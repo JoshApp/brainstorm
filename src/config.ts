@@ -62,4 +62,12 @@ export const CONFIG = {
   ENEMY_EYE_COLOR: 0xff5530,    // faint emissive eyes — visible even in shadow
   ENEMY_HIT_FLASH_COLOR: 0xffeedd,
   ENEMY_HIT_FLASH_DURATION: 0.08,
+
+  // === COMBAT CRUNCH ===
+  HIT_PAUSE_MS: 80,            // freeze duration on landing a hit — THE feel feature
+  SCREEN_SHAKE_HIT_MAGNITUDE: 0.04,  // meters of camera offset
+  SCREEN_SHAKE_HIT_DURATION: 0.14,   // seconds
+  HAPTIC_HIT_MS: 22,           // navigator.vibrate on landing hit
+  DAMAGE_NUMBER_LIFETIME: 0.7, // seconds before damage number removed
+  DAMAGE_NUMBER_RISE: 60,      // pixels the number floats up over its lifetime
 };

@@ -8,6 +8,8 @@ import { createSword } from './player/sword';
 import { createEnemy } from './mobs/enemy';
 import { createCombatSystem } from './combat/attack';
 import { createAttackButton, consumeAttackPressed } from './controls/attack-button';
+import { isFrozen } from './combat/hit-pause';
+import { tickShake } from './combat/screen-shake';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 // Requires fullscreen mode in some browsers — wrapped in try/catch.
@@ -83,20 +85,37 @@ window.addEventListener('resize', () => {
 
 // --- Render loop ---
 const clock = new THREE.Clock();
+const shakeOffset = new THREE.Vector3();
 
 function tick() {
-  const dt = Math.min(clock.getDelta(), 0.1);
+  const realDt = Math.min(clock.getDelta(), 0.1);
 
-  updateCamera(camera, input, dt);
-  updateTorchlight(torch, dt);
+  if (isFrozen()) {
+    // Hit-pause: skip all game updates so the world genuinely freezes.
+    // Drain look input so it doesn't accumulate and snap-rotate when we resume.
+    input.lookDx = 0;
+    input.lookDy = 0;
+  } else {
+    updateCamera(camera, input, realDt);
+    updateTorchlight(torch, realDt);
 
-  const attackPressed = consumeAttackPressed();
-  combat.tick(attackPressed);
+    const attackPressed = consumeAttackPressed();
+    combat.tick(attackPressed);
 
-  sword.update(dt);
-  enemy.update(dt);
+    sword.update(realDt);
+    enemy.update(realDt);
+  }
+
+  // Screen shake ticks even during freeze so the shake reads as a sharp kick
+  // rather than a delayed wobble. Apply offset, render, then revert so other
+  // systems see the camera at its true position next frame.
+  tickShake(realDt, shakeOffset);
+  camera.position.add(shakeOffset);
 
   renderer.render(scene, camera);
+
+  camera.position.sub(shakeOffset);
+
   requestAnimationFrame(tick);
 }
 
