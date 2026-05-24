@@ -18,7 +18,7 @@ export function showFirstTimeHint() {
     display: 'flex',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    padding: '0 32px 24vh 32px',
+    padding: '0 32px calc(20vh + env(safe-area-inset-bottom, 0px)) 32px',
     color: 'rgba(255, 200, 140, 0.55)',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: '14px',

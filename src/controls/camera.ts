@@ -10,13 +10,13 @@ import type { InputState } from './input';
 let yaw = 0;
 let pitch = 0;
 
+export function fovForAspect(aspect: number): number {
+  return aspect < 1 ? CONFIG.FOV_PORTRAIT : CONFIG.FOV_LANDSCAPE;
+}
+
 export function createFirstPersonCamera(): THREE.PerspectiveCamera {
-  return new THREE.PerspectiveCamera(
-    CONFIG.FOV,
-    window.innerWidth / window.innerHeight,
-    0.05,
-    50
-  );
+  const aspect = window.innerWidth / window.innerHeight;
+  return new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, 0.05, 50);
 }
 
 export function updateCamera(camera: THREE.PerspectiveCamera, input: InputState, dt: number) {

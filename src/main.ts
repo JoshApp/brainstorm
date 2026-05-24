@@ -3,7 +3,16 @@ import { CONFIG } from './config';
 import { buildDungeonRoom } from './scene/dungeon';
 import { createTorchlight, updateTorchlight } from './scene/torchlight';
 import { createTouchInput } from './controls/input';
-import { createFirstPersonCamera, updateCamera } from './controls/camera';
+import { createFirstPersonCamera, fovForAspect, updateCamera } from './controls/camera';
+
+// Best-effort portrait lock (no-op on iOS Safari and other unsupported envs).
+// Requires fullscreen mode in some browsers — wrapped in try/catch.
+try {
+  const so = (screen as Screen & { orientation?: { lock?: (o: string) => Promise<void> } }).orientation;
+  so?.lock?.('portrait').catch(() => {});
+} catch {
+  // ignore — orientation API not supported here
+}
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
@@ -45,8 +54,11 @@ const input = createTouchInput(canvas);
 
 // --- Resize ---
 window.addEventListener('resize', () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  camera.aspect = window.innerWidth / window.innerHeight;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.fov = fovForAspect(camera.aspect);
   camera.updateProjectionMatrix();
 });
 
