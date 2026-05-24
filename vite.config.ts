@@ -17,7 +17,7 @@ export default defineConfig({
         theme_color: '#0a0a0a',
         background_color: '#000000',
         display: 'fullscreen',
-        orientation: 'portrait',
+        orientation: 'landscape',
         start_url: BASE,
         scope: BASE,
         icons: [

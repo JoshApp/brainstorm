@@ -40,9 +40,5 @@ export const CONFIG = {
 
   // === RENDER ===
   PIXEL_RATIO_CAP: 2,          // cap DPR for mobile perf
-  // Three.js FOV is VERTICAL. In portrait the horizontal FOV is much
-  // narrower than the vertical, so we want a wider vertical FOV on portrait
-  // to keep a useful horizontal view. Landscape uses the smaller value.
-  FOV_LANDSCAPE: 70,
-  FOV_PORTRAIT: 95,
+  FOV: 70,                     // vertical FOV. In phone landscape ≈ 100° horizontal — wide enough for first-person crawler
 };

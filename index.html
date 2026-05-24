@@ -29,8 +29,8 @@
         padding: 0 32px;
         z-index: 1000;
       }
-      /* Show only on phone-sized landscape (not desktop). */
-      @media (orientation: landscape) and (max-width: 900px) {
+      /* Show on phone-sized portrait (not desktop). Game is landscape-locked. */
+      @media (orientation: portrait) and (max-width: 900px) {
         #scene { display: none; }
         #rotate-warning { display: flex; }
       }
@@ -38,7 +38,7 @@
   </head>
   <body>
     <canvas id="scene"></canvas>
-    <div id="rotate-warning">rotate your phone — descend in portrait</div>
+    <div id="rotate-warning">rotate your phone — descend in landscape</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
