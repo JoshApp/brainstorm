@@ -13,6 +13,10 @@ import { tickShake } from './combat/screen-shake';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying } from './player/death';
 import { initAchievements } from './broadcast/achievements';
+import { getStyle } from './style';
+import { buildMaterials } from './style/materials';
+import { initRenderPipeline, renderWithStyle } from './style/render-target';
+import { createStyleSwitcher } from './ui/style-switcher';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 // Requires fullscreen mode in some browsers — wrapped in try/catch.
@@ -48,6 +52,11 @@ scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY);
 scene.add(ambient);
 
+// --- Art style ---
+const style = getStyle();
+const materials = buildMaterials(style);
+initRenderPipeline(renderer);
+
 // --- Camera ---
 const camera = createFirstPersonCamera();
 camera.position.set(0, CONFIG.PLAYER_HEIGHT, 0);
@@ -55,20 +64,21 @@ camera.position.set(0, CONFIG.PLAYER_HEIGHT, 0);
 scene.add(camera);
 
 // --- Room ---
-buildDungeonRoom(scene);
+buildDungeonRoom(scene, materials);
 
 // --- Torchlight (mounted on north wall) ---
 const torch = createTorchlight(
   scene,
   new THREE.Vector3(0, CONFIG.TORCH_HEIGHT, -CONFIG.ROOM_DEPTH / 2 + 0.4),
+  materials,
 );
 
 // --- Player: held sword ---
-const sword = createSword(camera);
+const sword = createSword(camera, materials);
 
 // --- Enemy ---
 const [ex, ey, ez] = CONFIG.ENEMY_SPAWN;
-const enemy = createEnemy(scene, new THREE.Vector3(ex, ey, ez));
+const enemy = createEnemy(scene, new THREE.Vector3(ex, ey, ez), materials);
 
 // --- Combat ---
 const combat = createCombatSystem(camera, sword, [enemy]);
@@ -82,6 +92,7 @@ initAchievements();
 // --- Input ---
 const input = createTouchInput(canvas);
 createAttackButton();
+createStyleSwitcher();
 
 // --- Resize ---
 window.addEventListener('resize', () => {
@@ -132,7 +143,7 @@ function tick() {
   tickShake(realDt, shakeOffset);
   camera.position.add(shakeOffset);
 
-  renderer.render(scene, camera);
+  renderWithStyle(renderer, scene, camera, style);
 
   camera.position.sub(shakeOffset);
 

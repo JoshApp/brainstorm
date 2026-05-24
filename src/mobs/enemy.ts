@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
 import { emit } from '../broadcast/event-bus';
+import type { StyleMaterials } from '../style/materials';
 
 // First mob: capsule body + sphere head + emissive eyes.
 // State machine:
@@ -28,15 +29,13 @@ export interface Enemy {
 const tmpDir = new THREE.Vector3();
 const tmpFlat = new THREE.Vector3();
 
-export function createEnemy(scene: THREE.Scene, position: THREE.Vector3): Enemy {
+export function createEnemy(scene: THREE.Scene, position: THREE.Vector3, materials: StyleMaterials): Enemy {
   const group = new THREE.Group();
   group.position.copy(position);
 
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: CONFIG.ENEMY_COLOR,
-    roughness: 0.95,
-    metalness: 0.0,
-  });
+  const bodyMat = materials.enemyBody;
+  const eyeMat = materials.enemyEye;
+  const baseEyeEmissive = eyeMat.emissiveIntensity;
 
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 0.9, 4, 12), bodyMat);
   body.position.y = 0.8;
@@ -50,13 +49,6 @@ export function createEnemy(scene: THREE.Scene, position: THREE.Vector3): Enemy 
   head.receiveShadow = true;
   group.add(head);
 
-  const baseEyeEmissive = 1.6;
-  const eyeMat = new THREE.MeshStandardMaterial({
-    color: 0x000000,
-    emissive: CONFIG.ENEMY_EYE_COLOR,
-    emissiveIntensity: baseEyeEmissive,
-    roughness: 1.0,
-  });
   const eyeGeo = new THREE.SphereGeometry(0.035, 8, 6);
   const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
   leftEye.position.set(-0.08, 1.52, -0.24);
@@ -69,7 +61,7 @@ export function createEnemy(scene: THREE.Scene, position: THREE.Vector3): Enemy 
 
   // --- Hit-flash on damage taken ---
   let flashTimer = 0;
-  const originalColor = new THREE.Color(CONFIG.ENEMY_COLOR);
+  const originalColor = bodyMat.color.clone();
   const flashColor = new THREE.Color(CONFIG.ENEMY_HIT_FLASH_COLOR);
 
   // --- AI state machine ---
