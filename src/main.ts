@@ -12,6 +12,7 @@ import { isFrozen } from './combat/hit-pause';
 import { tickShake } from './combat/screen-shake';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying } from './player/death';
+import { initAchievements } from './broadcast/achievements';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 // Requires fullscreen mode in some browsers — wrapped in try/catch.
@@ -74,6 +75,9 @@ const combat = createCombatSystem(camera, sword, [enemy]);
 
 // --- Player death wiring ---
 onPlayerDeath(() => triggerDeath());
+
+// --- Broadcast / DCC tribute layer ---
+initAchievements();
 
 // --- Input ---
 const input = createTouchInput(canvas);

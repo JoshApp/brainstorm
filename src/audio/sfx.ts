@@ -135,3 +135,30 @@ export function playPlayerHurt() {
   lfo.start(now);
   lfo.stop(now + duration);
 }
+
+/** Broadcast/achievement chime — bright two-note arpeggio, sci-fi notification feel.
+ *  Cool register on purpose to contrast the dungeon's warm sound design. */
+export function playBroadcastChime() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const master = masterGain;
+
+  const now = c.currentTime;
+  const notes = [880, 1318.5]; // A5 then E6 — bright open fifth
+
+  notes.forEach((freq, i) => {
+    const t = now + i * 0.07;
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.18, t + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+
+    osc.connect(gain).connect(master);
+    osc.start(t);
+    osc.stop(t + 0.34);
+  });
+}

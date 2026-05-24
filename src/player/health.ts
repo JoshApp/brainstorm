@@ -3,6 +3,7 @@ import { freezeFor } from '../combat/hit-pause';
 import { kickShake } from '../combat/screen-shake';
 import { flashVignette } from '../ui/vignette';
 import { playPlayerHurt } from '../audio/sfx';
+import { emit } from '../broadcast/event-bus';
 
 // Player health module. Singleton state + damage handler that mirrors the
 // crunch stack from attack.ts but stronger (longer freeze, bigger shake,
@@ -42,9 +43,11 @@ export function damagePlayer(amount: number) {
   hapticVibrate(CONFIG.PLAYER_HIT_HAPTIC_MS);
   flashVignette();
   playPlayerHurt();
+  emit({ type: 'player:damaged', hpLeft: hp });
 
   if (hp <= 0 && !dead) {
     dead = true;
+    emit({ type: 'player:killed' });
     onDeathCb?.();
   }
 }

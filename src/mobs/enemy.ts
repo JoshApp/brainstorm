@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
+import { emit } from '../broadcast/event-bus';
 
 // First mob: capsule body + sphere head + emissive eyes.
 // State machine:
@@ -88,6 +89,7 @@ export function createEnemy(scene: THREE.Scene, position: THREE.Vector3): Enemy 
     if (meshState.hp <= 0) {
       meshState.alive = false;
       scene.remove(group);
+      emit({ type: 'enemy:killed' });
     }
   }
 

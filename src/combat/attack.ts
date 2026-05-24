@@ -6,6 +6,7 @@ import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
 import { playWhoosh, playImpact } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
+import { emit } from '../broadcast/event-bus';
 
 // Combat orchestration. Holds a single raycaster, projects from camera-forward
 // during the sword's strike window, and registers damage if any hit-target is
@@ -45,7 +46,10 @@ export function createCombatSystem(
   function tick(attackPressed: boolean) {
     if (attackPressed) {
       const started = sword.startSwing();
-      if (started) playWhoosh();
+      if (started) {
+        playWhoosh();
+        emit({ type: 'attack:swing' });
+      }
     }
 
     const striking = sword.isStriking;
@@ -84,6 +88,7 @@ export function createCombatSystem(
         hapticVibrate(CONFIG.HAPTIC_HIT_MS);
         playImpact();
         spawnDamageNumber(camera, hitPoint, damage);
+        emit({ type: 'attack:hit', damage });
         break;
       }
     }
