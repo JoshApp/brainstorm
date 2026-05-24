@@ -10,6 +10,8 @@ import { createCombatSystem } from './combat/attack';
 import { createAttackButton, consumeAttackPressed } from './controls/attack-button';
 import { isFrozen } from './combat/hit-pause';
 import { tickShake } from './combat/screen-shake';
+import { onPlayerDeath } from './player/health';
+import { triggerDeath, getTimeScale, tickDeath, isDying } from './player/death';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 // Requires fullscreen mode in some browsers — wrapped in try/catch.
@@ -70,6 +72,9 @@ const enemy = createEnemy(scene, new THREE.Vector3(ex, ey, ez));
 // --- Combat ---
 const combat = createCombatSystem(camera, sword, [enemy]);
 
+// --- Player death wiring ---
+onPlayerDeath(() => triggerDeath());
+
 // --- Input ---
 const input = createTouchInput(canvas);
 createAttackButton();
@@ -90,20 +95,31 @@ const shakeOffset = new THREE.Vector3();
 function tick() {
   const realDt = Math.min(clock.getDelta(), 0.1);
 
+  // Death sequence runs on real-time dt; world updates run on scaled dt.
+  tickDeath(realDt);
+  const scaledDt = realDt * getTimeScale();
+
   if (isFrozen()) {
     // Hit-pause: skip all game updates so the world genuinely freezes.
     // Drain look input so it doesn't accumulate and snap-rotate when we resume.
     input.lookDx = 0;
     input.lookDy = 0;
   } else {
-    updateCamera(camera, input, realDt);
-    updateTorchlight(torch, realDt);
+    // While dying, lock player input so the camera stays put for the epitaph.
+    if (!isDying()) {
+      updateCamera(camera, input, scaledDt);
+    } else {
+      input.lookDx = 0;
+      input.lookDy = 0;
+    }
+    updateTorchlight(torch, scaledDt);
 
-    const attackPressed = consumeAttackPressed();
+    // Attacks blocked while dying.
+    const attackPressed = isDying() ? false : consumeAttackPressed();
     combat.tick(attackPressed);
 
-    sword.update(realDt);
-    enemy.update(realDt);
+    sword.update(scaledDt);
+    enemy.update(scaledDt, camera.position);
   }
 
   // Screen shake ticks even during freeze so the shake reads as a sharp kick

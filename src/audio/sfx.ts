@@ -96,3 +96,42 @@ export function playImpact() {
   crack.start(now);
   crack.stop(now + crackDur);
 }
+
+/** Player getting hurt — a short pained grunt: low oscillator with vibrato + brief noise. */
+export function playPlayerHurt() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+
+  const now = c.currentTime;
+  const duration = 0.35;
+
+  // Grunt: low oscillator with downward pitch envelope + slight vibrato
+  const osc = c.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(180, now);
+  osc.frequency.exponentialRampToValueAtTime(80, now + duration);
+
+  // Vibrato LFO for vocal-like quality
+  const lfo = c.createOscillator();
+  lfo.frequency.value = 14;
+  const lfoGain = c.createGain();
+  lfoGain.gain.value = 12;
+  lfo.connect(lfoGain).connect(osc.frequency);
+
+  // Lowpass to take the edge off the saw
+  const filter = c.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(700, now);
+  filter.frequency.exponentialRampToValueAtTime(280, now + duration);
+
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.55, now + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  osc.connect(filter).connect(gain).connect(masterGain);
+  osc.start(now);
+  osc.stop(now + duration);
+  lfo.start(now);
+  lfo.stop(now + duration);
+}

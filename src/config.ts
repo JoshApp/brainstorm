@@ -70,4 +70,27 @@ export const CONFIG = {
   HAPTIC_HIT_MS: 22,           // navigator.vibrate on landing hit
   DAMAGE_NUMBER_LIFETIME: 0.7, // seconds before damage number removed
   DAMAGE_NUMBER_RISE: 60,      // pixels the number floats up over its lifetime
+
+  // === PLAYER HEALTH ===
+  PLAYER_HP_MAX: 5,
+  PLAYER_HIT_PAUSE_MS: 110,         // longer freeze than landing — getting hit hurts more
+  PLAYER_HIT_SHAKE_MAGNITUDE: 0.12, // stronger than landing-shake
+  PLAYER_HIT_SHAKE_DURATION: 0.28,
+  PLAYER_HIT_HAPTIC_MS: 60,         // longer buzz on damage
+  VIGNETTE_FLASH_OPACITY: 0.85,
+  VIGNETTE_FLASH_FADE_MS: 280,
+
+  // === ENEMY AI ===
+  ENEMY_MOVE_SPEED: 1.4,            // m/s — slower than player so retreat is possible
+  ENEMY_ATTACK_RANGE: 1.6,          // start windup when player within this distance
+  ENEMY_STRIKE_RANGE: 1.9,          // hit lands if player still within this when striking
+  ENEMY_ATTACK_DAMAGE: 1,
+  ENEMY_WINDUP_TIME: 0.55,          // telegraph: eyes brighten, body tilts forward
+  ENEMY_STRIKE_TIME: 0.18,          // hit window
+  ENEMY_RECOVER_TIME: 0.55,         // can't attack again — player's window to retreat or strike
+
+  // === DEATH SEQUENCE ===
+  DEATH_SLOWMO_SCALE: 0.25,         // dt multiplier while dying
+  DEATH_SEQUENCE_DURATION: 3.2,     // seconds before page reload
+  DEATH_VIGNETTE_DARKEN_MS: 1500,   // red vignette ramps in over this
 };
