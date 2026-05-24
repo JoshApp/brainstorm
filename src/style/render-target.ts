@@ -1,22 +1,101 @@
 import * as THREE from 'three';
 import type { Style } from './index';
 
-// PS1-era render pipeline: render the scene to a low-res target, then blit it
-// full-screen with nearest-neighbor filtering. The pixelated upscale + chunky
-// shadows + warm fog = late-90s console feel without any vertex shader work.
+// PS1-era render pipeline, PSX-horror flavor.
 //
-// Resolution is a fraction of canvas size (so it adapts to phone vs desktop).
-// 0.4 = roughly 480x216 on a phone — distinctly pixelated but still readable.
+// Render the scene to a low-res target, then blit it full-screen through a
+// custom fragment shader that adds the moves from the Haunted PS1 / Mike
+// Klubnika school (Buckshot Roulette, No I'm Not a Human, Mouthwashing,
+// Faith, etc.):
+//
+//   - Bayer 4x4 ORDERED DITHER baked into the color, so gradients posterize
+//     into that signature crosshatch instead of going smooth.
+//   - COLOR QUANTIZATION to ~32 levels per channel — hard color steps.
+//   - CHROMATIC ABERRATION at screen edges (subtle red/blue split).
+//   - SCANLINES — 1px horizontal darkening, ~3%, the CRT phosphor feel.
+//   - WARM AMBER TINT — Buckshot Roulette's sepia push, drives the dread.
+//
+// All five sit in one cheap fragment shader pass. Mobile-friendly.
 
 const PS1_SCALE = 0.4;
 
 let lowResTarget: THREE.WebGLRenderTarget | null = null;
 let blitScene: THREE.Scene | null = null;
 let blitCamera: THREE.OrthographicCamera | null = null;
+let blitMaterial: THREE.ShaderMaterial | null = null;
+
+const HORROR_BLIT_VERT = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = vec4(position, 1.0);
+  }
+`;
+
+const HORROR_BLIT_FRAG = `
+  precision highp float;
+  uniform sampler2D tDiffuse;
+  uniform vec2 uResolution;
+  varying vec2 vUv;
+
+  // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
+  float bayer(vec2 p) {
+    int x = int(mod(p.x, 4.0));
+    int y = int(mod(p.y, 4.0));
+    int i = y * 4 + x;
+    float m;
+    if (i ==  0) m =  0.0; else if (i ==  1) m = 12.0;
+    else if (i ==  2) m =  3.0; else if (i ==  3) m = 15.0;
+    else if (i ==  4) m =  8.0; else if (i ==  5) m =  4.0;
+    else if (i ==  6) m = 11.0; else if (i ==  7) m =  7.0;
+    else if (i ==  8) m =  2.0; else if (i ==  9) m = 14.0;
+    else if (i == 10) m =  1.0; else if (i == 11) m = 13.0;
+    else if (i == 12) m = 10.0; else if (i == 13) m =  6.0;
+    else if (i == 14) m =  9.0; else m =  5.0;
+    return m / 16.0 - 0.5;  // -0.5 .. +0.4375
+  }
+
+  vec3 quantize(vec3 col, float levels) {
+    return floor(col * levels + 0.5) / levels;
+  }
+
+  void main() {
+    vec2 uv = vUv;
+
+    // CHROMATIC ABERRATION — red/blue split scaling with distance from center
+    vec2 fromCenter = uv - 0.5;
+    vec2 caOffset = fromCenter * 0.006;
+    float r = texture2D(tDiffuse, uv + caOffset).r;
+    float g = texture2D(tDiffuse, uv).g;
+    float b = texture2D(tDiffuse, uv - caOffset).b;
+    vec3 col = vec3(r, g, b);
+
+    // DITHER — add Bayer pattern below quantization to break smooth bands
+    vec2 pixCoord = gl_FragCoord.xy;
+    float d = bayer(pixCoord);
+    col += d / 24.0;
+
+    // QUANTIZE to ~32 levels per channel for hard PSX color steps
+    col = quantize(col, 32.0);
+
+    // SCANLINES — every other row gets a slight darken
+    float scanline = mod(pixCoord.y, 2.0) < 1.0 ? 1.0 : 0.96;
+    col *= scanline;
+
+    // AMBER TINT — push the whole image warm, slightly desaturated
+    vec3 tint = vec3(1.04, 0.96, 0.86);
+    col *= tint;
+
+    // VIGNETTE — slight darkening at edges (cheap, complements the existing
+    // damage vignette which lives in the DOM layer above this)
+    float vig = 1.0 - dot(fromCenter, fromCenter) * 0.45;
+    col *= vig;
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
 
 export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
-  // Always allocate the low-res target + blit setup so style switching from
-  // ps1 → other → ps1 doesn't require re-init.
   const w = Math.max(1, Math.floor(renderer.domElement.width * PS1_SCALE));
   const h = Math.max(1, Math.floor(renderer.domElement.height * PS1_SCALE));
 
@@ -29,20 +108,27 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
 
   blitScene = new THREE.Scene();
   blitCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const blitMat = new THREE.MeshBasicMaterial({
-    map: lowResTarget.texture,
+
+  blitMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      tDiffuse: { value: lowResTarget.texture },
+      uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
+    },
+    vertexShader: HORROR_BLIT_VERT,
+    fragmentShader: HORROR_BLIT_FRAG,
     depthTest: false,
     depthWrite: false,
-    fog: false,
   });
-  const blitMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMat);
+
+  const blitMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMaterial);
   blitScene.add(blitMesh);
 
   window.addEventListener('resize', () => {
-    if (!lowResTarget) return;
+    if (!lowResTarget || !blitMaterial) return;
     const nw = Math.max(1, Math.floor(renderer.domElement.width * PS1_SCALE));
     const nh = Math.max(1, Math.floor(renderer.domElement.height * PS1_SCALE));
     lowResTarget.setSize(nw, nh);
+    blitMaterial.uniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
   });
 }
 
