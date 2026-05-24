@@ -13,6 +13,7 @@ export interface Torch {
   light: THREE.PointLight;
   group: THREE.Group;
   flameMaterial: THREE.MeshStandardMaterial;
+  flameMesh: THREE.Mesh;
   baseIntensity: number;
   baseEmissive: number;
   time: number;
@@ -52,8 +53,10 @@ export function createTorchlight(
 
   const flameMat = materials.torchFlame;
   const baseEmissive = flameMat.emissiveIntensity;
-  const flameGeo = new THREE.SphereGeometry(0.09, 12, 10);
+  // Bigger, elongated flame so it reads as fire at low render resolution.
+  const flameGeo = new THREE.SphereGeometry(0.12, 12, 12);
   const flame = new THREE.Mesh(flameGeo, flameMat);
+  flame.scale.set(1.0, 1.4, 1.0); // teardrop, taller than wide
   flame.position.z = 0;
   flame.castShadow = false;
   group.add(flame);
@@ -64,6 +67,7 @@ export function createTorchlight(
     light,
     group,
     flameMaterial: flameMat,
+    flameMesh: flame,
     baseIntensity: CONFIG.TORCH_INTENSITY,
     baseEmissive,
     time: 0,
@@ -75,17 +79,36 @@ export function createTorchlight(
 
 export function updateTorchlight(torch: Torch, dt: number) {
   torch.time += dt;
-
   const t = torch.time;
-  const fast = Math.sin((t + torch.n1) * 11) * 0.3;
-  const med = Math.sin((t + torch.n2) * 4.3) * 0.4;
-  const slow = Math.sin((t + torch.n3) * 1.7) * 0.3;
+  const { n1, n2, n3 } = torch;
 
-  const dramatic = Math.max(0, Math.sin((t + torch.n1) * 0.7) - 0.8) * 4;
+  // --- CAST LIGHT (intensity) ---
+  // Gentle layered flicker, never blacks out. Floor clamped at 50% of base
+  // so the room stays readable even when the dramatic dim peaks.
+  const lFast = Math.sin((t + n1) * 11) * 0.25;
+  const lMed = Math.sin((t + n2) * 4.3) * 0.35;
+  const lSlow = Math.sin((t + n3) * 1.7) * 0.25;
+  const lFlicker = (lFast + lMed + lSlow) / 3;
 
-  const flicker = (fast + med + slow) / 3;
-  const factor = 1 + flicker * CONFIG.TORCH_FLICKER_AMOUNT - dramatic * 0.4;
+  // Dramatic dim — rarer (threshold 0.92, period ~14s) and less severe.
+  const dramatic = Math.max(0, Math.sin((t + n1) * 0.45) - 0.92) * 12;
+  const lightFactor = 1 + lFlicker * 0.45 - dramatic * 0.20;
+  torch.light.intensity = Math.max(torch.baseIntensity * 0.5, torch.baseIntensity * lightFactor);
 
-  torch.light.intensity = Math.max(0.1, torch.baseIntensity * factor);
-  torch.flameMaterial.emissiveIntensity = Math.max(0.4, torch.baseEmissive * factor);
+  // --- VISIBLE FLAME ---
+  // More aggressive flicker on the flame's emissive + small scale jitter +
+  // tiny vertical bob, so the eye sees a *live fire* not a static dot.
+  const fFast = Math.sin((t + n1) * 23) * 0.35;
+  const fXfast = Math.sin((t + n2) * 47) * 0.25;
+  const fMed = Math.sin((t + n3) * 8) * 0.4;
+  const flameFactor = lightFactor + (fFast + fXfast + fMed) * 0.18;
+  torch.flameMaterial.emissiveIntensity = Math.max(0.6, torch.baseEmissive * flameFactor);
+
+  if (torch.flameMesh) {
+    // Scale jitter — flame swells and shrinks rapidly
+    const scaleJitter = 1 + Math.sin((t + n2) * 14) * 0.08 + Math.sin((t + n3) * 23) * 0.05;
+    torch.flameMesh.scale.set(scaleJitter, 1.4 * scaleJitter * (0.9 + Math.sin((t + n1) * 9) * 0.12), scaleJitter);
+    // Vertical bob — flame "leaps up" slightly
+    torch.flameMesh.position.y = Math.sin((t + n3) * 7) * 0.02 + Math.abs(Math.sin((t + n1) * 11)) * 0.015;
+  }
 }

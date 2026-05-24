@@ -66,11 +66,13 @@ export function buildDungeonRoom(scene: THREE.Scene, materials: StyleMaterials) 
   // from the torch toward the corners, creating depth and tactical hiding
   // positions for future combat scenarios.
   const pillarGeo = new THREE.BoxGeometry(0.5, H, 0.5);
+  // Pulled to z=±2.2 (was ±1.5) so the player spawns LOOKING DOWN A
+  // COLONNADE rather than boxed in by columns directly beside them.
   const pillarPositions: Array<[number, number, number]> = [
-    [-1.8, H / 2, -1.5],
-    [1.8, H / 2, -1.5],
-    [-1.8, H / 2, 1.5],
-    [1.8, H / 2, 1.5],
+    [-1.8, H / 2, -2.2],
+    [1.8, H / 2, -2.2],
+    [-1.8, H / 2, 2.2],
+    [1.8, H / 2, 2.2],
   ];
   for (const [px, py, pz] of pillarPositions) {
     const pillar = new THREE.Mesh(pillarGeo, materials.wall);
