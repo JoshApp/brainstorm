@@ -60,4 +60,41 @@ export function buildDungeonRoom(scene: THREE.Scene, materials: StyleMaterials) 
     mesh.castShadow = false;
     scene.add(mesh);
   }
+
+  // --- Four stone pillars: square columns at x=±1.8, z=±1.5 ---
+  // The player spawns inside the rectangle they form. Pillars cast shadows
+  // from the torch toward the corners, creating depth and tactical hiding
+  // positions for future combat scenarios.
+  const pillarGeo = new THREE.BoxGeometry(0.5, H, 0.5);
+  const pillarPositions: Array<[number, number, number]> = [
+    [-1.8, H / 2, -1.5],
+    [1.8, H / 2, -1.5],
+    [-1.8, H / 2, 1.5],
+    [1.8, H / 2, 1.5],
+  ];
+  for (const [px, py, pz] of pillarPositions) {
+    const pillar = new THREE.Mesh(pillarGeo, materials.wall);
+    pillar.position.set(px, py, pz);
+    pillar.castShadow = true;
+    pillar.receiveShadow = true;
+    scene.add(pillar);
+  }
+
+  // --- Altar at the back of the room ---
+  // Low stone block centered behind where the enemy spawns, in front of the
+  // north torch. Visual focal point + foreshadows future loot/rune spawns.
+  const altarGeo = new THREE.BoxGeometry(0.9, 0.55, 0.6);
+  const altar = new THREE.Mesh(altarGeo, materials.wall);
+  altar.position.set(0, 0.275, -2.8);
+  altar.castShadow = true;
+  altar.receiveShadow = true;
+  scene.add(altar);
+
+  // --- Altar base — slightly wider stone slab underneath ---
+  const baseGeo = new THREE.BoxGeometry(1.2, 0.1, 0.9);
+  const altarBase = new THREE.Mesh(baseGeo, materials.floor);
+  altarBase.position.set(0, 0.05, -2.8);
+  altarBase.castShadow = false;
+  altarBase.receiveShadow = true;
+  scene.add(altarBase);
 }

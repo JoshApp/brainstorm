@@ -66,12 +66,21 @@ scene.add(camera);
 // --- Room ---
 buildDungeonRoom(scene, materials);
 
-// --- Torchlight (mounted on north wall) ---
-const torch = createTorchlight(
-  scene,
-  new THREE.Vector3(0, CONFIG.TORCH_HEIGHT, -CONFIG.ROOM_DEPTH / 2 + 0.4),
-  materials,
-);
+// --- Torchlight: two torches, north + south walls ---
+const torches = [
+  createTorchlight(
+    scene,
+    new THREE.Vector3(0, CONFIG.TORCH_HEIGHT, -CONFIG.ROOM_DEPTH / 2 + 0.4),
+    materials,
+    0, // north wall — bracket extends -Z
+  ),
+  createTorchlight(
+    scene,
+    new THREE.Vector3(0, CONFIG.TORCH_HEIGHT, CONFIG.ROOM_DEPTH / 2 - 0.4),
+    materials,
+    Math.PI, // south wall — bracket extends +Z
+  ),
+];
 
 // --- Player: held sword ---
 const sword = createSword(camera, materials);
@@ -127,7 +136,7 @@ function tick() {
       input.lookDx = 0;
       input.lookDy = 0;
     }
-    updateTorchlight(torch, scaledDt);
+    for (const t of torches) updateTorchlight(t, scaledDt);
 
     // Attacks blocked while dying.
     const attackPressed = isDying() ? false : consumeAttackPressed();

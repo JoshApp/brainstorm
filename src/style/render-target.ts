@@ -82,13 +82,13 @@ const HORROR_BLIT_FRAG = `
     float scanline = mod(pixCoord.y, 2.0) < 1.0 ? 1.0 : 0.96;
     col *= scanline;
 
-    // AMBER TINT — push the whole image warm, slightly desaturated
-    vec3 tint = vec3(1.04, 0.96, 0.86);
+    // AMBER TINT — push the whole image warm, but no longer darken G/B
+    vec3 tint = vec3(1.05, 1.00, 0.92);
     col *= tint;
 
-    // VIGNETTE — slight darkening at edges (cheap, complements the existing
-    // damage vignette which lives in the DOM layer above this)
-    float vig = 1.0 - dot(fromCenter, fromCenter) * 0.45;
+    // VIGNETTE — slight darkening at edges (complements the existing DOM
+    // damage vignette above this; tuned down so the room isn't crushed)
+    float vig = 1.0 - dot(fromCenter, fromCenter) * 0.20;
     col *= vig;
 
     gl_FragColor = vec4(col, 1.0);

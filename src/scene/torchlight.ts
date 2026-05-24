@@ -25,6 +25,7 @@ export function createTorchlight(
   scene: THREE.Scene,
   position: THREE.Vector3,
   materials: StyleMaterials,
+  wallYaw: number = 0,  // 0 = north wall (default), Math.PI = south, ±PI/2 = west/east
 ): Torch {
   const light = new THREE.PointLight(
     CONFIG.TORCH_COLOR,
@@ -40,6 +41,7 @@ export function createTorchlight(
 
   const group = new THREE.Group();
   group.position.copy(position);
+  group.rotation.y = wallYaw;
 
   const bracketGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.3, 6);
   const bracket = new THREE.Mesh(bracketGeo, materials.torchBracket);

@@ -8,7 +8,7 @@ export const CONFIG = {
   FLOOR_COLOR: 0x0f0d0b,       // darker than walls
   CEILING_COLOR: 0x080706,     // darkest
   AMBIENT_COLOR: 0x1a1010,     // faint red/brown ambient — bare minimum visibility
-  AMBIENT_INTENSITY: 0.4,      // dim — most light still from torches (was 0.08 — too dark under r155+ physical lights)
+  AMBIENT_INTENSITY: 0.6,      // dim — most light still from torches (raised so the room reads less as void)
 
   // === FOG ===
   // Hides everything beyond torch range. Sells the dread.
@@ -20,7 +20,7 @@ export const CONFIG = {
   // Note: Three.js r155+ uses physical light units (candela). A torch needs
   // intensities in the 50-200 range, not single digits, to actually light a room.
   TORCH_COLOR: 0xffaa55,       // warm orange flame
-  TORCH_INTENSITY: 80,         // base brightness (was 2.2 — pre-r155 units)
+  TORCH_INTENSITY: 95,         // base brightness (was 80; bumped slightly for elaborated room)
   TORCH_DISTANCE: 10,          // falloff range (extended from 8 to reach far wall)
   TORCH_DECAY: 1.4,            // gentler-than-physical falloff — more "torch in dungeon"
   TORCH_FLICKER_AMOUNT: 0.4,   // how much intensity varies (0-1)
