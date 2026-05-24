@@ -4,6 +4,10 @@ import { buildDungeonRoom } from './scene/dungeon';
 import { createTorchlight, updateTorchlight } from './scene/torchlight';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, updateCamera } from './controls/camera';
+import { createSword } from './player/sword';
+import { createEnemy } from './mobs/enemy';
+import { createCombatSystem } from './combat/attack';
+import { createAttackButton, consumeAttackPressed } from './controls/attack-button';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 // Requires fullscreen mode in some browsers — wrapped in try/catch.
@@ -42,15 +46,31 @@ scene.add(ambient);
 // --- Camera ---
 const camera = createFirstPersonCamera();
 camera.position.set(0, CONFIG.PLAYER_HEIGHT, 0);
+// Camera must be in the scene graph for its children (the sword) to render.
+scene.add(camera);
 
 // --- Room ---
 buildDungeonRoom(scene);
 
-// --- Torchlight (mounted on north wall for now) ---
-const torch = createTorchlight(scene, new THREE.Vector3(0, CONFIG.TORCH_HEIGHT, -CONFIG.ROOM_DEPTH / 2 + 0.2));
+// --- Torchlight (mounted on north wall) ---
+const torch = createTorchlight(
+  scene,
+  new THREE.Vector3(0, CONFIG.TORCH_HEIGHT, -CONFIG.ROOM_DEPTH / 2 + 0.4),
+);
+
+// --- Player: held sword ---
+const sword = createSword(camera);
+
+// --- Enemy ---
+const [ex, ey, ez] = CONFIG.ENEMY_SPAWN;
+const enemy = createEnemy(scene, new THREE.Vector3(ex, ey, ez));
+
+// --- Combat ---
+const combat = createCombatSystem(camera, sword, [enemy]);
 
 // --- Input ---
 const input = createTouchInput(canvas);
+createAttackButton();
 
 // --- Resize ---
 window.addEventListener('resize', () => {
@@ -69,6 +89,12 @@ function tick() {
 
   updateCamera(camera, input, dt);
   updateTorchlight(torch, dt);
+
+  const attackPressed = consumeAttackPressed();
+  combat.tick(attackPressed);
+
+  sword.update(dt);
+  enemy.update(dt);
 
   renderer.render(scene, camera);
   requestAnimationFrame(tick);

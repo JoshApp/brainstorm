@@ -41,4 +41,25 @@ export const CONFIG = {
   // === RENDER ===
   PIXEL_RATIO_CAP: 2,          // cap DPR for mobile perf
   FOV: 70,                     // vertical FOV. In phone landscape ≈ 100° horizontal — wide enough for first-person crawler
+
+  // === WALLS — surface variation ===
+  WALL_SUBDIVISIONS_X: 16,     // segments along width — more = finer noise
+  WALL_SUBDIVISIONS_Y: 12,
+  WALL_VERTEX_JITTER: 0.04,    // meters of inward/outward perturbation per vertex
+
+  // === SWORD (first-person held weapon) ===
+  SWORD_REACH: 1.8,            // meters — raycast distance for hit detection
+  SWORD_SWING_WINDUP: 0.12,    // seconds — sword raises
+  SWORD_SWING_STRIKE: 0.10,    // seconds — sword chops through (hit window is here)
+  SWORD_SWING_RECOVER: 0.28,   // seconds — return to idle; can't attack again
+  SWORD_IDLE_POS: [0.35, -0.32, -0.55] as const,  // bottom-right of view
+  SWORD_IDLE_ROT: [-0.2, -0.15, 0.4] as const,    // tilted across body
+
+  // === ENEMY ===
+  ENEMY_HP: 3,
+  ENEMY_SPAWN: [0, 0, -1.5] as const,  // standing between player and torch — silhouetted
+  ENEMY_COLOR: 0x14100c,        // very dark, almost-black against the torch glow
+  ENEMY_EYE_COLOR: 0xff5530,    // faint emissive eyes — visible even in shadow
+  ENEMY_HIT_FLASH_COLOR: 0xffeedd,
+  ENEMY_HIT_FLASH_DURATION: 0.08,
 };
