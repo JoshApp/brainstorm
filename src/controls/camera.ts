@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import type { InputState } from './input';
+import type { WalkableRegion } from '../level/walkable';
 
 // Simple first-person camera with yaw/pitch and walking movement.
-// Movement is in the camera's horizontal facing direction.
-// Collision is *not* implemented — Phase 1 has a single open room.
-// Add collision when we get to Phase 3 (multiple rooms with walls/doors).
+// Movement is constrained by a WalkableRegion (rooms + corridors minus
+// obstacle circles), supplied each frame so the level system owns the
+// authoritative collision data.
+
+const PLAYER_RADIUS = 0.3;
 
 let yaw = 0;
 let pitch = 0;
@@ -19,7 +22,16 @@ export function createFirstPersonCamera(): THREE.PerspectiveCamera {
   );
 }
 
-export function updateCamera(camera: THREE.PerspectiveCamera, input: InputState, dt: number) {
+export function setCameraYaw(y: number) {
+  yaw = y;
+}
+
+export function updateCamera(
+  camera: THREE.PerspectiveCamera,
+  input: InputState,
+  dt: number,
+  walkable: WalkableRegion,
+) {
   // --- Look ---
   yaw -= input.lookDx * CONFIG.LOOK_SENSITIVITY;
   pitch -= input.lookDy * CONFIG.LOOK_SENSITIVITY;
@@ -28,30 +40,30 @@ export function updateCamera(camera: THREE.PerspectiveCamera, input: InputState,
   input.lookDx = 0;
   input.lookDy = 0;
 
-  // Apply rotation via Euler (YXZ order: yaw, then pitch)
   camera.rotation.order = 'YXZ';
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
 
   // --- Move ---
-  // Project input direction onto camera's horizontal plane.
   if (input.moveX !== 0 || input.moveY !== 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, yaw, 0));
     const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, yaw, 0));
 
     const move = new THREE.Vector3()
-      .addScaledVector(forward, -input.moveY) // joystick up = forward
+      .addScaledVector(forward, -input.moveY)
       .addScaledVector(right, input.moveX);
 
     if (move.lengthSq() > 0) {
       move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * dt);
-      camera.position.add(move);
-
-      // Clamp to room bounds (Phase 1 hack until proper collision)
-      const half = CONFIG.ROOM_WIDTH / 2 - 0.4;
-      const halfD = CONFIG.ROOM_DEPTH / 2 - 0.4;
-      camera.position.x = Math.max(-half, Math.min(half, camera.position.x));
-      camera.position.z = Math.max(-halfD, Math.min(halfD, camera.position.z));
+      const newX = camera.position.x + move.x;
+      const newZ = camera.position.z + move.z;
+      const resolved = walkable.clampMove(
+        camera.position.x, camera.position.z,
+        newX, newZ,
+        PLAYER_RADIUS,
+      );
+      camera.position.x = resolved.x;
+      camera.position.z = resolved.z;
     }
   }
 

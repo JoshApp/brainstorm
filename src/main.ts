@@ -1,11 +1,9 @@
 import * as THREE from 'three';
 import { CONFIG } from './config';
-import { buildDungeonRoom } from './scene/dungeon';
-import { createTorchlight, updateTorchlight } from './scene/torchlight';
+import { updateTorchlight } from './scene/torchlight';
 import { createTouchInput } from './controls/input';
-import { createFirstPersonCamera, updateCamera } from './controls/camera';
+import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/camera';
 import { createSword } from './player/sword';
-import { createEnemy } from './mobs/enemy';
 import { createCombatSystem } from './combat/attack';
 import { createAttackButton, consumeAttackPressed } from './controls/attack-button';
 import { isFrozen } from './combat/hit-pause';
@@ -17,9 +15,10 @@ import { getStyle } from './style';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle } from './style/render-target';
 import { createStyleSwitcher } from './ui/style-switcher';
+import { buildLevel } from './level/builder';
+import { LEVEL_1 } from './level/specs';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
-// Requires fullscreen mode in some browsers — wrapped in try/catch.
 try {
   const so = (screen as Screen & { orientation?: { lock?: (o: string) => Promise<void> } }).orientation;
   so?.lock?.('landscape').catch(() => {});
@@ -48,7 +47,6 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(CONFIG.FOG_COLOR);
 scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 
-// Faint ambient — just enough that pure shadow isn't void
 const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY);
 scene.add(ambient);
 
@@ -59,38 +57,18 @@ initRenderPipeline(renderer);
 
 // --- Camera ---
 const camera = createFirstPersonCamera();
-camera.position.set(0, CONFIG.PLAYER_HEIGHT, 0);
-// Camera must be in the scene graph for its children (the sword) to render.
-scene.add(camera);
+scene.add(camera); // required for the sword (camera child) to render
 
-// --- Room ---
-buildDungeonRoom(scene, materials);
-
-// --- Torchlight: two torches, north + south walls ---
-const torches = [
-  createTorchlight(
-    scene,
-    new THREE.Vector3(0, CONFIG.TORCH_HEIGHT, -CONFIG.ROOM_DEPTH / 2 + 0.4),
-    materials,
-    0, // north wall — bracket extends -Z
-  ),
-  createTorchlight(
-    scene,
-    new THREE.Vector3(0, CONFIG.TORCH_HEIGHT, CONFIG.ROOM_DEPTH / 2 - 0.4),
-    materials,
-    Math.PI, // south wall — bracket extends +Z
-  ),
-];
+// --- Level (the new declarative pipeline) ---
+const level = buildLevel(scene, LEVEL_1, materials);
+camera.position.set(level.playerSpawn.x, CONFIG.PLAYER_HEIGHT, level.playerSpawn.z);
+setCameraYaw(level.playerSpawn.yaw);
 
 // --- Player: held sword ---
 const sword = createSword(camera, materials);
 
-// --- Enemy ---
-const [ex, ey, ez] = CONFIG.ENEMY_SPAWN;
-const enemy = createEnemy(scene, new THREE.Vector3(ex, ey, ez), materials);
-
 // --- Combat ---
-const combat = createCombatSystem(camera, sword, [enemy]);
+const combat = createCombatSystem(camera, sword, level.enemies);
 
 // --- Player death wiring ---
 onPlayerDeath(() => triggerDeath());
@@ -119,36 +97,32 @@ const shakeOffset = new THREE.Vector3();
 function tick() {
   const realDt = Math.min(clock.getDelta(), 0.1);
 
-  // Death sequence runs on real-time dt; world updates run on scaled dt.
   tickDeath(realDt);
   const scaledDt = realDt * getTimeScale();
 
   if (isFrozen()) {
-    // Hit-pause: skip all game updates so the world genuinely freezes.
-    // Drain look input so it doesn't accumulate and snap-rotate when we resume.
+    // Hit-pause: skip all game updates, drain look input so it doesn't snap.
     input.lookDx = 0;
     input.lookDy = 0;
   } else {
-    // While dying, lock player input so the camera stays put for the epitaph.
     if (!isDying()) {
-      updateCamera(camera, input, scaledDt);
+      updateCamera(camera, input, scaledDt, level.walkable);
     } else {
       input.lookDx = 0;
       input.lookDy = 0;
     }
-    for (const t of torches) updateTorchlight(t, scaledDt);
 
-    // Attacks blocked while dying.
+    for (const t of level.torches) updateTorchlight(t, scaledDt);
+
     const attackPressed = isDying() ? false : consumeAttackPressed();
     combat.tick(attackPressed);
 
     sword.update(scaledDt);
-    enemy.update(scaledDt, camera.position);
+    for (const enemy of level.enemies) {
+      enemy.update(scaledDt, camera.position, level.walkable);
+    }
   }
 
-  // Screen shake ticks even during freeze so the shake reads as a sharp kick
-  // rather than a delayed wobble. Apply offset, render, then revert so other
-  // systems see the camera at its true position next frame.
   tickShake(realDt, shakeOffset);
   camera.position.add(shakeOffset);
 

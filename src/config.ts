@@ -33,11 +33,6 @@ export const CONFIG = {
   LOOK_SENSITIVITY: 0.004,     // touch swipe to camera rotation
   JOYSTICK_DEADZONE: 0.1,
 
-  // === ROOM (Phase 1 single room) ===
-  ROOM_WIDTH: 8,
-  ROOM_DEPTH: 8,
-  ROOM_HEIGHT: 3.2,
-
   // === RENDER ===
   PIXEL_RATIO_CAP: 2,          // cap DPR for mobile perf
   FOV: 70,                     // vertical FOV. In phone landscape ≈ 100° horizontal — wide enough for first-person crawler
@@ -57,7 +52,6 @@ export const CONFIG = {
 
   // === ENEMY ===
   ENEMY_HP: 3,
-  ENEMY_SPAWN: [0, 0, -1.5] as const,  // standing between player and torch — silhouetted
   ENEMY_COLOR: 0x14100c,        // very dark, almost-black against the torch glow
   ENEMY_EYE_COLOR: 0xff5530,    // faint emissive eyes — visible even in shadow
   ENEMY_HIT_FLASH_COLOR: 0xffeedd,
