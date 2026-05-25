@@ -3,20 +3,15 @@ import { CONFIG } from '../config';
 import type { Style } from './index';
 import { applyStoneShader } from './stone-shader';
 
-// Per-style material library. Centralizes all material decisions so the rest
-// of the codebase (dungeon, sword, enemy, torchlight) just asks "give me the
-// wall material for the current style" without knowing how each style works.
+// Per-style material library — only the BIG STATIC SURFACES of the level
+// (walls, floor, ceiling). Dynamic entities (enemies, sword, torches, future
+// chests) own their materials via ModelSpec.materials so per-instance state
+// (hit flash, independent flame flicker) doesn't bleed across instances.
 
 export interface StyleMaterials {
   wall: THREE.Material;
   floor: THREE.Material;
   ceiling: THREE.Material;
-  swordBlade: THREE.Material;
-  swordGuard: THREE.Material;
-  swordHilt: THREE.Material;
-  swordPommel: THREE.Material;
-  torchBracket: THREE.Material;
-  torchFlame: THREE.MeshStandardMaterial;
 }
 
 export function buildMaterials(style: Style): StyleMaterials {
@@ -54,46 +49,5 @@ export function buildMaterials(style: Style): StyleMaterials {
     wall: wallBase,
     floor: floorBase,
     ceiling: ceilingBase,
-    swordBlade: new THREE.MeshStandardMaterial({
-      color: 0x9a978f,
-      roughness: 0.4,
-      metalness: 0.85,
-      fog: false,
-      flatShading: flat,
-    }),
-    swordGuard: new THREE.MeshStandardMaterial({
-      color: 0x3a2f22,
-      roughness: 0.7,
-      metalness: 0.6,
-      fog: false,
-      flatShading: flat,
-    }),
-    swordHilt: new THREE.MeshStandardMaterial({
-      color: 0x1a1410,
-      roughness: 0.9,
-      metalness: 0.1,
-      fog: false,
-      flatShading: flat,
-    }),
-    swordPommel: new THREE.MeshStandardMaterial({
-      color: 0x4a3a26,
-      roughness: 0.6,
-      metalness: 0.7,
-      fog: false,
-      flatShading: flat,
-    }),
-    torchBracket: new THREE.MeshStandardMaterial({
-      color: 0x14110d,
-      roughness: 0.85,
-      metalness: 0.5,
-      flatShading: flat,
-    }),
-    torchFlame: new THREE.MeshStandardMaterial({
-      color: 0xffcc88,
-      emissive: 0xff8844,
-      emissiveIntensity: 3.0,
-      roughness: 0.4,
-      metalness: 0.0,
-    }),
   };
 }

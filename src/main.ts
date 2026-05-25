@@ -94,7 +94,7 @@ camera.rotation.y = level.playerSpawn.yaw;
 camera.rotation.x = 0;
 
 // --- Player: held sword ---
-const sword = createSword(camera, materials);
+const sword = createSword(camera);
 
 // --- Combat ---
 const combat = createCombatSystem(camera, sword, level.enemies);

@@ -152,7 +152,6 @@ export function buildLevel(
       createTorchlight(
         scene,
         new THREE.Vector3(t.x, t.height, t.z),
-        materials,
         torchYawForWall(t.wall),
       ),
     );

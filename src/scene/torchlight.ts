@@ -1,13 +1,15 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import type { StyleMaterials } from '../style/materials';
+import { buildModel } from '../ecs/build-model';
+import { WALL_TORCH } from '../content/torch';
 
-// Flickering point light + a visible torch object (iron bracket and emissive
-// flame sphere) at the same position. The flame's emissive intensity is synced
-// to the light's flicker so the visible flame breathes with the cast light.
+// Wall-mounted torch: a point light + a visible bracket + flame mesh, built
+// from the WALL_TORCH model spec. Per-instance flicker state (intensity +
+// emissive intensity + flame mesh scale/position) is animated each frame by
+// updateTorchlight.
 //
-// Materials come from the style library so the bracket can be re-skinned per
-// art style without duplicating logic.
+// Each torch builds its OWN materials (via buildModel) so flames flicker
+// independently — different noise offsets per torch produce different fires.
 
 export interface Torch {
   light: THREE.PointLight;
@@ -25,51 +27,26 @@ export interface Torch {
 export function createTorchlight(
   scene: THREE.Scene,
   position: THREE.Vector3,
-  materials: StyleMaterials,
   wallYaw: number = 0,  // 0 = north wall (default), Math.PI = south, ±PI/2 = west/east
 ): Torch {
-  const light = new THREE.PointLight(
-    CONFIG.TORCH_COLOR,
-    CONFIG.TORCH_INTENSITY,
-    CONFIG.TORCH_DISTANCE,
-    CONFIG.TORCH_DECAY,
-  );
-  light.position.copy(position);
-  light.castShadow = true;
-  light.shadow.mapSize.set(512, 512);
-  light.shadow.bias = -0.005;
-  scene.add(light);
+  const built = buildModel(WALL_TORCH);
+  built.group.position.copy(position);
+  built.group.rotation.y = wallYaw;
+  scene.add(built.group);
 
-  const group = new THREE.Group();
-  group.position.copy(position);
-  group.rotation.y = wallYaw;
-
-  const bracketGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.3, 6);
-  const bracket = new THREE.Mesh(bracketGeo, materials.torchBracket);
-  bracket.rotation.x = Math.PI / 2;
-  bracket.position.z = -0.15;
-  bracket.castShadow = false;
-  group.add(bracket);
-
-  const flameMat = materials.torchFlame;
-  const baseEmissive = flameMat.emissiveIntensity;
-  // Bigger, elongated flame so it reads as fire at low render resolution.
-  const flameGeo = new THREE.SphereGeometry(0.12, 12, 12);
-  const flame = new THREE.Mesh(flameGeo, flameMat);
-  flame.scale.set(1.0, 1.4, 1.0); // teardrop, taller than wide
-  flame.position.z = 0;
-  flame.castShadow = false;
-  group.add(flame);
-
-  scene.add(group);
+  const flameMaterial = built.materials.get('flame') as THREE.MeshStandardMaterial;
+  const flameMesh = built.parts.get('flame') as THREE.Mesh;
+  if (!built.light) {
+    throw new Error('WALL_TORCH model is missing its light spec');
+  }
 
   return {
-    light,
-    group,
-    flameMaterial: flameMat,
-    flameMesh: flame,
+    light: built.light,
+    group: built.group,
+    flameMaterial,
+    flameMesh,
     baseIntensity: CONFIG.TORCH_INTENSITY,
-    baseEmissive,
+    baseEmissive: flameMaterial.emissiveIntensity,
     time: 0,
     n1: Math.random() * 1000,
     n2: Math.random() * 1000,
