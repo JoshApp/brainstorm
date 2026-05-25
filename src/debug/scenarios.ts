@@ -133,14 +133,45 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // Looking south from spawn down the corridor toward the antechamber.
+  // Verifies the wall-opening logic + corridor connectivity.
+  corridor: {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: 0.5,
+      lookAt: { x: 0, z: 12, y: 1.0 },  // toward antechamber center
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
+  // Looking back from inside the antechamber toward the chamber.
+  antechamber: {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: 11,
+      lookAt: { x: 0, z: 0, y: 1.6 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
   // Close-up of the chest (closed). lookAt does the math; we just say where
   // the chest is and where to stand.
   chest: {
     freeze: true,
     hideSword: true,
     playerPos: {
-      x: 0.2, z: 1.0,
-      lookAt: { x: 0.2, z: 2.5, y: 0.2 },  // chest is at (0.2, _, 2.5), top ~y=0.35
+      x: -1.2, z: 1.3,
+      lookAt: { x: -2.2, z: 2.6, y: 0.2 },  // chest now at (-2.2, _, 2.6)
     },
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },
@@ -154,8 +185,8 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     hideSword: true,
     playerPos: {
-      x: 0.2, z: 1.0,
-      lookAt: { x: 0.2, z: 2.5, y: 0.25 },  // slightly higher to see lid + loot
+      x: -1.2, z: 1.3,
+      lookAt: { x: -2.2, z: 2.6, y: 0.3 },
     },
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },

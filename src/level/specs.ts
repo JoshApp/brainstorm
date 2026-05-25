@@ -26,20 +26,54 @@ const SOOT_WALL       = decalModel('soot-wall',    'soot-streak', [0.55, 1.4]);
 // Once we trust this format, procgen and additional floors just produce more
 // LevelSpecs.
 
+// LEVEL_1: two connected rooms.
+//
+//   ┌──────────────┐     ╔═══ ritual chamber ═══╗
+//   │   chamber    │     ║    (player spawn)    ║
+//   │              │     ║       8 × 8          ║
+//   │   8 × 8      │     ╚═══════ □  ═══════════╝   ← S side has an opening
+//   │              │             │ │                 (door to corridor)
+//   └─door──door───┘             │ │
+//   ┌──┴──corridor────────────┐  │ │
+//   │  2 × 4                  │  ▼ ▼
+//   └─door──door──────────────┘  ← corridor connects S of chamber to N of antechamber
+//   ┌─door──door──────────────┐
+//   │    antechamber          │
+//   │       6 × 5             │
+//   └─────────────────────────┘
+//
+// World coordinates: chamber at (0, 0), corridor at (0, 6), antechamber at (0, 11).
+// Their shared edges have openings auto-computed by the wall-segmenter.
+
 export const LEVEL_1: LevelSpec = {
   id: 'depth-1',
 
-  startPos: { x: 0, z: 0, yaw: 0 }, // spawn center of room, facing -Z (north)
+  startPos: { x: 0, z: 0, yaw: 0 }, // spawn center of chamber, facing -Z (north)
 
   rooms: [
     {
-      id: 'main-chamber',
+      id: 'ritual-chamber',
       rect: { x: 0, z: 0, w: 8, d: 8 },
       height: 3.2,
     },
+    {
+      // Smaller adjacent room — the "antechamber" reached via the corridor.
+      // Currently empty atmosphere — to be filled with more content later.
+      id: 'antechamber',
+      rect: { x: 0, z: 11, w: 6, d: 5 },
+      height: 3.0,
+    },
   ],
 
-  corridors: [],
+  corridors: [
+    // Corridor connecting chamber south wall (z=4) to antechamber north wall
+    // (z=8.5). Width 2m, depth 4.5m, centered at (0, 6.25).
+    {
+      id: 'corridor-1',
+      rect: { x: 0, z: 6.25, w: 2, d: 4.5 },
+      height: 2.6,  // lower ceiling than rooms — more claustrophobic
+    },
+  ],
 
   props: [
     { kind: 'pillar', x: -1.8, z: -2.2 },
@@ -55,11 +89,13 @@ export const LEVEL_1: LevelSpec = {
       rotX: -Math.PI / 2,
       rotY: 0.6,
     },
-    // CHEST south of spawn, lit by the south torch.
+    // CHEST in the south-WEST of the chamber, off the line between spawn and
+    // the corridor doorway (so the player can navigate to either without
+    // bumping into the chest).
     {
       kind: 'chest',
-      x: 0.2, z: 2.5,
-      rotY: -Math.PI * 0.85,
+      x: -2.2, z: 2.6,
+      rotY: -Math.PI * 0.7,
       loot: SCIMITAR_RELIC,
     },
 
@@ -93,17 +129,29 @@ export const LEVEL_1: LevelSpec = {
 
     // Soot streak above the north torch from years of flame
     { kind: 'model', model: SOOT_WALL, x: 0, y: 2.85, z: -3.99, rotY: 0 },
-    // Soot streak above the south torch
-    { kind: 'model', model: SOOT_WALL, x: 0, y: 2.85, z:  3.99, rotY: Math.PI },
+    // Soot above the offset south torches (skip soot above the corridor doorway)
+    { kind: 'model', model: SOOT_WALL, x: -2.5, y: 2.85, z:  3.99, rotY: Math.PI },
+    { kind: 'model', model: SOOT_WALL, x:  2.5, y: 2.85, z:  3.99, rotY: Math.PI },
   ],
 
   torches: [
-    // North wall — the one the player faces at spawn. Warm orange, full
-    // intensity; the "main fire" of the chamber.
+    // Chamber — north wall, the one the player faces at spawn. Warm orange,
+    // full intensity; the "main fire" of the chamber.
     { x: 0, z: -3.6, height: 2.2, wall: 'N', colorTint: 0xffaa55, intensityMul: 1.0 },
-    // South wall — paler, slightly cooler, dimmer. Reads as a dying or
-    // older torch. Creates color contrast between the two ends of the room.
-    { x: 0, z: 3.6, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
+    // Chamber — south wall, offset west of the corridor doorway. Paler /
+    // cooler so the two ends of the room have visual contrast.
+    { x: -2.5, z: 3.6, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
+    // Chamber — south wall, offset east of the corridor doorway. Same color
+    // family; symmetry around the doorway.
+    { x:  2.5, z: 3.6, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
+
+    // Corridor — west wall, midpoint. A single dim torch creates a "down the
+    // dark hall" feel — the player sees it from chamber south door.
+    { x: -0.6, z: 6.25, height: 1.9, wall: 'W', colorTint: 0xaa6633, intensityMul: 0.55 },
+
+    // Antechamber — east wall, with a haunted pale-green tint. Different room,
+    // different fire. Cue that the player has entered new territory.
+    { x: 2.5, z: 11, height: 2.0, wall: 'E', colorTint: 0xa0d0b0, intensityMul: 0.75 },
   ],
 
   spawns: [
