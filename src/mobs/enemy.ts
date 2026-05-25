@@ -165,8 +165,14 @@ export function createEnemy(
   }
 
   function faceTarget(target: THREE.Vector3) {
+    // Three.js Object3D.lookAt() (for non-cameras) makes the object's +Z
+    // axis face the target. Our models follow the OPPOSITE convention —
+    // head/eyes/snout at -Z, tail/back at +Z (matching camera convention)
+    // — so we add π to the yaw after lookAt so the model's -Z (head)
+    // faces the target instead of its +Z (back).
     tmpFlat.set(target.x, container.position.y, target.z);
     container.lookAt(tmpFlat);
+    container.rotation.y += Math.PI;
   }
 
   function applyTilt(angle: number) {
@@ -314,6 +320,7 @@ export function createEnemy(
   function faceWorld(x: number, z: number) {
     tmpFlat.set(x, container.position.y, z);
     container.lookAt(tmpFlat);
+    container.rotation.y += Math.PI;
   }
 
   return {
