@@ -10,6 +10,14 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
+      // Aggressive update: skipWaiting + clientsClaim so the new service
+      // worker takes over immediately on next page load instead of waiting
+      // until the user closes and reopens the PWA. Critical for iteration —
+      // without these flags the installed PWA serves stale code for days.
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+      },
       manifest: {
         name: 'Delve',
         short_name: 'Delve',

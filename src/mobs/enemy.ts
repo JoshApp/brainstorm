@@ -64,6 +64,26 @@ export function createEnemy(
   const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
   const eyeMat   = built.materials.get(spec.eyeMaterialName)   as THREE.MeshStandardMaterial | undefined;
 
+  // Windup telegraph: the body material gains an emissive glow that ramps up
+  // during winding and fades during recovery. This is the dominant visual
+  // tell — "the whole enemy lights up red about to strike" — readable from
+  // anywhere in the room on a phone screen. We mutate emissive on the body
+  // material; saving original values to restore between cycles.
+  const windupColor = new THREE.Color(0xff2010);
+  const bodyOriginalEmissive = flashMat ? flashMat.emissive.clone() : new THREE.Color(0x000000);
+  const bodyOriginalEmissiveIntensity = flashMat?.emissiveIntensity ?? 0;
+  function setWindupGlow(t: number) {
+    // t in [0, 1] = no glow to full glow. Set body emissive directly.
+    if (!flashMat) return;
+    if (t <= 0) {
+      flashMat.emissive.copy(bodyOriginalEmissive);
+      flashMat.emissiveIntensity = bodyOriginalEmissiveIntensity;
+    } else {
+      flashMat.emissive.copy(windupColor);
+      flashMat.emissiveIntensity = bodyOriginalEmissiveIntensity + 1.4 * t;
+    }
+  }
+
   // World entity (HP + buffs).
   const entityId = generateEntityId(`enemy-${spec.id}`);
   spawnEntity({
@@ -166,17 +186,24 @@ export function createEnemy(
         }
         setEyeEmissive(baseEyeEmissive);
         applyTilt(0);
+        setWindupGlow(0);
+        built.group.position.y = 0;
         break;
       }
 
       case 'winding': {
         phaseTimer += dt;
         const t = Math.min(1, phaseTimer / currentWindupTime);
-        // Eye flare: ramp baseline → 6x intensity over the windup. Stronger
-        // pop at peak so the telegraph is unmistakable on phone screens.
+        // Eye flare: ramp baseline → 6x intensity over the windup.
         setEyeEmissive(baseEyeEmissive * (1 + 5 * t));
-        // Body lean: 29° forward at peak (was 14° — too subtle).
+        // Body lean: 29° forward at peak.
         applyTilt(0.5 * t);
+        // BODY EMISSIVE GLOW — the dominant telegraph. The whole enemy
+        // lights up red over the windup, readable from across the room.
+        setWindupGlow(t);
+        // Upward lift — model rises ~10cm during windup ("rearing back"
+        // motion). Adds a clear vertical movement cue on top of the lean.
+        built.group.position.y = 0.10 * t;
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
           phaseTimer = 0;
@@ -190,6 +217,11 @@ export function createEnemy(
           damagePlayer(spec.attackDamage);
           strikeAlreadyHit = true;
         }
+        // During the strike, the body slams down past neutral (-15°) for a
+        // brief "follow-through" instead of staying at peak windup tilt.
+        applyTilt(-0.25);
+        built.group.position.y = 0;  // slammed back down
+        setWindupGlow(1);  // keep the glow burning during the actual strike
         if (phaseTimer >= spec.strikeTime) {
           state = 'recovering';
           phaseTimer = 0;
@@ -201,7 +233,10 @@ export function createEnemy(
         phaseTimer += dt;
         const t = Math.min(1, phaseTimer / spec.recoverTime);
         setEyeEmissive(THREE.MathUtils.lerp(baseEyeEmissive * 6, baseEyeEmissive, t));
-        applyTilt(THREE.MathUtils.lerp(0.5, 0, t));
+        applyTilt(THREE.MathUtils.lerp(-0.25, 0, t));
+        // Glow fades over the recovery — the enemy "cools down."
+        setWindupGlow(1 - t);
+        built.group.position.y = 0;
         if (phaseTimer >= spec.recoverTime) {
           state = 'chasing';
           phaseTimer = 0;
@@ -224,16 +259,22 @@ export function createEnemy(
         const f = Math.min(1, t / spec.windupTime);
         setEyeEmissive(baseEyeEmissive * (1 + 5 * f));
         applyTilt(0.5 * f);
+        setWindupGlow(f);
+        built.group.position.y = 0.10 * f;
         break;
       }
       case 'striking':
         setEyeEmissive(baseEyeEmissive * 6);
-        applyTilt(0.5);
+        applyTilt(-0.25);
+        setWindupGlow(1);
+        built.group.position.y = 0;
         break;
       case 'recovering': {
         const f = Math.min(1, t / spec.recoverTime);
         setEyeEmissive(THREE.MathUtils.lerp(baseEyeEmissive * 6, baseEyeEmissive, f));
-        applyTilt(THREE.MathUtils.lerp(0.5, 0, f));
+        applyTilt(THREE.MathUtils.lerp(-0.25, 0, f));
+        setWindupGlow(1 - f);
+        built.group.position.y = 0;
         break;
       }
     }

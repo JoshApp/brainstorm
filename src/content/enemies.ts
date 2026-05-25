@@ -139,9 +139,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // windup, the swing misses. This is what makes the telegraph escapable.
     attackRange: 1.7,
     strikeRange: 1.55,
-    windupTime: 0.65,    // up from 0.55 — reactable on a phone screen
+    windupTime: 0.90,    // long ghoul tell — heavy enemy, big wind-up animation
     strikeTime: 0.18,
-    recoverTime: 0.55,
+    recoverTime: 0.60,
     model: humanoidGhoulModel(0x14100c, 0xff5530, 1.6),
     baseEyeEmissive: 1.6,
     collisionRadius: 0.45,
@@ -158,9 +158,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     attackDamage: 1,
     attackRange: 1.0,
     strikeRange: 0.85,   // smaller than attackRange — escapable
-    windupTime: 0.50,    // up from 0.35 — readable on a phone
+    windupTime: 0.70,    // even the trash mob has a clear tell now
     strikeTime: 0.12,
-    recoverTime: 0.65,   // longer recovery — punishable
+    recoverTime: 0.65,
     model: quadrupedRatModel(0x2a1a14, 0xff2a0a, 2.0),
     baseEyeEmissive: 2.0,
     collisionRadius: 0.18,
@@ -177,7 +177,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     attackDamage: 1,
     attackRange: 1.5,
     strikeRange: 1.35,     // smaller than attackRange — escapable
-    windupTime: 0.48,      // up from 0.38 — still snappy but reactable
+    windupTime: 0.65,      // snappier than ghoul, slower than rat
     strikeTime: 0.14,
     recoverTime: 0.55,
     model: skirmisherModel(0x18130d, 0xffb060, 1.8),
