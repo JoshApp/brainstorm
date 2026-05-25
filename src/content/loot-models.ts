@@ -78,6 +78,43 @@ function ringModel(id: string, jewelColor: number, jewelEmissive: number): Model
 
 export const RING_OF_VIGOR = ringModel('ring-vigor', 0x66dd55, 2.0);       // green: life
 export const RING_OF_PREDATION = ringModel('ring-predation', 0xff4422, 2.0); // red: aggression
+export const RING_OF_BLOODTHIRST = ringModel('ring-bloodthirst', 0xaa1133, 3.0); // dark crimson: on-kill rage
+
+// Berserk potion — same flask geometry as the healing potion but with a
+// bright orange-red elixir (vs healing's red) so the player can tell them
+// apart on the floor without reading the name.
+export const BERSERK_POTION: ModelSpec = {
+  id: 'berserk-potion',
+  materials: {
+    glass: {
+      color: 0x161814,
+      roughness: 0.25,
+      metalness: 0.1,
+      fog: false,
+      flatShading: 'auto',
+    },
+    elixir: {
+      color: 0x000000,
+      emissive: 0xff7722,        // bright orange (distinct from healing's red)
+      emissiveIntensity: 2.4,
+      roughness: 0.4,
+      fog: false,
+    },
+    cork: {
+      color: 0x4a3a26,
+      roughness: 0.95,
+      metalness: 0.0,
+      fog: false,
+      flatShading: 'auto',
+    },
+  },
+  parts: [
+    { kind: 'cylinder', pos: [0, 0.06, 0], radius: 0.05, height: 0.10, segments: 10, mat: 'glass' },
+    { kind: 'cylinder', pos: [0, 0.055, 0], radius: 0.042, height: 0.08, segments: 10, mat: 'elixir' },
+    { kind: 'cylinder', pos: [0, 0.135, 0], radius: 0.022, height: 0.05, segments: 8, mat: 'glass' },
+    { kind: 'cylinder', pos: [0, 0.175, 0], radius: 0.020, height: 0.025, segments: 8, mat: 'cork' },
+  ],
+};
 
 // Tattered cloak — flat extruded silhouette of a cloak. Doesn't simulate
 // actual cloth (PSX-era games used flat shapes for cloth too). Stands

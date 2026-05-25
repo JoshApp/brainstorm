@@ -17,4 +17,17 @@ export const PASSIVES: Record<string, PassiveSpec> = {
       ],
     },
   },
+
+  // Granted by Ring of Bloodthirst while equipped. On each kill, apply
+  // bloodthirst buff (+1 weapon-damage for 4s). Refreshes on subsequent
+  // kills — sustained killing streak = sustained bonus damage.
+  'bloodthirst-onkill': {
+    id: 'bloodthirst-onkill',
+    trigger: {
+      on: 'killed',
+      effects: [
+        { type: 'apply-buff', buffId: 'bloodthirst', duration: 4.0 },
+      ],
+    },
+  },
 };

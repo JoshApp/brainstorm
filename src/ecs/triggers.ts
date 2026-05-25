@@ -2,17 +2,20 @@ import type { Entity, TriggerEvent } from './types';
 import { applyEffect } from './effects';
 import { on as onGameEvent } from '../broadcast/event-bus';
 import { get } from './world';
+import { aggregatePassives } from '../combat/modifiers';
 
-// Trigger firing — when the in-world event bus emits something, walk all
-// passives on the relevant entity (currently the player) and fire any whose
-// trigger matches the event.
+// Trigger firing — when the in-world event bus emits something, walk every
+// active passive on the relevant entity (intrinsic + equipment-granted)
+// and fire any whose trigger matches the event.
 //
-// This is the bridge between the existing event bus (broadcast/event-bus.ts,
-// already used by achievements) and the new effects/buffs/world layer.
+// Bridge between the event bus (broadcast/event-bus.ts) and the effects /
+// buffs / world layer. Equipment-granted passives are pulled live via
+// aggregatePassives — equipping a Ring of Bloodthirst gives the player
+// its on-kill effect for as long as it's worn; unequipping removes it.
 
 function fireTriggers(entity: Entity | undefined, event: TriggerEvent) {
   if (!entity) return;
-  for (const passive of entity.passives) {
+  for (const passive of aggregatePassives(entity.id)) {
     if (passive.trigger.on !== event) continue;
     const chance = passive.trigger.chance ?? 1;
     if (chance < 1 && Math.random() > chance) continue;

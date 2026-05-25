@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { EntityId } from '../ecs/types';
+import type { EntityId, PassiveSpec } from '../ecs/types';
 import { get } from '../ecs/world';
 import { getEquipment } from '../player/equipment';
 import { BUFFS } from '../content/buffs';
@@ -89,4 +89,31 @@ export function computePlayerStats(): PlayerStats {
     }
   }
   return { maxHp, weaponDamageBonus, damageMultiplier, physicalArmor, magicArmor };
+}
+
+/**
+ * Walk every source of TRIGGERED PASSIVES for an entity. Sister to
+ * aggregateModifiers — same idea, different shape:
+ *   - Modifiers       = static stat changes (max HP, damage bonus, armor)
+ *   - Passives        = trigger + effects pairs (on kill -> apply buff)
+ *
+ * Used by the trigger system (src/ecs/triggers.ts) so equipment-granted
+ * passives fire on game events without mutating the entity's
+ * intrinsic passive list when items are equipped/unequipped.
+ */
+export function aggregatePassives(entityId: EntityId): PassiveSpec[] {
+  const out: PassiveSpec[] = [];
+
+  // Intrinsic passives on the entity (player baseline, reaper, etc.).
+  const entity = get(entityId);
+  if (entity) out.push(...entity.passives);
+
+  // Equipment-granted passives — player only.
+  if (entityId === 'player') {
+    for (const slot of Object.values(getEquipment())) {
+      if (slot?.passives) out.push(...slot.passives);
+    }
+  }
+
+  return out;
 }

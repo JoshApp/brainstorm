@@ -192,9 +192,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
     drops: [
-      { itemId: 'scimitar', chance: 1.0 },          // always — the headline reward
+      { itemId: 'scimitar', chance: 1.0 },              // always — headline reward
       { itemId: 'healing-potion', chance: 0.5 },
-      { itemId: 'ring-of-vigor', chance: 0.2 },
+      { itemId: 'ring-of-vigor', chance: 0.20 },
+      { itemId: 'ring-of-bloodthirst', chance: 0.20 },  // triggered-buff demo
+      { itemId: 'berserk-potion', chance: 0.35 },       // multiplier buff demo
     ],
   },
 

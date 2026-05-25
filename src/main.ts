@@ -33,7 +33,7 @@ import { PASSIVES } from './content/passives';
 import { setupPwaAutoUpdate } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
 import { createUseButton, setUseButtonVisible, consumeUsePressed } from './controls/use-button';
-import { createPotionButton, updatePotionButton } from './controls/potion-button';
+import { createConsumableBar } from './controls/consumable-bar';
 import { createInteractPrompt, setInteractPrompt } from './ui/interact-prompt';
 import { createHpBar, updateHpBar } from './ui/hp-bar';
 import { createBuffBar, updateBuffBar } from './ui/buff-bar';
@@ -143,7 +143,7 @@ if (scenario) applyScenario(scenario, { level, sword, camera });
 // attack button — less intrusive UI, larger hit area.
 const input = createTouchInput(canvas);
 createUseButton();
-createPotionButton();
+createConsumableBar();
 createInteractPrompt();
 createStyleSwitcher();
 createSettingsMenu();
@@ -221,10 +221,11 @@ function tick() {
     setUseButtonVisible(!!inRange);
     if (!isDying() && consumeUsePressed()) pressUse();
 
-    // HUD — poll-based; cheap and always accurate.
+    // HUD — poll-based; cheap and always accurate. The consumable bar
+    // rebuilds itself on inventory changes (event-driven), so no per-frame
+    // tick is needed for it.
     updateHpBar();
     updateBuffBar();
-    updatePotionButton();
   }
 
   tickShake(realDt, shakeOffset);
