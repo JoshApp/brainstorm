@@ -8,6 +8,7 @@ import { playWhoosh, playImpact } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
+import { computeStats } from '../player/equipment-stats';
 
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
@@ -90,7 +91,8 @@ export function createCombatSystem(
 
     if (!bestEnemy) return;
 
-    const damage = weapon.damage;
+    // Weapon base damage + flat equipment bonus (Ring of Predation etc.)
+    const damage = weapon.damage + computeStats().weaponDamageBonus;
     bestEnemy.takeDamage(damage);
     strikeAlreadyHit = true;
 

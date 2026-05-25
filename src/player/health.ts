@@ -5,6 +5,7 @@ import { flashVignette } from '../ui/vignette';
 import { playPlayerHurt } from '../audio/sfx';
 import { emit } from '../broadcast/event-bus';
 import { get } from '../ecs/world';
+import { computeStats } from './equipment-stats';
 
 // Player health module. State now lives in the world entity (id: 'player')
 // rather than module-level vars, so effects (heal, apply-buff, damage) can
@@ -26,7 +27,20 @@ export function getPlayerHp(): number {
 }
 
 export function getPlayerMaxHp(): number {
-  return get(PLAYER_ENTITY_ID)?.hp?.base ?? CONFIG.PLAYER_HP_MAX;
+  // Always reflects the current equipment — a freshly-equipped Ring of
+  // Vigor bumps the visible max immediately.
+  return computeStats().maxHp;
+}
+
+/** Restore HP, clamped to the current max. Returns actual amount healed. */
+export function healPlayer(amount: number): number {
+  if (dead || amount <= 0) return 0;
+  const player = get(PLAYER_ENTITY_ID);
+  if (!player || !player.hp) return 0;
+  const max = computeStats().maxHp;
+  const before = player.hp.current;
+  player.hp.current = Math.min(max, player.hp.current + amount);
+  return player.hp.current - before;
 }
 
 export function isPlayerDead(): boolean {
@@ -42,7 +56,12 @@ export function damagePlayer(amount: number) {
   const player = get(PLAYER_ENTITY_ID);
   if (!player || !player.hp) return;
 
-  player.hp.current = Math.max(0, player.hp.current - amount);
+  // Apply equipment damage reduction (armor + passives), floored at 1 so
+  // even a full set of cloaks can't make the player invulnerable.
+  const reduction = computeStats().damageReduction;
+  const finalAmount = Math.max(1, amount - reduction);
+
+  player.hp.current = Math.max(0, player.hp.current - finalAmount);
 
   // --- The player-hit crunch stack ---
   freezeFor(CONFIG.PLAYER_HIT_PAUSE_MS);

@@ -155,13 +155,24 @@ export function createEnemy(
     if (entity.hp.current <= 0) {
       aliveLocal = false;
       destroyEntity(entityId);
-      // Drop loot at the enemy's death position before removing them.
-      // Pickup module handles the rest (interactable + inventory + equip).
-      if (spec.dropItemId) {
-        const item = ITEMS[spec.dropItemId];
-        if (item) {
-          createPickup(scene, container.position.clone(), item);
-        }
+      // Drop table: each entry rolls independently. Multiple successful
+      // drops are spread in a small arc around the death position so they
+      // don't stack on the same pixel.
+      if (spec.drops) {
+        const successful = spec.drops.filter(d => Math.random() < (d.chance ?? 1.0));
+        const N = successful.length;
+        successful.forEach((drop, i) => {
+          const item = ITEMS[drop.itemId];
+          if (!item) return;
+          const pos = container.position.clone();
+          if (N > 1) {
+            // Spread N items around a 0.4m circle.
+            const angle = (i / N) * Math.PI * 2;
+            pos.x += Math.cos(angle) * 0.35;
+            pos.z += Math.sin(angle) * 0.35;
+          }
+          createPickup(scene, pos, item);
+        });
       }
       scene.remove(container);
       emit({ type: 'enemy:killed' });

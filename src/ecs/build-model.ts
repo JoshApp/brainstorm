@@ -140,6 +140,11 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
       );
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
+    case 'torus': {
+      const segs = part.segments ?? [10, 8];
+      const geo = new THREE.TorusGeometry(part.radius, part.tube, segs[1], segs[0]);
+      return makeMesh(geo, materials.get(part.mat)!, part);
+    }
     case 'cone': {
       const geo = new THREE.ConeGeometry(part.radius, part.height, part.segments ?? 12);
       return makeMesh(geo, materials.get(part.mat)!, part);

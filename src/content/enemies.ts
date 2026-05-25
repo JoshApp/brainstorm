@@ -43,9 +43,18 @@ export interface EnemySpec {
   eyeMaterialName: string;
 
   // --- Drops ---
-  /** Optional ITEMS registry id; if set, a pickup of this item spawns at the
-   *  enemy's death position when killed. */
-  dropItemId?: string;
+  /**
+   * Drop table. On death, each entry rolls INDEPENDENTLY against its
+   * `chance` (default 1.0); successful rolls spawn a pickup of that item.
+   * Multiple drops from the same kill spread in a small arc on the floor.
+   */
+  drops?: DropEntry[];
+}
+
+export interface DropEntry {
+  itemId: string;
+  /** Probability in [0,1] this item drops. Default 1.0. */
+  chance?: number;
 }
 
 // --- Model factories ----------------------------------------------------
@@ -176,7 +185,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
-    dropItemId: 'scimitar',  // the curved blade — visible loot for killing the ritual ghoul
+    drops: [
+      { itemId: 'scimitar', chance: 1.0 },          // always — the headline reward
+      { itemId: 'healing-potion', chance: 0.5 },
+      { itemId: 'ring-of-vigor', chance: 0.2 },
+    ],
   },
 
   rat: {
@@ -196,6 +209,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',     // 'rig' slot — pre-rotated body rotates correctly when this tilts
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    drops: [
+      { itemId: 'healing-potion', chance: 0.25 },   // rare — rats are trash mobs
+    ],
   },
 
   skirmisher: {
@@ -215,5 +231,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    drops: [
+      { itemId: 'healing-potion', chance: 0.6 },
+      { itemId: 'ring-of-predation', chance: 0.25 },
+    ],
   },
 };

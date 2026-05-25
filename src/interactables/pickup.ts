@@ -5,6 +5,7 @@ import { registerInteractable } from './system';
 import { addItem } from '../player/inventory';
 import { equipWeapon } from '../player/weapon-equip';
 import { setCurrentWeapon } from '../player/current-weapon';
+import { tryAutoEquip } from '../player/equipment';
 import type { ItemSpec } from '../content/items';
 
 // Pickup interactable: a loot model floating on the floor that the player
@@ -43,9 +44,16 @@ export function createPickup(
     promptLabel: 'TAKE',
     onUse() {
       addItem(item.id);
-      // Weapon items: swap the viewmodel AND update combat stats.
-      if (item.viewmodel) equipWeapon(item.viewmodel);
-      if (item.weapon) setCurrentWeapon(item.weapon);
+      // Equipment slots first: weapons always equip (visual swap + stats);
+      // rings/armor auto-equip if a matching slot is empty. Consumables
+      // stay in inventory until used via the potion button.
+      if (item.kind === 'weapon') {
+        tryAutoEquip(item);
+        if (item.viewmodel) equipWeapon(item.viewmodel);
+        if (item.weapon) setCurrentWeapon(item.weapon);
+      } else if (item.kind === 'ring' || item.kind === 'armor') {
+        tryAutoEquip(item);  // silently no-op if all matching slots are full
+      }
       interactable.destroyed = true;
     },
     tick(dt: number) {

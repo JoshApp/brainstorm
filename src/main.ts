@@ -5,6 +5,8 @@ import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/camera';
 import { createSword } from './player/sword';
 import { onEquipWeapon } from './player/weapon-equip';
+import { setSlot } from './player/equipment';
+import { ITEMS } from './content/items';
 import { createCombatSystem } from './combat/attack';
 import { consumeAttackPressed } from './controls/attack-input';
 import { isFrozen } from './combat/hit-pause';
@@ -27,6 +29,7 @@ import { PASSIVES } from './content/passives';
 import { setupPwaAutoUpdate } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
 import { createUseButton, setUseButtonVisible, consumeUsePressed } from './controls/use-button';
+import { createPotionButton, updatePotionButton } from './controls/potion-button';
 import { createInteractPrompt, setInteractPrompt } from './ui/interact-prompt';
 import { createHpBar, updateHpBar } from './ui/hp-bar';
 import { createBuffBar, updateBuffBar } from './ui/buff-bar';
@@ -107,6 +110,9 @@ const sword = createSword(camera);
 // Pickup module fires this when the player takes a weapon item — swap the
 // visible viewmodel under the same swing animation.
 onEquipWeapon((spec) => sword.equip(spec));
+// Seed the equipment slot system with the player's starting weapon so
+// stats aggregation includes it (and the future inventory UI shows it).
+setSlot('weapon', ITEMS['rusted-sword']);
 
 // --- Combat ---
 const combat = createCombatSystem(camera, sword, level.enemies);
@@ -126,6 +132,7 @@ if (scenario) applyScenario(scenario, { level, sword, camera });
 // attack button — less intrusive UI, larger hit area.
 const input = createTouchInput(canvas);
 createUseButton();
+createPotionButton();
 createInteractPrompt();
 createStyleSwitcher();
 
@@ -199,6 +206,7 @@ function tick() {
     // HUD — poll-based; cheap and always accurate.
     updateHpBar();
     updateBuffBar();
+    updatePotionButton();
   }
 
   tickShake(realDt, shakeOffset);

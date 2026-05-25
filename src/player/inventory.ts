@@ -18,6 +18,14 @@ export function getCount(itemId: string): number {
   return counts.get(itemId) ?? 0;
 }
 
+/** Decrement the count for an item; safe to call when count is 0. */
+export function removeItem(itemId: string) {
+  const c = counts.get(itemId) ?? 0;
+  if (c <= 0) return;
+  if (c === 1) counts.delete(itemId);
+  else counts.set(itemId, c - 1);
+}
+
 export function getAllItems(): Array<{ id: string; count: number }> {
   return [...counts.entries()].map(([id, count]) => ({ id, count }));
 }
