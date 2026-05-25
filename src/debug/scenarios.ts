@@ -11,6 +11,7 @@ import { damagePlayer } from '../player/health';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { ITEMS } from '../content/items';
+import { setSlot } from '../player/equipment';
 
 // Predefined game states loadable via ?scenario=name URL param.
 // Used by the snap CLI (scripts/snap.ts) to produce deterministic screenshots,
@@ -410,7 +411,11 @@ export function applyScenario(
 
   if (scenario.equipWeaponId) {
     const item = ITEMS[scenario.equipWeaponId];
-    if (item?.viewmodel) ctx.sword.equip(item.viewmodel);
+    if (item) {
+      // Use the equipment system so viewmodel + stats both update via the
+      // main.ts listener — same code path as a real pickup.
+      setSlot('weapon', item);
+    }
   }
 
   if (scenario.freeze) {

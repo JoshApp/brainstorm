@@ -4,8 +4,8 @@ import { updateTorchlight } from './scene/torchlight';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/camera';
 import { createSword } from './player/sword';
-import { onEquipWeapon } from './player/weapon-equip';
-import { setSlot } from './player/equipment';
+import { setSlot, onEquipmentChanged } from './player/equipment';
+import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { createCombatSystem } from './combat/attack';
 import { consumeAttackPressed } from './controls/attack-input';
@@ -19,6 +19,7 @@ import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle } from './style/render-target';
 import { createStyleSwitcher } from './ui/style-switcher';
 import { createSettingsMenu } from './ui/settings-menu';
+import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings } from './settings/settings';
 import { setMasterVolume } from './audio/sfx';
 import { buildLevel } from './level/builder';
@@ -110,11 +111,18 @@ camera.rotation.x = 0;
 
 // --- Player: held sword ---
 const sword = createSword(camera);
-// Pickup module fires this when the player takes a weapon item — swap the
-// visible viewmodel under the same swing animation.
-onEquipWeapon((spec) => sword.equip(spec));
-// Seed the equipment slot system with the player's starting weapon so
-// stats aggregation includes it (and the future inventory UI shows it).
+
+// Sword viewmodel + combat stats are now driven REACTIVELY by the equipment
+// slot system. Whenever the weapon slot changes (pickup, manual equip via
+// the inventory panel, etc.), this listener swaps the visible model + the
+// active stats. Single source of truth: equipment.
+onEquipmentChanged((eq) => {
+  if (eq.weapon?.viewmodel) sword.equip(eq.weapon.viewmodel);
+  if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
+});
+
+// Seed the starting weapon — fires the listener above, which equips the
+// rusted sword viewmodel + sets initial combat stats.
 setSlot('weapon', ITEMS['rusted-sword']);
 
 // --- Combat ---
@@ -139,6 +147,7 @@ createPotionButton();
 createInteractPrompt();
 createStyleSwitcher();
 createSettingsMenu();
+createInventoryPanel();
 
 // Sync the master volume from persisted settings so saved volume is
 // applied at boot (not just when the slider next moves).

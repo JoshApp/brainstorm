@@ -29,14 +29,15 @@ const slots: Equipment = {
   ring2:  null,
 };
 
-const listeners = new Set<() => void>();
+type EquipListener = (eq: Readonly<Equipment>) => void;
+const listeners = new Set<EquipListener>();
 
 function notify() {
-  for (const fn of listeners) fn();
+  for (const fn of listeners) fn(slots);
 }
 
 /** Subscribe to equipment changes. Returns an unsubscribe function. */
-export function onEquipmentChanged(fn: () => void): () => void {
+export function onEquipmentChanged(fn: EquipListener): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
@@ -106,4 +107,43 @@ export function slotKindFor(kind: ItemKind): EquipSlot[] {
     case 'ring':       return ['ring1', 'ring2'];
     case 'consumable': return [];
   }
+}
+
+/**
+ * Equip an item INTO a specific slot (or the natural slot for its kind).
+ * The previous occupant is returned so the caller can put it back in the
+ * inventory bag. Used by the inventory panel's tap-to-equip handler.
+ *
+ * If no specific slot is given:
+ *   - weapon -> weapon slot
+ *   - armor -> armor slot
+ *   - ring -> first empty ring slot, else ring1 (replace, return old)
+ *   - consumable -> not equippable; returns null
+ */
+export function equipFromInventory(item: ItemSpec, targetSlot?: EquipSlot): ItemSpec | null {
+  let slot: EquipSlot | null = null;
+  if (targetSlot) {
+    slot = targetSlot;
+  } else {
+    switch (item.kind) {
+      case 'weapon': slot = 'weapon'; break;
+      case 'armor':  slot = 'armor'; break;
+      case 'ring':   slot = !slots.ring1 ? 'ring1' : !slots.ring2 ? 'ring2' : 'ring1'; break;
+      case 'consumable': return null;
+    }
+  }
+  if (!slot) return null;
+  const prev = slots[slot];
+  slots[slot] = item;
+  notify();
+  return prev;
+}
+
+/** Remove the item in a slot and return it. */
+export function unequipSlot(slot: EquipSlot): ItemSpec | null {
+  const prev = slots[slot];
+  if (!prev) return null;
+  slots[slot] = null;
+  notify();
+  return prev;
 }

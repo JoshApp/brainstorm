@@ -1,17 +1,41 @@
 import { emit } from '../broadcast/event-bus';
 
-// Player inventory — for now, just a multiset of item ids (the ModelSpec.id
-// of each picked-up item). Future commits add equipment slots, stack counts,
-// stat aggregation from equipped items, and a UI to view contents.
+// Player inventory bag — multiset of item ids the player CURRENTLY holds
+// but doesn't have equipped. Equipped items live in src/player/equipment.ts
+// instead; the inventory module only tracks the "bag" contents.
 //
-// For this commit, inventory exists so pickups have something to write to and
-// the pickup-notification has something to read.
+// Flow:
+//   pickup           -> addItem (count++)
+//                       caller may then move it to equipment via
+//                       equipFromInventory (which calls removeItem here)
+//   equip a bag item -> removeItem (count--), equipment.equipFromInventory
+//   unequip a slot   -> equipment.unequipSlot, then addItemSilently (count++)
+//   use a potion     -> removeItem (count--)
 
 const counts = new Map<string, number>();
+const listeners = new Set<() => void>();
 
+function notify() {
+  for (const fn of listeners) fn();
+}
+
+/** Subscribe to inventory changes. Returns unsubscribe. */
+export function onInventoryChanged(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+/** Add an item and fire the pickup event (notification toast triggers). */
 export function addItem(itemId: string) {
   counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
   emit({ type: 'item:picked-up', itemId });
+  notify();
+}
+
+/** Add an item without firing the pickup event (used when un-equipping). */
+export function addItemSilently(itemId: string) {
+  counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
+  notify();
 }
 
 export function getCount(itemId: string): number {
@@ -24,6 +48,7 @@ export function removeItem(itemId: string) {
   if (c <= 0) return;
   if (c === 1) counts.delete(itemId);
   else counts.set(itemId, c - 1);
+  notify();
 }
 
 export function getAllItems(): Array<{ id: string; count: number }> {
@@ -32,4 +57,5 @@ export function getAllItems(): Array<{ id: string; count: number }> {
 
 export function clearInventory() {
   counts.clear();
+  notify();
 }

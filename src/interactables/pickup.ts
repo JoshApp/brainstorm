@@ -2,10 +2,8 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
-import { addItem } from '../player/inventory';
-import { equipWeapon } from '../player/weapon-equip';
-import { setCurrentWeapon } from '../player/current-weapon';
-import { tryAutoEquip } from '../player/equipment';
+import { addItem, removeItem, addItemSilently } from '../player/inventory';
+import { tryAutoEquip, equipFromInventory } from '../player/equipment';
 import type { ItemSpec } from '../content/items';
 
 // Pickup interactable: a loot model floating on the floor that the player
@@ -43,17 +41,22 @@ export function createPickup(
     radius: 1.0,
     promptLabel: 'TAKE',
     onUse() {
+      // Always notify (pickup-notification toast + listener UIs) by
+      // calling addItem first, then move the item OUT of the bag if it
+      // was auto-equipped. Weapons always equip; rings/armor only if a
+      // slot is empty; consumables always stay in the bag.
       addItem(item.id);
-      // Equipment slots first: weapons always equip (visual swap + stats);
-      // rings/armor auto-equip if a matching slot is empty. Consumables
-      // stay in inventory until used via the potion button.
       if (item.kind === 'weapon') {
-        tryAutoEquip(item);
-        if (item.viewmodel) equipWeapon(item.viewmodel);
-        if (item.weapon) setCurrentWeapon(item.weapon);
+        // Weapons always equip on pickup (replace current).
+        const previous = equipFromInventory(item);
+        if (previous) addItemSilently(previous.id);   // old weapon back to bag
+        removeItem(item.id);                          // new weapon out of bag
       } else if (item.kind === 'ring' || item.kind === 'armor') {
-        tryAutoEquip(item);  // silently no-op if all matching slots are full
+        // Rings/armor auto-equip only if a matching slot is empty.
+        if (tryAutoEquip(item)) removeItem(item.id);
       }
+      // Weapon viewmodel + combat stats now driven reactively by the
+      // equipment-changed listener in main.ts; no manual call here.
       interactable.destroyed = true;
     },
     tick(dt: number) {
