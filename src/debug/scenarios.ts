@@ -11,7 +11,9 @@ import { damagePlayer } from '../player/health';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { ITEMS } from '../content/items';
-import { setSlot } from '../player/equipment';
+import { setSlot, tryAutoEquip } from '../player/equipment';
+import { addItem, removeItem } from '../player/inventory';
+import { openInventoryPanel } from '../ui/inventory-panel';
 
 // Predefined game states loadable via ?scenario=name URL param.
 // Used by the snap CLI (scripts/snap.ts) to produce deterministic screenshots,
@@ -67,6 +69,10 @@ export interface Scenario {
   applyPlayerBuff?: { id: string; duration: number };
   /** Equip a weapon by item id at startup (so snaps can show different viewmodels). */
   equipWeaponId?: string;
+  /** Add items to inventory and auto-equip rings/armor (for inventory-panel snaps). */
+  giveItems?: string[];
+  /** Programmatically open the inventory panel for the snap. */
+  openInventoryPanel?: boolean;
 }
 
 export const SCENARIOS: Record<string, Scenario> = {
@@ -211,6 +217,22 @@ export const SCENARIOS: Record<string, Scenario> = {
       x: -3.5, z: 0,
       lookAt: { x: -5, z: 0, y: 1.5 },  // facing the west wall up close
     },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
+  // Inventory panel populated with a representative loadout — for the
+  // paper-doll + stats + bag UI snap.
+  inventory: {
+    freeze: true,
+    giveItems: [
+      'scimitar', 'tattered-cloak', 'ring-of-vigor', 'ring-of-predation',
+      'ring-of-bloodthirst', 'healing-potion', 'healing-potion', 'berserk-potion',
+    ],
+    openInventoryPanel: true,
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
@@ -416,6 +438,21 @@ export function applyScenario(
       // main.ts listener — same code path as a real pickup.
       setSlot('weapon', item);
     }
+  }
+
+  if (scenario.giveItems) {
+    for (const id of scenario.giveItems) {
+      const item = ITEMS[id];
+      if (!item) continue;
+      addItem(id);
+      if (item.kind === 'ring' || item.kind === 'armor') {
+        if (tryAutoEquip(item)) removeItem(id);
+      }
+    }
+  }
+
+  if (scenario.openInventoryPanel) {
+    openInventoryPanel();
   }
 
   if (scenario.freeze) {

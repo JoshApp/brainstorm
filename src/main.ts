@@ -134,9 +134,6 @@ onPlayerDeath(() => triggerDeath());
 // --- Broadcast / DCC tribute layer ---
 initAchievements();
 
-// --- Apply scenario overrides (post-build) ---
-if (scenario) applyScenario(scenario, { level, sword, camera });
-
 // --- Input ---
 // Attack is now triggered by tapping anywhere on the right half of the
 // screen (in addition to the spacebar on desktop). No more on-screen
@@ -152,6 +149,10 @@ createInventoryPanel();
 // Sync the master volume from persisted settings so saved volume is
 // applied at boot (not just when the slider next moves).
 setMasterVolume(getSettings().masterVolume);
+
+// --- Apply scenario overrides (post-build, AFTER UI is created so
+// scenarios that open panels / give items work correctly).
+if (scenario) applyScenario(scenario, { level, sword, camera });
 
 // PWA: poll for SW updates + auto-reload when a new SW takes over.
 // Means a `git push` lands on Josh's installed home-screen app within a

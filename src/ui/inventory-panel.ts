@@ -6,37 +6,94 @@ import {
   getAllItems, addItemSilently, removeItem, onInventoryChanged,
 } from '../player/inventory';
 import { computeStats } from '../player/equipment-stats';
-import { getPlayerHp, getPlayerMaxHp } from '../player/health';
-import { ITEMS, type ItemSpec } from '../content/items';
+import { getPlayerHp, getPlayerMaxHp, healPlayer } from '../player/health';
+import { ITEMS, type ItemSpec, type WeaponStats } from '../content/items';
 import { getCurrentWeapon } from '../player/current-weapon';
+import { BUFFS } from '../content/buffs';
+import { applyBuff } from '../ecs/buffs';
+import { get } from '../ecs/world';
+import type { StatModifier } from '../combat/modifiers';
+import type { PassiveSpec } from '../ecs/types';
 
-// Inventory + character stat sheet panel.
+// Inventory + character stat sheet.
 //
-// Tap the bag icon (top-right) to open. Layout (mobile-first):
-//   [equipped slots row]    weapon | armor | ring1 | ring2
-//   [stats block]           HP / damage / armor
-//   [inventory grid]        every unequipped item, tap to equip
+// Horizontal three-column layout (mobile landscape):
+//   LEFT    stats column      HP / damage / armor / multiplier readouts
+//   CENTER  paper doll        Anatomical slots positioned around a
+//                             hooded-figure silhouette. Tap a slot for
+//                             item details + unequip.
+//   RIGHT   bag grid          Every unequipped item, tap to select +
+//                             see details (with EQUIP / USE button).
 //
-// Tap behaviors:
-//   - Inventory item:  equip into appropriate slot. Old slot occupant
-//                      (if any) pushed back to the bag.
-//   - Equipped slot:   unequip back to the bag (weapon slot can't unequip —
-//                      you always need a weapon).
+//   BOTTOM  details panel     Slides in when an item is selected (from
+//                             bag or doll). Shows name / kind / full
+//                             effects / contextual action button.
+//
+// Selecting an item is non-destructive — you see what it does BEFORE
+// equipping. The EQUIP button commits; tap-outside or another item
+// cancels. Equipped items can be unequipped via the doll except for the
+// weapon slot (you always need a weapon).
 
-const PANEL_BG = 'rgba(20, 14, 10, 0.95)';
-const BORDER = '1px solid rgba(180, 130, 90, 0.5)';
-const SLOT_BG = 'rgba(40, 28, 20, 0.7)';
-const SLOT_BORDER_EMPTY = '1px dashed rgba(120, 90, 60, 0.4)';
-const SLOT_BORDER_FILLED = '1px solid rgba(220, 170, 110, 0.7)';
+// ── Anatomical paper-doll layout ─────────────────────────────────────
+// Real equipment slots active in the current game. Slot id matches
+// EquipSlot in player/equipment.ts (these go through equipFromInventory).
+//
+// Display-only slots (helmet, amulet, gloves, offhand, boots) are
+// rendered as faint "future-slot" placeholders so the player can see
+// the system expanding later; tapping them does nothing yet.
 
+type SlotDef = {
+  /** Position on the doll container (percentages of container size). */
+  top: string; left: string;
+  /** Short label shown inside the slot when it's empty. */
+  shortLabel: string;
+  /** Long label shown in the details panel header. */
+  longLabel: string;
+  /** Active equipment slot id, or null if this is just a future placeholder. */
+  slotId: EquipSlot | null;
+  /** Pixel size. */
+  size: number;
+};
+
+const SLOTS: SlotDef[] = [
+  // Active slots
+  { slotId: null,    top: '5%',  left: '50%', size: 36, shortLabel: 'HELM',  longLabel: 'HELMET' },
+  { slotId: null,    top: '23%', left: '50%', size: 28, shortLabel: 'AMU',   longLabel: 'AMULET' },
+  { slotId: 'armor', top: '40%', left: '50%', size: 50, shortLabel: 'ARM',   longLabel: 'ARMOR' },
+  { slotId: 'weapon',top: '52%', left: '15%', size: 50, shortLabel: 'WPN',   longLabel: 'WEAPON' },
+  { slotId: null,    top: '52%', left: '85%', size: 50, shortLabel: 'OFF',   longLabel: 'OFF-HAND' },
+  { slotId: 'ring1', top: '70%', left: '20%', size: 38, shortLabel: 'R1',    longLabel: 'RING' },
+  { slotId: 'ring2', top: '70%', left: '80%', size: 38, shortLabel: 'R2',    longLabel: 'RING' },
+  { slotId: null,    top: '90%', left: '50%', size: 36, shortLabel: 'FEET',  longLabel: 'BOOTS' },
+];
+
+// ── Styling helpers ──────────────────────────────────────────────────
+const PANEL_BG = 'rgba(20, 14, 10, 0.96)';
+const PANEL_BORDER = '1px solid rgba(180, 130, 90, 0.5)';
+const CARD_BG = 'rgba(36, 26, 18, 0.7)';
+const FILLED_BORDER = '1px solid rgba(220, 170, 110, 0.7)';
+const EMPTY_BORDER = '1px dashed rgba(120, 90, 60, 0.4)';
+const PLACEHOLDER_BORDER = '1px dotted rgba(80, 60, 40, 0.35)';
+const TEXT_PRIMARY = 'rgba(230, 200, 170, 0.95)';
+const TEXT_DIM = 'rgba(160, 130, 100, 0.85)';
+const TEXT_FAINT = 'rgba(100, 80, 60, 0.6)';
+const ACCENT = 'rgba(255, 160, 80, 0.85)';
+
+// ── Module-level state ───────────────────────────────────────────────
 let openButton: HTMLButtonElement | null = null;
 let panel: HTMLDivElement | null = null;
 let panelOpen = false;
 
+/** Currently selected item — either from the bag (item) or a doll slot. */
+type Selection =
+  | { kind: 'bag'; item: ItemSpec }
+  | { kind: 'slot'; slotId: EquipSlot; item: ItemSpec }
+  | null;
+let selection: Selection = null;
+
 export function createInventoryPanel() {
   if (openButton) return;
 
-  // The bag button — top-right (mirror of the settings gear top-left).
   openButton = document.createElement('button');
   openButton.id = 'inventory-button';
   openButton.setAttribute('aria-label', 'inventory');
@@ -50,8 +107,7 @@ export function createInventoryPanel() {
     borderRadius: '50%',
     border: '1px solid rgba(180, 130, 90, 0.5)',
     background: 'rgba(20, 14, 10, 0.75)',
-    color: 'rgba(220, 180, 140, 0.9)',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    color: TEXT_PRIMARY,
     fontSize: '20px',
     lineHeight: '1',
     cursor: 'pointer',
@@ -67,7 +123,6 @@ export function createInventoryPanel() {
   });
   document.body.appendChild(openButton);
 
-  // Panel — hidden by default, content rebuilt on each open + on changes.
   panel = document.createElement('div');
   panel.id = 'inventory-panel';
   Object.assign(panel.style, {
@@ -75,29 +130,26 @@ export function createInventoryPanel() {
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    width: 'min(380px, 92vw)',
-    maxHeight: '85vh',
+    width: 'min(820px, 96vw)',
+    maxHeight: '92vh',
     overflowY: 'auto',
-    padding: '20px 22px',
+    padding: '18px 22px',
     background: PANEL_BG,
-    border: BORDER,
+    border: PANEL_BORDER,
     borderRadius: '4px',
-    color: 'rgba(230, 200, 170, 0.95)',
+    color: TEXT_PRIMARY,
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.85)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.9)',
     zIndex: '100',
     display: 'none',
     flexDirection: 'column',
-    gap: '18px',
+    gap: '14px',
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(panel);
 
-  // Rebuild contents whenever inventory or equipment changes (catches the
-  // case where the panel is OPEN and the player picks something up).
   onInventoryChanged(() => { if (panelOpen) rebuildPanel(); });
   onEquipmentChanged(() => { if (panelOpen) rebuildPanel(); });
 
-  // Tap outside the panel to close.
   document.addEventListener('click', (e) => {
     if (!panelOpen) return;
     if (panel!.contains(e.target as Node)) return;
@@ -106,40 +158,51 @@ export function createInventoryPanel() {
   });
 }
 
-function togglePanel() {
-  if (panelOpen) closePanel();
-  else openPanel();
+function togglePanel() { panelOpen ? closePanel() : openPanel(); }
+
+/** Programmatic open — used by debug scenarios for snaps. */
+export function openInventoryPanel() {
+  openPanel();
 }
 
 function openPanel() {
   if (!panel) return;
+  selection = null;
   rebuildPanel();
   panel.style.display = 'flex';
   panelOpen = true;
 }
-
 function closePanel() {
   if (!panel) return;
   panel.style.display = 'none';
   panelOpen = false;
+  selection = null;
 }
 
 function rebuildPanel() {
   if (!panel) return;
   panel.replaceChildren();
 
-  // --- Header row with close button ---
+  panel.appendChild(buildHeader());
+  panel.appendChild(buildThreeColumns());
+  panel.appendChild(buildDetailsRow());
+}
+
+// ── Header ───────────────────────────────────────────────────────────
+function buildHeader(): HTMLDivElement {
   const header = document.createElement('div');
   Object.assign(header.style, {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     borderBottom: '1px solid rgba(180, 130, 90, 0.3)', paddingBottom: '8px',
   } as Partial<CSSStyleDeclaration>);
+
   const title = document.createElement('div');
   title.textContent = 'INVENTORY';
   Object.assign(title.style, {
-    fontSize: '13px', fontWeight: '600', letterSpacing: '0.28em',
-    color: 'rgba(255, 200, 140, 0.9)',
+    fontSize: '13px', fontWeight: '600', letterSpacing: '0.30em',
+    color: 'rgba(255, 200, 140, 0.95)',
   } as Partial<CSSStyleDeclaration>);
+
   const close = document.createElement('button');
   close.textContent = '✕';
   Object.assign(close.style, {
@@ -148,125 +211,226 @@ function rebuildPanel() {
     padding: '4px 8px',
   } as Partial<CSSStyleDeclaration>);
   close.addEventListener('click', closePanel);
+
   header.append(title, close);
-  panel.appendChild(header);
-
-  // --- Equipped slots row ---
-  panel.appendChild(buildSectionLabel('EQUIPPED'));
-  const slotsRow = document.createElement('div');
-  Object.assign(slotsRow.style, {
-    display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px',
-  } as Partial<CSSStyleDeclaration>);
-  const eq = getEquipment();
-  slotsRow.appendChild(buildSlotCell('weapon', 'WPN', eq.weapon, /* unequippable */ false));
-  slotsRow.appendChild(buildSlotCell('armor',  'ARM', eq.armor,  true));
-  slotsRow.appendChild(buildSlotCell('ring1',  'R1',  eq.ring1,  true));
-  slotsRow.appendChild(buildSlotCell('ring2',  'R2',  eq.ring2,  true));
-  panel.appendChild(slotsRow);
-
-  // --- Stats block ---
-  panel.appendChild(buildSectionLabel('STATS'));
-  panel.appendChild(buildStatsBlock());
-
-  // --- Inventory grid ---
-  panel.appendChild(buildSectionLabel('BAG'));
-  panel.appendChild(buildInventoryGrid());
+  return header;
 }
 
-function buildSectionLabel(text: string): HTMLDivElement {
-  const el = document.createElement('div');
-  el.textContent = text;
-  Object.assign(el.style, {
-    fontSize: '11px', fontWeight: '500', letterSpacing: '0.22em',
-    color: 'rgba(180, 140, 100, 0.85)',
-    borderBottom: '1px solid rgba(120, 90, 60, 0.3)',
-    paddingBottom: '4px',
+// ── Three columns: stats | doll | bag ────────────────────────────────
+function buildThreeColumns(): HTMLDivElement {
+  const grid = document.createElement('div');
+  Object.assign(grid.style, {
+    display: 'grid',
+    gridTemplateColumns: '0.75fr 1fr 1fr',
+    gap: '16px',
+    alignItems: 'stretch',
   } as Partial<CSSStyleDeclaration>);
-  return el;
+
+  grid.appendChild(buildStatsColumn());
+  grid.appendChild(buildDollColumn());
+  grid.appendChild(buildBagColumn());
+  return grid;
 }
 
-function buildSlotCell(slot: EquipSlot, label: string, item: ItemSpec | null, canUnequip: boolean): HTMLDivElement {
-  const cell = document.createElement('div');
-  Object.assign(cell.style, {
-    minHeight: '64px', padding: '6px',
-    background: SLOT_BG,
-    border: item ? SLOT_BORDER_FILLED : SLOT_BORDER_EMPTY,
-    borderRadius: '3px',
-    display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-    cursor: item && canUnequip ? 'pointer' : 'default',
+// ── Stats column ─────────────────────────────────────────────────────
+function buildStatsColumn(): HTMLDivElement {
+  const col = document.createElement('div');
+  Object.assign(col.style, {
+    display: 'flex', flexDirection: 'column', gap: '8px',
   } as Partial<CSSStyleDeclaration>);
 
-  const slotLabel = document.createElement('div');
-  slotLabel.textContent = label;
-  Object.assign(slotLabel.style, {
-    fontSize: '9px', letterSpacing: '0.2em',
-    color: 'rgba(140, 110, 80, 0.7)',
-  } as Partial<CSSStyleDeclaration>);
-  cell.appendChild(slotLabel);
+  col.appendChild(sectionLabel('STATS'));
 
-  const itemLabel = document.createElement('div');
-  itemLabel.textContent = item ? shortName(item) : '—';
-  Object.assign(itemLabel.style, {
-    fontSize: '11px',
-    color: item ? 'rgba(230, 200, 170, 0.95)' : 'rgba(120, 90, 70, 0.5)',
-    fontWeight: '500',
-    lineHeight: '1.2',
-  } as Partial<CSSStyleDeclaration>);
-  cell.appendChild(itemLabel);
-
-  if (item && canUnequip) {
-    cell.addEventListener('click', () => {
-      const unequipped = unequipSlot(slot);
-      if (unequipped) addItemSilently(unequipped.id);
-    });
-  }
-
-  return cell;
-}
-
-function buildStatsBlock(): HTMLDivElement {
-  const block = document.createElement('div');
-  Object.assign(block.style, {
-    background: SLOT_BG, padding: '8px 12px', borderRadius: '3px',
+  const card = document.createElement('div');
+  Object.assign(card.style, {
+    background: CARD_BG, padding: '12px 14px', borderRadius: '3px',
     border: '1px solid rgba(120, 90, 60, 0.3)',
-    display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 14px',
-    fontSize: '12px',
+    display: 'flex', flexDirection: 'column', gap: '6px',
+    flex: '1',
   } as Partial<CSSStyleDeclaration>);
 
   const stats = computeStats();
   const weapon = getCurrentWeapon();
   const baseDamage = weapon.damage;
-  const totalDamage = baseDamage + stats.weaponDamageBonus;
+  const totalDamage = (baseDamage + stats.weaponDamageBonus) * stats.damageMultiplier;
+  const damageStr = stats.damageMultiplier !== 1
+    ? `${totalDamage.toFixed(1)}  (${baseDamage}+${stats.weaponDamageBonus} ×${stats.damageMultiplier})`
+    : stats.weaponDamageBonus > 0
+      ? `${totalDamage}  (${baseDamage}+${stats.weaponDamageBonus})`
+      : `${totalDamage}`;
 
-  addStatRow(block, 'HP', `${getPlayerHp()} / ${getPlayerMaxHp()}`);
-  addStatRow(block, 'DAMAGE', stats.weaponDamageBonus > 0
-    ? `${totalDamage}  (${baseDamage} + ${stats.weaponDamageBonus})`
-    : `${totalDamage}`);
-  addStatRow(block, 'PHYS ARM', `${stats.physicalArmor}`);
-  addStatRow(block, 'MAG ARM', `${stats.magicArmor}`);
-  addStatRow(block, 'REACH', `${weapon.reach.toFixed(1)}m`);
+  addStatRow(card, 'HP',         `${getPlayerHp()} / ${getPlayerMaxHp()}`);
+  addStatRow(card, 'DAMAGE',     damageStr);
+  addStatRow(card, 'PHYS ARM',   `${stats.physicalArmor}`);
+  addStatRow(card, 'MAG ARM',    `${stats.magicArmor}`);
+  addStatRow(card, 'REACH',      `${weapon.reach.toFixed(1)}m`);
 
-  return block;
+  col.appendChild(card);
+  return col;
 }
 
 function addStatRow(parent: HTMLElement, label: string, value: string) {
-  const l = document.createElement('div');
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    display: 'flex', justifyContent: 'space-between',
+    fontSize: '12px',
+  } as Partial<CSSStyleDeclaration>);
+  const l = document.createElement('span');
   l.textContent = label;
   Object.assign(l.style, {
-    color: 'rgba(160, 130, 100, 0.85)', letterSpacing: '0.15em', fontSize: '10px',
+    color: TEXT_DIM, letterSpacing: '0.15em', fontSize: '10px',
   } as Partial<CSSStyleDeclaration>);
-  const v = document.createElement('div');
+  const v = document.createElement('span');
   v.textContent = value;
   Object.assign(v.style, {
-    color: 'rgba(230, 200, 170, 0.95)', fontFamily: 'monospace',
+    color: TEXT_PRIMARY, fontFamily: 'monospace',
   } as Partial<CSSStyleDeclaration>);
-  parent.append(l, v);
+  row.append(l, v);
+  parent.appendChild(row);
 }
 
-function buildInventoryGrid(): HTMLDivElement {
+// ── Doll column ──────────────────────────────────────────────────────
+function buildDollColumn(): HTMLDivElement {
+  const col = document.createElement('div');
+  Object.assign(col.style, {
+    display: 'flex', flexDirection: 'column', gap: '8px',
+  } as Partial<CSSStyleDeclaration>);
+  col.appendChild(sectionLabel('EQUIPPED'));
+
+  const dollContainer = document.createElement('div');
+  Object.assign(dollContainer.style, {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: '0.7',  // tall-ish humanoid
+    minHeight: '260px',
+    background: 'radial-gradient(circle at 50% 45%, rgba(60, 40, 25, 0.35) 0%, rgba(20, 14, 10, 0.1) 70%)',
+    border: '1px solid rgba(80, 60, 40, 0.3)',
+    borderRadius: '4px',
+  } as Partial<CSSStyleDeclaration>);
+
+  // SVG silhouette behind the slot indicators.
+  dollContainer.appendChild(buildSilhouette());
+
+  // Slot indicators on top of the silhouette.
+  const eq = getEquipment();
+  for (const def of SLOTS) {
+    dollContainer.appendChild(buildDollSlot(def, def.slotId ? eq[def.slotId] : null));
+  }
+
+  col.appendChild(dollContainer);
+  return col;
+}
+
+function buildSilhouette(): SVGSVGElement {
+  // Stylized hooded humanoid. Simple shapes — reads as a person without
+  // distracting from the slot indicators overlaid on top.
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 200 320');
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  Object.assign(svg.style, {
+    position: 'absolute', inset: '0', width: '100%', height: '100%',
+    opacity: '0.85',
+  } as Partial<CSSStyleDeclaration>);
+
+  svg.innerHTML = `
+    <!-- Hood drape -->
+    <path d="M 50 75 Q 100 20 150 75 L 145 110 Q 100 95 55 110 Z"
+          fill="rgba(20, 14, 10, 0.95)" stroke="rgba(80, 55, 35, 0.5)" stroke-width="1"/>
+    <!-- Head -->
+    <ellipse cx="100" cy="68" rx="28" ry="32" fill="rgba(30, 22, 16, 0.95)"/>
+    <!-- Body torso -->
+    <path d="M 62 110 L 138 110 L 152 215 Q 100 225 48 215 Z"
+          fill="rgba(28, 20, 14, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
+    <!-- Arms -->
+    <rect x="32" y="115" width="22" height="110" rx="10"
+          fill="rgba(26, 18, 12, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
+    <rect x="146" y="115" width="22" height="110" rx="10"
+          fill="rgba(26, 18, 12, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
+    <!-- Legs -->
+    <rect x="68" y="218" width="25" height="92" rx="6"
+          fill="rgba(24, 16, 10, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
+    <rect x="107" y="218" width="25" height="92" rx="6"
+          fill="rgba(24, 16, 10, 0.95)" stroke="rgba(80, 55, 35, 0.4)" stroke-width="1"/>
+  `;
+  return svg;
+}
+
+function buildDollSlot(def: SlotDef, item: ItemSpec | null): HTMLDivElement {
+  const wrap = document.createElement('div');
+  const filled = !!item;
+  const active = !!def.slotId;
+  Object.assign(wrap.style, {
+    position: 'absolute',
+    top: def.top, left: def.left,
+    width: `${def.size}px`, height: `${def.size}px`,
+    transform: 'translate(-50%, -50%)',
+    borderRadius: '4px',
+    background: filled ? 'rgba(60, 40, 22, 0.85)'
+              : active  ? 'rgba(28, 20, 14, 0.7)'
+                        : 'rgba(20, 14, 10, 0.5)',
+    border: filled ? FILLED_BORDER
+          : active  ? EMPTY_BORDER
+                    : PLACEHOLDER_BORDER,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: active ? 'pointer' : 'default',
+    transition: 'transform 0.08s, border 0.15s',
+    boxShadow: filled ? `0 0 10px ${ACCENT}` : 'none',
+    pointerEvents: active || filled ? 'auto' : 'none',
+  } as Partial<CSSStyleDeclaration>);
+
+  const label = document.createElement('div');
+  label.textContent = filled ? abbrev(item!) : def.shortLabel;
+  Object.assign(label.style, {
+    fontSize: filled ? '9px' : '8px',
+    fontWeight: filled ? '600' : '400',
+    color: filled ? TEXT_PRIMARY
+          : active  ? TEXT_DIM
+                    : TEXT_FAINT,
+    letterSpacing: '0.1em',
+    textAlign: 'center',
+    padding: '2px',
+    lineHeight: '1.1',
+  } as Partial<CSSStyleDeclaration>);
+  wrap.appendChild(label);
+
+  // Visual highlight if this is the currently-selected slot.
+  if (selection?.kind === 'slot' && selection.slotId === def.slotId) {
+    wrap.style.border = `2px solid ${ACCENT}`;
+    wrap.style.boxShadow = `0 0 14px ${ACCENT}`;
+  }
+
+  if (active && def.slotId && item) {
+    wrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selection = { kind: 'slot', slotId: def.slotId!, item };
+      rebuildPanel();
+    });
+  } else if (active && def.slotId) {
+    // Empty active slot — just show a brief flash, no selection.
+    wrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selection = null;
+      rebuildPanel();
+    });
+  }
+
+  return wrap;
+}
+
+// ── Bag column ───────────────────────────────────────────────────────
+function buildBagColumn(): HTMLDivElement {
+  const col = document.createElement('div');
+  Object.assign(col.style, {
+    display: 'flex', flexDirection: 'column', gap: '8px',
+  } as Partial<CSSStyleDeclaration>);
+
+  col.appendChild(sectionLabel('BAG'));
+
   const grid = document.createElement('div');
   Object.assign(grid.style, {
-    display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px',
+    display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '6px', alignContent: 'start',
+    overflowY: 'auto', maxHeight: '320px',
   } as Partial<CSSStyleDeclaration>);
 
   const items = getAllItems().filter((i) => i.count > 0);
@@ -275,71 +439,310 @@ function buildInventoryGrid(): HTMLDivElement {
     empty.textContent = 'EMPTY';
     Object.assign(empty.style, {
       gridColumn: '1 / -1', padding: '14px', textAlign: 'center',
-      color: 'rgba(120, 90, 70, 0.5)', fontSize: '11px',
+      color: TEXT_FAINT, fontSize: '11px',
       letterSpacing: '0.25em', fontStyle: 'italic',
     } as Partial<CSSStyleDeclaration>);
     grid.appendChild(empty);
-    return grid;
+    col.appendChild(grid);
+    return col;
   }
 
   for (const { id, count } of items) {
     const item = ITEMS[id];
     if (!item) continue;
+    grid.appendChild(buildBagCell(item, count));
+  }
 
-    const cell = document.createElement('div');
-    Object.assign(cell.style, {
-      padding: '8px 10px',
-      background: SLOT_BG,
-      border: SLOT_BORDER_FILLED,
-      borderRadius: '3px',
-      display: 'flex', flexDirection: 'column', gap: '2px',
-      cursor: 'pointer',
-    } as Partial<CSSStyleDeclaration>);
+  col.appendChild(grid);
+  return col;
+}
 
-    const labelRow = document.createElement('div');
-    Object.assign(labelRow.style, { display: 'flex', justifyContent: 'space-between' } as Partial<CSSStyleDeclaration>);
-    const name = document.createElement('div');
-    name.textContent = shortName(item);
-    Object.assign(name.style, {
-      fontSize: '11px', color: 'rgba(230, 200, 170, 0.95)', fontWeight: '500',
-    } as Partial<CSSStyleDeclaration>);
-    const countLbl = document.createElement('div');
-    countLbl.textContent = count > 1 ? `×${count}` : '';
-    Object.assign(countLbl.style, {
-      fontSize: '10px', color: 'rgba(180, 140, 100, 0.7)',
-      fontFamily: 'monospace',
-    } as Partial<CSSStyleDeclaration>);
-    labelRow.append(name, countLbl);
-    cell.appendChild(labelRow);
+function buildBagCell(item: ItemSpec, count: number): HTMLDivElement {
+  const selected = selection?.kind === 'bag' && selection.item.id === item.id;
 
-    const kind = document.createElement('div');
-    kind.textContent = item.kind.toUpperCase();
-    Object.assign(kind.style, {
-      fontSize: '9px', letterSpacing: '0.2em', color: 'rgba(140, 110, 80, 0.65)',
-    } as Partial<CSSStyleDeclaration>);
-    cell.appendChild(kind);
+  const cell = document.createElement('div');
+  Object.assign(cell.style, {
+    padding: '8px 10px',
+    background: selected ? 'rgba(80, 50, 28, 0.85)' : CARD_BG,
+    border: selected ? `2px solid ${ACCENT}` : FILLED_BORDER,
+    borderRadius: '3px',
+    display: 'flex', flexDirection: 'column', gap: '2px',
+    cursor: 'pointer',
+    boxShadow: selected ? `0 0 12px ${ACCENT}` : 'none',
+  } as Partial<CSSStyleDeclaration>);
 
-    // Tap to equip (equipment kinds only — consumables are used via the
-    // bottom-left potion button, not by tapping here).
-    if (item.kind !== 'consumable') {
-      cell.addEventListener('click', () => {
+  const top = document.createElement('div');
+  Object.assign(top.style, { display: 'flex', justifyContent: 'space-between' } as Partial<CSSStyleDeclaration>);
+  const name = document.createElement('div');
+  name.textContent = abbrev(item);
+  Object.assign(name.style, {
+    fontSize: '11px', color: TEXT_PRIMARY, fontWeight: '500',
+  } as Partial<CSSStyleDeclaration>);
+  const cnt = document.createElement('div');
+  cnt.textContent = count > 1 ? `×${count}` : '';
+  Object.assign(cnt.style, {
+    fontSize: '10px', color: TEXT_DIM, fontFamily: 'monospace',
+  } as Partial<CSSStyleDeclaration>);
+  top.append(name, cnt);
+  cell.appendChild(top);
+
+  const kindLabel = document.createElement('div');
+  kindLabel.textContent = item.kind.toUpperCase();
+  Object.assign(kindLabel.style, {
+    fontSize: '9px', letterSpacing: '0.2em', color: TEXT_DIM,
+  } as Partial<CSSStyleDeclaration>);
+  cell.appendChild(kindLabel);
+
+  cell.addEventListener('click', (e) => {
+    e.stopPropagation();
+    selection = { kind: 'bag', item };
+    rebuildPanel();
+  });
+
+  return cell;
+}
+
+// ── Details row (selected item) ──────────────────────────────────────
+function buildDetailsRow(): HTMLDivElement {
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    marginTop: '6px',
+    minHeight: '92px',
+    background: CARD_BG,
+    border: '1px solid rgba(120, 90, 60, 0.4)',
+    borderRadius: '3px',
+    padding: '12px 14px',
+    display: 'flex', flexDirection: 'column', gap: '8px',
+  } as Partial<CSSStyleDeclaration>);
+
+  if (!selection) {
+    const hint = document.createElement('div');
+    hint.textContent = 'Tap an item or equipped slot to inspect.';
+    Object.assign(hint.style, {
+      color: TEXT_FAINT, fontSize: '11px',
+      fontStyle: 'italic', letterSpacing: '0.1em', textAlign: 'center',
+      padding: '14px 0',
+    } as Partial<CSSStyleDeclaration>);
+    row.appendChild(hint);
+    return row;
+  }
+
+  const item = selection.item;
+  row.appendChild(buildDetailsHeader(item));
+  for (const line of describeItem(item)) row.appendChild(line);
+  row.appendChild(buildDetailsAction(selection));
+  return row;
+}
+
+function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
+  const head = document.createElement('div');
+  Object.assign(head.style, {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+    borderBottom: '1px solid rgba(120, 90, 60, 0.3)', paddingBottom: '6px',
+  } as Partial<CSSStyleDeclaration>);
+
+  const name = document.createElement('div');
+  name.textContent = item.name;
+  Object.assign(name.style, {
+    fontSize: '15px', color: 'rgba(255, 220, 180, 0.95)',
+    fontFamily: 'Georgia, "Times New Roman", serif', fontStyle: 'italic',
+  } as Partial<CSSStyleDeclaration>);
+
+  const kind = document.createElement('div');
+  kind.textContent = item.kind.toUpperCase();
+  Object.assign(kind.style, {
+    fontSize: '10px', color: TEXT_DIM, letterSpacing: '0.25em',
+  } as Partial<CSSStyleDeclaration>);
+
+  head.append(name, kind);
+  return head;
+}
+
+function buildDetailsAction(sel: NonNullable<Selection>): HTMLButtonElement {
+  const btn = document.createElement('button');
+  let label: string;
+  let onClick: () => void;
+
+  if (sel.kind === 'bag') {
+    if (sel.item.kind === 'consumable') {
+      label = 'USE';
+      onClick = () => {
+        const item = sel.item;
+        if (item.consumableHeal != null) {
+          if (getPlayerHp() < getPlayerMaxHp()) {
+            healPlayer(item.consumableHeal);
+            removeItem(item.id);
+          }
+        } else if (item.consumableBuff) {
+          const player = get('player');
+          if (player) applyBuff(player, item.consumableBuff.buffId, item.consumableBuff.duration);
+          removeItem(item.id);
+        }
+        selection = null;
+        rebuildPanel();
+      };
+    } else {
+      label = 'EQUIP';
+      onClick = () => {
+        const item = sel.item;
         const previous = equipFromInventory(item);
         removeItem(item.id);
         if (previous) addItemSilently(previous.id);
-      });
-    } else {
-      cell.style.cursor = 'default';
-      cell.style.opacity = '0.85';
+        selection = null;
+        rebuildPanel();
+      };
     }
-
-    grid.appendChild(cell);
+  } else {
+    // sel.kind === 'slot'
+    if (sel.slotId === 'weapon') {
+      label = 'WEAPON LOCKED';
+      onClick = () => {};
+    } else {
+      label = 'UNEQUIP';
+      onClick = () => {
+        const unequipped = unequipSlot(sel.slotId);
+        if (unequipped) addItemSilently(unequipped.id);
+        selection = null;
+        rebuildPanel();
+      };
+    }
   }
 
-  return grid;
+  btn.textContent = label;
+  Object.assign(btn.style, {
+    marginTop: 'auto', alignSelf: 'flex-start',
+    padding: '8px 22px',
+    background: 'rgba(120, 70, 30, 0.75)',
+    border: '1px solid rgba(255, 180, 100, 0.65)',
+    borderRadius: '3px',
+    color: 'rgba(255, 230, 200, 0.97)',
+    fontSize: '11px',
+    fontWeight: '600',
+    letterSpacing: '0.25em',
+    cursor: label === 'WEAPON LOCKED' ? 'default' : 'pointer',
+    opacity: label === 'WEAPON LOCKED' ? '0.4' : '1',
+    touchAction: 'manipulation',
+  } as Partial<CSSStyleDeclaration>);
+  if (label !== 'WEAPON LOCKED') {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+  }
+  return btn;
 }
 
-// Take the item's display name and strip leading article (a/an) to fit
-// the cramped panel cell. "A scimitar, curved and stained" -> "scimitar, curved..."
-function shortName(item: ItemSpec): string {
-  return item.name.replace(/^(A |An )/, '').slice(0, 30);
+// ── Item description ─────────────────────────────────────────────────
+// Turn an ItemSpec into a list of human-readable description lines.
+function describeItem(item: ItemSpec): HTMLDivElement[] {
+  const lines: HTMLDivElement[] = [];
+
+  if (item.weapon) {
+    lines.push(detailLine(formatWeapon(item.weapon)));
+  }
+  if (item.modifiers && item.modifiers.length) {
+    for (const m of item.modifiers) lines.push(detailLine(formatModifier(m)));
+  }
+  if (item.passives && item.passives.length) {
+    for (const p of item.passives) lines.push(detailLine(formatPassive(p)));
+  }
+  if (item.consumableHeal != null) {
+    lines.push(detailLine(`Restores ${item.consumableHeal} HP`));
+  }
+  if (item.consumableBuff) {
+    const spec = BUFFS[item.consumableBuff.buffId];
+    const buffDesc = spec
+      ? formatBuffEffect(spec.id, item.consumableBuff.duration)
+      : item.consumableBuff.buffId;
+    lines.push(detailLine(`On use: ${buffDesc}`));
+  }
+  if (lines.length === 0) {
+    lines.push(detailLine('No effects.', /*dim*/ true));
+  }
+  return lines;
 }
+
+function detailLine(text: string, dim = false): HTMLDivElement {
+  const el = document.createElement('div');
+  el.textContent = '· ' + text;
+  Object.assign(el.style, {
+    fontSize: '12px',
+    color: dim ? TEXT_DIM : TEXT_PRIMARY,
+    letterSpacing: '0.04em',
+    lineHeight: '1.4',
+  } as Partial<CSSStyleDeclaration>);
+  return el;
+}
+
+function formatWeapon(w: WeaponStats): string {
+  return `Base Damage ${w.damage}  ·  Reach ${w.reach.toFixed(1)}m  ·  Arc ${(w.coneHalfAngle * 180 / Math.PI).toFixed(0)}°`;
+}
+
+function formatModifier(m: StatModifier): string {
+  switch (m.kind) {
+    case 'max-hp':           return signed(m.amount) + ' Max HP';
+    case 'weapon-damage':    return signed(m.amount) + ' Damage';
+    case 'damage-multiplier':return `×${m.amount.toFixed(2)} Damage`;
+    case 'physical-armor':   return signed(m.amount) + ' Physical Armor';
+    case 'magic-armor':      return signed(m.amount) + ' Magic Armor';
+  }
+}
+
+function formatPassive(p: PassiveSpec): string {
+  const triggerLabel = ({
+    hit: 'On hit',
+    killed: 'On kill',
+    damaged: 'When damaged',
+    died: 'On death',
+    interval: 'Periodically',
+  } as const)[p.trigger.on];
+
+  const effects = p.trigger.effects.map((e) => {
+    if (e.type === 'damage')   return `${e.amount} damage`;
+    if (e.type === 'heal')     return `heal ${e.amount} HP`;
+    if (e.type === 'apply-buff' && e.buffId) {
+      return formatBuffEffect(e.buffId, e.duration ?? 0);
+    }
+    return e.type;
+  });
+  return `${triggerLabel}: ${effects.join(', ')}`;
+}
+
+function formatBuffEffect(buffId: string, duration: number): string {
+  const spec = BUFFS[buffId];
+  if (!spec) return `${buffId} for ${duration}s`;
+  const name = spec.displayName ?? buffId;
+
+  const parts: string[] = [];
+  if (spec.modifiers) {
+    for (const m of spec.modifiers) parts.push(formatModifier(m));
+  }
+  if (spec.tickInterval && spec.tickEffect) {
+    const e = spec.tickEffect;
+    if (e.type === 'heal') parts.push(`+${e.amount} HP every ${spec.tickInterval}s`);
+    if (e.type === 'damage') parts.push(`-${e.amount} HP every ${spec.tickInterval}s`);
+  }
+  const effectStr = parts.length ? ` (${parts.join(', ')})` : '';
+  return `${name}${effectStr} for ${duration}s`;
+}
+
+function signed(n: number): string {
+  return n >= 0 ? `+${n}` : String(n);
+}
+
+// ── Misc helpers ─────────────────────────────────────────────────────
+function sectionLabel(text: string): HTMLDivElement {
+  const el = document.createElement('div');
+  el.textContent = text;
+  Object.assign(el.style, {
+    fontSize: '10px', fontWeight: '500', letterSpacing: '0.25em',
+    color: TEXT_DIM,
+    borderBottom: '1px solid rgba(120, 90, 60, 0.3)',
+    paddingBottom: '4px',
+  } as Partial<CSSStyleDeclaration>);
+  return el;
+}
+
+function abbrev(item: ItemSpec): string {
+  const name = item.name.replace(/^(A |An |The )/, '');
+  // Take first 2-3 words for the dollslot label.
+  return name.length > 22 ? name.slice(0, 20) + '…' : name;
+}
+
