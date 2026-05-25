@@ -49,6 +49,23 @@ function makeJitteredPlane(width: number, height: number): THREE.PlaneGeometry {
   }
   pos.needsUpdate = true;
   geo.computeVertexNormals();
+
+  // Per-vertex color tint jitter: each vertex gets an RGB multiplier in
+  // [0.7, 1.0]. The material multiplies this against its base color, so
+  // walls + floor get subtle dark/light splotches instead of one flat tone.
+  // Each channel is randomized slightly independently for color drift too.
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const base = 0.7 + Math.random() * 0.3;     // overall darkness per vertex
+    const tintR = base * (0.94 + Math.random() * 0.06);
+    const tintG = base * (0.94 + Math.random() * 0.06);
+    const tintB = base * (0.94 + Math.random() * 0.06);
+    colors[i * 3 + 0] = tintR;
+    colors[i * 3 + 1] = tintG;
+    colors[i * 3 + 2] = tintB;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
   return geo;
 }
 
@@ -165,6 +182,8 @@ export function buildLevel(
         scene,
         new THREE.Vector3(t.x, t.height, t.z),
         torchYawForWall(t.wall),
+        t.colorTint,
+        t.intensityMul,
       ),
     );
   }

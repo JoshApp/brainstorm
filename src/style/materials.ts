@@ -24,12 +24,14 @@ export function buildMaterials(style: Style): StyleMaterials {
     roughness: 0.95,
     metalness: 0.0,
     flatShading: flat,
+    vertexColors: true,   // per-vertex tint jitter breaks up uniform surfaces
   });
   const floorBase = new THREE.MeshStandardMaterial({
     color: flat ? 0x1a1410 : CONFIG.FLOOR_COLOR,
     roughness: 1.0,
     metalness: 0.0,
     flatShading: flat,
+    vertexColors: true,
   });
   const ceilingBase = new THREE.MeshStandardMaterial({
     color: CONFIG.CEILING_COLOR,

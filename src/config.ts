@@ -7,8 +7,8 @@ export const CONFIG = {
   WALL_COLOR: 0x1a1714,        // near-black warm stone
   FLOOR_COLOR: 0x0f0d0b,       // darker than walls
   CEILING_COLOR: 0x080706,     // darkest
-  AMBIENT_COLOR: 0x1a1010,     // faint red/brown ambient — bare minimum visibility
-  AMBIENT_INTENSITY: 0.6,      // dim — most light still from torches (raised so the room reads less as void)
+  AMBIENT_COLOR: 0x231711,     // warm sepia/brown ambient — floors and walls remain legible
+  AMBIENT_INTENSITY: 0.95,     // bumped from 0.6 so dark corners aren't pure void
 
   // === FOG ===
   // Hides everything beyond torch range. Sells the dread.

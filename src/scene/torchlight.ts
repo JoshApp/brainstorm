@@ -32,6 +32,8 @@ export function createTorchlight(
   scene: THREE.Scene,
   position: THREE.Vector3,
   wallYaw: number = 0,  // 0 = north wall (default), Math.PI = south, ±PI/2 = west/east
+  colorTint?: number,   // optional per-torch color (e.g. 0xffaa55 default, 0x88ddff = haunted pale)
+  intensityMul: number = 1,  // optional intensity multiplier (e.g. 0.5 = dying torch)
 ): Torch {
   const built = buildModel(WALL_TORCH);
   built.group.position.copy(position);
@@ -44,7 +46,22 @@ export function createTorchlight(
     throw new Error('WALL_TORCH model is missing its light spec');
   }
 
+  // Per-torch color tint: shift the light color + flame emissive + wisp tint.
+  // The model has the default warm orange baked in; this overrides for variety.
+  if (colorTint !== undefined) {
+    built.light.color.setHex(colorTint);
+    flameMaterial.emissive.setHex(colorTint);
+    // Body color of the flame mesh stays the warm core (kept warm so it reads
+    // as fire regardless of the surrounding color shift).
+  }
+
+  const baseIntensity = CONFIG.TORCH_INTENSITY * intensityMul;
+  built.light.intensity = baseIntensity;
+
   const wispSprite = built.parts.get('wisp') as THREE.Sprite | undefined;
+  if (wispSprite && colorTint !== undefined) {
+    (wispSprite.material as THREE.SpriteMaterial).color.setHex(colorTint);
+  }
   const wispBaseColor = wispSprite ? (wispSprite.material as THREE.SpriteMaterial).color.clone() : undefined;
   const wispBaseScale = wispSprite ? wispSprite.scale.clone() : undefined;
 
@@ -56,7 +73,7 @@ export function createTorchlight(
     wispSprite,
     wispBaseColor,
     wispBaseScale,
-    baseIntensity: CONFIG.TORCH_INTENSITY,
+    baseIntensity,
     baseEmissive: flameMaterial.emissiveIntensity,
     time: 0,
     n1: Math.random() * 1000,

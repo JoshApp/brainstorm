@@ -47,6 +47,10 @@ export type TorchSpec = {
   height: number;
   /** Which wall the torch is mounted on; determines bracket facing. */
   wall: 'N' | 'S' | 'E' | 'W';
+  /** Optional hex color override for this torch's light + flame (defaults to CONFIG.TORCH_COLOR). */
+  colorTint?: number;
+  /** Optional intensity multiplier (defaults to 1). Use 0.5 for a dying/dim torch. */
+  intensityMul?: number;
 };
 
 export type EnemySpawnSpec = {

@@ -1,5 +1,26 @@
 import type { LevelSpec } from './types';
 import { SCIMITAR_RELIC } from '../content/relics';
+import { FLOOR_CANDLE } from '../content/candle';
+import type { ModelSpec } from '../ecs/model-types';
+
+// Decal-as-prop helper. A decal is a flat textured plane oriented in world
+// space. We wrap it as a ModelSpec with a single 'decal' part so it slots
+// into the existing 'model' prop kind without adding a new prop type.
+function decalModel(id: string, texture: string, size: [number, number], color = 0xffffff): ModelSpec {
+  return {
+    id,
+    materials: {},
+    parts: [
+      { name: 'decal', kind: 'decal', size, texture, color },
+    ],
+  };
+}
+
+const MOSS_WALL_SMALL = decalModel('moss-wall-sm', 'moss-patch', [0.7, 0.5]);
+const MOSS_WALL_LARGE = decalModel('moss-wall-lg', 'moss-patch', [1.1, 0.8]);
+const MOSS_FLOOR      = decalModel('moss-floor',   'moss-patch', [1.0, 1.0], 0xa0b070);
+const BLOOD_FLOOR     = decalModel('blood-floor',  'blood-splatter', [0.9, 0.9]);
+const SOOT_WALL       = decalModel('soot-wall',    'soot-streak', [0.55, 1.4]);
 
 // Hand-authored level 1 — the current ritual chamber, expressed as data.
 // Once we trust this format, procgen and additional floors just produce more
@@ -26,9 +47,7 @@ export const LEVEL_1: LevelSpec = {
     { kind: 'pillar', x: -1.8, z: 2.2 },
     { kind: 'pillar', x: 1.8, z: 2.2 },
     { kind: 'altar', x: 0, z: -2.8 },
-    // SCIMITAR RELIC laid across the altar top. Altar top surface is at y=0.55
-    // (altar block is 0.55 tall, centered at y=0.275). Tip-down, hilt-up,
-    // rotated a bit so it lies diagonal across the altar stone.
+    // SCIMITAR RELIC laid across the altar top.
     {
       kind: 'model',
       model: SCIMITAR_RELIC,
@@ -36,24 +55,55 @@ export const LEVEL_1: LevelSpec = {
       rotX: -Math.PI / 2,
       rotY: 0.6,
     },
-    // CHEST south of spawn, lit by the south torch. After dealing with the
-    // enemies in front, turn around and you see it. Walk up, USE button
-    // appears, tap to open. Lid swings up on a hinge; a scimitar drops next
-    // to it as loot. Walk over to the loot, tap USE again to take it (it
-    // disappears — inventory plumbing comes next).
+    // CHEST south of spawn, lit by the south torch.
     {
       kind: 'chest',
       x: 0.2, z: 2.5,
-      rotY: -Math.PI * 0.85,  // facing north-ish so the lid hinges away from player
+      rotY: -Math.PI * 0.85,
       loot: SCIMITAR_RELIC,
     },
+
+    // FLOOR CANDLES — ankle-level light sources for atmosphere. Cast
+    // upward-warm-light on nearby pillars + altar. Placed in pairs flanking
+    // the altar like a votive offering.
+    { kind: 'model', model: FLOOR_CANDLE, x: -0.9, y: 0, z: -2.6 },
+    { kind: 'model', model: FLOOR_CANDLE, x:  0.9, y: 0, z: -2.6 },
+
+    // DECALS — sprite-textured planes oriented in world space. Break up the
+    // uniform stone with moss patches, old blood stains, soot above torches.
+    // Y for floor decals = 0.01 (just above floor to avoid z-fight).
+    // Rotation for floor: -PI/2 around X. For walls: face into room.
+
+    // Moss on the floor near the south-east pillar
+    { kind: 'model', model: MOSS_FLOOR, x: 1.8, y: 0.012, z: 1.8, rotX: -Math.PI / 2 },
+    // Moss on the floor under the north-west pillar
+    { kind: 'model', model: MOSS_FLOOR, x: -2.4, y: 0.012, z: -1.4, rotX: -Math.PI / 2, rotY: 0.4 },
+
+    // Old blood stain in front of the altar — the ritual fight's history
+    { kind: 'model', model: BLOOD_FLOOR, x: -0.3, y: 0.013, z: -1.3, rotX: -Math.PI / 2, rotY: 1.2 },
+    // Another smaller stain off to the east
+    { kind: 'model', model: BLOOD_FLOOR, x: 1.5, y: 0.013, z: -0.4, rotX: -Math.PI / 2 },
+
+    // Moss climbing the north wall (above where the altar sits)
+    { kind: 'model', model: MOSS_WALL_LARGE, x: -1.2, y: 1.0, z: -3.99, rotY: 0 },
+    { kind: 'model', model: MOSS_WALL_SMALL, x:  1.4, y: 1.4, z: -3.99, rotY: 0 },
+
+    // Moss on the south wall
+    { kind: 'model', model: MOSS_WALL_SMALL, x: -2.0, y: 1.2, z:  3.99, rotY: Math.PI },
+
+    // Soot streak above the north torch from years of flame
+    { kind: 'model', model: SOOT_WALL, x: 0, y: 2.85, z: -3.99, rotY: 0 },
+    // Soot streak above the south torch
+    { kind: 'model', model: SOOT_WALL, x: 0, y: 2.85, z:  3.99, rotY: Math.PI },
   ],
 
   torches: [
-    // North wall — the one the player faces at spawn
-    { x: 0, z: -3.6, height: 2.2, wall: 'N' },
-    // South wall — turn around to see this one
-    { x: 0, z: 3.6, height: 2.2, wall: 'S' },
+    // North wall — the one the player faces at spawn. Warm orange, full
+    // intensity; the "main fire" of the chamber.
+    { x: 0, z: -3.6, height: 2.2, wall: 'N', colorTint: 0xffaa55, intensityMul: 1.0 },
+    // South wall — paler, slightly cooler, dimmer. Reads as a dying or
+    // older torch. Creates color contrast between the two ends of the room.
+    { x: 0, z: 3.6, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
   ],
 
   spawns: [
