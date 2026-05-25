@@ -26,8 +26,24 @@ export interface Scenario {
   level?: LevelSpec;
   /** Freeze world updates after init — for deterministic screenshots. */
   freeze?: boolean;
-  /** Override player camera position + yaw (and optional pitch in radians, negative = look down). */
-  playerPos?: { x: number; z: number; yaw: number; pitch?: number };
+  /**
+   * Override player camera position + facing.
+   * - `yaw` / `pitch` (radians) for explicit angle control, OR
+   * - `lookAt: { x, z, y? }` to point the camera at a world position
+   *   (yaw + pitch computed automatically — much easier to author).
+   * `y` for the camera position defaults to PLAYER_HEIGHT; `y` for the
+   * lookAt target defaults to 0 (floor level).
+   */
+  playerPos?: {
+    x: number;
+    z: number;
+    y?: number;
+    yaw?: number;
+    pitch?: number;
+    lookAt?: { x: number; z: number; y?: number };
+  };
+  /** Hide the player's held sword (for non-combat scenarios where it fills the frame). */
+  hideSword?: boolean;
   /** Override one or more enemies' state by spawn index. */
   enemyOverrides?: Array<{
     index: number;
@@ -100,23 +116,32 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
 
   // Close-up of the scimitar relic on the altar. Demonstrates lathe (pommel)
-  // + extrude (curved blade) geometry. Camera looks at the altar from the
-  // west side so the relic's profile is visible against the torchlight.
+  // + extrude (curved blade) geometry. lookAt the altar from west side.
+  // (Altar is removed now — relic lives in chest — but kept as snapshot of
+  // the pre-chest staging.)
   altar: {
     freeze: true,
-    playerPos: { x: -1.5, z: -2.78, yaw: -Math.PI / 2 },
+    hideSword: true,
+    playerPos: {
+      x: -1.5, z: -2.78,
+      lookAt: { x: 0, z: -2.78, y: 0.5 },  // look at altar top
+    },
     enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } }, // ghoul out of view
-      { index: 1, pos: { x:  10, z: -10 } }, // skirmisher out of view
-      { index: 2, pos: { x: -10, z:  10 } }, // rat out of view
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
     ],
   },
 
-  // Close-up of the chest (closed). Camera south of spawn looking at the
-  // chest, tilted down slightly so the small chest fills the lower frame.
+  // Close-up of the chest (closed). lookAt does the math; we just say where
+  // the chest is and where to stand.
   chest: {
     freeze: true,
-    playerPos: { x: 0.2, z: 1.0, yaw: Math.PI, pitch: -0.3 },
+    hideSword: true,
+    playerPos: {
+      x: 0.2, z: 1.0,
+      lookAt: { x: 0.2, z: 2.5, y: 0.2 },  // chest is at (0.2, _, 2.5), top ~y=0.35
+    },
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
@@ -125,17 +150,20 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
 
   // Chest after being opened — lid swung up, loot scimitar bobbing beside it.
-  // Programmatically fires onUse + fast-forwards the open animation.
   'chest-open': {
     freeze: true,
-    playerPos: { x: 0.2, z: 1.0, yaw: Math.PI, pitch: -0.3 },
+    hideSword: true,
+    playerPos: {
+      x: 0.2, z: 1.0,
+      lookAt: { x: 0.2, z: 2.5, y: 0.25 },  // slightly higher to see lid + loot
+    },
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
       { index: 2, pos: { x: -10, z:  10 } },
     ],
     openAllInteractables: true,
-    tickInteractables: 0.8,  // longer than chest open duration (0.55s)
+    tickInteractables: 0.8,
   },
 
   // HUD test: damage the player to 2/5 HP + apply the regen buff. Both the
@@ -151,15 +179,18 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
-  // Close-up of the rat. Quadruped silhouette built from primitives.
-  // Player at spawn looking north; rat between player and the north torch
-  // (where the light actually reaches) so the silhouette + glowing eyes read.
+  // Close-up of the rat. Look at the rat directly — lookAt computes pitch
+  // so the small-on-the-floor target is centered, no manual math.
   rat: {
     freeze: true,
-    playerPos: { x: 0, z: -0.4, yaw: 0 },
+    hideSword: true,
+    playerPos: {
+      x: 0, z: -0.4,
+      lookAt: { x: 0, z: -1.6, y: 0.15 },  // rat eye height ~0.15
+    },
     enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } }, // ghoul out of view
-      { index: 1, pos: { x:  10, z: -10 } }, // skirmisher out of view
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
       { index: 2, pos: { x: 0, z: -1.6 }, state: 'chasing', phaseTimer: 0 },
     ],
   },
@@ -187,14 +218,28 @@ export function applyScenario(
   ctx: { level: LiveLevel; sword: Sword; camera: THREE.Camera },
 ) {
   if (scenario.playerPos) {
-    ctx.camera.position.x = scenario.playerPos.x;
-    ctx.camera.position.z = scenario.playerPos.z;
-    setCameraYaw(scenario.playerPos.yaw);
-    // Apply rotation directly so frozen scenarios render with the right yaw
-    // (updateCamera won't run while frozen).
+    const pp = scenario.playerPos;
+    ctx.camera.position.x = pp.x;
+    ctx.camera.position.y = pp.y ?? 1.6;  // PLAYER_HEIGHT default
+    ctx.camera.position.z = pp.z;
     ctx.camera.rotation.order = 'YXZ';
-    ctx.camera.rotation.y = scenario.playerPos.yaw;
-    ctx.camera.rotation.x = scenario.playerPos.pitch ?? 0;
+
+    if (pp.lookAt) {
+      // Look at a world point. Three.js handles the math; we extract yaw/pitch
+      // from the resulting quaternion (because rotation.order='YXZ' is set).
+      const targetY = pp.lookAt.y ?? 0;
+      ctx.camera.lookAt(pp.lookAt.x, targetY, pp.lookAt.z);
+      setCameraYaw(ctx.camera.rotation.y);
+    } else {
+      const yaw = pp.yaw ?? 0;
+      ctx.camera.rotation.y = yaw;
+      ctx.camera.rotation.x = pp.pitch ?? 0;
+      setCameraYaw(yaw);
+    }
+  }
+
+  if (scenario.hideSword) {
+    ctx.sword.group.visible = false;
   }
 
   if (scenario.enemyOverrides) {
