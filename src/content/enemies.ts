@@ -150,13 +150,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'rat',
     name: 'rat',
     hp: 1,           // dies in one hit — the trash mob
-    moveSpeed: 3.2,  // faster than the player can outrun head-on
+    moveSpeed: 2.6,  // slightly slower than player retreat speed (was 3.2)
     attackDamage: 1,
-    attackRange: 0.7,  // must close hard
-    strikeRange: 1.0,
-    windupTime: 0.18,  // almost no telegraph
-    strikeTime: 0.10,
-    recoverTime: 0.22,  // and back at it immediately
+    attackRange: 0.8,
+    strikeRange: 1.1,
+    windupTime: 0.35,  // up from 0.18 — reactable telegraph
+    strikeTime: 0.12,
+    recoverTime: 0.55,  // longer recovery — punishable
     model: quadrupedRatModel(0x2a1a14, 0xff2a0a, 2.0),
     baseEyeEmissive: 2.0,
     collisionRadius: 0.18,
@@ -169,13 +169,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'skirmisher',
     name: 'skirmisher',
     hp: 2,
-    moveSpeed: 2.4,        // faster than player retreat speed
+    moveSpeed: 2.2,        // was 2.4 — player can now outpace it slightly
     attackDamage: 1,
     attackRange: 1.35,
     strikeRange: 1.7,
-    windupTime: 0.28,      // ~half the ghoul — much harder to react
+    windupTime: 0.38,      // up from 0.28 — still snappy but reactable
     strikeTime: 0.14,
-    recoverTime: 0.35,
+    recoverTime: 0.50,     // up from 0.35 — small window after each strike
     model: skirmisherModel(0x18130d, 0xffb060, 1.8),
     baseEyeEmissive: 1.8,
     collisionRadius: 0.35,

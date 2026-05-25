@@ -63,7 +63,7 @@ export const CONFIG = {
   DAMAGE_NUMBER_RISE: 60,      // pixels the number floats up over its lifetime
 
   // === PLAYER HEALTH ===
-  PLAYER_HP_MAX: 5,
+  PLAYER_HP_MAX: 8,    // bumped from 5 — multiple enemies stacking damage is brutal at 5
   PLAYER_HIT_PAUSE_MS: 110,         // longer freeze than landing — getting hit hurts more
   PLAYER_HIT_SHAKE_MAGNITUDE: 0.12, // stronger than landing-shake
   PLAYER_HIT_SHAKE_DURATION: 0.28,

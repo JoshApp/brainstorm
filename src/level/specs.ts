@@ -107,12 +107,15 @@ export const LEVEL_1: LevelSpec = {
   ],
 
   spawns: [
-    // Slow heavy hitter in front of the altar — the silhouetted ritual fight.
-    { enemyId: 'ghoul', x: -0.6, z: -1.5 },
-    // Fast small skirmisher to the player's right — both visible at spawn.
-    { enemyId: 'skirmisher', x: 1.4, z: -1.8 },
-    // Rat scuttling along the right wall — trash mob, fast, low HP, no
-    // telegraph. Spawning behind a pillar so it has to come around it.
-    { enemyId: 'rat', x: 2.4, z: 0.5 },
+    // Slow heavy hitter directly ahead — the primary fight, visible at spawn.
+    // Player faces this one first; the ritual altar lies just behind it.
+    { enemyId: 'ghoul', x: 0, z: -2.0 },
+    // Skirmisher hangs further back behind a pillar — engages AFTER the ghoul
+    // is in range, so the player isn't sandwiched at spawn.
+    { enemyId: 'skirmisher', x: 2.5, z: -3.0 },
+    // Rat starts at the back of the room (south side, behind the player at
+    // spawn). It has to traverse the chamber to engage, giving the player
+    // time to deal with the ghoul first.
+    { enemyId: 'rat', x: -2.5, z: 3.0 },
   ],
 };
