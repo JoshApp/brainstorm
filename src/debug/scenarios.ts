@@ -86,6 +86,32 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     playerPos: { x: 0, z: 0, yaw: Math.PI },
   },
+
+  // Close-up of the scimitar relic on the altar. Demonstrates lathe (pommel)
+  // + extrude (curved blade) geometry. Camera looks at the altar from the
+  // west side so the relic's profile is visible against the torchlight.
+  altar: {
+    freeze: true,
+    playerPos: { x: -1.5, z: -2.78, yaw: -Math.PI / 2 },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } }, // ghoul out of view
+      { index: 1, pos: { x:  10, z: -10 } }, // skirmisher out of view
+      { index: 2, pos: { x: -10, z:  10 } }, // rat out of view
+    ],
+  },
+
+  // Close-up of the rat. Quadruped silhouette built from primitives.
+  // Player at spawn looking north; rat between player and the north torch
+  // (where the light actually reaches) so the silhouette + glowing eyes read.
+  rat: {
+    freeze: true,
+    playerPos: { x: 0, z: -0.4, yaw: 0 },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } }, // ghoul out of view
+      { index: 1, pos: { x:  10, z: -10 } }, // skirmisher out of view
+      { index: 2, pos: { x: 0, z: -1.6 }, state: 'chasing', phaseTimer: 0 },
+    ],
+  },
 };
 
 export function getScenarioFromUrl(): Scenario | null {

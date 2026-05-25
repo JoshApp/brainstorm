@@ -70,6 +70,40 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
   };
 }
 
+// Quadruped — body horizontal, four small leg capsules, long tail. Demonstrates
+// the model system handling a fundamentally different silhouette from primitives.
+function quadrupedRatModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
+  return {
+    id: 'rat-quadruped',
+    materials: {
+      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto' },
+      eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
+    },
+    parts: [
+      // Body — horizontal capsule (long axis along Z)
+      { name: 'body', kind: 'capsule', pos: [0, 0.14, 0], rot: [Math.PI / 2, 0, 0], radius: 0.10, height: 0.28, mat: 'body' },
+      // Head — slightly forward and lower
+      { name: 'head', kind: 'sphere', pos: [0, 0.13, -0.22], radius: 0.085, mat: 'body' },
+      // Snout — small cone pointing forward
+      { kind: 'cone', pos: [0, 0.115, -0.30], rot: [-Math.PI / 2, 0, 0], radius: 0.04, height: 0.07, segments: 8, mat: 'body' },
+      // Eyes
+      { kind: 'sphere', pos: [-0.045, 0.16, -0.25], radius: 0.018, mat: 'eyes' },
+      { kind: 'sphere', pos: [ 0.045, 0.16, -0.25], radius: 0.018, mat: 'eyes' },
+      // Four legs (small vertical capsules)
+      { kind: 'capsule', pos: [-0.07, 0.04, -0.10], radius: 0.022, height: 0.05, mat: 'body' },
+      { kind: 'capsule', pos: [ 0.07, 0.04, -0.10], radius: 0.022, height: 0.05, mat: 'body' },
+      { kind: 'capsule', pos: [-0.07, 0.04,  0.10], radius: 0.022, height: 0.05, mat: 'body' },
+      { kind: 'capsule', pos: [ 0.07, 0.04,  0.10], radius: 0.022, height: 0.05, mat: 'body' },
+      // Tail — thin cylinder trailing behind
+      { kind: 'cylinder', pos: [0, 0.14, 0.28], rot: [Math.PI / 2, 0, 0], radius: 0.015, radiusTop: 0.005, height: 0.30, segments: 6, mat: 'body' },
+    ],
+    slots: {
+      // Back of the body — for "rider" or saddle attachments later.
+      back: { pos: [0, 0.22, 0] },
+    },
+  };
+}
+
 function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
   return {
     id: 'skirmisher-humanoid',
@@ -108,6 +142,25 @@ export const ENEMIES: Record<string, EnemySpec> = {
     baseEyeEmissive: 1.6,
     collisionRadius: 0.45,
     tiltPartName: 'body',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+  },
+
+  rat: {
+    id: 'rat',
+    name: 'rat',
+    hp: 1,           // dies in one hit — the trash mob
+    moveSpeed: 3.2,  // faster than the player can outrun head-on
+    attackDamage: 1,
+    attackRange: 0.7,  // must close hard
+    strikeRange: 1.0,
+    windupTime: 0.18,  // almost no telegraph
+    strikeTime: 0.10,
+    recoverTime: 0.22,  // and back at it immediately
+    model: quadrupedRatModel(0x2a1a14, 0xff2a0a, 2.0),
+    baseEyeEmissive: 2.0,
+    collisionRadius: 0.18,
+    tiltPartName: 'body',  // body is rotated 90°, so 'tilt' lifts the head end
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
   },

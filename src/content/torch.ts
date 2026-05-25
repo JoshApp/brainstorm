@@ -47,6 +47,18 @@ export const WALL_TORCH: ModelSpec = {
       mat: 'flame',
       castShadow: false,
     },
+    // Wisp: additive-blended sprite floating above the flame core. Gives the
+    // torch a soft volumetric glow into the air above it (PSX-horror staple).
+    // Color tint is synced to the flame's flicker by updateTorchlight().
+    {
+      name: 'wisp',
+      kind: 'sprite',
+      pos: [0, 0.16, 0],
+      size: [0.55, 0.75],
+      texture: 'fire-wisp',
+      blending: 'additive',
+      color: 0xffaa55,
+    },
   ],
   slots: {
     // Above the flame — for future smoke-particle / fire-wisp sprite attachment.

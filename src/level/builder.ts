@@ -6,6 +6,7 @@ import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { createEnemy, type Enemy } from '../mobs/enemy';
 import { ENEMIES } from '../content/enemies';
+import { buildModel } from '../ecs/build-model';
 
 // Consumes a LevelSpec and produces the live scene + collision data. This is
 // the seam where declarative data becomes Three.js objects + game entities.
@@ -142,6 +143,14 @@ export function buildLevel(
       scene.add(altarBase);
 
       obstacles.push({ x: prop.x, z: prop.z, r: ALTAR_OBSTACLE_RADIUS });
+    } else if (prop.kind === 'model') {
+      // Static decoration model — no collision, no behavior, just visuals.
+      const built = buildModel(prop.model);
+      built.group.position.set(prop.x, prop.y, prop.z);
+      if (prop.rotX) built.group.rotation.x = prop.rotX;
+      if (prop.rotY) built.group.rotation.y = prop.rotY;
+      if (prop.rotZ) built.group.rotation.z = prop.rotZ;
+      scene.add(built.group);
     }
   }
 

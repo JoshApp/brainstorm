@@ -31,7 +31,11 @@ export type RoomSpec = {
 
 export type PropSpec =
   | { kind: 'pillar'; x: number; z: number; size?: number }
-  | { kind: 'altar'; x: number; z: number };
+  | { kind: 'altar'; x: number; z: number }
+  // 'model' = any ModelSpec placed in the world as static decoration. No
+  // collision, no behavior — just visuals. Use for relics, debris, sigils,
+  // anything atmospheric that doesn't move or react.
+  | { kind: 'model'; model: import('../ecs/model-types').ModelSpec; x: number; y: number; z: number; rotY?: number; rotX?: number; rotZ?: number };
 
 export type TorchSpec = {
   x: number;

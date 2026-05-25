@@ -16,6 +16,10 @@ export interface Torch {
   group: THREE.Group;
   flameMaterial: THREE.MeshStandardMaterial;
   flameMesh: THREE.Mesh;
+  /** Additive-blended sprite above the flame core — color/scale synced to flicker. */
+  wispSprite?: THREE.Sprite;
+  wispBaseColor?: THREE.Color;
+  wispBaseScale?: THREE.Vector3;
   baseIntensity: number;
   baseEmissive: number;
   time: number;
@@ -40,11 +44,18 @@ export function createTorchlight(
     throw new Error('WALL_TORCH model is missing its light spec');
   }
 
+  const wispSprite = built.parts.get('wisp') as THREE.Sprite | undefined;
+  const wispBaseColor = wispSprite ? (wispSprite.material as THREE.SpriteMaterial).color.clone() : undefined;
+  const wispBaseScale = wispSprite ? wispSprite.scale.clone() : undefined;
+
   return {
     light: built.light,
     group: built.group,
     flameMaterial,
     flameMesh,
+    wispSprite,
+    wispBaseColor,
+    wispBaseScale,
     baseIntensity: CONFIG.TORCH_INTENSITY,
     baseEmissive: flameMaterial.emissiveIntensity,
     time: 0,
@@ -81,11 +92,29 @@ export function updateTorchlight(torch: Torch, dt: number) {
   const flameFactor = lightFactor + (fFast + fXfast + fMed) * 0.18;
   torch.flameMaterial.emissiveIntensity = Math.max(0.6, torch.baseEmissive * flameFactor);
 
+  let scaleJitter = 1;
   if (torch.flameMesh) {
     // Scale jitter — flame swells and shrinks rapidly
-    const scaleJitter = 1 + Math.sin((t + n2) * 14) * 0.08 + Math.sin((t + n3) * 23) * 0.05;
+    scaleJitter = 1 + Math.sin((t + n2) * 14) * 0.08 + Math.sin((t + n3) * 23) * 0.05;
     torch.flameMesh.scale.set(scaleJitter, 1.4 * scaleJitter * (0.9 + Math.sin((t + n1) * 9) * 0.12), scaleJitter);
     // Vertical bob — flame "leaps up" slightly
     torch.flameMesh.position.y = Math.sin((t + n3) * 7) * 0.02 + Math.abs(Math.sin((t + n1) * 11)) * 0.015;
+  }
+
+  // --- WISP SPRITE ---
+  // Brightness lerps with the flame so the glow halo breathes with the fire;
+  // scale jitter is amplified slightly so the wisp looks turbulent against
+  // the relatively-stable sphere flame underneath.
+  if (torch.wispSprite && torch.wispBaseColor && torch.wispBaseScale) {
+    const wispMat = torch.wispSprite.material as THREE.SpriteMaterial;
+    const wispBrightness = Math.max(0.5, Math.min(1.4, flameFactor));
+    wispMat.color.copy(torch.wispBaseColor).multiplyScalar(wispBrightness);
+
+    const wispJitter = 1 + (scaleJitter - 1) * 1.6;
+    torch.wispSprite.scale.set(
+      torch.wispBaseScale.x * wispJitter,
+      torch.wispBaseScale.y * wispJitter * (0.95 + Math.sin((t + n1) * 5) * 0.08),
+      1,
+    );
   }
 }

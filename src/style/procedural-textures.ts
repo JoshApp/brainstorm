@@ -44,6 +44,31 @@ export function getTexture(id: string): THREE.Texture {
   return tex;
 }
 
+// --- Built-in textures ---
+
+// 'fire-wisp' — a soft, radial fire blob. Hot yellow-white core fading to
+// orange to red to transparent at the edges. Used as an additive-blended
+// sprite above torch flames so torches glow into the air above them.
+registerTexture('fire-wisp', (canvas) => {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // Slightly elongated vertical to suggest flame shape, with a hot core that
+  // falls off into ember orange and then transparent.
+  const cx = w / 2;
+  const cy = h / 2;
+  const grad = ctx.createRadialGradient(cx, cy * 1.05, 0, cx, cy * 0.95, w * 0.48);
+  grad.addColorStop(0.00, 'rgba(255, 240, 200, 1.00)');
+  grad.addColorStop(0.15, 'rgba(255, 200, 110, 0.95)');
+  grad.addColorStop(0.35, 'rgba(255, 130,  40, 0.65)');
+  grad.addColorStop(0.65, 'rgba(180,  40,  10, 0.25)');
+  grad.addColorStop(1.00, 'rgba( 30,   0,   0, 0.00)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+});
+
 function makeMissingTexture(): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = 8;
