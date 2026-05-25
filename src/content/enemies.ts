@@ -51,30 +51,33 @@ export interface EnemySpec {
 // material colors.
 
 function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
-  // Body at pos [0, 0.8, 0]. Head + eyes parented to body. Each eye is
-  // TWO parts: a small physical sphere (for the geometric anchor) plus a
-  // small additive-blended sprite halo that always faces the camera and
-  // reads at any distance. The halo is the dominant visible element on a
-  // phone screen at PSX render resolution (40% scale = eyes ~1-3 px).
+  // Humanoid ghoul. All visible parts are parented to a 'rig' slot (an
+  // invisible Object3D anchor), NOT directly to the body mesh. This matches
+  // the rat's working pattern — for reasons that remain a mystery, parenting
+  // children directly to a Mesh prevented them from rendering on the phone-
+  // facing snap path; parenting to an Object3D slot works correctly.
+  //
+  // tiltPart is 'rig' so the whole rig leans forward during windup as a unit.
   return {
     id: 'ghoul-humanoid',
     materials: {
       body: { color: bodyColor, roughness: 0.95, flatShading: 'auto' },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
     },
-    parts: [
-      { name: 'body', kind: 'capsule', pos: [0, 0.8, 0], radius: 0.35, height: 0.9, mat: 'body' },
-      { name: 'head', parent: 'body', kind: 'sphere', pos: [0, 0.7, 0], radius: 0.28, mat: 'body' },
-      // Eyes — body-local position past the head surface, modest radius.
-      { parent: 'body', kind: 'sphere', pos: [-0.11, 0.74, -0.36], radius: 0.08, segments: [14, 10], mat: 'eyes' },
-      { parent: 'body', kind: 'sphere', pos: [ 0.11, 0.74, -0.36], radius: 0.08, segments: [14, 10], mat: 'eyes' },
-      { name: 'eyeHaloL', parent: 'body', kind: 'sprite', pos: [-0.11, 0.74, -0.42], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-      { name: 'eyeHaloR', parent: 'body', kind: 'sprite', pos: [ 0.11, 0.74, -0.42], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-    ],
     slots: {
+      rig: { pos: [0, 0.8, 0] },           // rig pivot at body-center height
       weapon:   { pos: [0.35, 0.9, 0] satisfies Vec3 },
       head_top: { pos: [0,    1.8, 0] satisfies Vec3 },
     },
+    parts: [
+      // All visible parts parented to rig. Positions are RIG-LOCAL (i.e.
+      // offset from rig pivot at world y=0.8, not from world origin).
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], radius: 0.35, height: 0.9, mat: 'body' },
+      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.7, 0], radius: 0.28, mat: 'body' },
+      // Eyes past head front (head front at rig-local z=-0.28).
+      { parent: 'rig', kind: 'sphere', pos: [-0.10, 0.74, -0.36], radius: 0.09, segments: [14, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.10, 0.74, -0.36], radius: 0.09, segments: [14, 10], mat: 'eyes' },
+    ],
   };
 }
 
@@ -128,19 +131,17 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
       body: { color: bodyColor, roughness: 0.95, flatShading: 'auto' },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
     },
-    parts: [
-      { name: 'body', kind: 'capsule', pos: [0, 0.65, 0], radius: 0.28, height: 0.7, mat: 'body' },
-      { name: 'head', parent: 'body', kind: 'sphere', pos: [0, 0.55, 0], radius: 0.22, mat: 'body' },
-      // Eyes — body-local z=-0.30 (head front at -0.22), ~0.08m past head surface
-      { parent: 'body', kind: 'sphere', pos: [-0.10, 0.58, -0.30], radius: 0.08, segments: [14, 10], mat: 'eyes' },
-      { parent: 'body', kind: 'sphere', pos: [ 0.10, 0.58, -0.30], radius: 0.08, segments: [14, 10], mat: 'eyes' },
-      { name: 'eyeHaloL', parent: 'body', kind: 'sprite', pos: [-0.10, 0.58, -0.36], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-      { name: 'eyeHaloR', parent: 'body', kind: 'sprite', pos: [ 0.10, 0.58, -0.36], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-    ],
     slots: {
+      rig: { pos: [0, 0.65, 0] },
       weapon:   { pos: [0.28, 0.65, 0] satisfies Vec3 },
       head_top: { pos: [0,    1.45, 0] satisfies Vec3 },
     },
+    parts: [
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], radius: 0.28, height: 0.7, mat: 'body' },
+      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.55, 0], radius: 0.22, mat: 'body' },
+      { parent: 'rig', kind: 'sphere', pos: [-0.09, 0.58, -0.28], radius: 0.07, segments: [14, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.09, 0.58, -0.28], radius: 0.07, segments: [14, 10], mat: 'eyes' },
+    ],
   };
 }
 
@@ -162,10 +163,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     windupTime: 0.90,    // long ghoul tell — heavy enemy, big wind-up animation
     strikeTime: 0.18,
     recoverTime: 0.60,
-    model: humanoidGhoulModel(0x14100c, 0xff4422, 3.5),
+    model: humanoidGhoulModel(0x14100c, 0xff3322, 3.5),
     baseEyeEmissive: 3.5,
     collisionRadius: 0.45,
-    tiltPartName: 'body',
+    tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
   },
@@ -203,7 +204,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     model: skirmisherModel(0x18130d, 0xffb060, 3.5),
     baseEyeEmissive: 3.5,
     collisionRadius: 0.35,
-    tiltPartName: 'body',
+    tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
   },

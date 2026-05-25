@@ -64,9 +64,8 @@ export function buildModel(spec: ModelSpec): BuiltModel {
   }
 
   // Second pass: reparent any part with a `parent` field to its parent node.
-  // Names are NOT required — we look the built object up by index. Unnamed
-  // parts (e.g. eye spheres, snout cones) get reparented too. Without this,
-  // unnamed children stayed at the model root, often INSIDE other meshes.
+  // Names are NOT required — we look up the built object by index. Without
+  // this, unnamed children stayed at the model root, often INSIDE other meshes.
   for (let i = 0; i < spec.parts.length; i++) {
     const part = spec.parts[i];
     if (!part.parent) continue;

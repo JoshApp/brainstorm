@@ -291,6 +291,10 @@ export function buildLevel(
   }
 
   // --- Enemies ---
+  // Each enemy faces the player spawn at level start so the very first frame
+  // is correctly oriented (otherwise it ticks at default rotation = world -Z
+  // for the first frame, which can look like the rat is walking backwards
+  // before the first update() call corrects it).
   const enemies: Enemy[] = [];
   for (const s of spec.spawns) {
     const enemySpec = ENEMIES[s.enemyId];
@@ -299,7 +303,9 @@ export function buildLevel(
       console.warn(`Unknown enemyId in spawn: ${s.enemyId}`);
       continue;
     }
-    enemies.push(createEnemy(scene, new THREE.Vector3(s.x, 0, s.z), enemySpec));
+    const enemy = createEnemy(scene, new THREE.Vector3(s.x, 0, s.z), enemySpec);
+    enemy.faceWorld(spec.startPos.x, spec.startPos.z);
+    enemies.push(enemy);
   }
 
   // --- Walkable region (collision data) ---

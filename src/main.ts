@@ -23,6 +23,7 @@ import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
 import { PASSIVES } from './content/passives';
+import { setupPwaAutoUpdate } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
 import { createUseButton, setUseButtonVisible, consumeUsePressed } from './controls/use-button';
 import { createInteractPrompt, setInteractPrompt } from './ui/interact-prompt';
@@ -121,6 +122,11 @@ createAttackButton();
 createUseButton();
 createInteractPrompt();
 createStyleSwitcher();
+
+// PWA: poll for SW updates + auto-reload when a new SW takes over.
+// Means a `git push` lands on Josh's installed home-screen app within a
+// minute or two without him having to close and reopen it.
+setupPwaAutoUpdate();
 
 // --- HUD ---
 createHpBar();

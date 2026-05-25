@@ -149,6 +149,22 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // Rat in actual gameplay orientation — places rat near player and runs
+  // faceTarget so the model is oriented like in normal play.
+  'rat-gameplay': {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: -0.4,
+      lookAt: { x: 0, z: -1.6, y: 0.15 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: 0, z: -1.6 }, state: 'chasing', phaseTimer: 0 },
+    ],
+  },
+
   // Extremely close enemy face view — debug the eye visibility.
   'enemy-face': {
     freeze: true,
@@ -325,6 +341,11 @@ export function applyScenario(
       if (!enemy) continue;
       if (ov.pos) enemy.setDebugPosition(ov.pos.x, ov.pos.z);
       if (ov.state) enemy.setDebugState(ov.state, ov.phaseTimer ?? 0);
+      // Always make the repositioned enemy face the camera. Without this,
+      // frozen scenarios show enemies at default rotation (looking world -Z)
+      // regardless of where the camera is, so the rat appears to face
+      // "backwards" relative to the camera angle.
+      enemy.faceWorld(ctx.camera.position.x, ctx.camera.position.z);
     }
   }
 

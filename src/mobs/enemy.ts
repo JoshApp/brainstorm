@@ -39,6 +39,8 @@ export interface Enemy {
   update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion): void;
   setDebugState(state: EnemyState, phaseTimer: number): void;
   setDebugPosition(x: number, z: number): void;
+  /** Rotate the container so it faces a world point (head toward it). */
+  faceWorld(x: number, z: number): void;
 }
 
 const tmpDir = new THREE.Vector3();
@@ -66,19 +68,51 @@ export function createEnemy(
   const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
   const eyeMat   = built.materials.get(spec.eyeMaterialName)   as THREE.MeshStandardMaterial | undefined;
 
-  // Windup telegraph: the eyes blaze brighter and shift toward red as the
-  // enemy commits to a strike. The body itself does NOT change color — the
-  // in-world feel stays grim/coherent. Motion (tilt + lift) + the eye flare
-  // are the two cues.
+  // Windup telegraph: eyes blaze brighter and shift toward hot red as the
+  // enemy commits to a strike. We mutate the sprite halo material's color
+  // (and scale) since the visible eyes are sprite billboards. The mesh
+  // eye material is also mutated where it exists (rat) for consistency.
+  const eyeHaloL = built.parts.get('eyeHaloL') as THREE.Sprite | undefined;
+  const eyeHaloR = built.parts.get('eyeHaloR') as THREE.Sprite | undefined;
+  const haloMatL = eyeHaloL?.material as THREE.SpriteMaterial | undefined;
+  const haloMatR = eyeHaloR?.material as THREE.SpriteMaterial | undefined;
+  const haloBaseScaleL = eyeHaloL ? eyeHaloL.scale.clone() : new THREE.Vector3(1, 1, 1);
+  const haloBaseScaleR = eyeHaloR ? eyeHaloR.scale.clone() : new THREE.Vector3(1, 1, 1);
+  const haloBaseColorL = haloMatL ? haloMatL.color.clone() : new THREE.Color(0xff5500);
+  const haloBaseColorR = haloMatR ? haloMatR.color.clone() : new THREE.Color(0xff5500);
+
   const eyeBaseColor = eyeMat ? eyeMat.emissive.clone() : new THREE.Color(0xff5500);
-  const eyeWindupColor = new THREE.Color(0xff1505);  // hot red at peak windup
+  const eyeWindupColor = new THREE.Color(0xff1505);   // hot red at peak
+  const haloWindupColor = new THREE.Color(0xffffff);  // sprite goes white-hot
   const tmpEyeColor = new THREE.Color();
+  const tmpHaloColor = new THREE.Color();
   function setEyeFlare(t: number) {
-    // t in [0, 1] = neutral to full windup. Mutate eye intensity + tint.
-    if (!eyeMat) return;
-    eyeMat.emissiveIntensity = baseEyeEmissive * (1 + 7 * t);
-    tmpEyeColor.copy(eyeBaseColor).lerp(eyeWindupColor, t);
-    eyeMat.emissive.copy(tmpEyeColor);
+    // t in [0, 1] = neutral to full windup.
+
+    // Mesh eye material (for the rat — its eye spheres render fine).
+    if (eyeMat) {
+      eyeMat.emissiveIntensity = baseEyeEmissive * (1 + 7 * t);
+      tmpEyeColor.copy(eyeBaseColor).lerp(eyeWindupColor, t);
+      eyeMat.emissive.copy(tmpEyeColor);
+    }
+
+    // Sprite halos — the dominant visible cue on humanoid enemies.
+    // Scale up by ~1.6x at peak windup; color brightens toward white.
+    const haloScale = 1 + 0.6 * t;
+    if (eyeHaloL && haloMatL) {
+      eyeHaloL.scale.set(haloBaseScaleL.x * haloScale, haloBaseScaleL.y * haloScale, 1);
+      tmpHaloColor.copy(haloBaseColorL).lerp(haloWindupColor, t * 0.75);
+      // Boost overall brightness so additive blend cuts through even bright
+      // background pixels (e.g. silhouetted in front of a torch).
+      tmpHaloColor.multiplyScalar(1 + 1.2 * t);
+      haloMatL.color.copy(tmpHaloColor);
+    }
+    if (eyeHaloR && haloMatR) {
+      eyeHaloR.scale.set(haloBaseScaleR.x * haloScale, haloBaseScaleR.y * haloScale, 1);
+      tmpHaloColor.copy(haloBaseColorR).lerp(haloWindupColor, t * 0.75);
+      tmpHaloColor.multiplyScalar(1 + 1.2 * t);
+      haloMatR.color.copy(tmpHaloColor);
+    }
   }
 
   // World entity (HP + buffs).
@@ -277,6 +311,11 @@ export function createEnemy(
     container.position.z = z;
   }
 
+  function faceWorld(x: number, z: number) {
+    tmpFlat.set(x, container.position.y, z);
+    container.lookAt(tmpFlat);
+  }
+
   return {
     entityId,
     group: container,
@@ -293,5 +332,6 @@ export function createEnemy(
     update,
     setDebugState,
     setDebugPosition,
+    faceWorld,
   };
 }

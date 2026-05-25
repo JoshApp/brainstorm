@@ -139,11 +139,14 @@ export const LEVEL_1: LevelSpec = {
 
   spawns: [
     // Slow heavy hitter directly ahead — the primary fight, visible at spawn.
-    // Player faces this one first; the ritual altar lies just behind it.
-    { enemyId: 'ghoul', x: 0, z: -2.0 },
-    // Skirmisher hangs further back behind a pillar — engages AFTER the ghoul
-    // is in range, so the player isn't sandwiched at spawn.
-    { enemyId: 'skirmisher', x: 2.5, z: -3.0 },
+    // BUG FIX: previously at z=-2.0 which overlaps the altar's collision
+    // circle (altar at z=-2.8 has combined collision radius 1.1m with the
+    // ghoul's 0.45m radius). Ghoul got stuck unable to move. Now at z=-1.2,
+    // well clear of the altar, free to chase.
+    { enemyId: 'ghoul', x: 0, z: -1.2 },
+    // Skirmisher hangs further back to the east — engages AFTER the ghoul is
+    // in range, so the player isn't sandwiched at spawn.
+    { enemyId: 'skirmisher', x: 2.6, z: -2.6 },
     // Rat starts at the back of the room (south side, behind the player at
     // spawn). It has to traverse the chamber to engage, giving the player
     // time to deal with the ghoul first.
