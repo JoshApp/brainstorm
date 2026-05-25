@@ -7,6 +7,7 @@ import { createTorchlight, type Torch } from '../scene/torchlight';
 import { createEnemy, type Enemy } from '../mobs/enemy';
 import { ENEMIES } from '../content/enemies';
 import { buildModel } from '../ecs/build-model';
+import { spawnChest } from '../interactables/chest';
 
 // Consumes a LevelSpec and produces the live scene + collision data. This is
 // the seam where declarative data becomes Three.js objects + game entities.
@@ -151,6 +152,8 @@ export function buildLevel(
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
       scene.add(built.group);
+    } else if (prop.kind === 'chest') {
+      spawnChest(scene, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.loot);
     }
   }
 

@@ -33,11 +33,19 @@ export const LEVEL_1: LevelSpec = {
       kind: 'model',
       model: SCIMITAR_RELIC,
       x: 0, y: 0.56, z: -2.78,
-      // Lay it flat on the altar: rotate -90° around X so the blade (originally
-      // pointing along +Y) lies along the ground plane, then a bit of Y-rotation
-      // so it sits diagonally rather than dead-straight.
       rotX: -Math.PI / 2,
       rotY: 0.6,
+    },
+    // CHEST south of spawn, lit by the south torch. After dealing with the
+    // enemies in front, turn around and you see it. Walk up, USE button
+    // appears, tap to open. Lid swings up on a hinge; a scimitar drops next
+    // to it as loot. Walk over to the loot, tap USE again to take it (it
+    // disappears — inventory plumbing comes next).
+    {
+      kind: 'chest',
+      x: 0.2, z: 2.5,
+      rotY: -Math.PI * 0.85,  // facing north-ish so the lid hinges away from player
+      loot: SCIMITAR_RELIC,
     },
   ],
 

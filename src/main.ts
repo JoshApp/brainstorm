@@ -23,6 +23,9 @@ import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
 import { PASSIVES } from './content/passives';
+import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
+import { createUseButton, setUseButtonVisible, consumeUsePressed } from './controls/use-button';
+import { createInteractPrompt, setInteractPrompt } from './ui/interact-prompt';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 try {
@@ -111,6 +114,8 @@ if (scenario) applyScenario(scenario, { level, sword, camera });
 // --- Input ---
 const input = createTouchInput(canvas);
 createAttackButton();
+createUseButton();
+createInteractPrompt();
 createStyleSwitcher();
 
 // --- Resize ---
@@ -157,6 +162,14 @@ function tick() {
 
     // Tick active buffs on all entities (heal-over-time, future DoTs, etc.)
     tickAllBuffs(scaledDt);
+
+    // Interactables: tick per-instance animation (chest opening, pickup
+    // bob), recompute "what's in range," fire onUse on use press.
+    tickInteractables(scaledDt, camera.position);
+    const inRange = isDying() ? null : getInRangeInteractable();
+    setInteractPrompt(inRange ? inRange.promptLabel : null);
+    setUseButtonVisible(!!inRange);
+    if (!isDying() && consumeUsePressed()) pressUse();
   }
 
   tickShake(realDt, shakeOffset);

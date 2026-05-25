@@ -6,6 +6,7 @@ import { LEVEL_1 } from '../level/specs';
 import { triggerDeath } from '../player/death';
 import { setCameraYaw } from '../controls/camera';
 import { setWorldFrozen } from './freeze';
+import { debugUseAll, debugTickAll } from '../interactables/system';
 
 // Predefined game states loadable via ?scenario=name URL param.
 // Used by the snap CLI (scripts/snap.ts) to produce deterministic screenshots,
@@ -22,8 +23,8 @@ export interface Scenario {
   level?: LevelSpec;
   /** Freeze world updates after init — for deterministic screenshots. */
   freeze?: boolean;
-  /** Override player camera position + yaw. */
-  playerPos?: { x: number; z: number; yaw: number };
+  /** Override player camera position + yaw (and optional pitch in radians, negative = look down). */
+  playerPos?: { x: number; z: number; yaw: number; pitch?: number };
   /** Override one or more enemies' state by spawn index. */
   enemyOverrides?: Array<{
     index: number;
@@ -35,6 +36,10 @@ export interface Scenario {
   swordPhase?: { phase: SwordPhase; phaseTimer: number };
   /** Trigger the death sequence at startup (vignette + epitaph + reload). */
   triggerDeath?: boolean;
+  /** Fire onUse on every interactable then tick them by `chestOpenFastForwardSecs`. */
+  openAllInteractables?: boolean;
+  /** Seconds to fast-forward interactable animations after openAllInteractables. */
+  tickInteractables?: number;
 }
 
 export const SCENARIOS: Record<string, Scenario> = {
@@ -100,6 +105,32 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // Close-up of the chest (closed). Camera south of spawn looking at the
+  // chest, tilted down slightly so the small chest fills the lower frame.
+  chest: {
+    freeze: true,
+    playerPos: { x: 0.2, z: 1.0, yaw: Math.PI, pitch: -0.3 },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
+  // Chest after being opened — lid swung up, loot scimitar bobbing beside it.
+  // Programmatically fires onUse + fast-forwards the open animation.
+  'chest-open': {
+    freeze: true,
+    playerPos: { x: 0.2, z: 1.0, yaw: Math.PI, pitch: -0.3 },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+    openAllInteractables: true,
+    tickInteractables: 0.8,  // longer than chest open duration (0.55s)
+  },
+
   // Close-up of the rat. Quadruped silhouette built from primitives.
   // Player at spawn looking north; rat between player and the north torch
   // (where the light actually reaches) so the silhouette + glowing eyes read.
@@ -143,7 +174,7 @@ export function applyScenario(
     // (updateCamera won't run while frozen).
     ctx.camera.rotation.order = 'YXZ';
     ctx.camera.rotation.y = scenario.playerPos.yaw;
-    ctx.camera.rotation.x = 0;
+    ctx.camera.rotation.x = scenario.playerPos.pitch ?? 0;
   }
 
   if (scenario.enemyOverrides) {
@@ -161,6 +192,11 @@ export function applyScenario(
 
   if (scenario.triggerDeath) {
     triggerDeath();
+  }
+
+  if (scenario.openAllInteractables) {
+    debugUseAll();
+    if (scenario.tickInteractables) debugTickAll(scenario.tickInteractables);
   }
 
   if (scenario.freeze) {

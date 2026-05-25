@@ -35,6 +35,20 @@ export function buildModel(spec: ModelSpec): BuiltModel {
   const parts = new Map<string, THREE.Object3D>();
   const hitTargets: THREE.Object3D[] = [];
 
+  // Slots first (parts may parent to slots, so slots must exist first).
+  const slots = new Map<string, THREE.Object3D>();
+  if (spec.slots) {
+    for (const [name, slotSpec] of Object.entries(spec.slots)) {
+      const anchor = new THREE.Object3D();
+      anchor.position.fromArray(slotSpec.pos);
+      if (slotSpec.rot) anchor.rotation.fromArray(slotSpec.rot);
+      anchor.name = `slot:${name}`;
+      group.add(anchor);
+      slots.set(name, anchor);
+    }
+  }
+
+  // First pass: build all parts and add them to the model group.
   for (const part of spec.parts) {
     const obj = buildPart(part, materials);
     applyTransform(obj, part);
@@ -46,16 +60,19 @@ export function buildModel(spec: ModelSpec): BuiltModel {
     if (part.kind !== 'sprite') hitTargets.push(obj);
   }
 
-  const slots = new Map<string, THREE.Object3D>();
-  if (spec.slots) {
-    for (const [name, slotSpec] of Object.entries(spec.slots)) {
-      const anchor = new THREE.Object3D();
-      anchor.position.fromArray(slotSpec.pos);
-      if (slotSpec.rot) anchor.rotation.fromArray(slotSpec.rot);
-      anchor.name = `slot:${name}`;
-      group.add(anchor);
-      slots.set(name, anchor);
+  // Second pass: reparent any part with a `parent` field to its parent node.
+  // THREE.Object3D.add() removes the child from its previous parent automatically.
+  for (const part of spec.parts) {
+    if (!part.parent || !part.name) continue;
+    const child = parts.get(part.name);
+    if (!child) continue;
+    const parentNode = parts.get(part.parent) ?? slots.get(part.parent);
+    if (!parentNode) {
+      // eslint-disable-next-line no-console
+      console.warn(`Part "${part.name}" references unknown parent "${part.parent}"`);
+      continue;
     }
+    parentNode.add(child);
   }
 
   let light: THREE.PointLight | undefined;

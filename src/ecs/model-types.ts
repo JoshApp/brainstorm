@@ -35,7 +35,15 @@ export interface MaterialDef {
 interface PartCommon {
   /** Optional name — required if animations need to look this part up later. */
   name?: string;
-  /** Local position within the model group. Default [0,0,0]. */
+  /**
+   * Optional parent — name of another part OR a slot. If set, this part is
+   * attached as a child of that node (its pos/rot/scale become relative to
+   * the parent instead of the model root). Use to express hinges: parent the
+   * chest lid to a 'hinge' slot at the back edge of the box, then rotating
+   * the slot anchor swings the lid around that edge.
+   */
+  parent?: string;
+  /** Local position within the parent (model root by default). Default [0,0,0]. */
   pos?: Vec3;
   /** Local rotation (Euler XYZ radians). Default [0,0,0]. */
   rot?: Vec3;

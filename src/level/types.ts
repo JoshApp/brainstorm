@@ -35,7 +35,10 @@ export type PropSpec =
   // 'model' = any ModelSpec placed in the world as static decoration. No
   // collision, no behavior — just visuals. Use for relics, debris, sigils,
   // anything atmospheric that doesn't move or react.
-  | { kind: 'model'; model: import('../ecs/model-types').ModelSpec; x: number; y: number; z: number; rotY?: number; rotX?: number; rotZ?: number };
+  | { kind: 'model'; model: import('../ecs/model-types').ModelSpec; x: number; y: number; z: number; rotY?: number; rotX?: number; rotZ?: number }
+  // 'chest' = an openable container. When the player interacts, the lid swings
+  // up and an optional loot pickup spawns beside it.
+  | { kind: 'chest'; x: number; z: number; rotY?: number; loot?: import('../ecs/model-types').ModelSpec };
 
 export type TorchSpec = {
   x: number;
