@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { CHEST } from '../content/chest';
-import type { ModelSpec } from '../ecs/model-types';
+import type { ItemSpec } from '../content/items';
 import { registerInteractable } from './system';
 import { createPickup } from './pickup';
 
@@ -21,7 +21,7 @@ export function spawnChest(
   scene: THREE.Scene,
   pos: THREE.Vector3,
   rotY: number,
-  loot: ModelSpec | undefined,
+  loot: ItemSpec | undefined,
 ) {
   const built = buildModel(CHEST);
   built.group.position.copy(pos);

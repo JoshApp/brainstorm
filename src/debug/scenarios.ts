@@ -247,8 +247,8 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     hideSword: true,
     playerPos: {
-      x: -1.2, z: 1.3,
-      lookAt: { x: -2.2, z: 2.6, y: 0.3 },
+      x: -0.5, z: 0.6,
+      lookAt: { x: -2.2, z: 2.6, y: 0.6 },  // higher target — the loot now stands upright
     },
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },

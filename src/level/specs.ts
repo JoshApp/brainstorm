@@ -2,6 +2,7 @@ import type { LevelSpec } from './types';
 import { SCIMITAR_RELIC } from '../content/relics';
 import { FLOOR_CANDLE } from '../content/candle';
 import { MOONLIGHT_CRACK, floorGlow } from '../content/light-props';
+import { ITEMS } from '../content/items';
 
 const CORRIDOR_FLOOR_GLOW = floorGlow(0x6cc6e0);    // cool cyan — corridor transition
 const ANTE_FLOOR_GLOW     = floorGlow(0x6cffa0);    // sickly green — antechamber palette
@@ -80,7 +81,7 @@ export const LEVEL_1: LevelSpec = {
       kind: 'chest',
       x: -2.2, z: 2.6,
       rotY: -Math.PI * 0.7,
-      loot: SCIMITAR_RELIC,
+      loot: ITEMS.scimitar,
     },
 
     // FLOOR CANDLES — ankle-level light sources flanking the altar. Casts

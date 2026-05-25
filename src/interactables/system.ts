@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import { CONFIG } from '../config';
 import type { Interactable } from './types';
 
 // Interactable runtime. Holds the live list of interactables; each frame, the
-// main loop calls tick() with the player position. The system computes which
-// interactable (if any) is currently in range and exposes it for the prompt
-// overlay + use-button handler.
+// main loop calls tick() with the player position + forward direction. The
+// system computes which interactable (if any) is currently in range AND in
+// the player's forward cone, and exposes it for the prompt overlay + use-
+// button handler. Facing matters: the player shouldn't get a TAKE prompt for
+// loot directly behind them.
 
 const interactables: Interactable[] = [];
 let currentInRange: Interactable | null = null;
@@ -25,16 +28,16 @@ export function getInRangeInteractable(): Interactable | null {
 
 /**
  * Run each frame. Ticks per-interactable animation, removes destroyed ones,
- * and updates currentInRange based on the player's XZ position.
+ * and updates currentInRange based on player position AND forward direction.
+ * @param playerForward unit XZ direction the camera is looking (Y ignored).
  */
-export function tickInteractables(dt: number, playerPos: THREE.Vector3) {
+export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerForward: THREE.Vector3) {
   // Tick + collect surviving
   let i = 0;
   while (i < interactables.length) {
     const it = interactables[i];
     it.tick?.(dt);
     if (it.destroyed) {
-      // Clean up meshes from the scene
       if (it.built) {
         const parent = it.built.group.parent;
         parent?.remove(it.built.group);
@@ -45,14 +48,30 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3) {
     }
   }
 
-  // Pick the closest in-range
+  // Forward direction projected onto the XZ plane (Y ignored for the cone check).
+  const fxRaw = playerForward.x;
+  const fzRaw = playerForward.z;
+  const fLen = Math.hypot(fxRaw, fzRaw);
+  // If the player is looking straight up/down (rare), don't filter by cone —
+  // they'd just never be "facing" any interactable.
+  const useCone = fLen > 0.01;
+  const fx = useCone ? fxRaw / fLen : 0;
+  const fz = useCone ? fzRaw / fLen : 0;
+  const dotMin = Math.cos(CONFIG.INTERACT_CONE_HALF_ANGLE);
+
+  // Pick the closest in-range that's ALSO in the forward cone.
   let nearest: Interactable | null = null;
   let nearestD = Infinity;
   for (const it of interactables) {
     const dx = it.position.x - playerPos.x;
     const dz = it.position.z - playerPos.z;
     const d = Math.hypot(dx, dz);
-    if (d <= it.radius && d < nearestD) {
+    if (d > it.radius) continue;
+    if (useCone && d > 0.01) {
+      const dot = (fx * dx + fz * dz) / d;
+      if (dot < dotMin) continue;
+    }
+    if (d < nearestD) {
       nearest = it;
       nearestD = d;
     }

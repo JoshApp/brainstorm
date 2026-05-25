@@ -49,6 +49,10 @@ export const CONFIG = {
   // === SWORD (first-person held weapon) ===
   SWORD_REACH: 1.9,            // meters — distance enemies must be within to be hit
   SWORD_CONE_HALF_ANGLE: 0.7,  // radians (~40°) — forward arc that registers hits.
+  INTERACT_CONE_HALF_ANGLE: 0.9, // radians (~52°) — must look roughly at an
+                                 //   interactable before its prompt + USE button
+                                 //   appear. Otherwise the player would be told
+                                 //   "TAKE" about loot directly behind them.
                                //   Generous so the player doesn't have to look
                                //   precisely at the target (especially low rats).
   SWORD_SWING_WINDUP: 0.12,    // seconds — sword raises

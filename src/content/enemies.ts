@@ -41,6 +41,11 @@ export interface EnemySpec {
   flashMaterialName: string;
   /** Material name whose emissiveIntensity is animated during windup/strike. Usually 'eyes'. */
   eyeMaterialName: string;
+
+  // --- Drops ---
+  /** Optional ITEMS registry id; if set, a pickup of this item spawns at the
+   *  enemy's death position when killed. */
+  dropItemId?: string;
 }
 
 // --- Model factories ----------------------------------------------------
@@ -74,9 +79,11 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
       // offset from rig pivot at world y=0.8, not from world origin).
       { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], radius: 0.35, height: 0.9, mat: 'body' },
       { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.7, 0], radius: 0.28, mat: 'body' },
-      // Eyes past head front (head front at rig-local z=-0.28).
-      { parent: 'rig', kind: 'sphere', pos: [-0.10, 0.74, -0.36], radius: 0.09, segments: [14, 10], mat: 'eyes' },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.10, 0.74, -0.36], radius: 0.09, segments: [14, 10], mat: 'eyes' },
+      // Eyes past head front (head front at rig-local z=-0.28). Modest
+      // radius — the 180° rotation fix solved the visibility problem, no
+      // need for the oversized eyes we tried during that debugging.
+      { parent: 'rig', kind: 'sphere', pos: [-0.10, 0.74, -0.32], radius: 0.045, segments: [12, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.10, 0.74, -0.32], radius: 0.045, segments: [12, 10], mat: 'eyes' },
     ],
   };
 }
@@ -139,8 +146,8 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
     parts: [
       { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], radius: 0.28, height: 0.7, mat: 'body' },
       { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.55, 0], radius: 0.22, mat: 'body' },
-      { parent: 'rig', kind: 'sphere', pos: [-0.09, 0.58, -0.28], radius: 0.07, segments: [14, 10], mat: 'eyes' },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.09, 0.58, -0.28], radius: 0.07, segments: [14, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.58, -0.25], radius: 0.035, segments: [12, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.58, -0.25], radius: 0.035, segments: [12, 10], mat: 'eyes' },
     ],
   };
 }
@@ -163,12 +170,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     windupTime: 0.90,    // long ghoul tell — heavy enemy, big wind-up animation
     strikeTime: 0.18,
     recoverTime: 0.60,
-    model: humanoidGhoulModel(0x14100c, 0xff3322, 3.5),
-    baseEyeEmissive: 3.5,
+    model: humanoidGhoulModel(0x14100c, 0xff5530, 2.0),
+    baseEyeEmissive: 2.0,
     collisionRadius: 0.45,
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    dropItemId: 'scimitar',  // the curved blade — visible loot for killing the ritual ghoul
   },
 
   rat: {
@@ -201,8 +209,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     windupTime: 0.65,      // snappier than ghoul, slower than rat
     strikeTime: 0.14,
     recoverTime: 0.55,
-    model: skirmisherModel(0x18130d, 0xffb060, 3.5),
-    baseEyeEmissive: 3.5,
+    model: skirmisherModel(0x18130d, 0xffb060, 2.0),
+    baseEyeEmissive: 2.0,
     collisionRadius: 0.35,
     tiltPartName: 'rig',
     flashMaterialName: 'body',

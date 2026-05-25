@@ -12,6 +12,8 @@ import {
 } from '../ecs/world';
 import type { EntityId } from '../ecs/types';
 import { buildModel } from '../ecs/build-model';
+import { ITEMS } from '../content/items';
+import { createPickup } from '../interactables/pickup';
 
 // Enemy = a mob driven by its EnemySpec.
 //
@@ -153,6 +155,14 @@ export function createEnemy(
     if (entity.hp.current <= 0) {
       aliveLocal = false;
       destroyEntity(entityId);
+      // Drop loot at the enemy's death position before removing them.
+      // Pickup module handles the rest (interactable + inventory + equip).
+      if (spec.dropItemId) {
+        const item = ITEMS[spec.dropItemId];
+        if (item) {
+          createPickup(scene, container.position.clone(), item);
+        }
+      }
       scene.remove(container);
       emit({ type: 'enemy:killed' });
     }

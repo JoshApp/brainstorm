@@ -2,14 +2,19 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { SWORD_RUSTED } from '../content/sword';
+import type { ModelSpec } from '../ecs/model-types';
 
 // First-person held sword. Geometry comes from a ModelSpec (data); animation
 // state (swing phases) is procedural and operates on the model group.
+//
+// The wielded weapon can be swapped at runtime via equip(spec) — picking
+// up a different weapon swaps the visible model under the same animation.
 
 export type SwordPhase = 'idle' | 'windup' | 'strike' | 'recover';
 
 export interface Sword {
-  group: THREE.Group;
+  /** The live THREE.Group for the wielded weapon. Updated by equip(). */
+  readonly group: THREE.Group;
   /** True only during the strike phase of the current swing — use to gate raycasts. */
   isStriking: boolean;
   /** True from windup-start through recover-end — use to gate new attack inputs. */
@@ -17,24 +22,28 @@ export interface Sword {
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
   startSwing(): boolean;
   update(dt: number): void;
+  /** Swap the wielded weapon model. Resets to idle pose. */
+  equip(weaponSpec: ModelSpec): void;
   /** Debug-only: jump to a specific phase + phase timer. */
   setDebugPhase(phase: SwordPhase, phaseTimer: number): void;
 }
 
 export function createSword(camera: THREE.Camera): Sword {
-  // Build the visible weapon from its model spec. The returned `group` is what
-  // we parent to the camera and animate.
-  const built = buildModel(SWORD_RUSTED);
-  const group = built.group;
-
   const [ix, iy, iz] = CONFIG.SWORD_IDLE_POS;
   const [rx, ry, rz] = CONFIG.SWORD_IDLE_ROT;
 
-  group.position.set(ix, iy, iz);
-  group.rotation.set(rx, ry, rz);
+  // `group` is mutable — equip() rebuilds the model and reassigns it.
+  let group: THREE.Group;
 
-  // Parent the sword to the camera so it follows view automatically.
-  camera.add(group);
+  function mount(spec: ModelSpec) {
+    const built = buildModel(spec);
+    group = built.group;
+    group.position.set(ix, iy, iz);
+    group.rotation.set(rx, ry, rz);
+    camera.add(group);
+  }
+
+  mount(SWORD_RUSTED);
 
   // --- Swing state machine ---
   let phase: SwordPhase = 'idle';
@@ -103,8 +112,17 @@ export function createSword(camera: THREE.Camera): Sword {
     update(0);
   }
 
+  function equip(spec: ModelSpec) {
+    if (group) camera.remove(group);
+    mount(spec);
+    phase = 'idle';
+    phaseTimer = 0;
+  }
+
   return {
-    group,
+    get group() {
+      return group;
+    },
     get isStriking() {
       return phase === 'strike';
     },
@@ -113,6 +131,7 @@ export function createSword(camera: THREE.Camera): Sword {
     },
     startSwing,
     update,
+    equip,
     setDebugPhase,
   };
 }

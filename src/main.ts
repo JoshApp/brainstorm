@@ -4,6 +4,7 @@ import { updateTorchlight } from './scene/torchlight';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/camera';
 import { createSword } from './player/sword';
+import { onEquipWeapon } from './player/weapon-equip';
 import { createCombatSystem } from './combat/attack';
 import { createAttackButton, consumeAttackPressed } from './controls/attack-button';
 import { isFrozen } from './combat/hit-pause';
@@ -103,6 +104,9 @@ camera.rotation.x = 0;
 
 // --- Player: held sword ---
 const sword = createSword(camera);
+// Pickup module fires this when the player takes a weapon item — swap the
+// visible viewmodel under the same swing animation.
+onEquipWeapon((spec) => sword.equip(spec));
 
 // --- Combat ---
 const combat = createCombatSystem(camera, sword, level.enemies);
@@ -146,6 +150,7 @@ window.addEventListener('resize', () => {
 // --- Render loop ---
 const clock = new THREE.Clock();
 const shakeOffset = new THREE.Vector3();
+const forwardScratch = new THREE.Vector3();
 
 function tick() {
   const realDt = Math.min(clock.getDelta(), 0.1);
@@ -180,8 +185,10 @@ function tick() {
     tickAllBuffs(scaledDt);
 
     // Interactables: tick per-instance animation (chest opening, pickup
-    // bob), recompute "what's in range," fire onUse on use press.
-    tickInteractables(scaledDt, camera.position);
+    // bob), recompute "what's in range AND in the player's forward cone,"
+    // fire onUse on use press.
+    camera.getWorldDirection(forwardScratch);
+    tickInteractables(scaledDt, camera.position, forwardScratch);
     const inRange = isDying() ? null : getInRangeInteractable();
     setInteractPrompt(inRange ? inRange.promptLabel : null);
     setUseButtonVisible(!!inRange);

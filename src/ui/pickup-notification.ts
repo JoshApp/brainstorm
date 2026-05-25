@@ -1,15 +1,9 @@
 import { on } from '../broadcast/event-bus';
+import { ITEMS } from '../content/items';
 
 // Brief upper-center label that fades in and out when an item is picked up.
 // Stays warm/dim (in-world register, not broadcast register) so it doesn't
 // compete with achievement toasts in the upper-right.
-//
-// Item display names are looked up here for now; a future ITEMS registry will
-// own this (along with rarity tints, flavor text, etc.).
-
-const DISPLAY_NAMES: Record<string, string> = {
-  'scimitar-relic': 'A scimitar, curved and stained',
-};
 
 const SHOW_MS = 2200;
 const FADE_MS = 280;
@@ -48,7 +42,7 @@ export function createPickupNotification() {
 
   on((event) => {
     if (event.type !== 'item:picked-up') return;
-    show(DISPLAY_NAMES[event.itemId] ?? event.itemId);
+    show(ITEMS[event.itemId]?.name ?? event.itemId);
   });
 }
 

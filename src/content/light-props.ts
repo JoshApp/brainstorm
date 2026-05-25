@@ -39,34 +39,35 @@ export const MOONLIGHT_CRACK: ModelSpec = {
   },
 };
 
-// Floor glow: a soft circular puddle of cool light on the floor — implies
-// luminous fungus, a cracked floor with cold light bleeding through, or some
-// strange phosphorescence. Uses the fire-wisp texture as the gradient mask,
-// tinted cool cyan and emissive.
+// Floor glow: a soft pool of cool light on the floor — implies luminous
+// fungus, cracked floor with cold light bleeding through, or strange
+// phosphorescence. Uses the fire-wisp texture as the visible gradient
+// mask. Light has long range + gentle decay so it actually illuminates
+// the surrounding area (not just a small spot).
 export function floorGlow(tint: number = 0x6cc6e0): ModelSpec {
   return {
     id: `floor-glow-${tint.toString(16)}`,
     materials: {},
     parts: [
-      // Decal lying flat on the floor (-PI/2 around X), soft round gradient
-      // from the fire-wisp texture, tinted + emissive in the target color.
+      // Visible disc on the floor — bigger than before so the source reads
+      // as a wide soft pool, not a tiny dot.
       {
         kind: 'decal',
         pos: [0, 0.01, 0],
         rot: [-Math.PI / 2, 0, 0],
-        size: [0.9, 0.9],
+        size: [1.6, 1.6],
         texture: 'fire-wisp',
         color: tint,
         emissive: tint,
-        emissiveIntensity: 1.8,
+        emissiveIntensity: 1.5,
       },
     ],
     light: {
       color: tint,
-      intensity: 9,
-      distance: 2.8,
-      decay: 1.6,
-      pos: [0, 0.20, 0],          // just above the floor, gentle upward pool
+      intensity: 18,
+      distance: 6.5,              // much further reach — actually lights the room
+      decay: 1.2,                 // gentler falloff so the light feels diffuse
+      pos: [0, 0.30, 0],
       castShadow: false,
     },
   };

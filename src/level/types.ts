@@ -38,7 +38,7 @@ export type PropSpec =
   | { kind: 'model'; model: import('../ecs/model-types').ModelSpec; x: number; y: number; z: number; rotY?: number; rotX?: number; rotZ?: number }
   // 'chest' = an openable container. When the player interacts, the lid swings
   // up and an optional loot pickup spawns beside it.
-  | { kind: 'chest'; x: number; z: number; rotY?: number; loot?: import('../ecs/model-types').ModelSpec };
+  | { kind: 'chest'; x: number; z: number; rotY?: number; loot?: import('../content/items').ItemSpec };
 
 export type TorchSpec = {
   x: number;
