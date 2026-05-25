@@ -8,17 +8,16 @@ import { playWhoosh, playImpact } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit } from '../broadcast/event-bus';
 
-// Combat orchestration. Holds a single raycaster, projects from camera-forward
-// during the sword's strike window, and registers damage if any hit-target is
-// within sword reach. On hit, fires the full crunch stack: hit-pause, screen
-// shake, haptic, impact sound, damage number.
+// Combat orchestration. During the sword's strike window, scans all live
+// enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
+// half-angle = SWORD_CONE_HALF_ANGLE). The cone is wide enough that the
+// player doesn't have to aim precisely — facing the enemy roughly is enough,
+// including looking DOWN at small floor-level mobs like rats.
 //
-// One-hit-per-swing: we set a flag at the start of strike and only allow one
-// damage event per swing, so the raycaster doesn't tick damage every frame
-// of the strike phase.
+// One-hit-per-swing: flag set at start of strike phase, cleared on the next
+// strike. Picks the closest enemy in the cone, not the first.
 
 export interface CombatSystem {
-  /** Call once per frame. Triggers attack if input asks for it; resolves hits. */
   tick(attackPressed: boolean): void;
 }
 
@@ -28,20 +27,21 @@ function hapticVibrate(ms: number) {
   }
 }
 
+// Reusable scratch vectors.
+const forwardDir = new THREE.Vector3();
+const toEnemy = new THREE.Vector3();
+const hitPoint = new THREE.Vector3();
+
 export function createCombatSystem(
   camera: THREE.Camera,
   sword: Sword,
   enemies: Enemy[],
 ): CombatSystem {
-  const raycaster = new THREE.Raycaster();
-  raycaster.far = CONFIG.SWORD_REACH;
-
-  // Center of screen, normalized device coords
-  const center = new THREE.Vector2(0, 0);
-
-  // Has the current strike already registered a hit? Reset at start of each strike.
   let strikeAlreadyHit = false;
   let wasStriking = false;
+
+  // Pre-compute cos(half-angle) for cheap dot-product comparison
+  const cosConeHalf = Math.cos(CONFIG.SWORD_CONE_HALF_ANGLE);
 
   function tick(attackPressed: boolean) {
     if (attackPressed) {
@@ -54,7 +54,6 @@ export function createCombatSystem(
 
     const striking = sword.isStriking;
 
-    // Reset hit-flag at the start of each strike phase
     if (striking && !wasStriking) {
       strikeAlreadyHit = false;
     }
@@ -62,36 +61,56 @@ export function createCombatSystem(
 
     if (!striking || strikeAlreadyHit) return;
 
-    // Gather all live hit-targets
-    const targets: THREE.Object3D[] = [];
+    camera.getWorldDirection(forwardDir);  // unit vector
+    const reachSq = CONFIG.SWORD_REACH * CONFIG.SWORD_REACH;
+
+    let bestEnemy: Enemy | null = null;
+    let bestDistSq = reachSq + 1;
     for (const e of enemies) {
-      if (e.alive) targets.push(...e.hitTargets);
-    }
-    if (targets.length === 0) return;
+      if (!e.alive) continue;
 
-    raycaster.setFromCamera(center, camera);
-    const hits = raycaster.intersectObjects(targets, false);
-    if (hits.length === 0) return;
+      // Use the enemy's group origin (floor level) as the reference point,
+      // but raise by the enemy's "torso center" for a more natural target.
+      // The simple group position works fine since the cone is generous.
+      toEnemy.set(
+        e.group.position.x - camera.position.x,
+        (e.group.position.y + 0.6) - camera.position.y,  // chest height target
+        e.group.position.z - camera.position.z,
+      );
+      const distSq = toEnemy.lengthSq();
+      if (distSq > reachSq) continue;
 
-    // Find which enemy was hit
-    const hitObj = hits[0].object;
-    const hitPoint = hits[0].point;
-    for (const e of enemies) {
-      if (e.hitTargets.includes(hitObj)) {
-        const damage = 1;
-        e.takeDamage(damage);
-        strikeAlreadyHit = true;
+      const dist = Math.sqrt(distSq);
+      // Cheap cone check: dot(forward, toEnemyDir) > cos(half-angle)
+      const dot = (forwardDir.x * toEnemy.x + forwardDir.y * toEnemy.y + forwardDir.z * toEnemy.z) / dist;
+      if (dot < cosConeHalf) continue;
 
-        // --- THE CRUNCH ---
-        freezeFor(CONFIG.HIT_PAUSE_MS);
-        kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE, CONFIG.SCREEN_SHAKE_HIT_DURATION);
-        hapticVibrate(CONFIG.HAPTIC_HIT_MS);
-        playImpact();
-        spawnDamageNumber(camera, hitPoint, damage);
-        emit({ type: 'attack:hit', damage });
-        break;
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        bestEnemy = e;
       }
     }
+
+    if (!bestEnemy) return;
+
+    const damage = 1;
+    bestEnemy.takeDamage(damage);
+    strikeAlreadyHit = true;
+
+    // Damage number floats from the enemy's apparent location (torso height).
+    hitPoint.set(
+      bestEnemy.group.position.x,
+      bestEnemy.group.position.y + 0.9,
+      bestEnemy.group.position.z,
+    );
+
+    // --- THE CRUNCH ---
+    freezeFor(CONFIG.HIT_PAUSE_MS);
+    kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE, CONFIG.SCREEN_SHAKE_HIT_DURATION);
+    hapticVibrate(CONFIG.HAPTIC_HIT_MS);
+    playImpact();
+    spawnDamageNumber(camera, hitPoint, damage);
+    emit({ type: 'attack:hit', damage });
   }
 
   return { tick };

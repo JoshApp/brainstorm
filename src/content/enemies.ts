@@ -51,6 +51,10 @@ export interface EnemySpec {
 // material colors.
 
 function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
+  // Body at pos [0, 0.8, 0]. Head is parented to body so when the body tilts
+  // during windup, the head + eyes tilt with it (otherwise the head floats
+  // in place while the body leans, looking broken). Eyes pop OUT of the
+  // head surface (head radius 0.28, eye at distance 0.28+ from head center).
   return {
     id: 'ghoul-humanoid',
     materials: {
@@ -59,9 +63,14 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
     },
     parts: [
       { name: 'body', kind: 'capsule', pos: [0, 0.8, 0], radius: 0.35, height: 0.9, mat: 'body' },
-      { name: 'head', kind: 'sphere',  pos: [0, 1.5, 0], radius: 0.28, mat: 'body' },
-      { kind: 'sphere', pos: [-0.08, 1.52, -0.24], radius: 0.035, mat: 'eyes' },
-      { kind: 'sphere', pos: [ 0.08, 1.52, -0.24], radius: 0.035, mat: 'eyes' },
+      // Local positions below are relative to body (which is at world y=0.8).
+      { name: 'head', parent: 'body', kind: 'sphere', pos: [0, 0.7, 0], radius: 0.28, mat: 'body' },
+      // Eyes protrude from the front of the head. Surface of head sphere at
+      // forward angle ~25° below horizontal: (sin25°*0.28, ..., -cos25°*0.28) =
+      // (0.118, ..., -0.254). We place eyes just OUTSIDE that surface so they
+      // visibly stick out + their emissive isn't occluded by the head sphere.
+      { parent: 'body', kind: 'sphere', pos: [-0.10, 0.74, -0.28], radius: 0.045, mat: 'eyes' },
+      { parent: 'body', kind: 'sphere', pos: [ 0.10, 0.74, -0.28], radius: 0.045, mat: 'eyes' },
     ],
     slots: {
       weapon:   { pos: [0.35, 0.9, 0] satisfies Vec3 },
@@ -73,34 +82,43 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
 // Quadruped — body horizontal, four small leg capsules, long tail. Demonstrates
 // the model system handling a fundamentally different silhouette from primitives.
 function quadrupedRatModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
+  // The rat has a body capsule that's pre-rotated 90° around X so it lies
+  // horizontal. tiltPart tilts on top of that rotation (combined). The head,
+  // legs, and eyes used to be top-level parts which meant the windup tilt
+  // didn't bring them along — head floated in place while body rotated.
+  // Now: a separate 'rig' anchor part holds everything that should tilt with
+  // the body. tiltPart is set to 'rig' in the EnemySpec.
   return {
     id: 'rat-quadruped',
     materials: {
       body: { color: bodyColor, roughness: 0.95, flatShading: 'auto' },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
     },
-    parts: [
-      // Body — horizontal capsule (long axis along Z)
-      { name: 'body', kind: 'capsule', pos: [0, 0.14, 0], rot: [Math.PI / 2, 0, 0], radius: 0.10, height: 0.28, mat: 'body' },
-      // Head — slightly forward and lower
-      { name: 'head', kind: 'sphere', pos: [0, 0.13, -0.22], radius: 0.085, mat: 'body' },
-      // Snout — small cone pointing forward
-      { kind: 'cone', pos: [0, 0.115, -0.30], rot: [-Math.PI / 2, 0, 0], radius: 0.04, height: 0.07, segments: 8, mat: 'body' },
-      // Eyes
-      { kind: 'sphere', pos: [-0.045, 0.16, -0.25], radius: 0.018, mat: 'eyes' },
-      { kind: 'sphere', pos: [ 0.045, 0.16, -0.25], radius: 0.018, mat: 'eyes' },
-      // Four legs (small vertical capsules)
-      { kind: 'capsule', pos: [-0.07, 0.04, -0.10], radius: 0.022, height: 0.05, mat: 'body' },
-      { kind: 'capsule', pos: [ 0.07, 0.04, -0.10], radius: 0.022, height: 0.05, mat: 'body' },
-      { kind: 'capsule', pos: [-0.07, 0.04,  0.10], radius: 0.022, height: 0.05, mat: 'body' },
-      { kind: 'capsule', pos: [ 0.07, 0.04,  0.10], radius: 0.022, height: 0.05, mat: 'body' },
-      // Tail — thin cylinder trailing behind
-      { kind: 'cylinder', pos: [0, 0.14, 0.28], rot: [Math.PI / 2, 0, 0], radius: 0.015, radiusTop: 0.005, height: 0.30, segments: 6, mat: 'body' },
-    ],
+    // 'rig' is an invisible anchor at the rat's center; everything visible
+    // is parented to it. Tilting 'rig' rotates the whole rat as one body.
     slots: {
-      // Back of the body — for "rider" or saddle attachments later.
-      back: { pos: [0, 0.22, 0] },
+      rig: { pos: [0, 0.14, 0] },
+      back: { pos: [0, 0.22, 0] },  // future saddle attachment
     },
+    parts: [
+      // Body — horizontal capsule, parented to rig. Local pos at rig origin.
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], rot: [Math.PI / 2, 0, 0], radius: 0.10, height: 0.28, mat: 'body' },
+      // Head — slightly forward
+      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, -0.01, -0.22], radius: 0.085, mat: 'body' },
+      // Snout
+      { parent: 'rig', kind: 'cone', pos: [0, -0.025, -0.30], rot: [-Math.PI / 2, 0, 0], radius: 0.04, height: 0.07, segments: 8, mat: 'body' },
+      // Eyes — popped out of the head surface (head r=0.085 at z=-0.22).
+      // Eye centers ~0.10 forward of head center => sticks out by ~0.015.
+      { parent: 'rig', kind: 'sphere', pos: [-0.05, 0.025, -0.305], radius: 0.022, mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.05, 0.025, -0.305], radius: 0.022, mat: 'eyes' },
+      // Four legs (parented to rig so they lift with the windup)
+      { parent: 'rig', kind: 'capsule', pos: [-0.07, -0.10, -0.10], radius: 0.022, height: 0.05, mat: 'body' },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.07, -0.10, -0.10], radius: 0.022, height: 0.05, mat: 'body' },
+      { parent: 'rig', kind: 'capsule', pos: [-0.07, -0.10,  0.10], radius: 0.022, height: 0.05, mat: 'body' },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.07, -0.10,  0.10], radius: 0.022, height: 0.05, mat: 'body' },
+      // Tail
+      { parent: 'rig', kind: 'cylinder', pos: [0, 0, 0.28], rot: [Math.PI / 2, 0, 0], radius: 0.015, radiusTop: 0.005, height: 0.30, segments: 6, mat: 'body' },
+    ],
   };
 }
 
@@ -113,9 +131,11 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
     },
     parts: [
       { name: 'body', kind: 'capsule', pos: [0, 0.65, 0], radius: 0.28, height: 0.7, mat: 'body' },
-      { name: 'head', kind: 'sphere',  pos: [0, 1.2, 0],  radius: 0.22, mat: 'body' },
-      { kind: 'sphere', pos: [-0.07, 1.22, -0.19], radius: 0.032, mat: 'eyes' },
-      { kind: 'sphere', pos: [ 0.07, 1.22, -0.19], radius: 0.032, mat: 'eyes' },
+      { name: 'head', parent: 'body', kind: 'sphere', pos: [0, 0.55, 0], radius: 0.22, mat: 'body' },
+      // Eyes popped out of head surface (head r=0.22, head center y=1.2,
+      // eyes at world y=1.22 z=-0.22). Larger size for visibility.
+      { parent: 'body', kind: 'sphere', pos: [-0.09, 0.57, -0.23], radius: 0.038, mat: 'eyes' },
+      { parent: 'body', kind: 'sphere', pos: [ 0.09, 0.57, -0.23], radius: 0.038, mat: 'eyes' },
     ],
     slots: {
       weapon:   { pos: [0.28, 0.65, 0] satisfies Vec3 },
@@ -164,7 +184,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     model: quadrupedRatModel(0x2a1a14, 0xff2a0a, 2.0),
     baseEyeEmissive: 2.0,
     collisionRadius: 0.18,
-    tiltPartName: 'body',  // body is rotated 90°, so 'tilt' lifts the head end
+    tiltPartName: 'rig',     // 'rig' slot — pre-rotated body rotates correctly when this tilts
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
   },

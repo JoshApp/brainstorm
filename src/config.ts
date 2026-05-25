@@ -7,8 +7,12 @@ export const CONFIG = {
   WALL_COLOR: 0x1a1714,        // near-black warm stone
   FLOOR_COLOR: 0x0f0d0b,       // darker than walls
   CEILING_COLOR: 0x080706,     // darkest
-  AMBIENT_COLOR: 0x231711,     // warm sepia/brown ambient — floors and walls remain legible
-  AMBIENT_INTENSITY: 0.95,     // bumped from 0.6 so dark corners aren't pure void
+  // Neutral cool-gray ambient (not warm). Torchlight then *adds* warmth where
+  // torches are, leaving non-lit areas slightly cool — so the chamber feels
+  // warm vs the corridor feeling cooler vs the antechamber feeling sickly-green.
+  // Previous warm-sepia ambient (0x231711) painted the whole world ochre.
+  AMBIENT_COLOR: 0x181c22,
+  AMBIENT_INTENSITY: 1.1,
 
   // === FOG ===
   // Hides everything beyond torch range. Sells the dread.
@@ -43,7 +47,10 @@ export const CONFIG = {
   WALL_VERTEX_JITTER: 0.04,    // meters of inward/outward perturbation per vertex
 
   // === SWORD (first-person held weapon) ===
-  SWORD_REACH: 1.8,            // meters — raycast distance for hit detection
+  SWORD_REACH: 1.9,            // meters — distance enemies must be within to be hit
+  SWORD_CONE_HALF_ANGLE: 0.7,  // radians (~40°) — forward arc that registers hits.
+                               //   Generous so the player doesn't have to look
+                               //   precisely at the target (especially low rats).
   SWORD_SWING_WINDUP: 0.12,    // seconds — sword raises
   SWORD_SWING_STRIKE: 0.10,    // seconds — sword chops through (hit window is here)
   SWORD_SWING_RECOVER: 0.28,   // seconds — return to idle; can't attack again
