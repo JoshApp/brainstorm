@@ -11,7 +11,8 @@ export type GameEvent =
   | { type: 'attack:hit'; damage: number }
   | { type: 'enemy:killed' }
   | { type: 'player:damaged'; hpLeft: number }
-  | { type: 'player:killed' };
+  | { type: 'player:killed' }
+  | { type: 'item:picked-up'; itemId: string };
 
 type Handler = (event: GameEvent) => void;
 

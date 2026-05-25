@@ -91,6 +91,10 @@ export interface EffectSpec {
 
 export interface BuffSpec {
   id: string;
+  /** Human-readable label shown in the buff bar (e.g. 'REGEN', 'BURN'). */
+  displayName?: string;
+  /** Hex color for the buff bar indicator (and future effect tints). */
+  color?: number;
   /** Optional: how often (seconds) to fire tickEffect while active. */
   tickInterval?: number;
   /** Effect that fires on each tick (applied to the buff's owner). */

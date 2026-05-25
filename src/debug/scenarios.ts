@@ -7,6 +7,9 @@ import { triggerDeath } from '../player/death';
 import { setCameraYaw } from '../controls/camera';
 import { setWorldFrozen } from './freeze';
 import { debugUseAll, debugTickAll } from '../interactables/system';
+import { damagePlayer } from '../player/health';
+import { get as getEntity } from '../ecs/world';
+import { applyBuff } from '../ecs/buffs';
 
 // Predefined game states loadable via ?scenario=name URL param.
 // Used by the snap CLI (scripts/snap.ts) to produce deterministic screenshots,
@@ -40,6 +43,10 @@ export interface Scenario {
   openAllInteractables?: boolean;
   /** Seconds to fast-forward interactable animations after openAllInteractables. */
   tickInteractables?: number;
+  /** Apply N points of damage to the player at startup (for HP-bar verification). */
+  damagePlayerBy?: number;
+  /** Apply a buff to the player at startup: id + duration. */
+  applyPlayerBuff?: { id: string; duration: number };
 }
 
 export const SCENARIOS: Record<string, Scenario> = {
@@ -131,6 +138,19 @@ export const SCENARIOS: Record<string, Scenario> = {
     tickInteractables: 0.8,  // longer than chest open duration (0.55s)
   },
 
+  // HUD test: damage the player to 2/5 HP + apply the regen buff. Both the
+  // HP bar and the buff bar should show the expected state.
+  hud: {
+    freeze: true,
+    damagePlayerBy: 3,
+    applyPlayerBuff: { id: 'regen-pulse', duration: 2.7 },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
   // Close-up of the rat. Quadruped silhouette built from primitives.
   // Player at spawn looking north; rat between player and the north torch
   // (where the light actually reaches) so the silhouette + glowing eyes read.
@@ -197,6 +217,15 @@ export function applyScenario(
   if (scenario.openAllInteractables) {
     debugUseAll();
     if (scenario.tickInteractables) debugTickAll(scenario.tickInteractables);
+  }
+
+  if (scenario.damagePlayerBy) {
+    damagePlayer(scenario.damagePlayerBy);
+  }
+
+  if (scenario.applyPlayerBuff) {
+    const player = getEntity('player');
+    if (player) applyBuff(player, scenario.applyPlayerBuff.id, scenario.applyPlayerBuff.duration);
   }
 
   if (scenario.freeze) {

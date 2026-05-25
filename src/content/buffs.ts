@@ -9,6 +9,8 @@ export const BUFFS: Record<string, BuffSpec> = {
   // Granted by the player's "reaper" passive on enemy kill.
   'regen-pulse': {
     id: 'regen-pulse',
+    displayName: 'REGEN',
+    color: 0x55ff80,
     tickInterval: 0.45,
     tickEffect: { type: 'heal', amount: 1 },
   },

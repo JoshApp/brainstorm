@@ -26,6 +26,10 @@ import { PASSIVES } from './content/passives';
 import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
 import { createUseButton, setUseButtonVisible, consumeUsePressed } from './controls/use-button';
 import { createInteractPrompt, setInteractPrompt } from './ui/interact-prompt';
+import { createHpBar, updateHpBar } from './ui/hp-bar';
+import { createBuffBar, updateBuffBar } from './ui/buff-bar';
+import { createPickupNotification } from './ui/pickup-notification';
+import { createDepthCounter } from './ui/depth-counter';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 try {
@@ -118,6 +122,12 @@ createUseButton();
 createInteractPrompt();
 createStyleSwitcher();
 
+// --- HUD ---
+createHpBar();
+createBuffBar();
+createPickupNotification();
+createDepthCounter(1);  // hardcoded until floors system lands
+
 // --- Resize ---
 window.addEventListener('resize', () => {
   const w = window.innerWidth;
@@ -170,6 +180,10 @@ function tick() {
     setInteractPrompt(inRange ? inRange.promptLabel : null);
     setUseButtonVisible(!!inRange);
     if (!isDying() && consumeUsePressed()) pressUse();
+
+    // HUD — poll-based; cheap and always accurate.
+    updateHpBar();
+    updateBuffBar();
   }
 
   tickShake(realDt, shakeOffset);

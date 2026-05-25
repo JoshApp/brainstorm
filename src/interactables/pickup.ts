@@ -3,6 +3,7 @@ import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import type { ModelSpec } from '../ecs/model-types';
+import { addItem } from '../player/inventory';
 
 // Pickup interactable: a loot model floating on the floor that the player can
 // walk up to and "TAKE." For now, taking it just removes it from the world —
@@ -35,6 +36,7 @@ export function createPickup(
     radius: 1.0,
     promptLabel: 'TAKE',
     onUse() {
+      addItem(model.id);
       interactable.destroyed = true;
     },
     tick(dt: number) {
