@@ -1,6 +1,10 @@
 import type { LevelSpec } from './types';
 import { SCIMITAR_RELIC } from '../content/relics';
 import { FLOOR_CANDLE } from '../content/candle';
+import { MOONLIGHT_CRACK, floorGlow } from '../content/light-props';
+
+const CORRIDOR_FLOOR_GLOW = floorGlow(0x6cc6e0);    // cool cyan — corridor transition
+const ANTE_FLOOR_GLOW     = floorGlow(0x6cffa0);    // sickly green — antechamber palette
 
 // Hand-authored level 1 — the current ritual chamber, expressed as data.
 // Once we trust this format, procgen and additional floors just produce more
@@ -87,6 +91,29 @@ export const LEVEL_1: LevelSpec = {
     // the path. Tight light cones; create dramatic shadow drama on the walls.
     { kind: 'model', model: FLOOR_CANDLE, x:  0.6, y: 0, z: 5.0 },
     { kind: 'model', model: FLOOR_CANDLE, x: -0.6, y: 0, z: 7.5 },
+
+    // --- COOL LIGHT ACCENTS — Floor 1 palette pass ---
+    // The whole dungeon was previously ochre-on-ochre (warm ambient + warm
+    // torches). These three coloured-light fixtures introduce a per-room
+    // palette: warm chamber, transitional-cyan corridor, sickly-green
+    // antechamber. The eye reads each room as its own place.
+
+    // MOONLIGHT CRACK on the chamber's east wall — a vertical glowing slit
+    // implying light bleeding through cracked masonry from somewhere outside.
+    // Cold pale-blue, casts onto the east half of the chamber so the room
+    // has warm/cold contrast (north torch + altar candles are warm; east
+    // wall is touched by cool moonlight).
+    { kind: 'model', model: MOONLIGHT_CRACK, x: 3.99, y: 1.5, z: -0.5, rotY: -Math.PI / 2 },
+
+    // CYAN FLOOR GLOW in the corridor mid-way — luminous fungus or a
+    // cracked floor stone with cold light leaking through. Pairs with the
+    // corridor candles to give the corridor a warm+cool split palette.
+    { kind: 'model', model: CORRIDOR_FLOOR_GLOW, x: 0, y: 0, z: 6.25 },
+
+    // GREEN FLOOR GLOW in the antechamber — reinforces the haunted-green
+    // tint of the antechamber's torch with a floor-level source. Sickly,
+    // unhealthy, alien green.
+    { kind: 'model', model: ANTE_FLOOR_GLOW, x: 0, y: 0, z: 11 },
   ],
 
   torches: [
@@ -103,9 +130,11 @@ export const LEVEL_1: LevelSpec = {
     // Corridor has no wall torch — floor candles provide its light (see props).
     // Creates a "the candlelit path" feel from chamber to antechamber.
 
-    // Antechamber — east wall, with a haunted pale-green tint. Different room,
-    // different fire. Cue that the player has entered new territory.
-    { x: 2.5, z: 11, height: 2.0, wall: 'E', colorTint: 0xa0d0b0, intensityMul: 0.75 },
+    // Antechamber — east wall. Saturated sickly-green: the room's palette
+    // pillar. Strongly tinted so the antechamber doesn't just feel "less
+    // warm than the chamber" but actively HAUNTED. Matches the green floor
+    // glow underneath; together they paint the whole antechamber green.
+    { x: 2.5, z: 11, height: 2.0, wall: 'E', colorTint: 0x70e090, intensityMul: 1.0 },
   ],
 
   spawns: [

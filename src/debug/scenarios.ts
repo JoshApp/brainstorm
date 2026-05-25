@@ -149,6 +149,21 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // Looking at the east wall of the chamber — shows the moonlight crack.
+  moonlight: {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: -0.5,
+      lookAt: { x: 4, z: -0.5, y: 1.5 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
   // Standing INSIDE the corridor (verifies the player can actually be at
   // z > 4 without the collision system snapping them back into the chamber).
   'in-corridor': {
