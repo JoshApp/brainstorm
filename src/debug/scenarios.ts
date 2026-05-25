@@ -149,6 +149,22 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // Standing INSIDE the corridor (verifies the player can actually be at
+  // z > 4 without the collision system snapping them back into the chamber).
+  'in-corridor': {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: 6.25,                    // mid-corridor
+      lookAt: { x: 0, z: 12, y: 1.0 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
   // Looking back from inside the antechamber toward the chamber.
   antechamber: {
     freeze: true,

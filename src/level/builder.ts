@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { LevelSpec, RoomSpec, ObstacleCircle, TorchSpec } from './types';
-import { WalkableRegion } from './walkable';
+import { WalkableRegion, type WallSegment } from './walkable';
 import { CONFIG } from '../config';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
@@ -69,7 +69,7 @@ function makeJitteredPlane(width: number, height: number): THREE.PlaneGeometry {
   return geo;
 }
 
-function buildRoomShell(scene: THREE.Scene, room: RoomSpec, allRects: RoomSpec[], materials: StyleMaterials) {
+function buildRoomShell(scene: THREE.Scene, room: RoomSpec, allRects: RoomSpec[], materials: StyleMaterials, wallSegmentsOut: WallSegment[]) {
   const { rect, height: H } = room;
   const W = rect.w;
   const D = rect.d;
@@ -114,6 +114,15 @@ function buildRoomShell(scene: THREE.Scene, room: RoomSpec, allRects: RoomSpec[]
       const segLen = seg.end - seg.start;
       if (segLen < 0.01) continue;
       buildWallSegment(scene, we, seg.start, seg.end, H, materials);
+      // Record the segment as collision data. The XZ endpoints describe a
+      // line in the floor plane along which the player cannot pass.
+      if (we.perpAxis === 'z') {
+        // wall runs along X at z = we.perpCoord
+        wallSegmentsOut.push({ ax: seg.start, az: we.perpCoord, bx: seg.end, bz: we.perpCoord });
+      } else {
+        // wall runs along Z at x = we.perpCoord
+        wallSegmentsOut.push({ ax: we.perpCoord, az: seg.start, bx: we.perpCoord, bz: seg.end });
+      }
     }
   }
 }
@@ -216,8 +225,11 @@ export function buildLevel(
   // --- Geometry: rooms + corridors ---
   // All rects are collected together so each shell can find its openings into
   // adjacent rects (corridors -> rooms; rooms -> rooms if directly adjacent).
+  // The same wall-segmenter that builds geometry also emits collision data,
+  // so doorways automatically have no wall to collide with.
   const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
-  for (const r of allRects) buildRoomShell(scene, r, allRects, materials);
+  const wallSegments: WallSegment[] = [];
+  for (const r of allRects) buildRoomShell(scene, r, allRects, materials, wallSegments);
 
   // --- Props (visual meshes) + collect obstacles for collision ---
   const obstacles: ObstacleCircle[] = [];
@@ -294,6 +306,7 @@ export function buildLevel(
   const walkable = new WalkableRegion(
     [...spec.rooms.map((r) => r.rect), ...spec.corridors.map((c) => c.rect)],
     obstacles,
+    wallSegments,
   );
 
   return {
