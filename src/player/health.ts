@@ -4,16 +4,16 @@ import { kickShake } from '../combat/screen-shake';
 import { flashVignette } from '../ui/vignette';
 import { playPlayerHurt } from '../audio/sfx';
 import { emit } from '../broadcast/event-bus';
+import { get } from '../ecs/world';
 
-// Player health module. Singleton state + damage handler that mirrors the
-// crunch stack from attack.ts but stronger (longer freeze, bigger shake,
-// longer haptic, grunt sound, vignette flash).
-//
-// On HP=0 fires the registered onDeath callback once.
+// Player health module. State now lives in the world entity (id: 'player')
+// rather than module-level vars, so effects (heal, apply-buff, damage) can
+// address it through the same code path as everything else.
 
-let hp = CONFIG.PLAYER_HP_MAX;
-let dead = false;
+const PLAYER_ENTITY_ID = 'player';
+
 let onDeathCb: (() => void) | null = null;
+let dead = false;
 
 function hapticVibrate(ms: number) {
   if (ms > 0 && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -22,7 +22,11 @@ function hapticVibrate(ms: number) {
 }
 
 export function getPlayerHp(): number {
-  return hp;
+  return get(PLAYER_ENTITY_ID)?.hp?.current ?? 0;
+}
+
+export function getPlayerMaxHp(): number {
+  return get(PLAYER_ENTITY_ID)?.hp?.base ?? CONFIG.PLAYER_HP_MAX;
 }
 
 export function isPlayerDead(): boolean {
@@ -35,17 +39,20 @@ export function onPlayerDeath(cb: () => void) {
 
 export function damagePlayer(amount: number) {
   if (dead) return;
-  hp = Math.max(0, hp - amount);
+  const player = get(PLAYER_ENTITY_ID);
+  if (!player || !player.hp) return;
 
-  // --- THE PLAYER-HIT CRUNCH (mirror of attack.ts but stronger) ---
+  player.hp.current = Math.max(0, player.hp.current - amount);
+
+  // --- The player-hit crunch stack ---
   freezeFor(CONFIG.PLAYER_HIT_PAUSE_MS);
   kickShake(CONFIG.PLAYER_HIT_SHAKE_MAGNITUDE, CONFIG.PLAYER_HIT_SHAKE_DURATION);
   hapticVibrate(CONFIG.PLAYER_HIT_HAPTIC_MS);
   flashVignette();
   playPlayerHurt();
-  emit({ type: 'player:damaged', hpLeft: hp });
+  emit({ type: 'player:damaged', hpLeft: player.hp.current });
 
-  if (hp <= 0 && !dead) {
+  if (player.hp.current <= 0 && !dead) {
     dead = true;
     emit({ type: 'player:killed' });
     onDeathCb?.();

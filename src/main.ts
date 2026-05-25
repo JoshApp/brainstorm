@@ -19,6 +19,10 @@ import { buildLevel } from './level/builder';
 import { LEVEL_1 } from './level/specs';
 import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
 import { isWorldFrozen } from './debug/freeze';
+import { spawn as spawnEntity } from './ecs/world';
+import { tickAllBuffs } from './ecs/buffs';
+import { initTriggerListener } from './ecs/triggers';
+import { PASSIVES } from './content/passives';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 try {
@@ -64,6 +68,20 @@ scene.add(camera); // required for the sword (camera child) to render
 // --- Scenario (URL param ?scenario=...) ---
 const scenario = getScenarioFromUrl();
 const levelSpec = scenario?.level ?? LEVEL_1;
+
+// --- Player entity (HP + buffs + passives live in the world) ---
+// Spawn BEFORE buildLevel so enemies can already query player state during init.
+spawnEntity({
+  id: 'player',
+  kind: 'player',
+  hp: { base: CONFIG.PLAYER_HP_MAX, current: CONFIG.PLAYER_HP_MAX },
+  buffs: [],
+  // Reaper passive: kill an enemy → 2.7s of regen-pulse buff. Demonstrates
+  // the trigger → effect → buff → buff-tick-effect chain working end-to-end.
+  // Later this passive (or many like it) will come from equipped items.
+  passives: [PASSIVES.reaper],
+});
+initTriggerListener('player');
 
 // --- Level (the declarative pipeline) ---
 const level = buildLevel(scene, levelSpec, materials);
@@ -136,6 +154,9 @@ function tick() {
     for (const enemy of level.enemies) {
       enemy.update(scaledDt, camera.position, level.walkable);
     }
+
+    // Tick active buffs on all entities (heal-over-time, future DoTs, etc.)
+    tickAllBuffs(scaledDt);
   }
 
   tickShake(realDt, shakeOffset);

@@ -43,7 +43,8 @@ export type TorchSpec = {
 };
 
 export type EnemySpawnSpec = {
-  type: 'shambler';  // future: 'skirmisher' etc.
+  /** ID into the ENEMIES content registry (src/content/enemies.ts). */
+  enemyId: string;
   x: number;
   z: number;
 };

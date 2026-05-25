@@ -11,8 +11,6 @@ export interface StyleMaterials {
   wall: THREE.Material;
   floor: THREE.Material;
   ceiling: THREE.Material;
-  enemyBody: THREE.MeshStandardMaterial;
-  enemyEye: THREE.MeshStandardMaterial;
   swordBlade: THREE.Material;
   swordGuard: THREE.Material;
   swordHilt: THREE.Material;
@@ -56,18 +54,6 @@ export function buildMaterials(style: Style): StyleMaterials {
     wall: wallBase,
     floor: floorBase,
     ceiling: ceilingBase,
-    enemyBody: new THREE.MeshStandardMaterial({
-      color: flat ? 0x1e1812 : CONFIG.ENEMY_COLOR,
-      roughness: 0.95,
-      metalness: 0.0,
-      flatShading: flat,
-    }),
-    enemyEye: new THREE.MeshStandardMaterial({
-      color: 0x000000,
-      emissive: CONFIG.ENEMY_EYE_COLOR,
-      emissiveIntensity: 1.6,
-      roughness: 1.0,
-    }),
     swordBlade: new THREE.MeshStandardMaterial({
       color: 0x9a978f,
       roughness: 0.4,

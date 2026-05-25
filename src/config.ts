@@ -50,10 +50,7 @@ export const CONFIG = {
   SWORD_IDLE_POS: [0.35, -0.32, -0.55] as const,  // bottom-right of view
   SWORD_IDLE_ROT: [-0.2, -0.15, 0.4] as const,    // tilted across body
 
-  // === ENEMY ===
-  ENEMY_HP: 3,
-  ENEMY_COLOR: 0x14100c,        // very dark, almost-black against the torch glow
-  ENEMY_EYE_COLOR: 0xff5530,    // faint emissive eyes — visible even in shadow
+  // === ENEMY (cross-instance constants only — per-enemy values live in src/content/enemies.ts) ===
   ENEMY_HIT_FLASH_COLOR: 0xffeedd,
   ENEMY_HIT_FLASH_DURATION: 0.08,
 
@@ -73,15 +70,6 @@ export const CONFIG = {
   PLAYER_HIT_HAPTIC_MS: 60,         // longer buzz on damage
   VIGNETTE_FLASH_OPACITY: 0.85,
   VIGNETTE_FLASH_FADE_MS: 280,
-
-  // === ENEMY AI ===
-  ENEMY_MOVE_SPEED: 1.4,            // m/s — slower than player so retreat is possible
-  ENEMY_ATTACK_RANGE: 1.6,          // start windup when player within this distance
-  ENEMY_STRIKE_RANGE: 1.9,          // hit lands if player still within this when striking
-  ENEMY_ATTACK_DAMAGE: 1,
-  ENEMY_WINDUP_TIME: 0.55,          // telegraph: eyes brighten, body tilts forward
-  ENEMY_STRIKE_TIME: 0.18,          // hit window
-  ENEMY_RECOVER_TIME: 0.55,         // can't attack again — player's window to retreat or strike
 
   // === DEATH SEQUENCE ===
   DEATH_SLOWMO_SCALE: 0.25,         // dt multiplier while dying

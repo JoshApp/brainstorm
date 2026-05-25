@@ -35,6 +35,11 @@ export const LEVEL_1: LevelSpec = {
   ],
 
   spawns: [
-    { type: 'shambler', x: 0, z: -1.5 },
+    // Slow heavy hitter centered in front of the altar — the silhouetted
+    // ritual fight, visible at spawn.
+    { enemyId: 'ghoul', x: -0.6, z: -1.5 },
+    // Fast small skirmisher to the player's right — both enemies visible at
+    // spawn so the player immediately sees they have to track two rhythms.
+    { enemyId: 'skirmisher', x: 1.4, z: -1.8 },
   ],
 };

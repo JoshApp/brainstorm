@@ -5,6 +5,7 @@ import { CONFIG } from '../config';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { createEnemy, type Enemy } from '../mobs/enemy';
+import { ENEMIES } from '../content/enemies';
 
 // Consumes a LevelSpec and produces the live scene + collision data. This is
 // the seam where declarative data becomes Three.js objects + game entities.
@@ -160,7 +161,13 @@ export function buildLevel(
   // --- Enemies ---
   const enemies: Enemy[] = [];
   for (const s of spec.spawns) {
-    enemies.push(createEnemy(scene, new THREE.Vector3(s.x, 0, s.z), materials));
+    const enemySpec = ENEMIES[s.enemyId];
+    if (!enemySpec) {
+      // eslint-disable-next-line no-console
+      console.warn(`Unknown enemyId in spawn: ${s.enemyId}`);
+      continue;
+    }
+    enemies.push(createEnemy(scene, new THREE.Vector3(s.x, 0, s.z), enemySpec));
   }
 
   // --- Walkable region (collision data) ---
