@@ -14,6 +14,7 @@ import type { EntityId } from '../ecs/types';
 import { buildModel } from '../ecs/build-model';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
+import { computeDamage, setEntityCombatStats, clearEntityCombatStats, type DamageEvent } from '../combat/damage';
 
 // Enemy = a mob driven by its EnemySpec.
 //
@@ -37,7 +38,7 @@ export interface Enemy {
   alive: boolean;
   hp: number;
   collisionRadius: number;
-  takeDamage(amount: number): void;
+  takeDamage(event: DamageEvent): number;
   update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion): void;
   setDebugState(state: EnemyState, phaseTimer: number): void;
   setDebugPosition(x: number, z: number): void;
@@ -126,6 +127,13 @@ export function createEnemy(
     buffs: [],
     passives: [],
   });
+  // Register combat stats so the damage pipeline knows this enemy's armor +
+  // (future) damage modifiers. Defaults to 0 armor, no bonuses — fields on
+  // EnemySpec override per-enemy.
+  setEntityCombatStats(entityId, {
+    physicalArmor: spec.physicalArmor ?? 0,
+    magicArmor: spec.magicArmor ?? 0,
+  });
 
   // Per-instance presentation state.
   let flashTimer = 0;
@@ -146,14 +154,23 @@ export function createEnemy(
   }
   rollWindupTime();
 
-  function takeDamage(amount: number) {
-    if (!aliveLocal) return;
+  /**
+   * Apply incoming damage. Takes a DamageEvent and routes through the
+   * pipeline (computes final after this enemy's armor for the type),
+   * then mutates HP and fires presentation effects.
+   *
+   * Returns the actual amount applied (caller can use for damage numbers).
+   */
+  function takeDamage(event: DamageEvent): number {
+    if (!aliveLocal) return 0;
     const entity = getEntity(entityId);
-    if (!entity || !entity.hp) return;
-    entity.hp.current = Math.max(0, entity.hp.current - amount);
+    if (!entity || !entity.hp) return 0;
+    const result = computeDamage(event);
+    entity.hp.current = Math.max(0, entity.hp.current - result.applied);
     flashTimer = CONFIG.ENEMY_HIT_FLASH_DURATION;
     if (entity.hp.current <= 0) {
       aliveLocal = false;
+      clearEntityCombatStats(entityId);
       destroyEntity(entityId);
       // Drop table: each entry rolls independently. Multiple successful
       // drops are spread in a small arc around the death position so they
@@ -177,6 +194,7 @@ export function createEnemy(
       scene.remove(container);
       emit({ type: 'enemy:killed' });
     }
+    return result.applied;
   }
 
   function distToXZ(target: THREE.Vector3): number {
@@ -285,7 +303,9 @@ export function createEnemy(
       case 'striking': {
         phaseTimer += dt;
         if (!strikeAlreadyHit && distance <= spec.strikeRange) {
-          damagePlayer(spec.attackDamage);
+          // Enemy melee strike — physical, sourced from this enemy.
+          // damagePlayer routes through the pipeline (player armor applies).
+          damagePlayer(spec.attackDamage, entityId, 'physical');
           strikeAlreadyHit = true;
         }
         // Slam past neutral on the strike (follow-through). Eyes blaze at peak.

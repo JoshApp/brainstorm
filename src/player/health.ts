@@ -6,6 +6,8 @@ import { playPlayerHurt } from '../audio/sfx';
 import { emit } from '../broadcast/event-bus';
 import { get } from '../ecs/world';
 import { computeStats } from './equipment-stats';
+import { computeDamage, type DamageType } from '../combat/damage';
+import type { EntityId } from '../ecs/types';
 
 // Player health module. State now lives in the world entity (id: 'player')
 // rather than module-level vars, so effects (heal, apply-buff, damage) can
@@ -51,17 +53,20 @@ export function onPlayerDeath(cb: () => void) {
   onDeathCb = cb;
 }
 
-export function damagePlayer(amount: number) {
+/**
+ * Apply incoming damage to the player. Routes through the central damage
+ * pipeline so equipment armor + (future) buffs + damage type all apply
+ * consistently. `source` is the attacker's entity id (an enemy) — null
+ * for environmental damage (a trap, a fall). Default damage type is
+ * physical since most enemy attacks are melee.
+ */
+export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical') {
   if (dead) return;
   const player = get(PLAYER_ENTITY_ID);
   if (!player || !player.hp) return;
 
-  // Apply equipment damage reduction (armor + passives), floored at 1 so
-  // even a full set of cloaks can't make the player invulnerable.
-  const reduction = computeStats().damageReduction;
-  const finalAmount = Math.max(1, amount - reduction);
-
-  player.hp.current = Math.max(0, player.hp.current - finalAmount);
+  const result = computeDamage({ source, target: PLAYER_ENTITY_ID, base: amount, type });
+  player.hp.current = Math.max(0, player.hp.current - result.applied);
 
   // --- The player-hit crunch stack ---
   freezeFor(CONFIG.PLAYER_HIT_PAUSE_MS);

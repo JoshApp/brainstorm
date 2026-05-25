@@ -42,6 +42,12 @@ export interface EnemySpec {
   /** Material name whose emissiveIntensity is animated during windup/strike. Usually 'eyes'. */
   eyeMaterialName: string;
 
+  // --- Defense (damage pipeline) ---
+  /** Flat reduction to incoming physical damage. Default 0. */
+  physicalArmor?: number;
+  /** Flat reduction to incoming magic damage. Default 0. */
+  magicArmor?: number;
+
   // --- Drops ---
   /**
    * Drop table. On death, each entry rolls INDEPENDENTLY against its

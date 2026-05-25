@@ -22,12 +22,14 @@ export interface WeaponStats {
 
 /**
  * Passive effects applied while an item is equipped. Aggregated across all
- * equipped slots by src/player/equipment-stats.ts.
+ * equipped slots by src/player/equipment-stats.ts. Damage reduction is split
+ * by type — physical / magic — to feed the damage pipeline in src/combat/damage.ts.
  */
 export type PassiveEffect =
-  | { kind: 'max-hp'; amount: number }            // +N max HP
-  | { kind: 'weapon-damage'; amount: number }     // +N damage on each weapon swing
-  | { kind: 'damage-reduction'; amount: number }  // -N incoming damage (floor at 1)
+  | { kind: 'max-hp'; amount: number }
+  | { kind: 'weapon-damage'; amount: number }     // +N flat damage to each weapon swing
+  | { kind: 'physical-armor'; amount: number }    // -N to incoming physical damage
+  | { kind: 'magic-armor'; amount: number }       // -N to incoming magic damage
 ;
 
 export interface ItemSpec {
@@ -91,7 +93,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     kind: 'armor',
     name: 'A cloak, frayed and stained',
     dropModel: TATTERED_CLOAK,
-    passives: [{ kind: 'damage-reduction', amount: 1 }],
+    passives: [{ kind: 'physical-armor', amount: 1 }],
   },
 };
 

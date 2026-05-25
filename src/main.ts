@@ -174,7 +174,7 @@ function tick() {
     input.lookDy = 0;
   } else {
     if (!isDying()) {
-      updateCamera(camera, input, scaledDt, level.walkable);
+      updateCamera(camera, input, scaledDt, level.walkable, level.enemies);
     } else {
       input.lookDx = 0;
       input.lookDy = 0;

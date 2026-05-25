@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import type { InputState } from './input';
 import type { WalkableRegion } from '../level/walkable';
+import type { Enemy } from '../mobs/enemy';
 
 // Simple first-person camera with yaw/pitch and walking movement.
 // Movement is constrained by a WalkableRegion (rooms + corridors minus
-// obstacle circles), supplied each frame so the level system owns the
+// obstacles) AND by live enemies (the player can't walk through them).
+// Both are supplied each frame so the level + mob systems own the
 // authoritative collision data.
 
 const PLAYER_RADIUS = 0.3;
@@ -31,6 +33,7 @@ export function updateCamera(
   input: InputState,
   dt: number,
   walkable: WalkableRegion,
+  enemies: readonly Enemy[],
 ) {
   // --- Look ---
   yaw -= input.lookDx * CONFIG.LOOK_SENSITIVITY;
@@ -57,16 +60,51 @@ export function updateCamera(
       move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * dt);
       const newX = camera.position.x + move.x;
       const newZ = camera.position.z + move.z;
+      // First pass: static collision (walls, pillars, altar, chest).
       const resolved = walkable.clampMove(
         camera.position.x, camera.position.z,
         newX, newZ,
         PLAYER_RADIUS,
       );
-      camera.position.x = resolved.x;
-      camera.position.z = resolved.z;
+      // Second pass: dynamic collision against live enemies. Same axis-
+      // decomposed slide so the player slides around an enemy instead of
+      // sticking. Dead enemies have aliveLocal=false and are skipped.
+      const finalPos = slideAroundEnemies(
+        camera.position.x, camera.position.z,
+        resolved.x, resolved.z,
+        enemies,
+      );
+      camera.position.x = finalPos.x;
+      camera.position.z = finalPos.z;
     }
   }
 
   // Eye height locked
   camera.position.y = CONFIG.PLAYER_HEIGHT;
+}
+
+// Axis-decomposed slide against the set of live enemies. Try the X-only
+// move; if it collides with an enemy, revert X. Same for Z. Mirrors
+// WalkableRegion.clampMove's slide behavior so the player can walk along
+// an enemy's edge instead of sticking.
+function slideAroundEnemies(oldX: number, oldZ: number, newX: number, newZ: number, enemies: readonly Enemy[]): { x: number; z: number } {
+  let cx = newX;
+  let cz = oldZ;
+  if (collidesWithEnemy(cx, cz, enemies)) cx = oldX;
+  cz = newZ;
+  if (collidesWithEnemy(cx, cz, enemies)) cz = oldZ;
+  return { x: cx, z: cz };
+}
+
+function collidesWithEnemy(x: number, z: number, enemies: readonly Enemy[]): boolean {
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    const ex = e.group.position.x;
+    const ez = e.group.position.z;
+    const minDist = PLAYER_RADIUS + e.collisionRadius;
+    const dx = x - ex;
+    const dz = z - ez;
+    if (dx * dx + dz * dz < minDist * minDist) return true;
+  }
+  return false;
 }
