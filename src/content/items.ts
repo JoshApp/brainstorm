@@ -1,11 +1,12 @@
 import type { ModelSpec } from '../ecs/model-types';
+import type { StatModifier } from '../combat/modifiers';
 import { SWORD_RUSTED } from './sword';
 import { WEAPON_SCIMITAR } from './weapons';
 import { HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, TATTERED_CLOAK } from './loot-models';
 
 // Item registry. An ItemSpec is the canonical definition of a thing the
 // player can collect: kind, display name, drop model, optional viewmodel
-// (weapons), optional combat stats (weapons), optional passive effects
+// (weapons), optional combat stats (weapons), optional stat modifiers
 // (rings/armor).
 
 export type ItemKind = 'weapon' | 'armor' | 'ring' | 'consumable';
@@ -20,18 +21,6 @@ export interface WeaponStats {
   damage: number;
 }
 
-/**
- * Passive effects applied while an item is equipped. Aggregated across all
- * equipped slots by src/player/equipment-stats.ts. Damage reduction is split
- * by type — physical / magic — to feed the damage pipeline in src/combat/damage.ts.
- */
-export type PassiveEffect =
-  | { kind: 'max-hp'; amount: number }
-  | { kind: 'weapon-damage'; amount: number }     // +N flat damage to each weapon swing
-  | { kind: 'physical-armor'; amount: number }    // -N to incoming physical damage
-  | { kind: 'magic-armor'; amount: number }       // -N to incoming magic damage
-;
-
 export interface ItemSpec {
   id: string;
   /** Equipment kind. Determines slot + auto-equip behavior. */
@@ -44,8 +33,12 @@ export interface ItemSpec {
   viewmodel?: ModelSpec;
   /** For weapons: combat stats. */
   weapon?: WeaponStats;
-  /** For rings / armor: passive effects that aggregate while equipped. */
-  passives?: PassiveEffect[];
+  /**
+   * Stat modifiers applied while this item is equipped. Goes through the
+   * unified modifier pipeline in src/combat/modifiers.ts — same shape
+   * that buffs and other effect sources use, so synergies just work.
+   */
+  modifiers?: StatModifier[];
   /** For consumables: how much HP to restore on use (single-use). */
   consumableHeal?: number;
 }
@@ -79,21 +72,21 @@ export const ITEMS: Record<string, ItemSpec> = {
     kind: 'ring',
     name: 'A green-stoned ring',
     dropModel: RING_OF_VIGOR,
-    passives: [{ kind: 'max-hp', amount: 2 }],
+    modifiers: [{ kind: 'max-hp', amount: 2 }],
   },
   'ring-of-predation': {
     id: 'ring-of-predation',
     kind: 'ring',
     name: 'A red-stoned ring',
     dropModel: RING_OF_PREDATION,
-    passives: [{ kind: 'weapon-damage', amount: 1 }],
+    modifiers: [{ kind: 'weapon-damage', amount: 1 }],
   },
   'tattered-cloak': {
     id: 'tattered-cloak',
     kind: 'armor',
     name: 'A cloak, frayed and stained',
     dropModel: TATTERED_CLOAK,
-    passives: [{ kind: 'physical-armor', amount: 1 }],
+    modifiers: [{ kind: 'physical-armor', amount: 1 }],
   },
 };
 

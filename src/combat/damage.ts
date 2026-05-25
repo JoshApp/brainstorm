@@ -1,39 +1,27 @@
 import type { EntityId } from '../ecs/types';
-import { get } from '../ecs/world';
-import { computeStats as playerStats } from '../player/equipment-stats';
+import { aggregateModifiers, computePlayerStats } from './modifiers';
 
 // Damage pipeline. All damage in the game — player attacks on enemies, enemy
 // attacks on player, future spells/traps/environmental — funnels through
-// dealDamage(). One place computes the math; one place fires the effects;
-// one place returns the result for UI/SFX.
+// computeDamage(). One place computes the math; the caller fires whatever
+// presentation effects (vignette, hit-flash, damage numbers) it owns.
 //
-// Design goals:
-//   - SOURCE multipliers compose: weapon base + flat bonuses (Ring of
-//     Predation +1) + multipliers (future Berserk buff x1.5).
-//   - TARGET reduction is per-DAMAGE-TYPE: physical armor reduces physical,
-//     magic armor reduces magic. Floors at 1 so even a heavily armored
-//     target can't reduce to 0.
-//   - Extending damage types is a one-line change. To add 'fire':
-//       1. Add 'fire' to DamageType union
-//       2. Add fireArmor field to CombatStats
-//       3. Add the case in `armorFor()`
-//     Done.
+// Stats come from the unified modifier pipeline (combat/modifiers.ts):
+// equipment + active buffs + (future) per-entity baselines + procs all
+// produce StatModifier records that aggregate into the same CombatStats.
+//
+// Adding a damage type ('fire', 'cold', etc.) is a one-line change:
+//   1. Add to DamageType union
+//   2. Add per-type armor field in StatModifier + here in CombatStats
+//   3. Add case in armorFor()
 
 export type DamageType = 'physical' | 'magic';
 
-/**
- * Combat-relevant stats for any entity. Player gets these from equipment +
- * (future) buffs. Enemies get them from EnemySpec defaults. NPCs/bosses
- * could get them from their spec or per-instance overrides.
- */
 export interface CombatStats {
-  // --- Outgoing (matters when this entity is a damage SOURCE) ---
   /** Flat amount added to every damage dealt by this entity. */
   damageBonus: number;
   /** Multiplicative factor on outgoing damage. 1.0 = unchanged. */
   damageMultiplier: number;
-
-  // --- Incoming (matters when this entity is a damage TARGET) ---
   /** Flat reduction to incoming physical damage (floored at 1 final). */
   physicalArmor: number;
   /** Flat reduction to incoming magic damage (floored at 1 final). */
@@ -47,36 +35,59 @@ const DEFAULT_STATS: CombatStats = {
   magicArmor: 0,
 };
 
-// Per-entity static stats (set when the entity is created — used for enemies).
-// Player stats come from equipment dynamically, so player is NOT in this map.
-const enemyStats = new Map<EntityId, CombatStats>();
+// Per-entity BASELINE stats (set when an enemy spawns from its spec).
+// Active buffs add on top via aggregateModifiers. Player isn't in this
+// map — its base is CONFIG + equipment + buffs, all via the unified
+// modifier pipeline.
+const baselineStats = new Map<EntityId, CombatStats>();
 
-/** Register stats for an entity (typically called when an enemy spawns). */
+/** Register baseline stats for an entity (typically called when an enemy spawns). */
 export function setEntityCombatStats(id: EntityId, stats: Partial<CombatStats>) {
-  enemyStats.set(id, { ...DEFAULT_STATS, ...stats });
+  baselineStats.set(id, { ...DEFAULT_STATS, ...stats });
 }
 
 export function clearEntityCombatStats(id: EntityId) {
-  enemyStats.delete(id);
+  baselineStats.delete(id);
 }
 
 /**
- * Get combat stats for an entity. The 'player' entity reads from the
- * equipment stats module (live — reflects currently-equipped items).
- * Other entities read from the enemyStats map registered at spawn.
+ * Get the current combat stats for an entity — baseline + modifiers from
+ * every active source (equipment slots for player, buffs for anyone).
+ * Recomputed on each call; cheap at our scale.
  */
 export function getCombatStats(id: EntityId | null): CombatStats {
   if (id === 'player') {
-    const p = playerStats();
+    // Player: baseline is implicit 0/1/0/0; modifier aggregation already
+    // produced the structured player stats — translate to combat shape.
+    const p = computePlayerStats();
     return {
       damageBonus: p.weaponDamageBonus,
-      damageMultiplier: 1,
+      damageMultiplier: p.damageMultiplier,
       physicalArmor: p.physicalArmor,
       magicArmor: p.magicArmor,
     };
   }
-  if (id && enemyStats.has(id)) return enemyStats.get(id)!;
-  return DEFAULT_STATS;
+  if (!id) return DEFAULT_STATS;
+
+  // Enemy / other: start from baseline registered at spawn, then add
+  // modifiers from any active buffs. Future intrinsic-passive stat
+  // mods can just be added as additional modifier sources in
+  // aggregateModifiers() — this function need not change.
+  const base = baselineStats.get(id) ?? DEFAULT_STATS;
+  let damageBonus = base.damageBonus;
+  let damageMultiplier = base.damageMultiplier;
+  let physicalArmor = base.physicalArmor;
+  let magicArmor = base.magicArmor;
+  for (const m of aggregateModifiers(id)) {
+    switch (m.kind) {
+      case 'weapon-damage':     damageBonus += m.amount; break;
+      case 'damage-multiplier': damageMultiplier *= m.amount; break;
+      case 'physical-armor':    physicalArmor += m.amount; break;
+      case 'magic-armor':       magicArmor += m.amount; break;
+      // max-hp not applicable to enemy combat stats (HP is in spawn-time pool)
+    }
+  }
+  return { damageBonus, damageMultiplier, physicalArmor, magicArmor };
 }
 
 export interface DamageEvent {

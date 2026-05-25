@@ -99,6 +99,13 @@ export interface BuffSpec {
   tickInterval?: number;
   /** Effect that fires on each tick (applied to the buff's owner). */
   tickEffect?: EffectSpec;
+  /**
+   * Stat modifiers active while this buff is on its owner. Goes through
+   * the same unified pipeline as equipment modifiers (combat/modifiers.ts),
+   * so a Berserk buff (+50% damage for 8s) composes correctly with a
+   * Ring of Predation (+1 flat damage) — no special-casing.
+   */
+  modifiers?: import('../combat/modifiers').StatModifier[];
 }
 
 export interface PassiveSpec {
