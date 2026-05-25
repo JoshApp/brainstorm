@@ -48,7 +48,9 @@ export function buildModel(spec: ModelSpec): BuiltModel {
     }
   }
 
-  // First pass: build all parts and add them to the model group.
+  // First pass: build all parts, track them by index in a parallel array
+  // (so unnamed parts can still be reparented in pass 2).
+  const builtParts: THREE.Object3D[] = [];
   for (const part of spec.parts) {
     const obj = buildPart(part, materials);
     applyTransform(obj, part);
@@ -58,18 +60,21 @@ export function buildModel(spec: ModelSpec): BuiltModel {
     }
     group.add(obj);
     if (part.kind !== 'sprite') hitTargets.push(obj);
+    builtParts.push(obj);
   }
 
   // Second pass: reparent any part with a `parent` field to its parent node.
-  // THREE.Object3D.add() removes the child from its previous parent automatically.
-  for (const part of spec.parts) {
-    if (!part.parent || !part.name) continue;
-    const child = parts.get(part.name);
-    if (!child) continue;
+  // Names are NOT required — we look the built object up by index. Unnamed
+  // parts (e.g. eye spheres, snout cones) get reparented too. Without this,
+  // unnamed children stayed at the model root, often INSIDE other meshes.
+  for (let i = 0; i < spec.parts.length; i++) {
+    const part = spec.parts[i];
+    if (!part.parent) continue;
+    const child = builtParts[i];
     const parentNode = parts.get(part.parent) ?? slots.get(part.parent);
     if (!parentNode) {
       // eslint-disable-next-line no-console
-      console.warn(`Part "${part.name}" references unknown parent "${part.parent}"`);
+      console.warn(`Part references unknown parent "${part.parent}"`);
       continue;
     }
     parentNode.add(child);

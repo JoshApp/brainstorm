@@ -149,6 +149,21 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // Extremely close enemy face view — debug the eye visibility.
+  'enemy-face': {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: -1.0,
+      lookAt: { x: 0, z: -1.7, y: 1.4 },  // very close to ghoul head
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: 0, z: -1.7 }, state: 'chasing', phaseTimer: 0 },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
   // Looking at the east wall of the chamber — shows the moonlight crack.
   moonlight: {
     freeze: true,

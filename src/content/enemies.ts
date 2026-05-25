@@ -51,10 +51,11 @@ export interface EnemySpec {
 // material colors.
 
 function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
-  // Body at pos [0, 0.8, 0]. Head is parented to body so when the body tilts
-  // during windup, the head + eyes tilt with it (otherwise the head floats
-  // in place while the body leans, looking broken). Eyes pop OUT of the
-  // head surface (head radius 0.28, eye at distance 0.28+ from head center).
+  // Body at pos [0, 0.8, 0]. Head + eyes parented to body. Each eye is
+  // TWO parts: a small physical sphere (for the geometric anchor) plus a
+  // small additive-blended sprite halo that always faces the camera and
+  // reads at any distance. The halo is the dominant visible element on a
+  // phone screen at PSX render resolution (40% scale = eyes ~1-3 px).
   return {
     id: 'ghoul-humanoid',
     materials: {
@@ -63,14 +64,12 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
     },
     parts: [
       { name: 'body', kind: 'capsule', pos: [0, 0.8, 0], radius: 0.35, height: 0.9, mat: 'body' },
-      // Local positions below are relative to body (which is at world y=0.8).
       { name: 'head', parent: 'body', kind: 'sphere', pos: [0, 0.7, 0], radius: 0.28, mat: 'body' },
-      // Eyes protrude from the front of the head. Surface of head sphere at
-      // forward angle ~25° below horizontal: (sin25°*0.28, ..., -cos25°*0.28) =
-      // (0.118, ..., -0.254). We place eyes just OUTSIDE that surface so they
-      // visibly stick out + their emissive isn't occluded by the head sphere.
-      { parent: 'body', kind: 'sphere', pos: [-0.10, 0.74, -0.28], radius: 0.045, mat: 'eyes' },
-      { parent: 'body', kind: 'sphere', pos: [ 0.10, 0.74, -0.28], radius: 0.045, mat: 'eyes' },
+      // Eyes — body-local position past the head surface, modest radius.
+      { parent: 'body', kind: 'sphere', pos: [-0.11, 0.74, -0.36], radius: 0.08, segments: [14, 10], mat: 'eyes' },
+      { parent: 'body', kind: 'sphere', pos: [ 0.11, 0.74, -0.36], radius: 0.08, segments: [14, 10], mat: 'eyes' },
+      { name: 'eyeHaloL', parent: 'body', kind: 'sprite', pos: [-0.11, 0.74, -0.42], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { name: 'eyeHaloR', parent: 'body', kind: 'sprite', pos: [ 0.11, 0.74, -0.42], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
     ],
     slots: {
       weapon:   { pos: [0.35, 0.9, 0] satisfies Vec3 },
@@ -132,10 +131,11 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
     parts: [
       { name: 'body', kind: 'capsule', pos: [0, 0.65, 0], radius: 0.28, height: 0.7, mat: 'body' },
       { name: 'head', parent: 'body', kind: 'sphere', pos: [0, 0.55, 0], radius: 0.22, mat: 'body' },
-      // Eyes popped out of head surface (head r=0.22, head center y=1.2,
-      // eyes at world y=1.22 z=-0.22). Larger size for visibility.
-      { parent: 'body', kind: 'sphere', pos: [-0.09, 0.57, -0.23], radius: 0.038, mat: 'eyes' },
-      { parent: 'body', kind: 'sphere', pos: [ 0.09, 0.57, -0.23], radius: 0.038, mat: 'eyes' },
+      // Eyes — body-local z=-0.30 (head front at -0.22), ~0.08m past head surface
+      { parent: 'body', kind: 'sphere', pos: [-0.10, 0.58, -0.30], radius: 0.08, segments: [14, 10], mat: 'eyes' },
+      { parent: 'body', kind: 'sphere', pos: [ 0.10, 0.58, -0.30], radius: 0.08, segments: [14, 10], mat: 'eyes' },
+      { name: 'eyeHaloL', parent: 'body', kind: 'sprite', pos: [-0.10, 0.58, -0.36], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { name: 'eyeHaloR', parent: 'body', kind: 'sprite', pos: [ 0.10, 0.58, -0.36], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
     ],
     slots: {
       weapon:   { pos: [0.28, 0.65, 0] satisfies Vec3 },
@@ -162,8 +162,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     windupTime: 0.90,    // long ghoul tell — heavy enemy, big wind-up animation
     strikeTime: 0.18,
     recoverTime: 0.60,
-    model: humanoidGhoulModel(0x14100c, 0xff5530, 1.6),
-    baseEyeEmissive: 1.6,
+    model: humanoidGhoulModel(0x14100c, 0xff4422, 3.5),
+    baseEyeEmissive: 3.5,
     collisionRadius: 0.45,
     tiltPartName: 'body',
     flashMaterialName: 'body',
@@ -200,8 +200,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     windupTime: 0.65,      // snappier than ghoul, slower than rat
     strikeTime: 0.14,
     recoverTime: 0.55,
-    model: skirmisherModel(0x18130d, 0xffb060, 1.8),
-    baseEyeEmissive: 1.8,
+    model: skirmisherModel(0x18130d, 0xffb060, 3.5),
+    baseEyeEmissive: 3.5,
     collisionRadius: 0.35,
     tiltPartName: 'body',
     flashMaterialName: 'body',
