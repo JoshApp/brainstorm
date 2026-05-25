@@ -38,6 +38,23 @@ export function createSword(camera: THREE.Camera): Sword {
   function mount(spec: ModelSpec) {
     const built = buildModel(spec);
     group = built.group;
+    // Held weapon always renders ON TOP of scene geometry, so it never
+    // clips into walls. Standard PSX-era FPS trick. We don't change the
+    // ModelSpec materials (so the same model on the floor as a pickup
+    // still depth-tests normally) — only the live group's meshes get
+    // depthTest off + a high renderOrder so they're drawn last.
+    group.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        const mesh = obj as THREE.Mesh;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) {
+          m.depthTest = false;
+          m.depthWrite = false;
+          m.needsUpdate = true;
+        }
+        mesh.renderOrder = 999;
+      }
+    });
     group.position.set(ix, iy, iz);
     group.rotation.set(rx, ry, rz);
     camera.add(group);

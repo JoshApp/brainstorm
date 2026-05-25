@@ -10,6 +10,7 @@ import { debugUseAll, debugTickAll } from '../interactables/system';
 import { damagePlayer } from '../player/health';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
+import { ITEMS } from '../content/items';
 
 // Predefined game states loadable via ?scenario=name URL param.
 // Used by the snap CLI (scripts/snap.ts) to produce deterministic screenshots,
@@ -63,6 +64,8 @@ export interface Scenario {
   damagePlayerBy?: number;
   /** Apply a buff to the player at startup: id + duration. */
   applyPlayerBuff?: { id: string; duration: number };
+  /** Equip a weapon by item id at startup (so snaps can show different viewmodels). */
+  equipWeaponId?: string;
 }
 
 export const SCENARIOS: Record<string, Scenario> = {
@@ -175,6 +178,40 @@ export const SCENARIOS: Record<string, Scenario> = {
     },
     enemyOverrides: [
       { index: 0, pos: { x: 0, z: -1.7 }, state: 'chasing', phaseTimer: 0 },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
+  // Viewmodel snaps — empty room, player at spawn, weapon equipped.
+  'viewmodel-rusted': {
+    freeze: true,
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+  'viewmodel-scimitar': {
+    freeze: true,
+    equipWeaponId: 'scimitar',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+  // Player nose-to-wall — verifies the held weapon renders on top
+  // (doesn't clip through the wall).
+  'viewmodel-wall': {
+    freeze: true,
+    equipWeaponId: 'scimitar',
+    playerPos: {
+      x: -3.5, z: 0,
+      lookAt: { x: -5, z: 0, y: 1.5 },  // facing the west wall up close
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
       { index: 2, pos: { x: -10, z:  10 } },
     ],
@@ -369,6 +406,11 @@ export function applyScenario(
   if (scenario.applyPlayerBuff) {
     const player = getEntity('player');
     if (player) applyBuff(player, scenario.applyPlayerBuff.id, scenario.applyPlayerBuff.duration);
+  }
+
+  if (scenario.equipWeaponId) {
+    const item = ITEMS[scenario.equipWeaponId];
+    if (item?.viewmodel) ctx.sword.equip(item.viewmodel);
   }
 
   if (scenario.freeze) {
