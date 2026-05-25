@@ -8,11 +8,19 @@
 import { showJoystick, moveJoystickKnob, hideJoystick } from './joystick-hud';
 import { showFirstTimeHint, dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
+import { getSettings } from '../settings/settings';
 
 // Right-side tap detection thresholds. A "tap" is a brief contact that
 // didn't drift much — anything beyond these is interpreted as a look-drag.
 const TAP_MAX_MS = 220;
 const TAP_MAX_PX = 18;
+
+// Hybrid-look aim zone. Inside this radius from touchstart, dragging is
+// delta-based (precise aiming). Outside this radius, the touch ALSO
+// adds continuous rotation proportional to how far past the zone the
+// finger is — joystick-style for fast 180° turns.
+const AIM_ZONE_RADIUS = 70;
+const HYBRID_ROTATE_PIXELS_PER_SEC = 600;  // overshoot pixels emitted as virtual lookDx/lookDy per second
 
 const JOYSTICK_RADIUS = 80; // pixels of thumb travel = full-tilt input
 const DEADZONE = 0.1;
@@ -24,6 +32,9 @@ export interface InputState {
   // Look delta since last frame, then reset
   lookDx: number;
   lookDy: number;
+  /** Called once per frame by the main loop. Used by hybrid-look mode to
+   *  inject continuous rotation while a touch is past the aim zone. */
+  tickInput: (dt: number) => void;
 }
 
 interface TouchTracker {
@@ -39,7 +50,8 @@ interface TouchTracker {
 }
 
 export function createTouchInput(canvas: HTMLCanvasElement): InputState {
-  const state: InputState = { moveX: 0, moveY: 0, lookDx: 0, lookDy: 0 };
+  // tickInput is assigned below; the placeholder satisfies the type.
+  const state: InputState = { moveX: 0, moveY: 0, lookDx: 0, lookDy: 0, tickInput: () => {} };
   const touches: Map<number, TouchTracker> = new Map();
   let activeJoystickId: number | null = null;
 
@@ -187,6 +199,27 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputState {
     requestAnimationFrame(pollKeyboard);
   }
   pollKeyboard();
+
+  // Hybrid-look tick — call once per frame from the main loop. If the
+  // setting is enabled and any right-side touch is currently past the
+  // aim zone, add virtual look-delta proportional to the overshoot so
+  // the camera keeps rotating in that direction.
+  state.tickInput = (dt: number) => {
+    if (!getSettings().hybridLook) return;
+    for (const tracker of touches.values()) {
+      if (tracker.side !== 'right') continue;
+      const dx = tracker.lastX - tracker.startX;
+      const dy = tracker.lastY - tracker.startY;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= AIM_ZONE_RADIUS) continue;
+      const overshoot = dist - AIM_ZONE_RADIUS;
+      const inv = 1 / dist;
+      // Normalize direction; scale by overshoot fraction; emit as virtual
+      // pixels/sec — the camera converts via lookSensitivity.
+      state.lookDx += dx * inv * overshoot * HYBRID_ROTATE_PIXELS_PER_SEC * dt / AIM_ZONE_RADIUS;
+      state.lookDy += dy * inv * overshoot * HYBRID_ROTATE_PIXELS_PER_SEC * dt / AIM_ZONE_RADIUS;
+    }
+  };
 
   return state;
 }

@@ -41,9 +41,12 @@ export const WALL_TORCH: ModelSpec = {
     },
   },
   parts: [
-    // Sconce arm — short box reaching from the wall to the sconce bowl.
-    // -Z is the wall direction in local space.
-    { kind: 'box',  pos: [0, -0.24, -0.09], size: [0.045, 0.035, 0.14], mat: 'iron' },
+    // Sconce arm — long thin box reaching from the wall to the sconce bowl.
+    // -Z is the wall direction in local space. Centered at z=-0.20 with
+    // length 0.36, so it reaches from z=-0.02 (just behind the bowl) to
+    // z=-0.38 (well into the wall when the torch is placed within ~0.2m
+    // of the wall surface — see level placements).
+    { kind: 'box',  pos: [0, -0.24, -0.20], size: [0.045, 0.035, 0.36], mat: 'iron' },
     // Sconce bowl — short flared cylinder holding the wax. Wider at top.
     { kind: 'cylinder', pos: [0, -0.21, 0], radius: 0.05, radiusTop: 0.065, height: 0.05, segments: 10, mat: 'iron' },
     // Wax candle — short fat pillar

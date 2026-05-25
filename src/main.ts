@@ -18,6 +18,9 @@ import { getStyle } from './style';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle } from './style/render-target';
 import { createStyleSwitcher } from './ui/style-switcher';
+import { createSettingsMenu } from './ui/settings-menu';
+import { getSettings } from './settings/settings';
+import { setMasterVolume } from './audio/sfx';
 import { buildLevel } from './level/builder';
 import { LEVEL_1 } from './level/specs';
 import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
@@ -135,6 +138,11 @@ createUseButton();
 createPotionButton();
 createInteractPrompt();
 createStyleSwitcher();
+createSettingsMenu();
+
+// Sync the master volume from persisted settings so saved volume is
+// applied at boot (not just when the slider next moves).
+setMasterVolume(getSettings().masterVolume);
 
 // PWA: poll for SW updates + auto-reload when a new SW takes over.
 // Means a `git push` lands on Josh's installed home-screen app within a
@@ -174,6 +182,7 @@ function tick() {
     input.lookDy = 0;
   } else {
     if (!isDying()) {
+      input.tickInput(scaledDt);   // hybrid-look continuous rotation, if enabled
       updateCamera(camera, input, scaledDt, level.walkable, level.enemies);
     } else {
       input.lookDx = 0;

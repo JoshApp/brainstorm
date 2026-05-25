@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import type { InputState } from './input';
 import type { WalkableRegion } from '../level/walkable';
 import type { Enemy } from '../mobs/enemy';
+import { getSettings } from '../settings/settings';
 
 // Simple first-person camera with yaw/pitch and walking movement.
 // Movement is constrained by a WalkableRegion (rooms + corridors minus
@@ -36,8 +37,9 @@ export function updateCamera(
   enemies: readonly Enemy[],
 ) {
   // --- Look ---
-  yaw -= input.lookDx * CONFIG.LOOK_SENSITIVITY;
-  pitch -= input.lookDy * CONFIG.LOOK_SENSITIVITY;
+  const sensitivity = getSettings().lookSensitivity;
+  yaw -= input.lookDx * sensitivity;
+  pitch -= input.lookDy * sensitivity;
   pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
 
   input.lookDx = 0;

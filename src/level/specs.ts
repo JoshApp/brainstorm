@@ -120,13 +120,13 @@ export const LEVEL_1: LevelSpec = {
   torches: [
     // Chamber — north wall, the one the player faces at spawn. Warm orange,
     // full intensity; the "main fire" of the chamber.
-    { x: 0, z: -3.6, height: 2.2, wall: 'N', colorTint: 0xffaa55, intensityMul: 1.0 },
+    { x: 0, z: -3.85, height: 2.2, wall: 'N', colorTint: 0xffaa55, intensityMul: 1.0 },
     // Chamber — south wall, offset west of the corridor doorway. Paler /
     // cooler so the two ends of the room have visual contrast.
-    { x: -2.5, z: 3.6, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
+    { x: -2.5, z: 3.85, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
     // Chamber — south wall, offset east of the corridor doorway. Same color
     // family; symmetry around the doorway.
-    { x:  2.5, z: 3.6, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
+    { x:  2.5, z: 3.85, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
 
     // Corridor has no wall torch — floor candles provide its light (see props).
     // Creates a "the candlelit path" feel from chamber to antechamber.
@@ -135,7 +135,7 @@ export const LEVEL_1: LevelSpec = {
     // pillar. Strongly tinted so the antechamber doesn't just feel "less
     // warm than the chamber" but actively HAUNTED. Matches the green floor
     // glow underneath; together they paint the whole antechamber green.
-    { x: 2.5, z: 11, height: 2.0, wall: 'E', colorTint: 0x70e090, intensityMul: 1.0 },
+    { x: 2.85, z: 11, height: 2.0, wall: 'E', colorTint: 0x70e090, intensityMul: 1.0 },
   ],
 
   spawns: [

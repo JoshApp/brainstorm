@@ -9,6 +9,7 @@
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
+let masterVolume = 0.55;  // overridden by settings on init
 
 function ensureCtx(): AudioContext | null {
   if (ctx) return ctx;
@@ -17,12 +18,18 @@ function ensureCtx(): AudioContext | null {
     if (!Ctor) return null;
     ctx = new Ctor();
     masterGain = ctx.createGain();
-    masterGain.gain.value = 0.55;
+    masterGain.gain.value = masterVolume;
     masterGain.connect(ctx.destination);
     return ctx;
   } catch {
     return null;
   }
+}
+
+/** Set master volume (0..1). Settings menu calls this when the slider moves. */
+export function setMasterVolume(v: number) {
+  masterVolume = Math.max(0, Math.min(1, v));
+  if (masterGain) masterGain.gain.value = masterVolume;
 }
 
 /** Sword cutting air — a short filtered noise burst, mid-high frequency, fast decay. */
