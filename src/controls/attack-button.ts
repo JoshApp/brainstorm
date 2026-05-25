@@ -1,11 +1,14 @@
 // Bottom-right circular attack button. DOM overlay above the canvas.
-// Stays visible at all times. Sets a one-shot flag the main loop reads and clears.
 //
-// Press feedback: subtle scale-down + brighter background while pressed, so
-// the player gets a tactile sense of the input registering.
+// NOTE: as of the controls rework, this button is NOT created on game start
+// — the right half of the screen is a tap-to-attack zone. The module is
+// kept for desktop/dev use if needed, and now routes its press through the
+// shared attack-input module so the rest of the game doesn't care where
+// the attack input originated.
+
+import { triggerAttack } from './attack-input';
 
 let button: HTMLButtonElement | null = null;
-let pressedFlag = false;
 
 export function createAttackButton() {
   if (button) return;
@@ -39,7 +42,7 @@ export function createAttackButton() {
 
   const press = (e: Event) => {
     e.preventDefault();
-    pressedFlag = true;
+    triggerAttack();
     button!.style.transform = 'scale(0.92)';
     button!.style.background = 'rgba(80, 40, 20, 0.8)';
   };
@@ -58,9 +61,3 @@ export function createAttackButton() {
   document.body.appendChild(button);
 }
 
-/** Consume the "attack pressed since last frame" flag. Returns true at most once per press. */
-export function consumeAttackPressed(): boolean {
-  if (!pressedFlag) return false;
-  pressedFlag = false;
-  return true;
-}

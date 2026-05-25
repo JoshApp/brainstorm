@@ -1,10 +1,18 @@
 // Touch input model:
 // - Left half of screen: virtual joystick for movement (visualized via joystick-hud)
-// - Right half of screen: swipe to look
+// - Right half of screen: swipe to look + TAP to attack
+//   (a brief contact with little movement counts as an attack;
+//    sustained contact / drag is camera look.)
 // Multi-touch handled — both can be active simultaneously.
 
 import { showJoystick, moveJoystickKnob, hideJoystick } from './joystick-hud';
 import { showFirstTimeHint, dismissHint } from './hint-overlay';
+import { triggerAttack } from './attack-input';
+
+// Right-side tap detection thresholds. A "tap" is a brief contact that
+// didn't drift much — anything beyond these is interpreted as a look-drag.
+const TAP_MAX_MS = 220;
+const TAP_MAX_PX = 18;
 
 const JOYSTICK_RADIUS = 80; // pixels of thumb travel = full-tilt input
 const DEADZONE = 0.1;
@@ -25,6 +33,9 @@ interface TouchTracker {
   lastX: number;
   lastY: number;
   side: 'left' | 'right';
+  startTime: number;
+  /** Cumulative pixel distance moved since touchstart — used for tap detection. */
+  totalMovement: number;
 }
 
 export function createTouchInput(canvas: HTMLCanvasElement): InputState {
@@ -46,6 +57,8 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputState {
         lastX: t.clientX,
         lastY: t.clientY,
         side,
+        startTime: performance.now(),
+        totalMovement: 0,
       });
       if (side === 'left' && activeJoystickId === null) {
         activeJoystickId = t.identifier;
@@ -78,8 +91,11 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputState {
           moveJoystickKnob(tracker.startX, tracker.startY, dx, dy, JOYSTICK_RADIUS);
         }
       } else {
-        state.lookDx += t.clientX - tracker.lastX;
-        state.lookDy += t.clientY - tracker.lastY;
+        const ddx = t.clientX - tracker.lastX;
+        const ddy = t.clientY - tracker.lastY;
+        state.lookDx += ddx;
+        state.lookDy += ddy;
+        tracker.totalMovement += Math.hypot(ddx, ddy);
         tracker.lastX = t.clientX;
         tracker.lastY = t.clientY;
       }
@@ -97,6 +113,12 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputState {
           hideJoystick();
           activeJoystickId = null;
         }
+      } else {
+        // Right-side tap detection: short contact + little movement = attack.
+        const elapsed = performance.now() - tracker.startTime;
+        if (elapsed < TAP_MAX_MS && tracker.totalMovement < TAP_MAX_PX) {
+          triggerAttack();
+        }
       }
       touches.delete(t.identifier);
     }
@@ -107,10 +129,14 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputState {
   canvas.addEventListener('touchend', handleEnd, { passive: false });
   canvas.addEventListener('touchcancel', handleEnd, { passive: false });
 
-  // Desktop fallback for development: WASD + mouse drag
+  // Desktop fallback for development: WASD + mouse drag + Space to attack.
   const keys: Record<string, boolean> = {};
   window.addEventListener('keydown', (e) => {
     keys[e.key.toLowerCase()] = true;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      triggerAttack();
+    }
   });
   window.addEventListener('keyup', (e) => {
     keys[e.key.toLowerCase()] = false;

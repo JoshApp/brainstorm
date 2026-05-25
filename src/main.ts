@@ -6,7 +6,7 @@ import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/
 import { createSword } from './player/sword';
 import { onEquipWeapon } from './player/weapon-equip';
 import { createCombatSystem } from './combat/attack';
-import { createAttackButton, consumeAttackPressed } from './controls/attack-button';
+import { consumeAttackPressed } from './controls/attack-input';
 import { isFrozen } from './combat/hit-pause';
 import { tickShake } from './combat/screen-shake';
 import { onPlayerDeath } from './player/health';
@@ -121,8 +121,10 @@ initAchievements();
 if (scenario) applyScenario(scenario, { level, sword, camera });
 
 // --- Input ---
+// Attack is now triggered by tapping anywhere on the right half of the
+// screen (in addition to the spacebar on desktop). No more on-screen
+// attack button — less intrusive UI, larger hit area.
 const input = createTouchInput(canvas);
-createAttackButton();
 createUseButton();
 createInteractPrompt();
 createStyleSwitcher();

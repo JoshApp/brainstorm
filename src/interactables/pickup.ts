@@ -4,6 +4,7 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { addItem } from '../player/inventory';
 import { equipWeapon } from '../player/weapon-equip';
+import { setCurrentWeapon } from '../player/current-weapon';
 import type { ItemSpec } from '../content/items';
 
 // Pickup interactable: a loot model floating on the floor that the player
@@ -42,8 +43,9 @@ export function createPickup(
     promptLabel: 'TAKE',
     onUse() {
       addItem(item.id);
-      // If this item is a weapon, swap the player's wielded viewmodel too.
+      // Weapon items: swap the viewmodel AND update combat stats.
       if (item.viewmodel) equipWeapon(item.viewmodel);
+      if (item.weapon) setCurrentWeapon(item.weapon);
       interactable.destroyed = true;
     },
     tick(dt: number) {

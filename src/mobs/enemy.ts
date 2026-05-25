@@ -241,15 +241,29 @@ export function createEnemy(
       case 'winding': {
         phaseTimer += dt;
         const t = Math.min(1, phaseTimer / currentWindupTime);
-        // Eye flare: ramp baseline → 8x intensity + color shift toward
-        // hot red. With the eyes now POPPED OUT of the head and parented
-        // to the body, this is highly visible.
         setEyeFlare(t);
-        // Body lean: 29° forward at peak. Head + eyes follow via parenting.
         applyTilt(0.5 * t);
-        // Upward lift — model rises ~10cm during windup ("rearing back"
-        // motion). Adds a clear vertical movement cue on top of the lean.
         built.group.position.y = 0.10 * t;
+        // Continue closing during windup at HALF chase-speed so a stationary
+        // player gets hit (the rat used to stop exactly at attackRange and
+        // strike from there — but strikeRange < attackRange means strike
+        // misses unless the rat closes further). Backpedaling player still
+        // escapes since they retreat faster than the half-speed windup walk.
+        if (distance > spec.strikeRange) {
+          tmpDir.subVectors(playerPos, container.position);
+          tmpDir.y = 0;
+          tmpDir.normalize();
+          const step = spec.moveSpeed * 0.45 * dt;
+          const newX = container.position.x + tmpDir.x * step;
+          const newZ = container.position.z + tmpDir.z * step;
+          const resolved = walkable.clampMove(
+            container.position.x, container.position.z,
+            newX, newZ,
+            spec.collisionRadius,
+          );
+          container.position.x = resolved.x;
+          container.position.z = resolved.z;
+        }
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
           phaseTimer = 0;

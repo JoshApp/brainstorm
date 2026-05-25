@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { LevelSpec, RoomSpec, ObstacleCircle, TorchSpec } from './types';
-import { WalkableRegion, type WallSegment } from './walkable';
+import type { LevelSpec, RoomSpec, TorchSpec } from './types';
+import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { CONFIG } from '../config';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
@@ -18,8 +18,6 @@ import { spawnChest } from '../interactables/chest';
 //   - enemies: array of enemy handles (state machine, ticked each frame)
 //   - playerSpawn: where to put the camera + initial yaw
 
-const PILLAR_OBSTACLE_RADIUS = 0.4;
-const ALTAR_OBSTACLE_RADIUS = 0.65;
 const PILLAR_DEFAULT_SIZE = 0.5;
 
 export interface LiveLevel {
@@ -232,13 +230,11 @@ export function buildLevel(
   for (const r of allRects) buildRoomShell(scene, r, allRects, materials, wallSegments);
 
   // --- Props (visual meshes) + collect obstacles for collision ---
-  const obstacles: ObstacleCircle[] = [];
+  const obstacles: Obstacle[] = [];
 
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
-      // Use the first room's height for pillar height — good enough until
-      // we have variable ceiling heights per region.
       const H = spec.rooms[0]?.height ?? 3.2;
       const geo = new THREE.BoxGeometry(size, H, size);
       const pillar = new THREE.Mesh(geo, materials.wall);
@@ -246,9 +242,15 @@ export function buildLevel(
       pillar.castShadow = true;
       pillar.receiveShadow = true;
       scene.add(pillar);
-      obstacles.push({ x: prop.x, z: prop.z, r: PILLAR_OBSTACLE_RADIUS });
+      // AABB obstacle matching the pillar's actual square cross-section.
+      // Replaces the previous overly-conservative inscribed circle.
+      const halfSz = size / 2;
+      obstacles.push({
+        kind: 'aabb',
+        minX: prop.x - halfSz, maxX: prop.x + halfSz,
+        minZ: prop.z - halfSz, maxZ: prop.z + halfSz,
+      });
     } else if (prop.kind === 'altar') {
-      // Altar block on a slab
       const altarGeo = new THREE.BoxGeometry(0.9, 0.55, 0.6);
       const altar = new THREE.Mesh(altarGeo, materials.wall);
       altar.position.set(prop.x, 0.275, prop.z);
@@ -262,7 +264,13 @@ export function buildLevel(
       altarBase.receiveShadow = true;
       scene.add(altarBase);
 
-      obstacles.push({ x: prop.x, z: prop.z, r: ALTAR_OBSTACLE_RADIUS });
+      // AABB matching the altar BASE (1.2 × 0.9, the wider of the two boxes).
+      // Player can't walk into the slab; can approach right up to its edge.
+      obstacles.push({
+        kind: 'aabb',
+        minX: prop.x - 0.6, maxX: prop.x + 0.6,
+        minZ: prop.z - 0.45, maxZ: prop.z + 0.45,
+      });
     } else if (prop.kind === 'model') {
       // Static decoration model — no collision, no behavior, just visuals.
       const built = buildModel(prop.model);
@@ -273,6 +281,15 @@ export function buildLevel(
       scene.add(built.group);
     } else if (prop.kind === 'chest') {
       spawnChest(scene, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.loot);
+      // Chest body is 0.5 × 0.4. Approximate collision as an AABB matching
+      // the body footprint (ignore rotY for now — most chests sit roughly
+      // axis-aligned). A small extra margin (0.03) so the player can't
+      // visually intersect the lid when opened.
+      obstacles.push({
+        kind: 'aabb',
+        minX: prop.x - 0.28, maxX: prop.x + 0.28,
+        minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
+      });
     }
   }
 

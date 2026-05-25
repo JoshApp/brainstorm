@@ -63,6 +63,9 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
   let nearest: Interactable | null = null;
   let nearestD = Infinity;
   for (const it of interactables) {
+    // Empty promptLabel = interactable is currently inert (e.g. an open chest
+    // that was already used). Don't show its prompt or claim the USE button.
+    if (!it.promptLabel) continue;
     const dx = it.position.x - playerPos.x;
     const dz = it.position.z - playerPos.z;
     const d = Math.hypot(dx, dz);

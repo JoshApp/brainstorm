@@ -7,6 +7,7 @@ import { kickShake } from './screen-shake';
 import { playWhoosh, playImpact } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit } from '../broadcast/event-bus';
+import { getCurrentWeapon } from '../player/current-weapon';
 
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
@@ -40,9 +41,6 @@ export function createCombatSystem(
   let strikeAlreadyHit = false;
   let wasStriking = false;
 
-  // Pre-compute cos(half-angle) for cheap dot-product comparison
-  const cosConeHalf = Math.cos(CONFIG.SWORD_CONE_HALF_ANGLE);
-
   function tick(attackPressed: boolean) {
     if (attackPressed) {
       const started = sword.startSwing();
@@ -62,26 +60,25 @@ export function createCombatSystem(
     if (!striking || strikeAlreadyHit) return;
 
     camera.getWorldDirection(forwardDir);  // unit vector
-    const reachSq = CONFIG.SWORD_REACH * CONFIG.SWORD_REACH;
+    // Pull stats from the currently-equipped weapon (different weapons have
+    // different reach + arc + damage).
+    const weapon = getCurrentWeapon();
+    const reachSq = weapon.reach * weapon.reach;
+    const cosConeHalf = Math.cos(weapon.coneHalfAngle);
 
     let bestEnemy: Enemy | null = null;
     let bestDistSq = reachSq + 1;
     for (const e of enemies) {
       if (!e.alive) continue;
-
-      // Use the enemy's group origin (floor level) as the reference point,
-      // but raise by the enemy's "torso center" for a more natural target.
-      // The simple group position works fine since the cone is generous.
       toEnemy.set(
         e.group.position.x - camera.position.x,
-        (e.group.position.y + 0.6) - camera.position.y,  // chest height target
+        (e.group.position.y + 0.6) - camera.position.y,
         e.group.position.z - camera.position.z,
       );
       const distSq = toEnemy.lengthSq();
       if (distSq > reachSq) continue;
 
       const dist = Math.sqrt(distSq);
-      // Cheap cone check: dot(forward, toEnemyDir) > cos(half-angle)
       const dot = (forwardDir.x * toEnemy.x + forwardDir.y * toEnemy.y + forwardDir.z * toEnemy.z) / dist;
       if (dot < cosConeHalf) continue;
 
@@ -93,7 +90,7 @@ export function createCombatSystem(
 
     if (!bestEnemy) return;
 
-    const damage = 1;
+    const damage = weapon.damage;
     bestEnemy.takeDamage(damage);
     strikeAlreadyHit = true;
 
