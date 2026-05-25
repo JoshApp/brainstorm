@@ -6,6 +6,8 @@ import type { StyleMaterials } from '../style/materials';
 // renders in screen-relative space (always at the bottom-right of view).
 // Materials are supplied externally by the style library.
 
+export type SwordPhase = 'idle' | 'windup' | 'strike' | 'recover';
+
 export interface Sword {
   group: THREE.Group;
   /** True only during the strike phase of the current swing — use to gate raycasts. */
@@ -15,6 +17,8 @@ export interface Sword {
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
   startSwing(): boolean;
   update(dt: number): void;
+  /** Debug-only: jump to a specific phase + phase timer. */
+  setDebugPhase(phase: SwordPhase, phaseTimer: number): void;
 }
 
 export function createSword(camera: THREE.Camera, materials: StyleMaterials): Sword {
@@ -51,7 +55,7 @@ export function createSword(camera: THREE.Camera, materials: StyleMaterials): Sw
   camera.add(group);
 
   // --- Swing state machine ---
-  let phase: 'idle' | 'windup' | 'strike' | 'recover' = 'idle';
+  let phase: SwordPhase = 'idle';
   let phaseTimer = 0;
 
   function startSwing(): boolean {
@@ -114,6 +118,13 @@ export function createSword(camera: THREE.Camera, materials: StyleMaterials): Sw
     }
   }
 
+  function setDebugPhase(p: SwordPhase, t: number) {
+    phase = p;
+    phaseTimer = t;
+    // Apply the per-phase pose immediately for freeze+screenshot
+    update(0);
+  }
+
   return {
     group,
     get isStriking() {
@@ -124,5 +135,6 @@ export function createSword(camera: THREE.Camera, materials: StyleMaterials): Sw
     },
     startSwing,
     update,
+    setDebugPhase,
   };
 }

@@ -17,6 +17,8 @@ import { initRenderPipeline, renderWithStyle } from './style/render-target';
 import { createStyleSwitcher } from './ui/style-switcher';
 import { buildLevel } from './level/builder';
 import { LEVEL_1 } from './level/specs';
+import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
+import { isWorldFrozen } from './debug/freeze';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 try {
@@ -59,10 +61,19 @@ initRenderPipeline(renderer);
 const camera = createFirstPersonCamera();
 scene.add(camera); // required for the sword (camera child) to render
 
-// --- Level (the new declarative pipeline) ---
-const level = buildLevel(scene, LEVEL_1, materials);
+// --- Scenario (URL param ?scenario=...) ---
+const scenario = getScenarioFromUrl();
+const levelSpec = scenario?.level ?? LEVEL_1;
+
+// --- Level (the declarative pipeline) ---
+const level = buildLevel(scene, levelSpec, materials);
 camera.position.set(level.playerSpawn.x, CONFIG.PLAYER_HEIGHT, level.playerSpawn.z);
 setCameraYaw(level.playerSpawn.yaw);
+// Apply yaw to the camera object immediately so the first frame is correct
+// (otherwise frozen scenarios show the default rotation until updateCamera runs).
+camera.rotation.order = 'YXZ';
+camera.rotation.y = level.playerSpawn.yaw;
+camera.rotation.x = 0;
 
 // --- Player: held sword ---
 const sword = createSword(camera, materials);
@@ -75,6 +86,9 @@ onPlayerDeath(() => triggerDeath());
 
 // --- Broadcast / DCC tribute layer ---
 initAchievements();
+
+// --- Apply scenario overrides (post-build) ---
+if (scenario) applyScenario(scenario, { level, sword, camera });
 
 // --- Input ---
 const input = createTouchInput(canvas);
@@ -100,8 +114,9 @@ function tick() {
   tickDeath(realDt);
   const scaledDt = realDt * getTimeScale();
 
-  if (isFrozen()) {
-    // Hit-pause: skip all game updates, drain look input so it doesn't snap.
+  if (isFrozen() || isWorldFrozen()) {
+    // Hit-pause OR scenario freeze: skip all game updates, drain look input
+    // so it doesn't snap if/when we unfreeze.
     input.lookDx = 0;
     input.lookDy = 0;
   } else {

@@ -28,6 +28,10 @@ export interface Enemy {
   takeDamage(amount: number): void;
   /** Called each frame with the player's world position + walkable region. */
   update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion): void;
+  /** Debug-only: jump to a specific AI state + phase timer, apply visuals. */
+  setDebugState(state: EnemyState, phaseTimer: number): void;
+  /** Debug-only: teleport without collision check. */
+  setDebugPosition(x: number, z: number): void;
 }
 
 const tmpDir = new THREE.Vector3();
@@ -188,6 +192,41 @@ export function createEnemy(scene: THREE.Scene, position: THREE.Vector3, materia
     }
   }
 
+  function setDebugState(s: EnemyState, t: number) {
+    state = s;
+    phaseTimer = t;
+    strikeAlreadyHit = false;
+    // Apply state-appropriate visuals immediately so freeze+screenshot
+    // captures the right pose without needing an update tick.
+    switch (s) {
+      case 'chasing':
+        eyeMat.emissiveIntensity = baseEyeEmissive;
+        group.rotation.x = 0;
+        break;
+      case 'winding': {
+        const f = Math.min(1, t / CONFIG.ENEMY_WINDUP_TIME);
+        eyeMat.emissiveIntensity = baseEyeEmissive + (4.5 - 1) * baseEyeEmissive * f;
+        group.rotation.x = 0.25 * f;
+        break;
+      }
+      case 'striking':
+        eyeMat.emissiveIntensity = baseEyeEmissive * 4.5;
+        group.rotation.x = 0.25;
+        break;
+      case 'recovering': {
+        const f = Math.min(1, t / CONFIG.ENEMY_RECOVER_TIME);
+        eyeMat.emissiveIntensity = THREE.MathUtils.lerp(baseEyeEmissive * 4.5, baseEyeEmissive, f);
+        group.rotation.x = THREE.MathUtils.lerp(0.25, 0, f);
+        break;
+      }
+    }
+  }
+
+  function setDebugPosition(x: number, z: number) {
+    group.position.x = x;
+    group.position.z = z;
+  }
+
   return {
     group,
     hitTargets: [body, head],
@@ -199,5 +238,7 @@ export function createEnemy(scene: THREE.Scene, position: THREE.Vector3, materia
     },
     takeDamage,
     update,
+    setDebugState,
+    setDebugPosition,
   };
 }
