@@ -133,9 +133,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hp: 3,
     moveSpeed: 1.4,
     attackDamage: 1,
-    attackRange: 1.6,
-    strikeRange: 1.9,
-    windupTime: 0.55,
+    // attackRange = the distance at which the enemy COMMITS to a swing.
+    // strikeRange = the distance at which the swing actually LANDS.
+    // strikeRange < attackRange means: if the player backs away during the
+    // windup, the swing misses. This is what makes the telegraph escapable.
+    attackRange: 1.7,
+    strikeRange: 1.55,
+    windupTime: 0.65,    // up from 0.55 — reactable on a phone screen
     strikeTime: 0.18,
     recoverTime: 0.55,
     model: humanoidGhoulModel(0x14100c, 0xff5530, 1.6),
@@ -150,13 +154,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'rat',
     name: 'rat',
     hp: 1,           // dies in one hit — the trash mob
-    moveSpeed: 2.6,  // slightly slower than player retreat speed (was 3.2)
+    moveSpeed: 2.3,  // slower than player retreat (player MOVE_SPEED = 2.5)
     attackDamage: 1,
-    attackRange: 0.8,
-    strikeRange: 1.1,
-    windupTime: 0.35,  // up from 0.18 — reactable telegraph
+    attackRange: 1.0,
+    strikeRange: 0.85,   // smaller than attackRange — escapable
+    windupTime: 0.50,    // up from 0.35 — readable on a phone
     strikeTime: 0.12,
-    recoverTime: 0.55,  // longer recovery — punishable
+    recoverTime: 0.65,   // longer recovery — punishable
     model: quadrupedRatModel(0x2a1a14, 0xff2a0a, 2.0),
     baseEyeEmissive: 2.0,
     collisionRadius: 0.18,
@@ -169,13 +173,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'skirmisher',
     name: 'skirmisher',
     hp: 2,
-    moveSpeed: 2.2,        // was 2.4 — player can now outpace it slightly
+    moveSpeed: 2.0,        // player retreat (2.5) outruns now
     attackDamage: 1,
-    attackRange: 1.35,
-    strikeRange: 1.7,
-    windupTime: 0.38,      // up from 0.28 — still snappy but reactable
+    attackRange: 1.5,
+    strikeRange: 1.35,     // smaller than attackRange — escapable
+    windupTime: 0.48,      // up from 0.38 — still snappy but reactable
     strikeTime: 0.14,
-    recoverTime: 0.50,     // up from 0.35 — small window after each strike
+    recoverTime: 0.55,
     model: skirmisherModel(0x18130d, 0xffb060, 1.8),
     baseEyeEmissive: 1.8,
     collisionRadius: 0.35,

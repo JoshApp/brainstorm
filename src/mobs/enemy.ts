@@ -84,6 +84,14 @@ export function createEnemy(
   let phaseTimer = 0;
   let strikeAlreadyHit = false;
   let aliveLocal = true;
+  // Per-cycle randomized windup duration so multiple enemies attacking in
+  // unison de-synchronize over time (otherwise stacked mobs all strike on
+  // the exact same frame and the player has no rhythm to read).
+  let currentWindupTime = spec.windupTime;
+  function rollWindupTime() {
+    currentWindupTime = spec.windupTime * (0.78 + Math.random() * 0.44);  // ±22%
+  }
+  rollWindupTime();
 
   function takeDamage(amount: number) {
     if (!aliveLocal) return;
@@ -154,6 +162,7 @@ export function createEnemy(
           state = 'winding';
           phaseTimer = 0;
           strikeAlreadyHit = false;
+          rollWindupTime();
         }
         setEyeEmissive(baseEyeEmissive);
         applyTilt(0);
@@ -162,10 +171,13 @@ export function createEnemy(
 
       case 'winding': {
         phaseTimer += dt;
-        const t = Math.min(1, phaseTimer / spec.windupTime);
-        setEyeEmissive(baseEyeEmissive + (4.5 - 1) * baseEyeEmissive * t);
-        applyTilt(0.25 * t);
-        if (phaseTimer >= spec.windupTime) {
+        const t = Math.min(1, phaseTimer / currentWindupTime);
+        // Eye flare: ramp baseline → 6x intensity over the windup. Stronger
+        // pop at peak so the telegraph is unmistakable on phone screens.
+        setEyeEmissive(baseEyeEmissive * (1 + 5 * t));
+        // Body lean: 29° forward at peak (was 14° — too subtle).
+        applyTilt(0.5 * t);
+        if (phaseTimer >= currentWindupTime) {
           state = 'striking';
           phaseTimer = 0;
         }
@@ -188,8 +200,8 @@ export function createEnemy(
       case 'recovering': {
         phaseTimer += dt;
         const t = Math.min(1, phaseTimer / spec.recoverTime);
-        setEyeEmissive(THREE.MathUtils.lerp(baseEyeEmissive * 4.5, baseEyeEmissive, t));
-        applyTilt(THREE.MathUtils.lerp(0.25, 0, t));
+        setEyeEmissive(THREE.MathUtils.lerp(baseEyeEmissive * 6, baseEyeEmissive, t));
+        applyTilt(THREE.MathUtils.lerp(0.5, 0, t));
         if (phaseTimer >= spec.recoverTime) {
           state = 'chasing';
           phaseTimer = 0;
@@ -210,18 +222,18 @@ export function createEnemy(
         break;
       case 'winding': {
         const f = Math.min(1, t / spec.windupTime);
-        setEyeEmissive(baseEyeEmissive + (4.5 - 1) * baseEyeEmissive * f);
-        applyTilt(0.25 * f);
+        setEyeEmissive(baseEyeEmissive * (1 + 5 * f));
+        applyTilt(0.5 * f);
         break;
       }
       case 'striking':
-        setEyeEmissive(baseEyeEmissive * 4.5);
-        applyTilt(0.25);
+        setEyeEmissive(baseEyeEmissive * 6);
+        applyTilt(0.5);
         break;
       case 'recovering': {
         const f = Math.min(1, t / spec.recoverTime);
-        setEyeEmissive(THREE.MathUtils.lerp(baseEyeEmissive * 4.5, baseEyeEmissive, f));
-        applyTilt(THREE.MathUtils.lerp(0.25, 0, f));
+        setEyeEmissive(THREE.MathUtils.lerp(baseEyeEmissive * 6, baseEyeEmissive, f));
+        applyTilt(THREE.MathUtils.lerp(0.5, 0, f));
         break;
       }
     }
