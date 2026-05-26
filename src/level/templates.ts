@@ -33,6 +33,9 @@ export interface Template {
   spawnYaw?: number;
   roomHeight?: number;
   torchTint?: number;
+  /** Per-floor fog tint — distant darkness reads as this floor's
+   *  atmosphere, not absence. Typically a darker mix of the torchTint. */
+  fogColor?: number;
 }
 
 // ── T1: "The Old Refectory" ────────────────────────────────────────
@@ -142,8 +145,8 @@ const CISTERN: TileMap = [
 ];
 
 export const TEMPLATES: Template[] = [
-  { name: 'The Old Refectory', map: REFECTORY, torchTint: 0xffaa55 },
-  { name: 'The Long Hall',     map: LONG_HALL, torchTint: 0xddc090 },
-  { name: 'The Pillar Maze',   map: PILLAR_MAZE, torchTint: 0xa090ff },
-  { name: 'The Cistern',       map: CISTERN, torchTint: 0x66ccdd },
+  { name: 'The Old Refectory', map: REFECTORY,   torchTint: 0xffaa55, fogColor: 0x140a05 },
+  { name: 'The Long Hall',     map: LONG_HALL,   torchTint: 0xddc090, fogColor: 0x100c08 },
+  { name: 'The Pillar Maze',   map: PILLAR_MAZE, torchTint: 0xa090ff, fogColor: 0x0a0815 },
+  { name: 'The Cistern',       map: CISTERN,     torchTint: 0x66ccdd, fogColor: 0x05101a },
 ];

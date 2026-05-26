@@ -33,6 +33,8 @@ const CRYPT_FLOOR_GLOW    = floorGlow(0xff3a20);    // hot red — crypt palette
 export const LEVEL_1: LevelSpec = {
   id: 'depth-1',
   displayName: 'I — The Ritual Chamber',
+  // Warm dark — the chamber feels like a coal pit just-banked.
+  fogColor: 0x100806,
 
   startPos: { x: 0, z: 0, yaw: 0 }, // spawn center of chamber, facing -Z (north)
 
@@ -193,6 +195,8 @@ export const LEVEL_1: LevelSpec = {
 export const LEVEL_2: LevelSpec = {
   id: 'depth-2',
   displayName: 'II — The Blood Crypt',
+  // Hot dark — distant shadows wear a faint blood tint.
+  fogColor: 0x180605,
 
   // Spawn at the north end facing +Z so the altar/chest at the far end
   // is dead-ahead at first frame. yaw=π flips the camera's default

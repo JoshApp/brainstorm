@@ -153,6 +153,7 @@ export function generateFloor(
     torchTint: tmpl.torchTint,
     stairsTarget: nextLevelId,
   });
+  spec.fogColor = tmpl.fogColor;
 
   // Sanity: every generated floor must have a player spawn + a stairs.
   // The template author is responsible for including 'S' and '/'.

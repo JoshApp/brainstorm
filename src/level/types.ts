@@ -156,6 +156,12 @@ export type LevelSpec = {
   /** Stairs leading to other floors. */
   stairs?: StairsSpec[];
   /**
+   * Optional per-floor fog tint. Overrides the global CONFIG.FOG_COLOR.
+   * Reinforces the floor's identity at distance: blood crypt = red-
+   * tinted fog, drowned hall = teal, etc. Cheap atmospheric depth.
+   */
+  fogColor?: number;
+  /**
    * Extra wall segments BEYOND the auto-generated room-perimeter walls.
    * Used by the tile-map parser to express interior walls (between '#'
    * cells and walkable cells). Each segment becomes a rendered wall

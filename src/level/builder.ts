@@ -372,6 +372,50 @@ export function buildLevel(
     );
   }
 
+  // --- Stationary fill lights ---
+  // Scatter a few very-low-intensity, no-flicker PointLights across each
+  // room rect. They give the kind of uneven low-level light real-world
+  // bounced light has — pockets of room that aren't directly lit by a
+  // torch still have *some* variation, vs the flat baseline of global
+  // ambient. Density scales with rect area (~1 fill per 22 m²).
+  //
+  // Color picks up the per-floor fog tint (warmer near base) so the
+  // fills reinforce the floor's identity even where torches don't reach.
+  const fillColor = spec.fogColor !== undefined
+    ? mixColors(spec.fogColor, 0x553322, 0.5)  // warm-shift toward firelight
+    : 0x2a1a10;
+  for (const r of allRects) {
+    const area = r.rect.w * r.rect.d;
+    const count = Math.max(1, Math.floor(area / 22));
+    for (let i = 0; i < count; i++) {
+      // Spread across the rect on a coarse grid; offset by i so they
+      // don't overlap.
+      const fx = r.rect.x + (((i * 1.6) % r.rect.w) - r.rect.w / 2 + r.rect.w / (count + 1));
+      const fz = r.rect.z + (((i * 0.9) % r.rect.d) - r.rect.d / 2 + r.rect.d / (count + 1));
+      const fill = new THREE.PointLight(fillColor, 6, 5.0, 1.8);
+      fill.position.set(fx, 1.4, fz);
+      root.add(fill);
+    }
+  }
+
+  // --- Per-floor fog tint ---
+  // Atmospheric depth without flattening mood. The scene's Fog instance
+  // gets a recolor per floor; the scene background tracks so the very-
+  // distant horizon matches. Floor 2's blood crypt gets a faint red
+  // tint, procgen depths get their template's torchTint, etc.
+  if (spec.fogColor !== undefined && scene.fog && scene.fog instanceof THREE.Fog) {
+    scene.fog.color.setHex(spec.fogColor);
+    if (scene.background && (scene.background as THREE.Color).isColor) {
+      (scene.background as THREE.Color).setHex(spec.fogColor);
+    }
+  } else if (scene.fog && scene.fog instanceof THREE.Fog) {
+    // Reset to the global default when a floor omits the field.
+    scene.fog.color.setHex(CONFIG.FOG_COLOR);
+    if (scene.background && (scene.background as THREE.Color).isColor) {
+      (scene.background as THREE.Color).setHex(CONFIG.FOG_COLOR);
+    }
+  }
+
   // --- Walkable region (collision data; mutable so doors can add/remove) ---
   const walkable = new WalkableRegion(
     [...spec.rooms.map((r) => r.rect), ...spec.corridors.map((c) => c.rect)],
@@ -478,6 +522,16 @@ export function buildLevel(
     // wrapper if needed. For now expose directly.
     ...({ checkRoomClear } as object),
   } as LiveLevel & { checkRoomClear: () => void };
+}
+
+/** Linear mix between two hex colors. t=0 returns a, t=1 returns b. */
+function mixColors(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return (r << 16) | (g << 8) | bl;
 }
 
 /** Which room rect contains (x, z)? First match wins. Null if outside all. */

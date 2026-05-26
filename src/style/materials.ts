@@ -19,12 +19,23 @@ export function buildMaterials(style: Style): StyleMaterials {
   // facets read as polygons rather than mud.
   const flat = style === 'flat';
 
+  // Emissive baseline: a tiny self-luminance on every static surface so
+  // even unlit corners imply geometry ("stone, but barely") instead of
+  // reading as black void. Way better than cranking global ambient,
+  // which would flatten the warm/cool torch contrast.
+  const wallEmissive  = 0x0a0805;
+  const floorEmissive = 0x06050a;
+  const ceilEmissive  = 0x040303;
+  const emissiveBoost = 1.0;
+
   const wallBase = new THREE.MeshStandardMaterial({
     color: flat ? 0x2a221c : CONFIG.WALL_COLOR,
     roughness: 0.95,
     metalness: 0.0,
     flatShading: flat,
     vertexColors: true,   // per-vertex tint jitter breaks up uniform surfaces
+    emissive: wallEmissive,
+    emissiveIntensity: emissiveBoost,
   });
   const floorBase = new THREE.MeshStandardMaterial({
     color: flat ? 0x1a1410 : CONFIG.FLOOR_COLOR,
@@ -32,12 +43,16 @@ export function buildMaterials(style: Style): StyleMaterials {
     metalness: 0.0,
     flatShading: flat,
     vertexColors: true,
+    emissive: floorEmissive,
+    emissiveIntensity: emissiveBoost,
   });
   const ceilingBase = new THREE.MeshStandardMaterial({
     color: CONFIG.CEILING_COLOR,
     roughness: 1.0,
     metalness: 0.0,
     flatShading: flat,
+    emissive: ceilEmissive,
+    emissiveIntensity: emissiveBoost,
   });
 
   // For STONE style: inject a procedural noise+mortar shader on the wall/floor
