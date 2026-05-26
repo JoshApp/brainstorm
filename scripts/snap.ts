@@ -2,21 +2,19 @@
  * Snap CLI — headless screenshot of the game in a given scenario.
  *
  * Usage:
- *   npm run snap                 (defaults to "spawn")
+ *   npm run snap                              (defaults to "spawn", desktop viewport)
  *   npm run snap enemy-close
- *   npm run snap death
- *   npm run snap sword-strike
- *   npm run snap spawn --port=5180  (use a different port)
+ *   npm run snap inventory phone              (phone-landscape viewport)
+ *   npm run snap inventory phone-portrait
+ *   npm run snap inventory tablet
+ *   npm run snap inventory desktop
+ *   npm run snap spawn --port=5180            (use a different port)
  *
- * Output: /tmp/snap-<scenario>.png
+ * Output: /tmp/snap-<scenario>.png            (or -<viewport>.png if non-default)
  *
- * Flow:
- *   1. Spawn `vite` dev server on a free port
- *   2. Wait for it to bind
- *   3. Open headless Chromium at /brainstorm/?scenario=<name>
- *   4. Wait for the scene to settle
- *   5. Take a viewport screenshot (default: phone landscape, 1280x600)
- *   6. Clean up
+ * Use the viewport presets to iterate on mobile UI without guessing —
+ * the inventory panel needs different framing on a 392-tall phone vs
+ * a 600-tall laptop window.
  */
 
 import { chromium } from 'playwright';
@@ -27,22 +25,46 @@ import { dirname } from 'node:path';
 // Pre-installed by the sandbox; Playwright's normal browser download is blocked.
 const CHROMIUM_PATH = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 
-const VIEWPORT = { width: 1280, height: 600 }; // phone landscape-ish
+// Viewport presets. Realistic mobile/tablet sizes so the snap previews
+// match what Josh actually sees on his phone.
+const VIEWPORTS: Record<string, { width: number; height: number; deviceScaleFactor?: number }> = {
+  // Default — laptop window, what we've been snapping all along.
+  desktop:          { width: 1280, height: 600 },
+  // iPhone 14 Pro effective landscape (390 × 844 portrait → 844 × 390 landscape;
+  // the safe area between notches narrows usable space slightly).
+  phone:            { width: 844,  height: 390 },
+  // iPhone 14 Pro portrait — to test the rotate-warning + portrait UX.
+  'phone-portrait': { width: 390,  height: 844 },
+  // Slightly larger phone (Pixel 7) landscape.
+  'phone-large':    { width: 915,  height: 412 },
+  // iPad mini landscape.
+  tablet:           { width: 1024, height: 768 },
+};
 
 // Scenarios that need extra wait time (animations playing out)
 const LONG_WAIT_SCENARIOS = new Set(['death']);
 
 async function main() {
   const scenario = process.argv[2] || 'spawn';
-  // Random port per run so stale vite processes from previous failed runs
-  // don't collide. Range 5180-5280.
+
+  // Optional viewport name as the 3rd positional arg.
+  const viewportArg = process.argv[3] && !process.argv[3].startsWith('--') ? process.argv[3] : 'desktop';
+  const viewport = VIEWPORTS[viewportArg];
+  if (!viewport) {
+    console.error(`Unknown viewport "${viewportArg}". Available: ${Object.keys(VIEWPORTS).join(', ')}`);
+    process.exit(1);
+  }
+  console.log(`Viewport: ${viewportArg} ${viewport.width}×${viewport.height}`);
+
   const port = Number(
     process.argv.find((a) => a.startsWith('--port='))?.split('=')[1] ??
       String(5180 + Math.floor(Math.random() * 100)),
   );
   const outDir = '/tmp';
   if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-  const outPath = `${outDir}/snap-${scenario}.png`;
+  // Suffix with viewport name unless it's the default desktop.
+  const suffix = viewportArg === 'desktop' ? '' : `-${viewportArg}`;
+  const outPath = `${outDir}/snap-${scenario}${suffix}.png`;
 
   if (!existsSync(CHROMIUM_PATH)) {
     console.error(`Chromium binary not found at ${CHROMIUM_PATH}`);
@@ -94,7 +116,7 @@ async function main() {
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader'],
     });
 
-    const context = await browser.newContext({ viewport: VIEWPORT });
+    const context = await browser.newContext({ viewport });
     const page = await context.newPage();
 
     const url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}`;

@@ -193,8 +193,7 @@ function rebuildPanel() {
   panel.replaceChildren();
 
   panel.appendChild(buildHeader());
-  panel.appendChild(buildThreeColumns());
-  panel.appendChild(buildDetailsRow());
+  panel.appendChild(buildFourColumns());
 }
 
 // ── Header ───────────────────────────────────────────────────────────
@@ -226,18 +225,24 @@ function buildHeader(): HTMLDivElement {
 }
 
 // ── Three columns: stats | doll | bag ────────────────────────────────
-function buildThreeColumns(): HTMLDivElement {
+// Landscape-phone-friendly: every region is side-by-side so we never run
+// out of vertical space. The details column on the far right is ALWAYS
+// visible — EQUIP / UNEQUIP / USE buttons never get cut off the bottom.
+function buildFourColumns(): HTMLDivElement {
   const grid = document.createElement('div');
   Object.assign(grid.style, {
     display: 'grid',
-    gridTemplateColumns: '0.5fr 0.9fr 1.1fr',
+    gridTemplateColumns: '0.55fr 0.9fr 1fr 1.25fr',
     gap: '10px',
     alignItems: 'stretch',
+    flex: '1',
+    minHeight: '0',
   } as Partial<CSSStyleDeclaration>);
 
   grid.appendChild(buildStatsColumn());
   grid.appendChild(buildDollColumn());
   grid.appendChild(buildBagColumn());
+  grid.appendChild(buildDetailsColumn());
   return grid;
 }
 
@@ -536,50 +541,67 @@ function buildBagCell(item: ItemSpec, count: number): HTMLDivElement {
   return cell;
 }
 
-// ── Details row (selected item) ──────────────────────────────────────
-// Compact horizontal layout: [big thumbnail] [name + flavor + effects]
-// [action button]. Always visible; shows a hint message when nothing
-// is selected. Designed to be readable on a landscape-phone-sized panel.
-function buildDetailsRow(): HTMLDivElement {
-  const row = document.createElement('div');
-  Object.assign(row.style, {
-    minHeight: '88px',
+// ── Details column (selected item) ────────────────────────────────────
+// 4th column on the right — vertical layout so it fits landscape phone
+// without exceeding the panel height. Always visible (with a hint when
+// nothing is selected). Layout top-to-bottom:
+//
+//   [section label "DETAILS"]
+//   [big thumbnail]   [name+meta]
+//   [flavor text]
+//   [bulleted effects]
+//   [EQUIP / UNEQUIP / USE button]   <- always at the bottom
+function buildDetailsColumn(): HTMLDivElement {
+  const col = document.createElement('div');
+  Object.assign(col.style, {
+    display: 'flex', flexDirection: 'column', gap: '6px',
+    minWidth: '0',
+  } as Partial<CSSStyleDeclaration>);
+  col.appendChild(sectionLabel('DETAILS'));
+
+  const card = document.createElement('div');
+  Object.assign(card.style, {
+    flex: '1',
+    minHeight: '0',
     background: CARD_BG,
     border: '1px solid rgba(120, 90, 60, 0.4)',
     borderRadius: '3px',
-    padding: '10px 12px',
+    padding: '8px 10px',
+    display: 'flex', flexDirection: 'column', gap: '6px',
+    overflowY: 'auto',
   } as Partial<CSSStyleDeclaration>);
 
   if (!selection) {
     const hint = document.createElement('div');
-    hint.textContent = 'TAP AN ITEM IN THE BAG OR A FILLED SLOT TO INSPECT';
+    hint.textContent = 'TAP AN ITEM TO INSPECT';
     Object.assign(hint.style, {
       color: TEXT_FAINT, fontSize: '10px',
       letterSpacing: '0.22em', textAlign: 'center',
-      padding: '24px 0',
+      padding: '40px 0', margin: 'auto',
     } as Partial<CSSStyleDeclaration>);
-    row.appendChild(hint);
-    return row;
+    card.appendChild(hint);
+    col.appendChild(card);
+    return col;
   }
 
   const item = selection.item;
-  Object.assign(row.style, {
-    display: 'grid',
-    gridTemplateColumns: 'auto 1fr auto',
-    gap: '12px',
-    alignItems: 'stretch',
+
+  // Top row: small thumbnail + name+meta side-by-side.
+  const top = document.createElement('div');
+  Object.assign(top.style, {
+    display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px',
+    alignItems: 'center',
   } as Partial<CSSStyleDeclaration>);
 
-  // Left: big thumbnail on a dark plinth.
   const thumb = document.createElement('div');
   Object.assign(thumb.style, {
-    width: '76px', height: '76px',
+    width: '50px', height: '50px',
     background: 'rgba(20, 14, 10, 0.7)',
     border: `1.5px solid ${hexCss(RARITY_COLORS[item.rarity ?? 'mundane'])}`,
     borderRadius: '3px',
-    boxShadow: `0 0 10px ${hexCss(RARITY_COLORS[item.rarity ?? 'mundane'])}55`,
+    boxShadow: `0 0 8px ${hexCss(RARITY_COLORS[item.rarity ?? 'mundane'])}55`,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    alignSelf: 'center',
+    flexShrink: '0',
   } as Partial<CSSStyleDeclaration>);
   const img = document.createElement('img');
   img.src = getItemThumbnail(item);
@@ -589,72 +611,68 @@ function buildDetailsRow(): HTMLDivElement {
   } as Partial<CSSStyleDeclaration>);
   thumb.appendChild(img);
 
-  // Center: name + flavor + bulleted effects, compact.
-  const text = document.createElement('div');
-  Object.assign(text.style, {
-    display: 'flex', flexDirection: 'column', gap: '3px',
-    overflow: 'hidden', minWidth: '0',
-  } as Partial<CSSStyleDeclaration>);
-  text.appendChild(buildDetailsHeader(item));
-  for (const line of describeItem(item)) text.appendChild(line);
+  top.append(thumb, buildDetailsHeader(item));
+  card.appendChild(top);
 
-  // Right: action button.
-  const actionWrap = document.createElement('div');
-  Object.assign(actionWrap.style, {
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  } as Partial<CSSStyleDeclaration>);
-  actionWrap.appendChild(buildDetailsAction(selection));
+  const flavor = buildFlavorLine(item);
+  if (flavor) card.appendChild(flavor);
 
-  row.append(thumb, text, actionWrap);
-  return row;
+  for (const line of describeItem(item)) card.appendChild(line);
+
+  // Spacer + action at the bottom. Pinning the button to the bottom of
+  // the column means it's always in the same place (predictable target).
+  const spacer = document.createElement('div');
+  spacer.style.flex = '1';
+  card.appendChild(spacer);
+
+  card.appendChild(buildDetailsAction(selection));
+  col.appendChild(card);
+  return col;
 }
 
 function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
+  // Stacked vertical: rarity·kind meta on top, name underneath. Sits
+  // beside the thumbnail in the narrow details column.
   const wrap = document.createElement('div');
   Object.assign(wrap.style, {
-    display: 'flex', flexDirection: 'column', gap: '4px',
-    borderBottom: '1px solid rgba(120, 90, 60, 0.3)', paddingBottom: '6px',
-  } as Partial<CSSStyleDeclaration>);
-
-  const head = document.createElement('div');
-  Object.assign(head.style, {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-    gap: '12px',
+    display: 'flex', flexDirection: 'column', gap: '2px',
+    minWidth: '0',
   } as Partial<CSSStyleDeclaration>);
 
   const rarity = item.rarity ?? 'mundane';
   const rarityHex = hexCss(RARITY_COLORS[rarity]);
 
-  const name = document.createElement('div');
-  name.textContent = item.name;
-  Object.assign(name.style, {
-    fontSize: '15px', color: rarityHex,
-    fontFamily: 'Georgia, "Times New Roman", serif', fontStyle: 'italic',
-    fontWeight: '500',
-  } as Partial<CSSStyleDeclaration>);
-
   const meta = document.createElement('div');
   meta.textContent = `${rarity.toUpperCase()} · ${item.kind.toUpperCase()}`;
   Object.assign(meta.style, {
-    fontSize: '10px', color: TEXT_DIM, letterSpacing: '0.25em',
-    flexShrink: '0', whiteSpace: 'nowrap',
+    fontSize: '9px', color: TEXT_DIM, letterSpacing: '0.22em',
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   } as Partial<CSSStyleDeclaration>);
 
-  head.append(name, meta);
-  wrap.appendChild(head);
+  const name = document.createElement('div');
+  name.textContent = item.name;
+  Object.assign(name.style, {
+    fontSize: '13px', color: rarityHex,
+    fontFamily: 'Georgia, "Times New Roman", serif', fontStyle: 'italic',
+    fontWeight: '500', lineHeight: '1.2',
+  } as Partial<CSSStyleDeclaration>);
 
-  if (item.flavor) {
-    const flavor = document.createElement('div');
-    flavor.textContent = item.flavor;
-    Object.assign(flavor.style, {
-      fontSize: '11px', color: TEXT_DIM, fontStyle: 'italic',
-      fontFamily: 'Georgia, "Times New Roman", serif',
-      lineHeight: '1.3',
-    } as Partial<CSSStyleDeclaration>);
-    wrap.appendChild(flavor);
-  }
-
+  wrap.append(meta, name);
   return wrap;
+}
+
+/** Italic in-world flavor line — rendered between the header row and the effects bullets. */
+function buildFlavorLine(item: ItemSpec): HTMLDivElement | null {
+  if (!item.flavor) return null;
+  const flavor = document.createElement('div');
+  flavor.textContent = item.flavor;
+  Object.assign(flavor.style, {
+    fontSize: '11px', color: TEXT_DIM, fontStyle: 'italic',
+    fontFamily: 'Georgia, "Times New Roman", serif',
+    lineHeight: '1.3',
+    borderTop: '1px solid rgba(120, 90, 60, 0.3)', paddingTop: '4px',
+  } as Partial<CSSStyleDeclaration>);
+  return flavor;
 }
 
 function buildDetailsAction(sel: NonNullable<Selection>): HTMLButtonElement {
@@ -709,8 +727,8 @@ function buildDetailsAction(sel: NonNullable<Selection>): HTMLButtonElement {
 
   btn.textContent = label;
   Object.assign(btn.style, {
-    padding: '14px 22px',
-    minWidth: '88px',
+    width: '100%',
+    padding: '12px 14px',
     background: label === 'WEAPON LOCKED' ? 'rgba(60, 40, 20, 0.4)' : 'rgba(160, 90, 40, 0.85)',
     border: label === 'WEAPON LOCKED' ? '1px solid rgba(120, 80, 50, 0.3)' : '1px solid rgba(255, 200, 120, 0.85)',
     borderRadius: '3px',
