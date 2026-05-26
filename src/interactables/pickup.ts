@@ -8,6 +8,7 @@ import { getTexture } from '../style/procedural-textures';
 import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
 import { playLootLand, playPickupChime } from '../audio/sfx';
 import { emit } from '../broadcast/event-bus';
+import { getActiveLevel } from '../level/loader';
 
 // Rarity → audio "preciousness" index. Mundane is dull, fabled is bright.
 const RARITY_INDEX: Record<Rarity, number> = {
@@ -210,9 +211,27 @@ export function createPickup(
     tick(dt: number) {
       if (mode === 'flying') {
         vy += GRAVITY * dt;
-        itemX += vx * dt;
+        const nextX = itemX + vx * dt;
+        const nextZ = itemZ + vz * dt;
+        // Wall check: if the proposed XZ would leave the walkable region,
+        // BOUNCE off (damped) instead of phasing through. Compares world
+        // pos (pos + local) against the active level's walkable; small
+        // collision radius so an item can land tight against a wall but
+        // not pass through one. Vertical motion is unaffected.
+        const walkable = getActiveLevel()?.walkable;
+        const worldNextX = pos.x + nextX;
+        const worldNextZ = pos.z + nextZ;
+        if (!walkable || walkable.contains(worldNextX, worldNextZ, 0.05)) {
+          itemX = nextX;
+          itemZ = nextZ;
+        } else {
+          // Hit a wall mid-flight — flip horizontal velocity components
+          // and damp. The item ricochets back toward the room. Don't
+          // advance itemX/Z this frame; next frame retries from current.
+          vx *= -0.35;
+          vz *= -0.35;
+        }
         itemY += vy * dt;
-        itemZ += vz * dt;
         // Faster spin in the air sells the toss.
         built.group.rotation.y += ROTATE_SPEED * FLIGHT_SPIN_MUL * dt;
         built.group.rotation.x += ROTATE_SPEED * FLIGHT_SPIN_MUL * 0.6 * dt;

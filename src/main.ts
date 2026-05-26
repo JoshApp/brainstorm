@@ -43,6 +43,7 @@ import { PASSIVES } from './content/passives';
 import { setupPwaAutoUpdate } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
 import { initPickupLightPool } from './interactables/pickup';
+import { initSelectionRing, updateSelectionRing } from './interactables/selection-ring';
 import { createUseButton, setUseButtonVisible, setInteractAction, consumeUsePressed } from './controls/use-button';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar, updateHpBar } from './ui/hp-bar';
@@ -209,6 +210,10 @@ warmupContent(renderer);
 // fixed-count pool sidesteps that entirely.
 initPickupLightPool(scene);
 
+// Selection ring — billboarded glow under the in-range interactable.
+// Single mesh, moves to the active target each frame.
+initSelectionRing(scene);
+
 // Run-state listeners — kill counter, items-found set, autosave on
 // floor:loaded events. Wired before any level load so the initial
 // floor entry is captured.
@@ -312,6 +317,9 @@ function tick() {
   const inRange = (isDying() || isAnyScreenOpen()) ? null : getInRangeInteractable();
   setInteractAction(inRange ? inRange.promptLabel : null);
   setUseButtonVisible(!!inRange);
+  // Selection ring follows the in-range interactable. realDt (not scaled)
+  // so the pulse animates at real-time even during hit-pause / scenarios.
+  updateSelectionRing(inRange, realDt);
 
   // HUD — poll-based; cheap and always accurate. Runs even when the
   // world is paused so the player can see HP / buff state in menus
