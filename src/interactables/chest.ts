@@ -5,6 +5,7 @@ import { CHEST } from '../content/chest';
 import type { ItemSpec } from '../content/items';
 import { registerInteractable } from './system';
 import { createPickup } from './pickup';
+import { playChestOpen } from '../audio/sfx';
 
 // Chest interactable. Two states: closed (default) and open.
 //
@@ -45,6 +46,7 @@ export function spawnChest(
       state = 'opening';
       openTimer = 0;
       interactable.promptLabel = '';
+      playChestOpen();
     },
     tick(dt: number) {
       if (state === 'opening' && hinge) {

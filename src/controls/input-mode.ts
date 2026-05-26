@@ -15,6 +15,8 @@
 // onMenuStateChanged; the input-mode module owns its own shared full-
 // screen backdrop that fades in/out automatically.
 
+import { playMenuOpen, playMenuClose } from '../audio/sfx';
+
 const openMenus = new Set<string>();
 const listeners = new Set<() => void>();
 const dismissListeners = new Set<() => void>();
@@ -37,14 +39,17 @@ export function onDismissRequest(fn: () => void): () => void {
 
 /** Mark a menu as open. Idempotent; multiple opens of the same id stack as one. */
 export function openMenu(id: string) {
+  const wasNew = !openMenus.has(id);
   const wasEmpty = openMenus.size === 0;
   openMenus.add(id);
+  if (wasNew) playMenuOpen();
   if (wasEmpty) notify();
 }
 
 /** Mark a menu as closed. World only resumes once the set is empty. */
 export function closeMenu(id: string) {
   const had = openMenus.delete(id);
+  if (had) playMenuClose();
   if (had && openMenus.size === 0) notify();
 }
 

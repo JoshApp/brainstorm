@@ -15,6 +15,15 @@ import { buildModel } from '../ecs/build-model';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, type DamageEvent } from '../combat/damage';
+import { playEnemyDeath, playEnemyWindup, type EnemyDeathSize } from '../audio/sfx';
+
+// Map an EnemySpec → audio size bucket. Used by death + windup sounds so
+// big mobs sound big and the wraith reads as spectral, not physical.
+function audioSizeFor(spec: EnemySpec): EnemyDeathSize {
+  if (spec.id === 'wraith') return 'spectral';
+  if (spec.id === 'rat') return 'small';
+  return 'medium';
+}
 
 // Enemy = a mob driven by its EnemySpec.
 //
@@ -172,6 +181,7 @@ export function createEnemy(
       aliveLocal = false;
       clearEntityCombatStats(entityId);
       destroyEntity(entityId);
+      playEnemyDeath(audioSizeFor(spec));
       // Drop table: each entry rolls independently. Multiple successful
       // drops are spread in a small arc around the death position so they
       // don't stack on the same pixel.
@@ -274,6 +284,7 @@ export function createEnemy(
           phaseTimer = 0;
           strikeAlreadyHit = false;
           rollWindupTime();
+          playEnemyWindup(audioSizeFor(spec));
         }
         setEyeFlare(0);
         applyTilt(0);

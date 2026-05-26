@@ -3,6 +3,7 @@ import { healPlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
+import { playHealSlurp, playBuffApply } from '../audio/sfx';
 
 // Consumable hotbar — small horizontal row of buttons on the left edge of
 // the screen, above the joystick zone. One button per consumable type the
@@ -150,6 +151,7 @@ function useConsumable(item: ItemSpec) {
   if (item.consumableHeal != null) {
     if (getPlayerHp() >= getPlayerMaxHp()) return;
     healPlayer(item.consumableHeal);
+    playHealSlurp();
     removeItem(item.id);
     return;
   }
@@ -160,6 +162,7 @@ function useConsumable(item: ItemSpec) {
     if (player) {
       applyBuff(player, item.consumableBuff.buffId, item.consumableBuff.duration);
     }
+    playBuffApply();
     removeItem(item.id);
     return;
   }

@@ -22,7 +22,7 @@ import { createStyleSwitcher } from './ui/style-switcher';
 import { createSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings } from './settings/settings';
-import { setMasterVolume } from './audio/sfx';
+import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
 import { buildLevel } from './level/builder';
 import { LEVEL_1 } from './level/specs';
 import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
@@ -155,6 +155,21 @@ createInventoryPanel();
 // applied at boot (not just when the slider next moves).
 setMasterVolume(getSettings().masterVolume);
 
+// Start ambient loops (torch crackle bed + room drone) on the very first
+// user gesture — AudioContext can't run before the user has touched the
+// page, so we attach a one-shot listener that fires startAmbience once.
+{
+  const startOnce = () => {
+    startAmbience();
+    window.removeEventListener('pointerdown', startOnce);
+    window.removeEventListener('touchstart', startOnce);
+    window.removeEventListener('keydown', startOnce);
+  };
+  window.addEventListener('pointerdown', startOnce, { once: true });
+  window.addEventListener('touchstart', startOnce, { once: true });
+  window.addEventListener('keydown', startOnce, { once: true });
+}
+
 // Pre-warm: build/render every drop + enemy model once at boot so the first
 // kill in-game doesn't pay shader-compile / JIT cost mid-fight. Also primes
 // the item-thumbnail cache so the first inventory rebuild after a pickup is
@@ -212,6 +227,19 @@ function tick() {
     }
 
     for (const t of level.torches) updateTorchlight(t, scaledDt);
+
+    // Ambient torch crackle volume — sum of (1 - dist/range) across all
+    // torches in earshot. More torches nearby = louder bed. Clamped inside
+    // setTorchProximity. Single shared crackle source, so this is cheap.
+    let prox = 0;
+    const earRange = 6;
+    for (const t of level.torches) {
+      const dx = t.light.position.x - camera.position.x;
+      const dz = t.light.position.z - camera.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d < earRange) prox += 1 - d / earRange;
+    }
+    setTorchProximity(prox);
 
     const attackPressed = isDying() ? false : consumeAttackPressed();
     combat.tick(attackPressed);

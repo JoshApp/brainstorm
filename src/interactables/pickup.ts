@@ -5,7 +5,13 @@ import { registerInteractable } from './system';
 import { addItem, removeItem, addItemSilently } from '../player/inventory';
 import { tryAutoEquip, equipFromInventory } from '../player/equipment';
 import { getTexture } from '../style/procedural-textures';
-import { RARITY_COLORS, type ItemSpec } from '../content/items';
+import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
+import { playLootLand, playPickupChime } from '../audio/sfx';
+
+// Rarity → audio "preciousness" index. Mundane is dull, fabled is bright.
+const RARITY_INDEX: Record<Rarity, number> = {
+  mundane: 0, uncommon: 1, rare: 2, cursed: 3, fabled: 4,
+};
 
 // Pickup interactable: a loot model on the floor that the player can walk up
 // to and TAKE. The model bobs + rotates; an attached PointLight + floor
@@ -71,6 +77,9 @@ export function createPickup(
   built.group.position.y = Math.max(0, 0.35 - pos.y);  // float above the floor disc
   pickupGroup.add(built.group);
 
+  // Loot landing — the small thump as the item hits the floor.
+  playLootLand();
+
   const baseItemY = built.group.position.y;
   let t = 0;
   const id = generateEntityId('pickup');
@@ -81,6 +90,8 @@ export function createPickup(
     radius: 1.0,
     promptLabel: 'TAKE',
     onUse() {
+      // Pickup chime — rarity-tinted (mundane low/dull, fabled high/long).
+      playPickupChime(RARITY_INDEX[item.rarity ?? 'mundane']);
       // Inventory addition + auto-equip routing. The notification toast
       // listens for the addItem event; equipment routing decides whether
       // to keep the item in the bag.

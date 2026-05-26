@@ -4,6 +4,7 @@ import type { InputState } from './input';
 import type { WalkableRegion } from '../level/walkable';
 import type { Enemy } from '../mobs/enemy';
 import { getSettings } from '../settings/settings';
+import { playFootstep } from '../audio/sfx';
 
 // Simple first-person camera with yaw/pitch and walking movement.
 // Movement is constrained by a WalkableRegion (rooms + corridors minus
@@ -12,9 +13,13 @@ import { getSettings } from '../settings/settings';
 // authoritative collision data.
 
 const PLAYER_RADIUS = 0.3;
+// Distance between footsteps in meters. Tuned so a normal walking pace
+// hits ~1.5 steps/sec at MOVE_SPEED (feels right at the listening ear).
+const STEP_DISTANCE = 1.05;
 
 let yaw = 0;
 let pitch = 0;
+let distanceSinceStep = 0;
 
 export function createFirstPersonCamera(): THREE.PerspectiveCamera {
   return new THREE.PerspectiveCamera(
@@ -76,8 +81,18 @@ export function updateCamera(
         resolved.x, resolved.z,
         enemies,
       );
+      const stepDx = finalPos.x - camera.position.x;
+      const stepDz = finalPos.z - camera.position.z;
       camera.position.x = finalPos.x;
       camera.position.z = finalPos.z;
+
+      // Footstep accumulator — fires once per STEP_DISTANCE actually moved
+      // (so colliding with a wall doesn't trigger footsteps in place).
+      distanceSinceStep += Math.hypot(stepDx, stepDz);
+      if (distanceSinceStep >= STEP_DISTANCE) {
+        distanceSinceStep -= STEP_DISTANCE;
+        playFootstep();
+      }
     }
   }
 

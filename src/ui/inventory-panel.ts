@@ -14,6 +14,7 @@ import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
 import { openMenu, closeMenu, onDismissRequest } from '../controls/input-mode';
+import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 
@@ -689,11 +690,13 @@ function buildDetailsAction(sel: NonNullable<Selection>): HTMLButtonElement {
         if (item.consumableHeal != null) {
           if (getPlayerHp() < getPlayerMaxHp()) {
             healPlayer(item.consumableHeal);
+            playHealSlurp();
             removeItem(item.id);
           }
         } else if (item.consumableBuff) {
           const player = get('player');
           if (player) applyBuff(player, item.consumableBuff.buffId, item.consumableBuff.duration);
+          playBuffApply();
           removeItem(item.id);
         }
         selection = null;
@@ -706,6 +709,7 @@ function buildDetailsAction(sel: NonNullable<Selection>): HTMLButtonElement {
         const previous = equipFromInventory(item);
         removeItem(item.id);
         if (previous) addItemSilently(previous.id);
+        playEquipClick();
         selection = null;
         rebuildPanel();
       };
@@ -720,6 +724,7 @@ function buildDetailsAction(sel: NonNullable<Selection>): HTMLButtonElement {
       onClick = () => {
         const unequipped = unequipSlot(sel.slotId);
         if (unequipped) addItemSilently(unequipped.id);
+        playEquipClick();
         selection = null;
         rebuildPanel();
       };

@@ -143,6 +143,569 @@ export function playPlayerHurt() {
   lfo.stop(now + duration);
 }
 
+// ── Enemy death — per-size variant ─────────────────────────────────────
+// Three size buckets:
+//   small    rat / skitterer — squeal + light thud
+//   medium   ghoul / skirmisher — low groan + collapse
+//   spectral wraith — ethereal wail + dissolve hiss
+
+export type EnemyDeathSize = 'small' | 'medium' | 'spectral';
+
+export function playEnemyDeath(size: EnemyDeathSize = 'medium') {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  if (size === 'small') {
+    // Rodent squeal + tiny thud
+    const sq = c.createOscillator();
+    sq.type = 'sawtooth';
+    sq.frequency.setValueAtTime(900, now);
+    sq.frequency.exponentialRampToValueAtTime(420, now + 0.18);
+    const sqg = c.createGain();
+    sqg.gain.setValueAtTime(0.0001, now);
+    sqg.gain.exponentialRampToValueAtTime(0.32, now + 0.01);
+    sqg.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
+    const sqf = c.createBiquadFilter();
+    sqf.type = 'lowpass'; sqf.frequency.value = 1800;
+    sq.connect(sqf).connect(sqg).connect(master);
+    sq.start(now); sq.stop(now + 0.22);
+
+    // Tiny thud
+    const thud = c.createOscillator();
+    thud.type = 'sine';
+    thud.frequency.setValueAtTime(120, now + 0.04);
+    thud.frequency.exponentialRampToValueAtTime(55, now + 0.16);
+    const tg = c.createGain();
+    tg.gain.setValueAtTime(0.0001, now + 0.04);
+    tg.gain.exponentialRampToValueAtTime(0.35, now + 0.05);
+    tg.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    thud.connect(tg).connect(master);
+    thud.start(now + 0.04); thud.stop(now + 0.20);
+    return;
+  }
+
+  if (size === 'spectral') {
+    // Ethereal wail + dissolve hiss
+    const wail = c.createOscillator();
+    wail.type = 'sine';
+    wail.frequency.setValueAtTime(440, now);
+    wail.frequency.exponentialRampToValueAtTime(110, now + 0.7);
+    const wg = c.createGain();
+    wg.gain.setValueAtTime(0.0001, now);
+    wg.gain.exponentialRampToValueAtTime(0.32, now + 0.04);
+    wg.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+    // Detune second osc one fifth up for harmonic glow
+    const wail2 = c.createOscillator();
+    wail2.type = 'sine';
+    wail2.frequency.setValueAtTime(660, now);
+    wail2.frequency.exponentialRampToValueAtTime(165, now + 0.7);
+    const wg2 = c.createGain();
+    wg2.gain.setValueAtTime(0.0001, now);
+    wg2.gain.exponentialRampToValueAtTime(0.14, now + 0.05);
+    wg2.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+    wail.connect(wg).connect(master);
+    wail2.connect(wg2).connect(master);
+    wail.start(now); wail.stop(now + 0.8);
+    wail2.start(now); wail2.stop(now + 0.8);
+
+    // Dissolve hiss — long noise tail with downward filter sweep
+    const hissDur = 0.9;
+    const hb = c.createBuffer(1, Math.floor(c.sampleRate * hissDur), c.sampleRate);
+    const hd = hb.getChannelData(0);
+    for (let i = 0; i < hd.length; i++) hd[i] = (Math.random() * 2 - 1) * 0.4;
+    const hs = c.createBufferSource(); hs.buffer = hb;
+    const hf = c.createBiquadFilter();
+    hf.type = 'bandpass';
+    hf.frequency.setValueAtTime(2400, now);
+    hf.frequency.exponentialRampToValueAtTime(500, now + hissDur);
+    hf.Q.value = 0.8;
+    const hg = c.createGain();
+    hg.gain.setValueAtTime(0.0001, now);
+    hg.gain.exponentialRampToValueAtTime(0.18, now + 0.05);
+    hg.gain.exponentialRampToValueAtTime(0.001, now + hissDur);
+    hs.connect(hf).connect(hg).connect(master);
+    hs.start(now); hs.stop(now + hissDur);
+    return;
+  }
+
+  // Medium — low groan + collapse thud + cloth-rustle noise
+  const groan = c.createOscillator();
+  groan.type = 'sawtooth';
+  groan.frequency.setValueAtTime(150, now);
+  groan.frequency.exponentialRampToValueAtTime(60, now + 0.45);
+  const gf = c.createBiquadFilter();
+  gf.type = 'lowpass';
+  gf.frequency.setValueAtTime(600, now);
+  gf.frequency.exponentialRampToValueAtTime(180, now + 0.45);
+  const gg = c.createGain();
+  gg.gain.setValueAtTime(0.0001, now);
+  gg.gain.exponentialRampToValueAtTime(0.55, now + 0.02);
+  gg.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+  groan.connect(gf).connect(gg).connect(master);
+  groan.start(now); groan.stop(now + 0.5);
+
+  // Collapse thud, delayed slightly
+  const td = 0.18;
+  const thud = c.createOscillator();
+  thud.type = 'sine';
+  thud.frequency.setValueAtTime(110, now + td);
+  thud.frequency.exponentialRampToValueAtTime(38, now + td + 0.22);
+  const tg = c.createGain();
+  tg.gain.setValueAtTime(0.0001, now + td);
+  tg.gain.exponentialRampToValueAtTime(0.7, now + td + 0.005);
+  tg.gain.exponentialRampToValueAtTime(0.001, now + td + 0.25);
+  thud.connect(tg).connect(master);
+  thud.start(now + td); thud.stop(now + td + 0.28);
+}
+
+/** Enemy windup growl — short menacing telegraph as enemy starts winding up.
+ *  Size buckets match playEnemyDeath. */
+export function playEnemyWindup(size: EnemyDeathSize = 'medium') {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  const baseFreq = size === 'small' ? 280 : size === 'spectral' ? 220 : 110;
+  const peakFreq = size === 'small' ? 360 : size === 'spectral' ? 320 : 150;
+  const duration = 0.22;
+
+  const osc = c.createOscillator();
+  osc.type = size === 'spectral' ? 'sine' : 'sawtooth';
+  osc.frequency.setValueAtTime(baseFreq, now);
+  osc.frequency.exponentialRampToValueAtTime(peakFreq, now + duration * 0.7);
+  osc.frequency.exponentialRampToValueAtTime(baseFreq, now + duration);
+
+  const filter = c.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = size === 'spectral' ? 1200 : 500;
+  filter.Q.value = 4;
+
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(size === 'small' ? 0.18 : 0.32, now + 0.04);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  osc.connect(filter).connect(gain).connect(master);
+  osc.start(now); osc.stop(now + duration);
+}
+
+/** Magic strike — wraith hits, distinct from physical impact. Brief bell-like
+ *  chime layered with a sizzle to read as "burn + ring". */
+export function playMagicHit() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  // Bell — two slightly detuned triangles tuned to a minor third for a sour ring
+  const f1 = 660, f2 = 785;
+  for (const f of [f1, f2]) {
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = f;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.22, now + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.58);
+  }
+  // Sizzle — short noise burst, high-passed
+  const sd = 0.22;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * sd), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const s = c.createBufferSource(); s.buffer = b;
+  const f = c.createBiquadFilter();
+  f.type = 'highpass'; f.frequency.value = 2200;
+  const sg = c.createGain();
+  sg.gain.setValueAtTime(0.25, now);
+  sg.gain.exponentialRampToValueAtTime(0.001, now + sd);
+  s.connect(f).connect(sg).connect(master);
+  s.start(now); s.stop(now + sd);
+}
+
+// ── Pickup / item interaction ─────────────────────────────────────────
+
+/** Loot landing on the floor — short tumbly thump. Played when an item
+ *  pickup spawns (after enemy death). */
+export function playLootLand() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  // Thud
+  const thud = c.createOscillator();
+  thud.type = 'sine';
+  thud.frequency.setValueAtTime(90, now);
+  thud.frequency.exponentialRampToValueAtTime(45, now + 0.14);
+  const tg = c.createGain();
+  tg.gain.setValueAtTime(0.0001, now);
+  tg.gain.exponentialRampToValueAtTime(0.35, now + 0.004);
+  tg.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+  thud.connect(tg).connect(master);
+  thud.start(now); thud.stop(now + 0.18);
+
+  // Tiny clink/scrape on top
+  const cd = 0.08;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * cd), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const s = c.createBufferSource(); s.buffer = b;
+  const filt = c.createBiquadFilter();
+  filt.type = 'bandpass'; filt.frequency.value = 3500; filt.Q.value = 2;
+  const sg = c.createGain();
+  sg.gain.value = 0.18;
+  s.connect(filt).connect(sg).connect(master);
+  s.start(now + 0.02); s.stop(now + 0.02 + cd);
+}
+
+/** Pickup chime — when player TAKES an item. Rarity-tinted pitch — better
+ *  rarities ring higher and longer. */
+export function playPickupChime(rarityIndex: number = 0) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  // Map rarity 0..4 (mundane..fabled) to a small set of major-pentatonic notes
+  const notes = [392, 440, 523, 659, 784];  // G4 A4 C5 E5 G5
+  const f = notes[Math.max(0, Math.min(4, rarityIndex))];
+  const tail = 0.32 + rarityIndex * 0.08;
+
+  for (const mul of [1, 2]) {
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = f * mul;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(mul === 1 ? 0.22 : 0.10, now + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.001, now + tail);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + tail + 0.04);
+  }
+}
+
+/** Chest opening — creaky wood hinge: pitch-rising filtered noise. */
+export function playChestOpen() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  const dur = 0.55;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.5;
+  const s = c.createBufferSource(); s.buffer = b;
+  const filt = c.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.setValueAtTime(380, now);
+  filt.frequency.exponentialRampToValueAtTime(900, now + dur);
+  filt.Q.value = 6;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.35, now + 0.04);
+  g.gain.linearRampToValueAtTime(0.15, now + dur * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  s.connect(filt).connect(g).connect(master);
+  s.start(now); s.stop(now + dur);
+
+  // Final thunk as the lid stops
+  const thunk = c.createOscillator();
+  thunk.type = 'sine';
+  thunk.frequency.setValueAtTime(85, now + dur - 0.02);
+  thunk.frequency.exponentialRampToValueAtTime(40, now + dur + 0.12);
+  const tg = c.createGain();
+  tg.gain.setValueAtTime(0.0001, now + dur - 0.02);
+  tg.gain.exponentialRampToValueAtTime(0.32, now + dur - 0.015);
+  tg.gain.exponentialRampToValueAtTime(0.001, now + dur + 0.14);
+  thunk.connect(tg).connect(master);
+  thunk.start(now + dur - 0.02); thunk.stop(now + dur + 0.15);
+}
+
+/** Drinking a potion — wet slurp + glass settle. */
+export function playHealSlurp() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  // Wet gulp — noise modulated by a low oscillator giving a "glub" pulse
+  const dur = 0.35;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    const pulse = 0.5 + 0.5 * Math.sin(i / c.sampleRate * 22);
+    d[i] = (Math.random() * 2 - 1) * 0.4 * pulse;
+  }
+  const s = c.createBufferSource(); s.buffer = b;
+  const filt = c.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.setValueAtTime(900, now);
+  filt.frequency.linearRampToValueAtTime(400, now + dur);
+  filt.Q.value = 2;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.4, now + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  s.connect(filt).connect(g).connect(master);
+  s.start(now); s.stop(now + dur);
+
+  // Glass clink at the end
+  const clinkF = 1800;
+  const ck = c.createOscillator();
+  ck.type = 'triangle';
+  ck.frequency.value = clinkF;
+  const cg = c.createGain();
+  cg.gain.setValueAtTime(0.0001, now + dur);
+  cg.gain.exponentialRampToValueAtTime(0.12, now + dur + 0.005);
+  cg.gain.exponentialRampToValueAtTime(0.001, now + dur + 0.18);
+  ck.connect(cg).connect(master);
+  ck.start(now + dur); ck.stop(now + dur + 0.2);
+}
+
+/** Buff activating — magical shimmer up-glide. Distinct from heal. */
+export function playBuffApply() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  // Two saws gliding up a fifth
+  for (const [start, end, vol] of [[200, 300, 0.16], [400, 600, 0.10]] as const) {
+    const osc = c.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(start, now);
+    osc.frequency.exponentialRampToValueAtTime(end, now + 0.45);
+    const f = c.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(800, now);
+    f.frequency.exponentialRampToValueAtTime(2400, now + 0.45);
+    f.Q.value = 3;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(vol, now + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    osc.connect(f).connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.58);
+  }
+}
+
+// ── UI ────────────────────────────────────────────────────────────────
+
+/** Menu opening — soft paper rustle / fabric flip. */
+export function playMenuOpen() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  const dur = 0.22;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    const env = Math.sin((i / d.length) * Math.PI);
+    d[i] = (Math.random() * 2 - 1) * env * 0.5;
+  }
+  const s = c.createBufferSource(); s.buffer = b;
+  const f = c.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.setValueAtTime(1600, now);
+  f.frequency.linearRampToValueAtTime(2400, now + dur);
+  f.Q.value = 1.5;
+  const g = c.createGain();
+  g.gain.value = 0.22;
+  s.connect(f).connect(g).connect(master);
+  s.start(now); s.stop(now + dur);
+}
+
+/** Menu closing — similar to open but sweeps down. */
+export function playMenuClose() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  const dur = 0.18;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    const env = Math.sin((i / d.length) * Math.PI);
+    d[i] = (Math.random() * 2 - 1) * env * 0.5;
+  }
+  const s = c.createBufferSource(); s.buffer = b;
+  const f = c.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.setValueAtTime(2200, now);
+  f.frequency.linearRampToValueAtTime(1400, now + dur);
+  f.Q.value = 1.5;
+  const g = c.createGain();
+  g.gain.value = 0.18;
+  s.connect(f).connect(g).connect(master);
+  s.start(now); s.stop(now + dur);
+}
+
+/** Equip click — short metal-on-leather clink. */
+export function playEquipClick() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  // Two close metallic transients
+  for (const [t, freq] of [[0, 1400], [0.025, 1900]] as const) {
+    const osc = c.createOscillator();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, now + t);
+    g.gain.exponentialRampToValueAtTime(0.10, now + t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.001, now + t + 0.08);
+    const filt = c.createBiquadFilter();
+    filt.type = 'bandpass'; filt.frequency.value = freq; filt.Q.value = 5;
+    osc.connect(filt).connect(g).connect(master);
+    osc.start(now + t); osc.stop(now + t + 0.10);
+  }
+}
+
+// ── Player death — final stinger ──────────────────────────────────────
+
+/** Player death stinger — slow descending dread tone + low boom. */
+export function playPlayerDeathStinger() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  // Boom
+  const boom = c.createOscillator();
+  boom.type = 'sine';
+  boom.frequency.setValueAtTime(80, now);
+  boom.frequency.exponentialRampToValueAtTime(28, now + 0.9);
+  const bg = c.createGain();
+  bg.gain.setValueAtTime(0.0001, now);
+  bg.gain.exponentialRampToValueAtTime(0.75, now + 0.04);
+  bg.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
+  boom.connect(bg).connect(master);
+  boom.start(now); boom.stop(now + 1.5);
+
+  // Descending dread chord (minor second)
+  for (const [f, vol] of [[220, 0.18], [233, 0.14]] as const) {
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f, now + 0.1);
+    o.frequency.exponentialRampToValueAtTime(f * 0.4, now + 1.6);
+    const filt = c.createBiquadFilter();
+    filt.type = 'lowpass';
+    filt.frequency.setValueAtTime(700, now + 0.1);
+    filt.frequency.exponentialRampToValueAtTime(200, now + 1.6);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, now + 0.1);
+    g.gain.exponentialRampToValueAtTime(vol, now + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+    o.connect(filt).connect(g).connect(master);
+    o.start(now + 0.1); o.stop(now + 1.85);
+  }
+}
+
+/** Footstep on stone — soft scuff. Called once per stride from the camera
+ *  update; pitch slightly randomized so successive steps don't sound robotic. */
+export function playFootstep() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const master = masterGain;
+
+  const dur = 0.12;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    const env = (1 - i / d.length) * (i < 200 ? i / 200 : 1);
+    d[i] = (Math.random() * 2 - 1) * env * 0.5;
+  }
+  const s = c.createBufferSource(); s.buffer = b;
+  const f = c.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.value = 800 + Math.random() * 300;
+  f.Q.value = 1.5;
+  const g = c.createGain();
+  g.gain.value = 0.10;
+  s.connect(f).connect(g).connect(master);
+  s.start(now); s.stop(now + dur);
+}
+
+// ── Ambience: looped torch crackle + room drone ───────────────────────
+
+let crackleSource: AudioBufferSourceNode | null = null;
+let crackleGain: GainNode | null = null;
+let droneGain: GainNode | null = null;
+
+/** Start the looped torch-crackle bed. setTorchProximity controls volume
+ *  based on how close the listener is to torches. Cheap: one source, one
+ *  gain — no per-torch nodes. */
+export function startAmbience() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  if (crackleSource) return;  // already running
+  const master = masterGain;
+
+  // Crackle: 4-second noise loop with bandpass for "fire" character
+  const loopDur = 4.0;
+  const b = c.createBuffer(1, Math.floor(c.sampleRate * loopDur), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    // Sparse random pops + low background
+    const pop = Math.random() < 0.003 ? (Math.random() * 2 - 1) : 0;
+    const hiss = (Math.random() * 2 - 1) * 0.15;
+    d[i] = pop * 0.8 + hiss;
+  }
+  const s = c.createBufferSource();
+  s.buffer = b; s.loop = true;
+  const f = c.createBiquadFilter();
+  f.type = 'bandpass'; f.frequency.value = 2200; f.Q.value = 0.6;
+  crackleGain = c.createGain();
+  crackleGain.gain.value = 0;  // starts silent; setTorchProximity raises it
+  s.connect(f).connect(crackleGain).connect(master);
+  s.start();
+  crackleSource = s;
+
+  // Room drone: slow low oscillator + detuned partner for haunted shimmer
+  droneGain = c.createGain();
+  droneGain.gain.value = 0.05;
+  droneGain.connect(master);
+  for (const [f0, vol] of [[55, 0.6], [82.5, 0.25]] as const) {
+    const o = c.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f0;
+    const og = c.createGain();
+    og.gain.value = vol;
+    // Slow LFO on volume for breathing quality
+    const lfo = c.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.13;
+    const lfoG = c.createGain();
+    lfoG.gain.value = vol * 0.3;
+    lfo.connect(lfoG).connect(og.gain);
+    o.connect(og).connect(droneGain);
+    o.start(); lfo.start();
+  }
+}
+
+/** Adjust torch crackle volume — caller passes a 0..1 proximity factor each
+ *  frame (computed from sum of (1 - dist/range) across all torches, clamped).
+ *  Cheap to call every frame; uses linearRamp for smooth movement. */
+export function setTorchProximity(p: number) {
+  const c = ensureCtx();
+  if (!c || !crackleGain) return;
+  const target = Math.max(0, Math.min(1, p)) * 0.22;  // cap so it's never overwhelming
+  crackleGain.gain.linearRampToValueAtTime(target, c.currentTime + 0.1);
+}
+
 /** Broadcast/achievement chime — bright two-note arpeggio, sci-fi notification feel.
  *  Cool register on purpose to contrast the dungeon's warm sound design. */
 export function playBroadcastChime() {
