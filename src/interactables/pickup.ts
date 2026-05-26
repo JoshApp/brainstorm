@@ -4,34 +4,74 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { addItem, removeItem, addItemSilently } from '../player/inventory';
 import { tryAutoEquip, equipFromInventory } from '../player/equipment';
-import type { ItemSpec } from '../content/items';
+import { getTexture } from '../style/procedural-textures';
+import { RARITY_COLORS, type ItemSpec } from '../content/items';
 
-// Pickup interactable: a loot model floating on the floor that the player
-// can walk up to and TAKE. Takes an ItemSpec (not just a model) so it
-// knows the item id (for inventory tracking + the pickup-notification
-// display name) and whether the item is a weapon that should be equipped
-// on pickup.
+// Pickup interactable: a loot model on the floor that the player can walk up
+// to and TAKE. The model bobs + rotates; an attached PointLight + floor
+// disc tinted by the item's rarity make it visible from a distance — the
+// classic "loot on the dungeon floor" silhouette.
 //
-// The model bobs gently and slowly rotates so it reads as an item-of-
-// interest, not set dressing.
+// Layout:
+//   pickupGroup (root, added to scene; removed on take/destroy)
+//   ├─ floorDisc      flat decal on the floor, doesn't move
+//   ├─ glowLight      PointLight at item-center height, doesn't move
+//   └─ built.group    the actual item geometry, bobs + rotates
 
 const BOB_AMPLITUDE = 0.04;
 const BOB_FREQUENCY = 1.8;
 const ROTATE_SPEED = 0.5;  // rad/s
+
+// Floor-glow disc size + tunings — tweaked so loot is visible from across
+// a room without saturating the immediate area.
+const DISC_SIZE = 0.9;
+const LIGHT_INTENSITY = 3.5;
+const LIGHT_DISTANCE = 2.4;
+const LIGHT_DECAY = 1.6;
 
 export function createPickup(
   scene: THREE.Scene,
   pos: THREE.Vector3,
   item: ItemSpec,
 ) {
-  const built = buildModel(item.dropModel);
-  // Center the item at floor + a small lift so it floats above the ground
-  // (rather than half-buried in the floor mesh).
-  built.group.position.copy(pos);
-  built.group.position.y = Math.max(pos.y, 0.35);
-  scene.add(built.group);
+  const rarityColor = RARITY_COLORS[item.rarity ?? 'mundane'];
 
-  const baseY = built.group.position.y;
+  // Wrap everything in one group so destroy is a single scene.remove().
+  const pickupGroup = new THREE.Group();
+  pickupGroup.position.copy(pos);
+  scene.add(pickupGroup);
+
+  // ── Floor disc — flat plane on the ground, rarity-tinted ───────────
+  const discMat = new THREE.MeshStandardMaterial({
+    map: getTexture('fire-wisp'),
+    color: rarityColor,
+    emissive: rarityColor,
+    emissiveIntensity: 1.2,
+    transparent: true,
+    alphaTest: 0.05,
+    side: THREE.DoubleSide,
+    fog: false,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  const disc = new THREE.Mesh(new THREE.PlaneGeometry(DISC_SIZE, DISC_SIZE), discMat);
+  disc.rotation.x = -Math.PI / 2;
+  disc.position.y = 0.01 - pos.y;  // sit ~1cm above the floor (compensate for parent y)
+  pickupGroup.add(disc);
+
+  // ── Glow light — a small PointLight at item-center height ──────────
+  const glowLight = new THREE.PointLight(rarityColor, LIGHT_INTENSITY, LIGHT_DISTANCE, LIGHT_DECAY);
+  glowLight.position.y = 0.35 - pos.y;
+  pickupGroup.add(glowLight);
+
+  // ── Item model — bobs + rotates ────────────────────────────────────
+  const built = buildModel(item.dropModel);
+  built.group.position.y = Math.max(0, 0.35 - pos.y);  // float above the floor disc
+  pickupGroup.add(built.group);
+
+  const baseItemY = built.group.position.y;
   let t = 0;
   const id = generateEntityId('pickup');
 
@@ -41,34 +81,33 @@ export function createPickup(
     radius: 1.0,
     promptLabel: 'TAKE',
     onUse() {
-      // Always notify (pickup-notification toast + listener UIs) by
-      // calling addItem first, then move the item OUT of the bag if it
-      // was auto-equipped. Weapons always equip; rings/armor only if a
-      // slot is empty; consumables always stay in the bag.
+      // Inventory addition + auto-equip routing. The notification toast
+      // listens for the addItem event; equipment routing decides whether
+      // to keep the item in the bag.
       addItem(item.id);
       if (item.kind === 'weapon') {
         // Weapons always equip on pickup (replace current).
         const previous = equipFromInventory(item);
-        if (previous) addItemSilently(previous.id);   // old weapon back to bag
-        removeItem(item.id);                          // new weapon out of bag
-      } else if (item.kind === 'ring' || item.kind === 'armor') {
-        // Rings/armor auto-equip only if a matching slot is empty.
+        if (previous) addItemSilently(previous.id);
+        removeItem(item.id);
+      } else if (item.kind !== 'consumable') {
+        // All other equipment kinds auto-equip only if a matching slot
+        // is empty (ring + armor + helmet + amulet + gloves + boots +
+        // offhand); falls back to staying in the bag otherwise.
         if (tryAutoEquip(item)) removeItem(item.id);
       }
-      // Weapon viewmodel + combat stats now driven reactively by the
-      // equipment-changed listener in main.ts; no manual call here.
       interactable.destroyed = true;
     },
     tick(dt: number) {
       t += dt;
-      // Bob gently up and down.
-      built.group.position.y = baseY + Math.sin(t * BOB_FREQUENCY) * BOB_AMPLITUDE;
-      // Stand upright; rotate slowly around the world Y axis (like an
-      // item-of-interest in a JRPG).
+      built.group.position.y = baseItemY + Math.sin(t * BOB_FREQUENCY) * BOB_AMPLITUDE;
       built.group.rotation.y += ROTATE_SPEED * dt;
     },
     destroyed: false,
-    built,
+    /** When destroyed, the interactable system removes built.group from
+     *  its parent. We override built.group so that "parent" is the
+     *  pickupGroup itself — removing it cleans up disc + light + item. */
+    built: { ...built, group: pickupGroup },
   };
   registerInteractable(interactable);
 }

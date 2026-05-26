@@ -226,12 +226,14 @@ function tick() {
     setUseButtonVisible(!!inRange);
     if (!isDying() && consumeUsePressed()) pressUse();
 
-    // HUD — poll-based; cheap and always accurate. The consumable bar
-    // rebuilds itself on inventory changes (event-driven), so no per-frame
-    // tick is needed for it.
-    updateHpBar();
-    updateBuffBar();
   }
+
+  // HUD — poll-based; cheap and always accurate. Runs even when the
+  // world is paused so the player can see HP / buff state in menus
+  // and during hit-pause flashes. The consumable bar rebuilds itself
+  // on inventory changes (event-driven), so no per-frame tick.
+  updateHpBar();
+  updateBuffBar();
 
   tickShake(realDt, shakeOffset);
   camera.position.add(shakeOffset);

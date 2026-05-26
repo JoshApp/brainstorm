@@ -1,4 +1,4 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import type { LevelSpec } from '../level/types';
 import type { LiveLevel } from '../level/builder';
 import type { Sword, SwordPhase } from '../player/sword';
@@ -13,6 +13,7 @@ import { applyBuff } from '../ecs/buffs';
 import { ITEMS } from '../content/items';
 import { setSlot, tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
+import { createPickup } from '../interactables/pickup';
 import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
 
 // Predefined game states loadable via ?scenario=name URL param.
@@ -75,6 +76,8 @@ export interface Scenario {
   openInventoryPanel?: boolean;
   /** Pre-select an inventory item id so the details panel shows on snap. */
   selectItemId?: string;
+  /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
+  spawnPickups?: Array<{ itemId: string; x: number; z: number }>;
 }
 
 export const SCENARIOS: Record<string, Scenario> = {
@@ -223,6 +226,29 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
       { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
+  // Pickup floor glow — one of each rarity on the ground in front of the
+  // player so you can see the rarity-tinted disc + light at a glance.
+  pickups: {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: 0.5,
+      lookAt: { x: 0, z: -2, y: 0.3 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+    spawnPickups: [
+      { itemId: 'rusted-sword',         x: -2.2, z: -1.5 }, // mundane (gray)
+      { itemId: 'scimitar',             x: -1.1, z: -1.5 }, // uncommon (green)
+      { itemId: 'ring-of-bloodthirst',  x:  0.0, z: -1.5 }, // rare (blue)
+      { itemId: 'ring-of-frenzy',       x:  1.1, z: -1.5 }, // cursed (violet)
+      { itemId: 'bone-amulet',          x:  2.2, z: -1.5 }, // rare (blue)
     ],
   },
 
@@ -475,6 +501,15 @@ export function applyScenario(
       if (item.kind !== 'consumable' && item.kind !== 'weapon') {
         if (tryAutoEquip(item)) removeItem(id);
       }
+    }
+  }
+
+  if (scenario.spawnPickups) {
+    const scene = ctx.camera.parent as THREE.Scene;
+    for (const p of scenario.spawnPickups) {
+      const item = ITEMS[p.itemId];
+      if (!item) continue;
+      createPickup(scene, new THREE.Vector3(p.x, 0, p.z), item);
     }
   }
 
