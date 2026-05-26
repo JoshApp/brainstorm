@@ -269,9 +269,9 @@ function buildStatsColumn(): HTMLDivElement {
   const baseDamage = weapon.damage;
   const totalDamage = (baseDamage + stats.weaponDamageBonus) * stats.damageMultiplier;
   const damageStr = stats.damageMultiplier !== 1
-    ? `${totalDamage.toFixed(1)}  (${baseDamage}+${stats.weaponDamageBonus} ×${stats.damageMultiplier})`
+    ? `${totalDamage.toFixed(1)}  (${baseDamage}+${stats.weaponDamageBonus} ×${stats.damageMultiplier.toFixed(2)})`
     : stats.weaponDamageBonus > 0
-      ? `${totalDamage}  (${baseDamage}+${stats.weaponDamageBonus})`
+      ? `${totalDamage.toFixed(1)}  (${baseDamage}+${stats.weaponDamageBonus})`
       : `${totalDamage}`;
 
   addStatRow(card, 'HP',         `${getPlayerHp()} / ${getPlayerMaxHp()}`);

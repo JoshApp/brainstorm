@@ -7,6 +7,7 @@ import { createSword } from './player/sword';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
+import { warmupContent } from './content/warmup';
 import { createCombatSystem } from './combat/attack';
 import { consumeAttackPressed } from './controls/attack-input';
 import { isFrozen } from './combat/hit-pause';
@@ -153,6 +154,13 @@ createInventoryPanel();
 // Sync the master volume from persisted settings so saved volume is
 // applied at boot (not just when the slider next moves).
 setMasterVolume(getSettings().masterVolume);
+
+// Pre-warm: build/render every drop + enemy model once at boot so the first
+// kill in-game doesn't pay shader-compile / JIT cost mid-fight. Also primes
+// the item-thumbnail cache so the first inventory rebuild after a pickup is
+// instant. Done after the renderer + level exist; before scenarios so an
+// inventory-open scenario doesn't pay the cost on first frame.
+warmupContent(renderer);
 
 // --- Apply scenario overrides (post-build, AFTER UI is created so
 // scenarios that open panels / give items work correctly).
