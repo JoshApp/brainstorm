@@ -32,7 +32,16 @@ export interface LoaderConfig {
   /** Called after a successful load — main.ts wires up systems that
    *  depend on the per-level data (combat system, walkable region refs). */
   onLoaded: (level: LiveLevel) => void;
+  /**
+   * Optional fallback for ids NOT in the static registry. Used by the
+   * procgen system: when stairs descend to 'depth-3' and depth-3 isn't a
+   * hand-authored entry, the generator produces a fresh LevelSpec.
+   * Receives the depth implied by the id (parsed via parseDepth).
+   */
+  generate?: (id: string, depth: number) => LevelSpec | null;
 }
+
+let generate: LoaderConfig['generate'] = undefined;
 
 /** One-time setup. After this, the loader owns the active level handle. */
 export function initLevelLoader(cfg: LoaderConfig) {
@@ -41,6 +50,7 @@ export function initLevelLoader(cfg: LoaderConfig) {
   camera = cfg.camera;
   levels = cfg.levels;
   onLoaded = cfg.onLoaded;
+  generate = cfg.generate;
 }
 
 /** Get the currently-active level. Null before the first load. */
@@ -71,7 +81,21 @@ export function tickPendingLoad() {
     console.warn('Level loader not initialized');
     return;
   }
-  const spec = levels[id];
+  // Resolve the spec: registry first, then procgen fallback. We compute
+  // the depth-to-be (currentDepth + 1) so the generator can scale
+  // difficulty without needing extra params.
+  let spec = levels[id];
+  if (!spec && generate) {
+    const targetDepth = currentDepth + 1;
+    const generated = generate(id, targetDepth);
+    if (generated) {
+      spec = generated;
+      // Cache the generated spec in the registry so a stairs.targetLevel
+      // that references THIS floor (e.g. for hypothetical future
+      // back-tracking) finds it. Also makes repeated descents idempotent.
+      levels[id] = generated;
+    }
+  }
   if (!spec) {
     // eslint-disable-next-line no-console
     console.warn(`Unknown level id: ${id}`);

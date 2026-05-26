@@ -26,7 +26,8 @@ import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
 import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad } from './level/loader';
-import { startNewRun, adoptSave, loadSave, clearSave } from './state/run-state';
+import { generateFloor } from './level/procgen';
+import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { initRunStateListeners } from './state/run-state-listeners';
 import { showStartScreen } from './ui/start-screen';
 import { addItemSilently, clearInventory } from './player/inventory';
@@ -126,6 +127,16 @@ initLevelLoader({
   onLoaded(level) {
     currentLevel = level as LiveLevel & { checkRoomClear?: () => void };
     setCameraYaw(level.playerSpawn.yaw);
+  },
+  // Procgen fallback — invoked when the stairs target a level id that's
+  // not in the hand-authored LEVELS registry. Each new floor is seeded
+  // from the run's startedAt so resume regenerates the same floors. The
+  // stairs of the generated level point at the next depth, infinitely.
+  generate(id, depth) {
+    const run = getRunState();
+    const runSeed = run?.startedAt ?? Date.now();
+    const nextId = `depth-${depth + 1}`;
+    return generateFloor(depth, runSeed, nextId);
   },
 });
 

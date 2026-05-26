@@ -6,6 +6,7 @@ import { LEVEL_1 } from '../level/specs';
 import { triggerDeath } from '../player/death';
 import { setCameraYaw } from '../controls/camera';
 import { setWorldFrozen } from './freeze';
+import { generateFloor } from '../level/procgen';
 import { debugUseAll, debugTickAll } from '../interactables/system';
 import { damagePlayer } from '../player/health';
 import { get as getEntity } from '../ecs/world';
@@ -479,6 +480,31 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 2, pos: { x: -10, z:  10 } },
       { index: 3, pos: { x:  10, z:  10 } },
     ],
+  },
+
+  // ── Procgen previews ────────────────────────────────────────────
+  // One scenario per template in src/level/templates.ts. Each generates
+  // the same template with a fixed seed so snaps are deterministic.
+  // Use freeze:true for clean static screenshots.
+  'procgen-1': {
+    freeze: true,
+    hideSword: true,
+    level: generateFloor(1, 4242, 'depth-2'),  // template index 0
+  },
+  'procgen-2': {
+    freeze: true,
+    hideSword: true,
+    level: generateFloor(2, 4242, 'depth-3'),  // template index 1
+  },
+  'procgen-3': {
+    freeze: true,
+    hideSword: true,
+    level: generateFloor(3, 4242, 'depth-4'),  // template index 2
+  },
+  'procgen-4': {
+    freeze: true,
+    hideSword: true,
+    level: generateFloor(4, 4242, 'depth-5'),  // template index 3
   },
 
   // Mid-corridor looking down at the spike trap plate.

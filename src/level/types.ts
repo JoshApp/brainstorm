@@ -7,6 +7,12 @@
 
 export type Vec2 = { x: number; z: number };
 
+/**
+ * ASCII tile-map representation of a floor. Each character is one 1m × 1m
+ * cell. See src/level/tilemap.ts for the dictionary + parseTileMap().
+ */
+export type TileMap = readonly string[];
+
 /** Axis-aligned XZ rectangle, defined by center + extents. */
 export type WalkableRect = {
   x: number;
@@ -149,4 +155,11 @@ export type LevelSpec = {
   doors?: DoorSpec[];
   /** Stairs leading to other floors. */
   stairs?: StairsSpec[];
+  /**
+   * Extra wall segments BEYOND the auto-generated room-perimeter walls.
+   * Used by the tile-map parser to express interior walls (between '#'
+   * cells and walkable cells). Each segment becomes a rendered wall
+   * plane AND a collision segment. Segments must be axis-aligned.
+   */
+  extraWalls?: Array<{ ax: number; az: number; bx: number; bz: number; height?: number }>;
 };

@@ -326,6 +326,38 @@ export function buildLevel(
     }
   }
 
+  // --- Extra walls (from tile-map parsing — interior walls inside the
+  //     bounding room rect). Render them as wall meshes + add to
+  //     collision so the player can't walk through them.
+  if (spec.extraWalls) {
+    const defaultH = spec.rooms[0]?.height ?? 3.0;
+    for (const w of spec.extraWalls) {
+      const H = w.height ?? defaultH;
+      const dx = w.bx - w.ax;
+      const dz = w.bz - w.az;
+      const len = Math.hypot(dx, dz);
+      if (len < 0.01) continue;
+      const mesh = new THREE.Mesh(makeJitteredPlane(len, H), materials.wall);
+      mesh.position.set((w.ax + w.bx) / 2, H / 2, (w.az + w.bz) / 2);
+      // Orient: horizontal wall (running along X) faces ±Z; vertical
+      // (running along Z) faces ±X. Single-sided is fine since the
+      // wall is between two cells (one walkable, one solid) and the
+      // mesh is double-rendered as MeshStandardMaterial side='front'
+      // — but we use the wall material as-is.
+      if (Math.abs(dz) < Math.abs(dx)) {
+        // X-running wall — rotate so its normal is ±Z.
+        mesh.rotation.y = 0;
+      } else {
+        // Z-running wall — rotate normal to ±X.
+        mesh.rotation.y = Math.PI / 2;
+      }
+      mesh.receiveShadow = true;
+      mesh.castShadow = true;
+      root.add(mesh);
+      wallSegments.push({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz });
+    }
+  }
+
   // --- Torches ---
   const torches: Torch[] = [];
   for (const t of spec.torches) {

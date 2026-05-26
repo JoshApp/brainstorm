@@ -277,8 +277,18 @@ export const LEVEL_2: LevelSpec = {
     { enemyId: 'rat',        x:  0,   z:  0.5, roomId: 'crypt' },
   ],
 
-  // No stairs yet — LEVEL_2 is the dead-end for now. Future floors plug
-  // their id here.
+  // Stairs to procgen depth-3. The loader's `generate` callback produces a
+  // LevelSpec on demand the first time the player descends.
+  stairs: [
+    {
+      id: 'stairs-down-2',
+      // Tucked against the south wall behind the altar so the player has
+      // to walk past the chest + the enemies to reach them.
+      x: -3.6, z: 3.8,
+      rotY: 0,
+      targetLevel: 'depth-3',
+    },
+  ],
 };
 
 // Registry. The level loader looks up targetLevel against this map.
