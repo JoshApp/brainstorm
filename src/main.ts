@@ -26,6 +26,7 @@ import { buildLevel } from './level/builder';
 import { LEVEL_1 } from './level/specs';
 import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
 import { isWorldFrozen } from './debug/freeze';
+import { isAnyMenuOpen, installMenuBackdrop } from './controls/input-mode';
 import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
@@ -143,6 +144,9 @@ createUseButton();
 createConsumableBar();
 createInteractPrompt();
 createStyleSwitcher();
+// Shared modal backdrop — input-mode handles its own visibility based on
+// what menus are open. Must exist before any menu opens.
+installMenuBackdrop();
 createSettingsMenu();
 createInventoryPanel();
 
@@ -185,9 +189,9 @@ function tick() {
   tickDeath(realDt);
   const scaledDt = realDt * getTimeScale();
 
-  if (isFrozen() || isWorldFrozen()) {
-    // Hit-pause OR scenario freeze: skip all game updates, drain look input
-    // so it doesn't snap if/when we unfreeze.
+  if (isFrozen() || isWorldFrozen() || isAnyMenuOpen()) {
+    // Hit-pause OR scenario freeze OR any menu open: skip all game updates,
+    // drain look input so it doesn't snap if/when we unfreeze.
     input.lookDx = 0;
     input.lookDy = 0;
   } else {

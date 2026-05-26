@@ -13,6 +13,7 @@ import { BUFFS } from '../content/buffs';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
+import { openMenu, closeMenu, onDismissRequest } from '../controls/input-mode';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 
@@ -112,7 +113,7 @@ export function createInventoryPanel() {
     fontSize: '20px',
     lineHeight: '1',
     cursor: 'pointer',
-    zIndex: '15',
+    zIndex: '95',  // above the menu backdrop (90), below panels (100)
     touchAction: 'manipulation',
     userSelect: 'none',
     WebkitUserSelect: 'none',
@@ -151,12 +152,10 @@ export function createInventoryPanel() {
   onInventoryChanged(() => { if (panelOpen) rebuildPanel(); });
   onEquipmentChanged(() => { if (panelOpen) rebuildPanel(); });
 
-  document.addEventListener('click', (e) => {
-    if (!panelOpen) return;
-    if (panel!.contains(e.target as Node)) return;
-    if (openButton!.contains(e.target as Node)) return;
-    closePanel();
-  });
+  // Backdrop tap = close. Routed through input-mode so multiple open
+  // menus (e.g. settings on top of inventory) all close together
+  // cleanly and we don't fight other panels' own outside-click logic.
+  onDismissRequest(() => { if (panelOpen) closePanel(); });
 }
 
 function togglePanel() { panelOpen ? closePanel() : openPanel(); }
@@ -180,12 +179,14 @@ function openPanel() {
   rebuildPanel();
   panel.style.display = 'flex';
   panelOpen = true;
+  openMenu('inventory');   // pause world + bring up backdrop
 }
 function closePanel() {
   if (!panel) return;
   panel.style.display = 'none';
   panelOpen = false;
   selection = null;
+  closeMenu('inventory');  // world resumes if no other menu open
 }
 
 function rebuildPanel() {
