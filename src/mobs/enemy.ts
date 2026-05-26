@@ -188,17 +188,23 @@ export function createEnemy(
       if (spec.drops) {
         const successful = spec.drops.filter(d => Math.random() < (d.chance ?? 1.0));
         const N = successful.length;
+        // Loot fountain — each item pops out of the corpse on its own arc,
+        // settles where it lands. Angles distributed evenly + jittered so
+        // multiple drops spread out instead of clumping.
         successful.forEach((drop, i) => {
           const item = ITEMS[drop.itemId];
           if (!item) return;
           const pos = container.position.clone();
-          if (N > 1) {
-            // Spread N items around a 0.4m circle.
-            const angle = (i / N) * Math.PI * 2;
-            pos.x += Math.cos(angle) * 0.35;
-            pos.z += Math.sin(angle) * 0.35;
-          }
-          createPickup(scene, pos, item);
+          const angle = (N > 1 ? (i / N) * Math.PI * 2 : Math.random() * Math.PI * 2)
+            + (Math.random() - 0.5) * 0.6;
+          const horizontalSpeed = 1.4 + Math.random() * 0.6;
+          const verticalSpeed = 3.6 + Math.random() * 0.5;
+          const launchVel = new THREE.Vector3(
+            Math.cos(angle) * horizontalSpeed,
+            verticalSpeed,
+            Math.sin(angle) * horizontalSpeed,
+          );
+          createPickup(scene, pos, item, { velocity: launchVel });
         });
       }
       scene.remove(container);

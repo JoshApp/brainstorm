@@ -83,14 +83,35 @@ function releaseLight(p: PoolLight) {
   p.light.position.set(0, -100, 0);
 }
 
+// Fountain physics — items pop out of the spawn point on an arc,
+// settle into the bob+rotate display mode when they hit the floor.
+const REST_Y = 0.35;              // y where the item bobs around once settled
+const GRAVITY = -10.0;            // m/s² in game units (slightly punchier than real)
+const LAUNCH_HEIGHT_DEFAULT = 0.9; // start at "torso" height when no override given
+const FLIGHT_SPIN_MUL = 4;         // items spin faster while flying — adds flair
+
+/** Optional launch parameters for a fountain pop. If omitted, the pickup
+ *  appears settled on the floor immediately (legacy behavior, used by chest
+ *  loot if a future caller wants it). */
+export interface PickupLaunch {
+  /** Initial world-space velocity (m/s). y > 0 means upward. */
+  velocity: THREE.Vector3;
+  /** Starting height above pos.y. Default 0.9m (enemy torso). */
+  startHeight?: number;
+}
+
 export function createPickup(
   scene: THREE.Scene,
   pos: THREE.Vector3,
   item: ItemSpec,
+  launch?: PickupLaunch,
 ) {
   const rarityColor = RARITY_COLORS[item.rarity ?? 'mundane'];
 
   // Wrap everything in one group so destroy is a single scene.remove().
+  // pickupGroup stays at the SETTLED ground position; the item moves in
+  // local space within it during the fountain phase, then we re-parent
+  // the group to the actual landed spot.
   const pickupGroup = new THREE.Group();
   pickupGroup.position.copy(pos);
   scene.add(pickupGroup);
@@ -113,27 +134,47 @@ export function createPickup(
   const disc = new THREE.Mesh(new THREE.PlaneGeometry(DISC_SIZE, DISC_SIZE), discMat);
   disc.rotation.x = -Math.PI / 2;
   disc.position.y = 0.01 - pos.y;  // sit ~1cm above the floor (compensate for parent y)
+  // Hide the disc during fountain — it'd be a glowing landmark at the
+  // spawn point with no item on top of it (weird).
+  disc.visible = !launch;
   pickupGroup.add(disc);
 
   // ── Glow light — borrowed from the pre-allocated pool ──────────────
-  // No-op if the pool is exhausted; disc still gives a visible signal.
   const pooledLight = acquireLight();
-  if (pooledLight) {
-    pooledLight.light.color.setHex(rarityColor);
-    pooledLight.light.intensity = LIGHT_INTENSITY;
-    pooledLight.light.position.set(pos.x, pos.y + 0.35, pos.z);
-  }
 
   // ── Item model — bobs + rotates ────────────────────────────────────
   const built = buildModel(item.dropModel);
-  built.group.position.y = Math.max(0, 0.35 - pos.y);  // float above the floor disc
   pickupGroup.add(built.group);
 
-  // Loot landing — the small thump as the item hits the floor.
-  playLootLand();
+  // Fountain state. itemX/Y/Z are LOCAL to pickupGroup (which sits at
+  // pos). On land, we re-parent the group to the landed world position
+  // and reset locals to (0, REST_Y, 0) so the rest-mode math is clean.
+  let mode: 'flying' | 'settled' = launch ? 'flying' : 'settled';
+  let itemX = 0;
+  let itemZ = 0;
+  let itemY = mode === 'flying'
+    ? (launch!.startHeight ?? LAUNCH_HEIGHT_DEFAULT)
+    : Math.max(0, REST_Y - pos.y);
+  let vx = launch ? launch.velocity.x : 0;
+  let vy = launch ? launch.velocity.y : 0;
+  let vz = launch ? launch.velocity.z : 0;
 
-  const baseItemY = built.group.position.y;
+  built.group.position.set(itemX, itemY, itemZ);
+
+  // Light follows the item (also during flight). Position now.
+  if (pooledLight) {
+    pooledLight.light.color.setHex(rarityColor);
+    pooledLight.light.intensity = LIGHT_INTENSITY;
+    pooledLight.light.position.set(pos.x + itemX, pos.y + itemY, pos.z + itemZ);
+  }
+
+  // If we're not fountaining, this is effectively the moment it lands.
+  if (mode === 'settled') playLootLand();
+
   let t = 0;
+  // Tiny "land puff" — disc scales briefly bigger on landing for an
+  // anticipation pop, then settles back.
+  let landPuff = 0;
   const id = generateEntityId('pickup');
 
   const interactable = {
@@ -163,9 +204,53 @@ export function createPickup(
       interactable.destroyed = true;
     },
     tick(dt: number) {
-      t += dt;
-      built.group.position.y = baseItemY + Math.sin(t * BOB_FREQUENCY) * BOB_AMPLITUDE;
-      built.group.rotation.y += ROTATE_SPEED * dt;
+      if (mode === 'flying') {
+        vy += GRAVITY * dt;
+        itemX += vx * dt;
+        itemY += vy * dt;
+        itemZ += vz * dt;
+        // Faster spin in the air sells the toss.
+        built.group.rotation.y += ROTATE_SPEED * FLIGHT_SPIN_MUL * dt;
+        built.group.rotation.x += ROTATE_SPEED * FLIGHT_SPIN_MUL * 0.6 * dt;
+        if (itemY <= REST_Y - pos.y && vy < 0) {
+          // LAND. Snap to rest height, re-parent the group so the
+          // disc / interactable hitbox / future bob centers on the
+          // landed spot instead of the spawn spot.
+          const landedWorldX = pos.x + itemX;
+          const landedWorldZ = pos.z + itemZ;
+          pickupGroup.position.set(landedWorldX, pos.y, landedWorldZ);
+          interactable.position.set(landedWorldX, pos.y, landedWorldZ);
+          itemX = 0; itemZ = 0;
+          itemY = Math.max(0, REST_Y - pos.y);
+          built.group.position.set(itemX, itemY, itemZ);
+          // Reset spin tilt so it bobs upright.
+          built.group.rotation.x = 0;
+          mode = 'settled';
+          disc.visible = true;
+          landPuff = 1;
+          playLootLand();
+        } else {
+          built.group.position.set(itemX, itemY, itemZ);
+        }
+      } else {
+        t += dt;
+        itemY = Math.max(0, REST_Y - pos.y) + Math.sin(t * BOB_FREQUENCY) * BOB_AMPLITUDE;
+        built.group.position.y = itemY;
+        built.group.rotation.y += ROTATE_SPEED * dt;
+        if (landPuff > 0) {
+          landPuff = Math.max(0, landPuff - dt * 4);  // ~0.25s puff
+          const scale = 1 + landPuff * 0.6;
+          disc.scale.set(scale, scale, 1);
+        }
+      }
+      // Light tracks the item every frame (cheap; just a Vector3 set).
+      if (pooledLight) {
+        pooledLight.light.position.set(
+          pickupGroup.position.x + itemX,
+          pickupGroup.position.y + itemY,
+          pickupGroup.position.z + itemZ,
+        );
+      }
     },
     destroyed: false,
     /** When destroyed, the interactable system removes built.group from
