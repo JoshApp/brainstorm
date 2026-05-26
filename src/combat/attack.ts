@@ -35,7 +35,7 @@ const hitPoint = new THREE.Vector3();
 export function createCombatSystem(
   camera: THREE.Camera,
   sword: Sword,
-  enemies: Enemy[],
+  getEnemies: () => readonly Enemy[],
 ): CombatSystem {
   let strikeAlreadyHit = false;
   let wasStriking = false;
@@ -76,6 +76,7 @@ export function createCombatSystem(
 
     let bestEnemy: Enemy | null = null;
     let bestDistSq = reachSq + 1;
+    const enemies = getEnemies();
     for (const e of enemies) {
       if (!e.alive) continue;
       const dx = e.group.position.x - camera.position.x;

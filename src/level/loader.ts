@@ -1,0 +1,110 @@
+import * as THREE from 'three';
+import { buildLevel, type LiveLevel } from './builder';
+import type { LevelSpec } from './types';
+import type { StyleMaterials } from '../style/materials';
+import { CONFIG } from '../config';
+
+// Level loader = the seam between "we have a current level" and "let's swap
+// it for a different one". main.ts holds the active level reference via the
+// getter below; stairs interactables fire onDescend, which calls loadLevel
+// and the swap happens at the start of the next frame.
+//
+// Why deferred (next-frame) rather than immediate: the stairs.onUse fires
+// during interactables tick, which itself runs during the main loop. Tearing
+// down the world mid-tick would invalidate iteration. We queue a request
+// and apply at the top of the next frame.
+
+let scene: THREE.Scene | null = null;
+let materials: StyleMaterials | null = null;
+let camera: THREE.PerspectiveCamera | null = null;
+let levels: Record<string, LevelSpec> = {};
+let onLoaded: ((level: LiveLevel) => void) | null = null;
+
+let activeLevel: LiveLevel | null = null;
+let pendingLoadId: string | null = null;
+let currentDepth = 1;
+
+export interface LoaderConfig {
+  scene: THREE.Scene;
+  materials: StyleMaterials;
+  camera: THREE.PerspectiveCamera;
+  levels: Record<string, LevelSpec>;
+  /** Called after a successful load — main.ts wires up systems that
+   *  depend on the per-level data (combat system, walkable region refs). */
+  onLoaded: (level: LiveLevel) => void;
+}
+
+/** One-time setup. After this, the loader owns the active level handle. */
+export function initLevelLoader(cfg: LoaderConfig) {
+  scene = cfg.scene;
+  materials = cfg.materials;
+  camera = cfg.camera;
+  levels = cfg.levels;
+  onLoaded = cfg.onLoaded;
+}
+
+/** Get the currently-active level. Null before the first load. */
+export function getActiveLevel(): LiveLevel | null {
+  return activeLevel;
+}
+
+export function getCurrentDepth(): number {
+  return currentDepth;
+}
+
+/** Schedule a level load for the next frame. */
+export function loadLevel(id: string) {
+  pendingLoadId = id;
+}
+
+/**
+ * Apply a pending load if any. Call at the TOP of the main loop, before
+ * any tick that touches enemies / interactables / walkable.
+ */
+export function tickPendingLoad() {
+  if (!pendingLoadId) return;
+  const id = pendingLoadId;
+  pendingLoadId = null;
+
+  if (!scene || !materials || !camera || !onLoaded) {
+    // eslint-disable-next-line no-console
+    console.warn('Level loader not initialized');
+    return;
+  }
+  const spec = levels[id];
+  if (!spec) {
+    // eslint-disable-next-line no-console
+    console.warn(`Unknown level id: ${id}`);
+    return;
+  }
+
+  // Tear down current level if any. Player + UI + inventory persist.
+  if (activeLevel) {
+    activeLevel.teardown();
+    activeLevel = null;
+  }
+
+  // Build the new level into the same scene.
+  const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));
+  activeLevel = level;
+  currentDepth += 1;
+
+  // Reposition player to new spawn.
+  camera.position.set(level.playerSpawn.x, CONFIG.PLAYER_HEIGHT, level.playerSpawn.z);
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = level.playerSpawn.yaw;
+
+  onLoaded(level);
+}
+
+/**
+ * Bootstrap the FIRST level — same as loadLevel + tickPendingLoad in one
+ * call, since at boot there's no in-flight tick to defer for.
+ */
+export function loadInitialLevel(id: string) {
+  pendingLoadId = id;
+  // Reset depth — initial load = depth 1 (we increment in tickPendingLoad,
+  // so set to 0 here to land on 1).
+  currentDepth = 0;
+  tickPendingLoad();
+}

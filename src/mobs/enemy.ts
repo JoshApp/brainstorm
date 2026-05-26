@@ -92,7 +92,7 @@ const tmpDir = new THREE.Vector3();
 const tmpFlat = new THREE.Vector3();
 
 export function createEnemy(
-  scene: THREE.Scene,
+  scene: THREE.Object3D,
   position: THREE.Vector3,
   spec: EnemySpec,
 ): Enemy {

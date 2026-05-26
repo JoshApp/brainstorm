@@ -35,6 +35,21 @@ export class WalkableRegion {
     private readonly walls: WallSegment[] = [],
   ) {}
 
+  /**
+   * Add a wall segment. Used by closed doors to plug a doorway gap; the
+   * door removes its segment again when it opens. Identity is by reference
+   * so the same WallSegment object can be added once and removed once.
+   */
+  addWall(seg: WallSegment) {
+    this.walls.push(seg);
+  }
+
+  /** Remove a previously-added wall segment by reference. */
+  removeWall(seg: WallSegment) {
+    const idx = this.walls.indexOf(seg);
+    if (idx >= 0) this.walls.splice(idx, 1);
+  }
+
   /** Is the agent center at (x, z) (with given radius) currently walkable? */
   contains(x: number, z: number, radius: number): boolean {
     // (1) Inside the union of rects (unshrunken). Doorways are inside both

@@ -8,6 +8,10 @@ import { createEnemy, type Enemy } from '../mobs/enemy';
 import { ENEMIES } from '../content/enemies';
 import { buildModel } from '../ecs/build-model';
 import { spawnChest } from '../interactables/chest';
+import { spawnDoor } from '../interactables/door';
+import { spawnStairs } from '../interactables/stairs';
+import { clearInteractables } from '../interactables/system';
+import { emit } from '../broadcast/event-bus';
 
 // Consumes a LevelSpec and produces the live scene + collision data. This is
 // the seam where declarative data becomes Three.js objects + game entities.
@@ -26,6 +30,18 @@ export interface LiveLevel {
   torches: Torch[];
   enemies: Enemy[];
   playerSpawn: { x: number; z: number; yaw: number };
+  /**
+   * Single Three.js group containing EVERYTHING the level added to the
+   * scene — rooms, props, torches, enemies, doors, stairs. Teardown just
+   * removes this from the scene + disposes meshes inside it.
+   */
+  root: THREE.Group;
+  /**
+   * Call to dispose this level: removes root from its parent, disposes
+   * geometries/materials inside, clears interactables, destroys enemy
+   * entities. Idempotent.
+   */
+  teardown: () => void;
 }
 
 function makeJitteredPlane(width: number, height: number): THREE.PlaneGeometry {
@@ -67,7 +83,7 @@ function makeJitteredPlane(width: number, height: number): THREE.PlaneGeometry {
   return geo;
 }
 
-function buildRoomShell(scene: THREE.Scene, room: RoomSpec, allRects: RoomSpec[], materials: StyleMaterials, wallSegmentsOut: WallSegment[]) {
+function buildRoomShell(scene: THREE.Object3D, room: RoomSpec, allRects: RoomSpec[], materials: StyleMaterials, wallSegmentsOut: WallSegment[]) {
   const { rect, height: H } = room;
   const W = rect.w;
   const D = rect.d;
@@ -126,7 +142,7 @@ function buildRoomShell(scene: THREE.Scene, room: RoomSpec, allRects: RoomSpec[]
 }
 
 function buildWallSegment(
-  scene: THREE.Scene,
+  scene: THREE.Object3D,
   we: { side: 'N' | 'S' | 'E' | 'W'; perpAxis: 'x' | 'z'; perpCoord: number },
   segStart: number,
   segEnd: number,
@@ -219,15 +235,19 @@ export function buildLevel(
   scene: THREE.Scene,
   spec: LevelSpec,
   materials: StyleMaterials,
+  onDescend?: (targetLevel: string) => void,
 ): LiveLevel {
+  // Everything goes into this root group rather than directly into the
+  // scene — teardown is a single scene.remove(root). Geometry/material
+  // disposal walks root's tree.
+  const root = new THREE.Group();
+  root.name = `level-${spec.id}`;
+  scene.add(root);
+
   // --- Geometry: rooms + corridors ---
-  // All rects are collected together so each shell can find its openings into
-  // adjacent rects (corridors -> rooms; rooms -> rooms if directly adjacent).
-  // The same wall-segmenter that builds geometry also emits collision data,
-  // so doorways automatically have no wall to collide with.
   const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
   const wallSegments: WallSegment[] = [];
-  for (const r of allRects) buildRoomShell(scene, r, allRects, materials, wallSegments);
+  for (const r of allRects) buildRoomShell(root, r, allRects, materials, wallSegments);
 
   // --- Props (visual meshes) + collect obstacles for collision ---
   const obstacles: Obstacle[] = [];
@@ -241,9 +261,7 @@ export function buildLevel(
       pillar.position.set(prop.x, H / 2, prop.z);
       pillar.castShadow = true;
       pillar.receiveShadow = true;
-      scene.add(pillar);
-      // AABB obstacle matching the pillar's actual square cross-section.
-      // Replaces the previous overly-conservative inscribed circle.
+      root.add(pillar);
       const halfSz = size / 2;
       obstacles.push({
         kind: 'aabb',
@@ -256,35 +274,28 @@ export function buildLevel(
       altar.position.set(prop.x, 0.275, prop.z);
       altar.castShadow = true;
       altar.receiveShadow = true;
-      scene.add(altar);
+      root.add(altar);
 
       const baseGeo = new THREE.BoxGeometry(1.2, 0.1, 0.9);
       const altarBase = new THREE.Mesh(baseGeo, materials.floor);
       altarBase.position.set(prop.x, 0.05, prop.z);
       altarBase.receiveShadow = true;
-      scene.add(altarBase);
+      root.add(altarBase);
 
-      // AABB matching the altar BASE (1.2 × 0.9, the wider of the two boxes).
-      // Player can't walk into the slab; can approach right up to its edge.
       obstacles.push({
         kind: 'aabb',
         minX: prop.x - 0.6, maxX: prop.x + 0.6,
         minZ: prop.z - 0.45, maxZ: prop.z + 0.45,
       });
     } else if (prop.kind === 'model') {
-      // Static decoration model — no collision, no behavior, just visuals.
       const built = buildModel(prop.model);
       built.group.position.set(prop.x, prop.y, prop.z);
       if (prop.rotX) built.group.rotation.x = prop.rotX;
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
-      scene.add(built.group);
+      root.add(built.group);
     } else if (prop.kind === 'chest') {
-      spawnChest(scene, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.loot);
-      // Chest body is 0.5 × 0.4. Approximate collision as an AABB matching
-      // the body footprint (ignore rotY for now — most chests sit roughly
-      // axis-aligned). A small extra margin (0.03) so the player can't
-      // visually intersect the lid when opened.
+      spawnChest(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.loot);
       obstacles.push({
         kind: 'aabb',
         minX: prop.x - 0.28, maxX: prop.x + 0.28,
@@ -298,7 +309,7 @@ export function buildLevel(
   for (const t of spec.torches) {
     torches.push(
       createTorchlight(
-        scene,
+        root,
         new THREE.Vector3(t.x, t.height, t.z),
         torchYawForWall(t.wall),
         t.colorTint,
@@ -307,11 +318,21 @@ export function buildLevel(
     );
   }
 
-  // --- Enemies ---
+  // --- Walkable region (collision data; mutable so doors can add/remove) ---
+  const walkable = new WalkableRegion(
+    [...spec.rooms.map((r) => r.rect), ...spec.corridors.map((c) => c.rect)],
+    obstacles,
+    wallSegments,
+  );
+
+  // --- Enemies + room-membership tracking ----------------------------
   // Each enemy faces the player spawn at level start so the very first frame
-  // is correctly oriented (otherwise it ticks at default rotation = world -Z
-  // for the first frame, which can look like the rat is walking backwards
-  // before the first update() call corrects it).
+  // is correctly oriented.
+  //
+  // Room membership: an enemy belongs to the first rect whose AABB contains
+  // its spawn (x,z). Used to know when a room is "cleared" for door gating.
+  const enemyRoom = new Map<Enemy, string | null>();
+  const aliveByRoom = new Map<string, number>();
   const enemies: Enemy[] = [];
   for (const s of spec.spawns) {
     const enemySpec = ENEMIES[s.enemyId];
@@ -320,17 +341,76 @@ export function buildLevel(
       console.warn(`Unknown enemyId in spawn: ${s.enemyId}`);
       continue;
     }
-    const enemy = createEnemy(scene, new THREE.Vector3(s.x, 0, s.z), enemySpec);
+    const enemy = createEnemy(root, new THREE.Vector3(s.x, 0, s.z), enemySpec);
     enemy.faceWorld(spec.startPos.x, spec.startPos.z);
     enemies.push(enemy);
+    const roomId = s.roomId ?? findRoomContaining(s.x, s.z, spec.rooms);
+    enemyRoom.set(enemy, roomId);
+    if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
   }
 
-  // --- Walkable region (collision data) ---
-  const walkable = new WalkableRegion(
-    [...spec.rooms.map((r) => r.rect), ...spec.corridors.map((c) => c.rect)],
-    obstacles,
-    wallSegments,
-  );
+  // --- Doors ---------------------------------------------------------
+  // Doors close gaps in the wall layout. They start sealed if their unlock
+  // condition isn't met (defaults: cleared rooms). They listen for
+  // room:cleared events to flip to closed (interactable).
+  const doorTeardowns: Array<() => void> = [];
+  for (const d of spec.doors ?? []) {
+    const h = spawnDoor(root, d, walkable, materials, () => aliveByRoom);
+    doorTeardowns.push(h.teardown);
+  }
+
+  // --- Stairs --------------------------------------------------------
+  for (const st of spec.stairs ?? []) {
+    spawnStairs(root, st, materials, (target) => onDescend?.(target));
+  }
+
+  // Per-frame check (tucked into a separate driver below) wires room-clear
+  // detection: walk enemies, recompute aliveByRoom, emit room:cleared when
+  // a count flips from >0 to 0.
+  //
+  // Done lazily so we don't have to plumb a tick callback. main.ts ticks
+  // enemies anyway; we hook into that via a Proxy isn't worth it. Instead,
+  // expose tickRoomClearTracker — called from main.ts after enemy updates.
+
+  // We attach tickRoomClearTracker to the LiveLevel for now via the
+  // teardown closure (alternative would be a separate property; keep
+  // interface lean — main.ts can read it off level.checkRoomClear).
+  function checkRoomClear() {
+    for (const [roomId, count] of aliveByRoom) {
+      let stillAlive = 0;
+      for (const enemy of enemies) {
+        if (enemyRoom.get(enemy) === roomId && enemy.alive) stillAlive++;
+      }
+      if (stillAlive === 0 && count > 0) {
+        aliveByRoom.set(roomId, 0);
+        emit({ type: 'room:cleared', roomId });
+      }
+    }
+  }
+
+  let torndown = false;
+  function teardown() {
+    if (torndown) return;
+    torndown = true;
+    // Detach event-bus listeners owned by the level (door listeners).
+    for (const td of doorTeardowns) td();
+    // Wipe the interactables list — pickups + doors + stairs + chests all
+    // get reset. The pickup light pool persists; it's scene-wide.
+    clearInteractables();
+    // Yank the root from the scene. Geometry/material disposal walks the
+    // subtree so GPU memory isn't held.
+    scene.remove(root);
+    root.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh) {
+        // Only dispose geometries unique to this level. Shared materials
+        // (the StyleMaterials set) are reused across levels — don't dispose.
+        mesh.geometry?.dispose();
+      }
+    });
+  }
+
+  emit({ type: 'level:loaded', levelId: spec.id });
 
   return {
     spec,
@@ -338,5 +418,22 @@ export function buildLevel(
     torches,
     enemies,
     playerSpawn: spec.startPos,
-  };
+    root,
+    teardown,
+    // Stash on the object via casting; main.ts pulls this out via a typed
+    // wrapper if needed. For now expose directly.
+    ...({ checkRoomClear } as object),
+  } as LiveLevel & { checkRoomClear: () => void };
+}
+
+/** Which room rect contains (x, z)? First match wins. Null if outside all. */
+function findRoomContaining(x: number, z: number, rooms: RoomSpec[]): string | null {
+  for (const r of rooms) {
+    const hw = r.rect.w / 2;
+    const hd = r.rect.d / 2;
+    if (x >= r.rect.x - hw && x <= r.rect.x + hw && z >= r.rect.z - hd && z <= r.rect.z + hd) {
+      return r.id;
+    }
+  }
+  return null;
 }

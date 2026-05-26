@@ -23,8 +23,9 @@ import { createSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings } from './settings/settings';
 import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
-import { buildLevel } from './level/builder';
-import { LEVEL_1 } from './level/specs';
+import { buildLevel, type LiveLevel } from './level/builder';
+import { LEVEL_1, LEVELS } from './level/specs';
+import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad } from './level/loader';
 import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
 import { isWorldFrozen } from './debug/freeze';
 import { isAnyMenuOpen, installMenuBackdrop } from './controls/input-mode';
@@ -102,14 +103,40 @@ spawnEntity({
 });
 initTriggerListener('player');
 
-// --- Level (the declarative pipeline) ---
-const level = buildLevel(scene, levelSpec, materials);
-camera.position.set(level.playerSpawn.x, CONFIG.PLAYER_HEIGHT, level.playerSpawn.z);
-setCameraYaw(level.playerSpawn.yaw);
-// Apply yaw to the camera object immediately so the first frame is correct
-// (otherwise frozen scenarios show the default rotation until updateCamera runs).
+// --- Level loader ----------------------------------------------------
+// The loader owns the active LiveLevel. Stairs interact handlers schedule
+// a load via the loader; tickPendingLoad applies it at the top of the
+// next frame. Player state (HP, inventory, equipment, buffs) persists
+// across loads — only the world is rebuilt.
+//
+// The active-level handle lives in `currentLevel` here so the main-loop
+// tick code below can read it. Updated by the onLoaded callback below.
+let currentLevel: LiveLevel & { checkRoomClear?: () => void } = null as unknown as LiveLevel;
+
+initLevelLoader({
+  scene,
+  materials,
+  camera,
+  levels: LEVELS,
+  onLoaded(level) {
+    currentLevel = level as LiveLevel & { checkRoomClear?: () => void };
+    setCameraYaw(level.playerSpawn.yaw);
+  },
+});
+
+// Initial level — either from a debug scenario (still uses the old direct
+// build path) or the standard depth-1 entry. We respect levelSpec coming
+// from a scenario by overriding the LEVELS registry entry for its id.
+if (scenario?.level) {
+  // Override registry entry so the same loader code path drives both.
+  LEVELS[scenario.level.id] = scenario.level;
+  loadInitialLevel(scenario.level.id);
+} else {
+  loadInitialLevel(LEVEL_1.id);
+}
+camera.position.set(currentLevel.playerSpawn.x, CONFIG.PLAYER_HEIGHT, currentLevel.playerSpawn.z);
 camera.rotation.order = 'YXZ';
-camera.rotation.y = level.playerSpawn.yaw;
+camera.rotation.y = currentLevel.playerSpawn.yaw;
 camera.rotation.x = 0;
 
 // --- Player: held sword ---
@@ -129,7 +156,10 @@ onEquipmentChanged((eq) => {
 setSlot('weapon', ITEMS['rusted-sword']);
 
 // --- Combat ---
-const combat = createCombatSystem(camera, sword, level.enemies);
+// Combat queries enemies via a getter so the system follows level swaps —
+// after descent the new floor's enemies become attackable without
+// rewiring.
+const combat = createCombatSystem(camera, sword, () => currentLevel.enemies);
 
 // --- Player death wiring ---
 onPlayerDeath(() => triggerDeath());
@@ -187,7 +217,7 @@ initPickupLightPool(scene);
 
 // --- Apply scenario overrides (post-build, AFTER UI is created so
 // scenarios that open panels / give items work correctly).
-if (scenario) applyScenario(scenario, { level, sword, camera });
+if (scenario) applyScenario(scenario, { level: currentLevel, sword, camera });
 
 // PWA: poll for SW updates + auto-reload when a new SW takes over.
 // Means a `git push` lands on Josh's installed home-screen app within a
@@ -215,6 +245,11 @@ const shakeOffset = new THREE.Vector3();
 const forwardScratch = new THREE.Vector3();
 
 function tick() {
+  // Apply any pending level swap BEFORE any per-frame reads on the level.
+  // Stairs interactables call loadLevel() during the previous frame's
+  // interactables tick; the swap lands here at the top of the next frame.
+  tickPendingLoad();
+
   const realDt = Math.min(clock.getDelta(), 0.1);
 
   tickDeath(realDt);
@@ -228,20 +263,19 @@ function tick() {
   } else {
     if (!isDying()) {
       input.tickInput(scaledDt);   // hybrid-look continuous rotation, if enabled
-      updateCamera(camera, input, scaledDt, level.walkable, level.enemies);
+      updateCamera(camera, input, scaledDt, currentLevel.walkable, currentLevel.enemies);
     } else {
       input.lookDx = 0;
       input.lookDy = 0;
     }
 
-    for (const t of level.torches) updateTorchlight(t, scaledDt);
+    for (const t of currentLevel.torches) updateTorchlight(t, scaledDt);
 
     // Ambient torch crackle volume — sum of (1 - dist/range) across all
-    // torches in earshot. More torches nearby = louder bed. Clamped inside
-    // setTorchProximity. Single shared crackle source, so this is cheap.
+    // torches in earshot.
     let prox = 0;
     const earRange = 6;
-    for (const t of level.torches) {
+    for (const t of currentLevel.torches) {
       const dx = t.light.position.x - camera.position.x;
       const dz = t.light.position.z - camera.position.z;
       const d = Math.hypot(dx, dz);
@@ -253,9 +287,14 @@ function tick() {
     combat.tick(attackPressed);
 
     sword.update(scaledDt);
-    for (const enemy of level.enemies) {
-      enemy.update(scaledDt, camera.position, level.walkable);
+    for (const enemy of currentLevel.enemies) {
+      enemy.update(scaledDt, camera.position, currentLevel.walkable);
     }
+
+    // Room-clear detection — fires room:cleared events when a tracked
+    // room's alive count hits zero. Doors listen for this to flip from
+    // SEALED to OPEN. Cheap: handful of enemies per level.
+    currentLevel.checkRoomClear?.();
 
     // Tick active buffs on all entities (heal-over-time, future DoTs, etc.)
     tickAllBuffs(scaledDt);

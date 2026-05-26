@@ -19,7 +19,7 @@ const LID_OPEN_ANGLE = -1.9;   // rad — slightly past vertical so the lid lean
 const OPEN_DURATION = 0.55;    // seconds for the swing-open animation
 
 export function spawnChest(
-  scene: THREE.Scene,
+  scene: THREE.Object3D,
   pos: THREE.Vector3,
   rotY: number,
   loot: ItemSpec | undefined,

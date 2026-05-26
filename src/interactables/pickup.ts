@@ -101,7 +101,7 @@ export interface PickupLaunch {
 }
 
 export function createPickup(
-  scene: THREE.Scene,
+  scene: THREE.Object3D,
   pos: THREE.Vector3,
   item: ItemSpec,
   launch?: PickupLaunch,

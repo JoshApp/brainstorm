@@ -58,12 +58,73 @@ export type EnemySpawnSpec = {
   enemyId: string;
   x: number;
   z: number;
+  /**
+   * Optional room association. If provided, the builder uses this directly;
+   * otherwise it auto-assigns based on which room rect contains (x,z) at
+   * spawn time. Drives "this door opens when ROOM is cleared" gating.
+   */
+  roomId?: string;
+};
+
+/**
+ * A door — geometry that sits in a doorway, blocks movement while closed,
+ * swings open on interaction or when its unlock condition is satisfied.
+ *
+ * The door is anchored to a wall segment defined by (ax,az)→(bx,bz). The
+ * segment must be axis-aligned (either ax==bx or az==bz). Builder centers
+ * the door panel on the segment and hinges it on one end.
+ */
+export type DoorSpec = {
+  id: string;
+  ax: number; az: number;
+  bx: number; bz: number;
+  /** Height of the door panel. Defaults to the containing room height. */
+  height?: number;
+  /**
+   * Which end is the hinge — 'a' (the (ax,az) end) or 'b'. Determines swing
+   * direction. Default 'a'.
+   */
+  hinge?: 'a' | 'b';
+  /**
+   * Which way the door swings open relative to the wall normal. +1 swings
+   * one way, -1 the other. Default +1. Tweak per-door if the wrong side
+   * opens into a wall.
+   */
+  swingDir?: 1 | -1;
+  /**
+   * Unlock condition. If absent, the door opens on first interact.
+   *
+   * 'cleared': all enemies in the listed rooms must be dead. Until then
+   * the door shows no interact prompt (sealed / SEALED label).
+   */
+  unlock?:
+    | { kind: 'cleared'; roomIds: string[] };
+};
+
+/**
+ * Stairs descending to another level. On interact, the engine fades out
+ * the current level and loads `targetLevel` from the LEVELS registry.
+ * Player state (HP, inventory, equipment, buffs) carries forward; the
+ * world is rebuilt.
+ */
+export type StairsSpec = {
+  id?: string;
+  x: number;
+  z: number;
+  rotY?: number;
+  /** Key into LEVELS registry (src/level/specs.ts). */
+  targetLevel: string;
 };
 
 export type LevelSpec = {
   id: string;
   /** Player spawn — position + initial yaw (radians). */
   startPos: { x: number; z: number; yaw: number };
+  /**
+   * Optional display name for the floor — shown in a brief title card on
+   * descent. Leave undefined to skip the title card.
+   */
+  displayName?: string;
   rooms: RoomSpec[];
   /** corridors share types with rooms — keeping separate field for future
    *  wall-skipping logic where corridors meet rooms. */
@@ -71,4 +132,8 @@ export type LevelSpec = {
   props: PropSpec[];
   torches: TorchSpec[];
   spawns: EnemySpawnSpec[];
+  /** Doors that block passage until interacted with or unlocked. */
+  doors?: DoorSpec[];
+  /** Stairs leading to other floors. */
+  stairs?: StairsSpec[];
 };

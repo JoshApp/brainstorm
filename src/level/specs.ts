@@ -6,32 +6,33 @@ import { ITEMS } from '../content/items';
 
 const CORRIDOR_FLOOR_GLOW = floorGlow(0x6cc6e0);    // cool cyan — corridor transition
 const ANTE_FLOOR_GLOW     = floorGlow(0x6cffa0);    // sickly green — antechamber palette
+const CRYPT_FLOOR_GLOW    = floorGlow(0xff3a20);    // hot red — crypt palette
 
-// Hand-authored level 1 — the current ritual chamber, expressed as data.
-// Once we trust this format, procgen and additional floors just produce more
-// LevelSpecs.
-
-// LEVEL_1: two connected rooms.
+// ─── LEVEL 1: ritual chamber → corridor → antechamber → stairwell ─────
 //
-//   ┌──────────────┐     ╔═══ ritual chamber ═══╗
-//   │   chamber    │     ║    (player spawn)    ║
-//   │              │     ║       8 × 8          ║
-//   │   8 × 8      │     ╚═══════ □  ═══════════╝   ← S side has an opening
-//   │              │             │ │                 (door to corridor)
-//   └─door──door───┘             │ │
-//   ┌──┴──corridor────────────┐  │ │
-//   │  2 × 4                  │  ▼ ▼
-//   └─door──door──────────────┘  ← corridor connects S of chamber to N of antechamber
-//   ┌─door──door──────────────┐
-//   │    antechamber          │
-//   │       6 × 5             │
-//   └─────────────────────────┘
+//   ┌──── ritual-chamber ────┐
+//   │  spawn, 3 enemies      │
+//   │  altar + chest         │
+//   │     8 × 8              │
+//   └────── DOOR ────────────┘    ← sealed until chamber cleared
+//          │ corridor │
+//          │ 2 × 4.5  │
+//   ┌──────└──────────┘─────┐
+//   │     antechamber       │
+//   │  wraith (magic boss)  │
+//   │     6 × 5             │
+//   └────── DOOR ───────────┘    ← sealed until antechamber cleared
+//          │ stairwell │
+//          │  3 × 2    │
+//          │ STAIRS ↓  │
+//          └───────────┘    → LEVEL_2
 //
-// World coordinates: chamber at (0, 0), corridor at (0, 6), antechamber at (0, 11).
-// Their shared edges have openings auto-computed by the wall-segmenter.
+// All coordinates in world XZ. Doors live as wall segments that the door
+// system adds/removes from the walkable region.
 
 export const LEVEL_1: LevelSpec = {
   id: 'depth-1',
+  displayName: 'I — The Ritual Chamber',
 
   startPos: { x: 0, z: 0, yaw: 0 }, // spawn center of chamber, facing -Z (north)
 
@@ -42,21 +43,63 @@ export const LEVEL_1: LevelSpec = {
       height: 3.2,
     },
     {
-      // Smaller adjacent room — the "antechamber" reached via the corridor.
-      // Currently empty atmosphere — to be filled with more content later.
       id: 'antechamber',
       rect: { x: 0, z: 11, w: 6, d: 5 },
       height: 3.0,
     },
+    {
+      // Small stairwell beyond the antechamber. Holds the descent stairs.
+      // Lower ceiling, smaller footprint — feels like a service tunnel.
+      // z=14.5 with d=2 → north edge at z=13.5, matching antechamber south.
+      id: 'stairwell',
+      rect: { x: 0, z: 14.5, w: 3, d: 2 },
+      height: 2.4,
+    },
   ],
 
   corridors: [
-    // Corridor connecting chamber south wall (z=4) to antechamber north wall
-    // (z=8.5). Width 2m, depth 4.5m, centered at (0, 6.25).
     {
       id: 'corridor-1',
       rect: { x: 0, z: 6.25, w: 2, d: 4.5 },
-      height: 2.6,  // lower ceiling than rooms — more claustrophobic
+      height: 2.6,
+    },
+  ],
+
+  // Doors gate progression. The wall-segmenter already leaves a gap where
+  // rooms abut; the door geometry plugs that gap until unlocked.
+  doors: [
+    {
+      // Chamber south → corridor north. Shared edge at z=4, x in [-1, 1].
+      id: 'chamber-to-corridor',
+      ax: -1, az: 4,
+      bx:  1, bz: 4,
+      height: 2.6,
+      hinge: 'a',
+      swingDir: 1,
+      unlock: { kind: 'cleared', roomIds: ['ritual-chamber'] },
+    },
+    {
+      // Antechamber south → stairwell north. Shared edge at z=13.5, x in [-1.5, 1.5].
+      id: 'antechamber-to-stairwell',
+      ax: -1.5, az: 13.5,
+      bx:  1.5, bz: 13.5,
+      height: 2.4,
+      hinge: 'a',
+      swingDir: 1,
+      unlock: { kind: 'cleared', roomIds: ['antechamber'] },
+    },
+  ],
+
+  stairs: [
+    {
+      id: 'stairs-down-1',
+      // Top tread inside stairwell; descends south toward back wall.
+      // Stairwell z range: 13.5 to 15.5. Stairs top at z=14.0; 4 steps of
+      // depth 0.34 = 1.36m of horizontal extent, bottom at z=15.36 — just
+      // inside the back wall. Reads as "descend into the wall".
+      x: 0, z: 14.0,
+      rotY: 0,
+      targetLevel: 'depth-2',
     },
   ],
 
@@ -66,7 +109,6 @@ export const LEVEL_1: LevelSpec = {
     { kind: 'pillar', x: -1.8, z: 2.2 },
     { kind: 'pillar', x: 1.8, z: 2.2 },
     { kind: 'altar', x: 0, z: -2.8 },
-    // SCIMITAR RELIC laid across the altar top.
     {
       kind: 'model',
       model: SCIMITAR_RELIC,
@@ -74,9 +116,6 @@ export const LEVEL_1: LevelSpec = {
       rotX: -Math.PI / 2,
       rotY: 0.6,
     },
-    // CHEST in the south-WEST of the chamber, off the line between spawn and
-    // the corridor doorway (so the player can navigate to either without
-    // bumping into the chest).
     {
       kind: 'chest',
       x: -2.2, z: 2.6,
@@ -84,78 +123,108 @@ export const LEVEL_1: LevelSpec = {
       loot: ITEMS.scimitar,
     },
 
-    // FLOOR CANDLES — ankle-level light sources flanking the altar. Casts
-    // upward-warm-light on nearby pillars; reads as votive offering.
     { kind: 'model', model: FLOOR_CANDLE, x: -0.9, y: 0, z: -2.6 },
     { kind: 'model', model: FLOOR_CANDLE, x:  0.9, y: 0, z: -2.6 },
-    // Two more candles inside the corridor to provide floor-level light along
-    // the path. Tight light cones; create dramatic shadow drama on the walls.
     { kind: 'model', model: FLOOR_CANDLE, x:  0.6, y: 0, z: 5.0 },
     { kind: 'model', model: FLOOR_CANDLE, x: -0.6, y: 0, z: 7.5 },
 
-    // --- COOL LIGHT ACCENTS — Floor 1 palette pass ---
-    // The whole dungeon was previously ochre-on-ochre (warm ambient + warm
-    // torches). These three coloured-light fixtures introduce a per-room
-    // palette: warm chamber, transitional-cyan corridor, sickly-green
-    // antechamber. The eye reads each room as its own place.
-
-    // MOONLIGHT CRACK on the chamber's east wall — a vertical glowing slit
-    // implying light bleeding through cracked masonry from somewhere outside.
-    // Cold pale-blue, casts onto the east half of the chamber so the room
-    // has warm/cold contrast (north torch + altar candles are warm; east
-    // wall is touched by cool moonlight).
     { kind: 'model', model: MOONLIGHT_CRACK, x: 3.99, y: 1.5, z: -0.5, rotY: -Math.PI / 2 },
-
-    // CYAN FLOOR GLOW in the corridor mid-way — luminous fungus or a
-    // cracked floor stone with cold light leaking through. Pairs with the
-    // corridor candles to give the corridor a warm+cool split palette.
     { kind: 'model', model: CORRIDOR_FLOOR_GLOW, x: 0, y: 0, z: 6.25 },
-
-    // GREEN FLOOR GLOW in the antechamber — reinforces the haunted-green
-    // tint of the antechamber's torch with a floor-level source. Sickly,
-    // unhealthy, alien green.
     { kind: 'model', model: ANTE_FLOOR_GLOW, x: 0, y: 0, z: 11 },
   ],
 
   torches: [
-    // Chamber — north wall, the one the player faces at spawn. Warm orange,
-    // full intensity; the "main fire" of the chamber.
     { x: 0, z: -3.85, height: 2.2, wall: 'N', colorTint: 0xffaa55, intensityMul: 1.0 },
-    // Chamber — south wall, offset west of the corridor doorway. Paler /
-    // cooler so the two ends of the room have visual contrast.
     { x: -2.5, z: 3.85, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
-    // Chamber — south wall, offset east of the corridor doorway. Same color
-    // family; symmetry around the doorway.
     { x:  2.5, z: 3.85, height: 2.2, wall: 'S', colorTint: 0xddc090, intensityMul: 0.85 },
-
-    // Corridor has no wall torch — floor candles provide its light (see props).
-    // Creates a "the candlelit path" feel from chamber to antechamber.
-
-    // Antechamber — east wall. Saturated sickly-green: the room's palette
-    // pillar. Strongly tinted so the antechamber doesn't just feel "less
-    // warm than the chamber" but actively HAUNTED. Matches the green floor
-    // glow underneath; together they paint the whole antechamber green.
     { x: 2.85, z: 11, height: 2.0, wall: 'E', colorTint: 0x70e090, intensityMul: 1.0 },
+    // Stairwell — a dim warning lamp at the entrance to "the deeper dungeon".
+    { x: -1.4, z: 14.5, height: 1.8, wall: 'W', colorTint: 0x88aaff, intensityMul: 0.7 },
   ],
 
   spawns: [
-    // Slow heavy hitter directly ahead — the primary fight, visible at spawn.
-    // BUG FIX: previously at z=-2.0 which overlaps the altar's collision
-    // circle (altar at z=-2.8 has combined collision radius 1.1m with the
-    // ghoul's 0.45m radius). Ghoul got stuck unable to move. Now at z=-1.2,
-    // well clear of the altar, free to chase.
-    { enemyId: 'ghoul', x: 0, z: -1.2 },
-    // Skirmisher hangs further back to the east — engages AFTER the ghoul is
-    // in range, so the player isn't sandwiched at spawn.
-    { enemyId: 'skirmisher', x: 2.6, z: -2.6 },
-    // Rat starts at the back of the room (south side, behind the player at
-    // spawn). It has to traverse the chamber to engage, giving the player
-    // time to deal with the ghoul first.
-    { enemyId: 'rat', x: -2.5, z: 3.0 },
-    // WRAITH — antechamber boss. Centered against the back wall of the
-    // antechamber (rect at z=11, depth 5 so wall at z=13.5). Magic damage
-    // bypasses physical armor — the player needs a bone amulet (or to
-    // commit hard) to survive. Drops the fabled-tier Heartburn blade.
-    { enemyId: 'wraith', x: 0, z: 12.3 },
+    // ── Chamber: three enemies that gate the first door ───────────────
+    { enemyId: 'ghoul',      x: 0,    z: -1.2, roomId: 'ritual-chamber' },
+    { enemyId: 'skirmisher', x: 2.6,  z: -2.6, roomId: 'ritual-chamber' },
+    { enemyId: 'rat',        x: -2.5, z:  3.0, roomId: 'ritual-chamber' },
+    // ── Antechamber: the wraith gates the second door (to stairwell) ──
+    { enemyId: 'wraith',     x: 0,    z: 12.3, roomId: 'antechamber' },
   ],
+};
+
+// ─── LEVEL 2: the blood crypt ─────────────────────────────────────────
+//
+// Single larger chamber with a different palette (hot red — votive blood
+// chamber). Two enemies pre-positioned to flank the player from cover; a
+// chest at the far end with a fresh loot pick. Dead-end stairs for now —
+// LEVEL_3 will continue when we build it.
+
+export const LEVEL_2: LevelSpec = {
+  id: 'depth-2',
+  displayName: 'II — The Blood Crypt',
+
+  // Spawn is at one end of the room — the player walks into the crypt
+  // facing the altar/chest at the far end.
+  startPos: { x: 0, z: -4, yaw: 0 },
+
+  rooms: [
+    {
+      id: 'crypt',
+      rect: { x: 0, z: 0, w: 10, d: 10 },
+      height: 3.4,
+    },
+  ],
+  corridors: [],
+
+  props: [
+    // Four pillars near the entrance form a colonnade. Player navigates
+    // between them; enemies can ambush from behind.
+    { kind: 'pillar', x: -2.6, z: -2.0, size: 0.6 },
+    { kind: 'pillar', x:  2.6, z: -2.0, size: 0.6 },
+    { kind: 'pillar', x: -2.6, z:  1.0, size: 0.6 },
+    { kind: 'pillar', x:  2.6, z:  1.0, size: 0.6 },
+    // Altar at the far end — visual anchor + chest beside it.
+    { kind: 'altar', x: 0, z: 3.6 },
+    {
+      kind: 'chest',
+      x: 1.8, z: 3.6,
+      rotY: -Math.PI / 2,
+      loot: ITEMS['bone-amulet'],
+    },
+    // Floor candles flanking the altar (matches the chamber's ritual feel
+    // but in a more brutal register).
+    { kind: 'model', model: FLOOR_CANDLE, x: -0.9, y: 0, z: 3.4 },
+    { kind: 'model', model: FLOOR_CANDLE, x:  0.9, y: 0, z: 3.4 },
+    // RED FLOOR GLOW at the center of the room — hot blood-ember palette.
+    // Distinguishes Level 2 instantly from Level 1's warm/cool/green mix.
+    { kind: 'model', model: CRYPT_FLOOR_GLOW, x: 0, y: 0, z: 0 },
+  ],
+
+  torches: [
+    // Hot red-orange torches all around. Saturated, oppressive — the room
+    // ITSELF feels angry. No cool accents — this floor is mono-temperature.
+    { x: 0,    z: -4.85, height: 2.4, wall: 'N', colorTint: 0xff5530, intensityMul: 1.0 },
+    { x: 0,    z:  4.85, height: 2.4, wall: 'S', colorTint: 0xff7040, intensityMul: 0.9 },
+    { x: -4.85, z: -1.5, height: 2.4, wall: 'W', colorTint: 0xff6035, intensityMul: 0.85 },
+    { x:  4.85, z:  1.5, height: 2.4, wall: 'E', colorTint: 0xff6035, intensityMul: 0.85 },
+  ],
+
+  spawns: [
+    // Ambush layout: two enemies BEHIND the colonnade so they're not
+    // visible on entry. Player walks in, gets to the pillars, mobs flank.
+    { enemyId: 'ghoul',      x: -3.2, z:  2.5, roomId: 'crypt' },
+    { enemyId: 'skirmisher', x:  3.2, z:  2.5, roomId: 'crypt' },
+    // Rat in the center for movement variety — closes immediately,
+    // forces the player to split attention.
+    { enemyId: 'rat',        x:  0,   z:  0.5, roomId: 'crypt' },
+  ],
+
+  // No stairs yet — LEVEL_2 is the dead-end for now. Future floors plug
+  // their id here.
+};
+
+// Registry. The level loader looks up targetLevel against this map.
+export const LEVELS: Record<string, LevelSpec> = {
+  'depth-1': LEVEL_1,
+  'depth-2': LEVEL_2,
 };

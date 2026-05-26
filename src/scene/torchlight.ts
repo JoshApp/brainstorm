@@ -29,7 +29,7 @@ export interface Torch {
 }
 
 export function createTorchlight(
-  scene: THREE.Scene,
+  scene: THREE.Object3D,
   position: THREE.Vector3,
   wallYaw: number = 0,  // 0 = north wall (default), Math.PI = south, ±PI/2 = west/east
   colorTint?: number,   // optional per-torch color (e.g. 0xffaa55 default, 0x88ddff = haunted pale)
