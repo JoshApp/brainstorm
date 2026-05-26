@@ -57,15 +57,15 @@ type SlotDef = {
 };
 
 const SLOTS: SlotDef[] = [
-  { slotId: 'helmet', top: '6%',  left: '50%', size: 48, shortLabel: 'HELM', longLabel: 'HELMET' },
-  { slotId: 'amulet', top: '24%', left: '50%', size: 36, shortLabel: 'AMU',  longLabel: 'AMULET' },
-  { slotId: 'armor',  top: '42%', left: '50%', size: 56, shortLabel: 'ARM',  longLabel: 'ARMOR' },
-  { slotId: 'weapon', top: '54%', left: '13%', size: 56, shortLabel: 'WPN',  longLabel: 'WEAPON' },
-  { slotId: 'offhand',top: '54%', left: '87%', size: 56, shortLabel: 'OFF',  longLabel: 'OFF-HAND' },
-  { slotId: 'gloves', top: '70%', left: '13%', size: 42, shortLabel: 'GLV',  longLabel: 'GLOVES' },
-  { slotId: 'ring1',  top: '70%', left: '36%', size: 38, shortLabel: 'R1',   longLabel: 'RING' },
-  { slotId: 'ring2',  top: '70%', left: '64%', size: 38, shortLabel: 'R2',   longLabel: 'RING' },
-  { slotId: 'boots',  top: '92%', left: '50%', size: 44, shortLabel: 'FEET', longLabel: 'BOOTS' },
+  { slotId: 'helmet', top: '7%',  left: '50%', size: 38, shortLabel: 'HELM', longLabel: 'HELMET' },
+  { slotId: 'amulet', top: '24%', left: '50%', size: 28, shortLabel: 'AMU',  longLabel: 'AMULET' },
+  { slotId: 'armor',  top: '42%', left: '50%', size: 44, shortLabel: 'ARM',  longLabel: 'ARMOR' },
+  { slotId: 'weapon', top: '52%', left: '14%', size: 44, shortLabel: 'WPN',  longLabel: 'WEAPON' },
+  { slotId: 'offhand',top: '52%', left: '86%', size: 44, shortLabel: 'OFF',  longLabel: 'OFF-HAND' },
+  { slotId: 'gloves', top: '70%', left: '14%', size: 34, shortLabel: 'GLV',  longLabel: 'GLOVES' },
+  { slotId: 'ring1',  top: '70%', left: '38%', size: 30, shortLabel: 'R1',   longLabel: 'RING' },
+  { slotId: 'ring2',  top: '70%', left: '62%', size: 30, shortLabel: 'R2',   longLabel: 'RING' },
+  { slotId: 'boots',  top: '92%', left: '50%', size: 34, shortLabel: 'FEET', longLabel: 'BOOTS' },
 ];
 
 // ── Styling helpers ──────────────────────────────────────────────────
@@ -131,10 +131,10 @@ export function createInventoryPanel() {
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    width: 'min(820px, 96vw)',
-    maxHeight: '92vh',
+    width: 'min(880px, 98vw)',
+    maxHeight: '94vh',
     overflowY: 'auto',
-    padding: '18px 22px',
+    padding: '12px 14px',
     background: PANEL_BG,
     border: PANEL_BORDER,
     borderRadius: '4px',
@@ -144,7 +144,7 @@ export function createInventoryPanel() {
     zIndex: '100',
     display: 'none',
     flexDirection: 'column',
-    gap: '14px',
+    gap: '8px',
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(panel);
 
@@ -230,8 +230,8 @@ function buildThreeColumns(): HTMLDivElement {
   const grid = document.createElement('div');
   Object.assign(grid.style, {
     display: 'grid',
-    gridTemplateColumns: '0.75fr 1fr 1fr',
-    gap: '16px',
+    gridTemplateColumns: '0.5fr 0.9fr 1.1fr',
+    gap: '10px',
     alignItems: 'stretch',
   } as Partial<CSSStyleDeclaration>);
 
@@ -252,9 +252,9 @@ function buildStatsColumn(): HTMLDivElement {
 
   const card = document.createElement('div');
   Object.assign(card.style, {
-    background: CARD_BG, padding: '12px 14px', borderRadius: '3px',
+    background: CARD_BG, padding: '8px 10px', borderRadius: '3px',
     border: '1px solid rgba(120, 90, 60, 0.3)',
-    display: 'flex', flexDirection: 'column', gap: '6px',
+    display: 'flex', flexDirection: 'column', gap: '4px',
     flex: '1',
   } as Partial<CSSStyleDeclaration>);
 
@@ -310,8 +310,8 @@ function buildDollColumn(): HTMLDivElement {
   Object.assign(dollContainer.style, {
     position: 'relative',
     width: '100%',
-    aspectRatio: '0.7',  // tall-ish humanoid
-    minHeight: '260px',
+    aspectRatio: '0.62',  // tighter than before so it fits landscape phones
+    maxHeight: '230px',
     background: 'radial-gradient(circle at 50% 45%, rgba(60, 40, 25, 0.35) 0%, rgba(20, 14, 10, 0.1) 70%)',
     border: '1px solid rgba(80, 60, 40, 0.3)',
     borderRadius: '4px',
@@ -427,7 +427,8 @@ function buildDollSlot(def: SlotDef, item: ItemSpec | null): HTMLDivElement {
 function buildBagColumn(): HTMLDivElement {
   const col = document.createElement('div');
   Object.assign(col.style, {
-    display: 'flex', flexDirection: 'column', gap: '8px',
+    display: 'flex', flexDirection: 'column', gap: '6px',
+    minWidth: '0',
   } as Partial<CSSStyleDeclaration>);
 
   col.appendChild(sectionLabel('BAG'));
@@ -435,8 +436,9 @@ function buildBagColumn(): HTMLDivElement {
   const grid = document.createElement('div');
   Object.assign(grid.style, {
     display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '6px', alignContent: 'start',
-    overflowY: 'auto', maxHeight: '320px',
+    gap: '5px', alignContent: 'start',
+    overflowY: 'auto', maxHeight: '230px',
+    paddingRight: '4px',
   } as Partial<CSSStyleDeclaration>);
 
   const items = getAllItems().filter((i) => i.count > 0);
@@ -470,24 +472,24 @@ function buildBagCell(item: ItemSpec, count: number): HTMLDivElement {
 
   const cell = document.createElement('div');
   Object.assign(cell.style, {
-    padding: '6px 8px',
+    padding: '4px 6px',
     background: selected ? 'rgba(80, 50, 28, 0.85)' : CARD_BG,
     border: selected ? `2px solid ${ACCENT}` : `1.5px solid ${rarityHex}`,
     borderRadius: '3px',
     display: 'grid',
     gridTemplateColumns: 'auto 1fr',
-    gap: '8px',
+    gap: '6px',
     alignItems: 'center',
     cursor: 'pointer',
     boxShadow: selected ? `0 0 12px ${ACCENT}` : `0 0 6px ${rarityHex}33`,
-    minHeight: '48px',
+    minHeight: '38px',
   } as Partial<CSSStyleDeclaration>);
 
   // 3D thumbnail on the left.
   const img = document.createElement('img');
   img.src = getItemThumbnail(item);
   Object.assign(img.style, {
-    width: '40px', height: '40px',
+    width: '32px', height: '32px',
     objectFit: 'contain', imageRendering: 'pixelated',
     flexShrink: '0', pointerEvents: 'none',
   } as Partial<CSSStyleDeclaration>);
@@ -535,34 +537,75 @@ function buildBagCell(item: ItemSpec, count: number): HTMLDivElement {
 }
 
 // ── Details row (selected item) ──────────────────────────────────────
+// Compact horizontal layout: [big thumbnail] [name + flavor + effects]
+// [action button]. Always visible; shows a hint message when nothing
+// is selected. Designed to be readable on a landscape-phone-sized panel.
 function buildDetailsRow(): HTMLDivElement {
   const row = document.createElement('div');
   Object.assign(row.style, {
-    marginTop: '6px',
-    minHeight: '92px',
+    minHeight: '88px',
     background: CARD_BG,
     border: '1px solid rgba(120, 90, 60, 0.4)',
     borderRadius: '3px',
-    padding: '12px 14px',
-    display: 'flex', flexDirection: 'column', gap: '8px',
+    padding: '10px 12px',
   } as Partial<CSSStyleDeclaration>);
 
   if (!selection) {
     const hint = document.createElement('div');
-    hint.textContent = 'Tap an item or equipped slot to inspect.';
+    hint.textContent = 'TAP AN ITEM IN THE BAG OR A FILLED SLOT TO INSPECT';
     Object.assign(hint.style, {
-      color: TEXT_FAINT, fontSize: '11px',
-      fontStyle: 'italic', letterSpacing: '0.1em', textAlign: 'center',
-      padding: '14px 0',
+      color: TEXT_FAINT, fontSize: '10px',
+      letterSpacing: '0.22em', textAlign: 'center',
+      padding: '24px 0',
     } as Partial<CSSStyleDeclaration>);
     row.appendChild(hint);
     return row;
   }
 
   const item = selection.item;
-  row.appendChild(buildDetailsHeader(item));
-  for (const line of describeItem(item)) row.appendChild(line);
-  row.appendChild(buildDetailsAction(selection));
+  Object.assign(row.style, {
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr auto',
+    gap: '12px',
+    alignItems: 'stretch',
+  } as Partial<CSSStyleDeclaration>);
+
+  // Left: big thumbnail on a dark plinth.
+  const thumb = document.createElement('div');
+  Object.assign(thumb.style, {
+    width: '76px', height: '76px',
+    background: 'rgba(20, 14, 10, 0.7)',
+    border: `1.5px solid ${hexCss(RARITY_COLORS[item.rarity ?? 'mundane'])}`,
+    borderRadius: '3px',
+    boxShadow: `0 0 10px ${hexCss(RARITY_COLORS[item.rarity ?? 'mundane'])}55`,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    alignSelf: 'center',
+  } as Partial<CSSStyleDeclaration>);
+  const img = document.createElement('img');
+  img.src = getItemThumbnail(item);
+  Object.assign(img.style, {
+    width: '100%', height: '100%',
+    objectFit: 'contain', imageRendering: 'pixelated',
+  } as Partial<CSSStyleDeclaration>);
+  thumb.appendChild(img);
+
+  // Center: name + flavor + bulleted effects, compact.
+  const text = document.createElement('div');
+  Object.assign(text.style, {
+    display: 'flex', flexDirection: 'column', gap: '3px',
+    overflow: 'hidden', minWidth: '0',
+  } as Partial<CSSStyleDeclaration>);
+  text.appendChild(buildDetailsHeader(item));
+  for (const line of describeItem(item)) text.appendChild(line);
+
+  // Right: action button.
+  const actionWrap = document.createElement('div');
+  Object.assign(actionWrap.style, {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  } as Partial<CSSStyleDeclaration>);
+  actionWrap.appendChild(buildDetailsAction(selection));
+
+  row.append(thumb, text, actionWrap);
   return row;
 }
 
@@ -666,18 +709,19 @@ function buildDetailsAction(sel: NonNullable<Selection>): HTMLButtonElement {
 
   btn.textContent = label;
   Object.assign(btn.style, {
-    marginTop: 'auto', alignSelf: 'flex-start',
-    padding: '8px 22px',
-    background: 'rgba(120, 70, 30, 0.75)',
-    border: '1px solid rgba(255, 180, 100, 0.65)',
+    padding: '14px 22px',
+    minWidth: '88px',
+    background: label === 'WEAPON LOCKED' ? 'rgba(60, 40, 20, 0.4)' : 'rgba(160, 90, 40, 0.85)',
+    border: label === 'WEAPON LOCKED' ? '1px solid rgba(120, 80, 50, 0.3)' : '1px solid rgba(255, 200, 120, 0.85)',
     borderRadius: '3px',
-    color: 'rgba(255, 230, 200, 0.97)',
-    fontSize: '11px',
-    fontWeight: '600',
+    color: 'rgba(255, 235, 210, 0.97)',
+    fontSize: '12px',
+    fontWeight: '700',
     letterSpacing: '0.25em',
     cursor: label === 'WEAPON LOCKED' ? 'default' : 'pointer',
-    opacity: label === 'WEAPON LOCKED' ? '0.4' : '1',
+    opacity: label === 'WEAPON LOCKED' ? '0.5' : '1',
     touchAction: 'manipulation',
+    boxShadow: label === 'WEAPON LOCKED' ? 'none' : '0 0 12px rgba(255, 160, 80, 0.4)',
   } as Partial<CSSStyleDeclaration>);
   if (label !== 'WEAPON LOCKED') {
     btn.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
