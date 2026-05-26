@@ -67,12 +67,47 @@ export function spawnStairs(
   black.position.set(0, -totalDrop / 2, totalDepth);
   group.add(black);
 
-  // Subtle cool glow at the bottom — implies something is down there. Pulls
-  // from materials' palette accent if we want, but a simple cyan PointLight
-  // is fine and reads as "the next floor is different."
-  const glow = new THREE.PointLight(0x88aaff, 0.6, 2.5, 1.8);
-  glow.position.set(0, -totalDrop + 0.2, totalDepth - 0.4);
+  // Cool glow at the bottom — implies something is down there + reads
+  // as "the next floor is different." Bright enough to be the destination
+  // anchor visible from across the room, so the player sees the stairs
+  // call even when standing in a dark corner.
+  const glow = new THREE.PointLight(0x88aaff, 4.5, 5.5, 1.6);
+  glow.position.set(0, -totalDrop + 0.4, totalDepth - 0.4);
   group.add(glow);
+
+  // Vertical "beacon" plume rising out of the stairwell mouth — a
+  // billboarded sprite that reads from any angle. Pokes up through
+  // the floor opening so it's visible across the room (above the
+  // floor-level fog falloff). The eye finds this and walks toward it.
+  const beaconMat = new THREE.SpriteMaterial({
+    color: 0xa0c4ff,
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    depthWrite: false,
+  });
+  const beacon = new THREE.Sprite(beaconMat);
+  beacon.scale.set(0.7, 1.6, 1);
+  beacon.position.set(0, 0.6, STEP_DEPTH * 0.5);
+  group.add(beacon);
+
+  // Wide soft floor halo around the top tread — a "this is the way
+  // forward" pool that's visible peripherally even when the player
+  // isn't looking directly at the stairs.
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: 0x405680,
+    transparent: true,
+    opacity: 0.45,
+    fog: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), haloMat);
+  halo.rotation.x = -Math.PI / 2;
+  halo.position.set(0, 0.02, STEP_DEPTH * 0.5);
+  group.add(halo);
 
   const interactable = {
     id: generateEntityId(`stairs-${spec.id ?? spec.targetLevel}`),

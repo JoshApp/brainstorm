@@ -94,6 +94,32 @@ export function spawnDoor(
   const wallSeg: WallSegment = { ax: spec.ax, az: spec.az, bx: spec.bx, bz: spec.bz };
   walkable.addWall(wallSeg);
 
+  // ── Threshold light ────────────────────────────────────────────────
+  // A faint emissive strip on the floor along the doorway, parented to
+  // the LEVEL ROOT (not the pivot) so it doesn't swing with the panel.
+  // Reads from a distance as "passage here" — guides the eye even when
+  // the room beyond is dark + the door itself is in shadow. Color
+  // shifts cool/sealed → warm/open as the door's state changes.
+  const cxThresh = (spec.ax + spec.bx) / 2;
+  const czThresh = (spec.az + spec.bz) / 2;
+  const lengthThresh = Math.hypot(spec.bx - spec.ax, spec.bz - spec.az);
+  const thresholdMat = new THREE.MeshBasicMaterial({
+    color: 0x8c5a30,
+    transparent: true,
+    opacity: 0.6,
+    fog: false,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const thresholdGeo = new THREE.BoxGeometry(lengthThresh * 0.92, 0.04, 0.18);
+  const threshold = new THREE.Mesh(thresholdGeo, thresholdMat);
+  threshold.position.set(cxThresh, 0.025, czThresh);
+  // Rotate the strip to align with the door span (so it spans the
+  // doorway, not crossing it perpendicular).
+  const ang = Math.atan2(spec.bz - spec.az, spec.bx - spec.ax);
+  threshold.rotation.y = -ang;
+  parent.add(threshold);
+
   // Determine swing direction. The +X axis of the local pivot is the panel's
   // length direction. Rotating about Y by +angle pulls the far end into the
   // hinge's +Z side; -angle into the -Z side. spec.swingDir picks which.
@@ -127,6 +153,10 @@ export function spawnDoor(
       if (state === 'sealed' && isUnlocked()) {
         state = 'closed';
         interactable.promptLabel = 'OPEN';
+        // Sealed → closed: threshold warms up. Subtle "the way is now
+        // open" cue beyond the SEALED-label flip.
+        thresholdMat.color.setHex(0x8c5a30);
+        thresholdMat.opacity = 0.6;
       }
       if (state === 'opening') {
         openTimer += dt;
@@ -160,6 +190,10 @@ export function spawnDoor(
   if (!isUnlocked()) {
     state = 'sealed';
     interactable.promptLabel = 'SEALED';
+    // Sealed: cool gray threshold — reads as "passage exists, but
+    // closed off." Still visible from distance so the eye finds it.
+    thresholdMat.color.setHex(0x405060);
+    thresholdMat.opacity = 0.35;
   } else {
     interactable.promptLabel = 'OPEN';
   }
@@ -174,6 +208,8 @@ export function spawnDoor(
       state = 'closed';
       interactable.promptLabel = 'OPEN';
       // A subtle "unsealed" chime might go here later. For now silent.
+      thresholdMat.color.setHex(0x8c5a30);
+      thresholdMat.opacity = 0.6;
     }
   });
 
