@@ -30,7 +30,6 @@ function hapticVibrate(ms: number) {
 
 // Reusable scratch vectors.
 const forwardDir = new THREE.Vector3();
-const toEnemy = new THREE.Vector3();
 const hitPoint = new THREE.Vector3();
 
 export function createCombatSystem(
@@ -66,21 +65,35 @@ export function createCombatSystem(
     const reachSq = weapon.reach * weapon.reach;
     const cosConeHalf = Math.cos(weapon.coneHalfAngle);
 
+    // Cone check runs in the HORIZONTAL plane only. A 3D check breaks at
+    // very close range: when a tall enemy (e.g. wraith) is pressed against
+    // the player, the toEnemy vector points mostly downward, so its dot
+    // with the roughly-horizontal forward dir drops below cosConeHalf and
+    // the swing whiffs even though the enemy is right in your face. The
+    // reach check still uses 3D distance, so you can still hit a rat at
+    // your feet by looking down.
+    const forwardLenXZ = Math.hypot(forwardDir.x, forwardDir.z) || 1;
+
     let bestEnemy: Enemy | null = null;
     let bestDistSq = reachSq + 1;
     for (const e of enemies) {
       if (!e.alive) continue;
-      toEnemy.set(
-        e.group.position.x - camera.position.x,
-        (e.group.position.y + 0.6) - camera.position.y,
-        e.group.position.z - camera.position.z,
-      );
-      const distSq = toEnemy.lengthSq();
+      const dx = e.group.position.x - camera.position.x;
+      const dy = (e.group.position.y + 0.6) - camera.position.y;
+      const dz = e.group.position.z - camera.position.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
       if (distSq > reachSq) continue;
 
-      const dist = Math.sqrt(distSq);
-      const dot = (forwardDir.x * toEnemy.x + forwardDir.y * toEnemy.y + forwardDir.z * toEnemy.z) / dist;
-      if (dot < cosConeHalf) continue;
+      const horDist = Math.hypot(dx, dz);
+      // Degenerate case: enemy directly on top of the player (no horizontal
+      // displacement at all). Always counts as in-cone — you can't NOT face
+      // something inside you.
+      if (horDist < 0.0001) {
+        if (distSq < bestDistSq) { bestDistSq = distSq; bestEnemy = e; }
+        continue;
+      }
+      const horDot = (forwardDir.x * dx + forwardDir.z * dz) / (forwardLenXZ * horDist);
+      if (horDot < cosConeHalf) continue;
 
       if (distSq < bestDistSq) {
         bestDistSq = distSq;
