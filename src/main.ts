@@ -18,7 +18,6 @@ import { initAchievements } from './broadcast/achievements';
 import { getStyle } from './style';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle } from './style/render-target';
-import { createStyleSwitcher } from './ui/style-switcher';
 import { createSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings } from './settings/settings';
@@ -172,7 +171,6 @@ initAchievements();
 const input = createTouchInput(canvas);
 createUseButton();
 createConsumableBar();
-createStyleSwitcher();
 // Backdrop and HUD-hide are now owned by the screen manager — created
 // lazily when the first screen that needs them opens.
 createSettingsMenu();

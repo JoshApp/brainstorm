@@ -2,54 +2,26 @@ import { getSettings, updateSettings } from '../settings/settings';
 import { setMasterVolume } from '../audio/sfx';
 import { openScreen, closeScreen } from './screen-manager';
 
-// Settings menu: tap the gear icon (top-left, below the style switcher)
-// to open a panel with sliders + toggles. Same warm/dim palette as
-// the rest of the in-world UI (avoid blue/cyan = "tech" register).
+// Settings panel.
+//
+// Used to have its own gear button at top-left, but that cluttered the
+// gameplay HUD on a phone. Now the panel is "headless": no global open
+// button — other UI opens it via openSettings(). Currently the inventory
+// header's gear icon is the entry point.
 //
 // Settings persisted via src/settings/settings.ts to localStorage.
 
 const PANEL_BG = 'rgba(20, 14, 10, 0.92)';
 const BORDER = '1px solid rgba(180, 130, 90, 0.5)';
 
-let openButton: HTMLButtonElement | null = null;
 let panel: HTMLDivElement | null = null;
 let panelOpen = false;
 
 export function createSettingsMenu() {
-  if (openButton) return;
+  if (panel) return;
 
-  // The gear button — top-left, beneath the style switcher chip.
-  openButton = document.createElement('button');
-  openButton.id = 'settings-button';
-  openButton.setAttribute('aria-label', 'settings');
-  openButton.textContent = '⚙';
-  Object.assign(openButton.style, {
-    position: 'fixed',
-    top: 'calc(72px + env(safe-area-inset-top, 0px))',
-    left: 'calc(16px + env(safe-area-inset-left, 0px))',
-    width: '40px',
-    height: '40px',
-    borderRadius: '50%',
-    border: '1px solid rgba(180, 130, 90, 0.5)',
-    background: 'rgba(20, 14, 10, 0.75)',
-    color: 'rgba(220, 180, 140, 0.9)',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '20px',
-    lineHeight: '1',
-    cursor: 'pointer',
-    zIndex: '95',  // above the menu backdrop (90), below panels (100)
-    touchAction: 'manipulation',
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
-    WebkitTapHighlightColor: 'transparent',
-  } as Partial<CSSStyleDeclaration>);
-  openButton.addEventListener('click', (e) => {
-    e.stopPropagation();
-    togglePanel();
-  });
-  document.body.appendChild(openButton);
-
-  // The panel itself, hidden by default.
+  // The panel itself, hidden by default. Built ONCE at boot so opens are
+  // instant; only callers vary.
   panel = document.createElement('div');
   panel.id = 'settings-panel';
   Object.assign(panel.style, {
@@ -76,9 +48,12 @@ export function createSettingsMenu() {
   buildPanelContents();
 }
 
-function togglePanel() {
-  if (panelOpen) closePanel();
-  else openPanel();
+/** Public API — called by other UI (e.g. the inventory header gear)
+ *  to open the settings panel. Idempotent. */
+export function openSettings() { openPanel(); }
+export function closeSettings() { closePanel(); }
+export function toggleSettings() {
+  if (panelOpen) closePanel(); else openPanel();
 }
 
 function openPanel() {

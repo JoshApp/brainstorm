@@ -39,35 +39,64 @@ export const MOONLIGHT_CRACK: ModelSpec = {
   },
 };
 
-// Floor glow: a soft pool of cool light on the floor — implies luminous
-// fungus, cracked floor with cold light bleeding through, or strange
-// phosphorescence. Uses the fire-wisp texture as the visible gradient
-// mask. Light has long range + gentle decay so it actually illuminates
-// the surrounding area (not just a small spot).
+// Floor glow: a luminous source built INTO the floor — cracked stone with
+// something glowing beneath, or phosphorescent fungus. Three layered parts
+// give it depth (vs the old single flat disc):
+//
+//   1. Wide outer halo decal — soft falloff, the "ambient pool"
+//   2. Bright inner disc — the "core" you read as the source
+//   3. Vertical ember plume sprite — a billboarded heat-haze pillar that
+//      reads from any angle as light rising from the floor
+//
+// Plus the PointLight that does the actual room-illumination.
 export function floorGlow(tint: number = 0x6cc6e0): ModelSpec {
+  const id = `floor-glow-${tint.toString(16)}`;
   return {
-    id: `floor-glow-${tint.toString(16)}`,
+    id,
     materials: {},
     parts: [
-      // Visible disc on the floor — bigger than before so the source reads
-      // as a wide soft pool, not a tiny dot.
+      // Layer 1: outer halo — wide soft falloff.
       {
         kind: 'decal',
-        pos: [0, 0.01, 0],
+        pos: [0, 0.005, 0],
         rot: [-Math.PI / 2, 0, 0],
-        size: [1.6, 1.6],
+        size: [2.2, 2.2],
         texture: 'fire-wisp',
         color: tint,
         emissive: tint,
-        emissiveIntensity: 1.5,
+        emissiveIntensity: 0.9,
+      },
+      // Layer 2: bright inner core — smaller, brighter, gives the eye an
+      // anchor "this is THE source" instead of an indistinct smear.
+      {
+        kind: 'decal',
+        pos: [0, 0.012, 0],
+        rot: [-Math.PI / 2, 0, 0],
+        size: [0.8, 0.8],
+        texture: 'fire-wisp',
+        color: tint,
+        emissive: tint,
+        emissiveIntensity: 2.4,
+      },
+      // Layer 3: vertical ember-plume sprite. Billboarded so it ALWAYS
+      // faces the camera, reads as a column of light/heat rising from
+      // the floor. Tinted with the same color and additively blended so
+      // it stays luminous through fog.
+      {
+        kind: 'sprite',
+        pos: [0, 0.45, 0],
+        size: [0.55, 0.9],
+        texture: 'fire-wisp',
+        color: tint,
+        blending: 'additive',
       },
     ],
     light: {
       color: tint,
-      intensity: 18,
-      distance: 6.5,              // much further reach — actually lights the room
-      decay: 1.2,                 // gentler falloff so the light feels diffuse
-      pos: [0, 0.30, 0],
+      intensity: 22,              // bumped 18 → 22 for the brighter overall look
+      distance: 7.5,              // bumped 6.5 → 7.5
+      decay: 1.2,
+      pos: [0, 0.35, 0],
       castShadow: false,
     },
   };

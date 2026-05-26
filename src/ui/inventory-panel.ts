@@ -14,6 +14,7 @@ import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
 import { openScreen, closeScreen } from './screen-manager';
+import { openSettings } from './settings-menu';
 import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
@@ -215,6 +216,26 @@ function buildHeader(): HTMLDivElement {
     color: 'rgba(255, 200, 140, 0.95)',
   } as Partial<CSSStyleDeclaration>);
 
+  // Right side: gear (settings) + close. Gear sits inside the inventory
+  // so the gameplay HUD doesn't carry a standalone settings button.
+  const right = document.createElement('div');
+  Object.assign(right.style, {
+    display: 'flex', alignItems: 'center', gap: '4px',
+  } as Partial<CSSStyleDeclaration>);
+
+  const gear = document.createElement('button');
+  gear.textContent = '⚙';
+  gear.setAttribute('aria-label', 'settings');
+  Object.assign(gear.style, {
+    background: 'transparent', border: 'none',
+    color: 'rgba(200, 160, 110, 0.7)', fontSize: '18px', cursor: 'pointer',
+    padding: '4px 8px', lineHeight: '1',
+  } as Partial<CSSStyleDeclaration>);
+  gear.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openSettings();
+  });
+
   const close = document.createElement('button');
   close.textContent = '✕';
   Object.assign(close.style, {
@@ -224,7 +245,8 @@ function buildHeader(): HTMLDivElement {
   } as Partial<CSSStyleDeclaration>);
   close.addEventListener('click', closePanel);
 
-  header.append(title, close);
+  right.append(gear, close);
+  header.append(title, right);
   return header;
 }
 

@@ -11,21 +11,28 @@ export const CONFIG = {
   // torches are, leaving non-lit areas slightly cool — so the chamber feels
   // warm vs the corridor feeling cooler vs the antechamber feeling sickly-green.
   // Previous warm-sepia ambient (0x231711) painted the whole world ochre.
-  AMBIENT_COLOR: 0x181c22,
-  AMBIENT_INTENSITY: 1.1,
+  // Ambient bumped from 1.1 → 1.5 — the procgen rooms are larger than the
+  // hand-authored floor 1 and torch coverage is sparser, so the gap between
+  // "lit by torch" and "pitch black" was too binary. Slight cool-gray base
+  // keeps mood without saturating the warm torch additions.
+  AMBIENT_COLOR: 0x1a1e24,
+  AMBIENT_INTENSITY: 1.5,
 
   // === FOG ===
   // Hides everything beyond torch range. Sells the dread.
+  // Bumped 7 → 9 so larger procgen rooms read clearly past the immediate
+  // 6m halo of a torch — fog still hides the room's far end, but you can
+  // SEE that there IS a far end (silhouettes, distant emissives).
   FOG_COLOR: 0x000000,
   FOG_NEAR: 1.5,
-  FOG_FAR: 7,
+  FOG_FAR: 9,
 
   // === TORCHLIGHT ===
   // Note: Three.js r155+ uses physical light units (candela). A torch needs
   // intensities in the 50-200 range, not single digits, to actually light a room.
   TORCH_COLOR: 0xffaa55,       // warm orange flame
-  TORCH_INTENSITY: 95,         // base brightness (was 80; bumped slightly for elaborated room)
-  TORCH_DISTANCE: 10,          // falloff range (extended from 8 to reach far wall)
+  TORCH_INTENSITY: 115,        // bumped 95 → 115 for procgen-room visibility
+  TORCH_DISTANCE: 11,          // bumped 10 → 11 to reach corners of larger rooms
   TORCH_DECAY: 1.4,            // gentler-than-physical falloff — more "torch in dungeon"
   TORCH_FLICKER_AMOUNT: 0.4,   // how much intensity varies (0-1)
   TORCH_FLICKER_SPEED: 0.08,   // how fast it changes (lower = slower)
