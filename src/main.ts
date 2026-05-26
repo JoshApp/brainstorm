@@ -4,6 +4,7 @@ import { updateTorchlight } from './scene/torchlight';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/camera';
 import { createSword } from './player/sword';
+import { attachLamp, tickLamp } from './player/handheld-lamp';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
@@ -43,7 +44,7 @@ import { PASSIVES } from './content/passives';
 import { setupPwaAutoUpdate } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
 import { initPickupLightPool } from './interactables/pickup';
-import { initSelectionRing, updateSelectionRing } from './interactables/selection-ring';
+import { updateOutline } from './interactables/outline';
 import { createUseButton, setUseButtonVisible, setInteractAction, consumeUsePressed } from './controls/use-button';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar, updateHpBar } from './ui/hp-bar';
@@ -144,6 +145,12 @@ initLevelLoader({
 // --- Player: held sword ---
 const sword = createSword(camera);
 
+// --- Player: handheld lamp ---
+// Warm PointLight parented to the camera, offset to the off-hand
+// position. Carries with the player everywhere and gives consistent
+// near-field visibility — corners between torches no longer pitch-black.
+attachLamp(camera);
+
 // Sword viewmodel + combat stats are now driven REACTIVELY by the equipment
 // slot system. Whenever the weapon slot changes (pickup, manual equip via
 // the inventory panel, etc.), this listener swaps the visible model + the
@@ -209,10 +216,6 @@ warmupContent(renderer);
 // material shader if the scene's light count changes mid-fight, but a
 // fixed-count pool sidesteps that entirely.
 initPickupLightPool(scene);
-
-// Selection ring — billboarded glow under the in-range interactable.
-// Single mesh, moves to the active target each frame.
-initSelectionRing(scene);
 
 // Run-state listeners — kill counter, items-found set, autosave on
 // floor:loaded events. Wired before any level load so the initial
@@ -287,6 +290,9 @@ function tick() {
     combat.tick(attackPressed);
 
     sword.update(scaledDt);
+    // Handheld lamp flicker. realDt — flicker shouldn't slow during
+    // hit-pause (a frozen lamp looks broken).
+    tickLamp(realDt);
     for (const enemy of currentLevel.enemies) {
       enemy.update(scaledDt, camera.position, currentLevel.walkable);
     }
@@ -317,9 +323,9 @@ function tick() {
   const inRange = (isDying() || isAnyScreenOpen()) ? null : getInRangeInteractable();
   setInteractAction(inRange ? inRange.promptLabel : null);
   setUseButtonVisible(!!inRange);
-  // Selection ring follows the in-range interactable. realDt (not scaled)
+  // Outline highlight on the in-range interactable. realDt (not scaled)
   // so the pulse animates at real-time even during hit-pause / scenarios.
-  updateSelectionRing(inRange, realDt);
+  updateOutline(inRange, realDt);
 
   // HUD — poll-based; cheap and always accurate. Runs even when the
   // world is paused so the player can see HP / buff state in menus

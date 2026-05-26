@@ -183,7 +183,10 @@ export function createPickup(
     id,
     position: pos.clone(),
     radius: 1.0,
-    promptLabel: 'TAKE',
+    // Promptless during flight — the interactables system filters out
+    // empty-label items, so the player can't grab an item mid-arc. We
+    // flip to 'TAKE' the moment it lands (mode → 'settled').
+    promptLabel: (mode === 'settled' ? 'TAKE' : ''),
     onUse() {
       // Pickup chime — rarity-tinted (mundane low/dull, fabled high/long).
       playPickupChime(RARITY_INDEX[item.rarity ?? 'mundane']);
@@ -251,6 +254,10 @@ export function createPickup(
           mode = 'settled';
           disc.visible = true;
           landPuff = 1;
+          // Item just landed → it's pickable now. Empty during flight
+          // means the interactables system was ignoring it; TAKE now
+          // surfaces the prompt + tap target.
+          interactable.promptLabel = 'TAKE';
           playLootLand();
         } else {
           built.group.position.set(itemX, itemY, itemZ);

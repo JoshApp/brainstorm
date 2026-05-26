@@ -38,6 +38,14 @@ export const CONFIG = {
   TORCH_FLICKER_SPEED: 0.08,   // how fast it changes (lower = slower)
   TORCH_HEIGHT: 2.2,           // mounted on wall
 
+  // === HANDHELD LAMP ===
+  // Player-carried light source that follows the camera. Gives consistent
+  // visibility in the immediate vicinity (~3m) so corners and corridors
+  // between torches aren't pitch-black. Warmer than torches so the
+  // player's "personal halo" reads distinctly from the room's lighting.
+  LAMP_INTENSITY: 38,
+  LAMP_DISTANCE: 4.5,
+
   // === PLAYER ===
   PLAYER_HEIGHT: 1.6,          // eye level
   MOVE_SPEED: 2.5,             // meters per second — slow, deliberate
