@@ -14,8 +14,21 @@
 // most, how many runs in. Item/enemy/note generation will pull from
 // here.
 
+import type { Rarity } from '../content/items';
+
 const STORAGE_KEY = 'delve:meta';
-const META_VERSION = 1;
+// v2 added achievementsUnlocked + stash. v1 saves are compatible — the
+// fields default-init to empty arrays during the load fixup below.
+const META_VERSION = 2;
+
+export interface StashEntry {
+  /** Unique id used by the UI to key entries. Random per granted box. */
+  id: string;
+  /** Rarity tier that determines the item pool the box rolls from. */
+  tier: Rarity;
+  /** Where it came from — usually an achievement title for the reveal UI. */
+  source: string;
+}
 
 export interface MetaState {
   version: number;
@@ -35,6 +48,10 @@ export interface MetaState {
   itemsFound: string[];
   /** Unique corpse-note bodies read (truncated to first 60 chars as key). */
   notesRead: string[];
+  /** Achievement ids unlocked. Each fires AT MOST once across all runs. */
+  achievementsUnlocked: string[];
+  /** Unopened loot boxes waiting on the title screen. */
+  stash: StashEntry[];
 }
 
 function emptyMeta(): MetaState {
@@ -48,6 +65,8 @@ function emptyMeta(): MetaState {
     enemiesSlain: [],
     itemsFound: [],
     notesRead: [],
+    achievementsUnlocked: [],
+    stash: [],
   };
 }
 
@@ -62,13 +81,17 @@ function load(): MetaState {
       cache = emptyMeta();
       return cache;
     }
-    const parsed = JSON.parse(raw) as MetaState;
-    if (parsed.version !== META_VERSION) {
-      // Future migrations land here. For now, reset.
+    const parsed = JSON.parse(raw) as Partial<MetaState>;
+    // Forward-migrate: any new fields added in later versions default to
+    // empty. v1 → v2 added achievementsUnlocked + stash.
+    if ((parsed.version ?? 0) > META_VERSION) {
+      // Newer save format from a future build — reset rather than risk
+      // half-reading it.
       cache = emptyMeta();
       return cache;
     }
-    cache = parsed;
+    const fresh = emptyMeta();
+    cache = { ...fresh, ...parsed, version: META_VERSION };
     return cache;
   } catch {
     cache = emptyMeta();
@@ -143,6 +166,48 @@ export function recordDepthReached(depth: number): boolean {
   m.deepestDepth = depth;
   persist();
   return true;
+}
+
+// ── Achievements + stash ────────────────────────────────────────────
+
+/** Mark an achievement unlocked. Returns true if this is the first time. */
+export function recordAchievement(id: string): boolean {
+  const m = load();
+  if (m.achievementsUnlocked.includes(id)) return false;
+  m.achievementsUnlocked.push(id);
+  persist();
+  return true;
+}
+
+export function hasAchievement(id: string): boolean {
+  return load().achievementsUnlocked.includes(id);
+}
+
+/** Add a loot box to the stash. UI consumes via popStash. */
+export function addStashEntry(tier: Rarity, source: string) {
+  const m = load();
+  m.stash.push({
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    tier,
+    source,
+  });
+  persist();
+}
+
+/** Read-only view of unopened stash boxes. */
+export function getStash(): readonly StashEntry[] {
+  return load().stash;
+}
+
+/** Remove + return the stash entry with this id. Used when the player
+ *  opens a box; the rolled item is computed elsewhere. */
+export function consumeStashEntry(id: string): StashEntry | null {
+  const m = load();
+  const idx = m.stash.findIndex(e => e.id === id);
+  if (idx < 0) return null;
+  const [entry] = m.stash.splice(idx, 1);
+  persist();
+  return entry;
 }
 
 // ── Per-run discovery tracking ──────────────────────────────────────

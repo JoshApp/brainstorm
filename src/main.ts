@@ -383,10 +383,10 @@ function startRun(floorId: string, startDepth: number = 1) {
 }
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
-// the CODEX button without requiring real playthrough.
+// the CODEX/STASH buttons without requiring real playthrough.
 if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
   localStorage.setItem('delve:meta', JSON.stringify({
-    version: 1,
+    version: 2,
     runsAttempted: 7, runsDied: 6, deepestDepth: 4, totalKills: 31,
     totalPlayMs: 4 * 60 * 1000,
     enemiesSlain: ['rat', 'skirmisher', 'ghoul'],
@@ -395,6 +395,12 @@ if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
     notesRead: [
       'I came for the blade. I should have come for the door.',
       'They told us it was one floor. They counted wrong.',
+    ],
+    achievementsUnlocked: ['first-blood', 'untouched', 'depth-3-reached'],
+    stash: [
+      { id: 'a1', tier: 'uncommon', source: 'Untouched' },
+      { id: 'a2', tier: 'rare', source: 'The Dungeon Notices' },
+      { id: 'a3', tier: 'fabled', source: 'Magic Bypass' },
     ],
   }));
 }
@@ -427,6 +433,8 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   });
 } else if (new URLSearchParams(window.location.search).get('showCodex') === '1') {
   import('./ui/codex-screen').then(({ showCodex }) => showCodex());
+} else if (new URLSearchParams(window.location.search).get('showStash') === '1') {
+  import('./ui/stash-screen').then(({ showStash }) => showStash());
 } else if (scenario) {
   // Debug scenario — bypass title. Scenario may override the level
   // spec or use the default LEVEL_1.

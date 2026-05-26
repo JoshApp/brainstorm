@@ -46,7 +46,7 @@ const VIEWPORTS: Record<string, { width: number; height: number; deviceScaleFact
 // snap captures the FINAL state (title's letter-spacing tween is 1.6s,
 // the death sequence is several seconds before the end screen).
 const LONG_WAIT_SCENARIOS = new Set([
-  'death', 'title', 'title-continue', 'title-veteran', 'end', 'codex',
+  'death', 'title', 'title-continue', 'title-veteran', 'end', 'codex', 'stash',
 ]);
 
 async function main() {
@@ -130,12 +130,13 @@ async function main() {
     const isBare =
       scenario === 'title' || scenario === 'title-continue' ||
       scenario === 'title-veteran' || scenario === 'end' ||
-      scenario === 'codex';
+      scenario === 'codex' || scenario === 'stash';
     let url: string;
     if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
     else if (scenario === 'title-veteran') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1`;
     else if (scenario === 'codex') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showCodex=1`;
+    else if (scenario === 'stash') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showStash=1`;
     else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
     else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}`;
     console.log(`Opening ${url}`);

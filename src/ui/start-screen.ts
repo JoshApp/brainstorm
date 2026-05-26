@@ -9,8 +9,9 @@
 // no sponsor energy, no fanfare.
 
 import { openScreen, closeScreen } from './screen-manager';
-import { getMeta } from '../state/meta-state';
+import { getMeta, getStash } from '../state/meta-state';
 import { showCodex } from './codex-screen';
+import { showStash } from './stash-screen';
 
 const SCREEN_ID = 'start';
 
@@ -162,6 +163,20 @@ export function showStartScreen(opts: StartScreenOptions) {
       opts.onContinue();
     });
     buttons.appendChild(cont);
+  }
+
+  // STASH — appears whenever there are unopened loot boxes. Sits ABOVE
+  // codex so it's the second-most-prominent pill (after the primary
+  // DESCEND/CONTINUE) — players coming back from a successful run
+  // should be drawn to the rewards waiting for them.
+  const stash = getStash();
+  if (stash.length > 0) {
+    const stashPill = makePill('STASH', `${stash.length} unopened`, false);
+    stashPill.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      showStash();
+    });
+    buttons.appendChild(stashPill);
   }
 
   // CODEX — appears only when the player has discovered SOMETHING.

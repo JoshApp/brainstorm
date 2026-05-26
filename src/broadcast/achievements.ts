@@ -1,5 +1,7 @@
 import { on, type GameEvent } from './event-bus';
 import { broadcastPop } from '../ui/broadcast-pop';
+import { recordAchievement, hasAchievement, addStashEntry } from '../state/meta-state';
+import type { Rarity } from '../content/items';
 
 // Tiny "achievements queued" badge in the top-right. Pulses softly while
 // the queue has items so the player knows pops are held, not dropped. The
@@ -59,6 +61,9 @@ interface Achievement {
   desc: string;
   /** Returns true if this event triggers the achievement. */
   trigger: (event: GameEvent, state: TrackedState) => boolean;
+  /** Stash tier granted on first unlock. Optional — some achievements
+   *  are pure flavor. Tiers map to the existing item rarity pool. */
+  reward?: Rarity;
 }
 
 interface TrackedState {
@@ -77,26 +82,56 @@ const ACHIEVEMENTS: Achievement[] = [
     title: 'First Blood',
     desc: 'Statistically improbable for someone of your demographic.',
     trigger: (e) => e.type === 'enemy:killed',
+    reward: 'mundane',
   },
   {
     id: 'untouched',
     title: 'Untouched',
     desc: 'Lucky. Subsequent floors have been notified.',
     trigger: (e, s) => e.type === 'enemy:killed' && !s.hasTakenDamage,
+    reward: 'uncommon',
+  },
+  {
+    id: 'wraith-slain',
+    title: 'Magic Bypass',
+    desc: 'The dungeon files an exception.',
+    trigger: (e) => e.type === 'enemy:killed' && e.enemyId === 'wraith',
+    reward: 'fabled',
+  },
+  {
+    id: 'depth-3-reached',
+    title: 'Deeper Than Most',
+    desc: 'You are no longer in the tutorial.',
+    trigger: (e) => e.type === 'level:loaded' && parseDepth(e.levelId) >= 3,
+    reward: 'uncommon',
+  },
+  {
+    id: 'depth-5-reached',
+    title: 'The Dungeon Notices',
+    desc: 'Sponsorship inquiries forthcoming.',
+    trigger: (e) => e.type === 'level:loaded' && parseDepth(e.levelId) >= 5,
+    reward: 'rare',
   },
   {
     id: 'brief-forgotten',
     title: 'Brief and Forgotten',
     desc: 'Added to the Depth-1 leaderboard. It is long.',
     trigger: (e) => e.type === 'player:killed',
+    reward: 'mundane',
   },
   {
     id: 'pacifist',
     title: 'Pacifist',
     desc: 'Bold choice. The audience is split.',
     trigger: (e, s) => e.type === 'player:killed' && !s.hasSwung,
+    reward: 'cursed',
   },
 ];
+
+function parseDepth(levelId: string): number {
+  const m = levelId.match(/^depth-(\d+)$/);
+  return m ? parseInt(m[1], 10) : 1;
+}
 
 // Minimum gap between achievement pops once the queue starts draining.
 const POP_GAP_MS = 1800;
@@ -118,7 +153,8 @@ const COMBAT_EVENT_TYPES = new Set<GameEvent['type']>([
 ]);
 
 export function initAchievements() {
-  const unlocked = new Set<string>();
+  // Per-run tracked state for triggers that need it (pacifist needs to
+  // know you never swung this run, etc.). NOT persisted — resets at boot.
   const state: TrackedState = {
     hasSwung: false,
     hasKilled: false,
@@ -145,8 +181,6 @@ export function initAchievements() {
       lastPopTime = performance.now();
       broadcastPop(next.title, next.desc);
       updateIndicator(queue.length);
-      // Chain through the rest of the queue with gaps; the calm check
-      // runs again per pop so a fresh combat event interrupts mid-drain.
       tryDrain();
     }, wait);
   }
@@ -157,16 +191,22 @@ export function initAchievements() {
     }
 
     for (const ach of ACHIEVEMENTS) {
-      if (unlocked.has(ach.id)) continue;
+      // Unlock state is PERSISTED in meta-state, not just session.
+      // hasAchievement covers "already unlocked in a previous run".
+      if (hasAchievement(ach.id)) continue;
       if (ach.trigger(event, state)) {
-        unlocked.add(ach.id);
+        const isFirst = recordAchievement(ach.id);
+        if (isFirst && ach.reward) {
+          // Grant a loot box of the reward tier. Source name shows in
+          // the stash UI so the player remembers what they did to earn it.
+          addStashEntry(ach.reward, ach.title);
+        }
         queue.push(ach);
         updateIndicator(queue.length);
       }
     }
     tryDrain();
 
-    // Update state AFTER trigger checks so this event isn't reflected yet.
     if (event.type === 'attack:swing') state.hasSwung = true;
     if (event.type === 'enemy:killed') state.hasKilled = true;
     if (event.type === 'player:damaged') state.hasTakenDamage = true;
