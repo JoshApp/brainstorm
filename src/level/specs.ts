@@ -131,6 +131,37 @@ export const LEVEL_1: LevelSpec = {
     { kind: 'model', model: MOONLIGHT_CRACK, x: 3.99, y: 1.5, z: -0.5, rotY: -Math.PI / 2 },
     { kind: 'model', model: CORRIDOR_FLOOR_GLOW, x: 0, y: 0, z: 6.25 },
     { kind: 'model', model: ANTE_FLOOR_GLOW, x: 0, y: 0, z: 11 },
+
+    // ── Non-combat encounters ──────────────────────────────────────
+    // Chamber NW corner — a previous delver slumped against the wall.
+    // The note sets the world's voice without LLM. Player can find this
+    // before, during, or after the chamber fight.
+    {
+      kind: 'corpse',
+      x: -3.2, z: -3.2,
+      rotY: 0.7,
+      note: 'I came for the blade. I should have come for the door.\n\nDo not drink from the green water.',
+    },
+
+    // Corridor — a single spike trap mid-passage. The corridor is narrow
+    // (2m) so the trap is unavoidable on a straight walk — but the
+    // player can hug a wall to skirt it. Telegraph (plate sinks) is
+    // generous; standing still works too.
+    {
+      kind: 'spike-trap',
+      x: 0, z: 7.0,
+      damage: 2,
+    },
+
+    // Antechamber — a cursed fountain off to the WEST side of the
+    // wraith chamber. The corpse's note has already warned the player.
+    // Drinking is a real gamble: full heal vs. -1 dmg/-1 armor for the
+    // rest of the run. The wraith fight is hard; the temptation is real.
+    {
+      kind: 'fountain',
+      x: -2.0, z: 11.5,
+      rotY: 0,
+    },
   ],
 
   torches: [
@@ -163,9 +194,10 @@ export const LEVEL_2: LevelSpec = {
   id: 'depth-2',
   displayName: 'II — The Blood Crypt',
 
-  // Spawn is at one end of the room — the player walks into the crypt
-  // facing the altar/chest at the far end.
-  startPos: { x: 0, z: -4, yaw: 0 },
+  // Spawn at the north end facing +Z so the altar/chest at the far end
+  // is dead-ahead at first frame. yaw=π flips the camera's default
+  // -Z look-at to +Z.
+  startPos: { x: 0, z: -4, yaw: Math.PI },
 
   rooms: [
     {
@@ -198,6 +230,32 @@ export const LEVEL_2: LevelSpec = {
     // RED FLOOR GLOW at the center of the room — hot blood-ember palette.
     // Distinguishes Level 2 instantly from Level 1's warm/cool/green mix.
     { kind: 'model', model: CRYPT_FLOOR_GLOW, x: 0, y: 0, z: 0 },
+
+    // ── Non-combat encounters ──────────────────────────────────────
+    // Two corpses at the entrance, both with notes that reframe what
+    // the player thought they understood about the dungeon.
+    {
+      kind: 'corpse',
+      x: -3.8, z: -3.5,
+      rotY: -0.5,
+      note: 'They told us it was one floor. They counted wrong.\n\nThe stairs are the easy part.',
+    },
+    {
+      kind: 'corpse',
+      x:  3.6, z: -3.0,
+      rotY: 2.4,
+      note: 'I have killed three of myself.\n\nWe were not the same delver. Only the same hand.',
+    },
+
+    // Two spike traps in the colonnade. Placed so a careless rush across
+    // the room takes hits, but a cautious player can weave between them.
+    { kind: 'spike-trap', x: -1.3, z: -0.5, damage: 2 },
+    { kind: 'spike-trap', x:  1.3, z: -0.5, damage: 2 },
+
+    // Fountain off to the side — second chance at the gamble. A player
+    // who got cursed on Floor 1 has nothing to lose; a blessed one has
+    // everything.
+    { kind: 'fountain', x: -3.5, z: 2.6, rotY: 0.4 },
   ],
 
   torches: [

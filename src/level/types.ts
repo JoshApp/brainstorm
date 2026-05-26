@@ -38,7 +38,20 @@ export type PropSpec =
   | { kind: 'model'; model: import('../ecs/model-types').ModelSpec; x: number; y: number; z: number; rotY?: number; rotX?: number; rotZ?: number }
   // 'chest' = an openable container. When the player interacts, the lid swings
   // up and an optional loot pickup spawns beside it.
-  | { kind: 'chest'; x: number; z: number; rotY?: number; loot?: import('../content/items').ItemSpec };
+  | { kind: 'chest'; x: number; z: number; rotY?: number; loot?: import('../content/items').ItemSpec }
+  // ── Non-combat encounters ────────────────────────────────────────
+  // 'corpse' = a slumped body with a note. Walk up, read it. Pure
+  // atmosphere + (later) LLM-pluggable lore. The note text is short
+  // and in the in-world grimdark tone.
+  | { kind: 'corpse'; x: number; z: number; rotY?: number; note: string }
+  // 'spike-trap' = pressure-plate hazard. Player steps on the plate;
+  // brief telegraph (plate sinks, audible click); spikes shoot up and
+  // damage. Resets after a cooldown.
+  | { kind: 'spike-trap'; x: number; z: number; damage?: number; telegraphTime?: number }
+  // 'fountain' = a basin of suspect liquid. DRINK to gamble: half the
+  // time it heals to full; half the time it curses you (lasting debuff
+  // for the rest of the run). One-use per fountain.
+  | { kind: 'fountain'; x: number; z: number; rotY?: number };
 
 export type TorchSpec = {
   x: number;

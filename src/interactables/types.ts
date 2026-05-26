@@ -19,8 +19,12 @@ export interface Interactable {
   promptLabel: string;
   /** Called when the player presses USE while in range. */
   onUse: () => void;
-  /** Optional: called every frame (for animation like the chest lid swinging). */
-  tick?: (dt: number) => void;
+  /**
+   * Optional: called every frame. Receives dt + the current player XZ
+   * position so proximity-driven interactables (traps, pressure plates,
+   * auras) can react without importing the camera.
+   */
+  tick?: (dt: number, playerPos: THREE.Vector3) => void;
   /** If true, the interactable is gone (removed from the system at the next tick). */
   destroyed?: boolean;
   /** Optional: live mesh model for cleanup on destroy. */

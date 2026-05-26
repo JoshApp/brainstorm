@@ -39,4 +39,18 @@ export const BUFFS: Record<string, BuffSpec> = {
     color: 0xff8822,
     modifiers: [{ kind: 'damage-multiplier', amount: 1.5 }],
   },
+
+  // Cursed — penalty applied when the player drinks a cursed fountain.
+  // Long duration (essentially "the rest of the run") so the player feels
+  // the cost. -1 weapon damage AND -1 physical armor: meaningful, but not
+  // run-ending if they were already strong.
+  cursed: {
+    id: 'cursed',
+    displayName: 'CURSED',
+    color: 0x9c4dcf,
+    modifiers: [
+      { kind: 'weapon-damage', amount: -1 },
+      { kind: 'physical-armor', amount: -1 },
+    ],
+  },
 };

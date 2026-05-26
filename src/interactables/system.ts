@@ -36,7 +36,7 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
   let i = 0;
   while (i < interactables.length) {
     const it = interactables[i];
-    it.tick?.(dt);
+    it.tick?.(dt, playerPos);
     if (it.destroyed) {
       if (it.built) {
         const parent = it.built.group.parent;
@@ -98,7 +98,9 @@ export function debugUseAll() {
   for (const it of interactables) it.onUse();
 }
 
-/** Debug-only: advance all interactable animations by `seconds` (single big step). */
+/** Debug-only: advance all interactable animations by `seconds` (single big step).
+ *  Player pos defaults to origin for the debug path — most ticks don't read it. */
 export function debugTickAll(seconds: number) {
-  for (const it of interactables) it.tick?.(seconds);
+  const origin = new THREE.Vector3();
+  for (const it of interactables) it.tick?.(seconds, origin);
 }

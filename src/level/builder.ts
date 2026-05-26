@@ -10,6 +10,9 @@ import { buildModel } from '../ecs/build-model';
 import { spawnChest } from '../interactables/chest';
 import { spawnDoor } from '../interactables/door';
 import { spawnStairs } from '../interactables/stairs';
+import { spawnCorpse } from '../interactables/corpse';
+import { spawnSpikeTrap } from '../interactables/spike-trap';
+import { spawnFountain } from '../interactables/fountain';
 import { clearInteractables } from '../interactables/system';
 import { emit } from '../broadcast/event-bus';
 
@@ -300,6 +303,25 @@ export function buildLevel(
         kind: 'aabb',
         minX: prop.x - 0.28, maxX: prop.x + 0.28,
         minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
+      });
+    } else if (prop.kind === 'corpse') {
+      spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note);
+      // No collision — player can step over the body. Walking right up
+      // to READ it shouldn't be blocked.
+    } else if (prop.kind === 'spike-trap') {
+      spawnSpikeTrap(
+        root,
+        new THREE.Vector3(prop.x, 0, prop.z),
+        prop.damage ?? 2,
+        prop.telegraphTime ?? 0.45,
+      );
+      // No collision — the plate is flat with the floor. The DAMAGE is
+      // the trap. Walking through is the point.
+    } else if (prop.kind === 'fountain') {
+      spawnFountain(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0);
+      // Cylindrical collision — approximate the pedestal/bowl footprint.
+      obstacles.push({
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.45,
       });
     }
   }

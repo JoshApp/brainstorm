@@ -449,6 +449,53 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 2, pos: { x: 0, z: -1.6 }, state: 'chasing', phaseTimer: 0 },
     ],
   },
+
+  // Look at the NW corpse up close — verifies the slumped body model.
+  corpse: {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: -2.0, z: -2.2,
+      lookAt: { x: -3.2, z: -3.2, y: 0.2 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
+  // Look at the cursed fountain in the antechamber.
+  fountain: {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: 11.5,
+      lookAt: { x: -2.0, z: 11.5, y: 0.85 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+      { index: 3, pos: { x:  10, z:  10 } },
+    ],
+  },
+
+  // Mid-corridor looking down at the spike trap plate.
+  'spike-trap': {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: 6.2,
+      lookAt: { x: 0, z: 7.0, y: -0.02 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+      { index: 3, pos: { x:  10, z:  10 } },
+    ],
+  },
 };
 
 export function getScenarioFromUrl(): Scenario | null {
