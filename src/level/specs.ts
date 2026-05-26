@@ -152,5 +152,10 @@ export const LEVEL_1: LevelSpec = {
     // spawn). It has to traverse the chamber to engage, giving the player
     // time to deal with the ghoul first.
     { enemyId: 'rat', x: -2.5, z: 3.0 },
+    // WRAITH — antechamber boss. Centered against the back wall of the
+    // antechamber (rect at z=11, depth 5 so wall at z=13.5). Magic damage
+    // bypasses physical armor — the player needs a bone amulet (or to
+    // commit hard) to survive. Drops the fabled-tier Heartburn blade.
+    { enemyId: 'wraith', x: 0, z: 12.3 },
   ],
 };

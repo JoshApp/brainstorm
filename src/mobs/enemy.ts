@@ -304,8 +304,10 @@ export function createEnemy(
         phaseTimer += dt;
         if (!strikeAlreadyHit && distance <= spec.strikeRange) {
           // Enemy melee strike — physical, sourced from this enemy.
-          // damagePlayer routes through the pipeline (player armor applies).
-          damagePlayer(spec.attackDamage, entityId, 'physical');
+          // damagePlayer routes through the pipeline (player armor applies
+          // per the enemy's configured damage type — 'physical' default,
+          // 'magic' for wraiths, etc.).
+          damagePlayer(spec.attackDamage, entityId, spec.damageType ?? 'physical');
           strikeAlreadyHit = true;
         }
         // Slam past neutral on the strike (follow-through). Eyes blaze at peak.

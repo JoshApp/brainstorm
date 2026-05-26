@@ -2,7 +2,7 @@ import type { ModelSpec } from '../ecs/model-types';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 import { SWORD_RUSTED } from './sword';
-import { WEAPON_SCIMITAR } from './weapons';
+import { WEAPON_SCIMITAR, HEARTBURN } from './weapons';
 import {
   HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
@@ -100,6 +100,20 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: WEAPON_SCIMITAR,
     viewmodel: WEAPON_SCIMITAR,
     weapon: { reach: 2.2, coneHalfAngle: 0.85, damage: 2 },
+  },
+  heartburn: {
+    id: 'heartburn',
+    kind: 'weapon',
+    rarity: 'fabled',
+    name: 'Heartburn',
+    flavor: 'The blade was never quenched.',
+    dropModel: HEARTBURN,
+    viewmodel: HEARTBURN,
+    weapon: { reach: 2.3, coneHalfAngle: 0.9, damage: 3 },
+    modifiers: [
+      { kind: 'weapon-damage', amount: 1 },
+      { kind: 'damage-multiplier', amount: 1.15 },
+    ],
   },
   // ── ARMOR (chest slot) ─────────────────────────────────────────────
   'tattered-cloak': {

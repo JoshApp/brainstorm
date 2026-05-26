@@ -1,4 +1,5 @@
 import type { ModelSpec, Vec3 } from '../ecs/model-types';
+import type { DamageType } from '../combat/damage';
 
 // Enemy library. Each entry is data; enemy.ts consumes a spec instead of
 // reading constants. Adding a new enemy = add an entry here + reference its
@@ -47,6 +48,8 @@ export interface EnemySpec {
   physicalArmor?: number;
   /** Flat reduction to incoming magic damage. Default 0. */
   magicArmor?: number;
+  /** Damage type the enemy's melee strike does. Default 'physical'. */
+  damageType?: DamageType;
 
   // --- Drops ---
   /**
@@ -167,6 +170,63 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
   };
 }
 
+// Wraith — tall hovering spectral figure. Pale glowing body, sunken eyes,
+// magic-damage melee. Slow + telegraphed but hits hard and bypasses
+// physical armor entirely (only magic-armor reduces). Pairs with the bone
+// amulet's magic-armor passive as a real soft-counter.
+function wraithModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
+  return {
+    id: 'wraith',
+    materials: {
+      body: {
+        color: bodyColor,
+        roughness: 0.95,
+        emissive: 0x223a48,         // faint cool glow — looks spectral
+        emissiveIntensity: 0.35,
+        flatShading: 'auto',
+      },
+      eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
+      robe: {
+        // Trailing robe — even darker than the body so the wraith looks
+        // anchored below by shadow.
+        color: 0x080d12,
+        roughness: 1.0,
+        flatShading: 'auto',
+      },
+    },
+    slots: {
+      // 'rig' sits HIGHER than other enemies (0.9m vs the ghoul's 0.8m) so
+      // the wraith visibly floats — feet should be off the floor.
+      rig: { pos: [0, 0.95, 0] },
+    },
+    parts: [
+      // Robed trailing tail underneath — a thin elongated extruded shape
+      // anchored at the wraith's bottom, creating the "ghost trailing"
+      // silhouette. Parented to rig so it lifts/tilts during windup.
+      {
+        kind: 'extrude', parent: 'rig',
+        pos: [0, -0.5, 0],
+        shape: [
+          [-0.20, 0.5], [-0.28, 0.0], [-0.18, -0.35], [-0.06, -0.45],
+          [ 0.06, -0.45], [ 0.18, -0.35], [ 0.28, 0.0], [ 0.20, 0.5],
+        ],
+        depth: 0.04,
+        mat: 'robe',
+      },
+      // Main body — tall capsule, parented to rig.
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0.05, 0], radius: 0.30, height: 0.80, mat: 'body' },
+      // Head — sphere, slightly elongated by scale.
+      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, 0.75, 0], scale: [1, 1.15, 1], radius: 0.24, mat: 'body' },
+      // Eye sphere meshes + halo sprites — same dual-layer pattern as ghoul
+      // so they read at any distance.
+      { parent: 'rig', kind: 'sphere', pos: [-0.10, 0.78, -0.30], radius: 0.06, segments: [12, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.10, 0.78, -0.30], radius: 0.06, segments: [12, 10], mat: 'eyes' },
+      { name: 'eyeHaloL', parent: 'rig', kind: 'sprite', pos: [-0.10, 0.78, -0.34], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { name: 'eyeHaloR', parent: 'rig', kind: 'sprite', pos: [ 0.10, 0.78, -0.34], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+    ],
+  };
+}
+
 // --- Enemy registry -----------------------------------------------------
 
 export const ENEMIES: Record<string, EnemySpec> = {
@@ -249,6 +309,38 @@ export const ENEMIES: Record<string, EnemySpec> = {
       { itemId: 'ring-of-predation', chance: 0.25 },
       { itemId: 'worn-boots', chance: 0.30 },
       { itemId: 'leather-gloves', chance: 0.20 },
+    ],
+  },
+
+  // Antechamber boss — taller, slower, hits hard with MAGIC damage. Physical
+  // armor (cloak, boots, gloves, helmet) does nothing against it. Bone amulet's
+  // magic-armor passive is the soft-counter: equip it before the antechamber.
+  // Drops the first fabled-rarity weapon plus other rare loot.
+  wraith: {
+    id: 'wraith',
+    name: 'wraith',
+    hp: 5,
+    moveSpeed: 1.5,         // slow — heavily telegraphed bossier feel
+    attackDamage: 2,        // hits twice as hard as the trash mobs
+    attackRange: 1.7,
+    strikeRange: 1.55,
+    windupTime: 0.95,       // long, readable telegraph
+    strikeTime: 0.22,
+    recoverTime: 0.75,
+    damageType: 'magic',    // bypasses physical armor entirely
+    model: wraithModel(0x1a2a32, 0x66ffaa, 3.0),
+    baseEyeEmissive: 3.0,
+    collisionRadius: 0.40,
+    physicalArmor: 0,       // vulnerable to physical (your sword cuts it)
+    magicArmor: 2,          // but resistant to magic
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    drops: [
+      { itemId: 'heartburn', chance: 0.5 },          // fabled — the headline drop
+      { itemId: 'bone-amulet', chance: 0.6 },        // ironic: magic-armor item
+      { itemId: 'berserk-potion', chance: 0.7 },
+      { itemId: 'healing-potion', chance: 1.0 },
     ],
   },
 };

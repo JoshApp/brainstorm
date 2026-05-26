@@ -252,6 +252,57 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
+  // Antechamber wraith — looking through the corridor at the boss.
+  wraith: {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: 9,
+      lookAt: { x: 0, z: 12.3, y: 1.0 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },     // ghoul out of the way
+      { index: 1, pos: { x:  10, z: -10 } },     // skirmisher out of the way
+      { index: 2, pos: { x: -10, z:  10 } },     // rat out of the way
+      // wraith is index 3 — leave it where the level spec placed it.
+    ],
+  },
+
+  // Wraith mid-windup so the magic eye flare reads.
+  'wraith-windup': {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: 10.5,
+      lookAt: { x: 0, z: 12.3, y: 1.5 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+      { index: 3, pos: { x: 0, z: 12.3 }, state: 'winding', phaseTimer: 0.7 },
+    ],
+  },
+
+  // Heartburn (fabled) lying on the floor — show off the fabled rarity
+  // pickup glow.
+  heartburn: {
+    freeze: true,
+    hideSword: true,
+    playerPos: {
+      x: 0, z: 0.5,
+      lookAt: { x: 0, z: -1.5, y: 0.3 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+    spawnPickups: [
+      { itemId: 'heartburn', x: 0, z: -1.5 },
+    ],
+  },
+
   // Inventory panel populated with a representative loadout — for the
   // paper-doll + stats + bag UI snap.
   inventory: {
