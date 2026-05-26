@@ -99,12 +99,12 @@ export function tickPendingLoad() {
 
 /**
  * Bootstrap the FIRST level — same as loadLevel + tickPendingLoad in one
- * call, since at boot there's no in-flight tick to defer for.
+ * call. Optional startingDepth for resume: a save at depth 3 hydrates
+ * currentDepth=3 instead of 1.
  */
-export function loadInitialLevel(id: string) {
+export function loadInitialLevel(id: string, startingDepth: number = 1) {
   pendingLoadId = id;
-  // Reset depth — initial load = depth 1 (we increment in tickPendingLoad,
-  // so set to 0 here to land on 1).
-  currentDepth = 0;
+  // tickPendingLoad will increment, so we set one below the target.
+  currentDepth = startingDepth - 1;
   tickPendingLoad();
 }

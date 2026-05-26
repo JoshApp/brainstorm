@@ -7,6 +7,7 @@ import { tryAutoEquip, equipFromInventory } from '../player/equipment';
 import { getTexture } from '../style/procedural-textures';
 import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
 import { playLootLand, playPickupChime } from '../audio/sfx';
+import { emit } from '../broadcast/event-bus';
 
 // Rarity → audio "preciousness" index. Mundane is dull, fabled is bright.
 const RARITY_INDEX: Record<Rarity, number> = {
@@ -185,6 +186,9 @@ export function createPickup(
     onUse() {
       // Pickup chime — rarity-tinted (mundane low/dull, fabled high/long).
       playPickupChime(RARITY_INDEX[item.rarity ?? 'mundane']);
+      // Emit on the event bus so the run-state's "items found" set + any
+      // future listeners (LLM narration of first-discovery, etc.) hear it.
+      emit({ type: 'item:picked-up', itemId: item.id });
       // Inventory addition + auto-equip routing. The notification toast
       // listens for the addItem event; equipment routing decides whether
       // to keep the item in the bag.

@@ -26,6 +26,12 @@ import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
 import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad } from './level/loader';
+import { startNewRun, adoptSave, loadSave, clearSave } from './state/run-state';
+import { initRunStateListeners } from './state/run-state-listeners';
+import { showStartScreen } from './ui/start-screen';
+import { addItemSilently, clearInventory } from './player/inventory';
+import { get as getEntity } from './ecs/world';
+import type { EquipSlot } from './player/equipment';
 import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
 import { isWorldFrozen } from './debug/freeze';
 import { isAnyMenuOpen, installMenuBackdrop } from './controls/input-mode';
@@ -123,21 +129,6 @@ initLevelLoader({
   },
 });
 
-// Initial level — either from a debug scenario (still uses the old direct
-// build path) or the standard depth-1 entry. We respect levelSpec coming
-// from a scenario by overriding the LEVELS registry entry for its id.
-if (scenario?.level) {
-  // Override registry entry so the same loader code path drives both.
-  LEVELS[scenario.level.id] = scenario.level;
-  loadInitialLevel(scenario.level.id);
-} else {
-  loadInitialLevel(LEVEL_1.id);
-}
-camera.position.set(currentLevel.playerSpawn.x, CONFIG.PLAYER_HEIGHT, currentLevel.playerSpawn.z);
-camera.rotation.order = 'YXZ';
-camera.rotation.y = currentLevel.playerSpawn.yaw;
-camera.rotation.x = 0;
-
 // --- Player: held sword ---
 const sword = createSword(camera);
 
@@ -149,10 +140,6 @@ onEquipmentChanged((eq) => {
   if (eq.weapon?.viewmodel) sword.equip(eq.weapon.viewmodel);
   if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
 });
-
-// Seed the starting weapon — fires the listener above, which equips the
-// rusted sword viewmodel + sets initial combat stats.
-setSlot('weapon', ITEMS['rusted-sword']);
 
 // --- Combat ---
 // Combat queries enemies via a getter so the system follows level swaps —
@@ -213,9 +200,10 @@ warmupContent(renderer);
 // fixed-count pool sidesteps that entirely.
 initPickupLightPool(scene);
 
-// --- Apply scenario overrides (post-build, AFTER UI is created so
-// scenarios that open panels / give items work correctly).
-if (scenario) applyScenario(scenario, { level: currentLevel, sword, camera });
+// Run-state listeners — kill counter, items-found set, autosave on
+// floor:loaded events. Wired before any level load so the initial
+// floor entry is captured.
+initRunStateListeners();
 
 // PWA: poll for SW updates + auto-reload when a new SW takes over.
 // Means a `git push` lands on Josh's installed home-screen app within a
@@ -330,4 +318,102 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-tick();
+// ── Run start ──────────────────────────────────────────────────────────
+// All the systems above are wired; we just don't have an active level
+// (or a render loop) yet. The start screen owns the next step: either
+// DESCEND (fresh run on depth-1) or CONTINUE (resume the saved floor).
+//
+// Scenario URLs (debug) bypass the title and jump straight into the
+// requested level.
+
+function applyState(saveData: ReturnType<typeof loadSave>) {
+  // Reset inventory.
+  clearInventory();
+  // Hydrate inventory from save (or empty for new run).
+  if (saveData) {
+    for (const [id, count] of Object.entries(saveData.inventory)) {
+      for (let i = 0; i < count; i++) addItemSilently(id);
+    }
+  }
+  // Equipment — set saved slots, OR default starter weapon for new runs.
+  if (saveData) {
+    for (const [slot, itemId] of Object.entries(saveData.equipment)) {
+      if (itemId && ITEMS[itemId]) setSlot(slot as EquipSlot, ITEMS[itemId]);
+    }
+    // Safety: if save somehow has no weapon, fall back so the player
+    // isn't unarmed (would render as no held viewmodel).
+    if (!saveData.equipment.weapon) setSlot('weapon', ITEMS['rusted-sword']);
+  } else {
+    setSlot('weapon', ITEMS['rusted-sword']);
+  }
+  // HP — restore to saved value, or full for new run.
+  const player = getEntity('player');
+  if (player?.hp) {
+    player.hp.current = saveData ? saveData.hp : player.hp.base;
+  }
+}
+
+function startRun(floorId: string, startDepth: number = 1) {
+  loadInitialLevel(floorId, startDepth);
+  camera.position.set(currentLevel.playerSpawn.x, CONFIG.PLAYER_HEIGHT, currentLevel.playerSpawn.z);
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = currentLevel.playerSpawn.yaw;
+  camera.rotation.x = 0;
+  tick();
+}
+
+// Debug: `?fakesave=1` seeds a save so the title shows CONTINUE for snaps.
+if (new URLSearchParams(window.location.search).get('fakesave') === '1') {
+  localStorage.setItem('delve:save', JSON.stringify({
+    version: 1, floorId: 'depth-2', depth: 2, hp: 4,
+    inventory: { 'healing-potion': 2 },
+    equipment: { weapon: 'scimitar' },
+    startedAt: Date.now() - 240000, kills: 7, itemsFound: ['scimitar', 'healing-potion'],
+  }));
+}
+// Debug hook for snapping the end screen — `?showEnd=1` skips game
+// entirely, shows the end-screen with mocked stats.
+if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
+  import('./ui/end-screen').then(({ showEndScreen }) => {
+    showEndScreen(
+      { depth: 2, kills: 7, itemsFound: 5, elapsed: '4:12', epitaph: 'she was unmade in the first dark.' },
+      () => window.location.reload(),
+    );
+  });
+} else if (scenario?.level) {
+  // Debug scenario — bypass title. Override registry so the loader
+  // path is the same for both normal + scenario flows.
+  LEVELS[scenario.level.id] = scenario.level;
+  setSlot('weapon', ITEMS['rusted-sword']);
+  startRun(scenario.level.id);
+  // Scenarios may want to mutate enemies / give items / open panels.
+  // Runs AFTER startRun so currentLevel is populated.
+  applyScenario(scenario, { level: currentLevel, sword, camera });
+} else {
+  // Normal boot — title screen, then DESCEND or CONTINUE.
+  const save = loadSave();
+  showStartScreen({
+    hasSave: !!save,
+    saveDepth: save?.depth,
+    onDescend() {
+      clearSave();
+      startNewRun(LEVEL_1.id);
+      applyState(null);
+      startRun(LEVEL_1.id, 1);
+    },
+    onContinue() {
+      const s = loadSave();
+      if (!s) {
+        // Save vanished between title render + click. Fall back to fresh.
+        clearSave();
+        startNewRun(LEVEL_1.id);
+        applyState(null);
+        startRun(LEVEL_1.id, 1);
+        return;
+      }
+      adoptSave(s);
+      applyState(s);
+      startRun(s.floorId, s.depth);
+    },
+  });
+}

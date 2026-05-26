@@ -15,8 +15,8 @@ const EPITAPHS = [
 
 let overlay: HTMLDivElement | null = null;
 
-export function showDeathOverlay() {
-  if (overlay) return;
+export function showDeathOverlay(): string | undefined {
+  if (overlay) return undefined;
 
   const epitaph = EPITAPHS[Math.floor(Math.random() * EPITAPHS.length)];
 
@@ -48,4 +48,5 @@ export function showDeathOverlay() {
   requestAnimationFrame(() => {
     if (overlay) overlay.style.opacity = '1';
   });
+  return epitaph;
 }

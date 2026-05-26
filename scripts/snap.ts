@@ -119,7 +119,15 @@ async function main() {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
 
-    const url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}`;
+    // Special pseudo-scenarios that need a bare URL (no ?scenario=…) so
+    // the normal boot path (title screen / end screen) shows up instead
+    // of being bypassed by the debug scenario shortcut.
+    const isBare = scenario === 'title' || scenario === 'title-continue' || scenario === 'end';
+    let url: string;
+    if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1`;
+    else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
+    else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}`;
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output

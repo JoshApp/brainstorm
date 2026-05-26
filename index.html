@@ -34,6 +34,26 @@
         #scene { display: none; }
         #rotate-warning { display: flex; }
       }
+
+      /* When the title or end screen is up, hide every gameplay HUD element
+         (the screens still want the WebGL scene visible, just not the
+         in-world controls / icons / hints). */
+      body.hud-hidden #hint-overlay,
+      body.hud-hidden #style-switcher,
+      body.hud-hidden #settings-button,
+      body.hud-hidden #inventory-button,
+      body.hud-hidden #depth-counter,
+      body.hud-hidden #hp-bar,
+      body.hud-hidden #buff-bar,
+      body.hud-hidden #consumable-bar,
+      body.hud-hidden #interact-button,
+      body.hud-hidden #pickup-notification,
+      body.hud-hidden #broadcast-stack {
+        display: none !important;
+      }
+      /* And dim the WebGL scene itself so the title isn't a black slab on
+         top of a fully-rendered dungeon. */
+      body.hud-hidden #scene { opacity: 0.18; transition: opacity 0.6s ease; }
     </style>
   </head>
   <body>
