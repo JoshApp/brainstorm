@@ -13,20 +13,32 @@ import type { ItemSpec, ItemKind } from '../content/items';
 // this module only owns what's CURRENTLY EQUIPPED. Pickup logic decides
 // auto-equip; whatever doesn't auto-equip stays in inventory.
 
-export type EquipSlot = 'weapon' | 'armor' | 'ring1' | 'ring2';
+export type EquipSlot =
+  | 'weapon' | 'armor' | 'ring1' | 'ring2'
+  | 'helmet' | 'amulet' | 'gloves' | 'boots' | 'offhand';
 
 export interface Equipment {
-  weapon: ItemSpec | null;
-  armor:  ItemSpec | null;
-  ring1:  ItemSpec | null;
-  ring2:  ItemSpec | null;
+  weapon:  ItemSpec | null;
+  armor:   ItemSpec | null;
+  ring1:   ItemSpec | null;
+  ring2:   ItemSpec | null;
+  helmet:  ItemSpec | null;
+  amulet:  ItemSpec | null;
+  gloves:  ItemSpec | null;
+  boots:   ItemSpec | null;
+  offhand: ItemSpec | null;
 }
 
 const slots: Equipment = {
-  weapon: null,
-  armor:  null,
-  ring1:  null,
-  ring2:  null,
+  weapon:  null,
+  armor:   null,
+  ring1:   null,
+  ring2:   null,
+  helmet:  null,
+  amulet:  null,
+  gloves:  null,
+  boots:   null,
+  offhand: null,
 };
 
 type EquipListener = (eq: Readonly<Equipment>) => void;
@@ -75,23 +87,15 @@ export function tryAutoEquip(item: ItemSpec): boolean {
       notify();
       return true;
     }
-    case 'armor': {
-      if (slots.armor) return false;
-      slots.armor = item;
-      notify();
-      return true;
-    }
+    case 'armor':   return autoFillSingle('armor', item);
+    case 'helmet':  return autoFillSingle('helmet', item);
+    case 'amulet':  return autoFillSingle('amulet', item);
+    case 'gloves':  return autoFillSingle('gloves', item);
+    case 'boots':   return autoFillSingle('boots', item);
+    case 'offhand': return autoFillSingle('offhand', item);
     case 'ring': {
-      if (!slots.ring1) {
-        slots.ring1 = item;
-        notify();
-        return true;
-      }
-      if (!slots.ring2) {
-        slots.ring2 = item;
-        notify();
-        return true;
-      }
+      if (!slots.ring1) { slots.ring1 = item; notify(); return true; }
+      if (!slots.ring2) { slots.ring2 = item; notify(); return true; }
       return false;
     }
     case 'consumable':
@@ -99,11 +103,23 @@ export function tryAutoEquip(item: ItemSpec): boolean {
   }
 }
 
+function autoFillSingle(slot: EquipSlot, item: ItemSpec): boolean {
+  if (slots[slot]) return false;
+  slots[slot] = item;
+  notify();
+  return true;
+}
+
 /** Type of slot that a given item kind can go into. */
 export function slotKindFor(kind: ItemKind): EquipSlot[] {
   switch (kind) {
     case 'weapon':     return ['weapon'];
     case 'armor':      return ['armor'];
+    case 'helmet':     return ['helmet'];
+    case 'amulet':     return ['amulet'];
+    case 'gloves':     return ['gloves'];
+    case 'boots':      return ['boots'];
+    case 'offhand':    return ['offhand'];
     case 'ring':       return ['ring1', 'ring2'];
     case 'consumable': return [];
   }
@@ -126,9 +142,14 @@ export function equipFromInventory(item: ItemSpec, targetSlot?: EquipSlot): Item
     slot = targetSlot;
   } else {
     switch (item.kind) {
-      case 'weapon': slot = 'weapon'; break;
-      case 'armor':  slot = 'armor'; break;
-      case 'ring':   slot = !slots.ring1 ? 'ring1' : !slots.ring2 ? 'ring2' : 'ring1'; break;
+      case 'weapon':  slot = 'weapon'; break;
+      case 'armor':   slot = 'armor'; break;
+      case 'helmet':  slot = 'helmet'; break;
+      case 'amulet':  slot = 'amulet'; break;
+      case 'gloves':  slot = 'gloves'; break;
+      case 'boots':   slot = 'boots'; break;
+      case 'offhand': slot = 'offhand'; break;
+      case 'ring':    slot = !slots.ring1 ? 'ring1' : !slots.ring2 ? 'ring2' : 'ring1'; break;
       case 'consumable': return null;
     }
   }

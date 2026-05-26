@@ -13,7 +13,7 @@ import { applyBuff } from '../ecs/buffs';
 import { ITEMS } from '../content/items';
 import { setSlot, tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
-import { openInventoryPanel } from '../ui/inventory-panel';
+import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
 
 // Predefined game states loadable via ?scenario=name URL param.
 // Used by the snap CLI (scripts/snap.ts) to produce deterministic screenshots,
@@ -73,6 +73,8 @@ export interface Scenario {
   giveItems?: string[];
   /** Programmatically open the inventory panel for the snap. */
   openInventoryPanel?: boolean;
+  /** Pre-select an inventory item id so the details panel shows on snap. */
+  selectItemId?: string;
 }
 
 export const SCENARIOS: Record<string, Scenario> = {
@@ -229,10 +231,33 @@ export const SCENARIOS: Record<string, Scenario> = {
   inventory: {
     freeze: true,
     giveItems: [
-      'scimitar', 'tattered-cloak', 'ring-of-vigor', 'ring-of-predation',
-      'ring-of-bloodthirst', 'healing-potion', 'healing-potion', 'berserk-potion',
+      'iron-coif', 'bone-amulet', 'tattered-cloak', 'leather-gloves',
+      'worn-boots', 'wooden-shield',
+      'ring-of-vigor', 'ring-of-predation',
+      'ring-of-bloodthirst', 'ring-of-frenzy',
+      'scimitar',
+      'healing-potion', 'healing-potion', 'berserk-potion',
     ],
     openInventoryPanel: true,
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+  // Inventory panel with the violet-stoned (cursed) ring selected — shows
+  // the details panel populated with name + rarity + flavor + modifiers.
+  'inventory-detail': {
+    freeze: true,
+    giveItems: [
+      'iron-coif', 'bone-amulet', 'tattered-cloak', 'leather-gloves',
+      'worn-boots', 'wooden-shield',
+      'ring-of-vigor', 'ring-of-predation',
+      'ring-of-bloodthirst', 'ring-of-frenzy',
+      'scimitar', 'healing-potion', 'healing-potion', 'berserk-potion',
+    ],
+    openInventoryPanel: true,
+    selectItemId: 'ring-of-bloodthirst',
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
@@ -445,7 +470,9 @@ export function applyScenario(
       const item = ITEMS[id];
       if (!item) continue;
       addItem(id);
-      if (item.kind === 'ring' || item.kind === 'armor') {
+      // Auto-equip anything that has a slot (weapons go through equipFromInventory
+      // since they always swap; the rest auto-equip into an empty matching slot).
+      if (item.kind !== 'consumable' && item.kind !== 'weapon') {
         if (tryAutoEquip(item)) removeItem(id);
       }
     }
@@ -453,6 +480,9 @@ export function applyScenario(
 
   if (scenario.openInventoryPanel) {
     openInventoryPanel();
+  }
+  if (scenario.selectItemId) {
+    selectBagItem(scenario.selectItemId);
   }
 
   if (scenario.freeze) {

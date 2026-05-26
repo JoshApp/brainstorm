@@ -7,11 +7,12 @@ import {
 } from '../player/inventory';
 import { computeStats } from '../player/equipment-stats';
 import { getPlayerHp, getPlayerMaxHp, healPlayer } from '../player/health';
-import { ITEMS, type ItemSpec, type WeaponStats } from '../content/items';
+import { ITEMS, RARITY_COLORS, type ItemSpec, type WeaponStats, type Rarity } from '../content/items';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { BUFFS } from '../content/buffs';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
+import { getItemThumbnail } from './item-thumbnail';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 
@@ -49,22 +50,22 @@ type SlotDef = {
   shortLabel: string;
   /** Long label shown in the details panel header. */
   longLabel: string;
-  /** Active equipment slot id, or null if this is just a future placeholder. */
-  slotId: EquipSlot | null;
+  /** Active equipment slot id this position represents. */
+  slotId: EquipSlot;
   /** Pixel size. */
   size: number;
 };
 
 const SLOTS: SlotDef[] = [
-  // Active slots
-  { slotId: null,    top: '5%',  left: '50%', size: 36, shortLabel: 'HELM',  longLabel: 'HELMET' },
-  { slotId: null,    top: '23%', left: '50%', size: 28, shortLabel: 'AMU',   longLabel: 'AMULET' },
-  { slotId: 'armor', top: '40%', left: '50%', size: 50, shortLabel: 'ARM',   longLabel: 'ARMOR' },
-  { slotId: 'weapon',top: '52%', left: '15%', size: 50, shortLabel: 'WPN',   longLabel: 'WEAPON' },
-  { slotId: null,    top: '52%', left: '85%', size: 50, shortLabel: 'OFF',   longLabel: 'OFF-HAND' },
-  { slotId: 'ring1', top: '70%', left: '20%', size: 38, shortLabel: 'R1',    longLabel: 'RING' },
-  { slotId: 'ring2', top: '70%', left: '80%', size: 38, shortLabel: 'R2',    longLabel: 'RING' },
-  { slotId: null,    top: '90%', left: '50%', size: 36, shortLabel: 'FEET',  longLabel: 'BOOTS' },
+  { slotId: 'helmet', top: '6%',  left: '50%', size: 48, shortLabel: 'HELM', longLabel: 'HELMET' },
+  { slotId: 'amulet', top: '24%', left: '50%', size: 36, shortLabel: 'AMU',  longLabel: 'AMULET' },
+  { slotId: 'armor',  top: '42%', left: '50%', size: 56, shortLabel: 'ARM',  longLabel: 'ARMOR' },
+  { slotId: 'weapon', top: '54%', left: '13%', size: 56, shortLabel: 'WPN',  longLabel: 'WEAPON' },
+  { slotId: 'offhand',top: '54%', left: '87%', size: 56, shortLabel: 'OFF',  longLabel: 'OFF-HAND' },
+  { slotId: 'gloves', top: '70%', left: '13%', size: 42, shortLabel: 'GLV',  longLabel: 'GLOVES' },
+  { slotId: 'ring1',  top: '70%', left: '36%', size: 38, shortLabel: 'R1',   longLabel: 'RING' },
+  { slotId: 'ring2',  top: '70%', left: '64%', size: 38, shortLabel: 'R2',   longLabel: 'RING' },
+  { slotId: 'boots',  top: '92%', left: '50%', size: 44, shortLabel: 'FEET', longLabel: 'BOOTS' },
 ];
 
 // ── Styling helpers ──────────────────────────────────────────────────
@@ -163,6 +164,14 @@ function togglePanel() { panelOpen ? closePanel() : openPanel(); }
 /** Programmatic open — used by debug scenarios for snaps. */
 export function openInventoryPanel() {
   openPanel();
+}
+
+/** Programmatically select a bag item by id (for snap scenarios). */
+export function selectBagItem(itemId: string) {
+  const item = ITEMS[itemId];
+  if (!item) return;
+  selection = { kind: 'bag', item };
+  if (panelOpen) rebuildPanel();
 }
 
 function openPanel() {
@@ -314,7 +323,7 @@ function buildDollColumn(): HTMLDivElement {
   // Slot indicators on top of the silhouette.
   const eq = getEquipment();
   for (const def of SLOTS) {
-    dollContainer.appendChild(buildDollSlot(def, def.slotId ? eq[def.slotId] : null));
+    dollContainer.appendChild(buildDollSlot(def, eq[def.slotId]));
   }
 
   col.appendChild(dollContainer);
@@ -358,61 +367,58 @@ function buildSilhouette(): SVGSVGElement {
 function buildDollSlot(def: SlotDef, item: ItemSpec | null): HTMLDivElement {
   const wrap = document.createElement('div');
   const filled = !!item;
-  const active = !!def.slotId;
+  const rarityHex = item ? hexCss(RARITY_COLORS[item.rarity ?? 'mundane']) : null;
+  const isSelected = selection?.kind === 'slot' && selection.slotId === def.slotId;
+
   Object.assign(wrap.style, {
     position: 'absolute',
     top: def.top, left: def.left,
     width: `${def.size}px`, height: `${def.size}px`,
     transform: 'translate(-50%, -50%)',
     borderRadius: '4px',
-    background: filled ? 'rgba(60, 40, 22, 0.85)'
-              : active  ? 'rgba(28, 20, 14, 0.7)'
-                        : 'rgba(20, 14, 10, 0.5)',
-    border: filled ? FILLED_BORDER
-          : active  ? EMPTY_BORDER
-                    : PLACEHOLDER_BORDER,
+    background: filled ? 'rgba(40, 28, 20, 0.9)' : 'rgba(20, 14, 10, 0.7)',
+    border: isSelected
+      ? `2px solid ${ACCENT}`
+      : filled ? `1.5px solid ${rarityHex}` : EMPTY_BORDER,
+    boxShadow: isSelected ? `0 0 14px ${ACCENT}`
+              : filled    ? `0 0 8px ${rarityHex}55`
+                          : 'none',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    cursor: active ? 'pointer' : 'default',
-    transition: 'transform 0.08s, border 0.15s',
-    boxShadow: filled ? `0 0 10px ${ACCENT}` : 'none',
-    pointerEvents: active || filled ? 'auto' : 'none',
+    cursor: 'pointer',
+    transition: 'transform 0.08s, border 0.15s, box-shadow 0.15s',
+    overflow: 'hidden',
   } as Partial<CSSStyleDeclaration>);
 
-  const label = document.createElement('div');
-  label.textContent = filled ? abbrev(item!) : def.shortLabel;
-  Object.assign(label.style, {
-    fontSize: filled ? '9px' : '8px',
-    fontWeight: filled ? '600' : '400',
-    color: filled ? TEXT_PRIMARY
-          : active  ? TEXT_DIM
-                    : TEXT_FAINT,
-    letterSpacing: '0.1em',
-    textAlign: 'center',
-    padding: '2px',
-    lineHeight: '1.1',
-  } as Partial<CSSStyleDeclaration>);
-  wrap.appendChild(label);
-
-  // Visual highlight if this is the currently-selected slot.
-  if (selection?.kind === 'slot' && selection.slotId === def.slotId) {
-    wrap.style.border = `2px solid ${ACCENT}`;
-    wrap.style.boxShadow = `0 0 14px ${ACCENT}`;
+  if (filled && item) {
+    const img = document.createElement('img');
+    img.src = getItemThumbnail(item);
+    Object.assign(img.style, {
+      width: '100%', height: '100%',
+      objectFit: 'contain',
+      imageRendering: 'pixelated',
+      pointerEvents: 'none',
+    } as Partial<CSSStyleDeclaration>);
+    wrap.appendChild(img);
+  } else {
+    const label = document.createElement('div');
+    label.textContent = def.shortLabel;
+    Object.assign(label.style, {
+      fontSize: '9px', fontWeight: '500',
+      color: TEXT_DIM, letterSpacing: '0.15em', textAlign: 'center',
+      pointerEvents: 'none',
+    } as Partial<CSSStyleDeclaration>);
+    wrap.appendChild(label);
   }
 
-  if (active && def.slotId && item) {
-    wrap.addEventListener('click', (e) => {
-      e.stopPropagation();
-      selection = { kind: 'slot', slotId: def.slotId!, item };
-      rebuildPanel();
-    });
-  } else if (active && def.slotId) {
-    // Empty active slot — just show a brief flash, no selection.
-    wrap.addEventListener('click', (e) => {
-      e.stopPropagation();
+  wrap.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (item) {
+      selection = { kind: 'slot', slotId: def.slotId, item };
+    } else {
       selection = null;
-      rebuildPanel();
-    });
-  }
+    }
+    rebuildPanel();
+  });
 
   return wrap;
 }
@@ -459,39 +465,65 @@ function buildBagColumn(): HTMLDivElement {
 
 function buildBagCell(item: ItemSpec, count: number): HTMLDivElement {
   const selected = selection?.kind === 'bag' && selection.item.id === item.id;
+  const rarity = item.rarity ?? 'mundane';
+  const rarityHex = hexCss(RARITY_COLORS[rarity]);
 
   const cell = document.createElement('div');
   Object.assign(cell.style, {
-    padding: '8px 10px',
+    padding: '6px 8px',
     background: selected ? 'rgba(80, 50, 28, 0.85)' : CARD_BG,
-    border: selected ? `2px solid ${ACCENT}` : FILLED_BORDER,
+    border: selected ? `2px solid ${ACCENT}` : `1.5px solid ${rarityHex}`,
     borderRadius: '3px',
-    display: 'flex', flexDirection: 'column', gap: '2px',
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr',
+    gap: '8px',
+    alignItems: 'center',
     cursor: 'pointer',
-    boxShadow: selected ? `0 0 12px ${ACCENT}` : 'none',
+    boxShadow: selected ? `0 0 12px ${ACCENT}` : `0 0 6px ${rarityHex}33`,
+    minHeight: '48px',
+  } as Partial<CSSStyleDeclaration>);
+
+  // 3D thumbnail on the left.
+  const img = document.createElement('img');
+  img.src = getItemThumbnail(item);
+  Object.assign(img.style, {
+    width: '40px', height: '40px',
+    objectFit: 'contain', imageRendering: 'pixelated',
+    flexShrink: '0', pointerEvents: 'none',
+  } as Partial<CSSStyleDeclaration>);
+  cell.appendChild(img);
+
+  // Text block on the right.
+  const text = document.createElement('div');
+  Object.assign(text.style, {
+    display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden',
   } as Partial<CSSStyleDeclaration>);
 
   const top = document.createElement('div');
   Object.assign(top.style, { display: 'flex', justifyContent: 'space-between' } as Partial<CSSStyleDeclaration>);
+
   const name = document.createElement('div');
   name.textContent = abbrev(item);
   Object.assign(name.style, {
-    fontSize: '11px', color: TEXT_PRIMARY, fontWeight: '500',
+    fontSize: '11px', color: rarityHex, fontWeight: '500',
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   } as Partial<CSSStyleDeclaration>);
+
   const cnt = document.createElement('div');
   cnt.textContent = count > 1 ? `×${count}` : '';
   Object.assign(cnt.style, {
-    fontSize: '10px', color: TEXT_DIM, fontFamily: 'monospace',
+    fontSize: '10px', color: TEXT_DIM, fontFamily: 'monospace', flexShrink: '0',
   } as Partial<CSSStyleDeclaration>);
   top.append(name, cnt);
-  cell.appendChild(top);
 
   const kindLabel = document.createElement('div');
   kindLabel.textContent = item.kind.toUpperCase();
   Object.assign(kindLabel.style, {
     fontSize: '9px', letterSpacing: '0.2em', color: TEXT_DIM,
   } as Partial<CSSStyleDeclaration>);
-  cell.appendChild(kindLabel);
+
+  text.append(top, kindLabel);
+  cell.appendChild(text);
 
   cell.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -535,27 +567,51 @@ function buildDetailsRow(): HTMLDivElement {
 }
 
 function buildDetailsHeader(item: ItemSpec): HTMLDivElement {
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, {
+    display: 'flex', flexDirection: 'column', gap: '4px',
+    borderBottom: '1px solid rgba(120, 90, 60, 0.3)', paddingBottom: '6px',
+  } as Partial<CSSStyleDeclaration>);
+
   const head = document.createElement('div');
   Object.assign(head.style, {
     display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-    borderBottom: '1px solid rgba(120, 90, 60, 0.3)', paddingBottom: '6px',
+    gap: '12px',
   } as Partial<CSSStyleDeclaration>);
+
+  const rarity = item.rarity ?? 'mundane';
+  const rarityHex = hexCss(RARITY_COLORS[rarity]);
 
   const name = document.createElement('div');
   name.textContent = item.name;
   Object.assign(name.style, {
-    fontSize: '15px', color: 'rgba(255, 220, 180, 0.95)',
+    fontSize: '15px', color: rarityHex,
     fontFamily: 'Georgia, "Times New Roman", serif', fontStyle: 'italic',
+    fontWeight: '500',
   } as Partial<CSSStyleDeclaration>);
 
-  const kind = document.createElement('div');
-  kind.textContent = item.kind.toUpperCase();
-  Object.assign(kind.style, {
+  const meta = document.createElement('div');
+  meta.textContent = `${rarity.toUpperCase()} · ${item.kind.toUpperCase()}`;
+  Object.assign(meta.style, {
     fontSize: '10px', color: TEXT_DIM, letterSpacing: '0.25em',
+    flexShrink: '0', whiteSpace: 'nowrap',
   } as Partial<CSSStyleDeclaration>);
 
-  head.append(name, kind);
-  return head;
+  head.append(name, meta);
+  wrap.appendChild(head);
+
+  if (item.flavor) {
+    const flavor = document.createElement('div');
+    flavor.textContent = item.flavor;
+    Object.assign(flavor.style, {
+      fontSize: '11px', color: TEXT_DIM, fontStyle: 'italic',
+      fontFamily: 'Georgia, "Times New Roman", serif',
+      lineHeight: '1.3',
+    } as Partial<CSSStyleDeclaration>);
+    wrap.appendChild(flavor);
+  }
+
+  return wrap;
 }
 
 function buildDetailsAction(sel: NonNullable<Selection>): HTMLButtonElement {
@@ -742,7 +798,14 @@ function sectionLabel(text: string): HTMLDivElement {
 
 function abbrev(item: ItemSpec): string {
   const name = item.name.replace(/^(A |An |The )/, '');
-  // Take first 2-3 words for the dollslot label.
   return name.length > 22 ? name.slice(0, 20) + '…' : name;
+}
+
+/** "0xff7722" -> "rgb(255, 119, 34)" — for inline CSS color strings. */
+function hexCss(hex: number): string {
+  const r = (hex >> 16) & 0xff;
+  const g = (hex >> 8) & 0xff;
+  const b = hex & 0xff;
+  return `rgb(${r}, ${g}, ${b})`;
 }
 

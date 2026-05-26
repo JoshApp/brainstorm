@@ -195,8 +195,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
       { itemId: 'scimitar', chance: 1.0 },              // always — headline reward
       { itemId: 'healing-potion', chance: 0.5 },
       { itemId: 'ring-of-vigor', chance: 0.20 },
-      { itemId: 'ring-of-bloodthirst', chance: 0.20 },  // triggered-buff demo
-      { itemId: 'berserk-potion', chance: 0.35 },       // multiplier buff demo
+      { itemId: 'ring-of-bloodthirst', chance: 0.20 },
+      { itemId: 'ring-of-frenzy', chance: 0.10 },       // cursed rarity
+      { itemId: 'berserk-potion', chance: 0.35 },
+      { itemId: 'bone-amulet', chance: 0.15 },          // rare drop
+      { itemId: 'iron-coif', chance: 0.30 },
+      { itemId: 'wooden-shield', chance: 0.20 },
     ],
   },
 
@@ -218,7 +222,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
     drops: [
-      { itemId: 'healing-potion', chance: 0.25 },   // rare — rats are trash mobs
+      { itemId: 'healing-potion', chance: 0.25 },   // rats are trash mobs
+      { itemId: 'leather-gloves', chance: 0.15 },
     ],
   },
 
@@ -242,6 +247,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     drops: [
       { itemId: 'healing-potion', chance: 0.6 },
       { itemId: 'ring-of-predation', chance: 0.25 },
+      { itemId: 'worn-boots', chance: 0.30 },
+      { itemId: 'leather-gloves', chance: 0.20 },
     ],
   },
 };
