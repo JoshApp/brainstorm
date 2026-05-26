@@ -35,9 +35,8 @@
         #rotate-warning { display: flex; }
       }
 
-      /* When the title or end screen is up, hide every gameplay HUD element
-         (the screens still want the WebGL scene visible, just not the
-         in-world controls / icons / hints). */
+      /* When a screen with policy.hidesHud is open, hide every gameplay
+         HUD element. The screen manager toggles `body.hud-hidden`. */
       body.hud-hidden #hint-overlay,
       body.hud-hidden #style-switcher,
       body.hud-hidden #settings-button,
@@ -51,9 +50,11 @@
       body.hud-hidden #broadcast-stack {
         display: none !important;
       }
-      /* And dim the WebGL scene itself so the title isn't a black slab on
-         top of a fully-rendered dungeon. */
-      body.hud-hidden #scene { opacity: 0.18; transition: opacity 0.6s ease; }
+      /* When a screen with policy.dimsScene is open, fade the WebGL scene
+         behind it so the title/end-screen reads cleanly. */
+      body.scene-dimmed #scene { opacity: 0.18; transition: opacity 0.6s ease; }
+      /* Restore scene opacity smoothly when no dimming screen is open. */
+      #scene { transition: opacity 0.6s ease; }
     </style>
   </head>
   <body>

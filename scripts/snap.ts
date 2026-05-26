@@ -42,7 +42,10 @@ const VIEWPORTS: Record<string, { width: number; height: number; deviceScaleFact
 };
 
 // Scenarios that need extra wait time (animations playing out)
-const LONG_WAIT_SCENARIOS = new Set(['death']);
+// Screens with multi-second open animations need a longer wait so the
+// snap captures the FINAL state (title's letter-spacing tween is 1.6s,
+// the death sequence is several seconds before the end screen).
+const LONG_WAIT_SCENARIOS = new Set(['death', 'title', 'title-continue', 'end']);
 
 async function main() {
   const scenario = process.argv[2] || 'spawn';

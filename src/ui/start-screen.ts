@@ -8,6 +8,10 @@
 // subtitle, then the two action pills. Tone matches in-world voice —
 // no sponsor energy, no fanfare.
 
+import { openScreen, closeScreen } from './screen-manager';
+
+const SCREEN_ID = 'start';
+
 export interface StartScreenOptions {
   hasSave: boolean;
   saveDepth?: number;
@@ -19,7 +23,6 @@ let root: HTMLDivElement | null = null;
 
 export function showStartScreen(opts: StartScreenOptions) {
   if (root) return;
-  document.body.classList.add('hud-hidden');
 
   root = document.createElement('div');
   root.id = 'start-screen';
@@ -32,7 +35,7 @@ export function showStartScreen(opts: StartScreenOptions) {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '14px',
-    zIndex: '9000',
+    // z-index managed by the screen manager via policy.layer = 'title'.
     fontFamily: '"Iowan Old Style", "Palatino", "Times New Roman", serif',
     color: 'rgba(220, 180, 140, 0.9)',
     pointerEvents: 'auto',
@@ -138,6 +141,20 @@ export function showStartScreen(opts: StartScreenOptions) {
   root.appendChild(buttons);
   document.body.appendChild(root);
 
+  // Title screen: highest priority screen, hides the gameplay HUD,
+  // dims the WebGL scene, brings its OWN background (no shared backdrop).
+  openScreen({
+    id: SCREEN_ID,
+    root,
+    policy: {
+      pausesWorld: true,
+      hidesHud: true,
+      dimsScene: true,
+      needsBackdrop: false,
+      layer: 'title',
+    },
+  });
+
   // Fade in next frame.
   requestAnimationFrame(() => {
     if (root) root.style.opacity = '1';
@@ -206,5 +223,5 @@ function hide() {
   root = null;
   r.style.opacity = '0';
   setTimeout(() => r.remove(), 500);
-  document.body.classList.remove('hud-hidden');
+  closeScreen(SCREEN_ID);
 }

@@ -34,7 +34,7 @@ import { get as getEntity } from './ecs/world';
 import type { EquipSlot } from './player/equipment';
 import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
 import { isWorldFrozen } from './debug/freeze';
-import { isAnyMenuOpen, installMenuBackdrop } from './controls/input-mode';
+import { isWorldPausedByScreen, isAnyScreenOpen } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
@@ -161,9 +161,8 @@ const input = createTouchInput(canvas);
 createUseButton();
 createConsumableBar();
 createStyleSwitcher();
-// Shared modal backdrop — input-mode handles its own visibility based on
-// what menus are open. Must exist before any menu opens.
-installMenuBackdrop();
+// Backdrop and HUD-hide are now owned by the screen manager — created
+// lazily when the first screen that needs them opens.
 createSettingsMenu();
 createInventoryPanel();
 
@@ -241,7 +240,7 @@ function tick() {
   tickDeath(realDt);
   const scaledDt = realDt * getTimeScale();
 
-  if (isFrozen() || isWorldFrozen() || isAnyMenuOpen()) {
+  if (isFrozen() || isWorldFrozen() || isWorldPausedByScreen()) {
     // Hit-pause OR scenario freeze OR any menu open: skip all game updates,
     // drain look input so it doesn't snap if/when we unfreeze.
     input.lookDx = 0;
@@ -295,9 +294,12 @@ function tick() {
   // refreshes. While a menu is open the button hides; tap target should
   // not steal touches from the inventory panel.
   camera.getWorldDirection(forwardScratch);
-  const interactDt = (isFrozen() || isWorldFrozen() || isAnyMenuOpen()) ? 0 : scaledDt;
+  const interactDt = (isFrozen() || isWorldFrozen() || isWorldPausedByScreen()) ? 0 : scaledDt;
   tickInteractables(interactDt, camera.position, forwardScratch);
-  const inRange = (isDying() || isAnyMenuOpen()) ? null : getInRangeInteractable();
+  // Hide the interact button while any screen is open — even non-pausing
+  // screens (none exist yet, but if we add a passive overlay we don't
+  // want it stealing taps from the world.
+  const inRange = (isDying() || isAnyScreenOpen()) ? null : getInRangeInteractable();
   setInteractAction(inRange ? inRange.promptLabel : null);
   setUseButtonVisible(!!inRange);
 
@@ -380,12 +382,13 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       () => window.location.reload(),
     );
   });
-} else if (scenario?.level) {
-  // Debug scenario — bypass title. Override registry so the loader
-  // path is the same for both normal + scenario flows.
-  LEVELS[scenario.level.id] = scenario.level;
+} else if (scenario) {
+  // Debug scenario — bypass title. Scenario may override the level
+  // spec or use the default LEVEL_1.
+  const floorId = scenario.level?.id ?? LEVEL_1.id;
+  if (scenario.level) LEVELS[scenario.level.id] = scenario.level;
   setSlot('weapon', ITEMS['rusted-sword']);
-  startRun(scenario.level.id);
+  startRun(floorId);
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.
   applyScenario(scenario, { level: currentLevel, sword, camera });

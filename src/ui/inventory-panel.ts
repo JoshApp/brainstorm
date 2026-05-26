@@ -13,7 +13,7 @@ import { BUFFS } from '../content/buffs';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
-import { openMenu, closeMenu, onDismissRequest } from '../controls/input-mode';
+import { openScreen, closeScreen } from './screen-manager';
 import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
@@ -153,10 +153,6 @@ export function createInventoryPanel() {
   onInventoryChanged(() => { if (panelOpen) rebuildPanel(); });
   onEquipmentChanged(() => { if (panelOpen) rebuildPanel(); });
 
-  // Backdrop tap = close. Routed through input-mode so multiple open
-  // menus (e.g. settings on top of inventory) all close together
-  // cleanly and we don't fight other panels' own outside-click logic.
-  onDismissRequest(() => { if (panelOpen) closePanel(); });
 }
 
 function togglePanel() { panelOpen ? closePanel() : openPanel(); }
@@ -180,14 +176,20 @@ function openPanel() {
   rebuildPanel();
   panel.style.display = 'flex';
   panelOpen = true;
-  openMenu('inventory');   // pause world + bring up backdrop
+  // Default policy is fine for the inventory: pauses world, backdrop on,
+  // panel layer. Dismiss request routes from a backdrop tap.
+  openScreen({
+    id: 'inventory',
+    root: panel,
+    onDismissRequest: () => { if (panelOpen) closePanel(); },
+  });
 }
 function closePanel() {
   if (!panel) return;
   panel.style.display = 'none';
   panelOpen = false;
   selection = null;
-  closeMenu('inventory');  // world resumes if no other menu open
+  closeScreen('inventory');
 }
 
 function rebuildPanel() {

@@ -1,6 +1,6 @@
 import { getSettings, updateSettings } from '../settings/settings';
 import { setMasterVolume } from '../audio/sfx';
-import { openMenu, closeMenu, onDismissRequest } from '../controls/input-mode';
+import { openScreen, closeScreen } from './screen-manager';
 
 // Settings menu: tap the gear icon (top-left, below the style switcher)
 // to open a panel with sliders + toggles. Same warm/dim palette as
@@ -74,10 +74,6 @@ export function createSettingsMenu() {
   document.body.appendChild(panel);
 
   buildPanelContents();
-
-  // Backdrop tap = close. Routed through input-mode so the close logic
-  // composes cleanly with other menus that may be open at the same time.
-  onDismissRequest(() => { if (panelOpen) closePanel(); });
 }
 
 function togglePanel() {
@@ -89,14 +85,18 @@ function openPanel() {
   if (!panel) return;
   panel.style.display = 'flex';
   panelOpen = true;
-  openMenu('settings');
+  openScreen({
+    id: 'settings',
+    root: panel,
+    onDismissRequest: () => { if (panelOpen) closePanel(); },
+  });
 }
 
 function closePanel() {
   if (!panel) return;
   panel.style.display = 'none';
   panelOpen = false;
-  closeMenu('settings');
+  closeScreen('settings');
 }
 
 function buildPanelContents() {

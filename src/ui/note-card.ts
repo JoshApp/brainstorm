@@ -2,18 +2,16 @@
 // messages, sigil inscriptions. Distinct from broadcastPop (which is the
 // snarky cosmic broadcast tone) — this stays in the grimdark register
 // per CLAUDE.md Tone Bible. Centered card, parchment-feel typography,
-// tap anywhere to dismiss.
+// tap anywhere (the shared backdrop) to dismiss.
 //
-// Calling pattern: showNote(text). Returns the dismiss function; we
-// auto-pause the world while a note is open (uses the input-mode menu
-// stack so it follows the existing pause rules).
+// Calling pattern: showNote(text). Pauses the world via the screen
+// manager — same pause rules as inventory/settings.
 
-import { openMenu, closeMenu } from '../controls/input-mode';
+import { openScreen, closeScreen } from './screen-manager';
 
-const NOTE_MENU_ID = 'note';
+const NOTE_SCREEN_ID = 'note';
 
 let activeCard: HTMLDivElement | null = null;
-let backdropClick: ((e: Event) => void) | null = null;
 
 export function showNote(text: string) {
   if (activeCard) dismiss();
@@ -38,7 +36,6 @@ export function showNote(text: string) {
     lineHeight: '1.55',
     letterSpacing: '0.01em',
     textAlign: 'center',
-    zIndex: '110',
     pointerEvents: 'auto',
     transition: 'opacity 220ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)',
     opacity: '0',
@@ -79,7 +76,15 @@ export function showNote(text: string) {
 
   document.body.appendChild(card);
   activeCard = card;
-  openMenu(NOTE_MENU_ID);  // pauses the world via the menu stack
+  // Modal layer so notes stack ABOVE any panel that might be open. The
+  // shared backdrop handles tap-to-dismiss via onDismissRequest below;
+  // no document-wide pointerdown listener needed.
+  openScreen({
+    id: NOTE_SCREEN_ID,
+    root: card,
+    policy: { layer: 'modal' },
+    onDismissRequest: dismiss,
+  });
 
   // Slide-up + fade-in on next frame.
   requestAnimationFrame(() => {
@@ -87,33 +92,14 @@ export function showNote(text: string) {
     activeCard.style.opacity = '1';
     activeCard.style.transform = 'translate(-50%, -50%) scale(1)';
   });
-
-  // Dismiss on any tap anywhere. We listen on the WHOLE document so users
-  // don't have to hit the card itself.
-  backdropClick = (e: Event) => {
-    // Ignore the initial synthetic touch that may fire as the note opens.
-    e.stopPropagation();
-    dismiss();
-  };
-  // Delay attach by one frame so the touch that opened the note doesn't
-  // immediately close it.
-  setTimeout(() => {
-    if (backdropClick) {
-      document.addEventListener('pointerdown', backdropClick, { capture: true });
-    }
-  }, 60);
 }
 
 function dismiss() {
   if (!activeCard) return;
   const card = activeCard;
   activeCard = null;
-  if (backdropClick) {
-    document.removeEventListener('pointerdown', backdropClick, { capture: true });
-    backdropClick = null;
-  }
   card.style.opacity = '0';
   card.style.transform = 'translate(-50%, -50%) scale(0.94)';
   setTimeout(() => card.remove(), 240);
-  closeMenu(NOTE_MENU_ID);
+  closeScreen(NOTE_SCREEN_ID);
 }

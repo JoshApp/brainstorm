@@ -4,6 +4,10 @@
 // In-world voice — terse, no celebration, no "good job!" The epitaph
 // stays the headline; stats are quiet metadata.
 
+import { openScreen, closeScreen } from './screen-manager';
+
+const SCREEN_ID = 'end';
+
 export interface EndScreenStats {
   depth: number;
   kills: number;
@@ -16,7 +20,6 @@ let root: HTMLDivElement | null = null;
 
 export function showEndScreen(stats: EndScreenStats, onRiseAgain: () => void) {
   if (root) return;
-  document.body.classList.add('hud-hidden');
 
   root = document.createElement('div');
   root.id = 'end-screen';
@@ -29,7 +32,7 @@ export function showEndScreen(stats: EndScreenStats, onRiseAgain: () => void) {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '22px',
-    zIndex: '9000',
+    // z-index managed by the screen manager via policy.layer = 'title'.
     fontFamily: '"Iowan Old Style", "Palatino", "Times New Roman", serif',
     color: 'rgba(220, 180, 140, 0.9)',
     pointerEvents: 'auto',
@@ -117,6 +120,17 @@ export function showEndScreen(stats: EndScreenStats, onRiseAgain: () => void) {
   root.appendChild(btn);
 
   document.body.appendChild(root);
+  openScreen({
+    id: SCREEN_ID,
+    root,
+    policy: {
+      pausesWorld: true,
+      hidesHud: true,
+      dimsScene: true,
+      needsBackdrop: false,
+      layer: 'title',
+    },
+  });
   requestAnimationFrame(() => {
     if (root) root.style.opacity = '1';
   });
@@ -148,4 +162,5 @@ export function hideEndScreen() {
   root = null;
   r.style.opacity = '0';
   setTimeout(() => r.remove(), 500);
+  closeScreen(SCREEN_ID);
 }
