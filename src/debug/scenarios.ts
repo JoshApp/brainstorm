@@ -154,8 +154,8 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     hideSword: true,
     playerPos: {
-      x: 0, z: 0.5,
-      lookAt: { x: 0, z: 12, y: 1.0 },  // toward antechamber center
+      x: 0, z: 3.0,
+      lookAt: { x: 0, z: 12, y: 1.2 },  // close to chamber door to see SEALED prompt
     },
     enemyOverrides: [
       { index: 0, pos: { x: -10, z: -10 } },
@@ -455,7 +455,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     hideSword: true,
     playerPos: {
-      x: -2.0, z: -2.2,
+      x: -2.5, z: -2.5,
       lookAt: { x: -3.2, z: -3.2, y: 0.2 },
     },
     enemyOverrides: [
@@ -470,7 +470,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     hideSword: true,
     playerPos: {
-      x: 0, z: 11.5,
+      x: -1.0, z: 11.5,
       lookAt: { x: -2.0, z: 11.5, y: 0.85 },
     },
     enemyOverrides: [

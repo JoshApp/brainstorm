@@ -654,23 +654,46 @@ export function startAmbience() {
   if (crackleSource) return;  // already running
   const master = masterGain;
 
-  // Crackle: 4-second noise loop with bandpass for "fire" character
-  const loopDur = 4.0;
-  const b = c.createBuffer(1, Math.floor(c.sampleRate * loopDur), c.sampleRate);
+  // Crackle: 6-second loop of fire-like sound. Earlier this was constant
+  // noise with a bandpass — which sounded like radio static, not fire.
+  // Real fire crackle is sparse SHARP POPS with near-silence between
+  // (plus a faint warm rumble that the drone bed below handles). Each
+  // pop is a short noise burst with its own quick envelope, instead of
+  // continuous filtered noise.
+  const loopDur = 6.0;
+  const sr = c.sampleRate;
+  const b = c.createBuffer(1, Math.floor(sr * loopDur), sr);
   const d = b.getChannelData(0);
-  for (let i = 0; i < d.length; i++) {
-    // Sparse random pops + low background
-    const pop = Math.random() < 0.003 ? (Math.random() * 2 - 1) : 0;
-    const hiss = (Math.random() * 2 - 1) * 0.15;
-    d[i] = pop * 0.8 + hiss;
+  d.fill(0);
+  // Number of pops over the loop. ~7 per second → ~42 total; with random
+  // envelopes 5–40 ms long they're audibly distinct, not a continuous hiss.
+  const POPS_PER_SEC = 7;
+  const totalPops = Math.floor(loopDur * POPS_PER_SEC);
+  for (let p = 0; p < totalPops; p++) {
+    const start = Math.floor(Math.random() * d.length);
+    // Pop duration: 8–35 ms — short crackle snap. Bigger pops are louder.
+    const popLen = Math.floor(sr * (0.008 + Math.random() * 0.027));
+    const amp = 0.4 + Math.random() * 0.6;
+    for (let i = 0; i < popLen && start + i < d.length; i++) {
+      // Sharp attack, exponential decay envelope.
+      const env = Math.exp(-i / (popLen * 0.25));
+      d[start + i] += (Math.random() * 2 - 1) * amp * env;
+    }
   }
   const s = c.createBufferSource();
   s.buffer = b; s.loop = true;
-  const f = c.createBiquadFilter();
-  f.type = 'bandpass'; f.frequency.value = 2200; f.Q.value = 0.6;
+  // Slight pitch drift each cycle so the loop doesn't reveal itself.
+  s.playbackRate.value = 0.95 + Math.random() * 0.1;
+  // Bandpass tightened around the "snap" region of a real fire crackle
+  // (2.5–4 kHz). Q=2 makes it a clearer click rather than a wide hiss.
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 3000; bp.Q.value = 2.2;
+  // High-pass cut to kill any residual rumble — the drone bed owns the lows.
+  const hp = c.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 800;
   crackleGain = c.createGain();
   crackleGain.gain.value = 0;  // starts silent; setTorchProximity raises it
-  s.connect(f).connect(crackleGain).connect(master);
+  s.connect(hp).connect(bp).connect(crackleGain).connect(master);
   s.start();
   crackleSource = s;
 
@@ -702,7 +725,10 @@ export function startAmbience() {
 export function setTorchProximity(p: number) {
   const c = ensureCtx();
   if (!c || !crackleGain) return;
-  const target = Math.max(0, Math.min(1, p)) * 0.22;  // cap so it's never overwhelming
+  // Cap lowered from 0.22 → 0.14 now that the crackle is sparse pops
+  // rather than continuous filtered noise. Sparse content reads as
+  // louder per-event; cap so a torch-rich room doesn't drown combat.
+  const target = Math.max(0, Math.min(1, p)) * 0.14;
   crackleGain.gain.linearRampToValueAtTime(target, c.currentTime + 0.1);
 }
 

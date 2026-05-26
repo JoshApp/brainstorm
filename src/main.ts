@@ -36,9 +36,8 @@ import { PASSIVES } from './content/passives';
 import { setupPwaAutoUpdate } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
 import { initPickupLightPool } from './interactables/pickup';
-import { createUseButton, setUseButtonVisible, consumeUsePressed } from './controls/use-button';
+import { createUseButton, setUseButtonVisible, setInteractAction, consumeUsePressed } from './controls/use-button';
 import { createConsumableBar } from './controls/consumable-bar';
-import { createInteractPrompt, setInteractPrompt } from './ui/interact-prompt';
 import { createHpBar, updateHpBar } from './ui/hp-bar';
 import { createBuffBar, updateBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
@@ -174,7 +173,6 @@ initAchievements();
 const input = createTouchInput(canvas);
 createUseButton();
 createConsumableBar();
-createInteractPrompt();
 createStyleSwitcher();
 // Shared modal backdrop — input-mode handles its own visibility based on
 // what menus are open. Must exist before any menu opens.
@@ -299,17 +297,21 @@ function tick() {
     // Tick active buffs on all entities (heal-over-time, future DoTs, etc.)
     tickAllBuffs(scaledDt);
 
-    // Interactables: tick per-instance animation (chest opening, pickup
-    // bob), recompute "what's in range AND in the player's forward cone,"
-    // fire onUse on use press.
-    camera.getWorldDirection(forwardScratch);
-    tickInteractables(scaledDt, camera.position, forwardScratch);
-    const inRange = isDying() ? null : getInRangeInteractable();
-    setInteractPrompt(inRange ? inRange.promptLabel : null);
-    setUseButtonVisible(!!inRange);
     if (!isDying() && consumeUsePressed()) pressUse();
-
   }
+
+  // Interact tick + UI run OUTSIDE the freeze gate so the in-range
+  // detection + icon button persist through hit-pauses + scenarios. We
+  // pass dt=0 when the world is frozen so animations (chest lid, pickup
+  // bob, trap spike rise) don't advance — only the "what's in range" pass
+  // refreshes. While a menu is open the button hides; tap target should
+  // not steal touches from the inventory panel.
+  camera.getWorldDirection(forwardScratch);
+  const interactDt = (isFrozen() || isWorldFrozen() || isAnyMenuOpen()) ? 0 : scaledDt;
+  tickInteractables(interactDt, camera.position, forwardScratch);
+  const inRange = (isDying() || isAnyMenuOpen()) ? null : getInRangeInteractable();
+  setInteractAction(inRange ? inRange.promptLabel : null);
+  setUseButtonVisible(!!inRange);
 
   // HUD — poll-based; cheap and always accurate. Runs even when the
   // world is paused so the player can see HP / buff state in menus
