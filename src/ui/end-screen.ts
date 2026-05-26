@@ -14,6 +14,14 @@ export interface EndScreenStats {
   itemsFound: number;
   elapsed: string;  // pre-formatted "M:SS"
   epitaph: string;  // the in-world goodbye
+  /** First-time-seen highlights from this run. Powers the "DISCOVERED"
+   *  section — small but the addictive hook. */
+  discoveries?: {
+    enemies: readonly string[];
+    items: readonly string[];
+    notes: number;
+    newDepthRecord: boolean;
+  };
 }
 
 let root: HTMLDivElement | null = null;
@@ -78,11 +86,41 @@ export function showEndScreen(stats: EndScreenStats, onRiseAgain: () => void) {
     letterSpacing: '0.18em',
     color: 'rgba(180, 150, 120, 0.75)',
   });
-  addStatRow(grid, 'DEPTH',  String(stats.depth));
+  addStatRow(grid, 'DEPTH',  String(stats.depth) + (stats.discoveries?.newDepthRecord ? '  ✦' : ''));
   addStatRow(grid, 'KILLS',  String(stats.kills));
   addStatRow(grid, 'FOUND',  String(stats.itemsFound));
   addStatRow(grid, 'TIME',   stats.elapsed);
   root.appendChild(grid);
+
+  // Discoveries — only shows if this run saw first-time stuff.
+  // The hook for "death gave me SOMETHING" — fills the codex.
+  const d = stats.discoveries;
+  if (d && (d.enemies.length || d.items.length || d.notes > 0 || d.newDepthRecord)) {
+    const disc = document.createElement('div');
+    Object.assign(disc.style, {
+      marginTop: '14px',
+      fontFamily: '"Iowan Old Style", "Palatino", serif',
+      fontSize: '13px',
+      fontStyle: 'italic',
+      color: 'rgba(220, 180, 120, 0.7)',
+      maxWidth: '480px',
+      lineHeight: '1.5',
+      textAlign: 'center',
+    });
+    const lines: string[] = [];
+    if (d.newDepthRecord) lines.push('a new depth, recorded.');
+    if (d.enemies.length) lines.push(
+      `first met: ${d.enemies.map(prettyEnemyName).join(', ')}.`,
+    );
+    if (d.items.length) lines.push(
+      `first held: ${d.items.length} new thing${d.items.length === 1 ? '' : 's'}.`,
+    );
+    if (d.notes > 0) lines.push(
+      `${d.notes} new voice${d.notes === 1 ? '' : 's'} from below.`,
+    );
+    disc.textContent = lines.join('  ·  ');
+    root.appendChild(disc);
+  }
 
   // The single action.
   const btn = document.createElement('button');
@@ -134,6 +172,15 @@ export function showEndScreen(stats: EndScreenStats, onRiseAgain: () => void) {
   requestAnimationFrame(() => {
     if (root) root.style.opacity = '1';
   });
+}
+
+function prettyEnemyName(id: string): string {
+  // Match the in-world tone — terse, lowercase, no plurals.
+  const overrides: Record<string, string> = {
+    rat: 'the rats', ghoul: 'a ghoul', skirmisher: 'a skirmisher',
+    wraith: 'a wraith',
+  };
+  return overrides[id] ?? id;
 }
 
 function addStatRow(grid: HTMLElement, label: string, value: string) {

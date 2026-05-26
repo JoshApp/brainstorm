@@ -3,6 +3,7 @@ import { setPersistentVignette } from '../ui/vignette';
 import { showDeathOverlay } from '../ui/death-overlay';
 import { showEndScreen } from '../ui/end-screen';
 import { getRunState, elapsedString, clearSave } from '../state/run-state';
+import { recordRunDeath, getRunDiscoveries } from '../state/meta-state';
 
 // Death sequence orchestrator.
 //
@@ -51,6 +52,11 @@ export function triggerDeath() {
   const kills = run?.kills ?? 0;
   const itemsFound = run?.itemsFound.length ?? 0;
   const time = elapsedString();
+  const elapsedMs = run ? Date.now() - run.startedAt : 0;
+  const discoveries = getRunDiscoveries();
+  // Lifetime stat bump: total play time + death count. Kept SEPARATE from
+  // run-state.clearSave() so meta survives.
+  recordRunDeath(elapsedMs);
   clearSave();
   // After the death sequence (slow-mo + vignette + initial overlay),
   // show the end screen + RISE AGAIN action.
@@ -62,6 +68,12 @@ export function triggerDeath() {
         itemsFound,
         elapsed: time,
         epitaph: epitaph ?? EPITAPH_FALLBACKS[0],
+        discoveries: {
+          enemies: discoveries.enemies,
+          items: discoveries.items,
+          notes: discoveries.notes.length,
+          newDepthRecord: discoveries.newDepthRecord,
+        },
       },
       () => window.location.reload(),
     );

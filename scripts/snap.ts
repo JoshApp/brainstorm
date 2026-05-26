@@ -45,7 +45,9 @@ const VIEWPORTS: Record<string, { width: number; height: number; deviceScaleFact
 // Screens with multi-second open animations need a longer wait so the
 // snap captures the FINAL state (title's letter-spacing tween is 1.6s,
 // the death sequence is several seconds before the end screen).
-const LONG_WAIT_SCENARIOS = new Set(['death', 'title', 'title-continue', 'end']);
+const LONG_WAIT_SCENARIOS = new Set([
+  'death', 'title', 'title-continue', 'title-veteran', 'end', 'codex',
+]);
 
 async function main() {
   const scenario = process.argv[2] || 'spawn';
@@ -125,10 +127,15 @@ async function main() {
     // Special pseudo-scenarios that need a bare URL (no ?scenario=…) so
     // the normal boot path (title screen / end screen) shows up instead
     // of being bypassed by the debug scenario shortcut.
-    const isBare = scenario === 'title' || scenario === 'title-continue' || scenario === 'end';
+    const isBare =
+      scenario === 'title' || scenario === 'title-continue' ||
+      scenario === 'title-veteran' || scenario === 'end' ||
+      scenario === 'codex';
     let url: string;
-    if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1`;
+    if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
+    else if (scenario === 'title-veteran') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1`;
+    else if (scenario === 'codex') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showCodex=1`;
     else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
     else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}`;
     console.log(`Opening ${url}`);

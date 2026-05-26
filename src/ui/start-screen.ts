@@ -9,6 +9,8 @@
 // no sponsor energy, no fanfare.
 
 import { openScreen, closeScreen } from './screen-manager';
+import { getMeta } from '../state/meta-state';
+import { showCodex } from './codex-screen';
 
 const SCREEN_ID = 'start';
 
@@ -106,6 +108,30 @@ export function showStartScreen(opts: StartScreenOptions) {
   });
   root.appendChild(sub);
 
+  // Lifetime records line — only renders if the player has actually
+  // attempted a run before. Subtle, italic, small caps. The "you've
+  // been here before" tease.
+  const meta = getMeta();
+  if (meta.runsAttempted > 0) {
+    const records = document.createElement('div');
+    Object.assign(records.style, {
+      fontSize: '10px',
+      letterSpacing: '0.22em',
+      textTransform: 'uppercase',
+      color: 'rgba(180, 140, 100, 0.5)',
+      fontFamily: 'system-ui, sans-serif',
+      marginTop: '-12px',
+      marginBottom: '16px',
+      position: 'relative',
+      zIndex: '1',
+    });
+    const parts: string[] = [];
+    if (meta.deepestDepth > 0) parts.push(`deepest · ${meta.deepestDepth}`);
+    parts.push(`${meta.runsAttempted} descent${meta.runsAttempted === 1 ? '' : 's'}`);
+    records.textContent = parts.join('   ·   ');
+    root.appendChild(records);
+  }
+
   // Buttons row.
   const buttons = document.createElement('div');
   Object.assign(buttons.style, {
@@ -136,6 +162,17 @@ export function showStartScreen(opts: StartScreenOptions) {
       opts.onContinue();
     });
     buttons.appendChild(cont);
+  }
+
+  // CODEX — appears only when the player has discovered SOMETHING.
+  // Opens the lifetime memory of enemies / items / notes seen.
+  if (meta.enemiesSlain.length || meta.itemsFound.length || meta.notesRead.length) {
+    const codex = makePill('CODEX', 'what you remember', false);
+    codex.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      showCodex();
+    });
+    buttons.appendChild(codex);
   }
 
   root.appendChild(buttons);

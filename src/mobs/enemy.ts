@@ -299,7 +299,7 @@ export function createEnemy(
         });
       }
       scene.remove(container);
-      emit({ type: 'enemy:killed' });
+      emit({ type: 'enemy:killed', enemyId: spec.id });
     }
     return result.applied;
   }

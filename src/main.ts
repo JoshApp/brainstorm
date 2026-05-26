@@ -29,6 +29,7 @@ import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad } from '.
 import { generateFloor } from './level/procgen';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { initRunStateListeners } from './state/run-state-listeners';
+import { recordRunStart, resetRunDiscoveries } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
 import { addItemSilently, clearInventory } from './player/inventory';
 import { get as getEntity } from './ecs/world';
@@ -375,6 +376,22 @@ function startRun(floorId: string, startDepth: number = 1) {
   tick();
 }
 
+// Debug: `?fakemeta=1` seeds meta progress so title shows records +
+// the CODEX button without requiring real playthrough.
+if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
+  localStorage.setItem('delve:meta', JSON.stringify({
+    version: 1,
+    runsAttempted: 7, runsDied: 6, deepestDepth: 4, totalKills: 31,
+    totalPlayMs: 4 * 60 * 1000,
+    enemiesSlain: ['rat', 'skirmisher', 'ghoul'],
+    itemsFound: ['rusted-sword', 'scimitar', 'healing-potion', 'leather-gloves',
+                 'worn-boots', 'ring-of-vigor', 'iron-coif'],
+    notesRead: [
+      'I came for the blade. I should have come for the door.',
+      'They told us it was one floor. They counted wrong.',
+    ],
+  }));
+}
 // Debug: `?fakesave=1` seeds a save so the title shows CONTINUE for snaps.
 if (new URLSearchParams(window.location.search).get('fakesave') === '1') {
   localStorage.setItem('delve:save', JSON.stringify({
@@ -389,10 +406,21 @@ if (new URLSearchParams(window.location.search).get('fakesave') === '1') {
 if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   import('./ui/end-screen').then(({ showEndScreen }) => {
     showEndScreen(
-      { depth: 2, kills: 7, itemsFound: 5, elapsed: '4:12', epitaph: 'she was unmade in the first dark.' },
+      {
+        depth: 2, kills: 7, itemsFound: 5, elapsed: '4:12',
+        epitaph: 'she was unmade in the first dark.',
+        discoveries: {
+          enemies: ['wraith'],
+          items: ['heartburn', 'bone-amulet'],
+          notes: 2,
+          newDepthRecord: true,
+        },
+      },
       () => window.location.reload(),
     );
   });
+} else if (new URLSearchParams(window.location.search).get('showCodex') === '1') {
+  import('./ui/codex-screen').then(({ showCodex }) => showCodex());
 } else if (scenario) {
   // Debug scenario — bypass title. Scenario may override the level
   // spec or use the default LEVEL_1.
@@ -412,6 +440,8 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     onDescend() {
       clearSave();
       startNewRun(LEVEL_1.id);
+      recordRunStart();
+      resetRunDiscoveries();
       applyState(null);
       startRun(LEVEL_1.id, 1);
     },
@@ -421,11 +451,17 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
         // Save vanished between title render + click. Fall back to fresh.
         clearSave();
         startNewRun(LEVEL_1.id);
+        recordRunStart();
+        resetRunDiscoveries();
         applyState(null);
         startRun(LEVEL_1.id, 1);
         return;
       }
       adoptSave(s);
+      // CONTINUE doesn't reset discoveries — it picks up where the
+      // mid-run discovery tracking left off. (resetRunDiscoveries is
+      // also implicitly fresh on first load since the module-level
+      // discoveries object starts empty.)
       applyState(s);
       startRun(s.floorId, s.depth);
     },

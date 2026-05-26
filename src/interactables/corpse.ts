@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { showNote } from '../ui/note-card';
+import { emit } from '../broadcast/event-bus';
 
 // Corpse = a slumped body with a readable note pinned to / scrawled on it.
 // Pure atmosphere — no combat, no drops. Walking up shows the READ prompt;
@@ -107,6 +108,7 @@ export function spawnCorpse(
     promptLabel: 'READ',
     onUse() {
       showNote(note);
+      emit({ type: 'note:read', noteBody: note });
       // Note can be re-read; we don't destroy the corpse on first interact.
       // (If a player wants to forget, they can walk away.)
     },

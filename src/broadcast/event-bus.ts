@@ -9,10 +9,11 @@
 export type GameEvent =
   | { type: 'attack:swing' }
   | { type: 'attack:hit'; damage: number }
-  | { type: 'enemy:killed' }
+  | { type: 'enemy:killed'; enemyId: string }
   | { type: 'player:damaged'; hpLeft: number }
   | { type: 'player:killed' }
   | { type: 'item:picked-up'; itemId: string }
+  | { type: 'note:read'; noteBody: string }
   | { type: 'room:cleared'; roomId: string }
   | { type: 'level:loaded'; levelId: string };
 
