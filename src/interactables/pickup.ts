@@ -14,26 +14,74 @@ const RARITY_INDEX: Record<Rarity, number> = {
 };
 
 // Pickup interactable: a loot model on the floor that the player can walk up
-// to and TAKE. The model bobs + rotates; an attached PointLight + floor
-// disc tinted by the item's rarity make it visible from a distance — the
-// classic "loot on the dungeon floor" silhouette.
+// to and TAKE. The model bobs + rotates; an emissive floor disc + a borrowed
+// PointLight (from a fixed pool) tinted by the item's rarity make it visible
+// from a distance.
+//
+// PERF: pickups borrow lights from a FIXED pool pre-allocated at boot.
+// Three.js recompiles every material's shader whenever the scene's
+// light COUNT changes — but moving / recoloring / dimming an existing
+// light is free. So initLightPool() seeds the scene with N idle lights
+// once, and pickups grab/release them without ever changing the count.
+// Previously, creating a new PointLight per drop caused a multi-frame
+// hitch on every kill — especially when 3+ items dropped at once.
 //
 // Layout:
 //   pickupGroup (root, added to scene; removed on take/destroy)
 //   ├─ floorDisc      flat decal on the floor, doesn't move
-//   ├─ glowLight      PointLight at item-center height, doesn't move
 //   └─ built.group    the actual item geometry, bobs + rotates
+// (Light is shared from the pool — not parented to the group.)
 
 const BOB_AMPLITUDE = 0.04;
 const BOB_FREQUENCY = 1.8;
 const ROTATE_SPEED = 0.5;  // rad/s
 
-// Floor-glow disc size + tunings — tweaked so loot is visible from across
-// a room without saturating the immediate area.
 const DISC_SIZE = 0.9;
 const LIGHT_INTENSITY = 3.5;
 const LIGHT_DISTANCE = 2.4;
 const LIGHT_DECAY = 1.6;
+
+// ── Light pool ────────────────────────────────────────────────────────
+// Pre-allocate enough lights for the worst-case simultaneous-pickup count.
+// 8 is comfortable: at most every enemy on Floor 1 dropping max items at
+// once, plus a chest's worth. Exceeding it is silent: extra pickups just
+// don't get a light (disc still visible).
+const POOL_SIZE = 8;
+
+interface PoolLight {
+  light: THREE.PointLight;
+  inUse: boolean;
+}
+const lightPool: PoolLight[] = [];
+
+/** Call once at boot, with the live scene. Allocates the light pool. */
+export function initPickupLightPool(scene: THREE.Scene) {
+  if (lightPool.length > 0) return;  // idempotent
+  for (let i = 0; i < POOL_SIZE; i++) {
+    const light = new THREE.PointLight(0xffffff, 0, LIGHT_DISTANCE, LIGHT_DECAY);
+    // Far below the floor so it's invisible while idle. Intensity 0 also
+    // hides it, but parking it off-stage avoids any rounding-edge cases.
+    light.position.set(0, -100, 0);
+    scene.add(light);
+    lightPool.push({ light, inUse: false });
+  }
+}
+
+function acquireLight(): PoolLight | null {
+  for (const p of lightPool) {
+    if (!p.inUse) {
+      p.inUse = true;
+      return p;
+    }
+  }
+  return null;
+}
+
+function releaseLight(p: PoolLight) {
+  p.inUse = false;
+  p.light.intensity = 0;
+  p.light.position.set(0, -100, 0);
+}
 
 export function createPickup(
   scene: THREE.Scene,
@@ -67,10 +115,14 @@ export function createPickup(
   disc.position.y = 0.01 - pos.y;  // sit ~1cm above the floor (compensate for parent y)
   pickupGroup.add(disc);
 
-  // ── Glow light — a small PointLight at item-center height ──────────
-  const glowLight = new THREE.PointLight(rarityColor, LIGHT_INTENSITY, LIGHT_DISTANCE, LIGHT_DECAY);
-  glowLight.position.y = 0.35 - pos.y;
-  pickupGroup.add(glowLight);
+  // ── Glow light — borrowed from the pre-allocated pool ──────────────
+  // No-op if the pool is exhausted; disc still gives a visible signal.
+  const pooledLight = acquireLight();
+  if (pooledLight) {
+    pooledLight.light.color.setHex(rarityColor);
+    pooledLight.light.intensity = LIGHT_INTENSITY;
+    pooledLight.light.position.set(pos.x, pos.y + 0.35, pos.z);
+  }
 
   // ── Item model — bobs + rotates ────────────────────────────────────
   const built = buildModel(item.dropModel);
@@ -107,6 +159,7 @@ export function createPickup(
         // offhand); falls back to staying in the bag otherwise.
         if (tryAutoEquip(item)) removeItem(item.id);
       }
+      if (pooledLight) releaseLight(pooledLight);
       interactable.destroyed = true;
     },
     tick(dt: number) {

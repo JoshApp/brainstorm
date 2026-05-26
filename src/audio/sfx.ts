@@ -724,7 +724,8 @@ export function playBroadcastChime() {
 
     const gain = c.createGain();
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.18, t + 0.005);
+    // Quieter than before (was 0.18) — chime was fighting combat sounds.
+    gain.gain.exponentialRampToValueAtTime(0.09, t + 0.005);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
 
     osc.connect(gain).connect(master);

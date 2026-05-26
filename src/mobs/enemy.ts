@@ -188,31 +188,17 @@ export function createEnemy(
       if (spec.drops) {
         const successful = spec.drops.filter(d => Math.random() < (d.chance ?? 1.0));
         const N = successful.length;
-        // Spread spawns across frames — even with warmup, building 4+ pickup
-        // models in one frame is a perceptible hitch right when the player
-        // expects responsiveness (the kill flash). One per frame keeps the
-        // total under 17ms per frame even on slower phones.
         successful.forEach((drop, i) => {
           const item = ITEMS[drop.itemId];
           if (!item) return;
           const pos = container.position.clone();
           if (N > 1) {
+            // Spread N items around a 0.4m circle.
             const angle = (i / N) * Math.PI * 2;
             pos.x += Math.cos(angle) * 0.35;
             pos.z += Math.sin(angle) * 0.35;
           }
-          if (i === 0) {
-            createPickup(scene, pos, item);
-          } else {
-            // Defer subsequent drops one frame each.
-            const delay = i;
-            let frame = 0;
-            const tick = () => {
-              if (frame++ >= delay) createPickup(scene, pos, item);
-              else requestAnimationFrame(tick);
-            };
-            requestAnimationFrame(tick);
-          }
+          createPickup(scene, pos, item);
         });
       }
       scene.remove(container);

@@ -20,13 +20,11 @@ interface TrackedState {
   hasTakenDamage: boolean;
 }
 
+// Removed 'hello-crawler' (fired on first swing — terrible timing, popped
+// the broadcast UI in the middle of a player's first combat moment).
+// Tone-Bible-grade achievements should never interrupt the crunchy moment;
+// they should land between encounters.
 const ACHIEVEMENTS: Achievement[] = [
-  {
-    id: 'hello-crawler',
-    title: 'Hello, Crawler',
-    desc: 'The dungeon notes your enthusiasm.',
-    trigger: (e) => e.type === 'attack:swing',
-  },
   {
     id: 'first-blood',
     title: 'First Blood',
@@ -53,6 +51,12 @@ const ACHIEVEMENTS: Achievement[] = [
   },
 ];
 
+// Minimum gap between achievement pops. Without this, killing the first
+// enemy without taking damage triggers two pops on the same frame
+// (first-blood + untouched), stacking visually and chiming twice in 100ms
+// right at the kill — too noisy during combat.
+const POP_GAP_MS = 1800;
+
 export function initAchievements() {
   const unlocked = new Set<string>();
   const state: TrackedState = {
@@ -60,18 +64,31 @@ export function initAchievements() {
     hasKilled: false,
     hasTakenDamage: false,
   };
+  const queue: Achievement[] = [];
+  let lastPopTime = -Infinity;
+
+  function pumpQueue() {
+    if (queue.length === 0) return;
+    const now = performance.now();
+    const wait = Math.max(0, lastPopTime + POP_GAP_MS - now);
+    setTimeout(() => {
+      const next = queue.shift();
+      if (!next) return;
+      lastPopTime = performance.now();
+      broadcastPop(next.title, next.desc);
+      if (queue.length > 0) pumpQueue();
+    }, wait);
+  }
 
   on((event) => {
-    // Update tracked state FIRST so achievements can read it on the same event.
-    // (For "untouched": when the killed event fires, hasTakenDamage reflects
-    // damage taken before this moment.)
     for (const ach of ACHIEVEMENTS) {
       if (unlocked.has(ach.id)) continue;
       if (ach.trigger(event, state)) {
         unlocked.add(ach.id);
-        broadcastPop(ach.title, ach.desc);
+        queue.push(ach);
       }
     }
+    if (queue.length > 0) pumpQueue();
 
     // Update state AFTER trigger checks so this event isn't reflected yet.
     if (event.type === 'attack:swing') state.hasSwung = true;

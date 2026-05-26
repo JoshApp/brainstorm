@@ -253,14 +253,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     eyeMaterialName: 'eyes',
     drops: [
       { itemId: 'scimitar', chance: 1.0 },              // always — headline reward
-      { itemId: 'healing-potion', chance: 0.5 },
-      { itemId: 'ring-of-vigor', chance: 0.20 },
-      { itemId: 'ring-of-bloodthirst', chance: 0.20 },
-      { itemId: 'ring-of-frenzy', chance: 0.10 },       // cursed rarity
-      { itemId: 'berserk-potion', chance: 0.35 },
-      { itemId: 'bone-amulet', chance: 0.15 },          // rare drop
-      { itemId: 'iron-coif', chance: 0.30 },
-      { itemId: 'wooden-shield', chance: 0.20 },
+      { itemId: 'healing-potion', chance: 0.35 },
+      { itemId: 'ring-of-bloodthirst', chance: 0.10 },
+      { itemId: 'iron-coif', chance: 0.20 },
     ],
   },
 
@@ -282,8 +277,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
     drops: [
-      { itemId: 'healing-potion', chance: 0.25 },   // rats are trash mobs
-      { itemId: 'leather-gloves', chance: 0.15 },
+      // Trash mob: rarely drops anything. Empty hands most of the time.
+      { itemId: 'healing-potion', chance: 0.12 },
     ],
   },
 
@@ -305,10 +300,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
     drops: [
-      { itemId: 'healing-potion', chance: 0.6 },
-      { itemId: 'ring-of-predation', chance: 0.25 },
-      { itemId: 'worn-boots', chance: 0.30 },
-      { itemId: 'leather-gloves', chance: 0.20 },
+      { itemId: 'healing-potion', chance: 0.4 },
+      { itemId: 'ring-of-predation', chance: 0.15 },
+      { itemId: 'worn-boots', chance: 0.20 },
     ],
   },
 
@@ -338,9 +332,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     eyeMaterialName: 'eyes',
     drops: [
       { itemId: 'heartburn', chance: 0.5 },          // fabled — the headline drop
-      { itemId: 'bone-amulet', chance: 0.6 },        // ironic: magic-armor item
-      { itemId: 'berserk-potion', chance: 0.7 },
-      { itemId: 'healing-potion', chance: 1.0 },
+      { itemId: 'bone-amulet', chance: 0.5 },
+      { itemId: 'healing-potion', chance: 0.8 },
     ],
   },
 };

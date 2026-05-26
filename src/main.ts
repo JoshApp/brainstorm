@@ -34,6 +34,7 @@ import { initTriggerListener } from './ecs/triggers';
 import { PASSIVES } from './content/passives';
 import { setupPwaAutoUpdate } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
+import { initPickupLightPool } from './interactables/pickup';
 import { createUseButton, setUseButtonVisible, consumeUsePressed } from './controls/use-button';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createInteractPrompt, setInteractPrompt } from './ui/interact-prompt';
@@ -176,6 +177,13 @@ setMasterVolume(getSettings().masterVolume);
 // instant. Done after the renderer + level exist; before scenarios so an
 // inventory-open scenario doesn't pay the cost on first frame.
 warmupContent(renderer);
+
+// Pre-allocate the pickup light pool. Lights live in the scene forever
+// (idle = intensity 0, parked off-stage); pickups borrow and return them.
+// This is what actually keeps drops lag-free: Three.js recompiles every
+// material shader if the scene's light count changes mid-fight, but a
+// fixed-count pool sidesteps that entirely.
+initPickupLightPool(scene);
 
 // --- Apply scenario overrides (post-build, AFTER UI is created so
 // scenarios that open panels / give items work correctly).

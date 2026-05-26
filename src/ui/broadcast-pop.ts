@@ -12,8 +12,8 @@
 
 import { playBroadcastChime } from '../audio/sfx';
 
-const POP_DURATION_MS = 4500;
-const POP_SLIDE_MS = 320;
+const POP_DURATION_MS = 2800;
+const POP_SLIDE_MS = 280;
 const STACK_GAP_PX = 12;
 
 let container: HTMLDivElement | null = null;
