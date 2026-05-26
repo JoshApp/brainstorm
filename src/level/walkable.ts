@@ -83,6 +83,38 @@ export class WalkableRegion {
     if (!this.contains(cx, cz, radius)) cz = oldZ;
     return { x: cx, z: cz };
   }
+
+  /**
+   * Line-of-sight check: is the straight 2D path from (ax, az) to (bx, bz)
+   * clear of every wall segment? Used by enemy AI to decide if an enemy
+   * can see the player. Obstacles (pillars, altar) are intentionally NOT
+   * counted as sight-blockers — they block movement but the player can
+   * see/be-seen around them, which matches how a real low-profile pillar
+   * would feel in a dungeon.
+   */
+  hasLineOfSight(ax: number, az: number, bx: number, bz: number): boolean {
+    for (const w of this.walls) {
+      if (segmentsIntersect(ax, az, bx, bz, w.ax, w.az, w.bx, w.bz)) return false;
+    }
+    return true;
+  }
+}
+
+// 2D segment-segment intersection (excluding shared endpoints — pure cross
+// counts as intersecting). Standard orientation test.
+function segmentsIntersect(
+  p0x: number, p0z: number, p1x: number, p1z: number,
+  p2x: number, p2z: number, p3x: number, p3z: number,
+): boolean {
+  const s1x = p1x - p0x;
+  const s1z = p1z - p0z;
+  const s2x = p3x - p2x;
+  const s2z = p3z - p2z;
+  const denom = -s2x * s1z + s1x * s2z;
+  if (denom === 0) return false;  // parallel; treat as non-intersecting
+  const s = (-s1z * (p0x - p2x) + s1x * (p0z - p2z)) / denom;
+  const t = ( s2x * (p0z - p2z) - s2z * (p0x - p2x)) / denom;
+  return s >= 0 && s <= 1 && t >= 0 && t <= 1;
 }
 
 // Squared distance from point (px, pz) to segment (ax,az)-(bx,bz).

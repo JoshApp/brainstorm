@@ -29,16 +29,49 @@ function audioSizeFor(spec: EnemySpec): EnemyDeathSize {
 //
 // Geometry/materials come from spec.model via buildModel(). This module owns
 // only the behavior glue:
-//   - AI state machine (chasing → winding → striking → recovering)
+//   - AI state machine + perception:
+//       idle → alerted → chasing → winding → striking → recovering
+//                                         ↓
+//                                      searching → returning → idle
 //   - Per-instance presentation state (hit flash, animated emissive)
 //   - World-entity bookkeeping (HP lives in the world; effects can address it)
+//
+// Perception:
+//   - Sight cone (range + half-angle): player must be inside AND line-of-
+//     sight clear (no wall in between, queried from WalkableRegion).
+//   - Hearing radius: small unconditional proximity that always aggros,
+//     regardless of vision.
+//   - Damage taken always aggros and resets the lose-sight timer.
 //
 // Two nested groups:
 //   - `container` handles world position + yaw (face-player lookAt)
 //   - `model.group` (inside container) handles internal tilt animations
 // This way the body lean during windup doesn't fight the lookAt.
 
-type EnemyState = 'chasing' | 'winding' | 'striking' | 'recovering';
+type EnemyState =
+  | 'idle'        // at post, scanning, has not seen player
+  | 'alerted'     // first sight — brief rear-up before committing
+  | 'chasing'
+  | 'winding'
+  | 'striking'
+  | 'recovering'
+  | 'searching'   // lost sight, heading to last known position
+  | 'returning';  // gave up search, walking back to post
+
+// How long an enemy hesitates after first spotting the player before
+// committing to chase. Sells the "I see you" moment — also gives the
+// player a reaction window.
+const ALERTED_DURATION = 0.45;
+
+// How long the enemy will search at the last-known position before giving
+// up. Doesn't override per-spec loseSightTime; this is the search PHASE
+// duration after sight is already lost.
+const SEARCH_DURATION = 3.0;
+
+// Idle scan: rotates yaw target every N seconds within a small arc around
+// the home direction. Makes idle enemies feel watchful rather than statues.
+const IDLE_SCAN_INTERVAL = 2.5;
+const IDLE_SCAN_HALF_ARC = 0.7;   // ±40° around home yaw
 
 export interface Enemy {
   entityId: EntityId;
@@ -150,10 +183,57 @@ export function createEnemy(
   const flashColor = new THREE.Color(CONFIG.ENEMY_HIT_FLASH_COLOR);
   const baseEyeEmissive = spec.baseEyeEmissive;
 
-  let state: EnemyState = 'chasing';
+  let state: EnemyState = 'idle';
   let phaseTimer = 0;
   let strikeAlreadyHit = false;
   let aliveLocal = true;
+
+  // Perception state. lastSeenPos tracks the last known XZ of the player
+  // for searching. Updated each frame the enemy currently has LOS.
+  let aggroed = false;
+  let timeSinceLOS = 0;             // seconds since enemy last had LOS to player
+  const homePos = position.clone();  // post the enemy returns to when calm
+  // Capture spawn yaw as "home yaw" so idle scan / returning faces back the
+  // way the level placed us. Set after initial faceWorld() in builder.ts —
+  // for now, read whatever rotation is on the container right now.
+  let homeYaw = 0;                   // filled in on first idle-tick
+  let homeYawSet = false;
+  // Idle scan yaw target — rotates in place to feel watchful.
+  let scanTimer = IDLE_SCAN_INTERVAL;  // pick a new target immediately
+  let scanTargetYaw = 0;
+  // Last position we saw the player at. Used by 'searching' state.
+  const lastSeenPos = new THREE.Vector3();
+
+  // Per-spec aggro params with defaults.
+  const sightRange = spec.sightRange ?? 7;
+  const sightRangeSq = sightRange * sightRange;
+  const sightConeCos = Math.cos(spec.sightConeHalfAngle ?? 1.05);
+  const hearingRange = spec.hearingRange ?? 2.5;
+  const hearingRangeSq = hearingRange * hearingRange;
+  const loseSightTime = spec.loseSightTime ?? 4;
+
+  // Idle-state eye appearance: dim mesh emissive AND dim sprite halo. The
+  // setEyeFlare(0) path is for windup-reset and goes back to FULL base
+  // brightness, which is what aggroed-but-idle-frame should look like —
+  // not what we want for a truly unaware mob.
+  function applyIdleEyes() {
+    // Tuned against the PSX bloom pipeline — 0.45/0.4 multipliers still
+    // read as full-bright at distance. These low values give a faint
+    // "watching pinprick" feel: visible enough to know something's there,
+    // dim enough to read as unaware. Idle should be unsettling, not threatening.
+    if (eyeMat) eyeMat.emissiveIntensity = baseEyeEmissive * 0.18;
+    if (eyeHaloL && haloMatL) {
+      eyeHaloL.scale.set(haloBaseScaleL.x * 0.55, haloBaseScaleL.y * 0.55, 1);
+      haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.15);
+    }
+    if (eyeHaloR && haloMatR) {
+      eyeHaloR.scale.set(haloBaseScaleR.x * 0.55, haloBaseScaleR.y * 0.55, 1);
+      haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.15);
+    }
+  }
+  // Apply immediately so unseen enemies don't pop with full-bright eyes
+  // on the very first frame (before update runs even once).
+  applyIdleEyes();
   // Per-cycle randomized windup duration so multiple enemies attacking in
   // unison de-synchronize over time (otherwise stacked mobs all strike on
   // the exact same frame and the player has no rhythm to read).
@@ -177,6 +257,17 @@ export function createEnemy(
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
     flashTimer = CONFIG.ENEMY_HIT_FLASH_DURATION;
+    // Damage from any source aggros (and keeps aggro for the full
+    // loseSightTime window after the hit, even if the player breaks LOS
+    // — a wounded mob doesn't forget). If we were idle/searching/etc,
+    // jump straight to chasing (skip the alerted hesitation — being hit
+    // IS the wake-up).
+    aggroed = true;
+    timeSinceLOS = 0;
+    if (state === 'idle' || state === 'alerted' || state === 'searching' || state === 'returning') {
+      state = 'chasing';
+      phaseTimer = 0;
+    }
     if (entity.hp.current <= 0) {
       aliveLocal = false;
       clearEntityCombatStats(entityId);
@@ -239,6 +330,34 @@ export function createEnemy(
   }
   // (setEyeFlare lives above — combines intensity ramp + color shift.)
 
+  // Perception check. Returns true if the enemy can detect the player
+  // right now, via either:
+  //   - Hearing (proximity inside hearingRange, ignores cone + LOS)
+  //   - Sight (inside sightRange, inside cone, AND clear LOS to player)
+  // Hearing wins ties — close enough always trips, regardless of facing.
+  function canSeePlayer(playerPos: THREE.Vector3, walkable: WalkableRegion): boolean {
+    const dx = playerPos.x - container.position.x;
+    const dz = playerPos.z - container.position.z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq < hearingRangeSq) return true;
+    if (distSq > sightRangeSq) return false;
+    // Cone check (uses current container yaw — the enemy's facing).
+    // Container facing: container's "forward" is -Z in local space (per
+    // the lookAt convention we set in faceTarget). Convert to world.
+    const dist = Math.sqrt(distSq);
+    const ndx = dx / dist;
+    const ndz = dz / dist;
+    const forwardX = -Math.sin(container.rotation.y);
+    const forwardZ = -Math.cos(container.rotation.y);
+    const dot = forwardX * ndx + forwardZ * ndz;
+    if (dot < sightConeCos) return false;
+    // LOS — straight line, blocked by walls only (not pillars/altar).
+    return walkable.hasLineOfSight(
+      container.position.x, container.position.z,
+      playerPos.x, playerPos.z,
+    );
+  }
+
   function update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion) {
     if (!aliveLocal) return;
 
@@ -252,10 +371,159 @@ export function createEnemy(
       }
     }
 
-    faceTarget(playerPos);
+    // Capture home yaw the very first tick so idle scan rotates around the
+    // actual placed-orientation (set by builder via faceWorld at spawn).
+    if (!homeYawSet) {
+      homeYaw = container.rotation.y;
+      scanTargetYaw = homeYaw;
+      homeYawSet = true;
+    }
+
+    // ── Perception ─────────────────────────────────────────────────────
+    // Refresh sight check every frame. Once aggroed, we stay aggroed
+    // until loseSightTime seconds pass with no LOS AND we've transitioned
+    // out of mid-attack states (winding/striking/recovering finish before
+    // we drop aggro).
+    const seesPlayer = canSeePlayer(playerPos, walkable);
+    if (seesPlayer) {
+      timeSinceLOS = 0;
+      lastSeenPos.copy(playerPos);
+      if (!aggroed) {
+        aggroed = true;
+        if (state === 'idle' || state === 'returning') {
+          state = 'alerted';
+          phaseTimer = 0;
+          playEnemyWindup(audioSizeFor(spec));  // "I see you" growl
+        }
+      }
+    } else if (aggroed) {
+      timeSinceLOS += dt;
+      // Drop aggro only when we've lost sight long enough AND we're not
+      // mid-attack. Mid-attack we let the swing finish first.
+      const attackingStates: ReadonlyArray<EnemyState> = ['winding', 'striking', 'recovering'];
+      if (timeSinceLOS >= loseSightTime && !attackingStates.includes(state)) {
+        aggroed = false;
+        if (state === 'chasing') {
+          state = 'searching';
+          phaseTimer = 0;
+        }
+      }
+    }
+
     const distance = distToXZ(playerPos);
 
+    // Face target is conditional — idle/returning faces the scan target,
+    // not the player.
+    if (state !== 'idle' && state !== 'returning') {
+      faceTarget(playerPos);
+    }
+
     switch (state) {
+      case 'idle': {
+        // Slow scan around home yaw. Pick a new target angle every
+        // IDLE_SCAN_INTERVAL seconds; lerp toward it. Dim eye flare so
+        // a watching player can tell at a glance "this one hasn't seen me yet."
+        scanTimer += dt;
+        if (scanTimer >= IDLE_SCAN_INTERVAL) {
+          scanTimer = 0;
+          scanTargetYaw = homeYaw + (Math.random() * 2 - 1) * IDLE_SCAN_HALF_ARC;
+        }
+        // Lerp container yaw toward scan target. Wrap delta to nearest π.
+        let delta = scanTargetYaw - container.rotation.y;
+        while (delta >  Math.PI) delta -= Math.PI * 2;
+        while (delta < -Math.PI) delta += Math.PI * 2;
+        container.rotation.y += delta * Math.min(1, dt * 1.2);
+        applyIdleEyes();
+        applyTilt(0);
+        built.group.position.y = 0;
+        break;
+      }
+
+      case 'alerted': {
+        // Brief "I see you" pause. Eyes flare bright, body rears back
+        // slightly, then commits to chase. Face player during this so the
+        // moment reads — the model snaps from scan-pose to confront-pose.
+        phaseTimer += dt;
+        const t = Math.min(1, phaseTimer / ALERTED_DURATION);
+        faceTarget(playerPos);
+        setEyeFlare(t);
+        applyTilt(-0.15 * t);   // slight rear-back (negative tilt)
+        built.group.position.y = 0;
+        if (phaseTimer >= ALERTED_DURATION) {
+          state = 'chasing';
+          phaseTimer = 0;
+        }
+        break;
+      }
+
+      case 'searching': {
+        // Walk toward last known position. If we get close to it without
+        // re-acquiring (canSeePlayer handles that above by resetting
+        // state to chasing on re-acquire), wait a beat, then return home.
+        phaseTimer += dt;
+        const dxs = lastSeenPos.x - container.position.x;
+        const dzs = lastSeenPos.z - container.position.z;
+        const distToLast = Math.hypot(dxs, dzs);
+        // Face the search direction.
+        faceTarget(lastSeenPos);
+        if (distToLast > 0.4) {
+          tmpDir.set(dxs, 0, dzs).normalize();
+          const step = spec.moveSpeed * 0.7 * dt;  // slower than chase — wary search
+          const newX = container.position.x + tmpDir.x * step;
+          const newZ = container.position.z + tmpDir.z * step;
+          const resolved = walkable.clampMove(
+            container.position.x, container.position.z,
+            newX, newZ, spec.collisionRadius,
+          );
+          container.position.x = resolved.x;
+          container.position.z = resolved.z;
+        }
+        // Search times out either by phaseTimer or by re-acquiring (above).
+        if (phaseTimer >= SEARCH_DURATION) {
+          state = 'returning';
+          phaseTimer = 0;
+        }
+        // Dimmer eye flare during search — alert but not committed.
+        if (eyeMat) eyeMat.emissiveIntensity = baseEyeEmissive * 0.85;
+        if (haloMatL) haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.8);
+        if (haloMatR) haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.8);
+        applyTilt(0);
+        built.group.position.y = 0;
+        break;
+      }
+
+      case 'returning': {
+        // Walk back to spawn post. On arrival, snap to home yaw and idle.
+        const dxr = homePos.x - container.position.x;
+        const dzr = homePos.z - container.position.z;
+        const distHome = Math.hypot(dxr, dzr);
+        if (distHome < 0.25) {
+          state = 'idle';
+          // Reset scan so it picks a fresh target next idle tick.
+          scanTimer = IDLE_SCAN_INTERVAL;
+          scanTargetYaw = homeYaw;
+          break;
+        }
+        tmpDir.set(dxr, 0, dzr).normalize();
+        const step = spec.moveSpeed * 0.6 * dt;
+        const newX = container.position.x + tmpDir.x * step;
+        const newZ = container.position.z + tmpDir.z * step;
+        const resolved = walkable.clampMove(
+          container.position.x, container.position.z,
+          newX, newZ, spec.collisionRadius,
+        );
+        container.position.x = resolved.x;
+        container.position.z = resolved.z;
+        // Face direction of travel.
+        tmpFlat.set(container.position.x + tmpDir.x, container.position.y, container.position.z + tmpDir.z);
+        container.lookAt(tmpFlat);
+        container.rotation.y += Math.PI;
+        applyIdleEyes();
+        applyTilt(0);
+        built.group.position.y = 0;
+        break;
+      }
+
       case 'chasing': {
         if (distance > spec.attackRange) {
           tmpDir.subVectors(playerPos, container.position);

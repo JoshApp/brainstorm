@@ -51,6 +51,31 @@ export interface EnemySpec {
   /** Damage type the enemy's melee strike does. Default 'physical'. */
   damageType?: DamageType;
 
+  // --- Aggro / perception ---
+  /**
+   * Vision range in meters. Player must be inside this AND in the sight
+   * cone AND in line-of-sight (no wall between) to be spotted. Default 7.
+   */
+  sightRange?: number;
+  /**
+   * Vision cone half-angle in radians. ~1.05 rad = 60° half (120° total
+   * FOV) is a reasonable predator cone. Tight cones make the enemy
+   * exploitable from the sides; wide cones make it harder to sneak.
+   * Default 1.05.
+   */
+  sightConeHalfAngle?: number;
+  /**
+   * Proximity radius that triggers aggro regardless of vision/LOS — the
+   * enemy "hears" or "smells" the player at this distance. Smaller than
+   * sightRange. Default 2.5.
+   */
+  hearingRange?: number;
+  /**
+   * Seconds without LOS before deaggro. Default 4. Damage taken refreshes
+   * this timer (a hurt enemy stays aware).
+   */
+  loseSightTime?: number;
+
   // --- Drops ---
   /**
    * Drop table. On death, each entry rolls INDEPENDENTLY against its
@@ -251,6 +276,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    // Ghoul has decent eyes, moderate hearing. Wide cone — has to face you
+    // generally to spot you, but the cone is forgiving.
+    sightRange: 7,
+    sightConeHalfAngle: 1.05,   // ~60° half / 120° total
+    hearingRange: 2.5,
+    loseSightTime: 4,
     drops: [
       { itemId: 'scimitar', chance: 1.0 },              // always — headline reward
       { itemId: 'healing-potion', chance: 0.35 },
@@ -276,6 +307,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',     // 'rig' slot — pre-rotated body rotates correctly when this tilts
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    // Rats hear / smell better than they see. Bad eyes, wide nose. Easy
+    // to sneak past visually if you stay quiet, but step into the cone of
+    // their hearing radius and they'll come.
+    sightRange: 4,
+    sightConeHalfAngle: 0.8,    // ~46° half — narrow, head-bobbing predator
+    hearingRange: 3.5,
+    loseSightTime: 3,
     drops: [
       // Trash mob: rarely drops anything. Empty hands most of the time.
       { itemId: 'healing-potion', chance: 0.12 },
@@ -299,6 +337,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    // Skirmisher is a scout — best vision of the trash mobs. Tighter
+    // cone (predator focus) and longer range. Bad hearing for sneak-up.
+    sightRange: 9,
+    sightConeHalfAngle: 0.9,
+    hearingRange: 2.0,
+    loseSightTime: 5,
     drops: [
       { itemId: 'healing-potion', chance: 0.4 },
       { itemId: 'ring-of-predation', chance: 0.15 },
@@ -330,6 +374,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    // Wraith sees ECHO of you — basically supernatural perception. Long
+    // range, wide cone, but small hearing radius (no body to feel
+    // footsteps). Long lose-sight: it follows even if you break LOS.
+    sightRange: 12,
+    sightConeHalfAngle: 1.3,    // ~75° half / 150° total
+    hearingRange: 1.5,
+    loseSightTime: 7,
     drops: [
       { itemId: 'heartburn', chance: 0.5 },          // fabled — the headline drop
       { itemId: 'bone-amulet', chance: 0.5 },
