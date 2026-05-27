@@ -42,6 +42,10 @@ export interface WeaponStats {
   coneHalfAngle: number;
   /** Damage per successful strike (before equipment bonuses). */
   damage: number;
+  /** Probability [0,1] each landed hit crits. Default 0.05. */
+  critChance?: number;
+  /** Damage multiplier on crit. Default 2.0. */
+  critMultiplier?: number;
 }
 
 export interface ItemSpec {
@@ -89,7 +93,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Pitted and ill-balanced. It will do.',
     dropModel: SWORD_RUSTED,
     viewmodel: SWORD_RUSTED,
-    weapon: { reach: 1.8, coneHalfAngle: 0.65, damage: 1 },
+    weapon: { reach: 1.8, coneHalfAngle: 0.65, damage: 1, critChance: 0.05, critMultiplier: 2.0 },
   },
   scimitar: {
     id: 'scimitar',
@@ -99,7 +103,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Made for those who would not be patient.',
     dropModel: WEAPON_SCIMITAR,
     viewmodel: WEAPON_SCIMITAR,
-    weapon: { reach: 2.2, coneHalfAngle: 0.85, damage: 2 },
+    weapon: { reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0 },
   },
   heartburn: {
     id: 'heartburn',
@@ -109,7 +113,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'The blade was never quenched.',
     dropModel: HEARTBURN,
     viewmodel: HEARTBURN,
-    weapon: { reach: 2.3, coneHalfAngle: 0.9, damage: 3 },
+    weapon: { reach: 2.3, coneHalfAngle: 0.9, damage: 3, critChance: 0.22, critMultiplier: 2.5 },
     modifiers: [
       { kind: 'weapon-damage', amount: 1 },
       { kind: 'damage-multiplier', amount: 1.15 },

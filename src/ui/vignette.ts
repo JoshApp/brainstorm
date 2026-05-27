@@ -41,16 +41,21 @@ function ensureElements() {
   document.body.appendChild(flashEl);
 }
 
-/** Damage hit-flash: instant red bloom that fades back to 0. */
-export function flashVignette() {
+/** Damage hit-flash: instant red bloom that fades back to 0. The flash
+ *  opacity AND fade duration scale with damage amount, so a 3-damage hit
+ *  reads visibly heavier than a 1-damage hit — important now that
+ *  enemies have varied damage profiles (wraith hits for 2, etc.). */
+export function flashVignette(damageAmount: number = 1) {
   ensureElements();
   if (!flashEl) return;
-  // Snap to full opacity (no transition), then transition back to 0.
+  // Opacity ramps from 0.55 (1 dmg) → 1.0 (3+ dmg).
+  const intensity = Math.min(1.0, 0.55 + (damageAmount - 1) * 0.22);
+  // Heavy hits linger longer — 280ms baseline, +120ms per extra damage.
+  const fade = CONFIG.VIGNETTE_FLASH_FADE_MS + Math.max(0, damageAmount - 1) * 120;
   flashEl.style.transition = 'none';
-  flashEl.style.opacity = String(CONFIG.VIGNETTE_FLASH_OPACITY);
-  // Force a reflow so the next style change actually transitions.
+  flashEl.style.opacity = String(intensity);
   void flashEl.offsetWidth;
-  flashEl.style.transition = `opacity ${CONFIG.VIGNETTE_FLASH_FADE_MS}ms ease-out`;
+  flashEl.style.transition = `opacity ${fade}ms ease-out`;
   flashEl.style.opacity = '0';
 }
 
@@ -62,4 +67,51 @@ export function setPersistentVignette(opacity: number, transitionMs?: number) {
     persistentEl.style.transition = `opacity ${transitionMs}ms ease-in`;
   }
   persistentEl.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+}
+
+// ─── Low-HP pulse overlay ────────────────────────────────────────────
+// A third layer, independent of flash + persistent. When the player's
+// HP drops below the threshold, a soft red breathing pulse appears at
+// the screen edges — peripheral vision signal: "you are in danger."
+// Driven by tickLowHpPulse from the main loop; the only thing the
+// outside world has to do is call it each frame.
+
+let lowHpEl: HTMLDivElement | null = null;
+let lowHpTime = 0;
+
+function ensureLowHp() {
+  if (lowHpEl) return;
+  ensureElements();
+  lowHpEl = document.createElement('div');
+  lowHpEl.id = 'vignette-lowhp';
+  Object.assign(lowHpEl.style, baseStyle());
+  lowHpEl.style.background =
+    'radial-gradient(ellipse at center, transparent 35%, rgba(180, 30, 30, 0.45) 80%, rgba(80, 0, 0, 0.7) 100%)';
+  lowHpEl.style.transition = 'opacity 200ms ease-out';
+  document.body.appendChild(lowHpEl);
+}
+
+/** Per-frame tick for the low-HP pulse. Caller passes the current
+ *  HP fraction (0-1). Above the threshold the layer fades out;
+ *  below it, opacity oscillates on a slow sine breath. */
+export function tickLowHpPulse(dt: number, hpFraction: number) {
+  ensureLowHp();
+  if (!lowHpEl) return;
+  const THRESHOLD = 0.30;
+  if (hpFraction > THRESHOLD || hpFraction <= 0) {
+    // Above threshold OR dead (death sequence owns the screen) — fade out.
+    if (lowHpEl.style.opacity !== '0') lowHpEl.style.opacity = '0';
+    lowHpTime = 0;
+    return;
+  }
+  lowHpTime += dt;
+  // Pulse faster as HP drops lower — at 30% it breathes; at 10% it's
+  // a near-panic flash.
+  const urgency = 1 - hpFraction / THRESHOLD;       // 0 at threshold → 1 at zero
+  const freq = 1.8 + urgency * 3.5;                 // breaths/sec
+  const baseAlpha = 0.18 + urgency * 0.30;          // floor of pulse
+  const swing = 0.18 + urgency * 0.22;              // amplitude
+  const alpha = baseAlpha + Math.sin(lowHpTime * freq * Math.PI * 2) * 0.5 * swing;
+  lowHpEl.style.transition = 'opacity 80ms linear';
+  lowHpEl.style.opacity = String(Math.max(0, Math.min(0.9, alpha)));
 }

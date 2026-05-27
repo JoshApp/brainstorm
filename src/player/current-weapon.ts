@@ -8,6 +8,8 @@ let current: WeaponStats = {
   reach: 1.8,
   coneHalfAngle: 0.65,
   damage: 1,
+  critChance: 0.05,
+  critMultiplier: 2.0,
 };
 
 export function getCurrentWeapon(): WeaponStats {

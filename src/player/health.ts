@@ -72,12 +72,12 @@ export function damagePlayer(amount: number, source: EntityId | null = null, typ
   freezeFor(CONFIG.PLAYER_HIT_PAUSE_MS);
   kickShake(CONFIG.PLAYER_HIT_SHAKE_MAGNITUDE, CONFIG.PLAYER_HIT_SHAKE_DURATION);
   hapticVibrate(CONFIG.PLAYER_HIT_HAPTIC_MS);
-  flashVignette();
+  flashVignette(result.applied);
   playPlayerHurt();
   // Magic strikes layer a sour bell+sizzle on top of the hurt grunt — the
   // wraith should sound spectral, not like another club-swing.
   if (type === 'magic') playMagicHit();
-  emit({ type: 'player:damaged', hpLeft: player.hp.current });
+  emit({ type: 'player:damaged', hpLeft: player.hp.current, amount: result.applied });
 
   if (player.hp.current <= 0 && !dead) {
     dead = true;

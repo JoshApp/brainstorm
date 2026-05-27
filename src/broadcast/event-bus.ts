@@ -8,14 +8,15 @@
 
 export type GameEvent =
   | { type: 'attack:swing' }
-  | { type: 'attack:hit'; damage: number }
+  | { type: 'attack:hit'; damage: number; crit?: boolean }
   | { type: 'enemy:killed'; enemyId: string }
-  | { type: 'player:damaged'; hpLeft: number }
+  | { type: 'player:damaged'; hpLeft: number; amount: number }
   | { type: 'player:killed' }
   | { type: 'item:picked-up'; itemId: string }
   | { type: 'note:read'; noteBody: string }
   | { type: 'room:cleared'; roomId: string }
-  | { type: 'level:loaded'; levelId: string };
+  | { type: 'level:loaded'; levelId: string }
+  | { type: 'xp:absorbed' };
 
 type Handler = (event: GameEvent) => void;
 

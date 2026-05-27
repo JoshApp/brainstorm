@@ -96,6 +96,17 @@ export interface EnemySpec {
    */
   drops?: DropEntry[];
 
+  // --- Reward ---
+  /**
+   * XP granted on kill. Spawned as that many XP wisps from the mob's
+   * death position; each wisp homes in on the player and grants 1 XP
+   * when absorbed. Default 1 (trash mob); bosses go much higher.
+   */
+  xp?: number;
+  /** Gold range [min, max] dropped on kill. Credited directly to the
+   *  run's gold counter — no floor pickup for now (shop wiring comes later). */
+  gold?: [number, number];
+
   // --- Ranged ---
   /**
    * If set, the enemy is a SHOOTER — striking phase fires a projectile
@@ -534,6 +545,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     sightConeHalfAngle: 1.05,   // ~60° half / 120° total
     hearingRange: 2.5,
     loseSightTime: 4,
+    xp: 6,
+    gold: [3, 7],
     drops: [
       { itemId: 'scimitar', chance: 1.0 },              // always — headline reward
       { itemId: 'healing-potion', chance: 0.35 },
@@ -567,6 +580,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     sightConeHalfAngle: 0.8,    // ~46° half — narrow, head-bobbing predator
     hearingRange: 3.5,
     loseSightTime: 3,
+    xp: 1,
+    gold: [0, 2],
     drops: [
       // Trash mob: rarely drops anything. Empty hands most of the time.
       { itemId: 'healing-potion', chance: 0.12 },
@@ -597,6 +612,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     sightConeHalfAngle: 0.9,
     hearingRange: 2.0,
     loseSightTime: 5,
+    xp: 3,
+    gold: [1, 4],
     drops: [
       { itemId: 'healing-potion', chance: 0.4 },
       { itemId: 'ring-of-predation', chance: 0.15 },
@@ -645,6 +662,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
       muzzleOffset: [0.30, 1.65, -0.05],
       projectileId: 'acolyte-spit',
     },
+    xp: 5,
+    gold: [2, 6],
     drops: [
       { itemId: 'healing-potion', chance: 0.5 },
       { itemId: 'bone-amulet', chance: 0.15 },
@@ -683,6 +702,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     sightConeHalfAngle: 1.3,    // ~75° half / 150° total
     hearingRange: 1.5,
     loseSightTime: 7,
+    xp: 25,
+    gold: [15, 30],
     drops: [
       { itemId: 'heartburn', chance: 0.5 },          // fabled — the headline drop
       { itemId: 'bone-amulet', chance: 0.5 },

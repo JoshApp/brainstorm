@@ -104,6 +104,14 @@ export function createCombatSystem(
 
     if (!bestEnemy) return;
 
+    // Crit roll — decided BEFORE the damage pipeline so the pipeline's
+    // input damage already reflects the multiplier. critChance/Mult on
+    // WeaponStats default to 5% / 2x.
+    const critChance = weapon.critChance ?? 0;
+    const critMult   = weapon.critMultiplier ?? 2.0;
+    const crit = Math.random() < critChance;
+    const baseDamage = crit ? weapon.damage * critMult : weapon.damage;
+
     // Route through the damage pipeline. The pipeline applies the player's
     // equipment damage bonus (Ring of Predation +1, etc.) from the source
     // stats, then the enemy's physical armor from the target stats. Player
@@ -111,7 +119,7 @@ export function createCombatSystem(
     const applied = bestEnemy.takeDamage({
       source: 'player',
       target: bestEnemy.entityId,
-      base: weapon.damage,
+      base: baseDamage,
       type: 'physical',
     });
     strikeAlreadyHit = true;
@@ -124,12 +132,17 @@ export function createCombatSystem(
     );
 
     // --- THE CRUNCH ---
-    freezeFor(CONFIG.HIT_PAUSE_MS);
-    kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE, CONFIG.SCREEN_SHAKE_HIT_DURATION);
-    hapticVibrate(CONFIG.HAPTIC_HIT_MS);
+    // Crits get a beefier hit-pause + shake to sell the heavier blow.
+    const crunchPause = crit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS;
+    const crunchShake = crit
+      ? CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 1.8
+      : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE;
+    freezeFor(crunchPause);
+    kickShake(crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
+    hapticVibrate(crit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS);
     playImpact();
-    spawnDamageNumber(camera, hitPoint, applied);
-    emit({ type: 'attack:hit', damage: applied });
+    spawnDamageNumber(camera, hitPoint, applied, crit);
+    emit({ type: 'attack:hit', damage: applied, crit });
   }
 
   return { tick };

@@ -48,7 +48,7 @@ import { initPickupLightPool } from './interactables/pickup';
 import { initLightPool, tickLightPool } from './scene/light-pool';
 import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
-import { tickSoulWisps, clearSoulWisps } from './effects/soul-wisps';
+import { tickXpWisps, clearXpWisps } from './effects/xp-wisps';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
@@ -56,6 +56,9 @@ import { createHpBar, updateHpBar } from './ui/hp-bar';
 import { createBuffBar, updateBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
 import { createDepthCounter } from './ui/depth-counter';
+import { createXpGoldHud, updateXpGoldHud } from './ui/xp-gold-hud';
+import { tickLowHpPulse } from './ui/vignette';
+import { getPlayerHp, getPlayerMaxHp } from './player/health';
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 try {
@@ -290,6 +293,7 @@ createHpBar();
 createBuffBar();
 createPickupNotification();
 createDepthCounter(1);  // hardcoded until floors system lands
+createXpGoldHud();
 
 // --- Resize ---
 window.addEventListener('resize', () => {
@@ -370,9 +374,10 @@ function tick() {
       enemy.update(scaledDt, camera.position, currentLevel.walkable);
     }
 
-    // Soul wisps + future world-particle effects. Lives outside the
-    // enemy loop so they survive past their spawner's full retirement.
-    tickSoulWisps(scaledDt);
+    // XP wisps — home in on the player and absorb on contact. Lives
+    // outside the enemy loop so a wisp survives past its spawner's
+    // full retirement (mob disappears, wisps continue to player).
+    tickXpWisps(scaledDt, camera.position);
 
     // Projectiles — integrate active projectiles, hit-test the player +
     // walls, retire on contact/expiry. Lives outside the enemy loop so
@@ -415,6 +420,12 @@ function tick() {
   // on inventory changes (event-driven), so no per-frame tick.
   updateHpBar();
   updateBuffBar();
+  updateXpGoldHud(realDt);
+
+  // Low-HP breathing vignette — peripheral red signal at <30% HP. Uses
+  // realDt so it keeps breathing during hit-pause / scaled time.
+  const maxHp = getPlayerMaxHp();
+  tickLowHpPulse(realDt, maxHp > 0 ? getPlayerHp() / maxHp : 0);
 
   tickShake(realDt, shakeOffset);
   camera.position.add(shakeOffset);

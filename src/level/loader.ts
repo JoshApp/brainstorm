@@ -4,7 +4,7 @@ import type { LevelSpec } from './types';
 import type { StyleMaterials } from '../style/materials';
 import { CONFIG } from '../config';
 import { clearProjectiles } from '../combat/projectile-pool';
-import { clearSoulWisps } from '../effects/soul-wisps';
+import { clearXpWisps } from '../effects/xp-wisps';
 
 // Level loader = the seam between "we have a current level" and "let's swap
 // it for a different one". main.ts holds the active level reference via the
@@ -109,7 +109,7 @@ export function tickPendingLoad() {
   // survive into the new floor's scene graph.
   if (activeLevel) {
     clearProjectiles();
-    clearSoulWisps();
+    clearXpWisps();
     activeLevel.teardown();
     activeLevel = null;
   }

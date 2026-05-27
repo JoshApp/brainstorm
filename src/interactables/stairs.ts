@@ -4,6 +4,7 @@ import type { StyleMaterials } from '../style/materials';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
+import { getTexture } from '../style/procedural-textures';
 
 // Stairs = a visible descent into the floor + an interactable that requests
 // a level transition. The actual loadLevel call lives in main.ts (it owns
@@ -89,39 +90,63 @@ export function spawnStairs(
     decay: 1.6,
   });
 
-  // Vertical "beacon" plume rising out of the stairwell mouth — a
-  // billboarded sprite that reads from any angle. Pokes up through
-  // the floor opening so it's visible across the room (above the
-  // floor-level fog falloff). The eye finds this and walks toward it.
-  const beaconMat = new THREE.SpriteMaterial({
-    color: 0xa0c4ff,
-    transparent: true,
-    opacity: 0.55,
-    blending: THREE.AdditiveBlending,
-    fog: false,
-    depthWrite: false,
-  });
-  const beacon = new THREE.Sprite(beaconMat);
-  beacon.scale.set(0.7, 1.6, 1);
-  beacon.position.set(0, 0.6, STEP_DEPTH * 0.5);
-  group.add(beacon);
+  // ── MOONBEAM ──────────────────────────────────────────────────────
+  // The stairwell is read at-a-distance via a SHAFT of pale light
+  // rising from the mouth, not a flat blue rectangle. Three additive
+  // layers stack into a moonbeam:
+  //   1. Floor halo — soft radial pool at the top tread (fire-wisp
+  //      texture gives the gradient, so it's a circle not a square).
+  //   2. Outer column — wide, dim, slow-falloff sprite (the haze).
+  //   3. Inner core — narrow, bright sprite up the centre (the shaft).
+  // Together they read as god-ray pouring out of the floor.
 
-  // Wide soft floor halo around the top tread — a "this is the way
-  // forward" pool that's visible peripherally even when the player
-  // isn't looking directly at the stairs.
+  // 1. Floor halo — soft radial alpha via fire-wisp.
   const haloMat = new THREE.MeshBasicMaterial({
-    color: 0x405680,
+    map: getTexture('fire-wisp'),
+    color: 0x6688cc,
     transparent: true,
-    opacity: 0.45,
+    opacity: 0.7,
     fog: false,
     depthWrite: false,
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending,
   });
-  const halo = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), haloMat);
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), haloMat);
   halo.rotation.x = -Math.PI / 2;
   halo.position.set(0, 0.02, STEP_DEPTH * 0.5);
   group.add(halo);
+
+  // 2. Outer haze column — tall + wide, sets the silhouette of the
+  // beam visible from across the room.
+  const outerBeamMat = new THREE.SpriteMaterial({
+    map: getTexture('fire-wisp'),
+    color: 0x88a8e8,
+    transparent: true,
+    opacity: 0.45,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    depthWrite: false,
+  });
+  const outerBeam = new THREE.Sprite(outerBeamMat);
+  outerBeam.scale.set(1.8, 3.6, 1);
+  outerBeam.position.set(0, 1.6, STEP_DEPTH * 0.5);
+  group.add(outerBeam);
+
+  // 3. Inner core — narrow, brighter, slightly cooler-white to read
+  // as the "bright centre" of the moonbeam.
+  const coreBeamMat = new THREE.SpriteMaterial({
+    map: getTexture('fire-wisp'),
+    color: 0xd8e4ff,
+    transparent: true,
+    opacity: 0.75,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    depthWrite: false,
+  });
+  const coreBeam = new THREE.Sprite(coreBeamMat);
+  coreBeam.scale.set(0.55, 3.3, 1);
+  coreBeam.position.set(0, 1.5, STEP_DEPTH * 0.5);
+  group.add(coreBeam);
 
   const interactable = {
     id: generateEntityId(`stairs-${spec.id ?? spec.targetLevel}`),

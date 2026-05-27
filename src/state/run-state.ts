@@ -12,7 +12,7 @@
 import type { EquipSlot } from '../player/equipment';
 
 const STORAGE_KEY = 'delve:save';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 export interface SaveData {
   version: number;
@@ -33,6 +33,11 @@ export interface SaveData {
   kills: number;
   /** Unique item ids picked up this run. Set semantics via Array. */
   itemsFound: string[];
+  /** Total XP earned this run. Accumulates via absorbed XP wisps. */
+  xp: number;
+  /** Total gold gathered this run. Currently a counter only — spending
+   *  hooks come with the shop system later. */
+  gold: number;
 }
 
 // ── In-memory run state (mid-floor mutable counters) ─────────────────
@@ -52,12 +57,37 @@ export function startNewRun(initialFloorId: string) {
     startedAt: Date.now(),
     kills: 0,
     itemsFound: [],
+    xp: 0,
+    gold: 0,
   };
 }
 
-/** Hydrate memory state from a saved run. Used on CONTINUE. */
+/** Hydrate memory state from a saved run. Used on CONTINUE. Fills in
+ *  defaults for fields that may be missing from older save versions. */
 export function adoptSave(save: SaveData) {
-  inMemory = { ...save };
+  inMemory = {
+    ...save,
+    xp: save.xp ?? 0,
+    gold: save.gold ?? 0,
+  };
+}
+
+export function grantXp(amount: number): void {
+  if (!inMemory || amount <= 0) return;
+  inMemory.xp += amount;
+}
+
+export function grantGold(amount: number): void {
+  if (!inMemory || amount <= 0) return;
+  inMemory.gold += amount;
+}
+
+export function getXp(): number {
+  return inMemory?.xp ?? 0;
+}
+
+export function getGold(): number {
+  return inMemory?.gold ?? 0;
 }
 
 export function getRunState(): SaveData | null {
@@ -111,8 +141,17 @@ export function loadSave(): SaveData | null {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SaveData;
-    if (parsed.version !== SAVE_VERSION) return null;
-    return parsed;
+    // Soft migration — older saves get the new counters defaulted.
+    // Hard-mismatch (e.g. v0 with totally different shape) returns null.
+    if (parsed.version === 1 || parsed.version === SAVE_VERSION) {
+      return {
+        ...parsed,
+        version: SAVE_VERSION,
+        xp: parsed.xp ?? 0,
+        gold: parsed.gold ?? 0,
+      };
+    }
+    return null;
   } catch {
     return null;
   }
