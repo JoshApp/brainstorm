@@ -283,10 +283,18 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           ];
           const wall = order.find(sideIsWall);
           if (!wall) break;     // truly interior cell, no wall on any side
-          // Position the torch FLUSH against that wall edge so it
-          // visually mounts on a wall plane.
-          const tx = wall === 'W' ? x - 0.499 : wall === 'E' ? x + 0.499 : x;
-          const tz = wall === 'N' ? z - 0.499 : wall === 'S' ? z + 0.499 : z;
+          // Offset the torch position ~0.18m INTO the room from
+          // the wall plane (which sits 0.5m off the cell centre
+          // toward the wall direction). The torch model's sconce
+          // arm extends 0.2m+ along -Z in local space, so this
+          // offset puts the back of the arm just past the wall
+          // surface (hidden in the wall material) while the bowl
+          // / candle / flame sit forward in the room. Without the
+          // offset the bowl's mid-radius landed inside the wall
+          // plane — "torch stuck halfway in the wall".
+          const WALL_OFFSET = 0.32;   // = 0.5 (wall pos) - 0.18 (clearance)
+          const tx = wall === 'W' ? x - WALL_OFFSET : wall === 'E' ? x + WALL_OFFSET : x;
+          const tz = wall === 'N' ? z - WALL_OFFSET : wall === 'S' ? z + WALL_OFFSET : z;
           torches.push({
             x: tx, z: tz,
             height: 2.2,

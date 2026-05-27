@@ -5,6 +5,7 @@ import { parseTileMap } from './tilemap';
 import { populateTemplate } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { scatterClutter } from './clutter';
+import { wallOpenings, inOpening, findContainingRect } from './geometry-cull';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
 // with corridors between, and assemble a single LevelSpec the
@@ -332,46 +333,27 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/** True if the torch's wall-mount position sits inside another
- *  rect's footprint along the wall's running axis — i.e. a
- *  corridor (or another room) has carved the wall away at the
- *  torch's position, leaving it dangling in mid-air. */
+/** True if the torch sits on a wall range that has been carved
+ *  away — i.e. a corridor (or adjoining room) joins the torch's
+ *  room at the torch's position along the wall. The torch's
+ *  mounting plane no longer exists there.
+ *
+ *  Uses the same wallOpenings shape math as the clutter pass +
+ *  the builder, so what's flagged here matches what's actually
+ *  carved at render time. */
 function torchInOpening(
   t: TorchSpec,
   rects: Array<{ x: number; z: number; w: number; d: number }>,
 ): boolean {
-  const EPS = 0.4;   // some slack to drop torches NEAR the opening edge too
-  for (const r of rects) {
-    // For an N/S torch the mounted wall runs along X. The torch
-    // floats if another rect contains the torch X AND the torch Z
-    // sits inside that rect's Z span.
-    if (t.wall === 'N' || t.wall === 'S') {
-      const insideX = t.x > r.x - r.w / 2 - EPS && t.x < r.x + r.w / 2 + EPS;
-      const insideZ = t.z > r.z - r.d / 2 - EPS && t.z < r.z + r.d / 2 + EPS;
-      if (insideX && insideZ) {
-        // Is this rect actually the same room this torch is mounted on?
-        // The torch is FLUSH against a wall (±0.499m off the cell
-        // centre), so being marginally inside another rect on the
-        // perpendicular axis means a real overlap.
-        const margin = 0.05;
-        if (Math.abs(t.z - (r.z - r.d / 2)) > margin
-            && Math.abs(t.z - (r.z + r.d / 2)) > margin) {
-          return true;
-        }
-      }
-    } else {
-      const insideZ = t.z > r.z - r.d / 2 - EPS && t.z < r.z + r.d / 2 + EPS;
-      const insideX = t.x > r.x - r.w / 2 - EPS && t.x < r.x + r.w / 2 + EPS;
-      if (insideX && insideZ) {
-        const margin = 0.05;
-        if (Math.abs(t.x - (r.x - r.w / 2)) > margin
-            && Math.abs(t.x - (r.x + r.w / 2)) > margin) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+  // The torch is mounted slightly inside its room's wall — find
+  // the rect that contains it. After the offset fix the torch
+  // sits ~0.18m off the wall (well inside the rect), so a small
+  // slack is fine.
+  const room = findContainingRect(t.x, t.z, rects, 0.05);
+  if (!room) return false;
+  const openings = wallOpenings(room, t.wall, rects);
+  const pos = (t.wall === 'N' || t.wall === 'S') ? t.x : t.z;
+  return inOpening(pos, openings);
 }
 
 function translateProp(p: PropSpec, dx: number, dz: number): PropSpec {

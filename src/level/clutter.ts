@@ -1,11 +1,14 @@
-import type { LevelSpec, PropSpec, RoomSpec, StairsSpec } from './types';
+import type { LevelSpec, PropSpec, RoomSpec } from './types';
 import {
   RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS,
   FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE,
   CORNER_MOUND, CORNER_MOUND_LARGE, CORNER_MOUND_SMALL,
   WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN,
 } from '../content/clutter';
-import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
+import {
+  wallOpenings, inOpening, allStairFootprints,
+  type Opening, type StairFootprint,
+} from './geometry-cull';
 
 // Clutter scatter pass.
 //
@@ -51,27 +54,17 @@ interface PlacedPoint {
   z: number;
 }
 
-interface Opening {
-  start: number;
-  end: number;
-}
-
 /** Scatter clutter across every room rect in spec. Mutates spec.props. */
 export function scatterClutter(spec: LevelSpec, rand: () => number): void {
   const existing: PlacedPoint[] = spec.props
     .filter((p) => 'x' in p && 'z' in p)
     .map((p) => ({ x: p.x as number, z: p.z as number }));
 
-  // Directional stair footprints — cover the FULL stair body
-  // (extends STAIRWELL_TOTAL_DEPTH in the descent direction from
-  // the stair position) PLUS a generous approach zone in front of
-  // the mouth so a buttress can't spawn where the player walks up
-  // to descend. The previous symmetric 1.6m radius let clutter
-  // land in the back of long stair bodies.
-  const stairAabbs = (spec.stairs ?? []).map(stairFootprint);
-
-  // Build the same allRects list buildRoomShell uses, so opening
-  // detection here matches what's actually carved at render time.
+  // Stair footprints + room rects come from the shared
+  // geometry-cull module so wall-opening / floor-cut logic stays
+  // consistent across the clutter pass and the composer's torch
+  // filter.
+  const stairAabbs = allStairFootprints(spec);
   const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
 
   const newProps: PropSpec[] = [];
@@ -81,39 +74,11 @@ export function scatterClutter(spec: LevelSpec, rand: () => number): void {
   spec.props.push(...newProps);
 }
 
-/** AABB covering the stairwell body + approach corridor, axis-
- *  aligned (stairs only auto-rotate to cardinal angles so the
- *  rotated body's AABB is itself axis-aligned). */
-function stairFootprint(s: StairsSpec): { minX: number; maxX: number; minZ: number; maxZ: number } {
-  const rotY = s.rotY ?? 0;
-  const dirX = Math.sin(rotY);
-  const dirZ = Math.cos(rotY);
-  const APPROACH = 1.6;                            // clear floor in front of the mouth
-  const SIDE = STAIRWELL_HALF_WIDTH + 0.55;        // side parapets + margin
-  // World position of the deepest point of the stair body.
-  const bx = s.x + dirX * STAIRWELL_TOTAL_DEPTH;
-  const bz = s.z + dirZ * STAIRWELL_TOTAL_DEPTH;
-  // World position of the approach point (in front of the mouth).
-  const fx = s.x - dirX * APPROACH;
-  const fz = s.z - dirZ * APPROACH;
-  // Perpendicular side extent: when the descent runs along Z,
-  // the sides are along X (and vice versa). For axial rotY this
-  // collapses cleanly because one of dirX/dirZ is 0.
-  const sideDx = Math.abs(dirZ) * SIDE;
-  const sideDz = Math.abs(dirX) * SIDE;
-  return {
-    minX: Math.min(bx, fx) - sideDx,
-    maxX: Math.max(bx, fx) + sideDx,
-    minZ: Math.min(bz, fz) - sideDz,
-    maxZ: Math.max(bz, fz) + sideDz,
-  };
-}
-
 function decorateRect(
   room: RoomSpec,
   allRects: RoomSpec[],
   existing: PlacedPoint[],
-  stairs: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }>,
+  stairs: StairFootprint[],
   out: PropSpec[],
   rand: () => number,
 ): void {
@@ -134,14 +99,16 @@ function decorateRect(
   const minZ = rect.z - rect.d / 2;
   const maxZ = rect.z + rect.d / 2;
 
-  // Corridor / room openings per wall. Each wall is a 1D range
-  // along its running axis; openings are sub-ranges that have an
-  // adjoining rect on the other side, so the wall is actually
-  // carved away there. Decals placed in those ranges would float.
-  const openN = collectOpenings('N', rect, allRects);
-  const openS = collectOpenings('S', rect, allRects);
-  const openE = collectOpenings('E', rect, allRects);
-  const openW = collectOpenings('W', rect, allRects);
+  // Corridor / room openings per wall. The shared
+  // geometry-cull.wallOpenings does the exact same shape math
+  // the builder uses to carve the wall, so a position flagged
+  // here as "in an opening" is one that won't have a wall at
+  // render time.
+  const allRectsFlat = allRects.map((r) => r.rect);
+  const openN = wallOpenings(rect, 'N', allRectsFlat);
+  const openS = wallOpenings(rect, 'S', allRectsFlat);
+  const openE = wallOpenings(rect, 'E', allRectsFlat);
+  const openW = wallOpenings(rect, 'W', allRectsFlat);
 
   const tooClose = (x: number, z: number, minDist: number) => {
     const md2 = minDist * minDist;
@@ -156,12 +123,10 @@ function decorateRect(
     return false;
   };
 
-  const inOpening = (pos: number, openings: Opening[]): boolean => {
-    for (const o of openings) {
-      if (pos >= o.start - 0.4 && pos <= o.end + 0.4) return true;
-    }
-    return false;
-  };
+  // inOpening is imported from geometry-cull (default slack 0.4m).
+  // Anywhere this returns true, the wall slab is going to be
+  // carved off at render time and a prop mounted there would
+  // float in the corridor mouth.
 
   const tryPlace = (
     sampler: () => { x: number; z: number },
@@ -422,45 +387,6 @@ function decorateRect(
 
 // ── helpers ──────────────────────────────────────────────────────
 
-/** Mirror of builder.findOpenings — locates the ranges on each
- *  wall of `self` where another rect is flush, indicating a
- *  corridor / room carve. */
-function collectOpenings(
-  side: 'N' | 'S' | 'E' | 'W',
-  self: { x: number; z: number; w: number; d: number },
-  allRects: RoomSpec[],
-): Opening[] {
-  const EPS = 0.05;
-  const out: Opening[] = [];
-  for (const other of allRects) {
-    const o = other.rect;
-    // Same-rect identity — same centre + same size means it's us.
-    if (Math.abs(o.x - self.x) < 1e-6 && Math.abs(o.z - self.z) < 1e-6
-        && o.w === self.w && o.d === self.d) continue;
-
-    if (side === 'N' || side === 'S') {
-      const wallZ = side === 'N' ? self.z - self.d / 2 : self.z + self.d / 2;
-      const oNorth = o.z - o.d / 2;
-      const oSouth = o.z + o.d / 2;
-      const coincides = Math.abs(oSouth - wallZ) < EPS || Math.abs(oNorth - wallZ) < EPS;
-      if (!coincides) continue;
-      const a = Math.max(self.x - self.w / 2, o.x - o.w / 2);
-      const b = Math.min(self.x + self.w / 2, o.x + o.w / 2);
-      if (b > a + EPS) out.push({ start: a, end: b });
-    } else {
-      const wallX = side === 'W' ? self.x - self.w / 2 : self.x + self.w / 2;
-      const oWest = o.x - o.w / 2;
-      const oEast = o.x + o.w / 2;
-      const coincides = Math.abs(oEast - wallX) < EPS || Math.abs(oWest - wallX) < EPS;
-      if (!coincides) continue;
-      const a = Math.max(self.z - self.d / 2, o.z - o.d / 2);
-      const b = Math.min(self.z + self.d / 2, o.z + o.d / 2);
-      if (b > a + EPS) out.push({ start: a, end: b });
-    }
-  }
-  return out;
-}
-
 /** True if either of the two adjoining walls of a corner has an
  *  opening within ~1.2m — placing a mound there would visually
  *  crowd the doorway. */
@@ -580,8 +506,9 @@ function placeWallAttached(
 }
 
 function inOpeningRange(pos: number, openings: Opening[]): boolean {
-  for (const o of openings) {
-    if (pos >= o.start - 0.6 && pos <= o.end + 0.6) return true;
-  }
-  return false;
+  // Slightly more generous slack than the default 0.4 — buttresses
+  // are big floor-to-ceiling props, so we want a bigger safety
+  // margin around openings to avoid the column standing partly
+  // in front of a doorway.
+  return inOpening(pos, openings, 0.6);
 }
