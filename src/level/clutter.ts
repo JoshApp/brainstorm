@@ -1,4 +1,4 @@
-import type { LevelSpec, PropSpec, RoomSpec } from './types';
+import type { LevelSpec, PropSpec, RoomSpec, WalkableRect } from './types';
 import {
   RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS,
   FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE,
@@ -10,39 +10,34 @@ import {
   type Opening, type StairFootprint,
 } from './geometry-cull';
 
-// Clutter scatter pass.
+// Clutter pipeline — split into two clearly ordered stages so
+// later passes know about what earlier passes already placed:
 //
-// Walks each room rect produced by the vault composer and drops a
-// modest amount of small debris / damage props on the floor + walls
-// so the room reads as old, used, broken — not a clean cube of
-// stone. Heavily edge / corner biased: real debris piles up at
-// walls, dust settles in corners, scorch marks adhere to walls.
+//   STAGE 1 — applyStructuralClutter
+//     Buttresses, ruined columns, corner mounds, wall piles.
+//     These VOLUMETRICALLY MODIFY the playable shape of a room
+//     and need to land before torch positions are finalised so
+//     the torch filter can see them, and before surface
+//     decoration so cracks and scorches don't end up underneath
+//     a column.
 //
-// Volumetric corner mounds and wall piles do the actual visual
-// "deformation" — they break the rectangular silhouette by piling
-// against walls + corners and slumping into the room.
+//   STAGE 2 — applySurfaceClutter
+//     Floor debris, floor cracks, wall damage / scorches.
+//     Pure decoration. Always runs LAST so it never conflicts
+//     with the bigger architectural decisions or with fixtures
+//     authored by the vault (altars, chests, fountains).
 //
-// Wall placements skip CORRIDOR OPENINGS — any segment of a room
-// wall that has a corridor (or another room) flush against it is
-// not really a wall, so decals there would float in mid-air after
-// the carve. We mirror the builder's findOpenings logic to detect
-// those gaps.
+// scatterClutter() runs both in order; the composer can also
+// call them at different points in its pipeline.
 //
-// Overlap avoidance: every new prop checks a generous radius
-// against existing props + stair footprints.
+// Both stages share a small RoomContext built from the room's
+// rect, the global rect set, the existing props (so nothing is
+// placed where the vault author put a fountain), and the stair
+// footprints (carved-floor regions where placements would float).
 
-// Floor debris pool — kept to chunky stone-family props. The
-// earlier bone-piles and broken-planks read as noisy "branches"
-// from a distance; pulled them out so the eye latches on the
-// bigger silhouettes (wall piles, corner mounds, buttresses)
-// instead of getting busy at floor level.
 const FLOOR_DEBRIS = [RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS];
 const WALL_DAMAGE = [WALL_SCORCH, WALL_GOUGE];
 
-// Corner mound variants — picked weighted per corner so the big
-// version is rare but the small/medium read as the default. Big
-// mounds dominate one corner of a chamber; small ones fill the
-// other corners more subtly.
 const CORNER_MOUND_VARIANTS: Array<{ model: typeof CORNER_MOUND; weight: number }> = [
   { model: CORNER_MOUND_SMALL, weight: 5 },
   { model: CORNER_MOUND,       weight: 4 },
@@ -54,67 +49,77 @@ interface PlacedPoint {
   z: number;
 }
 
-/** Scatter clutter across every room rect in spec. Mutates spec.props. */
-export function scatterClutter(spec: LevelSpec, rand: () => number): void {
-  const existing: PlacedPoint[] = spec.props
-    .filter((p) => 'x' in p && 'z' in p)
-    .map((p) => ({ x: p.x as number, z: p.z as number }));
-
-  // Wall-mounted torches sit ~0.18m off the wall plane. Wall
-  // buttresses / wall piles / wall damage all extend into the
-  // room from the same wall — if we don't tell the clutter pass
-  // about torches, a buttress can spawn directly on top of one,
-  // burying the sconce inside the stone column. Treat torch
-  // positions as occupied points for the tooClose checks.
-  for (const t of spec.torches) {
-    existing.push({ x: t.x, z: t.z });
-  }
-
-  // Stair footprints + room rects come from the shared
-  // geometry-cull module so wall-opening / floor-cut logic stays
-  // consistent across the clutter pass and the composer's torch
-  // filter.
-  const stairAabbs = allStairFootprints(spec);
-  const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
-
-  const newProps: PropSpec[] = [];
-  for (const r of spec.rooms) {
-    decorateRect(r, allRects, existing, stairAabbs, newProps, rand);
-  }
-  spec.props.push(...newProps);
+interface RoomContext {
+  rect: WalkableRect;
+  minX: number; maxX: number; minZ: number; maxZ: number;
+  area: number;
+  openN: Opening[]; openS: Opening[]; openE: Opening[]; openW: Opening[];
+  existing: PlacedPoint[];
+  tooClose: (x: number, z: number, minDist: number) => boolean;
+  centreSampler: () => { x: number; z: number };
+  edgeSampler: () => { x: number; z: number };
 }
 
-function decorateRect(
+/** Convenience: run both clutter stages in order. */
+export function scatterClutter(spec: LevelSpec, rand: () => number): void {
+  applyStructuralClutter(spec, rand);
+  applySurfaceClutter(spec, rand);
+}
+
+/** Stage 1 — volumetric room shape modifiers. Buttresses, ruined
+ *  columns, corner mounds, wall piles. Mutates spec.props. */
+export function applyStructuralClutter(spec: LevelSpec, rand: () => number): void {
+  const existing = collectExisting(spec);
+  const stairs = allStairFootprints(spec);
+  const allRectsFlat = [...spec.rooms, ...spec.corridors].map((r) => r.rect);
+  const out: PropSpec[] = [];
+  for (const room of spec.rooms) {
+    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand);
+    structuralPass(ctx, out, rand);
+  }
+  spec.props.push(...out);
+}
+
+/** Stage 2 — surface decoration. Floor debris, floor cracks, wall
+ *  damage. Runs AFTER fixtures + structural so it doesn't paint
+ *  over things or stuff cracks under a column. Mutates spec.props. */
+export function applySurfaceClutter(spec: LevelSpec, rand: () => number): void {
+  const existing = collectExisting(spec);
+  const stairs = allStairFootprints(spec);
+  const allRectsFlat = [...spec.rooms, ...spec.corridors].map((r) => r.rect);
+  const out: PropSpec[] = [];
+  for (const room of spec.rooms) {
+    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand);
+    surfacePass(ctx, out, rand);
+  }
+  spec.props.push(...out);
+}
+
+// ── shared context ────────────────────────────────────────────────
+
+function collectExisting(spec: LevelSpec): PlacedPoint[] {
+  const out: PlacedPoint[] = spec.props
+    .filter((p) => 'x' in p && 'z' in p)
+    .map((p) => ({ x: p.x as number, z: p.z as number }));
+  // Wall torches count as occupied — buttresses / wall piles / wall
+  // damage must avoid sconces (otherwise the column buries the
+  // torch).
+  for (const t of spec.torches) out.push({ x: t.x, z: t.z });
+  return out;
+}
+
+function buildRoomContext(
   room: RoomSpec,
-  allRects: RoomSpec[],
+  allRectsFlat: WalkableRect[],
   existing: PlacedPoint[],
   stairs: StairFootprint[],
-  out: PropSpec[],
   rand: () => number,
-): void {
+): RoomContext {
   const rect = room.rect;
-  const area = rect.w * rect.d;
-
-  // Sparser than the first pass — the user's feedback was that the
-  // debris repeated too obviously. 1 piece per ~14m² floor, 1 wall
-  // damage per ~30m², 1 crack per ~20m². Small rooms get 1-2
-  // pieces; large halls get 6-8.
-  const floorCount = Math.max(1, Math.round(area / 14));
-  const crackCount = Math.max(1, Math.round(area / 20));
-  const wallCount = Math.max(0, Math.round(area / 30));
-  const wallPileCount = Math.max(0, Math.round(area / 25));
-
   const minX = rect.x - rect.w / 2;
   const maxX = rect.x + rect.w / 2;
   const minZ = rect.z - rect.d / 2;
   const maxZ = rect.z + rect.d / 2;
-
-  // Corridor / room openings per wall. The shared
-  // geometry-cull.wallOpenings does the exact same shape math
-  // the builder uses to carve the wall, so a position flagged
-  // here as "in an opening" is one that won't have a wall at
-  // render time.
-  const allRectsFlat = allRects.map((r) => r.rect);
   const openN = wallOpenings(rect, 'N', allRectsFlat);
   const openS = wallOpenings(rect, 'S', allRectsFlat);
   const openE = wallOpenings(rect, 'E', allRectsFlat);
@@ -133,36 +138,11 @@ function decorateRect(
     return false;
   };
 
-  // inOpening is imported from geometry-cull (default slack 0.4m).
-  // Anywhere this returns true, the wall slab is going to be
-  // carved off at render time and a prop mounted there would
-  // float in the corridor mouth.
-
-  const tryPlace = (
-    sampler: () => { x: number; z: number },
-    place: (x: number, z: number) => PropSpec,
-    count: number,
-    minDist: number,
-    attemptsPerPlacement: number = 6,
-  ) => {
-    for (let i = 0; i < count; i++) {
-      for (let a = 0; a < attemptsPerPlacement; a++) {
-        const p = sampler();
-        if (tooClose(p.x, p.z, minDist)) continue;
-        out.push(place(p.x, p.z));
-        existing.push(p);
-        break;
-      }
-    }
-  };
-
   const centreSampler = () => ({
     x: minX + 0.5 + rand() * Math.max(0, rect.w - 1),
     z: minZ + 0.5 + rand() * Math.max(0, rect.d - 1),
   });
 
-  // Edge sampler avoids opening ranges — debris-piled-against-a-
-  // wall shouldn't sit where the corridor mouth is.
   const edgeSampler = (): { x: number; z: number } => {
     const wall = Math.floor(rand() * 4);
     const inset = 0.25 + rand() * 0.55;
@@ -191,218 +171,255 @@ function decorateRect(
     }
   };
 
-  // Shuffle the debris pool per-room so the same model doesn't
-  // dominate a single chamber. The next room gets a fresh shuffle.
-  const debrisOrder = shuffled(FLOOR_DEBRIS, rand);
-  let debrisIdx = 0;
-  const pickDebris = () => {
-    const m = debrisOrder[debrisIdx % debrisOrder.length];
-    debrisIdx++;
-    return m;
+  return {
+    rect, minX, maxX, minZ, maxZ,
+    area: rect.w * rect.d,
+    openN, openS, openE, openW,
+    existing, tooClose,
+    centreSampler, edgeSampler,
   };
+}
 
-  // Floor debris, mostly edge-biased.
-  tryPlace(
-    () => (rand() < 0.7 ? edgeSampler() : centreSampler()),
-    (x, z) => ({
-      kind: 'model',
-      model: pickDebris(),
-      x,
-      y: 0,
-      z,
-      rotY: rand() * Math.PI * 2,
-    }),
-    floorCount,
-    0.7,
-  );
+// ── stage 1: structural ───────────────────────────────────────────
 
+function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number): void {
   // Corner mounds — volumetric piles of silt slumping out of each
-  // corner. Authored with HIGH end at local (-,-); rotate per
-  // corner so the high end faces into the corner. Skip a corner
-  // that's near an opening so we don't block the doorway.
+  // corner. One large mound max per chamber so a single corner
+  // reads as the "collapsed" focal point.
   const corners: Array<{ x: number; z: number; rotY: number; nearOpening: boolean }> = [
-    { x: minX + 0.45, z: minZ + 0.45, rotY: 0,
-      nearOpening: nearOpeningOnEither(openN, openW, minX + 0.45, minZ + 0.45) },
-    { x: maxX - 0.45, z: minZ + 0.45, rotY: -Math.PI / 2,
-      nearOpening: nearOpeningOnEither(openN, openE, maxX - 0.45, minZ + 0.45) },
-    { x: minX + 0.45, z: maxZ - 0.45, rotY:  Math.PI / 2,
-      nearOpening: nearOpeningOnEither(openS, openW, minX + 0.45, maxZ - 0.45) },
-    { x: maxX - 0.45, z: maxZ - 0.45, rotY: Math.PI,
-      nearOpening: nearOpeningOnEither(openS, openE, maxX - 0.45, maxZ - 0.45) },
+    { x: ctx.minX + 0.45, z: ctx.minZ + 0.45, rotY: 0,
+      nearOpening: nearOpeningOnEither(ctx.openN, ctx.openW, ctx.minX + 0.45, ctx.minZ + 0.45) },
+    { x: ctx.maxX - 0.45, z: ctx.minZ + 0.45, rotY: -Math.PI / 2,
+      nearOpening: nearOpeningOnEither(ctx.openN, ctx.openE, ctx.maxX - 0.45, ctx.minZ + 0.45) },
+    { x: ctx.minX + 0.45, z: ctx.maxZ - 0.45, rotY:  Math.PI / 2,
+      nearOpening: nearOpeningOnEither(ctx.openS, ctx.openW, ctx.minX + 0.45, ctx.maxZ - 0.45) },
+    { x: ctx.maxX - 0.45, z: ctx.maxZ - 0.45, rotY: Math.PI,
+      nearOpening: nearOpeningOnEither(ctx.openS, ctx.openE, ctx.maxX - 0.45, ctx.maxZ - 0.45) },
   ];
-  // Up to ONE large mound per chamber — the others stay small/
-  // medium so a single corner reads as the "collapsed" focal point.
   let largeUsed = false;
   for (const c of corners) {
     if (c.nearOpening) continue;
     if (rand() > 0.55) continue;
-    if (tooClose(c.x, c.z, 0.7)) continue;
+    if (ctx.tooClose(c.x, c.z, 0.7)) continue;
     const variant = pickCornerVariant(rand, largeUsed);
     if (variant === CORNER_MOUND_LARGE) largeUsed = true;
     out.push({ kind: 'model', model: variant, x: c.x, y: 0, z: c.z, rotY: c.rotY });
-    existing.push({ x: c.x, z: c.z });
+    ctx.existing.push({ x: c.x, z: c.z });
   }
 
-  // ── Wall buttresses ─────────────────────────────────────────────
-  // Structural columns attached to a wall, floor-to-ceiling. These
-  // are the biggest single change to room silhouette — they cast
-  // shadows across the floor from torches, so the wall stops
-  // reading as one flat plane. Big rooms get 1-2, small ones get
-  // none (a buttress in a tiny room eats too much floor space).
-  const buttressCount = area >= 60 ? 2 : area >= 30 ? 1 : 0;
+  // Wall buttresses — floor-to-ceiling structural columns attached
+  // to a wall. The biggest single change to room silhouette.
+  const buttressCount = ctx.area >= 60 ? 2 : ctx.area >= 30 ? 1 : 0;
   for (let i = 0; i < buttressCount; i++) {
-    placeWallAttached(
-      WALL_BUTTRESS, /*depth*/ 0.30, /*alongHalf*/ 0.7,
-      rect, openN, openS, openE, openW, tooClose, out, existing, rand,
-    );
+    placeWallAttached(WALL_BUTTRESS, 0.30, 0.7, ctx, out, rand);
   }
 
-  // ── Ruined column stubs ────────────────────────────────────────
-  // Free-standing chest-high broken column. Placed in open floor
-  // (not against a wall) — reads as a colonnade that mostly fell.
-  // Adds vertical break + a navigation obstacle the player has to
-  // path around. Rare in small rooms.
-  const columnCount = area >= 80 ? 2 : area >= 40 ? 1 : 0;
+  // Ruined column stubs — free-standing chest-high broken column.
+  const columnCount = ctx.area >= 80 ? 2 : ctx.area >= 40 ? 1 : 0;
   for (let i = 0; i < columnCount; i++) {
     for (let a = 0; a < 8; a++) {
-      const p = centreSampler();
-      // Keep clear of walls — columns mid-room read better.
-      if (p.x < minX + 1.4 || p.x > maxX - 1.4) continue;
-      if (p.z < minZ + 1.4 || p.z > maxZ - 1.4) continue;
-      if (tooClose(p.x, p.z, 1.2)) continue;
+      const p = ctx.centreSampler();
+      if (p.x < ctx.minX + 1.4 || p.x > ctx.maxX - 1.4) continue;
+      if (p.z < ctx.minZ + 1.4 || p.z > ctx.maxZ - 1.4) continue;
+      if (ctx.tooClose(p.x, p.z, 1.2)) continue;
       out.push({
         kind: 'model',
         model: RUINED_COLUMN,
         x: p.x, y: 0, z: p.z,
         rotY: rand() * Math.PI * 2,
       });
-      existing.push({ x: p.x, z: p.z });
+      ctx.existing.push({ x: p.x, z: p.z });
       break;
     }
   }
 
-  // Wall piles — slump against a wall, lean into the room. Skip
-  // wall positions that fall inside a corridor opening.
+  // Wall piles — slump against a wall, lean into the room.
+  const wallPileCount = Math.max(0, Math.round(ctx.area / 25));
   for (let i = 0; i < wallPileCount; i++) {
-    for (let a = 0; a < 8; a++) {
-      const wall = Math.floor(rand() * 4);
-      const along = rand();
-      let x = 0, z = 0, rotY = 0;
-      let blocked = false;
-      switch (wall) {
-        case 0: { // W
-          z = minZ + along * rect.d;
-          if (inOpening(z, openW)) { blocked = true; break; }
-          x = minX + 0.35;
-          rotY = -Math.PI / 2;
-          break;
-        }
-        case 1: { // E
-          z = minZ + along * rect.d;
-          if (inOpening(z, openE)) { blocked = true; break; }
-          x = maxX - 0.35;
-          rotY = Math.PI / 2;
-          break;
-        }
-        case 2: { // N
-          x = minX + along * rect.w;
-          if (inOpening(x, openN)) { blocked = true; break; }
-          z = minZ + 0.35;
-          rotY = 0;
-          break;
-        }
-        default: { // S
-          x = minX + along * rect.w;
-          if (inOpening(x, openS)) { blocked = true; break; }
-          z = maxZ - 0.35;
-          rotY = Math.PI;
-          break;
-        }
-      }
-      if (blocked) continue;
-      if (tooClose(x, z, 0.9)) continue;
-      out.push({ kind: 'model', model: WALL_PILE, x, y: 0, z, rotY });
-      existing.push({ x, z });
-      break;
-    }
-  }
-
-  // Floor cracks, free placement (cracks happen anywhere).
-  tryPlace(
-    centreSampler,
-    (x, z) => ({
-      kind: 'model',
-      model: FLOOR_CRACK,
-      x,
-      y: 0,
-      z,
-      rotY: rand() * Math.PI * 2,
-    }),
-    crackCount,
-    0.5,
-  );
-
-  // Wall damage — pick a wall, jitter along it, skip openings.
-  for (let i = 0; i < wallCount; i++) {
-    for (let a = 0; a < 8; a++) {
-      const wall = Math.floor(rand() * 4);
-      const along = rand();
-      let x = 0, z = 0, rotY = 0;
-      let blocked = false;
-      switch (wall) {
-        case 0: { // W
-          z = minZ + along * rect.d;
-          if (inOpening(z, openW)) { blocked = true; break; }
-          x = minX + 0.02;
-          rotY = -Math.PI / 2;
-          break;
-        }
-        case 1: { // E
-          z = minZ + along * rect.d;
-          if (inOpening(z, openE)) { blocked = true; break; }
-          x = maxX - 0.02;
-          rotY = Math.PI / 2;
-          break;
-        }
-        case 2: { // N
-          x = minX + along * rect.w;
-          if (inOpening(x, openN)) { blocked = true; break; }
-          z = minZ + 0.02;
-          rotY = 0;
-          break;
-        }
-        default: { // S
-          x = minX + along * rect.w;
-          if (inOpening(x, openS)) { blocked = true; break; }
-          z = maxZ - 0.02;
-          rotY = Math.PI;
-          break;
-        }
-      }
-      if (blocked) continue;
-      if (tooClose(x, z, 0.8)) continue;
-      out.push({
-        kind: 'model',
-        model: WALL_DAMAGE[Math.floor(rand() * WALL_DAMAGE.length)],
-        x,
-        y: 1.1 + rand() * 0.6,
-        z,
-        rotY,
-      });
-      existing.push({ x, z });
-      break;
-    }
+    placeWallPile(ctx, out, rand);
   }
 }
 
-// ── helpers ──────────────────────────────────────────────────────
+// ── stage 2: surface ──────────────────────────────────────────────
 
-/** True if either of the two adjoining walls of a corner has an
- *  opening within ~1.2m — placing a mound there would visually
- *  crowd the doorway. */
+function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): void {
+  // Floor debris — edge-biased, varied. Per-room shuffle of the
+  // pool so the same chunk model doesn't dominate a chamber.
+  const floorCount = Math.max(1, Math.round(ctx.area / 14));
+  const debrisOrder = shuffled(FLOOR_DEBRIS, rand);
+  let debrisIdx = 0;
+  for (let i = 0; i < floorCount; i++) {
+    for (let a = 0; a < 6; a++) {
+      const p = rand() < 0.7 ? ctx.edgeSampler() : ctx.centreSampler();
+      if (ctx.tooClose(p.x, p.z, 0.7)) continue;
+      const model = debrisOrder[debrisIdx % debrisOrder.length];
+      debrisIdx++;
+      out.push({
+        kind: 'model',
+        model,
+        x: p.x, y: 0, z: p.z,
+        rotY: rand() * Math.PI * 2,
+      });
+      ctx.existing.push(p);
+      break;
+    }
+  }
+
+  // Floor cracks — free placement anywhere.
+  const crackCount = Math.max(1, Math.round(ctx.area / 20));
+  for (let i = 0; i < crackCount; i++) {
+    for (let a = 0; a < 6; a++) {
+      const p = ctx.centreSampler();
+      if (ctx.tooClose(p.x, p.z, 0.5)) continue;
+      out.push({
+        kind: 'model',
+        model: FLOOR_CRACK,
+        x: p.x, y: 0, z: p.z,
+        rotY: rand() * Math.PI * 2,
+      });
+      ctx.existing.push(p);
+      break;
+    }
+  }
+
+  // Wall damage — scorches and gouges on clear wall sections.
+  const wallCount = Math.max(0, Math.round(ctx.area / 30));
+  for (let i = 0; i < wallCount; i++) {
+    placeWallDamage(ctx, out, rand);
+  }
+}
+
+// ── per-prop placers ──────────────────────────────────────────────
+
+function placeWallPile(ctx: RoomContext, out: PropSpec[], rand: () => number): void {
+  for (let a = 0; a < 8; a++) {
+    const wall = Math.floor(rand() * 4);
+    const along = rand();
+    let x = 0, z = 0, rotY = 0;
+    let blocked = false;
+    switch (wall) {
+      case 0: {
+        z = ctx.minZ + along * ctx.rect.d;
+        if (inOpening(z, ctx.openW)) { blocked = true; break; }
+        x = ctx.minX + 0.35; rotY = -Math.PI / 2; break;
+      }
+      case 1: {
+        z = ctx.minZ + along * ctx.rect.d;
+        if (inOpening(z, ctx.openE)) { blocked = true; break; }
+        x = ctx.maxX - 0.35; rotY = Math.PI / 2; break;
+      }
+      case 2: {
+        x = ctx.minX + along * ctx.rect.w;
+        if (inOpening(x, ctx.openN)) { blocked = true; break; }
+        z = ctx.minZ + 0.35; rotY = 0; break;
+      }
+      default: {
+        x = ctx.minX + along * ctx.rect.w;
+        if (inOpening(x, ctx.openS)) { blocked = true; break; }
+        z = ctx.maxZ - 0.35; rotY = Math.PI; break;
+      }
+    }
+    if (blocked) continue;
+    if (ctx.tooClose(x, z, 0.9)) continue;
+    out.push({ kind: 'model', model: WALL_PILE, x, y: 0, z, rotY });
+    ctx.existing.push({ x, z });
+    return;
+  }
+}
+
+function placeWallDamage(ctx: RoomContext, out: PropSpec[], rand: () => number): void {
+  for (let a = 0; a < 8; a++) {
+    const wall = Math.floor(rand() * 4);
+    const along = rand();
+    let x = 0, z = 0, rotY = 0;
+    let blocked = false;
+    switch (wall) {
+      case 0: {
+        z = ctx.minZ + along * ctx.rect.d;
+        if (inOpening(z, ctx.openW)) { blocked = true; break; }
+        x = ctx.minX + 0.02; rotY = -Math.PI / 2; break;
+      }
+      case 1: {
+        z = ctx.minZ + along * ctx.rect.d;
+        if (inOpening(z, ctx.openE)) { blocked = true; break; }
+        x = ctx.maxX - 0.02; rotY = Math.PI / 2; break;
+      }
+      case 2: {
+        x = ctx.minX + along * ctx.rect.w;
+        if (inOpening(x, ctx.openN)) { blocked = true; break; }
+        z = ctx.minZ + 0.02; rotY = 0; break;
+      }
+      default: {
+        x = ctx.minX + along * ctx.rect.w;
+        if (inOpening(x, ctx.openS)) { blocked = true; break; }
+        z = ctx.maxZ - 0.02; rotY = Math.PI; break;
+      }
+    }
+    if (blocked) continue;
+    if (ctx.tooClose(x, z, 0.8)) continue;
+    out.push({
+      kind: 'model',
+      model: WALL_DAMAGE[Math.floor(rand() * WALL_DAMAGE.length)],
+      x, y: 1.1 + rand() * 0.6, z, rotY,
+    });
+    ctx.existing.push({ x, z });
+    return;
+  }
+}
+
+/** Place a wall-attached prop in a clear segment. Used for the
+ *  buttress (full-height structural column). Position lifts off
+ *  the wall by `depth/2` so the model's half-thickness sits in
+ *  the wall and the rest pokes into the room. */
+function placeWallAttached(
+  model: typeof WALL_BUTTRESS,
+  depth: number,
+  alongHalf: number,
+  ctx: RoomContext,
+  out: PropSpec[],
+  rand: () => number,
+): void {
+  // Slightly more generous slack for buttresses near doorways.
+  const nearOpening = (pos: number, openings: Opening[]) => inOpening(pos, openings, 0.6);
+  for (let a = 0; a < 10; a++) {
+    const wall = Math.floor(rand() * 4);
+    let x = 0, z = 0, rotY = 0;
+    let blocked = false;
+    switch (wall) {
+      case 0: {
+        z = ctx.minZ + alongHalf + rand() * Math.max(0, ctx.rect.d - 2 * alongHalf);
+        if (nearOpening(z, ctx.openW)) { blocked = true; break; }
+        x = ctx.minX + depth / 2 + 0.02; rotY = -Math.PI / 2; break;
+      }
+      case 1: {
+        z = ctx.minZ + alongHalf + rand() * Math.max(0, ctx.rect.d - 2 * alongHalf);
+        if (nearOpening(z, ctx.openE)) { blocked = true; break; }
+        x = ctx.maxX - depth / 2 - 0.02; rotY = Math.PI / 2; break;
+      }
+      case 2: {
+        x = ctx.minX + alongHalf + rand() * Math.max(0, ctx.rect.w - 2 * alongHalf);
+        if (nearOpening(x, ctx.openN)) { blocked = true; break; }
+        z = ctx.minZ + depth / 2 + 0.02; rotY = 0; break;
+      }
+      default: {
+        x = ctx.minX + alongHalf + rand() * Math.max(0, ctx.rect.w - 2 * alongHalf);
+        if (nearOpening(x, ctx.openS)) { blocked = true; break; }
+        z = ctx.maxZ - depth / 2 - 0.02; rotY = Math.PI; break;
+      }
+    }
+    if (blocked) continue;
+    if (ctx.tooClose(x, z, 1.2)) continue;
+    out.push({ kind: 'model', model, x, y: 0, z, rotY });
+    ctx.existing.push({ x, z });
+    return;
+  }
+}
+
+// ── helpers ───────────────────────────────────────────────────────
+
 function nearOpeningOnEither(
-  horizontalWall: Opening[],   // N or S wall openings (positions in X)
-  verticalWall: Opening[],     // W or E wall openings (positions in Z)
+  horizontalWall: Opening[],
+  verticalWall: Opening[],
   cx: number,
   cz: number,
 ): boolean {
@@ -424,9 +441,6 @@ function shuffled<T>(arr: T[], rand: () => number): T[] {
   return out;
 }
 
-/** Weighted-pick a corner mound variant. If a large mound has
- *  already been placed in this chamber, drop it from the pool —
- *  one big collapse focal point per room reads better than four. */
 function pickCornerVariant(
   rand: () => number,
   largeUsed: boolean,
@@ -441,84 +455,4 @@ function pickCornerVariant(
     if (r <= 0) return v.model;
   }
   return pool[pool.length - 1].model;
-}
-
-/** Place a wall-attached prop on a random wall, biasing to mid-
- *  segments (away from openings + corners). The prop is positioned
- *  with its "wall" side against the chosen wall surface; rotY
- *  rotates the model so its authored -Z (wall-facing side) points
- *  back into the wall, with the model body protruding into the
- *  room by `depth` metres.
- *
- *  Used for the buttress (full-height structural column). The
- *  position lifts off the wall by `depth/2` so the model's half-
- *  thickness sits in the wall and the rest pokes into the room. */
-function placeWallAttached(
-  model: typeof WALL_BUTTRESS,
-  depth: number,
-  alongHalf: number,
-  rect: { x: number; z: number; w: number; d: number },
-  openN: Opening[],
-  openS: Opening[],
-  openE: Opening[],
-  openW: Opening[],
-  tooClose: (x: number, z: number, d: number) => boolean,
-  out: PropSpec[],
-  existing: PlacedPoint[],
-  rand: () => number,
-): void {
-  const minX = rect.x - rect.w / 2;
-  const maxX = rect.x + rect.w / 2;
-  const minZ = rect.z - rect.d / 2;
-  const maxZ = rect.z + rect.d / 2;
-  for (let a = 0; a < 10; a++) {
-    const wall = Math.floor(rand() * 4);
-    // Sample inside the wall span, leaving alongHalf metres of
-    // clearance from each corner.
-    let x = 0, z = 0, rotY = 0;
-    let blocked = false;
-    switch (wall) {
-      case 0: { // W
-        z = minZ + alongHalf + rand() * Math.max(0, rect.d - 2 * alongHalf);
-        if (inOpeningRange(z, openW)) { blocked = true; break; }
-        x = minX + depth / 2 + 0.02;
-        rotY = -Math.PI / 2;
-        break;
-      }
-      case 1: { // E
-        z = minZ + alongHalf + rand() * Math.max(0, rect.d - 2 * alongHalf);
-        if (inOpeningRange(z, openE)) { blocked = true; break; }
-        x = maxX - depth / 2 - 0.02;
-        rotY = Math.PI / 2;
-        break;
-      }
-      case 2: { // N
-        x = minX + alongHalf + rand() * Math.max(0, rect.w - 2 * alongHalf);
-        if (inOpeningRange(x, openN)) { blocked = true; break; }
-        z = minZ + depth / 2 + 0.02;
-        rotY = 0;
-        break;
-      }
-      default: { // S
-        x = minX + alongHalf + rand() * Math.max(0, rect.w - 2 * alongHalf);
-        if (inOpeningRange(x, openS)) { blocked = true; break; }
-        z = maxZ - depth / 2 - 0.02;
-        rotY = Math.PI;
-        break;
-      }
-    }
-    if (blocked) continue;
-    if (tooClose(x, z, 1.2)) continue;
-    out.push({ kind: 'model', model, x, y: 0, z, rotY });
-    existing.push({ x, z });
-    return;
-  }
-}
-
-function inOpeningRange(pos: number, openings: Opening[]): boolean {
-  // Slightly more generous slack than the default 0.4 — buttresses
-  // are big floor-to-ceiling props, so we want a bigger safety
-  // margin around openings to avoid the column standing partly
-  // in front of a doorway.
-  return inOpening(pos, openings, 0.6);
 }

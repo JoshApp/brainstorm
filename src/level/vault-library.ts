@@ -250,11 +250,20 @@ const COMBAT_DOORS: Vault = {
 const TREASURE_ALTAR: Vault = {
   id: 'treasure-altar',
   tags: ['treasure'],
+  // Altar as the room CENTERPIECE; chests tucked against the
+  // side walls where treasure caches go. Chest + altar side-by-
+  // side in the middle of a room read as "two centerpieces" —
+  // neither wins the eye. Authored rule going forward:
+  //   - altars / fountains: centre of the room
+  //   - chests: against a side wall (or as the LONE centerpiece
+  //     in non-altar rooms)
   map: [
     '##########',
     '#...t....#',
-    '#..A.c...#',
     '#........#',
+    '#...A....#',
+    '#........#',
+    '#c......c#',
     '#...X....#',
     '##########',
   ],

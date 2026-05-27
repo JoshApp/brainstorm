@@ -4,7 +4,7 @@ import { vaultsForTag, VAULTS } from './vault-library';
 import { parseTileMap } from './tilemap';
 import { populateTemplate } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
-import { scatterClutter } from './clutter';
+import { applyStructuralClutter, applySurfaceClutter } from './clutter';
 import { wallOpenings, inOpening, findContainingRect } from './geometry-cull';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
@@ -256,17 +256,9 @@ export function composeFloor(
     });
   }
 
-  // ── 6. Drop torches that sit in a corridor opening ─────────────
-  // The parser places torches flush against a wall edge based on
-  // the vault grid. After stitching, the corridor carves part of
-  // that wall away — torches falling in the opening end up
-  // floating in the corridor mouth or partially submerged in air.
-  // We sweep the torch list against the final set of rects (rooms
-  // + corridors) and drop any whose wall position is inside
-  // another rect's footprint on the relevant axis.
+  // Build the intermediate LevelSpec — props / torches will be
+  // mutated by the pipeline stages below.
   const allRectsFinal = [...rooms.map((r) => r.rect), ...corridorRooms.map((r) => r.rect)];
-  const torchesFiltered = torches.filter((t) => !torchInOpening(t, allRectsFinal));
-
   const result: LevelSpec = {
     id: opts.id,
     depth,
@@ -276,19 +268,32 @@ export function composeFloor(
     rooms,
     corridors: corridorRooms,
     props,
-    torches: torchesFiltered,
+    torches,
     spawns,
     doors,
     stairs,
     extraWalls,
   };
 
-  // Clutter pass — sprinkle debris, dust, cracks and wall damage
-  // per room so the floor doesn't read as clean tile. Runs AFTER
-  // authored props + group expansions so it can avoid landing on
-  // existing setpieces. Same rand stream so generation is
-  // deterministic per seed.
-  scatterClutter(result, rand);
+  // ── PIPELINE: ordered post-passes ───────────────────────────────
+  // Stage 1: STRUCTURAL clutter — buttresses, columns, corner
+  //          mounds, wall piles. Modifies the visible room shape.
+  //          Runs FIRST so torch filtering can see the new
+  //          structural props and surface decoration can avoid
+  //          painting under them.
+  applyStructuralClutter(result, rand);
+
+  // Stage 2: TORCH filtering — drop torches whose wall mounting
+  //          falls inside a carved corridor opening. The parser
+  //          places torches flush with vault perimeter walls; the
+  //          composer's corridor carves some of those walls away,
+  //          and any torch in that range is dangling in mid-air.
+  result.torches = result.torches.filter((t) => !torchInOpening(t, allRectsFinal));
+
+  // Stage 3: SURFACE clutter — floor debris, cracks, wall damage.
+  //          Pure decoration, runs LAST so it sits on top of
+  //          everything authored + structural without conflicts.
+  applySurfaceClutter(result, rand);
 
   return result;
 }
