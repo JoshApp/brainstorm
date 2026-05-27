@@ -105,7 +105,10 @@ export const LEVEL_1: LevelSpec = {
       // the back wall. Reads as "descend into the wall."
       x: 0, z: 14.0,
       rotY: 0,
-      targetLevel: 'depth-2',
+      // Descend INTO the safe room first; safe-1's stairs continue to
+      // depth-2. Lets the player open loot boxes / breathe between
+      // floors without leaving the diegetic flow.
+      targetLevel: 'safe-1',
     },
   ],
 
@@ -299,7 +302,9 @@ export const LEVEL_2: LevelSpec = {
       // to walk past the chest + the enemies to reach them.
       x: -3.6, z: 3.8,
       rotY: 0,
-      targetLevel: 'depth-3',
+      // Through the safe room (safe-2 → depth-3) so meta-progression
+      // services live between every floor pair, not just before depth-2.
+      targetLevel: 'safe-2',
     },
   ],
 };

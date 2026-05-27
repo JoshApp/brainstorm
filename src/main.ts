@@ -26,6 +26,7 @@ import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
 import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad } from './level/loader';
 import { generateFloor } from './level/procgen';
+import { generateSafeRoom } from './level/safe-room';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { initRunStateListeners } from './state/run-state-listeners';
 import { recordRunStart, resetRunDiscoveries } from './state/meta-state';
@@ -140,13 +141,27 @@ initLevelLoader({
     setCameraYaw(level.playerSpawn.yaw);
   },
   // Procgen fallback — invoked when the stairs target a level id that's
-  // not in the hand-authored LEVELS registry. Each new floor is seeded
-  // from the run's startedAt so resume regenerates the same floors. The
-  // stairs of the generated level point at the next depth, infinitely.
+  // not in the hand-authored LEVELS registry.
+  //
+  //   'safe-N'  → safe room AFTER floor N. Generated on demand; its
+  //               stairs target depth-(N+1).
+  //   anything else → the next procgen dungeon floor at depth N+1.
+  //
+  // Floors are seeded by the run start time so resume regenerates the
+  // same floors. The safe room geometry is static so it doesn't need
+  // a seed.
   generate(id, depth) {
+    if (id.startsWith('safe-')) {
+      // safe-N marks the safe room AFTER depth N. Pass N along so the
+      // safe-room generator can wire its exit stairs to 'depth-N+1'.
+      const prevDepth = parseInt(id.slice('safe-'.length), 10);
+      return generateSafeRoom(Number.isFinite(prevDepth) ? prevDepth : depth - 1);
+    }
     const run = getRunState();
     const runSeed = run?.startedAt ?? Date.now();
-    const nextId = `depth-${depth + 1}`;
+    // Procgen floors descend INTO a safe room first, not straight to
+    // the next dungeon floor — the safe room's stairs do the second hop.
+    const nextId = `safe-${depth}`;
     return generateFloor(depth, runSeed, nextId);
   },
 });

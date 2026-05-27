@@ -167,22 +167,19 @@ export function showStartScreen(opts: StartScreenOptions) {
 
   root.appendChild(buttons);
 
-  // SECONDARY ACTIONS — STASH + CODEX. Previously these were full-size
-  // pills competing visually with DESCEND. Demoted to a small text-link
-  // row at the bottom of the screen so the primary action stays clearly
-  // primary. Stash shows an unopened-count badge if there are rewards
-  // waiting; codex shows only after the first discovery.
+  // SECONDARY ACTIONS — STASH + CODEX. In the flex-column flow under
+  // the primary buttons (no absolute positioning — that was overlapping
+  // the buttons on shorter viewports). Smaller font, fainter colour, so
+  // they read as secondary without crowding DESCEND.
   const links = document.createElement('div');
   Object.assign(links.style, {
-    position: 'absolute',
-    bottom: 'calc(36px + env(safe-area-inset-bottom, 0px))',
-    left: '50%',
-    transform: 'translateX(-50%)',
     display: 'flex',
-    gap: '28px',
+    gap: '32px',
+    marginTop: '26px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: '11px',
     letterSpacing: '0.28em',
+    position: 'relative',
     zIndex: '1',
   } as Partial<CSSStyleDeclaration>);
 

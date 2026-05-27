@@ -3,29 +3,29 @@ import {
 } from '../state/run-state';
 import { on } from '../broadcast/event-bus';
 
-// Top-right HUD strip — level + XP progress bar + gold count with a
-// coin glyph. Mirrors the depth counter's "barely there" presence so
-// the eye registers it peripherally without it dominating the view.
+// Wide ARPG-style XP bar pinned along the BOTTOM edge of the screen,
+// just above the HP pips. The numbers (level + current/next) live
+// INSIDE the bar — no separate readout. Gold counter is split out to
+// the top-right corner with the coin glyph (the only thing left up
+// there).
 //
-// Layout (right-aligned):
-//
-//     LVL 3   ▮▮▮▯▯▯▯▯▯▯
-//                  ◯ 142
-//
-// XP bar is a row of pips so jumps from absorbed wisps read visually
-// (one pip ≈ one XP point at level 1). Gold uses an inline SVG coin
-// glyph + the running total. Both lines pulse on the corresponding
-// absorb event so the player gets a confirm twitch each pickup.
+//   ┌─ bottom edge ────────────────────────────────────────────────┐
+//   │ ┌──────────────────────────────────────────────────────────┐ │
+//   │ │ LVL 3       ▮▮▮▯▯▯▯▯▯▯▯▯▯▯▯▯▯▯▯▯       12 / 30          │ │
+//   │ └──────────────────────────────────────────────────────────┘ │
+//   └──────────────────────────────────────────────────────────────┘
 
 const SVG_COIN = `<svg width="14" height="14" viewBox="0 0 16 16" style="display:inline-block;vertical-align:-2px;margin-right:5px;"><circle cx="8" cy="8" r="6.5" fill="rgba(200,140,40,0.95)" stroke="rgba(255,200,90,0.95)" stroke-width="1"/><circle cx="8" cy="8" r="3.5" fill="none" stroke="rgba(255,220,140,0.7)" stroke-width="1"/></svg>`;
-const SVG_ESSENCE = `<svg width="14" height="14" viewBox="0 0 16 16" style="display:inline-block;vertical-align:-2px;margin-right:5px;"><circle cx="8" cy="8" r="4.5" fill="rgba(140,200,255,0.6)"/><circle cx="8" cy="8" r="6.5" fill="none" stroke="rgba(140,200,255,0.5)" stroke-width="1"/></svg>`;
 
-let container: HTMLDivElement | null = null;
-let levelEl: HTMLDivElement | null = null;
+let goldContainer: HTMLDivElement | null = null;
+let goldEl: HTMLDivElement | null = null;
+
+let xpContainer: HTMLDivElement | null = null;
 let xpBarEl: HTMLDivElement | null = null;
 let xpFillEl: HTMLDivElement | null = null;
-let xpTextEl: HTMLDivElement | null = null;
-let goldEl: HTMLDivElement | null = null;
+let xpLevelEl: HTMLDivElement | null = null;
+let xpFractionEl: HTMLDivElement | null = null;
+
 let levelToast: HTMLDivElement | null = null;
 
 let xpPulseTimer = 0;
@@ -37,98 +37,112 @@ let lastLevel = -1;
 let lastNextLevel = -1;
 
 export function createXpGoldHud(): void {
-  if (container) return;
-  container = document.createElement('div');
-  container.id = 'xp-gold-hud';
-  Object.assign(container.style, {
+  if (xpContainer) return;
+
+  // ── GOLD (top-right corner, just below the depth counter) ──────
+  goldContainer = document.createElement('div');
+  goldContainer.id = 'gold-hud';
+  Object.assign(goldContainer.style, {
     position: 'fixed',
     right: 'calc(16px + env(safe-area-inset-right, 0px))',
     top: 'calc(48px + env(safe-area-inset-top, 0px))',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: '5px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '12px',
-    fontWeight: '500',
-    letterSpacing: '0.16em',
+    fontSize: '14px',
+    fontWeight: '600',
+    letterSpacing: '0.10em',
+    color: 'rgba(255, 210, 110, 0.9)',
     textShadow: '0 0 6px rgba(0,0,0,0.85)',
+    pointerEvents: 'none',
+    zIndex: '10',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    transition: 'transform 180ms ease-out, color 180ms ease-out',
+  } as Partial<CSSStyleDeclaration>);
+  goldEl = goldContainer;   // single line — alias
+  document.body.appendChild(goldContainer);
+
+  // ── XP BAR (bottom edge, wide) ─────────────────────────────────
+  xpContainer = document.createElement('div');
+  xpContainer.id = 'xp-bar-hud';
+  Object.assign(xpContainer.style, {
+    position: 'fixed',
+    left: '50%',
+    bottom: 'calc(46px + env(safe-area-inset-bottom, 0px))',  // above HP pips
+    transform: 'translateX(-50%)',
+    width: 'min(720px, 84vw)',
     pointerEvents: 'none',
     zIndex: '10',
     userSelect: 'none',
     WebkitUserSelect: 'none',
   } as Partial<CSSStyleDeclaration>);
 
-  // ── Level + XP bar row ──────────────────────────────────────────
-  const xpRow = document.createElement('div');
-  Object.assign(xpRow.style, {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  } as Partial<CSSStyleDeclaration>);
-
-  levelEl = document.createElement('div');
-  Object.assign(levelEl.style, {
-    color: 'rgba(180, 220, 255, 0.9)',
-    fontWeight: '700',
-    letterSpacing: '0.20em',
-    transition: 'transform 280ms ease-out, color 280ms ease-out',
-  } as Partial<CSSStyleDeclaration>);
-  xpRow.appendChild(levelEl);
-
-  // The XP bar — a track with a glowing fill. Sized so it can read a
-  // few levels of progress (pips would clutter at high totals).
+  // The bar itself — a horizontal track + fill + overlayed text.
   xpBarEl = document.createElement('div');
   Object.assign(xpBarEl.style, {
-    width: '110px',
-    height: '7px',
-    background: 'rgba(20, 20, 28, 0.65)',
-    border: '1px solid rgba(120, 160, 220, 0.40)',
-    borderRadius: '2px',
+    position: 'relative',
+    width: '100%',
+    height: '20px',
+    background: 'rgba(14, 14, 22, 0.72)',
+    border: '1px solid rgba(120, 160, 220, 0.45)',
+    borderRadius: '3px',
     overflow: 'hidden',
-    boxShadow: 'inset 0 0 3px rgba(0,0,0,0.7)',
+    boxShadow: 'inset 0 0 4px rgba(0,0,0,0.8), 0 2px 8px rgba(0,0,0,0.4)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
   } as Partial<CSSStyleDeclaration>);
+
+  // Fill — animated width.
   xpFillEl = document.createElement('div');
   Object.assign(xpFillEl.style, {
-    height: '100%',
+    position: 'absolute',
+    left: '0', top: '0', bottom: '0',
     width: '0%',
-    background: 'linear-gradient(180deg, rgba(160,220,255,0.95), rgba(80,140,220,0.85))',
-    boxShadow: '0 0 6px rgba(140,200,255,0.55)',
+    background: 'linear-gradient(180deg, rgba(170,225,255,0.95), rgba(70,130,210,0.95))',
+    boxShadow: '0 0 8px rgba(140,200,255,0.6)',
     transition: 'width 220ms ease-out',
   } as Partial<CSSStyleDeclaration>);
   xpBarEl.appendChild(xpFillEl);
-  xpRow.appendChild(xpBarEl);
 
-  // Small fraction text under the bar — "12 / 30"
-  xpTextEl = document.createElement('div');
-  Object.assign(xpTextEl.style, {
-    fontSize: '10px',
-    color: 'rgba(160, 200, 240, 0.7)',
-    letterSpacing: '0.14em',
-    transition: 'color 220ms ease-out',
+  // Level chip on the LEFT side of the bar.
+  xpLevelEl = document.createElement('div');
+  Object.assign(xpLevelEl.style, {
+    position: 'absolute',
+    left: '10px',
+    top: '0',
+    bottom: '0',
+    display: 'flex',
+    alignItems: 'center',
+    color: 'rgba(220, 240, 255, 0.98)',
+    fontSize: '12px',
+    fontWeight: '700',
+    letterSpacing: '0.22em',
+    textShadow: '0 1px 3px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.7)',
+    transition: 'transform 280ms ease-out, color 280ms ease-out',
   } as Partial<CSSStyleDeclaration>);
+  xpBarEl.appendChild(xpLevelEl);
 
-  container.appendChild(xpRow);
-  container.appendChild(xpTextEl);
-
-  // ── Gold row ────────────────────────────────────────────────────
-  goldEl = document.createElement('div');
-  Object.assign(goldEl.style, {
-    color: 'rgba(255, 210, 110, 0.9)',
+  // Fraction (current / next) on the RIGHT.
+  xpFractionEl = document.createElement('div');
+  Object.assign(xpFractionEl.style, {
+    position: 'absolute',
+    right: '12px',
+    top: '0',
+    bottom: '0',
+    display: 'flex',
+    alignItems: 'center',
+    color: 'rgba(220, 240, 255, 0.92)',
+    fontSize: '11px',
     fontWeight: '600',
-    fontSize: '13px',
-    letterSpacing: '0.10em',
-    marginTop: '2px',
-    transition: 'transform 180ms ease-out, color 180ms ease-out',
+    letterSpacing: '0.14em',
+    fontVariantNumeric: 'tabular-nums',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.7)',
+    transition: 'color 280ms ease-out',
   } as Partial<CSSStyleDeclaration>);
-  container.appendChild(goldEl);
+  xpBarEl.appendChild(xpFractionEl);
 
-  document.body.appendChild(container);
+  xpContainer.appendChild(xpBarEl);
+  document.body.appendChild(xpContainer);
 
-  // ── Level-up toast ──────────────────────────────────────────────
-  // Big center "LEVEL N" pop on level transitions. Stays out of the
-  // way after 1.2s. Keeps levelling FEELING like an event without
-  // demanding a modal.
+  // ── Level-up toast (centre screen) ─────────────────────────────
   levelToast = document.createElement('div');
   Object.assign(levelToast.style, {
     position: 'fixed',
@@ -178,7 +192,7 @@ function showLevelToast(level: number) {
 
 /** Per-frame update. */
 export function updateXpGoldHud(dt: number): void {
-  if (!container || !levelEl || !xpFillEl || !xpTextEl || !goldEl) return;
+  if (!goldEl || !xpFillEl || !xpLevelEl || !xpFractionEl) return;
   const xp = getXp();
   const gold = getGold();
   const level = getLevel();
@@ -186,13 +200,13 @@ export function updateXpGoldHud(dt: number): void {
   const next = getXpForNextLevel();
 
   if (level !== lastLevel) {
-    levelEl.textContent = `LVL ${level}`;
+    xpLevelEl.textContent = `LVL ${level}`;
     lastLevel = level;
   }
   if (xp !== lastXp || next !== lastNextLevel) {
     const pct = next > 0 ? Math.min(100, (inLevel / next) * 100) : 100;
     xpFillEl.style.width = `${pct}%`;
-    xpTextEl.innerHTML = `${SVG_ESSENCE}${inLevel} / ${next}`;
+    xpFractionEl.textContent = `${inLevel} / ${next}`;
     lastXp = xp;
     lastNextLevel = next;
   }
@@ -205,9 +219,9 @@ export function updateXpGoldHud(dt: number): void {
   if (xpPulseTimer > 0) {
     xpPulseTimer -= dt;
     const t = Math.max(0, xpPulseTimer / 0.22);
-    xpTextEl.style.color = `rgba(${Math.round(180 + t * 75)}, ${Math.round(220 + t * 30)}, 255, ${0.85 + t * 0.15})`;
+    xpFractionEl.style.color = `rgba(${Math.round(220 + t * 35)}, ${Math.round(240 + t * 15)}, 255, ${0.92 + t * 0.08})`;
   } else {
-    xpTextEl.style.color = 'rgba(160, 200, 240, 0.7)';
+    xpFractionEl.style.color = 'rgba(220, 240, 255, 0.92)';
   }
   if (goldPulseTimer > 0) {
     goldPulseTimer -= dt;
@@ -221,10 +235,10 @@ export function updateXpGoldHud(dt: number): void {
   if (levelPulseTimer > 0) {
     levelPulseTimer -= dt;
     const t = Math.max(0, levelPulseTimer / 0.8);
-    levelEl.style.transform = `scale(${1 + t * 0.30})`;
-    levelEl.style.color = `rgba(${Math.round(180 + t * 75)}, ${Math.round(220 + t * 30)}, 255, ${0.90 + t * 0.10})`;
+    xpLevelEl.style.transform = `scale(${1 + t * 0.25})`;
+    xpLevelEl.style.color = `rgba(${Math.round(220 + t * 35)}, ${Math.round(240 + t * 15)}, 255, ${0.98})`;
   } else {
-    levelEl.style.transform = 'scale(1)';
-    levelEl.style.color = 'rgba(180, 220, 255, 0.9)';
+    xpLevelEl.style.transform = 'scale(1)';
+    xpLevelEl.style.color = 'rgba(220, 240, 255, 0.98)';
   }
 }

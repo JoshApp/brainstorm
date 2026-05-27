@@ -45,6 +45,10 @@ export type PropSpec =
   // 'chest' = an openable container. When the player interacts, the lid swings
   // up and an optional loot pickup spawns beside it.
   | { kind: 'chest'; x: number; z: number; rotY?: number; loot?: import('../content/items').ItemSpec }
+  // 'stash-chest' = the meta-progression stash entry point. Lives in
+  // the safe room. Interacting opens the stash UI (loot boxes saved
+  // across runs).
+  | { kind: 'stash-chest'; x: number; z: number; rotY?: number }
   // ── Non-combat encounters ────────────────────────────────────────
   // 'corpse' = a slumped body with a note. Walk up, read it. Pure
   // atmosphere + (later) LLM-pluggable lore. The note text is short
