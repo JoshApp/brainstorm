@@ -314,10 +314,14 @@ export const LEVEL_2: LevelSpec = {
 
 // Registry. The level loader looks up targetLevel against this map.
 export const LEVELS: Record<string, LevelSpec> = {
-  // Tutorial: entry chamber for first-time players. Stairs descend
-  // into 'depth-1' (LEVEL_1). Returning players bypass it via the
-  // start-screen logic (see main.ts).
+  // Tutorial: entry chamber for first-time players. Its stairs target
+  // 'depth-1', which is now PROCGEN-COMPOSED (vault chain) — no more
+  // hand-authored LEVEL_1 / LEVEL_2 in the live registry.
+  //
+  // LEVEL_1 + LEVEL_2 exports stay in this file for archival reference
+  // (their hand-tuned room shapes are a good source for future vault
+  // designs) but they're not in the production dungeon flow anymore.
+  // The act structure in src/level/acts.ts owns depth → next-floor
+  // routing.
   'tutorial': TUTORIAL,
-  'depth-1': LEVEL_1,
-  'depth-2': LEVEL_2,
 };

@@ -152,17 +152,19 @@ initLevelLoader({
   // a seed.
   generate(id, depth) {
     if (id.startsWith('safe-')) {
-      // safe-N marks the safe room AFTER depth N. Pass N along so the
-      // safe-room generator can wire its exit stairs to 'depth-N+1'.
+      // safe-N marks the safe room AFTER depth N (a BOSS depth). Pass
+      // N along so the safe-room generator wires its exit stairs to
+      // 'depth-N+1' (= the first floor of the next act).
       const prevDepth = parseInt(id.slice('safe-'.length), 10);
       return generateSafeRoom(Number.isFinite(prevDepth) ? prevDepth : depth - 1);
     }
     const run = getRunState();
     const runSeed = run?.startedAt ?? Date.now();
-    // Procgen floors descend INTO a safe room first, not straight to
-    // the next dungeon floor — the safe room's stairs do the second hop.
-    const nextId = `safe-${depth}`;
-    return generateFloor(depth, runSeed, nextId);
+    // Stair target now follows the ACT rules (see src/level/acts.ts):
+    // boss-depth → safe-N (the act's checkpoint); other depths go
+    // straight to the next floor with no safe-room interlude. The
+    // composer reads the same rules to flag boss floors.
+    return generateFloor(depth, runSeed);
   },
 });
 

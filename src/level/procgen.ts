@@ -19,17 +19,7 @@
 import type { LevelSpec, EnemySpawnSpec, TileMap } from './types';
 import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
-
-// Atmosphere palettes per depth cycle. The vault composer no longer
-// owns these (vaults are picked independently of mood); the procgen
-// just rotates the palette so consecutive floors feel different even
-// if they happen to share vault types.
-const PALETTES: Array<{ name: string; torchTint: number; fogColor: number }> = [
-  { name: 'The Old Refectory',  torchTint: 0xffaa55, fogColor: 0x140a05 },
-  { name: 'The Long Hall',       torchTint: 0xddc090, fogColor: 0x100c08 },
-  { name: 'The Pillar Maze',     torchTint: 0xa090ff, fogColor: 0x0a0815 },
-  { name: 'The Cistern',         torchTint: 0x66ccdd, fogColor: 0x05101a },
-];
+import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
 
 // Tiny seedable RNG (Mulberry32). 32-bit seed in, deterministic 0..1 floats.
 function rng(seed: number) {
@@ -150,25 +140,27 @@ export function populateTemplate(template: TileMap, depth: number, rand: () => n
 export function generateFloor(
   depth: number,
   runSeed: number,
-  nextLevelId: string,
+  /** Override the stair target. Pass undefined to let acts.ts
+   *  decide (boss-floor → safe-N, else → depth-N+1). The override
+   *  exists for test scenarios that want a specific destination. */
+  nextLevelIdOverride?: string,
 ): LevelSpec {
   const seedForFloor = hashSeed(`floor-${depth}`, runSeed);
   const rand = rng(seedForFloor);
 
-  // Pick a torch tint + fog tint per depth — cycles by depth so
-  // consecutive floors feel different. (Previously the tints rode on
-  // a single picked template; now the floor is composed of multiple
-  // vaults, so we choose ATMOSPHERE separately.)
-  const palette = PALETTES[(depth - 1) % PALETTES.length];
+  // Act → palette + boss-flag. Stair target follows from the act
+  // rule (boss floor → safe room; else → next depth).
+  const act = actForDepth(depth);
+  const nextLevelId = nextLevelIdOverride ?? nextLevelAfter(depth);
+  const bossFloor = isBossDepth(depth);
 
   const id = `depth-${depth}`;
-  // Compose: pick + chain vaults, run X→enemy substitution inside the
-  // composer, return a multi-room LevelSpec.
   const spec = composeFloor(depth, rand, nextLevelId, {
     id,
-    displayName: `${romanize(depth)} — ${palette.name}`,
-    torchTint: palette.torchTint,
-    fogColor: palette.fogColor,
+    displayName: `${romanize(depth)} — ${act.name}`,
+    torchTint: act.torchTint,
+    fogColor: act.fogColor,
+    isBossFloor: bossFloor,
   });
   // Apply X→enemy substitution per spawn. parseTileMap doesn't handle
   // 'X' itself (it's only in vault grids); the composer's spawn list

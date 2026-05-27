@@ -1,4 +1,4 @@
-import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec } from './types';
+import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec, TileMap } from './types';
 import type { Vault, VaultTag } from './vault';
 import { vaultsForTag, VAULTS } from './vault-library';
 import { parseTileMap } from './tilemap';
@@ -50,20 +50,22 @@ export function composeFloor(
     displayName?: string;
     torchTint?: number;
     fogColor?: number;
+    /** If true, the last vault is FORCED to be a boss antechamber.
+     *  Acts.ts sets this on the boss-depth of each act. */
+    isBossFloor?: boolean;
   },
 ): LevelSpec {
   // ── 1. Build the tag sequence ──────────────────────────────────
-  // [start, ...middle, exit]. Boss vault replaces the regular exit
-  // when depth qualifies + a coin-flip succeeds. Middle slot count
-  // scales gently with depth so floor 1 is short and floor 7+ feels
-  // expedition-sized.
+  // [start, ...middle, exit/boss]. Middle slot count scales gently
+  // with depth so early floors are short and later floors feel
+  // expedition-sized. The end tag is forced to 'boss' on boss
+  // floors; otherwise it's a regular exit room.
   const middleCount = clamp(1 + Math.floor((depth - 1) / 2), 1, 4);
-  const wantsBoss = depth >= 4 && rand() < 0.6;
   const tagSeq: VaultTag[] = ['start'];
   for (let i = 0; i < middleCount; i++) {
     tagSeq.push(pickMiddleTag(depth, rand));
   }
-  tagSeq.push(wantsBoss ? 'boss' : 'exit');
+  tagSeq.push(opts.isBossFloor ? 'boss' : 'exit');
 
   // ── 2. Resolve each slot to a concrete vault ───────────────────
   const placed: PlacedVault[] = [];
@@ -127,7 +129,19 @@ export function composeFloor(
     // Each vault rolls independently, so a floor can have a mix of
     // ghouls in one room + skirmishers in another.
     const populated = populateTemplate(pv.vault.map, depth, rand);
-    const sub = parseTileMap(populated, {
+    // Carve a doorway in this vault's perimeter wall wherever a
+    // corridor connects (north edge from previous vault, south edge
+    // to next). Without this, the perimeter '#' tiles emitted by
+    // parseTileMap stand BETWEEN the corridor and the vault as
+    // invisible-wall barriers — the user reported "a corridor I
+    // couldn't move into, blocked me like a wall."
+    const carved = carveDoorways(
+      populated,
+      i > 0,                 // north connection if not first
+      i < placed.length - 1, // south connection if not last
+      CORRIDOR_WIDTH,
+    );
+    const sub = parseTileMap(carved, {
       id: `${opts.id}-${pv.vault.id}`,
       offsetX: pv.offsetX,
       offsetZ: pv.offsetZ,
@@ -247,4 +261,44 @@ function translateProp(p: PropSpec, dx: number, dz: number): PropSpec {
   // Some variants have additional pos fields ('model' has y) which
   // we leave alone.
   return { ...p, x: p.x + dx, z: p.z + dz } as PropSpec;
+}
+
+/**
+ * Open a corridor-width doorway in the north and/or south perimeter
+ * row of a vault tilemap. Without this, parseTileMap auto-builds wall
+ * segments along the full vault perimeter (from the '#' tiles), and
+ * those walls sit BETWEEN the vault floor and the corridor that
+ * connects to the next vault — blocking movement.
+ *
+ * The opening is centred on the vault's middle column(s) so it lines
+ * up with the corridor (which is also centred at x=0). Doorway width
+ * is rounded up to whole cells from the world-space corridor width.
+ */
+function carveDoorways(
+  map: TileMap,
+  northConnection: boolean,
+  southConnection: boolean,
+  corridorWidth: number,
+): TileMap {
+  const rows = map.length;
+  const cols = Math.max(...map.map((r: string) => r.length));
+  const cellsWide = Math.max(2, Math.ceil(corridorWidth));
+  const start = Math.floor((cols - cellsWide) / 2);
+  const end = start + cellsWide;
+
+  const out = map.slice();
+  const carveRow = (rowIdx: number) => {
+    const row = out[rowIdx];
+    if (!row) return;
+    let s = '';
+    for (let c = 0; c < cols; c++) {
+      const ch = row[c] ?? ' ';
+      if (c >= start && c < end && ch === '#') s += '.';
+      else s += ch;
+    }
+    out[rowIdx] = s;
+  };
+  if (northConnection) carveRow(0);
+  if (southConnection) carveRow(rows - 1);
+  return out;
 }
