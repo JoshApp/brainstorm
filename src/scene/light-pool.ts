@@ -23,7 +23,12 @@ import * as THREE from 'three';
 // a player rarely sees a visible "torch dropped out" pop, low enough
 // that GPU has plenty of headroom.
 
-const SLOT_COUNT = 10;
+// 12 active slots. 10 was tight enough that two adjacent torches +
+// the lamp + a pickup easily competed for the boundary slot; bumping
+// to 12 gives the hysteresis fix more headroom on richer rooms without
+// significantly raising GPU cost (one extra light evaluation per
+// fragment is ~10% of a torch's cost, not per-frame fatal).
+const SLOT_COUNT = 12;
 // Park position for unused slots — far below the floor so any tiny
 // residual contribution never reaches a visible fragment.
 const PARK_Y = -1000;
@@ -52,15 +57,36 @@ export interface LightSource {
    * persist across level swaps.
    */
   persistent?: boolean;
+  /**
+   * Priority bias in metres² subtracted from the source's distance²
+   * before ranking. POSITIVE values make a source "feel closer" than
+   * its actual distance — used to keep important sources (the lamp,
+   * loot pickups) reliably bound to slots even when many torches
+   * compete. Default 0.
+   */
+  priority?: number;
 }
+
+// Hysteresis bonus: once a source is bound to a slot, it gets this
+// "stickiness" advantage in next frame's ranking. Equivalent of ~2.2m
+// of advantage — enough that a marginally-closer competitor can't keep
+// stealing the slot back and forth as the camera moves, which would
+// cause distant torches to flicker. A clearly-closer source still
+// wins (the threshold isn't large enough to permanently lock a far
+// source in once a much closer one appears).
+const HYSTERESIS_SQ = 2.2 * 2.2;
 
 const sources = new Map<string, LightSource>();
 const slots: THREE.PointLight[] = [];
 let scene: THREE.Scene | null = null;
 
+// Set of source ids bound to slots LAST frame. Used to apply the
+// hysteresis bonus on the current frame's ranking.
+const boundLastFrame = new Set<string>();
+
 // Reusable scratch list to avoid per-frame allocation. We append + sort
 // this in place each frame. Index 0..n-1 are valid after collect.
-const scratch: Array<{ src: LightSource; dist2: number }> = [];
+const scratch: Array<{ src: LightSource; sortKey: number }> = [];
 
 /** One-time setup. Adds SLOT_COUNT idle THREE.PointLights to the scene. */
 export function initLightPool(sc: THREE.Scene): void {
@@ -114,15 +140,27 @@ export function tickLightPool(camera: THREE.Camera): void {
     const dy = src.position.y - cy;
     const dz = src.position.z - cz;
     const dist2 = dx * dx + dy * dy + dz * dz;
-    // Skip sources whose light range can't reach the camera area
-    // (distance + a small margin so neighboring fragments are still
-    // lit). Saves shading time when the player is far from a torch.
+    // Skip sources whose light range can't reach the camera area.
+    // The cull check uses RAW dist2 (no hysteresis) so a source
+    // that's truly out of range can't sneak in via stickiness.
     const reach = src.distance + 2;
     if (dist2 > reach * reach) continue;
-    scratch.push({ src, dist2 });
+    // Sort key = dist² minus stickiness bonus minus per-source priority.
+    // Sources that WERE bound last frame get a 2.2m² head-start, which
+    // prevents two roughly-equidistant lights from popping in and out
+    // as the camera nudges the rank order. Per-source priority lets
+    // important sources (the lamp, a glowing pickup) shorten their
+    // effective distance so they reliably win a slot.
+    let sortKey = dist2;
+    if (boundLastFrame.has(src.id)) sortKey -= HYSTERESIS_SQ;
+    if (src.priority) sortKey -= src.priority;
+    scratch.push({ src, sortKey });
   }
-  scratch.sort(byDist2);
+  scratch.sort(bySortKey);
 
+  // Repopulate boundLastFrame as we assign slots so the next frame's
+  // hysteresis sees the right set.
+  boundLastFrame.clear();
   const n = Math.min(scratch.length, SLOT_COUNT);
   for (let i = 0; i < SLOT_COUNT; i++) {
     const slot = slots[i];
@@ -139,6 +177,7 @@ export function tickLightPool(camera: THREE.Camera): void {
       } else {
         slot.color.setHex(src.color);
       }
+      boundLastFrame.add(src.id);
     } else {
       // Unused slot — park it. Keep intensity 0 so it contributes zero
       // to every fragment without us having to remove it from the scene.
@@ -148,8 +187,8 @@ export function tickLightPool(camera: THREE.Camera): void {
   }
 }
 
-function byDist2(a: { dist2: number }, b: { dist2: number }): number {
-  return a.dist2 - b.dist2;
+function bySortKey(a: { sortKey: number }, b: { sortKey: number }): number {
+  return a.sortKey - b.sortKey;
 }
 
 /** Debug introspection — used by tests / scenarios. */
