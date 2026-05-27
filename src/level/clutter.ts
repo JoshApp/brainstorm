@@ -1,10 +1,11 @@
-import type { LevelSpec, PropSpec, RoomSpec } from './types';
+import type { LevelSpec, PropSpec, RoomSpec, StairsSpec } from './types';
 import {
   RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS,
   FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE,
   CORNER_MOUND, CORNER_MOUND_LARGE, CORNER_MOUND_SMALL,
   WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN,
 } from '../content/clutter';
+import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 
 // Clutter scatter pass.
 //
@@ -61,9 +62,13 @@ export function scatterClutter(spec: LevelSpec, rand: () => number): void {
     .filter((p) => 'x' in p && 'z' in p)
     .map((p) => ({ x: p.x as number, z: p.z as number }));
 
-  const stairAabbs = (spec.stairs ?? []).map((s) => ({
-    cx: s.x, cz: s.z, half: 1.6,
-  }));
+  // Directional stair footprints — cover the FULL stair body
+  // (extends STAIRWELL_TOTAL_DEPTH in the descent direction from
+  // the stair position) PLUS a generous approach zone in front of
+  // the mouth so a buttress can't spawn where the player walks up
+  // to descend. The previous symmetric 1.6m radius let clutter
+  // land in the back of long stair bodies.
+  const stairAabbs = (spec.stairs ?? []).map(stairFootprint);
 
   // Build the same allRects list buildRoomShell uses, so opening
   // detection here matches what's actually carved at render time.
@@ -76,11 +81,39 @@ export function scatterClutter(spec: LevelSpec, rand: () => number): void {
   spec.props.push(...newProps);
 }
 
+/** AABB covering the stairwell body + approach corridor, axis-
+ *  aligned (stairs only auto-rotate to cardinal angles so the
+ *  rotated body's AABB is itself axis-aligned). */
+function stairFootprint(s: StairsSpec): { minX: number; maxX: number; minZ: number; maxZ: number } {
+  const rotY = s.rotY ?? 0;
+  const dirX = Math.sin(rotY);
+  const dirZ = Math.cos(rotY);
+  const APPROACH = 1.6;                            // clear floor in front of the mouth
+  const SIDE = STAIRWELL_HALF_WIDTH + 0.55;        // side parapets + margin
+  // World position of the deepest point of the stair body.
+  const bx = s.x + dirX * STAIRWELL_TOTAL_DEPTH;
+  const bz = s.z + dirZ * STAIRWELL_TOTAL_DEPTH;
+  // World position of the approach point (in front of the mouth).
+  const fx = s.x - dirX * APPROACH;
+  const fz = s.z - dirZ * APPROACH;
+  // Perpendicular side extent: when the descent runs along Z,
+  // the sides are along X (and vice versa). For axial rotY this
+  // collapses cleanly because one of dirX/dirZ is 0.
+  const sideDx = Math.abs(dirZ) * SIDE;
+  const sideDz = Math.abs(dirX) * SIDE;
+  return {
+    minX: Math.min(bx, fx) - sideDx,
+    maxX: Math.max(bx, fx) + sideDx,
+    minZ: Math.min(bz, fz) - sideDz,
+    maxZ: Math.max(bz, fz) + sideDz,
+  };
+}
+
 function decorateRect(
   room: RoomSpec,
   allRects: RoomSpec[],
   existing: PlacedPoint[],
-  stairs: Array<{ cx: number; cz: number; half: number }>,
+  stairs: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }>,
   out: PropSpec[],
   rand: () => number,
 ): void {
@@ -118,7 +151,7 @@ function decorateRect(
       if (dx * dx + dz * dz < md2) return true;
     }
     for (const s of stairs) {
-      if (x > s.cx - s.half && x < s.cx + s.half && z > s.cz - s.half && z < s.cz + s.half) return true;
+      if (x >= s.minX && x <= s.maxX && z >= s.minZ && z <= s.maxZ) return true;
     }
     return false;
   };
