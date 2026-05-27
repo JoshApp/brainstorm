@@ -82,7 +82,12 @@ export function applyStructuralClutter(spec: LevelSpec, rand: () => number): voi
 
 /** Stage 2 — surface decoration. Floor debris, floor cracks, wall
  *  damage. Runs AFTER fixtures + structural so it doesn't paint
- *  over things or stuff cracks under a column. Mutates spec.props. */
+ *  over things or stuff cracks under a column. Mutates spec.props.
+ *
+ *  Corridors get a sparser version of the same — just enough
+ *  debris + cracks to break the long empty hallway feel without
+ *  cluttering passage. No wall damage in corridors (the walls
+ *  are short + close enough that a decal reads as graffiti). */
 export function applySurfaceClutter(spec: LevelSpec, rand: () => number): void {
   const existing = collectExisting(spec);
   const stairs = allStairFootprints(spec);
@@ -91,6 +96,10 @@ export function applySurfaceClutter(spec: LevelSpec, rand: () => number): void {
   for (const room of spec.rooms) {
     const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand);
     surfacePass(ctx, out, rand);
+  }
+  for (const corridor of spec.corridors) {
+    const ctx = buildRoomContext(corridor, allRectsFlat, existing, stairs, rand);
+    corridorSurfacePass(ctx, out, rand);
   }
   spec.props.push(...out);
 }
@@ -290,6 +299,69 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
   const wallCount = Math.max(0, Math.round(ctx.area / 30));
   for (let i = 0; i < wallCount; i++) {
     placeWallDamage(ctx, out, rand);
+  }
+}
+
+// ── corridor surface pass ─────────────────────────────────────────
+
+/** Sparser decoration for corridors. Long corridors get a few
+ *  pieces of floor debris + one or two cracks; short ones get
+ *  almost nothing. No wall props — corridor walls are too close
+ *  for buttresses / piles to read properly. */
+function corridorSurfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): void {
+  const length = Math.max(ctx.rect.w, ctx.rect.d);
+  // ~1 piece per 3m of length, capped. Corridors are normally
+  // 1.8-5m long so this lands at 1-2 pieces typically.
+  const floorCount = Math.max(0, Math.floor(length / 3));
+  const debrisOrder = shuffled(FLOOR_DEBRIS, rand);
+  let idx = 0;
+  for (let i = 0; i < floorCount; i++) {
+    for (let a = 0; a < 6; a++) {
+      const p = ctx.centreSampler();
+      // Edge bias — debris settles against the walls of a
+      // narrow corridor, not in the middle where the player walks.
+      const useEdge = rand() < 0.65;
+      let sx = p.x, sz = p.z;
+      if (useEdge) {
+        // Push perpendicular to the corridor's long axis toward
+        // a wall. Corridor running along Z (length d > w) →
+        // push along X; running along X → push along Z.
+        const runsAlongZ = ctx.rect.d > ctx.rect.w;
+        const inset = 0.25 + rand() * 0.25;
+        if (runsAlongZ) {
+          sx = rand() < 0.5 ? ctx.minX + inset : ctx.maxX - inset;
+        } else {
+          sz = rand() < 0.5 ? ctx.minZ + inset : ctx.maxZ - inset;
+        }
+      }
+      if (ctx.tooClose(sx, sz, 0.55)) continue;
+      const model = debrisOrder[idx % debrisOrder.length];
+      idx++;
+      out.push({
+        kind: 'model',
+        model,
+        x: sx, y: 0, z: sz,
+        rotY: rand() * Math.PI * 2,
+      });
+      ctx.existing.push({ x: sx, z: sz });
+      break;
+    }
+  }
+  // A single floor crack per longer corridor.
+  const crackCount = length > 3 ? 1 : 0;
+  for (let i = 0; i < crackCount; i++) {
+    for (let a = 0; a < 6; a++) {
+      const p = ctx.centreSampler();
+      if (ctx.tooClose(p.x, p.z, 0.5)) continue;
+      out.push({
+        kind: 'model',
+        model: FLOOR_CRACK,
+        x: p.x, y: 0, z: p.z,
+        rotY: rand() * Math.PI * 2,
+      });
+      ctx.existing.push(p);
+      break;
+    }
   }
 }
 

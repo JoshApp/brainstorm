@@ -6,6 +6,7 @@ import { populateTemplate } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { applyStructuralClutter, applySurfaceClutter } from './clutter';
 import { wallOpenings, inOpening, findContainingRect } from './geometry-cull';
+import { ARCHWAY } from '../content/archway';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
 // with corridors between, and assemble a single LevelSpec the
@@ -276,6 +277,12 @@ export function composeFloor(
   };
 
   // ── PIPELINE: ordered post-passes ───────────────────────────────
+  // Stage 0: ARCHWAYS at corridor↔room interfaces. Frame each
+  //          corridor mouth with a stone gate so transitions
+  //          between chambers read as architectural moments
+  //          rather than just stepping from one box to another.
+  emitArchwaysForCorridors(result);
+
   // Stage 1: STRUCTURAL clutter — buttresses, columns, corner
   //          mounds, wall piles. Modifies the visible room shape.
   //          Runs FIRST so torch filtering can see the new
@@ -296,6 +303,57 @@ export function composeFloor(
   applySurfaceClutter(result, rand);
 
   return result;
+}
+
+/**
+ * Frame each corridor mouth with an ARCHWAY. Walks every wall
+ * of every corridor rect, finds where another rect (a room) is
+ * flush against it (= the corridor opening), and drops an
+ * archway centred on that overlap. The archway's rotY orients
+ * its lintel along the opening's running axis (X for N/S walls,
+ * Z for E/W walls).
+ *
+ * Archways sit ON the wall plane (the boundary between corridor
+ * and room) so they read as a literal threshold the player
+ * passes under.
+ */
+function emitArchwaysForCorridors(spec: LevelSpec): void {
+  const allRectsFlat = [
+    ...spec.rooms.map((r) => r.rect),
+    ...spec.corridors.map((r) => r.rect),
+  ];
+  // De-dupe — corridor↔room pairs share an edge, so we'd
+  // otherwise emit the same archway twice (once from each side).
+  const seen = new Set<string>();
+  for (const corridor of spec.corridors) {
+    const c = corridor.rect;
+    for (const side of ['N', 'S', 'E', 'W'] as const) {
+      const openings = wallOpenings(c, side, allRectsFlat);
+      for (const o of openings) {
+        // Position the archway at the midpoint of the opening,
+        // sitting ON the wall plane.
+        let ax = 0, az = 0, rotY = 0;
+        if (side === 'N' || side === 'S') {
+          ax = (o.start + o.end) / 2;
+          az = side === 'N' ? c.z - c.d / 2 : c.z + c.d / 2;
+          rotY = 0;        // lintel runs along X
+        } else {
+          az = (o.start + o.end) / 2;
+          ax = side === 'W' ? c.x - c.w / 2 : c.x + c.w / 2;
+          rotY = Math.PI / 2;   // lintel runs along Z
+        }
+        const key = `${ax.toFixed(2)}:${az.toFixed(2)}:${rotY.toFixed(2)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        spec.props.push({
+          kind: 'model',
+          model: ARCHWAY,
+          x: ax, y: 0, z: az,
+          rotY,
+        });
+      }
+    }
+  }
 }
 
 // ── helpers ──────────────────────────────────────────────────────
