@@ -593,7 +593,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.5,
     loseSightTime: 4,
     xp: 6,
-    gold: [3, 7],
+    gold: [0, 8],
     drops: {
       // ~30% of kills drop one item from the pool. Scimitar is the
       // standout weight; rare rolls give a potion or piece of armor.
@@ -670,7 +670,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.0,
     loseSightTime: 5,
     xp: 3,
-    gold: [1, 4],
+    gold: [0, 5],
     drops: {
       rate: 0.22,
       pool: [
@@ -723,7 +723,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       projectileId: 'acolyte-spit',
     },
     xp: 5,
-    gold: [2, 6],
+    gold: [0, 7],
     drops: {
       rate: 0.28,
       pool: [

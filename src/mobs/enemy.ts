@@ -105,6 +105,7 @@ const tmpDir = new THREE.Vector3();
 const tmpFlat = new THREE.Vector3();
 const tmpMuzzle = new THREE.Vector3();
 const tmpTarget = new THREE.Vector3();
+const tmpEssenceOrigin = new THREE.Vector3();
 
 export function createEnemy(
   scene: THREE.Object3D,
@@ -371,6 +372,12 @@ export function createEnemy(
     const u = m.userData.uDissolve as { value: number } | undefined;
     if (u) dissolveUniforms.push(u);
   }
+  // Essence-emit counter — how many XP particles have been spawned out
+  // of the dissolving body so far. tickDying spawns them incrementally
+  // as the dissolve progresses, not all at once at death moment.
+  let essenceSpawned = 0;
+  let essenceTotal = 0;
+  let essenceRigY = 0;
 
   /**
    * Apply incoming damage. Takes a DamageEvent and routes through the
@@ -448,30 +455,23 @@ export function createEnemy(
       // zero-damage "hit" on the disintegrating corpse.
       built.hitTargets.length = 0;
       emit({ type: 'enemy:killed', enemyId: spec.id });
-      // Start the death animation. Spawn XP wisps (one per XP point)
-      // AND gold coins (one per gold point) from the MOB'S BODY CENTER
-      // — read rig slot height from spec so tiny mobs (rat) burst from
-      // their actual position instead of chest height. Coins fall and
-      // settle on the floor for the player to walk near; orbs fly up
-      // and home immediately.
+      // Start the death animation. Essence emits CONTINUOUSLY during
+      // the dissolve — see tickDying. Gold coins drop now as physical
+      // floor pickups with bundled value.
       deathTimer = 0;
-      const rigY = spec.model.slots?.rig?.pos[1] ?? 0.6;
-      const origin = container.position.clone();
-      origin.y += rigY;
-      const xp = spec.xp ?? 1;
-      spawnXpWisps(scene as THREE.Object3D, origin, xp);
-      // Gold coins — physical floor drops with magnetic pickup. Each
-      // coin = 1 gold, granted on absorb. Roll once for the count.
+      essenceRigY = spec.model.slots?.rig?.pos[1] ?? 0.6;
+      essenceTotal = spec.xp ?? 1;
+      essenceSpawned = 0;
+      // Gold coins — bundled into 1–3 chunky drops. The roll picks a
+      // TOTAL gold amount once; the coin module decides how to split it.
       const goldRange = spec.gold;
       if (goldRange) {
         const min = goldRange[0];
         const max = goldRange[1];
         const amt = min + Math.floor(Math.random() * (max - min + 1));
         if (amt > 0) {
-          // Coins spawn slightly below chest so the arc reads as
-          // "from inside the body" rather than "from above the head."
           const coinOrigin = container.position.clone();
-          coinOrigin.y += rigY * 0.55;
+          coinOrigin.y += essenceRigY * 0.55;
           spawnGoldCoins(scene as THREE.Object3D, coinOrigin, amt);
         }
       }
@@ -561,7 +561,35 @@ export function createEnemy(
     if (haloMatL) haloMatL.opacity = Math.max(0, 1 - t);
     if (haloMatR) haloMatR.opacity = Math.max(0, 1 - t);
 
+    // Essence emission — spawn XP motes incrementally during the
+    // dissolve so the body visibly becomes essence flowing into the
+    // player. Origin tracks the dissolve "front" (rises with t) so
+    // motes appear from the still-visible portion of the body.
+    if (essenceTotal > 0) {
+      const target = Math.floor(t * essenceTotal);
+      const dissolveFrontY = container.position.y + essenceRigY * (0.4 + (1 - t) * 0.8);
+      while (essenceSpawned < target && essenceSpawned < essenceTotal) {
+        const ox = container.position.x;
+        const oz = container.position.z;
+        tmpEssenceOrigin.set(ox, dissolveFrontY, oz);
+        spawnXpWisps(scene as THREE.Object3D, tmpEssenceOrigin, 1);
+        essenceSpawned++;
+      }
+    }
+
     if (t >= 1) {
+      // Catch any straggler XP that the integer-floor schedule missed
+      // (e.g. essenceTotal=5 but we only spawned 4 because t hit 1.0
+      // exactly on the same frame).
+      while (essenceSpawned < essenceTotal) {
+        tmpEssenceOrigin.set(
+          container.position.x,
+          container.position.y + essenceRigY * 0.4,
+          container.position.z,
+        );
+        spawnXpWisps(scene as THREE.Object3D, tmpEssenceOrigin, 1);
+        essenceSpawned++;
+      }
       // Animation complete — remove the container and mark fully done.
       scene.remove(container);
       deathTimer = -1;

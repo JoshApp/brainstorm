@@ -21,12 +21,18 @@ import { getTexture } from '../style/procedural-textures';
 //   portal seam      — additive cyan strip at the bottom edge, glowing
 //   floor halo + beam moonbeam — visible from across the room
 
-const STEP_COUNT = 8;
-const STEP_DEPTH = 0.32;
-const STEP_HEIGHT = 0.22;
-const STEP_WIDTH = 1.95;
+export const STEP_COUNT = 8;
+export const STEP_DEPTH = 0.32;
+export const STEP_HEIGHT = 0.22;
+export const STEP_WIDTH = 1.95;
 const TOP_RECESS = 0.04;          // top tread sits this far BELOW floor
 const PARAPET_HEIGHT = 0.10;      // lip above the floor that frames the hole
+
+/** Total footprint of one stairwell in stair-local coordinates. The
+ *  level builder uses this to compute a hole shape in the room floor
+ *  so the floor mesh no longer renders OVER the stairwell. */
+export const STAIRWELL_TOTAL_DEPTH = STEP_COUNT * STEP_DEPTH;
+export const STAIRWELL_HALF_WIDTH = STEP_WIDTH / 2;
 
 export function spawnStairs(
   parent: THREE.Object3D,
@@ -42,26 +48,12 @@ export function spawnStairs(
   const totalDepth = STEP_COUNT * STEP_DEPTH;
   const totalDrop = STEP_COUNT * STEP_HEIGHT;
 
-  // ── FLOOR CUTOUT ──────────────────────────────────────────────────
-  // A dark rectangle laid ON the floor mesh where the stairwell mouth
-  // is, hiding the world floor that would otherwise show through. Tiny
-  // upward offset prevents z-fighting with the actual floor. The black
-  // material here mimics the "no floor here, you're looking down a
-  // hole" read, which the upcoming parapet + recessed top tread sell.
-  const cutoutMat = new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    fog: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
-  const cutout = new THREE.Mesh(
-    new THREE.PlaneGeometry(STEP_WIDTH, totalDepth),
-    cutoutMat,
-  );
-  cutout.rotation.x = -Math.PI / 2;
-  cutout.position.set(0, 0.005, totalDepth / 2);
-  group.add(cutout);
+  // NOTE: The "floor cutout" plane used to live here. It's replaced by
+  // an actual HOLE punched into the room's floor mesh — see the
+  // collectStairHoles + makeFloorWithHoles path in level/builder.ts.
+  // Without the real hole the jittered floor peaks (y ≈ +0.04) poked
+  // up through the cutout plane (y = +0.005) regardless of polygon
+  // offset.
 
   // ── PARAPET LIP ───────────────────────────────────────────────────
   // Short low wall ringing the OPENING above the floor — sells "carved

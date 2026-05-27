@@ -11,7 +11,11 @@ import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
 import { spawnChest } from '../interactables/chest';
 import { spawnDoor } from '../interactables/door';
-import { spawnStairs } from '../interactables/stairs';
+import {
+  spawnStairs,
+  STAIRWELL_TOTAL_DEPTH,
+  STAIRWELL_HALF_WIDTH,
+} from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
@@ -75,6 +79,36 @@ export interface LiveLevel {
   teardown: () => void;
 }
 
+/** Floor mesh with rectangular holes punched for stairwells. Each hole
+ *  is a polygon in shape-space (x, y) where shape Y maps to world -Z
+ *  after the floor's -π/2 X rotation. Holes are passed in pre-projected
+ *  to those coords. No vertex jitter on this path — losing the slight
+ *  ripple is acceptable for rooms containing stairs, which is rare. */
+function makeFloorWithHoles(
+  width: number,
+  height: number,
+  holes: Array<Array<[number, number]>>,
+): THREE.ShapeGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(-width / 2, -height / 2);
+  shape.lineTo( width / 2, -height / 2);
+  shape.lineTo( width / 2,  height / 2);
+  shape.lineTo(-width / 2,  height / 2);
+  shape.closePath();
+  for (const h of holes) {
+    const path = new THREE.Path();
+    for (let i = 0; i < h.length; i++) {
+      const [px, py] = h[i];
+      if (i === 0) path.moveTo(px, py);
+      else path.lineTo(px, py);
+    }
+    path.closePath();
+    shape.holes.push(path);
+  }
+  const geo = new THREE.ShapeGeometry(shape);
+  return geo;
+}
+
 function makeJitteredPlane(width: number, height: number): THREE.PlaneGeometry {
   const geo = new THREE.PlaneGeometry(
     width,
@@ -114,13 +148,26 @@ function makeJitteredPlane(width: number, height: number): THREE.PlaneGeometry {
   return geo;
 }
 
-function buildRoomShell(scene: THREE.Object3D, room: RoomSpec, allRects: RoomSpec[], materials: StyleMaterials, wallSegmentsOut: WallSegment[]) {
+function buildRoomShell(
+  scene: THREE.Object3D,
+  room: RoomSpec,
+  allRects: RoomSpec[],
+  materials: StyleMaterials,
+  wallSegmentsOut: WallSegment[],
+  floorHoles: Array<Array<[number, number]>> = [],
+) {
   const { rect, height: H } = room;
   const W = rect.w;
   const D = rect.d;
 
-  // Floor
-  const floor = new THREE.Mesh(makeJitteredPlane(W, D), materials.floor);
+  // Floor — with rectangular holes for stairwells in this room. Holes
+  // path takes precedence over the jittered plane; without holes the
+  // legacy subdivided + Z-jittered plane is used (visually richer
+  // surface variation).
+  const floorGeo: THREE.BufferGeometry = floorHoles.length > 0
+    ? makeFloorWithHoles(W, D, floorHoles)
+    : makeJitteredPlane(W, D);
+  const floor = new THREE.Mesh(floorGeo, materials.floor);
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(rect.x, 0, rect.z);
   floor.receiveShadow = true;
@@ -282,7 +329,45 @@ export function buildLevel(
   // --- Geometry: rooms + corridors ---
   const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
   const wallSegments: WallSegment[] = [];
-  for (const r of allRects) buildRoomShell(root, r, allRects, materials, wallSegments);
+  // Pre-compute floor holes (one per stairwell) keyed by which room the
+  // stairwell sits inside. Each hole is a 4-corner polygon in floor-mesh
+  // shape coordinates (shape Y maps to world -Z after the -π/2 X rotation
+  // of the floor mesh). The stairwell descends in stair-local +Z; we
+  // rotate by stair.rotY to find its world footprint.
+  const stairs = spec.stairs ?? [];
+  for (const r of allRects) {
+    const holes: Array<Array<[number, number]>> = [];
+    for (const st of stairs) {
+      const rx = r.rect.x;
+      const rz = r.rect.z;
+      const hw = r.rect.w / 2;
+      const hd = r.rect.d / 2;
+      if (st.x < rx - hw || st.x > rx + hw) continue;
+      if (st.z < rz - hd || st.z > rz + hd) continue;
+      // Slight outward margin on each edge so the hole's outline can't
+      // peek past the parapet at oblique camera angles.
+      const halfW = STAIRWELL_HALF_WIDTH + 0.04;
+      const back = STAIRWELL_TOTAL_DEPTH + 0.04;
+      const front = -0.04;
+      const angle = st.rotY ?? 0;
+      const ca = Math.cos(angle);
+      const sa = Math.sin(angle);
+      // 4 stair-local corners → world XZ → shape coords (x, -z) rel. room.
+      const corners: Array<[number, number]> = [
+        [-halfW, front],
+        [ halfW, front],
+        [ halfW, back],
+        [-halfW, back],
+      ];
+      const hole: Array<[number, number]> = corners.map(([lx, lz]) => {
+        const wx = st.x + ca * lx - sa * lz;
+        const wz = st.z + sa * lx + ca * lz;
+        return [wx - rx, -(wz - rz)];
+      });
+      holes.push(hole);
+    }
+    buildRoomShell(root, r, allRects, materials, wallSegments, holes);
+  }
 
   // --- Props (visual meshes) + collect obstacles for collision ---
   const obstacles: Obstacle[] = [];
