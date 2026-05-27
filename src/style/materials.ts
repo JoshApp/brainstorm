@@ -36,6 +36,13 @@ export function buildMaterials(style: Style): StyleMaterials {
     vertexColors: true,   // per-vertex tint jitter breaks up uniform surfaces
     emissive: wallEmissive,
     emissiveIntensity: emissiveBoost,
+    // Wall planes are single quads with their normal facing INTO the
+    // room. When the player stands in a corridor and sees the back
+    // side of the adjacent vault's south wall (or vice versa), back-
+    // face culling would render it invisible — looked like "the wall
+    // is missing a side." Double-sided is the small-cost fix; with
+    // our wall count it doesn't move the perf needle.
+    side: THREE.DoubleSide,
   });
   const floorBase = new THREE.MeshStandardMaterial({
     color: flat ? 0x1a1410 : CONFIG.FLOOR_COLOR,

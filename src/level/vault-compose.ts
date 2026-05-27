@@ -124,24 +124,12 @@ export function composeFloor(
 
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
-    // Resolve 'X' / 'B' enemy slots in the vault map against the
-    // depth-weighted roll tables BEFORE the parser sees the grid.
-    // Each vault rolls independently, so a floor can have a mix of
-    // ghouls in one room + skirmishers in another.
+    // Resolve 'X' / 'B' enemy slots against the depth-weighted roll
+    // tables before the parser sees the grid. Each vault rolls
+    // independently, so a floor can have a mix of ghouls in one room
+    // + skirmishers in another.
     const populated = populateTemplate(pv.vault.map, depth, rand);
-    // Carve a doorway in this vault's perimeter wall wherever a
-    // corridor connects (north edge from previous vault, south edge
-    // to next). Without this, the perimeter '#' tiles emitted by
-    // parseTileMap stand BETWEEN the corridor and the vault as
-    // invisible-wall barriers — the user reported "a corridor I
-    // couldn't move into, blocked me like a wall."
-    const carved = carveDoorways(
-      populated,
-      i > 0,                 // north connection if not first
-      i < placed.length - 1, // south connection if not last
-      CORRIDOR_WIDTH,
-    );
-    const sub = parseTileMap(carved, {
+    const sub = parseTileMap(populated, {
       id: `${opts.id}-${pv.vault.id}`,
       offsetX: pv.offsetX,
       offsetZ: pv.offsetZ,
@@ -199,6 +187,16 @@ export function composeFloor(
     corridors.push(corridor);
   }
 
+  // ── 5. Clip vault inner walls through corridor mouths ─────────
+  // parseTileMap emits walls along each vault's INNER perimeter (1m
+  // inset from the rect edges, where the '#' tiles meet the floor
+  // cells). Those walls sit BETWEEN the player's walkable interior
+  // and the corridor mouth — that's the "blocked like a wall" bug.
+  // We clip wall segments that run along the inner perimeter z-row
+  // of a vault adjacent to a corridor, removing the portion that
+  // falls inside the corridor's x range.
+  const clippedWalls = clipInnerWallsAtCorridors(extraWalls, corridors);
+
   return {
     id: opts.id,
     depth,
@@ -212,8 +210,67 @@ export function composeFloor(
     spawns,
     doors,
     stairs,
-    extraWalls,
+    extraWalls: clippedWalls,
   };
+}
+
+/**
+ * Remove segments of vault inner-perimeter walls that cross a
+ * corridor mouth. Walls are at the boundary BETWEEN cells (floor on
+ * one side, '#' on the other) — for a corridor abutting a vault's
+ * south edge, the relevant wall sits at z = corridor.northEdge - 1
+ * (one metre INSIDE the vault from the corridor mouth). We clip
+ * everything horizontal at that z that overlaps the corridor's
+ * x range, leaving the rest of the wall intact.
+ */
+function clipInnerWallsAtCorridors(
+  walls: NonNullable<LevelSpec['extraWalls']>,
+  corridors: RoomSpec[],
+): NonNullable<LevelSpec['extraWalls']> {
+  let out = walls.slice();
+  for (const c of corridors) {
+    const northMouthZ = c.rect.z - c.rect.d / 2;   // vault A's south rect edge
+    const southMouthZ = c.rect.z + c.rect.d / 2;   // vault B's north rect edge
+    const xMin = c.rect.x - c.rect.w / 2;
+    const xMax = c.rect.x + c.rect.w / 2;
+    // Inner wall on each side sits 1m INTO the adjacent vault.
+    out = clipWallsAtZ(out, northMouthZ - 1, xMin, xMax);
+    out = clipWallsAtZ(out, southMouthZ + 1, xMin, xMax);
+  }
+  return out;
+}
+
+/** Clip horizontal wall segments at the given z, keeping the
+ *  portions that fall OUTSIDE [xMin, xMax]. */
+function clipWallsAtZ(
+  walls: NonNullable<LevelSpec['extraWalls']>,
+  z: number,
+  xMin: number,
+  xMax: number,
+): NonNullable<LevelSpec['extraWalls']> {
+  const EPS = 0.01;
+  const out: NonNullable<LevelSpec['extraWalls']> = [];
+  for (const w of walls) {
+    // Only horizontal walls at this z qualify.
+    if (Math.abs(w.az - z) > EPS || Math.abs(w.bz - z) > EPS) {
+      out.push(w);
+      continue;
+    }
+    const wMin = Math.min(w.ax, w.bx);
+    const wMax = Math.max(w.ax, w.bx);
+    if (wMax <= xMin + EPS || wMin >= xMax - EPS) {
+      out.push(w);
+      continue;
+    }
+    // Wall overlaps the clip range. Keep portions outside.
+    if (wMin < xMin - EPS) {
+      out.push({ ...w, ax: wMin, az: z, bx: xMin, bz: z });
+    }
+    if (wMax > xMax + EPS) {
+      out.push({ ...w, ax: xMax, az: z, bx: wMax, bz: z });
+    }
+  }
+  return out;
 }
 
 // ── helpers ──────────────────────────────────────────────────────
@@ -263,42 +320,8 @@ function translateProp(p: PropSpec, dx: number, dz: number): PropSpec {
   return { ...p, x: p.x + dx, z: p.z + dz } as PropSpec;
 }
 
-/**
- * Open a corridor-width doorway in the north and/or south perimeter
- * row of a vault tilemap. Without this, parseTileMap auto-builds wall
- * segments along the full vault perimeter (from the '#' tiles), and
- * those walls sit BETWEEN the vault floor and the corridor that
- * connects to the next vault — blocking movement.
- *
- * The opening is centred on the vault's middle column(s) so it lines
- * up with the corridor (which is also centred at x=0). Doorway width
- * is rounded up to whole cells from the world-space corridor width.
- */
-function carveDoorways(
-  map: TileMap,
-  northConnection: boolean,
-  southConnection: boolean,
-  corridorWidth: number,
-): TileMap {
-  const rows = map.length;
-  const cols = Math.max(...map.map((r: string) => r.length));
-  const cellsWide = Math.max(2, Math.ceil(corridorWidth));
-  const start = Math.floor((cols - cellsWide) / 2);
-  const end = start + cellsWide;
-
-  const out = map.slice();
-  const carveRow = (rowIdx: number) => {
-    const row = out[rowIdx];
-    if (!row) return;
-    let s = '';
-    for (let c = 0; c < cols; c++) {
-      const ch = row[c] ?? ' ';
-      if (c >= start && c < end && ch === '#') s += '.';
-      else s += ch;
-    }
-    out[rowIdx] = s;
-  };
-  if (northConnection) carveRow(0);
-  if (southConnection) carveRow(rows - 1);
-  return out;
-}
+// (carveDoorways helper removed — see clipInnerWallsAtCorridors above.
+// Previously we modified the vault tilemap to '.' at the corridor
+// mouth, but the parser then emitted a NEW outer-edge wall in those
+// cells, which blocked corridor entry from the vault side. Clipping
+// the inner-perimeter walls post-parse leaves the geometry clean.)
