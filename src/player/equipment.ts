@@ -1,4 +1,6 @@
 import type { ItemSpec, ItemKind } from '../content/items';
+import type { AffixInstance } from '../content/affixes';
+import type { StatModifier } from '../combat/modifiers';
 
 // Equipment slots. Four slots total: weapon, armor, ring1, ring2. Each
 // slot holds at most one ItemSpec (or null).
@@ -41,6 +43,16 @@ const slots: Equipment = {
   offhand: null,
 };
 
+// ── Affix sidecar ────────────────────────────────────────────────────
+// Per-slot rolled affixes from the most recent pickup. Cleared whenever
+// a slot is replaced via setSlot or unequipped via unequipSlot.
+// Aggregated by src/combat/modifiers.ts into the central stat pipeline,
+// and read by the inventory panel to display "scimitar of the keening".
+const slotAffixes: Record<EquipSlot, AffixInstance[]> = {
+  weapon:  [], armor:   [], ring1:   [], ring2:   [],
+  helmet:  [], amulet:  [], gloves:  [], boots:   [], offhand: [],
+};
+
 type EquipListener = (eq: Readonly<Equipment>) => void;
 const listeners = new Set<EquipListener>();
 
@@ -62,10 +74,39 @@ export function getEquipped(slot: EquipSlot): ItemSpec | null {
   return slots[slot];
 }
 
-/** Place an item directly into a slot, replacing whatever was there. */
+/** Place an item directly into a slot, replacing whatever was there.
+ *  Always clears any rolled affixes on the slot — call setSlotWithAffixes
+ *  if you want to install with rolled affixes attached. */
 export function setSlot(slot: EquipSlot, item: ItemSpec | null) {
   slots[slot] = item;
+  slotAffixes[slot] = [];
   notify();
+}
+
+/** Like setSlot but ALSO attaches rolled affixes to the slot. Used by
+ *  pickup.ts when an auto-equip happens against a freshly rolled
+ *  instance — preserves "scimitar of the keening" through aggregation. */
+export function setSlotWithAffixes(slot: EquipSlot, item: ItemSpec | null, affixes: AffixInstance[]) {
+  slots[slot] = item;
+  slotAffixes[slot] = item ? affixes : [];
+  notify();
+}
+
+/** Affixes currently rolled on the item occupying this slot. Empty if
+ *  the slot is empty OR if the slot was filled without affix data
+ *  (manual equip from bag, save restore — both bypass roll for now). */
+export function getSlotAffixes(slot: EquipSlot): readonly AffixInstance[] {
+  return slotAffixes[slot];
+}
+
+/** Flat list of every affix-rolled modifier across all equipped slots.
+ *  Consumed by the central stat aggregator in src/combat/modifiers.ts. */
+export function aggregateAffixModifiers(): StatModifier[] {
+  const out: StatModifier[] = [];
+  for (const slot of Object.keys(slotAffixes) as EquipSlot[]) {
+    for (const a of slotAffixes[slot]) out.push(...a.modifiers);
+  }
+  return out;
 }
 
 /**
@@ -80,18 +121,18 @@ export function setSlot(slot: EquipSlot, item: ItemSpec | null) {
  *   ring       -> equips into ring1 if empty, else ring2 if empty, else nope.
  *   consumable -> never auto-equipped (returns false).
  */
-export function tryAutoEquip(item: ItemSpec): boolean {
+export function tryAutoEquip(item: ItemSpec, affixes: AffixInstance[] = []): boolean {
   switch (item.kind) {
-    case 'weapon':  return autoFillSingle('weapon', item);
-    case 'armor':   return autoFillSingle('armor', item);
-    case 'helmet':  return autoFillSingle('helmet', item);
-    case 'amulet':  return autoFillSingle('amulet', item);
-    case 'gloves':  return autoFillSingle('gloves', item);
-    case 'boots':   return autoFillSingle('boots', item);
-    case 'offhand': return autoFillSingle('offhand', item);
+    case 'weapon':  return autoFillSingle('weapon', item, affixes);
+    case 'armor':   return autoFillSingle('armor', item, affixes);
+    case 'helmet':  return autoFillSingle('helmet', item, affixes);
+    case 'amulet':  return autoFillSingle('amulet', item, affixes);
+    case 'gloves':  return autoFillSingle('gloves', item, affixes);
+    case 'boots':   return autoFillSingle('boots', item, affixes);
+    case 'offhand': return autoFillSingle('offhand', item, affixes);
     case 'ring': {
-      if (!slots.ring1) { slots.ring1 = item; notify(); return true; }
-      if (!slots.ring2) { slots.ring2 = item; notify(); return true; }
+      if (!slots.ring1) { slots.ring1 = item; slotAffixes.ring1 = affixes; notify(); return true; }
+      if (!slots.ring2) { slots.ring2 = item; slotAffixes.ring2 = affixes; notify(); return true; }
       return false;
     }
     case 'consumable':
@@ -99,9 +140,10 @@ export function tryAutoEquip(item: ItemSpec): boolean {
   }
 }
 
-function autoFillSingle(slot: EquipSlot, item: ItemSpec): boolean {
+function autoFillSingle(slot: EquipSlot, item: ItemSpec, affixes: AffixInstance[] = []): boolean {
   if (slots[slot]) return false;
   slots[slot] = item;
+  slotAffixes[slot] = affixes;
   notify();
   return true;
 }
@@ -152,6 +194,10 @@ export function equipFromInventory(item: ItemSpec, targetSlot?: EquipSlot): Item
   if (!slot) return null;
   const prev = slots[slot];
   slots[slot] = item;
+  // Manual equips from inventory don't carry affix data (the bag
+  // doesn't track them in V1). Reset the sidecar to keep "what's in
+  // this slot" and "what affixes apply" consistent.
+  slotAffixes[slot] = [];
   notify();
   return prev;
 }
@@ -160,6 +206,7 @@ export function equipFromInventory(item: ItemSpec, targetSlot?: EquipSlot): Item
 export function unequipSlot(slot: EquipSlot): ItemSpec | null {
   const prev = slots[slot];
   if (!prev) return null;
+  slotAffixes[slot] = [];
   slots[slot] = null;
   notify();
   return prev;

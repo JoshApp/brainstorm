@@ -25,10 +25,13 @@ export function onInventoryChanged(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
-/** Add an item and fire the pickup event (notification toast triggers). */
-export function addItem(itemId: string) {
+/** Add an item and fire the pickup event (notification toast triggers).
+ *  Optional displayName lets callers (e.g. affix-rolled pickups) pass
+ *  the decorated name so the toast can show "scimitar of the keening"
+ *  instead of the plain base name. */
+export function addItem(itemId: string, displayName?: string) {
   counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
-  emit({ type: 'item:picked-up', itemId });
+  emit({ type: 'item:picked-up', itemId, displayName });
   notify();
 }
 

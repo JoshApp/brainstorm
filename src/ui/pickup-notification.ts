@@ -42,7 +42,9 @@ export function createPickupNotification() {
 
   on((event) => {
     if (event.type !== 'item:picked-up') return;
-    show(ITEMS[event.itemId]?.name ?? event.itemId);
+    // Use the affix-decorated displayName if the caller provided one
+    // (rolled-affix pickup); fall back to the base item name otherwise.
+    show(event.displayName ?? ITEMS[event.itemId]?.name ?? event.itemId);
   });
 }
 

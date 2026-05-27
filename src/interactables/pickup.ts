@@ -4,6 +4,7 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
 import { addItem, removeItem } from '../player/inventory';
 import { tryAutoEquip } from '../player/equipment';
+import { rollItemInstance, instanceDisplayName } from '../player/item-instance';
 import { getTexture } from '../style/procedural-textures';
 import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
 import { playLootLand, playPickupChime } from '../audio/sfx';
@@ -198,13 +199,20 @@ export function createPickup(
       // Inventory addition + auto-equip routing. The notification toast
       // listens for the addItem event; equipment routing decides whether
       // to keep the item in the bag.
-      addItem(item.id);
       if (item.kind !== 'consumable') {
-        // Auto-equip ONLY if the relevant slot is empty — players
-        // should never have their current gear silently swapped out
-        // by walking over a drop. Otherwise the new item stays in the
-        // bag and the player can manually swap via the inventory panel.
-        if (tryAutoEquip(item)) removeItem(item.id);
+        // Roll affixes now and pass them through to the equipment
+        // sidecar. Decorated name (base + suffixes) feeds the pickup
+        // toast so the player sees "scimitar of the keening" if a
+        // suffix rolled. V1 limitation: if auto-equip fails (slot
+        // already filled), the affixes are discarded and the bagged
+        // item shows its plain name — proper bag-resident affix
+        // preservation lands with the full inventory rewrite.
+        const inst = rollItemInstance(item);
+        const displayName = instanceDisplayName(inst);
+        addItem(item.id, displayName);
+        if (tryAutoEquip(item, inst.affixes)) removeItem(item.id);
+      } else {
+        addItem(item.id);
       }
       unregisterLight(lightSourceId);
       interactable.destroyed = true;

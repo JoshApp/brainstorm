@@ -1,7 +1,7 @@
 import { CONFIG } from '../config';
 import type { EntityId, PassiveSpec } from '../ecs/types';
 import { get } from '../ecs/world';
-import { getEquipment } from '../player/equipment';
+import { getEquipment, aggregateAffixModifiers } from '../player/equipment';
 import { BUFFS } from '../content/buffs';
 
 // Central stat-modifier abstraction.
@@ -43,6 +43,10 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
     for (const slot of Object.values(getEquipment())) {
       if (slot?.modifiers) out.push(...slot.modifiers);
     }
+    // Rolled affix modifiers from each equipped slot. Sidecar storage
+    // — see src/player/equipment.ts — so the base spec stays shared
+    // while each pickup can carry its own rolled tweaks.
+    out.push(...aggregateAffixModifiers());
   }
 
   // 2. Active buffs ticking on this entity.

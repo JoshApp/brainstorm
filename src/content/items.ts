@@ -34,6 +34,18 @@ export const RARITY_COLORS: Record<Rarity, number> = {
   fabled:   0xe6a335,  // amber-gold — heirloom, named, story-bearing
 };
 
+// ── Affixes ─────────────────────────────────────────────────────────
+// Hybrid ARPG: each item keeps a FIXED hand-written identity (name +
+// flavor + base stats). On top of that, every pickup instance rolls
+// 0-2 affixes from the item's affixPool. Affix definitions live in
+// src/content/affixes.ts; the roll + name-decoration pipeline lives
+// in src/player/item-instance.ts.
+//
+// Items WITHOUT an affixPool always pick up as their plain base form
+// (potions, story items, etc.). Items WITH a pool can roll suffixes
+// like "of the keening" → small stat tweak; tight ranges so variance
+// reads as flavor, not as min-max chasing.
+
 /** Combat stats — only set on items that are weapons. */
 export interface WeaponStats {
   /** Max melee reach in meters (camera-to-enemy distance). */
@@ -81,6 +93,15 @@ export interface ItemSpec {
   consumableHeal?: number;
   /** For consumables: apply this buff to the player on use. */
   consumableBuff?: { buffId: string; duration: number };
+  /**
+   * Affix pool — ids into AFFIXES (src/content/affixes.ts). Every
+   * pickup instance rolls up to `maxAffixes` of these by weight (see
+   * rollAffixes). Omit on items that should never be affix-rolled.
+   */
+  affixPool?: string[];
+  /** Max affixes that can roll on a single instance. Default 0 (no
+   *  affixes). Recommended 1–2 to keep variance readable. */
+  maxAffixes?: number;
 }
 
 export const ITEMS: Record<string, ItemSpec> = {
@@ -94,6 +115,8 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: SWORD_RUSTED,
     viewmodel: SWORD_RUSTED,
     weapon: { reach: 1.8, coneHalfAngle: 0.65, damage: 1, critChance: 0.05, critMultiplier: 2.0 },
+    affixPool: ['keening', 'gallows', 'spine'],
+    maxAffixes: 1,
   },
   scimitar: {
     id: 'scimitar',
@@ -104,6 +127,8 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: WEAPON_SCIMITAR,
     viewmodel: WEAPON_SCIMITAR,
     weapon: { reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0 },
+    affixPool: ['keening', 'gallows', 'vile', 'patience'],
+    maxAffixes: 2,
   },
   heartburn: {
     id: 'heartburn',
@@ -114,6 +139,8 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: HEARTBURN,
     viewmodel: HEARTBURN,
     weapon: { reach: 2.3, coneHalfAngle: 0.9, damage: 3, critChance: 0.22, critMultiplier: 2.5 },
+    affixPool: ['vile', 'patience', 'gallows', 'keening', 'spine'],
+    maxAffixes: 2,
     modifiers: [
       { kind: 'weapon-damage', amount: 1 },
       { kind: 'damage-multiplier', amount: 1.15 },
@@ -128,6 +155,8 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Smells of cellar and old fire.',
     dropModel: TATTERED_CLOAK,
     modifiers: [{ kind: 'physical-armor', amount: 1 }],
+    affixPool: ['cinder', 'salt', 'spine', 'patience'],
+    maxAffixes: 1,
   },
   // ── HELMET ─────────────────────────────────────────────────────────
   'iron-coif': {
@@ -138,6 +167,8 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'A skullcap, dented but serviceable.',
     dropModel: IRON_COIF,
     modifiers: [{ kind: 'physical-armor', amount: 1 }],
+    affixPool: ['cinder', 'spine'],
+    maxAffixes: 1,
   },
   // ── AMULET ─────────────────────────────────────────────────────────
   'bone-amulet': {
