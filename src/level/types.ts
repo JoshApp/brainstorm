@@ -61,7 +61,22 @@ export type PropSpec =
   // 'fountain' = a basin of suspect liquid. DRINK to gamble: half the
   // time it heals to full; half the time it curses you (lasting debuff
   // for the rest of the run). One-use per fountain.
-  | { kind: 'fountain'; x: number; z: number; rotY?: number };
+  | { kind: 'fountain'; x: number; z: number; rotY?: number }
+  // 'hint' = an invisible tutorial trigger. When the player walks
+  // within `triggerRadius`, italic in-world text fades in at the
+  // trigger's position. Optional `dismissOn` event hook cuts the
+  // hint short the moment the player performs the taught action.
+  // See src/effects/tutorial-hints.ts.
+  | {
+      kind: 'hint';
+      x: number;
+      z: number;
+      y?: number;
+      text: string;
+      triggerRadius?: number;
+      lingerMs?: number;
+      dismissOn?: 'attack:hit' | 'item:picked-up' | 'enemy:killed';
+    };
 
 export type TorchSpec = {
   x: number;

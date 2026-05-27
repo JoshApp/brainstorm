@@ -50,6 +50,7 @@ import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
 import { tickXpWisps, clearXpWisps } from './effects/xp-wisps';
 import { tickGoldCoins, clearGoldCoins } from './effects/gold-coins';
+import { tickTutorialHints, clearTutorialHints } from './effects/tutorial-hints';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
@@ -447,6 +448,10 @@ function tick() {
   // Determine the current in-range interactable. Hidden while any screen
   // is open so the label doesn't poke through a panel's backdrop.
   const inRange = (isDying() || isAnyScreenOpen()) ? null : getInRangeInteractable();
+  // Tutorial hints — diegetic in-world text that fades in/out by
+  // proximity. Only the tutorial level spawns these, so on every
+  // other floor the function early-returns instantly.
+  tickTutorialHints(realDt, camera, canvas, camera.position);
   // Floating world-anchored label over the interactable — the SOLE
   // interact UI now. Updated each frame so
   // it tracks the target as camera moves.

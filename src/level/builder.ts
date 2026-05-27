@@ -11,6 +11,7 @@ import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
 import { spawnChest } from '../interactables/chest';
 import { spawnStashChest } from '../interactables/stash-chest';
+import { spawnTutorialHint } from '../effects/tutorial-hints';
 import { spawnDoor } from '../interactables/door';
 import {
   spawnStairs,
@@ -532,6 +533,20 @@ export function buildLevel(
       // Cylindrical collision — approximate the pedestal/bowl footprint.
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.45,
+      });
+    } else if (prop.kind === 'hint') {
+      // Diegetic tutorial hint — invisible trigger that fades a line of
+      // italic text in over its world position as the player nears.
+      // No collision, no model. The effect module owns its own DOM
+      // element + per-frame tick (driven from main.ts).
+      spawnTutorialHint({
+        x: prop.x,
+        z: prop.z,
+        y: prop.y,
+        text: prop.text,
+        triggerRadius: prop.triggerRadius,
+        lingerMs: prop.lingerMs,
+        dismissOn: prop.dismissOn,
       });
     }
   }

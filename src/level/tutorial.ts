@@ -95,6 +95,46 @@ export const TUTORIAL: LevelSpec = {
     { kind: 'model', model: FLOOR_CANDLE, x: -0.9, y: 0, z: -5.5 },
     { kind: 'model', model: FLOOR_CANDLE, x:  0.9, y: 0, z: -5.5 },
 
+    // ── DIEGETIC TUTORIAL HINTS — italic in-world text that fades in
+    // as the player nears each beat. Tonal slot is "previous delver's
+    // marginalia": short, lowercase, world-voiced. Each hint that
+    // teaches an ACTION dismisses the moment the player performs it
+    // (attack, pickup) so it feels responsive rather than scripted.
+    {
+      kind: 'hint',
+      x: 0, z: 4.6,   // just past the spawn, before the entry corpse
+      text: 'step. it is the only verb you have.',
+      triggerRadius: 2.8,
+    },
+    {
+      kind: 'hint',
+      x: 0, z: 0.6,   // approaching the spike-trap plate
+      text: 'look down. the floor is not always patient.',
+      triggerRadius: 2.2,
+      lingerMs: 3500,
+    },
+    {
+      kind: 'hint',
+      x: 0.4, z: -1.0,  // a step before the rat / chest area
+      text: 'strike. it will not strike back forever.',
+      triggerRadius: 2.4,
+      dismissOn: 'enemy:killed',
+    },
+    {
+      kind: 'hint',
+      x: -1.4, z: -1.4,  // hovering above the chest with the potion
+      text: 'take what fell. the dead will not.',
+      triggerRadius: 2.0,
+      dismissOn: 'item:picked-up',
+    },
+    {
+      kind: 'hint',
+      x: 0, z: -4.6,  // approaching the stairs
+      text: 'down. always down.',
+      triggerRadius: 2.6,
+      lingerMs: 6000,
+    },
+
     // ── HEALING POTION ON THE FLOOR — teaches the magnetic pickup.
     // Placed slightly off the centre-line so the player has to step
     // toward it; combined with the absorb radius, walking near triggers
