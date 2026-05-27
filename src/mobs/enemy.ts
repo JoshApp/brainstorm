@@ -20,6 +20,7 @@ import { playEnemyDeath, playEnemyWindup, type EnemyDeathSize } from '../audio/s
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins } from '../effects/gold-coins';
+import { raiseAlert, sampleAlert } from './alerts';
 
 // Map an EnemySpec → audio size bucket. Used by death + windup sounds so
 // big mobs sound big and the wraith reads as spectral, not physical.
@@ -646,6 +647,10 @@ export function createEnemy(
           playEnemyWindup(audioSizeFor(spec));  // "I see you" growl
         }
       }
+      // Shared aggro — broadcast the player's position so nearby
+      // idle mobs join the fight. Overwriting each frame is fine;
+      // it's the same player, the alert just keeps refreshing.
+      raiseAlert(playerPos.x, playerPos.z);
     } else if (aggroed) {
       timeSinceLOS += dt;
       // Drop aggro only when we've lost sight long enough AND we're not
@@ -670,6 +675,19 @@ export function createEnemy(
 
     switch (state) {
       case 'idle': {
+        // Shared aggro pickup — if a fellow mob has broadcast an alert
+        // and we're inside its radius, join the fight. Sets lastSeenPos
+        // to the alert location so 'searching' / 'chasing' have a
+        // direction to head even if we don't currently have LOS.
+        const alert = sampleAlert(container.position.x, container.position.z);
+        if (alert) {
+          aggroed = true;
+          lastSeenPos.set(alert.x, 0, alert.z);
+          state = 'alerted';
+          phaseTimer = 0;
+          playEnemyWindup(audioSizeFor(spec));
+          break;
+        }
         // Slow scan around home yaw. Pick a new target angle every
         // IDLE_SCAN_INTERVAL seconds; lerp toward it. Dim eye flare so
         // a watching player can tell at a glance "this one hasn't seen me yet."
@@ -736,6 +754,16 @@ export function createEnemy(
       }
 
       case 'returning': {
+        // Returning home also picks up alerts — if combat reignites
+        // before we've reached our post, turn back around.
+        const returnAlert = sampleAlert(container.position.x, container.position.z);
+        if (returnAlert) {
+          aggroed = true;
+          lastSeenPos.set(returnAlert.x, 0, returnAlert.z);
+          state = 'chasing';
+          phaseTimer = 0;
+          break;
+        }
         // Walk back to spawn post. On arrival, snap to home yaw and idle.
         const dxr = homePos.x - container.position.x;
         const dzr = homePos.z - container.position.z;

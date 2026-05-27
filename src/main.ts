@@ -25,6 +25,7 @@ import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
 import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad } from './level/loader';
+import { tickAlerts, clearAlerts } from './mobs/alerts';
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
@@ -414,6 +415,9 @@ function tick() {
       const nav = enemy.phasing ? currentLevel.navPhasing : currentLevel.nav;
       enemy.update(scaledDt, camera.position, currentLevel.walkable, nav);
     }
+    // Decay active combat alerts so old broadcasts stop pulling
+    // mobs in long after the player has left the area.
+    tickAlerts(scaledDt);
 
     // XP wisps — home in on the player and absorb on contact. Lives
     // outside the enemy loop so a wisp survives past its spawner's

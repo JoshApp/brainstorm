@@ -7,6 +7,7 @@ import { clearProjectiles } from '../combat/projectile-pool';
 import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
 import { clearTutorialHints } from '../effects/tutorial-hints';
+import { clearAlerts } from '../mobs/alerts';
 import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
 import { actForDepth } from './acts';
 
@@ -121,6 +122,7 @@ export function tickPendingLoad() {
     clearXpWisps();
     clearGoldCoins();
     clearTutorialHints();
+    clearAlerts();
     activeLevel.teardown();
     activeLevel = null;
   }
