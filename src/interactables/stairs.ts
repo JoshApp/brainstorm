@@ -285,32 +285,52 @@ export function spawnStairs(
   };
   for (const m of outlineTargets) addOutline(m);
 
+  // Mega-halo: a very wide, very faint outer billboard. Reads
+  // from across a fogged room as "there is light over there"
+  // even when the player can't make out the stair geometry yet.
+  // Big enough that it sits ABOVE most clutter so it doesn't
+  // get blocked by buttresses / columns between the player and
+  // the stair.
+  const megaHaloMat = new THREE.SpriteMaterial({
+    map: getTexture('fire-wisp'),
+    color: 0x6a92dc,
+    transparent: true,
+    opacity: 0.50,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    depthWrite: false,
+  });
+  const megaHalo = new THREE.Sprite(megaHaloMat);
+  megaHalo.scale.set(5.0, 5.0, 1);
+  megaHalo.position.set(0, 2.6, totalDepth / 2);
+  group.add(megaHalo);
+
   const outerBeamMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
-    color: 0x88a8e8,
+    color: 0x9cbcf0,
     transparent: true,
-    opacity: 0.65,
+    opacity: 0.85,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
   const outerBeam = new THREE.Sprite(outerBeamMat);
-  outerBeam.scale.set(2.6, 5.6, 1);
-  outerBeam.position.set(0, 2.4, totalDepth / 2);
+  outerBeam.scale.set(3.4, 7.4, 1);
+  outerBeam.position.set(0, 3.0, totalDepth / 2);
   group.add(outerBeam);
 
   const coreBeamMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
-    color: 0xe4ecff,
+    color: 0xeef2ff,
     transparent: true,
-    opacity: 0.92,
+    opacity: 1.0,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
   const coreBeam = new THREE.Sprite(coreBeamMat);
-  coreBeam.scale.set(0.8, 5.2, 1);
-  coreBeam.position.set(0, 2.4, totalDepth / 2);
+  coreBeam.scale.set(1.0, 6.8, 1);
+  coreBeam.position.set(0, 3.0, totalDepth / 2);
   group.add(coreBeam);
 
   // Slow breath — opacity oscillates ±15% on a ~2.4s cycle. Driven
@@ -322,6 +342,7 @@ export function spawnStairs(
   const baseCore = coreBeamMat.opacity;
   const baseRing = floorRingMat.opacity;
   const baseOutline = outlineMat.opacity;
+  const baseMega = megaHaloMat.opacity;
   outerBeam.onBeforeRender = () => {
     const t = (Date.now() / 1000) * (Math.PI * 2 / 2.4) + beamBreathSeed;
     const b = 0.85 + 0.15 * Math.sin(t);
@@ -329,6 +350,7 @@ export function spawnStairs(
     coreBeamMat.opacity = baseCore * b;
     floorRingMat.opacity = baseRing * b;
     outlineMat.opacity = baseOutline * b;
+    megaHaloMat.opacity = baseMega * b;
   };
 
   const interactable = {
