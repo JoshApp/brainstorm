@@ -1,28 +1,31 @@
-import type { LevelSpec, PropSpec } from './types';
+import type { LevelSpec, PropSpec, RoomSpec } from './types';
 import {
-  RUBBLE_CHUNK, BONE_PILE, SAND_DRIFT, BROKEN_PLANKS, ASH_MOUND, STONE_SHARDS,
+  RUBBLE_CHUNK, BONE_PILE, BROKEN_PLANKS, ASH_MOUND, STONE_SHARDS,
   FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE,
+  CORNER_MOUND, WALL_PILE,
 } from '../content/clutter';
 
 // Clutter scatter pass.
 //
 // Walks each room rect produced by the vault composer and drops a
-// handful of small debris / damage props on the floor + walls so the
-// room reads as old, used, broken — not a clean cube of stone.
-// Heavily edge/corner biased: real debris piles up at walls, dust
-// settles in corners, scorch marks adhere to walls. Random centre
-// placement only sprinkles cracks (the floor itself can crack
-// anywhere).
+// modest amount of small debris / damage props on the floor + walls
+// so the room reads as old, used, broken — not a clean cube of
+// stone. Heavily edge / corner biased: real debris piles up at
+// walls, dust settles in corners, scorch marks adhere to walls.
 //
-// Avoids overlap by checking against ALL props ALREADY in the spec
-// (the vault's authored props + group expansions). New clutter never
-// lands within ~0.6m of an existing prop. Skip radius is generous
-// because clutter geometry is bigger than its anchor point suggests.
+// Volumetric corner mounds and wall piles do the actual visual
+// "deformation" — they break the rectangular silhouette by piling
+// against walls + corners and slumping into the room.
 //
-// Stair footprints are also avoided — sigils on a carved-out cell
-// float in mid-air.
+// Wall placements skip CORRIDOR OPENINGS — any segment of a room
+// wall that has a corridor (or another room) flush against it is
+// not really a wall, so decals there would float in mid-air after
+// the carve. We mirror the builder's findOpenings logic to detect
+// those gaps.
+//
+// Overlap avoidance: every new prop checks a generous radius
+// against existing props + stair footprints.
 
-// Floor pool — what to scatter on a typical floor cell.
 const FLOOR_DEBRIS = [RUBBLE_CHUNK, BONE_PILE, BROKEN_PLANKS, ASH_MOUND, STONE_SHARDS];
 const WALL_DAMAGE = [WALL_SCORCH, WALL_GOUGE];
 
@@ -31,55 +34,82 @@ interface PlacedPoint {
   z: number;
 }
 
+interface Opening {
+  start: number;
+  end: number;
+}
+
 /** Scatter clutter across every room rect in spec. Mutates spec.props. */
 export function scatterClutter(spec: LevelSpec, rand: () => number): void {
-  // Collect existing prop positions for overlap avoidance.
   const existing: PlacedPoint[] = spec.props
     .filter((p) => 'x' in p && 'z' in p)
     .map((p) => ({ x: p.x as number, z: p.z as number }));
 
-  // Stair footprints — same shape used by the floor-hole carve.
   const stairAabbs = (spec.stairs ?? []).map((s) => ({
     cx: s.x, cz: s.z, half: 1.6,
   }));
 
+  // Build the same allRects list buildRoomShell uses, so opening
+  // detection here matches what's actually carved at render time.
+  const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
+
   const newProps: PropSpec[] = [];
-
   for (const r of spec.rooms) {
-    decorateRect(r.rect, existing, stairAabbs, newProps, rand);
+    decorateRect(r, allRects, existing, stairAabbs, newProps, rand);
   }
-
   spec.props.push(...newProps);
 }
 
 function decorateRect(
-  rect: { x: number; z: number; w: number; d: number },
+  room: RoomSpec,
+  allRects: RoomSpec[],
   existing: PlacedPoint[],
   stairs: Array<{ cx: number; cz: number; half: number }>,
   out: PropSpec[],
   rand: () => number,
 ): void {
+  const rect = room.rect;
   const area = rect.w * rect.d;
-  // ~1 floor debris per 6m² + a few cracks + 1-2 wall damages.
-  // Small rooms get 2-3 things; large halls get 8-10.
-  const floorCount = Math.max(2, Math.round(area / 6));
-  const crackCount = Math.max(1, Math.round(area / 12));
-  const wallCount = Math.max(1, Math.round(area / 18));
-  const cornerCount = 2;  // sand drifts in 2 random corners
+
+  // Sparser than the first pass — the user's feedback was that the
+  // debris repeated too obviously. 1 piece per ~14m² floor, 1 wall
+  // damage per ~30m², 1 crack per ~20m². Small rooms get 1-2
+  // pieces; large halls get 6-8.
+  const floorCount = Math.max(1, Math.round(area / 14));
+  const crackCount = Math.max(1, Math.round(area / 20));
+  const wallCount = Math.max(0, Math.round(area / 30));
+  const wallPileCount = Math.max(0, Math.round(area / 25));
 
   const minX = rect.x - rect.w / 2;
   const maxX = rect.x + rect.w / 2;
   const minZ = rect.z - rect.d / 2;
   const maxZ = rect.z + rect.d / 2;
 
+  // Corridor / room openings per wall. Each wall is a 1D range
+  // along its running axis; openings are sub-ranges that have an
+  // adjoining rect on the other side, so the wall is actually
+  // carved away there. Decals placed in those ranges would float.
+  const openN = collectOpenings('N', rect, allRects);
+  const openS = collectOpenings('S', rect, allRects);
+  const openE = collectOpenings('E', rect, allRects);
+  const openW = collectOpenings('W', rect, allRects);
+
   const tooClose = (x: number, z: number, minDist: number) => {
+    const md2 = minDist * minDist;
     for (const p of existing) {
       const dx = p.x - x;
       const dz = p.z - z;
-      if (dx * dx + dz * dz < minDist * minDist) return true;
+      if (dx * dx + dz * dz < md2) return true;
     }
     for (const s of stairs) {
       if (x > s.cx - s.half && x < s.cx + s.half && z > s.cz - s.half && z < s.cz + s.half) return true;
+    }
+    return false;
+  };
+
+  const inOpening = (pos: number, openings: Opening[]): boolean => {
+    for (const o of openings) {
+      if (pos >= o.start - 0.4 && pos <= o.end + 0.4) return true;
     }
     return false;
   };
@@ -102,67 +132,135 @@ function decorateRect(
     }
   };
 
-  // Edge-biased sampler — picks a point near one of the four walls
-  // with some inward jitter (debris tends to settle along walls).
-  const edgeSampler = () => {
-    const wall = Math.floor(rand() * 4);
-    const inset = 0.25 + rand() * 0.55;       // 0.25-0.8m from wall
-    const along = rand();
-    switch (wall) {
-      case 0: return { x: minX + inset, z: minZ + along * rect.d };
-      case 1: return { x: maxX - inset, z: minZ + along * rect.d };
-      case 2: return { x: minX + along * rect.w, z: minZ + inset };
-      default: return { x: minX + along * rect.w, z: maxZ - inset };
-    }
-  };
-
-  // Centre sampler — anywhere inside the rect with a small margin so
-  // it doesn't kiss the walls.
   const centreSampler = () => ({
     x: minX + 0.5 + rand() * Math.max(0, rect.w - 1),
     z: minZ + 0.5 + rand() * Math.max(0, rect.d - 1),
   });
 
-  // Corner sampler — picks one of the four corners with small jitter.
-  const cornerSampler = () => {
-    const corner = Math.floor(rand() * 4);
-    const j = 0.5 + rand() * 0.3;
-    const cx = corner < 2 ? minX + j : maxX - j;
-    const cz = (corner % 2 === 0) ? minZ + j : maxZ - j;
-    return { x: cx, z: cz };
+  // Edge sampler avoids opening ranges — debris-piled-against-a-
+  // wall shouldn't sit where the corridor mouth is.
+  const edgeSampler = (): { x: number; z: number } => {
+    const wall = Math.floor(rand() * 4);
+    const inset = 0.25 + rand() * 0.55;
+    const along = rand();
+    switch (wall) {
+      case 0: {
+        const z = minZ + along * rect.d;
+        if (inOpening(z, openW)) return centreSampler();
+        return { x: minX + inset, z };
+      }
+      case 1: {
+        const z = minZ + along * rect.d;
+        if (inOpening(z, openE)) return centreSampler();
+        return { x: maxX - inset, z };
+      }
+      case 2: {
+        const x = minX + along * rect.w;
+        if (inOpening(x, openN)) return centreSampler();
+        return { x, z: minZ + inset };
+      }
+      default: {
+        const x = minX + along * rect.w;
+        if (inOpening(x, openS)) return centreSampler();
+        return { x, z: maxZ - inset };
+      }
+    }
   };
 
-  // ── Place floor debris, mostly edge-biased ─────────────────────
+  // Shuffle the debris pool per-room so the same model doesn't
+  // dominate a single chamber. The next room gets a fresh shuffle.
+  const debrisOrder = shuffled(FLOOR_DEBRIS, rand);
+  let debrisIdx = 0;
+  const pickDebris = () => {
+    const m = debrisOrder[debrisIdx % debrisOrder.length];
+    debrisIdx++;
+    return m;
+  };
+
+  // Floor debris, mostly edge-biased.
   tryPlace(
     () => (rand() < 0.7 ? edgeSampler() : centreSampler()),
     (x, z) => ({
       kind: 'model',
-      model: FLOOR_DEBRIS[Math.floor(rand() * FLOOR_DEBRIS.length)],
+      model: pickDebris(),
       x,
       y: 0,
       z,
       rotY: rand() * Math.PI * 2,
     }),
     floorCount,
-    0.55,
+    0.7,
   );
 
-  // ── Sand drifts in corners (the dusty-room feel) ────────────────
-  tryPlace(
-    cornerSampler,
-    (x, z) => ({
-      kind: 'model',
-      model: SAND_DRIFT,
-      x,
-      y: 0,
-      z,
-      rotY: rand() * Math.PI * 2,
-    }),
-    cornerCount,
-    0.5,
-  );
+  // Corner mounds — volumetric piles of silt slumping out of each
+  // corner. Authored with HIGH end at local (-,-); rotate per
+  // corner so the high end faces into the corner. Skip a corner
+  // that's near an opening so we don't block the doorway.
+  const corners: Array<{ x: number; z: number; rotY: number; nearOpening: boolean }> = [
+    { x: minX + 0.45, z: minZ + 0.45, rotY: 0,
+      nearOpening: nearOpeningOnEither(openN, openW, minX + 0.45, minZ + 0.45) },
+    { x: maxX - 0.45, z: minZ + 0.45, rotY: -Math.PI / 2,
+      nearOpening: nearOpeningOnEither(openN, openE, maxX - 0.45, minZ + 0.45) },
+    { x: minX + 0.45, z: maxZ - 0.45, rotY:  Math.PI / 2,
+      nearOpening: nearOpeningOnEither(openS, openW, minX + 0.45, maxZ - 0.45) },
+    { x: maxX - 0.45, z: maxZ - 0.45, rotY: Math.PI,
+      nearOpening: nearOpeningOnEither(openS, openE, maxX - 0.45, maxZ - 0.45) },
+  ];
+  for (const c of corners) {
+    if (c.nearOpening) continue;
+    if (rand() > 0.55) continue;
+    if (tooClose(c.x, c.z, 0.7)) continue;
+    out.push({ kind: 'model', model: CORNER_MOUND, x: c.x, y: 0, z: c.z, rotY: c.rotY });
+    existing.push({ x: c.x, z: c.z });
+  }
 
-  // ── Floor cracks, free placement (cracks happen anywhere) ───────
+  // Wall piles — slump against a wall, lean into the room. Skip
+  // wall positions that fall inside a corridor opening.
+  for (let i = 0; i < wallPileCount; i++) {
+    for (let a = 0; a < 8; a++) {
+      const wall = Math.floor(rand() * 4);
+      const along = rand();
+      let x = 0, z = 0, rotY = 0;
+      let blocked = false;
+      switch (wall) {
+        case 0: { // W
+          z = minZ + along * rect.d;
+          if (inOpening(z, openW)) { blocked = true; break; }
+          x = minX + 0.35;
+          rotY = -Math.PI / 2;
+          break;
+        }
+        case 1: { // E
+          z = minZ + along * rect.d;
+          if (inOpening(z, openE)) { blocked = true; break; }
+          x = maxX - 0.35;
+          rotY = Math.PI / 2;
+          break;
+        }
+        case 2: { // N
+          x = minX + along * rect.w;
+          if (inOpening(x, openN)) { blocked = true; break; }
+          z = minZ + 0.35;
+          rotY = 0;
+          break;
+        }
+        default: { // S
+          x = minX + along * rect.w;
+          if (inOpening(x, openS)) { blocked = true; break; }
+          z = maxZ - 0.35;
+          rotY = Math.PI;
+          break;
+        }
+      }
+      if (blocked) continue;
+      if (tooClose(x, z, 0.9)) continue;
+      out.push({ kind: 'model', model: WALL_PILE, x, y: 0, z, rotY });
+      existing.push({ x, z });
+      break;
+    }
+  }
+
+  // Floor cracks, free placement (cracks happen anywhere).
   tryPlace(
     centreSampler,
     (x, z) => ({
@@ -174,26 +272,48 @@ function decorateRect(
       rotY: rand() * Math.PI * 2,
     }),
     crackCount,
-    0.4,
+    0.5,
   );
 
-  // ── Wall damage — pick a wall, jitter along it, face the room ──
-  // The placer offsets the prop INTO the wall plane by ~0.02m so
-  // the decal/box sits flush, and sets rotY so the model's local +Z
-  // (which faces the camera in its authored space) points back into
-  // the room.
+  // Wall damage — pick a wall, jitter along it, skip openings.
   for (let i = 0; i < wallCount; i++) {
-    for (let a = 0; a < 6; a++) {
+    for (let a = 0; a < 8; a++) {
       const wall = Math.floor(rand() * 4);
-      const along = 0.5 + rand() * 0.8;
-      let x: number, z: number, rotY: number;
+      const along = rand();
+      let x = 0, z = 0, rotY = 0;
+      let blocked = false;
       switch (wall) {
-        case 0: x = minX + 0.02; z = minZ + along + rand() * Math.max(0, rect.d - 1); rotY = -Math.PI / 2; break;  // W wall
-        case 1: x = maxX - 0.02; z = minZ + along + rand() * Math.max(0, rect.d - 1); rotY =  Math.PI / 2; break;  // E wall
-        case 2: x = minX + along + rand() * Math.max(0, rect.w - 1); z = minZ + 0.02; rotY = 0;            break;  // N wall
-        default: x = minX + along + rand() * Math.max(0, rect.w - 1); z = maxZ - 0.02; rotY = Math.PI;     break;  // S wall
+        case 0: { // W
+          z = minZ + along * rect.d;
+          if (inOpening(z, openW)) { blocked = true; break; }
+          x = minX + 0.02;
+          rotY = -Math.PI / 2;
+          break;
+        }
+        case 1: { // E
+          z = minZ + along * rect.d;
+          if (inOpening(z, openE)) { blocked = true; break; }
+          x = maxX - 0.02;
+          rotY = Math.PI / 2;
+          break;
+        }
+        case 2: { // N
+          x = minX + along * rect.w;
+          if (inOpening(x, openN)) { blocked = true; break; }
+          z = minZ + 0.02;
+          rotY = 0;
+          break;
+        }
+        default: { // S
+          x = minX + along * rect.w;
+          if (inOpening(x, openS)) { blocked = true; break; }
+          z = maxZ - 0.02;
+          rotY = Math.PI;
+          break;
+        }
       }
-      if (tooClose(x, z, 0.6)) continue;
+      if (blocked) continue;
+      if (tooClose(x, z, 0.8)) continue;
       out.push({
         kind: 'model',
         model: WALL_DAMAGE[Math.floor(rand() * WALL_DAMAGE.length)],
@@ -206,4 +326,72 @@ function decorateRect(
       break;
     }
   }
+}
+
+// ── helpers ──────────────────────────────────────────────────────
+
+/** Mirror of builder.findOpenings — locates the ranges on each
+ *  wall of `self` where another rect is flush, indicating a
+ *  corridor / room carve. */
+function collectOpenings(
+  side: 'N' | 'S' | 'E' | 'W',
+  self: { x: number; z: number; w: number; d: number },
+  allRects: RoomSpec[],
+): Opening[] {
+  const EPS = 0.05;
+  const out: Opening[] = [];
+  for (const other of allRects) {
+    const o = other.rect;
+    // Same-rect identity — same centre + same size means it's us.
+    if (Math.abs(o.x - self.x) < 1e-6 && Math.abs(o.z - self.z) < 1e-6
+        && o.w === self.w && o.d === self.d) continue;
+
+    if (side === 'N' || side === 'S') {
+      const wallZ = side === 'N' ? self.z - self.d / 2 : self.z + self.d / 2;
+      const oNorth = o.z - o.d / 2;
+      const oSouth = o.z + o.d / 2;
+      const coincides = Math.abs(oSouth - wallZ) < EPS || Math.abs(oNorth - wallZ) < EPS;
+      if (!coincides) continue;
+      const a = Math.max(self.x - self.w / 2, o.x - o.w / 2);
+      const b = Math.min(self.x + self.w / 2, o.x + o.w / 2);
+      if (b > a + EPS) out.push({ start: a, end: b });
+    } else {
+      const wallX = side === 'W' ? self.x - self.w / 2 : self.x + self.w / 2;
+      const oWest = o.x - o.w / 2;
+      const oEast = o.x + o.w / 2;
+      const coincides = Math.abs(oEast - wallX) < EPS || Math.abs(oWest - wallX) < EPS;
+      if (!coincides) continue;
+      const a = Math.max(self.z - self.d / 2, o.z - o.d / 2);
+      const b = Math.min(self.z + self.d / 2, o.z + o.d / 2);
+      if (b > a + EPS) out.push({ start: a, end: b });
+    }
+  }
+  return out;
+}
+
+/** True if either of the two adjoining walls of a corner has an
+ *  opening within ~1.2m — placing a mound there would visually
+ *  crowd the doorway. */
+function nearOpeningOnEither(
+  horizontalWall: Opening[],   // N or S wall openings (positions in X)
+  verticalWall: Opening[],     // W or E wall openings (positions in Z)
+  cx: number,
+  cz: number,
+): boolean {
+  const probe = (openings: Opening[], v: number) => {
+    for (const o of openings) {
+      if (v >= o.start - 1.2 && v <= o.end + 1.2) return true;
+    }
+    return false;
+  };
+  return probe(horizontalWall, cx) || probe(verticalWall, cz);
+}
+
+function shuffled<T>(arr: T[], rand: () => number): T[] {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }

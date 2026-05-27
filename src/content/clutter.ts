@@ -67,6 +67,53 @@ export const SAND_DRIFT: ModelSpec = {
   ],
 };
 
+// Corner mound — actual volumetric pile of debris/sand that sits
+// against a corner. Authored with its HIGH end at local (-,-) and
+// sloping out toward local (+,+) so the same model rotates to fit
+// the four corners. Jitter on each part gives a natural lumpy
+// surface — no two corners look identical.
+export const CORNER_MOUND: ModelSpec = {
+  id: 'corner-mound',
+  materials: {
+    silt: { color: 0x382d22, roughness: 1.0, flatShading: true },
+  },
+  parts: [
+    // Wide low base — spans most of the corner footprint.
+    { kind: 'box', pos: [-0.15, 0.06, -0.15], size: [0.95, 0.12, 0.95], rot: [0, 0.2, 0], mat: 'silt', jitter: 0.06 },
+    // Middle hump — biased toward the corner (more negative x/z).
+    { kind: 'box', pos: [-0.32, 0.17, -0.32], size: [0.55, 0.14, 0.55], rot: [0, -0.3, 0], mat: 'silt', jitter: 0.07 },
+    // Peak chip against the corner.
+    { kind: 'box', pos: [-0.42, 0.27, -0.42], size: [0.28, 0.10, 0.28], rot: [0, 0.6, 0], mat: 'silt', jitter: 0.05 },
+    // Faint surface decal so it reads as dust, not just a stack of
+    // boxes. Sits on top, slightly oversize so it covers the front
+    // slope.
+    {
+      kind: 'decal',
+      pos: [-0.15, 0.123, -0.15],
+      rot: [-Math.PI / 2, 0, 0.2],
+      size: [1.0, 1.0],
+      texture: 'fire-wisp',
+      color: 0x251c12,
+    },
+  ],
+};
+
+// Wall pile — a debris mound that sits AGAINST a wall, slumping
+// outward into the room. Used along walls to break up the clean
+// wall line. Authored with its tall side at local -Z (so when
+// placed against a north wall, the pile leans south into the room).
+export const WALL_PILE: ModelSpec = {
+  id: 'wall-pile',
+  materials: {
+    pile: { color: 0x2c2418, roughness: 1.0, flatShading: true },
+  },
+  parts: [
+    { kind: 'box', pos: [0,    0.10, -0.08], size: [0.80, 0.20, 0.55], rot: [0,  0.1, 0], mat: 'pile', jitter: 0.05 },
+    { kind: 'box', pos: [0.1,  0.22, -0.18], size: [0.50, 0.18, 0.30], rot: [0, -0.2, 0], mat: 'pile', jitter: 0.06 },
+    { kind: 'box', pos: [-0.18, 0.16, -0.04], size: [0.32, 0.12, 0.22], rot: [0,  0.5, 0], mat: 'pile', jitter: 0.04 },
+  ],
+};
+
 // Splintered wooden plank set — the remains of a busted crate or
 // door. Two long pieces + a couple of shorter chips.
 export const BROKEN_PLANKS: ModelSpec = {
