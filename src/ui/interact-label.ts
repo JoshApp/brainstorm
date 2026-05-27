@@ -104,12 +104,11 @@ export function updateInteractLabel(
       svg.setAttribute('width', '22');
       svg.setAttribute('height', '22');
     }
-    // TAKE is a hand icon — no label needed (icon reads cleanly on
-    // its own). Keep text for the wordier actions (READ/OPEN/DRINK/
-    // DESCEND/SEALED) where the verb adds clarity.
-    const upper = target.promptLabel.toUpperCase();
-    textEl.textContent = upper === 'TAKE' ? '' : upper;
-    textEl.style.display = upper === 'TAKE' ? 'none' : 'block';
+    // Show the verb text under every icon, including TAKE — the hand
+    // icon reads on its own but Josh prefers the explicit label so the
+    // action stays diegetic-but-readable.
+    textEl.textContent = target.promptLabel.toUpperCase();
+    textEl.style.display = 'block';
     // SEALED gets a muted gray scheme to match the outline + corner
     // button visual language.
     if (target.promptLabel.toUpperCase() === 'SEALED') {

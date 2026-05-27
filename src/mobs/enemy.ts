@@ -250,11 +250,17 @@ export function createEnemy(
   rollWindupTime();
 
   // Presence — continuous animation overlay applied each frame on top of
-  // the per-state animation. Per-instance phase offset so two wraiths in
-  // the same room drift out of sync. Cost = 2 sin() per wraith per frame.
+  // the per-state animation. Per-instance phase offset so two of the same
+  // mob drift out of sync. Cost = a couple of sin() per mob per frame.
   const presence = spec.presence;
   const presencePhase = Math.random() * Math.PI * 2;
   let presenceTime = 0;
+  // 'chant' needs a reference to the orb material so the pulse can drive
+  // its emissive intensity. Grabbed once at build; null for non-chant.
+  const orbMat = presence === 'chant'
+    ? (built.materials.get('orb') as THREE.MeshStandardMaterial | undefined)
+    : undefined;
+  const orbBaseEmissive = orbMat?.emissiveIntensity ?? 0;
 
   // Death sequence — once hp hits zero we DON'T immediately remove the
   // mesh. We ramp a dissolve uniform 0→1 over DEATH_DURATION while
@@ -737,17 +743,59 @@ export function createEnemy(
     }
 
     // ── Presence overlay ─────────────────────────────────────────────
-    // Applied AFTER the state animation so it stacks on whatever the
-    // state set (e.g. winding's 0.10*t lift gets a bob on top — looks
-    // like the wraith levitates higher as it rears up).
-    if (presence === 'spectral') {
+    // Applied AFTER the state animation so it stacks on what the state
+    // set (e.g. winding's 0.10*t lift gets a bob on top — looks like
+    // the wraith levitates higher as it rears up).
+    //
+    // Conventions:
+    //   - position.y is WRITTEN by state code each frame, so presence
+    //     adds (+=) to it. Same for container.rotation.y (state's lookAt
+    //     writes it).
+    //   - position.x/z and rotation.x/z on built.group are NOT touched
+    //     by state code, so presence writes them directly (no drift).
+    if (presence) {
       presenceTime += dt;
       const t = presenceTime + presencePhase;
-      // Slow vertical bob, ±10cm.
-      built.group.position.y += Math.sin(t * 1.7) * 0.10;
-      // Micro yaw sway — the head doesn't sit perfectly still on the
-      // body. Small enough not to break the lookAt-at-player feel.
-      container.rotation.y += Math.sin(t * 0.9) * 0.05;
+      switch (presence) {
+        case 'spectral': {
+          // Slow vertical bob + micro yaw sway. Wraith — float + drift.
+          built.group.position.y += Math.sin(t * 1.7) * 0.10;
+          container.rotation.y   += Math.sin(t * 0.9) * 0.05;
+          break;
+        }
+        case 'lurch': {
+          // Shambling corpse — lateral roll with a shamble-step dip
+          // synced to the roll. Reads as heavy + off-balance.
+          built.group.rotation.z  = Math.sin(t * 1.45) * 0.08;
+          built.group.position.y += Math.abs(Math.sin(t * 1.45)) * 0.05 - 0.025;
+          break;
+        }
+        case 'twitch': {
+          // Rat — fast yaw micro-shudder + scurry bob. Yaw is on
+          // container so the whole body twitches, not just the head.
+          container.rotation.y   += Math.sin(t * 7.0) * 0.045;
+          built.group.position.y += Math.abs(Math.sin(t * 8.5)) * 0.012;
+          break;
+        }
+        case 'coiled': {
+          // Skirmisher — taut shoulder bob + subtle weight-shift roll.
+          // Reads as ready to spring rather than at rest.
+          built.group.position.y += Math.sin(t * 2.4) * 0.022;
+          built.group.rotation.z  = Math.sin(t * 1.7) * 0.030;
+          break;
+        }
+        case 'chant': {
+          // Acolyte — slow ritual side rock + horizontal drift + orb
+          // emissive pulse. The orb pulse is what sells "channelling"
+          // even when the caster is just standing.
+          built.group.rotation.z  = Math.sin(t * 1.0) * 0.08;
+          built.group.position.x  = Math.sin(t * 0.8) * 0.025;
+          if (orbMat) {
+            orbMat.emissiveIntensity = orbBaseEmissive * (1 + 0.35 * Math.sin(t * 1.4));
+          }
+          break;
+        }
+      }
     }
   }
 

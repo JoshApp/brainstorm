@@ -107,11 +107,23 @@ export interface EnemySpec {
   // --- Presence ---
   /**
    * Optional continuous animation overlay applied each frame on top of
-   * the per-state animation. 'spectral' = slow vertical bob + micro yaw
-   * sway (sells "floating ghost" — used by wraiths). Phase is randomized
-   * per-instance so a pair of wraiths drift out of sync.
+   * the per-state animation. Each variant has its own character:
+   *
+   *   spectral — floating ghost: slow vertical bob + micro yaw sway.
+   *              Layers on top of state animation.
+   *   lurch    — shambling corpse: lateral roll + shamble-step dip.
+   *              Reads as heavy, off-balance.
+   *   twitch   — small frantic creature: fast yaw micro-shudder +
+   *              scurry bob. Reads as nervous, restless.
+   *   coiled   — predator under tension: subtle shoulder bob +
+   *              weight-shift roll. Reads as ready to spring.
+   *   chant    — channelling caster: slow side rock + position drift
+   *              + orb material emissive pulse.
+   *
+   * Phase is randomized per-instance so a pair of the same mob drift
+   * out of sync. Cost = a couple of sin() per mob per frame.
    */
-  presence?: 'spectral';
+  presence?: 'spectral' | 'lurch' | 'twitch' | 'coiled' | 'chant';
 }
 
 export interface DropEntry {
@@ -128,32 +140,52 @@ export interface DropEntry {
 // material colors.
 
 function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
-  // Humanoid ghoul. All visible parts are parented to a 'rig' slot (an
-  // invisible Object3D anchor), NOT directly to the body mesh. This matches
-  // the rat's working pattern — for reasons that remain a mystery, parenting
-  // children directly to a Mesh prevented them from rendering on the phone-
-  // facing snap path; parenting to an Object3D slot works correctly.
-  //
-  // tiltPart is 'rig' so the whole rig leans forward during windup as a unit.
+  // Lurching corpse. Heavy vertex jitter + ASYMMETRIC parts (one shoulder
+  // bigger than the other, arms different lengths) so it reads "wrong"
+  // even when standing still. Faint dark-red emissive on body = festering
+  // wound glow; NO rim (it's flesh, not spectral).
   return {
     id: 'ghoul-humanoid',
     materials: {
-      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto', dissolvable: true },
+      body: {
+        color: bodyColor,
+        roughness: 0.95,
+        // Festering interior glow — barely there but reads warm in
+        // the close-up. Combined with vertex jitter it sells "rot."
+        emissive: 0x180806,
+        emissiveIntensity: 0.35,
+        flatShading: 'auto',
+        dissolvable: true,
+      },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
     },
     slots: {
-      rig: { pos: [0, 0.8, 0] },           // rig pivot at body-center height
+      rig: { pos: [0, 0.8, 0] },
       weapon:   { pos: [0.35, 0.9, 0] satisfies Vec3 },
       head_top: { pos: [0,    1.8, 0] satisfies Vec3 },
     },
     parts: [
-      // All visible parts parented to rig. Positions are RIG-LOCAL (i.e.
-      // offset from rig pivot at world y=0.8, not from world origin).
-      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], radius: 0.35, height: 0.9, mat: 'body' },
-      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.7, 0], radius: 0.28, mat: 'body' },
-      // Eyes past head front (head front at rig-local z=-0.28). Modest
-      // radius — the 180° rotation fix solved the visibility problem, no
-      // need for the oversized eyes we tried during that debugging.
+      // Body — slight asymmetric scale + jitter. Reads as a swollen,
+      // misshapen torso rather than a clean capsule.
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], scale: [1.05, 1, 0.95], radius: 0.35, height: 0.9, mat: 'body', jitter: 0.030 },
+      // Head — slight squish + jitter. Coupled with the body asymmetry
+      // the silhouette tilts subtly off-axis even before animation.
+      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.7, 0], scale: [1.05, 0.95, 1], radius: 0.28, mat: 'body', jitter: 0.025 },
+      // Asymmetric shoulder humps — LEFT noticeably bigger than RIGHT.
+      // Hidden geometric tell that the body is uneven beyond any single
+      // jitter variation.
+      { parent: 'rig', kind: 'sphere', pos: [-0.32, 0.40, 0], radius: 0.22, segments: [12, 10], mat: 'body', jitter: 0.022 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.32, 0.45, 0], radius: 0.16, segments: [12, 10], mat: 'body', jitter: 0.022 },
+      // Arms — stubby, DIFFERENT lengths (left longer). They hang from
+      // the shoulder humps. Heavy jitter on these is fine — the limbs
+      // are short so the perturbation reads as gnarled muscle.
+      { parent: 'rig', kind: 'capsule', pos: [-0.34, 0.05, 0.05], radius: 0.08, height: 0.50, mat: 'body', jitter: 0.020 },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.34, 0.12, 0.05], radius: 0.075, height: 0.35, mat: 'body', jitter: 0.020 },
+      // Fists at the end of each arm (asymmetric sizing for one more
+      // off-balance tell).
+      { parent: 'rig', kind: 'sphere', pos: [-0.34, -0.22, 0.05], radius: 0.10, segments: [10, 8], mat: 'body', jitter: 0.018 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.34, -0.07, 0.05], radius: 0.085, segments: [10, 8], mat: 'body', jitter: 0.018 },
+      // Eyes — close-set, slightly recessed.
       { parent: 'rig', kind: 'sphere', pos: [-0.10, 0.74, -0.32], radius: 0.045, segments: [12, 10], mat: 'eyes' },
       { parent: 'rig', kind: 'sphere', pos: [ 0.10, 0.74, -0.32], radius: 0.045, segments: [12, 10], mat: 'eyes' },
     ],
@@ -163,42 +195,59 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
 // Quadruped — body horizontal, four small leg capsules, long tail. Demonstrates
 // the model system handling a fundamentally different silhouette from primitives.
 function quadrupedRatModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
-  // The rat has a body capsule that's pre-rotated 90° around X so it lies
-  // horizontal. tiltPart tilts on top of that rotation (combined). The head,
-  // legs, and eyes used to be top-level parts which meant the windup tilt
-  // didn't bring them along — head floated in place while body rotated.
-  // Now: a separate 'rig' anchor part holds everything that should tilt with
-  // the body. tiltPart is set to 'rig' in the EnemySpec.
+  // Mangy, twitchy quadruped. Light jitter (small creature — heavy jitter
+  // would collapse the silhouette). Whiskers added as thin cones forward
+  // of the snout. Eye glow turned up so a darting red pinprick reads at
+  // a glance even when the body's near-black against floor.
   return {
     id: 'rat-quadruped',
     materials: {
-      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto', dissolvable: true },
+      // Slight emissive on the body so the rat doesn't black out completely
+      // in unlit floor gaps. Dark warm tone.
+      body: {
+        color: bodyColor,
+        roughness: 0.95,
+        emissive: 0x0a0604,
+        emissiveIntensity: 0.5,
+        flatShading: 'auto',
+        dissolvable: true,
+      },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
+      // Whisker material — flat, no jitter, very dim.
+      whisker: { color: 0x1a1410, roughness: 1.0, flatShading: 'auto' },
     },
-    // 'rig' is an invisible anchor at the rat's center; everything visible
-    // is parented to it. Tilting 'rig' rotates the whole rat as one body.
     slots: {
       rig: { pos: [0, 0.14, 0] },
-      back: { pos: [0, 0.22, 0] },  // future saddle attachment
+      back: { pos: [0, 0.22, 0] },
     },
     parts: [
-      // Body — horizontal capsule, parented to rig. Local pos at rig origin.
-      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], rot: [Math.PI / 2, 0, 0], radius: 0.10, height: 0.28, mat: 'body' },
-      // Head — slightly forward
-      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, -0.01, -0.22], radius: 0.085, mat: 'body' },
+      // Body — light jitter; the rat is small so big amplitudes would
+      // tear the capsule.
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], rot: [Math.PI / 2, 0, 0], radius: 0.10, height: 0.28, mat: 'body', jitter: 0.008 },
+      // Head — same light jitter as body.
+      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, -0.01, -0.22], radius: 0.085, mat: 'body', jitter: 0.008 },
       // Snout
       { parent: 'rig', kind: 'cone', pos: [0, -0.025, -0.30], rot: [-Math.PI / 2, 0, 0], radius: 0.04, height: 0.07, segments: 8, mat: 'body' },
-      // Eyes — popped out of the head surface (head r=0.085 at z=-0.22).
-      // Eye centers ~0.10 forward of head center => sticks out by ~0.015.
+      // Eyes — popped out of the head surface.
       { parent: 'rig', kind: 'sphere', pos: [-0.05, 0.025, -0.305], radius: 0.022, mat: 'eyes' },
       { parent: 'rig', kind: 'sphere', pos: [ 0.05, 0.025, -0.305], radius: 0.022, mat: 'eyes' },
-      // Four legs (parented to rig so they lift with the windup)
+      // Eye halo sprites — tiny additive flares so the eyes read at distance
+      // (the spheres alone go to a pixel each on a phone screen).
+      { parent: 'rig', kind: 'sprite', pos: [-0.05, 0.025, -0.31], size: [0.08, 0.08], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { parent: 'rig', kind: 'sprite', pos: [ 0.05, 0.025, -0.31], size: [0.08, 0.08], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      // Whiskers — four thin cones sticking forward, slightly fanned. Sells
+      // "rodent" in one glance.
+      { parent: 'rig', kind: 'cylinder', pos: [-0.045, -0.005, -0.35], rot: [-Math.PI / 2, 0,  0.5], radius: 0.001, radiusTop: 0.003, height: 0.08, segments: 4, mat: 'whisker' },
+      { parent: 'rig', kind: 'cylinder', pos: [-0.04,  -0.025, -0.35], rot: [-Math.PI / 2, 0,  0.3], radius: 0.001, radiusTop: 0.003, height: 0.08, segments: 4, mat: 'whisker' },
+      { parent: 'rig', kind: 'cylinder', pos: [ 0.045, -0.005, -0.35], rot: [-Math.PI / 2, 0, -0.5], radius: 0.001, radiusTop: 0.003, height: 0.08, segments: 4, mat: 'whisker' },
+      { parent: 'rig', kind: 'cylinder', pos: [ 0.04,  -0.025, -0.35], rot: [-Math.PI / 2, 0, -0.3], radius: 0.001, radiusTop: 0.003, height: 0.08, segments: 4, mat: 'whisker' },
+      // Four legs
       { parent: 'rig', kind: 'capsule', pos: [-0.07, -0.10, -0.10], radius: 0.022, height: 0.05, mat: 'body' },
       { parent: 'rig', kind: 'capsule', pos: [ 0.07, -0.10, -0.10], radius: 0.022, height: 0.05, mat: 'body' },
       { parent: 'rig', kind: 'capsule', pos: [-0.07, -0.10,  0.10], radius: 0.022, height: 0.05, mat: 'body' },
       { parent: 'rig', kind: 'capsule', pos: [ 0.07, -0.10,  0.10], radius: 0.022, height: 0.05, mat: 'body' },
-      // Tail
-      { parent: 'rig', kind: 'cylinder', pos: [0, 0, 0.28], rot: [Math.PI / 2, 0, 0], radius: 0.015, radiusTop: 0.005, height: 0.30, segments: 6, mat: 'body' },
+      // Tail — light jitter for irregular mangy look.
+      { parent: 'rig', kind: 'cylinder', pos: [0, 0, 0.28], rot: [Math.PI / 2, 0, 0], radius: 0.015, radiusTop: 0.005, height: 0.30, segments: 6, mat: 'body', jitter: 0.006 },
     ],
   };
 }
@@ -210,25 +259,43 @@ function quadrupedRatModel(bodyColor: number, eyeColor: number, eyeEmissive: num
 // projectile color. Reads at a glance: "thin dark figure with a glowing
 // stick — that one shoots."
 function acolyteModel(bodyColor: number, eyeColor: number, eyeEmissive: number, staffGlow: number): ModelSpec {
+  // Ritual caster. Robe gets heavy jitter (torn ceremonial fabric);
+  // body gets a faint green rim — the magic they channel illuminates
+  // them from within at the edges. 'chant' presence pulses the orb's
+  // emissive each frame so the staff feels alive even at rest.
   return {
     id: 'acolyte-caster',
     materials: {
-      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto', dissolvable: true },
+      body: {
+        color: bodyColor,
+        roughness: 0.95,
+        flatShading: 'auto',
+        // Subtle channelled-magic rim — same green family as the orb
+        // but desaturated so it reads as reflected glow, not the orb
+        // itself bleeding through the body.
+        rim: { color: 0x3a8060, power: 3.5, intensity: 0.6 },
+        dissolvable: true,
+      },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
-      robe: { color: 0x080a0e, roughness: 1.0, flatShading: 'auto', dissolvable: true },
+      robe: {
+        color: 0x080a0e,
+        roughness: 1.0,
+        flatShading: 'auto',
+        // Robe gets the same faint green rim as the body — keeps the
+        // overall silhouette outlined in the magic palette.
+        rim: { color: 0x224c3a, power: 3.5, intensity: 0.5 },
+        dissolvable: true,
+      },
       staff: { color: 0x1a140e, roughness: 0.9, flatShading: 'auto', dissolvable: true },
       orb: { color: 0x000000, emissive: staffGlow, emissiveIntensity: 2.6, roughness: 1.0 },
     },
     slots: {
       rig: { pos: [0, 0.85, 0] },
-      // Muzzle slot lives at the orb tip so projectiles can be spawned
-      // from there if we ever want to read it from a slot. We use the
-      // ranged.muzzleOffset for now since enemy.ts owns spawn timing.
       muzzle: { pos: [0.30, 1.20, -0.15] satisfies Vec3 },
     },
     parts: [
-      // Robed trailing tail — same trick as the wraith. Hides the absence
-      // of legs and gives a vertical silhouette.
+      // Robed trailing tail — torn fabric look via heavy jitter on the
+      // extruded silhouette.
       {
         kind: 'extrude', parent: 'rig',
         pos: [0, -0.55, 0],
@@ -238,38 +305,52 @@ function acolyteModel(bodyColor: number, eyeColor: number, eyeEmissive: number, 
         ],
         depth: 0.05,
         mat: 'robe',
+        jitter: 0.025,
       },
-      // Body — thin tall capsule, robe-colored (the acolyte's robe covers
-      // the body), parented to rig.
-      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0.05, 0], radius: 0.26, height: 0.85, mat: 'robe' },
-      // Head — sphere just above the body. Dark, mostly hidden under hood.
-      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, 0.75, 0], radius: 0.22, mat: 'body' },
-      // Hood — a cone tipped backward over the head. Adds the cultist read.
-      { parent: 'rig', kind: 'cone', pos: [0, 0.86, 0.02], radius: 0.30, height: 0.40, segments: 10, mat: 'robe' },
-      // Eyes — small mesh spheres deep under the hood, plus halo sprites
-      // for distance read (same dual-layer trick as wraith).
+      // Body — light jitter (the body is mostly hidden by robe; heavy
+      // jitter would distort the robe shape too).
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0.05, 0], radius: 0.26, height: 0.85, mat: 'robe', jitter: 0.012 },
+      // Head — slightly elongated, light jitter.
+      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, 0.75, 0], scale: [1, 1.10, 1], radius: 0.22, mat: 'body', jitter: 0.014 },
+      // Hood — cone with jitter so the fabric reads as crumpled/torn,
+      // not factory-made.
+      { parent: 'rig', kind: 'cone', pos: [0, 0.86, 0.02], radius: 0.30, height: 0.40, segments: 10, mat: 'robe', jitter: 0.020 },
+      // Eyes — small mesh spheres deep under the hood.
       { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.74, -0.20], radius: 0.035, segments: [12, 10], mat: 'eyes' },
       { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.74, -0.20], radius: 0.035, segments: [12, 10], mat: 'eyes' },
       { name: 'eyeHaloL', parent: 'rig', kind: 'sprite', pos: [-0.08, 0.74, -0.24], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
       { name: 'eyeHaloR', parent: 'rig', kind: 'sprite', pos: [ 0.08, 0.74, -0.24], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-      // Staff — held in the off hand. Long thin cylinder pre-rotated so it
-      // stands upright. Orb at the tip glows in the projectile color so the
-      // player can read "that staff is about to spit at me."
-      { parent: 'rig', kind: 'cylinder', pos: [0.30, 0.10, -0.05], radius: 0.025, height: 1.4, segments: 6, mat: 'staff' },
+      // Staff — thin, slight jitter for hand-carved feel.
+      { parent: 'rig', kind: 'cylinder', pos: [0.30, 0.10, -0.05], radius: 0.025, height: 1.4, segments: 6, mat: 'staff', jitter: 0.008 },
+      // Orb — clean (no jitter; magic geometry should look intentional).
       { parent: 'rig', kind: 'sphere', pos: [0.30, 0.80, -0.05], radius: 0.085, segments: [12, 10], mat: 'orb' },
-      // Halo around the orb so the projectile color reads at distance even
-      // when the lighting is dim.
+      // Halo around the orb so the projectile color reads at distance.
       { parent: 'rig', kind: 'sprite', pos: [0.30, 0.80, -0.05], size: [0.40, 0.40], texture: 'fire-wisp', blending: 'additive', color: staffGlow },
     ],
   };
 }
 
 function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
+  // Lean coiled predator. Medium jitter — too clean reads "stiff," too
+  // gnarled would step into ghoul territory. Faint amber rim catches
+  // light on the edges so it reads as taut sinew under skin, not the
+  // wraith's cold spectral glow.
   return {
     id: 'skirmisher-humanoid',
     materials: {
-      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto', dissolvable: true },
+      body: {
+        color: bodyColor,
+        roughness: 0.95,
+        flatShading: 'auto',
+        // Amber predator rim — much fainter than the wraith's so it
+        // doesn't read as supernatural. Just enough to keep the
+        // silhouette visible in dim corridors.
+        rim: { color: 0x9c6a3a, power: 3.5, intensity: 0.55 },
+        dissolvable: true,
+      },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
+      // Strap material — for crossed belts/sashes. Darker than skin.
+      strap: { color: 0x0d0a07, roughness: 1.0, flatShading: 'auto', dissolvable: true },
     },
     slots: {
       rig: { pos: [0, 0.65, 0] },
@@ -277,10 +358,33 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
       head_top: { pos: [0,    1.45, 0] satisfies Vec3 },
     },
     parts: [
-      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], radius: 0.28, height: 0.7, mat: 'body' },
-      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.55, 0], radius: 0.22, mat: 'body' },
-      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.58, -0.25], radius: 0.035, segments: [12, 10], mat: 'eyes' },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.58, -0.25], radius: 0.035, segments: [12, 10], mat: 'eyes' },
+      // Body — taller than ghoul, narrower. Slight asymmetric scale to
+      // suggest crouched-forward stance.
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], scale: [0.95, 1.05, 1.0], radius: 0.28, height: 0.7, mat: 'body', jitter: 0.014 },
+      // Crossed-belt sash via thin extruded strip. Sells "rough scavenged
+      // gear" without authoring a real costume.
+      { parent: 'rig', kind: 'extrude', pos: [0, 0.20, -0.27], rot: [0, 0, 0.6],
+        shape: [[-0.32, -0.03], [0.32, -0.03], [0.32, 0.03], [-0.32, 0.03]],
+        depth: 0.04, mat: 'strap' },
+      // Head — slightly forward of body axis, reads as craned-forward.
+      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.55, -0.04], scale: [0.95, 1.0, 1.05], radius: 0.22, mat: 'body', jitter: 0.013 },
+      // Shoulder humps (symmetric — unlike the ghoul, this thing is
+      // structurally balanced).
+      { parent: 'rig', kind: 'sphere', pos: [-0.25, 0.32, 0], radius: 0.14, segments: [12, 10], mat: 'body', jitter: 0.012 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.25, 0.32, 0], radius: 0.14, segments: [12, 10], mat: 'body', jitter: 0.012 },
+      // Arms — thin and long, held slightly forward (reads as ready to
+      // strike). Same length on both sides (symmetric predator).
+      { parent: 'rig', kind: 'capsule', pos: [-0.27, -0.05, 0.05], radius: 0.055, height: 0.50, mat: 'body', jitter: 0.012 },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.27, -0.05, 0.05], radius: 0.055, height: 0.50, mat: 'body', jitter: 0.012 },
+      // Fists — small.
+      { parent: 'rig', kind: 'sphere', pos: [-0.27, -0.32, 0.05], radius: 0.065, segments: [10, 8], mat: 'body', jitter: 0.010 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.27, -0.32, 0.05], radius: 0.065, segments: [10, 8], mat: 'body', jitter: 0.010 },
+      // Eyes — slightly larger than ghoul's, push the predator read.
+      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.58, -0.29], radius: 0.038, segments: [12, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.58, -0.29], radius: 0.038, segments: [12, 10], mat: 'eyes' },
+      // Eye halo — amber matches the rim. Subtle.
+      { parent: 'rig', kind: 'sprite', pos: [-0.08, 0.58, -0.32], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { parent: 'rig', kind: 'sprite', pos: [ 0.08, 0.58, -0.32], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
     ],
   };
 }
@@ -423,6 +527,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    presence: 'lurch',     // shambling lateral roll + shamble-step dip
     // Ghoul has decent eyes, moderate hearing. Wide cone — has to face you
     // generally to spot you, but the cone is forgiving.
     sightRange: 7,
@@ -454,6 +559,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',     // 'rig' slot — pre-rotated body rotates correctly when this tilts
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    presence: 'twitch',      // fast yaw micro-shudder + scurry bob
     // Rats hear / smell better than they see. Bad eyes, wide nose. Easy
     // to sneak past visually if you stay quiet, but step into the cone of
     // their hearing radius and they'll come.
@@ -484,6 +590,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    presence: 'coiled',      // taut shoulder bob + subtle weight shift
     // Skirmisher is a scout — best vision of the trash mobs. Tighter
     // cone (predator focus) and longer range. Bad hearing for sneak-up.
     sightRange: 9,
@@ -523,6 +630,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    presence: 'chant',       // slow side rock + orb emissive pulse
     // Best line-of-sight perception of any mob — they're casters, scanning
     // the room. Tight cone (they focus). Hearing radius small.
     sightRange: 11,
