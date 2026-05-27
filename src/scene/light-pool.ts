@@ -26,9 +26,12 @@ import * as THREE from 'three';
 
 export type LightCategory = 'lamp' | 'environment' | 'pickup';
 
+// Budgets per category. LOS-culling means only IN-ROOM sources can
+// reach a slot, so it's fine to give environment a generous budget —
+// the pool naturally caps to "lights you can see."
 const CATEGORY_SLOTS: Record<LightCategory, number> = {
   lamp: 1,
-  environment: 8,
+  environment: 10,
   pickup: 4,
 };
 
@@ -125,9 +128,18 @@ export function clearLightPool(): void {
 
 const tmpColor = new THREE.Color();
 
+/** Line-of-sight checker — provided each frame by the caller (main
+ *  loop pulls walkable.hasLineOfSight from the active level). Sources
+ *  whose XZ line to the camera is blocked by a wall get culled before
+ *  ranking: a torch in the next room is physically close but visually
+ *  useless (the wall absorbs every contribution to the player-side
+ *  surface anyway, via N·L). Without this, a through-wall torch could
+ *  hog a slot that an in-room torch wants. */
+export type LOSChecker = (ax: number, az: number, bx: number, bz: number) => boolean;
+
 /** Per-frame: bind the N nearest sources within each category to that
- *  category's slots. */
-export function tickLightPool(camera: THREE.Camera): void {
+ *  category's slots. losCheck (optional) culls through-wall sources. */
+export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void {
   if (slotsByCategory.environment.length === 0) return;
 
   const cx = camera.position.x;
@@ -150,6 +162,12 @@ export function tickLightPool(camera: THREE.Camera): void {
     // sneak in via hysteresis.
     const reach = src.distance + 2;
     if (dist2 > reach * reach) continue;
+    // LOS cull: if a wall separates this source from the camera, skip
+    // it. Lamp category bypasses LOS (it IS the camera; its own world
+    // pos sits at camera + offset, sometimes just inside a wall).
+    if (losCheck && src.category !== 'lamp') {
+      if (!losCheck(cx, cz, src.position.x, src.position.z)) continue;
+    }
     let sortKey = dist2;
     if (boundLastFrameByCategory[src.category].has(src.id)) sortKey -= HYSTERESIS_SQ;
     scratchByCategory[src.category].push({ src, sortKey });

@@ -398,7 +398,16 @@ function tick() {
   // PointLight slots. Runs every frame, regardless of world freeze —
   // the visible lighting must update with camera movement even during
   // hit-pause / menus.
-  tickLightPool(camera);
+  // LOS check culls through-wall sources from the slot ranking — a
+  // torch in the next room can't waste a slot even if its raw distance
+  // is small. The active level's walkable region carries the wall
+  // segments and the segment-vs-segment check.
+  const walkable = currentLevel?.walkable;
+  const los = walkable
+    ? (ax: number, az: number, bx: number, bz: number) =>
+        walkable.hasLineOfSight(ax, az, bx, bz)
+    : undefined;
+  tickLightPool(camera, los);
 
   renderWithStyle(renderer, scene, camera, style);
 
