@@ -1,5 +1,6 @@
 import type { Vault } from './vault';
 import { floorGlow } from './../content/light-props';
+import { BONFIRE } from '../content/bonfire';
 
 // Vault library — Pass A (variety) + Pass B (atmosphere).
 //
@@ -35,7 +36,9 @@ const FOYER_SMALL: Vault = {
   id: 'foyer-small',
   tags: ['start'],
   // 'S' centred in the room (was hugging the south edge — player
-  // spawned at the door instead of in the middle).
+  // spawned at the door instead of in the middle). Bonfire sits
+  // ~1.2m east of the spawn so the player sees its warm light
+  // on their right side as they appear.
   map: [
     '##########',
     '#..T...T.#',
@@ -47,6 +50,7 @@ const FOYER_SMALL: Vault = {
   ],
   props: [
     { kind: 'model', model: GLOW_WARM, x: 0, y: 0, z: 0 },
+    { kind: 'model', model: BONFIRE,   x: 0.8, y: 0, z: 0 },
   ],
 };
 
@@ -65,6 +69,9 @@ const FOYER_PILLAR: Vault = {
   ],
   props: [
     { kind: 'model', model: GLOW_WARM, x: 0, y: 0, z: 0 },
+    // Centred between the back pillars — bonfire as the room's
+    // visual anchor; spawn is two cells to its west.
+    { kind: 'model', model: BONFIRE,  x: 1.5, y: 0, z: 0.5 },
   ],
 };
 
@@ -82,6 +89,10 @@ const FOYER_ALCOVE: Vault = {
   ],
   props: [
     { kind: 'model', model: GLOW_AMBER, x: 0, y: 0, z: 0 },
+    // Tucked between the two corpses, north of the spawn — the
+    // player appears facing south and sees the bonfire glow off
+    // to their right rear.
+    { kind: 'model', model: BONFIRE,    x: 1.5, y: 0, z: -0.5 },
   ],
 };
 
