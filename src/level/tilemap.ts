@@ -69,6 +69,18 @@ export interface TileMapOptions {
   stairsTarget?: string;
   /** If set, props on stairs cells get this LevelSpec.id assigned. */
   floorId?: string;
+  /**
+   * Optional world-space offset applied to every position the parser
+   * produces. By default the map is centred on world origin (its
+   * (cols, rows) midpoint sits at (0, 0)); with an offset the SAME map
+   * is positioned at that offset instead. Used by the vault composer
+   * to stitch multiple maps into one floor.
+   */
+  offsetX?: number;
+  offsetZ?: number;
+  /** Override the room id assigned to spawns + the produced RoomSpec.
+   *  Defaults to 'main' for single-map floors. */
+  roomId?: string;
 }
 
 // TileMap type exported from level/types.ts so both tilemap + procgen share.
@@ -99,8 +111,11 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   const cols = Math.max(...map.map(r => r.length));
   const W = cols;
   const D = rows;
-  const originX = -W / 2;
-  const originZ = -D / 2;
+  const offsetX = opts.offsetX ?? 0;
+  const offsetZ = opts.offsetZ ?? 0;
+  const originX = -W / 2 + offsetX;
+  const originZ = -D / 2 + offsetZ;
+  const roomId = opts.roomId ?? 'main';
 
   // Helper: world center of cell (col, row).
   const cellCenter = (col: number, row: number) => ({
@@ -118,8 +133,8 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   // ── Room rect: single big bounding rect covering the map ──────────
   // (Walls inside it segment the space into "rooms" visually.)
   const room: RoomSpec = {
-    id: 'main',
-    rect: { x: 0, z: 0, w: W, d: D },
+    id: roomId,
+    rect: { x: offsetX, z: offsetZ, w: W, d: D },
     height: opts.roomHeight ?? 3.2,
   };
 
@@ -248,11 +263,11 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           });
           break;
         }
-        case 'G': spawns.push({ enemyId: 'ghoul',      x, z, roomId: 'main' }); break;
-        case 'R': spawns.push({ enemyId: 'rat',        x, z, roomId: 'main' }); break;
-        case 'K': spawns.push({ enemyId: 'skirmisher', x, z, roomId: 'main' }); break;
-        case 'W': spawns.push({ enemyId: 'wraith',     x, z, roomId: 'main' }); break;
-        case 'Y': spawns.push({ enemyId: 'acolyte',    x, z, roomId: 'main' }); break;
+        case 'G': spawns.push({ enemyId: 'ghoul',      x, z, roomId }); break;
+        case 'R': spawns.push({ enemyId: 'rat',        x, z, roomId }); break;
+        case 'K': spawns.push({ enemyId: 'skirmisher', x, z, roomId }); break;
+        case 'W': spawns.push({ enemyId: 'wraith',     x, z, roomId }); break;
+        case 'Y': spawns.push({ enemyId: 'acolyte',    x, z, roomId }); break;
         case '/': {
           if (opts.stairsTarget) {
             // Auto-orient: the stairs descend INTO the adjacent wall.
@@ -291,7 +306,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
             height: 2.6,
             hinge: 'a',
             swingDir: 1,
-            unlock: ch === 'O' ? { kind: 'cleared', roomIds: ['main'] } : undefined,
+            unlock: ch === 'O' ? { kind: 'cleared', roomIds: [roomId] } : undefined,
           });
           break;
         }

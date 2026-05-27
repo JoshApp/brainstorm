@@ -17,8 +17,19 @@
 // it calls generateFloor with the depth implied by the id ('depth-3').
 
 import type { LevelSpec, EnemySpawnSpec, TileMap } from './types';
-import { parseTileMap } from './tilemap';
-import { TEMPLATES } from './templates';
+import { composeFloor } from './vault-compose';
+import { VAULTS } from './vault-library';
+
+// Atmosphere palettes per depth cycle. The vault composer no longer
+// owns these (vaults are picked independently of mood); the procgen
+// just rotates the palette so consecutive floors feel different even
+// if they happen to share vault types.
+const PALETTES: Array<{ name: string; torchTint: number; fogColor: number }> = [
+  { name: 'The Old Refectory',  torchTint: 0xffaa55, fogColor: 0x140a05 },
+  { name: 'The Long Hall',       torchTint: 0xddc090, fogColor: 0x100c08 },
+  { name: 'The Pillar Maze',     torchTint: 0xa090ff, fogColor: 0x0a0815 },
+  { name: 'The Cistern',         torchTint: 0x66ccdd, fogColor: 0x05101a },
+];
 
 // Tiny seedable RNG (Mulberry32). 32-bit seed in, deterministic 0..1 floats.
 function rng(seed: number) {
@@ -99,7 +110,12 @@ function pickWeighted(rows: EnemyRoll[], rand: () => number): string {
 // Pre-process the template string to REPLACE 'X' and 'B' with rolled
 // enemy chars BEFORE parsing.
 
-function populateTemplate(template: TileMap, depth: number, rand: () => number): TileMap {
+/**
+ * Replace 'X' and 'B' tile chars with concrete enemy chars (G/R/K/W/Y)
+ * picked from depth-appropriate roll tables. Exported so the vault
+ * composer can call this per-vault before parseTileMap runs.
+ */
+export function populateTemplate(template: TileMap, depth: number, rand: () => number): TileMap {
   const table = rollTableFor(depth);
   const bossChar: Record<string, string> = { wraith: 'W' };
   const enemyChar: Record<string, string> = {
@@ -139,31 +155,30 @@ export function generateFloor(
   const seedForFloor = hashSeed(`floor-${depth}`, runSeed);
   const rand = rng(seedForFloor);
 
-  // Pick a template. Rotate through the library by depth so consecutive
-  // floors don't repeat. Within a single template, the populator's RNG
-  // makes the SAME template feel different across runs (different
-  // enemies rolled in 'X' slots).
-  const templateIdx = (depth - 1) % TEMPLATES.length;
-  const tmpl = TEMPLATES[templateIdx];
-
-  const populated = populateTemplate(tmpl.map, depth, rand);
+  // Pick a torch tint + fog tint per depth — cycles by depth so
+  // consecutive floors feel different. (Previously the tints rode on
+  // a single picked template; now the floor is composed of multiple
+  // vaults, so we choose ATMOSPHERE separately.)
+  const palette = PALETTES[(depth - 1) % PALETTES.length];
 
   const id = `depth-${depth}`;
-  const spec = parseTileMap(populated, {
+  // Compose: pick + chain vaults, run X→enemy substitution inside the
+  // composer, return a multi-room LevelSpec.
+  const spec = composeFloor(depth, rand, nextLevelId, {
     id,
-    displayName: `${romanize(depth)} — ${tmpl.name}`,
-    spawnYaw: tmpl.spawnYaw ?? 0,
-    roomHeight: tmpl.roomHeight ?? 3.2,
-    torchTint: tmpl.torchTint,
-    stairsTarget: nextLevelId,
+    displayName: `${romanize(depth)} — ${palette.name}`,
+    torchTint: palette.torchTint,
+    fogColor: palette.fogColor,
   });
-  spec.fogColor = tmpl.fogColor;
-  spec.depth = depth;
+  // Apply X→enemy substitution per spawn. parseTileMap doesn't handle
+  // 'X' itself (it's only in vault grids); the composer's spawn list
+  // already came back with 'X'-resolved enemies via the per-vault
+  // populate step above. (See composeFloor for the populateTemplate
+  // call on each vault's map.)
 
   // Modifier rolls per spawn — drives the difficulty system. The
   // deeper you go, the more often spawns get tagged with a modifier
-  // (and the more likely they stack two). Modifier ids must exist in
-  // src/content/modifiers.ts.
+  // (and the more likely they stack two).
   const modPool = ['fierce', 'swift', 'tough', 'withered', 'bloated'];
   const modChance = depth <= 2 ? 0
     : depth <= 4 ? 0.12
@@ -173,7 +188,6 @@ export function generateFloor(
     if (rand() < modChance) {
       const first = modPool[Math.floor(rand() * modPool.length)];
       s.modifiers = [first];
-      // At depth 8+, occasional second modifier stacked on top.
       if (depth >= 8 && rand() < 0.20) {
         const second = modPool[Math.floor(rand() * modPool.length)];
         if (second !== first) s.modifiers.push(second);
@@ -181,24 +195,21 @@ export function generateFloor(
     }
   }
 
-  // Stash decoration data on the spec; builder runs decorateFloor with
-  // its root group at build-time so InstancedMesh batches land in the
-  // right scene-graph spot.
-  spec.procgenDecor = {
-    grid: populated,
-    seed: seedForFloor,
-    tint: tmpl.torchTint ?? 0xffaa55,
-  };
+  // Decoration is skipped for vault-composed floors in V1 — the
+  // decorator's grid-based anchor system assumes a single contiguous
+  // tilemap. Per-vault decoration is a follow-up pass.
 
-  // Sanity: every generated floor must have a player spawn + a stairs.
-  // The template author is responsible for including 'S' and '/'.
+  // Sanity: every composed floor must contain a player spawn + a
+  // stairs. composeFloor's vault chain guarantees both by tag
+  // (start vault has 'S', exit/boss vault has '/'), but warn loudly
+  // if a vault library entry violates that contract.
   if (!hasSpawn(spec)) {
     // eslint-disable-next-line no-console
-    console.warn(`Template '${tmpl.name}' (depth ${depth}) lacks player spawn 'S'`);
+    console.warn(`Composed floor depth ${depth} lacks player spawn 'S'`);
   }
   if (spec.stairs?.length === 0) {
     // eslint-disable-next-line no-console
-    console.warn(`Template '${tmpl.name}' (depth ${depth}) lacks stairs '/'`);
+    console.warn(`Composed floor depth ${depth} lacks stairs '/'`);
   }
   return spec;
 }
@@ -219,13 +230,16 @@ function romanize(n: number): string {
   return out || 'I';
 }
 
-// Convenience used by tests / debug.
+// Convenience used by tests / debug — picks the first START vault and
+// returns its populated grid as a preview string. (The full floor
+// preview is harder now that floors are composed of multiple vaults;
+// this just spot-checks the X-enemy substitution math.)
 export function previewPopulated(depth: number, runSeed: number): string {
   const seedForFloor = hashSeed(`floor-${depth}`, runSeed);
   const rand = rng(seedForFloor);
-  const templateIdx = (depth - 1) % TEMPLATES.length;
-  const tmpl = TEMPLATES[templateIdx];
-  return populateTemplate(tmpl.map, depth, rand).join('\n');
+  const startVault = VAULTS.find((v) => v.tags.includes('start'));
+  if (!startVault) return '';
+  return populateTemplate(startVault.map, depth, rand).join('\n');
 }
 
 // Re-export TileMap typedef ergonomically.
