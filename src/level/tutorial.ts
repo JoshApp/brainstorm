@@ -31,9 +31,11 @@ export const TUTORIAL: LevelSpec = {
   // the deep dark.
   fogColor: 0x14100a,
 
-  // Player enters from the south end of a long narrow chamber, facing
-  // north toward the stairs at the far end.
-  startPos: { x: 0, z: 5.5, yaw: Math.PI },
+  // Player enters at the south end of a long narrow chamber, facing
+  // north (-Z) toward the stairs at the far end. yaw=0 leaves the
+  // camera's default-forward (-Z) untouched, so the descent is dead
+  // ahead on first frame.
+  startPos: { x: 0, z: 5.5, yaw: 0 },
 
   rooms: [
     {

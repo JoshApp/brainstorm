@@ -535,7 +535,15 @@ function applyState(saveData: ReturnType<typeof loadSave>) {
 
 function startRun(floorId: string, startDepth: number = 1) {
   loadInitialLevel(floorId, startDepth);
-  camera.position.set(currentLevel.playerSpawn.x, CONFIG.PLAYER_HEIGHT, currentLevel.playerSpawn.z);
+  // Resolve the spawn so an authored or procgen position that
+  // happens to overlap an obstacle (most commonly the stair
+  // footprint) gets nudged to the nearest free cell.
+  const resolved = currentLevel.walkable.resolveSpawn(
+    currentLevel.playerSpawn.x,
+    currentLevel.playerSpawn.z,
+    0.30,
+  );
+  camera.position.set(resolved.x, CONFIG.PLAYER_HEIGHT, resolved.z);
   camera.rotation.order = 'YXZ';
   camera.rotation.y = currentLevel.playerSpawn.yaw;
   camera.rotation.x = 0;

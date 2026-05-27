@@ -123,8 +123,18 @@ export function tickPendingLoad() {
   activeLevel = level;
   currentDepth += 1;
 
-  // Reposition player to new spawn.
-  camera.position.set(level.playerSpawn.x, CONFIG.PLAYER_HEIGHT, level.playerSpawn.z);
+  // Reposition player to new spawn — and resolve against the walkable
+  // region. Authored spawns are normally fine, but if a designer (or
+  // procgen) places the spawn inside an obstacle (e.g. on the new
+  // floor's stair footprint), this nudges the player to the nearest
+  // free spot so they don't start stuck. ~0.30m matches the typical
+  // player collision radius used elsewhere.
+  const resolved = level.walkable.resolveSpawn(
+    level.playerSpawn.x,
+    level.playerSpawn.z,
+    0.30,
+  );
+  camera.position.set(resolved.x, CONFIG.PLAYER_HEIGHT, resolved.z);
   camera.rotation.order = 'YXZ';
   camera.rotation.y = level.playerSpawn.yaw;
 

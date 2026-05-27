@@ -35,8 +35,10 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     // Warm dark — a touch warmer than the dungeon floors. Reads as
     // refuge without flipping to a brightly-lit room.
     fogColor: 0x1a0e08,
-    // Player enters at the south end, facing north toward the stairs.
-    startPos: { x: 0, z: 5.0, yaw: 0 },
+    // Player enters at the south end, facing north (-Z) toward the
+    // descent at the far end. Spawn pulled close to the south wall so
+    // there's zero chance of overlapping the stair footprint.
+    startPos: { x: 0, z: 5.5, yaw: 0 },
     rooms: [
       {
         id: 'safe-chamber',
@@ -47,55 +49,48 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     corridors: [],
 
     props: [
-      // ── STASH (west side, pulled inward so the player can circle it).
+      // ── STASH (west side, between spawn and altar).
       {
         kind: 'stash-chest',
-        x: -3.5, z: 0.0,
+        x: -3.5, z: 2.0,
         rotY: Math.PI / 2,   // face east (toward room centre)
       },
-      // Candles flanking the stash.
-      { kind: 'model', model: FLOOR_CANDLE, x: -3.5, y: 0, z: -1.0 },
-      { kind: 'model', model: FLOOR_CANDLE, x: -3.5, y: 0, z:  1.0 },
+      { kind: 'model', model: FLOOR_CANDLE, x: -3.5, y: 0, z: 1.0 },
+      { kind: 'model', model: FLOOR_CANDLE, x: -3.5, y: 0, z: 3.0 },
 
-      // ── FOUNTAIN (east side).
+      // ── FOUNTAIN (east side, mirror of stash).
       {
         kind: 'fountain',
-        x: 3.5, z: 0.0,
+        x: 3.5, z: 2.0,
         rotY: -Math.PI / 2,
       },
-      // Candles flanking the fountain.
-      { kind: 'model', model: FLOOR_CANDLE, x: 3.5, y: 0, z: -1.0 },
-      { kind: 'model', model: FLOOR_CANDLE, x: 3.5, y: 0, z:  1.0 },
+      { kind: 'model', model: FLOOR_CANDLE, x: 3.5, y: 0, z: 1.0 },
+      { kind: 'model', model: FLOOR_CANDLE, x: 3.5, y: 0, z: 3.0 },
 
-      // ── REST ALTAR (centre of the room) — small skull on stone for
-      // atmosphere. No interaction yet; just a focal point.
-      { kind: 'altar', x: 0, z: 0 },
-      { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.62, z: 0, rotY: 0.3 },
+      // ── REST ALTAR (centre of the room) — skull on stone, atmospheric.
+      { kind: 'altar', x: 0, z: -0.5 },
+      { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.62, z: -0.5, rotY: 0.3 },
 
-      // ── DESCENT STAIRS (north end). Stairs are pulled into the room
-      // so they don't sit flush against the back wall. The candles
-      // immediately south of the stairs frame the descent.
-      { kind: 'model', model: FLOOR_CANDLE, x: -1.4, y: 0, z: 1.8 },
-      { kind: 'model', model: FLOOR_CANDLE, x:  1.4, y: 0, z: 1.8 },
+      // Candles immediately south of the stair mouth — frame the descent.
+      { kind: 'model', model: FLOOR_CANDLE, x: -1.4, y: 0, z: -2.6 },
+      { kind: 'model', model: FLOOR_CANDLE, x:  1.4, y: 0, z: -2.6 },
 
-      // ── CENTRAL FLOOR GLOW — warm pool of light at the room centre.
-      { kind: 'model', model: SAFE_FLOOR_GLOW_CENTER, x: 0, y: 0, z: 0 },
-      // Secondary glow further north, between the rest altar and the
-      // stairs — guides the eye toward the egress.
-      { kind: 'model', model: SAFE_FLOOR_GLOW_NORTH, x: 0, y: 0, z: 2.4 },
+      // Warm floor glow near the spawn end + cool glow guiding north to
+      // the descent.
+      { kind: 'model', model: SAFE_FLOOR_GLOW_CENTER, x: 0, y: 0, z: 2.0 },
+      { kind: 'model', model: SAFE_FLOOR_GLOW_NORTH,  x: 0, y: 0, z: -2.5 },
     ],
 
     torches: [
-      // Six wall torches around the room. Warm tone everywhere except
-      // the stair-side accent which gets a cool blue to mark the
-      // descent (matches the moonbeam palette).
-      { x: -5.95, z: -4.0, height: 2.4, wall: 'W', colorTint: 0xffb070, intensityMul: 0.95 },
-      { x:  5.95, z: -4.0, height: 2.4, wall: 'E', colorTint: 0xffb070, intensityMul: 0.95 },
-      { x: -5.95, z:  0.5, height: 2.4, wall: 'W', colorTint: 0xffa860, intensityMul: 1.0 },
-      { x:  5.95, z:  0.5, height: 2.4, wall: 'E', colorTint: 0xffa860, intensityMul: 1.0 },
-      // Stair-flanking torches — cool blue.
-      { x: -5.95, z:  4.5, height: 2.4, wall: 'W', colorTint: 0x88aaff, intensityMul: 0.75 },
-      { x:  5.95, z:  4.5, height: 2.4, wall: 'E', colorTint: 0x88aaff, intensityMul: 0.75 },
+      // Six wall torches around the room. Cool blue accent flanks the
+      // descent stair at the NORTH end; warm orange everywhere else.
+      // Mirrored across the room's centre line.
+      { x: -5.95, z:  4.0, height: 2.4, wall: 'W', colorTint: 0xffb070, intensityMul: 0.95 },
+      { x:  5.95, z:  4.0, height: 2.4, wall: 'E', colorTint: 0xffb070, intensityMul: 0.95 },
+      { x: -5.95, z:  0.0, height: 2.4, wall: 'W', colorTint: 0xffa860, intensityMul: 1.0 },
+      { x:  5.95, z:  0.0, height: 2.4, wall: 'E', colorTint: 0xffa860, intensityMul: 1.0 },
+      { x: -5.95, z: -4.0, height: 2.4, wall: 'W', colorTint: 0x88aaff, intensityMul: 0.75 },
+      { x:  5.95, z: -4.0, height: 2.4, wall: 'E', colorTint: 0x88aaff, intensityMul: 0.75 },
     ],
 
     spawns: [],  // no enemies — this is the SAFE room
@@ -104,12 +99,12 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     stairs: [
       {
         id: `stairs-${id}-down`,
-        // Pulled away from the back wall — z=4.0 puts the stair's
-        // back end at z=6.56, leaving 0.44m of buffer to the room's
-        // back edge at z=7.0. No more "wall overhanging the stairs"
-        // — the wall sits well past the descent.
-        x: 0, z: 4.0,
-        rotY: 0,
+        // North end. rotY=π descends in -Z (further north into the
+        // back wall). Stair top at z=-3.5; footprint extends to
+        // z=-6.06 — 0.94m buffer to the back wall at z=-7. The
+        // descent is well clear of the player's south-end spawn.
+        x: 0, z: -3.5,
+        rotY: Math.PI,
         targetLevel: nextId,
       },
     ],
