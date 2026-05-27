@@ -39,53 +39,60 @@ export const MOONLIGHT_CRACK: ModelSpec = {
   },
 };
 
-// Floor glow: a luminous source built INTO the floor — cracked stone with
-// something glowing beneath, or phosphorescent fungus. Three layered parts
-// give it depth (vs the old single flat disc):
+// Floor glow: an ambient mood light that floods the room with a
+// coloured wash. NOT a tight spotlight — earlier passes used a
+// bright inner disc which read as "a glowing object" (eg. a relic
+// dropped on the floor). What we actually want here is "the air
+// in this chamber is tinted blue/green/etc" — a volumetric mood
+// register. So the layers are:
 //
-//   1. Wide outer halo decal — soft falloff, the "ambient pool"
-//   2. Bright inner disc — the "core" you read as the source
-//   3. Vertical ember plume sprite — a billboarded heat-haze pillar that
-//      reads from any angle as light rising from the floor
+//   1. Wide soft floor wash decal — dim, big, no clear edge
+//   2. Vertical haze column at chest height — reads as fog
+//      catching the tint
+//   3. Ceiling-level wash — large faint sprite suggesting the
+//      colour bouncing off the ceiling
 //
-// Plus the PointLight that does the actual room-illumination.
+// PointLight has lower intensity but much larger distance + a
+// softer decay so the colour reaches the walls without anywhere
+// being uncomfortably bright.
 export function floorGlow(tint: number = 0x6cc6e0): ModelSpec {
   const id = `floor-glow-${tint.toString(16)}`;
   return {
     id,
     materials: {},
     parts: [
-      // Layer 1: outer halo — wide soft falloff.
+      // Layer 1: wide floor wash — large, soft, no bright core.
+      // Bigger and dimmer than the old halo so the eye reads "the
+      // floor here is tinted" rather than "spotlight on floor".
       {
         kind: 'decal',
         pos: [0, 0.005, 0],
         rot: [-Math.PI / 2, 0, 0],
-        size: [2.2, 2.2],
+        size: [3.6, 3.6],
         texture: 'fire-wisp',
         color: tint,
         emissive: tint,
-        emissiveIntensity: 0.9,
+        emissiveIntensity: 0.45,
       },
-      // Layer 2: bright inner core — smaller, brighter, gives the eye an
-      // anchor "this is THE source" instead of an indistinct smear.
-      {
-        kind: 'decal',
-        pos: [0, 0.012, 0],
-        rot: [-Math.PI / 2, 0, 0],
-        size: [0.8, 0.8],
-        texture: 'fire-wisp',
-        color: tint,
-        emissive: tint,
-        emissiveIntensity: 2.4,
-      },
-      // Layer 3: vertical ember-plume sprite. Billboarded so it ALWAYS
-      // faces the camera, reads as a column of light/heat rising from
-      // the floor. Tinted with the same color and additively blended so
-      // it stays luminous through fog.
+      // Layer 2: chest-height haze column — a tall billboarded
+      // sprite catching the tint. From across the room this reads
+      // as "the air is glowing", a volumetric fog feel.
       {
         kind: 'sprite',
-        pos: [0, 0.45, 0],
-        size: [0.55, 0.9],
+        pos: [0, 1.10, 0],
+        size: [2.20, 2.40],
+        texture: 'fire-wisp',
+        color: tint,
+        blending: 'additive',
+      },
+      // Layer 3: ceiling-level wash — wide, short, low-opacity
+      // sprite implying the colour bouncing up. Visible above
+      // when the player looks up, peripheral when looking
+      // forward.
+      {
+        kind: 'sprite',
+        pos: [0, 2.60, 0],
+        size: [3.40, 1.20],
         texture: 'fire-wisp',
         color: tint,
         blending: 'additive',
@@ -93,10 +100,14 @@ export function floorGlow(tint: number = 0x6cc6e0): ModelSpec {
     ],
     light: {
       color: tint,
-      intensity: 22,              // bumped 18 → 22 for the brighter overall look
-      distance: 7.5,              // bumped 6.5 → 7.5
-      decay: 1.2,
-      pos: [0, 0.35, 0],
+      // Softer + wider than before: was intensity 22, distance
+      // 7.5, decay 1.2 — bright spot, tight pool. Now intensity
+      // 13, distance 13, decay 1.8 — the colour reaches all the
+      // way to the walls but no single spot is glaring.
+      intensity: 13,
+      distance: 13,
+      decay: 1.8,
+      pos: [0, 1.20, 0],          // raised from floor → chest height for room-wide wash
       castShadow: false,
     },
   };
