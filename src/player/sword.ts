@@ -50,6 +50,16 @@ export function createSword(camera: THREE.Camera): Sword {
         for (const m of mats) {
           m.depthTest = false;
           m.depthWrite = false;
+          // CRITICAL for the renderOrder to actually win against the
+          // world's transparent sprites (fountain shine, eye halos,
+          // moonbeams, etc.). Three.js renders opaque objects first,
+          // then transparent — within EACH pass renderOrder controls.
+          // An opaque sword with renderOrder 999 still renders BEFORE
+          // any transparent sprite, so sprites paint over it. Mark
+          // transparent (opacity stays 1, so visually identical) and
+          // the sword sorts into the transparent phase where 999 puts
+          // it last overall.
+          m.transparent = true;
           m.needsUpdate = true;
         }
         mesh.renderOrder = 999;

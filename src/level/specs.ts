@@ -1,5 +1,5 @@
 import type { LevelSpec } from './types';
-import { SCIMITAR_RELIC } from '../content/relics';
+import { ALTAR_SKULL } from '../content/relics';
 import { FLOOR_CANDLE } from '../content/candle';
 import { MOONLIGHT_CRACK, floorGlow } from '../content/light-props';
 import { ITEMS } from '../content/items';
@@ -119,11 +119,13 @@ export const LEVEL_1: LevelSpec = {
     { kind: 'pillar', x: 1.8, z: 2.2 },
     { kind: 'altar', x: 0, z: -2.8 },
     {
+      // Skull sitting on the altar — atmospheric, not interactable.
+      // Replaces the old scimitar-relic prop which looked like a
+      // pickup but wasn't, confusingly.
       kind: 'model',
-      model: SCIMITAR_RELIC,
-      x: 0, y: 0.56, z: -2.78,
-      rotX: -Math.PI / 2,
-      rotY: 0.6,
+      model: ALTAR_SKULL,
+      x: 0, y: 0.62, z: -2.78,
+      rotY: -0.25,
     },
     {
       kind: 'chest',

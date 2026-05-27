@@ -131,6 +131,10 @@ export function attachLamp(camera: THREE.Camera) {
       for (const m of mats) {
         m.depthTest = false;
         m.depthWrite = false;
+        // Sort into the transparent phase so renderOrder 998 actually
+        // wins against world-space transparent sprites — see the same
+        // pattern in sword.ts for the long version of why.
+        m.transparent = true;
         m.needsUpdate = true;
       }
       mesh.renderOrder = 998;  // just under the sword (999)

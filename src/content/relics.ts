@@ -85,3 +85,43 @@ export const SCIMITAR_RELIC: ModelSpec = {
     },
   ],
 };
+
+// ALTAR SKULL — a small primitive skull for the ritual chamber altar.
+// Bone sphere (cranium) with sunken eye sockets (small dark spheres
+// inset), a square nasal cavity, and a slab jaw under it. Lives at
+// the same scale as the old scimitar relic so it sits neatly on the
+// altar without geometry tweaks.
+export const ALTAR_SKULL: ModelSpec = {
+  id: 'altar-skull',
+  materials: {
+    bone: {
+      color: 0xa89880,
+      roughness: 0.95,
+      emissive: 0x1a1410,
+      emissiveIntensity: 0.35,
+      flatShading: 'auto',
+    },
+    socket: {
+      // Pitch dark — the sockets read as deep holes regardless of
+      // ambient lighting.
+      color: 0x000000,
+      roughness: 1.0,
+      emissive: 0x000000,
+    },
+  },
+  parts: [
+    // Cranium — slightly flattened sphere with small jitter so it
+    // doesn't read as a perfect ping-pong ball.
+    { name: 'cranium', kind: 'sphere', pos: [0, 0.08, 0], radius: 0.13, scale: [1.05, 0.95, 1.15], mat: 'bone', jitter: 0.010 },
+    // Eye sockets — small dark spheres recessed into the cranium front.
+    { kind: 'sphere', pos: [-0.055, 0.085, -0.105], radius: 0.034, mat: 'socket' },
+    { kind: 'sphere', pos: [ 0.055, 0.085, -0.105], radius: 0.034, mat: 'socket' },
+    // Nasal cavity — small dark box.
+    { kind: 'box', pos: [0, 0.025, -0.118], size: [0.025, 0.04, 0.02], mat: 'socket' },
+    // Jaw — wider flat slab under the cranium.
+    { name: 'jaw', kind: 'box', pos: [0, -0.05, -0.04], size: [0.18, 0.04, 0.12], mat: 'bone' },
+    // Cheek bones — thin extrusions giving a square jawline.
+    { kind: 'box', pos: [-0.09, -0.01, -0.045], size: [0.025, 0.05, 0.10], mat: 'bone' },
+    { kind: 'box', pos: [ 0.09, -0.01, -0.045], size: [0.025, 0.05, 0.10], mat: 'bone' },
+  ],
+};

@@ -40,7 +40,6 @@ import { isWorldPausedByScreen, isAnyScreenOpen } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
-import { PASSIVES } from './content/passives';
 import { setupPwaAutoUpdate } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
@@ -114,10 +113,10 @@ spawnEntity({
   kind: 'player',
   hp: { base: CONFIG.PLAYER_HP_MAX, current: CONFIG.PLAYER_HP_MAX },
   buffs: [],
-  // Reaper passive: kill an enemy → 2.7s of regen-pulse buff. Demonstrates
-  // the trigger → effect → buff → buff-tick-effect chain working end-to-end.
-  // Later this passive (or many like it) will come from equipped items.
-  passives: [PASSIVES.reaper],
+  // No intrinsic passives by default. Heal-on-kill / reaper-style
+  // effects belong on EQUIPMENT (ring of bloodthirst, etc.) so the
+  // baseline player has to earn their regen.
+  passives: [],
 });
 initTriggerListener('player');
 
