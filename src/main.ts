@@ -209,6 +209,14 @@ const input = createTouchInput(canvas, {
     // later; ignoring is fine for V1.
     return false;
   },
+  onInteract() {
+    // E key (or future gamepad confirm) — use the currently in-range
+    // interactable, no screen position needed. Same gate as the tap
+    // path: not during dying or open screens.
+    if (isDying() || isAnyScreenOpen()) return;
+    const inRange = getInRangeInteractable();
+    if (inRange) inRange.onUse();
+  },
 });
 // Floating world-anchored interact label only — the corner USE button
 // was removed. Interaction is now diegetic: tap the object directly
