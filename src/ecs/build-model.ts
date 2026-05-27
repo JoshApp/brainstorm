@@ -109,14 +109,17 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
     case 'sphere': {
       const segs = part.segments ?? [16, 12];
       const geo = new THREE.SphereGeometry(part.radius, segs[0], segs[1]);
+      jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'box': {
       const geo = new THREE.BoxGeometry(part.size[0], part.size[1], part.size[2]);
+      jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'capsule': {
       const geo = new THREE.CapsuleGeometry(part.radius, part.height, 4, 12);
+      jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'cylinder': {
@@ -126,20 +129,24 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
         part.height,
         part.segments ?? 12,
       );
+      jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'torus': {
       const segs = part.segments ?? [10, 8];
       const geo = new THREE.TorusGeometry(part.radius, part.tube, segs[1], segs[0]);
+      jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'cone': {
       const geo = new THREE.ConeGeometry(part.radius, part.height, part.segments ?? 12);
+      jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'lathe': {
       const pts = part.profile.map((p) => new THREE.Vector2(p[0], p[1]));
       const geo = new THREE.LatheGeometry(pts, part.segments ?? 12);
+      jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'extrude': {
@@ -160,6 +167,7 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
       // Center the extrusion on its origin (ExtrudeGeometry extrudes from z=0
       // to z=depth; shift back by half so `pos` means the part's center).
       geo.translate(0, 0, -part.depth / 2);
+      jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'sprite': {
@@ -211,4 +219,46 @@ function applyTransform(obj: THREE.Object3D, part: PartSpec) {
   if (part.pos) obj.position.fromArray(part.pos as Vec3);
   if (part.rot) obj.rotation.fromArray(part.rot as Vec3);
   if (part.scale) obj.scale.fromArray(part.scale as Vec3);
+}
+
+/**
+ * Per-vertex jitter. Coincident vertices (those at the same logical
+ * position in the original geometry) move together — without bucketing
+ * we'd tear seams in capsule caps, sphere poles, and ExtrudeGeometry
+ * edges. Each part gets a fresh random pattern at construction time, so
+ * two ghouls spawned next to each other are visibly distinct without
+ * any per-instance authoring.
+ *
+ * Runs ONCE at build, not per-frame. Recomputes normals so flat-shaded
+ * materials don't get smooth highlights leftover from the pre-jitter
+ * positions.
+ */
+function jitterGeometry(geo: THREE.BufferGeometry, amp: number | undefined): void {
+  if (!amp || amp <= 0) return;
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const arr = pos.array as Float32Array;
+  // Bucket by rounded position (1mm precision) so neighbors that started
+  // at the same point land on the same offset.
+  const buckets = new Map<string, [number, number, number]>();
+  const key = (x: number, y: number, z: number): string =>
+    `${Math.round(x * 1000)},${Math.round(y * 1000)},${Math.round(z * 1000)}`;
+  for (let i = 0; i < arr.length; i += 3) {
+    const k = key(arr[i], arr[i + 1], arr[i + 2]);
+    if (!buckets.has(k)) {
+      buckets.set(k, [
+        (Math.random() - 0.5) * 2 * amp,
+        (Math.random() - 0.5) * 2 * amp,
+        (Math.random() - 0.5) * 2 * amp,
+      ]);
+    }
+  }
+  for (let i = 0; i < arr.length; i += 3) {
+    const k = key(arr[i], arr[i + 1], arr[i + 2]);
+    const off = buckets.get(k)!;
+    arr[i + 0] += off[0];
+    arr[i + 1] += off[1];
+    arr[i + 2] += off[2];
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
 }

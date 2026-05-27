@@ -53,6 +53,16 @@ interface PartCommon {
   castShadow?: boolean;
   /** Receive shadows? Default true for solid meshes, false for sprites. */
   receiveShadow?: boolean;
+  /**
+   * Vertex jitter amplitude in meters. If > 0, each vertex of the
+   * generated geometry is perturbed by a per-position random offset of
+   * magnitude up to this value. Coincident vertices move together so
+   * the surface stays watertight. Builds in once at construction —
+   * costs nothing per frame. Use for organic / gnarled silhouettes
+   * (zombies, ghosts, horrors) where clean primitive surfaces feel
+   * too perfect.
+   */
+  jitter?: number;
 }
 
 export type PartSpec =

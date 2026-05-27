@@ -103,6 +103,15 @@ export interface EnemySpec {
    * apply, carried by the projectile.
    */
   ranged?: RangedSpec;
+
+  // --- Presence ---
+  /**
+   * Optional continuous animation overlay applied each frame on top of
+   * the per-state animation. 'spectral' = slow vertical bob + micro yaw
+   * sway (sells "floating ghost" — used by wraiths). Phase is randomized
+   * per-instance so a pair of wraiths drift out of sync.
+   */
+  presence?: 'spectral';
 }
 
 export interface DropEntry {
@@ -281,54 +290,97 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
 // physical armor entirely (only magic-armor reduces). Pairs with the bone
 // amulet's magic-armor passive as a real soft-counter.
 function wraithModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
+  // Spectral palette tuned for "soft ghost glow at body edges" — emissive
+  // ramped up so the silhouette reads in shadow, color shifted slightly
+  // cooler than the previous teal.
   return {
     id: 'wraith',
     materials: {
       body: {
         color: bodyColor,
         roughness: 0.95,
-        emissive: 0x223a48,         // faint cool glow — looks spectral
-        emissiveIntensity: 0.35,
+        emissive: 0x2a4a5c,
+        emissiveIntensity: 0.55,
         flatShading: 'auto',
       },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
       robe: {
-        // Trailing robe — even darker than the body so the wraith looks
-        // anchored below by shadow.
-        color: 0x080d12,
+        color: 0x070b10,
         roughness: 1.0,
+        flatShading: 'auto',
+      },
+      // 'bone' — used for the gnarled arms + claw tips. Paler than the
+      // body to read as exposed bone reaching out of the robe sleeves.
+      bone: {
+        color: 0x4a4338,
+        roughness: 1.0,
+        emissive: 0x1a1810,
+        emissiveIntensity: 0.4,
         flatShading: 'auto',
       },
     },
     slots: {
-      // 'rig' sits HIGHER than other enemies (0.9m vs the ghoul's 0.8m) so
-      // the wraith visibly floats — feet should be off the floor.
-      rig: { pos: [0, 0.95, 0] },
+      // 'rig' sits HIGHER than other enemies so the wraith visibly floats —
+      // feet should be off the floor. The presence-tick adds a slow bob
+      // on top of this baseline.
+      rig: { pos: [0, 1.05, 0] },
     },
     parts: [
-      // Robed trailing tail underneath — a thin elongated extruded shape
-      // anchored at the wraith's bottom, creating the "ghost trailing"
-      // silhouette. Parented to rig so it lifts/tilts during windup.
+      // OUTER AURA — large additive sprite behind everything else. Reads
+      // as "this thing has presence beyond its physical body." Cool teal
+      // matches the body emissive. Big enough to bloom outside the
+      // silhouette, low enough alpha that it doesn't wash the room.
+      { parent: 'rig', kind: 'sprite', pos: [0, 0.20, 0.05], size: [1.7, 2.2], texture: 'fire-wisp', blending: 'additive', color: 0x224058 },
+
+      // ROBE TAIL — wider, more irregular silhouette than the original
+      // (note the asymmetric points — left side shorter, right side
+      // ragged). Heavy jitter on the extrude vertices gives torn-fabric
+      // edges that vary per-instance.
       {
         kind: 'extrude', parent: 'rig',
-        pos: [0, -0.5, 0],
+        pos: [0, -0.55, 0],
         shape: [
-          [-0.20, 0.5], [-0.28, 0.0], [-0.18, -0.35], [-0.06, -0.45],
-          [ 0.06, -0.45], [ 0.18, -0.35], [ 0.28, 0.0], [ 0.20, 0.5],
+          [-0.22, 0.55], [-0.34, 0.10], [-0.30, -0.20], [-0.22, -0.45], [-0.08, -0.55],
+          [ 0.04, -0.50], [ 0.16, -0.58], [ 0.28, -0.35], [ 0.34, -0.05], [ 0.30, 0.25], [ 0.22, 0.55],
         ],
-        depth: 0.04,
+        depth: 0.06,
         mat: 'robe',
+        jitter: 0.035,
       },
-      // Main body — tall capsule, parented to rig.
-      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0.05, 0], radius: 0.30, height: 0.80, mat: 'body' },
-      // Head — sphere, slightly elongated by scale.
-      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, 0.75, 0], scale: [1, 1.15, 1], radius: 0.24, mat: 'body' },
-      // Eye sphere meshes + halo sprites — same dual-layer pattern as ghoul
-      // so they read at any distance.
+
+      // BODY — tall capsule, jittered so the surface looks gnarled rather
+      // than a polished pill. Slight horizontal scale so it's not a perfect
+      // cylinder of revolution; reads more like robed shoulders.
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0.05, 0], scale: [1.05, 1, 1], radius: 0.30, height: 0.80, mat: 'body', jitter: 0.035 },
+
+      // SHOULDER HUMPS — small spheres jutting out at the shoulders to
+      // break the cylindrical body silhouette. Each one gets independent
+      // jitter so the two shoulders aren't symmetric.
+      { parent: 'rig', kind: 'sphere', pos: [-0.30, 0.40, 0.02], radius: 0.16, segments: [12, 10], mat: 'body', jitter: 0.025 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.30, 0.40, 0.02], radius: 0.16, segments: [12, 10], mat: 'body', jitter: 0.025 },
+
+      // ARMS — long thin capsules hanging from the shoulders. "Spindly,"
+      // not muscular. The bone material reads paler so they pop against
+      // the dark body. Heavy jitter twists them into gnarled limbs.
+      { parent: 'rig', kind: 'capsule', pos: [-0.32, -0.05, 0.06], radius: 0.045, height: 0.55, mat: 'bone', jitter: 0.020 },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.32, -0.05, 0.06], radius: 0.045, height: 0.55, mat: 'bone', jitter: 0.020 },
+
+      // CLAW TIPS — small jittered spheres at the bottom of each arm so
+      // the silhouette ends in something pointy rather than rounded.
+      { parent: 'rig', kind: 'sphere', pos: [-0.34, -0.42, 0.06], radius: 0.055, segments: [10, 8], mat: 'bone', jitter: 0.025 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.34, -0.42, 0.06], radius: 0.055, segments: [10, 8], mat: 'bone', jitter: 0.025 },
+
+      // HEAD — sphere with vertical scale + jitter. Used to be a clean
+      // ovoid; now it's a gnarled skull-ish shape unique to each instance.
+      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, 0.75, 0], scale: [1, 1.18, 1], radius: 0.24, mat: 'body', jitter: 0.030 },
+
+      // EYE SPHERES + HALO SPRITES — same dual-layer pattern as before
+      // (mesh for close-up, sprite for distance). Slightly bigger halos
+      // since the rest of the model grew.
       { parent: 'rig', kind: 'sphere', pos: [-0.10, 0.78, -0.30], radius: 0.06, segments: [12, 10], mat: 'eyes' },
       { parent: 'rig', kind: 'sphere', pos: [ 0.10, 0.78, -0.30], radius: 0.06, segments: [12, 10], mat: 'eyes' },
-      { name: 'eyeHaloL', parent: 'rig', kind: 'sprite', pos: [-0.10, 0.78, -0.34], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-      { name: 'eyeHaloR', parent: 'rig', kind: 'sprite', pos: [ 0.10, 0.78, -0.34], size: [0.22, 0.22], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { name: 'eyeHaloL', parent: 'rig', kind: 'sprite', pos: [-0.10, 0.78, -0.34], size: [0.26, 0.26], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { name: 'eyeHaloR', parent: 'rig', kind: 'sprite', pos: [ 0.10, 0.78, -0.34], size: [0.26, 0.26], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
     ],
   };
 }
@@ -501,6 +553,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
+    presence: 'spectral',       // continuous bob + sway so it never reads as a statue
     // Wraith sees ECHO of you — basically supernatural perception. Long
     // range, wide cone, but small hearing radius (no body to feel
     // footsteps). Long lose-sight: it follows even if you break LOS.

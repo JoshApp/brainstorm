@@ -246,6 +246,13 @@ export function createEnemy(
   }
   rollWindupTime();
 
+  // Presence — continuous animation overlay applied each frame on top of
+  // the per-state animation. Per-instance phase offset so two wraiths in
+  // the same room drift out of sync. Cost = 2 sin() per wraith per frame.
+  const presence = spec.presence;
+  const presencePhase = Math.random() * Math.PI * 2;
+  let presenceTime = 0;
+
   /**
    * Apply incoming damage. Takes a DamageEvent and routes through the
    * pipeline (computes final after this enemy's armor for the type),
@@ -645,6 +652,20 @@ export function createEnemy(
         }
         break;
       }
+    }
+
+    // ── Presence overlay ─────────────────────────────────────────────
+    // Applied AFTER the state animation so it stacks on whatever the
+    // state set (e.g. winding's 0.10*t lift gets a bob on top — looks
+    // like the wraith levitates higher as it rears up).
+    if (presence === 'spectral') {
+      presenceTime += dt;
+      const t = presenceTime + presencePhase;
+      // Slow vertical bob, ±10cm.
+      built.group.position.y += Math.sin(t * 1.7) * 0.10;
+      // Micro yaw sway — the head doesn't sit perfectly still on the
+      // body. Small enough not to break the lookAt-at-player feel.
+      container.rotation.y += Math.sin(t * 0.9) * 0.05;
     }
   }
 
