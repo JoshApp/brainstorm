@@ -208,7 +208,9 @@ export function composeFloor(
       offsetX: pv.offsetX,
       offsetZ: pv.offsetZ,
       roomId: pv.roomId,
-      torchTint: opts.torchTint,
+      // Per-vault override wins over the act default — the
+      // tonal mood of a chamber comes from its torches.
+      torchTint: pv.vault.torchTint ?? opts.torchTint,
       stairsTarget: nextLevelId,
       roomHeight: pv.vault.roomHeight,
       spawnYaw: pv.vault.tags.includes('start') ? Math.PI : undefined,

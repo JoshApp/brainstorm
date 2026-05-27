@@ -39,71 +39,53 @@ export const MOONLIGHT_CRACK: ModelSpec = {
   },
 };
 
-// Floor glow: ambient mood for a room. NOT a spotlight or a
-// volumetric fog wall — earlier attempts produced a billboarded
-// sprite at chest height that read as a "fireball" obscuring the
-// view ahead. What works instead:
+// Floor glow: ambient mood. Earlier passes tried to make this
+// the primary "room is tinted" lever via a bright PointLight +
+// bright floor decal — but that read as "spotlight on the floor"
+// and competed with fountains, altars, anything else that wanted
+// to anchor the eye in the room centre.
 //
-//   1. Wide soft floor wash decal — dim, big, no bright core.
-//      The colour "stains" the floor.
-//   2. A handful of tiny scattered ember motes hanging in the
-//      air around the source. Small enough that no single one
-//      blocks vision, additive so they only ADD colour, never
-//      obscure. Their offsets break the always-camera-facing
-//      sprite illusion so the room feels like it has particulate
-//      material in the air.
-//
-// The PointLight does the heavy "room flooded with colour" work —
-// it's lower intensity but much larger distance + soft decay so
-// the tint reaches the walls without any one spot being glaring.
+// New model: floorGlow is JUST a handful of additive specks of
+// dust hanging in the air around its anchor, plus a very soft
+// fill light that tints nearby surfaces. The actual room mood
+// (warm vs cold vs sickly green) comes from per-vault TORCH
+// tinting now. floorGlow's role is the local accent — a hint of
+// colour over a specific prop (an altar, a chest pile) — not the
+// room's lighting register.
 export function floorGlow(tint: number = 0x6cc6e0): ModelSpec {
   const id = `floor-glow-${tint.toString(16)}`;
-  // Small additive motes scattered around the source. Each is a
-  // billboard but they sit at varied positions/sizes so the eye
-  // reads "specks of glowing dust in the air" rather than "wall
-  // of haze". Authored in a small grid pattern with jittered
-  // sizes for organic feel.
+  // Small additive motes scattered around the source. Tiny enough
+  // that they read as "dust in the air catching the light"
+  // rather than as a glowing object on the floor.
   const motes: Array<{ pos: [number, number, number]; size: [number, number] }> = [
-    { pos: [-0.6,  0.45,  0.2], size: [0.30, 0.34] },
-    { pos: [ 0.5,  0.30, -0.4], size: [0.26, 0.30] },
-    { pos: [ 0.3,  0.85,  0.5], size: [0.22, 0.26] },
-    { pos: [-0.4,  1.20, -0.3], size: [0.28, 0.32] },
-    { pos: [ 0.1,  1.70,  0.0], size: [0.20, 0.24] },
-    { pos: [-0.2,  2.20,  0.3], size: [0.18, 0.22] },
+    { pos: [-0.6,  0.45,  0.2], size: [0.22, 0.26] },
+    { pos: [ 0.5,  0.30, -0.4], size: [0.18, 0.22] },
+    { pos: [ 0.3,  0.85,  0.5], size: [0.16, 0.20] },
+    { pos: [-0.4,  1.20, -0.3], size: [0.20, 0.24] },
+    { pos: [ 0.1,  1.70,  0.0], size: [0.14, 0.18] },
+    { pos: [-0.2,  2.20,  0.3], size: [0.12, 0.16] },
   ];
   return {
     id,
     materials: {},
-    parts: [
-      // Wide soft floor wash — colour stain on the ground.
-      {
-        kind: 'decal',
-        pos: [0, 0.005, 0],
-        rot: [-Math.PI / 2, 0, 0],
-        size: [3.6, 3.6],
-        texture: 'fire-wisp',
-        color: tint,
-        emissive: tint,
-        emissiveIntensity: 0.45,
-      },
-      // Scattered ember motes. Additive so they layer subtly with
-      // the room torchlight and fog instead of stacking into an
-      // opaque wall.
-      ...motes.map((m) => ({
-        kind: 'sprite' as const,
-        pos: m.pos,
-        size: m.size,
-        texture: 'fire-wisp',
-        color: tint,
-        blending: 'additive' as const,
-      })),
-    ],
+    parts: motes.map((m) => ({
+      kind: 'sprite' as const,
+      pos: m.pos,
+      size: m.size,
+      texture: 'fire-wisp',
+      color: tint,
+      blending: 'additive' as const,
+    })),
     light: {
       color: tint,
-      intensity: 13,
-      distance: 13,
-      decay: 1.8,
-      pos: [0, 1.20, 0],
+      // Subtle, broad, raised. Doesn't ANCHOR the room — just
+      // tints whatever's already in it. Was intensity 13 / dist 13
+      // / decay 1.8; now much softer + wider so the colour
+      // suffuses without any spot being bright.
+      intensity: 6,
+      distance: 14,
+      decay: 2.2,
+      pos: [0, 2.0, 0],
       castShadow: false,
     },
   };

@@ -54,4 +54,13 @@ export interface Vault {
   weight?: number;
   /** Optional ceiling height override (m). */
   roomHeight?: number;
+  /**
+   * Optional per-vault torch tint override. When set, torches
+   * mounted on this vault's walls use this colour instead of
+   * the act default. Cheap way to vary room mood: a treasure
+   * chamber can burn warm gold even inside an act whose default
+   * torches are cool blue. The TONAL register of a room comes
+   * from its torches, not from a floor spotlight.
+   */
+  torchTint?: number;
 }

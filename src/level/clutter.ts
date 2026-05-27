@@ -60,6 +60,16 @@ export function scatterClutter(spec: LevelSpec, rand: () => number): void {
     .filter((p) => 'x' in p && 'z' in p)
     .map((p) => ({ x: p.x as number, z: p.z as number }));
 
+  // Wall-mounted torches sit ~0.18m off the wall plane. Wall
+  // buttresses / wall piles / wall damage all extend into the
+  // room from the same wall — if we don't tell the clutter pass
+  // about torches, a buttress can spawn directly on top of one,
+  // burying the sconce inside the stone column. Treat torch
+  // positions as occupied points for the tooClose checks.
+  for (const t of spec.torches) {
+    existing.push({ x: t.x, z: t.z });
+  }
+
   // Stair footprints + room rects come from the shared
   // geometry-cull module so wall-opening / floor-cut logic stays
   // consistent across the clutter pass and the composer's torch

@@ -1,5 +1,4 @@
 import type { Vault } from './vault';
-import { floorGlow } from './../content/light-props';
 import { BONFIRE } from '../content/bonfire';
 
 // Vault library — Pass A (variety) + Pass B (atmosphere).
@@ -20,15 +19,22 @@ import { BONFIRE } from '../content/bonfire';
 // The composer translates them to world space when stitching the
 // floor.
 
-// Floor-glow models scoped per vault so atmospheric tints stay
-// per-room (a warm-tinted treasure room can sit inside a cool act).
-const GLOW_WARM   = floorGlow(0xffb070);
-const GLOW_AMBER  = floorGlow(0xffa050);
-const GLOW_COOL   = floorGlow(0x80aacc);
-const GLOW_GREEN  = floorGlow(0x70d090);
-const GLOW_BLOOD  = floorGlow(0xff4030);
-const GLOW_VIOLET = floorGlow(0xa080ff);
-const GLOW_GOLD   = floorGlow(0xffd060);
+// Per-vault torch tint constants. The room's MOOD comes from
+// these now, not from a floor-glow spotlight: a treasure chamber
+// burns warm gold even in the cool Cistern act; a ritual cell
+// burns deep red; an antechamber stays pale and watchful.
+const TORCH_WARM   = 0xffb070;
+const TORCH_AMBER  = 0xffa050;
+const TORCH_PALE   = 0xa8c0d8;
+const TORCH_GREEN  = 0x70d090;
+const TORCH_BLOOD  = 0xff5040;
+const TORCH_VIOLET = 0xa080ff;
+const TORCH_GOLD   = 0xffd060;
+
+// floorGlow is retained for prop-group internals (the soft accent
+// glow at the foot of an altar etc) — see prop-groups.ts. Vault
+// entries themselves no longer drop a glow per chamber; they set
+// `torchTint` instead so the wall torches do the colouring.
 
 // ── START vaults ──────────────────────────────────────────────────
 
@@ -49,9 +55,10 @@ const FOYER_SMALL: Vault = {
     '##########',
   ],
   props: [
-    { kind: 'model', model: GLOW_WARM, x: 0, y: 0, z: 0 },
-    { kind: 'model', model: BONFIRE,   x: 0.8, y: 0, z: 0 },
+    { kind: 'model', model: BONFIRE, x: 0.8, y: 0, z: 0 },
   ],
+  // Bonfire is the warm anchor — no extra glow needed.
+  torchTint: TORCH_WARM,
 };
 
 const FOYER_PILLAR: Vault = {
@@ -68,11 +75,11 @@ const FOYER_PILLAR: Vault = {
     '############',
   ],
   props: [
-    { kind: 'model', model: GLOW_WARM, x: 0, y: 0, z: 0 },
     // Centred between the back pillars — bonfire as the room's
     // visual anchor; spawn is two cells to its west.
-    { kind: 'model', model: BONFIRE,  x: 1.5, y: 0, z: 0.5 },
+    { kind: 'model', model: BONFIRE, x: 1.5, y: 0, z: 0.5 },
   ],
+  torchTint: TORCH_WARM,
 };
 
 const FOYER_ALCOVE: Vault = {
@@ -88,12 +95,12 @@ const FOYER_ALCOVE: Vault = {
     '############',
   ],
   props: [
-    { kind: 'model', model: GLOW_AMBER, x: 0, y: 0, z: 0 },
     // Tucked between the two corpses, north of the spawn — the
     // player appears facing south and sees the bonfire glow off
     // to their right rear.
-    { kind: 'model', model: BONFIRE,    x: 1.5, y: 0, z: -0.5 },
+    { kind: 'model', model: BONFIRE, x: 1.5, y: 0, z: -0.5 },
   ],
+  torchTint: TORCH_AMBER,
 };
 
 // ── COMBAT vaults ─────────────────────────────────────────────────
@@ -128,9 +135,7 @@ const COMBAT_PILLARS: Vault = {
     '#....T....T..#',
     '##############',
   ],
-  props: [
-    { kind: 'model', model: GLOW_VIOLET, x: 0, y: 0, z: 0 },
-  ],
+  torchTint: TORCH_VIOLET,
 };
 
 const COMBAT_CHOKE: Vault = {
@@ -178,16 +183,17 @@ const COMBAT_HALL: Vault = {
     { kind: 'group', groupId: 'ritual-circle', x: 0, z: 0 },
     { kind: 'group', groupId: 'bone-shrine',   x: -5, z: -5 },
     { kind: 'group', groupId: 'bone-shrine',   x:  5, z:  5 },
-    { kind: 'model', model: GLOW_VIOLET, x: -3, y: 0, z: -2 },
-    { kind: 'model', model: GLOW_VIOLET, x:  3, y: 0, z:  2 },
   ],
+  // Ritual-circle group already has its own focal glow + the
+  // bone-shrines colour the corners. Wall torches push violet.
+  torchTint: TORCH_VIOLET,
 };
 
 const COMBAT_ARENA: Vault = {
   id: 'combat-arena',
   tags: ['combat'],
   // Open chamber, ritual feel: altar in the centre with X mobs
-  // around it. Blood-red floor tint sets the tone.
+  // around it. Blood-red wall torches set the tone — no spotlight.
   map: [
     '##############',
     '#....T....T..#',
@@ -204,9 +210,7 @@ const COMBAT_ARENA: Vault = {
   ],
   minDepth: 2,
   weight: 1,
-  props: [
-    { kind: 'model', model: GLOW_BLOOD, x: 0, y: 0, z: 0 },
-  ],
+  torchTint: TORCH_BLOOD,
 };
 
 const COMBAT_DOORS: Vault = {
@@ -243,9 +247,7 @@ const TREASURE_ALTAR: Vault = {
     '#...X....#',
     '##########',
   ],
-  props: [
-    { kind: 'model', model: GLOW_GOLD, x: 0, y: 0, z: 0 },
-  ],
+  torchTint: TORCH_GOLD,
 };
 
 const TREASURE_CACHE: Vault = {
@@ -261,9 +263,7 @@ const TREASURE_CACHE: Vault = {
     '########',
   ],
   minDepth: 3,
-  props: [
-    { kind: 'model', model: GLOW_GOLD, x: 0, y: 0, z: 0 },
-  ],
+  torchTint: TORCH_GOLD,
 };
 
 const TREASURE_VAULT: Vault = {
@@ -289,8 +289,8 @@ const TREASURE_VAULT: Vault = {
   weight: 1,
   props: [
     { kind: 'group', groupId: 'altar-ritual', x: 0, z: 0 },
-    { kind: 'model', model: GLOW_GOLD, x: 0, y: 0, z: 0 },
   ],
+  torchTint: TORCH_GOLD,
 };
 
 // ── ENCOUNTER vaults (non-combat) ────────────────────────────────
@@ -299,8 +299,8 @@ const ENCOUNTER_FOUNTAIN: Vault = {
   id: 'encounter-fountain',
   tags: ['encounter'],
   // Fountain in the centre with its shrine group (flanking candles +
-  // bone glow). The tile-based 'F' inside the room is replaced by
-  // the group's float-positioned fountain so we can rotate it.
+  // bone glow). The group's own glow + candles set the focal mood;
+  // wall torches push pale-cyan to match the basin.
   map: [
     '##########',
     '#..T.....#',
@@ -313,8 +313,8 @@ const ENCOUNTER_FOUNTAIN: Vault = {
   ],
   props: [
     { kind: 'group', groupId: 'fountain-shrine', x: 0, z: 0 },
-    { kind: 'model', model: GLOW_COOL, x: 0, y: 0, z: 0 },
   ],
+  torchTint: TORCH_PALE,
 };
 
 const ENCOUNTER_CORPSES: Vault = {
@@ -336,9 +336,7 @@ const ENCOUNTER_CORPSES: Vault = {
     '############',
   ],
   minDepth: 2,
-  props: [
-    { kind: 'model', model: GLOW_GREEN, x: 0, y: 0, z: 0 },
-  ],
+  torchTint: TORCH_GREEN,
 };
 
 const ENCOUNTER_RITUAL: Vault = {
@@ -359,9 +357,9 @@ const ENCOUNTER_RITUAL: Vault = {
   ],
   minDepth: 3,
   weight: 1,
+  torchTint: TORCH_GREEN,
   props: [
     { kind: 'group', groupId: 'ritual-circle', x: 0, z: 0 },
-    { kind: 'model', model: GLOW_GREEN, x: 0, y: 0, z: 0 },
   ],
 };
 
@@ -386,9 +384,7 @@ const BOSS_ANTECHAMBER: Vault = {
     '#############',
   ],
   minDepth: 3,
-  props: [
-    { kind: 'model', model: GLOW_BLOOD, x: 0, y: 0, z: 0 },
-  ],
+  torchTint: TORCH_BLOOD,
 };
 
 const BOSS_CATHEDRAL: Vault = {
@@ -417,10 +413,7 @@ const BOSS_CATHEDRAL: Vault = {
   ],
   minDepth: 7,
   weight: 1,
-  props: [
-    { kind: 'model', model: GLOW_BLOOD, x: 0, y: 0, z: -2 },
-    { kind: 'model', model: GLOW_VIOLET, x: 0, y: 0, z: 2 },
-  ],
+  torchTint: TORCH_BLOOD,
 };
 
 // ── EXIT vaults ───────────────────────────────────────────────────
@@ -430,6 +423,7 @@ const EXIT_SIMPLE: Vault = {
   tags: ['exit'],
   // '/' is INSIDE the walkable interior with an adjacent '#'
   // neighbour, so auto-rotation lands the descent against the wall.
+  // The stair's own moonbeam + outline does the colour-anchor work.
   map: [
     '##########',
     '#..T.....#',
@@ -438,9 +432,7 @@ const EXIT_SIMPLE: Vault = {
     '#........#',
     '##########',
   ],
-  props: [
-    { kind: 'model', model: GLOW_COOL, x: 0, y: 0, z: 0 },
-  ],
+  torchTint: TORCH_PALE,
 };
 
 const EXIT_ALCOVE: Vault = {
@@ -454,9 +446,7 @@ const EXIT_ALCOVE: Vault = {
     '#......../.#',
     '############',
   ],
-  props: [
-    { kind: 'model', model: GLOW_COOL, x: 0, y: 0, z: 0.5 },
-  ],
+  torchTint: TORCH_PALE,
 };
 
 const EXIT_GRAND: Vault = {
@@ -477,9 +467,7 @@ const EXIT_GRAND: Vault = {
     '##############',
   ],
   minDepth: 3,
-  props: [
-    { kind: 'model', model: GLOW_COOL, x: 0, y: 0, z: 2 },
-  ],
+  torchTint: TORCH_PALE,
 };
 
 export const VAULTS: Vault[] = [
