@@ -179,25 +179,47 @@ export function createTouchInput(canvas: HTMLCanvasElement, options: TouchInputO
   });
 
   let mouseDown = false;
+  let mouseStartX = 0;
+  let mouseStartY = 0;
+  let mouseStartTime = 0;
+  let mouseMovement = 0;
   let lastMouseX = 0;
   let lastMouseY = 0;
   canvas.addEventListener('mousedown', (e) => {
     mouseDown = true;
+    mouseStartX = e.clientX;
+    mouseStartY = e.clientY;
+    mouseStartTime = performance.now();
+    mouseMovement = 0;
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
     dismissHint();
   });
-  canvas.addEventListener('mouseup', () => {
+  canvas.addEventListener('mouseup', (e) => {
     mouseDown = false;
+    // Mouse-tap equivalent to touch-tap: short contact + little drift.
+    // Routes through the same onTap callback so desktop dev can click
+    // on objects to interact, just like phone players tap.
+    const elapsed = performance.now() - mouseStartTime;
+    if (elapsed < TAP_MAX_MS && mouseMovement < TAP_MAX_PX) {
+      const side: 'left' | 'right' = e.clientX < screenMid() ? 'left' : 'right';
+      const consumed = options.onTap?.(e.clientX, e.clientY, side) ?? false;
+      if (!consumed && side === 'right') triggerAttack();
+    }
   });
   canvas.addEventListener('mousemove', (e) => {
     if (mouseDown) {
-      state.lookDx += e.clientX - lastMouseX;
-      state.lookDy += e.clientY - lastMouseY;
+      const ddx = e.clientX - lastMouseX;
+      const ddy = e.clientY - lastMouseY;
+      state.lookDx += ddx;
+      state.lookDy += ddy;
+      mouseMovement += Math.hypot(ddx, ddy);
       lastMouseX = e.clientX;
       lastMouseY = e.clientY;
     }
   });
+  // Suppress an unused-warning for vars set by tap detection on touch.
+  void mouseStartX; void mouseStartY;
 
   // Keyboard movement (desktop only)
   function pollKeyboard() {

@@ -41,13 +41,12 @@ import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
 import { PASSIVES } from './content/passives';
 import { setupPwaAutoUpdate } from './pwa-update';
-import { tickInteractables, getInRangeInteractable, pressUse, getAllInteractables } from './interactables/system';
+import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { initLightPool, tickLightPool } from './scene/light-pool';
 import { updateOutline } from './interactables/outline';
-import { createUseButton, setUseButtonVisible, setInteractAction, consumeUsePressed } from './controls/use-button';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar, updateHpBar } from './ui/hp-bar';
@@ -211,7 +210,9 @@ const input = createTouchInput(canvas, {
     return false;
   },
 });
-createUseButton();
+// Floating world-anchored interact label only — the corner USE button
+// was removed. Interaction is now diegetic: tap the object directly
+// (handled by tap-target raycast in the touch input handler).
 ensureInteractLabel();
 createConsumableBar();
 // Backdrop and HUD-hide are now owned by the screen manager — created
@@ -357,8 +358,6 @@ function tick() {
 
     // Tick active buffs on all entities (heal-over-time, future DoTs, etc.)
     tickAllBuffs(scaledDt);
-
-    if (!isDying() && consumeUsePressed()) pressUse();
   }
 
   // Interact tick + UI run OUTSIDE the freeze gate so the in-range
@@ -370,14 +369,11 @@ function tick() {
   camera.getWorldDirection(forwardScratch);
   const interactDt = (isFrozen() || isWorldFrozen() || isWorldPausedByScreen()) ? 0 : scaledDt;
   tickInteractables(interactDt, camera.position, forwardScratch);
-  // Hide the interact button while any screen is open — even non-pausing
-  // screens (none exist yet, but if we add a passive overlay we don't
-  // want it stealing taps from the world.
+  // Determine the current in-range interactable. Hidden while any screen
+  // is open so the label doesn't poke through a panel's backdrop.
   const inRange = (isDying() || isAnyScreenOpen()) ? null : getInRangeInteractable();
-  setInteractAction(inRange ? inRange.promptLabel : null);
-  setUseButtonVisible(!!inRange);
-  // Floating world-anchored label over the interactable — diegetic
-  // secondary cue alongside the corner button. Updated each frame so
+  // Floating world-anchored label over the interactable — the SOLE
+  // interact UI now. Updated each frame so
   // it tracks the target as camera moves.
   updateInteractLabel(inRange, camera, canvas);
   // Outline highlight on the in-range interactable. realDt (not scaled)
