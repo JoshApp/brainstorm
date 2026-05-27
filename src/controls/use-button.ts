@@ -62,8 +62,11 @@ export function createUseButton() {
     position: 'fixed',
     left: 'calc(20px + env(safe-area-inset-left, 0px))',
     bottom: 'calc(132px + env(safe-area-inset-bottom, 0px))',
-    minWidth: '110px',
-    height: '64px',
+    // Smaller + more subtle now that the floating world-anchored label
+    // (src/ui/interact-label.ts) is the primary in-view cue. Corner
+    // button remains as a comfortable fallback tap target.
+    minWidth: '88px',
+    height: '52px',
     padding: '0 18px 0 12px',
     display: 'flex',
     alignItems: 'center',

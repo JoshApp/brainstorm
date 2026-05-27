@@ -48,6 +48,7 @@ import { initPickupLightPool } from './interactables/pickup';
 import { initLightPool, tickLightPool } from './scene/light-pool';
 import { updateOutline } from './interactables/outline';
 import { createUseButton, setUseButtonVisible, setInteractAction, consumeUsePressed } from './controls/use-button';
+import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar, updateHpBar } from './ui/hp-bar';
 import { createBuffBar, updateBuffBar } from './ui/buff-bar';
@@ -211,6 +212,7 @@ const input = createTouchInput(canvas, {
   },
 });
 createUseButton();
+ensureInteractLabel();
 createConsumableBar();
 // Backdrop and HUD-hide are now owned by the screen manager — created
 // lazily when the first screen that needs them opens.
@@ -361,6 +363,10 @@ function tick() {
   const inRange = (isDying() || isAnyScreenOpen()) ? null : getInRangeInteractable();
   setInteractAction(inRange ? inRange.promptLabel : null);
   setUseButtonVisible(!!inRange);
+  // Floating world-anchored label over the interactable — diegetic
+  // secondary cue alongside the corner button. Updated each frame so
+  // it tracks the target as camera moves.
+  updateInteractLabel(inRange, camera, canvas);
   // Outline highlight on the in-range interactable. realDt (not scaled)
   // so the pulse animates at real-time even during hit-pause / scenarios.
   updateOutline(inRange, realDt);

@@ -9,35 +9,38 @@ let knob: HTMLDivElement | null = null;
 function ensureElements() {
   if (base && knob) return;
 
+  // Subtle look — both ring and knob carry low alpha + thin strokes.
+  // Earlier iteration was thicker / brighter; visible under the thumb
+  // but distracting in the corner of the eye. Phone players don't need
+  // the joystick to ANNOUNCE itself; they need just enough to confirm
+  // their touch landed and how far it's drifted.
   base = document.createElement('div');
   base.id = 'joystick-base';
   Object.assign(base.style, {
     position: 'fixed',
-    width: '180px',
-    height: '180px',
-    border: '2px solid rgba(255, 200, 140, 0.25)',
+    width: '160px',
+    height: '160px',
+    border: '1px solid rgba(255, 200, 140, 0.18)',
     borderRadius: '50%',
     pointerEvents: 'none',
     display: 'none',
     transform: 'translate(-50%, -50%)',
     zIndex: '10',
-    boxShadow: '0 0 24px rgba(0,0,0,0.6) inset',
   });
 
   knob = document.createElement('div');
   knob.id = 'joystick-knob';
   Object.assign(knob.style, {
     position: 'fixed',
-    width: '60px',
-    height: '60px',
-    background: 'rgba(255, 200, 140, 0.35)',
-    border: '1px solid rgba(255, 200, 140, 0.6)',
+    width: '36px',
+    height: '36px',
+    background: 'rgba(255, 200, 140, 0.18)',
+    border: '1px solid rgba(255, 200, 140, 0.45)',
     borderRadius: '50%',
     pointerEvents: 'none',
     display: 'none',
     transform: 'translate(-50%, -50%)',
     zIndex: '11',
-    boxShadow: '0 0 12px rgba(255, 170, 85, 0.4)',
   });
 
   document.body.appendChild(base);

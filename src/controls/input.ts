@@ -66,7 +66,13 @@ export function createTouchInput(canvas: HTMLCanvasElement, options: TouchInputO
 
   showFirstTimeHint();
 
-  const screenMid = () => window.innerWidth / 2;
+  // Boundary between the LEFT (move) zone and the RIGHT (look + attack)
+  // zone. Earlier this was 50/50; in playtest the move zone barely
+  // needed half the screen but right-side look/attack felt cramped on a
+  // phone, especially when reaching for an enemy or interactable on the
+  // right edge. Move now gets ~40%, right gets ~60%.
+  const LEFT_ZONE_FRACTION = 0.4;
+  const screenMid = () => window.innerWidth * LEFT_ZONE_FRACTION;
 
   function handleStart(e: TouchEvent) {
     for (const t of Array.from(e.changedTouches)) {
