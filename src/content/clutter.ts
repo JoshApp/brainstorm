@@ -114,6 +114,109 @@ export const WALL_PILE: ModelSpec = {
   ],
 };
 
+// Bigger corner mound — same family as CORNER_MOUND but taller and
+// wider, dominates the corner. One per chamber max, biased to
+// large rooms. Reads as "the corner collapsed in on itself."
+export const CORNER_MOUND_LARGE: ModelSpec = {
+  id: 'corner-mound-large',
+  materials: {
+    silt: { color: 0x342a20, roughness: 1.0, flatShading: true },
+  },
+  parts: [
+    { kind: 'box', pos: [-0.25, 0.10, -0.25], size: [1.45, 0.20, 1.45], rot: [0,  0.15, 0], mat: 'silt', jitter: 0.08 },
+    { kind: 'box', pos: [-0.45, 0.30, -0.45], size: [0.95, 0.22, 0.95], rot: [0, -0.4,  0], mat: 'silt', jitter: 0.09 },
+    { kind: 'box', pos: [-0.58, 0.50, -0.58], size: [0.60, 0.20, 0.60], rot: [0,  0.7,  0], mat: 'silt', jitter: 0.07 },
+    { kind: 'box', pos: [-0.65, 0.65, -0.65], size: [0.30, 0.12, 0.30], rot: [0, -0.9,  0], mat: 'silt', jitter: 0.05 },
+    {
+      kind: 'decal',
+      pos: [-0.25, 0.21, -0.25],
+      rot: [-Math.PI / 2, 0, 0.3],
+      size: [1.55, 1.55],
+      texture: 'fire-wisp',
+      color: 0x1f1810,
+    },
+  ],
+};
+
+// Small corner mound — flatter and rougher, like dust + small
+// chunks settled in a corner that nothing big fell into. The
+// scatter pass picks between the three sizes per corner.
+export const CORNER_MOUND_SMALL: ModelSpec = {
+  id: 'corner-mound-small',
+  materials: {
+    silt: { color: 0x3a2f24, roughness: 1.0, flatShading: true },
+  },
+  parts: [
+    { kind: 'box', pos: [-0.10, 0.04, -0.10], size: [0.70, 0.08, 0.70], rot: [0,  0.3, 0], mat: 'silt', jitter: 0.04 },
+    { kind: 'box', pos: [-0.22, 0.10, -0.22], size: [0.32, 0.08, 0.32], rot: [0, -0.5, 0], mat: 'silt', jitter: 0.05 },
+    {
+      kind: 'decal',
+      pos: [-0.10, 0.085, -0.10],
+      rot: [-Math.PI / 2, 0, 0.1],
+      size: [0.85, 0.85],
+      texture: 'fire-wisp',
+      color: 0x251c12,
+    },
+  ],
+};
+
+// ── Architectural deformers ──────────────────────────────────────
+// These are the "break up the rectangle" props. Floor-to-ceiling
+// geometry that reads as STRUCTURAL (not debris) — buttresses
+// supporting a wall, broken-off columns where a colonnade used
+// to be. They cast shadows from torches, which is the real eye-
+// catcher: the wall stops being a flat plane and starts having
+// pockets of light + dark.
+
+// Wall buttress — a stone column attached to a wall, full height.
+// Reads as engineering: the room originally needed structural
+// support, the supports are still there even though everything
+// else fell. Authored at HEIGHT 3.2m to match the default room
+// height; placement code shrinks Y scale per-room as needed.
+// Sticks out ~0.55m from its wall, runs 0.85m wide along the wall.
+export const WALL_BUTTRESS: ModelSpec = {
+  id: 'wall-buttress',
+  materials: {
+    stone: { color: 0x2a241c, roughness: 1.0, metalness: 0.0, flatShading: true },
+  },
+  parts: [
+    // Main body — slightly inset from floor so the buttress reads
+    // as a thicker column with a base; flat on the wall side (local
+    // -Z is the wall) and rounded outward.
+    { kind: 'box', pos: [0,    1.60, -0.10], size: [0.85, 3.20, 0.55], mat: 'stone' },
+    // Capital block at the top — slightly wider, suggests a load-
+    // bearing capstone.
+    { kind: 'box', pos: [0,    3.05, -0.05], size: [1.00, 0.25, 0.70], mat: 'stone' },
+    // Base block — wider at the floor, reinforces "structural."
+    { kind: 'box', pos: [0,    0.18, -0.05], size: [1.00, 0.36, 0.70], mat: 'stone' },
+    // Vertical groove down the face — single thin box recessed in
+    // the front, gives shadow + readability.
+    { kind: 'box', pos: [0,    1.60,  0.16], size: [0.10, 2.40, 0.04], mat: 'stone' },
+  ],
+};
+
+// Ruined column stub — chest-high broken column standing in open
+// floor. Reads as the surviving base of a colonnade. Stable cylinder
+// with a jagged-box top suggesting a snapped column. Stands ~1.4m
+// tall so it's chest-height to a player — visible across the room
+// but doesn't block view.
+export const RUINED_COLUMN: ModelSpec = {
+  id: 'ruined-column',
+  materials: {
+    stone: { color: 0x2e2820, roughness: 1.0, flatShading: true },
+  },
+  parts: [
+    // Base — wider square plinth.
+    { kind: 'box',      pos: [0, 0.12, 0],  size: [0.62, 0.24, 0.62], mat: 'stone' },
+    // Shaft — cylinder.
+    { kind: 'cylinder', pos: [0, 0.78, 0],  radius: 0.22, height: 1.10, segments: 12, mat: 'stone' },
+    // Jagged broken top — three offset chunks. Reads as snap.
+    { kind: 'box', pos: [-0.08, 1.36, 0.06], size: [0.28, 0.16, 0.20], rot: [0,  0.4, 0.15], mat: 'stone', jitter: 0.04 },
+    { kind: 'box', pos: [ 0.10, 1.30, -0.05], size: [0.22, 0.12, 0.16], rot: [0, -0.7, -0.1], mat: 'stone', jitter: 0.04 },
+    { kind: 'box', pos: [ 0.02, 1.42, -0.10], size: [0.16, 0.10, 0.14], rot: [0,  1.2, 0.05], mat: 'stone', jitter: 0.03 },
+  ],
+};
+
 // Splintered wooden plank set — the remains of a busted crate or
 // door. Two long pieces + a couple of shorter chips.
 export const BROKEN_PLANKS: ModelSpec = {

@@ -1,8 +1,9 @@
 import type { LevelSpec, PropSpec, RoomSpec } from './types';
 import {
-  RUBBLE_CHUNK, BONE_PILE, BROKEN_PLANKS, ASH_MOUND, STONE_SHARDS,
+  RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS,
   FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE,
-  CORNER_MOUND, WALL_PILE,
+  CORNER_MOUND, CORNER_MOUND_LARGE, CORNER_MOUND_SMALL,
+  WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN,
 } from '../content/clutter';
 
 // Clutter scatter pass.
@@ -26,8 +27,23 @@ import {
 // Overlap avoidance: every new prop checks a generous radius
 // against existing props + stair footprints.
 
-const FLOOR_DEBRIS = [RUBBLE_CHUNK, BONE_PILE, BROKEN_PLANKS, ASH_MOUND, STONE_SHARDS];
+// Floor debris pool — kept to chunky stone-family props. The
+// earlier bone-piles and broken-planks read as noisy "branches"
+// from a distance; pulled them out so the eye latches on the
+// bigger silhouettes (wall piles, corner mounds, buttresses)
+// instead of getting busy at floor level.
+const FLOOR_DEBRIS = [RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS];
 const WALL_DAMAGE = [WALL_SCORCH, WALL_GOUGE];
+
+// Corner mound variants — picked weighted per corner so the big
+// version is rare but the small/medium read as the default. Big
+// mounds dominate one corner of a chamber; small ones fill the
+// other corners more subtly.
+const CORNER_MOUND_VARIANTS: Array<{ model: typeof CORNER_MOUND; weight: number }> = [
+  { model: CORNER_MOUND_SMALL, weight: 5 },
+  { model: CORNER_MOUND,       weight: 4 },
+  { model: CORNER_MOUND_LARGE, weight: 1 },
+];
 
 interface PlacedPoint {
   x: number;
@@ -206,12 +222,55 @@ function decorateRect(
     { x: maxX - 0.45, z: maxZ - 0.45, rotY: Math.PI,
       nearOpening: nearOpeningOnEither(openS, openE, maxX - 0.45, maxZ - 0.45) },
   ];
+  // Up to ONE large mound per chamber — the others stay small/
+  // medium so a single corner reads as the "collapsed" focal point.
+  let largeUsed = false;
   for (const c of corners) {
     if (c.nearOpening) continue;
     if (rand() > 0.55) continue;
     if (tooClose(c.x, c.z, 0.7)) continue;
-    out.push({ kind: 'model', model: CORNER_MOUND, x: c.x, y: 0, z: c.z, rotY: c.rotY });
+    const variant = pickCornerVariant(rand, largeUsed);
+    if (variant === CORNER_MOUND_LARGE) largeUsed = true;
+    out.push({ kind: 'model', model: variant, x: c.x, y: 0, z: c.z, rotY: c.rotY });
     existing.push({ x: c.x, z: c.z });
+  }
+
+  // ── Wall buttresses ─────────────────────────────────────────────
+  // Structural columns attached to a wall, floor-to-ceiling. These
+  // are the biggest single change to room silhouette — they cast
+  // shadows across the floor from torches, so the wall stops
+  // reading as one flat plane. Big rooms get 1-2, small ones get
+  // none (a buttress in a tiny room eats too much floor space).
+  const buttressCount = area >= 60 ? 2 : area >= 30 ? 1 : 0;
+  for (let i = 0; i < buttressCount; i++) {
+    placeWallAttached(
+      WALL_BUTTRESS, /*depth*/ 0.30, /*alongHalf*/ 0.7,
+      rect, openN, openS, openE, openW, tooClose, out, existing, rand,
+    );
+  }
+
+  // ── Ruined column stubs ────────────────────────────────────────
+  // Free-standing chest-high broken column. Placed in open floor
+  // (not against a wall) — reads as a colonnade that mostly fell.
+  // Adds vertical break + a navigation obstacle the player has to
+  // path around. Rare in small rooms.
+  const columnCount = area >= 80 ? 2 : area >= 40 ? 1 : 0;
+  for (let i = 0; i < columnCount; i++) {
+    for (let a = 0; a < 8; a++) {
+      const p = centreSampler();
+      // Keep clear of walls — columns mid-room read better.
+      if (p.x < minX + 1.4 || p.x > maxX - 1.4) continue;
+      if (p.z < minZ + 1.4 || p.z > maxZ - 1.4) continue;
+      if (tooClose(p.x, p.z, 1.2)) continue;
+      out.push({
+        kind: 'model',
+        model: RUINED_COLUMN,
+        x: p.x, y: 0, z: p.z,
+        rotY: rand() * Math.PI * 2,
+      });
+      existing.push({ x: p.x, z: p.z });
+      break;
+    }
   }
 
   // Wall piles — slump against a wall, lean into the room. Skip
@@ -394,4 +453,102 @@ function shuffled<T>(arr: T[], rand: () => number): T[] {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+/** Weighted-pick a corner mound variant. If a large mound has
+ *  already been placed in this chamber, drop it from the pool —
+ *  one big collapse focal point per room reads better than four. */
+function pickCornerVariant(
+  rand: () => number,
+  largeUsed: boolean,
+): typeof CORNER_MOUND {
+  const pool = largeUsed
+    ? CORNER_MOUND_VARIANTS.filter((v) => v.model !== CORNER_MOUND_LARGE)
+    : CORNER_MOUND_VARIANTS;
+  const total = pool.reduce((s, v) => s + v.weight, 0);
+  let r = rand() * total;
+  for (const v of pool) {
+    r -= v.weight;
+    if (r <= 0) return v.model;
+  }
+  return pool[pool.length - 1].model;
+}
+
+/** Place a wall-attached prop on a random wall, biasing to mid-
+ *  segments (away from openings + corners). The prop is positioned
+ *  with its "wall" side against the chosen wall surface; rotY
+ *  rotates the model so its authored -Z (wall-facing side) points
+ *  back into the wall, with the model body protruding into the
+ *  room by `depth` metres.
+ *
+ *  Used for the buttress (full-height structural column). The
+ *  position lifts off the wall by `depth/2` so the model's half-
+ *  thickness sits in the wall and the rest pokes into the room. */
+function placeWallAttached(
+  model: typeof WALL_BUTTRESS,
+  depth: number,
+  alongHalf: number,
+  rect: { x: number; z: number; w: number; d: number },
+  openN: Opening[],
+  openS: Opening[],
+  openE: Opening[],
+  openW: Opening[],
+  tooClose: (x: number, z: number, d: number) => boolean,
+  out: PropSpec[],
+  existing: PlacedPoint[],
+  rand: () => number,
+): void {
+  const minX = rect.x - rect.w / 2;
+  const maxX = rect.x + rect.w / 2;
+  const minZ = rect.z - rect.d / 2;
+  const maxZ = rect.z + rect.d / 2;
+  for (let a = 0; a < 10; a++) {
+    const wall = Math.floor(rand() * 4);
+    // Sample inside the wall span, leaving alongHalf metres of
+    // clearance from each corner.
+    let x = 0, z = 0, rotY = 0;
+    let blocked = false;
+    switch (wall) {
+      case 0: { // W
+        z = minZ + alongHalf + rand() * Math.max(0, rect.d - 2 * alongHalf);
+        if (inOpeningRange(z, openW)) { blocked = true; break; }
+        x = minX + depth / 2 + 0.02;
+        rotY = -Math.PI / 2;
+        break;
+      }
+      case 1: { // E
+        z = minZ + alongHalf + rand() * Math.max(0, rect.d - 2 * alongHalf);
+        if (inOpeningRange(z, openE)) { blocked = true; break; }
+        x = maxX - depth / 2 - 0.02;
+        rotY = Math.PI / 2;
+        break;
+      }
+      case 2: { // N
+        x = minX + alongHalf + rand() * Math.max(0, rect.w - 2 * alongHalf);
+        if (inOpeningRange(x, openN)) { blocked = true; break; }
+        z = minZ + depth / 2 + 0.02;
+        rotY = 0;
+        break;
+      }
+      default: { // S
+        x = minX + alongHalf + rand() * Math.max(0, rect.w - 2 * alongHalf);
+        if (inOpeningRange(x, openS)) { blocked = true; break; }
+        z = maxZ - depth / 2 - 0.02;
+        rotY = Math.PI;
+        break;
+      }
+    }
+    if (blocked) continue;
+    if (tooClose(x, z, 1.2)) continue;
+    out.push({ kind: 'model', model, x, y: 0, z, rotY });
+    existing.push({ x, z });
+    return;
+  }
+}
+
+function inOpeningRange(pos: number, openings: Opening[]): boolean {
+  for (const o of openings) {
+    if (pos >= o.start - 0.6 && pos <= o.end + 0.6) return true;
+  }
+  return false;
 }
