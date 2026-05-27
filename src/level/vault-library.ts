@@ -1,5 +1,13 @@
 import type { Vault } from './vault';
 import { BONFIRE } from '../content/bonfire';
+import { godRay } from '../content/god-ray';
+
+// God-ray instances scoped per vault — used VERY sparingly (a few
+// signature chambers, not every room). Same visual family as the
+// stair moonbeam but in the room itself.
+const RAY_PALE   = godRay(0xb8c8ff);
+const RAY_GOLD   = godRay(0xffd060);
+const RAY_VIOLET = godRay(0xa080ff);
 
 // Vault library — Pass A (variety) + Pass B (atmosphere).
 //
@@ -183,6 +191,9 @@ const COMBAT_HALL: Vault = {
     { kind: 'group', groupId: 'ritual-circle', x: 0, z: 0 },
     { kind: 'group', groupId: 'bone-shrine',   x: -5, z: -5 },
     { kind: 'group', groupId: 'bone-shrine',   x:  5, z:  5 },
+    // One violet god ray off to the side of the central ritual,
+    // so the player can walk through the beam on their approach.
+    { kind: 'model', model: RAY_VIOLET, x: -4, y: 0, z: 3, rotY: 0.4 },
   ],
   // Ritual-circle group already has its own focal glow + the
   // bone-shrines colour the corners. Wall torches push violet.
@@ -289,6 +300,10 @@ const TREASURE_VAULT: Vault = {
   weight: 1,
   props: [
     { kind: 'group', groupId: 'altar-ritual', x: 0, z: 0 },
+    // Warm gold shaft falling on the centre — the treasure
+    // signature beat. Offset slightly so it lands beside the
+    // altar group rather than overlapping it.
+    { kind: 'model', model: RAY_GOLD, x: 2.5, y: 0, z: 0, rotY: -0.3 },
   ],
   torchTint: TORCH_GOLD,
 };
@@ -414,6 +429,13 @@ const BOSS_CATHEDRAL: Vault = {
   minDepth: 7,
   weight: 1,
   torchTint: TORCH_BLOOD,
+  props: [
+    // Two converging god rays — pale moonlight from one
+    // direction, violet from another — light hitting the boss
+    // through cathedral cracks. Sets the cathedral feel.
+    { kind: 'model', model: RAY_PALE,   x: -3.5, y: 0, z: 1, rotY: 0.5 },
+    { kind: 'model', model: RAY_VIOLET, x:  3.5, y: 0, z: 3, rotY: -0.5 },
+  ],
 };
 
 // ── EXIT vaults ───────────────────────────────────────────────────
