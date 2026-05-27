@@ -309,14 +309,20 @@ const ENCOUNTER_FOUNTAIN: Vault = {
 const ENCOUNTER_CORPSES: Vault = {
   id: 'encounter-corpses',
   tags: ['encounter'],
+  // Asymmetric corpse arrangement — the four-corners + trap-in-
+  // middle pattern read as boilerplate. This is "they died trying
+  // to reach the door, one fell hard against the wall, one near
+  // the trap." Authored to look LIVED IN.
   map: [
-    '##########',
-    '#...t....#',
-    '#.C....C.#',
-    '#...^....#',
-    '#.C....C.#',
-    '#..T.....#',
-    '##########',
+    '############',
+    '#...T......#',
+    '#.C........#',
+    '#.....C....#',
+    '#..........#',
+    '#...^......#',
+    '#........C.#',
+    '#.....t....#',
+    '############',
   ],
   minDepth: 2,
   props: [

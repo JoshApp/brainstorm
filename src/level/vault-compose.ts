@@ -4,6 +4,7 @@ import { vaultsForTag, VAULTS } from './vault-library';
 import { parseTileMap } from './tilemap';
 import { populateTemplate } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
+import { scatterClutter } from './clutter';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
 // with corridors between, and assemble a single LevelSpec the
@@ -252,7 +253,7 @@ export function composeFloor(
     });
   }
 
-  return {
+  const result: LevelSpec = {
     id: opts.id,
     depth,
     displayName: opts.displayName,
@@ -267,6 +268,15 @@ export function composeFloor(
     stairs,
     extraWalls,
   };
+
+  // Clutter pass — sprinkle debris, dust, cracks and wall damage
+  // per room so the floor doesn't read as clean tile. Runs AFTER
+  // authored props + group expansions so it can avoid landing on
+  // existing setpieces. Same rand stream so generation is
+  // deterministic per seed.
+  scatterClutter(result, rand);
+
+  return result;
 }
 
 // ── helpers ──────────────────────────────────────────────────────
