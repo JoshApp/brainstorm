@@ -488,6 +488,31 @@ export function buildLevel(
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
       root.add(built.group);
+      // Optional collision shape — used by structural model props
+      // (buttresses, ruined columns) that should block the player.
+      // For AABB the half-extents rotate with the prop's rotY; we
+      // only support cardinal angles in practice so the rotated
+      // AABB stays axis-aligned. (See clutter.ts for the placers.)
+      if (prop.collision) {
+        if (prop.collision.kind === 'circle') {
+          obstacles.push({
+            kind: 'circle',
+            x: prop.x, z: prop.z,
+            r: prop.collision.r,
+          });
+        } else {
+          const angle = prop.rotY ?? 0;
+          // Swap halfW/halfD if rotation is perpendicular (±π/2).
+          const swap = Math.abs(Math.cos(angle)) < 0.5;
+          const hw = swap ? prop.collision.halfD : prop.collision.halfW;
+          const hd = swap ? prop.collision.halfW : prop.collision.halfD;
+          obstacles.push({
+            kind: 'aabb',
+            minX: prop.x - hw, maxX: prop.x + hw,
+            minZ: prop.z - hd, maxZ: prop.z + hd,
+          });
+        }
+      }
       // If the model spec carries a light, register it with the global
       // light pool. The pool decides per-frame whether this source gets
       // a real slot. Light's local position is added to the prop's

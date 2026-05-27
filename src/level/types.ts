@@ -38,10 +38,25 @@ export type RoomSpec = {
 export type PropSpec =
   | { kind: 'pillar'; x: number; z: number; size?: number }
   | { kind: 'altar'; x: number; z: number }
-  // 'model' = any ModelSpec placed in the world as static decoration. No
-  // collision, no behavior — just visuals. Use for relics, debris, sigils,
-  // anything atmospheric that doesn't move or react.
-  | { kind: 'model'; model: import('../ecs/model-types').ModelSpec; x: number; y: number; z: number; rotY?: number; rotX?: number; rotZ?: number }
+  // 'model' = any ModelSpec placed in the world as static decoration.
+  // Defaults to NO COLLISION — pure visuals. Use for relics, debris,
+  // sigils, anything atmospheric that doesn't move or react.
+  //
+  // For structural decoration that should block the player (a stone
+  // buttress, a broken column stub, a half-fallen statue base), set
+  // `collision` to attach a walk-blocker. Two shapes:
+  //   - circle: { kind: 'circle', r: 0.35 } at the prop's world XZ
+  //   - aabb:   { kind: 'aabb', halfW: 0.4, halfD: 0.3 }, with the
+  //             AABB rotated by the prop's rotY (for cardinal rotY
+  //             the rotated rectangle is itself axis-aligned).
+  | {
+      kind: 'model'; model: import('../ecs/model-types').ModelSpec;
+      x: number; y: number; z: number;
+      rotY?: number; rotX?: number; rotZ?: number;
+      collision?:
+        | { kind: 'circle'; r: number }
+        | { kind: 'aabb'; halfW: number; halfD: number };
+    }
   // 'chest' = an openable container. When the player interacts, the lid swings
   // up and an optional loot pickup spawns beside it.
   | { kind: 'chest'; x: number; z: number; rotY?: number; loot?: import('../content/items').ItemSpec }

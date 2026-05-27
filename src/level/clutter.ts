@@ -215,6 +215,9 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number): 
   }
 
   // Ruined column stubs — free-standing chest-high broken column.
+  // Carries a circular collision so the player has to path around
+  // it — the columns aren't just visual, they ARE obstacles
+  // (matches what they read as visually).
   const columnCount = ctx.area >= 80 ? 2 : ctx.area >= 40 ? 1 : 0;
   for (let i = 0; i < columnCount; i++) {
     for (let a = 0; a < 8; a++) {
@@ -227,6 +230,7 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number): 
         model: RUINED_COLUMN,
         x: p.x, y: 0, z: p.z,
         rotY: rand() * Math.PI * 2,
+        collision: { kind: 'circle', r: 0.34 },
       });
       ctx.existing.push({ x: p.x, z: p.z });
       break;
@@ -370,7 +374,9 @@ function placeWallDamage(ctx: RoomContext, out: PropSpec[], rand: () => number):
 /** Place a wall-attached prop in a clear segment. Used for the
  *  buttress (full-height structural column). Position lifts off
  *  the wall by `depth/2` so the model's half-thickness sits in
- *  the wall and the rest pokes into the room. */
+ *  the wall and the rest pokes into the room. Buttress carries
+ *  a rectangular collision matching its protruding footprint —
+ *  the player paths around the column. */
 function placeWallAttached(
   model: typeof WALL_BUTTRESS,
   depth: number,
@@ -381,6 +387,11 @@ function placeWallAttached(
 ): void {
   // Slightly more generous slack for buttresses near doorways.
   const nearOpening = (pos: number, openings: Opening[]) => inOpening(pos, openings, 0.6);
+  // Collision half-extents in MODEL local space — width along the
+  // wall, depth out from the wall. Matches the buttress model's
+  // main 0.85m × 0.55m body.
+  const collisionHalfW = 0.40;     // along the wall
+  const collisionHalfD = 0.28;     // out from the wall
   for (let a = 0; a < 10; a++) {
     const wall = Math.floor(rand() * 4);
     let x = 0, z = 0, rotY = 0;
@@ -409,7 +420,10 @@ function placeWallAttached(
     }
     if (blocked) continue;
     if (ctx.tooClose(x, z, 1.2)) continue;
-    out.push({ kind: 'model', model, x, y: 0, z, rotY });
+    out.push({
+      kind: 'model', model, x, y: 0, z, rotY,
+      collision: { kind: 'aabb', halfW: collisionHalfW, halfD: collisionHalfD },
+    });
     ctx.existing.push({ x, z });
     return;
   }
