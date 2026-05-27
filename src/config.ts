@@ -43,8 +43,8 @@ export const CONFIG = {
   // visibility in the immediate vicinity (~3m) so corners and corridors
   // between torches aren't pitch-black. Warmer than torches so the
   // player's "personal halo" reads distinctly from the room's lighting.
-  LAMP_INTENSITY: 38,
-  LAMP_DISTANCE: 4.5,
+  LAMP_INTENSITY: 60,
+  LAMP_DISTANCE: 5.5,
 
   // === PLAYER ===
   PLAYER_HEIGHT: 1.6,          // eye level

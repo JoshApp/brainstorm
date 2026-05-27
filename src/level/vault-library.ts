@@ -34,13 +34,15 @@ const GLOW_GOLD   = floorGlow(0xffd060);
 const FOYER_SMALL: Vault = {
   id: 'foyer-small',
   tags: ['start'],
+  // 'S' centred in the room (was hugging the south edge — player
+  // spawned at the door instead of in the middle).
   map: [
     '##########',
     '#..T...T.#',
     '#........#',
-    '#........#',
-    '#........#',
     '#...S....#',
+    '#........#',
+    '#..T...T.#',
     '##########',
   ],
   props: [
@@ -56,13 +58,13 @@ const FOYER_PILLAR: Vault = {
     '#....T.....#',
     '#.P......P.#',
     '#..........#',
+    '#....S.....#',
     '#..........#',
     '#.P......P.#',
-    '#....S.....#',
     '############',
   ],
   props: [
-    { kind: 'model', model: GLOW_WARM, x: 0, y: 0, z: -0.5 },
+    { kind: 'model', model: GLOW_WARM, x: 0, y: 0, z: 0 },
   ],
 };
 
@@ -73,13 +75,13 @@ const FOYER_ALCOVE: Vault = {
     '############',
     '#..T....T..#',
     '#..........#',
-    '#..C....C..#',
+    '#..C..S..C.#',
     '#..........#',
-    '#.....S....#',
+    '#..T....T..#',
     '############',
   ],
   props: [
-    { kind: 'model', model: GLOW_AMBER, x: 0, y: 0, z: 1 },
+    { kind: 'model', model: GLOW_AMBER, x: 0, y: 0, z: 0 },
   ],
 };
 
@@ -139,8 +141,9 @@ const COMBAT_CHOKE: Vault = {
 const COMBAT_HALL: Vault = {
   id: 'combat-hall',
   tags: ['combat'],
-  // Large pillar hall — a real chamber, not just a room. Heavy torches
-  // and a violet floor glow. Anchors a floor when it gets picked.
+  // Large pillar hall — a real chamber, not just a room. Anchors a
+  // floor. Atmospheric setpieces (ritual-circle in the centre,
+  // bone-shrines tucked into the corners) come from prop groups.
   map: [
     '################',
     '#..T...T..T..T.#',
@@ -161,9 +164,10 @@ const COMBAT_HALL: Vault = {
   minDepth: 3,
   weight: 2,
   props: [
+    { kind: 'group', groupId: 'ritual-circle', x: 0, z: 0 },
+    { kind: 'group', groupId: 'bone-shrine',   x: -5, z: -5 },
+    { kind: 'group', groupId: 'bone-shrine',   x:  5, z:  5 },
     { kind: 'model', model: GLOW_VIOLET, x: -3, y: 0, z: -2 },
-    { kind: 'model', model: GLOW_VIOLET, x:  3, y: 0, z: -2 },
-    { kind: 'model', model: GLOW_VIOLET, x: -3, y: 0, z:  2 },
     { kind: 'model', model: GLOW_VIOLET, x:  3, y: 0, z:  2 },
   ],
 };
@@ -254,17 +258,18 @@ const TREASURE_CACHE: Vault = {
 const TREASURE_VAULT: Vault = {
   id: 'treasure-vault',
   tags: ['treasure'],
-  // Big chamber with multiple chests, ringed by pillars. Rare floor
-  // — appears at deeper depths.
+  // Big chamber with one centrepiece chest-cache group + a ritual
+  // altar in the middle. Tile-placed chests in the ASCII give the
+  // baseline; the chest-cache group adds candles + a fallen guard.
   map: [
     '############',
     '#...T....T.#',
     '#.P......P.#',
-    '#...c...c..#',
+    '#...c....c.#',
     '#..........#',
-    '#....A.....#',
     '#..........#',
-    '#...c...c..#',
+    '#..........#',
+    '#...c....c.#',
     '#.P......P.#',
     '#...t....t.#',
     '############',
@@ -272,9 +277,8 @@ const TREASURE_VAULT: Vault = {
   minDepth: 5,
   weight: 1,
   props: [
+    { kind: 'group', groupId: 'altar-ritual', x: 0, z: 0 },
     { kind: 'model', model: GLOW_GOLD, x: 0, y: 0, z: 0 },
-    { kind: 'model', model: GLOW_GOLD, x: -2.5, y: 0, z: -1.5 },
-    { kind: 'model', model: GLOW_GOLD, x:  2.5, y: 0, z: -1.5 },
   ],
 };
 
@@ -283,17 +287,21 @@ const TREASURE_VAULT: Vault = {
 const ENCOUNTER_FOUNTAIN: Vault = {
   id: 'encounter-fountain',
   tags: ['encounter'],
+  // Fountain in the centre with its shrine group (flanking candles +
+  // bone glow). The tile-based 'F' inside the room is replaced by
+  // the group's float-positioned fountain so we can rotate it.
   map: [
     '##########',
     '#..T.....#',
     '#........#',
-    '#...F....#',
     '#........#',
-    '#....C...#',
+    '#........#',
+    '#........#',
     '#..t.....#',
     '##########',
   ],
   props: [
+    { kind: 'group', groupId: 'fountain-shrine', x: 0, z: 0 },
     { kind: 'model', model: GLOW_COOL, x: 0, y: 0, z: 0 },
   ],
 };
@@ -319,22 +327,23 @@ const ENCOUNTER_CORPSES: Vault = {
 const ENCOUNTER_RITUAL: Vault = {
   id: 'encounter-ritual',
   tags: ['encounter'],
-  // Altar with corpses arranged around it — a ritual scene. Sickly
-  // green floor tint sets the dread.
+  // Altar with the ritual-circle group dropped on it (altar + skull
+  // + 4 candles + bone glow). Empty floor around — non-combat.
   map: [
     '############',
     '#...T...T..#',
-    '#.C......C.#',
     '#..........#',
-    '#....A.....#',
     '#..........#',
-    '#.C......C.#',
+    '#..........#',
+    '#..........#',
+    '#..........#',
     '#...^......#',
     '############',
   ],
   minDepth: 3,
   weight: 1,
   props: [
+    { kind: 'group', groupId: 'ritual-circle', x: 0, z: 0 },
     { kind: 'model', model: GLOW_GREEN, x: 0, y: 0, z: 0 },
   ],
 };
@@ -344,6 +353,10 @@ const ENCOUNTER_RITUAL: Vault = {
 const BOSS_ANTECHAMBER: Vault = {
   id: 'boss-antechamber',
   tags: ['boss'],
+  // '/' MUST be at an interior cell. Previously sat at the perimeter
+  // column → stair top landed outside the shrunk rect → invisible.
+  // Now at col 11 (interior) with col 12 = '#' to trigger east
+  // auto-rotation; descent goes east into the back wall.
   map: [
     '#############',
     '#....T..T...#',
@@ -351,8 +364,8 @@ const BOSS_ANTECHAMBER: Vault = {
     '#.....B.....#',
     '#...........#',
     '#...X...X...#',
-    '#....t..t...#',
-    '#.........../',
+    '#..........##',
+    '#........../#',
     '#############',
   ],
   minDepth: 3,
@@ -364,9 +377,10 @@ const BOSS_ANTECHAMBER: Vault = {
 const BOSS_CATHEDRAL: Vault = {
   id: 'boss-cathedral',
   tags: ['boss'],
-  // Pillared cathedral — the boss stands at the back behind a
-  // colonnade. The stair to the safe room descends into the side
-  // alcove after the boss falls. Used at later acts.
+  // Pillared cathedral — the boss stands at the back. Stair sits
+  // INSIDE the row (col 14, with col 15 = '#') so auto-rotation
+  // descends east into the back wall, and the stair top stays
+  // inside the shrunk walkable rect.
   map: [
     '################',
     '#....T....T....#',
@@ -380,7 +394,7 @@ const BOSS_CATHEDRAL: Vault = {
     '#.P..........P.#',
     '#..............#',
     '#....X....X....#',
-    '#............../',
+    '#............/#',
     '#....t....t....#',
     '################',
   ],
@@ -431,22 +445,23 @@ const EXIT_ALCOVE: Vault = {
 const EXIT_GRAND: Vault = {
   id: 'exit-grand',
   tags: ['exit'],
-  // Larger exit hall — moonbeam descent reads more cinematic. Pulled
-  // toward the wall but with breathing room either side.
+  // Larger exit hall — moonbeam descent reads cinematic. '/' on the
+  // last interior row so south neighbour = '#' = auto-rotation south.
+  // Stair descends into the back wall behind the colonnade.
   map: [
     '##############',
     '#....T....T..#',
     '#.P........P.#',
     '#............#',
-    '#......./....#',
     '#............#',
     '#.P........P.#',
+    '#......./....#',
     '#....t....t..#',
     '##############',
   ],
   minDepth: 3,
   props: [
-    { kind: 'model', model: GLOW_COOL, x: 0, y: 0, z: 1 },
+    { kind: 'model', model: GLOW_COOL, x: 0, y: 0, z: 2 },
   ],
 };
 

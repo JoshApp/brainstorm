@@ -76,7 +76,14 @@ export type PropSpec =
       triggerRadius?: number;
       lingerMs?: number;
       dismissOn?: 'attack:hit' | 'item:picked-up' | 'enemy:killed';
-    };
+    }
+  // 'group' = a named modular prefab from src/level/prop-groups.ts.
+  // The composer looks up the group and expands it into individual
+  // PropSpec children at compose time, applying clearance checks so
+  // children that would clip into a wall are dropped. Use for
+  // atmospheric setpieces (altar-ritual, fountain-shrine, etc.)
+  // without forcing every vault to repeat the layout.
+  | { kind: 'group'; groupId: string; x: number; z: number; rotY?: number };
 
 export type TorchSpec = {
   x: number;

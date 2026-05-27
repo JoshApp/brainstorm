@@ -7,6 +7,7 @@ import { clearProjectiles } from '../combat/projectile-pool';
 import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
 import { clearTutorialHints } from '../effects/tutorial-hints';
+import { fadeOut, fadeIn } from '../ui/descent-fade';
 
 // Level loader = the seam between "we have a current level" and "let's swap
 // it for a different one". main.ts holds the active level reference via the
@@ -66,9 +67,14 @@ export function getCurrentDepth(): number {
   return currentDepth;
 }
 
-/** Schedule a level load for the next frame. */
+/** Schedule a level load. Plays a brief fade-to-black FIRST so the
+ *  camera angle + surroundings don't snap mid-frame, then sets the
+ *  pending id — the next tickPendingLoad picks it up. The fade-IN
+ *  is triggered from onLoaded once the new level is mounted. */
 export function loadLevel(id: string) {
-  pendingLoadId = id;
+  fadeOut().then(() => {
+    pendingLoadId = id;
+  });
 }
 
 /**
@@ -139,6 +145,8 @@ export function tickPendingLoad() {
   camera.rotation.y = level.playerSpawn.yaw;
 
   onLoaded(level);
+  // Reveal the new level once its first frame has rendered.
+  fadeIn();
 }
 
 /**

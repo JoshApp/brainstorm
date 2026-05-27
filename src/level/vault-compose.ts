@@ -3,6 +3,7 @@ import type { Vault, VaultTag } from './vault';
 import { vaultsForTag, VAULTS } from './vault-library';
 import { parseTileMap } from './tilemap';
 import { populateTemplate } from './procgen';
+import { PROP_GROUPS, type GroupChild } from './prop-groups';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
 // with corridors between, and assemble a single LevelSpec the
@@ -144,7 +145,12 @@ export function composeFloor(
   // Pick a random mid spine vault as the branch point; spawn a leaf
   // vault perpendicular to it (east or west) with its own corridor.
   // Dead end — leaf vault has no further connection.
-  const wantsBranch = middleCount >= 2 && rand() < (depth >= 3 ? 0.45 : 0.25);
+  // Branch chance — gated on having any mid vault to hang off of.
+  // Bumped over the earlier "middleCount >= 2" so even depth-1
+  // floors (which only get one mid vault) can fork — the user
+  // was never seeing non-south corridors because the gate was
+  // never satisfied early.
+  const wantsBranch = middleCount >= 1 && rand() < (depth >= 3 ? 0.6 : 0.45);
   if (wantsBranch) {
     const branchIdx = 1 + Math.floor(rand() * middleCount);   // mid index
     const parent = placed[branchIdx];
@@ -215,8 +221,22 @@ export function composeFloor(
     if (sub.extraWalls) extraWalls.push(...sub.extraWalls);
 
     if (pv.vault.props) {
+      // Vault-local rect for clearance culling — used to drop group
+      // children that would clip into a wall.
+      const dims = vaultDims(pv.vault);
+      const vaultRect = { x: 0, z: 0, w: dims.w, d: dims.d };
       for (const p of pv.vault.props) {
-        props.push(translateProp(p, pv.offsetX, pv.offsetZ));
+        if (p.kind === 'group') {
+          // Expand this group's children in VAULT-local coords,
+          // clearance-cull against the vault's own walls, then
+          // translate to WORLD via the vault's offset.
+          const expanded = expandGroup(p, vaultRect);
+          for (const child of expanded) {
+            props.push(translateProp(child, pv.offsetX, pv.offsetZ));
+          }
+        } else {
+          props.push(translateProp(p, pv.offsetX, pv.offsetZ));
+        }
       }
     }
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;
@@ -295,4 +315,73 @@ function translateProp(p: PropSpec, dx: number, dz: number): PropSpec {
   // Every PropSpec variant has x + z at top level. Some have a y for
   // 'model' which we leave alone.
   return { ...p, x: p.x + dx, z: p.z + dz } as PropSpec;
+}
+
+/**
+ * Expand a group reference into its concrete child props, in
+ * VAULT-local coordinates. Children are translated by (group.x,
+ * group.z) and rotated around the group origin by group.rotY.
+ * Each child is then clearance-culled against the vault's rect —
+ * children whose world-pos lands within `minClearance` of any
+ * vault wall are dropped. Lets the same group flow into different
+ * vault sizes without manually trimming each one.
+ */
+function expandGroup(
+  groupProp: PropSpec & { kind: 'group' },
+  vaultRect: { x: number; z: number; w: number; d: number },
+): PropSpec[] {
+  const groupSpec = PROP_GROUPS[groupProp.groupId];
+  if (!groupSpec) {
+    // eslint-disable-next-line no-console
+    console.warn(`Unknown propGroup id: ${groupProp.groupId}`);
+    return [];
+  }
+  const rotY = groupProp.rotY ?? 0;
+  const cosA = Math.cos(rotY);
+  const sinA = Math.sin(rotY);
+  const out: PropSpec[] = [];
+  for (const child of groupSpec.children) {
+    const transformed = transformGroupChild(child, groupProp.x, groupProp.z, cosA, sinA, rotY);
+    if (!withinClearance(transformed, child.minClearance ?? 0, vaultRect)) continue;
+    out.push(transformed);
+  }
+  return out;
+}
+
+/** Rotate child's (x, z) around the group origin, then translate. */
+function transformGroupChild(
+  child: GroupChild,
+  gx: number,
+  gz: number,
+  cosA: number,
+  sinA: number,
+  rotY: number,
+): PropSpec {
+  const cx = child.prop.x;
+  const cz = child.prop.z;
+  const rx = cx * cosA - cz * sinA;
+  const rz = cx * sinA + cz * cosA;
+  const result: PropSpec = { ...child.prop, x: gx + rx, z: gz + rz };
+  // If the child carries its own rotY (chest / fountain / corpse /
+  // model / stash-chest), compound it with the group rotation.
+  if ('rotY' in child.prop && rotY !== 0) {
+    (result as { rotY?: number }).rotY = (child.prop.rotY ?? 0) + rotY;
+  }
+  return result;
+}
+
+/** Returns true if the prop's vault-local position is at least
+ *  `minClearance` metres from each wall of the vault rect. */
+function withinClearance(
+  prop: PropSpec,
+  minClearance: number,
+  rect: { x: number; z: number; w: number; d: number },
+): boolean {
+  if (minClearance <= 0) return true;
+  const dWest  = prop.x - (rect.x - rect.w / 2);
+  const dEast  = (rect.x + rect.w / 2) - prop.x;
+  const dNorth = prop.z - (rect.z - rect.d / 2);
+  const dSouth = (rect.z + rect.d / 2) - prop.z;
+  const nearest = Math.min(dWest, dEast, dNorth, dSouth);
+  return nearest >= minClearance;
 }
