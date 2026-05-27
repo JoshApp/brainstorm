@@ -42,6 +42,7 @@ import type {
   LevelSpec, PropSpec, EnemySpawnSpec, TorchSpec, RoomSpec, DoorSpec, StairsSpec, TileMap,
 } from './types';
 import { ITEMS } from '../content/items';
+import { STAIRWELL_TOTAL_DEPTH } from '../interactables/stairs';
 
 // Pool of corpse notes. Procgen picks one per corpse-cell — deterministic
 // via the seed if we extend the API to take a Random.
@@ -290,9 +291,37 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
             else if (isWall(c, r - 1)) rotY = Math.PI;       // descend -Z
             else if (isWall(c + 1, r)) rotY = Math.PI / 2;   // descend +X
             else if (isWall(c - 1, r)) rotY = -Math.PI / 2;  // descend -X
+            // Stair body extends STAIRWELL_TOTAL_DEPTH (≈2.56m) along
+            // local +Z. If the '/' cell sits within that distance of
+            // the rect edge in the descent direction, the stair body
+            // overhangs the wall — only a sliver of the carved floor
+            // hole shows and the geometry visibly "sticks into the
+            // wall" past where the player can see. Shift the stair
+            // position backward so the BACK of the stairwell lands
+            // FLUSH with the room's wall, putting the full body
+            // inside the carved hole. A small inset (0.04m) matches
+            // the hole-clip margin in builder.ts so the back parapet
+            // sits just inside the wall mesh.
+            const dirX = Math.sin(rotY);
+            const dirZ = Math.cos(rotY);
+            const rectMinX = offsetX - innerW / 2;
+            const rectMaxX = offsetX + innerW / 2;
+            const rectMinZ = offsetZ - innerD / 2;
+            const rectMaxZ = offsetZ + innerD / 2;
+            const backX = x + dirX * STAIRWELL_TOTAL_DEPTH;
+            const backZ = z + dirZ * STAIRWELL_TOTAL_DEPTH;
+            const INSET = 0.04;
+            let shiftX = 0;
+            let shiftZ = 0;
+            if (backX > rectMaxX - INSET) shiftX = (rectMaxX - INSET) - backX;
+            else if (backX < rectMinX + INSET) shiftX = (rectMinX + INSET) - backX;
+            if (backZ > rectMaxZ - INSET) shiftZ = (rectMaxZ - INSET) - backZ;
+            else if (backZ < rectMinZ + INSET) shiftZ = (rectMinZ + INSET) - backZ;
             stairs.push({
               id: `stairs-${opts.id}`,
-              x, z, rotY,
+              x: x + shiftX,
+              z: z + shiftZ,
+              rotY,
               targetLevel: opts.stairsTarget,
             });
           }
