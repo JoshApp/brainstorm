@@ -256,11 +256,33 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         case 't':
         case '<':
         case '>': {
-          // Torch on a specific wall edge of this cell.
-          const wall: 'N' | 'S' | 'W' | 'E' =
+          // Torch on a specific wall edge of this cell. The
+          // character names a side, but several vaults in the
+          // library use 'T' (north) on cells whose north neighbour
+          // is interior floor — that puts the torch FLOATING in
+          // the middle of the room. We auto-correct: if the named
+          // side has no wall (the next cell is floor), fall back
+          // to whichever adjacent side IS a wall.
+          const requested: 'N' | 'S' | 'W' | 'E' =
             ch === 'T' ? 'N' :
             ch === 't' ? 'S' :
             ch === '<' ? 'W' : 'E';
+          const opp = (s: 'N' | 'S' | 'W' | 'E'): 'N' | 'S' | 'W' | 'E' =>
+            s === 'N' ? 'S' : s === 'S' ? 'N' : s === 'W' ? 'E' : 'W';
+          const sideIsWall = (s: 'N' | 'S' | 'W' | 'E') => {
+            const nr = s === 'N' ? r - 1 : s === 'S' ? r + 1 : r;
+            const nc = s === 'W' ? c - 1 : s === 'E' ? c + 1 : c;
+            return !isFloor(nc, nr);
+          };
+          // Try requested → opposite → perpendicular sides.
+          const order: Array<'N' | 'S' | 'W' | 'E'> = [
+            requested, opp(requested),
+            ...(requested === 'N' || requested === 'S'
+              ? (['W', 'E'] as const)
+              : (['N', 'S'] as const)),
+          ];
+          const wall = order.find(sideIsWall);
+          if (!wall) break;     // truly interior cell, no wall on any side
           // Position the torch FLUSH against that wall edge so it
           // visually mounts on a wall plane.
           const tx = wall === 'W' ? x - 0.499 : wall === 'E' ? x + 0.499 : x;
