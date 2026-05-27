@@ -502,10 +502,17 @@ export function buildLevel(
       console.warn(`Unknown enemyId in spawn: ${s.enemyId}`);
       continue;
     }
-    const enemy = createEnemy(root, new THREE.Vector3(s.x, 0, s.z), enemySpec);
+    // Resolve the spawn against the walkable region — if the authored
+    // (or procgen-rolled) cell lands on a fountain / altar / pillar /
+    // wall, scan outward for the nearest free spot. Without this, mobs
+    // can spawn stuck inside a prop and never move.
+    const resolved = walkable.resolveSpawn(s.x, s.z, enemySpec.collisionRadius);
+    const enemy = createEnemy(root, new THREE.Vector3(resolved.x, 0, resolved.z), enemySpec);
     enemy.faceWorld(spec.startPos.x, spec.startPos.z);
     enemies.push(enemy);
-    const roomId = s.roomId ?? findRoomContaining(s.x, s.z, spec.rooms);
+    // Room membership uses the resolved position so a mob nudged across
+    // a doorway is attributed to the room it actually ended up in.
+    const roomId = s.roomId ?? findRoomContaining(resolved.x, resolved.z, spec.rooms);
     enemyRoom.set(enemy, roomId);
     if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
   }

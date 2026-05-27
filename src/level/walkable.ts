@@ -113,6 +113,36 @@ export class WalkableRegion {
     }
     return true;
   }
+
+  /**
+   * Find a valid spawn position near (x, z). If the requested position
+   * is already free, returns it unchanged. Otherwise spirals outward in
+   * concentric rings of sample points and returns the nearest free one.
+   * If nothing's free within MAX_RADIUS, returns the original — the mob
+   * gets visibly stuck, which is at least clearly a bug to report rather
+   * than a silent gameplay failure.
+   *
+   * Used at level build time when an authored or procgen spawn lands on
+   * top of a fountain / altar / pillar — without this, the mob spawns
+   * inside the prop and can't move.
+   */
+  resolveSpawn(x: number, z: number, radius: number): Vec2 {
+    if (this.contains(x, z, radius)) return { x, z };
+    const STEP = 0.25;
+    const MAX_RADIUS = 3.0;
+    for (let r = STEP; r <= MAX_RADIUS; r += STEP) {
+      // Sample ~one point per 0.25m of circumference so coverage is
+      // roughly uniform regardless of ring size.
+      const n = Math.max(8, Math.round((2 * Math.PI * r) / STEP));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const tx = x + Math.cos(a) * r;
+        const tz = z + Math.sin(a) * r;
+        if (this.contains(tx, tz, radius)) return { x: tx, z: tz };
+      }
+    }
+    return { x, z };
+  }
 }
 
 // 2D segment-segment intersection (excluding shared endpoints — pure cross
