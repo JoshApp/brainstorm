@@ -18,9 +18,9 @@ const FLOOR_CHARS = new Set('.,SoO/^FCGRKWPAcTt<>'.split(''));
 // so a sigil doesn't end up overlapping a corpse / fountain / spawn.
 const NO_DECORATE_CHARS = new Set('SoO/^FCGRKWPAc'.split(''));
 
-const SIGIL_CHANCE = 0.07;   // per (cell × wall-neighbor) roll
-const CRACK_CHANCE = 0.06;   // per cell roll
-const RUBBLE_CHANCE = 0.04;  // per cell roll
+const SIGIL_CHANCE = 0.04;   // per (cell × wall-neighbor) roll — tuned for perf
+const CRACK_CHANCE = 0.03;   // per cell roll
+const RUBBLE_CHANCE = 0.02;  // per cell roll
 
 /**
  * Decorate a floor: mutates spec.props with sigils on walls + cracks

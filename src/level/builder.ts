@@ -373,26 +373,28 @@ export function buildLevel(
   }
 
   // --- Stationary fill lights ---
-  // Scatter a few very-low-intensity, no-flicker PointLights across each
-  // room rect. They give the kind of uneven low-level light real-world
-  // bounced light has — pockets of room that aren't directly lit by a
-  // torch still have *some* variation, vs the flat baseline of global
-  // ambient. Density scales with rect area (~1 fill per 22 m²).
+  // A few very-low-intensity, no-flicker PointLights per rect. Real-
+  // world bounced light has uneven low-level fill; this approximates it
+  // without flattening the spotlight contrast.
   //
-  // Color picks up the per-floor fog tint (warmer near base) so the
-  // fills reinforce the floor's identity even where torches don't reach.
+  // PERF: each PointLight costs PER FRAGMENT × every material — count
+  // dominates frame time on mobile. Earlier density (1 per 22 m²) put
+  // ~16 fills on a single procgen room; combined with torches, candles,
+  // floor-glow lights, pickup-pool lights + the player lantern, scenes
+  // hit 30+ PointLights and lagged hard. New budget: ~1 per 60 m², max
+  // 3 per rect. Floor 1 chamber gets 1, procgen rooms get 2-3 — still
+  // enough to vary the ambient without crushing the GPU.
   const fillColor = spec.fogColor !== undefined
-    ? mixColors(spec.fogColor, 0x553322, 0.5)  // warm-shift toward firelight
+    ? mixColors(spec.fogColor, 0x553322, 0.5)
     : 0x2a1a10;
   for (const r of allRects) {
     const area = r.rect.w * r.rect.d;
-    const count = Math.max(1, Math.floor(area / 22));
+    const count = Math.min(3, Math.max(1, Math.floor(area / 60)));
     for (let i = 0; i < count; i++) {
-      // Spread across the rect on a coarse grid; offset by i so they
-      // don't overlap.
       const fx = r.rect.x + (((i * 1.6) % r.rect.w) - r.rect.w / 2 + r.rect.w / (count + 1));
       const fz = r.rect.z + (((i * 0.9) % r.rect.d) - r.rect.d / 2 + r.rect.d / (count + 1));
-      const fill = new THREE.PointLight(fillColor, 6, 5.0, 1.8);
+      // Range bumped a touch so fewer lights cover the same volume.
+      const fill = new THREE.PointLight(fillColor, 7, 6.5, 1.6);
       fill.position.set(fx, 1.4, fz);
       root.add(fill);
     }

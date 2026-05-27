@@ -48,7 +48,12 @@ const LIGHT_DECAY = 1.6;
 // 8 is comfortable: at most every enemy on Floor 1 dropping max items at
 // once, plus a chest's worth. Exceeding it is silent: extra pickups just
 // don't get a light (disc still visible).
-const POOL_SIZE = 8;
+// PERF: Three.js evaluates every PointLight in every fragment shader pass
+// regardless of whether the light has intensity > 0. Pool size = pure
+// frame-time tax. 5 covers the worst-case "kill a wraith with 3-4 drops
+// + one chest open" without leaving extras lit. Pre-pool was 8; the
+// extra 3 were just costing GPU cycles for no benefit.
+const POOL_SIZE = 5;
 
 interface PoolLight {
   light: THREE.PointLight;
