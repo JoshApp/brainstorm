@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
+import { registerLight } from '../scene/light-pool';
 import { healPlayer, getPlayerMaxHp, getPlayerHp } from '../player/health';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
@@ -94,11 +95,19 @@ export function spawnFountain(
   liquid.position.y = 0.83;
   group.add(liquid);
 
-  // Soft glow — one PointLight (low-cost; one per fountain, not
-  // dynamically allocated, so light count stays stable).
-  const glow = new THREE.PointLight(0x88ffaa, 1.8, 2.4, 1.6);
-  glow.position.y = 0.95;
-  group.add(glow);
+  // Soft glow registered with the global light pool. Intensity is read
+  // each frame via getIntensity so we can dim it after the fountain is
+  // drunk (sets the fountainState.intensity to 0.2).
+  const fountainState = { intensity: 1.8 };
+  registerLight({
+    id: `fountain-${generateEntityId('fountain-light')}`,
+    position: new THREE.Vector3(pos.x, pos.y + 0.95, pos.z),
+    color: 0x88ffaa,
+    intensity: 1.8,
+    distance: 2.4,
+    decay: 1.6,
+    getIntensity: () => fountainState.intensity,
+  });
 
   let used = false;
 
@@ -114,7 +123,7 @@ export function spawnFountain(
 
       // Drain the liquid visually — hide the emissive disc, dim the glow.
       liquid.visible = false;
-      glow.intensity = 0.2;
+      fountainState.intensity = 0.2;
 
       // 50/50 gamble. Math.random() < 0.5 → blessing; otherwise curse.
       const blessed = Math.random() < 0.5;

@@ -79,25 +79,13 @@ export function buildModel(spec: ModelSpec): BuiltModel {
     parentNode.add(child);
   }
 
-  let light: THREE.PointLight | undefined;
-  if (spec.light) {
-    light = new THREE.PointLight(
-      spec.light.color,
-      spec.light.intensity,
-      spec.light.distance,
-      spec.light.decay,
-    );
-    if (spec.light.pos) light.position.fromArray(spec.light.pos);
-    if (spec.light.castShadow) {
-      light.castShadow = true;
-      const sz = spec.light.shadowMapSize ?? 512;
-      light.shadow.mapSize.set(sz, sz);
-      light.shadow.bias = spec.light.shadowBias ?? -0.005;
-    }
-    group.add(light);
-  }
-
-  return { group, parts, slots, materials, hitTargets, light };
+  // Lights are NOT created here anymore — every PointLight in the scene
+  // is owned by src/scene/light-pool.ts. buildModel reports the model's
+  // optional light SPEC (color/intensity/distance/decay/local-pos) and
+  // leaves it up to the caller to register a logical source with the
+  // pool. This is the architectural change that lets us have many more
+  // logical light sources than the GPU could afford as real PointLights.
+  return { group, parts, slots, materials, hitTargets, light: undefined };
 }
 
 function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Material {

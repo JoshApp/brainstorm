@@ -45,6 +45,7 @@ import { tickInteractables, getInRangeInteractable, pressUse, getAllInteractable
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
+import { initLightPool, tickLightPool } from './scene/light-pool';
 import { updateOutline } from './interactables/outline';
 import { createUseButton, setUseButtonVisible, setInteractAction, consumeUsePressed } from './controls/use-button';
 import { createConsumableBar } from './controls/consumable-bar';
@@ -247,6 +248,11 @@ warmupContent(renderer);
 // This is what actually keeps drops lag-free: Three.js recompiles every
 // material shader if the scene's light count changes mid-fight, but a
 // fixed-count pool sidesteps that entirely.
+// Global light pool — the perf-critical pool of N PointLight slots that
+// every scene PointLight runs through. See src/scene/light-pool.ts.
+// Must be initialized BEFORE any spawn that registers sources (torches,
+// fountains, lamp, fill, etc.).
+initLightPool(scene);
 initPickupLightPool(scene);
 
 // Run-state listeners — kill counter, items-found set, autosave on
@@ -311,8 +317,8 @@ function tick() {
     let prox = 0;
     const earRange = 6;
     for (const t of currentLevel.torches) {
-      const dx = t.light.position.x - camera.position.x;
-      const dz = t.light.position.z - camera.position.z;
+      const dx = t.position.x - camera.position.x;
+      const dz = t.position.z - camera.position.z;
       const d = Math.hypot(dx, dz);
       if (d < earRange) prox += 1 - d / earRange;
     }
@@ -368,6 +374,12 @@ function tick() {
 
   tickShake(realDt, shakeOffset);
   camera.position.add(shakeOffset);
+
+  // Bind the N nearest registered light sources to the pool's actual
+  // PointLight slots. Runs every frame, regardless of world freeze —
+  // the visible lighting must update with camera movement even during
+  // hit-pause / menus.
+  tickLightPool(camera);
 
   renderWithStyle(renderer, scene, camera, style);
 

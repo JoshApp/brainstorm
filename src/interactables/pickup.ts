@@ -9,6 +9,7 @@ import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
 import { playLootLand, playPickupChime } from '../audio/sfx';
 import { emit } from '../broadcast/event-bus';
 import { getActiveLevel } from '../level/loader';
+import { registerLight, unregisterLight } from '../scene/light-pool';
 
 // Rarity → audio "preciousness" index. Mundane is dull, fabled is bright.
 const RARITY_INDEX: Record<Rarity, number> = {
@@ -43,51 +44,18 @@ const LIGHT_INTENSITY = 3.5;
 const LIGHT_DISTANCE = 2.4;
 const LIGHT_DECAY = 1.6;
 
-// ── Light pool ────────────────────────────────────────────────────────
-// Pre-allocate enough lights for the worst-case simultaneous-pickup count.
-// 8 is comfortable: at most every enemy on Floor 1 dropping max items at
-// once, plus a chest's worth. Exceeding it is silent: extra pickups just
-// don't get a light (disc still visible).
-// PERF: Three.js evaluates every PointLight in every fragment shader pass
-// regardless of whether the light has intensity > 0. Pool size = pure
-// frame-time tax. 5 covers the worst-case "kill a wraith with 3-4 drops
-// + one chest open" without leaving extras lit. Pre-pool was 8; the
-// extra 3 were just costing GPU cycles for no benefit.
-const POOL_SIZE = 5;
+// Pickup lights now go through src/scene/light-pool.ts — the global
+// slot pool. Each pickup registers a logical source; the pool decides
+// per-frame whether to bind it to one of N real PointLights. Initially
+// pickups had their own dedicated pool to avoid shader recompile on
+// dynamic light count; the global pool achieves the same plus scales
+// to many more logical sources. initPickupLightPool is kept as a no-op
+// for back-compat with main.ts boot order.
 
-interface PoolLight {
-  light: THREE.PointLight;
-  inUse: boolean;
-}
-const lightPool: PoolLight[] = [];
-
-/** Call once at boot, with the live scene. Allocates the light pool. */
-export function initPickupLightPool(scene: THREE.Scene) {
-  if (lightPool.length > 0) return;  // idempotent
-  for (let i = 0; i < POOL_SIZE; i++) {
-    const light = new THREE.PointLight(0xffffff, 0, LIGHT_DISTANCE, LIGHT_DECAY);
-    // Far below the floor so it's invisible while idle. Intensity 0 also
-    // hides it, but parking it off-stage avoids any rounding-edge cases.
-    light.position.set(0, -100, 0);
-    scene.add(light);
-    lightPool.push({ light, inUse: false });
-  }
-}
-
-function acquireLight(): PoolLight | null {
-  for (const p of lightPool) {
-    if (!p.inUse) {
-      p.inUse = true;
-      return p;
-    }
-  }
-  return null;
-}
-
-function releaseLight(p: PoolLight) {
-  p.inUse = false;
-  p.light.intensity = 0;
-  p.light.position.set(0, -100, 0);
+/** No-op kept for boot-order back-compat. Light pool is initialized
+ *  separately via initLightPool(scene). */
+export function initPickupLightPool(_scene: THREE.Scene) {
+  // intentionally empty
 }
 
 // Fountain physics — items pop out of the spawn point on an arc,
@@ -166,9 +134,6 @@ export function createPickup(
   ring.visible = false;  // toggled on by tick when in range
   pickupGroup.add(ring);
 
-  // ── Glow light — borrowed from the pre-allocated pool ──────────────
-  const pooledLight = acquireLight();
-
   // ── Item model — bobs + rotates ────────────────────────────────────
   const built = buildModel(item.dropModel);
   pickupGroup.add(built.group);
@@ -188,12 +153,20 @@ export function createPickup(
 
   built.group.position.set(itemX, itemY, itemZ);
 
-  // Light follows the item (also during flight). Position now.
-  if (pooledLight) {
-    pooledLight.light.color.setHex(rarityColor);
-    pooledLight.light.intensity = LIGHT_INTENSITY;
-    pooledLight.light.position.set(pos.x + itemX, pos.y + itemY, pos.z + itemZ);
-  }
+  const id = generateEntityId('pickup');
+
+  // ── Light pool registration ──────────────────────────────────────
+  // World-position vector that we mutate each tick to follow the item.
+  const lightWorldPos = new THREE.Vector3(pos.x + itemX, pos.y + itemY, pos.z + itemZ);
+  const lightSourceId = `pickup-light-${id}`;
+  registerLight({
+    id: lightSourceId,
+    position: lightWorldPos,
+    color: rarityColor,
+    intensity: LIGHT_INTENSITY,
+    distance: LIGHT_DISTANCE,
+    decay: LIGHT_DECAY,
+  });
 
   // If we're not fountaining, this is effectively the moment it lands.
   if (mode === 'settled') playLootLand();
@@ -202,7 +175,6 @@ export function createPickup(
   // Tiny "land puff" — disc scales briefly bigger on landing for an
   // anticipation pop, then settles back.
   let landPuff = 0;
-  const id = generateEntityId('pickup');
 
   const interactable = {
     id,
@@ -237,7 +209,7 @@ export function createPickup(
         // offhand); falls back to staying in the bag otherwise.
         if (tryAutoEquip(item)) removeItem(item.id);
       }
-      if (pooledLight) releaseLight(pooledLight);
+      unregisterLight(lightSourceId);
       interactable.destroyed = true;
     },
     tick(dt: number) {
@@ -302,14 +274,13 @@ export function createPickup(
           disc.scale.set(scale, scale, 1);
         }
       }
-      // Light tracks the item every frame (cheap; just a Vector3 set).
-      if (pooledLight) {
-        pooledLight.light.position.set(
-          pickupGroup.position.x + itemX,
-          pickupGroup.position.y + itemY,
-          pickupGroup.position.z + itemZ,
-        );
-      }
+      // Light tracks the item every frame — mutate the shared
+      // Vector3; the light pool reads it on its next tick.
+      lightWorldPos.set(
+        pickupGroup.position.x + itemX,
+        pickupGroup.position.y + itemY,
+        pickupGroup.position.z + itemZ,
+      );
       // In-range floor ring: only visible when the player IS in range.
       // Pulses gently. Settled-only — flying items aren't takeable yet
       // so the ring would be misleading mid-arc.

@@ -13,6 +13,13 @@ import { spawnStairs } from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
+import { registerLight, clearLightPool } from '../scene/light-pool';
+
+// Module-level counter for unique source ids across all level builds.
+// Resets to a deterministic-enough range per build via the per-call
+// declaration below. Could be per-level seeded but cross-level
+// uniqueness is enough for our use.
+let lightSerial = 0;
 import { clearInteractables } from '../interactables/system';
 import { emit } from '../broadcast/event-bus';
 
@@ -240,6 +247,10 @@ export function buildLevel(
   materials: StyleMaterials,
   onDescend?: (targetLevel: string) => void,
 ): LiveLevel {
+  // Per-level lights start fresh. Persistent sources (the camera-
+  // attached lantern) survive — see light-pool.clearLightPool.
+  clearLightPool();
+
   // Everything goes into this root group rather than directly into the
   // scene — teardown is a single scene.remove(root). Geometry/material
   // disposal walks root's tree.
@@ -297,6 +308,27 @@ export function buildLevel(
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
       root.add(built.group);
+      // If the model spec carries a light, register it with the global
+      // light pool. The pool decides per-frame whether this source gets
+      // a real slot. Light's local position is added to the prop's
+      // world position; rotations are not currently applied to the
+      // offset (most model lights sit on the prop's axis).
+      if (prop.model.light) {
+        const lp = prop.model.light;
+        const lightPos = new THREE.Vector3(
+          prop.x + (lp.pos?.[0] ?? 0),
+          prop.y + (lp.pos?.[1] ?? 0),
+          prop.z + (lp.pos?.[2] ?? 0),
+        );
+        registerLight({
+          id: `model-light-${lightSerial++}`,
+          position: lightPos,
+          color: lp.color,
+          intensity: lp.intensity,
+          distance: lp.distance,
+          decay: lp.decay,
+        });
+      }
     } else if (prop.kind === 'chest') {
       spawnChest(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.loot);
       obstacles.push({
@@ -393,10 +425,14 @@ export function buildLevel(
     for (let i = 0; i < count; i++) {
       const fx = r.rect.x + (((i * 1.6) % r.rect.w) - r.rect.w / 2 + r.rect.w / (count + 1));
       const fz = r.rect.z + (((i * 0.9) % r.rect.d) - r.rect.d / 2 + r.rect.d / (count + 1));
-      // Range bumped a touch so fewer lights cover the same volume.
-      const fill = new THREE.PointLight(fillColor, 7, 6.5, 1.6);
-      fill.position.set(fx, 1.4, fz);
-      root.add(fill);
+      registerLight({
+        id: `fill-${lightSerial++}`,
+        position: new THREE.Vector3(fx, 1.4, fz),
+        color: fillColor,
+        intensity: 7,
+        distance: 6.5,
+        decay: 1.6,
+      });
     }
   }
 

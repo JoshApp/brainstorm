@@ -13,12 +13,20 @@ import * as THREE from 'three';
 // not nightvision, it's a thing you brought.
 
 import { CONFIG } from '../config';
+import { registerLight } from '../scene/light-pool';
 
 interface LampState {
-  light: THREE.PointLight;
-  flame: THREE.Mesh;          // small bright sphere; flicker also modulates this
+  /** World position vector — mutated each frame from the lantern's
+   *  scene-graph transform. Same vector the light pool reads. */
+  worldPos: THREE.Vector3;
+  /** Lantern mesh root, child of the camera. */
+  group: THREE.Group;
+  /** Visible flame sphere; flicker modulates its color. */
+  flame: THREE.Mesh;
   flameMat: THREE.MeshBasicMaterial;
   baseIntensity: number;
+  /** Computed each frame by tickLamp; pool reads via getIntensity. */
+  currentIntensity: number;
   flickerT: number;
 }
 
@@ -127,19 +135,34 @@ export function attachLamp(camera: THREE.Camera) {
 
   // ── The actual PointLight ─────────────────────────────────────────
   // Lives INSIDE the lantern cage so the flame mesh appears to be the
-  // source. Light is what reaches the world (the viewmodel-only flame
-  // mesh doesn't, since depthTest=false makes it an overlay).
-  const light = new THREE.PointLight(
-    LAMP_COLOR,
-    CONFIG.LAMP_INTENSITY,
-    CONFIG.LAMP_DISTANCE,
-    1.4,
-  );
-  // Anchor to the lantern's world position by parenting under group.
-  light.position.set(0, -0.005, 0);  // inside the cage, at flame center
-  group.add(light);
+  // ── Logical light source via the pool ──────────────────────────────
+  // The lantern doesn't own a THREE.PointLight directly anymore — every
+  // PointLight in the scene is owned by src/scene/light-pool.ts. We
+  // expose a position vector + dynamic intensity, and the pool decides
+  // each frame whether to bind us to one of its slots. Persistent=true
+  // so we survive level swaps (camera-attached, no level scope).
+  const worldPos = new THREE.Vector3();
+  const state: LampState = {
+    worldPos,
+    group,
+    flame,
+    flameMat,
+    baseIntensity: CONFIG.LAMP_INTENSITY,
+    currentIntensity: CONFIG.LAMP_INTENSITY,
+    flickerT: 0,
+  };
+  lamp = state;
 
-  lamp = { light, flame, flameMat, baseIntensity: CONFIG.LAMP_INTENSITY, flickerT: 0 };
+  registerLight({
+    id: 'player-lamp',
+    position: worldPos,
+    color: LAMP_COLOR,
+    intensity: CONFIG.LAMP_INTENSITY,
+    distance: CONFIG.LAMP_DISTANCE,
+    decay: 1.4,
+    getIntensity: () => state.currentIntensity,
+    persistent: true,
+  });
 }
 
 /** Per-frame tick. Layered-sine flicker on intensity + flame brightness. */
@@ -152,7 +175,13 @@ export function tickLamp(dt: number) {
       Math.sin(f * 7.3) * 0.06 +
       Math.sin(f * 13.1) * 0.03 +
       Math.sin(f * 23.7) * 0.02;
-  lamp.light.intensity = lamp.baseIntensity * (1 + flicker);
+  lamp.currentIntensity = lamp.baseIntensity * (1 + flicker);
+  // Update the source's world position by reading the lantern's
+  // transform. updateMatrixWorld first since the camera-parented chain
+  // may not have flushed yet this frame.
+  lamp.group.updateMatrixWorld(true);
+  lamp.worldPos.setFromMatrixPosition(lamp.group.matrixWorld);
+
   // Mirror the flicker in the flame's visible color so eye + light agree.
   const tone = 1 + flicker * 0.5;
   lamp.flameMat.color.setRGB(

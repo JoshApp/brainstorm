@@ -3,6 +3,7 @@ import type { StairsSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
+import { registerLight } from '../scene/light-pool';
 
 // Stairs = a visible descent into the floor + an interactable that requests
 // a level transition. The actual loadLevel call lives in main.ts (it owns
@@ -70,10 +71,22 @@ export function spawnStairs(
   // Cool glow at the bottom — implies something is down there + reads
   // as "the next floor is different." Bright enough to be the destination
   // anchor visible from across the room, so the player sees the stairs
-  // call even when standing in a dark corner.
-  const glow = new THREE.PointLight(0x88aaff, 4.5, 5.5, 1.6);
-  glow.position.set(0, -totalDrop + 0.4, totalDepth - 0.4);
-  group.add(glow);
+  // call even when standing in a dark corner. Registers with the light
+  // pool — Three.js only ever sees N total slot lights, so the stairs
+  // glow's cost is fully amortized.
+  const glowLocal = new THREE.Vector3(0, -totalDrop + 0.4, totalDepth - 0.4);
+  const glowWorld = new THREE.Vector3()
+    .copy(glowLocal)
+    .applyEuler(new THREE.Euler(0, spec.rotY ?? 0, 0))
+    .add(new THREE.Vector3(spec.x, 0, spec.z));
+  registerLight({
+    id: `stairs-${spec.id ?? spec.targetLevel}-glow`,
+    position: glowWorld,
+    color: 0x88aaff,
+    intensity: 4.5,
+    distance: 5.5,
+    decay: 1.6,
+  });
 
   // Vertical "beacon" plume rising out of the stairwell mouth — a
   // billboarded sprite that reads from any angle. Pokes up through
