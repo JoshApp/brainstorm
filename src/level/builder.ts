@@ -369,10 +369,18 @@ export function buildLevel(
         [ halfW, back],
         [-halfW, back],
       ];
-      // World XZ of the four stair-footprint corners.
+      // World XZ of the four stair-footprint corners. The rotation
+      // here MUST match Three.js's Y-rotation convention used by the
+      // group containing the stair geometry (group.rotation.y =
+      // spec.rotY). Three.js maps local (lx, ly, lz) under Y-rotation
+      // θ to world (ca*lx + sa*lz, ly, -sa*lx + ca*lz). The earlier
+      // formula used opposite-sign cross terms, which is rotation by
+      // -θ — the hole + obstacle ended up MIRRORED ACROSS the cell
+      // from the actual stair body for any non-axial rotY (most
+      // notably the auto-rotated east/west boss + exit stairs).
       const worldCorners = corners.map(([lx, lz]) => {
-        const wx = st.x + ca * lx - sa * lz;
-        const wz = st.z + sa * lx + ca * lz;
+        const wx = st.x + ca * lx + sa * lz;
+        const wz = st.z - sa * lx + ca * lz;
         return [wx, wz] as [number, number];
       });
       // Clip to the ROOM's axis-aligned bounding box. The stair often
@@ -418,8 +426,9 @@ export function buildLevel(
       ];
       let oMinX = Infinity, oMaxX = -Infinity, oMinZ = Infinity, oMaxZ = -Infinity;
       for (const [lx, lz] of obsCorners) {
-        const wx = st.x + ca * lx - sa * lz;
-        const wz = st.z + sa * lx + ca * lz;
+        // Same Three.js Y-rotation convention as the hole corners above.
+        const wx = st.x + ca * lx + sa * lz;
+        const wz = st.z - sa * lx + ca * lz;
         if (wx < oMinX) oMinX = wx;
         if (wx > oMaxX) oMaxX = wx;
         if (wz < oMinZ) oMinZ = wz;
