@@ -39,31 +39,43 @@ export const MOONLIGHT_CRACK: ModelSpec = {
   },
 };
 
-// Floor glow: an ambient mood light that floods the room with a
-// coloured wash. NOT a tight spotlight — earlier passes used a
-// bright inner disc which read as "a glowing object" (eg. a relic
-// dropped on the floor). What we actually want here is "the air
-// in this chamber is tinted blue/green/etc" — a volumetric mood
-// register. So the layers are:
+// Floor glow: ambient mood for a room. NOT a spotlight or a
+// volumetric fog wall — earlier attempts produced a billboarded
+// sprite at chest height that read as a "fireball" obscuring the
+// view ahead. What works instead:
 //
-//   1. Wide soft floor wash decal — dim, big, no clear edge
-//   2. Vertical haze column at chest height — reads as fog
-//      catching the tint
-//   3. Ceiling-level wash — large faint sprite suggesting the
-//      colour bouncing off the ceiling
+//   1. Wide soft floor wash decal — dim, big, no bright core.
+//      The colour "stains" the floor.
+//   2. A handful of tiny scattered ember motes hanging in the
+//      air around the source. Small enough that no single one
+//      blocks vision, additive so they only ADD colour, never
+//      obscure. Their offsets break the always-camera-facing
+//      sprite illusion so the room feels like it has particulate
+//      material in the air.
 //
-// PointLight has lower intensity but much larger distance + a
-// softer decay so the colour reaches the walls without anywhere
-// being uncomfortably bright.
+// The PointLight does the heavy "room flooded with colour" work —
+// it's lower intensity but much larger distance + soft decay so
+// the tint reaches the walls without any one spot being glaring.
 export function floorGlow(tint: number = 0x6cc6e0): ModelSpec {
   const id = `floor-glow-${tint.toString(16)}`;
+  // Small additive motes scattered around the source. Each is a
+  // billboard but they sit at varied positions/sizes so the eye
+  // reads "specks of glowing dust in the air" rather than "wall
+  // of haze". Authored in a small grid pattern with jittered
+  // sizes for organic feel.
+  const motes: Array<{ pos: [number, number, number]; size: [number, number] }> = [
+    { pos: [-0.6,  0.45,  0.2], size: [0.30, 0.34] },
+    { pos: [ 0.5,  0.30, -0.4], size: [0.26, 0.30] },
+    { pos: [ 0.3,  0.85,  0.5], size: [0.22, 0.26] },
+    { pos: [-0.4,  1.20, -0.3], size: [0.28, 0.32] },
+    { pos: [ 0.1,  1.70,  0.0], size: [0.20, 0.24] },
+    { pos: [-0.2,  2.20,  0.3], size: [0.18, 0.22] },
+  ];
   return {
     id,
     materials: {},
     parts: [
-      // Layer 1: wide floor wash — large, soft, no bright core.
-      // Bigger and dimmer than the old halo so the eye reads "the
-      // floor here is tinted" rather than "spotlight on floor".
+      // Wide soft floor wash — colour stain on the ground.
       {
         kind: 'decal',
         pos: [0, 0.005, 0],
@@ -74,40 +86,24 @@ export function floorGlow(tint: number = 0x6cc6e0): ModelSpec {
         emissive: tint,
         emissiveIntensity: 0.45,
       },
-      // Layer 2: chest-height haze column — a tall billboarded
-      // sprite catching the tint. From across the room this reads
-      // as "the air is glowing", a volumetric fog feel.
-      {
-        kind: 'sprite',
-        pos: [0, 1.10, 0],
-        size: [2.20, 2.40],
+      // Scattered ember motes. Additive so they layer subtly with
+      // the room torchlight and fog instead of stacking into an
+      // opaque wall.
+      ...motes.map((m) => ({
+        kind: 'sprite' as const,
+        pos: m.pos,
+        size: m.size,
         texture: 'fire-wisp',
         color: tint,
-        blending: 'additive',
-      },
-      // Layer 3: ceiling-level wash — wide, short, low-opacity
-      // sprite implying the colour bouncing up. Visible above
-      // when the player looks up, peripheral when looking
-      // forward.
-      {
-        kind: 'sprite',
-        pos: [0, 2.60, 0],
-        size: [3.40, 1.20],
-        texture: 'fire-wisp',
-        color: tint,
-        blending: 'additive',
-      },
+        blending: 'additive' as const,
+      })),
     ],
     light: {
       color: tint,
-      // Softer + wider than before: was intensity 22, distance
-      // 7.5, decay 1.2 — bright spot, tight pool. Now intensity
-      // 13, distance 13, decay 1.8 — the colour reaches all the
-      // way to the walls but no single spot is glaring.
       intensity: 13,
       distance: 13,
       decay: 1.8,
-      pos: [0, 1.20, 0],          // raised from floor → chest height for room-wide wash
+      pos: [0, 1.20, 0],
       castShadow: false,
     },
   };

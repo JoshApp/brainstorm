@@ -258,16 +258,17 @@ export function spawnStairs(
   // mesh with an unlit emissive material; when the original mesh
   // is in view, only the silhouette ring shows around the
   // original, giving a clean glowing edge. This is the "stair is
-  // highlighted" cue requested by the user — replaces the old
-  // floating disk halo that hovered above the carved hole.
-  const outlineColor = 0xa0c4ff;
+  // highlighted" cue — bumped wider (1.10x scale) and brighter so
+  // the blue silhouette carries the stair across the room without
+  // needing a giant beam to do the calling.
+  const outlineColor = 0xb8d4ff;
   const outlineMat = new THREE.MeshBasicMaterial({
     color: outlineColor,
     side: THREE.BackSide,
     fog: false,
     depthWrite: false,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.95,
   });
   /** Helper: clone a mesh's geometry as a slightly-scaled outline
    *  duplicate parented to the same node. The inset scale is
@@ -277,7 +278,7 @@ export function spawnStairs(
     const ol = new THREE.Mesh(mesh.geometry, outlineMat);
     ol.position.copy(mesh.position);
     ol.rotation.copy(mesh.rotation);
-    ol.scale.copy(mesh.scale).multiplyScalar(1.06);
+    ol.scale.copy(mesh.scale).multiplyScalar(1.12);
     ol.renderOrder = -1;     // render before the original so the
                              //  original's depth write masks the
                              //  interior of the outline volume
@@ -285,52 +286,50 @@ export function spawnStairs(
   };
   for (const m of outlineTargets) addOutline(m);
 
-  // Mega-halo: a very wide, very faint outer billboard. Reads
-  // from across a fogged room as "there is light over there"
-  // even when the player can't make out the stair geometry yet.
-  // Big enough that it sits ABOVE most clutter so it doesn't
-  // get blocked by buttresses / columns between the player and
-  // the stair.
+  // Mega-halo: a wide faint outer billboard. Calling-from-afar
+  // cue. Toned back from the previous pass — the inverse-hull
+  // outline does most of the heavy lifting now; this just nudges
+  // the eye toward the stair through fog.
   const megaHaloMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
     color: 0x6a92dc,
     transparent: true,
-    opacity: 0.50,
+    opacity: 0.32,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
   const megaHalo = new THREE.Sprite(megaHaloMat);
-  megaHalo.scale.set(5.0, 5.0, 1);
-  megaHalo.position.set(0, 2.6, totalDepth / 2);
+  megaHalo.scale.set(4.2, 4.2, 1);
+  megaHalo.position.set(0, 2.4, totalDepth / 2);
   group.add(megaHalo);
 
   const outerBeamMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
-    color: 0x9cbcf0,
+    color: 0x88a8e8,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.55,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
   const outerBeam = new THREE.Sprite(outerBeamMat);
-  outerBeam.scale.set(3.4, 7.4, 1);
-  outerBeam.position.set(0, 3.0, totalDepth / 2);
+  outerBeam.scale.set(2.6, 5.8, 1);
+  outerBeam.position.set(0, 2.4, totalDepth / 2);
   group.add(outerBeam);
 
   const coreBeamMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
-    color: 0xeef2ff,
+    color: 0xd8e4ff,
     transparent: true,
-    opacity: 1.0,
+    opacity: 0.75,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
   const coreBeam = new THREE.Sprite(coreBeamMat);
-  coreBeam.scale.set(1.0, 6.8, 1);
-  coreBeam.position.set(0, 3.0, totalDepth / 2);
+  coreBeam.scale.set(0.7, 5.2, 1);
+  coreBeam.position.set(0, 2.4, totalDepth / 2);
   group.add(coreBeam);
 
   // Slow breath — opacity oscillates ±15% on a ~2.4s cycle. Driven
