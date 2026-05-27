@@ -1,6 +1,18 @@
 import type { ModelSpec, Vec3 } from '../ecs/model-types';
 import type { DamageType } from '../combat/damage';
 
+// Ranged config — if present on a spec, the enemy fires a projectile from
+// `muzzleOffset` (local to the container) during the strike phase instead
+// of dealing melee damage. `attackRange` / `strikeRange` keep their
+// meaning: how far the enemy commits / hits from. Tune them up for
+// shooters so they keep their distance.
+export interface RangedSpec {
+  /** Spawn offset relative to the enemy container, in local meters. */
+  muzzleOffset: Vec3;
+  /** ProjectileType id (see src/content/projectiles.ts). */
+  projectileId: string;
+}
+
 // Enemy library. Each entry is data; enemy.ts consumes a spec instead of
 // reading constants. Adding a new enemy = add an entry here + reference its
 // ID from a LevelSpec spawn.
@@ -83,6 +95,14 @@ export interface EnemySpec {
    * Multiple drops from the same kill spread in a small arc on the floor.
    */
   drops?: DropEntry[];
+
+  // --- Ranged ---
+  /**
+   * If set, the enemy is a SHOOTER — striking phase fires a projectile
+   * instead of resolving a melee hit. attackDamage / damageType still
+   * apply, carried by the projectile.
+   */
+  ranged?: RangedSpec;
 }
 
 export interface DropEntry {
@@ -170,6 +190,67 @@ function quadrupedRatModel(bodyColor: number, eyeColor: number, eyeEmissive: num
       { parent: 'rig', kind: 'capsule', pos: [ 0.07, -0.10,  0.10], radius: 0.022, height: 0.05, mat: 'body' },
       // Tail
       { parent: 'rig', kind: 'cylinder', pos: [0, 0, 0.28], rot: [Math.PI / 2, 0, 0], radius: 0.015, radiusTop: 0.005, height: 0.30, segments: 6, mat: 'body' },
+    ],
+  };
+}
+
+// Acolyte — hooded ranged caster. Wider robe extrude underneath (no
+// visible feet — looks like it's floating in fabric), tall thin body
+// capsule, dark hooded head (eyes deep-set, glowing slits), staff parented
+// to the weapon slot with a glowing orb at the tip that matches the
+// projectile color. Reads at a glance: "thin dark figure with a glowing
+// stick — that one shoots."
+function acolyteModel(bodyColor: number, eyeColor: number, eyeEmissive: number, staffGlow: number): ModelSpec {
+  return {
+    id: 'acolyte-caster',
+    materials: {
+      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto' },
+      eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
+      robe: { color: 0x080a0e, roughness: 1.0, flatShading: 'auto' },
+      staff: { color: 0x1a140e, roughness: 0.9, flatShading: 'auto' },
+      orb: { color: 0x000000, emissive: staffGlow, emissiveIntensity: 2.6, roughness: 1.0 },
+    },
+    slots: {
+      rig: { pos: [0, 0.85, 0] },
+      // Muzzle slot lives at the orb tip so projectiles can be spawned
+      // from there if we ever want to read it from a slot. We use the
+      // ranged.muzzleOffset for now since enemy.ts owns spawn timing.
+      muzzle: { pos: [0.30, 1.20, -0.15] satisfies Vec3 },
+    },
+    parts: [
+      // Robed trailing tail — same trick as the wraith. Hides the absence
+      // of legs and gives a vertical silhouette.
+      {
+        kind: 'extrude', parent: 'rig',
+        pos: [0, -0.55, 0],
+        shape: [
+          [-0.26, 0.55], [-0.34, 0.10], [-0.22, -0.35], [-0.08, -0.50],
+          [ 0.08, -0.50], [ 0.22, -0.35], [ 0.34, 0.10], [ 0.26, 0.55],
+        ],
+        depth: 0.05,
+        mat: 'robe',
+      },
+      // Body — thin tall capsule, robe-colored (the acolyte's robe covers
+      // the body), parented to rig.
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0.05, 0], radius: 0.26, height: 0.85, mat: 'robe' },
+      // Head — sphere just above the body. Dark, mostly hidden under hood.
+      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, 0.75, 0], radius: 0.22, mat: 'body' },
+      // Hood — a cone tipped backward over the head. Adds the cultist read.
+      { parent: 'rig', kind: 'cone', pos: [0, 0.86, 0.02], radius: 0.30, height: 0.40, segments: 10, mat: 'robe' },
+      // Eyes — small mesh spheres deep under the hood, plus halo sprites
+      // for distance read (same dual-layer trick as wraith).
+      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.74, -0.20], radius: 0.035, segments: [12, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.74, -0.20], radius: 0.035, segments: [12, 10], mat: 'eyes' },
+      { name: 'eyeHaloL', parent: 'rig', kind: 'sprite', pos: [-0.08, 0.74, -0.24], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { name: 'eyeHaloR', parent: 'rig', kind: 'sprite', pos: [ 0.08, 0.74, -0.24], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      // Staff — held in the off hand. Long thin cylinder pre-rotated so it
+      // stands upright. Orb at the tip glows in the projectile color so the
+      // player can read "that staff is about to spit at me."
+      { parent: 'rig', kind: 'cylinder', pos: [0.30, 0.10, -0.05], radius: 0.025, height: 1.4, segments: 6, mat: 'staff' },
+      { parent: 'rig', kind: 'sphere', pos: [0.30, 0.80, -0.05], radius: 0.085, segments: [12, 10], mat: 'orb' },
+      // Halo around the orb so the projectile color reads at distance even
+      // when the lighting is dim.
+      { parent: 'rig', kind: 'sprite', pos: [0.30, 0.80, -0.05], size: [0.40, 0.40], texture: 'fire-wisp', blending: 'additive', color: staffGlow },
     ],
   };
 }
@@ -347,6 +428,52 @@ export const ENEMIES: Record<string, EnemySpec> = {
       { itemId: 'healing-potion', chance: 0.4 },
       { itemId: 'ring-of-predation', chance: 0.15 },
       { itemId: 'worn-boots', chance: 0.20 },
+    ],
+  },
+
+  // Acolyte — ranged caster. Keeps distance, hurls a slow magic projectile
+  // from the staff orb. Long telegraph (you can see the windup), but if it
+  // lands you're hit through physical armor. Pairs as a back-line behind
+  // melee mobs; on its own it's escapable by sidestep or charge-in.
+  acolyte: {
+    id: 'acolyte',
+    name: 'acolyte',
+    hp: 2,                  // squishier than a ghoul — break the line
+    moveSpeed: 1.3,         // slow — keeps its distance, doesn't chase well
+    attackDamage: 1,
+    // For a shooter, attackRange = "how far away I'll cast from"; we want
+    // this generous so it doesn't have to close to melee distance.
+    attackRange: 8,
+    strikeRange: 8,         // same — projectile spawns at strike phase regardless
+    windupTime: 1.10,       // long, readable telegraph (orb pulses brighter)
+    strikeTime: 0.15,
+    recoverTime: 0.80,
+    damageType: 'magic',
+    model: acolyteModel(0x1a1a22, 0x66ffaa, 2.5, 0x66ffaa),
+    baseEyeEmissive: 2.5,
+    collisionRadius: 0.32,
+    physicalArmor: 0,
+    magicArmor: 1,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    // Best line-of-sight perception of any mob — they're casters, scanning
+    // the room. Tight cone (they focus). Hearing radius small.
+    sightRange: 11,
+    sightConeHalfAngle: 0.95,
+    hearingRange: 2.0,
+    loseSightTime: 5,
+    ranged: {
+      // Muzzle = orb position in rig-local space (rig is at +0.85 y from
+      // container origin). World-y of the orb ≈ 0.85 + 0.80 = 1.65, which
+      // sits about at player chest height. Player hit-test in projectile-pool
+      // is generous on Y, so this lands cleanly.
+      muzzleOffset: [0.30, 1.65, -0.05],
+      projectileId: 'acolyte-spit',
+    },
+    drops: [
+      { itemId: 'healing-potion', chance: 0.5 },
+      { itemId: 'bone-amulet', chance: 0.15 },
     ],
   },
 

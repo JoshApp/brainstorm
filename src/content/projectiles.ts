@@ -1,0 +1,28 @@
+import { registerProjectileType, type ProjectileType } from '../combat/projectile-pool';
+
+// Projectile content registry. Add a new spell/dart/spit by adding a
+// ProjectileType here and exporting an id constant — ranged enemies
+// reference it from their spec (`ranged.projectileId`).
+//
+// Tuning notes:
+//   - speed:    too fast → unreadable, too slow → trivial to sidestep.
+//                Acolyte spit at 6 m/s is sluggish-magic feel.
+//   - lifetime: cap on travel time; combined with walkable.contains the
+//                projectile dies on wall hit anyway, so generous is fine.
+//   - color:    matches the caster's eye/staff cue so the player can
+//                read "that one is shooting at me" at a glance.
+
+export const ACOLYTE_SPIT: ProjectileType = {
+  id: 'acolyte-spit',
+  radius: 0.13,
+  speed: 6.0,
+  lifetime: 3.0,
+  damageType: 'magic',
+  color: 0x66ffaa,         // matches wraith/acolyte spectral palette
+  lightIntensity: 1.2,
+  lightRange: 3.0,
+};
+
+export function registerProjectiles(): void {
+  registerProjectileType(ACOLYTE_SPIT);
+}

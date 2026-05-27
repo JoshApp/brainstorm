@@ -16,6 +16,7 @@ import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, type DamageEvent } from '../combat/damage';
 import { playEnemyDeath, playEnemyWindup, type EnemyDeathSize } from '../audio/sfx';
+import { spawnProjectile } from '../combat/projectile-pool';
 
 // Map an EnemySpec → audio size bucket. Used by death + windup sounds so
 // big mobs sound big and the wraith reads as spectral, not physical.
@@ -90,6 +91,8 @@ export interface Enemy {
 
 const tmpDir = new THREE.Vector3();
 const tmpFlat = new THREE.Vector3();
+const tmpMuzzle = new THREE.Vector3();
+const tmpTarget = new THREE.Vector3();
 
 export function createEnemy(
   scene: THREE.Object3D,
@@ -587,13 +590,36 @@ export function createEnemy(
 
       case 'striking': {
         phaseTimer += dt;
-        if (!strikeAlreadyHit && distance <= spec.strikeRange) {
-          // Enemy melee strike — physical, sourced from this enemy.
-          // damagePlayer routes through the pipeline (player armor applies
-          // per the enemy's configured damage type — 'physical' default,
-          // 'magic' for wraiths, etc.).
-          damagePlayer(spec.attackDamage, entityId, spec.damageType ?? 'physical');
-          strikeAlreadyHit = true;
+        if (!strikeAlreadyHit) {
+          if (spec.ranged) {
+            // Ranged shooter — spawn a projectile from the muzzle slot.
+            // Muzzle offset is rig/container-local; compose with the
+            // container's world matrix so the spawn point matches the
+            // visible staff/orb regardless of facing.
+            const m = spec.ranged.muzzleOffset;
+            tmpMuzzle.set(m[0], m[1], m[2]);
+            container.updateMatrixWorld();
+            tmpMuzzle.applyMatrix4(container.matrixWorld);
+            // Target the player's torso height so a too-low orb doesn't
+            // arc down through the floor (projectiles move in a straight
+            // line — no gravity).
+            tmpTarget.set(playerPos.x, tmpMuzzle.y, playerPos.z);
+            spawnProjectile({
+              typeId: spec.ranged.projectileId,
+              origin: tmpMuzzle,
+              target: tmpTarget,
+              damage: spec.attackDamage,
+              source: entityId,
+            });
+            strikeAlreadyHit = true;
+          } else if (distance <= spec.strikeRange) {
+            // Enemy melee strike — physical, sourced from this enemy.
+            // damagePlayer routes through the pipeline (player armor applies
+            // per the enemy's configured damage type — 'physical' default,
+            // 'magic' for wraiths, etc.).
+            damagePlayer(spec.attackDamage, entityId, spec.damageType ?? 'physical');
+            strikeAlreadyHit = true;
+          }
         }
         // Slam past neutral on the strike (follow-through). Eyes blaze at peak.
         applyTilt(-0.25);

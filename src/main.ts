@@ -46,6 +46,8 @@ import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { initLightPool, tickLightPool } from './scene/light-pool';
+import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
+import { registerProjectiles } from './content/projectiles';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
@@ -265,6 +267,12 @@ warmupContent(renderer);
 // fountains, lamp, fill, etc.).
 initLightPool(scene);
 initPickupLightPool(scene);
+// Projectile pool — pre-allocates the meshes + trail sprites that ranged
+// enemies (and future spells/traps) rent at fire-time. Registers its own
+// 'projectile' category lights into the light pool above. Projectile
+// types are registered into a registry; register the built-in set now.
+initProjectilePool(scene);
+registerProjectiles();
 
 // Run-state listeners — kill counter, items-found set, autosave on
 // floor:loaded events. Wired before any level load so the initial
@@ -358,6 +366,12 @@ function tick() {
       if (dx * dx + dz * dz > sleepDist2) continue;
       enemy.update(scaledDt, camera.position, currentLevel.walkable);
     }
+
+    // Projectiles — integrate active projectiles, hit-test the player +
+    // walls, retire on contact/expiry. Lives outside the enemy loop so
+    // a shot survives the shooter's death and so future non-enemy spawn
+    // sources (player wand, trap dart) can plug in.
+    tickProjectiles(scaledDt, camera.position, currentLevel.walkable);
 
     // Room-clear detection — fires room:cleared events when a tracked
     // room's alive count hits zero. Doors listen for this to flip from

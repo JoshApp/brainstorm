@@ -35,6 +35,7 @@
 //   R   rat spawn (walkable)
 //   K   skirmisher spawn (walkable)
 //   W   wraith spawn (walkable)
+//   Y   acolyte spawn (walkable) — ranged caster
 //   space  treated as wall (so authors can omit perimeter quoting)
 
 import type {
@@ -76,7 +77,7 @@ export interface TileMapOptions {
 // (no auto-wall around them) — even though some place an obstacle inside
 // the cell (pillar / altar / chest / fountain) that blocks movement.
 // Authors who want a SOLID block of stone use '#'.
-const FLOOR_CHARS = new Set('.,SoO/^FCGRKWPAcTt<>'.split(''));
+const FLOOR_CHARS = new Set('.,SoO/^FCGRKWYPAcTt<>'.split(''));
 
 /**
  * Parse a TileMap into a LevelSpec the existing buildLevel consumes.
@@ -251,6 +252,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         case 'R': spawns.push({ enemyId: 'rat',        x, z, roomId: 'main' }); break;
         case 'K': spawns.push({ enemyId: 'skirmisher', x, z, roomId: 'main' }); break;
         case 'W': spawns.push({ enemyId: 'wraith',     x, z, roomId: 'main' }); break;
+        case 'Y': spawns.push({ enemyId: 'acolyte',    x, z, roomId: 'main' }); break;
         case '/': {
           if (opts.stairsTarget) {
             stairs.push({

@@ -15,16 +15,20 @@ import * as THREE from 'three';
 //                 can't crowd torches out, and torches can't crowd
 //                 pickups out. 4 slots covers worst-case wraith drop
 //                 + chest open + one straggler.
+//   projectile  — active projectiles in flight (acolyte spit, future
+//                 spells/darts). Own slots so a salvo can't crowd
+//                 torches out. 4 slots is plenty: the projectile pool
+//                 itself only spawns 16 and they're spread in space.
 //
 // Per category we sort registered sources by distance to camera and
 // bind the nearest N to that category's slots. Sources beyond their
 // own range are culled. Hysteresis (2.2m² bonus) prevents flicker
 // when two sources contend for the boundary slot.
 //
-// Three.js sees a constant 13 PointLights in the scene — no shader
-// recompiles regardless of how many logical sources exist.
+// Three.js sees a constant number of PointLights in the scene — no
+// shader recompiles regardless of how many logical sources exist.
 
-export type LightCategory = 'lamp' | 'environment' | 'pickup';
+export type LightCategory = 'lamp' | 'environment' | 'pickup' | 'projectile';
 
 // Budgets per category. LOS-culling means only IN-ROOM sources can
 // reach a slot, so it's fine to give environment a generous budget —
@@ -33,6 +37,7 @@ const CATEGORY_SLOTS: Record<LightCategory, number> = {
   lamp: 1,
   environment: 10,
   pickup: 4,
+  projectile: 4,
 };
 
 // Park position for unused slots — far below the floor.
@@ -69,11 +74,13 @@ const slotsByCategory: Record<LightCategory, THREE.PointLight[]> = {
   lamp: [],
   environment: [],
   pickup: [],
+  projectile: [],
 };
 const boundLastFrameByCategory: Record<LightCategory, Set<string>> = {
   lamp: new Set(),
   environment: new Set(),
   pickup: new Set(),
+  projectile: new Set(),
 };
 let scene: THREE.Scene | null = null;
 
@@ -82,6 +89,7 @@ const scratchByCategory: Record<LightCategory, Array<{ src: LightSource; sortKey
   lamp: [],
   environment: [],
   pickup: [],
+  projectile: [],
 };
 
 /** One-time setup. Adds N PointLights per category to the scene. */
@@ -150,6 +158,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
   scratchByCategory.lamp.length = 0;
   scratchByCategory.environment.length = 0;
   scratchByCategory.pickup.length = 0;
+  scratchByCategory.projectile.length = 0;
 
   // Bucket sources by category + compute sort keys (dist² with
   // hysteresis bonus for previously-bound sources).
@@ -174,7 +183,7 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
   }
 
   // Sort + bind each category's slots independently.
-  const cats: LightCategory[] = ['lamp', 'environment', 'pickup'];
+  const cats: LightCategory[] = ['lamp', 'environment', 'pickup', 'projectile'];
   for (const cat of cats) {
     const scratch = scratchByCategory[cat];
     const slots = slotsByCategory[cat];

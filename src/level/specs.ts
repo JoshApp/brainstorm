@@ -279,6 +279,10 @@ export const LEVEL_2: LevelSpec = {
     // Rat in the center for movement variety — closes immediately,
     // forces the player to split attention.
     { enemyId: 'rat',        x:  0,   z:  0.5, roomId: 'crypt' },
+    // Acolyte at the back, beside the altar. Long sight cone covers the
+    // colonnade entry — the moment the player rounds the pillars they're
+    // already being targeted. Forces movement, breaks the rat-melee rhythm.
+    { enemyId: 'acolyte',    x:  3.6, z:  3.6, roomId: 'crypt' },
   ],
 
   // Stairs to procgen depth-3. The loader's `generate` callback produces a

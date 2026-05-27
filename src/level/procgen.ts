@@ -52,21 +52,25 @@ function rollTableFor(depth: number): EnemyRoll[] {
       { enemyId: 'rat',        weight: 3 },
       { enemyId: 'skirmisher', weight: 2 },
       { enemyId: 'ghoul',      weight: 1 },
+      { enemyId: 'acolyte',    weight: 1 },
     ];
   }
-  // Depth 5-7: ghouls in the mix more.
+  // Depth 5-7: ghouls in the mix more; acolytes start appearing in pairs
+  // with melee escorts so they're not a solo gimmick.
   if (depth <= 7) {
     return [
       { enemyId: 'rat',        weight: 2 },
       { enemyId: 'skirmisher', weight: 2 },
       { enemyId: 'ghoul',      weight: 3 },
+      { enemyId: 'acolyte',    weight: 2 },
     ];
   }
-  // Depth 8+: wraiths possible, ghouls common.
+  // Depth 8+: wraiths possible, ghouls common, acolytes regular threat.
   return [
     { enemyId: 'rat',        weight: 1 },
     { enemyId: 'skirmisher', weight: 2 },
     { enemyId: 'ghoul',      weight: 3 },
+    { enemyId: 'acolyte',    weight: 2 },
     { enemyId: 'wraith',     weight: 1 },
   ];
 }
@@ -99,7 +103,7 @@ function populateTemplate(template: TileMap, depth: number, rand: () => number):
   const table = rollTableFor(depth);
   const bossChar: Record<string, string> = { wraith: 'W' };
   const enemyChar: Record<string, string> = {
-    rat: 'R', skirmisher: 'K', ghoul: 'G', wraith: 'W',
+    rat: 'R', skirmisher: 'K', ghoul: 'G', wraith: 'W', acolyte: 'Y',
   };
   return template.map(row => {
     let out = '';
