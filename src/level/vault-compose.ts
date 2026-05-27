@@ -137,6 +137,13 @@ export function composeFloor(
       torchTint: opts.torchTint,
       stairsTarget: nextLevelId,
       roomHeight: pv.vault.roomHeight,
+      // Start vault: face SOUTH (+Z) toward the corridor that exits
+      // the room. yaw=π puts the camera's default-forward (-Z) onto
+      // +Z, so the player's first frame looks down the chain toward
+      // the next vault instead of into the back wall. Without this
+      // override the default yaw=0 (north) had us spawning faced AT
+      // the wall the player came from.
+      spawnYaw: pv.vault.tags.includes('start') ? Math.PI : undefined,
     });
     rooms.push(...sub.rooms);
     corridors.push(...sub.corridors);
