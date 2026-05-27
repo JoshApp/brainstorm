@@ -55,6 +55,12 @@ export function spawnStairs(
   // up through the cutout plane (y = +0.005) regardless of polygon
   // offset.
 
+  // Meshes that get inverse-hull outlined later (parapet lips +
+  // top few treads/risers). Collected here while we build them so
+  // the outline pass is a single loop after we've defined the
+  // outline material.
+  const outlineTargets: THREE.Mesh[] = [];
+
   // ── PARAPET LIP ───────────────────────────────────────────────────
   // Short low wall ringing the OPENING above the floor — sells "carved
   // hole in the floor" rather than "stairs plopped on top." Three sides
@@ -75,6 +81,7 @@ export function spawnStairs(
     lip.receiveShadow = true;
     lip.castShadow = true;
     group.add(lip);
+    outlineTargets.push(lip);
   }
   // Far-end parapet (across the back of the well so the player doesn't
   // see beyond it into world geometry).
@@ -86,6 +93,7 @@ export function spawnStairs(
   farLip.receiveShadow = true;
   farLip.castShadow = true;
   group.add(farLip);
+  outlineTargets.push(farLip);
 
   // ── STEPS ─────────────────────────────────────────────────────────
   // Treads are RECESSED (top tread top edge at y = -TOP_RECESS). The
@@ -108,6 +116,13 @@ export function spawnStairs(
     riser.position.set(0, yTop - STEP_HEIGHT / 2, zFront);
     riser.receiveShadow = true;
     group.add(riser);
+    // Only outline the first three treads + risers — those are the
+    // visible "edge into the void" that the eye reads. Outlining
+    // every step would just glow everywhere, washing the cue out.
+    if (i < 3) {
+      outlineTargets.push(tread);
+      outlineTargets.push(riser);
+    }
   }
 
   // ── THROAT WALLS ──────────────────────────────────────────────────
@@ -203,16 +218,24 @@ export function spawnStairs(
   });
 
   // ── MOONBEAM (rises from the mouth) ───────────────────────────────
-  // Four additive layers: a wide floor halo (visible far-off as a
-  // pool of light on the ground), a tight inner halo (the pit mouth
-  // glow), an outer haze column, and a narrow bright core that pokes
-  // up above the average ceiling so it's spotted across a dark room.
-  // A slow opacity breath gives the eye something to latch onto from
-  // across a fogged room — the stair is the exit, it should call.
+  // Three layers + an outline highlight on the stair geometry:
+  //   - Floor RING — pool of light on the REAL floor around the
+  //     parapet (the old disk hovered over the carved hole because
+  //     the floor under it was gone).
+  //   - Inverse-hull outlines — slightly enlarged backface-rendered
+  //     duplicates of the parapets + first few steps, so the stair
+  //     reads as glowing against the dark interior of the well.
+  //   - Outer haze + bright core sprites — the vertical god-ray that
+  //     calls from across a fogged room.
+  // A slow opacity breath gives the eye something to latch onto.
 
-  // Wide far-visible floor pool. Big plane, soft opacity — reads
-  // as "there's light on the floor over there" through fog.
-  const floorPoolMat = new THREE.MeshBasicMaterial({
+  // Floor RING — RingGeometry has an inner radius cut out, so the
+  // glow only lands on the REAL floor outside the carved hole.
+  // Inner radius matches the parapet footprint + a tiny margin so
+  // there's no peek across the rim edge.
+  const ringInner = Math.max(STEP_WIDTH / 2 + 0.18, STAIRWELL_TOTAL_DEPTH / 2 + 0.20);
+  const ringOuter = ringInner + 2.0;
+  const floorRingMat = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'),
     color: 0x4a78c8,
     transparent: true,
@@ -222,26 +245,45 @@ export function spawnStairs(
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending,
   });
-  const floorPool = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 5.2), floorPoolMat);
-  floorPool.rotation.x = -Math.PI / 2;
-  floorPool.position.set(0, 0.03, totalDepth / 2);
-  group.add(floorPool);
+  const floorRing = new THREE.Mesh(
+    new THREE.RingGeometry(ringInner, ringOuter, 24),
+    floorRingMat,
+  );
+  floorRing.rotation.x = -Math.PI / 2;
+  floorRing.position.set(0, 0.012, totalDepth / 2);
+  group.add(floorRing);
 
-  // Tight bright halo right at the mouth.
-  const haloMat = new THREE.MeshBasicMaterial({
-    map: getTexture('fire-wisp'),
-    color: 0x88aaff,
-    transparent: true,
-    opacity: 0.90,
+  // Inverse-hull outline on the parapet lips + first few visible
+  // steps. Renders a slightly-larger backface duplicate of each
+  // mesh with an unlit emissive material; when the original mesh
+  // is in view, only the silhouette ring shows around the
+  // original, giving a clean glowing edge. This is the "stair is
+  // highlighted" cue requested by the user — replaces the old
+  // floating disk halo that hovered above the carved hole.
+  const outlineColor = 0xa0c4ff;
+  const outlineMat = new THREE.MeshBasicMaterial({
+    color: outlineColor,
+    side: THREE.BackSide,
     fog: false,
     depthWrite: false,
-    side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
+    transparent: true,
+    opacity: 0.85,
   });
-  const halo = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), haloMat);
-  halo.rotation.x = -Math.PI / 2;
-  halo.position.set(0, 0.05, totalDepth / 2);
-  group.add(halo);
+  /** Helper: clone a mesh's geometry as a slightly-scaled outline
+   *  duplicate parented to the same node. The inset scale is
+   *  vertex-space (so larger meshes get a proportionally thicker
+   *  outline — acceptable for our few stair meshes). */
+  const addOutline = (mesh: THREE.Mesh) => {
+    const ol = new THREE.Mesh(mesh.geometry, outlineMat);
+    ol.position.copy(mesh.position);
+    ol.rotation.copy(mesh.rotation);
+    ol.scale.copy(mesh.scale).multiplyScalar(1.06);
+    ol.renderOrder = -1;     // render before the original so the
+                             //  original's depth write masks the
+                             //  interior of the outline volume
+    mesh.parent?.add(ol);
+  };
+  for (const m of outlineTargets) addOutline(m);
 
   const outerBeamMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
@@ -278,15 +320,15 @@ export function spawnStairs(
   const beamBreathSeed = Math.random() * Math.PI * 2;
   const baseOuter = outerBeamMat.opacity;
   const baseCore = coreBeamMat.opacity;
-  const baseHalo = haloMat.opacity;
-  const basePool = floorPoolMat.opacity;
+  const baseRing = floorRingMat.opacity;
+  const baseOutline = outlineMat.opacity;
   outerBeam.onBeforeRender = () => {
     const t = (Date.now() / 1000) * (Math.PI * 2 / 2.4) + beamBreathSeed;
     const b = 0.85 + 0.15 * Math.sin(t);
     outerBeamMat.opacity = baseOuter * b;
     coreBeamMat.opacity = baseCore * b;
-    haloMat.opacity = baseHalo * b;
-    floorPoolMat.opacity = basePool * b;
+    floorRingMat.opacity = baseRing * b;
+    outlineMat.opacity = baseOutline * b;
   };
 
   const interactable = {
