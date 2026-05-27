@@ -82,11 +82,7 @@ export function setSlot(slot: EquipSlot, item: ItemSpec | null) {
  */
 export function tryAutoEquip(item: ItemSpec): boolean {
   switch (item.kind) {
-    case 'weapon': {
-      slots.weapon = item;
-      notify();
-      return true;
-    }
+    case 'weapon':  return autoFillSingle('weapon', item);
     case 'armor':   return autoFillSingle('armor', item);
     case 'helmet':  return autoFillSingle('helmet', item);
     case 'amulet':  return autoFillSingle('amulet', item);

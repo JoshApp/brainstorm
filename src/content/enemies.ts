@@ -90,11 +90,11 @@ export interface EnemySpec {
 
   // --- Drops ---
   /**
-   * Drop table. On death, each entry rolls INDEPENDENTLY against its
-   * `chance` (default 1.0); successful rolls spawn a pickup of that item.
-   * Multiple drops from the same kill spread in a small arc on the floor.
+   * Drop table — see DropTable above for semantics. Guaranteed items
+   * always drop; pool items roll once vs `rate` then pick one by
+   * weight. Multiple drops from one kill spread in a small arc.
    */
-  drops?: DropEntry[];
+  drops?: DropTable;
 
   // --- Reward ---
   /**
@@ -146,10 +146,36 @@ export interface EnemySpec {
   phasing?: boolean;
 }
 
-export interface DropEntry {
+// ── Drop table ──────────────────────────────────────────────────────
+// Drop semantics — scarce-but-exciting, ARPG-lite:
+//
+//   1. `guaranteed` items ALWAYS drop. Use for boss signature loot.
+//   2. ONE roll against `rate` decides whether the pool fires. If it
+//      fires, the pool picks ONE item by weight. So a kill produces
+//      at MOST one pool-rolled item (plus guaranteed).
+//   3. `rate` is depth-scaled in scaleEnemySpec — deeper floors have
+//      slightly better odds, capped at 0.75.
+//
+// Why pool-pick-one (vs the old per-entry independent rolls): when
+// every entry rolled independently, killing a ghoul almost always
+// dropped 2-3 items. Loot stopped reading as a reward. With pool-pick-
+// one + a stingier rate, most kills give nothing and the occasional
+// drop feels like an event.
+
+export interface DropPoolEntry {
   itemId: string;
-  /** Probability in [0,1] this item drops. Default 1.0. */
-  chance?: number;
+  /** Relative weight inside the pool. Higher = more likely picked. */
+  weight: number;
+}
+
+export interface DropTable {
+  /** Items that always drop. Empty/undefined = nothing guaranteed. */
+  guaranteed?: string[];
+  /** Probability that ONE pool item drops. Default 0.30. Scales with
+   *  depth (see scaleEnemySpec). */
+  rate?: number;
+  /** Weighted pool — one item picked if the rate gate succeeds. */
+  pool?: DropPoolEntry[];
 }
 
 // --- Model factories ----------------------------------------------------
@@ -568,12 +594,19 @@ export const ENEMIES: Record<string, EnemySpec> = {
     loseSightTime: 4,
     xp: 6,
     gold: [3, 7],
-    drops: [
-      { itemId: 'scimitar', chance: 1.0 },              // always — headline reward
-      { itemId: 'healing-potion', chance: 0.35 },
-      { itemId: 'ring-of-bloodthirst', chance: 0.10 },
-      { itemId: 'iron-coif', chance: 0.20 },
-    ],
+    drops: {
+      // ~30% of kills drop one item from the pool. Scimitar is the
+      // standout weight; rare rolls give a potion or piece of armor.
+      // Ring-of-bloodthirst stays rare so finding one is genuinely
+      // exciting.
+      rate: 0.30,
+      pool: [
+        { itemId: 'scimitar', weight: 5 },
+        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'iron-coif', weight: 2 },
+        { itemId: 'ring-of-bloodthirst', weight: 1 },
+      ],
+    },
   },
 
   rat: {
@@ -603,10 +636,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     loseSightTime: 3,
     xp: 1,
     gold: [0, 2],
-    drops: [
-      // Trash mob: rarely drops anything. Empty hands most of the time.
-      { itemId: 'healing-potion', chance: 0.12 },
-    ],
+    drops: {
+      // Trash mob — empty hands almost always. ~10% chance of a potion.
+      rate: 0.10,
+      pool: [
+        { itemId: 'healing-potion', weight: 1 },
+      ],
+    },
   },
 
   skirmisher: {
@@ -635,11 +671,14 @@ export const ENEMIES: Record<string, EnemySpec> = {
     loseSightTime: 5,
     xp: 3,
     gold: [1, 4],
-    drops: [
-      { itemId: 'healing-potion', chance: 0.4 },
-      { itemId: 'ring-of-predation', chance: 0.15 },
-      { itemId: 'worn-boots', chance: 0.20 },
-    ],
+    drops: {
+      rate: 0.22,
+      pool: [
+        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'worn-boots', weight: 2 },
+        { itemId: 'ring-of-predation', weight: 1 },
+      ],
+    },
   },
 
   // Acolyte — ranged caster. Keeps distance, hurls a slow magic projectile
@@ -685,10 +724,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     },
     xp: 5,
     gold: [2, 6],
-    drops: [
-      { itemId: 'healing-potion', chance: 0.5 },
-      { itemId: 'bone-amulet', chance: 0.15 },
-    ],
+    drops: {
+      rate: 0.28,
+      pool: [
+        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'bone-amulet', weight: 1 },
+      ],
+    },
   },
 
   // Antechamber boss — taller, slower, hits hard with MAGIC damage. Physical
@@ -726,10 +768,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
     loseSightTime: 7,
     xp: 25,
     gold: [15, 30],
-    drops: [
-      { itemId: 'heartburn', chance: 0.5 },          // fabled — the headline drop
-      { itemId: 'bone-amulet', chance: 0.5 },
-      { itemId: 'healing-potion', chance: 0.8 },
-    ],
+    drops: {
+      // Boss — always drops the consolation potion. Then a single pool
+      // roll for one of the rare items (heartburn fabled or the amulet).
+      // No matter what, the player walks away with at least a heal.
+      guaranteed: ['healing-potion'],
+      rate: 1.0,
+      pool: [
+        { itemId: 'heartburn', weight: 1 },          // fabled — the headline
+        { itemId: 'bone-amulet', weight: 2 },
+      ],
+    },
   },
 };

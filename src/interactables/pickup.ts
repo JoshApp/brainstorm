@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
-import { addItem, removeItem, addItemSilently } from '../player/inventory';
-import { tryAutoEquip, equipFromInventory } from '../player/equipment';
+import { addItem, removeItem } from '../player/inventory';
+import { tryAutoEquip } from '../player/equipment';
 import { getTexture } from '../style/procedural-textures';
 import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
 import { playLootLand, playPickupChime } from '../audio/sfx';
@@ -199,15 +199,11 @@ export function createPickup(
       // listens for the addItem event; equipment routing decides whether
       // to keep the item in the bag.
       addItem(item.id);
-      if (item.kind === 'weapon') {
-        // Weapons always equip on pickup (replace current).
-        const previous = equipFromInventory(item);
-        if (previous) addItemSilently(previous.id);
-        removeItem(item.id);
-      } else if (item.kind !== 'consumable') {
-        // All other equipment kinds auto-equip only if a matching slot
-        // is empty (ring + armor + helmet + amulet + gloves + boots +
-        // offhand); falls back to staying in the bag otherwise.
+      if (item.kind !== 'consumable') {
+        // Auto-equip ONLY if the relevant slot is empty — players
+        // should never have their current gear silently swapped out
+        // by walking over a drop. Otherwise the new item stays in the
+        // bag and the player can manually swap via the inventory panel.
         if (tryAutoEquip(item)) removeItem(item.id);
       }
       unregisterLight(lightSourceId);

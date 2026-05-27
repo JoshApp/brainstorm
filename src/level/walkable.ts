@@ -116,9 +116,24 @@ export class WalkableRegion {
    * see/be-seen around them, which matches how a real low-profile pillar
    * would feel in a dungeon.
    */
-  hasLineOfSight(ax: number, az: number, bx: number, bz: number): boolean {
+  hasLineOfSight(
+    ax: number, az: number, bx: number, bz: number,
+    opts?: { includeObstacles?: boolean },
+  ): boolean {
     for (const w of this.walls) {
       if (segmentsIntersect(ax, az, bx, bz, w.ax, w.az, w.bx, w.bz)) return false;
+    }
+    // For movement LOS (not perception), props ALSO block — otherwise a
+    // mob will beeline through a pillar and clampMove stops it dead.
+    // Default off so existing sight-cone callers keep their behaviour.
+    if (opts?.includeObstacles) {
+      for (const o of this.obstacles) {
+        if (o.kind === 'circle') {
+          if (distSqPointToSegment(o.x, o.z, ax, az, bx, bz) < o.r * o.r) return false;
+        } else {
+          if (segmentHitsAabb(ax, az, bx, bz, o.minX, o.maxX, o.minZ, o.maxZ)) return false;
+        }
+      }
     }
     return true;
   }
@@ -197,4 +212,38 @@ function distSqPointToAabb(px: number, pz: number, minX: number, maxX: number, m
   const dx = px - cx;
   const dz = pz - cz;
   return dx * dx + dz * dz;
+}
+
+// Does segment (ax,az)–(bx,bz) intersect the axis-aligned box?
+// Slab method: parametrise the segment, find the entry/exit t-range
+// against each slab, return true if the ranges overlap inside [0,1].
+function segmentHitsAabb(
+  ax: number, az: number, bx: number, bz: number,
+  minX: number, maxX: number, minZ: number, maxZ: number,
+): boolean {
+  const dx = bx - ax;
+  const dz = bz - az;
+  let tmin = 0;
+  let tmax = 1;
+  // X slab
+  if (dx === 0) {
+    if (ax < minX || ax > maxX) return false;
+  } else {
+    const t1 = (minX - ax) / dx;
+    const t2 = (maxX - ax) / dx;
+    tmin = Math.max(tmin, Math.min(t1, t2));
+    tmax = Math.min(tmax, Math.max(t1, t2));
+    if (tmin > tmax) return false;
+  }
+  // Z slab
+  if (dz === 0) {
+    if (az < minZ || az > maxZ) return false;
+  } else {
+    const t1 = (minZ - az) / dz;
+    const t2 = (maxZ - az) / dz;
+    tmin = Math.max(tmin, Math.min(t1, t2));
+    tmax = Math.min(tmax, Math.max(t1, t2));
+    if (tmin > tmax) return false;
+  }
+  return true;
 }

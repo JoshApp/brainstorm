@@ -34,10 +34,10 @@ let lamp: LampState | null = null;
 
 // Position mirrors the sword's bottom-RIGHT viewmodel offset. The
 // lantern hangs at the bottom-LEFT of the player's view, swinging
-// loosely. Pulled back toward the center (so it's not at the very
-// edge), CLOSER to the camera (less negative z), AND scaled up so
-// it reads as a hand actively holding a lantern out in front.
-const LAMP_LOCAL = new THREE.Vector3(-0.32, -0.28, -0.42);
+// loosely. Tuned so it visibly extends INTO the scene — pushed deeper
+// in z so it doesn't crowd the camera near-plane, with a bigger group
+// scale so it still reads at that depth instead of shrinking away.
+const LAMP_LOCAL = new THREE.Vector3(-0.34, -0.26, -0.55);
 const LAMP_COLOR = 0xffc488;  // warm oil-lamp tone
 
 export function attachLamp(camera: THREE.Camera) {
@@ -46,10 +46,10 @@ export function attachLamp(camera: THREE.Camera) {
   // ── Lantern geometry ──────────────────────────────────────────────
   const group = new THREE.Group();
   group.position.copy(LAMP_LOCAL);
-  // Upscale so the lantern silhouette has presence in the bottom-left
-  // corner — at 1.0× it read as a tiny cage; at 1.5× it reads as
-  // something the player is actually holding out front.
-  group.scale.setScalar(1.5);
+  // Upscale so the lantern silhouette reads as a real object held out
+  // in front (compensates for the depth push above — at 1.0× and z=-0.55
+  // it'd shrink to a smudge).
+  group.scale.setScalar(1.8);
 
   // Iron parts — dark metal with a slight emissive baseline so the
   // lantern reads even in pitch-black areas.

@@ -294,8 +294,13 @@ export function createEnemy(
     let mx = targetX;
     let mz = targetZ;
     if (!spec.phasing && nav) {
+      // includeObstacles: pillars + altars + fountains BLOCK movement
+      // even though they don't block perception. Without this the mob
+      // sees clear LOS through a pillar, beelines, and clampMove pins
+      // it against the pillar's edge.
       const directLOS = walkable.hasLineOfSight(
         container.position.x, container.position.z, targetX, targetZ,
+        { includeObstacles: true },
       );
       if (!directLOS) {
         // Invalidate the cached path if the target drifted significantly
@@ -407,13 +412,24 @@ export function createEnemy(
       // drops are spread in a small arc around the death position so they
       // don't stack on the same pixel.
       if (spec.drops) {
-        const successful = spec.drops.filter(d => Math.random() < (d.chance ?? 1.0));
-        const N = successful.length;
-        // Loot fountain — each item pops out of the corpse on its own arc,
-        // settles where it lands. Angles distributed evenly + jittered so
-        // multiple drops spread out instead of clumping.
-        successful.forEach((drop, i) => {
-          const item = ITEMS[drop.itemId];
+        const drops: string[] = [];
+        if (spec.drops.guaranteed) drops.push(...spec.drops.guaranteed);
+        const rate = spec.drops.rate ?? 0.3;
+        if (Math.random() < rate && spec.drops.pool && spec.drops.pool.length > 0) {
+          const total = spec.drops.pool.reduce((s, e) => s + e.weight, 0);
+          let r = Math.random() * total;
+          for (const entry of spec.drops.pool) {
+            r -= entry.weight;
+            if (r <= 0) {
+              drops.push(entry.itemId);
+              break;
+            }
+          }
+        }
+        const N = drops.length;
+        // Loot fountain — each item pops out of the corpse on its own arc.
+        drops.forEach((itemId, i) => {
+          const item = ITEMS[itemId];
           if (!item) return;
           const pos = container.position.clone();
           const angle = (N > 1 ? (i / N) * Math.PI * 2 : Math.random() * Math.PI * 2)

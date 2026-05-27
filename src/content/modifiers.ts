@@ -85,6 +85,11 @@ const DEPTH_HP_MUL_PER_LEVEL = 0.15;
 const DEPTH_DAMAGE_ADD_PER_LEVEL = 0.3;
 const DEPTH_XP_MUL_PER_LEVEL = 0.10;
 const DEPTH_GOLD_MUL_PER_LEVEL = 0.12;
+// Drop rate bonus per depth. Pool rolls get incrementally generous as
+// the player descends — gentle ramp so floor 1 doesn't feel like a
+// gift shop, but deeper floors visibly cough up more loot.
+const DEPTH_DROP_RATE_BONUS_PER_LEVEL = 0.04;
+const DROP_RATE_CAP = 0.75;
 
 /**
  * Produce an instance-ready EnemySpec by applying depth-scaling and
@@ -130,6 +135,19 @@ export function scaleEnemySpec(
       ]
     : undefined;
 
+  // Drops: bump rate by depth (deeper = more loot). Guaranteed and
+  // pool weights pass through unchanged — only the gate softens.
+  const scaledDrops = base.drops
+    ? {
+        ...base.drops,
+        rate: Math.min(
+          DROP_RATE_CAP,
+          (base.drops.rate ?? 0.30) +
+            Math.max(0, depth - 1) * DEPTH_DROP_RATE_BONUS_PER_LEVEL,
+        ),
+      }
+    : undefined;
+
   return {
     ...base,
     hp: scaledHp,
@@ -137,5 +155,6 @@ export function scaleEnemySpec(
     moveSpeed: scaledSpeed,
     xp: scaledXp,
     gold: scaledGold,
+    drops: scaledDrops,
   };
 }
