@@ -158,7 +158,9 @@ export function setInteractAction(label: string | null) {
     svg.setAttribute('width', '34');
     svg.setAttribute('height', '34');
   }
-  labelEl.textContent = upper;
+  // TAKE = hand icon only (no text). All other actions show their verb.
+  labelEl.textContent = upper === 'TAKE' ? '' : upper;
+  labelEl.style.display = upper === 'TAKE' ? 'none' : 'block';
 
   // Style swap for sealed vs armed.
   if (isSealed) {

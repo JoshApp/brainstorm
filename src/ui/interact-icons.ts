@@ -29,10 +29,14 @@ export function iconKindFromLabel(label: string): InteractIconKind {
 
 const COMMON = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
 
+// Open-hand glyph — a four-finger silhouette reaching toward the viewer.
+// Replaces the "arrow into tray" download icon, which didn't read as
+// "pick this up" for first-time phone players.
 const TAKE_SVG = `<svg ${COMMON}>
-  <path d="M12 4v11"/>
-  <path d="M7 10l5 5 5-5"/>
-  <rect x="5" y="17" width="14" height="3" rx="0.5"/>
+  <path d="M9 11V5a1.5 1.5 0 0 1 3 0v6"/>
+  <path d="M12 11V3.5a1.5 1.5 0 0 1 3 0V11"/>
+  <path d="M15 11V4.5a1.5 1.5 0 0 1 3 0V13"/>
+  <path d="M18 13v4a5 5 0 0 1-5 5h-1a6 6 0 0 1-6-6v-4a1.5 1.5 0 0 1 3 0v3"/>
 </svg>`;
 
 const OPEN_SVG = `<svg ${COMMON}>
