@@ -19,7 +19,6 @@
 import type { LevelSpec, EnemySpawnSpec, TileMap } from './types';
 import { parseTileMap } from './tilemap';
 import { TEMPLATES } from './templates';
-import { decorateFloor } from './decorate';
 
 // Tiny seedable RNG (Mulberry32). 32-bit seed in, deterministic 0..1 floats.
 function rng(seed: number) {
@@ -156,11 +155,14 @@ export function generateFloor(
   });
   spec.fogColor = tmpl.fogColor;
 
-  // Auto-decoration pass: sprinkles emissive wall sigils + floor cracks
-  // + rubble across the floor based on the template grid. Density rolls
-  // use the same seeded RNG so resume regenerates identically. Tint
-  // matches the floor's torch color so decorations reinforce identity.
-  decorateFloor(populated, spec, rand, tmpl.torchTint ?? 0xffaa55);
+  // Stash decoration data on the spec; builder runs decorateFloor with
+  // its root group at build-time so InstancedMesh batches land in the
+  // right scene-graph spot.
+  spec.procgenDecor = {
+    grid: populated,
+    seed: seedForFloor,
+    tint: tmpl.torchTint ?? 0xffaa55,
+  };
 
   // Sanity: every generated floor must have a player spawn + a stairs.
   // The template author is responsible for including 'S' and '/'.

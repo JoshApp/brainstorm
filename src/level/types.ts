@@ -168,4 +168,15 @@ export type LevelSpec = {
    * plane AND a collision segment. Segments must be axis-aligned.
    */
   extraWalls?: Array<{ ax: number; az: number; bx: number; bz: number; height?: number }>;
+  /**
+   * Procgen decoration data — populated tilemap grid + seeded RNG state +
+   * tint. Builder calls decorateFloor with this if present, producing
+   * InstancedMesh batches of sigils / cracks / rubble. Hand-authored
+   * levels leave this undefined.
+   */
+  procgenDecor?: {
+    grid: TileMap;
+    seed: number;
+    tint: number;
+  };
 };

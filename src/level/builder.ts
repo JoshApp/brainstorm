@@ -14,6 +14,20 @@ import { spawnCorpse } from '../interactables/corpse';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
+import { decorateFloor } from './decorate';
+
+// Local Mulberry32 seeded RNG — kept here to avoid importing procgen.ts
+// (would create a cyclic dependency between builder and procgen).
+function rngFromSeed(seed: number) {
+  let s = seed >>> 0;
+  return function next(): number {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 // Module-level counter for unique source ids across all level builds.
 // Resets to a deterministic-enough range per build via the per-call
@@ -434,6 +448,15 @@ export function buildLevel(
         decay: 1.6,
       });
     }
+  }
+
+  // --- Procgen decoration pass (instanced) ---
+  // procgenDecor is set by src/level/procgen.ts at generation time.
+  // decorateFloor builds InstancedMesh batches of sigils + cracks +
+  // rubble in a few draw calls instead of dozens of individual meshes.
+  if (spec.procgenDecor) {
+    const d = spec.procgenDecor;
+    decorateFloor(d.grid, spec, rngFromSeed(d.seed), d.tint, root);
   }
 
   // --- Per-floor fog tint ---

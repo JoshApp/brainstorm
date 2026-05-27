@@ -333,7 +333,20 @@ function tick() {
     // Handheld lamp flicker. realDt — flicker shouldn't slow during
     // hit-pause (a frozen lamp looks broken).
     tickLamp(realDt);
+    // Enemy sleep: skip update() for enemies far from the player. They
+    // can't influence gameplay outside their own perception range
+    // anyway; ticking them is GC + AI work for no visible result.
+    // Threshold = 25m, comfortably past the deepest perception ranges
+    // (wraith sight 12m). Player damage path still works since
+    // takeDamage doesn't go through update().
+    const playerX = camera.position.x;
+    const playerZ = camera.position.z;
+    const sleepDist2 = 25 * 25;
     for (const enemy of currentLevel.enemies) {
+      if (!enemy.alive) continue;
+      const dx = enemy.group.position.x - playerX;
+      const dz = enemy.group.position.z - playerZ;
+      if (dx * dx + dz * dz > sleepDist2) continue;
       enemy.update(scaledDt, camera.position, currentLevel.walkable);
     }
 
