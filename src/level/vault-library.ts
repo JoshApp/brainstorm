@@ -28,12 +28,13 @@ const FOYER_SMALL: Vault = {
   id: 'foyer-small',
   tags: ['start'],
   map: [
-    '########',
-    '#..T...#',
-    '#......#',
-    '#......#',
-    '#..S...#',
-    '########',
+    '##########',
+    '#...T....#',
+    '#........#',
+    '#........#',
+    '#........#',
+    '#...S....#',
+    '##########',
   ],
 };
 
@@ -41,12 +42,28 @@ const FOYER_PILLAR: Vault = {
   id: 'foyer-pillar',
   tags: ['start'],
   map: [
-    '##########',
-    '#...T....#',
-    '#.P....P.#',
-    '#........#',
-    '#...S....#',
-    '##########',
+    '############',
+    '#....T.....#',
+    '#.P......P.#',
+    '#..........#',
+    '#..........#',
+    '#.P......P.#',
+    '#....S.....#',
+    '############',
+  ],
+};
+
+const FOYER_ALCOVE: Vault = {
+  id: 'foyer-alcove',
+  tags: ['start'],
+  map: [
+    '############',
+    '#..T....T..#',
+    '#..........#',
+    '#..C....C..#',
+    '#..........#',
+    '#.....S....#',
+    '############',
   ],
 };
 
@@ -180,26 +197,30 @@ const BOSS_ANTECHAMBER: Vault = {
 const EXIT_SIMPLE: Vault = {
   id: 'exit-simple',
   tags: ['exit'],
+  // '/' must sit at an INTERIOR cell (not the perimeter column) so
+  // the stair top lands inside the shrunk walkable rect. East
+  // neighbour is '#' → auto-rotates to descend east into the wall.
   map: [
-    '########',
-    '#..T...#',
-    '#......#',
-    '#....../',  // stair flush to east wall, auto-rotates east descent
-    '#......#',
-    '########',
+    '##########',
+    '#..T.....#',
+    '#........#',
+    '#......./#',
+    '#........#',
+    '##########',
   ],
 };
 
 const EXIT_ALCOVE: Vault = {
   id: 'exit-alcove',
   tags: ['exit'],
+  // Stair pulled into the room with adjacent south '#' neighbour — descends south.
   map: [
-    '##########',
-    '#...t....#',
-    '#........#',
-    '#...../..#',  // stair recessed
-    '#........#',
-    '##########',
+    '############',
+    '#....t.....#',
+    '#..........#',
+    '#..........#',
+    '#......../.#',
+    '############',
   ],
 };
 

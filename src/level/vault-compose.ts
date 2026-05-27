@@ -194,16 +194,12 @@ export function composeFloor(
     corridors.push(corridor);
   }
 
-  // ── 5. Clip vault inner walls through corridor mouths ─────────
-  // parseTileMap emits walls along each vault's INNER perimeter (1m
-  // inset from the rect edges, where the '#' tiles meet the floor
-  // cells). Those walls sit BETWEEN the player's walkable interior
-  // and the corridor mouth — that's the "blocked like a wall" bug.
-  // We clip wall segments that run along the inner perimeter z-row
-  // of a vault adjacent to a corridor, removing the portion that
-  // falls inside the corridor's x range.
-  const clippedWalls = clipInnerWallsAtCorridors(extraWalls, corridors);
-
+  // (Wall clipping no longer needed — parseTileMap now produces a
+  // shrunk rect whose perimeter aligns with where its walls would
+  // otherwise sit, and skips those walls entirely. buildRoomShell
+  // handles the perimeter visual + collision + corridor openings
+  // via findOpenings. Interior '#' walls inside a vault still come
+  // through extraWalls and don't conflict with corridors.)
   return {
     id: opts.id,
     depth,
@@ -217,75 +213,24 @@ export function composeFloor(
     spawns,
     doors,
     stairs,
-    extraWalls: clippedWalls,
+    extraWalls,
   };
 }
 
-/**
- * Remove segments of vault inner-perimeter walls that cross a
- * corridor mouth. Walls are at the boundary BETWEEN cells (floor on
- * one side, '#' on the other) — for a corridor abutting a vault's
- * south edge, the relevant wall sits at z = corridor.northEdge - 1
- * (one metre INSIDE the vault from the corridor mouth). We clip
- * everything horizontal at that z that overlaps the corridor's
- * x range, leaving the rest of the wall intact.
- */
-function clipInnerWallsAtCorridors(
-  walls: NonNullable<LevelSpec['extraWalls']>,
-  corridors: RoomSpec[],
-): NonNullable<LevelSpec['extraWalls']> {
-  let out = walls.slice();
-  for (const c of corridors) {
-    const northMouthZ = c.rect.z - c.rect.d / 2;   // vault A's south rect edge
-    const southMouthZ = c.rect.z + c.rect.d / 2;   // vault B's north rect edge
-    const xMin = c.rect.x - c.rect.w / 2;
-    const xMax = c.rect.x + c.rect.w / 2;
-    // Inner wall on each side sits 1m INTO the adjacent vault.
-    out = clipWallsAtZ(out, northMouthZ - 1, xMin, xMax);
-    out = clipWallsAtZ(out, southMouthZ + 1, xMin, xMax);
-  }
-  return out;
-}
-
-/** Clip horizontal wall segments at the given z, keeping the
- *  portions that fall OUTSIDE [xMin, xMax]. */
-function clipWallsAtZ(
-  walls: NonNullable<LevelSpec['extraWalls']>,
-  z: number,
-  xMin: number,
-  xMax: number,
-): NonNullable<LevelSpec['extraWalls']> {
-  const EPS = 0.01;
-  const out: NonNullable<LevelSpec['extraWalls']> = [];
-  for (const w of walls) {
-    // Only horizontal walls at this z qualify.
-    if (Math.abs(w.az - z) > EPS || Math.abs(w.bz - z) > EPS) {
-      out.push(w);
-      continue;
-    }
-    const wMin = Math.min(w.ax, w.bx);
-    const wMax = Math.max(w.ax, w.bx);
-    if (wMax <= xMin + EPS || wMin >= xMax - EPS) {
-      out.push(w);
-      continue;
-    }
-    // Wall overlaps the clip range. Keep portions outside.
-    if (wMin < xMin - EPS) {
-      out.push({ ...w, ax: wMin, az: z, bx: xMin, bz: z });
-    }
-    if (wMax > xMax + EPS) {
-      out.push({ ...w, ax: xMax, az: z, bx: wMax, bz: z });
-    }
-  }
-  return out;
-}
+// (clipInnerWallsAtCorridors + clipWallsAtZ removed — the rect-
+// shrinking approach in parseTileMap obsoletes them.)
 
 // ── helpers ──────────────────────────────────────────────────────
 
 function vaultDims(v: Vault): { w: number; d: number } {
   const rows = v.map.length;
   const cols = Math.max(...v.map.map((r) => r.length));
-  return { w: cols, d: rows };
+  // Parser shrinks the rect to the inner walkable area (cell grid
+  // minus 1m on each side, since the outer '#' tiles are wall
+  // material the player can't stand on). Composer matches: corridor
+  // edges align with the SHRUNK vault edges so buildRoomShell's
+  // findOpenings detects abuttment correctly.
+  return { w: Math.max(0, cols - 2), d: Math.max(0, rows - 2) };
 }
 
 function pickMiddleTag(depth: number, rand: () => number): VaultTag {

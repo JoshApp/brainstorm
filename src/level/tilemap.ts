@@ -116,6 +116,16 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   const originX = -W / 2 + offsetX;
   const originZ = -D / 2 + offsetZ;
   const roomId = opts.roomId ?? 'main';
+  // The room RECT shrinks by 1m on each side so its perimeter aligns
+  // with the parser-emitted inner walls (the ones at the floor/'#'
+  // boundary). Without this, the rect extended a full cell PAST those
+  // walls — giving each room a 1m thick "dead zone" between outer
+  // rect and inner walls where the player could end up trapped. The
+  // shrunken rect IS the walkable area; buildRoomShell will build
+  // perimeter walls + open them where corridors abut, and the parser
+  // skips its perimeter walls (handled below) to avoid double walls.
+  const innerW = Math.max(0, W - 2);
+  const innerD = Math.max(0, D - 2);
 
   // Helper: world center of cell (col, row).
   const cellCenter = (col: number, row: number) => ({
@@ -134,7 +144,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   // (Walls inside it segment the space into "rooms" visually.)
   const room: RoomSpec = {
     id: roomId,
-    rect: { x: offsetX, z: offsetZ, w: W, d: D },
+    rect: { x: offsetX, z: offsetZ, w: innerW, d: innerD },
     height: opts.roomHeight ?? 3.2,
   };
 
@@ -314,20 +324,21 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     }
   }
 
-  // Wall segments are the auto-detected boundaries between walkable and
-  // non-walkable cells (perimeter + interior '#' walls). The bounding
-  // rect's auto-perimeter would duplicate the outer walls; trim those
-  // out by detecting segments that lie exactly on the rect's edge.
-  const halfW = W / 2;
-  const halfD = D / 2;
+  // Wall segments are auto-detected boundaries between walkable and
+  // non-walkable cells (perimeter + interior '#' walls). buildRoomShell
+  // will build the room's perimeter walls at the (shrunken) rect edge
+  // — so we skip ANY parser-emitted segment that sits on that perimeter
+  // and keep only the interior ones. The check is offset-aware so
+  // vault-composed floors (where each parse runs with its own
+  // offsetX/Z) skip correctly relative to the room's local centre.
+  const innerHalfW = innerW / 2;
+  const innerHalfD = innerD / 2;
   const onRectEdge = (s: { ax: number; az: number; bx: number; bz: number }) => {
     const EPS = 1e-3;
-    // Horizontal segment along an X-aligned edge
     if (Math.abs(s.az - s.bz) < EPS) {
-      return Math.abs(Math.abs(s.az) - halfD) < EPS;
+      return Math.abs(Math.abs(s.az - offsetZ) - innerHalfD) < EPS;
     }
-    // Vertical segment along a Z-aligned edge
-    return Math.abs(Math.abs(s.ax) - halfW) < EPS;
+    return Math.abs(Math.abs(s.ax - offsetX) - innerHalfW) < EPS;
   };
   const extraWalls = walls
     .filter(s => !onRectEdge(s))
