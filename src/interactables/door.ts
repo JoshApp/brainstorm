@@ -137,6 +137,10 @@ export function spawnDoor(
     id: generateEntityId(`door-${spec.id}`),
     position: new THREE.Vector3(cx, 0, cz),
     radius: 1.4,
+    // Door labels at hand-height — the door is 2m+ tall and its
+    // position pivot is at the FOOT. The default 0.6m offset reads as
+    // knee-height; 1.4m lands the label right over the lock plate.
+    labelOffsetY: 1.4,
     promptLabel: '',  // set per state below
     onUse() {
       if (state !== 'closed') return;

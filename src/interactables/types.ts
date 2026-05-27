@@ -35,6 +35,14 @@ export interface Interactable {
    * (a door panel) are fine at the default.
    */
   outlineScale?: number;
+  /**
+   * Optional vertical offset (in metres) above `position.y` where the
+   * floating interact label should appear. Defaults to 0.6 — fine for
+   * chest-height objects (loot, chests, altar). Override for tall
+   * things like doors (≈ 1.4) and stairs (≈ 0.8) so the label sits
+   * over the object's middle, not at its feet.
+   */
+  labelOffsetY?: number;
 }
 
 /** Spec for a level-spec-placed interactable. Engine-agnostic data. */

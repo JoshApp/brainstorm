@@ -122,8 +122,11 @@ export function updateInteractLabel(
     }
   }
 
-  // Project the target's world position to screen-space NDC.
-  tmpVec.set(target.position.x, target.position.y + VERTICAL_OFFSET_WORLD, target.position.z);
+  // Project the target's world position to screen-space NDC. Use the
+  // per-interactable label offset if set; otherwise default to 0.6m
+  // above the pivot (chest-height for floor objects).
+  const offsetY = target.labelOffsetY ?? VERTICAL_OFFSET_WORLD;
+  tmpVec.set(target.position.x, target.position.y + offsetY, target.position.z);
   tmpVec.project(camera);
   // If behind the camera (z > 1 after project), hide.
   if (tmpVec.z > 1) {

@@ -256,6 +256,10 @@ export function spawnStairs(
       new THREE.Vector3(0, 0, STEP_DEPTH / 2).applyEuler(new THREE.Euler(0, spec.rotY ?? 0, 0)),
     ),
     radius: 1.6,
+    // Position is at the TOP TREAD on the floor; default 0.6m offset
+    // would put the label inside the parapet lip. Lift to 1.0m so it
+    // floats above the parapet, clearly visible from the approach.
+    labelOffsetY: 1.0,
     promptLabel: 'DESCEND',
     onUse() {
       // Lock so multi-tap doesn't trigger N loads.

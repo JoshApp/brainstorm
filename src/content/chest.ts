@@ -37,8 +37,26 @@ export const CHEST: ModelSpec = {
     loot_spawn: { pos: [0, 0.32, 0] },
   },
   parts: [
-    // Body — main box of the chest
-    { name: 'body', kind: 'box', pos: [0, 0.15, 0], size: [0.5, 0.3, 0.4], mat: 'wood' },
+    // ── Hollow body — five walls (no top), so when the lid swings up
+    // the player sees an actual interior cavity instead of a solid
+    // block. Wall thickness 0.04m. Interior cavity dimensions:
+    // (0.5 - 2*0.04) × (0.3 - 0.04) × (0.4 - 2*0.04) = 0.42 × 0.26 × 0.32.
+    // Floor (with a darker interior material so the cavity reads
+    // distinctly from the outside).
+    { name: 'body', kind: 'box', pos: [0, 0.02, 0],     size: [0.50, 0.04, 0.40], mat: 'wood' },
+    // Front wall
+    { kind: 'box', pos: [0, 0.165, 0.18],  size: [0.50, 0.27, 0.04], mat: 'wood' },
+    // Back wall
+    { kind: 'box', pos: [0, 0.165, -0.18], size: [0.50, 0.27, 0.04], mat: 'wood' },
+    // Left wall
+    { kind: 'box', pos: [-0.23, 0.165, 0], size: [0.04, 0.27, 0.40], mat: 'wood' },
+    // Right wall
+    { kind: 'box', pos: [ 0.23, 0.165, 0], size: [0.04, 0.27, 0.40], mat: 'wood' },
+    // Interior lining — slightly inset darker box on the cavity floor
+    // gives a clear "the bottom is empty space, not the outer floor"
+    // read when looking down into the open chest.
+    { kind: 'box', pos: [0, 0.045, 0], size: [0.42, 0.005, 0.32], mat: 'wood_dark' },
+
     // Iron bands across the body (small flat boxes)
     { kind: 'box', pos: [-0.18, 0.15, 0],  size: [0.02, 0.32, 0.42], mat: 'iron' },
     { kind: 'box', pos: [ 0.18, 0.15, 0],  size: [0.02, 0.32, 0.42], mat: 'iron' },

@@ -591,13 +591,20 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       // First-ever run gets the tutorial chamber; everyone else lands
       // straight in LEVEL_1. "Ever attempted a run" is tracked in
       // meta-state and survives across saves/deaths.
+      //
+      // Dev: ?tutorial=1 forces the tutorial path regardless of
+      // meta-state, so you can iterate on the tutorial chamber
+      // without clearing localStorage each time. URL example:
+      //     https://...brainstorm/?tutorial=1
+      const forceTutorial = new URLSearchParams(window.location.search).get('tutorial') === '1';
       const isFirstRun = getMeta().runsAttempted === 0;
-      const entryId = isFirstRun ? 'tutorial' : LEVEL_1.id;
+      const wantTutorial = forceTutorial || isFirstRun;
+      const entryId = wantTutorial ? 'tutorial' : LEVEL_1.id;
       startNewRun(entryId);
       recordRunStart();
       resetRunDiscoveries();
       applyState(null);
-      startRun(entryId, isFirstRun ? 0 : 1);
+      startRun(entryId, wantTutorial ? 0 : 1);
     },
     onContinue() {
       const s = loadSave();
