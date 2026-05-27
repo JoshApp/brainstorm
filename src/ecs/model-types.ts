@@ -28,6 +28,22 @@ export interface MaterialDef {
   opacity?: number;
   /** If false, the material ignores scene fog (use for first-person held items). */
   fog?: boolean;
+  /**
+   * Fresnel rim glow — brightens fragments where the surface normal
+   * grazes the view direction (the silhouette edge). Classic "ghost
+   * edge brightness" effect. `power` controls falloff (higher = thinner
+   * rim). `intensity` scales the additive contribution. Implemented as
+   * a per-fragment addition after lighting, so it pops on dark mobs.
+   */
+  rim?: { color: number; power?: number; intensity?: number };
+  /**
+   * If true, the material is built with a `uDissolve` uniform (initially
+   * 0). Setting it >0 at runtime ramps a top-down ragged dissolve effect
+   * with an emissive edge. Used by mob deaths. Reference is stashed on
+   * `mat.userData.uDissolve` so callers can mutate `.value` without
+   * triggering a shader recompile.
+   */
+  dissolvable?: boolean;
 }
 
 // --- Parts (discriminated union) ---------------------------------------

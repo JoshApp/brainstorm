@@ -91,7 +91,7 @@ export function buildModel(spec: ModelSpec): BuiltModel {
 function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Material {
   const flatShading =
     def.flatShading === 'auto' ? defaultFlatShading : (def.flatShading ?? false);
-  return new THREE.MeshStandardMaterial({
+  const mat = new THREE.MeshStandardMaterial({
     color: def.color,
     emissive: def.emissive,
     emissiveIntensity: def.emissiveIntensity ?? 1,
@@ -102,6 +102,113 @@ function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Ma
     opacity: def.opacity ?? 1,
     fog: def.fog ?? true,
   });
+
+  // Inject custom GLSL for rim glow + dissolve. We do this once at
+  // build time so the shader compiles during warmup; the death sequence
+  // mutates uniform values at runtime, which doesn't trigger a recompile.
+  attachShaderExtensions(mat, def);
+  return mat;
+}
+
+/**
+ * Inject custom rim + dissolve passes into a MeshStandardMaterial via
+ * onBeforeCompile. The injected code runs AFTER lighting + tonemapping
+ * but BEFORE dithering — so the rim color isn't washed by tone curves
+ * and reads as the stylized accent we want.
+ *
+ * Uniforms are stashed on `mat.userData` so callers can mutate values
+ * (dissolve.value = 0.4) without going through Three.js's per-frame
+ * uniform tracking. Three.js still pushes the bound uniforms to GPU
+ * each render — we just write into the box it reads from.
+ *
+ * `customProgramCacheKey` lets shader programs share across material
+ * instances with the same shape (same set of injected extensions),
+ * avoiding a fresh compile per enemy spawn.
+ */
+function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDef): void {
+  const hasRim = !!def.rim;
+  const hasDissolve = !!def.dissolvable;
+  if (!hasRim && !hasDissolve) return;
+
+  const uRimColor   = { value: new THREE.Color(def.rim?.color ?? 0xffffff) };
+  const uRimPower   = { value: def.rim?.power ?? 2.5 };
+  const uRimIntens  = { value: def.rim?.intensity ?? 1.0 };
+  const uDissolve   = { value: 0 };
+
+  // Expose for external mutation. Death sequence reads userData.uDissolve.
+  mat.userData.uDissolve = uDissolve;
+
+  // Stable cache key so two wraiths (different instances, same def shape)
+  // hit the same compiled program. Different shapes get different keys.
+  const cacheKey = `enemy-ext|${hasRim ? '1' : '0'}|${hasDissolve ? '1' : '0'}`;
+  mat.customProgramCacheKey = () => cacheKey;
+
+  mat.onBeforeCompile = (shader) => {
+    if (hasRim) {
+      shader.uniforms.uRimColor  = uRimColor;
+      shader.uniforms.uRimPower  = uRimPower;
+      shader.uniforms.uRimIntens = uRimIntens;
+    }
+    if (hasDissolve) {
+      shader.uniforms.uDissolve  = uDissolve;
+    }
+
+    // Vertex: capture local position so the dissolve noise is stable in
+    // world (doesn't shift as the camera moves). `transformed` is the
+    // canonical "post-vertex-shader local position" variable in
+    // three.js's shader chunks.
+    if (hasDissolve) {
+      shader.vertexShader = `varying vec3 vLocalPos;\n${shader.vertexShader}`.replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvLocalPos = transformed;',
+      );
+    }
+
+    // Fragment: declare uniforms + varyings, then inject the rim +
+    // dissolve passes just before the final dithering chunk. This
+    // ordering ensures lighting is fully applied first, and our
+    // additive contributions get the same dither treatment as the
+    // base color.
+    let frag = '';
+    if (hasDissolve) {
+      frag += 'varying vec3 vLocalPos;\nuniform float uDissolve;\n';
+    }
+    if (hasRim) {
+      frag += 'uniform vec3 uRimColor;\nuniform float uRimPower;\nuniform float uRimIntens;\n';
+    }
+    shader.fragmentShader = frag + shader.fragmentShader;
+
+    const injection = `
+      ${hasDissolve ? `
+      if (uDissolve > 0.0) {
+        // Hash noise on local XZ (stable in world); biased by local Y
+        // so the dissolve travels top-down — the body crumbles from
+        // the head down to the feet.
+        float n = fract(sin(dot(vLocalPos.xz * 11.0, vec2(12.9898, 78.233))) * 43758.5453);
+        float t = (vLocalPos.y * 0.55 + 0.5) - uDissolve * 1.45 + n * 0.18;
+        if (t < 0.0) discard;
+        // Edge band — fragments close to the discard threshold get a
+        // bright additive flare in spectral cyan-green. Reads as energy
+        // leaking out as the body unmakes itself.
+        float edge = 1.0 - smoothstep(0.0, 0.13, t);
+        gl_FragColor.rgb += vec3(0.45, 1.0, 0.72) * edge * 3.5 * uDissolve;
+      }
+      ` : ''}
+      ${hasRim ? `
+      // Fresnel rim — brightest where surface normal grazes the view ray.
+      // pow() controls falloff (high power = thin rim, low power = soft).
+      vec3 viewDir = normalize(vViewPosition);
+      float rim = 1.0 - max(dot(viewDir, normalize(vNormal)), 0.0);
+      rim = pow(rim, uRimPower);
+      gl_FragColor.rgb += uRimColor * rim * uRimIntens;
+      ` : ''}
+    `;
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <dithering_fragment>',
+      `${injection}\n#include <dithering_fragment>`,
+    );
+  };
 }
 
 function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THREE.Object3D {

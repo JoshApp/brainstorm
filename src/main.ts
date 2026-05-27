@@ -48,6 +48,7 @@ import { initPickupLightPool } from './interactables/pickup';
 import { initLightPool, tickLightPool } from './scene/light-pool';
 import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
+import { tickSoulWisps, clearSoulWisps } from './effects/soul-wisps';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
@@ -360,12 +361,18 @@ function tick() {
     const playerZ = camera.position.z;
     const sleepDist2 = 25 * 25;
     for (const enemy of currentLevel.enemies) {
-      if (!enemy.alive) continue;
+      // Dying enemies still tick (their death animation drives the
+      // dissolve + lift each frame). Far-away mobs sleep regardless.
+      if (!enemy.alive && !enemy.dying) continue;
       const dx = enemy.group.position.x - playerX;
       const dz = enemy.group.position.z - playerZ;
       if (dx * dx + dz * dz > sleepDist2) continue;
       enemy.update(scaledDt, camera.position, currentLevel.walkable);
     }
+
+    // Soul wisps + future world-particle effects. Lives outside the
+    // enemy loop so they survive past their spawner's full retirement.
+    tickSoulWisps(scaledDt);
 
     // Projectiles — integrate active projectiles, hit-test the player +
     // walls, retire on contact/expiry. Lives outside the enemy loop so

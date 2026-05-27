@@ -4,6 +4,7 @@ import type { LevelSpec } from './types';
 import type { StyleMaterials } from '../style/materials';
 import { CONFIG } from '../config';
 import { clearProjectiles } from '../combat/projectile-pool';
+import { clearSoulWisps } from '../effects/soul-wisps';
 
 // Level loader = the seam between "we have a current level" and "let's swap
 // it for a different one". main.ts holds the active level reference via the
@@ -104,10 +105,11 @@ export function tickPendingLoad() {
   }
 
   // Tear down current level if any. Player + UI + inventory persist.
-  // Also retire any in-flight projectiles so a shot fired the same frame
-  // as a descent doesn't survive into the new floor's walkable region.
+  // Also retire any in-flight projectiles + soul wisps so they don't
+  // survive into the new floor's scene graph.
   if (activeLevel) {
     clearProjectiles();
+    clearSoulWisps();
     activeLevel.teardown();
     activeLevel = null;
   }

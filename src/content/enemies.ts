@@ -138,7 +138,7 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
   return {
     id: 'ghoul-humanoid',
     materials: {
-      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto' },
+      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto', dissolvable: true },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
     },
     slots: {
@@ -172,7 +172,7 @@ function quadrupedRatModel(bodyColor: number, eyeColor: number, eyeEmissive: num
   return {
     id: 'rat-quadruped',
     materials: {
-      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto' },
+      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto', dissolvable: true },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
     },
     // 'rig' is an invisible anchor at the rat's center; everything visible
@@ -213,10 +213,10 @@ function acolyteModel(bodyColor: number, eyeColor: number, eyeEmissive: number, 
   return {
     id: 'acolyte-caster',
     materials: {
-      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto' },
+      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto', dissolvable: true },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
-      robe: { color: 0x080a0e, roughness: 1.0, flatShading: 'auto' },
-      staff: { color: 0x1a140e, roughness: 0.9, flatShading: 'auto' },
+      robe: { color: 0x080a0e, roughness: 1.0, flatShading: 'auto', dissolvable: true },
+      staff: { color: 0x1a140e, roughness: 0.9, flatShading: 'auto', dissolvable: true },
       orb: { color: 0x000000, emissive: staffGlow, emissiveIntensity: 2.6, roughness: 1.0 },
     },
     slots: {
@@ -268,7 +268,7 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
   return {
     id: 'skirmisher-humanoid',
     materials: {
-      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto' },
+      body: { color: bodyColor, roughness: 0.95, flatShading: 'auto', dissolvable: true },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
     },
     slots: {
@@ -302,12 +302,22 @@ function wraithModel(bodyColor: number, eyeColor: number, eyeEmissive: number): 
         emissive: 0x2a4a5c,
         emissiveIntensity: 0.55,
         flatShading: 'auto',
+        // Fresnel rim — fragments at the silhouette edge get a soft
+        // teal glow. Sells "ghost" without translucency. Tuned cooler
+        // than the eye color so it reads as ambient spectral presence,
+        // not as the eyes themselves leaking.
+        rim: { color: 0x4a8cb0, power: 2.2, intensity: 1.4 },
+        dissolvable: true,
       },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
       robe: {
         color: 0x070b10,
         roughness: 1.0,
         flatShading: 'auto',
+        // Robe gets a much subtler rim — it's near-black, so a soft
+        // edge glow keeps its silhouette visible against the fog.
+        rim: { color: 0x1f3340, power: 3.0, intensity: 0.8 },
+        dissolvable: true,
       },
       // 'bone' — used for the gnarled arms + claw tips. Paler than the
       // body to read as exposed bone reaching out of the robe sleeves.
@@ -317,6 +327,10 @@ function wraithModel(bodyColor: number, eyeColor: number, eyeEmissive: number): 
         emissive: 0x1a1810,
         emissiveIntensity: 0.4,
         flatShading: 'auto',
+        // Bone rim is pale cyan-white — reads as cold light catching
+        // on bone surfaces.
+        rim: { color: 0xa8d4e0, power: 2.8, intensity: 1.1 },
+        dissolvable: true,
       },
     },
     slots: {

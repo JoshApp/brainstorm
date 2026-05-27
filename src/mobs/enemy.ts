@@ -17,6 +17,7 @@ import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, type DamageEvent } from '../combat/damage';
 import { playEnemyDeath, playEnemyWindup, type EnemyDeathSize } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
+import { spawnSoulWisps } from '../effects/soul-wisps';
 
 // Map an EnemySpec → audio size bucket. Used by death + windup sounds so
 // big mobs sound big and the wraith reads as spectral, not physical.
@@ -79,6 +80,8 @@ export interface Enemy {
   group: THREE.Group;
   hitTargets: THREE.Object3D[];
   alive: boolean;
+  /** True after hp hit zero AND the death animation is still ticking. */
+  dying: boolean;
   hp: number;
   collisionRadius: number;
   takeDamage(event: DamageEvent): number;
@@ -253,6 +256,21 @@ export function createEnemy(
   const presencePhase = Math.random() * Math.PI * 2;
   let presenceTime = 0;
 
+  // Death sequence — once hp hits zero we DON'T immediately remove the
+  // mesh. We ramp a dissolve uniform 0→1 over DEATH_DURATION while
+  // additive soul wisps drift up + the body lifts. Only when the timer
+  // expires does the container leave the scene.
+  const DEATH_DURATION = 0.55;
+  let deathTimer = -1;   // -1 = not dying; >=0 = ticking
+  // Pre-collect every dissolve uniform we need to drive. Walking
+  // `built.materials` per-frame would work too, but caching the refs
+  // here keeps the per-frame tick branch-free.
+  const dissolveUniforms: Array<{ value: number }> = [];
+  for (const m of built.materials.values()) {
+    const u = m.userData.uDissolve as { value: number } | undefined;
+    if (u) dissolveUniforms.push(u);
+  }
+
   /**
    * Apply incoming damage. Takes a DamageEvent and routes through the
    * pipeline (computes final after this enemy's armor for the type),
@@ -279,6 +297,12 @@ export function createEnemy(
       phaseTimer = 0;
     }
     if (entity.hp.current <= 0) {
+      // Mark dead immediately for combat/gameplay purposes (no more
+      // damage, no AI ticks, kill counter triggers, drops spawn). The
+      // container stays in the scene for the duration of the death
+      // animation — the dissolve uniform + soul wisps run via the
+      // dying-branch in update(). Final scene.remove happens when
+      // deathTimer crosses DEATH_DURATION.
       aliveLocal = false;
       clearEntityCombatStats(entityId);
       destroyEntity(entityId);
@@ -308,8 +332,19 @@ export function createEnemy(
           createPickup(scene, pos, item, { velocity: launchVel });
         });
       }
-      scene.remove(container);
+      // Clear raycast targets so a swing mid-dissolve doesn't generate a
+      // zero-damage "hit" on the disintegrating corpse.
+      built.hitTargets.length = 0;
       emit({ type: 'enemy:killed', enemyId: spec.id });
+      // Start the death animation. Spawn one wisp burst now; the dissolve
+      // ramp + body lift happen each tick in update() below.
+      deathTimer = 0;
+      // Soul wisp color: match spectral enemies' eye glow if defined,
+      // else a generic warm ember.
+      const wispColor = presence === 'spectral' ? 0x88ffbb : 0xffaa55;
+      const origin = container.position.clone();
+      origin.y += 0.6;
+      spawnSoulWisps(scene as THREE.Object3D, origin, wispColor, 6);
     }
     return result.applied;
   }
@@ -368,8 +403,55 @@ export function createEnemy(
     );
   }
 
+  function tickDying(dt: number) {
+    deathTimer += dt;
+    const t = Math.min(1, deathTimer / DEATH_DURATION);
+
+    // Drive the dissolve uniform on every dissolvable material on the
+    // mob. The shader injection (build-model.ts attachShaderExtensions)
+    // converts uDissolve into a top-down ragged discard with an
+    // emissive edge band.
+    for (const u of dissolveUniforms) u.value = t;
+
+    // Body lifts as the soul leaves — spectral enemies rise more (sells
+    // the float), physical creatures sag a touch.
+    const lift = presence === 'spectral'
+      ?  0.55 * t
+      : -0.08 * t;
+    built.group.position.y = lift;
+
+    // Eye flare — spike then crash. The mob "sees clearly" the instant
+    // it dies, then the lights go out before the body is gone.
+    const eyeT = t < 0.18
+      ?  t / 0.18
+      :  1 - (t - 0.18) / 0.82;
+    setEyeFlare(Math.max(0, eyeT));
+
+    // Halo opacity fades alongside.
+    if (haloMatL) haloMatL.opacity = Math.max(0, 1 - t);
+    if (haloMatR) haloMatR.opacity = Math.max(0, 1 - t);
+
+    if (t >= 1) {
+      // Animation complete — remove the container and mark fully done.
+      scene.remove(container);
+      deathTimer = -1;
+      // Dispose the geometries we built for this mob. Materials are
+      // safe to leak (the program cache key dedup means subsequent
+      // spawns hit the cached compile).
+      built.group.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh && mesh.geometry) mesh.geometry.dispose();
+      });
+    }
+  }
+
   function update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion) {
-    if (!aliveLocal) return;
+    if (!aliveLocal) {
+      // Dying branch — run the death animation; everything else (AI,
+      // perception, movement) is gated off.
+      if (deathTimer >= 0) tickDying(dt);
+      return;
+    }
 
     if (flashMat) {
       if (flashTimer > 0) {
@@ -719,6 +801,9 @@ export function createEnemy(
     collisionRadius: spec.collisionRadius,
     get alive() {
       return aliveLocal;
+    },
+    get dying() {
+      return deathTimer >= 0;
     },
     get hp() {
       const e = getEntity(entityId);
