@@ -165,32 +165,46 @@ export function showStartScreen(opts: StartScreenOptions) {
     buttons.appendChild(cont);
   }
 
-  // STASH — appears whenever there are unopened loot boxes. Sits ABOVE
-  // codex so it's the second-most-prominent pill (after the primary
-  // DESCEND/CONTINUE) — players coming back from a successful run
-  // should be drawn to the rewards waiting for them.
+  root.appendChild(buttons);
+
+  // SECONDARY ACTIONS — STASH + CODEX. Previously these were full-size
+  // pills competing visually with DESCEND. Demoted to a small text-link
+  // row at the bottom of the screen so the primary action stays clearly
+  // primary. Stash shows an unopened-count badge if there are rewards
+  // waiting; codex shows only after the first discovery.
+  const links = document.createElement('div');
+  Object.assign(links.style, {
+    position: 'absolute',
+    bottom: 'calc(36px + env(safe-area-inset-bottom, 0px))',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    gap: '28px',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: '11px',
+    letterSpacing: '0.28em',
+    zIndex: '1',
+  } as Partial<CSSStyleDeclaration>);
+
   const stash = getStash();
   if (stash.length > 0) {
-    const stashPill = makePill('STASH', `${stash.length} unopened`, false);
-    stashPill.addEventListener('pointerdown', (e) => {
+    const link = makeSecondaryLink('STASH', stash.length);
+    link.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       showStash();
     });
-    buttons.appendChild(stashPill);
+    links.appendChild(link);
   }
-
-  // CODEX — appears only when the player has discovered SOMETHING.
-  // Opens the lifetime memory of enemies / items / notes seen.
   if (meta.enemiesSlain.length || meta.itemsFound.length || meta.notesRead.length) {
-    const codex = makePill('CODEX', 'what you remember', false);
-    codex.addEventListener('pointerdown', (e) => {
+    const link = makeSecondaryLink('CODEX', 0);
+    link.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       showCodex();
     });
-    buttons.appendChild(codex);
+    links.appendChild(link);
   }
+  if (links.childElementCount > 0) root.appendChild(links);
 
-  root.appendChild(buttons);
   document.body.appendChild(root);
 
   // Title screen: highest priority screen, hides the gameplay HUD,
@@ -266,6 +280,52 @@ function makePill(label: string, hint: string, primary: boolean): HTMLButtonElem
   b.addEventListener('pointerup',   () => { b.style.transform = 'scale(1)'; });
   b.addEventListener('pointerleave',() => { b.style.transform = 'scale(1)'; });
 
+  return b;
+}
+
+function makeSecondaryLink(label: string, badge: number): HTMLButtonElement {
+  const b = document.createElement('button');
+  Object.assign(b.style, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 4px',
+    background: 'transparent',
+    border: 'none',
+    color: 'rgba(200, 170, 140, 0.65)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: '11px',
+    fontWeight: '500',
+    letterSpacing: '0.28em',
+    cursor: 'pointer',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
+    transition: 'color 0.15s ease',
+  } as Partial<CSSStyleDeclaration>);
+  b.textContent = label;
+  if (badge > 0) {
+    const dot = document.createElement('span');
+    dot.textContent = String(badge);
+    Object.assign(dot.style, {
+      display: 'inline-block',
+      minWidth: '16px',
+      height: '16px',
+      lineHeight: '14px',
+      padding: '0 4px',
+      borderRadius: '8px',
+      background: 'rgba(255, 150, 70, 0.85)',
+      color: 'rgba(20, 8, 4, 0.95)',
+      fontSize: '10px',
+      fontWeight: '700',
+      letterSpacing: '0',
+      textAlign: 'center',
+    });
+    b.appendChild(dot);
+  }
+  b.addEventListener('pointerenter', () => { b.style.color = 'rgba(255, 220, 180, 0.95)'; });
+  b.addEventListener('pointerleave', () => { b.style.color = 'rgba(200, 170, 140, 0.65)'; });
   return b;
 }
 

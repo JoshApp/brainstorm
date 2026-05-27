@@ -17,7 +17,8 @@ export type GameEvent =
   | { type: 'room:cleared'; roomId: string }
   | { type: 'level:loaded'; levelId: string }
   | { type: 'xp:absorbed' }
-  | { type: 'gold:absorbed' };
+  | { type: 'gold:absorbed' }
+  | { type: 'level:up'; level: number };
 
 type Handler = (event: GameEvent) => void;
 

@@ -48,7 +48,11 @@ export function showStash() {
   openScreen({
     id: SCREEN_ID,
     root,
-    policy: { pausesWorld: true, needsBackdrop: true, layer: 'modal' },
+    // 'title' layer so opening from the start screen renders ABOVE the
+    // title — title is also 'title' layer; later-opened screens within
+    // a layer stack higher. With 'modal' (z=200) it sat behind the
+    // title pill (z=9000), looking like a click that did nothing.
+    policy: { pausesWorld: true, needsBackdrop: true, layer: 'title' },
     onDismissRequest: dismiss,
   });
   requestAnimationFrame(() => { if (root) root.style.opacity = '1'; });

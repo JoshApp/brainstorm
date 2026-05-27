@@ -93,7 +93,10 @@ export function showCodex() {
   openScreen({
     id: SCREEN_ID,
     root,
-    policy: { pausesWorld: true, needsBackdrop: true, layer: 'modal' },
+    // 'title' layer so this renders ABOVE the start screen (also at
+    // 'title'); within the same layer, later-opened screens stack on
+    // top. Modal layer (z=200) would put the codex behind the title.
+    policy: { pausesWorld: true, needsBackdrop: true, layer: 'title' },
     onDismissRequest: dismiss,
   });
   requestAnimationFrame(() => {

@@ -35,8 +35,11 @@ const FLOOR_Y = 0.12;             // group center sits this high — disc radius
 const PICKUP_RADIUS_SQ = 1.8 * 1.8;
 const ABSORB_RADIUS_SQ = 0.55 * 0.55;
 const HOMING_BIAS_Y = -0.4;
-const HOMING_ACCEL = 16;
 const HOMING_MAX_SPEED = 15;
+// Exponential blend rate toward the desired-velocity. Higher = snappier
+// convergence (more "tracking"); lower = more "drifting toward." 8 is
+// fast enough that a 1m gap closes in ~0.15s with no orbit risk.
+const HOMING_BLEND_RATE = 8;
 const SETTLED_TIMEOUT = 22;
 /** Max gold per coin. Killing a wraith for 25g → 3 coins of ~8-9g each. */
 const MAX_GOLD_PER_COIN = 12;
@@ -157,14 +160,20 @@ export function tickGoldCoins(dt: number, playerPos: THREE.Vector3): void {
         coins.splice(i, 1);
         continue;
       }
+      // Blend velocity TOWARD a desired-velocity pointing at the player.
+      // The old code added acceleration without damping, so a coin could
+      // build momentum, overshoot the moving player, and orbit forever
+      // like a satellite. Blending against a desired-velocity vector
+      // gives critically-damped homing — velocity always trends toward
+      // straight-at-player at speedCap, can't sustain orbital momentum.
       const inv = 1 / Math.sqrt(distSq);
-      c.vel.x += tmp.x * inv * HOMING_ACCEL * dt;
-      c.vel.y += tmp.y * inv * HOMING_ACCEL * dt;
-      c.vel.z += tmp.z * inv * HOMING_ACCEL * dt;
-      const sp2 = c.vel.lengthSq();
-      if (sp2 > HOMING_MAX_SPEED * HOMING_MAX_SPEED) {
-        c.vel.multiplyScalar(HOMING_MAX_SPEED / Math.sqrt(sp2));
-      }
+      const desiredX = tmp.x * inv * HOMING_MAX_SPEED;
+      const desiredY = tmp.y * inv * HOMING_MAX_SPEED;
+      const desiredZ = tmp.z * inv * HOMING_MAX_SPEED;
+      const k = 1 - Math.exp(-HOMING_BLEND_RATE * dt);
+      c.vel.x += (desiredX - c.vel.x) * k;
+      c.vel.y += (desiredY - c.vel.y) * k;
+      c.vel.z += (desiredZ - c.vel.z) * k;
       c.group.position.addScaledVector(c.vel, dt);
       // Spin fast as the coin streams in — extra sell on the absorb.
       c.group.rotation.y += dt * 16;

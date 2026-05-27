@@ -29,8 +29,9 @@ const tmp = new THREE.Vector3();
 const ABSORB_RADIUS_SQ = 0.55 * 0.55;
 const MAX_HOMING_SPEED = 14;
 const HOMING_BIAS_Y = -0.4;
-const BASE_ACCEL = 11;
-const ACCEL_PER_SECOND = 24;
+// Blend toward a desired-velocity each frame rather than accumulating
+// acceleration — guarantees critically-damped convergence, no orbits.
+const HOMING_BLEND_RATE = 9;
 const LIFE_CAP = 2.5;             // safety: retire even if it can't reach the player
 
 let HALO_MAT: THREE.SpriteMaterial | null = null;
@@ -107,14 +108,16 @@ export function tickXpWisps(dt: number, playerPos: THREE.Vector3): void {
       continue;
     }
     const inv = 1 / Math.sqrt(distSq);
-    const accel = BASE_ACCEL + w.age * ACCEL_PER_SECOND;
-    w.vel.x += tmp.x * inv * accel * dt;
-    w.vel.y += tmp.y * inv * accel * dt;
-    w.vel.z += tmp.z * inv * accel * dt;
-    const sp2 = w.vel.lengthSq();
-    if (sp2 > MAX_HOMING_SPEED * MAX_HOMING_SPEED) {
-      w.vel.multiplyScalar(MAX_HOMING_SPEED / Math.sqrt(sp2));
-    }
+    // Blend velocity toward a desired-velocity that points at the
+    // player at MAX_HOMING_SPEED. Removes orbital momentum entirely —
+    // motes can't overshoot and circle the player like satellites.
+    const desiredX = tmp.x * inv * MAX_HOMING_SPEED;
+    const desiredY = tmp.y * inv * MAX_HOMING_SPEED;
+    const desiredZ = tmp.z * inv * MAX_HOMING_SPEED;
+    const k = 1 - Math.exp(-HOMING_BLEND_RATE * dt);
+    w.vel.x += (desiredX - w.vel.x) * k;
+    w.vel.y += (desiredY - w.vel.y) * k;
+    w.vel.z += (desiredZ - w.vel.z) * k;
     w.sprite.position.addScaledVector(w.vel, dt);
 
     // Subtle scale pulse — bigger as it nears the player so the absorb
