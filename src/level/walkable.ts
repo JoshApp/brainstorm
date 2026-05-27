@@ -50,8 +50,13 @@ export class WalkableRegion {
     if (idx >= 0) this.walls.splice(idx, 1);
   }
 
-  /** Is the agent center at (x, z) (with given radius) currently walkable? */
-  contains(x: number, z: number, radius: number): boolean {
+  /** Is the agent center at (x, z) (with given radius) currently walkable?
+   *  Options:
+   *    ignoreObstacles — skip the obstacle check (props like pillars,
+   *                       altars, fountains, chests). Used by phasing
+   *                       mobs (ghosts) who pass through props but are
+   *                       still bounded by room walls. */
+  contains(x: number, z: number, radius: number, opts?: { ignoreObstacles?: boolean }): boolean {
     // (1) Inside the union of rects (unshrunken). Doorways are inside both
     // adjacent rects' union; the player can cross them.
     let inside = false;
@@ -71,7 +76,8 @@ export class WalkableRegion {
       if (distSqPointToSegment(x, z, w.ax, w.az, w.bx, w.bz) < r2) return false;
     }
 
-    // (3) Outside every obstacle.
+    // (3) Outside every obstacle — unless the caller is a phasing mob.
+    if (opts?.ignoreObstacles) return true;
     for (const o of this.obstacles) {
       if (o.kind === 'circle') {
         const dx = x - o.x;
@@ -90,12 +96,15 @@ export class WalkableRegion {
    * Move an agent from oldPos toward newPos, sliding along walls and obstacles.
    * Returns the resolved position the agent should occupy this frame.
    */
-  clampMove(oldX: number, oldZ: number, newX: number, newZ: number, radius: number): Vec2 {
+  clampMove(
+    oldX: number, oldZ: number, newX: number, newZ: number, radius: number,
+    opts?: { ignoreObstacles?: boolean },
+  ): Vec2 {
     let cx = newX;
     let cz = oldZ;
-    if (!this.contains(cx, cz, radius)) cx = oldX;
+    if (!this.contains(cx, cz, radius, opts)) cx = oldX;
     cz = newZ;
-    if (!this.contains(cx, cz, radius)) cz = oldZ;
+    if (!this.contains(cx, cz, radius, opts)) cz = oldZ;
     return { x: cx, z: cz };
   }
 
@@ -126,8 +135,8 @@ export class WalkableRegion {
    * top of a fountain / altar / pillar — without this, the mob spawns
    * inside the prop and can't move.
    */
-  resolveSpawn(x: number, z: number, radius: number): Vec2 {
-    if (this.contains(x, z, radius)) return { x, z };
+  resolveSpawn(x: number, z: number, radius: number, opts?: { ignoreObstacles?: boolean }): Vec2 {
+    if (this.contains(x, z, radius, opts)) return { x, z };
     const STEP = 0.25;
     const MAX_RADIUS = 3.0;
     for (let r = STEP; r <= MAX_RADIUS; r += STEP) {
@@ -138,7 +147,7 @@ export class WalkableRegion {
         const a = (i / n) * Math.PI * 2;
         const tx = x + Math.cos(a) * r;
         const tz = z + Math.sin(a) * r;
-        if (this.contains(tx, tz, radius)) return { x: tx, z: tz };
+        if (this.contains(tx, tz, radius, opts)) return { x: tx, z: tz };
       }
     }
     return { x, z };

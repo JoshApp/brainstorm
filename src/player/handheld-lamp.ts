@@ -34,10 +34,10 @@ let lamp: LampState | null = null;
 
 // Position mirrors the sword's bottom-RIGHT viewmodel offset. The
 // lantern hangs at the bottom-LEFT of the player's view, swinging
-// loosely. Pushed left + CLOSER to the camera (less negative z)
-// AND scaled up so it reads as a hand actively holding a lantern
-// out in front, not a smudge in the corner that merges with the HUD.
-const LAMP_LOCAL = new THREE.Vector3(-0.46, -0.28, -0.42);
+// loosely. Pulled back toward the center (so it's not at the very
+// edge), CLOSER to the camera (less negative z), AND scaled up so
+// it reads as a hand actively holding a lantern out in front.
+const LAMP_LOCAL = new THREE.Vector3(-0.32, -0.28, -0.42);
 const LAMP_COLOR = 0xffc488;  // warm oil-lamp tone
 
 export function attachLamp(camera: THREE.Camera) {

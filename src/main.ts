@@ -371,7 +371,10 @@ function tick() {
       const dx = enemy.group.position.x - playerX;
       const dz = enemy.group.position.z - playerZ;
       if (dx * dx + dz * dz > sleepDist2) continue;
-      enemy.update(scaledDt, camera.position, currentLevel.walkable);
+      // Phasing mobs (ghosts) use the obstacle-free nav grid; everyone
+      // else uses the standard one that routes around props.
+      const nav = enemy.phasing ? currentLevel.navPhasing : currentLevel.nav;
+      enemy.update(scaledDt, camera.position, currentLevel.walkable, nav);
     }
 
     // XP wisps — home in on the player and absorb on contact. Lives

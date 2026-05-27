@@ -135,6 +135,15 @@ export interface EnemySpec {
    * out of sync. Cost = a couple of sin() per mob per frame.
    */
   presence?: 'spectral' | 'lurch' | 'twitch' | 'coiled' | 'chant';
+
+  // --- Phasing (ghost-style movement) ---
+  /**
+   * If true, this mob ignores OBSTACLE collision (pillars, altar,
+   * fountain, chest, etc.) — they pass through props. Walls still
+   * bound them; pathfinding uses a separate phasing grid that only
+   * accounts for walls. Wraiths use this.
+   */
+  phasing?: boolean;
 }
 
 export interface DropEntry {
@@ -151,18 +160,17 @@ export interface DropEntry {
 // material colors.
 
 function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
-  // Lurching corpse. Heavy vertex jitter + ASYMMETRIC parts (one shoulder
-  // bigger than the other, arms different lengths) so it reads "wrong"
-  // even when standing still. Faint dark-red emissive on body = festering
-  // wound glow; NO rim (it's flesh, not spectral).
+  // Grounded lurching corpse. Rig sits HIGHER (1.05) so the torso isn't
+  // a capsule dragging on the floor — it's a body STANDING on stumpy
+  // legs and flat ankle-less feet. Heavy asymmetry up top (left shoulder
+  // bigger, left arm longer), wide bowed legs below. Faint festering
+  // emissive; no rim (this is flesh, not spectral).
   return {
     id: 'ghoul-humanoid',
     materials: {
       body: {
         color: bodyColor,
         roughness: 0.95,
-        // Festering interior glow — barely there but reads warm in
-        // the close-up. Combined with vertex jitter it sells "rot."
         emissive: 0x180806,
         emissiveIntensity: 0.35,
         flatShading: 'auto',
@@ -171,34 +179,37 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
     },
     slots: {
-      rig: { pos: [0, 0.8, 0] },
-      weapon:   { pos: [0.35, 0.9, 0] satisfies Vec3 },
-      head_top: { pos: [0,    1.8, 0] satisfies Vec3 },
+      rig: { pos: [0, 1.05, 0] },
+      weapon:   { pos: [0.35, 1.15, 0] satisfies Vec3 },
+      head_top: { pos: [0,    1.9, 0] satisfies Vec3 },
     },
     parts: [
-      // Body — slight asymmetric scale + jitter. Reads as a swollen,
-      // misshapen torso rather than a clean capsule.
-      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], scale: [1.05, 1, 0.95], radius: 0.35, height: 0.9, mat: 'body', jitter: 0.030 },
-      // Head — slight squish + jitter. Coupled with the body asymmetry
-      // the silhouette tilts subtly off-axis even before animation.
-      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.7, 0], scale: [1.05, 0.95, 1], radius: 0.28, mat: 'body', jitter: 0.025 },
-      // Asymmetric shoulder humps — LEFT noticeably bigger than RIGHT.
-      // Hidden geometric tell that the body is uneven beyond any single
-      // jitter variation.
-      { parent: 'rig', kind: 'sphere', pos: [-0.32, 0.40, 0], radius: 0.22, segments: [12, 10], mat: 'body', jitter: 0.022 },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.32, 0.45, 0], radius: 0.16, segments: [12, 10], mat: 'body', jitter: 0.022 },
-      // Arms — stubby, DIFFERENT lengths (left longer). They hang from
-      // the shoulder humps. Heavy jitter on these is fine — the limbs
-      // are short so the perturbation reads as gnarled muscle.
-      { parent: 'rig', kind: 'capsule', pos: [-0.34, 0.05, 0.05], radius: 0.08, height: 0.50, mat: 'body', jitter: 0.020 },
-      { parent: 'rig', kind: 'capsule', pos: [ 0.34, 0.12, 0.05], radius: 0.075, height: 0.35, mat: 'body', jitter: 0.020 },
-      // Fists at the end of each arm (asymmetric sizing for one more
-      // off-balance tell).
-      { parent: 'rig', kind: 'sphere', pos: [-0.34, -0.22, 0.05], radius: 0.10, segments: [10, 8], mat: 'body', jitter: 0.018 },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.34, -0.07, 0.05], radius: 0.085, segments: [10, 8], mat: 'body', jitter: 0.018 },
-      // Eyes — close-set, slightly recessed.
-      { parent: 'rig', kind: 'sphere', pos: [-0.10, 0.74, -0.32], radius: 0.045, segments: [12, 10], mat: 'eyes' },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.10, 0.74, -0.32], radius: 0.045, segments: [12, 10], mat: 'eyes' },
+      // FEET — wide low cylinders flat on the floor. The "stumps" the
+      // body stands on. Slight forward offset on one foot so the stance
+      // reads as off-balance.
+      { parent: 'rig', kind: 'cylinder', pos: [-0.20, -1.00, 0.04], radius: 0.16, height: 0.08, segments: 8, mat: 'body', jitter: 0.012 },
+      { parent: 'rig', kind: 'cylinder', pos: [ 0.20, -1.00, -0.02], radius: 0.16, height: 0.08, segments: 8, mat: 'body', jitter: 0.012 },
+      // LEGS — thick stumpy capsules bowed outward (different lengths
+      // matching the asymmetric body theme).
+      { parent: 'rig', kind: 'capsule', pos: [-0.20, -0.65, 0], radius: 0.13, height: 0.40, mat: 'body', jitter: 0.018 },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.20, -0.62, 0], radius: 0.12, height: 0.36, mat: 'body', jitter: 0.018 },
+      // BODY — sits on top of the legs. Shorter than before (0.55) so
+      // proportions read "torso on legs" not "leg-less capsule."
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, -0.10, 0], scale: [1.10, 0.95, 0.95], radius: 0.34, height: 0.55, mat: 'body', jitter: 0.030 },
+      // ASYMMETRIC SHOULDER HUMPS — left noticeably larger.
+      { parent: 'rig', kind: 'sphere', pos: [-0.32, 0.30, 0], radius: 0.22, segments: [12, 10], mat: 'body', jitter: 0.022 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.32, 0.35, 0], radius: 0.16, segments: [12, 10], mat: 'body', jitter: 0.022 },
+      // ARMS — different lengths (left longer). Hang from shoulders.
+      { parent: 'rig', kind: 'capsule', pos: [-0.34, -0.05, 0.06], radius: 0.085, height: 0.50, mat: 'body', jitter: 0.020 },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.34, 0.05, 0.06], radius: 0.080, height: 0.35, mat: 'body', jitter: 0.020 },
+      // FISTS — asymmetric (left larger, hanging lower).
+      { parent: 'rig', kind: 'sphere', pos: [-0.34, -0.34, 0.06], radius: 0.105, segments: [10, 8], mat: 'body', jitter: 0.018 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.34, -0.14, 0.06], radius: 0.088, segments: [10, 8], mat: 'body', jitter: 0.018 },
+      // HEAD — hunched forward (z=-0.05) on a short thick neck.
+      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.55, -0.05], scale: [1.08, 0.95, 1], radius: 0.27, mat: 'body', jitter: 0.025 },
+      // Eyes — slightly closer together than wraith, set deep.
+      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.58, -0.30], radius: 0.045, segments: [12, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.58, -0.30], radius: 0.045, segments: [12, 10], mat: 'eyes' },
     ],
   };
 }
@@ -342,10 +353,15 @@ function acolyteModel(bodyColor: number, eyeColor: number, eyeEmissive: number, 
 }
 
 function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
-  // Lean coiled predator. Medium jitter — too clean reads "stiff," too
-  // gnarled would step into ghoul territory. Faint amber rim catches
-  // light on the edges so it reads as taut sinew under skin, not the
-  // wraith's cold spectral glow.
+  // Grounded lean predator — distinct from the ghoul by silhouette
+  // alone:
+  //   - Tall + narrow (vs ghoul's bulky + hunched).
+  //   - Symmetric (vs ghoul's asymmetric).
+  //   - Thin legs + small box feet (vs ghoul's stumpy cylinders).
+  //   - Crossed-belt sash + ribbed loincloth (clothed; the ghoul is
+  //     bare flesh).
+  // Faint amber rim catches light on edges — reads as taut skin over
+  // wiry muscle, not wraith-style spectral glow.
   return {
     id: 'skirmisher-humanoid',
     materials: {
@@ -353,49 +369,54 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
         color: bodyColor,
         roughness: 0.95,
         flatShading: 'auto',
-        // Amber predator rim — much fainter than the wraith's so it
-        // doesn't read as supernatural. Just enough to keep the
-        // silhouette visible in dim corridors.
         rim: { color: 0x9c6a3a, power: 3.5, intensity: 0.55 },
         dissolvable: true,
       },
       eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
-      // Strap material — for crossed belts/sashes. Darker than skin.
       strap: { color: 0x0d0a07, roughness: 1.0, flatShading: 'auto', dissolvable: true },
     },
     slots: {
-      rig: { pos: [0, 0.65, 0] },
-      weapon:   { pos: [0.28, 0.65, 0] satisfies Vec3 },
-      head_top: { pos: [0,    1.45, 0] satisfies Vec3 },
+      rig: { pos: [0, 1.00, 0] },
+      weapon:   { pos: [0.28, 1.0, 0] satisfies Vec3 },
+      head_top: { pos: [0,    1.85, 0] satisfies Vec3 },
     },
     parts: [
-      // Body — taller than ghoul, narrower. Slight asymmetric scale to
-      // suggest crouched-forward stance.
-      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0], scale: [0.95, 1.05, 1.0], radius: 0.28, height: 0.7, mat: 'body', jitter: 0.014 },
-      // Crossed-belt sash via thin extruded strip. Sells "rough scavenged
-      // gear" without authoring a real costume.
-      { parent: 'rig', kind: 'extrude', pos: [0, 0.20, -0.27], rot: [0, 0, 0.6],
-        shape: [[-0.32, -0.03], [0.32, -0.03], [0.32, 0.03], [-0.32, 0.03]],
+      // FEET — narrow boxes (not cylinders like ghoul). Reads pointier,
+      // more pickpocket than zombie.
+      { parent: 'rig', kind: 'box', size: [0.13, 0.06, 0.22], pos: [-0.11, -0.96, 0.05], mat: 'body', jitter: 0.009 },
+      { parent: 'rig', kind: 'box', size: [0.13, 0.06, 0.22], pos: [ 0.11, -0.96, 0.05], mat: 'body', jitter: 0.009 },
+      // LEGS — thin (radius 0.075, taller 0.50 height). Held vertical,
+      // closer together than ghoul's bowed stance.
+      { parent: 'rig', kind: 'capsule', pos: [-0.11, -0.55, 0], radius: 0.075, height: 0.55, mat: 'body', jitter: 0.010 },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.11, -0.55, 0], radius: 0.075, height: 0.55, mat: 'body', jitter: 0.010 },
+      // BODY — narrower than ghoul (radius 0.25 vs 0.34), TALLER torso.
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, -0.05, 0], scale: [0.90, 1.10, 1.0], radius: 0.25, height: 0.60, mat: 'body', jitter: 0.013 },
+      // CROSSED-BELT SASH — angled across the chest.
+      { parent: 'rig', kind: 'extrude', pos: [0, 0.15, -0.24], rot: [0, 0, 0.55],
+        shape: [[-0.30, -0.03], [0.30, -0.03], [0.30, 0.03], [-0.30, 0.03]],
         depth: 0.04, mat: 'strap' },
-      // Head — slightly forward of body axis, reads as craned-forward.
-      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.55, -0.04], scale: [0.95, 1.0, 1.05], radius: 0.22, mat: 'body', jitter: 0.013 },
-      // Shoulder humps (symmetric — unlike the ghoul, this thing is
-      // structurally balanced).
-      { parent: 'rig', kind: 'sphere', pos: [-0.25, 0.32, 0], radius: 0.14, segments: [12, 10], mat: 'body', jitter: 0.012 },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.25, 0.32, 0], radius: 0.14, segments: [12, 10], mat: 'body', jitter: 0.012 },
-      // Arms — thin and long, held slightly forward (reads as ready to
-      // strike). Same length on both sides (symmetric predator).
-      { parent: 'rig', kind: 'capsule', pos: [-0.27, -0.05, 0.05], radius: 0.055, height: 0.50, mat: 'body', jitter: 0.012 },
-      { parent: 'rig', kind: 'capsule', pos: [ 0.27, -0.05, 0.05], radius: 0.055, height: 0.50, mat: 'body', jitter: 0.012 },
-      // Fists — small.
-      { parent: 'rig', kind: 'sphere', pos: [-0.27, -0.32, 0.05], radius: 0.065, segments: [10, 8], mat: 'body', jitter: 0.010 },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.27, -0.32, 0.05], radius: 0.065, segments: [10, 8], mat: 'body', jitter: 0.010 },
-      // Eyes — slightly larger than ghoul's, push the predator read.
-      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.58, -0.29], radius: 0.038, segments: [12, 10], mat: 'eyes' },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.58, -0.29], radius: 0.038, segments: [12, 10], mat: 'eyes' },
-      // Eye halo — amber matches the rim. Subtle.
-      { parent: 'rig', kind: 'sprite', pos: [-0.08, 0.58, -0.32], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-      { parent: 'rig', kind: 'sprite', pos: [ 0.08, 0.58, -0.32], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      // LOINCLOTH — small extruded strip around the waist. Sells "clothed"
+      // and visually separates body from legs.
+      { parent: 'rig', kind: 'extrude', pos: [0, -0.30, 0],
+        shape: [[-0.22, -0.05], [0.22, -0.05], [0.22, 0.05], [-0.22, 0.05]],
+        depth: 0.32, mat: 'strap' },
+      // Shoulder humps — small + symmetric.
+      { parent: 'rig', kind: 'sphere', pos: [-0.22, 0.25, 0], radius: 0.12, segments: [12, 10], mat: 'body', jitter: 0.011 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.22, 0.25, 0], radius: 0.12, segments: [12, 10], mat: 'body', jitter: 0.011 },
+      // Arms — long thin capsules.
+      { parent: 'rig', kind: 'capsule', pos: [-0.24, -0.12, 0.04], radius: 0.050, height: 0.55, mat: 'body', jitter: 0.011 },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.24, -0.12, 0.04], radius: 0.050, height: 0.55, mat: 'body', jitter: 0.011 },
+      // Small fists.
+      { parent: 'rig', kind: 'sphere', pos: [-0.24, -0.42, 0.04], radius: 0.060, segments: [10, 8], mat: 'body', jitter: 0.010 },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.24, -0.42, 0.04], radius: 0.060, segments: [10, 8], mat: 'body', jitter: 0.010 },
+      // Head — narrow + slightly forward (craned, scout-like).
+      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.50, -0.06], scale: [0.85, 1.05, 1.05], radius: 0.20, mat: 'body', jitter: 0.012 },
+      // Eyes — wider apart than ghoul, push the alert-predator read.
+      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.52, -0.26], radius: 0.040, segments: [12, 10], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.52, -0.26], radius: 0.040, segments: [12, 10], mat: 'eyes' },
+      // Eye halos (amber).
+      { parent: 'rig', kind: 'sprite', pos: [-0.08, 0.52, -0.29], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { parent: 'rig', kind: 'sprite', pos: [ 0.08, 0.52, -0.29], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
     ],
   };
 }
@@ -695,6 +716,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
     presence: 'spectral',       // continuous bob + sway so it never reads as a statue
+    phasing: true,              // ghost — drifts through pillars/altars/chests
     // Wraith sees ECHO of you — basically supernatural perception. Long
     // range, wide cone, but small hearing radius (no body to feel
     // footsteps). Long lose-sight: it follows even if you break LOS.

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { LevelSpec, RoomSpec, TorchSpec } from './types';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
+import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
@@ -51,6 +52,11 @@ const PILLAR_DEFAULT_SIZE = 0.5;
 export interface LiveLevel {
   spec: LevelSpec;
   walkable: WalkableRegion;
+  /** Pathfinding grid for physical mobs (respects walls + obstacles). */
+  nav: NavGrid;
+  /** Phasing pathfinding grid for ghost mobs (respects walls only —
+   *  obstacles are passable). Same dimensions as `nav`. */
+  navPhasing: NavGrid;
   torches: Torch[];
   enemies: Enemy[];
   playerSpawn: { x: number; z: number; yaw: number };
@@ -486,6 +492,22 @@ export function buildLevel(
     wallSegments,
   );
 
+  // --- Pathfinding grids ---
+  // Built once at level construction. Covers the bounding box of every
+  // walkable rect; cells inside the box that aren't passable become
+  // blocked. Two variants — standard (mobs avoid props) and phasing
+  // (ghosts ignore props, walls only). Build cost is ~1ms at our cell
+  // counts; query cost is sub-ms per chase.
+  const navRects = allRects.map((r) => r.rect);
+  const navBbox = {
+    minX: Math.min(...navRects.map((r) => r.x - r.w / 2)),
+    maxX: Math.max(...navRects.map((r) => r.x + r.w / 2)),
+    minZ: Math.min(...navRects.map((r) => r.z - r.d / 2)),
+    maxZ: Math.max(...navRects.map((r) => r.z + r.d / 2)),
+  };
+  const nav = new NavGrid(walkable, navBbox, false);
+  const navPhasing = new NavGrid(walkable, navBbox, true);
+
   // --- Enemies + room-membership tracking ----------------------------
   // Each enemy faces the player spawn at level start so the very first frame
   // is correctly oriented.
@@ -583,6 +605,8 @@ export function buildLevel(
   return {
     spec,
     walkable,
+    nav,
+    navPhasing,
     torches,
     enemies,
     playerSpawn: spec.startPos,

@@ -4,6 +4,7 @@ import { damagePlayer } from '../player/health';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import type { WalkableRegion } from '../level/walkable';
+import type { NavGrid, Waypoint } from '../level/nav-grid';
 import {
   spawn as spawnEntity,
   destroy as destroyEntity,
@@ -83,10 +84,17 @@ export interface Enemy {
   alive: boolean;
   /** True after hp hit zero AND the death animation is still ticking. */
   dying: boolean;
+  /** Phases through obstacles (props). Walls still block. Ghost flag. */
+  phasing: boolean;
   hp: number;
   collisionRadius: number;
   takeDamage(event: DamageEvent): number;
-  update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion): void;
+  update(
+    dt: number,
+    playerPos: THREE.Vector3,
+    walkable: WalkableRegion,
+    nav?: NavGrid,
+  ): void;
   setDebugState(state: EnemyState, phaseTimer: number): void;
   setDebugPosition(x: number, z: number): void;
   /** Rotate the container so it faces a world point (head toward it). */
@@ -262,6 +270,87 @@ export function createEnemy(
     ? (built.materials.get('orb') as THREE.MeshStandardMaterial | undefined)
     : undefined;
   const orbBaseEmissive = orbMat?.emissiveIntensity ?? 0;
+
+  // Pathfinding state — cached waypoints to the current target. Refreshed
+  // every PATH_REFRESH seconds while LOS to the target is blocked. Phasing
+  // mobs (wraith) skip pathfinding entirely; they steer through props.
+  let path: Waypoint[] = [];
+  let pathTime = 0;
+  const PATH_REFRESH = 0.5;
+  const WAYPOINT_REACHED_SQ = 0.35 * 0.35;
+
+  /**
+   * Steer toward a world target, routing around obstacles via the nav
+   * grid when there's no line-of-sight. Centralized so every state that
+   * moves (chasing, searching, returning, winding) gets the same
+   * "doesn't get stuck on pillars" behavior. For phasing mobs the
+   * pathfinder is bypassed — they just steer directly and pass through
+   * props (walls still block them through clampMove's ignoreObstacles).
+   */
+  function moveTowards(
+    targetX: number, targetZ: number, speed: number, dt: number,
+    walkable: WalkableRegion, nav?: NavGrid,
+  ) {
+    let mx = targetX;
+    let mz = targetZ;
+    if (!spec.phasing && nav) {
+      const directLOS = walkable.hasLineOfSight(
+        container.position.x, container.position.z, targetX, targetZ,
+      );
+      if (!directLOS) {
+        // Invalidate the cached path if the target drifted significantly
+        // from where we last planned to (player moved across the room).
+        if (path.length > 0) {
+          const last = path[path.length - 1];
+          const tdx = targetX - last.x;
+          const tdz = targetZ - last.z;
+          if (tdx * tdx + tdz * tdz > 2.25) {
+            path.length = 0;
+            pathTime = 0;
+          }
+        }
+        pathTime += dt;
+        if (pathTime >= PATH_REFRESH || path.length === 0) {
+          path = nav.findPath(container.position.x, container.position.z, targetX, targetZ);
+          pathTime = 0;
+        }
+        // Walk the waypoint queue, popping any we've already reached.
+        while (path.length > 0) {
+          const wp = path[0];
+          const dwx = wp.x - container.position.x;
+          const dwz = wp.z - container.position.z;
+          if (dwx * dwx + dwz * dwz < WAYPOINT_REACHED_SQ) {
+            path.shift();
+          } else {
+            mx = wp.x;
+            mz = wp.z;
+            break;
+          }
+        }
+      } else {
+        // We can see the target — drop any stale path so we beeline.
+        pathTime = 0;
+        path.length = 0;
+      }
+    }
+
+    const dx = mx - container.position.x;
+    const dz = mz - container.position.z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq < 1e-6) return;
+    const inv = 1 / Math.sqrt(distSq);
+    const step = speed * dt;
+    const newX = container.position.x + dx * inv * step;
+    const newZ = container.position.z + dz * inv * step;
+    const resolved = walkable.clampMove(
+      container.position.x, container.position.z,
+      newX, newZ,
+      spec.collisionRadius,
+      spec.phasing ? { ignoreObstacles: true } : undefined,
+    );
+    container.position.x = resolved.x;
+    container.position.z = resolved.z;
+  }
 
   // Death sequence — once hp hits zero we DON'T immediately remove the
   // mesh. We ramp a dissolve uniform 0→1 over DEATH_DURATION while
@@ -463,7 +552,7 @@ export function createEnemy(
     }
   }
 
-  function update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion) {
+  function update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion, nav?: NavGrid) {
     if (!aliveLocal) {
       // Dying branch — run the death animation; everything else (AI,
       // perception, movement) is gated off.
@@ -577,16 +666,9 @@ export function createEnemy(
         // Face the search direction.
         faceTarget(lastSeenPos);
         if (distToLast > 0.4) {
-          tmpDir.set(dxs, 0, dzs).normalize();
-          const step = spec.moveSpeed * 0.7 * dt;  // slower than chase — wary search
-          const newX = container.position.x + tmpDir.x * step;
-          const newZ = container.position.z + tmpDir.z * step;
-          const resolved = walkable.clampMove(
-            container.position.x, container.position.z,
-            newX, newZ, spec.collisionRadius,
-          );
-          container.position.x = resolved.x;
-          container.position.z = resolved.z;
+          // Wary search — slower than chase (0.7x). Pathfinds around
+          // obstacles, same as chasing.
+          moveTowards(lastSeenPos.x, lastSeenPos.z, spec.moveSpeed * 0.7, dt, walkable, nav);
         }
         // Search times out either by phaseTimer or by re-acquiring (above).
         if (phaseTimer >= SEARCH_DURATION) {
@@ -614,17 +696,13 @@ export function createEnemy(
           scanTargetYaw = homeYaw;
           break;
         }
-        tmpDir.set(dxr, 0, dzr).normalize();
-        const step = spec.moveSpeed * 0.6 * dt;
-        const newX = container.position.x + tmpDir.x * step;
-        const newZ = container.position.z + tmpDir.z * step;
-        const resolved = walkable.clampMove(
-          container.position.x, container.position.z,
-          newX, newZ, spec.collisionRadius,
-        );
-        container.position.x = resolved.x;
-        container.position.z = resolved.z;
-        // Face direction of travel.
+        // Walk back to spawn at 0.6x speed, routing around obstacles.
+        moveTowards(homePos.x, homePos.z, spec.moveSpeed * 0.6, dt, walkable, nav);
+        // Face direction of travel — use the home delta direction so
+        // facing is stable even if the path waypoint pulls slightly
+        // sideways.
+        tmpDir.set(homePos.x - container.position.x, 0, homePos.z - container.position.z);
+        if (tmpDir.lengthSq() > 1e-6) tmpDir.normalize();
         tmpFlat.set(container.position.x + tmpDir.x, container.position.y, container.position.z + tmpDir.z);
         container.lookAt(tmpFlat);
         container.rotation.y += Math.PI;
@@ -636,19 +714,7 @@ export function createEnemy(
 
       case 'chasing': {
         if (distance > spec.attackRange) {
-          tmpDir.subVectors(playerPos, container.position);
-          tmpDir.y = 0;
-          tmpDir.normalize();
-          const step = spec.moveSpeed * dt;
-          const newX = container.position.x + tmpDir.x * step;
-          const newZ = container.position.z + tmpDir.z * step;
-          const resolved = walkable.clampMove(
-            container.position.x, container.position.z,
-            newX, newZ,
-            spec.collisionRadius,
-          );
-          container.position.x = resolved.x;
-          container.position.z = resolved.z;
+          moveTowards(playerPos.x, playerPos.z, spec.moveSpeed, dt, walkable, nav);
         } else {
           state = 'winding';
           phaseTimer = 0;
@@ -674,19 +740,9 @@ export function createEnemy(
         // misses unless the rat closes further). Backpedaling player still
         // escapes since they retreat faster than the half-speed windup walk.
         if (distance > spec.strikeRange) {
-          tmpDir.subVectors(playerPos, container.position);
-          tmpDir.y = 0;
-          tmpDir.normalize();
-          const step = spec.moveSpeed * 0.45 * dt;
-          const newX = container.position.x + tmpDir.x * step;
-          const newZ = container.position.z + tmpDir.z * step;
-          const resolved = walkable.clampMove(
-            container.position.x, container.position.z,
-            newX, newZ,
-            spec.collisionRadius,
-          );
-          container.position.x = resolved.x;
-          container.position.z = resolved.z;
+          // Continue closing during windup at half chase-speed so a
+          // stationary player gets hit.
+          moveTowards(playerPos.x, playerPos.z, spec.moveSpeed * 0.45, dt, walkable, nav);
         }
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
@@ -859,6 +915,7 @@ export function createEnemy(
     group: container,
     hitTargets: built.hitTargets,
     collisionRadius: spec.collisionRadius,
+    phasing: !!spec.phasing,
     get alive() {
       return aliveLocal;
     },
