@@ -105,6 +105,7 @@ export function createTorchlight(
   // frame when this torch is one of the N nearest sources.
   registerLight({
     id: torchSourceId,
+    category: 'environment',
     position: worldPos,
     color: effectiveColor,
     intensity: baseIntensity,

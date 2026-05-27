@@ -101,6 +101,7 @@ export function spawnFountain(
   const fountainState = { intensity: 1.8 };
   registerLight({
     id: `fountain-${generateEntityId('fountain-light')}`,
+    category: 'environment',
     position: new THREE.Vector3(pos.x, pos.y + 0.95, pos.z),
     color: 0x88ffaa,
     intensity: 1.8,

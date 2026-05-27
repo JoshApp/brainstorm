@@ -161,15 +161,12 @@ export function createPickup(
   const lightSourceId = `pickup-light-${id}`;
   registerLight({
     id: lightSourceId,
+    category: 'pickup',  // own pool — torches never crowd out loot
     position: lightWorldPos,
     color: rarityColor,
     intensity: LIGHT_INTENSITY,
     distance: LIGHT_DISTANCE,
     decay: LIGHT_DECAY,
-    // Pickups signal interactability. Moderate priority so a piece of
-    // loot 2-3m away wins against a torch 5m away — the player's
-    // attention should follow the loot first.
-    priority: 4 * 4,
   });
 
   // If we're not fountaining, this is effectively the moment it lands.

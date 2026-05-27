@@ -155,6 +155,7 @@ export function attachLamp(camera: THREE.Camera) {
 
   registerLight({
     id: 'player-lamp',
+    category: 'lamp',  // own dedicated slot — never crowded out
     position: worldPos,
     color: LAMP_COLOR,
     intensity: CONFIG.LAMP_INTENSITY,
@@ -162,11 +163,6 @@ export function attachLamp(camera: THREE.Camera) {
     decay: 1.4,
     getIntensity: () => state.currentIntensity,
     persistent: true,
-    // The lamp is the player's reliable halo. A heavy priority bias
-    // (effectively "always one of the closest sources") guarantees it
-    // never pops out of the slot pool, no matter how many torches the
-    // room has.
-    priority: 1000,
   });
 }
 

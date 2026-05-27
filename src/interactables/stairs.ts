@@ -81,6 +81,7 @@ export function spawnStairs(
     .add(new THREE.Vector3(spec.x, 0, spec.z));
   registerLight({
     id: `stairs-${spec.id ?? spec.targetLevel}-glow`,
+    category: 'environment',
     position: glowWorld,
     color: 0x88aaff,
     intensity: 4.5,

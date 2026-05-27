@@ -336,6 +336,7 @@ export function buildLevel(
         );
         registerLight({
           id: `model-light-${lightSerial++}`,
+          category: 'environment',
           position: lightPos,
           color: lp.color,
           intensity: lp.intensity,
@@ -441,6 +442,7 @@ export function buildLevel(
       const fz = r.rect.z + (((i * 0.9) % r.rect.d) - r.rect.d / 2 + r.rect.d / (count + 1));
       registerLight({
         id: `fill-${lightSerial++}`,
+        category: 'environment',
         position: new THREE.Vector3(fx, 1.4, fz),
         color: fillColor,
         intensity: 7,
