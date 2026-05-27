@@ -255,9 +255,19 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         case 'Y': spawns.push({ enemyId: 'acolyte',    x, z, roomId: 'main' }); break;
         case '/': {
           if (opts.stairsTarget) {
+            // Auto-orient: the stairs descend INTO the adjacent wall.
+            // Look at the four cardinal neighbours of the '/' cell; the
+            // one that's '#' tells us which way to rotate the descent.
+            // No wall adjacent → default south-descending (rotY=0).
+            const isWall = (cc: number, rr: number) => cellChar(cc, rr) === '#' || cellChar(cc, rr) === ' ';
+            let rotY = 0;
+            if (isWall(c, r + 1))      rotY = 0;             // descend +Z
+            else if (isWall(c, r - 1)) rotY = Math.PI;       // descend -Z
+            else if (isWall(c + 1, r)) rotY = Math.PI / 2;   // descend +X
+            else if (isWall(c - 1, r)) rotY = -Math.PI / 2;  // descend -X
             stairs.push({
               id: `stairs-${opts.id}`,
-              x, z, rotY: 0,
+              x, z, rotY,
               targetLevel: opts.stairsTarget,
             });
           }

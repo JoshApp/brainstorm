@@ -68,6 +68,11 @@ export function decorateFloor(
   rand: () => number,
   tint: number,
   root: THREE.Object3D,
+  // Stair footprints in world XZ AABB form. Cells whose center falls
+  // inside any footprint are skipped — sigils + cracks + rubble would
+  // otherwise float in mid-air above the cut floor where the stairwell
+  // descends.
+  stairFootprints: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> = [],
 ): void {
   const rows = grid.length;
   const cols = Math.max(...grid.map(r => r.length));
@@ -79,6 +84,12 @@ export function decorateFloor(
     return grid[r]?.[c] ?? ' ';
   };
   const isFloor = (c: number, r: number): boolean => FLOOR_CHARS.has(cellChar(c, r));
+  const inStairFootprint = (wx: number, wz: number): boolean => {
+    for (const f of stairFootprints) {
+      if (wx >= f.minX && wx <= f.maxX && wz >= f.minZ && wz <= f.maxZ) return true;
+    }
+    return false;
+  };
 
   // Collect anchors first so we know how many instances each kind needs;
   // each anchor has a final world-space position + rotation.
@@ -91,6 +102,9 @@ export function decorateFloor(
     for (let c = 0; c < cols; c++) {
       const ch = cellChar(c, r);
       if (!FLOOR_CHARS.has(ch)) continue;
+      const cellWx = originX + c + 0.5;
+      const cellWz = originZ + r + 0.5;
+      if (inStairFootprint(cellWx, cellWz)) continue;
       if (NO_DECORATE_CHARS.has(ch)) continue;
       const wx = originX + c + 0.5;
       const wz = originZ + r + 0.5;

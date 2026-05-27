@@ -51,11 +51,13 @@ export const LEVEL_1: LevelSpec = {
       height: 3.0,
     },
     {
-      // Small stairwell beyond the antechamber. Holds the descent stairs.
-      // Lower ceiling, smaller footprint — feels like a service tunnel.
-      // z=14.5 with d=2 → north edge at z=13.5, matching antechamber south.
+      // Stairwell beyond the antechamber. Deep enough to fit the full
+      // 8-step descent footprint (≈ 2.6m) + a player approach zone at
+      // the front. Lower ceiling so it still reads as a service tunnel.
+      // z=15.25 with d=3.5 → north edge at z=13.5 (matches antechamber
+      // south), south edge at z=17.0.
       id: 'stairwell',
-      rect: { x: 0, z: 14.5, w: 3, d: 2 },
+      rect: { x: 0, z: 15.25, w: 3, d: 3.5 },
       height: 2.4,
     },
   ],
@@ -97,9 +99,10 @@ export const LEVEL_1: LevelSpec = {
     {
       id: 'stairs-down-1',
       // Top tread inside stairwell; descends south toward back wall.
-      // Stairwell z range: 13.5 to 15.5. Stairs top at z=14.0; 4 steps of
-      // depth 0.34 = 1.36m of horizontal extent, bottom at z=15.36 — just
-      // inside the back wall. Reads as "descend into the wall".
+      // Stairwell z range: 13.5 to 17.0. Stairs top at z=14.0 (0.5m
+      // inside the room for an approach zone). 8 steps × 0.32 depth =
+      // 2.56m of horizontal extent → bottom at z=16.56, just inside
+      // the back wall. Reads as "descend into the wall."
       x: 0, z: 14.0,
       rotY: 0,
       targetLevel: 'depth-2',

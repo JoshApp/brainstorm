@@ -329,6 +329,15 @@ export function buildLevel(
   // --- Geometry: rooms + corridors ---
   const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
   const wallSegments: WallSegment[] = [];
+  // Hoisted: stair-footprint AABBs push into this BEFORE the prop pass
+  // populates the rest. WalkableRegion is constructed below with the
+  // full list.
+  const obstacles: Obstacle[] = [];
+  // Parallel list of stair-footprint AABBs in world XZ — same shape as
+  // the stair obstacles above. Passed to decorateFloor so the procgen
+  // sigils/cracks/rubble decorator skips cells that sit on the cut-out
+  // stairwell floor.
+  const stairFootprintAabbs: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> = [];
   // Pre-compute floor holes (one per stairwell) keyed by which room the
   // stairwell sits inside. Each hole is a 4-corner polygon in floor-mesh
   // shape coordinates (shape Y maps to world -Z after the -π/2 X rotation
@@ -352,25 +361,79 @@ export function buildLevel(
       const angle = st.rotY ?? 0;
       const ca = Math.cos(angle);
       const sa = Math.sin(angle);
-      // 4 stair-local corners → world XZ → shape coords (x, -z) rel. room.
       const corners: Array<[number, number]> = [
         [-halfW, front],
         [ halfW, front],
         [ halfW, back],
         [-halfW, back],
       ];
-      const hole: Array<[number, number]> = corners.map(([lx, lz]) => {
+      // World XZ of the four stair-footprint corners.
+      const worldCorners = corners.map(([lx, lz]) => {
         const wx = st.x + ca * lx - sa * lz;
         const wz = st.z + sa * lx + ca * lz;
-        return [wx - rx, -(wz - rz)];
+        return [wx, wz] as [number, number];
       });
+      // Clip to the ROOM's axis-aligned bounding box. The stair often
+      // descends INTO the back wall (the footprint extends past the
+      // room). Without clipping, the floor hole goes past the room rect
+      // and ShapeGeometry triangulates unpredictably — manifests as
+      // half-cut floors on small rooms. We axis-clamp the AABB of the
+      // footprint to the room rect; for axis-aligned stair rotations
+      // (0, ±π/2, π — all current cases) this preserves the rectangle.
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const [wx, wz] of worldCorners) {
+        if (wx < minX) minX = wx;
+        if (wx > maxX) maxX = wx;
+        if (wz < minZ) minZ = wz;
+        if (wz > maxZ) maxZ = wz;
+      }
+      const cMinX = Math.max(minX, rx - hw);
+      const cMaxX = Math.min(maxX, rx + hw);
+      const cMinZ = Math.max(minZ, rz - hd);
+      const cMaxZ = Math.min(maxZ, rz + hd);
+      if (cMinX >= cMaxX || cMinZ >= cMaxZ) continue;  // clipped to nothing
+      // Build hole in floor-shape coords (X = world_x - rect.x;
+      // Y = -(world_z - rect.z) due to the floor's -π/2 X rotation).
+      const hole: Array<[number, number]> = [
+        [cMinX - rx, -(cMinZ - rz)],
+        [cMaxX - rx, -(cMinZ - rz)],
+        [cMaxX - rx, -(cMaxZ - rz)],
+        [cMinX - rx, -(cMaxZ - rz)],
+      ];
       holes.push(hole);
+      // Stair footprint → AABB obstacle. The player can walk up to the
+      // stair MOUTH (interactable range fires before contact) but can't
+      // step onto the stairs themselves. Leave a small front-edge gap
+      // so the prompt is reachable. The obstacle is computed in WORLD
+      // space (matches the rest of the obstacle list).
+      const FRONT_GAP = 0.15;
+      // Re-build the FRONT-clipped local corners and project to world.
+      const obsCorners = [
+        [-halfW, front + FRONT_GAP],
+        [ halfW, front + FRONT_GAP],
+        [ halfW, back],
+        [-halfW, back],
+      ];
+      let oMinX = Infinity, oMaxX = -Infinity, oMinZ = Infinity, oMaxZ = -Infinity;
+      for (const [lx, lz] of obsCorners) {
+        const wx = st.x + ca * lx - sa * lz;
+        const wz = st.z + sa * lx + ca * lz;
+        if (wx < oMinX) oMinX = wx;
+        if (wx > oMaxX) oMaxX = wx;
+        if (wz < oMinZ) oMinZ = wz;
+        if (wz > oMaxZ) oMaxZ = wz;
+      }
+      obstacles.push({ kind: 'aabb', minX: oMinX, maxX: oMaxX, minZ: oMinZ, maxZ: oMaxZ });
+      // Decorator AABB uses the FULL (unclipped) footprint so cells
+      // beyond the room rect can't sprout sigils either — even though
+      // those cells fall outside the floor, the grid loop iterates them.
+      stairFootprintAabbs.push({ minX, maxX, minZ, maxZ });
     }
     buildRoomShell(root, r, allRects, materials, wallSegments, holes);
   }
 
   // --- Props (visual meshes) + collect obstacles for collision ---
-  const obstacles: Obstacle[] = [];
+  // `obstacles` was hoisted above so stair AABBs land in the same list.
 
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
@@ -550,7 +613,7 @@ export function buildLevel(
   // rubble in a few draw calls instead of dozens of individual meshes.
   if (spec.procgenDecor) {
     const d = spec.procgenDecor;
-    decorateFloor(d.grid, spec, rngFromSeed(d.seed), d.tint, root);
+    decorateFloor(d.grid, spec, rngFromSeed(d.seed), d.tint, root, stairFootprintAabbs);
   }
 
   // --- Per-floor fog tint ---
