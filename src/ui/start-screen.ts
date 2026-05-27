@@ -20,6 +20,9 @@ export interface StartScreenOptions {
   saveDepth?: number;
   onDescend: () => void;
   onContinue: () => void;
+  /** Optional: explicit "play tutorial" entry point. Lets returning
+   *  players revisit the antechamber even after their first run. */
+  onTutorial?: () => void;
 }
 
 let root: HTMLDivElement | null = null;
@@ -182,6 +185,19 @@ export function showStartScreen(opts: StartScreenOptions) {
     position: 'relative',
     zIndex: '1',
   } as Partial<CSSStyleDeclaration>);
+
+  // TUTORIAL — small text link, always available. Returning players
+  // can revisit the antechamber if they want to refresh the loop or
+  // show someone the controls without resetting their save.
+  if (opts.onTutorial) {
+    const link = makeSecondaryLink('TUTORIAL', 0);
+    link.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      hide();
+      opts.onTutorial!();
+    });
+    links.appendChild(link);
+  }
 
   const stash = getStash();
   if (stash.length > 0) {

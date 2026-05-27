@@ -101,7 +101,18 @@ export function createInventoryPanel() {
   openButton = document.createElement('button');
   openButton.id = 'inventory-button';
   openButton.setAttribute('aria-label', 'inventory');
-  openButton.textContent = '▦';
+  // Satchel/bag SVG — fits the dungeon-delver register better than the
+  // abstract ▦ grid glyph that was here before. Strap arc + body box
+  // + clasp line.
+  openButton.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+         stroke-linejoin="round" stroke-linecap="round" width="22" height="22"
+         style="display:block;margin:auto;">
+      <path d="M5 9 L5 19.5 Q5 21 6.5 21 L17.5 21 Q19 21 19 19.5 L19 9 Z" />
+      <path d="M8 9 L8 7 Q8 4.5 12 4.5 Q16 4.5 16 7 L16 9" />
+      <line x1="9" y1="13" x2="15" y2="13" />
+    </svg>
+  `;
   Object.assign(openButton.style, {
     position: 'fixed',
     top: 'calc(16px + env(safe-area-inset-top, 0px))',
@@ -112,8 +123,7 @@ export function createInventoryPanel() {
     border: '1px solid rgba(180, 130, 90, 0.5)',
     background: 'rgba(20, 14, 10, 0.75)',
     color: TEXT_PRIMARY,
-    fontSize: '20px',
-    lineHeight: '1',
+    padding: '0',
     cursor: 'pointer',
     zIndex: '95',  // above the menu backdrop (90), below panels (100)
     touchAction: 'manipulation',

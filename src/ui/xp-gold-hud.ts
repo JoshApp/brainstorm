@@ -45,7 +45,9 @@ export function createXpGoldHud(): void {
   Object.assign(goldContainer.style, {
     position: 'fixed',
     right: 'calc(16px + env(safe-area-inset-right, 0px))',
-    top: 'calc(48px + env(safe-area-inset-top, 0px))',
+    // Below the 40px inventory button (which sits at top: 16px + safe area)
+    // with a 16px gap so the gold doesn't overlap the bag icon.
+    top: 'calc(72px + env(safe-area-inset-top, 0px))',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: '14px',
     fontWeight: '600',

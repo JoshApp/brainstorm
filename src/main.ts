@@ -18,7 +18,7 @@ import { initAchievements } from './broadcast/achievements';
 import { getStyle } from './style';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle } from './style/render-target';
-import { createSettingsMenu } from './ui/settings-menu';
+import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings } from './settings/settings';
 import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
@@ -247,6 +247,26 @@ createConsumableBar();
 // Backdrop and HUD-hide are now owned by the screen manager — created
 // lazily when the first screen that needs them opens.
 createSettingsMenu();
+configureSettingsMenu({
+  abandonRun() {
+    // Wipe the save then reload — the boot flow will show the title
+    // screen with no CONTINUE pill, ready for a fresh DESCEND.
+    clearSave();
+    location.reload();
+  },
+  quitToMenu() {
+    // Save is preserved; reload kicks the boot flow which sees the
+    // save and offers CONTINUE on the title screen.
+    location.reload();
+  },
+  exitGame() {
+    // window.close only works on tabs opened by script (or PWAs on
+    // some platforms). Best-effort then fall back to blanking the
+    // page so the player can manually close the tab / hit home.
+    try { window.close(); } catch {}
+    document.body.innerHTML = '<div style="position:fixed;inset:0;background:#000;color:#765;display:flex;align-items:center;justify-content:center;font:italic 14px serif;letter-spacing:0.2em;">the dark forgets you.</div>';
+  },
+});
 createInventoryPanel();
 
 // Sync the master volume from persisted settings so saved volume is
@@ -605,6 +625,16 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       resetRunDiscoveries();
       applyState(null);
       startRun(entryId, wantTutorial ? 0 : 1);
+    },
+    onTutorial() {
+      // Explicit replay path — always lands in the tutorial chamber
+      // regardless of meta state. Mirrors the onDescend flow.
+      clearSave();
+      startNewRun('tutorial');
+      recordRunStart();
+      resetRunDiscoveries();
+      applyState(null);
+      startRun('tutorial', 0);
     },
     onContinue() {
       const s = loadSave();

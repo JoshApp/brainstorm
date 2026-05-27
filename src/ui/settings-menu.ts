@@ -4,18 +4,31 @@ import { openScreen, closeScreen } from './screen-manager';
 
 // Settings panel.
 //
-// Used to have its own gear button at top-left, but that cluttered the
-// gameplay HUD on a phone. Now the panel is "headless": no global open
-// button — other UI opens it via openSettings(). Currently the inventory
-// header's gear icon is the entry point.
-//
 // Settings persisted via src/settings/settings.ts to localStorage.
+// "Run actions" (abandon / quit / exit) live at the bottom of the
+// panel — they're app-level shutdowns, kept out of mainline gameplay
+// flow but discoverable when the player explicitly opens settings.
 
 const PANEL_BG = 'rgba(20, 14, 10, 0.92)';
 const BORDER = '1px solid rgba(180, 130, 90, 0.5)';
 
 let panel: HTMLDivElement | null = null;
 let panelOpen = false;
+
+// Run-action handlers — wired by main.ts at boot via configureSettingsMenu.
+// Kept out of this module's imports so settings doesn't need to know
+// about run-state or the title screen.
+interface RunActions {
+  abandonRun: () => void;
+  quitToMenu: () => void;
+  exitGame:   () => void;
+}
+let runActions: RunActions | null = null;
+
+export function configureSettingsMenu(actions: RunActions) {
+  runActions = actions;
+  if (panel) buildPanelContents();   // rebuild if already mounted
+}
 
 export function createSettingsMenu() {
   if (panel) return;
@@ -137,6 +150,143 @@ function buildPanelContents() {
     },
     format: (v) => `${Math.round(v * 100)}%`,
   }));
+
+  // --- RUN ACTIONS ──────────────────────────────────────────────────
+  // Bottom-of-panel danger-ish row. Three buttons in descending
+  // commitment: ABANDON RUN wipes the save, QUIT keeps the save and
+  // returns to title, EXIT tries to close the tab (mobile PWAs
+  // usually just go to home). Two-step confirm on the destructive
+  // ones so a fat-finger doesn't nuke a run.
+  if (runActions) {
+    const divider = document.createElement('div');
+    Object.assign(divider.style, {
+      height: '1px',
+      background: 'rgba(180, 130, 90, 0.25)',
+      margin: '4px 0',
+    } as Partial<CSSStyleDeclaration>);
+    panel.appendChild(divider);
+
+    const sectionLabel = document.createElement('div');
+    sectionLabel.textContent = 'RUN';
+    Object.assign(sectionLabel.style, {
+      fontSize: '10px',
+      fontWeight: '600',
+      letterSpacing: '0.30em',
+      color: 'rgba(180, 130, 90, 0.7)',
+    } as Partial<CSSStyleDeclaration>);
+    panel.appendChild(sectionLabel);
+
+    panel.appendChild(makeRunButton({
+      label: 'QUIT TO MENU',
+      description: 'Return to the title screen. Your run is saved.',
+      destructive: false,
+      onClick: () => {
+        closePanel();
+        runActions!.quitToMenu();
+      },
+    }));
+    panel.appendChild(makeRunButton({
+      label: 'ABANDON RUN',
+      description: 'Discard this run. Inventory, depth, and progress are lost.',
+      destructive: true,
+      onClick: () => {
+        closePanel();
+        runActions!.abandonRun();
+      },
+    }));
+    panel.appendChild(makeRunButton({
+      label: 'EXIT GAME',
+      description: 'Close the game tab. (On mobile, returns to the home screen.)',
+      destructive: false,
+      onClick: () => runActions!.exitGame(),
+    }));
+  }
+}
+
+interface RunButtonOpts {
+  label: string;
+  description: string;
+  destructive: boolean;
+  onClick: () => void;
+}
+
+/** A two-step-confirm button. First tap arms the button (label
+ *  becomes "TAP AGAIN TO CONFIRM"); second tap within 2.5s commits.
+ *  Non-destructive buttons skip the confirm and fire immediately. */
+function makeRunButton(opts: RunButtonOpts): HTMLDivElement {
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px',
+  } as Partial<CSSStyleDeclaration>);
+
+  const button = document.createElement('button');
+  button.textContent = opts.label;
+  const baseBg = opts.destructive ? 'rgba(60, 18, 12, 0.7)' : 'rgba(40, 28, 20, 0.7)';
+  const baseBorder = opts.destructive ? 'rgba(200, 80, 60, 0.55)' : 'rgba(180, 130, 90, 0.5)';
+  const baseColor = opts.destructive ? 'rgba(255, 190, 170, 0.95)' : 'rgba(230, 200, 170, 0.95)';
+  Object.assign(button.style, {
+    padding: '9px 14px',
+    background: baseBg,
+    border: `1px solid ${baseBorder}`,
+    borderRadius: '3px',
+    color: baseColor,
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: '11px',
+    fontWeight: '600',
+    letterSpacing: '0.22em',
+    cursor: 'pointer',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
+    transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+  } as Partial<CSSStyleDeclaration>);
+  wrap.appendChild(button);
+
+  const desc = document.createElement('div');
+  desc.textContent = opts.description;
+  Object.assign(desc.style, {
+    fontSize: '10px',
+    color: 'rgba(180, 140, 100, 0.7)',
+    paddingLeft: '2px',
+  } as Partial<CSSStyleDeclaration>);
+  wrap.appendChild(desc);
+
+  if (!opts.destructive) {
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      opts.onClick();
+    });
+    return wrap;
+  }
+
+  // Destructive: two-step confirm.
+  let armed = false;
+  let armTimer: number | undefined;
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!armed) {
+      armed = true;
+      button.textContent = 'TAP AGAIN TO CONFIRM';
+      button.style.background = 'rgba(120, 30, 22, 0.85)';
+      button.style.borderColor = 'rgba(255, 120, 80, 0.85)';
+      button.style.color = 'rgba(255, 230, 220, 0.98)';
+      if (armTimer !== undefined) clearTimeout(armTimer);
+      armTimer = window.setTimeout(() => {
+        armed = false;
+        button.textContent = opts.label;
+        button.style.background = baseBg;
+        button.style.borderColor = baseBorder;
+        button.style.color = baseColor;
+      }, 2500);
+    } else {
+      if (armTimer !== undefined) clearTimeout(armTimer);
+      opts.onClick();
+    }
+  });
+  return wrap;
 }
 
 interface SliderOpts {
