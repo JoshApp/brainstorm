@@ -29,7 +29,7 @@ import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { initRunStateListeners } from './state/run-state-listeners';
-import { recordRunStart, resetRunDiscoveries } from './state/meta-state';
+import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
 import { addItemSilently, clearInventory } from './player/inventory';
 import { get as getEntity } from './ecs/world';
@@ -588,11 +588,16 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     saveDepth: save?.depth,
     onDescend() {
       clearSave();
-      startNewRun(LEVEL_1.id);
+      // First-ever run gets the tutorial chamber; everyone else lands
+      // straight in LEVEL_1. "Ever attempted a run" is tracked in
+      // meta-state and survives across saves/deaths.
+      const isFirstRun = getMeta().runsAttempted === 0;
+      const entryId = isFirstRun ? 'tutorial' : LEVEL_1.id;
+      startNewRun(entryId);
       recordRunStart();
       resetRunDiscoveries();
       applyState(null);
-      startRun(LEVEL_1.id, 1);
+      startRun(entryId, isFirstRun ? 0 : 1);
     },
     onContinue() {
       const s = loadSave();

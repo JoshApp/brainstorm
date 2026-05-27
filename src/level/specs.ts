@@ -3,6 +3,7 @@ import { ALTAR_SKULL } from '../content/relics';
 import { FLOOR_CANDLE } from '../content/candle';
 import { MOONLIGHT_CRACK, floorGlow } from '../content/light-props';
 import { ITEMS } from '../content/items';
+import { TUTORIAL } from './tutorial';
 
 const CORRIDOR_FLOOR_GLOW = floorGlow(0x6cc6e0);    // cool cyan — corridor transition
 const ANTE_FLOOR_GLOW     = floorGlow(0x6cffa0);    // sickly green — antechamber palette
@@ -313,6 +314,10 @@ export const LEVEL_2: LevelSpec = {
 
 // Registry. The level loader looks up targetLevel against this map.
 export const LEVELS: Record<string, LevelSpec> = {
+  // Tutorial: entry chamber for first-time players. Stairs descend
+  // into 'depth-1' (LEVEL_1). Returning players bypass it via the
+  // start-screen logic (see main.ts).
+  'tutorial': TUTORIAL,
   'depth-1': LEVEL_1,
   'depth-2': LEVEL_2,
 };
