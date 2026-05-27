@@ -10,7 +10,6 @@ import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
 import { createCombatSystem } from './combat/attack';
-import { consumeAttackPressed } from './controls/attack-input';
 import { isFrozen } from './combat/hit-pause';
 import { tickShake } from './combat/screen-shake';
 import { onPlayerDeath } from './player/health';
@@ -42,7 +41,9 @@ import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
 import { PASSIVES } from './content/passives';
 import { setupPwaAutoUpdate } from './pwa-update';
-import { tickInteractables, getInRangeInteractable, pressUse } from './interactables/system';
+import { tickInteractables, getInRangeInteractable, pressUse, getAllInteractables } from './interactables/system';
+import { findTapTarget } from './controls/tap-target';
+import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { updateOutline } from './interactables/outline';
 import { createUseButton, setUseButtonVisible, setInteractAction, consumeUsePressed } from './controls/use-button';
@@ -176,7 +177,38 @@ initAchievements();
 // Attack is now triggered by tapping anywhere on the right half of the
 // screen (in addition to the spacebar on desktop). No more on-screen
 // attack button — less intrusive UI, larger hit area.
-const input = createTouchInput(canvas);
+const input = createTouchInput(canvas, {
+  onTap(clientX, clientY) {
+    // Don't tap-target anything during dying or while screens are open.
+    if (isDying() || isAnyScreenOpen()) return false;
+    if (!currentLevel) return false;
+    const hit = findTapTarget(
+      clientX, clientY, canvas, camera,
+      currentLevel.enemies,
+      getAllInteractables(),
+    );
+    if (!hit) return false;
+    if (hit.kind === 'enemy') {
+      // Tapped an enemy anywhere on screen → fire an attack. Combat's
+      // cone check handles whether the swing actually lands; tap just
+      // signals intent.
+      triggerAttack();
+      return true;
+    }
+    // Interactable: only if it's in range AND has an active prompt.
+    // Range is owned by the interactables system via getInRangeInteractable;
+    // anything else would let the player use a chest from across the room.
+    const inRange = getInRangeInteractable();
+    if (inRange && inRange.id === hit.interactable.id) {
+      hit.interactable.onUse();
+      return true;
+    }
+    // Out of range — let the tap fall through (right-side becomes a swing,
+    // left-side does nothing). Some feedback "too far" would help here
+    // later; ignoring is fine for V1.
+    return false;
+  },
+});
 createUseButton();
 createConsumableBar();
 // Backdrop and HUD-hide are now owned by the screen manager — created

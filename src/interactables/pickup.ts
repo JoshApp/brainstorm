@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
-import { registerInteractable } from './system';
+import { registerInteractable, getInRangeInteractable } from './system';
 import { addItem, removeItem, addItemSilently } from '../player/inventory';
 import { tryAutoEquip, equipFromInventory } from '../player/equipment';
 import { getTexture } from '../style/procedural-textures';
@@ -146,6 +146,26 @@ export function createPickup(
   disc.visible = !launch;
   pickupGroup.add(disc);
 
+  // ── Pickup ring — thin glowing ring on the floor, ONLY visible
+  // when the player is in range. Tells the player "you can take this"
+  // without relying solely on the use button (some players reach for
+  // the object directly with their thumb on phone).
+  const ringGeom = new THREE.RingGeometry(0.50, 0.62, 28);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: rarityColor,
+    transparent: true,
+    opacity: 0.85,
+    side: THREE.DoubleSide,
+    fog: false,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const ring = new THREE.Mesh(ringGeom, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.015 - pos.y;
+  ring.visible = false;  // toggled on by tick when in range
+  pickupGroup.add(ring);
+
   // ── Glow light — borrowed from the pre-allocated pool ──────────────
   const pooledLight = acquireLight();
 
@@ -192,6 +212,10 @@ export function createPickup(
     // empty-label items, so the player can't grab an item mid-arc. We
     // flip to 'TAKE' the moment it lands (mode → 'settled').
     promptLabel: (mode === 'settled' ? 'TAKE' : ''),
+    // Items are small; the default 1.07× outline doesn't read at all
+    // on a 30cm sword. 1.45× makes the silhouette properly pop without
+    // looking like a halo balloon.
+    outlineScale: 1.45,
     onUse() {
       // Pickup chime — rarity-tinted (mundane low/dull, fabled high/long).
       playPickupChime(RARITY_INDEX[item.rarity ?? 'mundane']);
@@ -285,6 +309,17 @@ export function createPickup(
           pickupGroup.position.y + itemY,
           pickupGroup.position.z + itemZ,
         );
+      }
+      // In-range floor ring: only visible when the player IS in range.
+      // Pulses gently. Settled-only — flying items aren't takeable yet
+      // so the ring would be misleading mid-arc.
+      if (mode === 'settled') {
+        const isInRange = getInRangeInteractable() === interactable;
+        ring.visible = isInRange;
+        if (isInRange) {
+          const pulse = 1 + 0.08 * Math.sin(t * Math.PI * 2 / 0.9);
+          ring.scale.set(pulse, pulse, 1);
+        }
       }
     },
     destroyed: false,

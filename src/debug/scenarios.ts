@@ -291,7 +291,9 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     hideSword: true,
     playerPos: {
-      x: 0, z: 0.5,
+      // Stand right next to the dropped Heartburn so the in-range
+      // pickup ring + outline are visible.
+      x: 0, z: -0.7,
       lookAt: { x: 0, z: -1.5, y: 0.3 },
     },
     enemyOverrides: [

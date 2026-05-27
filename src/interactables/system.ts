@@ -26,6 +26,12 @@ export function getInRangeInteractable(): Interactable | null {
   return currentInRange;
 }
 
+/** Read-only snapshot of the live interactables list. Used by tap-target
+ *  resolution to know what's eligible for a screen-tap raycast. */
+export function getAllInteractables(): readonly Interactable[] {
+  return interactables;
+}
+
 /**
  * Run each frame. Ticks per-interactable animation, removes destroyed ones,
  * and updates currentInRange based on player position AND forward direction.

@@ -16,7 +16,7 @@ import type { Interactable } from './types';
 // Single live target at a time (only one thing is in-range). When the
 // target changes, the previous outline meshes are removed.
 
-const OUTLINE_SCALE = 1.07;
+const OUTLINE_SCALE_DEFAULT = 1.07;
 const OUTLINE_COLOR_ARMED  = 0xffd6a0;
 const OUTLINE_COLOR_SEALED = 0x808088;
 
@@ -63,6 +63,7 @@ function buildOutlinesFor(target: Interactable) {
   if (!root) return;
   const isSealed = target.promptLabel === 'SEALED';
   const baseMat = isSealed ? sealedMat : armedMat;
+  const scaleFactor = target.outlineScale ?? OUTLINE_SCALE_DEFAULT;
   // Traverse the target's mesh subtree. For each renderable mesh, attach
   // a sibling-cloned outline mesh under the same parent (so animations
   // — chest hinge, pickup bob, door swing — naturally carry it).
@@ -76,7 +77,8 @@ function buildOutlinesFor(target: Interactable) {
     const clone = new THREE.Mesh(mesh.geometry, baseMat);
     clone.position.copy(mesh.position);
     clone.rotation.copy(mesh.rotation);
-    clone.scale.copy(mesh.scale).multiplyScalar(OUTLINE_SCALE);
+    clone.scale.copy(mesh.scale).multiplyScalar(scaleFactor);
+    clone.userData.outlineScale = scaleFactor;
     clone.renderOrder = mesh.renderOrder + 1;
     clone.userData.outline = true;
     mesh.parent?.add(clone);
@@ -99,7 +101,7 @@ export function updateOutline(target: Interactable | null, dt: number) {
   for (const o of liveOutlines) {
     o.clone.position.copy(o.src.position);
     o.clone.rotation.copy(o.src.rotation);
-    o.clone.scale.copy(o.src.scale).multiplyScalar(OUTLINE_SCALE);
+    o.clone.scale.copy(o.src.scale).multiplyScalar((o.clone.userData.outlineScale as number) ?? OUTLINE_SCALE_DEFAULT);
   }
   // Subtle pulse — vary opacity ±10% so it BREATHES even when the
   // object is still. Gives the eye an anchor.

@@ -29,6 +29,12 @@ export interface Interactable {
   destroyed?: boolean;
   /** Optional: live mesh model for cleanup on destroy. */
   built?: BuiltModel;
+  /**
+   * Optional multiplier for the in-range outline scale (default 1.07).
+   * Tiny items (a ring on the floor) need ~1.4 to read; large objects
+   * (a door panel) are fine at the default.
+   */
+  outlineScale?: number;
 }
 
 /** Spec for a level-spec-placed interactable. Engine-agnostic data. */

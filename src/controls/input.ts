@@ -49,7 +49,16 @@ interface TouchTracker {
   totalMovement: number;
 }
 
-export function createTouchInput(canvas: HTMLCanvasElement): InputState {
+export interface TouchInputOptions {
+  /** Called for every tap (short contact + little movement) on EITHER
+   *  side of the screen, with the touch's pixel coords. Returns true
+   *  if the tap was consumed (e.g. resolved to an interactable use or
+   *  a target-aware attack). If false / undefined, input.ts falls back
+   *  to the legacy tap-right-half = attack behavior. */
+  onTap?: (clientX: number, clientY: number, side: 'left' | 'right') => boolean;
+}
+
+export function createTouchInput(canvas: HTMLCanvasElement, options: TouchInputOptions = {}): InputState {
   // tickInput is assigned below; the placeholder satisfies the type.
   const state: InputState = { moveX: 0, moveY: 0, lookDx: 0, lookDy: 0, tickInput: () => {} };
   const touches: Map<number, TouchTracker> = new Map();
@@ -118,6 +127,14 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputState {
     for (const t of Array.from(e.changedTouches)) {
       const tracker = touches.get(t.identifier);
       if (!tracker) continue;
+      // Tap detection runs on EITHER side now — short contact + little
+      // movement counts as a tap, then we resolve via raycast (chest,
+      // corpse, enemy on the left side all get to trigger). If the
+      // raycast finds nothing, we fall back to the legacy contract:
+      // right-side tap = attack, left-side tap = no-op.
+      const elapsed = performance.now() - tracker.startTime;
+      const isTap = elapsed < TAP_MAX_MS && tracker.totalMovement < TAP_MAX_PX;
+
       if (tracker.side === 'left') {
         state.moveX = 0;
         state.moveY = 0;
@@ -125,10 +142,11 @@ export function createTouchInput(canvas: HTMLCanvasElement): InputState {
           hideJoystick();
           activeJoystickId = null;
         }
-      } else {
-        // Right-side tap detection: short contact + little movement = attack.
-        const elapsed = performance.now() - tracker.startTime;
-        if (elapsed < TAP_MAX_MS && tracker.totalMovement < TAP_MAX_PX) {
+      }
+
+      if (isTap) {
+        const consumed = options.onTap?.(t.clientX, t.clientY, tracker.side) ?? false;
+        if (!consumed && tracker.side === 'right') {
           triggerAttack();
         }
       }
