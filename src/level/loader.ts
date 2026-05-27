@@ -5,6 +5,7 @@ import type { StyleMaterials } from '../style/materials';
 import { CONFIG } from '../config';
 import { clearProjectiles } from '../combat/projectile-pool';
 import { clearXpWisps } from '../effects/xp-wisps';
+import { clearGoldCoins } from '../effects/gold-coins';
 
 // Level loader = the seam between "we have a current level" and "let's swap
 // it for a different one". main.ts holds the active level reference via the
@@ -110,6 +111,7 @@ export function tickPendingLoad() {
   if (activeLevel) {
     clearProjectiles();
     clearXpWisps();
+    clearGoldCoins();
     activeLevel.teardown();
     activeLevel = null;
   }

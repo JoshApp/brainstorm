@@ -49,6 +49,7 @@ import { initLightPool, tickLightPool } from './scene/light-pool';
 import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
 import { tickXpWisps, clearXpWisps } from './effects/xp-wisps';
+import { tickGoldCoins, clearGoldCoins } from './effects/gold-coins';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
@@ -381,6 +382,9 @@ function tick() {
     // outside the enemy loop so a wisp survives past its spawner's
     // full retirement (mob disappears, wisps continue to player).
     tickXpWisps(scaledDt, camera.position);
+    // Gold coins — fall to the floor, rotate, and vacuum to the player
+    // when they walk within pickup radius.
+    tickGoldCoins(scaledDt, camera.position);
 
     // Projectiles — integrate active projectiles, hit-test the player +
     // walls, retire on contact/expiry. Lives outside the enemy loop so

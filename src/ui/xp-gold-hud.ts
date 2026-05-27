@@ -17,7 +17,8 @@ import { on } from '../broadcast/event-bus';
 let container: HTMLDivElement | null = null;
 let goldEl: HTMLDivElement | null = null;
 let xpEl: HTMLDivElement | null = null;
-let pulseTimer = 0;
+let xpPulseTimer = 0;
+let goldPulseTimer = 0;
 let lastXp = -1;
 let lastGold = -1;
 
@@ -60,11 +61,11 @@ export function createXpGoldHud(): void {
 
   document.body.appendChild(container);
 
-  // XP absorb event — fired each time a wisp lands on the player. Kick
-  // a brief scale-pulse on the XP line so the absorb feels like it
-  // landed somewhere.
+  // Each absorb fires a scale-pulse on the matching line so the player
+  // sees the counter twitch each time a wisp or coin lands.
   on((e) => {
-    if (e.type === 'xp:absorbed') pulseTimer = 0.22;
+    if (e.type === 'xp:absorbed') xpPulseTimer = 0.22;
+    else if (e.type === 'gold:absorbed') goldPulseTimer = 0.22;
   });
 }
 
@@ -81,15 +82,24 @@ export function updateXpGoldHud(dt: number): void {
     xpEl.textContent = `✦ ${xp}`;
     lastXp = xp;
   }
-  // Pulse decay
-  if (pulseTimer > 0) {
-    pulseTimer -= dt;
-    const t = Math.max(0, pulseTimer / 0.22);
-    const scale = 1 + t * 0.18;
-    xpEl.style.transform = `scale(${scale})`;
+  // Pulse decay — XP (blue) and gold (warm yellow) each kick their own
+  // line so a coin landing doesn't tug the XP line and vice versa.
+  if (xpPulseTimer > 0) {
+    xpPulseTimer -= dt;
+    const t = Math.max(0, xpPulseTimer / 0.22);
+    xpEl.style.transform = `scale(${1 + t * 0.18})`;
     xpEl.style.color = `rgba(${Math.round(180 + t * 75)}, ${Math.round(200 + t * 40)}, 255, ${0.85 + t * 0.15})`;
   } else {
     xpEl.style.transform = 'scale(1)';
     xpEl.style.color = 'rgba(140, 180, 255, 0.85)';
+  }
+  if (goldPulseTimer > 0) {
+    goldPulseTimer -= dt;
+    const t = Math.max(0, goldPulseTimer / 0.22);
+    goldEl.style.transform = `scale(${1 + t * 0.18})`;
+    goldEl.style.color = `rgba(255, ${Math.round(220 + t * 30)}, ${Math.round(110 + t * 100)}, ${0.85 + t * 0.15})`;
+  } else {
+    goldEl.style.transform = 'scale(1)';
+    goldEl.style.color = 'rgba(255, 210, 110, 0.85)';
   }
 }

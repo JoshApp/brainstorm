@@ -83,6 +83,13 @@ export type EnemySpawnSpec = {
    * spawn time. Drives "this door opens when ROOM is cleared" gating.
    */
   roomId?: string;
+  /**
+   * Modifier tag ids (see src/content/modifiers.ts). Stack stat tweaks
+   * on this individual spawn — "fierce", "swift", "tough", etc. Empty
+   * or absent = no modifiers. Authored levels set them explicitly;
+   * procgen rolls them per spawn based on depth.
+   */
+  modifiers?: string[];
 };
 
 /**
@@ -139,6 +146,13 @@ export type LevelSpec = {
   id: string;
   /** Player spawn — position + initial yaw (radians). */
   startPos: { x: number; z: number; yaw: number };
+  /**
+   * 1-based floor depth. Feeds the difficulty-scaling pipeline
+   * (src/content/modifiers.ts) which multiplies mob HP / damage /
+   * reward at spawn time. Hand-authored floors set this explicitly;
+   * procgen sets it from the generation seed input. Defaults to 1.
+   */
+  depth?: number;
   /**
    * Optional display name for the floor — shown in a brief title card on
    * descent. Leave undefined to skip the title card.

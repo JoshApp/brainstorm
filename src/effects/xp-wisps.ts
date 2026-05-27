@@ -3,111 +3,163 @@ import { getTexture } from '../style/procedural-textures';
 import { grantXp } from '../state/run-state';
 import { emit } from '../broadcast/event-bus';
 
-// XP wisps — additive sprites that burst out of a dying mob, hang for
-// a beat, then home in on the player and absorb on contact. Each wisp
-// grants 1 XP. The visible effect IS the XP — there are no abstract
-// "+5 XP" popups; the player sees their kills literally flow into them.
+// XP wisps — visible glowing orbs that burst UP from a dying mob, hang
+// for a beat, then home in on the player and absorb on contact. Each
+// orb is a mesh sphere (so it reads as a physical object) + an additive
+// halo sprite (so it glows). Each orb = 1 XP granted on absorb.
 //
-// Two phases per wisp:
-//   1. burst (≈0.18s): outward drift with drag, slight upward bias.
-//   2. home (rest of lifetime): accelerate toward player chest height,
-//      capped at maxSpeed, absorbed when within absorb radius.
+// Three phases:
+//   1. burst (≈0.4s): strong upward velocity + outward spread, gentle
+//      drag. Visibly flies UP out of the corpse.
+//   2. hover (≈0.15s): nearly stationary at peak, slight wobble. Gives
+//      the player a beat to register the drop before it homes.
+//   3. home (rest of lifetime): accelerate toward player chest height,
+//      capped speed, absorbed when within absorb radius.
 //
-// 30% of wisps are violet (the rest blue) so each kill looks like a
-// little shower of mixed motes rather than a uniform blob.
+// 30% violet, 70% blue so each kill reads as a shower of mixed motes.
 
 interface Wisp {
-  sprite: THREE.Sprite;
+  mesh: THREE.Mesh;
+  halo: THREE.Sprite;
   vel: THREE.Vector3;
   age: number;
-  burstDuration: number;
+  burstEnd: number;
+  hoverEnd: number;
+  violet: boolean;
 }
 
 const wisps: Wisp[] = [];
 const tmp = new THREE.Vector3();
 
 const ABSORB_RADIUS_SQ = 0.55 * 0.55;
-const MAX_HOMING_SPEED = 14;
-// playerPos is the CAMERA (eye level). Bias downward so wisps converge
-// on the player's CHEST instead of above the head — feels like they're
-// absorbed into the player rather than rising past them.
+const MAX_HOMING_SPEED = 16;
 const HOMING_BIAS_Y = -0.4;
 
-export function spawnXpWisps(
-  scene: THREE.Object3D,
-  origin: THREE.Vector3,
-  count: number,
-): void {
-  for (let i = 0; i < count; i++) {
-    const violet = Math.random() < 0.3;
-    const color = violet ? 0x9560ff : 0x40a0ff;
-    const mat = new THREE.SpriteMaterial({
+// Shared resources — built once.
+let ORB_GEOM: THREE.SphereGeometry | null = null;
+let ORB_MAT_BLUE: THREE.MeshBasicMaterial | null = null;
+let ORB_MAT_VIOLET: THREE.MeshBasicMaterial | null = null;
+let HALO_MAT_BLUE: THREE.SpriteMaterial | null = null;
+let HALO_MAT_VIOLET: THREE.SpriteMaterial | null = null;
+
+function ensureResources(): void {
+  if (!ORB_GEOM) ORB_GEOM = new THREE.SphereGeometry(0.10, 10, 8);
+  if (!ORB_MAT_BLUE) {
+    // MeshBasic so the orb is unlit — it IS a light source visually,
+    // not something the dungeon's torches need to light.
+    ORB_MAT_BLUE = new THREE.MeshBasicMaterial({ color: 0x80c8ff, fog: false });
+  }
+  if (!ORB_MAT_VIOLET) {
+    ORB_MAT_VIOLET = new THREE.MeshBasicMaterial({ color: 0xc090ff, fog: false });
+  }
+  if (!HALO_MAT_BLUE) {
+    HALO_MAT_BLUE = new THREE.SpriteMaterial({
       map: getTexture('fire-wisp'),
-      color,
+      color: 0x40a0ff,
       transparent: true,
       opacity: 0.95,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: false,
     });
-    const sp = new THREE.Sprite(mat);
-    sp.position.copy(origin);
-    // Small birth jitter — wisps don't all start exactly at the same
-    // pixel, so the burst reads as a cluster, not a single bright blob.
-    sp.position.x += (Math.random() - 0.5) * 0.25;
-    sp.position.y += (Math.random() - 0.5) * 0.20;
-    sp.position.z += (Math.random() - 0.5) * 0.25;
-    sp.scale.setScalar(0.28 + Math.random() * 0.14);
-    scene.add(sp);
-    wisps.push({
-      sprite: sp,
-      vel: new THREE.Vector3(
-        (Math.random() - 0.5) * 1.6,
-        0.4 + Math.random() * 0.6,
-        (Math.random() - 0.5) * 1.6,
-      ),
-      age: 0,
-      burstDuration: 0.16 + Math.random() * 0.10,
+  }
+  if (!HALO_MAT_VIOLET) {
+    HALO_MAT_VIOLET = new THREE.SpriteMaterial({
+      map: getTexture('fire-wisp'),
+      color: 0x9560ff,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
     });
   }
 }
 
-/** Per-frame tick. Needs the live player position so wisps can home. */
+export function spawnXpWisps(
+  scene: THREE.Object3D,
+  origin: THREE.Vector3,
+  count: number,
+): void {
+  ensureResources();
+  for (let i = 0; i < count; i++) {
+    const violet = Math.random() < 0.3;
+    const mesh = new THREE.Mesh(ORB_GEOM!, violet ? ORB_MAT_VIOLET! : ORB_MAT_BLUE!);
+    mesh.position.copy(origin);
+    mesh.position.x += (Math.random() - 0.5) * 0.25;
+    mesh.position.y += (Math.random() - 0.5) * 0.15;
+    mesh.position.z += (Math.random() - 0.5) * 0.25;
+
+    const halo = new THREE.Sprite(violet ? HALO_MAT_VIOLET! : HALO_MAT_BLUE!);
+    halo.scale.set(0.6, 0.6, 1);
+    halo.position.copy(mesh.position);
+
+    scene.add(mesh);
+    scene.add(halo);
+
+    // Strong UPWARD velocity — orbs visibly fly up out of the corpse
+    // before they home. Slight outward spread so a 5-orb burst reads
+    // as a fountain, not a single rising column.
+    const angle = Math.random() * Math.PI * 2;
+    const horiz = 0.6 + Math.random() * 1.0;
+    const burst = 0.35 + Math.random() * 0.12;
+    wisps.push({
+      mesh,
+      halo,
+      vel: new THREE.Vector3(
+        Math.cos(angle) * horiz,
+        2.4 + Math.random() * 1.0,
+        Math.sin(angle) * horiz,
+      ),
+      age: 0,
+      burstEnd: burst,
+      hoverEnd: burst + 0.15 + Math.random() * 0.10,
+      violet,
+    });
+  }
+}
+
+/** Per-frame tick. Burst → hover → home. */
 export function tickXpWisps(dt: number, playerPos: THREE.Vector3): void {
   for (let i = wisps.length - 1; i >= 0; i--) {
     const w = wisps[i];
     w.age += dt;
 
-    if (w.age < w.burstDuration) {
-      // Burst phase — outward drift with strong drag so it settles.
-      w.sprite.position.addScaledVector(w.vel, dt);
-      const drag = Math.pow(0.5, dt * 2);
+    if (w.age < w.burstEnd) {
+      // Burst — rise + spread, gentle drag.
+      w.mesh.position.addScaledVector(w.vel, dt);
+      const drag = Math.pow(0.45, dt * 2);
       w.vel.x *= drag;
       w.vel.z *= drag;
-      w.vel.y *= Math.pow(0.7, dt * 1.5);
+      // Light upward drag too — orbs slow as they reach peak.
+      w.vel.y *= Math.pow(0.55, dt * 1.8);
+    } else if (w.age < w.hoverEnd) {
+      // Hover — nearly stationary with a tiny wobble. Gives the player
+      // a beat to register "there's the loot" before it streams in.
+      const wob = Math.sin(w.age * 6 + w.burstEnd) * 0.012;
+      w.mesh.position.y += wob * dt * 60;
+      // Drift residue from burst dies fast.
+      w.vel.multiplyScalar(Math.pow(0.2, dt));
+      w.mesh.position.addScaledVector(w.vel, dt);
     } else {
-      // Homing phase — accelerate toward player chest. Accel ramps so
-      // wisps "snap in" rather than glide gently (matches the absorb
-      // sound profile we want — punchy, not soft).
+      // Home — accelerate to player chest.
       tmp.set(
-        playerPos.x - w.sprite.position.x,
-        playerPos.y + HOMING_BIAS_Y - w.sprite.position.y,
-        playerPos.z - w.sprite.position.z,
+        playerPos.x - w.mesh.position.x,
+        playerPos.y + HOMING_BIAS_Y - w.mesh.position.y,
+        playerPos.z - w.mesh.position.z,
       );
       const distSq = tmp.lengthSq();
       if (distSq < ABSORB_RADIUS_SQ) {
-        // Absorbed — grant XP, fire event (sound + HUD pulse), remove.
         grantXp(1);
         emit({ type: 'xp:absorbed' });
-        w.sprite.parent?.remove(w.sprite);
-        (w.sprite.material as THREE.SpriteMaterial).dispose();
+        w.mesh.parent?.remove(w.mesh);
+        w.halo.parent?.remove(w.halo);
         wisps.splice(i, 1);
         continue;
       }
-      const dist = Math.sqrt(distSq);
-      const inv = 1 / dist;
-      const homeT = w.age - w.burstDuration;
-      const accel = 7 + homeT * 22;
+      const inv = 1 / Math.sqrt(distSq);
+      const homeT = w.age - w.hoverEnd;
+      const accel = 9 + homeT * 26;
       w.vel.x += tmp.x * inv * accel * dt;
       w.vel.y += tmp.y * inv * accel * dt;
       w.vel.z += tmp.z * inv * accel * dt;
@@ -116,21 +168,26 @@ export function tickXpWisps(dt: number, playerPos: THREE.Vector3): void {
         const s = MAX_HOMING_SPEED / Math.sqrt(speedSq);
         w.vel.multiplyScalar(s);
       }
-      w.sprite.position.addScaledVector(w.vel, dt);
+      w.mesh.position.addScaledVector(w.vel, dt);
     }
 
-    // Scale pulse — slightly larger as the wisp ages so absorption
-    // feels weighty (the closer-it-gets-the-bigger-it-is read).
-    const s = 0.28 + Math.min(0.45, w.age * 0.35);
-    w.sprite.scale.set(s, s, 1);
+    // Pulse the orb's mesh size slightly so it reads as alive, not a
+    // static sphere. Halo tracks the mesh.
+    const pulse = 1 + Math.sin(w.age * 7) * 0.10;
+    w.mesh.scale.setScalar(pulse);
+    w.halo.position.copy(w.mesh.position);
+    // Halo grows slightly as it ages — the orb gets brighter as it
+    // commits to the player.
+    const haloScale = 0.6 + Math.min(0.35, w.age * 0.25);
+    w.halo.scale.set(haloScale, haloScale, 1);
   }
 }
 
 /** Retire every active wisp. Called on level swap. */
 export function clearXpWisps(): void {
   for (const w of wisps) {
-    w.sprite.parent?.remove(w.sprite);
-    (w.sprite.material as THREE.SpriteMaterial).dispose();
+    w.mesh.parent?.remove(w.mesh);
+    w.halo.parent?.remove(w.halo);
   }
   wisps.length = 0;
 }

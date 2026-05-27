@@ -6,16 +6,27 @@ import { registerInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
 import { getTexture } from '../style/procedural-textures';
 
-// Stairs = a visible descent into the floor + an interactable that requests
-// a level transition. The actual loadLevel call lives in main.ts (it owns
-// the scene + the player); stairs delegate via a callback passed in at
-// spawn time. That keeps this module dependency-light and lets stairs sit
-// inside the interactables tree like everything else.
+// Stairs = a visible descent CARVED into the floor (the top of the
+// stairwell sits below floor level, framed by a low parapet lip), plus
+// an interactable that requests the level transition. The actual
+// loadLevel call lives in main.ts (it owns the scene + the player);
+// stairs delegate via a callback passed in at spawn time.
+//
+// Visual structure (top → bottom):
+//   parapet lip      — short box above the floor that frames the opening
+//   floor cutout     — dark rectangle masking the world floor at the mouth
+//   8 steps          — descending into the well, recessed below floor y=0
+//   throat walls     — flanking the steps, recede deep below floor
+//   black pit floor  — at the bottom, masking far geometry
+//   portal seam      — additive cyan strip at the bottom edge, glowing
+//   floor halo + beam moonbeam — visible from across the room
 
-const STEP_COUNT = 6;
-const STEP_DEPTH = 0.34;      // m along the descent direction
-const STEP_HEIGHT = 0.18;     // m vertical drop per step
-const STEP_WIDTH = 1.8;       // m wide
+const STEP_COUNT = 8;
+const STEP_DEPTH = 0.32;
+const STEP_HEIGHT = 0.22;
+const STEP_WIDTH = 1.95;
+const TOP_RECESS = 0.04;          // top tread sits this far BELOW floor
+const PARAPET_HEIGHT = 0.10;      // lip above the floor that frames the hole
 
 export function spawnStairs(
   parent: THREE.Object3D,
@@ -23,59 +34,168 @@ export function spawnStairs(
   materials: StyleMaterials,
   onDescend: (targetLevel: string) => void,
 ) {
-  // The staircase group sits at (x,z) with rotY around vertical. Builds
-  // steps marching in the local +Z direction, descending into negative Y.
   const group = new THREE.Group();
   group.position.set(spec.x, 0, spec.z);
   group.rotation.y = spec.rotY ?? 0;
   parent.add(group);
 
-  // Steps — front-facing rises + horizontal treads. Stack them so the
-  // top tread is at y=0 (floor level), each subsequent step recedes and
-  // drops.
+  const totalDepth = STEP_COUNT * STEP_DEPTH;
+  const totalDrop = STEP_COUNT * STEP_HEIGHT;
+
+  // ── FLOOR CUTOUT ──────────────────────────────────────────────────
+  // A dark rectangle laid ON the floor mesh where the stairwell mouth
+  // is, hiding the world floor that would otherwise show through. Tiny
+  // upward offset prevents z-fighting with the actual floor. The black
+  // material here mimics the "no floor here, you're looking down a
+  // hole" read, which the upcoming parapet + recessed top tread sell.
+  const cutoutMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    fog: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  const cutout = new THREE.Mesh(
+    new THREE.PlaneGeometry(STEP_WIDTH, totalDepth),
+    cutoutMat,
+  );
+  cutout.rotation.x = -Math.PI / 2;
+  cutout.position.set(0, 0.005, totalDepth / 2);
+  group.add(cutout);
+
+  // ── PARAPET LIP ───────────────────────────────────────────────────
+  // Short low wall ringing the OPENING above the floor — sells "carved
+  // hole in the floor" rather than "stairs plopped on top." Three sides
+  // (the open mouth is the side facing the player approach, so no lip
+  // there).
+  const parapetMat = materials.wall;
+  // Left + right side parapets, running the full length of the well.
+  for (const side of [-1, 1]) {
+    const lip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.10, PARAPET_HEIGHT, totalDepth + 0.10),
+      parapetMat,
+    );
+    lip.position.set(
+      side * (STEP_WIDTH / 2 + 0.05),
+      PARAPET_HEIGHT / 2,
+      totalDepth / 2,
+    );
+    lip.receiveShadow = true;
+    lip.castShadow = true;
+    group.add(lip);
+  }
+  // Far-end parapet (across the back of the well so the player doesn't
+  // see beyond it into world geometry).
+  const farLip = new THREE.Mesh(
+    new THREE.BoxGeometry(STEP_WIDTH + 0.20, PARAPET_HEIGHT, 0.10),
+    parapetMat,
+  );
+  farLip.position.set(0, PARAPET_HEIGHT / 2, totalDepth + 0.05);
+  farLip.receiveShadow = true;
+  farLip.castShadow = true;
+  group.add(farLip);
+
+  // ── STEPS ─────────────────────────────────────────────────────────
+  // Treads are RECESSED (top tread top edge at y = -TOP_RECESS). The
+  // first riser becomes the visible "drop into the floor" cue from
+  // above, and the recess prevents z-fighting with the cutout.
   for (let i = 0; i < STEP_COUNT; i++) {
-    const yTop = -i * STEP_HEIGHT;
+    const yTop = -TOP_RECESS - i * STEP_HEIGHT;
     const zFront = i * STEP_DEPTH;
-    // Tread (the horizontal you step on)
-    const treadGeo = new THREE.BoxGeometry(STEP_WIDTH, 0.04, STEP_DEPTH);
-    const tread = new THREE.Mesh(treadGeo, materials.floor);
-    tread.position.set(0, yTop - 0.02, zFront + STEP_DEPTH / 2);
+    const tread = new THREE.Mesh(
+      new THREE.BoxGeometry(STEP_WIDTH, 0.05, STEP_DEPTH),
+      materials.floor,
+    );
+    tread.position.set(0, yTop - 0.025, zFront + STEP_DEPTH / 2);
     tread.receiveShadow = true;
     group.add(tread);
-    // Riser (the vertical you don't step on)
-    const riserGeo = new THREE.BoxGeometry(STEP_WIDTH, STEP_HEIGHT, 0.04);
-    const riser = new THREE.Mesh(riserGeo, materials.wall);
+    const riser = new THREE.Mesh(
+      new THREE.BoxGeometry(STEP_WIDTH, STEP_HEIGHT, 0.04),
+      materials.wall,
+    );
     riser.position.set(0, yTop - STEP_HEIGHT / 2, zFront);
     riser.receiveShadow = true;
     group.add(riser);
   }
 
-  // Side walls flanking the descent — visually frames the stairwell so it
-  // doesn't look like a hole in the floor.
-  const totalDepth = STEP_COUNT * STEP_DEPTH;
-  const totalDrop = STEP_COUNT * STEP_HEIGHT;
+  // ── THROAT WALLS ──────────────────────────────────────────────────
+  // Side walls of the well below the parapet. They extend from floor
+  // level down past the deepest step so the player can never see "around"
+  // the stairwell into world geometry.
   for (const side of [-1, 1]) {
-    const wallGeo = new THREE.BoxGeometry(0.1, totalDrop + 0.6, totalDepth);
-    const wall = new THREE.Mesh(wallGeo, materials.wall);
-    wall.position.set(side * (STEP_WIDTH / 2 + 0.05), -totalDrop / 2 + 0.3, totalDepth / 2);
+    const wall = new THREE.Mesh(
+      new THREE.BoxGeometry(0.10, totalDrop + 1.2, totalDepth),
+      materials.wall,
+    );
+    wall.position.set(
+      side * (STEP_WIDTH / 2 + 0.05),
+      -totalDrop / 2 - 0.3,
+      totalDepth / 2,
+    );
     wall.receiveShadow = true;
     group.add(wall);
   }
 
-  // Darkness at the bottom — a black plane facing the player so the bottom
-  // of the stairwell reads as "into the dark, deeper" rather than ending.
-  const blackMat = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
-  const black = new THREE.Mesh(new THREE.PlaneGeometry(STEP_WIDTH, totalDrop), blackMat);
-  black.position.set(0, -totalDrop / 2, totalDepth);
-  group.add(black);
+  // ── PIT FLOOR (very dark, below deepest step) ─────────────────────
+  // A horizontal dark plane some distance BELOW the last tread, so
+  // looking down the stairwell you see darkness receding — depth read.
+  const pitFloor = new THREE.Mesh(
+    new THREE.PlaneGeometry(STEP_WIDTH, STEP_DEPTH * 2),
+    new THREE.MeshBasicMaterial({ color: 0x020203, fog: false }),
+  );
+  pitFloor.rotation.x = -Math.PI / 2;
+  pitFloor.position.set(0, -totalDrop - 0.40, totalDepth + STEP_DEPTH);
+  group.add(pitFloor);
 
-  // Cool glow at the bottom — implies something is down there + reads
-  // as "the next floor is different." Bright enough to be the destination
-  // anchor visible from across the room, so the player sees the stairs
-  // call even when standing in a dark corner. Registers with the light
-  // pool — Three.js only ever sees N total slot lights, so the stairs
-  // glow's cost is fully amortized.
-  const glowLocal = new THREE.Vector3(0, -totalDrop + 0.4, totalDepth - 0.4);
+  // ── BACK WALL (darkness beyond the last step) ─────────────────────
+  // Slight angle so it reads as "this corridor continues out of sight."
+  const backMat = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
+  const back = new THREE.Mesh(
+    new THREE.PlaneGeometry(STEP_WIDTH, totalDrop + 1.4),
+    backMat,
+  );
+  back.position.set(0, -totalDrop / 2 - 0.2, totalDepth + STEP_DEPTH * 1.9);
+  group.add(back);
+
+  // ── PORTAL SEAM AT THE BOTTOM ─────────────────────────────────────
+  // Glowing cyan band where the deepest step meets the pit floor. Reads
+  // as "something is down there." Plane facing the camera (player's view
+  // angle from above), additive over the dark plane.
+  const seamMat = new THREE.MeshBasicMaterial({
+    map: getTexture('fire-wisp'),
+    color: 0x4a78b0,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const seam = new THREE.Mesh(new THREE.PlaneGeometry(STEP_WIDTH * 0.9, 0.55), seamMat);
+  seam.position.set(0, -totalDrop - 0.15, totalDepth + STEP_DEPTH * 0.8);
+  seam.rotation.x = -Math.PI / 4;   // tilt toward the camera
+  group.add(seam);
+
+  // Wider haze around the seam for atmosphere.
+  const seamHazeMat = new THREE.MeshBasicMaterial({
+    map: getTexture('fire-wisp'),
+    color: 0x2a4a7c,
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const seamHaze = new THREE.Mesh(new THREE.PlaneGeometry(STEP_WIDTH * 1.4, 1.2), seamHazeMat);
+  seamHaze.position.set(0, -totalDrop, totalDepth + STEP_DEPTH * 0.4);
+  seamHaze.rotation.x = -Math.PI / 4;
+  group.add(seamHaze);
+
+  // ── DEEP GLOW LIGHT ──────────────────────────────────────────────
+  // Cool pool-of-light at the bottom of the stairwell — bright enough
+  // that the bottom edge of the staircase reads as the path forward.
+  const glowLocal = new THREE.Vector3(0, -totalDrop + 0.5, totalDepth - 0.2);
   const glowWorld = new THREE.Vector3()
     .copy(glowLocal)
     .applyEuler(new THREE.Euler(0, spec.rotY ?? 0, 0))
@@ -85,67 +205,56 @@ export function spawnStairs(
     category: 'environment',
     position: glowWorld,
     color: 0x88aaff,
-    intensity: 4.5,
-    distance: 5.5,
-    decay: 1.6,
+    intensity: 5.5,
+    distance: 6.5,
+    decay: 1.5,
   });
 
-  // ── MOONBEAM ──────────────────────────────────────────────────────
-  // The stairwell is read at-a-distance via a SHAFT of pale light
-  // rising from the mouth, not a flat blue rectangle. Three additive
-  // layers stack into a moonbeam:
-  //   1. Floor halo — soft radial pool at the top tread (fire-wisp
-  //      texture gives the gradient, so it's a circle not a square).
-  //   2. Outer column — wide, dim, slow-falloff sprite (the haze).
-  //   3. Inner core — narrow, bright sprite up the centre (the shaft).
-  // Together they read as god-ray pouring out of the floor.
-
-  // 1. Floor halo — soft radial alpha via fire-wisp.
+  // ── MOONBEAM (rises from the mouth) ───────────────────────────────
+  // Three additive layers: a soft radial floor halo, an outer haze
+  // column, and a narrow bright core. Reads as a god-ray pouring out
+  // of the pit from across the room.
   const haloMat = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'),
     color: 0x6688cc,
     transparent: true,
-    opacity: 0.7,
+    opacity: 0.75,
     fog: false,
     depthWrite: false,
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending,
   });
-  const halo = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), haloMat);
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), haloMat);
   halo.rotation.x = -Math.PI / 2;
-  halo.position.set(0, 0.02, STEP_DEPTH * 0.5);
+  halo.position.set(0, 0.04, totalDepth / 2);
   group.add(halo);
 
-  // 2. Outer haze column — tall + wide, sets the silhouette of the
-  // beam visible from across the room.
   const outerBeamMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
     color: 0x88a8e8,
     transparent: true,
-    opacity: 0.45,
+    opacity: 0.50,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
   const outerBeam = new THREE.Sprite(outerBeamMat);
-  outerBeam.scale.set(1.8, 3.6, 1);
-  outerBeam.position.set(0, 1.6, STEP_DEPTH * 0.5);
+  outerBeam.scale.set(2.0, 4.0, 1);
+  outerBeam.position.set(0, 1.8, totalDepth / 2);
   group.add(outerBeam);
 
-  // 3. Inner core — narrow, brighter, slightly cooler-white to read
-  // as the "bright centre" of the moonbeam.
   const coreBeamMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
     color: 0xd8e4ff,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.80,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
   const coreBeam = new THREE.Sprite(coreBeamMat);
-  coreBeam.scale.set(0.55, 3.3, 1);
-  coreBeam.position.set(0, 1.5, STEP_DEPTH * 0.5);
+  coreBeam.scale.set(0.6, 3.6, 1);
+  coreBeam.position.set(0, 1.7, totalDepth / 2);
   group.add(coreBeam);
 
   const interactable = {

@@ -19,7 +19,7 @@ import { computeDamage, setEntityCombatStats, clearEntityCombatStats, type Damag
 import { playEnemyDeath, playEnemyWindup, type EnemyDeathSize } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
-import { grantGold } from '../state/run-state';
+import { spawnGoldCoins } from '../effects/gold-coins';
 
 // Map an EnemySpec → audio size bucket. Used by death + windup sounds so
 // big mobs sound big and the wraith reads as spectral, not physical.
@@ -432,26 +432,33 @@ export function createEnemy(
       // zero-damage "hit" on the disintegrating corpse.
       built.hitTargets.length = 0;
       emit({ type: 'enemy:killed', enemyId: spec.id });
-      // Gold credited immediately on death — no on-floor pickup yet
-      // (shop system will add that later). HUD listens for the counter
-      // changing and re-renders.
-      const goldRange = spec.gold;
-      if (goldRange) {
-        const min = goldRange[0];
-        const max = goldRange[1];
-        const amt = min + Math.floor(Math.random() * (max - min + 1));
-        if (amt > 0) grantGold(amt);
-      }
       // Start the death animation. Spawn XP wisps (one per XP point)
-      // from the MOB'S BODY CENTER — read rig slot height from spec so
-      // tiny mobs (rat) burst from their actual position instead of
-      // chest height.
+      // AND gold coins (one per gold point) from the MOB'S BODY CENTER
+      // — read rig slot height from spec so tiny mobs (rat) burst from
+      // their actual position instead of chest height. Coins fall and
+      // settle on the floor for the player to walk near; orbs fly up
+      // and home immediately.
       deathTimer = 0;
       const rigY = spec.model.slots?.rig?.pos[1] ?? 0.6;
       const origin = container.position.clone();
       origin.y += rigY;
       const xp = spec.xp ?? 1;
       spawnXpWisps(scene as THREE.Object3D, origin, xp);
+      // Gold coins — physical floor drops with magnetic pickup. Each
+      // coin = 1 gold, granted on absorb. Roll once for the count.
+      const goldRange = spec.gold;
+      if (goldRange) {
+        const min = goldRange[0];
+        const max = goldRange[1];
+        const amt = min + Math.floor(Math.random() * (max - min + 1));
+        if (amt > 0) {
+          // Coins spawn slightly below chest so the arc reads as
+          // "from inside the body" rather than "from above the head."
+          const coinOrigin = container.position.clone();
+          coinOrigin.y += rigY * 0.55;
+          spawnGoldCoins(scene as THREE.Object3D, coinOrigin, amt);
+        }
+      }
     }
     return result.applied;
   }

@@ -158,6 +158,28 @@ export function generateFloor(
     stairsTarget: nextLevelId,
   });
   spec.fogColor = tmpl.fogColor;
+  spec.depth = depth;
+
+  // Modifier rolls per spawn — drives the difficulty system. The
+  // deeper you go, the more often spawns get tagged with a modifier
+  // (and the more likely they stack two). Modifier ids must exist in
+  // src/content/modifiers.ts.
+  const modPool = ['fierce', 'swift', 'tough', 'withered', 'bloated'];
+  const modChance = depth <= 2 ? 0
+    : depth <= 4 ? 0.12
+    : depth <= 7 ? 0.22
+    : 0.35;
+  for (const s of spec.spawns) {
+    if (rand() < modChance) {
+      const first = modPool[Math.floor(rand() * modPool.length)];
+      s.modifiers = [first];
+      // At depth 8+, occasional second modifier stacked on top.
+      if (depth >= 8 && rand() < 0.20) {
+        const second = modPool[Math.floor(rand() * modPool.length)];
+        if (second !== first) s.modifiers.push(second);
+      }
+    }
+  }
 
   // Stash decoration data on the spec; builder runs decorateFloor with
   // its root group at build-time so InstancedMesh batches land in the

@@ -7,6 +7,7 @@ import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { createEnemy, type Enemy } from '../mobs/enemy';
 import { ENEMIES } from '../content/enemies';
+import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
 import { spawnChest } from '../interactables/chest';
 import { spawnDoor } from '../interactables/door';
@@ -517,13 +518,18 @@ export function buildLevel(
   const enemyRoom = new Map<Enemy, string | null>();
   const aliveByRoom = new Map<string, number>();
   const enemies: Enemy[] = [];
+  const levelDepth = spec.depth ?? 1;
   for (const s of spec.spawns) {
-    const enemySpec = ENEMIES[s.enemyId];
-    if (!enemySpec) {
+    const baseSpec = ENEMIES[s.enemyId];
+    if (!baseSpec) {
       // eslint-disable-next-line no-console
       console.warn(`Unknown enemyId in spawn: ${s.enemyId}`);
       continue;
     }
+    // Difficulty pipeline — apply depth scaling + any modifier tags on
+    // the spawn entry. Returns an instance-ready spec (the registry
+    // entry is never mutated).
+    const enemySpec = scaleEnemySpec(baseSpec, levelDepth, s.modifiers);
     // Resolve the spawn against the walkable region — if the authored
     // (or procgen-rolled) cell lands on a fountain / altar / pillar /
     // wall, scan outward for the nearest free spot. Without this, mobs
