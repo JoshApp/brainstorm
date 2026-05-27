@@ -61,85 +61,84 @@ export function createXpGoldHud(): void {
   goldEl = goldContainer;   // single line — alias
   document.body.appendChild(goldContainer);
 
-  // ── XP BAR (bottom edge, wide) ─────────────────────────────────
+  // ── XP BAR (very bottom edge, full width, slim) ────────────────
+  // Spans the entire bottom edge of the screen as a thin bar — the
+  // ARPG / MMO convention. Numbers flank the bar on either side
+  // rather than living inside the chunky band, so the bar itself
+  // stays unobtrusive while still being readable. HP pips sit
+  // comfortably above it.
   xpContainer = document.createElement('div');
   xpContainer.id = 'xp-bar-hud';
   Object.assign(xpContainer.style, {
     position: 'fixed',
-    left: '50%',
-    bottom: 'calc(46px + env(safe-area-inset-bottom, 0px))',  // above HP pips
-    transform: 'translateX(-50%)',
-    width: 'min(720px, 84vw)',
+    left: '0',
+    right: '0',
+    bottom: 'env(safe-area-inset-bottom, 0px)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '0 14px 4px',
     pointerEvents: 'none',
     zIndex: '10',
     userSelect: 'none',
     WebkitUserSelect: 'none',
-  } as Partial<CSSStyleDeclaration>);
-
-  // The bar itself — a horizontal track + fill + overlayed text.
-  xpBarEl = document.createElement('div');
-  Object.assign(xpBarEl.style, {
-    position: 'relative',
-    width: '100%',
-    height: '20px',
-    background: 'rgba(14, 14, 22, 0.72)',
-    border: '1px solid rgba(120, 160, 220, 0.45)',
-    borderRadius: '3px',
-    overflow: 'hidden',
-    boxShadow: 'inset 0 0 4px rgba(0,0,0,0.8), 0 2px 8px rgba(0,0,0,0.4)',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   } as Partial<CSSStyleDeclaration>);
 
-  // Fill — animated width.
+  // LVL chip on the left.
+  xpLevelEl = document.createElement('div');
+  Object.assign(xpLevelEl.style, {
+    flex: '0 0 auto',
+    color: 'rgba(220, 240, 255, 0.95)',
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.20em',
+    textShadow: '0 1px 3px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.7)',
+    minWidth: '46px',
+    textAlign: 'right',
+    transition: 'transform 280ms ease-out, color 280ms ease-out',
+  } as Partial<CSSStyleDeclaration>);
+
+  // The bar — slim, fills the remaining width.
+  xpBarEl = document.createElement('div');
+  Object.assign(xpBarEl.style, {
+    flex: '1 1 auto',
+    position: 'relative',
+    height: '6px',
+    background: 'rgba(14, 14, 22, 0.78)',
+    border: '1px solid rgba(120, 160, 220, 0.45)',
+    borderRadius: '3px',
+    overflow: 'hidden',
+    boxShadow: 'inset 0 0 3px rgba(0,0,0,0.85), 0 1px 4px rgba(0,0,0,0.4)',
+  } as Partial<CSSStyleDeclaration>);
   xpFillEl = document.createElement('div');
   Object.assign(xpFillEl.style, {
     position: 'absolute',
     left: '0', top: '0', bottom: '0',
     width: '0%',
     background: 'linear-gradient(180deg, rgba(170,225,255,0.95), rgba(70,130,210,0.95))',
-    boxShadow: '0 0 8px rgba(140,200,255,0.6)',
+    boxShadow: '0 0 6px rgba(140,200,255,0.55)',
     transition: 'width 220ms ease-out',
   } as Partial<CSSStyleDeclaration>);
   xpBarEl.appendChild(xpFillEl);
 
-  // Level chip on the LEFT side of the bar.
-  xpLevelEl = document.createElement('div');
-  Object.assign(xpLevelEl.style, {
-    position: 'absolute',
-    left: '10px',
-    top: '0',
-    bottom: '0',
-    display: 'flex',
-    alignItems: 'center',
-    color: 'rgba(220, 240, 255, 0.98)',
-    fontSize: '12px',
-    fontWeight: '700',
-    letterSpacing: '0.22em',
-    textShadow: '0 1px 3px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.7)',
-    transition: 'transform 280ms ease-out, color 280ms ease-out',
-  } as Partial<CSSStyleDeclaration>);
-  xpBarEl.appendChild(xpLevelEl);
-
-  // Fraction (current / next) on the RIGHT.
+  // Fraction on the right.
   xpFractionEl = document.createElement('div');
   Object.assign(xpFractionEl.style, {
-    position: 'absolute',
-    right: '12px',
-    top: '0',
-    bottom: '0',
-    display: 'flex',
-    alignItems: 'center',
-    color: 'rgba(220, 240, 255, 0.92)',
-    fontSize: '11px',
+    flex: '0 0 auto',
+    color: 'rgba(200, 220, 255, 0.85)',
+    fontSize: '10px',
     fontWeight: '600',
-    letterSpacing: '0.14em',
+    letterSpacing: '0.10em',
     fontVariantNumeric: 'tabular-nums',
-    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.7)',
+    textShadow: '0 1px 3px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.7)',
+    minWidth: '52px',
     transition: 'color 280ms ease-out',
   } as Partial<CSSStyleDeclaration>);
-  xpBarEl.appendChild(xpFractionEl);
 
+  xpContainer.appendChild(xpLevelEl);
   xpContainer.appendChild(xpBarEl);
+  xpContainer.appendChild(xpFractionEl);
   document.body.appendChild(xpContainer);
 
   // ── Level-up toast (centre screen) ─────────────────────────────
