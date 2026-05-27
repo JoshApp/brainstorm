@@ -24,7 +24,7 @@ import { getSettings } from './settings/settings';
 import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
-import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad } from './level/loader';
+import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad, getCurrentDepth } from './level/loader';
 import { tickAlerts, clearAlerts } from './mobs/alerts';
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
@@ -52,6 +52,8 @@ import { registerProjectiles } from './content/projectiles';
 import { tickXpWisps, clearXpWisps } from './effects/xp-wisps';
 import { tickGoldCoins, clearGoldCoins } from './effects/gold-coins';
 import { tickTutorialHints, clearTutorialHints } from './effects/tutorial-hints';
+import { initDriftingMotes, tickDriftingMotes } from './effects/drifting-motes';
+import { actForDepth } from './level/acts';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
@@ -140,6 +142,18 @@ initLevelLoader({
   onLoaded(level) {
     currentLevel = level as LiveLevel & { checkRoomClear?: () => void };
     setCameraYaw(level.playerSpawn.yaw);
+    // Drifting motes — ambient volumetric "dust in the air" tied
+    // to the level's room rects. Tint takes the act's torch
+    // colour so the mood reads consistent (warm motes in warm
+    // acts, cold motes in cold acts). Re-init on every load so
+    // the previous floor's motes get cleared first.
+    const depth = getCurrentDepth();
+    const tint = actForDepth(depth).torchTint;
+    const rectsForMotes = [
+      ...level.spec.rooms.map((r) => r.rect),
+      ...level.spec.corridors.map((r) => r.rect),
+    ];
+    initDriftingMotes(scene, rectsForMotes, tint);
   },
   // Procgen fallback — invoked when the stairs target a level id that's
   // not in the hand-authored LEVELS registry.
@@ -441,6 +455,11 @@ function tick() {
     // Tick active buffs on all entities (heal-over-time, future DoTs, etc.)
     tickAllBuffs(scaledDt);
   }
+
+  // Drifting motes — slow ambient particle drift. Lives OUTSIDE
+  // the freeze gate so dust keeps falling through hit-pauses,
+  // death sequences, and menus. Real dt — no time-scale.
+  tickDriftingMotes(realDt);
 
   // Interact tick + UI run OUTSIDE the freeze gate so the in-range
   // detection + icon button persist through hit-pauses + scenarios. We

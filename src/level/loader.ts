@@ -8,6 +8,7 @@ import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
 import { clearTutorialHints } from '../effects/tutorial-hints';
 import { clearAlerts } from '../mobs/alerts';
+import { clearDriftingMotes } from '../effects/drifting-motes';
 import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
 import { actForDepth } from './acts';
 
@@ -123,6 +124,7 @@ export function tickPendingLoad() {
     clearGoldCoins();
     clearTutorialHints();
     clearAlerts();
+    clearDriftingMotes();
     activeLevel.teardown();
     activeLevel = null;
   }
