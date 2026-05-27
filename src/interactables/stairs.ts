@@ -203,14 +203,36 @@ export function spawnStairs(
   });
 
   // ── MOONBEAM (rises from the mouth) ───────────────────────────────
-  // Three additive layers: a soft radial floor halo, an outer haze
-  // column, and a narrow bright core. Reads as a god-ray pouring out
-  // of the pit from across the room.
+  // Four additive layers: a wide floor halo (visible far-off as a
+  // pool of light on the ground), a tight inner halo (the pit mouth
+  // glow), an outer haze column, and a narrow bright core that pokes
+  // up above the average ceiling so it's spotted across a dark room.
+  // A slow opacity breath gives the eye something to latch onto from
+  // across a fogged room — the stair is the exit, it should call.
+
+  // Wide far-visible floor pool. Big plane, soft opacity — reads
+  // as "there's light on the floor over there" through fog.
+  const floorPoolMat = new THREE.MeshBasicMaterial({
+    map: getTexture('fire-wisp'),
+    color: 0x4a78c8,
+    transparent: true,
+    opacity: 0.55,
+    fog: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const floorPool = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 5.2), floorPoolMat);
+  floorPool.rotation.x = -Math.PI / 2;
+  floorPool.position.set(0, 0.03, totalDepth / 2);
+  group.add(floorPool);
+
+  // Tight bright halo right at the mouth.
   const haloMat = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'),
-    color: 0x6688cc,
+    color: 0x88aaff,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.90,
     fog: false,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -218,36 +240,54 @@ export function spawnStairs(
   });
   const halo = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), haloMat);
   halo.rotation.x = -Math.PI / 2;
-  halo.position.set(0, 0.04, totalDepth / 2);
+  halo.position.set(0, 0.05, totalDepth / 2);
   group.add(halo);
 
   const outerBeamMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
     color: 0x88a8e8,
     transparent: true,
-    opacity: 0.50,
+    opacity: 0.65,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
   const outerBeam = new THREE.Sprite(outerBeamMat);
-  outerBeam.scale.set(2.0, 4.0, 1);
-  outerBeam.position.set(0, 1.8, totalDepth / 2);
+  outerBeam.scale.set(2.6, 5.6, 1);
+  outerBeam.position.set(0, 2.4, totalDepth / 2);
   group.add(outerBeam);
 
   const coreBeamMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
-    color: 0xd8e4ff,
+    color: 0xe4ecff,
     transparent: true,
-    opacity: 0.80,
+    opacity: 0.92,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
   const coreBeam = new THREE.Sprite(coreBeamMat);
-  coreBeam.scale.set(0.6, 3.6, 1);
-  coreBeam.position.set(0, 1.7, totalDepth / 2);
+  coreBeam.scale.set(0.8, 5.2, 1);
+  coreBeam.position.set(0, 2.4, totalDepth / 2);
   group.add(coreBeam);
+
+  // Slow breath — opacity oscillates ±15% on a ~2.4s cycle. Driven
+  // off Date.now() via onBeforeRender so we don't need a global
+  // tick subscription. The eye reads slow opacity changes as
+  // "alive" — exactly the "the exit is calling" feel.
+  const beamBreathSeed = Math.random() * Math.PI * 2;
+  const baseOuter = outerBeamMat.opacity;
+  const baseCore = coreBeamMat.opacity;
+  const baseHalo = haloMat.opacity;
+  const basePool = floorPoolMat.opacity;
+  outerBeam.onBeforeRender = () => {
+    const t = (Date.now() / 1000) * (Math.PI * 2 / 2.4) + beamBreathSeed;
+    const b = 0.85 + 0.15 * Math.sin(t);
+    outerBeamMat.opacity = baseOuter * b;
+    coreBeamMat.opacity = baseCore * b;
+    haloMat.opacity = baseHalo * b;
+    floorPoolMat.opacity = basePool * b;
+  };
 
   const interactable = {
     id: generateEntityId(`stairs-${spec.id ?? spec.targetLevel}`),

@@ -7,7 +7,8 @@ import { clearProjectiles } from '../combat/projectile-pool';
 import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
 import { clearTutorialHints } from '../effects/tutorial-hints';
-import { fadeOut, fadeIn } from '../ui/descent-fade';
+import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
+import { actForDepth } from './acts';
 
 // Level loader = the seam between "we have a current level" and "let's swap
 // it for a different one". main.ts holds the active level reference via the
@@ -145,6 +146,18 @@ export function tickPendingLoad() {
   camera.rotation.y = level.playerSpawn.yaw;
 
   onLoaded(level);
+
+  // Title card: "Depth N" + act name. Safe rooms get "Sanctuary"
+  // instead of a depth — they aren't a dungeon floor, they're the
+  // breath between acts. (The loader still increments currentDepth
+  // on safe-room entry; we detect by id prefix rather than depth.)
+  if (id.startsWith('safe-')) {
+    showDescentTitle('Sanctuary', 'rest and ready');
+  } else {
+    const act = actForDepth(currentDepth);
+    showDescentTitle(`Depth ${currentDepth}`, act.name);
+  }
+
   // Reveal the new level once its first frame has rendered.
   fadeIn();
 }
