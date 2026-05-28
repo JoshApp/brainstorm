@@ -13,7 +13,7 @@ import { createCombatSystem } from './combat/attack';
 import { isFrozen } from './combat/hit-pause';
 import { tickShake } from './combat/screen-shake';
 import { onPlayerDeath } from './player/health';
-import { triggerDeath, getTimeScale, tickDeath, isDying } from './player/death';
+import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './player/death';
 import { initAchievements } from './broadcast/achievements';
 import { getStyle } from './style';
 import { buildMaterials } from './style/materials';
@@ -105,6 +105,9 @@ initRenderPipeline(renderer);
 // --- Camera ---
 const camera = createFirstPersonCamera();
 scene.add(camera); // required for the sword (camera child) to render
+// Register camera with the death sequence so the death tick can
+// pitch + drop it during the collapse animation.
+initDeath(camera);
 
 // --- Scenario (URL param ?scenario=...) ---
 const scenario = getScenarioFromUrl();
