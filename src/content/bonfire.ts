@@ -18,23 +18,17 @@ import type { ModelSpec } from '../ecs/model-types';
 export const BONFIRE: ModelSpec = {
   id: 'bonfire',
   materials: {
-    stone:  { color: 0x231d16, roughness: 1.0, flatShading: true },
-    dirt:   { color: 0x2a1d10, roughness: 1.0, flatShading: true },
-    twig:   { color: 0x1a1108, roughness: 0.95, flatShading: true },
-    iron:   { color: 0x141210, roughness: 0.55, metalness: 0.6, flatShading: true },
-    ember:  { color: 0xffb060, emissive: 0xff7020, emissiveIntensity: 3.0, roughness: 0.8 },
-    flame:  { color: 0xffd58a, emissive: 0xffa040, emissiveIntensity: 3.4, roughness: 0.4 },
+    dirt: { color: 0x2a1d10, roughness: 1.0, flatShading: true },
+    twig: { color: 0x1a1108, roughness: 0.95, flatShading: true },
+    iron: { color: 0x141210, roughness: 0.55, metalness: 0.6, flatShading: true },
   },
   parts: [
-    // ── Stone ring (small jagged stones) ─────────────────────────
-    // Six stones around a ~0.38m-radius pit. Heights +
-    // rotations jittered so no two read identical.
-    { kind: 'box', pos: [ 0.38, 0.07,  0.00], size: [0.15, 0.14, 0.18], rot: [0,  0.30, 0.1], mat: 'stone', jitter: 0.04 },
-    { kind: 'box', pos: [ 0.19, 0.07,  0.34], size: [0.16, 0.13, 0.15], rot: [0, -0.60, 0.0], mat: 'stone', jitter: 0.04 },
-    { kind: 'box', pos: [-0.21, 0.07,  0.32], size: [0.15, 0.14, 0.15], rot: [0,  0.90, 0.0], mat: 'stone', jitter: 0.05 },
-    { kind: 'box', pos: [-0.38, 0.06,  0.00], size: [0.15, 0.12, 0.18], rot: [0, -0.20, 0.1], mat: 'stone', jitter: 0.04 },
-    { kind: 'box', pos: [-0.19, 0.07, -0.34], size: [0.16, 0.13, 0.15], rot: [0,  0.40, 0.0], mat: 'stone', jitter: 0.05 },
-    { kind: 'box', pos: [ 0.22, 0.07, -0.32], size: [0.15, 0.14, 0.15], rot: [0, -0.80, 0.1], mat: 'stone', jitter: 0.04 },
+    // No stone ring — earlier passes had a tight ring of six
+    // jagged stones around the pit, but the user wanted them
+    // gone. The dirt mound + sword + flame stack now stand on
+    // their own. Floor decals + clutter (corner mounds, debris)
+    // from the surrounding pass handle the "this is built into
+    // the floor" read.
 
     // ── Dirt mound (where the sword + sticks sit) ───────────────
     {
@@ -85,28 +79,24 @@ export const BONFIRE: ModelSpec = {
 
     // ── Iron sword stuck BLADE-FIRST into the mound ─────────────
     // Dark Souls bonfire orientation: blade points DOWN into the
-    // dirt (mostly hidden), with the cross-guard at the dirt
-    // line, the hilt grip rising above, and the pommel as the
-    // round ball ON TOP of the hilt. The grip + pommel are the
-    // visible "sword icon" that reads as a bonfire from afar.
+    // dirt (mostly hidden), with the cross-guard well ABOVE the
+    // dirt, the hilt grip rising further, and the pommel as the
+    // round ball on top. Whole sword raised again so the hilt +
+    // pommel sit clearly above the entire flame body — the
+    // sword icon now reads as the bonfire's literal landmark.
     //
-    // Whole sword raised by ~0.08m vs the previous pass so the
-    // hilt + pommel sit clearly above the coals + flames.
-    //
-    // Blade is two tapered segments running DOWN below the dirt
-    // line. Most of it sits inside the dirt mound + below the
-    // floor where the player can't see it; a small portion peeks
-    // above to meet the cross-guard.
-    { kind: 'box', pos: [0,  0.03, 0], size: [0.045, 0.50, 0.018], mat: 'iron' },
-    { kind: 'box', pos: [0, -0.32, 0], size: [0.030, 0.30, 0.014], mat: 'iron' },
-    // Cross-guard at the dirt line (just above the mound's top).
-    { kind: 'box',      pos: [0, 0.315, 0], size: [0.32, 0.040, 0.050], mat: 'iron' },
-    // Hilt grip — tall cylinder rising above the cross-guard,
-    // wrapped in dark binding (slightly wider than the bare
-    // tang of a real sword to read clearly).
-    { kind: 'cylinder', pos: [0, 0.44, 0], radius: 0.024, height: 0.20, segments: 8, mat: 'iron' },
-    // Pommel — round ball ON TOP of the hilt.
-    { kind: 'sphere',   pos: [0, 0.57, 0], radius: 0.045, mat: 'iron' },
+    // Blade is two tapered segments running DOWN through the
+    // dirt mound; the top of the blade is visible just above
+    // dirt level, the rest is hidden inside the mound.
+    { kind: 'box', pos: [0,  0.18, 0], size: [0.045, 0.55, 0.018], mat: 'iron' },
+    { kind: 'box', pos: [0, -0.20, 0], size: [0.030, 0.32, 0.014], mat: 'iron' },
+    // Cross-guard sits well above the dirt line so the visible
+    // bottom of the hilt assembly clears the coal sprites.
+    { kind: 'box',      pos: [0, 0.50, 0], size: [0.32, 0.045, 0.055], mat: 'iron' },
+    // Hilt grip — taller cylinder, sitting above the cross-guard.
+    { kind: 'cylinder', pos: [0, 0.64, 0], radius: 0.024, height: 0.24, segments: 8, mat: 'iron' },
+    // Pommel — round ball at the very top.
+    { kind: 'sphere',   pos: [0, 0.79, 0], radius: 0.048, mat: 'iron' },
 
     // ── Flame stack — sprites rising around the cross-guard ─────
     // Same flicker pattern as before but origins shifted slightly
