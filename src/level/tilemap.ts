@@ -101,7 +101,7 @@ export interface TileMapOptions {
 // Past bugs: M (stoneguard), Z (ooze), D (arena door) were missing —
 // any vault using those as mid-room features triggered the X-wall
 // pattern. Added all three.
-const FLOOR_CHARS = new Set('.,SoOD/^FCGRKWYMZPAcvVTt<>'.split(''));
+const FLOOR_CHARS = new Set('.,SoOD/^FCGRKWYMZXPAcvVTt<>'.split(''));
 
 /**
  * Parse a TileMap into a LevelSpec the existing buildLevel consumes.
@@ -457,6 +457,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         case 'Y': spawns.push({ enemyId: 'acolyte',    x, z, roomId: cellRoomId(c, r) }); break;
         case 'M': spawns.push({ enemyId: 'stoneguard', x, z, roomId: cellRoomId(c, r) }); break;
         case 'Z': spawns.push({ enemyId: 'ooze',       x, z, roomId: cellRoomId(c, r) }); break;
+        case 'X': spawns.push({ enemyId: 'acid-spitter', x, z, roomId: cellRoomId(c, r) }); break;
         case '/': {
           if (opts.stairsTarget) {
             // Auto-orient: the stairs descend INTO the adjacent wall.

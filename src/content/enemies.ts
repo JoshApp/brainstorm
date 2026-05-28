@@ -1014,6 +1014,67 @@ export const ENEMIES: Record<string, EnemySpec> = {
     },
   },
 
+  // Acid spitter — blue ooze that hangs back and lobs acid. Solves
+  // the "all oozes are pure melee" problem and gives ranged threats
+  // a second silhouette beyond the upright acolyte. Pack-friendly:
+  // an acid spitter behind a regular ooze forces the player to
+  // close on the melee without taking pot-shots in the face.
+  //
+  // Tuning intent: easier to dodge than the acolyte (slower
+  // projectile, longer telegraph) but tankier (3 HP, slow retreat)
+  // so it stays at range and forces a decision — eat the spit while
+  // crossing the room, or work the edges and circle in. No splitting
+  // on death — the ranged threat is dangerous enough at full size;
+  // splitting it AND keeping it ranged would be a "back-line cleared
+  // → back-line refilled" trap that punishes legitimate kill order.
+  'acid-spitter': {
+    id: 'acid-spitter',
+    name: 'acid spitter',
+    hp: 3,
+    moveSpeed: 0.9,              // lazier than a regular ooze — it doesn't chase
+    attackDamage: 1,
+    attackRange: 7,              // ranged commit distance
+    strikeRange: 7,
+    windupTime: 1.05,            // longer telegraph than acolyte — core orb pulses
+    strikeTime: 0.15,
+    recoverTime: 0.75,
+    damageType: 'magic',         // acid bypasses physical armour
+    // Blue body + bright cyan core — reads as a different chemistry
+    // than the green ground ooze.
+    model: oozeModel(0x1a3a78, 0x66ccff, 1.05),
+    baseEyeEmissive: 2.6,        // brighter than the green ooze's 0 — the spitter's
+                                 // core is the windup tell, so it needs to pulse hard
+    collisionRadius: 0.34,
+    physicalArmor: 0,
+    magicArmor: 0,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'core',     // re-use the core orb for the windup flare
+    presence: 'twitch',          // same wobble as the green ooze — it's the same species
+    sightRange: 9,               // sees well — caster-class perception
+    sightConeHalfAngle: 1.3,
+    hearingRange: 2.5,
+    loseSightTime: 5,
+    ranged: {
+      // Muzzle at the core orb's height — visually the spit
+      // emerges from the bright cyan ball at the centre of the
+      // blob, which sells the "this orb is the thing shooting."
+      // y ≈ rig (0.19) + body offset (0) = ~0.19m; bump up to 0.30
+      // so the projectile clears the body silhouette on launch.
+      muzzleOffset: [0, 0.30, 0],
+      projectileId: 'acid-spit',
+    },
+    xp: 6,
+    gold: [0, 7],
+    drops: {
+      rate: 0.38,
+      pool: [
+        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'bone-amulet', weight: 1 },
+      ],
+    },
+  },
+
   // Stoneguard — slow, armoured, hits like a truck. Changes combat
   // rhythm: the fast mobs taught you to flail; this one teaches you to
   // time the dodge. The huge windup is escapable on sight, but the

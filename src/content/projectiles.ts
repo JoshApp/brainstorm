@@ -23,6 +23,25 @@ export const ACOLYTE_SPIT: ProjectileType = {
   lightRange: 3.0,
 };
 
+// Acid spit — slower + a touch bigger than the acolyte spit so it
+// reads as "globular bolus of corrosive slime" instead of "magic
+// dart." Cyan/blue glow matches the acid-spitter's core orb. Magic
+// damage type so the chemistry bypasses physical armour — the
+// thematic justification: acid eats through iron plate. Slower
+// speed is the dodge affordance — these things are easy to
+// sidestep one-on-one; danger comes from a pack across a room.
+export const ACID_SPIT: ProjectileType = {
+  id: 'acid-spit',
+  radius: 0.16,
+  speed: 5.0,
+  lifetime: 3.2,
+  damageType: 'magic',
+  color: 0x66ccff,
+  lightIntensity: 1.0,
+  lightRange: 2.8,
+};
+
 export function registerProjectiles(): void {
   registerProjectileType(ACOLYTE_SPIT);
+  registerProjectileType(ACID_SPIT);
 }

@@ -62,26 +62,32 @@ function rollTableFor(depth: number): EnemyRoll[] {
   // Depth 5-7: ghouls in the mix more; acolytes start appearing in pairs
   // with melee escorts so they're not a solo gimmick. Stoneguard makes
   // its first appearance here — rare so it's an "oh shit" moment.
+  // Acid spitter joins the table here so the green ooze has read for
+  // a few floors before its ranged cousin shows up.
   if (depth <= 7) {
     return [
-      { enemyId: 'rat',        weight: 2 },
-      { enemyId: 'skirmisher', weight: 2 },
-      { enemyId: 'ghoul',      weight: 3 },
-      { enemyId: 'acolyte',    weight: 2 },
-      { enemyId: 'ooze',       weight: 2 },
-      { enemyId: 'stoneguard', weight: 1 },
+      { enemyId: 'rat',          weight: 2 },
+      { enemyId: 'skirmisher',   weight: 2 },
+      { enemyId: 'ghoul',        weight: 3 },
+      { enemyId: 'acolyte',      weight: 2 },
+      { enemyId: 'ooze',         weight: 2 },
+      { enemyId: 'acid-spitter', weight: 1 },
+      { enemyId: 'stoneguard',   weight: 1 },
     ];
   }
   // Depth 8+: wraiths possible, ghouls common, acolytes regular threat,
-  // stoneguards now a real fixture.
+  // stoneguards now a real fixture. Acid spitter same weight as the
+  // acolyte — by deep dungeon the player should expect mixed ranged
+  // threats, not just one kind.
   return [
-    { enemyId: 'rat',        weight: 1 },
-    { enemyId: 'skirmisher', weight: 2 },
-    { enemyId: 'ghoul',      weight: 3 },
-    { enemyId: 'acolyte',    weight: 2 },
-    { enemyId: 'ooze',       weight: 2 },
-    { enemyId: 'stoneguard', weight: 2 },
-    { enemyId: 'wraith',     weight: 1 },
+    { enemyId: 'rat',          weight: 1 },
+    { enemyId: 'skirmisher',   weight: 2 },
+    { enemyId: 'ghoul',        weight: 3 },
+    { enemyId: 'acolyte',      weight: 2 },
+    { enemyId: 'ooze',         weight: 2 },
+    { enemyId: 'acid-spitter', weight: 2 },
+    { enemyId: 'stoneguard',   weight: 2 },
+    { enemyId: 'wraith',       weight: 1 },
   ];
 }
 
