@@ -99,12 +99,22 @@ export const desktopScheme: InputScheme = {
 
     // ── Per-frame WASD polling ─────────────────────────────────────
     // Returned as the scheme's tick. The orchestrator calls it once
-    // per main-loop frame. WASD only steers when no touch is active
-    // (avoids fighting the joystick on hybrid devices).
+    // per main-loop frame AFTER the touch scheme has run. On hybrid
+    // devices the touch joystick may have written this frame; we
+    // must not clobber it when keyboard is idle.
+    //
+    // The earlier `touchActive = state.moveX !== 0` check was
+    // broken: when WASD wrote to state last frame and is released
+    // this frame, state STILL has our own non-zero value from last
+    // frame, the check returns true, and we never clear — so the
+    // player walks forever after releasing the key.
+    //
+    // Fix: remember what THIS scheme wrote last frame. If state
+    // still matches that, only WE wrote → clear. If state differs,
+    // touch must have written different values → leave them.
+    let lastKbMoveX = 0;
+    let lastKbMoveY = 0;
     return (_dt: number) => {
-      // If the touch scheme has written non-zero move axes this frame,
-      // don't clobber it.
-      const touchActive = state.moveX !== 0 || state.moveY !== 0;
       let kx = 0;
       let ky = 0;
       if (keys['w']) ky -= 1;
@@ -115,12 +125,18 @@ export const desktopScheme: InputScheme = {
         const mag = Math.hypot(kx, ky);
         state.moveX = kx / mag;
         state.moveY = ky / mag;
+        lastKbMoveX = state.moveX;
+        lastKbMoveY = state.moveY;
         dismissHint();
-      } else if (!touchActive) {
-        // Only zero out if touch ISN'T driving. Otherwise leave the
-        // joystick's reading alone.
-        state.moveX = 0;
-        state.moveY = 0;
+      } else {
+        // Keyboard idle. Clear our previous contribution UNLESS
+        // state already differs from it (touch wrote this frame).
+        if (state.moveX === lastKbMoveX && state.moveY === lastKbMoveY) {
+          state.moveX = 0;
+          state.moveY = 0;
+        }
+        lastKbMoveX = 0;
+        lastKbMoveY = 0;
       }
     };
   },

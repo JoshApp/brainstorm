@@ -254,35 +254,46 @@ export function spawnStairs(
   group.add(floorRing);
 
   // Inverse-hull outline on the parapet lips + first few visible
-  // steps. Renders a slightly-larger backface duplicate of each
-  // mesh with an unlit emissive material; when the original mesh
-  // is in view, only the silhouette ring shows around the
-  // original, giving a clean glowing edge. This is the "stair is
-  // highlighted" cue — bumped wider (1.10x scale) and brighter so
-  // the blue silhouette carries the stair across the room without
-  // needing a giant beam to do the calling.
-  const outlineColor = 0xb8d4ff;
-  const outlineMat = new THREE.MeshBasicMaterial({
+  // steps. Two stacked layers — a wider OUTER outline (faint, 1.22x
+  // scale) plus a tighter INNER outline (bright, 1.10x scale).
+  // The outer layer reads from across a dark room (a soft blue
+  // glow around the silhouette); the inner crisps the edge up
+  // close. Together they make the stair "definitely recognizable
+  // in the dark" without flooding the room with light.
+  const outlineColor = 0xc8ddff;
+  const outlineOuterMat = new THREE.MeshBasicMaterial({
     color: outlineColor,
     side: THREE.BackSide,
     fog: false,
     depthWrite: false,
     transparent: true,
-    opacity: 0.95,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
   });
-  /** Helper: clone a mesh's geometry as a slightly-scaled outline
-   *  duplicate parented to the same node. The inset scale is
-   *  vertex-space (so larger meshes get a proportionally thicker
-   *  outline — acceptable for our few stair meshes). */
+  const outlineMat = new THREE.MeshBasicMaterial({
+    color: 0xe0eaff,
+    side: THREE.BackSide,
+    fog: false,
+    depthWrite: false,
+    transparent: true,
+    opacity: 1.0,
+  });
+  /** Add TWO inverse-hull duplicates of a mesh: a wide soft
+   *  outer halo + a tight bright inner edge. Both parented to
+   *  the original's parent so they follow it. */
   const addOutline = (mesh: THREE.Mesh) => {
-    const ol = new THREE.Mesh(mesh.geometry, outlineMat);
-    ol.position.copy(mesh.position);
-    ol.rotation.copy(mesh.rotation);
-    ol.scale.copy(mesh.scale).multiplyScalar(1.12);
-    ol.renderOrder = -1;     // render before the original so the
-                             //  original's depth write masks the
-                             //  interior of the outline volume
-    mesh.parent?.add(ol);
+    const outer = new THREE.Mesh(mesh.geometry, outlineOuterMat);
+    outer.position.copy(mesh.position);
+    outer.rotation.copy(mesh.rotation);
+    outer.scale.copy(mesh.scale).multiplyScalar(1.22);
+    outer.renderOrder = -2;
+    mesh.parent?.add(outer);
+    const inner = new THREE.Mesh(mesh.geometry, outlineMat);
+    inner.position.copy(mesh.position);
+    inner.rotation.copy(mesh.rotation);
+    inner.scale.copy(mesh.scale).multiplyScalar(1.10);
+    inner.renderOrder = -1;
+    mesh.parent?.add(inner);
   };
   for (const m of outlineTargets) addOutline(m);
 
@@ -372,11 +383,12 @@ export function spawnStairs(
   // Drives the ring, outline, shaft layers and mote sprites
   // together so the call pulses as one.
   const beamBreathSeed = Math.random() * Math.PI * 2;
-  const baseOuter   = shaftOuterMat.opacity;
-  const baseCore    = shaftCoreMat.opacity;
-  const baseMote    = moteMat.opacity;
-  const baseRing    = floorRingMat.opacity;
-  const baseOutline = outlineMat.opacity;
+  const baseOuter       = shaftOuterMat.opacity;
+  const baseCore        = shaftCoreMat.opacity;
+  const baseMote        = moteMat.opacity;
+  const baseRing        = floorRingMat.opacity;
+  const baseOutline     = outlineMat.opacity;
+  const baseOutlineHalo = outlineOuterMat.opacity;
   shaftOuter.onBeforeRender = () => {
     const t = (Date.now() / 1000) * (Math.PI * 2 / 2.4) + beamBreathSeed;
     const b = 0.85 + 0.15 * Math.sin(t);
@@ -385,6 +397,7 @@ export function spawnStairs(
     moteMat.opacity = baseMote * b;
     floorRingMat.opacity = baseRing * b;
     outlineMat.opacity = baseOutline * b;
+    outlineOuterMat.opacity = baseOutlineHalo * b;
   };
 
   const interactable = {
