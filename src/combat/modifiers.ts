@@ -21,11 +21,12 @@ import { getCharacter } from '../state/character';
 // current sources say it is.
 
 export type StatModifier =
-  | { kind: 'max-hp';            amount: number }    // flat add to maximum HP
-  | { kind: 'weapon-damage';     amount: number }    // flat add to outgoing damage
-  | { kind: 'damage-multiplier'; amount: number }    // multiplicative on outgoing (1.5 = +50%)
-  | { kind: 'physical-armor';    amount: number }    // flat reduction to incoming physical
-  | { kind: 'magic-armor';       amount: number }    // flat reduction to incoming magic
+  | { kind: 'max-hp';                amount: number }    // flat add to maximum HP
+  | { kind: 'weapon-damage';         amount: number }    // flat add to outgoing damage
+  | { kind: 'damage-multiplier';     amount: number }    // multiplicative on outgoing (1.5 = +50%)
+  | { kind: 'finisher-damage-mult';  amount: number }    // multiplicative on outgoing ONLY for the finisher (last combo step)
+  | { kind: 'physical-armor';        amount: number }    // flat reduction to incoming physical
+  | { kind: 'magic-armor';           amount: number }    // flat reduction to incoming magic
 ;
 
 /**
@@ -68,6 +69,10 @@ export interface PlayerStats {
   maxHp: number;
   weaponDamageBonus: number;
   damageMultiplier: number;
+  /** Multiplier applied to outgoing damage ONLY when the strike is
+   *  the finisher (last step of the current weapon's combo). 1.0 =
+   *  no bonus. Items with on-finisher effects compose here. */
+  finisherDamageMultiplier: number;
   physicalArmor: number;
   magicArmor: number;
 }
@@ -81,16 +86,18 @@ export function computePlayerStats(): PlayerStats {
   let maxHp = CONFIG.PLAYER_HP_MAX;
   let weaponDamageBonus = 0;
   let damageMultiplier = 1;
+  let finisherDamageMultiplier = 1;
   let physicalArmor = 0;
   let magicArmor = 0;
 
   for (const m of aggregateModifiers('player')) {
     switch (m.kind) {
-      case 'max-hp':            maxHp += m.amount; break;
-      case 'weapon-damage':     weaponDamageBonus += m.amount; break;
-      case 'damage-multiplier': damageMultiplier *= m.amount; break;
-      case 'physical-armor':    physicalArmor += m.amount; break;
-      case 'magic-armor':       magicArmor += m.amount; break;
+      case 'max-hp':               maxHp += m.amount; break;
+      case 'weapon-damage':        weaponDamageBonus += m.amount; break;
+      case 'damage-multiplier':    damageMultiplier *= m.amount; break;
+      case 'finisher-damage-mult': finisherDamageMultiplier *= m.amount; break;
+      case 'physical-armor':       physicalArmor += m.amount; break;
+      case 'magic-armor':          magicArmor += m.amount; break;
     }
   }
   // Character attributes — spent at safe rooms. Vigor → max HP,
@@ -101,7 +108,7 @@ export function computePlayerStats(): PlayerStats {
   maxHp += vigor;
   physicalArmor += resolve * 0.5;
   magicArmor    += resolve * 0.5;
-  return { maxHp, weaponDamageBonus, damageMultiplier, physicalArmor, magicArmor };
+  return { maxHp, weaponDamageBonus, damageMultiplier, finisherDamageMultiplier, physicalArmor, magicArmor };
 }
 
 /**

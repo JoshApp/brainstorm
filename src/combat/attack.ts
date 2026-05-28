@@ -9,6 +9,7 @@ import { playImpact } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
+import { computePlayerStats } from './modifiers';
 
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
@@ -145,7 +146,15 @@ export function createCombatSystem(
     const critChance = weapon.critChance ?? 0;
     const critMult   = weapon.critMultiplier ?? 2.0;
     const crit = Math.random() < critChance;
-    const baseDamage = crit ? weapon.damage * critMult : weapon.damage;
+    // Finisher bonus: if this strike is the LAST step of the combo
+    // and the player has any items with 'finisher-damage-mult'
+    // modifiers, fold their compound multiplier into the base.
+    // Pre-pipeline so the resulting damage still gets equipment
+    // damage bonuses + targets armor as usual.
+    const finisherMult = sword.isFinisherStrike
+      ? computePlayerStats().finisherDamageMultiplier
+      : 1;
+    const baseDamage = (crit ? weapon.damage * critMult : weapon.damage) * finisherMult;
 
     // Route through the damage pipeline. The pipeline applies the player's
     // equipment damage bonus (Ring of Predation +1, etc.) from the source

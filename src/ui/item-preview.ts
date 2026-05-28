@@ -232,6 +232,12 @@ function formatStats(item: ItemSpec): string | null {
           parts.push(`${psign}${pct}% DMG`);
           break;
         }
+        case 'finisher-damage-mult': {
+          const pct = Math.round((mod.amount - 1) * 100);
+          const psign = pct >= 0 ? '+' : '';
+          parts.push(`${psign}${pct}% FINISHER DMG`);
+          break;
+        }
       }
     }
   }

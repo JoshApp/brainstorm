@@ -21,6 +21,11 @@ export interface Sword {
   isStriking: boolean;
   /** True from windup-start through recover-end — use to gate new attack inputs. */
   isSwinging: boolean;
+  /** True only during the strike phase AND only when the current
+   *  combo step is the finisher (last entry in the weapon's combo
+   *  array). Combat reads this to apply on-finisher item modifiers
+   *  to outgoing damage. */
+  isFinisherStrike: boolean;
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
   startSwing(): boolean;
   update(dt: number): void;
@@ -244,6 +249,11 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
     },
     get isSwinging() {
       return phase !== 'idle';
+    },
+    get isFinisherStrike() {
+      if (phase !== 'strike') return false;
+      const w = getCurrentWeapon();
+      return comboStep === w.combo.length - 1;
     },
     startSwing,
     update,

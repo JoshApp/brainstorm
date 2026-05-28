@@ -870,11 +870,12 @@ function formatWeapon(w: WeaponStats): string {
 
 function formatModifier(m: StatModifier): string {
   switch (m.kind) {
-    case 'max-hp':           return signed(m.amount) + ' Max HP';
-    case 'weapon-damage':    return signed(m.amount) + ' Damage';
-    case 'damage-multiplier':return `×${m.amount.toFixed(2)} Damage`;
-    case 'physical-armor':   return signed(m.amount) + ' Physical Armor';
-    case 'magic-armor':      return signed(m.amount) + ' Magic Armor';
+    case 'max-hp':                return signed(m.amount) + ' Max HP';
+    case 'weapon-damage':         return signed(m.amount) + ' Damage';
+    case 'damage-multiplier':     return `×${m.amount.toFixed(2)} Damage`;
+    case 'finisher-damage-mult':  return `×${m.amount.toFixed(2)} Finisher Damage`;
+    case 'physical-armor':        return signed(m.amount) + ' Physical Armor';
+    case 'magic-armor':           return signed(m.amount) + ' Magic Armor';
   }
 }
 

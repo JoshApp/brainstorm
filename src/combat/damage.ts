@@ -85,6 +85,7 @@ export function getCombatStats(id: EntityId | null): CombatStats {
       case 'physical-armor':    physicalArmor += m.amount; break;
       case 'magic-armor':       magicArmor += m.amount; break;
       // max-hp not applicable to enemy combat stats (HP is in spawn-time pool)
+      // finisher-damage-mult is player-side; enemies don't combo.
     }
   }
   return { damageBonus, damageMultiplier, physicalArmor, magicArmor };
