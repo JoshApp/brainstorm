@@ -100,21 +100,25 @@ function swordSlashLeftPose(phase: SwordPhase, t: number): WeaponPose {
 }
 
 function swordSlashRightPose(phase: SwordPhase, t: number): WeaponPose {
-  // Mirror of slash-left. Winds up on the upper-LEFT, sweeps down
-  // and across to the lower-RIGHT. Rotations on rotY/rotZ flipped so
-  // the blade comes from the opposite shoulder.
-  const WOUND_X = ix - 0.10;
-  const WOUND_Y = iy + 0.18;
+  // Rising slash on the RIGHT side. Originally I authored this as a
+  // back-handed mirror that wound up on the LEFT and swept across to
+  // the RIGHT — but the blade had to cross the player's view to
+  // get there, reading as "the sword is coming at me." This version
+  // stays on the right side: blade winds up low-right (tip down) and
+  // strikes up-right (tip up), like a rising backhand off the
+  // returning slash-left's end pose. No cross-body motion.
+  const WOUND_X = ix + 0.10;          // stay on the right
+  const WOUND_Y = iy - 0.15;          // low
   const WOUND_Z = iz + 0.05;
-  const WOUND_RX = rx - 0.9;
-  const WOUND_RY = ry - 0.30;
-  const WOUND_RZ = rz - 0.50;
-  const STRIKE_X = ix + 0.22;
-  const STRIKE_Y = iy - 0.25;
-  const STRIKE_Z = iz - 0.10;
-  const STRIKE_RX = rx + 0.65;
-  const STRIKE_RY = ry + 0.30;
-  const STRIKE_RZ = rz + 0.50;
+  const WOUND_RX = rx + 0.5;          // pitch forward — tip points down
+  const WOUND_RY = ry;
+  const WOUND_RZ = rz + 0.15;         // a hair more roll than idle
+  const STRIKE_X = ix + 0.30;         // sweep up and across the right
+  const STRIKE_Y = iy + 0.25;         // high
+  const STRIKE_Z = iz - 0.10;         // forward
+  const STRIKE_RX = rx - 0.9;         // pitch back — tip up
+  const STRIKE_RY = ry;
+  const STRIKE_RZ = rz + 0.45;        // edge keeps leading the rise
   if (phase === 'windup') {
     scratch.x = ix + (WOUND_X - ix) * t;
     scratch.y = iy + (WOUND_Y - iy) * t;
@@ -348,21 +352,25 @@ function daggerDoubleStabPose(phase: SwordPhase, t: number): WeaponPose {
 // Step 2: the existing overhead crash — committing finisher.
 
 function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
-  // Side-smash from the RIGHT, ending on the LEFT. Hammer head
-  // pitches forward in windup (so it leads the swing), rolls
-  // INWARD so the head trails to the right side at the apex.
-  const WOUND_X = ix + 0.20;        // pulled to the right
-  const WOUND_Y = iy + 0.38;        // up high
+  // Side-smash from the RIGHT, ending on the LEFT. The HEAD (+Y in
+  // the model) leads via a big rotZ roll: rotZ positive curls +Y
+  // toward +X (head far right) in windup; rotZ negative curls +Y
+  // toward -X (head far left) in strike-end. Previous version mixed
+  // rotX/rotY in ways that put the haft in front of the head — the
+  // player was hitting things with the wood. Now it's a clean
+  // rotZ-driven horizontal arc with the head visibly leading.
+  const WOUND_X = ix + 0.05;        // body roughly centred — head rotates around the grip
+  const WOUND_Y = iy + 0.25;        // raise so head sweeps through chest height
   const WOUND_Z = iz + 0.05;
-  const WOUND_RX = rx - 0.55;       // head pitches forward
-  const WOUND_RY = ry + 0.45;       // yaw toward right
-  const WOUND_RZ = rz + 0.55;       // roll the head outward to the right
-  const STRIKE_X = ix - 0.32;       // sweep across to the LEFT
-  const STRIKE_Y = iy - 0.08;       // crashes through eye-line
-  const STRIKE_Z = iz - 0.12;
-  const STRIKE_RX = rx + 0.15;
-  const STRIKE_RY = ry - 0.45;      // yaw flips the other way
-  const STRIKE_RZ = rz - 0.65;      // roll all the way over
+  const WOUND_RX = rx + 0.20;       // small pitch back — head goes up-and-back
+  const WOUND_RY = ry;
+  const WOUND_RZ = rz + 1.20;       // head rolled FAR RIGHT (≈ +0.4+1.20 = 1.60 rad)
+  const STRIKE_X = ix - 0.30;       // body drifts LEFT as the swing follows through
+  const STRIKE_Y = iy + 0.05;
+  const STRIKE_Z = iz - 0.10;
+  const STRIKE_RX = rx - 0.30;      // pitch forward — head dips into the swing
+  const STRIKE_RY = ry;
+  const STRIKE_RZ = rz - 0.90;      // head rolled FAR LEFT (≈ 0.4-0.90 = -0.50 rad)
   if (phase === 'windup') {
     scratch.x = ix + (WOUND_X - ix) * t;
     scratch.y = iy + (WOUND_Y - iy) * t;
@@ -393,19 +401,21 @@ function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
 }
 
 function hammerSwingRightPose(phase: SwordPhase, t: number): WeaponPose {
-  // Mirror of swingLeft. Wound up on the LEFT, sweeps to the RIGHT.
-  const WOUND_X = ix - 0.32;
-  const WOUND_Y = iy + 0.38;
+  // Mirror of swingLeft. Head winds up FAR LEFT (rotZ negative) and
+  // sweeps to FAR RIGHT (rotZ positive). Body drifts right with the
+  // follow-through.
+  const WOUND_X = ix - 0.30;
+  const WOUND_Y = iy + 0.25;
   const WOUND_Z = iz + 0.05;
-  const WOUND_RX = rx - 0.55;
-  const WOUND_RY = ry - 0.45;
-  const WOUND_RZ = rz - 0.65;
-  const STRIKE_X = ix + 0.22;
-  const STRIKE_Y = iy - 0.08;
-  const STRIKE_Z = iz - 0.12;
-  const STRIKE_RX = rx + 0.15;
-  const STRIKE_RY = ry + 0.45;
-  const STRIKE_RZ = rz + 0.55;
+  const WOUND_RX = rx + 0.20;
+  const WOUND_RY = ry;
+  const WOUND_RZ = rz - 0.90;
+  const STRIKE_X = ix + 0.25;
+  const STRIKE_Y = iy + 0.05;
+  const STRIKE_Z = iz - 0.10;
+  const STRIKE_RX = rx - 0.30;
+  const STRIKE_RY = ry;
+  const STRIKE_RZ = rz + 1.20;
   if (phase === 'windup') {
     scratch.x = ix + (WOUND_X - ix) * t;
     scratch.y = iy + (WOUND_Y - iy) * t;
