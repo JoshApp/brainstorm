@@ -6,6 +6,7 @@ import { populateTemplate } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { applyGeometryWarp, applySurfaceClutter } from './clutter';
 import { resolveAllFacings } from './facing';
+import { rollManifest, reconcileManifest } from './floor-manifest';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
 // with corridors between, and assemble a single LevelSpec the
@@ -277,6 +278,11 @@ export function composeFloor(
   // ── DECORATION PIPELINE ────────────────────────────────────────
   // Three clearly delineated phases:
   //
+  //   Phase 0: Manifest reconciliation — apply per-floor caps so two
+  //            fountain-bearing vaults can't double up the heal supply.
+  //            Runs FIRST so downstream phases never see the stripped
+  //            props (no orphan facings to resolve, no orphan clutter
+  //            to anchor around them).
   //   Phase A: Facing resolution — walk every prop with a
   //            declarative `facing` directive (wall-away,
   //            wall-toward, point-away, point-toward) and
@@ -287,6 +293,8 @@ export function composeFloor(
   //            corner mounds + wall piles for visual mass,
   //            torch reconciliation against final wall set.
   //   Phase C: Surface decoration — debris, cracks, wall damage.
+  const manifest = rollManifest(depth, rand);
+  reconcileManifest(result, manifest, rand);
   resolveAllFacings(result);
   applyGeometryWarp(result, rand);
   applySurfaceClutter(result, rand);
