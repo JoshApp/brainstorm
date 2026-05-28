@@ -1,39 +1,54 @@
-import type { LevelSpec, PropSpec, RoomSpec, WalkableRect } from './types';
+import type { LevelSpec, PropSpec, RoomSpec, TorchSpec, WalkableRect } from './types';
 import {
   RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS,
   FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE,
   CORNER_MOUND, CORNER_MOUND_LARGE, CORNER_MOUND_SMALL,
   WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN,
 } from '../content/clutter';
+import { ARCHWAY } from '../content/archway';
 import {
-  wallOpenings, inOpening, allStairFootprints,
+  wallOpenings, inOpening, allStairFootprints, findContainingRect,
   type Opening, type StairFootprint,
 } from './geometry-cull';
 
-// Clutter pipeline — split into two clearly ordered stages so
-// later passes know about what earlier passes already placed:
+// =====================================================================
+// LEVEL DECORATION PIPELINE
+// =====================================================================
 //
-//   STAGE 1 — applyStructuralClutter
-//     Buttresses, ruined columns, corner mounds, wall piles.
-//     These VOLUMETRICALLY MODIFY the playable shape of a room
-//     and need to land before torch positions are finalised so
-//     the torch filter can see them, and before surface
-//     decoration so cracks and scorches don't end up underneath
-//     a column.
+// The composer runs two distinct phases AFTER the base skeleton
+// (rooms, corridors, stairs, and tile-authored props) is laid
+// down. Each phase has a clear remit:
 //
-//   STAGE 2 — applySurfaceClutter
-//     Floor debris, floor cracks, wall damage / scorches.
-//     Pure decoration. Always runs LAST so it never conflicts
-//     with the bigger architectural decisions or with fixtures
-//     authored by the vault (altars, chests, fountains).
+//   PHASE B — applyGeometryWarp
+//   ─────────────────────────────
+//   Everything that PHYSICALLY EXISTS in the world above the
+//   base shell. Frames the playable space.
+//     · Archways at corridor mouths — columns block, lintel
+//       overhead. The transition moment between chambers.
+//     · Buttresses + ruined columns — real obstacles attached
+//       to walls / standing free. The player paths around them.
+//     · Volumetric mounds — corner mounds + wall piles. Visual
+//       mass that breaks rectangular silhouettes (no collision
+//       so they don't gate movement, but they shape what the
+//       eye reads).
+//     · Torch reconciliation — torches mounted on walls that
+//       got carved away by a corridor get dropped here, since
+//       this is the last moment when the wall set is decided.
 //
-// scatterClutter() runs both in order; the composer can also
-// call them at different points in its pipeline.
+//   PHASE C — applySurfaceClutter
+//   ─────────────────────────────
+//   COSMETIC ONLY. Never carries collision, never changes the
+//   playable shape. Runs LAST so it cannot conflict with any
+//   structural decision above.
+//     · Floor debris (small rubble, ash, shards)
+//     · Floor cracks
+//     · Wall damage — scorches + gouges on clear wall ranges
+//     · Sparse corridor surface decor
 //
-// Both stages share a small RoomContext built from the room's
-// rect, the global rect set, the existing props (so nothing is
-// placed where the vault author put a fountain), and the stair
-// footprints (carved-floor regions where placements would float).
+// Both phases consume the same shared RoomContext (rect, wall
+// openings, samplers, the running "occupied" list of placed
+// points) so collision avoidance and opening-aware placement
+// stays consistent across passes.
 
 const FLOOR_DEBRIS = [RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS];
 const WALL_DAMAGE = [WALL_SCORCH, WALL_GOUGE];
@@ -60,15 +75,26 @@ interface RoomContext {
   edgeSampler: () => { x: number; z: number };
 }
 
-/** Convenience: run both clutter stages in order. */
-export function scatterClutter(spec: LevelSpec, rand: () => number): void {
-  applyStructuralClutter(spec, rand);
-  applySurfaceClutter(spec, rand);
-}
+/**
+ * PHASE B — Geometry warp.
+ *
+ * Frames the playable space:
+ *   1. Archways at corridor mouths (with column collision)
+ *   2. Structural props per room — buttresses + ruined columns
+ *      (collision) and corner mounds + wall piles (visual mass)
+ *   3. Reconcile torches against the final wall set: any torch
+ *      mounted in a carved corridor opening is dropped here.
+ *
+ * Mutates spec.props and spec.torches. Must run BEFORE
+ * applySurfaceClutter so the surface pass sees the final shape.
+ */
+export function applyGeometryWarp(spec: LevelSpec, rand: () => number): void {
+  // 1. Archway emission. Walks every corridor, finds where it
+  //    meets a room, drops a framed gate. De-duped so a shared
+  //    edge only emits once.
+  emitArchwaysForCorridors(spec);
 
-/** Stage 1 — volumetric room shape modifiers. Buttresses, ruined
- *  columns, corner mounds, wall piles. Mutates spec.props. */
-export function applyStructuralClutter(spec: LevelSpec, rand: () => number): void {
+  // 2. Per-room structural placement.
   const existing = collectExisting(spec);
   const stairs = allStairFootprints(spec);
   const allRectsFlat = [...spec.rooms, ...spec.corridors].map((r) => r.rect);
@@ -78,7 +104,18 @@ export function applyStructuralClutter(spec: LevelSpec, rand: () => number): voi
     structuralPass(ctx, out, rand);
   }
   spec.props.push(...out);
+
+  // 3. Drop torches whose wall mounting falls in a corridor
+  //    opening — the wall slab there has been carved away, the
+  //    torch would dangle in mid-air.
+  spec.torches = spec.torches.filter((t) => !torchInOpening(t, allRectsFlat));
 }
+
+/**
+ * @deprecated Old name. Kept as an alias for callers that haven't
+ * been migrated; new code should call applyGeometryWarp.
+ */
+export const applyStructuralClutter = applyGeometryWarp;
 
 /** Stage 2 — surface decoration. Floor debris, floor cracks, wall
  *  damage. Runs AFTER fixtures + structural so it doesn't paint
@@ -526,6 +563,82 @@ function shuffled<T>(arr: T[], rand: () => number): T[] {
   }
   return out;
 }
+
+// ── archway emission ──────────────────────────────────────────────
+
+/** Frame each corridor mouth with an ARCHWAY. Walks every wall
+ *  of every corridor rect, finds where another rect (a room) is
+ *  flush against it (= the corridor opening), and drops an
+ *  archway centred on that overlap. The lintel runs along the
+ *  opening's axis; the two columns carry collision so the
+ *  player paths between them rather than through them. */
+function emitArchwaysForCorridors(spec: LevelSpec): void {
+  const allRectsFlat = [
+    ...spec.rooms.map((r) => r.rect),
+    ...spec.corridors.map((r) => r.rect),
+  ];
+  // De-dupe — corridor↔room pairs share an edge so we'd
+  // otherwise emit the same archway twice (once from each side).
+  const seen = new Set<string>();
+  for (const corridor of spec.corridors) {
+    const c = corridor.rect;
+    for (const side of ['N', 'S', 'E', 'W'] as const) {
+      const openings = wallOpenings(c, side, allRectsFlat);
+      for (const o of openings) {
+        // Position the archway at the midpoint of the opening,
+        // sitting ON the wall plane.
+        let ax = 0, az = 0, rotY = 0;
+        if (side === 'N' || side === 'S') {
+          ax = (o.start + o.end) / 2;
+          az = side === 'N' ? c.z - c.d / 2 : c.z + c.d / 2;
+          rotY = 0;        // lintel runs along X
+        } else {
+          az = (o.start + o.end) / 2;
+          ax = side === 'W' ? c.x - c.w / 2 : c.x + c.w / 2;
+          rotY = Math.PI / 2;   // lintel runs along Z
+        }
+        const key = `${ax.toFixed(2)}:${az.toFixed(2)}:${rotY.toFixed(2)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        spec.props.push({
+          kind: 'model',
+          model: ARCHWAY,
+          x: ax, y: 0, z: az,
+          rotY,
+          // Two column blockers at ±1m along the lintel axis.
+          // Small radius so the player threads cleanly between
+          // them on the corridor centreline but can't walk
+          // through the visible column itself.
+          collision: [
+            { kind: 'circle', r: 0.22, ox: -1.0, oz: 0 },
+            { kind: 'circle', r: 0.22, ox:  1.0, oz: 0 },
+          ],
+        });
+      }
+    }
+  }
+}
+
+// ── torch reconciliation ──────────────────────────────────────────
+
+/** True if a torch sits on a wall range that has been carved
+ *  away by an adjoining corridor / room. Uses the same
+ *  wallOpenings shape math the builder uses for the actual
+ *  carve, so what's flagged here matches what gets rendered. */
+function torchInOpening(
+  t: TorchSpec,
+  rects: WalkableRect[],
+): boolean {
+  // The torch sits ~0.18m inside its room's wall — find which
+  // rect contains it.
+  const room = findContainingRect(t.x, t.z, rects, 0.05);
+  if (!room) return false;
+  const openings = wallOpenings(room, t.wall, rects);
+  const pos = (t.wall === 'N' || t.wall === 'S') ? t.x : t.z;
+  return inOpening(pos, openings);
+}
+
+// ── pick helpers ──────────────────────────────────────────────────
 
 function pickCornerVariant(
   rand: () => number,

@@ -4,9 +4,7 @@ import { vaultsForTag, VAULTS } from './vault-library';
 import { parseTileMap } from './tilemap';
 import { populateTemplate } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
-import { applyStructuralClutter, applySurfaceClutter } from './clutter';
-import { wallOpenings, inOpening, findContainingRect } from './geometry-cull';
-import { ARCHWAY } from '../content/archway';
+import { applyGeometryWarp, applySurfaceClutter } from './clutter';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
 // with corridors between, and assemble a single LevelSpec the
@@ -258,8 +256,7 @@ export function composeFloor(
   }
 
   // Build the intermediate LevelSpec — props / torches will be
-  // mutated by the pipeline stages below.
-  const allRectsFinal = [...rooms.map((r) => r.rect), ...corridorRooms.map((r) => r.rect)];
+  // mutated by the decoration pipeline below.
   const result: LevelSpec = {
     id: opts.id,
     depth,
@@ -276,84 +273,20 @@ export function composeFloor(
     extraWalls,
   };
 
-  // ── PIPELINE: ordered post-passes ───────────────────────────────
-  // Stage 0: ARCHWAYS at corridor↔room interfaces. Frame each
-  //          corridor mouth with a stone gate so transitions
-  //          between chambers read as architectural moments
-  //          rather than just stepping from one box to another.
-  emitArchwaysForCorridors(result);
-
-  // Stage 1: STRUCTURAL clutter — buttresses, columns, corner
-  //          mounds, wall piles. Modifies the visible room shape.
-  //          Runs FIRST so torch filtering can see the new
-  //          structural props and surface decoration can avoid
-  //          painting under them.
-  applyStructuralClutter(result, rand);
-
-  // Stage 2: TORCH filtering — drop torches whose wall mounting
-  //          falls inside a carved corridor opening. The parser
-  //          places torches flush with vault perimeter walls; the
-  //          composer's corridor carves some of those walls away,
-  //          and any torch in that range is dangling in mid-air.
-  result.torches = result.torches.filter((t) => !torchInOpening(t, allRectsFinal));
-
-  // Stage 3: SURFACE clutter — floor debris, cracks, wall damage.
-  //          Pure decoration, runs LAST so it sits on top of
-  //          everything authored + structural without conflicts.
+  // ── DECORATION PIPELINE ────────────────────────────────────────
+  // Two clearly delineated phases (see clutter.ts for the pipeline
+  // doc). The first owns everything that PHYSICALLY EXISTS in the
+  // playable space; the second only paints surface decoration.
+  //
+  //   Phase B: Geometry warp — archways with column collision,
+  //            buttresses + ruined columns with collision,
+  //            corner mounds + wall piles for visual mass,
+  //            torch reconciliation against final wall set.
+  //   Phase C: Surface decoration — debris, cracks, wall damage.
+  applyGeometryWarp(result, rand);
   applySurfaceClutter(result, rand);
 
   return result;
-}
-
-/**
- * Frame each corridor mouth with an ARCHWAY. Walks every wall
- * of every corridor rect, finds where another rect (a room) is
- * flush against it (= the corridor opening), and drops an
- * archway centred on that overlap. The archway's rotY orients
- * its lintel along the opening's running axis (X for N/S walls,
- * Z for E/W walls).
- *
- * Archways sit ON the wall plane (the boundary between corridor
- * and room) so they read as a literal threshold the player
- * passes under.
- */
-function emitArchwaysForCorridors(spec: LevelSpec): void {
-  const allRectsFlat = [
-    ...spec.rooms.map((r) => r.rect),
-    ...spec.corridors.map((r) => r.rect),
-  ];
-  // De-dupe — corridor↔room pairs share an edge, so we'd
-  // otherwise emit the same archway twice (once from each side).
-  const seen = new Set<string>();
-  for (const corridor of spec.corridors) {
-    const c = corridor.rect;
-    for (const side of ['N', 'S', 'E', 'W'] as const) {
-      const openings = wallOpenings(c, side, allRectsFlat);
-      for (const o of openings) {
-        // Position the archway at the midpoint of the opening,
-        // sitting ON the wall plane.
-        let ax = 0, az = 0, rotY = 0;
-        if (side === 'N' || side === 'S') {
-          ax = (o.start + o.end) / 2;
-          az = side === 'N' ? c.z - c.d / 2 : c.z + c.d / 2;
-          rotY = 0;        // lintel runs along X
-        } else {
-          az = (o.start + o.end) / 2;
-          ax = side === 'W' ? c.x - c.w / 2 : c.x + c.w / 2;
-          rotY = Math.PI / 2;   // lintel runs along Z
-        }
-        const key = `${ax.toFixed(2)}:${az.toFixed(2)}:${rotY.toFixed(2)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        spec.props.push({
-          kind: 'model',
-          model: ARCHWAY,
-          x: ax, y: 0, z: az,
-          rotY,
-        });
-      }
-    }
-  }
 }
 
 // ── helpers ──────────────────────────────────────────────────────
@@ -396,29 +329,6 @@ function weightedPick<T extends { weight?: number }>(pool: T[], rand: () => numb
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
-}
-
-/** True if the torch sits on a wall range that has been carved
- *  away — i.e. a corridor (or adjoining room) joins the torch's
- *  room at the torch's position along the wall. The torch's
- *  mounting plane no longer exists there.
- *
- *  Uses the same wallOpenings shape math as the clutter pass +
- *  the builder, so what's flagged here matches what's actually
- *  carved at render time. */
-function torchInOpening(
-  t: TorchSpec,
-  rects: Array<{ x: number; z: number; w: number; d: number }>,
-): boolean {
-  // The torch is mounted slightly inside its room's wall — find
-  // the rect that contains it. After the offset fix the torch
-  // sits ~0.18m off the wall (well inside the rect), so a small
-  // slack is fine.
-  const room = findContainingRect(t.x, t.z, rects, 0.05);
-  if (!room) return false;
-  const openings = wallOpenings(room, t.wall, rects);
-  const pos = (t.wall === 'N' || t.wall === 'S') ? t.x : t.z;
-  return inOpening(pos, openings);
 }
 
 function translateProp(p: PropSpec, dx: number, dz: number): PropSpec {

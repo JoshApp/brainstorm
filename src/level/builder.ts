@@ -488,29 +488,39 @@ export function buildLevel(
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
       root.add(built.group);
-      // Optional collision shape — used by structural model props
-      // (buttresses, ruined columns) that should block the player.
-      // For AABB the half-extents rotate with the prop's rotY; we
+      // Optional collision shape(s) — used by structural model
+      // props (buttresses, ruined columns, archway columns). For
+      // AABB the half-extents rotate with the prop's rotY; we
       // only support cardinal angles in practice so the rotated
-      // AABB stays axis-aligned. (See clutter.ts for the placers.)
+      // AABB stays axis-aligned. Each shape may carry a local
+      // offset (ox, oz) so one prop can express multiple
+      // obstacles (e.g. an archway's TWO columns).
       if (prop.collision) {
-        if (prop.collision.kind === 'circle') {
-          obstacles.push({
-            kind: 'circle',
-            x: prop.x, z: prop.z,
-            r: prop.collision.r,
-          });
-        } else {
-          const angle = prop.rotY ?? 0;
-          // Swap halfW/halfD if rotation is perpendicular (±π/2).
-          const swap = Math.abs(Math.cos(angle)) < 0.5;
-          const hw = swap ? prop.collision.halfD : prop.collision.halfW;
-          const hd = swap ? prop.collision.halfW : prop.collision.halfD;
-          obstacles.push({
-            kind: 'aabb',
-            minX: prop.x - hw, maxX: prop.x + hw,
-            minZ: prop.z - hd, maxZ: prop.z + hd,
-          });
+        const shapes = Array.isArray(prop.collision) ? prop.collision : [prop.collision];
+        const angle = prop.rotY ?? 0;
+        const ca = Math.cos(angle);
+        const sa = Math.sin(angle);
+        for (const shape of shapes) {
+          const ox = shape.ox ?? 0;
+          const oz = shape.oz ?? 0;
+          // Rotate local offset into world.
+          const wox = ca * ox + sa * oz;
+          const woz = -sa * ox + ca * oz;
+          const cx = prop.x + wox;
+          const cz = prop.z + woz;
+          if (shape.kind === 'circle') {
+            obstacles.push({ kind: 'circle', x: cx, z: cz, r: shape.r });
+          } else {
+            // Swap halfW/halfD if rotation is perpendicular (±π/2).
+            const swap = Math.abs(ca) < 0.5;
+            const hw = swap ? shape.halfD : shape.halfW;
+            const hd = swap ? shape.halfW : shape.halfD;
+            obstacles.push({
+              kind: 'aabb',
+              minX: cx - hw, maxX: cx + hw,
+              minZ: cz - hd, maxZ: cz + hd,
+            });
+          }
         }
       }
       // If the model spec carries a light, register it with the global

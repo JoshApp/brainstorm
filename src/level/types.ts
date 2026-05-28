@@ -28,6 +28,13 @@ export type ObstacleCircle = {
   r: number;  // radius
 };
 
+/** Per-shape collision attached to a 'model' prop. Each shape may
+ *  carry an optional offset relative to the prop's local origin;
+ *  the offset is rotated by the prop's rotY at build time. */
+export type PropCollision =
+  | { kind: 'circle'; r: number; ox?: number; oz?: number }
+  | { kind: 'aabb'; halfW: number; halfD: number; ox?: number; oz?: number };
+
 export type RoomSpec = {
   id: string;
   /** The walkable rectangle for this room. Walls are built on its perimeter. */
@@ -43,19 +50,21 @@ export type PropSpec =
   // sigils, anything atmospheric that doesn't move or react.
   //
   // For structural decoration that should block the player (a stone
-  // buttress, a broken column stub, a half-fallen statue base), set
-  // `collision` to attach a walk-blocker. Two shapes:
+  // buttress, a broken column stub, the columns of an archway), set
+  // `collision` to attach one or more walk-blockers. Two shapes:
   //   - circle: { kind: 'circle', r: 0.35 } at the prop's world XZ
   //   - aabb:   { kind: 'aabb', halfW: 0.4, halfD: 0.3 }, with the
   //             AABB rotated by the prop's rotY (for cardinal rotY
   //             the rotated rectangle is itself axis-aligned).
+  // Each shape may carry optional local offsets (ox, oz) so a single
+  // prop can express multiple obstacles — e.g. an archway has TWO
+  // column blockers at (±1, 0). Offsets are rotated by the prop's
+  // rotY before being added to the prop's world position.
   | {
       kind: 'model'; model: import('../ecs/model-types').ModelSpec;
       x: number; y: number; z: number;
       rotY?: number; rotX?: number; rotZ?: number;
-      collision?:
-        | { kind: 'circle'; r: number }
-        | { kind: 'aabb'; halfW: number; halfD: number };
+      collision?: PropCollision | PropCollision[];
     }
   // 'chest' = an openable container. When the player interacts, the lid swings
   // up and an optional loot pickup spawns beside it.
