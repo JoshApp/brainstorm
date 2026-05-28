@@ -183,8 +183,17 @@ function buildRoomContext(
       const dz = p.z - z;
       if (dx * dx + dz * dz < md2) return true;
     }
+    // Stair exclusion needs to inflate by ~prop half-size, otherwise a
+    // wall buttress / mound / wall pile placed with its CENTER just
+    // outside the stair AABB ends up with its body clipping into the
+    // stair (the prop extends 0.3-0.5m into the room from the wall it
+    // hangs on). Symptom: a quadratic open-back box wedged into the
+    // stairwell or a wall pile inside the descent. 0.70m of margin
+    // covers every current wall prop with safety.
+    const STAIR_MARGIN = 0.70;
     for (const s of stairs) {
-      if (x >= s.minX && x <= s.maxX && z >= s.minZ && z <= s.maxZ) return true;
+      if (x >= s.minX - STAIR_MARGIN && x <= s.maxX + STAIR_MARGIN &&
+          z >= s.minZ - STAIR_MARGIN && z <= s.maxZ + STAIR_MARGIN) return true;
     }
     return false;
   };
