@@ -4,6 +4,7 @@ import {
   FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE,
   CORNER_MOUND, CORNER_MOUND_LARGE, CORNER_MOUND_SMALL,
   WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN,
+  FALLEN_PILLAR_SEGMENT, IRON_BARS,
 } from '../content/clutter';
 import { ARCHWAY } from '../content/archway';
 import {
@@ -50,7 +51,11 @@ import {
 // points) so collision avoidance and opening-aware placement
 // stays consistent across passes.
 
-const FLOOR_DEBRIS = [RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS];
+// Small floor debris pool — pure cosmetic, no collision. Used by
+// the surface pass. IRON_BARS joins the pool to add a material
+// contrast (dark iron vs stone) to break up the otherwise
+// stone-only family.
+const FLOOR_DEBRIS = [RUBBLE_CHUNK, ASH_MOUND, STONE_SHARDS, IRON_BARS];
 const WALL_DAMAGE = [WALL_SCORCH, WALL_GOUGE];
 
 const CORNER_MOUND_VARIANTS: Array<{ model: typeof CORNER_MOUND; weight: number }> = [
@@ -287,6 +292,40 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number): 
   const wallPileCount = Math.max(0, Math.round(ctx.area / 25));
   for (let i = 0; i < wallPileCount; i++) {
     placeWallPile(ctx, out, rand);
+  }
+
+  // Fallen pillar segments — horizontal stone cylinders ~1.5m
+  // long lying on the floor. Pairs with the ruined column stubs
+  // (a stub plus the piece that fell off, reading as a story).
+  // Rare: medium-large rooms only, low chance per slot. Carries
+  // AABB collision so the player paths around it.
+  const fallenCount = ctx.area >= 80 ? 2 : ctx.area >= 50 ? 1 : 0;
+  for (let i = 0; i < fallenCount; i++) {
+    if (rand() > 0.6) continue;            // not every slot fills
+    for (let a = 0; a < 8; a++) {
+      const p = ctx.centreSampler();
+      // Keep at least 1m off all walls so the segment isn't
+      // visually clipping a wall buttress.
+      if (p.x < ctx.minX + 1.1 || p.x > ctx.maxX - 1.1) continue;
+      if (p.z < ctx.minZ + 1.1 || p.z > ctx.maxZ - 1.1) continue;
+      if (ctx.tooClose(p.x, p.z, 1.4)) continue;
+      // Axis-aligned (cardinal rotation) so the AABB collision
+      // stays clean. ~half the time lying north-south, half
+      // east-west.
+      const rotY = rand() < 0.5 ? 0 : Math.PI / 2;
+      out.push({
+        kind: 'model',
+        model: FALLEN_PILLAR_SEGMENT,
+        x: p.x, y: 0, z: p.z,
+        rotY,
+        // Cylinder lying along local X → halfW=0.78 (length/2)
+        // along its long axis, halfD=0.24 (radius + jitter) across.
+        // builder.ts swaps halfW/halfD for ±π/2 rotation.
+        collision: { kind: 'aabb', halfW: 0.78, halfD: 0.24 },
+      });
+      ctx.existing.push({ x: p.x, z: p.z });
+      break;
+    }
   }
 }
 

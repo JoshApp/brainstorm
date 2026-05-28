@@ -195,6 +195,70 @@ export const WALL_BUTTRESS: ModelSpec = {
   ],
 };
 
+// Fallen pillar segment — a stone cylinder lying horizontally on
+// the floor, ~1.5m long × 0.4m thick. Pairs with the RUINED_COLUMN
+// stubs (you see a stub plus the piece that fell off lying nearby
+// — story in one room). Bigger silhouette than the small debris
+// pool, with collision so the player walks around it.
+//
+// Authored lying along local X (so rotY=0 lies east-west, rotY=π/2
+// lies north-south). Slight tilt + jitter on the surface gives a
+// "broken stone" feel rather than a clean cylinder.
+export const FALLEN_PILLAR_SEGMENT: ModelSpec = {
+  id: 'fallen-pillar-segment',
+  materials: {
+    stone: { color: 0x2c2620, roughness: 1.0, flatShading: true },
+  },
+  parts: [
+    // Main cylinder body, lying on its side. Rotate +90° around
+    // Z so the cylinder's local +Y axis (its length) now runs
+    // along world +X.
+    {
+      kind: 'cylinder',
+      pos: [0, 0.22, 0],
+      radius: 0.22,
+      height: 1.50,
+      segments: 12,
+      rot: [0, 0, Math.PI / 2],
+      mat: 'stone',
+      jitter: 0.025,
+    },
+    // Cap on the +X end — a slightly larger broken disc.
+    {
+      kind: 'cylinder',
+      pos: [0.78, 0.22, 0],
+      radius: 0.26,
+      height: 0.06,
+      segments: 12,
+      rot: [0, 0, Math.PI / 2],
+      mat: 'stone',
+      jitter: 0.04,
+    },
+    // Smaller chunks broken off near each end so the silhouette
+    // isn't a clean cylinder.
+    { kind: 'box', pos: [-0.62, 0.08, 0.18], size: [0.18, 0.16, 0.20], rot: [0,  0.4, 0.1], mat: 'stone', jitter: 0.04 },
+    { kind: 'box', pos: [ 0.55, 0.06, -0.20], size: [0.16, 0.12, 0.18], rot: [0, -0.6, 0],  mat: 'stone', jitter: 0.04 },
+  ],
+};
+
+// Bent iron grate fragment — a few bars on the floor, slightly
+// angled. Matches the iron sconce palette so it reads as "the
+// dungeon's iron infrastructure has fallen apart". No collision
+// — it's flat enough that the player can step on it.
+export const IRON_BARS: ModelSpec = {
+  id: 'iron-bars',
+  materials: {
+    iron: { color: 0x1a1612, roughness: 0.85, metalness: 0.4, flatShading: true },
+  },
+  parts: [
+    { kind: 'cylinder', pos: [0,    0.04,  0.12], radius: 0.025, height: 0.85, segments: 6, rot: [0, 0, Math.PI / 2], mat: 'iron' },
+    { kind: 'cylinder', pos: [0.02, 0.04, -0.02], radius: 0.025, height: 0.78, segments: 6, rot: [0, 0.15, Math.PI / 2], mat: 'iron' },
+    { kind: 'cylinder', pos: [-0.03, 0.04, -0.16], radius: 0.025, height: 0.72, segments: 6, rot: [0, -0.08, Math.PI / 2], mat: 'iron' },
+    // A cross-bar visible at one end.
+    { kind: 'cylinder', pos: [0.42, 0.04, -0.04], radius: 0.022, height: 0.30, segments: 6, rot: [Math.PI / 2, 0, 0], mat: 'iron' },
+  ],
+};
+
 // Ruined column stub — chest-high broken column standing in open
 // floor. Reads as the surviving base of a colonnade. Stable cylinder
 // with a jagged-box top suggesting a snapped column. Stands ~1.4m
