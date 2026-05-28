@@ -114,7 +114,14 @@ function makeFloorWithHoles(
   return geo;
 }
 
-function makeJitteredPlane(width: number, height: number): THREE.PlaneGeometry {
+function makeJitteredPlane(
+  width: number, height: number,
+  /** Walls additionally bake a smooth low-frequency wave into
+   *  the surface so they don't all read as perfectly flat
+   *  slabs. Floors keep the plain random jitter — wave-warped
+   *  floors would push the player up in lumps. */
+  opts: { wavy?: boolean } = {},
+): THREE.PlaneGeometry {
   const geo = new THREE.PlaneGeometry(
     width,
     height,
@@ -123,13 +130,40 @@ function makeJitteredPlane(width: number, height: number): THREE.PlaneGeometry {
   );
   const pos = geo.attributes.position;
   const jitter = CONFIG.WALL_VERTEX_JITTER;
+  // Per-plane random phase so neighbouring walls don't share
+  // the same wave pattern — every wall slab gets its own
+  // unique warp.
+  const wavy = !!opts.wavy;
+  const wavePhaseA = Math.random() * 100;
+  const wavePhaseB = Math.random() * 100;
+  const WAVE_AMPL = 0.045;        // peak displacement in metres
+  const WAVE_SCALE_X = 1.2;       // metres / radian along the wall
+  const WAVE_SCALE_Y = 0.9;
+  const WAVE_SCALE_X2 = 0.55;     // higher-freq overlay
+  const WAVE_SCALE_Y2 = 0.7;
+  const EDGE_FADE = 0.5;          // metres from edge where wave fades to 0
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const y = pos.getY(i);
     const onEdgeX = Math.abs(Math.abs(x) - width / 2) < 1e-4;
     const onEdgeY = Math.abs(Math.abs(y) - height / 2) < 1e-4;
     if (onEdgeX || onEdgeY) continue;
-    pos.setZ(i, (Math.random() - 0.5) * 2 * jitter);
+    let z = (Math.random() - 0.5) * 2 * jitter;
+    if (wavy) {
+      // Two superimposed waves — a slow primary undulation +
+      // a faster overlay — give a non-repeating warp pattern.
+      const waveLow  = Math.sin(x / WAVE_SCALE_X + wavePhaseA)
+                     * Math.cos(y / WAVE_SCALE_Y + wavePhaseB);
+      const waveHigh = Math.sin(x / WAVE_SCALE_X2 + wavePhaseB * 0.7 + y * 0.6)
+                     * 0.45;
+      // Taper toward the edges so neighbouring wall segments
+      // line up cleanly with no visible seam.
+      const dx = Math.min(width / 2 + x, width / 2 - x);
+      const dy = Math.min(height / 2 + y, height / 2 - y);
+      const fade = Math.min(1, dx / EDGE_FADE) * Math.min(1, dy / EDGE_FADE);
+      z += (waveLow + waveHigh) * WAVE_AMPL * fade;
+    }
+    pos.setZ(i, z);
   }
   pos.needsUpdate = true;
   geo.computeVertexNormals();
@@ -234,7 +268,7 @@ function buildWallSegment(
 ) {
   const segLen = segEnd - segStart;
   const segMid = (segStart + segEnd) / 2;
-  const mesh = new THREE.Mesh(makeJitteredPlane(segLen, height), materials.wall);
+  const mesh = new THREE.Mesh(makeJitteredPlane(segLen, height, { wavy: true }), materials.wall);
   mesh.receiveShadow = true;
 
   // Position + facing based on which side of the room this wall is.
@@ -606,7 +640,7 @@ export function buildLevel(
       const dz = w.bz - w.az;
       const len = Math.hypot(dx, dz);
       if (len < 0.01) continue;
-      const mesh = new THREE.Mesh(makeJitteredPlane(len, H), materials.wall);
+      const mesh = new THREE.Mesh(makeJitteredPlane(len, H, { wavy: true }), materials.wall);
       mesh.position.set((w.ax + w.bx) / 2, H / 2, (w.az + w.bz) / 2);
       // Orient: horizontal wall (running along X) faces ±Z; vertical
       // (running along Z) faces ±X. Single-sided is fine since the

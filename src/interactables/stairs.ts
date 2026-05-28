@@ -211,7 +211,9 @@ export function spawnStairs(
     id: `stairs-${spec.id ?? spec.targetLevel}-glow`,
     category: 'environment',
     position: glowWorld,
-    color: 0x88aaff,
+    // Cool moonlight blue — same palette family as the
+    // passive outline / shaft.
+    color: 0x6ea0ff,
     intensity: 5.5,
     distance: 6.5,
     decay: 1.5,
@@ -386,11 +388,16 @@ export function spawnStairs(
   // highlighted (gold) targets each frame. The shaft outer mesh
   // owns the onBeforeRender — drives every material in the
   // stair's lighting set so they stay coherent.
-  const PASSIVE_OUTLINE_INNER = new THREE.Color(0xc8ddff);
-  const PASSIVE_OUTLINE_OUTER = new THREE.Color(0xc8ddff);
-  const PASSIVE_RING          = new THREE.Color(0x4a78c8);
-  const PASSIVE_SHAFT_OUTER   = new THREE.Color(0xa8c4ff);
-  const PASSIVE_SHAFT_CORE    = new THREE.Color(0xd8e0ff);
+  // Cool moonlight palette for the passive state. Bumped
+  // saturation noticeably blue — earlier pale blues read as
+  // washed-out / reddish against warm torch-lit scenes because
+  // additive blending diluted the blue against an orange-tinted
+  // backdrop. Pure moonlight reads as moonlight from any angle.
+  const PASSIVE_OUTLINE_INNER = new THREE.Color(0xa0c4ff);
+  const PASSIVE_OUTLINE_OUTER = new THREE.Color(0x6ea0ff);
+  const PASSIVE_RING          = new THREE.Color(0x2a60c8);
+  const PASSIVE_SHAFT_OUTER   = new THREE.Color(0x6ea0ff);
+  const PASSIVE_SHAFT_CORE    = new THREE.Color(0xa0c4ff);
   const ACTIVE_OUTLINE_INNER  = new THREE.Color(0xfff0c0);
   const ACTIVE_OUTLINE_OUTER  = new THREE.Color(0xffd680);
   const ACTIVE_RING           = new THREE.Color(0xffb050);

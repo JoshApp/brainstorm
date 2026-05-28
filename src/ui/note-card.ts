@@ -74,11 +74,21 @@ export function showNote(text: string) {
   });
   card.appendChild(hint);
 
+  // Tap ANYWHERE on the card itself dismisses too, not just on the
+  // backdrop. The card has pointerEvents:'auto' (so swipes through
+  // it don't pass to the world) which means tap-on-card would
+  // otherwise just sit there — players reach for the visible
+  // note to close it, this honours that instinct.
+  card.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    dismiss();
+  });
+
   document.body.appendChild(card);
   activeCard = card;
   // Modal layer so notes stack ABOVE any panel that might be open. The
   // shared backdrop handles tap-to-dismiss via onDismissRequest below;
-  // no document-wide pointerdown listener needed.
+  // tap-on-card uses the listener wired just above.
   openScreen({
     id: NOTE_SCREEN_ID,
     root: card,

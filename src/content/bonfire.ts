@@ -26,15 +26,15 @@ export const BONFIRE: ModelSpec = {
     flame:  { color: 0xffd58a, emissive: 0xffa040, emissiveIntensity: 3.4, roughness: 0.4 },
   },
   parts: [
-    // ── Stone ring (tighter than before) ────────────────────────
-    // Six jagged stones around a ~0.45m-radius pit. Heights +
+    // ── Stone ring (small jagged stones) ─────────────────────────
+    // Six stones around a ~0.38m-radius pit. Heights +
     // rotations jittered so no two read identical.
-    { kind: 'box', pos: [ 0.45, 0.09,  0.00], size: [0.18, 0.18, 0.22], rot: [0,  0.30, 0.1], mat: 'stone', jitter: 0.04 },
-    { kind: 'box', pos: [ 0.22, 0.08,  0.40], size: [0.20, 0.16, 0.18], rot: [0, -0.60, 0.0], mat: 'stone', jitter: 0.04 },
-    { kind: 'box', pos: [-0.25, 0.09,  0.38], size: [0.18, 0.18, 0.18], rot: [0,  0.90, 0.0], mat: 'stone', jitter: 0.05 },
-    { kind: 'box', pos: [-0.45, 0.07,  0.00], size: [0.18, 0.14, 0.22], rot: [0, -0.20, 0.1], mat: 'stone', jitter: 0.04 },
-    { kind: 'box', pos: [-0.22, 0.08, -0.40], size: [0.20, 0.16, 0.18], rot: [0,  0.40, 0.0], mat: 'stone', jitter: 0.05 },
-    { kind: 'box', pos: [ 0.26, 0.09, -0.38], size: [0.18, 0.18, 0.18], rot: [0, -0.80, 0.1], mat: 'stone', jitter: 0.04 },
+    { kind: 'box', pos: [ 0.38, 0.07,  0.00], size: [0.15, 0.14, 0.18], rot: [0,  0.30, 0.1], mat: 'stone', jitter: 0.04 },
+    { kind: 'box', pos: [ 0.19, 0.07,  0.34], size: [0.16, 0.13, 0.15], rot: [0, -0.60, 0.0], mat: 'stone', jitter: 0.04 },
+    { kind: 'box', pos: [-0.21, 0.07,  0.32], size: [0.15, 0.14, 0.15], rot: [0,  0.90, 0.0], mat: 'stone', jitter: 0.05 },
+    { kind: 'box', pos: [-0.38, 0.06,  0.00], size: [0.15, 0.12, 0.18], rot: [0, -0.20, 0.1], mat: 'stone', jitter: 0.04 },
+    { kind: 'box', pos: [-0.19, 0.07, -0.34], size: [0.16, 0.13, 0.15], rot: [0,  0.40, 0.0], mat: 'stone', jitter: 0.05 },
+    { kind: 'box', pos: [ 0.22, 0.07, -0.32], size: [0.15, 0.14, 0.15], rot: [0, -0.80, 0.1], mat: 'stone', jitter: 0.04 },
 
     // ── Dirt mound (where the sword + sticks sit) ───────────────
     {
@@ -56,22 +56,55 @@ export const BONFIRE: ModelSpec = {
     { kind: 'cylinder', pos: [ 0.10, 0.18,  0.10], radius: 0.012, height: 0.18, segments: 6, rot: [0.2,  0,    0.1], mat: 'twig' },
     { kind: 'cylinder', pos: [-0.11, 0.18, -0.09], radius: 0.012, height: 0.18, segments: 6, rot: [-0.2, 0,   -0.1], mat: 'twig' },
 
-    // ── Smouldering ember ring on top of the dirt ───────────────
-    { kind: 'cylinder', pos: [0, 0.16, 0], radius: 0.22, height: 0.04, segments: 12, mat: 'ember', castShadow: false },
+    // ── Smouldering coals — a handful of small bright dots ──────
+    // Replaces the previous full-disc ember layer (read as a
+    // bright white plate at the pit bottom). Now: a few jittered
+    // tiny additive sprites scattered across the mound's top,
+    // suggesting individual hot coals catching the eye instead
+    // of a uniform glow plate. They also flicker independently.
+    {
+      kind: 'sprite', pos: [-0.08, 0.16,  0.05], size: [0.14, 0.14],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff7028,
+      flicker: { scale: 0.30, bob: 0.005, speed: 3.4 },
+    },
+    {
+      kind: 'sprite', pos: [ 0.10, 0.16, -0.06], size: [0.12, 0.12],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff6020,
+      flicker: { scale: 0.28, bob: 0.005, speed: 2.7 },
+    },
+    {
+      kind: 'sprite', pos: [-0.04, 0.16, -0.12], size: [0.10, 0.10],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff8030,
+      flicker: { scale: 0.32, bob: 0.005, speed: 3.9 },
+    },
+    {
+      kind: 'sprite', pos: [ 0.05, 0.16,  0.12], size: [0.11, 0.11],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff6824,
+      flicker: { scale: 0.30, bob: 0.005, speed: 3.1 },
+    },
 
-    // ── Iron sword stuck point-first into the mound ─────────────
-    // Bladed half rises up THROUGH the flames; cross-guard sits
-    // just above the dirt; pommel is the small ball at the top.
-    // Two sub-blades for a tapered look (lower wider, upper
-    // narrower) so it reads as forged.
-    { kind: 'box',      pos: [0, 0.42, 0], size: [0.045, 0.40, 0.018], mat: 'iron' },
-    { kind: 'box',      pos: [0, 0.78, 0], size: [0.030, 0.32, 0.014], mat: 'iron' },
-    // Cross-guard.
-    { kind: 'box',      pos: [0, 0.225, 0], size: [0.32, 0.030, 0.040], mat: 'iron' },
-    // Hilt grip (just under the cross-guard).
-    { kind: 'cylinder', pos: [0, 0.17,  0], radius: 0.020, height: 0.08, segments: 6, mat: 'iron' },
-    // Pommel — round ball at the very top of the sword.
-    { kind: 'sphere',   pos: [0, 0.95, 0], radius: 0.040, mat: 'iron' },
+    // ── Iron sword stuck BLADE-FIRST into the mound ─────────────
+    // Dark Souls bonfire orientation: blade points DOWN into the
+    // dirt (mostly hidden), with the cross-guard at the dirt
+    // line, the hilt grip rising above, and the pommel as the
+    // round ball ON TOP of the hilt. The grip + pommel are the
+    // visible "sword icon" that reads as a bonfire from afar.
+    //
+    // Blade is two tapered segments running DOWN below the dirt
+    // line (y goes negative). Most of it sits inside the dirt
+    // mound + below the floor where the player can't see it; a
+    // small portion peeks above to meet the cross-guard.
+    { kind: 'box', pos: [0, -0.05, 0], size: [0.045, 0.50, 0.018], mat: 'iron' },
+    { kind: 'box', pos: [0, -0.40, 0], size: [0.030, 0.30, 0.014], mat: 'iron' },
+    // Cross-guard at the dirt line (just above the mound's top).
+    { kind: 'box',      pos: [0, 0.235, 0], size: [0.32, 0.040, 0.050], mat: 'iron' },
+    // Hilt grip — tall cylinder rising above the cross-guard,
+    // wrapped in dark binding (slightly wider than the bare
+    // tang of a real sword to read clearly).
+    { kind: 'cylinder', pos: [0, 0.36, 0], radius: 0.024, height: 0.20, segments: 8, mat: 'iron' },
+    // Pommel — round ball ON TOP of the hilt (where the user
+    // expected it to sit).
+    { kind: 'sphere',   pos: [0, 0.49, 0], radius: 0.045, mat: 'iron' },
 
     // ── Flame stack — sprites rising around the cross-guard ─────
     // Same flicker pattern as before but origins shifted slightly
