@@ -30,14 +30,36 @@ export const FLOOR_CANDLE: ModelSpec = {
     { kind: 'cylinder', pos: [0, 0.21, 0], radius: 0.004, height: 0.025, segments: 4, mat: 'wax' },
     // Flame
     { name: 'flame', kind: 'sphere', pos: [0, 0.245, 0], radius: 0.025, scale: [1, 1.4, 1], mat: 'flame', castShadow: false },
-    // Wisp halo (small, tight — floor candle has less reach than a torch)
+    // Flame tongue stack — same family as the bonfire's flicker
+    // sprites but much smaller. Three subtle layers + a faint
+    // warmth haze. Each carries an independent flicker (scale
+    // wobble + Y bob) with random phase so layers don't sync.
     {
       kind: 'sprite',
       pos: [0, 0.30, 0],
       size: [0.18, 0.26],
       texture: 'fire-wisp',
       blending: 'additive',
-      color: 0xffaa55,
+      color: 0xffe0a8,
+      flicker: { scale: 0.20, bob: 0.020, speed: 3.0 },
+    },
+    {
+      kind: 'sprite',
+      pos: [0, 0.34, 0],
+      size: [0.12, 0.22],
+      texture: 'fire-wisp',
+      blending: 'additive',
+      color: 0xff9040,
+      flicker: { scale: 0.26, bob: 0.030, speed: 2.4 },
+    },
+    {
+      kind: 'sprite',
+      pos: [0, 0.27, 0],
+      size: [0.30, 0.30],
+      texture: 'fire-wisp',
+      blending: 'additive',
+      color: 0xc8632a,
+      flicker: { scale: 0.10, bob: 0.012, speed: 1.4 },
     },
   ],
   light: {

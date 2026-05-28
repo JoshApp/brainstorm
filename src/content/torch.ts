@@ -65,8 +65,11 @@ export const WALL_TORCH: ModelSpec = {
       mat: 'flame',
       castShadow: false,
     },
-    // Wisp: additive-blended halo sprite above the flame. Smaller than before
-    // (was 0.55 × 0.75) so it doesn't blow out the room.
+    // Wisp: additive-blended halo sprite above the flame. The
+    // 'wisp' name is recognised by torchlight.ts updateTorchlight
+    // for the dramatic dim-out cycles, so this one stays
+    // animation-free (driven by the runtime ticker instead of the
+    // built-in flicker field).
     {
       name: 'wisp',
       kind: 'sprite',
@@ -75,6 +78,29 @@ export const WALL_TORCH: ModelSpec = {
       texture: 'fire-wisp',
       blending: 'additive',
       color: 0xffaa55,
+    },
+    // Subtle flame tongue layers stacked above the flame sphere —
+    // same family as the bonfire's flicker stack but small.
+    // These DON'T have the 'wisp' name so torchlight.ts won't
+    // touch them; their own per-sprite flicker (scale wobble + Y
+    // bob, desynced via random phase) does the work.
+    {
+      kind: 'sprite',
+      pos: [0, 0.06, 0],
+      size: [0.14, 0.22],
+      texture: 'fire-wisp',
+      blending: 'additive',
+      color: 0xffd070,
+      flicker: { scale: 0.22, bob: 0.020, speed: 3.2 },
+    },
+    {
+      kind: 'sprite',
+      pos: [0, 0.14, 0],
+      size: [0.10, 0.22],
+      texture: 'fire-wisp',
+      blending: 'additive',
+      color: 0xff7028,
+      flicker: { scale: 0.30, bob: 0.030, speed: 2.6 },
     },
   ],
   slots: {
