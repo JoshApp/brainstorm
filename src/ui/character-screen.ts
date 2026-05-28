@@ -77,7 +77,7 @@ const PROF_GROUPS: Array<{ heading: string; rows: Array<{ kind: ProficiencyKind;
 
 let root: HTMLDivElement | null = null;
 let summaryEl: HTMLDivElement | null = null;
-let unspentLabel: HTMLDivElement | null = null;
+let unspentLabel: HTMLSpanElement | null = null;
 let attrRows: AttributeRow[] = [];
 let profRows: ProficiencyRow[] = [];
 let unsubscribe: (() => void) | null = null;
@@ -169,13 +169,14 @@ export function openCharacterScreen(): void {
   } as Partial<CSSStyleDeclaration>);
   const attrTitle = document.createElement('span');
   attrTitle.textContent = 'ATTRIBUTES';
-  unspentLabel = document.createElement('span');
-  Object.assign(unspentLabel.style, {
+  const unspentSpan = document.createElement('span');
+  Object.assign(unspentSpan.style, {
     color: 'rgba(255, 220, 130, 0.90)',
   } as Partial<CSSStyleDeclaration>);
   attrHeader.appendChild(attrTitle);
-  attrHeader.appendChild(unspentLabel);
+  attrHeader.appendChild(unspentSpan);
   attrCol.appendChild(attrHeader);
+  unspentLabel = unspentSpan;
 
   attrRows = ATTR_DEFS.map((def) => buildAttributeRow(def, attrCol));
   body.appendChild(attrCol);
