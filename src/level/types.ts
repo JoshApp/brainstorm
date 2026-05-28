@@ -122,6 +122,14 @@ export type PropSpec =
        *  affect the open animation or hinge geometry; purely the
        *  silhouette and built-in materials. */
       tier?: 'supply' | 'iron' | 'boss';
+      /** Set by the corridor-clearance post-process when a chest's
+       *  position overlaps a corridor rect. Builder skips collision
+       *  push for the chest so the player can walk through it — the
+       *  alternative is being permanently stuck behind a chest the
+       *  vault author placed in a narrow choke. Interactability is
+       *  untouched: the OPEN prompt still fires when the player is
+       *  in range. */
+      noCollision?: boolean;
     }
   // 'stash-chest' = the meta-progression stash entry point. Lives in
   // the safe room. Interacting opens the stash UI (loot boxes saved

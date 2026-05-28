@@ -590,11 +590,13 @@ export function buildLevel(
       }
     } else if (prop.kind === 'chest') {
       spawnChest(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.loot, prop.tier);
-      obstacles.push({
-        kind: 'aabb',
-        minX: prop.x - 0.28, maxX: prop.x + 0.28,
-        minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
-      });
+      if (!prop.noCollision) {
+        obstacles.push({
+          kind: 'aabb',
+          minX: prop.x - 0.28, maxX: prop.x + 0.28,
+          minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
+        });
+      }
     } else if (prop.kind === 'stash-chest') {
       spawnStashChest(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0);
       obstacles.push({

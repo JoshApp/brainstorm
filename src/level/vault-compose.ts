@@ -298,8 +298,51 @@ export function composeFloor(
   resolveAllFacings(result);
   applyGeometryWarp(result, rand);
   applySurfaceClutter(result, rand);
+  // PROGRESSION GUARANTEE: walk every chest in the floor and disable
+  // its collision if it overlaps a corridor rect. A chest planted in
+  // a corridor (vault author put 'c' at a cell adjacent to a corridor
+  // opening; corridor + chest footprint overlap) creates a hard
+  // block — the player cannot advance and there is no way around. We
+  // keep the chest visible and interactable so the loot can still be
+  // taken; only the collision push is dropped. Quiet, conservative
+  // safety net: most chests aren't affected, the ones that are can
+  // still be opened, and no permanent stuck state is possible.
+  clearChestsBlockingCorridors(result);
 
   return result;
+}
+
+/** Disable collision on any chest whose footprint overlaps a corridor
+ *  rect. See progression-guarantee note at the call site. */
+function clearChestsBlockingCorridors(result: LevelSpec): void {
+  if (!result.corridors || result.corridors.length === 0) return;
+  const corridorAabbs = result.corridors.map((c) => ({
+    minX: c.rect.x - c.rect.w / 2,
+    maxX: c.rect.x + c.rect.w / 2,
+    minZ: c.rect.z - c.rect.d / 2,
+    maxZ: c.rect.z + c.rect.d / 2,
+  }));
+  // Match the chest AABB the builder pushes — slightly wider margin
+  // so a chest that just SKIMS a corridor edge also gets cleared
+  // (the player's collision radius would still catch the protrusion).
+  const CHEST_HX = 0.32;
+  const CHEST_HZ = 0.27;
+  for (const prop of result.props) {
+    if (prop.kind !== 'chest') continue;
+    const aabb = {
+      minX: prop.x - CHEST_HX, maxX: prop.x + CHEST_HX,
+      minZ: prop.z - CHEST_HZ, maxZ: prop.z + CHEST_HZ,
+    };
+    for (const c of corridorAabbs) {
+      const overlap =
+        aabb.maxX > c.minX && aabb.minX < c.maxX &&
+        aabb.maxZ > c.minZ && aabb.minZ < c.maxZ;
+      if (overlap) {
+        prop.noCollision = true;
+        break;
+      }
+    }
+  }
 }
 
 // ── helpers ──────────────────────────────────────────────────────
