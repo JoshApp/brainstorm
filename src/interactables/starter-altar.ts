@@ -50,7 +50,7 @@ export function spawnStarterAltar(
   const baseD = 0.55;
   const base = new THREE.Mesh(
     new THREE.BoxGeometry(baseW, baseHeight, baseD),
-    materials.pillar,
+    materials.wall,
   );
   base.position.y = baseHeight / 2;
   base.castShadow = true;
@@ -62,7 +62,7 @@ export function spawnStarterAltar(
   const topH = 0.06;
   const top = new THREE.Mesh(
     new THREE.BoxGeometry(topW, topH, topD),
-    materials.pillar,
+    materials.wall,
   );
   top.position.y = baseHeight + topH / 2;
   top.castShadow = true;
