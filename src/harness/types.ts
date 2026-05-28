@@ -157,4 +157,10 @@ export interface HarnessApi {
   /** Force-pause (default) / force-unpause without running an action. */
   pause(): void;
   resume(): void;
+  /** PWA update status: 'pending' = a new SW is installed and waiting
+   *  to activate. Reads through to src/pwa-update.ts. */
+  updateStatus(): 'none' | 'pending';
+  /** Apply a pending PWA update (SKIP_WAITING + reload). The CLI driver
+   *  calls this between episodes when it's safe to take a new build. */
+  applyUpdate(): Promise<void>;
 }

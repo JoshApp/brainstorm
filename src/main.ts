@@ -45,7 +45,7 @@ import { isAnyScreenOpen } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
-import { setupPwaAutoUpdate } from './pwa-update';
+import { setupPwaAutoUpdate, maybeApplyUpdateSilently } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
@@ -809,6 +809,11 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // a function so sub-screens (like the test chambers picker) can
   // re-open the title on BACK.
   function openTitle() {
+    // Title is the safest moment to apply a pending PWA update — no
+    // in-progress run state, save (if any) is on disk. If an update
+    // is pending and we're not in the harness, take it now; the page
+    // navigates and this title invocation becomes a no-op.
+    void maybeApplyUpdateSilently();
     const save = loadSave();
     showStartScreen({
     hasSave: !!save,
