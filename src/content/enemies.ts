@@ -561,6 +561,69 @@ function wraithModel(bodyColor: number, eyeColor: number, eyeEmissive: number): 
   };
 }
 
+// Stoneguard — slow tanky armoured brute. Box-heavy silhouette to read
+// as "this one wears plates, not flesh." Tiny recessed eye slits (no
+// flaring red — this is mineral, not feral). One arm carries a maul:
+// thick handle + spherical stone head, the visible threat.
+function stoneguardModel(bodyColor: number, eyeColor: number): ModelSpec {
+  return {
+    id: 'stoneguard',
+    materials: {
+      // Stone — warm gray, very rough, faint dust emissive so it reads
+      // even in dark corners without becoming a silhouette.
+      body: {
+        color: bodyColor,
+        roughness: 0.95,
+        emissive: 0x0a0908,
+        emissiveIntensity: 0.35,
+        flatShading: 'auto',
+        dissolvable: true,
+      },
+      // Eye slits — dim red, almost embers behind the helmet rather
+      // than the bright glares the flesh mobs have.
+      eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: 1.2, roughness: 1.0 },
+      // Maul head — slightly more metallic so it picks up torchlight
+      // distinctly from the stone body. Reads as the swung weapon.
+      maul: { color: 0x2a2622, roughness: 0.55, metalness: 0.6, flatShading: 'auto' },
+    },
+    slots: {
+      rig: { pos: [0, 1.20, 0] },     // taller than ghoul (1.05)
+    },
+    parts: [
+      // FEET — wide stone slabs.
+      { parent: 'rig', kind: 'box', pos: [-0.22, -1.12, 0], size: [0.30, 0.12, 0.36], mat: 'body', jitter: 0.012 },
+      { parent: 'rig', kind: 'box', pos: [ 0.22, -1.12, 0], size: [0.30, 0.12, 0.36], mat: 'body', jitter: 0.012 },
+      // LEGS — thick boxy greaves.
+      { parent: 'rig', kind: 'box', pos: [-0.22, -0.70, 0], size: [0.26, 0.70, 0.26], mat: 'body', jitter: 0.018 },
+      { parent: 'rig', kind: 'box', pos: [ 0.22, -0.70, 0], size: [0.26, 0.70, 0.26], mat: 'body', jitter: 0.018 },
+      // TORSO — the defining plate. Boxy, wide. Slight overhang at
+      // the shoulders sells "armoured."
+      { name: 'body', parent: 'rig', kind: 'box', pos: [0, -0.05, 0], size: [0.70, 0.65, 0.42], mat: 'body', jitter: 0.024 },
+      // SHOULDER PAULDRONS — flanking the torso top, blocky.
+      { parent: 'rig', kind: 'box', pos: [-0.45, 0.20, 0], size: [0.22, 0.22, 0.30], mat: 'body', jitter: 0.020 },
+      { parent: 'rig', kind: 'box', pos: [ 0.45, 0.20, 0], size: [0.22, 0.22, 0.30], mat: 'body', jitter: 0.020 },
+      // ARMS — thick capsules hanging from the pauldrons.
+      { parent: 'rig', kind: 'capsule', pos: [-0.45, -0.10, 0], radius: 0.11, height: 0.40, mat: 'body', jitter: 0.018 },
+      { parent: 'rig', kind: 'capsule', pos: [ 0.45, -0.10, 0], radius: 0.11, height: 0.40, mat: 'body', jitter: 0.018 },
+      // RIGHT FIST — bare, on the off side.
+      { parent: 'rig', kind: 'sphere', pos: [-0.45, -0.42, 0], radius: 0.13, segments: [10, 8], mat: 'body', jitter: 0.018 },
+      // LEFT HAND MAUL — handle (thin capsule) + head (chunky box).
+      // The head sits BELOW the fist so the maul is "resting at the
+      // ready" silhouette.
+      { parent: 'rig', kind: 'cylinder', pos: [ 0.45, -0.32, 0.05], radius: 0.025, height: 0.42, mat: 'maul' },
+      { parent: 'rig', kind: 'box',      pos: [ 0.45, -0.58, 0.05], size: [0.22, 0.22, 0.22], mat: 'maul', jitter: 0.010 },
+      // HELMET — boxy faceplate sitting on a short neck. Slightly
+      // narrower than the torso so the eye reads "head set in heavy
+      // plate."
+      { parent: 'rig', kind: 'box', pos: [0, 0.50, 0], size: [0.42, 0.36, 0.36], mat: 'body', jitter: 0.018 },
+      // EYE SLITS — two tiny dim rectangles set deep into the helmet.
+      // Small + recessed so the embers read as "behind a visor."
+      { parent: 'rig', kind: 'box', pos: [-0.09, 0.52, -0.19], size: [0.06, 0.025, 0.02], mat: 'eyes' },
+      { parent: 'rig', kind: 'box', pos: [ 0.09, 0.52, -0.19], size: [0.06, 0.025, 0.02], mat: 'eyes' },
+    ],
+  };
+}
+
 // --- Enemy registry -----------------------------------------------------
 
 export const ENEMIES: Record<string, EnemySpec> = {
@@ -777,6 +840,52 @@ export const ENEMIES: Record<string, EnemySpec> = {
       pool: [
         { itemId: 'heartburn', weight: 1 },          // fabled — the headline
         { itemId: 'bone-amulet', weight: 2 },
+      ],
+    },
+  },
+
+  // Stoneguard — slow, armoured, hits like a truck. Changes combat
+  // rhythm: the fast mobs taught you to flail; this one teaches you to
+  // time the dodge. The huge windup is escapable on sight, but the
+  // recovery is short enough that you can't punish endlessly — you
+  // get ONE strike per cycle, two if you read it perfectly. Physical
+  // armor 2 means trash-tier weapons take a few hits to chew through.
+  stoneguard: {
+    id: 'stoneguard',
+    name: 'stoneguard',
+    hp: 6,                       // tankiest non-boss
+    moveSpeed: 1.0,              // glacial — player retreat (2.5) outruns easily
+    attackDamage: 3,             // biggest single-hit damage in the roster
+    attackRange: 1.9,            // long reach (maul + heavy frame)
+    strikeRange: 1.65,           // big gap → big punish for misreading the windup
+    windupTime: 1.40,            // the giveaway tell — slow overhead heave
+    strikeTime: 0.22,
+    recoverTime: 1.00,           // long recovery — missed swings are exploitable
+    damageType: 'physical',
+    model: stoneguardModel(0x3a3530, 0xff5530),
+    baseEyeEmissive: 1.2,
+    collisionRadius: 0.55,       // wider footprint — harder to slip around
+    physicalArmor: 2,            // the defining stat — chips through trash weapons
+    magicArmor: 0,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    presence: 'lurch',           // shambling weight-shift; reads heavy
+    // Sees and hears poorly — slow, lumbering. Easy to sneak past if
+    // you commit to it. Once aggro'd, sticks for a long time.
+    sightRange: 6,
+    sightConeHalfAngle: 0.95,    // ~55° half / 110° — narrower than ghoul
+    hearingRange: 3.0,           // can feel footfalls through the floor
+    loseSightTime: 6,
+    xp: 12,
+    gold: [8, 16],
+    drops: {
+      rate: 0.40,
+      pool: [
+        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'wooden-shield', weight: 2 },     // shield drops feel earned from a tank
+        { itemId: 'iron-coif', weight: 2 },
+        { itemId: 'ring-of-bloodthirst', weight: 1 },
       ],
     },
   },

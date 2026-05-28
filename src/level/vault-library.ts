@@ -18,6 +18,7 @@ const RAY_VIOLET = godRay({ tint: 0xa080ff });
 //   F  fountain  ^  spike trap
 //   T  torch N   t  torch S  <  torch W       >  torch E
 //   G  ghoul     R  rat      K  skirmisher    W  wraith   Y  acolyte
+//   M  stoneguard (slow armoured tank)
 //   X  random enemy (composer fills depth-appropriate)   B  boss slot
 //
 // Each vault may also declare a `props` array of float-coord

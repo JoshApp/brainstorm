@@ -23,7 +23,8 @@
 //   P  pillar    A  altar    c  chest          C  corpse
 //   F  fountain  ^  spike trap
 //   T  torch (N) t  torch (S)  <  torch (W)  >  torch (E)
-//   G  ghoul     R  rat      K  skirmisher    W  wraith   X  random  B  boss
+//   G  ghoul     R  rat      K  skirmisher    W  wraith   M  stoneguard
+//   X  random   B  boss
 
 import type { TileMap } from './types';
 
