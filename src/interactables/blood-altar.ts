@@ -9,6 +9,7 @@ import { damagePlayer } from '../player/health';
 import { spawnBloodBurst } from '../effects/blood-burst';
 import { playEquipClick } from '../audio/sfx';
 import { RARITY_COLORS } from '../content/items';
+import { registerItemPreview, setItemPreviewAnchor, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
 
@@ -113,6 +114,16 @@ export function spawnBloodAltar(
   let phase = 0;
   let taken = false;
 
+  // Item-preview label. Blood altars charge 4 HP up front; the player
+  // needs to KNOW what they're paying for before tapping TAKE. The
+  // preview shows when the player is within PREVIEW_RANGE (the
+  // approach distance, generous enough to read before committing to
+  // the altar). Anchored ~2.0m above the basin so it floats above
+  // the offering itself.
+  const PREVIEW_RANGE = 4.0;
+  registerItemPreview(id, cursedItem);
+  const previewY = pos.y + 2.0;
+
   const interactable: import('./types').Interactable = {
     id,
     position: pos.clone(),
@@ -154,11 +165,18 @@ export function spawnBloodAltar(
       interactable.destroyed = true;
       interactable.promptLabel = '';
     },
-    tick(dt: number) {
+    tick(dt: number, playerPos: THREE.Vector3) {
       if (taken) return;
       phase += dt;
       offerGroup.rotation.y = rotY + phase * ROTATE_SPEED;
       offerGroup.position.y = pos.y + restingY + Math.sin(phase * BOB_FREQUENCY * Math.PI * 2) * BOB_AMPLITUDE;
+      // Show the preview only when the player is in approach range —
+      // not constantly across the floor, since blood altars are a
+      // commitment beat, not a picker.
+      const dx = playerPos.x - pos.x;
+      const dz = playerPos.z - pos.z;
+      const inRange = (dx * dx + dz * dz) < PREVIEW_RANGE * PREVIEW_RANGE;
+      setItemPreviewAnchor(id, pos.x, previewY, pos.z, inRange);
     },
     destroyed: false,
     onDestroy() {
@@ -173,6 +191,7 @@ export function spawnBloodAltar(
       // Also dim the violet disc — the altar is "spent" after the
       // offering is taken. Stays visible as a marker but quieter.
       discMat.opacity = 0.18;
+      unregisterItemPreview(id);
       onDestroy?.();
     },
   };

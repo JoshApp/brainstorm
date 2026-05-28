@@ -62,6 +62,7 @@ import { tickBloodBurst } from './effects/blood-burst';
 import { actForDepth } from './level/acts';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
+import { tickItemPreviews } from './ui/item-preview';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar, updateHpBar } from './ui/hp-bar';
 import { createBuffBar, updateBuffBar } from './ui/buff-bar';
@@ -522,6 +523,11 @@ function tick() {
   // interact UI now. Updated each frame so
   // it tracks the target as camera moves.
   updateInteractLabel(inRange, camera, canvas);
+  // Item-preview labels — used by starter altars + blood altar so the
+  // player can see what they'd be taking before committing. The
+  // per-altar tick sets visibility; this driver just does the
+  // world→screen projection across the whole set.
+  tickItemPreviews(camera, canvas);
   // Outline highlight on the in-range interactable. realDt (not scaled)
   // so the pulse animates at real-time even during hit-pause / scenarios.
   updateOutline(inRange, realDt);

@@ -5,6 +5,7 @@ import { registerInteractable } from './system';
 import { setSlot } from '../player/equipment';
 import { emit, on as onEvent } from '../broadcast/event-bus';
 import { playEquipClick } from '../audio/sfx';
+import { registerItemPreview, setItemPreviewAnchor, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
 
@@ -105,6 +106,16 @@ export function spawnStarterAltar(
   let phase = 0;
   let taken = false;
 
+  // Item-preview label — floats name + flavor + stats above the altar.
+  // Starter altars surface the preview UNCONDITIONALLY once placed:
+  // the room IS the picker, the player should see all three options
+  // at once when surveying the chamber. The shared screen-projector
+  // hides it automatically when off-screen, behind the camera, or
+  // while a menu is open. Anchored ~1.7m above the altar base so it
+  // floats above the rotating weapon, not on top of it.
+  registerItemPreview(id, weaponItem);
+  const previewY = pos.y + 1.7;
+
   const interactable: import('./types').Interactable = {
     id,
     position: pos.clone(),
@@ -141,6 +152,7 @@ export function spawnStarterAltar(
       phase += dt;
       weaponGroup.rotation.y = rotY + phase * ROTATE_SPEED;
       weaponGroup.position.y = pos.y + restingY + Math.sin(phase * BOB_FREQUENCY * Math.PI * 2) * BOB_AMPLITUDE;
+      setItemPreviewAnchor(id, pos.x, previewY, pos.z, true);
     },
     destroyed: false,
     // Cleanup: remove the floating weapon group + dispose its meshes,
@@ -157,6 +169,7 @@ export function spawnStarterAltar(
         for (const m of mats) m.dispose();
         mesh.geometry.dispose();
       });
+      unregisterItemPreview(id);
       onDestroy?.();
       unsubscribe();
     },
