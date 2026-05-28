@@ -47,13 +47,16 @@ function hashSeed(idOrDepth: string | number, seed: number): number {
 type EnemyRoll = { enemyId: string; weight: number };
 
 function rollTableFor(depth: number): EnemyRoll[] {
-  // Depth 3-4: mostly trash mobs, occasional skirmisher.
+  // Depth 3-4: mostly trash mobs, occasional skirmisher. Ooze
+  // shows up here too — the AoE-or-suffer math is a worthwhile
+  // mid-early teach.
   if (depth <= 4) {
     return [
       { enemyId: 'rat',        weight: 3 },
       { enemyId: 'skirmisher', weight: 2 },
       { enemyId: 'ghoul',      weight: 1 },
       { enemyId: 'acolyte',    weight: 1 },
+      { enemyId: 'ooze',       weight: 1 },
     ];
   }
   // Depth 5-7: ghouls in the mix more; acolytes start appearing in pairs
@@ -65,6 +68,7 @@ function rollTableFor(depth: number): EnemyRoll[] {
       { enemyId: 'skirmisher', weight: 2 },
       { enemyId: 'ghoul',      weight: 3 },
       { enemyId: 'acolyte',    weight: 2 },
+      { enemyId: 'ooze',       weight: 2 },
       { enemyId: 'stoneguard', weight: 1 },
     ];
   }
@@ -75,6 +79,7 @@ function rollTableFor(depth: number): EnemyRoll[] {
     { enemyId: 'skirmisher', weight: 2 },
     { enemyId: 'ghoul',      weight: 3 },
     { enemyId: 'acolyte',    weight: 2 },
+    { enemyId: 'ooze',       weight: 2 },
     { enemyId: 'stoneguard', weight: 2 },
     { enemyId: 'wraith',     weight: 1 },
   ];
@@ -114,7 +119,7 @@ export function populateTemplate(template: TileMap, depth: number, rand: () => n
   const bossChar: Record<string, string> = { wraith: 'W' };
   const enemyChar: Record<string, string> = {
     rat: 'R', skirmisher: 'K', ghoul: 'G', wraith: 'W', acolyte: 'Y',
-    stoneguard: 'M',
+    stoneguard: 'M', ooze: 'Z',
   };
   return template.map(row => {
     let out = '';

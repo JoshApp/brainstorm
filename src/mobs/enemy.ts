@@ -108,10 +108,17 @@ const tmpMuzzle = new THREE.Vector3();
 const tmpTarget = new THREE.Vector3();
 const tmpEssenceOrigin = new THREE.Vector3();
 
+/** Optional callback fired right after an enemy reaches 0 HP — used by
+ *  the builder to spawn split-on-death offspring. Runs AFTER drops +
+ *  the kill event, so any spawned children appear in the same frame's
+ *  enemy list and the kill is already recorded. */
+export type EnemyOnDeath = (spec: EnemySpec, deathPosition: THREE.Vector3) => void;
+
 export function createEnemy(
   scene: THREE.Object3D,
   position: THREE.Vector3,
   spec: EnemySpec,
+  onDeath?: EnemyOnDeath,
 ): Enemy {
   // Container: world position + yaw to face player.
   const container = new THREE.Group();
@@ -456,6 +463,11 @@ export function createEnemy(
       // zero-damage "hit" on the disintegrating corpse.
       built.hitTargets.length = 0;
       emit({ type: 'enemy:killed', enemyId: spec.id });
+      // Split-on-death — fire the builder's spawn callback so any
+      // children appear in the same frame's enemy list. Pass a CLONE
+      // of the death position because the builder may need it after
+      // we've moved on (and clone is cheap).
+      if (onDeath) onDeath(spec, container.position.clone());
       // Start the death animation. Essence emits CONTINUOUSLY during
       // the dissolve — see tickDying. Gold coins drop now as physical
       // floor pickups with bundled value.

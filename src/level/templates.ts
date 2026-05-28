@@ -24,6 +24,7 @@
 //   F  fountain  ^  spike trap
 //   T  torch (N) t  torch (S)  <  torch (W)  >  torch (E)
 //   G  ghoul     R  rat      K  skirmisher    W  wraith   M  stoneguard
+//   Z  ooze (splits)
 //   X  random   B  boss
 
 import type { TileMap } from './types';

@@ -144,6 +144,24 @@ export interface EnemySpec {
    * accounts for walls. Wraiths use this.
    */
   phasing?: boolean;
+
+  // --- Split on death ---
+  /**
+   * If set, when this enemy dies the builder spawns `count` enemies
+   * of `enemyId` at the death position (small angular offsets so they
+   * don't stack on a single pixel). Children inherit room membership
+   * so room-clear detection still works correctly — you have to kill
+   * the spawned offspring too.
+   *
+   * Recursion terminates naturally: the child enemy spec should NOT
+   * carry its own `splitsInto`, otherwise oozes would multiply forever.
+   */
+  splitsInto?: {
+    enemyId: string;
+    count: number;
+    /** Radial distance to scatter children. Default 0.4m. */
+    radius?: number;
+  };
 }
 
 // ── Drop table ──────────────────────────────────────────────────────
@@ -624,6 +642,56 @@ function stoneguardModel(bodyColor: number, eyeColor: number): ModelSpec {
   };
 }
 
+// Ooze — squat blobby creature, no humanoid silhouette. Built from a
+// few squashed spheres with a brightly emissive interior orb so the
+// "alive" reads even when the outer body is dim against a dark floor.
+// `scale` lets the same model serve the big parent and the smaller
+// split offspring without authoring two factories.
+function oozeModel(bodyColor: number, innerColor: number, scale: number = 1): ModelSpec {
+  // s — geometry multiplier. Applied through size/radius rather than
+  // a parent group transform so collision radius (set on the spec, not
+  // the model) and visible size stay in sync at the spec level.
+  const s = scale;
+  return {
+    id: `ooze-${scale.toFixed(2)}`,
+    materials: {
+      body: {
+        color: bodyColor,
+        roughness: 0.55,
+        emissive: 0x080a04,
+        emissiveIntensity: 0.6,
+        flatShading: 'auto',
+        dissolvable: true,
+        // Soft sickly rim so the silhouette glows faintly even when
+        // the body is in shadow — the ooze should always read as
+        // "wet", not "lump of stone."
+        rim: { color: 0x88cc33, power: 2.2, intensity: 0.5 },
+      },
+      core: {
+        color: 0x000000,
+        emissive: innerColor,
+        emissiveIntensity: 2.4,
+        roughness: 1.0,
+      },
+    },
+    slots: {
+      rig: { pos: [0, 0.18 * s, 0] },
+    },
+    parts: [
+      // OUTER BODY — squashed sphere (wide, low). Mild jitter for
+      // organic surface variation; the rim glow + scale animation in
+      // 'twitch' presence sells the "blob" feel.
+      { name: 'body', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], scale: [1.15 * s, 0.85 * s, 1.15 * s], radius: 0.22, segments: [16, 12], mat: 'body', jitter: 0.018 },
+      // Slight TRAILING BUMP at the back — gives the blob a direction
+      // hint (faces forward via the head position).
+      { parent: 'rig', kind: 'sphere', pos: [0, -0.02 * s, 0.12 * s], radius: 0.12 * s, segments: [10, 8], mat: 'body', jitter: 0.015 },
+      // CORE — bright emissive orb inside. Reads as the nucleus you
+      // need to break.
+      { parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.07 * s, segments: [10, 8], mat: 'core' },
+    ],
+  };
+}
+
 // --- Enemy registry -----------------------------------------------------
 
 export const ENEMIES: Record<string, EnemySpec> = {
@@ -840,6 +908,85 @@ export const ENEMIES: Record<string, EnemySpec> = {
       pool: [
         { itemId: 'heartburn', weight: 1 },          // fabled — the headline
         { itemId: 'bone-amulet', weight: 2 },
+      ],
+    },
+  },
+
+  // Ooze — slow contact-damage blob. Dies in two strikes, BUT splits
+  // into two small oozes on death (see splitsInto). Kills net more
+  // total HP than facing a single small mob; the math is "spend two
+  // sword swings to make the problem WORSE." The teach: AoE / cone-
+  // catch matters; if you can clip two small oozes in one wide arc,
+  // the split is contained. If you take them one at a time after a
+  // careless kill, you spend three more swings on cleanup.
+  ooze: {
+    id: 'ooze',
+    name: 'ooze',
+    hp: 2,
+    moveSpeed: 1.4,
+    attackDamage: 1,
+    attackRange: 1.0,
+    strikeRange: 0.85,
+    windupTime: 0.55,           // short — it just lurches into you
+    strikeTime: 0.18,
+    recoverTime: 0.45,
+    damageType: 'physical',
+    model: oozeModel(0x355230, 0x88dd33, 1.0),
+    baseEyeEmissive: 0,         // no eyes — emissive lives in the core orb instead
+    collisionRadius: 0.32,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'core',    // re-use the core orb for the windup flare
+    presence: 'twitch',         // wobbly micro-scurry; reads "alive jelly"
+    sightRange: 5,
+    sightConeHalfAngle: 1.4,    // ~80° — basically omnidirectional sensing
+    hearingRange: 3.0,
+    loseSightTime: 5,
+    xp: 4,
+    gold: [0, 4],
+    splitsInto: { enemyId: 'ooze-small', count: 2, radius: 0.5 },
+    drops: {
+      rate: 0.20,
+      pool: [
+        { itemId: 'healing-potion', weight: 1 },
+      ],
+    },
+  },
+
+  // Small ooze — the offspring. Less HP, less damage, no further
+  // splitting. The reward for killing a parent ooze cleanly is that
+  // these two replace it; the punishment for killing it sloppily is
+  // that you face them anyway.
+  'ooze-small': {
+    id: 'ooze-small',
+    name: 'ooze',
+    hp: 1,                       // one-shot kill, like a rat
+    moveSpeed: 1.6,              // slightly faster — they're "cleanup speed"
+    attackDamage: 1,
+    attackRange: 0.8,
+    strikeRange: 0.7,
+    windupTime: 0.45,
+    strikeTime: 0.14,
+    recoverTime: 0.40,
+    damageType: 'physical',
+    model: oozeModel(0x355230, 0x88dd33, 0.55),
+    baseEyeEmissive: 0,
+    collisionRadius: 0.20,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'core',
+    presence: 'twitch',
+    sightRange: 4,
+    sightConeHalfAngle: 1.4,
+    hearingRange: 2.0,
+    loseSightTime: 3,
+    xp: 1,
+    gold: [0, 1],
+    // No splitsInto — recursion terminator.
+    drops: {
+      rate: 0.05,                // mostly nothing — they're cleanup
+      pool: [
+        { itemId: 'healing-potion', weight: 1 },
       ],
     },
   },

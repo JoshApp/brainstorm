@@ -8,7 +8,7 @@ import { spawnVase, spawnVaseCluster, type Destructible } from './destructibles'
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { createEnemy, type Enemy } from '../mobs/enemy';
-import { ENEMIES } from '../content/enemies';
+import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
 import { spawnChest } from '../interactables/chest';
@@ -781,6 +781,63 @@ export function buildLevel(
   const aliveByRoom = new Map<string, number>();
   const enemies: Enemy[] = [];
   const levelDepth = spec.depth ?? 1;
+
+  // Single helper for spawning an enemy into the live level. Used by
+  // both the initial spawn loop AND the split-on-death callback so the
+  // bookkeeping (room membership, alive count) stays consistent across
+  // both paths. Recursive: the spawned child receives `spawnInto`
+  // again as its onDeath, so a child that itself has splitsInto will
+  // also split correctly. Termination relies on the child spec NOT
+  // carrying splitsInto (e.g. ooze-small has none — ooze cascades stop
+  // after one generation).
+  function spawnInto(baseSpec: EnemySpec, pos: THREE.Vector3, roomId: string | null): Enemy {
+    const enemySpec = scaleEnemySpec(baseSpec, levelDepth, []);
+    const resolved = walkable.resolveSpawn(pos.x, pos.z, enemySpec.collisionRadius);
+    const e = createEnemy(
+      root,
+      new THREE.Vector3(resolved.x, 0, resolved.z),
+      enemySpec,
+      onEnemyDeath,
+    );
+    enemies.push(e);
+    enemyRoom.set(e, roomId);
+    if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
+    return e;
+  }
+
+  // Fired right after an enemy dies in enemy.ts:takeDamage. Handles
+  // splitsInto — spawns N children scattered in a small ring around
+  // the death position. Roomid comes from where the PARENT was
+  // tracked so split children stay attributed to the same room for
+  // door-clear bookkeeping (kill the parent → kids spawn in the same
+  // sealed combat room → you have to kill them too).
+  const onEnemyDeath = (deadSpec: EnemySpec, deathPos: THREE.Vector3) => {
+    const split = deadSpec.splitsInto;
+    if (!split) return;
+    const childBase = ENEMIES[split.enemyId];
+    if (!childBase) return;
+    const radius = split.radius ?? 0.4;
+    // Find the parent's room by scanning the existing map — quick at
+    // this scale, and avoids passing room context through the enemy
+    // layer.
+    let parentRoom: string | null = null;
+    for (const [e, r] of enemyRoom) {
+      if (e.group.position.distanceToSquared(deathPos) < 0.01) {
+        parentRoom = r;
+        break;
+      }
+    }
+    for (let i = 0; i < split.count; i++) {
+      const angle = (i / split.count) * Math.PI * 2 + Math.random() * 0.3;
+      const childPos = new THREE.Vector3(
+        deathPos.x + Math.cos(angle) * radius,
+        0,
+        deathPos.z + Math.sin(angle) * radius,
+      );
+      spawnInto(childBase, childPos, parentRoom);
+    }
+  };
+
   for (const s of spec.spawns) {
     const baseSpec = ENEMIES[s.enemyId];
     if (!baseSpec) {
@@ -797,7 +854,12 @@ export function buildLevel(
     // wall, scan outward for the nearest free spot. Without this, mobs
     // can spawn stuck inside a prop and never move.
     const resolved = walkable.resolveSpawn(s.x, s.z, enemySpec.collisionRadius);
-    const enemy = createEnemy(root, new THREE.Vector3(resolved.x, 0, resolved.z), enemySpec);
+    const enemy = createEnemy(
+      root,
+      new THREE.Vector3(resolved.x, 0, resolved.z),
+      enemySpec,
+      onEnemyDeath,
+    );
     enemy.faceWorld(spec.startPos.x, spec.startPos.z);
     enemies.push(enemy);
     // Room membership uses the resolved position so a mob nudged across

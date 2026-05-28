@@ -331,6 +331,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         case 'W': spawns.push({ enemyId: 'wraith',     x, z, roomId }); break;
         case 'Y': spawns.push({ enemyId: 'acolyte',    x, z, roomId }); break;
         case 'M': spawns.push({ enemyId: 'stoneguard', x, z, roomId }); break;
+        case 'Z': spawns.push({ enemyId: 'ooze',       x, z, roomId }); break;
         case '/': {
           if (opts.stairsTarget) {
             // Auto-orient: the stairs descend INTO the adjacent wall.
