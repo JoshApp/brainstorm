@@ -145,7 +145,7 @@ initLevelLoader({
   onLoaded(level) {
     currentLevel = level as LiveLevel & { checkRoomClear?: () => void };
     setCameraYaw(level.playerSpawn.yaw);
-    setDepthCounter(getCurrentDepth());
+    setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-'));
     // Drifting motes — ambient volumetric "dust in the air" tied
     // to the level's room rects. Tint takes the act's torch
     // colour so the mood reads consistent (warm motes in warm

@@ -27,7 +27,7 @@ export function createDepthCounter(depth: number) {
   document.body.appendChild(label);
 }
 
-export function setDepth(depth: number) {
+export function setDepth(depth: number, sanctuary: boolean = false) {
   if (!label) return;
-  label.textContent = `DEPTH ${depth}`;
+  label.textContent = sanctuary ? `DEPTH ${depth} — SANCTUARY` : `DEPTH ${depth}`;
 }

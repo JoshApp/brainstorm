@@ -96,11 +96,13 @@ export function tickPendingLoad() {
     return;
   }
   // Resolve the spec: registry first, then procgen fallback. We compute
-  // the depth-to-be (currentDepth + 1) so the generator can scale
-  // difficulty without needing extra params.
+  // the depth-to-be so the generator can scale difficulty without needing
+  // extra params. Regular floors increment from current; safe rooms inherit
+  // the boss-depth they sit after (encoded in the id, e.g. 'safe-3' → 3).
+  const isSafeRoom = id.startsWith('safe-');
   let spec = levels[id];
   if (!spec && generate) {
-    const targetDepth = currentDepth + 1;
+    const targetDepth = isSafeRoom ? currentDepth : currentDepth + 1;
     const generated = generate(id, targetDepth);
     if (generated) {
       spec = generated;
@@ -134,7 +136,10 @@ export function tickPendingLoad() {
   // Build the new level into the same scene.
   const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));
   activeLevel = level;
-  currentDepth += 1;
+  // Safe rooms don't advance depth — they're the breath between acts, not
+  // a dungeon floor. The depth counter / title both read the unchanged
+  // currentDepth, which matches the boss the player just beat.
+  if (!isSafeRoom) currentDepth += 1;
 
   // Reposition player to new spawn — and resolve against the walkable
   // region. Authored spawns are normally fine, but if a designer (or
@@ -153,12 +158,11 @@ export function tickPendingLoad() {
 
   onLoaded(level);
 
-  // Title card: "Depth N" + act name. Safe rooms get "Sanctuary"
-  // instead of a depth — they aren't a dungeon floor, they're the
-  // breath between acts. (The loader still increments currentDepth
-  // on safe-room entry; we detect by id prefix rather than depth.)
-  if (id.startsWith('safe-')) {
-    showDescentTitle('Sanctuary', 'rest and ready');
+  // Title card: "Depth N" + act name. Safe rooms keep the boss's depth
+  // and swap the subtitle to 'sanctuary' — they aren't a dungeon floor,
+  // they're the breath between acts.
+  if (isSafeRoom) {
+    showDescentTitle(`Depth ${currentDepth}`, 'sanctuary');
   } else {
     const act = actForDepth(currentDepth);
     showDescentTitle(`Depth ${currentDepth}`, act.name);
@@ -175,7 +179,9 @@ export function tickPendingLoad() {
  */
 export function loadInitialLevel(id: string, startingDepth: number = 1) {
   pendingLoadId = id;
-  // tickPendingLoad will increment, so we set one below the target.
-  currentDepth = startingDepth - 1;
+  // tickPendingLoad increments for regular loads but not for safe rooms;
+  // mirror that here so the post-load currentDepth equals startingDepth
+  // either way.
+  currentDepth = id.startsWith('safe-') ? startingDepth : startingDepth - 1;
   tickPendingLoad();
 }
