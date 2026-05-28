@@ -516,6 +516,19 @@ export function buildLevel(
       if (prop.rotX) built.group.rotation.x = prop.rotX;
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
+      // Mood-tint pass: if the spec opts in (moodTintable), recolour
+      // its flame material + every additive sprite particle + the
+      // attached light to match the average torch tint of the room
+      // the prop sits in. Cheap, instance-local. See FLOOR_CANDLE
+      // for the canonical user.
+      let lightColorOverride: number | undefined;
+      if (prop.model.moodTintable) {
+        const moodTint = moodTintForPosition(spec, prop.x, prop.z);
+        if (moodTint !== null) {
+          applyMoodTint(built, moodTint);
+          lightColorOverride = moodTint;
+        }
+      }
       root.add(built.group);
       // Optional collision shape(s) — used by structural model
       // props (buttresses, ruined columns, archway columns). For
@@ -568,7 +581,7 @@ export function buildLevel(
           id: `model-light-${lightSerial++}`,
           category: 'environment',
           position: lightPos,
-          color: lp.color,
+          color: lightColorOverride ?? lp.color,
           intensity: lp.intensity,
           distance: lp.distance,
           decay: lp.decay,
@@ -1045,6 +1058,57 @@ function mixColors(a: number, b: number, t: number): number {
   const g = Math.round(ag + (bg - ag) * t);
   const bl = Math.round(ab + (bb - ab) * t);
   return (r << 16) | (g << 8) | bl;
+}
+
+/** Look up the mood tint (average torch palette) for a world point.
+ *  Walks rooms smallest-first so a sub-room's local torches win over
+ *  its parent vault's average; falls back to the parent if the sub
+ *  has no torches. Returns null when the position is outside every
+ *  room OR no torch sits inside any of its containing rects. */
+function moodTintForPosition(spec: LevelSpec, x: number, z: number): number | null {
+  const candidates: RoomSpec[] = [];
+  for (const r of spec.rooms) {
+    const hw = r.rect.w / 2;
+    const hd = r.rect.d / 2;
+    if (x >= r.rect.x - hw && x <= r.rect.x + hw &&
+        z >= r.rect.z - hd && z <= r.rect.z + hd) {
+      candidates.push(r);
+    }
+  }
+  candidates.sort((a, b) => (a.rect.w * a.rect.d) - (b.rect.w * b.rect.d));
+  for (const r of candidates) {
+    const tint = averageTorchTintInRect(spec.torches, r.rect);
+    if (tint !== null) return tint;
+  }
+  return null;
+}
+
+/** Recolour a built model's flame-family materials + additive sprite
+ *  particles + (signalled out) attached light to `tint`. Used by the
+ *  model-prop handler when the spec sets moodTintable. Wax / wick /
+ *  iron / wood materials and non-additive sprites are left alone.
+ *  The light's colour override is returned via a separate path
+ *  (`lightColorOverride` in the caller) so we don't have to mutate
+ *  the spec. */
+function applyMoodTint(built: import('../ecs/build-model').BuiltModel, tint: number): void {
+  // Named flame-family materials — mutate colour + emissive together
+  // so the tint reads in both lit and unlit paths.
+  for (const name of ['flame', 'core', 'orb', 'shine']) {
+    const mat = built.materials.get(name) as THREE.MeshStandardMaterial | undefined;
+    if (!mat) continue;
+    if (mat.color) mat.color.setHex(tint);
+    if (mat.emissive) mat.emissive.setHex(tint);
+  }
+  // Additive sprite tongues (flame, embers). These are unnamed in the
+  // materials map; walk the scene-graph instead and recolour any
+  // additive SpriteMaterial.
+  built.group.traverse((obj) => {
+    const sprite = obj as THREE.Sprite;
+    if (!sprite.isSprite) return;
+    const m = sprite.material as THREE.SpriteMaterial;
+    if (m.blending !== THREE.AdditiveBlending) return;
+    m.color.setHex(tint);
+  });
 }
 
 /** Average torch colorTint across every torch whose position falls

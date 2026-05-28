@@ -184,4 +184,18 @@ export interface ModelSpec {
   light?: LightSpec;
   /** Materials this model uses, keyed by `mat` field on parts. */
   materials: Record<string, MaterialDef>;
+  /**
+   * If true, the BUILDER recolours this model's flame materials + any
+   * additive sprite particles + its attached light to match the room's
+   * average torch tint at spawn time. Used by candles so a yellow
+   * floor candle becomes violet in a violet vault, sickly-green in a
+   * green vault, etc. — without each vault having to author a tinted
+   * variant.
+   *
+   * Limits: only mutates materials named 'flame' and additive sprite
+   * particles. Wax / iron / wood stay the same. Fixtures with a
+   * SIGNATURE colour (bonfire embers, fountain shine, named floor
+   * glows) intentionally don't set this — their palette is the point.
+   */
+  moodTintable?: boolean;
 }

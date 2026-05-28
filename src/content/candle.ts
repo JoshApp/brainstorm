@@ -9,6 +9,11 @@ import type { ModelSpec } from '../ecs/model-types';
 
 export const FLOOR_CANDLE: ModelSpec = {
   id: 'floor-candle',
+  // Builder retints flame + sprite tongues + light to match the room's
+  // torch palette. The same FLOOR_CANDLE used in a violet act reads as
+  // a violet flame; in a sickly-green chamber, a green flame. Wax /
+  // wick are unchanged. See builder.ts mood-tint pass.
+  moodTintable: true,
   materials: {
     wax: {
       color: 0x4a3a2e,
