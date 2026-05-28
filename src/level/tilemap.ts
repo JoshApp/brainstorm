@@ -149,6 +149,80 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     height: opts.roomHeight ?? 3.2,
   };
 
+  // ── Flood fill walkable cells into sub-rooms ──────────────────────
+  // Door tiles ('o', 'O', 'D') are treated as separators alongside
+  // walls — each door connects two distinct sub-rooms. This is what
+  // lets the arena door's unlock target a SPECIFIC inner sub-room
+  // instead of the whole vault. Authors get sub-rooms "for free" just
+  // by putting interior walls + a door tile in their map.
+  const isWalkableForFlood = (col: number, row: number): boolean => {
+    const ch = cellChar(col, row);
+    return FLOOR_CHARS.has(ch) && ch !== 'o' && ch !== 'O' && ch !== 'D';
+  };
+  const cellComp: number[][] = [];
+  for (let r = 0; r < rows; r++) cellComp.push(new Array(cols).fill(-1));
+  type Bbox = { minC: number; maxC: number; minR: number; maxR: number };
+  const componentBboxes: Bbox[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (cellComp[r][c] !== -1) continue;
+      if (!isWalkableForFlood(c, r)) continue;
+      const comp = componentBboxes.length;
+      const bb: Bbox = { minC: c, maxC: c, minR: r, maxR: r };
+      const queue: Array<[number, number]> = [[c, r]];
+      while (queue.length > 0) {
+        const [qc, qr] = queue.shift()!;
+        if (cellComp[qr][qc] !== -1) continue;
+        cellComp[qr][qc] = comp;
+        if (qc < bb.minC) bb.minC = qc;
+        if (qc > bb.maxC) bb.maxC = qc;
+        if (qr < bb.minR) bb.minR = qr;
+        if (qr > bb.maxR) bb.maxR = qr;
+        const neighbors: Array<[number, number]> = [
+          [qc + 1, qr], [qc - 1, qr], [qc, qr + 1], [qc, qr - 1],
+        ];
+        for (const [nc, nr] of neighbors) {
+          if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+          if (cellComp[nr][nc] !== -1) continue;
+          if (isWalkableForFlood(nc, nr)) queue.push([nc, nr]);
+        }
+      }
+      componentBboxes.push(bb);
+    }
+  }
+
+  // Component-id → sub-room id mapping. For SINGLE-component vaults
+  // we keep the existing roomId as the canonical id (no sub-rooms
+  // emitted at all — backward compatibility for every existing vault).
+  // For multi-component vaults the main RoomSpec keeps its id for
+  // shell geometry and each component gets `${roomId}-sub${i}`.
+  const componentRoomIds: string[] = componentBboxes.length === 1
+    ? [roomId]
+    : componentBboxes.map((_, i) => `${roomId}-sub${i}`);
+
+  /** Look up the sub-room a tile cell belongs to. Returns the cell's
+   *  component id if walkable; for door cells (which are separators),
+   *  returns null — door placement uses adjacentComponentIds. */
+  const cellRoomId = (col: number, row: number): string => {
+    const comp = cellComp[row]?.[col] ?? -1;
+    return comp >= 0 ? componentRoomIds[comp] : roomId;
+  };
+  /** For a door cell, return the unique component ids on either side
+   *  of the door (axis inferred from the door's span). Used to fill
+   *  unlock.roomIds without forcing authors to type them. */
+  const adjacentComponentIds = (col: number, row: number, ew: boolean): string[] => {
+    const out = new Set<string>();
+    const neighbors: Array<[number, number]> = ew
+      ? [[col, row - 1], [col, row + 1]]
+      : [[col - 1, row], [col + 1, row]];
+    for (const [nc, nr] of neighbors) {
+      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+      const comp = cellComp[nr][nc];
+      if (comp >= 0) out.add(componentRoomIds[comp]);
+    }
+    return [...out];
+  };
+
   // ── Walls: emit a segment between every walkable/non-walkable
   // adjacency. ────────────────────────────────────────────────────
   // Horizontal walls (running along X at z = fixed):
@@ -325,13 +399,17 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           });
           break;
         }
-        case 'G': spawns.push({ enemyId: 'ghoul',      x, z, roomId }); break;
-        case 'R': spawns.push({ enemyId: 'rat',        x, z, roomId }); break;
-        case 'K': spawns.push({ enemyId: 'skirmisher', x, z, roomId }); break;
-        case 'W': spawns.push({ enemyId: 'wraith',     x, z, roomId }); break;
-        case 'Y': spawns.push({ enemyId: 'acolyte',    x, z, roomId }); break;
-        case 'M': spawns.push({ enemyId: 'stoneguard', x, z, roomId }); break;
-        case 'Z': spawns.push({ enemyId: 'ooze',       x, z, roomId }); break;
+        // Spawns attributed to their containing sub-room — this is what
+        // makes per-sub-room room-clear detection (arena unlock,
+        // boss-antechamber gating, etc.) work. cellRoomId falls back to
+        // the canonical roomId for single-component vaults.
+        case 'G': spawns.push({ enemyId: 'ghoul',      x, z, roomId: cellRoomId(c, r) }); break;
+        case 'R': spawns.push({ enemyId: 'rat',        x, z, roomId: cellRoomId(c, r) }); break;
+        case 'K': spawns.push({ enemyId: 'skirmisher', x, z, roomId: cellRoomId(c, r) }); break;
+        case 'W': spawns.push({ enemyId: 'wraith',     x, z, roomId: cellRoomId(c, r) }); break;
+        case 'Y': spawns.push({ enemyId: 'acolyte',    x, z, roomId: cellRoomId(c, r) }); break;
+        case 'M': spawns.push({ enemyId: 'stoneguard', x, z, roomId: cellRoomId(c, r) }); break;
+        case 'Z': spawns.push({ enemyId: 'ooze',       x, z, roomId: cellRoomId(c, r) }); break;
         case '/': {
           if (opts.stairsTarget) {
             // Auto-orient: the stairs descend INTO the adjacent wall.
@@ -393,12 +471,20 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           //   D → arena door. STARTS open + passable; slams shut when
           //       the player crosses into the containing room; reopens
           //       when the room clears. Lock-on-enter.
+          //
+          // Roomids on the unlock are auto-derived from flood fill:
+          // the two sub-rooms on either side of the door. For O / D
+          // this means the door's gate predicate covers BOTH sides,
+          // so the arena slam fires the moment the player enters
+          // either side from a corridor (or interior wall passage).
           const nIsFloor = isFloor(c, r - 1);
           const sIsFloor = isFloor(c, r + 1);
           const ew = nIsFloor && sIsFloor;  // door swings E↔W
           const doorRect = ew
             ? { ax: x - 0.5, az: z, bx: x + 0.5, bz: z }
             : { ax: x, az: z - 0.5, bx: x, bz: z + 0.5 };
+          const neighborRooms = adjacentComponentIds(c, r, ew);
+          const gateRooms = neighborRooms.length > 0 ? neighborRooms : [roomId];
           doors.push({
             id: `door-${c}-${r}`,
             ax: doorRect.ax, az: doorRect.az,
@@ -406,8 +492,8 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
             height: 2.6,
             hinge: 'a',
             swingDir: 1,
-            unlock: ch === 'O' ? { kind: 'cleared', roomIds: [roomId] }
-                  : ch === 'D' ? { kind: 'arena',   roomIds: [roomId] }
+            unlock: ch === 'O' ? { kind: 'cleared', roomIds: gateRooms }
+                  : ch === 'D' ? { kind: 'arena',   roomIds: gateRooms }
                   : undefined,
           });
           break;
@@ -436,11 +522,37 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     .filter(s => !onRectEdge(s))
     .map(s => ({ ...s, height: room.height }));
 
+  // Sub-room emission. Only when flood fill found >1 component — for
+  // single-component vaults we emit nothing extra so every existing
+  // vault is byte-identical to before this refactor. Each sub-room is
+  // a logical-only RoomSpec whose rect = the component's bbox in
+  // WORLD coords (cell centres → outer edges, +0.5m each side so a
+  // cell at the bbox edge is fully inside the rect).
+  const subRooms: RoomSpec[] = componentBboxes.length > 1
+    ? componentBboxes.map((bb, i) => {
+        const minX = originX + bb.minC;
+        const maxX = originX + bb.maxC + 1;
+        const minZ = originZ + bb.minR;
+        const maxZ = originZ + bb.maxR + 1;
+        return {
+          id: componentRoomIds[i],
+          rect: {
+            x: (minX + maxX) / 2,
+            z: (minZ + maxZ) / 2,
+            w: maxX - minX,
+            d: maxZ - minZ,
+          },
+          height: opts.roomHeight ?? 3.2,
+          logicalOnly: true,
+        };
+      })
+    : [];
+
   return {
     id: opts.id,
     displayName: opts.displayName,
     startPos,
-    rooms: [room],
+    rooms: [room, ...subRooms],
     corridors: [],
     props,
     torches,

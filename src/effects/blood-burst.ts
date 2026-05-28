@@ -44,7 +44,7 @@ function ensureMats() {
       emissive: 0x5a0204,
       emissiveIntensity: 1.6,
       fog: false,
-      flatShading: 'flat',
+      flatShading: true,
     });
   }
   if (!spriteMat) {

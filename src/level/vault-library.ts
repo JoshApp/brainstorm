@@ -425,18 +425,25 @@ const ENCOUNTER_PRISON: Vault = {
 const ENCOUNTER_ARENA: Vault = {
   id: 'encounter-arena',
   tags: ['encounter'],
+  // Layout: an entry alcove at the top, an interior wall row with a
+  // single 'D' arena door, and the arena proper below holding two
+  // pairs of ghouls and a chest centrepiece. Multi-room vault parsing
+  // splits the alcove and arena into separate sub-rooms; the 'D'
+  // door's cross-axis trigger fires the slam when the player walks
+  // through it — not on vault entry. The arena sub-room's clear
+  // count re-opens the door so the player can continue south.
   map: [
     '##############',
     '#....T....T..#',
     '#............#',
+    '#............#',
+    '######D#######',
     '#.G........G.#',
     '#............#',
     '#......c.....#',
     '#............#',
     '#.G........G.#',
-    '#............#',
     '#....t....t..#',
-    '######D#######',
     '##############',
   ],
   minDepth: 3,

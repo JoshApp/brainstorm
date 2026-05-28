@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { DoorSpec, RoomSpec } from '../level/types';
+import type { DoorSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
 import type { WalkableRegion, WallSegment } from '../level/walkable';
 import { generateEntityId } from '../ecs/world';
@@ -30,10 +30,6 @@ export function spawnDoor(
   walkable: WalkableRegion,
   materials: StyleMaterials,
   enemyRoomMembership: () => Map<string, number>, // roomId -> alive count
-  /** Lookup a room's rect by id. Required for arena-unlock doors
-   *  (they need to know whether the player has crossed into one
-   *  of the rooms they're protecting). Other door kinds ignore. */
-  roomRectLookup?: (id: string) => RoomSpec | null,
 ) {
   // Geometry: a flat plank in the doorway. The wall segment is axis-aligned
   // so the door is axis-aligned. Width = segment length; thickness pulled
@@ -134,10 +130,11 @@ export function spawnDoor(
   // State machine. Adds two new states beyond the classic
   // sealed/closed/opening/open progression to support arena
   // lock-on-enter:
-  //   'arena-open' — door starts OPEN + passable; tick polls the
-  //                  player's position vs the protected room rects.
-  //                  When the player crosses inside, transition to
-  //                  'closing'.
+  //   'arena-open' — door starts OPEN + passable; tick watches the
+  //                  player's side relative to the door's axis and
+  //                  triggers the slam the FRAME the side flips
+  //                  (the player just walked through). Works for
+  //                  perimeter doors AND interior-wall doors.
   //   'closing'    — fast reverse animation. Wall returns IMMEDIATELY
   //                  at the start so the player can't squeeze back
   //                  out mid-slam. Ends in 'sealed' (with the
@@ -146,6 +143,17 @@ export function spawnDoor(
   let state: 'arena-open' | 'sealed' | 'closed' | 'opening' | 'closing' | 'open' = 'closed';
   let openTimer = 0;
   let closeTimer = 0;
+  // Cross-axis trigger state — sign of the player's perpendicular
+  // offset from the door midpoint on the previous tick. Null until
+  // the first tick fixes it; from then on, a flip from +1 → -1 (or
+  // vice versa) means the player crossed the door's axis line.
+  let prevSide: 1 | -1 | null = null;
+  // Door axis perpendicular (unit vector in XZ). Cached.
+  const doorAxisLen = Math.hypot(spec.bx - spec.ax, spec.bz - spec.az) || 1;
+  const perpX = -(spec.bz - spec.az) / doorAxisLen;
+  const perpZ =  (spec.bx - spec.ax) / doorAxisLen;
+  const doorMidX = (spec.ax + spec.bx) / 2;
+  const doorMidZ = (spec.az + spec.bz) / 2;
 
   // Door center for the interactable hit position.
   const cx = (spec.ax + spec.bx) / 2;
@@ -171,30 +179,28 @@ export function spawnDoor(
       playChestOpen();  // creaky hinge sfx reused — chests + doors share vibe
     },
     tick(_dt: number, playerPos: THREE.Vector3) {
-      // Arena trigger: while open + passable, watch the player. The
-      // moment they cross into one of the protected rooms, slam.
-      if (state === 'arena-open' && spec.unlock?.kind === 'arena' && roomRectLookup) {
-        for (const rid of spec.unlock.roomIds) {
-          const rs = roomRectLookup(rid);
-          if (!rs) continue;
-          const hw = rs.rect.w / 2;
-          const hd = rs.rect.d / 2;
-          if (
-            playerPos.x >= rs.rect.x - hw && playerPos.x <= rs.rect.x + hw &&
-            playerPos.z >= rs.rect.z - hd && playerPos.z <= rs.rect.z + hd
-          ) {
-            // SLAM. Wall up immediately, audio sting, threshold
-            // flashes cool/sealed; the closing animation runs over
-            // the next CLOSE_DURATION.
-            state = 'closing';
-            closeTimer = 0;
-            walkable.addWall(wallSeg);
-            playChestOpen();
-            thresholdMat.color.setHex(0xb04030);   // brief red — visual punch
-            thresholdMat.opacity = 0.75;
-            break;
-          }
+      // Arena trigger: while open + passable, watch the player's side
+      // of the door's axis. The frame their side flips, they just
+      // walked through. Cross-axis works for both perimeter doors
+      // (player crosses from corridor to room) and interior-wall
+      // doors (player crosses from alcove to arena).
+      if (state === 'arena-open' && spec.unlock?.kind === 'arena') {
+        const ox = playerPos.x - doorMidX;
+        const oz = playerPos.z - doorMidZ;
+        const dot = perpX * ox + perpZ * oz;
+        const side: 1 | -1 = dot >= 0 ? 1 : -1;
+        if (prevSide !== null && side !== prevSide) {
+          // SLAM. Wall up immediately, audio sting, threshold
+          // flashes cool/sealed; the closing animation runs over
+          // the next CLOSE_DURATION.
+          state = 'closing';
+          closeTimer = 0;
+          walkable.addWall(wallSeg);
+          playChestOpen();
+          thresholdMat.color.setHex(0xb04030);   // brief red — visual punch
+          thresholdMat.opacity = 0.75;
         }
+        prevSide = side;
       }
       // Closing animation — reverses the swing fast.
       if (state === 'closing') {

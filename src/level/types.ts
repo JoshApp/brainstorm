@@ -69,6 +69,18 @@ export type RoomSpec = {
   /** The walkable rectangle for this room. Walls are built on its perimeter. */
   rect: WalkableRect;
   height: number;
+  /**
+   * If true, the builder SKIPS shell generation (floor / ceiling /
+   * walls) for this room. The rect is still used for ATTRIBUTION:
+   * mob spawns find their roomId via findRoomContaining, arena
+   * doors detect player-entry via the rect, room-clear events
+   * fire per this room.
+   *
+   * Used by multi-room vault parsing — one main RoomSpec carries
+   * the vault's geometry, and one logical-only sub-room per
+   * flood-fill component carries the finer attribution.
+   */
+  logicalOnly?: boolean;
 };
 
 export type PropSpec =

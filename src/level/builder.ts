@@ -304,6 +304,10 @@ function findOpenings(
   const openings: Array<{ start: number; end: number }> = [];
   for (const other of allRects) {
     if (other === selfRoom) continue;
+    // Sub-rooms (logical-only) are INSIDE their parent vault rect —
+    // their edges often coincide with the parent's exterior walls,
+    // which would spuriously punch openings through them. Skip.
+    if (other.logicalOnly) continue;
     const o = other.rect;
     if (we.perpAxis === 'z') {
       // wall runs along X; coincide if any of other's Z-edges == we.perpCoord
@@ -483,7 +487,13 @@ export function buildLevel(
       // those cells fall outside the floor, the grid loop iterates them.
       stairFootprintAabbs.push({ minX, maxX, minZ, maxZ });
     }
-    buildRoomShell(root, r, allRects, materials, wallSegments, holes);
+    // Logical-only sub-rooms (multi-room vault parsing) skip the shell
+    // build — they exist only for mob-attribution and arena-door
+    // trigger purposes. Their parent vault's main RoomSpec already
+    // covers floor/ceiling/walls.
+    if (!r.logicalOnly) {
+      buildRoomShell(root, r, allRects, materials, wallSegments, holes);
+    }
   }
 
   // --- Props (visual meshes) + collect obstacles for collision ---
@@ -762,6 +772,10 @@ export function buildLevel(
     ? mixColors(spec.fogColor, 0x553322, 0.5)
     : 0x2a1a10;
   for (const r of allRects) {
+    // Sub-rooms (logical-only) already live inside their parent's
+    // rect — adding fill lights for them double-illuminates the
+    // same volume.
+    if (r.logicalOnly) continue;
     const area = r.rect.w * r.rect.d;
     const count = Math.min(3, Math.max(1, Math.floor(area / 60)));
     for (let i = 0; i < count; i++) {
@@ -930,21 +944,12 @@ export function buildLevel(
   // --- Doors ---------------------------------------------------------
   // Doors close gaps in the wall layout. They start sealed if their unlock
   // condition isn't met (defaults: cleared rooms). They listen for
-  // room:cleared events to flip to closed (interactable).
-  //
-  // Arena doors additionally need a room-rect lookup so their tick can
-  // detect the player crossing INTO one of the protected rooms (the
-  // trigger for the slam). Build a single id→RoomSpec map and hand it
-  // through to every door — non-arena doors ignore the lookup.
-  const roomById = new Map<string, RoomSpec>();
-  for (const r of spec.rooms) roomById.set(r.id, r);
+  // room:cleared events to flip to closed (interactable). Arena doors
+  // are now driven by cross-axis trigger in door.ts; no level-side
+  // lookup needed.
   const doorTeardowns: Array<() => void> = [];
   for (const d of spec.doors ?? []) {
-    const h = spawnDoor(
-      root, d, walkable, materials,
-      () => aliveByRoom,
-      (id) => roomById.get(id) ?? null,
-    );
+    const h = spawnDoor(root, d, walkable, materials, () => aliveByRoom);
     doorTeardowns.push(h.teardown);
   }
 
@@ -1028,14 +1033,24 @@ function mixColors(a: number, b: number, t: number): number {
   return (r << 16) | (g << 8) | bl;
 }
 
-/** Which room rect contains (x, z)? First match wins. Null if outside all. */
+/** Which room rect contains (x, z)? Prefers logical-only sub-rooms over
+ *  their parent vault rect — they're the finer-grained attribution
+ *  emitted by multi-room vault parsing. Null if outside all. */
 function findRoomContaining(x: number, z: number, rooms: RoomSpec[]): string | null {
-  for (const r of rooms) {
+  const containsHere = (r: RoomSpec): boolean => {
     const hw = r.rect.w / 2;
     const hd = r.rect.d / 2;
-    if (x >= r.rect.x - hw && x <= r.rect.x + hw && z >= r.rect.z - hd && z <= r.rect.z + hd) {
-      return r.id;
-    }
+    return x >= r.rect.x - hw && x <= r.rect.x + hw && z >= r.rect.z - hd && z <= r.rect.z + hd;
+  };
+  // Sub-rooms first (more specific).
+  for (const r of rooms) {
+    if (!r.logicalOnly) continue;
+    if (containsHere(r)) return r.id;
+  }
+  // Fall back to main rooms.
+  for (const r of rooms) {
+    if (r.logicalOnly) continue;
+    if (containsHere(r)) return r.id;
   }
   return null;
 }
