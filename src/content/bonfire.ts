@@ -90,21 +90,23 @@ export const BONFIRE: ModelSpec = {
     // round ball ON TOP of the hilt. The grip + pommel are the
     // visible "sword icon" that reads as a bonfire from afar.
     //
+    // Whole sword raised by ~0.08m vs the previous pass so the
+    // hilt + pommel sit clearly above the coals + flames.
+    //
     // Blade is two tapered segments running DOWN below the dirt
-    // line (y goes negative). Most of it sits inside the dirt
-    // mound + below the floor where the player can't see it; a
-    // small portion peeks above to meet the cross-guard.
-    { kind: 'box', pos: [0, -0.05, 0], size: [0.045, 0.50, 0.018], mat: 'iron' },
-    { kind: 'box', pos: [0, -0.40, 0], size: [0.030, 0.30, 0.014], mat: 'iron' },
+    // line. Most of it sits inside the dirt mound + below the
+    // floor where the player can't see it; a small portion peeks
+    // above to meet the cross-guard.
+    { kind: 'box', pos: [0,  0.03, 0], size: [0.045, 0.50, 0.018], mat: 'iron' },
+    { kind: 'box', pos: [0, -0.32, 0], size: [0.030, 0.30, 0.014], mat: 'iron' },
     // Cross-guard at the dirt line (just above the mound's top).
-    { kind: 'box',      pos: [0, 0.235, 0], size: [0.32, 0.040, 0.050], mat: 'iron' },
+    { kind: 'box',      pos: [0, 0.315, 0], size: [0.32, 0.040, 0.050], mat: 'iron' },
     // Hilt grip — tall cylinder rising above the cross-guard,
     // wrapped in dark binding (slightly wider than the bare
     // tang of a real sword to read clearly).
-    { kind: 'cylinder', pos: [0, 0.36, 0], radius: 0.024, height: 0.20, segments: 8, mat: 'iron' },
-    // Pommel — round ball ON TOP of the hilt (where the user
-    // expected it to sit).
-    { kind: 'sphere',   pos: [0, 0.49, 0], radius: 0.045, mat: 'iron' },
+    { kind: 'cylinder', pos: [0, 0.44, 0], radius: 0.024, height: 0.20, segments: 8, mat: 'iron' },
+    // Pommel — round ball ON TOP of the hilt.
+    { kind: 'sphere',   pos: [0, 0.57, 0], radius: 0.045, mat: 'iron' },
 
     // ── Flame stack — sprites rising around the cross-guard ─────
     // Same flicker pattern as before but origins shifted slightly

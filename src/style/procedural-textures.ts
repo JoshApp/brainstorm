@@ -69,6 +69,28 @@ registerTexture('fire-wisp', (canvas) => {
   ctx.fillRect(0, 0, w, h);
 });
 
+// 'moonbeam' — neutral white-to-transparent radial gradient. NO red /
+// orange in the gradient (unlike fire-wisp), so material-level colour
+// tinting is the ONLY thing that decides the visible hue. Used by the
+// stair shaft + motes (and any other "shaft of light" prop) so the
+// blue passive state stays blue and the gold active state stays gold —
+// the texture's edges don't poison the colour the way fire-wisp's red
+// edge does when tinted blue.
+registerTexture('moonbeam', (canvas) => {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.5);
+  grad.addColorStop(0.00, 'rgba(255, 255, 255, 1.00)');
+  grad.addColorStop(0.25, 'rgba(255, 255, 255, 0.75)');
+  grad.addColorStop(0.55, 'rgba(255, 255, 255, 0.30)');
+  grad.addColorStop(0.85, 'rgba(255, 255, 255, 0.08)');
+  grad.addColorStop(1.00, 'rgba(255, 255, 255, 0.00)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+});
+
 // 'moss-patch' — irregular green-grey blob with darker veins. Used as wall and
 // floor decals to break up uniform stone. Alpha-faded edges so it blends into
 // the surface it sits on. Procedural noise gives each patch a unique shape.

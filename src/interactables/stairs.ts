@@ -238,10 +238,13 @@ export function spawnStairs(
   const ringInner = Math.max(STEP_WIDTH / 2 + 0.18, STAIRWELL_TOTAL_DEPTH / 2 + 0.20);
   const ringOuter = ringInner + 2.0;
   const floorRingMat = new THREE.MeshBasicMaterial({
-    map: getTexture('fire-wisp'),
+    // Neutral 'moonbeam' texture so the floor pool stays pure
+    // blue in passive, pure gold in active — no red tint from
+    // the fire-wisp gradient bleeding through.
+    map: getTexture('moonbeam'),
     color: 0x4a78c8,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.45,
     fog: false,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -324,11 +327,16 @@ export function spawnStairs(
 
   // Outer haze plane — small + dim by default. When highlighted
   // it'll be scaled up + opacity boosted via the per-frame tick.
+  // Uses the NEUTRAL 'moonbeam' texture (white-to-transparent
+  // radial) so the colour comes purely from the material tint.
+  // Earlier passes used 'fire-wisp' which has red/orange in its
+  // gradient — that bled through additive blending and made the
+  // shaft read as reddish even when tinted blue.
   const shaftOuterMat = new THREE.MeshBasicMaterial({
-    map: getTexture('fire-wisp'),
-    color: 0xa8c4ff,         // passive blue
+    map: getTexture('moonbeam'),
+    color: 0xa8c4ff,         // passive blue (overwritten by tween below)
     transparent: true,
-    opacity: 0.30,           // dim by default
+    opacity: 0.22,           // very subtle by default
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
@@ -344,10 +352,10 @@ export function spawnStairs(
 
   // Bright core — much thinner default. Scales up when highlighted.
   const shaftCoreMat = new THREE.MeshBasicMaterial({
-    map: getTexture('fire-wisp'),
+    map: getTexture('moonbeam'),
     color: 0xd8e0ff,
     transparent: true,
-    opacity: 0.50,
+    opacity: 0.38,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
@@ -362,12 +370,12 @@ export function spawnStairs(
   group.add(shaftCoreMesh);
 
   // Dust motes along the shaft — keep them, they sell the
-  // volumetric beam feel.
+  // volumetric beam feel. Same neutral 'moonbeam' texture.
   const moteMat = new THREE.SpriteMaterial({
-    map: getTexture('fire-wisp'),
+    map: getTexture('moonbeam'),
     color: 0xd8e0ff,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.50,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
@@ -404,11 +412,14 @@ export function spawnStairs(
   const ACTIVE_SHAFT_OUTER    = new THREE.Color(0xffc060);
   const ACTIVE_SHAFT_CORE     = new THREE.Color(0xfff0c8);
 
-  // Opacity + scale targets for each state.
+  // Opacity + scale targets for each state. Passive opacities
+  // pulled down a touch from the previous pass — the user
+  // wanted "subtle god ray" not "bright god ray waiting for
+  // attention".
   const PASSIVE = {
-    outerOp: 0.30, coreOp: 0.50, moteOp: 0.55,
-    ringOp:  0.55, outlineInner: 1.00, outlineOuter: 0.55,
-    shaftScale: 1.0,
+    outerOp: 0.22, coreOp: 0.38, moteOp: 0.50,
+    ringOp:  0.45, outlineInner: 0.85, outlineOuter: 0.45,
+    shaftScale: 0.85,
   };
   const ACTIVE = {
     outerOp: 0.85, coreOp: 1.00, moteOp: 0.90,
