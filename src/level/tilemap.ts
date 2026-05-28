@@ -234,7 +234,26 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         }
         case 'c': {
           // Pseudo-random loot — pick something useful but not headline.
-          props.push({ kind: 'chest', x, z, loot: ITEMS['healing-potion'] });
+          // Auto-orient so the back of the chest sits AGAINST a
+          // nearby wall, lid swings forward into the open room.
+          // Chest's local -Z is the back / hinge edge; the
+          // rotations below put -Z toward the named wall.
+          let chestRotY = 0;
+          const wallN = !isFloor(c, r - 1);
+          const wallS = !isFloor(c, r + 1);
+          const wallE = !isFloor(c + 1, r);
+          const wallW = !isFloor(c - 1, r);
+          // Prefer the wall that's exactly adjacent if there's
+          // only one; otherwise pick by priority N → S → E → W.
+          if      (wallN && !wallS) chestRotY = 0;
+          else if (wallS && !wallN) chestRotY = Math.PI;
+          else if (wallE && !wallW) chestRotY = -Math.PI / 2;
+          else if (wallW && !wallE) chestRotY = Math.PI / 2;
+          else if (wallN)           chestRotY = 0;
+          else if (wallS)           chestRotY = Math.PI;
+          else if (wallE)           chestRotY = -Math.PI / 2;
+          else if (wallW)           chestRotY = Math.PI / 2;
+          props.push({ kind: 'chest', x, z, rotY: chestRotY, loot: ITEMS['healing-potion'] });
           break;
         }
         case 'C': {

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { StairsSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
 import { generateEntityId } from '../ecs/world';
-import { registerInteractable } from './system';
+import { registerInteractable, getInRangeInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
 import { getTexture } from '../style/procedural-textures';
 
@@ -297,71 +297,75 @@ export function spawnStairs(
   };
   for (const m of outlineTargets) addOutline(m);
 
-  // God-ray shaft instead of the old vertical billboards. The
-  // previous pass used three sprite billboards (mega-halo, outer
-  // beam, core beam) stacked vertically — they read as a fuzzy
-  // pillar of light, not a beam. Now: two tilted additive planes
-  // (haze + core) plus a handful of bright dust motes along the
-  // shaft. Same visual family as the godRay() model used in the
-  // signature vaults so the stair feels consistent with the rest
-  // of the ambient light system. Cool blue palette throughout so
-  // it matches the floor ring + inverse-hull outline.
-  const shaftTint  = 0xb0c8ff;
-  const shaftCore  = 0xe8eeff;
-  const shaftLandY = 0.3;     // bottom of the shaft sits just above the parapet
-  const shaftTopY  = 3.0;     // top reaches above the ceiling line
-  const shaftMidY  = (shaftLandY + shaftTopY) / 2;
-  const shaftLen   = shaftTopY - shaftLandY;
-  const shaftTilt  = 0.18;    // ~10° off vertical — reads as light through a crack
-  const shaftPivotZ = totalDepth / 2;   // shaft centred over the mouth
+  // Two-state god ray.
+  //
+  //   PASSIVE  — player not near the stair. Small, dim, BLUE
+  //              shaft matching the outline / ring palette.
+  //              Reads as "ambient light source over there,
+  //              come find it".
+  //   HIGHLIGHTED — player walks into interact range. Same
+  //              shaft scales up + brightens + shifts to GOLD,
+  //              signalling "you can descend here, this is the
+  //              way out". Outline + ring shift palette too so
+  //              the whole stair lighting unifies the colour.
+  //
+  // We use ONE shaft (outer haze + bright core) instead of the
+  // earlier triple-sprite stack. Per-frame lerp between the two
+  // colour/scale targets based on whether THIS stair is the in-
+  // range interactable.
+  const shaftPivotZ = totalDepth / 2;
+  const shaftLandY  = 0.3;
+  const shaftTopY   = 3.0;
+  const shaftMidY   = (shaftLandY + shaftTopY) / 2;
+  const shaftLen    = shaftTopY - shaftLandY;
+  const shaftTilt   = 0.18;
 
-  // Wider, softer outer plane — the diffuse haze around the beam.
+  // Outer haze plane — small + dim by default. When highlighted
+  // it'll be scaled up + opacity boosted via the per-frame tick.
   const shaftOuterMat = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'),
-    color: shaftTint,
+    color: 0xa8c4ff,         // passive blue
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.30,           // dim by default
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
   const shaftOuter = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.55, shaftLen),
+    new THREE.PlaneGeometry(0.95, shaftLen),       // narrower default
     shaftOuterMat,
   );
   shaftOuter.position.set(0, shaftMidY, shaftPivotZ);
   shaftOuter.rotation.z = shaftTilt;
   group.add(shaftOuter);
 
-  // Narrower bright core — the visible centre of the ray.
+  // Bright core — much thinner default. Scales up when highlighted.
   const shaftCoreMat = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'),
-    color: shaftCore,
+    color: 0xd8e0ff,
     transparent: true,
-    opacity: 0.90,
+    opacity: 0.50,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
   const shaftCoreMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.55, shaftLen),
+    new THREE.PlaneGeometry(0.30, shaftLen),
     shaftCoreMat,
   );
   shaftCoreMesh.position.set(0, shaftMidY, shaftPivotZ + 0.02);
   shaftCoreMesh.rotation.z = shaftTilt;
   group.add(shaftCoreMesh);
 
-  // Dust motes along the shaft — bright additive sprites at
-  // varied positions catch the "particles drifting in the beam"
-  // feel without running a particle system. Slight offset along
-  // the shaft tilt so they read as INSIDE the beam.
+  // Dust motes along the shaft — keep them, they sell the
+  // volumetric beam feel.
   const moteMat = new THREE.SpriteMaterial({
     map: getTexture('fire-wisp'),
-    color: shaftCore,
+    color: 0xd8e0ff,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.55,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
@@ -369,35 +373,83 @@ export function spawnStairs(
   const moteOffsets: Array<[number, number]> = [
     [-0.05, 0.6], [-0.10, 1.2], [-0.18, 1.85], [-0.25, 2.45], [-0.13, 2.8],
   ];
-  const motes: THREE.Sprite[] = [];
   for (const [ox, oy] of moteOffsets) {
     const m = new THREE.Sprite(moteMat);
-    const size = 0.07 + Math.random() * 0.04;
+    const size = 0.05 + Math.random() * 0.03;
     m.scale.set(size, size, 1);
     m.position.set(ox, shaftLandY + oy, shaftPivotZ);
     group.add(m);
-    motes.push(m);
   }
 
-  // Slow breath — opacity oscillates ±15% on a ~2.4s cycle.
-  // Drives the ring, outline, shaft layers and mote sprites
-  // together so the call pulses as one.
-  const beamBreathSeed = Math.random() * Math.PI * 2;
-  const baseOuter       = shaftOuterMat.opacity;
-  const baseCore        = shaftCoreMat.opacity;
-  const baseMote        = moteMat.opacity;
-  const baseRing        = floorRingMat.opacity;
-  const baseOutline     = outlineMat.opacity;
-  const baseOutlineHalo = outlineOuterMat.opacity;
+  // ── Two-state palette + tween ──────────────────────────────────
+  // We lerp colours + opacities between passive (blue) and
+  // highlighted (gold) targets each frame. The shaft outer mesh
+  // owns the onBeforeRender — drives every material in the
+  // stair's lighting set so they stay coherent.
+  const PASSIVE_OUTLINE_INNER = new THREE.Color(0xc8ddff);
+  const PASSIVE_OUTLINE_OUTER = new THREE.Color(0xc8ddff);
+  const PASSIVE_RING          = new THREE.Color(0x4a78c8);
+  const PASSIVE_SHAFT_OUTER   = new THREE.Color(0xa8c4ff);
+  const PASSIVE_SHAFT_CORE    = new THREE.Color(0xd8e0ff);
+  const ACTIVE_OUTLINE_INNER  = new THREE.Color(0xfff0c0);
+  const ACTIVE_OUTLINE_OUTER  = new THREE.Color(0xffd680);
+  const ACTIVE_RING           = new THREE.Color(0xffb050);
+  const ACTIVE_SHAFT_OUTER    = new THREE.Color(0xffc060);
+  const ACTIVE_SHAFT_CORE     = new THREE.Color(0xfff0c8);
+
+  // Opacity + scale targets for each state.
+  const PASSIVE = {
+    outerOp: 0.30, coreOp: 0.50, moteOp: 0.55,
+    ringOp:  0.55, outlineInner: 1.00, outlineOuter: 0.55,
+    shaftScale: 1.0,
+  };
+  const ACTIVE = {
+    outerOp: 0.85, coreOp: 1.00, moteOp: 0.90,
+    ringOp:  0.95, outlineInner: 1.00, outlineOuter: 1.00,
+    shaftScale: 1.7,        // wider + taller when called
+  };
+
+  // Lerp helper.
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  let highlightT = 0;    // 0 = passive, 1 = highlighted
+  const breathSeed = Math.random() * Math.PI * 2;
+  // Store base shaft scale so we can scale up/down dynamically.
+  const shaftOuterBaseW = 0.95;
+  const shaftCoreBaseW  = 0.30;
   shaftOuter.onBeforeRender = () => {
-    const t = (Date.now() / 1000) * (Math.PI * 2 / 2.4) + beamBreathSeed;
-    const b = 0.85 + 0.15 * Math.sin(t);
-    shaftOuterMat.opacity = baseOuter * b;
-    shaftCoreMat.opacity = baseCore * b;
-    moteMat.opacity = baseMote * b;
-    floorRingMat.opacity = baseRing * b;
-    outlineMat.opacity = baseOutline * b;
-    outlineOuterMat.opacity = baseOutlineHalo * b;
+    // Smoothly track the highlight state. dtApprox is the time
+    // between renders; we approximate via a fixed exponential
+    // tween factor — looks identical on both 60fps and 120fps.
+    const target = (getInRangeInteractable() === interactable) ? 1 : 0;
+    highlightT += (target - highlightT) * 0.12;
+    const t = highlightT;
+    // Slow breath on top of the highlight tween — so even the
+    // passive state has a faint heartbeat.
+    const wave = (Date.now() / 1000) * (Math.PI * 2 / 2.4) + breathSeed;
+    const b = 0.88 + 0.12 * Math.sin(wave);
+
+    // Material colours.
+    shaftOuterMat.color.copy(PASSIVE_SHAFT_OUTER).lerp(ACTIVE_SHAFT_OUTER, t);
+    shaftCoreMat.color.copy(PASSIVE_SHAFT_CORE).lerp(ACTIVE_SHAFT_CORE, t);
+    moteMat.color.copy(PASSIVE_SHAFT_CORE).lerp(ACTIVE_SHAFT_CORE, t);
+    floorRingMat.color.copy(PASSIVE_RING).lerp(ACTIVE_RING, t);
+    outlineMat.color.copy(PASSIVE_OUTLINE_INNER).lerp(ACTIVE_OUTLINE_INNER, t);
+    outlineOuterMat.color.copy(PASSIVE_OUTLINE_OUTER).lerp(ACTIVE_OUTLINE_OUTER, t);
+
+    // Opacities.
+    shaftOuterMat.opacity   = lerp(PASSIVE.outerOp,        ACTIVE.outerOp,        t) * b;
+    shaftCoreMat.opacity    = lerp(PASSIVE.coreOp,         ACTIVE.coreOp,         t) * b;
+    moteMat.opacity         = lerp(PASSIVE.moteOp,         ACTIVE.moteOp,         t) * b;
+    floorRingMat.opacity    = lerp(PASSIVE.ringOp,         ACTIVE.ringOp,         t) * b;
+    outlineMat.opacity      = lerp(PASSIVE.outlineInner,   ACTIVE.outlineInner,   t);
+    outlineOuterMat.opacity = lerp(PASSIVE.outlineOuter,   ACTIVE.outlineOuter,   t) * b;
+
+    // Shaft widens visibly when called — the highlight feels
+    // physical, like the beam opens up.
+    const s = lerp(PASSIVE.shaftScale, ACTIVE.shaftScale, t);
+    shaftOuter.scale.set(s, 1, 1);
+    shaftCoreMesh.scale.set(s, 1, 1);
+    void shaftOuterBaseW; void shaftCoreBaseW;   // (geometry width is static; scale.x does the work)
   };
 
   const interactable = {

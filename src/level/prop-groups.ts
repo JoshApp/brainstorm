@@ -59,14 +59,17 @@ export const PROP_GROUPS: Record<string, PropGroupSpec> = {
     ],
   },
 
-  // Fountain + flanking candles + bone glow on the floor.
+  // Fountain + three candles in a triangle + bone glow on the
+  // floor. Two candles flank the fountain at the front, a third
+  // sits behind it — completes a triangle anchored on the basin.
   'fountain-shrine': {
     id: 'fountain-shrine',
     children: [
       { prop: { kind: 'fountain', x: 0, z: 0 } },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x: -1.1, y: 0, z: -0.6 }, minClearance: 0.5 },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x:  1.1, y: 0, z: -0.6 }, minClearance: 0.5 },
-      { prop: { kind: 'model', model: GLOW_BONE, x: 0, y: 0, z: 1.2 }, minClearance: 0.4 },
+      { prop: { kind: 'model', model: FLOOR_CANDLE, x:  0,   y: 0, z:  1.1 }, minClearance: 0.5 },
+      { prop: { kind: 'model', model: GLOW_BONE, x: 0, y: 0, z: 1.6 }, minClearance: 0.4 },
     ],
   },
 
