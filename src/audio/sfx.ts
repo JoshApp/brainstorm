@@ -654,29 +654,49 @@ export function startAmbience() {
   if (crackleSource) return;  // already running
   const master = masterGain;
 
-  // Crackle: 6-second loop of fire-like sound. Earlier this was constant
-  // noise with a bandpass — which sounded like radio static, not fire.
-  // Real fire crackle is sparse SHARP POPS with near-silence between
-  // (plus a faint warm rumble that the drone bed below handles). Each
-  // pop is a short noise burst with its own quick envelope, instead of
-  // continuous filtered noise.
+  // Crackle: 6-second loop of fire-like sound. Two layered components:
+  //
+  //   1. CONTINUOUS FIZZ BED — quiet broadband noise filling the loop
+  //      so there's never empty silence. This is the warm hiss of
+  //      flame burning gas. Without it, the gaps between pops read as
+  //      "click… click… click…" — a Geiger counter.
+  //
+  //   2. SOFT POPS on top — short noise bursts with gentle attack +
+  //      exponential decay. Far fewer pops than before AND each pop
+  //      has a slower attack (~10% of length, not instant), so they
+  //      blend into the fizz rather than punch out as sharp clicks.
+  //
+  // Filter chain widened + dropped from 3 kHz to 1.5 kHz so the warmer
+  // body of fire reads through instead of just the snap region. Low Q
+  // (0.7) means it's a gentle tilt, not a sharp resonance peak.
   const loopDur = 6.0;
   const sr = c.sampleRate;
   const b = c.createBuffer(1, Math.floor(sr * loopDur), sr);
   const d = b.getChannelData(0);
-  d.fill(0);
-  // Number of pops over the loop. ~7 per second → ~42 total; with random
-  // envelopes 5–40 ms long they're audibly distinct, not a continuous hiss.
-  const POPS_PER_SEC = 7;
+  // Fizz bed — fills the whole buffer with quiet noise so there's
+  // ALWAYS something making sound, not just pop-silence-pop.
+  const FIZZ_AMP = 0.05;
+  for (let i = 0; i < d.length; i++) {
+    d[i] = (Math.random() * 2 - 1) * FIZZ_AMP;
+  }
+  // Soft pops layered ON TOP of the fizz. Fewer than before (4/sec vs 7)
+  // and gentler — they accent the fizz rather than replace it.
+  const POPS_PER_SEC = 4;
   const totalPops = Math.floor(loopDur * POPS_PER_SEC);
   for (let p = 0; p < totalPops; p++) {
     const start = Math.floor(Math.random() * d.length);
-    // Pop duration: 8–35 ms — short crackle snap. Bigger pops are louder.
-    const popLen = Math.floor(sr * (0.008 + Math.random() * 0.027));
-    const amp = 0.4 + Math.random() * 0.6;
+    // Pop duration: 25–95 ms — longer than before so each pop reads
+    // as a crackle, not a tick.
+    const popLen = Math.floor(sr * (0.025 + Math.random() * 0.070));
+    const amp = 0.20 + Math.random() * 0.35;   // softer peaks
     for (let i = 0; i < popLen && start + i < d.length; i++) {
-      // Sharp attack, exponential decay envelope.
-      const env = Math.exp(-i / (popLen * 0.25));
+      // Gentle attack over the first 10% of the pop, then exponential
+      // decay over the rest. The non-zero attack is what kills the
+      // "click" character — sharp transients are what made it Geiger.
+      const attackLen = popLen * 0.10;
+      const attack = i < attackLen ? i / attackLen : 1;
+      const decay = Math.exp(-i / (popLen * 0.45));
+      const env = attack * decay;
       d[start + i] += (Math.random() * 2 - 1) * amp * env;
     }
   }
@@ -684,13 +704,14 @@ export function startAmbience() {
   s.buffer = b; s.loop = true;
   // Slight pitch drift each cycle so the loop doesn't reveal itself.
   s.playbackRate.value = 0.95 + Math.random() * 0.1;
-  // Bandpass tightened around the "snap" region of a real fire crackle
-  // (2.5–4 kHz). Q=2 makes it a clearer click rather than a wide hiss.
+  // Bandpass centred around the warm-body region of fire (1.5 kHz)
+  // with low Q so it's a broad tilt, not a sharp resonant peak.
   const bp = c.createBiquadFilter();
-  bp.type = 'bandpass'; bp.frequency.value = 3000; bp.Q.value = 2.2;
-  // High-pass cut to kill any residual rumble — the drone bed owns the lows.
+  bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 0.7;
+  // High-pass cut keeps the drone bed's low rumble territory clean
+  // but pulled down from 800 Hz → 300 Hz so the warmth comes through.
   const hp = c.createBiquadFilter();
-  hp.type = 'highpass'; hp.frequency.value = 800;
+  hp.type = 'highpass'; hp.frequency.value = 300;
   crackleGain = c.createGain();
   crackleGain.gain.value = 0;  // starts silent; setTorchProximity raises it
   s.connect(hp).connect(bp).connect(crackleGain).connect(master);
