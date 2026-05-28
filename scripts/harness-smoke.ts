@@ -13,7 +13,7 @@
 
 import { chromium, type ConsoleMessage } from 'playwright';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 // Resolve a usable Chromium binary. Sandboxed envs may pre-install at
@@ -169,6 +169,25 @@ async function main(): Promise<void> {
     console.log('\nfinal state:', finalState);
     if (!finalState.paused) throw new Error('world not re-paused after action sequence');
     if (finalState.turn < 3) throw new Error(`turn counter didn't advance (turn=${finalState.turn})`);
+
+    // 4. Annotated screenshot — capture + persist to /tmp so we can eyeball it.
+    console.log('\n→ screenshot (annotated)');
+    const shot = await page.evaluate(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async () => (window as any).harness.screenshot({ annotated: true }),
+    );
+    console.log(`  size: ${shot.size.w}x${shot.size.h}`);
+    console.log(`  camera: pos=(${shot.camera.pos.x},${shot.camera.pos.y},${shot.camera.pos.z}) yaw=${shot.camera.yaw}`);
+    console.log(`  annotations: ${shot.annotations.length}`);
+    for (const a of shot.annotations.slice(0, 6)) {
+      console.log(`    ${a.kind.padEnd(12)} [${a.bbox.x},${a.bbox.y} ${a.bbox.w}x${a.bbox.h}] visible=${a.visible}  ${a.label}`);
+    }
+    // Decode the data URL and save to disk
+    const b64 = shot.pngDataUrl.replace(/^data:image\/png;base64,/, '');
+    const buf = Buffer.from(b64, 'base64');
+    const outPath = '/tmp/harness-smoke-annotated.png';
+    writeFileSync(outPath, buf);
+    console.log(`  saved to ${outPath} (${buf.length} bytes)`);
 
     console.log('\n✓ Smoke test passed.');
   } catch (err) {

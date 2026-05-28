@@ -98,10 +98,14 @@ try {
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
 // --- Renderer ---
+// preserveDrawingBuffer is needed for the harness to read frames via
+// canvas.toDataURL() asynchronously (after render is gone otherwise).
+// Off by default — there's a measurable perf hit on some mobile GPUs.
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: false,
   powerPreference: 'high-performance',
+  preserveDrawingBuffer: HARNESS_ENABLED,
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, CONFIG.PIXEL_RATIO_CAP));
 renderer.setSize(window.innerWidth, window.innerHeight);

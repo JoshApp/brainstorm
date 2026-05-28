@@ -15,6 +15,7 @@ import {
 import { buildObservation } from './observation';
 import { renderObservationText } from './observation-text';
 import { applyAction } from './action';
+import { captureScreenshot } from './annotate';
 import { getUpdateStatus, applyUpdate } from '../pwa-update';
 import type { HarnessApi, Observation, Action, ActionResult, Screenshot } from './types';
 import type { HarnessContext } from './state';
@@ -48,8 +49,10 @@ export function bootHarness(ctx: HarnessContext): void {
       if (!c) throw new Error('[harness] not booted');
       return applyAction(c, action);
     },
-    async screenshot(_opts?: { annotated?: boolean }): Promise<Screenshot> {
-      throw new Error('[harness] screenshot() not yet implemented (Task 4)');
+    async screenshot(opts?: { annotated?: boolean }): Promise<Screenshot> {
+      const c = tryGetContext();
+      if (!c) throw new Error('[harness] not booted');
+      return captureScreenshot(c, opts);
     },
     state() {
       return {
