@@ -176,6 +176,20 @@ function buildPanelContents() {
     } as Partial<CSSStyleDeclaration>);
     panel.appendChild(sectionLabel);
 
+    // CHARACTER — view attributes + proficiencies + spend points (at
+    // safe rooms). Lives above the run-actions block so it's easy to
+    // reach from touch without scrolling past the destructive buttons.
+    panel.appendChild(makeRunButton({
+      label: 'CHARACTER',
+      description: 'View attributes + proficiencies. Spend points at safe rooms.',
+      destructive: false,
+      onClick: () => {
+        closePanel();
+        // Lazy import to avoid the settings menu pulling the screen at
+        // module load.
+        import('./character-screen').then(({ openCharacterScreen }) => openCharacterScreen());
+      },
+    }));
     panel.appendChild(makeRunButton({
       label: 'QUIT TO MENU',
       description: 'Return to the title screen. Your run is saved.',

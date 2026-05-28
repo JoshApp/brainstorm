@@ -12,6 +12,7 @@ import { dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
 import { useFirstConsumable } from './consumable-bar';
 import { toggleInventoryPanel } from '../ui/inventory-panel';
+import { openCharacterScreen, isCharacterScreenOpen, closeCharacterScreen } from '../ui/character-screen';
 import { dismissTopScreen, isAnyScreenOpen } from '../ui/screen-manager';
 import { openSettings } from '../ui/settings-menu';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
@@ -55,6 +56,13 @@ export const desktopScheme: InputScheme = {
       if (k === 'q') {
         e.preventDefault();
         useFirstConsumable();
+      }
+      // Character screen — visible mid-run for status check. Spend
+      // buttons enable only at safe rooms.
+      if (k === 'c') {
+        e.preventDefault();
+        if (isCharacterScreenOpen()) closeCharacterScreen();
+        else openCharacterScreen();
       }
       // Escape: close the topmost open panel (mirrors the backdrop-tap
       // gesture on touch). If nothing is open, open the settings menu
