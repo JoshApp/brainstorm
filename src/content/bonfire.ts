@@ -31,24 +31,28 @@ export const BONFIRE: ModelSpec = {
     // the floor" read.
 
     // ── Dirt mound (where the sword + sticks sit) ───────────────
+    // Wider + a touch taller than the previous pass so the
+    // base feels grounded rather than dainty. Coals + twigs
+    // shifted up accordingly so they sit on the new top
+    // (~y=0.22) instead of inside the mound.
     {
       kind: 'decal',
       pos: [0, 0.018, 0],
       rot: [-Math.PI / 2, 0, 0],
-      size: [0.85, 0.85],
+      size: [1.10, 1.10],
       texture: 'fire-wisp',
       color: 0x0c0805,
     },
-    { kind: 'cone', pos: [0, 0.07, 0], radius: 0.28, height: 0.14, segments: 12, mat: 'dirt' },
+    { kind: 'cone', pos: [0, 0.10, 0], radius: 0.38, height: 0.20, segments: 14, mat: 'dirt' },
 
     // ── Twig tangle — crisscrossed broken branches in the mound ─
-    { kind: 'cylinder', pos: [ 0.04, 0.16, -0.02], radius: 0.018, height: 0.35, segments: 6, rot: [0.7,  0.3, -0.4], mat: 'twig' },
-    { kind: 'cylinder', pos: [-0.04, 0.15,  0.03], radius: 0.016, height: 0.32, segments: 6, rot: [0.6, -0.4,  0.5], mat: 'twig' },
-    { kind: 'cylinder', pos: [ 0.06, 0.14,  0.04], radius: 0.014, height: 0.28, segments: 6, rot: [0.5,  0.8, -0.2], mat: 'twig' },
-    { kind: 'cylinder', pos: [-0.08, 0.14, -0.04], radius: 0.014, height: 0.26, segments: 6, rot: [0.8, -0.7,  0.3], mat: 'twig' },
+    { kind: 'cylinder', pos: [ 0.04, 0.22, -0.02], radius: 0.018, height: 0.35, segments: 6, rot: [0.7,  0.3, -0.4], mat: 'twig' },
+    { kind: 'cylinder', pos: [-0.04, 0.21,  0.03], radius: 0.016, height: 0.32, segments: 6, rot: [0.6, -0.4,  0.5], mat: 'twig' },
+    { kind: 'cylinder', pos: [ 0.06, 0.20,  0.04], radius: 0.014, height: 0.28, segments: 6, rot: [0.5,  0.8, -0.2], mat: 'twig' },
+    { kind: 'cylinder', pos: [-0.08, 0.20, -0.04], radius: 0.014, height: 0.26, segments: 6, rot: [0.8, -0.7,  0.3], mat: 'twig' },
     // A few short stubs sticking up between the longer twigs.
-    { kind: 'cylinder', pos: [ 0.10, 0.18,  0.10], radius: 0.012, height: 0.18, segments: 6, rot: [0.2,  0,    0.1], mat: 'twig' },
-    { kind: 'cylinder', pos: [-0.11, 0.18, -0.09], radius: 0.012, height: 0.18, segments: 6, rot: [-0.2, 0,   -0.1], mat: 'twig' },
+    { kind: 'cylinder', pos: [ 0.10, 0.24,  0.10], radius: 0.012, height: 0.18, segments: 6, rot: [0.2,  0,    0.1], mat: 'twig' },
+    { kind: 'cylinder', pos: [-0.11, 0.24, -0.09], radius: 0.012, height: 0.18, segments: 6, rot: [-0.2, 0,   -0.1], mat: 'twig' },
 
     // ── Smouldering coals — a handful of small bright dots ──────
     // Replaces the previous full-disc ember layer (read as a
@@ -57,22 +61,22 @@ export const BONFIRE: ModelSpec = {
     // suggesting individual hot coals catching the eye instead
     // of a uniform glow plate. They also flicker independently.
     {
-      kind: 'sprite', pos: [-0.08, 0.16,  0.05], size: [0.14, 0.14],
+      kind: 'sprite', pos: [-0.08, 0.22,  0.05], size: [0.14, 0.14],
       texture: 'fire-wisp', blending: 'additive', color: 0xff7028,
       flicker: { scale: 0.30, bob: 0.005, speed: 3.4 },
     },
     {
-      kind: 'sprite', pos: [ 0.10, 0.16, -0.06], size: [0.12, 0.12],
+      kind: 'sprite', pos: [ 0.10, 0.22, -0.06], size: [0.12, 0.12],
       texture: 'fire-wisp', blending: 'additive', color: 0xff6020,
       flicker: { scale: 0.28, bob: 0.005, speed: 2.7 },
     },
     {
-      kind: 'sprite', pos: [-0.04, 0.16, -0.12], size: [0.10, 0.10],
+      kind: 'sprite', pos: [-0.04, 0.22, -0.12], size: [0.10, 0.10],
       texture: 'fire-wisp', blending: 'additive', color: 0xff8030,
       flicker: { scale: 0.32, bob: 0.005, speed: 3.9 },
     },
     {
-      kind: 'sprite', pos: [ 0.05, 0.16,  0.12], size: [0.11, 0.11],
+      kind: 'sprite', pos: [ 0.05, 0.22,  0.12], size: [0.11, 0.11],
       texture: 'fire-wisp', blending: 'additive', color: 0xff6824,
       flicker: { scale: 0.30, bob: 0.005, speed: 3.1 },
     },
