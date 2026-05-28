@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { SWORD_RUSTED } from '../content/sword';
+import { getBob } from './viewmodel-bob';
 import type { ModelSpec } from '../ecs/model-types';
 
 // First-person held sword. Geometry comes from a ModelSpec (data); animation
@@ -85,8 +86,11 @@ export function createSword(camera: THREE.Camera): Sword {
 
   function update(dt: number) {
     if (phase === 'idle') {
-      group.position.set(ix, iy, iz);
-      group.rotation.set(rx, ry, rz);
+      // Idle pose + walk bob. Only applied during idle — adding bob
+      // on top of the swing animations would muddy their snap.
+      const b = getBob();
+      group.position.set(ix + b.x, iy + b.y, iz);
+      group.rotation.set(rx, ry, rz + b.rotZ);
       return;
     }
 

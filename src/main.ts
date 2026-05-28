@@ -5,7 +5,8 @@ import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/camera';
 import { createSword } from './player/sword';
 import { attachLamp, detachLamp, tickLamp } from './player/handheld-lamp';
-import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
+import { attachOffhandViewmodel, detachOffhandViewmodel, tickOffhandViewmodel } from './player/handheld-offhand';
+import { setBobTarget, updateBob } from './player/viewmodel-bob';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
@@ -424,10 +425,18 @@ function tick() {
     const attackPressed = isDying() ? false : consumeAttackPressed();
     combat.tick(attackPressed);
 
+    // Walk bob — sword + lamp + offhand viewmodels all read the same
+    // shared bob each frame. realDt so the sway keeps a steady rhythm
+    // through slow-mo and doesn't stutter. Target intensity = joystick
+    // magnitude, so standing still locks the hands and tapping forward
+    // ramps the bob in smoothly.
+    setBobTarget(Math.hypot(input.moveX, input.moveY));
+    updateBob(realDt);
     sword.update(scaledDt);
-    // Handheld lamp flicker. realDt — flicker shouldn't slow during
-    // hit-pause (a frozen lamp looks broken).
+    // Handheld lamp flicker + bob. realDt — flicker shouldn't slow
+    // during slow-mo (a frozen lamp looks broken).
     tickLamp(realDt);
+    tickOffhandViewmodel();
     // Enemy sleep: skip update() for enemies far from the player. They
     // can't influence gameplay outside their own perception range
     // anyway; ticking them is GC + AI work for no visible result.

@@ -14,6 +14,7 @@ import * as THREE from 'three';
 
 import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
+import { getBob } from './viewmodel-bob';
 
 interface LampState {
   /** World position vector — mutated each frame from the lantern's
@@ -204,6 +205,12 @@ export function tickLamp(dt: number) {
       Math.sin(f * 13.1) * 0.03 +
       Math.sin(f * 23.7) * 0.02;
   lamp.currentIntensity = lamp.baseIntensity * (1 + flicker);
+  // Walk bob — apply on top of the base offhand position so the lantern
+  // sways with the player's stride. Same shared bob the sword + offhand
+  // viewmodel read, so they all move in lockstep.
+  const b = getBob();
+  lamp.group.position.set(LAMP_LOCAL.x + b.x, LAMP_LOCAL.y + b.y, LAMP_LOCAL.z);
+  lamp.group.rotation.z = b.rotZ;
   // Update the source's world position by reading the lantern's
   // transform. updateMatrixWorld first since the camera-parented chain
   // may not have flushed yet this frame.
