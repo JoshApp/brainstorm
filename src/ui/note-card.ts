@@ -13,6 +13,7 @@ const NOTE_SCREEN_ID = 'note';
 
 let activeCard: HTMLDivElement | null = null;
 let noteKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+let notePointerHandler: ((e: PointerEvent) => void) | null = null;
 
 export function showNote(text: string) {
   if (activeCard) dismiss();
@@ -104,6 +105,25 @@ export function showNote(text: string) {
   window.addEventListener('keydown', onKey, true);
   noteKeyHandler = onKey;
 
+  // Desktop pointer-lock case: clicks on the locked canvas fire
+  // mousedown on the canvas (not the card / not the screen
+  // backdrop), so neither the card's own pointerdown nor the
+  // screen-manager's backdrop dismissal catches them. A
+  // capture-phase window listener swallows the click + closes
+  // the note. The card's own pointerdown still wins for
+  // taps on the card; the screen backdrop still wins for
+  // taps on the dimmed area; this handles "anywhere else".
+  const onPointer = (e: PointerEvent) => {
+    if (!activeCard) return;
+    // Only left button (or any touch). Right-click reserved.
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dismiss();
+  };
+  window.addEventListener('pointerdown', onPointer, true);
+  notePointerHandler = onPointer;
+
   document.body.appendChild(card);
   activeCard = card;
   // Modal layer so notes stack ABOVE any panel that might be open. The
@@ -132,10 +152,14 @@ function dismiss() {
   card.style.transform = 'translate(-50%, -50%) scale(0.94)';
   setTimeout(() => card.remove(), 240);
   closeScreen(NOTE_SCREEN_ID);
-  // Tear down the keydown listener so it doesn't linger past
-  // dismissal and eat keys outside note-reading state.
+  // Tear down the global listeners so they don't linger past
+  // dismissal and eat input outside note-reading state.
   if (noteKeyHandler) {
     window.removeEventListener('keydown', noteKeyHandler, true);
     noteKeyHandler = null;
+  }
+  if (notePointerHandler) {
+    window.removeEventListener('pointerdown', notePointerHandler, true);
+    notePointerHandler = null;
   }
 }
