@@ -9,7 +9,8 @@
     "preview": "vite preview --host",
     "snap": "tsx scripts/snap.ts",
     "harness-smoke": "tsx scripts/harness-smoke.ts",
-    "harness-continue": "tsx scripts/harness-continue.ts"
+    "harness-continue": "tsx scripts/harness-continue.ts",
+    "play": "tsx scripts/play.ts"
   },
   "dependencies": {
     "three": "^0.160.0"

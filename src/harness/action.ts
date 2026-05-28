@@ -206,11 +206,18 @@ async function attackAction(
 
 // ── Interact ─────────────────────────────────────────────────────────
 
-function interactAction(): Omit<ActionResult, 'observation' | 'elapsed'> {
+async function interactAction(): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
   const it = getInRangeInteractable();
   if (!it) return { ok: false, reason: 'no-target' };
   it.onUse();
-  return { ok: true };
+  // Some interactables trigger side effects that need real-time ticks
+  // to play out — stairs schedule a 220ms fade then a level swap, chest
+  // lids animate, fountains open a result UI. Give 500ms of world time
+  // so the side effect lands before we re-pause and return the obs.
+  // No predicate — we don't know what the side effect will be, so
+  // we just budget a window.
+  const end = await requestTickBudget({ maxSeconds: 0.5 });
+  return { ok: true, budgetEnd: end.reason };
 }
 
 // ── Use consumable ───────────────────────────────────────────────────

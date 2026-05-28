@@ -16,6 +16,7 @@ import { buildObservation } from './observation';
 import { renderObservationText } from './observation-text';
 import { applyAction } from './action';
 import { captureScreenshot } from './annotate';
+import * as bot from './bot';
 import { getUpdateStatus, applyUpdate } from '../pwa-update';
 import type { HarnessApi, Observation, Action, ActionResult, Screenshot } from './types';
 import type { HarnessContext } from './state';
@@ -66,6 +67,14 @@ export function bootHarness(ctx: HarnessContext): void {
     resume() { setHarnessPaused(false); },
     updateStatus() { return getUpdateStatus(); },
     async applyUpdate() { await applyUpdate(); },
+    bot: {
+      step: bot.step,
+      async run(opts?: bot.RunOpts) {
+        const c = tryGetContext();
+        if (!c) throw new Error('[harness] not booted');
+        return bot.run(c, opts);
+      },
+    },
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

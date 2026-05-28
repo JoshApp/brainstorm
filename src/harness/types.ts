@@ -163,4 +163,15 @@ export interface HarnessApi {
   /** Apply a pending PWA update (SKIP_WAITING + reload). The CLI driver
    *  calls this between episodes when it's safe to take a new build. */
   applyUpdate(): Promise<void>;
+  /** Built-in dumb-AI bot — runs autonomous loops, yields control on
+   *  conditions you care about. See src/harness/bot.ts for the
+   *  RunOpts shape. */
+  bot: {
+    step(obs: Observation): Action;
+    run(opts?: {
+      maxTurns?: number;
+      until?: (obs: Observation, result: ActionResult, turn: number) => boolean | string;
+      onStep?: (obs: Observation, result: ActionResult, turn: number) => void | Promise<void>;
+    }): Promise<{ turns: number; stopReason: string; transcript: ActionResult[] }>;
+  };
 }

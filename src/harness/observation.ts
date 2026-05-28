@@ -195,13 +195,16 @@ function wallDistance(
   const uz = dz / len;
   const step = 0.25;
   const max = 20;
+  // Match the player's actual collision radius so walls8 reports the
+  // distance the PLAYER can travel, not the distance a 0.05m point
+  // can travel. Mismatched radii were making the bot think doorways
+  // and gaps were navigable when they're too narrow to fit through.
+  const radius = 0.3;
   let lastFree = 0;
   for (let d = step; d <= max; d += step) {
     const x = px + ux * d;
     const z = pz + uz * d;
-    // Use a small radius so we report distance to the actual wall, not
-    // to the wall + collision-buffer.
-    if (level.walkable.contains(x, z, 0.05)) {
+    if (level.walkable.contains(x, z, radius)) {
       lastFree = d;
     } else {
       return round(lastFree, 2);
