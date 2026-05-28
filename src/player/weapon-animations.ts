@@ -84,83 +84,134 @@ function swordPose(phase: SwordPhase, t: number): WeaponPose {
   return scratch;
 }
 
-// ── Dagger (forward stab) ─────────────────────────────────────────
-// Minimal shoulder draw, then a fast push of the viewmodel forward
-// along the camera's -Z axis. The blade barely rotates — it's a
-// thrust, not a swing. Reads as quick + precise.
+// ── Dagger (forward stab — stab stab) ─────────────────────────────
+// Two-step thrust. Windup tilts the blade so the tip ACTUALLY POINTS
+// camera-forward (cancels the idle diagonal-across-body roll). Strike
+// is two sine-pulse jabs back-to-back, the second deeper — reads as a
+// quick "stab stab" combo. Hit detection still fires once per strike
+// phase (combat/attack.ts gates on strikeAlreadyHit), so the second
+// jab is animation flavour, not extra damage.
+
+// Stab pose — blade tip aimed at the centre of the view.
+// Dagger model has tip at +Y, so we rotate ~−π/2 around X to swing
+// the tip toward camera-forward (−Z). The idle yaw/roll get cancelled
+// out so the blade lines up with the crosshair instead of cutting
+// across the body.
+const DAGGER_STAB_RX = rx - 1.30;   // -0.2 - 1.30 = -1.50 → tip forward
+const DAGGER_STAB_RY = ry + 0.15;   // cancel idle yaw  → ≈ 0
+const DAGGER_STAB_RZ = rz - 0.40;   // cancel idle roll → ≈ 0
+
+// Wound-up pose, used as the "between stabs" rest point too.
+const DAGGER_WOUND_X = ix - 0.06;   // pulled toward centre line
+const DAGGER_WOUND_Y = iy + 0.05;   // up to eye-line
+const DAGGER_WOUND_Z = iz + 0.10;   // drawn back toward camera
+
+// Per-stab forward push in metres along camera-local −Z. Second stab
+// goes deeper so the rhythm reads as "jab… JAB".
+const STAB1_DEPTH = 0.30;
+const STAB2_DEPTH = 0.42;
+
 function daggerPose(phase: SwordPhase, t: number): WeaponPose {
   if (phase === 'windup') {
-    // Tiny pull-back: blade slips a hair toward the camera + tilts
-    // forward (bringing the tip in line with the camera forward).
-    scratch.x = ix - 0.04 * t;
-    scratch.y = iy + 0.03 * t;
-    scratch.z = iz + 0.07 * t;          // closer to the eye = bigger thrust visually
-    scratch.rotX = rx + 0.20 * t;       // tip drops to point forward
-    scratch.rotY = ry - 0.20 * t;
-    scratch.rotZ = rz;
+    // Lerp idle → wound-up in one shot. Quick draw, no flourish.
+    scratch.x = ix + (DAGGER_WOUND_X - ix) * t;
+    scratch.y = iy + (DAGGER_WOUND_Y - iy) * t;
+    scratch.z = iz + (DAGGER_WOUND_Z - iz) * t;
+    scratch.rotX = rx + (DAGGER_STAB_RX - rx) * t;
+    scratch.rotY = ry + (DAGGER_STAB_RY - ry) * t;
+    scratch.rotZ = rz + (DAGGER_STAB_RZ - rz) * t;
     return scratch;
   }
   if (phase === 'strike') {
-    // Push forward fast. Slight inward (centre-line) translation so
-    // the strike comes through the centre of the view rather than
-    // staying out to the right.
-    const ease = 1 - (1 - t) * (1 - t);
-    scratch.x = (ix - 0.04) + (- 0.10) * ease;
-    scratch.y = (iy + 0.03) + (- 0.02) * ease;
-    scratch.z = (iz + 0.07) + (-0.40) * ease;   // hard push forward
-    scratch.rotX = (rx + 0.20) + (-0.10) * ease;
-    scratch.rotY = (ry - 0.20) + (-0.25) * ease;
-    scratch.rotZ = rz;
+    // Two sine pulses end-to-end. Each pulse: 0 → peak → 0 along the
+    // forward axis. Blade rotation stays locked at the stab pose so
+    // the tip leads each thrust cleanly.
+    let fwd = 0;
+    if (t < 0.5) {
+      const u = t / 0.5;                       // 0..1 inside stab 1
+      fwd = STAB1_DEPTH * Math.sin(Math.PI * u);
+    } else {
+      const u = (t - 0.5) / 0.5;               // 0..1 inside stab 2
+      fwd = STAB2_DEPTH * Math.sin(Math.PI * u);
+    }
+    // Tiny inward sway scaled to the current thrust depth so the
+    // blade tracks slightly toward centre as it extends.
+    const swayScale = fwd / STAB2_DEPTH;
+    scratch.x = DAGGER_WOUND_X + (-0.03) * swayScale;
+    scratch.y = DAGGER_WOUND_Y + (-0.02) * swayScale;
+    scratch.z = DAGGER_WOUND_Z + (-fwd);
+    scratch.rotX = DAGGER_STAB_RX;
+    scratch.rotY = DAGGER_STAB_RY;
+    scratch.rotZ = DAGGER_STAB_RZ;
     return scratch;
   }
-  // recover — snap back to idle.
+  // recover — strike ends back at the wound-up pose (sin(π)=0), so
+  // we lerp from THAT back to idle in one ease.
   const e = 1 - (1 - t) * (1 - t);
-  const fromX = ix - 0.14, fromY = iy + 0.01, fromZ = iz - 0.33;
-  const fromRx = rx + 0.10, fromRy = ry - 0.45, fromRz = rz;
-  scratch.x = fromX + (ix - fromX) * e;
-  scratch.y = fromY + (iy - fromY) * e;
-  scratch.z = fromZ + (iz - fromZ) * e;
-  scratch.rotX = fromRx + (rx - fromRx) * e;
-  scratch.rotY = fromRy + (ry - fromRy) * e;
-  scratch.rotZ = fromRz + (rz - fromRz) * e;
+  scratch.x = DAGGER_WOUND_X + (ix - DAGGER_WOUND_X) * e;
+  scratch.y = DAGGER_WOUND_Y + (iy - DAGGER_WOUND_Y) * e;
+  scratch.z = DAGGER_WOUND_Z + (iz - DAGGER_WOUND_Z) * e;
+  scratch.rotX = DAGGER_STAB_RX + (rx - DAGGER_STAB_RX) * e;
+  scratch.rotY = DAGGER_STAB_RY + (ry - DAGGER_STAB_RY) * e;
+  scratch.rotZ = DAGGER_STAB_RZ + (rz - DAGGER_STAB_RZ) * e;
   return scratch;
 }
 
 // ── Hammer (overhead smash) ───────────────────────────────────────
-// Big wind-up: viewmodel rises high above the camera and tilts back.
-// Strike drops straight DOWN + forward — gravity carries it. Slow
-// recovery so missing is genuinely punishing.
+// Big wind-up: viewmodel rises high above the camera, the HEAD
+// pitches back over the shoulder. Strike sweeps the head forward
+// and down through the centre line — gravity-driven. Slow recovery
+// so missing is genuinely punishing.
+//
+// Iron-maul model has the head at +Y (up). To swing the head BACK
+// during windup we rotate POSITIVELY around X (head moves +Y → +Z,
+// i.e. up-and-back). The strike then rotates NEGATIVELY through the
+// arc so the head crashes from over-the-shoulder, through overhead,
+// down to forward-and-low. The previous version inverted both — the
+// head went forward during windup and BACKWARD during strike, so
+// players were smashing things with the haft instead of the iron.
+
+// Wound-up pose: hammer raised, head pitched back over the shoulder.
+const HAMMER_WOUND_X = ix - 0.10;
+const HAMMER_WOUND_Y = iy + 0.55;
+const HAMMER_WOUND_Z = iz + 0.08;
+const HAMMER_WOUND_RX = rx + 1.40;   // +X rot pulls the +Y head back to +Z
+const HAMMER_WOUND_RZ = rz - 0.20;
+// Strike-end pose: head down and forward.
+const HAMMER_STRIKE_X = ix + 0.00;
+const HAMMER_STRIKE_Y = iy - 0.30;
+const HAMMER_STRIKE_Z = iz - 0.12;
+const HAMMER_STRIKE_RX = rx - 1.10;  // sweep through +π/2 → head ends pointing down/-Z
+const HAMMER_STRIKE_RZ = rz + 0.25;
+
 function hammerPose(phase: SwordPhase, t: number): WeaponPose {
   if (phase === 'windup') {
-    // Heave it up + back. Big Y, big backward pitch.
-    scratch.x = ix - 0.10 * t;
-    scratch.y = iy + 0.55 * t;            // up high
-    scratch.z = iz + 0.08 * t;
-    scratch.rotX = rx - 1.40 * t;         // strong backward pitch
+    scratch.x = ix + (HAMMER_WOUND_X - ix) * t;
+    scratch.y = iy + (HAMMER_WOUND_Y - iy) * t;
+    scratch.z = iz + (HAMMER_WOUND_Z - iz) * t;
+    scratch.rotX = rx + (HAMMER_WOUND_RX - rx) * t;
     scratch.rotY = ry;
-    scratch.rotZ = rz - 0.20 * t;
+    scratch.rotZ = rz + (HAMMER_WOUND_RZ - rz) * t;
     return scratch;
   }
   if (phase === 'strike') {
-    // Drop it. Y crashes down faster than it goes forward.
+    // Ease-out: head accelerates fast through the arc.
     const ease = 1 - (1 - t) * (1 - t);
-    scratch.x = (ix - 0.10) + 0.10 * ease;
-    scratch.y = (iy + 0.55) + (-0.85) * ease;   // overshoots idle floorward
-    scratch.z = (iz + 0.08) + (-0.20) * ease;
-    scratch.rotX = (rx - 1.40) + 1.95 * ease;   // whole arc forward
+    scratch.x = HAMMER_WOUND_X + (HAMMER_STRIKE_X - HAMMER_WOUND_X) * ease;
+    scratch.y = HAMMER_WOUND_Y + (HAMMER_STRIKE_Y - HAMMER_WOUND_Y) * ease;
+    scratch.z = HAMMER_WOUND_Z + (HAMMER_STRIKE_Z - HAMMER_WOUND_Z) * ease;
+    scratch.rotX = HAMMER_WOUND_RX + (HAMMER_STRIKE_RX - HAMMER_WOUND_RX) * ease;
     scratch.rotY = ry;
-    scratch.rotZ = (rz - 0.20) + 0.45 * ease;
+    scratch.rotZ = HAMMER_WOUND_RZ + (HAMMER_STRIKE_RZ - HAMMER_WOUND_RZ) * ease;
     return scratch;
   }
   // recover — slow lift back to idle from low-and-forward.
   const e = 1 - (1 - t) * (1 - t);
-  const fromX = ix,        fromY = iy - 0.30, fromZ = iz - 0.12;
-  const fromRx = rx + 0.55, fromRy = ry,       fromRz = rz + 0.25;
-  scratch.x = fromX + (ix - fromX) * e;
-  scratch.y = fromY + (iy - fromY) * e;
-  scratch.z = fromZ + (iz - fromZ) * e;
-  scratch.rotX = fromRx + (rx - fromRx) * e;
-  scratch.rotY = fromRy + (ry - fromRy) * e;
-  scratch.rotZ = fromRz + (rz - fromRz) * e;
+  scratch.x = HAMMER_STRIKE_X + (ix - HAMMER_STRIKE_X) * e;
+  scratch.y = HAMMER_STRIKE_Y + (iy - HAMMER_STRIKE_Y) * e;
+  scratch.z = HAMMER_STRIKE_Z + (iz - HAMMER_STRIKE_Z) * e;
+  scratch.rotX = HAMMER_STRIKE_RX + (rx - HAMMER_STRIKE_RX) * e;
+  scratch.rotY = ry;
+  scratch.rotZ = HAMMER_STRIKE_RZ + (rz - HAMMER_STRIKE_RZ) * e;
   return scratch;
 }

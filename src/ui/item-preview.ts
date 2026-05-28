@@ -22,7 +22,24 @@ interface PreviewEntry {
   worldZ: number;
   visible: boolean;
   el: HTMLDivElement;
+  // Cached child refs — we restyle font sizes per-frame to keep the
+  // label legible across viewing distance, so we need direct access
+  // instead of re-querying every tick.
+  nameEl: HTMLDivElement;
+  flavorEl: HTMLDivElement | null;
+  statsEl: HTMLDivElement | null;
 }
+
+// Base font sizes (px) at REF_DIST. Per-frame distance scaling
+// multiplies these.
+const NAME_BASE_PX = 12;
+const FLAVOR_BASE_PX = 13;
+const STATS_BASE_PX = 10;
+// Camera-to-anchor distance at which labels render at base size.
+// Closer than this → labels grow; further → they shrink (clamped).
+const REF_DIST = 3.0;
+const MIN_SCALE = 0.85;
+const MAX_SCALE = 1.6;
 
 const entries = new Map<string, PreviewEntry>();
 
@@ -47,7 +64,10 @@ export function registerItemPreview(id: string, item: ItemSpec): void {
     border: '1px solid rgba(180, 130, 90, 0.4)',
     borderRadius: '4px',
     textAlign: 'center',
-    maxWidth: '240px',
+    // Cap width but stay inside the viewport on narrow phones — 80vw
+    // leaves room for the screen edges so the label never wraps awkwardly
+    // because it's pinned half-off-screen.
+    maxWidth: 'min(240px, 80vw)',
     lineHeight: '1.3',
   } as Partial<CSSStyleDeclaration>);
 
@@ -58,7 +78,7 @@ export function registerItemPreview(id: string, item: ItemSpec): void {
   name.textContent = item.name;
   Object.assign(name.style, {
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '12px',
+    fontSize: `${NAME_BASE_PX}px`,
     fontWeight: '600',
     letterSpacing: '0.18em',
     color: `#${rarityHex}`,
@@ -67,26 +87,28 @@ export function registerItemPreview(id: string, item: ItemSpec): void {
   el.appendChild(name);
 
   // Flavor — italic, dimmed.
+  let flavorEl: HTMLDivElement | null = null;
   if (item.flavor) {
-    const flavor = document.createElement('div');
-    flavor.textContent = item.flavor;
-    Object.assign(flavor.style, {
+    flavorEl = document.createElement('div');
+    flavorEl.textContent = item.flavor;
+    Object.assign(flavorEl.style, {
       fontStyle: 'italic',
-      fontSize: '13px',
+      fontSize: `${FLAVOR_BASE_PX}px`,
       color: 'rgba(220, 180, 140, 0.70)',
       marginTop: '4px',
     } as Partial<CSSStyleDeclaration>);
-    el.appendChild(flavor);
+    el.appendChild(flavorEl);
   }
 
   // Stat summary — compact, monospace-ish.
   const stats = formatStats(item);
+  let statsEl: HTMLDivElement | null = null;
   if (stats) {
-    const statsEl = document.createElement('div');
+    statsEl = document.createElement('div');
     statsEl.textContent = stats;
     Object.assign(statsEl.style, {
       fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontSize: '10px',
+      fontSize: `${STATS_BASE_PX}px`,
       fontWeight: '600',
       letterSpacing: '0.10em',
       color: 'rgba(255, 220, 180, 0.85)',
@@ -96,7 +118,10 @@ export function registerItemPreview(id: string, item: ItemSpec): void {
   }
 
   document.body.appendChild(el);
-  entries.set(id, { id, worldX: 0, worldY: 0, worldZ: 0, visible: false, el });
+  entries.set(id, {
+    id, worldX: 0, worldY: 0, worldZ: 0, visible: false, el,
+    nameEl: name, flavorEl, statsEl,
+  });
 }
 
 /** Update the world anchor + visibility for a registered preview. */
@@ -123,23 +148,56 @@ export function unregisterItemPreview(id: string): void {
 export function tickItemPreviews(camera: THREE.Camera, canvas: HTMLCanvasElement): void {
   const rect = canvas.getBoundingClientRect();
   const screensOpen = isAnyScreenOpen();
+  const margin = 8;
   for (const e of entries.values()) {
     if (!e.visible || screensOpen) {
       if (e.el.style.opacity !== '0') e.el.style.opacity = '0';
       continue;
     }
+    // Camera-to-anchor distance drives the font-size scale: closer
+    // makes the label feel like part of the world (especially on
+    // desktop where the viewport is wide and a fixed 12px name reads
+    // as tiny). Clamped both sides so it never balloons or vanishes.
+    const dx = e.worldX - camera.position.x;
+    const dy = e.worldY - camera.position.y;
+    const dz = e.worldZ - camera.position.z;
+    const dist = Math.hypot(dx, dy, dz);
+    const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, REF_DIST / Math.max(dist, 0.5)));
+    setFontScale(e, scale);
+
     tmpVec.set(e.worldX, e.worldY, e.worldZ);
     tmpVec.project(camera);
     if (tmpVec.z > 1) {
       if (e.el.style.opacity !== '0') e.el.style.opacity = '0';
       continue;
     }
-    const sx = (tmpVec.x * 0.5 + 0.5) * rect.width + rect.left;
+    let sx = (tmpVec.x * 0.5 + 0.5) * rect.width + rect.left;
     const sy = (-tmpVec.y * 0.5 + 0.5) * rect.height + rect.top;
+    // Clamp horizontally so the label can't slide off-screen on
+    // mobile when the anchor sits near the viewport edge. We use the
+    // measured width of the label, halved (CSS centres it via
+    // translate(-50%)), so it always stays fully visible.
+    const halfW = e.el.offsetWidth / 2;
+    if (halfW > 0) {
+      const minX = halfW + margin;
+      const maxX = window.innerWidth - halfW - margin;
+      if (maxX >= minX) sx = Math.max(minX, Math.min(maxX, sx));
+    }
     e.el.style.left = `${sx}px`;
     e.el.style.top = `${sy}px`;
     if (e.el.style.opacity !== '1') e.el.style.opacity = '1';
   }
+}
+
+function setFontScale(e: PreviewEntry, scale: number): void {
+  // Skip restyle if scale hasn't meaningfully changed — keeps the
+  // DOM out of layout thrash for static viewing.
+  const prev = parseFloat(e.el.dataset.fontScale ?? '0');
+  if (Math.abs(prev - scale) < 0.02) return;
+  e.el.dataset.fontScale = scale.toFixed(3);
+  e.nameEl.style.fontSize = `${NAME_BASE_PX * scale}px`;
+  if (e.flavorEl) e.flavorEl.style.fontSize = `${FLAVOR_BASE_PX * scale}px`;
+  if (e.statsEl) e.statsEl.style.fontSize = `${STATS_BASE_PX * scale}px`;
 }
 
 function formatStats(item: ItemSpec): string | null {

@@ -33,7 +33,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, {
 }> = {
   dagger: {
     windup: 0.06,         // barely any wind-up; the stab is a flick
-    strike: 0.08,
+    strike: 0.22,         // two jabs back-to-back ("stab stab"); split 50/50 inside the curve
     recover: 0.16,        // snap back to ready
   },
   sword: {
