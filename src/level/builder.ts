@@ -931,9 +931,20 @@ export function buildLevel(
   // Doors close gaps in the wall layout. They start sealed if their unlock
   // condition isn't met (defaults: cleared rooms). They listen for
   // room:cleared events to flip to closed (interactable).
+  //
+  // Arena doors additionally need a room-rect lookup so their tick can
+  // detect the player crossing INTO one of the protected rooms (the
+  // trigger for the slam). Build a single id→RoomSpec map and hand it
+  // through to every door — non-arena doors ignore the lookup.
+  const roomById = new Map<string, RoomSpec>();
+  for (const r of spec.rooms) roomById.set(r.id, r);
   const doorTeardowns: Array<() => void> = [];
   for (const d of spec.doors ?? []) {
-    const h = spawnDoor(root, d, walkable, materials, () => aliveByRoom);
+    const h = spawnDoor(
+      root, d, walkable, materials,
+      () => aliveByRoom,
+      (id) => roomById.get(id) ?? null,
+    );
     doorTeardowns.push(h.teardown);
   }
 

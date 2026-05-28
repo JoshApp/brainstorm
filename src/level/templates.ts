@@ -19,7 +19,7 @@
 //
 // Tile dictionary (see src/level/tilemap.ts for the canonical list):
 //   #  wall      .  floor    S  player spawn   /  stairs DOWN
-//   o  door      O  sealed door (clear room to open)
+//   o  door      O  sealed door (clear room to open)   D  arena door (slams on enter)
 //   P  pillar    A  altar    c  chest          C  corpse
 //   F  fountain  ^  spike trap
 //   T  torch (N) t  torch (S)  <  torch (W)  >  torch (E)

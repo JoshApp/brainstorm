@@ -229,11 +229,18 @@ export type DoorSpec = {
   /**
    * Unlock condition. If absent, the door opens on first interact.
    *
-   * 'cleared': all enemies in the listed rooms must be dead. Until then
-   * the door shows no interact prompt (sealed / SEALED label).
+   * 'cleared': sealed from spawn until every enemy in the listed
+   *            rooms is dead.
+   * 'arena':   STARTS open + passable; per-tick checks the player's
+   *            position against the listed rooms' rects. The moment
+   *            the player crosses into one of them the door slams
+   *            shut (a closing animation + audio sting). It then
+   *            behaves like a cleared-unlock door — opens again
+   *            when the rooms are empty. Lock-on-enter behaviour.
    */
   unlock?:
-    | { kind: 'cleared'; roomIds: string[] };
+    | { kind: 'cleared'; roomIds: string[] }
+    | { kind: 'arena'; roomIds: string[] };
 };
 
 /**

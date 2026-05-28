@@ -13,7 +13,7 @@ const RAY_VIOLET = godRay({ tint: 0xa080ff });
 //
 // Tile dictionary (canonical list in src/level/tilemap.ts):
 //   #  wall      .  floor    S  player spawn   /  stairs DOWN
-//   o  door      O  sealed door (clear to open)
+//   o  door      O  sealed door (clear to open)   D  arena door (slams on enter)
 //   P  pillar    A  altar    c  chest          C  corpse
 //   F  fountain  ^  spike trap
 //   T  torch N   t  torch S  <  torch W       >  torch E
@@ -415,6 +415,35 @@ const ENCOUNTER_PRISON: Vault = {
   torchTint: TORCH_BLOOD,
 };
 
+// Arena encounter — the lock-on-enter test. The 'D' door starts
+// visibly open at the corridor mouth; the moment the player crosses
+// into the vault it slams shut and a quartet of mobs becomes the
+// problem. Door reopens on room-clear so the spine progression isn't
+// permanently broken if the player somehow can't finish (e.g. only
+// option is to die + restart). Inner chest as the carrot for taking
+// the fight.
+const ENCOUNTER_ARENA: Vault = {
+  id: 'encounter-arena',
+  tags: ['encounter'],
+  map: [
+    '##############',
+    '#....T....T..#',
+    '#............#',
+    '#.G........G.#',
+    '#............#',
+    '#......c.....#',
+    '#............#',
+    '#.G........G.#',
+    '#............#',
+    '#....t....t..#',
+    '######D#######',
+    '##############',
+  ],
+  minDepth: 3,
+  weight: 1,
+  torchTint: TORCH_BLOOD,
+};
+
 // Blood altar encounter. A single cursed offering (ring of marrow)
 // floats over a basin in the centre of the chamber. Walking into the
 // glow does nothing; TAKE costs 4 HP and erupts in blood — the item
@@ -595,6 +624,7 @@ export const VAULTS: Vault[] = [
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
   ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
+  ENCOUNTER_ARENA,
   BOSS_ANTECHAMBER, BOSS_CATHEDRAL,
   EXIT_SIMPLE, EXIT_ALCOVE, EXIT_GRAND,
 ];

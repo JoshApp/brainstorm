@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { DoorSpec } from '../level/types';
+import type { DoorSpec, RoomSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
 import type { WalkableRegion, WallSegment } from '../level/walkable';
 import { generateEntityId } from '../ecs/world';
@@ -19,6 +19,7 @@ import { playChestOpen } from '../audio/sfx';
 // inert (the system module already respects that).
 
 const OPEN_DURATION = 0.6;          // seconds for swing animation
+const CLOSE_DURATION = 0.22;        // arena slam — much faster than the open swing
 const OPEN_ANGLE = Math.PI * 0.55;  // ~100° — feels like the door swings clear
 const DOOR_THICKNESS = 0.08;
 const DOOR_HEIGHT_FALLBACK = 2.8;
@@ -29,6 +30,10 @@ export function spawnDoor(
   walkable: WalkableRegion,
   materials: StyleMaterials,
   enemyRoomMembership: () => Map<string, number>, // roomId -> alive count
+  /** Lookup a room's rect by id. Required for arena-unlock doors
+   *  (they need to know whether the player has crossed into one
+   *  of the rooms they're protecting). Other door kinds ignore. */
+  roomRectLookup?: (id: string) => RoomSpec | null,
 ) {
   // Geometry: a flat plank in the doorway. The wall segment is axis-aligned
   // so the door is axis-aligned. Width = segment length; thickness pulled
@@ -126,8 +131,21 @@ export function spawnDoor(
   const swingSign = spec.swingDir ?? 1;
   const targetAngle = swingSign * OPEN_ANGLE;
 
-  let state: 'sealed' | 'closed' | 'opening' | 'open' = 'closed';
+  // State machine. Adds two new states beyond the classic
+  // sealed/closed/opening/open progression to support arena
+  // lock-on-enter:
+  //   'arena-open' — door starts OPEN + passable; tick polls the
+  //                  player's position vs the protected room rects.
+  //                  When the player crosses inside, transition to
+  //                  'closing'.
+  //   'closing'    — fast reverse animation. Wall returns IMMEDIATELY
+  //                  at the start so the player can't squeeze back
+  //                  out mid-slam. Ends in 'sealed' (with the
+  //                  cleared-unlock condition taking it the rest of
+  //                  the way).
+  let state: 'arena-open' | 'sealed' | 'closed' | 'opening' | 'closing' | 'open' = 'closed';
   let openTimer = 0;
+  let closeTimer = 0;
 
   // Door center for the interactable hit position.
   const cx = (spec.ax + spec.bx) / 2;
@@ -152,7 +170,49 @@ export function spawnDoor(
       walkable.removeWall(wallSeg);
       playChestOpen();  // creaky hinge sfx reused — chests + doors share vibe
     },
-    tick(dt: number) {
+    tick(_dt: number, playerPos: THREE.Vector3) {
+      // Arena trigger: while open + passable, watch the player. The
+      // moment they cross into one of the protected rooms, slam.
+      if (state === 'arena-open' && spec.unlock?.kind === 'arena' && roomRectLookup) {
+        for (const rid of spec.unlock.roomIds) {
+          const rs = roomRectLookup(rid);
+          if (!rs) continue;
+          const hw = rs.rect.w / 2;
+          const hd = rs.rect.d / 2;
+          if (
+            playerPos.x >= rs.rect.x - hw && playerPos.x <= rs.rect.x + hw &&
+            playerPos.z >= rs.rect.z - hd && playerPos.z <= rs.rect.z + hd
+          ) {
+            // SLAM. Wall up immediately, audio sting, threshold
+            // flashes cool/sealed; the closing animation runs over
+            // the next CLOSE_DURATION.
+            state = 'closing';
+            closeTimer = 0;
+            walkable.addWall(wallSeg);
+            playChestOpen();
+            thresholdMat.color.setHex(0xb04030);   // brief red — visual punch
+            thresholdMat.opacity = 0.75;
+            break;
+          }
+        }
+      }
+      // Closing animation — reverses the swing fast.
+      if (state === 'closing') {
+        closeTimer += _dt;
+        const t = Math.min(1, closeTimer / CLOSE_DURATION);
+        // Ease-IN (start slow, accelerate) so the slam feels weighty
+        // at the end rather than thudding instantly.
+        const ease = t * t;
+        pivot.rotation.y = initialYaw + targetAngle * (1 - ease);
+        if (closeTimer >= CLOSE_DURATION) {
+          state = 'sealed';
+          interactable.promptLabel = 'SEALED';
+          // Threshold settles to the cool/sealed colour now that the
+          // slam flash is done.
+          thresholdMat.color.setHex(0x405060);
+          thresholdMat.opacity = 0.35;
+        }
+      }
       // Check unlock progression every frame (cheap — just a map lookup).
       if (state === 'sealed' && isUnlocked()) {
         state = 'closed';
@@ -163,7 +223,7 @@ export function spawnDoor(
         thresholdMat.opacity = 0.6;
       }
       if (state === 'opening') {
-        openTimer += dt;
+        openTimer += _dt;
         const t = Math.min(1, openTimer / OPEN_DURATION);
         // Ease-out so the door slows as it reaches open
         const ease = 1 - (1 - t) * (1 - t);
@@ -180,9 +240,12 @@ export function spawnDoor(
 
   // Initial unlock state. If sealed condition isn't satisfied at spawn,
   // mark as sealed; tick() will flip to closed automatically when it is.
+  // Both 'cleared' AND 'arena' use the same predicate once the door is
+  // in the sealed state — arena just adds the lock-on-enter trigger
+  // that gets it there in the first place.
   function isUnlocked(): boolean {
     if (!spec.unlock) return true;
-    if (spec.unlock.kind === 'cleared') {
+    if (spec.unlock.kind === 'cleared' || spec.unlock.kind === 'arena') {
       const counts = enemyRoomMembership();
       for (const roomId of spec.unlock.roomIds) {
         if ((counts.get(roomId) ?? 0) > 0) return false;
@@ -191,7 +254,22 @@ export function spawnDoor(
     }
     return true;
   }
-  if (!isUnlocked()) {
+  // Initial visible/passable state, branching on unlock kind:
+  //   arena   → starts OPEN + passable; tick triggers the slam.
+  //   cleared → standard "sealed until cleared" behaviour.
+  //   none    → closed, ready to open on use.
+  if (spec.unlock?.kind === 'arena') {
+    state = 'arena-open';
+    interactable.promptLabel = '';
+    // Remove the collision wall: the doorway is passable.
+    walkable.removeWall(wallSeg);
+    // Render the panel at the visibly-open angle.
+    pivot.rotation.y = initialYaw + targetAngle;
+    // Threshold uses the warm/open palette while the door is
+    // arena-open so the player can read it as "passable now."
+    thresholdMat.color.setHex(0x8c5a30);
+    thresholdMat.opacity = 0.6;
+  } else if (!isUnlocked()) {
     state = 'sealed';
     interactable.promptLabel = 'SEALED';
     // Sealed: cool gray threshold — reads as "passage exists, but

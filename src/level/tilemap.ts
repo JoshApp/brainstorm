@@ -381,10 +381,18 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           break;
         }
         case 'o':
-        case 'O': {
+        case 'O':
+        case 'D': {
           // Door at this cell. The door SPAN is along the perpendicular
           // axis — we pick based on neighbors: if cells E/W of this are
           // walls and N/S are walkable, the door runs E↔W.
+          //
+          // Tile semantics:
+          //   o → always-unlocked door (open on first interact, no gate)
+          //   O → sealed from spawn until the containing room clears
+          //   D → arena door. STARTS open + passable; slams shut when
+          //       the player crosses into the containing room; reopens
+          //       when the room clears. Lock-on-enter.
           const nIsFloor = isFloor(c, r - 1);
           const sIsFloor = isFloor(c, r + 1);
           const ew = nIsFloor && sIsFloor;  // door swings E↔W
@@ -398,7 +406,9 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
             height: 2.6,
             hinge: 'a',
             swingDir: 1,
-            unlock: ch === 'O' ? { kind: 'cleared', roomIds: [roomId] } : undefined,
+            unlock: ch === 'O' ? { kind: 'cleared', roomIds: [roomId] }
+                  : ch === 'D' ? { kind: 'arena',   roomIds: [roomId] }
+                  : undefined,
           });
           break;
         }
