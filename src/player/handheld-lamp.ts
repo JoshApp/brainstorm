@@ -5,25 +5,30 @@ import * as THREE from 'three';
 // warm flickering PointLight inside its cage so the lamp visibly is
 // the source of the light.
 //
-// Why this exists: even with torches placed along walls, corners and
-// corridors between torches felt pitch-black. Rather than crank global
-// ambient (which flattens the warm/cool mood), the player CARRIES a
-// small reliable light source. The visible lantern model on top of
-// the light sells the "you're a delver with a lantern" read — it's
-// not nightvision, it's a thing you brought.
+// Scene-graph shape (matters for the pendulum):
+//
+//   camera
+//     └ hinge      ← positioned at the lantern's HANDLE.
+//                    rotation.z is the pendulum angle.
+//        └ body    ← offset DOWN from hinge by ~the cage height
+//                    so the lantern visibly hangs below the pivot.
+//                    All cage + flame meshes live here.
+//
+// When the hinge rotates, the body swings around the handle in a real
+// pendulum arc — no manual parametric-arc math needed in the tick.
 
 import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
-import { getBob } from './viewmodel-bob';
+import { getLanternSwing } from './viewmodel-bob';
 
 interface LampState {
-  /** World position vector — mutated each frame from the lantern's
+  /** World position vector — mutated each frame from the lantern body's
    *  scene-graph transform. Same vector the light pool reads. */
   worldPos: THREE.Vector3;
-  /** Lantern mesh root, child of the camera. */
-  group: THREE.Group;
-  /** Visible flame sphere; flicker modulates its color. */
-  flame: THREE.Mesh;
+  /** Hinge group, child of the camera. Its rotation.z is the swing. */
+  hinge: THREE.Group;
+  /** Body group, child of hinge. Holds all visible geometry. */
+  body: THREE.Group;
   flameMat: THREE.MeshBasicMaterial;
   baseIntensity: number;
   /** Computed each frame by tickLamp; pool reads via getIntensity. */
@@ -33,24 +38,29 @@ interface LampState {
 
 let lamp: LampState | null = null;
 
-// Position mirrors the sword's bottom-RIGHT viewmodel offset. The
-// lantern hangs at the bottom-LEFT of the player's view, swinging
-// loosely. Tuned so it visibly extends INTO the scene — pushed deeper
-// in z so it doesn't crowd the camera near-plane, with a bigger group
-// scale so it still reads at that depth instead of shrinking away.
-const LAMP_LOCAL = new THREE.Vector3(-0.34, -0.26, -0.55);
+// HINGE position — where the pendulum's pivot sits. Higher up than the
+// old single-group origin so the lantern hangs visibly BELOW it.
+const HINGE_LOCAL = new THREE.Vector3(-0.34, -0.066, -0.55);
+// Body offset DOWN from the hinge (in scaled body local). Tuned so the
+// visible centre of the lantern lands roughly where the old single
+// group sat (~y = -0.26 worldspace at scale 1.8).
+const BODY_OFFSET_Y = -0.108;
 const LAMP_COLOR = 0xffc488;  // warm oil-lamp tone
 
 export function attachLamp(camera: THREE.Camera) {
   if (lamp) return;
 
-  // ── Lantern geometry ──────────────────────────────────────────────
-  const group = new THREE.Group();
-  group.position.copy(LAMP_LOCAL);
-  // Upscale so the lantern silhouette reads as a real object held out
-  // in front (compensates for the depth push above — at 1.0× and z=-0.55
-  // it'd shrink to a smudge).
-  group.scale.setScalar(1.8);
+  // ── Hinge + body groups ───────────────────────────────────────────
+  // Hinge owns the position + scale; rotation drives the pendulum.
+  // Body is the visible lantern, hanging below the hinge.
+  const hinge = new THREE.Group();
+  hinge.position.copy(HINGE_LOCAL);
+  hinge.scale.setScalar(1.8);
+  camera.add(hinge);
+
+  const body = new THREE.Group();
+  body.position.y = BODY_OFFSET_Y;
+  hinge.add(body);
 
   // Iron parts — dark metal with a slight emissive baseline so the
   // lantern reads even in pitch-black areas.
@@ -74,7 +84,7 @@ export function attachLamp(camera: THREE.Camera) {
       ironMat,
     );
     bar.position.set(Math.cos(a) * cageRadius, 0, Math.sin(a) * cageRadius);
-    group.add(bar);
+    body.add(bar);
   }
 
   // Top + bottom plates connecting the cage.
@@ -83,29 +93,30 @@ export function attachLamp(camera: THREE.Camera) {
     ironMat,
   );
   top.position.y = barH / 2 + 0.005;
-  group.add(top);
+  body.add(top);
 
   const bottom = new THREE.Mesh(
     new THREE.CylinderGeometry(0.045, 0.052, 0.015, 8),
     ironMat,
   );
   bottom.position.y = -barH / 2 - 0.005;
-  group.add(bottom);
+  body.add(bottom);
 
-  // Small upright post + ring for the handle.
+  // Small upright post + ring for the handle. Sits at the body's top —
+  // visually right under the hinge so the pendulum looks chained to it.
   const post = new THREE.Mesh(
     new THREE.CylinderGeometry(0.005, 0.005, 0.04, 6),
     ironMat,
   );
   post.position.y = barH / 2 + 0.035;
-  group.add(post);
+  body.add(post);
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(0.018, 0.005, 4, 8),
     ironMat,
   );
   ring.position.y = barH / 2 + 0.058;
   ring.rotation.x = Math.PI / 2;
-  group.add(ring);
+  body.add(ring);
 
   // ── Flame ─────────────────────────────────────────────────────────
   // Small bright sphere inside the cage. MeshBasic so it ignores
@@ -119,13 +130,14 @@ export function attachLamp(camera: THREE.Camera) {
     flameMat,
   );
   flame.position.y = -0.005;
-  group.add(flame);
+  body.add(flame);
 
   // ── Viewmodel rendering ───────────────────────────────────────────
   // depthTest off + high renderOrder so the lantern always paints over
   // world geometry — matches how the sword viewmodel handles it (no
-  // close walls clip through the lantern).
-  group.traverse((obj) => {
+  // close walls clip through the lantern). Traverse from the hinge so
+  // every child gets the same treatment.
+  hinge.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (mesh.isMesh) {
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -142,21 +154,20 @@ export function attachLamp(camera: THREE.Camera) {
     }
   });
 
-  camera.add(group);
-
-  // ── The actual PointLight ─────────────────────────────────────────
-  // Lives INSIDE the lantern cage so the flame mesh appears to be the
   // ── Logical light source via the pool ──────────────────────────────
-  // The lantern doesn't own a THREE.PointLight directly anymore — every
+  // The lantern doesn't own a THREE.PointLight directly — every
   // PointLight in the scene is owned by src/scene/light-pool.ts. We
   // expose a position vector + dynamic intensity, and the pool decides
   // each frame whether to bind us to one of its slots. Persistent=true
   // so we survive level swaps (camera-attached, no level scope).
+  //
+  // The worldPos is read from the BODY's matrixWorld so the light
+  // tracks the swinging lantern, not the static hinge.
   const worldPos = new THREE.Vector3();
   const state: LampState = {
     worldPos,
-    group,
-    flame,
+    hinge,
+    body,
     flameMat,
     baseIntensity: CONFIG.LAMP_INTENSITY,
     currentIntensity: CONFIG.LAMP_INTENSITY,
@@ -180,11 +191,11 @@ export function attachLamp(camera: THREE.Camera) {
 /** Remove the lamp viewmodel + unregister its light. Idempotent. */
 export function detachLamp() {
   if (!lamp) return;
-  lamp.group.parent?.remove(lamp.group);
+  lamp.hinge.parent?.remove(lamp.hinge);
   unregisterLight('player-lamp');
   // Dispose so we don't leak GPU memory when the player swaps offhand
   // back and forth between lamp and shield.
-  lamp.group.traverse((obj) => {
+  lamp.hinge.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -194,7 +205,8 @@ export function detachLamp() {
   lamp = null;
 }
 
-/** Per-frame tick. Layered-sine flicker on intensity + flame brightness. */
+/** Per-frame tick. Layered-sine flicker on intensity + flame brightness,
+ *  plus pendulum swing on the hinge. */
 export function tickLamp(dt: number) {
   if (!lamp) return;
   lamp.flickerT += dt;
@@ -205,17 +217,18 @@ export function tickLamp(dt: number) {
       Math.sin(f * 13.1) * 0.03 +
       Math.sin(f * 23.7) * 0.02;
   lamp.currentIntensity = lamp.baseIntensity * (1 + flicker);
-  // Walk bob — apply on top of the base offhand position so the lantern
-  // sways with the player's stride. Same shared bob the sword + offhand
-  // viewmodel read, so they all move in lockstep.
-  const b = getBob();
-  lamp.group.position.set(LAMP_LOCAL.x + b.x, LAMP_LOCAL.y + b.y, LAMP_LOCAL.z);
-  lamp.group.rotation.z = b.rotZ;
-  // Update the source's world position by reading the lantern's
-  // transform. updateMatrixWorld first since the camera-parented chain
-  // may not have flushed yet this frame.
-  lamp.group.updateMatrixWorld(true);
-  lamp.worldPos.setFromMatrixPosition(lamp.group.matrixWorld);
+
+  // Pendulum swing — rotation on the hinge. Body is a child offset
+  // downward, so rotating the hinge automatically swings the body
+  // around the handle in a true pendulum arc.
+  lamp.hinge.rotation.z = getLanternSwing();
+
+  // Update the light's world position from the BODY's transform — the
+  // light should track the visibly-swinging lantern, not the static
+  // hinge. updateMatrixWorld(true) flushes the camera-parented chain
+  // since it may not have updated yet this frame.
+  lamp.body.updateMatrixWorld(true);
+  lamp.worldPos.setFromMatrixPosition(lamp.body.matrixWorld);
 
   // Mirror the flicker in the flame's visible color so eye + light agree.
   const tone = 1 + flicker * 0.5;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
-import { getBob } from './viewmodel-bob';
+import { getOffhandOffset } from './viewmodel-bob';
 import type { ModelSpec } from '../ecs/model-types';
 
 // Generic offhand viewmodel — a model parented to the camera at the
@@ -49,14 +49,14 @@ export function attachOffhandViewmodel(camera: THREE.Camera, spec: ModelSpec) {
   camera.add(group);
 }
 
-/** Per-frame — apply walk bob on top of the base offhand position so
- *  shields (etc.) sway in lockstep with the sword + lamp. No-op if
- *  no offhand viewmodel is attached. */
+/** Per-frame — apply subtle bob on top of the base offhand position
+ *  so shields (etc.) lift gently in sync with the stride. The offhand
+ *  is BRACED, not swung — minimal motion is the point. No-op if no
+ *  offhand viewmodel is attached. */
 export function tickOffhandViewmodel() {
   if (!group) return;
-  const b = getBob();
+  const b = getOffhandOffset();
   group.position.set(OFFHAND_LOCAL.x + b.x, OFFHAND_LOCAL.y + b.y, OFFHAND_LOCAL.z);
-  // Z-roll layered on top of the static inward yaw.
   group.rotation.set(0, OFFHAND_ROT_Y, b.rotZ);
 }
 

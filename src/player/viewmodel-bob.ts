@@ -1,28 +1,27 @@
-// Shared "headbob" state for first-person viewmodels (sword, lamp,
-// offhand). Each viewmodel reads getBob() in its own per-frame update
-// and adds the offset on top of its idle position.
+// Shared viewmodel motion state. Each held viewmodel (sword, lantern,
+// offhand) reads its own per-viewmodel helper from here so they all
+// move in lockstep against the same stride cycle but with the
+// character appropriate to that prop:
 //
-// Why shared: all three viewmodels are hands attached to the same
-// invisible body. They should sway in lockstep, not at independent
-// phases.
+//   sword     → vertical BOP (down/forward per footfall) + tilt
+//   lantern   → pendulum SWING from its handle
+//   offhand   → gentle vertical lift only
 //
-// Design notes:
-//   - Vertical bob runs at 2× the horizontal sway frequency, matching
-//     a real walk cycle (you bob DOWN twice per stride — once per
-//     footfall).
-//   - Intensity eases toward the move-magnitude target so starting
-//     and stopping don't snap on/off.
-//   - Phase only advances while the player is actually moving;
-//     standing still locks the viewmodels in place rather than
-//     drifting through a sine curve.
+// Two phases run independently:
+//
+//   walkPhase  advances only while moving (intensity > ~0)
+//   idlePhase  always advances — produces the breath / micro-sway
+//              that keeps a stationary view from looking painted on.
+//
+// Both phases feed multi-sine combinations at incommensurable ratios
+// so the motion never lines up into an obvious loop.
 
-const BOB_FREQ = 5.5;       // Hz — feels like a brisk delver walk
-const BOB_LIFT = 0.020;     // metres of peak vertical offset
-const BOB_SWAY = 0.014;     // metres of peak horizontal offset
-const BOB_TILT = 0.05;      // radians of peak roll
-const BLEND_RATE = 7;       // 1/sec exponential toward target intensity
+const WALK_FREQ = 1.8;        // Hz — one full stride cycle. ~2 footfalls / sec.
+const IDLE_FREQ = 0.35;       // Hz — breath / hand microadjust.
+const BLEND_RATE = 4;         // 1/sec exponential toward target intensity
 
-let phase = 0;
+let walkPhase = 0;
+let idlePhase = 0;
 let intensity = 0;
 let target = 0;
 
@@ -31,27 +30,74 @@ export function setBobTarget(t: number) {
   target = Math.max(0, Math.min(1, t));
 }
 
-/** Advance the bob state. Use realDt — bob should keep its rhythm
- *  during hit-pause / slow-mo, otherwise the hands "stutter." */
+/** Advance bob state. Use realDt so the rhythm doesn't stutter through
+ *  slow-mo. Idle phase always advances; walk phase only when moving. */
 export function updateBob(dt: number) {
-  if (target > 0.01) phase += dt * BOB_FREQ * 2 * Math.PI;
+  idlePhase += dt * IDLE_FREQ * 2 * Math.PI;
+  if (target > 0.01) walkPhase += dt * WALK_FREQ * 2 * Math.PI;
   const k = 1 - Math.exp(-BLEND_RATE * dt);
   intensity += (target - intensity) * k;
 }
 
-export interface BobOffset {
+// Two-sine helper at incommensurable ratio — neither phase repeats
+// cleanly against the other so the visual reads "organic" rather
+// than "sinusoid".
+function dualSine(phase: number, ratio: number, offset: number): number {
+  return Math.sin(phase) * 0.7 + Math.sin(phase * ratio + offset) * 0.3;
+}
+
+export interface SwordOffset {
   x: number;
   y: number;
   rotZ: number;
 }
 
-const scratch: BobOffset = { x: 0, y: 0, rotZ: 0 };
+const swordScratch: SwordOffset = { x: 0, y: 0, rotZ: 0 };
 
-/** Current bob offset, scaled by smoothed intensity. Shared scratch
- *  object — callers should read it and apply, not retain. */
-export function getBob(): BobOffset {
-  scratch.x = Math.cos(phase) * BOB_SWAY * intensity;
-  scratch.y = Math.sin(phase * 2) * BOB_LIFT * intensity;
-  scratch.rotZ = Math.sin(phase) * BOB_TILT * intensity;
-  return scratch;
+/** Sword: vertical bop on each footfall (2× walk frequency) + tiny
+ *  horizontal sway. Idle adds a small drift so the blade isn't dead
+ *  still while standing. */
+export function getSwordOffset(): SwordOffset {
+  const walkY  = dualSine(walkPhase * 2, 1.31, 0.4) * 0.022 * intensity;
+  const walkX  = dualSine(walkPhase, 1.41, 0.0)    * 0.006 * intensity;
+  const walkRZ = dualSine(walkPhase, 1.27, 0.2)    * 0.030 * intensity;
+  const idleY  = dualSine(idlePhase, 1.31, 0.3)    * 0.0035;
+  const idleRZ = dualSine(idlePhase * 1.13, 1.41, 0.7) * 0.008;
+  swordScratch.x = walkX;
+  swordScratch.y = walkY + idleY;
+  swordScratch.rotZ = walkRZ + idleRZ;
+  return swordScratch;
+}
+
+/** Lantern: pendulum SWING — radians, applied as rotation Z on the
+ *  HINGE (a parent group positioned at the lantern's handle). The
+ *  body is a child offset down from the hinge, so when the hinge
+ *  rotates the body automatically traces the pendulum arc.
+ *
+ *  Walking drives the big arc, idle adds a constant micro-sway so the
+ *  lamp never reads as dead-still. Opposite phase from the sword bop
+ *  so when the player dips into a footfall, the lantern is rising. */
+export function getLanternSwing(): number {
+  const walkAng = dualSine(walkPhase + Math.PI, 1.37, 0.5) * 0.16 * intensity;
+  const idleAng = dualSine(idlePhase, 1.41, 0.2) * 0.035;
+  return walkAng + idleAng;
+}
+
+export interface OffhandOffset {
+  x: number;
+  y: number;
+  rotZ: number;
+}
+
+const offhandScratch: OffhandOffset = { x: 0, y: 0, rotZ: 0 };
+
+/** Generic offhand (shield etc.): subtle vertical lift only. Shields
+ *  aren't swung — they should feel braced, not animated. */
+export function getOffhandOffset(): OffhandOffset {
+  const walkY = dualSine(walkPhase * 2, 1.21, 0.2) * 0.012 * intensity;
+  const idleY = dualSine(idlePhase * 1.2, 1.31, 0.1) * 0.003;
+  offhandScratch.x = 0;
+  offhandScratch.y = walkY + idleY;
+  offhandScratch.rotZ = 0;
+  return offhandScratch;
 }
