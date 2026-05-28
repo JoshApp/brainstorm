@@ -110,7 +110,19 @@ export type PropSpec =
     }
   // 'chest' = an openable container. When the player interacts, the lid swings
   // up and an optional loot pickup spawns beside it.
-  | { kind: 'chest'; x: number; z: number; rotY?: number; facing?: PropFacing; loot?: import('../content/items').ItemSpec }
+  | {
+      kind: 'chest';
+      x: number;
+      z: number;
+      rotY?: number;
+      facing?: PropFacing;
+      loot?: import('../content/items').ItemSpec;
+      /** Visual tier — supply = plain wood (default), iron = uncommon-
+       *  green sealed, boss = ornate gold + amber emissive. Doesn't
+       *  affect the open animation or hinge geometry; purely the
+       *  silhouette and built-in materials. */
+      tier?: 'supply' | 'iron' | 'boss';
+    }
   // 'stash-chest' = the meta-progression stash entry point. Lives in
   // the safe room. Interacting opens the stash UI (loot boxes saved
   // across runs).

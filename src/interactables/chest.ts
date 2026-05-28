@@ -1,11 +1,19 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
-import { CHEST } from '../content/chest';
+import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
 import type { ItemSpec } from '../content/items';
 import { registerInteractable } from './system';
 import { createPickup } from './pickup';
 import { playChestOpen } from '../audio/sfx';
+
+export type ChestTier = 'supply' | 'iron' | 'boss';
+
+const TIER_MODEL = {
+  supply: CHEST,
+  iron: CHEST_IRON,
+  boss: CHEST_BOSS,
+};
 
 // Chest interactable. Two states: closed (default) and open.
 //
@@ -23,8 +31,9 @@ export function spawnChest(
   pos: THREE.Vector3,
   rotY: number,
   loot: ItemSpec | undefined,
+  tier: ChestTier = 'supply',
 ) {
-  const built = buildModel(CHEST);
+  const built = buildModel(TIER_MODEL[tier]);
   built.group.position.copy(pos);
   built.group.rotation.y = rotY;
   scene.add(built.group);

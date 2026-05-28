@@ -427,11 +427,15 @@ const ENCOUNTER_ARENA: Vault = {
   tags: ['encounter'],
   // Layout: an entry alcove at the top, an interior wall row with a
   // single 'D' arena door, and the arena proper below holding two
-  // pairs of ghouls and a chest centrepiece. Multi-room vault parsing
-  // splits the alcove and arena into separate sub-rooms; the 'D'
-  // door's cross-axis trigger fires the slam when the player walks
-  // through it — not on vault entry. The arena sub-room's clear
-  // count re-opens the door so the player can continue south.
+  // pairs of ghouls and an iron chest centrepiece. Multi-room vault
+  // parsing splits the alcove and arena into separate sub-rooms; the
+  // 'D' door's cross-axis trigger fires the slam when the player
+  // walks through it — not on vault entry. The arena sub-room's
+  // clear count re-opens the door so the player can continue south.
+  //
+  // The chest is declared as a PROP (not a 'c' tile) so we can ask
+  // for the iron tier — the arena reward should LOOK like more than
+  // a roadside supply box.
   map: [
     '##############',
     '#....T....T..#',
@@ -440,7 +444,7 @@ const ENCOUNTER_ARENA: Vault = {
     '######D#######',
     '#.G........G.#',
     '#............#',
-    '#......c.....#',
+    '#............#',
     '#............#',
     '#.G........G.#',
     '#....t....t..#',
@@ -449,6 +453,9 @@ const ENCOUNTER_ARENA: Vault = {
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_BLOOD,
+  props: [
+    { kind: 'chest', x: 0, z: 1.5, tier: 'iron', facing: { kind: 'wall-away' } },
+  ],
 };
 
 // Blood altar encounter. A single cursed offering (ring of marrow)

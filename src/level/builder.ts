@@ -588,7 +588,7 @@ export function buildLevel(
         });
       }
     } else if (prop.kind === 'chest') {
-      spawnChest(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.loot);
+      spawnChest(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.loot, prop.tier);
       obstacles.push({
         kind: 'aabb',
         minX: prop.x - 0.28, maxX: prop.x + 0.28,

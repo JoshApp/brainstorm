@@ -60,26 +60,35 @@ function smallChamber(
 // standalone room), so the arena door is hand-placed as an interior
 // wall segment + DoorSpec.
 function buildArena(): LevelSpec {
-  // 12×12 chamber. Interior wall at z=-1 with a 1m gap at x=0 for the
-  // door; arena room is south of the wall with two ghouls + a chest.
+  // 12×12 chamber. Coordinate sense (matches smallChamber + camera):
+  //   yaw=0 faces -Z. Player spawns at +Z (south end), walks toward
+  //   -Z (north). Arena (challenge area) is on the NEGATIVE-Z side.
+  //
+  // Interior wall at z = -1 with a 1m gap at x=0 for the door. The
+  // arena room is at z < -1 (north of the wall, where the player is
+  // heading). Mobs + chest live there. The hint sits in the south
+  // alcove where the player approaches the door.
   const spec = smallChamber('arena', 'arena door', 12, 14, () => {
     const wallZ = -1;
     return {
-      // Two sub-rooms via logical-only RoomSpecs — gives the door
-      // proper room:cleared bookkeeping for the south half.
       props: [
-        { kind: 'chest', x: 0, z: 4, facing: { kind: 'wall-away' } },
+        // Iron chest at the deep end of the arena — the reward for
+        // committing to the slam.
+        { kind: 'chest', x: 0, z: -4.5, facing: { kind: 'wall-away' }, tier: 'iron' },
         {
           kind: 'hint',
-          x: 0, z: -4,
+          x: 0, z: 3.0,             // SOUTH side, where the player approaches
           text: 'cross the threshold. the door will not wait.',
           triggerRadius: 3.0,
           lingerMs: 4500,
         },
       ],
       spawns: [
-        { enemyId: 'ghoul', x: -2.5, z: 2,    roomId: 'test-arena-arena' },
-        { enemyId: 'ghoul', x:  2.5, z: 2,    roomId: 'test-arena-arena' },
+        // Ghouls live INSIDE the arena (z < wallZ). Previously they
+        // were authored at z = 2 — same side as the player spawn —
+        // so crossing the door slammed onto an empty room.
+        { enemyId: 'ghoul', x: -2.5, z: -2.5, roomId: 'test-arena-arena' },
+        { enemyId: 'ghoul', x:  2.5, z: -2.5, roomId: 'test-arena-arena' },
       ],
       doors: [
         {
@@ -91,19 +100,19 @@ function buildArena(): LevelSpec {
           unlock: { kind: 'arena', roomIds: ['test-arena-arena'] },
         },
       ],
-      // Interior wall around the door: two segments to the west and
-      // east of the 1m gap. Heights match the room.
+      // Interior wall — two segments west and east of the 1m door gap.
       extraWalls: [
         { ax: -6, az: wallZ, bx: -0.5, bz: wallZ, height: TEST_HEIGHT },
         { ax:  0.5, az: wallZ, bx:  6, bz: wallZ, height: TEST_HEIGHT },
       ],
     };
   });
-  // Add the arena sub-room (logical-only) so room:cleared fires
-  // correctly when both ghouls die.
+  // Add the arena sub-room (logical-only) — the NORTH half of the
+  // chamber, where the mobs spawn. room:cleared fires for this id
+  // when both ghouls die, which is what unlocks the door.
   spec.rooms.push({
     id: 'test-arena-arena',
-    rect: { x: 0, z: 2.5, w: 12, d: 5 },
+    rect: { x: 0, z: -3.5, w: 12, d: 5 },
     height: TEST_HEIGHT,
     logicalOnly: true,
   });
