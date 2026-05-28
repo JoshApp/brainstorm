@@ -94,12 +94,43 @@ export function createSword(camera: THREE.Camera): Sword {
     group.add(built.group);
   }
 
-  // --- Swing state machine ---
+  // --- Swing state machine + combo tracking ---
+  // comboStep is the index into the current weapon's combo array. It
+  // advances when the player presses attack again "fast enough" — see
+  // the windowing logic below. queuedPress buffers a press that came
+  // in DURING a swing so the chain feels responsive even if the player
+  // taps slightly before recover ends.
   let phase: SwordPhase = 'idle';
   let phaseTimer = 0;
+  let comboStep = 0;
+  let comboWindowExpiresAt = 0;     // ms (performance.now() basis)
+  let queuedPress = false;
+
+  function nowMs(): number { return performance.now(); }
+
+  /** Pull the resolved step for the CURRENT combo index, defensively
+   *  wrapping in case the weapon was swapped to one with a shorter
+   *  combo while we were mid-swing. */
+  function currentStep() {
+    const w = getCurrentWeapon();
+    const idx = ((comboStep % w.combo.length) + w.combo.length) % w.combo.length;
+    return { w, step: w.combo[idx] };
+  }
 
   function startSwing(): boolean {
-    if (phase !== 'idle') return false;
+    // Mid-swing presses don't fire a fresh swing — they BUFFER, and
+    // when the current step's recover ends we chain to the next step.
+    if (phase !== 'idle') {
+      queuedPress = true;
+      return false;
+    }
+    // Idle. If we're past the combo window, the previous chain is dead
+    // and the next press restarts the combo from step 0. If we're
+    // still inside it, comboStep was pre-advanced when the last
+    // recover ended, so we just fire whatever it currently is.
+    if (nowMs() >= comboWindowExpiresAt) {
+      comboStep = 0;
+    }
     phase = 'windup';
     phaseTimer = 0;
     return true;
@@ -107,6 +138,12 @@ export function createSword(camera: THREE.Camera): Sword {
 
   function update(dt: number) {
     if (phase === 'idle') {
+      // If the combo window has expired since we went idle, drop back
+      // to step 0 so the held-pose preview (if/when we add one) and
+      // any future combo-step HUD reflect the reset.
+      if (comboStep !== 0 && nowMs() >= comboWindowExpiresAt) {
+        comboStep = 0;
+      }
       // Idle pose + walk bop. The bob system layers on top of the
       // idle baseline; the bob isn't applied to swing animations
       // because it would muddy their snap.
@@ -118,24 +155,45 @@ export function createSword(camera: THREE.Camera): Sword {
 
     phaseTimer += dt;
 
-    // Phase timings come from the CURRENT weapon's resolved stats
-    // (class defaults + per-spec overrides + attackSpeed multiplier).
-    // Pose curves come from the weapon's class — dagger thrusts
-    // forward, sword arcs across, hammer drops overhead.
-    const w = getCurrentWeapon();
+    // Phase timings come from the CURRENT combo step. Pose curve
+    // comes from the step's pose key — daggers walk through
+    // stab → slash → stab-stab as the combo advances.
+    const { w, step } = currentStep();
     const phaseDur =
-      phase === 'windup' ? w.windupTime :
-      phase === 'strike' ? w.strikeTime :
-                            w.recoverTime;
+      phase === 'windup' ? step.windupTime :
+      phase === 'strike' ? step.strikeTime :
+                            step.recoverTime;
     const t = Math.min(1, phaseTimer / Math.max(phaseDur, 0.001));
-    const pose = computeWeaponPose(w.class, phase, t);
+    const pose = computeWeaponPose(step.pose, phase, t);
     group.position.set(pose.x, pose.y, pose.z);
     group.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
 
     if (phaseTimer >= phaseDur) {
-      if (phase === 'windup') { phase = 'strike';  phaseTimer = 0; }
-      else if (phase === 'strike') { phase = 'recover'; phaseTimer = 0; }
-      else { phase = 'idle'; phaseTimer = 0; }
+      if (phase === 'windup') {
+        phase = 'strike';
+        phaseTimer = 0;
+      } else if (phase === 'strike') {
+        phase = 'recover';
+        phaseTimer = 0;
+      } else {
+        // Recover ended. If a press buffered during the swing, OR if
+        // the combo has more steps queued up, advance the combo and
+        // chain straight into the next windup — no idle frame between
+        // taps so the routine reads as one fluid combo.
+        if (queuedPress) {
+          queuedPress = false;
+          comboStep = (comboStep + 1) % w.combo.length;
+          phase = 'windup';
+          phaseTimer = 0;
+        } else {
+          // Open the combo window. The next press inside this window
+          // advances comboStep; outside it, comboStep resets to 0.
+          comboStep = (comboStep + 1) % w.combo.length;
+          comboWindowExpiresAt = nowMs() + w.comboWindowMs;
+          phase = 'idle';
+          phaseTimer = 0;
+        }
+      }
     }
   }
 
@@ -151,8 +209,13 @@ export function createSword(camera: THREE.Camera): Sword {
     } else {
       mount(spec);
     }
+    // Weapon swap kills any in-flight combo state — the new weapon's
+    // combo starts fresh on the next press.
     phase = 'idle';
     phaseTimer = 0;
+    comboStep = 0;
+    comboWindowExpiresAt = 0;
+    queuedPress = false;
   }
 
   return {

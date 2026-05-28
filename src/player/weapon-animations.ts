@@ -1,8 +1,8 @@
 import { CONFIG } from '../config';
-import type { WeaponClass } from '../content/items';
+import type { PoseKey } from '../content/weapon-classes';
 import type { SwordPhase } from './sword';
 
-// Per-class viewmodel pose curves. Each function takes the current
+// Per-step viewmodel pose curves. Each function takes the current
 // phase + a normalised phase progress (0..1) and returns the local
 // pose to apply on top of the idle rest pose.
 //
@@ -10,9 +10,12 @@ import type { SwordPhase } from './sword';
 //   pos       metres, camera-local. +X right, +Y up, -Z forward.
 //   rot       radians, applied in camera-local Euler.
 //
-// All three classes share the SAME idle pose (CONFIG.SWORD_IDLE_POS /
+// All weapons share the SAME idle pose (CONFIG.SWORD_IDLE_POS /
 // _ROT) so weapon swaps don't snap-rotate the held item. The walking
 // bob (getSwordOffset in sword.ts) layers on top of idle as before.
+//
+// The caller (sword.ts) picks the pose KEY from the current combo
+// step on the resolved weapon stats — pose key → curve here.
 
 export interface WeaponPose {
   x: number; y: number; z: number;
@@ -28,10 +31,11 @@ const rz = CONFIG.SWORD_IDLE_ROT[2];
 
 const scratch: WeaponPose = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 };
 
-/** Pose for the current swing phase. Caller passes the phase + the
- *  PROGRESS within that phase (0..1). Returns a shared scratch
- *  object — read it, don't retain. */
-export function computeWeaponPose(cls: WeaponClass, phase: SwordPhase, t: number): WeaponPose {
+/** Pose for the current swing phase. Caller passes the pose key for
+ *  the current combo step + the phase + the PROGRESS within that
+ *  phase (0..1). Returns a shared scratch object — read it, don't
+ *  retain. */
+export function computeWeaponPose(pose: PoseKey, phase: SwordPhase, t: number): WeaponPose {
   if (phase === 'idle') {
     // Idle = rest pose. The bob system already mutates X/Y/rotZ on
     // top of these values, so we just return the baseline.
@@ -39,11 +43,13 @@ export function computeWeaponPose(cls: WeaponClass, phase: SwordPhase, t: number
     scratch.rotX = rx; scratch.rotY = ry; scratch.rotZ = rz;
     return scratch;
   }
-  switch (cls) {
-    case 'dagger': return daggerPose(phase, t);
-    case 'hammer': return hammerPose(phase, t);
-    case 'sword':
-    default:       return swordPose(phase, t);
+  switch (pose) {
+    case 'dagger-stab':        return daggerStabPose(phase, t);
+    case 'dagger-slash':       return daggerSlashPose(phase, t);
+    case 'dagger-double-stab': return daggerDoubleStabPose(phase, t);
+    case 'hammer-smash':       return hammerPose(phase, t);
+    case 'sword-slash':
+    default:                   return swordPose(phase, t);
   }
 }
 
@@ -84,15 +90,13 @@ function swordPose(phase: SwordPhase, t: number): WeaponPose {
   return scratch;
 }
 
-// ── Dagger (forward stab — stab stab) ─────────────────────────────
-// Two-step thrust. Windup tilts the blade so the tip ACTUALLY POINTS
-// camera-forward (cancels the idle diagonal-across-body roll). Strike
-// is two sine-pulse jabs back-to-back, the second deeper — reads as a
-// quick "stab stab" combo. Hit detection still fires once per strike
-// phase (combat/attack.ts gates on strikeAlreadyHit), so the second
-// jab is animation flavour, not extra damage.
+// ── Dagger combo: stab → slash → stab-stab ───────────────────────
+// Step 0: single forward thrust — quick, clean. Step 1: lateral cut
+// across the view. Step 2: two-pulse "stab stab" finisher.
+// All three share the same wound-up centre-line tilt so the combo
+// reads as one continuous routine, not three unrelated swings.
 
-// Stab pose — blade tip aimed at the centre of the view.
+// Shared stab-pose orientation: blade tip aimed at camera-forward.
 // Dagger model has tip at +Y, so we rotate ~−π/2 around X to swing
 // the tip toward camera-forward (−Z). The idle yaw/roll get cancelled
 // out so the blade lines up with the crosshair instead of cutting
@@ -101,17 +105,101 @@ const DAGGER_STAB_RX = rx - 1.30;   // -0.2 - 1.30 = -1.50 → tip forward
 const DAGGER_STAB_RY = ry + 0.15;   // cancel idle yaw  → ≈ 0
 const DAGGER_STAB_RZ = rz - 0.40;   // cancel idle roll → ≈ 0
 
-// Wound-up pose, used as the "between stabs" rest point too.
+// Wound-up translation, shared by stab and double-stab.
 const DAGGER_WOUND_X = ix - 0.06;   // pulled toward centre line
 const DAGGER_WOUND_Y = iy + 0.05;   // up to eye-line
 const DAGGER_WOUND_Z = iz + 0.10;   // drawn back toward camera
 
-// Per-stab forward push in metres along camera-local −Z. Second stab
-// goes deeper so the rhythm reads as "jab… JAB".
+function daggerStabPose(phase: SwordPhase, t: number): WeaponPose {
+  // Single forward thrust. Same wound-up pose as the finisher; just
+  // one sine-pulse instead of two. Reads as the opener.
+  const STAB_DEPTH = 0.32;
+  if (phase === 'windup') {
+    scratch.x = ix + (DAGGER_WOUND_X - ix) * t;
+    scratch.y = iy + (DAGGER_WOUND_Y - iy) * t;
+    scratch.z = iz + (DAGGER_WOUND_Z - iz) * t;
+    scratch.rotX = rx + (DAGGER_STAB_RX - rx) * t;
+    scratch.rotY = ry + (DAGGER_STAB_RY - ry) * t;
+    scratch.rotZ = rz + (DAGGER_STAB_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    // Ease-out push forward. Holds at full extension at end of strike
+    // so the blade visually peaks in the enemy.
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = DAGGER_WOUND_X;
+    scratch.y = DAGGER_WOUND_Y;
+    scratch.z = DAGGER_WOUND_Z + (-STAB_DEPTH) * ease;
+    scratch.rotX = DAGGER_STAB_RX;
+    scratch.rotY = DAGGER_STAB_RY;
+    scratch.rotZ = DAGGER_STAB_RZ;
+    return scratch;
+  }
+  // recover — strike ends at full extension; lerp back to idle.
+  const e = 1 - (1 - t) * (1 - t);
+  const fromZ = DAGGER_WOUND_Z - STAB_DEPTH;
+  scratch.x = DAGGER_WOUND_X + (ix - DAGGER_WOUND_X) * e;
+  scratch.y = DAGGER_WOUND_Y + (iy - DAGGER_WOUND_Y) * e;
+  scratch.z = fromZ + (iz - fromZ) * e;
+  scratch.rotX = DAGGER_STAB_RX + (rx - DAGGER_STAB_RX) * e;
+  scratch.rotY = DAGGER_STAB_RY + (ry - DAGGER_STAB_RY) * e;
+  scratch.rotZ = DAGGER_STAB_RZ + (rz - DAGGER_STAB_RZ) * e;
+  return scratch;
+}
+
+function daggerSlashPose(phase: SwordPhase, t: number): WeaponPose {
+  // Lateral cut: pull the blade across to the LEFT in windup, then
+  // sweep right across the view. Different rotation profile from the
+  // stab — tip pitches less forward, more SIDEWAYS so the edge leads
+  // the sweep instead of the point.
+  const WOUND_X = ix - 0.22;          // pulled across to the left
+  const WOUND_Y = iy + 0.06;
+  const WOUND_Z = iz + 0.04;
+  const WOUND_RX = rx - 0.40;
+  const WOUND_RY = ry + 0.50;          // yaw tip rightward
+  const WOUND_RZ = rz - 0.30;          // cancel idle diagonal roll
+  const STRIKE_X = ix + 0.22;          // sweep through to the right
+  const STRIKE_Y = iy + 0.02;
+  const STRIKE_Z = iz - 0.06;
+  const STRIKE_RX = rx - 0.20;
+  const STRIKE_RY = ry - 0.50;
+  const STRIKE_RZ = rz + 0.10;
+  if (phase === 'windup') {
+    scratch.x = ix + (WOUND_X - ix) * t;
+    scratch.y = iy + (WOUND_Y - iy) * t;
+    scratch.z = iz + (WOUND_Z - iz) * t;
+    scratch.rotX = rx + (WOUND_RX - rx) * t;
+    scratch.rotY = ry + (WOUND_RY - ry) * t;
+    scratch.rotZ = rz + (WOUND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WOUND_X + (STRIKE_X - WOUND_X) * ease;
+    scratch.y = WOUND_Y + (STRIKE_Y - WOUND_Y) * ease;
+    scratch.z = WOUND_Z + (STRIKE_Z - WOUND_Z) * ease;
+    scratch.rotX = WOUND_RX + (STRIKE_RX - WOUND_RX) * ease;
+    scratch.rotY = WOUND_RY + (STRIKE_RY - WOUND_RY) * ease;
+    scratch.rotZ = WOUND_RZ + (STRIKE_RZ - WOUND_RZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = STRIKE_X + (ix - STRIKE_X) * e;
+  scratch.y = STRIKE_Y + (iy - STRIKE_Y) * e;
+  scratch.z = STRIKE_Z + (iz - STRIKE_Z) * e;
+  scratch.rotX = STRIKE_RX + (rx - STRIKE_RX) * e;
+  scratch.rotY = STRIKE_RY + (ry - STRIKE_RY) * e;
+  scratch.rotZ = STRIKE_RZ + (rz - STRIKE_RZ) * e;
+  return scratch;
+}
+
+// Per-stab forward push in metres along camera-local −Z for the
+// double-stab finisher. Second stab goes deeper so the rhythm reads
+// as "jab… JAB".
 const STAB1_DEPTH = 0.30;
 const STAB2_DEPTH = 0.42;
 
-function daggerPose(phase: SwordPhase, t: number): WeaponPose {
+function daggerDoubleStabPose(phase: SwordPhase, t: number): WeaponPose {
   if (phase === 'windup') {
     // Lerp idle → wound-up in one shot. Quick draw, no flourish.
     scratch.x = ix + (DAGGER_WOUND_X - ix) * t;

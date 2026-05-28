@@ -15,6 +15,32 @@ import { getCharacter } from '../state/character';
 // Combat + the sword viewmodel both consume the RESOLVED stats so
 // per-instance overrides flow through with no special cases.
 
+// Pose keys identify a per-step animation curve in weapon-animations.ts.
+// Adding a new combo step starts with adding its pose key here, then
+// writing the matching pose() function over there. The string-key
+// indirection lets one class reuse another's pose (e.g. a future
+// "longsword" combo step could borrow 'sword-slash' for its first hit).
+export type PoseKey =
+  | 'sword-slash'
+  | 'dagger-stab'
+  | 'dagger-slash'
+  | 'dagger-double-stab'
+  | 'hammer-smash';
+
+export interface ComboStep {
+  pose: PoseKey;
+  windup: number;
+  strike: number;
+  recover: number;
+}
+
+export interface ResolvedComboStep {
+  pose: PoseKey;
+  windupTime: number;
+  strikeTime: number;
+  recoverTime: number;
+}
+
 export interface ResolvedWeaponStats {
   reach: number;
   coneHalfAngle: number;
@@ -22,32 +48,53 @@ export interface ResolvedWeaponStats {
   critChance: number;
   critMultiplier: number;
   class: WeaponClass;
-  windupTime: number;
-  strikeTime: number;
-  recoverTime: number;
+  /** Ordered combo steps. A press while idle within comboWindowMs of
+   *  the previous step's recover-end advances to the next step;
+   *  outside the window, the combo resets to step 0. The array wraps
+   *  — pressing past the last step starts over at 0. */
+  combo: ResolvedComboStep[];
+  comboWindowMs: number;
 }
 
-export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, {
-  windup: number;
-  strike: number;
-  recover: number;
-}> = {
+interface ClassDefaults {
+  combo: ComboStep[];
+  comboWindowMs: number;
+}
+
+export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
   dagger: {
-    windup: 0.06,         // barely any wind-up; the stab is a flick
-    strike: 0.22,         // two jabs back-to-back ("stab stab"); split 50/50 inside the curve
-    recover: 0.16,        // snap back to ready
+    // stab → slash → stab-stab. Each step gets progressively beefier;
+    // the finisher commits the player with the longest recover so
+    // missing the third tap on a backpedalling enemy genuinely hurts.
+    combo: [
+      { pose: 'dagger-stab',        windup: 0.06, strike: 0.10, recover: 0.16 },
+      { pose: 'dagger-slash',       windup: 0.08, strike: 0.12, recover: 0.18 },
+      { pose: 'dagger-double-stab', windup: 0.06, strike: 0.22, recover: 0.22 },
+    ],
+    comboWindowMs: 380,
   },
   sword: {
-    // Original CONFIG values become the SWORD class defaults so the
-    // existing balance is unchanged for sword-class weapons.
-    windup:  CONFIG.SWORD_SWING_WINDUP,
-    strike:  CONFIG.SWORD_SWING_STRIKE,
-    recover: CONFIG.SWORD_SWING_RECOVER,
+    // Single-step combo for now — the slash that's already authored.
+    // Sword's multi-step (slash-left → slash-right → thrust) lands
+    // once we tune the dagger feel and reuse the same shape.
+    combo: [
+      { pose: 'sword-slash',
+        windup:  CONFIG.SWORD_SWING_WINDUP,
+        strike:  CONFIG.SWORD_SWING_STRIKE,
+        recover: CONFIG.SWORD_SWING_RECOVER },
+    ],
+    comboWindowMs: 350,
   },
   hammer: {
-    windup: 0.28,         // long telegraph — heave it overhead
-    strike: 0.14,         // the strike itself comes down fast
-    recover: 0.50,        // long recovery — punish a missed swing
+    // Single-step combo for now — heavy overhead smash. Future combo:
+    // swing-left → swing-right → smash, with the third hit getting
+    // the long recover.
+    combo: [
+      { pose: 'hammer-smash', windup: 0.28, strike: 0.14, recover: 0.50 },
+    ],
+    // Wider window than dagger — the hammer's slow recover means
+    // chaining feels OK on a less twitchy press.
+    comboWindowMs: 500,
   },
 };
 
@@ -79,6 +126,15 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   const profDmgMul = 1 + profPct;     // damage scales the same direction
   const acuityCrit = char.attributes.acuity * ACUITY_CRIT_PER_POINT;
 
+  // Same speed multipliers apply uniformly to every combo step.
+  const timeMul = speedMul * profSpeed;
+  const combo: ResolvedComboStep[] = baseT.combo.map(step => ({
+    pose: step.pose,
+    windupTime:  step.windup  * timeMul,
+    strikeTime:  step.strike  * timeMul,
+    recoverTime: step.recover * timeMul,
+  }));
+
   return {
     reach: spec.reach,
     coneHalfAngle: spec.coneHalfAngle,
@@ -86,8 +142,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     critChance: (spec.critChance ?? 0.05) + acuityCrit,
     critMultiplier: spec.critMultiplier ?? 2.0,
     class: cls,
-    windupTime:  (spec.windupTime  ?? baseT.windup)  * speedMul * profSpeed,
-    strikeTime:  (spec.strikeTime  ?? baseT.strike)  * speedMul * profSpeed,
-    recoverTime: (spec.recoverTime ?? baseT.recover) * speedMul * profSpeed,
+    combo,
+    comboWindowMs: baseT.comboWindowMs,
   };
 }

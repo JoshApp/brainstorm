@@ -72,23 +72,15 @@ export interface WeaponStats {
   /** Damage multiplier on crit. Default 2.0. */
   critMultiplier?: number;
   /**
-   * Weapon class — picks the animation curves (forward stab vs
-   * diagonal slash vs overhead smash) and seeds the default
-   * windup/strike/recover timings. Default 'sword'.
+   * Weapon class — picks the animation combo (stab→slash→stab-stab
+   * for daggers, single slash for swords, single smash for hammers)
+   * and seeds the per-step timings + combo window. Default 'sword'.
    */
   class?: WeaponClass;
   /**
-   * Per-instance timing overrides. Any field set here REPLACES the
-   * class-default value. Used to give a particularly snappy weapon
-   * faster timings without leaving its animation class.
-   */
-  windupTime?: number;
-  strikeTime?: number;
-  recoverTime?: number;
-  /**
-   * Multiplier applied to ALL THREE timings after overrides resolve.
-   * 1.0 = baseline, 1.2 = 20% faster (smaller timings), 0.8 = slower.
-   * The proficiency / level system will eventually feed into this.
+   * Multiplier applied to all combo-step timings after the class
+   * defaults resolve. 1.0 = baseline, 1.2 = 20% faster (smaller
+   * timings), 0.8 = slower. Proficiency points feed in alongside it.
    */
   attackSpeed?: number;
 }
