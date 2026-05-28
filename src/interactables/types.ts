@@ -30,6 +30,24 @@ export interface Interactable {
   /** Optional: live mesh model for cleanup on destroy. */
   built?: BuiltModel;
   /**
+   * Cleanup hook fired when the system observes destroyed=true. Runs
+   * BEFORE the auto-removal of built.group (if any). Use for state
+   * that lives OUTSIDE built.group: collision-obstacle entries the
+   * builder pushed into the level's obstacles array, event-bus
+   * subscriptions, registered lights, etc.
+   *
+   * If you ALSO want to keep some of the built.group children visible
+   * after destruction (e.g. the stone altar stays as a monument even
+   * though the floating weapon offer is gone), set keepBuiltOnDestroy
+   * and remove the specific children yourself in onDestroy.
+   */
+  onDestroy?: () => void;
+  /**
+   * If true, the system does NOT auto-remove built.group on destroy.
+   * Pair with onDestroy to perform a partial removal yourself.
+   */
+  keepBuiltOnDestroy?: boolean;
+  /**
    * Optional multiplier for the in-range outline scale (default 1.07).
    * Tiny items (a ring on the floor) need ~1.4 to read; large objects
    * (a door panel) are fine at the default.

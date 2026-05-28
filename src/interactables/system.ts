@@ -44,7 +44,14 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
     const it = interactables[i];
     it.tick?.(dt, playerPos);
     if (it.destroyed) {
-      if (it.built) {
+      // 1) Owner-supplied cleanup (obstacles, subscriptions, lights, etc.).
+      //    Runs BEFORE the auto-remove of built.group so the callback can
+      //    still see the live scene-graph if it needs to.
+      it.onDestroy?.();
+      // 2) Auto-remove the visible mesh tree, UNLESS the owner asked to
+      //    keep some of it standing (e.g. starter altars: the stone
+      //    block stays as a monument after the weapon offer is taken).
+      if (it.built && !it.keepBuiltOnDestroy) {
         const parent = it.built.group.parent;
         parent?.remove(it.built.group);
       }

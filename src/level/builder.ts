@@ -630,14 +630,31 @@ export function buildLevel(
     } else if (prop.kind === 'starter-altar') {
       const weapon = ITEMS[prop.weaponId];
       if (weapon) {
-        spawnStarterAltar(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, weapon, materials);
-        // AABB matches the altar block's footprint so the player can't
-        // wedge themselves into a corner of the plinth.
-        obstacles.push({
+        // Push the obstacle FIRST, keep a reference, and pass a
+        // splice callback to spawnStarterAltar — interactable.onDestroy
+        // will fire it so the AABB doesn't outlive the visible stone.
+        // (The stone monument REMAINS visible after the weapon is taken,
+        // so the splice would normally NOT fire here; we leave the
+        // collision in place because the player can still walk into the
+        // remaining stone block. If we ever want walk-through-empty-
+        // altar later, swap to splice unconditionally.)
+        const altarObs: Obstacle = {
           kind: 'aabb',
           minX: prop.x - 0.40, maxX: prop.x + 0.40,
           minZ: prop.z - 0.32, maxZ: prop.z + 0.32,
-        });
+        };
+        obstacles.push(altarObs);
+        // onDestroy: no obstacle removal — stone block stays and
+        // remains a collider. The hook is still wired in case future
+        // iteration wants the empty altars to become walkable.
+        spawnStarterAltar(
+          root,
+          new THREE.Vector3(prop.x, 0, prop.z),
+          prop.rotY ?? 0,
+          weapon,
+          materials,
+          undefined,
+        );
       } else {
         // eslint-disable-next-line no-console
         console.warn(`starter-altar references unknown weaponId: ${prop.weaponId}`);
