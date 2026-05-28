@@ -128,6 +128,14 @@ export type PropSpec =
   // time it heals to full; half the time it curses you (lasting debuff
   // for the rest of the run). One-use per fountain.
   | { kind: 'fountain'; x: number; z: number; rotY?: number; facing?: PropFacing }
+  | {
+      kind: 'starter-altar';
+      x: number;
+      z: number;
+      rotY?: number;
+      /** Item id (from src/content/items.ts) to offer on this altar. */
+      weaponId: string;
+    }
   // 'hint' = an invisible tutorial trigger. When the player walks
   // within `triggerRadius`, italic in-world text fades in at the
   // trigger's position. Optional `dismissOn` event hook cuts the
@@ -232,6 +240,15 @@ export type StairsSpec = {
   rotY?: number;
   /** Key into LEVELS registry (src/level/specs.ts). */
   targetLevel: string;
+  /**
+   * Unlock gate. If absent, stairs are always usable.
+   *
+   * 'has-equipment': stairs show a SEALED prompt and reject use until
+   * the player has something equipped in the named slot. Used by the
+   * starter chamber to enforce "pick a weapon before descending."
+   */
+  unlock?:
+    | { kind: 'has-equipment'; slot: 'weapon' | 'offhand' };
 };
 
 export type LevelSpec = {

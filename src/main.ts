@@ -26,6 +26,7 @@ import { getSettings } from './settings/settings';
 import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
+import { buildStarterChamber } from './level/starter-chamber';
 import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad, getCurrentDepth } from './level/loader';
 import { tickAlerts, clearAlerts } from './mobs/alerts';
 import { generateFloor } from './level/procgen';
@@ -574,20 +575,20 @@ function applyState(saveData: ReturnType<typeof loadSave>) {
     }
   }
   // Equipment — set saved slots, OR defaults for new runs.
-  // Starter loadout: rusted sword + oil lamp. The lamp is the player's
-  // light source; equipping a different offhand (shield, future spell
-  // focus) puts the dungeon back into torch-only darkness.
+  // Fresh runs deliberately START WITHOUT a weapon — the player picks
+  // one at an altar in the starter chamber (the first room of every
+  // run). Offhand defaults to the lamp regardless.
   if (saveData) {
     for (const [slot, itemId] of Object.entries(saveData.equipment)) {
       if (itemId && ITEMS[itemId]) setSlot(slot as EquipSlot, ITEMS[itemId]);
     }
-    // Safety: if save somehow has no weapon, fall back so the player
-    // isn't unarmed (would render as no held viewmodel).
+    // Safety: legacy saves predating the starter chamber may have no
+    // weapon recorded; give them a rusted sword so they're not stuck
+    // unarmed mid-dungeon on resume.
     if (!saveData.equipment.weapon) setSlot('weapon', ITEMS['rusted-sword']);
     // Same safety for offhand — pre-offhand-slot saves won't have one.
     if (!saveData.equipment.offhand) setSlot('offhand', ITEMS['oil-lamp']);
   } else {
-    setSlot('weapon', ITEMS['rusted-sword']);
     setSlot('offhand', ITEMS['oil-lamp']);
   }
   // HP — restore to saved value, or full for new run.
@@ -696,22 +697,28 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       const forceTutorial = new URLSearchParams(window.location.search).get('tutorial') === '1';
       const isFirstRun = getMeta().runsAttempted === 0;
       const wantTutorial = forceTutorial || isFirstRun;
-      const entryId = wantTutorial ? 'tutorial' : LEVEL_1.id;
-      startNewRun(entryId);
+      // Every fresh run now starts in the starter chamber — three
+      // altars, one weapon each. The chamber's stair-target depends
+      // on whether this is also the player's first-ever run (then
+      // tutorial after picking; otherwise straight to depth-1).
+      const nextAfterStarter = wantTutorial ? 'tutorial' : LEVEL_1.id;
+      LEVELS['starter'] = buildStarterChamber(nextAfterStarter);
+      startNewRun('starter');
       recordRunStart();
       resetRunDiscoveries();
       applyState(null);
-      startRun(entryId, wantTutorial ? 0 : 1);
+      startRun('starter', 0);
     },
     onTutorial() {
-      // Explicit replay path — always lands in the tutorial chamber
-      // regardless of meta state. Mirrors the onDescend flow.
+      // Explicit replay path — always routes through the starter
+      // chamber THEN the tutorial, mirroring a first-time-ever run.
       clearSave();
-      startNewRun('tutorial');
+      LEVELS['starter'] = buildStarterChamber('tutorial');
+      startNewRun('starter');
       recordRunStart();
       resetRunDiscoveries();
       applyState(null);
-      startRun('tutorial', 0);
+      startRun('starter', 0);
     },
     onContinue() {
       const s = loadSave();

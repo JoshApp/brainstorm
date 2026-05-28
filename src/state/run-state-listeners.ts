@@ -43,6 +43,11 @@ export function initRunStateListeners() {
       if (first) noteRunDiscovery('note', event.noteBody);
     } else if (event.type === 'level:loaded') {
       if (!getRunState()) return;
+      // Skip saving on the starter chamber — the player hasn't picked
+      // a weapon yet, and a half-formed save (no weapon, depth 0)
+      // would resume into a broken state. If the player closes the
+      // tab here, next launch shows DESCEND for a clean fresh start.
+      if (event.levelId === 'starter') return;
       const inv: Record<string, number> = {};
       for (const { id, count } of getAllItems()) inv[id] = count;
       const eq = getEquipment();

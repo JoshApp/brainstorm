@@ -5,6 +5,7 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
 import { getTexture } from '../style/procedural-textures';
+import { getEquipped } from '../player/equipment';
 
 // Stairs = a visible descent CARVED into the floor (the top of the
 // stairwell sits below floor level, framed by a low parapet lip), plus
@@ -470,7 +471,16 @@ export function spawnStairs(
     void shaftOuterBaseW; void shaftCoreBaseW;   // (geometry width is static; scale.x does the work)
   };
 
-  const interactable = {
+  // Unlock predicate — null = always usable; otherwise re-evaluated
+  // each tick to flip the prompt between SEALED and DESCEND.
+  const unlock = spec.unlock;
+  const isUnlocked = (): boolean => {
+    if (!unlock) return true;
+    if (unlock.kind === 'has-equipment') return getEquipped(unlock.slot) !== null;
+    return true;
+  };
+
+  const interactable: import('./types').Interactable = {
     id: generateEntityId(`stairs-${spec.id ?? spec.targetLevel}`),
     // World-space center of the top tread.
     position: new THREE.Vector3(spec.x, 0, spec.z).add(
@@ -481,13 +491,25 @@ export function spawnStairs(
     // would put the label inside the parapet lip. Lift to 1.0m so it
     // floats above the parapet, clearly visible from the approach.
     labelOffsetY: 1.0,
-    promptLabel: 'DESCEND',
+    promptLabel: isUnlocked() ? 'DESCEND' : 'SEALED',
     onUse() {
-      // Lock so multi-tap doesn't trigger N loads.
-      if (interactable.promptLabel === '') return;
+      // SEALED → no descent; the player still sees the prompt but
+      // tapping does nothing until the gate predicate succeeds.
+      if (interactable.promptLabel !== 'DESCEND') return;
       interactable.promptLabel = '';
       onDescend(spec.targetLevel);
     },
+    // Re-evaluate the unlock each tick so the prompt flips the
+    // instant the predicate becomes satisfied (e.g. the player
+    // equips a weapon in the starter chamber).
+    tick: unlock
+      ? () => {
+          // Don't unflag once the descent has started (promptLabel
+          // === '' is the "loading" state).
+          if (interactable.promptLabel === '') return;
+          interactable.promptLabel = isUnlocked() ? 'DESCEND' : 'SEALED';
+        }
+      : undefined,
     destroyed: false,
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
   };

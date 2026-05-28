@@ -13,6 +13,8 @@ import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
 import { spawnChest } from '../interactables/chest';
 import { spawnStashChest } from '../interactables/stash-chest';
+import { spawnStarterAltar } from '../interactables/starter-altar';
+import { ITEMS } from '../content/items';
 import { spawnTutorialHint } from '../effects/tutorial-hints';
 import { spawnDoor } from '../interactables/door';
 import {
@@ -625,6 +627,21 @@ export function buildLevel(
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.45,
       });
+    } else if (prop.kind === 'starter-altar') {
+      const weapon = ITEMS[prop.weaponId];
+      if (weapon) {
+        spawnStarterAltar(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, weapon, materials);
+        // AABB matches the altar block's footprint so the player can't
+        // wedge themselves into a corner of the plinth.
+        obstacles.push({
+          kind: 'aabb',
+          minX: prop.x - 0.40, maxX: prop.x + 0.40,
+          minZ: prop.z - 0.32, maxZ: prop.z + 0.32,
+        });
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`starter-altar references unknown weaponId: ${prop.weaponId}`);
+      }
     } else if (prop.kind === 'hint') {
       // Diegetic tutorial hint — invisible trigger that fades a line of
       // italic text in over its world position as the player nears.

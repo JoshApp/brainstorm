@@ -107,6 +107,121 @@ export const HEARTBURN: ModelSpec = {
   },
 };
 
+// Bone needle — fast precise dagger. Narrow bone-white blade, tight
+// cross-guard, dark wrapped grip. Visibly small in the player's view
+// to read as the "weak fast" starter at a glance.
+const NEEDLE_BLADE_SHAPE: [number, number][] = [
+  // Cutting edge (hilt → tip) — long thin taper, no curve.
+  [ 0.014, 0.00 ],
+  [ 0.020, 0.12 ],
+  [ 0.018, 0.26 ],
+  [ 0.014, 0.40 ],
+  [ 0.006, 0.50 ],   // tip
+  // Spine (tip → hilt) — mirrors the edge, also straight.
+  [-0.004, 0.48 ],
+  [-0.010, 0.36 ],
+  [-0.012, 0.24 ],
+  [-0.010, 0.12 ],
+  [-0.006, 0.00 ],
+];
+
+export const BONE_NEEDLE: ModelSpec = {
+  id: 'bone-needle',
+  materials: {
+    bone: {
+      // Off-white with a warm marrow tint and faint emissive so the
+      // blade stays visible at distance against dark floors.
+      color: 0xe0d6c0,
+      roughness: 0.7,
+      metalness: 0.05,
+      emissive: 0x281a10,
+      emissiveIntensity: 0.25,
+      fog: false,
+      flatShading: 'auto',
+    },
+    guard: {
+      color: 0x1a1410,
+      roughness: 0.55,
+      metalness: 0.65,
+      fog: false,
+      flatShading: 'auto',
+    },
+    wrap: {
+      color: 0x2a1a0e,
+      roughness: 0.95,
+      metalness: 0.0,
+      fog: false,
+      flatShading: 'auto',
+    },
+  },
+  parts: [
+    // Blade — small thin extruded silhouette.
+    { name: 'blade', kind: 'extrude', shape: NEEDLE_BLADE_SHAPE, depth: 0.005, mat: 'bone' },
+    // Tight cross-guard — barely wider than the grip.
+    { name: 'guard', kind: 'box', pos: [0.004, -0.008, 0], size: [0.08, 0.014, 0.025], mat: 'guard' },
+    // Wrapped grip — narrow + short.
+    { name: 'grip', kind: 'cylinder', pos: [0.004, -0.060, 0], radius: 0.014, height: 0.085, segments: 8, mat: 'wrap' },
+    // Pommel — a small bone bead.
+    { name: 'pommel', kind: 'sphere', pos: [0.004, -0.108, 0], radius: 0.018, segments: [10, 8], mat: 'bone' },
+  ],
+  slots: {
+    blade_tip: { pos: [0.006, 0.50, 0] },
+    grip_anchor: { pos: [0.004, -0.060, 0] },
+  },
+};
+
+// Iron maul — slow heavy hitter. Long iron-banded haft + a chunky
+// box-shaped head with two side bands. Player's maul reads as
+// "warhammer" — distinct from the stoneguard's stone-bludgeon
+// silhouette so the held weapon and the enemy don't read alike.
+export const IRON_MAUL: ModelSpec = {
+  id: 'iron-maul',
+  materials: {
+    head: {
+      // Dark iron — slightly more metallic than the haft for contrast.
+      color: 0x3c3a36,
+      roughness: 0.45,
+      metalness: 0.85,
+      fog: false,
+      flatShading: 'auto',
+    },
+    haft: {
+      // Stained wood + iron bands.
+      color: 0x2a1a10,
+      roughness: 0.92,
+      metalness: 0.05,
+      fog: false,
+      flatShading: 'auto',
+    },
+    band: {
+      color: 0x52504a,
+      roughness: 0.55,
+      metalness: 0.8,
+      fog: false,
+      flatShading: 'auto',
+    },
+  },
+  parts: [
+    // Hammer head — square iron block. Bigger than the stoneguard's
+    // stone bludgeon so the silhouette is distinctly "tool, not rock."
+    { name: 'head', kind: 'box', pos: [0, 0.46, 0], size: [0.085, 0.16, 0.155], mat: 'head' },
+    // Side bands wrapping the head — sells "forged iron, banded shut."
+    { kind: 'box', pos: [0, 0.46, 0.062], size: [0.092, 0.17, 0.018], mat: 'band' },
+    { kind: 'box', pos: [0, 0.46, -0.062], size: [0.092, 0.17, 0.018], mat: 'band' },
+    // Haft — long thick wooden shaft.
+    { name: 'haft', kind: 'cylinder', pos: [0, 0.18, 0], radius: 0.016, height: 0.40, segments: 10, mat: 'haft' },
+    // Iron bands at the top + bottom of the grip section.
+    { kind: 'cylinder', pos: [0, 0.34, 0], radius: 0.020, height: 0.024, segments: 10, mat: 'band' },
+    { kind: 'cylinder', pos: [0, 0.02, 0], radius: 0.020, height: 0.024, segments: 10, mat: 'band' },
+    // Pommel cap — flat iron disc at the base.
+    { kind: 'cylinder', pos: [0, -0.018, 0], radius: 0.024, height: 0.014, segments: 10, mat: 'head' },
+  ],
+  slots: {
+    head_top: { pos: [0, 0.54, 0] },
+    grip_anchor: { pos: [0, 0.18, 0] },
+  },
+};
+
 export const WEAPON_SCIMITAR: ModelSpec = {
   id: 'weapon-scimitar',
   materials: {

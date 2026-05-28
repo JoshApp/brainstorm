@@ -2,7 +2,7 @@ import type { ModelSpec } from '../ecs/model-types';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 import { SWORD_RUSTED } from './sword';
-import { WEAPON_SCIMITAR, HEARTBURN } from './weapons';
+import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL } from './weapons';
 import {
   HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
@@ -130,6 +130,48 @@ export const ITEMS: Record<string, ItemSpec> = {
     weapon: { reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0 },
     affixPool: ['keening', 'gallows', 'vile', 'patience'],
     maxAffixes: 2,
+  },
+  // ── STARTER WEAPONS ───────────────────────────────────────────────
+  // Three starter alternatives offered in the diegetic starter chamber
+  // at the top of every fresh run. Each defines a distinct early-game
+  // playstyle. Stats are tuned so all three are viable at depth 1 but
+  // each rewards a different combat instinct:
+  //   needle → fast precise crit-fishing (squishy weapon, needs care)
+  //   sword  → balanced baseline (the rusted shortsword above)
+  //   maul   → slow heavy punish-on-read (wide cone catches multiples)
+  'bone-needle': {
+    id: 'bone-needle',
+    kind: 'weapon',
+    rarity: 'mundane',
+    name: 'A bone needle',
+    flavor: 'Thin enough to fit between ribs.',
+    dropModel: BONE_NEEDLE,
+    viewmodel: BONE_NEEDLE,
+    // Short reach, narrow cone, low base damage — but the highest crit
+    // chance + multiplier in the starting roster. Skirts trash mobs
+    // by repeated strikes; struggles against armoured targets unless
+    // you land crits.
+    weapon: { reach: 1.5, coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5 },
+    affixPool: ['keening', 'gallows', 'spine'],
+    maxAffixes: 1,
+  },
+  'iron-maul': {
+    id: 'iron-maul',
+    kind: 'weapon',
+    rarity: 'mundane',
+    name: 'An iron maul',
+    flavor: 'It does not require finesse.',
+    dropModel: IRON_MAUL,
+    viewmodel: IRON_MAUL,
+    // Long reach, wide cone, high base damage, ZERO crit chance — the
+    // damage is dependable, not lucky. Catches multiple mobs in one
+    // swing (the wide cone) so a careless ooze-killer can still
+    // contain the split. Slow swing timings live elsewhere if we
+    // ever wire per-weapon attack timings; for now the base sword
+    // cadence applies.
+    weapon: { reach: 2.0, coneHalfAngle: 0.85, damage: 2, critChance: 0, critMultiplier: 1 },
+    affixPool: ['gallows', 'spine', 'patience'],
+    maxAffixes: 1,
   },
   heartburn: {
     id: 'heartburn',

@@ -18,7 +18,8 @@ export type GameEvent =
   | { type: 'level:loaded'; levelId: string }
   | { type: 'xp:absorbed' }
   | { type: 'gold:absorbed' }
-  | { type: 'level:up'; level: number };
+  | { type: 'level:up'; level: number }
+  | { type: 'starter:chosen'; weaponId: string };
 
 type Handler = (event: GameEvent) => void;
 
