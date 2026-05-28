@@ -77,16 +77,7 @@ function ensureBackdrop(): HTMLDivElement {
     transition: 'opacity 0.12s ease-out',
   } as Partial<CSSStyleDeclaration>);
   // Backdrop tap = dismiss request to the TOP-MOST screen that has one.
-  // We walk in reverse open-order so the topmost panel handles it first.
-  backdrop.addEventListener('click', () => {
-    const stack = [...openScreens.values()].reverse();
-    for (const s of stack) {
-      if (s.onDismissRequest) {
-        s.onDismissRequest();
-        break;
-      }
-    }
-  });
+  backdrop.addEventListener('click', () => { dismissTopScreen(); });
   document.body.appendChild(backdrop);
   return backdrop;
 }
@@ -122,6 +113,22 @@ export function isScreenOpen(id: string): boolean {
 
 export function isAnyScreenOpen(): boolean {
   return openScreens.size > 0;
+}
+
+/** Fire onDismissRequest on the top-most open screen that has one.
+ *  Walks in reverse open-order so the most recently opened panel
+ *  handles it first. Returns true if a dismiss was dispatched —
+ *  callers (backdrop tap, ESC key) use this to decide whether to
+ *  fall through to other behaviour. */
+export function dismissTopScreen(): boolean {
+  const stack = [...openScreens.values()].reverse();
+  for (const s of stack) {
+    if (s.onDismissRequest) {
+      s.onDismissRequest();
+      return true;
+    }
+  }
+  return false;
 }
 
 /** True if any open screen has policy.pausesWorld. Used by the main loop

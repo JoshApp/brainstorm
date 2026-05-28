@@ -12,6 +12,8 @@ import { dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
 import { useFirstConsumable } from './consumable-bar';
 import { toggleInventoryPanel } from '../ui/inventory-panel';
+import { dismissTopScreen, isAnyScreenOpen } from '../ui/screen-manager';
+import { openSettings } from '../ui/settings-menu';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
 import { LEFT_ZONE_FRACTION } from './input-touch';
 
@@ -53,6 +55,21 @@ export const desktopScheme: InputScheme = {
       if (k === 'q') {
         e.preventDefault();
         useFirstConsumable();
+      }
+      // Escape: close the topmost open panel (mirrors the backdrop-tap
+      // gesture on touch). If nothing is open, open the settings menu
+      // — desktop's pause-equivalent of the touch inventory-gear flow.
+      // Note: the browser also intercepts Escape to release pointer
+      // lock. When locked, the first Escape unlocks (no keydown fires
+      // here); a second Escape then reaches us and dismisses/opens.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (dismissTopScreen()) return;
+        // No dismissible top screen. Only open settings if nothing
+        // else is on screen — title and end-screen are non-dismissible
+        // and sit on a higher layer, so opening settings behind them
+        // would just be invisible churn.
+        if (!isAnyScreenOpen()) openSettings();
       }
     });
     window.addEventListener('keyup', (e) => {
