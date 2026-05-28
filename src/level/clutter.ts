@@ -104,10 +104,22 @@ export function applyGeometryWarp(spec: LevelSpec, rand: () => number): void {
   const existing = collectExisting(spec);
   const stairs = allStairFootprints(spec);
   const allRectsFlat = [...spec.rooms, ...spec.corridors].map((r) => r.rect);
+  // Centrepiece detection — does this room already contain a fountain
+  // / altar / chest? If so, the light-prop pass skips it. Per the
+  // "lighting as signal" rule in CLAUDE.md: an uncommon light source
+  // should mean SOMETHING IS HAPPENING. If the room already has a
+  // focal point, dropping a brazier next to it is competing noise.
+  const centrepieceKinds = new Set(['fountain', 'altar', 'chest']);
+  const centrepiecePoints: PlacedPoint[] = spec.props
+    .filter((p) => 'kind' in p && centrepieceKinds.has(p.kind) && 'x' in p && 'z' in p)
+    .map((p) => ({ x: p.x as number, z: p.z as number }));
   const out: PropSpec[] = [];
   for (const room of spec.rooms) {
     const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand);
-    structuralPass(ctx, out, rand);
+    const hasCentrepiece = centrepiecePoints.some(
+      (p) => p.x >= ctx.minX && p.x <= ctx.maxX && p.z >= ctx.minZ && p.z <= ctx.maxZ,
+    );
+    structuralPass(ctx, out, rand, hasCentrepiece);
   }
   spec.props.push(...out);
 
@@ -243,7 +255,7 @@ function buildRoomContext(
 
 // ── stage 1: structural ───────────────────────────────────────────
 
-function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number): void {
+function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number, hasCentrepiece: boolean = false): void {
   // Corner mounds — volumetric piles of silt slumping out of each
   // corner. One large mound max per chamber so a single corner
   // reads as the "collapsed" focal point.
@@ -298,51 +310,70 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number): 
     }
   }
 
-  // Light-prop accent — at most one PER ROOM, either a free-standing
-  // iron brazier or a tall cresset pike. Adds visual warmth focal
-  // points beyond the wall torches. Neither carries an attached
-  // PointLight (the existing torch budget stays put); the flame
-  // stacks read as warm sources visually but only the room's torches
-  // actually illuminate. Placement: ~40% chance on rooms ≥ 35m².
-  if (ctx.area >= 35 && rand() < 0.40) {
-    // Coin-flip between the two variants. Brazier wants a chunk of
-    // mid-room space; pike likes an edge/corner because its tall
-    // narrow silhouette reads against a wall.
-    const wantPike = rand() < 0.5;
-    if (wantPike) {
-      // Try to seat the pike at the room edge: sample edges,
-      // require a clear footprint, keep ~0.6m clearance off the
-      // wall so the basket doesn't punch through.
+  // Light-prop accent — at most ONE per room, always at an edge/corner.
+  // Per CLAUDE.md "lighting as signal": uncommon light sources should
+  // mean something is HAPPENING THERE, not decorate empty space. Rules:
+  //
+  //   - Skip rooms that already have a centrepiece (fountain/altar/
+  //     chest). Those rooms have their own focal point; another light
+  //     reads as noise that competes with the actual interactable.
+  //   - Require a bigger room (≥ 50m²) so the accent has space to
+  //     register. Smaller rooms feel cluttered immediately.
+  //   - Low base rate (~22%). Most qualifying rooms get NO light prop.
+  //     Scarcity is what makes the ones we DO place feel intentional.
+  //   - Always edge/corner placement — never centreSampler. Mid-room
+  //     placement was the "blocking paths" symptom Josh reported.
+  //   - Pike-preferred for tighter rooms (narrow silhouette reads
+  //     well against a wall); brazier reserved for rooms big enough
+  //     that its footprint won't squeeze a doorway.
+  if (!hasCentrepiece && ctx.area >= 50 && rand() < 0.22) {
+    // Single helper for "near any door / corridor opening on any
+    // wall." Each axis check uses the right coord against the right
+    // opening list (openings on N/S walls have X-ranges; openings
+    // on W/E walls have Z-ranges).
+    const nearAnyOpening = (px: number, pz: number) =>
+      inOpening(px, ctx.openN) || inOpening(px, ctx.openS) ||
+      inOpening(pz, ctx.openW) || inOpening(pz, ctx.openE);
+
+    const wantBrazier = ctx.area >= 70 && rand() < 0.35;
+    if (wantBrazier) {
+      // Brazier at a CORNER — pulled in from a corner by ~1.2m so the
+      // bowl + haze read with stone on two sides framing it.
+      const corners = shuffled([
+        { x: ctx.minX + 1.2, z: ctx.minZ + 1.2 },
+        { x: ctx.maxX - 1.2, z: ctx.minZ + 1.2 },
+        { x: ctx.minX + 1.2, z: ctx.maxZ - 1.2 },
+        { x: ctx.maxX - 1.2, z: ctx.maxZ - 1.2 },
+      ], rand);
+      for (const c of corners) {
+        if (nearAnyOpening(c.x, c.z)) continue;
+        if (ctx.tooClose(c.x, c.z, 1.4)) continue;
+        out.push({
+          kind: 'model',
+          model: IRON_BRAZIER,
+          x: c.x, y: 0, z: c.z,
+          rotY: rand() * Math.PI * 2,
+          collision: { kind: 'circle', r: 0.32 },
+        });
+        ctx.existing.push({ x: c.x, z: c.z });
+        break;
+      }
+    } else {
+      // Cresset pike — flush against a wall along the long edge.
+      // Edge sampler picks a perimeter point; reject if it sits near
+      // a door / corridor opening on any wall.
       for (let a = 0; a < 8; a++) {
         const p = ctx.edgeSampler();
-        if (p.x < ctx.minX + 0.6 || p.x > ctx.maxX - 0.6) continue;
-        if (p.z < ctx.minZ + 0.6 || p.z > ctx.maxZ - 0.6) continue;
-        if (ctx.tooClose(p.x, p.z, 1.0)) continue;
+        if (p.x < ctx.minX + 0.5 || p.x > ctx.maxX - 0.5) continue;
+        if (p.z < ctx.minZ + 0.5 || p.z > ctx.maxZ - 0.5) continue;
+        if (nearAnyOpening(p.x, p.z)) continue;
+        if (ctx.tooClose(p.x, p.z, 1.2)) continue;
         out.push({
           kind: 'model',
           model: CRESSET_PIKE,
           x: p.x, y: 0, z: p.z,
           rotY: rand() * Math.PI * 2,
           collision: { kind: 'circle', r: 0.18 },
-        });
-        ctx.existing.push({ x: p.x, z: p.z });
-        break;
-      }
-    } else {
-      // Brazier sits more openly — sample the interior, require a
-      // wider clearance so the bowl + haze read against the floor
-      // not against another prop.
-      for (let a = 0; a < 8; a++) {
-        const p = ctx.centreSampler();
-        if (p.x < ctx.minX + 1.2 || p.x > ctx.maxX - 1.2) continue;
-        if (p.z < ctx.minZ + 1.2 || p.z > ctx.maxZ - 1.2) continue;
-        if (ctx.tooClose(p.x, p.z, 1.4)) continue;
-        out.push({
-          kind: 'model',
-          model: IRON_BRAZIER,
-          x: p.x, y: 0, z: p.z,
-          rotY: rand() * Math.PI * 2,
-          collision: { kind: 'circle', r: 0.32 },
         });
         ctx.existing.push({ x: p.x, z: p.z });
         break;
