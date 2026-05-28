@@ -11,12 +11,14 @@ export const CONFIG = {
   // torches are, leaving non-lit areas slightly cool — so the chamber feels
   // warm vs the corridor feeling cooler vs the antechamber feeling sickly-green.
   // Previous warm-sepia ambient (0x231711) painted the whole world ochre.
-  // Ambient bumped from 1.1 → 1.5 — the procgen rooms are larger than the
-  // hand-authored floor 1 and torch coverage is sparser, so the gap between
-  // "lit by torch" and "pitch black" was too binary. Slight cool-gray base
-  // keeps mood without saturating the warm torch additions.
+  // Ambient bumped 1.1 → 1.5 → 1.8 — the procgen rooms are larger than
+  // the hand-authored floor 1 and torch coverage is sparser, so the gap
+  // between "lit by torch" and "pitch black" was too binary. The 1.8
+  // bump lifts unlit corners without flattening the warm-torch
+  // contrast that defines the mood. Slight cool-gray base keeps mood
+  // without saturating the warm torch additions.
   AMBIENT_COLOR: 0x1a1e24,
-  AMBIENT_INTENSITY: 1.5,
+  AMBIENT_INTENSITY: 1.8,
 
   // === FOG ===
   // Hides everything beyond torch range. Sells the dread.

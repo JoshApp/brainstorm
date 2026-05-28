@@ -765,10 +765,16 @@ export function buildLevel(
   // dominates frame time on mobile. Earlier density (1 per 22 m²) put
   // ~16 fills on a single procgen room; combined with torches, candles,
   // floor-glow lights, pickup-pool lights + the player lantern, scenes
-  // hit 30+ PointLights and lagged hard. New budget: ~1 per 60 m², max
-  // 3 per rect. Floor 1 chamber gets 1, procgen rooms get 2-3 — still
-  // enough to vary the ambient without crushing the GPU.
-  const fillColor = spec.fogColor !== undefined
+  // hit 30+ PointLights and lagged hard. Current budget: ~1 per 45 m²,
+  // max 4 per rect (bumped from 60m² / 3 cap because the phone was
+  // dark-cornering in larger procgen rooms).
+  //
+  // Color: averaged from the torches actually placed in the room so the
+  // fill agrees with the room's mood — a blood-tinted chamber gets a
+  // red-tinted ambient fill, a sickly-green chamber gets sickly-green,
+  // not a generic warm wash regardless of palette. Falls back to a
+  // fog-mixed warm default when the room has no torches.
+  const defaultFillColor = spec.fogColor !== undefined
     ? mixColors(spec.fogColor, 0x553322, 0.5)
     : 0x2a1a10;
   for (const r of allRects) {
@@ -777,7 +783,15 @@ export function buildLevel(
     // same volume.
     if (r.logicalOnly) continue;
     const area = r.rect.w * r.rect.d;
-    const count = Math.min(3, Math.max(1, Math.floor(area / 60)));
+    const count = Math.min(4, Math.max(1, Math.floor(area / 45)));
+    // Average tint of torches inside this room's rect — what the
+    // mood reads as. mixed with the default fill so the fill stays
+    // dimmer/desaturated relative to the torches themselves.
+    const fillColor = mixColors(
+      averageTorchTintInRect(spec.torches, r.rect) ?? defaultFillColor,
+      defaultFillColor,
+      0.4,
+    );
     for (let i = 0; i < count; i++) {
       const fx = r.rect.x + (((i * 1.6) % r.rect.w) - r.rect.w / 2 + r.rect.w / (count + 1));
       const fz = r.rect.z + (((i * 0.9) % r.rect.d) - r.rect.d / 2 + r.rect.d / (count + 1));
@@ -1031,6 +1045,28 @@ function mixColors(a: number, b: number, t: number): number {
   const g = Math.round(ag + (bg - ag) * t);
   const bl = Math.round(ab + (bb - ab) * t);
   return (r << 16) | (g << 8) | bl;
+}
+
+/** Average torch colorTint across every torch whose position falls
+ *  inside `rect`. Returns null when the room has no torches — caller
+ *  falls back to the default fill colour. Used so fill PointLights in
+ *  a blood-tinted chamber read RED, not generic warm; sickly-green
+ *  chambers get sickly-green fills; etc. */
+function averageTorchTintInRect(torches: TorchSpec[], rect: { x: number; z: number; w: number; d: number }): number | null {
+  const hw = rect.w / 2;
+  const hd = rect.d / 2;
+  let n = 0, r = 0, g = 0, b = 0;
+  for (const t of torches) {
+    if (t.x < rect.x - hw || t.x > rect.x + hw) continue;
+    if (t.z < rect.z - hd || t.z > rect.z + hd) continue;
+    const tint = t.colorTint ?? 0xffaa55;
+    r += (tint >> 16) & 0xff;
+    g += (tint >> 8) & 0xff;
+    b += tint & 0xff;
+    n++;
+  }
+  if (n === 0) return null;
+  return (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n);
 }
 
 /** Which room rect contains (x, z)? Prefers logical-only sub-rooms over

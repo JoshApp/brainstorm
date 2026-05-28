@@ -107,6 +107,35 @@ NOT inspired by:
 - Pixel art (we are 3D)
 - Anything cute or stylized-bright
 
+## Lighting as signal
+
+The dungeon's baseline is darkness. **Any UNCOMMON light source the
+player sees should mean SOMETHING IS HAPPENING THERE.** Players will
+learn the rule from the geometry: an unusual light = an event, an
+interactable, a story beat. If we use special lighting as pure
+decoration, we destroy that signal.
+
+Rules:
+- **God rays anchor content.** Every god ray must illuminate or sit
+  beside something the player can engage with — a fountain, an altar,
+  a chest, a corpse with a note, a boss spawn. Never as background
+  ambience.
+- **Coloured floor glows mark a hot spot.** Treasure glows under the
+  treasure-room altar; blood glows under the blood altar's basin.
+  Don't sprinkle them as carpet.
+- **Mood-coloured torches signal the room's character.** Blood-red,
+  sickly-green, moonlight-blue — each is a promise about what's in
+  the room. The fill light system auto-tints to match (see
+  `averageTorchTintInRect` in builder.ts) so all sources read in
+  agreement once a vault commits to a palette.
+- **The player's lamp is the BASELINE everywhere.** Anything brighter
+  than the lamp or in a colour the lamp isn't carrying is a signal.
+
+When in doubt: if you're tempted to add a god ray to make a room look
+less empty, the right move is usually to give the room a reason to
+exist (encounter, hint, interactable) rather than light up an empty
+corner.
+
 ## Tone Bible (for any text written by the system or LLM later)
 
 - Terse. Archaic. Cruel. Indifferent.
