@@ -23,7 +23,8 @@ import { initRenderPipeline, renderWithStyle } from './style/render-target';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings } from './settings/settings';
-import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
+import { setMasterVolume, startAmbience, setTorchProximity, playWhoosh } from './audio/sfx';
+import { emit } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
 import { buildStarterChamber } from './level/starter-chamber';
@@ -196,7 +197,16 @@ initLevelLoader({
 });
 
 // --- Player: held sword ---
-const sword = createSword(camera);
+// onSwingStart fires for EVERY combo step's windup (initial press +
+// every chained step), so the whoosh and 'attack:swing' broadcast
+// play through the whole stab → slash → stab-stab routine, not just
+// the first press.
+const sword = createSword(camera, {
+  onSwingStart: () => {
+    playWhoosh();
+    emit({ type: 'attack:swing' });
+  },
+});
 
 // Sword + offhand viewmodels are driven REACTIVELY by the equipment
 // slot system. Whenever a slot changes (pickup, manual equip via the

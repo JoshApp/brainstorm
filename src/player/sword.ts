@@ -32,7 +32,15 @@ export interface Sword {
   setDebugPhase(phase: SwordPhase, phaseTimer: number): void;
 }
 
-export function createSword(camera: THREE.Camera): Sword {
+export interface SwordOptions {
+  /** Fired every time a NEW windup begins — whether from an idle
+   *  press or from a queued combo chain. Combat wires playWhoosh +
+   *  'attack:swing' emit here so chained combo steps make sound, not
+   *  just the first press. */
+  onSwingStart?: () => void;
+}
+
+export function createSword(camera: THREE.Camera, options: SwordOptions = {}): Sword {
   const [ix, iy, iz] = CONFIG.SWORD_IDLE_POS;
   const [rx, ry, rz] = CONFIG.SWORD_IDLE_ROT;
 
@@ -133,6 +141,7 @@ export function createSword(camera: THREE.Camera): Sword {
     }
     phase = 'windup';
     phaseTimer = 0;
+    options.onSwingStart?.();
     return true;
   }
 
@@ -185,6 +194,10 @@ export function createSword(camera: THREE.Camera): Sword {
           comboStep = (comboStep + 1) % w.combo.length;
           phase = 'windup';
           phaseTimer = 0;
+          // Chained swing fires the same swing-start callback so the
+          // whoosh + broadcast event play for every combo step, not
+          // just the initial press.
+          options.onSwingStart?.();
         } else {
           // Open the combo window. The next press inside this window
           // advances comboStep; outside it, comboStep resets to 0.

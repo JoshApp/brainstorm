@@ -5,7 +5,7 @@ import type { Enemy } from '../mobs/enemy';
 import type { Destructible } from '../level/destructibles';
 import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
-import { playWhoosh, playImpact } from '../audio/sfx';
+import { playImpact } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
@@ -44,11 +44,10 @@ export function createCombatSystem(
 
   function tick(attackPressed: boolean) {
     if (attackPressed) {
-      const started = sword.startSwing();
-      if (started) {
-        playWhoosh();
-        emit({ type: 'attack:swing' });
-      }
+      // Whoosh + 'attack:swing' fire from sword.ts's onSwingStart so
+      // chained combo steps make sound too, not just the first press.
+      // We just forward the input.
+      sword.startSwing();
     }
 
     const striking = sword.isStriking;

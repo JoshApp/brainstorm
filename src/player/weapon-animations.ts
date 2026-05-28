@@ -148,22 +148,21 @@ function daggerStabPose(phase: SwordPhase, t: number): WeaponPose {
 }
 
 function daggerSlashPose(phase: SwordPhase, t: number): WeaponPose {
-  // Lateral cut: pull the blade across to the LEFT in windup, then
-  // sweep right across the view. Different rotation profile from the
-  // stab — tip pitches less forward, more SIDEWAYS so the edge leads
-  // the sweep instead of the point.
-  const WOUND_X = ix - 0.22;          // pulled across to the left
-  const WOUND_Y = iy + 0.06;
-  const WOUND_Z = iz + 0.04;
-  const WOUND_RX = rx - 0.40;
-  const WOUND_RY = ry + 0.50;          // yaw tip rightward
-  const WOUND_RZ = rz - 0.30;          // cancel idle diagonal roll
-  const STRIKE_X = ix + 0.22;          // sweep through to the right
-  const STRIKE_Y = iy + 0.02;
-  const STRIKE_Z = iz - 0.06;
-  const STRIKE_RX = rx - 0.20;
-  const STRIKE_RY = ry - 0.50;
-  const STRIKE_RZ = rz + 0.10;
+  // Lateral cut: pull the blade WAY across to the LEFT in windup,
+  // then sweep right across the view. Big visible arc — the edge
+  // leads, the tip yaws through ~120° so the slash reads at a glance.
+  const WOUND_X = ix - 0.42;          // pulled across to the left, FAR
+  const WOUND_Y = iy + 0.10;          // raised slightly above eye-line
+  const WOUND_Z = iz + 0.06;
+  const WOUND_RX = rx - 0.55;          // blade tilts up-and-across
+  const WOUND_RY = ry + 0.95;          // tip yaws hard to the right
+  const WOUND_RZ = rz - 0.40;          // cancel idle diagonal roll
+  const STRIKE_X = ix + 0.42;          // sweep all the way across to the right
+  const STRIKE_Y = iy + 0.00;
+  const STRIKE_Z = iz - 0.10;
+  const STRIKE_RX = rx - 0.25;
+  const STRIKE_RY = ry - 0.95;         // tip yaws back the other way
+  const STRIKE_RZ = rz + 0.25;
   if (phase === 'windup') {
     scratch.x = ix + (WOUND_X - ix) * t;
     scratch.y = iy + (WOUND_Y - iy) * t;
