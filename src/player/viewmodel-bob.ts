@@ -58,11 +58,11 @@ const swordScratch: SwordOffset = { x: 0, y: 0, rotZ: 0 };
  *  horizontal sway. Idle adds a small drift so the blade isn't dead
  *  still while standing. */
 export function getSwordOffset(): SwordOffset {
-  const walkY  = dualSine(walkPhase * 2, 1.31, 0.4) * 0.022 * intensity;
-  const walkX  = dualSine(walkPhase, 1.41, 0.0)    * 0.006 * intensity;
-  const walkRZ = dualSine(walkPhase, 1.27, 0.2)    * 0.030 * intensity;
-  const idleY  = dualSine(idlePhase, 1.31, 0.3)    * 0.0035;
-  const idleRZ = dualSine(idlePhase * 1.13, 1.41, 0.7) * 0.008;
+  const walkY  = dualSine(walkPhase * 2, 1.31, 0.4) * 0.014 * intensity;
+  const walkX  = dualSine(walkPhase, 1.41, 0.0)    * 0.004 * intensity;
+  const walkRZ = dualSine(walkPhase, 1.27, 0.2)    * 0.020 * intensity;
+  const idleY  = dualSine(idlePhase, 1.31, 0.3)    * 0.002;
+  const idleRZ = dualSine(idlePhase * 1.13, 1.41, 0.7) * 0.005;
   swordScratch.x = walkX;
   swordScratch.y = walkY + idleY;
   swordScratch.rotZ = walkRZ + idleRZ;
@@ -78,8 +78,8 @@ export function getSwordOffset(): SwordOffset {
  *  lamp never reads as dead-still. Opposite phase from the sword bop
  *  so when the player dips into a footfall, the lantern is rising. */
 export function getLanternSwing(): number {
-  const walkAng = dualSine(walkPhase + Math.PI, 1.37, 0.5) * 0.16 * intensity;
-  const idleAng = dualSine(idlePhase, 1.41, 0.2) * 0.035;
+  const walkAng = dualSine(walkPhase + Math.PI, 1.37, 0.5) * 0.10 * intensity;
+  const idleAng = dualSine(idlePhase, 1.41, 0.2) * 0.020;
   return walkAng + idleAng;
 }
 
@@ -94,8 +94,8 @@ const offhandScratch: OffhandOffset = { x: 0, y: 0, rotZ: 0 };
 /** Generic offhand (shield etc.): subtle vertical lift only. Shields
  *  aren't swung — they should feel braced, not animated. */
 export function getOffhandOffset(): OffhandOffset {
-  const walkY = dualSine(walkPhase * 2, 1.21, 0.2) * 0.012 * intensity;
-  const idleY = dualSine(idlePhase * 1.2, 1.31, 0.1) * 0.003;
+  const walkY = dualSine(walkPhase * 2, 1.21, 0.2) * 0.008 * intensity;
+  const idleY = dualSine(idlePhase * 1.2, 1.31, 0.1) * 0.002;
   offhandScratch.x = 0;
   offhandScratch.y = walkY + idleY;
   offhandScratch.rotZ = 0;
