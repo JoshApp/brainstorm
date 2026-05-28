@@ -22,6 +22,26 @@ interface PreviewEntry {
   worldZ: number;
   visible: boolean;
   el: HTMLDivElement;
+  /** Stats element (if the item HAS stats to show). null when the
+   *  item is stat-less. */
+  statsEl: HTMLDivElement | null;
+  /** True for altars where stats are hidden by default and only
+   *  revealed when the player is highlighting the altar (in interact
+   *  range + facing it). Starter altars set this false because the
+   *  whole room IS a picker and stats need to be visible side-by-side
+   *  for comparison. */
+  hideStatsUntilInspect: boolean;
+  /** Last inspected state — used to skip redundant style writes. */
+  inspected: boolean;
+}
+
+export interface ItemPreviewOptions {
+  /** If true, the stats line is hidden by default and only shown when
+   *  setItemPreviewInspected(id, true) is called. Used by the blood
+   *  altar so the player has to LEAN IN (be the in-range interactable)
+   *  to see what bargain they're considering — name + flavor still
+   *  identify the offering, stats are the contract. */
+  hideStatsUntilInspect?: boolean;
 }
 
 const entries = new Map<string, PreviewEntry>();
@@ -29,7 +49,7 @@ const entries = new Map<string, PreviewEntry>();
 /** Register a preview for a given item at the given altar id. The id
  *  is owner-supplied (e.g. the interactable id) so update and
  *  unregister calls can find the entry. */
-export function registerItemPreview(id: string, item: ItemSpec): void {
+export function registerItemPreview(id: string, item: ItemSpec, opts: ItemPreviewOptions = {}): void {
   if (entries.has(id)) return;
 
   const el = document.createElement('div');
@@ -42,64 +62,99 @@ export function registerItemPreview(id: string, item: ItemSpec): void {
     transition: 'opacity 0.18s ease',
     fontFamily: '"Iowan Old Style", "Palatino", "Times New Roman", serif',
     color: 'rgba(220, 180, 140, 0.95)',
-    padding: '7px 13px',
+    padding: '6px 11px',
     background: 'rgba(20, 12, 8, 0.78)',
     border: '1px solid rgba(180, 130, 90, 0.4)',
     borderRadius: '4px',
     textAlign: 'center',
-    // Cap width but stay inside the viewport on narrow phones — 80vw
-    // leaves room for the screen edges so the label never wraps awkwardly
-    // because it's pinned half-off-screen.
-    maxWidth: 'min(240px, 80vw)',
+    // Width is content-driven up to a viewport-relative cap — narrower
+    // on phones, generous on desktop. Critical for cross-platform
+    // robustness: the label width is a function of VIEWPORT size,
+    // not of where the label happens to sit on screen, so it can
+    // never reflow differently near one edge vs the other.
+    width: 'max-content',
+    maxWidth: 'clamp(160px, 32vw, 240px)',
+    boxSizing: 'border-box',
     lineHeight: '1.3',
   } as Partial<CSSStyleDeclaration>);
 
-  // Name — rarity-coloured, slight letter spacing.
+  // Name — rarity-coloured. Forced single-line via nowrap so it never
+  // silently wraps near a viewport edge (which used to read as "the
+  // label is resizing"). Sizes are clamp(min, vw, max) so a phone
+  // gets a small readable label and a desktop gets a slightly larger
+  // one without either platform feeling broken.
   const name = document.createElement('div');
   const rarity = item.rarity ?? 'mundane';
   const rarityHex = RARITY_COLORS[rarity].toString(16).padStart(6, '0');
   name.textContent = item.name;
   Object.assign(name.style, {
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '12px',
+    fontSize: 'clamp(11px, 2.0vw, 13px)',
     fontWeight: '600',
-    letterSpacing: '0.18em',
+    letterSpacing: '0.16em',
     color: `#${rarityHex}`,
     textTransform: 'uppercase',
+    whiteSpace: 'nowrap',
   } as Partial<CSSStyleDeclaration>);
   el.appendChild(name);
 
-  // Flavor — italic, dimmed.
+  // Flavor — italic, dimmed. The only line allowed to wrap (bounded
+  // by the max-width above), so longer flavour can break into 2 short
+  // lines on mobile.
   if (item.flavor) {
     const flavorEl = document.createElement('div');
     flavorEl.textContent = item.flavor;
     Object.assign(flavorEl.style, {
       fontStyle: 'italic',
-      fontSize: '13px',
+      fontSize: 'clamp(11px, 1.8vw, 13px)',
       color: 'rgba(220, 180, 140, 0.70)',
-      marginTop: '4px',
+      marginTop: '3px',
     } as Partial<CSSStyleDeclaration>);
     el.appendChild(flavorEl);
   }
 
-  // Stat summary — compact.
+  // Stat summary — single line via nowrap. Hidden by default if the
+  // caller asked for hide-until-inspect (blood altar); the starter
+  // altars leave the flag off so stats are always visible for
+  // side-by-side comparison.
   const stats = formatStats(item);
+  let statsEl: HTMLDivElement | null = null;
   if (stats) {
-    const statsEl = document.createElement('div');
+    statsEl = document.createElement('div');
     statsEl.textContent = stats;
     Object.assign(statsEl.style, {
       fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontSize: '10px',
+      fontSize: 'clamp(9px, 1.5vw, 11px)',
       fontWeight: '600',
       letterSpacing: '0.10em',
       color: 'rgba(255, 220, 180, 0.85)',
-      marginTop: '6px',
+      marginTop: '5px',
+      whiteSpace: 'nowrap',
+      display: opts.hideStatsUntilInspect ? 'none' : 'block',
     } as Partial<CSSStyleDeclaration>);
     el.appendChild(statsEl);
   }
 
   document.body.appendChild(el);
-  entries.set(id, { id, worldX: 0, worldY: 0, worldZ: 0, visible: false, el });
+  entries.set(id, {
+    id, worldX: 0, worldY: 0, worldZ: 0, visible: false, el,
+    statsEl,
+    hideStatsUntilInspect: !!opts.hideStatsUntilInspect,
+    inspected: false,
+  });
+}
+
+/** Toggle the stats-line visibility for previews registered with
+ *  hideStatsUntilInspect. No-op for previews that always show stats
+ *  (the starter altars). Called from the blood altar's tick: true
+ *  when this altar is the highlighted in-range interactable, false
+ *  otherwise. */
+export function setItemPreviewInspected(id: string, inspected: boolean): void {
+  const e = entries.get(id);
+  if (!e || !e.hideStatsUntilInspect || !e.statsEl) return;
+  if (e.inspected === inspected) return;
+  e.inspected = inspected;
+  e.statsEl.style.display = inspected ? 'block' : 'none';
 }
 
 /** Update the world anchor + visibility for a registered preview. */

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
-import { registerInteractable } from './system';
+import { registerInteractable, getInRangeInteractable } from './system';
 import { tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
 import { rollItemInstance, instanceDisplayName } from '../player/item-instance';
@@ -9,7 +9,7 @@ import { damagePlayer } from '../player/health';
 import { spawnBloodBurst } from '../effects/blood-burst';
 import { playEquipClick } from '../audio/sfx';
 import { RARITY_COLORS } from '../content/items';
-import { registerItemPreview, setItemPreviewAnchor, unregisterItemPreview } from '../ui/item-preview';
+import { registerItemPreview, setItemPreviewAnchor, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
 
@@ -116,12 +116,15 @@ export function spawnBloodAltar(
 
   // Item-preview label. Blood altars charge 4 HP up front; the player
   // needs to KNOW what they're paying for before tapping TAKE. The
-  // preview shows when the player is within PREVIEW_RANGE (the
-  // approach distance, generous enough to read before committing to
-  // the altar). Anchored ~2.0m above the basin so it floats above
-  // the offering itself.
+  // preview shows when the player is within PREVIEW_RANGE so the
+  // offering can be IDENTIFIED (name + flavour) from a few steps
+  // away — STATS are gated on inspection (= you're the highlighted
+  // interactable), so you have to lean in to read the price. That's
+  // the gamble beat: name + flavour set the tone, stats are the
+  // contract, and you only see the contract once you've committed
+  // to actually approach the altar.
   const PREVIEW_RANGE = 4.0;
-  registerItemPreview(id, cursedItem);
+  registerItemPreview(id, cursedItem, { hideStatsUntilInspect: true });
   const previewY = pos.y + 2.0;
 
   const interactable: import('./types').Interactable = {
@@ -177,6 +180,11 @@ export function spawnBloodAltar(
       const dz = playerPos.z - pos.z;
       const inRange = (dx * dx + dz * dz) < PREVIEW_RANGE * PREVIEW_RANGE;
       setItemPreviewAnchor(id, pos.x, previewY, pos.z, inRange);
+      // Stats only when this altar is the one the player is actually
+      // highlighting — i.e. in interact range AND looking at it. The
+      // existing in-range check from the interactables system already
+      // encodes both, so we just ask "am I the highlighted one?".
+      setItemPreviewInspected(id, getInRangeInteractable() === interactable);
     },
     destroyed: false,
     onDestroy() {
