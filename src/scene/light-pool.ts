@@ -230,3 +230,29 @@ export function getActiveSourceCount(): number {
 export function getRegisteredSourceCount(): number {
   return sources.size;
 }
+
+/** Sum of attenuated contributions from all CURRENTLY BOUND slots at
+ *  (x, y, z). Reads slot state directly so it reflects exactly what the
+ *  shader sees this frame (LOS-culled, hysteresis-stable). Returns raw
+ *  intensity units — caller decides how to normalize.
+ *
+ *  Used by the AI-playable harness to report "how lit is the player".
+ *  Cheap: walks ~17 slots, no allocations. */
+export function sampleLightAt(x: number, y: number, z: number): number {
+  let total = 0;
+  for (const cat of Object.keys(slotsByCategory) as LightCategory[]) {
+    for (const slot of slotsByCategory[cat]) {
+      if (slot.intensity <= 0 || slot.distance <= 0) continue;
+      const dx = slot.position.x - x;
+      const dy = slot.position.y - y;
+      const dz = slot.position.z - z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d >= slot.distance) continue;
+      // Three.js PointLight distance attenuation:  (1 - d/distance)^decay
+      const t = 1 - d / slot.distance;
+      const att = Math.pow(t, slot.decay);
+      total += slot.intensity * att;
+    }
+  }
+  return total;
+}

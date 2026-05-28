@@ -1,0 +1,160 @@
+// Shared types for the harness.
+//
+// The Observation / Action / ActionResult types are the public contract
+// between the in-game module (this file's neighbours) and external
+// drivers (devtools console, scripts/play.ts, future LLM client).
+//
+// Kept in one file so the contract is reviewable at a glance.
+
+import type { BudgetEndReason } from './pause';
+
+// ── Observation ───────────────────────────────────────────────────────
+
+export type Direction8 = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
+
+export type EntityState =
+  | 'idle' | 'alert' | 'chasing' | 'winding' | 'striking'
+  | 'recovering' | 'searching' | 'returning' | 'dying' | 'dead';
+
+export interface ObservedEnemy {
+  id: string;
+  kind: string;
+  pos: { x: number; z: number };
+  /** Metres from player camera (XZ plane). */
+  distance: number;
+  /** Bearing relative to player facing, radians. 0 = ahead, +π/2 = right. */
+  bearing: number;
+  /** Compass direction from player, world-space. */
+  compass: Direction8;
+  state: EntityState | string;
+  hp: { current: number; max: number };
+  /** Omniscient flags — drivers can self-restrict for fair-play questions. */
+  inLight: boolean;
+  inSight: boolean;
+  inCone: boolean;
+}
+
+export interface ObservedInteractable {
+  id: string;
+  kind: string;
+  pos: { x: number; z: number };
+  distance: number;
+  bearing: number;
+  compass: Direction8;
+  state: string;
+  inRange: boolean;
+  inSight: boolean;
+}
+
+export interface ObservedPickup {
+  id: string;
+  kind: string;
+  pos: { x: number; z: number };
+  distance: number;
+  bearing: number;
+  compass: Direction8;
+  inSight: boolean;
+}
+
+export interface Observation {
+  /** Monotonic action count since boot. */
+  turn: number;
+  /** Accumulated unpaused game-time seconds since boot. */
+  tickClock: number;
+  depth: number;
+  floorId: string;
+  roomId: string | null;
+  pausedReason: 'harness' | 'hit' | 'screen' | 'debug' | null;
+
+  player: {
+    pos: { x: number; z: number; y: number };
+    facingYaw: number;
+    hp: { current: number; max: number };
+    buffs: string[];
+    equipped: Record<string, string | null>;
+  };
+
+  light: {
+    /** 0..1 sum of attenuated active sources at the player position. */
+    atPlayer: number;
+    /** Count of registered light sources within reach (not just bound). */
+    nearbySources: number;
+  };
+
+  visible: {
+    enemies: ObservedEnemy[];
+    interactables: ObservedInteractable[];
+    pickups: ObservedPickup[];
+  };
+
+  geometry: {
+    /** Raycast wall distance per 8-cardinal, metres. Infinity = no wall in reach. */
+    walls8: Record<Direction8, number>;
+  };
+}
+
+// ── Action ────────────────────────────────────────────────────────────
+
+export type Action =
+  | { kind: 'move'; dir: Direction8; seconds?: number }
+  | { kind: 'turn'; angle: number }                       // relative radians
+  | { kind: 'face'; target: Direction8 | { id: string } }
+  | { kind: 'attack' }
+  | { kind: 'interact' }
+  | { kind: 'use'; slot: number }
+  | { kind: 'wait'; seconds: number }
+  | { kind: 'inspect'; id: string };
+
+export interface ActionResult {
+  ok: boolean;
+  /** Reason for !ok or for early termination. */
+  reason?: string;
+  /** How the underlying tick budget ended (timeout / predicate / cancelled). */
+  budgetEnd?: BudgetEndReason;
+  /** Real seconds the world ran for this action. */
+  elapsed: number;
+  /** Post-action snapshot. Always present, even on !ok. */
+  observation: Observation;
+}
+
+// ── Screenshot ────────────────────────────────────────────────────────
+
+export interface Annotation {
+  id: string;
+  kind: string;
+  label: string;
+  /** Pixel-space bounding box on the rendered frame. */
+  bbox: { x: number; y: number; w: number; h: number };
+  /** Was this entity considered visible (LOS, cone, lit)? */
+  visible: boolean;
+}
+
+export interface Screenshot {
+  /** PNG data URL of the (optionally annotated) frame. */
+  pngDataUrl: string;
+  /** Width × height in CSS pixels. */
+  size: { w: number; h: number };
+  /** Camera state at capture. */
+  camera: { pos: { x: number; y: number; z: number }; yaw: number; pitch: number };
+  annotations: Annotation[];
+}
+
+// ── Public API surface (for typing window.harness) ────────────────────
+
+export interface HarnessApi {
+  /** Resolves once the harness is fully wired into a live level. */
+  ready: Promise<void>;
+  observe(): Observation;
+  act(action: Action): Promise<ActionResult>;
+  screenshot(opts?: { annotated?: boolean }): Promise<Screenshot>;
+  /** Read-only inspection helpers — no time cost, never unpause. */
+  state(): {
+    booted: boolean;
+    turn: number;
+    tickClock: number;
+    paused: boolean;
+  };
+  /** Force-pause (default) / force-unpause without running an action. */
+  pause(): void;
+  resume(): void;
+}

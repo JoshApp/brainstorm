@@ -71,6 +71,21 @@ import { createDepthCounter, setDepth as setDepthCounter } from './ui/depth-coun
 import { createXpGoldHud, updateXpGoldHud } from './ui/xp-gold-hud';
 import { tickLowHpPulse } from './ui/vignette';
 import { getPlayerHp, getPlayerMaxHp } from './player/health';
+import { setHarnessPaused } from './harness/pause';
+
+// AI-playable harness: `?harness=1` flips the world into turn-based mode
+// from frame 0. The full harness module loads asynchronously below; the
+// synchronous setHarnessPaused above guarantees the world is frozen
+// before the first tick runs, even if the title screen / scenarios kick
+// off before the dynamic import resolves.
+const HARNESS_ENABLED =
+  new URLSearchParams(window.location.search).get('harness') === '1';
+if (HARNESS_ENABLED) setHarnessPaused(true);
+
+// Lazily-assigned hooks from the dynamic-imported harness module.
+// Stay null when harness is off so the tick loop pays one branch.
+let harnessLevelReady: (() => void) | null = null;
+let harnessTickFn: ((realDt: number, worldRunning: boolean) => void) | null = null;
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 try {
@@ -165,6 +180,10 @@ initLevelLoader({
       ...level.spec.corridors.map((r) => r.rect),
     ];
     initDriftingMotes(scene, rectsForMotes, tint);
+    // Notify the harness (if booted) that a level is observable. Only
+    // fires once — subsequent stair-driven swaps are transparent since
+    // observation reads via the same getLevel() getter.
+    harnessLevelReady?.();
   },
   // Procgen fallback — invoked when the stairs target a level id that's
   // not in the hand-authored LEVELS registry.
@@ -399,6 +418,12 @@ function tick() {
 
   const realDt = Math.min(clock.getDelta(), 0.1);
 
+  // Harness: drain any in-flight tick budget and advance game-time
+  // clock. Cheap when harness is off (one branch). Called BEFORE the
+  // isWorldPaused() check below so a budget that ends this frame
+  // re-pauses the world for the same frame's update gate.
+  harnessTickFn?.(realDt, !isWorldPaused());
+
   tickDeath(realDt);
   const scaledDt = realDt * getTimeScale();
 
@@ -626,6 +651,23 @@ function startRun(floorId: string, startDepth: number = 1) {
   camera.rotation.y = currentLevel.playerSpawn.yaw;
   camera.rotation.x = 0;
   tick();
+}
+
+// AI-playable harness — dynamic-import so player builds (no ?harness=1)
+// don't pay the module's bundle cost. The pause hook is already set
+// at the top of this file (synchronous); this wires the rest.
+if (HARNESS_ENABLED) {
+  void import('./harness').then((mod) => {
+    mod.bootHarness({
+      scene, camera, renderer, canvas, input, sword,
+      getLevel: () => currentLevel,
+    });
+    harnessLevelReady = mod.notifyLevelReady;
+    harnessTickFn = mod.tickHarness;
+    // If a level loaded before the dynamic import resolved (scenario
+    // boot is fast), notify immediately.
+    if (currentLevel) mod.notifyLevelReady();
+  });
 }
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
