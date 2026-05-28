@@ -101,6 +101,9 @@ export const CONFIG = {
 
   // === DEATH SEQUENCE ===
   DEATH_SLOWMO_SCALE: 0.25,         // dt multiplier while dying
-  DEATH_SEQUENCE_DURATION: 3.2,     // seconds before page reload
-  DEATH_VIGNETTE_DARKEN_MS: 1500,   // red vignette ramps in over this
+  // Sequence holds longer now (3.2 → 4.8s) so the bigger epitaph fade
+  // has time to land before the end screen takes over — the moment
+  // wants to breathe.
+  DEATH_SEQUENCE_DURATION: 4.8,     // seconds before end screen appears
+  DEATH_VIGNETTE_DARKEN_MS: 1800,   // red vignette ramps in over this
 };

@@ -34,10 +34,15 @@ let camera: THREE.PerspectiveCamera | null = null;
 let startPitch = 0;
 let startHeight = 0;
 
-const FALL_DURATION = 1.2;       // seconds to finish the camera collapse
-const STILL_AT      = 1.8;       // seconds before time-scale hits zero
-const FALL_PITCH    = -1.25;     // radians — face-down (-π/2.5)
-const FALL_DROP     = 0.7;       // metres dropped during the collapse
+const FALL_DURATION = 1.4;       // seconds to finish the camera collapse
+const STILL_AT      = 2.0;       // seconds before time-scale hits zero
+// Camera lies almost ON the floor at the end — eye height ~0.15m off
+// the ground (the player is on their side, not face-down). The sword
+// viewmodel attached to the camera stays in view as the "last sight"
+// of your own hand on the floor before the dark takes over.
+const FALL_PITCH    = -1.05;     // radians — head tilted sideways toward floor
+const FALL_ROLL     = -0.55;     // radians — body collapses onto its side
+const FALL_DROP     = 1.45;      // metres dropped during the collapse
 
 // Epitaph fallback list (mirrored from death-overlay.ts so the
 // end screen can show one even if the overlay was skipped).
@@ -132,19 +137,23 @@ export function tickDeath(realDt: number) {
   elapsed += realDt;
 
   if (camera) {
-    // Camera collapse — pitch forward + drop in height. Both
-    // ease-out so the fall starts fast and settles softly into
-    // the floor. After FALL_DURATION, we hold at the final
-    // collapsed pose for the rest of the sequence.
+    // Camera collapse — pitch + roll + drop, all eased-out so the
+    // fall starts fast and settles softly into the floor. The roll
+    // is the big addition vs the older "face-down" pose: the player
+    // collapses onto their SIDE so the sword viewmodel attached to
+    // the camera ends up visibly sprawled on the floor (right hand
+    // still gripping it). That's the Dark-Souls-y "see your
+    // character" beat in a first-person rig — your own hand IS the
+    // character.
     const t = Math.min(1, elapsed / FALL_DURATION);
     const eased = 1 - Math.pow(1 - t, 2);   // easeOutQuad
     camera.rotation.x = startPitch + (FALL_PITCH - startPitch) * eased;
     camera.position.y = startHeight + (-FALL_DROP) * eased;
-    // Subtle roll as the body twists. Small magnitude so it
-    // reads as "the head fell sideways" without nausea.
-    const rollT = Math.min(1, elapsed / (FALL_DURATION * 1.4));
+    // Pronounced roll — the body buckling onto its side. Slightly
+    // longer than the pitch so the head settles last.
+    const rollT = Math.min(1, elapsed / (FALL_DURATION * 1.2));
     const rollEased = 1 - Math.pow(1 - rollT, 2);
-    camera.rotation.z = -0.18 * rollEased;
+    camera.rotation.z = FALL_ROLL * rollEased;
     // Once the camera has stopped (world frozen), apply a very
     // slight low-frequency drift to suggest the player's last
     // breath — barely perceptible.
