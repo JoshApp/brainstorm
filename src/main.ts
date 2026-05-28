@@ -47,7 +47,7 @@ import { isAnyScreenOpen } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
-import { setupPwaAutoUpdate } from './pwa-update';
+import { setupPwaAutoUpdate, maybeApplyUpdateSilently } from './pwa-update';
 import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
@@ -73,6 +73,21 @@ import { createDepthCounter, setDepth as setDepthCounter } from './ui/depth-coun
 import { createXpGoldHud, updateXpGoldHud } from './ui/xp-gold-hud';
 import { tickLowHpPulse } from './ui/vignette';
 import { getPlayerHp, getPlayerMaxHp } from './player/health';
+import { setHarnessPaused } from './harness/pause';
+
+// AI-playable harness: `?harness=1` flips the world into turn-based mode
+// from frame 0. The full harness module loads asynchronously below; the
+// synchronous setHarnessPaused above guarantees the world is frozen
+// before the first tick runs, even if the title screen / scenarios kick
+// off before the dynamic import resolves.
+const HARNESS_ENABLED =
+  new URLSearchParams(window.location.search).get('harness') === '1';
+if (HARNESS_ENABLED) setHarnessPaused(true);
+
+// Lazily-assigned hooks from the dynamic-imported harness module.
+// Stay null when harness is off so the tick loop pays one branch.
+let harnessLevelReady: (() => void) | null = null;
+let harnessTickFn: ((realDt: number, worldRunning: boolean) => void) | null = null;
 
 // Best-effort landscape lock (no-op on iOS Safari and other unsupported envs).
 try {
@@ -85,10 +100,14 @@ try {
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
 // --- Renderer ---
+// preserveDrawingBuffer is needed for the harness to read frames via
+// canvas.toDataURL() asynchronously (after render is gone otherwise).
+// Off by default — there's a measurable perf hit on some mobile GPUs.
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: false,
   powerPreference: 'high-performance',
+  preserveDrawingBuffer: HARNESS_ENABLED,
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, CONFIG.PIXEL_RATIO_CAP));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -167,6 +186,10 @@ initLevelLoader({
       ...level.spec.corridors.map((r) => r.rect),
     ];
     initDriftingMotes(scene, rectsForMotes, tint);
+    // Notify the harness (if booted) that a level is observable. Only
+    // fires once — subsequent stair-driven swaps are transparent since
+    // observation reads via the same getLevel() getter.
+    harnessLevelReady?.();
   },
   // Procgen fallback — invoked when the stairs target a level id that's
   // not in the hand-authored LEVELS registry.
@@ -411,6 +434,12 @@ function tick() {
 
   const realDt = Math.min(clock.getDelta(), 0.1);
 
+  // Harness: drain any in-flight tick budget and advance game-time
+  // clock. Cheap when harness is off (one branch). Called BEFORE the
+  // isWorldPaused() check below so a budget that ends this frame
+  // re-pauses the world for the same frame's update gate.
+  harnessTickFn?.(realDt, !isWorldPaused());
+
   tickDeath(realDt);
   const scaledDt = realDt * getTimeScale();
 
@@ -640,6 +669,92 @@ function startRun(floorId: string, startDepth: number = 1) {
   tick();
 }
 
+/**
+ * Autostart: ?autostart=1 / ?autostart=descend / ?autostart=continue
+ * bypass the title screen. Combine with ?seed=N for deterministic runs.
+ *
+ * `?autostart=continue` resumes the saved run if one exists, else
+ * returns false so the title can fall through to a fresh start.
+ *
+ * `?autostart=1` (or `descend`) starts a fresh run. Optional:
+ *   - `?seed=N` overrides the run's startedAt (= procgen seed). Two
+ *     boots with the same seed produce byte-identical floors.
+ *   - `?depth=N` jumps directly to depth N, skipping the starter
+ *     chamber. Gated behind ?harness=1 or ?dev=1 so players can't
+ *     trivially level-skip via URL.
+ */
+function handleAutostart(): boolean {
+  const url = new URLSearchParams(window.location.search);
+  const auto = url.get('autostart');
+  if (!auto) return false;
+
+  if (auto === 'continue') {
+    const s = loadSave();
+    if (!s) return false;  // no save → fall through to title for fresh start
+    adoptSave(s);
+    applyState(s);
+    startRun(s.floorId, s.depth);
+    return true;
+  }
+
+  // DESCEND path. Accept ?seed=N and (gated) ?depth=N.
+  const seedParam = url.get('seed');
+  const seed = seedParam != null && seedParam !== '' ? Number(seedParam) : undefined;
+  if (seed !== undefined && !Number.isFinite(seed)) {
+    console.warn(`?seed=${seedParam} is not a number, ignoring`);
+  }
+  const depthParam = url.get('depth');
+  let depth = depthParam != null ? Number(depthParam) : 1;
+  if (!Number.isFinite(depth) || depth < 1) depth = 1;
+  const allowJump = HARNESS_ENABLED || url.get('dev') === '1';
+  if (depth > 1 && !allowJump) {
+    console.warn(`?depth=${depth} requires ?harness=1 or ?dev=1; starting at depth 1`);
+    depth = 1;
+  }
+
+  clearSave();
+  if (depth === 1) {
+    LEVELS['starter'] = buildStarterChamber(LEVEL_1.id);
+    startNewRun('starter', { seed: Number.isFinite(seed as number) ? seed : undefined });
+    recordRunStart();
+    resetRunDiscoveries();
+    applyState(null);
+    startRun('starter', 0);
+  } else {
+    // Seeded jump — skip starter, equip a starter loadout, land
+    // directly on depth-N. floorId 'depth-N' is the procgen convention.
+    const floorId = `depth-${depth}`;
+    startNewRun(floorId, {
+      seed: Number.isFinite(seed as number) ? seed : undefined,
+      depth,
+    });
+    recordRunStart();
+    resetRunDiscoveries();
+    applyState(null);
+    setSlot('weapon', ITEMS['rusted-sword']);
+    setSlot('offhand', ITEMS['oil-lamp']);
+    startRun(floorId, depth);
+  }
+  return true;
+}
+
+// AI-playable harness — dynamic-import so player builds (no ?harness=1)
+// don't pay the module's bundle cost. The pause hook is already set
+// at the top of this file (synchronous); this wires the rest.
+if (HARNESS_ENABLED) {
+  void import('./harness').then((mod) => {
+    mod.bootHarness({
+      scene, camera, renderer, canvas, input, sword,
+      getLevel: () => currentLevel,
+    });
+    harnessLevelReady = mod.notifyLevelReady;
+    harnessTickFn = mod.tickHarness;
+    // If a level loaded before the dynamic import resolved (scenario
+    // boot is fast), notify immediately.
+    if (currentLevel) mod.notifyLevelReady();
+  });
+}
+
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
 // the CODEX/STASH buttons without requiring real playthrough.
 if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
@@ -703,11 +818,18 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.
   applyScenario(scenario, { level: currentLevel, sword, camera });
+} else if (handleAutostart()) {
+  // Autostart flow ran (DESCEND / CONTINUE / seeded jump). Title is bypassed.
 } else {
   // Normal boot — title screen, then DESCEND or CONTINUE. Wrapped in
   // a function so sub-screens (like the test chambers picker) can
   // re-open the title on BACK.
   function openTitle() {
+    // Title is the safest moment to apply a pending PWA update — no
+    // in-progress run state, save (if any) is on disk. If an update
+    // is pending and we're not in the harness, take it now; the page
+    // navigates and this title invocation becomes a no-op.
+    void maybeApplyUpdateSilently();
     const save = loadSave();
     showStartScreen({
     hasSave: !!save,

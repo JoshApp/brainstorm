@@ -18,6 +18,19 @@ export type TouchInputOptions = InputOptions;
 
 const ALL_SCHEMES: InputScheme[] = [touchScheme, desktopScheme];
 
+// Optional override that REPLACES the per-frame scheme ticks. Set by the
+// AI-playable harness so its synthetic moveX/moveY values aren't fought
+// by the touch/desktop schemes (which write 0 whenever there's no human
+// input). Pass null to restore normal scheme-driven behaviour.
+let overrideTick: ((state: InputState) => void) | null = null;
+
+/** Replace the per-frame input tick with a custom hook. Used by the
+ *  harness to drive synthetic movement; passing null restores the
+ *  touch + desktop schemes. */
+export function setInputOverride(fn: ((state: InputState) => void) | null): void {
+  overrideTick = fn;
+}
+
 export function createTouchInput(
   canvas: HTMLCanvasElement,
   options: InputOptions = {},
@@ -36,6 +49,10 @@ export function createTouchInput(
 
   // Compose per-frame ticks into the InputState's tickInput hook.
   state.tickInput = (dt: number) => {
+    if (overrideTick) {
+      overrideTick(state);
+      return;
+    }
     for (const t of ticks) t(dt);
   };
 

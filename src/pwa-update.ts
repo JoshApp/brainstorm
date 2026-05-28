@@ -1,46 +1,86 @@
-// PWA auto-update wiring.
+// PWA update suppression + safe-moment application.
 //
-// vite-plugin-pwa is configured with registerType:'autoUpdate' + workbox.skipWaiting,
-// which means a freshly-found service worker takes over immediately instead of
-// waiting for the user to close the app. BUT — the currently-running page keeps
-// running the OLD bundle until it reloads. Without explicit help, the user has
-// to close and reopen the app to actually see new code.
+// Default behavior (before this module): vite-plugin-pwa in autoUpdate
+// mode + skipWaiting=true would activate a new SW the moment it
+// finishes installing, then controllerchange would reload the page
+// while the player was mid-floor on Depth 12. Bad for players, terrible
+// for the harness (which is meant to run long deterministic episodes).
 //
-// This module closes that gap. Two pieces:
-//
-// 1. Listen for `controllerchange` — fires when a new SW takes over. When this
-//    happens, reload the page once so the user sees the new bundle.
-//
-// 2. Poll for SW updates every 60s. Default browser behavior only checks every
-//    24 hours; for an iteration-heavy game we want updates to roll out within
-//    a minute or two of `git push`.
+// Policy:
+//   - New SWs install into the WAITING state (registerType: 'prompt'
+//     in vite.config.ts). They do NOT activate automatically.
+//   - getUpdateStatus() reports whether one is pending.
+//   - applyUpdate() applies it: posts SKIP_WAITING to the waiting SW,
+//     listens for controllerchange, reloads.
+//   - At the title screen, the boot code auto-applies any pending
+//     update silently (no in-progress run state to lose).
+//   - When the harness is active, NEVER auto-apply — the CLI driver
+//     must call applyUpdate() between episodes.
 
-export function setupPwaAutoUpdate() {
+import { registerSW } from 'virtual:pwa-register';
+import { isHarnessPaused } from './harness/pause';
+
+type UpdateStatus = 'none' | 'pending';
+let status: UpdateStatus = 'none';
+let updateSW: ((reloadPage?: boolean) => Promise<void>) | null = null;
+const listeners: Array<(s: UpdateStatus) => void> = [];
+
+export function setupPwaAutoUpdate(): void {
   if (!('serviceWorker' in navigator)) return;
 
-  // ── (1) Auto-reload when a new service worker takes over ─────────────
-  let reloading = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) return;
-    reloading = true;
-    // Tiny visible cue so the player isn't startled by an instant reload.
-    showUpdateToast();
-    // Reload after a brief delay so the toast actually paints once.
-    setTimeout(() => window.location.reload(), 600);
+  // registerSW from virtual:pwa-register: returns a function that triggers
+  // SKIP_WAITING + auto-reload on call. We only call it when we decide
+  // a moment is safe.
+  updateSW = registerSW({
+    onNeedRefresh() {
+      status = 'pending';
+      for (const fn of listeners) fn(status);
+    },
+    // onOfflineReady fires when the very first SW install completes.
+    // Nothing to do — the player can use the app offline now.
+    onOfflineReady() { /* noop */ },
   });
+}
 
-  // ── (2) Poll for updates ─────────────────────────────────────────────
-  navigator.serviceWorker.ready
-    .then((registration) => {
-      // Check immediately, then every minute.
-      registration.update().catch(() => {});
-      setInterval(() => {
-        registration.update().catch(() => {});
-      }, 60_000);
-    })
-    .catch(() => {
-      // No SW available — nothing to poll.
-    });
+/** Current update status. 'pending' = a new SW is installed and waiting
+ *  to activate; applyUpdate() will take it. */
+export function getUpdateStatus(): UpdateStatus {
+  return status;
+}
+
+/** Apply a pending update: SKIP_WAITING → controllerchange → reload.
+ *  Safe to call when status is 'none' (resolves immediately).
+ *
+ *  When the harness is active, the caller is responsible for picking
+ *  the right moment — this function does no harness-state checking. */
+export async function applyUpdate(): Promise<void> {
+  if (status !== 'pending' || !updateSW) return;
+  showUpdateToast();
+  // updateSW(true) calls registration.waiting.postMessage({type:'SKIP_WAITING'}),
+  // listens for controllerchange, and reloads the page.
+  await updateSW(true);
+}
+
+/** Subscribe to status changes. Returns an unsubscribe. */
+export function onUpdateStatusChange(fn: (s: UpdateStatus) => void): () => void {
+  listeners.push(fn);
+  return () => {
+    const i = listeners.indexOf(fn);
+    if (i >= 0) listeners.splice(i, 1);
+  };
+}
+
+/** Apply if pending AND the moment is judged safe. Currently safe =
+ *  no harness pause + no in-run state (caller's responsibility to gate
+ *  by 'on title screen / between floors'). Returns true if applied. */
+export async function maybeApplyUpdateSilently(): Promise<boolean> {
+  if (status !== 'pending') return false;
+  // Refuse if the harness is active — it would yank any running
+  // episode out from under the operator. The harness has its own
+  // explicit applyUpdate() entry point.
+  if (isHarnessPaused()) return false;
+  await applyUpdate();
+  return true;
 }
 
 function showUpdateToast() {

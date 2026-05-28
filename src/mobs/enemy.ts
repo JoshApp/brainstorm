@@ -53,7 +53,7 @@ function audioSizeFor(spec: EnemySpec): EnemyDeathSize {
 //   - `model.group` (inside container) handles internal tilt animations
 // This way the body lean during windup doesn't fight the lookAt.
 
-type EnemyState =
+export type EnemyState =
   | 'idle'        // at post, scanning, has not seen player
   | 'alerted'     // first sight — brief rear-up before committing
   | 'chasing'
@@ -80,6 +80,8 @@ const IDLE_SCAN_HALF_ARC = 0.7;   // ±40° around home yaw
 
 export interface Enemy {
   entityId: EntityId;
+  /** Spec id from src/content/enemies.ts ('rat', 'skirmisher', etc.). */
+  kind: string;
   group: THREE.Group;
   hitTargets: THREE.Object3D[];
   alive: boolean;
@@ -88,6 +90,10 @@ export interface Enemy {
   /** Phases through obstacles (props). Walls still block. Ghost flag. */
   phasing: boolean;
   hp: number;
+  /** Spec-declared base HP. Useful for hp/max ratios in HUD/observation. */
+  maxHp: number;
+  /** Current AI state machine phase. */
+  aiState: EnemyState;
   collisionRadius: number;
   /** If true, the player walks through this mob (movement-only).
    *  See EnemySpec.noPlayerCollision. */
@@ -1006,11 +1012,13 @@ export function createEnemy(
 
   return {
     entityId,
+    kind: spec.id,
     group: container,
     hitTargets: built.hitTargets,
     collisionRadius: spec.collisionRadius,
     noPlayerCollision: !!spec.noPlayerCollision,
     phasing: !!spec.phasing,
+    maxHp: spec.hp,
     get alive() {
       return aliveLocal;
     },
@@ -1020,6 +1028,9 @@ export function createEnemy(
     get hp() {
       const e = getEntity(entityId);
       return e?.hp?.current ?? 0;
+    },
+    get aiState() {
+      return state;
     },
     takeDamage,
     update,

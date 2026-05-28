@@ -135,13 +135,20 @@ export function tickPendingLoad() {
     activeLevel = null;
   }
 
+  // Advance currentDepth BEFORE buildLevel so the level:loaded event
+  // (emitted from inside buildLevel) sees the correct depth. The
+  // run-state listener calls getCurrentDepth() to snapshot the save's
+  // depth field; without this ordering, every save records a depth
+  // one less than the player's actual floor, and Continue Run then
+  // regenerates the WRONG floor (one shallower than where they were).
+  //
+  // Safe rooms don't advance depth — they're the breath between acts,
+  // not a dungeon floor. The depth counter / title both read the
+  // unchanged currentDepth, which matches the boss the player just beat.
+  if (!isSafeRoom) currentDepth += 1;
   // Build the new level into the same scene.
   const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));
   activeLevel = level;
-  // Safe rooms don't advance depth — they're the breath between acts, not
-  // a dungeon floor. The depth counter / title both read the unchanged
-  // currentDepth, which matches the boss the player just beat.
-  if (!isSafeRoom) currentDepth += 1;
 
   // Reposition player to new spawn — and resolve against the walkable
   // region. Authored spawns are normally fine, but if a designer (or
