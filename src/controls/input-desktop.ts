@@ -10,6 +10,8 @@
 
 import { dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
+import { useFirstConsumable } from './consumable-bar';
+import { toggleInventoryPanel } from '../ui/inventory-panel';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
 import { LEFT_ZONE_FRACTION } from './input-touch';
 
@@ -29,14 +31,28 @@ export const desktopScheme: InputScheme = {
     // ── Keyboard ────────────────────────────────────────────────────
     window.addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
-      keys[k] = true;
+      // Ignore repeats so holding a key doesn't refire one-shot actions.
+      if (!e.repeat) keys[k] = true;
       if (e.code === 'Space') {
         e.preventDefault();
         triggerAttack();
       }
+      if (e.repeat) return;
       if (k === 'e') {
         e.preventDefault();
         options.onInteract?.();
+      }
+      // Inventory: I or TAB. Releases pointer lock so the mouse can
+      // drive the panel.
+      if (k === 'i' || k === 'tab') {
+        e.preventDefault();
+        toggleInventoryPanel();
+      }
+      // Quick-use the first consumable (healing potion if HP is low,
+      // else whatever's on the bar).
+      if (k === 'q') {
+        e.preventDefault();
+        useFirstConsumable();
       }
     });
     window.addEventListener('keyup', (e) => {

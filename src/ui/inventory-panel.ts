@@ -135,6 +135,26 @@ export function createInventoryPanel() {
     e.stopPropagation();
     togglePanel();
   });
+  // Keyboard hint badge — only shown on pure desktop. Tiny letter in
+  // the corner of the satchel icon so players who have a keyboard
+  // discover the I shortcut without polluting the touch HUD.
+  import('../controls/platform').then(({ isDesktopLike }) => {
+    if (!isDesktopLike() || !openButton) return;
+    const hint = document.createElement('div');
+    hint.textContent = 'I';
+    Object.assign(hint.style, {
+      position: 'absolute',
+      bottom: '2px',
+      right: '4px',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontSize: '9px',
+      fontWeight: '700',
+      letterSpacing: '0.05em',
+      color: 'rgba(180, 130, 90, 0.7)',
+      pointerEvents: 'none',
+    } as Partial<CSSStyleDeclaration>);
+    openButton.appendChild(hint);
+  });
   document.body.appendChild(openButton);
 
   panel = document.createElement('div');
@@ -171,6 +191,21 @@ function togglePanel() { panelOpen ? closePanel() : openPanel(); }
 /** Programmatic open — used by debug scenarios for snaps. */
 export function openInventoryPanel() {
   openPanel();
+}
+
+/** Toggle open/close — used by the desktop 'I' hotkey + future
+ *  controller binding. Opening via this path also releases pointer
+ *  lock so the player can drive the panel with the mouse. */
+export function toggleInventoryPanel() {
+  togglePanel();
+  if (panelOpen) {
+    if (document.exitPointerLock) document.exitPointerLock();
+  }
+}
+
+/** Whether the inventory panel is currently open. */
+export function isInventoryPanelOpen(): boolean {
+  return panelOpen;
 }
 
 /** Programmatically select a bag item by id (for snap scenarios). */

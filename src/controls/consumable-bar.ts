@@ -125,6 +125,29 @@ function createButton(item: ItemSpec): ButtonHandle {
 
   el.appendChild(icon);
   el.appendChild(countLabel);
+  // Keyboard hint — only on pure desktop. Tiny 'Q' badge so players
+  // who can press Q know they can. First slot only — quick-use is
+  // always the first available consumable.
+  import('./platform').then(({ isDesktopLike }) => {
+    if (!isDesktopLike()) return;
+    const isFirstButton = buttons.size === 0;
+    if (!isFirstButton) return;
+    const hint = document.createElement('div');
+    hint.textContent = 'Q';
+    Object.assign(hint.style, {
+      position: 'absolute',
+      bottom: '2px',
+      right: '4px',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontSize: '9px',
+      fontWeight: '700',
+      letterSpacing: '0.05em',
+      color: 'rgba(180, 130, 90, 0.7)',
+      pointerEvents: 'none',
+    } as Partial<CSSStyleDeclaration>);
+    el.style.position = 'relative';
+    el.appendChild(hint);
+  });
 
   const press = (e: Event) => {
     e.preventDefault();
@@ -142,6 +165,20 @@ function createButton(item: ItemSpec): ButtonHandle {
   el.addEventListener('mouseleave', release);
 
   return { itemId: item.id, el, countLabel };
+}
+
+/** Quick-use the FIRST consumable the player holds. Used by the
+ *  desktop 'Q' hotkey + future controller binding. Prefers healing
+ *  potions when at sub-max HP; otherwise picks the first stack with
+ *  any count remaining. No-op if the player carries no consumables. */
+export function useFirstConsumable() {
+  const all = Object.values(ITEMS).filter(
+    (i) => i.kind === 'consumable' && getCount(i.id) > 0,
+  );
+  if (all.length === 0) return;
+  const heal = all.find((i) => i.consumableHeal != null);
+  const pick = heal && getPlayerHp() < getPlayerMaxHp() ? heal : all[0];
+  useConsumable(pick);
 }
 
 function useConsumable(item: ItemSpec) {
