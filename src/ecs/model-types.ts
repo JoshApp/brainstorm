@@ -113,6 +113,8 @@ export type PartSpec =
       texture: string;
       color?: number;
       blending?: 'normal' | 'additive';
+      /** 0..1 transparency. Default 1. */
+      opacity?: number;
       flicker?: {
         /** Scale wobble amplitude as a fraction (e.g. 0.15 = ±15%). */
         scale?: number;
@@ -129,7 +131,29 @@ export type PartSpec =
   // 2D textured plane with explicit orientation (does NOT billboard). Use for
   // wall/floor decoration: moss patches, blood splatter on the floor, soot
   // streaks on walls, runic glyphs. pos/rot place the plane in world space.
-  | (PartCommon & { kind: 'decal'; size: Vec2; texture: string; color?: number; emissive?: number; emissiveIntensity?: number });
+  //
+  // Default is a lit, alpha-blended decal (MeshStandardMaterial). Pass
+  // `blending: 'additive'` for unlit emissive shapes that add over what's
+  // behind them — light shafts, glow planes, god rays. With additive
+  // blending the material switches to MeshBasicMaterial (color is the
+  // emitted hue; `emissive` is ignored) and `fog`/`depthWrite` default
+  // to false to keep the glow from being eaten by fog or occluding
+  // particles behind it.
+  | (PartCommon & {
+      kind: 'decal';
+      size: Vec2;
+      texture: string;
+      color?: number;
+      emissive?: number;
+      emissiveIntensity?: number;
+      blending?: 'normal' | 'additive';
+      /** Default true for normal, false for additive. */
+      fog?: boolean;
+      /** Default true for normal, false for additive. */
+      depthWrite?: boolean;
+      /** 0..1 transparency. Default 1. */
+      opacity?: number;
+    });
 
 // --- Slots & lights -----------------------------------------------------
 

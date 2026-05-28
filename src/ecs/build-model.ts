@@ -282,6 +282,7 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
         map: getTexture(part.texture),
         color: part.color ?? 0xffffff,
         transparent: true,
+        opacity: part.opacity ?? 1,
         blending: part.blending === 'additive' ? THREE.AdditiveBlending : THREE.NormalBlending,
         depthWrite: false,
       });
@@ -313,22 +314,36 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
     }
     case 'decal': {
       const geo = new THREE.PlaneGeometry(part.size[0], part.size[1]);
-      const mat = new THREE.MeshStandardMaterial({
-        map: getTexture(part.texture),
-        color: part.color ?? 0xffffff,
-        emissive: part.emissive ?? 0x000000,
-        emissiveIntensity: part.emissiveIntensity ?? 0,
-        transparent: true,
-        alphaTest: 0.05,    // discard fully transparent pixels so shadow + depth stay clean
-        depthWrite: true,
-        roughness: 0.95,
-        side: THREE.DoubleSide,
-        // Polygon offset pushes the decal slightly toward the camera so it
-        // doesn't z-fight with the wall/floor it sits on.
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
-      });
+      const additive = part.blending === 'additive';
+      const mat = additive
+        ? new THREE.MeshBasicMaterial({
+            map: getTexture(part.texture),
+            color: part.color ?? 0xffffff,
+            transparent: true,
+            opacity: part.opacity ?? 1,
+            blending: THREE.AdditiveBlending,
+            fog: part.fog ?? false,
+            depthWrite: part.depthWrite ?? false,
+            side: THREE.DoubleSide,
+          })
+        : new THREE.MeshStandardMaterial({
+            map: getTexture(part.texture),
+            color: part.color ?? 0xffffff,
+            emissive: part.emissive ?? 0x000000,
+            emissiveIntensity: part.emissiveIntensity ?? 0,
+            transparent: true,
+            opacity: part.opacity ?? 1,
+            alphaTest: 0.05,    // discard fully transparent pixels so shadow + depth stay clean
+            depthWrite: part.depthWrite ?? true,
+            fog: part.fog ?? true,
+            roughness: 0.95,
+            side: THREE.DoubleSide,
+            // Polygon offset pushes the decal slightly toward the camera so it
+            // doesn't z-fight with the wall/floor it sits on.
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+          });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = false;
       mesh.receiveShadow = part.receiveShadow ?? false;

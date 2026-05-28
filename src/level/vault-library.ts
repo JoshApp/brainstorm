@@ -5,9 +5,9 @@ import { godRay } from '../content/god-ray';
 // God-ray instances scoped per vault — used VERY sparingly (a few
 // signature chambers, not every room). Same visual family as the
 // stair moonbeam but in the room itself.
-const RAY_PALE   = godRay(0xb8c8ff);
-const RAY_GOLD   = godRay(0xffd060);
-const RAY_VIOLET = godRay(0xa080ff);
+const RAY_PALE   = godRay({ tint: 0xb8c8ff });
+const RAY_GOLD   = godRay({ tint: 0xffd060 });
+const RAY_VIOLET = godRay({ tint: 0xa080ff });
 
 // Vault library — Pass A (variety) + Pass B (atmosphere).
 //

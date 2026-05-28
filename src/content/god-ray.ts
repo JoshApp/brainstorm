@@ -1,14 +1,21 @@
 import type { ModelSpec } from '../ecs/model-types';
 
-// God ray — a single slanted shaft of light reaching from
-// somewhere high (a crack, a grate, a hole in the ceiling) down
-// to the floor. Pure atmosphere; no gameplay function.
+// God ray — a shaft of light pouring through a crack in the ceiling
+// down to the floor. Pure atmosphere; no gameplay function.
 //
-// Authored as a tilted additive plane plus a faint emissive disc
-// where the ray "lands" on the floor + a tight bright dust mote
-// along the shaft. Tinted variants let a room use a god ray
-// matching its torch palette (the stair beam stays cool blue;
-// a treasure chamber gets warm gold).
+// Built in the stair-beam pattern (see src/interactables/stairs.ts):
+//   - Bright ceiling-crack emitter at the top — the visible source.
+//   - Outer haze + bright core planes vertically anchored from
+//     floor to ceiling so the shaft never reads as a floating oval.
+//   - Floor disc at the base — pool of light where the ray lands.
+//   - Dust motes along the shaft for the volumetric "particles in
+//     the beam" feel.
+//   - PointLight aligned directly under the shaft so the lit floor
+//     matches what the eye sees.
+//
+// All glow parts use the neutral 'moonbeam' texture (pure white-to-
+// transparent radial). Hue comes purely from the `tint` param — no
+// red bleed from a fire-wisp gradient.
 //
 // Usage rules:
 //   - Sparingly. A god ray loses meaning if every room has one;
@@ -19,74 +26,100 @@ import type { ModelSpec } from '../ecs/model-types';
 //     the strongest mood payoff (you cross a shaft of light,
 //     dust glints around you).
 
-export function godRay(tint: number = 0xb8c8ff): ModelSpec {
-  const id = `god-ray-${tint.toString(16)}`;
+export interface GodRayOpts {
+  /** Hex color tint. Default pale moonlight blue. */
+  tint?: number;
+  /** Room ceiling height — shaft top anchors here. Default 3.2
+   *  matches the standard dungeon ceiling (see archway.ts). */
+  ceilingHeight?: number;
+}
+
+export function godRay(opts: GodRayOpts = {}): ModelSpec {
+  const tint = opts.tint ?? 0xb8c8ff;
+  const ceiling = opts.ceilingHeight ?? 3.2;
+
+  const shaftMidY = ceiling / 2;
+  const id = `god-ray-${tint.toString(16)}-${ceiling.toFixed(1)}`;
+
   return {
     id,
     materials: {},
     parts: [
-      // The shaft — wide tall additive plane tilted off vertical.
-      // Plane geometry, faced both ways so it shows from any
-      // approach angle. The slant is small (~12°) so it reads as
-      // light pouring in from a side crack rather than a perfect
-      // pillar.
+      // Ceiling crack emitter — bright slit just below the ceiling.
+      // Reads as "the light is pouring through HERE". Horizontal
+      // plane facing down; small + bright.
       {
         kind: 'decal',
-        pos: [0, 1.55, 0],
-        rot: [0, 0, 0.20],
-        size: [0.75, 3.20],
-        texture: 'fire-wisp',
+        pos: [0, ceiling - 0.01, 0],
+        rot: [Math.PI / 2, 0, 0],
+        size: [0.55, 0.12],
+        texture: 'moonbeam',
         color: tint,
+        blending: 'additive',
+        opacity: 0.85,
       },
-      // Outer wider/softer shaft for haze depth.
+      // Outer haze — wide, dim. Anchored floor-to-ceiling.
       {
         kind: 'decal',
-        pos: [0, 1.55, 0.02],
-        rot: [0, 0, 0.20],
-        size: [1.35, 3.20],
-        texture: 'fire-wisp',
+        pos: [0, shaftMidY, 0],
+        size: [0.55, ceiling],
+        texture: 'moonbeam',
         color: tint,
+        blending: 'additive',
+        opacity: 0.22,
       },
-      // Floor disc where the ray lands — pool of light at the
-      // foot of the shaft.
+      // Bright core — narrow, brighter. Slightly forward of the
+      // outer haze so it always renders on top.
       {
         kind: 'decal',
-        pos: [-0.30, 0.008, 0],
+        pos: [0, shaftMidY, 0.02],
+        size: [0.18, ceiling],
+        texture: 'moonbeam',
+        color: tint,
+        blending: 'additive',
+        opacity: 0.40,
+      },
+      // Floor disc — soft pool of light where the ray lands.
+      // Centered directly under the shaft (no offset like the
+      // old version) so the light source, shaft, and floor pool
+      // all line up.
+      {
+        kind: 'decal',
+        pos: [0, 0.012, 0],
         rot: [-Math.PI / 2, 0, 0],
-        size: [1.40, 1.40],
-        texture: 'fire-wisp',
+        size: [0.85, 0.85],
+        texture: 'moonbeam',
         color: tint,
-        emissive: tint,
-        emissiveIntensity: 0.6,
+        blending: 'additive',
+        opacity: 0.55,
       },
-      // A handful of bright dust motes along the shaft — speaks
-      // to the volumetric "particles in the beam" feel without
-      // running an actual particle system.
+      // Dust motes — sprites along the shaft. Slightly jittered
+      // in X/Z so they don't form a perfect column.
       {
-        kind: 'sprite', pos: [-0.05, 0.85, 0], size: [0.10, 0.10],
-        texture: 'fire-wisp', color: tint, blending: 'additive',
-      },
-      {
-        kind: 'sprite', pos: [-0.18, 1.45, 0.04], size: [0.08, 0.08],
-        texture: 'fire-wisp', color: tint, blending: 'additive',
+        kind: 'sprite', pos: [-0.04, ceiling * 0.25, 0.01], size: [0.07, 0.07],
+        texture: 'moonbeam', color: tint, blending: 'additive', opacity: 0.55,
       },
       {
-        kind: 'sprite', pos: [-0.10, 2.10, -0.02], size: [0.07, 0.07],
-        texture: 'fire-wisp', color: tint, blending: 'additive',
+        kind: 'sprite', pos: [0.05, ceiling * 0.45, -0.02], size: [0.06, 0.06],
+        texture: 'moonbeam', color: tint, blending: 'additive', opacity: 0.50,
       },
       {
-        kind: 'sprite', pos: [-0.22, 2.65, 0.03], size: [0.06, 0.06],
-        texture: 'fire-wisp', color: tint, blending: 'additive',
+        kind: 'sprite', pos: [-0.03, ceiling * 0.62, 0.03], size: [0.05, 0.05],
+        texture: 'moonbeam', color: tint, blending: 'additive', opacity: 0.45,
+      },
+      {
+        kind: 'sprite', pos: [0.04, ceiling * 0.80, -0.01], size: [0.05, 0.05],
+        texture: 'moonbeam', color: tint, blending: 'additive', opacity: 0.40,
       },
     ],
     light: {
       color: tint,
-      intensity: 9,
-      distance: 7,
+      intensity: 5,
+      distance: 5,
       decay: 1.8,
-      // Pool light at the base of the shaft where it lands on
-      // the floor, not up in the shaft itself.
-      pos: [-0.30, 0.4, 0],
+      // Directly under the shaft, slightly above the floor — so
+      // the lit floor patch matches where the shaft visibly lands.
+      pos: [0, 0.4, 0],
       castShadow: false,
     },
   };
