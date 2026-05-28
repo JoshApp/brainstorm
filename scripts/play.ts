@@ -49,6 +49,8 @@ interface Args {
   screenshotEvery: number;
   viewport: string;
   port: number;
+  headed: boolean;
+  slowMo: number;
 }
 
 function parseArgs(): Args {
@@ -58,15 +60,21 @@ function parseArgs(): Args {
     if (i >= 0 && i + 1 < argv.length) return argv[i + 1];
     return undefined;
   };
+  const has = (flag: string): boolean => argv.includes(flag);
   const seed = Number(get('--seed') ?? Math.floor(Math.random() * 1e9));
   const depth = Number(get('--depth') ?? 1);
   const turns = Number(get('--turns') ?? 100);
   const screenshotEvery = Number(get('--screenshot-every') ?? 10);
   const viewport = get('--viewport') ?? 'desktop';
   const port = Number(get('--port') ?? 5180 + Math.floor(Math.random() * 100));
+  const headed = has('--headed');
+  // slow-mo (ms between Playwright actions) is helpful in headed mode to
+  // actually see the bot's pulses — defaults to 0 in headless, 250 in
+  // headed so the eye can follow.
+  const slowMo = Number(get('--slow-mo') ?? (headed ? 250 : 0));
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const out = get('--out') ?? `/tmp/play-${ts}-seed${seed}-d${depth}`;
-  return { seed, depth, turns, out, screenshotEvery, viewport, port };
+  return { seed, depth, turns, out, screenshotEvery, viewport, port, headed, slowMo };
 }
 
 async function main(): Promise<void> {
@@ -89,6 +97,7 @@ async function main(): Promise<void> {
   console.log(`  turns:   ${args.turns}`);
   console.log(`  out:     ${args.out}`);
   console.log(`  viewport: ${args.viewport} ${vp.width}x${vp.height}`);
+  if (args.headed) console.log(`  mode:    HEADED (browser window visible) — slowMo ${args.slowMo}ms`);
   console.log();
 
   // Start vite.
@@ -119,6 +128,8 @@ async function main(): Promise<void> {
   try {
     browser = await chromium.launch({
       ...(CHROMIUM_PATH ? { executablePath: CHROMIUM_PATH } : {}),
+      headless: !args.headed,
+      slowMo: args.slowMo,
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader'],
     });
     const ctx = await browser.newContext({ viewport: vp });
