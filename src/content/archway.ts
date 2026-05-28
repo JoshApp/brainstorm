@@ -6,37 +6,100 @@ import type { ModelSpec } from '../ecs/model-types';
 // the player passes UNDER something, framing the next room
 // cinematically.
 //
-// Geometry: two square stone columns flanking the opening (~2m
-// apart inner edge to inner edge), a thick lintel across the
-// top, plus a keystone block in the middle of the lintel.
-// Authored at a fixed 2.4m outer width; corridors are 1.6-3.4m
-// wide so the columns either sit slightly INSIDE the corridor
-// (narrow case) or with a small gap on either side (wide case).
-// Either way it reads as an actual frame.
+// Built per-instance so columns can sit AT THE CORRIDOR EDGES
+// (not at a fixed 2m apart) and the tympanum block above the
+// lintel fills the wall up to the ceiling. The wall opening
+// running floor→ceiling needs to be closed above the lintel
+// otherwise the player sees a gap revealing the void behind
+// the wall mesh.
 //
-// No collision — the player walks through it. The columns are
-// at ±1m off the archway centre so a 0.3m-radius player stays
-// clear of them when walking the corridor centreline.
+// Authoring axes:
+//   - +X = along the lintel (the gate's running direction)
+//   - +Y = up
+//   - +Z = INTO the corridor / through the gate
+// Composer rotates with rotY so +X aligns with the wall the
+// gate sits in.
+//
+// Collision: emitted via PropSpec.collision[] with two circle
+// blockers at the column world positions — the composer
+// computes those.
 
-export const ARCHWAY: ModelSpec = {
-  id: 'corridor-archway',
-  materials: {
-    stone: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true },
-  },
-  parts: [
-    // Left column — square pillar.
-    { kind: 'box', pos: [-1.00, 1.20, 0], size: [0.32, 2.40, 0.40], mat: 'stone' },
-    // Right column.
-    { kind: 'box', pos: [ 1.00, 1.20, 0], size: [0.32, 2.40, 0.40], mat: 'stone' },
-    // Column bases — slightly wider plinths at the floor.
-    { kind: 'box', pos: [-1.00, 0.15, 0], size: [0.45, 0.30, 0.52], mat: 'stone' },
-    { kind: 'box', pos: [ 1.00, 0.15, 0], size: [0.45, 0.30, 0.52], mat: 'stone' },
-    // Column capitals — caps at the top.
-    { kind: 'box', pos: [-1.00, 2.45, 0], size: [0.45, 0.18, 0.50], mat: 'stone' },
-    { kind: 'box', pos: [ 1.00, 2.45, 0], size: [0.45, 0.18, 0.50], mat: 'stone' },
-    // Lintel across the top.
-    { kind: 'box', pos: [0, 2.70, 0], size: [2.50, 0.30, 0.55], mat: 'stone' },
-    // Keystone — small slightly-protruding block centred on the lintel.
-    { kind: 'box', pos: [0, 2.55, 0], size: [0.32, 0.28, 0.60], mat: 'stone' },
-  ],
-};
+export interface ArchwayOptions {
+  /** Width of the corridor opening this archway frames, in
+   *  metres. Columns are positioned so their OUTER faces sit
+   *  just inside the opening (~0.04m clearance). */
+  width: number;
+  /** Ceiling height of the abutting room. The tympanum block
+   *  above the lintel fills from lintel-top to ceiling so the
+   *  void behind the wall doesn't peek through. Default 3.2m. */
+  ceilingHeight?: number;
+}
+
+const COL_HALF_THICK = 0.16;       // half of the column box X size
+const COL_HEIGHT     = 2.40;       // column body height (centre at y=1.20)
+const COL_DEPTH      = 0.40;       // along the corridor axis
+const BASE_HEIGHT    = 0.30;
+const BASE_OVERHANG  = 0.065;      // base extends this far past column on each side
+const CAPITAL_HEIGHT = 0.18;
+const CAPITAL_OVERHANG = 0.065;
+const LINTEL_BOTTOM  = 2.55;
+const LINTEL_HEIGHT  = 0.30;
+const LINTEL_DEPTH   = 0.55;
+const LINTEL_OVERHANG = 0.10;      // extra width past column outer edges
+const KEYSTONE_W     = 0.32;
+const KEYSTONE_H     = 0.28;
+const KEYSTONE_D     = 0.60;
+
+/** Top of the visible archway (lintel + keystone) — used by the
+ *  tympanum to know where to start filling upward. */
+export const ARCHWAY_TOP_Y = LINTEL_BOTTOM + LINTEL_HEIGHT;
+
+/** Local-X offset from the archway centre to each column's
+ *  centre, for a given opening width. The composer uses this
+ *  to position the collision blockers. */
+export function archwayColumnOffset(width: number): number {
+  // Outer column face flush with opening edge → column centre
+  // sits one column-half-thickness inside.
+  return Math.max(COL_HALF_THICK + 0.02, width / 2 - COL_HALF_THICK);
+}
+
+export function archway(opts: ArchwayOptions): ModelSpec {
+  const width = opts.width;
+  const ceiling = opts.ceilingHeight ?? 3.2;
+  const colOffset = archwayColumnOffset(width);
+  const lintelWidth = width + LINTEL_OVERHANG * 2;
+  const tympanumHeight = Math.max(0.10, ceiling - ARCHWAY_TOP_Y);
+  const tympanumCentreY = ARCHWAY_TOP_Y + tympanumHeight / 2;
+
+  // Tag the id with the opening width (rounded) so buildModel's
+  // future cache layer can re-use same-sized archways. Currently
+  // buildModel doesn't cache by id, but it's cheap to be ready.
+  const id = `archway-w${width.toFixed(2)}-c${ceiling.toFixed(1)}`;
+
+  return {
+    id,
+    materials: {
+      stone: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true },
+    },
+    parts: [
+      // Left + right column shafts.
+      { kind: 'box', pos: [-colOffset, COL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2, COL_HEIGHT, COL_DEPTH], mat: 'stone' },
+      { kind: 'box', pos: [ colOffset, COL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2, COL_HEIGHT, COL_DEPTH], mat: 'stone' },
+      // Base plinths (slightly wider feet).
+      { kind: 'box', pos: [-colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'stone' },
+      { kind: 'box', pos: [ colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'stone' },
+      // Capitals at the top of each column.
+      { kind: 'box', pos: [-colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'stone' },
+      { kind: 'box', pos: [ colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'stone' },
+      // Lintel across the top, spanning both columns + a bit.
+      { kind: 'box', pos: [0, LINTEL_BOTTOM + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'stone' },
+      // Keystone — small slightly-protruding block centred on the lintel.
+      { kind: 'box', pos: [0, LINTEL_BOTTOM + KEYSTONE_H / 2, 0], size: [KEYSTONE_W, KEYSTONE_H, KEYSTONE_D], mat: 'stone' },
+      // Tympanum — wall block from lintel top to ceiling. Without
+      // this the player sees through the wall above the lintel
+      // into the void behind. Same depth as the lintel so it
+      // visually continues the gate's mass.
+      { kind: 'box', pos: [0, tympanumCentreY, 0], size: [lintelWidth, tympanumHeight, LINTEL_DEPTH], mat: 'stone' },
+    ],
+  };
+}

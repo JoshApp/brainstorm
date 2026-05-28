@@ -6,7 +6,7 @@ import {
   WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN,
   FALLEN_PILLAR_SEGMENT, IRON_BARS,
 } from '../content/clutter';
-import { ARCHWAY } from '../content/archway';
+import { archway, archwayColumnOffset } from '../content/archway';
 import {
   wallOpenings, inOpening, allStairFootprints, findContainingRect,
   type Opening, type StairFootprint,
@@ -608,14 +608,25 @@ function shuffled<T>(arr: T[], rand: () => number): T[] {
 /** Frame each corridor mouth with an ARCHWAY. Walks every wall
  *  of every corridor rect, finds where another rect (a room) is
  *  flush against it (= the corridor opening), and drops an
- *  archway centred on that overlap. The lintel runs along the
- *  opening's axis; the two columns carry collision so the
- *  player paths between them rather than through them. */
+ *  archway sized to the opening width on that overlap. The
+ *  lintel runs along the opening's axis; the two columns carry
+ *  collision so the player paths between them rather than
+ *  through them. The archway also includes a tympanum block
+ *  above the lintel filling the wall to the ceiling, otherwise
+ *  the player can see through the gap. */
 function emitArchwaysForCorridors(spec: LevelSpec): void {
   const allRectsFlat = [
     ...spec.rooms.map((r) => r.rect),
     ...spec.corridors.map((r) => r.rect),
   ];
+  // Map room rect → height so each archway uses the right
+  // ceiling for its tympanum. Corridors and rooms can have
+  // different heights; we read the abutting ROOM's height since
+  // the archway sits in that room's wall.
+  const heightByRect = new Map<{ x: number; z: number; w: number; d: number }, number>();
+  for (const r of spec.rooms) heightByRect.set(r.rect, r.height);
+  for (const r of spec.corridors) heightByRect.set(r.rect, r.height);
+
   // De-dupe — corridor↔room pairs share an edge so we'd
   // otherwise emit the same archway twice (once from each side).
   const seen = new Set<string>();
@@ -624,13 +635,15 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
     for (const side of ['N', 'S', 'E', 'W'] as const) {
       const openings = wallOpenings(c, side, allRectsFlat);
       for (const o of openings) {
+        const width = o.end - o.start;
+        if (width < 1.0) continue;     // skip skinny seams
         // Position the archway at the midpoint of the opening,
         // sitting ON the wall plane.
         let ax = 0, az = 0, rotY = 0;
         if (side === 'N' || side === 'S') {
           ax = (o.start + o.end) / 2;
           az = side === 'N' ? c.z - c.d / 2 : c.z + c.d / 2;
-          rotY = 0;        // lintel runs along X
+          rotY = 0;        // lintel runs along X (model's local +X)
         } else {
           az = (o.start + o.end) / 2;
           ax = side === 'W' ? c.x - c.w / 2 : c.x + c.w / 2;
@@ -639,18 +652,34 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
         const key = `${ax.toFixed(2)}:${az.toFixed(2)}:${rotY.toFixed(2)}`;
         if (seen.has(key)) continue;
         seen.add(key);
+
+        // Find the abutting room's ceiling height (for tympanum
+        // sizing). We pick the larger of the two abutting heights
+        // so the tympanum never falls short of the ceiling.
+        let ceiling = corridor.height;
+        for (const other of [...spec.rooms, ...spec.corridors]) {
+          const or = other.rect;
+          if (or === c) continue;
+          // Quick adjacency check on the relevant axis.
+          const adjacent =
+            (side === 'N' && Math.abs((or.z + or.d / 2) - (c.z - c.d / 2)) < 0.05) ||
+            (side === 'S' && Math.abs((or.z - or.d / 2) - (c.z + c.d / 2)) < 0.05) ||
+            (side === 'W' && Math.abs((or.x + or.w / 2) - (c.x - c.w / 2)) < 0.05) ||
+            (side === 'E' && Math.abs((or.x - or.w / 2) - (c.x + c.w / 2)) < 0.05);
+          if (adjacent) ceiling = Math.max(ceiling, other.height);
+        }
+
+        const colOffset = archwayColumnOffset(width);
         spec.props.push({
           kind: 'model',
-          model: ARCHWAY,
+          model: archway({ width, ceilingHeight: ceiling }),
           x: ax, y: 0, z: az,
           rotY,
-          // Two column blockers at ±1m along the lintel axis.
-          // Small radius so the player threads cleanly between
-          // them on the corridor centreline but can't walk
-          // through the visible column itself.
+          // Column blockers sit at the column centre offsets so
+          // collision matches the visible columns.
           collision: [
-            { kind: 'circle', r: 0.22, ox: -1.0, oz: 0 },
-            { kind: 'circle', r: 0.22, ox:  1.0, oz: 0 },
+            { kind: 'circle', r: 0.22, ox: -colOffset, oz: 0 },
+            { kind: 'circle', r: 0.22, ox:  colOffset, oz: 0 },
           ],
         });
       }
