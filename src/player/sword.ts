@@ -105,17 +105,21 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
   // --- Swing state machine + combo tracking ---
   // comboStep is the index into the current weapon's combo array. It
   // advances when the player presses attack inside the combo window
-  // AFTER the previous step's recover ends.
+  // AFTER the previous step's recover ends — OR via the one-hop press
+  // buffer below.
   //
-  // NO press buffering: a tap mid-swing is ignored. Earlier versions
-  // queued one buffered press, but rapid taps then chained the WHOLE
-  // combo automatically (especially noticeable with mouse left-click
-  // spam). Players who want all three steps now press THREE times,
-  // each within the window, matching the swing tempo.
+  // Press buffering, one-hop only:
+  //   A press during a swing that was started by an EXPLICIT press
+  //   buffers, and chains the next step at recover-end. The chained
+  //   step itself cannot be further buffered. This catches the player
+  //   who taps just-too-early for the window without auto-playing the
+  //   whole combo from a rapid mouse-click burst.
   let phase: SwordPhase = 'idle';
   let phaseTimer = 0;
   let comboStep = 0;
   let comboWindowExpiresAt = 0;     // ms (performance.now() basis)
+  let queuedPress = false;
+  let currentStepIsChained = false;  // true when current swing started via buffer chain
 
   function nowMs(): number { return performance.now(); }
 
@@ -129,9 +133,15 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
   }
 
   function startSwing(): boolean {
-    // Mid-swing presses are dropped. Combos advance only via presses
-    // that land in the idle window after the previous step ends.
-    if (phase !== 'idle') return false;
+    if (phase !== 'idle') {
+      // Mid-swing press: buffer ONE follow-up — but only if the
+      // current swing was started by an explicit press. A swing that
+      // was already chained-in via the buffer can't queue another
+      // chain, so rapid taps stop after one hop instead of auto-
+      // playing the whole combo.
+      if (!currentStepIsChained) queuedPress = true;
+      return false;
+    }
     // Idle. If we're past the combo window, the previous chain is dead
     // and the next press restarts the combo from step 0. If we're
     // still inside it, comboStep was pre-advanced when the last
@@ -141,6 +151,7 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
     }
     phase = 'windup';
     phaseTimer = 0;
+    currentStepIsChained = false;
     options.onSwingStart?.();
     return true;
   }
@@ -185,13 +196,21 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
         phase = 'recover';
         phaseTimer = 0;
       } else {
-        // Recover ended. Pre-advance the combo step and open the
-        // combo window — a press inside the window advances to the
-        // pre-advanced step; past it, startSwing() resets to step 0.
+        // Recover ended. Pre-advance the combo step and either
+        // chain straight into the next windup (if a press buffered)
+        // or open the idle combo window.
         comboStep = (comboStep + 1) % w.combo.length;
-        comboWindowExpiresAt = nowMs() + w.comboWindowMs;
-        phase = 'idle';
-        phaseTimer = 0;
+        if (queuedPress) {
+          queuedPress = false;
+          currentStepIsChained = true;
+          phase = 'windup';
+          phaseTimer = 0;
+          options.onSwingStart?.();
+        } else {
+          comboWindowExpiresAt = nowMs() + w.comboWindowMs;
+          phase = 'idle';
+          phaseTimer = 0;
+        }
       }
     }
   }
@@ -214,6 +233,8 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
     phaseTimer = 0;
     comboStep = 0;
     comboWindowExpiresAt = 0;
+    queuedPress = false;
+    currentStepIsChained = false;
   }
 
   return {
