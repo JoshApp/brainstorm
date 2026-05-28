@@ -85,6 +85,11 @@ export type PropSpec =
   // treasure / encounter rooms so the player has a low-stakes
   // "swing something" target.
   | { kind: 'vase'; x: number; z: number }
+  // 'vase-cluster' = a tight group of 2-4 vases jittered around
+  // a point. Authored with the 'V' tile or composed by procgen;
+  // the builder calls spawnVaseCluster which handles random
+  // separation + variant selection per vase.
+  | { kind: 'vase-cluster'; x: number; z: number }
   // 'spike-trap' = pressure-plate hazard. Player steps on the plate;
   // brief telegraph (plate sinks, audible click); spikes shoot up and
   // damage. Resets after a cooldown.

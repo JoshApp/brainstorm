@@ -4,7 +4,7 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
-import { spawnVase, type Destructible } from './destructibles';
+import { spawnVase, spawnVaseCluster, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { createEnemy, type Enemy } from '../mobs/enemy';
@@ -553,6 +553,16 @@ export function buildLevel(
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.18,
       });
+    } else if (prop.kind === 'vase-cluster') {
+      // Cluster of 2-4 vases jittered around (x, z). Each gets
+      // its own destructible entry + its own collision circle.
+      const cluster = spawnVaseCluster(root, prop.x, prop.z);
+      for (const v of cluster) {
+        destructibles.push(v);
+        obstacles.push({
+          kind: 'circle', x: v.position.x, z: v.position.z, r: 0.18,
+        });
+      }
     } else if (prop.kind === 'spike-trap') {
       spawnSpikeTrap(
         root,

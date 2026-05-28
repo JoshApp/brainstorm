@@ -15,7 +15,7 @@ import type { LevelSpec, TileMap } from './types';
 // sub-mesh). Plus the emissive materials are shared across all instances
 // of a kind, so material count stays flat.
 
-const FLOOR_CHARS = new Set('.,SoO/^FCGRKWPAcvTt<>'.split(''));
+const FLOOR_CHARS = new Set('.,SoO/^FCGRKWPAcvVTt<>'.split(''));
 const NO_DECORATE_CHARS = new Set('SoO/^FCGRKWPAc'.split(''));
 
 const SIGIL_CHANCE = 0.04;

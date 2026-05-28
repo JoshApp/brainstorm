@@ -44,6 +44,52 @@ export const VASE_TALL: ModelSpec = {
   ],
 };
 
+// Slender flask — long thin neck, narrow base. Reads as
+// "alchemical bottle" rather than urn.
+export const VASE_FLASK: ModelSpec = {
+  id: 'vase-flask',
+  materials: {
+    clay: { color: 0x4a3a26, roughness: 0.85, flatShading: true },
+    rim:  { color: 0x251810, roughness: 0.9, flatShading: true },
+  },
+  parts: [
+    // Narrow base disc.
+    { kind: 'cylinder', pos: [0, 0.02, 0], radius: 0.085, height: 0.04, segments: 12, mat: 'clay' },
+    // Bulbous belly — most volume at the bottom third.
+    { kind: 'cylinder', pos: [0, 0.13, 0], radius: 0.085, radiusTop: 0.115, height: 0.18, segments: 14, mat: 'clay' },
+    // Narrowing shoulder.
+    { kind: 'cylinder', pos: [0, 0.28, 0], radius: 0.115, radiusTop: 0.045, height: 0.10, segments: 12, mat: 'clay' },
+    // Long thin neck.
+    { kind: 'cylinder', pos: [0, 0.46, 0], radius: 0.045, height: 0.26, segments: 10, mat: 'clay' },
+    // Rim flare at the top of the neck.
+    { kind: 'cylinder', pos: [0, 0.60, 0], radius: 0.045, radiusTop: 0.07, height: 0.04, segments: 10, mat: 'rim' },
+  ],
+};
+
+// Cracked broken vase — half-collapsed pot with a chunk missing,
+// jagged top rim. Visually reads as "already-broken" so a player
+// can tell at a glance this one won't drop loot (we still mark
+// it as a destructible — just rolls a no-drop most of the time).
+export const VASE_BROKEN: ModelSpec = {
+  id: 'vase-broken',
+  materials: {
+    clay: { color: 0x5a3a26, roughness: 0.95, flatShading: true },
+    rim:  { color: 0x251810, roughness: 0.9, flatShading: true },
+  },
+  parts: [
+    // Base disc.
+    { kind: 'cylinder', pos: [0, 0.025, 0], radius: 0.14, height: 0.05, segments: 12, mat: 'clay' },
+    // Lower body (intact half).
+    { kind: 'cylinder', pos: [0, 0.13, 0], radius: 0.13, radiusTop: 0.10, height: 0.16, segments: 14, mat: 'clay', jitter: 0.02 },
+    // Jagged rim chunks remaining — a few box pieces, gaps between.
+    { kind: 'box', pos: [ 0.09, 0.24,  0.00], size: [0.05, 0.08, 0.05], rot: [0,  0.2, 0.1], mat: 'rim', jitter: 0.015 },
+    { kind: 'box', pos: [-0.08, 0.23,  0.05], size: [0.05, 0.06, 0.05], rot: [0, -0.4, -0.1], mat: 'rim', jitter: 0.015 },
+    { kind: 'box', pos: [ 0.02, 0.22, -0.09], size: [0.05, 0.05, 0.05], rot: [0,  0.7, 0.05], mat: 'rim', jitter: 0.015 },
+    // A shard fallen on the ground next to it.
+    { kind: 'box', pos: [0.16, 0.018, 0.04], size: [0.07, 0.025, 0.04], rot: [0, 0.6, 0], mat: 'clay' },
+  ],
+};
+
 // Short, squat vase / urn.
 export const VASE_SQUAT: ModelSpec = {
   id: 'vase-squat',
