@@ -47,6 +47,18 @@ export const RARITY_COLORS: Record<Rarity, number> = {
 // like "of the keening" → small stat tweak; tight ranges so variance
 // reads as flavor, not as min-max chasing.
 
+/**
+ * Weapon class — picks the animation archetype and supplies DEFAULT
+ * timings (windup / strike / recover). Each weapon can override any
+ * specific value below; the class is just the baseline + the visual
+ * routing.
+ *
+ *   dagger  fast forward stab; short reach, narrow cone, crit-fishing
+ *   sword   balanced diagonal slash; medium reach + cone
+ *   hammer  slow overhead smash; long reach, wide cone, no crits
+ */
+export type WeaponClass = 'dagger' | 'sword' | 'hammer';
+
 /** Combat stats — only set on items that are weapons. */
 export interface WeaponStats {
   /** Max melee reach in meters (camera-to-enemy distance). */
@@ -59,6 +71,26 @@ export interface WeaponStats {
   critChance?: number;
   /** Damage multiplier on crit. Default 2.0. */
   critMultiplier?: number;
+  /**
+   * Weapon class — picks the animation curves (forward stab vs
+   * diagonal slash vs overhead smash) and seeds the default
+   * windup/strike/recover timings. Default 'sword'.
+   */
+  class?: WeaponClass;
+  /**
+   * Per-instance timing overrides. Any field set here REPLACES the
+   * class-default value. Used to give a particularly snappy weapon
+   * faster timings without leaving its animation class.
+   */
+  windupTime?: number;
+  strikeTime?: number;
+  recoverTime?: number;
+  /**
+   * Multiplier applied to ALL THREE timings after overrides resolve.
+   * 1.0 = baseline, 1.2 = 20% faster (smaller timings), 0.8 = slower.
+   * The proficiency / level system will eventually feed into this.
+   */
+  attackSpeed?: number;
 }
 
 export interface ItemSpec {
@@ -115,7 +147,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Pitted and ill-balanced. It will do.',
     dropModel: SWORD_RUSTED,
     viewmodel: SWORD_RUSTED,
-    weapon: { reach: 1.8, coneHalfAngle: 0.65, damage: 1, critChance: 0.05, critMultiplier: 2.0 },
+    weapon: { class: 'sword', reach: 1.8, coneHalfAngle: 0.65, damage: 1, critChance: 0.05, critMultiplier: 2.0 },
     affixPool: ['keening', 'gallows', 'spine'],
     maxAffixes: 1,
   },
@@ -127,7 +159,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Made for those who would not be patient.',
     dropModel: WEAPON_SCIMITAR,
     viewmodel: WEAPON_SCIMITAR,
-    weapon: { reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0 },
+    weapon: { class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0 },
     affixPool: ['keening', 'gallows', 'vile', 'patience'],
     maxAffixes: 2,
   },
@@ -151,7 +183,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     // chance + multiplier in the starting roster. Skirts trash mobs
     // by repeated strikes; struggles against armoured targets unless
     // you land crits.
-    weapon: { reach: 1.5, coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5 },
+    weapon: { class: 'dagger', reach: 1.5, coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5 },
     affixPool: ['keening', 'gallows', 'spine'],
     maxAffixes: 1,
   },
@@ -169,7 +201,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     // contain the split. Slow swing timings live elsewhere if we
     // ever wire per-weapon attack timings; for now the base sword
     // cadence applies.
-    weapon: { reach: 2.0, coneHalfAngle: 0.85, damage: 2, critChance: 0, critMultiplier: 1 },
+    weapon: { class: 'hammer', reach: 2.0, coneHalfAngle: 0.85, damage: 2, critChance: 0, critMultiplier: 1 },
     affixPool: ['gallows', 'spine', 'patience'],
     maxAffixes: 1,
   },
@@ -181,7 +213,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'The blade was never quenched.',
     dropModel: HEARTBURN,
     viewmodel: HEARTBURN,
-    weapon: { reach: 2.3, coneHalfAngle: 0.9, damage: 3, critChance: 0.22, critMultiplier: 2.5 },
+    weapon: { class: 'sword', reach: 2.3, coneHalfAngle: 0.9, damage: 3, critChance: 0.22, critMultiplier: 2.5, attackSpeed: 1.15 },
     affixPool: ['vile', 'patience', 'gallows', 'keening', 'spine'],
     maxAffixes: 2,
     modifiers: [

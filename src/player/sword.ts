@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { getSwordOffset } from './viewmodel-bob';
+import { computeWeaponPose } from './weapon-animations';
+import { getCurrentWeapon } from './current-weapon';
 import type { ModelSpec } from '../ecs/model-types';
 
 // First-person held sword. Geometry comes from a ModelSpec (data); animation
@@ -105,10 +107,9 @@ export function createSword(camera: THREE.Camera): Sword {
 
   function update(dt: number) {
     if (phase === 'idle') {
-      // Idle pose + walk bop. Only applied during the idle phase —
-      // adding bob on top of the swing animations would muddy their
-      // snap. The bob system contributes both the resting idle drift
-      // and the walking bop on a single read.
+      // Idle pose + walk bop. The bob system layers on top of the
+      // idle baseline; the bob isn't applied to swing animations
+      // because it would muddy their snap.
       const b = getSwordOffset();
       group.position.set(ix + b.x, iy + b.y, iz);
       group.rotation.set(rx, ry, rz + b.rotZ);
@@ -117,44 +118,24 @@ export function createSword(camera: THREE.Camera): Sword {
 
     phaseTimer += dt;
 
-    if (phase === 'windup') {
-      const t = Math.min(1, phaseTimer / CONFIG.SWORD_SWING_WINDUP);
-      group.position.set(ix, iy + 0.15 * t, iz + 0.05 * t);
-      group.rotation.set(rx - 0.9 * t, ry, rz);
-      if (phaseTimer >= CONFIG.SWORD_SWING_WINDUP) {
-        phase = 'strike';
-        phaseTimer = 0;
-      }
-      return;
-    }
+    // Phase timings come from the CURRENT weapon's resolved stats
+    // (class defaults + per-spec overrides + attackSpeed multiplier).
+    // Pose curves come from the weapon's class — dagger thrusts
+    // forward, sword arcs across, hammer drops overhead.
+    const w = getCurrentWeapon();
+    const phaseDur =
+      phase === 'windup' ? w.windupTime :
+      phase === 'strike' ? w.strikeTime :
+                            w.recoverTime;
+    const t = Math.min(1, phaseTimer / Math.max(phaseDur, 0.001));
+    const pose = computeWeaponPose(w.class, phase, t);
+    group.position.set(pose.x, pose.y, pose.z);
+    group.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
 
-    if (phase === 'strike') {
-      const t = Math.min(1, phaseTimer / CONFIG.SWORD_SWING_STRIKE);
-      const ease = 1 - (1 - t) * (1 - t); // ease-out quad
-      group.position.set(ix - 0.15 * ease, iy + 0.15 - 0.4 * ease, iz - 0.1 * ease);
-      group.rotation.set(rx - 0.9 + 1.6 * ease, ry, rz + 0.3 * ease);
-      if (phaseTimer >= CONFIG.SWORD_SWING_STRIKE) {
-        phase = 'recover';
-        phaseTimer = 0;
-      }
-      return;
-    }
-
-    if (phase === 'recover') {
-      const t = Math.min(1, phaseTimer / CONFIG.SWORD_SWING_RECOVER);
-      const e = 1 - (1 - t) * (1 - t);
-      const fromPos = new THREE.Vector3(ix - 0.15, iy - 0.25, iz - 0.1);
-      const toPos = new THREE.Vector3(ix, iy, iz);
-      group.position.lerpVectors(fromPos, toPos, e);
-      group.rotation.set(
-        THREE.MathUtils.lerp(rx + 0.7, rx, e),
-        ry,
-        THREE.MathUtils.lerp(rz + 0.3, rz, e),
-      );
-      if (phaseTimer >= CONFIG.SWORD_SWING_RECOVER) {
-        phase = 'idle';
-        phaseTimer = 0;
-      }
+    if (phaseTimer >= phaseDur) {
+      if (phase === 'windup') { phase = 'strike';  phaseTimer = 0; }
+      else if (phase === 'strike') { phase = 'recover'; phaseTimer = 0; }
+      else { phase = 'idle'; phaseTimer = 0; }
     }
   }
 
