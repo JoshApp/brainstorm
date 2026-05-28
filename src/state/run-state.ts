@@ -46,16 +46,24 @@ export interface SaveData {
 // them to localStorage at the right moment (floor transition).
 let inMemory: SaveData | null = null;
 
-/** Start a fresh run. Wipes save, initializes memory state. */
-export function startNewRun(initialFloorId: string) {
+/** Start a fresh run. Wipes save, initializes memory state. Pass
+ *  `seed` to make procgen deterministic (used by ?seed=N URL flag) —
+ *  defaults to Date.now() which is also what procgen reads from
+ *  startedAt during play, so a seeded run reproduces byte-identical
+ *  floors on every boot.
+ *
+ *  Pass `depth` for seeded-jump entry — the run starts at that depth
+ *  rather than the default 1. Used by ?depth=N URL flag (gated to
+ *  harness/dev mode so players can't level-skip). */
+export function startNewRun(initialFloorId: string, opts?: { seed?: number; depth?: number }) {
   inMemory = {
     version: SAVE_VERSION,
     floorId: initialFloorId,
-    depth: 1,
+    depth: opts?.depth ?? 1,
     hp: 0,  // populated at first commit
     inventory: {},
     equipment: {},
-    startedAt: Date.now(),
+    startedAt: opts?.seed ?? Date.now(),
     kills: 0,
     itemsFound: [],
     xp: 0,
@@ -193,6 +201,16 @@ export function loadSave(): SaveData | null {
     // Soft migration — older saves get the new counters defaulted.
     // Hard-mismatch (e.g. v0 with totally different shape) returns null.
     if (parsed.version === 1 || parsed.version === SAVE_VERSION) {
+      // Repair off-by-one depth in saves written before the level
+      // loader was fixed to increment currentDepth BEFORE emitting
+      // level:loaded. The floorId is always authoritative ('depth-N'
+      // means depth N), so trust it over the stored depth field.
+      // Idempotent for correct saves; rescues broken ones.
+      const m = parsed.floorId.match(/^depth-(\d+)$/);
+      if (m) {
+        const fromId = parseInt(m[1], 10);
+        if (Number.isFinite(fromId) && fromId > 0) parsed.depth = fromId;
+      }
       return {
         ...parsed,
         version: SAVE_VERSION,

@@ -653,6 +653,75 @@ function startRun(floorId: string, startDepth: number = 1) {
   tick();
 }
 
+/**
+ * Autostart: ?autostart=1 / ?autostart=descend / ?autostart=continue
+ * bypass the title screen. Combine with ?seed=N for deterministic runs.
+ *
+ * `?autostart=continue` resumes the saved run if one exists, else
+ * returns false so the title can fall through to a fresh start.
+ *
+ * `?autostart=1` (or `descend`) starts a fresh run. Optional:
+ *   - `?seed=N` overrides the run's startedAt (= procgen seed). Two
+ *     boots with the same seed produce byte-identical floors.
+ *   - `?depth=N` jumps directly to depth N, skipping the starter
+ *     chamber. Gated behind ?harness=1 or ?dev=1 so players can't
+ *     trivially level-skip via URL.
+ */
+function handleAutostart(): boolean {
+  const url = new URLSearchParams(window.location.search);
+  const auto = url.get('autostart');
+  if (!auto) return false;
+
+  if (auto === 'continue') {
+    const s = loadSave();
+    if (!s) return false;  // no save → fall through to title for fresh start
+    adoptSave(s);
+    applyState(s);
+    startRun(s.floorId, s.depth);
+    return true;
+  }
+
+  // DESCEND path. Accept ?seed=N and (gated) ?depth=N.
+  const seedParam = url.get('seed');
+  const seed = seedParam != null && seedParam !== '' ? Number(seedParam) : undefined;
+  if (seed !== undefined && !Number.isFinite(seed)) {
+    console.warn(`?seed=${seedParam} is not a number, ignoring`);
+  }
+  const depthParam = url.get('depth');
+  let depth = depthParam != null ? Number(depthParam) : 1;
+  if (!Number.isFinite(depth) || depth < 1) depth = 1;
+  const allowJump = HARNESS_ENABLED || url.get('dev') === '1';
+  if (depth > 1 && !allowJump) {
+    console.warn(`?depth=${depth} requires ?harness=1 or ?dev=1; starting at depth 1`);
+    depth = 1;
+  }
+
+  clearSave();
+  if (depth === 1) {
+    LEVELS['starter'] = buildStarterChamber(LEVEL_1.id);
+    startNewRun('starter', { seed: Number.isFinite(seed as number) ? seed : undefined });
+    recordRunStart();
+    resetRunDiscoveries();
+    applyState(null);
+    startRun('starter', 0);
+  } else {
+    // Seeded jump — skip starter, equip a starter loadout, land
+    // directly on depth-N. floorId 'depth-N' is the procgen convention.
+    const floorId = `depth-${depth}`;
+    startNewRun(floorId, {
+      seed: Number.isFinite(seed as number) ? seed : undefined,
+      depth,
+    });
+    recordRunStart();
+    resetRunDiscoveries();
+    applyState(null);
+    setSlot('weapon', ITEMS['rusted-sword']);
+    setSlot('offhand', ITEMS['oil-lamp']);
+    startRun(floorId, depth);
+  }
+  return true;
+}
+
 // AI-playable harness — dynamic-import so player builds (no ?harness=1)
 // don't pay the module's bundle cost. The pause hook is already set
 // at the top of this file (synchronous); this wires the rest.
@@ -733,6 +802,8 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.
   applyScenario(scenario, { level: currentLevel, sword, camera });
+} else if (handleAutostart()) {
+  // Autostart flow ran (DESCEND / CONTINUE / seeded jump). Title is bypassed.
 } else {
   // Normal boot — title screen, then DESCEND or CONTINUE. Wrapped in
   // a function so sub-screens (like the test chambers picker) can
