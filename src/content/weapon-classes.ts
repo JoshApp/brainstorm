@@ -67,9 +67,9 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     // the finisher commits the player with the longest recover so
     // missing the third tap on a backpedalling enemy genuinely hurts.
     combo: [
-      { pose: 'dagger-stab',        windup: 0.06, strike: 0.10, recover: 0.16 },
-      { pose: 'dagger-slash',       windup: 0.08, strike: 0.12, recover: 0.18 },
-      { pose: 'dagger-double-stab', windup: 0.06, strike: 0.22, recover: 0.22 },
+      { pose: 'dagger-stab',        windup: 0.08, strike: 0.13, recover: 0.22 },
+      { pose: 'dagger-slash',       windup: 0.10, strike: 0.15, recover: 0.24 },
+      { pose: 'dagger-double-stab', windup: 0.08, strike: 0.26, recover: 0.30 },
     ],
     comboWindowMs: 380,
   },
