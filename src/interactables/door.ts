@@ -30,6 +30,7 @@ export function spawnDoor(
   walkable: WalkableRegion,
   materials: StyleMaterials,
   enemyRoomMembership: () => Map<string, number>, // roomId -> alive count
+  wallHeight: number = DOOR_HEIGHT_FALLBACK,
 ) {
   // Geometry: a flat plank in the doorway. The wall segment is axis-aligned
   // so the door is axis-aligned. Width = segment length; thickness pulled
@@ -89,6 +90,28 @@ export function spawnDoor(
   );
   stud.position.set(length * 0.78, height * 0.5, 0);
   pivot.add(stud);
+
+  // ── Lintel ─────────────────────────────────────────────────────────
+  // Static wall block above the door, filling from the top of the door
+  // panel up to the room's ceiling. Without this the doorway has an
+  // open gap above the door reaching the ceiling — you can see right
+  // through into the next room over the top of the closed door.
+  // Parented to the LEVEL ROOT (not the pivot) so it stays put while
+  // the door swings. Match the wall's surface material so it reads
+  // continuous with the wall around it.
+  const lintelHeight = Math.max(0, wallHeight - height);
+  if (lintelHeight > 0.02) {
+    const lintelGeo = new THREE.BoxGeometry(length, lintelHeight, DOOR_THICKNESS);
+    const lintel = new THREE.Mesh(lintelGeo, materials.wall);
+    const cxL = (spec.ax + spec.bx) / 2;
+    const czL = (spec.az + spec.bz) / 2;
+    const yawL = Math.atan2(spec.bz - spec.az, spec.bx - spec.ax);
+    lintel.position.set(cxL, height + lintelHeight / 2, czL);
+    lintel.rotation.y = yawL;
+    lintel.receiveShadow = true;
+    lintel.castShadow = true;
+    parent.add(lintel);
+  }
 
   // Wall segment that represents the door's collision while closed. Identity
   // matters: WalkableRegion add/remove by reference.

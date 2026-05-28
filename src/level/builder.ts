@@ -982,7 +982,24 @@ export function buildLevel(
   // lookup needed.
   const doorTeardowns: Array<() => void> = [];
   for (const d of spec.doors ?? []) {
-    const h = spawnDoor(root, d, walkable, materials, () => aliveByRoom);
+    // Find the room rect this door sits in so its lintel fills to
+    // the right ceiling height. Doors sit on a wall edge — the
+    // midpoint should still be inside (or on the boundary of) one
+    // of the room rects. Fallback to the first room's height when
+    // no containing rect is found (degenerate vaults).
+    const dcx = (d.ax + d.bx) / 2;
+    const dcz = (d.az + d.bz) / 2;
+    let doorRoomH = spec.rooms[0]?.height ?? 3.2;
+    for (const r of spec.rooms) {
+      const hw = r.rect.w / 2;
+      const hd = r.rect.d / 2;
+      if (dcx >= r.rect.x - hw - 0.05 && dcx <= r.rect.x + hw + 0.05 &&
+          dcz >= r.rect.z - hd - 0.05 && dcz <= r.rect.z + hd + 0.05) {
+        doorRoomH = r.height;
+        break;
+      }
+    }
+    const h = spawnDoor(root, d, walkable, materials, () => aliveByRoom, doorRoomH);
     doorTeardowns.push(h.teardown);
   }
 

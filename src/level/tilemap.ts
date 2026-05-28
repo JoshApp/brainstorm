@@ -622,7 +622,40 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   // Only operates on NON-perimeter walls (perimeter pairs across an
   // adjacent vault's matching edge get carved into a corridor opening
   // by the room-shell builder; they shouldn't be merged).
-  const consolidated: Seg[] = consolidateInteriorWalls(walls, onRectEdge);
+  // Door cells AND stair body cells are FLOOR but bracketed by walls
+  // on the perpendicular sides. The boundary scanner emits those
+  // bracketing edges as a parallel pair 1m apart with the same
+  // running-axis range — the EXACT pattern the consolidator matches.
+  // Without a guard the consolidator collapses those edges into a
+  // single mid-cell wall, putting:
+  //   - Doors: a wall through the doorway (the "wall slab in the
+  //     middle of the door" symptom).
+  //   - Stairs: a wall through the stair body's path (the "orphaned
+  //     hanging wall above the stair" symptom — the end-cap removal
+  //     pass killed the other half of what was originally an X).
+  // Pass these cell centres to the consolidator so it can skip the
+  // candidate pairs that straddle them.
+  const openingCells: Array<{ x: number; z: number }> = doors.map((d) => ({
+    x: (d.ax + d.bx) / 2,
+    z: (d.az + d.bz) / 2,
+  }));
+  // Stair body footprint — extends from the stair's '/' cell forward
+  // by STAIRWELL_TOTAL_DEPTH along the descent axis. Cell centres
+  // every 1m starting at the stair position. ceil(depth) + 1 covers
+  // both ends so consolidation candidates between any two adjacent
+  // cells in the body are also guarded.
+  for (const st of stairs) {
+    const sDirX = Math.sin(st.rotY ?? 0);
+    const sDirZ = Math.cos(st.rotY ?? 0);
+    const steps = Math.ceil(STAIRWELL_TOTAL_DEPTH) + 1;
+    for (let i = 0; i <= steps; i++) {
+      openingCells.push({
+        x: st.x + sDirX * i,
+        z: st.z + sDirZ * i,
+      });
+    }
+  }
+  const consolidated: Seg[] = consolidateInteriorWalls(walls, onRectEdge, openingCells);
 
   const extraWalls = consolidated
     .filter(s => !onRectEdge(s))
@@ -680,6 +713,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
 function consolidateInteriorWalls(
   walls: Array<{ ax: number; az: number; bx: number; bz: number }>,
   onRectEdge: (s: { ax: number; az: number; bx: number; bz: number }) => boolean,
+  openingCells: Array<{ x: number; z: number }> = [],
 ): Array<{ ax: number; az: number; bx: number; bz: number }> {
   const EPS = 1e-3;
   // Interior horizontal walls: az === bz, ax !== bx.
@@ -704,6 +738,29 @@ function consolidateInteriorWalls(
   const mergedHTermini: Array<{ midZ: number; minX: number; maxX: number }> = [];
   const mergedVTermini: Array<{ midX: number; minZ: number; maxZ: number }> = [];
 
+  // Door-cell guard: a horizontal pair brackets a door if the door
+  // cell's Z centre equals the pair's midZ AND its X centre is in
+  // the pair's X range. Symmetric for vertical pairs. Door cells
+  // sit at the half-integer grid (cellCenter), and midZ of a 1m
+  // pair also lands at half-integer, so EPS-tolerant compare is
+  // enough — no special grid logic needed.
+  const hCrossesOpening = (midZ: number, minX: number, maxX: number): boolean => {
+    for (const o of openingCells) {
+      if (Math.abs(o.z - midZ) > EPS) continue;
+      if (o.x < minX - EPS || o.x > maxX + EPS) continue;
+      return true;
+    }
+    return false;
+  };
+  const vCrossesOpening = (midX: number, minZ: number, maxZ: number): boolean => {
+    for (const o of openingCells) {
+      if (Math.abs(o.x - midX) > EPS) continue;
+      if (o.z < minZ - EPS || o.z > maxZ + EPS) continue;
+      return true;
+    }
+    return false;
+  };
+
   // Horizontal pairs: same X range, |dz| == 1.
   for (let i = 0; i < horizontal.length; i++) {
     const a = horizontal[i];
@@ -723,10 +780,17 @@ function consolidateInteriorWalls(
     }
     if (match) {
       const midZ = (a.az + match.az) / 2;
-      merged.push({ ax: aMinX, az: midZ, bx: aMaxX, bz: midZ });
-      consumed.add(a);
-      consumed.add(match);
-      mergedHTermini.push({ midZ, minX: aMinX, maxX: aMaxX });
+      // Skip the merge if a door cell sits between this pair — the
+      // pair is the door FRAME, not a 1-cell wall. Leaving them as
+      // separate walls keeps the doorway open.
+      if (hCrossesOpening(midZ, aMinX, aMaxX)) {
+        // Both walls stay; neither gets consumed.
+      } else {
+        merged.push({ ax: aMinX, az: midZ, bx: aMaxX, bz: midZ });
+        consumed.add(a);
+        consumed.add(match);
+        mergedHTermini.push({ midZ, minX: aMinX, maxX: aMaxX });
+      }
     }
   }
   for (const w of horizontal) if (!consumed.has(w)) merged.push(w);
@@ -750,10 +814,15 @@ function consolidateInteriorWalls(
     }
     if (match) {
       const midX = (a.ax + match.ax) / 2;
-      merged.push({ ax: midX, az: aMinZ, bx: midX, bz: aMaxZ });
-      consumed.add(a);
-      consumed.add(match);
-      mergedVTermini.push({ midX, minZ: aMinZ, maxZ: aMaxZ });
+      if (vCrossesOpening(midX, aMinZ, aMaxZ)) {
+        // Door cell sits between this pair — leave both walls as
+        // the door frame.
+      } else {
+        merged.push({ ax: midX, az: aMinZ, bx: midX, bz: aMaxZ });
+        consumed.add(a);
+        consumed.add(match);
+        mergedVTermini.push({ midX, minZ: aMinZ, maxZ: aMaxZ });
+      }
     }
   }
   for (const w of vertical) if (!consumed.has(w)) merged.push(w);
