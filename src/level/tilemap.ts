@@ -654,6 +654,12 @@ function consolidateInteriorWalls(
 
   const consumed = new Set<typeof walls[number]>();
   const merged: typeof walls = [];
+  // Track consolidated walls' termini so we can detect & drop the
+  // perpendicular end-cap walls that the boundary scanner emitted
+  // around the original 1-cell-thick wall's open ends. See the
+  // end-cap removal block below.
+  const mergedHTermini: Array<{ midZ: number; minX: number; maxX: number }> = [];
+  const mergedVTermini: Array<{ midX: number; minZ: number; maxZ: number }> = [];
 
   // Horizontal pairs: same X range, |dz| == 1.
   for (let i = 0; i < horizontal.length; i++) {
@@ -677,6 +683,7 @@ function consolidateInteriorWalls(
       merged.push({ ax: aMinX, az: midZ, bx: aMaxX, bz: midZ });
       consumed.add(a);
       consumed.add(match);
+      mergedHTermini.push({ midZ, minX: aMinX, maxX: aMaxX });
     }
   }
   for (const w of horizontal) if (!consumed.has(w)) merged.push(w);
@@ -703,9 +710,65 @@ function consolidateInteriorWalls(
       merged.push({ ax: midX, az: aMinZ, bx: midX, bz: aMaxZ });
       consumed.add(a);
       consumed.add(match);
+      mergedVTermini.push({ midX, minZ: aMinZ, maxZ: aMaxZ });
     }
   }
   for (const w of vertical) if (!consumed.has(w)) merged.push(w);
 
-  return [...passthrough, ...merged];
+  // ── End-cap removal ─────────────────────────────────────────────
+  // When a 1-cell-thick interior wall terminates in mid-room (the row
+  // or column ENDS without joining a perimeter wall), the boundary
+  // scanner emits a perpendicular 1m wall at the terminus — closing
+  // off the original wall's open 1m end face. The consolidator above
+  // then collapses the parallel-pair walls into a single mid-cell
+  // plane, dropping that thickness to zero. The end-cap STAYS at its
+  // full cell-edge position, perpendicular to the consolidated plane,
+  // straddling the plane's terminus by ±0.5m on each side. That's
+  // the X-shape visible in mid-room: consolidated plane crossing
+  // through the END-CAP's mid-length.
+  //
+  // Drop these end-caps. They're identifiable as:
+  //   - exactly 1m long
+  //   - perpendicular to a consolidated wall
+  //   - at the consolidated wall's terminus (X equals minX/maxX for H;
+  //     Z equals minZ/maxZ for V)
+  //   - straddling the consolidated wall's centre by ±0.5
+  //
+  // A real 1m perpendicular wall in the same position would be part
+  // of a LONGER perpendicular run — the boundary scanner glues
+  // adjacent same-edge segments, so a continuing wall would be > 1m.
+  // The 1m-length check is the discriminator.
+  const isEndCap = (w: { ax: number; az: number; bx: number; bz: number }): boolean => {
+    if (Math.abs(w.az - w.bz) < EPS) {
+      // Horizontal candidate — would cap a VERTICAL consolidated.
+      const wLen = Math.abs(w.bx - w.ax);
+      if (Math.abs(wLen - 1) > EPS) return false;
+      const wMinX = Math.min(w.ax, w.bx);
+      const wMaxX = Math.max(w.ax, w.bx);
+      for (const v of mergedVTermini) {
+        if (Math.abs(wMinX - (v.midX - 0.5)) > EPS) continue;
+        if (Math.abs(wMaxX - (v.midX + 0.5)) > EPS) continue;
+        if (Math.abs(w.az - v.minZ) < EPS || Math.abs(w.az - v.maxZ) < EPS) return true;
+      }
+      return false;
+    }
+    if (Math.abs(w.ax - w.bx) < EPS) {
+      // Vertical candidate — would cap a HORIZONTAL consolidated.
+      const wLen = Math.abs(w.bz - w.az);
+      if (Math.abs(wLen - 1) > EPS) return false;
+      const wMinZ = Math.min(w.az, w.bz);
+      const wMaxZ = Math.max(w.az, w.bz);
+      for (const h of mergedHTermini) {
+        if (Math.abs(wMinZ - (h.midZ - 0.5)) > EPS) continue;
+        if (Math.abs(wMaxZ - (h.midZ + 0.5)) > EPS) continue;
+        if (Math.abs(w.ax - h.minX) < EPS || Math.abs(w.ax - h.maxX) < EPS) return true;
+      }
+      return false;
+    }
+    return false;
+  };
+
+  const filteredMerged = merged.filter(w => !isEndCap(w));
+
+  return [...passthrough, ...filteredMerged];
 }
