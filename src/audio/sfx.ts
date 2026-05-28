@@ -681,23 +681,21 @@ export function startAmbience() {
   for (let i = 0; i < d.length; i++) {
     d[i] = (Math.random() * 2 - 1) * FIZZ_AMP;
   }
-  // Crackles ON TOP of the fizz. These are the foreground — louder
-  // and more frequent than the previous "really quiet fireworks"
-  // tuning. Still has a soft attack (5% of length) so they read as
-  // crackles, not the Geiger transients of two iterations ago.
-  const POPS_PER_SEC = 6;
+  // Crackles ON TOP of the fizz — SUBTLE. Rare, quiet, with a soft
+  // attack so they barely announce themselves above the fizz floor.
+  // The fizz carries the ambience; the pops are just a hint that
+  // there's fire in the room.
+  const POPS_PER_SEC = 1.5;
   const totalPops = Math.floor(loopDur * POPS_PER_SEC);
   for (let p = 0; p < totalPops; p++) {
     const start = Math.floor(Math.random() * d.length);
-    // Pop duration: 20–80 ms.
-    const popLen = Math.floor(sr * (0.020 + Math.random() * 0.060));
-    const amp = 0.45 + Math.random() * 0.50;   // punchier, range 0.45–0.95
+    const popLen = Math.floor(sr * (0.025 + Math.random() * 0.060));
+    const amp = 0.06 + Math.random() * 0.14;   // 0.06–0.20 — quiet
     for (let i = 0; i < popLen && start + i < d.length; i++) {
-      // 5% attack — short enough to feel like a crackle pop with
-      // weight, not so short it's a Geiger click.
-      const attackLen = popLen * 0.05;
+      // 18% gentle attack — pops swell in rather than punch in.
+      const attackLen = popLen * 0.18;
       const attack = i < attackLen ? i / attackLen : 1;
-      const decay = Math.exp(-i / (popLen * 0.40));
+      const decay = Math.exp(-i / (popLen * 0.45));
       const env = attack * decay;
       d[start + i] += (Math.random() * 2 - 1) * amp * env;
     }
