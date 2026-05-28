@@ -286,70 +286,105 @@ export function spawnStairs(
   };
   for (const m of outlineTargets) addOutline(m);
 
-  // Mega-halo: a wide faint outer billboard. Calling-from-afar
-  // cue. Toned back from the previous pass — the inverse-hull
-  // outline does most of the heavy lifting now; this just nudges
-  // the eye toward the stair through fog.
-  const megaHaloMat = new THREE.SpriteMaterial({
-    map: getTexture('fire-wisp'),
-    color: 0x6a92dc,
-    transparent: true,
-    opacity: 0.32,
-    blending: THREE.AdditiveBlending,
-    fog: false,
-    depthWrite: false,
-  });
-  const megaHalo = new THREE.Sprite(megaHaloMat);
-  megaHalo.scale.set(4.2, 4.2, 1);
-  megaHalo.position.set(0, 2.4, totalDepth / 2);
-  group.add(megaHalo);
+  // God-ray shaft instead of the old vertical billboards. The
+  // previous pass used three sprite billboards (mega-halo, outer
+  // beam, core beam) stacked vertically — they read as a fuzzy
+  // pillar of light, not a beam. Now: two tilted additive planes
+  // (haze + core) plus a handful of bright dust motes along the
+  // shaft. Same visual family as the godRay() model used in the
+  // signature vaults so the stair feels consistent with the rest
+  // of the ambient light system. Cool blue palette throughout so
+  // it matches the floor ring + inverse-hull outline.
+  const shaftTint  = 0xb0c8ff;
+  const shaftCore  = 0xe8eeff;
+  const shaftLandY = 0.3;     // bottom of the shaft sits just above the parapet
+  const shaftTopY  = 3.0;     // top reaches above the ceiling line
+  const shaftMidY  = (shaftLandY + shaftTopY) / 2;
+  const shaftLen   = shaftTopY - shaftLandY;
+  const shaftTilt  = 0.18;    // ~10° off vertical — reads as light through a crack
+  const shaftPivotZ = totalDepth / 2;   // shaft centred over the mouth
 
-  const outerBeamMat = new THREE.SpriteMaterial({
+  // Wider, softer outer plane — the diffuse haze around the beam.
+  const shaftOuterMat = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'),
-    color: 0x88a8e8,
+    color: shaftTint,
     transparent: true,
     opacity: 0.55,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
+    side: THREE.DoubleSide,
   });
-  const outerBeam = new THREE.Sprite(outerBeamMat);
-  outerBeam.scale.set(2.6, 5.8, 1);
-  outerBeam.position.set(0, 2.4, totalDepth / 2);
-  group.add(outerBeam);
+  const shaftOuter = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.55, shaftLen),
+    shaftOuterMat,
+  );
+  shaftOuter.position.set(0, shaftMidY, shaftPivotZ);
+  shaftOuter.rotation.z = shaftTilt;
+  group.add(shaftOuter);
 
-  const coreBeamMat = new THREE.SpriteMaterial({
+  // Narrower bright core — the visible centre of the ray.
+  const shaftCoreMat = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'),
-    color: 0xd8e4ff,
+    color: shaftCore,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.90,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const shaftCoreMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.55, shaftLen),
+    shaftCoreMat,
+  );
+  shaftCoreMesh.position.set(0, shaftMidY, shaftPivotZ + 0.02);
+  shaftCoreMesh.rotation.z = shaftTilt;
+  group.add(shaftCoreMesh);
+
+  // Dust motes along the shaft — bright additive sprites at
+  // varied positions catch the "particles drifting in the beam"
+  // feel without running a particle system. Slight offset along
+  // the shaft tilt so they read as INSIDE the beam.
+  const moteMat = new THREE.SpriteMaterial({
+    map: getTexture('fire-wisp'),
+    color: shaftCore,
+    transparent: true,
+    opacity: 0.85,
     blending: THREE.AdditiveBlending,
     fog: false,
     depthWrite: false,
   });
-  const coreBeam = new THREE.Sprite(coreBeamMat);
-  coreBeam.scale.set(0.7, 5.2, 1);
-  coreBeam.position.set(0, 2.4, totalDepth / 2);
-  group.add(coreBeam);
+  const moteOffsets: Array<[number, number]> = [
+    [-0.05, 0.6], [-0.10, 1.2], [-0.18, 1.85], [-0.25, 2.45], [-0.13, 2.8],
+  ];
+  const motes: THREE.Sprite[] = [];
+  for (const [ox, oy] of moteOffsets) {
+    const m = new THREE.Sprite(moteMat);
+    const size = 0.07 + Math.random() * 0.04;
+    m.scale.set(size, size, 1);
+    m.position.set(ox, shaftLandY + oy, shaftPivotZ);
+    group.add(m);
+    motes.push(m);
+  }
 
-  // Slow breath — opacity oscillates ±15% on a ~2.4s cycle. Driven
-  // off Date.now() via onBeforeRender so we don't need a global
-  // tick subscription. The eye reads slow opacity changes as
-  // "alive" — exactly the "the exit is calling" feel.
+  // Slow breath — opacity oscillates ±15% on a ~2.4s cycle.
+  // Drives the ring, outline, shaft layers and mote sprites
+  // together so the call pulses as one.
   const beamBreathSeed = Math.random() * Math.PI * 2;
-  const baseOuter = outerBeamMat.opacity;
-  const baseCore = coreBeamMat.opacity;
-  const baseRing = floorRingMat.opacity;
+  const baseOuter   = shaftOuterMat.opacity;
+  const baseCore    = shaftCoreMat.opacity;
+  const baseMote    = moteMat.opacity;
+  const baseRing    = floorRingMat.opacity;
   const baseOutline = outlineMat.opacity;
-  const baseMega = megaHaloMat.opacity;
-  outerBeam.onBeforeRender = () => {
+  shaftOuter.onBeforeRender = () => {
     const t = (Date.now() / 1000) * (Math.PI * 2 / 2.4) + beamBreathSeed;
     const b = 0.85 + 0.15 * Math.sin(t);
-    outerBeamMat.opacity = baseOuter * b;
-    coreBeamMat.opacity = baseCore * b;
+    shaftOuterMat.opacity = baseOuter * b;
+    shaftCoreMat.opacity = baseCore * b;
+    moteMat.opacity = baseMote * b;
     floorRingMat.opacity = baseRing * b;
     outlineMat.opacity = baseOutline * b;
-    megaHaloMat.opacity = baseMega * b;
   };
 
   const interactable = {
