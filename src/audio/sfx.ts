@@ -673,29 +673,31 @@ export function startAmbience() {
   const sr = c.sampleRate;
   const b = c.createBuffer(1, Math.floor(sr * loopDur), sr);
   const d = b.getChannelData(0);
-  // Fizz bed — fills the whole buffer with quiet noise so there's
-  // ALWAYS something making sound, not just pop-silence-pop.
-  const FIZZ_AMP = 0.05;
+  // Fizz bed — VERY quiet bed of noise so there's never absolute
+  // silence between pops (silent gaps are what make sparse clicks
+  // read as Geiger ticks). Kept low enough that it doesn't dominate
+  // — the pops should be the foreground sound.
+  const FIZZ_AMP = 0.018;
   for (let i = 0; i < d.length; i++) {
     d[i] = (Math.random() * 2 - 1) * FIZZ_AMP;
   }
-  // Soft pops layered ON TOP of the fizz. Fewer than before (4/sec vs 7)
-  // and gentler — they accent the fizz rather than replace it.
-  const POPS_PER_SEC = 4;
+  // Crackles ON TOP of the fizz. These are the foreground — louder
+  // and more frequent than the previous "really quiet fireworks"
+  // tuning. Still has a soft attack (5% of length) so they read as
+  // crackles, not the Geiger transients of two iterations ago.
+  const POPS_PER_SEC = 6;
   const totalPops = Math.floor(loopDur * POPS_PER_SEC);
   for (let p = 0; p < totalPops; p++) {
     const start = Math.floor(Math.random() * d.length);
-    // Pop duration: 25–95 ms — longer than before so each pop reads
-    // as a crackle, not a tick.
-    const popLen = Math.floor(sr * (0.025 + Math.random() * 0.070));
-    const amp = 0.20 + Math.random() * 0.35;   // softer peaks
+    // Pop duration: 20–80 ms.
+    const popLen = Math.floor(sr * (0.020 + Math.random() * 0.060));
+    const amp = 0.45 + Math.random() * 0.50;   // punchier, range 0.45–0.95
     for (let i = 0; i < popLen && start + i < d.length; i++) {
-      // Gentle attack over the first 10% of the pop, then exponential
-      // decay over the rest. The non-zero attack is what kills the
-      // "click" character — sharp transients are what made it Geiger.
-      const attackLen = popLen * 0.10;
+      // 5% attack — short enough to feel like a crackle pop with
+      // weight, not so short it's a Geiger click.
+      const attackLen = popLen * 0.05;
       const attack = i < attackLen ? i / attackLen : 1;
-      const decay = Math.exp(-i / (popLen * 0.45));
+      const decay = Math.exp(-i / (popLen * 0.40));
       const env = attack * decay;
       d[start + i] += (Math.random() * 2 - 1) * amp * env;
     }
