@@ -1,6 +1,7 @@
 import { getSettings, updateSettings } from '../settings/settings';
 import { setMasterVolume } from '../audio/sfx';
 import { openScreen, closeScreen } from './screen-manager';
+import { getUpdateStatus, applyUpdate, onUpdateStatusChange } from '../pwa-update';
 
 // Settings panel.
 //
@@ -150,6 +151,15 @@ function buildPanelContents() {
     },
     format: (v) => `${Math.round(v * 100)}%`,
   }));
+
+  // --- Auto-update toggle + install-now button ---
+  panel.appendChild(makeToggle({
+    label: 'AUTO UPDATE',
+    description: 'Install new builds automatically when you return to the title screen.',
+    get: () => getSettings().autoUpdate,
+    set: (v) => updateSettings({ autoUpdate: v }),
+  }));
+  panel.appendChild(makeUpdateRow());
 
   // --- RUN ACTIONS ──────────────────────────────────────────────────
   // Bottom-of-panel danger-ish row. Three buttons in descending
@@ -430,6 +440,74 @@ function makeToggle(opts: ToggleOpts): HTMLDivElement {
     switchEl.style.background = newVal ? 'rgba(255, 160, 80, 0.6)' : 'rgba(60, 40, 30, 0.6)';
     knob.style.left = newVal ? '18px' : '2px';
   });
+
+  return row;
+}
+
+/** Update status row: shows "UP TO DATE" (disabled) or "INSTALL UPDATE"
+ *  (tappable, applies the pending SW). Live-updates when the status
+ *  changes — subscribes to pwa-update via onUpdateStatusChange. */
+function makeUpdateRow(): HTMLDivElement {
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '12px',
+  } as Partial<CSSStyleDeclaration>);
+
+  const label = document.createElement('div');
+  label.textContent = 'UPDATE';
+  Object.assign(label.style, {
+    fontSize: '11px',
+    fontWeight: '600',
+    letterSpacing: '0.25em',
+    color: 'rgba(220, 180, 140, 0.85)',
+  } as Partial<CSSStyleDeclaration>);
+  row.appendChild(label);
+
+  const button = document.createElement('button');
+  Object.assign(button.style, {
+    padding: '6px 12px',
+    fontSize: '11px',
+    fontWeight: '600',
+    letterSpacing: '0.25em',
+    borderRadius: '3px',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  } as Partial<CSSStyleDeclaration>);
+
+  function render() {
+    const pending = getUpdateStatus() === 'pending';
+    if (pending) {
+      button.textContent = 'INSTALL NOW';
+      button.disabled = false;
+      Object.assign(button.style, {
+        background: 'rgba(255, 160, 80, 0.6)',
+        border: '1px solid rgba(255, 200, 140, 0.8)',
+        color: 'rgba(255, 240, 220, 0.98)',
+      } as Partial<CSSStyleDeclaration>);
+    } else {
+      button.textContent = 'UP TO DATE';
+      button.disabled = true;
+      Object.assign(button.style, {
+        background: 'rgba(40, 32, 26, 0.6)',
+        border: '1px solid rgba(120, 90, 70, 0.4)',
+        color: 'rgba(150, 130, 110, 0.65)',
+        cursor: 'default',
+      } as Partial<CSSStyleDeclaration>);
+    }
+  }
+  render();
+  onUpdateStatusChange(render);
+
+  button.addEventListener('click', () => {
+    if (getUpdateStatus() !== 'pending') return;
+    button.textContent = 'INSTALLING…';
+    button.disabled = true;
+    void applyUpdate();   // triggers reload — this panel goes away with it
+  });
+  row.appendChild(button);
 
   return row;
 }

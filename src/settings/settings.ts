@@ -11,6 +11,9 @@ export interface Settings {
   hybridLook: boolean;
   /** Master audio volume (0..1). */
   masterVolume: number;
+  /** Auto-install new builds at safe moments (title screen). When false,
+   *  the player taps "INSTALL UPDATE" in the settings menu instead. */
+  autoUpdate: boolean;
 }
 
 const STORAGE_KEY = 'delve-settings';
@@ -19,6 +22,7 @@ const DEFAULTS: Settings = {
   lookSensitivity: CONFIG.LOOK_SENSITIVITY,
   hybridLook: false,
   masterVolume: 0.55,
+  autoUpdate: true,
 };
 
 let current: Settings = load();

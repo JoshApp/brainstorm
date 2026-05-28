@@ -21,6 +21,8 @@ import { registerSW } from 'virtual:pwa-register';
 import { isHarnessPaused } from './harness/pause';
 
 type UpdateStatus = 'none' | 'pending';
+const POLL_INTERVAL_MS = 60_000;
+
 let status: UpdateStatus = 'none';
 let updateSW: ((reloadPage?: boolean) => Promise<void>) | null = null;
 const listeners: Array<(s: UpdateStatus) => void> = [];
@@ -28,10 +30,25 @@ const listeners: Array<(s: UpdateStatus) => void> = [];
 export function setupPwaAutoUpdate(): void {
   if (!('serviceWorker' in navigator)) return;
 
-  // registerSW from virtual:pwa-register: returns a function that triggers
-  // SKIP_WAITING + auto-reload on call. We only call it when we decide
-  // a moment is safe.
+  // registerSW from virtual:pwa-register: registers the SW and returns
+  // a function that triggers SKIP_WAITING + auto-reload on call. We
+  // only call updateSW(true) when WE decide a moment is safe (see
+  // applyUpdate / maybeApplyUpdateSilently).
+  //
+  // CRITICAL: registerSW does NOT poll for new SWs on its own. Without
+  // an explicit periodic update() call, the browser only checks for
+  // new SWs on hard navigation. On a long-lived PWA tab that means
+  // "never." The 60s polling below is what makes "deploy → live in a
+  // minute" actually work.
   updateSW = registerSW({
+    onRegisteredSW(_swUrl, registration) {
+      if (!registration) return;
+      // Initial check immediately, then every 60s.
+      registration.update().catch(() => { /* offline / no-op */ });
+      window.setInterval(() => {
+        registration.update().catch(() => { /* offline / no-op */ });
+      }, POLL_INTERVAL_MS);
+    },
     onNeedRefresh() {
       status = 'pending';
       for (const fn of listeners) fn(status);

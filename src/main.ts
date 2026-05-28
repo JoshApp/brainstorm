@@ -827,9 +827,11 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   function openTitle() {
     // Title is the safest moment to apply a pending PWA update — no
     // in-progress run state, save (if any) is on disk. If an update
-    // is pending and we're not in the harness, take it now; the page
-    // navigates and this title invocation becomes a no-op.
-    void maybeApplyUpdateSilently();
+    // is pending AND the player has Auto Update on (default), take
+    // it now; the page navigates and this title invocation becomes
+    // a no-op. With Auto Update off they have to install via the
+    // settings menu's UPDATE NOW button instead.
+    if (getSettings().autoUpdate) void maybeApplyUpdateSilently();
     const save = loadSave();
     showStartScreen({
     hasSave: !!save,
