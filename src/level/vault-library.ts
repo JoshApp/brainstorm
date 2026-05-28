@@ -415,6 +415,44 @@ const ENCOUNTER_PRISON: Vault = {
   torchTint: TORCH_BLOOD,
 };
 
+// Blood altar encounter. A single cursed offering (ring of marrow)
+// floats over a basin in the centre of the chamber. Walking into the
+// glow does nothing; TAKE costs 4 HP and erupts in blood — the item
+// is yours, the stone block stays as a marker. Real gamble: at low
+// HP this kills you outright. Two flanking candles + cool side
+// torches frame the basin in violet glow from the offering itself.
+const ENCOUNTER_BLOOD_ALTAR: Vault = {
+  id: 'encounter-blood-altar',
+  tags: ['encounter'],
+  map: [
+    '############',
+    '#....T.....#',
+    '#..........#',
+    '#..........#',
+    '#..........#',
+    '#..........#',
+    '#..........#',
+    '#....t.....#',
+    '############',
+  ],
+  minDepth: 2,
+  weight: 1,
+  torchTint: TORCH_BLOOD,
+  props: [
+    { kind: 'blood-altar', x: 0, z: 0, rotY: 0, itemId: 'ring-of-marrow' },
+    // Diegetic hint placed where the player approaches from the south
+    // entry corridor. Voice matches the rest of the tutorial-style
+    // marginalia: terse, lowercase, world-spoken.
+    {
+      kind: 'hint',
+      x: 0, z: 2.0,
+      text: 'the price is in marrow.',
+      triggerRadius: 2.8,
+      lingerMs: 5000,
+    },
+  ],
+};
+
 // Spike-trap puzzle. Chest in the centre with four spike traps in the
 // corners — the loot is visible but reaching it on a careless approach
 // hurts. Non-combat encounter that changes the playstyle from "fight
@@ -556,7 +594,7 @@ export const VAULTS: Vault[] = [
   COMBAT_OPEN, COMBAT_PILLARS, COMBAT_CHOKE, COMBAT_HALL, COMBAT_ARENA, COMBAT_DOORS,
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
-  ENCOUNTER_PRISON, ENCOUNTER_TRAPPED,
+  ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
   BOSS_ANTECHAMBER, BOSS_CATHEDRAL,
   EXIT_SIMPLE, EXIT_ALCOVE, EXIT_GRAND,
 ];

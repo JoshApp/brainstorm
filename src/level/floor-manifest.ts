@@ -24,13 +24,14 @@ import type { LevelSpec, PropSpec } from './types';
  *  want a per-floor cap on it. PropSpec kinds not listed are unlimited
  *  (e.g. pillars, vases, chests — those are placed per-vault by
  *  design). */
-export type ContentKind = 'fountain' | 'altar';
+export type ContentKind = 'fountain' | 'altar' | 'blood-altar';
 
 /** Which PropSpec kinds map to which manifest content kind. Anything
  *  not in this map is unconstrained. */
 const PROP_KIND_TO_CONTENT: Partial<Record<PropSpec['kind'], ContentKind>> = {
   fountain: 'fountain',
   altar: 'altar',
+  'blood-altar': 'blood-altar',
 };
 
 export interface FloorManifest {
@@ -53,6 +54,11 @@ export function rollManifest(_depth: number, _rand: () => number): FloorManifest
       // Same for altars. One altar per floor stays special; two on the
       // same map dilutes the "this chamber is for the rite" beat.
       altar: 1,
+      // Blood altars: at most one per floor. Doubling up would mean
+      // the player can stack two gambles on the same descent, which
+      // makes the "gamble or pass" choice flatter and amplifies
+      // run variance to dice-roll levels.
+      'blood-altar': 1,
     },
   };
 }

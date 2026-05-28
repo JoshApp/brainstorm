@@ -10,6 +10,7 @@ import { clearTutorialHints } from '../effects/tutorial-hints';
 import { clearAlerts } from '../mobs/alerts';
 import { clearDriftingMotes } from '../effects/drifting-motes';
 import { clearShatterBurst } from '../effects/shatter-burst';
+import { clearBloodBurst } from '../effects/blood-burst';
 import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
 import { actForDepth } from './acts';
 
@@ -129,6 +130,7 @@ export function tickPendingLoad() {
     clearAlerts();
     clearDriftingMotes();
     clearShatterBurst();
+    clearBloodBurst();
     activeLevel.teardown();
     activeLevel = null;
   }

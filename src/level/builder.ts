@@ -14,6 +14,7 @@ import { buildModel } from '../ecs/build-model';
 import { spawnChest } from '../interactables/chest';
 import { spawnStashChest } from '../interactables/stash-chest';
 import { spawnStarterAltar } from '../interactables/starter-altar';
+import { spawnBloodAltar } from '../interactables/blood-altar';
 import { ITEMS } from '../content/items';
 import { spawnTutorialHint } from '../effects/tutorial-hints';
 import { spawnDoor } from '../interactables/door';
@@ -627,6 +628,29 @@ export function buildLevel(
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.45,
       });
+    } else if (prop.kind === 'blood-altar') {
+      const item = ITEMS[prop.itemId];
+      if (item) {
+        // Same AABB pattern as the starter altar — slightly wider
+        // footprint matches the larger basin geometry. Stone block
+        // stays a collider for the rest of the run.
+        obstacles.push({
+          kind: 'aabb',
+          minX: prop.x - 0.44, maxX: prop.x + 0.44,
+          minZ: prop.z - 0.36, maxZ: prop.z + 0.36,
+        });
+        spawnBloodAltar(
+          root,
+          new THREE.Vector3(prop.x, 0, prop.z),
+          prop.rotY ?? 0,
+          item,
+          materials,
+          undefined,
+        );
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`blood-altar references unknown itemId: ${prop.itemId}`);
+      }
     } else if (prop.kind === 'starter-altar') {
       const weapon = ITEMS[prop.weaponId];
       if (weapon) {

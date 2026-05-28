@@ -56,6 +56,7 @@ import { tickGoldCoins, clearGoldCoins } from './effects/gold-coins';
 import { tickTutorialHints, clearTutorialHints } from './effects/tutorial-hints';
 import { initDriftingMotes, tickDriftingMotes } from './effects/drifting-motes';
 import { tickShatterBurst } from './effects/shatter-burst';
+import { tickBloodBurst } from './effects/blood-burst';
 import { actForDepth } from './level/acts';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
@@ -497,6 +498,7 @@ function tick() {
   // destructibles. Uses scaled dt so the chunks slow-mo with
   // the hit-pause / death sequence (reads as crunchier).
   tickShatterBurst(scaledDt);
+  tickBloodBurst(scaledDt);
 
   // Interact tick + UI run OUTSIDE the freeze gate so the in-range
   // detection + icon button persist through hit-pauses + scenarios. We

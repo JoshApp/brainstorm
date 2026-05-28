@@ -136,6 +136,15 @@ export type PropSpec =
       /** Item id (from src/content/items.ts) to offer on this altar. */
       weaponId: string;
     }
+  | {
+      kind: 'blood-altar';
+      x: number;
+      z: number;
+      rotY?: number;
+      /** Item id (from src/content/items.ts) — the cursed offering.
+       *  Vault authors hand-pick; procgen may roll from a pool later. */
+      itemId: string;
+    }
   // 'hint' = an invisible tutorial trigger. When the player walks
   // within `triggerRadius`, italic in-world text fades in at the
   // trigger's position. Optional `dismissOn` event hook cuts the

@@ -309,6 +309,23 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: RING_OF_FRENZY,
     modifiers: [{ kind: 'damage-multiplier', amount: 1.2 }],
   },
+  // ── BLOOD-ALTAR OFFERINGS ─────────────────────────────────────────
+  // Cursed items with REAL downsides — what you get for paying HP at
+  // a blood altar. Each trades raw flesh (max-hp) for a meaningful
+  // combat advantage. Model reuses an existing ring silhouette; the
+  // cursed-violet rarity tint on pickup is the visual giveaway.
+  'ring-of-marrow': {
+    id: 'ring-of-marrow',
+    kind: 'ring',
+    rarity: 'cursed',
+    name: 'A bone-set ring',
+    flavor: 'It carved the wearer for the wearer.',
+    dropModel: RING_OF_FRENZY,
+    modifiers: [
+      { kind: 'weapon-damage', amount: 2 },
+      { kind: 'max-hp', amount: -1 },
+    ],
+  },
   // ── CONSUMABLES ────────────────────────────────────────────────────
   'healing-potion': {
     id: 'healing-potion',
