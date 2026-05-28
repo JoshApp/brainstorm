@@ -7,6 +7,7 @@ import {
   HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
   IRON_COIF, BONE_AMULET, LEATHER_GLOVES, WORN_BOOTS, WOODEN_SHIELD,
+  OIL_LAMP_MODEL,
 } from './loot-models';
 import { PASSIVES } from './passives';
 
@@ -203,7 +204,20 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: WORN_BOOTS,
     modifiers: [{ kind: 'physical-armor', amount: 1 }],
   },
-  // ── OFFHAND (shield) ───────────────────────────────────────────────
+  // ── OFFHAND ────────────────────────────────────────────────────────
+  // The lamp is the player's default offhand. Equipping a shield (or any
+  // other offhand item) removes the lamp's light — that's the design
+  // tradeoff: visibility vs defence. The handheld viewmodel + the
+  // PointLight registration live in src/player/handheld-lamp.ts; the
+  // model here is the floor / inventory silhouette only.
+  'oil-lamp': {
+    id: 'oil-lamp',
+    kind: 'offhand',
+    rarity: 'mundane',
+    name: 'An oil lamp',
+    flavor: 'The flame is your only friend down here.',
+    dropModel: OIL_LAMP_MODEL,
+  },
   'wooden-shield': {
     id: 'wooden-shield',
     kind: 'offhand',

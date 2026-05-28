@@ -4,7 +4,8 @@ import { updateTorchlight } from './scene/torchlight';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/camera';
 import { createSword } from './player/sword';
-import { attachLamp, tickLamp } from './player/handheld-lamp';
+import { attachLamp, detachLamp, tickLamp } from './player/handheld-lamp';
+import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
@@ -190,19 +191,30 @@ initLevelLoader({
 // --- Player: held sword ---
 const sword = createSword(camera);
 
-// --- Player: handheld lamp ---
-// Warm PointLight parented to the camera, offset to the off-hand
-// position. Carries with the player everywhere and gives consistent
-// near-field visibility — corners between torches no longer pitch-black.
-attachLamp(camera);
-
-// Sword viewmodel + combat stats are now driven REACTIVELY by the equipment
-// slot system. Whenever the weapon slot changes (pickup, manual equip via
-// the inventory panel, etc.), this listener swaps the visible model + the
-// active stats. Single source of truth: equipment.
+// Sword + offhand viewmodels are driven REACTIVELY by the equipment
+// slot system. Whenever a slot changes (pickup, manual equip via the
+// inventory panel, save restore), this listener swaps the visible model
+// + the active stats. Single source of truth: equipment.
+//
+// Offhand handling — the lamp is a special offhand item that owns its
+// own viewmodel + a registered PointLight (handheld-lamp.ts). Any other
+// offhand item (shield, future spell focus, etc.) renders through the
+// generic offhand-viewmodel manager. Equipping a shield silently
+// removes the lamp's light — that's the design tradeoff: visibility
+// vs defence.
 onEquipmentChanged((eq) => {
   if (eq.weapon?.viewmodel) sword.equip(eq.weapon.viewmodel);
   if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
+  if (eq.offhand?.id === 'oil-lamp') {
+    detachOffhandViewmodel();
+    attachLamp(camera);
+  } else if (eq.offhand) {
+    detachLamp();
+    attachOffhandViewmodel(camera, eq.offhand.dropModel);
+  } else {
+    detachLamp();
+    detachOffhandViewmodel();
+  }
 });
 
 // --- Combat ---
@@ -552,7 +564,10 @@ function applyState(saveData: ReturnType<typeof loadSave>) {
       for (let i = 0; i < count; i++) addItemSilently(id);
     }
   }
-  // Equipment — set saved slots, OR default starter weapon for new runs.
+  // Equipment — set saved slots, OR defaults for new runs.
+  // Starter loadout: rusted sword + oil lamp. The lamp is the player's
+  // light source; equipping a different offhand (shield, future spell
+  // focus) puts the dungeon back into torch-only darkness.
   if (saveData) {
     for (const [slot, itemId] of Object.entries(saveData.equipment)) {
       if (itemId && ITEMS[itemId]) setSlot(slot as EquipSlot, ITEMS[itemId]);
@@ -560,8 +575,11 @@ function applyState(saveData: ReturnType<typeof loadSave>) {
     // Safety: if save somehow has no weapon, fall back so the player
     // isn't unarmed (would render as no held viewmodel).
     if (!saveData.equipment.weapon) setSlot('weapon', ITEMS['rusted-sword']);
+    // Same safety for offhand — pre-offhand-slot saves won't have one.
+    if (!saveData.equipment.offhand) setSlot('offhand', ITEMS['oil-lamp']);
   } else {
     setSlot('weapon', ITEMS['rusted-sword']);
+    setSlot('offhand', ITEMS['oil-lamp']);
   }
   // HP — restore to saved value, or full for new run.
   const player = getEntity('player');

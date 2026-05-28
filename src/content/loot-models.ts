@@ -152,6 +152,33 @@ export const WORN_BOOTS: ModelSpec = {
 };
 
 // --- Shield — round wooden shield with metal rim ---
+// Oil lamp — small iron-cage lantern with a glowing flame inside.
+// Used as both the dropModel for the starter offhand item AND the
+// visible icon in inventory. The actual handheld viewmodel still
+// lives inline in handheld-lamp.ts because it owns a registered
+// light source + flicker (this model is just a static silhouette).
+export const OIL_LAMP_MODEL: ModelSpec = {
+  id: 'oil-lamp',
+  materials: {
+    iron: { color: 0x1a1410, metalness: 0.7, roughness: 0.45, emissive: 0x2a1a08, emissiveIntensity: 0.4, fog: false, flatShading: 'auto' },
+    flame: { color: 0x000000, emissive: 0xffc488, emissiveIntensity: 2.4, roughness: 0.4, fog: false },
+  },
+  parts: [
+    // Top + bottom plates of the cage.
+    { kind: 'cylinder', pos: [0, 0.07, 0], radius: 0.06, radiusTop: 0.05, height: 0.02, segments: 8, mat: 'iron' },
+    { kind: 'cylinder', pos: [0, -0.07, 0], radius: 0.055, radiusTop: 0.06, height: 0.02, segments: 8, mat: 'iron' },
+    // Four cage bars connecting top and bottom.
+    { kind: 'box', pos: [0.045, 0, 0.045], size: [0.012, 0.12, 0.012], mat: 'iron' },
+    { kind: 'box', pos: [-0.045, 0, 0.045], size: [0.012, 0.12, 0.012], mat: 'iron' },
+    { kind: 'box', pos: [0.045, 0, -0.045], size: [0.012, 0.12, 0.012], mat: 'iron' },
+    { kind: 'box', pos: [-0.045, 0, -0.045], size: [0.012, 0.12, 0.012], mat: 'iron' },
+    // The flame at the heart.
+    { kind: 'sphere', pos: [0, 0, 0], radius: 0.028, segments: [10, 8], mat: 'flame' },
+    // Top handle ring.
+    { kind: 'torus', pos: [0, 0.105, 0], radius: 0.022, tube: 0.005, segments: [10, 6], rot: [Math.PI / 2, 0, 0], mat: 'iron' },
+  ],
+};
+
 export const WOODEN_SHIELD: ModelSpec = {
   id: 'wooden-shield',
   materials: {

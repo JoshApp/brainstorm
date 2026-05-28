@@ -13,7 +13,7 @@ import * as THREE from 'three';
 // not nightvision, it's a thing you brought.
 
 import { CONFIG } from '../config';
-import { registerLight } from '../scene/light-pool';
+import { registerLight, unregisterLight } from '../scene/light-pool';
 
 interface LampState {
   /** World position vector — mutated each frame from the lantern's
@@ -174,6 +174,23 @@ export function attachLamp(camera: THREE.Camera) {
     getIntensity: () => state.currentIntensity,
     persistent: true,
   });
+}
+
+/** Remove the lamp viewmodel + unregister its light. Idempotent. */
+export function detachLamp() {
+  if (!lamp) return;
+  lamp.group.parent?.remove(lamp.group);
+  unregisterLight('player-lamp');
+  // Dispose so we don't leak GPU memory when the player swaps offhand
+  // back and forth between lamp and shield.
+  lamp.group.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) m.dispose();
+    mesh.geometry.dispose();
+  });
+  lamp = null;
 }
 
 /** Per-frame tick. Layered-sine flicker on intensity + flame brightness. */
