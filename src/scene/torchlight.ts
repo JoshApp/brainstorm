@@ -3,23 +3,30 @@ import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { WALL_TORCH } from '../content/torch';
 import { registerLight, unregisterLight } from './light-pool';
+import type { ModelSpec } from '../ecs/model-types';
 
-// Wall-mounted torch — visible flame + a logical light source registered
-// with the light pool. The pool decides whether this torch is one of the
-// N nearest sources and gets a real slot; if not, the flame still renders
-// (visual cue), the light just doesn't contribute to fragment shading.
+// Wall-mounted lit fixture — torch, wall cresset, or any future
+// drop-in wall-light ModelSpec. Visible flame + a logical light
+// source registered with the light pool.
 //
-// Per-instance state: flicker time, base intensity, flame mesh/material/
-// wisp. updateTorchlight() drives the flicker each frame; the pool reads
-// torch.currentIntensity via the source's getIntensity callback.
+// The fixture model is passed in by the caller (default WALL_TORCH for
+// backwards compat with code that hasn't migrated yet). If the model
+// has a 'flame' part + 'flame' material, the per-frame tick wobbles
+// them like the classic torch does. If those parts are absent (the
+// wall cresset uses a sprite-stack flame instead), the per-mesh
+// flicker is skipped — the model's own sprite flicker handles the
+// "alive" work. Either way the light's intensity flickers, so the
+// scene shading reads as torch-class.
 
 export interface Torch {
   /** World position the pool reads each frame. Same vector as the
    *  registered source's position — never reallocated. */
   position: THREE.Vector3;
   group: THREE.Group;
-  flameMaterial: THREE.MeshStandardMaterial;
-  flameMesh: THREE.Mesh;
+  /** Present for fixtures that have a named 'flame' part (classic
+   *  torch). Absent for sprite-stack fixtures (wall cresset). */
+  flameMaterial?: THREE.MeshStandardMaterial;
+  flameMesh?: THREE.Mesh;
   wispSprite?: THREE.Sprite;
   wispBaseColor?: THREE.Color;
   wispBaseScale?: THREE.Vector3;
@@ -44,25 +51,29 @@ export function createTorchlight(
   wallYaw: number = 0,
   colorTint?: number,
   intensityMul: number = 1,
+  fixtureModel: ModelSpec = WALL_TORCH,
 ): Torch {
-  const built = buildModel(WALL_TORCH);
+  const built = buildModel(fixtureModel);
   built.group.position.copy(position);
   built.group.rotation.y = wallYaw;
   scene.add(built.group);
 
-  const flameMaterial = built.materials.get('flame') as THREE.MeshStandardMaterial;
-  const flameMesh = built.parts.get('flame') as THREE.Mesh;
-  if (!WALL_TORCH.light) {
-    throw new Error('WALL_TORCH model is missing its light spec');
+  // 'flame' part + material are OPTIONAL — sprite-stack fixtures don't
+  // have them. The per-frame tick checks for their presence before
+  // mutating, so undefined here is fine.
+  const flameMaterial = built.materials.get('flame') as THREE.MeshStandardMaterial | undefined;
+  const flameMesh = built.parts.get('flame') as THREE.Mesh | undefined;
+  if (!fixtureModel.light) {
+    throw new Error(`${fixtureModel.id} is missing its light spec`);
   }
-  const lightSpec = WALL_TORCH.light;
+  const lightSpec = fixtureModel.light;
   const effectiveColor = colorTint ?? lightSpec.color;
 
-  if (colorTint !== undefined) {
+  if (flameMaterial && colorTint !== undefined) {
     flameMaterial.emissive.setHex(colorTint);
   }
 
-  const baseIntensity = CONFIG.TORCH_INTENSITY * intensityMul;
+  const baseIntensity = lightSpec.intensity * intensityMul;
 
   const wispSprite = built.parts.get('wisp') as THREE.Sprite | undefined;
   if (wispSprite && colorTint !== undefined) {
@@ -92,7 +103,7 @@ export function createTorchlight(
     wispBaseColor,
     wispBaseScale,
     baseIntensity,
-    baseEmissive: flameMaterial.emissiveIntensity,
+    baseEmissive: flameMaterial?.emissiveIntensity ?? 0,
     currentIntensity: baseIntensity,
     sourceId: torchSourceId,
     time: 0,
@@ -144,11 +155,17 @@ export function updateTorchlight(torch: Torch, dt: number) {
   );
 
   // --- VISIBLE FLAME ---
+  // Only fixtures with a named 'flame' MESH + material get the per-
+  // frame emissive/scale wobble (classic torch). Sprite-stack
+  // fixtures (wall cresset) skip this branch entirely — their
+  // sprites flicker via the built-in ModelSpec flicker hook.
   const fFast = Math.sin((t + n1) * 23) * 0.35;
   const fXfast = Math.sin((t + n2) * 47) * 0.25;
   const fMed = Math.sin((t + n3) * 8) * 0.4;
   const flameFactor = lightFactor + (fFast + fXfast + fMed) * 0.18;
-  torch.flameMaterial.emissiveIntensity = Math.max(0.6, torch.baseEmissive * flameFactor);
+  if (torch.flameMaterial) {
+    torch.flameMaterial.emissiveIntensity = Math.max(0.6, torch.baseEmissive * flameFactor);
+  }
 
   let scaleJitter = 1;
   if (torch.flameMesh) {

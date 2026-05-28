@@ -7,6 +7,7 @@ import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
 import { spawnVase, spawnVaseCluster, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
+import { wallFixtureModel } from './lit-fixture-pool';
 import { createEnemy, type Enemy } from '../mobs/enemy';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
@@ -755,7 +756,11 @@ export function buildLevel(
     }
   }
 
-  // --- Torches ---
+  // --- Torches / wall cressets ---
+  // Each TorchSpec carries a fixtureKind set at emission time by
+  // pickWallFixture (defaults to 'torch' for legacy specs). Resolve
+  // the kind to the right ModelSpec and hand it to createTorchlight,
+  // which is now model-agnostic.
   const torches: Torch[] = [];
   for (const t of spec.torches) {
     torches.push(
@@ -765,6 +770,7 @@ export function buildLevel(
         torchYawForWall(t.wall),
         t.colorTint,
         t.intensityMul,
+        wallFixtureModel(t.fixtureKind),
       ),
     );
   }

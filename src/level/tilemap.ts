@@ -43,6 +43,7 @@ import type {
 } from './types';
 import { ITEMS } from '../content/items';
 import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
+import { pickWallFixture } from './lit-fixture-pool';
 
 // Pool of corpse notes. Procgen picks one per corpse-cell — deterministic
 // via the seed if we extend the API to take a Random.
@@ -437,6 +438,11 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
             wall,
             colorTint: opts.torchTint,
             intensityMul: 0.95,
+            // Roll the wall-fixture pool — mostly torches with the
+            // occasional wall cresset for silhouette variety. Same
+            // light spec across variants so the env light pool sees
+            // no difference; only the visible model changes.
+            fixtureKind: pickWallFixture(Math.random),
           });
           break;
         }

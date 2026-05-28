@@ -1,4 +1,5 @@
 import type { ModelSpec } from '../ecs/model-types';
+import { CONFIG } from '../config';
 
 // "Coloured-light props" — small fixtures whose primary purpose is throwing a
 // non-warm light into a space. Used to break up the dungeon's default warm
@@ -39,18 +40,98 @@ export const MOONLIGHT_CRACK: ModelSpec = {
   },
 };
 
+// Wall cresset — a wall-mounted iron sconce holding a small flame
+// basket. Drop-in alternative to WALL_TORCH for the lit-fixture
+// pool. Same local conventions: origin = flame centre (where the
+// PointLight sits), -Z = into the wall (arm reaches back to mount).
+//
+// Sprite-stack flame (no MeshStandard 'flame' part) — the cheap
+// per-sprite flicker handles all the "alive" work. createTorchlight
+// in src/scene/torchlight.ts is built to tolerate the missing
+// 'flame' / 'wisp' parts so this model needs neither.
+//
+// Light spec mirrors WALL_TORCH exactly so the pool can't tell the
+// fixtures apart — a cresset at slot N is indistinguishable from a
+// torch at slot N for shading purposes. The only difference is the
+// silhouette.
+export const WALL_CRESSET: ModelSpec = {
+  id: 'wall-cresset',
+  moodTintable: true,
+  materials: {
+    iron: { color: 0x14110d, roughness: 0.55, metalness: 0.6, flatShading: true },
+    coal: { color: 0x1a0e08, roughness: 1.0, flatShading: true },
+  },
+  parts: [
+    // Wall plate — small flat anchor flush with the wall, suggests
+    // a forged bracket bolted into the masonry.
+    { kind: 'box',      pos: [0, -0.10, -0.32], size: [0.10, 0.18, 0.04], mat: 'iron' },
+    // Sconce arm — horizontal bar reaching from the plate to under
+    // the basket. -Z is into wall; arm runs along Z.
+    { kind: 'box',      pos: [0, -0.16, -0.18], size: [0.035, 0.035, 0.28], mat: 'iron' },
+    // Brace strut — angled support from arm down to plate.
+    { kind: 'box',      pos: [0, -0.21, -0.24], size: [0.025, 0.025, 0.18], rot: [Math.PI / 6, 0, 0], mat: 'iron' },
+    // Basket cup — short tapered cylinder at the arm tip.
+    { kind: 'cylinder', pos: [0, -0.10, -0.02], radius: 0.058, radiusTop: 0.075, height: 0.06, segments: 12, mat: 'iron' },
+    // Basket rim — thin torus across the top.
+    { kind: 'torus',    pos: [0, -0.07, -0.02], radius: 0.070, tube: 0.008, segments: [4, 14], rot: [Math.PI / 2, 0, 0], mat: 'iron' },
+    // Coal mound inside the basket.
+    { kind: 'cylinder', pos: [0, -0.085, -0.02], radius: 0.052, radiusTop: 0.045, height: 0.02, segments: 10, mat: 'coal', jitter: 0.005 },
+    // Smouldering hot dots on the coal.
+    {
+      kind: 'sprite', pos: [-0.025, -0.07, 0.0], size: [0.06, 0.06],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff6824, opacity: 0.85,
+      flicker: { scale: 0.30, bob: 0.004, speed: 3.1 },
+    },
+    {
+      kind: 'sprite', pos: [ 0.025, -0.07, -0.03], size: [0.05, 0.05],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff7028, opacity: 0.85,
+      flicker: { scale: 0.28, bob: 0.004, speed: 2.5 },
+    },
+    // Flame stack — small, fits within the basket footprint.
+    {
+      kind: 'sprite', pos: [0, -0.02, -0.02], size: [0.11, 0.13],
+      texture: 'fire-wisp', blending: 'additive', color: 0xffe8b0,
+      flicker: { scale: 0.18, bob: 0.014, speed: 3.3 },
+    },
+    {
+      kind: 'sprite', pos: [0,  0.04, -0.02], size: [0.12, 0.20],
+      texture: 'fire-wisp', blending: 'additive', color: 0xffd070,
+      flicker: { scale: 0.22, bob: 0.024, speed: 2.5 },
+    },
+    {
+      kind: 'sprite', pos: [0,  0.11, -0.02], size: [0.15, 0.26],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff9040,
+      flicker: { scale: 0.24, bob: 0.032, speed: 1.9 },
+    },
+    {
+      kind: 'sprite', pos: [0,  0.04, -0.02], size: [0.34, 0.42],
+      texture: 'fire-wisp', blending: 'additive', color: 0xc8642a, opacity: 0.48,
+      flicker: { scale: 0.10, bob: 0.014, speed: 0.9 },
+    },
+  ],
+  light: {
+    // Torch-class light so the pool treats cresset and torch
+    // identically. No castShadow — wall cresset is a sibling of
+    // torch and shadow cost on mobile is already metered by torches
+    // alone; doubling the shadow casters by adding cressets isn't
+    // worth it.
+    color: CONFIG.TORCH_COLOR,
+    intensity: CONFIG.TORCH_INTENSITY,
+    distance: CONFIG.TORCH_DISTANCE,
+    decay: CONFIG.TORCH_DECAY,
+    castShadow: false,
+  },
+};
+
 // Iron brazier — a forged fire bowl on a stout pedestal, flames
 // licking up out of the bowl. Free-standing, reads from any angle
 // as "occupied chamber, someone lit this." Sits anywhere on a floor.
 //
-// No attached PointLight by default — the flame stack is visually
-// bright (additive sprites) but adds no scene illumination, so we
-// stay inside the existing mobile light budget. Brazier should be
-// placed in rooms that already have torches; it visually "borrows"
-// their warmth and adds a focal point. If a room needs a brazier to
-// be the SOLE light source later, it can be wrapped with a `light:`
-// spec — but that's a deliberate per-placement decision, not the
-// default.
+// Torch-class attached PointLight — contends in the environment
+// slot pool alongside torches and the wall cresset. The pool's
+// LOS + frustum cull + nearest-N ranking handles slot allocation,
+// so a brazier in a room with 4 torches just adds a 5th contender
+// — only the player-visible ones win slots each frame.
 //
 // Authored centred on origin with base flush at y=0 — so a placer
 // can drop it straight onto the floor with `y: 0`.
@@ -122,14 +203,27 @@ export const IRON_BRAZIER: ModelSpec = {
       texture: 'fire-wisp', blending: 'additive', color: 0xff5020,
       flicker: { scale: 0.28, bob: 0.08, speed: 2.9 },
     },
-    // Outer warmth haze — wide + dim. Sells the "warm zone around
-    // the brazier" feel without needing an attached PointLight.
+    // Outer warmth haze — wide + dim.
     {
       kind: 'sprite', pos: [0, 0.88, 0], size: [0.85, 0.70],
       texture: 'fire-wisp', blending: 'additive', color: 0xc8642a, opacity: 0.55,
       flicker: { scale: 0.10, bob: 0.02, speed: 0.9 },
     },
   ],
+  light: {
+    // Brazier shares the torch-class profile so it can substitute
+    // for / contend alongside torches in the environment light pool
+    // without changing the budget. Light origin sits at the flame
+    // stack's mid-height (≈0.95m). castShadow off — most braziers
+    // sit near a wall and a shadow caster there pays for almost no
+    // visible benefit.
+    color: CONFIG.TORCH_COLOR,
+    intensity: CONFIG.TORCH_INTENSITY,
+    distance: CONFIG.TORCH_DISTANCE,
+    decay: CONFIG.TORCH_DECAY,
+    pos: [0, 0.95, 0],
+    castShadow: false,
+  },
 };
 
 // Cresset pike — a tall iron rod driven point-first into the floor,
@@ -137,9 +231,9 @@ export const IRON_BRAZIER: ModelSpec = {
 // well at room edges, in corners, or flanking doorways without
 // claiming much floor footprint. ~2.0m total.
 //
-// Like the brazier: no attached PointLight. The flame is bright
-// additively; place the pike inside the envelope of existing torch
-// light or treat it as a purely visual accent.
+// Like the brazier: torch-class attached PointLight registered with
+// the environment pool. The light origin sits at the basket height
+// so the floor pool around the pike matches the visible flame.
 export const CRESSET_PIKE: ModelSpec = {
   id: 'cresset-pike',
   moodTintable: true,
@@ -205,6 +299,17 @@ export const CRESSET_PIKE: ModelSpec = {
       flicker: { scale: 0.10, bob: 0.02, speed: 0.9 },
     },
   ],
+  light: {
+    // Pike rides the same torch-class profile as the brazier.
+    // Position is raised toward the basket (≈2.1m) so the light's
+    // apparent origin matches the visible flame.
+    color: CONFIG.TORCH_COLOR,
+    intensity: CONFIG.TORCH_INTENSITY,
+    distance: CONFIG.TORCH_DISTANCE,
+    decay: CONFIG.TORCH_DECAY,
+    pos: [0, 2.10, 0],
+    castShadow: false,
+  },
 };
 
 // Floor glow: ambient mood. Earlier passes tried to make this

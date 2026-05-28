@@ -192,6 +192,12 @@ export type PropSpec =
   // without forcing every vault to repeat the layout.
   | { kind: 'group'; groupId: string; x: number; z: number; rotY?: number };
 
+/** Wall-mounted lit fixture. Variant picked at emission time from
+ *  the wall-fixture pool (torch or wall cresset). All variants share
+ *  the torch-class light spec so the light pool treats them
+ *  identically. */
+export type WallFixtureKind = 'torch' | 'wall-cresset';
+
 export type TorchSpec = {
   x: number;
   z: number;
@@ -203,6 +209,10 @@ export type TorchSpec = {
   colorTint?: number;
   /** Optional intensity multiplier (defaults to 1). Use 0.5 for a dying/dim torch. */
   intensityMul?: number;
+  /** Which wall fixture model to build. Defaults to 'torch' for
+   *  every emission path that hasn't rolled the pool yet (legacy
+   *  vault parsers, tests). */
+  fixtureKind?: WallFixtureKind;
 };
 
 export type EnemySpawnSpec = {
