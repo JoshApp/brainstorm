@@ -55,7 +55,13 @@ export const PROP_GROUPS: Record<string, PropGroupSpec> = {
       { prop: { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.82, z: 0, rotY: 0.25 } },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x: -0.85, y: 0, z: 0.2 }, minClearance: 0.5 },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x:  0.85, y: 0, z: 0.2 }, minClearance: 0.5 },
-      { prop: { kind: 'corpse', x: 0, z: 1.4, rotY: 0.3, note: CORPSE_NOTE }, minClearance: 0.6 },
+      // Corpse sprawled at the altar's foot, facing AWAY from
+      // the altar — they died crawling away. The facing
+      // directive resolves at compose time using world coords;
+      // expandGroup rotates / translates the target point so
+      // the directive lands correctly even when the whole group
+      // is rotated or offset within a vault.
+      { prop: { kind: 'corpse', x: 0, z: 1.4, facing: { kind: 'point-away', x: 0, z: 0 }, note: CORPSE_NOTE }, minClearance: 0.6 },
     ],
   },
 
@@ -101,14 +107,16 @@ export const PROP_GROUPS: Record<string, PropGroupSpec> = {
   },
 
   // Chest with two flanking candles + a corpse defender — the "the
-  // last guy died protecting this loot" arrangement.
+  // last guy died protecting this loot" arrangement. The chest
+  // faces the corpse (defender fell trying to open it); corpse
+  // faces the chest (still reaching).
   'chest-cache': {
     id: 'chest-cache',
     children: [
-      { prop: { kind: 'chest', x: 0, z: 0 } },
+      { prop: { kind: 'chest', x: 0, z: 0, facing: { kind: 'point-toward', x: 0, z: 1.3 } } },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x: -0.7, y: 0, z: -0.4 }, minClearance: 0.5 },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x:  0.7, y: 0, z: -0.4 }, minClearance: 0.5 },
-      { prop: { kind: 'corpse', x: 0, z: 1.3, rotY: 0.8, note: CORPSE_NOTE }, minClearance: 0.6 },
+      { prop: { kind: 'corpse', x: 0, z: 1.3, facing: { kind: 'point-toward', x: 0, z: 0 }, note: CORPSE_NOTE }, minClearance: 0.6 },
       { prop: { kind: 'model', model: GLOW_CACHE, x: 0, y: 0, z: 0 } },
     ],
   },

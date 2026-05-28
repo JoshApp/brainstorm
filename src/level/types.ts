@@ -35,6 +35,35 @@ export type PropCollision =
   | { kind: 'circle'; r: number; ox?: number; oz?: number }
   | { kind: 'aabb'; halfW: number; halfD: number; ox?: number; oz?: number };
 
+/** Declarative facing directive for a prop. Resolves to a
+ *  concrete rotY at compose time via src/level/facing.ts. The
+ *  resolver knows about room rects + the prop's position, so
+ *  authoring is "what should this prop's FRONT do" instead of
+ *  "what angle in radians".
+ *
+ *  Convention: a prop's FRONT is its local +Z direction at rotY=0.
+ *  At rotY=0 the prop's front points world +Z (south). The
+ *  resolver rotates the prop so its front lines up with the
+ *  named target.
+ *
+ *  Variants:
+ *    fixed         — explicit rotY; equivalent to setting rotY directly.
+ *    wall-away     — front faces AWAY from the nearest wall of the
+ *                    containing room (back of the prop against that
+ *                    wall). The chest's natural placement.
+ *    wall-toward   — front faces the nearest wall (sconces, paintings).
+ *    point-away    — front points away from a world XZ point
+ *                    (corpse sprawled away from a trap).
+ *    point-toward  — front points at a world XZ point (corpse
+ *                    reaching for an altar; bone shrine facing
+ *                    a fountain). */
+export type PropFacing =
+  | { kind: 'fixed'; rotY: number }
+  | { kind: 'wall-away' }
+  | { kind: 'wall-toward' }
+  | { kind: 'point-away'; x: number; z: number }
+  | { kind: 'point-toward'; x: number; z: number };
+
 export type RoomSpec = {
   id: string;
   /** The walkable rectangle for this room. Walls are built on its perimeter. */
@@ -65,19 +94,20 @@ export type PropSpec =
       x: number; y: number; z: number;
       rotY?: number; rotX?: number; rotZ?: number;
       collision?: PropCollision | PropCollision[];
+      facing?: PropFacing;
     }
   // 'chest' = an openable container. When the player interacts, the lid swings
   // up and an optional loot pickup spawns beside it.
-  | { kind: 'chest'; x: number; z: number; rotY?: number; loot?: import('../content/items').ItemSpec }
+  | { kind: 'chest'; x: number; z: number; rotY?: number; facing?: PropFacing; loot?: import('../content/items').ItemSpec }
   // 'stash-chest' = the meta-progression stash entry point. Lives in
   // the safe room. Interacting opens the stash UI (loot boxes saved
   // across runs).
-  | { kind: 'stash-chest'; x: number; z: number; rotY?: number }
+  | { kind: 'stash-chest'; x: number; z: number; rotY?: number; facing?: PropFacing }
   // ── Non-combat encounters ────────────────────────────────────────
   // 'corpse' = a slumped body with a note. Walk up, read it. Pure
   // atmosphere + (later) LLM-pluggable lore. The note text is short
   // and in the in-world grimdark tone.
-  | { kind: 'corpse'; x: number; z: number; rotY?: number; note: string }
+  | { kind: 'corpse'; x: number; z: number; rotY?: number; facing?: PropFacing; note: string }
   // 'vase' = small destructible ceramic prop. Takes a hit from
   // the player's swing, shatters into a few stone-shard pieces,
   // and may drop a small reward (gold or potion). Tiny obstacle
@@ -97,7 +127,7 @@ export type PropSpec =
   // 'fountain' = a basin of suspect liquid. DRINK to gamble: half the
   // time it heals to full; half the time it curses you (lasting debuff
   // for the rest of the run). One-use per fountain.
-  | { kind: 'fountain'; x: number; z: number; rotY?: number }
+  | { kind: 'fountain'; x: number; z: number; rotY?: number; facing?: PropFacing }
   // 'hint' = an invisible tutorial trigger. When the player walks
   // within `triggerRadius`, italic in-world text fades in at the
   // trigger's position. Optional `dismissOn` event hook cuts the

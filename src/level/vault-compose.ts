@@ -5,6 +5,7 @@ import { parseTileMap } from './tilemap';
 import { populateTemplate } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { applyGeometryWarp, applySurfaceClutter } from './clutter';
+import { resolveAllFacings } from './facing';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
 // with corridors between, and assemble a single LevelSpec the
@@ -274,15 +275,19 @@ export function composeFloor(
   };
 
   // ── DECORATION PIPELINE ────────────────────────────────────────
-  // Two clearly delineated phases (see clutter.ts for the pipeline
-  // doc). The first owns everything that PHYSICALLY EXISTS in the
-  // playable space; the second only paints surface decoration.
+  // Three clearly delineated phases:
   //
+  //   Phase A: Facing resolution — walk every prop with a
+  //            declarative `facing` directive (wall-away,
+  //            wall-toward, point-away, point-toward) and
+  //            replace it with a concrete rotY. Runs first so
+  //            all downstream stages see final orientations.
   //   Phase B: Geometry warp — archways with column collision,
   //            buttresses + ruined columns with collision,
   //            corner mounds + wall piles for visual mass,
   //            torch reconciliation against final wall set.
   //   Phase C: Surface decoration — debris, cracks, wall damage.
+  resolveAllFacings(result);
   applyGeometryWarp(result, rand);
   applySurfaceClutter(result, rand);
 
@@ -334,7 +339,20 @@ function clamp(v: number, lo: number, hi: number): number {
 function translateProp(p: PropSpec, dx: number, dz: number): PropSpec {
   // Every PropSpec variant has x + z at top level. Some have a y for
   // 'model' which we leave alone.
-  return { ...p, x: p.x + dx, z: p.z + dz } as PropSpec;
+  const result = { ...p, x: p.x + dx, z: p.z + dz } as PropSpec;
+  // If the prop carries a point-* facing directive, the world
+  // point also needs the same offset applied.
+  if ('facing' in p && p.facing) {
+    const f = p.facing;
+    if (f.kind === 'point-away' || f.kind === 'point-toward') {
+      (result as { facing?: typeof f }).facing = {
+        kind: f.kind,
+        x: f.x + dx,
+        z: f.z + dz,
+      };
+    }
+  }
+  return result;
 }
 
 /**
@@ -386,6 +404,23 @@ function transformGroupChild(
   // model / stash-chest), compound it with the group rotation.
   if ('rotY' in child.prop && rotY !== 0) {
     (result as { rotY?: number }).rotY = (child.prop.rotY ?? 0) + rotY;
+  }
+  // If the child carries a `facing` directive that references a
+  // world point (point-away / point-toward), the referenced
+  // point also needs the group's rotate + translate applied so
+  // it lands in the same world space as the prop. Other facing
+  // kinds (fixed / wall-*) are coordinate-free; pass through.
+  if ('facing' in child.prop && child.prop.facing) {
+    const f = child.prop.facing;
+    if (f.kind === 'point-away' || f.kind === 'point-toward') {
+      const px = f.x * cosA - f.z * sinA;
+      const pz = f.x * sinA + f.z * cosA;
+      (result as { facing?: typeof f }).facing = {
+        kind: f.kind,
+        x: gx + px,
+        z: gz + pz,
+      };
+    }
   }
   return result;
 }
