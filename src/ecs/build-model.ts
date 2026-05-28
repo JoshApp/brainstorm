@@ -286,7 +286,29 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
         depthWrite: false,
       });
       const sprite = new THREE.Sprite(spriteMat);
-      sprite.scale.set(part.size[0], part.size[1], 1);
+      const baseW = part.size[0];
+      const baseH = part.size[1];
+      sprite.scale.set(baseW, baseH, 1);
+      // Optional cheap flicker — wobbles scale + Y position via a
+      // sine wave on Date.now(). No external tick needed.
+      if (part.flicker) {
+        const f = part.flicker;
+        const baseY = part.pos?.[1] ?? 0;
+        const phase = (f.phase ?? Math.random() * 100) * 1000;   // seconds → ms
+        const omega = (Math.PI * 2) * f.speed;
+        const scaleAmp = f.scale ?? 0;
+        const bobAmp = f.bob ?? 0;
+        sprite.onBeforeRender = () => {
+          const t = (Date.now() + phase) / 1000;
+          // Two superimposed sines at slightly different rates so
+          // the wobble doesn't look like a clean oscillation.
+          const a = Math.sin(omega * t);
+          const b = Math.sin(omega * 1.7 * t + 1.3);
+          const s = 1 + (a * 0.6 + b * 0.4) * scaleAmp;
+          sprite.scale.set(baseW * s, baseH * s, 1);
+          sprite.position.y = baseY + (a * 0.6 + b * 0.4) * bobAmp;
+        };
+      }
       return sprite;
     }
     case 'decal': {
