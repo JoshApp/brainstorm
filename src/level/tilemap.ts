@@ -536,7 +536,6 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   // Only operates on NON-perimeter walls (perimeter pairs across an
   // adjacent vault's matching edge get carved into a corridor opening
   // by the room-shell builder; they shouldn't be merged).
-  type Seg = { ax: number; az: number; bx: number; bz: number };
   const consolidated: Seg[] = consolidateInteriorWalls(walls, onRectEdge);
 
   const extraWalls = consolidated
