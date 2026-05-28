@@ -47,17 +47,26 @@ export function computeWeaponPose(pose: PoseKey, phase: SwordPhase, t: number): 
     case 'dagger-stab':        return daggerStabPose(phase, t);
     case 'dagger-slash':       return daggerSlashPose(phase, t);
     case 'dagger-double-stab': return daggerDoubleStabPose(phase, t);
+    case 'sword-slash-right':  return swordSlashRightPose(phase, t);
+    case 'sword-thrust':       return swordThrustPose(phase, t);
+    case 'hammer-swing-left':  return hammerSwingLeftPose(phase, t);
+    case 'hammer-swing-right': return hammerSwingRightPose(phase, t);
     case 'hammer-smash':       return hammerPose(phase, t);
-    case 'sword-slash':
-    default:                   return swordPose(phase, t);
+    case 'sword-slash-left':
+    default:                   return swordSlashLeftPose(phase, t);
   }
 }
 
-// ── Sword (existing diagonal slash) ───────────────────────────────
-// The arc the rusted shortsword + scimitar + heartburn already use.
-// Lifted out of sword.ts so the state machine can call it through
-// the unified entrypoint above.
-function swordPose(phase: SwordPhase, t: number): WeaponPose {
+// ── Sword combo: slash-left → slash-right → thrust ───────────────
+// Step 0: existing diagonal slash, ending on the lower-LEFT.
+// Step 1: mirror of step 0 — winds up on the LEFT, sweeps to the
+//         lower-RIGHT. Combined, the two slashes make an X-cut
+//         routine — natural rhythm for sword and ratchets toward
+//         the thrust finisher.
+// Step 2: forward lunge with the tip leading — committing finisher,
+//         long recover.
+
+function swordSlashLeftPose(phase: SwordPhase, t: number): WeaponPose {
   if (phase === 'windup') {
     // Pull up + back, pitch back.
     scratch.x = ix;
@@ -87,6 +96,93 @@ function swordPose(phase: SwordPhase, t: number): WeaponPose {
   scratch.rotX = (rx + 0.7) + (rx - (rx + 0.7)) * e;
   scratch.rotY = ry;
   scratch.rotZ = (rz + 0.3) + (rz - (rz + 0.3)) * e;
+  return scratch;
+}
+
+function swordSlashRightPose(phase: SwordPhase, t: number): WeaponPose {
+  // Mirror of slash-left. Winds up on the upper-LEFT, sweeps down
+  // and across to the lower-RIGHT. Rotations on rotY/rotZ flipped so
+  // the blade comes from the opposite shoulder.
+  const WOUND_X = ix - 0.10;
+  const WOUND_Y = iy + 0.18;
+  const WOUND_Z = iz + 0.05;
+  const WOUND_RX = rx - 0.9;
+  const WOUND_RY = ry - 0.30;
+  const WOUND_RZ = rz - 0.50;
+  const STRIKE_X = ix + 0.22;
+  const STRIKE_Y = iy - 0.25;
+  const STRIKE_Z = iz - 0.10;
+  const STRIKE_RX = rx + 0.65;
+  const STRIKE_RY = ry + 0.30;
+  const STRIKE_RZ = rz + 0.50;
+  if (phase === 'windup') {
+    scratch.x = ix + (WOUND_X - ix) * t;
+    scratch.y = iy + (WOUND_Y - iy) * t;
+    scratch.z = iz + (WOUND_Z - iz) * t;
+    scratch.rotX = rx + (WOUND_RX - rx) * t;
+    scratch.rotY = ry + (WOUND_RY - ry) * t;
+    scratch.rotZ = rz + (WOUND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WOUND_X + (STRIKE_X - WOUND_X) * ease;
+    scratch.y = WOUND_Y + (STRIKE_Y - WOUND_Y) * ease;
+    scratch.z = WOUND_Z + (STRIKE_Z - WOUND_Z) * ease;
+    scratch.rotX = WOUND_RX + (STRIKE_RX - WOUND_RX) * ease;
+    scratch.rotY = WOUND_RY + (STRIKE_RY - WOUND_RY) * ease;
+    scratch.rotZ = WOUND_RZ + (STRIKE_RZ - WOUND_RZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = STRIKE_X + (ix - STRIKE_X) * e;
+  scratch.y = STRIKE_Y + (iy - STRIKE_Y) * e;
+  scratch.z = STRIKE_Z + (iz - STRIKE_Z) * e;
+  scratch.rotX = STRIKE_RX + (rx - STRIKE_RX) * e;
+  scratch.rotY = STRIKE_RY + (ry - STRIKE_RY) * e;
+  scratch.rotZ = STRIKE_RZ + (rz - STRIKE_RZ) * e;
+  return scratch;
+}
+
+function swordThrustPose(phase: SwordPhase, t: number): WeaponPose {
+  // Forward lunge — tip leads. Larger reach than the dagger thrust
+  // because the sword is longer; deeper push along -Z. Rotation
+  // mirrors the dagger stab orientation (sword blade tip is +Y in
+  // the model, same as dagger).
+  const THRUST_RX = rx - 1.15;
+  const THRUST_RY = ry + 0.15;
+  const THRUST_RZ = rz - 0.40;
+  const WOUND_X = ix - 0.08;
+  const WOUND_Y = iy + 0.10;
+  const WOUND_Z = iz + 0.12;
+  const THRUST_DEPTH = 0.55;
+  if (phase === 'windup') {
+    scratch.x = ix + (WOUND_X - ix) * t;
+    scratch.y = iy + (WOUND_Y - iy) * t;
+    scratch.z = iz + (WOUND_Z - iz) * t;
+    scratch.rotX = rx + (THRUST_RX - rx) * t;
+    scratch.rotY = ry + (THRUST_RY - ry) * t;
+    scratch.rotZ = rz + (THRUST_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WOUND_X;
+    scratch.y = WOUND_Y;
+    scratch.z = WOUND_Z + (-THRUST_DEPTH) * ease;
+    scratch.rotX = THRUST_RX;
+    scratch.rotY = THRUST_RY;
+    scratch.rotZ = THRUST_RZ;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  const fromZ = WOUND_Z - THRUST_DEPTH;
+  scratch.x = WOUND_X + (ix - WOUND_X) * e;
+  scratch.y = WOUND_Y + (iy - WOUND_Y) * e;
+  scratch.z = fromZ + (iz - fromZ) * e;
+  scratch.rotX = THRUST_RX + (rx - THRUST_RX) * e;
+  scratch.rotY = THRUST_RY + (ry - THRUST_RY) * e;
+  scratch.rotZ = THRUST_RZ + (rz - THRUST_RZ) * e;
   return scratch;
 }
 
@@ -244,7 +340,102 @@ function daggerDoubleStabPose(phase: SwordPhase, t: number): WeaponPose {
   return scratch;
 }
 
-// ── Hammer (overhead smash) ───────────────────────────────────────
+// ── Hammer combo: swing-left → swing-right → smash ───────────────
+// Step 0/1: lateral side-smashes. Hammer head wound up high on one
+// shoulder, sweeps down and ACROSS the view to the opposite side.
+// Reads as a horizontal smash — same head-leads logic as the overhead
+// finisher but the arc is sideways instead of vertical.
+// Step 2: the existing overhead crash — committing finisher.
+
+function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
+  // Side-smash from the RIGHT, ending on the LEFT. Hammer head
+  // pitches forward in windup (so it leads the swing), rolls
+  // INWARD so the head trails to the right side at the apex.
+  const WOUND_X = ix + 0.20;        // pulled to the right
+  const WOUND_Y = iy + 0.38;        // up high
+  const WOUND_Z = iz + 0.05;
+  const WOUND_RX = rx - 0.55;       // head pitches forward
+  const WOUND_RY = ry + 0.45;       // yaw toward right
+  const WOUND_RZ = rz + 0.55;       // roll the head outward to the right
+  const STRIKE_X = ix - 0.32;       // sweep across to the LEFT
+  const STRIKE_Y = iy - 0.08;       // crashes through eye-line
+  const STRIKE_Z = iz - 0.12;
+  const STRIKE_RX = rx + 0.15;
+  const STRIKE_RY = ry - 0.45;      // yaw flips the other way
+  const STRIKE_RZ = rz - 0.65;      // roll all the way over
+  if (phase === 'windup') {
+    scratch.x = ix + (WOUND_X - ix) * t;
+    scratch.y = iy + (WOUND_Y - iy) * t;
+    scratch.z = iz + (WOUND_Z - iz) * t;
+    scratch.rotX = rx + (WOUND_RX - rx) * t;
+    scratch.rotY = ry + (WOUND_RY - ry) * t;
+    scratch.rotZ = rz + (WOUND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WOUND_X + (STRIKE_X - WOUND_X) * ease;
+    scratch.y = WOUND_Y + (STRIKE_Y - WOUND_Y) * ease;
+    scratch.z = WOUND_Z + (STRIKE_Z - WOUND_Z) * ease;
+    scratch.rotX = WOUND_RX + (STRIKE_RX - WOUND_RX) * ease;
+    scratch.rotY = WOUND_RY + (STRIKE_RY - WOUND_RY) * ease;
+    scratch.rotZ = WOUND_RZ + (STRIKE_RZ - WOUND_RZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = STRIKE_X + (ix - STRIKE_X) * e;
+  scratch.y = STRIKE_Y + (iy - STRIKE_Y) * e;
+  scratch.z = STRIKE_Z + (iz - STRIKE_Z) * e;
+  scratch.rotX = STRIKE_RX + (rx - STRIKE_RX) * e;
+  scratch.rotY = STRIKE_RY + (ry - STRIKE_RY) * e;
+  scratch.rotZ = STRIKE_RZ + (rz - STRIKE_RZ) * e;
+  return scratch;
+}
+
+function hammerSwingRightPose(phase: SwordPhase, t: number): WeaponPose {
+  // Mirror of swingLeft. Wound up on the LEFT, sweeps to the RIGHT.
+  const WOUND_X = ix - 0.32;
+  const WOUND_Y = iy + 0.38;
+  const WOUND_Z = iz + 0.05;
+  const WOUND_RX = rx - 0.55;
+  const WOUND_RY = ry - 0.45;
+  const WOUND_RZ = rz - 0.65;
+  const STRIKE_X = ix + 0.22;
+  const STRIKE_Y = iy - 0.08;
+  const STRIKE_Z = iz - 0.12;
+  const STRIKE_RX = rx + 0.15;
+  const STRIKE_RY = ry + 0.45;
+  const STRIKE_RZ = rz + 0.55;
+  if (phase === 'windup') {
+    scratch.x = ix + (WOUND_X - ix) * t;
+    scratch.y = iy + (WOUND_Y - iy) * t;
+    scratch.z = iz + (WOUND_Z - iz) * t;
+    scratch.rotX = rx + (WOUND_RX - rx) * t;
+    scratch.rotY = ry + (WOUND_RY - ry) * t;
+    scratch.rotZ = rz + (WOUND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WOUND_X + (STRIKE_X - WOUND_X) * ease;
+    scratch.y = WOUND_Y + (STRIKE_Y - WOUND_Y) * ease;
+    scratch.z = WOUND_Z + (STRIKE_Z - WOUND_Z) * ease;
+    scratch.rotX = WOUND_RX + (STRIKE_RX - WOUND_RX) * ease;
+    scratch.rotY = WOUND_RY + (STRIKE_RY - WOUND_RY) * ease;
+    scratch.rotZ = WOUND_RZ + (STRIKE_RZ - WOUND_RZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = STRIKE_X + (ix - STRIKE_X) * e;
+  scratch.y = STRIKE_Y + (iy - STRIKE_Y) * e;
+  scratch.z = STRIKE_Z + (iz - STRIKE_Z) * e;
+  scratch.rotX = STRIKE_RX + (rx - STRIKE_RX) * e;
+  scratch.rotY = STRIKE_RY + (ry - STRIKE_RY) * e;
+  scratch.rotZ = STRIKE_RZ + (rz - STRIKE_RZ) * e;
+  return scratch;
+}
+
+// ── Hammer (overhead smash — finisher) ────────────────────────────
 // Big wind-up: viewmodel rises high above the camera, the HEAD
 // pitches back over the shoulder. Strike sweeps the head forward
 // and down through the centre line — gravity-driven. Slow recovery

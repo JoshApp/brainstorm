@@ -19,12 +19,16 @@ import { getCharacter } from '../state/character';
 // Adding a new combo step starts with adding its pose key here, then
 // writing the matching pose() function over there. The string-key
 // indirection lets one class reuse another's pose (e.g. a future
-// "longsword" combo step could borrow 'sword-slash' for its first hit).
+// "longsword" combo step could borrow 'sword-slash-left' for its first hit).
 export type PoseKey =
-  | 'sword-slash'
+  | 'sword-slash-left'
+  | 'sword-slash-right'
+  | 'sword-thrust'
   | 'dagger-stab'
   | 'dagger-slash'
   | 'dagger-double-stab'
+  | 'hammer-swing-left'
+  | 'hammer-swing-right'
   | 'hammer-smash';
 
 export interface ComboStep {
@@ -74,27 +78,35 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     comboWindowMs: 380,
   },
   sword: {
-    // Single-step combo for now — the slash that's already authored.
-    // Sword's multi-step (slash-left → slash-right → thrust) lands
-    // once we tune the dagger feel and reuse the same shape.
+    // slash-left → slash-right → thrust. Step 0 and step 1 use the
+    // shared sword-swing timings (mirrored animations); the thrust
+    // finisher gets a slightly longer recover so missing it stings.
     combo: [
-      { pose: 'sword-slash',
+      { pose: 'sword-slash-left',
         windup:  CONFIG.SWORD_SWING_WINDUP,
         strike:  CONFIG.SWORD_SWING_STRIKE,
         recover: CONFIG.SWORD_SWING_RECOVER },
+      { pose: 'sword-slash-right',
+        windup:  CONFIG.SWORD_SWING_WINDUP,
+        strike:  CONFIG.SWORD_SWING_STRIKE,
+        recover: CONFIG.SWORD_SWING_RECOVER },
+      { pose: 'sword-thrust', windup: 0.14, strike: 0.12, recover: 0.34 },
     ],
-    comboWindowMs: 350,
+    comboWindowMs: 380,
   },
   hammer: {
-    // Single-step combo for now — heavy overhead smash. Future combo:
-    // swing-left → swing-right → smash, with the third hit getting
-    // the long recover.
+    // swing-left → swing-right → smash. Two horizontal side-strikes
+    // then the existing overhead crash as the committing finisher.
+    // Steps 0/1 are lighter than the smash so the player can chain
+    // smoothly into the heavy third hit.
     combo: [
-      { pose: 'hammer-smash', windup: 0.28, strike: 0.14, recover: 0.50 },
+      { pose: 'hammer-swing-left',  windup: 0.20, strike: 0.12, recover: 0.36 },
+      { pose: 'hammer-swing-right', windup: 0.20, strike: 0.12, recover: 0.36 },
+      { pose: 'hammer-smash',       windup: 0.28, strike: 0.14, recover: 0.50 },
     ],
-    // Wider window than dagger — the hammer's slow recover means
-    // chaining feels OK on a less twitchy press.
-    comboWindowMs: 500,
+    // Wider window than dagger/sword — the hammer's slow recover
+    // means chaining feels OK on a less twitchy press.
+    comboWindowMs: 520,
   },
 };
 
