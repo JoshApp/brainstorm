@@ -7,6 +7,7 @@ import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { applyGeometryWarp, applySurfaceClutter } from './clutter';
 import { resolveAllFacings } from './facing';
 import { rollManifest, reconcileManifest } from './floor-manifest';
+import { getPropAABB, type PropAABB } from './prop-aabb';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
 // with corridors between, and assemble a single LevelSpec the
@@ -298,22 +299,106 @@ export function composeFloor(
   resolveAllFacings(result);
   applyGeometryWarp(result, rand);
   applySurfaceClutter(result, rand);
-  // PROGRESSION GUARANTEE: walk every chest in the floor and disable
-  // its collision if it overlaps a corridor rect. A chest planted in
-  // a corridor (vault author put 'c' at a cell adjacent to a corridor
-  // opening; corridor + chest footprint overlap) creates a hard
-  // block — the player cannot advance and there is no way around. We
-  // keep the chest visible and interactable so the loot can still be
-  // taken; only the collision push is dropped. Quiet, conservative
-  // safety net: most chests aren't affected, the ones that are can
-  // still be opened, and no permanent stuck state is possible.
+  // PROGRESSION GUARANTEE — two-phase safety net.
+  //
+  //  Phase 1 (preferred): nudge every collision-bearing prop out of
+  //  passage zones (corridor rects + door clearance bubbles). Most
+  //  cases resolve here — the chest just slides against the nearest
+  //  wall, reads as "intentional placement," and player can both
+  //  open the chest AND continue down the corridor.
+  //
+  //  Phase 2 (fallback): the chest-specific noCollision path stays
+  //  as a last resort for cases Phase 1 can't resolve (prop AABB
+  //  larger than the available wall offset). Chest is preserved
+  //  visible + interactable; the player walks through it.
+  //
+  // A reachability check sits over the top: BFS from spawn through
+  // a coarse walkability grid (rooms + corridors minus prop AABBs).
+  // Any stair not reachable from spawn means a non-corridor block
+  // (e.g. chest in a doorway between two sub-rooms). Walk the path
+  // and disable collision on whichever prop is the bottleneck.
+  nudgePropsOutOfPassages(result);
   clearChestsBlockingCorridors(result);
+  ensureStairsReachable(result);
 
   return result;
 }
 
-/** Disable collision on any chest whose footprint overlaps a corridor
- *  rect. See progression-guarantee note at the call site. */
+// ── Passage clearance ────────────────────────────────────────────────
+
+/** Build the set of "passage zones" — areas the player MUST be able
+ *  to walk through to advance. Corridors are the obvious case;
+ *  doors get a small clearance bubble around them so a chest sitting
+ *  right at the doorway gets nudged too. */
+function buildPassageAabbs(spec: LevelSpec): PropAABB[] {
+  const out: PropAABB[] = [];
+  // Corridor rects.
+  for (const c of spec.corridors ?? []) {
+    out.push({
+      minX: c.rect.x - c.rect.w / 2,
+      maxX: c.rect.x + c.rect.w / 2,
+      minZ: c.rect.z - c.rect.d / 2,
+      maxZ: c.rect.z + c.rect.d / 2,
+    });
+  }
+  // Door clearance bubbles — ±0.55m around each door's midpoint.
+  // Slightly larger than a 1m door so a prop hugging the door's edge
+  // also gets nudged.
+  const DOOR_HALF = 0.55;
+  for (const d of spec.doors ?? []) {
+    const cx = (d.ax + d.bx) / 2;
+    const cz = (d.az + d.bz) / 2;
+    out.push({
+      minX: cx - DOOR_HALF, maxX: cx + DOOR_HALF,
+      minZ: cz - DOOR_HALF, maxZ: cz + DOOR_HALF,
+    });
+  }
+  return out;
+}
+
+function aabbsOverlap(a: PropAABB, b: PropAABB): boolean {
+  return a.maxX > b.minX && a.minX < b.maxX &&
+         a.maxZ > b.minZ && a.minZ < b.maxZ;
+}
+
+/** Try to nudge a prop out of every passage AABB it overlaps. Greedy:
+ *  pick the smallest axis-aligned escape distance per overlap and
+ *  apply it. Returns true if the prop is fully clear of passages
+ *  afterward, false if a single overlap needs > MAX_NUDGE_M to escape. */
+const MAX_NUDGE_M = 1.0;
+function nudgePropsOutOfPassages(spec: LevelSpec): void {
+  const passages = buildPassageAabbs(spec);
+  if (passages.length === 0) return;
+  for (const prop of spec.props) {
+    if (!('x' in prop) || !('z' in prop)) continue;
+    // Best-effort loop: re-evaluate AABB each iteration since nudges
+    // accumulate. Hard cap iterations so a prop pinned between two
+    // passages can't loop forever.
+    for (let iter = 0; iter < 6; iter++) {
+      const aabb = getPropAABB(prop);
+      if (!aabb) break;
+      const overlap = passages.find((p) => aabbsOverlap(aabb, p));
+      if (!overlap) break;
+      // Compute the four axis-aligned escapes from this passage.
+      const escapes: Array<{ dx: number; dz: number; cost: number }> = [
+        { dx: overlap.maxX - aabb.minX + 0.02, dz: 0, cost: overlap.maxX - aabb.minX + 0.02 },
+        { dx: -(aabb.maxX - overlap.minX + 0.02), dz: 0, cost: aabb.maxX - overlap.minX + 0.02 },
+        { dx: 0, dz: overlap.maxZ - aabb.minZ + 0.02, cost: overlap.maxZ - aabb.minZ + 0.02 },
+        { dx: 0, dz: -(aabb.maxZ - overlap.minZ + 0.02), cost: aabb.maxZ - overlap.minZ + 0.02 },
+      ].sort((a, b) => a.cost - b.cost);
+      const best = escapes[0];
+      if (best.cost > MAX_NUDGE_M) break;  // can't nudge — leave to fallback
+      (prop as { x: number; z: number }).x += best.dx;
+      (prop as { x: number; z: number }).z += best.dz;
+    }
+  }
+}
+
+/** Final-resort chest fallback: any chest still overlapping a
+ *  corridor after the nudge pass loses its collision. The nudge
+ *  pass usually resolves this; this catches the few cases where the
+ *  nearest wall is > MAX_NUDGE_M away (very narrow vaults, props in
+ *  the middle of a corridor cell). */
 function clearChestsBlockingCorridors(result: LevelSpec): void {
   if (!result.corridors || result.corridors.length === 0) return;
   const corridorAabbs = result.corridors.map((c) => ({
@@ -322,27 +407,227 @@ function clearChestsBlockingCorridors(result: LevelSpec): void {
     minZ: c.rect.z - c.rect.d / 2,
     maxZ: c.rect.z + c.rect.d / 2,
   }));
-  // Match the chest AABB the builder pushes — slightly wider margin
-  // so a chest that just SKIMS a corridor edge also gets cleared
-  // (the player's collision radius would still catch the protrusion).
-  const CHEST_HX = 0.32;
-  const CHEST_HZ = 0.27;
   for (const prop of result.props) {
     if (prop.kind !== 'chest') continue;
-    const aabb = {
-      minX: prop.x - CHEST_HX, maxX: prop.x + CHEST_HX,
-      minZ: prop.z - CHEST_HZ, maxZ: prop.z + CHEST_HZ,
-    };
-    for (const c of corridorAabbs) {
-      const overlap =
-        aabb.maxX > c.minX && aabb.minX < c.maxX &&
-        aabb.maxZ > c.minZ && aabb.minZ < c.maxZ;
-      if (overlap) {
-        prop.noCollision = true;
-        break;
+    const aabb = getPropAABB(prop);
+    if (!aabb) continue;
+    if (corridorAabbs.some((c) => aabbsOverlap(aabb, c))) {
+      prop.noCollision = true;
+    }
+  }
+}
+
+// ── Reachability safety net ─────────────────────────────────────────
+
+/** BFS-based reachability check from the player's spawn to every
+ *  stair. If a stair is unreachable, scan the props blocking the
+ *  shortest path-by-bbox-overlap and disable collision on the first
+ *  CHEST in the way (the only kind we know carries noCollision today).
+ *  Catches blocks that aren't corridor-related: a chest pinned
+ *  between two sub-rooms in a multi-room vault, an altar dropped in
+ *  the only doorway, etc.
+ *
+ *  Cell-grid resolution is 0.5m — coarse enough to be cheap (a 30×30m
+ *  floor is 60×60 cells = 3600 cells) and fine enough to catch
+ *  prop-sized obstructions. */
+const REACH_CELL_M = 0.5;
+
+function ensureStairsReachable(spec: LevelSpec): void {
+  const stairs = spec.stairs ?? [];
+  if (stairs.length === 0) return;
+  // Build walkable cell grid covering the floor's bbox.
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const r of [...spec.rooms, ...spec.corridors]) {
+    minX = Math.min(minX, r.rect.x - r.rect.w / 2);
+    maxX = Math.max(maxX, r.rect.x + r.rect.w / 2);
+    minZ = Math.min(minZ, r.rect.z - r.rect.d / 2);
+    maxZ = Math.max(maxZ, r.rect.z + r.rect.d / 2);
+  }
+  if (!isFinite(minX)) return;
+  const cellsX = Math.ceil((maxX - minX) / REACH_CELL_M);
+  const cellsZ = Math.ceil((maxZ - minZ) / REACH_CELL_M);
+  const cellWalkable = new Uint8Array(cellsX * cellsZ);
+  const idx = (cx: number, cz: number) => cz * cellsX + cx;
+  // Mark cells inside any room/corridor as walkable.
+  for (const r of [...spec.rooms, ...spec.corridors]) {
+    const rMinX = r.rect.x - r.rect.w / 2;
+    const rMaxX = r.rect.x + r.rect.w / 2;
+    const rMinZ = r.rect.z - r.rect.d / 2;
+    const rMaxZ = r.rect.z + r.rect.d / 2;
+    const c0x = Math.max(0, Math.floor((rMinX - minX) / REACH_CELL_M));
+    const c1x = Math.min(cellsX - 1, Math.floor((rMaxX - minX) / REACH_CELL_M));
+    const c0z = Math.max(0, Math.floor((rMinZ - minZ) / REACH_CELL_M));
+    const c1z = Math.min(cellsZ - 1, Math.floor((rMaxZ - minZ) / REACH_CELL_M));
+    for (let cz = c0z; cz <= c1z; cz++) {
+      for (let cx = c0x; cx <= c1x; cx++) {
+        cellWalkable[idx(cx, cz)] = 1;
       }
     }
   }
+  // Map of cell → blocking prop (the first prop that marked it
+  // unwalkable). Lets the rescue step undo a specific blocker.
+  const cellBlocker = new Map<number, PropSpec>();
+  for (const prop of spec.props) {
+    // Chests can be rescued by setting noCollision; other kinds
+    // can't be (no flag on their type), so we skip recording them
+    // as rescuable. They still block reachability, just irrecoverably.
+    if (prop.kind !== 'chest') continue;
+    if (prop.noCollision) continue;
+    const aabb = getPropAABB(prop);
+    if (!aabb) continue;
+    const c0x = Math.max(0, Math.floor((aabb.minX - minX) / REACH_CELL_M));
+    const c1x = Math.min(cellsX - 1, Math.floor((aabb.maxX - minX) / REACH_CELL_M));
+    const c0z = Math.max(0, Math.floor((aabb.minZ - minZ) / REACH_CELL_M));
+    const c1z = Math.min(cellsZ - 1, Math.floor((aabb.maxZ - minZ) / REACH_CELL_M));
+    for (let cz = c0z; cz <= c1z; cz++) {
+      for (let cx = c0x; cx <= c1x; cx++) {
+        const i = idx(cx, cz);
+        if (cellWalkable[i]) {
+          cellWalkable[i] = 0;
+          cellBlocker.set(i, prop);
+        }
+      }
+    }
+  }
+  // BFS from spawn.
+  const sx = Math.floor((spec.startPos.x - minX) / REACH_CELL_M);
+  const sz = Math.floor((spec.startPos.z - minZ) / REACH_CELL_M);
+  if (sx < 0 || sx >= cellsX || sz < 0 || sz >= cellsZ) return;
+  const reached = new Uint8Array(cellsX * cellsZ);
+  const parent = new Int32Array(cellsX * cellsZ);
+  parent.fill(-1);
+  const queue: number[] = [];
+  const startIdx = idx(sx, sz);
+  if (cellWalkable[startIdx]) {
+    reached[startIdx] = 1;
+    queue.push(startIdx);
+  }
+  // Standard BFS, 4-connected.
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const cx = cur % cellsX;
+    const cz = Math.floor(cur / cellsX);
+    const neighbours: Array<[number, number]> = [
+      [cx + 1, cz], [cx - 1, cz], [cx, cz + 1], [cx, cz - 1],
+    ];
+    for (const [nx, nz] of neighbours) {
+      if (nx < 0 || nx >= cellsX || nz < 0 || nz >= cellsZ) continue;
+      const ni = idx(nx, nz);
+      if (reached[ni] || !cellWalkable[ni]) continue;
+      reached[ni] = 1;
+      parent[ni] = cur;
+      queue.push(ni);
+    }
+  }
+  // Rescue any stair that's unreachable. Strategy: re-run BFS
+  // ignoring cellWalkable for the blocker map's cells, walk the
+  // resulting path from spawn to stair, find the first cell on the
+  // path that had a rescuable blocker, disable that prop's collision,
+  // re-mark its cells walkable, retry. Cap rescues per call so a
+  // pathological floor can't loop.
+  for (const st of stairs) {
+    const tx = Math.floor((st.x - minX) / REACH_CELL_M);
+    const tz = Math.floor((st.z - minZ) / REACH_CELL_M);
+    if (tx < 0 || tx >= cellsX || tz < 0 || tz >= cellsZ) continue;
+    let attempts = 0;
+    while (!reached[idx(tx, tz)] && attempts < 8) {
+      attempts++;
+      const rescued = rescueOneBlocker(
+        cellWalkable, cellBlocker, reached, parent,
+        cellsX, cellsZ, startIdx, idx(tx, tz),
+      );
+      if (!rescued) break;
+    }
+  }
+}
+
+/** Find the first rescuable blocker on a hypothetical path from
+ *  start to goal, mark its cells walkable, then re-run BFS to update
+ *  reached/parent. Returns true if a rescue was applied. */
+function rescueOneBlocker(
+  walkable: Uint8Array,
+  blockers: Map<number, PropSpec>,
+  reached: Uint8Array,
+  parent: Int32Array,
+  cellsX: number,
+  cellsZ: number,
+  startIdx: number,
+  goalIdx: number,
+): boolean {
+  // Second BFS that traverses blocker cells too — gives us a path
+  // even when blockers stand between spawn and goal.
+  const reached2 = new Uint8Array(walkable.length);
+  const parent2 = new Int32Array(walkable.length);
+  parent2.fill(-1);
+  const queue: number[] = [];
+  reached2[startIdx] = 1;
+  queue.push(startIdx);
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (cur === goalIdx) break;
+    const cx = cur % cellsX;
+    const cz = Math.floor(cur / cellsX);
+    const neighbours: Array<[number, number]> = [
+      [cx + 1, cz], [cx - 1, cz], [cx, cz + 1], [cx, cz - 1],
+    ];
+    for (const [nx, nz] of neighbours) {
+      if (nx < 0 || nx >= cellsX || nz < 0 || nz >= cellsZ) continue;
+      const ni = nz * cellsX + nx;
+      if (reached2[ni]) continue;
+      // Permeable to blocker cells but NOT to "no room at all" cells
+      // (a cell that's not in any rect AND not a blocker — outside the
+      // floor entirely). Detect outside-floor by: not walkable AND no
+      // blocker entry.
+      if (!walkable[ni] && !blockers.has(ni)) continue;
+      reached2[ni] = 1;
+      parent2[ni] = cur;
+      queue.push(ni);
+    }
+  }
+  if (!reached2[goalIdx]) return false;
+  // Walk the path from goal back to start, find first blocker cell.
+  let firstBlocker: PropSpec | null = null;
+  for (let cur = goalIdx; cur !== -1; cur = parent2[cur]) {
+    const b = blockers.get(cur);
+    if (b) { firstBlocker = b; break; }
+  }
+  if (!firstBlocker) return false;
+  // Disable its collision (chest only — that's all we record).
+  if (firstBlocker.kind === 'chest') {
+    firstBlocker.noCollision = true;
+  } else {
+    return false;
+  }
+  // Re-mark every cell that this prop blocked as walkable.
+  for (const [cell, p] of blockers.entries()) {
+    if (p === firstBlocker) {
+      walkable[cell] = 1;
+      blockers.delete(cell);
+    }
+  }
+  // Re-do the main BFS so the next iteration sees the updated map.
+  reached.fill(0);
+  parent.fill(-1);
+  const queue2: number[] = [];
+  reached[startIdx] = 1;
+  queue2.push(startIdx);
+  while (queue2.length > 0) {
+    const cur = queue2.shift()!;
+    const cx = cur % cellsX;
+    const cz = Math.floor(cur / cellsX);
+    const neighbours: Array<[number, number]> = [
+      [cx + 1, cz], [cx - 1, cz], [cx, cz + 1], [cx, cz - 1],
+    ];
+    for (const [nx, nz] of neighbours) {
+      if (nx < 0 || nx >= cellsX || nz < 0 || nz >= cellsZ) continue;
+      const ni = nz * cellsX + nx;
+      if (reached[ni] || !walkable[ni]) continue;
+      reached[ni] = 1;
+      parent[ni] = cur;
+      queue2.push(ni);
+    }
+  }
+  return true;
 }
 
 // ── helpers ──────────────────────────────────────────────────────
