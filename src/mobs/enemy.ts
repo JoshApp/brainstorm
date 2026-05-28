@@ -89,6 +89,9 @@ export interface Enemy {
   phasing: boolean;
   hp: number;
   collisionRadius: number;
+  /** If true, the player walks through this mob (movement-only).
+   *  See EnemySpec.noPlayerCollision. */
+  noPlayerCollision: boolean;
   takeDamage(event: DamageEvent): number;
   update(
     dt: number,
@@ -1006,6 +1009,7 @@ export function createEnemy(
     group: container,
     hitTargets: built.hitTargets,
     collisionRadius: spec.collisionRadius,
+    noPlayerCollision: !!spec.noPlayerCollision,
     phasing: !!spec.phasing,
     get alive() {
       return aliveLocal;

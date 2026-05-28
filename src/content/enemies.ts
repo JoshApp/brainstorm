@@ -145,6 +145,17 @@ export interface EnemySpec {
    */
   phasing?: boolean;
 
+  /**
+   * If true, the PLAYER walks through this mob with no collision —
+   * useful for small, scurrying creatures (rats, ooze offspring,
+   * future creepy-crawler swarms) where bumping into one shouldn't
+   * stop forward motion. The mob still takes damage normally and
+   * still tries to damage the player; this is a movement-only
+   * affordance. The mob's `collisionRadius` is unchanged so spawn
+   * resolution + future mob-mob behaviour stays intact.
+   */
+  noPlayerCollision?: boolean;
+
   // --- Split on death ---
   /**
    * If set, when this enemy dies the builder spawns `count` enemies
@@ -726,11 +737,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
     xp: 6,
     gold: [0, 8],
     drops: {
-      // ~30% of kills drop one item from the pool. Scimitar is the
-      // standout weight; rare rolls give a potion or piece of armor.
-      // Ring-of-bloodthirst stays rare so finding one is genuinely
-      // exciting.
-      rate: 0.30,
+      // Mid-tier melee. Bumped 0.30 → 0.45 so kills actually
+      // contribute to the player's kit and the trash mob (rat)
+      // bump doesn't end up giving ghouls a smaller relative
+      // drop rate. Scimitar is the standout weight; rare rolls
+      // give a potion or piece of armor. Ring-of-bloodthirst
+      // stays rare so finding one is genuinely exciting.
+      rate: 0.45,
       pool: [
         { itemId: 'scimitar', weight: 5 },
         { itemId: 'healing-potion', weight: 4 },
@@ -754,6 +767,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
     model: quadrupedRatModel(0x2a1a14, 0xff2a0a, 2.0),
     baseEyeEmissive: 2.0,
     collisionRadius: 0.18,
+    // Player walks RIGHT THROUGH rats — they're foot-high scurriers
+    // and getting bodyblocked by one mid-fight feels bad. Still
+    // pathfind / take damage / deal damage normally; just no
+    // movement collision against the player.
+    noPlayerCollision: true,
     tiltPartName: 'rig',     // 'rig' slot — pre-rotated body rotates correctly when this tilts
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
@@ -766,10 +784,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 3.5,
     loseSightTime: 3,
     xp: 1,
-    gold: [0, 2],
+    gold: [0, 3],
     drops: {
-      // Trash mob — empty hands almost always. ~10% chance of a potion.
-      rate: 0.10,
+      // Trash mob — empty hands more often than not. Bumped from
+      // ~10% so the trash kills aren't pure XP grind.
+      rate: 0.22,
       pool: [
         { itemId: 'healing-potion', weight: 1 },
       ],
@@ -801,9 +820,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.0,
     loseSightTime: 5,
     xp: 3,
-    gold: [0, 5],
+    gold: [0, 6],
     drops: {
-      rate: 0.22,
+      rate: 0.38,                  // bumped from 0.22
       pool: [
         { itemId: 'healing-potion', weight: 4 },
         { itemId: 'worn-boots', weight: 2 },
@@ -854,9 +873,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
       projectileId: 'acolyte-spit',
     },
     xp: 5,
-    gold: [0, 7],
+    gold: [0, 8],
     drops: {
-      rate: 0.28,
+      rate: 0.42,                  // bumped from 0.28
       pool: [
         { itemId: 'healing-potion', weight: 4 },
         { itemId: 'bone-amulet', weight: 1 },
@@ -943,10 +962,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 3.0,
     loseSightTime: 5,
     xp: 4,
-    gold: [0, 4],
+    gold: [0, 5],
     splitsInto: { enemyId: 'ooze-small', count: 2, radius: 0.5 },
     drops: {
-      rate: 0.20,
+      rate: 0.35,                  // bumped from 0.20
       pool: [
         { itemId: 'healing-potion', weight: 1 },
       ],
@@ -972,6 +991,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     model: oozeModel(0x355230, 0x88dd33, 0.55),
     baseEyeEmissive: 0,
     collisionRadius: 0.20,
+    // Same player-walk-through affordance as rats — the split kids
+    // are knee-high and should feel like swarm cleanup, not body-
+    // blockers.
+    noPlayerCollision: true,
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'core',
@@ -981,10 +1004,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 2.0,
     loseSightTime: 3,
     xp: 1,
-    gold: [0, 1],
+    gold: [0, 2],
     // No splitsInto — recursion terminator.
     drops: {
-      rate: 0.05,                // mostly nothing — they're cleanup
+      rate: 0.12,                // mostly nothing — they're cleanup
       pool: [
         { itemId: 'healing-potion', weight: 1 },
       ],
@@ -1025,9 +1048,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 3.0,           // can feel footfalls through the floor
     loseSightTime: 6,
     xp: 12,
-    gold: [8, 16],
+    gold: [10, 20],
     drops: {
-      rate: 0.40,
+      rate: 0.55,                  // bumped from 0.40 — tanks are real fights
       pool: [
         { itemId: 'healing-potion', weight: 4 },
         { itemId: 'wooden-shield', weight: 2 },     // shield drops feel earned from a tank

@@ -116,6 +116,10 @@ function slideAroundEnemies(oldX: number, oldZ: number, newX: number, newZ: numb
 function collidesWithEnemy(x: number, z: number, enemies: readonly Enemy[]): boolean {
   for (const e of enemies) {
     if (!e.alive) continue;
+    // Small / swarm mobs (rats, ooze offspring) are explicitly opted
+    // out of player-collision so getting bodyblocked by a scurrying
+    // critter doesn't kill momentum mid-fight. They still hit you.
+    if (e.noPlayerCollision) continue;
     const ex = e.group.position.x;
     const ez = e.group.position.z;
     const minDist = PLAYER_RADIUS + e.collisionRadius;
