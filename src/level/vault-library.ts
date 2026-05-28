@@ -389,6 +389,52 @@ const ENCOUNTER_RITUAL: Vault = {
   ],
 };
 
+// Pillared inner chamber framing a single wraith + chest. The four
+// pillars read as "the thing was contained here" — they don't actually
+// block the player, but they enclose the eye on the centerpiece.
+// Player has to commit to the fight to claim the chest behind the
+// guardian.
+const ENCOUNTER_PRISON: Vault = {
+  id: 'encounter-prison',
+  tags: ['encounter'],
+  map: [
+    '############',
+    '#....T.....#',
+    '#.P......P.#',
+    '#..........#',
+    '#..W.....c.#',
+    '#..........#',
+    '#.P......P.#',
+    '#....t.....#',
+    '############',
+  ],
+  minDepth: 2,   // wraith is a real threat — keep off depth 1
+  weight: 1,
+  torchTint: TORCH_BLOOD,
+};
+
+// Spike-trap puzzle. Chest in the centre with four spike traps in the
+// corners — the loot is visible but reaching it on a careless approach
+// hurts. Non-combat encounter that changes the playstyle from "fight
+// or skip" to "look where you're stepping."
+const ENCOUNTER_TRAPPED: Vault = {
+  id: 'encounter-trapped',
+  tags: ['encounter'],
+  map: [
+    '##########',
+    '#...T....#',
+    '#^......^#',
+    '#........#',
+    '#...c....#',
+    '#........#',
+    '#^......^#',
+    '#...t....#',
+    '##########',
+  ],
+  weight: 1,
+  torchTint: TORCH_GREEN,
+};
+
 // ── BOSS vaults ───────────────────────────────────────────────────
 
 const BOSS_ANTECHAMBER: Vault = {
@@ -508,6 +554,7 @@ export const VAULTS: Vault[] = [
   COMBAT_OPEN, COMBAT_PILLARS, COMBAT_CHOKE, COMBAT_HALL, COMBAT_ARENA, COMBAT_DOORS,
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
+  ENCOUNTER_PRISON, ENCOUNTER_TRAPPED,
   BOSS_ANTECHAMBER, BOSS_CATHEDRAL,
   EXIT_SIMPLE, EXIT_ALCOVE, EXIT_GRAND,
 ];
