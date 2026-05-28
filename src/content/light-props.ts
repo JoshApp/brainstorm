@@ -39,6 +39,174 @@ export const MOONLIGHT_CRACK: ModelSpec = {
   },
 };
 
+// Iron brazier — a forged fire bowl on a stout pedestal, flames
+// licking up out of the bowl. Free-standing, reads from any angle
+// as "occupied chamber, someone lit this." Sits anywhere on a floor.
+//
+// No attached PointLight by default — the flame stack is visually
+// bright (additive sprites) but adds no scene illumination, so we
+// stay inside the existing mobile light budget. Brazier should be
+// placed in rooms that already have torches; it visually "borrows"
+// their warmth and adds a focal point. If a room needs a brazier to
+// be the SOLE light source later, it can be wrapped with a `light:`
+// spec — but that's a deliberate per-placement decision, not the
+// default.
+//
+// Authored centred on origin with base flush at y=0 — so a placer
+// can drop it straight onto the floor with `y: 0`.
+export const IRON_BRAZIER: ModelSpec = {
+  id: 'iron-brazier',
+  // Mood-tintable: flame + sprite colours retint to match the room's
+  // torch palette, same hook the candle uses. Wax/iron unchanged.
+  moodTintable: true,
+  materials: {
+    iron: { color: 0x161210, roughness: 0.55, metalness: 0.6, flatShading: true },
+    coal: { color: 0x1a0e08, roughness: 1.0, flatShading: true },
+  },
+  parts: [
+    // ── Pedestal ────────────────────────────────────────────────────
+    // Tapered cylinder rising from the floor to under the bowl —
+    // reads as a cast-iron stem, wider at the foot for stability.
+    { kind: 'cylinder', pos: [0, 0.04, 0], radius: 0.18, radiusTop: 0.14, height: 0.08, segments: 14, mat: 'iron' },
+    { kind: 'cylinder', pos: [0, 0.30, 0], radius: 0.10, radiusTop: 0.07, height: 0.44, segments: 12, mat: 'iron' },
+    // Decorative ring band partway up the stem.
+    { kind: 'torus',    pos: [0, 0.36, 0], radius: 0.09, tube: 0.012, segments: [6, 16], rot: [Math.PI / 2, 0, 0], mat: 'iron' },
+    // ── Bowl ────────────────────────────────────────────────────────
+    // Wide inverted cone forming the cup, with a slight rim torus on
+    // top so the lip catches light. Hollow read comes from the dark
+    // coal layer inside (next part).
+    { kind: 'cylinder', pos: [0, 0.62, 0], radius: 0.30, radiusTop: 0.34, height: 0.14, segments: 16, mat: 'iron' },
+    { kind: 'torus',    pos: [0, 0.69, 0], radius: 0.32, tube: 0.020, segments: [6, 20], rot: [Math.PI / 2, 0, 0], mat: 'iron' },
+    // Charred coal layer inside the bowl — dark mound that the
+    // flames sit on. Slightly smaller than the bowl interior so a
+    // hint of the iron rim shows.
+    { kind: 'cylinder', pos: [0, 0.65, 0], radius: 0.26, radiusTop: 0.24, height: 0.04, segments: 14, mat: 'coal', jitter: 0.01 },
+    // ── Coals — a few jittered additive hot spots on top of the
+    //    mound. Same trick as the bonfire. ────────────────────────
+    {
+      kind: 'sprite', pos: [-0.09, 0.69,  0.05], size: [0.14, 0.14],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff7028, opacity: 0.85,
+      flicker: { scale: 0.30, bob: 0.005, speed: 3.4 },
+    },
+    {
+      kind: 'sprite', pos: [ 0.11, 0.69, -0.06], size: [0.12, 0.12],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff6020, opacity: 0.85,
+      flicker: { scale: 0.28, bob: 0.005, speed: 2.7 },
+    },
+    {
+      kind: 'sprite', pos: [-0.02, 0.69, -0.12], size: [0.10, 0.10],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff8030, opacity: 0.85,
+      flicker: { scale: 0.32, bob: 0.005, speed: 3.9 },
+    },
+    // ── Flame stack — bonfire layering, scaled to the bowl ────────
+    // White core → yellow body → orange tongue → red tip, plus a
+    // wider warmth haze. Same family as the bonfire but ~half the
+    // size since the bowl is ~half the footprint of a fire pit.
+    {
+      kind: 'sprite', pos: [0, 0.78, 0], size: [0.24, 0.24],
+      texture: 'fire-wisp', blending: 'additive', color: 0xffe8b0,
+      flicker: { scale: 0.18, bob: 0.020, speed: 3.2 },
+    },
+    {
+      kind: 'sprite', pos: [0, 0.88, 0], size: [0.26, 0.40],
+      texture: 'fire-wisp', blending: 'additive', color: 0xffd070,
+      flicker: { scale: 0.20, bob: 0.035, speed: 2.4 },
+    },
+    {
+      kind: 'sprite', pos: [0, 0.98, 0], size: [0.34, 0.52],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff9040,
+      flicker: { scale: 0.22, bob: 0.05, speed: 1.7 },
+    },
+    {
+      kind: 'sprite', pos: [0, 1.12, 0], size: [0.20, 0.58],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff5020,
+      flicker: { scale: 0.28, bob: 0.08, speed: 2.9 },
+    },
+    // Outer warmth haze — wide + dim. Sells the "warm zone around
+    // the brazier" feel without needing an attached PointLight.
+    {
+      kind: 'sprite', pos: [0, 0.88, 0], size: [0.85, 0.70],
+      texture: 'fire-wisp', blending: 'additive', color: 0xc8642a, opacity: 0.55,
+      flicker: { scale: 0.10, bob: 0.02, speed: 0.9 },
+    },
+  ],
+};
+
+// Cresset pike — a tall iron rod driven point-first into the floor,
+// crowned with a small flame basket. Tall narrow silhouette reads
+// well at room edges, in corners, or flanking doorways without
+// claiming much floor footprint. ~2.0m total.
+//
+// Like the brazier: no attached PointLight. The flame is bright
+// additively; place the pike inside the envelope of existing torch
+// light or treat it as a purely visual accent.
+export const CRESSET_PIKE: ModelSpec = {
+  id: 'cresset-pike',
+  moodTintable: true,
+  materials: {
+    iron: { color: 0x161210, roughness: 0.55, metalness: 0.6, flatShading: true },
+    coal: { color: 0x1a0e08, roughness: 1.0, flatShading: true },
+  },
+  parts: [
+    // Spike at the base — small cone pointing UP from the floor,
+    // suggesting the pike is driven point-first into stone.
+    { kind: 'cone',     pos: [0, 0.06, 0], radius: 0.05, height: 0.12, segments: 8, mat: 'iron' },
+    // Ring band at the bottom of the visible pole — like a
+    // wrought-iron foot collar.
+    { kind: 'torus',    pos: [0, 0.13, 0], radius: 0.045, tube: 0.010, segments: [6, 12], rot: [Math.PI / 2, 0, 0], mat: 'iron' },
+    // Main pole — thin cylinder running up to the basket.
+    { kind: 'cylinder', pos: [0, 0.95, 0], radius: 0.025, height: 1.65, segments: 10, mat: 'iron' },
+    // Mid-pole cross-arms — two short horizontal cylinders crossed,
+    // purely decorative. Reads as wrought-iron filigree.
+    { kind: 'cylinder', pos: [0, 1.05, 0], radius: 0.012, height: 0.22, segments: 6, rot: [0, 0, Math.PI / 2], mat: 'iron' },
+    { kind: 'cylinder', pos: [0, 1.05, 0], radius: 0.012, height: 0.22, segments: 6, rot: [Math.PI / 2, 0, Math.PI / 2], mat: 'iron' },
+    // Basket cup at the top — short wide tapered cylinder.
+    { kind: 'cylinder', pos: [0, 1.86, 0], radius: 0.13, radiusTop: 0.16, height: 0.10, segments: 14, mat: 'iron' },
+    { kind: 'torus',    pos: [0, 1.91, 0], radius: 0.15, tube: 0.012, segments: [6, 18], rot: [Math.PI / 2, 0, 0], mat: 'iron' },
+    // Coal mound inside the basket.
+    { kind: 'cylinder', pos: [0, 1.88, 0], radius: 0.11, radiusTop: 0.10, height: 0.03, segments: 12, mat: 'coal', jitter: 0.008 },
+    // Smouldering coal dots.
+    {
+      kind: 'sprite', pos: [-0.04, 1.91,  0.02], size: [0.08, 0.08],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff6824, opacity: 0.85,
+      flicker: { scale: 0.30, bob: 0.004, speed: 3.1 },
+    },
+    {
+      kind: 'sprite', pos: [ 0.05, 1.91, -0.04], size: [0.07, 0.07],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff7028, opacity: 0.85,
+      flicker: { scale: 0.28, bob: 0.004, speed: 2.5 },
+    },
+    // Flame stack — narrower than the brazier (smaller basket).
+    {
+      kind: 'sprite', pos: [0, 1.98, 0], size: [0.14, 0.16],
+      texture: 'fire-wisp', blending: 'additive', color: 0xffe8b0,
+      flicker: { scale: 0.18, bob: 0.018, speed: 3.4 },
+    },
+    {
+      kind: 'sprite', pos: [0, 2.06, 0], size: [0.16, 0.26],
+      texture: 'fire-wisp', blending: 'additive', color: 0xffd070,
+      flicker: { scale: 0.22, bob: 0.030, speed: 2.5 },
+    },
+    {
+      kind: 'sprite', pos: [0, 2.16, 0], size: [0.20, 0.34],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff9040,
+      flicker: { scale: 0.24, bob: 0.04, speed: 1.8 },
+    },
+    {
+      kind: 'sprite', pos: [0, 2.28, 0], size: [0.12, 0.34],
+      texture: 'fire-wisp', blending: 'additive', color: 0xff5020,
+      flicker: { scale: 0.28, bob: 0.06, speed: 2.9 },
+    },
+    // Outer warmth haze — narrow + tall so the silhouette stays
+    // pike-like at distance.
+    {
+      kind: 'sprite', pos: [0, 2.10, 0], size: [0.45, 0.60],
+      texture: 'fire-wisp', blending: 'additive', color: 0xc8642a, opacity: 0.50,
+      flicker: { scale: 0.10, bob: 0.02, speed: 0.9 },
+    },
+  ],
+};
+
 // Floor glow: ambient mood. Earlier passes tried to make this
 // the primary "room is tinted" lever via a bright PointLight +
 // bright floor decal — but that read as "spotlight on the floor"

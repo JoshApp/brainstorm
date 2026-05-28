@@ -135,6 +135,13 @@ export function clearLightPool(): void {
 }
 
 const tmpColor = new THREE.Color();
+// Frustum-cull scratch. Three.js doesn't auto-cull PointLights so a
+// light to the player's back still pays per-fragment shader cost on
+// every lit material. Build the frustum once per tick and reject any
+// source whose sphere (centre + reach radius) misses it.
+const tmpFrustum = new THREE.Frustum();
+const tmpProjView = new THREE.Matrix4();
+const tmpSphere = new THREE.Sphere();
 
 /** Line-of-sight checker — provided each frame by the caller (main
  *  loop pulls walkable.hasLineOfSight from the active level). Sources
@@ -154,6 +161,16 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
   const cy = camera.position.y;
   const cz = camera.position.z;
 
+  // Rebuild the frustum each tick. matrixWorldInverse is normally
+  // updated by the renderer during render() — we may be called from
+  // the main tick BEFORE render, so flush it ourselves. Cheap.
+  camera.updateMatrixWorld();
+  tmpProjView.multiplyMatrices(
+    (camera as THREE.PerspectiveCamera).projectionMatrix,
+    camera.matrixWorldInverse,
+  );
+  tmpFrustum.setFromProjectionMatrix(tmpProjView);
+
   // Reset scratch buckets.
   scratchByCategory.lamp.length = 0;
   scratchByCategory.environment.length = 0;
@@ -171,6 +188,16 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     // sneak in via hysteresis.
     const reach = src.distance + 2;
     if (dist2 > reach * reach) continue;
+    // Frustum cull: if the light's reach sphere doesn't intersect
+    // the camera frustum, nothing the camera renders can be lit by
+    // it. Lamp is exempt — its world pos sits a few cm in front of
+    // the camera and the sphere can technically miss the frustum
+    // bound on certain FOVs; for the lamp we always want a slot.
+    if (src.category !== 'lamp') {
+      tmpSphere.center.copy(src.position);
+      tmpSphere.radius = src.distance;
+      if (!tmpFrustum.intersectsSphere(tmpSphere)) continue;
+    }
     // LOS cull: if a wall separates this source from the camera, skip
     // it. Lamp category bypasses LOS (it IS the camera; its own world
     // pos sits at camera + offset, sometimes just inside a wall).

@@ -6,6 +6,7 @@ import {
   WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN,
   FALLEN_PILLAR_SEGMENT, IRON_BARS,
 } from '../content/clutter';
+import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
 import { archway, archwayColumnOffset } from '../content/archway';
 import {
   wallOpenings, inOpening, allStairFootprints, findContainingRect,
@@ -294,6 +295,58 @@ function structuralPass(ctx: RoomContext, out: PropSpec[], rand: () => number): 
       });
       ctx.existing.push({ x: p.x, z: p.z });
       break;
+    }
+  }
+
+  // Light-prop accent — at most one PER ROOM, either a free-standing
+  // iron brazier or a tall cresset pike. Adds visual warmth focal
+  // points beyond the wall torches. Neither carries an attached
+  // PointLight (the existing torch budget stays put); the flame
+  // stacks read as warm sources visually but only the room's torches
+  // actually illuminate. Placement: ~40% chance on rooms ≥ 35m².
+  if (ctx.area >= 35 && rand() < 0.40) {
+    // Coin-flip between the two variants. Brazier wants a chunk of
+    // mid-room space; pike likes an edge/corner because its tall
+    // narrow silhouette reads against a wall.
+    const wantPike = rand() < 0.5;
+    if (wantPike) {
+      // Try to seat the pike at the room edge: sample edges,
+      // require a clear footprint, keep ~0.6m clearance off the
+      // wall so the basket doesn't punch through.
+      for (let a = 0; a < 8; a++) {
+        const p = ctx.edgeSampler();
+        if (p.x < ctx.minX + 0.6 || p.x > ctx.maxX - 0.6) continue;
+        if (p.z < ctx.minZ + 0.6 || p.z > ctx.maxZ - 0.6) continue;
+        if (ctx.tooClose(p.x, p.z, 1.0)) continue;
+        out.push({
+          kind: 'model',
+          model: CRESSET_PIKE,
+          x: p.x, y: 0, z: p.z,
+          rotY: rand() * Math.PI * 2,
+          collision: { kind: 'circle', r: 0.18 },
+        });
+        ctx.existing.push({ x: p.x, z: p.z });
+        break;
+      }
+    } else {
+      // Brazier sits more openly — sample the interior, require a
+      // wider clearance so the bowl + haze read against the floor
+      // not against another prop.
+      for (let a = 0; a < 8; a++) {
+        const p = ctx.centreSampler();
+        if (p.x < ctx.minX + 1.2 || p.x > ctx.maxX - 1.2) continue;
+        if (p.z < ctx.minZ + 1.2 || p.z > ctx.maxZ - 1.2) continue;
+        if (ctx.tooClose(p.x, p.z, 1.4)) continue;
+        out.push({
+          kind: 'model',
+          model: IRON_BRAZIER,
+          x: p.x, y: 0, z: p.z,
+          rotY: rand() * Math.PI * 2,
+          collision: { kind: 'circle', r: 0.32 },
+        });
+        ctx.existing.push({ x: p.x, z: p.z });
+        break;
+      }
     }
   }
 

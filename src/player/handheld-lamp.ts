@@ -20,6 +20,18 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { getLanternSwing } from './viewmodel-bob';
+import { getTexture } from '../style/procedural-textures';
+
+interface FlameSprite {
+  sprite: THREE.Sprite;
+  baseW: number;
+  baseH: number;
+  baseY: number;
+  speed: number;
+  scaleAmp: number;
+  bobAmp: number;
+  phase: number;
+}
 
 interface LampState {
   /** World position vector — mutated each frame from the lantern body's
@@ -29,7 +41,12 @@ interface LampState {
   hinge: THREE.Group;
   /** Body group, child of hinge. Holds all visible geometry. */
   body: THREE.Group;
-  flameMat: THREE.MeshBasicMaterial;
+  /** Flame-stack sprites — bonfire-style but scaled to lantern size.
+   *  Each sprite carries its own flicker schedule so the layers don't
+   *  sync. Materials are shared via flameMats so the colour-tone tick
+   *  only touches a small set. */
+  flameSprites: FlameSprite[];
+  flameMats: THREE.SpriteMaterial[];
   baseIntensity: number;
   /** Computed each frame by tickLamp; pool reads via getIntensity. */
   currentIntensity: number;
@@ -118,19 +135,68 @@ export function attachLamp(camera: THREE.Camera) {
   ring.rotation.x = Math.PI / 2;
   body.add(ring);
 
-  // ── Flame ─────────────────────────────────────────────────────────
-  // Small bright sphere inside the cage. MeshBasic so it ignores
-  // lighting (it IS the light source, doesn't need to be lit by torches).
-  const flameMat = new THREE.MeshBasicMaterial({
-    color: LAMP_COLOR,
-    fog: false,
-  });
-  const flame = new THREE.Mesh(
-    new THREE.SphereGeometry(0.022, 10, 8),
-    flameMat,
-  );
-  flame.position.y = -0.005;
-  body.add(flame);
+  // ── Flame stack ───────────────────────────────────────────────────
+  // Same pattern as the bonfire / candle flame stacks but scaled to
+  // lantern-cage size: white-hot core → yellow body → orange tongue
+  // → soft warmth haze. All additive sprites on the 'fire-wisp'
+  // texture; each layer carries its own flicker rate + phase so they
+  // don't pulse together. Sized to fit inside the cage (radius 0.045,
+  // bar height 0.10) without clipping through the bars.
+  const flameSprites: FlameSprite[] = [];
+  const flameMats: THREE.SpriteMaterial[] = [];
+  const FLAME_LAYERS: Array<{
+    pos: [number, number, number];
+    size: [number, number];
+    color: number;
+    opacity: number;
+    flicker: { scale: number; bob: number; speed: number };
+  }> = [
+    // White-hot core — bright, small, fastest flicker.
+    { pos: [0, -0.012, 0], size: [0.032, 0.034], color: 0xffe8b0, opacity: 0.95,
+      flicker: { scale: 0.18, bob: 0.004, speed: 3.4 } },
+    // Yellow body — slightly taller, slower.
+    { pos: [0,  0.000, 0], size: [0.038, 0.052], color: 0xffd070, opacity: 0.85,
+      flicker: { scale: 0.22, bob: 0.006, speed: 2.6 } },
+    // Orange tongue — tallest layer, lazy bob.
+    { pos: [0,  0.012, 0], size: [0.046, 0.068], color: 0xff9040, opacity: 0.65,
+      flicker: { scale: 0.26, bob: 0.008, speed: 1.9 } },
+    // Outer warmth haze — wide + dim, very slow. Sells "glow filling
+    // the cage" without putting bright pixels outside the bars.
+    { pos: [0,  0.000, 0], size: [0.090, 0.080], color: 0xc8642a, opacity: 0.40,
+      flicker: { scale: 0.10, bob: 0.003, speed: 0.9 } },
+  ];
+  for (const layer of FLAME_LAYERS) {
+    const mat = new THREE.SpriteMaterial({
+      map: getTexture('fire-wisp'),
+      color: layer.color,
+      transparent: true,
+      opacity: layer.opacity,
+      blending: THREE.AdditiveBlending,
+      // Match the rest of the viewmodel: paint over world geometry
+      // (depthTest off + write off) and sort into the transparent
+      // phase so renderOrder beats world-space sprites. The hinge
+      // traverse below only handles meshes, so set this here.
+      depthTest: false,
+      depthWrite: false,
+      fog: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.set(layer.pos[0], layer.pos[1], layer.pos[2]);
+    sprite.scale.set(layer.size[0], layer.size[1], 1);
+    sprite.renderOrder = 998;
+    body.add(sprite);
+    flameMats.push(mat);
+    flameSprites.push({
+      sprite,
+      baseW: layer.size[0],
+      baseH: layer.size[1],
+      baseY: layer.pos[1],
+      speed: layer.flicker.speed,
+      scaleAmp: layer.flicker.scale,
+      bobAmp: layer.flicker.bob,
+      phase: Math.random() * 100,
+    });
+  }
 
   // ── Viewmodel rendering ───────────────────────────────────────────
   // depthTest off + high renderOrder so the lantern always paints over
@@ -168,7 +234,8 @@ export function attachLamp(camera: THREE.Camera) {
     worldPos,
     hinge,
     body,
-    flameMat,
+    flameSprites,
+    flameMats,
     baseIntensity: CONFIG.LAMP_INTENSITY,
     currentIntensity: CONFIG.LAMP_INTENSITY,
     flickerT: 0,
@@ -197,11 +264,14 @@ export function detachLamp() {
   // back and forth between lamp and shield.
   lamp.hinge.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const m of mats) m.dispose();
-    mesh.geometry.dispose();
+    if (mesh.isMesh) {
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) m.dispose();
+      mesh.geometry.dispose();
+    }
   });
+  // Sprite materials aren't caught by the mesh traverse above.
+  for (const m of lamp.flameMats) m.dispose();
   lamp = null;
 }
 
@@ -230,11 +300,18 @@ export function tickLamp(dt: number) {
   lamp.body.updateMatrixWorld(true);
   lamp.worldPos.setFromMatrixPosition(lamp.body.matrixWorld);
 
-  // Mirror the flicker in the flame's visible color so eye + light agree.
-  const tone = 1 + flicker * 0.5;
-  lamp.flameMat.color.setRGB(
-    1.0 * tone,
-    0.77 * tone,
-    0.53 * tone,
-  );
+  // Per-sprite flicker — bonfire pattern: two superimposed sines at
+  // slightly different rates so each layer wobbles on its own clock,
+  // never resyncing. Drives both scale (the flame breathes) and Y bob
+  // (the tongue rises + falls slightly inside the cage).
+  for (const s of lamp.flameSprites) {
+    const omega = (Math.PI * 2) * s.speed;
+    const t = lamp.flickerT + s.phase;
+    const a = Math.sin(omega * t);
+    const b = Math.sin(omega * 1.7 * t + 1.3);
+    const wobble = (a * 0.6 + b * 0.4);
+    const scale = 1 + wobble * s.scaleAmp;
+    s.sprite.scale.set(s.baseW * scale, s.baseH * scale, 1);
+    s.sprite.position.y = s.baseY + wobble * s.bobAmp;
+  }
 }
