@@ -42,7 +42,7 @@ import type {
   LevelSpec, PropSpec, EnemySpawnSpec, TorchSpec, RoomSpec, DoorSpec, StairsSpec, TileMap,
 } from './types';
 import { ITEMS } from '../content/items';
-import { STAIRWELL_TOTAL_DEPTH } from '../interactables/stairs';
+import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 
 // Pool of corpse notes. Procgen picks one per corpse-cell — deterministic
 // via the seed if we extend the API to take a Random.
@@ -489,6 +489,32 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
             else if (backX < rectMinX + INSET) shiftX = (rectMinX + INSET) - backX;
             if (backZ > rectMaxZ - INSET) shiftZ = (rectMaxZ - INSET) - backZ;
             else if (backZ < rectMinZ + INSET) shiftZ = (rectMinZ + INSET) - backZ;
+            // Same shift, perpendicular to descent. Stair body is
+            // STAIRWELL_HALF_WIDTH on each side of its long axis; if a
+            // side lands past the rect edge, shift it back inside.
+            // Without this, a '/' cell adjacent to a SIDE wall (not
+            // just the back wall) overshoots — the floor hole gets
+            // clipped to the rect, but the side wall stays standing
+            // above where the stair body extends past, leaving a wall
+            // face hanging above the stair pit. Symptom in screenshots:
+            // stair half-buried in the left wall + a floating wall
+            // section above it.
+            const sideX = Math.cos(rotY);
+            const sideZ = -Math.sin(rotY);
+            const cx = x + shiftX;
+            const cz = z + shiftZ;
+            const leftX  = cx - sideX * STAIRWELL_HALF_WIDTH;
+            const leftZ  = cz - sideZ * STAIRWELL_HALF_WIDTH;
+            const rightX = cx + sideX * STAIRWELL_HALF_WIDTH;
+            const rightZ = cz + sideZ * STAIRWELL_HALF_WIDTH;
+            // Each side may overflow independently; pick the larger
+            // correction in each axis (you can't satisfy both walls if
+            // the stair is wider than the room, but for realistic vault
+            // sizes only one side will overshoot).
+            if (leftX  < rectMinX + INSET) shiftX += (rectMinX + INSET) - leftX;
+            if (rightX > rectMaxX - INSET) shiftX += (rectMaxX - INSET) - rightX;
+            if (leftZ  < rectMinZ + INSET) shiftZ += (rectMinZ + INSET) - leftZ;
+            if (rightZ > rectMaxZ - INSET) shiftZ += (rectMaxZ - INSET) - rightZ;
             stairs.push({
               id: `stairs-${opts.id}`,
               x: x + shiftX,
