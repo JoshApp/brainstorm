@@ -90,7 +90,17 @@ export interface TileMapOptions {
 // (no auto-wall around them) — even though some place an obstacle inside
 // the cell (pillar / altar / chest / fountain) that blocks movement.
 // Authors who want a SOLID block of stone use '#'.
-const FLOOR_CHARS = new Set('.,SoO/^FCGRKWYPAcvVTt<>'.split(''));
+// Every char that's conceptually FLOOR with a feature on it has to
+// be in here, or the boundary scanner will treat the cell as a wall
+// (because isFloor() drives the floor/non-floor edge detection). If
+// a feature char is missing, an isolated cell of that char produces
+// exactly the same boundary edges as an isolated '#' would — which
+// after consolidation becomes the X-walls-in-mid-room artifact.
+//
+// Past bugs: M (stoneguard), Z (ooze), D (arena door) were missing —
+// any vault using those as mid-room features triggered the X-wall
+// pattern. Added all three.
+const FLOOR_CHARS = new Set('.,SoOD/^FCGRKWYMZPAcvVTt<>'.split(''));
 
 /**
  * Parse a TileMap into a LevelSpec the existing buildLevel consumes.
