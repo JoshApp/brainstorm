@@ -100,25 +100,24 @@ function swordSlashLeftPose(phase: SwordPhase, t: number): WeaponPose {
 }
 
 function swordSlashRightPose(phase: SwordPhase, t: number): WeaponPose {
-  // Rising slash on the RIGHT side. Originally I authored this as a
-  // back-handed mirror that wound up on the LEFT and swept across to
-  // the RIGHT — but the blade had to cross the player's view to
-  // get there, reading as "the sword is coming at me." This version
-  // stays on the right side: blade winds up low-right (tip down) and
-  // strikes up-right (tip up), like a rising backhand off the
-  // returning slash-left's end pose. No cross-body motion.
+  // Rising slice on the RIGHT side. Previous version went mostly
+  // STRAIGHT UP (low-right → high-right) and read as a parade salute
+  // — "presenting arms," not striking. This version drives the blade
+  // FORWARD as it rises so it visibly slices through the cut line.
+  // End pose has the tip pointing up-and-FORWARD (not vertical) so
+  // the strike looks like it carved through something on the way up.
   const WOUND_X = ix + 0.10;          // stay on the right
   const WOUND_Y = iy - 0.15;          // low
-  const WOUND_Z = iz + 0.05;
-  const WOUND_RX = rx + 0.5;          // pitch forward — tip points down
+  const WOUND_Z = iz + 0.08;          // pulled back to load the cut
+  const WOUND_RX = rx + 0.55;         // pitch forward — tip down
   const WOUND_RY = ry;
-  const WOUND_RZ = rz + 0.15;         // a hair more roll than idle
-  const STRIKE_X = ix + 0.30;         // sweep up and across the right
-  const STRIKE_Y = iy + 0.25;         // high
-  const STRIKE_Z = iz - 0.10;         // forward
-  const STRIKE_RX = rx - 0.9;         // pitch back — tip up
-  const STRIKE_RY = ry;
-  const STRIKE_RZ = rz + 0.45;        // edge keeps leading the rise
+  const WOUND_RZ = rz - 0.10;         // edge pre-rotated to lead the rise
+  const STRIKE_X = ix + 0.18;         // modest right — not flaring outward
+  const STRIKE_Y = iy + 0.10;         // moderate height — chest/shoulder, not overhead
+  const STRIKE_Z = iz - 0.24;         // PUSH FORWARD: this is what makes it a cut, not a lift
+  const STRIKE_RX = rx - 0.45;        // tip up-and-FORWARD (not straight up)
+  const STRIKE_RY = ry - 0.10;        // slight yaw so the blade arcs across the front
+  const STRIKE_RZ = rz + 0.50;        // edge leads the slice
   if (phase === 'windup') {
     scratch.x = ix + (WOUND_X - ix) * t;
     scratch.y = iy + (WOUND_Y - iy) * t;
@@ -352,25 +351,25 @@ function daggerDoubleStabPose(phase: SwordPhase, t: number): WeaponPose {
 // Step 2: the existing overhead crash — committing finisher.
 
 function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
-  // Side-smash from the RIGHT, ending on the LEFT. The HEAD (+Y in
-  // the model) leads via a big rotZ roll: rotZ positive curls +Y
-  // toward +X (head far right) in windup; rotZ negative curls +Y
-  // toward -X (head far left) in strike-end. Previous version mixed
-  // rotX/rotY in ways that put the haft in front of the head — the
-  // player was hitting things with the wood. Now it's a clean
-  // rotZ-driven horizontal arc with the head visibly leading.
+  // Horizontal right-to-left side-smash. HEAD (+Y in model) sweeps
+  // across at constant chest height via a big rotZ roll: positive
+  // rotZ curls +Y toward +X (head far right) in windup; negative
+  // rotZ toward -X (head far left) in strike-end. PURE horizontal —
+  // y stays the same across windup and strike so the motion reads as
+  // a left-right swing, not a fly-swat downward smack.
+  const SWING_Y = iy + 0.18;        // chest height — held constant through the strike
   const WOUND_X = ix + 0.05;        // body roughly centred — head rotates around the grip
-  const WOUND_Y = iy + 0.25;        // raise so head sweeps through chest height
-  const WOUND_Z = iz + 0.05;
-  const WOUND_RX = rx + 0.20;       // small pitch back — head goes up-and-back
+  const WOUND_Y = SWING_Y;
+  const WOUND_Z = iz + 0.05;        // pulled back slightly to load
+  const WOUND_RX = rx;              // NO pitch change — head stays at chest level
   const WOUND_RY = ry;
-  const WOUND_RZ = rz + 1.20;       // head rolled FAR RIGHT (≈ +0.4+1.20 = 1.60 rad)
-  const STRIKE_X = ix - 0.30;       // body drifts LEFT as the swing follows through
-  const STRIKE_Y = iy + 0.05;
-  const STRIKE_Z = iz - 0.10;
-  const STRIKE_RX = rx - 0.30;      // pitch forward — head dips into the swing
+  const WOUND_RZ = rz + 1.30;       // head rolled FAR RIGHT
+  const STRIKE_X = ix - 0.25;       // body drifts LEFT as the swing follows through
+  const STRIKE_Y = SWING_Y;          // SAME y — horizontal sweep
+  const STRIKE_Z = iz - 0.06;
+  const STRIKE_RX = rx;             // still no pitch
   const STRIKE_RY = ry;
-  const STRIKE_RZ = rz - 0.90;      // head rolled FAR LEFT (≈ 0.4-0.90 = -0.50 rad)
+  const STRIKE_RZ = rz - 1.00;      // head rolled FAR LEFT
   if (phase === 'windup') {
     scratch.x = ix + (WOUND_X - ix) * t;
     scratch.y = iy + (WOUND_Y - iy) * t;
@@ -402,20 +401,21 @@ function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
 
 function hammerSwingRightPose(phase: SwordPhase, t: number): WeaponPose {
   // Mirror of swingLeft. Head winds up FAR LEFT (rotZ negative) and
-  // sweeps to FAR RIGHT (rotZ positive). Body drifts right with the
-  // follow-through.
-  const WOUND_X = ix - 0.30;
-  const WOUND_Y = iy + 0.25;
+  // sweeps to FAR RIGHT (rotZ positive) — pure horizontal at chest
+  // height.
+  const SWING_Y = iy + 0.18;
+  const WOUND_X = ix - 0.25;
+  const WOUND_Y = SWING_Y;
   const WOUND_Z = iz + 0.05;
-  const WOUND_RX = rx + 0.20;
+  const WOUND_RX = rx;
   const WOUND_RY = ry;
-  const WOUND_RZ = rz - 0.90;
-  const STRIKE_X = ix + 0.25;
-  const STRIKE_Y = iy + 0.05;
-  const STRIKE_Z = iz - 0.10;
-  const STRIKE_RX = rx - 0.30;
+  const WOUND_RZ = rz - 1.00;
+  const STRIKE_X = ix + 0.20;
+  const STRIKE_Y = SWING_Y;
+  const STRIKE_Z = iz - 0.06;
+  const STRIKE_RX = rx;
   const STRIKE_RY = ry;
-  const STRIKE_RZ = rz + 1.20;
+  const STRIKE_RZ = rz + 1.30;
   if (phase === 'windup') {
     scratch.x = ix + (WOUND_X - ix) * t;
     scratch.y = iy + (WOUND_Y - iy) * t;
