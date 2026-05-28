@@ -205,7 +205,10 @@ const sword = createSword(camera);
 // removes the lamp's light — that's the design tradeoff: visibility
 // vs defence.
 onEquipmentChanged((eq) => {
-  if (eq.weapon?.viewmodel) sword.equip(eq.weapon.viewmodel);
+  // Pass null when no weapon equipped — the sword viewmodel
+  // clears and the player walks empty-handed. This is the
+  // starter-chamber default until they take from an altar.
+  sword.equip(eq.weapon?.viewmodel ?? null);
   if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
   if (eq.offhand?.id === 'oil-lamp') {
     detachOffhandViewmodel();

@@ -93,6 +93,19 @@ export function spawnStarterAltar(
     radius: 1.5,
     labelOffsetY: 1.1,
     promptLabel: 'TAKE',
+    // built.group is what the tap-target raycaster intersects against.
+    // Without it, TAP on the altar mesh finds nothing and the take
+    // never fires (the in-range USE button still works, but the
+    // diegetic tap-the-thing flow is broken). Pointing at altarGroup
+    // means a tap on EITHER the stone base OR the floating weapon
+    // resolves to this interactable.
+    built: {
+      group: altarGroup,
+      parts: new Map(),
+      slots: new Map(),
+      materials: new Map(),
+      hitTargets: [],
+    },
     onUse() {
       if (taken) return;
       taken = true;

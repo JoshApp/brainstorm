@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
-import { SWORD_RUSTED } from '../content/sword';
 import { getSwordOffset } from './viewmodel-bob';
 import type { ModelSpec } from '../ecs/model-types';
 
@@ -23,8 +22,10 @@ export interface Sword {
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
   startSwing(): boolean;
   update(dt: number): void;
-  /** Swap the wielded weapon model. Resets to idle pose. */
-  equip(weaponSpec: ModelSpec): void;
+  /** Swap the wielded weapon model. Passing null leaves the player
+   *  empty-handed (used at run start before the player picks at the
+   *  starter altar, and any future unequip-weapon flow). */
+  equip(weaponSpec: ModelSpec | null): void;
   /** Debug-only: jump to a specific phase + phase timer. */
   setDebugPhase(phase: SwordPhase, phaseTimer: number): void;
 }
@@ -33,18 +34,40 @@ export function createSword(camera: THREE.Camera): Sword {
   const [ix, iy, iz] = CONFIG.SWORD_IDLE_POS;
   const [rx, ry, rz] = CONFIG.SWORD_IDLE_ROT;
 
-  // `group` is mutable — equip() rebuilds the model and reassigns it.
-  let group: THREE.Group;
+  // `group` is the animated HOLDER — always exists, parented to the
+  // camera, position + rotation driven by the swing state machine.
+  // The wielded weapon model lives as a CHILD of group, added by
+  // mount(); empty hand = no child. Starting empty (no mount at boot)
+  // is the starter-chamber default — the equipment listener calls
+  // equip(...) the moment the player takes a weapon at an altar.
+  const group = new THREE.Group();
+  group.position.set(ix, iy, iz);
+  group.rotation.set(rx, ry, rz);
+  camera.add(group);
+
+  function unmount() {
+    while (group.children.length > 0) {
+      const child = group.children[0];
+      group.remove(child);
+      child.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) m.dispose();
+        mesh.geometry.dispose();
+      });
+    }
+  }
 
   function mount(spec: ModelSpec) {
+    unmount();
     const built = buildModel(spec);
-    group = built.group;
     // Held weapon always renders ON TOP of scene geometry, so it never
     // clips into walls. Standard PSX-era FPS trick. We don't change the
     // ModelSpec materials (so the same model on the floor as a pickup
-    // still depth-tests normally) — only the live group's meshes get
+    // still depth-tests normally) — only the live built meshes get
     // depthTest off + a high renderOrder so they're drawn last.
-    group.traverse((obj) => {
+    built.group.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
         const mesh = obj as THREE.Mesh;
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -66,12 +89,8 @@ export function createSword(camera: THREE.Camera): Sword {
         mesh.renderOrder = 999;
       }
     });
-    group.position.set(ix, iy, iz);
-    group.rotation.set(rx, ry, rz);
-    camera.add(group);
+    group.add(built.group);
   }
-
-  mount(SWORD_RUSTED);
 
   // --- Swing state machine ---
   let phase: SwordPhase = 'idle';
@@ -145,9 +164,12 @@ export function createSword(camera: THREE.Camera): Sword {
     update(0);
   }
 
-  function equip(spec: ModelSpec) {
-    if (group) camera.remove(group);
-    mount(spec);
+  function equip(spec: ModelSpec | null) {
+    if (!spec) {
+      unmount();
+    } else {
+      mount(spec);
+    }
     phase = 'idle';
     phaseTimer = 0;
   }
