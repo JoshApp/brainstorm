@@ -1,28 +1,25 @@
 import type { WeaponStats } from '../content/items';
 import { resolveWeaponStats, type ResolvedWeaponStats } from '../content/weapon-classes';
 
-// Currently-equipped weapon stats. Combat code + the sword viewmodel
-// both read from here every frame (cheap, no allocation). The
-// equipment listener calls setCurrentWeapon() when a weapon item
-// equips; the default matches the starter-sword baseline.
-//
-// We store the RESOLVED stats so combat + animation don't have to
-// know about class defaults or per-instance overrides — those are
-// flattened in once at set time.
+// Currently-equipped weapon stats. Combat + the sword viewmodel read
+// from here every frame; the resolve runs PER QUERY so that mid-run
+// growth of weapon-class proficiency + Acuity attribute show up
+// immediately without an explicit "re-equip" tick. Resolve is cheap
+// (a handful of multiplies); even at 60Hz it's noise.
 
-let current: ResolvedWeaponStats = resolveWeaponStats({
+let rawSpec: WeaponStats = {
   reach: 1.8,
   coneHalfAngle: 0.65,
   damage: 1,
   critChance: 0.05,
   critMultiplier: 2.0,
   class: 'sword',
-});
+};
 
 export function getCurrentWeapon(): ResolvedWeaponStats {
-  return current;
+  return resolveWeaponStats(rawSpec);
 }
 
 export function setCurrentWeapon(stats: WeaponStats) {
-  current = resolveWeaponStats(stats);
+  rawSpec = stats;
 }

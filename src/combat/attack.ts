@@ -178,7 +178,7 @@ export function createCombatSystem(
     hapticVibrate(crit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS);
     playImpact();
     spawnDamageNumber(camera, hitPoint, applied, crit);
-    emit({ type: 'attack:hit', damage: applied, crit });
+    emit({ type: 'attack:hit', damage: applied, crit, cls: weapon.class });
   }
 
   return { tick };

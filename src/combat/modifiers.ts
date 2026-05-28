@@ -3,6 +3,7 @@ import type { EntityId, PassiveSpec } from '../ecs/types';
 import { get } from '../ecs/world';
 import { getEquipment, aggregateAffixModifiers } from '../player/equipment';
 import { BUFFS } from '../content/buffs';
+import { getCharacter } from '../state/character';
 
 // Central stat-modifier abstraction.
 //
@@ -92,6 +93,14 @@ export function computePlayerStats(): PlayerStats {
       case 'magic-armor':       magicArmor += m.amount; break;
     }
   }
+  // Character attributes — spent at safe rooms. Vigor → max HP,
+  // Resolve → +0.5 armour to BOTH kinds. Acuity feeds crit chance in
+  // the weapon-resolve path (not this function). Lore has no
+  // mechanical effect yet — it's the narrator/LLM signal.
+  const { vigor, resolve } = getCharacter().attributes;
+  maxHp += vigor;
+  physicalArmor += resolve * 0.5;
+  magicArmor    += resolve * 0.5;
   return { maxHp, weaponDamageBonus, damageMultiplier, physicalArmor, magicArmor };
 }
 

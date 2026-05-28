@@ -1,5 +1,6 @@
 import { CONFIG } from '../config';
 import type { WeaponStats, WeaponClass } from './items';
+import { getCharacter } from '../state/character';
 
 // Weapon classes — pick the animation archetype and seed the default
 // timings. Each weapon spec can override individual fields; class is
@@ -50,22 +51,43 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, {
   },
 };
 
-/** Flatten class defaults + per-spec overrides + attackSpeed into a
- *  single resolved stat block. Falls back to safe defaults whenever
- *  the spec is missing fields. */
+// Per-proficiency bonus tuning. Each point of weapon-class proficiency
+// shaves a small percentage off the timings AND adds the same to the
+// damage. Capped at PROFICIENCY_CAP so a long run doesn't trivialise
+// floor 1 — at the cap one weapon class is ~25% faster + 25% harder
+// hitting than its baseline.
+const PROFICIENCY_PER_POINT = 0.005;     // 0.5% per point
+const PROFICIENCY_CAP_PCT  = 0.25;       // hard cap at 25% (50 points)
+// Acuity adds 2% crit chance per point.
+const ACUITY_CRIT_PER_POINT = 0.02;
+
+/** Flatten class defaults + per-spec overrides + attackSpeed +
+ *  character proficiency + Acuity into a single resolved stat block.
+ *  Cheap; called per-frame from combat + sword animation.
+ *
+ *  When the player has zero character points across the board (start
+ *  of a fresh run, the unspent ones still in the pool), the resolved
+ *  stats equal the spec exactly — no surprises in early-game balance. */
 export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   const cls: WeaponClass = spec.class ?? 'sword';
   const baseT = WEAPON_CLASS_DEFAULTS[cls];
   const speedMul = 1 / (spec.attackSpeed ?? 1);    // larger attackSpeed → SHORTER timings
+
+  const char = getCharacter();
+  const profPct = Math.min(PROFICIENCY_CAP_PCT, char.proficiencies[cls] * PROFICIENCY_PER_POINT);
+  const profSpeed = 1 - profPct;      // shorter timings as proficiency rises
+  const profDmgMul = 1 + profPct;     // damage scales the same direction
+  const acuityCrit = char.attributes.acuity * ACUITY_CRIT_PER_POINT;
+
   return {
     reach: spec.reach,
     coneHalfAngle: spec.coneHalfAngle,
-    damage: spec.damage,
-    critChance: spec.critChance ?? 0.05,
+    damage: spec.damage * profDmgMul,
+    critChance: (spec.critChance ?? 0.05) + acuityCrit,
     critMultiplier: spec.critMultiplier ?? 2.0,
     class: cls,
-    windupTime:  (spec.windupTime  ?? baseT.windup)  * speedMul,
-    strikeTime:  (spec.strikeTime  ?? baseT.strike)  * speedMul,
-    recoverTime: (spec.recoverTime ?? baseT.recover) * speedMul,
+    windupTime:  (spec.windupTime  ?? baseT.windup)  * speedMul * profSpeed,
+    strikeTime:  (spec.strikeTime  ?? baseT.strike)  * speedMul * profSpeed,
+    recoverTime: (spec.recoverTime ?? baseT.recover) * speedMul * profSpeed,
   };
 }

@@ -1,6 +1,5 @@
 import { on as onEvent } from '../broadcast/event-bus';
 import type { GameEvent } from '../broadcast/event-bus';
-import { getCurrentWeapon } from '../player/current-weapon';
 import { ITEMS } from '../content/items';
 
 // Character state — per-run "who is this delver becoming."
@@ -161,9 +160,12 @@ export function initCharacterTracking(): void {
   onEvent((event: GameEvent) => {
     switch (event.type) {
       case 'attack:hit': {
-        // Weapon-class proficiency ticks per landed hit.
-        const cls = getCurrentWeapon().class;
-        gainProficiency(cls);
+        // Weapon-class proficiency ticks per landed hit. The class
+        // comes through the event payload so this module doesn't have
+        // to import current-weapon (which would create a cycle once
+        // current-weapon reads BACK from character for proficiency
+        // bonuses).
+        if (event.cls) gainProficiency(event.cls);
         break;
       }
       case 'gold:absorbed': {

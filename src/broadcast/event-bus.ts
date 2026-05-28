@@ -8,7 +8,7 @@
 
 export type GameEvent =
   | { type: 'attack:swing' }
-  | { type: 'attack:hit'; damage: number; crit?: boolean }
+  | { type: 'attack:hit'; damage: number; crit?: boolean; cls?: import('../content/items').WeaponClass }
   | { type: 'enemy:killed'; enemyId: string }
   | { type: 'player:damaged'; hpLeft: number; amount: number }
   | { type: 'player:killed' }
