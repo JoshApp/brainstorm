@@ -238,6 +238,37 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   type Seg = { ax: number; az: number; bx: number; bz: number };
   const walls: Seg[] = [];
 
+  // ── Isolated-wall-cell detection ─────────────────────────────────
+  // A single '#' tile surrounded on all 4 cardinal sides by floor
+  // would otherwise emit four boundary edges (one per side). The
+  // consolidator on the back end merges the parallel pairs (top/bottom
+  // → one mid-cell horizontal wall; left/right → one mid-cell vertical
+  // wall), leaving TWO perpendicular walls crossing through the cell
+  // centre. From above that's a '+'; from any oblique angle it reads
+  // as an X-shaped pair of intersecting wall planes hanging in mid-
+  // room. Almost certainly never what the vault author intended.
+  //
+  // Fix: treat such cells as a PILLAR. They get no boundary walls
+  // (treated as floor by the boundary scan below) and we emit a
+  // pillar prop at the cell centre — same as the explicit 'P' tile.
+  // The pillar prop carries its own collision so the cell remains a
+  // physical obstacle; flood fill is unaffected because it walks the
+  // raw cellChar grid, not isFloor.
+  const isolatedWallCells = new Set<string>();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (cellChar(c, r) !== '#') continue;
+      const allFloorAround =
+        r > 0        && isFloor(c, r - 1) &&
+        r < rows - 1 && isFloor(c, r + 1) &&
+        c > 0        && isFloor(c - 1, r) &&
+        c < cols - 1 && isFloor(c + 1, r);
+      if (allFloorAround) isolatedWallCells.add(`${c},${r}`);
+    }
+  }
+  const isFloorForBoundary = (col: number, row: number): boolean =>
+    isFloor(col, row) || isolatedWallCells.has(`${col},${row}`);
+
   // Build sets of "wall edges" per kind. Each edge is (cellRow, colStart..colEnd, z)
   // or (cellCol, rowStart..rowEnd, x). Then we MERGE adjacent edges.
   // ── Horizontal edges (running along X) ─────────────────────────
@@ -247,8 +278,8 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   for (let r = 0; r <= rows; r++) {
     let runStart: number | null = null;
     for (let c = 0; c <= cols; c++) {
-      const above = r > 0 ? isFloor(c, r - 1) : false;
-      const below = r < rows ? isFloor(c, r) : false;
+      const above = r > 0 ? isFloorForBoundary(c, r - 1) : false;
+      const below = r < rows ? isFloorForBoundary(c, r) : false;
       const isEdge = above !== below;
       if (isEdge) {
         if (runStart === null) runStart = c;
@@ -265,8 +296,8 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   for (let c = 0; c <= cols; c++) {
     let runStart: number | null = null;
     for (let r = 0; r <= rows; r++) {
-      const left  = c > 0 ? isFloor(c - 1, r) : false;
-      const right = c < cols ? isFloor(c, r) : false;
+      const left  = c > 0 ? isFloorForBoundary(c - 1, r) : false;
+      const right = c < cols ? isFloorForBoundary(c, r) : false;
       const isEdge = left !== right;
       if (isEdge) {
         if (runStart === null) runStart = r;
@@ -500,6 +531,18 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         }
       }
     }
+  }
+
+  // Emit a pillar prop for each isolated '#' cell — same as the 'P'
+  // tile would have produced. Done here, after the per-cell loop, so
+  // `props` is in scope. Boundary scan above already skipped these
+  // cells (treated them as floor) so no crossed walls are produced.
+  for (const key of isolatedWallCells) {
+    const [cStr, rStr] = key.split(',');
+    const cc = Number(cStr);
+    const rr = Number(rStr);
+    const { x, z } = cellCenter(cc, rr);
+    props.push({ kind: 'pillar', x, z });
   }
 
   // Wall segments are auto-detected boundaries between walkable and
