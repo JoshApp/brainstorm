@@ -1,8 +1,5 @@
 // Small top-left depth indicator. Just text — no border, no background.
 // Stays out of the way; the player only glances at it.
-//
-// Currently hardcoded to DEPTH 1 (LEVEL_1). When floors-system lands, this
-// reads from the active floor's id.
 
 let label: HTMLDivElement | null = null;
 
@@ -28,4 +25,9 @@ export function createDepthCounter(depth: number) {
   } as Partial<CSSStyleDeclaration>);
   label.textContent = `DEPTH ${depth}`;
   document.body.appendChild(label);
+}
+
+export function setDepth(depth: number) {
+  if (!label) return;
+  label.textContent = `DEPTH ${depth}`;
 }

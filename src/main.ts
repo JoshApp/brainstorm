@@ -10,7 +10,7 @@ import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
 import { createCombatSystem } from './combat/attack';
-import { isFrozen } from './combat/hit-pause';
+import { isWorldPaused } from './world-paused';
 import { tickShake } from './combat/screen-shake';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './player/death';
@@ -36,8 +36,7 @@ import { addItemSilently, clearInventory } from './player/inventory';
 import { get as getEntity } from './ecs/world';
 import type { EquipSlot } from './player/equipment';
 import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
-import { isWorldFrozen } from './debug/freeze';
-import { isWorldPausedByScreen, isAnyScreenOpen } from './ui/screen-manager';
+import { isAnyScreenOpen } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
@@ -61,7 +60,7 @@ import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar, updateHpBar } from './ui/hp-bar';
 import { createBuffBar, updateBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
-import { createDepthCounter } from './ui/depth-counter';
+import { createDepthCounter, setDepth as setDepthCounter } from './ui/depth-counter';
 import { createXpGoldHud, updateXpGoldHud } from './ui/xp-gold-hud';
 import { tickLowHpPulse } from './ui/vignette';
 import { getPlayerHp, getPlayerMaxHp } from './player/health';
@@ -146,6 +145,7 @@ initLevelLoader({
   onLoaded(level) {
     currentLevel = level as LiveLevel & { checkRoomClear?: () => void };
     setCameraYaw(level.playerSpawn.yaw);
+    setDepthCounter(getCurrentDepth());
     // Drifting motes — ambient volumetric "dust in the air" tied
     // to the level's room rects. Tint takes the act's torch
     // colour so the mood reads consistent (warm motes in warm
@@ -353,7 +353,7 @@ setupPwaAutoUpdate();
 createHpBar();
 createBuffBar();
 createPickupNotification();
-createDepthCounter(1);  // hardcoded until floors system lands
+createDepthCounter(getCurrentDepth());
 createXpGoldHud();
 
 // --- Resize ---
@@ -381,7 +381,7 @@ function tick() {
   tickDeath(realDt);
   const scaledDt = realDt * getTimeScale();
 
-  if (isFrozen() || isWorldFrozen() || isWorldPausedByScreen()) {
+  if (isWorldPaused()) {
     // Hit-pause OR scenario freeze OR any menu open: skip all game updates,
     // drain look input so it doesn't snap if/when we unfreeze.
     input.lookDx = 0;
@@ -480,7 +480,7 @@ function tick() {
   // refreshes. While a menu is open the button hides; tap target should
   // not steal touches from the inventory panel.
   camera.getWorldDirection(forwardScratch);
-  const interactDt = (isFrozen() || isWorldFrozen() || isWorldPausedByScreen()) ? 0 : scaledDt;
+  const interactDt = isWorldPaused() ? 0 : scaledDt;
   tickInteractables(interactDt, camera.position, forwardScratch);
   // Determine the current in-range interactable. Hidden while any screen
   // is open so the label doesn't poke through a panel's backdrop.

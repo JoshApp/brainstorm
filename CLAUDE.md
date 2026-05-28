@@ -1,71 +1,96 @@
-# Project: DELVE (working title)
+# Project: DELVE
 
 A grimdark first-person dungeon crawler for mobile browser. Async multiplayer in the Dark Souls tradition. LLM-augmented item, lore, and event system.
 
 ## Core Design Pillars
 
-1. **Crunchy combat first.** Combat feel is the foundation. Everything else is built on top. If combat doesn't feel good, nothing else matters. Polish this before adding features.
-2. **Mobile-native browser game.** Must work on a phone, in a browser, with thumbs. No keyboard, no mouse. PWA-installable.
+1. **Crunchy combat first.** Combat feel is the foundation. Everything else is built on top. If combat doesn't feel good, nothing else matters.
+2. **Mobile-native browser game.** Must work on a phone, in a browser, with thumbs. PWA-installable. Desktop is debug only.
 3. **Grimdark atmosphere through restraint.** Limited palette, torchlight, sound design, terse writing. NEVER bright, NEVER cute, NEVER comic-relief.
 4. **Solo descent, async multiplayer.** Players play alone but encounter traces of others — bloodstains, messages, corpses, phantom NPCs.
 5. **Delve structure, not extraction.** Players descend, going deeper is the progression. They will eventually die. Meta-progression carries forward.
 6. **Code-generated visuals.** No 3D model files, no texture pipelines. Geometry composed from Three.js primitives. Style emerges from lighting, shaders, and palette.
-7. **LLM is narrative flavor, never mechanics.** The LLM layer (added LATER) generates names, descriptions, epitaphs, lore. It never touches combat math or game rules.
+7. **LLM is narrative flavor, never mechanics.** The LLM layer generates names, descriptions, epitaphs, lore. It never touches combat math or game rules.
 
-## Build Phases (in order — DO NOT SKIP AHEAD)
+## What's Built
 
-### Phase 1: Atmosphere & Movement (current focus)
-- [ ] Three.js scene with one dungeon room (walls, floor, ceiling)
-- [ ] Torchlight: real-time flickering point light, dramatic shadows
-- [ ] Fog: dense, dark, hides anything beyond ~6 meters
-- [ ] First-person controls: touch joystick (left thumb) + camera swipe (right thumb)
-- [ ] PWA manifest so it installs to home screen
-- [ ] Deploy to a public URL so Josh can open on his phone
+If you're reading this to figure out where to start, read this section first — it's the source of truth for what already exists. Don't reinvent any of it.
 
-### Phase 2: Combat (the make-or-break)
-- [ ] One mob type, primitive geometry (capsule body + sphere head)
-- [ ] Mob AI: detect player, approach, attack when in range
-- [ ] Tap-to-attack on right side of screen
-- [ ] Hit detection with raycast
-- [ ] **Hit-pause** (80ms freeze on connecting hit) — non-negotiable
-- [ ] Screen shake on hit
-- [ ] Haptic feedback (navigator.vibrate)
-- [ ] Sound effects layered (impact + material + grunt)
-- [ ] Damage numbers, small and fast
-- [ ] Recovery frames on player swing (cannot cancel)
-- [ ] Stamina bar with consequences (empty = stagger on hit)
-- [ ] Death sequence (slow-mo, red vignette, audio muffle, beat of silence)
-- [ ] **Iterate this phase until combat genuinely feels crunchy on a phone.** Do not move on until Josh confirms.
+### Core loop
+- 3-act dungeon (`src/level/acts.ts`) with hand-authored safe rooms between acts and procgen floors in between
+- Vault-based procgen (`src/level/{procgen,vault,vault-compose,vault-library}.ts`) — ASCII tile chunks chained into floors, deterministic per run seed
+- Multi-room levels with corridors, doors that seal on combat and open on room-clear
+- Tutorial chamber for first-time players (`src/level/tutorial.ts`)
 
-### Phase 3: Dungeon Structure
-- [ ] Multiple rooms connected by doors
-- [ ] Procedurally arranged floors (3-5 rooms per floor)
-- [ ] Stairs down between floors
-- [ ] Depth counter (small, bottom of UI)
-- [ ] 3 mob types with different attack patterns / spatial dances
-- [ ] Basic loot drops (visual objects you walk over to pick up)
-- [ ] Inventory screen (simple grid)
+### Combat
+- Cone raycast sword swing with windup/strike/recover phases (`src/combat/attack.ts`, `src/player/sword.ts`)
+- Hit-pause, screen shake, haptic, damage numbers (`src/combat/`, all tuned in `src/config.ts`)
+- 3+ enemy types with data-driven specs (`src/content/enemies.ts`), shared aggro alerts (`src/mobs/alerts.ts`), pooled projectiles (`src/combat/projectile-pool.ts`)
+- Dark Souls-style death sequence: slow-mo + camera collapse + red vignette (`src/player/death.ts`)
+- Destructible vases drop loot (`src/level/destructibles.ts`, `src/content/vase.ts`)
 
-### Phase 4: Async Multiplayer Foundation
-- [ ] SpacetimeDB integration
-- [ ] Player events logged as event-sourced rows
-- [ ] Bloodstains: spawn at death locations from other players' runs
-- [ ] Messages: simple template-based for now (Souls-style vocabulary)
-- [ ] Corpses: other players' dead characters appear as walkable-up-to objects
+### Player progression
+- Equipment slots (weapon, armor, helmet, amulet, gloves, boots, offhand, two rings) — `src/player/equipment.ts`
+- Affixes + passives + relics + buffs, all composing through one stat pipeline (`src/combat/modifiers.ts`, `src/ecs/buffs.ts`)
+- Inventory grid, consumables bar, stash chest (`src/ui/inventory-panel.ts`, `src/ui/stash-screen.ts`)
+- Per-run state + meta progression (codex, deepest depth, achievements) persisted to `localStorage` (`src/state/`)
 
-### Phase 5: LLM Layer (LAST)
-- [ ] Item descriptions generated on first-discovery
-- [ ] Death epitaphs generated from player event log
-- [ ] Bloodstain narration generated from death context
-- [ ] Cached aggressively — most calls hit cache, only novel events hit API
-- [ ] Character summary updates every 5 floors
+### Atmosphere & rendering
+- Three swappable art styles: PS1 / flat-shaded / procedural stone (`src/style/`)
+- Slot-based light pool with LOS culling (`src/scene/light-pool.ts`) — prevents Three.js shader recompiles on light-count change
+- Torchlight flicker, handheld lamp, candle/bonfire flame stacks, god rays in signature vaults
+- Drifting motes, XP wisps, gold coins (`src/effects/`)
+- Web Audio synth for ambient bed + impacts (`src/audio/sfx.ts`)
+
+### Interactables
+- Registry-based system with in-range + forward-cone detection (`src/interactables/system.ts`)
+- Chests, stash chest, doors, fountains, spike traps, stairs, corpses, pickups, notes
+- Tap-target raycast lets you tap directly on an object instead of walking up to it (`src/controls/tap-target.ts`)
+
+### Broadcast layer (DCC tribute)
+- Event bus + achievement queue + pop UI all wired (`src/broadcast/`, `src/ui/broadcast-pop.ts`)
+- LLM not plugged in yet — that's Phase 5. The seams are there.
+
+### Debug
+- URL scenarios (`?scenario=name`) jump past the title into posed world states (`src/debug/scenarios.ts`)
+- Snap CLI for headless Playwright screenshots (`scripts/snap.ts`, `npm run snap`)
+- URL flags: `?fakemeta=1`, `?fakesave=1`, `?showEnd=1`, `?showCodex=1`, `?showStash=1`, `?tutorial=1`
+
+## Current Focus
+
+Atmosphere & feel polish. Recent work has been on prop variety, declarative prop facing, bonfire/candle flame stacks, art-style passes. The core game is feature-complete through Phase 3.
+
+**Default mode: don't add new mechanics unless explicitly asked.** Polish, iterate on feel, fix bugs found on the phone. Save big new systems for when Josh names one.
+
+When in doubt about what to do next: ask Josh.
+
+## Phases
+
+- **Phase 1 — Atmosphere & Movement: ✓ DONE**
+- **Phase 2 — Combat: ✓ DONE** (hit-pause, shake, haptic, damage numbers, death sequence — all in)
+- **Phase 3 — Dungeon Structure: ✓ DONE** (multi-room procgen, multiple enemy types, inventory, loot)
+- **Phase 4 — Async Multiplayer: NOT STARTED**
+  - SpacetimeDB integration
+  - Player events logged as event-sourced rows
+  - Bloodstains spawned at other players' death locations
+  - Souls-style template messages
+  - Other-player corpses walkable-up-to
+- **Phase 5 — LLM Layer: NOT STARTED** (broadcast architecture from Phase 4-tribute work is already in place; just needs the LLM calls + cache)
+  - Item descriptions on first discovery
+  - Death epitaphs from event log
+  - Bloodstain narration from death context
+  - Aggressive caching — most calls hit cache
+  - Character summary every 5 floors
 
 ## Architecture Principles
 
-- **Vanilla TypeScript + Three.js.** No React for the 3D scene. React only for UI overlay (HUD, inventory, menus).
+- **Vanilla TypeScript + Three.js.** No framework. UI is vanilla DOM with manual layout.
 - **Vite** as build tool. Fast HMR, mobile-friendly dev server with QR code for phone testing.
-- **One concern per file.** Combat logic, mob AI, lighting, controls, UI — all separate modules.
-- **Constants in one place.** All tuning numbers (damage values, attack timing, light radius, etc.) in `src/config.ts` so iteration is one-file changes.
+- **One concern per file.** Combat logic, mob AI, lighting, controls, UI — all separate modules. Long file names are fine.
+- **Constants in one place.** All tuning numbers in `src/config.ts`. Iterate there first.
+- **ECS-lite.** Entities live in a single `Map` in `src/ecs/world.ts`. Presentation (meshes, AI state) lives on classes that reference their entity by id. Effects/triggers/buffs all flow through the same pipeline regardless of source.
+- **Module-level mutable state with getter/setter exports.** Not class singletons. Fine at this scale.
+- **No barrel exports.** Direct imports.
 - **No premature optimization.** Build it working first, optimize when measured.
 - **Mobile is the primary target, desktop is debug.** Test on phone every change.
 
@@ -92,34 +117,13 @@ NOT inspired by:
 - Items don't celebrate. The dungeon doesn't care. The system observes without judgment.
 - No exclamation points outside player input. No emoji. No modern slang.
 
-## Deployment
-
-- Hosted on Cloudflare Pages (free tier, instant deploys from git push).
-- Public URL. Mobile-installable.
-- Every push to `main` deploys automatically.
-- Josh opens the URL on his phone, taps install, plays daily build.
-
-## Operating Mode
-
-- Iterate in small, testable increments. Each session, ship something Josh can feel on his phone.
-- Commit often. Push often. Live URL always reflects latest work.
-- When in doubt, ask Josh which direction. Do not over-architect.
-- This is not a long-running production codebase. It is an evolving prototype. Optimize for iteration speed, not enterprise patterns.
-
 ## Tone Layering — the DCC tribute hook
 
-This project is inspired by *Dungeon Crawler Carl*. The DCC tone (snarky AI announcer,
-sponsor pops, sarcastic achievements, fourth-wall mockery) is the **tribute layer**.
-It does NOT live in the dungeon.
+This project is inspired by *Dungeon Crawler Carl*. The DCC tone (snarky AI announcer, sponsor pops, sarcastic achievements, fourth-wall mockery) is the **tribute layer**. It does NOT live in the dungeon.
 
-**The dungeon is grimdark.** All in-world text — item flavor, mob behavior, room
-descriptions, ambient writing — stays cruel, terse, and indifferent. Everything in
-the "Tone Bible" section above still applies, unchanged, to in-world content.
+**The dungeon is grimdark.** All in-world text — item flavor, mob behavior, room descriptions, ambient writing — stays cruel, terse, and indifferent. Everything in the "Tone Bible" section above still applies, unchanged, to in-world content.
 
-**The narrator is not.** The game runs on top of a cosmic **broadcast frame**: a
-meta-layer of system pops, achievements, item-discovery blurbs, run-summary
-epitaphs, and (eventually) an announcer voice. THIS layer is allowed to be
-snarky, pop-cultural, fourth-wall-aware. The contrast IS the joke.
+**The narrator is not.** The game runs on top of a cosmic **broadcast frame**: a meta-layer of system pops, achievements, item-discovery blurbs, run-summary epitaphs, and (eventually) an announcer voice. THIS layer is allowed to be snarky, pop-cultural, fourth-wall-aware. The contrast IS the joke.
 
 Example of the split on a single event (player dies on Floor 1 in their underwear):
 
@@ -128,28 +132,25 @@ Example of the split on a single event (player dies on Floor 1 in their underwea
 - **Broadcast pop on the same death** (DCC tribute layer):
   > "Achievement Unlocked: Dignity Optional — Die in your underwear on Floor 1."
 
-**Phase ordering for the tribute layer:**
+**The broadcast layer's architecture is already built** (`src/broadcast/`, `src/ui/broadcast-pop.ts`). Phase 5 plugs the LLM into it to generate snark on demand, with aggressive caching.
 
-- Phases 1-3 build the grimdark crawler exactly as planned in the Build Phases above.
-  Zero broadcast content. Zero snark in any text.
-- Phase 4 introduces the broadcast frame as architecture (event bus, achievement
-  triggers, UI overlay distinct from in-world UI).
-- Phase 5 plugs the LLM into the broadcast layer to generate snark on demand,
-  with aggressive caching.
+**Do not bleed snark into in-world text.** Keep the layers architecturally separate. Item names are grim. Achievement names are funny. They can describe the same event.
 
-**Do not bleed snark into in-world text.** Keep the layers architecturally separate.
-Item names are grim. Achievement names are funny. They can describe the same event.
+## Operating Mode
+
+- Iterate in small, testable increments. Each session, ship something Josh can feel on his phone.
+- Commit often. Push often. Live URL always reflects latest work.
+- When in doubt, ask Josh which direction. Do not over-architect.
+- This is not a long-running production codebase. It is an evolving prototype. Optimize for iteration speed, not enterprise patterns.
 
 ## Deploy
 
-Deployed via **GitHub Pages**, built by GitHub Actions on every push to `main` or
-the active feature branch.
+Deployed via **GitHub Pages**, built by GitHub Actions on every push to the active branch.
 
 - Workflow: `.github/workflows/deploy.yml`
 - Live URL: `https://joshapp.github.io/brainstorm/`
 - Vite is configured with `base: '/brainstorm/'` so the sub-path works.
-- PWA manifest `scope`/`start_url` also use `/brainstorm/` — install-to-home-screen
-  launches at the right URL.
+- PWA manifest `scope`/`start_url` also use `/brainstorm/` — install-to-home-screen launches at the right URL.
 
 One-time Pages setup (Josh, in the GitHub UI):
 `Settings → Pages → Source: "GitHub Actions"`.

@@ -1,6 +1,8 @@
 # First Claude Code Session — Copy-Paste Prompts
 
-Use these prompts to drive Claude Code sessions. Each one is scoped to one concrete deliverable.
+> **HISTORICAL.** These are the bootstrap prompts from the project's first week, when Phases 1-2 were the work. The game is past Phase 3 now — multi-room procgen, full combat, equipment, atmosphere polish all done. See `CLAUDE.md` for current state and what's next.
+>
+> Kept for archaeology: this is how the project was scoped initially.
 
 ---
 
