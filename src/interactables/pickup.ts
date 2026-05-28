@@ -222,23 +222,23 @@ export function createPickup(
         vy += GRAVITY * dt;
         const nextX = itemX + vx * dt;
         const nextZ = itemZ + vz * dt;
-        // Wall check: if the proposed XZ would leave the walkable region,
-        // BOUNCE off (damped) instead of phasing through. Compares world
-        // pos (pos + local) against the active level's walkable; small
-        // collision radius so an item can land tight against a wall but
-        // not pass through one. Vertical motion is unaffected.
+        // Horizontal motion through walkable.clampMove — same primitive
+        // the player + gold coins use. Slides along walls on partial
+        // blocks; zeroes velocity on the blocked axis so the item
+        // sticks instead of jittering against the wall. Vertical
+        // motion is unaffected.
         const walkable = getActiveLevel()?.walkable;
-        const worldNextX = pos.x + nextX;
-        const worldNextZ = pos.z + nextZ;
-        if (!walkable || walkable.contains(worldNextX, worldNextZ, 0.05)) {
+        if (walkable) {
+          const wx = pos.x + itemX;
+          const wz = pos.z + itemZ;
+          const m = walkable.clampMove(wx, wz, pos.x + nextX, pos.z + nextZ, 0.05);
+          if (m.x !== pos.x + nextX) vx = 0;
+          if (m.z !== pos.z + nextZ) vz = 0;
+          itemX = m.x - pos.x;
+          itemZ = m.z - pos.z;
+        } else {
           itemX = nextX;
           itemZ = nextZ;
-        } else {
-          // Hit a wall mid-flight — flip horizontal velocity components
-          // and damp. The item ricochets back toward the room. Don't
-          // advance itemX/Z this frame; next frame retries from current.
-          vx *= -0.35;
-          vz *= -0.35;
         }
         itemY += vy * dt;
         // Faster spin in the air sells the toss.

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getTexture } from '../style/procedural-textures';
 import { grantGold } from '../state/run-state';
 import { emit } from '../broadcast/event-bus';
+import type { WalkableRegion } from '../level/walkable';
 
 // Gold coins — chunky floor pickups, survivor-game style. Each mob drops
 // at most THREE coins; the kill's total gold is bundled into them so the
@@ -32,6 +33,10 @@ const tmp = new THREE.Vector3();
 
 const GRAVITY = -9.5;
 const FLOOR_Y = 0.12;             // group center sits this high — disc radius ≈ 0.085 below
+/** Collision radius for the arc-flight wall check. Small enough that a
+ *  coin can come to rest tight against a wall, big enough that it doesn't
+ *  end up halfway through one. Same approach as item pickups (pickup.ts). */
+const COIN_FLIGHT_RADIUS = 0.05;
 const PICKUP_RADIUS_SQ = 1.8 * 1.8;
 const ABSORB_RADIUS_SQ = 0.55 * 0.55;
 const HOMING_BIAS_Y = -0.4;
@@ -139,8 +144,10 @@ export function spawnGoldCoins(
   }
 }
 
-/** Per-frame tick. */
-export function tickGoldCoins(dt: number, playerPos: THREE.Vector3): void {
+/** Per-frame tick. `walkable` is the active level's region — used to
+ *  clamp the arc so a coin lobbed into a wall doesn't phase through it.
+ *  May be undefined during the brief window between level swaps. */
+export function tickGoldCoins(dt: number, playerPos: THREE.Vector3, walkable?: WalkableRegion): void {
   for (let i = coins.length - 1; i >= 0; i--) {
     const c = coins[i];
     c.age += dt;
@@ -185,7 +192,24 @@ export function tickGoldCoins(dt: number, playerPos: THREE.Vector3): void {
       c.vel.y += GRAVITY * dt;
       c.vel.x *= Math.pow(0.7, dt);
       c.vel.z *= Math.pow(0.7, dt);
-      c.group.position.addScaledVector(c.vel, dt);
+      // Horizontal motion through clampMove so a coin lobbed into a
+      // wall doesn't phase through. Slide-on-blocked behaviour comes
+      // for free from clampMove (same primitive the player uses).
+      // Walls hit → zero that axis so the coin sticks instead of
+      // grinding endlessly along the wall.
+      const nextX = c.group.position.x + c.vel.x * dt;
+      const nextZ = c.group.position.z + c.vel.z * dt;
+      if (walkable) {
+        const m = walkable.clampMove(c.group.position.x, c.group.position.z, nextX, nextZ, COIN_FLIGHT_RADIUS);
+        if (m.x !== nextX) c.vel.x = 0;
+        if (m.z !== nextZ) c.vel.z = 0;
+        c.group.position.x = m.x;
+        c.group.position.z = m.z;
+      } else {
+        c.group.position.x = nextX;
+        c.group.position.z = nextZ;
+      }
+      c.group.position.y += c.vel.y * dt;
       // Tumble during the arc.
       c.group.rotation.y += dt * 8;
       c.group.rotation.z += dt * 5;

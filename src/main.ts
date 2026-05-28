@@ -447,7 +447,7 @@ function tick() {
     tickXpWisps(scaledDt, camera.position);
     // Gold coins — fall to the floor, rotate, and vacuum to the player
     // when they walk within pickup radius.
-    tickGoldCoins(scaledDt, camera.position);
+    tickGoldCoins(scaledDt, camera.position, currentLevel.walkable);
 
     // Projectiles — integrate active projectiles, hit-test the player +
     // walls, retire on contact/expiry. Lives outside the enemy loop so
