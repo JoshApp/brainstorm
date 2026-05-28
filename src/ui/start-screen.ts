@@ -23,6 +23,10 @@ export interface StartScreenOptions {
   /** Optional: explicit "play tutorial" entry point. Lets returning
    *  players revisit the antechamber even after their first run. */
   onTutorial?: () => void;
+  /** Open the test-chambers picker. Dev affordance for verifying
+   *  individual features (arena door, blood altar, ooze split, etc.)
+   *  in isolation. */
+  onTestChambers?: () => void;
 }
 
 let root: HTMLDivElement | null = null;
@@ -195,6 +199,16 @@ export function showStartScreen(opts: StartScreenOptions) {
       e.preventDefault();
       hide();
       opts.onTutorial!();
+    });
+    links.appendChild(link);
+  }
+
+  if (opts.onTestChambers) {
+    const link = makeSecondaryLink('TEST', 0);
+    link.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      hide();
+      opts.onTestChambers!();
     });
     links.appendChild(link);
   }

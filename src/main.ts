@@ -27,6 +27,8 @@ import { setMasterVolume, startAmbience, setTorchProximity } from './audio/sfx';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
 import { buildStarterChamber } from './level/starter-chamber';
+import { findTestChamber } from './level/test-chambers';
+import { showTestChambersScreen } from './ui/test-chambers-screen';
 import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad, getCurrentDepth } from './level/loader';
 import { tickAlerts, clearAlerts } from './mobs/alerts';
 import { generateFloor } from './level/procgen';
@@ -684,9 +686,12 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // Runs AFTER startRun so currentLevel is populated.
   applyScenario(scenario, { level: currentLevel, sword, camera });
 } else {
-  // Normal boot — title screen, then DESCEND or CONTINUE.
-  const save = loadSave();
-  showStartScreen({
+  // Normal boot — title screen, then DESCEND or CONTINUE. Wrapped in
+  // a function so sub-screens (like the test chambers picker) can
+  // re-open the title on BACK.
+  function openTitle() {
+    const save = loadSave();
+    showStartScreen({
     hasSave: !!save,
     saveDepth: save?.depth,
     onDescend() {
@@ -725,6 +730,37 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       applyState(null);
       startRun('starter', 0);
     },
+    onTestChambers() {
+      // Open the chamber picker. Picking a card loads its hand-
+      // authored small level into a fresh test run. Test chambers
+      // never write to localStorage (see run-state-listeners) so
+      // any in-progress real save stays untouched. On BACK from the
+      // picker, re-open the title.
+      showTestChambersScreen(
+        (chamberId) => {
+          const chamber = findTestChamber(chamberId);
+          if (!chamber) {
+            // eslint-disable-next-line no-console
+            console.warn(`Unknown test chamber: ${chamberId}`);
+            return;
+          }
+          const spec = chamber.build();
+          LEVELS[spec.id] = spec;
+          // Fresh test run — give the player the chamber's stated
+          // loadout (or rusted sword + lamp by default) so they're
+          // not unarmed in front of the feature.
+          startNewRun(spec.id);
+          recordRunStart();
+          resetRunDiscoveries();
+          applyState(null);
+          const lo = chamber.loadout ?? { weapon: 'rusted-sword', offhand: 'oil-lamp' };
+          if (lo.weapon && ITEMS[lo.weapon]) setSlot('weapon', ITEMS[lo.weapon]);
+          if (lo.offhand && ITEMS[lo.offhand]) setSlot('offhand', ITEMS[lo.offhand]);
+          startRun(spec.id, 0);
+        },
+        () => openTitle(),   // BACK — re-show the title
+      );
+    },
     onContinue() {
       const s = loadSave();
       if (!s) {
@@ -745,5 +781,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       applyState(s);
       startRun(s.floorId, s.depth);
     },
-  });
+    });
+  }
+  openTitle();
 }
