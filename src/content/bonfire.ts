@@ -88,15 +88,15 @@ export const BONFIRE: ModelSpec = {
     // Blade is two tapered segments running DOWN through the
     // dirt mound; the top of the blade is visible just above
     // dirt level, the rest is hidden inside the mound.
-    { kind: 'box', pos: [0,  0.18, 0], size: [0.045, 0.55, 0.018], mat: 'iron' },
-    { kind: 'box', pos: [0, -0.20, 0], size: [0.030, 0.32, 0.014], mat: 'iron' },
-    // Cross-guard sits well above the dirt line so the visible
-    // bottom of the hilt assembly clears the coal sprites.
-    { kind: 'box',      pos: [0, 0.50, 0], size: [0.32, 0.045, 0.055], mat: 'iron' },
+    { kind: 'box', pos: [0,  0.33, 0], size: [0.045, 0.55, 0.018], mat: 'iron' },
+    { kind: 'box', pos: [0, -0.05, 0], size: [0.030, 0.32, 0.014], mat: 'iron' },
+    // Cross-guard well above the flame body — the sword sticks
+    // up out of the fire as a tall vertical landmark.
+    { kind: 'box',      pos: [0, 0.65, 0], size: [0.32, 0.045, 0.055], mat: 'iron' },
     // Hilt grip — taller cylinder, sitting above the cross-guard.
-    { kind: 'cylinder', pos: [0, 0.64, 0], radius: 0.024, height: 0.24, segments: 8, mat: 'iron' },
+    { kind: 'cylinder', pos: [0, 0.80, 0], radius: 0.024, height: 0.26, segments: 8, mat: 'iron' },
     // Pommel — round ball at the very top.
-    { kind: 'sphere',   pos: [0, 0.79, 0], radius: 0.048, mat: 'iron' },
+    { kind: 'sphere',   pos: [0, 0.96, 0], radius: 0.048, mat: 'iron' },
 
     // ── Flame stack — sprites rising around the cross-guard ─────
     // Same flicker pattern as before but origins shifted slightly

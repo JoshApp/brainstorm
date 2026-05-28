@@ -12,6 +12,7 @@ import { openScreen, closeScreen } from './screen-manager';
 const NOTE_SCREEN_ID = 'note';
 
 let activeCard: HTMLDivElement | null = null;
+let noteKeyHandler: ((e: KeyboardEvent) => void) | null = null;
 
 export function showNote(text: string) {
   if (activeCard) dismiss();
@@ -83,6 +84,25 @@ export function showNote(text: string) {
     e.stopPropagation();
     dismiss();
   });
+  // Desktop: Space / E / Escape / Enter all dismiss too. Without
+  // this the keypress falls through to the global input handlers
+  // (Space triggers an attack, E fires onInteract) AND the note
+  // stays up, blocking the world. Capture + stop propagation so
+  // the underlying handlers don't see the keypress while the
+  // note is being acknowledged.
+  const onKey = (e: KeyboardEvent) => {
+    if (!activeCard) return;
+    if (e.code === 'Space' || e.key === 'e' || e.key === 'E'
+        || e.key === 'Escape' || e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      dismiss();
+    }
+  };
+  // Capture phase so we run BEFORE the global window keydown
+  // listeners in input-desktop.ts.
+  window.addEventListener('keydown', onKey, true);
+  noteKeyHandler = onKey;
 
   document.body.appendChild(card);
   activeCard = card;
@@ -112,4 +132,10 @@ function dismiss() {
   card.style.transform = 'translate(-50%, -50%) scale(0.94)';
   setTimeout(() => card.remove(), 240);
   closeScreen(NOTE_SCREEN_ID);
+  // Tear down the keydown listener so it doesn't linger past
+  // dismissal and eat keys outside note-reading state.
+  if (noteKeyHandler) {
+    window.removeEventListener('keydown', noteKeyHandler, true);
+    noteKeyHandler = null;
+  }
 }
