@@ -3,6 +3,7 @@ import type { LevelSpec, RoomSpec, TorchSpec } from './types';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
+import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { createEnemy, type Enemy } from '../mobs/enemy';
@@ -450,37 +451,13 @@ export function buildLevel(
     if (prop.kind === 'pillar') {
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
       const H = spec.rooms[0]?.height ?? 3.2;
-      const geo = new THREE.BoxGeometry(size, H, size);
-      const pillar = new THREE.Mesh(geo, materials.wall);
-      pillar.position.set(prop.x, H / 2, prop.z);
-      pillar.castShadow = true;
-      pillar.receiveShadow = true;
-      root.add(pillar);
-      const halfSz = size / 2;
-      obstacles.push({
-        kind: 'aabb',
-        minX: prop.x - halfSz, maxX: prop.x + halfSz,
-        minZ: prop.z - halfSz, maxZ: prop.z + halfSz,
-      });
+      const { group: pillarGroup, obstacle } = buildAltarPillar(prop.x, prop.z, size, H, materials);
+      root.add(pillarGroup);
+      obstacles.push({ kind: 'aabb', ...obstacle });
     } else if (prop.kind === 'altar') {
-      const altarGeo = new THREE.BoxGeometry(0.9, 0.55, 0.6);
-      const altar = new THREE.Mesh(altarGeo, materials.wall);
-      altar.position.set(prop.x, 0.275, prop.z);
-      altar.castShadow = true;
-      altar.receiveShadow = true;
-      root.add(altar);
-
-      const baseGeo = new THREE.BoxGeometry(1.2, 0.1, 0.9);
-      const altarBase = new THREE.Mesh(baseGeo, materials.floor);
-      altarBase.position.set(prop.x, 0.05, prop.z);
-      altarBase.receiveShadow = true;
-      root.add(altarBase);
-
-      obstacles.push({
-        kind: 'aabb',
-        minX: prop.x - 0.6, maxX: prop.x + 0.6,
-        minZ: prop.z - 0.45, maxZ: prop.z + 0.45,
-      });
+      const { group: altarGroup, obstacle } = buildAltarBlock(prop.x, prop.z, materials);
+      root.add(altarGroup);
+      obstacles.push({ kind: 'aabb', ...obstacle });
     } else if (prop.kind === 'model') {
       const built = buildModel(prop.model);
       built.group.position.set(prop.x, prop.y, prop.z);

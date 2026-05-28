@@ -52,7 +52,7 @@ export const PROP_GROUPS: Record<string, PropGroupSpec> = {
     id: 'altar-ritual',
     children: [
       { prop: { kind: 'altar', x: 0, z: 0 } },
-      { prop: { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.62, z: 0, rotY: 0.25 } },
+      { prop: { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.82, z: 0, rotY: 0.25 } },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x: -0.85, y: 0, z: 0.2 }, minClearance: 0.5 },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x:  0.85, y: 0, z: 0.2 }, minClearance: 0.5 },
       { prop: { kind: 'corpse', x: 0, z: 1.4, rotY: 0.3, note: CORPSE_NOTE }, minClearance: 0.6 },
@@ -77,7 +77,7 @@ export const PROP_GROUPS: Record<string, PropGroupSpec> = {
     id: 'ritual-circle',
     children: [
       { prop: { kind: 'altar', x: 0, z: 0 } },
-      { prop: { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.62, z: 0, rotY: -0.4 } },
+      { prop: { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.82, z: 0, rotY: -0.4 } },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x: -1.1, y: 0, z: -1.1 }, minClearance: 0.5 },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x:  1.1, y: 0, z: -1.1 }, minClearance: 0.5 },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x: -1.1, y: 0, z:  1.1 }, minClearance: 0.5 },
