@@ -350,102 +350,86 @@ function daggerDoubleStabPose(phase: SwordPhase, t: number): WeaponPose {
 // finisher but the arc is sideways instead of vertical.
 // Step 2: the existing overhead crash — committing finisher.
 
-function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
-  // WIDE horizontal right-to-left haymaker. HEAD (+Y in model) sweeps
-  // across at constant chest height via a huge rotZ roll (~3 rad =
-  // ~170° arc) and the body drifts far left through the strike. The
-  // hammer is a heavy two-handed weapon — the windup loads way out
-  // to the right, then the head whips around in front and out the
-  // other side. The follow-through carries the body and weapon over
-  // to the left so the next swing (swing-right) has somewhere to
-  // wind up from.
-  const SWING_Y = iy + 0.18;        // chest height — held constant
-  const WOUND_X = ix + 0.28;        // body wound up far to the right
-  const WOUND_Y = SWING_Y;
-  const WOUND_Z = iz + 0.12;        // pulled back to load the swing
-  const WOUND_RX = rx;
-  const WOUND_RY = ry;
-  const WOUND_RZ = rz + 1.70;       // head almost straight out to the right
-  const STRIKE_X = ix - 0.38;       // body follows through far to the left
-  const STRIKE_Y = SWING_Y;
-  const STRIKE_Z = iz - 0.08;       // forward through impact
-  const STRIKE_RX = rx;
-  const STRIKE_RY = ry;
-  const STRIKE_RZ = rz - 1.40;      // head almost straight out to the left
+// Shared hammer-side-swing implementation. swingLeft and swingRight
+// pass mirrored windup/strike values; the actual arc curve is the
+// same. The KEY trick is the z-axis sin curve in the strike phase:
+// the body's grip is pulled BACK at both endpoints and pushed forward
+// at midpoint, so the whole hammer + arm traces a parabolic arc
+// through the front of the player instead of just translating in a
+// straight line. That's what makes it read as a swinging arc rather
+// than the hammer leaning in place.
+interface SwingParams {
+  woundX: number; strikeX: number;
+  woundZ: number; strikeZ: number;
+  woundRZ: number; strikeRZ: number;
+  swingY: number;
+  /** How far the grip pushes FORWARD (−Z) at the midpoint of the
+   *  strike. The whole arm rides this forward arc, so the head
+   *  visibly carves a horizontal arc through the player's view. */
+  arcForwardPush: number;
+}
+
+function applyHammerSwing(phase: SwordPhase, t: number, p: SwingParams): WeaponPose {
   if (phase === 'windup') {
-    scratch.x = ix + (WOUND_X - ix) * t;
-    scratch.y = iy + (WOUND_Y - iy) * t;
-    scratch.z = iz + (WOUND_Z - iz) * t;
-    scratch.rotX = rx + (WOUND_RX - rx) * t;
-    scratch.rotY = ry + (WOUND_RY - ry) * t;
-    scratch.rotZ = rz + (WOUND_RZ - rz) * t;
+    scratch.x = ix + (p.woundX - ix) * t;
+    scratch.y = iy + (p.swingY - iy) * t;
+    scratch.z = iz + (p.woundZ - iz) * t;
+    scratch.rotX = rx;
+    scratch.rotY = ry;
+    scratch.rotZ = rz + (p.woundRZ - rz) * t;
     return scratch;
   }
   if (phase === 'strike') {
     const ease = 1 - (1 - t) * (1 - t);
-    scratch.x = WOUND_X + (STRIKE_X - WOUND_X) * ease;
-    scratch.y = WOUND_Y + (STRIKE_Y - WOUND_Y) * ease;
-    scratch.z = WOUND_Z + (STRIKE_Z - WOUND_Z) * ease;
-    scratch.rotX = WOUND_RX + (STRIKE_RX - WOUND_RX) * ease;
-    scratch.rotY = WOUND_RY + (STRIKE_RY - WOUND_RY) * ease;
-    scratch.rotZ = WOUND_RZ + (STRIKE_RZ - WOUND_RZ) * ease;
+    // Linear-ish base path from wound → strike.
+    scratch.x = p.woundX + (p.strikeX - p.woundX) * ease;
+    scratch.y = p.swingY;
+    // Z-arc: lerp base + forward push that peaks at mid-strike (sin(π·t)
+    // = 0 at endpoints, 1 at t=0.5). This is what makes the grip — and
+    // the whole hammer with it — visibly swing through the front.
+    const zBase = p.woundZ + (p.strikeZ - p.woundZ) * ease;
+    const zArc = -p.arcForwardPush * Math.sin(Math.PI * t);
+    scratch.z = zBase + zArc;
+    scratch.rotX = rx;
+    scratch.rotY = ry;
+    scratch.rotZ = p.woundRZ + (p.strikeRZ - p.woundRZ) * ease;
     return scratch;
   }
+  // recover — lerp end-of-strike back to idle. At strike t=1 the
+  // sin arc is 0, so strike-end z is just the strikeZ.
   const e = 1 - (1 - t) * (1 - t);
-  scratch.x = STRIKE_X + (ix - STRIKE_X) * e;
-  scratch.y = STRIKE_Y + (iy - STRIKE_Y) * e;
-  scratch.z = STRIKE_Z + (iz - STRIKE_Z) * e;
-  scratch.rotX = STRIKE_RX + (rx - STRIKE_RX) * e;
-  scratch.rotY = STRIKE_RY + (ry - STRIKE_RY) * e;
-  scratch.rotZ = STRIKE_RZ + (rz - STRIKE_RZ) * e;
+  scratch.x = p.strikeX + (ix - p.strikeX) * e;
+  scratch.y = p.swingY + (iy - p.swingY) * e;
+  scratch.z = p.strikeZ + (iz - p.strikeZ) * e;
+  scratch.rotX = rx;
+  scratch.rotY = ry;
+  scratch.rotZ = p.strikeRZ + (rz - p.strikeRZ) * e;
   return scratch;
 }
 
+function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
+  // Right-to-left wide haymaker. Body sweeps from far right through
+  // forward to far left, head leads with a big rotZ roll. Tuned so
+  // the WHOLE arm traces an arc — not just the hammer rotating
+  // around the grip in place.
+  return applyHammerSwing(phase, t, {
+    swingY: iy + 0.18,
+    woundX: ix + 0.40, strikeX: ix - 0.45,    // big body sweep across
+    woundZ: iz + 0.18, strikeZ: iz + 0.18,    // both endpoints PULLED BACK
+    woundRZ: rz + 1.45, strikeRZ: rz - 1.15,
+    arcForwardPush: 0.42,                       // grip drives forward at mid-strike
+  });
+}
+
 function hammerSwingRightPose(phase: SwordPhase, t: number): WeaponPose {
-  // Mirror of swingLeft. Head winds up FAR LEFT and sweeps to FAR
-  // RIGHT — pure horizontal at chest height, same wide haymaker arc.
-  // Natural follow-through from swing-left's end pose: body is
-  // already on the LEFT, so the windup just settles into the load.
-  const SWING_Y = iy + 0.18;
-  const WOUND_X = ix - 0.38;        // body wound up far to the left
-  const WOUND_Y = SWING_Y;
-  const WOUND_Z = iz + 0.12;
-  const WOUND_RX = rx;
-  const WOUND_RY = ry;
-  const WOUND_RZ = rz - 1.40;
-  const STRIKE_X = ix + 0.28;        // body follows through far to the right
-  const STRIKE_Y = SWING_Y;
-  const STRIKE_Z = iz - 0.08;
-  const STRIKE_RX = rx;
-  const STRIKE_RY = ry;
-  const STRIKE_RZ = rz + 1.70;
-  if (phase === 'windup') {
-    scratch.x = ix + (WOUND_X - ix) * t;
-    scratch.y = iy + (WOUND_Y - iy) * t;
-    scratch.z = iz + (WOUND_Z - iz) * t;
-    scratch.rotX = rx + (WOUND_RX - rx) * t;
-    scratch.rotY = ry + (WOUND_RY - ry) * t;
-    scratch.rotZ = rz + (WOUND_RZ - rz) * t;
-    return scratch;
-  }
-  if (phase === 'strike') {
-    const ease = 1 - (1 - t) * (1 - t);
-    scratch.x = WOUND_X + (STRIKE_X - WOUND_X) * ease;
-    scratch.y = WOUND_Y + (STRIKE_Y - WOUND_Y) * ease;
-    scratch.z = WOUND_Z + (STRIKE_Z - WOUND_Z) * ease;
-    scratch.rotX = WOUND_RX + (STRIKE_RX - WOUND_RX) * ease;
-    scratch.rotY = WOUND_RY + (STRIKE_RY - WOUND_RY) * ease;
-    scratch.rotZ = WOUND_RZ + (STRIKE_RZ - WOUND_RZ) * ease;
-    return scratch;
-  }
-  const e = 1 - (1 - t) * (1 - t);
-  scratch.x = STRIKE_X + (ix - STRIKE_X) * e;
-  scratch.y = STRIKE_Y + (iy - STRIKE_Y) * e;
-  scratch.z = STRIKE_Z + (iz - STRIKE_Z) * e;
-  scratch.rotX = STRIKE_RX + (rx - STRIKE_RX) * e;
-  scratch.rotY = STRIKE_RY + (ry - STRIKE_RY) * e;
-  scratch.rotZ = STRIKE_RZ + (rz - STRIKE_RZ) * e;
-  return scratch;
+  // Mirror — left-to-right.
+  return applyHammerSwing(phase, t, {
+    swingY: iy + 0.18,
+    woundX: ix - 0.45, strikeX: ix + 0.40,
+    woundZ: iz + 0.18, strikeZ: iz + 0.18,
+    woundRZ: rz - 1.15, strikeRZ: rz + 1.45,
+    arcForwardPush: 0.42,
+  });
 }
 
 // ── Hammer (overhead smash — finisher) ────────────────────────────
