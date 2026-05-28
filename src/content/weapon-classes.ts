@@ -95,13 +95,14 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     comboWindowMs: 380,
   },
   hammer: {
-    // swing-left → swing-right → smash. Two horizontal side-strikes
+    // swing-right → swing-left → smash. Two horizontal side-strikes
     // then the existing overhead crash as the committing finisher.
-    // Steps 0/1 are lighter than the smash so the player can chain
-    // smoothly into the heavy third hit.
+    // Right first so the player's body lands on the LEFT after step 0,
+    // which is exactly where swing-left wants to wind up from — the
+    // combo flows naturally without a snap-back between steps.
     combo: [
-      { pose: 'hammer-swing-left',  windup: 0.20, strike: 0.12, recover: 0.36 },
       { pose: 'hammer-swing-right', windup: 0.20, strike: 0.12, recover: 0.36 },
+      { pose: 'hammer-swing-left',  windup: 0.20, strike: 0.12, recover: 0.36 },
       { pose: 'hammer-smash',       windup: 0.28, strike: 0.14, recover: 0.50 },
     ],
     // Wider window than dagger/sword — the hammer's slow recover
