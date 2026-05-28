@@ -143,11 +143,20 @@ export function spawnDoor(
   let state: 'arena-open' | 'sealed' | 'closed' | 'opening' | 'closing' | 'open' = 'closed';
   let openTimer = 0;
   let closeTimer = 0;
-  // Cross-axis trigger state — sign of the player's perpendicular
-  // offset from the door midpoint on the previous tick. Null until
-  // the first tick fixes it; from then on, a flip from +1 → -1 (or
-  // vice versa) means the player crossed the door's axis line.
-  let prevSide: 1 | -1 | null = null;
+  // Committed-side trigger state. We track the side of the door the
+  // player has CLEARLY committed to — not just where their centre
+  // sits. "Clearly" means at least COMMIT_THRESHOLD past the door's
+  // axis along the perpendicular. While they're inside the doorway
+  // (distance < threshold) we don't update the committed side, so the
+  // slam fires only ONCE the player has stepped fully clear of the
+  // door onto the other side. Critical for the wall-add: if we slam
+  // while the player's collision circle still straddles the door
+  // axis, the new wall ends up INSIDE the player and clampMove blocks
+  // every direction — trapping them in the doorway.
+  //
+  // PLAYER_RADIUS (camera.ts) is 0.30; threshold is 0.40 for safety.
+  const COMMIT_THRESHOLD = 0.40;
+  let committedSide: 1 | -1 | null = null;
   // Door axis perpendicular (unit vector in XZ). Cached.
   const doorAxisLen = Math.hypot(spec.bx - spec.ax, spec.bz - spec.az) || 1;
   const perpX = -(spec.bz - spec.az) / doorAxisLen;
@@ -179,28 +188,33 @@ export function spawnDoor(
       playChestOpen();  // creaky hinge sfx reused — chests + doors share vibe
     },
     tick(_dt: number, playerPos: THREE.Vector3) {
-      // Arena trigger: while open + passable, watch the player's side
-      // of the door's axis. The frame their side flips, they just
-      // walked through. Cross-axis works for both perimeter doors
-      // (player crosses from corridor to room) and interior-wall
-      // doors (player crosses from alcove to arena).
+      // Arena trigger: while open + passable, watch the player's
+      // COMMITTED side of the door's axis. Slam when the committed
+      // side changes (player walked through AND stepped clear). The
+      // door doesn't slam mid-cross — that would add a wall inside
+      // the player's collision circle and trap them in the doorway.
       if (state === 'arena-open' && spec.unlock?.kind === 'arena') {
         const ox = playerPos.x - doorMidX;
         const oz = playerPos.z - doorMidZ;
         const dot = perpX * ox + perpZ * oz;
-        const side: 1 | -1 = dot >= 0 ? 1 : -1;
-        if (prevSide !== null && side !== prevSide) {
-          // SLAM. Wall up immediately, audio sting, threshold
-          // flashes cool/sealed; the closing animation runs over
-          // the next CLOSE_DURATION.
-          state = 'closing';
-          closeTimer = 0;
-          walkable.addWall(wallSeg);
-          playChestOpen();
-          thresholdMat.color.setHex(0xb04030);   // brief red — visual punch
-          thresholdMat.opacity = 0.75;
+        // Only update the committed side when the player is CLEARLY
+        // past the door. Inside the doorway: leave the committed
+        // side alone (waits for the player to step through fully).
+        if (Math.abs(dot) >= COMMIT_THRESHOLD) {
+          const newSide: 1 | -1 = dot >= 0 ? 1 : -1;
+          if (committedSide !== null && newSide !== committedSide) {
+            // SLAM. Wall up immediately, audio sting, threshold
+            // flashes cool/sealed; the closing animation runs over
+            // the next CLOSE_DURATION.
+            state = 'closing';
+            closeTimer = 0;
+            walkable.addWall(wallSeg);
+            playChestOpen();
+            thresholdMat.color.setHex(0xb04030);   // brief red — visual punch
+            thresholdMat.opacity = 0.75;
+          }
+          committedSide = newSide;
         }
-        prevSide = side;
       }
       // Closing animation — reverses the swing fast.
       if (state === 'closing') {
