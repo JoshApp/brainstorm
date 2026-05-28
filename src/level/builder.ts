@@ -580,22 +580,35 @@ export function buildLevel(
       // No collision — player can step over the body. Walking right up
       // to READ it shouldn't be blocked.
     } else if (prop.kind === 'vase') {
-      const vase = spawnVase(root, prop.x, prop.z);
-      destructibles.push(vase);
-      // Small circular obstacle so the player walks around it
-      // rather than through. Drops when smashed.
-      obstacles.push({
-        kind: 'circle', x: prop.x, z: prop.z, r: 0.18,
+      // Push the obstacle FIRST, keep a reference, and pass a
+      // splice callback to spawnVase so the obstacle goes away
+      // when the vase shatters — otherwise the cell stays
+      // blocked even after the vase mesh is gone.
+      const vaseObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.18 };
+      obstacles.push(vaseObs);
+      const vase = spawnVase(root, prop.x, prop.z, () => {
+        const idx = obstacles.indexOf(vaseObs);
+        if (idx >= 0) obstacles.splice(idx, 1);
       });
+      destructibles.push(vase);
     } else if (prop.kind === 'vase-cluster') {
       // Cluster of 2-4 vases jittered around (x, z). Each gets
       // its own destructible entry + its own collision circle.
-      const cluster = spawnVaseCluster(root, prop.x, prop.z);
+      // Build an obstacle list parallel to the cluster's vase
+      // list so the spliceOnDestroy callback can find the right
+      // one by index when an individual cluster member breaks.
+      const clusterObs: Obstacle[] = [];
+      const cluster = spawnVaseCluster(root, prop.x, prop.z, (idx) => {
+        const obs = clusterObs[idx];
+        if (!obs) return;
+        const j = obstacles.indexOf(obs);
+        if (j >= 0) obstacles.splice(j, 1);
+      });
       for (const v of cluster) {
         destructibles.push(v);
-        obstacles.push({
-          kind: 'circle', x: v.position.x, z: v.position.z, r: 0.18,
-        });
+        const obs: Obstacle = { kind: 'circle', x: v.position.x, z: v.position.z, r: 0.18 };
+        clusterObs.push(obs);
+        obstacles.push(obs);
       }
     } else if (prop.kind === 'spike-trap') {
       spawnSpikeTrap(

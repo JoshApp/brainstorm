@@ -5,6 +5,7 @@ import { spawnGoldCoins } from '../effects/gold-coins';
 import { createPickup } from '../interactables/pickup';
 import { ITEMS } from '../content/items';
 import { playEnemyDeath } from '../audio/sfx';
+import { spawnShatterBurst } from '../effects/shatter-burst';
 
 // Destructible props — a parallel hit-test target list for the
 // combat system. Distinct from enemies (no AI, no perception, no
@@ -56,11 +57,17 @@ const VASE_VARIANTS: VaseVariant[] = [
 ];
 
 /** Spawn a vase destructible at world (x, z). Random variant
- *  + random rotation + random scale jitter (90-115%). */
+ *  + random rotation + random scale jitter (90-115%).
+ *
+ *  `onDestroyed` is invoked when HP hits zero, BEFORE the mesh
+ *  is removed from the scene. The builder uses it to splice the
+ *  vase's obstacle entry out of the walkable region so the
+ *  player can pass through the smashed cell. */
 export function spawnVase(
   scene: THREE.Object3D,
   x: number,
   z: number,
+  onDestroyed?: () => void,
 ): Destructible {
   const id = `vase-${Math.floor(Math.random() * 1e9).toString(36)}`;
   const variant = pickVariant();
@@ -90,6 +97,14 @@ export function spawnVase(
       if (dest.hp > 0) return amount;
       // Destroyed.
       dest.alive = false;
+      // Spawn the shatter burst before removing the mesh so we
+      // have a position reference; the burst lives on its own
+      // pool ticked from main.ts.
+      spawnShatterBurst(scene, group.position.x, group.position.y + 0.20, group.position.z, isBroken);
+      // Tell the builder/runtime to splice this vase's
+      // obstacle out of the walkable region — without this, the
+      // player can't walk through the smashed cell.
+      onDestroyed?.();
       playEnemyDeath('small');
       // Roll loot. Pre-broken vases drop a small amount of dust
       // rather than coins — visually they were already smashed,
@@ -128,14 +143,17 @@ export function spawnVase(
 
 /** Spawn a CLUSTER of 2-4 vases around (x, z). Used by the 'V'
  *  (capital) tile so a level author can drop "vase corner" with
- *  one tile and get a believable group. Vases jittered around
- *  the centre by up to ±0.35m in each axis with small
- *  separation enforced; if too crowded the cluster ends up
- *  smaller than the target count. */
+ *  one tile and get a believable group.
+ *
+ *  `onVaseDestroyed(idx)` fires when an individual vase in the
+ *  cluster is destroyed — the caller uses the index to splice
+ *  THAT vase's obstacle (the cluster pushes one obstacle per
+ *  vase into the walkable region). */
 export function spawnVaseCluster(
   scene: THREE.Object3D,
   x: number,
   z: number,
+  onVaseDestroyed?: (idx: number) => void,
 ): Destructible[] {
   const target = 2 + Math.floor(Math.random() * 3);   // 2-4
   const placed: Destructible[] = [];
@@ -154,7 +172,8 @@ export function spawnVaseCluster(
     }
     if (tooClose) continue;
     positions.push({ x: px, z: pz });
-    placed.push(spawnVase(scene, px, pz));
+    const idx = placed.length;
+    placed.push(spawnVase(scene, px, pz, () => onVaseDestroyed?.(idx)));
   }
   return placed;
 }

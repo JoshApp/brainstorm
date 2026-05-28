@@ -53,6 +53,7 @@ import { tickXpWisps, clearXpWisps } from './effects/xp-wisps';
 import { tickGoldCoins, clearGoldCoins } from './effects/gold-coins';
 import { tickTutorialHints, clearTutorialHints } from './effects/tutorial-hints';
 import { initDriftingMotes, tickDriftingMotes } from './effects/drifting-motes';
+import { tickShatterBurst } from './effects/shatter-burst';
 import { actForDepth } from './level/acts';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
@@ -467,6 +468,10 @@ function tick() {
   // the freeze gate so dust keeps falling through hit-pauses,
   // death sequences, and menus. Real dt — no time-scale.
   tickDriftingMotes(realDt);
+  // Shatter bursts — physics shards from broken vases / future
+  // destructibles. Uses scaled dt so the chunks slow-mo with
+  // the hit-pause / death sequence (reads as crunchier).
+  tickShatterBurst(scaledDt);
 
   // Interact tick + UI run OUTSIDE the freeze gate so the in-range
   // detection + icon button persist through hit-pauses + scenarios. We
