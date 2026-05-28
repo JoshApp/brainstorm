@@ -518,7 +518,28 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     }
     return Math.abs(Math.abs(s.ax - offsetX) - innerHalfW) < EPS;
   };
-  const extraWalls = walls
+
+  // ── Interior 1-cell-thick wall consolidation ─────────────────────
+  // When a single row (or column) of '#' tiles sits between two open
+  // areas, the boundary-emission loop above puts TWO parallel wall
+  // edges — one at each side of the wall cell. Visually that reads as
+  // a 1m-thick "channel" of empty floor between two thin walls, with
+  // any door tile floating in the middle of the channel. Looks wrong.
+  //
+  // Fix: post-process the wall list. Find any pair of parallel walls
+  // exactly 1m apart with the same running-axis range — that's a 1-
+  // cell-thick interior wall — and replace the pair with a SINGLE wall
+  // at the midpoint. Door cells, which already break the wall edge
+  // with a 1m gap, naturally end up with a clean 1m opening at the
+  // cell centre after consolidation.
+  //
+  // Only operates on NON-perimeter walls (perimeter pairs across an
+  // adjacent vault's matching edge get carved into a corridor opening
+  // by the room-shell builder; they shouldn't be merged).
+  type Seg = { ax: number; az: number; bx: number; bz: number };
+  const consolidated: Seg[] = consolidateInteriorWalls(walls, onRectEdge);
+
+  const extraWalls = consolidated
     .filter(s => !onRectEdge(s))
     .map(s => ({ ...s, height: room.height }));
 
@@ -561,4 +582,88 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     stairs,
     extraWalls,
   };
+}
+
+/**
+ * Find pairs of parallel interior walls 1m apart with identical
+ * running-axis ranges (a 1-cell-thick wall row/column emitted as two
+ * boundary segments) and replace each pair with a single wall at the
+ * midpoint. Non-paired walls are returned unchanged. Perimeter walls
+ * (per onRectEdge) are never merged — corridor carving needs them at
+ * the exact rect edge.
+ */
+function consolidateInteriorWalls(
+  walls: Array<{ ax: number; az: number; bx: number; bz: number }>,
+  onRectEdge: (s: { ax: number; az: number; bx: number; bz: number }) => boolean,
+): Array<{ ax: number; az: number; bx: number; bz: number }> {
+  const EPS = 1e-3;
+  // Interior horizontal walls: az === bz, ax !== bx.
+  const horizontal: typeof walls = [];
+  // Interior vertical walls: ax === bx, az !== bz.
+  const vertical: typeof walls = [];
+  const passthrough: typeof walls = [];   // perimeter + degenerates
+
+  for (const w of walls) {
+    if (onRectEdge(w)) { passthrough.push(w); continue; }
+    if (Math.abs(w.az - w.bz) < EPS) horizontal.push(w);
+    else if (Math.abs(w.ax - w.bx) < EPS) vertical.push(w);
+    else passthrough.push(w);
+  }
+
+  const consumed = new Set<typeof walls[number]>();
+  const merged: typeof walls = [];
+
+  // Horizontal pairs: same X range, |dz| == 1.
+  for (let i = 0; i < horizontal.length; i++) {
+    const a = horizontal[i];
+    if (consumed.has(a)) continue;
+    const aMinX = Math.min(a.ax, a.bx);
+    const aMaxX = Math.max(a.ax, a.bx);
+    let match: typeof a | null = null;
+    for (let j = i + 1; j < horizontal.length; j++) {
+      const b = horizontal[j];
+      if (consumed.has(b)) continue;
+      if (Math.abs(Math.abs(b.az - a.az) - 1) > EPS) continue;
+      const bMinX = Math.min(b.ax, b.bx);
+      const bMaxX = Math.max(b.ax, b.bx);
+      if (Math.abs(aMinX - bMinX) > EPS || Math.abs(aMaxX - bMaxX) > EPS) continue;
+      match = b;
+      break;
+    }
+    if (match) {
+      const midZ = (a.az + match.az) / 2;
+      merged.push({ ax: aMinX, az: midZ, bx: aMaxX, bz: midZ });
+      consumed.add(a);
+      consumed.add(match);
+    }
+  }
+  for (const w of horizontal) if (!consumed.has(w)) merged.push(w);
+
+  // Vertical pairs: same Z range, |dx| == 1.
+  for (let i = 0; i < vertical.length; i++) {
+    const a = vertical[i];
+    if (consumed.has(a)) continue;
+    const aMinZ = Math.min(a.az, a.bz);
+    const aMaxZ = Math.max(a.az, a.bz);
+    let match: typeof a | null = null;
+    for (let j = i + 1; j < vertical.length; j++) {
+      const b = vertical[j];
+      if (consumed.has(b)) continue;
+      if (Math.abs(Math.abs(b.ax - a.ax) - 1) > EPS) continue;
+      const bMinZ = Math.min(b.az, b.bz);
+      const bMaxZ = Math.max(b.az, b.bz);
+      if (Math.abs(aMinZ - bMinZ) > EPS || Math.abs(aMaxZ - bMaxZ) > EPS) continue;
+      match = b;
+      break;
+    }
+    if (match) {
+      const midX = (a.ax + match.ax) / 2;
+      merged.push({ ax: midX, az: aMinZ, bx: midX, bz: aMaxZ });
+      consumed.add(a);
+      consumed.add(match);
+    }
+  }
+  for (const w of vertical) if (!consumed.has(w)) merged.push(w);
+
+  return [...passthrough, ...merged];
 }
