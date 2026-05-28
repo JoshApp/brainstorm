@@ -409,25 +409,32 @@ function applyHammerSwing(phase: SwordPhase, t: number, p: SwingParams): WeaponP
 
 function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
   // Right-to-left wide haymaker. Body sweeps from far right through
-  // forward to far left, head leads with a big rotZ roll. Tuned so
-  // the WHOLE arm traces an arc — not just the hammer rotating
-  // around the grip in place.
+  // forward to far left; HEAD must sweep the same direction so the
+  // whole hammer moves together.
+  //
+  // rotZ sign: three.js XYZ Euler order rotates +Y (model head)
+  // toward −X (LEFT) for POSITIVE rotZ. So:
+  //   - head on RIGHT (windup) → rotZ NEGATIVE
+  //   - head on LEFT  (strike) → rotZ POSITIVE
+  // Earlier versions had this reversed — the head went one way while
+  // the grip went the other, so the haft ended up doing the work.
   return applyHammerSwing(phase, t, {
     swingY: iy + 0.18,
-    woundX: ix + 0.40, strikeX: ix - 0.45,    // big body sweep across
-    woundZ: iz + 0.18, strikeZ: iz + 0.18,    // both endpoints PULLED BACK
-    woundRZ: rz + 1.45, strikeRZ: rz - 1.15,
-    arcForwardPush: 0.42,                       // grip drives forward at mid-strike
+    woundX: ix + 0.40, strikeX: ix - 0.45,
+    woundZ: iz + 0.18, strikeZ: iz + 0.18,
+    woundRZ: rz - 1.15, strikeRZ: rz + 1.45,
+    arcForwardPush: 0.42,
   });
 }
 
 function hammerSwingRightPose(phase: SwordPhase, t: number): WeaponPose {
-  // Mirror — left-to-right.
+  // Mirror — left-to-right. Head LEFT in windup (rotZ positive) →
+  // head RIGHT in strike (rotZ negative).
   return applyHammerSwing(phase, t, {
     swingY: iy + 0.18,
     woundX: ix - 0.45, strikeX: ix + 0.40,
     woundZ: iz + 0.18, strikeZ: iz + 0.18,
-    woundRZ: rz - 1.15, strikeRZ: rz + 1.45,
+    woundRZ: rz + 1.45, strikeRZ: rz - 1.15,
     arcForwardPush: 0.42,
   });
 }
