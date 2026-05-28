@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import type { Sword } from '../player/sword';
 import type { Enemy } from '../mobs/enemy';
+import type { Destructible } from '../level/destructibles';
 import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
 import { playWhoosh, playImpact } from '../audio/sfx';
@@ -36,6 +37,7 @@ export function createCombatSystem(
   camera: THREE.Camera,
   sword: Sword,
   getEnemies: () => readonly Enemy[],
+  getDestructibles: () => readonly Destructible[] = () => [],
 ): CombatSystem {
   let strikeAlreadyHit = false;
   let wasStriking = false;
@@ -102,7 +104,41 @@ export function createCombatSystem(
       }
     }
 
-    if (!bestEnemy) return;
+    if (!bestEnemy) {
+      // No enemy in the swing cone — fall back to destructibles
+      // (vases, future breakable props). Same cone + range test;
+      // lighter feedback than an enemy hit.
+      const destructibles = getDestructibles();
+      let bestDest: Destructible | null = null;
+      let bestDestSq = reachSq + 1;
+      for (const d of destructibles) {
+        if (!d.alive) continue;
+        const dx = d.position.x - camera.position.x;
+        const dy = (d.position.y + 0.25) - camera.position.y;
+        const dz = d.position.z - camera.position.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq > reachSq) continue;
+        const horDist = Math.hypot(dx, dz);
+        if (horDist < 0.0001) {
+          if (distSq < bestDestSq) { bestDestSq = distSq; bestDest = d; }
+          continue;
+        }
+        const horDot = (forwardDir.x * dx + forwardDir.z * dz) / (forwardLenXZ * horDist);
+        if (horDot < cosConeHalf) continue;
+        if (distSq < bestDestSq) { bestDestSq = distSq; bestDest = d; }
+      }
+      if (bestDest) {
+        bestDest.takeDamage(getCurrentWeapon().damage, hitPoint);
+        strikeAlreadyHit = true;
+        // Lighter crunch than an enemy hit — the vase shatters,
+        // it doesn't fight back.
+        freezeFor(Math.min(40, CONFIG.HIT_PAUSE_MS * 0.4));
+        kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 0.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 0.5);
+        hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
+        playImpact();
+      }
+      return;
+    }
 
     // Crit roll — decided BEFORE the damage pipeline so the pipeline's
     // input damage already reflects the multiplier. critChance/Mult on

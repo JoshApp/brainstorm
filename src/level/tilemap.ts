@@ -90,7 +90,7 @@ export interface TileMapOptions {
 // (no auto-wall around them) — even though some place an obstacle inside
 // the cell (pillar / altar / chest / fountain) that blocks movement.
 // Authors who want a SOLID block of stone use '#'.
-const FLOOR_CHARS = new Set('.,SoO/^FCGRKWYPAcTt<>'.split(''));
+const FLOOR_CHARS = new Set('.,SoO/^FCGRKWYPAcvTt<>'.split(''));
 
 /**
  * Parse a TileMap into a LevelSpec the existing buildLevel consumes.
@@ -265,6 +265,12 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         }
         case 'F': {
           props.push({ kind: 'fountain', x, z });
+          break;
+        }
+        case 'v': {
+          // Destructible ceramic vase. One-tile prop; smashes
+          // into a small loot drop on hit.
+          props.push({ kind: 'vase', x, z });
           break;
         }
         case '^': {

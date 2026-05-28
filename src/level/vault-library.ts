@@ -119,11 +119,11 @@ const COMBAT_OPEN: Vault = {
   map: [
     '############',
     '#..T....T..#',
-    '#..........#',
+    '#v........v#',
     '#....X.....#',
     '#..........#',
     '#..X....X..#',
-    '#..........#',
+    '#.........v#',
     '#..T....T..#',
     '############',
   ],
@@ -273,11 +273,13 @@ const TREASURE_ALTAR: Vault = {
 const TREASURE_CACHE: Vault = {
   id: 'treasure-cache',
   tags: ['treasure'],
+  // A pair of vases tucked among the chests — small loot tease,
+  // breakable for coins.
   map: [
     '########',
     '#..T...#',
     '#.c..c.#',
-    '#......#',
+    '#.v..v.#',
     '#......#',
     '#..c...#',
     '########',

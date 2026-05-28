@@ -4,6 +4,7 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
+import { spawnVase, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { createEnemy, type Enemy } from '../mobs/enemy';
@@ -67,6 +68,7 @@ export interface LiveLevel {
   navPhasing: NavGrid;
   torches: Torch[];
   enemies: Enemy[];
+  destructibles: Destructible[];
   playerSpawn: { x: number; z: number; yaw: number };
   /**
    * Single Three.js group containing EVERYTHING the level added to the
@@ -336,6 +338,9 @@ export function buildLevel(
   // populates the rest. WalkableRegion is constructed below with the
   // full list.
   const obstacles: Obstacle[] = [];
+  // Destructibles — vases + future breakable props. Built
+  // inline alongside the props loop, returned in LiveLevel.
+  const destructibles: Destructible[] = [];
   // Parallel list of stair-footprint AABBs in world XZ — same shape as
   // the stair obstacles above. Passed to decorateFloor so the procgen
   // sigils/cracks/rubble decorator skips cells that sit on the cut-out
@@ -540,6 +545,14 @@ export function buildLevel(
       spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note);
       // No collision — player can step over the body. Walking right up
       // to READ it shouldn't be blocked.
+    } else if (prop.kind === 'vase') {
+      const vase = spawnVase(root, prop.x, prop.z);
+      destructibles.push(vase);
+      // Small circular obstacle so the player walks around it
+      // rather than through. Drops when smashed.
+      obstacles.push({
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.18,
+      });
     } else if (prop.kind === 'spike-trap') {
       spawnSpikeTrap(
         root,
@@ -807,6 +820,7 @@ export function buildLevel(
     navPhasing,
     torches,
     enemies,
+    destructibles,
     playerSpawn: spec.startPos,
     root,
     teardown,

@@ -205,7 +205,11 @@ onEquipmentChanged((eq) => {
 // Combat queries enemies via a getter so the system follows level swaps —
 // after descent the new floor's enemies become attackable without
 // rewiring.
-const combat = createCombatSystem(camera, sword, () => currentLevel.enemies);
+const combat = createCombatSystem(
+  camera, sword,
+  () => currentLevel.enemies,
+  () => currentLevel.destructibles ?? [],
+);
 
 // --- Player death wiring ---
 onPlayerDeath(() => triggerDeath());

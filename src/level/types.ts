@@ -78,6 +78,13 @@ export type PropSpec =
   // atmosphere + (later) LLM-pluggable lore. The note text is short
   // and in the in-world grimdark tone.
   | { kind: 'corpse'; x: number; z: number; rotY?: number; note: string }
+  // 'vase' = small destructible ceramic prop. Takes a hit from
+  // the player's swing, shatters into a few stone-shard pieces,
+  // and may drop a small reward (gold or potion). Tiny obstacle
+  // until destroyed. Sprinkled rarely throughout combat /
+  // treasure / encounter rooms so the player has a low-stakes
+  // "swing something" target.
+  | { kind: 'vase'; x: number; z: number }
   // 'spike-trap' = pressure-plate hazard. Player steps on the plate;
   // brief telegraph (plate sinks, audible click); spikes shoot up and
   // damage. Resets after a cooldown.
