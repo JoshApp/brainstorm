@@ -34,6 +34,7 @@ import { tickAlerts, clearAlerts } from './mobs/alerts';
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
+import { initCharacterTracking, resetCharacter } from './state/character';
 import { initRunStateListeners } from './state/run-state-listeners';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
@@ -364,6 +365,7 @@ registerProjectiles();
 // floor:loaded events. Wired before any level load so the initial
 // floor entry is captured.
 initRunStateListeners();
+initCharacterTracking();
 
 // PWA: poll for SW updates + auto-reload when a new SW takes over.
 // Means a `git push` lands on Josh's installed home-screen app within a
@@ -722,6 +724,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       startNewRun('starter');
       recordRunStart();
       resetRunDiscoveries();
+      resetCharacter();
       applyState(null);
       startRun('starter', 0);
     },
@@ -733,6 +736,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       startNewRun('starter');
       recordRunStart();
       resetRunDiscoveries();
+      resetCharacter();
       applyState(null);
       startRun('starter', 0);
     },

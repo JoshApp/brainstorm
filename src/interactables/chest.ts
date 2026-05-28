@@ -6,6 +6,7 @@ import type { ItemSpec } from '../content/items';
 import { registerInteractable } from './system';
 import { createPickup } from './pickup';
 import { playChestOpen } from '../audio/sfx';
+import { recordChestOpened } from '../state/character';
 
 export type ChestTier = 'supply' | 'iron' | 'boss';
 
@@ -56,6 +57,7 @@ export function spawnChest(
       openTimer = 0;
       interactable.promptLabel = '';
       playChestOpen();
+      recordChestOpened();
     },
     tick(dt: number) {
       if (state === 'opening' && hinge) {

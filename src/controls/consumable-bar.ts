@@ -1,4 +1,5 @@
 import { getCount, removeItem, onInventoryChanged } from '../player/inventory';
+import { recordConsumableUse } from '../state/character';
 import { healPlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { applyBuff } from '../ecs/buffs';
@@ -190,6 +191,7 @@ function useConsumable(item: ItemSpec) {
     healPlayer(item.consumableHeal);
     playHealSlurp();
     removeItem(item.id);
+    recordConsumableUse();
     return;
   }
 
@@ -201,6 +203,7 @@ function useConsumable(item: ItemSpec) {
     }
     playBuffApply();
     removeItem(item.id);
+    recordConsumableUse();
     return;
   }
 }

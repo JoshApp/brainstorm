@@ -8,6 +8,8 @@ import { get } from '../ecs/world';
 import { computeStats } from './equipment-stats';
 import { computeDamage, type DamageType } from '../combat/damage';
 import type { EntityId } from '../ecs/types';
+import { recordHpRecovered, recordDamageTaken, recordShieldedHit } from '../state/character';
+import { getEquipped } from './equipment';
 
 // Player health module. State now lives in the world entity (id: 'player')
 // rather than module-level vars, so effects (heal, apply-buff, damage) can
@@ -42,7 +44,9 @@ export function healPlayer(amount: number): number {
   const max = computeStats().maxHp;
   const before = player.hp.current;
   player.hp.current = Math.min(max, player.hp.current + amount);
-  return player.hp.current - before;
+  const recovered = player.hp.current - before;
+  if (recovered > 0) recordHpRecovered(recovered);
+  return recovered;
 }
 
 export function isPlayerDead(): boolean {
@@ -67,6 +71,13 @@ export function damagePlayer(amount: number, source: EntityId | null = null, typ
 
   const result = computeDamage({ source, target: PLAYER_ENTITY_ID, base: amount, type });
   player.hp.current = Math.max(0, player.hp.current - result.applied);
+  // Toughness proficiency: damage absorbed → +N. Block ticks too if
+  // a shield is equipped (passive shields = every hit while equipped
+  // counts; narrows to actual blocks once active blocking lands).
+  if (result.applied > 0) {
+    recordDamageTaken(result.applied);
+    if (getEquipped('offhand')?.id === 'wooden-shield') recordShieldedHit();
+  }
 
   // --- The player-hit crunch stack ---
   freezeFor(CONFIG.PLAYER_HIT_PAUSE_MS);
