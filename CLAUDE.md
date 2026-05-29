@@ -178,8 +178,15 @@ Deployed via **GitHub Pages**, built by GitHub Actions on every push to the acti
 
 **Always push with `npm run ship`, never bare `git push`.** It typechecks
 (pre-push hook), pushes, watches the GitHub Pages run to completion, and
-prints the failed step's log right in the terminal if it goes red — so a
-broken deploy surfaces immediately instead of on the next manual check.
+prints the failed step's log if it goes red — so a broken deploy surfaces
+on its own instead of on the next manual check.
+
+**Run it in the background (Claude Code: `run_in_background: true`), never
+in the foreground.** The deploy takes ~45–60s; backgrounding means it
+never blocks — keep working, and the harness re-invokes you with the
+result (success, or the failed-step log to fix) when it finishes. This is
+the standard push: fire `npm run ship` to the background and move on.
+
 Pass git args through with `npm run ship -- <args>`. (`SKIP_PREPUSH=1`
 bypasses the typecheck for an emergency push.)
 
