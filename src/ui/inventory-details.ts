@@ -1,7 +1,8 @@
-import { equipFromInventory, unequipSlot, getEquipment } from '../player/equipment';
+import { equipFromInventory, unequipSlot, getEquipment, getSlotAffixes } from '../player/equipment';
 import { addItemSilently, removeItem } from '../player/inventory';
 import { getPlayerHp, getPlayerMaxHp, healPlayer } from '../player/health';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
+import type { AffixInstance } from '../content/affixes';
 import { SETS } from '../content/sets';
 import { BUFFS } from '../content/buffs';
 import { applyBuff } from '../ecs/buffs';
@@ -86,7 +87,10 @@ export function buildDetailsColumn(ctx: InventoryCtx): HTMLDivElement {
   const flavor = buildFlavorLine(item);
   if (flavor) card.appendChild(flavor);
 
-  for (const line of describeItem(item)) card.appendChild(line);
+  // Rolled affixes are tracked per equipped slot (the bag doesn't carry
+  // instance data in V1), so we can only show them for a 'slot' selection.
+  const slotAffixes = selection.kind === 'slot' ? getSlotAffixes(selection.slotId) : [];
+  for (const line of describeItem(item, slotAffixes)) card.appendChild(line);
 
   // Spacer + action at the bottom. Pinning the button to the bottom of
   // the column means it's always in the same place (predictable target).
@@ -218,7 +222,7 @@ function buildDetailsAction(sel: NonNullable<Selection>, ctx: InventoryCtx): HTM
 }
 
 // Turn an ItemSpec into a list of human-readable description lines.
-function describeItem(item: ItemSpec): HTMLDivElement[] {
+function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] = []): HTMLDivElement[] {
   const lines: HTMLDivElement[] = [];
 
   if (item.weapon) {
@@ -227,6 +231,13 @@ function describeItem(item: ItemSpec): HTMLDivElement[] {
   }
   if (item.modifiers && item.modifiers.length) {
     for (const m of item.modifiers) lines.push(detailLine(formatModifier(m)));
+  }
+  // Rolled affixes (equipped items only) — show each rolled bonus so a
+  // "searing" / "venom-etched" weapon's behavioral on-hit is visible, not
+  // just baked invisibly into the stats. Suffix labels which affix it is.
+  for (const a of affixes) {
+    for (const m of a.modifiers) lines.push(detailLine(`${formatModifier(m)}  · ${a.suffix}`));
+    if (a.onHit) lines.push(detailLine(`${formatOnHit(a.onHit)}  · ${a.suffix}`));
   }
   if (item.passives && item.passives.length) {
     for (const p of item.passives) lines.push(detailLine(formatPassive(p)));

@@ -48,6 +48,13 @@ export function registerProjectileType(t: ProjectileType) {
   TYPES.set(t.id, t);
 }
 
+/** Whether a projectile id has been registered. Used by the content
+ *  validator to catch typo'd `ranged.projectileId` references. Call
+ *  after registerProjectiles() has run. */
+export function isProjectileRegistered(id: string): boolean {
+  return TYPES.has(id);
+}
+
 // Single shared sphere geometry across all projectiles — cheap, low-poly.
 const SHARED_GEOM = new THREE.SphereGeometry(1, 10, 8);
 // Per-type emissive material so colors stay distinct without per-instance

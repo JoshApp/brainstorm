@@ -63,6 +63,7 @@ import { initPickupLightPool } from './interactables/pickup';
 import { initLightPool, tickLightPool } from './scene/light-pool';
 import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
+import { validateContent } from './content/validate';
 import { tickXpWisps, clearXpWisps } from './effects/xp-wisps';
 import { tickGoldCoins, clearGoldCoins } from './effects/gold-coins';
 import { tickTutorialHints, clearTutorialHints } from './effects/tutorial-hints';
@@ -416,6 +417,11 @@ initPickupLightPool(scene);
 // types are registered into a registry; register the built-in set now.
 initProjectilePool(scene);
 registerProjectiles();
+// Content cross-reference check — fail loudly + early if any spec points
+// at a buff/item/projectile/affix/set/enemy id that doesn't exist. Runs
+// after registerProjectiles() so projectile ids are known. See
+// src/content/validate.ts.
+validateContent();
 
 // Run-state listeners — kill counter, items-found set, autosave on
 // floor:loaded events. Wired before any level load so the initial
