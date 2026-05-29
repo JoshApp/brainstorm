@@ -8,6 +8,50 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-05-29",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Path-ahead prep"
+      },
+      {
+        "tag": "tune",
+        "text": "HUD binding layer: shared primitives + store-bound readouts"
+      },
+      {
+        "tag": "content",
+        "text": "Enemy verb-audit"
+      },
+      {
+        "tag": "tune",
+        "text": "Game-mode machine, system registry, reactive player stats"
+      },
+      {
+        "tag": "content",
+        "text": "Unify enemies + destructibles under a Damageable interface"
+      },
+      {
+        "tag": "tune",
+        "text": "Capture design philosophy in docs/DESIGN.md"
+      },
+      {
+        "tag": "tune",
+        "text": "Debug capture"
+      },
+      {
+        "tag": "tune",
+        "text": "Ship in the background, never foreground"
+      },
+      {
+        "tag": "tune",
+        "text": "One-command ship: push + watch deploy in one step"
+      },
+      {
+        "tag": "tune",
+        "text": "Deploy feedback: pre-push typecheck + post-push run watcher"
+      },
+      {
+        "tag": "tune",
+        "text": "PWA: poll for updates every 15s (was 60s)"
+      },
+      {
         "tag": "add",
         "text": "Debug capture"
       },
@@ -168,50 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Harness v1: ?harness=1 boot + observation + action injection"
-      },
-      {
-        "tag": "fix",
-        "text": "Item preview labels: fixed size, no clamp, just clip off-screen"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix character-screen build: unspentLabel typing + appendChild"
-      },
-      {
-        "tag": "tune",
-        "text": "Character system V1: combat math hookup"
-      },
-      {
-        "tag": "tune",
-        "text": "CHARACTER screen — read your build, spend points at safe rooms"
-      },
-      {
-        "tag": "tune",
-        "text": "Character system V1: attributes + proficiencies (tracking layer)"
-      },
-      {
-        "tag": "content",
-        "text": "Weapon anims: stab-stab dagger, head-first hammer, scaled item labels"
-      },
-      {
-        "tag": "tune",
-        "text": "Desktop"
-      },
-      {
-        "tag": "content",
-        "text": "Weapon classes: dagger stab, sword slash, hammer smash"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix build: remove duplicate Seg type in parseTileMap"
-      },
-      {
-        "tag": "tune",
-        "text": "Death sequence: collapse onto side + dark fade + breathing epitaph"
-      },
-      {
-        "tag": "tune",
-        "text": "Stair clutter"
       }
     ]
   }
