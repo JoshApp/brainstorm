@@ -115,6 +115,18 @@ export interface EnemySpec {
    */
   ranged?: RangedSpec;
 
+  /**
+   * KITER standoff distance (meters). If set and > 0, the enemy backs
+   * AWAY from the player whenever the player is closer than this — it
+   * tries to hold the band [preferredRange, attackRange] and shoot from
+   * there. Without this a "ranged" enemy just stands still once the
+   * player closes and becomes a free point-blank kill; with it, the
+   * enemy teaches "close the gap under fire / pin it against a wall."
+   * Rushing it during its windup still works (it can't retreat while
+   * locked in a strike). Pairs with `ranged` but doesn't require it.
+   */
+  preferredRange?: number;
+
   // --- Presence ---
   /**
    * Optional continuous animation overlay applied each frame on top of
@@ -831,20 +843,23 @@ export const ENEMIES: Record<string, EnemySpec> = {
     },
   },
 
-  // Acolyte — ranged caster. Keeps distance, hurls a slow magic projectile
-  // from the staff orb. Long telegraph (you can see the windup), but if it
-  // lands you're hit through physical armor. Pairs as a back-line behind
-  // melee mobs; on its own it's escapable by sidestep or charge-in.
+  // Acolyte — the KITER. Hurls a slow magic bolt AND backs away when you
+  // close, holding a standoff band so you can never just walk up and
+  // free-kill it. Teaches "run it down": chase it into a corner, cut it
+  // off, or rush it during its windup (it can't retreat mid-cast).
+  // Squishy — two hits — so the payoff for closing is quick. The verb
+  // that distinguishes it from the acid-spitter (which holds ground) is
+  // MOBILITY: the acolyte makes you cover ground, the spitter makes you
+  // commit through chip damage.
   acolyte: {
     id: 'acolyte',
     name: 'acolyte',
-    hp: 2,                  // squishier than a ghoul — break the line
-    moveSpeed: 1.3,         // slow — keeps its distance, doesn't chase well
+    hp: 2,                  // squishy — closing on it pays off fast
+    moveSpeed: 1.7,         // mobile enough to actually kite a retreating gap
     attackDamage: 1,
-    // For a shooter, attackRange = "how far away I'll cast from"; we want
-    // this generous so it doesn't have to close to melee distance.
-    attackRange: 8,
-    strikeRange: 8,         // same — projectile spawns at strike phase regardless
+    attackRange: 9,         // commits to casting from far out
+    strikeRange: 9,         // projectile spawns at strike regardless of range
+    preferredRange: 5.5,    // backs away when the player gets nearer than this
     windupTime: 1.10,       // long, readable telegraph (orb pulses brighter)
     strikeTime: 0.15,
     recoverTime: 0.80,
@@ -1014,30 +1029,28 @@ export const ENEMIES: Record<string, EnemySpec> = {
     },
   },
 
-  // Acid spitter — blue ooze that hangs back and lobs acid. Solves
-  // the "all oozes are pure melee" problem and gives ranged threats
-  // a second silhouette beyond the upright acolyte. Pack-friendly:
-  // an acid spitter behind a regular ooze forces the player to
-  // close on the melee without taking pot-shots in the face.
+  // Acid spitter — the HOLDER. The deliberate foil to the acolyte: where
+  // the acolyte runs from you, the spitter plants and refuses to move,
+  // lobbing acid on a fast cadence so the longer you stay at range the
+  // more chip you eat. It does NOT kite (no preferredRange) — closing on
+  // it WORKS, that's the lesson, but it's tanky (4 HP) and its acid
+  // bypasses armour, so "commit and burst it down before the chip adds
+  // up" is the verb. Pack glue: a spitter behind a melee line punishes
+  // turtling — you can't out-wait it, you have to push.
   //
-  // Tuning intent: easier to dodge than the acolyte (slower
-  // projectile, longer telegraph) but tankier (3 HP, slow retreat)
-  // so it stays at range and forces a decision — eat the spit while
-  // crossing the room, or work the edges and circle in. No splitting
-  // on death — the ranged threat is dangerous enough at full size;
-  // splitting it AND keeping it ranged would be a "back-line cleared
-  // → back-line refilled" trap that punishes legitimate kill order.
+  // No splitting on death — a ranged splitter would be a "back-line
+  // cleared → back-line refilled" trap that punishes correct kill order.
   'acid-spitter': {
     id: 'acid-spitter',
     name: 'acid spitter',
-    hp: 3,
-    moveSpeed: 0.9,              // lazier than a regular ooze — it doesn't chase
+    hp: 4,                       // tanky — closing on it is a real commitment
+    moveSpeed: 0.8,              // glacial — it holds ground, doesn't chase
     attackDamage: 1,
-    attackRange: 7,              // ranged commit distance
+    attackRange: 7,              // ranged commit distance; no preferredRange (holds)
     strikeRange: 7,
-    windupTime: 1.05,            // longer telegraph than acolyte — core orb pulses
+    windupTime: 0.85,            // faster cadence than the acolyte — chip pressure
     strikeTime: 0.15,
-    recoverTime: 0.75,
+    recoverTime: 0.55,           // short recovery → it shoots OFTEN
     damageType: 'magic',         // acid bypasses physical armour
     // Blue body + bright cyan core — reads as a different chemistry
     // than the green ground ooze.
