@@ -4,7 +4,7 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
-import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } from './destructibles';
+import { spawnVase, spawnVaseCluster, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
@@ -1046,10 +1046,6 @@ export function buildLevel(
     torndown = true;
     // Detach event-bus listeners owned by the level (door listeners).
     for (const td of doorTeardowns) td();
-    // Release ECS entities for any vases left unsmashed on this floor so
-    // they don't leak into the world map across descents (smashed ones
-    // already cleaned up in takeDamage).
-    for (const d of destructibles) disposeDestructible(d);
     // Wipe the interactables list — pickups + doors + stairs + chests all
     // get reset. The pickup light pool persists; it's scene-wide.
     clearInteractables();
