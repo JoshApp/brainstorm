@@ -8,7 +8,7 @@ import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } f
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
-import { createEnemy, type Enemy } from '../mobs/enemy';
+import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
@@ -1046,10 +1046,11 @@ export function buildLevel(
     torndown = true;
     // Detach event-bus listeners owned by the level (door listeners).
     for (const td of doorTeardowns) td();
-    // Release ECS entities for any vases left unsmashed on this floor so
-    // they don't leak into the world map across descents (smashed ones
-    // already clean up in takeDamage). Idempotent.
+    // Release ECS entities for anything the player left behind on this floor
+    // so they don't leak into the world map across descents (killed mobs +
+    // smashed vases already clean up on death). Idempotent.
     for (const d of destructibles) disposeDestructible(d);
+    for (const e of enemies) disposeEnemy(e);
     // Wipe the interactables list — pickups + doors + stairs + chests all
     // get reset. The pickup light pool persists; it's scene-wide.
     clearInteractables();

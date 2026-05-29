@@ -17,6 +17,7 @@ import { tickShake } from './combat/screen-shake';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './player/death';
 import { initAchievements } from './broadcast/achievements';
+import { initEventLog } from './broadcast/event-log';
 import { getStyle } from './style';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle } from './style/render-target';
@@ -41,6 +42,7 @@ import { isPlaying, getGameMode } from './state/game-mode';
 import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { recomputePlayerStats } from './state/player-stats';
 import { syncHudStores } from './state/hud-stores';
+import { seedRng } from './engine/rng';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
 import { addItemSilently, clearInventory } from './player/inventory';
@@ -291,6 +293,9 @@ onPlayerDeath(() => triggerDeath());
 
 // --- Broadcast / DCC tribute layer ---
 initAchievements();
+// Append-only event log — Phase-4 (async multiplayer) foundation. Records
+// bus events now; Phase 4 swaps the sink for a SpacetimeDB writer.
+initEventLog();
 
 // --- Input ---
 // Attack is now triggered by tapping anywhere on the right half of the
@@ -711,6 +716,9 @@ function applyState(saveData: ReturnType<typeof loadSave>) {
 }
 
 function startRun(floorId: string, startDepth: number = 1) {
+  // Seed the gameplay RNG stream from the run seed (startedAt) so a seeded
+  // run's crit/loot rolls are reproducible — the Phase-4 replay foundation.
+  seedRng(getRunState()?.startedAt ?? Date.now());
   loadInitialLevel(floorId, startDepth);
   // Resolve the spawn so an authored or procgen position that
   // happens to overlap an obstacle (most commonly the stair

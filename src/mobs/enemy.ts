@@ -31,6 +31,15 @@ function audioSizeFor(spec: EnemySpec): EnemyDeathSize {
   return 'medium';
 }
 
+/** Release an enemy's ECS entity + registered combat stats. Called from level
+ *  teardown for mobs the player LEFT ALIVE — those never hit the death path
+ *  that frees them, so without this their entity + baseline stats leak into
+ *  the world map across descents. Idempotent (killed mobs already freed). */
+export function disposeEnemy(e: Enemy): void {
+  clearEntityCombatStats(e.entityId);
+  destroyEntity(e.entityId);
+}
+
 // Enemy = a mob driven by its EnemySpec.
 //
 // Geometry/materials come from spec.model via buildModel(). This module owns

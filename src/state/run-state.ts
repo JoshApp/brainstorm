@@ -11,6 +11,7 @@
 
 import type { EquipSlot } from '../player/equipment';
 import { emit } from '../broadcast/event-bus';
+import { levelForXp, xpInLevel, xpForNextLevel } from './leveling';
 
 const STORAGE_KEY = 'delve:save';
 const SAVE_VERSION = 2;
@@ -108,43 +109,23 @@ export function getGold(): number {
 }
 
 // ── Leveling curve ──────────────────────────────────────────────────
-// Quadratic per-level cost: gaining level L costs L * XP_PER_LEVEL XP.
-// Cumulative XP to FINISH level L = XP_PER_LEVEL * L * (L+1) / 2.
-// At XP_PER_LEVEL=10:
-//   L1 → L2: needs 10 cumulative
-//   L2 → L3: needs 30 cumulative
-//   L3 → L4: needs 60 cumulative
-//   L4 → L5: needs 100 cumulative
-// Gentle early ramp; the late-floor mob XP scaling matches the curve so
+// Pure curve math lives in state/leveling.ts (unit-tested). These wrap it
+// with the live XP total. The late-floor mob XP scaling matches the curve so
 // the level number tracks "how deep have you gone."
 
-const XP_PER_LEVEL = 10;
-
-/** Cumulative XP needed to BE at level L (i.e. to finish level L-1). */
-function xpFloorForLevel(level: number): number {
-  if (level <= 1) return 0;
-  return XP_PER_LEVEL * level * (level - 1) / 2;
-}
-
-/** Current level given an XP total. Level 1 starts at 0 XP. */
+/** Current level given the live XP total. Level 1 starts at 0 XP. */
 export function getLevel(): number {
-  const xp = getXp();
-  // Invert: level is the largest L where xpFloorForLevel(L) <= xp.
-  // Solving xp = k * L * (L-1) / 2 for L: L = (1 + sqrt(1 + 8 * xp / k)) / 2.
-  const L = (1 + Math.sqrt(1 + 8 * xp / XP_PER_LEVEL)) / 2;
-  return Math.max(1, Math.floor(L));
+  return levelForXp(getXp());
 }
 
 /** XP earned WITHIN the current level (0 ... xpForNextLevel-1). */
 export function getXpInLevel(): number {
-  const level = getLevel();
-  return getXp() - xpFloorForLevel(level);
+  return xpInLevel(getXp());
 }
 
 /** XP needed to FINISH the current level (i.e. the size of the bar). */
 export function getXpForNextLevel(): number {
-  const level = getLevel();
-  return xpFloorForLevel(level + 1) - xpFloorForLevel(level);
+  return xpForNextLevel(getXp());
 }
 
 export function getRunState(): SaveData | null {

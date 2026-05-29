@@ -11,6 +11,7 @@ import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { computePlayerStats } from './modifiers';
+import { gameRngChance } from '../engine/rng';
 
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
@@ -91,7 +92,7 @@ export function createCombatSystem(
     // WeaponStats default to 5% / 2x.
     const critChance = weapon.critChance ?? 0;
     const critMult   = weapon.critMultiplier ?? 2.0;
-    const crit = Math.random() < critChance;
+    const crit = gameRngChance(critChance);
     // Finisher bonus: if this strike is the LAST step of the combo
     // and the player has any items with 'finisher-damage-mult'
     // modifiers, fold their compound multiplier into the base.

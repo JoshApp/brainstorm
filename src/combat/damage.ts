@@ -1,5 +1,6 @@
 import type { EntityId } from '../ecs/types';
 import { aggregateModifiers, computePlayerStats } from './modifiers';
+import { resolveDamage } from './damage-math';
 
 // Damage pipeline. All damage in the game — player attacks on enemies, enemy
 // attacks on player, future spells/traps/environmental — funnels through
@@ -126,11 +127,7 @@ export interface DamageResult {
 export function computeDamage(event: DamageEvent): { applied: number; blocked: number } {
   const src = getCombatStats(event.source);
   const tgt = getCombatStats(event.target);
-
-  const boosted = (event.base + src.damageBonus) * src.damageMultiplier;
-  const armor = armorFor(tgt, event.type);
-  const final = Math.max(1, Math.round(boosted - armor));
-  return { applied: final, blocked: Math.max(0, boosted - final) };
+  return resolveDamage(event.base, src.damageBonus, src.damageMultiplier, armorFor(tgt, event.type));
 }
 
 function armorFor(stats: CombatStats, type: DamageType): number {
