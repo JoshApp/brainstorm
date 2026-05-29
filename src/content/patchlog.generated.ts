@@ -9,6 +9,182 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Archway: darker stone so the lamp doesn't bloom on it close-up"
+      },
+      {
+        "tag": "tune",
+        "text": "Archway glow: whole frame outline, not just the lintel"
+      },
+      {
+        "tag": "tune",
+        "text": "Archway glow: tighten proximity (fade in from ~2.5m, full ~1m)"
+      },
+      {
+        "tag": "tune",
+        "text": "Archway glow far subtler (lintel/keystone only)"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix severe lag"
+      },
+      {
+        "tag": "tune",
+        "text": "Threshold haze: layered volume inside the archway (less portal)"
+      },
+      {
+        "tag": "tune",
+        "text": "Eye dark-adaptation off measured perceived brightness"
+      },
+      {
+        "tag": "tune",
+        "text": "Archway proximity glow: lintel + keystone light up on approach"
+      },
+      {
+        "tag": "tune",
+        "text": "Tune threshold draft stronger; dark-adapt probes the looked-at surface"
+      },
+      {
+        "tag": "tune",
+        "text": "Content authoring safety"
+      },
+      {
+        "tag": "tune",
+        "text": "Replace floor embers with threshold dust + proximity haze"
+      },
+      {
+        "tag": "tune",
+        "text": "Loot depth: on-hit affixes, rarity-driven rolls, set bonuses"
+      },
+      {
+        "tag": "tune",
+        "text": "Debug: skeleton snap scenario (?scenario=skeleton)"
+      },
+      {
+        "tag": "fix",
+        "text": "creature(): skull head option (fixes committed skeleton build)"
+      },
+      {
+        "tag": "content",
+        "text": "Spear: reach-melee weapon class (the in-between)"
+      },
+      {
+        "tag": "tune",
+        "text": "Ranged viewmodel polish: crossbow recoil + wand cast poses"
+      },
+      {
+        "tag": "tune",
+        "text": "Dark-adapt reads view direction too (look into the dark to adjust)"
+      },
+      {
+        "tag": "content",
+        "text": "Ranged weapon class: crossbow + wand (main-hand ranged)"
+      },
+      {
+        "tag": "tune",
+        "text": "Dark-adapt additive lift; brighter interactable glow; cobweb variety"
+      },
+      {
+        "tag": "fix",
+        "text": "Collapse to PS1-only render path; fix dark-adapt exposure"
+      },
+      {
+        "tag": "content",
+        "text": "Chill + Sunder statuses; wire weapon on-hit application"
+      },
+      {
+        "tag": "tune",
+        "text": "Status effects — full system"
+      },
+      {
+        "tag": "tune",
+        "text": "Dark-adaptation"
+      },
+      {
+        "tag": "tune",
+        "text": "Debug readout for eye dark-adaptation"
+      },
+      {
+        "tag": "content",
+        "text": "Spider-nest vault — ties cobwebs + spiders + skeletons together"
+      },
+      {
+        "tag": "content",
+        "text": "Spider enemy — fast swarm pouncer (custom 8-leg model)"
+      },
+      {
+        "tag": "content",
+        "text": "Skeleton enemy — pressure at every range, built from creature() + abilities"
+      },
+      {
+        "tag": "tune",
+        "text": "Cobwebs — ambient decoration + destructible web-gate barriers"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix kiter (acolyte): attack-first, hold between shots, cooldown window"
+      },
+      {
+        "tag": "tune",
+        "text": "Threshold embers: faint coals at open archways (dark wayfinding)"
+      },
+      {
+        "tag": "tune",
+        "text": "Eye dark-adaptation: lift ambient floor in torchless dark"
+      },
+      {
+        "tag": "tune",
+        "text": "Faint proximity glow on nearby interactables (dark-navigation aid)"
+      },
+      {
+        "tag": "tune",
+        "text": "Parametric creature() builder + defiler's own silhouette"
+      },
+      {
+        "tag": "tune",
+        "text": "Head crane — humanoids tip their gaze toward the player"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix charger getting stuck inside the player: recoil + point-blank hits"
+      },
+      {
+        "tag": "tune",
+        "text": "Decompose the inventory panel monolith into column components"
+      },
+      {
+        "tag": "tune",
+        "text": "Walk gait — legs swing from real movement (no more moonwalk)"
+      },
+      {
+        "tag": "tune",
+        "text": "Extract pure item-formatting out of the inventory monolith + tests"
+      },
+      {
+        "tag": "tune",
+        "text": "Roll shoulder-pivot arms out to ghoul, wraith, stoneguard"
+      },
+      {
+        "tag": "tune",
+        "text": "Pose-clip animation + jointed-arm rig (skirmisher proof)"
+      },
+      {
+        "tag": "content",
+        "text": "Defiler (AoE zone enemy) + enemy tile-char registry"
+      },
+      {
+        "tag": "tune",
+        "text": "Make seeded floors fully reproducible (build-time RNG)"
+      },
+      {
+        "tag": "content",
+        "text": "Enemy ability system: data-driven attacks + skirmisher charger"
+      },
+      {
+        "tag": "tune",
+        "text": "Migrate xp/gold HUD to stores; seed loot/proc randomness"
+      },
+      {
+        "tag": "tune",
         "text": "Path-ahead prep"
       },
       {
@@ -30,188 +206,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Capture design philosophy in docs/DESIGN.md"
-      },
-      {
-        "tag": "tune",
-        "text": "Debug capture"
-      },
-      {
-        "tag": "tune",
-        "text": "Ship in the background, never foreground"
-      },
-      {
-        "tag": "tune",
-        "text": "One-command ship: push + watch deploy in one step"
-      },
-      {
-        "tag": "tune",
-        "text": "Deploy feedback: pre-push typecheck + post-push run watcher"
-      },
-      {
-        "tag": "tune",
-        "text": "PWA: poll for updates every 15s (was 60s)"
-      },
-      {
-        "tag": "add",
-        "text": "Debug capture"
-      },
-      {
-        "tag": "tune",
-        "text": "Debug capture tool (?debug=1): one-tap glitch reports"
-      },
-      {
-        "tag": "tune",
-        "text": "Vases shatter in one hit"
-      }
-    ]
-  },
-  {
-    "version": "Build 5",
-    "date": "2026-05-28",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "Generic passage clearance + reachability safety net"
-      },
-      {
-        "tag": "tune",
-        "text": "Progression safety net: chests in corridors lose collision"
-      },
-      {
-        "tag": "fix",
-        "text": "Door + stair opening fixes; doorframe lintel above doors"
-      },
-      {
-        "tag": "content",
-        "text": "Torch audio: subtle pops — quieter, rarer, gentler attack"
-      },
-      {
-        "tag": "tune",
-        "text": "Hammer combo: swing-right → swing-left → smash"
-      },
-      {
-        "tag": "content",
-        "text": "Torch audio: drop fizz bed, boost crackle pops to foreground"
-      },
-      {
-        "tag": "content",
-        "text": "Add acid-spitter ooze — blue ranged ooze variant"
-      },
-      {
-        "tag": "content",
-        "text": "Torch audio: warm fizz bed under softer pops, not Geiger clicks"
-      },
-      {
-        "tag": "add",
-        "text": "PWA updates"
-      },
-      {
-        "tag": "fix",
-        "text": "Hammer side-swings: fix rotZ sign — head now leads, not haft"
-      },
-      {
-        "tag": "tune",
-        "text": "Hammer side-swings: parabolic forward arc, not in-place leaning"
-      },
-      {
-        "tag": "content",
-        "text": "Lit-fixture pool"
-      },
-      {
-        "tag": "tune",
-        "text": "play.ts: --headed flag for live watching"
-      },
-      {
-        "tag": "content",
-        "text": "Quieter, more deliberate brazier + pike placement"
-      },
-      {
-        "tag": "tune",
-        "text": "Hammer side-swings: wide haymaker arc, body drifts through"
-      },
-      {
-        "tag": "tune",
-        "text": "Shift stairs SIDEWAYS too, not just along descent"
-      },
-      {
-        "tag": "tune",
-        "text": "Combo anims: flatten hammer side-swings, push sword slash-right forward"
-      },
-      {
-        "tag": "tune",
-        "text": "Combo anims: rising sword slash-right, head-led hammer side-smashes"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix X-walls"
-      },
-      {
-        "tag": "content",
-        "text": "Drop the three candles from the healing fountain shrine"
-      },
-      {
-        "tag": "tune",
-        "text": "Finisher trigger: scaffold on-finisher damage modifier"
-      },
-      {
-        "tag": "tune",
-        "text": "Bot + npm run play: autonomous episodes with transcripts"
-      },
-      {
-        "tag": "tune",
-        "text": "Combos"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix X-walls in mid-room: drop terminus end-caps"
-      },
-      {
-        "tag": "tune",
-        "text": "Combo: queue chains through whole combo, stops at finisher"
-      },
-      {
-        "tag": "content",
-        "text": "Lantern flame stack + iron brazier + cresset pike + frustum cull"
-      },
-      {
-        "tag": "tune",
-        "text": "Combo: one-hop press buffer — chain next step, not the whole combo"
-      },
-      {
-        "tag": "tune",
-        "text": "Dagger combo: drop press buffering, slow timings ~25%"
-      },
-      {
-        "tag": "tune",
-        "text": "Combo: whoosh + event fire per step, widen dagger slash"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix X-shaped wall artifact from isolated '#' tiles"
-      },
-      {
-        "tag": "content",
-        "text": "Weapon combos: dagger stab → slash → stab-stab"
-      },
-      {
-        "tag": "tune",
-        "text": "Annotated screenshots: harness.screenshot({annotated:true})"
-      },
-      {
-        "tag": "content",
-        "text": "Robust preview labels + inspect-to-reveal stats on blood altar"
-      },
-      {
-        "tag": "tune",
-        "text": "Update suppression"
-      },
-      {
-        "tag": "fix",
-        "text": "Continue Run fix: depth was off by one + seeded jumps"
-      },
-      {
-        "tag": "tune",
-        "text": "Harness v1: ?harness=1 boot + observation + action injection"
       }
     ]
   }
