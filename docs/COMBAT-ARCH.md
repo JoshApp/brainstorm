@@ -125,21 +125,28 @@ eyes; it tips the gaze toward the player, stronger the closer they
 are (looms at melee range, level at distance), eased back to neutral
 when calm. Body yaw already faces the player; this adds the pitch.
 
-**Still pending:** fold the whole rig — shoulders, hips, neck — into a
-parametric `creature()` builder so new enemies get limbs + gait +
-telegraph + head-crane animation for free (and the defiler earns its
-own silhouette instead of the recoloured ghoul).
+**Parametric rig builder (done):** `creature()` (content/creature.ts)
+assembles a humanoid ModelSpec with the FULL rig baked in — rig +
+shoulderL/R + hipL/R + neck slots, limbs/head hung under them — so
+anything built with it inherits arm-swing, gait, AND head-crane for
+free, by construction (no per-model risk of forgetting a pivot). Proven
+on the **defiler**, which now has its own gaunt/stooped/long-armed
+violet silhouette instead of the recoloured ghoul. A few proportion
+knobs (height, build, armLength, legLength, headRadius, hunch) +
+palette make distinct shapes.
 
 ## Models — current + next
 
-Today each enemy has a bespoke builder (`humanoidGhoulModel`,
-`oozeModel`, …). They already share a partial rig: a `rig` slot root +
-named `body`/`head`. **Next:** parametric archetype builders —
-`creature({ archetype: 'humanoid'|'quadruped'|'blob'|'floating',
-palette, size, extraParts })` — so a new enemy model is a few params,
-and every archetype emits the standard named-part rig the pose-clip
-animation targets. This is the keystone that ties models + animation +
-abilities together: one named-part contract everything keys off.
+The hand-tuned bespoke builders (`humanoidGhoulModel`, `oozeModel`, …)
+stay as-is. NEW humanoid enemies should use `creature({...})` — a few
+params instead of a 40-line function, and the animation rig is correct
+by construction. Migrating an existing model to `creature()` is
+optional (only if a silhouette change is wanted; the rig pivots were
+already added to the hand models by the animation passes).
+
+**Next archetypes** (same idea, when needed): `quadruped` (rat-style),
+`blob` (ooze), `floating` (robed caster / wraith) — each emitting the
+standard slot names so they inherit whatever animation applies.
 
 ## Roadmap (effects + content)
 

@@ -1,6 +1,7 @@
 import type { ModelSpec, Vec3 } from '../ecs/model-types';
 import type { DamageType } from '../combat/damage';
 import type { Ability } from './abilities';
+import { creature } from './creature';
 
 // Ranged config — if present on a spec, the enemy fires a projectile from
 // `muzzleOffset` (local to the container) during the strike phase instead
@@ -1289,8 +1290,21 @@ export const ENEMIES: Record<string, EnemySpec> = {
         effects: [{ kind: 'melee', reach: 1.5, damageType: 'magic' }],
       },
     ],
-    // Recoloured ghoul silhouette (violet) — distinct model pending.
-    model: humanoidGhoulModel(0x281830, 0xbb55ff, 2.6),
+    // Own silhouette via the parametric builder: tall, gaunt, stooped,
+    // long reaching arms (it pulls the hex down), violet with a sickly
+    // rim. Distinct from the bulky ghoul + lean skirmisher. Inherits
+    // the full rig (arm-swing, gait, head-crane) for free.
+    model: creature({
+      id: 'defiler-creature',
+      palette: { body: 0x281830, eye: 0xbb55ff, eyeEmissive: 2.6, bodyEmissive: 0x140a1e },
+      rim: { color: 0x7a4ac0, power: 3.0, intensity: 0.7 },
+      height: 1.15,      // tall
+      build: 0.82,       // gaunt
+      armLength: 0.62,   // long, reaching
+      legLength: 0.5,
+      headRadius: 0.21,
+      hunch: 0.12,       // stooped, head thrust forward
+    }),
     baseEyeEmissive: 2.6,
     collisionRadius: 0.42,
     physicalArmor: 0,
