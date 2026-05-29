@@ -23,7 +23,16 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 // Pre-installed by the sandbox; Playwright's normal browser download is blocked.
-const CHROMIUM_PATH = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+// Probe the known install locations (sandbox + Playwright's own cache) and
+// take the first that exists, rather than hard-coding one version path.
+const CHROMIUM_CANDIDATES = [
+  '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  process.env.HOME + '/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome',
+  process.env.HOME + '/.cache/ms-playwright/chromium-1194/chrome-linux/chrome',
+  process.env.HOME + '/.cache/ms-playwright/chromium-1161/chrome-linux/chrome',
+  process.env.HOME + '/.cache/ms-playwright/chromium-1148/chrome-linux/chrome',
+];
+const CHROMIUM_PATH = CHROMIUM_CANDIDATES.find((p) => existsSync(p)) ?? CHROMIUM_CANDIDATES[0];
 
 // Viewport presets. Realistic mobile/tablet sizes so the snap previews
 // match what Josh actually sees on his phone.
