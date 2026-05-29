@@ -12,6 +12,7 @@ import { openScreen, closeScreen } from './screen-manager';
 import { getMeta, getStash } from '../state/meta-state';
 import { showCodex } from './codex-screen';
 import { showStash } from './stash-screen';
+import { showPatchlog } from './patchlog-screen';
 
 const SCREEN_ID = 'start';
 
@@ -227,6 +228,17 @@ export function showStartScreen(opts: StartScreenOptions) {
     link.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       showCodex();
+    });
+    links.appendChild(link);
+  }
+  // DISPATCHES — the patch log. Always available; it's the public
+  // record of what's changed. Factual now; the announcer voice is a
+  // later view over the same data.
+  {
+    const link = makeSecondaryLink('DISPATCHES', 0);
+    link.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      showPatchlog();
     });
     links.appendChild(link);
   }

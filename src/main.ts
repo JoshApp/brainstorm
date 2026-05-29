@@ -22,7 +22,7 @@ import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle } from './style/render-target';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
-import { getSettings } from './settings/settings';
+import { getSettings, onSettingsChanged } from './settings/settings';
 import { setMasterVolume, startAmbience, setTorchProximity, playWhoosh } from './audio/sfx';
 import { emit } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
@@ -84,12 +84,14 @@ const HARNESS_ENABLED =
   new URLSearchParams(window.location.search).get('harness') === '1';
 if (HARNESS_ENABLED) setHarnessPaused(true);
 
-// Debug capture tool (?debug=1): an on-screen CAPTURE button that grabs
-// a rich snapshot during NORMAL play. Install the console-error ring
-// buffer synchronously here so it catches errors thrown before the
-// dynamic-imported debug module resolves.
+// Debug capture tool: an on-screen CAPTURE button that grabs a rich
+// snapshot during NORMAL play. Enabled by EITHER the ?debug=1 URL flag
+// OR the persisted "DEBUG MODE" setting (toggled in the settings menu).
+// Install the console-error ring buffer at boot when enabled so it
+// catches errors thrown before the dynamic-imported debug module loads.
 const DEBUG_ENABLED =
-  new URLSearchParams(window.location.search).get('debug') === '1';
+  new URLSearchParams(window.location.search).get('debug') === '1' ||
+  getSettings().debugMode;
 if (DEBUG_ENABLED) {
   void import('./debug/console-buffer').then((m) => m.installConsoleBuffer());
 }
@@ -765,17 +767,36 @@ if (HARNESS_ENABLED) {
   });
 }
 
-// Debug capture button (?debug=1) — dynamic-import so player builds skip
-// the whole debug + harness-observation graph. Mounts the on-screen
-// CAPTURE chip; reads the live level via the same getLevel closure.
-if (DEBUG_ENABLED) {
+// Debug capture button — dynamic-import so player builds skip the whole
+// debug + harness-observation graph. Enabled at boot by ?debug=1 or the
+// persisted DEBUG MODE setting; also toggled live from the settings menu
+// (the onSettingsChanged subscription below mounts/unmounts on demand).
+//
+// NOTE: the annotated screenshot needs preserveDrawingBuffer, which is
+// fixed at renderer-creation time from DEBUG_ENABLED (URL flag OR the
+// setting AS PERSISTED AT BOOT). So toggling debug ON mid-session gives
+// you the text report + console + look-at immediately; full screenshots
+// kick in after the next reload (when the buffer flag is re-evaluated).
+function setDebugButton(on: boolean) {
   void import('./debug/debug-button').then((mod) => {
-    mod.mountDebugButton({
-      scene, camera, renderer, canvas,
-      getLevel: () => currentLevel,
-    });
+    if (on) {
+      void import('./debug/console-buffer').then((m) => m.installConsoleBuffer());
+      mod.mountDebugButton({
+        scene, camera, renderer, canvas,
+        getLevel: () => currentLevel,
+      });
+    } else {
+      mod.unmountDebugButton();
+    }
   });
 }
+if (DEBUG_ENABLED) setDebugButton(true);
+// React to the settings-menu toggle live (no reload needed to show/hide
+// the button). The URL flag forces it on regardless of the setting.
+onSettingsChanged((s) => {
+  const urlForced = new URLSearchParams(window.location.search).get('debug') === '1';
+  setDebugButton(urlForced || s.debugMode);
+});
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
 // the CODEX/STASH buttons without requiring real playthrough.
@@ -830,6 +851,8 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   import('./ui/codex-screen').then(({ showCodex }) => showCodex());
 } else if (new URLSearchParams(window.location.search).get('showStash') === '1') {
   import('./ui/stash-screen').then(({ showStash }) => showStash());
+} else if (new URLSearchParams(window.location.search).get('showPatchlog') === '1') {
+  import('./ui/patchlog-screen').then(({ showPatchlog }) => showPatchlog());
 } else if (scenario) {
   // Debug scenario — bypass title. Scenario may override the level
   // spec or use the default LEVEL_1.
