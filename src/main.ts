@@ -19,7 +19,7 @@ import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './pla
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setDarkAdapt } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setDarkAdapt, getSceneLuminance } from './style/render-target';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
@@ -487,48 +487,34 @@ const SYSTEMS: GameSystem[] = [
   // clear line of sight (one behind a wall neither lights nor sounds here).
   // Drives both the ambient crackle volume and the eye dark-adaptation signal.
   { name: 'torch-audio', phase: 'unpaused', tick(ctx) {
+    // Torch crackle volume — LOS torch proximity at the player's position.
+    let prox = 0;
     const earRange = 6;
     const walkable = currentLevel.walkable;
-    // LOS torch proximity at an arbitrary point (higher = more lit).
-    const proxAt = (px: number, pz: number) => {
-      let p = 0;
-      for (const t of currentLevel.torches) {
-        const dx = t.position.x - px;
-        const dz = t.position.z - pz;
-        const d = Math.hypot(dx, dz);
-        if (d >= earRange) continue;
-        if (walkable && !walkable.hasLineOfSight(px, pz, t.position.x, t.position.z)) continue;
-        p += 1 - d / earRange;
-      }
-      return p;
-    };
-
     const cx = camera.position.x;
     const cz = camera.position.z;
-    const playerProx = proxAt(cx, cz);
-    setTorchProximity(playerProx);   // audio crackle = where you ARE
+    for (const t of currentLevel.torches) {
+      const dx = t.position.x - cx;
+      const dz = t.position.z - cz;
+      const d = Math.hypot(dx, dz);
+      if (d >= earRange) continue;
+      if (walkable && !walkable.hasLineOfSight(cx, cz, t.position.x, t.position.z)) continue;
+      prox += 1 - d / earRange;
+    }
+    setTorchProximity(prox);
 
-    // Eyes adapt to what you're LOOKING at, not just where you stand: probe
-    // the darkness of the SURFACE the view ray hits (the wall/corner you're
-    // facing, however far), and take the darker of here-vs-there. So standing
-    // by a torch but peering into a dark corner lets your eyes adjust to it.
-    camera.getWorldDirection(forwardScratch);
-    const fl = Math.hypot(forwardScratch.x, forwardScratch.z) || 1;
-    const fx = forwardScratch.x / fl;
-    const fz = forwardScratch.z / fl;
-    const hitDist = walkable ? walkable.rayWallDistance(cx, cz, fx, fz, 9) : 9;
-    const lookDist = Math.max(0.8, Math.min(hitDist - 0.3, 8));   // just shy of the surface
-    const lookProx = proxAt(cx + fx * lookDist, cz + fz * lookDist);
-    const darkness = Math.min(playerProx, lookProx);
-
-    // realDt so the adjustment runs at real-time, not the death slow-mo.
-    const adapt = tickDarkAdaptation(darkness, ctx.realDt);
+    // Eye dark-adaptation now keys off MEASURED perceived brightness — the
+    // metered luminance of the frame centre (set during render last frame),
+    // which reliably reflects every light source actually on screen, weighted
+    // by where you look. realDt so it adjusts at real-time, not death slow-mo.
+    const luma = getSceneLuminance();
+    const adapt = tickDarkAdaptation(luma, ctx.realDt);
     // PS1 path ignores renderer tone mapping (render-to-target), so the dark
     // lift lives in the blit shader (additive shadow-raise). Ambient is a
     // secondary fill (applied during the scene render, so it works there).
     setDarkAdapt(adapt);
     ambient.intensity = darkAdaptAmbient();
-    updateDarkAdaptReadout(darkness, adapt, darkAdaptBrightness());
+    updateDarkAdaptReadout(luma, adapt, darkAdaptBrightness());
   } },
 
   { name: 'combat', phase: 'unpaused', tick() {

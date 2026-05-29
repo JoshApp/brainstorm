@@ -28,15 +28,14 @@ export function initDarkAdaptReadout(): void {
   document.body.appendChild(el);
 }
 
-/** Per-frame update. No-op (and allocates nothing) when not mounted. */
-export function updateDarkAdaptReadout(prox: number, adaptation: number, brightness: number): void {
+/** Per-frame update. No-op (and allocates nothing) when not mounted.
+ *  `luminance` = measured perceived brightness of the frame centre (0..1). */
+export function updateDarkAdaptReadout(luminance: number, adaptation: number, brightness: number): void {
   if (!el) return;
   const filled = Math.round(adaptation * 12);
   const bar = '█'.repeat(filled) + '·'.repeat(12 - filled);
-  // Matches DARK_LIGHT_THRESHOLD in scene/dark-adaptation.ts.
-  const state = prox < 0.25 ? 'DARK (adapting↑)' : 'LIT (re-blind↓)';
   el.textContent =
     `eye-adapt ${adaptation.toFixed(2)} [${bar}]\n` +
-    `los-torch ${prox.toFixed(2)}  ${state}\n` +
+    `scene-lum ${luminance.toFixed(3)}\n` +
     `brightness ×${brightness.toFixed(2)}`;
 }

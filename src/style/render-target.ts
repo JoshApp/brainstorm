@@ -148,6 +148,45 @@ export function setDarkAdapt(amount: number): void {
   if (blitMaterial) blitMaterial.uniforms.uDarkAdapt.value = amount;
 }
 
+// ── Scene luminance metering (auto-exposure for eye dark-adaptation) ───────
+// We read a small CENTRE block of the low-res scene target and average its
+// perceived luminance — the reliable "how bright is what I'm looking at",
+// accounting for every light source actually on screen. Metered on the RAW
+// scene target (before the blit's dark-lift), so there's no feedback loop.
+// Throttled + tiny region to keep the readback stall negligible on mobile.
+const METER_EVERY = 6;          // frames between readbacks (~10Hz)
+const METER_SIZE = 24;          // centre block side, in low-res target pixels
+const meterBuf = new Uint8Array(METER_SIZE * METER_SIZE * 4);
+let meterFrame = 0;
+let lastLuminance = 0.12;
+
+function meterLuminance(renderer: THREE.WebGLRenderer): void {
+  if (!lowResTarget) return;
+  const tw = lowResTarget.width;
+  const th = lowResTarget.height;
+  const w = Math.min(METER_SIZE, tw);
+  const h = Math.min(METER_SIZE, th);
+  const sx = Math.max(0, Math.floor((tw - w) / 2));
+  const sy = Math.max(0, Math.floor((th - h) / 2));
+  try {
+    renderer.readRenderTargetPixels(lowResTarget, sx, sy, w, h, meterBuf);
+  } catch {
+    return;   // some mobile drivers reject mid-frame readback; keep last value
+  }
+  let sum = 0;
+  const n = w * h;
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    sum += 0.2126 * meterBuf[o] + 0.7152 * meterBuf[o + 1] + 0.0722 * meterBuf[o + 2];
+  }
+  lastLuminance = sum / (n * 255);
+}
+
+/** Perceived luminance (0..1) of the centre of the last metered frame. */
+export function getSceneLuminance(): number {
+  return lastLuminance;
+}
+
 export function renderWithStyle(
   renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,
@@ -160,6 +199,8 @@ export function renderWithStyle(
     renderer.setRenderTarget(lowResTarget);
     renderer.clear();
     renderer.render(scene, camera);
+    // Meter the raw scene (pre-lift) for eye dark-adaptation. Throttled.
+    if ((meterFrame++ % METER_EVERY) === 0) meterLuminance(renderer);
     renderer.setRenderTarget(null);
     renderer.render(blitScene, blitCamera);
   } else {
