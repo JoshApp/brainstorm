@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "verify": "tsc --noEmit",
+    "watch-deploy": "bash scripts/watch-deploy.sh",
     "gen-patchlog": "tsx scripts/gen-patchlog.ts",
     "prebuild": "tsx scripts/gen-patchlog.ts",
     "build": "tsc && vite build",

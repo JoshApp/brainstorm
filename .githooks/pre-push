@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Pre-push safety net: typecheck before anything reaches CI.
+#
+# The GitHub Pages deploy runs `tsc && vite build`; the overwhelming
+# majority of red deploys are TypeScript errors, which `tsc --noEmit`
+# catches here in a few seconds — before the push, before CI, before
+# the live URL goes stale. Catching it locally is the fastest possible
+# feedback: the failure never happens.
+#
+# Skips itself if tsc isn't installed (e.g. a clone without npm ci).
+# Set SKIP_PREPUSH=1 to bypass for an emergency push.
+
+set -euo pipefail
+
+if [ "${SKIP_PREPUSH:-}" = "1" ]; then
+  echo "[pre-push] SKIP_PREPUSH=1 — skipping typecheck"
+  exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+if [ ! -x node_modules/.bin/tsc ]; then
+  echo "[pre-push] tsc not found (run npm ci) — skipping typecheck"
+  exit 0
+fi
+
+echo "[pre-push] typechecking…"
+if ! node_modules/.bin/tsc --noEmit; then
+  echo ""
+  echo "[pre-push] ✗ typecheck FAILED — push aborted."
+  echo "           Fix the errors above, or SKIP_PREPUSH=1 git push to force."
+  exit 1
+fi
+echo "[pre-push] ✓ typecheck passed"
+exit 0
