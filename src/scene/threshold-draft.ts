@@ -16,7 +16,7 @@ import * as THREE from 'three';
 
 const DUST_COLOR = 0x9c937c;
 const HAZE_COLOR = 0xb4aa90;
-const HAZE_MAX_OPACITY = 0.16;     // faint — well under the lamp
+const HAZE_MAX_OPACITY = 0.32;     // visible-but-diffuse; tune to taste
 const HAZE_HEIGHT = 2.4;
 const MOTES_PER_DRAFT = 5;
 const TICK_RANGE = 9;              // skip motes for drafts further than this
@@ -135,7 +135,7 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
       fog: true,
     });
     const sprite = new THREE.Sprite(mat);
-    const sz = 0.03 + rand() * 0.03;
+    const sz = 0.04 + rand() * 0.04;
     sprite.scale.set(sz, sz, 1);
     scene.add(sprite);
     const m: Mote = {
@@ -145,7 +145,7 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
       oz: (rand() - 0.5) * 0.8,
       vAxis: (rand() < 0.5 ? -1 : 1) * DUST_SPEED * (0.6 + rand() * 0.8),
       vLat: (rand() - 0.5) * 0.04,
-      baseOpacity: 0.25 + rand() * 0.35,
+      baseOpacity: 0.35 + rand() * 0.4,
     };
     motes.push(m);
     placeMote(x, z, axis, m);
@@ -169,9 +169,9 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
     d.t += dt;
     const dist = Math.hypot(d.cx - playerPos.x, d.cz - playerPos.z);
 
-    // Haze: 0 beyond 5m, blooms toward ~1.8m, then fades as you pass through
+    // Haze: 0 beyond 6m, blooms toward ~2m, then fades as you pass through
     // (so it doesn't white out the doorway you're standing in).
-    const near = smoothstep(5.0, 1.8, dist);
+    const near = smoothstep(6.0, 2.0, dist);
     const notInside = smoothstep(0.4, 1.5, dist);
     const flicker = 0.88 + 0.12 * Math.sin(d.t * 1.7);
     d.hazeMat.opacity = HAZE_MAX_OPACITY * near * notInside * flicker;

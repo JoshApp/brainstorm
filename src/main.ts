@@ -508,17 +508,17 @@ const SYSTEMS: GameSystem[] = [
     const playerProx = proxAt(cx, cz);
     setTorchProximity(playerProx);   // audio crackle = where you ARE
 
-    // Eyes adapt to what you're LOOKING at too: sample a point ahead along the
-    // view ray (shortened if a wall is closer) and take the DARKER of here vs
-    // there — so standing by a torch but peering into a dark corner still lets
-    // your eyes adjust to the corner.
+    // Eyes adapt to what you're LOOKING at, not just where you stand: probe
+    // the darkness of the SURFACE the view ray hits (the wall/corner you're
+    // facing, however far), and take the darker of here-vs-there. So standing
+    // by a torch but peering into a dark corner lets your eyes adjust to it.
     camera.getWorldDirection(forwardScratch);
     const fl = Math.hypot(forwardScratch.x, forwardScratch.z) || 1;
     const fx = forwardScratch.x / fl;
     const fz = forwardScratch.z / fl;
-    let ahead = 3.5;
-    if (walkable && !walkable.hasLineOfSight(cx, cz, cx + fx * ahead, cz + fz * ahead)) ahead = 1.6;
-    const lookProx = proxAt(cx + fx * ahead, cz + fz * ahead);
+    const hitDist = walkable ? walkable.rayWallDistance(cx, cz, fx, fz, 9) : 9;
+    const lookDist = Math.max(0.8, Math.min(hitDist - 0.3, 8));   // just shy of the surface
+    const lookProx = proxAt(cx + fx * lookDist, cz + fz * lookDist);
     const darkness = Math.min(playerProx, lookProx);
 
     // realDt so the adjustment runs at real-time, not the death slow-mo.

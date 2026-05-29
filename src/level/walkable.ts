@@ -145,6 +145,27 @@ export class WalkableRegion {
   }
 
   /**
+   * Distance from (ox,oz) along unit direction (dx,dz) to the nearest wall,
+   * capped at maxDist. Used to sample "what surface am I looking at" (e.g. the
+   * dark-adaptation gaze probe). Ignores obstacles — walls only.
+   */
+  rayWallDistance(ox: number, oz: number, dx: number, dz: number, maxDist: number): number {
+    let best = maxDist;
+    for (const w of this.walls) {
+      const ex = w.bx - w.ax;
+      const ez = w.bz - w.az;
+      const denom = dx * ez - dz * ex;
+      if (Math.abs(denom) < 1e-9) continue;       // parallel
+      const rx = w.ax - ox;
+      const rz = w.az - oz;
+      const t = (rx * ez - rz * ex) / denom;       // distance along the ray
+      const u = (rx * dz - rz * dx) / denom;       // position along the segment
+      if (t >= 0 && t < best && u >= 0 && u <= 1) best = t;
+    }
+    return best;
+  }
+
+  /**
    * Find a valid spawn position near (x, z). If the requested position
    * is already free, returns it unchanged. Otherwise spirals outward in
    * concentric rings of sample points and returns the nearest free one.
