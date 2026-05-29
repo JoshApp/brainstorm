@@ -19,6 +19,7 @@ import {
   type DamageEvent,
 } from '../combat/damage';
 import type { Damageable } from '../combat/damageable';
+import { gameRngInt, gameRngChance } from '../engine/rng';
 
 // Destructible props — a parallel hit-test target list for the
 // combat system. Distinct from enemies (no AI, no perception, no
@@ -137,11 +138,11 @@ export function spawnVase(
       const potionChance = isBroken ? 0 : VASE_POTION_CHANCE;
       const dropY = 0.25;
       tmpDropPos.set(group.position.x, dropY, group.position.z);
-      if (Math.random() < goldChance) {
-        const amt = VASE_GOLD_MIN + Math.floor(Math.random() * (VASE_GOLD_MAX - VASE_GOLD_MIN + 1));
+      if (gameRngChance(goldChance)) {
+        const amt = gameRngInt(VASE_GOLD_MIN, VASE_GOLD_MAX);
         spawnGoldCoins(scene, tmpDropPos, amt);
       }
-      if (Math.random() < potionChance) {
+      if (gameRngChance(potionChance)) {
         const potion = ITEMS['healing-potion'];
         if (potion) {
           const launchVel = new THREE.Vector3(

@@ -1,4 +1,5 @@
 import type { StatModifier } from '../combat/modifiers';
+import { gameRng } from '../engine/rng';
 
 // Affix system — ARPG-lite hybrid for DELVE.
 //
@@ -132,7 +133,7 @@ export function rollAffixes(
     const candidates = pool.filter((a) => !usedIds.has(a.id));
     if (candidates.length === 0) break;
     const total = candidates.reduce((s, a) => s + (a.weight ?? 1), 0);
-    let r = Math.random() * total;
+    let r = gameRng() * total;
     let chosen: AffixSpec | null = null;
     for (const a of candidates) {
       r -= a.weight ?? 1;
@@ -145,7 +146,7 @@ export function rollAffixes(
 
     // Roll the affix's stat ranges.
     const mods: StatModifier[] = chosen.rolls.map((roll) => {
-      const raw = roll.min + Math.random() * (roll.max - roll.min);
+      const raw = roll.min + gameRng() * (roll.max - roll.min);
       const amount = roll.integer ? Math.round(raw) : Math.round(raw * 100) / 100;
       return { kind: roll.kind, amount } as StatModifier;
     });
@@ -154,7 +155,7 @@ export function rollAffixes(
 
     // Each subsequent affix has a lower chance to even appear. Roll
     // a 60% gate after the first — gives "mostly 1 affix, sometimes 2."
-    if (i + 1 < maxCount && Math.random() > 0.55) break;
+    if (i + 1 < maxCount && gameRng() > 0.55) break;
   }
   return picked;
 }

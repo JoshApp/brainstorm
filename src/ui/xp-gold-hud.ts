@@ -1,7 +1,6 @@
-import {
-  getXp, getGold, getLevel, getXpInLevel, getXpForNextLevel,
-} from '../state/run-state';
 import { on } from '../broadcast/event-bus';
+import { xpStore, goldStore, type XpState } from '../state/hud-stores';
+import { bind } from './hud';
 
 // Wide ARPG-style XP bar pinned along the BOTTOM edge of the screen,
 // just above the HP pips. The numbers (level + current/next) live
@@ -31,10 +30,6 @@ let levelToast: HTMLDivElement | null = null;
 let xpPulseTimer = 0;
 let goldPulseTimer = 0;
 let levelPulseTimer = 0;
-let lastXp = -1;
-let lastGold = -1;
-let lastLevel = -1;
-let lastNextLevel = -1;
 
 export function createXpGoldHud(): void {
   if (xpContainer) return;
@@ -163,6 +158,20 @@ export function createXpGoldHud(): void {
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(levelToast);
 
+  // Data → DOM: bound to the HUD stores (synced each frame), so the bar,
+  // level label and gold re-render only when their value actually changes.
+  bind(xpStore, ({ level, inLevel, next }: XpState) => {
+    if (!xpLevelEl || !xpFillEl || !xpFractionEl) return;
+    xpLevelEl.textContent = `LVL ${level}`;
+    const pct = next > 0 ? Math.min(100, (inLevel / next) * 100) : 100;
+    xpFillEl.style.width = `${pct}%`;
+    xpFractionEl.textContent = `${inLevel} / ${next}`;
+  });
+  bind(goldStore, (gold) => {
+    if (!goldEl) return;
+    goldEl.innerHTML = `${SVG_COIN}${gold}`;
+  });
+
   on((e) => {
     if (e.type === 'xp:absorbed') xpPulseTimer = 0.22;
     else if (e.type === 'gold:absorbed') goldPulseTimer = 0.22;
@@ -191,30 +200,11 @@ function showLevelToast(level: number) {
   }, 900);
 }
 
-/** Per-frame update. */
+/** Per-frame update — pulse-animation decay only. The data (bar, level, gold)
+ *  is store-bound in createXpGoldHud; this just eases the on-event flourishes
+ *  (xp/gold absorb, level-up) back to rest. */
 export function updateXpGoldHud(dt: number): void {
   if (!goldEl || !xpFillEl || !xpLevelEl || !xpFractionEl) return;
-  const xp = getXp();
-  const gold = getGold();
-  const level = getLevel();
-  const inLevel = getXpInLevel();
-  const next = getXpForNextLevel();
-
-  if (level !== lastLevel) {
-    xpLevelEl.textContent = `LVL ${level}`;
-    lastLevel = level;
-  }
-  if (xp !== lastXp || next !== lastNextLevel) {
-    const pct = next > 0 ? Math.min(100, (inLevel / next) * 100) : 100;
-    xpFillEl.style.width = `${pct}%`;
-    xpFractionEl.textContent = `${inLevel} / ${next}`;
-    lastXp = xp;
-    lastNextLevel = next;
-  }
-  if (gold !== lastGold) {
-    goldEl.innerHTML = `${SVG_COIN}${gold}`;
-    lastGold = gold;
-  }
 
   // Pulse decays.
   if (xpPulseTimer > 0) {

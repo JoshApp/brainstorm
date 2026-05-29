@@ -3,6 +3,7 @@ import { applyEffect } from './effects';
 import { on as onGameEvent } from '../broadcast/event-bus';
 import { get } from './world';
 import { aggregatePassives } from '../combat/modifiers';
+import { gameRng } from '../engine/rng';
 
 // Trigger firing — when the in-world event bus emits something, walk every
 // active passive on the relevant entity (intrinsic + equipment-granted)
@@ -18,7 +19,7 @@ function fireTriggers(entity: Entity | undefined, event: TriggerEvent) {
   for (const passive of aggregatePassives(entity.id)) {
     if (passive.trigger.on !== event) continue;
     const chance = passive.trigger.chance ?? 1;
-    if (chance < 1 && Math.random() > chance) continue;
+    if (chance < 1 && gameRng() > chance) continue;
     for (const effect of passive.trigger.effects) {
       applyEffect(effect, { defaultTarget: entity.id });
     }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
+import { gameRngChance } from '../engine/rng';
 import { registerLight } from '../scene/light-pool';
 import { healPlayer, getPlayerMaxHp, getPlayerHp } from '../player/health';
 import { applyBuff } from '../ecs/buffs';
@@ -126,8 +127,8 @@ export function spawnFountain(
       liquid.visible = false;
       fountainState.intensity = 0.2;
 
-      // 50/50 gamble. Math.random() < 0.5 → blessing; otherwise curse.
-      const blessed = Math.random() < 0.5;
+      // 50/50 gamble — blessing or curse. Seeded so a run is reproducible.
+      const blessed = gameRngChance(0.5);
       if (blessed) {
         const before = getPlayerHp();
         healPlayer(getPlayerMaxHp());

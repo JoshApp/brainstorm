@@ -1,6 +1,7 @@
 import { writable } from './store';
 import { getPlayerHp } from '../player/health';
 import { getPlayerSnapshot } from './player-stats';
+import { getGold, getLevel, getXpInLevel, getXpForNextLevel } from './run-state';
 
 // Reactive stores backing the live HUD readouts. Synced once per frame from
 // the source-of-truth getters (frame-coherent: any direct mutation is caught
@@ -26,10 +27,26 @@ export const depthStore = writable<DepthState>(
   (a, b) => a.depth === b.depth && a.sanctuary === b.sanctuary,
 );
 
+export interface XpState {
+  level: number;
+  /** XP earned within the current level. */
+  inLevel: number;
+  /** XP needed to finish the current level (bar size). */
+  next: number;
+}
+export const xpStore = writable<XpState>(
+  { level: 1, inLevel: 0, next: 0 },
+  (a, b) => a.level === b.level && a.inLevel === b.inLevel && a.next === b.next,
+);
+
+export const goldStore = writable<number>(0);
+
 /** Push current HP into the store. Called once per frame after the player
  *  snapshot is recomputed (so max reflects this frame's equipment/buffs). */
 export function syncHudStores(): void {
   hpStore.set({ hp: getPlayerHp(), max: getPlayerSnapshot().maxHp });
+  xpStore.set({ level: getLevel(), inLevel: getXpInLevel(), next: getXpForNextLevel() });
+  goldStore.set(getGold());
 }
 
 /** Set the depth readout. Event-driven — called on level load, not polled. */
