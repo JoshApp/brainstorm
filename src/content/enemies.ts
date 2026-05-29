@@ -278,6 +278,10 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
       rig: { pos: [0, 1.05, 0] },
       weapon:   { pos: [0.35, 1.15, 0] satisfies Vec3 },
       head_top: { pos: [0,    1.9, 0] satisfies Vec3 },
+      // Shoulder pivots (parented to rig) — the pose-clip layer swings
+      // these so the ghoul's arms heave up on windup + slam on strike.
+      shoulderL: { pos: [-0.34, 0.20, 0.06], parent: 'rig' },
+      shoulderR: { pos: [ 0.34, 0.20, 0.06], parent: 'rig' },
     },
     parts: [
       // FEET — wide low cylinders flat on the floor. The "stumps" the
@@ -295,12 +299,13 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
       // ASYMMETRIC SHOULDER HUMPS — left noticeably larger.
       { parent: 'rig', kind: 'sphere', pos: [-0.32, 0.30, 0], radius: 0.22, segments: [12, 10], mat: 'body', jitter: 0.022 },
       { parent: 'rig', kind: 'sphere', pos: [ 0.32, 0.35, 0], radius: 0.16, segments: [12, 10], mat: 'body', jitter: 0.022 },
-      // ARMS — different lengths (left longer). Hang from shoulders.
-      { parent: 'rig', kind: 'capsule', pos: [-0.34, -0.05, 0.06], radius: 0.085, height: 0.50, mat: 'body', jitter: 0.020 },
-      { parent: 'rig', kind: 'capsule', pos: [ 0.34, 0.05, 0.06], radius: 0.080, height: 0.35, mat: 'body', jitter: 0.020 },
+      // ARMS — different lengths (left longer). Hung from the shoulder
+      // pivots (pos relative to each pivot) so the pose layer swings them.
+      { parent: 'shoulderL', kind: 'capsule', pos: [0, -0.25, 0], radius: 0.085, height: 0.50, mat: 'body', jitter: 0.020 },
+      { parent: 'shoulderR', kind: 'capsule', pos: [0, -0.15, 0], radius: 0.080, height: 0.35, mat: 'body', jitter: 0.020 },
       // FISTS — asymmetric (left larger, hanging lower).
-      { parent: 'rig', kind: 'sphere', pos: [-0.34, -0.34, 0.06], radius: 0.105, segments: [10, 8], mat: 'body', jitter: 0.018 },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.34, -0.14, 0.06], radius: 0.088, segments: [10, 8], mat: 'body', jitter: 0.018 },
+      { parent: 'shoulderL', kind: 'sphere', pos: [0, -0.54, 0], radius: 0.105, segments: [10, 8], mat: 'body', jitter: 0.018 },
+      { parent: 'shoulderR', kind: 'sphere', pos: [0, -0.34, 0], radius: 0.088, segments: [10, 8], mat: 'body', jitter: 0.018 },
       // HEAD — hunched forward (z=-0.05) on a short thick neck.
       { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.55, -0.05], scale: [1.08, 0.95, 1], radius: 0.27, mat: 'body', jitter: 0.025 },
       // Eyes — slightly closer together than wraith, set deep.
@@ -577,6 +582,9 @@ function wraithModel(bodyColor: number, eyeColor: number, eyeEmissive: number): 
       // feet should be off the floor. The presence-tick adds a slow bob
       // on top of this baseline.
       rig: { pos: [0, 1.05, 0] },
+      // Shoulder pivots — the spindly arms reach forward on the strike.
+      shoulderL: { pos: [-0.32, 0.20, 0.06], parent: 'rig' },
+      shoulderR: { pos: [ 0.32, 0.20, 0.06], parent: 'rig' },
     },
     parts: [
       // OUTER AURA — large additive sprite behind everything else. Reads
@@ -612,16 +620,17 @@ function wraithModel(bodyColor: number, eyeColor: number, eyeEmissive: number): 
       { parent: 'rig', kind: 'sphere', pos: [-0.30, 0.40, 0.02], radius: 0.16, segments: [12, 10], mat: 'body', jitter: 0.025 },
       { parent: 'rig', kind: 'sphere', pos: [ 0.30, 0.40, 0.02], radius: 0.16, segments: [12, 10], mat: 'body', jitter: 0.025 },
 
-      // ARMS — long thin capsules hanging from the shoulders. "Spindly,"
-      // not muscular. The bone material reads paler so they pop against
-      // the dark body. Heavy jitter twists them into gnarled limbs.
-      { parent: 'rig', kind: 'capsule', pos: [-0.32, -0.05, 0.06], radius: 0.045, height: 0.55, mat: 'bone', jitter: 0.020 },
-      { parent: 'rig', kind: 'capsule', pos: [ 0.32, -0.05, 0.06], radius: 0.045, height: 0.55, mat: 'bone', jitter: 0.020 },
+      // ARMS — long thin capsules hung from the shoulder pivots.
+      // "Spindly," not muscular. The bone material reads paler so they
+      // pop against the dark body. Heavy jitter twists them into gnarled
+      // limbs. The pivots let them reach forward on the strike.
+      { parent: 'shoulderL', kind: 'capsule', pos: [0, -0.25, 0], radius: 0.045, height: 0.55, mat: 'bone', jitter: 0.020 },
+      { parent: 'shoulderR', kind: 'capsule', pos: [0, -0.25, 0], radius: 0.045, height: 0.55, mat: 'bone', jitter: 0.020 },
 
       // CLAW TIPS — small jittered spheres at the bottom of each arm so
       // the silhouette ends in something pointy rather than rounded.
-      { parent: 'rig', kind: 'sphere', pos: [-0.34, -0.42, 0.06], radius: 0.055, segments: [10, 8], mat: 'bone', jitter: 0.025 },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.34, -0.42, 0.06], radius: 0.055, segments: [10, 8], mat: 'bone', jitter: 0.025 },
+      { parent: 'shoulderL', kind: 'sphere', pos: [-0.02, -0.62, 0], radius: 0.055, segments: [10, 8], mat: 'bone', jitter: 0.025 },
+      { parent: 'shoulderR', kind: 'sphere', pos: [ 0.02, -0.62, 0], radius: 0.055, segments: [10, 8], mat: 'bone', jitter: 0.025 },
 
       // HEAD — sphere with vertical scale + jitter. Used to be a clean
       // ovoid; now it's a gnarled skull-ish shape unique to each instance.
@@ -665,6 +674,11 @@ function stoneguardModel(bodyColor: number, eyeColor: number): ModelSpec {
     },
     slots: {
       rig: { pos: [0, 1.20, 0] },     // taller than ghoul (1.05)
+      // Shoulder pivots under the pauldrons. The maul rides the RIGHT
+      // pivot, so the pose layer heaves it overhead on windup and slams
+      // it down on strike — the stoneguard's signature crusher.
+      shoulderL: { pos: [-0.45, 0.18, 0], parent: 'rig' },
+      shoulderR: { pos: [ 0.45, 0.18, 0], parent: 'rig' },
     },
     parts: [
       // FEET — wide stone slabs.
@@ -679,16 +693,17 @@ function stoneguardModel(bodyColor: number, eyeColor: number): ModelSpec {
       // SHOULDER PAULDRONS — flanking the torso top, blocky.
       { parent: 'rig', kind: 'box', pos: [-0.45, 0.20, 0], size: [0.22, 0.22, 0.30], mat: 'body', jitter: 0.020 },
       { parent: 'rig', kind: 'box', pos: [ 0.45, 0.20, 0], size: [0.22, 0.22, 0.30], mat: 'body', jitter: 0.020 },
-      // ARMS — thick capsules hanging from the pauldrons.
-      { parent: 'rig', kind: 'capsule', pos: [-0.45, -0.10, 0], radius: 0.11, height: 0.40, mat: 'body', jitter: 0.018 },
-      { parent: 'rig', kind: 'capsule', pos: [ 0.45, -0.10, 0], radius: 0.11, height: 0.40, mat: 'body', jitter: 0.018 },
-      // RIGHT FIST — bare, on the off side.
-      { parent: 'rig', kind: 'sphere', pos: [-0.45, -0.42, 0], radius: 0.13, segments: [10, 8], mat: 'body', jitter: 0.018 },
-      // LEFT HAND MAUL — handle (thin capsule) + head (chunky box).
-      // The head sits BELOW the fist so the maul is "resting at the
-      // ready" silhouette.
-      { parent: 'rig', kind: 'cylinder', pos: [ 0.45, -0.32, 0.05], radius: 0.025, height: 0.42, mat: 'maul' },
-      { parent: 'rig', kind: 'box',      pos: [ 0.45, -0.58, 0.05], size: [0.22, 0.22, 0.22], mat: 'maul', jitter: 0.010 },
+      // ARMS — thick capsules hung from the shoulder pivots so they
+      // heave with the swing.
+      { parent: 'shoulderL', kind: 'capsule', pos: [0, -0.28, 0], radius: 0.11, height: 0.40, mat: 'body', jitter: 0.018 },
+      { parent: 'shoulderR', kind: 'capsule', pos: [0, -0.28, 0], radius: 0.11, height: 0.40, mat: 'body', jitter: 0.018 },
+      // OFF-SIDE FIST — bare, on the left pivot.
+      { parent: 'shoulderL', kind: 'sphere', pos: [0, -0.60, 0], radius: 0.13, segments: [10, 8], mat: 'body', jitter: 0.018 },
+      // MAUL — handle (thin capsule) + head (chunky box), on the RIGHT
+      // pivot so it swings overhead → down with the strike. The head
+      // sits below the fist for a "resting at the ready" rest pose.
+      { parent: 'shoulderR', kind: 'cylinder', pos: [0, -0.50, 0.05], radius: 0.025, height: 0.42, mat: 'maul' },
+      { parent: 'shoulderR', kind: 'box',      pos: [0, -0.76, 0.05], size: [0.22, 0.22, 0.22], mat: 'maul', jitter: 0.010 },
       // HELMET — boxy faceplate sitting on a short neck. Slightly
       // narrower than the torso so the eye reads "head set in heavy
       // plate."

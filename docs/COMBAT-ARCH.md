@@ -98,15 +98,18 @@ Two layers, both procedural (no model files, fits the PS1/Lunacid look):
 `SlotSpec.parent` (build-model) lets a slot nest under another node, so
 a **shoulder pivot** parented to the body `rig` both swings its arm and
 follows the body lean. The arm + fist hang below the pivot; the pose-
-clip rotates the pivot. Proven on the **skirmisher** (its charge/slash
-now swing the arms). Rest pose is unchanged — the pivot + arm offset
-reproduce the old arm position exactly.
+clip rotates the pivot. Rest pose is unchanged for every conversion —
+the pivot + arm offset reproduce the old arm position exactly.
 
-**Rollout pending:** convert the other humanoids (ghoul, acolyte,
-wraith, stoneguard, defiler) to shoulder-pivot arms so their swings/
-casts animate too — same pattern, one model at a time. Then legs +
-head as named pivots for richer idle/locomotion. This is the
-incremental path to the full named-part rig.
+**Rigged with shoulder-pivot arms:** skirmisher (charge/slash), ghoul
++ defiler (ghoul model — swing/hex), wraith (reach), stoneguard (the
+MAUL rides the right pivot → overhead slam). The acolyte is robed with
+no visible arms (the staff implies them) so it stays body-only — not
+every model needs limbs. Rat + ooze are non-humanoid, also body-only.
+
+**Still pending:** leg + head pivots for richer idle/locomotion (a
+walking shamble, a craning head); then fold the whole rig into a
+parametric `creature()` builder so new enemies get it for free.
 
 ## Models — current + next
 
