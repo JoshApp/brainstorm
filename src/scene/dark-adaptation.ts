@@ -21,11 +21,10 @@ const DARK_LIGHT_THRESHOLD = 0.25;   // LOS torch-proximity below this reads as 
 const ADAPT_UP_RATE = 0.6;           // per-sec approach while dark (~1.7s to adjust)
 const ADAPT_DOWN_RATE = 4.0;         // per-sec approach while lit (~0.25s — re-blinded)
 
-// Tone-map exposure: BASE matches the renderer init.
-export const BASE_EXPOSURE = 0.9;
-const MAX_EXPOSURE_BOOST = 0.7;      // → 1.6 at full dark (~1.8× brighter image)
-// Ambient fill on top of the configured baseline.
-const MAX_AMBIENT_BOOST = 1.6;       // → baseline + 1.6 at full dark
+// Brightness multiplier at full adaptation. The blit shader multiplies the
+// image by darkAdaptBrightness() (1.0 = neutral), and the AmbientLight is
+// scaled by the same factor as a secondary fill.
+const MAX_BRIGHTNESS_BOOST = 0.8;    // → 1.8× at full dark
 
 let adaptation = 0;   // 0..1
 
@@ -41,14 +40,16 @@ export function tickDarkAdaptation(lightLevel: number, dt: number): number {
   return adaptation;
 }
 
-/** ACES tone-map exposure to apply this frame. */
-export function darkAdaptExposure(): number {
-  return BASE_EXPOSURE + adaptation * MAX_EXPOSURE_BOOST;
+/** Relative brightness multiplier for this frame — 1.0 at rest, up to
+ *  1 + MAX_BRIGHTNESS_BOOST in full darkness. Applied to the blit exposure
+ *  and (scaled) to the ambient fill. */
+export function darkAdaptBrightness(): number {
+  return 1 + adaptation * MAX_BRIGHTNESS_BOOST;
 }
 
-/** AmbientLight intensity to apply this frame. */
+/** AmbientLight intensity to apply this frame (baseline × brightness). */
 export function darkAdaptAmbient(): number {
-  return CONFIG.AMBIENT_INTENSITY + adaptation * MAX_AMBIENT_BOOST;
+  return CONFIG.AMBIENT_INTENSITY * darkAdaptBrightness();
 }
 
 export function getDarkAdaptation(): number {

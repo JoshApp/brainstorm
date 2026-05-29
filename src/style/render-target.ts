@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import type { Style } from './index';
 
 // PS1-era render pipeline, PSX-horror flavor.
 //
@@ -36,6 +35,7 @@ const HORROR_BLIT_FRAG = `
   precision highp float;
   uniform sampler2D tDiffuse;
   uniform vec2 uResolution;
+  uniform float uExposure;   // dark-adaptation brightness (1.0 = neutral)
   varying vec2 vUv;
 
   // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
@@ -69,6 +69,11 @@ const HORROR_BLIT_FRAG = `
     float g = texture2D(tDiffuse, uv).g;
     float b = texture2D(tDiffuse, uv - caOffset).b;
     vec3 col = vec3(r, g, b);
+
+    // EYE DARK-ADAPTATION — scale brightness BEFORE posterize so the
+    // quantization steps land on the exposed image. (Tone-map exposure on the
+    // renderer is ignored when rendering to a target, so the lever lives here.)
+    col *= uExposure;
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;
@@ -113,6 +118,7 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
     uniforms: {
       tDiffuse: { value: lowResTarget.texture },
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
+      uExposure: { value: 1.0 },
     },
     vertexShader: HORROR_BLIT_VERT,
     fragmentShader: HORROR_BLIT_FRAG,
@@ -132,19 +138,28 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
   });
 }
 
+/** Set the PS1 blit exposure (dark-adaptation brightness, 1.0 = neutral).
+ *  No-op until the pipeline is initialised / for non-PS1 styles. */
+export function setStyleExposure(exposure: number): void {
+  if (blitMaterial) blitMaterial.uniforms.uExposure.value = exposure;
+}
+
 export function renderWithStyle(
   renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,
   camera: THREE.Camera,
-  style: Style,
 ) {
-  if (style === 'ps1' && lowResTarget && blitScene && blitCamera) {
+  if (lowResTarget && blitScene && blitCamera) {
+    // Scene → low-res target, then the PSX blit (dither/quantize/CA/scanlines/
+    // exposure) to screen. NOTE: tone mapping is disabled on render-target
+    // passes, so all post + exposure must live in the blit shader.
     renderer.setRenderTarget(lowResTarget);
     renderer.clear();
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);
     renderer.render(blitScene, blitCamera);
   } else {
+    // Before initRenderPipeline runs (shouldn't happen in practice).
     renderer.render(scene, camera);
   }
 }

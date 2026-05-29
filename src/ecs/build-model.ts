@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import type { MaterialDef, ModelSpec, PartSpec, Vec3 } from './model-types';
-import { getStyle } from '../style';
 import { getTexture } from '../style/procedural-textures';
 
 // buildModel — turn a ModelSpec into a live THREE.Group with named parts,
@@ -22,7 +21,7 @@ export interface BuiltModel {
 }
 
 export function buildModel(spec: ModelSpec): BuiltModel {
-  const flatShadingDefault = getStyle() === 'flat';
+  const flatShadingDefault = false;   // PS1 is the only style; smooth shading
 
   // Fresh material instances per-model (so hit-flash on one ghoul doesn't
   // tint another, etc.).

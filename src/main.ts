@@ -18,9 +18,8 @@ import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './player/death';
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
-import { getStyle } from './style';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setStyleExposure } from './style/render-target';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
@@ -42,7 +41,7 @@ import { isPlaying, getGameMode } from './state/game-mode';
 import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { recomputePlayerStats } from './state/player-stats';
 import { syncHudStores } from './state/hud-stores';
-import { tickDarkAdaptation, darkAdaptExposure, darkAdaptAmbient } from './scene/dark-adaptation';
+import { tickDarkAdaptation, darkAdaptBrightness, darkAdaptAmbient } from './scene/dark-adaptation';
 import { initDarkAdaptReadout, updateDarkAdaptReadout } from './debug/dark-adapt-readout';
 import { tickThresholdEmbers } from './scene/threshold-ember';
 import { seedRng } from './engine/rng';
@@ -147,9 +146,8 @@ scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY);
 scene.add(ambient);
 
-// --- Art style ---
-const style = getStyle();
-const materials = buildMaterials(style);
+// --- Static surface materials (PS1) ---
+const materials = buildMaterials();
 initRenderPipeline(renderer);
 
 // --- Camera ---
@@ -499,9 +497,12 @@ const SYSTEMS: GameSystem[] = [
     // dark actually lifts — ambient just scales a near-black colour). realDt so
     // the adjustment runs at real-time, not the death slow-mo.
     const adapt = tickDarkAdaptation(prox, ctx.realDt);
-    renderer.toneMappingExposure = darkAdaptExposure();
+    // PS1 path ignores renderer tone mapping (render-to-target), so the
+    // brightness lift lives in the blit shader's exposure uniform; ambient is
+    // a secondary fill (applied during the scene render, so it works there).
+    setStyleExposure(darkAdaptBrightness());
     ambient.intensity = darkAdaptAmbient();
-    updateDarkAdaptReadout(prox, adapt, renderer.toneMappingExposure);
+    updateDarkAdaptReadout(prox, adapt, darkAdaptBrightness());
   } },
 
   { name: 'combat', phase: 'unpaused', tick() {
@@ -656,7 +657,7 @@ const SYSTEMS: GameSystem[] = [
     tickLightPool(camera, los);
   } },
 
-  { name: 'render', phase: 'always', tick() { renderWithStyle(renderer, scene, camera, style); } },
+  { name: 'render', phase: 'always', tick() { renderWithStyle(renderer, scene, camera); } },
 
   { name: 'shake-restore', phase: 'always', tick() { camera.position.sub(shakeOffset); } },
 ];
