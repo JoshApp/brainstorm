@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { worldToScreen } from './hud';
 
 // Floating damage numbers. DOM overlay above the canvas. Each number is a
 // short-lived absolutely-positioned div that rises a few pixels and fades out
@@ -8,19 +9,16 @@ import { CONFIG } from '../config';
 // CRIT animation: scale-burst from large → settle, yellow color, "!" suffix.
 // Sells the rare big hit visually without being annoying.
 
-const ndc = new THREE.Vector3();
-
 export function spawnDamageNumber(
   camera: THREE.Camera,
   worldPos: THREE.Vector3,
   amount: number,
   crit: boolean = false,
 ) {
-  ndc.copy(worldPos).project(camera);
-  if (ndc.z < -1 || ndc.z > 1) return; // outside the camera frustum
-
-  const x = (ndc.x * 0.5 + 0.5) * window.innerWidth;
-  const y = (-ndc.y * 0.5 + 0.5) * window.innerHeight;
+  const p = worldToScreen(worldPos, camera);
+  if (p.z < -1 || p.behind) return; // outside the camera frustum
+  const x = p.x;
+  const y = p.y;
 
   const el = document.createElement('div');
   el.textContent = crit ? `${amount}!` : String(amount);

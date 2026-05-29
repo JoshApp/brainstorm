@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Interactable } from '../interactables/types';
 import { iconKindFromLabel, iconSvg } from './interact-icons';
+import { worldToScreen } from './hud';
 
 // Floating interact label — projects an icon + label OVER the world
 // position of the currently in-range interactable. Reads diegetically:
@@ -127,16 +128,13 @@ export function updateInteractLabel(
   // above the pivot (chest-height for floor objects).
   const offsetY = target.labelOffsetY ?? VERTICAL_OFFSET_WORLD;
   tmpVec.set(target.position.x, target.position.y + offsetY, target.position.z);
-  tmpVec.project(camera);
-  // If behind the camera (z > 1 after project), hide.
-  if (tmpVec.z > 1) {
+  const p = worldToScreen(tmpVec, camera, canvas.getBoundingClientRect());
+  // If behind the camera, hide.
+  if (p.behind) {
     if (labelEl.style.opacity !== '0') labelEl.style.opacity = '0';
     return;
   }
-  const rect = canvas.getBoundingClientRect();
-  const sx = (tmpVec.x * 0.5 + 0.5) * rect.width + rect.left;
-  const sy = (-tmpVec.y * 0.5 + 0.5) * rect.height + rect.top;
-  labelEl.style.left = `${sx}px`;
-  labelEl.style.top = `${sy}px`;
+  labelEl.style.left = `${p.x}px`;
+  labelEl.style.top = `${p.y}px`;
   if (labelEl.style.opacity !== '1') labelEl.style.opacity = '1';
 }

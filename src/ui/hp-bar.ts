@@ -1,15 +1,19 @@
-import { getPlayerHp, getPlayerMaxHp } from '../player/health';
+import { hpStore, type HpState } from '../state/hud-stores';
+import { bind } from './hud';
 
 // Segmented HP indicator at the bottom-center of the screen. One pip per HP
 // point so the player can see exactly how many hits they have left, the way
 // Resident Evil / Souls health bars work — discrete, readable at a glance.
 // Pips fade when lost rather than disappearing, so the maximum is always
 // visible. Warm orange palette matches the dungeon's torchlight.
+//
+// Data flow: bound to hpStore (synced once per frame). The render only runs
+// when hp/max actually change, so there's no per-frame DOM churn and no
+// hand-kept lastHp/lastMax cache to drift.
 
 let container: HTMLDivElement | null = null;
 let pips: HTMLDivElement[] = [];
-let lastMax = -1;
-let lastHp = -1;
+let builtMax = -1;
 
 const PIP_W = 36;
 const PIP_H = 12;
@@ -30,15 +34,15 @@ export function createHpBar() {
     pointerEvents: 'none',
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(container);
+
+  bind(hpStore, render);
 }
 
-export function updateHpBar() {
+function render({ hp, max }: HpState) {
   if (!container) return;
-  const max = getPlayerMaxHp();
-  const hp = getPlayerHp();
 
-  // Rebuild pip elements if max HP changed (rarely — startup or stat change).
-  if (max !== lastMax) {
+  // Rebuild pip elements when max HP changes (startup or a stat change).
+  if (max !== builtMax) {
     container.replaceChildren();
     pips = [];
     for (let i = 0; i < max; i++) {
@@ -55,20 +59,16 @@ export function updateHpBar() {
       container.appendChild(p);
       pips.push(p);
     }
-    lastMax = max;
-    lastHp = -1; // force pip refresh below
+    builtMax = max;
   }
 
-  if (hp !== lastHp) {
-    for (let i = 0; i < pips.length; i++) {
-      const filled = i < hp;
-      pips[i].style.background = filled
-        ? 'linear-gradient(180deg, rgba(255, 140, 70, 0.95), rgba(200, 60, 30, 0.95))'
-        : 'rgba(20, 10, 6, 0.45)';
-      pips[i].style.boxShadow = filled
-        ? 'inset 0 0 4px rgba(0,0,0,0.6), 0 0 8px rgba(255, 100, 40, 0.35)'
-        : 'inset 0 0 4px rgba(0,0,0,0.7)';
-    }
-    lastHp = hp;
+  for (let i = 0; i < pips.length; i++) {
+    const filled = i < hp;
+    pips[i].style.background = filled
+      ? 'linear-gradient(180deg, rgba(255, 140, 70, 0.95), rgba(200, 60, 30, 0.95))'
+      : 'rgba(20, 10, 6, 0.45)';
+    pips[i].style.boxShadow = filled
+      ? 'inset 0 0 4px rgba(0,0,0,0.6), 0 0 8px rgba(255, 100, 40, 0.35)'
+      : 'inset 0 0 4px rgba(0,0,0,0.7)';
   }
 }

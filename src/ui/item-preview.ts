@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import { isAnyScreenOpen } from './screen-manager';
+import { worldToScreen } from './hud';
 
 // Floating item-preview labels — used by SELECT few interactables
 // where the player needs to know an item's identity BEFORE committing
@@ -194,15 +195,13 @@ export function tickItemPreviews(camera: THREE.Camera, canvas: HTMLCanvasElement
     // visibly snap toward the centre instead of sliding cleanly off
     // with the camera. Just project + position.
     tmpVec.set(e.worldX, e.worldY, e.worldZ);
-    tmpVec.project(camera);
-    if (tmpVec.z > 1) {
+    const p = worldToScreen(tmpVec, camera, rect);
+    if (p.behind) {
       if (e.el.style.opacity !== '0') e.el.style.opacity = '0';
       continue;
     }
-    const sx = (tmpVec.x * 0.5 + 0.5) * rect.width + rect.left;
-    const sy = (-tmpVec.y * 0.5 + 0.5) * rect.height + rect.top;
-    e.el.style.left = `${sx}px`;
-    e.el.style.top = `${sy}px`;
+    e.el.style.left = `${p.x}px`;
+    e.el.style.top = `${p.y}px`;
     if (e.el.style.opacity !== '1') e.el.style.opacity = '1';
   }
 }

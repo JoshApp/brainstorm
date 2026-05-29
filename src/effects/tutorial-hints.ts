@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { on } from '../broadcast/event-bus';
+import { worldToScreen } from '../ui/hud';
 
 // Diegetic tutorial hints — small italic in-world text that fades in
 // as the player approaches a teaching trigger, holds briefly, then
@@ -59,7 +60,6 @@ interface Hint {
 }
 
 const hints: Hint[] = [];
-const ndc = new THREE.Vector3();
 
 const FADE_IN_MS = 600;
 const FADE_OUT_MS = 900;
@@ -177,17 +177,14 @@ export function tickTutorialHints(
       continue;
     }
 
-    // Project world pos to screen.
-    ndc.copy(h.worldPos).project(camera);
-    // If the hint is BEHIND the camera, hide it — don't show off-screen.
-    if (ndc.z > 1) {
+    // Project world pos to screen. If BEHIND the camera, hide it.
+    const p = worldToScreen(h.worldPos, camera, rect);
+    if (p.behind) {
       if (h.el.style.opacity !== '0') h.el.style.opacity = '0';
       continue;
     }
-    const sx = (ndc.x * 0.5 + 0.5) * rect.width + rect.left;
-    const sy = (-ndc.y * 0.5 + 0.5) * rect.height + rect.top;
-    h.el.style.left = `${sx}px`;
-    h.el.style.top = `${sy}px`;
+    h.el.style.left = `${p.x}px`;
+    h.el.style.top = `${p.y}px`;
 
     // Opacity per phase.
     let opacity = 0;

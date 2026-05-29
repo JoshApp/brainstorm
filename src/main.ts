@@ -40,6 +40,7 @@ import { initRunStateListeners } from './state/run-state-listeners';
 import { isPlaying, getGameMode } from './state/game-mode';
 import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { recomputePlayerStats } from './state/player-stats';
+import { syncHudStores } from './state/hud-stores';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
 import { addItemSilently, clearInventory } from './player/inventory';
@@ -69,7 +70,7 @@ import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { tickItemPreviews } from './ui/item-preview';
 import { createConsumableBar } from './controls/consumable-bar';
-import { createHpBar, updateHpBar } from './ui/hp-bar';
+import { createHpBar } from './ui/hp-bar';
 import { createBuffBar, updateBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
 import { createDepthCounter, setDepth as setDepthCounter } from './ui/depth-counter';
@@ -583,12 +584,18 @@ const SYSTEMS: GameSystem[] = [
   // while a menu is open still update the snapshot (and its subscribers,
   // e.g. the inventory stat column) live. Subscribers fire only on real
   // change. Ordered before 'hud' so HUD readouts read this frame's values.
-  { name: 'player-stats', phase: 'always', tick() { recomputePlayerStats(); } },
+  // Recompute the player snapshot, then push live values (HP) into the HUD
+  // stores. Order matters: snapshot first so hpStore's max reflects this
+  // frame's equipment/buffs. Bound HUD widgets (hp-bar, depth) re-render
+  // from here only when a value actually changes.
+  { name: 'player-stats', phase: 'always', tick() {
+    recomputePlayerStats();
+    syncHudStores();
+  } },
 
-  // HUD — poll-based; cheap and always accurate. Runs even when paused so
-  // HP / buff state is visible in menus. The consumable bar is event-driven.
+  // HUD — the buff bar diffs the live buff list; the xp/gold bar polls +
+  // animates its pulses. (HP bar + depth are store-bound, updated above.)
   { name: 'hud', phase: 'always', tick(ctx) {
-    updateHpBar();
     updateBuffBar();
     updateXpGoldHud(ctx.realDt);
   } },
