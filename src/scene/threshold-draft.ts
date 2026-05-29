@@ -16,7 +16,7 @@ import * as THREE from 'three';
 
 const DUST_COLOR = 0x9c937c;
 const HAZE_COLOR = 0xb4aa90;
-const HAZE_MAX_OPACITY = 0.32;     // visible-but-diffuse; tune to taste
+const HAZE_MAX_OPACITY = 0.22;     // per-layer base (×weight, ×3 layers); tune to taste
 const HAZE_HEIGHT = 2.4;
 const MOTES_PER_DRAFT = 5;
 const TICK_RANGE = 9;              // skip motes for drafts further than this
@@ -34,12 +34,21 @@ interface Mote {
   baseOpacity: number;
 }
 
+// The haze is a few layered planes at slightly different depths within the
+// archway frame, not one flat sheet — depth reads as a volume of dusty air
+// (less "portal"), framed by the columns, and looks the same from both sides.
+const HAZE_LAYERS = 3;
+const HAZE_DEPTH = 0.4;            // spread along the passage axis (within the frame)
+const HAZE_WIDTH_INSET = 0.82;     // narrower than the opening so the columns frame it
+const HAZE_LAYER_WEIGHT = [0.45, 0.72, 0.45];   // centre layer brightest
+
+interface HazeLayer { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; weight: number; }
+
 interface Draft {
   cx: number; cz: number;
   axis: Axis;
   width: number;
-  haze: THREE.Mesh;
-  hazeMat: THREE.MeshBasicMaterial;
+  hazeLayers: HazeLayer[];
   motes: Mote[];
   t: number;
 }
@@ -117,22 +126,34 @@ function rand(): number { return Math.random(); }
  *  motes drift along it; the haze faces across it); `width` is the opening
  *  width. Added under `scene` (the level root). */
 export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number, axis: Axis, width: number): void {
-  const w = Math.min(2.2, Math.max(0.8, width));
+  const w = Math.min(2.2, Math.max(0.8, width)) * HAZE_WIDTH_INSET;
 
-  const hazeMat = new THREE.MeshBasicMaterial({
-    map: hazeTexture(),
-    color: HAZE_COLOR,
-    transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    fog: true,
-    side: THREE.DoubleSide,
-  });
-  const haze = new THREE.Mesh(new THREE.PlaneGeometry(w, HAZE_HEIGHT), hazeMat);
-  haze.position.set(x, HAZE_HEIGHT * 0.48, z);
-  if (axis === 'x') haze.rotation.y = Math.PI / 2;   // normal along X (default plane faces +Z)
-  scene.add(haze);
+  // Layered haze planes at staggered depths within the archway frame.
+  const hazeLayers: HazeLayer[] = [];
+  for (let i = 0; i < HAZE_LAYERS; i++) {
+    const mat = new THREE.MeshBasicMaterial({
+      map: hazeTexture(),
+      color: HAZE_COLOR,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: true,
+      side: THREE.DoubleSide,
+    });
+    // Vary size per layer so the stack doesn't read as one crisp rectangle.
+    const sclW = 0.86 + (i % 2) * 0.18;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w * sclW, HAZE_HEIGHT * (0.9 + (i % 2) * 0.08)), mat);
+    const off = (HAZE_LAYERS > 1 ? i / (HAZE_LAYERS - 1) - 0.5 : 0) * HAZE_DEPTH;
+    if (axis === 'z') {
+      mesh.position.set(x, HAZE_HEIGHT * 0.46, z + off);
+    } else {
+      mesh.position.set(x + off, HAZE_HEIGHT * 0.46, z);
+      mesh.rotation.y = Math.PI / 2;   // normal along X (default plane faces +Z)
+    }
+    scene.add(mesh);
+    hazeLayers.push({ mesh, mat, weight: HAZE_LAYER_WEIGHT[i] ?? 0.5 });
+  }
 
   const motes: Mote[] = [];
   for (let i = 0; i < MOTES_PER_DRAFT; i++) {
@@ -162,7 +183,7 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
     placeMote(x, z, axis, m);
   }
 
-  drafts.push({ cx: x, cz: z, axis, width: w, haze, hazeMat, motes, t: rand() * 10 });
+  drafts.push({ cx: x, cz: z, axis, width: w, hazeLayers, motes, t: rand() * 10 });
 }
 
 function placeMote(cx: number, cz: number, axis: Axis, m: Mote): void {
@@ -190,7 +211,8 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
     const near = smoothstep(6.0, 2.0, dist);
     const notInside = smoothstep(0.4, 1.5, dist);
     const flicker = 0.88 + 0.12 * Math.sin(d.t * 1.7);
-    d.hazeMat.opacity = HAZE_MAX_OPACITY * near * notInside * flicker;
+    const hazeOp = HAZE_MAX_OPACITY * near * notInside * flicker;
+    for (const l of d.hazeLayers) l.mat.opacity = hazeOp * l.weight;
 
     if (dist > TICK_RANGE) {
       for (const m of d.motes) m.mat.opacity = 0;
@@ -219,9 +241,11 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
 /** Remove all drafts + dispose. Call on level teardown. */
 export function clearThresholdDrafts(): void {
   for (const d of drafts) {
-    d.haze.parent?.remove(d.haze);
-    d.haze.geometry.dispose();
-    d.hazeMat.dispose();
+    for (const l of d.hazeLayers) {
+      l.mesh.parent?.remove(l.mesh);
+      l.mesh.geometry.dispose();
+      l.mat.dispose();
+    }
     for (const m of d.motes) {
       m.sprite.parent?.remove(m.sprite);
       m.mat.dispose();
