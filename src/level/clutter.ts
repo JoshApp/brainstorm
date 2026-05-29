@@ -810,6 +810,7 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
           model: archway({ width, ceilingHeight: ceiling }),
           x: ax, y: 0, z: az,
           rotY,
+          proximityGlow: true,   // lintel/keystone glow as the player nears
           // Column blockers sit at the column centre offsets so
           // collision matches the visible columns.
           collision: [

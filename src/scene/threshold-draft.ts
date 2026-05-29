@@ -48,6 +48,17 @@ const drafts: Draft[] = [];
 let hazeTex: THREE.Texture | null = null;
 let moteTex: THREE.Texture | null = null;
 
+// Archway frame glow — the lintel/keystone 'glow' material on each corridor
+// archway, brightened by player proximity so the gate's crown lights up to
+// mark a passage. Registered by the builder for props flagged proximityGlow.
+const GLOW_MAX_EMISSIVE = 1.3;
+interface FrameGlow { mat: THREE.MeshStandardMaterial; x: number; z: number; }
+const frameGlows: FrameGlow[] = [];
+
+export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, z: number): void {
+  frameGlows.push({ mat, x, z });
+}
+
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
@@ -163,8 +174,13 @@ function placeMote(cx: number, cz: number, axis: Axis, m: Mote): void {
   }
 }
 
-/** Per-frame. Haze blooms with player proximity; dust drifts (only near). */
+/** Per-frame. Haze blooms with player proximity; dust drifts (only near);
+ *  archway frames glow brighter as you approach. */
 export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void {
+  for (const f of frameGlows) {
+    const dist = Math.hypot(f.x - playerPos.x, f.z - playerPos.z);
+    f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(6.5, 1.8, dist);
+  }
   for (const d of drafts) {
     d.t += dt;
     const dist = Math.hypot(d.cx - playerPos.x, d.cz - playerPos.z);
@@ -212,4 +228,5 @@ export function clearThresholdDrafts(): void {
     }
   }
   drafts.length = 0;
+  frameGlows.length = 0;
 }

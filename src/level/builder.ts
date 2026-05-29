@@ -30,7 +30,7 @@ import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
 import { seedBuildRng, buildRng, hashStringToSeed } from '../engine/rng';
-import { spawnThresholdDraft } from '../scene/threshold-draft';
+import { spawnThresholdDraft, registerArchwayGlow } from '../scene/threshold-draft';
 
 // Local Mulberry32 seeded RNG — kept here to avoid importing procgen.ts
 // (would create a cyclic dependency between builder and procgen).
@@ -574,6 +574,12 @@ export function buildLevel(
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
       if (prop.scale && prop.scale !== 1) built.group.scale.setScalar(prop.scale);
+      // Proximity glow (archways): hand the 'glow' material to the threshold
+      // system, which raises its emissive as the player nears.
+      if (prop.proximityGlow) {
+        const gm = built.materials.get('glow');
+        if (gm) registerArchwayGlow(gm as THREE.MeshStandardMaterial, prop.x, prop.z);
+      }
       // Debug provenance — stamp the generating system + a coarse model
       // hint onto the group so the debug capture's look-at/cone resolver
       // can report "this rubble = surface-clutter phase." No-op for

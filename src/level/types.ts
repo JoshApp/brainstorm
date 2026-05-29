@@ -108,6 +108,11 @@ export type PropSpec =
       /** Uniform scale multiplier (default 1). Lets a single ModelSpec be
        *  placed at varied sizes — e.g. cobwebs / debris size jitter. */
       scale?: number;
+      /** If set, the builder registers this prop's 'glow' material with the
+       *  threshold system, which raises its warm emissive as the player nears
+       *  (archways glowing to mark a passage). No-op if the model has no
+       *  material id 'glow'. */
+      proximityGlow?: boolean;
       collision?: PropCollision | PropCollision[];
       facing?: PropFacing;
       /** Debug provenance — which pipeline phase produced this prop

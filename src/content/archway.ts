@@ -80,6 +80,11 @@ export function archway(opts: ArchwayOptions): ModelSpec {
     id,
     materials: {
       stone: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true },
+      // Lintel + keystone use this — identical to stone at rest (emissive 0),
+      // but the threshold system raises its warm emissive as the player nears,
+      // so the gate's crown glows to mark "a way through." Modulated by id
+      // 'glow' (see builder's proximityGlow handling).
+      glow: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xff8c3a, emissiveIntensity: 0 },
     },
     parts: [
       // Left + right column shafts.
@@ -91,10 +96,10 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       // Capitals at the top of each column.
       { kind: 'box', pos: [-colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'stone' },
       { kind: 'box', pos: [ colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'stone' },
-      // Lintel across the top, spanning both columns + a bit.
-      { kind: 'box', pos: [0, LINTEL_BOTTOM + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'stone' },
-      // Keystone — small slightly-protruding block centred on the lintel.
-      { kind: 'box', pos: [0, LINTEL_BOTTOM + KEYSTONE_H / 2, 0], size: [KEYSTONE_W, KEYSTONE_H, KEYSTONE_D], mat: 'stone' },
+      // Lintel across the top, spanning both columns + a bit. Glows on approach.
+      { kind: 'box', pos: [0, LINTEL_BOTTOM + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'glow' },
+      // Keystone — small slightly-protruding block centred on the lintel. Glows.
+      { kind: 'box', pos: [0, LINTEL_BOTTOM + KEYSTONE_H / 2, 0], size: [KEYSTONE_W, KEYSTONE_H, KEYSTONE_D], mat: 'glow' },
       // Tympanum — wall block from lintel top to ceiling. Without
       // this the player sees through the wall above the lintel
       // into the void behind. Same depth as the lintel so it
