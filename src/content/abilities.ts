@@ -36,7 +36,14 @@ export type AbilityEffect =
   // from the player, dealing one contact hit when within `contactReach`.
   // This is how "attacks that move the enemy" (charge / lunge / leap)
   // are expressed: a long-ish strike phase + a dash effect.
-  | { kind: 'dash'; speed: number; toward: 'player' | 'away'; contactReach: number; damageType?: DamageType };
+  | { kind: 'dash'; speed: number; toward: 'player' | 'away'; contactReach: number; damageType?: DamageType }
+  // AoE — a telegraphed ground zone. A ring marker appears during the
+  // WINDUP at the locked target (the player's feet for 'player', the
+  // enemy's own feet for 'self'); at strike, anyone still inside the
+  // radius takes the hit. Teaches "don't stand there" — move off the
+  // marker before it resolves. 'player' = a stomp where-you-were
+  // (move out to dodge); 'self' = a radial slam (don't be adjacent).
+  | { kind: 'aoe'; radius: number; targetMode: 'player' | 'self'; damageType?: DamageType };
 
 export interface Ability {
   /** Unique within the enemy — keys the cooldown timer. */
@@ -70,6 +77,13 @@ export interface Ability {
  *  null if the ability has no melee effect. */
 export function meleeReachOf(ability: Ability): number | null {
   for (const e of ability.effects) if (e.kind === 'melee') return e.reach;
+  return null;
+}
+
+/** The first aoe effect on an ability, or null. The runner spawns its
+ *  ground telegraph at windup start and resolves it at strike. */
+export function aoeEffectOf(ability: Ability): Extract<AbilityEffect, { kind: 'aoe' }> | null {
+  for (const e of ability.effects) if (e.kind === 'aoe') return e;
   return null;
 }
 

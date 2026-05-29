@@ -21,6 +21,7 @@ AbilityEffect =
   | { kind: 'melee';      reach, damageType }
   | { kind: 'projectile'; projectileId, muzzle }
   | { kind: 'dash';       speed, toward, contactReach, damageType }   // moves the enemy
+  | { kind: 'aoe';        radius, targetMode, damageType }            // telegraphed ground zone
 ```
 
 - **windup** — telegraph (the player's reaction window). Melee abilities
@@ -48,7 +49,21 @@ compose existing effects, or add ONE effect handler (`runEffect` in
 - `src/mobs/enemy.ts` — the runner. `selectAbility(distance)` picks the
   highest-priority ready ability in band; winding/striking/recovering
   execute `currentAbility`; `runEffect` applies each effect;
-  `applyTelegraph` poses per flavour; `cooldowns` gates re-use.
+  `applyTelegraph` poses per flavour; `cooldowns` gates re-use. AoE
+  abilities raise a ground telegraph (`effects/aoe-telegraph.ts`) at
+  windup start and resolve it at strike.
+
+## Tile-char registry (no drift)
+
+Placeable enemies declare their own map char via `EnemySpec.tileChar`.
+That is the SINGLE source of truth — `content/enemies.ts` derives
+`ENEMY_BY_CHAR` (char→id) + `ENEMY_CHAR_BY_ID` (id→char) from it, and
+`tilemap.ts` (parsing + FLOOR_CHARS) and `procgen.ts` (roll→char) both
+read those maps instead of hand-kept lists. Collisions with a
+structural tile, the `X`/`B` procgen slots, or another enemy throw at
+module load; `procgen.ts` also asserts every roll-table id has a
+tileChar. So adding a placeable enemy is ONE field — the char can't
+drift out of sync across files (the bug that motivated this).
 
 ## Movement / steering
 
@@ -99,8 +114,7 @@ abilities together: one named-part contract everything keys off.
 
 ## Roadmap (effects + content)
 
-- `aoe` effect — zone denial ("don't stand there"). One handler in
-  `runEffect` + a telegraph decal.
+- ~~`aoe` effect — zone denial.~~ ✅ DONE (the defiler).
 - `spawn` effect — in-combat summon (distinct from split-on-death,
   which stays a death trigger in the builder).
 - Pose-clip animation + the humanoid limb rig.

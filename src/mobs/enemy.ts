@@ -3,7 +3,8 @@ import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
-import { resolveAbilities, meleeReachOf, type Ability } from '../content/abilities';
+import { resolveAbilities, meleeReachOf, aoeEffectOf, type Ability } from '../content/abilities';
+import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import type { WalkableRegion } from '../level/walkable';
 import type { NavGrid, Waypoint } from '../level/nav-grid';
 import {
@@ -253,6 +254,13 @@ export function createEnemy(
   const commitDistance = abilities.reduce((m, a) => Math.max(m, a.maxRange), 0);
   let currentAbility: Ability | null = null;
   const cooldowns = new Map<string, number>();
+  // AoE telegraph state — the ground marker shown during an aoe ability's
+  // windup, and the world point it's locked to (resolved at strike).
+  let aoeTelegraph: AoeTelegraph | null = null;
+  const aoeTarget = new THREE.Vector3();
+  function clearAoeTelegraph() {
+    if (aoeTelegraph) { aoeTelegraph.dispose(); aoeTelegraph = null; }
+  }
 
   // Perception state. lastSeenPos tracks the last known XZ of the player
   // for searching. Updated each frame the enemy currently has LOS.
@@ -456,6 +464,9 @@ export function createEnemy(
       phaseTimer = 0;
     }
     if (entity.hp.current <= 0) {
+      // Killed mid-windup — drop any pending AoE marker so it doesn't
+      // linger on the floor after the caster is gone.
+      clearAoeTelegraph();
       // Mark dead immediately for combat/gameplay purposes (no more
       // damage, no AI ticks, kill counter triggers, drops spawn). The
       // container stays in the scene for the duration of the death
@@ -656,6 +667,21 @@ export function createEnemy(
         }
         if (!strikeAlreadyHit && distance <= eff.contactReach) {
           damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+          strikeAlreadyHit = true;
+        }
+        break;
+      }
+      case 'aoe': {
+        if (!strikeAlreadyHit) {
+          // Resolve against the LOCKED target (set at windup start),
+          // not the enemy's current position — the player dodges by
+          // leaving the marked circle, regardless of where the enemy is.
+          const dx = playerPos.x - aoeTarget.x;
+          const dz = playerPos.z - aoeTarget.z;
+          if (dx * dx + dz * dz <= eff.radius * eff.radius) {
+            damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+          }
+          clearAoeTelegraph();
           strikeAlreadyHit = true;
         }
         break;
@@ -987,6 +1013,16 @@ export function createEnemy(
             strikeAlreadyHit = false;
             rollWindupTime();
             playEnemyWindup(audioSizeFor(spec));
+            // AoE abilities lock their target + raise the ground
+            // telegraph the instant the windup begins, so the player
+            // has the full windup to step off the marker.
+            const aoe = aoeEffectOf(ability);
+            if (aoe) {
+              if (aoe.targetMode === 'self') aoeTarget.set(container.position.x, 0, container.position.z);
+              else aoeTarget.set(playerPos.x, 0, playerPos.z);
+              clearAoeTelegraph();
+              aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, aoe.radius);
+            }
           } else if (distance > 0.1) {
             // No ability in band — close (or, if inside every band's
             // minRange, still close to reach the melee fallback).
@@ -1004,6 +1040,7 @@ export function createEnemy(
         phaseTimer += dt;
         const t = Math.min(1, phaseTimer / currentWindupTime);
         applyTelegraph(currentAbility.telegraph, 'windup', t);
+        if (aoeTelegraph) aoeTelegraph.setProgress(t);
         // Melee creep — close at half-speed during windup so a stationary
         // player still gets clipped (a backpedalling player out-runs it).
         // Charges DON'T creep: the dash strike is the approach.
@@ -1042,6 +1079,7 @@ export function createEnemy(
         if (phaseTimer >= currentAbility.recover) {
           cooldowns.set(currentAbility.id, currentAbility.cooldown ?? 0);
           currentAbility = null;
+          clearAoeTelegraph();   // safety — normally disposed at strike
           state = 'chasing';
           phaseTimer = 0;
         }

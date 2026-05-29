@@ -40,6 +40,7 @@ buff allies**, **directional block**.
 | acid-spitter | **commit & burst** — push the holder | ✅ *fixed this pass* |
 | rat | clear chaff, don't get surrounded | ⚠️ weak verb; fine as cheap chaff |
 | skirmisher | **sidestep the charge**, punish the recovery | ✅ *fixed — now the charger* |
+| defiler | **don't stand there** — keep moving off the hex | ✅ *new — zone control* |
 | ooze-small | (recursion terminator / cleanup) | — |
 
 ## The verb-audit pass (what changed & why)
@@ -73,7 +74,11 @@ commit through chip. Same "deal with ranged" family, opposite answers.
   ability system. Coil → dash (speed 7.5, catches a backpedalling
   player) → contact slam, with a point-blank slash fallback. Teaches
   "sidestep, don't retreat." See `docs/COMBAT-ARCH.md`.
-- **An AoE / zone-denial enemy.** Nothing teaches "don't stand there."
+- ~~**An AoE / zone-denial enemy.**~~ ✅ DONE — the **defiler** drops a
+  telegraphed ground hex at your feet (the `aoe` ability effect + a
+  ground-ring telegraph). Teaches "don't stand there." Reuses the ghoul
+  silhouette recoloured violet — a distinct model is pending the
+  parametric-creature pass.
   A ground-slam or acid-puddle layer would add the positioning-over-
   time verb. Bigger lift (new attack system).
 - **rat** is acceptable as chaff but could become genuinely

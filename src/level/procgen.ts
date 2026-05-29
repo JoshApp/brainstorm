@@ -19,6 +19,7 @@
 import type { LevelSpec, EnemySpawnSpec, TileMap } from './types';
 import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
+import { ENEMY_CHAR_BY_ID } from '../content/enemies';
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
 import { seedBuildRng } from '../engine/rng';
 
@@ -73,6 +74,7 @@ function rollTableFor(depth: number): EnemyRoll[] {
       { enemyId: 'acolyte',      weight: 2 },
       { enemyId: 'ooze',         weight: 2 },
       { enemyId: 'acid-spitter', weight: 1 },
+      { enemyId: 'defiler',      weight: 1 },
       { enemyId: 'stoneguard',   weight: 1 },
     ];
   }
@@ -87,10 +89,25 @@ function rollTableFor(depth: number): EnemyRoll[] {
     { enemyId: 'acolyte',      weight: 2 },
     { enemyId: 'ooze',         weight: 2 },
     { enemyId: 'acid-spitter', weight: 2 },
+    { enemyId: 'defiler',      weight: 2 },
     { enemyId: 'stoneguard',   weight: 2 },
     { enemyId: 'wraith',       weight: 1 },
   ];
 }
+
+// Drift guard — every enemy a roll table can produce MUST have a tile
+// char (else populateTemplate would silently fall back to a rat).
+// Validated at module load so a typo'd or unplaceable id throws in
+// dev/build/CI the moment this file is imported, not 9 floors deep.
+(function validateRollTables() {
+  const ids = new Set<string>();
+  for (const d of [3, 6, 9]) for (const r of rollTableFor(d)) ids.add(r.enemyId);
+  for (const id of ids) {
+    if (!ENEMY_CHAR_BY_ID[id]) {
+      throw new Error(`Roll table references '${id}', which has no tileChar in the enemy registry`);
+    }
+  }
+})();
 
 function bossFor(depth: number): string {
   // Bosses get nastier as you descend. Depth 3-5 wraith is unusual but
@@ -123,20 +140,20 @@ function pickWeighted(rows: EnemyRoll[], rand: () => number): string {
  */
 export function populateTemplate(template: TileMap, depth: number, rand: () => number): TileMap {
   const table = rollTableFor(depth);
-  const bossChar: Record<string, string> = { wraith: 'W' };
-  const enemyChar: Record<string, string> = {
-    rat: 'R', skirmisher: 'K', ghoul: 'G', wraith: 'W', acolyte: 'Y',
-    stoneguard: 'M', ooze: 'Z', 'acid-spitter': 'X', defiler: 'H',
-  };
+  // enemyId → tile char comes from the SINGLE registry in
+  // content/enemies.ts (ENEMY_CHAR_BY_ID). No hand-kept map here, so a
+  // new enemy is roll-placeable the moment it declares a tileChar —
+  // and a roll-table id that lacks one is caught by validateRollTables
+  // at module load rather than silently spawning as a rat.
   return template.map(row => {
     let out = '';
     for (const ch of row) {
       if (ch === 'X') {
         const id = pickWeighted(table, rand);
-        out += enemyChar[id] ?? 'R';
+        out += ENEMY_CHAR_BY_ID[id] ?? 'R';
       } else if (ch === 'B') {
         const id = bossFor(depth);
-        out += bossChar[id] ?? enemyChar[id] ?? 'W';
+        out += ENEMY_CHAR_BY_ID[id] ?? 'W';
       } else {
         out += ch;
       }

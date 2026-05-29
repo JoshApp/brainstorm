@@ -31,17 +31,21 @@
 //   t   torch on the SOUTH wall ahead of this cell
 //   <   torch on the WEST wall left of this cell
 //   >   torch on the EAST wall right of this cell
-//   G   ghoul spawn (walkable)
-//   R   rat spawn (walkable)
-//   K   skirmisher spawn (walkable)
-//   W   wraith spawn (walkable)
-//   Y   acolyte spawn (walkable) — ranged caster
+//   <enemy chars>  spawn an enemy — REGISTRY-DRIVEN. Each EnemySpec
+//                  declares its own `tileChar` (content/enemies.ts);
+//                  the parser, FLOOR_CHARS, and procgen all derive from
+//                  that one source (ENEMY_BY_CHAR) so chars can't drift.
+//                  Current: G ghoul · R rat · K skirmisher · W wraith ·
+//                  Y acolyte · M stoneguard · Z ooze · Q acid-spitter ·
+//                  H defiler. ('X'/'B' are procgen slot placeholders,
+//                  NOT enemy chars.)
 //   space  treated as wall (so authors can omit perimeter quoting)
 
 import type {
   LevelSpec, PropSpec, EnemySpawnSpec, TorchSpec, RoomSpec, DoorSpec, StairsSpec, TileMap,
 } from './types';
 import { ITEMS } from '../content/items';
+import { ENEMY_BY_CHAR } from '../content/enemies';
 import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 import { pickWallFixture } from './lit-fixture-pool';
 import { buildRng } from '../engine/rng';
@@ -99,10 +103,16 @@ export interface TileMapOptions {
 // exactly the same boundary edges as an isolated '#' would — which
 // after consolidation becomes the X-walls-in-mid-room artifact.
 //
-// Past bugs: M (stoneguard), Z (ooze), D (arena door) were missing —
-// any vault using those as mid-room features triggered the X-wall
-// pattern. Added all three.
-const FLOOR_CHARS = new Set('.,SoOD/^FCGRKWYMZXHPAcvVTt<>'.split(''));
+// STRUCTURAL chars are listed here literally; ENEMY chars are pulled
+// from the enemy registry (ENEMY_BY_CHAR) so a new enemy is walkable
+// floor automatically — no risk of forgetting to add it here. 'X' is
+// the procgen generic-enemy slot (replaced before parse, but kept
+// walkable as a safety net).
+const STRUCTURAL_FLOOR_CHARS = '.,SoOD/^FCPAcvVTt<>X';
+const FLOOR_CHARS = new Set([
+  ...STRUCTURAL_FLOOR_CHARS.split(''),
+  ...ENEMY_BY_CHAR.keys(),
+]);
 
 /**
  * Parse a TileMap into a LevelSpec the existing buildLevel consumes.
@@ -336,6 +346,14 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     for (let c = 0; c < cols; c++) {
       const ch = cellChar(c, r);
       const { x, z } = cellCenter(c, r);
+      // Enemy spawns are registry-driven (see ENEMY_BY_CHAR in
+      // content/enemies.ts) — one source of truth shared with procgen
+      // + FLOOR_CHARS, so a new enemy's char can't drift out of sync.
+      const enemyId = ENEMY_BY_CHAR.get(ch);
+      if (enemyId) {
+        spawns.push({ enemyId, x, z, roomId: cellRoomId(c, r) });
+        continue;
+      }
       switch (ch) {
         case 'S': {
           startPos = { x, z, yaw: opts.spawnYaw ?? 0 };
@@ -451,15 +469,6 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         // makes per-sub-room room-clear detection (arena unlock,
         // boss-antechamber gating, etc.) work. cellRoomId falls back to
         // the canonical roomId for single-component vaults.
-        case 'G': spawns.push({ enemyId: 'ghoul',      x, z, roomId: cellRoomId(c, r) }); break;
-        case 'R': spawns.push({ enemyId: 'rat',        x, z, roomId: cellRoomId(c, r) }); break;
-        case 'K': spawns.push({ enemyId: 'skirmisher', x, z, roomId: cellRoomId(c, r) }); break;
-        case 'W': spawns.push({ enemyId: 'wraith',     x, z, roomId: cellRoomId(c, r) }); break;
-        case 'Y': spawns.push({ enemyId: 'acolyte',    x, z, roomId: cellRoomId(c, r) }); break;
-        case 'M': spawns.push({ enemyId: 'stoneguard', x, z, roomId: cellRoomId(c, r) }); break;
-        case 'Z': spawns.push({ enemyId: 'ooze',       x, z, roomId: cellRoomId(c, r) }); break;
-        case 'X': spawns.push({ enemyId: 'acid-spitter', x, z, roomId: cellRoomId(c, r) }); break;
-        case 'H': spawns.push({ enemyId: 'defiler',      x, z, roomId: cellRoomId(c, r) }); break;
         case '/': {
           if (opts.stairsTarget) {
             // Auto-orient: the stairs descend INTO the adjacent wall.
