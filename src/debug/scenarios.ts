@@ -85,6 +85,26 @@ export const SCENARIOS: Record<string, Scenario> = {
   // Default spawn view, frozen so the snap captures the deterministic frame.
   spawn: { freeze: true },
 
+  // Isolated open archway — room + abutting corridor (a real wall gap), player
+  // standing right before it. For reviewing the threshold dust + proximity haze.
+  archway: {
+    freeze: true,
+    hideSword: true,
+    level: {
+      id: 'dbg-archway', depth: 0, displayName: 'archway', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 0.5, yaw: 0 },
+      rooms: [{ id: 'arch-room', rect: { x: 0, z: 1, w: 5, d: 4 }, height: 3.2 }],
+      corridors: [{ id: 'arch-cor', rect: { x: 0, z: -2.5, w: 1.6, d: 3 }, height: 3.0 }],
+      props: [],
+      torches: [
+        { x: -2.55, z: 2.0, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.7 },
+        { x:  2.55, z: 2.0, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.7 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -4, y: 1.1 } },
+  },
+
   // Skeleton up close in a small lit room — for silhouette review.
   skeleton: {
     freeze: true,

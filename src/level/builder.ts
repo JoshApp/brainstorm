@@ -30,7 +30,7 @@ import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
 import { seedBuildRng, buildRng, hashStringToSeed } from '../engine/rng';
-import { spawnThresholdEmber } from '../scene/threshold-ember';
+import { spawnThresholdDraft } from '../scene/threshold-draft';
 
 // Local Mulberry32 seeded RNG — kept here to avoid importing procgen.ts
 // (would create a cyclic dependency between builder and procgen).
@@ -295,12 +295,12 @@ function buildWallSegment(
   scene.add(mesh);
 }
 
-// Place a faint coal at each OPEN archway — a room wall opening (where a
+// Place a dust draft at each OPEN archway — a room wall opening (where a
 // corridor / adjacent room connects) that has no door. Reuses findOpenings to
 // locate the gaps; dedups shared thresholds; skips any opening near a door
-// (those already signal). Onward passages get a diegetic beacon without
+// (those already signal). Onward passages get a diegetic dust/haze cue without
 // rimming the architecture.
-function placeThresholdEmbers(root: THREE.Object3D, spec: LevelSpec, allRects: RoomSpec[]) {
+function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: RoomSpec[]) {
   const doors = spec.doors ?? [];
   const seen = new Set<string>();
   for (const room of spec.rooms) {
@@ -331,7 +331,9 @@ function placeThresholdEmbers(root: THREE.Object3D, spec: LevelSpec, allRects: R
           if (Math.hypot(dmx - x, dmz - z) < 1.2) { doored = true; break; }
         }
         if (doored) continue;
-        spawnThresholdEmber(root, x, z);
+        // The passage runs along the wall's perpendicular axis; the opening
+        // span (op) is the doorway width.
+        spawnThresholdDraft(root, x, z, we.perpAxis, op.end - op.start);
       }
     }
   }
@@ -546,10 +548,10 @@ export function buildLevel(
     }
   }
 
-  // --- Threshold embers: faint coals at OPEN archways (passages with no
-  // door), so an onward passage reads across a dark room without a UI rim.
-  // Doored passages already signal (the door glows + is interactable).
-  placeThresholdEmbers(root, spec, allRects);
+  // --- Threshold drafts: drifting dust + a proximity haze at OPEN archways
+  // (passages with no door), so an onward passage reads as a way through —
+  // diffuse + in-motion, not a placed marker. Doored passages already signal.
+  placeThresholdDrafts(root, spec, allRects);
 
   // --- Props (visual meshes) + collect obstacles for collision ---
   // `obstacles` was hoisted above so stair AABBs land in the same list.

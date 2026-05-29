@@ -43,7 +43,7 @@ import { recomputePlayerStats } from './state/player-stats';
 import { syncHudStores } from './state/hud-stores';
 import { tickDarkAdaptation, darkAdaptBrightness, darkAdaptAmbient } from './scene/dark-adaptation';
 import { initDarkAdaptReadout, updateDarkAdaptReadout } from './debug/dark-adapt-readout';
-import { tickThresholdEmbers } from './scene/threshold-ember';
+import { tickThresholdDrafts } from './scene/threshold-draft';
 import { seedRng } from './engine/rng';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
@@ -472,8 +472,9 @@ const SYSTEMS: GameSystem[] = [
 
   { name: 'torchlight', phase: 'unpaused', tick(ctx) {
     for (const t of currentLevel.torches) updateTorchlight(t, ctx.scaledDt);
-    // Threshold-ember coals flicker on realDt (a coal doesn't slow in slow-mo).
-    tickThresholdEmbers(ctx.realDt);
+    // Threshold dust + proximity haze. realDt so the drift doesn't stutter in
+    // slow-mo; haze blooms by player proximity.
+    tickThresholdDrafts(ctx.realDt, camera.position);
   } },
 
   // Effective torchlight at the player — torches within earshot AND with a
