@@ -143,6 +143,15 @@ export interface EnemySpec {
    */
   preferredRange?: number;
 
+  /**
+   * Cooldown (s) on the DEFAULT ability synthesized from the legacy
+   * fields. 0 = attack as fast as windup/strike/recover allow (holders
+   * like the acid-spitter). Kiters need a non-zero value so there's a
+   * window AFTER each shot to reposition (flee) before the next — without
+   * it a kiter just stands and shoots. Ignored when `abilities` is set
+   * (declare per-ability cooldowns there). Default 0. */
+  attackCooldown?: number;
+
   // --- Abilities ---
   /**
    * Explicit ability list (highest-priority first). When set, the AI's
@@ -965,6 +974,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     attackRange: 9,         // commits to casting from far out
     strikeRange: 9,         // projectile spawns at strike regardless of range
     preferredRange: 5.5,    // backs away when the player gets nearer than this
+    attackCooldown: 1.4,    // reposition window between shots — without it the
+                            // kiter would just stand and shoot, never fleeing
     windupTime: 1.10,       // long, readable telegraph (orb pulses brighter)
     strikeTime: 0.15,
     recoverTime: 0.80,

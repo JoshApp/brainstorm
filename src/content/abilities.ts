@@ -101,6 +101,9 @@ export function defaultAbility(spec: EnemySpec): Ability {
       windup: spec.windupTime,
       strike: spec.strikeTime,
       recover: spec.recoverTime,
+      // Kiters set attackCooldown so there's a reposition window between
+      // shots; holders leave it 0 to fire as fast as the phases allow.
+      cooldown: spec.attackCooldown ?? 0,
       damage: spec.attackDamage,
       telegraph: 'cast',
       effects: [{ kind: 'projectile', projectileId: spec.ranged.projectileId, muzzle: spec.ranged.muzzleOffset }],

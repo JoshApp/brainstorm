@@ -1033,50 +1033,57 @@ export function createEnemy(
       }
 
       case 'chasing': {
-        const pref = spec.preferredRange ?? 0;
-        if (pref > 0 && distance < pref) {
-          // KITER — the player is inside our preferred standoff band, so
-          // back away to re-open the gap before attacking again. Aim a
-          // point ~2m directly away from the player; moveTowards pathfinds
-          // + clamps it against walls. Cornered against a wall it can't
-          // retreat (player's reward for running it down); pinned mid-
-          // windup it can't retreat either (rushing the cast beats it).
-          const dx = container.position.x - playerPos.x;
-          const dz = container.position.z - playerPos.z;
-          const len = Math.hypot(dx, dz) || 1;
-          moveTowards(
-            container.position.x + (dx / len) * 2.0,
-            container.position.z + (dz / len) * 2.0,
-            spec.moveSpeed, dt, walkable, nav,
-          );
-          tmpFlat.set(playerPos.x, container.position.y, playerPos.z);
-          container.lookAt(tmpFlat);
-          container.rotation.y += Math.PI;
+        // ATTACK FIRST: if a ready ability's band contains us, commit to
+        // it — regardless of being a kiter or "too close." This is the
+        // fix for kiters never attacking: the flee branch used to run
+        // first, so an acolyte (which the faster player can always stay
+        // close to) fled forever and never cast. Now it shoots whenever
+        // it can; the cooldown between shots is its window to reposition.
+        const ability = selectAbility(distance);
+        if (ability) {
+          currentAbility = ability;
+          state = 'winding';
+          phaseTimer = 0;
+          strikeAlreadyHit = false;
+          rollWindupTime();
+          playEnemyWindup(audioSizeFor(spec));
+          // AoE abilities lock their target + raise the ground telegraph
+          // the instant the windup begins, so the player has the full
+          // windup to step off the marker.
+          const aoe = aoeEffectOf(ability);
+          if (aoe) {
+            if (aoe.targetMode === 'self') aoeTarget.set(container.position.x, 0, container.position.z);
+            else aoeTarget.set(playerPos.x, 0, playerPos.z);
+            clearAoeTelegraph();
+            aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, aoe.radius);
+          }
         } else {
-          // Ability selection — pick the highest-priority ready ability
-          // whose range band we're in. If one fires, run its windup;
-          // otherwise close the gap toward commit distance.
-          const ability = selectAbility(distance);
-          if (ability) {
-            currentAbility = ability;
-            state = 'winding';
-            phaseTimer = 0;
-            strikeAlreadyHit = false;
-            rollWindupTime();
-            playEnemyWindup(audioSizeFor(spec));
-            // AoE abilities lock their target + raise the ground
-            // telegraph the instant the windup begins, so the player
-            // has the full windup to step off the marker.
-            const aoe = aoeEffectOf(ability);
-            if (aoe) {
-              if (aoe.targetMode === 'self') aoeTarget.set(container.position.x, 0, container.position.z);
-              else aoeTarget.set(playerPos.x, 0, playerPos.z);
-              clearAoeTelegraph();
-              aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, aoe.radius);
-            }
+          // No ability available (out of band, or on cooldown).
+          const pref = spec.preferredRange ?? 0;
+          if (pref > 0 && distance < pref) {
+            // KITER too close — back away to reopen the gap (the
+            // reposition window between shots). Aim ~2m directly away;
+            // moveTowards pathfinds + clamps against walls. Cornered, it
+            // can't retreat (your reward for running it down).
+            const dx = container.position.x - playerPos.x;
+            const dz = container.position.z - playerPos.z;
+            const len = Math.hypot(dx, dz) || 1;
+            moveTowards(
+              container.position.x + (dx / len) * 2.0,
+              container.position.z + (dz / len) * 2.0,
+              spec.moveSpeed, dt, walkable, nav,
+            );
+            tmpFlat.set(playerPos.x, container.position.y, playerPos.z);
+            container.lookAt(tmpFlat);
+            container.rotation.y += Math.PI;
+          } else if (pref > 0 && distance <= commitDistance) {
+            // KITER waiting out its cooldown while comfortably in range —
+            // HOLD position (just keep facing the player). Without this it
+            // would creep toward you between shots, which looked wrong for
+            // a ranged enemy.
           } else if (distance > 0.1) {
-            // No ability in band — close (or, if inside every band's
-            // minRange, still close to reach the melee fallback).
+            // Melee/charger, or a kiter that's genuinely out of range —
+            // close the gap.
             moveTowards(playerPos.x, playerPos.z, spec.moveSpeed, dt, walkable, nav);
           }
         }
