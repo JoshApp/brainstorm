@@ -285,6 +285,8 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
       // Hip pivots — legs swing from these with the walk gait.
       hipL: { pos: [-0.20, -0.40, 0], parent: 'rig' },
       hipR: { pos: [ 0.20, -0.40, 0], parent: 'rig' },
+      // Neck pivot — head + eyes crane from here toward the player.
+      neck: { pos: [0, 0.40, 0], parent: 'rig' },
     },
     parts: [
       // FEET — wide low cylinders. Hung under the hip pivots (relative
@@ -308,11 +310,12 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
       // FISTS — asymmetric (left larger, hanging lower).
       { parent: 'shoulderL', kind: 'sphere', pos: [0, -0.54, 0], radius: 0.105, segments: [10, 8], mat: 'body', jitter: 0.018 },
       { parent: 'shoulderR', kind: 'sphere', pos: [0, -0.34, 0], radius: 0.088, segments: [10, 8], mat: 'body', jitter: 0.018 },
-      // HEAD — hunched forward (z=-0.05) on a short thick neck.
-      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.55, -0.05], scale: [1.08, 0.95, 1], radius: 0.27, mat: 'body', jitter: 0.025 },
+      // HEAD — hunched forward (z=-0.05). Hung off the neck pivot so it
+      // cranes toward the player.
+      { name: 'head', parent: 'neck', kind: 'sphere',  pos: [0, 0.15, -0.05], scale: [1.08, 0.95, 1], radius: 0.27, mat: 'body', jitter: 0.025 },
       // Eyes — slightly closer together than wraith, set deep.
-      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.58, -0.30], radius: 0.045, segments: [12, 10], mat: 'eyes' },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.58, -0.30], radius: 0.045, segments: [12, 10], mat: 'eyes' },
+      { parent: 'neck', kind: 'sphere', pos: [-0.08, 0.18, -0.30], radius: 0.045, segments: [12, 10], mat: 'eyes' },
+      { parent: 'neck', kind: 'sphere', pos: [ 0.08, 0.18, -0.30], radius: 0.045, segments: [12, 10], mat: 'eyes' },
     ],
   };
 }
@@ -417,6 +420,8 @@ function acolyteModel(bodyColor: number, eyeColor: number, eyeEmissive: number, 
     slots: {
       rig: { pos: [0, 0.85, 0] },
       muzzle: { pos: [0.30, 1.20, -0.15] satisfies Vec3 },
+      // Neck pivot — hood + head + eyes crane toward the player.
+      neck: { pos: [0, 0.60, 0], parent: 'rig' },
     },
     parts: [
       // Robed trailing tail — torn fabric look via heavy jitter on the
@@ -436,15 +441,15 @@ function acolyteModel(bodyColor: number, eyeColor: number, eyeEmissive: number, 
       // jitter would distort the robe shape too).
       { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0.05, 0], radius: 0.26, height: 0.85, mat: 'robe', jitter: 0.012 },
       // Head — slightly elongated, light jitter.
-      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, 0.75, 0], scale: [1, 1.10, 1], radius: 0.22, mat: 'body', jitter: 0.014 },
+      { name: 'head', parent: 'neck', kind: 'sphere', pos: [0, 0.15, 0], scale: [1, 1.10, 1], radius: 0.22, mat: 'body', jitter: 0.014 },
       // Hood — cone with jitter so the fabric reads as crumpled/torn,
-      // not factory-made.
-      { parent: 'rig', kind: 'cone', pos: [0, 0.86, 0.02], radius: 0.30, height: 0.40, segments: 10, mat: 'robe', jitter: 0.020 },
+      // not factory-made. On the neck so it cranes with the head.
+      { parent: 'neck', kind: 'cone', pos: [0, 0.26, 0.02], radius: 0.30, height: 0.40, segments: 10, mat: 'robe', jitter: 0.020 },
       // Eyes — small mesh spheres deep under the hood.
-      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.74, -0.20], radius: 0.035, segments: [12, 10], mat: 'eyes' },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.74, -0.20], radius: 0.035, segments: [12, 10], mat: 'eyes' },
-      { name: 'eyeHaloL', parent: 'rig', kind: 'sprite', pos: [-0.08, 0.74, -0.24], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-      { name: 'eyeHaloR', parent: 'rig', kind: 'sprite', pos: [ 0.08, 0.74, -0.24], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { parent: 'neck', kind: 'sphere', pos: [-0.08, 0.14, -0.20], radius: 0.035, segments: [12, 10], mat: 'eyes' },
+      { parent: 'neck', kind: 'sphere', pos: [ 0.08, 0.14, -0.20], radius: 0.035, segments: [12, 10], mat: 'eyes' },
+      { name: 'eyeHaloL', parent: 'neck', kind: 'sprite', pos: [-0.08, 0.14, -0.24], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { name: 'eyeHaloR', parent: 'neck', kind: 'sprite', pos: [ 0.08, 0.14, -0.24], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
       // Staff — thin, slight jitter for hand-carved feel.
       { parent: 'rig', kind: 'cylinder', pos: [0.30, 0.10, -0.05], radius: 0.025, height: 1.4, segments: 6, mat: 'staff', jitter: 0.008 },
       // Orb — clean (no jitter; magic geometry should look intentional).
@@ -490,6 +495,8 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
       // Hip pivots — legs swing from these with the walk gait.
       hipL: { pos: [-0.11, -0.30, 0], parent: 'rig' },
       hipR: { pos: [ 0.11, -0.30, 0], parent: 'rig' },
+      // Neck pivot — head + eyes crane toward the player.
+      neck: { pos: [0, 0.36, 0], parent: 'rig' },
     },
     parts: [
       // FEET — narrow boxes (not cylinders like ghoul). Hung under the
@@ -522,14 +529,15 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
       // Small fists — at the end of each arm, also under the pivot.
       { parent: 'shoulderL', kind: 'sphere', pos: [0, -0.58, 0.04], radius: 0.060, segments: [10, 8], mat: 'body', jitter: 0.010 },
       { parent: 'shoulderR', kind: 'sphere', pos: [0, -0.58, 0.04], radius: 0.060, segments: [10, 8], mat: 'body', jitter: 0.010 },
-      // Head — narrow + slightly forward (craned, scout-like).
-      { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.50, -0.06], scale: [0.85, 1.05, 1.05], radius: 0.20, mat: 'body', jitter: 0.012 },
+      // Head — narrow + slightly forward (craned, scout-like). Hung off
+      // the neck pivot so it tracks the player.
+      { name: 'head', parent: 'neck', kind: 'sphere',  pos: [0, 0.14, -0.06], scale: [0.85, 1.05, 1.05], radius: 0.20, mat: 'body', jitter: 0.012 },
       // Eyes — wider apart than ghoul, push the alert-predator read.
-      { parent: 'rig', kind: 'sphere', pos: [-0.08, 0.52, -0.26], radius: 0.040, segments: [12, 10], mat: 'eyes' },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.08, 0.52, -0.26], radius: 0.040, segments: [12, 10], mat: 'eyes' },
+      { parent: 'neck', kind: 'sphere', pos: [-0.08, 0.16, -0.26], radius: 0.040, segments: [12, 10], mat: 'eyes' },
+      { parent: 'neck', kind: 'sphere', pos: [ 0.08, 0.16, -0.26], radius: 0.040, segments: [12, 10], mat: 'eyes' },
       // Eye halos (amber).
-      { parent: 'rig', kind: 'sprite', pos: [-0.08, 0.52, -0.29], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-      { parent: 'rig', kind: 'sprite', pos: [ 0.08, 0.52, -0.29], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { parent: 'neck', kind: 'sprite', pos: [-0.08, 0.16, -0.29], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { parent: 'neck', kind: 'sprite', pos: [ 0.08, 0.16, -0.29], size: [0.14, 0.14], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
     ],
   };
 }
@@ -590,6 +598,8 @@ function wraithModel(bodyColor: number, eyeColor: number, eyeEmissive: number): 
       // Shoulder pivots — the spindly arms reach forward on the strike.
       shoulderL: { pos: [-0.32, 0.20, 0.06], parent: 'rig' },
       shoulderR: { pos: [ 0.32, 0.20, 0.06], parent: 'rig' },
+      // Neck pivot — the gnarled skull cranes toward the player.
+      neck: { pos: [0, 0.58, 0], parent: 'rig' },
     },
     parts: [
       // OUTER AURA — large additive sprite behind everything else. Reads
@@ -639,15 +649,15 @@ function wraithModel(bodyColor: number, eyeColor: number, eyeEmissive: number): 
 
       // HEAD — sphere with vertical scale + jitter. Used to be a clean
       // ovoid; now it's a gnarled skull-ish shape unique to each instance.
-      { name: 'head', parent: 'rig', kind: 'sphere', pos: [0, 0.75, 0], scale: [1, 1.18, 1], radius: 0.24, mat: 'body', jitter: 0.030 },
+      { name: 'head', parent: 'neck', kind: 'sphere', pos: [0, 0.17, 0], scale: [1, 1.18, 1], radius: 0.24, mat: 'body', jitter: 0.030 },
 
       // EYE SPHERES + HALO SPRITES — same dual-layer pattern as before
-      // (mesh for close-up, sprite for distance). Slightly bigger halos
-      // since the rest of the model grew.
-      { parent: 'rig', kind: 'sphere', pos: [-0.10, 0.78, -0.30], radius: 0.06, segments: [12, 10], mat: 'eyes' },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.10, 0.78, -0.30], radius: 0.06, segments: [12, 10], mat: 'eyes' },
-      { name: 'eyeHaloL', parent: 'rig', kind: 'sprite', pos: [-0.10, 0.78, -0.34], size: [0.26, 0.26], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
-      { name: 'eyeHaloR', parent: 'rig', kind: 'sprite', pos: [ 0.10, 0.78, -0.34], size: [0.26, 0.26], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      // (mesh for close-up, sprite for distance). On the neck so they
+      // crane with the head.
+      { parent: 'neck', kind: 'sphere', pos: [-0.10, 0.20, -0.30], radius: 0.06, segments: [12, 10], mat: 'eyes' },
+      { parent: 'neck', kind: 'sphere', pos: [ 0.10, 0.20, -0.30], radius: 0.06, segments: [12, 10], mat: 'eyes' },
+      { name: 'eyeHaloL', parent: 'neck', kind: 'sprite', pos: [-0.10, 0.20, -0.34], size: [0.26, 0.26], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      { name: 'eyeHaloR', parent: 'neck', kind: 'sprite', pos: [ 0.10, 0.20, -0.34], size: [0.26, 0.26], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
     ],
   };
 }
@@ -687,6 +697,8 @@ function stoneguardModel(bodyColor: number, eyeColor: number): ModelSpec {
       // Hip pivots — the heavy greaves plod from these.
       hipL: { pos: [-0.22, -0.40, 0], parent: 'rig' },
       hipR: { pos: [ 0.22, -0.40, 0], parent: 'rig' },
+      // Neck pivot — the helmet tips toward the player.
+      neck: { pos: [0, 0.36, 0], parent: 'rig' },
     },
     parts: [
       // FEET — wide stone slabs, hung under the hip pivots.
@@ -712,14 +724,13 @@ function stoneguardModel(bodyColor: number, eyeColor: number): ModelSpec {
       // sits below the fist for a "resting at the ready" rest pose.
       { parent: 'shoulderR', kind: 'cylinder', pos: [0, -0.50, 0.05], radius: 0.025, height: 0.42, mat: 'maul' },
       { parent: 'shoulderR', kind: 'box',      pos: [0, -0.76, 0.05], size: [0.22, 0.22, 0.22], mat: 'maul', jitter: 0.010 },
-      // HELMET — boxy faceplate sitting on a short neck. Slightly
-      // narrower than the torso so the eye reads "head set in heavy
-      // plate."
-      { parent: 'rig', kind: 'box', pos: [0, 0.50, 0], size: [0.42, 0.36, 0.36], mat: 'body', jitter: 0.018 },
+      // HELMET — boxy faceplate. Hung off the neck pivot so the visor
+      // tips toward the player.
+      { parent: 'neck', kind: 'box', pos: [0, 0.14, 0], size: [0.42, 0.36, 0.36], mat: 'body', jitter: 0.018 },
       // EYE SLITS — two tiny dim rectangles set deep into the helmet.
       // Small + recessed so the embers read as "behind a visor."
-      { parent: 'rig', kind: 'box', pos: [-0.09, 0.52, -0.19], size: [0.06, 0.025, 0.02], mat: 'eyes' },
-      { parent: 'rig', kind: 'box', pos: [ 0.09, 0.52, -0.19], size: [0.06, 0.025, 0.02], mat: 'eyes' },
+      { parent: 'neck', kind: 'box', pos: [-0.09, 0.16, -0.19], size: [0.06, 0.025, 0.02], mat: 'eyes' },
+      { parent: 'neck', kind: 'box', pos: [ 0.09, 0.16, -0.19], size: [0.06, 0.025, 0.02], mat: 'eyes' },
     ],
   };
 }

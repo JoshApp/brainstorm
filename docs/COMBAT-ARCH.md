@@ -119,10 +119,16 @@ stopped, plus a subtle footfall bob. Floaters (wraith, acolyte) and
 non-humanoids (rat, ooze) have no hips → they glide, which is correct.
 See the locomotion block in `enemy.ts`.
 
-**Still pending:** head pivots (a craning "I see you" look toward the
-player); then fold the whole rig — shoulders, hips, head — into a
+**Head crane (done):** all five humanoids (ghoul, skirmisher,
+stoneguard, wraith, acolyte) have a `neck` pivot holding the head +
+eyes; it tips the gaze toward the player, stronger the closer they
+are (looms at melee range, level at distance), eased back to neutral
+when calm. Body yaw already faces the player; this adds the pitch.
+
+**Still pending:** fold the whole rig — shoulders, hips, neck — into a
 parametric `creature()` builder so new enemies get limbs + gait +
-telegraph animation for free.
+telegraph + head-crane animation for free (and the defiler earns its
+own silhouette instead of the recoloured ghoul).
 
 ## Models — current + next
 

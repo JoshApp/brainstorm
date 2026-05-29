@@ -182,6 +182,13 @@ export function createEnemy(
   const hipR = built.slots.get('hipR');
   const hipBaseLX = hipL ? hipL.rotation.x : 0;
   const hipBaseRX = hipR ? hipR.rotation.x : 0;
+  // Neck pivot (optional) — holds the head + eyes so it can CRANE toward
+  // the player: the head tips down as the player gets close (the enemy
+  // looms / fixates), eases back to neutral when calm. Yaw is already
+  // handled by the body facing; this adds the pitch.
+  const neck = built.slots.get('neck');
+  const neckBaseX = neck ? neck.rotation.x : 0;
+  let headPitch = 0;
   const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
   const eyeMat   = built.materials.get(spec.eyeMaterialName)   as THREE.MeshStandardMaterial | undefined;
 
@@ -1129,6 +1136,19 @@ export function createEnemy(
         }
         break;
       }
+    }
+
+    // ── Head crane ───────────────────────────────────────────────────
+    // Tip the head toward the player when aware — stronger the closer
+    // they are (looms over you at melee range, level at distance). Eases
+    // back to neutral when idle/returning. Negative rot.x pitches the
+    // gaze DOWN (model forward is -Z). No-op without a neck pivot.
+    if (neck) {
+      const aware = aggroed && state !== 'returning';
+      const prox = Math.max(0, 1 - distance / 5);   // 0 far → 1 point-blank
+      const targetPitch = aware ? -0.45 * prox : 0;
+      headPitch += (targetPitch - headPitch) * Math.min(1, dt * 6);
+      neck.rotation.x = neckBaseX + headPitch;
     }
 
     // ── Knockback ────────────────────────────────────────────────────
