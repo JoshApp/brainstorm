@@ -6,6 +6,19 @@ import { createPickup } from '../interactables/pickup';
 import { ITEMS } from '../content/items';
 import { playEnemyDeath } from '../audio/sfx';
 import { spawnShatterBurst } from '../effects/shatter-burst';
+import {
+  spawn as spawnEntity,
+  destroy as destroyEntity,
+  get as getEntity,
+  generateEntityId,
+} from '../ecs/world';
+import {
+  computeDamage,
+  setEntityCombatStats,
+  clearEntityCombatStats,
+  type DamageEvent,
+} from '../combat/damage';
+import type { Damageable } from '../combat/damageable';
 
 // Destructible props — a parallel hit-test target list for the
 // combat system. Distinct from enemies (no AI, no perception, no
@@ -19,20 +32,13 @@ import { spawnShatterBurst } from '../effects/shatter-burst';
 // existing gold-coin / pickup systems to avoid a new particle
 // system.
 
-export interface Destructible {
+// A destructible is a Damageable like any enemy — it just has no AI and
+// 0 armor. Its HP lives in the ECS entity pool (keyed by entityId), so
+// the damage pipeline, buffs, and any future DoT/AoE pick it up with no
+// special-casing in the combat system.
+export interface Destructible extends Damageable {
   id: string;
   group: THREE.Group;
-  /** World position of the destructible's centre — combat uses
-   *  this for cone + range checks. Aliased with group.position. */
-  position: THREE.Vector3;
-  /** Half-extent for the combat cone's "is it pointing at this"
-   *  test. Vases are small (~0.18m). */
-  collisionRadius: number;
-  hp: number;
-  alive: boolean;
-  /** Take a damage value. Returns the applied damage (== given
-   *  for now — no armour on destructibles). */
-  takeDamage(amount: number, hitPoint: THREE.Vector3): number;
 }
 
 // Loot table for vases.
@@ -70,6 +76,7 @@ export function spawnVase(
   onDestroyed?: () => void,
 ): Destructible {
   const id = `vase-${Math.floor(Math.random() * 1e9).toString(36)}`;
+  const entityId = generateEntityId('vase');
   const variant = pickVariant();
   const built = buildModel(variant.model);
   const group = built.group;
@@ -82,25 +89,38 @@ export function spawnVase(
   scene.add(group);
   const isBroken = !!variant.broken;
 
+  // Register as an ECS entity so the damage pipeline owns its HP. Plain
+  // vases shatter in ONE hit — they're flavour clutter, not a fight — but
+  // computeDamage floors every hit at 1, so hp:1 means one-and-done while
+  // still flowing through armor/crit/buffs like anything else. A sturdier
+  // breakable (reinforced crate, sealed urn) just spawns with higher hp.
+  spawnEntity({ id: entityId, kind: 'prop', hp: { base: 1, current: 1 }, buffs: [], passives: [] });
+  setEntityCombatStats(entityId, {}); // defaults: 0 armor, 1x damage
+
   const tmpDropPos = new THREE.Vector3();
 
   const dest: Destructible = {
     id,
+    entityId,
     group,
     position: group.position,
+    // Vases sit low; aim the cone (and the floating damage number) at the
+    // body, not the floor.
+    aimHeight: 0.25,
     collisionRadius: 0.18,
-    // Plain vases shatter in ONE hit — they're flavour clutter, not
-    // a fight. Any sturdier breakable (a reinforced crate, a sealed
-    // urn) that wants to take multiple swings should be its own
-    // destructible with a higher hp; the default is one-and-done.
-    hp: 1,
+    hitFeedback: 'light',
     alive: true,
-    takeDamage(amount, _hitPoint) {
+    takeDamage(event: DamageEvent) {
       if (!dest.alive) return 0;
-      dest.hp -= amount;
-      if (dest.hp > 0) return amount;
+      const entity = getEntity(entityId);
+      if (!entity || !entity.hp) return 0;
+      const { applied } = computeDamage(event);
+      entity.hp.current = Math.max(0, entity.hp.current - applied);
+      if (entity.hp.current > 0) return applied;
       // Destroyed.
       dest.alive = false;
+      destroyEntity(entityId);
+      clearEntityCombatStats(entityId);
       // Spawn the shatter burst before removing the mesh so we
       // have a position reference; the burst lives on its own
       // pool ticked from main.ts.
@@ -139,10 +159,20 @@ export function spawnVase(
         if (mesh.isMesh && mesh.geometry) mesh.geometry.dispose();
       });
       scene.remove(group);
-      return amount;
+      return applied;
     },
   };
   return dest;
+}
+
+/** Release the ECS entity backing a destructible that's being torn down
+ *  with the level (i.e. never smashed). Smashing already cleans up via
+ *  takeDamage; this is the leftover-on-floor-exit path. Idempotent. */
+export function disposeDestructible(dest: Destructible) {
+  if (!dest.alive) return;
+  dest.alive = false;
+  destroyEntity(dest.entityId);
+  clearEntityCombatStats(dest.entityId);
 }
 
 /** Spawn a CLUSTER of 2-4 vases around (x, z). Used by the 'V'

@@ -21,6 +21,7 @@ import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
+import type { Damageable } from '../combat/damageable';
 
 // Map an EnemySpec → audio size bucket. Used by death + windup sounds so
 // big mobs sound big and the wraith reads as spectral, not physical.
@@ -78,11 +79,14 @@ const SEARCH_DURATION = 3.0;
 const IDLE_SCAN_INTERVAL = 2.5;
 const IDLE_SCAN_HALF_ARC = 0.7;   // ±40° around home yaw
 
-export interface Enemy {
+export interface Enemy extends Damageable {
   entityId: EntityId;
   /** Spec id from src/content/enemies.ts ('rat', 'skirmisher', etc.). */
   kind: string;
   group: THREE.Group;
+  /** Live alias of group.position — satisfies Damageable for the unified
+   *  combat cone scan. */
+  position: THREE.Vector3;
   hitTargets: THREE.Object3D[];
   alive: boolean;
   /** True after hp hit zero AND the death animation is still ticking. */
@@ -95,6 +99,10 @@ export interface Enemy {
   /** Current AI state machine phase. */
   aiState: EnemyState;
   collisionRadius: number;
+  /** Height the swing cone aims at + where the damage number floats from. */
+  aimHeight: number;
+  /** Mobs take the full crunch + fire the player's on-hit passives. */
+  hitFeedback: 'heavy';
   /** If true, the player walks through this mob (movement-only).
    *  See EnemySpec.noPlayerCollision. */
   noPlayerCollision: boolean;
@@ -813,7 +821,29 @@ export function createEnemy(
       }
 
       case 'chasing': {
-        if (distance > spec.attackRange) {
+        const pref = spec.preferredRange ?? 0;
+        if (pref > 0 && distance < pref) {
+          // KITER — the player is inside our preferred standoff band, so
+          // back away to re-open the gap before shooting again. Aim a
+          // point ~2m directly away from the player; moveTowards pathfinds
+          // + clamps it against walls. If cornered (wall behind), it can't
+          // retreat and ends up shooting at close range — the player's
+          // reward for running it down. Closing on a kiter mid-windup
+          // also pins it (it can't retreat while locked in winding/
+          // striking), so rushing during the telegraph beats it.
+          const dx = container.position.x - playerPos.x;
+          const dz = container.position.z - playerPos.z;
+          const len = Math.hypot(dx, dz) || 1;
+          moveTowards(
+            container.position.x + (dx / len) * 2.0,
+            container.position.z + (dz / len) * 2.0,
+            spec.moveSpeed, dt, walkable, nav,
+          );
+          // Still face the player while backpedalling so the shot lines up.
+          tmpFlat.set(playerPos.x, container.position.y, playerPos.z);
+          container.lookAt(tmpFlat);
+          container.rotation.y += Math.PI;
+        } else if (distance > spec.attackRange) {
           moveTowards(playerPos.x, playerPos.z, spec.moveSpeed, dt, walkable, nav);
         } else {
           state = 'winding';
@@ -1014,6 +1044,9 @@ export function createEnemy(
     entityId,
     kind: spec.id,
     group: container,
+    position: container.position,
+    aimHeight: 0.6,
+    hitFeedback: 'heavy',
     hitTargets: built.hitTargets,
     collisionRadius: spec.collisionRadius,
     noPlayerCollision: !!spec.noPlayerCollision,

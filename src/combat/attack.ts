@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import type { Sword } from '../player/sword';
 import type { Enemy } from '../mobs/enemy';
 import type { Destructible } from '../level/destructibles';
+import type { Damageable } from './damageable';
 import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
 import { playImpact } from '../audio/sfx';
@@ -76,69 +77,14 @@ export function createCombatSystem(
     // your feet by looking down.
     const forwardLenXZ = Math.hypot(forwardDir.x, forwardDir.z) || 1;
 
-    let bestEnemy: Enemy | null = null;
-    let bestDistSq = reachSq + 1;
-    const enemies = getEnemies();
-    for (const e of enemies) {
-      if (!e.alive) continue;
-      const dx = e.group.position.x - camera.position.x;
-      const dy = (e.group.position.y + 0.6) - camera.position.y;
-      const dz = e.group.position.z - camera.position.z;
-      const distSq = dx * dx + dy * dy + dz * dz;
-      if (distSq > reachSq) continue;
-
-      const horDist = Math.hypot(dx, dz);
-      // Degenerate case: enemy directly on top of the player (no horizontal
-      // displacement at all). Always counts as in-cone — you can't NOT face
-      // something inside you.
-      if (horDist < 0.0001) {
-        if (distSq < bestDistSq) { bestDistSq = distSq; bestEnemy = e; }
-        continue;
-      }
-      const horDot = (forwardDir.x * dx + forwardDir.z * dz) / (forwardLenXZ * horDist);
-      if (horDot < cosConeHalf) continue;
-
-      if (distSq < bestDistSq) {
-        bestDistSq = distSq;
-        bestEnemy = e;
-      }
-    }
-
-    if (!bestEnemy) {
-      // No enemy in the swing cone — fall back to destructibles
-      // (vases, future breakable props). Same cone + range test;
-      // lighter feedback than an enemy hit.
-      const destructibles = getDestructibles();
-      let bestDest: Destructible | null = null;
-      let bestDestSq = reachSq + 1;
-      for (const d of destructibles) {
-        if (!d.alive) continue;
-        const dx = d.position.x - camera.position.x;
-        const dy = (d.position.y + 0.25) - camera.position.y;
-        const dz = d.position.z - camera.position.z;
-        const distSq = dx * dx + dy * dy + dz * dz;
-        if (distSq > reachSq) continue;
-        const horDist = Math.hypot(dx, dz);
-        if (horDist < 0.0001) {
-          if (distSq < bestDestSq) { bestDestSq = distSq; bestDest = d; }
-          continue;
-        }
-        const horDot = (forwardDir.x * dx + forwardDir.z * dz) / (forwardLenXZ * horDist);
-        if (horDot < cosConeHalf) continue;
-        if (distSq < bestDestSq) { bestDestSq = distSq; bestDest = d; }
-      }
-      if (bestDest) {
-        bestDest.takeDamage(getCurrentWeapon().damage, hitPoint);
-        strikeAlreadyHit = true;
-        // Lighter crunch than an enemy hit — the vase shatters,
-        // it doesn't fight back.
-        freezeFor(Math.min(40, CONFIG.HIT_PAUSE_MS * 0.4));
-        kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 0.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 0.5);
-        hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
-        playImpact();
-      }
-      return;
-    }
+    // ONE cone scan over a uniform Damageable shape (enemies + destructible
+    // props both implement it). Enemies take priority: a vase shouldn't soak
+    // a swing meant for the mob behind it, so we only fall back to props when
+    // no enemy is in the cone. Each list shares the same picker below.
+    const target =
+      pickTarget(getEnemies(), camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf) ??
+      pickTarget(getDestructibles(), camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf);
+    if (!target) return;
 
     // Crit roll — decided BEFORE the damage pipeline so the pipeline's
     // input damage already reflects the multiplier. critChance/Mult on
@@ -158,36 +104,90 @@ export function createCombatSystem(
 
     // Route through the damage pipeline. The pipeline applies the player's
     // equipment damage bonus (Ring of Predation +1, etc.) from the source
-    // stats, then the enemy's physical armor from the target stats. Player
-    // attacks default to PHYSICAL until we add a wand / spell.
-    const applied = bestEnemy.takeDamage({
+    // stats, then the target's physical armor (0 for props) from the target
+    // stats. Player attacks default to PHYSICAL until we add a wand / spell.
+    const applied = target.takeDamage({
       source: 'player',
-      target: bestEnemy.entityId,
+      target: target.entityId,
       base: baseDamage,
       type: 'physical',
     });
     strikeAlreadyHit = true;
 
-    // Damage number floats from the enemy's apparent location (torso height).
-    hitPoint.set(
-      bestEnemy.group.position.x,
-      bestEnemy.group.position.y + 0.9,
-      bestEnemy.group.position.z,
-    );
+    // Damage number floats from the target's aim point.
+    hitPoint.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
+    if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit);
 
     // --- THE CRUNCH ---
-    // Crits get a beefier hit-pause + shake to sell the heavier blow.
-    const crunchPause = crit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS;
-    const crunchShake = crit
-      ? CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 1.8
-      : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE;
-    freezeFor(crunchPause);
-    kickShake(crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
-    hapticVibrate(crit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS);
-    playImpact();
-    spawnDamageNumber(camera, hitPoint, applied, crit);
-    emit({ type: 'attack:hit', damage: applied, crit, cls: weapon.class });
+    // Heavy targets (mobs) get the full hit-pause + shake + on-hit passives;
+    // crits beef it up further. Light targets (vases) get a token crunch —
+    // they shatter, they don't fight back — and never fire on-hit passives
+    // (no lifesteal off an urn).
+    if (target.hitFeedback === 'heavy') {
+      const crunchPause = crit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS;
+      const crunchShake = crit
+        ? CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 1.8
+        : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE;
+      freezeFor(crunchPause);
+      kickShake(crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
+      hapticVibrate(crit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS);
+      playImpact();
+      emit({ type: 'attack:hit', damage: applied, crit, cls: weapon.class });
+    } else {
+      freezeFor(Math.min(40, CONFIG.HIT_PAUSE_MS * 0.4));
+      kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 0.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 0.5);
+      hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
+      playImpact();
+    }
   }
 
   return { tick };
+}
+
+/**
+ * Pick the closest live target inside the swing cone. Shared by enemies and
+ * destructibles — both are Damageable.
+ *
+ * Cone check runs in the HORIZONTAL plane only. A 3D check breaks at very
+ * close range: when a tall enemy (e.g. wraith) is pressed against the player,
+ * the to-target vector points mostly downward, so its dot with the roughly-
+ * horizontal forward dir drops below cosConeHalf and the swing whiffs even
+ * though the target is right in your face. The reach check still uses 3D
+ * distance, so you can still hit a rat at your feet by looking down.
+ */
+function pickTarget<T extends Damageable>(
+  targets: readonly T[],
+  camera: THREE.Camera,
+  forwardDir: THREE.Vector3,
+  forwardLenXZ: number,
+  reachSq: number,
+  cosConeHalf: number,
+): T | null {
+  let best: T | null = null;
+  let bestDistSq = reachSq + 1;
+  for (const t of targets) {
+    if (!t.alive) continue;
+    const dx = t.position.x - camera.position.x;
+    const dy = (t.position.y + t.aimHeight) - camera.position.y;
+    const dz = t.position.z - camera.position.z;
+    const distSq = dx * dx + dy * dy + dz * dz;
+    if (distSq > reachSq) continue;
+
+    const horDist = Math.hypot(dx, dz);
+    // Degenerate case: target directly on top of the player (no horizontal
+    // displacement at all). Always counts as in-cone — you can't NOT face
+    // something inside you.
+    if (horDist < 0.0001) {
+      if (distSq < bestDistSq) { bestDistSq = distSq; best = t; }
+      continue;
+    }
+    const horDot = (forwardDir.x * dx + forwardDir.z * dz) / (forwardLenXZ * horDist);
+    if (horDot < cosConeHalf) continue;
+
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      best = t;
+    }
+  }
+  return best;
 }
