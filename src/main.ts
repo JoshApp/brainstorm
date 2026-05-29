@@ -480,29 +480,48 @@ const SYSTEMS: GameSystem[] = [
   // clear line of sight (one behind a wall neither lights nor sounds here).
   // Drives both the ambient crackle volume and the eye dark-adaptation signal.
   { name: 'torch-audio', phase: 'unpaused', tick(ctx) {
-    let prox = 0;
     const earRange = 6;
     const walkable = currentLevel.walkable;
-    for (const t of currentLevel.torches) {
-      const dx = t.position.x - camera.position.x;
-      const dz = t.position.z - camera.position.z;
-      const d = Math.hypot(dx, dz);
-      if (d >= earRange) continue;
-      // LOS gate: a torch behind a wall doesn't count toward "how lit am I".
-      if (walkable && !walkable.hasLineOfSight(camera.position.x, camera.position.z, t.position.x, t.position.z)) continue;
-      prox += 1 - d / earRange;
-    }
-    setTorchProximity(prox);
-    // Eye dark-adaptation drives ACES exposure (scales the whole image, so the
-    // dark actually lifts — ambient just scales a near-black colour). realDt so
-    // the adjustment runs at real-time, not the death slow-mo.
-    const adapt = tickDarkAdaptation(prox, ctx.realDt);
+    // LOS torch proximity at an arbitrary point (higher = more lit).
+    const proxAt = (px: number, pz: number) => {
+      let p = 0;
+      for (const t of currentLevel.torches) {
+        const dx = t.position.x - px;
+        const dz = t.position.z - pz;
+        const d = Math.hypot(dx, dz);
+        if (d >= earRange) continue;
+        if (walkable && !walkable.hasLineOfSight(px, pz, t.position.x, t.position.z)) continue;
+        p += 1 - d / earRange;
+      }
+      return p;
+    };
+
+    const cx = camera.position.x;
+    const cz = camera.position.z;
+    const playerProx = proxAt(cx, cz);
+    setTorchProximity(playerProx);   // audio crackle = where you ARE
+
+    // Eyes adapt to what you're LOOKING at too: sample a point ahead along the
+    // view ray (shortened if a wall is closer) and take the DARKER of here vs
+    // there — so standing by a torch but peering into a dark corner still lets
+    // your eyes adjust to the corner.
+    camera.getWorldDirection(forwardScratch);
+    const fl = Math.hypot(forwardScratch.x, forwardScratch.z) || 1;
+    const fx = forwardScratch.x / fl;
+    const fz = forwardScratch.z / fl;
+    let ahead = 3.5;
+    if (walkable && !walkable.hasLineOfSight(cx, cz, cx + fx * ahead, cz + fz * ahead)) ahead = 1.6;
+    const lookProx = proxAt(cx + fx * ahead, cz + fz * ahead);
+    const darkness = Math.min(playerProx, lookProx);
+
+    // realDt so the adjustment runs at real-time, not the death slow-mo.
+    const adapt = tickDarkAdaptation(darkness, ctx.realDt);
     // PS1 path ignores renderer tone mapping (render-to-target), so the dark
     // lift lives in the blit shader (additive shadow-raise). Ambient is a
     // secondary fill (applied during the scene render, so it works there).
     setDarkAdapt(adapt);
     ambient.intensity = darkAdaptAmbient();
-    updateDarkAdaptReadout(prox, adapt, darkAdaptBrightness());
+    updateDarkAdaptReadout(darkness, adapt, darkAdaptBrightness());
   } },
 
   { name: 'combat', phase: 'unpaused', tick() {
