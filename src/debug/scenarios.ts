@@ -85,6 +85,26 @@ export const SCENARIOS: Record<string, Scenario> = {
   // Default spawn view, frozen so the snap captures the deterministic frame.
   spawn: { freeze: true },
 
+  // Skeleton up close in a small lit room — for silhouette review.
+  skeleton: {
+    freeze: true,
+    level: {
+      id: 'dbg-skeleton', depth: 0, displayName: 'skeleton', fogColor: 0x14100a,
+      startPos: { x: 0, z: 2.5, yaw: 0 },
+      rooms: [{ id: 'sk-room', rect: { x: 0, z: 0, w: 6, d: 6 }, height: 3.2 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.05, z: -1.5, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  3.05, z: -1.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'skeleton', x: 0, z: -1.5, roomId: 'sk-room' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 1.6, lookAt: { x: 0, z: -1.5, y: 0.9 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.5 }, state: 'chasing' }],
+  },
+
   // Enemy mid-windup right next to the player — eyes flared, body tilted forward.
   'enemy-close': {
     freeze: true,
