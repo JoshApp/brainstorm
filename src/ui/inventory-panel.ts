@@ -7,7 +7,7 @@ import {
 } from '../player/inventory';
 import { getPlayerSnapshot, onPlayerStatsChanged } from '../state/player-stats';
 import { getPlayerHp, getPlayerMaxHp, healPlayer } from '../player/health';
-import { ITEMS, RARITY_COLORS, type ItemSpec, type WeaponStats, type Rarity } from '../content/items';
+import { ITEMS, RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
 import { BUFFS } from '../content/buffs';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
@@ -15,8 +15,7 @@ import { getItemThumbnail } from './item-thumbnail';
 import { openScreen, closeScreen } from './screen-manager';
 import { openSettings } from './settings-menu';
 import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
-import type { StatModifier } from '../combat/modifiers';
-import type { PassiveSpec } from '../ecs/types';
+import { formatWeapon, formatModifier, formatPassive, formatBuffEffect, abbrev, hexCss } from './item-format';
 
 // Inventory + character stat sheet.
 //
@@ -868,64 +867,8 @@ function detailLine(text: string, dim = false): HTMLDivElement {
   return el;
 }
 
-function formatWeapon(w: WeaponStats): string {
-  return `Base Damage ${w.damage}  ·  Reach ${w.reach.toFixed(1)}m  ·  Arc ${(w.coneHalfAngle * 180 / Math.PI).toFixed(0)}°`;
-}
-
-function formatModifier(m: StatModifier): string {
-  switch (m.kind) {
-    case 'max-hp':                return signed(m.amount) + ' Max HP';
-    case 'weapon-damage':         return signed(m.amount) + ' Damage';
-    case 'damage-multiplier':     return `×${m.amount.toFixed(2)} Damage`;
-    case 'finisher-damage-mult':  return `×${m.amount.toFixed(2)} Finisher Damage`;
-    case 'physical-armor':        return signed(m.amount) + ' Physical Armor';
-    case 'magic-armor':           return signed(m.amount) + ' Magic Armor';
-  }
-}
-
-function formatPassive(p: PassiveSpec): string {
-  const triggerLabel = ({
-    hit: 'On hit',
-    killed: 'On kill',
-    damaged: 'When damaged',
-    died: 'On death',
-    interval: 'Periodically',
-  } as const)[p.trigger.on];
-
-  const effects = p.trigger.effects.map((e) => {
-    if (e.type === 'damage')   return `${e.amount} damage`;
-    if (e.type === 'heal')     return `heal ${e.amount} HP`;
-    if (e.type === 'apply-buff' && e.buffId) {
-      return formatBuffEffect(e.buffId, e.duration ?? 0);
-    }
-    return e.type;
-  });
-  return `${triggerLabel}: ${effects.join(', ')}`;
-}
-
-function formatBuffEffect(buffId: string, duration: number): string {
-  const spec = BUFFS[buffId];
-  if (!spec) return `${buffId} for ${duration}s`;
-  const name = spec.displayName ?? buffId;
-
-  const parts: string[] = [];
-  if (spec.modifiers) {
-    for (const m of spec.modifiers) parts.push(formatModifier(m));
-  }
-  if (spec.tickInterval && spec.tickEffect) {
-    const e = spec.tickEffect;
-    if (e.type === 'heal') parts.push(`+${e.amount} HP every ${spec.tickInterval}s`);
-    if (e.type === 'damage') parts.push(`-${e.amount} HP every ${spec.tickInterval}s`);
-  }
-  const effectStr = parts.length ? ` (${parts.join(', ')})` : '';
-  return `${name}${effectStr} for ${duration}s`;
-}
-
-function signed(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
-}
-
 // ── Misc helpers ─────────────────────────────────────────────────────
+// Item → text formatting lives in ./item-format (pure, reusable, tested).
 function sectionLabel(text: string): HTMLDivElement {
   const el = document.createElement('div');
   el.textContent = text;
@@ -936,18 +879,5 @@ function sectionLabel(text: string): HTMLDivElement {
     paddingBottom: '4px',
   } as Partial<CSSStyleDeclaration>);
   return el;
-}
-
-function abbrev(item: ItemSpec): string {
-  const name = item.name.replace(/^(A |An |The )/, '');
-  return name.length > 22 ? name.slice(0, 20) + '…' : name;
-}
-
-/** "0xff7722" -> "rgb(255, 119, 34)" — for inline CSS color strings. */
-function hexCss(hex: number): string {
-  const r = (hex >> 16) & 0xff;
-  const g = (hex >> 8) & 0xff;
-  const b = hex & 0xff;
-  return `rgb(${r}, ${g}, ${b})`;
 }
 
