@@ -89,7 +89,11 @@ export function spawnVase(
     group,
     position: group.position,
     collisionRadius: 0.18,
-    hp: 2,
+    // Plain vases shatter in ONE hit — they're flavour clutter, not
+    // a fight. Any sturdier breakable (a reinforced crate, a sealed
+    // urn) that wants to take multiple swings should be its own
+    // destructible with a higher hp; the default is one-and-done.
+    hp: 1,
     alive: true,
     takeDamage(amount, _hitPoint) {
       if (!dest.alive) return 0;
