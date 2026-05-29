@@ -159,7 +159,13 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Made for those who would not be patient.',
     dropModel: WEAPON_SCIMITAR,
     viewmodel: WEAPON_SCIMITAR,
-    weapon: { class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0 },
+    // A cold bite — chance to CHILL on hit (slows the target's movement +
+    // attacks). Turns the scimitar into a control weapon: chill a charger
+    // mid-rush, or buy spacing against a swarm.
+    weapon: {
+      class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0,
+      onHit: { buffId: 'chill', chance: 0.4, duration: 2.5 },
+    },
     affixPool: ['keening', 'gallows', 'vile', 'patience'],
     maxAffixes: 2,
   },
@@ -207,7 +213,14 @@ export const ITEMS: Record<string, ItemSpec> = {
     // contain the split. Slow swing timings live elsewhere if we
     // ever wire per-weapon attack timings; for now the base sword
     // cadence applies.
-    weapon: { class: 'hammer', reach: 2.0, coneHalfAngle: 0.85, damage: 2, critChance: 0, critMultiplier: 1 },
+    // Crushing blows SUNDER armour — a chance to make the target take
+    // +35% damage for a few seconds. The maul's payoff: it doesn't crit,
+    // but it softens whatever it hits for everything that follows
+    // (your next swings, a bleed, an ally-less combo).
+    weapon: {
+      class: 'hammer', reach: 2.0, coneHalfAngle: 0.85, damage: 2, critChance: 0, critMultiplier: 1,
+      onHit: { buffId: 'sunder', chance: 0.5, duration: 4 },
+    },
     affixPool: ['gallows', 'spine', 'patience'],
     maxAffixes: 1,
   },
@@ -219,7 +232,13 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'The blade was never quenched.',
     dropModel: HEARTBURN,
     viewmodel: HEARTBURN,
-    weapon: { class: 'sword', reach: 2.3, coneHalfAngle: 0.9, damage: 3, critChance: 0.22, critMultiplier: 2.5, attackSpeed: 1.15 },
+    // Never quenched — every strike has a good chance to set the target
+    // alight (burn: bursty fire DoT). The fabled fire blade lives up to
+    // its name.
+    weapon: {
+      class: 'sword', reach: 2.3, coneHalfAngle: 0.9, damage: 3, critChance: 0.22, critMultiplier: 2.5, attackSpeed: 1.15,
+      onHit: { buffId: 'burn', chance: 0.6, duration: 2.5 },
+    },
     affixPool: ['vile', 'patience', 'gallows', 'keening', 'spine'],
     maxAffixes: 2,
     modifiers: [

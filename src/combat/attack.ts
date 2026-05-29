@@ -12,6 +12,8 @@ import { emit } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { computePlayerStats } from './modifiers';
 import { gameRngChance } from '../engine/rng';
+import { get as getEntity } from '../ecs/world';
+import { applyBuff } from '../ecs/buffs';
 
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
@@ -118,6 +120,18 @@ export function createCombatSystem(
     // Damage number floats from the target's aim point.
     hitPoint.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
     if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit);
+
+    // On-hit status — a serrated/venomed weapon applies its status to the
+    // struck enemy. Stacking statuses (bleed/poison) build per hit, so a
+    // fast weapon ramps them. Only on "heavy" targets (enemies), never
+    // props — an urn doesn't bleed.
+    if (weapon.onHit && target.hitFeedback === 'heavy') {
+      const oh = weapon.onHit;
+      if (gameRngChance(oh.chance)) {
+        const ent = getEntity(target.entityId);
+        if (ent) applyBuff(ent, oh.buffId, oh.duration, 'player');
+      }
+    }
 
     // --- THE CRUNCH ---
     // Heavy targets (mobs) get the full hit-pause + shake + on-hit passives;

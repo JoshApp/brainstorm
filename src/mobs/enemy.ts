@@ -20,6 +20,7 @@ import { buildModel } from '../ecs/build-model';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
+import { aggregateSpeed } from '../combat/modifiers';
 import { playEnemyDeath, playEnemyWindup, type EnemyDeathSize } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
@@ -920,6 +921,13 @@ export function createEnemy(
 
     const distance = distToXZ(playerPos);
 
+    // Chill / haste — movement pace + attack-phase timing scale by the
+    // entity's speed buffs (chill = both < 1). moveSpeed is used by every
+    // movement state; actionDt slows the windup/strike/recover advance.
+    const speed = aggregateSpeed(entityId);
+    const moveSpeed = spec.moveSpeed * speed.move;
+    const actionDt = dt * speed.action;
+
     // Tick down per-ability cooldowns.
     if (cooldowns.size > 0) {
       for (const [id, t] of cooldowns) {
@@ -997,7 +1005,7 @@ export function createEnemy(
         if (distToLast > 0.4) {
           // Wary search — slower than chase (0.7x). Pathfinds around
           // obstacles, same as chasing.
-          moveTowards(lastSeenPos.x, lastSeenPos.z, spec.moveSpeed * 0.7, dt, walkable, nav);
+          moveTowards(lastSeenPos.x, lastSeenPos.z, moveSpeed * 0.7, dt, walkable, nav);
         }
         // Search times out either by phaseTimer or by re-acquiring (above).
         if (phaseTimer >= SEARCH_DURATION) {
@@ -1036,7 +1044,7 @@ export function createEnemy(
           break;
         }
         // Walk back to spawn at 0.6x speed, routing around obstacles.
-        moveTowards(homePos.x, homePos.z, spec.moveSpeed * 0.6, dt, walkable, nav);
+        moveTowards(homePos.x, homePos.z, moveSpeed * 0.6, dt, walkable, nav);
         // Face direction of travel — use the home delta direction so
         // facing is stable even if the path waypoint pulls slightly
         // sideways.
@@ -1090,7 +1098,7 @@ export function createEnemy(
             moveTowards(
               container.position.x + (dx / len) * 2.0,
               container.position.z + (dz / len) * 2.0,
-              spec.moveSpeed, dt, walkable, nav,
+              moveSpeed, dt, walkable, nav,
             );
             tmpFlat.set(playerPos.x, container.position.y, playerPos.z);
             container.lookAt(tmpFlat);
@@ -1103,7 +1111,7 @@ export function createEnemy(
           } else if (distance > 0.1) {
             // Melee/charger, or a kiter that's genuinely out of range —
             // close the gap.
-            moveTowards(playerPos.x, playerPos.z, spec.moveSpeed, dt, walkable, nav);
+            moveTowards(playerPos.x, playerPos.z, moveSpeed, dt, walkable, nav);
           }
         }
         setEyeFlare(0);
@@ -1114,7 +1122,7 @@ export function createEnemy(
 
       case 'winding': {
         if (!currentAbility) { state = 'chasing'; break; }
-        phaseTimer += dt;
+        phaseTimer += actionDt;
         const t = Math.min(1, phaseTimer / currentWindupTime);
         applyTelegraph(currentAbility.telegraph, 'windup', t);
         if (aoeTelegraph) aoeTelegraph.setProgress(t);
@@ -1125,7 +1133,7 @@ export function createEnemy(
           ?? (meleeReachOf(currentAbility) !== null);
         const reach = meleeReachOf(currentAbility);
         if (wantsCreep && reach !== null && distance > reach) {
-          moveTowards(playerPos.x, playerPos.z, spec.moveSpeed * 0.45, dt, walkable, nav);
+          moveTowards(playerPos.x, playerPos.z, moveSpeed * 0.45, dt, walkable, nav);
         }
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
@@ -1136,7 +1144,7 @@ export function createEnemy(
 
       case 'striking': {
         if (!currentAbility) { state = 'chasing'; break; }
-        phaseTimer += dt;
+        phaseTimer += actionDt;
         for (const eff of currentAbility.effects) {
           runEffect(eff, currentAbility, playerPos, distance, dt, walkable, nav);
         }
@@ -1150,7 +1158,7 @@ export function createEnemy(
 
       case 'recovering': {
         if (!currentAbility) { state = 'chasing'; break; }
-        phaseTimer += dt;
+        phaseTimer += actionDt;
         const t = Math.min(1, phaseTimer / currentAbility.recover);
         applyTelegraph(currentAbility.telegraph, 'recover', t);
         if (phaseTimer >= currentAbility.recover) {

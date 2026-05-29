@@ -27,6 +27,9 @@ export type StatModifier =
   | { kind: 'finisher-damage-mult';  amount: number }    // multiplicative on outgoing ONLY for the finisher (last combo step)
   | { kind: 'physical-armor';        amount: number }    // flat reduction to incoming physical
   | { kind: 'magic-armor';           amount: number }    // flat reduction to incoming magic
+  | { kind: 'incoming-damage-mult';  amount: number }    // multiplicative on INCOMING (sunder/vulnerable: 1.35 = +35% taken)
+  | { kind: 'move-speed-mult';       amount: number }    // multiplicative on move speed (chill: 0.5 = half)
+  | { kind: 'action-speed-mult';     amount: number }    // multiplicative on attack/windup speed (chill: 0.6 = 40% slower)
 ;
 
 /**
@@ -75,6 +78,8 @@ export interface PlayerStats {
   finisherDamageMultiplier: number;
   physicalArmor: number;
   magicArmor: number;
+  /** Multiplier on INCOMING damage (sunder/vulnerable). 1.0 = normal. */
+  vulnerability: number;
 }
 
 /**
@@ -89,6 +94,7 @@ export function computePlayerStats(): PlayerStats {
   let finisherDamageMultiplier = 1;
   let physicalArmor = 0;
   let magicArmor = 0;
+  let vulnerability = 1;
 
   for (const m of aggregateModifiers('player')) {
     switch (m.kind) {
@@ -98,6 +104,11 @@ export function computePlayerStats(): PlayerStats {
       case 'finisher-damage-mult': finisherDamageMultiplier *= m.amount; break;
       case 'physical-armor':       physicalArmor += m.amount; break;
       case 'magic-armor':          magicArmor += m.amount; break;
+      case 'incoming-damage-mult': vulnerability *= m.amount; break;
+      // move/action-speed are handled by aggregateSpeed (movement +
+      // attack timing), not the damage-stat path.
+      case 'move-speed-mult':
+      case 'action-speed-mult':    break;
     }
   }
   // Character attributes — spent at safe rooms. Vigor → max HP,
@@ -108,7 +119,23 @@ export function computePlayerStats(): PlayerStats {
   maxHp += vigor;
   physicalArmor += resolve * 0.5;
   magicArmor    += resolve * 0.5;
-  return { maxHp, weaponDamageBonus, damageMultiplier, finisherDamageMultiplier, physicalArmor, magicArmor };
+  return { maxHp, weaponDamageBonus, damageMultiplier, finisherDamageMultiplier, physicalArmor, magicArmor, vulnerability };
+}
+
+/**
+ * Movement + action speed multipliers for an entity, from active buffs
+ * (chill slows both). Products of all move-speed-mult / action-speed-mult
+ * modifiers; 1.0 each when unaffected. Read by the enemy AI for movement
+ * pace and attack-phase timing.
+ */
+export function aggregateSpeed(entityId: EntityId): { move: number; action: number } {
+  let move = 1;
+  let action = 1;
+  for (const m of aggregateModifiers(entityId)) {
+    if (m.kind === 'move-speed-mult') move *= m.amount;
+    else if (m.kind === 'action-speed-mult') action *= m.amount;
+  }
+  return { move, action };
 }
 
 /**

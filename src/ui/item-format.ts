@@ -25,6 +25,9 @@ export function formatModifier(m: StatModifier): string {
     case 'finisher-damage-mult':  return `×${m.amount.toFixed(2)} Finisher Damage`;
     case 'physical-armor':        return signed(m.amount) + ' Physical Armor';
     case 'magic-armor':           return signed(m.amount) + ' Magic Armor';
+    case 'incoming-damage-mult':  return `×${m.amount.toFixed(2)} Damage Taken`;
+    case 'move-speed-mult':       return `×${m.amount.toFixed(2)} Move Speed`;
+    case 'action-speed-mult':     return `×${m.amount.toFixed(2)} Attack Speed`;
   }
 }
 

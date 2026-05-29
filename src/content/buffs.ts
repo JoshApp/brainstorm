@@ -96,4 +96,37 @@ export const BUFFS: Record<string, BuffSpec> = {
     maxStacks: 6,
     vfx: { color: 0x66cc33, style: 'drip' },
   },
+
+  // ── Control / amplifier statuses (no DoT — pure modifiers) ────────
+
+  // CHILL — frostbite: slows movement AND attack cadence. No damage; a
+  // control tool (a frost weapon makes a charger sluggish, buys spacing
+  // against a swarm). Refresh-only. Modifiers route through the same
+  // pipeline as everything else — the enemy AI reads move/action speed
+  // from aggregateSpeed.
+  chill: {
+    id: 'chill',
+    displayName: 'CHILL',
+    color: 0x88ccff,
+    modifiers: [
+      { kind: 'move-speed-mult', amount: 0.5 },
+      { kind: 'action-speed-mult', amount: 0.6 },
+    ],
+    vfx: { color: 0x9fd8ff, style: 'rise' },   // frost vapour
+  },
+
+  // SUNDER — armour cracked: the target takes MORE damage (×1.35). The
+  // combo amplifier — sunder, then bleed/poison hit harder; or sunder a
+  // tank so your swings land for real. Works on enemies (a heavy weapon)
+  // AND on the player (an enemy that makes you brittle) via the same
+  // incoming-damage multiplier in computeDamage.
+  sunder: {
+    id: 'sunder',
+    displayName: 'SUNDER',
+    color: 0xffb347,
+    modifiers: [
+      { kind: 'incoming-damage-mult', amount: 1.35 },
+    ],
+    vfx: { color: 0xffc266, style: 'rise' },
+  },
 };

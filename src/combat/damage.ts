@@ -28,6 +28,8 @@ export interface CombatStats {
   physicalArmor: number;
   /** Flat reduction to incoming magic damage (floored at 1 final). */
   magicArmor: number;
+  /** Multiplier on INCOMING damage (sunder/vulnerable). 1.0 = normal. */
+  vulnerability: number;
 }
 
 const DEFAULT_STATS: CombatStats = {
@@ -35,6 +37,7 @@ const DEFAULT_STATS: CombatStats = {
   damageMultiplier: 1,
   physicalArmor: 0,
   magicArmor: 0,
+  vulnerability: 1,
 };
 
 // Per-entity BASELINE stats (set when an enemy spawns from its spec).
@@ -67,6 +70,7 @@ export function getCombatStats(id: EntityId | null): CombatStats {
       damageMultiplier: p.damageMultiplier,
       physicalArmor: p.physicalArmor,
       magicArmor: p.magicArmor,
+      vulnerability: p.vulnerability,
     };
   }
   if (!id) return DEFAULT_STATS;
@@ -80,17 +84,19 @@ export function getCombatStats(id: EntityId | null): CombatStats {
   let damageMultiplier = base.damageMultiplier;
   let physicalArmor = base.physicalArmor;
   let magicArmor = base.magicArmor;
+  let vulnerability = base.vulnerability;
   for (const m of aggregateModifiers(id)) {
     switch (m.kind) {
       case 'weapon-damage':     damageBonus += m.amount; break;
       case 'damage-multiplier': damageMultiplier *= m.amount; break;
       case 'physical-armor':    physicalArmor += m.amount; break;
       case 'magic-armor':       magicArmor += m.amount; break;
+      case 'incoming-damage-mult': vulnerability *= m.amount; break;
       // max-hp not applicable to enemy combat stats (HP is in spawn-time pool)
-      // finisher-damage-mult is player-side; enemies don't combo.
+      // finisher-damage-mult is player-side; speed mods handled by aggregateSpeed.
     }
   }
-  return { damageBonus, damageMultiplier, physicalArmor, magicArmor };
+  return { damageBonus, damageMultiplier, physicalArmor, magicArmor, vulnerability };
 }
 
 export interface DamageEvent {
@@ -128,7 +134,14 @@ export interface DamageResult {
 export function computeDamage(event: DamageEvent): { applied: number; blocked: number } {
   const src = getCombatStats(event.source);
   const tgt = getCombatStats(event.target);
-  return resolveDamage(event.base, src.damageBonus, src.damageMultiplier, armorFor(tgt, event.type));
+  const r = resolveDamage(event.base, src.damageBonus, src.damageMultiplier, armorFor(tgt, event.type));
+  // Sunder/vulnerable amplifies the FINAL (post-armor) damage. Floored
+  // at 1 like the rest of the pipeline. No-op when vulnerability is 1.
+  if (tgt.vulnerability !== 1) {
+    const amped = Math.max(1, Math.round(r.applied * tgt.vulnerability));
+    return { applied: amped, blocked: r.blocked };
+  }
+  return r;
 }
 
 function armorFor(stats: CombatStats, type: DamageType): number {
