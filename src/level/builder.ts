@@ -571,6 +571,7 @@ export function buildLevel(
       if (prop.rotX) built.group.rotation.x = prop.rotX;
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
+      if (prop.scale && prop.scale !== 1) built.group.scale.setScalar(prop.scale);
       // Debug provenance — stamp the generating system + a coarse model
       // hint onto the group so the debug capture's look-at/cone resolver
       // can report "this rubble = surface-clutter phase." No-op for

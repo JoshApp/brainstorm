@@ -27,7 +27,7 @@ const COLOR_ARMED  = 0xffd6a0;
 const COLOR_SEALED = 0x808088;
 
 const NEARBY_RADIUS = 4.0;         // m — interactables within this glow faintly
-const NEARBY_MAX_OPACITY = 0.20;   // faint cap (additive → only reads in dark)
+const NEARBY_MAX_OPACITY = 0.32;   // faint cap (additive → only reads in dark)
 const ARMED_BASE_OPACITY = 0.78;
 const SEALED_BASE_OPACITY = 0.45;
 

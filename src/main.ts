@@ -19,7 +19,7 @@ import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './pla
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setStyleExposure } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setDarkAdapt } from './style/render-target';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
@@ -497,10 +497,10 @@ const SYSTEMS: GameSystem[] = [
     // dark actually lifts — ambient just scales a near-black colour). realDt so
     // the adjustment runs at real-time, not the death slow-mo.
     const adapt = tickDarkAdaptation(prox, ctx.realDt);
-    // PS1 path ignores renderer tone mapping (render-to-target), so the
-    // brightness lift lives in the blit shader's exposure uniform; ambient is
-    // a secondary fill (applied during the scene render, so it works there).
-    setStyleExposure(darkAdaptBrightness());
+    // PS1 path ignores renderer tone mapping (render-to-target), so the dark
+    // lift lives in the blit shader (additive shadow-raise). Ambient is a
+    // secondary fill (applied during the scene render, so it works there).
+    setDarkAdapt(adapt);
     ambient.intensity = darkAdaptAmbient();
     updateDarkAdaptReadout(prox, adapt, darkAdaptBrightness());
   } },

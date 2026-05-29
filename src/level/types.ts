@@ -105,6 +105,9 @@ export type PropSpec =
       kind: 'model'; model: import('../ecs/model-types').ModelSpec;
       x: number; y: number; z: number;
       rotY?: number; rotX?: number; rotZ?: number;
+      /** Uniform scale multiplier (default 1). Lets a single ModelSpec be
+       *  placed at varied sizes — e.g. cobwebs / debris size jitter. */
+      scale?: number;
       collision?: PropCollision | PropCollision[];
       facing?: PropFacing;
       /** Debug provenance — which pipeline phase produced this prop

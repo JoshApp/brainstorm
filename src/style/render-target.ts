@@ -35,7 +35,7 @@ const HORROR_BLIT_FRAG = `
   precision highp float;
   uniform sampler2D tDiffuse;
   uniform vec2 uResolution;
-  uniform float uExposure;   // dark-adaptation brightness (1.0 = neutral)
+  uniform float uDarkAdapt;  // eye dark-adaptation, 0 = none .. 1 = full dark
   varying vec2 vUv;
 
   // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
@@ -70,10 +70,14 @@ const HORROR_BLIT_FRAG = `
     float b = texture2D(tDiffuse, uv - caOffset).b;
     vec3 col = vec3(r, g, b);
 
-    // EYE DARK-ADAPTATION — scale brightness BEFORE posterize so the
-    // quantization steps land on the exposed image. (Tone-map exposure on the
-    // renderer is ignored when rendering to a target, so the lever lives here.)
-    col *= uExposure;
+    // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — RAISE the shadow floor, don't
+    // just multiply: a torchless corridor is near-black, and black × gain is
+    // still black. An additive lift (with a slight cool scotopic tint) is what
+    // actually makes the dark navigable, plus a mild gain on top. Applied
+    // before posterize so the steps land on the lifted image. Rests at 0 in
+    // torchlight, so lit rooms are untouched.
+    col *= 1.0 + uDarkAdapt * 0.45;                       // mild gain
+    col += uDarkAdapt * vec3(0.045, 0.060, 0.085);        // cool shadow lift
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;
@@ -118,7 +122,7 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
     uniforms: {
       tDiffuse: { value: lowResTarget.texture },
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
-      uExposure: { value: 1.0 },
+      uDarkAdapt: { value: 0 },
     },
     vertexShader: HORROR_BLIT_VERT,
     fragmentShader: HORROR_BLIT_FRAG,
@@ -138,10 +142,10 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
   });
 }
 
-/** Set the PS1 blit exposure (dark-adaptation brightness, 1.0 = neutral).
- *  No-op until the pipeline is initialised / for non-PS1 styles. */
-export function setStyleExposure(exposure: number): void {
-  if (blitMaterial) blitMaterial.uniforms.uExposure.value = exposure;
+/** Set the eye dark-adaptation amount (0..1) applied by the blit shader's
+ *  shadow-lift. No-op until the pipeline is initialised. */
+export function setDarkAdapt(amount: number): void {
+  if (blitMaterial) blitMaterial.uniforms.uDarkAdapt.value = amount;
 }
 
 export function renderWithStyle(

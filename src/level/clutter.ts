@@ -476,19 +476,34 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
     }
   }
 
-  // Cobweb corners — faint webs slung high into the room's corners.
-  // Sparse + cosmetic (no collision); the dense hub tucks into the
-  // corner via the per-corner rotY. Sets the abandoned, long-undisturbed
-  // mood and seeds the spider-nest theme.
-  const cobwebCorners = [
+  // Cobweb corners — faint webs tucked into the room's corners. Cosmetic
+  // (no collision); seeds the abandoned, long-undisturbed mood. Kept SPARSE
+  // and VARIED so they don't read as the same web stamped in every corner:
+  //   - at most ~1-2 per room (shuffle corners, low per-corner odds),
+  //   - height jittered (slung high to slung mid-corner),
+  //   - rotY jittered off the corner-facing base, plus a rotZ tilt so the
+  //     web plane hangs differently each time,
+  //   - size jittered 65-130%.
+  const cobwebCorners = shuffled([
     { x: ctx.minX + 0.35, z: ctx.minZ + 0.35, rotY:  Math.PI * 0.25 },
     { x: ctx.maxX - 0.35, z: ctx.minZ + 0.35, rotY:  Math.PI * 0.75 },
     { x: ctx.minX + 0.35, z: ctx.maxZ - 0.35, rotY: -Math.PI * 0.25 },
     { x: ctx.maxX - 0.35, z: ctx.maxZ - 0.35, rotY: -Math.PI * 0.75 },
-  ];
+  ], rand);
+  let webs = 0;
   for (const c of cobwebCorners) {
-    if (rand() > 0.30) continue;   // most corners stay bare
-    out.push({ kind: 'model', model: COBWEB_CORNER, x: c.x, y: 2.2, z: c.z, rotY: c.rotY });
+    if (webs >= 2) break;                 // never more than two webs in a room
+    if (rand() > 0.28) continue;          // most corners stay bare
+    webs++;
+    out.push({
+      kind: 'model', model: COBWEB_CORNER,
+      x: c.x,
+      y: 1.7 + rand() * 0.85,             // slung mid-corner to high (1.7-2.55m)
+      z: c.z,
+      rotY: c.rotY + (rand() - 0.5) * 0.7,
+      rotZ: (rand() - 0.5) * 0.6,         // tilt the web plane
+      scale: 0.65 + rand() * 0.65,        // 65-130% size
+    });
   }
 
   // Wall damage — scorches and gouges on clear wall sections.
