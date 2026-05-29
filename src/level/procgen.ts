@@ -59,6 +59,7 @@ function rollTableFor(depth: number): EnemyRoll[] {
       { enemyId: 'ghoul',      weight: 1 },
       { enemyId: 'acolyte',    weight: 1 },
       { enemyId: 'ooze',       weight: 1 },
+      { enemyId: 'skeleton',   weight: 1 },
     ];
   }
   // Depth 5-7: ghouls in the mix more; acolytes start appearing in pairs
@@ -75,6 +76,7 @@ function rollTableFor(depth: number): EnemyRoll[] {
       { enemyId: 'ooze',         weight: 2 },
       { enemyId: 'acid-spitter', weight: 1 },
       { enemyId: 'defiler',      weight: 1 },
+      { enemyId: 'skeleton',     weight: 2 },
       { enemyId: 'stoneguard',   weight: 1 },
     ];
   }
@@ -90,6 +92,7 @@ function rollTableFor(depth: number): EnemyRoll[] {
     { enemyId: 'ooze',         weight: 2 },
     { enemyId: 'acid-spitter', weight: 2 },
     { enemyId: 'defiler',      weight: 2 },
+    { enemyId: 'skeleton',     weight: 2 },
     { enemyId: 'stoneguard',   weight: 2 },
     { enemyId: 'wraith',       weight: 1 },
   ];

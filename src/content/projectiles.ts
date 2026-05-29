@@ -41,7 +41,23 @@ export const ACID_SPIT: ProjectileType = {
   lightRange: 2.8,
 };
 
+// Bone shard — a hurled shard of bone. PHYSICAL (it's a thrown object,
+// not a spell), fast + small so it reads as a flung splinter. Faint
+// pale glow so it's visible crossing a dark room. The skeleton throws
+// these as it advances, so the player is pressured at range too.
+export const BONE_SHARD: ProjectileType = {
+  id: 'bone-shard',
+  radius: 0.11,
+  speed: 8.0,
+  lifetime: 2.6,
+  damageType: 'physical',
+  color: 0xd8cfb8,
+  lightIntensity: 0.5,
+  lightRange: 2.2,
+};
+
 export function registerProjectiles(): void {
   registerProjectileType(ACOLYTE_SPIT);
   registerProjectileType(ACID_SPIT);
+  registerProjectileType(BONE_SHARD);
 }

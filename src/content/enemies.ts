@@ -1338,6 +1338,86 @@ export const ENEMIES: Record<string, EnemySpec> = {
       ],
     },
   },
+
+  // Skeleton — the PRESSURE enemy: dangerous at every range. It hurls
+  // bone shards while it advances, then slashes once it's on you. Where
+  // the acolyte flees and the acid-spitter plants, the skeleton just
+  // keeps coming AND keeps throwing, so backing off doesn't buy safety —
+  // the answer is to close and break it fast (it's brittle: 3 HP).
+  // Built entirely from creature() + two abilities — no new mechanics;
+  // a showcase of both systems (first mob with a ranged AND a melee
+  // ability it uses by range).
+  skeleton: {
+    id: 'skeleton',
+    name: 'skeleton',
+    tileChar: 'L',
+    hp: 3,
+    moveSpeed: 1.5,            // advances steadily (no kite, no preferredRange)
+    attackDamage: 1,
+    // Legacy mirrors for audio/debug; the abilities drive combat.
+    attackRange: 1.7,
+    strikeRange: 1.5,
+    windupTime: 0.55,
+    strikeTime: 0.15,
+    recoverTime: 0.45,
+    damageType: 'physical',
+    abilities: [
+      // BONE THROW — ranged poke from mid distance while closing. Cooldown
+      // so it's a periodic shard, not a stream; minRange keeps it from
+      // throwing point-blank (it slashes there instead).
+      {
+        id: 'bone-throw',
+        minRange: 2.4, maxRange: 8,
+        windup: 0.6, strike: 0.15, recover: 0.5, cooldown: 2.0,
+        damage: 1, telegraph: 'cast',
+        effects: [{ kind: 'projectile', projectileId: 'bone-shard', muzzle: [0.28, 1.35, -0.1] }],
+      },
+      // SLASH — the close-range bite once it reaches you.
+      {
+        id: 'slash',
+        minRange: 0, maxRange: 1.7,
+        windup: 0.5, strike: 0.15, recover: 0.45,
+        damage: 1, telegraph: 'swing', creep: true,
+        effects: [{ kind: 'melee', reach: 1.5, damageType: 'physical' }],
+      },
+    ],
+    // Gaunt, pale, cold-eyed bones via the parametric builder — its own
+    // brittle silhouette, and it inherits the full rig (arms gesture the
+    // throw + slash, it strides in, skull cranes at you).
+    model: creature({
+      id: 'skeleton-creature',
+      palette: { body: 0xb8b0a0, eye: 0x9fd8ff, eyeEmissive: 2.4, bodyEmissive: 0x101418 },
+      rim: { color: 0xcfe6ff, power: 2.8, intensity: 0.6 },
+      height: 1.05,
+      build: 0.78,        // skeletal — thin
+      armLength: 0.54,
+      legLength: 0.5,
+      headRadius: 0.2,
+      hunch: 0.04,
+    }),
+    baseEyeEmissive: 2.4,
+    collisionRadius: 0.34,
+    physicalArmor: 0,
+    magicArmor: 0,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    presence: 'lurch',         // bony shamble
+    sightRange: 8,
+    sightConeHalfAngle: 1.0,
+    hearingRange: 2.5,
+    loseSightTime: 5,
+    xp: 7,
+    gold: [0, 9],
+    drops: {
+      rate: 0.42,
+      pool: [
+        { itemId: 'healing-potion', weight: 4 },
+        { itemId: 'bone-amulet', weight: 1 },
+        { itemId: 'iron-coif', weight: 2 },
+      ],
+    },
+  },
 };
 
 // ── Tile-char registry — single source of truth ─────────────────────
@@ -1359,7 +1439,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
 // added — but enemies are now safe by construction.
 const RESERVED_TILE_CHARS = new Set(
   ['#', ' ', 'X', 'B', '.', ',', 'S', 'o', 'O', 'D', '/', '^',
-   'F', 'C', 'P', 'A', 'c', 'v', 'V', 'T', 't', '<', '>'],
+   'F', 'C', 'P', 'A', 'c', 'v', 'V', 'T', 't', '<', '>', '%'],
 );
 
 /** char → enemyId. */

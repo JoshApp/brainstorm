@@ -40,7 +40,8 @@ buff allies**, **directional block**.
 | acid-spitter | **commit & burst** — push the holder | ✅ *fixed this pass* |
 | rat | clear chaff, don't get surrounded | ⚠️ weak verb; fine as cheap chaff |
 | skirmisher | **sidestep the charge**, punish the recovery | ✅ *fixed — now the charger* |
-| defiler | **don't stand there** — keep moving off the hex | ✅ *new — zone control* |
+| defiler | **don't stand there** — keep moving off the hex | ✅ *zone control* |
+| skeleton | **close and break it** — pressure at every range | ✅ *new — ranged+melee, advances* |
 | ooze-small | (recursion terminator / cleanup) | — |
 
 ## The verb-audit pass (what changed & why)
