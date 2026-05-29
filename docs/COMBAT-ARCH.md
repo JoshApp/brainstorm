@@ -107,9 +107,18 @@ MAUL rides the right pivot → overhead slam). The acolyte is robed with
 no visible arms (the staff implies them) so it stays body-only — not
 every model needs limbs. Rat + ooze are non-humanoid, also body-only.
 
-**Still pending:** leg + head pivots for richer idle/locomotion (a
-walking shamble, a craning head); then fold the whole rig into a
-parametric `creature()` builder so new enemies get it for free.
+**Walk gait (done):** ghoul, skirmisher, stoneguard have `hipL/hipR`
+pivots; legs swing from a DISTANCE-driven stride (advances by how far
+the body actually moved, so feet roughly track the ground instead of
+moonwalking). Gait amplitude eases in/out so legs settle to rest when
+stopped, plus a subtle footfall bob. Floaters (wraith, acolyte) and
+non-humanoids (rat, ooze) have no hips → they glide, which is correct.
+See the locomotion block in `enemy.ts`.
+
+**Still pending:** head pivots (a craning "I see you" look toward the
+player); then fold the whole rig — shoulders, hips, head — into a
+parametric `creature()` builder so new enemies get limbs + gait +
+telegraph animation for free.
 
 ## Models — current + next
 

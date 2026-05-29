@@ -171,6 +171,13 @@ export function createEnemy(
   const shoulderR = built.slots.get('shoulderR');
   const shoulderBaseLX = shoulderL ? shoulderL.rotation.x : 0;
   const shoulderBaseRX = shoulderR ? shoulderR.rotation.x : 0;
+  // Hip pivots (optional) — legs swing from these as the enemy MOVES
+  // (distance-driven gait, see the locomotion block in update). Models
+  // without hips just slide (correct for floaters like the wraith).
+  const hipL = built.slots.get('hipL');
+  const hipR = built.slots.get('hipR');
+  const hipBaseLX = hipL ? hipL.rotation.x : 0;
+  const hipBaseRX = hipR ? hipR.rotation.x : 0;
   const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
   const eyeMat   = built.materials.get(spec.eyeMaterialName)   as THREE.MeshStandardMaterial | undefined;
 
@@ -332,6 +339,18 @@ export function createEnemy(
   const presence = spec.presence;
   const presencePhase = Math.random() * Math.PI * 2;
   let presenceTime = 0;
+
+  // Locomotion (gait) — drives the hip pivots from ACTUAL movement so
+  // legs swing in step with travel instead of the body moonwalking. The
+  // stride phase advances by distance covered (auto-syncs to real
+  // speed); gait amplitude eases in when moving, out when stopped so
+  // legs settle to rest. Only does anything on models with hip pivots.
+  let prevX = container.position.x;
+  let prevZ = container.position.z;
+  let stridePhase = Math.random() * Math.PI * 2;   // desync mobs
+  let gaitAmp = 0;
+  const STRIDE_LENGTH = 0.7;   // metres per full leg cycle
+  const GAIT_SWING = 0.5;      // peak hip rotation (rad) at full gait
   // 'chant' needs a reference to the orb material so the pulse can drive
   // its emissive intensity. Grabbed once at build; null for non-chant.
   const orbMat = presence === 'chant'
@@ -1081,6 +1100,31 @@ export function createEnemy(
         break;
       }
     }
+
+    // ── Locomotion (gait) ────────────────────────────────────────────
+    // Swing the legs from how far the body actually moved this frame, so
+    // a walking enemy plants strides instead of sliding. Runs before
+    // presence so the idle overlay's bob still stacks on top. No-op on
+    // floaters / non-humanoids (no hip pivots).
+    if (hipL || hipR) {
+      const movedX = container.position.x - prevX;
+      const movedZ = container.position.z - prevZ;
+      const moved = Math.hypot(movedX, movedZ);
+      // Advance the cycle by distance covered → feet roughly track the
+      // ground, less moonwalk than a time-based cycle.
+      stridePhase += (moved / STRIDE_LENGTH) * Math.PI * 2;
+      // Ease gait in/out so legs return to rest when the enemy stops
+      // (a frozen mid-stride pose reads worse than settling to neutral).
+      const targetAmp = moved > 0.0005 ? GAIT_SWING : 0;
+      gaitAmp += (targetAmp - gaitAmp) * Math.min(1, dt * 9);
+      const swing = Math.sin(stridePhase) * gaitAmp;
+      if (hipL) hipL.rotation.x = hipBaseLX + swing;
+      if (hipR) hipR.rotation.x = hipBaseRX - swing;
+      // Subtle vertical bob synced to the stride (up on each footfall).
+      built.group.position.y += Math.abs(Math.sin(stridePhase)) * gaitAmp * 0.05;
+    }
+    prevX = container.position.x;
+    prevZ = container.position.z;
 
     // ── Presence overlay ─────────────────────────────────────────────
     // Applied AFTER the state animation so it stacks on what the state

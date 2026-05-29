@@ -282,17 +282,19 @@ function humanoidGhoulModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
       // these so the ghoul's arms heave up on windup + slam on strike.
       shoulderL: { pos: [-0.34, 0.20, 0.06], parent: 'rig' },
       shoulderR: { pos: [ 0.34, 0.20, 0.06], parent: 'rig' },
+      // Hip pivots — legs swing from these with the walk gait.
+      hipL: { pos: [-0.20, -0.40, 0], parent: 'rig' },
+      hipR: { pos: [ 0.20, -0.40, 0], parent: 'rig' },
     },
     parts: [
-      // FEET — wide low cylinders flat on the floor. The "stumps" the
-      // body stands on. Slight forward offset on one foot so the stance
-      // reads as off-balance.
-      { parent: 'rig', kind: 'cylinder', pos: [-0.20, -1.00, 0.04], radius: 0.16, height: 0.08, segments: 8, mat: 'body', jitter: 0.012 },
-      { parent: 'rig', kind: 'cylinder', pos: [ 0.20, -1.00, -0.02], radius: 0.16, height: 0.08, segments: 8, mat: 'body', jitter: 0.012 },
+      // FEET — wide low cylinders. Hung under the hip pivots (relative
+      // pos) so they swing with the legs.
+      { parent: 'hipL', kind: 'cylinder', pos: [0, -0.60, 0.04], radius: 0.16, height: 0.08, segments: 8, mat: 'body', jitter: 0.012 },
+      { parent: 'hipR', kind: 'cylinder', pos: [0, -0.60, -0.02], radius: 0.16, height: 0.08, segments: 8, mat: 'body', jitter: 0.012 },
       // LEGS — thick stumpy capsules bowed outward (different lengths
       // matching the asymmetric body theme).
-      { parent: 'rig', kind: 'capsule', pos: [-0.20, -0.65, 0], radius: 0.13, height: 0.40, mat: 'body', jitter: 0.018 },
-      { parent: 'rig', kind: 'capsule', pos: [ 0.20, -0.62, 0], radius: 0.12, height: 0.36, mat: 'body', jitter: 0.018 },
+      { parent: 'hipL', kind: 'capsule', pos: [0, -0.25, 0], radius: 0.13, height: 0.40, mat: 'body', jitter: 0.018 },
+      { parent: 'hipR', kind: 'capsule', pos: [0, -0.22, 0], radius: 0.12, height: 0.36, mat: 'body', jitter: 0.018 },
       // BODY — sits on top of the legs. Shorter than before (0.55) so
       // proportions read "torso on legs" not "leg-less capsule."
       { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, -0.10, 0], scale: [1.10, 0.95, 0.95], radius: 0.34, height: 0.55, mat: 'body', jitter: 0.030 },
@@ -485,16 +487,19 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
       // rotates these). Arms + fists hang below each pivot.
       shoulderL: { pos: [-0.24, 0.16, 0], parent: 'rig' },
       shoulderR: { pos: [ 0.24, 0.16, 0], parent: 'rig' },
+      // Hip pivots — legs swing from these with the walk gait.
+      hipL: { pos: [-0.11, -0.30, 0], parent: 'rig' },
+      hipR: { pos: [ 0.11, -0.30, 0], parent: 'rig' },
     },
     parts: [
-      // FEET — narrow boxes (not cylinders like ghoul). Reads pointier,
-      // more pickpocket than zombie.
-      { parent: 'rig', kind: 'box', size: [0.13, 0.06, 0.22], pos: [-0.11, -0.96, 0.05], mat: 'body', jitter: 0.009 },
-      { parent: 'rig', kind: 'box', size: [0.13, 0.06, 0.22], pos: [ 0.11, -0.96, 0.05], mat: 'body', jitter: 0.009 },
-      // LEGS — thin (radius 0.075, taller 0.50 height). Held vertical,
+      // FEET — narrow boxes (not cylinders like ghoul). Hung under the
+      // hip pivots so they stride with the legs.
+      { parent: 'hipL', kind: 'box', size: [0.13, 0.06, 0.22], pos: [0, -0.66, 0.05], mat: 'body', jitter: 0.009 },
+      { parent: 'hipR', kind: 'box', size: [0.13, 0.06, 0.22], pos: [0, -0.66, 0.05], mat: 'body', jitter: 0.009 },
+      // LEGS — thin (radius 0.075, taller 0.55 height). Held vertical,
       // closer together than ghoul's bowed stance.
-      { parent: 'rig', kind: 'capsule', pos: [-0.11, -0.55, 0], radius: 0.075, height: 0.55, mat: 'body', jitter: 0.010 },
-      { parent: 'rig', kind: 'capsule', pos: [ 0.11, -0.55, 0], radius: 0.075, height: 0.55, mat: 'body', jitter: 0.010 },
+      { parent: 'hipL', kind: 'capsule', pos: [0, -0.25, 0], radius: 0.075, height: 0.55, mat: 'body', jitter: 0.010 },
+      { parent: 'hipR', kind: 'capsule', pos: [0, -0.25, 0], radius: 0.075, height: 0.55, mat: 'body', jitter: 0.010 },
       // BODY — narrower than ghoul (radius 0.25 vs 0.34), TALLER torso.
       { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, -0.05, 0], scale: [0.90, 1.10, 1.0], radius: 0.25, height: 0.60, mat: 'body', jitter: 0.013 },
       // CROSSED-BELT SASH — angled across the chest.
@@ -679,14 +684,17 @@ function stoneguardModel(bodyColor: number, eyeColor: number): ModelSpec {
       // it down on strike — the stoneguard's signature crusher.
       shoulderL: { pos: [-0.45, 0.18, 0], parent: 'rig' },
       shoulderR: { pos: [ 0.45, 0.18, 0], parent: 'rig' },
+      // Hip pivots — the heavy greaves plod from these.
+      hipL: { pos: [-0.22, -0.40, 0], parent: 'rig' },
+      hipR: { pos: [ 0.22, -0.40, 0], parent: 'rig' },
     },
     parts: [
-      // FEET — wide stone slabs.
-      { parent: 'rig', kind: 'box', pos: [-0.22, -1.12, 0], size: [0.30, 0.12, 0.36], mat: 'body', jitter: 0.012 },
-      { parent: 'rig', kind: 'box', pos: [ 0.22, -1.12, 0], size: [0.30, 0.12, 0.36], mat: 'body', jitter: 0.012 },
+      // FEET — wide stone slabs, hung under the hip pivots.
+      { parent: 'hipL', kind: 'box', pos: [0, -0.72, 0], size: [0.30, 0.12, 0.36], mat: 'body', jitter: 0.012 },
+      { parent: 'hipR', kind: 'box', pos: [0, -0.72, 0], size: [0.30, 0.12, 0.36], mat: 'body', jitter: 0.012 },
       // LEGS — thick boxy greaves.
-      { parent: 'rig', kind: 'box', pos: [-0.22, -0.70, 0], size: [0.26, 0.70, 0.26], mat: 'body', jitter: 0.018 },
-      { parent: 'rig', kind: 'box', pos: [ 0.22, -0.70, 0], size: [0.26, 0.70, 0.26], mat: 'body', jitter: 0.018 },
+      { parent: 'hipL', kind: 'box', pos: [0, -0.30, 0], size: [0.26, 0.70, 0.26], mat: 'body', jitter: 0.018 },
+      { parent: 'hipR', kind: 'box', pos: [0, -0.30, 0], size: [0.26, 0.70, 0.26], mat: 'body', jitter: 0.018 },
       // TORSO — the defining plate. Boxy, wide. Slight overhang at
       // the shoulders sells "armoured."
       { name: 'body', parent: 'rig', kind: 'box', pos: [0, -0.05, 0], size: [0.70, 0.65, 0.42], mat: 'body', jitter: 0.024 },
