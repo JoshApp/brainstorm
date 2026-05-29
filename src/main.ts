@@ -42,6 +42,7 @@ import { isPlaying, getGameMode } from './state/game-mode';
 import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { recomputePlayerStats } from './state/player-stats';
 import { syncHudStores } from './state/hud-stores';
+import { tickDarkAdaptation } from './scene/dark-adaptation';
 import { seedRng } from './engine/rng';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
@@ -474,7 +475,7 @@ const SYSTEMS: GameSystem[] = [
 
   // Ambient torch crackle volume — sum of (1 - dist/range) across torches
   // in earshot.
-  { name: 'torch-audio', phase: 'unpaused', tick() {
+  { name: 'torch-audio', phase: 'unpaused', tick(ctx) {
     let prox = 0;
     const earRange = 6;
     for (const t of currentLevel.torches) {
@@ -484,6 +485,10 @@ const SYSTEMS: GameSystem[] = [
       if (d < earRange) prox += 1 - d / earRange;
     }
     setTorchProximity(prox);
+    // Eye dark-adaptation: lift the ambient floor when the player is away
+    // from torchlight so torchless corridors stay navigable. realDt so the
+    // adjustment runs at real-time, not the death slow-mo.
+    ambient.intensity = tickDarkAdaptation(prox, ctx.realDt);
   } },
 
   { name: 'combat', phase: 'unpaused', tick() {

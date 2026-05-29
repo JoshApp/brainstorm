@@ -12,6 +12,7 @@ import { clearDriftingMotes } from '../effects/drifting-motes';
 import { clearShatterBurst } from '../effects/shatter-burst';
 import { clearBloodBurst } from '../effects/blood-burst';
 import { clearAllOutlines } from '../interactables/outline';
+import { resetDarkAdaptation } from '../scene/dark-adaptation';
 import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
 import { actForDepth } from './acts';
 
@@ -133,6 +134,7 @@ export function tickPendingLoad() {
     clearShatterBurst();
     clearBloodBurst();
     clearAllOutlines();
+    resetDarkAdaptation();
     activeLevel.teardown();
     activeLevel = null;
   }
