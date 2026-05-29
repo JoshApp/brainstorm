@@ -44,6 +44,7 @@ import type {
 import { ITEMS } from '../content/items';
 import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 import { pickWallFixture } from './lit-fixture-pool';
+import { buildRng } from '../engine/rng';
 
 // Pool of corpse notes. Procgen picks one per corpse-cell — deterministic
 // via the seed if we extend the API to take a Random.
@@ -101,7 +102,7 @@ export interface TileMapOptions {
 // Past bugs: M (stoneguard), Z (ooze), D (arena door) were missing —
 // any vault using those as mid-room features triggered the X-wall
 // pattern. Added all three.
-const FLOOR_CHARS = new Set('.,SoOD/^FCGRKWYMZXPAcvVTt<>'.split(''));
+const FLOOR_CHARS = new Set('.,SoOD/^FCGRKWYMZXHPAcvVTt<>'.split(''));
 
 /**
  * Parse a TileMap into a LevelSpec the existing buildLevel consumes.
@@ -363,7 +364,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         }
         case 'C': {
           props.push({
-            kind: 'corpse', x, z, rotY: Math.random() * Math.PI * 2,
+            kind: 'corpse', x, z, rotY: buildRng() * Math.PI * 2,
             note: CORPSE_NOTES[(noteIndex++) % CORPSE_NOTES.length],
           });
           break;
@@ -442,7 +443,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
             // occasional wall cresset for silhouette variety. Same
             // light spec across variants so the env light pool sees
             // no difference; only the visible model changes.
-            fixtureKind: pickWallFixture(Math.random),
+            fixtureKind: pickWallFixture(buildRng),
           });
           break;
         }
@@ -458,6 +459,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         case 'M': spawns.push({ enemyId: 'stoneguard', x, z, roomId: cellRoomId(c, r) }); break;
         case 'Z': spawns.push({ enemyId: 'ooze',       x, z, roomId: cellRoomId(c, r) }); break;
         case 'X': spawns.push({ enemyId: 'acid-spitter', x, z, roomId: cellRoomId(c, r) }); break;
+        case 'H': spawns.push({ enemyId: 'defiler',      x, z, roomId: cellRoomId(c, r) }); break;
         case '/': {
           if (opts.stairsTarget) {
             // Auto-orient: the stairs descend INTO the adjacent wall.

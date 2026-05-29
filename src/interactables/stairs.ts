@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { StairsSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
 import { generateEntityId } from '../ecs/world';
+import { buildRng } from '../engine/rng';
 import { registerInteractable, getInRangeInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
 import { getTexture } from '../style/procedural-textures';
@@ -386,7 +387,7 @@ export function spawnStairs(
   ];
   for (const [ox, oy] of moteOffsets) {
     const m = new THREE.Sprite(moteMat);
-    const size = 0.05 + Math.random() * 0.03;
+    const size = 0.05 + buildRng() * 0.03;
     m.scale.set(size, size, 1);
     m.position.set(ox, shaftLandY + oy, shaftPivotZ);
     group.add(m);
@@ -431,7 +432,7 @@ export function spawnStairs(
   // Lerp helper.
   const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
   let highlightT = 0;    // 0 = passive, 1 = highlighted
-  const breathSeed = Math.random() * Math.PI * 2;
+  const breathSeed = buildRng() * Math.PI * 2;
   // Store base shaft scale so we can scale up/down dynamically.
   const shaftOuterBaseW = 0.95;
   const shaftCoreBaseW  = 0.30;

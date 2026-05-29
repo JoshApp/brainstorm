@@ -29,6 +29,7 @@ import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
+import { seedBuildRng, buildRng, hashStringToSeed } from '../engine/rng';
 
 // Local Mulberry32 seeded RNG — kept here to avoid importing procgen.ts
 // (would create a cyclic dependency between builder and procgen).
@@ -138,8 +139,8 @@ function makeJitteredPlane(
   // the same wave pattern — every wall slab gets its own
   // unique warp.
   const wavy = !!opts.wavy;
-  const wavePhaseA = Math.random() * 100;
-  const wavePhaseB = Math.random() * 100;
+  const wavePhaseA = buildRng() * 100;
+  const wavePhaseB = buildRng() * 100;
   const WAVE_AMPL = 0.045;        // peak displacement in metres
   const WAVE_SCALE_X = 1.2;       // metres / radian along the wall
   const WAVE_SCALE_Y = 0.9;
@@ -152,7 +153,7 @@ function makeJitteredPlane(
     const onEdgeX = Math.abs(Math.abs(x) - width / 2) < 1e-4;
     const onEdgeY = Math.abs(Math.abs(y) - height / 2) < 1e-4;
     if (onEdgeX || onEdgeY) continue;
-    let z = (Math.random() - 0.5) * 2 * jitter;
+    let z = (buildRng() - 0.5) * 2 * jitter;
     if (wavy) {
       // Two superimposed waves — a slow primary undulation +
       // a faster overlay — give a non-repeating warp pattern.
@@ -178,10 +179,10 @@ function makeJitteredPlane(
   // Each channel is randomized slightly independently for color drift too.
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
-    const base = 0.7 + Math.random() * 0.3;     // overall darkness per vertex
-    const tintR = base * (0.94 + Math.random() * 0.06);
-    const tintG = base * (0.94 + Math.random() * 0.06);
-    const tintB = base * (0.94 + Math.random() * 0.06);
+    const base = 0.7 + buildRng() * 0.3;     // overall darkness per vertex
+    const tintR = base * (0.94 + buildRng() * 0.06);
+    const tintG = base * (0.94 + buildRng() * 0.06);
+    const tintB = base * (0.94 + buildRng() * 0.06);
     colors[i * 3 + 0] = tintR;
     colors[i * 3 + 1] = tintG;
     colors[i * 3 + 2] = tintB;
@@ -362,6 +363,11 @@ export function buildLevel(
   materials: StyleMaterials,
   onDescend?: (targetLevel: string) => void,
 ): LiveLevel {
+  // Seed the build stream from the floor seed so geometry jitter + prop /
+  // loot placement are reproducible for a given seed. Procgen stamps
+  // spec.seed; hand-authored floors fall back to a stable hash of their id.
+  seedBuildRng(spec.seed ?? hashStringToSeed(spec.id));
+
   // Per-level lights start fresh. Persistent sources (the camera-
   // attached lantern) survive — see light-pool.clearLightPool.
   clearLightPool();

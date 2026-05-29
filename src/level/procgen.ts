@@ -20,6 +20,7 @@ import type { LevelSpec, EnemySpawnSpec, TileMap } from './types';
 import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
+import { seedBuildRng } from '../engine/rng';
 
 // Tiny seedable RNG (Mulberry32). 32-bit seed in, deterministic 0..1 floats.
 function rng(seed: number) {
@@ -125,7 +126,7 @@ export function populateTemplate(template: TileMap, depth: number, rand: () => n
   const bossChar: Record<string, string> = { wraith: 'W' };
   const enemyChar: Record<string, string> = {
     rat: 'R', skirmisher: 'K', ghoul: 'G', wraith: 'W', acolyte: 'Y',
-    stoneguard: 'M', ooze: 'Z',
+    stoneguard: 'M', ooze: 'Z', 'acid-spitter': 'X', defiler: 'H',
   };
   return template.map(row => {
     let out = '';
@@ -163,6 +164,10 @@ export function generateFloor(
 ): LevelSpec {
   const seedForFloor = hashSeed(`floor-${depth}`, runSeed);
   const rand = rng(seedForFloor);
+  // Seed the build stream BEFORE composeFloor — vault-compose → parseTileMap
+  // bakes corpse rotation + wall-fixture rolls into the spec, and those must
+  // be reproducible per floor seed too.
+  seedBuildRng(seedForFloor);
 
   // Act → palette + boss-flag. Stair target follows from the act
   // rule (boss floor → safe room; else → next depth).
@@ -219,6 +224,8 @@ export function generateFloor(
     // eslint-disable-next-line no-console
     console.warn(`Composed floor depth ${depth} lacks stairs '/'`);
   }
+  // Stamp the floor seed so buildLevel re-seeds the build stream identically.
+  spec.seed = seedForFloor;
   return spec;
 }
 

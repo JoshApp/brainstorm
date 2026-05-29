@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { StyleMaterials } from '../style/materials';
 import { buildModel } from '../ecs/build-model';
+import { buildRng, buildRngInt } from '../engine/rng';
 import {
   ALTAR_BOWL, ALTAR_CHALICE, ALTAR_DAGGER, ALTAR_BONES, ALTAR_CANDLE_STUB,
   type AltarItemEntry,
@@ -196,15 +197,15 @@ export function buildAltarBlock(
   group.add(slab);
 
   // Drape ritual items on top.
-  const itemCount = 1 + Math.floor(Math.random() * 3);     // 1-3 items
+  const itemCount = buildRngInt(1, 3);     // 1-3 items
   const placed: Array<{ ox: number; oz: number; r: number }> = [];
   for (let i = 0; i < itemCount; i++) {
     const entry = pickWeighted(ITEM_POOL);
     if (!entry) continue;
     // Try a few positions on the slab surface.
     for (let a = 0; a < 6; a++) {
-      const ox = (Math.random() - 0.5) * (ALTAR_SLAB_W - 2 * entry.halfExtent - 0.06);
-      const oz = (Math.random() - 0.5) * (ALTAR_SLAB_D - 2 * entry.halfExtent - 0.06);
+      const ox = (buildRng() - 0.5) * (ALTAR_SLAB_W - 2 * entry.halfExtent - 0.06);
+      const oz = (buildRng() - 0.5) * (ALTAR_SLAB_D - 2 * entry.halfExtent - 0.06);
       let collides = false;
       for (const p of placed) {
         const dx = p.ox - ox;
@@ -215,7 +216,7 @@ export function buildAltarBlock(
       if (collides) continue;
       const built = buildModel(entry.model);
       built.group.position.set(ox, ALTAR_TOP_Y, oz);
-      built.group.rotation.y = Math.random() * Math.PI * 2;
+      built.group.rotation.y = buildRng() * Math.PI * 2;
       group.add(built.group);
       placed.push({ ox, oz, r: entry.halfExtent });
       break;
@@ -233,7 +234,7 @@ export function buildAltarBlock(
 
 function pickWeighted(pool: AltarItemEntry[]): AltarItemEntry | null {
   const total = pool.reduce((s, e) => s + e.weight, 0);
-  let r = Math.random() * total;
+  let r = buildRng() * total;
   for (const e of pool) {
     r -= e.weight;
     if (r <= 0) return e;

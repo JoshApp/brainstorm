@@ -318,6 +318,13 @@ export type StairsSpec = {
 
 export type LevelSpec = {
   id: string;
+  /**
+   * Deterministic per-floor seed for build-time randomness (geometry jitter,
+   * prop variants, loot placement). Procgen sets it from its floor seed;
+   * hand-authored floors leave it undefined and the builder derives a stable
+   * seed from the id. Makes a seeded run's floors reproducible.
+   */
+  seed?: number;
   /** Player spawn — position + initial yaw (radians). */
   startPos: { x: number; z: number; yaw: number };
   /**

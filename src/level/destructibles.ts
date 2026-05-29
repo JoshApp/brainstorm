@@ -19,7 +19,7 @@ import {
   type DamageEvent,
 } from '../combat/damage';
 import type { Damageable } from '../combat/damageable';
-import { gameRngInt, gameRngChance } from '../engine/rng';
+import { gameRngInt, gameRngChance, buildRng, buildRngInt } from '../engine/rng';
 
 // Destructible props — a parallel hit-test target list for the
 // combat system. Distinct from enemies (no AI, no perception, no
@@ -82,10 +82,10 @@ export function spawnVase(
   const built = buildModel(variant.model);
   const group = built.group;
   group.position.set(x, 0, z);
-  group.rotation.y = Math.random() * Math.PI * 2;
+  group.rotation.y = buildRng() * Math.PI * 2;
   // Scale jitter — 90-115% so vases in a cluster don't all read
   // the same height.
-  const s = 0.90 + Math.random() * 0.25;
+  const s = 0.90 + buildRng() * 0.25;
   group.scale.set(s, s, s);
   scene.add(group);
   const isBroken = !!variant.broken;
@@ -190,13 +190,13 @@ export function spawnVaseCluster(
   z: number,
   onVaseDestroyed?: (idx: number) => void,
 ): Destructible[] {
-  const target = 2 + Math.floor(Math.random() * 3);   // 2-4
+  const target = buildRngInt(2, 4);   // 2-4
   const placed: Destructible[] = [];
   const positions: Array<{ x: number; z: number }> = [];
   const MIN_SEP = 0.32;
   for (let i = 0; i < target * 3 && placed.length < target; i++) {
-    const ox = (Math.random() - 0.5) * 0.7;
-    const oz = (Math.random() - 0.5) * 0.7;
+    const ox = (buildRng() - 0.5) * 0.7;
+    const oz = (buildRng() - 0.5) * 0.7;
     const px = x + ox;
     const pz = z + oz;
     let tooClose = false;
@@ -215,7 +215,7 @@ export function spawnVaseCluster(
 
 function pickVariant(): VaseVariant {
   const total = VASE_VARIANTS.reduce((s, v) => s + v.weight, 0);
-  let r = Math.random() * total;
+  let r = buildRng() * total;
   for (const v of VASE_VARIANTS) {
     r -= v.weight;
     if (r <= 0) return v;
