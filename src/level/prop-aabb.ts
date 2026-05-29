@@ -85,7 +85,6 @@ export function getPropAABB(prop: PropSpec): PropAABB | null {
     case 'spike-trap':
     case 'vase-cluster':   // multi-instance — passage check skips it
     case 'hint':
-    case 'note':
     case 'group':
       return null;
   }
