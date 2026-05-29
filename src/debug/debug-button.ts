@@ -15,12 +15,14 @@ import { captureDebugSnapshot, formatSnapshotText } from './capture';
 
 let mounted = false;
 let busy = false;
+let buttonEl: HTMLButtonElement | null = null;
 
 export function mountDebugButton(ctx: DebugContext): void {
   if (mounted) return;
   mounted = true;
 
   const btn = document.createElement('button');
+  buttonEl = btn;
   btn.textContent = '⊕ CAPTURE';
   Object.assign(btn.style, {
     position: 'fixed',
@@ -83,6 +85,17 @@ export function mountDebugButton(ctx: DebugContext): void {
   });
 
   document.body.appendChild(btn);
+}
+
+/** Remove the capture button (live toggle-off from settings). The toast
+ *  element + console buffer are left in place — both are harmless when
+ *  idle and cheap to keep. */
+export function unmountDebugButton(): void {
+  if (buttonEl) {
+    buttonEl.remove();
+    buttonEl = null;
+  }
+  mounted = false;
 }
 
 function filename(snap: { observation: { floorId: string; roomId: string | null } }, ext: string): string {

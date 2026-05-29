@@ -161,6 +161,14 @@ function buildPanelContents() {
   }));
   panel.appendChild(makeUpdateRow());
 
+  // --- Debug capture toggle ---
+  panel.appendChild(makeToggle({
+    label: 'DEBUG MODE',
+    description: 'Show the ⊕ CAPTURE button. Tap it on a glitch to copy a report + screenshot to share.',
+    get: () => getSettings().debugMode,
+    set: (v) => updateSettings({ debugMode: v }),
+  }));
+
   // --- RUN ACTIONS ──────────────────────────────────────────────────
   // Bottom-of-panel danger-ish row. Three buttons in descending
   // commitment: ABANDON RUN wipes the save, QUIT keeps the save and

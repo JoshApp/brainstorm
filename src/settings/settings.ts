@@ -14,6 +14,9 @@ export interface Settings {
   /** Auto-install new builds at safe moments (title screen). When false,
    *  the player taps "INSTALL UPDATE" in the settings menu instead. */
   autoUpdate: boolean;
+  /** Show the debug capture button (the ⊕ CAPTURE chip) during play.
+   *  Same as the ?debug=1 URL flag, but persisted + toggleable in-menu. */
+  debugMode: boolean;
 }
 
 const STORAGE_KEY = 'delve-settings';
@@ -23,6 +26,7 @@ const DEFAULTS: Settings = {
   hybridLook: false,
   masterVolume: 0.55,
   autoUpdate: true,
+  debugMode: false,
 };
 
 let current: Settings = load();
