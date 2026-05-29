@@ -200,7 +200,8 @@ function placeMote(cx: number, cz: number, axis: Axis, m: Mote): void {
 export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void {
   for (const f of frameGlows) {
     const dist = Math.hypot(f.x - playerPos.x, f.z - playerPos.z);
-    f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(6.5, 1.8, dist);
+    // Only kicks in up close — fades in from ~2.5m, full by ~1m.
+    f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
   }
   for (const d of drafts) {
     d.t += dt;
