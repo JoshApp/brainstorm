@@ -53,29 +53,36 @@ export function mountDebugButton(ctx: DebugContext): void {
     try {
       const snap = await captureDebugSnapshot(ctx);
       const text = formatSnapshotText(snap);
+      const id = makeId(snap);
 
-      let clip = false;
-      try {
-        await navigator.clipboard.writeText(text);
-        clip = true;
-      } catch {
-        // Clipboard can fail (permissions / insecure context). Fall back
-        // to a downloadable .txt so the report is never lost.
-        downloadDataUrl(
-          'data:text/plain;charset=utf-8,' + encodeURIComponent(text),
-          filename(snap, 'txt'),
-        );
+      // All four screenshot layers.
+      const images = [
+        { name: 'annotated', dataUrl: snap.screenshot.pngDataUrl },
+        { name: 'geometry', dataUrl: snap.overlays.geometry },
+        { name: 'light', dataUrl: snap.overlays.lightHeat },
+        { name: 'cone', dataUrl: snap.overlays.cone },
+      ];
+
+      // PREFERRED PATH: POST to the dev server, which writes
+      // debug-captures/<id>/ to disk for Claude to read by id. Strip the
+      // heavy image dataUrls out of the JSON (they go as PNG files).
+      const uploaded = await tryUpload(id, text, stripImages(snap), images);
+
+      if (uploaded) {
+        toast(`✓ captured: ${id} — tell Claude "read debug capture ${id}"`);
+      } else {
+        // FALLBACK (live URL / no dev server): clipboard + downloads.
+        let clip = false;
+        try { await navigator.clipboard.writeText(text); clip = true; } catch {
+          downloadDataUrl('data:text/plain;charset=utf-8,' + encodeURIComponent(text), `${id}-report.txt`);
+        }
+        for (const img of images) downloadDataUrl(img.dataUrl, `${id}-${img.name}.png`);
+        toast(clip
+          ? `copied report + downloaded ${images.length} shots (id ${id})`
+          : `downloaded report + ${images.length} shots (id ${id})`);
       }
-
-      // Always download the annotated screenshot so the image reaches chat.
-      downloadDataUrl(snap.screenshot.pngDataUrl, filename(snap, 'png'));
-
-      toast(clip
-        ? 'COPIED to clipboard + screenshot downloaded — paste into chat'
-        : 'report + screenshot downloaded');
-      // Also log the text so it's grabbable from devtools on desktop.
       // eslint-disable-next-line no-console
-      console.log('[debug capture]\n' + text);
+      console.log(`[debug capture ${id}]\n` + text);
     } catch (err) {
       toast('capture failed: ' + ((err as Error).message ?? 'error'));
     } finally {
@@ -98,10 +105,43 @@ export function unmountDebugButton(): void {
   mounted = false;
 }
 
-function filename(snap: { observation: { floorId: string; roomId: string | null } }, ext: string): string {
-  const room = snap.observation.roomId ?? 'noroom';
-  const safe = `${snap.observation.floorId}-${room}`.replace(/[^a-z0-9-]/gi, '_');
-  return `delve-capture-${safe}.${ext}`;
+/** POST the capture bundle to the dev-server endpoint. Returns true on
+ *  success, false if there's no endpoint (live URL) or it errored — the
+ *  caller then falls back to clipboard + download. */
+async function tryUpload(
+  id: string,
+  report: string,
+  snapshot: unknown,
+  images: Array<{ name: string; dataUrl: string }>,
+): Promise<boolean> {
+  try {
+    const res = await fetch('/__debug/capture', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, report, snapshot, images }),
+    });
+    if (!res.ok) return false;
+    const json = await res.json().catch(() => null);
+    return Boolean(json && json.ok);
+  } catch {
+    return false; // network error / no endpoint
+  }
+}
+
+/** Short, paste-friendly id: floor + 4 random base36 chars. Avoids
+ *  Date.now collisions across rapid captures. */
+function makeId(snap: { observation: { depth: number } }): string {
+  const rnd = Math.floor(Math.random() * 36 ** 4).toString(36).padStart(4, '0');
+  return `d${snap.observation.depth}-${rnd}`;
+}
+
+/** Drop the big base64 image dataUrls from the snapshot before it's
+ *  written as JSON — the images are saved as separate PNG files, so the
+ *  JSON stays readable. */
+function stripImages(snap: object): unknown {
+  const { screenshot, overlays, ...rest } = snap as Record<string, unknown>;
+  void screenshot; void overlays;
+  return rest;
 }
 
 function downloadDataUrl(dataUrl: string, name: string): void {

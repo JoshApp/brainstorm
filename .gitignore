@@ -7,3 +7,6 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 *.log
+
+# Debug capture bundles (written by the dev-server capture endpoint)
+debug-captures/

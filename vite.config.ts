@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { debugCapturePlugin } from './scripts/debug-capture-plugin';
 
 // Served from GitHub Pages at https://joshapp.github.io/brainstorm/
 // so all built asset URLs need this sub-path prefix.
@@ -8,6 +9,8 @@ const BASE = '/brainstorm/';
 export default defineConfig({
   base: BASE,
   plugins: [
+    // Dev-only: receives in-game debug captures → debug-captures/<id>/.
+    debugCapturePlugin(),
     VitePWA({
       // 'prompt' registration: new SWs install into the WAITING state and
       // do NOT auto-activate. src/pwa-update.ts decides when it's safe

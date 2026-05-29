@@ -4,7 +4,7 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
-import { spawnVase, spawnVaseCluster, type Destructible } from './destructibles';
+import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
@@ -517,6 +517,12 @@ export function buildLevel(
       if (prop.rotX) built.group.rotation.x = prop.rotX;
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
+      // Debug provenance — stamp the generating system + a coarse model
+      // hint onto the group so the debug capture's look-at/cone resolver
+      // can report "this rubble = surface-clutter phase." No-op for
+      // gameplay; only read by src/debug/capture.ts.
+      built.group.userData.dbgSource = prop._dbg ?? 'authored';
+      built.group.userData.dbgKind = 'prop';
       // Mood-tint pass: if the spec opts in (moodTintable), recolour
       // its flame material + every additive sprite particle + the
       // attached light to match the average torch tint of the room
@@ -1040,6 +1046,10 @@ export function buildLevel(
     torndown = true;
     // Detach event-bus listeners owned by the level (door listeners).
     for (const td of doorTeardowns) td();
+    // Release ECS entities for any vases left unsmashed on this floor so
+    // they don't leak into the world map across descents (smashed ones
+    // already cleaned up in takeDamage).
+    for (const d of destructibles) disposeDestructible(d);
     // Wipe the interactables list — pickups + doors + stairs + chests all
     // get reset. The pickup light pool persists; it's scene-wide.
     clearInteractables();

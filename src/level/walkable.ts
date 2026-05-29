@@ -50,6 +50,12 @@ export class WalkableRegion {
     if (idx >= 0) this.walls.splice(idx, 1);
   }
 
+  /** Debug-only: the live wall segment set (read-only) for the debug
+   *  capture's geometry-overlay screenshot. Not for gameplay use. */
+  getWallsForDebug(): readonly WallSegment[] {
+    return this.walls;
+  }
+
   /** Is the agent center at (x, z) (with given radius) currently walkable?
    *  Options:
    *    ignoreObstacles — skip the obstacle check (props like pillars,

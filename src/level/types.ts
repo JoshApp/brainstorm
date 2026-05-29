@@ -107,6 +107,13 @@ export type PropSpec =
       rotY?: number; rotX?: number; rotZ?: number;
       collision?: PropCollision | PropCollision[];
       facing?: PropFacing;
+      /** Debug provenance — which pipeline phase produced this prop
+       *  (`vault:lattice`, `geometry-warp`, `surface-clutter`,
+       *  `floor-decor`, `group:altar-ritual`). Stamped at creation;
+       *  copied into the built group's userData by builder.ts so the
+       *  debug capture tool can report what made the thing you're
+       *  looking at. Purely diagnostic — ignored by gameplay. */
+      _dbg?: string;
     }
   // 'chest' = an openable container. When the player interacts, the lid swings
   // up and an optional loot pickup spawns beside it.

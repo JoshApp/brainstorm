@@ -20,6 +20,9 @@ import type { HarnessContext } from '../harness/state';
 import { getAllInteractables } from '../interactables/system';
 import { getRecentLogs } from './console-buffer';
 import { getRunState } from '../state/run-state';
+import { listLightSourcesNear, getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
+import { actForDepth } from '../level/acts';
+import { captureAllOverlays } from './debug-screenshots';
 
 export interface DebugContext {
   scene: THREE.Scene;
@@ -37,6 +40,8 @@ export interface LookAtInfo {
   kind: 'enemy' | 'interactable' | 'destructible' | 'geometry' | 'nothing';
   /** Human label: enemy kind, interactable kind, or mesh/geometry name. */
   label: string;
+  /** Which pipeline phase produced this (prop provenance), if known. */
+  source?: string;
   /** Metres from camera to the hit point. */
   distance: number;
   /** World hit point. */
@@ -66,6 +71,7 @@ export function resolveLookAt(ctx: DebugContext): LookAtInfo {
     return {
       kind: identity.kind,
       label: identity.label,
+      source: identity.source,
       distance: round(hit.distance),
       point: { x: round(p.x), y: round(p.y), z: round(p.z) },
       room: room?.id ?? null,
@@ -76,10 +82,51 @@ export function resolveLookAt(ctx: DebugContext): LookAtInfo {
   return { kind: 'nothing', label: '(void)', distance: Infinity, point: null, room: null, vault: null };
 }
 
+/** Raycast a fan of rays across the forward view cone and return the
+ *  distinct objects hit (deduped by identity label + rounded distance),
+ *  nearest first. Answers "everything I'm looking at", not just dead
+ *  centre. ~25 rays in a grid covering roughly the central 50° of view. */
+export function resolveLookCone(ctx: DebugContext, maxItems = 12): LookAtInfo[] {
+  const { camera, scene } = ctx;
+  const level = ctx.getLevel();
+  const seen = new Map<string, LookAtInfo>();
+
+  // 5×5 grid of NDC offsets within ±0.45 (≈ central cone, not the full
+  // frustum edges where fisheye distortion dominates).
+  const SPREAD = 0.45;
+  const N = 5;
+  for (let iy = 0; iy < N; iy++) {
+    for (let ix = 0; ix < N; ix++) {
+      const nx = (ix / (N - 1) - 0.5) * 2 * SPREAD;
+      const ny = (iy / (N - 1) - 0.5) * 2 * SPREAD;
+      raycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
+      const hits = raycaster.intersectObjects(scene.children, true);
+      for (const hit of hits) {
+        if (isDescendantOf(hit.object, camera)) continue;
+        const id = identifyObject(hit.object, level);
+        const key = `${id.kind}:${id.label}`;
+        const prior = seen.get(key);
+        if (!prior || hit.distance < prior.distance) {
+          const room = level ? roomAt(hit.point.x, hit.point.z, level) : null;
+          seen.set(key, {
+            kind: id.kind, label: id.label, source: id.source,
+            distance: round(hit.distance),
+            point: { x: round(hit.point.x), y: round(hit.point.y), z: round(hit.point.z) },
+            room: room?.id ?? null,
+            vault: room ? (level?.spec.roomVaults?.[room.id] ?? null) : null,
+          });
+        }
+        break; // first non-viewmodel hit per ray
+      }
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.distance - b.distance).slice(0, maxItems);
+}
+
 function identifyObject(
   obj: THREE.Object3D,
   level: LiveLevel | null,
-): { kind: LookAtInfo['kind']; label: string } {
+): { kind: LookAtInfo['kind']; label: string; source?: string } {
   if (level) {
     // Enemy? compare ancestry against each enemy's group.
     for (const e of level.enemies) {
@@ -102,6 +149,13 @@ function identifyObject(
       return { kind: 'interactable', label: `${kindFromId(it.id)} (${it.promptLabel || 'inert'})` };
     }
   }
+  // Decoration prop? builder.ts stamps userData.dbgSource on prop groups.
+  // Walk up to the nearest ancestor carrying it.
+  const src = findUserData(obj, 'dbgSource');
+  if (src) {
+    const geo = (obj as THREE.Mesh).geometry?.type ?? '';
+    return { kind: 'geometry', label: `prop [${src}]${geo ? ` ${geo}` : ''}`, source: String(src) };
+  }
   // Static geometry — report the most descriptive name we can find by
   // walking up to a named ancestor, else the geometry type.
   let named: THREE.Object3D | null = obj;
@@ -110,31 +164,107 @@ function identifyObject(
   return { kind: 'geometry', label: named?.name ? named.name : geo };
 }
 
+/** Walk up the parent chain returning the first ancestor's userData
+ *  value for `key`, or undefined. */
+function findUserData(obj: THREE.Object3D, key: string): unknown {
+  let p: THREE.Object3D | null = obj;
+  while (p) {
+    if (p.userData && p.userData[key] !== undefined) return p.userData[key];
+    p = p.parent;
+  }
+  return undefined;
+}
+
 /** Build the full structured snapshot. */
 export async function captureDebugSnapshot(ctx: DebugContext) {
   const level = ctx.getLevel();
   if (!level) throw new Error('[debug] no live level');
 
-  const observation = buildObservation(ctx.camera, level);
+  const cam = ctx.camera;
+  const observation = buildObservation(cam, level);
   const lookAt = resolveLookAt(ctx);
+  const cone = resolveLookCone(ctx);
   const run = getRunState();
   const roomVault = observation.roomId
     ? (level.spec.roomVaults?.[observation.roomId] ?? null)
     : null;
 
+  // Nearby light sources (for lighting glitches + the light=signal rule).
+  const lights = listLightSourcesNear(cam.position.x, cam.position.z, 14);
+
+  // Floor manifest — whole-floor context for reproduction + understanding.
+  const act = actForDepth(observation.depth);
+  const vaultList = level.spec.roomVaults
+    ? [...new Set(Object.values(level.spec.roomVaults))].sort()
+    : [];
+  const manifest = {
+    seed: run?.startedAt ?? null,
+    depth: observation.depth,
+    act: `${act.number}: ${act.name}`,
+    floorId: level.spec.id,
+    vaults: vaultList,
+    fogColor: level.spec.fogColor ?? null,
+    counts: {
+      rooms: level.spec.rooms.length,
+      corridors: level.spec.corridors.length,
+      props: level.spec.props.length,
+      torches: level.spec.torches.length,
+      enemiesAlive: level.enemies.filter((e) => e.alive).length,
+      interactables: getAllInteractables().length,
+      lightSourcesRegistered: getRegisteredSourceCount(),
+      lightSlotsActive: getActiveSourceCount(),
+    },
+  };
+
+  // Perf + nav. renderer.info is cheap + already tracked by Three.js.
+  const info = ctx.renderer.info;
+  const walkableHere = level.walkable.contains(cam.position.x, cam.position.z, 0.3);
+  const perf = {
+    fps: await sampleFps(),
+    drawCalls: info.render.calls,
+    triangles: info.render.triangles,
+    geometries: info.memory.geometries,
+    textures: info.memory.textures,
+    /** False = player centre is NOT in a walkable cell (clipped into
+     *  geometry / out of bounds) — a strong glitch signal. */
+    walkableAtPlayer: walkableHere,
+  };
+
   // captureScreenshot wants a HarnessContext; the debug context carries
   // the same render-relevant fields, so cast through the shared shape.
   const screenshot = await captureScreenshot(ctx as unknown as HarnessContext, { annotated: true });
+  // Three extra diagnostic layers sharing one base frame.
+  const overlays = await captureAllOverlays(ctx, cone);
 
   return {
     when: new Date().toISOString(),
     seed: run?.startedAt ?? null,
     vault: roomVault,
     lookAt,
+    cone,
+    lights,
+    manifest,
+    perf,
     observation,
     consoleLogs: getRecentLogs(),
     screenshot,
+    overlays,
   };
+}
+
+/** Rough FPS from two rAF deltas. Adds ~16-33ms to a capture — fine for
+ *  a manual debug action. */
+function sampleFps(): Promise<number> {
+  return new Promise((resolve) => {
+    let t0 = 0;
+    requestAnimationFrame((a) => {
+      t0 = a;
+      requestAnimationFrame((b) => {
+        const dt = b - t0;
+        resolve(dt > 0 ? Math.round(1000 / dt) : 0);
+      });
+    });
+  });
 }
 
 export type DebugSnapshot = Awaited<ReturnType<typeof captureDebugSnapshot>>;
@@ -150,6 +280,11 @@ export function formatSnapshotText(snap: DebugSnapshot): string {
   lines.push(`room: ${o.roomId ?? '?'}${snap.vault ? `  vault: ${snap.vault}` : ''}`);
   lines.push(`player: (${o.player.pos.x}, ${o.player.pos.z}) yaw ${deg(o.player.facingYaw)}  HP ${o.player.hp.current}/${o.player.hp.max}  light ${o.light.atPlayer.toFixed(1)}`);
 
+  // Perf + nav one-liner (clip warning is a strong glitch signal)
+  const pf = snap.perf;
+  const clip = pf.walkableAtPlayer ? '' : '  ⚠ NOT-WALKABLE (clipped?)';
+  lines.push(`perf: ${pf.fps}fps  ${pf.drawCalls} draws  ${(pf.triangles / 1000).toFixed(0)}k tris  lights ${snap.manifest.counts.lightSlotsActive}/${snap.manifest.counts.lightSourcesRegistered}${clip}`);
+
   // Looking at — the headline for "this thing is glitched"
   lines.push('');
   if (L.kind === 'nothing') {
@@ -158,6 +293,15 @@ export function formatSnapshotText(snap: DebugSnapshot): string {
     const loc = L.point ? ` @ (${L.point.x},${L.point.z})` : '';
     const prov = L.vault ? `  [vault ${L.vault}]` : '';
     lines.push(`looking at: ${L.kind} — ${L.label}  ${L.distance.toFixed(1)}m${loc}${prov}`);
+  }
+
+  // Cone — everything in the forward view (provenance-tagged)
+  if (snap.cone.length > 1) {
+    lines.push('in view cone:');
+    for (const c of snap.cone) {
+      const prov = c.source ? ` {${c.source}}` : '';
+      lines.push(`  ${c.kind} — ${c.label}  ${c.distance.toFixed(1)}m${prov}`);
+    }
   }
 
   // Walls
@@ -182,6 +326,22 @@ export function formatSnapshotText(snap: DebugSnapshot): string {
       lines.push(`  ${it.kind} ${it.distance.toFixed(1)}m ${it.compass} ${it.state}${it.inRange ? ' [in-range]' : ''}`);
     }
   }
+
+  // Nearby light sources — for lighting glitches + the light=signal rule
+  if (snap.lights.length) {
+    lines.push('');
+    lines.push(`lights near (${snap.lights.length}):`);
+    for (const lt of snap.lights.slice(0, 10)) {
+      lines.push(`  ${lt.category} #${lt.id.slice(-8)} ${lt.range.toFixed(1)}m  i=${lt.intensity}  #${lt.color.toString(16).padStart(6, '0')}`);
+    }
+  }
+
+  // Floor manifest — whole-floor context for reproduction
+  const m = snap.manifest;
+  lines.push('');
+  lines.push(`floor manifest: act ${m.act}  seed ${m.seed ?? '?'}`);
+  lines.push(`  vaults: ${m.vaults.length ? m.vaults.join(', ') : '(hand-authored)'}`);
+  lines.push(`  counts: ${m.counts.rooms} rooms, ${m.counts.corridors} corridors, ${m.counts.props} props, ${m.counts.torches} torches, ${m.counts.enemiesAlive} enemies, ${m.counts.interactables} interactables`);
 
   // Console errors — the "what broke" section
   const logs = snap.consoleLogs;

@@ -258,6 +258,43 @@ export function getRegisteredSourceCount(): number {
   return sources.size;
 }
 
+export interface LightSourceInfo {
+  id: string;
+  category: LightCategory;
+  pos: { x: number; y: number; z: number };
+  color: number;
+  intensity: number;
+  distance: number;
+  /** Metres from the given point (set by listLightSourcesNear). */
+  range: number;
+}
+
+/** Debug introspection — list registered light sources within `radius`
+ *  of (x, z), nearest first. Used by the debug capture tool to report
+ *  the lights around the player. Reports the source's CURRENT intensity
+ *  (via getIntensity if present) so flicker is reflected. */
+export function listLightSourcesNear(x: number, z: number, radius = 14): LightSourceInfo[] {
+  const out: LightSourceInfo[] = [];
+  for (const s of sources.values()) {
+    const dx = s.position.x - x;
+    const dz = s.position.z - z;
+    const range = Math.hypot(dx, dz);
+    if (range > radius) continue;
+    out.push({
+      id: s.id,
+      category: s.category,
+      pos: { x: round1(s.position.x), y: round1(s.position.y), z: round1(s.position.z) },
+      color: s.color,
+      intensity: round1(s.getIntensity ? s.getIntensity() : s.intensity),
+      distance: s.distance,
+      range: round1(range),
+    });
+  }
+  return out.sort((a, b) => a.range - b.range);
+}
+
+function round1(n: number): number { return Math.round(n * 10) / 10; }
+
 /** Sum of attenuated contributions from all CURRENTLY BOUND slots at
  *  (x, y, z). Reads slot state directly so it reflects exactly what the
  *  shader sees this frame (LOS-culled, hysteresis-stable). Returns raw

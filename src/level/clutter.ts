@@ -121,6 +121,7 @@ export function applyGeometryWarp(spec: LevelSpec, rand: () => number): void {
     );
     structuralPass(ctx, out, rand, hasCentrepiece);
   }
+  stampDbg(out, 'geometry-warp');
   spec.props.push(...out);
 
   // 3. Drop torches whose wall mounting falls in a corridor
@@ -156,7 +157,17 @@ export function applySurfaceClutter(spec: LevelSpec, rand: () => number): void {
     const ctx = buildRoomContext(corridor, allRectsFlat, existing, stairs, rand);
     corridorSurfacePass(ctx, out, rand);
   }
+  stampDbg(out, 'surface-clutter');
   spec.props.push(...out);
+}
+
+/** Stamp a debug-provenance tag on every model prop in a batch (only if
+ *  not already tagged, so a more specific upstream tag wins). Diagnostic
+ *  only — read by the debug capture tool. */
+function stampDbg(props: PropSpec[], source: string): void {
+  for (const p of props) {
+    if (p.kind === 'model' && p._dbg === undefined) p._dbg = source;
+  }
 }
 
 // ── shared context ────────────────────────────────────────────────

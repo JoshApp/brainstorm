@@ -244,10 +244,14 @@ export function composeFloor(
           // translate to WORLD via the vault's offset.
           const expanded = expandGroup(p, vaultRect);
           for (const child of expanded) {
-            props.push(translateProp(child, pv.offsetX, pv.offsetZ));
+            const tp = translateProp(child, pv.offsetX, pv.offsetZ);
+            if (tp.kind === 'model') tp._dbg = `group:${p.groupId}@${pv.vault.id}`;
+            props.push(tp);
           }
         } else {
-          props.push(translateProp(p, pv.offsetX, pv.offsetZ));
+          const tp = translateProp(p, pv.offsetX, pv.offsetZ);
+          if (tp.kind === 'model') tp._dbg = `vault:${pv.vault.id}`;
+          props.push(tp);
         }
       }
     }
