@@ -39,7 +39,7 @@ buff allies**, **directional block**.
 | acolyte | **run it down** — kite-breaker | ✅ *fixed this pass* |
 | acid-spitter | **commit & burst** — push the holder | ✅ *fixed this pass* |
 | rat | clear chaff, don't get surrounded | ⚠️ weak verb; fine as cheap chaff |
-| skirmisher | "react faster than ghoul" | ❌ redundant — see roadmap |
+| skirmisher | **sidestep the charge**, punish the recovery | ✅ *fixed — now the charger* |
 | ooze-small | (recursion terminator / cleanup) | — |
 
 ## The verb-audit pass (what changed & why)
@@ -69,11 +69,10 @@ commit through chip. Same "deal with ranged" family, opposite answers.
 
 ## Roadmap — next brutal moves (not yet done)
 
-- **skirmisher → charger/leaper.** Currently just "fast ghoul," no
-  distinct verb. Give it a gap-close dash (new AI behaviour): it
-  lunges across a gap so backpedalling no longer saves you — teaches
-  "sidestep, don't retreat." This is the clearest remaining redundancy
-  to kill.
+- ~~**skirmisher → charger/leaper.**~~ ✅ DONE — first user of the
+  ability system. Coil → dash (speed 7.5, catches a backpedalling
+  player) → contact slam, with a point-blank slash fallback. Teaches
+  "sidestep, don't retreat." See `docs/COMBAT-ARCH.md`.
 - **An AoE / zone-denial enemy.** Nothing teaches "don't stand there."
   A ground-slam or acid-puddle layer would add the positioning-over-
   time verb. Bigger lift (new attack system).

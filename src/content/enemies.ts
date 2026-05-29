@@ -1,5 +1,6 @@
 import type { ModelSpec, Vec3 } from '../ecs/model-types';
 import type { DamageType } from '../combat/damage';
+import type { Ability } from './abilities';
 
 // Ranged config — if present on a spec, the enemy fires a projectile from
 // `muzzleOffset` (local to the container) during the strike phase instead
@@ -126,6 +127,20 @@ export interface EnemySpec {
    * locked in a strike). Pairs with `ranged` but doesn't require it.
    */
   preferredRange?: number;
+
+  // --- Abilities ---
+  /**
+   * Explicit ability list (highest-priority first). When set, the AI's
+   * attack runner uses these instead of the single default ability
+   * synthesized from the legacy windup/strike/recover/attackRange/
+   * ranged fields. Use for enemies that need more than one attack or a
+   * movement-attack (charge / lunge). See src/content/abilities.ts.
+   *
+   * The legacy flat fields remain (they still feed the default ability,
+   * the debug poser, and audio sizing), so adding `abilities` to one
+   * enemy doesn't touch any other.
+   */
+  abilities?: Ability[];
 
   // --- Presence ---
   /**
@@ -807,24 +822,54 @@ export const ENEMIES: Record<string, EnemySpec> = {
     },
   },
 
+  // Skirmisher — the CHARGER. No longer "fast ghoul-lite": its identity
+  // is the gap-close lunge. From a few metres out it coils, then dashes
+  // across the gap and slams into you — so backpedalling no longer
+  // saves you the way it does against a ghoul. The verb it teaches is
+  // SIDESTEP, not retreat: dodge perpendicular to the charge line, then
+  // punish the recovery. At point-blank it falls back to a quick slash.
+  // First user of the data-driven ability system (src/content/abilities).
   skirmisher: {
     id: 'skirmisher',
     name: 'skirmisher',
     hp: 2,
-    moveSpeed: 2.0,        // player retreat (2.5) outruns now
+    moveSpeed: 2.0,        // player retreat (2.5) outruns the WALK...
     attackDamage: 1,
+    // Legacy fields kept for audio sizing + the debug poser; the
+    // abilities array below is what actually drives combat.
     attackRange: 1.5,
-    strikeRange: 1.35,     // smaller than attackRange — escapable
-    windupTime: 0.65,      // snappier than ghoul, slower than rat
+    strikeRange: 1.35,
+    windupTime: 0.65,
     strikeTime: 0.14,
     recoverTime: 0.55,
+    abilities: [
+      // CHARGE — coil (windup), then a fast dash that DOES catch a
+      // backpedalling player (dash speed 7.5 >> player 2.5). Cooldown
+      // so it can't chain; the recovery is the punish window.
+      {
+        id: 'charge',
+        minRange: 1.8, maxRange: 6.5,
+        windup: 0.55, strike: 0.42, recover: 0.75, cooldown: 2.6,
+        damage: 1, telegraph: 'charge', creep: false,
+        effects: [{ kind: 'dash', speed: 7.5, toward: 'player', contactReach: 1.35, damageType: 'physical' }],
+      },
+      // SLASH — point-blank fallback when the player is already in melee
+      // (or after a charge lands and they're still close).
+      {
+        id: 'slash',
+        minRange: 0, maxRange: 1.7,
+        windup: 0.4, strike: 0.14, recover: 0.5,
+        damage: 1, telegraph: 'swing', creep: true,
+        effects: [{ kind: 'melee', reach: 1.5, damageType: 'physical' }],
+      },
+    ],
     model: skirmisherModel(0x18130d, 0xffb060, 2.0),
     baseEyeEmissive: 2.0,
     collisionRadius: 0.35,
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
-    presence: 'coiled',      // taut shoulder bob + subtle weight shift
+    presence: 'coiled',      // taut shoulder bob — reads as ready to spring
     // Skirmisher is a scout — best vision of the trash mobs. Tighter
     // cone (predator focus) and longer range. Bad hearing for sneak-up.
     sightRange: 9,

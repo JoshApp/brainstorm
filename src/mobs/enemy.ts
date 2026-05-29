@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
+import { resolveAbilities, meleeReachOf, type Ability } from '../content/abilities';
 import type { WalkableRegion } from '../level/walkable';
 import type { NavGrid, Waypoint } from '../level/nav-grid';
 import {
@@ -22,6 +23,7 @@ import { spawnXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
 import type { Damageable } from '../combat/damageable';
+import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
 
 // Map an EnemySpec → audio size bucket. Used by death + windup sounds so
 // big mobs sound big and the wraith reads as spectral, not physical.
@@ -238,6 +240,20 @@ export function createEnemy(
   let strikeAlreadyHit = false;
   let aliveLocal = true;
 
+  // ── Abilities ──────────────────────────────────────────────────────
+  // The attack runner is fully ability-driven. Enemies without an
+  // explicit `abilities` list get one default ability synthesized from
+  // their legacy fields (see resolveAbilities). `currentAbility` is the
+  // one being executed across winding/striking/recovering; `cooldowns`
+  // tracks per-ability lockout so a charge can't fire every second.
+  const abilities = resolveAbilities(spec);
+  // Commit distance — the farthest range at which ANY ability triggers.
+  // Beyond this the enemy just chases to close. Equals attackRange for a
+  // pure melee mob, the cast range for a shooter.
+  const commitDistance = abilities.reduce((m, a) => Math.max(m, a.maxRange), 0);
+  let currentAbility: Ability | null = null;
+  const cooldowns = new Map<string, number>();
+
   // Perception state. lastSeenPos tracks the last known XZ of the player
   // for searching. Updated each frame the enemy currently has LOS.
   let aggroed = false;
@@ -287,9 +303,10 @@ export function createEnemy(
   // Per-cycle randomized windup duration so multiple enemies attacking in
   // unison de-synchronize over time (otherwise stacked mobs all strike on
   // the exact same frame and the player has no rhythm to read).
-  let currentWindupTime = spec.windupTime;
+  let currentWindupTime = abilities[0].windup;
   function rollWindupTime() {
-    currentWindupTime = spec.windupTime * (0.78 + Math.random() * 0.44);  // ±22%
+    const base = currentAbility?.windup ?? abilities[0].windup;
+    currentWindupTime = base * (0.78 + gameRng() * 0.44);  // ±22%
   }
   rollWindupTime();
 
@@ -456,9 +473,9 @@ export function createEnemy(
         const drops: string[] = [];
         if (spec.drops.guaranteed) drops.push(...spec.drops.guaranteed);
         const rate = spec.drops.rate ?? 0.3;
-        if (Math.random() < rate && spec.drops.pool && spec.drops.pool.length > 0) {
+        if (gameRngChance(rate) && spec.drops.pool && spec.drops.pool.length > 0) {
           const total = spec.drops.pool.reduce((s, e) => s + e.weight, 0);
-          let r = Math.random() * total;
+          let r = gameRng() * total;
           for (const entry of spec.drops.pool) {
             r -= entry.weight;
             if (r <= 0) {
@@ -507,7 +524,7 @@ export function createEnemy(
       if (goldRange) {
         const min = goldRange[0];
         const max = goldRange[1];
-        const amt = min + Math.floor(Math.random() * (max - min + 1));
+        const amt = gameRngInt(min, max);
         if (amt > 0) {
           const coinOrigin = container.position.clone();
           coinOrigin.y += essenceRigY * 0.55;
@@ -543,6 +560,108 @@ export function createEnemy(
     if (eyeMat) eyeMat.emissiveIntensity = intensity;
   }
   // (setEyeFlare lives above — combines intensity ramp + color shift.)
+
+  // ── Ability runner helpers ─────────────────────────────────────────
+
+  /** Pick the highest-priority ready ability whose range band contains
+   *  `distance`. null if none is ready/in-band (caller then steers). */
+  function selectAbility(distance: number): Ability | null {
+    for (const ab of abilities) {
+      if ((cooldowns.get(ab.id) ?? 0) > 0) continue;
+      const min = ab.minRange ?? 0;
+      if (distance >= min && distance <= ab.maxRange) return ab;
+    }
+    return null;
+  }
+
+  /** Telegraph + strike pose per ability flavour, driven by phase
+   *  progress t (0..1). Generalises the old hardcoded windup/strike
+   *  poses; gives each telegraph style a distinct, crude read:
+   *    swing  — lean back, then slam forward (the baseline melee).
+   *    cast   — small lean, hold steady (the caster).
+   *    charge — coil back hard, then lunge far forward (the charger). */
+  function applyTelegraph(style: Ability['telegraph'], phase: 'windup' | 'strike' | 'recover', t: number) {
+    const s = style ?? 'swing';
+    if (phase === 'windup') {
+      setEyeFlare(t);
+      if (s === 'charge') { applyTilt(-0.45 * t); built.group.position.y = 0.04 * t; }
+      else if (s === 'cast') { applyTilt(0.18 * t); built.group.position.y = 0.06 * t; }
+      else { applyTilt(0.5 * t); built.group.position.y = 0.10 * t; }
+    } else if (phase === 'strike') {
+      setEyeFlare(1);
+      if (s === 'charge') applyTilt(-0.5);          // big forward lunge
+      else if (s === 'cast') applyTilt(0);
+      else applyTilt(-0.25);                         // swing follow-through
+      built.group.position.y = 0;
+    } else {
+      // recover — ease tilt back to neutral, eyes fade.
+      const from = s === 'charge' ? -0.5 : s === 'cast' ? 0 : -0.25;
+      applyTilt(THREE.MathUtils.lerp(from, 0, t));
+      setEyeFlare(1 - t);
+      built.group.position.y = 0;
+    }
+  }
+
+  /** Run one ability effect during the strike phase. Instantaneous
+   *  effects (melee/projectile) latch on strikeAlreadyHit so they fire
+   *  once; dash moves the enemy every frame and lands one contact hit. */
+  function runEffect(
+    eff: import('../content/abilities').AbilityEffect,
+    ability: Ability,
+    playerPos: THREE.Vector3,
+    distance: number,
+    dt: number,
+    walkable: WalkableRegion,
+    nav?: NavGrid,
+  ) {
+    switch (eff.kind) {
+      case 'melee': {
+        if (!strikeAlreadyHit && distance <= eff.reach) {
+          damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+          strikeAlreadyHit = true;
+        }
+        break;
+      }
+      case 'projectile': {
+        if (!strikeAlreadyHit) {
+          tmpMuzzle.set(eff.muzzle[0], eff.muzzle[1], eff.muzzle[2]);
+          container.updateMatrixWorld();
+          tmpMuzzle.applyMatrix4(container.matrixWorld);
+          tmpTarget.set(playerPos.x, tmpMuzzle.y, playerPos.z);
+          spawnProjectile({
+            typeId: eff.projectileId,
+            origin: tmpMuzzle,
+            target: tmpTarget,
+            damage: ability.damage,
+            source: entityId,
+          });
+          strikeAlreadyHit = true;
+        }
+        break;
+      }
+      case 'dash': {
+        // Drive the enemy for the whole strike phase. 'player' = lunge
+        // at them (charge); 'away' = launch back (a future retreat-leap).
+        if (eff.toward === 'player') {
+          moveTowards(playerPos.x, playerPos.z, eff.speed, dt, walkable, nav);
+        } else {
+          const dx = container.position.x - playerPos.x;
+          const dz = container.position.z - playerPos.z;
+          const len = Math.hypot(dx, dz) || 1;
+          moveTowards(
+            container.position.x + (dx / len) * 2.0,
+            container.position.z + (dz / len) * 2.0,
+            eff.speed, dt, walkable, nav,
+          );
+        }
+        if (!strikeAlreadyHit && distance <= eff.contactReach) {
+          damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+          strikeAlreadyHit = true;
+        }
+        break;
+      }
+    }
+  }
 
   // Perception check. Returns true if the enemy can detect the player
   // right now, via either:
@@ -705,6 +824,13 @@ export function createEnemy(
 
     const distance = distToXZ(playerPos);
 
+    // Tick down per-ability cooldowns.
+    if (cooldowns.size > 0) {
+      for (const [id, t] of cooldowns) {
+        if (t > 0) cooldowns.set(id, Math.max(0, t - dt));
+      }
+    }
+
     // Face target is conditional — idle/returning faces the scan target,
     // not the player.
     if (state !== 'idle' && state !== 'returning') {
@@ -732,7 +858,7 @@ export function createEnemy(
         scanTimer += dt;
         if (scanTimer >= IDLE_SCAN_INTERVAL) {
           scanTimer = 0;
-          scanTargetYaw = homeYaw + (Math.random() * 2 - 1) * IDLE_SCAN_HALF_ARC;
+          scanTargetYaw = homeYaw + (gameRng() * 2 - 1) * IDLE_SCAN_HALF_ARC;
         }
         // Lerp container yaw toward scan target. Wrap delta to nearest π.
         let delta = scanTargetYaw - container.rotation.y;
@@ -833,13 +959,11 @@ export function createEnemy(
         const pref = spec.preferredRange ?? 0;
         if (pref > 0 && distance < pref) {
           // KITER — the player is inside our preferred standoff band, so
-          // back away to re-open the gap before shooting again. Aim a
+          // back away to re-open the gap before attacking again. Aim a
           // point ~2m directly away from the player; moveTowards pathfinds
-          // + clamps it against walls. If cornered (wall behind), it can't
-          // retreat and ends up shooting at close range — the player's
-          // reward for running it down. Closing on a kiter mid-windup
-          // also pins it (it can't retreat while locked in winding/
-          // striking), so rushing during the telegraph beats it.
+          // + clamps it against walls. Cornered against a wall it can't
+          // retreat (player's reward for running it down); pinned mid-
+          // windup it can't retreat either (rushing the cast beats it).
           const dx = container.position.x - playerPos.x;
           const dz = container.position.z - playerPos.z;
           const len = Math.hypot(dx, dz) || 1;
@@ -848,18 +972,26 @@ export function createEnemy(
             container.position.z + (dz / len) * 2.0,
             spec.moveSpeed, dt, walkable, nav,
           );
-          // Still face the player while backpedalling so the shot lines up.
           tmpFlat.set(playerPos.x, container.position.y, playerPos.z);
           container.lookAt(tmpFlat);
           container.rotation.y += Math.PI;
-        } else if (distance > spec.attackRange) {
-          moveTowards(playerPos.x, playerPos.z, spec.moveSpeed, dt, walkable, nav);
         } else {
-          state = 'winding';
-          phaseTimer = 0;
-          strikeAlreadyHit = false;
-          rollWindupTime();
-          playEnemyWindup(audioSizeFor(spec));
+          // Ability selection — pick the highest-priority ready ability
+          // whose range band we're in. If one fires, run its windup;
+          // otherwise close the gap toward commit distance.
+          const ability = selectAbility(distance);
+          if (ability) {
+            currentAbility = ability;
+            state = 'winding';
+            phaseTimer = 0;
+            strikeAlreadyHit = false;
+            rollWindupTime();
+            playEnemyWindup(audioSizeFor(spec));
+          } else if (distance > 0.1) {
+            // No ability in band — close (or, if inside every band's
+            // minRange, still close to reach the melee fallback).
+            moveTowards(playerPos.x, playerPos.z, spec.moveSpeed, dt, walkable, nav);
+          }
         }
         setEyeFlare(0);
         applyTilt(0);
@@ -868,19 +1000,17 @@ export function createEnemy(
       }
 
       case 'winding': {
+        if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += dt;
         const t = Math.min(1, phaseTimer / currentWindupTime);
-        setEyeFlare(t);
-        applyTilt(0.5 * t);
-        built.group.position.y = 0.10 * t;
-        // Continue closing during windup at HALF chase-speed so a stationary
-        // player gets hit (the rat used to stop exactly at attackRange and
-        // strike from there — but strikeRange < attackRange means strike
-        // misses unless the rat closes further). Backpedaling player still
-        // escapes since they retreat faster than the half-speed windup walk.
-        if (distance > spec.strikeRange) {
-          // Continue closing during windup at half chase-speed so a
-          // stationary player gets hit.
+        applyTelegraph(currentAbility.telegraph, 'windup', t);
+        // Melee creep — close at half-speed during windup so a stationary
+        // player still gets clipped (a backpedalling player out-runs it).
+        // Charges DON'T creep: the dash strike is the approach.
+        const wantsCreep = currentAbility.creep
+          ?? (meleeReachOf(currentAbility) !== null);
+        const reach = meleeReachOf(currentAbility);
+        if (wantsCreep && reach !== null && distance > reach) {
           moveTowards(playerPos.x, playerPos.z, spec.moveSpeed * 0.45, dt, walkable, nav);
         }
         if (phaseTimer >= currentWindupTime) {
@@ -891,43 +1021,13 @@ export function createEnemy(
       }
 
       case 'striking': {
+        if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += dt;
-        if (!strikeAlreadyHit) {
-          if (spec.ranged) {
-            // Ranged shooter — spawn a projectile from the muzzle slot.
-            // Muzzle offset is rig/container-local; compose with the
-            // container's world matrix so the spawn point matches the
-            // visible staff/orb regardless of facing.
-            const m = spec.ranged.muzzleOffset;
-            tmpMuzzle.set(m[0], m[1], m[2]);
-            container.updateMatrixWorld();
-            tmpMuzzle.applyMatrix4(container.matrixWorld);
-            // Target the player's torso height so a too-low orb doesn't
-            // arc down through the floor (projectiles move in a straight
-            // line — no gravity).
-            tmpTarget.set(playerPos.x, tmpMuzzle.y, playerPos.z);
-            spawnProjectile({
-              typeId: spec.ranged.projectileId,
-              origin: tmpMuzzle,
-              target: tmpTarget,
-              damage: spec.attackDamage,
-              source: entityId,
-            });
-            strikeAlreadyHit = true;
-          } else if (distance <= spec.strikeRange) {
-            // Enemy melee strike — physical, sourced from this enemy.
-            // damagePlayer routes through the pipeline (player armor applies
-            // per the enemy's configured damage type — 'physical' default,
-            // 'magic' for wraiths, etc.).
-            damagePlayer(spec.attackDamage, entityId, spec.damageType ?? 'physical');
-            strikeAlreadyHit = true;
-          }
+        for (const eff of currentAbility.effects) {
+          runEffect(eff, currentAbility, playerPos, distance, dt, walkable, nav);
         }
-        // Slam past neutral on the strike (follow-through). Eyes blaze at peak.
-        applyTilt(-0.25);
-        built.group.position.y = 0;
-        setEyeFlare(1);
-        if (phaseTimer >= spec.strikeTime) {
+        applyTelegraph(currentAbility.telegraph, 'strike', 1);
+        if (phaseTimer >= currentAbility.strike) {
           state = 'recovering';
           phaseTimer = 0;
         }
@@ -935,13 +1035,13 @@ export function createEnemy(
       }
 
       case 'recovering': {
+        if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += dt;
-        const t = Math.min(1, phaseTimer / spec.recoverTime);
-        applyTilt(THREE.MathUtils.lerp(-0.25, 0, t));
-        // Eye flare fades back to baseline over the recovery.
-        setEyeFlare(1 - t);
-        built.group.position.y = 0;
-        if (phaseTimer >= spec.recoverTime) {
+        const t = Math.min(1, phaseTimer / currentAbility.recover);
+        applyTelegraph(currentAbility.telegraph, 'recover', t);
+        if (phaseTimer >= currentAbility.recover) {
+          cooldowns.set(currentAbility.id, currentAbility.cooldown ?? 0);
+          currentAbility = null;
           state = 'chasing';
           phaseTimer = 0;
         }
