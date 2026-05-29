@@ -84,7 +84,13 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       // but the threshold system raises its warm emissive as the player nears,
       // so the gate's crown glows to mark "a way through." Modulated by id
       // 'glow' (see builder's proximityGlow handling).
-      glow: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xff8c3a, emissiveIntensity: 0 },
+      //
+      // Toned the emissive colour down from a bright orange (0xff8c3a) to
+      // a more restrained warm amber (0xc05a18) — the previous tint was
+      // reading as "glowing" too aggressively when the player came close.
+      // The proximity system still drives the intensity up, but the peak
+      // now sits in a more subtle range.
+      glow: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xc05a18, emissiveIntensity: 0 },
     },
     parts: [
       // Whole frame glows on approach (the 'glow' material) — columns,

@@ -60,7 +60,12 @@ let moteTex: THREE.Texture | null = null;
 // Archway frame glow — the lintel/keystone 'glow' material on each corridor
 // archway, brightened by player proximity so the gate's crown lights up to
 // mark a passage. Registered by the builder for props flagged proximityGlow.
-const GLOW_MAX_EMISSIVE = 0.3;   // subtle warm crown on the lintel/keystone only
+// Toned down from 0.3 to 0.13 so the archway crown still warms as
+// the player approaches but doesn't read as a bright "glow".
+// Combined with the emissive colour shift on the 'glow' material
+// (0xff8c3a → 0xc05a18 in content/archway.ts), the peak proximity
+// glow now sits at a much more restrained register.
+const GLOW_MAX_EMISSIVE = 0.13;
 interface FrameGlow { mat: THREE.MeshStandardMaterial; x: number; z: number; }
 const frameGlows: FrameGlow[] = [];
 
