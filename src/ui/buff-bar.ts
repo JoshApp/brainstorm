@@ -1,5 +1,6 @@
 import { get } from '../ecs/world';
 import { BUFFS } from '../content/buffs';
+import { FONT_UI } from './hud';
 
 // Active-buff indicators stacked above the HP bar. Each active buff shows:
 //   - a colored icon dot (matching the buff's spec color)
@@ -117,7 +118,7 @@ function createPill(label: string, color: number): BuffPill {
     borderLeft: `3px solid ${cssColor}`,
     borderRadius: '3px',
     color: cssColor,
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontFamily: FONT_UI,
     fontSize: '12px',
     fontWeight: '600',
     letterSpacing: '0.15em',

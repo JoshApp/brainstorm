@@ -5,6 +5,7 @@ import { ITEMS, type ItemSpec } from '../content/items';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { playHealSlurp, playBuffApply } from '../audio/sfx';
+import { FONT_UI } from '../ui/hud';
 
 // Consumable hotbar — small horizontal row of buttons on the left edge of
 // the screen, above the joystick zone. One button per consumable type the
@@ -95,7 +96,7 @@ function createButton(item: ItemSpec): ButtonHandle {
     border: `2px solid ${tintBorder(tint)}`,
     background: `${tintBackground(tint)}`,
     color: 'rgba(255, 220, 200, 0.95)',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontFamily: FONT_UI,
     fontSize: '22px',
     lineHeight: '1',
     boxShadow: `0 0 14px ${tintShadow(tint)}`,
@@ -139,7 +140,7 @@ function createButton(item: ItemSpec): ButtonHandle {
       position: 'absolute',
       bottom: '2px',
       right: '4px',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontFamily: FONT_UI,
       fontSize: '9px',
       fontWeight: '700',
       letterSpacing: '0.05em',
