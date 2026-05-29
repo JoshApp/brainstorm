@@ -52,6 +52,8 @@ export function computeWeaponPose(pose: PoseKey, phase: SwordPhase, t: number): 
     case 'hammer-swing-left':  return hammerSwingLeftPose(phase, t);
     case 'hammer-swing-right': return hammerSwingRightPose(phase, t);
     case 'hammer-smash':       return hammerPose(phase, t);
+    case 'spear-thrust':       return spearThrustPose(phase, t);
+    case 'spear-lunge':        return spearLungePose(phase, t);
     case 'crossbow-fire':      return crossbowFirePose(phase, t);
     case 'wand-cast':          return wandCastPose(phase, t);
     case 'sword-slash-left':
@@ -498,6 +500,68 @@ function hammerPose(phase: SwordPhase, t: number): WeaponPose {
   scratch.rotY = ry;
   scratch.rotZ = HAMMER_STRIKE_RZ + (rz - HAMMER_STRIKE_RZ) * e;
   return scratch;
+}
+
+// ── Spear: braced thrust + lunge ─────────────────────────────────
+// The spear model runs the shaft along −Z with the head at the tip, so
+// the pose is mostly about levelling the shared idle tilt to point the
+// head down the crosshair, then driving it forward. Two flavours:
+//   spear-thrust — quick jab, modest depth, snappy recover.
+//   spear-lunge  — the finisher: deeper push + a small body-drop, long
+//                  recover (committing).
+// Both brace at the same "ready" pose (drawn back + levelled) so the
+// combo reads as one continuous routine.
+const SPEAR_READY_X = ix - 0.10;     // pulled toward centre line
+const SPEAR_READY_Y = iy + 0.06;     // raised to a braced carry
+const SPEAR_READY_Z = iz + 0.12;     // drawn back to load the thrust
+const SPEAR_READY_RX = rx + 0.20;    // ≈ 0 — level the shaft forward
+const SPEAR_READY_RY = ry + 0.15;    // ≈ 0 — aim down the crosshair
+const SPEAR_READY_RZ = rz - 0.34;    // ≈ 0.06 — de-roll
+
+/** Shared spear thrust curve. `depth` = forward push along −Z at full
+ *  extension; `drop` = how far the whole weapon sinks (body lunge) at
+ *  the strike peak. */
+function spearThrust(phase: SwordPhase, t: number, depth: number, drop: number): WeaponPose {
+  if (phase === 'windup') {
+    scratch.x = ix + (SPEAR_READY_X - ix) * t;
+    scratch.y = iy + (SPEAR_READY_Y - iy) * t;
+    scratch.z = iz + (SPEAR_READY_Z - iz) * t;
+    scratch.rotX = rx + (SPEAR_READY_RX - rx) * t;
+    scratch.rotY = ry + (SPEAR_READY_RY - ry) * t;
+    scratch.rotZ = rz + (SPEAR_READY_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    // Ease-out push; holds at full extension so the head visibly peaks
+    // in the target. A sine drop adds a small lunge dip at mid-strike.
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = SPEAR_READY_X;
+    scratch.y = SPEAR_READY_Y - drop * Math.sin(Math.PI * t);
+    scratch.z = SPEAR_READY_Z + (-depth) * ease;
+    scratch.rotX = SPEAR_READY_RX;
+    scratch.rotY = SPEAR_READY_RY;
+    scratch.rotZ = SPEAR_READY_RZ;
+    return scratch;
+  }
+  // recover — from full extension back to idle.
+  const e = 1 - (1 - t) * (1 - t);
+  const fromZ = SPEAR_READY_Z - depth;
+  scratch.x = SPEAR_READY_X + (ix - SPEAR_READY_X) * e;
+  scratch.y = SPEAR_READY_Y + (iy - SPEAR_READY_Y) * e;
+  scratch.z = fromZ + (iz - fromZ) * e;
+  scratch.rotX = SPEAR_READY_RX + (rx - SPEAR_READY_RX) * e;
+  scratch.rotY = SPEAR_READY_RY + (ry - SPEAR_READY_RY) * e;
+  scratch.rotZ = SPEAR_READY_RZ + (rz - SPEAR_READY_RZ) * e;
+  return scratch;
+}
+
+function spearThrustPose(phase: SwordPhase, t: number): WeaponPose {
+  return spearThrust(phase, t, 0.42, 0.04);
+}
+
+function spearLungePose(phase: SwordPhase, t: number): WeaponPose {
+  // Finisher — deeper drive + a real body-drop on the lunge.
+  return spearThrust(phase, t, 0.62, 0.12);
 }
 
 // ── Crossbow: level → recoil → re-cock ───────────────────────────

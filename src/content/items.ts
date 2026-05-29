@@ -2,7 +2,7 @@ import type { ModelSpec } from '../ecs/model-types';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 import { SWORD_RUSTED } from './sword';
-import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, CROSSBOW, WAND } from './weapons';
+import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WAND } from './weapons';
 import {
   HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
@@ -57,7 +57,7 @@ export const RARITY_COLORS: Record<Rarity, number> = {
  *   sword   balanced diagonal slash; medium reach + cone
  *   hammer  slow overhead smash; long reach, wide cone, no crits
  */
-export type WeaponClass = 'dagger' | 'sword' | 'hammer' | 'crossbow' | 'wand';
+export type WeaponClass = 'dagger' | 'sword' | 'hammer' | 'spear' | 'crossbow' | 'wand';
 
 /** Combat stats — only set on items that are weapons. */
 export interface WeaponStats {
@@ -253,6 +253,28 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'weapon-damage', amount: 1 },
       { kind: 'damage-multiplier', amount: 1.15 },
     ],
+  },
+  // ── REACH MELEE ───────────────────────────────────────────────────
+  // The in-between weapon. Melee, but its long reach lets it strike from
+  // outside enemy range — spacing is the skill, not crit-fishing or
+  // wide-cone crowd control. Narrow cone (it pokes, doesn't sweep).
+  spear: {
+    id: 'spear',
+    kind: 'weapon',
+    rarity: 'uncommon',
+    name: 'A pitted spear',
+    flavor: 'Kept the careless at a distance, once.',
+    dropModel: SPEAR,
+    viewmodel: SPEAR,
+    // Long reach, narrow cone, modest damage. Puncture wounds BLEED —
+    // the reach weapon's pressure tool: poke, retreat, let the stacks
+    // work while you keep spacing.
+    weapon: {
+      class: 'spear', reach: 3.0, coneHalfAngle: 0.42, damage: 2, critChance: 0.12, critMultiplier: 2.2,
+      onHit: { buffId: 'bleed', chance: 0.4, duration: 3 },
+    },
+    affixPool: ['keening', 'gallows', 'patience', 'spine'],
+    maxAffixes: 2,
   },
   // ── RANGED WEAPONS ────────────────────────────────────────────────
   // The main-hand ranged class. A ranged weapon's `ranged.projectileId`

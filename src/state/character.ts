@@ -31,7 +31,7 @@ export type AttributeKind = 'vigor' | 'resolve' | 'acuity' | 'lore';
 
 export type ProficiencyKind =
   // Weapon classes — combat math hookup lives in resolveWeaponStats.
-  | 'sword' | 'dagger' | 'hammer' | 'crossbow' | 'wand'
+  | 'sword' | 'dagger' | 'hammer' | 'spear' | 'crossbow' | 'wand'
   // Defensive — block (shield-equipped + hit taken) / toughness
   // (damage absorbed, including from traps; absorbs the would-be
   // 'trap-sense' proficiency so the player isn't punished twice for
@@ -58,7 +58,7 @@ function baseline(): CharacterState {
   return {
     attributes: { vigor: 0, resolve: 0, acuity: 0, lore: 0 },
     proficiencies: {
-      sword: 0, dagger: 0, hammer: 0, crossbow: 0, wand: 0,
+      sword: 0, dagger: 0, hammer: 0, spear: 0, crossbow: 0, wand: 0,
       block: 0, toughness: 0,
       alchemy: 0, tinkering: 0, greed: 0, profanity: 0, survival: 0,
       descent: 0,

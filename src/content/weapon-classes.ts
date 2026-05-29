@@ -30,6 +30,8 @@ export type PoseKey =
   | 'hammer-swing-left'
   | 'hammer-swing-right'
   | 'hammer-smash'
+  | 'spear-thrust'
+  | 'spear-lunge'
   | 'crossbow-fire'
   | 'wand-cast';
 
@@ -115,6 +117,19 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     // Wider window than dagger/sword — the hammer's slow recover
     // means chaining feels OK on a less twitchy press.
     comboWindowMs: 520,
+  },
+  spear: {
+    // thrust → thrust → lunge. The in-between weapon: melee, but its
+    // long reach lets it poke from outside enemy strike range. Narrow
+    // cone (set on the spec) — it pokes, it doesn't sweep, so spacing
+    // is the skill. Two quick jabs then a committing lunge finisher
+    // with the deepest reach + longest recover.
+    combo: [
+      { pose: 'spear-thrust', windup: 0.12, strike: 0.12, recover: 0.26 },
+      { pose: 'spear-thrust', windup: 0.12, strike: 0.12, recover: 0.26 },
+      { pose: 'spear-lunge',  windup: 0.16, strike: 0.16, recover: 0.40 },
+    ],
+    comboWindowMs: 420,
   },
   // RANGED classes — a single "fire" step (no combo chain). The strike
   // spawns the weapon's projectile (combat/attack.ts) instead of a melee

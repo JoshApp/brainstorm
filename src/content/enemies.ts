@@ -1018,6 +1018,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { itemId: 'healing-potion', weight: 4 },
         { itemId: 'worn-boots', weight: 2 },
         { itemId: 'ring-of-predation', weight: 1 },
+        // The charger drops its reach weapon — uncommon spear. Fits the
+        // aggressive melee fantasy and gives the player the spacing tool
+        // to answer chargers in kind.
+        { itemId: 'spear', weight: 2 },
       ],
     },
   },
@@ -1456,14 +1460,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // throw + slash, it strides in, skull cranes at you).
     model: creature({
       id: 'skeleton-creature',
-      palette: { body: 0xb8b0a0, eye: 0x9fd8ff, eyeEmissive: 2.4, bodyEmissive: 0x101418 },
-      rim: { color: 0xcfe6ff, power: 2.8, intensity: 0.6 },
+      palette: { body: 0x7c7464, eye: 0x9fd8ff, eyeEmissive: 2.4, bodyEmissive: 0x0c0f12 },
+      rim: { color: 0xb8d4f0, power: 3.0, intensity: 0.4 },
       height: 1.05,
       build: 0.78,        // skeletal — thin
       armLength: 0.54,
       legLength: 0.5,
       headRadius: 0.2,
       hunch: 0.04,
+      head: 'skull',      // cranium + jaw + dark eye-sockets
+      torso: 'ribcage',   // thin spine + exposed rib slats
     }),
     baseEyeEmissive: 2.4,
     collisionRadius: 0.34,
