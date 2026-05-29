@@ -5,6 +5,7 @@ import { showDeathOverlay } from '../ui/death-overlay';
 import { showEndScreen } from '../ui/end-screen';
 import { getRunState, elapsedString, clearSave } from '../state/run-state';
 import { recordRunDeath, getRunDiscoveries } from '../state/meta-state';
+import { setGameMode } from '../state/game-mode';
 
 // Death sequence — Dark-Souls-esque collapse + world freeze.
 //
@@ -90,6 +91,9 @@ export function triggerDeath() {
   if (dying) return;
   dying = true;
   elapsed = 0;
+  // Lifecycle → dying: input + viewmodel motion stop reading control;
+  // the world coasts to a freeze via getTimeScale() below.
+  setGameMode('dying');
   if (camera) {
     startPitch = camera.rotation.x;
     startHeight = camera.position.y;
@@ -111,6 +115,7 @@ export function triggerDeath() {
   // After the death sequence (camera collapse + world freeze + epitaph),
   // show the end screen + RISE AGAIN action.
   setTimeout(() => {
+    setGameMode('dead');
     showEndScreen(
       {
         depth,

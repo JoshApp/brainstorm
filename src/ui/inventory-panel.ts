@@ -5,10 +5,9 @@ import {
 import {
   getAllItems, addItemSilently, removeItem, onInventoryChanged,
 } from '../player/inventory';
-import { computeStats } from '../player/equipment-stats';
+import { getPlayerSnapshot, onPlayerStatsChanged } from '../state/player-stats';
 import { getPlayerHp, getPlayerMaxHp, healPlayer } from '../player/health';
 import { ITEMS, RARITY_COLORS, type ItemSpec, type WeaponStats, type Rarity } from '../content/items';
-import { getCurrentWeapon } from '../player/current-weapon';
 import { BUFFS } from '../content/buffs';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
@@ -183,6 +182,10 @@ export function createInventoryPanel() {
 
   onInventoryChanged(() => { if (panelOpen) rebuildPanel(); });
   onEquipmentChanged(() => { if (panelOpen) rebuildPanel(); });
+  // Stat snapshot changes (proficiency gain, attribute spend, buff on/off)
+  // refresh the open panel so the readout never goes stale. Fires only on a
+  // real change, and only the panel-open case rebuilds.
+  onPlayerStatsChanged(() => { if (panelOpen) rebuildPanel(); });
 
 }
 
@@ -334,21 +337,22 @@ function buildStatsColumn(): HTMLDivElement {
     flex: '1',
   } as Partial<CSSStyleDeclaration>);
 
-  const stats = computeStats();
-  const weapon = getCurrentWeapon();
-  const baseDamage = weapon.damage;
-  const totalDamage = (baseDamage + stats.weaponDamageBonus) * stats.damageMultiplier;
-  const damageStr = stats.damageMultiplier !== 1
-    ? `${totalDamage.toFixed(1)}  (${baseDamage}+${stats.weaponDamageBonus} ×${stats.damageMultiplier.toFixed(2)})`
-    : stats.weaponDamageBonus > 0
-      ? `${totalDamage.toFixed(1)}  (${baseDamage}+${stats.weaponDamageBonus})`
-      : `${totalDamage}`;
+  // Single source of truth: the player snapshot folds proficiency + equipment
+  // into one weaponDamage, so this readout can't drift from the combat number.
+  const snap = getPlayerSnapshot();
+  const baseDamage = snap.weaponBaseDamage;
+  const totalDamage = snap.weaponDamage;
+  const damageStr = snap.damageMultiplier !== 1
+    ? `${totalDamage.toFixed(1)}  (${baseDamage.toFixed(1)}+${snap.weaponDamageBonus} ×${snap.damageMultiplier.toFixed(2)})`
+    : snap.weaponDamageBonus > 0
+      ? `${totalDamage.toFixed(1)}  (${baseDamage.toFixed(1)}+${snap.weaponDamageBonus})`
+      : `${totalDamage.toFixed(1)}`;
 
-  addStatRow(card, 'HP',         `${getPlayerHp()} / ${getPlayerMaxHp()}`);
+  addStatRow(card, 'HP',         `${getPlayerHp()} / ${snap.maxHp}`);
   addStatRow(card, 'DAMAGE',     damageStr);
-  addStatRow(card, 'PHYS ARM',   `${stats.physicalArmor}`);
-  addStatRow(card, 'MAG ARM',    `${stats.magicArmor}`);
-  addStatRow(card, 'REACH',      `${weapon.reach.toFixed(1)}m`);
+  addStatRow(card, 'PHYS ARM',   `${snap.physicalArmor}`);
+  addStatRow(card, 'MAG ARM',    `${snap.magicArmor}`);
+  addStatRow(card, 'REACH',      `${snap.weaponReach.toFixed(1)}m`);
 
   col.appendChild(card);
   return col;

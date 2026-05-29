@@ -37,6 +37,9 @@ import { generateSafeRoom } from './level/safe-room';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { initCharacterTracking, resetCharacter } from './state/character';
 import { initRunStateListeners } from './state/run-state-listeners';
+import { isPlaying, getGameMode } from './state/game-mode';
+import { runSystems, type GameSystem, type TickContext } from './engine/loop';
+import { recomputePlayerStats } from './state/player-stats';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
 import { addItemSilently, clearInventory } from './player/inventory';
@@ -438,41 +441,34 @@ const clock = new THREE.Clock();
 const shakeOffset = new THREE.Vector3();
 const forwardScratch = new THREE.Vector3();
 
-function tick() {
-  // Apply any pending level swap BEFORE any per-frame reads on the level.
-  // Stairs interactables call loadLevel() during the previous frame's
-  // interactables tick; the swap lands here at the top of the next frame.
-  tickPendingLoad();
-
-  const realDt = Math.min(clock.getDelta(), 0.1);
-
-  // Harness: drain any in-flight tick budget and advance game-time
-  // clock. Cheap when harness is off (one branch). Called BEFORE the
-  // isWorldPaused() check below so a budget that ends this frame
-  // re-pauses the world for the same frame's update gate.
-  harnessTickFn?.(realDt, !isWorldPaused());
-
-  tickDeath(realDt);
-  const scaledDt = realDt * getTimeScale();
-
-  if (isWorldPaused()) {
-    // Hit-pause OR scenario freeze OR any menu open: skip all game updates,
-    // drain look input so it doesn't snap if/when we unfreeze.
-    input.lookDx = 0;
-    input.lookDy = 0;
-  } else {
+// ── Per-frame systems ───────────────────────────────────────────────────
+// The frame is an ordered list of systems (engine/loop.ts). Each declares a
+// phase ('unpaused' skips while the world is paused; 'always' runs every
+// frame) so freeze behaviour is data, not nested control flow. Order below =
+// execution order. dt/pause/lifecycle come off the ctx; everything else is
+// closed over from the module scope above.
+const SYSTEMS: GameSystem[] = [
+  // Look/move input + camera. While dying, control input is dropped so
+  // nothing downstream (camera, bob) reads stale joystick values.
+  { name: 'input-camera', phase: 'unpaused', tick(ctx) {
     if (!isDying()) {
-      input.tickInput(scaledDt);   // hybrid-look continuous rotation, if enabled
-      updateCamera(camera, input, scaledDt, currentLevel.walkable, currentLevel.enemies);
+      input.tickInput(ctx.scaledDt);   // hybrid-look continuous rotation, if enabled
+      updateCamera(camera, input, ctx.scaledDt, currentLevel.walkable, currentLevel.enemies);
     } else {
       input.lookDx = 0;
       input.lookDy = 0;
+      input.moveX = 0;
+      input.moveY = 0;
     }
+  } },
 
-    for (const t of currentLevel.torches) updateTorchlight(t, scaledDt);
+  { name: 'torchlight', phase: 'unpaused', tick(ctx) {
+    for (const t of currentLevel.torches) updateTorchlight(t, ctx.scaledDt);
+  } },
 
-    // Ambient torch crackle volume — sum of (1 - dist/range) across all
-    // torches in earshot.
+  // Ambient torch crackle volume — sum of (1 - dist/range) across torches
+  // in earshot.
+  { name: 'torch-audio', phase: 'unpaused', tick() {
     let prox = 0;
     const earRange = 6;
     for (const t of currentLevel.torches) {
@@ -482,143 +478,186 @@ function tick() {
       if (d < earRange) prox += 1 - d / earRange;
     }
     setTorchProximity(prox);
+  } },
 
+  { name: 'combat', phase: 'unpaused', tick() {
     const attackPressed = isDying() ? false : consumeAttackPressed();
     combat.tick(attackPressed);
+  } },
 
-    // Walk bob — sword + lamp + offhand viewmodels all read the same
-    // shared bob each frame. realDt so the sway keeps a steady rhythm
-    // through slow-mo and doesn't stutter. Target intensity = joystick
-    // magnitude, so standing still locks the hands and tapping forward
-    // ramps the bob in smoothly.
-    setBobTarget(Math.hypot(input.moveX, input.moveY));
-    updateBob(realDt);
-    sword.update(scaledDt);
-    // Handheld lamp flicker + bob. realDt — flicker shouldn't slow
-    // during slow-mo (a frozen lamp looks broken).
-    tickLamp(realDt);
-    tickOffhandViewmodel();
-    // Enemy sleep: skip update() for enemies far from the player. They
-    // can't influence gameplay outside their own perception range
-    // anyway; ticking them is GC + AI work for no visible result.
-    // Threshold = 25m, comfortably past the deepest perception ranges
-    // (wraith sight 12m). Player damage path still works since
-    // takeDamage doesn't go through update().
+  // Walk bob — sword + lamp + offhand viewmodels all read the same shared
+  // bob. realDt so the sway keeps a steady rhythm through slow-mo. Target
+  // intensity = joystick magnitude (zeroed when not in control so the
+  // viewmodel settles during death).
+  { name: 'viewmodel-bob', phase: 'unpaused', tick(ctx) {
+    const playing = ctx.playing;
+    setBobTarget(playing ? Math.hypot(input.moveX, input.moveY) : 0);
+    updateBob(ctx.realDt, playing);
+  } },
+
+  { name: 'sword', phase: 'unpaused', tick(ctx) { sword.update(ctx.scaledDt); } },
+
+  // Handheld lamp flicker + bob. realDt — flicker shouldn't slow during
+  // slow-mo (a frozen lamp looks broken).
+  { name: 'lamp', phase: 'unpaused', tick(ctx) { tickLamp(ctx.realDt); } },
+
+  { name: 'offhand', phase: 'unpaused', tick() { tickOffhandViewmodel(); } },
+
+  // Enemy sleep: skip update() for enemies far from the player — they can't
+  // influence gameplay outside perception range. Threshold 25m, past the
+  // deepest sight (wraith 12m). Damage path is unaffected (takeDamage
+  // doesn't go through update()).
+  { name: 'enemies', phase: 'unpaused', tick(ctx) {
     const playerX = camera.position.x;
     const playerZ = camera.position.z;
     const sleepDist2 = 25 * 25;
     for (const enemy of currentLevel.enemies) {
-      // Dying enemies still tick (their death animation drives the
-      // dissolve + lift each frame). Far-away mobs sleep regardless.
+      // Dying enemies still tick (death animation drives the dissolve).
       if (!enemy.alive && !enemy.dying) continue;
       const dx = enemy.group.position.x - playerX;
       const dz = enemy.group.position.z - playerZ;
       if (dx * dx + dz * dz > sleepDist2) continue;
-      // Phasing mobs (ghosts) use the obstacle-free nav grid; everyone
-      // else uses the standard one that routes around props.
+      // Phasing mobs (ghosts) use the obstacle-free nav grid.
       const nav = enemy.phasing ? currentLevel.navPhasing : currentLevel.nav;
-      enemy.update(scaledDt, camera.position, currentLevel.walkable, nav);
+      enemy.update(ctx.scaledDt, camera.position, currentLevel.walkable, nav);
     }
-    // Decay active combat alerts so old broadcasts stop pulling
-    // mobs in long after the player has left the area.
-    tickAlerts(scaledDt);
+  } },
 
-    // XP wisps — home in on the player and absorb on contact. Lives
-    // outside the enemy loop so a wisp survives past its spawner's
-    // full retirement (mob disappears, wisps continue to player).
-    tickXpWisps(scaledDt, camera.position);
-    // Gold coins — fall to the floor, rotate, and vacuum to the player
-    // when they walk within pickup radius.
-    tickGoldCoins(scaledDt, camera.position, currentLevel.walkable);
+  // Decay active combat alerts so old broadcasts stop pulling mobs in long
+  // after the player has left.
+  { name: 'alerts', phase: 'unpaused', tick(ctx) { tickAlerts(ctx.scaledDt); } },
 
-    // Projectiles — integrate active projectiles, hit-test the player +
-    // walls, retire on contact/expiry. Lives outside the enemy loop so
-    // a shot survives the shooter's death and so future non-enemy spawn
-    // sources (player wand, trap dart) can plug in.
-    tickProjectiles(scaledDt, camera.position, currentLevel.walkable);
+  // XP wisps / gold coins — home in on the player and absorb on contact.
+  // Live outside the enemy loop so they survive past their spawner.
+  { name: 'xp-wisps', phase: 'unpaused', tick(ctx) { tickXpWisps(ctx.scaledDt, camera.position); } },
+  { name: 'gold-coins', phase: 'unpaused', tick(ctx) {
+    tickGoldCoins(ctx.scaledDt, camera.position, currentLevel.walkable);
+  } },
 
-    // Room-clear detection — fires room:cleared events when a tracked
-    // room's alive count hits zero. Doors listen for this to flip from
-    // SEALED to OPEN. Cheap: handful of enemies per level.
-    currentLevel.checkRoomClear?.();
+  // Projectiles — integrate, hit-test player + walls, retire. Outside the
+  // enemy loop so a shot survives the shooter's death.
+  { name: 'projectiles', phase: 'unpaused', tick(ctx) {
+    tickProjectiles(ctx.scaledDt, camera.position, currentLevel.walkable);
+  } },
 
-    // Tick active buffs on all entities (heal-over-time, future DoTs, etc.)
-    tickAllBuffs(scaledDt);
+  // Room-clear detection — fires room:cleared so doors flip SEALED→OPEN.
+  { name: 'room-clear', phase: 'unpaused', tick() { currentLevel.checkRoomClear?.(); } },
+
+  // Active buffs on all entities (heal-over-time, DoTs, etc.).
+  { name: 'buffs', phase: 'unpaused', tick(ctx) { tickAllBuffs(ctx.scaledDt); } },
+
+  // ── always-on (run through pause/death so the screen stays live) ──
+
+  // Drifting motes — ambient dust keeps falling through hit-pauses, death,
+  // and menus. Real dt.
+  { name: 'motes', phase: 'always', tick(ctx) { tickDriftingMotes(ctx.realDt); } },
+  // Shatter / blood bursts — scaled dt so shards slow-mo with the
+  // hit-pause / death sequence (reads as crunchier).
+  { name: 'shatter', phase: 'always', tick(ctx) { tickShatterBurst(ctx.scaledDt); } },
+  { name: 'blood', phase: 'always', tick(ctx) { tickBloodBurst(ctx.scaledDt); } },
+
+  // Interact tick + world-anchored UI run OUTSIDE the freeze gate so
+  // in-range detection persists through hit-pauses. dt=0 when frozen so
+  // animations (chest lid, pickup bob) don't advance — only the "what's in
+  // range" pass refreshes.
+  { name: 'world-ui', phase: 'always', tick(ctx) {
+    camera.getWorldDirection(forwardScratch);
+    const interactDt = ctx.paused ? 0 : ctx.scaledDt;
+    tickInteractables(interactDt, camera.position, forwardScratch);
+    // Hidden while dying or any screen is open so the label doesn't poke
+    // through a panel's backdrop.
+    const inRange = (isDying() || isAnyScreenOpen()) ? null : getInRangeInteractable();
+    // Tutorial hints — only the tutorial level spawns these; elsewhere this
+    // early-returns instantly.
+    tickTutorialHints(ctx.realDt, camera, canvas, camera.position);
+    updateInteractLabel(inRange, camera, canvas);
+    // Item-preview labels (starter / blood altars) — world→screen projection.
+    tickItemPreviews(camera, canvas);
+    // Outline pulse on the in-range interactable. realDt so it animates at
+    // real-time even during hit-pause.
+    updateOutline(inRange, ctx.realDt);
+  } },
+
+  // Player stats snapshot — recompute the single reactive PlayerSnapshot
+  // once per frame. Runs in 'always' so equipment/attribute changes made
+  // while a menu is open still update the snapshot (and its subscribers,
+  // e.g. the inventory stat column) live. Subscribers fire only on real
+  // change. Ordered before 'hud' so HUD readouts read this frame's values.
+  { name: 'player-stats', phase: 'always', tick() { recomputePlayerStats(); } },
+
+  // HUD — poll-based; cheap and always accurate. Runs even when paused so
+  // HP / buff state is visible in menus. The consumable bar is event-driven.
+  { name: 'hud', phase: 'always', tick(ctx) {
+    updateHpBar();
+    updateBuffBar();
+    updateXpGoldHud(ctx.realDt);
+  } },
+
+  // Low-HP breathing vignette — peripheral red at <30% HP. realDt so it
+  // keeps breathing during scaled time.
+  { name: 'low-hp-vignette', phase: 'always', tick(ctx) {
+    const maxHp = getPlayerMaxHp();
+    tickLowHpPulse(ctx.realDt, maxHp > 0 ? getPlayerHp() / maxHp : 0);
+  } },
+
+  // Screen shake offset is applied to the camera before light-pool + render,
+  // then removed after, so it never accumulates. Three ordered systems.
+  { name: 'shake-apply', phase: 'always', tick(ctx) {
+    tickShake(ctx.realDt, shakeOffset);
+    camera.position.add(shakeOffset);
+  } },
+
+  // Bind the N nearest registered lights to the pool's PointLight slots.
+  // Runs every frame so lighting updates with camera movement even when
+  // frozen. LOS culls through-wall sources from the ranking.
+  { name: 'light-pool', phase: 'always', tick() {
+    const walkable = currentLevel?.walkable;
+    const los = walkable
+      ? (ax: number, az: number, bx: number, bz: number) =>
+          walkable.hasLineOfSight(ax, az, bx, bz)
+      : undefined;
+    tickLightPool(camera, los);
+  } },
+
+  { name: 'render', phase: 'always', tick() { renderWithStyle(renderer, scene, camera, style); } },
+
+  { name: 'shake-restore', phase: 'always', tick() { camera.position.sub(shakeOffset); } },
+];
+
+function tick() {
+  // Apply any pending level swap BEFORE any per-frame reads on the level.
+  // Stairs interactables call loadLevel() during the previous frame's
+  // interactables tick; the swap lands here at the top of the next frame.
+  tickPendingLoad();
+
+  const realDt = Math.min(clock.getDelta(), 0.1);
+
+  // Harness: drain any in-flight tick budget and advance game-time clock.
+  // Cheap when off. Called BEFORE the pause snapshot below so a budget that
+  // ends this frame re-pauses the world for the same frame's update gate.
+  harnessTickFn?.(realDt, !isWorldPaused());
+
+  tickDeath(realDt);
+  const scaledDt = realDt * getTimeScale();
+  // Snapshot pause state AFTER the harness so a just-ended budget gates this
+  // frame's unpaused systems.
+  const paused = isWorldPaused();
+
+  // While paused, drain look input so it doesn't snap when we unfreeze.
+  // (The input-camera system is gated off by the pause, so it won't.)
+  if (paused) {
+    input.lookDx = 0;
+    input.lookDy = 0;
   }
 
-  // Drifting motes — slow ambient particle drift. Lives OUTSIDE
-  // the freeze gate so dust keeps falling through hit-pauses,
-  // death sequences, and menus. Real dt — no time-scale.
-  tickDriftingMotes(realDt);
-  // Shatter bursts — physics shards from broken vases / future
-  // destructibles. Uses scaled dt so the chunks slow-mo with
-  // the hit-pause / death sequence (reads as crunchier).
-  tickShatterBurst(scaledDt);
-  tickBloodBurst(scaledDt);
-
-  // Interact tick + UI run OUTSIDE the freeze gate so the in-range
-  // detection + icon button persist through hit-pauses + scenarios. We
-  // pass dt=0 when the world is frozen so animations (chest lid, pickup
-  // bob, trap spike rise) don't advance — only the "what's in range" pass
-  // refreshes. While a menu is open the button hides; tap target should
-  // not steal touches from the inventory panel.
-  camera.getWorldDirection(forwardScratch);
-  const interactDt = isWorldPaused() ? 0 : scaledDt;
-  tickInteractables(interactDt, camera.position, forwardScratch);
-  // Determine the current in-range interactable. Hidden while any screen
-  // is open so the label doesn't poke through a panel's backdrop.
-  const inRange = (isDying() || isAnyScreenOpen()) ? null : getInRangeInteractable();
-  // Tutorial hints — diegetic in-world text that fades in/out by
-  // proximity. Only the tutorial level spawns these, so on every
-  // other floor the function early-returns instantly.
-  tickTutorialHints(realDt, camera, canvas, camera.position);
-  // Floating world-anchored label over the interactable — the SOLE
-  // interact UI now. Updated each frame so
-  // it tracks the target as camera moves.
-  updateInteractLabel(inRange, camera, canvas);
-  // Item-preview labels — used by starter altars + blood altar so the
-  // player can see what they'd be taking before committing. The
-  // per-altar tick sets visibility; this driver just does the
-  // world→screen projection across the whole set.
-  tickItemPreviews(camera, canvas);
-  // Outline highlight on the in-range interactable. realDt (not scaled)
-  // so the pulse animates at real-time even during hit-pause / scenarios.
-  updateOutline(inRange, realDt);
-
-  // HUD — poll-based; cheap and always accurate. Runs even when the
-  // world is paused so the player can see HP / buff state in menus
-  // and during hit-pause flashes. The consumable bar rebuilds itself
-  // on inventory changes (event-driven), so no per-frame tick.
-  updateHpBar();
-  updateBuffBar();
-  updateXpGoldHud(realDt);
-
-  // Low-HP breathing vignette — peripheral red signal at <30% HP. Uses
-  // realDt so it keeps breathing during hit-pause / scaled time.
-  const maxHp = getPlayerMaxHp();
-  tickLowHpPulse(realDt, maxHp > 0 ? getPlayerHp() / maxHp : 0);
-
-  tickShake(realDt, shakeOffset);
-  camera.position.add(shakeOffset);
-
-  // Bind the N nearest registered light sources to the pool's actual
-  // PointLight slots. Runs every frame, regardless of world freeze —
-  // the visible lighting must update with camera movement even during
-  // hit-pause / menus.
-  // LOS check culls through-wall sources from the slot ranking — a
-  // torch in the next room can't waste a slot even if its raw distance
-  // is small. The active level's walkable region carries the wall
-  // segments and the segment-vs-segment check.
-  const walkable = currentLevel?.walkable;
-  const los = walkable
-    ? (ax: number, az: number, bx: number, bz: number) =>
-        walkable.hasLineOfSight(ax, az, bx, bz)
-    : undefined;
-  tickLightPool(camera, los);
-
-  renderWithStyle(renderer, scene, camera, style);
-
-  camera.position.sub(shakeOffset);
+  const ctx: TickContext = {
+    realDt,
+    scaledDt,
+    paused,
+    mode: getGameMode(),
+    playing: isPlaying(),
+  };
+  runSystems(SYSTEMS, ctx);
 
   requestAnimationFrame(tick);
 }
