@@ -77,6 +77,7 @@ function rollTableFor(depth: number): EnemyRoll[] {
       { enemyId: 'acid-spitter', weight: 1 },
       { enemyId: 'defiler',      weight: 1 },
       { enemyId: 'skeleton',     weight: 2 },
+      { enemyId: 'spider',       weight: 1 },
       { enemyId: 'stoneguard',   weight: 1 },
     ];
   }
@@ -93,6 +94,7 @@ function rollTableFor(depth: number): EnemyRoll[] {
     { enemyId: 'acid-spitter', weight: 2 },
     { enemyId: 'defiler',      weight: 2 },
     { enemyId: 'skeleton',     weight: 2 },
+    { enemyId: 'spider',       weight: 1 },
     { enemyId: 'stoneguard',   weight: 2 },
     { enemyId: 'wraith',       weight: 1 },
   ];

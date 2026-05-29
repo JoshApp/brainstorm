@@ -41,7 +41,8 @@ buff allies**, **directional block**.
 | rat | clear chaff, don't get surrounded | ⚠️ weak verb; fine as cheap chaff |
 | skirmisher | **sidestep the charge**, punish the recovery | ✅ *fixed — now the charger* |
 | defiler | **don't stand there** — keep moving off the hex | ✅ *zone control* |
-| skeleton | **close and break it** — pressure at every range | ✅ *new — ranged+melee, advances* |
+| skeleton | **close and break it** — pressure at every range | ✅ *ranged+melee, advances* |
+| spider | **read the pounce, don't get surrounded** | ✅ *new — swarm pouncer* |
 | ooze-small | (recursion terminator / cleanup) | — |
 
 ## The verb-audit pass (what changed & why)

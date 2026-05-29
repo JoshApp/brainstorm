@@ -795,6 +795,64 @@ function oozeModel(bodyColor: number, innerColor: number, scale: number = 1): Mo
   };
 }
 
+// Spider — low, eight-legged scuttler. Two body segments (bulbous
+// abdomen + smaller cephalothorax), a cluster of glowing eyes, fangs,
+// and four splayed legs per side. Not humanoid, so it's hand-authored
+// (creature() is for uprights); the legs are static and the 'twitch'
+// presence does the scuttle. Sits low to the floor.
+function spiderModel(bodyColor: number, eyeColor: number, eyeEmissive: number): ModelSpec {
+  const legs: ModelSpec['parts'] = [];
+  // Four legs per side, fanned front→back, splayed outward + down.
+  const zs = [-0.16, -0.05, 0.06, 0.17];
+  for (const sx of [-1, 1] as const) {
+    zs.forEach((z, i) => {
+      // Front legs reach a touch forward, back legs a touch back (subtle
+      // per-index roll on the splay so they aren't a fan of clones).
+      legs.push({
+        parent: 'rig', kind: 'capsule',
+        pos: [sx * 0.16, 0.02, z],
+        rot: [0.15, 0, sx * (1.05 + i * 0.05)],
+        radius: 0.018, height: 0.36,
+        mat: 'body', jitter: 0.006,
+      });
+      // Foot tip — tiny dark sphere at the splayed end, near the floor.
+      legs.push({
+        parent: 'rig', kind: 'sphere',
+        pos: [sx * 0.34, -0.22, z + 0.02],
+        radius: 0.02, segments: [6, 6], mat: 'body',
+      });
+    });
+  }
+  return {
+    id: 'spider',
+    materials: {
+      body: { color: bodyColor, roughness: 0.7, emissive: 0x0a0608, emissiveIntensity: 0.4, flatShading: 'auto', dissolvable: true,
+        rim: { color: 0x6a3050, power: 3.0, intensity: 0.4 } },
+      eyes: { color: 0x000000, emissive: eyeColor, emissiveIntensity: eyeEmissive, roughness: 1.0 },
+    },
+    slots: {
+      rig: { pos: [0, 0.28, 0] },
+    },
+    parts: [
+      ...legs,
+      // Abdomen — big bulbous sphere at the back.
+      { name: 'body', parent: 'rig', kind: 'sphere', pos: [0, 0.04, 0.17], scale: [1.05, 0.9, 1.2], radius: 0.21, segments: [14, 12], mat: 'body', jitter: 0.02 },
+      // Cephalothorax — smaller, forward.
+      { parent: 'rig', kind: 'sphere', pos: [0, 0.0, -0.12], scale: [1.0, 0.85, 1.0], radius: 0.14, segments: [12, 10], mat: 'body', jitter: 0.015 },
+      // Eye cluster — several small glowing spheres on the front face.
+      { parent: 'rig', kind: 'sphere', pos: [-0.05, 0.06, -0.23], radius: 0.028, segments: [8, 8], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.05, 0.06, -0.23], radius: 0.028, segments: [8, 8], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [-0.09, 0.02, -0.21], radius: 0.018, segments: [8, 8], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.09, 0.02, -0.21], radius: 0.018, segments: [8, 8], mat: 'eyes' },
+      // Eye halo so the cluster reads as a glint at distance.
+      { name: 'eyeHaloL', parent: 'rig', kind: 'sprite', pos: [0, 0.05, -0.26], size: [0.22, 0.12], texture: 'fire-wisp', blending: 'additive', color: eyeColor },
+      // Fangs — two short downward cones at the mouth.
+      { parent: 'rig', kind: 'cone', pos: [-0.04, -0.06, -0.22], rot: [Math.PI, 0, 0], radius: 0.022, height: 0.10, segments: 6, mat: 'body' },
+      { parent: 'rig', kind: 'cone', pos: [ 0.04, -0.06, -0.22], rot: [Math.PI, 0, 0], radius: 0.022, height: 0.10, segments: 6, mat: 'body' },
+    ],
+  };
+}
+
 // --- Enemy registry -----------------------------------------------------
 
 export const ENEMIES: Record<string, EnemySpec> = {
@@ -1415,6 +1473,65 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { itemId: 'healing-potion', weight: 4 },
         { itemId: 'bone-amulet', weight: 1 },
         { itemId: 'iron-coif', weight: 2 },
+      ],
+    },
+  },
+
+  // Spider — fast, fragile POUNCER that comes in packs. Scuttles in,
+  // coils, then leaps the gap with a lunge-bite (the dash ability, like
+  // the skirmisher's charge — but spiders are a SWARM of them: low HP,
+  // faster, several at once). Verb: read the pounce + sidestep it, and
+  // don't get surrounded. The nest mob; lives in web rooms.
+  spider: {
+    id: 'spider',
+    name: 'spider',
+    tileChar: 'N',
+    hp: 2,
+    moveSpeed: 2.2,            // fast scuttle
+    attackDamage: 1,
+    attackRange: 1.5,
+    strikeRange: 1.3,
+    windupTime: 0.4,
+    strikeTime: 0.14,
+    recoverTime: 0.4,
+    damageType: 'physical',
+    abilities: [
+      // POUNCE — coil then leap across the gap with a bite on contact.
+      {
+        id: 'pounce',
+        minRange: 1.6, maxRange: 5,
+        windup: 0.45, strike: 0.38, recover: 0.55, cooldown: 2.0,
+        damage: 1, telegraph: 'charge', creep: false,
+        effects: [{ kind: 'dash', speed: 8.5, toward: 'player', contactReach: 1.2, damageType: 'physical' }],
+      },
+      // BITE — point-blank snap when already on top of the player.
+      {
+        id: 'bite',
+        minRange: 0, maxRange: 1.5,
+        windup: 0.35, strike: 0.12, recover: 0.38,
+        damage: 1, telegraph: 'swing', creep: true,
+        effects: [{ kind: 'melee', reach: 1.3, damageType: 'physical' }],
+      },
+    ],
+    model: spiderModel(0x1a1016, 0xff3a55, 2.4),   // near-black chitin, red eyes
+    baseEyeEmissive: 2.4,
+    collisionRadius: 0.30,
+    physicalArmor: 0,
+    magicArmor: 0,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    presence: 'twitch',        // restless scuttle
+    sightRange: 8,
+    sightConeHalfAngle: 1.3,   // wide — wall-crawler awareness
+    hearingRange: 3.0,
+    loseSightTime: 4,
+    xp: 4,
+    gold: [0, 4],
+    drops: {
+      rate: 0.30,
+      pool: [
+        { itemId: 'healing-potion', weight: 1 },
       ],
     },
   },
