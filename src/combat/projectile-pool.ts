@@ -4,6 +4,13 @@ import { damagePlayer } from '../player/health';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { applyDamageVia, type DamageType } from './damage';
 import type { EntityId } from '../ecs/types';
+import { applyBuff } from '../ecs/buffs';
+import { get as getEntity } from '../ecs/world';
+import { gameRngChance } from '../engine/rng';
+
+/** On-hit status carried by a friendly projectile (player's weapon /
+ *  affix / set on-hits). Rolled per enemy hit. */
+type ProjectileOnHit = { buffId: string; chance: number; duration: number };
 
 // Projectile pool. Same pattern as the light pool: a fixed budget of
 // pre-allocated mesh + light slots. Spawning a projectile rents from
@@ -75,6 +82,9 @@ interface Slot {
   /** FRIENDLY = fired by the player; hit-tests ENEMIES. Otherwise an
    *  enemy projectile that hit-tests the player. */
   friendly: boolean;
+  /** On-hit statuses to roll when this (friendly) projectile strikes an
+   *  enemy. Null for enemy projectiles / shots with no on-hit. */
+  onHits: ReadonlyArray<ProjectileOnHit> | null;
   /** Stable id for the light pool registration. */
   lightId: string;
 }
@@ -133,6 +143,7 @@ export function initProjectilePool(sc: THREE.Scene): void {
       damage: 0,
       source: null,
       friendly: false,
+      onHits: null,
       remaining: 0,
       lightId: `projectile-${i}`,
     });
@@ -148,6 +159,8 @@ export interface SpawnArgs {
   source: EntityId | null;
   /** True = player projectile (hits enemies). Default false (enemy → player). */
   friendly?: boolean;
+  /** On-hit statuses to roll on the struck enemy (friendly shots). */
+  onHits?: ReadonlyArray<ProjectileOnHit>;
 }
 
 /** Rent a slot + fire. No-op if the pool is full (rare; 16 is generous). */
@@ -161,6 +174,7 @@ export function spawnProjectile(args: SpawnArgs): void {
   slot.damage = args.damage;
   slot.source = args.source;
   slot.friendly = args.friendly ?? false;
+  slot.onHits = args.onHits ?? null;
   slot.remaining = type.lifetime;
   slot.position.copy(args.origin);
   // Velocity = unit (target - origin) × speed.
@@ -199,6 +213,7 @@ function retire(slot: Slot): void {
   slot.inUse = false;
   slot.mesh.visible = false;
   slot.trail.visible = false;
+  slot.onHits = null;
   unregisterLight(slot.lightId);
   slot.position.set(0, -1000, 0);
 }
@@ -231,6 +246,17 @@ export function tickProjectiles(
         const ey = slot.position.y - (e.position.y + e.aimHeight);
         if (ex * ex + ez * ez < HIT_RADIUS_SQ && Math.abs(ey) < 1.4) {
           applyDamageVia({ source: slot.source, target: e.entityId, base: slot.damage, type: slot.type.damageType });
+          // Roll the bolt's on-hit statuses against the struck enemy —
+          // same rules as a melee landed hit (wand chill, on-hit affixes,
+          // set on-hits). Applied before retire() (which clears onHits).
+          if (slot.onHits) {
+            const ent = getEntity(e.entityId);
+            if (ent) {
+              for (const oh of slot.onHits) {
+                if (gameRngChance(oh.chance)) applyBuff(ent, oh.buffId, oh.duration, 'player');
+              }
+            }
+          }
           retire(slot);
           hit = true;
           break;

@@ -1,6 +1,7 @@
 import type { ItemSpec, ItemKind } from '../content/items';
 import type { AffixInstance } from '../content/affixes';
 import type { StatModifier } from '../combat/modifiers';
+import { collectActiveSetBonuses } from '../content/sets';
 
 // Equipment slots. Four slots total: weapon, armor, ring1, ring2. Each
 // slot holds at most one ItemSpec (or null).
@@ -106,6 +107,36 @@ export function aggregateAffixModifiers(): StatModifier[] {
   for (const slot of Object.keys(slotAffixes) as EquipSlot[]) {
     for (const a of slotAffixes[slot]) out.push(...a.modifiers);
   }
+  return out;
+}
+
+/** Modifiers from every ACTIVE set bonus (enough pieces equipped). Same
+ *  central-pipeline citizen as affix + buff modifiers; consumed by
+ *  src/combat/modifiers.ts. */
+export function aggregateSetModifiers(): StatModifier[] {
+  const setIds = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
+  const out: StatModifier[] = [];
+  for (const b of collectActiveSetBonuses(setIds)) {
+    if (b.modifiers) out.push(...b.modifiers);
+  }
+  return out;
+}
+
+export interface PlayerOnHit { buffId: string; chance: number; duration: number; }
+
+/** Every on-hit status the player currently inflicts, from all sources:
+ *  the equipped weapon's base on-hit, any on-hit AFFIXES rolled on the
+ *  weapon, and any active SET on-hit bonuses (player-wide). Combat rolls
+ *  each independently on a landed hit (melee cone or ranged bolt), so a
+ *  serrated venom-etched needle in the bone set bleeds AND poisons AND
+ *  set-poisons. Single source of truth — see combat/attack.ts. */
+export function getPlayerOnHits(): PlayerOnHit[] {
+  const out: PlayerOnHit[] = [];
+  const w = slots.weapon;
+  if (w?.weapon?.onHit) out.push(w.weapon.onHit);
+  for (const a of slotAffixes.weapon) if (a.onHit) out.push(a.onHit);
+  const setIds = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
+  for (const b of collectActiveSetBonuses(setIds)) if (b.onHit) out.push(b.onHit);
   return out;
 }
 

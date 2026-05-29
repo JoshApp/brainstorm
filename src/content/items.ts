@@ -35,6 +35,26 @@ export const RARITY_COLORS: Record<Rarity, number> = {
   fabled:   0xe6a335,  // amber-gold — heirloom, named, story-bearing
 };
 
+/**
+ * The MECHANICAL meaning of rarity: how many affixes an instance of this
+ * rarity rolls, and how likely each successive affix is to land
+ * (continueChance, see rollAffixes). Higher rarity → more affixes, more
+ * reliably. This is what makes a "rare" drop genuinely better than a
+ * "mundane" one rather than just a different border colour.
+ *
+ * A spec's explicit maxAffixes still overrides maxAffixes here (author
+ * intent wins on hand-tuned items); the continueChance always comes from
+ * rarity. Cursed sits beside rare on the budget (it's a sidegrade tier,
+ * powerful-but-flawed, not strictly above rare).
+ */
+export const RARITY_AFFIX_BUDGET: Record<Rarity, { maxAffixes: number; continueChance: number }> = {
+  mundane:  { maxAffixes: 1, continueChance: 0.25 },
+  uncommon: { maxAffixes: 2, continueChance: 0.45 },
+  rare:     { maxAffixes: 2, continueChance: 0.70 },
+  cursed:   { maxAffixes: 2, continueChance: 0.65 },
+  fabled:   { maxAffixes: 3, continueChance: 0.85 },
+};
+
 // ── Affixes ─────────────────────────────────────────────────────────
 // Hybrid ARPG: each item keeps a FIXED hand-written identity (name +
 // flavor + base stats). On top of that, every pickup instance rolls
@@ -140,9 +160,14 @@ export interface ItemSpec {
    * rollAffixes). Omit on items that should never be affix-rolled.
    */
   affixPool?: string[];
-  /** Max affixes that can roll on a single instance. Default 0 (no
-   *  affixes). Recommended 1–2 to keep variance readable. */
+  /** Max affixes that can roll on a single instance. Overrides the
+   *  rarity budget (RARITY_AFFIX_BUDGET) when set; otherwise rarity
+   *  decides. Recommended 1–2 to keep variance readable. */
   maxAffixes?: number;
+  /** Set membership — id into SETS (src/content/sets.ts). Equipping
+   *  enough pieces of the same set activates that set's threshold
+   *  bonuses. Omit on items that belong to no set. */
+  setId?: string;
 }
 
 export const ITEMS: Record<string, ItemSpec> = {
@@ -156,7 +181,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: SWORD_RUSTED,
     viewmodel: SWORD_RUSTED,
     weapon: { class: 'sword', reach: 1.8, coneHalfAngle: 0.65, damage: 1, critChance: 0.05, critMultiplier: 2.0 },
-    affixPool: ['keening', 'gallows', 'spine'],
+    affixPool: ['keening', 'gallows', 'spine', 'searing', 'hoarfrost'],
     maxAffixes: 1,
   },
   scimitar: {
@@ -174,7 +199,7 @@ export const ITEMS: Record<string, ItemSpec> = {
       class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0,
       onHit: { buffId: 'chill', chance: 0.4, duration: 2.5 },
     },
-    affixPool: ['keening', 'gallows', 'vile', 'patience'],
+    affixPool: ['keening', 'gallows', 'vile', 'patience', 'rending', 'serration'],
     maxAffixes: 2,
   },
   // ── STARTER WEAPONS ───────────────────────────────────────────────
@@ -204,8 +229,9 @@ export const ITEMS: Record<string, ItemSpec> = {
       class: 'dagger', reach: 1.5, coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5,
       onHit: { buffId: 'bleed', chance: 0.5, duration: 3 },
     },
-    affixPool: ['keening', 'gallows', 'spine'],
+    affixPool: ['keening', 'gallows', 'spine', 'serration', 'venom'],
     maxAffixes: 1,
+    setId: 'ossuary',
   },
   'iron-maul': {
     id: 'iron-maul',
@@ -229,7 +255,7 @@ export const ITEMS: Record<string, ItemSpec> = {
       class: 'hammer', reach: 2.0, coneHalfAngle: 0.85, damage: 2, critChance: 0, critMultiplier: 1,
       onHit: { buffId: 'sunder', chance: 0.5, duration: 4 },
     },
-    affixPool: ['gallows', 'spine', 'patience'],
+    affixPool: ['gallows', 'spine', 'patience', 'rending', 'searing'],
     maxAffixes: 1,
   },
   heartburn: {
@@ -247,7 +273,7 @@ export const ITEMS: Record<string, ItemSpec> = {
       class: 'sword', reach: 2.3, coneHalfAngle: 0.9, damage: 3, critChance: 0.22, critMultiplier: 2.5, attackSpeed: 1.15,
       onHit: { buffId: 'burn', chance: 0.6, duration: 2.5 },
     },
-    affixPool: ['vile', 'patience', 'gallows', 'keening', 'spine'],
+    affixPool: ['vile', 'patience', 'gallows', 'keening', 'spine', 'searing', 'venom'],
     maxAffixes: 2,
     modifiers: [
       { kind: 'weapon-damage', amount: 1 },
@@ -273,7 +299,7 @@ export const ITEMS: Record<string, ItemSpec> = {
       class: 'spear', reach: 3.0, coneHalfAngle: 0.42, damage: 2, critChance: 0.12, critMultiplier: 2.2,
       onHit: { buffId: 'bleed', chance: 0.4, duration: 3 },
     },
-    affixPool: ['keening', 'gallows', 'patience', 'spine'],
+    affixPool: ['keening', 'gallows', 'patience', 'spine', 'serration', 'venom'],
     maxAffixes: 2,
   },
   // ── RANGED WEAPONS ────────────────────────────────────────────────
@@ -299,7 +325,7 @@ export const ITEMS: Record<string, ItemSpec> = {
       class: 'crossbow', reach: 16, coneHalfAngle: 0.6, damage: 4, critChance: 0.15, critMultiplier: 2.5,
       ranged: { projectileId: 'crossbow-bolt' },
     },
-    affixPool: ['keening', 'gallows', 'patience', 'spine'],
+    affixPool: ['keening', 'gallows', 'patience', 'spine', 'searing', 'rending'],
     maxAffixes: 2,
   },
   wand: {
@@ -320,7 +346,7 @@ export const ITEMS: Record<string, ItemSpec> = {
       ranged: { projectileId: 'arcane-bolt' },
       onHit: { buffId: 'chill', chance: 0.3, duration: 2.5 },
     },
-    affixPool: ['vile', 'keening', 'patience', 'gallows'],
+    affixPool: ['vile', 'keening', 'patience', 'gallows', 'hoarfrost', 'venom'],
     maxAffixes: 2,
   },
   // ── ARMOR (chest slot) ─────────────────────────────────────────────
@@ -334,6 +360,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     modifiers: [{ kind: 'physical-armor', amount: 1 }],
     affixPool: ['cinder', 'salt', 'spine', 'patience'],
     maxAffixes: 1,
+    setId: 'pauper',
   },
   // ── HELMET ─────────────────────────────────────────────────────────
   'iron-coif': {
@@ -359,6 +386,7 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'max-hp', amount: 1 },
       { kind: 'magic-armor', amount: 1 },
     ],
+    setId: 'ossuary',
   },
   // ── GLOVES ─────────────────────────────────────────────────────────
   'leather-gloves': {
@@ -369,6 +397,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Stiffened by old blood. Someone else\'s.',
     dropModel: LEATHER_GLOVES,
     modifiers: [{ kind: 'weapon-damage', amount: 1 }],
+    setId: 'pauper',
   },
   // ── BOOTS ──────────────────────────────────────────────────────────
   'worn-boots': {
@@ -379,6 +408,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'They have walked further than you have.',
     dropModel: WORN_BOOTS,
     modifiers: [{ kind: 'physical-armor', amount: 1 }],
+    setId: 'pauper',
   },
   // ── OFFHAND ────────────────────────────────────────────────────────
   // The lamp is the player's default offhand. Equipping a shield (or any

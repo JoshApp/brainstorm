@@ -14,7 +14,19 @@ export function signed(n: number): string {
 }
 
 export function formatWeapon(w: WeaponStats): string {
+  if (w.ranged) {
+    // Ranged weapons hit-test the bolt, not a cone — reach/arc are the
+    // auto-aim window, not a melee swing, so present them as range.
+    return `Base Damage ${w.damage}  ·  Ranged  ·  Range ${w.reach.toFixed(0)}m`;
+  }
   return `Base Damage ${w.damage}  ·  Reach ${w.reach.toFixed(1)}m  ·  Arc ${(w.coneHalfAngle * 180 / Math.PI).toFixed(0)}°`;
+}
+
+/** "On hit: Bleed (50%)" — the weapon/affix/set status applicator line. */
+export function formatOnHit(oh: { buffId: string; chance: number; duration: number }): string {
+  const spec = BUFFS[oh.buffId];
+  const name = spec?.displayName ?? oh.buffId;
+  return `On hit: ${name} (${Math.round(oh.chance * 100)}%)`;
 }
 
 export function formatModifier(m: StatModifier): string {
@@ -67,6 +79,18 @@ export function formatBuffEffect(buffId: string, duration: number): string {
   }
   const effectStr = parts.length ? ` (${parts.join(', ')})` : '';
   return `${name}${effectStr} for ${duration}s`;
+}
+
+/** One set-bonus tier as "(2) +1 Physical Armor, On hit: Poison (35%)". */
+export function formatSetBonus(b: {
+  pieces: number;
+  modifiers?: StatModifier[];
+  onHit?: { buffId: string; chance: number; duration: number };
+}): string {
+  const parts: string[] = [];
+  if (b.modifiers) for (const m of b.modifiers) parts.push(formatModifier(m));
+  if (b.onHit) parts.push(formatOnHit(b.onHit));
+  return `(${b.pieces}) ${parts.join(', ')}`;
 }
 
 /** Strip a leading article and clamp to a tidy width for grid labels. */

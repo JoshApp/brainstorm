@@ -1,4 +1,4 @@
-import type { ItemSpec } from '../content/items';
+import { RARITY_AFFIX_BUDGET, type ItemSpec } from '../content/items';
 import { rollAffixes, type AffixInstance } from '../content/affixes';
 import type { StatModifier } from '../combat/modifiers';
 
@@ -20,10 +20,18 @@ export interface RolledInstance {
 
 /** Roll an instance for a freshly-picked-up item. Always returns a
  *  RolledInstance, even when the spec has no affix pool (just empty
- *  affixes). */
+ *  affixes).
+ *
+ *  Rarity drives the roll: the affix COUNT defaults to the rarity budget
+ *  (spec.maxAffixes overrides it when the author set one), and the
+ *  per-affix continueChance always comes from rarity — so a rare item
+ *  rolls more affixes, more reliably, than a mundane one. */
 export function rollItemInstance(spec: ItemSpec): RolledInstance {
-  const maxAffixes = spec.maxAffixes ?? 0;
-  const affixes = rollAffixes(spec.affixPool, maxAffixes);
+  const budget = RARITY_AFFIX_BUDGET[spec.rarity ?? 'mundane'];
+  // Author intent wins on count when set; otherwise the rarity budget.
+  // An item with no affixPool still resolves to empty affixes below.
+  const maxAffixes = spec.maxAffixes ?? budget.maxAffixes;
+  const affixes = rollAffixes(spec.affixPool, maxAffixes, budget.continueChance);
   return { spec, affixes };
 }
 

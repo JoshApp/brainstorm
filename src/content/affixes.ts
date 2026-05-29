@@ -33,7 +33,16 @@ export interface AffixSpec {
    * modifiers (e.g. flat +HP) use integer rolls; fractional ones
    * (crit chance, multipliers) use float rolls.
    */
-  rolls: AffixRollSpec[];
+  rolls?: AffixRollSpec[];
+  /**
+   * On-hit status infliction granted by this affix. When a weapon rolls
+   * this affix, each landed hit rolls `chance` and, on success, applies
+   * the buff to the struck enemy. This is what makes an affix BEHAVIORAL
+   * — a "venom-etched" sword poisons, "searing" burns — not just a stat
+   * stick. Stacks alongside the weapon's own base onHit (a serrated
+   * blade that also rolls venom does both). Only meaningful on weapons.
+   */
+  onHit?: { buffId: string; chance: number; duration: number };
 }
 
 export interface AffixRollSpec {
@@ -49,6 +58,9 @@ export interface AffixInstance {
   affixId: string;
   suffix: string;
   modifiers: StatModifier[];
+  /** On-hit status carried by this affix (weapons). Copied through from
+   *  the AffixSpec at roll time; aggregated by getPlayerOnHits(). */
+  onHit?: { buffId: string; chance: number; duration: number };
 }
 
 /** Affix registry. Add new ones here; reference by id from
@@ -106,6 +118,43 @@ export const AFFIXES: Record<string, AffixSpec> = {
       { kind: 'physical-armor', min: 1, max: 1, integer: true },
     ],
   },
+
+  // ── On-hit tier — BEHAVIORAL affixes (weapons only) ──────────────
+  // These don't roll stats; they roll an on-hit status. A weapon that
+  // lands one turns that weapon into a status applicator on top of its
+  // base identity. Tighter weight than stat affixes so a status-roll
+  // feels like a real find. The chance/duration are fixed per affix
+  // (no range) — the variance is WHETHER it rolled, not how strong.
+  'venom': {
+    id: 'venom',
+    suffix: 'venom-etched',
+    weight: 1,
+    onHit: { buffId: 'poison', chance: 0.35, duration: 4 },
+  },
+  'serration': {
+    id: 'serration',
+    suffix: 'serrated',
+    weight: 1,
+    onHit: { buffId: 'bleed', chance: 0.4, duration: 3 },
+  },
+  'searing': {
+    id: 'searing',
+    suffix: 'searing',
+    weight: 1,
+    onHit: { buffId: 'burn', chance: 0.4, duration: 2.5 },
+  },
+  'hoarfrost': {
+    id: 'hoarfrost',
+    suffix: 'hoarfrost-kissed',
+    weight: 1,
+    onHit: { buffId: 'chill', chance: 0.4, duration: 2.5 },
+  },
+  'rending': {
+    id: 'rending',
+    suffix: 'rending',
+    weight: 1,
+    onHit: { buffId: 'sunder', chance: 0.4, duration: 4 },
+  },
 };
 
 /**
@@ -114,11 +163,17 @@ export const AFFIXES: Record<string, AffixSpec> = {
  * ranges; returns the rolled AffixInstance list ready to be stored on
  * the item.
  *
+ * `continueChance` is the probability of rolling ANOTHER affix after
+ * each one (gated up to maxCount). Higher-rarity items pass a higher
+ * value so they're more likely to come fully loaded — that's the
+ * mechanical meaning of rarity (see RARITY_AFFIX_BUDGET in items.ts).
+ *
  * Returns an empty array if the pool is missing/empty or maxCount <= 0.
  */
 export function rollAffixes(
   affixPoolIds: readonly string[] | undefined,
   maxCount: number,
+  continueChance = 0.45,
 ): AffixInstance[] {
   if (!affixPoolIds || affixPoolIds.length === 0 || maxCount <= 0) return [];
   const pool = affixPoolIds
@@ -144,18 +199,18 @@ export function rollAffixes(
     }
     if (!chosen) chosen = candidates[candidates.length - 1];
 
-    // Roll the affix's stat ranges.
-    const mods: StatModifier[] = chosen.rolls.map((roll) => {
+    // Roll the affix's stat ranges (behavioral on-hit affixes have none).
+    const mods: StatModifier[] = (chosen.rolls ?? []).map((roll) => {
       const raw = roll.min + gameRng() * (roll.max - roll.min);
       const amount = roll.integer ? Math.round(raw) : Math.round(raw * 100) / 100;
       return { kind: roll.kind, amount } as StatModifier;
     });
-    picked.push({ affixId: chosen.id, suffix: chosen.suffix, modifiers: mods });
+    picked.push({ affixId: chosen.id, suffix: chosen.suffix, modifiers: mods, onHit: chosen.onHit });
     usedIds.add(chosen.id);
 
-    // Each subsequent affix has a lower chance to even appear. Roll
-    // a 60% gate after the first — gives "mostly 1 affix, sometimes 2."
-    if (i + 1 < maxCount && gameRng() > 0.55) break;
+    // Each subsequent affix is gated on continueChance — higher rarity
+    // passes a higher value, so it's more likely to come fully loaded.
+    if (i + 1 < maxCount && gameRng() > continueChance) break;
   }
   return picked;
 }

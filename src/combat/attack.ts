@@ -10,6 +10,7 @@ import { playImpact, playWhoosh } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
+import { getPlayerOnHits } from '../player/equipment';
 import type { ResolvedWeaponStats } from '../content/weapon-classes';
 import { computePlayerStats } from './modifiers';
 import { gameRngChance } from '../engine/rng';
@@ -85,6 +86,10 @@ export function createCombatSystem(
       damage: dmg,
       source: 'player',
       friendly: true,
+      // Carry the player's on-hit statuses onto the bolt so a ranged
+      // weapon's base on-hit (the wand's chill) + on-hit affixes + set
+      // bonuses all land when it strikes an enemy — same rules as melee.
+      onHits: getPlayerOnHits(),
     });
     playWhoosh();
     hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
@@ -184,15 +189,19 @@ export function createCombatSystem(
     hitPoint.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
     if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit);
 
-    // On-hit status — a serrated/venomed weapon applies its status to the
-    // struck enemy. Stacking statuses (bleed/poison) build per hit, so a
-    // fast weapon ramps them. Only on "heavy" targets (enemies), never
-    // props — an urn doesn't bleed.
-    if (weapon.onHit && target.hitFeedback === 'heavy') {
-      const oh = weapon.onHit;
-      if (gameRngChance(oh.chance)) {
-        const ent = getEntity(target.entityId);
-        if (ent) applyBuff(ent, oh.buffId, oh.duration, 'player');
+    // On-hit status — every source the player carries (weapon base
+    // on-hit + on-hit affixes rolled on the weapon + active set on-hits)
+    // rolls independently against the struck enemy. So a serrated,
+    // venom-etched needle in the bone set can bleed AND poison AND
+    // set-poison off one hit. Stacking statuses (bleed/poison) build per
+    // hit, so a fast weapon ramps them. Heavy targets only — an urn
+    // doesn't bleed.
+    if (target.hitFeedback === 'heavy') {
+      const ent = getEntity(target.entityId);
+      if (ent) {
+        for (const oh of getPlayerOnHits()) {
+          if (gameRngChance(oh.chance)) applyBuff(ent, oh.buffId, oh.duration, 'player');
+        }
       }
     }
 

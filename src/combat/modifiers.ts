@@ -1,7 +1,7 @@
 import { CONFIG } from '../config';
 import type { EntityId, PassiveSpec } from '../ecs/types';
 import { get } from '../ecs/world';
-import { getEquipment, aggregateAffixModifiers } from '../player/equipment';
+import { getEquipment, aggregateAffixModifiers, aggregateSetModifiers } from '../player/equipment';
 import { BUFFS } from '../content/buffs';
 import { getCharacter } from '../state/character';
 
@@ -52,6 +52,8 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
     // — see src/player/equipment.ts — so the base spec stays shared
     // while each pickup can carry its own rolled tweaks.
     out.push(...aggregateAffixModifiers());
+    // Active set-bonus modifiers (enough matched pieces equipped).
+    out.push(...aggregateSetModifiers());
   }
 
   // 2. Active buffs ticking on this entity.

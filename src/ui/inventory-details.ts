@@ -1,13 +1,14 @@
-import { equipFromInventory, unequipSlot } from '../player/equipment';
+import { equipFromInventory, unequipSlot, getEquipment } from '../player/equipment';
 import { addItemSilently, removeItem } from '../player/inventory';
 import { getPlayerHp, getPlayerMaxHp, healPlayer } from '../player/health';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
+import { SETS } from '../content/sets';
 import { BUFFS } from '../content/buffs';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
 import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
-import { formatWeapon, formatModifier, formatPassive, formatBuffEffect, hexCss } from './item-format';
+import { formatWeapon, formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus, hexCss } from './item-format';
 import {
   CARD_BG, TEXT_PRIMARY, TEXT_DIM, TEXT_FAINT, sectionLabel,
   type Selection, type InventoryCtx,
@@ -222,6 +223,7 @@ function describeItem(item: ItemSpec): HTMLDivElement[] {
 
   if (item.weapon) {
     lines.push(detailLine(formatWeapon(item.weapon)));
+    if (item.weapon.onHit) lines.push(detailLine(formatOnHit(item.weapon.onHit)));
   }
   if (item.modifiers && item.modifiers.length) {
     for (const m of item.modifiers) lines.push(detailLine(formatModifier(m)));
@@ -239,10 +241,32 @@ function describeItem(item: ItemSpec): HTMLDivElement[] {
       : item.consumableBuff.buffId;
     lines.push(detailLine(`On use: ${buffDesc}`));
   }
+  // Set membership — show the set name, current equipped count, and each
+  // tier's bonus, dimming tiers not yet met. Lets the player SEE why
+  // keeping a matched piece over a strictly-better loose drop pays off.
+  if (item.setId) {
+    const set = SETS[item.setId];
+    if (set) {
+      const have = countEquippedInSet(item.setId);
+      lines.push(detailLine(`${set.name}  (${have} worn)`));
+      for (const b of set.bonuses) {
+        lines.push(detailLine(formatSetBonus(b), /*dim*/ have < b.pieces));
+      }
+    }
+  }
   if (lines.length === 0) {
     lines.push(detailLine('No effects.', /*dim*/ true));
   }
   return lines;
+}
+
+/** How many currently-equipped items belong to the given set. */
+function countEquippedInSet(setId: string): number {
+  let n = 0;
+  for (const slot of Object.values(getEquipment())) {
+    if (slot?.setId === setId) n++;
+  }
+  return n;
 }
 
 function detailLine(text: string, dim = false): HTMLDivElement {
