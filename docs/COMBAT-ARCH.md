@@ -85,21 +85,28 @@ Two layers, both procedural (no model files, fits the PS1/Lunacid look):
 
 1. **Presence** (`spec.presence`) — the ambient idle overlay (spectral
    float, lurch, twitch, coiled, chant). Always on, per-instance phase.
-2. **Telegraph poses** (`applyTelegraph`) — keyed to the ability's
-   phase + flavour. `swing` = lean-back→slam, `cast` = subtle→hold,
-   `charge` = coil-back→lunge. Crude 2-key lerps on the `rig`, but
-   enough to make each attack *read* differently.
+2. **Telegraph pose-clips** (`mobs/pose-clips.ts` + `applyTelegraph`) —
+   data-driven per telegraph flavour: `swing` = lean-back→slam, `cast`
+   = subtle→thrust, `charge` = coil-back→lunge. Each pose is additive
+   offsets on named rig nodes — `rigTilt` (body lean) + `bob` (rise) on
+   EVERY enemy, plus `armSwing` (shoulder pivots) on models that have
+   them. Nodes that don't exist no-op, so one clip works on a fully-
+   rigged humanoid and a limbless blob alike.
 
-### Next animation step (not done yet)
+### Jointed limbs (the shared rig)
 
-Generalise telegraph poses into **declarative pose-clips**: a clip = a
-set of `{ part, rot/pos/scale: [from,to], ease }` tracks lerped over a
-phase. This needs a **shared named-part rig** (humanoids declare
-`torso, head, armL/R, legL/R`; blobs `body, core`) so one "swing" clip
-targets any humanoid. The models currently only name `rig/body/head`
-(+ eye halos) — adding limbs is the prerequisite. Until then,
-`applyTelegraph` does whole-body poses, which is enough for charge vs
-swing vs cast to read.
+`SlotSpec.parent` (build-model) lets a slot nest under another node, so
+a **shoulder pivot** parented to the body `rig` both swings its arm and
+follows the body lean. The arm + fist hang below the pivot; the pose-
+clip rotates the pivot. Proven on the **skirmisher** (its charge/slash
+now swing the arms). Rest pose is unchanged — the pivot + arm offset
+reproduce the old arm position exactly.
+
+**Rollout pending:** convert the other humanoids (ghoul, acolyte,
+wraith, stoneguard, defiler) to shoulder-pivot arms so their swings/
+casts animate too — same pattern, one model at a time. Then legs +
+head as named pivots for richer idle/locomotion. This is the
+incremental path to the full named-part rig.
 
 ## Models — current + next
 

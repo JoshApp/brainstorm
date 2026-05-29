@@ -160,6 +160,14 @@ export type PartSpec =
 export interface SlotSpec {
   pos: Vec3;
   rot?: Vec3;
+  /**
+   * Optional parent — another slot or a named part. When set, the slot
+   * is nested under that node so it inherits its transform (and its
+   * `pos`/`rot` are interpreted in the parent's local space). Used for
+   * jointed rigs: a shoulder slot parented to the body `rig` swings the
+   * arm AND follows the body's lean. Default: direct child of the model
+   * root. */
+  parent?: string;
 }
 
 export interface LightSpec {

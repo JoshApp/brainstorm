@@ -475,6 +475,11 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
       rig: { pos: [0, 1.00, 0] },
       weapon:   { pos: [0.28, 1.0, 0] satisfies Vec3 },
       head_top: { pos: [0,    1.85, 0] satisfies Vec3 },
+      // Shoulder PIVOTS — parented to the rig so they follow the body
+      // lean AND can swing the arms independently (the pose-clip layer
+      // rotates these). Arms + fists hang below each pivot.
+      shoulderL: { pos: [-0.24, 0.16, 0], parent: 'rig' },
+      shoulderR: { pos: [ 0.24, 0.16, 0], parent: 'rig' },
     },
     parts: [
       // FEET — narrow boxes (not cylinders like ghoul). Reads pointier,
@@ -499,12 +504,14 @@ function skirmisherModel(bodyColor: number, eyeColor: number, eyeEmissive: numbe
       // Shoulder humps — small + symmetric.
       { parent: 'rig', kind: 'sphere', pos: [-0.22, 0.25, 0], radius: 0.12, segments: [12, 10], mat: 'body', jitter: 0.011 },
       { parent: 'rig', kind: 'sphere', pos: [ 0.22, 0.25, 0], radius: 0.12, segments: [12, 10], mat: 'body', jitter: 0.011 },
-      // Arms — long thin capsules.
-      { parent: 'rig', kind: 'capsule', pos: [-0.24, -0.12, 0.04], radius: 0.050, height: 0.55, mat: 'body', jitter: 0.011 },
-      { parent: 'rig', kind: 'capsule', pos: [ 0.24, -0.12, 0.04], radius: 0.050, height: 0.55, mat: 'body', jitter: 0.011 },
-      // Small fists.
-      { parent: 'rig', kind: 'sphere', pos: [-0.24, -0.42, 0.04], radius: 0.060, segments: [10, 8], mat: 'body', jitter: 0.010 },
-      { parent: 'rig', kind: 'sphere', pos: [ 0.24, -0.42, 0.04], radius: 0.060, segments: [10, 8], mat: 'body', jitter: 0.010 },
+      // Arms — long thin capsules, hung from the shoulder PIVOTS (not
+      // the rig) so the pose-clip layer can swing them on the charge.
+      // pos is relative to the shoulder slot; the capsule hangs below it.
+      { parent: 'shoulderL', kind: 'capsule', pos: [0, -0.28, 0.04], radius: 0.050, height: 0.55, mat: 'body', jitter: 0.011 },
+      { parent: 'shoulderR', kind: 'capsule', pos: [0, -0.28, 0.04], radius: 0.050, height: 0.55, mat: 'body', jitter: 0.011 },
+      // Small fists — at the end of each arm, also under the pivot.
+      { parent: 'shoulderL', kind: 'sphere', pos: [0, -0.58, 0.04], radius: 0.060, segments: [10, 8], mat: 'body', jitter: 0.010 },
+      { parent: 'shoulderR', kind: 'sphere', pos: [0, -0.58, 0.04], radius: 0.060, segments: [10, 8], mat: 'body', jitter: 0.010 },
       // Head — narrow + slightly forward (craned, scout-like).
       { name: 'head', parent: 'rig', kind: 'sphere',  pos: [0, 0.50, -0.06], scale: [0.85, 1.05, 1.05], radius: 0.20, mat: 'body', jitter: 0.012 },
       // Eyes — wider apart than ghoul, push the alert-predator read.

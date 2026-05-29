@@ -5,6 +5,7 @@ import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { resolveAbilities, meleeReachOf, aoeEffectOf, type Ability } from '../content/abilities';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
+import { TELEGRAPH_POSES, poseValue, type TelegraphStyle } from './pose-clips';
 import type { WalkableRegion } from '../level/walkable';
 import type { NavGrid, Waypoint } from '../level/nav-grid';
 import {
@@ -163,6 +164,13 @@ export function createEnemy(
   // part OR a slot (slots are pure anchors useful when an enemy has a 'rig'
   // group holding everything that should tilt together).
   const tiltPart = built.parts.get(spec.tiltPartName) ?? built.slots.get(spec.tiltPartName);
+  // Jointed-arm pivots (optional). Models that declare shoulderL/R slots
+  // (parented to the rig) get their arms swung by the pose-clip layer;
+  // models without them fall back to body-only telegraph motion.
+  const shoulderL = built.slots.get('shoulderL');
+  const shoulderR = built.slots.get('shoulderR');
+  const shoulderBaseLX = shoulderL ? shoulderL.rotation.x : 0;
+  const shoulderBaseRX = shoulderR ? shoulderR.rotation.x : 0;
   const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
   const eyeMat   = built.materials.get(spec.eyeMaterialName)   as THREE.MeshStandardMaterial | undefined;
 
@@ -586,31 +594,18 @@ export function createEnemy(
   }
 
   /** Telegraph + strike pose per ability flavour, driven by phase
-   *  progress t (0..1). Generalises the old hardcoded windup/strike
-   *  poses; gives each telegraph style a distinct, crude read:
-   *    swing  — lean back, then slam forward (the baseline melee).
-   *    cast   — small lean, hold steady (the caster).
-   *    charge — coil back hard, then lunge far forward (the charger). */
+   *  progress t (0..1). Data-driven via TELEGRAPH_POSES (pose-clips.ts):
+   *  body lean + rise on every enemy, plus an arm swing on models that
+   *  have shoulder pivots (graceful no-op otherwise). Eye flare ramps
+   *  with the windup, holds at strike, fades over recover. */
   function applyTelegraph(style: Ability['telegraph'], phase: 'windup' | 'strike' | 'recover', t: number) {
-    const s = style ?? 'swing';
-    if (phase === 'windup') {
-      setEyeFlare(t);
-      if (s === 'charge') { applyTilt(-0.45 * t); built.group.position.y = 0.04 * t; }
-      else if (s === 'cast') { applyTilt(0.18 * t); built.group.position.y = 0.06 * t; }
-      else { applyTilt(0.5 * t); built.group.position.y = 0.10 * t; }
-    } else if (phase === 'strike') {
-      setEyeFlare(1);
-      if (s === 'charge') applyTilt(-0.5);          // big forward lunge
-      else if (s === 'cast') applyTilt(0);
-      else applyTilt(-0.25);                         // swing follow-through
-      built.group.position.y = 0;
-    } else {
-      // recover — ease tilt back to neutral, eyes fade.
-      const from = s === 'charge' ? -0.5 : s === 'cast' ? 0 : -0.25;
-      applyTilt(THREE.MathUtils.lerp(from, 0, t));
-      setEyeFlare(1 - t);
-      built.group.position.y = 0;
-    }
+    const pose = TELEGRAPH_POSES[(style ?? 'swing') as TelegraphStyle];
+    applyTilt(poseValue(pose.rigTilt, phase, t));
+    built.group.position.y = poseValue(pose.bob, phase, t);
+    const arm = poseValue(pose.armSwing, phase, t);
+    if (shoulderL) shoulderL.rotation.x = shoulderBaseLX + arm;
+    if (shoulderR) shoulderR.rotation.x = shoulderBaseRX + arm;
+    setEyeFlare(phase === 'windup' ? t : phase === 'strike' ? 1 : 1 - t);
   }
 
   /** Run one ability effect during the strike phase. Instantaneous

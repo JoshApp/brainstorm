@@ -79,6 +79,26 @@ export function buildModel(spec: ModelSpec): BuiltModel {
     parentNode.add(child);
   }
 
+  // Third pass: nest any SLOT that declares a parent (slot or part).
+  // Enables jointed rigs — a shoulder slot parented to the body `rig`
+  // both swings its arm and inherits the body's lean. Runs after parts
+  // are built so a slot can parent to a named part too; the slot keeps
+  // its authored local pos/rot (now interpreted in the parent's space).
+  if (spec.slots) {
+    for (const [name, slotSpec] of Object.entries(spec.slots)) {
+      if (!slotSpec.parent) continue;
+      const node = slots.get(name);
+      const parentNode = slots.get(slotSpec.parent) ?? parts.get(slotSpec.parent);
+      if (!node) continue;
+      if (!parentNode) {
+        // eslint-disable-next-line no-console
+        console.warn(`Slot "${name}" references unknown parent "${slotSpec.parent}"`);
+        continue;
+      }
+      parentNode.add(node);
+    }
+  }
+
   // Lights are NOT created here anymore — every PointLight in the scene
   // is owned by src/scene/light-pool.ts. buildModel reports the model's
   // optional light SPEC (color/intensity/distance/decay/local-pos) and
