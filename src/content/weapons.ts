@@ -222,6 +222,56 @@ export const IRON_MAUL: ModelSpec = {
   },
 };
 
+// Crossbow viewmodel — a stock running forward (−Z), two splayed bow
+// arms at the front, a loaded bolt down the groove. Hand-scale, points
+// where the player faces so the fire reads forward.
+export const CROSSBOW: ModelSpec = {
+  id: 'weapon-crossbow',
+  materials: {
+    wood:  { color: 0x3a2a1a, roughness: 0.85, metalness: 0.1, fog: false, flatShading: 'auto' },
+    metal: { color: 0x6a6258, roughness: 0.5, metalness: 0.7, fog: false, flatShading: 'auto' },
+    bolt:  { color: 0x9a8a70, roughness: 0.7, metalness: 0.3, fog: false, flatShading: 'auto' },
+  },
+  parts: [
+    // Stock — runs forward along −Z.
+    { kind: 'box', pos: [0, 0, -0.06], size: [0.035, 0.05, 0.26], mat: 'wood', jitter: 0.004 },
+    // Grip — drops below the stock.
+    { kind: 'box', pos: [0, -0.07, 0.02], size: [0.03, 0.10, 0.05], mat: 'wood' },
+    // Bow arms — a wide thin bar across X at the front, slightly swept.
+    { kind: 'box', pos: [0, 0.01, -0.18], size: [0.30, 0.018, 0.02], mat: 'metal', jitter: 0.003 },
+    // String hint — a thin bar behind the arms.
+    { kind: 'box', pos: [0, 0.012, -0.10], size: [0.26, 0.006, 0.006], mat: 'metal' },
+    // Loaded bolt — thin shaft down the groove, tip forward.
+    { kind: 'cylinder', pos: [0, 0.03, -0.14], radius: 0.008, height: 0.22, rot: [Math.PI / 2, 0, 0], mat: 'bolt' },
+  ],
+  slots: {
+    muzzle: { pos: [0, 0.03, -0.28] },
+  },
+};
+
+// Wand viewmodel — a gnarled rod with a bright arcane orb at the tip.
+// The orb's emissive sells "this casts" even at rest.
+export const WAND: ModelSpec = {
+  id: 'weapon-wand',
+  materials: {
+    wood: { color: 0x241a12, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
+    orb:  { color: 0x000000, emissive: 0xb060ff, emissiveIntensity: 2.6, roughness: 1.0, fog: false },
+  },
+  parts: [
+    // Shaft — thin rod pointing forward (−Z).
+    { kind: 'cylinder', pos: [0, 0, -0.04], radius: 0.012, height: 0.26, rot: [Math.PI / 2, 0, 0], mat: 'wood', jitter: 0.006 },
+    // Grip wrap.
+    { kind: 'cylinder', pos: [0, -0.005, 0.06], radius: 0.018, height: 0.08, rot: [Math.PI / 2, 0, 0], mat: 'wood' },
+    // Arcane orb at the tip.
+    { kind: 'sphere', pos: [0, 0.005, -0.18], radius: 0.035, segments: [12, 10], mat: 'orb' },
+    // Halo so the cast colour reads at a glance.
+    { kind: 'sprite', pos: [0, 0.005, -0.18], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: 0xb060ff },
+  ],
+  slots: {
+    muzzle: { pos: [0, 0.005, -0.22] },
+  },
+};
+
 export const WEAPON_SCIMITAR: ModelSpec = {
   id: 'weapon-scimitar',
   materials: {

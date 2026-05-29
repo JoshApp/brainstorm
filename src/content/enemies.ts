@@ -1076,6 +1076,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
       pool: [
         { itemId: 'healing-potion', weight: 4 },
         { itemId: 'bone-amulet', weight: 1 },
+        // The caster drops its implement — a rare arcane-bolt wand. Low
+        // weight so it's a genuine find, thematically sourced from the
+        // thing that was casting at you.
+        { itemId: 'wand', weight: 1 },
       ],
     },
   },
@@ -1481,6 +1485,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { itemId: 'healing-potion', weight: 4 },
         { itemId: 'bone-amulet', weight: 1 },
         { itemId: 'iron-coif', weight: 2 },
+        // The armed undead drops its crossbow — uncommon physical ranged.
+        // Modest weight so it shows up reliably enough to let a player
+        // try the ranged playstyle without being guaranteed.
+        { itemId: 'crossbow', weight: 2 },
       ],
     },
   },

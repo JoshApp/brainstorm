@@ -60,6 +60,9 @@ export interface ResolvedWeaponStats {
   comboWindowMs: number;
   /** On-hit status infliction, passed through from the weapon spec. */
   onHit?: { buffId: string; chance: number; duration: number };
+  /** Ranged projectile (crossbow/wand) — strike fires this instead of a
+   *  melee cone hit. Passed through from the weapon spec. */
+  ranged?: { projectileId: string };
 }
 
 interface ClassDefaults {
@@ -111,6 +114,23 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     // means chaining feels OK on a less twitchy press.
     comboWindowMs: 520,
   },
+  // RANGED classes — a single "fire" step (no combo chain). The strike
+  // spawns the weapon's projectile (combat/attack.ts) instead of a melee
+  // cone; the long recover IS the reload/draw — the cadence cost that
+  // keeps ranged from obsoleting melee. Reuse the 'sword-thrust' pose for
+  // now (a forward jab reads acceptably as a fire gesture) until a proper
+  // fire/recoil pose lands. comboWindowMs 0 → never chains.
+  crossbow: {
+    // Crossbow — quick fire, long reload.
+    combo: [{ pose: 'sword-thrust', windup: 0.12, strike: 0.10, recover: 0.85 }],
+    comboWindowMs: 0,
+  },
+  wand: {
+    // Wand — a channelled draw (longer windup), shorter recover; the
+    // bolt comes off a wind-up rather than a reload.
+    combo: [{ pose: 'sword-thrust', windup: 0.45, strike: 0.10, recover: 0.55 }],
+    comboWindowMs: 0,
+  },
 };
 
 // Per-proficiency bonus tuning. Each point of weapon-class proficiency
@@ -160,5 +180,6 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     combo,
     comboWindowMs: baseT.comboWindowMs,
     onHit: spec.onHit,
+    ranged: spec.ranged,
   };
 }

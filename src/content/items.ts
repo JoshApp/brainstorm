@@ -2,7 +2,7 @@ import type { ModelSpec } from '../ecs/model-types';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 import { SWORD_RUSTED } from './sword';
-import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL } from './weapons';
+import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, CROSSBOW, WAND } from './weapons';
 import {
   HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
@@ -57,7 +57,7 @@ export const RARITY_COLORS: Record<Rarity, number> = {
  *   sword   balanced diagonal slash; medium reach + cone
  *   hammer  slow overhead smash; long reach, wide cone, no crits
  */
-export type WeaponClass = 'dagger' | 'sword' | 'hammer';
+export type WeaponClass = 'dagger' | 'sword' | 'hammer' | 'crossbow' | 'wand';
 
 /** Combat stats — only set on items that are weapons. */
 export interface WeaponStats {
@@ -91,6 +91,14 @@ export interface WeaponStats {
    * (bleed/poison) build with repeated hits.
    */
   onHit?: { buffId: string; chance: number; duration: number };
+  /**
+   * RANGED weapon. When set, the weapon FIRES this projectile at the
+   * auto-target on its strike instead of doing a melee cone hit. The
+   * weapon's class (crossbow/wand) provides the slow draw/reload
+   * cadence — the constraint that keeps ranged from obsoleting melee.
+   * See docs/WEAPONS.md.
+   */
+  ranged?: { projectileId: string };
 }
 
 export interface ItemSpec {
@@ -245,6 +253,53 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'weapon-damage', amount: 1 },
       { kind: 'damage-multiplier', amount: 1.15 },
     ],
+  },
+  // ── RANGED WEAPONS ────────────────────────────────────────────────
+  // The main-hand ranged class. A ranged weapon's `ranged.projectileId`
+  // makes attack.ts fire a bolt instead of swinging a cone. The cadence
+  // constraint (slow recover = reload, set in weapon-classes.ts) is what
+  // keeps ranged from obsoleting melee — you get one shot, then a beat
+  // of vulnerability. Auto-target cone + tap-target focus do the aiming
+  // so it stays one-thumb. See docs/WEAPONS.md.
+  crossbow: {
+    id: 'crossbow',
+    kind: 'weapon',
+    rarity: 'uncommon',
+    name: 'A heavy crossbow',
+    flavor: 'Patience, then a single certainty.',
+    dropModel: CROSSBOW,
+    viewmodel: CROSSBOW,
+    // Physical bolt — respects armour, so it's a clean damage check, not
+    // a finesse weapon. High base damage to reward the slow reload; the
+    // reach/cone fields are vestigial for a ranged weapon (the bolt
+    // hit-tests in projectile-pool) but kept for the target-pick cone.
+    weapon: {
+      class: 'crossbow', reach: 16, coneHalfAngle: 0.6, damage: 4, critChance: 0.15, critMultiplier: 2.5,
+      ranged: { projectileId: 'crossbow-bolt' },
+    },
+    affixPool: ['keening', 'gallows', 'patience', 'spine'],
+    maxAffixes: 2,
+  },
+  wand: {
+    id: 'wand',
+    kind: 'weapon',
+    rarity: 'rare',
+    name: 'A wand of cold fire',
+    flavor: 'It asks nothing and gives less.',
+    dropModel: WAND,
+    viewmodel: WAND,
+    // Arcane bolt — MAGIC damage, bypasses physical armour, so it's the
+    // answer to plated targets the crossbow struggles with. Lower base
+    // than the crossbow (armour-bypass is the payoff) but a touch faster
+    // recover lives in weapon-classes. Chance to chill on hit — the
+    // caster's control tool.
+    weapon: {
+      class: 'wand', reach: 16, coneHalfAngle: 0.6, damage: 3, critChance: 0.12, critMultiplier: 2.0,
+      ranged: { projectileId: 'arcane-bolt' },
+      onHit: { buffId: 'chill', chance: 0.3, duration: 2.5 },
+    },
+    affixPool: ['vile', 'keening', 'patience', 'gallows'],
+    maxAffixes: 2,
   },
   // ── ARMOR (chest slot) ─────────────────────────────────────────────
   'tattered-cloak': {

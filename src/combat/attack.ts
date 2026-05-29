@@ -6,14 +6,16 @@ import type { Destructible } from '../level/destructibles';
 import type { Damageable } from './damageable';
 import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
-import { playImpact } from '../audio/sfx';
+import { playImpact, playWhoosh } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
+import type { ResolvedWeaponStats } from '../content/weapon-classes';
 import { computePlayerStats } from './modifiers';
 import { gameRngChance } from '../engine/rng';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
+import { spawnProjectile, setProjectileEnemyProvider } from './projectile-pool';
 
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
@@ -37,6 +39,14 @@ function hapticVibrate(ms: number) {
 // Reusable scratch vectors.
 const forwardDir = new THREE.Vector3();
 const hitPoint = new THREE.Vector3();
+const tmpMuzzle = new THREE.Vector3();
+const tmpAim = new THREE.Vector3();
+
+// Ranged auto-aim — generous so the player never has to aim precisely
+// (one-thumb). Long reach + a wide cone; the nearest in-arc enemy is the
+// shot's target.
+const RANGED_REACH = 16;
+const RANGED_CONE_COS = Math.cos(0.6);   // ~34° half-angle auto-aim arc
 
 export function createCombatSystem(
   camera: THREE.Camera,
@@ -46,6 +56,39 @@ export function createCombatSystem(
 ): CombatSystem {
   let strikeAlreadyHit = false;
   let wasStriking = false;
+
+  // Friendly projectiles (crossbow/wand) hit-test enemies via this
+  // provider — registered here so the projectile pool's tick needn't
+  // take an extra arg (keeps the main-loop call site untouched).
+  setProjectileEnemyProvider(getEnemies);
+
+  /** Fire the equipped ranged weapon's projectile at the auto-target
+   *  (nearest enemy in the forward arc) or straight ahead if none. */
+  function fireRanged(weapon: ResolvedWeaponStats) {
+    if (!weapon.ranged) return;
+    const target = pickTarget(getEnemies(), camera, forwardDir, Math.hypot(forwardDir.x, forwardDir.z) || 1, RANGED_REACH * RANGED_REACH, RANGED_CONE_COS);
+    // Muzzle just in front of + below the camera so the bolt reads as
+    // leaving the weapon, not the eye.
+    tmpMuzzle.copy(camera.position).addScaledVector(forwardDir, 0.5);
+    tmpMuzzle.y -= 0.15;
+    if (target) {
+      tmpAim.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
+    } else {
+      tmpAim.copy(camera.position).addScaledVector(forwardDir, RANGED_REACH);
+    }
+    const crit = gameRngChance(weapon.critChance ?? 0);
+    const dmg = crit ? weapon.damage * (weapon.critMultiplier ?? 2) : weapon.damage;
+    spawnProjectile({
+      typeId: weapon.ranged.projectileId,
+      origin: tmpMuzzle,
+      target: tmpAim,
+      damage: dmg,
+      source: 'player',
+      friendly: true,
+    });
+    playWhoosh();
+    hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
+  }
 
   function tick(attackPressed: boolean) {
     if (attackPressed) {
@@ -70,6 +113,15 @@ export function createCombatSystem(
     const weapon = getCurrentWeapon();
     const reachSq = weapon.reach * weapon.reach;
     const cosConeHalf = Math.cos(weapon.coneHalfAngle);
+
+    // RANGED branch — a crossbow/wand FIRES a projectile at the auto-
+    // target instead of doing a melee cone hit. One shot per strike
+    // (strikeAlreadyHit), the weapon's slow recover IS the reload.
+    if (weapon.ranged) {
+      fireRanged(weapon);
+      strikeAlreadyHit = true;
+      return;
+    }
 
     // Cone check runs in the HORIZONTAL plane only. A 3D check breaks at
     // very close range: when a tall enemy (e.g. wraith) is pressed against

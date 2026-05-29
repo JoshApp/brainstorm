@@ -56,8 +56,38 @@ export const BONE_SHARD: ProjectileType = {
   lightRange: 2.2,
 };
 
+// Crossbow bolt — the player's physical ranged shot. Fast + small +
+// barely-glowing (it's a quarrel, not magic); a faint warm tracer so
+// it reads crossing the dark.
+export const CROSSBOW_BOLT: ProjectileType = {
+  id: 'crossbow-bolt',
+  radius: 0.09,
+  speed: 13.0,
+  lifetime: 1.6,
+  damageType: 'physical',
+  color: 0xffd9a0,
+  lightIntensity: 0.4,
+  lightRange: 1.8,
+};
+
+// Arcane bolt — the player's wand shot. Magic (bypasses physical
+// armour), slower + bigger + brightly violet so the caster playstyle
+// reads distinct from the crossbow.
+export const ARCANE_BOLT: ProjectileType = {
+  id: 'arcane-bolt',
+  radius: 0.15,
+  speed: 9.0,
+  lifetime: 2.4,
+  damageType: 'magic',
+  color: 0xb060ff,
+  lightIntensity: 1.4,
+  lightRange: 3.2,
+};
+
 export function registerProjectiles(): void {
   registerProjectileType(ACOLYTE_SPIT);
   registerProjectileType(ACID_SPIT);
   registerProjectileType(BONE_SHARD);
+  registerProjectileType(CROSSBOW_BOLT);
+  registerProjectileType(ARCANE_BOLT);
 }

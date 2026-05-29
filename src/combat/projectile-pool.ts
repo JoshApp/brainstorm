@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { WalkableRegion } from '../level/walkable';
 import { damagePlayer } from '../player/health';
 import { registerLight, unregisterLight } from '../scene/light-pool';
-import type { DamageType } from './damage';
+import { applyDamageVia, type DamageType } from './damage';
 import type { EntityId } from '../ecs/types';
 
 // Projectile pool. Same pattern as the light pool: a fixed budget of
@@ -72,8 +72,26 @@ interface Slot {
   damage: number;
   source: EntityId | null;
   remaining: number;
+  /** FRIENDLY = fired by the player; hit-tests ENEMIES. Otherwise an
+   *  enemy projectile that hit-tests the player. */
+  friendly: boolean;
   /** Stable id for the light pool registration. */
   lightId: string;
+}
+
+// Enemy list provider for friendly (player) projectile hit-tests. Set
+// once (createCombatSystem) so tickProjectiles needn't take an extra
+// arg — keeps the main-loop call site unchanged.
+let enemyProvider: (() => readonly EnemyHittable[]) | null = null;
+/** A target a friendly projectile can hit — the Enemy shape subset we need. */
+export interface EnemyHittable {
+  entityId: EntityId;
+  position: THREE.Vector3;
+  alive: boolean;
+  aimHeight: number;
+}
+export function setProjectileEnemyProvider(fn: () => readonly EnemyHittable[]): void {
+  enemyProvider = fn;
 }
 
 const POOL_SIZE = 16;
@@ -114,6 +132,7 @@ export function initProjectilePool(sc: THREE.Scene): void {
       type: null,
       damage: 0,
       source: null,
+      friendly: false,
       remaining: 0,
       lightId: `projectile-${i}`,
     });
@@ -127,6 +146,8 @@ export interface SpawnArgs {
   target: THREE.Vector3;
   damage: number;
   source: EntityId | null;
+  /** True = player projectile (hits enemies). Default false (enemy → player). */
+  friendly?: boolean;
 }
 
 /** Rent a slot + fire. No-op if the pool is full (rare; 16 is generous). */
@@ -139,6 +160,7 @@ export function spawnProjectile(args: SpawnArgs): void {
   slot.type = type;
   slot.damage = args.damage;
   slot.source = args.source;
+  slot.friendly = args.friendly ?? false;
   slot.remaining = type.lifetime;
   slot.position.copy(args.origin);
   // Velocity = unit (target - origin) × speed.
@@ -196,16 +218,36 @@ export function tickProjectiles(
     slot.trail.position.copy(slot.position);
     slot.remaining -= dt;
 
-    // Player hit — XZ distance check; vertical alignment loose so a
-    // chest-height projectile still hits the player even though the
-    // camera is at eye level.
-    const dx = slot.position.x - playerPos.x;
-    const dz = slot.position.z - playerPos.z;
-    const dy = slot.position.y - playerPos.y;
-    if (dx * dx + dz * dz < HIT_RADIUS_SQ && Math.abs(dy) < 1.2) {
-      damagePlayer(slot.damage, slot.source, slot.type.damageType);
-      retire(slot);
-      continue;
+    if (slot.friendly) {
+      // Player projectile — hit-test ENEMIES (nearest within radius).
+      // Routes through applyDamageVia so the enemy's death (drops, kill
+      // credit) resolves like a melee hit.
+      const enemies = enemyProvider?.() ?? [];
+      let hit = false;
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        const ex = slot.position.x - e.position.x;
+        const ez = slot.position.z - e.position.z;
+        const ey = slot.position.y - (e.position.y + e.aimHeight);
+        if (ex * ex + ez * ez < HIT_RADIUS_SQ && Math.abs(ey) < 1.4) {
+          applyDamageVia({ source: slot.source, target: e.entityId, base: slot.damage, type: slot.type.damageType });
+          retire(slot);
+          hit = true;
+          break;
+        }
+      }
+      if (hit) continue;
+    } else {
+      // Enemy projectile — hit-test the player. XZ distance; vertical
+      // alignment loose so a chest-height bolt still connects.
+      const dx = slot.position.x - playerPos.x;
+      const dz = slot.position.z - playerPos.z;
+      const dy = slot.position.y - playerPos.y;
+      if (dx * dx + dz * dz < HIT_RADIUS_SQ && Math.abs(dy) < 1.2) {
+        damagePlayer(slot.damage, slot.source, slot.type.damageType);
+        retire(slot);
+        continue;
+      }
     }
 
     // Wall hit — walkable.contains uses a small radius so a projectile
