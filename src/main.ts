@@ -19,7 +19,7 @@ import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './pla
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setDarkAdapt, getSceneLuminance } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setDarkAdapt } from './style/render-target';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
@@ -487,12 +487,13 @@ const SYSTEMS: GameSystem[] = [
   // clear line of sight (one behind a wall neither lights nor sounds here).
   // Drives both the ambient crackle volume and the eye dark-adaptation signal.
   { name: 'torch-audio', phase: 'unpaused', tick(ctx) {
-    // Torch crackle volume — LOS torch proximity at the player's position.
-    let prox = 0;
     const earRange = 6;
     const walkable = currentLevel.walkable;
     const cx = camera.position.x;
     const cz = camera.position.z;
+
+    // Torch crackle volume — LOS torch proximity at the player's position.
+    let prox = 0;
     for (const t of currentLevel.torches) {
       const dx = t.position.x - cx;
       const dz = t.position.z - cz;
@@ -503,18 +504,39 @@ const SYSTEMS: GameSystem[] = [
     }
     setTorchProximity(prox);
 
-    // Eye dark-adaptation now keys off MEASURED perceived brightness — the
-    // metered luminance of the frame centre (set during render last frame),
-    // which reliably reflects every light source actually on screen, weighted
-    // by where you look. realDt so it adjusts at real-time, not death slow-mo.
-    const luma = getSceneLuminance();
-    const adapt = tickDarkAdaptation(luma, ctx.realDt);
+    // Eye dark-adaptation keys off the estimated light on the SURFACE you're
+    // facing — analytic (no GPU readback): torch LOS proximity at the looked-at
+    // point + the lamp's falloff to it. So a far dark wall reads dark (lamp
+    // can't reach, no torch) and your eyes adjust; a near or torchlit surface
+    // reads lit. realDt so it adjusts at real-time, not the death slow-mo.
+    camera.getWorldDirection(forwardScratch);
+    const fl = Math.hypot(forwardScratch.x, forwardScratch.z) || 1;
+    const fx = forwardScratch.x / fl;
+    const fz = forwardScratch.z / fl;
+    const hitDist = walkable ? walkable.rayWallDistance(cx, cz, fx, fz, 9) : 9;
+    const lookDist = Math.max(0.8, Math.min(hitDist - 0.3, 8));
+    const lx = cx + fx * lookDist;
+    const lz = cz + fz * lookDist;
+    let lookTorch = 0;
+    for (const t of currentLevel.torches) {
+      const dx = t.position.x - lx;
+      const dz = t.position.z - lz;
+      const d = Math.hypot(dx, dz);
+      if (d >= earRange) continue;
+      if (walkable && !walkable.hasLineOfSight(lx, lz, t.position.x, t.position.z)) continue;
+      lookTorch += 1 - d / earRange;
+    }
+    // Lamp reaches the looked-at surface by falloff over LAMP_DISTANCE.
+    const lampLit = Math.max(0, 1 - lookDist / CONFIG.LAMP_DISTANCE);
+    const lit = lookTorch + lampLit;
+
+    const adapt = tickDarkAdaptation(lit, ctx.realDt);
     // PS1 path ignores renderer tone mapping (render-to-target), so the dark
     // lift lives in the blit shader (additive shadow-raise). Ambient is a
     // secondary fill (applied during the scene render, so it works there).
     setDarkAdapt(adapt);
     ambient.intensity = darkAdaptAmbient();
-    updateDarkAdaptReadout(luma, adapt, darkAdaptBrightness());
+    updateDarkAdaptReadout(lit, adapt, darkAdaptBrightness());
   } },
 
   { name: 'combat', phase: 'unpaused', tick() {

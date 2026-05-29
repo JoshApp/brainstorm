@@ -29,13 +29,13 @@ export function initDarkAdaptReadout(): void {
 }
 
 /** Per-frame update. No-op (and allocates nothing) when not mounted.
- *  `luminance` = measured perceived brightness of the frame centre (0..1). */
-export function updateDarkAdaptReadout(luminance: number, adaptation: number, brightness: number): void {
+ *  `lit` = estimated light on the surface you're facing (torch + lamp). */
+export function updateDarkAdaptReadout(lit: number, adaptation: number, brightness: number): void {
   if (!el) return;
   const filled = Math.round(adaptation * 12);
   const bar = '█'.repeat(filled) + '·'.repeat(12 - filled);
   el.textContent =
     `eye-adapt ${adaptation.toFixed(2)} [${bar}]\n` +
-    `scene-lum ${luminance.toFixed(3)}\n` +
+    `lit ${lit.toFixed(2)}\n` +
     `brightness ×${brightness.toFixed(2)}`;
 }

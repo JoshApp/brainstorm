@@ -17,12 +17,12 @@ import { CONFIG } from '../config';
 // lamp-only hall correctly reads "dark." Adaptation rests at 0 wherever
 // there's visible torchlight, so torchlit rooms keep their grimdark look.
 
-// Measured-luminance thresholds (perceived brightness, 0..1, from the frame
-// metering). At/below DARK_LUMA the eye fully adapts; at/above BRIGHT_LUMA it
-// rests. Between, it ramps. Reliable because it reads what's actually on
-// screen — all light sources, weighted by where you look.
-const DARK_LUMA = 0.05;
-const BRIGHT_LUMA = 0.20;
+// "Lit" thresholds — the estimated light reaching the surface you're looking
+// at (torches with line-of-sight + your lamp's falloff, summed by the caller).
+// At/below LIT_DARK the eye fully adapts; at/above LIT_BRIGHT it rests. No GPU
+// readback (framebuffer metering stalled the pipeline) — this is analytic.
+const LIT_DARK = 0.15;
+const LIT_BRIGHT = 0.65;
 const ADAPT_UP_RATE = 0.6;           // per-sec approach while dark (~1.7s to adjust)
 const ADAPT_DOWN_RATE = 4.0;         // per-sec approach while lit (~0.25s — re-blinded)
 
@@ -39,14 +39,13 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 /**
- * Advance adaptation toward its target and return the 0..1 value. `luminance`
- * = measured perceived brightness of the frame centre (0..1). Dark frame →
- * adapt toward 1; bright frame → toward 0. Use realDt so adjustment runs at
- * real-time.
+ * Advance adaptation toward its target and return the 0..1 value. `lit` =
+ * estimated light on the surface you're looking at (torch LOS + lamp falloff).
+ * Dark → adapt toward 1; lit → toward 0. Use realDt so it runs at real-time.
  */
-export function tickDarkAdaptation(luminance: number, dt: number): number {
-  // BRIGHT_LUMA → 0, DARK_LUMA → 1 (smoothstep handles edge0 > edge1).
-  const target = smoothstep(BRIGHT_LUMA, DARK_LUMA, luminance);
+export function tickDarkAdaptation(lit: number, dt: number): number {
+  // LIT_BRIGHT → 0, LIT_DARK → 1 (smoothstep handles edge0 > edge1).
+  const target = smoothstep(LIT_BRIGHT, LIT_DARK, lit);
   const rate = target > adaptation ? ADAPT_UP_RATE : ADAPT_DOWN_RATE;
   adaptation += (target - adaptation) * (1 - Math.exp(-rate * dt));
   return adaptation;
