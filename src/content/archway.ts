@@ -87,15 +87,18 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       glow: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xff8c3a, emissiveIntensity: 0 },
     },
     parts: [
+      // Whole frame glows on approach (the 'glow' material) — columns,
+      // plinths, capitals, lintel, keystone — a warm rim around the opening.
+      // Only the tympanum wall-fill stays plain stone.
       // Left + right column shafts.
-      { kind: 'box', pos: [-colOffset, COL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2, COL_HEIGHT, COL_DEPTH], mat: 'stone' },
-      { kind: 'box', pos: [ colOffset, COL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2, COL_HEIGHT, COL_DEPTH], mat: 'stone' },
+      { kind: 'box', pos: [-colOffset, COL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2, COL_HEIGHT, COL_DEPTH], mat: 'glow' },
+      { kind: 'box', pos: [ colOffset, COL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2, COL_HEIGHT, COL_DEPTH], mat: 'glow' },
       // Base plinths (slightly wider feet).
-      { kind: 'box', pos: [-colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'stone' },
-      { kind: 'box', pos: [ colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'stone' },
+      { kind: 'box', pos: [-colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'glow' },
+      { kind: 'box', pos: [ colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'glow' },
       // Capitals at the top of each column.
-      { kind: 'box', pos: [-colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'stone' },
-      { kind: 'box', pos: [ colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'stone' },
+      { kind: 'box', pos: [-colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'glow' },
+      { kind: 'box', pos: [ colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'glow' },
       // Lintel across the top, spanning both columns + a bit. Glows on approach.
       { kind: 'box', pos: [0, LINTEL_BOTTOM + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'glow' },
       // Keystone — small slightly-protruding block centred on the lintel. Glows.
