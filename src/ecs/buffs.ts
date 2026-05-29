@@ -1,23 +1,30 @@
-import type { ActiveBuff, Entity } from './types';
+import type { ActiveBuff, Entity, EntityId } from './types';
 import { BUFFS } from '../content/buffs';
 import { applyEffect } from './effects';
 import { all } from './world';
+import { applyDamageVia } from '../combat/damage';
 
 // Buff lifecycle:
-// - applyBuff() adds a new ActiveBuff to an entity (or refreshes an existing one
-//   if already active — refresh takes the longer of remaining vs new duration).
+// - applyBuff() adds a new ActiveBuff (or, for an already-active buff,
+//   refreshes its duration and — if maxStacks > 1 — adds a stack).
 // - tickAllBuffs() runs each frame; for each active buff, advances its
 //   tickAccumulator and fires tickEffect when an interval elapses, then decays
-//   remaining time, then removes expired buffs.
+//   remaining time, then removes expired buffs. DoT ticks (a 'damage'
+//   tickEffect) route through the damage SINK so the death sequence
+//   (drops, kill event, player death) resolves — a poison kill counts.
 
-export function applyBuff(entity: Entity, buffId: string, duration: number) {
+export function applyBuff(entity: Entity, buffId: string, duration: number, sourceId?: EntityId) {
   const spec = BUFFS[buffId];
   if (!spec) return;
+  const maxStacks = spec.maxStacks ?? 1;
 
   const existing = entity.buffs.find((b) => b.specId === buffId);
   if (existing) {
-    // Refresh — take the longer duration so re-applying doesn't shorten a buff.
+    // Refresh — take the longer duration so re-applying doesn't shorten it.
     if (duration > existing.remaining) existing.remaining = duration;
+    // Stack up to the cap (poison/bleed ramp; refresh-only buffs cap at 1).
+    if (existing.stacks < maxStacks) existing.stacks += 1;
+    existing.sourceId = sourceId;   // freshest applier gets kill credit
     return;
   }
 
@@ -26,6 +33,7 @@ export function applyBuff(entity: Entity, buffId: string, duration: number) {
     remaining: duration,
     tickAccumulator: 0,
     stacks: 1,
+    sourceId,
   };
   entity.buffs.push(fresh);
 }
@@ -47,7 +55,19 @@ function tickEntityBuffs(entity: Entity, dt: number) {
       buff.tickAccumulator += dt;
       while (buff.tickAccumulator >= spec.tickInterval) {
         buff.tickAccumulator -= spec.tickInterval;
-        applyEffect(spec.tickEffect, { defaultTarget: entity.id });
+        const eff = spec.tickEffect;
+        if (eff.type === 'damage') {
+          // DoT — scale by stacks + route through the damage sink so a
+          // kill resolves drops/credit (and a quiet path for the player).
+          applyDamageVia({
+            source: buff.sourceId ?? null,
+            target: entity.id,
+            base: (eff.amount ?? 0) * buff.stacks,
+            type: eff.damageType ?? 'physical',
+          });
+        } else {
+          applyEffect(eff, { defaultTarget: entity.id });
+        }
       }
     }
 

@@ -70,6 +70,7 @@ import { tickTutorialHints, clearTutorialHints } from './effects/tutorial-hints'
 import { initDriftingMotes, tickDriftingMotes } from './effects/drifting-motes';
 import { tickShatterBurst } from './effects/shatter-burst';
 import { tickBloodBurst } from './effects/blood-burst';
+import { tickStatusVfx } from './effects/status-vfx';
 import { actForDepth } from './level/acts';
 import { updateOutline } from './interactables/outline';
 import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
@@ -568,6 +569,13 @@ const SYSTEMS: GameSystem[] = [
 
   // Active buffs on all entities (heal-over-time, DoTs, etc.).
   { name: 'buffs', phase: 'unpaused', tick(ctx) { tickAllBuffs(ctx.scaledDt); } },
+
+  // Status VFX — colored motes off anything carrying a buff with `vfx`
+  // (burn embers, poison/bleed drips). Runs after buffs so it reflects
+  // the current affliction.
+  { name: 'status-vfx', phase: 'unpaused', tick(ctx) {
+    tickStatusVfx(scene, currentLevel.enemies, camera.position, ctx.scaledDt);
+  } },
 
   // ── always-on (run through pause/death so the screen stays live) ──
 

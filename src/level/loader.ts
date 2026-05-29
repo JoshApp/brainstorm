@@ -6,6 +6,7 @@ import { CONFIG } from '../config';
 import { clearProjectiles } from '../combat/projectile-pool';
 import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
+import { clearStatusVfx } from '../effects/status-vfx';
 import { clearTutorialHints } from '../effects/tutorial-hints';
 import { clearAlerts } from '../mobs/alerts';
 import { clearDriftingMotes } from '../effects/drifting-motes';
@@ -129,6 +130,7 @@ export function tickPendingLoad() {
     clearProjectiles();
     clearXpWisps();
     clearGoldCoins();
+    clearStatusVfx();
     clearTutorialHints();
     clearAlerts();
     clearDriftingMotes();

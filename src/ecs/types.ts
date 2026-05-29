@@ -28,8 +28,11 @@ export interface ActiveBuff {
   remaining: number;
   /** Accumulator for periodic-tick effects (compared against spec.tickInterval). */
   tickAccumulator: number;
-  /** Number of stacks (1 unless the spec allows stacking). */
+  /** Number of stacks (1 unless the spec allows stacking via maxStacks). */
   stacks: number;
+  /** Who applied this buff — for DoT kill attribution. null/undefined =
+   *  environmental. */
+  sourceId?: EntityId;
 }
 
 /**
@@ -83,6 +86,10 @@ export interface EffectSpec {
   target?: EffectTarget;
   /** For damage/heal — amount (positive). */
   amount?: number;
+  /** For damage — which armor reduces it. Default 'physical'. DoT buffs
+   *  use this: poison 'magic' (bypasses physical armour → beats tanks),
+   *  bleed/burn 'physical'. */
+  damageType?: import('../combat/damage').DamageType;
   /** For apply-buff — which BuffSpec to apply. */
   buffId?: string;
   /** For apply-buff — duration in seconds. */
@@ -97,8 +104,24 @@ export interface BuffSpec {
   color?: number;
   /** Optional: how often (seconds) to fire tickEffect while active. */
   tickInterval?: number;
-  /** Effect that fires on each tick (applied to the buff's owner). */
+  /** Effect that fires on each tick (applied to the buff's owner). For a
+   *  DoT this is a 'damage' effect; the per-tick amount is scaled by the
+   *  buff's current stack count. */
   tickEffect?: EffectSpec;
+  /**
+   * Max stacks. When >1, re-applying the buff to an already-affected
+   * entity ADDS a stack (up to this cap) and scales the tick damage by
+   * the stack count — poison/bleed ramp as you keep hitting. Omit (or 1)
+   * for refresh-only buffs like burn.
+   */
+  maxStacks?: number;
+  /**
+   * Optional world VFX while the buff is active — colored motes emitted
+   * from the afflicted entity. The whole point: a new status gets a
+   * visual from ONE field. `style`: 'rise' (embers float up — burn) or
+   * 'drip' (droplets fall — poison/bleed). Color defaults to `color`.
+   */
+  vfx?: { color?: number; style?: 'rise' | 'drip' };
   /**
    * Stat modifiers active while this buff is on its owner. Goes through
    * the same unified pipeline as equipment modifiers (combat/modifiers.ts),

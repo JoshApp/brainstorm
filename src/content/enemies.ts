@@ -152,6 +152,14 @@ export interface EnemySpec {
    * (declare per-ability cooldowns there). Default 0. */
   attackCooldown?: number;
 
+  /**
+   * On-hit status this enemy inflicts on the PLAYER. When a melee or
+   * dash strike connects, rolls `chance` and applies the buff (from
+   * content/buffs.ts) for `duration` seconds — spider → venom (poison),
+   * a future hellhound → burn, etc. Cuts the status system both ways.
+   */
+  onHit?: { buffId: string; chance: number; duration: number };
+
   // --- Abilities ---
   /**
    * Explicit ability list (highest-priority first). When set, the AI's
@@ -1495,6 +1503,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.14,
     recoverTime: 0.4,
     damageType: 'physical',
+    // Venom — every bite/pounce has a good chance to poison. Poison
+    // stacks, so a swarm stacks it FAST: the nest punishes getting
+    // surrounded with mounting attrition, not just burst.
+    onHit: { buffId: 'poison', chance: 0.6, duration: 4 },
     abilities: [
       // POUNCE — coil then leap across the gap with a bite on contact.
       {

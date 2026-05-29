@@ -4,6 +4,7 @@ import { damagePlayer } from '../player/health';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { resolveAbilities, meleeReachOf, aoeEffectOf, type Ability } from '../content/abilities';
+import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { TELEGRAPH_POSES, poseValue, type TelegraphStyle } from './pose-clips';
 import type { WalkableRegion } from '../level/walkable';
@@ -18,7 +19,7 @@ import type { EntityId } from '../ecs/types';
 import { buildModel } from '../ecs/build-model';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
-import { computeDamage, setEntityCombatStats, clearEntityCombatStats, type DamageEvent } from '../combat/damage';
+import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
 import { playEnemyDeath, playEnemyWindup, type EnemyDeathSize } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
@@ -41,6 +42,7 @@ function audioSizeFor(spec: EnemySpec): EnemyDeathSize {
  *  the world map across descents. Idempotent (killed mobs already freed). */
 export function disposeEnemy(e: Enemy): void {
   clearEntityCombatStats(e.entityId);
+  unregisterDamageSink(e.entityId);
   destroyEntity(e.entityId);
 }
 
@@ -255,6 +257,10 @@ export function createEnemy(
     physicalArmor: spec.physicalArmor ?? 0,
     magicArmor: spec.magicArmor ?? 0,
   });
+  // Route ALL damage to this enemy (incl. DoT ticks) through takeDamage
+  // so death — drops, kill event, dissolve, removal — resolves no matter
+  // the source. takeDamage is a hoisted function declaration below.
+  registerDamageSink(entityId, takeDamage);
 
   // Per-instance presentation state.
   let flashTimer = 0;
@@ -527,6 +533,7 @@ export function createEnemy(
       // deathTimer crosses DEATH_DURATION.
       aliveLocal = false;
       clearEntityCombatStats(entityId);
+      unregisterDamageSink(entityId);
       destroyEntity(entityId);
       playEnemyDeath(audioSizeFor(spec));
       // Drop table: each entry rolls independently. Multiple successful
@@ -652,6 +659,16 @@ export function createEnemy(
     setEyeFlare(phase === 'windup' ? t : phase === 'strike' ? 1 : 1 - t);
   }
 
+  /** Apply this enemy's on-hit status to the player, if it has one and
+   *  the roll succeeds. Called after any strike that damages the player
+   *  (melee + dash contact). Sourced to this enemy for kill attribution. */
+  function inflictOnHit() {
+    const oh = spec.onHit;
+    if (!oh || !gameRngChance(oh.chance)) return;
+    const player = getEntity('player');
+    if (player) applyBuff(player, oh.buffId, oh.duration, entityId);
+  }
+
   /** Run one ability effect during the strike phase. Instantaneous
    *  effects (melee/projectile) latch on strikeAlreadyHit so they fire
    *  once; dash moves the enemy every frame and lands one contact hit. */
@@ -668,6 +685,7 @@ export function createEnemy(
       case 'melee': {
         if (!strikeAlreadyHit && distance <= eff.reach) {
           damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+          inflictOnHit();
           strikeAlreadyHit = true;
         }
         break;
@@ -710,6 +728,7 @@ export function createEnemy(
           }
           if (distance <= eff.contactReach) {
             damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+            inflictOnHit();
             strikeAlreadyHit = true;
             // Bounce back off the player so the charger separates to a
             // readable, hittable distance instead of overlapping you.

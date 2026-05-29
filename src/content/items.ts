@@ -83,6 +83,14 @@ export interface WeaponStats {
    * timings), 0.8 = slower. Proficiency points feed in alongside it.
    */
   attackSpeed?: number;
+  /**
+   * On-hit status infliction. When set, a landed hit rolls `chance` and,
+   * on success, applies the buff (a status effect from content/buffs.ts)
+   * to the struck enemy for `duration` seconds. This is how a serrated
+   * blade bleeds or a venom-etched dagger poisons. Stacking statuses
+   * (bleed/poison) build with repeated hits.
+   */
+  onHit?: { buffId: string; chance: number; duration: number };
 }
 
 export interface ItemSpec {
@@ -175,7 +183,13 @@ export const ITEMS: Record<string, ItemSpec> = {
     // chance + multiplier in the starting roster. Skirts trash mobs
     // by repeated strikes; struggles against armoured targets unless
     // you land crits.
-    weapon: { class: 'dagger', reach: 1.5, coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5 },
+    // Serrated edge — every hit has a chance to BLEED, and bleed stacks,
+    // so the needle's rapid combo ramps it fast. Turns its low base
+    // damage into sustained pressure: the fast-weapon payoff.
+    weapon: {
+      class: 'dagger', reach: 1.5, coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5,
+      onHit: { buffId: 'bleed', chance: 0.5, duration: 3 },
+    },
     affixPool: ['keening', 'gallows', 'spine'],
     maxAffixes: 1,
   },

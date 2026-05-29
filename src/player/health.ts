@@ -6,7 +6,7 @@ import { playPlayerHurt, playMagicHit, playPlayerDeathStinger } from '../audio/s
 import { emit } from '../broadcast/event-bus';
 import { get } from '../ecs/world';
 import { computeStats } from './equipment-stats';
-import { computeDamage, type DamageType } from '../combat/damage';
+import { computeDamage, registerDamageSink, type DamageType, type DamageEvent } from '../combat/damage';
 import type { EntityId } from '../ecs/types';
 import { recordHpRecovered, recordDamageTaken, recordShieldedHit } from '../state/character';
 import { getEquipped } from './equipment';
@@ -19,6 +19,17 @@ const PLAYER_ENTITY_ID = 'player';
 
 let onDeathCb: (() => void) | null = null;
 let dead = false;
+
+// Route damage-over-time ticks (poison/burn/bleed inflicted by enemies)
+// through the player's health with the QUIET flag, so they reduce HP +
+// can kill + flash the vignette, but don't strobe the screen with the
+// per-tick hit-crunch. Registered once at module load.
+registerDamageSink(PLAYER_ENTITY_ID, (e: DamageEvent) => {
+  const before = get(PLAYER_ENTITY_ID)?.hp?.current ?? 0;
+  damagePlayer(e.base, e.source, e.type, true);
+  const after = get(PLAYER_ENTITY_ID)?.hp?.current ?? 0;
+  return Math.max(0, before - after);
+});
 
 function hapticVibrate(ms: number) {
   if (ms > 0 && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -64,7 +75,14 @@ export function onPlayerDeath(cb: () => void) {
  * for environmental damage (a trap, a fall). Default damage type is
  * physical since most enemy attacks are melee.
  */
-export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical') {
+/**
+ * Apply damage to the player. `quiet` skips the full hit-crunch
+ * (freeze/shake/haptic/grunt) — used for damage-over-time ticks so a
+ * poison/burn ticking twice a second doesn't strobe the screen. HP
+ * reduction, the vignette flash, and death are NOT skipped (a DoT must
+ * still be able to kill, with feedback).
+ */
+export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical', quiet = false) {
   if (dead) return;
   const player = get(PLAYER_ENTITY_ID);
   if (!player || !player.hp) return;
@@ -79,15 +97,19 @@ export function damagePlayer(amount: number, source: EntityId | null = null, typ
     if (getEquipped('offhand')?.id === 'wooden-shield') recordShieldedHit();
   }
 
-  // --- The player-hit crunch stack ---
-  freezeFor(CONFIG.PLAYER_HIT_PAUSE_MS);
-  kickShake(CONFIG.PLAYER_HIT_SHAKE_MAGNITUDE, CONFIG.PLAYER_HIT_SHAKE_DURATION);
-  hapticVibrate(CONFIG.PLAYER_HIT_HAPTIC_MS);
+  // --- The player-hit crunch stack (skipped for DoT ticks) ---
+  if (!quiet) {
+    freezeFor(CONFIG.PLAYER_HIT_PAUSE_MS);
+    kickShake(CONFIG.PLAYER_HIT_SHAKE_MAGNITUDE, CONFIG.PLAYER_HIT_SHAKE_DURATION);
+    hapticVibrate(CONFIG.PLAYER_HIT_HAPTIC_MS);
+  }
   flashVignette(result.applied);
-  playPlayerHurt();
-  // Magic strikes layer a sour bell+sizzle on top of the hurt grunt — the
-  // wraith should sound spectral, not like another club-swing.
-  if (type === 'magic') playMagicHit();
+  if (!quiet) {
+    playPlayerHurt();
+    // Magic strikes layer a sour bell+sizzle on top of the hurt grunt — the
+    // wraith should sound spectral, not like another club-swing.
+    if (type === 'magic') playMagicHit();
+  }
   emit({ type: 'player:damaged', hpLeft: player.hp.current, amount: result.applied });
 
   if (player.hp.current <= 0 && !dead) {

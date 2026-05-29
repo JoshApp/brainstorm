@@ -1,4 +1,5 @@
 import type { EntityId } from '../ecs/types';
+import { get } from '../ecs/world';
 import { aggregateModifiers, computePlayerStats } from './modifiers';
 import { resolveDamage } from './damage-math';
 
@@ -135,4 +136,39 @@ function armorFor(stats: CombatStats, type: DamageType): number {
     case 'physical': return stats.physicalArmor;
     case 'magic':    return stats.magicArmor;
   }
+}
+
+// ── Damage sinks — route damage through full death handling ──────────
+//
+// computeDamage() only does the MATH; HP mutation + the death sequence
+// (drops, kill event, removal, player death) live in the wrappers
+// (enemy.takeDamage, player health). A damage-over-time tick must go
+// through those same wrappers so a poison kill drops loot + credits the
+// kill, and a burn can actually kill the player. Each enemy registers
+// its takeDamage; the player registers its health sink. applyDamageVia
+// dispatches to them — falling back to a raw HP mutation only for
+// entities with no wrapper (plain props), which never matters for DoTs.
+
+type DamageSink = (event: DamageEvent) => number;
+const damageSinks = new Map<EntityId, DamageSink>();
+
+export function registerDamageSink(id: EntityId, fn: DamageSink): void {
+  damageSinks.set(id, fn);
+}
+export function unregisterDamageSink(id: EntityId): void {
+  damageSinks.delete(id);
+}
+
+/** Apply a damage event through the target's registered handler so its
+ *  death is fully resolved. Returns the amount applied. */
+export function applyDamageVia(event: DamageEvent): number {
+  const sink = damageSinks.get(event.target);
+  if (sink) return sink(event);
+  // Fallback — raw HP, no death sequence (legacy behaviour for entities
+  // without a wrapper). DoT targets (enemies/player) always have one.
+  const e = get(event.target);
+  if (!e?.hp) return 0;
+  const { applied } = computeDamage(event);
+  e.hp.current = Math.max(0, e.hp.current - applied);
+  return applied;
 }

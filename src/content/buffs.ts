@@ -53,4 +53,47 @@ export const BUFFS: Record<string, BuffSpec> = {
       { kind: 'physical-armor', amount: -1 },
     ],
   },
+
+  // ── Status effects (DoTs) ─────────────────────────────────────────
+  // Three damage-over-time presets, each a DIFFERENT texture of play —
+  // not reskins. All are buff entries: the runtime already knows how to
+  // tick them, scale by stacks, route the kill, and draw the VFX.
+
+  // BURN — bursty: high, fast ticks, short, does NOT stack (re-applying
+  // just refreshes). Physical. "Light it and back off." A blade that
+  // remembers heat.
+  burn: {
+    id: 'burn',
+    displayName: 'BURN',
+    color: 0xff6020,
+    tickInterval: 0.4,
+    tickEffect: { type: 'damage', amount: 1, damageType: 'physical' },
+    vfx: { color: 0xff6824, style: 'rise' },
+  },
+
+  // BLEED — builds with each hit: medium, STACKS (per strike) up to 5,
+  // physical. Rewards fast weapons — daggers shred. Short-ish so you
+  // have to keep the pressure on to ramp it.
+  bleed: {
+    id: 'bleed',
+    displayName: 'BLEED',
+    color: 0xcc1418,
+    tickInterval: 0.5,
+    tickEffect: { type: 'damage', amount: 1, damageType: 'physical' },
+    maxStacks: 5,
+    vfx: { color: 0xcc1418, style: 'drip' },
+  },
+
+  // POISON — attrition: low, LONG, stacks to 6, and 'magic'-typed so it
+  // bypasses PHYSICAL armour (most enemies have none vs magic) — the
+  // answer to armoured tanks like the stoneguard. Spider/acid theme.
+  poison: {
+    id: 'poison',
+    displayName: 'POISON',
+    color: 0x66cc33,
+    tickInterval: 0.6,
+    tickEffect: { type: 'damage', amount: 1, damageType: 'magic' },
+    maxStacks: 6,
+    vfx: { color: 0x66cc33, style: 'drip' },
+  },
 };

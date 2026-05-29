@@ -58,6 +58,8 @@ export interface ResolvedWeaponStats {
    *  — pressing past the last step starts over at 0. */
   combo: ResolvedComboStep[];
   comboWindowMs: number;
+  /** On-hit status infliction, passed through from the weapon spec. */
+  onHit?: { buffId: string; chance: number; duration: number };
 }
 
 interface ClassDefaults {
@@ -157,5 +159,6 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     class: cls,
     combo,
     comboWindowMs: baseT.comboWindowMs,
+    onHit: spec.onHit,
   };
 }
