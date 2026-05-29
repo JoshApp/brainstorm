@@ -130,6 +130,10 @@ export interface Enemy extends Damageable {
   setDebugPosition(x: number, z: number): void;
   /** Rotate the container so it faces a world point (head toward it). */
   faceWorld(x: number, z: number): void;
+  /** Apply a decaying knockback impulse in world XZ direction (dirX,
+   *  dirZ need not be normalised) at `speed` m/s. Used by the charge's
+   *  self-recoil; available for player-hit stagger too. */
+  applyKnockback(dirX: number, dirZ: number, speed: number): void;
 }
 
 const tmpDir = new THREE.Vector3();
@@ -351,6 +355,20 @@ export function createEnemy(
   let gaitAmp = 0;
   const STRIDE_LENGTH = 0.7;   // metres per full leg cycle
   const GAIT_SWING = 0.5;      // peak hip rotation (rad) at full gait
+
+  // Knockback — a short decaying impulse on the enemy's position,
+  // applied on top of (and overriding) AI movement each frame. Used by
+  // the charge to recoil off the player on contact; also exposed so the
+  // player's melee hits can stagger enemies later. Walls clamp it.
+  let knockVX = 0;
+  let knockVZ = 0;
+  const KNOCKBACK_CHARGE = 4.5;   // recoil speed when a charge connects
+  function applyKnockback(dirX: number, dirZ: number, speed: number) {
+    const len = Math.hypot(dirX, dirZ);
+    if (len < 1e-5) return;
+    knockVX = (dirX / len) * speed;
+    knockVZ = (dirZ / len) * speed;
+  }
   // 'chant' needs a reference to the orb material so the pulse can drive
   // its emissive intensity. Grabbed once at build; null for non-chant.
   const orbMat = presence === 'chant'
@@ -665,23 +683,35 @@ export function createEnemy(
         break;
       }
       case 'dash': {
-        // Drive the enemy for the whole strike phase. 'player' = lunge
-        // at them (charge); 'away' = launch back (a future retreat-leap).
-        if (eff.toward === 'player') {
-          moveTowards(playerPos.x, playerPos.z, eff.speed, dt, walkable, nav);
-        } else {
-          const dx = container.position.x - playerPos.x;
-          const dz = container.position.z - playerPos.z;
-          const len = Math.hypot(dx, dz) || 1;
-          moveTowards(
-            container.position.x + (dx / len) * 2.0,
-            container.position.z + (dz / len) * 2.0,
-            eff.speed, dt, walkable, nav,
-          );
-        }
-        if (!strikeAlreadyHit && distance <= eff.contactReach) {
-          damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
-          strikeAlreadyHit = true;
+        // Lunge ONLY until contact (or a miss runs out the strike). The
+        // moment it connects we stop driving forward and recoil OFF the
+        // player — otherwise the charger keeps moving into you for the
+        // rest of the strike and ends up stuck inside you (hard to hit,
+        // bad feel). Once strikeAlreadyHit is set, no more dash movement.
+        if (!strikeAlreadyHit) {
+          if (eff.toward === 'player') {
+            moveTowards(playerPos.x, playerPos.z, eff.speed, dt, walkable, nav);
+          } else {
+            const dx = container.position.x - playerPos.x;
+            const dz = container.position.z - playerPos.z;
+            const len = Math.hypot(dx, dz) || 1;
+            moveTowards(
+              container.position.x + (dx / len) * 2.0,
+              container.position.z + (dz / len) * 2.0,
+              eff.speed, dt, walkable, nav,
+            );
+          }
+          if (distance <= eff.contactReach) {
+            damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+            strikeAlreadyHit = true;
+            // Bounce back off the player so the charger separates to a
+            // readable, hittable distance instead of overlapping you.
+            applyKnockback(
+              container.position.x - playerPos.x,
+              container.position.z - playerPos.z,
+              KNOCKBACK_CHARGE,
+            );
+          }
         }
         break;
       }
@@ -1101,6 +1131,27 @@ export function createEnemy(
       }
     }
 
+    // ── Knockback ────────────────────────────────────────────────────
+    // Integrate + decay the recoil impulse, clamped against walls. Runs
+    // after AI movement so it overrides (a charge that just connected
+    // recoils even though its dash set strikeAlreadyHit). Fast decay →
+    // a brief shove, not a long slide.
+    if (knockVX !== 0 || knockVZ !== 0) {
+      const r = walkable.clampMove(
+        container.position.x, container.position.z,
+        container.position.x + knockVX * dt,
+        container.position.z + knockVZ * dt,
+        spec.collisionRadius,
+        spec.phasing ? { ignoreObstacles: true } : undefined,
+      );
+      container.position.x = r.x;
+      container.position.z = r.z;
+      const decay = Math.exp(-dt * 9);
+      knockVX *= decay;
+      knockVZ *= decay;
+      if (Math.abs(knockVX) < 0.05 && Math.abs(knockVZ) < 0.05) { knockVX = 0; knockVZ = 0; }
+    }
+
     // ── Locomotion (gait) ────────────────────────────────────────────
     // Swing the legs from how far the body actually moved this frame, so
     // a walking enemy plants strides instead of sliding. Runs before
@@ -1256,5 +1307,6 @@ export function createEnemy(
     setDebugState,
     setDebugPosition,
     faceWorld,
+    applyKnockback,
   };
 }

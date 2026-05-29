@@ -156,6 +156,11 @@ export function createCombatSystem(
  * though the target is right in your face. The reach check still uses 3D
  * distance, so you can still hit a rat at your feet by looking down.
  */
+// Horizontal distance under which a target is treated as "in your
+// face" and always inside the swing cone (see pickTarget). ~0.9m so an
+// adjacent or overlapping enemy is reliably hittable.
+const POINT_BLANK_RADIUS = 0.9;
+
 function pickTarget<T extends Damageable>(
   targets: readonly T[],
   camera: THREE.Camera,
@@ -175,10 +180,13 @@ function pickTarget<T extends Damageable>(
     if (distSq > reachSq) continue;
 
     const horDist = Math.hypot(dx, dz);
-    // Degenerate case: target directly on top of the player (no horizontal
-    // displacement at all). Always counts as in-cone — you can't NOT face
-    // something inside you.
-    if (horDist < 0.0001) {
+    // Point-blank: a target pressed against (or inside) you is ALWAYS
+    // hittable, regardless of facing — you'd flail at something that
+    // close. Covers both the exact-overlap degenerate case and the
+    // "enemy ended up adjacent / slightly behind" case (e.g. after a
+    // charge), which the cone check would otherwise whiff. Without this,
+    // an enemy stuck on top of you is weirdly hard to hit.
+    if (horDist < POINT_BLANK_RADIUS) {
       if (distSq < bestDistSq) { bestDistSq = distSq; best = t; }
       continue;
     }

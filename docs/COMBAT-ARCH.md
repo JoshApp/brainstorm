@@ -74,6 +74,10 @@ Positioning is separate from attacking:
 - **kite** (`spec.preferredRange`) — back away when the player is inside
   the standoff band, so ranged enemies can't be free-killed point-blank.
 - **dash** — ability-driven burst (charge/lunge), via the `dash` effect.
+  The lunge stops the instant it connects and recoils off the player
+  (a decaying knockback impulse) so the charger separates to a hittable
+  distance instead of bulldozing into you. `enemy.applyKnockback()` is
+  the reusable primitive — also wired-ready for player-hit stagger.
 
 All movement funnels through `moveTowards`, which pathfinds around
 obstacles (or steers straight for phasing mobs). Steering decides *how
