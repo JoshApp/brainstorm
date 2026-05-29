@@ -34,13 +34,15 @@ interface Mote {
   baseOpacity: number;
 }
 
-// The haze is a few layered planes at slightly different depths within the
-// archway frame, not one flat sheet — depth reads as a volume of dusty air
-// (less "portal"), framed by the columns, and looks the same from both sides.
-const HAZE_LAYERS = 3;
-const HAZE_DEPTH = 0.4;            // spread along the passage axis (within the frame)
-const HAZE_WIDTH_INSET = 0.82;     // narrower than the opening so the columns frame it
-const HAZE_LAYER_WEIGHT = [0.45, 0.72, 0.45];   // centre layer brightest
+// The haze used to be a few layered planes at slightly different depths
+// within the archway frame, but it ALWAYS read as a portal at glance
+// — disabled by setting the layer count to 0. The dust motes + the
+// frame proximity glow still carry the "way through here" cue without
+// any plane-of-air across the opening.
+const HAZE_LAYERS = 0;
+const HAZE_DEPTH = 0.4;
+const HAZE_WIDTH_INSET = 0.82;
+const HAZE_LAYER_WEIGHT = [0.45, 0.72, 0.45];
 
 interface HazeLayer { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; weight: number; }
 
