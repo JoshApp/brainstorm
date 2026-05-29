@@ -42,7 +42,7 @@ import { isPlaying, getGameMode } from './state/game-mode';
 import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { recomputePlayerStats } from './state/player-stats';
 import { syncHudStores } from './state/hud-stores';
-import { tickDarkAdaptation, getDarkAdaptation } from './scene/dark-adaptation';
+import { tickDarkAdaptation, darkAdaptExposure, darkAdaptAmbient } from './scene/dark-adaptation';
 import { initDarkAdaptReadout, updateDarkAdaptReadout } from './debug/dark-adapt-readout';
 import { tickThresholdEmbers } from './scene/threshold-ember';
 import { seedRng } from './engine/rng';
@@ -477,23 +477,30 @@ const SYSTEMS: GameSystem[] = [
     tickThresholdEmbers(ctx.realDt);
   } },
 
-  // Ambient torch crackle volume — sum of (1 - dist/range) across torches
-  // in earshot.
+  // Effective torchlight at the player — torches within earshot AND with a
+  // clear line of sight (one behind a wall neither lights nor sounds here).
+  // Drives both the ambient crackle volume and the eye dark-adaptation signal.
   { name: 'torch-audio', phase: 'unpaused', tick(ctx) {
     let prox = 0;
     const earRange = 6;
+    const walkable = currentLevel.walkable;
     for (const t of currentLevel.torches) {
       const dx = t.position.x - camera.position.x;
       const dz = t.position.z - camera.position.z;
       const d = Math.hypot(dx, dz);
-      if (d < earRange) prox += 1 - d / earRange;
+      if (d >= earRange) continue;
+      // LOS gate: a torch behind a wall doesn't count toward "how lit am I".
+      if (walkable && !walkable.hasLineOfSight(camera.position.x, camera.position.z, t.position.x, t.position.z)) continue;
+      prox += 1 - d / earRange;
     }
     setTorchProximity(prox);
-    // Eye dark-adaptation: lift the ambient floor when the player is away
-    // from torchlight so torchless corridors stay navigable. realDt so the
-    // adjustment runs at real-time, not the death slow-mo.
-    ambient.intensity = tickDarkAdaptation(prox, ctx.realDt);
-    updateDarkAdaptReadout(prox, getDarkAdaptation(), ambient.intensity);
+    // Eye dark-adaptation drives ACES exposure (scales the whole image, so the
+    // dark actually lifts — ambient just scales a near-black colour). realDt so
+    // the adjustment runs at real-time, not the death slow-mo.
+    const adapt = tickDarkAdaptation(prox, ctx.realDt);
+    renderer.toneMappingExposure = darkAdaptExposure();
+    ambient.intensity = darkAdaptAmbient();
+    updateDarkAdaptReadout(prox, adapt, renderer.toneMappingExposure);
   } },
 
   { name: 'combat', phase: 'unpaused', tick() {

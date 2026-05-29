@@ -29,7 +29,7 @@ export function initDarkAdaptReadout(): void {
 }
 
 /** Per-frame update. No-op (and allocates nothing) when not mounted. */
-export function updateDarkAdaptReadout(prox: number, adaptation: number, ambient: number): void {
+export function updateDarkAdaptReadout(prox: number, adaptation: number, exposure: number): void {
   if (!el) return;
   const filled = Math.round(adaptation * 12);
   const bar = '█'.repeat(filled) + '·'.repeat(12 - filled);
@@ -37,6 +37,6 @@ export function updateDarkAdaptReadout(prox: number, adaptation: number, ambient
   const state = prox < 0.25 ? 'DARK (adapting↑)' : 'LIT (re-blind↓)';
   el.textContent =
     `eye-adapt ${adaptation.toFixed(2)} [${bar}]\n` +
-    `torch-prox ${prox.toFixed(2)}  ${state}\n` +
-    `ambient ${ambient.toFixed(2)}`;
+    `los-torch ${prox.toFixed(2)}  ${state}\n` +
+    `exposure ${exposure.toFixed(2)}`;
 }
