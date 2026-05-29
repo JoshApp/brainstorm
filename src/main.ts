@@ -42,7 +42,8 @@ import { isPlaying, getGameMode } from './state/game-mode';
 import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { recomputePlayerStats } from './state/player-stats';
 import { syncHudStores } from './state/hud-stores';
-import { tickDarkAdaptation } from './scene/dark-adaptation';
+import { tickDarkAdaptation, getDarkAdaptation } from './scene/dark-adaptation';
+import { initDarkAdaptReadout, updateDarkAdaptReadout } from './debug/dark-adapt-readout';
 import { tickThresholdEmbers } from './scene/threshold-ember';
 import { seedRng } from './engine/rng';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
@@ -492,6 +493,7 @@ const SYSTEMS: GameSystem[] = [
     // from torchlight so torchless corridors stay navigable. realDt so the
     // adjustment runs at real-time, not the death slow-mo.
     ambient.intensity = tickDarkAdaptation(prox, ctx.realDt);
+    updateDarkAdaptReadout(prox, getDarkAdaptation(), ambient.intensity);
   } },
 
   { name: 'combat', phase: 'unpaused', tick() {
@@ -853,6 +855,7 @@ function setDebugButton(on: boolean) {
   });
 }
 if (DEBUG_ENABLED) setDebugButton(true);
+if (DEBUG_ENABLED) initDarkAdaptReadout();
 // React to the settings-menu toggle live (no reload needed to show/hide
 // the button). The URL flag forces it on regardless of the setting.
 onSettingsChanged((s) => {
