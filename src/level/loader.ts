@@ -13,6 +13,7 @@ import { clearShatterBurst } from '../effects/shatter-burst';
 import { clearBloodBurst } from '../effects/blood-burst';
 import { clearAllOutlines } from '../interactables/outline';
 import { resetDarkAdaptation } from '../scene/dark-adaptation';
+import { clearThresholdEmbers } from '../scene/threshold-ember';
 import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
 import { actForDepth } from './acts';
 
@@ -135,6 +136,7 @@ export function tickPendingLoad() {
     clearBloodBurst();
     clearAllOutlines();
     resetDarkAdaptation();
+    clearThresholdEmbers();
     activeLevel.teardown();
     activeLevel = null;
   }

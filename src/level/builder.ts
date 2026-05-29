@@ -30,6 +30,7 @@ import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
 import { seedBuildRng, buildRng, hashStringToSeed } from '../engine/rng';
+import { spawnThresholdEmber } from '../scene/threshold-ember';
 
 // Local Mulberry32 seeded RNG — kept here to avoid importing procgen.ts
 // (would create a cyclic dependency between builder and procgen).
@@ -294,6 +295,48 @@ function buildWallSegment(
   scene.add(mesh);
 }
 
+// Place a faint coal at each OPEN archway — a room wall opening (where a
+// corridor / adjacent room connects) that has no door. Reuses findOpenings to
+// locate the gaps; dedups shared thresholds; skips any opening near a door
+// (those already signal). Onward passages get a diegetic beacon without
+// rimming the architecture.
+function placeThresholdEmbers(root: THREE.Object3D, spec: LevelSpec, allRects: RoomSpec[]) {
+  const doors = spec.doors ?? [];
+  const seen = new Set<string>();
+  for (const room of spec.rooms) {
+    if (room.logicalOnly) continue;
+    const rect = room.rect;
+    const halfW = rect.w / 2;
+    const halfD = rect.d / 2;
+    const edges = [
+      { perpAxis: 'z' as const, perpCoord: rect.z - halfD, wallStart: rect.x - halfW, wallEnd: rect.x + halfW },
+      { perpAxis: 'z' as const, perpCoord: rect.z + halfD, wallStart: rect.x - halfW, wallEnd: rect.x + halfW },
+      { perpAxis: 'x' as const, perpCoord: rect.x - halfW, wallStart: rect.z - halfD, wallEnd: rect.z + halfD },
+      { perpAxis: 'x' as const, perpCoord: rect.x + halfW, wallStart: rect.z - halfD, wallEnd: rect.z + halfD },
+    ];
+    for (const we of edges) {
+      for (const op of findOpenings(we, allRects, room)) {
+        const mid = (op.start + op.end) / 2;
+        const x = we.perpAxis === 'z' ? mid : we.perpCoord;
+        const z = we.perpAxis === 'z' ? we.perpCoord : mid;
+        // Dedup thresholds shared by two rects (rounded to 0.5m).
+        const key = `${Math.round(x * 2)}:${Math.round(z * 2)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        // Skip doored passages — the door already signals.
+        let doored = false;
+        for (const d of doors) {
+          const dmx = (d.ax + d.bx) / 2;
+          const dmz = (d.az + d.bz) / 2;
+          if (Math.hypot(dmx - x, dmz - z) < 1.2) { doored = true; break; }
+        }
+        if (doored) continue;
+        spawnThresholdEmber(root, x, z);
+      }
+    }
+  }
+}
+
 // Find segments where another rect's edge coincides with this wall edge.
 // "Coincides" = on the same line (same perpendicular coord) AND overlapping
 // in the running-axis direction.
@@ -502,6 +545,11 @@ export function buildLevel(
       buildRoomShell(root, r, allRects, materials, wallSegments, holes);
     }
   }
+
+  // --- Threshold embers: faint coals at OPEN archways (passages with no
+  // door), so an onward passage reads across a dark room without a UI rim.
+  // Doored passages already signal (the door glows + is interactable).
+  placeThresholdEmbers(root, spec, allRects);
 
   // --- Props (visual meshes) + collect obstacles for collision ---
   // `obstacles` was hoisted above so stair AABBs land in the same list.

@@ -43,6 +43,7 @@ import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { recomputePlayerStats } from './state/player-stats';
 import { syncHudStores } from './state/hud-stores';
 import { tickDarkAdaptation } from './scene/dark-adaptation';
+import { tickThresholdEmbers } from './scene/threshold-ember';
 import { seedRng } from './engine/rng';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
@@ -471,6 +472,8 @@ const SYSTEMS: GameSystem[] = [
 
   { name: 'torchlight', phase: 'unpaused', tick(ctx) {
     for (const t of currentLevel.torches) updateTorchlight(t, ctx.scaledDt);
+    // Threshold-ember coals flicker on realDt (a coal doesn't slow in slow-mo).
+    tickThresholdEmbers(ctx.realDt);
   } },
 
   // Ambient torch crackle volume — sum of (1 - dist/range) across torches
