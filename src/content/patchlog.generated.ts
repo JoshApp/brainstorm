@@ -9,7 +9,7 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
-        "text": "Archway: darker stone so the lamp doesn't bloom on it close-up"
+        "text": "Tone down archway proximity glow"
       },
       {
         "tag": "tune",
