@@ -21,6 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the patch-log generator (prebuild) can read
+          # every commit. Default shallow clone (depth 1) would yield a
+          # one-entry changelog.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20

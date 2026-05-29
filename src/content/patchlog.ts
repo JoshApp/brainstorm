@@ -33,27 +33,24 @@ export interface PatchVersion {
   entries: PatchEntry[];
 }
 
+import { GENERATED_PATCHLOG } from './patchlog.generated';
+
+// The log is AUTO-GENERATED from the git history by
+// scripts/gen-patchlog.ts (runs on every build via the package.json
+// "prebuild" hook). To change what appears here, write good commit
+// subjects — the generator groups commits by day into "Build N"
+// versions, infers a tag per commit, and filters housekeeping.
+//
+// Manual highlights (optional): anything in MANUAL_HIGHLIGHTS is
+// prepended ABOVE the generated builds — use it for a curated
+// "what's new" banner when a release deserves more than the raw
+// commit subjects. Empty by default; the generated log stands alone.
+const MANUAL_HIGHLIGHTS: PatchVersion[] = [];
+
 /** Newest first. The viewer renders top-to-bottom in this order. */
 export const PATCHLOG: PatchVersion[] = [
-  {
-    version: '0.4',
-    date: '2026-05-29',
-    entries: [
-      { tag: 'content', text: 'Acid spitter — a blue ooze that hangs back and lobs corrosive bolts. Appears from depth 5.' },
-      { tag: 'content', text: 'New light sources: iron brazier, cresset pike, and wall cresset.' },
-      { tag: 'add', text: 'Light fixtures now share one pool — braziers and pikes can stand in for torches without raising the light budget.' },
-      { tag: 'add', text: 'Lantern flame reworked into a layered, flickering flame stack.' },
-      { tag: 'add', text: 'Item preview labels hold a fixed size; the blood altar reveals an item’s stats only when you lean in to inspect it.' },
-      { tag: 'fix', text: 'Removed the X-shaped wall slivers that appeared in the middle of rooms.' },
-      { tag: 'fix', text: 'Stairs no longer clip halfway into side walls, and the stray wall above them is gone.' },
-      { tag: 'fix', text: 'Doorways are no longer blocked by a stray wall face; doors now have a proper frame above them.' },
-      { tag: 'fix', text: 'Props blocking a corridor are nudged aside; every stairway is now guaranteed reachable.' },
-      { tag: 'tune', text: 'Plain vases shatter in a single hit.' },
-      { tag: 'tune', text: 'Healing fountains read cleaner — the surrounding candles were removed.' },
-      { tag: 'tune', text: 'Brazier and pike placement is quieter and hugs room edges instead of cluttering the centre.' },
-      { tag: 'tech', text: 'Off-screen lights are frustum-culled for better mobile performance.' },
-    ],
-  },
+  ...MANUAL_HIGHLIGHTS,
+  ...(GENERATED_PATCHLOG as unknown as PatchVersion[]),
 ];
 
 /** Most recent version label — handy for a "what’s new" badge or a

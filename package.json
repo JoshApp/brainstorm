@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "gen-patchlog": "tsx scripts/gen-patchlog.ts",
+    "prebuild": "tsx scripts/gen-patchlog.ts",
     "build": "tsc && vite build",
     "preview": "vite preview --host",
     "snap": "tsx scripts/snap.ts",
