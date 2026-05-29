@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from '../content/vase';
+import { COBWEB_BARRIER } from '../content/cobweb';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { createPickup } from '../interactables/pickup';
 import { ITEMS } from '../content/items';
@@ -155,6 +156,64 @@ export function spawnVase(
       }
       // Remove from scene next frame (after caller sees alive=false).
       // Disposing geometries: walk the model group.
+      group.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh && mesh.geometry) mesh.geometry.dispose();
+      });
+      scene.remove(group);
+      return applied;
+    },
+  };
+  return dest;
+}
+
+/** Spawn a destructible COBWEB BARRIER at (x, z) facing `rotY` — a web
+ *  curtain that plugs a passage until the player slashes it. Same
+ *  Damageable contract as a vase (one swing clears it: hp 1), but no
+ *  loot and a softer "tear" instead of a stone shatter. The caller
+ *  pushes the blocking obstacle and passes `onDestroyed` to splice it
+ *  out so the passage opens the instant the web is cut. */
+export function spawnCobweb(
+  scene: THREE.Object3D,
+  x: number,
+  z: number,
+  rotY: number,
+  onDestroyed?: () => void,
+): Destructible {
+  const id = `cobweb-${Math.floor(buildRng() * 1e9).toString(36)}`;
+  const entityId = generateEntityId('prop');
+  const built = buildModel(COBWEB_BARRIER);
+  const group = built.group;
+  group.position.set(x, 0, z);
+  group.rotation.y = rotY;
+  scene.add(group);
+
+  spawnEntity({ id: entityId, kind: 'prop', hp: { base: 1, current: 1 }, buffs: [], passives: [] });
+  setEntityCombatStats(entityId, {});
+
+  const dest: Destructible = {
+    id,
+    entityId,
+    group,
+    position: group.position,
+    aimHeight: 1.1,            // chest-height curtain — aim the cone at the web
+    collisionRadius: 0.9,      // spans a standard doorway / corridor mouth
+    hitFeedback: 'light',
+    alive: true,
+    takeDamage(event: DamageEvent) {
+      if (!dest.alive) return 0;
+      const entity = getEntity(entityId);
+      if (!entity || !entity.hp) return 0;
+      const { applied } = computeDamage(event);
+      entity.hp.current = Math.max(0, entity.hp.current - applied);
+      if (entity.hp.current > 0) return applied;
+      dest.alive = false;
+      destroyEntity(entityId);
+      clearEntityCombatStats(entityId);
+      // Soft tear — a few pale shards (web tatters), no stone crunch.
+      spawnShatterBurst(scene, group.position.x, group.position.y + 1.0, group.position.z, true);
+      playEnemyDeath('small');
+      onDestroyed?.();         // opens the passage
       group.traverse((o) => {
         const mesh = o as THREE.Mesh;
         if (mesh.isMesh && mesh.geometry) mesh.geometry.dispose();

@@ -91,6 +91,49 @@ registerTexture('moonbeam', (canvas) => {
   ctx.fillRect(0, 0, w, h);
 });
 
+// 'cobweb' — a radial spider web: spokes from a corner anchor + a few
+// concentric strands, pale grey on transparent. Anchored at the
+// TOP-LEFT (0,0) so a quad textured with it reads as a web slung into a
+// corner / across an opening. Faded so it's gossamer, not a solid sheet.
+registerTexture('cobweb', (canvas) => {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const ax = 0, ay = 0;          // anchor in the corner
+  const R = Math.hypot(w, h);
+  const spokes = 9;
+  ctx.lineCap = 'round';
+  // Radial spokes fanning from the corner across the quad (0..90°).
+  ctx.strokeStyle = 'rgba(225, 228, 232, 0.42)';
+  ctx.lineWidth = Math.max(1, w / 220);
+  for (let i = 0; i <= spokes; i++) {
+    const a = (i / spokes) * (Math.PI / 2);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax + Math.cos(a) * R, ay + Math.sin(a) * R);
+    ctx.stroke();
+  }
+  // Concentric catch-strands — gentle arcs between the spokes at a few
+  // radii, slightly thinner + fainter.
+  ctx.strokeStyle = 'rgba(225, 228, 232, 0.30)';
+  ctx.lineWidth = Math.max(1, w / 300);
+  const rings = 6;
+  for (let r = 1; r <= rings; r++) {
+    const rad = (r / rings) * R * 0.95;
+    ctx.beginPath();
+    for (let i = 0; i <= spokes; i++) {
+      const a = (i / spokes) * (Math.PI / 2);
+      // Sag the strand inward slightly between spokes for a hand-strung feel.
+      const sag = rad * (0.92 + ((i % 2) ? 0.0 : 0.05));
+      const x = ax + Math.cos(a) * sag;
+      const y = ay + Math.sin(a) * sag;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+});
+
 // 'moss-patch' — irregular green-grey blob with darker veins. Used as wall and
 // floor decals to break up uniform stone. Alpha-faded edges so it blends into
 // the surface it sits on. Procedural noise gives each patch a unique shape.

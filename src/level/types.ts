@@ -159,6 +159,11 @@ export type PropSpec =
   // the builder calls spawnVaseCluster which handles random
   // separation + variant selection per vase.
   | { kind: 'vase-cluster'; x: number; z: number }
+  // 'cobweb' = a destructible web curtain plugging a passage. Blocks
+  // movement until the player slashes through it (one swing); rotY aims
+  // the curtain across the passage. A soft, diegetic gate cleared with
+  // the weapon, not a hard wall.
+  | { kind: 'cobweb'; x: number; z: number; rotY?: number }
   // 'spike-trap' = pressure-plate hazard. Player steps on the plate;
   // brief telegraph (plate sinks, audible click); spikes shoot up and
   // damage. Resets after a cooldown.

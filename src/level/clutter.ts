@@ -7,6 +7,7 @@ import {
   FALLEN_PILLAR_SEGMENT, IRON_BARS,
 } from '../content/clutter';
 import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
+import { COBWEB_CORNER } from '../content/cobweb';
 import { archway, archwayColumnOffset } from '../content/archway';
 import {
   wallOpenings, inOpening, allStairFootprints, findContainingRect,
@@ -473,6 +474,21 @@ function surfacePass(ctx: RoomContext, out: PropSpec[], rand: () => number): voi
       ctx.existing.push(p);
       break;
     }
+  }
+
+  // Cobweb corners — faint webs slung high into the room's corners.
+  // Sparse + cosmetic (no collision); the dense hub tucks into the
+  // corner via the per-corner rotY. Sets the abandoned, long-undisturbed
+  // mood and seeds the spider-nest theme.
+  const cobwebCorners = [
+    { x: ctx.minX + 0.35, z: ctx.minZ + 0.35, rotY:  Math.PI * 0.25 },
+    { x: ctx.maxX - 0.35, z: ctx.minZ + 0.35, rotY:  Math.PI * 0.75 },
+    { x: ctx.minX + 0.35, z: ctx.maxZ - 0.35, rotY: -Math.PI * 0.25 },
+    { x: ctx.maxX - 0.35, z: ctx.maxZ - 0.35, rotY: -Math.PI * 0.75 },
+  ];
+  for (const c of cobwebCorners) {
+    if (rand() > 0.30) continue;   // most corners stay bare
+    out.push({ kind: 'model', model: COBWEB_CORNER, x: c.x, y: 2.2, z: c.z, rotY: c.rotY });
   }
 
   // Wall damage — scorches and gouges on clear wall sections.

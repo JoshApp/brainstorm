@@ -108,7 +108,7 @@ export interface TileMapOptions {
 // floor automatically — no risk of forgetting to add it here. 'X' is
 // the procgen generic-enemy slot (replaced before parse, but kept
 // walkable as a safety net).
-const STRUCTURAL_FLOOR_CHARS = '.,SoOD/^FCPAcvVTt<>X';
+const STRUCTURAL_FLOOR_CHARS = '.,SoOD/^FCPAcvVTt<>X%';
 const FLOOR_CHARS = new Set([
   ...STRUCTURAL_FLOOR_CHARS.split(''),
   ...ENEMY_BY_CHAR.keys(),
@@ -402,6 +402,15 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           // builder calls spawnVaseCluster which handles the
           // random count + variants + spacing.
           props.push({ kind: 'vase-cluster', x, z });
+          break;
+        }
+        case '%': {
+          // Destructible cobweb curtain plugging this passage. Orient
+          // the web across the open axis: if N/S are floor the passage
+          // runs N-S so the curtain faces ±Z (rotY 0); otherwise it
+          // runs E-W and the curtain faces ±X (rotY π/2).
+          const nsOpen = isFloor(c, r - 1) && isFloor(c, r + 1);
+          props.push({ kind: 'cobweb', x, z, rotY: nsOpen ? 0 : Math.PI / 2 });
           break;
         }
         case '^': {

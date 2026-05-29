@@ -4,7 +4,7 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
-import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } from './destructibles';
+import { spawnVase, spawnVaseCluster, spawnCobweb, disposeDestructible, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
@@ -680,6 +680,17 @@ export function buildLevel(
         if (idx >= 0) obstacles.splice(idx, 1);
       });
       destructibles.push(vase);
+    } else if (prop.kind === 'cobweb') {
+      // Destructible web curtain — blocks the passage until slashed.
+      // Push the blocking obstacle + a splice callback so cutting the
+      // web opens the way. Wider radius than a vase (it spans a doorway).
+      const webObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.9 };
+      obstacles.push(webObs);
+      const web = spawnCobweb(root, prop.x, prop.z, prop.rotY ?? 0, () => {
+        const idx = obstacles.indexOf(webObs);
+        if (idx >= 0) obstacles.splice(idx, 1);
+      });
+      destructibles.push(web);
     } else if (prop.kind === 'vase-cluster') {
       // Cluster of 2-4 vases jittered around (x, z). Each gets
       // its own destructible entry + its own collision circle.

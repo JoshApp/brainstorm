@@ -84,6 +84,11 @@ export function getPropAABB(prop: PropSpec): PropAABB | null {
     case 'corpse':
     case 'spike-trap':
     case 'vase-cluster':   // multi-instance — passage check skips it
+    // 'cobweb' DOES block, but it's an intentional destructible gate —
+    // return null so the corridor-clearance nudge + reachability rescue
+    // leave it alone (the player clears it by slashing, not by walking
+    // around it).
+    case 'cobweb':
     case 'hint':
     case 'group':
       return null;
