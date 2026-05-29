@@ -88,6 +88,17 @@ export function createCombatSystem(
     });
     playWhoosh();
     hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
+
+    // Fire punch — a camera kick on release so the shot has weight. The
+    // crossbow's mechanical release hits harder (heftier kick + a tiny
+    // hit-pause "thunk"); the wand's cast is a lighter shove. This is the
+    // viewmodel recoil's screen-space counterpart.
+    const heavy = weapon.class === 'crossbow';
+    kickShake(
+      CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * (heavy ? 0.7 : 0.4),
+      CONFIG.SCREEN_SHAKE_HIT_DURATION * 0.6,
+    );
+    if (heavy) freezeFor(Math.min(30, CONFIG.HIT_PAUSE_MS * 0.3));
   }
 
   function tick(attackPressed: boolean) {

@@ -52,6 +52,8 @@ export function computeWeaponPose(pose: PoseKey, phase: SwordPhase, t: number): 
     case 'hammer-swing-left':  return hammerSwingLeftPose(phase, t);
     case 'hammer-swing-right': return hammerSwingRightPose(phase, t);
     case 'hammer-smash':       return hammerPose(phase, t);
+    case 'crossbow-fire':      return crossbowFirePose(phase, t);
+    case 'wand-cast':          return wandCastPose(phase, t);
     case 'sword-slash-left':
     default:                   return swordSlashLeftPose(phase, t);
   }
@@ -495,5 +497,117 @@ function hammerPose(phase: SwordPhase, t: number): WeaponPose {
   scratch.rotX = HAMMER_STRIKE_RX + (rx - HAMMER_STRIKE_RX) * e;
   scratch.rotY = ry;
   scratch.rotZ = HAMMER_STRIKE_RZ + (rz - HAMMER_STRIKE_RZ) * e;
+  return scratch;
+}
+
+// ── Crossbow: level → recoil → re-cock ───────────────────────────
+// The crossbow model points the stock/barrel along −Z (forward), so
+// the "aim" pose is mostly about CANCELLING the shared idle tilt — the
+// idle roll/pitch (rz 0.4, rx −0.2) reads as "carried at the hip," and
+// we level it to the crosshair to brace the shot.
+//
+//   windup  — raise + pull to the shoulder, level the barrel (de-roll,
+//             de-pitch) so it aims down the crosshair.
+//   strike  — RECOIL: snap back toward the camera (+Z) and kick the
+//             muzzle UP (rotX more positive → −Z barrel tips toward +Y).
+//             Fast, so the kick punches.
+//   recover — the reload. A slow re-cock: the front dips DOWN (muzzle
+//             drops as if working the lever) on a sine bump partway
+//             through, while the base path eases recoil → idle. The
+//             long recover is the cadence cost.
+const XBOW_AIM_X = ix - 0.12;       // toward centre line
+const XBOW_AIM_Y = iy + 0.10;       // raised to brace
+const XBOW_AIM_Z = iz + 0.04;       // pulled back to the shoulder
+const XBOW_AIM_RX = rx + 0.20;      // ≈ 0 — level the barrel
+const XBOW_AIM_RY = ry + 0.15;      // ≈ 0 — aim straight forward
+const XBOW_AIM_RZ = rz - 0.30;      // ≈ 0.1 — mostly de-roll
+// Recoil end-of-strike pose, relative to the aim pose.
+const XBOW_KICK_Y = 0.06;           // muzzle climbs
+const XBOW_KICK_Z = 0.16;           // snaps back into the shoulder
+const XBOW_KICK_RX = 0.34;          // muzzle pitches up
+
+function crossbowFirePose(phase: SwordPhase, t: number): WeaponPose {
+  if (phase === 'windup') {
+    scratch.x = ix + (XBOW_AIM_X - ix) * t;
+    scratch.y = iy + (XBOW_AIM_Y - iy) * t;
+    scratch.z = iz + (XBOW_AIM_Z - iz) * t;
+    scratch.rotX = rx + (XBOW_AIM_RX - rx) * t;
+    scratch.rotY = ry + (XBOW_AIM_RY - ry) * t;
+    scratch.rotZ = rz + (XBOW_AIM_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    // Snap to recoil fast (ease-out), so the kick reads as an impulse.
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = XBOW_AIM_X;
+    scratch.y = XBOW_AIM_Y + XBOW_KICK_Y * ease;
+    scratch.z = XBOW_AIM_Z + XBOW_KICK_Z * ease;
+    scratch.rotX = XBOW_AIM_RX + XBOW_KICK_RX * ease;
+    scratch.rotY = XBOW_AIM_RY;
+    scratch.rotZ = XBOW_AIM_RZ;
+    return scratch;
+  }
+  // recover — the reload. Base path eases the recoil pose back to idle;
+  // a sine bump dips the muzzle down mid-way (re-cock the lever) so the
+  // long recover has a beat of business instead of a dead lerp.
+  const e = 1 - (1 - t) * (1 - t);
+  const fromX = XBOW_AIM_X, fromY = XBOW_AIM_Y + XBOW_KICK_Y, fromZ = XBOW_AIM_Z + XBOW_KICK_Z;
+  const fromRX = XBOW_AIM_RX + XBOW_KICK_RX, fromRZ = XBOW_AIM_RZ;
+  const dip = Math.sin(Math.PI * t);      // 0 → 1 → 0 across recover
+  scratch.x = fromX + (ix - fromX) * e;
+  scratch.y = fromY + (iy - fromY) * e - 0.10 * dip;     // drop while re-cocking
+  scratch.z = fromZ + (iz - fromZ) * e;
+  scratch.rotX = fromRX + (rx - fromRX) * e - 0.45 * dip; // muzzle pitches down
+  scratch.rotY = ry;
+  scratch.rotZ = fromRZ + (rz - fromRZ) * e;
+  return scratch;
+}
+
+// ── Wand: gather → cast → settle ─────────────────────────────────
+// The wand reads as a caster's gesture rather than a weapon swing.
+//   windup  — draw back + up, cock the wrist; the long windup is the
+//             channel. A tiny tremble (sine jitter scaling with t)
+//             reads as "gathering charge."
+//   strike  — CAST: thrust the orb forward (−Z) and slightly up, fast.
+//   recover — settle the cast pose back to idle.
+const WAND_DRAW_X = ix - 0.10;
+const WAND_DRAW_Y = iy + 0.12;
+const WAND_DRAW_Z = iz + 0.10;      // drawn back toward the camera
+const WAND_DRAW_RX = rx + 0.12;
+const WAND_DRAW_RZ = rz + 0.18;     // cock the wrist
+const WAND_CAST_X = ix - 0.04;
+const WAND_CAST_Y = iy + 0.06;
+const WAND_CAST_Z = iz - 0.30;      // pushed forward — the release
+const WAND_CAST_RX = rx - 0.28;     // tip up-and-forward
+const WAND_CAST_RZ = rz - 0.10;
+
+function wandCastPose(phase: SwordPhase, t: number): WeaponPose {
+  if (phase === 'windup') {
+    const tremble = 0.012 * t * Math.sin(t * 40);   // grows as charge builds
+    scratch.x = ix + (WAND_DRAW_X - ix) * t + tremble;
+    scratch.y = iy + (WAND_DRAW_Y - iy) * t;
+    scratch.z = iz + (WAND_DRAW_Z - iz) * t;
+    scratch.rotX = rx + (WAND_DRAW_RX - rx) * t;
+    scratch.rotY = ry;
+    scratch.rotZ = rz + (WAND_DRAW_RZ - rz) * t - tremble;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WAND_DRAW_X + (WAND_CAST_X - WAND_DRAW_X) * ease;
+    scratch.y = WAND_DRAW_Y + (WAND_CAST_Y - WAND_DRAW_Y) * ease;
+    scratch.z = WAND_DRAW_Z + (WAND_CAST_Z - WAND_DRAW_Z) * ease;
+    scratch.rotX = WAND_DRAW_RX + (WAND_CAST_RX - WAND_DRAW_RX) * ease;
+    scratch.rotY = ry;
+    scratch.rotZ = WAND_DRAW_RZ + (WAND_CAST_RZ - WAND_DRAW_RZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = WAND_CAST_X + (ix - WAND_CAST_X) * e;
+  scratch.y = WAND_CAST_Y + (iy - WAND_CAST_Y) * e;
+  scratch.z = WAND_CAST_Z + (iz - WAND_CAST_Z) * e;
+  scratch.rotX = WAND_CAST_RX + (rx - WAND_CAST_RX) * e;
+  scratch.rotY = ry;
+  scratch.rotZ = WAND_CAST_RZ + (rz - WAND_CAST_RZ) * e;
   return scratch;
 }

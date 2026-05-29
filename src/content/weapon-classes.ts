@@ -29,7 +29,9 @@ export type PoseKey =
   | 'dagger-double-stab'
   | 'hammer-swing-left'
   | 'hammer-swing-right'
-  | 'hammer-smash';
+  | 'hammer-smash'
+  | 'crossbow-fire'
+  | 'wand-cast';
 
 export interface ComboStep {
   pose: PoseKey;
@@ -117,18 +119,17 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
   // RANGED classes — a single "fire" step (no combo chain). The strike
   // spawns the weapon's projectile (combat/attack.ts) instead of a melee
   // cone; the long recover IS the reload/draw — the cadence cost that
-  // keeps ranged from obsoleting melee. Reuse the 'sword-thrust' pose for
-  // now (a forward jab reads acceptably as a fire gesture) until a proper
-  // fire/recoil pose lands. comboWindowMs 0 → never chains.
+  // keeps ranged from obsoleting melee. comboWindowMs 0 → never chains.
   crossbow: {
-    // Crossbow — quick fire, long reload.
-    combo: [{ pose: 'sword-thrust', windup: 0.12, strike: 0.10, recover: 0.85 }],
+    // Crossbow — level + brace (windup), snap recoil (strike), then the
+    // long re-cock dip (recover IS the reload). 'crossbow-fire' pose.
+    combo: [{ pose: 'crossbow-fire', windup: 0.12, strike: 0.10, recover: 0.85 }],
     comboWindowMs: 0,
   },
   wand: {
-    // Wand — a channelled draw (longer windup), shorter recover; the
-    // bolt comes off a wind-up rather than a reload.
-    combo: [{ pose: 'sword-thrust', windup: 0.45, strike: 0.10, recover: 0.55 }],
+    // Wand — a channelled gather (longer windup), forward cast snap
+    // (strike), settle (recover). 'wand-cast' pose.
+    combo: [{ pose: 'wand-cast', windup: 0.45, strike: 0.10, recover: 0.55 }],
     comboWindowMs: 0,
   },
 };

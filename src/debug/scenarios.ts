@@ -214,6 +214,25 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 2, pos: { x: -10, z:  10 } },
     ],
   },
+  // Ranged viewmodels — equip the crossbow / wand so the fire + reload
+  // (crossbow) and gather + cast (wand) poses can be reviewed by firing
+  // at the posed enemies.
+  'viewmodel-crossbow': {
+    equipWeaponId: 'crossbow',
+    enemyOverrides: [
+      { index: 0, pos: { x: 0, z: -8 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+  'viewmodel-wand': {
+    equipWeaponId: 'wand',
+    enemyOverrides: [
+      { index: 0, pos: { x: 0, z: -8 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
   // Player nose-to-wall — verifies the held weapon renders on top
   // (doesn't clip through the wall).
   'viewmodel-wall': {
