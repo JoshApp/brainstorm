@@ -176,6 +176,13 @@ Example of the split on a single event (player dies on Floor 1 in their underwea
 
 Deployed via **GitHub Pages**, built by GitHub Actions on every push to the active branch.
 
+**Always push with `npm run ship`, never bare `git push`.** It typechecks
+(pre-push hook), pushes, watches the GitHub Pages run to completion, and
+prints the failed step's log right in the terminal if it goes red — so a
+broken deploy surfaces immediately instead of on the next manual check.
+Pass git args through with `npm run ship -- <args>`. (`SKIP_PREPUSH=1`
+bypasses the typecheck for an emergency push.)
+
 - Workflow: `.github/workflows/deploy.yml`
 - Live URL: `https://joshapp.github.io/brainstorm/`
 - Vite is configured with `base: '/brainstorm/'` so the sub-path works.
