@@ -581,7 +581,7 @@ const SYSTEMS: GameSystem[] = [
     tickItemPreviews(camera, canvas);
     // Outline pulse on the in-range interactable. realDt so it animates at
     // real-time even during hit-pause.
-    updateOutline(inRange, ctx.realDt);
+    updateOutline(inRange, ctx.realDt, camera.position);
   } },
 
   // Player stats snapshot — recompute the single reactive PlayerSnapshot
