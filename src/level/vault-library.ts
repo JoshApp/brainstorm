@@ -1,6 +1,7 @@
 import type { Vault } from './vault';
 import { BONFIRE } from '../content/bonfire';
 import { godRay } from '../content/god-ray';
+import { COBWEB_CORNER } from '../content/cobweb';
 
 // God-ray instances scoped per vault — used VERY sparingly (a few
 // signature chambers, not every room). Same visual family as the
@@ -578,6 +579,42 @@ const BOSS_CATHEDRAL: Vault = {
   ],
 };
 
+// Spider nest — a web-gated combat set-piece. The only way in is a
+// destructible cobweb curtain ('%') plugging the choke; slash through
+// it into a sickly-green chamber thick with webs, a skeleton, and four
+// spiders that pounce from the corners. Loot ('c') waits past the
+// swarm. Ties the cobweb + spider + skeleton work into one room where
+// they reinforce each other.
+const ENCOUNTER_NEST: Vault = {
+  id: 'encounter-nest',
+  tags: ['combat'],
+  map: [
+    '##############',
+    '#.....T......#',
+    '#............#',
+    '######%#######',   // cobweb gate — cut it to enter the nest
+    '#..N......N..#',
+    '#............#',
+    '#.....L......#',
+    '#..N......N..#',
+    '#.....c......#',
+    '#.....t......#',
+    '##############',
+  ],
+  minDepth: 4,
+  weight: 1,
+  torchTint: TORCH_GREEN,
+  // Guaranteed corner webs so the nest reads webbed (clutter's ambient
+  // webs are sparse). Vault-local coords: centre = (0,0). Slung high
+  // into the four chamber corners, hubs facing inward.
+  props: [
+    { kind: 'model', model: COBWEB_CORNER, x: -5.5, y: 2.2, z: -1, rotY:  Math.PI * 0.25 },
+    { kind: 'model', model: COBWEB_CORNER, x:  5.5, y: 2.2, z: -1, rotY:  Math.PI * 0.75 },
+    { kind: 'model', model: COBWEB_CORNER, x: -5.5, y: 2.2, z:  4, rotY: -Math.PI * 0.25 },
+    { kind: 'model', model: COBWEB_CORNER, x:  5.5, y: 2.2, z:  4, rotY: -Math.PI * 0.75 },
+  ],
+};
+
 // ── EXIT vaults ───────────────────────────────────────────────────
 
 const EXIT_SIMPLE: Vault = {
@@ -635,6 +672,7 @@ const EXIT_GRAND: Vault = {
 export const VAULTS: Vault[] = [
   FOYER_SMALL, FOYER_PILLAR, FOYER_ALCOVE,
   COMBAT_OPEN, COMBAT_PILLARS, COMBAT_CHOKE, COMBAT_HALL, COMBAT_ARENA, COMBAT_DOORS,
+  ENCOUNTER_NEST,
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
   ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
