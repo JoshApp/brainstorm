@@ -201,9 +201,15 @@ export function composeFloor(
   const stairs: StairsSpec[] = [];
   const extraWalls: NonNullable<LevelSpec['extraWalls']> = [];
   let startPos: LevelSpec['startPos'] = { x: 0, z: 0, yaw: 0 };
+  // Provenance: which vault TEMPLATE generated each room. The room ids
+  // (`vault-0`, `branch-2`) are positional; this maps them back to the
+  // authored template name (`lattice`, `blood-altar-chamber`) so the
+  // debug capture tool can report "you're standing in the X vault."
+  const roomVaults: Record<string, string> = {};
 
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
+    roomVaults[pv.roomId] = pv.vault.id;
     const populated = populateTemplate(pv.vault.map, depth, rand);
     const sub = parseTileMap(populated, {
       id: `${opts.id}-${pv.vault.id}`,
@@ -274,6 +280,7 @@ export function composeFloor(
     doors,
     stairs,
     extraWalls,
+    roomVaults,
   };
 
   // ── DECORATION PIPELINE ────────────────────────────────────────

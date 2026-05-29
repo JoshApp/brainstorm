@@ -84,6 +84,16 @@ const HARNESS_ENABLED =
   new URLSearchParams(window.location.search).get('harness') === '1';
 if (HARNESS_ENABLED) setHarnessPaused(true);
 
+// Debug capture tool (?debug=1): an on-screen CAPTURE button that grabs
+// a rich snapshot during NORMAL play. Install the console-error ring
+// buffer synchronously here so it catches errors thrown before the
+// dynamic-imported debug module resolves.
+const DEBUG_ENABLED =
+  new URLSearchParams(window.location.search).get('debug') === '1';
+if (DEBUG_ENABLED) {
+  void import('./debug/console-buffer').then((m) => m.installConsoleBuffer());
+}
+
 // Lazily-assigned hooks from the dynamic-imported harness module.
 // Stay null when harness is off so the tick loop pays one branch.
 let harnessLevelReady: (() => void) | null = null;
@@ -107,7 +117,7 @@ const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: false,
   powerPreference: 'high-performance',
-  preserveDrawingBuffer: HARNESS_ENABLED,
+  preserveDrawingBuffer: HARNESS_ENABLED || DEBUG_ENABLED,
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, CONFIG.PIXEL_RATIO_CAP));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -752,6 +762,18 @@ if (HARNESS_ENABLED) {
     // If a level loaded before the dynamic import resolved (scenario
     // boot is fast), notify immediately.
     if (currentLevel) mod.notifyLevelReady();
+  });
+}
+
+// Debug capture button (?debug=1) — dynamic-import so player builds skip
+// the whole debug + harness-observation graph. Mounts the on-screen
+// CAPTURE chip; reads the live level via the same getLevel closure.
+if (DEBUG_ENABLED) {
+  void import('./debug/debug-button').then((mod) => {
+    mod.mountDebugButton({
+      scene, camera, renderer, canvas,
+      getLevel: () => currentLevel,
+    });
   });
 }
 

@@ -337,6 +337,13 @@ export type LevelSpec = {
   /** Stairs leading to other floors. */
   stairs?: StairsSpec[];
   /**
+   * Provenance map: room id (`vault-0`, `branch-2`) → the vault TEMPLATE
+   * name that generated it (`lattice`, `blood-altar-chamber`). Populated
+   * by the vault composer; absent on hand-authored floors. Read by the
+   * debug capture tool to report which vault the player is standing in.
+   */
+  roomVaults?: Record<string, string>;
+  /**
    * Optional per-floor fog tint. Overrides the global CONFIG.FOG_COLOR.
    * Reinforces the floor's identity at distance: blood crypt = red-
    * tinted fog, drowned hall = teal, etc. Cheap atmospheric depth.
