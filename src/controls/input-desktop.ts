@@ -21,14 +21,28 @@ import { LEFT_ZONE_FRACTION } from './input-touch';
 const TAP_MAX_MS = 220;
 const TAP_MAX_PX = 18;
 
+// Pointer-lock movementX/Y is a per-event delta in device pixels. Even a
+// hard, fast flick at 60Hz stays well under ~200px/event. The pointer-lock
+// API, though, intermittently emits a single spurious delta in the thousands
+// (a known Chrome/Windows bug) and ALSO fires a large centring "warp" delta
+// on the first move right after lock engages — either one spins yaw or slams
+// pitch to its limit for a frame (the rare sharp camera flip). Drop any single
+// event beyond this magnitude as spurious; legit motion never reaches it.
+const LOOK_SPIKE_PX = 400;
+
 export const desktopScheme: InputScheme = {
   attach({ canvas, state, options }: SchemeContext): InputTick | null {
     const keys: Record<string, boolean> = {};
     let pointerLocked = false;
+    // The first mousemove after lock engages carries the cursor→centre warp
+    // delta; swallow it so the view doesn't jump on lock.
+    let swallowNextMove = false;
 
     // ── Pointer lock state ──────────────────────────────────────────
     document.addEventListener('pointerlockchange', () => {
-      pointerLocked = document.pointerLockElement === canvas;
+      const nowLocked = document.pointerLockElement === canvas;
+      if (nowLocked && !pointerLocked) swallowNextMove = true;
+      pointerLocked = nowLocked;
     });
 
     // ── Keyboard ────────────────────────────────────────────────────
@@ -124,8 +138,16 @@ export const desktopScheme: InputScheme = {
 
     canvas.addEventListener('mousemove', (e) => {
       if (pointerLocked) {
-        // movementX/Y come straight from the pointer-lock API — no need
-        // to track previous coords. They're raw deltas in pixels.
+        // movementX/Y come straight from the pointer-lock API — raw deltas
+        // in pixels. Swallow the post-lock centring warp, and drop spurious
+        // spike events (see LOOK_SPIKE_PX) so the camera never flips.
+        if (swallowNextMove) {
+          swallowNextMove = false;
+          return;
+        }
+        if (Math.abs(e.movementX) > LOOK_SPIKE_PX || Math.abs(e.movementY) > LOOK_SPIKE_PX) {
+          return;
+        }
         state.lookDx += e.movementX;
         state.lookDy += e.movementY;
       } else {
