@@ -91,9 +91,13 @@ export const BUFFS: Record<string, BuffSpec> = {
     id: 'poison',
     displayName: 'POISON',
     color: 0x66cc33,
-    tickInterval: 0.6,
+    // Attrition = SLOW drip, not a shredder. ~1 tick/sec, capped lower than
+    // burn/bleed's burst so a spider swarm wears you down instead of melting
+    // you (it bypasses physical armour, so the per-second rate has to be
+    // gentler than the physical DoTs to stay fair).
+    tickInterval: 1.0,
     tickEffect: { type: 'damage', amount: 1, damageType: 'magic' },
-    maxStacks: 6,
+    maxStacks: 4,
     vfx: { color: 0x66cc33, style: 'drip' },
   },
 

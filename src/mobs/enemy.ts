@@ -90,10 +90,17 @@ const ALERTED_DURATION = 0.45;
 // duration after sight is already lost.
 const SEARCH_DURATION = 3.0;
 
-// Idle scan: rotates yaw target every N seconds within a small arc around
-// the home direction. Makes idle enemies feel watchful rather than statues.
-const IDLE_SCAN_INTERVAL = 2.5;
-const IDLE_SCAN_HALF_ARC = 0.7;   // ±40° around home yaw
+// Idle scan: the enemy drifts its gaze in a gentle random-walk around its
+// home facing, holding still much of the time, so a roomful (especially a
+// spider swarm) reads as watchful — not a row of heads slapping left-right
+// in unison. Each gaze change is a SMALL step from the current angle, not a
+// fresh jump across the whole arc, and the interval is jittered per enemy so
+// the swarm desyncs.
+const IDLE_SCAN_INTERVAL_MIN = 3.0;    // base seconds between gaze changes
+const IDLE_SCAN_INTERVAL_JITTER = 2.5; // + up to this (desyncs a swarm)
+const IDLE_SCAN_HALF_ARC = 0.5;        // ±29° max from home yaw
+const IDLE_SCAN_STEP = 0.35;           // ±20° gentle step per change
+const IDLE_SCAN_HOLD_CHANCE = 0.4;     // fraction of changes that just pause
 
 export interface Enemy extends Damageable {
   entityId: EntityId;
@@ -306,7 +313,8 @@ export function createEnemy(
   let homeYaw = 0;                   // filled in on first idle-tick
   let homeYawSet = false;
   // Idle scan yaw target — rotates in place to feel watchful.
-  let scanTimer = IDLE_SCAN_INTERVAL;  // pick a new target immediately
+  let scanTimer = IDLE_SCAN_INTERVAL_MIN;  // pick a new target immediately
+  let scanInterval = IDLE_SCAN_INTERVAL_MIN;
   let scanTargetYaw = 0;
   // Last position we saw the player at. Used by 'searching' state.
   const lastSeenPos = new THREE.Vector3();
@@ -960,15 +968,25 @@ export function createEnemy(
         // IDLE_SCAN_INTERVAL seconds; lerp toward it. Dim eye flare so
         // a watching player can tell at a glance "this one hasn't seen me yet."
         scanTimer += dt;
-        if (scanTimer >= IDLE_SCAN_INTERVAL) {
+        if (scanTimer >= scanInterval) {
           scanTimer = 0;
-          scanTargetYaw = homeYaw + (gameRng() * 2 - 1) * IDLE_SCAN_HALF_ARC;
+          scanInterval = IDLE_SCAN_INTERVAL_MIN + gameRng() * IDLE_SCAN_INTERVAL_JITTER;
+          if (gameRng() < IDLE_SCAN_HOLD_CHANCE) {
+            // Pause: keep watching the current direction for a beat.
+            scanTargetYaw = container.rotation.y;
+          } else {
+            // Gentle random-walk: step a little from where we're looking,
+            // clamped to ±arc around home so it never slams side-to-side.
+            const stepped = scanTargetYaw + (gameRng() * 2 - 1) * IDLE_SCAN_STEP;
+            scanTargetYaw = Math.max(homeYaw - IDLE_SCAN_HALF_ARC,
+                                     Math.min(homeYaw + IDLE_SCAN_HALF_ARC, stepped));
+          }
         }
         // Lerp container yaw toward scan target. Wrap delta to nearest π.
         let delta = scanTargetYaw - container.rotation.y;
         while (delta >  Math.PI) delta -= Math.PI * 2;
         while (delta < -Math.PI) delta += Math.PI * 2;
-        container.rotation.y += delta * Math.min(1, dt * 1.2);
+        container.rotation.y += delta * Math.min(1, dt * 0.9);
         applyIdleEyes();
         applyTilt(0);
         built.group.position.y = 0;
@@ -1039,7 +1057,7 @@ export function createEnemy(
         if (distHome < 0.25) {
           state = 'idle';
           // Reset scan so it picks a fresh target next idle tick.
-          scanTimer = IDLE_SCAN_INTERVAL;
+          scanTimer = scanInterval;
           scanTargetYaw = homeYaw;
           break;
         }

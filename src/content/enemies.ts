@@ -1517,10 +1517,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.14,
     recoverTime: 0.4,
     damageType: 'physical',
-    // Venom — every bite/pounce has a good chance to poison. Poison
-    // stacks, so a swarm stacks it FAST: the nest punishes getting
-    // surrounded with mounting attrition, not just burst.
-    onHit: { buffId: 'poison', chance: 0.6, duration: 4 },
+    // Venom — bites have a chance to poison. Poison stacks, so a swarm
+    // still ramps attrition when it surrounds you, but the per-bite chance
+    // is moderate so a single spider isn't a guaranteed stacking machine.
+    onHit: { buffId: 'poison', chance: 0.4, duration: 4 },
     abilities: [
       // POUNCE — coil then leap across the gap with a bite on contact.
       {
