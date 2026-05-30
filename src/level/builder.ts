@@ -515,10 +515,22 @@ export function buildLevel(
         if (wz < minZ) minZ = wz;
         if (wz > maxZ) maxZ = wz;
       }
-      const cMinX = Math.max(minX, rx - hw);
-      const cMaxX = Math.min(maxX, rx + hw);
-      const cMinZ = Math.max(minZ, rz - hd);
-      const cMaxZ = Math.min(maxZ, rz + hd);
+      // Clamp the hole to sit STRICTLY INSIDE the floor contour by a
+      // small inset on every side. A hole vertex that lands exactly on
+      // (or, via float error, a hair past) the outer boundary makes
+      // THREE's earcut triangulation silently DROP the hole — the floor
+      // comes back as a solid 2-triangle slab with no stairwell opening.
+      // This bites whenever a stairwell is shifted flush with its back
+      // wall (the back edge then coincides with the room boundary): e.g.
+      // exit-grand, where rz≈30.7227 made the back edge land at
+      // y=-3.5000000000000036 vs the contour's -3.5. The leftover inset
+      // sliver (≤2cm) sits under the wall / behind the stair parapet, so
+      // it's never visible.
+      const EDGE_INSET = 0.02;
+      const cMinX = Math.max(minX, rx - hw + EDGE_INSET);
+      const cMaxX = Math.min(maxX, rx + hw - EDGE_INSET);
+      const cMinZ = Math.max(minZ, rz - hd + EDGE_INSET);
+      const cMaxZ = Math.min(maxZ, rz + hd - EDGE_INSET);
       if (cMinX >= cMaxX || cMinZ >= cMaxZ) continue;  // clipped to nothing
       // Build hole in floor-shape coords (X = world_x - rect.x;
       // Y = -(world_z - rect.z) due to the floor's -π/2 X rotation).
