@@ -58,7 +58,7 @@ import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
-import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot } from './state/dev-snapshot';
+import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
 import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
@@ -1152,6 +1152,16 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.
   applyScenario(scenario, { level: currentLevel, sword, camera });
+} else if (hasPendingDevSnapshot() && loadSave()) {
+  // Dev hot-reload returning from DEV AUTO-UPDATE: a pending pose/HP/buffs
+  // snapshot means the page just reloaded mid-floor. Skip the title and
+  // continue the saved run — the snapshot will restore the player's pose
+  // when onLoaded fires for the resumed floor. If there's no save (fresh
+  // boot somehow), fall through; the snapshot expires on its 30-min TTL.
+  const s = loadSave()!;
+  adoptSave(s);
+  applyState(s);
+  startRun(s.floorId, s.depth);
 } else if (handleAutostart()) {
   // Autostart flow ran (DESCEND / CONTINUE / seeded jump). Title is bypassed.
 } else {

@@ -148,6 +148,14 @@ export function applyDevSnapshot(
   return true;
 }
 
+/** Cheap check: does a non-stale snapshot exist? Used at boot to
+ *  decide whether to bypass the title screen — if dev mode just
+ *  reloaded the page, the player wants to land back in their floor
+ *  with their pose restored, not on the title's CONTINUE button. */
+export function hasPendingDevSnapshot(): boolean {
+  return readSnapshot() !== null;
+}
+
 /** Drop the snapshot — called on player:killed and when level:loaded
  *  reports a different floor (player descended after the snapshot). */
 export function clearDevSnapshot(): void {

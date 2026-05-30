@@ -9,6 +9,26 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Dev hot-reload"
+      },
+      {
+        "tag": "add",
+        "text": "Add a denied sound for full-stock / full-HP refusals"
+      },
+      {
+        "tag": "tune",
+        "text": "Combat audio: textural pressure, not a tone"
+      },
+      {
+        "tag": "tune",
+        "text": "Audio: monster vocalisations, natural drip, dread combat layer"
+      },
+      {
+        "tag": "tune",
+        "text": "Audio: silence-first exploration — soundscape over melody"
+      },
+      {
+        "tag": "tune",
         "text": "Auto-update"
       },
       {
@@ -192,26 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Ranged weapon class: crossbow + wand (main-hand ranged)"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt additive lift; brighter interactable glow; cobweb variety"
-      },
-      {
-        "tag": "fix",
-        "text": "Collapse to PS1-only render path; fix dark-adapt exposure"
-      },
-      {
-        "tag": "content",
-        "text": "Chill + Sunder statuses; wire weapon on-hit application"
-      },
-      {
-        "tag": "tune",
-        "text": "Status effects — full system"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adaptation"
       }
     ]
   }
