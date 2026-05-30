@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Dark-adapt"
+      },
+      {
+        "tag": "tune",
         "text": "Dark-adapt: hybrid lit signal — max(surface, camera-at-eye)"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Path-ahead prep"
-      },
-      {
-        "tag": "tune",
-        "text": "HUD binding layer: shared primitives + store-bound readouts"
       }
     ]
   }

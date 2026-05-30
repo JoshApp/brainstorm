@@ -52,17 +52,17 @@ const TORCH_GOLD   = 0xffd060;
 const FOYER_SMALL: Vault = {
   id: 'foyer-small',
   tags: ['start'],
-  // 'S' centred in the room (was hugging the south edge — player
-  // spawned at the door instead of in the middle). Bonfire sits
-  // ~1.2m east of the spawn so the player sees its warm light
-  // on their right side as they appear.
+  // 'S' centred in the room. Bonfire sits ~1.2m east of the spawn
+  // so the player sees its warm light on their right side as they
+  // appear. Torches scarcer + asymmetric — one torch each end,
+  // diagonally opposed; the bonfire carries the rest of the warmth.
   map: [
     '##########',
-    '#..T...T.#',
+    '#..T.....#',
     '#........#',
     '#...S....#',
     '#........#',
-    '#..T...T.#',
+    '#.....T..#',
     '##########',
   ],
   props: [
@@ -96,13 +96,15 @@ const FOYER_PILLAR: Vault = {
 const FOYER_ALCOVE: Vault = {
   id: 'foyer-alcove',
   tags: ['start'],
+  // Cut to 2 torches diagonally so the alcove has a moodier
+  // light gradient rather than four symmetric pools.
   map: [
     '############',
-    '#..T....T..#',
+    '#..T.......#',
     '#..........#',
     '#..C..S..C.#',
     '#..........#',
-    '#..T....T..#',
+    '#.......T..#',
     '############',
   ],
   props: [
@@ -119,15 +121,18 @@ const FOYER_ALCOVE: Vault = {
 const COMBAT_OPEN: Vault = {
   id: 'combat-open',
   tags: ['combat'],
+  // Torches scarcer + asymmetric — one corner each row, opposite
+  // sides. Lit hotspots near two edges; the middle stays darker
+  // so dark-adapt has somewhere to engage.
   map: [
     '############',
-    '#..T....T..#',
+    '#..T.......#',
     '#v........v#',
     '#....X.....#',
     '#..........#',
     '#..X....X..#',
     '#.........v#',
-    '#..T....T..#',
+    '#.......T..#',
     '############',
   ],
 };
@@ -135,15 +140,17 @@ const COMBAT_OPEN: Vault = {
 const COMBAT_PILLARS: Vault = {
   id: 'combat-pillars',
   tags: ['combat'],
+  // Two torches diagonally opposite instead of four in pairs —
+  // most of the room past the pillars stays dim.
   map: [
     '##############',
-    '#....T....T..#',
+    '#....T.......#',
     '#.P........P.#',
     '#....X.......#',
     '#............#',
     '#.....X......#',
     '#.P........P.#',
-    '#....T....T..#',
+    '#.........T..#',
     '##############',
   ],
   torchTint: TORCH_VIOLET,
@@ -171,9 +178,14 @@ const COMBAT_HALL: Vault = {
   // Large pillar hall — a real chamber, not just a room. Anchors a
   // floor. Atmospheric setpieces (ritual-circle in the centre,
   // bone-shrines tucked into the corners) come from prop groups.
+  //
+  // Torch pass: cut from 8 → 4 and staggered diagonally so the
+  // hall has clear lit hotspots near a couple of pillars + large
+  // dim middle. Dark-adapt has room to engage in the middle
+  // colonnade.
   map: [
     '################',
-    '#..T...T..T..T.#',
+    '#..T..........T#',
     '#..............#',
     '#.P..P..P..P.P.#',
     '#..............#',
@@ -185,7 +197,7 @@ const COMBAT_HALL: Vault = {
     '#..............#',
     '#.P..P..P..P.P.#',
     '#..............#',
-    '#..T...T..T..T.#',
+    '#T..........T..#',
     '################',
   ],
   minDepth: 3,

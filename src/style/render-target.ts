@@ -70,20 +70,18 @@ const HORROR_BLIT_FRAG = `
     float b = texture2D(tDiffuse, uv - caOffset).b;
     vec3 col = vec3(r, g, b);
 
-    // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — RAISE the shadow floor, don't
-    // just multiply: a torchless corridor is near-black, and black × gain is
-    // still black. An additive lift (with a slight cool scotopic tint) is what
-    // actually makes the dark navigable, plus a gain on top. Applied
-    // before posterize so the steps land on the lifted image. Rests at 0 in
-    // torchlight, so lit rooms are untouched.
+    // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — Raise the SHADOW
+    // FLOOR (max-with), don't blanket-add. Earlier passes added a
+    // constant to every pixel, which washed out bright areas
+    // ("half lit all the time") because torchlit pixels also got
+    // the lift on top of being already-bright. max() is shadow-only:
+    // dark pixels get raised to the floor; lit pixels stay where
+    // they are.
     //
-    // Tuned UP from earlier values (gain 0.45→0.70, additive
-    // (0.045,0.060,0.085)→(0.080,0.100,0.130)) — players reported "almost
-    // pitch black" in rooms past lamp range with few torches. The additive
-    // floor is what makes silhouettes legible; the gain expands the
-    // contrast above it.
-    col *= 1.0 + uDarkAdapt * 0.70;                       // gain
-    col += uDarkAdapt * vec3(0.080, 0.100, 0.130);        // cool shadow lift
+    // Plus a small gain — adds a hair of contrast inside the
+    // mid-range without clipping the highs.
+    col *= 1.0 + uDarkAdapt * 0.30;
+    col = max(col, uDarkAdapt * vec3(0.110, 0.140, 0.180));
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;

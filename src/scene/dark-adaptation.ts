@@ -21,14 +21,17 @@ import { CONFIG } from '../config';
 // at (torches with line-of-sight + your lamp's falloff, summed by the caller).
 // At/below LIT_DARK the eye fully adapts; at/above LIT_BRIGHT it rests. No GPU
 // readback (framebuffer metering stalled the pipeline) — this is analytic.
-const LIT_DARK = 0.15;
-const LIT_BRIGHT = 0.65;
-// Faster ramps than the previous 0.6/4.0 values — feedback was
-// "this feels too slow for gameplay". Now ~0.6s to adapt UP and
-// ~0.12s to slam DOWN. Still keeps the asymmetry (bright re-
-// blinds you instantly; darkness takes a beat to grow into).
-const ADAPT_UP_RATE = 1.6;           // per-sec approach while dark
-const ADAPT_DOWN_RATE = 8.0;         // per-sec approach while lit
+const LIT_DARK = 0.18;
+const LIT_BRIGHT = 0.85;
+// UP fast, DOWN slow — the player asked for this orientation:
+// stepping into a dark area should adapt almost immediately
+// (~0.25s) so the dark spot becomes navigable fast; stepping
+// BACK into torchlight should fade adaptation off more gradually
+// (~0.5s) instead of slamming back to "blinded by torch". The
+// previous direction (slow-up, fast-down) made the system feel
+// passive and rarely useful.
+const ADAPT_UP_RATE = 3.5;           // per-sec approach while dark
+const ADAPT_DOWN_RATE = 2.2;         // per-sec approach while lit
 
 // Brightness multiplier at full adaptation. The blit shader multiplies the
 // image by darkAdaptBrightness() (1.0 = neutral), and the AmbientLight is
