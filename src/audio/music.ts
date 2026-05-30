@@ -7,8 +7,9 @@
 //     floor / threat bed) + a sparse ambient SOUNDSCAPE (drips, settling
 //     stone, far groans, drafts) on long irregular gaps. The dungeon's
 //     voice, not a score — the player listens into the dark.
-//   - Combat: the drone tightens + a held-tension layer swells. The crunchy
-//     impact SFX carries the rhythm; no battle theme.
+//   - Combat: NO music. The drone ducks out the moment a fight starts — the
+//     world goes quiet and the fight carries itself (impacts + enemy vocals
+//     + room tone). No bed, no battle theme.
 //   - Safe rooms: the only place melodic MOTIFS play — the exhale/reward.
 // A synth pluck playing a tune in a grimdark dungeon reads as "MIDI
 // keyboard" no matter how good the notes, so melody earns its place by
@@ -359,40 +360,13 @@ export function startMusic(): void {
     droneOscs.push(o);
   }
 
-  // ── Combat layer — textural pressure, NO note ─────────────────────────
-  // Three tonal versions all read wrong (throb / consonant breath / dissonant
-  // tritone). So: not a tone at all. A low, non-pitched RUMBLE — looping noise
-  // through a lowpass (sub weight) + a little band-passed grit — swelling
-  // slowly. combatGain (driven by heat in tickHeat) raises it as danger rises
-  // and drops it as the fight clears: FELT as weight in the room, not heard as
-  // music. The crunchy impact SFX carry the rhythm.
-  const combatNoise = c.createBufferSource();
-  combatNoise.buffer = getNoise(c);
-  combatNoise.loop = true;
-  // Low body — the chest-weight rumble.
-  const combatLp = c.createBiquadFilter();
-  combatLp.type = 'lowpass';
-  combatLp.frequency.value = 220;
-  combatLp.Q.value = 0.7;
-  const combatBody = c.createGain();
-  combatBody.gain.value = 0.55;
-  // A touch of mid grit so it's "tension" not just sub-mud.
-  const combatGrit = c.createBiquadFilter();
-  combatGrit.type = 'bandpass';
-  combatGrit.frequency.value = 850;
-  combatGrit.Q.value = 0.6;
-  const combatGritG = c.createGain();
-  combatGritG.gain.value = 0.10;
-  // Slow pressure swell so a held fight still breathes (looms, never pulses).
-  const combatLfo = c.createOscillator();
-  combatLfo.type = 'sine';
-  combatLfo.frequency.value = 0.16;
-  const combatLfoG = c.createGain();
-  combatLfoG.gain.value = 0.18;
-  combatLfo.connect(combatLfoG).connect(combatBody.gain);
-  combatNoise.connect(combatLp).connect(combatBody).connect(combatGain);
-  combatNoise.connect(combatGrit).connect(combatGritG).connect(combatGain);
-  combatNoise.start(); combatLfo.start();
+  // ── Combat layer — intentionally SILENT ──────────────────────────────
+  // Every musical combat bed we tried read wrong (sub throb / consonant
+  // breath / dissonant tritone / textural rumble). Josh's call: combat has
+  // NO music. The fight carries itself — your impacts, the enemy vocals,
+  // the room. So nothing feeds combatGain; the drone also ducks to silence
+  // when a fight starts (see applyState 'combat'). combatGain stays in the
+  // layer mix as a slot in case we ever want a boss-fight bed.
 
   // ── Ambient bus ──────────────────────────────────────────────────────
   // The environmental one-shots (drips, settling stone, far groans, drafts)
@@ -451,9 +425,11 @@ function applyState(state: MusicState): void {
       setRamp(combatGain, 0.00, 0.8);
       break;
     case 'combat':
-      setRamp(droneGain,  0.34, 0.6);
-      setRamp(pluckGain,  0.08, 0.4);   // duck plucks — held breath breathes
-      setRamp(combatGain, 0.22, 0.7);   // gentle swell, not a thump
+      // No music in combat — the world goes quiet for the fight. The drone
+      // ducks out so only impacts + enemy vocals + room tone carry it.
+      setRamp(droneGain,  0.00, 0.9);
+      setRamp(pluckGain,  0.00, 0.4);
+      setRamp(combatGain, 0.00, 0.6);
       break;
     case 'safe':
       setRamp(droneGain,  0.22, 2.4);
@@ -729,18 +705,6 @@ function tickHeat(): void {
   if (currentState !== 'exploration' && currentState !== 'combat') return;
   if (combatHeat > 1.2 && currentState !== 'combat') applyState('combat');
   else if (combatHeat < 0.35 && currentState === 'combat') applyState('exploration');
-
-  // While fighting, the pressure rumble tracks how hot the fight is — a
-  // bigger brawl looms louder, and it eases as the room calms. Mapped
-  // heat 1.2..4 → gain 0.10..0.30, smoothed so it swells rather than steps.
-  if (currentState === 'combat' && combatGain) {
-    const c = getAudioContext();
-    if (c) {
-      const t = Math.min(1, Math.max(0, (combatHeat - 1.2) / 2.8));
-      const target = 0.10 + t * 0.20;
-      combatGain.gain.setTargetAtTime(target, c.currentTime, 0.35);
-    }
-  }
 }
 
 function initMusicEventHooks(): void {
