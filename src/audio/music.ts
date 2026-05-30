@@ -344,6 +344,18 @@ export function startMusic(): void {
   // an LFO on detune (slow breath) and a separate LFO on its own
   // amplitude — so the three voices breathe out of phase, like
   // candle-lit chant.
+  //
+  // The whole stack runs through ONE gentle lowpass before droneGain. With
+  // melody stripped off exploration, the bare drone is exposed — and a
+  // sawtooth palette (Act 3, "wrong nature") buzzes harshly without it. The
+  // lowpass keeps the fundamental + a few harmonics (so the sour character
+  // survives) but shaves the aggressive top so it reads as a felt floor, not
+  // a buzz. Barely touches the sine/triangle acts (they have little up there).
+  const droneLp = c.createBiquadFilter();
+  droneLp.type = 'lowpass';
+  droneLp.frequency.value = 360;
+  droneLp.Q.value = 0.6;
+  droneLp.connect(droneGain);
   const droneRatios = [1.0, 1.5, 2.0];
   for (let i = 0; i < droneRatios.length; i++) {
     const o = c.createOscillator();
@@ -369,7 +381,7 @@ export function startMusic(): void {
     ampLfoG.gain.value = og.gain.value * 0.30;
     ampLfo.connect(ampLfoG).connect(og.gain);
 
-    o.connect(og).connect(droneGain);
+    o.connect(og).connect(droneLp);
     o.start(); detLfo.start(); ampLfo.start();
     droneOscs.push(o);
   }
@@ -783,6 +795,9 @@ function initMusicEventHooks(): void {
     if (event.type === 'attack:hit')        combatHeat += 1.0;
     else if (event.type === 'player:damaged') combatHeat += 1.5;
     else if (event.type === 'enemy:killed') combatHeat += 0.6;
+    // Room cleared → the fight is over: drop heat so combat/boss music calms
+    // promptly instead of lingering on the decay tail.
+    else if (event.type === 'room:cleared') combatHeat = 0;
     else if (event.type === 'player:killed') applyState('death');
     else if (event.type === 'level:loaded') {
       // Switch palette + reset state + clear any lingering combat heat.
