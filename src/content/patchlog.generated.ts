@@ -4,9 +4,13 @@
 
 export const GENERATED_PATCHLOG = [
   {
-    "version": "Build 7",
+    "version": "Build 8",
     "date": "2026-05-30",
     "entries": [
+      {
+        "tag": "tune",
+        "text": "Dev hot-reload: bypass title screen when snapshot is pending"
+      },
       {
         "tag": "tune",
         "text": "Dev hot-reload"
@@ -134,6 +138,16 @@ export const GENERATED_PATCHLOG = [
     ]
   },
   {
+    "version": "Build 7",
+    "date": "2026-05-31",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "Combat audio: fully silent — the world goes quiet for the fight"
+      }
+    ]
+  },
+  {
     "version": "Build 6",
     "date": "2026-05-29",
     "entries": [
@@ -204,14 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Ranged viewmodel polish: crossbow recoil + wand cast poses"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt reads view direction too (look into the dark to adjust)"
-      },
-      {
-        "tag": "content",
-        "text": "Ranged weapon class: crossbow + wand (main-hand ranged)"
       }
     ]
   }

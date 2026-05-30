@@ -1,5 +1,5 @@
 import { getSettings, updateSettings } from '../settings/settings';
-import { setMasterVolume } from '../audio/sfx';
+import { setMasterVolume, setReverbEnabled } from '../audio/sfx';
 import { setMusicVolume } from '../audio/music';
 import { openScreen, closeScreen } from './screen-manager';
 import { getUpdateStatus, applyUpdate, onUpdateStatusChange } from '../pwa-update';
@@ -163,6 +163,17 @@ function buildPanelContents() {
       setMusicVolume(v);
     },
     format: (v) => `${Math.round(v * 100)}%`,
+  }));
+
+  // --- Reverb toggle (mobile-perf escape hatch) ---
+  panel.appendChild(makeToggle({
+    label: 'REVERB',
+    description: 'Adds a sense of room to sounds. Turn off if performance drops — the convolver is the most expensive piece of the audio chain on weaker phones.',
+    get: () => getSettings().reverb,
+    set: (v) => {
+      updateSettings({ reverb: v });
+      setReverbEnabled(v);
+    },
   }));
 
   // --- Auto-update toggle + install-now button ---

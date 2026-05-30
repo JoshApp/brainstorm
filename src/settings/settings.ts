@@ -15,6 +15,12 @@ export interface Settings {
    *  engine. Applied as an additional gain stage AFTER master, so the
    *  player can quiet the score independently of SFX. */
   musicVolume: number;
+  /** Reverb on/off. The shared convolver gives sounds a sense of room,
+   *  but ConvolverNode is the heaviest piece of the audio chain on
+   *  mobile — convolving every sustained music layer + every
+   *  positional SFX through a long impulse response can sap frame
+   *  budget on weaker phones. Toggle off if performance drops. */
+  reverb: boolean;
   /** Auto-install new builds at safe moments (title screen + the next
    *  level-transition fade). When false, the player taps "INSTALL
    *  UPDATE" in the settings menu instead. */
@@ -38,6 +44,7 @@ const DEFAULTS: Settings = {
   hybridLook: false,
   masterVolume: 0.55,
   musicVolume: 0.65,
+  reverb: true,
   autoUpdate: true,
   devAutoUpdate: false,
   debugMode: false,

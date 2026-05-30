@@ -23,7 +23,7 @@ import { initRenderPipeline, renderWithStyle, setDarkAdapt } from './style/rende
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
-import { setMasterVolume, startAmbience, setTorchProximity, setAudioListenerPose, playWhoosh } from './audio/sfx';
+import { setMasterVolume, setReverbEnabled, startAmbience, setTorchProximity, setAudioListenerPose, playWhoosh } from './audio/sfx';
 import { startMusic, setMusicVolume } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
@@ -397,6 +397,7 @@ createInventoryPanel();
 // applied at boot (not just when the slider next moves).
 setMasterVolume(getSettings().masterVolume);
 setMusicVolume(getSettings().musicVolume);
+setReverbEnabled(getSettings().reverb);
 
 // Start ambient loops (torch crackle bed + room drone) on the very first
 // user gesture — AudioContext can't run before the user has touched the

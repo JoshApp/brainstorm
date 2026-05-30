@@ -27,6 +27,8 @@ export type Vec3Sound = { x: number; y: number; z: number };
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 let reverbInput: GainNode | null = null;   // sources send into here for reverb
+let reverbOutput: GainNode | null = null;  // last node in reverb chain — disconnect to bypass
+let reverbEnabled = true;
 let masterVolume = 0.55;  // overridden by settings on init
 
 function ensureCtx(): AudioContext | null {
@@ -44,11 +46,19 @@ function ensureCtx(): AudioContext | null {
     reverbInput = ctx.createGain();
     reverbInput.gain.value = 1.0;
     const convolver = ctx.createConvolver();
-    convolver.buffer = makeReverbImpulse(ctx, 1.6, 2.6);
+    // Shorter IR (was 1.6s × 2.6 decay) — half the per-sample cost.
+    // Mobile convolvers scale with IR length × number of input sources;
+    // dropping to 0.8s × 3.5 keeps the room-sense audible at roughly
+    // half the convolution work per second.
+    convolver.buffer = makeReverbImpulse(ctx, 0.8, 3.5);
     // Output trim so wet doesn't drown the dry path. Tweak to taste.
-    const wetTrim = ctx.createGain();
-    wetTrim.gain.value = 0.55;
-    reverbInput.connect(convolver).connect(wetTrim).connect(masterGain);
+    reverbOutput = ctx.createGain();
+    reverbOutput.gain.value = 0.55;
+    reverbInput.connect(convolver).connect(reverbOutput);
+    // Connect into master only when reverb is enabled; setReverbEnabled
+    // re-wires this on toggle. Bypass = no signal reaches the destination
+    // so the browser can short-circuit the convolution work.
+    if (reverbEnabled) reverbOutput.connect(masterGain);
     return ctx;
   } catch {
     return null;
@@ -163,6 +173,23 @@ export function setAudioListenerPose(
 export function setMasterVolume(v: number) {
   masterVolume = Math.max(0, Math.min(1, v));
   if (masterGain) masterGain.gain.value = masterVolume;
+}
+
+/** Toggle the reverb wet bus. Off = the convolver's output is
+ *  disconnected from master so it stops processing audio (browsers
+ *  short-circuit convolution work when output isn't reaching the
+ *  destination). Sounds keep their dry path; they just lose the room
+ *  tail. Used by the REVERB setting on mobile-perf-sensitive devices. */
+export function setReverbEnabled(enabled: boolean) {
+  reverbEnabled = enabled;
+  if (!reverbOutput || !masterGain) return;
+  try {
+    if (enabled) reverbOutput.connect(masterGain);
+    else reverbOutput.disconnect(masterGain);
+  } catch {
+    // Already (dis)connected — Web Audio throws when reconnecting an
+    // existing connection or disconnecting one that isn't there.
+  }
 }
 
 /** Sword cutting air — a short filtered noise burst, mid-high frequency, fast decay. */
