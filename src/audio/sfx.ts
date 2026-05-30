@@ -109,6 +109,26 @@ function createPositionalChain(pos: Vec3Sound, wetSend: number = 0.35): AudioNod
   return panner;
 }
 
+// ── Shared infrastructure access for other audio modules ──────────────
+// music.ts uses these to plug its layers into the same context + busses
+// as the SFX, sharing the reverb convolver instead of building its own.
+
+/** Audio context (null until first user gesture creates it). */
+export function getAudioContext(): AudioContext | null {
+  ensureCtx();
+  return ctx;
+}
+/** Master output bus — every dry path terminates here. */
+export function getMasterGain(): GainNode | null {
+  ensureCtx();
+  return masterGain;
+}
+/** Shared reverb wet-bus input. Connect into this for spatial tail. */
+export function getReverbInput(): GainNode | null {
+  ensureCtx();
+  return reverbInput;
+}
+
 /** Update the AudioListener pose so positional pans/distances track the
  *  player's view. Call once per frame from the main loop with the
  *  camera. Cheap — just sets a few AudioParam values. */

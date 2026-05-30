@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-05-30",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Audio: positional pan + shared reverb send for in-world sounds"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix stray wall stubs by the boss stairwells"
+      },
+      {
         "tag": "content",
         "text": "Safe room: redesign + warm-variant stairs + rest fountain + transition card"
       },
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Eye dark-adaptation: lift ambient floor in torchless dark"
-      },
-      {
-        "tag": "tune",
-        "text": "Faint proximity glow on nearby interactables (dark-navigation aid)"
-      },
-      {
-        "tag": "tune",
-        "text": "Parametric creature() builder + defiler's own silhouette"
       }
     ]
   }

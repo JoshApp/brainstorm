@@ -24,6 +24,7 @@ import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
 import { setMasterVolume, startAmbience, setTorchProximity, setAudioListenerPose, playWhoosh } from './audio/sfx';
+import { startMusic } from './audio/music';
 import { emit } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
@@ -385,6 +386,7 @@ setMasterVolume(getSettings().masterVolume);
 {
   const startOnce = () => {
     startAmbience();
+    startMusic();
     window.removeEventListener('pointerdown', startOnce);
     window.removeEventListener('touchstart', startOnce);
     window.removeEventListener('keydown', startOnce);
