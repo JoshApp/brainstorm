@@ -5,24 +5,45 @@ import type { WalkableRegion, WallSegment } from '../level/walkable';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { on as onEvent } from '../broadcast/event-bus';
-import { playChestOpen } from '../audio/sfx';
+import { playChestOpen, playImpact } from '../audio/sfx';
 
-// Door = a hinged panel that plugs a doorway. Three states:
-//   sealed   — locked by an unlock condition (e.g. room not cleared). No
-//              interact prompt; collision wall is up.
-//   closed   — unlocked, ready to be opened. Prompt 'OPEN'; collision up.
-//   opening  — swinging the panel. Collision wall comes DOWN at the start
-//              of the swing (so the player can step through as it opens).
-//   open     — fully open. No prompt; no collision wall.
+// Door = the thing that plugs a doorway. Two physical kinds, chosen by
+// whether the door is GATED (has an unlock condition):
+//
+//   • Hinged panel (ungated 'o' doors) — a plank you walk up to and OPEN.
+//     Swings about a vertical hinge. States: closed → opening → open.
+//
+//   • Portcullis (gated 'O'/'D' doors) — an iron grate the DUNGEON drops
+//     and raises. No handle: a cleared-gate is barred until you clear the
+//     room; an arena-gate drops the moment you step in and winches back up
+//     when the last enemy falls. Reads as a trap, not a courtesy. Slides
+//     on Y: dropped (sealed) ↔ raised (passable, teeth peeking from the
+//     lintel). States: arena-open / sealed → closing(drop) / opening(rise)
+//     → open.
+//
+// Shared states:
+//   sealed   — locked by the unlock condition. Collision wall up. Label
+//              'SEALED'. (Portcullis only — ungated doors are never sealed.)
+//   closed   — unlocked hinged panel, ready to open. Prompt 'OPEN'.
+//   opening  — animating toward passable. Collision wall drops at the
+//              START so the player can flow through as it moves.
+//   open     — fully passable. No prompt, no collision.
 //
 // The interact prompt visibility hinges on promptLabel — empty string means
 // inert (the system module already respects that).
 
-const OPEN_DURATION = 0.6;          // seconds for swing animation
+const OPEN_DURATION = 0.6;          // hinged swing animation
 const CLOSE_DURATION = 0.22;        // arena slam — much faster than the open swing
 const OPEN_ANGLE = Math.PI * 0.55;  // ~100° — feels like the door swings clear
 const DOOR_THICKNESS = 0.08;
 const DOOR_HEIGHT_FALLBACK = 2.8;
+
+// Portcullis vertical-slide timings + travel.
+const GATE_DROP_DURATION = 0.30;    // the slam — accelerates into the floor
+const GATE_RISE_DURATION = 1.15;    // the winch — slow, mechanical, deliberate
+const GATE_RAISED_PEEK = 0.20;      // when raised, the grate stops this far below
+                                    // the lintel so the spike teeth still hang
+                                    // visible in the opening (a sprung trap).
 
 export function spawnDoor(
   parent: THREE.Object3D,
@@ -32,82 +53,60 @@ export function spawnDoor(
   enemyRoomMembership: () => Map<string, number>, // roomId -> alive count
   wallHeight: number = DOOR_HEIGHT_FALLBACK,
 ) {
-  // Geometry: a flat plank in the doorway. The wall segment is axis-aligned
-  // so the door is axis-aligned. Width = segment length; thickness pulled
-  // from DOOR_THICKNESS.
   const dx = spec.bx - spec.ax;
   const dz = spec.bz - spec.az;
   const length = Math.hypot(dx, dz);
   const height = spec.height ?? DOOR_HEIGHT_FALLBACK;
 
+  // A door is a GATE (portcullis) iff it carries an unlock condition.
+  // Plain interact-to-open doors stay hinged panels.
+  const isGate = !!spec.unlock;
+
+  // Door center + the wall-line yaw (used to align the portcullis with
+  // the opening, and for the lintel/threshold which are center-anchored).
+  const cx = (spec.ax + spec.bx) / 2;
+  const cz = (spec.az + spec.bz) / 2;
+  const doorYaw = Math.atan2(spec.bz - spec.az, spec.bx - spec.ax);
+
+  // ── Hinge geometry (ungated panel only) ─────────────────────────────
   // Hinge pivot — one end of the segment. The door rotates about a vertical
   // axis at this point.
   const hingeEnd = spec.hinge ?? 'a';
   const hingeX = hingeEnd === 'a' ? spec.ax : spec.bx;
   const hingeZ = hingeEnd === 'a' ? spec.az : spec.bz;
-  // Vector from hinge to the OTHER end. The panel will be aligned along this.
   const farX = hingeEnd === 'a' ? spec.bx : spec.ax;
   const farZ = hingeEnd === 'a' ? spec.bz : spec.az;
-  const fdx = farX - hingeX;
-  const fdz = farZ - hingeZ;
-  // Initial rotation aligning a +X-axis-extending panel with hinge→far.
-  const initialYaw = Math.atan2(fdz, fdx);
+  const initialYaw = Math.atan2(farZ - hingeZ, farX - hingeX);
 
-  // Build a group at the hinge so rotation pivots correctly. The panel mesh
-  // sits inside, offset +X by length/2 (its center).
-  const pivot = new THREE.Group();
-  pivot.position.set(hingeX, 0, hingeZ);
-  pivot.rotation.y = initialYaw;
-  parent.add(pivot);
+  // The animated group. For a hinged panel it pivots at the hinge and
+  // rotates on Y; for a portcullis it sits at the door center and slides
+  // on Y. `raisedY` is how far up a portcullis travels when open.
+  const group = new THREE.Group();
+  const raisedY = Math.max(0.1, height - GATE_RAISED_PEEK);
 
-  const panelGeo = new THREE.BoxGeometry(length, height, DOOR_THICKNESS);
-  const panel = new THREE.Mesh(panelGeo, materials.wall);
-  panel.position.set(length / 2, height / 2, 0);
-  panel.castShadow = true;
-  panel.receiveShadow = true;
-  pivot.add(panel);
-
-  // Iron banding — horizontal strips + a vertical center seam. Distinguishes
-  // the door from a plain wall slab at a glance, even in shadow. Slight
-  // emissive + brighter color so torches catch them and they read at distance.
-  const bandMat = new THREE.MeshStandardMaterial({
-    color: 0x4a3a25,
-    roughness: 0.5,
-    metalness: 0.8,
-    emissive: 0x382010,
-    emissiveIntensity: 0.7,
-  });
-  for (const bandY of [height * 0.25, height * 0.75]) {
-    const bandGeo = new THREE.BoxGeometry(length * 0.94, 0.09, DOOR_THICKNESS + 0.018);
-    const band = new THREE.Mesh(bandGeo, bandMat);
-    band.position.set(length / 2, bandY, 0);
-    pivot.add(band);
+  if (isGate) {
+    group.position.set(cx, 0, cz);
+    group.rotation.y = doorYaw;
+    buildPortcullis(group, length, height);
+  } else {
+    group.position.set(hingeX, 0, hingeZ);
+    group.rotation.y = initialYaw;
+    buildHingedPanel(group, length, height, materials);
   }
-  // Central iron stud / lock plate — visual anchor at handle height.
-  const stud = new THREE.Mesh(
-    new THREE.BoxGeometry(0.18, 0.18, DOOR_THICKNESS + 0.03),
-    bandMat,
-  );
-  stud.position.set(length * 0.78, height * 0.5, 0);
-  pivot.add(stud);
+  parent.add(group);
 
   // ── Lintel ─────────────────────────────────────────────────────────
-  // Static wall block above the door, filling from the top of the door
-  // panel up to the room's ceiling. Without this the doorway has an
-  // open gap above the door reaching the ceiling — you can see right
-  // through into the next room over the top of the closed door.
-  // Parented to the LEVEL ROOT (not the pivot) so it stays put while
-  // the door swings. Match the wall's surface material so it reads
-  // continuous with the wall around it.
+  // Static wall block above the opening, filling from the top of the door
+  // up to the room's ceiling — without it you'd see through the gap above
+  // the door into the next room. Parented to the LEVEL ROOT (not the
+  // animated group) so it stays put while the door swings/slides. It also
+  // hides the raised portcullis bars, which tuck up behind it.
   const lintelHeight = Math.max(0, wallHeight - height);
   if (lintelHeight > 0.02) {
     const lintelGeo = new THREE.BoxGeometry(length, lintelHeight, DOOR_THICKNESS);
     const lintel = new THREE.Mesh(lintelGeo, materials.wall);
-    const cxL = (spec.ax + spec.bx) / 2;
-    const czL = (spec.az + spec.bz) / 2;
-    const yawL = Math.atan2(spec.bz - spec.az, spec.bx - spec.ax);
-    lintel.position.set(cxL, height + lintelHeight / 2, czL);
-    lintel.rotation.y = yawL;
+    lintel.position.set(cx, height + lintelHeight / 2, cz);
+    lintel.rotation.y = doorYaw;
     lintel.receiveShadow = true;
     lintel.castShadow = true;
     parent.add(lintel);
@@ -119,14 +118,9 @@ export function spawnDoor(
   walkable.addWall(wallSeg);
 
   // ── Threshold light ────────────────────────────────────────────────
-  // A faint emissive strip on the floor along the doorway, parented to
-  // the LEVEL ROOT (not the pivot) so it doesn't swing with the panel.
-  // Reads from a distance as "passage here" — guides the eye even when
-  // the room beyond is dark + the door itself is in shadow. Color
-  // shifts cool/sealed → warm/open as the door's state changes.
-  const cxThresh = (spec.ax + spec.bx) / 2;
-  const czThresh = (spec.az + spec.bz) / 2;
-  const lengthThresh = Math.hypot(spec.bx - spec.ax, spec.bz - spec.az);
+  // A faint emissive strip on the floor along the doorway. Reads from a
+  // distance as "passage here." Color shifts cool/sealed → warm/open.
+  const lengthThresh = length;
   const thresholdMat = new THREE.MeshBasicMaterial({
     color: 0x8c5a30,
     transparent: true,
@@ -137,155 +131,151 @@ export function spawnDoor(
   });
   const thresholdGeo = new THREE.BoxGeometry(lengthThresh * 0.92, 0.04, 0.18);
   const threshold = new THREE.Mesh(thresholdGeo, thresholdMat);
-  threshold.position.set(cxThresh, 0.025, czThresh);
-  // Rotate the strip to align with the door span (so it spans the
-  // doorway, not crossing it perpendicular).
-  const ang = Math.atan2(spec.bz - spec.az, spec.bx - spec.ax);
-  threshold.rotation.y = -ang;
+  threshold.position.set(cx, 0.025, cz);
+  threshold.rotation.y = -doorYaw;
   parent.add(threshold);
 
-  // Determine swing direction. The +X axis of the local pivot is the panel's
-  // length direction. Rotating about Y by +angle pulls the far end into the
-  // hinge's +Z side; -angle into the -Z side. spec.swingDir picks which.
+  // Hinged swing direction. +X of the local pivot is the panel length dir.
   const swingSign = spec.swingDir ?? 1;
   const targetAngle = swingSign * OPEN_ANGLE;
 
-  // State machine. Adds two new states beyond the classic
-  // sealed/closed/opening/open progression to support arena
-  // lock-on-enter:
-  //   'arena-open' — door starts OPEN + passable; tick watches the
-  //                  player's side relative to the door's axis and
-  //                  triggers the slam the FRAME the side flips
-  //                  (the player just walked through). Works for
-  //                  perimeter doors AND interior-wall doors.
-  //   'closing'    — fast reverse animation. Wall returns IMMEDIATELY
-  //                  at the start so the player can't squeeze back
-  //                  out mid-slam. Ends in 'sealed' (with the
-  //                  cleared-unlock condition taking it the rest of
-  //                  the way).
+  // State machine. Hinged path uses rotation; gate path uses group.position.y.
+  //   'arena-open' — gate starts raised + passable; tick watches the
+  //                  player's committed side and drops the grate the frame
+  //                  they step clear into the arena.
+  //   'closing'    — gate slam (fast Y drop) / hinged reverse swing. The
+  //                  collision wall returns IMMEDIATELY at the start so the
+  //                  player can't squeeze back out mid-slam.
   let state: 'arena-open' | 'sealed' | 'closed' | 'opening' | 'closing' | 'open' = 'closed';
   let openTimer = 0;
   let closeTimer = 0;
-  // Committed-side trigger state. We track the side of the door the
-  // player has CLEARLY committed to — not just where their centre
-  // sits. "Clearly" means at least COMMIT_THRESHOLD past the door's
-  // axis along the perpendicular. While they're inside the doorway
-  // (distance < threshold) we don't update the committed side, so the
-  // slam fires only ONCE the player has stepped fully clear of the
-  // door onto the other side. Critical for the wall-add: if we slam
-  // while the player's collision circle still straddles the door
-  // axis, the new wall ends up INSIDE the player and clampMove blocks
-  // every direction — trapping them in the doorway.
-  //
-  // PLAYER_RADIUS (camera.ts) is 0.30; threshold is 0.40 for safety.
+
+  // Committed-side trigger state (arena slam). We track the side of the
+  // door the player has CLEARLY committed to — at least COMMIT_THRESHOLD
+  // past the door axis — so the slam fires only ONCE the player has
+  // stepped fully clear of the doorway. Slamming while their collision
+  // circle still straddles the door axis would drop a wall INSIDE them and
+  // trap them in the gap.
   const COMMIT_THRESHOLD = 0.40;
   let committedSide: 1 | -1 | null = null;
-  // Door axis perpendicular (unit vector in XZ). Cached.
   const doorAxisLen = Math.hypot(spec.bx - spec.ax, spec.bz - spec.az) || 1;
   const perpX = -(spec.bz - spec.az) / doorAxisLen;
   const perpZ =  (spec.bx - spec.ax) / doorAxisLen;
-  const doorMidX = (spec.ax + spec.bx) / 2;
-  const doorMidZ = (spec.az + spec.bz) / 2;
+  const doorMidX = cx;
+  const doorMidZ = cz;
 
-  // Door center for the interactable hit position.
-  const cx = (spec.ax + spec.bx) / 2;
-  const cz = (spec.az + spec.bz) / 2;
+  // ── Animation helpers ───────────────────────────────────────────────
+  // Set the visible pose for a given progress. Hinged: rotate; gate: slide.
+  const setSealedPose = () => {
+    if (isGate) group.position.y = 0;            // grate down, teeth at floor
+    else group.rotation.y = initialYaw;          // panel shut
+  };
+  const setOpenPose = () => {
+    if (isGate) group.position.y = raisedY;       // grate up in the lintel
+    else group.rotation.y = initialYaw + targetAngle;
+  };
 
   const interactable = {
     id: generateEntityId(`door-${spec.id}`),
     position: new THREE.Vector3(cx, 0, cz),
     radius: 1.4,
-    // Door labels at hand-height — the door is 2m+ tall and its
-    // position pivot is at the FOOT. The default 0.6m offset reads as
-    // knee-height; 1.4m lands the label right over the lock plate.
+    // Labels at hand-height — the door pivot is at the FOOT.
     labelOffsetY: 1.4,
     promptLabel: '',  // set per state below
     onUse() {
+      // Only ungated hinged doors are opened by hand. Gates are automatic.
       if (state !== 'closed') return;
       state = 'opening';
       openTimer = 0;
       interactable.promptLabel = '';
-      // Walls come down at the START of the swing — feels much better than
-      // waiting for the door to be 100% open. Player can flow through.
+      // Wall comes down at the START of the swing — player can flow through.
       walkable.removeWall(wallSeg);
-      playChestOpen();  // creaky hinge sfx reused — chests + doors share vibe
+      playChestOpen();  // creaky hinge
     },
     tick(_dt: number, playerPos: THREE.Vector3) {
-      // Arena trigger: while open + passable, watch the player's
-      // COMMITTED side of the door's axis. Slam when the committed
-      // side changes (player walked through AND stepped clear). The
-      // door doesn't slam mid-cross — that would add a wall inside
-      // the player's collision circle and trap them in the doorway.
+      // Arena trigger: while raised + passable, watch the player's COMMITTED
+      // side of the door axis. Drop the grate when the committed side flips
+      // (player walked through AND stepped clear).
       if (state === 'arena-open' && spec.unlock?.kind === 'arena') {
         const ox = playerPos.x - doorMidX;
         const oz = playerPos.z - doorMidZ;
         const dot = perpX * ox + perpZ * oz;
-        // Only update the committed side when the player is CLEARLY
-        // past the door. Inside the doorway: leave the committed
-        // side alone (waits for the player to step through fully).
         if (Math.abs(dot) >= COMMIT_THRESHOLD) {
           const newSide: 1 | -1 = dot >= 0 ? 1 : -1;
           if (committedSide !== null && newSide !== committedSide) {
-            // SLAM. Wall up immediately, audio sting, threshold
-            // flashes cool/sealed; the closing animation runs over
-            // the next CLOSE_DURATION.
+            // SLAM. Wall up immediately, heavy impact, threshold flashes red.
             state = 'closing';
             closeTimer = 0;
             walkable.addWall(wallSeg);
-            playChestOpen();
-            thresholdMat.color.setHex(0xb04030);   // brief red — visual punch
+            playImpact(interactable.position);
+            thresholdMat.color.setHex(0xb04030);
             thresholdMat.opacity = 0.75;
           }
           committedSide = newSide;
         }
       }
-      // Closing animation — reverses the swing fast.
+
+      // Closing — gate slam (Y drop, ease-IN so it accelerates and SLAMS)
+      // or hinged reverse swing.
       if (state === 'closing') {
         closeTimer += _dt;
-        const t = Math.min(1, closeTimer / CLOSE_DURATION);
-        // Ease-IN (start slow, accelerate) so the slam feels weighty
-        // at the end rather than thudding instantly.
-        const ease = t * t;
-        pivot.rotation.y = initialYaw + targetAngle * (1 - ease);
-        if (closeTimer >= CLOSE_DURATION) {
+        const dur = isGate ? GATE_DROP_DURATION : CLOSE_DURATION;
+        const t = Math.min(1, closeTimer / dur);
+        const ease = t * t;            // accelerate into the impact
+        if (isGate) group.position.y = raisedY * (1 - ease);
+        else pivotRotate(group, initialYaw, targetAngle, 1 - ease);
+        if (closeTimer >= dur) {
           state = 'sealed';
           interactable.promptLabel = 'SEALED';
-          // Threshold settles to the cool/sealed colour now that the
-          // slam flash is done.
+          setSealedPose();
           thresholdMat.color.setHex(0x405060);
           thresholdMat.opacity = 0.35;
         }
       }
-      // Check unlock progression every frame (cheap — just a map lookup).
+
+      // Unlock progression. A sealed GATE winches itself back up the frame
+      // the room clears — no walk-up, no OPEN prompt (it's a trap, not a
+      // door). A hinged door (only ever sealed in the legacy cleared case)
+      // would become openable, but gated doors are always portcullises now.
       if (state === 'sealed' && isUnlocked()) {
-        state = 'closed';
-        interactable.promptLabel = 'OPEN';
-        // Sealed → closed: threshold warms up. Subtle "the way is now
-        // open" cue beyond the SEALED-label flip.
-        thresholdMat.color.setHex(0x8c5a30);
-        thresholdMat.opacity = 0.6;
+        if (isGate) {
+          state = 'opening';
+          openTimer = 0;
+          interactable.promptLabel = '';
+          walkable.removeWall(wallSeg);   // passable as it rises
+          playChestOpen();                // winch creak
+          thresholdMat.color.setHex(0x8c5a30);
+          thresholdMat.opacity = 0.6;
+        } else {
+          state = 'closed';
+          interactable.promptLabel = 'OPEN';
+          thresholdMat.color.setHex(0x8c5a30);
+          thresholdMat.opacity = 0.6;
+        }
       }
+
+      // Opening — gate rise (ease-OUT, slow winch) or hinged swing.
       if (state === 'opening') {
         openTimer += _dt;
-        const t = Math.min(1, openTimer / OPEN_DURATION);
-        // Ease-out so the door slows as it reaches open
-        const ease = 1 - (1 - t) * (1 - t);
-        pivot.rotation.y = initialYaw + targetAngle * ease;
-        if (openTimer >= OPEN_DURATION) {
+        const dur = isGate ? GATE_RISE_DURATION : OPEN_DURATION;
+        const t = Math.min(1, openTimer / dur);
+        const ease = 1 - (1 - t) * (1 - t);   // slow to a stop at the top
+        if (isGate) group.position.y = raisedY * ease;
+        else pivotRotate(group, initialYaw, targetAngle, ease);
+        if (openTimer >= dur) {
           state = 'open';
+          setOpenPose();
         }
       }
     },
     destroyed: false,
-    /** When destroyed, system removes built.group from parent. Wrap pivot. */
-    built: { group: pivot, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
+    /** When destroyed, system removes built.group from parent. */
+    built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
   };
 
-  // Initial unlock state. If sealed condition isn't satisfied at spawn,
-  // mark as sealed; tick() will flip to closed automatically when it is.
-  // Both 'cleared' AND 'arena' use the same predicate once the door is
-  // in the sealed state — arena just adds the lock-on-enter trigger
-  // that gets it there in the first place.
+  // Unlock predicate — 'cleared' AND 'arena' share it once the door is in
+  // the sealed state; arena just adds the lock-on-enter trigger that gets
+  // it there.
   function isUnlocked(): boolean {
     if (!spec.unlock) return true;
     if (spec.unlock.kind === 'cleared' || spec.unlock.kind === 'arena') {
@@ -297,42 +287,54 @@ export function spawnDoor(
     }
     return true;
   }
-  // Initial visible/passable state, branching on unlock kind:
-  //   arena   → starts OPEN + passable; tick triggers the slam.
-  //   cleared → standard "sealed until cleared" behaviour.
-  //   none    → closed, ready to open on use.
+
+  // Initial visible/passable state.
+  //   arena            → starts raised + passable; tick triggers the slam.
+  //   gate, unlocked   → already open (room empty at spawn): raised + passable.
+  //   gate, locked     → sealed: grate down, wall up.
+  //   ungated          → closed hinged panel, ready to open on use.
   if (spec.unlock?.kind === 'arena') {
     state = 'arena-open';
     interactable.promptLabel = '';
-    // Remove the collision wall: the doorway is passable.
     walkable.removeWall(wallSeg);
-    // Render the panel at the visibly-open angle.
-    pivot.rotation.y = initialYaw + targetAngle;
-    // Threshold uses the warm/open palette while the door is
-    // arena-open so the player can read it as "passable now."
+    setOpenPose();
     thresholdMat.color.setHex(0x8c5a30);
     thresholdMat.opacity = 0.6;
-  } else if (!isUnlocked()) {
-    state = 'sealed';
-    interactable.promptLabel = 'SEALED';
-    // Sealed: cool gray threshold — reads as "passage exists, but
-    // closed off." Still visible from distance so the eye finds it.
-    thresholdMat.color.setHex(0x405060);
-    thresholdMat.opacity = 0.35;
+  } else if (isGate) {
+    if (isUnlocked()) {
+      state = 'open';
+      interactable.promptLabel = '';
+      walkable.removeWall(wallSeg);
+      setOpenPose();
+    } else {
+      state = 'sealed';
+      interactable.promptLabel = 'SEALED';
+      setSealedPose();
+      thresholdMat.color.setHex(0x405060);
+      thresholdMat.opacity = 0.35;
+    }
   } else {
+    state = 'closed';
     interactable.promptLabel = 'OPEN';
   }
 
-  // Subscribe to room-clear events for sealed-state UX punch — when the
-  // unlock condition flips, we want feedback (the SEALED label goes away
-  // immediately even without a re-tick).
+  // Sealed-state UX punch — when the unlock flips via the room-clear event,
+  // kick the gate into its rise immediately (don't wait for the next tick).
   const unsubscribe = onEvent((event) => {
     if (event.type !== 'room:cleared') return;
     if (state !== 'sealed') return;
-    if (isUnlocked()) {
+    if (!isUnlocked()) return;
+    if (isGate) {
+      state = 'opening';
+      openTimer = 0;
+      interactable.promptLabel = '';
+      walkable.removeWall(wallSeg);
+      playChestOpen();
+      thresholdMat.color.setHex(0x8c5a30);
+      thresholdMat.opacity = 0.6;
+    } else {
       state = 'closed';
       interactable.promptLabel = 'OPEN';
-      // A subtle "unsealed" chime might go here later. For now silent.
       thresholdMat.color.setHex(0x8c5a30);
       thresholdMat.opacity = 0.6;
     }
@@ -340,7 +342,94 @@ export function spawnDoor(
 
   registerInteractable(interactable);
 
-  // Return a teardown helper so level cleanup can detach this door's
-  // listener. Without this, draining listeners pile up across descent.
   return { teardown: () => { unsubscribe(); } };
+}
+
+/** Rotate a hinged pivot to initialYaw + targetAngle * frac. */
+function pivotRotate(group: THREE.Group, initialYaw: number, targetAngle: number, frac: number) {
+  group.rotation.y = initialYaw + targetAngle * frac;
+}
+
+// ── Geometry builders ──────────────────────────────────────────────────
+
+/** Hinged plank with iron banding — the classic ungated door. Built into
+ *  `pivot`, offset +X by length/2 so it extends from the hinge. */
+function buildHingedPanel(
+  pivot: THREE.Group, length: number, height: number, materials: StyleMaterials,
+) {
+  const panelGeo = new THREE.BoxGeometry(length, height, DOOR_THICKNESS);
+  const panel = new THREE.Mesh(panelGeo, materials.wall);
+  panel.position.set(length / 2, height / 2, 0);
+  panel.castShadow = true;
+  panel.receiveShadow = true;
+  pivot.add(panel);
+
+  const bandMat = new THREE.MeshStandardMaterial({
+    color: 0x4a3a25, roughness: 0.5, metalness: 0.8,
+    emissive: 0x382010, emissiveIntensity: 0.7,
+  });
+  for (const bandY of [height * 0.25, height * 0.75]) {
+    const bandGeo = new THREE.BoxGeometry(length * 0.94, 0.09, DOOR_THICKNESS + 0.018);
+    const band = new THREE.Mesh(bandGeo, bandMat);
+    band.position.set(length / 2, bandY, 0);
+    pivot.add(band);
+  }
+  const stud = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 0.18, DOOR_THICKNESS + 0.03), bandMat,
+  );
+  stud.position.set(length * 0.78, height * 0.5, 0);
+  pivot.add(stud);
+}
+
+/** Iron portcullis — vertical bars + horizontal rails + pointed teeth at
+ *  the bottom, built into `group` centered on the opening. Local +X runs
+ *  along the wall line; bars stand on +Y; the whole group slides on Y to
+ *  drop/raise. */
+function buildPortcullis(group: THREE.Group, length: number, height: number) {
+  const ironMat = new THREE.MeshStandardMaterial({
+    color: 0x2a2622, roughness: 0.55, metalness: 0.85,
+    emissive: 0x140a06, emissiveIntensity: 0.5,
+  });
+  const BAR = 0.06;
+  const RAIL = 0.075;
+  const inset = 0.07;                       // keep bars off the stone jambs
+  const span = Math.max(0.2, length - inset * 2);
+  const nBars = Math.max(2, Math.round(span / 0.34));
+
+  for (let i = 0; i < nBars; i++) {
+    const x = nBars === 1 ? 0 : -span / 2 + (i * span) / (nBars - 1);
+    // Vertical bar.
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(BAR, height - 0.02, BAR), ironMat);
+    bar.position.set(x, height / 2, 0);
+    bar.castShadow = true;
+    group.add(bar);
+    // Pointed tooth at the foot — the bite of the trap.
+    const tooth = new THREE.Mesh(
+      new THREE.ConeGeometry(BAR * 0.95, 0.22, 6), ironMat,
+    );
+    tooth.position.set(x, -0.05, 0);
+    tooth.rotation.x = Math.PI;             // point down
+    tooth.castShadow = true;
+    group.add(tooth);
+  }
+
+  // Horizontal cross-rails tie the bars together.
+  for (const railY of [height * 0.16, height * 0.5, height * 0.84]) {
+    const rail = new THREE.Mesh(
+      new THREE.BoxGeometry(length - inset, RAIL, RAIL * 0.7), ironMat,
+    );
+    rail.position.set(0, railY, 0);
+    rail.castShadow = true;
+    group.add(rail);
+  }
+
+  // Thicker edge runners — the bars that ride the wall grooves.
+  for (const ex of [-span / 2, span / 2]) {
+    const runner = new THREE.Mesh(
+      new THREE.BoxGeometry(BAR * 1.5, height, BAR * 1.5), ironMat,
+    );
+    runner.position.set(ex, height / 2, 0);
+    runner.castShadow = true;
+    group.add(runner);
+  }
 }

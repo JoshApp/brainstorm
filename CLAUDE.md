@@ -55,6 +55,20 @@ If you're reading this to figure out where to start, read this section first —
 - URL scenarios (`?scenario=name`) jump past the title into posed world states (`src/debug/scenarios.ts`)
 - Snap CLI for headless Playwright screenshots (`scripts/snap.ts`, `npm run snap`)
 - URL flags: `?fakemeta=1`, `?fakesave=1`, `?showEnd=1`, `?showCodex=1`, `?showStash=1`, `?tutorial=1`
+- `?god=1` — invulnerability for posing combat states without dying (DEV-only)
+
+### Dev-only code must not ship to the live site
+The live GitHub Pages site is a `vite build` (production), where Vite replaces
+`import.meta.env.DEV` with the literal `false`. **Every cheat / debug-only
+affordance** — godmode, scenario jumps, `window.__*` inspection hooks,
+debug-only URL flags — **must sit behind the `DEV` gate** (`src/debug/dev.ts`):
+an `if (import.meta.env.DEV)` guard or a `DEV && …` short-circuit. Those blocks
+collapse to `if (false)` and are dead-code-eliminated, so the affordance
+literally cannot be reached or toggled on the live site. Belt-and-suspenders for
+the riskiest ones (e.g. `setGodMode` does `godMode = DEV && on`) so even a stray
+call can't enable them in prod. Diagnostics that are safe for players and already
+inert on the static deploy (the dev-server `/__debug/capture` endpoint) are the
+only exception. Verify a strip with `npm run build` then grep `dist/assets/*.js`.
 
 ## Current Focus
 

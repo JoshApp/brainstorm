@@ -10,6 +10,7 @@ import { computeDamage, registerDamageSink, type DamageType, type DamageEvent } 
 import type { EntityId } from '../ecs/types';
 import { recordHpRecovered, recordDamageTaken, recordShieldedHit } from '../state/character';
 import { getEquipped } from './equipment';
+import { DEV } from '../debug/dev';
 
 // Player health module. State now lives in the world entity (id: 'player')
 // rather than module-level vars, so effects (heal, apply-buff, damage) can
@@ -19,6 +20,14 @@ const PLAYER_ENTITY_ID = 'player';
 
 let onDeathCb: (() => void) | null = null;
 let dead = false;
+// Debug invulnerability — when on, damagePlayer is a no-op. Set via
+// setGodMode (debug scenarios / the ?god=1 flag) so we can pose combat
+// states, drive enemies, and screenshot without dying. Gated on DEV: in a
+// production build `DEV` is the literal `false`, so `DEV && on` is always
+// false — godmode is unreachable on the live site no matter who calls this.
+let godMode = false;
+export function setGodMode(on: boolean) { godMode = DEV && on; }
+export function isGodMode(): boolean { return godMode; }
 
 // Route damage-over-time ticks (poison/burn/bleed inflicted by enemies)
 // through the player's health with the QUIET flag, so they reduce HP +
@@ -83,7 +92,7 @@ export function onPlayerDeath(cb: () => void) {
  * still be able to kill, with feedback).
  */
 export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical', quiet = false) {
-  if (dead) return;
+  if (dead || godMode) return;
   const player = get(PLAYER_ENTITY_ID);
   if (!player || !player.hp) return;
 
