@@ -41,6 +41,17 @@ export const xpStore = writable<XpState>(
 
 export const goldStore = writable<number>(0);
 
+export interface BossState {
+  visible: boolean;
+  name: string;
+  hp: number;
+  max: number;
+}
+export const bossStore = writable<BossState>(
+  { visible: false, name: '', hp: 0, max: 0 },
+  (a, b) => a.visible === b.visible && a.name === b.name && a.hp === b.hp && a.max === b.max,
+);
+
 /** Push current HP into the store. Called once per frame after the player
  *  snapshot is recomputed (so max reflects this frame's equipment/buffs). */
 export function syncHudStores(): void {

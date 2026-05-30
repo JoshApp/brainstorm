@@ -146,6 +146,29 @@ export const SCENARIOS: Record<string, Scenario> = {
     giveItems: ['healing-potion', 'healing-potion', 'healing-potion', 'healing-potion', 'healing-potion', 'berserk-potion', 'berserk-potion'],
   },
 
+  // Boss (the wraith, now scaled + named) up close — for size/silhouette
+  // review. The boss bar itself only ticks in live play (driven by the
+  // enemies system), so it won't show in this frozen pose.
+  boss: {
+    freeze: true,
+    hideSword: true,
+    level: {
+      id: 'dbg-boss', depth: 0, displayName: 'boss', fogColor: 0x140a0a,
+      startPos: { x: 0, z: 3.5, yaw: 0 },
+      rooms: [{ id: 'boss-room', rect: { x: 0, z: 0, w: 8, d: 8 }, height: 4.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -4.05, z: -2.0, height: 2.4, wall: 'W', colorTint: 0xff5a44, intensityMul: 1.0 },
+        { x:  4.05, z: -2.0, height: 2.4, wall: 'E', colorTint: 0xff5a44, intensityMul: 1.0 },
+      ],
+      spawns: [{ enemyId: 'wraith', x: 0, z: -1.5, roomId: 'boss-room' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 3.5, lookAt: { x: 0, z: -1.5, y: 1.3 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.5 }, state: 'chasing' }],
+  },
+
   // Skeleton up close in a small lit room — for silhouette review.
   skeleton: {
     freeze: true,

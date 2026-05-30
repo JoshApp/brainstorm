@@ -127,6 +127,10 @@ export interface Enemy extends Damageable {
   entityId: EntityId;
   /** Spec id from src/content/enemies.ts ('rat', 'skirmisher', etc.). */
   kind: string;
+  /** True for boss enemies — drives the boss bar (see ui/boss-bar.ts). */
+  isBoss: boolean;
+  /** Boss bar display name (only meaningful when isBoss). */
+  bossName: string;
   group: THREE.Group;
   /** Live alias of group.position — satisfies Damageable for the unified
    *  combat cone scan. */
@@ -191,6 +195,9 @@ export function createEnemy(
 
   // Built model: meshes + named parts + per-instance materials.
   const built = buildModel(spec.model);
+  // Bosses loom larger — scale the visual model (gameplay reach/collision
+  // stay driven by the explicit stat fields).
+  if (spec.scale && spec.scale !== 1) built.group.scale.multiplyScalar(spec.scale);
   container.add(built.group);
 
   scene.add(container);
@@ -1396,9 +1403,11 @@ export function createEnemy(
   return {
     entityId,
     kind: spec.id,
+    isBoss: !!spec.isBoss,
+    bossName: spec.bossName ?? spec.name,
     group: container,
     position: container.position,
-    aimHeight: 0.6,
+    aimHeight: 0.6 * (spec.scale ?? 1),   // taller body on a scaled boss
     hitFeedback: 'heavy',
     hitTargets: built.hitTargets,
     collisionRadius: spec.collisionRadius,

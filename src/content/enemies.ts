@@ -29,6 +29,16 @@ export interface EnemySpec {
   /** Display name (for future tooltip / kill log / epitaph use). */
   name: string;
 
+  /** Boss flag — drives the Dark Souls-style boss bar + "this is a boss"
+   *  treatment (the bar finds the live boss enemy by this). */
+  isBoss?: boolean;
+  /** Name shown on the boss bar (grimdark, e.g. "The Hollow Choir"). */
+  bossName?: string;
+  /** Visual model scale multiplier — bosses loom larger than trash. The
+   *  built model group is scaled by this; gameplay reach/collision still
+   *  come from the explicit stat fields. Default 1. */
+  scale?: number;
+
   /**
    * ASCII tile character used to place this enemy in a vault map AND
    * the char procgen emits for it. THE SINGLE SOURCE OF TRUTH for this
@@ -1096,18 +1106,24 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'wraith',
     name: 'wraith',
     tileChar: 'W',
-    hp: 5,
+    // BOSS — only ever spawned via the 'B' boss slot (never in roll tables),
+    // so the boss treatment lives right on the spec. Bigger, far tankier than
+    // trash, and named, so it reads as a set-piece, not a stray mob.
+    isBoss: true,
+    bossName: 'The Hollow Choir',
+    scale: 1.5,
+    hp: 12,                 // boss HP — a real fight, gives the bar range
     moveSpeed: 1.5,         // slow — heavily telegraphed bossier feel
     attackDamage: 2,        // hits twice as hard as the trash mobs
-    attackRange: 1.7,
-    strikeRange: 1.55,
+    attackRange: 1.9,
+    strikeRange: 1.75,
     windupTime: 0.95,       // long, readable telegraph
     strikeTime: 0.22,
     recoverTime: 0.75,
     damageType: 'magic',    // bypasses physical armor entirely
     model: wraithModel(0x1a2a32, 0x66ffaa, 3.0),
     baseEyeEmissive: 3.0,
-    collisionRadius: 0.40,
+    collisionRadius: 0.55,
     physicalArmor: 0,       // vulnerable to physical (your sword cuts it)
     magicArmor: 2,          // but resistant to magic
     tiltPartName: 'rig',

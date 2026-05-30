@@ -80,12 +80,13 @@ import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
 import { tickItemPreviews } from './ui/item-preview';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar } from './ui/hp-bar';
+import { createBossBar, tickBossBar, resetBossBar } from './ui/boss-bar';
 import { createBuffBar, updateBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
 import { createDepthCounter, setDepth as setDepthCounter } from './ui/depth-counter';
 import { createXpGoldHud, updateXpGoldHud } from './ui/xp-gold-hud';
 import { tickLowHpPulse } from './ui/vignette';
-import { getPlayerHp, getPlayerMaxHp } from './player/health';
+import { getPlayerHp, getPlayerMaxHp, setGodMode } from './player/health';
 import { setHarnessPaused } from './harness/pause';
 
 // AI-playable harness: `?harness=1` flips the world into turn-based mode
@@ -162,7 +163,11 @@ scene.add(camera); // required for the sword (camera child) to render
 initDeath(camera);
 
 // --- Scenario (URL param ?scenario=...) ---
-const scenario = getScenarioFromUrl();
+// DEV-only. In a production build `import.meta.env.DEV` is the literal
+// `false`, so this resolves to `null`, every `scenario` branch below goes
+// dead, and the bundler tree-shakes the entire debug/scenarios module (and
+// its fixed-seed test levels) out of the live site.
+const scenario = import.meta.env.DEV ? getScenarioFromUrl() : null;
 const levelSpec = scenario?.level ?? LEVEL_1;
 
 // --- Player entity (HP + buffs + passives live in the world) ---
@@ -198,6 +203,7 @@ initLevelLoader({
     currentLevel = level as LiveLevel & { checkRoomClear?: () => void };
     setCameraYaw(level.playerSpawn.yaw);
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-'));
+    resetBossBar();   // new floor — clear any prior boss bar state
 
     // Dev-mode hot-reload restore: if a snapshot exists for THIS floor,
     // overwrite the just-applied spawn pose + reset HP/buffs with the
@@ -472,6 +478,7 @@ onEvent((e) => {
 
 // --- HUD ---
 createHpBar();
+createBossBar();
 createBuffBar();
 createPickupNotification();
 createDepthCounter(getCurrentDepth());
@@ -739,6 +746,8 @@ const SYSTEMS: GameSystem[] = [
       const nav = enemy.phasing ? currentLevel.navPhasing : currentLevel.nav;
       enemy.update(ctx.scaledDt, camera.position, currentLevel.walkable, nav);
     }
+    // Boss bar — show/drain/fade based on the live boss enemy.
+    tickBossBar(currentLevel.enemies, ctx.scaledDt);
   } },
 
   // Decay active combat alerts so old broadcasts stop pulling mobs in long
@@ -1093,6 +1102,13 @@ if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
       { id: 'a3', tier: 'fabled', source: 'Magic Bypass' },
     ],
   }));
+}
+// Debug: `?god=1` makes the player invulnerable — for posing combat states,
+// driving enemies, and screenshotting without dying. DEV-only: the whole
+// block is dropped from the production bundle (and setGodMode would refuse
+// anyway), so it can't be used on the live site.
+if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('god') === '1') {
+  setGodMode(true);
 }
 // Debug: `?fakesave=1` seeds a save so the title shows CONTINUE for snaps.
 if (new URLSearchParams(window.location.search).get('fakesave') === '1') {
