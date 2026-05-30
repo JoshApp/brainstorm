@@ -70,27 +70,29 @@ const HORROR_BLIT_FRAG = `
     float b = texture2D(tDiffuse, uv - caOffset).b;
     vec3 col = vec3(r, g, b);
 
-    // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — lift dim pixels
-    // toward a navigable shadow floor WHILE PRESERVING HUE. The
-    // earlier max(col, cool_tint) approach was shadow-only but
-    // desaturated dim coloured pixels: a faint red wall got
-    // clamped UP to the cool-blue floor and lost its red, which
-    // made the whole scene read "washed out".
+    // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — darkness-weighted
+    // additive cool tint, plus a darkness-weighted gain.
     //
-    // New: scale-lift dim pixels uniformly so their hue + chroma
-    // survive — only pure-black ends up below the floor, and we
-    // add the small cool-blue tint there (no hue to preserve).
-    // The mild gain is darkness-weighted so highlights stay
-    // crisp (torch glows don't get desaturated).
+    // Three previous approaches all failed:
+    //   - Unconditional additive: washed bright pixels grey.
+    //   - max(col, cool_tint) floor: desaturated dim coloured
+    //     pixels to flat cool-blue.
+    //   - Scale-lift (col *= floor/maxC): amplified tiny chromatic
+    //     noise on near-black pixels into vivid colour bands after
+    //     quantization (the "psychedelic night-vision" artefact).
+    //
+    // Darkness-weighted additive avoids all three: the tint is
+    // added in proportion to (1 - maxChannel), so highlights get
+    // 0× tint (no wash), dim coloured pixels get a partial cool
+    // shift (Purkinje-like — real human scotopic vision shifts
+    // blueward at low light too), and true-black pixels get the
+    // full lift to a navigable floor. No multiplicative scaling
+    // of dim inputs, so no noise amplification or banding.
     float maxC = max(col.r, max(col.g, col.b));
-    float floorLum = uDarkAdapt * 0.16;
-    float scale = (maxC > 1e-4) ? max(1.0, floorLum / maxC) : 1.0;
-    col *= scale;
-    float gap = max(0.0, floorLum - max(col.r, max(col.g, col.b)));
-    col += gap * vec3(0.50, 0.62, 0.81);
-    // Darkness-weighted gain — mild contrast lift on dim/mid
-    // areas, identity on bright pixels so highlights don't crush.
-    col *= 1.0 + uDarkAdapt * 0.25 * (1.0 - maxC);
+    float darkness = 1.0 - maxC;
+    col += uDarkAdapt * vec3(0.075, 0.095, 0.125) * darkness;
+    // Mild gain on dim pixels only — preserves highlight crispness.
+    col *= 1.0 + uDarkAdapt * 0.25 * darkness;
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;

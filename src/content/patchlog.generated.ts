@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Dark-adapt shader: scale-lift preserves hue, no more wash-out"
+      },
+      {
+        "tag": "tune",
         "text": "Dark-adapt: fog-attenuate lit signal so foggy rooms read as dark"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Make seeded floors fully reproducible (build-time RNG)"
-      },
-      {
-        "tag": "content",
-        "text": "Enemy ability system: data-driven attacks + skirmisher charger"
       }
     ]
   }
