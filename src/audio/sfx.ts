@@ -699,23 +699,49 @@ export function playPickupChime(rarityIndex: number = 0) {
   const c = ensureCtx();
   if (!c || !masterGain) return;
   const now = c.currentTime;
-  const master = masterGain;
 
-  // Map rarity 0..4 (mundane..fabled) to a small set of major-pentatonic notes
-  const notes = [392, 440, 523, 659, 784];  // G4 A4 C5 E5 G5
-  const f = notes[Math.max(0, Math.min(4, rarityIndex))];
-  const tail = 0.32 + rarityIndex * 0.08;
+  // A cold, hollow toll — NOT a cheery bell. The old sound was a bright
+  // major-pentatonic ding (G4 + octave) that rang out happily in the
+  // exploration silence — wrong for grimdark ("items don't celebrate; the
+  // system observes without judgment"). Now: a low root + bare FIFTH (hollow,
+  // indifferent) through a lowpass, short decay so it doesn't linger. Rarity
+  // still reads — it raises the pitch + lengthens, and uncommon+ get a faint
+  // high shimmer so a real find still feels like one.
+  const idx = Math.max(0, Math.min(4, rarityIndex));
+  const roots = [196, 220, 247, 277, 311];   // G3..D#4 — rises with rarity, stays low/dark
+  const root = roots[idx];
+  const tail = 0.22 + idx * 0.05;
 
-  for (const mul of [1, 2]) {
+  // Warmth lowpass — shaves the bright top so the toll reads as struck stone/
+  // metal, not a synth bell.
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 1400; lp.Q.value = 0.7;
+  lp.connect(masterGain);
+
+  // Root + bare fifth (×1.5) — a hollow, cold interval, no major brightness.
+  for (const [mul, amp] of [[1, 0.20], [1.5, 0.11]] as const) {
     const osc = c.createOscillator();
     osc.type = 'triangle';
-    osc.frequency.value = f * mul;
+    osc.frequency.value = root * mul;
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, now);
-    g.gain.exponentialRampToValueAtTime(mul === 1 ? 0.22 : 0.10, now + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.001, now + tail);
-    osc.connect(g).connect(master);
-    osc.start(now); osc.stop(now + tail + 0.04);
+    g.gain.exponentialRampToValueAtTime(amp, now + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0008, now + tail);
+    osc.connect(g).connect(lp);
+    osc.start(now); osc.stop(now + tail + 0.05);
+  }
+
+  // Rare-find shimmer — a faint high partial that only blooms for uncommon+.
+  if (idx >= 2) {
+    const sh = c.createOscillator();
+    sh.type = 'sine';
+    sh.frequency.value = root * 4;
+    const sg = c.createGain();
+    sg.gain.setValueAtTime(0.0001, now + 0.02);
+    sg.gain.exponentialRampToValueAtTime(0.04 + idx * 0.012, now + 0.05);
+    sg.gain.exponentialRampToValueAtTime(0.0006, now + tail * 1.2);
+    sh.connect(sg).connect(masterGain);
+    sh.start(now + 0.02); sh.stop(now + tail * 1.2 + 0.05);
   }
 }
 
