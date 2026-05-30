@@ -106,6 +106,28 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -4, y: 1.1 } },
   },
 
+  // Narrow opening — a 1m doorway between room + corridor. Below the 1.6m
+  // archway threshold, so it gets the light DOORFRAME instead. For reviewing
+  // the doorframe model (jambs + lintel + void-cap) framing a thin wall.
+  doorframe: {
+    freeze: true,
+    hideSword: true,
+    level: {
+      id: 'dbg-doorframe', depth: 0, displayName: 'doorframe', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 0.5, yaw: 0 },
+      rooms: [{ id: 'df-room', rect: { x: 0, z: 1, w: 5, d: 4 }, height: 3.2 }],
+      corridors: [{ id: 'df-cor', rect: { x: 0, z: -2.5, w: 1.0, d: 3 }, height: 3.0 }],
+      props: [],
+      torches: [
+        // Flank the opening so the doorframe is clearly lit for review.
+        { x: -2.0, z: -0.9, height: 2.0, wall: 'N', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x:  2.0, z: -0.9, height: 2.0, wall: 'N', colorTint: 0xffaa55, intensityMul: 1.0 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -4, y: 1.1 } },
+  },
+
   // Skeleton up close in a small lit room — for silhouette review.
   skeleton: {
     freeze: true,

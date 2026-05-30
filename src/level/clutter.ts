@@ -9,6 +9,7 @@ import {
 import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
 import { COBWEB_CORNER } from '../content/cobweb';
 import { archway, archwayColumnOffset } from '../content/archway';
+import { doorframe } from '../content/doorframe';
 import {
   wallOpenings, inOpening, allStairFootprints, findContainingRect,
   type Opening, type StairFootprint,
@@ -771,7 +772,7 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
       const openings = wallOpenings(c, side, allRectsFlat);
       for (const o of openings) {
         const width = o.end - o.start;
-        if (width < 1.0) continue;     // skip skinny seams
+        if (width < 0.7) continue;     // skip skinny seams (build noise)
         // Position the archway at the midpoint of the opening,
         // sitting ON the wall plane.
         let ax = 0, az = 0, rotY = 0;
@@ -804,20 +805,35 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
           if (adjacent) ceiling = Math.max(ceiling, other.height);
         }
 
-        const colOffset = archwayColumnOffset(width);
-        spec.props.push({
-          kind: 'model',
-          model: archway({ width, ceilingHeight: ceiling }),
-          x: ax, y: 0, z: az,
-          rotY,
-          proximityGlow: true,   // lintel/keystone glow as the player nears
-          // Column blockers sit at the column centre offsets so
-          // collision matches the visible columns.
-          collision: [
-            { kind: 'circle', r: 0.22, ox: -colOffset, oz: 0 },
-            { kind: 'circle', r: 0.22, ox:  colOffset, oz: 0 },
-          ],
-        });
+        // Narrow mouths get the light doorframe — its jambs are slim and it
+        // emits NO collision, so it never chokes a ~1m gap. Wide mouths get
+        // the full archway with column blockers.
+        if (width < 1.6) {
+          spec.props.push({
+            kind: 'model',
+            model: doorframe({ width, ceilingHeight: ceiling }),
+            x: ax, y: 0, z: az,
+            rotY,
+            proximityGlow: true,
+            _dbg: 'doorframe',
+          });
+        } else {
+          const colOffset = archwayColumnOffset(width);
+          spec.props.push({
+            kind: 'model',
+            model: archway({ width, ceilingHeight: ceiling }),
+            x: ax, y: 0, z: az,
+            rotY,
+            proximityGlow: true,   // lintel/keystone glow as the player nears
+            _dbg: 'archway',
+            // Column blockers sit at the column centre offsets so
+            // collision matches the visible columns.
+            collision: [
+              { kind: 'circle', r: 0.22, ox: -colOffset, oz: 0 },
+              { kind: 'circle', r: 0.22, ox:  colOffset, oz: 0 },
+            ],
+          });
+        }
       }
     }
   }

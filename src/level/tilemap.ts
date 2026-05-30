@@ -46,6 +46,7 @@ import type {
 } from './types';
 import { ITEMS } from '../content/items';
 import { ENEMY_BY_CHAR } from '../content/enemies';
+import { doorframe } from '../content/doorframe';
 import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 import { pickWallFixture } from './lit-fixture-pool';
 import { buildRng } from '../engine/rng';
@@ -411,6 +412,12 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           // runs E-W and the curtain faces ±X (rotY π/2).
           const nsOpen = isFloor(c, r - 1) && isFloor(c, r + 1);
           props.push({ kind: 'cobweb', x, z, rotY: nsOpen ? 0 : Math.PI / 2 });
+          // Frame the opening (carving step) so the web hangs across a stone
+          // doorway, not a bare hole in a paper wall.
+          props.push({
+            kind: 'model', model: doorframe({ ceilingHeight: opts.roomHeight ?? 3.2 }),
+            x, y: 0, z, rotY: nsOpen ? 0 : Math.PI / 2, proximityGlow: true, _dbg: 'doorframe',
+          });
           break;
         }
         case '^': {
@@ -589,6 +596,12 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
             unlock: ch === 'O' ? { kind: 'cleared', roomIds: gateRooms }
                   : ch === 'D' ? { kind: 'arena',   roomIds: gateRooms }
                   : undefined,
+          });
+          // Frame the opening so the door sits in a stone surround, not a
+          // bare slot in a paper wall.
+          props.push({
+            kind: 'model', model: doorframe({ ceilingHeight: opts.roomHeight ?? 3.2 }),
+            x, y: 0, z, rotY: ew ? 0 : Math.PI / 2, proximityGlow: true, _dbg: 'doorframe',
           });
           break;
         }
