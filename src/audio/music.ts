@@ -1,8 +1,18 @@
-// Procedural music engine. Layered Web Audio synthesis driven by game
-// state — exploration drone + hand-authored melodic MOTIFS played on
-// a plucked synth, a soft tension layer that fades up under combat,
-// and a quieter warmer bed in safe rooms. Everything is generated in
-// code (no asset files), in keeping with the rest of the project.
+// Procedural music + soundscape engine. Layered Web Audio synthesis driven
+// by game state. Everything is generated in code (no asset files).
+//
+// DESIGN: silence is the default; sound is signal (the audio sibling of the
+// "lighting as signal" doctrine). So MELODY is rare and reserved —
+//   - Exploration: NO melody. A subtle felt-not-heard drone (the tonal
+//     floor / threat bed) + a sparse ambient SOUNDSCAPE (drips, settling
+//     stone, far groans, drafts) on long irregular gaps. The dungeon's
+//     voice, not a score — the player listens into the dark.
+//   - Combat: the drone tightens + a held-tension layer swells. The crunchy
+//     impact SFX carries the rhythm; no battle theme.
+//   - Safe rooms: the only place melodic MOTIFS play — the exhale/reward.
+// A synth pluck playing a tune in a grimdark dungeon reads as "MIDI
+// keyboard" no matter how good the notes, so melody earns its place by
+// scarcity. (Boss music — a reserved, sustained, textural bed — is a TODO.)
 //
 // Iteration notes:
 //   - V1 used a random pick from the mode pool per pluck. Result was
@@ -270,6 +280,10 @@ const droneOscs: OscillatorNode[] = [];
 const combatOscs: OscillatorNode[] = [];
 // Motif scheduler handle.
 let motifScheduler: number | null = null;
+// Ambient soundscape: output bus + scheduler + shared noise buffer.
+let ambientGain: GainNode | null = null;
+let ambientScheduler: number | null = null;
+let noiseBuffer: AudioBuffer | null = null;
 // Heat decay ticker.
 let heatTicker: number | null = null;
 // Last-played motif index so we avoid playing the same one twice in a row.
@@ -377,6 +391,18 @@ export function startMusic(): void {
     combatOscs.push(o);
   }
 
+  // ── Ambient bus ──────────────────────────────────────────────────────
+  // The environmental one-shots (drips, settling stone, far groans, drafts)
+  // are diegetic WORLD sound, not score — so they hang off the SFX master
+  // (master), not musicMasterGain. They get a heavy wet send so they echo
+  // down the corridors. Muting "music" leaves the dungeon's voice intact.
+  ambientGain = c.createGain();
+  ambientGain.gain.value = 1.0;
+  ambientGain.connect(master);
+  const ambientWet = c.createGain();
+  ambientWet.gain.value = 0.55;
+  ambientGain.connect(ambientWet).connect(reverb);
+
   // ── Combat-heat decay ticker ─────────────────────────────────────────
   // 4 ticks per second is enough — heat moves slowly. We drive
   // setMusicState() based on threshold crossings inside the tick.
@@ -413,8 +439,12 @@ function applyState(state: MusicState): void {
   // = relative to the music mix (which is then scaled by master).
   switch (state) {
     case 'exploration':
-      setRamp(droneGain,  0.28, 1.8);
-      setRamp(pluckGain,  0.22, 1.8);
+      // No melody in exploration — silence is the instrument. Only a
+      // subtle felt-not-heard drone (the tonal floor / threat bed); the
+      // dungeon's voice is the sparse ambient one-shot soundscape below.
+      // Melodic motifs are reserved for safe rooms (the exhale).
+      setRamp(droneGain,  0.20, 2.2);
+      setRamp(pluckGain,  0.00, 1.2);
       setRamp(combatGain, 0.00, 0.8);
       break;
     case 'combat':
@@ -442,6 +472,7 @@ function applyState(state: MusicState): void {
   }
   currentState = state;
   scheduleMotifLoop();
+  scheduleAmbientLoop();
 }
 
 // ── Motif scheduler ────────────────────────────────────────────────────
@@ -462,7 +493,9 @@ function scheduleMotifLoop(): void {
     clearTimeout(motifScheduler);
     motifScheduler = null;
   }
-  if (currentState !== 'exploration' && currentState !== 'safe') return;
+  // Melody lives ONLY in safe rooms now — the exhale/reward. Exploration is
+  // soundscape + silence; combat is the tension layer + impacts.
+  if (currentState !== 'safe') return;
   // First note fires after a small intro delay so a state change
   // (e.g. entering exploration from level load) doesn't drop a note
   // the instant the camera arrives.
@@ -471,7 +504,7 @@ function scheduleMotifLoop(): void {
 }
 
 function playNextMotif(): void {
-  if (currentState !== 'exploration' && currentState !== 'safe') return;
+  if (currentState !== 'safe') return;
   const c = getAudioContext();
   if (!c || !pluckGain) return;
   const motifs = currentPalette.motifs;
@@ -536,6 +569,152 @@ function playPluckAt(semitones: number, octave: number, when: number): void {
     osc.start(when);
     osc.stop(when + 2.5);
   }
+}
+
+// ── Ambient soundscape ─────────────────────────────────────────────────
+//
+// The dungeon's voice during exploration (and, sparser, in safe rooms):
+// sparse environmental one-shots on long irregular gaps so it never reads
+// as a loop or as music. Silence between them is the point — the player
+// listens. All synthesised in code, panned + reverbed so they feel like
+// they come from somewhere down the dark.
+
+/** Shared white-noise buffer for the noise-based ambiences. */
+function getNoise(c: AudioContext): AudioBuffer {
+  if (noiseBuffer) return noiseBuffer;
+  const len = Math.floor(c.sampleRate * 2);
+  const buf = c.createBuffer(1, len, c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  noiseBuffer = buf;
+  return buf;
+}
+
+/** A stereo-panned node feeding the ambient bus (falls back to the bus
+ *  directly where StereoPanner is unavailable). */
+function ambientOut(c: AudioContext, pan: number): AudioNode {
+  if (!ambientGain) return c.destination;
+  if (typeof c.createStereoPanner === 'function') {
+    const p = c.createStereoPanner();
+    p.pan.value = pan;
+    p.connect(ambientGain);
+    return p;
+  }
+  return ambientGain;
+}
+
+/** A water drip — bright plip with a fast downward chirp; the reverb tail
+ *  turns it into a drip echoing in a stone chamber. The dungeon's heartbeat. */
+function ambientDrip(c: AudioContext, when: number, pan: number): void {
+  const out = ambientOut(c, pan);
+  const f0 = 900 + Math.random() * 800;
+  const osc = c.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(f0, when);
+  osc.frequency.exponentialRampToValueAtTime(f0 * 0.45, when + 0.07);
+  const env = c.createGain();
+  env.gain.setValueAtTime(0.0001, when);
+  env.gain.exponentialRampToValueAtTime(0.32 + Math.random() * 0.18, when + 0.005);
+  env.gain.exponentialRampToValueAtTime(0.0006, when + 0.22);
+  osc.connect(env).connect(out);
+  osc.start(when); osc.stop(when + 0.3);
+}
+
+/** Distant settling stone / a far collapse — a low filtered-noise swell.
+ *  Quiet and slow; reads as "something shifted, far off". */
+function ambientRumble(c: AudioContext, when: number, pan: number): void {
+  const out = ambientOut(c, pan);
+  const src = c.createBufferSource();
+  src.buffer = getNoise(c); src.loop = true;
+  const filt = c.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = 120 + Math.random() * 70;
+  filt.Q.value = 0.7;
+  const env = c.createGain();
+  env.gain.setValueAtTime(0.0001, when);
+  env.gain.linearRampToValueAtTime(0.35, when + 0.7);
+  env.gain.exponentialRampToValueAtTime(0.0005, when + 2.6);
+  src.connect(filt).connect(env).connect(out);
+  src.start(when); src.stop(when + 2.8);
+}
+
+/** A far-off groan — low detuned saw through a narrow bandpass with a slow
+ *  pitch waver. Could be the structure, could be something alive. Rare. */
+function ambientGroan(c: AudioContext, when: number, pan: number): void {
+  const out = ambientOut(c, pan);
+  const base = 64 + Math.random() * 44;
+  const osc = c.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(base, when);
+  osc.frequency.linearRampToValueAtTime(base * 1.14, when + 0.9);
+  osc.frequency.linearRampToValueAtTime(base * 0.96, when + 2.0);
+  const filt = c.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.value = 240 + Math.random() * 120;
+  filt.Q.value = 4.5;
+  const env = c.createGain();
+  env.gain.setValueAtTime(0.0001, when);
+  env.gain.linearRampToValueAtTime(0.16, when + 0.5);
+  env.gain.exponentialRampToValueAtTime(0.0005, when + 2.3);
+  osc.connect(filt).connect(env).connect(out);
+  osc.start(when); osc.stop(when + 2.5);
+}
+
+/** Wind through a gap — a band-swept noise swell. The dungeon breathing. */
+function ambientDraft(c: AudioContext, when: number, pan: number): void {
+  const out = ambientOut(c, pan);
+  const src = c.createBufferSource();
+  src.buffer = getNoise(c); src.loop = true;
+  const filt = c.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.Q.value = 2.5;
+  filt.frequency.setValueAtTime(360, when);
+  filt.frequency.linearRampToValueAtTime(700, when + 1.4);
+  filt.frequency.linearRampToValueAtTime(300, when + 3.0);
+  const env = c.createGain();
+  env.gain.setValueAtTime(0.0001, when);
+  env.gain.linearRampToValueAtTime(0.11, when + 1.0);
+  env.gain.exponentialRampToValueAtTime(0.0005, when + 3.0);
+  src.connect(filt).connect(env).connect(out);
+  src.start(when); src.stop(when + 3.2);
+}
+
+// Weighted pool — drips dominate (the signature dungeon sound), the rest
+// punctuate. Cumulative weights for a single random pick.
+const AMBIENT_POOL: Array<{ fn: (c: AudioContext, when: number, pan: number) => void; weight: number }> = [
+  { fn: ambientDrip,   weight: 4.0 },
+  { fn: ambientDraft,  weight: 2.0 },
+  { fn: ambientRumble, weight: 1.5 },
+  { fn: ambientGroan,  weight: 1.2 },
+];
+const AMBIENT_WEIGHT_TOTAL = AMBIENT_POOL.reduce((s, a) => s + a.weight, 0);
+
+function scheduleAmbientLoop(): void {
+  if (ambientScheduler !== null) {
+    clearTimeout(ambientScheduler);
+    ambientScheduler = null;
+  }
+  // Soundscape runs while exploring + (sparser) in safe rooms. Combat,
+  // death, off get silence-but-for-the-fight / nothing.
+  if (currentState !== 'exploration' && currentState !== 'safe') return;
+  // Long, irregular gaps. Safe rooms breathe slower (you're meant to rest).
+  const gap = currentState === 'safe'
+    ? 11000 + Math.random() * 12000   // 11-23s
+    : 6000 + Math.random() * 9000;    // 6-15s
+  ambientScheduler = window.setTimeout(() => {
+    playAmbientOneShot();
+    scheduleAmbientLoop();
+  }, gap);
+}
+
+function playAmbientOneShot(): void {
+  const c = getAudioContext();
+  if (!c || !ambientGain) return;
+  let r = Math.random() * AMBIENT_WEIGHT_TOTAL;
+  let pick = AMBIENT_POOL[0];
+  for (const a of AMBIENT_POOL) { if ((r -= a.weight) <= 0) { pick = a; break; } }
+  const pan = (Math.random() * 2 - 1) * 0.8;   // spread across the field
+  pick.fn(c, c.currentTime + 0.03, pan);
 }
 
 // ── Heat tracker + event hooks ─────────────────────────────────────────
@@ -616,5 +795,6 @@ export function setMusicVolume(v: number): void {
 export function stopMusic(): void {
   if (heatTicker !== null) { clearInterval(heatTicker); heatTicker = null; }
   if (motifScheduler !== null) { clearTimeout(motifScheduler); motifScheduler = null; }
+  if (ambientScheduler !== null) { clearTimeout(ambientScheduler); ambientScheduler = null; }
   applyState('off');
 }
