@@ -560,7 +560,43 @@ const SYSTEMS: GameSystem[] = [
     });
     // Lamp reaches the looked-at surface by falloff over LAMP_DISTANCE.
     const lampLit = Math.max(0, 1 - lookDist / CONFIG.LAMP_DISTANCE);
-    const lit = lookTorch + envLit + lampLit;
+
+    // ── Camera-position sample (the "what light is on MY EYE" pass) ──
+    // The surface sample above is aim-dependent — bright torch beside
+    // you while you look at a dark wall reads as "dark" and dark-adapt
+    // over-fires. Sum lights within range of the camera itself; take
+    // the max with the surface sample. Models how the eye actually
+    // adapts: to the brighter of "ambient around me" or "what I'm
+    // focused on", whichever wins.
+    //
+    // Lamp is EXCLUDED on purpose. Your own hand-lamp is the baseline
+    // you've already adapted past; counting it would mean dark
+    // corridors with the lamp on never trigger adapt at all, which is
+    // wrong (you ARE still trying to see beyond the lamp's reach).
+    let camTorch = 0;
+    for (const t of currentLevel.torches) {
+      const dx = t.position.x - cx;
+      const dz = t.position.z - cz;
+      const d = Math.hypot(dx, dz);
+      if (d >= lightRange) continue;
+      if (walkable && !walkable.hasLineOfSight(cx, cz, t.position.x, t.position.z)) continue;
+      camTorch += 1 - d / lightRange;
+    }
+    let camEnv = 0;
+    forEachLight('environment', (src) => {
+      if (src.id.startsWith('torch-')) return;
+      const dx = src.position.x - cx;
+      const dz = src.position.z - cz;
+      const d = Math.hypot(dx, dz);
+      const r = Math.max(2, src.distance);
+      if (d >= r) return;
+      if (walkable && !walkable.hasLineOfSight(cx, cz, src.position.x, src.position.z)) return;
+      const w = Math.min(1.5, src.intensity / CONFIG.TORCH_INTENSITY);
+      camEnv += (1 - d / r) * w;
+    });
+    const litSurface = lookTorch + envLit + lampLit;
+    const litCamera = camTorch + camEnv;     // lamp deliberately omitted
+    const lit = Math.max(litSurface, litCamera);
 
     const adapt = tickDarkAdaptation(lit, ctx.realDt);
     // PS1 path ignores renderer tone mapping (render-to-target), so the dark

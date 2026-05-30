@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-05-30",
     "entries": [
       {
+        "tag": "content",
+        "text": "Dark-adapt: wider torch range, count env lights, brighter floor"
+      },
+      {
         "tag": "tune",
         "text": "Tap-target: screen-space proximity fallback for interactables"
       }
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Enemy verb-audit"
-      },
-      {
-        "tag": "tune",
-        "text": "Game-mode machine, system registry, reactive player stats"
       }
     ]
   }
