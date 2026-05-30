@@ -561,6 +561,22 @@ const SYSTEMS: GameSystem[] = [
     // Lamp reaches the looked-at surface by falloff over LAMP_DISTANCE.
     const lampLit = Math.max(0, 1 - lookDist / CONFIG.LAMP_DISTANCE);
 
+    // Fog visibility helpers — the analytic lit-signal must agree
+    // with what the player actually sees on screen. Without this,
+    // a torch 8m down a long corridor still contributed ~0.27 to
+    // the surface sample even though fog (FOG_FAR=9m) renders it
+    // as pitch black. Player saw black, dark-adapt didn't fire.
+    //
+    // fogVis(d) → 1 at distance ≤ FOG_NEAR, 0 at distance ≥ FOG_FAR,
+    // smoothly between. Camera-sample contributions are multiplied
+    // by fogVis(torch_to_camera); the surface sample's total is
+    // multiplied by fogVis(lookDist) since the whole sum describes
+    // the surface being looked at.
+    const fogVis = (d: number): number => {
+      const t = (CONFIG.FOG_FAR - d) / (CONFIG.FOG_FAR - CONFIG.FOG_NEAR);
+      return Math.max(0, Math.min(1, t));
+    };
+
     // ── Camera-position sample (the "what light is on MY EYE" pass) ──
     // The surface sample above is aim-dependent — bright torch beside
     // you while you look at a dark wall reads as "dark" and dark-adapt
@@ -576,6 +592,11 @@ const SYSTEMS: GameSystem[] = [
     // all near the player. Cutoff at ~110° total (cos(55°) ≈
     // 0.574) — slightly wider than the visible frustum so a torch
     // just at the edge of vision still counts.
+    //
+    // Fog-attenuated: a torch fully behind fog isn't actually
+    // lighting the screen the player sees. Multiply each contribution
+    // by fogVis(torch_to_camera) so far-but-in-FOV torches don't
+    // bogusly cancel adapt.
     //
     // Lamp is EXCLUDED on purpose. Your own hand-lamp is the
     // baseline you've already adapted past; counting it would mean
@@ -598,7 +619,7 @@ const SYSTEMS: GameSystem[] = [
       if (d >= lightRange) continue;
       if (!inViewCone(t.position.x, t.position.z)) continue;
       if (walkable && !walkable.hasLineOfSight(cx, cz, t.position.x, t.position.z)) continue;
-      camTorch += 1 - d / lightRange;
+      camTorch += (1 - d / lightRange) * fogVis(d);
     }
     let camEnv = 0;
     forEachLight('environment', (src) => {
@@ -611,9 +632,13 @@ const SYSTEMS: GameSystem[] = [
       if (!inViewCone(src.position.x, src.position.z)) return;
       if (walkable && !walkable.hasLineOfSight(cx, cz, src.position.x, src.position.z)) return;
       const w = Math.min(1.5, src.intensity / CONFIG.TORCH_INTENSITY);
-      camEnv += (1 - d / r) * w;
+      camEnv += (1 - d / r) * w * fogVis(d);
     });
-    const litSurface = lookTorch + envLit + lampLit;
+    // Surface signal — fog the whole sum by lookDist (the player
+    // sees the lit surface through fog; if the surface is past fog
+    // far, signal collapses to ~0 regardless of how lit it would
+    // be at that distance).
+    const litSurface = (lookTorch + envLit + lampLit) * fogVis(lookDist);
     const litCamera = camTorch + camEnv;     // lamp deliberately omitted
     const lit = Math.max(litSurface, litCamera);
 
