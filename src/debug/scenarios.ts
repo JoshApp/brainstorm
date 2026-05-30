@@ -629,6 +629,17 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 4.0, lookAt: { x: 0, z: -2.0, y: 0.8 } },
   },
 
+  // TEMP: cobweb-gate verification (the captured d4 seed → encounter-nest
+  // in vault-1). Player in the alcove looking south through the 2-wide web
+  // gate. Confirms no wall-face stands in the doorway + the opening reads
+  // wide enough to walk through.
+  'cobweb-gate-repro': {
+    freeze: true,
+    hideSword: true,
+    level: generateFloor(4, 1780177907387, 'depth-5'),
+    playerPos: { x: 1.0, z: 7.4, lookAt: { x: 1.0, z: 9.0, y: 1.0 } },
+  },
+
   // Mid-corridor looking down at the spike trap plate.
   'spike-trap': {
     freeze: true,

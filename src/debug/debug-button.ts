@@ -53,7 +53,7 @@ export function mountDebugButton(ctx: DebugContext): void {
     try {
       const snap = await captureDebugSnapshot(ctx);
       const text = formatSnapshotText(snap);
-      const id = makeId(snap);
+      const id = snap.id;
 
       // All four screenshot layers.
       const images = [
@@ -126,13 +126,6 @@ async function tryUpload(
   } catch {
     return false; // network error / no endpoint
   }
-}
-
-/** Short, paste-friendly id: floor + 4 random base36 chars. Avoids
- *  Date.now collisions across rapid captures. */
-function makeId(snap: { observation: { depth: number } }): string {
-  const rnd = Math.floor(Math.random() * 36 ** 4).toString(36).padStart(4, '0');
-  return `d${snap.observation.depth}-${rnd}`;
 }
 
 /** Drop the big base64 image dataUrls from the snapshot before it's

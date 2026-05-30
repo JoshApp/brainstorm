@@ -156,13 +156,100 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     x: originX + col + 0.5,
     z: originZ + row + 0.5,
   });
-  const cellChar = (col: number, row: number): string => {
+  // Raw authored char, ignoring any width-roll seals applied below.
+  const rawChar = (col: number, row: number): string => {
     const r = map[row] ?? '';
     return r[col] ?? ' ';
+  };
+  // Cells the door-width roll has sealed back to wall (see the door-run
+  // pre-pass). cellChar reports these as '#' so flood fill, boundary
+  // detection, and the feature loop all see a narrower opening.
+  const sealedCells = new Set<string>();
+  const cellChar = (col: number, row: number): string => {
+    if (sealedCells.has(`${col},${row}`)) return '#';
+    return rawChar(col, row);
   };
   const isFloor = (col: number, row: number): boolean => {
     return FLOOR_CHARS.has(cellChar(col, row));
   };
+
+  // ── Door runs: coalesce + variable width ──────────────────────────
+  // A horizontal/vertical run of adjacent door tiles ('o'/'O'/'D')
+  // becomes ONE door spanning the whole run (and one wide stone frame)
+  // instead of a stack of 1m doors. For GATED runs ('O'/'D') of 3+ cells
+  // we roll a kept width in [2, length] off the per-floor build RNG and
+  // seal the surplus back to wall — so an arena maw reads ~2m in one
+  // floor and ~3m in the next, never the same prefab twice. The doorframe
+  // model already takes a width, so the surround scales for free.
+  type DoorRun = { char: string; ew: boolean; cells: Array<[number, number]> };
+  const doorRuns: DoorRun[] = [];
+  const DOOR_TILE = new Set(['o', 'O', 'D']);
+  const runVisited = new Set<string>();
+  const isFloorRaw = (col: number, row: number) => FLOOR_CHARS.has(rawChar(col, row));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const ch = rawChar(c, r);
+      if (!DOOR_TILE.has(ch)) continue;
+      if (runVisited.has(`${c},${r}`)) continue;
+      // Orientation: a door whose N AND S are floor spans E↔W (runs along
+      // columns); otherwise it spans N↔S (runs along rows).
+      const ew = isFloorRaw(c, r - 1) && isFloorRaw(c, r + 1);
+      const cells: Array<[number, number]> = [[c, r]];
+      runVisited.add(`${c},${r}`);
+      // Extend forward along the run axis while same-char door tiles continue.
+      // (We scan top-left→bottom-right, so this cell is the run's start.)
+      let k = 1;
+      for (;;) {
+        const nc = ew ? c + k : c;
+        const nr = ew ? r : r + k;
+        if (nc >= cols || nr >= rows) break;
+        if (rawChar(nc, nr) !== ch) break;
+        cells.push([nc, nr]);
+        runVisited.add(`${nc},${nr}`);
+        k++;
+      }
+      // Variable-width roll for gated maws of 3+ cells.
+      if (cells.length >= 3 && (ch === 'O' || ch === 'D')) {
+        const keep = 2 + Math.floor(buildRng() * (cells.length - 1)); // [2..len]
+        for (let i = keep; i < cells.length; i++) {
+          const [sc, sr] = cells[i];
+          sealedCells.add(`${sc},${sr}`);
+        }
+        cells.length = Math.min(keep, cells.length);
+      }
+      doorRuns.push({ char: ch, ew, cells });
+    }
+  }
+
+  // ── Cobweb runs: coalesce + size to opening ───────────────────────
+  // A run of adjacent '%' tiles becomes ONE destructible web curtain (and
+  // one stone frame) spanning the whole opening — mirrors the door-run
+  // coalescing above so a vault widens a web gate with '%%' the same way
+  // it widens an arena maw, instead of stacking 1m webs cell by cell.
+  type CobwebRun = { ew: boolean; cells: Array<[number, number]> };
+  const cobwebRuns: CobwebRun[] = [];
+  const cobwebVisited = new Set<string>();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (rawChar(c, r) !== '%') continue;
+      if (cobwebVisited.has(`${c},${r}`)) continue;
+      // Same orientation rule as doors: N AND S floor ⇒ the gate spans E↔W.
+      const ew = isFloorRaw(c, r - 1) && isFloorRaw(c, r + 1);
+      const cells: Array<[number, number]> = [[c, r]];
+      cobwebVisited.add(`${c},${r}`);
+      let k = 1;
+      for (;;) {
+        const nc = ew ? c + k : c;
+        const nr = ew ? r : r + k;
+        if (nc >= cols || nr >= rows) break;
+        if (rawChar(nc, nr) !== '%') break;
+        cells.push([nc, nr]);
+        cobwebVisited.add(`${nc},${nr}`);
+        k++;
+      }
+      cobwebRuns.push({ ew, cells });
+    }
+  }
 
   // ── Room rect: single big bounding rect covering the map ──────────
   // (Walls inside it segment the space into "rooms" visually.)
@@ -343,6 +430,70 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   let startPos = { x: 0, z: 0, yaw: opts.spawnYaw ?? 0 };
   let noteIndex = 0;
 
+  // ── Emit coalesced doors (one per run) + their stone surrounds ─────
+  // Done here (not in the per-cell loop) so each multi-cell run produces
+  // a single wide door + frame. Component ids on either side come from
+  // the flood fill above, unioned across the run.
+  for (const run of doorRuns) {
+    const cells = run.cells;
+    const [c0, r0] = cells[0];
+    const [c1, r1] = cells[cells.length - 1];
+    const a = cellCenter(c0, r0);
+    const b = cellCenter(c1, r1);
+    // Span the full run; ±0.5 extends to the outer cell edges.
+    const doorRect = run.ew
+      ? { ax: a.x - 0.5, az: a.z, bx: b.x + 0.5, bz: b.z }
+      : { ax: a.x, az: a.z - 0.5, bx: b.x, bz: b.z + 0.5 };
+    const widthCells = cells.length;
+    // Union the sub-rooms touching either side across every run cell.
+    const gateRoomSet = new Set<string>();
+    for (const [cc, rr] of cells) {
+      for (const id of adjacentComponentIds(cc, rr, run.ew)) gateRoomSet.add(id);
+    }
+    const gateRooms = gateRoomSet.size > 0 ? [...gateRoomSet] : [roomId];
+    doors.push({
+      id: `door-${c0}-${r0}`,
+      ax: doorRect.ax, az: doorRect.az,
+      bx: doorRect.bx, bz: doorRect.bz,
+      height: 2.6,
+      hinge: 'a',
+      swingDir: 1,
+      unlock: run.char === 'O' ? { kind: 'cleared', roomIds: gateRooms }
+            : run.char === 'D' ? { kind: 'arena',   roomIds: gateRooms }
+            : undefined,
+    });
+    // Stone surround sized to the (rolled) opening width.
+    const cxF = (doorRect.ax + doorRect.bx) / 2;
+    const czF = (doorRect.az + doorRect.bz) / 2;
+    props.push({
+      kind: 'model',
+      model: doorframe({ width: widthCells, ceilingHeight: opts.roomHeight ?? 3.2 }),
+      x: cxF, y: 0, z: czF, rotY: run.ew ? 0 : Math.PI / 2,
+      proximityGlow: true, _dbg: 'doorframe',
+    });
+  }
+
+  // ── Emit coalesced cobweb curtains (one per run) + stone frames ────
+  // One web + one frame spanning the whole run, sized to the opening, so
+  // the curtain fills a wide gate instead of a 2m web over a 1m hole.
+  for (const run of cobwebRuns) {
+    const [c0, r0] = run.cells[0];
+    const [c1, r1] = run.cells[run.cells.length - 1];
+    const a = cellCenter(c0, r0);
+    const b = cellCenter(c1, r1);
+    const cxW = (a.x + b.x) / 2;
+    const czW = (a.z + b.z) / 2;
+    const widthM = run.cells.length;          // 1m per cell
+    const rotY = run.ew ? 0 : Math.PI / 2;
+    props.push({ kind: 'cobweb', x: cxW, z: czW, rotY, widthM });
+    // Frame the opening so the web hangs across a stone doorway, not a
+    // bare hole in a paper wall.
+    props.push({
+      kind: 'model', model: doorframe({ width: widthM, ceilingHeight: opts.roomHeight ?? 3.2 }),
+      x: cxW, y: 0, z: czW, rotY, proximityGlow: true, _dbg: 'doorframe',
+    });
+  }
+
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const ch = cellChar(c, r);
@@ -405,21 +556,8 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           props.push({ kind: 'vase-cluster', x, z });
           break;
         }
-        case '%': {
-          // Destructible cobweb curtain plugging this passage. Orient
-          // the web across the open axis: if N/S are floor the passage
-          // runs N-S so the curtain faces ±Z (rotY 0); otherwise it
-          // runs E-W and the curtain faces ±X (rotY π/2).
-          const nsOpen = isFloor(c, r - 1) && isFloor(c, r + 1);
-          props.push({ kind: 'cobweb', x, z, rotY: nsOpen ? 0 : Math.PI / 2 });
-          // Frame the opening (carving step) so the web hangs across a stone
-          // doorway, not a bare hole in a paper wall.
-          props.push({
-            kind: 'model', model: doorframe({ ceilingHeight: opts.roomHeight ?? 3.2 }),
-            x, y: 0, z, rotY: nsOpen ? 0 : Math.PI / 2, proximityGlow: true, _dbg: 'doorframe',
-          });
-          break;
-        }
+        // '%' (cobweb gate) is handled by the cobweb-run pre-pass above —
+        // coalesced into one curtain + frame per run, sized to the opening.
         case '^': {
           props.push({ kind: 'spike-trap', x, z, damage: 2 });
           break;
@@ -561,50 +699,12 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         }
         case 'o':
         case 'O':
-        case 'D': {
-          // Door at this cell. The door SPAN is along the perpendicular
-          // axis — we pick based on neighbors: if cells E/W of this are
-          // walls and N/S are walkable, the door runs E↔W.
-          //
-          // Tile semantics:
-          //   o → always-unlocked door (open on first interact, no gate)
-          //   O → sealed from spawn until the containing room clears
-          //   D → arena door. STARTS open + passable; slams shut when
-          //       the player crosses into the containing room; reopens
-          //       when the room clears. Lock-on-enter.
-          //
-          // Roomids on the unlock are auto-derived from flood fill:
-          // the two sub-rooms on either side of the door. For O / D
-          // this means the door's gate predicate covers BOTH sides,
-          // so the arena slam fires the moment the player enters
-          // either side from a corridor (or interior wall passage).
-          const nIsFloor = isFloor(c, r - 1);
-          const sIsFloor = isFloor(c, r + 1);
-          const ew = nIsFloor && sIsFloor;  // door swings E↔W
-          const doorRect = ew
-            ? { ax: x - 0.5, az: z, bx: x + 0.5, bz: z }
-            : { ax: x, az: z - 0.5, bx: x, bz: z + 0.5 };
-          const neighborRooms = adjacentComponentIds(c, r, ew);
-          const gateRooms = neighborRooms.length > 0 ? neighborRooms : [roomId];
-          doors.push({
-            id: `door-${c}-${r}`,
-            ax: doorRect.ax, az: doorRect.az,
-            bx: doorRect.bx, bz: doorRect.bz,
-            height: 2.6,
-            hinge: 'a',
-            swingDir: 1,
-            unlock: ch === 'O' ? { kind: 'cleared', roomIds: gateRooms }
-                  : ch === 'D' ? { kind: 'arena',   roomIds: gateRooms }
-                  : undefined,
-          });
-          // Frame the opening so the door sits in a stone surround, not a
-          // bare slot in a paper wall.
-          props.push({
-            kind: 'model', model: doorframe({ ceilingHeight: opts.roomHeight ?? 3.2 }),
-            x, y: 0, z, rotY: ew ? 0 : Math.PI / 2, proximityGlow: true, _dbg: 'doorframe',
-          });
+        case 'D':
+          // Doors are emitted by the coalescing run pass above (one wide
+          // door + frame per run, with the variable-width roll). Sealed
+          // surplus cells read as '#' here via cellChar, so they never
+          // reach this case.
           break;
-        }
       }
     }
   }
@@ -686,6 +786,16 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
         x: st.x + sDirX * i,
         z: st.z + sDirZ * i,
       });
+    }
+  }
+  // Cobweb-gate cells are openings too. A '%' in a 1-cell-thick wall is
+  // bracketed by jamb walls 1m apart, the exact pattern the consolidator
+  // collapses into a single mid-cell wall — a vertical face standing in
+  // the middle of the doorway you can't pass. Guard the run cells so the
+  // jamb pair stays split and the gate reads open.
+  for (const run of cobwebRuns) {
+    for (const [cc, rr] of run.cells) {
+      openingCells.push(cellCenter(cc, rr));
     }
   }
   const consolidated: Seg[] = consolidateInteriorWalls(walls, onRectEdge, openingCells);

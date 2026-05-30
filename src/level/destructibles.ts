@@ -173,11 +173,17 @@ export function spawnVase(
  *  loot and a softer "tear" instead of a stone shatter. The caller
  *  pushes the blocking obstacle and passes `onDestroyed` to splice it
  *  out so the passage opens the instant the web is cut. */
+// The COBWEB_BARRIER decals are authored to span a ~1.9m single doorway;
+// widthM scales the curtain horizontally (and its blocking radius) so a
+// wider web gate reads filled rather than a 2m web stretched over a 1m hole.
+const COBWEB_BASE_WIDTH = 1.9;
+
 export function spawnCobweb(
   scene: THREE.Object3D,
   x: number,
   z: number,
   rotY: number,
+  widthM: number = COBWEB_BASE_WIDTH,
   onDestroyed?: () => void,
 ): Destructible {
   const id = `cobweb-${Math.floor(buildRng() * 1e9).toString(36)}`;
@@ -186,6 +192,9 @@ export function spawnCobweb(
   const group = built.group;
   group.position.set(x, 0, z);
   group.rotation.y = rotY;
+  // Widen the curtain along its local X (the passage-crossing axis) before
+  // rotY orients it. Scaled, not rebuilt, so the gossamer layering is kept.
+  group.scale.x = widthM / COBWEB_BASE_WIDTH;
   scene.add(group);
 
   spawnEntity({ id: entityId, kind: 'prop', hp: { base: 1, current: 1 }, buffs: [], passives: [] });
@@ -197,7 +206,7 @@ export function spawnCobweb(
     group,
     position: group.position,
     aimHeight: 1.1,            // chest-height curtain — aim the cone at the web
-    collisionRadius: 0.9,      // spans a standard doorway / corridor mouth
+    collisionRadius: Math.max(0.9, widthM / 2 + 0.1),  // covers the whole opening for aim-assist
     hitFeedback: 'light',
     alive: true,
     takeDamage(event: DamageEvent) {

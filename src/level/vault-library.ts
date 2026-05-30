@@ -439,7 +439,8 @@ const ENCOUNTER_ARENA: Vault = {
   id: 'encounter-arena',
   tags: ['encounter'],
   // Layout: an entry alcove at the top, an interior wall row with a
-  // single 'D' arena door, and the arena proper below holding two
+  // wide 'D' arena gate (3 cells — the parser rolls it down to 2-3m
+  // and drops a portcullis), and the arena proper below holding two
   // pairs of ghouls and an iron chest centrepiece. Multi-room vault
   // parsing splits the alcove and arena into separate sub-rooms; the
   // 'D' door's cross-axis trigger fires the slam when the player
@@ -454,7 +455,7 @@ const ENCOUNTER_ARENA: Vault = {
     '#....T....T..#',
     '#............#',
     '#............#',
-    '######D#######',
+    '#####DDD######',
     '#.G........G.#',
     '#............#',
     '#............#',
@@ -604,7 +605,7 @@ const ENCOUNTER_NEST: Vault = {
     '##############',
     '#.....T......#',
     '#............#',
-    '######%#######',   // cobweb gate — cut it to enter the nest
+    '######%%######',   // cobweb gate (2-wide) — cut it to enter the nest
     '#..N......N..#',
     '#............#',
     '#.....L......#',

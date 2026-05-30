@@ -170,8 +170,10 @@ export type PropSpec =
   // 'cobweb' = a destructible web curtain plugging a passage. Blocks
   // movement until the player slashes through it (one swing); rotY aims
   // the curtain across the passage. A soft, diegetic gate cleared with
-  // the weapon, not a hard wall.
-  | { kind: 'cobweb'; x: number; z: number; rotY?: number }
+  // the weapon, not a hard wall. widthM sizes the curtain + its blocking
+  // obstacle to the opening it plugs (defaults to a ~1.9m single doorway);
+  // a multi-cell '%' run passes its full span so the web fills a wide maw.
+  | { kind: 'cobweb'; x: number; z: number; rotY?: number; widthM?: number }
   // 'spike-trap' = pressure-plate hazard. Player steps on the plate;
   // brief telegraph (plate sinks, audible click); spikes shoot up and
   // damage. Resets after a cooldown.

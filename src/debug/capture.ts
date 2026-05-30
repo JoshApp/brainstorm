@@ -242,6 +242,7 @@ export async function captureDebugSnapshot(ctx: DebugContext) {
 
   return {
     when: new Date().toISOString(),
+    id: makeId(observation.depth),
     seed: run?.startedAt ?? null,
     vault: roomVault,
     lookAt,
@@ -273,6 +274,17 @@ function sampleFps(): Promise<number> {
 
 export type DebugSnapshot = Awaited<ReturnType<typeof captureDebugSnapshot>>;
 
+/** Short, paste-friendly capture id: floor + 4 random base36 chars. The
+ *  dev-server plugin writes the bundle to debug-captures/<id>/, so the id
+ *  is how Claude finds the report + screenshots on disk. */
+export function makeId(depth: number): string {
+  const rnd = Math.floor(Math.random() * 36 ** 4).toString(36).padStart(4, '0');
+  return `d${depth}-${rnd}`;
+}
+
+/** The four PNG layers written alongside report.txt in debug-captures/<id>/. */
+const CAPTURE_LAYERS = ['annotated', 'geometry', 'light', 'cone'];
+
 /** Compact, paste-ready text report for chat. */
 export function formatSnapshotText(snap: DebugSnapshot): string {
   const o = snap.observation;
@@ -280,6 +292,7 @@ export function formatSnapshotText(snap: DebugSnapshot): string {
   const lines: string[] = [];
 
   lines.push('=== DELVE DEBUG CAPTURE ===');
+  lines.push(`id: ${snap.id}  ·  files: debug-captures/${snap.id}/ (report.txt + ${CAPTURE_LAYERS.map(l => l + '.png').join(', ')})`);
   lines.push(`floor: ${o.floorId} (depth ${o.depth})  seed: ${snap.seed ?? '?'}`);
   lines.push(`room: ${o.roomId ?? '?'}${snap.vault ? `  vault: ${snap.vault}` : ''}`);
   lines.push(`player: (${o.player.pos.x}, ${o.player.pos.z}) yaw ${deg(o.player.facingYaw)}  HP ${o.player.hp.current}/${o.player.hp.max}  light ${o.light.atPlayer.toFixed(1)}`);
@@ -368,7 +381,8 @@ export function formatSnapshotText(snap: DebugSnapshot): string {
   }
 
   lines.push('');
-  lines.push(`(screenshot ${snap.screenshot.size.w}x${snap.screenshot.size.h} captured)`);
+  lines.push(`screenshots: ${snap.screenshot.size.w}x${snap.screenshot.size.h} → debug-captures/${snap.id}/ {${CAPTURE_LAYERS.join(', ')}}.png`);
+  lines.push(`(to read: "read debug capture ${snap.id}")`);
   return lines.join('\n');
 }
 

@@ -723,10 +723,12 @@ export function buildLevel(
     } else if (prop.kind === 'cobweb') {
       // Destructible web curtain — blocks the passage until slashed.
       // Push the blocking obstacle + a splice callback so cutting the
-      // web opens the way. Wider radius than a vase (it spans a doorway).
-      const webObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.9 };
+      // web opens the way. Radius scales with the opening width so a wide
+      // web gate is fully plugged (a single doorway stays ~0.9m).
+      const webWidth = prop.widthM ?? 1.9;
+      const webObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: Math.max(0.9, webWidth / 2 + 0.1) };
       obstacles.push(webObs);
-      const web = spawnCobweb(root, prop.x, prop.z, prop.rotY ?? 0, () => {
+      const web = spawnCobweb(root, prop.x, prop.z, prop.rotY ?? 0, webWidth, () => {
         const idx = obstacles.indexOf(webObs);
         if (idx >= 0) obstacles.splice(idx, 1);
       });
