@@ -23,15 +23,15 @@ import { CONFIG } from '../config';
 // readback (framebuffer metering stalled the pipeline) — this is analytic.
 const LIT_DARK = 0.18;
 const LIT_BRIGHT = 0.85;
-// UP fast, DOWN slow — the player asked for this orientation:
-// stepping into a dark area should adapt almost immediately
-// (~0.25s) so the dark spot becomes navigable fast; stepping
-// BACK into torchlight should fade adaptation off more gradually
-// (~0.5s) instead of slamming back to "blinded by torch". The
-// previous direction (slow-up, fast-down) made the system feel
-// passive and rarely useful.
-const ADAPT_UP_RATE = 3.5;           // per-sec approach while dark
-const ADAPT_DOWN_RATE = 2.2;         // per-sec approach while lit
+// Slow UP, fast DOWN — feedback: previous "fast up + slow down"
+// orientation felt twitchy ("it ramps up immediately and then
+// fades"). Inverted now: the dark has to GROW on you (~1.5s to
+// fully adapt) before your eye lifts it, then any bright light
+// snaps you back almost instantly (~0.1s). Models how real eyes
+// actually work — dark adaptation takes seconds-to-minutes;
+// light reflex is near-instant.
+const ADAPT_UP_RATE = 0.7;           // per-sec approach while dark
+const ADAPT_DOWN_RATE = 14.0;        // per-sec approach while lit
 
 // Brightness multiplier at full adaptation. The blit shader multiplies the
 // image by darkAdaptBrightness() (1.0 = neutral), and the AmbientLight is

@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Dark-adapt shader: darkness-weighted additive (no scale-lift)"
+      },
+      {
+        "tag": "tune",
         "text": "Dark-adapt shader: scale-lift preserves hue, no more wash-out"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Defiler (AoE zone enemy) + enemy tile-char registry"
-      },
-      {
-        "tag": "tune",
-        "text": "Make seeded floors fully reproducible (build-time RNG)"
       }
     ]
   }
