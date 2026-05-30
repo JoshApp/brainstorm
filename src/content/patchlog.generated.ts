@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Audio: procedural music engine — drone, plucks, combat throb"
+      },
+      {
+        "tag": "tune",
+        "text": "Frame every opening: doorframe model for narrow passages"
+      },
+      {
+        "tag": "tune",
         "text": "Audio: positional pan + shared reverb send for in-world sounds"
       },
       {
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "Fix kiter (acolyte): attack-first, hold between shots, cooldown window"
-      },
-      {
-        "tag": "tune",
-        "text": "Threshold embers: faint coals at open archways (dark wayfinding)"
-      },
-      {
-        "tag": "tune",
-        "text": "Eye dark-adaptation: lift ambient floor in torchless dark"
       }
     ]
   }

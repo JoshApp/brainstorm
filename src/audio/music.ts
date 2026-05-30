@@ -1,8 +1,22 @@
 // Procedural music engine. Layered Web Audio synthesis driven by game
-// state — exploration drone + sparse plucks, a sub-bass throb that
-// fades up under combat, a quieter warmer bed in safe rooms. Everything
-// is generated in code (no asset files), in keeping with the rest of
-// the project.
+// state — exploration drone + hand-authored melodic MOTIFS played on
+// a plucked synth, a soft tension layer that fades up under combat,
+// and a quieter warmer bed in safe rooms. Everything is generated in
+// code (no asset files), in keeping with the rest of the project.
+//
+// Iteration notes:
+//   - V1 used a random pick from the mode pool per pluck. Result was
+//     "atonal pluck shower" — notes had no shape. V2 (here) plays
+//     hand-authored motifs (small phrases of 3-6 notes with their own
+//     rhythm) from a per-palette pool, so the music has SENTENCES
+//     instead of word salad.
+//   - V1 combat layer was a thumping sub-bass throb. Too in-your-face.
+//     V2 is a high-octave breath that swells gently — feels like
+//     held tension, not a war drum.
+//   - All target gains pulled WAY down from V1 (~half). Music should
+//     fade INTO the dungeon, not announce itself.
+//   - Separate music volume slider scales musicMasterGain after the
+//     per-state mix, independent of the SFX master.
 //
 // ── Layer architecture ────────────────────────────────────────────────
 //
@@ -48,16 +62,31 @@ import { getCurrentDepth } from '../level/loader';
 
 export type MusicState = 'off' | 'exploration' | 'combat' | 'safe' | 'death';
 
+/** A single note inside a motif. Semitone offset relative to the
+ *  palette root, octave shift from the root's octave, and how long
+ *  the note rings before the next one starts. */
+interface MotifNote {
+  semitones: number;
+  octave: number;
+  /** Time until the NEXT note starts (in seconds). The note's tail
+   *  decays through this window — a longer interNoteDur = more
+   *  breathing space between notes. */
+  interNoteDur: number;
+}
+
+/** A motif is just an ordered list of notes. Phrases of 3-6 notes
+ *  are the sweet spot — long enough to feel composed, short enough
+ *  to vary without exhausting the listener. */
+type Motif = MotifNote[];
+
 interface MusicPalette {
   /** Drone root in Hz. */
   rootHz: number;
-  /** Semitone offsets from the root that the pluck scheduler may pick
-   *  from. Should be a scale or mode — pentatonic minor, phrygian,
-   *  locrian, hungarian minor, etc. Smaller pools = more tonal weight. */
-  modeIntervals: number[];
-  /** Octave offsets the plucks bounce through (relative to the root's
-   *  octave). [0, 1] means root-octave + one above. */
-  pluckOctaveRange: [number, number];
+  /** Hand-authored motif pool. The scheduler picks one, plays it,
+   *  pauses 6-14s, picks another (avoiding immediate repeat). All
+   *  notes inside use semitone offsets that already conform to
+   *  the palette's mode. */
+  motifs: Motif[];
   /** Drone oscillator waveform — 'triangle' = warm chant, 'sawtooth' =
    *  pinched/sour, 'sine' = pure / ethereal. */
   droneWave: OscillatorType;
@@ -66,47 +95,143 @@ interface MusicPalette {
 }
 
 // ── Palettes ───────────────────────────────────────────────────────────
+//
+// Motif notation: each note is { semitones from root, octave, time
+// until next note in seconds }. Octave 3 = pluck sits a third octave
+// above the root (i.e. root D2 → motif octave 3 means D5-ish range).
+// Phrases hand-shaped so they have a SHAPE — descents, plaintive
+// climbs, hovering resolutions. Not random selections from a mode.
 
-/** Act 1 — The Old Refectory. Warm, monastic, dark. Phrygian mode at D2
- *  is the classic "candlelit stone hall" sound — minor second on top of
- *  the root gives the anxious lean without going abrasive. */
+/** Act 1 — The Old Refectory. Warm, monastic, dark. Phrygian mode at D2.
+ *  Motifs are slow stepwise descents and rising plaints — chant-like. */
 const PALETTE_REFECTORY: MusicPalette = {
   rootHz: 73.42,                            // D2
-  modeIntervals: [0, 1, 3, 5, 7, 8, 10],    // phrygian: ♭2, ♭3, 4, 5, ♭6, ♭7
-  pluckOctaveRange: [2, 3],
   droneWave: 'triangle',
-  pluckCutoff: 3200,
+  pluckCutoff: 3000,
+  motifs: [
+    // "Descent" — ♭3 → ♭2 → 1, with a return + final resolution.
+    // The phrygian pulldown to the leading tone is the act's voice.
+    [
+      { semitones: 3, octave: 3, interNoteDur: 1.3 },
+      { semitones: 1, octave: 3, interNoteDur: 1.0 },
+      { semitones: 0, octave: 3, interNoteDur: 1.6 },
+      { semitones: 1, octave: 3, interNoteDur: 1.1 },
+      { semitones: 0, octave: 3, interNoteDur: 2.0 },
+    ],
+    // "Hover" — sit on the fifth, drift to the fourth and back, fall.
+    [
+      { semitones: 7, octave: 3, interNoteDur: 1.2 },
+      { semitones: 5, octave: 3, interNoteDur: 1.0 },
+      { semitones: 7, octave: 3, interNoteDur: 1.4 },
+      { semitones: 3, octave: 3, interNoteDur: 1.8 },
+    ],
+    // "Whisper" — three sparse notes, very quiet phrase.
+    [
+      { semitones: 0, octave: 3, interNoteDur: 2.4 },
+      { semitones: 1, octave: 3, interNoteDur: 1.8 },
+      { semitones: 0, octave: 3, interNoteDur: 2.2 },
+    ],
+    // "Lift" — rise to the ♭6 and let it ring. The ♭6 is phrygian's
+    // most haunted interval; landing on it without resolving is the
+    // hook.
+    [
+      { semitones: 0, octave: 3, interNoteDur: 1.1 },
+      { semitones: 3, octave: 3, interNoteDur: 1.0 },
+      { semitones: 5, octave: 3, interNoteDur: 1.1 },
+      { semitones: 8, octave: 3, interNoteDur: 2.6 },
+    ],
+  ],
 };
 
-/** Act 2 — The Cistern. Cold, watery, unstable. Locrian at A1 — the most
- *  dissonant minor mode, fits "subterranean / drowned / wrong". */
+/** Act 2 — The Cistern. Cold, watery, unstable. Locrian at A1. Motifs
+ *  fall like drops — single high notes that descend to the dissonant
+ *  diminished fifth. Slower than Act 1, more space between notes. */
 const PALETTE_CISTERN: MusicPalette = {
   rootHz: 55.00,                            // A1
-  modeIntervals: [0, 1, 3, 5, 6, 8, 10],    // locrian
-  pluckOctaveRange: [3, 4],
   droneWave: 'sine',
-  pluckCutoff: 2200,                        // duller — through-water filter
+  pluckCutoff: 2200,
+  motifs: [
+    // "Drip" — single note repeated twice, then a slow fall.
+    [
+      { semitones: 10, octave: 3, interNoteDur: 1.6 },
+      { semitones: 10, octave: 3, interNoteDur: 2.0 },
+      { semitones: 6,  octave: 3, interNoteDur: 2.8 },
+    ],
+    // "Ripple" — descending phrase that hits the ♭5.
+    [
+      { semitones: 6,  octave: 3, interNoteDur: 1.0 },
+      { semitones: 5,  octave: 3, interNoteDur: 1.0 },
+      { semitones: 3,  octave: 3, interNoteDur: 1.2 },
+      { semitones: 1,  octave: 3, interNoteDur: 1.4 },
+      { semitones: 0,  octave: 3, interNoteDur: 2.4 },
+    ],
+    // "Submerged" — two low notes, sustained.
+    [
+      { semitones: 0,  octave: 3, interNoteDur: 2.8 },
+      { semitones: 3,  octave: 3, interNoteDur: 3.0 },
+    ],
+  ],
 };
 
 /** Act 3 — The Verdant Rot. Sickly, organic, buzzing. Hungarian minor at
- *  F2 — the augmented fourth gives the "wrong nature" colour. */
+ *  F2 — the augmented fourth gives the "wrong nature" colour. Motifs
+ *  lurch and hover on the ♯4. */
 const PALETTE_VERDANT: MusicPalette = {
   rootHz: 87.31,                            // F2
-  modeIntervals: [0, 2, 3, 6, 7, 8, 11],    // hungarian minor
-  pluckOctaveRange: [2, 3],
   droneWave: 'sawtooth',
-  pluckCutoff: 1800,                        // muffled, fungal
+  pluckCutoff: 1800,
+  motifs: [
+    // "Lurch" — climb through the augmented fourth.
+    [
+      { semitones: 0, octave: 3, interNoteDur: 1.1 },
+      { semitones: 3, octave: 3, interNoteDur: 1.0 },
+      { semitones: 6, octave: 3, interNoteDur: 1.4 },
+      { semitones: 7, octave: 3, interNoteDur: 1.8 },
+    ],
+    // "Wrong song" — hover on the ♯4 dissonance.
+    [
+      { semitones: 3, octave: 3, interNoteDur: 1.2 },
+      { semitones: 6, octave: 3, interNoteDur: 1.2 },
+      { semitones: 3, octave: 3, interNoteDur: 1.4 },
+      { semitones: 0, octave: 3, interNoteDur: 2.0 },
+    ],
+    // "Sigh" — leading-tone resolution. Three quiet notes.
+    [
+      { semitones: 11, octave: 2, interNoteDur: 1.4 },
+      { semitones: 0,  octave: 3, interNoteDur: 1.6 },
+      { semitones: 3,  octave: 3, interNoteDur: 2.4 },
+    ],
+  ],
 };
 
-/** Safe rooms — sparser, lighter, warmer than the dungeon palette.
- *  Same root as Act 1 (D2) so the tonal centre travels with the player;
- *  pluck pool trims to pentatonic for a calmer, less-chromatic feel. */
+/** Safe rooms — pentatonic, slow, warmer. Same root as Act 1 (D2) so
+ *  the tonal centre travels with the player. Motifs are small arches
+ *  and resolutions — the music is allowed to feel like an exhale. */
 const PALETTE_SAFE: MusicPalette = {
-  rootHz: 73.42,                            // D2 (same as Refectory)
-  modeIntervals: [0, 3, 5, 7, 10],          // minor pentatonic
-  pluckOctaveRange: [3, 4],                 // brighter octaves
+  rootHz: 73.42,                            // D2
   droneWave: 'triangle',
-  pluckCutoff: 4200,                        // bell-clear
+  pluckCutoff: 4200,
+  motifs: [
+    // "Hope" — a 5-note arch resolving down to the root.
+    [
+      { semitones: 7,  octave: 3, interNoteDur: 1.1 },
+      { semitones: 5,  octave: 3, interNoteDur: 1.0 },
+      { semitones: 3,  octave: 3, interNoteDur: 1.2 },
+      { semitones: 0,  octave: 3, interNoteDur: 2.2 },
+    ],
+    // "Rest" — an arch up to the 4 and back.
+    [
+      { semitones: 0,  octave: 3, interNoteDur: 1.4 },
+      { semitones: 3,  octave: 3, interNoteDur: 1.2 },
+      { semitones: 5,  octave: 3, interNoteDur: 1.4 },
+      { semitones: 3,  octave: 3, interNoteDur: 1.2 },
+      { semitones: 0,  octave: 3, interNoteDur: 2.4 },
+    ],
+    // "Single" — one note, allowed to ring.
+    [
+      { semitones: 0,  octave: 3, interNoteDur: 3.0 },
+    ],
+  ],
 };
 
 function paletteForLevel(levelId: string): MusicPalette {
@@ -126,6 +251,12 @@ let currentPalette: MusicPalette = PALETTE_REFECTORY;
 let combatHeat = 0;          // 0..several; thresholds 1.2 (in) and 0.35 (out)
 let lastTickAt = 0;          // ms timestamp for the heat decay
 
+// musicMasterGain sits after all per-layer mixing — the music-volume
+// slider drives this. Stays separate from the SFX master so the player
+// can quiet the score without dropping combat impact.
+let musicMasterGain: GainNode | null = null;
+let musicVolume = 0.65;
+
 // Output gains for each layer. Per-state target levels are set in
 // applyState(); ramps run on these.
 let droneGain: GainNode | null = null;
@@ -134,10 +265,15 @@ let combatGain: GainNode | null = null;
 
 // Drone oscillators (we keep the array so palette swaps can retune them).
 const droneOscs: OscillatorNode[] = [];
-// Pluck scheduler handle.
-let pluckScheduler: number | null = null;
+// Combat oscillators — same purpose, separate array because they tune
+// to the root × different multipliers than the drone.
+const combatOscs: OscillatorNode[] = [];
+// Motif scheduler handle.
+let motifScheduler: number | null = null;
 // Heat decay ticker.
 let heatTicker: number | null = null;
+// Last-played motif index so we avoid playing the same one twice in a row.
+let lastMotifIdx = -1;
 
 // ── Init ────────────────────────────────────────────────────────────────
 
@@ -152,21 +288,27 @@ export function startMusic(): void {
   const reverb = getReverbInput();
   if (!master || !reverb) return;
 
+  // Music master sits between the per-layer mix and the SFX master,
+  // driven by the music-volume settings slider. Independent of SFX.
+  musicMasterGain = c.createGain();
+  musicMasterGain.gain.value = musicVolume;
+  musicMasterGain.connect(master);
+
   // ── Per-layer output gains (start silent; setMusicState ramps them) ──
   droneGain  = c.createGain(); droneGain.gain.value  = 0;
   pluckGain  = c.createGain(); pluckGain.gain.value  = 0;
   combatGain = c.createGain(); combatGain.gain.value = 0;
-  // Each layer feeds master + a small wet send into the shared reverb.
-  // Drone is sustained — too much reverb gets muddy; keep it dryish.
-  // Plucks live on the reverb tail to feel cavernous.
+  // Each layer feeds musicMasterGain + a small wet send into the shared
+  // reverb. Drone is sustained — too much reverb gets muddy; keep it
+  // dryish. Plucks live on the reverb tail to feel cavernous.
   for (const [g, wet] of [
-    [droneGain,  0.25] as const,
-    [pluckGain,  0.55] as const,
-    [combatGain, 0.30] as const,
+    [droneGain,  0.20] as const,
+    [pluckGain,  0.45] as const,
+    [combatGain, 0.25] as const,
   ]) {
     const wetSend = c.createGain();
     wetSend.gain.value = wet;
-    g.connect(master);
+    g.connect(musicMasterGain);
     g.connect(wetSend).connect(reverb);
   }
 
@@ -205,27 +347,34 @@ export function startMusic(): void {
     droneOscs.push(o);
   }
 
-  // ── Combat layer — sub-throb ─────────────────────────────────────────
-  // A 55 Hz sine plus an octave (110 Hz), both with a 1.3 Hz amplitude
-  // LFO so they THROB. The combatGain stays at 0 until heat says
-  // we're in combat. Cheap, persistent, no scheduling.
-  for (const freq of [55, 110]) {
+  // ── Combat layer — held breath, not war drum ─────────────────────────
+  // V1 was a sub-bass throb that punched through the mix. Replaced
+  // with a SUSTAINED breath: a fifth (root × 3) at mid-range with a
+  // slow 0.4 Hz amplitude wobble + a softly detuned partner. Reads
+  // as "held tension" — present but not loud. The combatGain stays
+  // at 0 until heat trips the threshold.
+  for (let i = 0; i < 2; i++) {
     const o = c.createOscillator();
     o.type = 'sine';
-    o.frequency.value = freq;
+    o.frequency.value = currentPalette.rootHz * (i === 0 ? 3.0 : 4.0);  // fifth + octave above
+    // Slight steady detune for body — not LFO'd, just a one-shot cent shift.
+    o.detune.value = i === 0 ? -4 : 6;
 
     const og = c.createGain();
-    og.gain.value = freq === 55 ? 0.55 : 0.22;
+    og.gain.value = i === 0 ? 0.20 : 0.10;
 
+    // Slow swell (0.35-0.45 Hz). Shallow modulation depth (35%) so it
+    // breathes rather than throbs.
     const lfo = c.createOscillator();
     lfo.type = 'sine';
-    lfo.frequency.value = 1.30 + (freq === 110 ? 0.07 : 0);
+    lfo.frequency.value = 0.35 + i * 0.07;
     const lfoG = c.createGain();
-    lfoG.gain.value = og.gain.value * 0.95;   // near-full duck on each pulse
+    lfoG.gain.value = og.gain.value * 0.35;
     lfo.connect(lfoG).connect(og.gain);
 
     o.connect(og).connect(combatGain);
     o.start(); lfo.start();
+    combatOscs.push(o);
   }
 
   // ── Combat-heat decay ticker ─────────────────────────────────────────
@@ -258,25 +407,24 @@ function applyState(state: MusicState): void {
     g.gain.setTargetAtTime(target, now, ramp);
   };
 
-  // Per-state target levels. droneTarget tracks the "always there but
-  // varies by mood" character; pluckTarget controls the gentle melodic
-  // sprinkles; combatTarget gates the sub-throb. Volumes here are
-  // applied AFTER the master volume slider, so 0..1 = relative to the
-  // total mix.
+  // Per-state target levels — pulled WAY down from V1 ("too strong"
+  // feedback). The music should fade INTO the dungeon, not announce
+  // itself. Numbers below are AFTER the music-volume slider, so 0..1
+  // = relative to the music mix (which is then scaled by master).
   switch (state) {
     case 'exploration':
-      setRamp(droneGain,  0.50, 1.8);
-      setRamp(pluckGain,  0.40, 1.8);
+      setRamp(droneGain,  0.28, 1.8);
+      setRamp(pluckGain,  0.22, 1.8);
       setRamp(combatGain, 0.00, 0.8);
       break;
     case 'combat':
-      setRamp(droneGain,  0.70, 0.4);
-      setRamp(pluckGain,  0.05, 0.4);   // duck plucks — let the throb breathe
-      setRamp(combatGain, 0.85, 0.4);
+      setRamp(droneGain,  0.34, 0.6);
+      setRamp(pluckGain,  0.08, 0.4);   // duck plucks — held breath breathes
+      setRamp(combatGain, 0.22, 0.7);   // gentle swell, not a thump
       break;
     case 'safe':
-      setRamp(droneGain,  0.40, 2.4);
-      setRamp(pluckGain,  0.35, 2.4);
+      setRamp(droneGain,  0.22, 2.4);
+      setRamp(pluckGain,  0.20, 2.4);
       setRamp(combatGain, 0.00, 0.8);
       break;
     case 'death':
@@ -293,51 +441,81 @@ function applyState(state: MusicState): void {
       break;
   }
   currentState = state;
-  schedulePluckLoop();
+  scheduleMotifLoop();
 }
 
-// ── Pluck scheduler ────────────────────────────────────────────────────
+// ── Motif scheduler ────────────────────────────────────────────────────
+//
+// Plays HAND-AUTHORED phrases (see each palette's motif pool), not
+// random notes. Each motif is played note-by-note with its own rhythm.
+// Between motifs we pause a few seconds so the silence has shape too.
+//
+// Variation knobs that keep the loop from feeling rote:
+//   - Avoid playing the same motif index twice in a row.
+//   - 25% chance to shift the motif up an octave (still in the
+//     palette's key, just brighter). Adds register variety.
+//   - Pause length between motifs is randomized 5-12s (exploration)
+//     or 8-16s (safe room). Combat skips motifs entirely.
 
-function schedulePluckLoop(): void {
-  if (pluckScheduler !== null) {
-    clearTimeout(pluckScheduler);
-    pluckScheduler = null;
+function scheduleMotifLoop(): void {
+  if (motifScheduler !== null) {
+    clearTimeout(motifScheduler);
+    motifScheduler = null;
   }
-  let delay: number;
-  if (currentState === 'safe') {
-    delay = 5500 + Math.random() * 4500;        // every 5.5-10s, calmer
-  } else if (currentState === 'exploration') {
-    delay = 4200 + Math.random() * 3800;        // every 4.2-8s
-  } else {
-    // 'combat' / 'death' / 'off' — no plucks
-    return;
-  }
-  pluckScheduler = window.setTimeout(() => {
-    playPluck();
-    schedulePluckLoop();
-  }, delay);
+  if (currentState !== 'exploration' && currentState !== 'safe') return;
+  // First note fires after a small intro delay so a state change
+  // (e.g. entering exploration from level load) doesn't drop a note
+  // the instant the camera arrives.
+  const introDelay = 1200 + Math.random() * 1500;
+  motifScheduler = window.setTimeout(playNextMotif, introDelay);
 }
 
-function playPluck(): void {
+function playNextMotif(): void {
+  if (currentState !== 'exploration' && currentState !== 'safe') return;
   const c = getAudioContext();
   if (!c || !pluckGain) return;
-  const now = c.currentTime;
+  const motifs = currentPalette.motifs;
+  if (!motifs.length) return;
 
-  // Pick a mode degree + octave from the palette.
-  const intervals = currentPalette.modeIntervals;
-  const semitones = intervals[Math.floor(Math.random() * intervals.length)];
-  const [oMin, oMax] = currentPalette.pluckOctaveRange;
-  const octaveStep = oMin + Math.floor(Math.random() * (oMax - oMin + 1));
-  // Pitch = root × 2^(octaveStep + semitones/12). 2^octaveStep doubles
-  // per octave; +semitones/12 is the in-mode position.
-  const freq = currentPalette.rootHz * Math.pow(2, octaveStep + semitones / 12);
+  // Pick a motif index that isn't the last one we played.
+  let idx = Math.floor(Math.random() * motifs.length);
+  if (motifs.length > 1 && idx === lastMotifIdx) {
+    idx = (idx + 1) % motifs.length;
+  }
+  lastMotifIdx = idx;
+  const motif = motifs[idx];
+  // Optional octave shift — 25% chance, +1 octave. Keeps the same
+  // mode and shape but brighter; adds variety without breaking the
+  // composed feel.
+  const octaveShift = Math.random() < 0.25 ? 1 : 0;
 
-  // Plucked sine — fast attack, slow decay. Light low-pass filter for
-  // a softened bell. Two notes per pluck: the fundamental + a quieter
-  // perfect fifth above for a hollow harmonic shimmer.
+  // Schedule each note. Web Audio's currentTime is float seconds;
+  // we walk the motif accumulating time and start each pluck at the
+  // right offset. The motif lives in one playPluckAt call per note.
+  let tOffset = 0;
+  for (const note of motif) {
+    playPluckAt(note.semitones, note.octave + octaveShift, c.currentTime + tOffset);
+    tOffset += note.interNoteDur;
+  }
+
+  // After the motif finishes, pause then queue the next.
+  const pauseAfter = currentState === 'safe'
+    ? 8000 + Math.random() * 8000      // 8-16s in safe rooms
+    : 5000 + Math.random() * 7000;     // 5-12s in exploration
+  motifScheduler = window.setTimeout(playNextMotif, tOffset * 1000 + pauseAfter);
+}
+
+/** Play a single pluck note at an absolute audio-context time. Uses
+ *  the palette's pluck cutoff for its low-pass filter. Plucked-sine
+ *  voice + a quiet fifth partial for a hollow bell tone. */
+function playPluckAt(semitones: number, octave: number, when: number): void {
+  const c = getAudioContext();
+  if (!c || !pluckGain) return;
+
+  const freq = currentPalette.rootHz * Math.pow(2, octave + semitones / 12);
   const partials: Array<[number, number]> = [
-    [freq,        0.40],
-    [freq * 1.5,  0.10],
+    [freq,        0.34],
+    [freq * 1.5,  0.08],
   ];
   for (const [f, amp] of partials) {
     const osc = c.createOscillator();
@@ -350,13 +528,13 @@ function playPluck(): void {
     filt.Q.value = 0.9;
 
     const env = c.createGain();
-    env.gain.setValueAtTime(0.0001, now);
-    env.gain.exponentialRampToValueAtTime(amp, now + 0.012);
-    env.gain.exponentialRampToValueAtTime(0.0008, now + 2.0);
+    env.gain.setValueAtTime(0.0001, when);
+    env.gain.exponentialRampToValueAtTime(amp, when + 0.012);
+    env.gain.exponentialRampToValueAtTime(0.0008, when + 2.4);
 
     osc.connect(filt).connect(env).connect(pluckGain);
-    osc.start(now);
-    osc.stop(now + 2.1);
+    osc.start(when);
+    osc.stop(when + 2.5);
   }
 }
 
@@ -393,19 +571,28 @@ function initMusicEventHooks(): void {
   });
 }
 
-/** Re-pitch the drone oscillators to the current palette's root +
- *  re-pick their wave type. Called on level:loaded so the act transition
- *  feels like the room changed key beneath you. AudioParam ramp keeps
- *  the change smooth — no clicks. */
+/** Re-pitch the drone + combat oscillators to the current palette's
+ *  root + re-pick the drone wave type. Called on level:loaded so an act
+ *  transition feels like the room changed key beneath you. AudioParam
+ *  ramps keep the change smooth — no clicks. */
 function retuneDroneStack(): void {
   const c = getAudioContext();
-  if (!c || droneOscs.length === 0) return;
+  if (!c) return;
   const now = c.currentTime;
-  const ratios = [1.0, 1.5, 2.0];
-  for (let i = 0; i < droneOscs.length && i < ratios.length; i++) {
+  const droneRatios = [1.0, 1.5, 2.0];
+  for (let i = 0; i < droneOscs.length && i < droneRatios.length; i++) {
     const o = droneOscs[i];
     o.type = currentPalette.droneWave;
-    const targetHz = currentPalette.rootHz * ratios[i];
+    const targetHz = currentPalette.rootHz * droneRatios[i];
+    o.frequency.cancelScheduledValues(now);
+    o.frequency.setTargetAtTime(targetHz, now, 0.8);
+  }
+  // Combat layer rides the same root via fixed multipliers (3× = fifth
+  // above, 4× = octave above) so it stays in key with the drone.
+  const combatMultipliers = [3.0, 4.0];
+  for (let i = 0; i < combatOscs.length && i < combatMultipliers.length; i++) {
+    const o = combatOscs[i];
+    const targetHz = currentPalette.rootHz * combatMultipliers[i];
     o.frequency.cancelScheduledValues(now);
     o.frequency.setTargetAtTime(targetHz, now, 0.8);
   }
@@ -418,9 +605,16 @@ export function setMusicState(state: MusicState): void {
   applyState(state);
 }
 
+/** Set the music master volume (0..1). Independent of the SFX master.
+ *  Persisted via Settings and re-applied on each settings change. */
+export function setMusicVolume(v: number): void {
+  musicVolume = Math.max(0, Math.min(1, v));
+  if (musicMasterGain) musicMasterGain.gain.value = musicVolume;
+}
+
 /** Tear down (e.g. on hard reset). Mostly for tests / future use. */
 export function stopMusic(): void {
   if (heatTicker !== null) { clearInterval(heatTicker); heatTicker = null; }
-  if (pluckScheduler !== null) { clearTimeout(pluckScheduler); pluckScheduler = null; }
+  if (motifScheduler !== null) { clearTimeout(motifScheduler); motifScheduler = null; }
   applyState('off');
 }

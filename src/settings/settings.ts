@@ -9,8 +9,12 @@ export interface Settings {
   lookSensitivity: number;
   /** When true, dragging past an aim-zone radius adds continuous rotation. */
   hybridLook: boolean;
-  /** Master audio volume (0..1). */
+  /** Master audio volume (0..1). Scales every audio output. */
   masterVolume: number;
+  /** Music volume (0..1) — separate slider for the procedural music
+   *  engine. Applied as an additional gain stage AFTER master, so the
+   *  player can quiet the score independently of SFX. */
+  musicVolume: number;
   /** Auto-install new builds at safe moments (title screen). When false,
    *  the player taps "INSTALL UPDATE" in the settings menu instead. */
   autoUpdate: boolean;
@@ -25,6 +29,7 @@ const DEFAULTS: Settings = {
   lookSensitivity: CONFIG.LOOK_SENSITIVITY,
   hybridLook: false,
   masterVolume: 0.55,
+  musicVolume: 0.65,
   autoUpdate: true,
   debugMode: false,
 };

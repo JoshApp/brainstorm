@@ -1,5 +1,6 @@
 import { getSettings, updateSettings } from '../settings/settings';
 import { setMasterVolume } from '../audio/sfx';
+import { setMusicVolume } from '../audio/music';
 import { openScreen, closeScreen } from './screen-manager';
 import { getUpdateStatus, applyUpdate, onUpdateStatusChange } from '../pwa-update';
 
@@ -148,6 +149,18 @@ function buildPanelContents() {
     set: (v) => {
       updateSettings({ masterVolume: v });
       setMasterVolume(v);
+    },
+    format: (v) => `${Math.round(v * 100)}%`,
+  }));
+
+  // --- Music volume slider ---
+  panel.appendChild(makeSlider({
+    label: 'MUSIC VOLUME',
+    min: 0, max: 1, step: 0.05,
+    get: () => getSettings().musicVolume,
+    set: (v) => {
+      updateSettings({ musicVolume: v });
+      setMusicVolume(v);
     },
     format: (v) => `${Math.round(v * 100)}%`,
   }));

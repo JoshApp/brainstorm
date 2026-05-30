@@ -24,7 +24,7 @@ import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
 import { setMasterVolume, startAmbience, setTorchProximity, setAudioListenerPose, playWhoosh } from './audio/sfx';
-import { startMusic } from './audio/music';
+import { startMusic, setMusicVolume } from './audio/music';
 import { emit } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
@@ -379,6 +379,7 @@ createInventoryPanel();
 // Sync the master volume from persisted settings so saved volume is
 // applied at boot (not just when the slider next moves).
 setMasterVolume(getSettings().masterVolume);
+setMusicVolume(getSettings().musicVolume);
 
 // Start ambient loops (torch crackle bed + room drone) on the very first
 // user gesture — AudioContext can't run before the user has touched the
