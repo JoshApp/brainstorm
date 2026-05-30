@@ -153,8 +153,12 @@ function identifyObject(
   // Walk up to the nearest ancestor carrying it.
   const src = findUserData(obj, 'dbgSource');
   if (src) {
+    const dbgKind = findUserData(obj, 'dbgKind');
     const geo = (obj as THREE.Mesh).geometry?.type ?? '';
-    return { kind: 'geometry', label: `prop [${src}]${geo ? ` ${geo}` : ''}`, source: String(src) };
+    // Walls/floor/ceiling stamp dbgKind too — label them by what they are,
+    // not as "prop", so a stray structural face self-identifies.
+    const prefix = dbgKind && dbgKind !== 'prop' ? '' : 'prop ';
+    return { kind: 'geometry', label: `${prefix}[${src}]${geo ? ` ${geo}` : ''}`, source: String(src) };
   }
   // Static geometry — report the most descriptive name we can find by
   // walking up to a named ancestor, else the geometry type.

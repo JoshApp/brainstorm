@@ -216,6 +216,9 @@ function buildRoomShell(
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(rect.x, 0, rect.z);
   floor.receiveShadow = true;
+  floor.name = 'floor';
+  floor.userData.dbgKind = 'floor';
+  floor.userData.dbgSource = `floor · ${room.id} @(${rect.x.toFixed(1)},${rect.z.toFixed(1)})`;
   scene.add(floor);
 
   // Ceiling
@@ -223,6 +226,9 @@ function buildRoomShell(
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.set(rect.x, H, rect.z);
   ceiling.receiveShadow = true;
+  ceiling.name = 'ceiling';
+  ceiling.userData.dbgKind = 'ceiling';
+  ceiling.userData.dbgSource = `ceiling · ${room.id} @(${rect.x.toFixed(1)},${rect.z.toFixed(1)}) y${H.toFixed(1)}`;
   scene.add(ceiling);
 
   // Walls with openings where another rect butts up. Each of the four wall
@@ -250,7 +256,7 @@ function buildRoomShell(
     for (const seg of segments) {
       const segLen = seg.end - seg.start;
       if (segLen < 0.01) continue;
-      buildWallSegment(scene, we, seg.start, seg.end, H, materials);
+      buildWallSegment(scene, we, seg.start, seg.end, H, materials, room.id);
       // Record the segment as collision data. The XZ endpoints describe a
       // line in the floor plane along which the player cannot pass.
       if (we.perpAxis === 'z') {
@@ -271,6 +277,7 @@ function buildWallSegment(
   segEnd: number,
   height: number,
   materials: StyleMaterials,
+  roomId = '?',
 ) {
   const segLen = segEnd - segStart;
   const segMid = (segStart + segEnd) / 2;
@@ -292,6 +299,14 @@ function buildWallSegment(
     mesh.position.set(we.perpCoord, height / 2, segMid);
     mesh.rotation.y = -Math.PI / 2;
   }
+  // Provenance for the debug capture: which room-shell wall this is and
+  // where its centre sits. A stray/floating wall then self-identifies
+  // (e.g. "shell-wall S · vault-3 @(4.7,31.6) len 1.2") instead of just
+  // resolving to the level root.
+  mesh.name = `shell-wall-${we.side}`;
+  mesh.userData.dbgKind = 'wall';
+  mesh.userData.dbgSource =
+    `shell-wall ${we.side} · ${roomId} @(${mesh.position.x.toFixed(1)},${mesh.position.z.toFixed(1)}) len ${segLen.toFixed(1)}`;
   scene.add(mesh);
 }
 
@@ -833,6 +848,10 @@ export function buildLevel(
       }
       mesh.receiveShadow = true;
       mesh.castShadow = true;
+      mesh.name = 'extra-wall';
+      mesh.userData.dbgKind = 'wall';
+      mesh.userData.dbgSource =
+        `extra-wall @(${mesh.position.x.toFixed(1)},${mesh.position.z.toFixed(1)}) len ${len.toFixed(1)} h${H.toFixed(1)}`;
       root.add(mesh);
       wallSegments.push({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz });
     }
