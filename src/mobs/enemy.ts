@@ -21,7 +21,7 @@ import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
 import { aggregateSpeed } from '../combat/modifiers';
-import { playEnemyDeath, playEnemyWindup, type EnemyDeathSize } from '../audio/sfx';
+import { playEnemyDeath, playEnemyWindup, playEnemyVocal, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins } from '../effects/gold-coins';
@@ -35,6 +35,27 @@ function audioSizeFor(spec: EnemySpec): EnemyDeathSize {
   if (spec.id === 'wraith') return 'spectral';
   if (spec.id === 'rat') return 'small';
   return 'medium';
+}
+
+// Which idle/aware vocalisation a mob emits (mobs/enemy.ts ticks a timer and
+// calls playEnemyVocal positionally). Maps by spec id — same one-source-of-
+// truth pattern as audioSizeFor. null = silent (no betraying sound).
+function vocalArchetypeFor(spec: EnemySpec): VocalArchetype | null {
+  switch (spec.id) {
+    case 'spider': return 'skitter';
+    case 'skeleton': return 'rattle';
+    case 'wraith': return 'groan';
+    case 'ghoul': return 'groan';
+    case 'skirmisher': return 'groan';
+    case 'rat': return 'squeak';
+    case 'ooze':
+    case 'ooze-small': return 'gurgle';
+    case 'stoneguard': return 'grind';
+    case 'acid-spitter': return 'hiss';
+    case 'acolyte':
+    case 'defiler': return 'hiss';
+    default: return null;
+  }
 }
 
 /** Release an enemy's ECS entity + registered combat stats. Called from level
@@ -316,6 +337,12 @@ export function createEnemy(
   let scanTimer = IDLE_SCAN_INTERVAL_MIN;  // pick a new target immediately
   let scanInterval = IDLE_SCAN_INTERVAL_MIN;
   let scanTargetYaw = 0;
+
+  // Vocalisation — positional idle/aware sound so the player hears the mob
+  // before they see it. Staggered first utterance so a roomful doesn't fire
+  // in unison; the global throttle in sfx caps overlap.
+  const vocalArch = vocalArchetypeFor(spec);
+  let vocalTimer = 2 + gameRng() * 8;
   // Last position we saw the player at. Used by 'searching' state.
   const lastSeenPos = new THREE.Vector3();
 
@@ -890,6 +917,23 @@ export function createEnemy(
       homeYaw = container.rotation.y;
       scanTargetYaw = homeYaw;
       homeYawSet = true;
+    }
+
+    // Vocalisation timer — emit a positional sound in states where the mob
+    // is "living its life" (not mid-attack). Agitated when hunting; calm +
+    // sparse when at post. The point is hearing it before seeing it.
+    if (vocalArch) {
+      vocalTimer -= dt;
+      if (vocalTimer <= 0) {
+        const agitated = state === 'chasing' || state === 'searching';
+        const canVocalize = state === 'idle' || state === 'returning' || agitated;
+        if (canVocalize) {
+          playEnemyVocal(vocalArch, container.position, agitated);
+          vocalTimer = agitated ? 2.5 + gameRng() * 3 : 7 + gameRng() * 10;
+        } else {
+          vocalTimer = 1.5;   // mid-attack — retry shortly
+        }
+      }
     }
 
     // ── Perception ─────────────────────────────────────────────────────

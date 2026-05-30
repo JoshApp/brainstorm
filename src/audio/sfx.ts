@@ -431,6 +431,169 @@ export function playEnemyWindup(size: EnemyDeathSize = 'medium', pos?: Vec3Sound
   osc.start(now); osc.stop(now + duration);
 }
 
+// ── Monster vocalisations ───────────────────────────────────────────────
+//
+// Positional idle/aware sounds emitted by living mobs (see mobs/enemy.ts).
+// The point: you HEAR a thing before you SEE it — sound as a "something
+// lives here" signal, sourced from a real enemy's position (never random).
+// Each archetype is a short synth; the panner attenuates with distance, so
+// a far mob is a faint cue down the dark and a near one is unmistakable.
+
+export type VocalArchetype = 'skitter' | 'rattle' | 'groan' | 'squeak' | 'gurgle' | 'grind' | 'hiss';
+
+// Global throttle so a swarm can't stack into a wall of noise — at most one
+// vocalisation every ~0.45s across all mobs.
+let lastVocalAt = -1;
+
+function shortNoise(c: AudioContext, dur: number): AudioBuffer {
+  const b = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate * dur)), c.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return b;
+}
+
+/** Emit a creature vocalisation at a world position. `agitated` (chasing/
+ *  searching) tightens + brightens it vs. a calm idle utterance. */
+export function playEnemyVocal(archetype: VocalArchetype, pos: Vec3Sound, agitated = false) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  if (lastVocalAt >= 0 && now - lastVocalAt < 0.45) return;
+  lastVocalAt = now;
+
+  const out = createPositionalChain(pos, archetype === 'groan' ? 0.5 : 0.35);
+  const r = () => Math.random();
+  const ag = agitated ? 1 : 0;
+
+  switch (archetype) {
+    case 'skitter': {
+      // Rapid tiny chitinous clicks — a spider scuttling in the dark.
+      const n = 4 + Math.floor(r() * (agitated ? 5 : 3));
+      let t = now;
+      for (let i = 0; i < n; i++) {
+        const src = c.createBufferSource();
+        src.buffer = shortNoise(c, 0.02);
+        const hp = c.createBiquadFilter();
+        hp.type = 'highpass'; hp.frequency.value = 2400 + r() * 1800;
+        const g = c.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.10 + 0.05 * ag, t + 0.003);
+        g.gain.exponentialRampToValueAtTime(0.0006, t + 0.03);
+        src.connect(hp).connect(g).connect(out);
+        src.start(t); src.stop(t + 0.04);
+        t += 0.035 + r() * (agitated ? 0.03 : 0.05);
+      }
+      break;
+    }
+    case 'rattle': {
+      // Dry bone clatter — slower, woodier clicks than the skitter.
+      const n = 3 + Math.floor(r() * 3);
+      let t = now;
+      for (let i = 0; i < n; i++) {
+        const src = c.createBufferSource();
+        src.buffer = shortNoise(c, 0.03);
+        const bp = c.createBiquadFilter();
+        bp.type = 'bandpass'; bp.frequency.value = 1100 + r() * 900; bp.Q.value = 3;
+        const g = c.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.14, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0006, t + 0.06);
+        src.connect(bp).connect(g).connect(out);
+        src.start(t); src.stop(t + 0.07);
+        t += 0.07 + r() * 0.06;
+      }
+      break;
+    }
+    case 'groan': {
+      // Low detuned moan with a slow pitch waver — the dread voice. Could be
+      // the dead, could be the structure. (The one Josh liked, now sourced.)
+      const base = (58 + r() * 40) * (agitated ? 1.18 : 1);
+      const osc = c.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(base, now);
+      osc.frequency.linearRampToValueAtTime(base * 1.13, now + 0.8);
+      osc.frequency.linearRampToValueAtTime(base * 0.96, now + 1.7);
+      const bp = c.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 230 + r() * 130; bp.Q.value = 4.5;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(0.17, now + 0.5);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + 2.1);
+      osc.connect(bp).connect(g).connect(out);
+      osc.start(now); osc.stop(now + 2.3);
+      break;
+    }
+    case 'squeak': {
+      // Short high chirp — vermin.
+      const n = 1 + Math.floor(r() * 2);
+      let t = now;
+      for (let i = 0; i < n; i++) {
+        const osc = c.createOscillator();
+        osc.type = 'sawtooth';
+        const f = 700 + r() * 500;
+        osc.frequency.setValueAtTime(f, t);
+        osc.frequency.exponentialRampToValueAtTime(f * 0.55, t + 0.09);
+        const lp = c.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 2000;
+        const g = c.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.12, t + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0006, t + 0.11);
+        osc.connect(lp).connect(g).connect(out);
+        osc.start(t); osc.stop(t + 0.13);
+        t += 0.12 + r() * 0.08;
+      }
+      break;
+    }
+    case 'gurgle': {
+      // Wet low wobble — ooze. Bandpassed noise with an amplitude warble.
+      const src = c.createBufferSource();
+      src.buffer = shortNoise(c, 0.8); src.loop = true;
+      const bp = c.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 280 + r() * 120; bp.Q.value = 2.5;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(0.13, now + 0.1);
+      // warble
+      const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 7 + r() * 5;
+      const lfoG = c.createGain(); lfoG.gain.value = 0.06;
+      lfo.connect(lfoG).connect(g.gain);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + 0.7);
+      src.connect(bp).connect(g).connect(out);
+      src.start(now); src.stop(now + 0.75); lfo.start(now); lfo.stop(now + 0.75);
+      break;
+    }
+    case 'grind': {
+      // Low stone-on-stone grind — the stoneguard shifting its weight.
+      const src = c.createBufferSource();
+      src.buffer = shortNoise(c, 1.0); src.loop = true;
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 320; lp.Q.value = 0.8;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(0.16, now + 0.3);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + 1.0);
+      src.connect(lp).connect(g).connect(out);
+      src.start(now); src.stop(now + 1.05);
+      break;
+    }
+    case 'hiss': {
+      // Breathy whisper — caster / acid-spitter. Highpassed noise swell.
+      const src = c.createBufferSource();
+      src.buffer = shortNoise(c, 0.9); src.loop = true;
+      const hp = c.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 3200; hp.Q.value = 0.7;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(0.08 + 0.03 * ag, now + 0.25);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + 0.85);
+      src.connect(hp).connect(g).connect(out);
+      src.start(now); src.stop(now + 0.9);
+      break;
+    }
+  }
+}
+
 /** Magic strike — wraith hits, distinct from physical impact. Brief bell-like
  *  chime layered with a sizzle to read as "burn + ring". */
 export function playMagicHit() {

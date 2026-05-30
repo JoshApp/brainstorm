@@ -361,32 +361,38 @@ export function startMusic(): void {
     droneOscs.push(o);
   }
 
-  // ── Combat layer — held breath, not war drum ─────────────────────────
-  // V1 was a sub-bass throb that punched through the mix. Replaced
-  // with a SUSTAINED breath: a fifth (root × 3) at mid-range with a
-  // slow 0.4 Hz amplitude wobble + a softly detuned partner. Reads
-  // as "held tension" — present but not loud. The combatGain stays
-  // at 0 until heat trips the threshold.
+  // ── Combat layer — low dissonant dread ───────────────────────────────
+  // V1 was a sub-bass throb (too in-your-face); V2 was a mid consonant
+  // "breath" (a clean fifth — too pleasant, read as nothing). V3: a LOW,
+  // DISSONANT swell — a low octave (root × 2) plus the TRITONE above it
+  // (× 2.83, the "wrong" interval), through a lowpass so it's felt as
+  // unease in the chest, not heard as a note. Slow swell, never a pulse.
+  // The crunchy impact SFX carry the rhythm; this is just dread under it.
+  const combatMul = [2.0, 2.83];   // low octave + tritone above → tension
+  const combatFilt = c.createBiquadFilter();
+  combatFilt.type = 'lowpass';
+  combatFilt.frequency.value = 520;
+  combatFilt.Q.value = 0.8;
+  combatFilt.connect(combatGain);
   for (let i = 0; i < 2; i++) {
     const o = c.createOscillator();
-    o.type = 'sine';
-    o.frequency.value = currentPalette.rootHz * (i === 0 ? 3.0 : 4.0);  // fifth + octave above
-    // Slight steady detune for body — not LFO'd, just a one-shot cent shift.
-    o.detune.value = i === 0 ? -4 : 6;
+    o.type = i === 0 ? 'triangle' : 'sawtooth';   // saw on the tritone = teeth
+    o.frequency.value = currentPalette.rootHz * combatMul[i];
+    o.detune.value = i === 0 ? -5 : 7;
 
     const og = c.createGain();
-    og.gain.value = i === 0 ? 0.20 : 0.10;
+    og.gain.value = i === 0 ? 0.22 : 0.12;
 
-    // Slow swell (0.35-0.45 Hz). Shallow modulation depth (35%) so it
-    // breathes rather than throbs.
+    // Slow ominous swell (~0.22-0.28 Hz) — slower than the old breath so it
+    // looms rather than pulses.
     const lfo = c.createOscillator();
     lfo.type = 'sine';
-    lfo.frequency.value = 0.35 + i * 0.07;
+    lfo.frequency.value = 0.22 + i * 0.06;
     const lfoG = c.createGain();
-    lfoG.gain.value = og.gain.value * 0.35;
+    lfoG.gain.value = og.gain.value * 0.4;
     lfo.connect(lfoG).connect(og.gain);
 
-    o.connect(og).connect(combatGain);
+    o.connect(og).connect(combatFilt);
     o.start(); lfo.start();
     combatOscs.push(o);
   }
@@ -603,21 +609,34 @@ function ambientOut(c: AudioContext, pan: number): AudioNode {
   return ambientGain;
 }
 
-/** A water drip — bright plip with a fast downward chirp; the reverb tail
- *  turns it into a drip echoing in a stone chamber. The dungeon's heartbeat. */
+/** A water drip. The natural "ploink" of a drop landing comes from a quick
+ *  UPWARD pitch chirp (cavity resonance rising as the cavity closes) + a tiny
+ *  noise tap at the onset — not a downward sweep (that reads as a sci-fi
+ *  blip). Short and soft; the reverb tail makes it echo down the stone. */
 function ambientDrip(c: AudioContext, when: number, pan: number): void {
   const out = ambientOut(c, pan);
-  const f0 = 900 + Math.random() * 800;
+  // Tiny attack transient — the "tap" of the drop hitting water.
+  const tap = c.createBufferSource();
+  tap.buffer = noiseBuffer ?? getNoise(c);
+  const tapHp = c.createBiquadFilter();
+  tapHp.type = 'highpass'; tapHp.frequency.value = 1800;
+  const tapG = c.createGain();
+  tapG.gain.setValueAtTime(0.06, when);
+  tapG.gain.exponentialRampToValueAtTime(0.0005, when + 0.012);
+  tap.connect(tapHp).connect(tapG).connect(out);
+  tap.start(when); tap.stop(when + 0.03);
+  // Resonant body — rises in pitch quickly, very short decay.
+  const f0 = 380 + Math.random() * 260;
   const osc = c.createOscillator();
   osc.type = 'sine';
   osc.frequency.setValueAtTime(f0, when);
-  osc.frequency.exponentialRampToValueAtTime(f0 * 0.45, when + 0.07);
+  osc.frequency.exponentialRampToValueAtTime(f0 * 2.1, when + 0.05);
   const env = c.createGain();
   env.gain.setValueAtTime(0.0001, when);
-  env.gain.exponentialRampToValueAtTime(0.32 + Math.random() * 0.18, when + 0.005);
-  env.gain.exponentialRampToValueAtTime(0.0006, when + 0.22);
+  env.gain.exponentialRampToValueAtTime(0.16 + Math.random() * 0.08, when + 0.004);
+  env.gain.exponentialRampToValueAtTime(0.0006, when + 0.14);
   osc.connect(env).connect(out);
-  osc.start(when); osc.stop(when + 0.3);
+  osc.start(when); osc.stop(when + 0.18);
 }
 
 /** Distant settling stone / a far collapse — a low filtered-noise swell.
@@ -638,27 +657,9 @@ function ambientRumble(c: AudioContext, when: number, pan: number): void {
   src.start(when); src.stop(when + 2.8);
 }
 
-/** A far-off groan — low detuned saw through a narrow bandpass with a slow
- *  pitch waver. Could be the structure, could be something alive. Rare. */
-function ambientGroan(c: AudioContext, when: number, pan: number): void {
-  const out = ambientOut(c, pan);
-  const base = 64 + Math.random() * 44;
-  const osc = c.createOscillator();
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(base, when);
-  osc.frequency.linearRampToValueAtTime(base * 1.14, when + 0.9);
-  osc.frequency.linearRampToValueAtTime(base * 0.96, when + 2.0);
-  const filt = c.createBiquadFilter();
-  filt.type = 'bandpass';
-  filt.frequency.value = 240 + Math.random() * 120;
-  filt.Q.value = 4.5;
-  const env = c.createGain();
-  env.gain.setValueAtTime(0.0001, when);
-  env.gain.linearRampToValueAtTime(0.16, when + 0.5);
-  env.gain.exponentialRampToValueAtTime(0.0005, when + 2.3);
-  osc.connect(filt).connect(env).connect(out);
-  osc.start(when); osc.stop(when + 2.5);
-}
+// (The far-off groan moved to a MONSTER vocalisation — see playEnemyVocal in
+// sfx.ts. A groan implies a creature, so it now comes from a real mob's
+// position, not random nowhere. Random ambience stays purely environmental.)
 
 /** Wind through a gap — a band-swept noise swell. The dungeon breathing. */
 function ambientDraft(c: AudioContext, when: number, pan: number): void {
@@ -682,10 +683,9 @@ function ambientDraft(c: AudioContext, when: number, pan: number): void {
 // Weighted pool — drips dominate (the signature dungeon sound), the rest
 // punctuate. Cumulative weights for a single random pick.
 const AMBIENT_POOL: Array<{ fn: (c: AudioContext, when: number, pan: number) => void; weight: number }> = [
-  { fn: ambientDrip,   weight: 4.0 },
-  { fn: ambientDraft,  weight: 2.0 },
-  { fn: ambientRumble, weight: 1.5 },
-  { fn: ambientGroan,  weight: 1.2 },
+  { fn: ambientDrip,   weight: 3.0 },
+  { fn: ambientDraft,  weight: 2.2 },
+  { fn: ambientRumble, weight: 1.6 },
 ];
 const AMBIENT_WEIGHT_TOTAL = AMBIENT_POOL.reduce((s, a) => s + a.weight, 0);
 
@@ -766,9 +766,9 @@ function retuneDroneStack(): void {
     o.frequency.cancelScheduledValues(now);
     o.frequency.setTargetAtTime(targetHz, now, 0.8);
   }
-  // Combat layer rides the same root via fixed multipliers (3× = fifth
-  // above, 4× = octave above) so it stays in key with the drone.
-  const combatMultipliers = [3.0, 4.0];
+  // Combat layer rides the same root: a low octave + the tritone above it
+  // (the dissonant dread interval). Stays anchored to the floor's key.
+  const combatMultipliers = [2.0, 2.83];
   for (let i = 0; i < combatOscs.length && i < combatMultipliers.length; i++) {
     const o = combatOscs[i];
     const targetHz = currentPalette.rootHz * combatMultipliers[i];
