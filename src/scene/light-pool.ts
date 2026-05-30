@@ -111,6 +111,19 @@ export function registerLight(src: LightSource): void {
   sources.set(src.id, src);
 }
 
+/** Iterate registered sources in a given category. Used by the
+ *  dark-adaptation "lit" estimate to count non-torch room lights
+ *  (bonfire, candles, god rays, floor glows) toward the signal —
+ *  without this the system over-adapts in bonfire-lit foyers. */
+export function forEachLight(
+  category: LightCategory,
+  fn: (src: LightSource) => void,
+): void {
+  for (const src of sources.values()) {
+    if (src.category === category) fn(src);
+  }
+}
+
 export function unregisterLight(id: string): void {
   sources.delete(id);
   // Drop it from every category's bound set so its slot frees up

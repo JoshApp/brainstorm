@@ -4,6 +4,16 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 7",
+    "date": "2026-05-30",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "Tap-target: screen-space proximity fallback for interactables"
+      }
+    ]
+  },
+  {
     "version": "Build 6",
     "date": "2026-05-29",
     "entries": [
@@ -202,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Game-mode machine, system registry, reactive player stats"
-      },
-      {
-        "tag": "content",
-        "text": "Unify enemies + destructibles under a Damageable interface"
       }
     ]
   }

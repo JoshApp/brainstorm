@@ -73,11 +73,17 @@ const HORROR_BLIT_FRAG = `
     // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — RAISE the shadow floor, don't
     // just multiply: a torchless corridor is near-black, and black × gain is
     // still black. An additive lift (with a slight cool scotopic tint) is what
-    // actually makes the dark navigable, plus a mild gain on top. Applied
+    // actually makes the dark navigable, plus a gain on top. Applied
     // before posterize so the steps land on the lifted image. Rests at 0 in
     // torchlight, so lit rooms are untouched.
-    col *= 1.0 + uDarkAdapt * 0.45;                       // mild gain
-    col += uDarkAdapt * vec3(0.045, 0.060, 0.085);        // cool shadow lift
+    //
+    // Tuned UP from earlier values (gain 0.45→0.70, additive
+    // (0.045,0.060,0.085)→(0.080,0.100,0.130)) — players reported "almost
+    // pitch black" in rooms past lamp range with few torches. The additive
+    // floor is what makes silhouettes legible; the gain expands the
+    // contrast above it.
+    col *= 1.0 + uDarkAdapt * 0.70;                       // gain
+    col += uDarkAdapt * vec3(0.080, 0.100, 0.130);        // cool shadow lift
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;

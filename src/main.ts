@@ -60,7 +60,7 @@ import { tickInteractables, getInRangeInteractable, getAllInteractables } from '
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
-import { initLightPool, tickLightPool } from './scene/light-pool';
+import { initLightPool, tickLightPool, forEachLight } from './scene/light-pool';
 import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
 import { validateContent } from './content/validate';
@@ -487,7 +487,12 @@ const SYSTEMS: GameSystem[] = [
   // clear line of sight (one behind a wall neither lights nor sounds here).
   // Drives both the ambient crackle volume and the eye dark-adaptation signal.
   { name: 'torch-audio', phase: 'unpaused', tick(ctx) {
+    // Earshot for the torch crackle audio — kept tight so distant
+    // wall torches don't bleed into the player's earpiece. Visual
+    // lit-signal below uses a much wider range so dark-adapt
+    // doesn't over-adapt in actually-torchlit halls.
     const earRange = 6;
+    const lightRange = 11;          // matches CONFIG.TORCH_DISTANCE
     const walkable = currentLevel.walkable;
     const cx = camera.position.x;
     const cz = camera.position.z;
@@ -522,13 +527,40 @@ const SYSTEMS: GameSystem[] = [
       const dx = t.position.x - lx;
       const dz = t.position.z - lz;
       const d = Math.hypot(dx, dz);
-      if (d >= earRange) continue;
+      if (d >= lightRange) continue;
       if (walkable && !walkable.hasLineOfSight(lx, lz, t.position.x, t.position.z)) continue;
-      lookTorch += 1 - d / earRange;
+      lookTorch += 1 - d / lightRange;
     }
+    // Also sample non-torch environment lights (bonfire, god rays,
+    // floor glows, candles registered with the light pool). Without
+    // this, rooms whose primary illumination is a bonfire register
+    // as "dark" → dark-adapt over-adapts and the contrast goes weird.
+    // Torches are excluded here because they're already counted in
+    // the loop above (they ALSO go through registerLight, but with
+    // a tighter visual model).
+    let envLit = 0;
+    forEachLight('environment', (src) => {
+      // Quick check: torches are already counted above by the
+      // currentLevel.torches loop, so skip any registered torch
+      // light to avoid double-counting. Torch sources prefix their
+      // id with 'torch-' (see scene/torchlight.ts).
+      if (src.id.startsWith('torch-')) return;
+      const dx = src.position.x - lx;
+      const dz = src.position.z - lz;
+      const d = Math.hypot(dx, dz);
+      const r = Math.max(2, src.distance);
+      if (d >= r) return;
+      if (walkable && !walkable.hasLineOfSight(lx, lz, src.position.x, src.position.z)) return;
+      // Weight by the light's intensity so a strong bonfire counts
+      // for more than a small candle. Scale into the same 0..1
+      // register the torch loop uses by normalising against
+      // CONFIG.TORCH_INTENSITY.
+      const w = Math.min(1.5, src.intensity / CONFIG.TORCH_INTENSITY);
+      envLit += (1 - d / r) * w;
+    });
     // Lamp reaches the looked-at surface by falloff over LAMP_DISTANCE.
     const lampLit = Math.max(0, 1 - lookDist / CONFIG.LAMP_DISTANCE);
-    const lit = lookTorch + lampLit;
+    const lit = lookTorch + envLit + lampLit;
 
     const adapt = tickDarkAdaptation(lit, ctx.realDt);
     // PS1 path ignores renderer tone mapping (render-to-target), so the dark
