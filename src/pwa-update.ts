@@ -21,6 +21,18 @@ import { registerSW } from 'virtual:pwa-register';
 import { isHarnessPaused } from './harness/pause';
 import { getSettings } from './settings/settings';
 
+// Hook fired by main.ts right before a reload is triggered. Lets the
+// dev path capture mid-floor state (player pose / HP / buffs) so the
+// next boot can restore it via applyDevSnapshot. Set from main.ts at
+// boot; left null in tests / harness.
+let beforeReloadHook: (() => void) | null = null;
+
+/** Register a function to call just before any reload triggered by
+ *  applyUpdate. Used by main.ts to capture the dev snapshot. */
+export function setBeforeReloadHook(fn: () => void): void {
+  beforeReloadHook = fn;
+}
+
 type UpdateStatus = 'none' | 'pending';
 // How often to re-check for a new service worker. 15s keeps the
 // iteration loop tight (deploy → live in well under a minute) at a
@@ -84,6 +96,12 @@ export function getUpdateStatus(): UpdateStatus {
  *  the right moment — this function does no harness-state checking. */
 export async function applyUpdate(): Promise<void> {
   if (status !== 'pending' || !updateSW) return;
+  // Fire the pre-reload hook so callers can persist any mid-floor
+  // state they want to restore on next boot (see dev-snapshot.ts).
+  // Synchronous + try/catch — a buggy hook shouldn't block updates.
+  if (beforeReloadHook) {
+    try { beforeReloadHook(); } catch { /* swallow — don't block reload */ }
+  }
   showUpdateToast();
   // updateSW(true) calls registration.waiting.postMessage({type:'SKIP_WAITING'}),
   // listens for controllerchange, and reloads the page.

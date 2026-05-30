@@ -34,6 +34,14 @@ export function setCameraYaw(y: number) {
   yaw = y;
 }
 
+/** Direct pitch setter — used by dev-snapshot restore so the camera
+ *  resumes at the same up/down angle after a hot reload. The input
+ *  drag system reads from this module-level `pitch` each frame, so
+ *  setting camera.rotation.x alone wouldn't stick. */
+export function setCameraPitch(p: number) {
+  pitch = p;
+}
+
 export function updateCamera(
   camera: THREE.PerspectiveCamera,
   input: InputState,

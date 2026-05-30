@@ -9,6 +9,22 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Auto-update"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix uncarved stairwell floor when stairs sit flush with back wall"
+      },
+      {
+        "tag": "tune",
+        "text": "Consumables: heal carry cap, mobile-first hotbar, better feedback"
+      },
+      {
+        "tag": "tune",
+        "text": "Flatten floors — kill the wavy corridor/room ground mismatch"
+      },
+      {
+        "tag": "tune",
         "text": "Music: motifs not random plucks, gentle combat, separate volume slider"
       },
       {
@@ -196,22 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Dark-adaptation"
-      },
-      {
-        "tag": "tune",
-        "text": "Debug readout for eye dark-adaptation"
-      },
-      {
-        "tag": "content",
-        "text": "Spider-nest vault — ties cobwebs + spiders + skeletons together"
-      },
-      {
-        "tag": "content",
-        "text": "Spider enemy — fast swarm pouncer (custom 8-leg model)"
-      },
-      {
-        "tag": "content",
-        "text": "Skeleton enemy — pressure at every range, built from creature() + abilities"
       }
     ]
   }

@@ -25,7 +25,7 @@ import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
 import { setMasterVolume, startAmbience, setTorchProximity, setAudioListenerPose, playWhoosh } from './audio/sfx';
 import { startMusic, setMusicVolume } from './audio/music';
-import { emit } from './broadcast/event-bus';
+import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
 import { buildStarterChamber } from './level/starter-chamber';
@@ -57,7 +57,8 @@ import { isAnyScreenOpen } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
-import { setupPwaAutoUpdate, maybeApplyUpdateSilently } from './pwa-update';
+import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
+import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot } from './state/dev-snapshot';
 import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
@@ -197,6 +198,16 @@ initLevelLoader({
     currentLevel = level as LiveLevel & { checkRoomClear?: () => void };
     setCameraYaw(level.playerSpawn.yaw);
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-'));
+
+    // Dev-mode hot-reload restore: if a snapshot exists for THIS floor,
+    // overwrite the just-applied spawn pose + reset HP/buffs with the
+    // ones captured before the reload. One-shot — applyDevSnapshot
+    // clears the storage so a subsequent normal level load doesn't
+    // teleport the player to an old position.
+    const player = getEntity('player');
+    if (player) {
+      applyDevSnapshot(level.spec.id, camera, player, CONFIG.PLAYER_HEIGHT);
+    }
     // Drifting motes — ambient volumetric "dust in the air" tied
     // to the level's room rects. Tint takes the act's torch
     // colour so the mood reads consistent (warm motes in warm
@@ -437,6 +448,27 @@ initCharacterTracking();
 // Means a `git push` lands on Josh's installed home-screen app within a
 // minute or two without him having to close and reopen it.
 setupPwaAutoUpdate();
+
+// Dev hot-reload snapshot: before any update-triggered reload, persist
+// the player's pose + HP + buffs so the next boot can restore them on
+// the same floor. Only meaningful when DEV AUTO-UPDATE is on (live
+// updates take during level transitions, which already land at a
+// freshly-built floor). Clears itself on player:killed or when the
+// next floor's id differs from the snapshot.
+setBeforeReloadHook(() => {
+  // Only capture when DEV AUTO-UPDATE is on. Live auto-update reloads
+  // happen during a level transition fade, so the player is already
+  // at the new floor's spawn — the snapshot would be a no-op
+  // restoration that just leaves a stale localStorage entry hanging
+  // around until the next non-matching level load cleans it up.
+  if (!getSettings().devAutoUpdate) return;
+  const player = getEntity('player');
+  if (!player || !currentLevel) return;
+  captureDevSnapshot(currentLevel.spec.id, camera, player);
+});
+onEvent((e) => {
+  if (e.type === 'player:killed') clearDevSnapshot();
+});
 
 // --- HUD ---
 createHpBar();
