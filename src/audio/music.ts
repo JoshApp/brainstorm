@@ -11,6 +11,10 @@
 //     world goes quiet and the fight carries itself (impacts + enemy vocals
 //     + room tone). No bed, no battle theme.
 //   - Safe rooms: the only place melodic MOTIFS play — the exhale/reward.
+//   - Boss floors: combat triggers the BOSS BED — a reserved, sustained,
+//     textural dark cluster (detuned-saw strings through a breathing filter,
+//     NOT a melody) that blooms in loud against all the silence. The one
+//     time the score really speaks.
 // A synth pluck playing a tune in a grimdark dungeon reads as "MIDI
 // keyboard" no matter how good the notes, so melody earns its place by
 // scarcity. (Boss music — a reserved, sustained, textural bed — is a TODO.)
@@ -68,10 +72,10 @@
 
 import { on as onEvent } from '../broadcast/event-bus';
 import { getAudioContext, getMasterGain, getReverbInput } from './sfx';
-import { actForDepth } from '../level/acts';
+import { actForDepth, isBossDepth } from '../level/acts';
 import { getCurrentDepth } from '../level/loader';
 
-export type MusicState = 'off' | 'exploration' | 'combat' | 'safe' | 'death';
+export type MusicState = 'off' | 'exploration' | 'combat' | 'safe' | 'boss' | 'death';
 
 /** A single note inside a motif. Semitone offset relative to the
  *  palette root, octave shift from the root's octave, and how long
@@ -273,10 +277,18 @@ let musicVolume = 0.65;
 let droneGain: GainNode | null = null;
 let pluckGain: GainNode | null = null;
 let combatGain: GainNode | null = null;
+// Boss bed — a reserved, sustained, textural dark cluster. Silent except in
+// the 'boss' state (combat on a boss floor). The contrast with all the
+// exploration silence is the point.
+let bossGain: GainNode | null = null;
+// True while on a boss floor — combat there triggers 'boss' not 'combat'.
+let onBossFloor = false;
 
 // Drone oscillators (we keep the array so palette swaps can retune them).
 const droneOscs: OscillatorNode[] = [];
-// (Combat is now a non-pitched noise rumble — nothing to retune per act.)
+// Boss-cluster oscillators (retuned per act to stay in the floor's key).
+const bossOscs: OscillatorNode[] = [];
+// (Combat is now silent of music — nothing to retune per act.)
 // Motif scheduler handle.
 let motifScheduler: number | null = null;
 // Ambient soundscape: output bus + scheduler + shared noise buffer.
@@ -311,13 +323,15 @@ export function startMusic(): void {
   droneGain  = c.createGain(); droneGain.gain.value  = 0;
   pluckGain  = c.createGain(); pluckGain.gain.value  = 0;
   combatGain = c.createGain(); combatGain.gain.value = 0;
-  // Each layer feeds musicMasterGain + a small wet send into the shared
-  // reverb. Drone is sustained — too much reverb gets muddy; keep it
-  // dryish. Plucks live on the reverb tail to feel cavernous.
+  bossGain   = c.createGain(); bossGain.gain.value   = 0;
+  // Each layer feeds musicMasterGain + a wet send into the shared reverb.
+  // Drone is sustained — keep it dryish. Plucks + the boss bed live on a
+  // bigger reverb tail (cavernous / epic).
   for (const [g, wet] of [
     [droneGain,  0.20] as const,
     [pluckGain,  0.45] as const,
     [combatGain, 0.25] as const,
+    [bossGain,   0.50] as const,
   ]) {
     const wetSend = c.createGain();
     wetSend.gain.value = wet;
@@ -360,13 +374,55 @@ export function startMusic(): void {
     droneOscs.push(o);
   }
 
-  // ── Combat layer — intentionally SILENT ──────────────────────────────
+  // ── Boss bed — sustained dark cluster (textural, NOT melodic) ─────────
+  // A held chord of detuned SAWS — root + fifth + octave (grand power) plus
+  // the tritone above the octave (the dread "wrong" note) — through ONE slow
+  // lowpass that breathes open and shut, so it evolves like a score without
+  // ever playing a tune. Heavy detune = a thick string-section shimmer.
+  // Reserved for the 'boss' state; the contrast with the silence is the hit.
+  const bossLp = c.createBiquadFilter();
+  bossLp.type = 'lowpass';
+  bossLp.frequency.value = 600;
+  bossLp.Q.value = 1.2;
+  bossLp.connect(bossGain);
+  // Slow filter sweep — 0.08 Hz, ±450 Hz around 800 — the bed "breathes".
+  const bossFiltLfo = c.createOscillator();
+  bossFiltLfo.type = 'sine';
+  bossFiltLfo.frequency.value = 0.08;
+  const bossFiltLfoG = c.createGain();
+  bossFiltLfoG.gain.value = 450;
+  bossFiltLfo.connect(bossFiltLfoG).connect(bossLp.frequency);
+  bossLp.frequency.value = 800;
+  const bossRatios = [1.0, 1.5, 2.0, 2.828];   // root, 5th, octave, +tritone
+  const bossLevels = [0.16, 0.10, 0.09, 0.06];
+  const bossDetune = [-8, 9, -6, 11];           // cents — chorus thickness
+  for (let i = 0; i < bossRatios.length; i++) {
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = currentPalette.rootHz * bossRatios[i];
+    o.detune.value = bossDetune[i];
+    const og = c.createGain();
+    og.gain.value = bossLevels[i];
+    // Slow amplitude swell so the cluster looms and recedes.
+    const ampLfo = c.createOscillator();
+    ampLfo.type = 'sine';
+    ampLfo.frequency.value = 0.13 + i * 0.05;
+    const ampLfoG = c.createGain();
+    ampLfoG.gain.value = og.gain.value * 0.35;
+    ampLfo.connect(ampLfoG).connect(og.gain);
+    o.connect(og).connect(bossLp);
+    o.start(); ampLfo.start();
+    bossOscs.push(o);
+  }
+  bossFiltLfo.start();
+
+  // ── Combat layer — intentionally SILENT (no bed) ─────────────────────
   // Every musical combat bed we tried read wrong (sub throb / consonant
-  // breath / dissonant tritone / textural rumble). Josh's call: combat has
-  // NO music. The fight carries itself — your impacts, the enemy vocals,
-  // the room. So nothing feeds combatGain; the drone also ducks to silence
-  // when a fight starts (see applyState 'combat'). combatGain stays in the
-  // layer mix as a slot in case we ever want a boss-fight bed.
+  // breath / dissonant tritone / textural rumble). Josh's call: ordinary
+  // combat has NO bed — the fight carries itself (impacts + enemy vocals)
+  // over the steady ambient drone, which keeps playing (see applyState
+  // 'combat'). Nothing feeds combatGain; it stays a slot in the mix. The
+  // ONE exception is a boss floor, which gets the dedicated boss bed above.
 
   // ── Ambient bus ──────────────────────────────────────────────────────
   // The environmental one-shots (drips, settling stone, far groans, drafts)
@@ -402,7 +458,7 @@ export function startMusic(): void {
 function applyState(state: MusicState): void {
   if (state === currentState) return;
   const c = getAudioContext();
-  if (!c || !droneGain || !pluckGain || !combatGain) return;
+  if (!c || !droneGain || !pluckGain || !combatGain || !bossGain) return;
   const now = c.currentTime;
 
   const setRamp = (g: GainNode, target: number, ramp: number) => {
@@ -423,27 +479,41 @@ function applyState(state: MusicState): void {
       setRamp(droneGain,  0.20, 2.2);
       setRamp(pluckGain,  0.00, 1.2);
       setRamp(combatGain, 0.00, 0.8);
+      setRamp(bossGain,   0.00, 1.8);
       break;
     case 'combat':
-      // No music in combat — the world goes quiet for the fight. The drone
-      // ducks out so only impacts + enemy vocals + room tone carry it.
-      setRamp(droneGain,  0.00, 0.9);
+      // No combat BED (no melody, no rumble) — but the ambient drone keeps
+      // going so the world doesn't fall dead silent mid-fight. The impacts +
+      // enemy vocals carry the fight over a steady tonal floor.
+      setRamp(droneGain,  0.22, 1.0);
       setRamp(pluckGain,  0.00, 0.4);
       setRamp(combatGain, 0.00, 0.6);
+      setRamp(bossGain,   0.00, 1.2);
+      break;
+    case 'boss':
+      // The set-piece. The dark cluster blooms in — loud against all the
+      // exploration silence — with the drone dropped low beneath it so the
+      // boss bed owns the room. Fast-ish ramp so it lands when you engage.
+      setRamp(droneGain,  0.08, 0.8);
+      setRamp(pluckGain,  0.00, 0.4);
+      setRamp(combatGain, 0.00, 0.6);
+      setRamp(bossGain,   0.30, 0.9);
       break;
     case 'safe':
       setRamp(droneGain,  0.22, 2.4);
       setRamp(pluckGain,  0.20, 2.4);
       setRamp(combatGain, 0.00, 0.8);
+      setRamp(bossGain,   0.00, 2.0);
       break;
     case 'death':
       setRamp(droneGain,  0.00, 1.2);
       setRamp(pluckGain,  0.00, 0.6);
       setRamp(combatGain, 0.00, 0.6);
+      setRamp(bossGain,   0.00, 1.0);
       break;
     case 'off':
       // Hard mute.
-      for (const g of [droneGain, pluckGain, combatGain]) {
+      for (const g of [droneGain, pluckGain, combatGain, bossGain]) {
         g.gain.cancelScheduledValues(now);
         g.gain.setValueAtTime(0, now);
       }
@@ -699,12 +769,13 @@ function tickHeat(): void {
   lastTickAt = now;
   if (combatHeat > 0) combatHeat = Math.max(0, combatHeat - 0.55 * dt);
 
-  // Only nudge state if we're in a state that heat is allowed to
-  // override. Safe rooms IGNORE combat heat (there are no enemies),
-  // death is terminal until reset, off means the engine is muted.
-  if (currentState !== 'exploration' && currentState !== 'combat') return;
-  if (combatHeat > 1.2 && currentState !== 'combat') applyState('combat');
-  else if (combatHeat < 0.35 && currentState === 'combat') applyState('exploration');
+  // Only nudge state if we're in a state that heat is allowed to override.
+  // Safe rooms IGNORE combat heat, death is terminal, off is muted.
+  if (currentState !== 'exploration' && currentState !== 'combat' && currentState !== 'boss') return;
+  // The fight state is 'boss' on a boss floor (the dedicated bed), else 'combat'.
+  const fightState: MusicState = onBossFloor ? 'boss' : 'combat';
+  if (combatHeat > 1.2 && currentState !== fightState) applyState(fightState);
+  else if (combatHeat < 0.35 && (currentState === 'combat' || currentState === 'boss')) applyState('exploration');
 }
 
 function initMusicEventHooks(): void {
@@ -715,10 +786,13 @@ function initMusicEventHooks(): void {
     else if (event.type === 'player:killed') applyState('death');
     else if (event.type === 'level:loaded') {
       // Switch palette + reset state + clear any lingering combat heat.
+      const safe = event.levelId.startsWith('safe-');
       currentPalette = paletteForLevel(event.levelId);
       retuneDroneStack();
       combatHeat = 0;
-      applyState(event.levelId.startsWith('safe-') ? 'safe' : 'exploration');
+      // Boss floor? Combat here will trigger the boss bed, not plain combat.
+      onBossFloor = !safe && isBossDepth(getCurrentDepth());
+      applyState(safe ? 'safe' : 'exploration');
     }
   });
 }
@@ -739,7 +813,14 @@ function retuneDroneStack(): void {
     o.frequency.cancelScheduledValues(now);
     o.frequency.setTargetAtTime(targetHz, now, 0.8);
   }
-  // Combat layer is non-pitched noise now — no per-act retune needed.
+  // Boss cluster rides the same root (stays in the floor's key).
+  const bossRatios = [1.0, 1.5, 2.0, 2.828];
+  for (let i = 0; i < bossOscs.length && i < bossRatios.length; i++) {
+    const o = bossOscs[i];
+    o.frequency.cancelScheduledValues(now);
+    o.frequency.setTargetAtTime(currentPalette.rootHz * bossRatios[i], now, 0.8);
+  }
+  // Combat layer is silent of music now — no per-act retune needed.
 }
 
 // ── Public lifecycle hooks ─────────────────────────────────────────────
