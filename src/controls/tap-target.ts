@@ -16,9 +16,22 @@ import type { Interactable } from '../interactables/types';
 // Callers (input.ts touchend, attack-input mouse click) feed in the
 // touch's pixel coords + canvas; we convert to NDC and run a single
 // raycast against the candidate roots.
+//
+// Two-pass resolution: (1) precise raycast against actual mesh
+// geometry — best for hit-targeting; (2) if the raycast misses, a
+// screen-space proximity fallback for interactables (NOT enemies)
+// finds the closest interactable's projected position within
+// PROXIMITY_PX. The fallback is what makes thin floating weapons
+// (starter-altar daggers etc.) tappable without pixel-perfect aim.
 
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
+const tmpVec = new THREE.Vector3();
+
+/** Pixel radius for the "near-tap" fallback. ~70px is a comfortable
+ *  thumb-tap radius and roughly matches the FORGIVING_TOUCH zones
+ *  in input-touch.ts. */
+const PROXIMITY_PX = 72;
 
 export type TapTarget =
   | { kind: 'enemy'; enemy: Enemy }
@@ -60,24 +73,59 @@ export function findTapTarget(
     ...interactableRoots.map(r => r.root),
   ];
   const hits = raycaster.intersectObjects(candidates, true);
-  if (hits.length === 0) return null;
 
-  // The first hit is the closest. Walk parents until we find a known
-  // root and resolve to enemy or interactable.
-  const hitObj = hits[0].object;
-  // Check enemies first — tap-on-enemy almost always means "attack
-  // this thing", even if it overlaps an interactable visually.
-  for (const e of enemyRoots) {
-    if (isDescendantOrSelf(hitObj, e)) {
-      const enemy = enemies.find(en => en.group === e);
-      if (enemy) return { kind: 'enemy', enemy };
+  if (hits.length > 0) {
+    // The first hit is the closest. Walk parents until we find a known
+    // root and resolve to enemy or interactable.
+    const hitObj = hits[0].object;
+    // Check enemies first — tap-on-enemy almost always means "attack
+    // this thing", even if it overlaps an interactable visually.
+    for (const e of enemyRoots) {
+      if (isDescendantOrSelf(hitObj, e)) {
+        const enemy = enemies.find(en => en.group === e);
+        if (enemy) return { kind: 'enemy', enemy };
+      }
+    }
+    for (const r of interactableRoots) {
+      if (isDescendantOrSelf(hitObj, r.root)) {
+        return { kind: 'interactable', interactable: r.it };
+      }
     }
   }
+
+  // ── Screen-space proximity fallback for interactables ─────────────
+  // Thin floating viewmodels (starter-altar daggers, rapiers etc.)
+  // miss the precise raycast above on most taps. Project each
+  // interactable's position to screen space and pick the closest
+  // within PROXIMITY_PX of the tap. Enemies are NOT included here —
+  // tap-near-enemy could mistakenly swing at a far foe.
+  const tapPxX = clientX - rect.left;
+  const tapPxY = clientY - rect.top;
+  let bestProx: Interactable | null = null;
+  let bestProxDist2 = PROXIMITY_PX * PROXIMITY_PX;
   for (const r of interactableRoots) {
-    if (isDescendantOrSelf(hitObj, r.root)) {
-      return { kind: 'interactable', interactable: r.it };
+    // Project the interactable's anchor (use position rather than the
+    // mesh group origin, so a tilted/rotated viewmodel doesn't shift
+    // the tap target away from its visible centre).
+    tmpVec.copy(r.it.position);
+    // Raise to the labelOffsetY so the projection lands near the
+    // prompt label / visible weapon centre, not the floor.
+    tmpVec.y += r.it.labelOffsetY ?? 0.6;
+    tmpVec.project(camera);
+    // Behind the camera → z>1; skip.
+    if (tmpVec.z > 1 || tmpVec.z < -1) continue;
+    const screenX = (tmpVec.x * 0.5 + 0.5) * rect.width;
+    const screenY = (-tmpVec.y * 0.5 + 0.5) * rect.height;
+    const dx = screenX - tapPxX;
+    const dy = screenY - tapPxY;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestProxDist2) {
+      bestProxDist2 = d2;
+      bestProx = r.it;
     }
   }
+  if (bestProx) return { kind: 'interactable', interactable: bestProx };
+
   return null;
 }
 
