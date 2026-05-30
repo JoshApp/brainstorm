@@ -8,7 +8,7 @@ import { tryAutoEquip } from '../player/equipment';
 import { rollItemInstance, instanceDisplayName } from '../player/item-instance';
 import { getTexture } from '../style/procedural-textures';
 import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
-import { playLootLand, playPickupChime } from '../audio/sfx';
+import { playLootLand, playPickupChime, playDenied } from '../audio/sfx';
 import { emit } from '../broadcast/event-bus';
 import { getActiveLevel } from '../level/loader';
 import { registerLight, unregisterLight } from '../scene/light-pool';
@@ -196,6 +196,7 @@ export function createPickup(
       // tell the player — no chime, no destroy, so they can grab it later.
       if (item.kind === 'consumable' && isAtCarryLimit(item.id)) {
         showInWorldMessage('You can carry no more.');
+        playDenied();
         return;
       }
       // Pickup chime — rarity-tinted (mundane low/dull, fabled high/long).

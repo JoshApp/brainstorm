@@ -4,7 +4,7 @@ import { healPlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
-import { playHealSlurp, playBuffApply } from '../audio/sfx';
+import { playHealSlurp, playBuffApply, playDenied } from '../audio/sfx';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { FONT_UI } from '../ui/hud';
 import { isDesktopLike } from './platform';
@@ -275,6 +275,7 @@ function denyHealFeedback() {
     { duration: 240, easing: 'ease-out' },
   );
   showInWorldMessage('Already whole.');
+  playDenied();
   hapticVibrate(8);
 }
 

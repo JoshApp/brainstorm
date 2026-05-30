@@ -594,6 +594,33 @@ export function playEnemyVocal(archetype: VocalArchetype, pos: Vec3Sound, agitat
   }
 }
 
+/** A withheld/denied action — pickup refused (carry full), or drinking at
+ *  full HP. Deliberately NOT a chime: a dull, low, lowpassed double-knock
+ *  that falls in pitch (a flat "no"), so it reads as "blocked" without the
+ *  bright UI-bleep register. */
+export function playDenied() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 0.6;
+  lp.connect(masterGain);
+  // Two soft low knocks, the second lower — a downward "nope".
+  const hits: Array<[number, number]> = [[180, now], [132, now + 0.085]];
+  for (const [f, t] of hits) {
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(f, t);
+    osc.frequency.exponentialRampToValueAtTime(f * 0.8, t + 0.09);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0006, t + 0.13);
+    osc.connect(g).connect(lp);
+    osc.start(t); osc.stop(t + 0.15);
+  }
+}
+
 /** Magic strike — wraith hits, distinct from physical impact. Brief bell-like
  *  chime layered with a sizzle to read as "burn + ring". */
 export function playMagicHit() {
