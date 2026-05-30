@@ -146,6 +146,7 @@ async function main() {
     else if (scenario === 'title-veteran') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1`;
     else if (scenario === 'codex') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showCodex=1`;
     else if (scenario === 'stash') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showStash=1`;
+    else if (scenario === 'safe-transition') url = `http://127.0.0.1:${port}/brainstorm/?showSafeTransition=1`;
     else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
     else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}`;
     console.log(`Opening ${url}`);

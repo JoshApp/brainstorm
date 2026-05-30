@@ -34,6 +34,7 @@ import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad, getCurre
 import { tickAlerts, clearAlerts } from './mobs/alerts';
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
+import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { initCharacterTracking, resetCharacter } from './state/character';
 import { initRunStateListeners } from './state/run-state-listeners';
@@ -1080,12 +1081,27 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   import('./ui/stash-screen').then(({ showStash }) => showStash());
 } else if (new URLSearchParams(window.location.search).get('showPatchlog') === '1') {
   import('./ui/patchlog-screen').then(({ showPatchlog }) => showPatchlog());
+} else if (new URLSearchParams(window.location.search).get('showSafeTransition') === '1') {
+  // Debug hook — preview the safe-room transition card with mocked stats.
+  import('./ui/safe-room-transition').then(({ showSafeRoomTransition }) => {
+    showSafeRoomTransition({
+      actName: 'The Old Refectory',
+      depth: 3,
+      kills: 14,
+      xp: 247,
+    });
+  });
 } else if (scenario) {
   // Debug scenario — bypass title. Scenario may override the level
   // spec or use the default LEVEL_1.
   const floorId = scenario.level?.id ?? LEVEL_1.id;
   if (scenario.level) LEVELS[scenario.level.id] = scenario.level;
   setSlot('weapon', ITEMS['rusted-sword']);
+  // Don't pop the safe-room transition card when a scenario drops the
+  // player directly into a safe-N level — the card would cover the
+  // very geometry the scenario exists to show. Real gameplay descents
+  // still trigger it normally.
+  if (floorId.startsWith('safe-')) suppressNextSafeRoomTransition();
   startRun(floorId);
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.

@@ -7,6 +7,7 @@ import { triggerDeath } from '../player/death';
 import { setCameraYaw } from '../controls/camera';
 import { setWorldFrozen } from './freeze';
 import { generateFloor } from '../level/procgen';
+import { generateSafeRoom } from '../level/safe-room';
 import { debugUseAll, debugTickAll } from '../interactables/system';
 import { damagePlayer } from '../player/health';
 import { get as getEntity } from '../ecs/world';
@@ -576,6 +577,16 @@ export const SCENARIOS: Record<string, Scenario> = {
     freeze: true,
     hideSword: true,
     level: generateFloor(4, 4242, 'depth-5'),  // template index 3
+  },
+
+  // Safe room — overview from the spawn end looking down the chamber
+  // toward the hearth + descent. For verifying the V3 layout (smaller +
+  // warmer + central brazier).
+  'safe-room': {
+    freeze: true,
+    hideSword: true,
+    level: generateSafeRoom(3),  // safe room after Act I (boss depth 3)
+    playerPos: { x: 0, z: 4.0, lookAt: { x: 0, z: -2.0, y: 0.8 } },
   },
 
   // Mid-corridor looking down at the spike trap plate.

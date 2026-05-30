@@ -42,6 +42,13 @@ export function spawnStairs(
   materials: StyleMaterials,
   onDescend: (targetLevel: string) => void,
 ) {
+  // Stairs leading to a safe-N level get a WARM passive palette
+  // (amber outline + gold ring + gold shaft) instead of the cool
+  // moonlight blue. Player learns: blue beam ahead = deeper dark,
+  // warm beam ahead = refuge. Active (in-range) state stays gold
+  // either way, so the in-range read is unchanged.
+  const isSafeVariant = spec.targetLevel.startsWith('safe-');
+
   const group = new THREE.Group();
   group.position.set(spec.x, 0, spec.z);
   group.rotation.y = spec.rotY ?? 0;
@@ -213,9 +220,10 @@ export function spawnStairs(
     id: `stairs-${spec.id ?? spec.targetLevel}-glow`,
     category: 'environment',
     position: glowWorld,
-    // Cool moonlight blue — same palette family as the
-    // passive outline / shaft.
-    color: 0x6ea0ff,
+    // Cool moonlight blue for descent into more dungeon, warm
+    // amber for stairs that lead UP to a safe room — the deep
+    // pool of light matches the shaft above.
+    color: isSafeVariant ? 0xff9050 : 0x6ea0ff,
     intensity: 5.5,
     distance: 6.5,
     decay: 1.5,
@@ -403,11 +411,21 @@ export function spawnStairs(
   // washed-out / reddish against warm torch-lit scenes because
   // additive blending diluted the blue against an orange-tinted
   // backdrop. Pure moonlight reads as moonlight from any angle.
-  const PASSIVE_OUTLINE_INNER = new THREE.Color(0xa0c4ff);
-  const PASSIVE_OUTLINE_OUTER = new THREE.Color(0x6ea0ff);
-  const PASSIVE_RING          = new THREE.Color(0x2a60c8);
-  const PASSIVE_SHAFT_OUTER   = new THREE.Color(0x6ea0ff);
-  const PASSIVE_SHAFT_CORE    = new THREE.Color(0xa0c4ff);
+  // Two passive palettes — cool moonlight for stairs descending into
+  // more dungeon, warm amber for stairs that lead to a safe room.
+  // The warm passive uses a slightly dimmer / less saturated cousin of
+  // the ACTIVE colours so the safe variant still 'lights up' when the
+  // player walks into range — same gold, but brighter + wider.
+  const PASSIVE_OUTLINE_INNER = isSafeVariant
+    ? new THREE.Color(0xffd6a8) : new THREE.Color(0xa0c4ff);
+  const PASSIVE_OUTLINE_OUTER = isSafeVariant
+    ? new THREE.Color(0xff9858) : new THREE.Color(0x6ea0ff);
+  const PASSIVE_RING          = isSafeVariant
+    ? new THREE.Color(0xc06028) : new THREE.Color(0x2a60c8);
+  const PASSIVE_SHAFT_OUTER   = isSafeVariant
+    ? new THREE.Color(0xff9858) : new THREE.Color(0x6ea0ff);
+  const PASSIVE_SHAFT_CORE    = isSafeVariant
+    ? new THREE.Color(0xffd0a0) : new THREE.Color(0xa0c4ff);
   const ACTIVE_OUTLINE_INNER  = new THREE.Color(0xfff0c0);
   const ACTIVE_OUTLINE_OUTER  = new THREE.Color(0xffd680);
   const ACTIVE_RING           = new THREE.Color(0xffb050);

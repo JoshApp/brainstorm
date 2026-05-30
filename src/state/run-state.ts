@@ -40,6 +40,13 @@ export interface SaveData {
   /** Total gold gathered this run. Currently a counter only — spending
    *  hooks come with the shop system later. */
   gold: number;
+  /** Snapshot of cumulative kills/xp/gold taken at the start of the
+   *  current act (i.e. when the player entered the first depth of the
+   *  act they're currently in). Diff against the live totals to read
+   *  "stats earned during this act" for the safe-room transition card. */
+  actEntryKills?: number;
+  actEntryXp?: number;
+  actEntryGold?: number;
 }
 
 // ── In-memory run state (mid-floor mutable counters) ─────────────────
@@ -69,6 +76,9 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
     itemsFound: [],
     xp: 0,
     gold: 0,
+    actEntryKills: 0,
+    actEntryXp: 0,
+    actEntryGold: 0,
   };
 }
 
@@ -134,6 +144,29 @@ export function getRunState(): SaveData | null {
 
 export function recordKill() {
   if (inMemory) inMemory.kills += 1;
+}
+
+/** Snapshot kills/xp/gold totals at the start of the current act.
+ *  Called from the run-state listener when level:loaded crosses into
+ *  the first depth of an act. Idempotent if called repeatedly on the
+ *  same act-start depth — diffs come out as 0 either way. */
+export function snapshotActEntry() {
+  if (!inMemory) return;
+  inMemory.actEntryKills = inMemory.kills;
+  inMemory.actEntryXp    = inMemory.xp;
+  inMemory.actEntryGold  = inMemory.gold;
+}
+
+/** Stats EARNED during the act the player is finishing — the deltas
+ *  between live totals and the act-entry snapshot. Returns zeros if
+ *  there's no live run (e.g. called before startNewRun). */
+export function getActStats(): { kills: number; xp: number; gold: number } {
+  if (!inMemory) return { kills: 0, xp: 0, gold: 0 };
+  return {
+    kills: inMemory.kills - (inMemory.actEntryKills ?? 0),
+    xp:    inMemory.xp    - (inMemory.actEntryXp    ?? 0),
+    gold:  inMemory.gold  - (inMemory.actEntryGold  ?? 0),
+  };
 }
 
 export function recordItemFound(itemId: string) {

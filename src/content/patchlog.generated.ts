@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Ranged pass: viewmodels, projectile shapes, vertical aim"
+      },
+      {
+        "tag": "tune",
         "text": "Combo pass"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Decompose the inventory panel monolith into column components"
-      },
-      {
-        "tag": "tune",
-        "text": "Walk gait — legs swing from real movement (no more moonwalk)"
       }
     ]
   }

@@ -15,7 +15,9 @@ import {
   recordItemFound,
   commitFloorEntry,
   getRunState,
+  snapshotActEntry,
 } from './run-state';
+import { actForDepth } from '../level/acts';
 import {
   recordKill as metaRecordKill,
   recordItemFound as metaRecordItemFound,
@@ -59,6 +61,15 @@ export function initRunStateListeners() {
         if (item) eqSnapshot[slot] = item.id;
       }
       const depth = getCurrentDepth();
+      // Crossing into the FIRST depth of an act — snapshot kills/xp/gold
+      // so the safe-room transition card at the end of the act can show
+      // "during this act" stats. Safe rooms don't snapshot (they're the
+      // breath between acts, not an act start) — the loader skips depth
+      // bookkeeping for safe-N entries via the same path.
+      if (!event.levelId.startsWith('safe-')) {
+        const act = actForDepth(depth);
+        if (depth === act.depths[0]) snapshotActEntry();
+      }
       commitFloorEntry({
         floorId: event.levelId,
         depth,

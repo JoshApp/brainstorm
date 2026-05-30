@@ -176,10 +176,13 @@ export type PropSpec =
   // brief telegraph (plate sinks, audible click); spikes shoot up and
   // damage. Resets after a cooldown.
   | { kind: 'spike-trap'; x: number; z: number; damage?: number; telegraphTime?: number }
-  // 'fountain' = a basin of suspect liquid. DRINK to gamble: half the
-  // time it heals to full; half the time it curses you (lasting debuff
-  // for the rest of the run). One-use per fountain.
-  | { kind: 'fountain'; x: number; z: number; rotY?: number; facing?: PropFacing }
+  // 'fountain' = a basin of liquid.
+  //   variant 'gamble' (default, DUNGEON): DRINK — 50/50 heal/curse.
+  //   variant 'rest'                (SAFE): REST  — always heals to full,
+  //                                          warm amber glow, no risk.
+  // One-use per fountain.
+  | { kind: 'fountain'; x: number; z: number; rotY?: number; facing?: PropFacing;
+      variant?: 'gamble' | 'rest' }
   | {
       kind: 'starter-altar';
       x: number;

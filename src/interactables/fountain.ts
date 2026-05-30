@@ -9,28 +9,30 @@ import { get } from '../ecs/world';
 import { playHealSlurp, playBuffApply } from '../audio/sfx';
 import { showNote } from '../ui/note-card';
 
-// Fountain = a basin of suspect liquid. DRINK gambles 50/50:
-//   - blessing: heal to full HP
-//   - curse: -1 weapon damage AND -1 physical armor for ~5 minutes (the
-//            rest of a typical run on early floors)
+// Fountain = a basin of suspect liquid. Two variants:
 //
-// One-use per fountain. After drinking, the prompt disappears and the
+//   'gamble' (DUNGEON): DRINK gambles 50/50. Heal-to-full or a -1 weapon
+//                       damage & -1 physical armour curse for ~5 minutes.
+//                       Sickly green emissive, sells "this is suspect."
+//
+//   'rest'   (SAFE ROOM): REST always heals to full. No curse. Warm
+//                         amber emissive — reads as clean water,
+//                         a kindness between acts.
+//
+// One-use per fountain. After interacting, the prompt disappears and the
 // liquid drains visually (basin shows the dry stone bottom). A short note
 // pops describing what happened — both because feedback matters and
 // because it fits the dungeon's in-world voice better than a number popup.
-//
-// Visual: stone pedestal + bowl + glowing liquid disc + a soft PointLight
-// from the pickup pool would be ideal, but we don't have access to it from
-// here without coupling. Instead use a small dedicated point light on the
-// fountain since there's only one per room — light count is fixed at
-// build time.
 
 const CURSE_DURATION = 300;  // 5 minutes — effectively rest of an early run
+
+export type FountainVariant = 'gamble' | 'rest';
 
 export function spawnFountain(
   parent: THREE.Object3D,
   pos: THREE.Vector3,
   rotY: number,
+  variant: FountainVariant = 'gamble',
 ) {
   const group = new THREE.Group();
   group.position.copy(pos);
@@ -76,12 +78,14 @@ export function spawnFountain(
   dryDisc.position.y = 0.81;
   group.add(dryDisc);
 
-  // Liquid — emissive disc on top. Sickly green; reads as "wrong" the
-  // moment the player sees it. The 50/50 gamble means even cautious
-  // players will eventually risk it.
+  // Liquid — emissive disc on top.
+  //   'gamble' — sickly green; reads as "wrong" the moment the player
+  //              sees it. The 50/50 risk is in the colour.
+  //   'rest'   — warm amber; reads as clean firelight in the basin,
+  //              a refuge between acts.
   const liquidMat = new THREE.MeshStandardMaterial({
-    color: 0x2a3a22,
-    emissive: 0x66ff88,
+    color:     variant === 'rest' ? 0x3a2818 : 0x2a3a22,
+    emissive:  variant === 'rest' ? 0xffb070 : 0x66ff88,
     emissiveIntensity: 0.9,
     roughness: 0.3,
     metalness: 0.0,
@@ -104,7 +108,7 @@ export function spawnFountain(
     id: `fountain-${generateEntityId('fountain-light')}`,
     category: 'environment',
     position: new THREE.Vector3(pos.x, pos.y + 0.95, pos.z),
-    color: 0x88ffaa,
+    color: variant === 'rest' ? 0xffc890 : 0x88ffaa,
     intensity: 1.8,
     distance: 2.4,
     decay: 1.6,
@@ -117,7 +121,7 @@ export function spawnFountain(
     id: generateEntityId('fountain'),
     position: pos.clone(),
     radius: 1.3,
-    promptLabel: 'DRINK',
+    promptLabel: variant === 'rest' ? 'REST' : 'DRINK',
     onUse() {
       if (used) return;
       used = true;
@@ -127,7 +131,21 @@ export function spawnFountain(
       liquid.visible = false;
       fountainState.intensity = 0.2;
 
-      // 50/50 gamble — blessing or curse. Seeded so a run is reproducible.
+      if (variant === 'rest') {
+        // Safe-room fountain — no gamble. Always a clean mend.
+        const before = getPlayerHp();
+        healPlayer(getPlayerMaxHp());
+        const healed = getPlayerMaxHp() - before;
+        playHealSlurp();
+        showNote(
+          healed > 0
+            ? 'The water is clean. Something in you settles.'
+            : 'The water is clean. You were already whole.',
+        );
+        return;
+      }
+
+      // Dungeon fountain — 50/50 gamble. Seeded so a run is reproducible.
       const blessed = gameRngChance(0.5);
       if (blessed) {
         const before = getPlayerHp();

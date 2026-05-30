@@ -16,7 +16,9 @@ import { clearAllOutlines } from '../interactables/outline';
 import { resetDarkAdaptation } from '../scene/dark-adaptation';
 import { clearThresholdDrafts } from '../scene/threshold-draft';
 import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
+import { showSafeRoomTransition } from '../ui/safe-room-transition';
 import { actForDepth } from './acts';
+import { getActStats } from '../state/run-state';
 
 // Level loader = the seam between "we have a current level" and "let's swap
 // it for a different one". main.ts holds the active level reference via the
@@ -175,11 +177,25 @@ export function tickPendingLoad() {
 
   onLoaded(level);
 
-  // Title card: "Depth N" + act name. Safe rooms keep the boss's depth
-  // and swap the subtitle to 'sanctuary' — they aren't a dungeon floor,
-  // they're the breath between acts.
+  // Title card: "Depth N" + act name. Safe rooms get the transition
+  // card instead — a longer in-world beat with stats from the act
+  // the player just survived. The descent-title's brief flash would
+  // step on the transition card's slower entry, so we skip it.
   if (isSafeRoom) {
-    showDescentTitle(`Depth ${currentDepth}`, 'sanctuary');
+    const act = actForDepth(currentDepth);
+    const stats = getActStats();
+    // Show the card AFTER the world fades in — the player lands in
+    // the safe room, gets the camera oriented, then the card rises
+    // over it. Tap-to-dismiss. The fade-in delay below matches the
+    // descent-fade's 320ms fade-out + a beat for the world to settle.
+    window.setTimeout(() => {
+      showSafeRoomTransition({
+        actName: act.name,
+        depth: currentDepth,
+        kills: stats.kills,
+        xp:    stats.xp,
+      });
+    }, 600);
   } else {
     const act = actForDepth(currentDepth);
     showDescentTitle(`Depth ${currentDepth}`, act.name);
