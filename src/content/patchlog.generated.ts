@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Dark-adapt: fog-attenuate lit signal so foggy rooms read as dark"
+      },
+      {
+        "tag": "tune",
         "text": "Dark-adapt"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Enemy ability system: data-driven attacks + skirmisher charger"
-      },
-      {
-        "tag": "tune",
-        "text": "Migrate xp/gold HUD to stores; seed loot/proc randomness"
       }
     ]
   }

@@ -70,18 +70,27 @@ const HORROR_BLIT_FRAG = `
     float b = texture2D(tDiffuse, uv - caOffset).b;
     vec3 col = vec3(r, g, b);
 
-    // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — Raise the SHADOW
-    // FLOOR (max-with), don't blanket-add. Earlier passes added a
-    // constant to every pixel, which washed out bright areas
-    // ("half lit all the time") because torchlit pixels also got
-    // the lift on top of being already-bright. max() is shadow-only:
-    // dark pixels get raised to the floor; lit pixels stay where
-    // they are.
+    // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — lift dim pixels
+    // toward a navigable shadow floor WHILE PRESERVING HUE. The
+    // earlier max(col, cool_tint) approach was shadow-only but
+    // desaturated dim coloured pixels: a faint red wall got
+    // clamped UP to the cool-blue floor and lost its red, which
+    // made the whole scene read "washed out".
     //
-    // Plus a small gain — adds a hair of contrast inside the
-    // mid-range without clipping the highs.
-    col *= 1.0 + uDarkAdapt * 0.30;
-    col = max(col, uDarkAdapt * vec3(0.110, 0.140, 0.180));
+    // New: scale-lift dim pixels uniformly so their hue + chroma
+    // survive — only pure-black ends up below the floor, and we
+    // add the small cool-blue tint there (no hue to preserve).
+    // The mild gain is darkness-weighted so highlights stay
+    // crisp (torch glows don't get desaturated).
+    float maxC = max(col.r, max(col.g, col.b));
+    float floorLum = uDarkAdapt * 0.16;
+    float scale = (maxC > 1e-4) ? max(1.0, floorLum / maxC) : 1.0;
+    col *= scale;
+    float gap = max(0.0, floorLum - max(col.r, max(col.g, col.b)));
+    col += gap * vec3(0.50, 0.62, 0.81);
+    // Darkness-weighted gain — mild contrast lift on dim/mid
+    // areas, identity on bright pixels so highlights don't crush.
+    col *= 1.0 + uDarkAdapt * 0.25 * (1.0 - maxC);
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;
