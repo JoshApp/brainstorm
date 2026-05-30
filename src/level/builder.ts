@@ -122,11 +122,13 @@ function makeFloorWithHoles(
 
 function makeJitteredPlane(
   width: number, height: number,
-  /** Walls additionally bake a smooth low-frequency wave into
-   *  the surface so they don't all read as perfectly flat
-   *  slabs. Floors keep the plain random jitter — wave-warped
-   *  floors would push the player up in lumps. */
-  opts: { wavy?: boolean } = {},
+  /** Walls bake a smooth low-frequency wave into the surface (`wavy`) so
+   *  they don't read as flat slabs. Floors pass `flat` to skip ALL vertex
+   *  displacement (no wave, no jitter) — a bumpy floor reads as warped next
+   *  to the dead-flat stairwell-room floors (makeFloorWithHoles), and lumps
+   *  push the player up. Flat floors keep the per-vertex colour tint below,
+   *  so they still have surface variation without geometry warp. */
+  opts: { wavy?: boolean; flat?: boolean } = {},
 ): THREE.PlaneGeometry {
   const geo = new THREE.PlaneGeometry(
     width,
@@ -140,6 +142,7 @@ function makeJitteredPlane(
   // the same wave pattern — every wall slab gets its own
   // unique warp.
   const wavy = !!opts.wavy;
+  const flat = !!opts.flat;
   const wavePhaseA = buildRng() * 100;
   const wavePhaseB = buildRng() * 100;
   const WAVE_AMPL = 0.045;        // peak displacement in metres
@@ -154,6 +157,7 @@ function makeJitteredPlane(
     const onEdgeX = Math.abs(Math.abs(x) - width / 2) < 1e-4;
     const onEdgeY = Math.abs(Math.abs(y) - height / 2) < 1e-4;
     if (onEdgeX || onEdgeY) continue;
+    if (flat) continue;   // dead-flat surface; colour tint below still applies
     let z = (buildRng() - 0.5) * 2 * jitter;
     if (wavy) {
       // Two superimposed waves — a slow primary undulation +
@@ -211,7 +215,7 @@ function buildRoomShell(
   // surface variation).
   const floorGeo: THREE.BufferGeometry = floorHoles.length > 0
     ? makeFloorWithHoles(W, D, floorHoles)
-    : makeJitteredPlane(W, D);
+    : makeJitteredPlane(W, D, { flat: true });
   const floor = new THREE.Mesh(floorGeo, materials.floor);
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(rect.x, 0, rect.z);
