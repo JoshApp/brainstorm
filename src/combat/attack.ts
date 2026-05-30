@@ -256,6 +256,10 @@ export function createCombatSystem(
     // stacking N freezes for an N-cleave would feel terrible. Use
     // the best-hit's stats (any-crit, any-heavy) so a cleave that
     // crit-killed a mob and grazed a vase still gets the full crunch.
+    // Impact sound plays at the CLOSEST target's position — gives the
+    // hit a directional sense (pans + room reverb tail) instead of a
+    // flat dry thud at the listener.
+    const impactAt = targets[0].position;
     if (anyHeavy) {
       const crunchPause = anyCrit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS;
       const crunchShake = anyCrit
@@ -264,13 +268,13 @@ export function createCombatSystem(
       freezeFor(crunchPause);
       kickShake(crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
       hapticVibrate(anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS);
-      playImpact();
+      playImpact(impactAt);
     } else {
       // Light targets only (vases) — token crunch, no on-hit passives.
       freezeFor(Math.min(40, CONFIG.HIT_PAUSE_MS * 0.4));
       kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 0.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 0.5);
       hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
-      playImpact();
+      playImpact(impactAt);
     }
     void bestApplied;   // reserved for future "biggest hit wins crunch tier"
   }

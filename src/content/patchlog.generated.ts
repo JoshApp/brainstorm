@@ -8,6 +8,18 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-05-30",
     "entries": [
       {
+        "tag": "content",
+        "text": "Safe room: redesign + warm-variant stairs + rest fountain + transition card"
+      },
+      {
+        "tag": "tune",
+        "text": "Tune poison + calm idle gaze scan"
+      },
+      {
+        "tag": "tune",
+        "text": "Debug capture"
+      },
+      {
         "tag": "tune",
         "text": "Ranged pass: viewmodels, projectile shapes, vertical aim"
       },
@@ -200,18 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Parametric creature() builder + defiler's own silhouette"
-      },
-      {
-        "tag": "tune",
-        "text": "Head crane — humanoids tip their gaze toward the player"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix charger getting stuck inside the player: recoil + point-blank hits"
-      },
-      {
-        "tag": "tune",
-        "text": "Decompose the inventory panel monolith into column components"
       }
     ]
   }

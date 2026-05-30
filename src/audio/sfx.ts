@@ -1,14 +1,32 @@
 // Procedural sound effects via the Web Audio API. No asset files — these are
-// placeholder synthesized sounds we can iterate on, with real samples coming
-// later. Two events for now: whoosh (sword cutting air) on swing start, and
-// impact (heavy thud) on a hit landing.
+// synthesized sounds we iterate on directly in code, in keeping with the
+// game's code-generated-everything ethos. Browsers require a user-gesture-
+// initiated context, so the AudioContext is created lazily on first call.
+// The attack button press IS a user gesture, so the first sword swing will
+// succeed in creating it.
 //
-// Browsers require a user-gesture-initiated context, so the AudioContext is
-// lazily created on first call. The attack button press IS a user gesture,
-// so the first sword swing will succeed in creating it.
+// ── Bus layout ─────────────────────────────────────────────────────────
+//
+//      source → masterGain → destination                (UI / 2D sounds)
+//      source → panner → dryGain → masterGain
+//                     └ wetGain → reverb → masterGain   (positional sounds)
+//
+// 2D sounds (existing flat SFX — menu clicks, footsteps, heal slurp, etc.)
+// keep connecting directly to masterGain — no panning, no reverb. Sounds
+// that want a spatial sense (enemy windup/death, impact, loot land) route
+// through createPositionalChain(pos), which sets up a PannerNode plus dry
+// and wet (reverb send) gains in parallel.
+//
+// The reverb is a synthetic impulse response — a short decaying noise burst
+// generated into an AudioBuffer once, fed into a single shared ConvolverNode.
+// All positional sounds share that one convolver via the wet bus, so the
+// CPU cost is fixed regardless of how many spatialized sounds are firing.
+
+export type Vec3Sound = { x: number; y: number; z: number };
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
+let reverbInput: GainNode | null = null;   // sources send into here for reverb
 let masterVolume = 0.55;  // overridden by settings on init
 
 function ensureCtx(): AudioContext | null {
@@ -20,9 +38,104 @@ function ensureCtx(): AudioContext | null {
     masterGain = ctx.createGain();
     masterGain.gain.value = masterVolume;
     masterGain.connect(ctx.destination);
+    // Reverb bus: wet input → convolver → master. A single shared
+    // convolver, so per-frame CPU is fixed no matter how many sounds
+    // are routing through it.
+    reverbInput = ctx.createGain();
+    reverbInput.gain.value = 1.0;
+    const convolver = ctx.createConvolver();
+    convolver.buffer = makeReverbImpulse(ctx, 1.6, 2.6);
+    // Output trim so wet doesn't drown the dry path. Tweak to taste.
+    const wetTrim = ctx.createGain();
+    wetTrim.gain.value = 0.55;
+    reverbInput.connect(convolver).connect(wetTrim).connect(masterGain);
     return ctx;
   } catch {
     return null;
+  }
+}
+
+/** Synthetic reverb IR — exponentially-decaying stereo noise. Cheap,
+ *  procedural, and tunable per-act later (longer tail for the Cistern,
+ *  damped tail for the Refectory). */
+function makeReverbImpulse(c: AudioContext, durationSec: number, decay: number): AudioBuffer {
+  const sr = c.sampleRate;
+  const length = Math.max(1, Math.floor(sr * durationSec));
+  const ir = c.createBuffer(2, length, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = ir.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      const t = i / length;
+      // Power-law decay — fast initial fall, long quiet tail.
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+    }
+  }
+  return ir;
+}
+
+/** Build the dry+wet routing chain for a positional sound. Sources
+ *  connect into the returned node; their signal flows through a panner
+ *  (which Web Audio positions in 3D relative to the listener), then
+ *  splits to dry → master and wet → reverb. The shared convolver does
+ *  the heavy lifting once; per-sound CPU is just a panner + two gains.
+ *
+ *  wetSend defaults to 0.35 — present but not drowning. UI sounds skip
+ *  this path entirely and stay bone dry. */
+function createPositionalChain(pos: Vec3Sound, wetSend: number = 0.35): AudioNode {
+  const c = ctx!;
+  const panner = c.createPanner();
+  panner.panningModel = 'equalpower';   // cheap, mobile-safe; HRTF is CPU
+  panner.distanceModel = 'inverse';
+  panner.refDistance = 1.5;             // metres — full volume within
+  panner.maxDistance = 28;              // beyond this, no more attenuation
+  panner.rolloffFactor = 1.4;
+  panner.coneInnerAngle = 360;
+  // Modern AudioParam API where available; fall back to setPosition()
+  // on older Safari. Same for the listener pose tick below.
+  if ('positionX' in panner) {
+    panner.positionX.value = pos.x;
+    panner.positionY.value = pos.y;
+    panner.positionZ.value = pos.z;
+  } else {
+    (panner as unknown as { setPosition: (x: number, y: number, z: number) => void })
+      .setPosition(pos.x, pos.y, pos.z);
+  }
+  const dryGain = c.createGain();
+  dryGain.gain.value = 1.0;
+  const wetGain = c.createGain();
+  wetGain.gain.value = wetSend;
+  panner.connect(dryGain).connect(masterGain!);
+  panner.connect(wetGain).connect(reverbInput!);
+  return panner;
+}
+
+/** Update the AudioListener pose so positional pans/distances track the
+ *  player's view. Call once per frame from the main loop with the
+ *  camera. Cheap — just sets a few AudioParam values. */
+export function setAudioListenerPose(
+  px: number, py: number, pz: number,
+  fx: number, fy: number, fz: number,
+): void {
+  const c = ensureCtx();
+  if (!c) return;
+  const lis = c.listener;
+  if ('positionX' in lis) {
+    lis.positionX.value = px;
+    lis.positionY.value = py;
+    lis.positionZ.value = pz;
+    lis.forwardX.value = fx;
+    lis.forwardY.value = fy;
+    lis.forwardZ.value = fz;
+    lis.upX.value = 0;
+    lis.upY.value = 1;
+    lis.upZ.value = 0;
+  } else {
+    const oldLis = lis as unknown as {
+      setPosition: (x: number, y: number, z: number) => void;
+      setOrientation: (fx: number, fy: number, fz: number, ux: number, uy: number, uz: number) => void;
+    };
+    oldLis.setPosition(px, py, pz);
+    oldLis.setOrientation(fx, fy, fz, 0, 1, 0);
   }
 }
 
@@ -66,11 +179,12 @@ export function playWhoosh() {
 }
 
 /** Heavy impact — low-frequency body thud + a brief high-mid crack on top. */
-export function playImpact() {
+export function playImpact(pos?: Vec3Sound) {
   const c = ensureCtx();
   if (!c || !masterGain) return;
 
   const now = c.currentTime;
+  const out: AudioNode = pos ? createPositionalChain(pos, 0.40) : masterGain;
 
   // Body: low oscillator dropping to sub-bass
   const body = c.createOscillator();
@@ -81,7 +195,7 @@ export function playImpact() {
   bodyGain.gain.setValueAtTime(0.0001, now);
   bodyGain.gain.exponentialRampToValueAtTime(0.8, now + 0.005);
   bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-  body.connect(bodyGain).connect(masterGain);
+  body.connect(bodyGain).connect(out);
   body.start(now);
   body.stop(now + 0.24);
 
@@ -99,7 +213,7 @@ export function playImpact() {
   crackFilter.frequency.value = 1500;
   const crackGain = c.createGain();
   crackGain.gain.value = 0.4;
-  crack.connect(crackFilter).connect(crackGain).connect(masterGain);
+  crack.connect(crackFilter).connect(crackGain).connect(out);
   crack.start(now);
   crack.stop(now + crackDur);
 }
@@ -151,11 +265,14 @@ export function playPlayerHurt() {
 
 export type EnemyDeathSize = 'small' | 'medium' | 'spectral';
 
-export function playEnemyDeath(size: EnemyDeathSize = 'medium') {
+export function playEnemyDeath(size: EnemyDeathSize = 'medium', pos?: Vec3Sound) {
   const c = ensureCtx();
   if (!c || !masterGain) return;
   const now = c.currentTime;
-  const master = masterGain;
+  // Spectral deaths get a wetter send — they're meant to feel ethereal.
+  const master: AudioNode = pos
+    ? createPositionalChain(pos, size === 'spectral' ? 0.60 : 0.40)
+    : masterGain;
 
   if (size === 'small') {
     // Rodent squeal + tiny thud
@@ -262,11 +379,13 @@ export function playEnemyDeath(size: EnemyDeathSize = 'medium') {
 
 /** Enemy windup growl — short menacing telegraph as enemy starts winding up.
  *  Size buckets match playEnemyDeath. */
-export function playEnemyWindup(size: EnemyDeathSize = 'medium') {
+export function playEnemyWindup(size: EnemyDeathSize = 'medium', pos?: Vec3Sound) {
   const c = ensureCtx();
   if (!c || !masterGain) return;
   const now = c.currentTime;
-  const master = masterGain;
+  const master: AudioNode = pos
+    ? createPositionalChain(pos, size === 'spectral' ? 0.55 : 0.30)
+    : masterGain;
 
   const baseFreq = size === 'small' ? 280 : size === 'spectral' ? 220 : 110;
   const peakFreq = size === 'small' ? 360 : size === 'spectral' ? 320 : 150;
@@ -332,11 +451,11 @@ export function playMagicHit() {
 
 /** Loot landing on the floor — short tumbly thump. Played when an item
  *  pickup spawns (after enemy death). */
-export function playLootLand() {
+export function playLootLand(pos?: Vec3Sound) {
   const c = ensureCtx();
   if (!c || !masterGain) return;
   const now = c.currentTime;
-  const master = masterGain;
+  const master: AudioNode = pos ? createPositionalChain(pos, 0.30) : masterGain;
 
   // Thud
   const thud = c.createOscillator();

@@ -131,7 +131,7 @@ export function spawnVase(
       // obstacle out of the walkable region — without this, the
       // player can't walk through the smashed cell.
       onDestroyed?.();
-      playEnemyDeath('small');
+      playEnemyDeath('small', group.position);
       // Roll loot. Pre-broken vases drop a small amount of dust
       // rather than coins — visually they were already smashed,
       // so the "reward" should match.
@@ -212,7 +212,7 @@ export function spawnCobweb(
       clearEntityCombatStats(entityId);
       // Soft tear — a few pale shards (web tatters), no stone crunch.
       spawnShatterBurst(scene, group.position.x, group.position.y + 1.0, group.position.z, true);
-      playEnemyDeath('small');
+      playEnemyDeath('small', group.position);
       onDestroyed?.();         // opens the passage
       group.traverse((o) => {
         const mesh = o as THREE.Mesh;

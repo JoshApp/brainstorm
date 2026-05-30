@@ -171,7 +171,7 @@ export function createPickup(
   });
 
   // If we're not fountaining, this is effectively the moment it lands.
-  if (mode === 'settled') playLootLand();
+  if (mode === 'settled') playLootLand(pos);
 
   let t = 0;
   // Tiny "land puff" — disc scales briefly bigger on landing for an
@@ -264,7 +264,7 @@ export function createPickup(
           // means the interactables system was ignoring it; TAKE now
           // surfaces the prompt + tap target.
           interactable.promptLabel = 'TAKE';
-          playLootLand();
+          playLootLand(built.group.position);
         } else {
           built.group.position.set(itemX, itemY, itemZ);
         }

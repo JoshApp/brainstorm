@@ -544,7 +544,7 @@ export function createEnemy(
       clearEntityCombatStats(entityId);
       unregisterDamageSink(entityId);
       destroyEntity(entityId);
-      playEnemyDeath(audioSizeFor(spec));
+      playEnemyDeath(audioSizeFor(spec), container.position);
       // Drop table: each entry rolls independently. Multiple successful
       // drops are spread in a small arc around the death position so they
       // don't stack on the same pixel.
@@ -906,7 +906,7 @@ export function createEnemy(
         if (state === 'idle' || state === 'returning') {
           state = 'alerted';
           phaseTimer = 0;
-          playEnemyWindup(audioSizeFor(spec));  // "I see you" growl
+          playEnemyWindup(audioSizeFor(spec), container.position);  // "I see you" growl
         }
       }
       // Shared aggro — broadcast the player's position so nearby
@@ -961,7 +961,7 @@ export function createEnemy(
           lastSeenPos.set(alert.x, 0, alert.z);
           state = 'alerted';
           phaseTimer = 0;
-          playEnemyWindup(audioSizeFor(spec));
+          playEnemyWindup(audioSizeFor(spec), container.position);
           break;
         }
         // Slow scan around home yaw. Pick a new target angle every
@@ -1091,7 +1091,7 @@ export function createEnemy(
           phaseTimer = 0;
           strikeAlreadyHit = false;
           rollWindupTime();
-          playEnemyWindup(audioSizeFor(spec));
+          playEnemyWindup(audioSizeFor(spec), container.position);
           // AoE abilities lock their target + raise the ground telegraph
           // the instant the windup begins, so the player has the full
           // windup to step off the marker.

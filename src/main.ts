@@ -23,7 +23,7 @@ import { initRenderPipeline, renderWithStyle, setDarkAdapt } from './style/rende
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
-import { setMasterVolume, startAmbience, setTorchProximity, playWhoosh } from './audio/sfx';
+import { setMasterVolume, startAmbience, setTorchProximity, setAudioListenerPose, playWhoosh } from './audio/sfx';
 import { emit } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { LEVEL_1, LEVELS } from './level/specs';
@@ -509,6 +509,17 @@ const SYSTEMS: GameSystem[] = [
       prox += 1 - d / earRange;
     }
     setTorchProximity(prox);
+
+    // Update the Web Audio listener pose so positional sounds (enemy
+    // growls, impacts, loot landing) pan + attenuate relative to the
+    // camera. forwardScratch is filled by the dark-adapt step below;
+    // here we use the camera's world direction directly so this tick
+    // doesn't depend on which block runs first.
+    camera.getWorldDirection(forwardScratch);
+    setAudioListenerPose(
+      camera.position.x, camera.position.y, camera.position.z,
+      forwardScratch.x, forwardScratch.y, forwardScratch.z,
+    );
 
     // Eye dark-adaptation keys off the estimated light on the SURFACE you're
     // facing — analytic (no GPU readback): torch LOS proximity at the looked-at
