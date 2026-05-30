@@ -10,7 +10,7 @@
 
 import { dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
-import { useFirstConsumable } from './consumable-bar';
+import { useFirstConsumable, useConsumableSlot } from './consumable-bar';
 import { toggleInventoryPanel } from '../ui/inventory-panel';
 import { openCharacterScreen, isCharacterScreenOpen, closeCharacterScreen } from '../ui/character-screen';
 import { dismissTopScreen, isAnyScreenOpen } from '../ui/screen-manager';
@@ -70,6 +70,11 @@ export const desktopScheme: InputScheme = {
       if (k === 'q') {
         e.preventDefault();
         useFirstConsumable();
+      }
+      // Number keys: use the consumable in that hotbar slot (1 = heal).
+      if (k >= '1' && k <= '9') {
+        e.preventDefault();
+        useConsumableSlot(Number(k));
       }
       // Character screen — visible mid-run for status check. Spend
       // buttons enable only at safe rooms.

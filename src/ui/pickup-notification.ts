@@ -48,6 +48,13 @@ export function createPickupNotification() {
   });
 }
 
+/** Show a brief in-world message in the same warm serif register as pickups
+ *  (e.g. "You can carry no more.", "Already whole."). Terse + indifferent —
+ *  this is in-world voice, NOT the broadcast layer. */
+export function showInWorldMessage(text: string) {
+  show(text);
+}
+
 function show(text: string) {
   if (!label) return;
   label.textContent = text;

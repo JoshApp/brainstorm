@@ -154,6 +154,10 @@ export interface ItemSpec {
   consumableHeal?: number;
   /** For consumables: apply this buff to the player on use. */
   consumableBuff?: { buffId: string; duration: number };
+  /** For consumables: the most the player may CARRY at once. Pickups beyond
+   *  this are refused (left on the ground); the hotbar shows the stack full.
+   *  Omit for no cap. Souls-style scarcity — a finite heal economy per run. */
+  carryLimit?: number;
   /**
    * Affix pool — ids into AFFIXES (src/content/affixes.ts). Every
    * pickup instance rolls up to `maxAffixes` of these by weight (see
@@ -499,6 +503,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Tastes of iron and dust.',
     dropModel: HEALING_POTION,
     consumableHeal: 4,
+    carryLimit: 5,
   },
   'berserk-potion': {
     id: 'berserk-potion',
@@ -508,6 +513,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'It moves on its own behind the glass.',
     dropModel: BERSERK_POTION,
     consumableBuff: { buffId: 'berserk', duration: 8.0 },
+    carryLimit: 3,
   },
 };
 

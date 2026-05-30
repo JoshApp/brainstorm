@@ -1,4 +1,5 @@
 import { emit } from '../broadcast/event-bus';
+import { ITEMS } from '../content/items';
 
 // Player inventory bag — multiset of item ids the player CURRENTLY holds
 // but doesn't have equipped. Equipped items live in src/player/equipment.ts
@@ -25,14 +26,23 @@ export function onInventoryChanged(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
+/** True if the player is already holding the carry cap for this item. */
+export function isAtCarryLimit(itemId: string): boolean {
+  const limit = ITEMS[itemId]?.carryLimit;
+  return limit != null && (counts.get(itemId) ?? 0) >= limit;
+}
+
 /** Add an item and fire the pickup event (notification toast triggers).
  *  Optional displayName lets callers (e.g. affix-rolled pickups) pass
  *  the decorated name so the toast can show "scimitar of the keening"
- *  instead of the plain base name. */
-export function addItem(itemId: string, displayName?: string) {
+ *  instead of the plain base name. Returns false (and adds nothing) when
+ *  the item is at its carry cap — callers leave the world pickup in place. */
+export function addItem(itemId: string, displayName?: string): boolean {
+  if (isAtCarryLimit(itemId)) return false;
   counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
   emit({ type: 'item:picked-up', itemId, displayName });
   notify();
+  return true;
 }
 
 /** Add an item without firing the pickup event (used when un-equipping). */

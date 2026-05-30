@@ -128,6 +128,24 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -4, y: 1.1 } },
   },
 
+  // Consumable hotbar review — full heal stack + a berserk, gameplay HUD up.
+  consumables: {
+    freeze: true,
+    level: {
+      id: 'dbg-consumables', depth: 0, displayName: 'consumables', fogColor: 0x14100a,
+      startPos: { x: 0, z: 0, yaw: 0 },
+      rooms: [{ id: 'cb-room', rect: { x: 0, z: 0, w: 6, d: 6 }, height: 3.2 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.05, z: -1.5, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  3.05, z: -1.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    giveItems: ['healing-potion', 'healing-potion', 'healing-potion', 'healing-potion', 'healing-potion', 'berserk-potion', 'berserk-potion'],
+  },
+
   // Skeleton up close in a small lit room — for silhouette review.
   skeleton: {
     freeze: true,

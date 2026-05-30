@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
-import { addItem, removeItem } from '../player/inventory';
+import { addItem, removeItem, isAtCarryLimit } from '../player/inventory';
+import { showInWorldMessage } from '../ui/pickup-notification';
 import { tryAutoEquip } from '../player/equipment';
 import { rollItemInstance, instanceDisplayName } from '../player/item-instance';
 import { getTexture } from '../style/procedural-textures';
@@ -191,6 +192,12 @@ export function createPickup(
     // looking like a halo balloon.
     outlineScale: 1.45,
     onUse() {
+      // Carry cap (consumables): if full, leave the pickup on the ground and
+      // tell the player — no chime, no destroy, so they can grab it later.
+      if (item.kind === 'consumable' && isAtCarryLimit(item.id)) {
+        showInWorldMessage('You can carry no more.');
+        return;
+      }
       // Pickup chime — rarity-tinted (mundane low/dull, fabled high/long).
       playPickupChime(RARITY_INDEX[item.rarity ?? 'mundane']);
       // Emit on the event bus so the run-state's "items found" set + any
