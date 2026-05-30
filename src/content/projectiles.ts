@@ -1,4 +1,48 @@
+import * as THREE from 'three';
 import { registerProjectileType, type ProjectileType } from '../combat/projectile-pool';
+
+// ── Custom projectile geometries ─────────────────────────────────
+// Authored at REAL-WORLD SIZE (the pool sets mesh.scale=1 when a
+// type provides geometry). Each is oriented so the tip / forward
+// end sits at LOCAL -Z — the pool's orientToVelocity tick aligns
+// local -Z with the velocity direction so they fly tip-first.
+
+/** Long thin cone — an arrow / bolt shape. Used by the player's
+ *  crossbow. The tip is at -Z, the base at +Z. Trail sprite carries
+ *  the visible glow; the cone itself reads as a slim metallic dart. */
+function arrowGeometry(): THREE.BufferGeometry {
+  const g = new THREE.ConeGeometry(0.030, 0.36, 6);
+  // ConeGeometry's apex sits at +Y by default; rotate so apex → -Z.
+  g.rotateX(-Math.PI / 2);
+  // Shift so the apex is forward of the projectile centre by ~0.20m;
+  // the back of the shaft trails at +Z.
+  g.translate(0, 0, -0.10);
+  return g;
+}
+
+/** Short stout cylinder — a flung bone. Sphere caps would be nicer
+ *  but a single cylinder reads as "bone" at projectile scale; the
+ *  pale tint sells the rest. */
+function boneGeometry(): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(0.038, 0.038, 0.22, 6);
+  // Cylinder is +Y by default; rotate so its long axis aligns with -Z.
+  g.rotateX(Math.PI / 2);
+  // Centre on (0, 0, 0).
+  g.translate(0, 0, -0.05);
+  return g;
+}
+
+/** Elongated octahedron — an arcane bolt with sharp facets that
+ *  read as crystalline / magical, not just "ball". The emissive
+ *  material does the heavy lifting; the octahedron's silhouette
+ *  catches per-face shading so it looks alive in flight. */
+function arcaneBoltGeometry(): THREE.BufferGeometry {
+  const g = new THREE.OctahedronGeometry(0.14, 0);
+  // Stretch along travel direction (-Z) so it reads as a streaking
+  // shard rather than a static gem.
+  g.scale(1.0, 1.0, 1.7);
+  return g;
+}
 
 // Projectile content registry. Add a new spell/dart/spit by adding a
 // ProjectileType here and exporting an id constant — ranged enemies
@@ -54,6 +98,8 @@ export const BONE_SHARD: ProjectileType = {
   color: 0xd8cfb8,
   lightIntensity: 0.5,
   lightRange: 2.2,
+  geometry: boneGeometry,
+  orientToVelocity: true,
 };
 
 // Crossbow bolt — the player's physical ranged shot. Fast + small +
@@ -68,6 +114,8 @@ export const CROSSBOW_BOLT: ProjectileType = {
   color: 0xffd9a0,
   lightIntensity: 0.4,
   lightRange: 1.8,
+  geometry: arrowGeometry,
+  orientToVelocity: true,
 };
 
 // Arcane bolt — the player's wand shot. Magic (bypasses physical
@@ -82,6 +130,8 @@ export const ARCANE_BOLT: ProjectileType = {
   color: 0xb060ff,
   lightIntensity: 1.4,
   lightRange: 3.2,
+  geometry: arcaneBoltGeometry,
+  orientToVelocity: true,
 };
 
 export function registerProjectiles(): void {

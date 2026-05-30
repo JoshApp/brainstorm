@@ -84,7 +84,23 @@ export function createCombatSystem(
     tmpMuzzle.copy(camera.position).addScaledVector(forwardDir, 0.5);
     tmpMuzzle.y -= 0.15;
     if (target) {
-      tmpAim.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
+      // Horizontal auto-aim (XZ to the target), but the player
+      // controls the VERTICAL — the bolt's elevation comes from
+      // the camera's pitch projected to the target's horizontal
+      // distance. Looking up shoots over / at the head; looking
+      // down lands at the feet. Previous version forced y to the
+      // target's torso aimHeight which felt like the player was
+      // shooting at feet regardless of where they aimed.
+      const dx = target.position.x - camera.position.x;
+      const dz = target.position.z - camera.position.z;
+      const horDist = Math.hypot(dx, dz) || 0.001;
+      const fLatLen = Math.hypot(forwardDir.x, forwardDir.z) || 0.001;
+      const pitchTan = forwardDir.y / fLatLen;
+      tmpAim.set(
+        target.position.x,
+        camera.position.y + pitchTan * horDist,
+        target.position.z,
+      );
     } else {
       tmpAim.copy(camera.position).addScaledVector(forwardDir, RANGED_REACH);
     }

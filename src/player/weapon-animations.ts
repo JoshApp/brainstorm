@@ -579,12 +579,12 @@ function spearLungePose(phase: SwordPhase, t: number): WeaponPose {
 //             drops as if working the lever) on a sine bump partway
 //             through, while the base path eases recoil → idle. The
 //             long recover is the cadence cost.
-const XBOW_AIM_X = ix - 0.12;       // toward centre line
-const XBOW_AIM_Y = iy + 0.10;       // raised to brace
-const XBOW_AIM_Z = iz + 0.04;       // pulled back to the shoulder
-const XBOW_AIM_RX = rx + 0.20;      // ≈ 0 — level the barrel
-const XBOW_AIM_RY = ry + 0.15;      // ≈ 0 — aim straight forward
-const XBOW_AIM_RZ = rz - 0.30;      // ≈ 0.1 — mostly de-roll
+const XBOW_AIM_X = ix - 0.20;       // closer to centre line
+const XBOW_AIM_Y = iy + 0.08;       // raised slightly
+const XBOW_AIM_Z = iz - 0.14;       // pushed FORWARD past idle — bow stays out
+const XBOW_AIM_RX = rx + 0.10;      // mostly level barrel, slight downward tip
+const XBOW_AIM_RY = ry + 0.20;      // aimed straight forward
+const XBOW_AIM_RZ = rz - 0.30;      // de-roll so the prod is horizontal
 // Recoil end-of-strike pose, relative to the aim pose.
 const XBOW_KICK_Y = 0.06;           // muzzle climbs
 const XBOW_KICK_Z = 0.16;           // snaps back into the shoulder
@@ -627,22 +627,34 @@ function crossbowFirePose(phase: SwordPhase, t: number): WeaponPose {
   return scratch;
 }
 
-// ── Wand: gather → cast → settle ─────────────────────────────────
-// The wand reads as a caster's gesture rather than a weapon swing.
-//   windup  — draw back + up, cock the wrist; the long windup is the
-//             channel. A tiny tremble (sine jitter scaling with t)
-//             reads as "gathering charge."
-//   strike  — CAST: thrust the orb forward (−Z) and slightly up, fast.
-//   recover — settle the cast pose back to idle.
-const WAND_DRAW_X = ix - 0.10;
-const WAND_DRAW_Y = iy + 0.12;
-const WAND_DRAW_Z = iz + 0.10;      // drawn back toward the camera
-const WAND_DRAW_RX = rx + 0.12;
-const WAND_DRAW_RZ = rz + 0.18;     // cock the wrist
-const WAND_CAST_X = ix - 0.04;
-const WAND_CAST_Y = iy + 0.06;
-const WAND_CAST_Z = iz - 0.30;      // pushed forward — the release
-const WAND_CAST_RX = rx - 0.28;     // tip up-and-forward
+// ── Wand / Staff: raise upright → cast → settle ──────────────────
+// The staff is held UPRIGHT in the casting pose — vertical shaft,
+// orb at the top. The shiver during windup reads as the staff
+// gathering charge before the release. Cast keeps the staff
+// vertical but pushes it slightly forward + tips the orb toward
+// the target.
+//   windup  — bring the staff to the upright ready pose with a
+//             rising sine-tremble (shiver builds with t).
+//   strike  — push the upright staff forward briefly, tip the
+//             orb toward the camera-forward direction. The orb
+//             stays HIGH so the launched projectile reads as
+//             coming from the top of the staff.
+//   recover — settle back to idle.
+// Upright pose — wand model authors shaft along -Z, so rotX ≈ -π/2
+// tilts it to point UP. Held to the player's right, base at hip
+// level, orb crown at head level.
+const WAND_DRAW_X = ix + 0.18;       // out to the right of centre
+const WAND_DRAW_Y = iy - 0.12;       // base low so the orb sits at eye level
+const WAND_DRAW_Z = iz + 0.05;       // close to chest, slightly back
+const WAND_DRAW_RX = -1.35;          // strongly tilted UP — close to vertical
+const WAND_DRAW_RZ = rz - 0.12;      // slight outward roll, natural hold
+// Cast pose — shaft tips FORWARD from vertical to about 45°,
+// pointing the orb crown at the target while staying high. The
+// small forward Z-push reads as the release motion.
+const WAND_CAST_X = ix + 0.10;
+const WAND_CAST_Y = iy - 0.04;
+const WAND_CAST_Z = iz - 0.10;
+const WAND_CAST_RX = -0.65;          // tipped forward, orb pointing target-ish
 const WAND_CAST_RZ = rz - 0.10;
 
 function wandCastPose(phase: SwordPhase, t: number): WeaponPose {

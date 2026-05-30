@@ -249,26 +249,47 @@ export const CROSSBOW: ModelSpec = {
   },
 };
 
-// Wand viewmodel — a gnarled rod with a bright arcane orb at the tip.
-// The orb's emissive sells "this casts" even at rest.
+// Wand / Staff viewmodel — long gnarled shaft, three iron claws
+// cradling a bright arcane orb at the top. The orb's emissive
+// + a faint halo sprite sell "this casts" even at rest. The
+// claws + the longer shaft push it from "stick with a ball" into
+// "ritual staff" territory.
+//
+// Authored along -Z (forward) at rest. The viewmodel pose
+// rotates it to UPRIGHT for held / cast — see WAND_DRAW_RX etc.
+// in weapon-animations.ts. So the model's tip ends up POINTING
+// UPWARD on screen, with the orb visible at the top of the
+// silhouette.
 export const WAND: ModelSpec = {
   id: 'weapon-wand',
   materials: {
-    wood: { color: 0x241a12, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
-    orb:  { color: 0x000000, emissive: 0xb060ff, emissiveIntensity: 2.6, roughness: 1.0, fog: false },
+    wood:  { color: 0x241a12, roughness: 0.95, metalness: 0.0, fog: false, flatShading: 'auto' },
+    iron:  { color: 0x14110d, roughness: 0.55, metalness: 0.6, fog: false, flatShading: 'auto' },
+    orb:   { color: 0x000000, emissive: 0xb060ff, emissiveIntensity: 2.8, roughness: 1.0, fog: false },
   },
   parts: [
-    // Shaft — thin rod pointing forward (−Z).
-    { kind: 'cylinder', pos: [0, 0, -0.04], radius: 0.012, height: 0.26, rot: [Math.PI / 2, 0, 0], mat: 'wood', jitter: 0.006 },
-    // Grip wrap.
-    { kind: 'cylinder', pos: [0, -0.005, 0.06], radius: 0.018, height: 0.08, rot: [Math.PI / 2, 0, 0], mat: 'wood' },
-    // Arcane orb at the tip.
-    { kind: 'sphere', pos: [0, 0.005, -0.18], radius: 0.035, segments: [12, 10], mat: 'orb' },
-    // Halo so the cast colour reads at a glance.
-    { kind: 'sprite', pos: [0, 0.005, -0.18], size: [0.16, 0.16], texture: 'fire-wisp', blending: 'additive', color: 0xb060ff },
+    // Long gnarled shaft — runs from grip (+Z) to the crown
+    // (-Z). Slightly thicker than the old wand to read as staff.
+    { kind: 'cylinder', pos: [0, 0, -0.12], radius: 0.016, height: 0.50, rot: [Math.PI / 2, 0, 0], mat: 'wood', jitter: 0.008 },
+    // Grip binding near the back.
+    { kind: 'cylinder', pos: [0, 0, 0.10], radius: 0.022, height: 0.08, rot: [Math.PI / 2, 0, 0], mat: 'iron' },
+    // Iron collar just below the crown — anchors the claws.
+    { kind: 'cylinder', pos: [0, 0, -0.32], radius: 0.025, height: 0.025, rot: [Math.PI / 2, 0, 0], mat: 'iron' },
+    // Three claw tines splayed around the orb. Authored as small
+    // cones, slightly angled outward + upward toward the orb.
+    // Splayed at 0° / 120° / 240° around the shaft.
+    // The angled rotation tilts each cone so its tip arcs in
+    // toward the orb's location at z=-0.40.
+    { kind: 'cone', pos: [ 0.030, 0,      -0.36], radius: 0.010, height: 0.10, rot: [-Math.PI / 2,  0,  -0.5], mat: 'iron' },
+    { kind: 'cone', pos: [-0.015, 0.026,  -0.36], radius: 0.010, height: 0.10, rot: [-Math.PI / 2,  0,   0.5], mat: 'iron' },
+    { kind: 'cone', pos: [-0.015,-0.026,  -0.36], radius: 0.010, height: 0.10, rot: [-Math.PI / 2,  0,   0.5], mat: 'iron' },
+    // Arcane orb cradled between the claws.
+    { kind: 'sphere', pos: [0, 0, -0.40], radius: 0.034, segments: [12, 10], mat: 'orb' },
+    // Soft halo — kept small so it doesn't read as a rectangle.
+    { kind: 'sprite', pos: [0, 0, -0.40], size: [0.13, 0.13], texture: 'fire-wisp', blending: 'additive', color: 0xb060ff },
   ],
   slots: {
-    muzzle: { pos: [0, 0.005, -0.22] },
+    muzzle: { pos: [0, 0, -0.44] },
   },
 };
 

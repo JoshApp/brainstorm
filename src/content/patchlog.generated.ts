@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-05-30",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Combo pass"
+      },
+      {
         "tag": "content",
         "text": "Combat feel: no-weapon gate, strike trail, wider cone + more reach"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Walk gait — legs swing from real movement (no more moonwalk)"
-      },
-      {
-        "tag": "tune",
-        "text": "Extract pure item-formatting out of the inventory monolith + tests"
       }
     ]
   }

@@ -41,6 +41,15 @@ export interface ProjectileType {
   lightIntensity: number;
   /** PointLight range. */
   lightRange: number;
+  /** Optional custom mesh geometry — authored at real-world size.
+   *  Bones, arrows, etc. When set, mesh.scale is forced to 1
+   *  (otherwise the type's radius doubles as visual scale of the
+   *  default sphere). */
+  geometry?: () => THREE.BufferGeometry;
+  /** When true, the mesh is rotated each frame so its local -Z
+   *  faces the direction of travel. Use with arrow / bone /
+   *  spear-like geometries authored with the tip at local -Z. */
+  orientToVelocity?: boolean;
 }
 
 const TYPES = new Map<string, ProjectileType>();
@@ -55,8 +64,28 @@ export function isProjectileRegistered(id: string): boolean {
   return TYPES.has(id);
 }
 
-// Single shared sphere geometry across all projectiles — cheap, low-poly.
+// Default shared sphere geometry — cheap, low-poly, used by spell bolts
+// + spits where shape isn't important.
 const SHARED_GEOM = new THREE.SphereGeometry(1, 10, 8);
+
+// Per-type geometry cache. Types that declare a geometry() factory get
+// their own pre-built BufferGeometry (built lazily on first use) so
+// arrows look like arrows and bones look like bones without paying per-
+// instance allocation. Geometries are authored at INTENDED REAL-WORLD
+// SIZE — when a type has its own geometry, the pool sets mesh.scale to
+// 1 instead of scaling by type.radius (which only matters for hit-test
+// then).
+const geometriesByType = new Map<string, THREE.BufferGeometry>();
+function geometryFor(type: ProjectileType): THREE.BufferGeometry {
+  if (!type.geometry) return SHARED_GEOM;
+  let g = geometriesByType.get(type.id);
+  if (!g) {
+    g = type.geometry();
+    geometriesByType.set(type.id, g);
+  }
+  return g;
+}
+
 // Per-type emissive material so colors stay distinct without per-instance
 // material allocation.
 const materialsByType = new Map<string, THREE.MeshBasicMaterial>();
@@ -187,10 +216,13 @@ export function spawnProjectile(args: SpawnArgs): void {
   // Velocity = unit (target - origin) × speed.
   slot.velocity.copy(args.target).sub(args.origin).normalize().multiplyScalar(type.speed);
 
-  // Mesh visuals.
+  // Mesh visuals. Custom geometries are authored at real-world size
+  // so they get scale=1; the default sphere is unit-radius and uses
+  // type.radius as a uniform scale.
   slot.mesh.material = materialFor(type);
+  slot.mesh.geometry = geometryFor(type);
   slot.mesh.position.copy(args.origin);
-  slot.mesh.scale.setScalar(type.radius);
+  slot.mesh.scale.setScalar(type.geometry ? 1 : type.radius);
   slot.mesh.visible = true;
 
   // Trail — colored match, slightly larger than the core. Stretches a
@@ -238,6 +270,16 @@ export function tickProjectiles(
     slot.position.addScaledVector(slot.velocity, dt);
     slot.mesh.position.copy(slot.position);
     slot.trail.position.copy(slot.position);
+    // Orient elongated geometries (arrow / bone) along the velocity
+    // direction so they read as flying tip-first instead of always
+    // pointing world-forward.
+    if (slot.type.orientToVelocity) {
+      slot.mesh.lookAt(
+        slot.position.x + slot.velocity.x,
+        slot.position.y + slot.velocity.y,
+        slot.position.z + slot.velocity.z,
+      );
+    }
     slot.remaining -= dt;
 
     if (slot.friendly) {
