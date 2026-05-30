@@ -180,7 +180,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Pitted and ill-balanced. It will do.',
     dropModel: SWORD_RUSTED,
     viewmodel: SWORD_RUSTED,
-    weapon: { class: 'sword', reach: 1.8, coneHalfAngle: 0.65, damage: 1, critChance: 0.05, critMultiplier: 2.0 },
+    weapon: { class: 'sword', reach: 2.1, coneHalfAngle: 0.80, damage: 1, critChance: 0.05, critMultiplier: 2.0 },
     affixPool: ['keening', 'gallows', 'spine', 'searing', 'hoarfrost'],
     maxAffixes: 1,
   },

@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Dark-adapt shader: less blue, more shimmer"
+      },
+      {
+        "tag": "tune",
         "text": "Dark-adapt rates"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Roll shoulder-pivot arms out to ghoul, wraith, stoneguard"
-      },
-      {
-        "tag": "tune",
-        "text": "Pose-clip animation + jointed-arm rig (skirmisher proof)"
       }
     ]
   }

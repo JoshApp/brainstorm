@@ -17,6 +17,7 @@ import { gameRngChance } from '../engine/rng';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { spawnProjectile, setProjectileEnemyProvider } from './projectile-pool';
+import { getEquipped } from '../player/equipment';
 
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
@@ -26,9 +27,18 @@ import { spawnProjectile, setProjectileEnemyProvider } from './projectile-pool';
 //
 // One-hit-per-swing: flag set at start of strike phase, cleared on the next
 // strike. Picks the closest enemy in the cone, not the first.
+//
+// Strike-window trail: after the strike phase ENDS, the cone-test keeps
+// running for STRIKE_TRAIL_DURATION more seconds (if we haven't hit yet).
+// Gives the player a small forgiveness tail — close-call timings where
+// the swing felt right but the enemy was just outside reach during the
+// 100ms strike now connect. Doesn't extend the animation or let you
+// double-tap faster; only opens if no hit landed during strike.
+
+const STRIKE_TRAIL_DURATION = 0.10;     // seconds — Smash-Bros-style intent buffer
 
 export interface CombatSystem {
-  tick(attackPressed: boolean): void;
+  tick(attackPressed: boolean, dt: number): void;
 }
 
 function hapticVibrate(ms: number) {
@@ -57,6 +67,7 @@ export function createCombatSystem(
 ): CombatSystem {
   let strikeAlreadyHit = false;
   let wasStriking = false;
+  let trailTimer = 0;     // > 0 → strike-trail hit window is open
 
   // Friendly projectiles (crossbow/wand) hit-test enemies via this
   // provider — registered here so the projectile pool's tick needn't
@@ -106,8 +117,15 @@ export function createCombatSystem(
     if (heavy) freezeFor(Math.min(30, CONFIG.HIT_PAUSE_MS * 0.3));
   }
 
-  function tick(attackPressed: boolean) {
+  function tick(attackPressed: boolean, dt: number) {
     if (attackPressed) {
+      // Gate: if nothing is equipped in the weapon slot, swallow the
+      // press silently. Avoids the bare-hands attack sound + the
+      // viewmodel-less swing animation that fires when the player
+      // hasn't picked up a weapon yet.
+      if (!getEquipped('weapon')) {
+        return;
+      }
       // Whoosh + 'attack:swing' fire from sword.ts's onSwingStart so
       // chained combo steps make sound too, not just the first press.
       // We just forward the input.
@@ -118,10 +136,20 @@ export function createCombatSystem(
 
     if (striking && !wasStriking) {
       strikeAlreadyHit = false;
+      trailTimer = 0;
+    }
+    // Strike phase just ended without a hit → open the trail window.
+    if (wasStriking && !striking && !strikeAlreadyHit) {
+      trailTimer = STRIKE_TRAIL_DURATION;
     }
     wasStriking = striking;
 
-    if (!striking || strikeAlreadyHit) return;
+    // Hit-test runs during strike OR during the trail tail (if we
+    // haven't connected yet). Once strikeAlreadyHit is true, both
+    // windows close until the next swing.
+    const inHitWindow = (striking || trailTimer > 0) && !strikeAlreadyHit;
+    if (trailTimer > 0) trailTimer = Math.max(0, trailTimer - dt);
+    if (!inHitWindow) return;
 
     camera.getWorldDirection(forwardDir);  // unit vector
     // Pull stats from the currently-equipped weapon (different weapons have

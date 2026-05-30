@@ -651,9 +651,9 @@ const SYSTEMS: GameSystem[] = [
     updateDarkAdaptReadout(lit, adapt, darkAdaptBrightness());
   } },
 
-  { name: 'combat', phase: 'unpaused', tick() {
+  { name: 'combat', phase: 'unpaused', tick(ctx) {
     const attackPressed = isDying() ? false : consumeAttackPressed();
-    combat.tick(attackPressed);
+    combat.tick(attackPressed, ctx.scaledDt);
   } },
 
   // Walk bob — sword + lamp + offhand viewmodels all read the same shared

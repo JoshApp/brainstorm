@@ -8,8 +8,8 @@ import { resolveWeaponStats, type ResolvedWeaponStats } from '../content/weapon-
 // (a handful of multiplies); even at 60Hz it's noise.
 
 let rawSpec: WeaponStats = {
-  reach: 1.8,
-  coneHalfAngle: 0.65,
+  reach: 2.1,
+  coneHalfAngle: 0.80,
   damage: 1,
   critChance: 0.05,
   critMultiplier: 2.0,
