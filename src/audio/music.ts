@@ -275,9 +275,7 @@ let combatGain: GainNode | null = null;
 
 // Drone oscillators (we keep the array so palette swaps can retune them).
 const droneOscs: OscillatorNode[] = [];
-// Combat oscillators — same purpose, separate array because they tune
-// to the root × different multipliers than the drone.
-const combatOscs: OscillatorNode[] = [];
+// (Combat is now a non-pitched noise rumble — nothing to retune per act.)
 // Motif scheduler handle.
 let motifScheduler: number | null = null;
 // Ambient soundscape: output bus + scheduler + shared noise buffer.
@@ -361,41 +359,40 @@ export function startMusic(): void {
     droneOscs.push(o);
   }
 
-  // ── Combat layer — low dissonant dread ───────────────────────────────
-  // V1 was a sub-bass throb (too in-your-face); V2 was a mid consonant
-  // "breath" (a clean fifth — too pleasant, read as nothing). V3: a LOW,
-  // DISSONANT swell — a low octave (root × 2) plus the TRITONE above it
-  // (× 2.83, the "wrong" interval), through a lowpass so it's felt as
-  // unease in the chest, not heard as a note. Slow swell, never a pulse.
-  // The crunchy impact SFX carry the rhythm; this is just dread under it.
-  const combatMul = [2.0, 2.83];   // low octave + tritone above → tension
-  const combatFilt = c.createBiquadFilter();
-  combatFilt.type = 'lowpass';
-  combatFilt.frequency.value = 520;
-  combatFilt.Q.value = 0.8;
-  combatFilt.connect(combatGain);
-  for (let i = 0; i < 2; i++) {
-    const o = c.createOscillator();
-    o.type = i === 0 ? 'triangle' : 'sawtooth';   // saw on the tritone = teeth
-    o.frequency.value = currentPalette.rootHz * combatMul[i];
-    o.detune.value = i === 0 ? -5 : 7;
-
-    const og = c.createGain();
-    og.gain.value = i === 0 ? 0.22 : 0.12;
-
-    // Slow ominous swell (~0.22-0.28 Hz) — slower than the old breath so it
-    // looms rather than pulses.
-    const lfo = c.createOscillator();
-    lfo.type = 'sine';
-    lfo.frequency.value = 0.22 + i * 0.06;
-    const lfoG = c.createGain();
-    lfoG.gain.value = og.gain.value * 0.4;
-    lfo.connect(lfoG).connect(og.gain);
-
-    o.connect(og).connect(combatFilt);
-    o.start(); lfo.start();
-    combatOscs.push(o);
-  }
+  // ── Combat layer — textural pressure, NO note ─────────────────────────
+  // Three tonal versions all read wrong (throb / consonant breath / dissonant
+  // tritone). So: not a tone at all. A low, non-pitched RUMBLE — looping noise
+  // through a lowpass (sub weight) + a little band-passed grit — swelling
+  // slowly. combatGain (driven by heat in tickHeat) raises it as danger rises
+  // and drops it as the fight clears: FELT as weight in the room, not heard as
+  // music. The crunchy impact SFX carry the rhythm.
+  const combatNoise = c.createBufferSource();
+  combatNoise.buffer = getNoise(c);
+  combatNoise.loop = true;
+  // Low body — the chest-weight rumble.
+  const combatLp = c.createBiquadFilter();
+  combatLp.type = 'lowpass';
+  combatLp.frequency.value = 220;
+  combatLp.Q.value = 0.7;
+  const combatBody = c.createGain();
+  combatBody.gain.value = 0.55;
+  // A touch of mid grit so it's "tension" not just sub-mud.
+  const combatGrit = c.createBiquadFilter();
+  combatGrit.type = 'bandpass';
+  combatGrit.frequency.value = 850;
+  combatGrit.Q.value = 0.6;
+  const combatGritG = c.createGain();
+  combatGritG.gain.value = 0.10;
+  // Slow pressure swell so a held fight still breathes (looms, never pulses).
+  const combatLfo = c.createOscillator();
+  combatLfo.type = 'sine';
+  combatLfo.frequency.value = 0.16;
+  const combatLfoG = c.createGain();
+  combatLfoG.gain.value = 0.18;
+  combatLfo.connect(combatLfoG).connect(combatBody.gain);
+  combatNoise.connect(combatLp).connect(combatBody).connect(combatGain);
+  combatNoise.connect(combatGrit).connect(combatGritG).connect(combatGain);
+  combatNoise.start(); combatLfo.start();
 
   // ── Ambient bus ──────────────────────────────────────────────────────
   // The environmental one-shots (drips, settling stone, far groans, drafts)
@@ -732,6 +729,18 @@ function tickHeat(): void {
   if (currentState !== 'exploration' && currentState !== 'combat') return;
   if (combatHeat > 1.2 && currentState !== 'combat') applyState('combat');
   else if (combatHeat < 0.35 && currentState === 'combat') applyState('exploration');
+
+  // While fighting, the pressure rumble tracks how hot the fight is — a
+  // bigger brawl looms louder, and it eases as the room calms. Mapped
+  // heat 1.2..4 → gain 0.10..0.30, smoothed so it swells rather than steps.
+  if (currentState === 'combat' && combatGain) {
+    const c = getAudioContext();
+    if (c) {
+      const t = Math.min(1, Math.max(0, (combatHeat - 1.2) / 2.8));
+      const target = 0.10 + t * 0.20;
+      combatGain.gain.setTargetAtTime(target, c.currentTime, 0.35);
+    }
+  }
 }
 
 function initMusicEventHooks(): void {
@@ -766,15 +775,7 @@ function retuneDroneStack(): void {
     o.frequency.cancelScheduledValues(now);
     o.frequency.setTargetAtTime(targetHz, now, 0.8);
   }
-  // Combat layer rides the same root: a low octave + the tritone above it
-  // (the dissonant dread interval). Stays anchored to the floor's key.
-  const combatMultipliers = [2.0, 2.83];
-  for (let i = 0; i < combatOscs.length && i < combatMultipliers.length; i++) {
-    const o = combatOscs[i];
-    const targetHz = currentPalette.rootHz * combatMultipliers[i];
-    o.frequency.cancelScheduledValues(now);
-    o.frequency.setTargetAtTime(targetHz, now, 0.8);
-  }
+  // Combat layer is non-pitched noise now — no per-act retune needed.
 }
 
 // ── Public lifecycle hooks ─────────────────────────────────────────────
