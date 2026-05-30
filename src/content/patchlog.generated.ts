@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Dark-adapt rates"
+      },
+      {
+        "tag": "tune",
         "text": "Dark-adapt shader: darkness-weighted additive (no scale-lift)"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Pose-clip animation + jointed-arm rig (skirmisher proof)"
-      },
-      {
-        "tag": "content",
-        "text": "Defiler (AoE zone enemy) + enemy tile-char registry"
       }
     ]
   }

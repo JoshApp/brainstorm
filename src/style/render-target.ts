@@ -71,28 +71,30 @@ const HORROR_BLIT_FRAG = `
     vec3 col = vec3(r, g, b);
 
     // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — darkness-weighted
-    // additive cool tint, plus a darkness-weighted gain.
+    // shadow detail, not a blue floodlight.
     //
-    // Three previous approaches all failed:
-    //   - Unconditional additive: washed bright pixels grey.
-    //   - max(col, cool_tint) floor: desaturated dim coloured
-    //     pixels to flat cool-blue.
-    //   - Scale-lift (col *= floor/maxC): amplified tiny chromatic
-    //     noise on near-black pixels into vivid colour bands after
-    //     quantization (the "psychedelic night-vision" artefact).
+    // Previous values (additive (0.075, 0.095, 0.125), gain 0.25)
+    // painted true-black with a distinctly cool moonlight tint
+    // that fought the dungeon's warm-amber atmosphere — read as
+    // "night vision washout" even though hue was preserved on
+    // coloured pixels.
     //
-    // Darkness-weighted additive avoids all three: the tint is
-    // added in proportion to (1 - maxChannel), so highlights get
-    // 0× tint (no wash), dim coloured pixels get a partial cool
-    // shift (Purkinje-like — real human scotopic vision shifts
-    // blueward at low light too), and true-black pixels get the
-    // full lift to a navigable floor. No multiplicative scaling
-    // of dim inputs, so no noise amplification or banding.
+    // New tuning leans on GAIN (which amplifies whatever
+    // micro-light is already in the rendered scene) rather than
+    // ADDITIVE (which paints colour into pixels that had none):
+    //   - Gain bumped 0.25 → 0.55 (darkness-weighted, so highlights
+    //     untouched). Pulls existing faint shading OUT of darker
+    //     regions — silhouettes, edges, the gleam of metal — so the
+    //     player sees a *shimmer of what's there* instead of a flat
+    //     blue-grey field.
+    //   - Additive tint slashed to (0.034, 0.036, 0.040) — barely
+    //     warmer than neutral, near-imperceptible on coloured
+    //     pixels, just enough to lift pure-black above zero so it's
+    //     navigable. The dungeon stays dark and atmospheric.
     float maxC = max(col.r, max(col.g, col.b));
     float darkness = 1.0 - maxC;
-    col += uDarkAdapt * vec3(0.075, 0.095, 0.125) * darkness;
-    // Mild gain on dim pixels only — preserves highlight crispness.
-    col *= 1.0 + uDarkAdapt * 0.25 * darkness;
+    col += uDarkAdapt * vec3(0.034, 0.036, 0.040) * darkness;
+    col *= 1.0 + uDarkAdapt * 0.55 * darkness;
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;
