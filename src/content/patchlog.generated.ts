@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Remove portal-haze planes from archway thresholds"
+      },
+      {
+        "tag": "tune",
         "text": "Tone down archway proximity glow"
       },
       {
@@ -202,10 +206,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Unify enemies + destructibles under a Damageable interface"
-      },
-      {
-        "tag": "tune",
-        "text": "Capture design philosophy in docs/DESIGN.md"
       }
     ]
   }
