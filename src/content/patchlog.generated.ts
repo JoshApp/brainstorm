@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-05-30",
     "entries": [
       {
+        "tag": "content",
+        "text": "Combat feel: no-weapon gate, strike trail, wider cone + more reach"
+      },
+      {
         "tag": "tune",
         "text": "Dark-adapt shader: less blue, more shimmer"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Extract pure item-formatting out of the inventory monolith + tests"
-      },
-      {
-        "tag": "tune",
-        "text": "Roll shoulder-pivot arms out to ghoul, wraith, stoneguard"
       }
     ]
   }

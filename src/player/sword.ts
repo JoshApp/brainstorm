@@ -5,6 +5,7 @@ import { getSwordOffset } from './viewmodel-bob';
 import { computeWeaponPose } from './weapon-animations';
 import { getCurrentWeapon } from './current-weapon';
 import type { ModelSpec } from '../ecs/model-types';
+import type { ResolvedComboStep } from '../content/weapon-classes';
 
 // First-person held sword. Geometry comes from a ModelSpec (data); animation
 // state (swing phases) is procedural and operates on the model group.
@@ -26,6 +27,10 @@ export interface Sword {
    *  array). Combat reads this to apply on-finisher item modifiers
    *  to outgoing damage. */
   isFinisherStrike: boolean;
+  /** The currently-active combo step (the one being animated). Read
+   *  by combat to apply per-step reach/cone/maxTargets overrides.
+   *  Returns null when no swing is in progress. */
+  getActiveStep(): ResolvedComboStep | null;
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
   startSwing(): boolean;
   update(dt: number): void;
@@ -254,6 +259,10 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
       if (phase !== 'strike') return false;
       const w = getCurrentWeapon();
       return comboStep === w.combo.length - 1;
+    },
+    getActiveStep(): ResolvedComboStep | null {
+      if (phase === 'idle') return null;
+      return currentStep().step;
     },
     startSwing,
     update,

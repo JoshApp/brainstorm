@@ -40,6 +40,19 @@ export interface ComboStep {
   windup: number;
   strike: number;
   recover: number;
+  /** Multiplier on the weapon's base reach for this combo step.
+   *  Combo finishers usually extend further (1.15-1.25); quick
+   *  jabs may shorten. Default 1.0. */
+  reachMul?: number;
+  /** Multiplier on the weapon's base cone half-angle. Wide
+   *  sweeps go up (1.2-1.4), narrow thrusts go down (0.6-0.8).
+   *  Default 1.0. */
+  coneHalfAngleMul?: number;
+  /** Max enemies hit by this step. Sweeping arcs cleave (2-3);
+   *  thrusts and stabs land on one. Default 1.
+   *  When >1, the cone-scan returns the N nearest in-cone
+   *  targets in distance order and damages each. */
+  maxTargets?: number;
 }
 
 export interface ResolvedComboStep {
@@ -47,6 +60,9 @@ export interface ResolvedComboStep {
   windupTime: number;
   strikeTime: number;
   recoverTime: number;
+  reachMul: number;
+  coneHalfAngleMul: number;
+  maxTargets: number;
 }
 
 export interface ResolvedWeaponStats {
@@ -76,58 +92,61 @@ interface ClassDefaults {
 
 export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
   dagger: {
-    // stab → slash → stab-stab. Each step gets progressively beefier;
-    // the finisher commits the player with the longest recover so
-    // missing the third tap on a backpedalling enemy genuinely hurts.
+    // stab → slash → double-stab. Stab one, slash cleaves two,
+    // double-stab finisher commits on one target with extra damage.
     combo: [
-      { pose: 'dagger-stab',        windup: 0.08, strike: 0.13, recover: 0.22 },
-      { pose: 'dagger-slash',       windup: 0.10, strike: 0.15, recover: 0.24 },
-      { pose: 'dagger-double-stab', windup: 0.08, strike: 0.26, recover: 0.30 },
+      { pose: 'dagger-stab',        windup: 0.08, strike: 0.13, recover: 0.22,
+        reachMul: 0.95, coneHalfAngleMul: 0.7, maxTargets: 1 },
+      { pose: 'dagger-slash',       windup: 0.10, strike: 0.15, recover: 0.24,
+        reachMul: 1.0,  coneHalfAngleMul: 1.3, maxTargets: 2 },
+      { pose: 'dagger-double-stab', windup: 0.08, strike: 0.26, recover: 0.30,
+        reachMul: 1.05, coneHalfAngleMul: 0.7, maxTargets: 1 },
     ],
     comboWindowMs: 380,
   },
   sword: {
-    // slash-left → slash-right → thrust. Step 0 and step 1 use the
-    // shared sword-swing timings (mirrored animations); the thrust
-    // finisher gets a slightly longer recover so missing it stings.
+    // slash-left → slash-right → thrust. Two sweeping arcs that
+    // cleave up to two targets, then a deep thrust on one.
     combo: [
       { pose: 'sword-slash-left',
         windup:  CONFIG.SWORD_SWING_WINDUP,
         strike:  CONFIG.SWORD_SWING_STRIKE,
-        recover: CONFIG.SWORD_SWING_RECOVER },
+        recover: CONFIG.SWORD_SWING_RECOVER,
+        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 2 },
       { pose: 'sword-slash-right',
         windup:  CONFIG.SWORD_SWING_WINDUP,
         strike:  CONFIG.SWORD_SWING_STRIKE,
-        recover: CONFIG.SWORD_SWING_RECOVER },
-      { pose: 'sword-thrust', windup: 0.14, strike: 0.12, recover: 0.34 },
+        recover: CONFIG.SWORD_SWING_RECOVER,
+        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 2 },
+      { pose: 'sword-thrust', windup: 0.14, strike: 0.12, recover: 0.34,
+        reachMul: 1.25, coneHalfAngleMul: 0.6, maxTargets: 1 },
     ],
     comboWindowMs: 380,
   },
   hammer: {
-    // swing-right → swing-left → smash. Two horizontal side-strikes
-    // then the existing overhead crash as the committing finisher.
-    // Right first so the player's body lands on the LEFT after step 0,
-    // which is exactly where swing-left wants to wind up from — the
-    // combo flows naturally without a snap-back between steps.
+    // swing-right → swing-left → smash. Wide horizontal sweeps
+    // cleave two; the overhead smash finisher catches up to three
+    // with the widest area + a longer effective reach.
     combo: [
-      { pose: 'hammer-swing-right', windup: 0.20, strike: 0.12, recover: 0.36 },
-      { pose: 'hammer-swing-left',  windup: 0.20, strike: 0.12, recover: 0.36 },
-      { pose: 'hammer-smash',       windup: 0.28, strike: 0.14, recover: 0.50 },
+      { pose: 'hammer-swing-right', windup: 0.20, strike: 0.12, recover: 0.36,
+        reachMul: 1.0, coneHalfAngleMul: 1.2, maxTargets: 2 },
+      { pose: 'hammer-swing-left',  windup: 0.20, strike: 0.12, recover: 0.36,
+        reachMul: 1.0, coneHalfAngleMul: 1.2, maxTargets: 2 },
+      { pose: 'hammer-smash',       windup: 0.28, strike: 0.14, recover: 0.50,
+        reachMul: 1.15, coneHalfAngleMul: 1.4, maxTargets: 3 },
     ],
-    // Wider window than dagger/sword — the hammer's slow recover
-    // means chaining feels OK on a less twitchy press.
     comboWindowMs: 520,
   },
   spear: {
-    // thrust → thrust → lunge. The in-between weapon: melee, but its
-    // long reach lets it poke from outside enemy strike range. Narrow
-    // cone (set on the spec) — it pokes, it doesn't sweep, so spacing
-    // is the skill. Two quick jabs then a committing lunge finisher
-    // with the deepest reach + longest recover.
+    // thrust → thrust → lunge. Spear stays narrow + single-target
+    // — it pokes, it doesn't sweep. Lunge finisher extends reach.
     combo: [
-      { pose: 'spear-thrust', windup: 0.12, strike: 0.12, recover: 0.26 },
-      { pose: 'spear-thrust', windup: 0.12, strike: 0.12, recover: 0.26 },
-      { pose: 'spear-lunge',  windup: 0.16, strike: 0.16, recover: 0.40 },
+      { pose: 'spear-thrust', windup: 0.12, strike: 0.12, recover: 0.26,
+        reachMul: 1.0, coneHalfAngleMul: 1.0, maxTargets: 1 },
+      { pose: 'spear-thrust', windup: 0.12, strike: 0.12, recover: 0.26,
+        reachMul: 1.0, coneHalfAngleMul: 1.0, maxTargets: 1 },
+      { pose: 'spear-lunge',  windup: 0.16, strike: 0.16, recover: 0.40,
+        reachMul: 1.30, coneHalfAngleMul: 0.85, maxTargets: 1 },
     ],
     comboWindowMs: 420,
   },
@@ -184,6 +203,9 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     windupTime:  step.windup  * timeMul,
     strikeTime:  step.strike  * timeMul,
     recoverTime: step.recover * timeMul,
+    reachMul: step.reachMul ?? 1,
+    coneHalfAngleMul: step.coneHalfAngleMul ?? 1,
+    maxTargets: step.maxTargets ?? 1,
   }));
 
   return {

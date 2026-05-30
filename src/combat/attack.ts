@@ -152,11 +152,7 @@ export function createCombatSystem(
     if (!inHitWindow) return;
 
     camera.getWorldDirection(forwardDir);  // unit vector
-    // Pull stats from the currently-equipped weapon (different weapons have
-    // different reach + arc + damage).
     const weapon = getCurrentWeapon();
-    const reachSq = weapon.reach * weapon.reach;
-    const cosConeHalf = Math.cos(weapon.coneHalfAngle);
 
     // RANGED branch — a crossbow/wand FIRES a projectile at the auto-
     // target instead of doing a melee cone hit. One shot per strike
@@ -167,6 +163,17 @@ export function createCombatSystem(
       return;
     }
 
+    // Per-combo-step reach + cone + multi-target. The active step's
+    // reachMul / coneHalfAngleMul / maxTargets layer over the weapon's
+    // base stats so each combo position has its own character:
+    // sword's slashes cleave 2 at standard reach, thrust finisher
+    // extends and narrows; hammer smash cleaves 3 with wider arc.
+    const step = sword.getActiveStep();
+    const reach = weapon.reach * (step?.reachMul ?? 1);
+    const reachSq = reach * reach;
+    const cosConeHalf = Math.cos(weapon.coneHalfAngle * (step?.coneHalfAngleMul ?? 1));
+    const maxTargets = step?.maxTargets ?? 1;
+
     // Cone check runs in the HORIZONTAL plane only. A 3D check breaks at
     // very close range: when a tall enemy (e.g. wraith) is pressed against
     // the player, the toEnemy vector points mostly downward, so its dot
@@ -176,84 +183,80 @@ export function createCombatSystem(
     // your feet by looking down.
     const forwardLenXZ = Math.hypot(forwardDir.x, forwardDir.z) || 1;
 
-    // ONE cone scan over a uniform Damageable shape (enemies + destructible
-    // props both implement it). Enemies take priority: a vase shouldn't soak
-    // a swing meant for the mob behind it, so we only fall back to props when
-    // no enemy is in the cone. Each list shares the same picker below.
-    const target =
-      pickTarget(getEnemies(), camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf) ??
-      pickTarget(getDestructibles(), camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf);
-    if (!target) return;
+    // Multi-target cone scan. Enemies take priority; props only fall
+    // through when no enemies are in the cone (a vase shouldn't soak
+    // a swing meant for the mob behind it).
+    const enemyHits = pickTargets(getEnemies(), camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf, maxTargets);
+    const targets = enemyHits.length > 0
+      ? enemyHits
+      : pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf, maxTargets);
+    if (targets.length === 0) return;
 
-    // Crit roll — decided BEFORE the damage pipeline so the pipeline's
-    // input damage already reflects the multiplier. critChance/Mult on
-    // WeaponStats default to 5% / 2x.
+    strikeAlreadyHit = true;
+
+    // Crit per-hit so a 3-target sweep can crit one and not the
+    // others — feels better than one roll applying to the whole arc.
     const critChance = weapon.critChance ?? 0;
     const critMult   = weapon.critMultiplier ?? 2.0;
-    const crit = gameRngChance(critChance);
-    // Finisher bonus: if this strike is the LAST step of the combo
-    // and the player has any items with 'finisher-damage-mult'
-    // modifiers, fold their compound multiplier into the base.
-    // Pre-pipeline so the resulting damage still gets equipment
-    // damage bonuses + targets armor as usual.
     const finisherMult = sword.isFinisherStrike
       ? computePlayerStats().finisherDamageMultiplier
       : 1;
-    const baseDamage = (crit ? weapon.damage * critMult : weapon.damage) * finisherMult;
 
-    // Route through the damage pipeline. The pipeline applies the player's
-    // equipment damage bonus (Ring of Predation +1, etc.) from the source
-    // stats, then the target's physical armor (0 for props) from the target
-    // stats. Player attacks default to PHYSICAL until we add a wand / spell.
-    const applied = target.takeDamage({
-      source: 'player',
-      target: target.entityId,
-      base: baseDamage,
-      type: 'physical',
-    });
-    strikeAlreadyHit = true;
+    let anyCrit = false;
+    let bestApplied = 0;
+    let anyHeavy = false;
+    for (const target of targets) {
+      const crit = gameRngChance(critChance);
+      const baseDamage = (crit ? weapon.damage * critMult : weapon.damage) * finisherMult;
+      const applied = target.takeDamage({
+        source: 'player',
+        target: target.entityId,
+        base: baseDamage,
+        type: 'physical',
+      });
 
-    // Damage number floats from the target's aim point.
-    hitPoint.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
-    if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit);
+      // Damage number floats from this target's aim point.
+      hitPoint.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
+      if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit);
 
-    // On-hit status — every source the player carries (weapon base
-    // on-hit + on-hit affixes rolled on the weapon + active set on-hits)
-    // rolls independently against the struck enemy. So a serrated,
-    // venom-etched needle in the bone set can bleed AND poison AND
-    // set-poison off one hit. Stacking statuses (bleed/poison) build per
-    // hit, so a fast weapon ramps them. Heavy targets only — an urn
-    // doesn't bleed.
-    if (target.hitFeedback === 'heavy') {
-      const ent = getEntity(target.entityId);
-      if (ent) {
-        for (const oh of getPlayerOnHits()) {
-          if (gameRngChance(oh.chance)) applyBuff(ent, oh.buffId, oh.duration, 'player');
+      // On-hit statuses roll per-target on heavies (mobs) — vases
+      // don't bleed.
+      if (target.hitFeedback === 'heavy') {
+        anyHeavy = true;
+        const ent = getEntity(target.entityId);
+        if (ent) {
+          for (const oh of getPlayerOnHits()) {
+            if (gameRngChance(oh.chance)) applyBuff(ent, oh.buffId, oh.duration, 'player');
+          }
         }
+        emit({ type: 'attack:hit', damage: applied, crit, cls: weapon.class });
       }
+      if (crit) anyCrit = true;
+      if (applied > bestApplied) bestApplied = applied;
     }
 
     // --- THE CRUNCH ---
-    // Heavy targets (mobs) get the full hit-pause + shake + on-hit passives;
-    // crits beef it up further. Light targets (vases) get a token crunch —
-    // they shatter, they don't fight back — and never fire on-hit passives
-    // (no lifesteal off an urn).
-    if (target.hitFeedback === 'heavy') {
-      const crunchPause = crit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS;
-      const crunchShake = crit
+    // One hit-pause + shake per swing regardless of target count —
+    // stacking N freezes for an N-cleave would feel terrible. Use
+    // the best-hit's stats (any-crit, any-heavy) so a cleave that
+    // crit-killed a mob and grazed a vase still gets the full crunch.
+    if (anyHeavy) {
+      const crunchPause = anyCrit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS;
+      const crunchShake = anyCrit
         ? CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 1.8
         : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE;
       freezeFor(crunchPause);
       kickShake(crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
-      hapticVibrate(crit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS);
+      hapticVibrate(anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS);
       playImpact();
-      emit({ type: 'attack:hit', damage: applied, crit, cls: weapon.class });
     } else {
+      // Light targets only (vases) — token crunch, no on-hit passives.
       freezeFor(Math.min(40, CONFIG.HIT_PAUSE_MS * 0.4));
       kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 0.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 0.5);
       hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
       playImpact();
     }
+    void bestApplied;   // reserved for future "biggest hit wins crunch tier"
   }
 
   return { tick };
@@ -274,6 +277,44 @@ export function createCombatSystem(
 // face" and always inside the swing cone (see pickTarget). ~0.9m so an
 // adjacent or overlapping enemy is reliably hittable.
 const POINT_BLANK_RADIUS = 0.9;
+
+/** Multi-target variant — returns up to `maxTargets` in-cone targets,
+ *  nearest first. Used by combo steps that cleave (sword slash, hammer
+ *  smash). Single-target callers pass maxTargets=1 and unwrap [0]. */
+function pickTargets<T extends Damageable>(
+  targets: readonly T[],
+  camera: THREE.Camera,
+  forwardDir: THREE.Vector3,
+  forwardLenXZ: number,
+  reachSq: number,
+  cosConeHalf: number,
+  maxTargets: number,
+): T[] {
+  if (maxTargets <= 1) {
+    const single = pickTarget(targets, camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf);
+    return single ? [single] : [];
+  }
+  // Collect all in-cone targets with distance, then sort + cap.
+  const hits: Array<{ t: T; d2: number }> = [];
+  for (const t of targets) {
+    if (!t.alive) continue;
+    const dx = t.position.x - camera.position.x;
+    const dy = (t.position.y + t.aimHeight) - camera.position.y;
+    const dz = t.position.z - camera.position.z;
+    const distSq = dx * dx + dy * dy + dz * dz;
+    if (distSq > reachSq) continue;
+    const horDist = Math.hypot(dx, dz);
+    if (horDist < POINT_BLANK_RADIUS) {
+      hits.push({ t, d2: distSq });
+      continue;
+    }
+    const horDot = (forwardDir.x * dx + forwardDir.z * dz) / (forwardLenXZ * horDist);
+    if (horDot < cosConeHalf) continue;
+    hits.push({ t, d2: distSq });
+  }
+  hits.sort((a, b) => a.d2 - b.d2);
+  return hits.slice(0, maxTargets).map((h) => h.t);
+}
 
 function pickTarget<T extends Damageable>(
   targets: readonly T[],
