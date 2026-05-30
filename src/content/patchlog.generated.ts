@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-05-30",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Dark-adapt: hybrid lit signal — max(surface, camera-at-eye)"
+      },
+      {
         "tag": "content",
         "text": "Dark-adapt: wider torch range, count env lights, brighter floor"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "HUD binding layer: shared primitives + store-bound readouts"
-      },
-      {
-        "tag": "content",
-        "text": "Enemy verb-audit"
       }
     ]
   }

@@ -569,16 +569,34 @@ const SYSTEMS: GameSystem[] = [
     // adapts: to the brighter of "ambient around me" or "what I'm
     // focused on", whichever wins.
     //
-    // Lamp is EXCLUDED on purpose. Your own hand-lamp is the baseline
-    // you've already adapted past; counting it would mean dark
-    // corridors with the lamp on never trigger adapt at all, which is
-    // wrong (you ARE still trying to see beyond the lamp's reach).
+    // FOV-gated: lights BEHIND the player don't light the screen,
+    // so they shouldn't count toward the camera sample. Previous
+    // pass counted every nearby light regardless of facing, which
+    // made the hybrid barely trigger when there were any lights at
+    // all near the player. Cutoff at ~110° total (cos(55°) ≈
+    // 0.574) — slightly wider than the visible frustum so a torch
+    // just at the edge of vision still counts.
+    //
+    // Lamp is EXCLUDED on purpose. Your own hand-lamp is the
+    // baseline you've already adapted past; counting it would mean
+    // dark corridors with the lamp on never trigger adapt at all,
+    // which is wrong (you ARE still trying to see beyond the
+    // lamp's reach).
+    const COS_FOV_LIMIT = 0.574;
+    const inViewCone = (sx: number, sz: number): boolean => {
+      const ldx = sx - cx;
+      const ldz = sz - cz;
+      const ldist = Math.hypot(ldx, ldz) || 1e-6;
+      const dot = (fx * ldx + fz * ldz) / ldist;
+      return dot >= COS_FOV_LIMIT;
+    };
     let camTorch = 0;
     for (const t of currentLevel.torches) {
       const dx = t.position.x - cx;
       const dz = t.position.z - cz;
       const d = Math.hypot(dx, dz);
       if (d >= lightRange) continue;
+      if (!inViewCone(t.position.x, t.position.z)) continue;
       if (walkable && !walkable.hasLineOfSight(cx, cz, t.position.x, t.position.z)) continue;
       camTorch += 1 - d / lightRange;
     }
@@ -590,6 +608,7 @@ const SYSTEMS: GameSystem[] = [
       const d = Math.hypot(dx, dz);
       const r = Math.max(2, src.distance);
       if (d >= r) return;
+      if (!inViewCone(src.position.x, src.position.z)) return;
       if (walkable && !walkable.hasLineOfSight(cx, cz, src.position.x, src.position.z)) return;
       const w = Math.min(1.5, src.intensity / CONFIG.TORCH_INTENSITY);
       camEnv += (1 - d / r) * w;

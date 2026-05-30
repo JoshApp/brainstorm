@@ -23,8 +23,12 @@ import { CONFIG } from '../config';
 // readback (framebuffer metering stalled the pipeline) — this is analytic.
 const LIT_DARK = 0.15;
 const LIT_BRIGHT = 0.65;
-const ADAPT_UP_RATE = 0.6;           // per-sec approach while dark (~1.7s to adjust)
-const ADAPT_DOWN_RATE = 4.0;         // per-sec approach while lit (~0.25s — re-blinded)
+// Faster ramps than the previous 0.6/4.0 values — feedback was
+// "this feels too slow for gameplay". Now ~0.6s to adapt UP and
+// ~0.12s to slam DOWN. Still keeps the asymmetry (bright re-
+// blinds you instantly; darkness takes a beat to grow into).
+const ADAPT_UP_RATE = 1.6;           // per-sec approach while dark
+const ADAPT_DOWN_RATE = 8.0;         // per-sec approach while lit
 
 // Brightness multiplier at full adaptation. The blit shader multiplies the
 // image by darkAdaptBrightness() (1.0 = neutral), and the AmbientLight is

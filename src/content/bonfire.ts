@@ -170,13 +170,13 @@ export const BONFIRE: ModelSpec = {
   ],
   light: {
     color: 0xffb066,
-    // Smaller + faster-falloff than before so the bright floor
-    // circle is tighter (was intensity 60, distance 9.5, decay
-    // 1.5 — too much spotlight). The flame stack carries the
-    // visible warmth; the light just tints the surrounding stone.
-    intensity: 38,
-    distance: 6.5,
-    decay: 2.0,
+    // Dimmed further: previous 38 / 6.5 / 2.0 still cast more
+    // floor light than the stone needs. The flame stack visibly
+    // carries the warmth — the light now just gives the
+    // immediate stones a soft tint rather than lighting the room.
+    intensity: 22,
+    distance: 5.5,
+    decay: 2.2,
     pos: [0, 0.55, 0],
     castShadow: false,
   },
