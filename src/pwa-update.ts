@@ -19,6 +19,7 @@
 
 import { registerSW } from 'virtual:pwa-register';
 import { isHarnessPaused } from './harness/pause';
+import { getSettings } from './settings/settings';
 
 type UpdateStatus = 'none' | 'pending';
 // How often to re-check for a new service worker. 15s keeps the
@@ -56,6 +57,13 @@ export function setupPwaAutoUpdate(): void {
     onNeedRefresh() {
       status = 'pending';
       for (const fn of listeners) fn(status);
+      // DEV mode: apply immediately on detection, no waiting for a safe
+      // moment. The mid-floor reload costs the player kills/positions
+      // since the last floor entry — the cost of fast iteration. Still
+      // respects the harness pause (CLI driver applies between episodes).
+      if (getSettings().devAutoUpdate && !isHarnessPaused()) {
+        void applyUpdate();
+      }
     },
     // onOfflineReady fires when the very first SW install completes.
     // Nothing to do — the player can use the app offline now.

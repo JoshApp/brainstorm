@@ -19,6 +19,8 @@ import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
 import { showSafeRoomTransition } from '../ui/safe-room-transition';
 import { actForDepth } from './acts';
 import { getActStats } from '../state/run-state';
+import { getUpdateStatus, applyUpdate } from '../pwa-update';
+import { getSettings } from '../settings/settings';
 
 // Level loader = the seam between "we have a current level" and "let's swap
 // it for a different one". main.ts holds the active level reference via the
@@ -199,6 +201,18 @@ export function tickPendingLoad() {
   } else {
     const act = actForDepth(currentDepth);
     showDescentTitle(`Depth ${currentDepth}`, act.name);
+  }
+
+  // Pending service-worker update? The world is still hidden (fadeOut
+  // ran before we got here) — the perfect moment to take it. The reload
+  // happens during the black, the new bundle reads the save we just
+  // committed (commitFloorEntry fires from the level:loaded event
+  // emitted inside buildLevel above), and the player lands on the same
+  // floor we were about to reveal — except running new code. From their
+  // POV: tapped DESCEND, world loaded. Invisible.
+  if (getSettings().autoUpdate && getUpdateStatus() === 'pending') {
+    void applyUpdate();    // reload is coming; skip fadeIn
+    return;
   }
 
   // Reveal the new level once its first frame has rendered.

@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Music: motifs not random plucks, gentle combat, separate volume slider"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix rare sharp camera flip on mouse look"
+      },
+      {
+        "tag": "tune",
         "text": "Audio: procedural music engine — drone, plucks, combat throb"
       },
       {
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Skeleton enemy — pressure at every range, built from creature() + abilities"
-      },
-      {
-        "tag": "tune",
-        "text": "Cobwebs — ambient decoration + destructible web-gate barriers"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix kiter (acolyte): attack-first, hold between shots, cooldown window"
       }
     ]
   }

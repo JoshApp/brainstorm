@@ -168,9 +168,15 @@ function buildPanelContents() {
   // --- Auto-update toggle + install-now button ---
   panel.appendChild(makeToggle({
     label: 'AUTO UPDATE',
-    description: 'Install new builds automatically when you return to the title screen.',
+    description: 'Install new builds automatically at safe moments (title screen, level transitions).',
     get: () => getSettings().autoUpdate,
     set: (v) => updateSettings({ autoUpdate: v }),
+  }));
+  panel.appendChild(makeToggle({
+    label: 'DEV AUTO-UPDATE',
+    description: 'For development. Apply pending updates the instant the service worker detects them, without waiting. Mid-floor state is lost on reload (resumes at floor entry).',
+    get: () => getSettings().devAutoUpdate,
+    set: (v) => updateSettings({ devAutoUpdate: v }),
   }));
   panel.appendChild(makeUpdateRow());
 

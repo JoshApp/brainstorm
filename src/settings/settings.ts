@@ -15,9 +15,17 @@ export interface Settings {
    *  engine. Applied as an additional gain stage AFTER master, so the
    *  player can quiet the score independently of SFX. */
   musicVolume: number;
-  /** Auto-install new builds at safe moments (title screen). When false,
-   *  the player taps "INSTALL UPDATE" in the settings menu instead. */
+  /** Auto-install new builds at safe moments (title screen + the next
+   *  level-transition fade). When false, the player taps "INSTALL
+   *  UPDATE" in the settings menu instead. */
   autoUpdate: boolean;
+  /** DEV mode for the auto-updater — apply pending updates the instant
+   *  the service worker detects one, without waiting for a level
+   *  transition. Mid-floor state is lost on reload (player resumes at
+   *  the current floor's entry), but iteration is fast: deploy → live
+   *  on the phone in well under 30 seconds. Off by default; toggle on
+   *  while iterating. */
+  devAutoUpdate: boolean;
   /** Show the debug capture button (the ⊕ CAPTURE chip) during play.
    *  Same as the ?debug=1 URL flag, but persisted + toggleable in-menu. */
   debugMode: boolean;
@@ -31,6 +39,7 @@ const DEFAULTS: Settings = {
   masterVolume: 0.55,
   musicVolume: 0.65,
   autoUpdate: true,
+  devAutoUpdate: false,
   debugMode: false,
 };
 
