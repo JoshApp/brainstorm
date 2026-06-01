@@ -21,6 +21,7 @@ import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
 import { ENEMY_CHAR_BY_ID } from '../content/enemies';
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
+import { bossById } from '../content/bosses';
 import { seedBuildRng } from '../engine/rng';
 
 // Tiny seedable RNG (Mulberry32). 32-bit seed in, deterministic 0..1 floats.
@@ -131,14 +132,11 @@ function rollTableFor(depth: number): EnemyRoll[] {
 })();
 
 function bossFor(depth: number): string {
-  // Rotate bosses across acts so each one has a different first
-  // impression. Act I gets the king slime — it's the simplest fight
-  // (telegraphed hop + split-on-death) so it teaches "yes, bosses
-  // are a thing" without being punishing. Act II and III keep the
-  // wraith until they get their own bespoke fights.
-  const act = actForDepth(depth).number;
-  if (act === 1) return 'boiling-king';
-  return 'wraith';
+  // Single source of truth — each Act carries its bossId; we look
+  // up the BossSpec to translate it into the EnemySpec id the
+  // spawner actually uses. Adding/swapping a boss now means
+  // editing acts.ts and bosses.ts, not this function.
+  return bossById(actForDepth(depth).bossId).enemyId;
 }
 
 function pickWeighted(rows: EnemyRoll[], rand: () => number): string {
@@ -215,6 +213,13 @@ export function generateFloor(
   const act = actForDepth(depth);
   const nextLevelId = nextLevelIdOverride ?? nextLevelAfter(depth);
   const bossFloor = isBossDepth(depth);
+  // On boss floors, hand the BossSpec's preferred vault to the
+  // composer so the king slime gets the grand hall and the wraith
+  // gets the cathedral. The composer falls back to weighted-pick
+  // when the preference isn't in the eligible pool.
+  const preferredBossVaultId = bossFloor
+    ? bossById(act.bossId).preferredVaultId
+    : undefined;
 
   const id = `depth-${depth}`;
   const spec = composeFloor(depth, rand, nextLevelId, {
@@ -223,6 +228,7 @@ export function generateFloor(
     torchTint: act.torchTint,
     fogColor: act.fogColor,
     isBossFloor: bossFloor,
+    preferredBossVaultId,
   });
   // Apply X→enemy substitution per spawn. parseTileMap doesn't handle
   // 'X' itself (it's only in vault grids); the composer's spawn list

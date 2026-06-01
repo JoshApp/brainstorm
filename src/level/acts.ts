@@ -25,6 +25,10 @@ export interface Act {
   /** The depth that contains the boss + ends the act. Usually the
    *  last entry of `depths`. */
   bossDepth: number;
+  /** BossSpec id (see src/content/bosses.ts) that ends this act.
+   *  procgen reads this to know which boss to spawn AND which
+   *  preferred arena to bias the boss-vault roll toward. */
+  bossId: string;
   /** Atmosphere for floors in this act. */
   torchTint: number;
   fogColor: number;
@@ -36,6 +40,7 @@ export const ACTS: Act[] = [
     name: 'The Old Refectory',
     depths: [1, 2, 3],
     bossDepth: 3,
+    bossId: 'boiling-king',
     torchTint: 0xffaa55,
     fogColor: 0x140a05,
   },
@@ -44,6 +49,7 @@ export const ACTS: Act[] = [
     name: 'The Cistern',
     depths: [4, 5, 6, 7],
     bossDepth: 7,
+    bossId: 'hollow-choir',
     torchTint: 0x66ccdd,
     fogColor: 0x05101a,
   },
@@ -52,6 +58,7 @@ export const ACTS: Act[] = [
     name: 'The Verdant Rot',
     depths: [8, 9, 10, 11, 12],
     bossDepth: 12,
+    bossId: 'hollow-choir',
     torchTint: 0x80c060,
     fogColor: 0x080f05,
   },
@@ -74,6 +81,7 @@ export function actForDepth(depth: number): Act {
     name: `${palette.name} (revisited)`,
     depths: [actStart, actStart + 1, actStart + 2, actStart + 3, actStart + 4],
     bossDepth: actStart + 4,
+    bossId: palette.bossId,
     torchTint: palette.torchTint,
     fogColor: palette.fogColor,
   };

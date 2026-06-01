@@ -1,6 +1,9 @@
 import { bossStore, type BossState } from '../state/hud-stores';
 import { bind } from './hud';
 import type { Enemy } from '../mobs/enemy';
+import { ENEMIES } from '../content/enemies';
+import { bossSpecForEnemy } from '../content/bosses';
+import { showBossIntro, hideBossIntro } from './boss-intro-card';
 
 // Dark Souls-style boss bar — a wide, thin, deep-red bar at the bottom centre
 // with the boss's name above it. Appears the moment the boss becomes aware of
@@ -119,6 +122,13 @@ export function tickBossBar(enemies: Enemy[], dt: number): void {
     // Engage on first awareness — the fog-gate moment.
     if (!engaged && boss.aiState !== 'idle' && boss.aiState !== 'returning') {
       engaged = true;
+      // Intro title card layers on top of the boss bar — fires once
+      // per fight on first aggro. Reads identity from the BossSpec
+      // (preferred + LLM-ready) and falls back to the runtime
+      // boss.bossName for any boss without a BossSpec yet.
+      const spec = ENEMIES[boss.kind];
+      const bs = spec ? bossSpecForEnemy(spec) : undefined;
+      showBossIntro(bs?.defaultName ?? boss.bossName, bs?.introLine ?? '');
     }
     if (engaged) {
       lastName = boss.bossName;
@@ -150,5 +160,6 @@ export function resetBossBar(): void {
   fadeTimer = -1;
   lastName = '';
   lastMax = 0;
+  hideBossIntro();
   bossStore.set({ visible: false, name: '', hp: 0, max: 0 });
 }

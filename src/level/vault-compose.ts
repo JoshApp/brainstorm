@@ -159,6 +159,12 @@ export function composeFloor(
     torchTint?: number;
     fogColor?: number;
     isBossFloor?: boolean;
+    /** Preferred boss vault id — when set, the boss-tag slot
+     *  prefers this vault if it's in the eligible pool for the
+     *  current depth. Falls through to weighted-pick when the
+     *  preference isn't available (wrong depth, removed from
+     *  library, etc) so a missing preference never breaks gen. */
+    preferredBossVaultId?: string;
   },
 ): LevelSpec {
   // ── 1. Tag sequence for the main spine ─────────────────────────
@@ -183,7 +189,14 @@ export function composeFloor(
       : tag === 'exit'
         ? VAULTS.filter((v) => v.tags.includes('exit'))
         : VAULTS.filter((v) => v.tags.includes('combat'));
-    const vault = weightedPick(pool, rand);
+    // Boss-vault preference: if this slot is the boss tag AND the
+    // current boss has a preferredVaultId set AND that vault is in
+    // the eligible pool, USE it directly. Otherwise fall through to
+    // weighted-pick — the preference never blocks generation.
+    const preferred = tag === 'boss' && opts.preferredBossVaultId
+      ? pool.find((v) => v.id === opts.preferredBossVaultId)
+      : undefined;
+    const vault = preferred ?? weightedPick(pool, rand);
     const dims = vaultDims(vault);
 
     if (i === 0) {

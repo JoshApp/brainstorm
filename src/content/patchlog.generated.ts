@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "content",
+        "text": "Creator suite: validation tests + vault inspector + pre-push gate"
+      },
+      {
         "tag": "fix",
         "text": "Fix: reassign reserved enemy tile chars (game-load crash)"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Audio: procedural music engine — drone, plucks, combat throb"
-      },
-      {
-        "tag": "tune",
-        "text": "Frame every opening: doorframe model for narrow passages"
       }
     ]
   }
