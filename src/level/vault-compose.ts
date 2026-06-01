@@ -1,5 +1,6 @@
 import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec } from './types';
 import type { Vault, VaultTag } from './vault';
+import type { EncounterSpec } from '../content/encounters';
 import { vaultsForTag, VAULTS } from './vault-library';
 import { parseTileMap } from './tilemap';
 import { populateTemplate } from './procgen';
@@ -148,6 +149,19 @@ export function ceilingFor(
   return index % 2 === 0 ? { style: 'flat', rise: 0 } : { style: 'pitched', rise: 0.9 };
 }
 
+/** Resolve a vault's encounter archetype: explicit `encounter` wins, else
+ *  every combat/boss room gets a coherent `mixed` pack by default (so the
+ *  whole library benefits from pack coherence, not just tagged vaults).
+ *  Non-combat rooms (treasure/encounter/exit) keep per-tile X unless they
+ *  opt in explicitly. */
+function encounterFor(vault: Vault): EncounterSpec | undefined {
+  if (vault.encounter) return vault.encounter;
+  if (vault.tags.includes('combat') || vault.tags.includes('boss')) {
+    return { archetype: 'mixed', intensity: 'medium' };
+  }
+  return undefined;
+}
+
 /** Build a faithful single-vault LevelSpec for inspection + piloting — the
  *  SAME per-vault pipeline the composer runs (X enemies resolved via
  *  populateTemplate, prop groups expanded + facings resolved, ceiling / wall /
@@ -161,7 +175,7 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   let s = (seed * 2654435761) >>> 0;
   const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
 
-  const populated = populateTemplate(vault.map, depth, rand, vault.encounter);
+  const populated = populateTemplate(vault.map, depth, rand, encounterFor(vault));
   const ceil = ceilingFor(vault, depth, 1);
   const sub = parseTileMap(populated, {
     id: `vault-preview-${vault.id}`,
@@ -362,7 +376,7 @@ export function composeFloor(
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
     roomVaults[pv.roomId] = pv.vault.id;
-    const populated = populateTemplate(pv.vault.map, depth, rand, pv.vault.encounter);
+    const populated = populateTemplate(pv.vault.map, depth, rand, encounterFor(pv.vault));
     const ceil = ceilingFor(pv.vault, depth, i);
     const sub = parseTileMap(populated, {
       id: `${opts.id}-${pv.vault.id}`,

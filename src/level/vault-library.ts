@@ -140,6 +140,8 @@ const COMBAT_OPEN: Vault = {
 const COMBAT_PILLARS: Vault = {
   id: 'combat-pillars',
   tags: ['combat'],
+  // Casters use the pillars as cover — close the gap or get pelted.
+  encounter: { archetype: 'caster-pack', intensity: 'medium' },
   // Two torches diagonally opposite instead of four in pairs —
   // most of the room past the pillars stays dim.
   map: [
@@ -245,6 +247,8 @@ const COMBAT_ARENA: Vault = {
 const COMBAT_DOORS: Vault = {
   id: 'combat-doors',
   tags: ['combat'],
+  // Sealed room-clear gauntlet — a swarm that floods you once the doors lock.
+  encounter: { archetype: 'swarm', intensity: 'medium' },
   // Room-clear gating — sealed doors open when the room's enemies
   // die. Player walks in, the doors lock behind, fight, escape.
   map: [
@@ -268,6 +272,8 @@ const COMBAT_DOORS: Vault = {
 const TREASURE_ALTAR: Vault = {
   id: 'treasure-altar',
   tags: ['treasure'],
+  // A lone guardian over the hoard, not a random mob.
+  encounter: { archetype: 'bruisers', intensity: 'light' },
   // Altar as the room CENTERPIECE; chests tucked against the
   // side walls where treasure caches go. Chest + altar side-by-
   // side in the middle of a room read as "two centerpieces" —
@@ -725,7 +731,7 @@ const MINESHAFT_GALLERY: Vault = {
   map: [
     '##############',
     '#<..v...v...>#',
-    '#....RR......#',
+    '#....XX......#',
     '#......v.....#',
     '#>..v...v...<#',
     '##############',
@@ -735,6 +741,8 @@ const MINESHAFT_GALLERY: Vault = {
   torchTint: TORCH_PALE,
   roomHeight: 2.6,
   wallVariant: 'braced',   // timber support frames — the mine-shaft read
+  // Vermin swarm — light + fast, scaling with depth instead of fixed rats.
+  encounter: { archetype: 'swarm', intensity: 'light' },
 };
 
 // Ossuary — a lore pocket: four corpses (Souls-style notes), a chest in
@@ -742,6 +750,8 @@ const MINESHAFT_GALLERY: Vault = {
 const ENCOUNTER_OSSUARY: Vault = {
   id: 'encounter-ossuary',
   tags: ['encounter'],
+  // Light, mixed haunt — a lore pocket, not a hard fight.
+  encounter: { archetype: 'mixed', intensity: 'light' },
   map: [
     '############',
     '#.C..T..C..#',
@@ -762,6 +772,8 @@ const ENCOUNTER_OSSUARY: Vault = {
 const COMBAT_PITS: Vault = {
   id: 'combat-pits',
   tags: ['combat'],
+  // Ranged threats behind the spike grid — footing matters under fire.
+  encounter: { archetype: 'caster-pack', intensity: 'medium' },
   map: [
     '############',
     '#..T....T..#',

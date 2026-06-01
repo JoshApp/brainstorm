@@ -19,12 +19,16 @@ export interface EncounterSpec {
 
 /** Enemy role buckets (ids must exist in the registry — validated at module
  *  load in procgen.ts alongside the roll tables). A pack draws from these,
- *  filtered to what's available at the current depth. */
+ *  filtered to what's available at the current depth.
+ *
+ *  ORDER MATTERS: each bucket is listed ascending by threat, so `intensity`
+ *  can bias the pick — 'light' leans to the front (weaker), 'heavy' to the
+ *  back (tougher), 'medium' picks uniformly. */
 export const ROLE = {
   light:  ['rat', 'skirmisher', 'carrion-hound'],
-  heavy:  ['ghoul', 'stoneguard', 'skeleton', 'ooze'],
-  ranged: ['acolyte', 'acid-spitter', 'sump-wisp', 'plague-spore'],
-  elite:  ['wraith', 'defiler', 'spider'],
+  heavy:  ['skeleton', 'ooze', 'ghoul', 'stoneguard'],
+  ranged: ['plague-spore', 'sump-wisp', 'acolyte', 'acid-spitter'],
+  elite:  ['spider', 'defiler', 'wraith'],
 } as const;
 
 export type Role = keyof typeof ROLE;

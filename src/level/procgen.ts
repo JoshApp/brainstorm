@@ -165,16 +165,22 @@ function pickWeighted(rows: EnemyRoll[], rand: () => number): string {
 function rollPack(spec: EncounterSpec, depth: number, slotCount: number, rand: () => number): string[] {
   const table = rollTableFor(depth);
   const available = new Set(table.map((r) => r.enemyId));
+  // Intensity biases WHERE in a (threat-ascending) bucket we pick: 'light'
+  // leans weak, 'heavy' leans tough, 'medium' is uniform.
+  const bias = (r: number): number =>
+    spec.intensity === 'light' ? r * r
+    : spec.intensity === 'heavy' ? 1 - (1 - r) * (1 - r)
+    : r;
   const fromRole = (role: Role): string => {
-    const pool = ROLE[role].filter((id) => available.has(id));
-    if (pool.length === 0) return pickWeighted(table, rand);   // depth has none → fallback
-    return pool[Math.floor(rand() * pool.length)];
+    const pool = ROLE[role].filter((id) => available.has(id));   // threat-ordered
+    if (pool.length === 0) return pickWeighted(table, rand);     // depth has none → fallback
+    return pool[Math.min(pool.length - 1, Math.floor(bias(rand()) * pool.length))];
   };
   const slots = ARCHETYPE_SLOTS[spec.archetype];
   const out: string[] = [];
   for (let i = 0; i < slotCount; i++) out.push(fromRole(slots[i % slots.length]));
   if (spec.intensity === 'heavy' && out.length > 0) {
-    const elites = ROLE.elite.filter((id) => available.has(id));
+    const elites = ROLE.elite.filter((id) => available.has(id));   // an elite anchors a heavy pack
     if (elites.length) out[Math.floor(rand() * out.length)] = elites[Math.floor(rand() * elites.length)];
   }
   return out;
