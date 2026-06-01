@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Sword moveset"
+      },
+      {
+        "tag": "tune",
         "text": "Sword pilot moveset: directional moves + combo + charge"
       },
       {
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Re-tone the pickup chime: cold hollow toll, not a happy bell"
-      },
-      {
-        "tag": "tune",
-        "text": "Audio: tame the exposed drone (esp. Act 3 sawtooth) + calm on clear"
       }
     ]
   }

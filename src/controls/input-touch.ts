@@ -11,7 +11,7 @@
 import { showJoystick, moveJoystickKnob, hideJoystick } from './joystick-hud';
 import { showFirstTimeHint, dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
-import { setChargeFromHeldMs, tryReleaseChargedAttack, cancelCharge } from './charge-input';
+import { setChargeFromHeldMs, tryReleaseChargedAttack, cancelCharge, setChargePosition } from './charge-input';
 import { getSettings } from '../settings/settings';
 import { wantsHoldToCharge } from '../player/current-weapon';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
@@ -162,6 +162,7 @@ export const touchScheme: InputScheme = {
       // is held this frame, the module's progress decays via release/
       // cancel calls — we don't reset it here.
       let bestHeldMs = 0;
+      let bestTracker: TouchTracker | null = null;
       for (const tracker of touches.values()) {
         if (tracker.side !== 'right' || !tracker.chargeEligible) continue;
         const held = now - tracker.startTime;
@@ -176,9 +177,23 @@ export const touchScheme: InputScheme = {
         ) {
           tracker.chargeCommitted = true;
         }
-        if (held > bestHeldMs) bestHeldMs = held;
+        if (held > bestHeldMs) {
+          bestHeldMs = held;
+          bestTracker = tracker;
+        }
       }
       if (bestHeldMs > 0) setChargeFromHeldMs(bestHeldMs);
+      // Anchor the charge ring to the live thumb position — it
+      // follows along as the player adjusts aim while charging.
+      // Uses START position before commit (the thumb hasn't moved
+      // yet); after commit the ring locks to the touchstart point
+      // so post-commit aim drag doesn't drag the ring around with
+      // it — feedback stays where the gesture was COMMITTED.
+      if (bestTracker) {
+        const anchorX = bestTracker.chargeCommitted ? bestTracker.startX : bestTracker.lastX;
+        const anchorY = bestTracker.chargeCommitted ? bestTracker.startY : bestTracker.lastY;
+        setChargePosition(anchorX, anchorY);
+      }
 
       // Hybrid-look continuous rotation (existing behaviour).
       if (!getSettings().hybridLook) return;

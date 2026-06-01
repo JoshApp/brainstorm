@@ -1,27 +1,32 @@
 // Charge-ring HUD overlay — visual telegraph for hold-to-charge.
 //
-// A small circular ring sits over the bottom-right attack zone. As the
-// player holds the touch still, the ring fills CLOCKWISE from 12-o'clock
-// — the same gesture a console game would map to a "press and hold"
-// indicator. Fills over 550ms (from the 250ms tap-cancel threshold up
-// to the fully-charged 800ms point). Disappears the moment the touch
-// releases or drags.
+// Anchors to the THUMB position (set by input-touch's per-frame tick)
+// rather than a fixed corner — feedback lives where the gesture is.
+// The ring uses screen pixels (not the canvas's renderer space) so it
+// scales correctly across DPRs without needing a custom render layer.
 //
-// Cheap: one DOM element (an SVG circle), no per-frame allocations,
-// updated by setting stroke-dashoffset directly. Mounted once at boot,
-// hidden until the engine reports a non-zero progress.
+// Two states the player should be able to read at a glance:
+//   - RAMPING (0 < progress < 1): clockwise arc fills, soft amber.
+//   - FULLY COOKED (progress >= 1): the ring PULSES + brightens to a
+//     hot gold. This is the "release NOW" tell. Overcharging past
+//     the sweet spot still fires the max-payoff swing; we just
+//     emphasise the moment so the player learns to release there.
+//
+// Cheap: one DOM element + an SVG circle. No per-frame allocations.
+// Updated by setting stroke-dashoffset + style.left/top/transform.
 
-import { getChargeProgress } from '../controls/charge-input';
+import { getChargeProgress, getChargePosition } from '../controls/charge-input';
 
 const SIZE = 96;                  // px — outer SVG dimension
 const STROKE = 6;                 // ring stroke width
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUM = 2 * Math.PI * RADIUS;
+// Hot-gold pulse oscillation rate while the charge is overcooked.
+const PULSE_HZ = 2.4;
 
 let root: HTMLDivElement | null = null;
 let arc: SVGCircleElement | null = null;
 let glow: SVGCircleElement | null = null;
-let lastProgress = -1;
 
 export function createChargeRing(): void {
   if (root) return;
@@ -30,17 +35,21 @@ export function createChargeRing(): void {
   root.id = 'charge-ring';
   Object.assign(root.style, {
     position: 'fixed',
-    // Sits at the bottom-right corner above the attack-zone, in the
-    // same area the player's thumb is already on. Lifted clear of the
-    // safe-area and the on-screen HUD pips.
-    right: 'calc(48px + env(safe-area-inset-right, 0px))',
-    bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))',
+    // Centred on (0,0) — input-touch's tick repositions per frame
+    // by setting left/top. Translate -50% so the anchor is the ring
+    // CENTRE, not its corner.
+    left: '0px',
+    top:  '0px',
     width: `${SIZE}px`,
     height: `${SIZE}px`,
+    transform: 'translate(-50%, -50%)',
     pointerEvents: 'none',
     opacity: '0',
     transition: 'opacity 120ms ease-out',
     zIndex: '20',
+    // Will-change hint so the browser composites this on its own
+    // layer — sub-pixel movement during touch-track stays smooth.
+    willChange: 'left, top, opacity',
   } as Partial<CSSStyleDeclaration>);
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -54,7 +63,7 @@ export function createChargeRing(): void {
   track.setAttribute('cy', String(SIZE / 2));
   track.setAttribute('r', String(RADIUS));
   track.setAttribute('fill', 'none');
-  track.setAttribute('stroke', 'rgba(220, 200, 160, 0.20)');
+  track.setAttribute('stroke', 'rgba(220, 200, 160, 0.22)');
   track.setAttribute('stroke-width', String(STROKE));
   svg.appendChild(track);
 
@@ -74,7 +83,7 @@ export function createChargeRing(): void {
   arc.setAttribute('stroke-dashoffset', String(CIRCUM));
   svg.appendChild(arc);
 
-  // Inner glow ring — wider, blurry, only visible at high charge.
+  // Inner glow ring — wider, blurry. Drives the "fully cooked" pulse.
   glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   glow.setAttribute('cx', String(SIZE / 2));
   glow.setAttribute('cy', String(SIZE / 2));
@@ -90,26 +99,43 @@ export function createChargeRing(): void {
 }
 
 /** Called once per frame from the main loop. Reads the live charge
- *  progress and updates the ring. Early-outs when progress hasn't
- *  changed so we're not writing the DOM 60 times per second for
- *  nothing. */
+ *  progress + thumb position; updates ring position, arc fill, and
+ *  glow / pulse. Early-outs when no charge is in flight. */
 export function tickChargeRing(): void {
   if (!root || !arc || !glow) return;
   const p = getChargeProgress();
-  if (p === lastProgress) return;
-  lastProgress = p;
+  const pos = getChargePosition();
 
-  if (p <= 0) {
+  if (p <= 0 || !pos) {
     root.style.opacity = '0';
-    arc.setAttribute('stroke-dashoffset', String(CIRCUM));
-    glow.setAttribute('stroke', 'rgba(255, 220, 140, 0.0)');
     return;
   }
   root.style.opacity = '1';
-  // Dashoffset = full circumference at 0, zero at full charge.
-  arc.setAttribute('stroke-dashoffset', String(CIRCUM * (1 - p)));
-  // Glow ramps in past 50% so the player can FEEL the difference at
-  // the higher charge tiers.
-  const glowAlpha = Math.max(0, (p - 0.5) * 1.4);
-  glow.setAttribute('stroke', `rgba(255, 220, 140, ${glowAlpha.toFixed(3)})`);
+  // Position the ring at the thumb. CSS left/top + the transform=
+  // -50% above centre the circle on the touch point.
+  root.style.left = `${pos.x}px`;
+  root.style.top  = `${pos.y}px`;
+
+  // Arc fill — dashoffset goes from full circumference (0%) to 0
+  // (100%). Clamp at 1 so overcharges show a full ring rather than
+  // a negative offset.
+  const visible = Math.min(1, p);
+  arc.setAttribute('stroke-dashoffset', String(CIRCUM * (1 - visible)));
+
+  // Below 100%: smooth amber ramp. Glow ramps in past 50% so the
+  // higher charge tiers gain a soft halo.
+  // At/above 100%: SWEET SPOT — both the arc colour and the glow
+  // pulse on a sine wave so the eye locks onto the moment to
+  // release. Frequency tuned to feel "ready, ready, ready" without
+  // being strobe-y.
+  if (p >= 1) {
+    const phase = (performance.now() / 1000) * (Math.PI * 2 * PULSE_HZ);
+    const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(phase));   // 0.55..1.0
+    arc.setAttribute('stroke', `rgba(255, 240, 180, ${(0.85 + 0.15 * pulse).toFixed(3)})`);
+    glow.setAttribute('stroke', `rgba(255, 230, 150, ${(0.55 * pulse).toFixed(3)})`);
+  } else {
+    arc.setAttribute('stroke', 'rgba(255, 210, 130, 0.95)');
+    const glowAlpha = Math.max(0, (p - 0.5) * 1.4);
+    glow.setAttribute('stroke', `rgba(255, 220, 140, ${glowAlpha.toFixed(3)})`);
+  }
 }
