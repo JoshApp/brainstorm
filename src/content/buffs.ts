@@ -30,6 +30,21 @@ export const BUFFS: Record<string, BuffSpec> = {
     modifiers: [{ kind: 'weapon-damage', amount: 1 }],
   },
 
+  // Brief defensive proc — typically applied by an item's on-damaged
+  // trigger ("when hit, stiffen for a moment"). Short duration so the
+  // player can't just sit in damage and stay armoured; it's a *reactive
+  // window* that rewards re-engaging after being clipped.
+  ironhide: {
+    id: 'ironhide',
+    displayName: 'IRONHIDE',
+    color: 0x8090a8,
+    modifiers: [
+      { kind: 'physical-armor', amount: 1 },
+      { kind: 'magic-armor', amount: 1 },
+    ],
+    maxStacks: 3,
+  },
+
   // Multiplicative damage bonus. Granted by drinking a Berserk potion.
   // Multiplies the final outgoing damage by 1.5 (after flat bonuses are
   // summed). Tests the multiplier path in the damage pipeline.

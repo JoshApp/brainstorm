@@ -47,6 +47,18 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
   if (entityId === 'player') {
     for (const slot of Object.values(getEquipment())) {
       if (slot?.modifiers) out.push(...slot.modifiers);
+      // Conditional modifiers — only contribute while their condition
+      // holds. Lets items express state-aware effects ("when below
+      // 30% HP, +1 weapon damage") without needing a trigger event.
+      // Cheap to check per-frame; the player's equipped item count
+      // is small and the conditions are simple comparisons.
+      if (slot?.conditionalModifiers) {
+        for (const c of slot.conditionalModifiers) {
+          if (evaluateModifierCondition(c.condition, entityId)) {
+            out.push(...c.modifiers);
+          }
+        }
+      }
     }
     // Rolled affix modifiers from each equipped slot. Sidecar storage
     // — see src/player/equipment.ts — so the base spec stays shared
@@ -66,6 +78,17 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
   }
 
   return out;
+}
+
+/** Evaluate a conditional-modifier predicate for the given entity. */
+function evaluateModifierCondition(
+  cond: { kind: 'below-hp-pct' | 'above-hp-pct'; value: number },
+  entityId: EntityId,
+): boolean {
+  const entity = get(entityId);
+  if (!entity?.hp || entity.hp.base <= 0) return false;
+  const pct = entity.hp.current / entity.hp.base;
+  return cond.kind === 'below-hp-pct' ? pct < cond.value : pct >= cond.value;
 }
 
 // Combined-and-structured player stats. Returned by computePlayerStats().

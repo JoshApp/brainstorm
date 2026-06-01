@@ -17,6 +17,14 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "tune",
+        "text": "Reactive item verbs"
+      },
+      {
+        "tag": "tune",
+        "text": "Level gen: grand boss-hall arena (18x16) for real set-piece fights"
+      },
+      {
+        "tag": "tune",
         "text": "Level gen: four new variety vaults (attack the 'samey' feel)"
       },
       {
