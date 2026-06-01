@@ -178,6 +178,18 @@ async function main() {
     // moves. ?freeze=false overrides scenario.freeze at apply time
     // (see getScenarioFromUrl in src/debug/scenarios.ts).
     const freezeOverride = frameCount > 0 ? '&freeze=false' : '';
+    // INSPECTION MODE — flood the scene with flat bright light, push
+    // fog out, suppress the floor title card, and strip the gameplay
+    // HUD. Auto-enabled for any scenario named mob-*, model-*, item-*,
+    // or vault-* (the inspection scenario family). --inspect forces it
+    // on for anything else; --no-inspect turns it off if you actually
+    // want torch-lit atmosphere on a mob shot.
+    const inspectFamily = /^(mob|model|item|vault)-/.test(scenario);
+    const inspectFlag = process.argv.includes('--inspect');
+    const noInspectFlag = process.argv.includes('--no-inspect');
+    const wantInspect = noInspectFlag ? false : (inspectFlag || inspectFamily);
+    const inspectOverride = wantInspect ? '&inspect=true' : '';
+    if (wantInspect) console.log('Inspect mode: flat-lit, HUD stripped, title suppressed');
     let url: string;
     if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
@@ -186,7 +198,7 @@ async function main() {
     else if (scenario === 'stash') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showStash=1`;
     else if (scenario === 'safe-transition') url = `http://127.0.0.1:${port}/brainstorm/?showSafeTransition=1`;
     else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
-    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}`;
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output

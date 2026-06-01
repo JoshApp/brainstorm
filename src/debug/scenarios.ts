@@ -961,10 +961,15 @@ export function getScenarioFromUrl(): Scenario | null {
     return null;
   }
   const freezeOverride = params.get('freeze');
+  const inspectOverride = params.get('inspect');
+  let result: Scenario = base;
   if (freezeOverride !== null) {
-    return { ...base, freeze: freezeOverride === 'true' };
+    result = { ...result, freeze: freezeOverride === 'true' };
   }
-  return base;
+  if (inspectOverride !== null) {
+    result = { ...result, inspect: inspectOverride === 'true' };
+  }
+  return result;
 }
 
 export function applyScenario(
