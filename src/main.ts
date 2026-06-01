@@ -60,6 +60,7 @@ import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
+import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
@@ -482,6 +483,7 @@ onEvent((e) => {
 createHpBar();
 createBossBar();
 createBuffBar();
+createChargeRing();
 createPickupNotification();
 createDepthCounter(getCurrentDepth());
 createXpGoldHud();
@@ -900,6 +902,10 @@ function tick() {
     playing: isPlaying(),
   };
   runSystems(SYSTEMS, ctx);
+
+  // Charge-ring HUD — early-outs on no-progress so it's free when no
+  // hold is in flight. Always ticked; the visual itself opts in.
+  tickChargeRing();
 
   // Perf overlay (toggle in Settings → PERF METER). Internally early-
   // outs when hidden so it's free when off. reportRendererInfo reads

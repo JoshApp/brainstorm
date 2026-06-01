@@ -18,6 +18,7 @@ import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { spawnProjectile, setProjectileEnemyProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
+import { consumeChargedAmount } from '../controls/charge-input';
 
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
@@ -68,6 +69,10 @@ export function createCombatSystem(
   let strikeAlreadyHit = false;
   let wasStriking = false;
   let trailTimer = 0;     // > 0 → strike-trail hit window is open
+  // Charge level 0..1 captured at attackPressed time; read by the
+  // strike resolution to scale damage / reach / cone. Reset on each
+  // new press (taps reset it to 0, charged swings to their progress).
+  let currentSwingCharge = 0;
 
   // Friendly projectiles (crossbow/wand) hit-test enemies via this
   // provider — registered here so the projectile pool's tick needn't
@@ -142,6 +147,12 @@ export function createCombatSystem(
       if (!getEquipped('weapon')) {
         return;
       }
+      // Capture any pending charge for this swing — 0 if it was a
+      // tap, 0..1 if the player held to charge. The strike-phase
+      // resolution below reads currentSwingCharge to scale damage,
+      // reach, and cone width. Reset per-press, so chained tap-combos
+      // reset back to 0 naturally on the next press.
+      currentSwingCharge = consumeChargedAmount();
       // Whoosh + 'attack:swing' fire from sword.ts's onSwingStart so
       // chained combo steps make sound too, not just the first press.
       // We just forward the input.
@@ -184,11 +195,17 @@ export function createCombatSystem(
     // base stats so each combo position has its own character:
     // sword's slashes cleave 2 at standard reach, thrust finisher
     // extends and narrows; hammer smash cleaves 3 with wider arc.
+    //
+    // Hold-to-charge (sword prototype): a fully charged swing extends
+    // reach by 30%, widens the cone by 40%, and adds up to one extra
+    // multi-target slot for a more sweeping cleave. Damage scaling
+    // happens further down at the per-target damage calculation.
     const step = sword.getActiveStep();
-    const reach = weapon.reach * (step?.reachMul ?? 1);
+    const c = currentSwingCharge;
+    const reach = weapon.reach * (step?.reachMul ?? 1) * (1 + c * 0.30);
     const reachSq = reach * reach;
-    const cosConeHalf = Math.cos(weapon.coneHalfAngle * (step?.coneHalfAngleMul ?? 1));
-    const maxTargets = step?.maxTargets ?? 1;
+    const cosConeHalf = Math.cos(weapon.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.40));
+    const maxTargets = (step?.maxTargets ?? 1) + (c >= 0.7 ? 1 : 0);
 
     // Cone check runs in the HORIZONTAL plane only. A 3D check breaks at
     // very close range: when a tall enemy (e.g. wraith) is pressed against
@@ -218,12 +235,16 @@ export function createCombatSystem(
       ? computePlayerStats().finisherDamageMultiplier
       : 1;
 
+    // Charged-swing damage multiplier — fully charged ×1.8, ramps
+    // linearly from charge progress (c).
+    const chargeDamageMul = 1 + c * 0.80;
+
     let anyCrit = false;
     let bestApplied = 0;
     let anyHeavy = false;
     for (const target of targets) {
       const crit = gameRngChance(critChance);
-      const baseDamage = (crit ? weapon.damage * critMult : weapon.damage) * finisherMult;
+      const baseDamage = (crit ? weapon.damage * critMult : weapon.damage) * finisherMult * chargeDamageMul;
       const applied = target.takeDamage({
         source: 'player',
         target: target.entityId,

@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The Boiling King"
+      },
+      {
         "tag": "fix",
         "text": "Geometry pool"
       },
@@ -220,10 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "Fix severe lag"
-      },
-      {
-        "tag": "tune",
-        "text": "Threshold haze: layered volume inside the archway (less portal)"
       }
     ]
   }

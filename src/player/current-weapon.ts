@@ -23,3 +23,13 @@ export function getCurrentWeapon(): ResolvedWeaponStats {
 export function setCurrentWeapon(stats: WeaponStats) {
   rawSpec = stats;
 }
+
+// Hold-to-charge — per-weapon opt-in. Today the SWORD prototypes the
+// gesture; once it shapes up, crossbow + focus + future greataxe will
+// follow. Weapons that don't opt in keep the existing tap-only model
+// completely unchanged — the charge tracker never arms.
+const CHARGE_CLASSES = new Set(['sword']);
+
+export function wantsHoldToCharge(): boolean {
+  return rawSpec.class !== undefined && CHARGE_CLASSES.has(rawSpec.class);
+}

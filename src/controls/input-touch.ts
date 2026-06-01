@@ -11,7 +11,9 @@
 import { showJoystick, moveJoystickKnob, hideJoystick } from './joystick-hud';
 import { showFirstTimeHint, dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
+import { setChargeFromHeldMs, tryReleaseChargedAttack, cancelCharge } from './charge-input';
 import { getSettings } from '../settings/settings';
+import { wantsHoldToCharge } from '../player/current-weapon';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
 
 const TAP_MAX_MS = 220;
@@ -32,6 +34,11 @@ interface TouchTracker {
   side: 'left' | 'right';
   startTime: number;
   totalMovement: number;
+  /** Right-side only: is this touch still ELIGIBLE for a charged
+   *  attack? Set false the moment the player drags past the tap
+   *  movement threshold; once false it never re-arms during this
+   *  touch. Drag-cancel keeps look-around feeling instant. */
+  chargeArmed: boolean;
 }
 
 export const touchScheme: InputScheme = {
@@ -51,6 +58,7 @@ export const touchScheme: InputScheme = {
           startX: t.clientX, startY: t.clientY,
           lastX: t.clientX,  lastY: t.clientY,
           side, startTime: performance.now(), totalMovement: 0,
+          chargeArmed: side === 'right' && wantsHoldToCharge(),
         });
         if (side === 'left' && activeJoystickId === null) {
           activeJoystickId = t.identifier;
@@ -85,6 +93,13 @@ export const touchScheme: InputScheme = {
           tracker.totalMovement += Math.hypot(ddx, ddy);
           tracker.lastX = t.clientX;
           tracker.lastY = t.clientY;
+          // Charge intent dies the moment a touch drags past the tap
+          // movement threshold — looking around always wins. Once
+          // disarmed it stays disarmed for the rest of this touch.
+          if (tracker.chargeArmed && tracker.totalMovement >= TAP_MAX_PX) {
+            tracker.chargeArmed = false;
+            cancelCharge();
+          }
         }
       }
     }
@@ -106,7 +121,17 @@ export const touchScheme: InputScheme = {
         if (isTap) {
           const consumed = options.onTap?.(t.clientX, t.clientY, tracker.side) ?? false;
           if (!consumed && tracker.side === 'right') triggerAttack();
+        } else if (tracker.side === 'right' && tracker.chargeArmed && tracker.totalMovement < TAP_MAX_PX) {
+          // Held still past the tap window — a charged release. If the
+          // charge had built any progress (>= CHARGE_RAMP_START_MS) the
+          // charge-input module queues a charged attack; otherwise this
+          // is a no-op and the touch is treated as nothing happened.
+          const fired = tryReleaseChargedAttack();
+          if (fired) triggerAttack();
         }
+        // Any touch that ended without firing a charge release leaves
+        // the visible ring at zero — cancelCharge is idempotent.
+        cancelCharge();
         touches.delete(t.identifier);
       }
     }
@@ -116,8 +141,23 @@ export const touchScheme: InputScheme = {
     canvas.addEventListener('touchend', handleEnd, { passive: false });
     canvas.addEventListener('touchcancel', handleEnd, { passive: false });
 
-    // Per-frame tick — hybrid-look continuous rotation.
+    // Per-frame tick — hybrid-look continuous rotation + charge ramp.
     return (dt: number) => {
+      const now = performance.now();
+      // Find the highest-progressing armed right-side hold and feed
+      // its elapsed time to the charge module. If no eligible touch
+      // is held this frame, the module's progress decays via release/
+      // cancel calls — we don't reset it here.
+      let bestHeldMs = 0;
+      for (const tracker of touches.values()) {
+        if (tracker.side === 'right' && tracker.chargeArmed) {
+          const held = now - tracker.startTime;
+          if (held > bestHeldMs) bestHeldMs = held;
+        }
+      }
+      if (bestHeldMs > 0) setChargeFromHeldMs(bestHeldMs);
+
+      // Hybrid-look continuous rotation (existing behaviour).
       if (!getSettings().hybridLook) return;
       for (const tracker of touches.values()) {
         if (tracker.side !== 'right') continue;

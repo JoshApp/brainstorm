@@ -1,0 +1,75 @@
+// Hold-to-charge input — prototype.
+//
+// A second attack pathway parallel to attack-input.ts. While a right-
+// side touch is held STILL (no drag) for longer than the tap window,
+// a charge accumulates. On release, if the charge crossed the trigger
+// threshold, a charged attack fires; otherwise the existing tap path
+// runs as usual. Any drag past the tap movement threshold cancels the
+// charge — looking around always wins.
+//
+// Per-weapon opt-in: not every weapon is a charge weapon. Combat reads
+// `wasChargedAttack()` after the attack fires; weapons that don't use
+// charges ignore the flag. Today only the sword uses it (prototype) —
+// crossbow / focus / future greataxe will follow.
+
+import { isWorldPausedByScreen } from '../ui/screen-manager';
+
+// Aligned with TAP_MAX_MS in input-touch (220) so there's no
+// dead-zone hold where neither tap nor charge fires. At exactly the
+// tap-end threshold the charge ring begins to fill.
+const CHARGE_RAMP_START_MS = 220;
+const CHARGE_FULL_MS       = 800;   // at this point, charge is fully cooked
+
+let liveProgress = 0;                // 0..1 — current visible charge, updated by setChargeProgress
+let chargedPending = false;          // a charged attack release is queued for the game loop
+let chargedAmount  = 0;              // the progress level at the moment of release (0..1)
+
+/** Current charge progress (0..1) for the visible HUD ring. Returns 0
+ *  when no charge is in flight. Called every frame by the overlay. */
+export function getChargeProgress(): number {
+  return liveProgress;
+}
+
+/** Set by the input layer each frame as a touch is held. Pass the
+ *  elapsed-since-touchstart in ms; this module computes the 0..1
+ *  progress and stores it for the overlay. */
+export function setChargeFromHeldMs(heldMs: number): void {
+  if (heldMs < CHARGE_RAMP_START_MS) { liveProgress = 0; return; }
+  const t = (heldMs - CHARGE_RAMP_START_MS) / (CHARGE_FULL_MS - CHARGE_RAMP_START_MS);
+  liveProgress = Math.max(0, Math.min(1, t));
+}
+
+/** Called by the input layer when a charge-eligible touch ends. If the
+ *  charge had any progress (> 0), queues a charged attack release for
+ *  the game loop. Returns true if a charged attack was queued — the
+ *  caller can then SKIP firing the normal tap-attack to avoid both
+ *  firing on the same release. */
+export function tryReleaseChargedAttack(): boolean {
+  if (isWorldPausedByScreen()) {
+    liveProgress = 0;
+    return false;
+  }
+  if (liveProgress <= 0) return false;
+  chargedAmount  = liveProgress;
+  chargedPending = true;
+  liveProgress   = 0;
+  return true;
+}
+
+/** Called by the input layer when the charge is interrupted (drag past
+ *  the tap-movement threshold, screen rotation, etc). Clears progress
+ *  WITHOUT firing. */
+export function cancelCharge(): void {
+  liveProgress = 0;
+}
+
+/** Game-loop side: returns the charge amount (0..1) of the just-pressed
+ *  attack, or 0 if it wasn't a charged attack. Consumed once per press,
+ *  same pattern as consumeAttackPressed. */
+export function consumeChargedAmount(): number {
+  if (!chargedPending) return 0;
+  chargedPending = false;
+  const amt = chargedAmount;
+  chargedAmount = 0;
+  return amt;
+}
