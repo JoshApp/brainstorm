@@ -10,7 +10,14 @@
  *   npm run snap inventory desktop
  *   npm run snap spawn --port=5180            (use a different port)
  *
+ *   # Animation grid — capture N evenly-spaced frames over a duration
+ *   # and lay them out as a contact sheet. Auto-unfreezes the scenario
+ *   # so animations actually run. Saves to /tmp/snap-<scenario>-grid.png.
+ *   npm run snap mob-mimic --frames=6                (6 frames over 2s)
+ *   npm run snap boss --frames=8 --duration=4        (8 frames over 4s)
+ *
  * Output: /tmp/snap-<scenario>.png            (or -<viewport>.png if non-default)
+ *         /tmp/snap-<scenario>-grid.png       (when --frames is set)
  *
  * Use the viewport presets to iterate on mobile UI without guessing —
  * the inventory panel needs different framing on a 392-tall phone vs
@@ -58,6 +65,20 @@ const LONG_WAIT_SCENARIOS = new Set([
   'death', 'title', 'title-continue', 'title-veteran', 'end', 'codex', 'stash',
 ]);
 
+// Contact-sheet column count by frame count. Hand-picked for the
+// common N values so the grid reads time-left-to-right, top-to-bottom
+// with no awkward gaps. Falls back to a square-ish layout for
+// anything else.
+function gridCols(n: number): number {
+  if (n <= 3) return n;
+  if (n === 4) return 2;
+  if (n <= 6) return 3;
+  if (n === 8) return 4;
+  if (n === 9) return 3;
+  if (n <= 12) return 4;
+  return Math.ceil(Math.sqrt(n));
+}
+
 async function main() {
   const scenario = process.argv[2] || 'spawn';
 
@@ -70,6 +91,16 @@ async function main() {
   }
   console.log(`Viewport: ${viewportArg} ${viewport.width}×${viewport.height}`);
 
+  // Animation-grid mode: --frames=N (and optional --duration=Ns, default 2s).
+  // 0/undefined = single-frame mode (the original behaviour).
+  const framesArg = process.argv.find((a) => a.startsWith('--frames='))?.split('=')[1];
+  const frameCount = framesArg ? Math.max(1, Math.min(32, Number(framesArg))) : 0;
+  const durationSec = Number(process.argv.find((a) => a.startsWith('--duration='))?.split('=')[1] ?? '2');
+  const durationMs = Math.max(100, durationSec * 1000);
+  if (frameCount > 0) {
+    console.log(`Animation grid: ${frameCount} frames over ${durationSec}s`);
+  }
+
   const port = Number(
     process.argv.find((a) => a.startsWith('--port='))?.split('=')[1] ??
       String(5180 + Math.floor(Math.random() * 100)),
@@ -78,7 +109,9 @@ async function main() {
   if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
   // Suffix with viewport name unless it's the default desktop.
   const suffix = viewportArg === 'desktop' ? '' : `-${viewportArg}`;
-  const outPath = `${outDir}/snap-${scenario}${suffix}.png`;
+  const outPath = frameCount > 0
+    ? `${outDir}/snap-${scenario}${suffix}-grid.png`
+    : `${outDir}/snap-${scenario}${suffix}.png`;
 
   if (!existsSync(CHROMIUM_PATH)) {
     console.error(`Chromium binary not found at ${CHROMIUM_PATH}`);
@@ -140,6 +173,11 @@ async function main() {
       scenario === 'title' || scenario === 'title-continue' ||
       scenario === 'title-veteran' || scenario === 'end' ||
       scenario === 'codex' || scenario === 'stash';
+    // In animation-grid mode, force the scenario UNFROZEN so the world
+    // actually ticks between captures — the whole point is to see what
+    // moves. ?freeze=false overrides scenario.freeze at apply time
+    // (see getScenarioFromUrl in src/debug/scenarios.ts).
+    const freezeOverride = frameCount > 0 ? '&freeze=false' : '';
     let url: string;
     if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
@@ -148,7 +186,7 @@ async function main() {
     else if (scenario === 'stash') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showStash=1`;
     else if (scenario === 'safe-transition') url = `http://127.0.0.1:${port}/brainstorm/?showSafeTransition=1`;
     else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
-    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}`;
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output
@@ -171,8 +209,72 @@ async function main() {
     const waitMs = longWait ? 2000 : 900;
     await page.waitForTimeout(waitMs);
 
-    await page.screenshot({ path: outPath });
-    console.log(`Saved ${outPath}`);
+    if (frameCount > 0) {
+      // ── Animation grid: capture N frames at evenly-spaced moments
+      //    across `durationMs`, then compose them into a single
+      //    contact-sheet PNG. Each cell is the FULL viewport-size
+      //    frame with a small t= label burnt into the top-left.
+      const frames: Buffer[] = [];
+      const interval = frameCount > 1 ? durationMs / (frameCount - 1) : 0;
+      for (let i = 0; i < frameCount; i++) {
+        if (i > 0) await page.waitForTimeout(interval);
+        frames.push(await page.screenshot({ type: 'png' }));
+        process.stdout.write(`  captured frame ${i + 1}/${frameCount}\r`);
+      }
+      process.stdout.write('\n');
+
+      // Compose: lay frames out in a grid as an HTML page, then
+      // screenshot the page. fullPage:true captures the full document
+      // height regardless of the browser viewport, so the grid renders
+      // at full per-cell resolution.
+      const cols = gridCols(frameCount);
+      const rows = Math.ceil(frameCount / cols);
+      const cellW = viewport.width;
+      const cellH = viewport.height;
+      const labels = frames.map((_, i) =>
+        frameCount > 1 ? `t=${((i / (frameCount - 1)) * (durationMs / 1000)).toFixed(2)}s` : 't=0.00s'
+      );
+      const cells = frames.map((buf, i) =>
+        `<div class="cell">
+          <img src="data:image/png;base64,${buf.toString('base64')}">
+          <div class="lbl">${labels[i]}</div>
+        </div>`
+      ).join('');
+      const html = `<!doctype html><html><head><style>
+        html, body { margin: 0; padding: 0; background: #000; }
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(${cols}, ${cellW}px);
+          gap: 2px;
+          width: ${cols * cellW + (cols - 1) * 2}px;
+        }
+        .cell { position: relative; width: ${cellW}px; height: ${cellH}px; }
+        .cell img { width: ${cellW}px; height: ${cellH}px; display: block; }
+        .lbl {
+          position: absolute; top: 8px; left: 10px;
+          padding: 3px 8px;
+          background: rgba(0,0,0,0.7);
+          color: #ddd;
+          font-family: 'SF Mono', Menlo, monospace;
+          font-size: 16px;
+          letter-spacing: 0.04em;
+          border: 1px solid rgba(255,255,255,0.1);
+        }
+      </style></head><body><div class="grid">${cells}</div></body></html>`;
+      // Resize viewport so fullPage screenshot doesn't introduce
+      // unexpected scaling — the grid renders 1:1 at its native size.
+      await page.setViewportSize({
+        width: cols * cellW + (cols - 1) * 2,
+        height: rows * cellH + (rows - 1) * 2,
+      });
+      await page.setContent(html, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(150); // let images decode
+      await page.screenshot({ path: outPath, fullPage: true });
+      console.log(`Saved ${outPath} (${cols}×${rows} grid, ${frameCount} frames over ${durationSec}s)`);
+    } else {
+      await page.screenshot({ path: outPath });
+      console.log(`Saved ${outPath}`);
+    }
   } finally {
     if (browser) await browser.close().catch(() => {});
     // Kill the whole process group so vite + its esbuild child both die.
