@@ -84,15 +84,18 @@ export type EnemyState =
   | 'searching'   // lost sight, heading to last known position
   | 'returning';  // gave up search, walking back to post
 
+// AI timing/feel constants are tuned in src/config.ts (CONFIG.ENEMY_AI);
+// the rationale for each stays here at the use site.
+
 // How long an enemy hesitates after first spotting the player before
 // committing to chase. Sells the "I see you" moment — also gives the
 // player a reaction window.
-const ALERTED_DURATION = 0.45;
+const ALERTED_DURATION = CONFIG.ENEMY_AI.ALERTED_DURATION;
 
 // How long the enemy will search at the last-known position before giving
 // up. Doesn't override per-spec loseSightTime; this is the search PHASE
 // duration after sight is already lost.
-const SEARCH_DURATION = 3.0;
+const SEARCH_DURATION = CONFIG.ENEMY_AI.SEARCH_DURATION;
 
 // Idle scan: the enemy drifts its gaze in a gentle random-walk around its
 // home facing, holding still much of the time, so a roomful (especially a
@@ -100,11 +103,11 @@ const SEARCH_DURATION = 3.0;
 // in unison. Each gaze change is a SMALL step from the current angle, not a
 // fresh jump across the whole arc, and the interval is jittered per enemy so
 // the swarm desyncs.
-const IDLE_SCAN_INTERVAL_MIN = 3.0;    // base seconds between gaze changes
-const IDLE_SCAN_INTERVAL_JITTER = 2.5; // + up to this (desyncs a swarm)
-const IDLE_SCAN_HALF_ARC = 0.5;        // ±29° max from home yaw
-const IDLE_SCAN_STEP = 0.35;           // ±20° gentle step per change
-const IDLE_SCAN_HOLD_CHANCE = 0.4;     // fraction of changes that just pause
+const IDLE_SCAN_INTERVAL_MIN = CONFIG.ENEMY_AI.IDLE_SCAN_INTERVAL_MIN;
+const IDLE_SCAN_INTERVAL_JITTER = CONFIG.ENEMY_AI.IDLE_SCAN_INTERVAL_JITTER;
+const IDLE_SCAN_HALF_ARC = CONFIG.ENEMY_AI.IDLE_SCAN_HALF_ARC;
+const IDLE_SCAN_STEP = CONFIG.ENEMY_AI.IDLE_SCAN_STEP;
+const IDLE_SCAN_HOLD_CHANCE = CONFIG.ENEMY_AI.IDLE_SCAN_HOLD_CHANCE;
 
 export interface Enemy extends Damageable {
   entityId: EntityId;
