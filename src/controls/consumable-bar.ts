@@ -8,6 +8,7 @@ import { playHealSlurp, playBuffApply, playDenied } from '../audio/sfx';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { FONT_UI } from '../ui/hud';
 import { isDesktopLike } from './platform';
+import { hexCss, hexRgba } from '../style/color-utils';
 
 // Consumable hotbar — left-thumb cluster, above the joystick zone.
 //
@@ -293,7 +294,7 @@ function drainPulse(itemId: string) {
 // clearer than the old alchemical glyph. Liquid colour = the item's elixir
 // tint (red = heal, orange = berserk), so types are distinguishable instantly.
 function flaskSvg(tint: number, px: number): string {
-  const liquid = rgbCss(tint);
+  const liquid = hexCss(tint);
   const glass = 'rgba(220,226,236,0.55)';
   const glassFill = 'rgba(220,226,236,0.10)';
   return `<svg viewBox="0 0 24 28" width="${px}" height="${(px * 28) / 24}" aria-hidden="true">
@@ -316,15 +317,6 @@ function readElixirTint(item: ItemSpec): number {
   return HEAL_TINT_FALLBACK;
 }
 
-function tintBorder(tint: number): string { return rgbaCss(tint, 0.55); }
-function tintBackground(tint: number): string { return rgbaCss(tint, 0.18); }
-function tintShadow(tint: number): string { return rgbaCss(tint, 0.30); }
-
-function rgbCss(hex: number): string {
-  const r = (hex >> 16) & 0xff, g = (hex >> 8) & 0xff, b = hex & 0xff;
-  return `rgb(${r}, ${g}, ${b})`;
-}
-function rgbaCss(hex: number, alpha: number): string {
-  const r = (hex >> 16) & 0xff, g = (hex >> 8) & 0xff, b = hex & 0xff;
-  return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})`;
-}
+function tintBorder(tint: number): string { return hexRgba(tint, 0.55); }
+function tintBackground(tint: number): string { return hexRgba(tint, 0.18); }
+function tintShadow(tint: number): string { return hexRgba(tint, 0.30); }

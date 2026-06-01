@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
+import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import { resolveAbilities, meleeReachOf, aoeEffectOf, type Ability } from '../content/abilities';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
@@ -29,33 +30,15 @@ import { raiseAlert, sampleAlert } from './alerts';
 import type { Damageable } from '../combat/damageable';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
 
-// Map an EnemySpec → audio size bucket. Used by death + windup sounds so
-// big mobs sound big and the wraith reads as spectral, not physical.
+// Audio buckets are content data (see content/enemies.ts). These thin
+// lookups apply the runtime defaults: 'medium' for an unlisted size,
+// null (silent) for an unlisted voice.
 function audioSizeFor(spec: EnemySpec): EnemyDeathSize {
-  if (spec.id === 'wraith') return 'spectral';
-  if (spec.id === 'rat') return 'small';
-  return 'medium';
+  return ENEMY_AUDIO_SIZE[spec.id] ?? 'medium';
 }
 
-// Which idle/aware vocalisation a mob emits (mobs/enemy.ts ticks a timer and
-// calls playEnemyVocal positionally). Maps by spec id — same one-source-of-
-// truth pattern as audioSizeFor. null = silent (no betraying sound).
 function vocalArchetypeFor(spec: EnemySpec): VocalArchetype | null {
-  switch (spec.id) {
-    case 'spider': return 'skitter';
-    case 'skeleton': return 'rattle';
-    case 'wraith': return 'groan';
-    case 'ghoul': return 'groan';
-    case 'skirmisher': return 'groan';
-    case 'rat': return 'squeak';
-    case 'ooze':
-    case 'ooze-small': return 'gurgle';
-    case 'stoneguard': return 'grind';
-    case 'acid-spitter': return 'hiss';
-    case 'acolyte':
-    case 'defiler': return 'hiss';
-    default: return null;
-  }
+  return ENEMY_VOCAL_ARCHETYPE[spec.id] ?? null;
 }
 
 /** Release an enemy's ECS entity + registered combat stats. Called from level
@@ -101,15 +84,18 @@ export type EnemyState =
   | 'searching'   // lost sight, heading to last known position
   | 'returning';  // gave up search, walking back to post
 
+// AI timing/feel constants are tuned in src/config.ts (CONFIG.ENEMY_AI);
+// the rationale for each stays here at the use site.
+
 // How long an enemy hesitates after first spotting the player before
 // committing to chase. Sells the "I see you" moment — also gives the
 // player a reaction window.
-const ALERTED_DURATION = 0.45;
+const ALERTED_DURATION = CONFIG.ENEMY_AI.ALERTED_DURATION;
 
 // How long the enemy will search at the last-known position before giving
 // up. Doesn't override per-spec loseSightTime; this is the search PHASE
 // duration after sight is already lost.
-const SEARCH_DURATION = 3.0;
+const SEARCH_DURATION = CONFIG.ENEMY_AI.SEARCH_DURATION;
 
 // Idle scan: the enemy drifts its gaze in a gentle random-walk around its
 // home facing, holding still much of the time, so a roomful (especially a
@@ -117,11 +103,11 @@ const SEARCH_DURATION = 3.0;
 // in unison. Each gaze change is a SMALL step from the current angle, not a
 // fresh jump across the whole arc, and the interval is jittered per enemy so
 // the swarm desyncs.
-const IDLE_SCAN_INTERVAL_MIN = 3.0;    // base seconds between gaze changes
-const IDLE_SCAN_INTERVAL_JITTER = 2.5; // + up to this (desyncs a swarm)
-const IDLE_SCAN_HALF_ARC = 0.5;        // ±29° max from home yaw
-const IDLE_SCAN_STEP = 0.35;           // ±20° gentle step per change
-const IDLE_SCAN_HOLD_CHANCE = 0.4;     // fraction of changes that just pause
+const IDLE_SCAN_INTERVAL_MIN = CONFIG.ENEMY_AI.IDLE_SCAN_INTERVAL_MIN;
+const IDLE_SCAN_INTERVAL_JITTER = CONFIG.ENEMY_AI.IDLE_SCAN_INTERVAL_JITTER;
+const IDLE_SCAN_HALF_ARC = CONFIG.ENEMY_AI.IDLE_SCAN_HALF_ARC;
+const IDLE_SCAN_STEP = CONFIG.ENEMY_AI.IDLE_SCAN_STEP;
+const IDLE_SCAN_HOLD_CHANCE = CONFIG.ENEMY_AI.IDLE_SCAN_HOLD_CHANCE;
 
 export interface Enemy extends Damageable {
   entityId: EntityId;
@@ -900,6 +886,131 @@ export function createEnemy(
     }
   }
 
+  // ── Per-frame animation/audio overlays ──────────────────────────────
+  // Cosmetic + audio steps that run every aware/active frame regardless of
+  // AI state. Pulled out of update() so the state machine reads clean; each
+  // is a nested closure so it keeps direct access to the model refs.
+
+  // Emit a positional vocalisation in "living its life" states (not
+  // mid-attack). Agitated when hunting; calm + sparse at post.
+  function tickVocalisation(dt: number) {
+    if (!vocalArch) return;
+    vocalTimer -= dt;
+    if (vocalTimer > 0) return;
+    const agitated = state === 'chasing' || state === 'searching';
+    const canVocalize = state === 'idle' || state === 'returning' || agitated;
+    if (canVocalize) {
+      playEnemyVocal(vocalArch, container.position, agitated);
+      vocalTimer = agitated ? 2.5 + gameRng() * 3 : 7 + gameRng() * 10;
+    } else {
+      vocalTimer = 1.5;   // mid-attack — retry shortly
+    }
+  }
+
+  // Tip the head toward the player when aware — stronger the closer they
+  // are. Eases back to neutral when idle/returning. No-op without a neck.
+  function tickHeadCrane(dt: number, distance: number) {
+    if (!neck) return;
+    const aware = aggroed && state !== 'returning';
+    const prox = Math.max(0, 1 - distance / 5);   // 0 far → 1 point-blank
+    const targetPitch = aware ? -0.45 * prox : 0;
+    headPitch += (targetPitch - headPitch) * Math.min(1, dt * 6);
+    neck.rotation.x = neckBaseX + headPitch;
+  }
+
+  // Integrate + decay the recoil impulse, clamped against walls. Runs after
+  // AI movement so a connected charge recoils. Fast decay → a brief shove.
+  function tickKnockback(dt: number, walkable: WalkableRegion) {
+    if (knockVX === 0 && knockVZ === 0) return;
+    const r = walkable.clampMove(
+      container.position.x, container.position.z,
+      container.position.x + knockVX * dt,
+      container.position.z + knockVZ * dt,
+      spec.collisionRadius,
+      spec.phasing ? { ignoreObstacles: true } : undefined,
+    );
+    container.position.x = r.x;
+    container.position.z = r.z;
+    const decay = Math.exp(-dt * 9);
+    knockVX *= decay;
+    knockVZ *= decay;
+    if (Math.abs(knockVX) < 0.05 && Math.abs(knockVZ) < 0.05) { knockVX = 0; knockVZ = 0; }
+  }
+
+  // Swing the legs from how far the body actually moved this frame, so a
+  // walking enemy plants strides instead of sliding. No-op on floaters /
+  // non-humanoids (no hip pivots).
+  function tickLocomotion(dt: number) {
+    if (hipL || hipR) {
+      const movedX = container.position.x - prevX;
+      const movedZ = container.position.z - prevZ;
+      const moved = Math.hypot(movedX, movedZ);
+      // Advance the cycle by distance covered → feet roughly track the
+      // ground, less moonwalk than a time-based cycle.
+      stridePhase += (moved / STRIDE_LENGTH) * Math.PI * 2;
+      // Ease gait in/out so legs return to rest when the enemy stops
+      // (a frozen mid-stride pose reads worse than settling to neutral).
+      const targetAmp = moved > 0.0005 ? GAIT_SWING : 0;
+      gaitAmp += (targetAmp - gaitAmp) * Math.min(1, dt * 9);
+      const swing = Math.sin(stridePhase) * gaitAmp;
+      if (hipL) hipL.rotation.x = hipBaseLX + swing;
+      if (hipR) hipR.rotation.x = hipBaseRX - swing;
+      // Subtle vertical bob synced to the stride (up on each footfall).
+      built.group.position.y += Math.abs(Math.sin(stridePhase)) * gaitAmp * 0.05;
+    }
+    prevX = container.position.x;
+    prevZ = container.position.z;
+  }
+
+  // Idle "alive" overlay applied AFTER the state animation so it stacks on
+  // what the state set. position.y + container yaw are written by state code
+  // (so presence ADDS); built.group x/z + roll are untouched (writes direct).
+  function tickPresenceOverlay(dt: number) {
+    if (!presence) return;
+    presenceTime += dt;
+    const t = presenceTime + presencePhase;
+    switch (presence) {
+      case 'spectral': {
+        // Slow vertical bob + micro yaw sway. Wraith — float + drift.
+        built.group.position.y += Math.sin(t * 1.7) * 0.10;
+        container.rotation.y   += Math.sin(t * 0.9) * 0.05;
+        break;
+      }
+      case 'lurch': {
+        // Shambling corpse — lateral roll with a shamble-step dip
+        // synced to the roll. Reads as heavy + off-balance.
+        built.group.rotation.z  = Math.sin(t * 1.45) * 0.08;
+        built.group.position.y += Math.abs(Math.sin(t * 1.45)) * 0.05 - 0.025;
+        break;
+      }
+      case 'twitch': {
+        // Rat — fast yaw micro-shudder + scurry bob. Yaw is on
+        // container so the whole body twitches, not just the head.
+        container.rotation.y   += Math.sin(t * 7.0) * 0.045;
+        built.group.position.y += Math.abs(Math.sin(t * 8.5)) * 0.012;
+        break;
+      }
+      case 'coiled': {
+        // Skirmisher — taut shoulder bob + subtle weight-shift roll.
+        // Reads as ready to spring rather than at rest.
+        built.group.position.y += Math.sin(t * 2.4) * 0.022;
+        built.group.rotation.z  = Math.sin(t * 1.7) * 0.030;
+        break;
+      }
+      case 'chant': {
+        // Acolyte — slow ritual side rock + horizontal drift + orb
+        // emissive pulse. The orb pulse is what sells "channelling"
+        // even when the caster is just standing.
+        built.group.rotation.z  = Math.sin(t * 1.0) * 0.08;
+        built.group.position.x  = Math.sin(t * 0.8) * 0.025;
+        if (orbMat) {
+          orbMat.emissiveIntensity = orbBaseEmissive * (1 + 0.35 * Math.sin(t * 1.4));
+        }
+        break;
+      }
+    }
+  }
+
   function update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion, nav?: NavGrid) {
     if (!aliveLocal) {
       // Dying branch — run the death animation; everything else (AI,
@@ -926,22 +1037,8 @@ export function createEnemy(
       homeYawSet = true;
     }
 
-    // Vocalisation timer — emit a positional sound in states where the mob
-    // is "living its life" (not mid-attack). Agitated when hunting; calm +
-    // sparse when at post. The point is hearing it before seeing it.
-    if (vocalArch) {
-      vocalTimer -= dt;
-      if (vocalTimer <= 0) {
-        const agitated = state === 'chasing' || state === 'searching';
-        const canVocalize = state === 'idle' || state === 'returning' || agitated;
-        if (canVocalize) {
-          playEnemyVocal(vocalArch, container.position, agitated);
-          vocalTimer = agitated ? 2.5 + gameRng() * 3 : 7 + gameRng() * 10;
-        } else {
-          vocalTimer = 1.5;   // mid-attack — retry shortly
-        }
-      }
-    }
+    // Vocalisation — hear it before you see it. (see tickVocalisation)
+    tickVocalisation(dt);
 
     // ── Perception ─────────────────────────────────────────────────────
     // Refresh sight check every frame. Once aggroed, we stay aggroed
@@ -1241,120 +1338,14 @@ export function createEnemy(
       }
     }
 
-    // ── Head crane ───────────────────────────────────────────────────
-    // Tip the head toward the player when aware — stronger the closer
-    // they are (looms over you at melee range, level at distance). Eases
-    // back to neutral when idle/returning. Negative rot.x pitches the
-    // gaze DOWN (model forward is -Z). No-op without a neck pivot.
-    if (neck) {
-      const aware = aggroed && state !== 'returning';
-      const prox = Math.max(0, 1 - distance / 5);   // 0 far → 1 point-blank
-      const targetPitch = aware ? -0.45 * prox : 0;
-      headPitch += (targetPitch - headPitch) * Math.min(1, dt * 6);
-      neck.rotation.x = neckBaseX + headPitch;
-    }
-
-    // ── Knockback ────────────────────────────────────────────────────
-    // Integrate + decay the recoil impulse, clamped against walls. Runs
-    // after AI movement so it overrides (a charge that just connected
-    // recoils even though its dash set strikeAlreadyHit). Fast decay →
-    // a brief shove, not a long slide.
-    if (knockVX !== 0 || knockVZ !== 0) {
-      const r = walkable.clampMove(
-        container.position.x, container.position.z,
-        container.position.x + knockVX * dt,
-        container.position.z + knockVZ * dt,
-        spec.collisionRadius,
-        spec.phasing ? { ignoreObstacles: true } : undefined,
-      );
-      container.position.x = r.x;
-      container.position.z = r.z;
-      const decay = Math.exp(-dt * 9);
-      knockVX *= decay;
-      knockVZ *= decay;
-      if (Math.abs(knockVX) < 0.05 && Math.abs(knockVZ) < 0.05) { knockVX = 0; knockVZ = 0; }
-    }
-
-    // ── Locomotion (gait) ────────────────────────────────────────────
-    // Swing the legs from how far the body actually moved this frame, so
-    // a walking enemy plants strides instead of sliding. Runs before
-    // presence so the idle overlay's bob still stacks on top. No-op on
-    // floaters / non-humanoids (no hip pivots).
-    if (hipL || hipR) {
-      const movedX = container.position.x - prevX;
-      const movedZ = container.position.z - prevZ;
-      const moved = Math.hypot(movedX, movedZ);
-      // Advance the cycle by distance covered → feet roughly track the
-      // ground, less moonwalk than a time-based cycle.
-      stridePhase += (moved / STRIDE_LENGTH) * Math.PI * 2;
-      // Ease gait in/out so legs return to rest when the enemy stops
-      // (a frozen mid-stride pose reads worse than settling to neutral).
-      const targetAmp = moved > 0.0005 ? GAIT_SWING : 0;
-      gaitAmp += (targetAmp - gaitAmp) * Math.min(1, dt * 9);
-      const swing = Math.sin(stridePhase) * gaitAmp;
-      if (hipL) hipL.rotation.x = hipBaseLX + swing;
-      if (hipR) hipR.rotation.x = hipBaseRX - swing;
-      // Subtle vertical bob synced to the stride (up on each footfall).
-      built.group.position.y += Math.abs(Math.sin(stridePhase)) * gaitAmp * 0.05;
-    }
-    prevX = container.position.x;
-    prevZ = container.position.z;
-
-    // ── Presence overlay ─────────────────────────────────────────────
-    // Applied AFTER the state animation so it stacks on what the state
-    // set (e.g. winding's 0.10*t lift gets a bob on top — looks like
-    // the wraith levitates higher as it rears up).
-    //
-    // Conventions:
-    //   - position.y is WRITTEN by state code each frame, so presence
-    //     adds (+=) to it. Same for container.rotation.y (state's lookAt
-    //     writes it).
-    //   - position.x/z and rotation.x/z on built.group are NOT touched
-    //     by state code, so presence writes them directly (no drift).
-    if (presence) {
-      presenceTime += dt;
-      const t = presenceTime + presencePhase;
-      switch (presence) {
-        case 'spectral': {
-          // Slow vertical bob + micro yaw sway. Wraith — float + drift.
-          built.group.position.y += Math.sin(t * 1.7) * 0.10;
-          container.rotation.y   += Math.sin(t * 0.9) * 0.05;
-          break;
-        }
-        case 'lurch': {
-          // Shambling corpse — lateral roll with a shamble-step dip
-          // synced to the roll. Reads as heavy + off-balance.
-          built.group.rotation.z  = Math.sin(t * 1.45) * 0.08;
-          built.group.position.y += Math.abs(Math.sin(t * 1.45)) * 0.05 - 0.025;
-          break;
-        }
-        case 'twitch': {
-          // Rat — fast yaw micro-shudder + scurry bob. Yaw is on
-          // container so the whole body twitches, not just the head.
-          container.rotation.y   += Math.sin(t * 7.0) * 0.045;
-          built.group.position.y += Math.abs(Math.sin(t * 8.5)) * 0.012;
-          break;
-        }
-        case 'coiled': {
-          // Skirmisher — taut shoulder bob + subtle weight-shift roll.
-          // Reads as ready to spring rather than at rest.
-          built.group.position.y += Math.sin(t * 2.4) * 0.022;
-          built.group.rotation.z  = Math.sin(t * 1.7) * 0.030;
-          break;
-        }
-        case 'chant': {
-          // Acolyte — slow ritual side rock + horizontal drift + orb
-          // emissive pulse. The orb pulse is what sells "channelling"
-          // even when the caster is just standing.
-          built.group.rotation.z  = Math.sin(t * 1.0) * 0.08;
-          built.group.position.x  = Math.sin(t * 0.8) * 0.025;
-          if (orbMat) {
-            orbMat.emissiveIntensity = orbBaseEmissive * (1 + 0.35 * Math.sin(t * 1.4));
-          }
-          break;
-        }
-      }
-    }
+    // ── Post-AI animation/audio overlays ─────────────────────────────
+    // Order matters: head crane + knockback, then gait (reads this frame's
+    // net movement), then the presence overlay last so its idle bob stacks
+    // on top of whatever the state animation set.
+    tickHeadCrane(dt, distance);
+    tickKnockback(dt, walkable);
+    tickLocomotion(dt);
+    tickPresenceOverlay(dt);
   }
 
   function setDebugState(s: EnemyState, t: number) {

@@ -82,6 +82,32 @@ export const CONFIG = {
   ENEMY_HIT_FLASH_COLOR: 0xffeedd,
   ENEMY_HIT_FLASH_DURATION: 0.08,
 
+  // === ENEMY AI (cross-instance perception + idle feel) ===
+  // The "I see you" hesitation, search-phase length, and idle gaze drift.
+  // Rationale for each lives at its use site in src/mobs/enemy.ts.
+  ENEMY_AI: {
+    ALERTED_DURATION: 0.45,           // s — hesitation after first spotting the player
+    SEARCH_DURATION: 3.0,             // s — search at last-known position before giving up
+    IDLE_SCAN_INTERVAL_MIN: 3.0,      // s — base gap between idle gaze changes
+    IDLE_SCAN_INTERVAL_JITTER: 2.5,   // s — + up to this (desyncs a swarm)
+    IDLE_SCAN_HALF_ARC: 0.5,          // rad — ±29° max from home yaw
+    IDLE_SCAN_STEP: 0.35,             // rad — ±20° gentle step per gaze change
+    IDLE_SCAN_HOLD_CHANCE: 0.4,       // fraction of changes that just pause
+  },
+
+  // === EFFECTS — DRIFTING MOTES (ambient dust atmosphere) ===
+  EFFECTS_MOTES: {
+    COUNT: 38,            // sparse — feedback was "not too crowded"
+    SPAWN_Y_MIN: 0.25,
+    SPAWN_Y_MAX: 2.60,
+    LIFE_MIN: 6.0,        // seconds
+    LIFE_MAX: 11.0,
+    DRIFT_SPEED_LAT: 0.06, // m/s — sideways drift max
+    DRIFT_SPEED_UP: 0.10,  // m/s — upward drift max
+    BASE_SIZE: 0.085,
+    FADE_FRACTION: 0.18,   // first/last 18% of life ramps size
+  },
+
   // === COMBAT CRUNCH ===
   HIT_PAUSE_MS: 80,            // freeze duration on landing a hit — THE feel feature
   SCREEN_SHAKE_HIT_MAGNITUDE: 0.04,  // meters of camera offset

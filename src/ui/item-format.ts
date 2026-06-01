@@ -99,10 +99,3 @@ export function abbrev(item: ItemSpec): string {
   return name.length > 22 ? name.slice(0, 20) + '…' : name;
 }
 
-/** 0xff7722 → "rgb(255, 119, 34)" — for inline CSS color strings. */
-export function hexCss(hex: number): string {
-  const r = (hex >> 16) & 0xff;
-  const g = (hex >> 8) & 0xff;
-  const b = hex & 0xff;
-  return `rgb(${r}, ${g}, ${b})`;
-}

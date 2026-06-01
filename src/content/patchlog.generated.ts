@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Hold-to-charge prototype on the sword (touch)"
+      },
+      {
+        "tag": "tune",
         "text": "The Boiling King"
       },
       {
@@ -220,10 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Archway glow far subtler (lintel/keystone only)"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix severe lag"
       }
     ]
   }

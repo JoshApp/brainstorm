@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CONFIG } from '../config';
 import { getTexture } from '../style/procedural-textures';
 import type { WalkableRect } from '../level/types';
 
@@ -18,15 +19,16 @@ import type { WalkableRect } from '../level/types';
 //   tickDriftingMotes(dt) each frame
 //   clearDriftingMotes() at level teardown
 
-const MOTE_COUNT       = 38;        // sparse — feedback was "not too crowded"
-const SPAWN_Y_MIN      = 0.25;
-const SPAWN_Y_MAX      = 2.60;
-const LIFE_MIN         = 6.0;       // seconds
-const LIFE_MAX         = 11.0;
-const DRIFT_SPEED_LAT  = 0.06;      // m/s — sideways drift max
-const DRIFT_SPEED_UP   = 0.10;      // m/s — upward drift max
-const BASE_SIZE        = 0.085;
-const FADE_FRACTION    = 0.18;      // first/last 18% of life ramps size
+// Atmosphere tuning lives in src/config.ts (CONFIG.EFFECTS_MOTES).
+const MOTE_COUNT       = CONFIG.EFFECTS_MOTES.COUNT;
+const SPAWN_Y_MIN      = CONFIG.EFFECTS_MOTES.SPAWN_Y_MIN;
+const SPAWN_Y_MAX      = CONFIG.EFFECTS_MOTES.SPAWN_Y_MAX;
+const LIFE_MIN         = CONFIG.EFFECTS_MOTES.LIFE_MIN;
+const LIFE_MAX         = CONFIG.EFFECTS_MOTES.LIFE_MAX;
+const DRIFT_SPEED_LAT  = CONFIG.EFFECTS_MOTES.DRIFT_SPEED_LAT;
+const DRIFT_SPEED_UP   = CONFIG.EFFECTS_MOTES.DRIFT_SPEED_UP;
+const BASE_SIZE        = CONFIG.EFFECTS_MOTES.BASE_SIZE;
+const FADE_FRACTION    = CONFIG.EFFECTS_MOTES.FADE_FRACTION;
 
 interface Mote {
   sprite: THREE.Sprite;

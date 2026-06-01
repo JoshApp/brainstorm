@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { LevelSpec, TileMap } from './types';
+import { brighten, darken } from '../style/color-utils';
 
 // Auto-decoration pass for procgen floors.
 //
@@ -211,18 +212,3 @@ function buildInstancedKind(
   }
 }
 
-// ── Color helpers ──────────────────────────────────────────────────
-
-function brighten(hex: number, t: number): number {
-  const r = Math.min(255, ((hex >> 16) & 0xff) + (255 - ((hex >> 16) & 0xff)) * t);
-  const g = Math.min(255, ((hex >> 8) & 0xff)  + (255 - ((hex >> 8) & 0xff))  * t);
-  const b = Math.min(255, (hex & 0xff)         + (255 - (hex & 0xff))         * t);
-  return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
-}
-
-function darken(hex: number, t: number): number {
-  const r = ((hex >> 16) & 0xff) * (1 - t);
-  const g = ((hex >> 8) & 0xff)  * (1 - t);
-  const b = (hex & 0xff)         * (1 - t);
-  return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
-}
