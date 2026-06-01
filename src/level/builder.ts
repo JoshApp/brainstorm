@@ -384,13 +384,18 @@ function buildRoomShell(
     { side: 'E', perpAxis: 'x', perpCoord: rect.x + halfW, wallStart: rect.z - halfD, wallEnd: rect.z + halfD },
   ];
 
+  // Wall segments are BAKED to world space + merged into ONE mesh for this
+  // room (one draw call instead of one per segment — a floor had ~50-100
+  // wall draw calls). Per-room (not per-floor) so each room's wall set still
+  // frustum-culls as a unit. Collision is recorded per segment as before.
+  const wallGeos: THREE.BufferGeometry[] = [];
   for (const we of wallEdges) {
     const openings = findOpenings(we, allRects, room);
     const segments = subtractRanges(we.wallStart, we.wallEnd, openings);
     for (const seg of segments) {
       const segLen = seg.end - seg.start;
       if (segLen < 0.01) continue;
-      buildWallSegment(scene, we, seg.start, seg.end, H, materials, room.id);
+      wallGeos.push(bakeWallSegmentGeometry(we, seg.start, seg.end, H));
       // Record the segment as collision data. The XZ endpoints describe a
       // line in the floor plane along which the player cannot pass.
       if (we.perpAxis === 'z') {
@@ -400,6 +405,18 @@ function buildRoomShell(
         // wall runs along Z at x = we.perpCoord
         wallSegmentsOut.push({ ax: we.perpCoord, az: seg.start, bx: we.perpCoord, bz: seg.end });
       }
+    }
+  }
+  if (wallGeos.length > 0) {
+    const merged = mergeGeometries(wallGeos, false);
+    for (const g of wallGeos) g.dispose();
+    if (merged) {
+      const walls = new THREE.Mesh(merged, materials.wall);
+      walls.receiveShadow = true;
+      walls.name = 'walls-merged';
+      walls.userData.dbgKind = 'wall';
+      walls.userData.dbgSource = `walls · ${room.id}`;
+      scene.add(walls);
     }
   }
 
@@ -418,44 +435,28 @@ function buildRoomShell(
   }
 }
 
-function buildWallSegment(
-  scene: THREE.Object3D,
+// Bake one wall-segment plane into a WORLD-SPACE geometry (so a room's
+// segments can be merged into a single mesh — see buildRoomShell). Position
+// + facing depend on which edge it's on; the jittered-plane normal faces
+// into the room (materials.wall is double-sided anyway, so the back is safe).
+function bakeWallSegmentGeometry(
   we: { side: 'N' | 'S' | 'E' | 'W'; perpAxis: 'x' | 'z'; perpCoord: number },
   segStart: number,
   segEnd: number,
   height: number,
-  materials: StyleMaterials,
-  roomId = '?',
-) {
+): THREE.BufferGeometry {
   const segLen = segEnd - segStart;
   const segMid = (segStart + segEnd) / 2;
-  const mesh = new THREE.Mesh(makeJitteredPlane(segLen, height, { wavy: true }), materials.wall);
-  mesh.receiveShadow = true;
-
-  // Position + facing based on which side of the room this wall is.
-  if (we.side === 'N') {
-    // North wall: at z = perpCoord (= rect.z - halfD), facing inward (+Z)
-    mesh.position.set(segMid, height / 2, we.perpCoord);
-    mesh.rotation.y = 0;
-  } else if (we.side === 'S') {
-    mesh.position.set(segMid, height / 2, we.perpCoord);
-    mesh.rotation.y = Math.PI;
-  } else if (we.side === 'W') {
-    mesh.position.set(we.perpCoord, height / 2, segMid);
-    mesh.rotation.y = Math.PI / 2;
-  } else { // E
-    mesh.position.set(we.perpCoord, height / 2, segMid);
-    mesh.rotation.y = -Math.PI / 2;
-  }
-  // Provenance for the debug capture: which room-shell wall this is and
-  // where its centre sits. A stray/floating wall then self-identifies
-  // (e.g. "shell-wall S · vault-3 @(4.7,31.6) len 1.2") instead of just
-  // resolving to the level root.
-  mesh.name = `shell-wall-${we.side}`;
-  mesh.userData.dbgKind = 'wall';
-  mesh.userData.dbgSource =
-    `shell-wall ${we.side} · ${roomId} @(${mesh.position.x.toFixed(1)},${mesh.position.z.toFixed(1)}) len ${segLen.toFixed(1)}`;
-  scene.add(mesh);
+  const geo = makeJitteredPlane(segLen, height, { wavy: true });
+  let yaw = 0, px = 0, pz = 0;
+  if (we.side === 'N') { yaw = 0; px = segMid; pz = we.perpCoord; }
+  else if (we.side === 'S') { yaw = Math.PI; px = segMid; pz = we.perpCoord; }
+  else if (we.side === 'W') { yaw = Math.PI / 2; px = we.perpCoord; pz = segMid; }
+  else { yaw = -Math.PI / 2; px = we.perpCoord; pz = segMid; }
+  const m4 = new THREE.Matrix4().makeRotationY(yaw);
+  m4.setPosition(px, height / 2, pz);
+  geo.applyMatrix4(m4);
+  return geo;
 }
 
 // Place a dust draft at each OPEN archway — a room wall opening (where a
@@ -1021,34 +1022,37 @@ export function buildLevel(
   //     collision so the player can't walk through them.
   if (spec.extraWalls) {
     const defaultH = spec.rooms[0]?.height ?? 3.0;
+    // Same per-floor merge as the shell walls — interior walls collapse to
+    // one mesh. Collision still recorded per segment.
+    const extraGeos: THREE.BufferGeometry[] = [];
+    const m4 = new THREE.Matrix4();
     for (const w of spec.extraWalls) {
       const H = w.height ?? defaultH;
       const dx = w.bx - w.ax;
       const dz = w.bz - w.az;
       const len = Math.hypot(dx, dz);
       if (len < 0.01) continue;
-      const mesh = new THREE.Mesh(makeJitteredPlane(len, H, { wavy: true }), materials.wall);
-      mesh.position.set((w.ax + w.bx) / 2, H / 2, (w.az + w.bz) / 2);
-      // Orient: horizontal wall (running along X) faces ±Z; vertical
-      // (running along Z) faces ±X. Single-sided is fine since the
-      // wall is between two cells (one walkable, one solid) and the
-      // mesh is double-rendered as MeshStandardMaterial side='front'
-      // — but we use the wall material as-is.
-      if (Math.abs(dz) < Math.abs(dx)) {
-        // X-running wall — rotate so its normal is ±Z.
-        mesh.rotation.y = 0;
-      } else {
-        // Z-running wall — rotate normal to ±X.
-        mesh.rotation.y = Math.PI / 2;
-      }
-      mesh.receiveShadow = true;
-      mesh.castShadow = true;
-      mesh.name = 'extra-wall';
-      mesh.userData.dbgKind = 'wall';
-      mesh.userData.dbgSource =
-        `extra-wall @(${mesh.position.x.toFixed(1)},${mesh.position.z.toFixed(1)}) len ${len.toFixed(1)} h${H.toFixed(1)}`;
-      root.add(mesh);
+      const geo = makeJitteredPlane(len, H, { wavy: true });
+      // X-running wall faces ±Z (yaw 0); Z-running faces ±X (yaw π/2).
+      const yaw = Math.abs(dz) < Math.abs(dx) ? 0 : Math.PI / 2;
+      m4.makeRotationY(yaw);
+      m4.setPosition((w.ax + w.bx) / 2, H / 2, (w.az + w.bz) / 2);
+      geo.applyMatrix4(m4);
+      extraGeos.push(geo);
       wallSegments.push({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz });
+    }
+    if (extraGeos.length > 0) {
+      const merged = mergeGeometries(extraGeos, false);
+      for (const g of extraGeos) g.dispose();
+      if (merged) {
+        const mesh = new THREE.Mesh(merged, materials.wall);
+        mesh.receiveShadow = true;
+        mesh.castShadow = true;
+        mesh.name = 'extra-walls-merged';
+        mesh.userData.dbgKind = 'wall';
+        mesh.userData.dbgSource = 'extra-walls (merged)';
+        root.add(mesh);
+      }
     }
   }
 

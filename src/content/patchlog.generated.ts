@@ -8,12 +8,16 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Level gen: braced timber wall variant + timber plank doors"
+      },
+      {
         "tag": "tech",
         "text": "Perf: batch all pillar geometry into one mesh per floor"
       },
       {
         "tag": "tune",
-        "text": "Level gen: grand boss-hall arena (18x16) for real set-piece fights"
+        "text": "Effects: target 'attacker' resolution + 3 retaliation items"
       },
       {
         "tag": "tune",
@@ -208,18 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Debug capture"
-      },
-      {
-        "tag": "tune",
-        "text": "Ranged pass: viewmodels, projectile shapes, vertical aim"
-      },
-      {
-        "tag": "tune",
-        "text": "Combo pass"
-      },
-      {
-        "tag": "content",
-        "text": "Combat feel: no-weapon gate, strike trail, wider cone + more reach"
       }
     ]
   }
