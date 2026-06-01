@@ -1166,7 +1166,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'plague-spore': {
     id: 'plague-spore',
     name: 'plague spore',
-    tileChar: 'F',
+    tileChar: 'E',   // was 'F' — collided with the reserved fountain char
     hp: 3,
     moveSpeed: 0,                  // truly stationary
     attackDamage: 2,
@@ -1256,7 +1256,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'carrion-hound': {
     id: 'carrion-hound',
     name: 'carrion hound',
-    tileChar: 'D',
+    tileChar: 'J',   // was 'D' — collided with the reserved arena-door char
     hp: 3,
     moveSpeed: 2.6,                 // fast chase
     attackDamage: 2,

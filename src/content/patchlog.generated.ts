@@ -12,6 +12,14 @@ export const GENERATED_PATCHLOG = [
         "text": "Level gen: chasm voids + bridge (flat-playfield verticality)"
       },
       {
+        "tag": "content",
+        "text": "Mob variety: 3 new mobs + Boiling King now Act I boss + bigger arenas"
+      },
+      {
+        "tag": "tune",
+        "text": "Crit + lifesteal modifiers + 6 items leaning into them"
+      },
+      {
         "tag": "tech",
         "text": "Perf: merge static walls into one mesh per room"
       },
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Audio: positional pan + shared reverb send for in-world sounds"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix stray wall stubs by the boss stairwells"
-      },
-      {
-        "tag": "content",
-        "text": "Safe room: redesign + warm-variant stairs + rest fountain + transition card"
       }
     ]
   }
