@@ -1102,29 +1102,43 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   applyScenario(scenario, { level: currentLevel, weapon, camera });
   if (scenario.inspect) {
     inspectMode = true;
-    // Flood the scene with FLAT WHITE ambient so the actual base
-    // colors of the geometry read truly. The default ambient is a
-    // dark blueish 0x1a1e24 × 1.8; even cranked to 3.0 that's a
-    // dim blue tint over everything. Inspection wants the
-    // unmodulated material color so a "should-be-black" piece
-    // doesn't look midnight-blue.
+    // White ambient as the FILL light — at a moderate level so the
+    // shadow side of the silhouette stays readable but isn't blown
+    // out. Inspection wants the unmodulated material color (the
+    // default 0x1a1e24 ambient washes everything blue).
     ambient.color.setHex(0xffffff);
-    ambient.intensity = 3.0;
-    // Replace the pure-black scene background with a flat mid-grey
-    // backdrop so silhouettes have something to contrast against.
-    // Dungeon stone is dark by design; the inspection backdrop
-    // existing was making everything blend together.
+    ambient.intensity = 1.2;
+    // KEY LIGHT — DirectionalLight from upper-front-side. Without
+    // this, metallic/glossy materials (rings, sword blades) look
+    // matte under pure ambient because there's no normal-dependent
+    // illumination to drive their specular response. The key
+    // creates real shading + highlights so the item reads as
+    // STEEL/STONE/BONE, not "shape painted one colour."
+    const key = new THREE.DirectionalLight(0xffffff, 2.0);
+    key.position.set(2, 4, 2);
+    key.target.position.set(0, 1.4, 0);
+    scene.add(key);
+    scene.add(key.target);
+    // Backlight RIM — soft secondary from behind/below to pop the
+    // silhouette away from the backdrop. Low intensity warm tint so
+    // the highlight reads as bronze/torchlight, not stadium-white.
+    const rim = new THREE.DirectionalLight(0xffd0a0, 0.7);
+    rim.position.set(-1, 2, -2);
+    rim.target.position.set(0, 1.4, 0);
+    scene.add(rim);
+    scene.add(rim.target);
+    // Mid-grey scene backdrop — dark enough that bright items pop,
+    // light enough that dark items don't disappear. Pure black or
+    // pure white both kill one end of the value range.
     scene.background = new THREE.Color(0x404040);
-    // Kill fog entirely for inspect — pushing near/far still leaves
-    // a subtle grade across the room.
+    // Kill fog — even pushed to 1000+, a subtle grade across the
+    // room is visible in flat-lit inspection shots.
     const fog = scene.fog as THREE.Fog | null;
     if (fog) { fog.near = 1000; fog.far = 2000; }
     // Strip all gameplay HUD so the snap shows the scene geometry
     // alone. Same CSS class the screen-manager uses for full-screen
-    // panels (#perf-overlay, #depth-counter, #hp-bar, hotbar, boss
-    // bar etc. all hide). Reuse instead of a parallel class so a
-    // future "show only health bar in inspect" flag has one place
-    // to override.
+    // panels — #perf-overlay, #depth-counter, #hp-bar, hotbar, boss
+    // bar etc. all hide.
     document.body.classList.add('hud-hidden');
   }
   // HUD-ONLY mode — the inverse of inspect. Hide the 3D canvas
