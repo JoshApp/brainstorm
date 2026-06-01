@@ -115,11 +115,13 @@ function rollTableFor(depth: number): EnemyRoll[] {
 })();
 
 function bossFor(depth: number): string {
-  // Bosses get nastier as you descend. Depth 3-5 wraith is unusual but
-  // beatable; depth 6+ multiple ghouls + a wraith feels right.
-  if (depth <= 5) return 'wraith';
-  return 'wraith';  // for now, single boss type — extend with new
-                    // boss specs later (lich, giant, etc.)
+  // Bosses get nastier as you descend. Depth 12 (end of Act III) is
+  // where the king slime — The Boiling King — lives: simplest "real
+  // boss" pipeline (telegraphed AoE hop + splits into three princes
+  // on death + unique drop). The earlier acts still use the wraith
+  // until they get their own bosses.
+  if (depth >= 12) return 'boiling-king';
+  return 'wraith';
 }
 
 function pickWeighted(rows: EnemyRoll[], rand: () => number): string {

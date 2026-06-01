@@ -1577,6 +1577,131 @@ export const ENEMIES: Record<string, EnemySpec> = {
       ],
     },
   },
+
+  // The Boiling King — Act III boss (depth 12).
+  //
+  // A king slime, big and viscous, swollen with everything it's eaten.
+  // The act's verdant-rot palette (sickly greens) gives us a perfect
+  // home for an acid theme that doesn't read as cute. Designed as the
+  // SIMPLEST possible "real boss" — one telegraphed mechanic + one
+  // dramatic death — to validate the whole pipeline (boss bar,
+  // unique drop, splits-on-death, boss music state) before we author
+  // more elaborate fights for Acts I and II.
+  //
+  // Fight loop:
+  //   1. Player enters the boss arena, slime sees them, boss bar
+  //      appears (handled by ui/boss-bar.ts — keyed off isBoss + aware).
+  //   2. Slime telegraphs a HOP — long windup, ground ring at the
+  //      player's feet, then a leap that lands as a radial AoE.
+  //      Player steps out of the ring to dodge.
+  //   3. Repeat until dead.
+  //   4. On death, BURSTS into 3 boiling-prince smaller slimes
+  //      (splitsInto). The fight isn't over yet — clean them up.
+  //   5. Guaranteed drop: a poison-themed unique relic.
+  //
+  // Phase-2 / mid-fight transition mechanic (e.g. spitting acid
+  // droplets between hops) is deliberately deferred to a follow-up
+  // pass once V1 plays well.
+  'boiling-king': {
+    id: 'boiling-king',
+    name: 'boiling king',
+    // 'B' is reserved for the procgen boss-slot — never placed
+    // directly. Procgen's bossFor(depth) returns this id at depth 12.
+    isBoss: true,
+    bossName: 'The Boiling King',
+    scale: 2.4,                     // looms — a king slime is BIG
+    hp: 16,                          // a real fight; mid-Act III gear should crack it in ~12 swings
+    moveSpeed: 0.9,                  // sluggish between hops
+    attackDamage: 3,                 // hits hard — the AoE is the threat
+    attackRange: 4.5,                // long range — it'll hop from across the room
+    strikeRange: 1.8,                // landing-zone radius (mostly handled by the aoe effect)
+    windupTime: 1.20,                // generous telegraph — readable on phone
+    strikeTime: 0.24,
+    recoverTime: 0.80,
+    damageType: 'magic',             // acid bypasses physical armour — boss earns its name
+    model: oozeModel(0x4a6a18, 0xa8ff44, 1.0),   // sickly green + bright acid core; scale field above does the looming
+    baseEyeEmissive: 0,              // no eyes — core orb carries the read
+    collisionRadius: 0.55,           // wide footprint matches the visual
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'core',
+    presence: 'twitch',              // pulsing blob feel even when idle
+    physicalArmor: 0,
+    magicArmor: 0,
+    sightRange: 14,                  // sees you anywhere in the arena — no sneaking past
+    sightConeHalfAngle: 1.8,         // near-omnidirectional — it's a blob, no front
+    hearingRange: 4,
+    loseSightTime: 12,               // never really gives up
+    abilities: [
+      // HOP — telegraphed AoE leap. The ring appears at the player's
+      // location during the long windup; if they're still standing on
+      // it at strike, they eat the splash. Long maxRange so the slime
+      // doesn't run out of attack just because the player kited away.
+      {
+        id: 'hop',
+        minRange: 0, maxRange: 8,
+        windup: 1.20, strike: 0.24, recover: 0.80,
+        cooldown: 0.6,
+        damage: 3,
+        telegraph: 'cast',           // body coils + pulses during windup
+        effects: [{ kind: 'aoe', radius: 1.8, targetMode: 'player', damageType: 'magic' }],
+      },
+    ],
+    xp: 60,                          // significant haul — earns the depth
+    gold: [40, 80],
+    drops: {
+      // Guaranteed: healing potion (the soft landing) + the unique
+      // boss drop. Pool roll on top adds variance.
+      guaranteed: ['healing-potion', 'acid-tongue'],
+      rate: 1.0,
+      pool: [
+        { itemId: 'heartburn',   weight: 1 },
+        { itemId: 'bone-amulet', weight: 1 },
+      ],
+    },
+    // Death = bursts into three smaller slimes. The fight isn't over
+    // yet; the prince spec terminates the recursion (no splitsInto on
+    // it). 0.8m scatter radius spreads them around the corpse.
+    splitsInto: { enemyId: 'boiling-prince', count: 3, radius: 0.8 },
+  },
+
+  // Boiling Prince — the children of the king. Smaller, faster, no
+  // further splitting. They're cleanup — the king's last gasp before
+  // the room unseals.
+  'boiling-prince': {
+    id: 'boiling-prince',
+    name: 'boiling prince',
+    // No tileChar — only spawned via the king's splitsInto.
+    hp: 3,
+    moveSpeed: 1.5,
+    attackDamage: 1,
+    attackRange: 1.0,
+    strikeRange: 0.85,
+    windupTime: 0.55,
+    strikeTime: 0.18,
+    recoverTime: 0.45,
+    damageType: 'magic',             // still acid — keeps the king's theme
+    model: oozeModel(0x4a6a18, 0xa8ff44, 0.85),
+    baseEyeEmissive: 0,
+    collisionRadius: 0.30,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'core',
+    presence: 'twitch',
+    sightRange: 5,
+    sightConeHalfAngle: 1.6,
+    hearingRange: 2.5,
+    loseSightTime: 4,
+    xp: 4,
+    gold: [2, 6],
+    // No splitsInto — recursion terminator.
+    drops: {
+      rate: 0.20,
+      pool: [
+        { itemId: 'healing-potion', weight: 1 },
+      ],
+    },
+  },
 };
 
 // ── Tile-char registry — single source of truth ─────────────────────

@@ -642,6 +642,30 @@ export const SCENARIOS: Record<string, Scenario> = {
     level: generateFloor(4, 4242, 'depth-5'),  // template index 3
   },
 
+  // Boiling King — Act III boss preview. Drops you in a small lit arena
+  // with the king slime spawned mid-room. Verifies model scale, palette,
+  // and boss bar engagement.
+  'boiling-king': {
+    freeze: true,
+    level: {
+      id: 'dbg-boiling-king', depth: 12, displayName: 'boiling king', fogColor: 0x080f05,
+      startPos: { x: 0, z: 3.5, yaw: 0 },
+      rooms: [{ id: 'bk-room', rect: { x: 0, z: 0, w: 9, d: 9 }, height: 3.6 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -4.45, z: -3.5, height: 2.4, wall: 'W', colorTint: 0x88ff44, intensityMul: 0.9 },
+        { x:  4.45, z: -3.5, height: 2.4, wall: 'E', colorTint: 0x88ff44, intensityMul: 0.9 },
+        { x: -4.45, z:  3.5, height: 2.4, wall: 'W', colorTint: 0x88ff44, intensityMul: 0.9 },
+        { x:  4.45, z:  3.5, height: 2.4, wall: 'E', colorTint: 0x88ff44, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'boiling-king', x: 0, z: -1.5, roomId: 'bk-room' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 2.5, lookAt: { x: 0, z: -1.5, y: 1.2 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.5 }, state: 'chasing' }],
+  },
+
   // Safe room — overview from the spawn end looking down the chamber
   // toward the hearth + descent. For verifying the V3 layout (smaller +
   // warmer + central brazier).

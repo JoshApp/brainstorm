@@ -117,6 +117,35 @@ export const BONE_AMULET: ModelSpec = {
   ],
 };
 
+// --- Acid Tongue — pendant cut from the Boiling King's core orb.
+// Sickly green stone slung from a tarnished chain, still wet. The
+// "tongue" shape (elongated teardrop) sells the visual; emissive
+// pulse keeps it alive in low light.
+export const ACID_TONGUE_AMULET: ModelSpec = {
+  id: 'acid-tongue-amulet',
+  materials: {
+    chain: { color: 0x1c2010, roughness: 0.7, metalness: 0.7, fog: false, flatShading: 'auto' },
+    stone: {
+      // Black-green base with bright acid emissive — the stone glows.
+      color: 0x0a1408,
+      emissive: 0x88ff44,
+      emissiveIntensity: 1.4,
+      roughness: 0.35,
+      metalness: 0.2,
+      fog: false,
+    },
+    drip: { color: 0x000000, emissive: 0xa8ff44, emissiveIntensity: 2.2, roughness: 1.0, fog: false },
+  },
+  parts: [
+    // Chain — thin torus loop at top.
+    { kind: 'torus', pos: [0, 0.16, 0], rot: [Math.PI / 2, 0, 0], radius: 0.06, tube: 0.005, segments: [16, 6], mat: 'chain' },
+    // Pendant — elongated teardrop shape via stretched sphere.
+    { kind: 'sphere', pos: [0, 0.06, 0], scale: [0.9, 1.3, 0.7], radius: 0.04, segments: [10, 8], mat: 'stone' },
+    // Bright core spot — additional smaller emissive sphere inside.
+    { kind: 'sphere', pos: [0, 0.07, -0.01], radius: 0.014, segments: [8, 8], mat: 'drip' },
+  ],
+};
+
 // --- Gloves — single grouped representation (one glove shape) ---
 export const LEATHER_GLOVES: ModelSpec = {
   id: 'leather-gloves',

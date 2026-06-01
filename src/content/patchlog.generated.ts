@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Geometry pool"
+      },
+      {
         "tag": "tune",
         "text": "Geometry pool: shared BufferGeometries across ModelSpec spawns + stairs"
       },
@@ -220,10 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Threshold haze: layered volume inside the archway (less portal)"
-      },
-      {
-        "tag": "tune",
-        "text": "Eye dark-adaptation off measured perceived brightness"
       }
     ]
   }

@@ -135,6 +135,14 @@ export function getPlayerOnHits(): PlayerOnHit[] {
   const w = slots.weapon;
   if (w?.weapon?.onHit) out.push(w.weapon.onHit);
   for (const a of slotAffixes.weapon) if (a.onHit) out.push(a.onHit);
+  // Item-level onHit from ANY equipped slot — amulets/rings/armor can
+  // grant on-hit effects too (e.g. the Acid Tongue amulet's poison).
+  // Iterates every slot, including weapon (so a weapon could carry
+  // BOTH a weapon.onHit and an item.onHit — they stack independently).
+  for (const slot of Object.keys(slots) as EquipSlot[]) {
+    const item = slots[slot];
+    if (item?.onHit) out.push(item.onHit);
+  }
   const setIds = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
   for (const b of collectActiveSetBonuses(setIds)) if (b.onHit) out.push(b.onHit);
   return out;

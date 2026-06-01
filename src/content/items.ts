@@ -6,7 +6,7 @@ import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WA
 import {
   HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
-  IRON_COIF, BONE_AMULET, LEATHER_GLOVES, WORN_BOOTS, WOODEN_SHIELD,
+  IRON_COIF, BONE_AMULET, ACID_TONGUE_AMULET, LEATHER_GLOVES, WORN_BOOTS, WOODEN_SHIELD,
   OIL_LAMP_MODEL,
 } from './loot-models';
 import { PASSIVES } from './passives';
@@ -137,6 +137,15 @@ export interface ItemSpec {
   viewmodel?: ModelSpec;
   /** For weapons: combat stats. */
   weapon?: WeaponStats;
+  /**
+   * On-hit status applied to anything the player strikes while this item
+   * is equipped. Pairs with the existing weapon.onHit (weapons carry
+   * their own intrinsic onHit) — this slot lets ARMOUR / AMULETS / RINGS
+   * grant on-hit effects too. Aggregated through getPlayerOnHits() and
+   * rolled per swing in combat/attack.ts. Example: the Acid Tongue
+   * amulet rolls a poison chance on each melee hit.
+   */
+  onHit?: { buffId: string; chance: number; duration: number };
   /**
    * Stat modifiers applied while this item is equipped. Goes through the
    * unified modifier pipeline in src/combat/modifiers.ts — same shape
@@ -391,6 +400,26 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'magic-armor', amount: 1 },
     ],
     setId: 'ossuary',
+  },
+  // Boss-unique drop from The Boiling King (Act III). Cut from the
+  // slime's core — still glistening, still warm. Equipping it
+  // gives every melee swing a chance to inflict poison on the
+  // target, plus a small magic-armor bump because acid eats
+  // chemistry both ways.
+  'acid-tongue': {
+    id: 'acid-tongue',
+    kind: 'amulet',
+    rarity: 'fabled',
+    name: 'Acid Tongue',
+    flavor: 'Cut from something that had eaten kings.',
+    dropModel: ACID_TONGUE_AMULET,
+    modifiers: [
+      { kind: 'magic-armor', amount: 1 },
+    ],
+    // 30% chance to apply 2 stacks of poison (4s duration) on a melee
+    // hit. Pairs with the existing combat:hit pipeline that reads
+    // playerOnHits and rolls per swing.
+    onHit: { buffId: 'poison', chance: 0.30, duration: 4.0 },
   },
   // ── GLOVES ─────────────────────────────────────────────────────────
   'leather-gloves': {
