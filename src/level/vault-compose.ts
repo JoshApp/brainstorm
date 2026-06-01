@@ -69,6 +69,65 @@ function pickCorridorProfile(rand: () => number): CorridorProfile {
   return { width, length, height };
 }
 
+// ── 2D winding placement ─────────────────────────────────────────────
+// The floor used to march due south (a linear Z-spine), so a traverse
+// felt like one straight tube. Placement now winds: each vault is dropped
+// in a chosen cardinal direction off the previous one — usually
+// continuing, often turning, never reversing — with a straight corridor
+// bridging the gap. Consecutive segments in different directions read as
+// real L-bends. A 2D occupancy list (every vault + corridor AABB) keeps
+// the path from crossing itself; a blocked direction falls back to a
+// longer straight run so the chain always completes.
+//
+// Only WHERE pieces land changed: the wall/opening/nav machinery is
+// already direction-agnostic (builder.findOpenings punches a gap wherever
+// a corridor rect abuts a vault edge, on any of the four sides).
+
+type Dir = 'N' | 'S' | 'E' | 'W';
+interface Box { x: number; z: number; w: number; d: number; }
+const DIR_VEC: Record<Dir, { x: number; z: number }> = {
+  N: { x: 0, z: -1 }, S: { x: 0, z: 1 }, E: { x: 1, z: 0 }, W: { x: -1, z: 0 },
+};
+
+function vaultBoxOf(pv: { offsetX: number; offsetZ: number }, dims: { w: number; d: number }): Box {
+  return { x: pv.offsetX, z: pv.offsetZ, w: dims.w, d: dims.d };
+}
+
+/** AABBs overlap if their extents (grown by `margin`) intersect on both axes. */
+function boxesOverlap(a: Box, b: Box, margin: number): boolean {
+  return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + margin
+      && Math.abs(a.z - b.z) < (a.d + b.d) / 2 + margin;
+}
+
+/** The two cardinal directions perpendicular to `d` (the available turns). */
+function turnsOf(d: Dir): [Dir, Dir] {
+  return d === 'N' || d === 'S' ? ['E', 'W'] : ['N', 'S'];
+}
+
+/** Geometry for placing `dims` a corridor of `length`×`width` away from a
+ *  parent box in direction `dir`, perpendicular-aligned to the parent so
+ *  the corridor abuts both walls cleanly (→ findOpenings punches gaps). */
+function stepGeometry(
+  parent: Box, dims: { w: number; d: number }, dir: Dir, length: number, width: number,
+): { vault: Box; corridor: Box } {
+  const v = DIR_VEC[dir];
+  const alongZ = dir === 'N' || dir === 'S';
+  const parentHalf = alongZ ? parent.d / 2 : parent.w / 2;
+  const nextHalf = alongZ ? dims.d / 2 : dims.w / 2;
+  const vx = parent.x + v.x * (parentHalf + length + nextHalf);
+  const vz = parent.z + v.z * (parentHalf + length + nextHalf);
+  const cx = parent.x + v.x * (parentHalf + length / 2);
+  const cz = parent.z + v.z * (parentHalf + length / 2);
+  return {
+    vault: { x: vx, z: vz, w: dims.w, d: dims.d },
+    corridor: {
+      x: cx, z: cz,
+      w: alongZ ? width : length,
+      d: alongZ ? length : width,
+    },
+  };
+}
+
 /** Compose a LevelSpec for the given floor depth. */
 export function composeFloor(
   depth: number,
@@ -88,13 +147,14 @@ export function composeFloor(
   for (let i = 0; i < middleCount; i++) tagSeq.push(pickMiddleTag(depth, rand));
   tagSeq.push(opts.isBossFloor ? 'boss' : 'exit');
 
-  // ── 2. Resolve + place spine vaults with VARIABLE corridors ────
-  // Each mid vault can also offset east or west (L-shape) to break
-  // the linear feel — clamped to small offsets so corridors stay
-  // reasonable.
+  // ── 2. Place spine vaults along a WINDING 2D path ──────────────
   const placed: PlacedVault[] = [];
   const corridors: CorridorPlacement[] = [];
-  let zCursor = 0;
+  const occupied: Box[] = [];   // every vault + corridor AABB (self-intersection guard)
+  const MARGIN = 1.0;           // min gap between unrelated pieces (no clipped walls)
+  let heading: Dir = 'S';       // start faces its entrance; the first move heads in
+  let prevBox: Box = { x: 0, z: 0, w: 0, d: 0 };
+
   for (let i = 0; i < tagSeq.length; i++) {
     const tag = tagSeq[i];
     const candidates = vaultsForTag(tag, depth);
@@ -107,94 +167,94 @@ export function composeFloor(
     const dims = vaultDims(vault);
 
     if (i === 0) {
-      placed.push({ vault, roomId: ROOM_ID(i), offsetX: 0, offsetZ: 0 });
-      zCursor = dims.d / 2;
-    } else {
-      const prev = placed[i - 1];
-      const prevDims = vaultDims(prev.vault);
-      const profile = pickCorridorProfile(rand);
-
-      // L-shape offset: mid vaults can shift east or west, NOT the
-      // exit/boss (we want the final descent clearly at the end of
-      // the spine). Clamped so the corridor still connects both
-      // perimeter walls along the connecting axis.
-      const isMid = tag !== 'exit' && tag !== 'boss';
-      const maxLOffset =
-        Math.max(0, Math.min(prevDims.w, dims.w) / 2 - profile.width / 2 - 0.5);
-      const lOffset = isMid && rand() < 0.45
-        ? (rand() * 2 - 1) * maxLOffset
-        : 0;
-
-      const corridorNorthZ = zCursor;
-      const corridorSouthZ = corridorNorthZ + profile.length;
-      const vaultCentreZ = corridorSouthZ + dims.d / 2;
-      placed.push({
-        vault,
-        roomId: ROOM_ID(i),
-        offsetX: prev.offsetX + lOffset,
-        offsetZ: vaultCentreZ,
-      });
-      // Corridor centred between the two vaults' x positions so it
-      // bridges any L-offset cleanly.
-      const corridorMidX = (prev.offsetX + (prev.offsetX + lOffset)) / 2;
-      corridors.push({
-        rect: {
-          x: corridorMidX,
-          z: (corridorNorthZ + corridorSouthZ) / 2,
-          w: profile.width,
-          d: profile.length,
-        },
-        height: profile.height,
-        fromIdx: i - 1,
-        toIdx: i,
-      });
-      zCursor = vaultCentreZ + dims.d / 2;
+      placed.push({ vault, roomId: ROOM_ID(0), offsetX: 0, offsetZ: 0 });
+      prevBox = vaultBoxOf({ offsetX: 0, offsetZ: 0 }, dims);
+      occupied.push(prevBox);
+      continue;
     }
+
+    const profile = pickCorridorProfile(rand);
+    // Straight bias for the first move (a clean exit from the start vault)
+    // and the last (a clearly-terminal descent to boss/exit). Mids wind:
+    // about half the time they turn before continuing.
+    const straightBias = i === 1 || tag === 'exit' || tag === 'boss';
+    const [t0, t1] = turnsOf(heading);
+    const turns = rand() < 0.5 ? [t0, t1] : [t1, t0];
+    const order: Dir[] = straightBias || rand() < 0.5
+      ? [heading, ...turns]
+      : [...turns, heading];
+
+    // Accept the first direction whose vault + corridor don't collide. The
+    // corridor abuts prevBox by design, so prevBox is excluded from ITS test.
+    let chosen: { vault: Box; corridor: Box; dir: Dir } | null = null;
+    for (const dir of order) {
+      const g = stepGeometry(prevBox, dims, dir, profile.length, profile.width);
+      const vaultClear = !occupied.some((o) => boxesOverlap(g.vault, o, MARGIN));
+      const corrClear = !occupied.some((o) => o !== prevBox && boxesOverlap(g.corridor, o, MARGIN));
+      if (vaultClear && corrClear) { chosen = { ...g, dir }; break; }
+    }
+    // Fallback: push straight in `heading`, lengthening the corridor until it
+    // clears. Terminates — far enough out, nothing is there.
+    if (!chosen) {
+      let len = profile.length;
+      for (let tries = 0; tries < 24 && !chosen; tries++) {
+        len += 2.5;
+        const g = stepGeometry(prevBox, dims, heading, len, profile.width);
+        const vaultClear = !occupied.some((o) => boxesOverlap(g.vault, o, MARGIN));
+        const corrClear = !occupied.some((o) => o !== prevBox && boxesOverlap(g.corridor, o, MARGIN));
+        if (vaultClear && corrClear) chosen = { ...g, dir: heading };
+      }
+      if (!chosen) {
+        const g = stepGeometry(prevBox, dims, heading, profile.length, profile.width);
+        chosen = { ...g, dir: heading };
+      }
+    }
+
+    placed.push({ vault, roomId: ROOM_ID(i), offsetX: chosen.vault.x, offsetZ: chosen.vault.z });
+    corridors.push({ rect: chosen.corridor, height: profile.height, fromIdx: i - 1, toIdx: i });
+    occupied.push(chosen.vault);
+    occupied.push(chosen.corridor);
+    prevBox = chosen.vault;
+    heading = chosen.dir;
   }
 
-  // ── 3. Side branch (30% chance, depth-gated) ───────────────────
-  // Pick a random mid spine vault as the branch point; spawn a leaf
-  // vault perpendicular to it (east or west) with its own corridor.
-  // Dead end — leaf vault has no further connection.
-  // Branch chance — gated on having any mid vault to hang off of.
-  // Bumped over the earlier "middleCount >= 2" so even depth-1
-  // floors (which only get one mid vault) can fork — the user
-  // was never seeing non-south corridors because the gate was
-  // never satisfied early.
+  // ── 3. Side branch — a dead-end leaf off a mid vault ───────────
+  // With the spine now winding, this is bonus exploration (a treasure or
+  // encounter pocket) dropped in whatever free cardinal direction fits off
+  // a random mid vault. Occupancy-checked so it never clips the path; if
+  // no direction is clear it's simply skipped.
   const wantsBranch = middleCount >= 1 && rand() < (depth >= 3 ? 0.6 : 0.45);
   if (wantsBranch) {
     const branchIdx = 1 + Math.floor(rand() * middleCount);   // mid index
     const parent = placed[branchIdx];
-    const parentDims = vaultDims(parent.vault);
-    const dir: 1 | -1 = rand() < 0.5 ? 1 : -1;                 // 1 = east
+    const parentBox = vaultBoxOf(parent, vaultDims(parent.vault));
+    const sameAsParent = (o: Box) =>
+      o.x === parentBox.x && o.z === parentBox.z && o.w === parentBox.w && o.d === parentBox.d;
     const leafTag: VaultTag = rand() < 0.5 ? 'treasure' : 'encounter';
     const leafPool = vaultsForTag(leafTag, depth);
     if (leafPool.length > 0) {
       const leaf = weightedPick(leafPool, rand);
       const leafDims = vaultDims(leaf);
       const profile = pickCorridorProfile(rand);
-      const corridorWestX = parent.offsetX + dir * (parentDims.w / 2);
-      const corridorEastX = corridorWestX + dir * profile.length;
-      const leafCentreX = corridorEastX + dir * (leafDims.w / 2);
-      const leafIdx = placed.length;
-      placed.push({
-        vault: leaf,
-        roomId: BRANCH_ROOM_ID(leafIdx),
-        offsetX: leafCentreX,
-        offsetZ: parent.offsetZ,
-      });
-      corridors.push({
-        rect: {
-          x: (corridorWestX + corridorEastX) / 2,
-          z: parent.offsetZ,
-          // For E-W corridors: width = X span (length), depth = Z span (corridor width)
-          w: profile.length,
-          d: profile.width,
-        },
-        height: profile.height,
-        fromIdx: branchIdx,
-        toIdx: leafIdx,
-      });
+      // Shuffle the four cardinals; take the first that fits.
+      const dirs: Dir[] = ['N', 'S', 'E', 'W'];
+      for (let k = dirs.length - 1; k > 0; k--) {
+        const j = Math.floor(rand() * (k + 1));
+        [dirs[k], dirs[j]] = [dirs[j], dirs[k]];
+      }
+      for (const dir of dirs) {
+        const g = stepGeometry(parentBox, leafDims, dir, profile.length, profile.width);
+        const vaultClear = !occupied.some((o) => boxesOverlap(g.vault, o, MARGIN));
+        const corrClear = !occupied.some((o) => !sameAsParent(o) && boxesOverlap(g.corridor, o, MARGIN));
+        if (vaultClear && corrClear) {
+          const leafIdx = placed.length;
+          placed.push({ vault: leaf, roomId: BRANCH_ROOM_ID(leafIdx), offsetX: g.vault.x, offsetZ: g.vault.z });
+          corridors.push({ rect: g.corridor, height: profile.height, fromIdx: branchIdx, toIdx: leafIdx });
+          occupied.push(g.vault);
+          occupied.push(g.corridor);
+          break;
+        }
+      }
     }
   }
 
