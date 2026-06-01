@@ -49,7 +49,9 @@ export const ACTS: Act[] = [
     name: 'The Cistern',
     depths: [4, 5, 6, 7],
     bossDepth: 7,
-    bossId: 'hollow-choir',
+    // INTERIM: the boiling-king fills every act's boss slot until Act II/III
+    // get distinct bosses (was 'hollow-choir', the wraith placeholder).
+    bossId: 'boiling-king',
     torchTint: 0x66ccdd,
     fogColor: 0x05101a,
   },
@@ -58,7 +60,8 @@ export const ACTS: Act[] = [
     name: 'The Verdant Rot',
     depths: [8, 9, 10, 11, 12],
     bossDepth: 12,
-    bossId: 'hollow-choir',
+    // INTERIM: boiling-king everywhere until distinct bosses exist.
+    bossId: 'boiling-king',
     torchTint: 0x80c060,
     fogColor: 0x080f05,
   },
