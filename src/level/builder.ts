@@ -314,6 +314,31 @@ function makeBracedFramesGeometry(rect: { x: number; z: number; w: number; d: nu
   return geos.length ? mergeGeometries(geos, false) : null;
 }
 
+// Chasm drop geometry — for each void, four inward pit walls descending from
+// the floor (y=0) to y=-drop plus a dark bottom, all merged into ONE mesh.
+// Rendered with the double-sided dark ceiling material (no vertex-colour
+// dependency, never culls from above) so it reads as an abyss.
+function makeChasmDropGeometry(voids: { x: number; z: number; w: number; d: number }[], drop: number): THREE.BufferGeometry | null {
+  const geos: THREE.BufferGeometry[] = [];
+  const m4 = new THREE.Matrix4();
+  for (const v of voids) {
+    const { x, z, w, d } = v;
+    const bottom = new THREE.PlaneGeometry(w, d);   // faces up
+    m4.makeRotationX(-Math.PI / 2); m4.setPosition(x, -drop, z); bottom.applyMatrix4(m4);
+    geos.push(bottom);
+    const wall = (len: number, yaw: number, px: number, pz: number) => {
+      const g = new THREE.PlaneGeometry(len, drop);
+      m4.makeRotationY(yaw); m4.setPosition(px, -drop / 2, pz); g.applyMatrix4(m4);
+      geos.push(g);
+    };
+    wall(w, 0, x, z - d / 2);            // north edge
+    wall(w, Math.PI, x, z + d / 2);      // south edge
+    wall(d, Math.PI / 2, x - w / 2, z);  // west edge
+    wall(d, -Math.PI / 2, x + w / 2, z); // east edge
+  }
+  return geos.length ? mergeGeometries(geos, false) : null;
+}
+
 function buildRoomShell(
   scene: THREE.Object3D,
   room: RoomSpec,
@@ -715,6 +740,27 @@ export function buildLevel(
       // those cells fall outside the floor, the grid loop iterates them.
       stairFootprintAabbs.push({ minX, maxX, minZ, maxZ });
     }
+    // Chasm voids inside this room → a floor hole (clamped just inside the
+    // contour so earcut keeps it) + an edge-barrier obstacle covering the
+    // FULL void (so the player can't step into the abyss). Drop geometry is
+    // built once after this loop.
+    for (const v of spec.voids ?? []) {
+      const rx = r.rect.x, rz = r.rect.z, hw = r.rect.w / 2, hd = r.rect.d / 2;
+      if (v.x < rx - hw || v.x > rx + hw || v.z < rz - hd || v.z > rz + hd) continue;
+      const vMinX = v.x - v.w / 2, vMaxX = v.x + v.w / 2;
+      const vMinZ = v.z - v.d / 2, vMaxZ = v.z + v.d / 2;
+      const EDGE = 0.02;
+      const cMinX = Math.max(vMinX, rx - hw + EDGE), cMaxX = Math.min(vMaxX, rx + hw - EDGE);
+      const cMinZ = Math.max(vMinZ, rz - hd + EDGE), cMaxZ = Math.min(vMaxZ, rz + hd - EDGE);
+      if (cMinX >= cMaxX || cMinZ >= cMaxZ) continue;
+      holes.push([
+        [cMinX - rx, -(cMinZ - rz)],
+        [cMaxX - rx, -(cMinZ - rz)],
+        [cMaxX - rx, -(cMaxZ - rz)],
+        [cMinX - rx, -(cMaxZ - rz)],
+      ]);
+      obstacles.push({ kind: 'aabb', minX: vMinX, maxX: vMaxX, minZ: vMinZ, maxZ: vMaxZ });
+    }
     // Logical-only sub-rooms (multi-room vault parsing) skip the shell
     // build — they exist only for mob-attribution and arena-door
     // trigger purposes. Their parent vault's main RoomSpec already
@@ -1014,6 +1060,20 @@ export function buildLevel(
       pillarsMesh.receiveShadow = true;
       pillarsMesh.name = 'pillars-merged';
       root.add(pillarsMesh);
+    }
+  }
+
+  // Chasm drop geometry — one merged abyss mesh for all voids on the floor.
+  // (The floor holes + edge barriers were added per-room above.)
+  if (spec.voids && spec.voids.length > 0) {
+    const dropGeo = makeChasmDropGeometry(spec.voids, 6);
+    if (dropGeo) {
+      const chasm = new THREE.Mesh(dropGeo, archCeilingMaterial(materials.ceiling));
+      chasm.receiveShadow = true;
+      chasm.name = 'chasm-drop';
+      chasm.userData.dbgKind = 'wall';
+      chasm.userData.dbgSource = 'chasm-drop';
+      root.add(chasm);
     }
   }
 

@@ -287,6 +287,7 @@ export function composeFloor(
   const doors: DoorSpec[] = [];
   const stairs: StairsSpec[] = [];
   const extraWalls: NonNullable<LevelSpec['extraWalls']> = [];
+  const voids: NonNullable<LevelSpec['voids']> = [];
   let startPos: LevelSpec['startPos'] = { x: 0, z: 0, yaw: 0 };
   // Provenance: which vault TEMPLATE generated each room. The room ids
   // (`vault-0`, `branch-2`) are positional; this maps them back to the
@@ -347,6 +348,12 @@ export function composeFloor(
       }
     }
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;
+    // Chasm voids → world coords (vault-local + the vault's offset).
+    if (pv.vault.voids) {
+      for (const v of pv.vault.voids) {
+        voids.push({ x: v.x + pv.offsetX, z: v.z + pv.offsetZ, w: v.w, d: v.d });
+      }
+    }
   }
 
   // ── 5. Stamp the corridor rects into the LevelSpec ─────────────
@@ -375,6 +382,7 @@ export function composeFloor(
     doors,
     stairs,
     extraWalls,
+    voids,
     roomVaults,
   };
 
@@ -591,6 +599,19 @@ function ensureStairsReachable(spec: LevelSpec): void {
       }
     }
   }
+  // Chasm voids block reachability (you must route via the bridge). Zero
+  // their cells so the BFS can't path across the abyss; if no bridge
+  // connects, the stairs come back unreachable and surface the bad layout.
+  for (const v of spec.voids ?? []) {
+    const c0x = Math.max(0, Math.floor((v.x - v.w / 2 - minX) / REACH_CELL_M));
+    const c1x = Math.min(cellsX - 1, Math.floor((v.x + v.w / 2 - minX) / REACH_CELL_M));
+    const c0z = Math.max(0, Math.floor((v.z - v.d / 2 - minZ) / REACH_CELL_M));
+    const c1z = Math.min(cellsZ - 1, Math.floor((v.z + v.d / 2 - minZ) / REACH_CELL_M));
+    for (let cz = c0z; cz <= c1z; cz++) {
+      for (let cx = c0x; cx <= c1x; cx++) cellWalkable[idx(cx, cz)] = 0;
+    }
+  }
+
   // BFS from spawn.
   const sx = Math.floor((spec.startPos.x - minX) / REACH_CELL_M);
   const sz = Math.floor((spec.startPos.z - minZ) / REACH_CELL_M);

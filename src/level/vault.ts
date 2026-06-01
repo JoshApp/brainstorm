@@ -57,6 +57,12 @@ export interface Vault {
   /** Optional wall treatment — 'braced' adds mine-shaft timber framing. */
   wallVariant?: 'stone' | 'braced';
   /**
+   * Chasm voids in VAULT-LOCAL coords (centre = 0,0). Each becomes a floor
+   * hole + edge barrier + drop. Leave a walkable gap between two voids for a
+   * bridge. The map cells under a void stay '.' — the void blocks them.
+   */
+  voids?: Array<{ x: number; z: number; w: number; d: number }>;
+  /**
    * Optional per-vault torch tint override. When set, torches
    * mounted on this vault's walls use this colour instead of
    * the act default. Cheap way to vary room mood: a treasure

@@ -804,10 +804,46 @@ const BOSS_HALL: Vault = {
   torchTint: TORCH_BLOOD,
 };
 
+// Chasm bridge — a void splits the room; a narrow walkable bridge crosses it
+// (with thin ledges to either side). Pure flat-playfield verticality: the
+// floor is cut, an edge barrier blocks the abyss, drop geometry falls away
+// below. Tense crossing without any player-Y simulation. The void rects are
+// vault-local; the map stays ordinary floor (the voids block the cells they
+// cover). Enemies sit on the rims + one on the bridge.
+const CHASM_BRIDGE: Vault = {
+  id: 'chasm-bridge',
+  tags: ['combat'],
+  map: [
+    '################',
+    '#..X.......T...#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#......X.......#',
+    '#..............#',
+    '#..............#',
+    '#..............#',
+    '#...t......X...#',
+    '################',
+  ],
+  minDepth: 3,
+  weight: 1,
+  torchTint: TORCH_PALE,
+  // Two voids flanking a ~1.8m central bridge (x∈[-0.9,0.9]), with ~1m
+  // walkable ledges at the E/W walls + ~2.5m rims N/S. Every mid-edge corridor
+  // opening lands on solid floor, and there are always multiple routes across
+  // (bridge or skirt the ledges) — so the abyss never strands the stairs.
+  voids: [
+    { x: -3.45, z: 0, w: 5.1, d: 5 },
+    { x: 3.45, z: 0, w: 5.1, d: 5 },
+  ],
+};
+
 export const VAULTS: Vault[] = [
   FOYER_SMALL, FOYER_PILLAR, FOYER_ALCOVE,
   COMBAT_OPEN, COMBAT_PILLARS, COMBAT_CHOKE, COMBAT_HALL, COMBAT_ARENA, COMBAT_DOORS,
-  COMBAT_CROSS, MINESHAFT_GALLERY, COMBAT_PITS,
+  COMBAT_CROSS, MINESHAFT_GALLERY, COMBAT_PITS, CHASM_BRIDGE,
   ENCOUNTER_NEST,
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,

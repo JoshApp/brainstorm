@@ -405,6 +405,14 @@ export type LevelSpec = {
    */
   extraWalls?: Array<{ ax: number; az: number; bx: number; bz: number; height?: number }>;
   /**
+   * Chasm voids — rectangular floor holes the player can't cross (the floor
+   * is cut, an edge barrier blocks entry, and drop geometry shows the abyss).
+   * A flat playfield reads as vertical without any player-Y simulation: you
+   * skirt the void, or cross a bridge (an ordinary walkable floor gap between
+   * two voids). World coords. See builder.ts + ensureStairsReachable.
+   */
+  voids?: WalkableRect[];
+  /**
    * Procgen decoration data — populated tilemap grid + seeded RNG state +
    * tint. Builder calls decorateFloor with this if present, producing
    * InstancedMesh batches of sigils / cracks / rubble. Hand-authored

@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tech",
+        "text": "Perf: merge static walls into one mesh per room"
+      },
+      {
         "tag": "tune",
         "text": "Level gen: braced timber wall variant + timber plank doors"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Tune poison + calm idle gaze scan"
-      },
-      {
-        "tag": "tune",
-        "text": "Debug capture"
       }
     ]
   }
