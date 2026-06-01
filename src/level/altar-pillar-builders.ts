@@ -7,6 +7,7 @@ import {
   type AltarItemEntry,
 } from '../content/altar-items';
 import { ALTAR_SKULL } from '../content/relics';
+import { pooledBox, pooledCylinder } from '../scene/geometry-pool';
 
 // Inline scene builders for pillar + altar.
 //
@@ -19,6 +20,20 @@ import { ALTAR_SKULL } from '../content/relics';
 // Each function returns a Group that the caller adds to root +
 // pushes the matching obstacle for. Geometry shares the existing
 // StyleMaterials so palette stays consistent across rooms.
+//
+// All primitive geometries route through scene/geometry-pool.ts so
+// every identical part across every pillar/altar instance shares
+// the same vertex buffer.
+//
+// ── Seam fix ──────────────────────────────────────────────────────
+// Stacked segments (plinth → bead → shaft → bead → capital) used to
+// meet at EXACT y boundaries — both pieces' edges sat at the same
+// coordinate. Camera-angle-dependent sub-pixel gaps showed the floor
+// behind through the seam. Now every piece extends by SEAM_BLEED at
+// each end (half above, half below) so adjacent pieces overlap by
+// SEAM_BLEED. The silhouette grows by an invisible 3mm per side; the
+// seam never appears.
+const SEAM_BLEED = 0.008;
 
 // ── Pillar ────────────────────────────────────────────────────────
 //
@@ -56,24 +71,28 @@ export function buildAltarPillar(
 
   const stone = materials.wall;
 
-  // Plinth — wider square at the floor.
-  const plinth = new THREE.Mesh(new THREE.BoxGeometry(plinthSide, plinthH, plinthSide), stone);
-  plinth.position.y = plinthH / 2;
+  // Plinth — wider square at the floor. Extended by SEAM_BLEED so
+  // it overlaps the bead above; floor side stays at y=0 (the bleed
+  // sinks into the floor mesh, which is what we want).
+  const plinth = new THREE.Mesh(pooledBox(plinthSide, plinthH + SEAM_BLEED, plinthSide), stone);
+  plinth.position.y = plinthH / 2 + SEAM_BLEED / 2;
   plinth.castShadow = true; plinth.receiveShadow = true;
   group.add(plinth);
 
   // Lower bead — torus-like band (we use a flattened cylinder).
+  // Extended both ends — overlaps the plinth below and the shaft above.
   const lowerBead = new THREE.Mesh(
-    new THREE.CylinderGeometry(shaftRadius * 1.18, shaftRadius * 1.18, beadH, 16),
+    pooledCylinder(shaftRadius * 1.18, shaftRadius * 1.18, beadH + SEAM_BLEED * 2, 16),
     stone,
   );
   lowerBead.position.y = plinthH + beadH / 2;
   lowerBead.castShadow = true; lowerBead.receiveShadow = true;
   group.add(lowerBead);
 
-  // Shaft — 8-sided cylinder reads as a chiseled column.
+  // Shaft — 8-sided cylinder reads as a chiseled column. Extended
+  // both ends to overlap the beads above and below.
   const shaft = new THREE.Mesh(
-    new THREE.CylinderGeometry(shaftRadius, shaftRadius, shaftH, 8),
+    pooledCylinder(shaftRadius, shaftRadius, shaftH + SEAM_BLEED * 2, 8),
     stone,
   );
   shaft.position.y = plinthH + beadH + shaftH / 2;
@@ -92,7 +111,7 @@ export function buildAltarPillar(
     [0, -(shaftRadius - flutingDepth * 0.5)],
   ] as const) {
     const flute = new THREE.Mesh(
-      new THREE.BoxGeometry(
+      pooledBox(
         Math.abs(dir[0]) > 0 ? flutingDepth : flutingThick,
         shaftH * 0.85,
         Math.abs(dir[1]) > 0 ? flutingDepth : flutingThick,
@@ -104,18 +123,20 @@ export function buildAltarPillar(
     group.add(flute);
   }
 
-  // Upper bead — mirror of the lower one.
+  // Upper bead — mirror of the lower one. Extended both ends.
   const upperBead = new THREE.Mesh(
-    new THREE.CylinderGeometry(shaftRadius * 1.18, shaftRadius * 1.18, beadH, 16),
+    pooledCylinder(shaftRadius * 1.18, shaftRadius * 1.18, beadH + SEAM_BLEED * 2, 16),
     stone,
   );
   upperBead.position.y = plinthH + beadH + shaftH + beadH / 2;
   upperBead.castShadow = true; upperBead.receiveShadow = true;
   group.add(upperBead);
 
-  // Capital — wider square cap.
-  const capital = new THREE.Mesh(new THREE.BoxGeometry(capitalSide, capitalH, capitalSide), stone);
-  capital.position.y = height - capitalH / 2;
+  // Capital — wider square cap. Extended at the bottom to overlap
+  // the upper bead; top stays at room height (no seam there since
+  // the ceiling sits above).
+  const capital = new THREE.Mesh(pooledBox(capitalSide, capitalH + SEAM_BLEED, capitalSide), stone);
+  capital.position.y = height - capitalH / 2 - SEAM_BLEED / 2;
   capital.castShadow = true; capital.receiveShadow = true;
   group.add(capital);
 
@@ -172,27 +193,33 @@ export function buildAltarBlock(
   const stone = materials.wall;
   const stoneFloor = materials.floor;
 
-  // Base — widest step.
-  const base = new THREE.Mesh(new THREE.BoxGeometry(ALTAR_BASE_W, ALTAR_BASE_H, ALTAR_BASE_D), stoneFloor);
-  base.position.y = ALTAR_BASE_H / 2;
+  // Stacked segments overlap by SEAM_BLEED at each interface — without
+  // this, adjacent boxes meet at an exact y boundary and a sub-pixel
+  // gap shows the floor through the seam at oblique camera angles.
+
+  // Base — widest step. Extended upward to overlap the step above.
+  const base = new THREE.Mesh(pooledBox(ALTAR_BASE_W, ALTAR_BASE_H + SEAM_BLEED, ALTAR_BASE_D), stoneFloor);
+  base.position.y = ALTAR_BASE_H / 2 + SEAM_BLEED / 2;
   base.castShadow = true; base.receiveShadow = true;
   group.add(base);
 
-  // Step — narrower than base.
-  const step = new THREE.Mesh(new THREE.BoxGeometry(ALTAR_STEP_W, ALTAR_STEP_H, ALTAR_STEP_D), stone);
+  // Step — narrower than base. Extended both ends.
+  const step = new THREE.Mesh(pooledBox(ALTAR_STEP_W, ALTAR_STEP_H + SEAM_BLEED * 2, ALTAR_STEP_D), stone);
   step.position.y = ALTAR_BASE_H + ALTAR_STEP_H / 2;
   step.castShadow = true; step.receiveShadow = true;
   group.add(step);
 
-  // Body — the main altar block.
-  const body = new THREE.Mesh(new THREE.BoxGeometry(ALTAR_BODY_W, ALTAR_BODY_H, ALTAR_BODY_D), stone);
+  // Body — the main altar block. Extended both ends.
+  const body = new THREE.Mesh(pooledBox(ALTAR_BODY_W, ALTAR_BODY_H + SEAM_BLEED * 2, ALTAR_BODY_D), stone);
   body.position.y = ALTAR_BASE_H + ALTAR_STEP_H + ALTAR_BODY_H / 2;
   body.castShadow = true; body.receiveShadow = true;
   group.add(body);
 
   // Top slab — slightly wider than the body, gives a "ledge" feel.
-  const slab = new THREE.Mesh(new THREE.BoxGeometry(ALTAR_SLAB_W, ALTAR_SLAB_H, ALTAR_SLAB_D), stoneFloor);
-  slab.position.y = ALTAR_BASE_H + ALTAR_STEP_H + ALTAR_BODY_H + ALTAR_SLAB_H / 2;
+  // Extended downward to overlap the body; top stays at the placement
+  // height (items sit on top, anchored to ALTAR_TOP_Y).
+  const slab = new THREE.Mesh(pooledBox(ALTAR_SLAB_W, ALTAR_SLAB_H + SEAM_BLEED, ALTAR_SLAB_D), stoneFloor);
+  slab.position.y = ALTAR_BASE_H + ALTAR_STEP_H + ALTAR_BODY_H + ALTAR_SLAB_H / 2 - SEAM_BLEED / 2;
   slab.castShadow = true; slab.receiveShadow = true;
   group.add(slab);
 

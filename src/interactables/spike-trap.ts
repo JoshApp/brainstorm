@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { damagePlayer } from '../player/health';
+import { pooledBox, pooledPlane, pooledCone } from '../scene/geometry-pool';
 
 // Spike trap — a pressure plate hazard. Player steps onto the plate; a
 // brief telegraph (plate sinks, an audible click) gives them a moment to
@@ -48,7 +49,7 @@ export function spawnSpikeTrap(
     metalness: 0.3,
   });
   const plate = new THREE.Mesh(
-    new THREE.BoxGeometry(PLATE_SIZE, PLATE_THICKNESS, PLATE_SIZE),
+    pooledBox(PLATE_SIZE, PLATE_THICKNESS, PLATE_SIZE),
     plateMat,
   );
   plate.position.y = PLATE_THICKNESS / 2 + 0.005;
@@ -62,7 +63,7 @@ export function spawnSpikeTrap(
     roughness: 1.0,
   });
   const border = new THREE.Mesh(
-    new THREE.PlaneGeometry(PLATE_SIZE * 1.18, PLATE_SIZE * 1.18),
+    pooledPlane(PLATE_SIZE * 1.18, PLATE_SIZE * 1.18),
     borderMat,
   );
   border.rotation.x = -Math.PI / 2;
@@ -87,7 +88,7 @@ export function spawnSpikeTrap(
   for (let i = 0; i < grid; i++) {
     for (let j = 0; j < grid; j++) {
       const spike = new THREE.Mesh(
-        new THREE.ConeGeometry(0.06, 0.45, 6),
+        pooledCone(0.06, 0.45, 6),
         spikeMat,
       );
       spike.position.set(start + i * step, SPIKE_HIDDEN_Y, start + j * step);

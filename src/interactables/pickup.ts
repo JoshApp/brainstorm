@@ -12,6 +12,7 @@ import { playLootLand, playPickupChime, playDenied } from '../audio/sfx';
 import { emit } from '../broadcast/event-bus';
 import { getActiveLevel } from '../level/loader';
 import { registerLight, unregisterLight } from '../scene/light-pool';
+import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 
 // Rarity → audio "preciousness" index. Mundane is dull, fabled is bright.
 const RARITY_INDEX: Record<Rarity, number> = {
@@ -108,7 +109,7 @@ export function createPickup(
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
-  const disc = new THREE.Mesh(new THREE.PlaneGeometry(DISC_SIZE, DISC_SIZE), discMat);
+  const disc = new THREE.Mesh(pooledPlane(DISC_SIZE, DISC_SIZE), discMat);
   disc.rotation.x = -Math.PI / 2;
   disc.position.y = 0.01 - pos.y;  // sit ~1cm above the floor (compensate for parent y)
   // Hide the disc during fountain — it'd be a glowing landmark at the
@@ -120,7 +121,7 @@ export function createPickup(
   // when the player is in range. Tells the player "you can take this"
   // without relying solely on the use button (some players reach for
   // the object directly with their thumb on phone).
-  const ringGeom = new THREE.RingGeometry(0.50, 0.62, 28);
+  const ringGeom = pooledRing(0.50, 0.62, 28);
   const ringMat = new THREE.MeshBasicMaterial({
     color: rarityColor,
     transparent: true,

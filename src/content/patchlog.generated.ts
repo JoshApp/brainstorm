@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Geometry pool: shared BufferGeometries across ModelSpec spawns + stairs"
+      },
+      {
         "tag": "tech",
         "text": "Perf overlay"
       }
@@ -220,10 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Eye dark-adaptation off measured perceived brightness"
-      },
-      {
-        "tag": "tune",
-        "text": "Archway proximity glow: lintel + keystone light up on approach"
       }
     ]
   }
