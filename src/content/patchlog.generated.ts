@@ -9,6 +9,18 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Event slots: rollable feature placeholders (?) through the manifest"
+      },
+      {
+        "tag": "fix",
+        "text": "snap"
+      },
+      {
+        "tag": "tune",
+        "text": "Loot slots: rollable, partial-fill reward placeholders ($)"
+      },
+      {
+        "tag": "tune",
         "text": "Encounters"
       },
       {
@@ -194,24 +206,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tech",
         "text": "Perf overlay"
-      }
-    ]
-  },
-  {
-    "version": "Build 8",
-    "date": "2026-05-30",
-    "entries": [
-      {
-        "tag": "tech",
-        "text": "Audio"
-      },
-      {
-        "tag": "tune",
-        "text": "Dev hot-reload: bypass title screen when snapshot is pending"
-      },
-      {
-        "tag": "tune",
-        "text": "Dev hot-reload"
       }
     ]
   }
