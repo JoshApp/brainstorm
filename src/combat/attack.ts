@@ -18,6 +18,7 @@ import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { spawnProjectile, setProjectileEnemyProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
+import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
 import type { AttackDirection } from '../player/viewmodel';
 
@@ -324,13 +325,18 @@ export function createCombatSystem(
 
     strikeAlreadyHit = true;
 
+    // Player-stat layer — read ONCE per strike so a 3-target sweep
+    // shares the same crit chance / lifesteal % / finisher mul (the
+    // per-target *roll* is still independent, but the rate isn't).
+    const ps = computePlayerStats();
+
     // Crit per-hit so a 3-target sweep can crit one and not the
     // others — feels better than one roll applying to the whole arc.
-    const critChance = stats.critChance ?? 0;
-    const critMult   = stats.critMultiplier ?? 2.0;
-    const finisherMult = weapon.isFinisherStrike
-      ? computePlayerStats().finisherDamageMultiplier
-      : 1;
+    // Item crit bonuses stack ADDITIVELY on the weapon's intrinsic
+    // chance / multiplier; the final chance clamps at 1.0.
+    const critChance = Math.min(1, (stats.critChance ?? 0) + ps.critChanceBonus);
+    const critMult   = (stats.critMultiplier ?? 2.0) + ps.critMultBonus;
+    const finisherMult = weapon.isFinisherStrike ? ps.finisherDamageMultiplier : 1;
 
     // Charged-swing damage multiplier — fully charged ×1.8, ramps
     // linearly from charge progress (c).
@@ -364,6 +370,17 @@ export function createCombatSystem(
           }
         }
         emit({ type: 'attack:hit', damage: applied, crit, cls: stats.class });
+        // LIFESTEAL — heal a fraction of damage dealt per heavy target
+        // hit. Per-target so a 3-target cleave heals from each
+        // independently. Vases skipped (their hitFeedback is 'light'
+        // and they don't grant the on-hit pipeline). Rounded UP so a
+        // small lifesteal value still produces visible healing on
+        // chip damage; capped at 1 HP per hit to keep stacking
+        // meaningful without infinite-stalling on weak mobs.
+        if (ps.lifestealPct > 0 && applied > 0) {
+          const heal = Math.max(1, Math.ceil(applied * ps.lifestealPct));
+          healPlayer(heal);
+        }
       }
       if (crit) anyCrit = true;
       if (applied > bestApplied) bestApplied = applied;

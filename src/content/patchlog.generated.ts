@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Level gen: chasm voids + bridge (flat-playfield verticality)"
+      },
+      {
         "tag": "tech",
         "text": "Perf: merge static walls into one mesh per room"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Safe room: redesign + warm-variant stairs + rest fountain + transition card"
-      },
-      {
-        "tag": "tune",
-        "text": "Tune poison + calm idle gaze scan"
       }
     ]
   }

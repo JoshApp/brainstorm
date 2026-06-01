@@ -694,6 +694,63 @@ export const SCENARIOS: Record<string, Scenario> = {
     enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.5 }, state: 'chasing' }],
   },
 
+  // Mob variety pass previews — small lit room with one mob spawned
+  // mid-room, frozen, camera angled to catch the silhouette.
+  'mob-plague-spore': {
+    freeze: true, hideSword: true,
+    level: {
+      id: 'dbg-spore', depth: 6, displayName: 'plague spore', fogColor: 0x080f05,
+      startPos: { x: 0, z: 2.5, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 6, d: 6 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.0, z: -2.5, height: 2.2, wall: 'W', colorTint: 0xa8d870, intensityMul: 0.9 },
+        { x:  3.0, z: -2.5, height: 2.2, wall: 'E', colorTint: 0xa8d870, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'plague-spore', x: 0, z: -1.0, roomId: 'r' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 1.5, lookAt: { x: 0, z: -1.0, y: 0.4 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
+  },
+  'mob-sump-wisp': {
+    freeze: true, hideSword: true,
+    level: {
+      id: 'dbg-wisp', depth: 6, displayName: 'sump wisp', fogColor: 0x080a14,
+      startPos: { x: 0, z: 2.5, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 6, d: 6 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.0, z: -2.5, height: 2.2, wall: 'W', colorTint: 0x88aaff, intensityMul: 0.9 },
+        { x:  3.0, z: -2.5, height: 2.2, wall: 'E', colorTint: 0x88aaff, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'sump-wisp', x: 0, z: -1.0, roomId: 'r' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 1.5, lookAt: { x: 0, z: -1.0, y: 1.0 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
+  },
+  'mob-carrion-hound': {
+    freeze: true, hideSword: true,
+    level: {
+      id: 'dbg-hound', depth: 4, displayName: 'carrion hound', fogColor: 0x14100a,
+      startPos: { x: 0, z: 2.5, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 6, d: 6 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.0, z: -2.5, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  3.0, z: -2.5, height: 2.2, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'carrion-hound', x: 0, z: -1.0, roomId: 'r' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 1.5, lookAt: { x: 0, z: -1.0, y: 0.3 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
+  },
+
   // Safe room — overview from the spawn end looking down the chamber
   // toward the hearth + descent. For verifying the V3 layout (smaller +
   // warmer + central brazier).

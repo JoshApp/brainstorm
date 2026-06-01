@@ -291,6 +291,10 @@ export interface DropTable {
 export const ENEMY_AUDIO_SIZE: Record<string, EnemyDeathSize> = {
   wraith: 'spectral',
   rat: 'small',
+  // New mob audio sizes.
+  'sump-wisp':   'spectral',   // floating, magical — same ethereal palette as the wraith
+  'plague-spore':'small',      // small body, soft pop on death
+  'carrion-hound':'medium',    // dog-sized — same as ghoul/skirmisher
 };
 
 /** Idle/aware vocalisation per enemy (mobs/enemy.ts ticks a timer and
@@ -308,6 +312,10 @@ export const ENEMY_VOCAL_ARCHETYPE: Record<string, VocalArchetype> = {
   'acid-spitter': 'hiss',
   acolyte: 'hiss',
   defiler: 'hiss',
+  // New mobs.
+  'sump-wisp':    'groan',     // low spectral hum — fits the wraith family
+  'plague-spore': 'hiss',      // wet release
+  'carrion-hound':'squeak',    // panting/growling; nearest match in the existing pool
 };
 
 
@@ -1142,7 +1150,206 @@ export const ENEMIES: Record<string, EnemySpec> = {
       ],
     },
   },
+
+  // ── Mob variety pass ───────────────────────────────────────────────
+  // Three new mob types filling underrepresented combat verbs:
+  //   - stationary AoE turret (plague spore)
+  //   - floating fast caster, non-humanoid (sump wisp)
+  //   - fast pack melee, bleed-on-hit (carrion hound)
+  // Each ships with a distinct model so the silhouette reads
+  // immediately, even in low-light corridors.
+
+  // Plague Spore — stationary fungal turret. Doesn't move; periodically
+  // inflates and releases a poison cloud AoE around itself. Reads as
+  // "do I kill it or sprint past?" — the player chooses commitment.
+  // Verdant Rot themed but appears act 2+.
+  'plague-spore': {
+    id: 'plague-spore',
+    name: 'plague spore',
+    tileChar: 'F',
+    hp: 3,
+    moveSpeed: 0,                  // truly stationary
+    attackDamage: 2,
+    attackRange: 2.4,              // AoE radius; player must clear this
+    strikeRange: 2.4,
+    windupTime: 1.10,              // long telegraph — body inflates
+    strikeTime: 0.18,
+    recoverTime: 1.40,             // long cooldown — sprint past is viable
+    damageType: 'magic',
+    model: spore_modelV1(0x6a4a18, 0xa8d870),
+    baseEyeEmissive: 0,
+    collisionRadius: 0.40,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'core',
+    sightRange: 6,
+    sightConeHalfAngle: 1.8,       // near-omnidirectional — it's a fungus
+    hearingRange: 4,
+    loseSightTime: 99,             // never disengages — stationary
+    abilities: [{
+      id: 'spore-burst',
+      minRange: 0, maxRange: 2.4,
+      windup: 1.10, strike: 0.18, recover: 1.40, cooldown: 1.0,
+      damage: 2, telegraph: 'cast',
+      effects: [{ kind: 'aoe', radius: 2.4, targetMode: 'self', damageType: 'magic' }],
+    }],
+    // Poison-on-hit because spores. Player who eats the cloud bleeds
+    // damage for a few seconds after stepping out.
+    onHit: { buffId: 'poison', chance: 0.8, duration: 4 },
+    xp: 4,
+    gold: [0, 4],
+    drops: {
+      rate: 0.20,
+      pool: [{ itemId: 'healing-potion', weight: 1 }],
+    },
+  },
+
+  // Sump Wisp — floating non-humanoid caster. Distinct from the
+  // acolyte (humanoid robed caster) by being a small glowing orb
+  // that drifts. Fast move speed + low HP = hit-and-run kiter.
+  // Reads as "ambient malevolence" rather than "person."
+  'sump-wisp': {
+    id: 'sump-wisp',
+    name: 'sump wisp',
+    tileChar: 'I',
+    hp: 2,                          // one-shot for most weapons — closing matters
+    moveSpeed: 1.8,                 // fast — it kites
+    attackDamage: 1,
+    attackRange: 8,
+    strikeRange: 8,
+    windupTime: 0.70,
+    strikeTime: 0.14,
+    recoverTime: 0.55,
+    damageType: 'magic',
+    model: wisp_modelV1(0x66a8e0, 0xaaccff, 2.8),
+    baseEyeEmissive: 2.2,           // the core pulses on windup
+    collisionRadius: 0.22,
+    noPlayerCollision: true,        // ghosts through you, doesn't body-block
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'core',
+    presence: 'spectral',           // floats + bobs
+    phasing: true,                  // drifts through obstacles like the wraith
+    sightRange: 12,
+    sightConeHalfAngle: 1.6,
+    hearingRange: 4,
+    loseSightTime: 6,
+    preferredRange: 5.5,            // backs off if you close
+    attackCooldown: 0.4,
+    ranged: {
+      muzzleOffset: [0, 0, 0],
+      projectileId: 'acolyte-spit',  // reuse the spectral spit; tinted by the wisp's blue
+    },
+    xp: 5,
+    gold: [0, 5],
+    drops: {
+      rate: 0.25,
+      pool: [
+        { itemId: 'healing-potion', weight: 2 },
+      ],
+    },
+  },
+
+  // Carrion Hound — fast quadruped pack predator. Sits between rat
+  // (too soft) and skirmisher (humanoid melee) in the difficulty
+  // curve. Bleeds on hit so being mobbed by a pack actually adds up.
+  'carrion-hound': {
+    id: 'carrion-hound',
+    name: 'carrion hound',
+    tileChar: 'D',
+    hp: 3,
+    moveSpeed: 2.6,                 // fast chase
+    attackDamage: 2,
+    attackRange: 1.4,
+    strikeRange: 1.20,
+    windupTime: 0.40,               // shorter than the skirmisher — it bites quick
+    strikeTime: 0.14,
+    recoverTime: 0.40,
+    damageType: 'physical',
+    // Bigger than a rat (scale 3.0 vs rat's 2.0) + black-brown
+    // palette + yellow-green sickly eyes. Reads as "starving dog,
+    // not vermin."
+    model: quadrupedRatModel(0x18120c, 0xc8d030, 3.0),
+    baseEyeEmissive: 2.0,
+    collisionRadius: 0.30,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    sightRange: 8,
+    sightConeHalfAngle: 1.4,
+    hearingRange: 4.5,
+    loseSightTime: 5,
+    // Bleed-on-hit — the bites tear and they STAY torn. A pack of
+    // hounds quickly stacks bleed; the kill isn't the worst part.
+    onHit: { buffId: 'bleed', chance: 0.4, duration: 4 },
+    xp: 5,
+    gold: [0, 6],
+    drops: {
+      rate: 0.28,
+      pool: [
+        { itemId: 'healing-potion', weight: 3 },
+        { itemId: 'leather-gloves', weight: 1 },
+      ],
+    },
+  },
 };
+
+// ── Inline model builders for the variety pass ────────────────────
+// Kept next to the specs that use them — small enough not to deserve
+// their own enemy-models.ts entry. Both share the existing material
+// + sprite vocabulary so they slot into the style cleanly.
+
+/** Spore — short stem + flattened mushroom cap + a few drooping
+ *  tendrils. The cap has a glowing core that pulses on windup. */
+function spore_modelV1(bodyColor: number, coreColor: number): ModelSpec {
+  return {
+    id: `spore-${bodyColor.toString(16)}`,
+    materials: {
+      body: { color: bodyColor, roughness: 1.0, flatShading: 'auto' },
+      core: { color: 0x000000, emissive: coreColor, emissiveIntensity: 1.4, roughness: 1.0 },
+      tendril: { color: bodyColor, roughness: 1.0 },
+    },
+    slots: { rig: { pos: [0, 0.18, 0] } },
+    parts: [
+      // Stem.
+      { kind: 'cylinder', pos: [0, 0.08, 0], radius: 0.10, radiusTop: 0.08, height: 0.16, segments: 8, mat: 'body' },
+      // Cap — flattened oblate sphere on top of the stem.
+      { name: 'body', parent: 'rig', kind: 'sphere', pos: [0, 0.04, 0], scale: [1.0, 0.55, 1.0], radius: 0.28, segments: [12, 10], mat: 'body', jitter: 0.02 },
+      // Glowing core inside the cap — pulses on windup via the
+      // existing eyeMaterialName hook.
+      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0.04, 0], radius: 0.10, segments: [10, 8], mat: 'core' },
+      // Drooping tendrils — small cylinders splayed out.
+      { kind: 'cylinder', pos: [-0.18, 0.16, 0],    rot: [0, 0,  0.6], radius: 0.014, height: 0.18, segments: 6, mat: 'tendril' },
+      { kind: 'cylinder', pos: [ 0.18, 0.16, 0],    rot: [0, 0, -0.6], radius: 0.014, height: 0.18, segments: 6, mat: 'tendril' },
+      { kind: 'cylinder', pos: [ 0.00, 0.18, -0.18], rot: [-0.6, 0, 0], radius: 0.014, height: 0.18, segments: 6, mat: 'tendril' },
+    ],
+  };
+}
+
+/** Wisp — a floating sphere with a brighter glowing core. Designed
+ *  to read as "ambient light gone wrong" rather than a creature
+ *  with body parts. The spectral presence overlay adds the float. */
+function wisp_modelV1(bodyColor: number, coreColor: number, coreEmissive: number): ModelSpec {
+  return {
+    id: `wisp-${bodyColor.toString(16)}`,
+    materials: {
+      body: {
+        color: bodyColor, roughness: 0.4, metalness: 0.0,
+        emissive: bodyColor, emissiveIntensity: 0.6,
+        rim: { color: coreColor, power: 2.0, intensity: 0.7 },
+        dissolvable: true,
+      },
+      core: { color: 0x000000, emissive: coreColor, emissiveIntensity: coreEmissive, roughness: 1.0 },
+    },
+    slots: { rig: { pos: [0, 0.85, 0] } },
+    parts: [
+      // Outer luminous body — translucent-looking sphere.
+      { name: 'body', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.20, segments: [14, 10], mat: 'body', jitter: 0.012 },
+      // Inner bright core — the windup tell pulses this.
+      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.09, segments: [10, 8], mat: 'core' },
+    ],
+  };
+}
 
 // ── Tile-char registry — single source of truth ─────────────────────
 //

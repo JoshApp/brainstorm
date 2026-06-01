@@ -54,12 +54,16 @@ function rollTableFor(depth: number): EnemyRoll[] {
   // mid-early teach.
   if (depth <= 4) {
     return [
-      { enemyId: 'rat',        weight: 3 },
-      { enemyId: 'skirmisher', weight: 2 },
-      { enemyId: 'ghoul',      weight: 1 },
-      { enemyId: 'acolyte',    weight: 1 },
-      { enemyId: 'ooze',       weight: 1 },
-      { enemyId: 'skeleton',   weight: 1 },
+      { enemyId: 'rat',           weight: 3 },
+      { enemyId: 'skirmisher',    weight: 2 },
+      { enemyId: 'ghoul',         weight: 1 },
+      { enemyId: 'acolyte',       weight: 1 },
+      { enemyId: 'ooze',          weight: 1 },
+      { enemyId: 'skeleton',      weight: 1 },
+      // Carrion hound — fast bleed-pack predator. Joins the early
+      // mix at the same weight as the skirmisher so by depth 3-4
+      // the player has met them.
+      { enemyId: 'carrion-hound', weight: 2 },
     ];
   }
   // Depth 5-7: ghouls in the mix more; acolytes start appearing in pairs
@@ -67,18 +71,25 @@ function rollTableFor(depth: number): EnemyRoll[] {
   // its first appearance here — rare so it's an "oh shit" moment.
   // Acid spitter joins the table here so the green ooze has read for
   // a few floors before its ranged cousin shows up.
+  //
+  // Sump wisp + plague spore appear at mid-depth: the wisp adds a
+  // floating non-humanoid caster to mix with the acolyte; the spore
+  // is a stationary AoE turret that forces "kill or sprint past."
   if (depth <= 7) {
     return [
-      { enemyId: 'rat',          weight: 2 },
-      { enemyId: 'skirmisher',   weight: 2 },
-      { enemyId: 'ghoul',        weight: 3 },
-      { enemyId: 'acolyte',      weight: 2 },
-      { enemyId: 'ooze',         weight: 2 },
-      { enemyId: 'acid-spitter', weight: 1 },
-      { enemyId: 'defiler',      weight: 1 },
-      { enemyId: 'skeleton',     weight: 2 },
-      { enemyId: 'spider',       weight: 1 },
-      { enemyId: 'stoneguard',   weight: 1 },
+      { enemyId: 'rat',           weight: 2 },
+      { enemyId: 'skirmisher',    weight: 2 },
+      { enemyId: 'ghoul',         weight: 3 },
+      { enemyId: 'acolyte',       weight: 2 },
+      { enemyId: 'ooze',          weight: 2 },
+      { enemyId: 'acid-spitter',  weight: 1 },
+      { enemyId: 'defiler',       weight: 1 },
+      { enemyId: 'skeleton',      weight: 2 },
+      { enemyId: 'spider',        weight: 1 },
+      { enemyId: 'stoneguard',    weight: 1 },
+      { enemyId: 'carrion-hound', weight: 2 },
+      { enemyId: 'sump-wisp',     weight: 2 },
+      { enemyId: 'plague-spore',  weight: 1 },
     ];
   }
   // Depth 8+: wraiths possible, ghouls common, acolytes regular threat,
@@ -86,17 +97,22 @@ function rollTableFor(depth: number): EnemyRoll[] {
   // acolyte — by deep dungeon the player should expect mixed ranged
   // threats, not just one kind.
   return [
-    { enemyId: 'rat',          weight: 1 },
-    { enemyId: 'skirmisher',   weight: 2 },
-    { enemyId: 'ghoul',        weight: 3 },
-    { enemyId: 'acolyte',      weight: 2 },
-    { enemyId: 'ooze',         weight: 2 },
-    { enemyId: 'acid-spitter', weight: 2 },
-    { enemyId: 'defiler',      weight: 2 },
-    { enemyId: 'skeleton',     weight: 2 },
-    { enemyId: 'spider',       weight: 1 },
-    { enemyId: 'stoneguard',   weight: 2 },
-    { enemyId: 'wraith',       weight: 1 },
+    { enemyId: 'rat',           weight: 1 },
+    { enemyId: 'skirmisher',    weight: 2 },
+    { enemyId: 'ghoul',         weight: 3 },
+    { enemyId: 'acolyte',       weight: 2 },
+    { enemyId: 'ooze',          weight: 2 },
+    { enemyId: 'acid-spitter',  weight: 2 },
+    { enemyId: 'defiler',       weight: 2 },
+    { enemyId: 'skeleton',      weight: 2 },
+    { enemyId: 'spider',        weight: 1 },
+    { enemyId: 'stoneguard',    weight: 2 },
+    { enemyId: 'wraith',        weight: 1 },
+    { enemyId: 'carrion-hound', weight: 2 },
+    { enemyId: 'sump-wisp',     weight: 2 },
+    // Plague spore commits more at deep dungeon — Verdant Rot
+    // theme owns this depth band.
+    { enemyId: 'plague-spore',  weight: 2 },
   ];
 }
 
@@ -115,12 +131,13 @@ function rollTableFor(depth: number): EnemyRoll[] {
 })();
 
 function bossFor(depth: number): string {
-  // Bosses get nastier as you descend. Depth 12 (end of Act III) is
-  // where the king slime — The Boiling King — lives: simplest "real
-  // boss" pipeline (telegraphed AoE hop + splits into three princes
-  // on death + unique drop). The earlier acts still use the wraith
-  // until they get their own bosses.
-  if (depth >= 12) return 'boiling-king';
+  // Rotate bosses across acts so each one has a different first
+  // impression. Act I gets the king slime — it's the simplest fight
+  // (telegraphed hop + split-on-death) so it teaches "yes, bosses
+  // are a thing" without being punishing. Act II and III keep the
+  // wraith until they get their own bespoke fights.
+  const act = actForDepth(depth).number;
+  if (act === 1) return 'boiling-king';
   return 'wraith';
 }
 

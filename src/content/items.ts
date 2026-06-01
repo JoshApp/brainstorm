@@ -1039,6 +1039,81 @@ export const ITEMS: Record<string, ItemSpec> = {
       },
     }],
   },
+  // ── CRIT BUILD — items that stack +crit-chance / +crit-mult ────────
+  // Single-source crit is small (5% on a starter sword). Each item
+  // here contributes a piece; pile them together and you build a
+  // weapon-class-agnostic "every fifth swing crushes" identity.
+  'jeweler-band': {
+    id: 'jeweler-band',
+    kind: 'ring',
+    rarity: 'uncommon',
+    name: "Jeweler's Band",
+    flavor: 'Reads weakness like a vein in stone.',
+    dropModel: RING_OF_PREDATION,
+    modifiers: [{ kind: 'crit-chance', amount: 0.08 }],
+  },
+  'split-iris-amulet': {
+    id: 'split-iris-amulet',
+    kind: 'amulet',
+    rarity: 'rare',
+    name: 'Split-Iris Amulet',
+    flavor: "Two pupils. Neither blinks.",
+    dropModel: BONE_AMULET,
+    modifiers: [
+      { kind: 'crit-chance', amount: 0.10 },
+      { kind: 'crit-mult',   amount: 0.40 },
+    ],
+  },
+  'executioners-gloves': {
+    id: 'executioners-gloves',
+    kind: 'gloves',
+    rarity: 'rare',
+    name: "Executioner's Gloves",
+    flavor: 'Worn to thirty-one names. The thirty-second was the same.',
+    dropModel: GRAVECUTTER_GAUNTLETS,
+    modifiers: [
+      { kind: 'crit-chance', amount: 0.05 },
+      { kind: 'crit-mult',   amount: 0.50 },
+    ],
+  },
+  // ── LIFESTEAL BUILD — items that grant %-damage-as-heal ────────────
+  // Melee sustain answer. Pairs naturally with wide-cone weapons (the
+  // scythe, the sword's strafe sweeps) — each target in a cleave
+  // contributes its own lifesteal heal, so a 3-target sweep at 15%
+  // lifesteal can outpace incoming chip damage.
+  'sanguine-ring': {
+    id: 'sanguine-ring',
+    kind: 'ring',
+    rarity: 'uncommon',
+    name: 'Sanguine Ring',
+    flavor: 'It drinks first, gives second.',
+    dropModel: RING_OF_BLOODTHIRST,
+    modifiers: [{ kind: 'lifesteal-pct', amount: 0.15 }],
+  },
+  'vampire-amulet': {
+    id: 'vampire-amulet',
+    kind: 'amulet',
+    rarity: 'rare',
+    name: 'Amulet of the Drinker',
+    flavor: "She didn't survive the cellar. The thirst did.",
+    dropModel: HEART_OF_DROWNED,
+    modifiers: [
+      { kind: 'lifesteal-pct', amount: 0.25 },
+      { kind: 'max-hp', amount: -2 },
+    ],
+  },
+  'reapers-vow-gauntlets': {
+    id: 'reapers-vow-gauntlets',
+    kind: 'gloves',
+    rarity: 'rare',
+    name: "Reaper's Vow Gauntlets",
+    flavor: 'Each finger is a kept promise.',
+    dropModel: GRAVECUTTER_GAUNTLETS,
+    modifiers: [
+      { kind: 'weapon-damage', amount: 1 },
+      { kind: 'lifesteal-pct', amount: 0.10 },
+    ],
+  },
   // ── CONSUMABLES ────────────────────────────────────────────────────
   'healing-potion': {
     id: 'healing-potion',
