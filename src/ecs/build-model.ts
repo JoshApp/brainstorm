@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import type { MaterialDef, ModelSpec, PartSpec, Vec3 } from './model-types';
 import { getTexture } from '../style/procedural-textures';
+import {
+  pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
+} from '../scene/geometry-pool';
 
 // buildModel — turn a ModelSpec into a live THREE.Group with named parts,
 // slot anchors, fresh per-instance materials, and an optional attached light.
@@ -231,42 +234,58 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
 }
 
 function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THREE.Object3D {
+  // For primitives without per-instance mutation (`jitter`), pull a
+  // SHARED geometry from the pool — every identical part across every
+  // instance points at the same vertex buffer. Jittered parts go
+  // through fresh constructors + in-place jitterGeometry: each is
+  // unique by design, so caching would defeat the point.
+  const pooled = !part.jitter;
   switch (part.kind) {
     case 'sphere': {
       const segs = part.segments ?? [16, 12];
-      const geo = new THREE.SphereGeometry(part.radius, segs[0], segs[1]);
-      jitterGeometry(geo, part.jitter);
+      const geo = pooled
+        ? pooledSphere(part.radius, segs[0], segs[1])
+        : new THREE.SphereGeometry(part.radius, segs[0], segs[1]);
+      if (!pooled) jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'box': {
-      const geo = new THREE.BoxGeometry(part.size[0], part.size[1], part.size[2]);
-      jitterGeometry(geo, part.jitter);
+      const geo = pooled
+        ? pooledBox(part.size[0], part.size[1], part.size[2])
+        : new THREE.BoxGeometry(part.size[0], part.size[1], part.size[2]);
+      if (!pooled) jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'capsule': {
-      const geo = new THREE.CapsuleGeometry(part.radius, part.height, 4, 12);
-      jitterGeometry(geo, part.jitter);
+      const geo = pooled
+        ? pooledCapsule(part.radius, part.height, 4, 12)
+        : new THREE.CapsuleGeometry(part.radius, part.height, 4, 12);
+      if (!pooled) jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'cylinder': {
-      const geo = new THREE.CylinderGeometry(
-        part.radiusTop ?? part.radius,
-        part.radius,
-        part.height,
-        part.segments ?? 12,
-      );
-      jitterGeometry(geo, part.jitter);
+      const rTop = part.radiusTop ?? part.radius;
+      const segs = part.segments ?? 12;
+      const geo = pooled
+        ? pooledCylinder(rTop, part.radius, part.height, segs)
+        : new THREE.CylinderGeometry(rTop, part.radius, part.height, segs);
+      if (!pooled) jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'torus': {
       const segs = part.segments ?? [10, 8];
-      const geo = new THREE.TorusGeometry(part.radius, part.tube, segs[1], segs[0]);
-      jitterGeometry(geo, part.jitter);
+      const geo = pooled
+        ? pooledTorus(part.radius, part.tube, segs[1], segs[0])
+        : new THREE.TorusGeometry(part.radius, part.tube, segs[1], segs[0]);
+      if (!pooled) jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'cone': {
-      const geo = new THREE.ConeGeometry(part.radius, part.height, part.segments ?? 12);
-      jitterGeometry(geo, part.jitter);
+      const segs = part.segments ?? 12;
+      const geo = pooled
+        ? pooledCone(part.radius, part.height, segs)
+        : new THREE.ConeGeometry(part.radius, part.height, segs);
+      if (!pooled) jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'lathe': {

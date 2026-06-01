@@ -12,6 +12,7 @@
 // overlay still works for non-Three.js contexts later.
 
 import type * as THREE from 'three';
+import { getGeometryPoolSize } from '../scene/geometry-pool';
 
 let root: HTMLDivElement | null = null;
 let lastDisplayUpdate = 0;
@@ -102,5 +103,6 @@ export function tickPerfOverlay(nowMs: number): void {
 
   root.textContent =
     `${fps} fps   ${lastMs.toFixed(1)} ms   p95 ${p95.toFixed(1)} ms\n` +
-    `${lastTris.toLocaleString()} tris   ${lastCalls} draws`;
+    `${lastTris.toLocaleString()} tris   ${lastCalls} draws   ` +
+    `${getGeometryPoolSize()} pooled`;
 }

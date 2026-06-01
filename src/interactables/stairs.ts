@@ -7,6 +7,7 @@ import { registerInteractable, getInRangeInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
 import { getTexture } from '../style/procedural-textures';
 import { getEquipped } from '../player/equipment';
+import { pooledBox, pooledPlane, pooledRing } from '../scene/geometry-pool';
 
 // Stairs = a visible descent CARVED into the floor (the top of the
 // stairwell sits below floor level, framed by a low parapet lip), plus
@@ -79,7 +80,7 @@ export function spawnStairs(
   // Left + right side parapets, running the full length of the well.
   for (const side of [-1, 1]) {
     const lip = new THREE.Mesh(
-      new THREE.BoxGeometry(0.10, PARAPET_HEIGHT, totalDepth + 0.10),
+      pooledBox(0.10, PARAPET_HEIGHT, totalDepth + 0.10),
       parapetMat,
     );
     lip.position.set(
@@ -95,7 +96,7 @@ export function spawnStairs(
   // Far-end parapet (across the back of the well so the player doesn't
   // see beyond it into world geometry).
   const farLip = new THREE.Mesh(
-    new THREE.BoxGeometry(STEP_WIDTH + 0.20, PARAPET_HEIGHT, 0.10),
+    pooledBox(STEP_WIDTH + 0.20, PARAPET_HEIGHT, 0.10),
     parapetMat,
   );
   farLip.position.set(0, PARAPET_HEIGHT / 2, totalDepth + 0.05);
@@ -112,14 +113,14 @@ export function spawnStairs(
     const yTop = -TOP_RECESS - i * STEP_HEIGHT;
     const zFront = i * STEP_DEPTH;
     const tread = new THREE.Mesh(
-      new THREE.BoxGeometry(STEP_WIDTH, 0.05, STEP_DEPTH),
+      pooledBox(STEP_WIDTH, 0.05, STEP_DEPTH),
       materials.floor,
     );
     tread.position.set(0, yTop - 0.025, zFront + STEP_DEPTH / 2);
     tread.receiveShadow = true;
     group.add(tread);
     const riser = new THREE.Mesh(
-      new THREE.BoxGeometry(STEP_WIDTH, STEP_HEIGHT, 0.04),
+      pooledBox(STEP_WIDTH, STEP_HEIGHT, 0.04),
       materials.wall,
     );
     riser.position.set(0, yTop - STEP_HEIGHT / 2, zFront);
@@ -140,7 +141,7 @@ export function spawnStairs(
   // the stairwell into world geometry.
   for (const side of [-1, 1]) {
     const wall = new THREE.Mesh(
-      new THREE.BoxGeometry(0.10, totalDrop + 1.2, totalDepth),
+      pooledBox(0.10, totalDrop + 1.2, totalDepth),
       materials.wall,
     );
     wall.position.set(
@@ -156,7 +157,7 @@ export function spawnStairs(
   // A horizontal dark plane some distance BELOW the last tread, so
   // looking down the stairwell you see darkness receding — depth read.
   const pitFloor = new THREE.Mesh(
-    new THREE.PlaneGeometry(STEP_WIDTH, STEP_DEPTH * 2),
+    pooledPlane(STEP_WIDTH, STEP_DEPTH * 2),
     new THREE.MeshBasicMaterial({ color: 0x020203, fog: false }),
   );
   pitFloor.rotation.x = -Math.PI / 2;
@@ -167,7 +168,7 @@ export function spawnStairs(
   // Slight angle so it reads as "this corridor continues out of sight."
   const backMat = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
   const back = new THREE.Mesh(
-    new THREE.PlaneGeometry(STEP_WIDTH, totalDrop + 1.4),
+    pooledPlane(STEP_WIDTH, totalDrop + 1.4),
     backMat,
   );
   back.position.set(0, -totalDrop / 2 - 0.2, totalDepth + STEP_DEPTH * 1.9);
@@ -187,7 +188,7 @@ export function spawnStairs(
     depthWrite: false,
     side: THREE.DoubleSide,
   });
-  const seam = new THREE.Mesh(new THREE.PlaneGeometry(STEP_WIDTH * 0.9, 0.55), seamMat);
+  const seam = new THREE.Mesh(pooledPlane(STEP_WIDTH * 0.9, 0.55), seamMat);
   seam.position.set(0, -totalDrop - 0.15, totalDepth + STEP_DEPTH * 0.8);
   seam.rotation.x = -Math.PI / 4;   // tilt toward the camera
   group.add(seam);
@@ -203,7 +204,7 @@ export function spawnStairs(
     depthWrite: false,
     side: THREE.DoubleSide,
   });
-  const seamHaze = new THREE.Mesh(new THREE.PlaneGeometry(STEP_WIDTH * 1.4, 1.2), seamHazeMat);
+  const seamHaze = new THREE.Mesh(pooledPlane(STEP_WIDTH * 1.4, 1.2), seamHazeMat);
   seamHaze.position.set(0, -totalDrop, totalDepth + STEP_DEPTH * 0.4);
   seamHaze.rotation.x = -Math.PI / 4;
   group.add(seamHaze);
@@ -261,7 +262,7 @@ export function spawnStairs(
     blending: THREE.AdditiveBlending,
   });
   const floorRing = new THREE.Mesh(
-    new THREE.RingGeometry(ringInner, ringOuter, 24),
+    pooledRing(ringInner, ringOuter, 24),
     floorRingMat,
   );
   floorRing.rotation.x = -Math.PI / 2;
@@ -353,7 +354,7 @@ export function spawnStairs(
     side: THREE.DoubleSide,
   });
   const shaftOuter = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.95, shaftLen),       // narrower default
+    pooledPlane(0.95, shaftLen),       // narrower default
     shaftOuterMat,
   );
   shaftOuter.position.set(0, shaftMidY, shaftPivotZ);
@@ -372,7 +373,7 @@ export function spawnStairs(
     side: THREE.DoubleSide,
   });
   const shaftCoreMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.30, shaftLen),
+    pooledPlane(0.30, shaftLen),
     shaftCoreMat,
   );
   shaftCoreMesh.position.set(0, shaftMidY, shaftPivotZ + 0.02);

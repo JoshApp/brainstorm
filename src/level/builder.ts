@@ -12,6 +12,7 @@ import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
+import { isPooledGeometry } from '../scene/geometry-pool';
 import { spawnChest } from '../interactables/chest';
 import { spawnStashChest } from '../interactables/stash-chest';
 import { spawnStarterAltar } from '../interactables/starter-altar';
@@ -1170,10 +1171,14 @@ export function buildLevel(
     scene.remove(root);
     root.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
-      if (mesh.isMesh) {
-        // Only dispose geometries unique to this level. Shared materials
-        // (the StyleMaterials set) are reused across levels — don't dispose.
-        mesh.geometry?.dispose();
+      if (mesh.isMesh && mesh.geometry) {
+        // Only dispose geometries unique to this level. POOLED geometries
+        // (see scene/geometry-pool.ts) are shared across levels — disposing
+        // them would yank vertex buffers out from under meshes in the
+        // NEXT level. Shared materials (the StyleMaterials set) follow
+        // the same rule and are skipped by virtue of never being walked
+        // here (materials aren't disposed in this loop).
+        if (!isPooledGeometry(mesh.geometry)) mesh.geometry.dispose();
       }
     });
   }

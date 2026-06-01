@@ -4,6 +4,16 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 9",
+    "date": "2026-06-01",
+    "entries": [
+      {
+        "tag": "tech",
+        "text": "Perf overlay"
+      }
+    ]
+  },
+  {
     "version": "Build 8",
     "date": "2026-05-30",
     "entries": [
@@ -214,10 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Archway proximity glow: lintel + keystone light up on approach"
-      },
-      {
-        "tag": "tune",
-        "text": "Tune threshold draft stronger; dark-adapt probes the looked-at surface"
       }
     ]
   }
