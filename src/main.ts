@@ -90,6 +90,7 @@ import { createXpGoldHud, updateXpGoldHud } from './ui/xp-gold-hud';
 import { tickLowHpPulse } from './ui/vignette';
 import { getPlayerHp, getPlayerMaxHp, setGodMode } from './player/health';
 import { setHarnessPaused } from './harness/pause';
+import { isDesktopLike } from './controls/platform';
 
 // AI-playable harness: `?harness=1` flips the world into turn-based mode
 // from frame 0. The full harness module loads asynchronously below; the
@@ -137,7 +138,10 @@ const renderer = new THREE.WebGLRenderer({
   powerPreference: 'high-performance',
   preserveDrawingBuffer: HARNESS_ENABLED || DEBUG_ENABLED,
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, CONFIG.PIXEL_RATIO_CAP));
+// DPR cap is lower on mobile (fragment-bound) than desktop debug. See
+// CONFIG.PIXEL_RATIO_CAP_MOBILE — the biggest single lever against overdraw.
+const dprCap = isDesktopLike() ? CONFIG.PIXEL_RATIO_CAP : CONFIG.PIXEL_RATIO_CAP_MOBILE;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, dprCap));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;

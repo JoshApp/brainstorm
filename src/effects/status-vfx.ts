@@ -24,68 +24,87 @@ interface Mote {
   life: number;
   gravity: number;
   baseSize: number;
+  active: boolean;
 }
 
-const motes: Mote[] = [];
+// Fixed pool — built once (lazily, on first emit) then reused forever.
+// Each mote owns its own SpriteMaterial so it can fade independently
+// (additive opacity is per-material). Previously every emit did
+// `new Sprite(base.clone())` + a dispose on retire — steady clone→dispose
+// churn whenever multiple things were afflicted (the boss arena: wraith +
+// 3 trash), which showed up as GC hitches. Pooling removes all per-emit
+// allocation. Same pattern as effects/drifting-motes.
 const MAX_MOTES = 64;
-let MAT_BASE: THREE.SpriteMaterial | null = null;
-const tmpColor = new THREE.Color();
+const motes: Mote[] = [];
 
 // Throttle emission to a steady cadence regardless of frame rate / how
 // many things are afflicted.
 const EMIT_INTERVAL = 0.12;
 let emitAccum = 0;
 
-function ensureMat(): THREE.SpriteMaterial {
-  if (!MAT_BASE) {
-    MAT_BASE = new THREE.SpriteMaterial({
+function ensurePool(scene: THREE.Object3D) {
+  if (motes.length > 0) return;
+  for (let i = 0; i < MAX_MOTES; i++) {
+    const material = new THREE.SpriteMaterial({
       map: getTexture('fire-wisp'),
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: false,
     });
+    const sprite = new THREE.Sprite(material);
+    sprite.visible = false;
+    scene.add(sprite);
+    motes.push({
+      sprite,
+      vel: new THREE.Vector3(),
+      age: 0, life: 0, gravity: 0, baseSize: 0,
+      active: false,
+    });
   }
-  return MAT_BASE;
 }
 
 function spawnMote(scene: THREE.Object3D, x: number, y: number, z: number, color: number, style: 'rise' | 'drip') {
-  if (motes.length >= MAX_MOTES) return;
-  const sprite = new THREE.Sprite(ensureMat().clone());
-  (sprite.material as THREE.SpriteMaterial).color.setHex(color);
+  ensurePool(scene);
+  // First free slot. Full pool → drop the emit (same cap as before).
+  let m: Mote | undefined;
+  for (const cand of motes) { if (!cand.active) { m = cand; break; } }
+  if (!m) return;
+
+  const mat = m.sprite.material as THREE.SpriteMaterial;
+  mat.color.setHex(color);
+  mat.opacity = 0.85;
   const size = 0.10 + Math.random() * 0.06;
-  sprite.scale.set(size, size, 1);
+  m.sprite.scale.set(size, size, 1);
   // Small jitter around the source so motes don't stack on one point.
-  sprite.position.set(
+  m.sprite.position.set(
     x + (Math.random() - 0.5) * 0.35,
     y + (Math.random() - 0.5) * 0.3,
     z + (Math.random() - 0.5) * 0.35,
   );
-  scene.add(sprite);
+  m.sprite.visible = true;
   const rise = style === 'rise';
-  motes.push({
-    sprite,
-    vel: new THREE.Vector3(
-      (Math.random() - 0.5) * 0.5,
-      rise ? 0.7 + Math.random() * 0.5 : 0.5 + Math.random() * 0.3,
-      (Math.random() - 0.5) * 0.5,
-    ),
-    age: 0,
-    life: rise ? 0.7 : 0.85,
-    gravity: rise ? 0.4 : -4.0,   // rise: gentle lift decel; drip: fall
-    baseSize: size,
-  });
+  m.vel.set(
+    (Math.random() - 0.5) * 0.5,
+    rise ? 0.7 + Math.random() * 0.5 : 0.5 + Math.random() * 0.3,
+    (Math.random() - 0.5) * 0.5,
+  );
+  m.age = 0;
+  m.life = rise ? 0.7 : 0.85;
+  m.gravity = rise ? 0.4 : -4.0;   // rise: gentle lift decel; drip: fall
+  m.baseSize = size;
+  m.active = true;
 }
 
-/** Animate + retire live motes. Called every frame by tickStatusVfx. */
-function tickMotes(scene: THREE.Object3D, dt: number) {
-  for (let i = motes.length - 1; i >= 0; i--) {
-    const m = motes[i];
+/** Animate + retire live motes. Retire just hides + frees the slot — no
+ *  scene.remove / material.dispose (the pool owns them for the app life). */
+function tickMotes(dt: number) {
+  for (const m of motes) {
+    if (!m.active) continue;
     m.age += dt;
     if (m.age >= m.life) {
-      scene.remove(m.sprite);
-      (m.sprite.material as THREE.SpriteMaterial).dispose();
-      motes.splice(i, 1);
+      m.active = false;
+      m.sprite.visible = false;
       continue;
     }
     m.vel.y += m.gravity * dt;
@@ -123,7 +142,7 @@ export function tickStatusVfx(
   playerPos: THREE.Vector3,
   dt: number,
 ) {
-  tickMotes(scene, dt);
+  tickMotes(dt);
   emitAccum += dt;
   if (emitAccum < EMIT_INTERVAL) return;
   emitAccum -= EMIT_INTERVAL;
@@ -135,13 +154,12 @@ export function tickStatusVfx(
   emitForEntity(scene, 'player', playerPos.x, playerPos.y - 0.3, playerPos.z);
 }
 
-/** Clear all live motes (level teardown). Removes via each sprite's
- *  own parent so no scene ref is needed. */
+/** Free all live motes (level teardown). The pool itself persists — slots
+ *  just go inactive + hidden, ready for reuse on the next floor. */
 export function clearStatusVfx() {
   for (const m of motes) {
-    m.sprite.parent?.remove(m.sprite);
-    (m.sprite.material as THREE.SpriteMaterial).dispose();
+    m.active = false;
+    m.sprite.visible = false;
   }
-  motes.length = 0;
   emitAccum = 0;
 }

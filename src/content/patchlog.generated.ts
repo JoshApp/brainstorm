@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tech",
+        "text": "Perf meter"
+      },
+      {
         "tag": "tune",
         "text": "Ranged auto-aim LOS + rename sword.ts → viewmodel.ts"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Dark-adapt: wider torch range, count env lights, brighter floor"
-      },
-      {
-        "tag": "tune",
-        "text": "Tap-target: screen-space proximity fallback for interactables"
       }
     ]
   }
