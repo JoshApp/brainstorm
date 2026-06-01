@@ -1,7 +1,8 @@
 import { getAllItems } from '../player/inventory';
 import { ITEMS, RARITY_COLORS, type ItemSpec } from '../content/items';
 import { getItemThumbnail } from './item-thumbnail';
-import { abbrev, hexCss } from './item-format';
+import { abbrev } from './item-format';
+import { hexCss } from '../style/color-utils';
 import { CARD_BG, TEXT_DIM, TEXT_FAINT, ACCENT, sectionLabel, type InventoryCtx } from './inventory-shared';
 
 // BAG column — every unequipped item, two-per-row. Tapping a cell selects it

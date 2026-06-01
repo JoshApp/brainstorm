@@ -2,8 +2,9 @@
 
 import assert from 'node:assert/strict';
 import {
-  signed, formatWeapon, formatModifier, formatBuffEffect, abbrev, hexCss,
+  signed, formatWeapon, formatModifier, formatBuffEffect, abbrev,
 } from '../src/ui/item-format';
+import { hexCss } from '../src/style/color-utils';
 
 let passed = 0;
 let failed = 0;

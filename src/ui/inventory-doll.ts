@@ -1,7 +1,7 @@
 import { getEquipment, type EquipSlot } from '../player/equipment';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import { getItemThumbnail } from './item-thumbnail';
-import { hexCss } from './item-format';
+import { hexCss } from '../style/color-utils';
 import { EMPTY_BORDER, ACCENT, TEXT_DIM, sectionLabel, type InventoryCtx } from './inventory-shared';
 
 // EQUIPPED column — anatomical paper doll. Slots are positioned around a

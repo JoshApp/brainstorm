@@ -7,6 +7,7 @@
 // game-y, but the stash itself sits in the title-screen frame which
 // reads more in-world.
 
+import { hexCss } from '../style/color-utils';
 import { openScreen, closeScreen } from './screen-manager';
 import {
   getStash, consumeStashEntry, recordItemFound,
@@ -136,7 +137,7 @@ function rebuild() {
 
 function makeBox(entry: StashEntry): HTMLButtonElement {
   const tint = RARITY_COLORS[entry.tier];
-  const tintRgb = colorToRgb(tint);
+  const tintRgb = hexCss(tint);
   const btn = document.createElement('button');
   Object.assign(btn.style, {
     display: 'flex', flexDirection: 'column', gap: '4px',
@@ -226,7 +227,7 @@ function showReveal(entry: StashEntry, item: ItemSpec) {
     transition: 'opacity 200ms ease',
   });
 
-  const tintRgb = colorToRgb(RARITY_COLORS[entry.tier]);
+  const tintRgb = hexCss(RARITY_COLORS[entry.tier]);
   const card = document.createElement('div');
   Object.assign(card.style, {
     width: 'min(360px, 80vw)',
@@ -359,8 +360,4 @@ function showReveal(entry: StashEntry, item: ItemSpec) {
 function randomItemNameForFlavor(): string {
   const all = Object.values(ITEMS).map(it => it.name);
   return all[Math.floor(Math.random() * all.length)];
-}
-
-function colorToRgb(hex: number): string {
-  return `rgb(${(hex >> 16) & 0xff}, ${(hex >> 8) & 0xff}, ${hex & 0xff})`;
 }

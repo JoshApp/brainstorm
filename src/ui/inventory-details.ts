@@ -9,7 +9,8 @@ import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
 import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
-import { formatWeapon, formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus, hexCss } from './item-format';
+import { formatWeapon, formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus } from './item-format';
+import { hexCss } from '../style/color-utils';
 import {
   CARD_BG, TEXT_PRIMARY, TEXT_DIM, TEXT_FAINT, sectionLabel,
   type Selection, type InventoryCtx,
