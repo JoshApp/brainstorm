@@ -682,14 +682,103 @@ const EXIT_GRAND: Vault = {
   torchTint: TORCH_PALE,
 };
 
+// ── New variety vaults (Pass C) ───────────────────────────────────
+// Deliberately pillar-light: pillars aren't instanced yet, so colonnades
+// would worsen the boss-floor draw-call cost. Variety here comes from
+// SILHOUETTE (non-rectangular rooms) and THEME, not prop density.
+
+// Cross/I-shaped combat room — narrow top + bottom arms, wide middle.
+// Breaks the "every room is a box" read. Reachable from any side: the
+// composer's corridor enters mid-edge, which lands in an arm or the
+// central band, both connected.
+const COMBAT_CROSS: Vault = {
+  id: 'combat-cross',
+  tags: ['combat'],
+  map: [
+    '############',
+    '####.TT.####',
+    '####....####',
+    '#..........#',
+    '#.X..X...X.#',
+    '#..........#',
+    '####....####',
+    '####.tt.####',
+    '############',
+  ],
+  minDepth: 2,
+  weight: 2,
+};
+
+// Mine-shaft gallery — long, narrow, low, pale. The "white corridor that
+// feels like a mine shaft" as an actual room: ore-vein vases, a couple of
+// rats, cold cyan torches, a low ceiling (the composer pitches it into an
+// A-frame at depth). Common (weight 2) so the mine feel recurs.
+const MINESHAFT_GALLERY: Vault = {
+  id: 'mineshaft-gallery',
+  tags: ['combat'],
+  map: [
+    '##############',
+    '#<..v...v...>#',
+    '#....RR......#',
+    '#......v.....#',
+    '#>..v...v...<#',
+    '##############',
+  ],
+  minDepth: 1,
+  weight: 2,
+  torchTint: TORCH_PALE,
+  roomHeight: 2.6,
+};
+
+// Ossuary — a lore pocket: four corpses (Souls-style notes), a chest in
+// the middle, sickly-green light. Low threat, high atmosphere.
+const ENCOUNTER_OSSUARY: Vault = {
+  id: 'encounter-ossuary',
+  tags: ['encounter'],
+  map: [
+    '############',
+    '#.C..T..C..#',
+    '#..........#',
+    '#....c.....#',
+    '#.X......X.#',
+    '#..........#',
+    '#.C..t..C..#',
+    '############',
+  ],
+  minDepth: 2,
+  weight: 1,
+  torchTint: TORCH_GREEN,
+};
+
+// Spike gauntlet — a hazard-grid combat room. Spike traps stagger the
+// floor so the fight is about footing, not just the mobs.
+const COMBAT_PITS: Vault = {
+  id: 'combat-pits',
+  tags: ['combat'],
+  map: [
+    '############',
+    '#..T....T..#',
+    '#..........#',
+    '#.^..X..^..#',
+    '#....^.....#',
+    '#.^..X..^..#',
+    '#..........#',
+    '#..t....t..#',
+    '############',
+  ],
+  minDepth: 3,
+  weight: 1,
+};
+
 export const VAULTS: Vault[] = [
   FOYER_SMALL, FOYER_PILLAR, FOYER_ALCOVE,
   COMBAT_OPEN, COMBAT_PILLARS, COMBAT_CHOKE, COMBAT_HALL, COMBAT_ARENA, COMBAT_DOORS,
+  COMBAT_CROSS, MINESHAFT_GALLERY, COMBAT_PITS,
   ENCOUNTER_NEST,
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
   ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
-  ENCOUNTER_ARENA,
+  ENCOUNTER_ARENA, ENCOUNTER_OSSUARY,
   BOSS_ANTECHAMBER, BOSS_CATHEDRAL,
   EXIT_SIMPLE, EXIT_ALCOVE, EXIT_GRAND,
 ];

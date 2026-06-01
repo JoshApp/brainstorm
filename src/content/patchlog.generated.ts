@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Level gen: vaulted + pitched ceilings (kill the 'flat' feel)"
+      },
+      {
+        "tag": "tune",
         "text": "Content expansion: 15 new equipment items + Penitent's Vigil set"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Dark-adapt shader: darkness-weighted additive (no scale-lift)"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt shader: scale-lift preserves hue, no more wash-out"
       }
     ]
   }
