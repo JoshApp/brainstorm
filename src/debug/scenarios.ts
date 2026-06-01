@@ -760,6 +760,56 @@ export const SCENARIOS: Record<string, Scenario> = {
     enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
   },
 
+  // Mimic — three chests in a row, one of each tier, each one a
+  // mimic. Lets us preview the disguise (chest sees-as-chest), the
+  // subtle breathing tell, the reveal animation, and the mob model
+  // post-reveal in one scenario. NOT frozen so you can walk up and
+  // open them.
+  'mob-mimic': {
+    hideSword: false,
+    level: {
+      id: 'dbg-mimic', depth: 1, displayName: 'mimic', fogColor: 0x14100a,
+      startPos: { x: 0, z: 4, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 9, d: 9 }, height: 3.2 }],
+      corridors: [],
+      props: [
+        { kind: 'chest', x: -2.4, z: -1.5, rotY: 0, tier: 'supply', mimic: true },
+        { kind: 'chest', x:  0.0, z: -1.5, rotY: 0, tier: 'iron',   mimic: true },
+        { kind: 'chest', x:  2.4, z: -1.5, rotY: 0, tier: 'boss',   mimic: true },
+      ],
+      torches: [
+        { x: -4.45, z: -3.5, height: 2.4, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  4.45, z: -3.5, height: 2.4, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x: -4.45, z:  3.5, height: 2.4, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  4.45, z:  3.5, height: 2.4, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 2.5, lookAt: { x: 0, z: -1.5, y: 0.3 } },
+  },
+
+  // Mimic, frozen camera angle on the post-reveal mob — useful for
+  // screenshotting the silhouette. Spawns a real mimic mob (not a
+  // chest) so the toothy maw and legs are visible.
+  'mob-mimic-revealed': {
+    freeze: true, hideSword: true,
+    level: {
+      id: 'dbg-mimic-revealed', depth: 4, displayName: 'mimic (revealed)', fogColor: 0x14100a,
+      startPos: { x: 0, z: 2.5, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 6, d: 6 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.0, z: -2.5, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  3.0, z: -2.5, height: 2.2, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'mimic', x: 0, z: -1.0, roomId: 'r' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 1.5, lookAt: { x: 0, z: -1.0, y: 0.2 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
+  },
+
   // Safe room — overview from the spawn end looking down the chamber
   // toward the hearth + descent. For verifying the V3 layout (smaller +
   // warmer + central brazier).

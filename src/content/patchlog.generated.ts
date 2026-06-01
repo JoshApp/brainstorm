@@ -8,18 +8,6 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
-        "tag": "content",
-        "text": "Pilot: --vault entry — walk a single authored vault from the inside"
-      },
-      {
-        "tag": "tune",
-        "text": "Creator suite: pilot driver — Claude drives + inspects the live world"
-      },
-      {
-        "tag": "content",
-        "text": "Creator suite: validation tests + vault inspector + pre-push gate"
-      },
-      {
         "tag": "tune",
         "text": "First-class boss architecture: BossSpec registry + intro card"
       },
@@ -212,6 +200,18 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Flatten floors — kill the wavy corridor/room ground mismatch"
+      },
+      {
+        "tag": "tune",
+        "text": "Music: motifs not random plucks, gentle combat, separate volume slider"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix rare sharp camera flip on mouse look"
+      },
+      {
+        "tag": "tune",
+        "text": "Audio: procedural music engine — drone, plucks, combat throb"
       }
     ]
   }
