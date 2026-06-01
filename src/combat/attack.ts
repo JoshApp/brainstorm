@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import type { Sword } from '../player/sword';
+import type { WeaponViewmodel } from '../player/viewmodel';
 import type { Enemy } from '../mobs/enemy';
 import type { Destructible } from '../level/destructibles';
 import type { Damageable } from './damageable';
@@ -19,7 +19,7 @@ import { applyBuff } from '../ecs/buffs';
 import { spawnProjectile, setProjectileEnemyProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
 import { consumeChargedAmount } from '../controls/charge-input';
-import type { AttackDirection } from '../player/sword';
+import type { AttackDirection } from '../player/viewmodel';
 
 // Joystick magnitude below this counts as "not moving" → no
 // directional override. Tuned so a tiny accidental thumb shift on
@@ -93,9 +93,10 @@ const RANGED_CONE_COS = Math.cos(0.12);  // ~7° half-angle = 14° total cone
 
 export function createCombatSystem(
   camera: THREE.Camera,
-  sword: Sword,
+  weapon: WeaponViewmodel,
   getEnemies: () => readonly Enemy[],
   getDestructibles: () => readonly Destructible[] = () => [],
+  getWalkable: () => { hasLineOfSight: (x1: number, z1: number, x2: number, z2: number) => boolean } | undefined = () => undefined,
 ): CombatSystem {
   let strikeAlreadyHit = false;
   let wasStriking = false;
@@ -114,7 +115,13 @@ export function createCombatSystem(
    *  (nearest enemy in the forward arc) or straight ahead if none. */
   function fireRanged(weapon: ResolvedWeaponStats) {
     if (!weapon.ranged) return;
-    const target = pickTarget(getEnemies(), camera, forwardDir, Math.hypot(forwardDir.x, forwardDir.z) || 1, RANGED_REACH * RANGED_REACH, RANGED_CONE_COS);
+    // Ranged auto-aim must respect LOS — without this the lock-on
+    // would happily snap onto an enemy on the other side of a wall.
+    const walkable = getWalkable();
+    const losCheck = walkable
+      ? (cx: number, cz: number, tx: number, tz: number) => walkable.hasLineOfSight(cx, cz, tx, tz)
+      : undefined;
+    const target = pickTarget(getEnemies(), camera, forwardDir, Math.hypot(forwardDir.x, forwardDir.z) || 1, RANGED_REACH * RANGED_REACH, RANGED_CONE_COS, losCheck);
     // Muzzle just in front of + below the camera so the bolt reads as
     // leaving the weapon, not the eye.
     tmpMuzzle.copy(camera.position).addScaledVector(forwardDir, 0.5);
@@ -199,10 +206,10 @@ export function createCombatSystem(
       // it by holding; the viewmodel's cocked-back idle pose blends
       // continuously into the strike's t=0 pose so the swing reads as
       // "held back, now released" rather than "extra windup."
-      sword.startSwing({ skipWindup: currentSwingCharge > 0, direction });
+      weapon.startSwing({ skipWindup: currentSwingCharge > 0, direction });
     }
 
-    const striking = sword.isStriking;
+    const striking = weapon.isStriking;
 
     if (striking && !wasStriking) {
       strikeAlreadyHit = false;
@@ -222,13 +229,16 @@ export function createCombatSystem(
     if (!inHitWindow) return;
 
     camera.getWorldDirection(forwardDir);  // unit vector
-    const weapon = getCurrentWeapon();
+    // Two refs to read from in this block: `weapon` (the viewmodel —
+    // exposes isStriking / getActiveStep / isFinisherStrike) and
+    // `stats` (the resolved combat numbers — reach / damage / etc.).
+    const stats = getCurrentWeapon();
 
     // RANGED branch — a crossbow/wand FIRES a projectile at the auto-
     // target instead of doing a melee cone hit. One shot per strike
     // (strikeAlreadyHit), the weapon's slow recover IS the reload.
-    if (weapon.ranged) {
-      fireRanged(weapon);
+    if (stats.ranged) {
+      fireRanged(stats);
       strikeAlreadyHit = true;
       return;
     }
@@ -239,15 +249,15 @@ export function createCombatSystem(
     // sword's slashes cleave 2 at standard reach, thrust finisher
     // extends and narrows; hammer smash cleaves 3 with wider arc.
     //
-    // Hold-to-charge (sword prototype): a fully charged swing extends
-    // reach by 30%, widens the cone by 40%, and adds up to one extra
-    // multi-target slot for a more sweeping cleave. Damage scaling
-    // happens further down at the per-target damage calculation.
-    const step = sword.getActiveStep();
+    // Hold-to-charge: a fully charged swing extends reach by 30%,
+    // widens the cone by 40%, and adds up to one extra multi-target
+    // slot for a more sweeping cleave. Damage scaling happens further
+    // down at the per-target damage calculation.
+    const step = weapon.getActiveStep();
     const c = currentSwingCharge;
-    const reach = weapon.reach * (step?.reachMul ?? 1) * (1 + c * 0.30);
+    const reach = stats.reach * (step?.reachMul ?? 1) * (1 + c * 0.30);
     const reachSq = reach * reach;
-    const cosConeHalf = Math.cos(weapon.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.40));
+    const cosConeHalf = Math.cos(stats.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.40));
     const maxTargets = (step?.maxTargets ?? 1) + (c >= 0.7 ? 1 : 0);
 
     // Cone check runs in the HORIZONTAL plane only. A 3D check breaks at
@@ -272,9 +282,9 @@ export function createCombatSystem(
 
     // Crit per-hit so a 3-target sweep can crit one and not the
     // others — feels better than one roll applying to the whole arc.
-    const critChance = weapon.critChance ?? 0;
-    const critMult   = weapon.critMultiplier ?? 2.0;
-    const finisherMult = sword.isFinisherStrike
+    const critChance = stats.critChance ?? 0;
+    const critMult   = stats.critMultiplier ?? 2.0;
+    const finisherMult = weapon.isFinisherStrike
       ? computePlayerStats().finisherDamageMultiplier
       : 1;
 
@@ -287,7 +297,7 @@ export function createCombatSystem(
     let anyHeavy = false;
     for (const target of targets) {
       const crit = gameRngChance(critChance);
-      const baseDamage = (crit ? weapon.damage * critMult : weapon.damage) * finisherMult * chargeDamageMul;
+      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul;
       const applied = target.takeDamage({
         source: 'player',
         target: target.entityId,
@@ -309,7 +319,7 @@ export function createCombatSystem(
             if (gameRngChance(oh.chance)) applyBuff(ent, oh.buffId, oh.duration, 'player');
           }
         }
-        emit({ type: 'attack:hit', damage: applied, crit, cls: weapon.class });
+        emit({ type: 'attack:hit', damage: applied, crit, cls: stats.class });
       }
       if (crit) anyCrit = true;
       if (applied > bestApplied) bestApplied = applied;
@@ -407,6 +417,13 @@ function pickTarget<T extends Damageable>(
   forwardLenXZ: number,
   reachSq: number,
   cosConeHalf: number,
+  /** Optional LOS predicate — called with camera + target X/Z. When
+   *  provided, targets without a clear line through the walkable
+   *  region (i.e. a wall is between you) are skipped. Ranged auto-
+   *  aim passes this; melee swings don't need it (the cone reach is
+   *  short enough that you're swinging through the air, not past
+   *  walls). */
+  hasLOS?: (cx: number, cz: number, tx: number, tz: number) => boolean,
 ): T | null {
   let best: T | null = null;
   let bestDistSq = reachSq + 1;
@@ -431,6 +448,10 @@ function pickTarget<T extends Damageable>(
     }
     const horDot = (forwardDir.x * dx + forwardDir.z * dz) / (forwardLenXZ * horDist);
     if (horDot < cosConeHalf) continue;
+
+    // LOS check is LAST — it's the most expensive filter, so we run
+    // it only after distance + cone have culled obvious misses.
+    if (hasLOS && !hasLOS(camera.position.x, camera.position.z, t.position.x, t.position.z)) continue;
 
     if (distSq < bestDistSq) {
       bestDistSq = distSq;

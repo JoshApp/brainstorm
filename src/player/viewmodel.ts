@@ -1,30 +1,44 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
-import { getSwordOffset } from './viewmodel-bob';
+import { getBobOffset } from './viewmodel-bob';
 import { computeWeaponPose } from './weapon-animations';
 import { getCurrentWeapon } from './current-weapon';
 import { getChargeProgress } from '../controls/charge-input';
+import type { ModelSpec } from '../ecs/model-types';
+import type { ResolvedComboStep } from '../content/weapon-classes';
+
+// First-person held weapon viewmodel.
+//
+// Despite its old name (this file used to be sword.ts back when the
+// only weapon was a sword), it drives EVERY player weapon: sword,
+// dagger, hammer, spear, crossbow, wand/staff. Geometry comes from a
+// ModelSpec (data); animation state (swing phases) is procedural and
+// operates on the model group.
+//
+// The wielded weapon can be swapped at runtime via equip(spec) —
+// picking up a different weapon swaps the visible model under the
+// same animation state machine.
+//
+// State machine:
+//   idle    — at rest pose (per-weapon; sword hip-held, staff upright)
+//   windup  — winding up (animated toward end-of-windup pose)
+//   strike  — the swing's HIT WINDOW. combat reads isStriking to
+//             gate raycasts. directional/charged moves can SKIP
+//             windup and start here.
+//   recover — locked-out follow-through. comboStep advances when
+//             this completes.
 
 /** Movement intent at the moment the player presses attack. Picked
  *  from the joystick magnitude + direction in combat/attack.ts and
  *  passed into startSwing — if a directional move is registered for
  *  this weapon class, it overrides the normal combo step. Strafe is
- *  split L/R so the sword can sweep IN the direction of the body's
- *  momentum (right strafe → blade sweeps left-to-right). */
+ *  split L/R so the swing follows the body's momentum direction. */
 export type AttackDirection = 'forward' | 'back' | 'strafe-left' | 'strafe-right' | null;
-import type { ModelSpec } from '../ecs/model-types';
-import type { ResolvedComboStep } from '../content/weapon-classes';
 
-// First-person held sword. Geometry comes from a ModelSpec (data); animation
-// state (swing phases) is procedural and operates on the model group.
-//
-// The wielded weapon can be swapped at runtime via equip(spec) — picking
-// up a different weapon swaps the visible model under the same animation.
+export type SwingPhase = 'idle' | 'windup' | 'strike' | 'recover';
 
-export type SwordPhase = 'idle' | 'windup' | 'strike' | 'recover';
-
-export interface Sword {
+export interface WeaponViewmodel {
   /** The live THREE.Group for the wielded weapon. Updated by equip(). */
   readonly group: THREE.Group;
   /** True only during the strike phase of the current swing — use to gate raycasts. */
@@ -48,10 +62,10 @@ export interface Sword {
    *  starter altar, and any future unequip-weapon flow). */
   equip(weaponSpec: ModelSpec | null): void;
   /** Debug-only: jump to a specific phase + phase timer. */
-  setDebugPhase(phase: SwordPhase, phaseTimer: number): void;
+  setDebugPhase(phase: SwingPhase, phaseTimer: number): void;
 }
 
-export interface SwordOptions {
+export interface WeaponViewmodelOptions {
   /** Fired every time a NEW windup begins — whether from an idle
    *  press or from a queued combo chain. Combat wires playWhoosh +
    *  'attack:swing' emit here so chained combo steps make sound, not
@@ -59,7 +73,10 @@ export interface SwordOptions {
   onSwingStart?: () => void;
 }
 
-export function createSword(camera: THREE.Camera, options: SwordOptions = {}): Sword {
+export function createWeaponViewmodel(
+  camera: THREE.Camera,
+  options: WeaponViewmodelOptions = {},
+): WeaponViewmodel {
   const [ix, iy, iz] = CONFIG.SWORD_IDLE_POS;
   const [rx, ry, rz] = CONFIG.SWORD_IDLE_ROT;
 
@@ -107,11 +124,11 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
           // world's transparent sprites (fountain shine, eye halos,
           // moonbeams, etc.). Three.js renders opaque objects first,
           // then transparent — within EACH pass renderOrder controls.
-          // An opaque sword with renderOrder 999 still renders BEFORE
+          // An opaque weapon with renderOrder 999 still renders BEFORE
           // any transparent sprite, so sprites paint over it. Mark
           // transparent (opacity stays 1, so visually identical) and
-          // the sword sorts into the transparent phase where 999 puts
-          // it last overall.
+          // the viewmodel sorts into the transparent phase where 999
+          // puts it last overall.
           m.transparent = true;
           m.needsUpdate = true;
         }
@@ -134,7 +151,7 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
   //   step 2, walking through the full combo. The FINISHER (the last
   //   step) does NOT accept a buffer — otherwise a spam-burst on the
   //   last step would wrap the combo back to step 0 and start over.
-  let phase: SwordPhase = 'idle';
+  let phase: SwingPhase = 'idle';
   let phaseTimer = 0;
   let comboStep = 0;
   let comboWindowExpiresAt = 0;     // ms (performance.now() basis)
@@ -188,7 +205,7 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
     if (dir) {
       // Map strafe-left / strafe-right onto a single 'strafe' key for
       // chargedMoves lookup (the spin is rotationally symmetric).
-      const chargeKey: 'forward' | 'back' | 'strafe' | null =
+      const chargeKey: 'forward' | 'back' | 'strafe' =
         dir === 'forward' ? 'forward' :
         dir === 'back'    ? 'back' :
                             'strafe';
@@ -234,20 +251,19 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
       // gets its native carry stance. The bob system layers on top
       // of the baseline; the bob isn't applied to swing animations
       // because it would muddy their snap.
-      const b = getSwordOffset();
+      const b = getBobOffset();
       const { step } = currentStep();
       const idle = computeWeaponPose(step.pose, 'idle', 0);
       let px = idle.x + b.x, py = idle.y + b.y, pz = idle.z;
       let prx = idle.rotX, pry = idle.rotY, prz = idle.rotZ + b.rotZ;
       // CHARGED HOLD blend: if the player is mid-charge, lerp the
       // resting pose toward the END-OF-WINDUP pose of the current
-      // combo step. Blade visibly cocks back the longer they hold.
+      // combo step. Weapon visibly cocks back the longer they hold.
       // The end-of-windup pose is the same one a strike starts from,
       // so when the player releases (skipWindup → phase='strike')
       // the visual transition is seamless — no snap.
       const charge = getChargeProgress();
       if (charge > 0) {
-        const { step } = currentStep();
         const cocked = computeWeaponPose(step.pose, 'windup', 1.0);
         px  = px  + (cocked.x    - px)  * charge;
         py  = py  + (cocked.y    - py)  * charge;
@@ -310,7 +326,7 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
     }
   }
 
-  function setDebugPhase(p: SwordPhase, t: number) {
+  function setDebugPhase(p: SwingPhase, t: number) {
     phase = p;
     phaseTimer = t;
     update(0);

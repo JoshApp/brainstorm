@@ -1,9 +1,9 @@
-// Shared viewmodel motion state. Each held viewmodel (sword, lantern,
-// offhand) reads its own per-viewmodel helper from here so they all
-// move in lockstep against the same stride cycle but with the
-// character appropriate to that prop:
+// Shared viewmodel motion state. Each held viewmodel (the player's
+// weapon, the lantern, the offhand prop) reads its own per-viewmodel
+// helper from here so they all move in lockstep against the same
+// stride cycle but with the character appropriate to that prop:
 //
-//   sword     → vertical BOP (down/forward per footfall) + tilt
+//   weapon    → vertical BOP (down/forward per footfall) + tilt
 //   lantern   → pendulum SWING from its handle
 //   offhand   → gentle vertical lift only
 //
@@ -58,27 +58,29 @@ function dualSine(phase: number, ratio: number, offset: number): number {
   return Math.sin(phase) * 0.7 + Math.sin(phase * ratio + offset) * 0.3;
 }
 
-export interface SwordOffset {
+export interface BobOffset {
   x: number;
   y: number;
   rotZ: number;
 }
 
-const swordScratch: SwordOffset = { x: 0, y: 0, rotZ: 0 };
+const bobScratch: BobOffset = { x: 0, y: 0, rotZ: 0 };
 
-/** Sword: vertical bop on each footfall (2× walk frequency) + tiny
- *  horizontal sway. Idle adds a small drift so the blade isn't dead
- *  still while standing. */
-export function getSwordOffset(): SwordOffset {
+/** Held weapon: vertical bop on each footfall (2× walk frequency) +
+ *  tiny horizontal sway. Idle adds a small drift so the viewmodel
+ *  isn't dead-still while standing. Same curve regardless of the
+ *  equipped weapon class — sword, dagger, hammer, etc. all share
+ *  the same bob, only the held pose differs. */
+export function getBobOffset(): BobOffset {
   const walkY  = dualSine(walkPhase * 2, 1.31, 0.4) * 0.014 * intensity;
   const walkX  = dualSine(walkPhase, 1.41, 0.0)    * 0.004 * intensity;
   const walkRZ = dualSine(walkPhase, 1.27, 0.2)    * 0.020 * intensity;
   const idleY  = dualSine(idlePhase, 1.31, 0.3)    * 0.002 * liveness;
   const idleRZ = dualSine(idlePhase * 1.13, 1.41, 0.7) * 0.005 * liveness;
-  swordScratch.x = walkX;
-  swordScratch.y = walkY + idleY;
-  swordScratch.rotZ = walkRZ + idleRZ;
-  return swordScratch;
+  bobScratch.x = walkX;
+  bobScratch.y = walkY + idleY;
+  bobScratch.rotZ = walkRZ + idleRZ;
+  return bobScratch;
 }
 
 /** Lantern: pendulum SWING — radians, applied as rotation Z on the

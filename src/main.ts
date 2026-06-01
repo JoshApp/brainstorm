@@ -3,7 +3,7 @@ import { CONFIG } from './config';
 import { updateTorchlight } from './scene/torchlight';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/camera';
-import { createSword } from './player/sword';
+import { createWeaponViewmodel } from './player/viewmodel';
 import { attachLamp, detachLamp, tickLamp } from './player/handheld-lamp';
 import { attachOffhandViewmodel, detachOffhandViewmodel, tickOffhandViewmodel } from './player/handheld-offhand';
 import { setBobTarget, updateBob } from './player/viewmodel-bob';
@@ -266,14 +266,14 @@ initLevelLoader({
 // every chained step), so the whoosh and 'attack:swing' broadcast
 // play through the whole stab → slash → stab-stab routine, not just
 // the first press.
-const sword = createSword(camera, {
+const weapon = createWeaponViewmodel(camera, {
   onSwingStart: () => {
     playWhoosh();
     emit({ type: 'attack:swing' });
   },
 });
 
-// Sword + offhand viewmodels are driven REACTIVELY by the equipment
+// Weapon + offhand viewmodels are driven REACTIVELY by the equipment
 // slot system. Whenever a slot changes (pickup, manual equip via the
 // inventory panel, save restore), this listener swaps the visible model
 // + the active stats. Single source of truth: equipment.
@@ -288,7 +288,7 @@ onEquipmentChanged((eq) => {
   // Pass null when no weapon equipped — the sword viewmodel
   // clears and the player walks empty-handed. This is the
   // starter-chamber default until they take from an altar.
-  sword.equip(eq.weapon?.viewmodel ?? null);
+  weapon.equip(eq.weapon?.viewmodel ?? null);
   if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
   if (eq.offhand?.id === 'oil-lamp') {
     detachOffhandViewmodel();
@@ -307,9 +307,10 @@ onEquipmentChanged((eq) => {
 // after descent the new floor's enemies become attackable without
 // rewiring.
 const combat = createCombatSystem(
-  camera, sword,
+  camera, weapon,
   () => currentLevel.enemies,
   () => currentLevel.destructibles ?? [],
+  () => currentLevel?.walkable,
 );
 
 // --- Player death wiring ---
@@ -599,7 +600,7 @@ const SYSTEMS: GameSystem[] = [
     updateBob(ctx.realDt, playing);
   } },
 
-  { name: 'sword', phase: 'unpaused', tick(ctx) { sword.update(ctx.scaledDt); } },
+  { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.scaledDt); } },
 
   // Handheld lamp flicker + bob. realDt — flicker shouldn't slow during
   // slow-mo (a frozen lamp looks broken).
@@ -928,7 +929,7 @@ function handleAutostart(): boolean {
 if (HARNESS_ENABLED) {
   void import('./harness').then((mod) => {
     mod.bootHarness({
-      scene, camera, renderer, canvas, input, sword,
+      scene, camera, renderer, canvas, input, weapon,
       getLevel: () => currentLevel,
     });
     harnessLevelReady = mod.notifyLevelReady;
@@ -1064,7 +1065,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   startRun(floorId);
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.
-  applyScenario(scenario, { level: currentLevel, sword, camera });
+  applyScenario(scenario, { level: currentLevel, weapon, camera });
 } else if (hasPendingDevSnapshot() && loadSave()) {
   // Dev hot-reload returning from DEV AUTO-UPDATE: a pending pose/HP/buffs
   // snapshot means the page just reloaded mid-floor. Skip the title and

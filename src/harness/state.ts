@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import type { LiveLevel } from '../level/builder';
 import type { InputState } from '../controls/input';
-import type { Sword } from '../player/sword';
+import type { WeaponViewmodel } from '../player/viewmodel';
 
 export interface HarnessContext {
   scene: THREE.Scene;
@@ -17,9 +17,10 @@ export interface HarnessContext {
   /** Returns the active level — main.ts holds a mutable `currentLevel`,
    *  so we read via a getter to follow stair-driven swaps. */
   getLevel: () => LiveLevel | null;
-  /** Player's sword — exposes isSwinging so the harness's attack action
-   *  can wait for the full swing to play out before re-pausing. */
-  sword: Sword;
+  /** Player's weapon viewmodel — exposes isSwinging so the harness's
+   *  attack action can wait for the full swing to play out before
+   *  re-pausing. */
+  weapon: WeaponViewmodel;
 }
 
 let ctx: HarnessContext | null = null;

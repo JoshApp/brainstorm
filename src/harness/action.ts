@@ -188,8 +188,8 @@ async function attackAction(
   const end = await requestTickBudget({
     maxSeconds: ATTACK_MAX_SECONDS,
     stopWhen: () => {
-      if (ctx.sword.isSwinging) started = true;
-      return started && !ctx.sword.isSwinging;
+      if (ctx.weapon.isSwinging) started = true;
+      return started && !ctx.weapon.isSwinging;
     },
   });
   if (end.reason === 'timeout') {

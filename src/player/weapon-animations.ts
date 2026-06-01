@@ -1,6 +1,6 @@
 import { CONFIG } from '../config';
 import type { PoseKey } from '../content/weapon-classes';
-import type { SwordPhase } from './sword';
+import type { SwingPhase } from './viewmodel';
 
 // Per-step viewmodel pose curves. Each function takes the current
 // phase + a normalised phase progress (0..1) and returns the local
@@ -10,12 +10,13 @@ import type { SwordPhase } from './sword';
 //   pos       metres, camera-local. +X right, +Y up, -Z forward.
 //   rot       radians, applied in camera-local Euler.
 //
-// All weapons share the SAME idle pose (CONFIG.SWORD_IDLE_POS /
-// _ROT) so weapon swaps don't snap-rotate the held item. The walking
-// bob (getSwordOffset in sword.ts) layers on top of idle as before.
+// Most weapons share the SAME idle pose (CONFIG.SWORD_IDLE_POS /
+// _ROT) so weapon swaps don't snap-rotate the held item. The wand
+// is the exception — it idles upright like a staff. The walking
+// bob (getBobOffset in viewmodel-bob.ts) layers on top of idle.
 //
-// The caller (sword.ts) picks the pose KEY from the current combo
-// step on the resolved weapon stats — pose key → curve here.
+// The caller (viewmodel.ts) picks the pose KEY from the current
+// combo step on the resolved weapon stats — pose key → curve here.
 
 export interface WeaponPose {
   x: number; y: number; z: number;
@@ -35,7 +36,7 @@ const scratch: WeaponPose = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 };
  *  the current combo step + the phase + the PROGRESS within that
  *  phase (0..1). Returns a shared scratch object — read it, don't
  *  retain. */
-export function computeWeaponPose(pose: PoseKey, phase: SwordPhase, t: number): WeaponPose {
+export function computeWeaponPose(pose: PoseKey, phase: SwingPhase, t: number): WeaponPose {
   if (phase === 'idle') {
     // Idle = the rest pose for THIS weapon type. Default = hip-held
     // (sword/dagger/hammer/spear). Wand idle is upright like a
@@ -81,7 +82,7 @@ export function computeWeaponPose(pose: PoseKey, phase: SwordPhase, t: number): 
 // Step 2: forward lunge with the tip leading — committing finisher,
 //         long recover.
 
-function swordSlashLeftPose(phase: SwordPhase, t: number): WeaponPose {
+function swordSlashLeftPose(phase: SwingPhase, t: number): WeaponPose {
   if (phase === 'windup') {
     // Pull up + back, pitch back.
     scratch.x = ix;
@@ -114,7 +115,7 @@ function swordSlashLeftPose(phase: SwordPhase, t: number): WeaponPose {
   return scratch;
 }
 
-function swordSlashRightPose(phase: SwordPhase, t: number): WeaponPose {
+function swordSlashRightPose(phase: SwingPhase, t: number): WeaponPose {
   // Rising slice on the RIGHT side. Previous version went mostly
   // STRAIGHT UP (low-right → high-right) and read as a parade salute
   // — "presenting arms," not striking. This version drives the blade
@@ -162,7 +163,7 @@ function swordSlashRightPose(phase: SwordPhase, t: number): WeaponPose {
   return scratch;
 }
 
-function swordThrustPose(phase: SwordPhase, t: number): WeaponPose {
+function swordThrustPose(phase: SwingPhase, t: number): WeaponPose {
   // Forward lunge — tip leads. Larger reach than the dagger thrust
   // because the sword is longer; deeper push along -Z. Rotation
   // mirrors the dagger stab orientation (sword blade tip is +Y in
@@ -212,7 +213,7 @@ function swordThrustPose(phase: SwordPhase, t: number): WeaponPose {
 /** Forward lunge — bigger committed thrust than the combo finisher.
  *  Tip leads further, the body visibly leans IN, deeper push along
  *  -Z. Reads as "I'm closing the gap." */
-function swordLungeForwardPose(phase: SwordPhase, t: number): WeaponPose {
+function swordLungeForwardPose(phase: SwingPhase, t: number): WeaponPose {
   const WIND_X = ix - 0.10;
   const WIND_Y = iy + 0.14;
   const WIND_Z = iz + 0.16;
@@ -254,7 +255,7 @@ function swordLungeForwardPose(phase: SwordPhase, t: number): WeaponPose {
  *  leftward momentum. Sword cocks behind the right shoulder, sweeps
  *  across to the lower-left. Triggered when strafing LEFT into
  *  the swing. */
-function swordSweepLeftPose(phase: SwordPhase, t: number): WeaponPose {
+function swordSweepLeftPose(phase: SwingPhase, t: number): WeaponPose {
   return swordSweepBetween(phase, t,
     /* WIND */  ix + 0.22, iy + 0.10, iz + 0.06,
     /* WIND R */ rx - 0.45, ry - 0.55, rz - 0.85,
@@ -265,7 +266,7 @@ function swordSweepLeftPose(phase: SwordPhase, t: number): WeaponPose {
 
 /** Strafe-RIGHT sweep — mirror of strafe-left. Cocks behind the
  *  left shoulder, sweeps to the lower-right. */
-function swordSweepRightPose(phase: SwordPhase, t: number): WeaponPose {
+function swordSweepRightPose(phase: SwingPhase, t: number): WeaponPose {
   return swordSweepBetween(phase, t,
     /* WIND */  ix - 0.22, iy + 0.10, iz + 0.06,
     /* WIND R */ rx - 0.45, ry + 0.55, rz + 0.85,
@@ -278,7 +279,7 @@ function swordSweepRightPose(phase: SwordPhase, t: number): WeaponPose {
  *  parametrised by the start/end pose endpoints. Saves duplicating
  *  the lerp math for the two mirrored sweeps. */
 function swordSweepBetween(
-  phase: SwordPhase, t: number,
+  phase: SwingPhase, t: number,
   windX: number, windY: number, windZ: number,
   windRX: number, windRY: number, windRZ: number,
   endX: number, endY: number, endZ: number,
@@ -319,7 +320,7 @@ function swordSweepBetween(
  *  then a wide horizontal SHOVE during strike. Wider arc than the
  *  thrust, and the long recover sells the commit. The "I will be
  *  given space" move. */
-function swordWardBackPose(phase: SwordPhase, t: number): WeaponPose {
+function swordWardBackPose(phase: SwingPhase, t: number): WeaponPose {
   // Windup: blade pulled vertically up to chest, flat facing forward,
   // gripped at centre — a guard stance.
   const WIND_X = ix + 0.04;
@@ -368,7 +369,7 @@ function swordWardBackPose(phase: SwordPhase, t: number): WeaponPose {
 /** Retreat slash — a short defensive poke as the player backs off.
  *  Brief windup, modest forward extension, fast recovery so the
  *  next move can be a reposition or a follow-up. */
-function swordRetreatSlashPose(phase: SwordPhase, t: number): WeaponPose {
+function swordRetreatSlashPose(phase: SwingPhase, t: number): WeaponPose {
   // Smaller wound-up than the thrust — this is a JAB, not a commit.
   const WIND_X = ix - 0.04;
   const WIND_Y = iy + 0.06;
@@ -429,7 +430,7 @@ const DAGGER_WOUND_X = ix - 0.06;   // pulled toward centre line
 const DAGGER_WOUND_Y = iy + 0.05;   // up to eye-line
 const DAGGER_WOUND_Z = iz + 0.10;   // drawn back toward camera
 
-function daggerStabPose(phase: SwordPhase, t: number): WeaponPose {
+function daggerStabPose(phase: SwingPhase, t: number): WeaponPose {
   // Single forward thrust. Same wound-up pose as the finisher; just
   // one sine-pulse instead of two. Reads as the opener.
   const STAB_DEPTH = 0.32;
@@ -466,7 +467,7 @@ function daggerStabPose(phase: SwordPhase, t: number): WeaponPose {
   return scratch;
 }
 
-function daggerSlashPose(phase: SwordPhase, t: number): WeaponPose {
+function daggerSlashPose(phase: SwingPhase, t: number): WeaponPose {
   // Lateral cut: pull the blade WAY across to the LEFT in windup,
   // then sweep right across the view. Big visible arc — the edge
   // leads, the tip yaws through ~120° so the slash reads at a glance.
@@ -517,7 +518,7 @@ function daggerSlashPose(phase: SwordPhase, t: number): WeaponPose {
 const STAB1_DEPTH = 0.30;
 const STAB2_DEPTH = 0.42;
 
-function daggerDoubleStabPose(phase: SwordPhase, t: number): WeaponPose {
+function daggerDoubleStabPose(phase: SwingPhase, t: number): WeaponPose {
   if (phase === 'windup') {
     // Lerp idle → wound-up in one shot. Quick draw, no flourish.
     scratch.x = ix + (DAGGER_WOUND_X - ix) * t;
@@ -589,7 +590,7 @@ interface SwingParams {
   arcForwardPush: number;
 }
 
-function applyHammerSwing(phase: SwordPhase, t: number, p: SwingParams): WeaponPose {
+function applyHammerSwing(phase: SwingPhase, t: number, p: SwingParams): WeaponPose {
   if (phase === 'windup') {
     scratch.x = ix + (p.woundX - ix) * t;
     scratch.y = iy + (p.swingY - iy) * t;
@@ -627,7 +628,7 @@ function applyHammerSwing(phase: SwordPhase, t: number, p: SwingParams): WeaponP
   return scratch;
 }
 
-function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
+function hammerSwingLeftPose(phase: SwingPhase, t: number): WeaponPose {
   // Right-to-left wide haymaker. Body sweeps from far right through
   // forward to far left; HEAD must sweep the same direction so the
   // whole hammer moves together.
@@ -647,7 +648,7 @@ function hammerSwingLeftPose(phase: SwordPhase, t: number): WeaponPose {
   });
 }
 
-function hammerSwingRightPose(phase: SwordPhase, t: number): WeaponPose {
+function hammerSwingRightPose(phase: SwingPhase, t: number): WeaponPose {
   // Mirror — left-to-right. Head LEFT in windup (rotZ positive) →
   // head RIGHT in strike (rotZ negative).
   return applyHammerSwing(phase, t, {
@@ -686,7 +687,7 @@ const HAMMER_STRIKE_Z = iz - 0.12;
 const HAMMER_STRIKE_RX = rx - 1.10;  // sweep through +π/2 → head ends pointing down/-Z
 const HAMMER_STRIKE_RZ = rz + 0.25;
 
-function hammerPose(phase: SwordPhase, t: number): WeaponPose {
+function hammerPose(phase: SwingPhase, t: number): WeaponPose {
   if (phase === 'windup') {
     scratch.x = ix + (HAMMER_WOUND_X - ix) * t;
     scratch.y = iy + (HAMMER_WOUND_Y - iy) * t;
@@ -737,7 +738,7 @@ const SPEAR_READY_RZ = rz - 0.34;    // ≈ 0.06 — de-roll
 /** Shared spear thrust curve. `depth` = forward push along −Z at full
  *  extension; `drop` = how far the whole weapon sinks (body lunge) at
  *  the strike peak. */
-function spearThrust(phase: SwordPhase, t: number, depth: number, drop: number): WeaponPose {
+function spearThrust(phase: SwingPhase, t: number, depth: number, drop: number): WeaponPose {
   if (phase === 'windup') {
     scratch.x = ix + (SPEAR_READY_X - ix) * t;
     scratch.y = iy + (SPEAR_READY_Y - iy) * t;
@@ -771,11 +772,11 @@ function spearThrust(phase: SwordPhase, t: number, depth: number, drop: number):
   return scratch;
 }
 
-function spearThrustPose(phase: SwordPhase, t: number): WeaponPose {
+function spearThrustPose(phase: SwingPhase, t: number): WeaponPose {
   return spearThrust(phase, t, 0.42, 0.04);
 }
 
-function spearLungePose(phase: SwordPhase, t: number): WeaponPose {
+function spearLungePose(phase: SwingPhase, t: number): WeaponPose {
   // Finisher — deeper drive + a real body-drop on the lunge.
   return spearThrust(phase, t, 0.62, 0.12);
 }
@@ -806,7 +807,7 @@ const XBOW_KICK_Y = 0.06;           // muzzle climbs
 const XBOW_KICK_Z = 0.16;           // snaps back into the shoulder
 const XBOW_KICK_RX = 0.34;          // muzzle pitches up
 
-function crossbowFirePose(phase: SwordPhase, t: number): WeaponPose {
+function crossbowFirePose(phase: SwingPhase, t: number): WeaponPose {
   if (phase === 'windup') {
     scratch.x = ix + (XBOW_AIM_X - ix) * t;
     scratch.y = iy + (XBOW_AIM_Y - iy) * t;
@@ -873,7 +874,7 @@ const WAND_CAST_Z = iz - 0.10;
 const WAND_CAST_RX = -0.65;          // tipped forward, orb pointing target-ish
 const WAND_CAST_RZ = rz - 0.10;
 
-function wandCastPose(phase: SwordPhase, t: number): WeaponPose {
+function wandCastPose(phase: SwingPhase, t: number): WeaponPose {
   // Staff is ALREADY held upright (idle = DRAW pose). Windup is a
   // tiny tremble in place — orb gathering — not a big motion, since
   // the staff is already cocked. Strike tips forward to the cast

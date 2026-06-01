@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Settings tabs + staff upright + tight ranged aim + moveset all classes"
+      },
+      {
+        "tag": "tune",
         "text": "Charge ring: thumb-tracking + sweet-spot pulse"
       },
       {
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tech",
         "text": "Arena portcullis + prod-safe godmode / dev-mode gating"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss bar (Dark Souls-style) + make the boss a real boss"
       }
     ]
   }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { LevelSpec } from '../level/types';
 import type { LiveLevel } from '../level/builder';
-import type { Sword, SwordPhase } from '../player/sword';
+import type { WeaponViewmodel, SwingPhase } from '../player/viewmodel';
 import { LEVEL_1 } from '../level/specs';
 import { triggerDeath } from '../player/death';
 import { setCameraYaw } from '../controls/camera';
@@ -59,7 +59,7 @@ export interface Scenario {
     phaseTimer?: number;
   }>;
   /** Override the sword's phase + timer at startup. */
-  swordPhase?: { phase: SwordPhase; phaseTimer: number };
+  swordPhase?: { phase: SwingPhase; phaseTimer: number };
   /** Trigger the death sequence at startup (vignette + epitaph + reload). */
   triggerDeath?: boolean;
   /** Fire onUse on every interactable then tick them by `chestOpenFastForwardSecs`. */
@@ -723,7 +723,7 @@ export function getScenarioFromUrl(): Scenario | null {
 
 export function applyScenario(
   scenario: Scenario,
-  ctx: { level: LiveLevel; sword: Sword; camera: THREE.Camera },
+  ctx: { level: LiveLevel; weapon: WeaponViewmodel; camera: THREE.Camera },
 ) {
   if (scenario.playerPos) {
     const pp = scenario.playerPos;
@@ -747,7 +747,7 @@ export function applyScenario(
   }
 
   if (scenario.hideSword) {
-    ctx.sword.group.visible = false;
+    ctx.weapon.group.visible = false;
   }
 
   if (scenario.enemyOverrides) {
@@ -765,7 +765,7 @@ export function applyScenario(
   }
 
   if (scenario.swordPhase) {
-    ctx.sword.setDebugPhase(scenario.swordPhase.phase, scenario.swordPhase.phaseTimer);
+    ctx.weapon.setDebugPhase(scenario.swordPhase.phase, scenario.swordPhase.phaseTimer);
   }
 
   if (scenario.triggerDeath) {
