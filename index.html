@@ -51,6 +51,17 @@
       body.hud-hidden #boss-intro-card {
         display: none !important;
       }
+
+      /* HUD-only inspection mode — hide the 3D canvas and put a flat
+         backdrop behind the rest. Lets us snap HUD widgets cleanly
+         (inventory panel, hp bar, hotbar, broadcast pop, boss bar)
+         without the dungeon scene fighting them. */
+      body.hud-only {
+        background: #2a2a30;
+      }
+      body.hud-only #scene { display: none !important; }
+      /* Also strip the perf overlay in hud-only — it's still noise. */
+      body.hud-only #perf-overlay { display: none !important; }
       /* When a screen with policy.dimsScene is open, fade the WebGL scene
          behind it so the title/end-screen reads cleanly. */
       body.scene-dimmed #scene { opacity: 0.18; transition: opacity 0.6s ease; }

@@ -190,6 +190,15 @@ async function main() {
     const wantInspect = noInspectFlag ? false : (inspectFlag || inspectFamily);
     const inspectOverride = wantInspect ? '&inspect=true' : '';
     if (wantInspect) console.log('Inspect mode: flat-lit, HUD stripped, title suppressed');
+    // HUD-only mode — auto-enabled for `hud-*` scenarios. Hides the
+    // 3D canvas + puts a flat backdrop behind the HUD widgets so the
+    // inventory panel / HP bar / hotbar / broadcast pop / boss bar
+    // can be snapped without the dungeon scene fighting them.
+    const hudFamily = /^hud-/.test(scenario);
+    const hudOnlyFlag = process.argv.includes('--hud-only');
+    const wantHudOnly = hudOnlyFlag || hudFamily;
+    const hudOnlyOverride = wantHudOnly ? '&hudOnly=true' : '';
+    if (wantHudOnly) console.log('HUD-only mode: canvas hidden, flat backdrop');
     let url: string;
     if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
@@ -198,7 +207,7 @@ async function main() {
     else if (scenario === 'stash') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showStash=1`;
     else if (scenario === 'safe-transition') url = `http://127.0.0.1:${port}/brainstorm/?showSafeTransition=1`;
     else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
-    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}`;
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output

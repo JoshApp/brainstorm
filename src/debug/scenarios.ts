@@ -60,6 +60,15 @@ export interface Scenario {
    * legibility — only meant for `vault-<id>` previews, never gameplay.
    */
   inspect?: boolean;
+  /**
+   * HUD-only mode: hide the 3D canvas entirely (a flat mid backdrop sits
+   * behind it via the .hud-only body class). For inspecting HUD widgets —
+   * inventory panel, HP bar, hotbar, broadcast pop, boss bar — without the
+   * dungeon scene fighting the read. Pair with the existing field that
+   * mounts the widget (giveItems / openInventoryPanel / damagePlayerBy /
+   * applyPlayerBuff / etc.).
+   */
+  hudOnly?: boolean;
   /** Override one or more enemies' state by spawn index. */
   enemyOverrides?: Array<{
     index: number;
@@ -497,6 +506,60 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   // Inventory panel with the violet-stoned (cursed) ring selected — shows
   // the details panel populated with name + rarity + flavor + modifiers.
+  // ── HUD-only inspection scenarios ────────────────────────────────
+  // Same setup as the gameplay-context scenarios above (give items,
+  // damage the player, etc.) but with `hudOnly: true` so the 3D
+  // canvas is hidden behind a flat backdrop — pure widget review.
+  // snap.ts auto-applies hudOnly for any scenario named hud-*; the
+  // explicit field here keeps the page reachable via the URL too.
+  'hud-inventory': {
+    freeze: true,
+    hudOnly: true,
+    giveItems: [
+      'iron-coif', 'bone-amulet', 'tattered-cloak', 'leather-gloves',
+      'worn-boots', 'wooden-shield',
+      'ring-of-vigor', 'ring-of-predation',
+      'ring-of-bloodthirst', 'ring-of-frenzy',
+      'scimitar',
+      'healing-potion', 'healing-potion', 'berserk-potion',
+    ],
+    openInventoryPanel: true,
+  },
+  // HP bar at one pip — verify the low-health red treatment + the
+  // damage-flash decay. Damage applied at startup; freeze stops the
+  // regen-tick from creeping it back up.
+  'hud-hp-low': {
+    freeze: true,
+    hudOnly: true,
+    damagePlayerBy: 7,
+  },
+  // Consumable hotbar with a healthy stack of potions — slot icons +
+  // count badges + selected-slot indicator visible.
+  'hud-hotbar': {
+    freeze: true,
+    hudOnly: true,
+    giveItems: ['healing-potion', 'healing-potion', 'healing-potion', 'healing-potion', 'berserk-potion', 'berserk-potion'],
+  },
+  // Boss bar mid-fight. Spawns a boss in chasing state so the boss-
+  // bar engagement check fires; doesn't damage it (the bar starts
+  // full). Useful for verifying the bar layout + the name above it
+  // + the intro card timing (NOT frozen — let the card play out).
+  'hud-boss-bar': {
+    hudOnly: true,
+    level: {
+      id: 'dbg-hud-boss', depth: 12, displayName: 'boss', fogColor: 0x080f05,
+      startPos: { x: 0, z: 3.5, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 9, d: 9 }, height: 3.6 }],
+      corridors: [],
+      props: [],
+      torches: [],
+      spawns: [{ enemyId: 'boiling-king', x: 0, z: -1.5, roomId: 'r' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 2.5, lookAt: { x: 0, z: -1.5, y: 1.2 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.5 }, state: 'chasing' }],
+  },
+
   'inventory-detail': {
     freeze: true,
     giveItems: [
@@ -962,12 +1025,16 @@ export function getScenarioFromUrl(): Scenario | null {
   }
   const freezeOverride = params.get('freeze');
   const inspectOverride = params.get('inspect');
+  const hudOnlyOverride = params.get('hudOnly');
   let result: Scenario = base;
   if (freezeOverride !== null) {
     result = { ...result, freeze: freezeOverride === 'true' };
   }
   if (inspectOverride !== null) {
     result = { ...result, inspect: inspectOverride === 'true' };
+  }
+  if (hudOnlyOverride !== null) {
+    result = { ...result, hudOnly: hudOnlyOverride === 'true' };
   }
   return result;
 }

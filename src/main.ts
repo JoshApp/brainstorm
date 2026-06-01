@@ -1102,9 +1102,23 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   applyScenario(scenario, { level: currentLevel, weapon, camera });
   if (scenario.inspect) {
     inspectMode = true;
-    ambient.intensity = 1.6;
+    // Flood the scene with FLAT WHITE ambient so the actual base
+    // colors of the geometry read truly. The default ambient is a
+    // dark blueish 0x1a1e24 × 1.8; even cranked to 3.0 that's a
+    // dim blue tint over everything. Inspection wants the
+    // unmodulated material color so a "should-be-black" piece
+    // doesn't look midnight-blue.
+    ambient.color.setHex(0xffffff);
+    ambient.intensity = 3.0;
+    // Replace the pure-black scene background with a flat mid-grey
+    // backdrop so silhouettes have something to contrast against.
+    // Dungeon stone is dark by design; the inspection backdrop
+    // existing was making everything blend together.
+    scene.background = new THREE.Color(0x404040);
+    // Kill fog entirely for inspect — pushing near/far still leaves
+    // a subtle grade across the room.
     const fog = scene.fog as THREE.Fog | null;
-    if (fog) { fog.near = 30; fog.far = 90; }
+    if (fog) { fog.near = 1000; fog.far = 2000; }
     // Strip all gameplay HUD so the snap shows the scene geometry
     // alone. Same CSS class the screen-manager uses for full-screen
     // panels (#perf-overlay, #depth-counter, #hp-bar, hotbar, boss
@@ -1112,6 +1126,14 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     // future "show only health bar in inspect" flag has one place
     // to override.
     document.body.classList.add('hud-hidden');
+  }
+  // HUD-ONLY mode — the inverse of inspect. Hide the 3D canvas
+  // entirely and put a flat backdrop behind whichever HUD widgets
+  // the scenario opted to leave visible. For previewing the
+  // inventory panel, HP bar, hotbar, broadcast pop, etc. without
+  // the dungeon scene fighting them.
+  if (scenario.hudOnly) {
+    document.body.classList.add('hud-only');
   }
 } else if (hasPendingDevSnapshot() && loadSave()) {
   // Dev hot-reload returning from DEV AUTO-UPDATE: a pending pose/HP/buffs
