@@ -236,6 +236,12 @@ export function populateTemplate(
       } else if (ch === 'B') {
         const id = bossFor(depth);
         out += ENEMY_CHAR_BY_ID[id] ?? 'W';
+      } else if (ch === '$') {
+        // Loot slot — PARTIAL fill: a chest sometimes appears here, the
+        // chance rising slightly with depth. Reuses 'c' so the existing
+        // chest/loot pipeline handles it; '.' = empty this run. Per-slot, so
+        // a room with several $ yields a varying subset run to run.
+        out += rand() < Math.min(0.8, 0.5 + depth * 0.02) ? 'c' : '.';
       } else {
         out += ch;
       }

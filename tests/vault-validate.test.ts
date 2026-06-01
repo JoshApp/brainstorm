@@ -32,6 +32,7 @@ function test(name: string, fn: () => void) {
 const STRUCTURAL = new Set([
   '#', ' ', '.', ',', 'S', '/', 'o', 'O', 'D', '^', 'F', 'C',
   'P', 'A', 'c', 'v', 'V', 'T', 't', '<', '>', '%', 'X', 'B',
+  '$',   // loot slot (rolled to chest / empty at gen time)
 ]);
 const KNOWN = new Set([...STRUCTURAL, ...ENEMY_BY_CHAR.keys()]);
 const isFloorish = (ch: string) => ch !== '#' && ch !== ' ';

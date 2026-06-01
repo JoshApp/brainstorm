@@ -129,12 +129,13 @@ const COMBAT_OPEN: Vault = {
     '#..T.......#',
     '#v........v#',
     '#....X.....#',
-    '#..........#',
+    '#....$.....#',
     '#..X....X..#',
     '#.........v#',
     '#.......T..#',
     '############',
   ],
+  // $ = optional loot for clearing — sometimes a chest, sometimes nothing.
 };
 
 const COMBAT_PILLARS: Vault = {
@@ -379,7 +380,7 @@ const ENCOUNTER_CORPSES: Vault = {
     '#...T......#',
     '#.C........#',
     '#.....C....#',
-    '#..........#',
+    '#......$...#',
     '#...^......#',
     '#........C.#',
     '#.....t....#',

@@ -9,6 +9,22 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Encounters"
+      },
+      {
+        "tag": "content",
+        "text": "snap"
+      },
+      {
+        "tag": "tune",
+        "text": "Two new mobs: pit moth (swarmer) + lasher (long-reach turret)"
+      },
+      {
+        "tag": "tune",
+        "text": "Encounters: coherent room-level packs (prototype on 2 vaults)"
+      },
+      {
+        "tag": "tune",
         "text": "snap: --frames=N animation grid"
       },
       {
@@ -196,22 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Dev hot-reload"
-      },
-      {
-        "tag": "add",
-        "text": "Add a denied sound for full-stock / full-HP refusals"
-      },
-      {
-        "tag": "tune",
-        "text": "Combat audio: textural pressure, not a tone"
-      },
-      {
-        "tag": "tune",
-        "text": "Audio: monster vocalisations, natural drip, dread combat layer"
-      },
-      {
-        "tag": "tune",
-        "text": "Audio: silence-first exploration — soundscape over melody"
       }
     ]
   }
