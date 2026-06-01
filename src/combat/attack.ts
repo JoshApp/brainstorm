@@ -19,6 +19,30 @@ import { applyBuff } from '../ecs/buffs';
 import { spawnProjectile, setProjectileEnemyProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
 import { consumeChargedAmount } from '../controls/charge-input';
+import type { AttackDirection } from '../player/sword';
+
+// Joystick magnitude below this counts as "not moving" → no
+// directional override. Tuned so a tiny accidental thumb shift on
+// the joystick doesn't pull the player into an unintended sweep.
+const MOVE_INTENT_THRESHOLD = 0.35;
+// How much more lateral than forward/back the joystick needs to be
+// before "strafe" wins over "forward/back." Below 1.0 means lateral
+// reads even on near-diagonal — strafe is hard to commit to fully
+// during combat-pressure thumb movement.
+const STRAFE_AXIS_BIAS = 0.7;
+
+/** Picks an attack direction from the live joystick state at the
+ *  moment of a press. Returns null if the joystick isn't held past
+ *  the intent threshold — caller should fire a neutral combo step. */
+function pickAttackDirection(moveX: number, moveY: number): AttackDirection {
+  const mag = Math.hypot(moveX, moveY);
+  if (mag < MOVE_INTENT_THRESHOLD) return null;
+  // Lateral wins on near-diagonals (STRAFE_AXIS_BIAS < 1).
+  if (Math.abs(moveX) > Math.abs(moveY) * STRAFE_AXIS_BIAS) return 'strafe';
+  // moveY < 0 in joystick convention means UP — the player is
+  // pushing FORWARD relative to where the camera is facing.
+  return moveY < 0 ? 'forward' : 'back';
+}
 
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
@@ -39,7 +63,7 @@ import { consumeChargedAmount } from '../controls/charge-input';
 const STRIKE_TRAIL_DURATION = 0.10;     // seconds — Smash-Bros-style intent buffer
 
 export interface CombatSystem {
-  tick(attackPressed: boolean, dt: number): void;
+  tick(attackPressed: boolean, moveX: number, moveY: number, dt: number): void;
 }
 
 function hapticVibrate(ms: number) {
@@ -138,7 +162,7 @@ export function createCombatSystem(
     if (heavy) freezeFor(Math.min(30, CONFIG.HIT_PAUSE_MS * 0.3));
   }
 
-  function tick(attackPressed: boolean, dt: number) {
+  function tick(attackPressed: boolean, moveX: number, moveY: number, dt: number) {
     if (attackPressed) {
       // Gate: if nothing is equipped in the weapon slot, swallow the
       // press silently. Avoids the bare-hands attack sound + the
@@ -153,13 +177,18 @@ export function createCombatSystem(
       // reach, and cone width. Reset per-press, so chained tap-combos
       // reset back to 0 naturally on the next press.
       currentSwingCharge = consumeChargedAmount();
+      // Movement intent at press time. Picks a directional move
+      // override (lunge / sweep / retreat) when the joystick is
+      // held — null otherwise (= normal combo step). The sword
+      // class spec decides whether a directional move is registered.
+      const direction = pickAttackDirection(moveX, moveY);
       // Whoosh + 'attack:swing' fire from sword.ts's onSwingStart so
       // chained combo steps make sound too, not just the first press.
       // Charged releases SKIP the windup phase — the player paid for
       // it by holding; the viewmodel's cocked-back idle pose blends
       // continuously into the strike's t=0 pose so the swing reads as
       // "held back, now released" rather than "extra windup."
-      sword.startSwing({ skipWindup: currentSwingCharge > 0 });
+      sword.startSwing({ skipWindup: currentSwingCharge > 0, direction });
     }
 
     const striking = sword.isStriking;

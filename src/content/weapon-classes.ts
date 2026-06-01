@@ -24,6 +24,9 @@ export type PoseKey =
   | 'sword-slash-left'
   | 'sword-slash-right'
   | 'sword-thrust'
+  | 'sword-lunge-forward'
+  | 'sword-sweep-strafe'
+  | 'sword-retreat-slash'
   | 'dagger-stab'
   | 'dagger-slash'
   | 'dagger-double-stab'
@@ -83,11 +86,35 @@ export interface ResolvedWeaponStats {
   /** Ranged projectile (crossbow/wand) — strike fires this instead of a
    *  melee cone hit. Passed through from the weapon spec. */
   ranged?: { projectileId: string };
+  /** Resolved directional move steps (lunge/sweep/retreat) — the
+   *  same speed multipliers as the combo are applied. Optional;
+   *  not every weapon has movement variants. */
+  directionalMoves?: {
+    forward?: ResolvedComboStep;
+    strafe?:  ResolvedComboStep;
+    back?:    ResolvedComboStep;
+  };
+}
+
+/** Movement-driven attack variants. When the joystick is held past a
+ *  small deadzone at the moment of a press, the swing OVERRIDES the
+ *  normal combo with one of these — picked by the dominant direction.
+ *  Forward = lunge (commit-and-step-in), strafe = sweep (wide cone),
+ *  back = retreat-slash (quick poke + repositioning recovery).
+ *
+ *  Firing a directional move RESETS the normal combo to step 0 — it
+ *  doesn't advance the chain. Players who want the 1-2-3 keep the
+ *  joystick centred; players who want intent-driven moves point. */
+export interface DirectionalMoves {
+  forward?: ComboStep;
+  strafe?:  ComboStep;
+  back?:    ComboStep;
 }
 
 interface ClassDefaults {
   combo: ComboStep[];
   comboWindowMs: number;
+  directionalMoves?: DirectionalMoves;
 }
 
 export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
@@ -122,6 +149,26 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.25, coneHalfAngleMul: 0.6, maxTargets: 1 },
     ],
     comboWindowMs: 380,
+    // Move-driven variants — pick by joystick direction at press time.
+    // Each one is a one-off (resets combo to step 0 after firing).
+    directionalMoves: {
+      // FORWARD lunge — commit-and-step-in. Long reach, narrow cone,
+      // single target. The "I see an opening, I take it" attack.
+      // Slightly slower recover than a tap-thrust because you've
+      // physically stepped in and need a beat to reset.
+      forward: { pose: 'sword-lunge-forward', windup: 0.12, strike: 0.16, recover: 0.42,
+                 reachMul: 1.50, coneHalfAngleMul: 0.45, maxTargets: 1 },
+      // STRAFE sweep — wide horizontal arc that catches multiple
+      // adjacent enemies. The crowd-clearance answer when two mobs
+      // pin you on a side.
+      strafe:  { pose: 'sword-sweep-strafe', windup: 0.16, strike: 0.18, recover: 0.40,
+                 reachMul: 1.0,  coneHalfAngleMul: 1.7,  maxTargets: 3 },
+      // BACK retreating slash — fast poke as the player backs off.
+      // Modest damage, but the SHORT recover lets you reposition
+      // immediately. The "fighting retreat" answer to a charge.
+      back:    { pose: 'sword-retreat-slash', windup: 0.08, strike: 0.10, recover: 0.22,
+                 reachMul: 1.1,  coneHalfAngleMul: 0.7,  maxTargets: 1 },
+    },
   },
   hammer: {
     // swing-right → swing-left → smash. Wide horizontal sweeps
@@ -208,6 +255,23 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     maxTargets: step.maxTargets ?? 1,
   }));
 
+  // Directional move resolution mirrors the combo resolution — same
+  // proficiency-speed multiplier, no special-case math.
+  const resolveStep = (step: ComboStep): ResolvedComboStep => ({
+    pose: step.pose,
+    windupTime:  step.windup  * timeMul,
+    strikeTime:  step.strike  * timeMul,
+    recoverTime: step.recover * timeMul,
+    reachMul: step.reachMul ?? 1,
+    coneHalfAngleMul: step.coneHalfAngleMul ?? 1,
+    maxTargets: step.maxTargets ?? 1,
+  });
+  const directionalMoves = baseT.directionalMoves ? {
+    forward: baseT.directionalMoves.forward && resolveStep(baseT.directionalMoves.forward),
+    strafe:  baseT.directionalMoves.strafe  && resolveStep(baseT.directionalMoves.strafe),
+    back:    baseT.directionalMoves.back    && resolveStep(baseT.directionalMoves.back),
+  } : undefined;
+
   return {
     reach: spec.reach,
     coneHalfAngle: spec.coneHalfAngle,
@@ -219,5 +283,6 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     comboWindowMs: baseT.comboWindowMs,
     onHit: spec.onHit,
     ranged: spec.ranged,
+    directionalMoves,
   };
 }

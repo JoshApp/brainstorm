@@ -586,7 +586,7 @@ const SYSTEMS: GameSystem[] = [
 
   { name: 'combat', phase: 'unpaused', tick(ctx) {
     const attackPressed = isDying() ? false : consumeAttackPressed();
-    combat.tick(attackPressed, ctx.scaledDt);
+    combat.tick(attackPressed, input.moveX, input.moveY, ctx.scaledDt);
   } },
 
   // Walk bob — sword + lamp + offhand viewmodels all read the same shared

@@ -49,6 +49,9 @@ export function computeWeaponPose(pose: PoseKey, phase: SwordPhase, t: number): 
     case 'dagger-double-stab': return daggerDoubleStabPose(phase, t);
     case 'sword-slash-right':  return swordSlashRightPose(phase, t);
     case 'sword-thrust':       return swordThrustPose(phase, t);
+    case 'sword-lunge-forward':return swordLungeForwardPose(phase, t);
+    case 'sword-sweep-strafe': return swordSweepStrafePose(phase, t);
+    case 'sword-retreat-slash':return swordRetreatSlashPose(phase, t);
     case 'hammer-swing-left':  return hammerSwingLeftPose(phase, t);
     case 'hammer-swing-right': return hammerSwingRightPose(phase, t);
     case 'hammer-smash':       return hammerPose(phase, t);
@@ -190,6 +193,145 @@ function swordThrustPose(phase: SwordPhase, t: number): WeaponPose {
   scratch.rotX = THRUST_RX + (rx - THRUST_RX) * e;
   scratch.rotY = THRUST_RY + (ry - THRUST_RY) * e;
   scratch.rotZ = THRUST_RZ + (rz - THRUST_RZ) * e;
+  return scratch;
+}
+
+// ── Sword movement-driven variants ───────────────────────────────
+// Fired when the player's joystick is held in a direction at the
+// moment of press. Each one is a single-strike alternative to the
+// normal combo step — combat/attack.ts picks which by direction.
+
+/** Forward lunge — bigger committed thrust than the combo finisher.
+ *  Tip leads further, the body visibly leans IN, deeper push along
+ *  -Z. Reads as "I'm closing the gap." */
+function swordLungeForwardPose(phase: SwordPhase, t: number): WeaponPose {
+  const WIND_X = ix - 0.10;
+  const WIND_Y = iy + 0.14;
+  const WIND_Z = iz + 0.16;
+  const WIND_RX = rx - 1.30;
+  const WIND_RY = ry + 0.18;
+  const WIND_RZ = rz - 0.45;
+  const LUNGE_DEPTH = 0.80;        // deeper than the thrust's 0.55
+  if (phase === 'windup') {
+    scratch.x = ix + (WIND_X - ix) * t;
+    scratch.y = iy + (WIND_Y - iy) * t;
+    scratch.z = iz + (WIND_Z - iz) * t;
+    scratch.rotX = rx + (WIND_RX - rx) * t;
+    scratch.rotY = ry + (WIND_RY - ry) * t;
+    scratch.rotZ = rz + (WIND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WIND_X;
+    scratch.y = WIND_Y;
+    scratch.z = WIND_Z + (-LUNGE_DEPTH) * ease;
+    scratch.rotX = WIND_RX;
+    scratch.rotY = WIND_RY;
+    scratch.rotZ = WIND_RZ;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  const fromZ = WIND_Z - LUNGE_DEPTH;
+  scratch.x = WIND_X + (ix - WIND_X) * e;
+  scratch.y = WIND_Y + (iy - WIND_Y) * e;
+  scratch.z = fromZ + (iz - fromZ) * e;
+  scratch.rotX = WIND_RX + (rx - WIND_RX) * e;
+  scratch.rotY = WIND_RY + (ry - WIND_RY) * e;
+  scratch.rotZ = WIND_RZ + (rz - WIND_RZ) * e;
+  return scratch;
+}
+
+/** Strafe sweep — a wide horizontal arc that catches multiple
+ *  adjacent targets. Goes from far right (windup) all the way to
+ *  far left (strike-end) with the blade swinging through the
+ *  player's eye line. Crowd-clearance answer to "two mobs flanking." */
+function swordSweepStrafePose(phase: SwordPhase, t: number): WeaponPose {
+  // Pull WAY across to the RIGHT in windup — sword cocks behind the
+  // player's right shoulder.
+  const WIND_X = ix + 0.22;
+  const WIND_Y = iy + 0.10;
+  const WIND_Z = iz + 0.06;
+  const WIND_RX = rx - 0.45;
+  const WIND_RY = ry - 0.55;
+  const WIND_RZ = rz - 0.85;        // blade leaning right, tip up
+  // Strike-end: blade fully across to the LEFT, low.
+  const END_X = ix - 0.28;
+  const END_Y = iy - 0.16;
+  const END_Z = iz - 0.05;
+  const END_RX = rx - 0.30;
+  const END_RY = ry + 0.40;
+  const END_RZ = rz + 1.00;
+  if (phase === 'windup') {
+    scratch.x = ix + (WIND_X - ix) * t;
+    scratch.y = iy + (WIND_Y - iy) * t;
+    scratch.z = iz + (WIND_Z - iz) * t;
+    scratch.rotX = rx + (WIND_RX - rx) * t;
+    scratch.rotY = ry + (WIND_RY - ry) * t;
+    scratch.rotZ = rz + (WIND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WIND_X + (END_X - WIND_X) * ease;
+    scratch.y = WIND_Y + (END_Y - WIND_Y) * ease;
+    scratch.z = WIND_Z + (END_Z - WIND_Z) * ease;
+    scratch.rotX = WIND_RX + (END_RX - WIND_RX) * ease;
+    scratch.rotY = WIND_RY + (END_RY - WIND_RY) * ease;
+    scratch.rotZ = WIND_RZ + (END_RZ - WIND_RZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = END_X + (ix - END_X) * e;
+  scratch.y = END_Y + (iy - END_Y) * e;
+  scratch.z = END_Z + (iz - END_Z) * e;
+  scratch.rotX = END_RX + (rx - END_RX) * e;
+  scratch.rotY = END_RY + (ry - END_RY) * e;
+  scratch.rotZ = END_RZ + (rz - END_RZ) * e;
+  return scratch;
+}
+
+/** Retreat slash — a short defensive poke as the player backs off.
+ *  Brief windup, modest forward extension, fast recovery so the
+ *  next move can be a reposition or a follow-up. */
+function swordRetreatSlashPose(phase: SwordPhase, t: number): WeaponPose {
+  // Smaller wound-up than the thrust — this is a JAB, not a commit.
+  const WIND_X = ix - 0.04;
+  const WIND_Y = iy + 0.06;
+  const WIND_Z = iz + 0.08;
+  const WIND_RX = rx - 0.85;
+  const WIND_RY = ry + 0.10;
+  const WIND_RZ = rz - 0.25;
+  const POKE_DEPTH = 0.36;       // shorter than the thrust's 0.55
+  if (phase === 'windup') {
+    scratch.x = ix + (WIND_X - ix) * t;
+    scratch.y = iy + (WIND_Y - iy) * t;
+    scratch.z = iz + (WIND_Z - iz) * t;
+    scratch.rotX = rx + (WIND_RX - rx) * t;
+    scratch.rotY = ry + (WIND_RY - ry) * t;
+    scratch.rotZ = rz + (WIND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WIND_X;
+    scratch.y = WIND_Y;
+    scratch.z = WIND_Z + (-POKE_DEPTH) * ease;
+    scratch.rotX = WIND_RX;
+    scratch.rotY = WIND_RY;
+    scratch.rotZ = WIND_RZ;
+    return scratch;
+  }
+  // Snappier recover — same ease curve but the phase duration in the
+  // class spec is already shorter (0.22s).
+  const e = 1 - (1 - t) * (1 - t);
+  const fromZ = WIND_Z - POKE_DEPTH;
+  scratch.x = WIND_X + (ix - WIND_X) * e;
+  scratch.y = WIND_Y + (iy - WIND_Y) * e;
+  scratch.z = fromZ + (iz - fromZ) * e;
+  scratch.rotX = WIND_RX + (rx - WIND_RX) * e;
+  scratch.rotY = WIND_RY + (ry - WIND_RY) * e;
+  scratch.rotZ = WIND_RZ + (rz - WIND_RZ) * e;
   return scratch;
 }
 

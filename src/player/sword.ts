@@ -5,6 +5,12 @@ import { getSwordOffset } from './viewmodel-bob';
 import { computeWeaponPose } from './weapon-animations';
 import { getCurrentWeapon } from './current-weapon';
 import { getChargeProgress } from '../controls/charge-input';
+
+/** Movement intent at the moment the player presses attack. Picked
+ *  from the joystick magnitude + direction in combat/attack.ts and
+ *  passed into startSwing — if a directional move is registered for
+ *  this weapon class, it overrides the normal combo step. */
+export type AttackDirection = 'forward' | 'back' | 'strafe' | null;
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep } from '../content/weapon-classes';
 
@@ -33,7 +39,7 @@ export interface Sword {
    *  Returns null when no swing is in progress. */
   getActiveStep(): ResolvedComboStep | null;
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
-  startSwing(opts?: { skipWindup?: boolean }): boolean;
+  startSwing(opts?: { skipWindup?: boolean; direction?: AttackDirection }): boolean;
   update(dt: number): void;
   /** Swap the wielded weapon model. Passing null leaves the player
    *  empty-handed (used at run start before the player picks at the
@@ -131,6 +137,10 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
   let comboStep = 0;
   let comboWindowExpiresAt = 0;     // ms (performance.now() basis)
   let queuedPress = false;
+  // Directional move override — set at startSwing when the player's
+  // joystick was held in a direction at press time. Used in place of
+  // the combo step until cleared on idle.
+  let activeDirectionalStep: ResolvedComboStep | null = null;
 
   function nowMs(): number { return performance.now(); }
 
@@ -139,11 +149,14 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
    *  combo while we were mid-swing. */
   function currentStep() {
     const w = getCurrentWeapon();
+    // Directional override beats the combo. Cleared on idle so the
+    // next neutral press resumes the standard combo sequence.
+    if (activeDirectionalStep) return { w, step: activeDirectionalStep };
     const idx = ((comboStep % w.combo.length) + w.combo.length) % w.combo.length;
     return { w, step: w.combo[idx] };
   }
 
-  function startSwing(opts?: { skipWindup?: boolean }): boolean {
+  function startSwing(opts?: { skipWindup?: boolean; direction?: AttackDirection }): boolean {
     if (phase !== 'idle') {
       // Mid-swing press: buffer the next combo step UNLESS the
       // current step is the finisher (last in the array). A spam
@@ -154,11 +167,25 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
       if (!isFinisher) queuedPress = true;
       return false;
     }
-    // Idle. If we're past the combo window, the previous chain is dead
-    // and the next press restarts the combo from step 0. If we're
-    // still inside it, comboStep was pre-advanced when the last
-    // recover ended, so we just fire whatever it currently is.
-    if (nowMs() >= comboWindowExpiresAt) {
+    // Pick the active step. If the player held the joystick in a
+    // direction AND this weapon has a matching directional move,
+    // override the combo with it AND reset the combo position so
+    // the next neutral press starts a fresh 1-2-3.
+    const w = getCurrentWeapon();
+    activeDirectionalStep = null;
+    if (opts?.direction && w.directionalMoves) {
+      const move = w.directionalMoves[opts.direction];
+      if (move) {
+        activeDirectionalStep = move;
+        comboStep = 0;
+      }
+    }
+    // No directional override: if we're past the combo window the
+    // previous chain is dead and the next press restarts the combo
+    // from step 0. If we're still inside it, comboStep was pre-
+    // advanced when the last recover ended, so we just fire whatever
+    // it currently is.
+    if (!activeDirectionalStep && nowMs() >= comboWindowExpiresAt) {
       comboStep = 0;
     }
     // Charged release skips the windup phase — the player ALREADY
@@ -237,10 +264,18 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
         comboStep = (comboStep + 1) % w.combo.length;
         if (queuedPress) {
           queuedPress = false;
+          // Buffered chain advances the COMBO — directional moves
+          // are one-off, so a buffered press always falls back to
+          // the next combo step regardless of what we just fired.
+          activeDirectionalStep = null;
           phase = 'windup';
           phaseTimer = 0;
           options.onSwingStart?.();
         } else {
+          // Recover ended without a buffered chain — return to idle
+          // and clear the directional override so the next press
+          // (if not directional) starts a fresh combo at step 0.
+          activeDirectionalStep = null;
           comboWindowExpiresAt = nowMs() + w.comboWindowMs;
           phase = 'idle';
           phaseTimer = 0;
@@ -268,6 +303,7 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
     comboStep = 0;
     comboWindowExpiresAt = 0;
     queuedPress = false;
+    activeDirectionalStep = null;
   }
 
   return {
