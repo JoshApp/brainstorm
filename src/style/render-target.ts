@@ -36,6 +36,7 @@ const HORROR_BLIT_FRAG = `
   uniform sampler2D tDiffuse;
   uniform vec2 uResolution;
   uniform float uDarkAdapt;  // eye dark-adaptation, 0 = none .. 1 = full dark
+  uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
   varying vec2 vUv;
 
   // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
@@ -61,6 +62,26 @@ const HORROR_BLIT_FRAG = `
 
   void main() {
     vec2 uv = vUv;
+
+    // INSPECTION BYPASS — skip every PSX effect (chromatic aberration,
+    // dark-adapt, dither, quantize, scanlines, amber tint, vignette)
+    // when uInspect is on. They're stylistic crunchifiers for grimdark
+    // gameplay; for snap-the-model-cleanly they fight the inspection
+    // mode's bright-flat-lit intent and squash dim grey backdrops to
+    // pure black. Direct pass-through of the rendered scene.
+    if (uInspect > 0.5) {
+      // The low-res target stores LINEAR-encoded radiance (Three.js's
+      // intermediate render space). Output goes to canvas which
+      // expects sRGB-encoded values; the gameplay blit lower down
+      // doesn't need an explicit encode step because its tonemap +
+      // amber tint + dither implicitly land near the right curve.
+      // For the bypass we must apply the linear→sRGB encode by
+      // hand or the backdrop looks gamma-crushed.
+      vec3 linear = texture2D(tDiffuse, uv).rgb;
+      vec3 srgb = pow(max(linear, vec3(0.0)), vec3(1.0 / 2.2));
+      gl_FragColor = vec4(srgb, 1.0);
+      return;
+    }
 
     // CHROMATIC ABERRATION — red/blue split scaling with distance from center
     vec2 fromCenter = uv - 0.5;
@@ -140,6 +161,7 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       tDiffuse: { value: lowResTarget.texture },
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
       uDarkAdapt: { value: 0 },
+      uInspect: { value: 0 },
     },
     vertexShader: HORROR_BLIT_VERT,
     fragmentShader: HORROR_BLIT_FRAG,
@@ -163,6 +185,13 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
  *  shadow-lift. No-op until the pipeline is initialised. */
 export function setDarkAdapt(amount: number): void {
   if (blitMaterial) blitMaterial.uniforms.uDarkAdapt.value = amount;
+}
+
+/** Bypass every PSX post-effect (quantize, dither, scanlines, amber
+ *  tint, vignette, chromatic aberration, dark-adapt). For inspection
+ *  snaps where the gameplay crunchifiers fight a clean material read. */
+export function setInspectBypass(on: boolean): void {
+  if (blitMaterial) blitMaterial.uniforms.uInspect.value = on ? 1 : 0;
 }
 
 export function renderWithStyle(

@@ -19,7 +19,7 @@ import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './pla
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setDarkAdapt } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setDarkAdapt, setInspectBypass } from './style/render-target';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
@@ -1102,28 +1102,65 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   applyScenario(scenario, { level: currentLevel, weapon, camera });
   if (scenario.inspect) {
     inspectMode = true;
+    // Bypass the PSX blit shader (quantize / scanlines / amber tint /
+    // vignette / chromatic aberration / dark-adapt). All are gameplay
+    // grimdark crunchifiers that fight the inspection mode's clean
+    // material read — they squash a mid-grey backdrop to pure black.
+    setInspectBypass(true);
+    // Disable filmic tone mapping for the scene render too — ACES
+    // crushes mid-tones (a 0x404040 backdrop curves down to near
+    // black). NoToneMapping = linear pass-through so the backdrop
+    // and lit materials read their intended values.
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    // Hide the level geometry (walls, floor, torches, props). Dungeon
+    // materials are tuned VERY DARK by base colour so they read
+    // grimdark under torchlight; in flat-lit inspection they still
+    // appear near-black behind the subject and read as noise. The
+    // item/mob model we're inspecting is added DIRECTLY to
+    // currentLevel.root (via applyScenario / mob spawn), so hiding
+    // its sibling meshes won't hide the subject — wait, that's
+    // wrong, the subject is also a child of root. We need to hide
+    // SIBLINGS only. Walk root's children and hide everything that
+    // isn't the previewed item / mob.
+    // Cleanest: tag subject groups with userData.inspectSubject = true
+    // when adding them (item viewer + mob spawn paths) and hide every
+    // child without that tag.
+    for (const child of currentLevel.root.children) {
+      if (!(child as THREE.Object3D).userData.inspectSubject) {
+        child.visible = false;
+      }
+    }
     // White ambient as the FILL light — at a moderate level so the
     // shadow side of the silhouette stays readable but isn't blown
     // out. Inspection wants the unmodulated material color (the
     // default 0x1a1e24 ambient washes everything blue).
     ambient.color.setHex(0xffffff);
     ambient.intensity = 1.2;
-    // KEY LIGHT — DirectionalLight from upper-front-side. Without
-    // this, metallic/glossy materials (rings, sword blades) look
-    // matte under pure ambient because there's no normal-dependent
-    // illumination to drive their specular response. The key
-    // creates real shading + highlights so the item reads as
-    // STEEL/STONE/BONE, not "shape painted one colour."
-    const key = new THREE.DirectionalLight(0xffffff, 2.0);
-    key.position.set(2, 4, 2);
+    // HEMISPHERE LIGHT — top-down sky/ground fill. Critical for
+    // metallic materials (sword blades, ring bands, helmets):
+    // without an environment map, metals get almost no contribution
+    // from AmbientLight (it lacks the directional gradient metals
+    // sample), but a HemisphereLight provides a per-fragment
+    // up-vs-down split that lifts them. Warm-from-below mimics
+    // torchlight bounce; cool-from-above feels like a museum top
+    // light.
+    const hemi = new THREE.HemisphereLight(0xeeeeff, 0x806040, 2.5);
+    hemi.position.set(0, 5, 0);
+    scene.add(hemi);
+    // KEY LIGHT — front-right, drives specular highlights + shading
+    // on whichever face the camera's looking at. Positioned to
+    // light the camera-facing side from above-right.
+    const key = new THREE.DirectionalLight(0xffffff, 3.0);
+    key.position.set(2, 3, 3);
     key.target.position.set(0, 1.4, 0);
     scene.add(key);
     scene.add(key.target);
-    // Backlight RIM — soft secondary from behind/below to pop the
-    // silhouette away from the backdrop. Low intensity warm tint so
-    // the highlight reads as bronze/torchlight, not stadium-white.
-    const rim = new THREE.DirectionalLight(0xffd0a0, 0.7);
-    rim.position.set(-1, 2, -2);
+    // BACK / RIM LIGHT — warm tint behind the subject, pops the
+    // silhouette off the grey backdrop with a torchlight-coloured
+    // edge so highlights read bronze, not stadium-white.
+    const rim = new THREE.DirectionalLight(0xffd0a0, 1.5);
+    rim.position.set(-2, 2, -3);
     rim.target.position.set(0, 1.4, 0);
     scene.add(rim);
     scene.add(rim.target);
