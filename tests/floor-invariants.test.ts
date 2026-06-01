@@ -28,7 +28,8 @@ function penetration(a: Rect, b: Rect): number {
 // Coarse BFS over rooms+corridors (minus void cells) → is every stair reachable
 // from spawn? Mirrors the runtime walkable model closely enough to catch a
 // chasm/void that strands the path.
-const CELL = 0.5;
+const CELL = 0.25;
+const PLAYER_RADIUS = 0.3;   // matches camera.ts — the path must FIT the player
 function stairsReachable(spec: LevelSpec): boolean {
   const rects = [...spec.rooms.filter((r) => !r.logicalOnly), ...spec.corridors];
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -43,7 +44,10 @@ function stairsReachable(spec: LevelSpec): boolean {
       for (let cx = Math.max(0, Math.floor((b.x - b.w / 2 - minX) / CELL)); cx <= Math.min(CX - 1, Math.floor((b.x + b.w / 2 - minX) / CELL)); cx++) W[id(cx, cz)] = v;
   };
   for (const r of rects) mark(r.rect, 1);
-  for (const v of spec.voids ?? []) mark(v, 0);
+  // Voids block the player's CENTER within its radius (collision), so erode
+  // around them — a strip thinner than ~2*radius next to a void isn't really
+  // walkable (the soft-lock that slipped past the old point-BFS check).
+  for (const v of spec.voids ?? []) mark({ x: v.x, z: v.z, w: v.w + 2 * PLAYER_RADIUS, d: v.d + 2 * PLAYER_RADIUS }, 0);
   const sx = Math.floor((spec.startPos.x - minX) / CELL), sz = Math.floor((spec.startPos.z - minZ) / CELL);
   const seen = new Uint8Array(CX * CZ); const q = [id(sx, sz)];
   if (!W[q[0]]) return false; seen[q[0]] = 1;

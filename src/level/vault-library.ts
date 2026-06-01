@@ -864,13 +864,15 @@ const CHASM_BRIDGE: Vault = {
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_PALE,
-  // Two voids flanking a ~1.8m central bridge (x∈[-0.9,0.9]), with ~1m
-  // walkable ledges at the E/W walls + ~2.5m rims N/S. Every mid-edge corridor
-  // opening lands on solid floor, and there are always multiple routes across
-  // (bridge or skirt the ledges) — so the abyss never strands the stairs.
+  // Two voids flanking a 3m central bridge (x∈[-1.5,1.5]), with ~2m walkable
+  // ledges at the E/W walls + ~3m rims N/S. Every margin is >= 2m so the
+  // PLAYER (collision radius 0.3) can actually traverse the strip a corridor
+  // opens onto — a thinner ledge soft-locks: you enter onto a sliver with the
+  // abyss right ahead and can't slip past it to the bridge. (Was 1m ledges,
+  // which the old point-BFS reachability check wrongly passed.)
   voids: [
-    { x: -3.45, z: 0, w: 5.1, d: 5 },
-    { x: 3.45, z: 0, w: 5.1, d: 5 },
+    { x: -3.25, z: 0, w: 3.5, d: 4 },
+    { x: 3.25, z: 0, w: 3.5, d: 4 },
   ],
 };
 
