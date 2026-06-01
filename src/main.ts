@@ -36,6 +36,7 @@ import { tickAlerts, clearAlerts } from './mobs/alerts';
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
 import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
+import { suppressNextDescentTitle } from './ui/descent-fade';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { initCharacterTracking, resetCharacter } from './state/character';
 import { initRunStateListeners } from './state/run-state-listeners';
@@ -156,6 +157,10 @@ scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 
 const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY);
 scene.add(ambient);
+
+// Inspection mode (vault-preview snaps) — flat bright fill so authored
+// geometry reads regardless of torchlight; overrides dark-adaptation.
+let inspectMode = false;
 
 // --- Static surface materials (PS1) ---
 const materials = buildMaterials();
@@ -585,7 +590,7 @@ const SYSTEMS: GameSystem[] = [
     // lift lives in the blit shader (additive shadow-raise). Ambient is a
     // secondary fill (applied during the scene render, so it works there).
     setDarkAdapt(adapt);
-    ambient.intensity = darkAdaptAmbient();
+    ambient.intensity = inspectMode ? 1.6 : darkAdaptAmbient();
     updateDarkAdaptReadout(lit, adapt, darkAdaptBrightness());
   } },
 
@@ -1066,10 +1071,20 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // very geometry the scenario exists to show. Real gameplay descents
   // still trigger it normally.
   if (floorId.startsWith('safe-')) suppressNextSafeRoomTransition();
+  // Inspection previews: skip the title card (it covers the geometry) BEFORE
+  // the load fires it, and flood bright flat light + push fog out so the whole
+  // room reads. Set after applyScenario below so nothing resets them.
+  if (scenario.inspect) suppressNextDescentTitle();
   startRun(floorId);
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.
   applyScenario(scenario, { level: currentLevel, weapon, camera });
+  if (scenario.inspect) {
+    inspectMode = true;
+    ambient.intensity = 1.6;
+    const fog = scene.fog as THREE.Fog | null;
+    if (fog) { fog.near = 30; fog.far = 90; }
+  }
 } else if (hasPendingDevSnapshot() && loadSave()) {
   // Dev hot-reload returning from DEV AUTO-UPDATE: a pending pose/HP/buffs
   // snapshot means the page just reloaded mid-floor. Skip the title and

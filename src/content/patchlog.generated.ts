@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Fix: reassign reserved enemy tile chars (game-load crash)"
+      },
+      {
         "tag": "tune",
         "text": "Level gen: chasm voids + bridge (flat-playfield verticality)"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Frame every opening: doorframe model for narrow passages"
-      },
-      {
-        "tag": "tune",
-        "text": "Audio: positional pan + shared reverb send for in-world sounds"
       }
     ]
   }

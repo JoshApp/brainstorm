@@ -1,0 +1,96 @@
+// Floor-level invariants across many generated floors. Codifies the smoke
+// scripts I kept re-writing in /tmp (vault overlap, stairs reachable, chasm
+// soft-lock) into permanent CI. Catches composer regressions — a winding
+// step that self-intersects, a void with no bridge, an unreachable exit.
+//
+//   npm test
+//
+// Sample is kept modest so the suite stays fast (~1s).
+
+import assert from 'node:assert/strict';
+import { generateFloor } from '../src/level/procgen';
+import type { LevelSpec } from '../src/level/types';
+
+let passed = 0;
+let failed = 0;
+function test(name: string, fn: () => void) {
+  try { fn(); passed++; }
+  catch (err) { failed++; console.error(`✗ ${name}\n  ${(err as Error).message}`); }
+}
+
+type Rect = { x: number; z: number; w: number; d: number };
+function penetration(a: Rect, b: Rect): number {
+  const ox = (a.w + b.w) / 2 - Math.abs(a.x - b.x);
+  const oz = (a.d + b.d) / 2 - Math.abs(a.z - b.z);
+  return Math.min(ox, oz);
+}
+
+// Coarse BFS over rooms+corridors (minus void cells) → is every stair reachable
+// from spawn? Mirrors the runtime walkable model closely enough to catch a
+// chasm/void that strands the path.
+const CELL = 0.5;
+function stairsReachable(spec: LevelSpec): boolean {
+  const rects = [...spec.rooms.filter((r) => !r.logicalOnly), ...spec.corridors];
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const r of rects) {
+    minX = Math.min(minX, r.rect.x - r.rect.w / 2); maxX = Math.max(maxX, r.rect.x + r.rect.w / 2);
+    minZ = Math.min(minZ, r.rect.z - r.rect.d / 2); maxZ = Math.max(maxZ, r.rect.z + r.rect.d / 2);
+  }
+  const CX = Math.ceil((maxX - minX) / CELL), CZ = Math.ceil((maxZ - minZ) / CELL);
+  const W = new Uint8Array(CX * CZ); const id = (x: number, z: number) => z * CX + x;
+  const mark = (b: Rect, v: number) => {
+    for (let cz = Math.max(0, Math.floor((b.z - b.d / 2 - minZ) / CELL)); cz <= Math.min(CZ - 1, Math.floor((b.z + b.d / 2 - minZ) / CELL)); cz++)
+      for (let cx = Math.max(0, Math.floor((b.x - b.w / 2 - minX) / CELL)); cx <= Math.min(CX - 1, Math.floor((b.x + b.w / 2 - minX) / CELL)); cx++) W[id(cx, cz)] = v;
+  };
+  for (const r of rects) mark(r.rect, 1);
+  for (const v of spec.voids ?? []) mark(v, 0);
+  const sx = Math.floor((spec.startPos.x - minX) / CELL), sz = Math.floor((spec.startPos.z - minZ) / CELL);
+  const seen = new Uint8Array(CX * CZ); const q = [id(sx, sz)];
+  if (!W[q[0]]) return false; seen[q[0]] = 1;
+  while (q.length) {
+    const c = q.pop()!; const cx = c % CX, cz = (c - cx) / CX;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, nz = cz + dz;
+      if (nx < 0 || nz < 0 || nx >= CX || nz >= CZ) continue;
+      const ni = id(nx, nz); if (W[ni] && !seen[ni]) { seen[ni] = 1; q.push(ni); }
+    }
+  }
+  for (const st of spec.stairs ?? []) {
+    const x = Math.floor((st.x - minX) / CELL), z = Math.floor((st.z - minZ) / CELL);
+    let ok = false;
+    for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const a = x + dx, b = z + dz;
+      if (a >= 0 && b >= 0 && a < CX && b < CZ && seen[id(a, b)]) ok = true;
+    }
+    if (!ok) return false;
+  }
+  return true;
+}
+
+// Deterministic sample: depths 1..13 × 25 seeds.
+const SEEDS = Array.from({ length: 25 }, (_, i) => 4242 + i * 1009);
+
+test('generation never throws', () => {
+  for (let d = 1; d <= 13; d++) for (const s of SEEDS) generateFloor(d, s);
+});
+
+test('no two vaults overlap on any floor', () => {
+  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
+    const spec = generateFloor(d, s);
+    const rooms = spec.rooms.filter((r) => !r.logicalOnly).map((r) => r.rect);
+    for (let i = 0; i < rooms.length; i++)
+      for (let j = i + 1; j < rooms.length; j++)
+        assert.ok(penetration(rooms[i], rooms[j]) <= 0.05,
+          `depth ${d} seed ${s}: vault overlap ${penetration(rooms[i], rooms[j]).toFixed(2)}m`);
+  }
+});
+
+test('stairs are always reachable from spawn (incl. chasm bridges)', () => {
+  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
+    const spec = generateFloor(d, s);
+    assert.ok(stairsReachable(spec), `depth ${d} seed ${s}: stairs unreachable`);
+  }
+});
+
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);

@@ -32,4 +32,22 @@ if ! node_modules/.bin/tsc --noEmit; then
   exit 1
 fi
 echo "[pre-push] ✓ typecheck passed"
+
+# Tests — catch what tsc can't: a module that THROWS at runtime init (a
+# reserved/duplicate enemy tile char white-screened the live game once;
+# tsc + vite build don't execute the module, the test suite does), plus
+# composer invariants (vault overlap, unreachable stairs) and vault
+# structure. Fast (~couple seconds). Skipped if tsx isn't installed.
+if [ -x node_modules/.bin/tsx ]; then
+  echo "[pre-push] running tests…"
+  if ! npm test --silent; then
+    echo ""
+    echo "[pre-push] ✗ tests FAILED — push aborted."
+    echo "           Fix the failures above, or SKIP_PREPUSH=1 git push to force."
+    exit 1
+  fi
+  echo "[pre-push] ✓ tests passed"
+else
+  echo "[pre-push] tsx not found (run npm ci) — skipping tests"
+fi
 exit 0

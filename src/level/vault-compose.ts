@@ -134,7 +134,7 @@ function stepGeometry(
  *  shifts flat → pitched (mine tunnels) → barrel (deep cathedral). Pure
  *  function of (role, depth, index) — no RNG, so it never perturbs the
  *  placement stream and stays reproducible per seed. */
-function ceilingFor(
+export function ceilingFor(
   vault: Vault, depth: number, index: number,
 ): { style: 'flat' | 'barrel' | 'pitched'; rise: number } {
   const tags = vault.tags;

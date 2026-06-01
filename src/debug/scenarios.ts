@@ -8,6 +8,10 @@ import { setCameraYaw } from '../controls/camera';
 import { setWorldFrozen } from './freeze';
 import { generateFloor } from '../level/procgen';
 import { generateSafeRoom } from '../level/safe-room';
+import { parseTileMap } from '../level/tilemap';
+import { ceilingFor } from '../level/vault-compose';
+import { VAULTS } from '../level/vault-library';
+import type { Vault } from '../level/vault';
 import { debugUseAll, debugTickAll } from '../interactables/system';
 import { damagePlayer } from '../player/health';
 import { get as getEntity } from '../ecs/world';
@@ -51,6 +55,13 @@ export interface Scenario {
   };
   /** Hide the player's held sword (for non-combat scenarios where it fills the frame). */
   hideSword?: boolean;
+  /**
+   * Inspection mode (vault-preview snaps): suppress the floor title card and
+   * flood the scene with bright, flat ambient + far fog so AUTHORED GEOMETRY
+   * reads clearly regardless of torch placement. Trades grimdark mood for
+   * legibility — only meant for `vault-<id>` previews, never gameplay.
+   */
+  inspect?: boolean;
   /** Override one or more enemies' state by spawn index. */
   enemyOverrides?: Array<{
     index: number;
@@ -788,6 +799,51 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 };
+
+// ── Vault inspector previews (DEV only) ─────────────────────────────────
+// One scenario per vault — `?scenario=vault-<id>` (snap: `npm run snap
+// vault-<id>`). Builds the single vault with its REAL treatment (ceiling
+// style via ceilingFor, wallVariant, voids) and frames it from an elevated
+// interior camera, so authored geometry can be inspected directly instead of
+// walking a whole floor hunting for the room. DEV-gated so it never runs (or
+// bloats) the production bundle.
+
+/** Single-vault LevelSpec mirroring how the composer would build this vault
+ *  (ceiling shape, wall variant, voids) — for inspection snaps. */
+function vaultPreviewSpec(v: Vault): LevelSpec {
+  const ceil = ceilingFor(v, 5, 1);
+  const sub = parseTileMap(v.map, {
+    id: `vault-preview-${v.id}`,
+    offsetX: 0, offsetZ: 0,
+    roomId: 'vault-0',
+    torchTint: v.torchTint,
+    roomHeight: v.roomHeight,
+    ceilingStyle: ceil.style,
+    ceilingRise: ceil.rise,
+    wallVariant: v.wallVariant,
+    spawnYaw: Math.PI,
+  });
+  return {
+    ...sub,
+    depth: 5,
+    voids: (v.voids ?? []).map((z) => ({ x: z.x, z: z.z, w: z.w, d: z.d })),
+  };
+}
+
+if (import.meta.env.DEV) {
+  for (const v of VAULTS) {
+    const innerD = Math.max(0, v.map.length - 2);
+    SCENARIOS[`vault-${v.id}`] = {
+      freeze: true,
+      hideSword: true,
+      inspect: true,
+      level: vaultPreviewSpec(v),
+      // Elevated interior view from the south edge, looking north across the
+      // room — shows floor layout, walls, the ceiling underside, and any void.
+      playerPos: { x: 0, z: innerD / 2 - 0.5, y: 2.3, lookAt: { x: 0, z: 0, y: 1.3 } },
+    };
+  }
+}
 
 export function getScenarioFromUrl(): Scenario | null {
   const params = new URLSearchParams(window.location.search);

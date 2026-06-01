@@ -164,8 +164,11 @@ async function main() {
 
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
 
-    // Wait for canvas to actually render some frames
-    const waitMs = LONG_WAIT_SCENARIOS.has(scenario) ? 1800 : 900;
+    // Wait for canvas to actually render some frames. Vault-inspector previews
+    // (`vault-<id>`) wait long enough for the floor title card to fully fade
+    // (~1.6s after load) so the geometry shot isn't covered by "Depth N" text.
+    const longWait = LONG_WAIT_SCENARIOS.has(scenario) || scenario.startsWith('vault-');
+    const waitMs = longWait ? 2000 : 900;
     await page.waitForTimeout(waitMs);
 
     await page.screenshot({ path: outPath });

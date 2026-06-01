@@ -101,11 +101,17 @@ export function fadeIn(): void {
   }, 40);
 }
 
+// One-shot suppression — the next showDescentTitle is skipped. Used by the
+// vault-inspector snaps so the "Depth N" card never covers the geometry.
+let suppressNext = false;
+export function suppressNextDescentTitle() { suppressNext = true; }
+
 /** Show a title card (e.g. "Depth 3 / The Old Refectory") centered
  *  on the black overlay. Call AFTER fadeOut completes so the text is
  *  born onto the black, then it auto-fades a moment after the world
  *  is revealed. Pass an empty subtitle for unnamed depths. */
 export function showDescentTitle(title: string, subtitle: string = '') {
+  if (suppressNext) { suppressNext = false; return; }
   const card = ensureTitleCard();
   if (titleEl) titleEl.textContent = title;
   if (subtitleEl) subtitleEl.textContent = subtitle;
