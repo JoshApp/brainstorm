@@ -153,6 +153,13 @@ export type PropSpec =
        *  affect the open animation or hinge geometry; purely the
        *  silhouette and built-in materials. */
       tier?: 'supply' | 'iron' | 'boss';
+      /** If true, this chest is a MIMIC in disguise. The interactable
+       *  still renders as a chest of `tier` (so the player can't tell
+       *  from a distance — see chest.ts for the subtle lid-jiggle
+       *  tell), but on OPEN it spawns a mimic mob at this position
+       *  instead of dropping loot. Procgen rolls this with a small
+       *  per-tier probability. */
+      mimic?: boolean;
       /** Set by the corridor-clearance post-process when a chest's
        *  position overlaps a corridor rect. Builder skips collision
        *  push for the chest so the player can walk through it — the

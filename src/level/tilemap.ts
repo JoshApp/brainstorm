@@ -95,6 +95,58 @@ export interface TileMapOptions {
   /** Override the room id assigned to spawns + the produced RoomSpec.
    *  Defaults to 'main' for single-map floors. */
   roomId?: string;
+  /** Dungeon depth this map sits at. Used by the chest-tier roll
+   *  (deeper floors get iron/boss tiers more often) and by the mimic
+   *  chance (a tiny per-tier probability of replacing a real chest
+   *  with one in disguise). Default 1. */
+  depth?: number;
+}
+
+// ── Procgen chest tier + mimic + loot rolls ─────────────────────────
+//
+// The `c` tile in a procgen map is a "spawn a chest here" placeholder.
+// At parse time we roll:
+//   1. Tier (supply / iron / boss), weighted by depth.
+//   2. Mimic chance (small per-tier probability).
+//   3. Loot (only used when it's NOT a mimic — the mimic gives its
+//      own drops via the enemy spec, more generous than a real chest).
+//
+// All rolls go through buildRng() (the per-floor seeded stream) so a
+// given floor reproduces identically.
+
+type ChestTier = 'supply' | 'iron' | 'boss';
+
+function rollChestTier(depth: number, rand: () => number): ChestTier {
+  // Cumulative weights by depth band. Boss-tier never exceeds ~12%
+  // even very deep — it should stay a rare reward, not a regular.
+  let supplyW = 0.75, ironW = 0.22, bossW = 0.03;
+  if (depth >= 4 && depth <= 7) { supplyW = 0.55; ironW = 0.38; bossW = 0.07; }
+  else if (depth >= 8)           { supplyW = 0.40; ironW = 0.48; bossW = 0.12; }
+  const r = rand();
+  if (r < supplyW) return 'supply';
+  if (r < supplyW + ironW) return 'iron';
+  return 'boss';
+}
+
+function rollMimic(tier: ChestTier, rand: () => number): boolean {
+  // Rarer chests are likelier to be mimics — they're the gamble. The
+  // dungeon punishes greed in proportion to the reward you reached
+  // for. Wood mimic is the surprise; boss mimic is the choice.
+  const chance = tier === 'supply' ? 0.05 : tier === 'iron' ? 0.09 : 0.14;
+  return rand() < chance;
+}
+
+function rollChestLoot(tier: ChestTier, rand: () => number): import('../content/items').ItemSpec {
+  // Small hand-tuned pool per tier. Quality climbs visibly: supply
+  // mostly potions, iron mostly gear, boss mostly relics/rings.
+  // Picks once via uniform weighted choice — no cumulative rare-roll
+  // gating; the tier IS the gate.
+  const supplyPool = ['healing-potion', 'healing-potion', 'healing-potion', 'leather-gloves', 'worn-boots', 'oil-lamp'];
+  const ironPool = ['iron-coif', 'leather-gloves', 'worn-boots', 'wooden-shield', 'scimitar', 'bone-amulet', 'tattered-cloak', 'healing-potion'];
+  const bossPool = ['ring-of-vigor', 'ring-of-bloodthirst', 'ring-of-marrow', 'mendicants-locket', 'cuirass-of-ash', 'heretics-hood', 'reapers-toll'];
+  const pool = tier === 'supply' ? supplyPool : tier === 'iron' ? ironPool : bossPool;
+  const pick = pool[Math.floor(rand() * pool.length)];
+  return ITEMS[pick] ?? ITEMS['healing-potion'];
 }
 
 // TileMap type exported from level/types.ts so both tilemap + procgen share.
@@ -529,15 +581,23 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           break;
         }
         case 'c': {
-          // Pseudo-random loot — pick something useful but not headline.
-          // Declarative facing: the back of the chest sits AGAINST
-          // the nearest wall, lid swings forward into the open
-          // room. resolveAllFacings (in level/facing.ts) computes
-          // the concrete rotY at compose time using the room rects.
+          // Procgen chest: roll TIER (visual + loot quality) then a
+          // small per-tier MIMIC chance. A mimic chest gets no loot
+          // assigned — its drop pool lives on the mimic enemy spec
+          // and only fires if you survive opening it. Declarative
+          // facing: the back of the chest sits AGAINST the nearest
+          // wall, lid swings forward into the open room.
+          const depth = opts.depth ?? 1;
+          const tier = rollChestTier(depth, buildRng);
+          const mimic = rollMimic(tier, buildRng);
           props.push({
             kind: 'chest', x, z,
             facing: { kind: 'wall-away' },
-            loot: ITEMS['healing-potion'],
+            tier,
+            mimic,
+            // A real chest carries its tier-rolled loot; a mimic
+            // doesn't — opening it spawns the mob, not a pickup.
+            loot: mimic ? undefined : rollChestLoot(tier, buildRng),
           });
           break;
         }

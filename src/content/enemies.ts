@@ -7,6 +7,7 @@ import {
   humanoidGhoulModel, quadrupedRatModel, acolyteModel, skirmisherModel,
   wraithModel, stoneguardModel, oozeModel, spiderModel,
 } from './enemy-models';
+import { mimicModel } from './mimic';
 
 // Ranged config — if present on a spec, the enemy fires a projectile from
 // `muzzleOffset` (local to the container) during the strike phase instead
@@ -295,6 +296,7 @@ export const ENEMY_AUDIO_SIZE: Record<string, EnemyDeathSize> = {
   'sump-wisp':   'spectral',   // floating, magical — same ethereal palette as the wraith
   'plague-spore':'small',      // small body, soft pop on death
   'carrion-hound':'medium',    // dog-sized — same as ghoul/skirmisher
+  mimic:          'medium',    // chunky thud on death
 };
 
 /** Idle/aware vocalisation per enemy (mobs/enemy.ts ticks a timer and
@@ -316,6 +318,7 @@ export const ENEMY_VOCAL_ARCHETYPE: Record<string, VocalArchetype> = {
   'sump-wisp':    'groan',     // low spectral hum — fits the wraith family
   'plague-spore': 'hiss',      // wet release
   'carrion-hound':'squeak',    // panting/growling; nearest match in the existing pool
+  mimic:          'groan',     // low chest-rattle from the throat
 };
 
 
@@ -1246,6 +1249,58 @@ export const ENEMIES: Record<string, EnemySpec> = {
       rate: 0.25,
       pool: [
         { itemId: 'healing-potion', weight: 2 },
+      ],
+    },
+  },
+
+  // Mimic — chest-disguised ambush mob. Never roll-placed in a vault
+  // (no tileChar). Spawned in by the chest interactable when the
+  // player "opens" a chest that was marked mimic in procgen. Stats
+  // skew chunky: more HP than a ghoul, slower chase, big chomping
+  // bite. Doesn't perceive the world normally — sightRange/hearingRange
+  // are wide so the spawn-frame aggro on the player who JUST opened
+  // the chest is automatic; no need to be facing it.
+  mimic: {
+    id: 'mimic',
+    name: 'mimic',
+    // No tileChar — never roll-placed. The chest interactable is the
+    // only spawn path.
+    hp: 6,
+    moveSpeed: 1.8,
+    attackDamage: 2,
+    attackRange: 1.6,
+    strikeRange: 1.40,
+    windupTime: 0.55,     // big maw-gape tell — long enough to read
+    strikeTime: 0.18,
+    recoverTime: 0.55,
+    damageType: 'physical',
+    model: mimicModel(),
+    baseEyeEmissive: 2.4,
+    collisionRadius: 0.32,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    presence: 'lurch',
+    // Wide perception so the post-reveal frame aggros the player
+    // even if they jumped sideways the instant they opened it.
+    sightRange: 8,
+    sightConeHalfAngle: Math.PI,   // full sphere — it's already on you
+    hearingRange: 4,
+    loseSightTime: 8,
+    xp: 12,
+    gold: [4, 16],
+    // Surviving a mimic is its own loot event. Always drops a pool
+    // pick (rate = 1.0) so the betrayal pays out, with quality
+    // weighted toward gear over potions — the dungeon rewards a
+    // player who keeps their footing after the trap springs.
+    drops: {
+      rate: 1.0,
+      pool: [
+        { itemId: 'ring-of-bloodthirst', weight: 1 },
+        { itemId: 'iron-coif', weight: 3 },
+        { itemId: 'leather-gloves', weight: 3 },
+        { itemId: 'scimitar', weight: 4 },
+        { itemId: 'healing-potion', weight: 4 },
       ],
     },
   },

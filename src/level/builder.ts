@@ -897,7 +897,28 @@ export function buildLevel(
         });
       }
     } else if (prop.kind === 'chest') {
-      spawnChest(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.loot, prop.tier);
+      // Mimic chests need a callback that spawns the mimic mob into
+      // the right room when the lid slams open. spawnInto is defined
+      // later in this function (hoisted as a function declaration);
+      // the closure body only runs at interact-time so all the
+      // by-then-initialised state is available.
+      const chestRoomId = prop.mimic
+        ? findRoomContaining(prop.x, prop.z, spec.rooms)
+        : null;
+      const onMimic = prop.mimic
+        ? (worldPos: THREE.Vector3) => {
+            spawnInto(ENEMIES.mimic, worldPos, chestRoomId);
+          }
+        : undefined;
+      spawnChest(
+        root,
+        new THREE.Vector3(prop.x, 0, prop.z),
+        prop.rotY ?? 0,
+        prop.loot,
+        prop.tier,
+        prop.mimic ?? false,
+        onMimic,
+      );
       if (!prop.noCollision) {
         obstacles.push({
           kind: 'aabb',

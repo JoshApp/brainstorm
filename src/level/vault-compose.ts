@@ -378,6 +378,7 @@ export function composeFloor(
       ceilingRise: ceil.rise,
       wallVariant: pv.vault.wallVariant,
       spawnYaw: pv.vault.tags.includes('start') ? Math.PI : undefined,
+      depth,
     });
     rooms.push(...sub.rooms);
     corridorRooms.push(...sub.corridors);

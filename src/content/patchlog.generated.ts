@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Pilot: goto verb + cross-call persistence"
+      },
+      {
         "tag": "content",
         "text": "Pilot/inspector: faithful populated vault previews"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "Fix uncarved stairwell floor when stairs sit flush with back wall"
-      },
-      {
-        "tag": "tune",
-        "text": "Consumables: heal carry cap, mobile-first hotbar, better feedback"
       }
     ]
   }
