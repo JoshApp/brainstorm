@@ -9,8 +9,10 @@ import { getChargeProgress } from '../controls/charge-input';
 /** Movement intent at the moment the player presses attack. Picked
  *  from the joystick magnitude + direction in combat/attack.ts and
  *  passed into startSwing — if a directional move is registered for
- *  this weapon class, it overrides the normal combo step. */
-export type AttackDirection = 'forward' | 'back' | 'strafe' | null;
+ *  this weapon class, it overrides the normal combo step. Strafe is
+ *  split L/R so the sword can sweep IN the direction of the body's
+ *  momentum (right strafe → blade sweeps left-to-right). */
+export type AttackDirection = 'forward' | 'back' | 'strafe-left' | 'strafe-right' | null;
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep } from '../content/weapon-classes';
 
@@ -167,24 +169,43 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
       if (!isFinisher) queuedPress = true;
       return false;
     }
-    // Pick the active step. If the player held the joystick in a
-    // direction AND this weapon has a matching directional move,
-    // override the combo with it AND reset the combo position so
-    // the next neutral press starts a fresh 1-2-3.
+    // Pick the active step.
+    //
+    // Lookup order (highest priority first):
+    //   1. CHARGED + direction → chargedMoves[direction] (specials —
+    //      back-ward, strafe-spin, forward-plunge; today only ward).
+    //   2. direction → directionalMoves[direction] (lunge / sweeps /
+    //      retreat). Charge modifiers (+30% reach / +40% cone / +80%
+    //      damage) still stack on top in attack.ts.
+    //   3. neither → normal combo step. Charge modifiers stack too.
+    //
+    // Firing a directional or charged-special override RESETS the
+    // combo to step 0 so the next neutral press starts a fresh 1-2-3.
     const w = getCurrentWeapon();
     activeDirectionalStep = null;
-    if (opts?.direction && w.directionalMoves) {
-      const move = w.directionalMoves[opts.direction];
-      if (move) {
-        activeDirectionalStep = move;
-        comboStep = 0;
-      }
+    const dir = opts?.direction;
+    const isCharged = !!opts?.skipWindup;
+    if (dir) {
+      // Map strafe-left / strafe-right onto a single 'strafe' key for
+      // chargedMoves lookup (the spin is rotationally symmetric).
+      const chargeKey: 'forward' | 'back' | 'strafe' | null =
+        dir === 'forward' ? 'forward' :
+        dir === 'back'    ? 'back' :
+                            'strafe';
+      const dirKey =
+        dir === 'forward'      ? 'forward' :
+        dir === 'back'         ? 'back' :
+        dir === 'strafe-left'  ? 'strafeLeft' :
+                                  'strafeRight';
+      const chargedMove = isCharged && w.chargedMoves ? w.chargedMoves[chargeKey] : undefined;
+      const directional = w.directionalMoves ? w.directionalMoves[dirKey] : undefined;
+      activeDirectionalStep = chargedMove ?? directional ?? null;
+      if (activeDirectionalStep) comboStep = 0;
     }
-    // No directional override: if we're past the combo window the
-    // previous chain is dead and the next press restarts the combo
-    // from step 0. If we're still inside it, comboStep was pre-
-    // advanced when the last recover ended, so we just fire whatever
-    // it currently is.
+    // No override: if we're past the combo window the previous chain
+    // is dead and the next press restarts from step 0. If we're still
+    // inside it, comboStep was pre-advanced when the last recover
+    // ended, so we just fire whatever it currently is.
     if (!activeDirectionalStep && nowMs() >= comboWindowExpiresAt) {
       comboStep = 0;
     }

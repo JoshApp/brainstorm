@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Sword pilot moveset: directional moves + combo + charge"
+      },
+      {
+        "tag": "tune",
         "text": "Charge prototype: aim-while-charging + heavier viewmodel + threshold"
       },
       {
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Audio: tame the exposed drone (esp. Act 3 sawtooth) + calm on clear"
-      },
-      {
-        "tag": "fix",
-        "text": "Wide cobweb gates + fix wall-face stuck in the doorway"
       }
     ]
   }

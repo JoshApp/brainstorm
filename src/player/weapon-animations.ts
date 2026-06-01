@@ -50,8 +50,10 @@ export function computeWeaponPose(pose: PoseKey, phase: SwordPhase, t: number): 
     case 'sword-slash-right':  return swordSlashRightPose(phase, t);
     case 'sword-thrust':       return swordThrustPose(phase, t);
     case 'sword-lunge-forward':return swordLungeForwardPose(phase, t);
-    case 'sword-sweep-strafe': return swordSweepStrafePose(phase, t);
+    case 'sword-sweep-left':   return swordSweepLeftPose(phase, t);
+    case 'sword-sweep-right':  return swordSweepRightPose(phase, t);
     case 'sword-retreat-slash':return swordRetreatSlashPose(phase, t);
+    case 'sword-ward-back':    return swordWardBackPose(phase, t);
     case 'hammer-swing-left':  return hammerSwingLeftPose(phase, t);
     case 'hammer-swing-right': return hammerSwingRightPose(phase, t);
     case 'hammer-smash':       return hammerPose(phase, t);
@@ -242,26 +244,91 @@ function swordLungeForwardPose(phase: SwordPhase, t: number): WeaponPose {
   return scratch;
 }
 
-/** Strafe sweep — a wide horizontal arc that catches multiple
- *  adjacent targets. Goes from far right (windup) all the way to
- *  far left (strike-end) with the blade swinging through the
- *  player's eye line. Crowd-clearance answer to "two mobs flanking." */
-function swordSweepStrafePose(phase: SwordPhase, t: number): WeaponPose {
-  // Pull WAY across to the RIGHT in windup — sword cocks behind the
-  // player's right shoulder.
-  const WIND_X = ix + 0.22;
-  const WIND_Y = iy + 0.10;
-  const WIND_Z = iz + 0.06;
-  const WIND_RX = rx - 0.45;
-  const WIND_RY = ry - 0.55;
-  const WIND_RZ = rz - 0.85;        // blade leaning right, tip up
-  // Strike-end: blade fully across to the LEFT, low.
-  const END_X = ix - 0.28;
-  const END_Y = iy - 0.16;
-  const END_Z = iz - 0.05;
-  const END_RX = rx - 0.30;
-  const END_RY = ry + 0.40;
-  const END_RZ = rz + 1.00;
+/** Strafe-LEFT sweep — wide horizontal arc following the body's
+ *  leftward momentum. Sword cocks behind the right shoulder, sweeps
+ *  across to the lower-left. Triggered when strafing LEFT into
+ *  the swing. */
+function swordSweepLeftPose(phase: SwordPhase, t: number): WeaponPose {
+  return swordSweepBetween(phase, t,
+    /* WIND */  ix + 0.22, iy + 0.10, iz + 0.06,
+    /* WIND R */ rx - 0.45, ry - 0.55, rz - 0.85,
+    /* END  */  ix - 0.28, iy - 0.16, iz - 0.05,
+    /* END R */ rx - 0.30, ry + 0.40, rz + 1.00,
+  );
+}
+
+/** Strafe-RIGHT sweep — mirror of strafe-left. Cocks behind the
+ *  left shoulder, sweeps to the lower-right. */
+function swordSweepRightPose(phase: SwordPhase, t: number): WeaponPose {
+  return swordSweepBetween(phase, t,
+    /* WIND */  ix - 0.22, iy + 0.10, iz + 0.06,
+    /* WIND R */ rx - 0.45, ry + 0.55, rz + 0.85,
+    /* END  */  ix + 0.28, iy - 0.16, iz - 0.05,
+    /* END R */ rx - 0.30, ry - 0.40, rz - 1.00,
+  );
+}
+
+/** Shared sweep curve — same windup→strike→recover envelope, just
+ *  parametrised by the start/end pose endpoints. Saves duplicating
+ *  the lerp math for the two mirrored sweeps. */
+function swordSweepBetween(
+  phase: SwordPhase, t: number,
+  windX: number, windY: number, windZ: number,
+  windRX: number, windRY: number, windRZ: number,
+  endX: number, endY: number, endZ: number,
+  endRX: number, endRY: number, endRZ: number,
+): WeaponPose {
+  if (phase === 'windup') {
+    scratch.x = ix + (windX - ix) * t;
+    scratch.y = iy + (windY - iy) * t;
+    scratch.z = iz + (windZ - iz) * t;
+    scratch.rotX = rx + (windRX - rx) * t;
+    scratch.rotY = ry + (windRY - ry) * t;
+    scratch.rotZ = rz + (windRZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = windX + (endX - windX) * ease;
+    scratch.y = windY + (endY - windY) * ease;
+    scratch.z = windZ + (endZ - windZ) * ease;
+    scratch.rotX = windRX + (endRX - windRX) * ease;
+    scratch.rotY = windRY + (endRY - windRY) * ease;
+    scratch.rotZ = windRZ + (endRZ - windRZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = endX + (ix - endX) * e;
+  scratch.y = endY + (iy - endY) * e;
+  scratch.z = endZ + (iz - endZ) * e;
+  scratch.rotX = endRX + (rx - endRX) * e;
+  scratch.rotY = endRY + (ry - endRY) * e;
+  scratch.rotZ = endRZ + (rz - endRZ) * e;
+  return scratch;
+}
+
+/** Charged-back WARD — the player held to charge, then released
+ *  backwards. They're winding up to KICK SPACE OPEN. Blade held
+ *  vertical at the chest during windup (flat-of-blade forward),
+ *  then a wide horizontal SHOVE during strike. Wider arc than the
+ *  thrust, and the long recover sells the commit. The "I will be
+ *  given space" move. */
+function swordWardBackPose(phase: SwordPhase, t: number): WeaponPose {
+  // Windup: blade pulled vertically up to chest, flat facing forward,
+  // gripped at centre — a guard stance.
+  const WIND_X = ix + 0.04;
+  const WIND_Y = iy + 0.18;
+  const WIND_Z = iz + 0.10;
+  const WIND_RX = rx - 0.30;
+  const WIND_RY = ry - 0.40;
+  const WIND_RZ = rz - 0.10;
+  // Strike-end: blade SHOVED forward + sweeping horizontally across.
+  const END_X = ix - 0.10;
+  const END_Y = iy + 0.02;
+  const END_Z = iz - 0.32;
+  const END_RX = rx - 0.95;
+  const END_RY = ry + 0.30;
+  const END_RZ = rz + 0.40;
   if (phase === 'windup') {
     scratch.x = ix + (WIND_X - ix) * t;
     scratch.y = iy + (WIND_Y - iy) * t;
@@ -272,6 +339,7 @@ function swordSweepStrafePose(phase: SwordPhase, t: number): WeaponPose {
     return scratch;
   }
   if (phase === 'strike') {
+    // Fast snap during strike — this is the SHOVE.
     const ease = 1 - (1 - t) * (1 - t);
     scratch.x = WIND_X + (END_X - WIND_X) * ease;
     scratch.y = WIND_Y + (END_Y - WIND_Y) * ease;

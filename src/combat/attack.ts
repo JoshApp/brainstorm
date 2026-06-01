@@ -33,12 +33,17 @@ const STRAFE_AXIS_BIAS = 0.7;
 
 /** Picks an attack direction from the live joystick state at the
  *  moment of a press. Returns null if the joystick isn't held past
- *  the intent threshold — caller should fire a neutral combo step. */
+ *  the intent threshold — caller should fire a neutral combo step.
+ *  Strafe is split L/R so the sword can sweep IN the direction of
+ *  the body's momentum. */
 function pickAttackDirection(moveX: number, moveY: number): AttackDirection {
   const mag = Math.hypot(moveX, moveY);
   if (mag < MOVE_INTENT_THRESHOLD) return null;
-  // Lateral wins on near-diagonals (STRAFE_AXIS_BIAS < 1).
-  if (Math.abs(moveX) > Math.abs(moveY) * STRAFE_AXIS_BIAS) return 'strafe';
+  // Lateral wins on near-diagonals (STRAFE_AXIS_BIAS < 1). Sign of
+  // moveX picks left vs right — moveX > 0 = strafing RIGHT.
+  if (Math.abs(moveX) > Math.abs(moveY) * STRAFE_AXIS_BIAS) {
+    return moveX > 0 ? 'strafe-right' : 'strafe-left';
+  }
   // moveY < 0 in joystick convention means UP — the player is
   // pushing FORWARD relative to where the camera is facing.
   return moveY < 0 ? 'forward' : 'back';

@@ -25,8 +25,10 @@ export type PoseKey =
   | 'sword-slash-right'
   | 'sword-thrust'
   | 'sword-lunge-forward'
-  | 'sword-sweep-strafe'
+  | 'sword-sweep-left'
+  | 'sword-sweep-right'
   | 'sword-retreat-slash'
+  | 'sword-ward-back'
   | 'dagger-stab'
   | 'dagger-slash'
   | 'dagger-double-stab'
@@ -86,35 +88,67 @@ export interface ResolvedWeaponStats {
   /** Ranged projectile (crossbow/wand) — strike fires this instead of a
    *  melee cone hit. Passed through from the weapon spec. */
   ranged?: { projectileId: string };
-  /** Resolved directional move steps (lunge/sweep/retreat) — the
+  /** Resolved directional move steps (lunge/sweeps/retreat) — the
    *  same speed multipliers as the combo are applied. Optional;
    *  not every weapon has movement variants. */
   directionalMoves?: {
     forward?: ResolvedComboStep;
-    strafe?:  ResolvedComboStep;
-    back?:    ResolvedComboStep;
+    strafeLeft?: ResolvedComboStep;
+    strafeRight?: ResolvedComboStep;
+    back?: ResolvedComboStep;
+  };
+  /** Resolved charged-release special moves. Same shape as directional
+   *  moves; fires only when releasing a charge in the matching
+   *  direction. If absent for a direction, the regular directional
+   *  (or combo) step fires with the standard charge modifiers
+   *  stacked. */
+  chargedMoves?: {
+    forward?: ResolvedComboStep;
+    strafe?: ResolvedComboStep;
+    back?: ResolvedComboStep;
   };
 }
 
 /** Movement-driven attack variants. When the joystick is held past a
  *  small deadzone at the moment of a press, the swing OVERRIDES the
  *  normal combo with one of these — picked by the dominant direction.
- *  Forward = lunge (commit-and-step-in), strafe = sweep (wide cone),
- *  back = retreat-slash (quick poke + repositioning recovery).
+ *  Forward = lunge (commit-and-step-in), strafe-L/R = directional
+ *  sweeps (wide cone, mirrored arc), back = retreat-slash (quick
+ *  poke + repositioning recovery).
  *
  *  Firing a directional move RESETS the normal combo to step 0 — it
  *  doesn't advance the chain. Players who want the 1-2-3 keep the
  *  joystick centred; players who want intent-driven moves point. */
 export interface DirectionalMoves {
   forward?: ComboStep;
-  strafe?:  ComboStep;
-  back?:    ComboStep;
+  strafeLeft?: ComboStep;
+  strafeRight?: ComboStep;
+  back?: ComboStep;
+}
+
+/** Charged-release SPECIAL moves — only accessible by HOLDING to
+ *  charge AND releasing in a direction. These are distinct moves
+ *  the player can't reach with a tap. If a charged release in a
+ *  given direction has NO entry here, the regular directional (or
+ *  combo) step fires with the standard +30% reach / +40% cone /
+ *  +80% damage charge modifiers stacked on top — i.e. directional
+ *  moves are still "chargeable" by default; ChargedMoves adds the
+ *  next tier of expression on top.
+ *
+ *  Today: sword has a chargedMoves.back ("ward") — a defensive
+ *  push that creates space when the player is on the back foot.
+ *  Spin sweep (chargedMoves.strafe) is teed up for the next pass. */
+export interface ChargedMoves {
+  forward?: ComboStep;
+  strafe?: ComboStep;       // shared between strafe-left and strafe-right
+  back?: ComboStep;
 }
 
 interface ClassDefaults {
   combo: ComboStep[];
   comboWindowMs: number;
   directionalMoves?: DirectionalMoves;
+  chargedMoves?: ChargedMoves;
 }
 
 export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
@@ -158,16 +192,35 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       // physically stepped in and need a beat to reset.
       forward: { pose: 'sword-lunge-forward', windup: 0.12, strike: 0.16, recover: 0.42,
                  reachMul: 1.50, coneHalfAngleMul: 0.45, maxTargets: 1 },
-      // STRAFE sweep — wide horizontal arc that catches multiple
-      // adjacent enemies. The crowd-clearance answer when two mobs
-      // pin you on a side.
-      strafe:  { pose: 'sword-sweep-strafe', windup: 0.16, strike: 0.18, recover: 0.40,
-                 reachMul: 1.0,  coneHalfAngleMul: 1.7,  maxTargets: 3 },
+      // STRAFE-LEFT sweep — wide horizontal arc that follows the
+      // body's leftward momentum. Sword cocks behind the right
+      // shoulder, sweeps across to the lower left. Crowd-clearance
+      // when a mob is on your right side.
+      strafeLeft:  { pose: 'sword-sweep-left', windup: 0.16, strike: 0.18, recover: 0.40,
+                     reachMul: 1.0, coneHalfAngleMul: 1.7, maxTargets: 3 },
+      // STRAFE-RIGHT sweep — mirror. Cocks behind the left shoulder,
+      // sweeps to the lower right.
+      strafeRight: { pose: 'sword-sweep-right', windup: 0.16, strike: 0.18, recover: 0.40,
+                     reachMul: 1.0, coneHalfAngleMul: 1.7, maxTargets: 3 },
       // BACK retreating slash — fast poke as the player backs off.
       // Modest damage, but the SHORT recover lets you reposition
       // immediately. The "fighting retreat" answer to a charge.
       back:    { pose: 'sword-retreat-slash', windup: 0.08, strike: 0.10, recover: 0.22,
-                 reachMul: 1.1,  coneHalfAngleMul: 0.7,  maxTargets: 1 },
+                 reachMul: 1.1, coneHalfAngleMul: 0.7, maxTargets: 1 },
+    },
+    chargedMoves: {
+      // CHARGED + BACK = WARD strike. The player held to charge, then
+      // released backwards — they're not retreating, they're winding
+      // up to KICK SPACE OPEN. A horizontal shove with the flat of
+      // the blade. Wider cone than the retreat, much harder push, the
+      // long recover sells the commit. Pairs with the charge's +80%
+      // damage bonus to make it the punisher of an over-extended foe.
+      back: { pose: 'sword-ward-back', windup: 0.18, strike: 0.20, recover: 0.55,
+              reachMul: 1.25, coneHalfAngleMul: 1.3, maxTargets: 3 },
+      // (Future: chargedMoves.strafe = spinning 360° sweep, and
+      // chargedMoves.forward = an even bigger plunging strike. For
+      // V1 those fall back to the regular directional move with the
+      // standard charge modifiers stacked.)
     },
   },
   hammer: {
@@ -267,9 +320,15 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     maxTargets: step.maxTargets ?? 1,
   });
   const directionalMoves = baseT.directionalMoves ? {
-    forward: baseT.directionalMoves.forward && resolveStep(baseT.directionalMoves.forward),
-    strafe:  baseT.directionalMoves.strafe  && resolveStep(baseT.directionalMoves.strafe),
-    back:    baseT.directionalMoves.back    && resolveStep(baseT.directionalMoves.back),
+    forward:     baseT.directionalMoves.forward     && resolveStep(baseT.directionalMoves.forward),
+    strafeLeft:  baseT.directionalMoves.strafeLeft  && resolveStep(baseT.directionalMoves.strafeLeft),
+    strafeRight: baseT.directionalMoves.strafeRight && resolveStep(baseT.directionalMoves.strafeRight),
+    back:        baseT.directionalMoves.back        && resolveStep(baseT.directionalMoves.back),
+  } : undefined;
+  const chargedMoves = baseT.chargedMoves ? {
+    forward: baseT.chargedMoves.forward && resolveStep(baseT.chargedMoves.forward),
+    strafe:  baseT.chargedMoves.strafe  && resolveStep(baseT.chargedMoves.strafe),
+    back:    baseT.chargedMoves.back    && resolveStep(baseT.chargedMoves.back),
   } : undefined;
 
   return {
@@ -284,5 +343,6 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     onHit: spec.onHit,
     ranged: spec.ranged,
     directionalMoves,
+    chargedMoves,
   };
 }
