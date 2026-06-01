@@ -830,6 +830,15 @@ function vaultPreviewSpec(v: Vault): LevelSpec {
   };
 }
 
+/** Build a single-vault preview LevelSpec by vault id, or null if unknown.
+ *  Used by the `?vault=<id>` harness entry (pilot driver) to walk an authored
+ *  vault directly — the freeze lives on the SCENARIO, not the spec, so this
+ *  same spec loads fine unfrozen under harness control. */
+export function buildVaultPreviewLevel(id: string): LevelSpec | null {
+  const v = VAULTS.find((x) => x.id === id);
+  return v ? vaultPreviewSpec(v) : null;
+}
+
 if (import.meta.env.DEV) {
   for (const v of VAULTS) {
     const innerD = Math.max(0, v.map.length - 2);

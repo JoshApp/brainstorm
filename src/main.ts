@@ -53,7 +53,7 @@ import { showStartScreen } from './ui/start-screen';
 import { addItemSilently, clearInventory } from './player/inventory';
 import { get as getEntity } from './ecs/world';
 import type { EquipSlot } from './player/equipment';
-import { getScenarioFromUrl, applyScenario } from './debug/scenarios';
+import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
 import { isAnyScreenOpen } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { tickAllBuffs } from './ecs/buffs';
@@ -889,6 +889,27 @@ function handleAutostart(): boolean {
     applyState(s);
     startRun(s.floorId, s.depth);
     return true;
+  }
+
+  // VAULT preview entry — `?vault=<id>` loads a single authored vault
+  // (unfrozen, harness-controllable) so the pilot driver can walk exactly
+  // the room I just built. DEV-only + gated behind harness/dev like ?depth.
+  const vaultId = url.get('vault');
+  if (import.meta.env.DEV && vaultId && (HARNESS_ENABLED || url.get('dev') === '1')) {
+    const spec = buildVaultPreviewLevel(vaultId);
+    if (spec) {
+      clearSave();
+      LEVELS[spec.id] = spec;
+      startNewRun(spec.id, { depth: 5 });
+      recordRunStart();
+      resetRunDiscoveries();
+      applyState(null);
+      setSlot('weapon', ITEMS['rusted-sword']);
+      setSlot('offhand', ITEMS['oil-lamp']);
+      startRun(spec.id, 5);
+      return true;
+    }
+    console.warn(`?vault=${vaultId} not found in the vault library`);
   }
 
   // DESCEND path. Accept ?seed=N and (gated) ?depth=N.

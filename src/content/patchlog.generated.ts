@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Creator suite: pilot driver — Claude drives + inspects the live world"
+      },
+      {
         "tag": "content",
         "text": "Creator suite: validation tests + vault inspector + pre-push gate"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Music: motifs not random plucks, gentle combat, separate volume slider"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix rare sharp camera flip on mouse look"
       }
     ]
   }

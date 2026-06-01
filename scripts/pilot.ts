@@ -10,6 +10,8 @@
  *   npm run pilot -- --seed 42 --depth 7 --do "observe; turn 180; move N 1; interact"
  *
  * Flags:
+ *   --vault ID      pilot a single authored vault (e.g. chasm-bridge) instead
+ *                   of a procgen floor — walk exactly the room I just built
  *   --seed N        run seed (default random)
  *   --depth M       start depth (default 1)
  *   --do "..."      ';'-separated action script (see VERBS below). Default: just observe.
@@ -55,6 +57,7 @@ const argv = process.argv.slice(2);
 const get = (f: string) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined; };
 const seed = Number(get('--seed') ?? Math.floor(Math.random() * 1e9));
 const depth = Number(get('--depth') ?? 1);
+const vault = get('--vault');   // pilot a single authored vault instead of a procgen floor
 const doScript = get('--do') ?? 'observe';
 const viewport = get('--viewport') ?? 'desktop';
 const port = Number(get('--port') ?? 5180 + Math.floor(Math.random() * 200));
@@ -119,8 +122,11 @@ async function main() {
     page.on('console', (m: ConsoleMessage) => { if (m.type() === 'error') console.log(`  [browser error] ${m.text()}`); });
     page.on('pageerror', (e) => console.log(`  [browser pageerror] ${e.message}`));
 
-    const url = `http://127.0.0.1:${port}/brainstorm/?harness=1&autostart=1&seed=${seed}&depth=${depth}&freeze=false`;
-    console.log(`pilot — seed ${seed} depth ${depth}  (${url})\n`);
+    const target = vault
+      ? `vault=${encodeURIComponent(vault)}`
+      : `seed=${seed}&depth=${depth}`;
+    const url = `http://127.0.0.1:${port}/brainstorm/?harness=1&autostart=1&${target}&freeze=false`;
+    console.log(`pilot — ${vault ? `vault ${vault}` : `seed ${seed} depth ${depth}`}  (${url})\n`);
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
     await page.waitForFunction(() => Boolean((window as { harness?: unknown }).harness), { timeout: 10_000 });
     await page.evaluate(async () => { await (window as { harness: { ready: Promise<void> } }).harness.ready; });
