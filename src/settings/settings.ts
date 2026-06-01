@@ -21,6 +21,9 @@ export interface Settings {
    *  positional SFX through a long impulse response can sap frame
    *  budget on weaker phones. Toggle off if performance drops. */
   reverb: boolean;
+  /** Show the on-screen perf overlay (FPS / frame time / draw calls).
+   *  For diagnosing frame drops on the phone in the field. */
+  perfMeter: boolean;
   /** Auto-install new builds at safe moments (title screen + the next
    *  level-transition fade). When false, the player taps "INSTALL
    *  UPDATE" in the settings menu instead. */
@@ -48,6 +51,7 @@ const DEFAULTS: Settings = {
   autoUpdate: true,
   devAutoUpdate: false,
   debugMode: false,
+  perfMeter: false,
 };
 
 let current: Settings = load();

@@ -59,6 +59,7 @@ import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
+import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
@@ -900,6 +901,13 @@ function tick() {
   };
   runSystems(SYSTEMS, ctx);
 
+  // Perf overlay (toggle in Settings → PERF METER). Internally early-
+  // outs when hidden so it's free when off. reportRendererInfo reads
+  // renderer.info AFTER the render system has run this frame, so the
+  // tris/draws numbers reflect what was actually drawn.
+  reportRendererInfo(renderer);
+  tickPerfOverlay(performance.now());
+
   requestAnimationFrame(tick);
 }
 
@@ -1080,7 +1088,14 @@ if (DEBUG_ENABLED) initDarkAdaptReadout();
 onSettingsChanged((s) => {
   const urlForced = new URLSearchParams(window.location.search).get('debug') === '1';
   setDebugButton(urlForced || s.debugMode);
+  setPerfOverlayVisible(s.perfMeter);
 });
+
+// Perf overlay (FPS / frame time / draw calls). Hidden until the PERF
+// METER setting flips on — tickPerfOverlay early-outs when hidden so
+// the per-frame cost is a single style read.
+createPerfOverlay();
+setPerfOverlayVisible(getSettings().perfMeter);
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
 // the CODEX/STASH buttons without requiring real playthrough.

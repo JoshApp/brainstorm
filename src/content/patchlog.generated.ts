@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-05-30",
     "entries": [
       {
+        "tag": "tech",
+        "text": "Audio"
+      },
+      {
         "tag": "tune",
         "text": "Dev hot-reload: bypass title screen when snapshot is pending"
       },
@@ -142,6 +146,30 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-05-31",
     "entries": [
       {
+        "tag": "tech",
+        "text": "Arena portcullis + prod-safe godmode / dev-mode gating"
+      },
+      {
+        "tag": "tune",
+        "text": "Boss bar (Dark Souls-style) + make the boss a real boss"
+      },
+      {
+        "tag": "tune",
+        "text": "Re-tone the pickup chime: cold hollow toll, not a happy bell"
+      },
+      {
+        "tag": "tune",
+        "text": "Audio: tame the exposed drone (esp. Act 3 sawtooth) + calm on clear"
+      },
+      {
+        "tag": "fix",
+        "text": "Wide cobweb gates + fix wall-face stuck in the doorway"
+      },
+      {
+        "tag": "tune",
+        "text": "Boss music + keep the drone alive during ordinary combat"
+      },
+      {
         "tag": "tune",
         "text": "Combat audio: fully silent — the world goes quiet for the fight"
       }
@@ -190,34 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Tune threshold draft stronger; dark-adapt probes the looked-at surface"
-      },
-      {
-        "tag": "tune",
-        "text": "Content authoring safety"
-      },
-      {
-        "tag": "tune",
-        "text": "Replace floor embers with threshold dust + proximity haze"
-      },
-      {
-        "tag": "tune",
-        "text": "Loot depth: on-hit affixes, rarity-driven rolls, set bonuses"
-      },
-      {
-        "tag": "tune",
-        "text": "Debug: skeleton snap scenario (?scenario=skeleton)"
-      },
-      {
-        "tag": "fix",
-        "text": "creature(): skull head option (fixes committed skeleton build)"
-      },
-      {
-        "tag": "content",
-        "text": "Spear: reach-melee weapon class (the in-between)"
-      },
-      {
-        "tag": "tune",
-        "text": "Ranged viewmodel polish: crossbow recoil + wand cast poses"
       }
     ]
   }

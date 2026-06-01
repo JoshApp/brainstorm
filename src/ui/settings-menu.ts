@@ -199,6 +199,14 @@ function buildPanelContents() {
     set: (v) => updateSettings({ debugMode: v }),
   }));
 
+  // --- Perf meter toggle ---
+  panel.appendChild(makeToggle({
+    label: 'PERF METER',
+    description: 'Top-right overlay with FPS, frame time, and renderer draw counts. For diagnosing slow moments in the field.',
+    get: () => getSettings().perfMeter,
+    set: (v) => updateSettings({ perfMeter: v }),
+  }));
+
   // --- RUN ACTIONS ──────────────────────────────────────────────────
   // Bottom-of-panel danger-ish row. Three buttons in descending
   // commitment: ABANDON RUN wipes the save, QUIT keeps the save and
