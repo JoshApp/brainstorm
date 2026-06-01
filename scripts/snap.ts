@@ -207,6 +207,14 @@ async function main() {
     else if (scenario === 'stash') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showStash=1`;
     else if (scenario === 'safe-transition') url = `http://127.0.0.1:${port}/brainstorm/?showSafeTransition=1`;
     else if (isBare) url = `http://127.0.0.1:${port}/brainstorm/`;
+    // Item viewer: `item-<id>` is sugar for the generic `item`
+    // scenario with the requested item id passed via the &item=
+    // URL override. Lets us snap any of the 50+ items with one
+    // scenario row + one snap arg.
+    else if (scenario.startsWith('item-')) {
+      const itemId = scenario.slice('item-'.length);
+      url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}`;
+    }
     else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}`;
     console.log(`Opening ${url}`);
 

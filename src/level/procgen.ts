@@ -101,6 +101,10 @@ function rollTableFor(depth: number): EnemyRoll[] {
       // weight kept low so encounters where it shows up read as a
       // fixture, not a roomful.
       { enemyId: 'lasher',        weight: 1 },
+      // Burrower — floor ambush. Low weight so encountering one
+      // remains a surprise, not a regular trash mob. Pairs the
+      // moth's "look up" with "scan the floor."
+      { enemyId: 'burrower',      weight: 1 },
     ];
   }
   // Depth 8+: wraiths possible, ghouls common, acolytes regular threat,
@@ -130,6 +134,7 @@ function rollTableFor(depth: number): EnemyRoll[] {
     // has the room-control fixture available regularly.
     { enemyId: 'pit-moth',      weight: 3 },
     { enemyId: 'lasher',        weight: 2 },
+    { enemyId: 'burrower',      weight: 2 },
   ];
 }
 
