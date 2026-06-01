@@ -6,6 +6,7 @@ import { creature } from './creature';
 import {
   humanoidGhoulModel, quadrupedRatModel, acolyteModel, skirmisherModel,
   wraithModel, stoneguardModel, oozeModel, spiderModel,
+  pitMothModel, lasherModel,
 } from './enemy-models';
 import { mimicModel } from './mimic';
 
@@ -297,6 +298,8 @@ export const ENEMY_AUDIO_SIZE: Record<string, EnemyDeathSize> = {
   'plague-spore':'small',      // small body, soft pop on death
   'carrion-hound':'medium',    // dog-sized — same as ghoul/skirmisher
   mimic:          'medium',    // chunky thud on death
+  'pit-moth':     'small',     // tiny crunch
+  lasher:         'medium',    // plant-creature death
 };
 
 /** Idle/aware vocalisation per enemy (mobs/enemy.ts ticks a timer and
@@ -319,6 +322,8 @@ export const ENEMY_VOCAL_ARCHETYPE: Record<string, VocalArchetype> = {
   'plague-spore': 'hiss',      // wet release
   'carrion-hound':'squeak',    // panting/growling; nearest match in the existing pool
   mimic:          'groan',     // low chest-rattle from the throat
+  'pit-moth':     'skitter',   // wing-rustle / tiny clicks
+  lasher:         'gurgle',    // wet plant-throat
 };
 
 
@@ -1344,6 +1349,103 @@ export const ENEMIES: Record<string, EnemySpec> = {
       pool: [
         { itemId: 'healing-potion', weight: 3 },
         { itemId: 'leather-gloves', weight: 1 },
+      ],
+    },
+  },
+
+  // Pit Moth — flying insectoid melee swarmer. The mob whose job is
+  // teaching you to LOOK UP and to use CLEAVING swings, not single-
+  // target pokes. Each moth alone is trivial (1 HP — one hit kills),
+  // but they're rolled in clusters at mid-depth so encountering
+  // one usually means encountering 3-5. Hovers at head-height via
+  // the model's elevated 'rig' slot + the spectral presence overlay.
+  // No phasing — they're physical (a sword cone catches them) — but
+  // noPlayerCollision so a swarm doesn't body-block your retreat.
+  'pit-moth': {
+    id: 'pit-moth',
+    name: 'pit moth',
+    tileChar: 'm',
+    hp: 1,
+    moveSpeed: 2.6,                 // fast — outruns retreat
+    attackDamage: 1,
+    attackRange: 1.4,
+    strikeRange: 1.20,
+    windupTime: 0.30,               // brief tell — the bite is fast
+    strikeTime: 0.10,
+    recoverTime: 0.40,
+    damageType: 'physical',
+    model: pitMothModel(),
+    baseEyeEmissive: 2.6,
+    collisionRadius: 0.10,          // very small footprint
+    noPlayerCollision: true,        // swarm shouldn't body-block
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    // 'spectral' gives the float + bob — exactly what we want for
+    // "hovering above the floor."
+    presence: 'spectral',
+    // Wide spheric vision + decent hearing — they're a swarm, you
+    // can't sneak past one without all of them noticing.
+    sightRange: 7,
+    sightConeHalfAngle: 1.8,        // near-omnidirectional eyes
+    hearingRange: 3.5,
+    loseSightTime: 5,
+    xp: 1,
+    gold: [0, 2],
+    drops: {
+      rate: 0.10,                   // chaff — drops are rare per moth
+      pool: [
+        { itemId: 'healing-potion', weight: 1 },
+      ],
+    },
+  },
+
+  // Lasher — STATIONARY plant-creature with a long whip-arm tendril
+  // ending in a fanged maw. moveSpeed: 0 (rooted), but strikeRange:
+  // 3.5m means the player's safe zone is "very close OR very far."
+  // The middle band (1.5–3.5m) is the kill zone — get past the
+  // sweep, hug the bulb, and the maw can't reach you. Forces a
+  // commit decision on approach instead of the standard backpedal
+  // dance. A new attack-distance pattern in the roster (everything
+  // else either chases at melee or sits at range; the lasher does
+  // long-reach melee from a fixed spot).
+  lasher: {
+    id: 'lasher',
+    name: 'lasher',
+    tileChar: 'U',
+    hp: 4,
+    moveSpeed: 0,                   // rooted in the floor
+    attackDamage: 2,
+    attackRange: 3.8,               // long reach — the threat band
+    strikeRange: 3.5,
+    windupTime: 0.90,               // long telegraph — you can read the lunge
+    strikeTime: 0.20,
+    recoverTime: 0.85,
+    damageType: 'physical',
+    model: lasherModel(),
+    baseEyeEmissive: 2.4,
+    collisionRadius: 0.40,          // the bulb is wide
+    physicalArmor: 1,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    // 'coiled' fits — a tense plant ready to strike. The shoulder-
+    // bob shows up faintly on the maw segment.
+    presence: 'coiled',
+    // Near-omnidirectional perception so the lasher isn't bypassable
+    // from the side; it's a deliberate room-control encounter.
+    sightRange: 7,
+    sightConeHalfAngle: 1.8,
+    hearingRange: 3.5,
+    loseSightTime: 99,              // stationary — sticks indefinitely
+    xp: 8,
+    gold: [3, 10],
+    drops: {
+      rate: 0.45,
+      pool: [
+        { itemId: 'healing-potion', weight: 3 },
+        { itemId: 'acid-tongue', weight: 2 },
+        { itemId: 'cord-of-knives', weight: 1 },
       ],
     },
   },

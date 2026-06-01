@@ -1105,6 +1105,13 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     ambient.intensity = 1.6;
     const fog = scene.fog as THREE.Fog | null;
     if (fog) { fog.near = 30; fog.far = 90; }
+    // Strip all gameplay HUD so the snap shows the scene geometry
+    // alone. Same CSS class the screen-manager uses for full-screen
+    // panels (#perf-overlay, #depth-counter, #hp-bar, hotbar, boss
+    // bar etc. all hide). Reuse instead of a parallel class so a
+    // future "show only health bar in inspect" flag has one place
+    // to override.
+    document.body.classList.add('hud-hidden');
   }
 } else if (hasPendingDevSnapshot() && loadSave()) {
   // Dev hot-reload returning from DEV AUTO-UPDATE: a pending pose/HP/buffs

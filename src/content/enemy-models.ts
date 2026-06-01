@@ -599,3 +599,184 @@ export function spiderModel(bodyColor: number, eyeColor: number, eyeEmissive: nu
     ],
   };
 }
+
+// ── Pit moth — small flying insectoid ───────────────────────────────
+// Hovers at head-height (rig at y=1.55) with the spectral presence
+// overlay so it bobs continuously. Body is a tiny dark capsule; four
+// wing planes splay outward (no flap animation — the bob sells it).
+// Two oversized luminescent eyes give the creature its read at a
+// glance: bright pinpricks in the dark, a moth's whole face. Used by
+// the pit-moth EnemySpec (low HP, fast bob, melee bite — the swarm
+// is the threat, not the individual).
+export function pitMothModel(): ModelSpec {
+  return {
+    id: 'pit-moth',
+    materials: {
+      // Body: matte near-black with a faint sickly emissive — reads as
+      // a dark silhouette but doesn't disappear into the dungeon black.
+      body: {
+        color: 0x100a08,
+        roughness: 1.0,
+        emissive: 0x100a05,
+        emissiveIntensity: 0.5,
+        flatShading: 'auto',
+        dissolvable: true,
+      },
+      // Wing: dusty tan, partially transparent. Lit from behind by the
+      // dungeon's torch palette it still reads as a moth-wing membrane.
+      wing: {
+        color: 0x3a2818,
+        roughness: 0.95,
+        flatShading: 'auto',
+        transparent: true,
+        opacity: 0.78,
+      },
+      // Eyes: huge for the head size. Two big pinprick lights.
+      eyes: {
+        color: 0x000000,
+        emissive: 0xffd060,
+        emissiveIntensity: 2.6,
+        roughness: 1.0,
+      },
+    },
+    slots: {
+      // Float head-high. 'rig' is what tilts on windup + bobs via the
+      // spectral presence overlay.
+      rig: { pos: [0, 1.55, 0] },
+    },
+    parts: [
+      // Thorax + abdomen — two stacked horizontal capsules so the
+      // silhouette has a clear waist.
+      { name: 'body', parent: 'rig', kind: 'capsule', pos: [0, 0, 0.04], rot: [Math.PI / 2, 0, 0], radius: 0.05, height: 0.10, mat: 'body', jitter: 0.005 },
+      { parent: 'rig', kind: 'sphere', pos: [0, 0.01, -0.07], radius: 0.06, segments: [10, 8], mat: 'body', jitter: 0.005 },
+      // Eyes — angled forward on the head sphere. Big for the body.
+      { parent: 'rig', kind: 'sphere', pos: [-0.035, 0.025, -0.10], radius: 0.025, segments: [8, 8], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.035, 0.025, -0.10], radius: 0.025, segments: [8, 8], mat: 'eyes' },
+      // Wings — four extruded triangle planes splayed out + slightly
+      // up from the thorax. The 2D shape is a tear-drop traced
+      // counter-clockwise. extrude depth tiny (0.003m) so they read
+      // as paper-thin membranes.
+      { parent: 'rig', kind: 'extrude', pos: [-0.06, 0.02,  0.0], rot: [0, 0,  0.40], shape: [[0, 0], [0.18, 0.04], [0.22, 0.14], [0.12, 0.16], [0.04, 0.10]], depth: 0.003, mat: 'wing' },
+      { parent: 'rig', kind: 'extrude', pos: [ 0.06, 0.02,  0.0], rot: [0, Math.PI, -0.40], shape: [[0, 0], [0.18, 0.04], [0.22, 0.14], [0.12, 0.16], [0.04, 0.10]], depth: 0.003, mat: 'wing' },
+      { parent: 'rig', kind: 'extrude', pos: [-0.05, 0.01,  0.04], rot: [0, 0.20,  0.55], shape: [[0, 0], [0.14, 0.03], [0.17, 0.10], [0.09, 0.13], [0.03, 0.08]], depth: 0.003, mat: 'wing' },
+      { parent: 'rig', kind: 'extrude', pos: [ 0.05, 0.01,  0.04], rot: [0, Math.PI - 0.20, -0.55], shape: [[0, 0], [0.14, 0.03], [0.17, 0.10], [0.09, 0.13], [0.03, 0.08]], depth: 0.003, mat: 'wing' },
+      // Antennae — two thin forward-curving cylinders.
+      { parent: 'rig', kind: 'cylinder', pos: [-0.022, 0.05, -0.14], rot: [0.5, 0,  0.15], radius: 0.004, height: 0.10, segments: 5, mat: 'body' },
+      { parent: 'rig', kind: 'cylinder', pos: [ 0.022, 0.05, -0.14], rot: [0.5, 0, -0.15], radius: 0.004, height: 0.10, segments: 5, mat: 'body' },
+    ],
+  };
+}
+
+// ── Lasher — stationary plant-creature with a long-reach tendril ────
+// Rooted in the floor: a stocky bulb with a single thick stalk
+// emerging at an angle, ending in a fang-tipped maw on the end of a
+// LONG whip-arm. The mob is FIXED IN PLACE (moveSpeed 0) but its
+// strike range is 3.5m — the player's kill zone is "very close OR
+// very far." Up close the head can't reach; outside 3.5m it can't
+// hit. The middle distance is the danger band.
+//
+// Visual is a venus-fly-trap by way of a sea-anemone: thick base
+// rooted in the floor, several rib-like leaves curling outward from
+// the bulb, one dominant arm-stalk reaching forward with a toothed
+// maw on the tip. Internal eye glows from inside the maw.
+export function lasherModel(): ModelSpec {
+  return {
+    id: 'lasher',
+    materials: {
+      // Plant body: bruised purple-green, faint sickly emissive.
+      body: {
+        color: 0x1d2a18,
+        roughness: 0.92,
+        emissive: 0x0a1408,
+        emissiveIntensity: 0.6,
+        flatShading: 'auto',
+        dissolvable: true,
+      },
+      // Stalk: a notch darker so the whip-arm reads against the bulb.
+      stalk: {
+        color: 0x162010,
+        roughness: 0.95,
+        flatShading: 'auto',
+      },
+      // Maw interior: wet pink-red emissive.
+      throat: {
+        color: 0x4a0a0c,
+        emissive: 0xc4202a,
+        emissiveIntensity: 1.6,
+        roughness: 0.7,
+      },
+      // Fangs on the maw rim: yellowed bone.
+      fang: {
+        color: 0xb8a87a,
+        emissive: 0x2a1808,
+        emissiveIntensity: 0.4,
+        roughness: 0.6,
+        flatShading: 'auto',
+      },
+      // Eyes inside the maw — same pinprick treatment as the mimic.
+      eyes: {
+        color: 0x000000,
+        emissive: 0xff6020,
+        emissiveIntensity: 2.4,
+        roughness: 1.0,
+      },
+    },
+    slots: {
+      // 'rig' is what windup/strike pose tilts. Sits at the maw
+      // height so the maw lunges forward on a strike rather than the
+      // whole plant rotating around its base.
+      rig: { pos: [0, 0.65, -0.85] },
+      // Eye material driven by spec.eyeMaterialName for windup flare.
+    },
+    parts: [
+      // ── BASE BULB — sits planted on the floor. Not parented to rig
+      //    so it doesn't tilt; it's the anchored root.
+      { kind: 'sphere', pos: [0, 0.20, 0], scale: [1.4, 0.9, 1.4], radius: 0.30, segments: [14, 10], mat: 'body', jitter: 0.018 },
+      // Ribbed leaves curling outward from the bulb — 6 around.
+      ...Array.from({ length: 6 }, (_, i) => {
+        const a = (i / 6) * Math.PI * 2;
+        const cos = Math.cos(a);
+        const sin = Math.sin(a);
+        return {
+          kind: 'cone' as const,
+          pos: [cos * 0.34, 0.18, sin * 0.34] as Vec3,
+          rot: [sin * 0.6, -a, cos * -0.6] as Vec3,
+          radius: 0.05, height: 0.30, segments: 6, mat: 'body',
+          jitter: 0.012,
+        };
+      }),
+
+      // ── WHIP STALK — segmented capsules running from the bulb forward
+      //    + up to where the rig (and the maw) sit. The stalk is NOT
+      //    parented to the rig — only the maw is — so when the rig
+      //    tilts on a strike, just the head lunges and the stalk
+      //    stays as a static "lean."
+      { kind: 'capsule', pos: [0, 0.35, -0.18], rot: [-0.5, 0, 0], radius: 0.07, height: 0.34, mat: 'stalk', jitter: 0.012 },
+      { kind: 'capsule', pos: [0, 0.50, -0.45], rot: [-0.6, 0, 0], radius: 0.06, height: 0.30, mat: 'stalk', jitter: 0.012 },
+      { kind: 'capsule', pos: [0, 0.60, -0.72], rot: [-0.7, 0, 0], radius: 0.05, height: 0.24, mat: 'stalk', jitter: 0.012 },
+
+      // ── MAW (the "head" on the end of the whip) — parented to rig
+      //    so it lunges forward on strike. Throat sphere + fang ring +
+      //    eye spheres inside.
+      { name: 'body', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], scale: [1.1, 1.0, 1.4], radius: 0.13, segments: [12, 10], mat: 'body', jitter: 0.014 },
+      // Maw interior — flattened glowing sphere recessed into the head.
+      { parent: 'rig', kind: 'sphere', pos: [0, 0, -0.08], scale: [1.0, 0.7, 1.3], radius: 0.08, segments: [10, 8], mat: 'throat' },
+      // Fangs — ring of 6 cones around the maw opening.
+      ...Array.from({ length: 6 }, (_, i) => {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        const r = 0.10;
+        return {
+          parent: 'rig',
+          kind: 'cone' as const,
+          pos: [Math.cos(a) * r, Math.sin(a) * 0.06, -0.13] as Vec3,
+          rot: [Math.PI / 2 + 0.1, 0, a] as Vec3,
+          radius: 0.018, height: 0.06, segments: 6, mat: 'fang',
+        };
+      }),
+      // Eyes — two pinprick spheres set DEEP in the maw, slightly
+      // offset so they read as a stare from inside the throat.
+      { parent: 'rig', kind: 'sphere', pos: [-0.025, 0, -0.13], radius: 0.014, segments: [6, 6], mat: 'eyes' },
+      { parent: 'rig', kind: 'sphere', pos: [ 0.025, 0, -0.13], radius: 0.014, segments: [6, 6], mat: 'eyes' },
+    ],
+  };
+}
