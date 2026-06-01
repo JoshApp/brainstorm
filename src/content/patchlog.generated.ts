@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "content",
+        "text": "Level gen: winding 2D vault placement (corridors turn now)"
+      },
+      {
+        "tag": "tune",
+        "text": "Heal cap, charged-effect system + Howling Edge, three new weapons"
+      },
+      {
         "tag": "tune",
         "text": "Level gen: varied corridor ceiling heights (mine-shaft tunnels vs galleries)"
       },
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Dark-adapt: fog-attenuate lit signal so foggy rooms read as dark"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt"
       }
     ]
   }
