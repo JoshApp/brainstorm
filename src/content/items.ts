@@ -191,6 +191,19 @@ export interface ItemSpec {
    */
   modifiers?: StatModifier[];
   /**
+   * State-aware modifiers — apply only while their condition holds.
+   * Evaluated per modifier-pipeline pass (which is cheap, just walks
+   * equipped slots). Lets items express the berserker fantasy ("when
+   * below 30% HP, +1 weapon damage") and last-stand effects ("below
+   * 25% HP, +1 incoming damage reduction") without needing a new
+   * trigger event for HP threshold crossings.
+   */
+  conditionalModifiers?: Array<{
+    condition: { kind: 'below-hp-pct'; value: number }
+             | { kind: 'above-hp-pct'; value: number };
+    modifiers: StatModifier[];
+  }>;
+  /**
    * Triggered passives granted while this item is equipped. Same pipeline
    * as intrinsic player passives — trigger fires on the listed event,
    * effects apply. Lets a ring grant "on kill → apply X buff" without
@@ -836,6 +849,134 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: STEADY_TONIC,
     consumableBuff: { buffId: 'regen-pulse', duration: 6.0 },
     carryLimit: 2,
+  },
+  // ── REACTIVE EQUIPMENT ────────────────────────────────────────────
+  // Two new design verbs in play here:
+  //   on-DAMAGED triggers — fire a buff when the player takes a hit.
+  //     Reads as "the wound activates something." Already supported
+  //     by the trigger pipeline; just needed items that USE it.
+  //   conditionalModifiers — modifiers that only count while a state
+  //     condition holds (HP threshold). Enables the berserker /
+  //     last-stand archetype without needing a new trigger event.
+  //
+  // — On-damaged procs —
+  'stoneskin-locket': {
+    id: 'stoneskin-locket',
+    kind: 'amulet',
+    rarity: 'uncommon',
+    name: 'Stoneskin Locket',
+    flavor: 'The first wound stiffens the second.',
+    dropModel: MENDICANT_LOCKET,
+    passives: [{
+      id: 'stoneskin-on-dmg',
+      trigger: { on: 'damaged', effects: [{ type: 'apply-buff', buffId: 'ironhide', duration: 4.0 }] },
+    }],
+  },
+  'ring-of-fury': {
+    id: 'ring-of-fury',
+    kind: 'ring',
+    rarity: 'rare',
+    name: 'Ring of Fury',
+    flavor: 'It hates whatever hates you.',
+    dropModel: RING_OF_EMBER,
+    passives: [{
+      id: 'fury-on-dmg',
+      trigger: { on: 'damaged', effects: [{ type: 'apply-buff', buffId: 'bloodthirst', duration: 5.0 }] },
+    }],
+  },
+  'mantle-of-hounded': {
+    id: 'mantle-of-hounded',
+    kind: 'armor',
+    rarity: 'rare',
+    name: 'Mantle of the Hounded',
+    flavor: 'The body learns what the mind refused.',
+    dropModel: PENITENTS_ROBE,
+    modifiers: [{ kind: 'physical-armor', amount: 1 }],
+    passives: [{
+      id: 'mantle-regen-on-dmg',
+      trigger: { on: 'damaged', effects: [{ type: 'apply-buff', buffId: 'regen-pulse', duration: 2.0 }] },
+    }],
+  },
+  'wrathful-crown': {
+    id: 'wrathful-crown',
+    kind: 'helmet',
+    rarity: 'cursed',
+    name: 'Wrathful Crown',
+    flavor: "It rewards what shouldn't be rewarded.",
+    dropModel: SKULLCAP_HANGED,
+    // Cursed: the proc is fierce but the baseline costs you survival.
+    modifiers: [{ kind: 'max-hp', amount: -1 }],
+    passives: [{
+      id: 'wrath-on-dmg',
+      trigger: { on: 'damaged', effects: [{ type: 'apply-buff', buffId: 'berserk', duration: 4.0 }] },
+    }],
+  },
+  // — Conditional (HP-threshold) modifiers —
+  'bloodbond-ring': {
+    id: 'bloodbond-ring',
+    kind: 'ring',
+    rarity: 'uncommon',
+    name: 'Bloodbond Ring',
+    flavor: 'Tighter as the blood gets warmer.',
+    dropModel: RING_OF_BLOODTHIRST,
+    conditionalModifiers: [{
+      // Below half HP: +1 weapon damage. Classic "wounded fights
+      // harder" hook. Small enough to stack with other items, big
+      // enough to feel.
+      condition: { kind: 'below-hp-pct', value: 0.50 },
+      modifiers: [{ kind: 'weapon-damage', amount: 1 }],
+    }],
+  },
+  'last-stand-pauldrons': {
+    id: 'last-stand-pauldrons',
+    kind: 'gloves',
+    rarity: 'rare',
+    name: 'Last-Stand Pauldrons',
+    flavor: 'Sized for the unburied.',
+    dropModel: GRAVECUTTER_GAUNTLETS,
+    modifiers: [{ kind: 'weapon-damage', amount: 1 }],
+    conditionalModifiers: [{
+      // Below 30%: a real spike — +2 damage AND magic-armor. Reads
+      // as "the body refuses." Pair with healing potions held in
+      // reserve for the danger band.
+      condition: { kind: 'below-hp-pct', value: 0.30 },
+      modifiers: [
+        { kind: 'weapon-damage', amount: 2 },
+        { kind: 'magic-armor', amount: 1 },
+      ],
+    }],
+  },
+  'mantle-of-resolve': {
+    id: 'mantle-of-resolve',
+    kind: 'armor',
+    rarity: 'rare',
+    name: 'Mantle of Resolve',
+    flavor: "It hardens when there's nowhere left to fall.",
+    dropModel: CUIRASS_OF_ASH,
+    modifiers: [{ kind: 'physical-armor', amount: 1 }],
+    conditionalModifiers: [{
+      // Below quarter HP, take 25% less damage. The defensive
+      // counterpart to the offensive berserker items — buys time
+      // to drink a potion or escape rather than spiking output.
+      condition: { kind: 'below-hp-pct', value: 0.25 },
+      modifiers: [{ kind: 'incoming-damage-mult', amount: 0.75 }],
+    }],
+  },
+  'talon-amulet': {
+    id: 'talon-amulet',
+    kind: 'amulet',
+    rarity: 'uncommon',
+    name: 'Talon Amulet',
+    flavor: 'Sharpens while the carrier is unblooded.',
+    dropModel: HEART_OF_DROWNED,
+    conditionalModifiers: [{
+      // ABOVE-threshold variant — reward for STAYING healthy.
+      // Different reward loop from the low-HP items: a haste boost
+      // you LOSE the moment you take serious damage. Pairs with
+      // skill-based avoidance over potion-spam.
+      condition: { kind: 'above-hp-pct', value: 0.80 },
+      modifiers: [{ kind: 'action-speed-mult', amount: 1.10 }],
+    }],
   },
   // ── CONSUMABLES ────────────────────────────────────────────────────
   'healing-potion': {
