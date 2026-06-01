@@ -44,9 +44,9 @@ export function createSettingsMenu() {
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    minWidth: '300px',
-    maxWidth: '90vw',
-    padding: '20px 22px',
+    width: 'min(360px, 92vw)',
+    maxHeight: '88vh',
+    padding: '16px 18px',
     background: PANEL_BG,
     border: BORDER,
     borderRadius: '4px',
@@ -56,7 +56,10 @@ export function createSettingsMenu() {
     zIndex: '100',
     display: 'none',
     flexDirection: 'column',
-    gap: '18px',
+    gap: '12px',
+    // Mobile fit: long settings list overflowed the viewport. Cap
+    // the panel height and let the body scroll.
+    overflow: 'hidden',
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(panel);
 
@@ -89,23 +92,29 @@ function closePanel() {
   closeScreen('settings');
 }
 
+// Active tab persists across opens within a session — convenient when
+// iterating on a tab's contents on the phone.
+type TabId = 'controls' | 'audio' | 'system' | 'run';
+let activeTab: TabId = 'controls';
+
 function buildPanelContents() {
   if (!panel) return;
   panel.replaceChildren();
 
-  // Header row
+  // Header row — title + close. Stays at panel top above the tabs.
   const header = document.createElement('div');
   Object.assign(header.style, {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottom: '1px solid rgba(180, 130, 90, 0.3)',
-    paddingBottom: '8px',
+    paddingBottom: '6px',
+    flexShrink: '0',
   } as Partial<CSSStyleDeclaration>);
   const title = document.createElement('div');
   title.textContent = 'SETTINGS';
   Object.assign(title.style, {
-    fontSize: '13px',
+    fontSize: '12px',
     fontWeight: '600',
     letterSpacing: '0.28em',
     color: 'rgba(255, 200, 140, 0.9)',
@@ -118,159 +127,218 @@ function buildPanelContents() {
     color: 'rgba(220, 180, 140, 0.7)',
     fontSize: '18px',
     cursor: 'pointer',
-    padding: '4px 8px',
+    padding: '2px 6px',
   } as Partial<CSSStyleDeclaration>);
   close.addEventListener('click', closePanel);
   header.append(title, close);
   panel.appendChild(header);
 
-  // --- Look sensitivity slider ---
-  panel.appendChild(makeSlider({
-    label: 'LOOK SENSITIVITY',
-    min: 0.001, max: 0.012, step: 0.0005,
-    get: () => getSettings().lookSensitivity,
-    set: (v) => updateSettings({ lookSensitivity: v }),
-    format: (v) => v.toFixed(4),
-  }));
+  // Tabs available depend on whether there's a live run — RUN tab
+  // appears only when actions are wired.
+  const tabs: Array<{ id: TabId; label: string }> = [
+    { id: 'controls', label: 'CONTROLS' },
+    { id: 'audio',    label: 'AUDIO' },
+    { id: 'system',   label: 'SYSTEM' },
+  ];
+  if (runActions) tabs.push({ id: 'run', label: 'RUN' });
+  // If the previously-active tab disappeared (e.g. RUN gone after
+  // quitting), fall back to controls.
+  if (!tabs.find((t) => t.id === activeTab)) activeTab = 'controls';
 
-  // --- Hybrid look toggle ---
-  panel.appendChild(makeToggle({
-    label: 'HYBRID LOOK',
-    description: 'Drag past the aim zone to keep rotating (like a joystick).',
-    get: () => getSettings().hybridLook,
-    set: (v) => updateSettings({ hybridLook: v }),
-  }));
+  // Tab bar — horizontal row of buttons. Active tab is highlighted.
+  const tabBar = document.createElement('div');
+  Object.assign(tabBar.style, {
+    display: 'flex',
+    gap: '4px',
+    borderBottom: '1px solid rgba(180, 130, 90, 0.25)',
+    paddingBottom: '6px',
+    flexShrink: '0',
+  } as Partial<CSSStyleDeclaration>);
+  panel.appendChild(tabBar);
 
-  // --- Master volume slider ---
-  panel.appendChild(makeSlider({
-    label: 'MASTER VOLUME',
-    min: 0, max: 1, step: 0.05,
-    get: () => getSettings().masterVolume,
-    set: (v) => {
-      updateSettings({ masterVolume: v });
-      setMasterVolume(v);
-    },
-    format: (v) => `${Math.round(v * 100)}%`,
-  }));
+  // Content area — scrollable when contents exceed viewport. Body of
+  // the active tab is rendered into this on each tab switch.
+  const content = document.createElement('div');
+  Object.assign(content.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+    overflowY: 'auto',
+    paddingRight: '4px',
+    flex: '1 1 auto',
+    minHeight: '0',
+    // Cushion the bottom so a swipe-up doesn't overshoot past the
+    // last control under iOS overscroll.
+    paddingBottom: '8px',
+  } as Partial<CSSStyleDeclaration>);
+  panel.appendChild(content);
 
-  // --- Music volume slider ---
-  panel.appendChild(makeSlider({
-    label: 'MUSIC VOLUME',
-    min: 0, max: 1, step: 0.05,
-    get: () => getSettings().musicVolume,
-    set: (v) => {
-      updateSettings({ musicVolume: v });
-      setMusicVolume(v);
-    },
-    format: (v) => `${Math.round(v * 100)}%`,
-  }));
-
-  // --- Reverb toggle (mobile-perf escape hatch) ---
-  panel.appendChild(makeToggle({
-    label: 'REVERB',
-    description: 'Adds a sense of room to sounds. Turn off if performance drops — the convolver is the most expensive piece of the audio chain on weaker phones.',
-    get: () => getSettings().reverb,
-    set: (v) => {
-      updateSettings({ reverb: v });
-      setReverbEnabled(v);
-    },
-  }));
-
-  // --- Auto-update toggle + install-now button ---
-  panel.appendChild(makeToggle({
-    label: 'AUTO UPDATE',
-    description: 'Install new builds automatically at safe moments (title screen, level transitions).',
-    get: () => getSettings().autoUpdate,
-    set: (v) => updateSettings({ autoUpdate: v }),
-  }));
-  panel.appendChild(makeToggle({
-    label: 'DEV AUTO-UPDATE',
-    description: 'For development. Apply pending updates the instant the service worker detects them, without waiting. Mid-floor state is lost on reload (resumes at floor entry).',
-    get: () => getSettings().devAutoUpdate,
-    set: (v) => updateSettings({ devAutoUpdate: v }),
-  }));
-  panel.appendChild(makeUpdateRow());
-
-  // --- Debug capture toggle ---
-  panel.appendChild(makeToggle({
-    label: 'DEBUG MODE',
-    description: 'Show the ⊕ CAPTURE button. Tap it on a glitch to copy a report + screenshot to share.',
-    get: () => getSettings().debugMode,
-    set: (v) => updateSettings({ debugMode: v }),
-  }));
-
-  // --- Perf meter toggle ---
-  panel.appendChild(makeToggle({
-    label: 'PERF METER',
-    description: 'Top-right overlay with FPS, frame time, and renderer draw counts. For diagnosing slow moments in the field.',
-    get: () => getSettings().perfMeter,
-    set: (v) => updateSettings({ perfMeter: v }),
-  }));
-
-  // --- RUN ACTIONS ──────────────────────────────────────────────────
-  // Bottom-of-panel danger-ish row. Three buttons in descending
-  // commitment: ABANDON RUN wipes the save, QUIT keeps the save and
-  // returns to title, EXIT tries to close the tab (mobile PWAs
-  // usually just go to home). Two-step confirm on the destructive
-  // ones so a fat-finger doesn't nuke a run.
-  if (runActions) {
-    const divider = document.createElement('div');
-    Object.assign(divider.style, {
-      height: '1px',
-      background: 'rgba(180, 130, 90, 0.25)',
-      margin: '4px 0',
-    } as Partial<CSSStyleDeclaration>);
-    panel.appendChild(divider);
-
-    const sectionLabel = document.createElement('div');
-    sectionLabel.textContent = 'RUN';
-    Object.assign(sectionLabel.style, {
-      fontSize: '10px',
+  const renderTab = (id: TabId) => {
+    activeTab = id;
+    // Refresh the bar's active-state styling.
+    for (const child of Array.from(tabBar.children) as HTMLElement[]) {
+      const isActive = child.dataset.tabId === id;
+      child.style.background = isActive ? 'rgba(80, 50, 30, 0.85)' : 'transparent';
+      child.style.color = isActive ? 'rgba(255, 220, 170, 0.98)' : 'rgba(200, 170, 130, 0.65)';
+      child.style.borderBottom = isActive ? '2px solid rgba(255, 200, 130, 0.85)' : '2px solid transparent';
+    }
+    content.replaceChildren();
+    for (const el of TAB_BUILDERS[id]()) content.appendChild(el);
+  };
+  for (const t of tabs) {
+    const btn = document.createElement('button');
+    btn.textContent = t.label;
+    btn.dataset.tabId = t.id;
+    Object.assign(btn.style, {
+      flex: '1 1 auto',
+      padding: '8px 4px',
+      border: 'none',
+      background: 'transparent',
+      color: 'rgba(200, 170, 130, 0.65)',
+      fontFamily: 'inherit',
+      fontSize: '11px',
       fontWeight: '600',
-      letterSpacing: '0.30em',
-      color: 'rgba(180, 130, 90, 0.7)',
+      letterSpacing: '0.18em',
+      cursor: 'pointer',
+      borderBottom: '2px solid transparent',
+      transition: 'background 0.12s ease, color 0.12s ease',
     } as Partial<CSSStyleDeclaration>);
-    panel.appendChild(sectionLabel);
-
-    // CHARACTER — view attributes + proficiencies + spend points (at
-    // safe rooms). Lives above the run-actions block so it's easy to
-    // reach from touch without scrolling past the destructive buttons.
-    panel.appendChild(makeRunButton({
-      label: 'CHARACTER',
-      description: 'View attributes + proficiencies. Spend points at safe rooms.',
-      destructive: false,
-      onClick: () => {
-        closePanel();
-        // Lazy import to avoid the settings menu pulling the screen at
-        // module load.
-        import('./character-screen').then(({ openCharacterScreen }) => openCharacterScreen());
-      },
-    }));
-    panel.appendChild(makeRunButton({
-      label: 'QUIT TO MENU',
-      description: 'Return to the title screen. Your run is saved.',
-      destructive: false,
-      onClick: () => {
-        closePanel();
-        runActions!.quitToMenu();
-      },
-    }));
-    panel.appendChild(makeRunButton({
-      label: 'ABANDON RUN',
-      description: 'Discard this run. Inventory, depth, and progress are lost.',
-      destructive: true,
-      onClick: () => {
-        closePanel();
-        runActions!.abandonRun();
-      },
-    }));
-    panel.appendChild(makeRunButton({
-      label: 'EXIT GAME',
-      description: 'Close the game tab. (On mobile, returns to the home screen.)',
-      destructive: false,
-      onClick: () => runActions!.exitGame(),
-    }));
+    btn.addEventListener('click', () => renderTab(t.id));
+    tabBar.appendChild(btn);
   }
+  renderTab(activeTab);
+}
+
+// ── Tab content builders ───────────────────────────────────────────
+// Each builder returns the rows for one tab. Building lazily on
+// switch keeps the cost of opening the panel tiny — only the active
+// tab's controls are constructed.
+
+const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
+  controls: () => [
+    makeSlider({
+      label: 'LOOK SENSITIVITY',
+      min: 0.001, max: 0.012, step: 0.0005,
+      get: () => getSettings().lookSensitivity,
+      set: (v) => updateSettings({ lookSensitivity: v }),
+      format: (v) => v.toFixed(4),
+    }),
+    makeToggle({
+      label: 'HYBRID LOOK',
+      description: 'Drag past the aim zone to keep rotating (like a joystick).',
+      get: () => getSettings().hybridLook,
+      set: (v) => updateSettings({ hybridLook: v }),
+    }),
+  ],
+
+  audio: () => [
+    makeSlider({
+      label: 'MASTER VOLUME',
+      min: 0, max: 1, step: 0.05,
+      get: () => getSettings().masterVolume,
+      set: (v) => {
+        updateSettings({ masterVolume: v });
+        setMasterVolume(v);
+      },
+      format: (v) => `${Math.round(v * 100)}%`,
+    }),
+    makeSlider({
+      label: 'MUSIC VOLUME',
+      min: 0, max: 1, step: 0.05,
+      get: () => getSettings().musicVolume,
+      set: (v) => {
+        updateSettings({ musicVolume: v });
+        setMusicVolume(v);
+      },
+      format: (v) => `${Math.round(v * 100)}%`,
+    }),
+    makeToggle({
+      label: 'REVERB',
+      description: 'Adds a sense of room to sounds. Turn off if performance drops — the convolver is the most expensive piece of the audio chain on weaker phones.',
+      get: () => getSettings().reverb,
+      set: (v) => {
+        updateSettings({ reverb: v });
+        setReverbEnabled(v);
+      },
+    }),
+  ],
+
+  system: () => [
+    makeToggle({
+      label: 'AUTO UPDATE',
+      description: 'Install new builds automatically at safe moments (title screen, level transitions).',
+      get: () => getSettings().autoUpdate,
+      set: (v) => updateSettings({ autoUpdate: v }),
+    }),
+    makeToggle({
+      label: 'DEV AUTO-UPDATE',
+      description: 'For development. Apply pending updates the instant the service worker detects them, without waiting. Mid-floor state is lost on reload (resumes at floor entry).',
+      get: () => getSettings().devAutoUpdate,
+      set: (v) => updateSettings({ devAutoUpdate: v }),
+    }),
+    makeUpdateRow(),
+    makeToggle({
+      label: 'DEBUG MODE',
+      description: 'Show the ⊕ CAPTURE button. Tap it on a glitch to copy a report + screenshot to share.',
+      get: () => getSettings().debugMode,
+      set: (v) => updateSettings({ debugMode: v }),
+    }),
+    makeToggle({
+      label: 'PERF METER',
+      description: 'Top-right overlay with FPS, frame time, and renderer draw counts. For diagnosing slow moments in the field.',
+      get: () => getSettings().perfMeter,
+      set: (v) => updateSettings({ perfMeter: v }),
+    }),
+  ],
+
+  run: () => buildRunTab(),
+};
+
+/** RUN tab — character + quit + abandon + exit. Lives behind a tab
+ *  switch so destructive buttons can't be hit by accident while
+ *  scrolling through volume sliders. */
+function buildRunTab(): HTMLElement[] {
+  if (!runActions) return [];
+  const out: HTMLElement[] = [];
+
+// CHARACTER — view attributes + proficiencies + spend points (at
+  // safe rooms). Top of the tab so it's easy to reach from touch.
+  out.push(makeRunButton({
+    label: 'CHARACTER',
+    description: 'View attributes + proficiencies. Spend points at safe rooms.',
+    destructive: false,
+    onClick: () => {
+      closePanel();
+      // Lazy import to avoid the settings menu pulling the screen at
+      // module load.
+      import('./character-screen').then(({ openCharacterScreen }) => openCharacterScreen());
+    },
+  }));
+  out.push(makeRunButton({
+    label: 'QUIT TO MENU',
+    description: 'Return to the title screen. Your run is saved.',
+    destructive: false,
+    onClick: () => {
+      closePanel();
+      runActions!.quitToMenu();
+    },
+  }));
+  out.push(makeRunButton({
+    label: 'ABANDON RUN',
+    description: 'Discard this run. Inventory, depth, and progress are lost.',
+    destructive: true,
+    onClick: () => {
+      closePanel();
+      runActions!.abandonRun();
+    },
+  }));
+  out.push(makeRunButton({
+    label: 'EXIT GAME',
+    description: 'Close the game tab. (On mobile, returns to the home screen.)',
+    destructive: false,
+    onClick: () => runActions!.exitGame(),
+  }));
+  return out;
 }
 
 interface RunButtonOpts {

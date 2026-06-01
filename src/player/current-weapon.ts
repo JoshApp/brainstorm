@@ -24,12 +24,11 @@ export function setCurrentWeapon(stats: WeaponStats) {
   rawSpec = stats;
 }
 
-// Hold-to-charge — per-weapon opt-in. Today the SWORD prototypes the
-// gesture; once it shapes up, crossbow + focus + future greataxe will
-// follow. Weapons that don't opt in keep the existing tap-only model
-// completely unchanged — the charge tracker never arms.
-const CHARGE_CLASSES = new Set(['sword']);
-
+// Hold-to-charge — applied to ALL weapon classes now. Melee classes
+// get the cocked-back viewmodel + damage/reach/cone bonus; ranged
+// classes scale the projectile's damage by the same curve. Per-class
+// charged specials are configured via the chargedMoves field on each
+// ClassDefaults entry.
 export function wantsHoldToCharge(): boolean {
-  return rawSpec.class !== undefined && CHARGE_CLASSES.has(rawSpec.class);
+  return rawSpec.class !== undefined;
 }

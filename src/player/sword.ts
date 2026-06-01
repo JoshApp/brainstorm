@@ -228,12 +228,17 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
       if (comboStep !== 0 && nowMs() >= comboWindowExpiresAt) {
         comboStep = 0;
       }
-      // Idle pose + walk bop. The bob system layers on top of the
-      // idle baseline; the bob isn't applied to swing animations
+      // Idle pose + walk bop. Per-weapon idle (the wand is held
+      // upright like a staff; sword/dagger/etc. stay hip-held) is
+      // resolved through computeWeaponPose so each weapon class
+      // gets its native carry stance. The bob system layers on top
+      // of the baseline; the bob isn't applied to swing animations
       // because it would muddy their snap.
       const b = getSwordOffset();
-      let px = ix + b.x, py = iy + b.y, pz = iz;
-      let prx = rx, pry = ry, prz = rz + b.rotZ;
+      const { step } = currentStep();
+      const idle = computeWeaponPose(step.pose, 'idle', 0);
+      let px = idle.x + b.x, py = idle.y + b.y, pz = idle.z;
+      let prx = idle.rotX, pry = idle.rotY, prz = idle.rotZ + b.rotZ;
       // CHARGED HOLD blend: if the player is mid-charge, lerp the
       // resting pose toward the END-OF-WINDUP pose of the current
       // combo step. Blade visibly cocks back the longer they hold.

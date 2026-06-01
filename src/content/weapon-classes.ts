@@ -164,6 +164,27 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.05, coneHalfAngleMul: 0.7, maxTargets: 1 },
     ],
     comboWindowMs: 380,
+    // Dagger directional moves — reuse existing combo poses to keep
+    // pose-authoring tight; movement intent reshapes the swing's
+    // stats (reach / cone / damage) rather than the animation.
+    directionalMoves: {
+      // FORWARD: a longer thrusting stab. Reuses the basic stab pose
+      // but with extended reach and a faster snap — the assassin's
+      // "I see an opening" beat.
+      forward:     { pose: 'dagger-stab',        windup: 0.06, strike: 0.12, recover: 0.30,
+                     reachMul: 1.30, coneHalfAngleMul: 0.5, maxTargets: 1 },
+      // STRAFE: double-stab — two rapid cuts as the body weaves
+      // sideways. Same pose as the combo finisher with strafe-fit
+      // timing and a slightly wider catch.
+      strafeLeft:  { pose: 'dagger-slash', windup: 0.08, strike: 0.18, recover: 0.26,
+                     reachMul: 1.0,  coneHalfAngleMul: 1.5, maxTargets: 2 },
+      strafeRight: { pose: 'dagger-slash', windup: 0.08, strike: 0.18, recover: 0.26,
+                     reachMul: 1.0,  coneHalfAngleMul: 1.5, maxTargets: 2 },
+      // BACK: a defensive slash on the retreat — short windup, short
+      // recover, modest reach. The dagger's answer to a charging mob.
+      back:        { pose: 'dagger-slash', windup: 0.06, strike: 0.10, recover: 0.18,
+                     reachMul: 1.0,  coneHalfAngleMul: 0.9, maxTargets: 1 },
+    },
   },
   sword: {
     // slash-left → slash-right → thrust. Two sweeping arcs that
@@ -236,6 +257,23 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.15, coneHalfAngleMul: 1.4, maxTargets: 3 },
     ],
     comboWindowMs: 520,
+    // Hammer directional moves — the overhead smash and the directional
+    // swings carry the body's momentum into the strike.
+    directionalMoves: {
+      // FORWARD: a commit-and-step overhead smash. Bigger reach + the
+      // smash's wide AoE catches up to 3 mobs in front of you.
+      forward:     { pose: 'hammer-smash', windup: 0.26, strike: 0.16, recover: 0.55,
+                     reachMul: 1.35, coneHalfAngleMul: 1.5, maxTargets: 3 },
+      // STRAFE: the directional swing IN the strafe direction —
+      // body's momentum drives the cut. Sweep that catches 2 to your side.
+      strafeLeft:  { pose: 'hammer-swing-left', windup: 0.18, strike: 0.14, recover: 0.34,
+                     reachMul: 1.05, coneHalfAngleMul: 1.4, maxTargets: 2 },
+      strafeRight: { pose: 'hammer-swing-right', windup: 0.18, strike: 0.14, recover: 0.34,
+                     reachMul: 1.05, coneHalfAngleMul: 1.4, maxTargets: 2 },
+      // BACK: defensive horizontal swing as the player backs off.
+      back:        { pose: 'hammer-swing-right', windup: 0.16, strike: 0.12, recover: 0.30,
+                     reachMul: 1.05, coneHalfAngleMul: 1.2, maxTargets: 2 },
+    },
   },
   spear: {
     // thrust → thrust → lunge. Spear stays narrow + single-target
@@ -249,6 +287,23 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.30, coneHalfAngleMul: 0.85, maxTargets: 1 },
     ],
     comboWindowMs: 420,
+    // Spear directional moves — the long-reach poker. Forward = an
+    // even-longer lunge; strafe = a quick poke that pivots; back =
+    // a fast brace.
+    directionalMoves: {
+      // FORWARD: the spear's signature long thrust, even further.
+      forward:     { pose: 'spear-lunge', windup: 0.14, strike: 0.16, recover: 0.42,
+                     reachMul: 1.60, coneHalfAngleMul: 0.6, maxTargets: 1 },
+      // STRAFE: pivot thrust — same pose, slight cone widening to
+      // catch a flanker.
+      strafeLeft:  { pose: 'spear-thrust', windup: 0.10, strike: 0.12, recover: 0.24,
+                     reachMul: 1.1, coneHalfAngleMul: 1.2, maxTargets: 2 },
+      strafeRight: { pose: 'spear-thrust', windup: 0.10, strike: 0.12, recover: 0.24,
+                     reachMul: 1.1, coneHalfAngleMul: 1.2, maxTargets: 2 },
+      // BACK: short defensive jab + step.
+      back:        { pose: 'spear-thrust', windup: 0.08, strike: 0.10, recover: 0.20,
+                     reachMul: 1.1, coneHalfAngleMul: 0.9, maxTargets: 1 },
+    },
   },
   // RANGED classes — a single "fire" step (no combo chain). The strike
   // spawns the weapon's projectile (combat/attack.ts) instead of a melee

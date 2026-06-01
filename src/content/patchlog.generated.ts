@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Charge ring: thumb-tracking + sweet-spot pulse"
+      },
+      {
+        "tag": "tune",
         "text": "Sword moveset"
       },
       {
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Boss bar (Dark Souls-style) + make the boss a real boss"
-      },
-      {
-        "tag": "tune",
-        "text": "Re-tone the pickup chime: cold hollow toll, not a happy bell"
       }
     ]
   }

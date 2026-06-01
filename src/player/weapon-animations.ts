@@ -37,8 +37,14 @@ const scratch: WeaponPose = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 };
  *  retain. */
 export function computeWeaponPose(pose: PoseKey, phase: SwordPhase, t: number): WeaponPose {
   if (phase === 'idle') {
-    // Idle = rest pose. The bob system already mutates X/Y/rotZ on
-    // top of these values, so we just return the baseline.
+    // Idle = the rest pose for THIS weapon type. Default = hip-held
+    // (sword/dagger/hammer/spear). Wand idle is upright like a
+    // staff. Crossbow idle is the same rest pose for now.
+    if (pose === 'wand-cast') {
+      scratch.x = WAND_DRAW_X; scratch.y = WAND_DRAW_Y; scratch.z = WAND_DRAW_Z;
+      scratch.rotX = WAND_DRAW_RX; scratch.rotY = ry; scratch.rotZ = WAND_DRAW_RZ;
+      return scratch;
+    }
     scratch.x = ix; scratch.y = iy; scratch.z = iz;
     scratch.rotX = rx; scratch.rotY = ry; scratch.rotZ = rz;
     return scratch;
@@ -868,14 +874,19 @@ const WAND_CAST_RX = -0.65;          // tipped forward, orb pointing target-ish
 const WAND_CAST_RZ = rz - 0.10;
 
 function wandCastPose(phase: SwordPhase, t: number): WeaponPose {
+  // Staff is ALREADY held upright (idle = DRAW pose). Windup is a
+  // tiny tremble in place — orb gathering — not a big motion, since
+  // the staff is already cocked. Strike tips forward to the cast
+  // pose. Recover settles back to the upright draw pose, NOT the
+  // hip-rest pose. That keeps the staff vertical throughout combat.
   if (phase === 'windup') {
-    const tremble = 0.012 * t * Math.sin(t * 40);   // grows as charge builds
-    scratch.x = ix + (WAND_DRAW_X - ix) * t + tremble;
-    scratch.y = iy + (WAND_DRAW_Y - iy) * t;
-    scratch.z = iz + (WAND_DRAW_Z - iz) * t;
-    scratch.rotX = rx + (WAND_DRAW_RX - rx) * t;
+    const tremble = 0.012 * t * Math.sin(t * 40);
+    scratch.x = WAND_DRAW_X + tremble;
+    scratch.y = WAND_DRAW_Y;
+    scratch.z = WAND_DRAW_Z;
+    scratch.rotX = WAND_DRAW_RX;
     scratch.rotY = ry;
-    scratch.rotZ = rz + (WAND_DRAW_RZ - rz) * t - tremble;
+    scratch.rotZ = WAND_DRAW_RZ - tremble;
     return scratch;
   }
   if (phase === 'strike') {
@@ -888,12 +899,13 @@ function wandCastPose(phase: SwordPhase, t: number): WeaponPose {
     scratch.rotZ = WAND_DRAW_RZ + (WAND_CAST_RZ - WAND_DRAW_RZ) * ease;
     return scratch;
   }
+  // Recover: CAST → DRAW (not back to hip-rest).
   const e = 1 - (1 - t) * (1 - t);
-  scratch.x = WAND_CAST_X + (ix - WAND_CAST_X) * e;
-  scratch.y = WAND_CAST_Y + (iy - WAND_CAST_Y) * e;
-  scratch.z = WAND_CAST_Z + (iz - WAND_CAST_Z) * e;
-  scratch.rotX = WAND_CAST_RX + (rx - WAND_CAST_RX) * e;
+  scratch.x = WAND_CAST_X + (WAND_DRAW_X - WAND_CAST_X) * e;
+  scratch.y = WAND_CAST_Y + (WAND_DRAW_Y - WAND_CAST_Y) * e;
+  scratch.z = WAND_CAST_Z + (WAND_DRAW_Z - WAND_CAST_Z) * e;
+  scratch.rotX = WAND_CAST_RX + (WAND_DRAW_RX - WAND_CAST_RX) * e;
   scratch.rotY = ry;
-  scratch.rotZ = WAND_CAST_RZ + (rz - WAND_CAST_RZ) * e;
+  scratch.rotZ = WAND_CAST_RZ + (WAND_DRAW_RZ - WAND_CAST_RZ) * e;
   return scratch;
 }

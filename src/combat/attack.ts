@@ -83,11 +83,13 @@ const hitPoint = new THREE.Vector3();
 const tmpMuzzle = new THREE.Vector3();
 const tmpAim = new THREE.Vector3();
 
-// Ranged auto-aim — generous so the player never has to aim precisely
-// (one-thumb). Long reach + a wide cone; the nearest in-arc enemy is the
-// shot's target.
+// Ranged auto-aim — tightened from a generous 34° half-arc to ~7°
+// (0.12 rad). The player aims with the camera; auto-aim only snaps
+// onto a target that's nearly dead-centred, correcting small thumb
+// inaccuracies without doing the aiming FOR them. Misses are now
+// possible, which is the point — ranged becomes skill-based.
 const RANGED_REACH = 16;
-const RANGED_CONE_COS = Math.cos(0.6);   // ~34° half-angle auto-aim arc
+const RANGED_CONE_COS = Math.cos(0.12);  // ~7° half-angle = 14° total cone
 
 export function createCombatSystem(
   camera: THREE.Camera,
@@ -139,7 +141,11 @@ export function createCombatSystem(
       tmpAim.copy(camera.position).addScaledVector(forwardDir, RANGED_REACH);
     }
     const crit = gameRngChance(weapon.critChance ?? 0);
-    const dmg = crit ? weapon.damage * (weapon.critMultiplier ?? 2) : weapon.damage;
+    // Same charge-damage curve as melee — a fully-cooked shot does
+    // +80% damage. Held aim with a focus / charged crossbow becomes
+    // worth the wait.
+    const chargeMul = 1 + currentSwingCharge * 0.80;
+    const dmg = (crit ? weapon.damage * (weapon.critMultiplier ?? 2) : weapon.damage) * chargeMul;
     spawnProjectile({
       typeId: weapon.ranged.projectileId,
       origin: tmpMuzzle,
