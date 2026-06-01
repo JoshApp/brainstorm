@@ -56,6 +56,23 @@ export const SETS: Record<string, SetSpec> = {
       },
     ],
   },
+  // Penitent's vigil — robe + hood + sandals. The ascetic set:
+  // damage-reduction stacks if you commit to the kit. Pairs naturally
+  // with the magic-armor / weapon-damage from the hood. Reads as
+  // "I wear my faith"; mechanically, leans into mitigation builds.
+  'penitent': {
+    id: 'penitent',
+    name: "The Penitent's Vigil",
+    bonuses: [
+      // Two-piece — modest defensive bump.
+      { pieces: 2, modifiers: [{ kind: 'physical-armor', amount: 1 }, { kind: 'magic-armor', amount: 1 }] },
+      // Three-piece — additional damage reduction on top.
+      { pieces: 3, modifiers: [
+        { kind: 'incoming-damage-mult', amount: 0.92 },
+        { kind: 'max-hp', amount: 2 },
+      ] },
+    ],
+  },
 };
 
 /**

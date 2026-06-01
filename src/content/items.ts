@@ -9,6 +9,15 @@ import {
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
   IRON_COIF, BONE_AMULET, ACID_TONGUE_AMULET, LEATHER_GLOVES, WORN_BOOTS, WOODEN_SHIELD,
   OIL_LAMP_MODEL,
+  // Content expansion — new equipment models.
+  PENITENTS_ROBE, CUIRASS_OF_ASH,
+  HERETICS_HOOD, SKULLCAP_HANGED,
+  GRAVECUTTER_GAUNTLETS, VELLUM_WRAPS,
+  SHROUD_STEP_BOOTS, SIN_EATER_SANDALS,
+  SPLINTERED_AEGIS,
+  MENDICANT_LOCKET, HEART_OF_DROWNED,
+  RING_OF_IRON, RING_OF_EMBER, RING_OF_QUICKENING,
+  STEADY_TONIC,
 } from './loot-models';
 import { PASSIVES } from './passives';
 
@@ -633,6 +642,200 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'weapon-damage', amount: 2 },
       { kind: 'max-hp', amount: -1 },
     ],
+  },
+  // ── CONTENT EXPANSION ─────────────────────────────────────────────
+  // Slot variety pass — most non-ring slots had a single mundane pick
+  // and no uncommon/rare options. These add a clear identity per item
+  // (defensive / mobility / offensive / hybrid) so the player has a
+  // build choice at every floor instead of "did the chest drop the
+  // one thing." Affix pools tag the broad theme; setId glues a few
+  // together so equipping the matching pieces awards a bonus.
+  //
+  // ARMOR (chest)
+  'penitents-robe': {
+    id: 'penitents-robe',
+    kind: 'armor',
+    rarity: 'uncommon',
+    name: "Penitent's Robe",
+    flavor: 'Worn against both flesh and weather.',
+    dropModel: PENITENTS_ROBE,
+    modifiers: [
+      { kind: 'physical-armor', amount: 1 },
+      { kind: 'magic-armor', amount: 1 },
+    ],
+    setId: 'penitent',
+  },
+  'cuirass-of-ash': {
+    id: 'cuirass-of-ash',
+    kind: 'armor',
+    rarity: 'rare',
+    name: 'Cuirass of Ash',
+    flavor: 'Forged in something that did not burn cleanly.',
+    dropModel: CUIRASS_OF_ASH,
+    modifiers: [
+      { kind: 'physical-armor', amount: 3 },
+      { kind: 'move-speed-mult', amount: 0.92 },
+    ],
+  },
+  // HELMET
+  'heretics-hood': {
+    id: 'heretics-hood',
+    kind: 'helmet',
+    rarity: 'uncommon',
+    name: "Heretic's Hood",
+    flavor: 'Cuts no draught. Hides everything else.',
+    dropModel: HERETICS_HOOD,
+    modifiers: [
+      { kind: 'weapon-damage', amount: 1 },
+      { kind: 'magic-armor', amount: 1 },
+    ],
+    setId: 'penitent',
+  },
+  'skullcap-hanged': {
+    id: 'skullcap-hanged',
+    kind: 'helmet',
+    rarity: 'rare',
+    name: 'Skullcap of the Hanged',
+    flavor: 'Taken before it could rot.',
+    dropModel: SKULLCAP_HANGED,
+    modifiers: [
+      { kind: 'physical-armor', amount: 1 },
+      { kind: 'magic-armor', amount: 1 },
+      { kind: 'max-hp', amount: 1 },
+    ],
+  },
+  // GLOVES
+  'gravecutter-gauntlets': {
+    id: 'gravecutter-gauntlets',
+    kind: 'gloves',
+    rarity: 'uncommon',
+    name: 'Gravecutter Gauntlets',
+    flavor: 'Brass knuckles, sealed inside leather. For decorum.',
+    dropModel: GRAVECUTTER_GAUNTLETS,
+    modifiers: [
+      { kind: 'weapon-damage', amount: 1 },
+      { kind: 'finisher-damage-mult', amount: 0.20 },
+    ],
+  },
+  'vellum-wraps': {
+    id: 'vellum-wraps',
+    kind: 'gloves',
+    rarity: 'rare',
+    name: 'Vellum Wraps',
+    flavor: 'Old vows, wrapped around the bones that broke them.',
+    dropModel: VELLUM_WRAPS,
+    modifiers: [
+      { kind: 'weapon-damage', amount: 1 },
+      { kind: 'action-speed-mult', amount: 1.12 },
+    ],
+  },
+  // BOOTS
+  'shroud-step-boots': {
+    id: 'shroud-step-boots',
+    kind: 'boots',
+    rarity: 'uncommon',
+    name: 'Shroud-Step Boots',
+    flavor: 'For walking past what is left behind.',
+    dropModel: SHROUD_STEP_BOOTS,
+    modifiers: [
+      { kind: 'physical-armor', amount: 1 },
+      { kind: 'move-speed-mult', amount: 1.10 },
+    ],
+  },
+  'sin-eater-sandals': {
+    id: 'sin-eater-sandals',
+    kind: 'boots',
+    rarity: 'rare',
+    name: 'Sin-Eater Sandals',
+    flavor: 'Worn thin by other people\'s sins.',
+    dropModel: SIN_EATER_SANDALS,
+    modifiers: [
+      { kind: 'incoming-damage-mult', amount: 0.90 },
+    ],
+    setId: 'penitent',
+  },
+  // OFFHAND
+  'splintered-aegis': {
+    id: 'splintered-aegis',
+    kind: 'offhand',
+    rarity: 'uncommon',
+    name: 'Splintered Aegis',
+    flavor: 'Held by someone whose arms got tired.',
+    dropModel: SPLINTERED_AEGIS,
+    modifiers: [
+      { kind: 'physical-armor', amount: 1 },
+      { kind: 'max-hp', amount: 1 },
+    ],
+  },
+  // AMULETS
+  'mendicants-locket': {
+    id: 'mendicants-locket',
+    kind: 'amulet',
+    rarity: 'uncommon',
+    name: "Mendicant's Locket",
+    flavor: 'Holds a coin that was never spent.',
+    dropModel: MENDICANT_LOCKET,
+    modifiers: [
+      { kind: 'max-hp', amount: 2 },
+      { kind: 'physical-armor', amount: 1 },
+    ],
+  },
+  'heart-of-drowned': {
+    id: 'heart-of-drowned',
+    kind: 'amulet',
+    rarity: 'rare',
+    name: 'Heart of the Drowned',
+    flavor: 'It beats slower than yours.',
+    dropModel: HEART_OF_DROWNED,
+    modifiers: [
+      { kind: 'max-hp', amount: 3 },
+      { kind: 'magic-armor', amount: 1 },
+    ],
+    // The cold seep — chill-on-hit chance. The drowned mark their kills.
+    onHit: { buffId: 'chill', chance: 0.30, duration: 2.5 },
+  },
+  // RINGS
+  'ring-of-iron': {
+    id: 'ring-of-iron',
+    kind: 'ring',
+    rarity: 'uncommon',
+    name: 'Ring of Iron',
+    flavor: 'A length of nail. Bent.',
+    dropModel: RING_OF_IRON,
+    modifiers: [{ kind: 'physical-armor', amount: 1 }],
+  },
+  'ring-of-ember': {
+    id: 'ring-of-ember',
+    kind: 'ring',
+    rarity: 'uncommon',
+    name: 'Ring of Ember',
+    flavor: 'Still warm.',
+    dropModel: RING_OF_EMBER,
+    modifiers: [{ kind: 'weapon-damage', amount: 1 }],
+    onHit: { buffId: 'burn', chance: 0.25, duration: 2.0 },
+  },
+  'ring-of-quickening': {
+    id: 'ring-of-quickening',
+    kind: 'ring',
+    rarity: 'rare',
+    name: 'Ring of Quickening',
+    flavor: 'The hours run shorter while it is worn.',
+    dropModel: RING_OF_QUICKENING,
+    modifiers: [
+      { kind: 'action-speed-mult', amount: 1.20 },
+      { kind: 'max-hp', amount: -2 },
+    ],
+  },
+  // CONSUMABLES
+  'steady-tonic': {
+    id: 'steady-tonic',
+    kind: 'consumable',
+    rarity: 'uncommon',
+    name: 'A flask of steady tonic',
+    flavor: 'The mending takes its time.',
+    dropModel: STEADY_TONIC,
+    consumableBuff: { buffId: 'regen-pulse', duration: 6.0 },
+    carryLimit: 2,
   },
   // ── CONSUMABLES ────────────────────────────────────────────────────
   'healing-potion': {
