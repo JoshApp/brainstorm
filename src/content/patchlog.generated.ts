@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Lighting"
+      },
+      {
+        "tag": "tune",
         "text": "Event slots: rollable feature placeholders (?) through the manifest"
       },
       {
@@ -202,10 +206,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Geometry pool: shared BufferGeometries across ModelSpec spawns + stairs"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf overlay"
       }
     ]
   }

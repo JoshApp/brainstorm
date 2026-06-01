@@ -9,6 +9,7 @@ import {
   pitMothModel, lasherModel,
 } from './enemy-models';
 import { mimicModel } from './mimic';
+import { burrowerModel } from './burrower';
 
 // Ranged config — if present on a spec, the enemy fires a projectile from
 // `muzzleOffset` (local to the container) during the strike phase instead
@@ -232,6 +233,25 @@ export interface EnemySpec {
    */
   noPlayerCollision?: boolean;
 
+  // --- Burrowed (floor ambush) ---
+  /**
+   * If set, this enemy spawns BURIED — its model sits below floor
+   * level, invisible to the player, with a small dirt-mound "tell"
+   * on the ground above it. When the player walks within
+   * `triggerDistance` (metres), the mob emerges over `emergeTime`
+   * seconds (model rises from y=-1.2 to y=0 with an ease-out)
+   * and then behaves as a normal melee mob. While buried/emerging
+   * the mob is invulnerable, ignores perception, and cannot move.
+   * Pairs with a fast windup + tight strike so the emerge-into-bite
+   * lands as one motion.
+   */
+  burrowed?: {
+    /** Player distance (m) that flips the mob from buried to emerging. */
+    triggerDistance: number;
+    /** Seconds the rise takes (model y interpolates -1.2 → 0). */
+    emergeTime: number;
+  };
+
   // --- Split on death ---
   /**
    * If set, when this enemy dies the builder spawns `count` enemies
@@ -300,6 +320,7 @@ export const ENEMY_AUDIO_SIZE: Record<string, EnemyDeathSize> = {
   mimic:          'medium',    // chunky thud on death
   'pit-moth':     'small',     // tiny crunch
   lasher:         'medium',    // plant-creature death
+  burrower:       'medium',    // wet thud, then collapse
 };
 
 /** Idle/aware vocalisation per enemy (mobs/enemy.ts ticks a timer and
@@ -324,6 +345,7 @@ export const ENEMY_VOCAL_ARCHETYPE: Record<string, VocalArchetype> = {
   mimic:          'groan',     // low chest-rattle from the throat
   'pit-moth':     'skitter',   // wing-rustle / tiny clicks
   lasher:         'gurgle',    // wet plant-throat
+  burrower:       'gurgle',    // subterranean wet — same family as ooze
 };
 
 
@@ -1446,6 +1468,57 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { itemId: 'healing-potion', weight: 3 },
         { itemId: 'acid-tongue', weight: 2 },
         { itemId: 'cord-of-knives', weight: 1 },
+      ],
+    },
+  },
+
+  // Burrower — floor ambush predator. Spawns BURIED under a small
+  // dirt-mound tell; emerges when the player walks within 2m. Once
+  // surfaced it's a normal chunky melee mob — slower than a ghoul
+  // but bigger bite (the ambush is the threat, not the chase).
+  // Pairs with the pit moth thematically: moths teach "look up,"
+  // burrowers teach "scan the floor."
+  burrower: {
+    id: 'burrower',
+    name: 'burrower',
+    tileChar: 'b',
+    hp: 4,
+    moveSpeed: 1.6,                  // moderate — the surprise IS the threat
+    attackDamage: 2,
+    attackRange: 1.5,
+    strikeRange: 1.30,
+    windupTime: 0.50,                // medium telegraph — the maw gapes
+    strikeTime: 0.16,
+    recoverTime: 0.55,
+    damageType: 'physical',
+    model: burrowerModel(),
+    baseEyeEmissive: 2.4,
+    collisionRadius: 0.32,
+    tiltPartName: 'rig',
+    flashMaterialName: 'body',
+    eyeMaterialName: 'eyes',
+    presence: 'lurch',
+    // Buried — emerge at 2m. The trigger distance is generous so
+    // the player has half a beat to react; the emergeTime is short
+    // (0.45s) so the rise reads as a BURST, not a slow elevator.
+    burrowed: {
+      triggerDistance: 2.0,
+      emergeTime: 0.45,
+    },
+    // Once emerged, wide-sphere perception so the post-emerge
+    // aggro on the player who just triggered it is automatic.
+    sightRange: 8,
+    sightConeHalfAngle: Math.PI,
+    hearingRange: 4,
+    loseSightTime: 8,
+    xp: 8,
+    gold: [3, 12],
+    drops: {
+      rate: 0.40,
+      pool: [
+        { itemId: 'healing-potion', weight: 3 },
+        { itemId: 'leather-gloves', weight: 2 },
+        { itemId: 'bone-needle', weight: 1 },
       ],
     },
   },

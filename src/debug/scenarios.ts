@@ -15,6 +15,7 @@ import { damagePlayer } from '../player/health';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { ITEMS } from '../content/items';
+import { buildModel } from '../ecs/build-model';
 import { setSlot, tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
 import { createPickup } from '../interactables/pickup';
@@ -98,6 +99,15 @@ export interface Scenario {
   selectItemId?: string;
   /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
   spawnPickups?: Array<{ itemId: string; x: number; z: number }>;
+  /**
+   * Item viewer: float a single item's dropModel at eye level in front
+   * of the camera, slowly rotating. For previewing weapon/armor/ring
+   * geometry without committing it to inventory + squinting at the
+   * tiny icon. Combine with inspect:true for flat lighting + clean
+   * background. The URL param ?item=<id> overrides this so a single
+   * 'item' scenario row can serve every item via snap arg.
+   */
+  previewItemId?: string;
 }
 
 export const SCENARIOS: Record<string, Scenario> = {
@@ -506,6 +516,34 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
   // Inventory panel with the violet-stoned (cursed) ring selected — shows
   // the details panel populated with name + rarity + flavor + modifiers.
+  // ── Item viewer ─────────────────────────────────────────────────
+  // One-row template — the actual item id is set via the &item=
+  // URL param (snap.ts converts `item-<id>` into that automatically).
+  // Empty 6×6 room; camera looks at the spin position (0, 1.4, 0)
+  // from the south so the item rotates head-on. inspect:true gives
+  // flat lighting; freeze halts world ticks but NOT the spin (the
+  // spin runs off performance.now() in onBeforeRender).
+  item: {
+    inspect: true,
+    freeze: true,
+    hideSword: true,
+    level: {
+      id: 'dbg-item', depth: 1, displayName: 'item viewer', fogColor: 0x000000,
+      startPos: { x: 0, z: 1.5, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 6, d: 6 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [],
+      spawns: [],
+      doors: [], stairs: [],
+    },
+    // Camera close (~0.5m) so a ring fills the frame; large items
+    // like a sword are necessarily bigger than the gameplay read but
+    // that's an inspection trade. Slight 3/4 angle so the silhouette
+    // has depth instead of reading head-on flat.
+    playerPos: { x: 0.30, z: 0.40, y: 1.50, lookAt: { x: 0, z: 0, y: 1.4 } },
+  },
+
   // ── HUD-only inspection scenarios ────────────────────────────────
   // Same setup as the gameplay-context scenarios above (give items,
   // damage the player, etc.) but with `hudOnly: true` so the 3D
@@ -900,6 +938,51 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 2.5, lookAt: { x: 0, z: -1.5, y: 1.4 } },
   },
 
+  // Burrower (buried) — verify the dirt-mound tell is visible on
+  // the floor with the creature hidden below. Player stands far
+  // enough away that the emerge doesn't fire mid-snap.
+  'mob-burrower-buried': {
+    freeze: true, hideSword: true,
+    level: {
+      id: 'dbg-burrower-buried', depth: 6, displayName: 'burrower (buried)', fogColor: 0x14100a,
+      startPos: { x: 0, z: 3.0, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 7, d: 7 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.5, z: -3.0, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  3.5, z: -3.0, height: 2.2, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      // Burrower stays buried — playerPos sits at z=2.5, mob at
+      // z=-1.0, distance 3.5m > triggerDistance 2.0m.
+      spawns: [{ enemyId: 'burrower', x: 0, z: -1.0, roomId: 'r' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 2.5, lookAt: { x: 0, z: -1.0, y: 0.0 } },
+  },
+
+  // Burrower (emerged) — walk-in distance triggers the emerge.
+  // hideSword off, NOT frozen, so the animation actually plays. Use
+  // --frames=6 on this to capture the full emerge.
+  'mob-burrower-emerging': {
+    level: {
+      id: 'dbg-burrower-emerging', depth: 6, displayName: 'burrower (emerging)', fogColor: 0x14100a,
+      startPos: { x: 0, z: 1.5, yaw: 0 },   // ~2.5m from the burrower
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 7, d: 7 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.5, z: -3.0, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  3.5, z: -3.0, height: 2.2, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'burrower', x: 0, z: -1.0, roomId: 'r' }],
+      doors: [], stairs: [],
+    },
+    // Player just inside the trigger ring (2m), so emerge fires
+    // immediately on world tick.
+    playerPos: { x: 0, z: 0.8, lookAt: { x: 0, z: -1.0, y: 0.8 } },
+  },
+
   // Lasher — stationary long-reach plant. Camera angled to catch
   // the bulb, the stalk, and the maw on the whip arm.
   'mob-lasher': {
@@ -1036,6 +1119,10 @@ export function getScenarioFromUrl(): Scenario | null {
   if (hudOnlyOverride !== null) {
     result = { ...result, hudOnly: hudOnlyOverride === 'true' };
   }
+  const itemOverride = params.get('item');
+  if (itemOverride) {
+    result = { ...result, previewItemId: itemOverride };
+  }
   return result;
 }
 
@@ -1140,6 +1227,31 @@ export function applyScenario(
   }
   if (scenario.selectItemId) {
     selectBagItem(scenario.selectItemId);
+  }
+
+  // ── Item viewer ───────────────────────────────────────────────────
+  // Float the item's dropModel at (0, 1.4, 0) and slowly rotate it
+  // around Y so a single snap captures the silhouette and a frames-
+  // grid (`npm run snap item-<id> --frames=8 --duration=4`) captures
+  // a full 360° turn. Auto-pair with inspect:true on the scenario
+  // for the flat-lit backdrop. onBeforeRender drives the spin from
+  // performance.now() so a frozen world doesn't stop the rotation
+  // (we want freeze:true to halt mob/world ticks, NOT the preview).
+  if (scenario.previewItemId) {
+    const item = ITEMS[scenario.previewItemId];
+    if (item && item.dropModel) {
+      const built = buildModel(item.dropModel);
+      built.group.position.set(0, 1.4, 0);
+      const startMs = performance.now();
+      built.group.onBeforeRender = () => {
+        const elapsed = (performance.now() - startMs) / 1000;
+        built.group.rotation.y = elapsed * 0.6;  // ~57°/s — full turn ≈ 6.3s
+      };
+      ctx.level.root.add(built.group);
+    } else if (!item) {
+      // eslint-disable-next-line no-console
+      console.warn(`Unknown previewItemId: ${scenario.previewItemId}`);
+    }
   }
 
   if (scenario.freeze) {
