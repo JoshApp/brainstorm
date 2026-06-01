@@ -18,10 +18,15 @@
  *   --out DIR       output dir (default /tmp/pilot-<ts>)
  *   --viewport NAME desktop|phone|... (default desktop)
  *   --port N        vite port (default randomized)
+ *   --profile DIR   persist a browser profile on disk (the run's save survives)
+ *   --continue      resume the saved run from --profile (instead of --seed/--vault)
  *
  * Action verbs (';'-separated):
  *   observe              print the observation again (no world time)
  *   shot                 force an annotated screenshot here
+ *   goto <id|kind>       pathfind toward a target (chest/stairs/an enemy id or
+ *                        kind) until in range / close / stuck — issue intent,
+ *                        not micro-steps
  *   turn <deg>           rotate view by <deg> (right = positive)
  *   move <DIR> [sec]     walk DIR (N/NE/E/SE/S/SW/W/NW) for [sec] s (default 0.25)
  *   attack               swing
@@ -63,9 +68,15 @@ const viewport = get('--viewport') ?? 'desktop';
 const port = Number(get('--port') ?? 5180 + Math.floor(Math.random() * 200));
 const out = get('--out') ?? `/tmp/pilot-${Date.now()}`;
 const vp = VIEWPORTS[viewport] ?? VIEWPORTS.desktop;
+// Persistence: --profile DIR keeps a browser profile (localStorage) on disk so
+// the run's save survives between invocations; --continue resumes that save
+// (the game persists on descent), so I can pilot a run across many calls.
+const profile = get('--profile');
+const continueRun = argv.includes('--continue');
 
 type Step =
   | { meta: 'observe' | 'shot' }
+  | { goto: string }
   | { action: Record<string, unknown> };
 
 /** Parse the ';'-separated --do script into steps. */
@@ -76,6 +87,7 @@ function parseScript(s: string): Step[] {
     switch (verb) {
       case 'observe': steps.push({ meta: 'observe' }); break;
       case 'shot':    steps.push({ meta: 'shot' }); break;
+      case 'goto':    steps.push({ goto: rest.join(' ') }); break;
       case 'turn':    steps.push({ action: { kind: 'turn', angle: (Number(rest[0]) || 0) * Math.PI / 180 } }); break;
       case 'move':    steps.push({ action: { kind: 'move', dir: rest[0] ?? 'N', seconds: rest[1] ? Number(rest[1]) : undefined } }); break;
       case 'attack':  steps.push({ action: { kind: 'attack' } }); break;
@@ -86,6 +98,32 @@ function parseScript(s: string): Step[] {
     }
   }
   return steps;
+}
+
+interface Target { id: string; kind: string; distance: number; compass: string; inRange?: boolean; }
+/** Structured observation (subset we steer by). */
+async function observeJson(page: Page): Promise<{ player: { pos: { x: number; z: number } }; visible: { enemies: Target[]; interactables: Target[]; pickups: Target[] } }> {
+  return page.evaluate(() => (window as { harness: { observe(): unknown } }).harness.observe() as never);
+}
+
+/** Driver-side pathing: steer toward a target (by exact id, else nearest of a
+ *  kind) using the observation's per-target compass, until in range / close /
+ *  stuck. The harness stays dumb — this is the brain. */
+async function gotoTarget(page: Page, arg: string): Promise<void> {
+  const ARRIVE = 1.5, MAX_IT = 30;
+  let prev = Infinity, stuck = 0;
+  for (let it = 0; it < MAX_IT; it++) {
+    const obs = await observeJson(page);
+    const all: Target[] = [...obs.visible.interactables, ...obs.visible.enemies, ...obs.visible.pickups];
+    const target = all.find((t) => t.id === arg) ?? all.filter((t) => t.kind === arg).sort((a, b) => a.distance - b.distance)[0];
+    if (!target) { console.log(`  goto ${arg}: no such target in view`); return; }
+    if (target.inRange || target.distance <= ARRIVE) { console.log(`  goto ${arg}: arrived (${target.distance.toFixed(1)}m)`); return; }
+    if (target.distance >= prev - 0.08) stuck++; else stuck = 0;
+    if (stuck >= 3) { console.log(`  goto ${arg}: stuck at ${target.distance.toFixed(1)}m (${target.compass})`); return; }
+    prev = target.distance;
+    await page.evaluate(async (a) => (window as { harness: { act(x: unknown): Promise<unknown> } }).harness.act(a), { kind: 'move', dir: target.compass, seconds: 0.35 });
+  }
+  console.log(`  goto ${arg}: gave up after ${MAX_IT} steps`);
 }
 
 async function shot(page: Page, label: string): Promise<void> {
@@ -113,23 +151,46 @@ async function main() {
   });
   if (!ready) { console.error('vite failed to start:\n' + viteOut); killVite(); process.exit(1); }
 
-  const browser = await chromium.launch({
+  const launchOpts = {
     ...(CHROMIUM_PATH ? { executablePath: CHROMIUM_PATH } : {}),
     headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader'],
-  });
+  };
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let page: Page;
+  let closeCtx: () => Promise<void>;
+  if (profile) {
+    const context = await chromium.launchPersistentContext(profile, { ...launchOpts, viewport: vp });
+    page = context.pages()[0] ?? await context.newPage();
+    closeCtx = () => context.close();
+  } else {
+    browser = await chromium.launch(launchOpts);
+    const context = await browser.newContext({ viewport: vp });
+    page = await context.newPage();
+    closeCtx = () => browser!.close();
+  }
   try {
-    const page = await (await browser.newContext({ viewport: vp })).newPage();
     page.on('console', (m: ConsoleMessage) => { if (m.type() === 'error') console.log(`  [browser error] ${m.text()}`); });
     page.on('pageerror', (e) => console.log(`  [browser pageerror] ${e.message}`));
 
-    const target = vault
-      ? `vault=${encodeURIComponent(vault)}`
-      : `seed=${seed}&depth=${depth}`;
-    const url = `http://127.0.0.1:${port}/brainstorm/?harness=1&autostart=1&${target}&freeze=false`;
-    console.log(`pilot — ${vault ? `vault ${vault}` : `seed ${seed} depth ${depth}`}  (${url})\n`);
+    const autostartVal = continueRun ? 'continue' : '1';
+    const target = continueRun ? ''
+      : vault ? `&vault=${encodeURIComponent(vault)}`
+      : `&seed=${seed}&depth=${depth}`;
+    const url = `http://127.0.0.1:${port}/brainstorm/?harness=1&autostart=${autostartVal}${target}&freeze=false`;
+    const what = continueRun ? 'continue' : vault ? `vault ${vault}` : `seed ${seed} depth ${depth}`;
+    console.log(`pilot — ${what}${profile ? ` [profile ${profile}]` : ''}  (${url})\n`);
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
     await page.waitForFunction(() => Boolean((window as { harness?: unknown }).harness), { timeout: 10_000 });
-    await page.evaluate(async () => { await (window as { harness: { ready: Promise<void> } }).harness.ready; });
+    // Guard the ready wait: --continue with no save boots to the title (no
+    // level ever loads), which would hang harness.ready forever.
+    const ready = await page.evaluate(async () => Promise.race([
+      (window as { harness: { ready: Promise<void> } }).harness.ready.then(() => true),
+      new Promise<boolean>((r) => setTimeout(() => r(false), 8000)),
+    ]));
+    if (!ready) {
+      console.log('harness never became ready — no level loaded (e.g. --continue with no saved run). Nothing to pilot.');
+      return;
+    }
 
     console.log('── initial ──');
     console.log(await observeText(page));
@@ -145,6 +206,13 @@ async function main() {
         else { await shot(page, label); console.log(`\n── shot → ${label}.png ──`); }
         continue;
       }
+      if ('goto' in step) {
+        console.log(`\n── goto ${step.goto} ──`);
+        await gotoTarget(page, step.goto);
+        console.log(await observeText(page));
+        await shot(page, label);
+        continue;
+      }
       const r = await page.evaluate(
         async (action) => { const h = (window as { harness: { act(a: unknown): Promise<{ ok: boolean; reason?: string }> } }).harness; return h.act(action); },
         step.action,
@@ -155,7 +223,7 @@ async function main() {
     }
     console.log(`\nScreenshots in ${out}/`);
   } finally {
-    await browser.close();
+    await closeCtx();
     killVite();
   }
 }

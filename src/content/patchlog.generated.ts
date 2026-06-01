@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "content",
+        "text": "Pilot/inspector: faithful populated vault previews"
+      },
+      {
+        "tag": "content",
         "text": "Pilot: --vault entry — walk a single authored vault from the inside"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Consumables: heal carry cap, mobile-first hotbar, better feedback"
-      },
-      {
-        "tag": "tune",
-        "text": "Flatten floors — kill the wavy corridor/room ground mismatch"
       }
     ]
   }
