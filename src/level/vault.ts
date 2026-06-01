@@ -1,4 +1,5 @@
 import type { PropSpec, TileMap } from './types';
+import type { EncounterSpec } from '../content/encounters';
 
 // Vault system — pre-authored room chunks the procgen composer
 // stitches into multi-room floors. Each vault is a small ASCII map
@@ -56,6 +57,13 @@ export interface Vault {
   roomHeight?: number;
   /** Optional wall treatment — 'braced' adds mine-shaft timber framing. */
   wallVariant?: 'stone' | 'braced';
+  /**
+   * Optional encounter archetype. When set, the room's X spawn slots are
+   * filled from ONE coherent depth-scaled pack (swarm / bruisers / caster-
+   * pack / mixed) instead of rolled independently — so the fight reads as a
+   * designed encounter. The spawn POINTS stay authored; only the roster rolls.
+   */
+  encounter?: EncounterSpec;
   /**
    * Chasm voids in VAULT-LOCAL coords (centre = 0,0). Each becomes a floor
    * hole + edge barrier + drop. Leave a walkable gap between two voids for a

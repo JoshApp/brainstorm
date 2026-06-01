@@ -13,6 +13,10 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "content",
+        "text": "Mimic mob + procgen chest tier rolls"
+      },
+      {
+        "tag": "content",
         "text": "Pilot/inspector: faithful populated vault previews"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Auto-update"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix uncarved stairwell floor when stairs sit flush with back wall"
       }
     ]
   }

@@ -161,7 +161,7 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   let s = (seed * 2654435761) >>> 0;
   const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
 
-  const populated = populateTemplate(vault.map, depth, rand);
+  const populated = populateTemplate(vault.map, depth, rand, vault.encounter);
   const ceil = ceilingFor(vault, depth, 1);
   const sub = parseTileMap(populated, {
     id: `vault-preview-${vault.id}`,
@@ -362,7 +362,7 @@ export function composeFloor(
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
     roomVaults[pv.roomId] = pv.vault.id;
-    const populated = populateTemplate(pv.vault.map, depth, rand);
+    const populated = populateTemplate(pv.vault.map, depth, rand, pv.vault.encounter);
     const ceil = ceilingFor(pv.vault, depth, i);
     const sub = parseTileMap(populated, {
       id: `${opts.id}-${pv.vault.id}`,

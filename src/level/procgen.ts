@@ -20,6 +20,7 @@ import type { LevelSpec, EnemySpawnSpec, TileMap } from './types';
 import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
 import { ENEMY_CHAR_BY_ID } from '../content/enemies';
+import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type Role } from '../content/encounters';
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
 import { bossById } from '../content/bosses';
 import { seedBuildRng } from '../engine/rng';
@@ -124,9 +125,11 @@ function rollTableFor(depth: number): EnemyRoll[] {
 (function validateRollTables() {
   const ids = new Set<string>();
   for (const d of [3, 6, 9]) for (const r of rollTableFor(d)) ids.add(r.enemyId);
+  // Encounter-archetype role buckets are placeable too — same guard.
+  for (const bucket of Object.values(ROLE)) for (const id of bucket) ids.add(id);
   for (const id of ids) {
     if (!ENEMY_CHAR_BY_ID[id]) {
-      throw new Error(`Roll table references '${id}', which has no tileChar in the enemy registry`);
+      throw new Error(`Roll table / encounter role references '${id}', which has no tileChar in the enemy registry`);
     }
   }
 })();
@@ -155,13 +158,49 @@ function pickWeighted(rows: EnemyRoll[], rand: () => number): string {
 // Pre-process the template string to REPLACE 'X' and 'B' with rolled
 // enemy chars BEFORE parsing.
 
-/**
- * Replace 'X' and 'B' tile chars with concrete enemy chars (G/R/K/W/Y)
- * picked from depth-appropriate roll tables. Exported so the vault
- * composer can call this per-vault before parseTileMap runs.
- */
-export function populateTemplate(template: TileMap, depth: number, rand: () => number): TileMap {
+/** Roll a COHERENT pack of `slotCount` enemy ids for an encounter archetype,
+ *  depth-scaled. Each slot draws from its archetype role bucket, filtered to
+ *  what's available at this depth (empty bucket → fall back to the weighted
+ *  roll table). 'heavy' intensity upgrades one slot to an elite. */
+function rollPack(spec: EncounterSpec, depth: number, slotCount: number, rand: () => number): string[] {
   const table = rollTableFor(depth);
+  const available = new Set(table.map((r) => r.enemyId));
+  const fromRole = (role: Role): string => {
+    const pool = ROLE[role].filter((id) => available.has(id));
+    if (pool.length === 0) return pickWeighted(table, rand);   // depth has none → fallback
+    return pool[Math.floor(rand() * pool.length)];
+  };
+  const slots = ARCHETYPE_SLOTS[spec.archetype];
+  const out: string[] = [];
+  for (let i = 0; i < slotCount; i++) out.push(fromRole(slots[i % slots.length]));
+  if (spec.intensity === 'heavy' && out.length > 0) {
+    const elites = ROLE.elite.filter((id) => available.has(id));
+    if (elites.length) out[Math.floor(rand() * out.length)] = elites[Math.floor(rand() * elites.length)];
+  }
+  return out;
+}
+
+/**
+ * Replace 'X' and 'B' tile chars with concrete enemy chars picked from
+ * depth-appropriate roll tables. Exported so the vault composer can call this
+ * per-vault before parseTileMap runs.
+ *
+ * When `encounter` is set, the X slots are filled from ONE coherent pack
+ * (see rollPack) instead of rolled independently — so the room reads as a
+ * designed fight, not a grab-bag. B (boss) is unaffected.
+ */
+export function populateTemplate(
+  template: TileMap, depth: number, rand: () => number, encounter?: EncounterSpec,
+): TileMap {
+  const table = rollTableFor(depth);
+  // Pre-roll a coherent pack sized to the X-slot count when an archetype is set.
+  let packChars: string[] | null = null;
+  let packIdx = 0;
+  if (encounter) {
+    let n = 0;
+    for (const row of template) for (const ch of row) if (ch === 'X') n++;
+    if (n > 0) packChars = rollPack(encounter, depth, n, rand).map((id) => ENEMY_CHAR_BY_ID[id] ?? 'R');
+  }
   // enemyId → tile char comes from the SINGLE registry in
   // content/enemies.ts (ENEMY_CHAR_BY_ID). No hand-kept map here, so a
   // new enemy is roll-placeable the moment it declares a tileChar —
@@ -171,8 +210,8 @@ export function populateTemplate(template: TileMap, depth: number, rand: () => n
     let out = '';
     for (const ch of row) {
       if (ch === 'X') {
-        const id = pickWeighted(table, rand);
-        out += ENEMY_CHAR_BY_ID[id] ?? 'R';
+        const id = packChars ? null : pickWeighted(table, rand);
+        out += packChars ? (packChars[packIdx++] ?? 'R') : (ENEMY_CHAR_BY_ID[id!] ?? 'R');
       } else if (ch === 'B') {
         const id = bossFor(depth);
         out += ENEMY_CHAR_BY_ID[id] ?? 'W';

@@ -213,6 +213,9 @@ const COMBAT_HALL: Vault = {
   // Ritual-circle group already has its own focal glow + the
   // bone-shrines colour the corners. Wall torches push violet.
   torchTint: TORCH_VIOLET,
+  // PROTOTYPE: a coherent bruiser pack fills the X slots around the boss —
+  // a slow armoured grind in the big hall, not a random grab-bag.
+  encounter: { archetype: 'bruisers', intensity: 'medium' },
 };
 
 const COMBAT_ARENA: Vault = {
@@ -707,6 +710,9 @@ const COMBAT_CROSS: Vault = {
   ],
   minDepth: 2,
   weight: 2,
+  // PROTOTYPE: coherent pack instead of 3 independent X rolls. A swarm —
+  // fast weak bodies that overwhelm the cross's narrow arms.
+  encounter: { archetype: 'swarm', intensity: 'medium' },
 };
 
 // Mine-shaft gallery — long, narrow, low, pale. The "white corridor that
