@@ -70,6 +70,16 @@ export type RoomSpec = {
   rect: WalkableRect;
   height: number;
   /**
+   * Ceiling shape. Default 'flat' (a plane at `height`). 'barrel' (curved
+   * vault) and 'pitched' (A-frame) spring from the wall-top at `height` and
+   * arch UP to height + ceilingRise at the crown, with the short-wall
+   * lunettes filled so there's no gap. Adds verticality; still ONE ceiling
+   * mesh, so no extra draw calls.
+   */
+  ceilingStyle?: 'flat' | 'barrel' | 'pitched';
+  /** Crown rise above `height` for barrel/pitched ceilings (meters). */
+  ceilingRise?: number;
+  /**
    * If true, the builder SKIPS shell generation (floor / ceiling /
    * walls) for this room. The rect is still used for ATTRIBUTION:
    * mob spawns find their roomId via findRoomContaining, arena

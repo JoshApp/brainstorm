@@ -198,6 +198,87 @@ function makeJitteredPlane(
   return geo;
 }
 
+// Double-sided clone of the ceiling material for vaulted/pitched ceilings.
+// Double-sided so the custom arch geometry is robust to winding direction
+// (it can never render as an invisible black hole), and MeshStandard flips
+// the normal per-face so lighting reads correctly from below either way.
+// Cached (re-cloned only if the base material instance changes across a
+// rebuild) so we don't leak a material per room.
+let _archCeilMat: THREE.Material | null = null;
+let _archCeilBase: THREE.Material | null = null;
+function archCeilingMaterial(base: THREE.Material): THREE.Material {
+  if (_archCeilBase !== base || !_archCeilMat) {
+    _archCeilMat = base.clone();
+    _archCeilMat.side = THREE.DoubleSide;
+    _archCeilBase = base;
+  }
+  return _archCeilMat;
+}
+
+// Build a barrel (curved) or pitched (A-frame) ceiling as ONE BufferGeometry:
+// an arch that springs from the wall-top height H along the longer axis and
+// rises to H+rise at the crown, PLUS the two end tympana that fill the arch
+// profile above the short walls (no gap). World-Y coords — place the mesh at
+// (rect.x, 0, rect.z) with no rotation.
+function makeArchedCeilingGeometry(
+  W: number, D: number, H: number, rise: number, profile: 'barrel' | 'pitched',
+): THREE.BufferGeometry {
+  // Arch across the SHORTER horizontal axis; run flat along the longer one.
+  const curveX = W <= D;                       // true → arch spans X, runs along Z
+  const acrossHalf = (curveX ? W : D) / 2;
+  const alongHalf = (curveX ? D : W) / 2;
+  const NA = 16;                               // segments across the arch (smoothness)
+  const NB = Math.max(1, Math.round((alongHalf * 2) / 3));   // along the run
+  const shape = (t: number) =>
+    profile === 'barrel' ? Math.cos(t * Math.PI / 2) : 1 - Math.abs(t);
+  const xz = (a: number, b: number): [number, number] => (curveX ? [a, b] : [b, a]);
+
+  const pos: number[] = [];
+  const idx: number[] = [];
+
+  // ── Arched surface ──
+  const rowLen = NA + 1;
+  for (let j = 0; j <= NB; j++) {
+    const b = -alongHalf + (j / NB) * (alongHalf * 2);
+    for (let i = 0; i <= NA; i++) {
+      const a = -acrossHalf + (i / NA) * (acrossHalf * 2);
+      const y = H + rise * shape(a / acrossHalf);
+      const [x, z] = xz(a, b);
+      pos.push(x, y, z);
+    }
+  }
+  for (let j = 0; j < NB; j++) {
+    for (let i = 0; i < NA; i++) {
+      const v0 = j * rowLen + i;
+      const v2 = v0 + rowLen;
+      idx.push(v0, v2, v0 + 1, v0 + 1, v2, v2 + 1);
+    }
+  }
+
+  // ── End tympana: fill above the short walls (between y=H and the arch) ──
+  for (const bEnd of [-alongHalf, alongHalf]) {
+    const base = pos.length / 3;
+    for (let i = 0; i <= NA; i++) {
+      const a = -acrossHalf + (i / NA) * (acrossHalf * 2);
+      const yTop = H + rise * shape(a / acrossHalf);
+      const [x, z] = xz(a, bEnd);
+      pos.push(x, H, z);       // bottom — wall-top line
+      pos.push(x, yTop, z);    // top — arch
+    }
+    for (let i = 0; i < NA; i++) {
+      const b0 = base + i * 2, t0 = base + i * 2 + 1;
+      const b1 = base + (i + 1) * 2, t1 = base + (i + 1) * 2 + 1;
+      idx.push(b0, b1, t0, t0, b1, t1);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function buildRoomShell(
   scene: THREE.Object3D,
   room: RoomSpec,
@@ -226,14 +307,27 @@ function buildRoomShell(
   floor.userData.dbgSource = `floor · ${room.id} @(${rect.x.toFixed(1)},${rect.z.toFixed(1)})`;
   scene.add(floor);
 
-  // Ceiling
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(W, D), materials.ceiling);
-  ceiling.rotation.x = Math.PI / 2;
-  ceiling.position.set(rect.x, H, rect.z);
+  // Ceiling — flat plane by default; barrel/pitched build a custom arch that
+  // springs from the wall-top (H) and rises to H+rise. Verticality without a
+  // draw-call increase (still one ceiling mesh per room).
+  const ceilStyle = room.ceilingStyle ?? 'flat';
+  let ceiling: THREE.Mesh;
+  if (ceilStyle === 'flat') {
+    ceiling = new THREE.Mesh(new THREE.PlaneGeometry(W, D), materials.ceiling);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set(rect.x, H, rect.z);
+  } else {
+    const rise = room.ceilingRise ?? (ceilStyle === 'barrel' ? 1.3 : 1.0);
+    ceiling = new THREE.Mesh(
+      makeArchedCeilingGeometry(W, D, H, rise, ceilStyle),
+      archCeilingMaterial(materials.ceiling),
+    );
+    ceiling.position.set(rect.x, 0, rect.z);   // geometry already in world-Y
+  }
   ceiling.receiveShadow = true;
   ceiling.name = 'ceiling';
   ceiling.userData.dbgKind = 'ceiling';
-  ceiling.userData.dbgSource = `ceiling · ${room.id} @(${rect.x.toFixed(1)},${rect.z.toFixed(1)}) y${H.toFixed(1)}`;
+  ceiling.userData.dbgSource = `ceiling · ${room.id} (${ceilStyle}) @(${rect.x.toFixed(1)},${rect.z.toFixed(1)}) y${H.toFixed(1)}`;
   scene.add(ceiling);
 
   // Walls with openings where another rect butts up. Each of the four wall

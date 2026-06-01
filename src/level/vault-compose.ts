@@ -128,6 +128,26 @@ function stepGeometry(
   };
 }
 
+/** Pick a ceiling shape for a placed vault. Role + depth-banded so it reads
+ *  as deliberate strata, not random noise (per the design rule that ceiling
+ *  shape is identity, not decoration): set-pieces vault grandly, the descent
+ *  shifts flat → pitched (mine tunnels) → barrel (deep cathedral). Pure
+ *  function of (role, depth, index) — no RNG, so it never perturbs the
+ *  placement stream and stays reproducible per seed. */
+function ceilingFor(
+  vault: Vault, depth: number, index: number,
+): { style: 'flat' | 'barrel' | 'pitched'; rise: number } {
+  const tags = vault.tags;
+  if (tags.includes('boss')) return { style: 'barrel', rise: 1.9 };       // grand set-piece
+  if (tags.includes('treasure')) return { style: 'barrel', rise: 1.0 };   // vaulted treasury
+  if (tags.includes('start') || tags.includes('exit')) return { style: 'flat', rise: 0 };
+  // Combat / encounter rooms shift with the descent.
+  if (depth >= 7) return { style: 'barrel', rise: 1.4 };                  // deep — cathedral vaults
+  if (depth >= 4) return { style: 'pitched', rise: 1.1 };                 // mid — mine-tunnel A-frames
+  // Shallow: alternate flat / low-pitched by index for grounded variety.
+  return index % 2 === 0 ? { style: 'flat', rise: 0 } : { style: 'pitched', rise: 0.9 };
+}
+
 /** Compose a LevelSpec for the given floor depth. */
 export function composeFloor(
   depth: number,
@@ -278,6 +298,7 @@ export function composeFloor(
     const pv = placed[i];
     roomVaults[pv.roomId] = pv.vault.id;
     const populated = populateTemplate(pv.vault.map, depth, rand);
+    const ceil = ceilingFor(pv.vault, depth, i);
     const sub = parseTileMap(populated, {
       id: `${opts.id}-${pv.vault.id}`,
       offsetX: pv.offsetX,
@@ -288,6 +309,8 @@ export function composeFloor(
       torchTint: pv.vault.torchTint ?? opts.torchTint,
       stairsTarget: nextLevelId,
       roomHeight: pv.vault.roomHeight,
+      ceilingStyle: ceil.style,
+      ceilingRise: ceil.rise,
       spawnYaw: pv.vault.tags.includes('start') ? Math.PI : undefined,
     });
     rooms.push(...sub.rooms);

@@ -68,6 +68,10 @@ export interface TileMapOptions {
   spawnYaw?: number;
   /** Default room height in meters. */
   roomHeight?: number;
+  /** Ceiling shape for the vault's main room (default 'flat'). */
+  ceilingStyle?: 'flat' | 'barrel' | 'pitched';
+  /** Crown rise above roomHeight for a barrel/pitched ceiling (meters). */
+  ceilingRise?: number;
   /** Color tint for the room's torches (applied to all torches in the map). */
   torchTint?: number;
   /**
@@ -257,6 +261,8 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     id: roomId,
     rect: { x: offsetX, z: offsetZ, w: innerW, d: innerD },
     height: opts.roomHeight ?? 3.2,
+    ceilingStyle: opts.ceilingStyle,
+    ceilingRise: opts.ceilingRise,
   };
 
   // ── Flood fill walkable cells into sub-rooms ──────────────────────

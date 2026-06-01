@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Content expansion: 15 new equipment items + Penitent's Vigil set"
+      },
+      {
         "tag": "content",
         "text": "Level gen: winding 2D vault placement (corridors turn now)"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Dark-adapt shader: scale-lift preserves hue, no more wash-out"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt: fog-attenuate lit signal so foggy rooms read as dark"
       }
     ]
   }
