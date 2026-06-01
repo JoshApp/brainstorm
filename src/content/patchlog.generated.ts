@@ -12,6 +12,30 @@ export const GENERATED_PATCHLOG = [
         "text": "Hold-to-charge prototype on the sword (touch)"
       },
       {
+        "tag": "content",
+        "text": "Separate enemy animation overlays from the AI core in update()"
+      },
+      {
+        "tag": "content",
+        "text": "Centralize enemy-AI + drifting-mote tuning in config.ts"
+      },
+      {
+        "tag": "tune",
+        "text": "Extract dark-adapt light sampler out of main.ts loop"
+      },
+      {
+        "tag": "content",
+        "text": "Move enemy audio mapping into content layer"
+      },
+      {
+        "tag": "content",
+        "text": "Extract enemy model factories to content/enemy-models.ts"
+      },
+      {
+        "tag": "tune",
+        "text": "Dedup hex-colour helpers into src/style/color-utils"
+      },
+      {
         "tag": "tune",
         "text": "The Boiling King"
       },
@@ -194,36 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Boss music + keep the drone alive during ordinary combat"
-      },
-      {
-        "tag": "tune",
-        "text": "Combat audio: fully silent — the world goes quiet for the fight"
-      }
-    ]
-  },
-  {
-    "version": "Build 6",
-    "date": "2026-05-29",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "Remove portal-haze planes from archway thresholds"
-      },
-      {
-        "tag": "tune",
-        "text": "Tone down archway proximity glow"
-      },
-      {
-        "tag": "tune",
-        "text": "Archway glow: whole frame outline, not just the lintel"
-      },
-      {
-        "tag": "tune",
-        "text": "Archway glow: tighten proximity (fade in from ~2.5m, full ~1m)"
-      },
-      {
-        "tag": "tune",
-        "text": "Archway glow far subtler (lintel/keystone only)"
       }
     ]
   }
