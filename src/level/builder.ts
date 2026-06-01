@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { LevelSpec, RoomSpec, TorchSpec } from './types';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
@@ -682,12 +683,29 @@ export function buildLevel(
   // --- Props (visual meshes) + collect obstacles for collision ---
   // `obstacles` was hoisted above so stair AABBs land in the same list.
 
+  // Pillar geometry is BATCHED: each pillar's ~8 parts are baked to world
+  // space and collected here, then merged into ONE mesh after the loop (see
+  // below) — so a colonnade costs a single draw call instead of dozens. The
+  // boss cathedral alone was ~48 pillar draw calls.
+  const pillarGeos: THREE.BufferGeometry[] = [];
+
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
       const H = spec.rooms[0]?.height ?? 3.2;
       const { group: pillarGroup, obstacle } = buildAltarPillar(prop.x, prop.z, size, H, materials);
-      root.add(pillarGroup);
+      // Bake each part's local transform into a world-space geometry clone
+      // for the merge. (Merge, not InstancedMesh: pillars vary in height +
+      // size, which one instanced geometry can't express without stretching
+      // the cap/bead proportions.) The pooled source geometries are left
+      // intact; the clones get disposed after the merge.
+      pillarGroup.updateMatrixWorld(true);
+      pillarGroup.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh && mesh.geometry) {
+          pillarGeos.push(mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
+        }
+      });
       obstacles.push({ kind: 'aabb', ...obstacle });
     } else if (prop.kind === 'altar') {
       const { group: altarGroup, obstacle } = buildAltarBlock(prop.x, prop.z, materials);
@@ -931,6 +949,22 @@ export function buildLevel(
         lingerMs: prop.lingerMs,
         dismissOn: prop.dismissOn,
       });
+    }
+  }
+
+  // Merge every pillar's baked parts into a SINGLE mesh — one draw call for
+  // all pillars on the floor (they were ~8 meshes each). Non-pooled, so the
+  // teardown traversal disposes it. mergeGeometries(…, false) → one material
+  // group (all parts share materials.wall).
+  if (pillarGeos.length > 0) {
+    const merged = mergeGeometries(pillarGeos, false);
+    for (const g of pillarGeos) g.dispose();
+    if (merged) {
+      const pillarsMesh = new THREE.Mesh(merged, materials.wall);
+      pillarsMesh.castShadow = true;
+      pillarsMesh.receiveShadow = true;
+      pillarsMesh.name = 'pillars-merged';
+      root.add(pillarsMesh);
     }
   }
 
