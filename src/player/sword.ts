@@ -4,6 +4,7 @@ import { buildModel } from '../ecs/build-model';
 import { getSwordOffset } from './viewmodel-bob';
 import { computeWeaponPose } from './weapon-animations';
 import { getCurrentWeapon } from './current-weapon';
+import { getChargeProgress } from '../controls/charge-input';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep } from '../content/weapon-classes';
 
@@ -32,7 +33,7 @@ export interface Sword {
    *  Returns null when no swing is in progress. */
   getActiveStep(): ResolvedComboStep | null;
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
-  startSwing(): boolean;
+  startSwing(opts?: { skipWindup?: boolean }): boolean;
   update(dt: number): void;
   /** Swap the wielded weapon model. Passing null leaves the player
    *  empty-handed (used at run start before the player picks at the
@@ -142,7 +143,7 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
     return { w, step: w.combo[idx] };
   }
 
-  function startSwing(): boolean {
+  function startSwing(opts?: { skipWindup?: boolean }): boolean {
     if (phase !== 'idle') {
       // Mid-swing press: buffer the next combo step UNLESS the
       // current step is the finisher (last in the array). A spam
@@ -160,7 +161,12 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
     if (nowMs() >= comboWindowExpiresAt) {
       comboStep = 0;
     }
-    phase = 'windup';
+    // Charged release skips the windup phase — the player ALREADY
+    // paid for it by holding. The cocked-back idle pose blends seam-
+    // lessly into the strike's t=0 pose (which IS the end-of-windup
+    // pose for the same combo step), so the visual transition is
+    // continuous: held back → swings forward.
+    phase = opts?.skipWindup ? 'strike' : 'windup';
     phaseTimer = 0;
     options.onSwingStart?.();
     return true;
@@ -178,8 +184,27 @@ export function createSword(camera: THREE.Camera, options: SwordOptions = {}): S
       // idle baseline; the bob isn't applied to swing animations
       // because it would muddy their snap.
       const b = getSwordOffset();
-      group.position.set(ix + b.x, iy + b.y, iz);
-      group.rotation.set(rx, ry, rz + b.rotZ);
+      let px = ix + b.x, py = iy + b.y, pz = iz;
+      let prx = rx, pry = ry, prz = rz + b.rotZ;
+      // CHARGED HOLD blend: if the player is mid-charge, lerp the
+      // resting pose toward the END-OF-WINDUP pose of the current
+      // combo step. Blade visibly cocks back the longer they hold.
+      // The end-of-windup pose is the same one a strike starts from,
+      // so when the player releases (skipWindup → phase='strike')
+      // the visual transition is seamless — no snap.
+      const charge = getChargeProgress();
+      if (charge > 0) {
+        const { step } = currentStep();
+        const cocked = computeWeaponPose(step.pose, 'windup', 1.0);
+        px  = px  + (cocked.x    - px)  * charge;
+        py  = py  + (cocked.y    - py)  * charge;
+        pz  = pz  + (cocked.z    - pz)  * charge;
+        prx = prx + (cocked.rotX - prx) * charge;
+        pry = pry + (cocked.rotY - pry) * charge;
+        prz = prz + (cocked.rotZ - prz) * charge;
+      }
+      group.position.set(px, py, pz);
+      group.rotation.set(prx, pry, prz);
       return;
     }
 

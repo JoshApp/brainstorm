@@ -16,7 +16,7 @@ import { getSettings } from '../settings/settings';
 import { wantsHoldToCharge } from '../player/current-weapon';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
 
-const TAP_MAX_MS = 220;
+const TAP_MAX_MS = 320;
 const TAP_MAX_PX = 18;
 const AIM_ZONE_RADIUS = 70;
 const HYBRID_ROTATE_PIXELS_PER_SEC = 600;
@@ -24,6 +24,10 @@ const JOYSTICK_RADIUS = 80;
 const DEADZONE = 0.1;
 /** Left zone width as a fraction of viewport. 0.4 = 40% move, 60% look. */
 const LEFT_ZONE_FRACTION = 0.4;
+// Aligned with CHARGE_RAMP_START_MS in charge-input. A right-side
+// touch held STILL for this long commits to a charge; once committed,
+// subsequent drag aims the camera instead of cancelling the charge.
+const CHARGE_COMMIT_MS = 320;
 
 interface TouchTracker {
   id: number;
@@ -34,11 +38,14 @@ interface TouchTracker {
   side: 'left' | 'right';
   startTime: number;
   totalMovement: number;
-  /** Right-side only: is this touch still ELIGIBLE for a charged
-   *  attack? Set false the moment the player drags past the tap
-   *  movement threshold; once false it never re-arms during this
-   *  touch. Drag-cancel keeps look-around feeling instant. */
-  chargeArmed: boolean;
+  /** Right-side only: is this touch eligible to START charging at all?
+   *  Set at touchstart when the player has a charge-class weapon
+   *  equipped. Once disarmed (drag before commit) it never re-arms. */
+  chargeEligible: boolean;
+  /** Right-side only: has the touch already crossed the commit
+   *  threshold without dragging? Once true, drag becomes AIM instead
+   *  of cancel — looking around mid-charge is intentional. */
+  chargeCommitted: boolean;
 }
 
 export const touchScheme: InputScheme = {
@@ -58,7 +65,8 @@ export const touchScheme: InputScheme = {
           startX: t.clientX, startY: t.clientY,
           lastX: t.clientX,  lastY: t.clientY,
           side, startTime: performance.now(), totalMovement: 0,
-          chargeArmed: side === 'right' && wantsHoldToCharge(),
+          chargeEligible: side === 'right' && wantsHoldToCharge(),
+          chargeCommitted: false,
         });
         if (side === 'left' && activeJoystickId === null) {
           activeJoystickId = t.identifier;
@@ -93,11 +101,16 @@ export const touchScheme: InputScheme = {
           tracker.totalMovement += Math.hypot(ddx, ddy);
           tracker.lastX = t.clientX;
           tracker.lastY = t.clientY;
-          // Charge intent dies the moment a touch drags past the tap
-          // movement threshold — looking around always wins. Once
-          // disarmed it stays disarmed for the rest of this touch.
-          if (tracker.chargeArmed && tracker.totalMovement >= TAP_MAX_PX) {
-            tracker.chargeArmed = false;
+          // Pre-commit drag cancels the charge — that touch was a
+          // look swipe all along. POST-commit drag keeps the charge
+          // alive and just aims the camera, so ranged players can
+          // adjust where the charged shot lands.
+          if (
+            tracker.chargeEligible &&
+            !tracker.chargeCommitted &&
+            tracker.totalMovement >= TAP_MAX_PX
+          ) {
+            tracker.chargeEligible = false;
             cancelCharge();
           }
         }
@@ -121,11 +134,11 @@ export const touchScheme: InputScheme = {
         if (isTap) {
           const consumed = options.onTap?.(t.clientX, t.clientY, tracker.side) ?? false;
           if (!consumed && tracker.side === 'right') triggerAttack();
-        } else if (tracker.side === 'right' && tracker.chargeArmed && tracker.totalMovement < TAP_MAX_PX) {
-          // Held still past the tap window — a charged release. If the
-          // charge had built any progress (>= CHARGE_RAMP_START_MS) the
-          // charge-input module queues a charged attack; otherwise this
-          // is a no-op and the touch is treated as nothing happened.
+        } else if (tracker.side === 'right' && tracker.chargeCommitted) {
+          // Committed-charge release. Drag may have happened post-
+          // commit (the player was aiming) — that's fine, the charge
+          // is still in flight. tryReleaseChargedAttack queues the
+          // attack with the captured progress level.
           const fired = tryReleaseChargedAttack();
           if (fired) triggerAttack();
         }
@@ -150,10 +163,20 @@ export const touchScheme: InputScheme = {
       // cancel calls — we don't reset it here.
       let bestHeldMs = 0;
       for (const tracker of touches.values()) {
-        if (tracker.side === 'right' && tracker.chargeArmed) {
-          const held = now - tracker.startTime;
-          if (held > bestHeldMs) bestHeldMs = held;
+        if (tracker.side !== 'right' || !tracker.chargeEligible) continue;
+        const held = now - tracker.startTime;
+        // Promote to committed once the threshold is crossed without
+        // an early drag-cancel. After this, drag aims instead of
+        // cancels (the look update still runs in handleMove every
+        // frame regardless — we just don't disarm).
+        if (
+          !tracker.chargeCommitted &&
+          held >= CHARGE_COMMIT_MS &&
+          tracker.totalMovement < TAP_MAX_PX
+        ) {
+          tracker.chargeCommitted = true;
         }
+        if (held > bestHeldMs) bestHeldMs = held;
       }
       if (bestHeldMs > 0) setChargeFromHeldMs(bestHeldMs);
 

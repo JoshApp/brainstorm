@@ -155,8 +155,11 @@ export function createCombatSystem(
       currentSwingCharge = consumeChargedAmount();
       // Whoosh + 'attack:swing' fire from sword.ts's onSwingStart so
       // chained combo steps make sound too, not just the first press.
-      // We just forward the input.
-      sword.startSwing();
+      // Charged releases SKIP the windup phase — the player paid for
+      // it by holding; the viewmodel's cocked-back idle pose blends
+      // continuously into the strike's t=0 pose so the swing reads as
+      // "held back, now released" rather than "extra windup."
+      sword.startSwing({ skipWindup: currentSwingCharge > 0 });
     }
 
     const striking = sword.isStriking;

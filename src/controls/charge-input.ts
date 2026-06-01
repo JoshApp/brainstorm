@@ -14,11 +14,12 @@
 
 import { isWorldPausedByScreen } from '../ui/screen-manager';
 
-// Aligned with TAP_MAX_MS in input-touch (220) so there's no
-// dead-zone hold where neither tap nor charge fires. At exactly the
-// tap-end threshold the charge ring begins to fill.
-const CHARGE_RAMP_START_MS = 220;
-const CHARGE_FULL_MS       = 800;   // at this point, charge is fully cooked
+// Aligned with TAP_MAX_MS in input-touch (320). Quick releases below
+// this fire a normal tap; longer holds are intentional charges. Tuned
+// up from 220 to reduce accidental-charges on slow taps — a thumb-
+// down landing then immediate release commonly takes ~250ms.
+const CHARGE_RAMP_START_MS = 320;
+const CHARGE_FULL_MS       = 900;   // at this point, charge is fully cooked
 
 let liveProgress = 0;                // 0..1 — current visible charge, updated by setChargeProgress
 let chargedPending = false;          // a charged attack release is queued for the game loop
