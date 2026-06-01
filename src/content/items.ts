@@ -978,6 +978,67 @@ export const ITEMS: Record<string, ItemSpec> = {
       modifiers: [{ kind: 'action-speed-mult', amount: 1.10 }],
     }],
   },
+  // ── RETALIATION ITEMS — fire effects at the ATTACKER on damaged ─────
+  // Uses the new `target: 'attacker'` resolution in the trigger system.
+  // The attacker reference is carried through the player:damaged event;
+  // if the damage came from an unattributed source (DoT tick, trap),
+  // these effects fall back to targeting self — never crash.
+  'frostgrip-amulet': {
+    id: 'frostgrip-amulet',
+    kind: 'amulet',
+    rarity: 'rare',
+    name: 'Frostgrip Amulet',
+    flavor: 'The bite finds its way back along the arm.',
+    dropModel: HEART_OF_DROWNED,
+    modifiers: [{ kind: 'magic-armor', amount: 1 }],
+    passives: [{
+      id: 'frostgrip-chill-on-dmg',
+      // 60% chance: when hit, chill the attacker for 3s. Slows their
+      // movement + attack cadence — buys you a beat to reposition.
+      // Perfect counter to charging melee mobs.
+      trigger: {
+        on: 'damaged',
+        chance: 0.60,
+        effects: [{ type: 'apply-buff', target: 'attacker', buffId: 'chill', duration: 3.0 }],
+      },
+    }],
+  },
+  'spineweave-cloak': {
+    id: 'spineweave-cloak',
+    kind: 'armor',
+    rarity: 'rare',
+    name: 'Spineweave Cloak',
+    flavor: 'Sewn with their own ribs, by their own hands.',
+    dropModel: PENITENTS_ROBE,
+    modifiers: [{ kind: 'physical-armor', amount: 1 }],
+    passives: [{
+      id: 'spineweave-bleed-on-dmg',
+      trigger: {
+        on: 'damaged',
+        chance: 0.50,
+        effects: [{ type: 'apply-buff', target: 'attacker', buffId: 'bleed', duration: 4.0 }],
+      },
+    }],
+  },
+  'thornring': {
+    id: 'thornring',
+    kind: 'ring',
+    rarity: 'rare',
+    name: 'Thornring',
+    flavor: 'It draws back as it draws.',
+    dropModel: RING_OF_EMBER,
+    passives: [{
+      id: 'thornring-retaliate',
+      trigger: {
+        on: 'damaged',
+        // Always procs but only deals 1 damage — the design is
+        // attrition. Twenty hits from a swarm doubles its health
+        // shortage. Routes through the damage sink so it can land
+        // killing blows + you get kill credit.
+        effects: [{ type: 'damage', target: 'attacker', amount: 1 }],
+      },
+    }],
+  },
   // ── CONSUMABLES ────────────────────────────────────────────────────
   'healing-potion': {
     id: 'healing-potion',

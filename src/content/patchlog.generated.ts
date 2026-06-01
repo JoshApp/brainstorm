@@ -9,11 +9,35 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Reactive item verbs"
+      },
+      {
+        "tag": "tune",
+        "text": "Level gen: grand boss-hall arena (18x16) for real set-piece fights"
+      },
+      {
+        "tag": "tune",
+        "text": "Level gen: four new variety vaults (attack the 'samey' feel)"
+      },
+      {
+        "tag": "tune",
+        "text": "Level gen: vaulted + pitched ceilings (kill the 'flat' feel)"
+      },
+      {
+        "tag": "tune",
         "text": "Content expansion: 15 new equipment items + Penitent's Vigil set"
+      },
+      {
+        "tag": "content",
+        "text": "Level gen: winding 2D vault placement (corridors turn now)"
       },
       {
         "tag": "tune",
         "text": "Heal cap, charged-effect system + Howling Edge, three new weapons"
+      },
+      {
+        "tag": "tune",
+        "text": "Level gen: varied corridor ceiling heights (mine-shaft tunnels vs galleries)"
       },
       {
         "tag": "tech",
@@ -188,30 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Combat feel: no-weapon gate, strike trail, wider cone + more reach"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt shader: less blue, more shimmer"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt rates"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt shader: darkness-weighted additive (no scale-lift)"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt shader: scale-lift preserves hue, no more wash-out"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt: fog-attenuate lit signal so foggy rooms read as dark"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt"
       }
     ]
   }

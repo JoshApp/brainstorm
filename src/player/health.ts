@@ -119,7 +119,10 @@ export function damagePlayer(amount: number, source: EntityId | null = null, typ
     // wraith should sound spectral, not like another club-swing.
     if (type === 'magic') playMagicHit();
   }
-  emit({ type: 'player:damaged', hpLeft: player.hp.current, amount: result.applied });
+  // Carry the attacker through to listeners. Trigger pipeline reads
+  // this to resolve `target: 'attacker'` effects (chill-on-damaged,
+  // thorns, etc.) — without it, defensive procs only target self.
+  emit({ type: 'player:damaged', hpLeft: player.hp.current, amount: result.applied, attacker: source ?? undefined });
 
   if (player.hp.current <= 0 && !dead) {
     dead = true;
