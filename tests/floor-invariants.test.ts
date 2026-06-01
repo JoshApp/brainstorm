@@ -78,6 +78,25 @@ test('generation never throws', () => {
   for (let d = 1; d <= 13; d++) for (const s of SEEDS) generateFloor(d, s);
 });
 
+// The bug this missed before: archways (placed by the decoration pipeline at
+// corridor mouths) carry collision columns that NARROW the opening. The old
+// rect-level checks never saw them. This reads the ACTUAL emitted archway
+// collision and asserts the gap between its columns leaves the 0.6m-diameter
+// player a real passage — no choke, no soft-lock at a doorway.
+test('no archway chokes a passage below the player', () => {
+  const MIN_BAND = 0.5;   // required passable centre-band (player diameter 0.6, w/ margin)
+  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
+    const spec = generateFloor(d, s);
+    for (const p of spec.props as Array<{ _dbg?: string; collision?: Array<{ kind: string; r: number; ox?: number; oz?: number }> }>) {
+      if (p._dbg !== 'archway' || !p.collision || p.collision.length < 2) continue;
+      const [a, b] = p.collision;
+      const gap = Math.hypot((a.ox ?? 0) - (b.ox ?? 0), (a.oz ?? 0) - (b.oz ?? 0));
+      const band = gap - a.r - b.r - 2 * PLAYER_RADIUS;
+      assert.ok(band >= MIN_BAND, `depth ${d} seed ${s}: archway columns leave only ${band.toFixed(2)}m (< ${MIN_BAND})`);
+    }
+  }
+});
+
 test('no two vaults overlap on any floor', () => {
   for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
     const spec = generateFloor(d, s);

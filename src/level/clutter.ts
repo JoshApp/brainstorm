@@ -806,9 +806,18 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
         }
 
         // Narrow mouths get the light doorframe — its jambs are slim and it
-        // emits NO collision, so it never chokes a ~1m gap. Wide mouths get
+        // emits NO collision, so it never chokes the gap. Only WIDE mouths get
         // the full archway with column blockers.
-        if (width < 1.6) {
+        //
+        // GUARANTEE (no archway can soft-lock a passage): the columns sit at
+        // ±(width/2 − 0.16) with collision r 0.18, and the player radius is
+        // 0.3. The passable centre-band is 2·(colOffset − 0.18 − 0.3). At the
+        // 2.0m threshold that's 2·(0.84 − 0.48) = 0.72m — comfortably wider
+        // than the player's 0.6m diameter. Below 2.0m the band would shrink
+        // toward the knife-edge that soft-locked the chasm mouth, so those
+        // openings get the collision-free doorframe instead. (Was 1.6m, which
+        // left only a ~0.24m band — passable in theory, a trap in practice.)
+        if (width < 2.0) {
           spec.props.push({
             kind: 'model',
             model: doorframe({ width, ceilingHeight: ceiling }),
@@ -828,9 +837,12 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
             _dbg: 'archway',
             // Column blockers sit at the column centre offsets so
             // collision matches the visible columns.
+            // r 0.18 matches the visible column half-width (0.16) + a hair,
+            // rather than the old generous 0.22 — every cm of collision here
+            // narrows the walkable gap.
             collision: [
-              { kind: 'circle', r: 0.22, ox: -colOffset, oz: 0 },
-              { kind: 'circle', r: 0.22, ox:  colOffset, oz: 0 },
+              { kind: 'circle', r: 0.18, ox: -colOffset, oz: 0 },
+              { kind: 'circle', r: 0.18, ox:  colOffset, oz: 0 },
             ],
           });
         }
