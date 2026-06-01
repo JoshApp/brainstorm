@@ -799,8 +799,13 @@ const BOSS_HALL: Vault = {
     '#........../.......#',
     '####################',
   ],
-  minDepth: 7,
-  weight: 1,
+  minDepth: 3,
+  // Weight 3 (vs 1 for the antechamber + cathedral) so the grand
+  // arena wins the boss-vault roll most of the time. Tiny boss rooms
+  // are still possible — they're the variant for the curious player
+  // — but the new fights are big enough that the cramped vault would
+  // feel undersized.
+  weight: 3,
   torchTint: TORCH_BLOOD,
 };
 

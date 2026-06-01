@@ -9,6 +9,22 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Crit + lifesteal modifiers + 6 items leaning into them"
+      },
+      {
+        "tag": "tech",
+        "text": "Perf: merge static walls into one mesh per room"
+      },
+      {
+        "tag": "tune",
+        "text": "Level gen: braced timber wall variant + timber plank doors"
+      },
+      {
+        "tag": "tech",
+        "text": "Perf: batch all pillar geometry into one mesh per floor"
+      },
+      {
+        "tag": "tune",
         "text": "Effects: target 'attacker' resolution + 3 retaliation items"
       },
       {
@@ -196,22 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Safe room: redesign + warm-variant stairs + rest fountain + transition card"
-      },
-      {
-        "tag": "tune",
-        "text": "Tune poison + calm idle gaze scan"
-      },
-      {
-        "tag": "tune",
-        "text": "Debug capture"
-      },
-      {
-        "tag": "tune",
-        "text": "Ranged pass: viewmodels, projectile shapes, vertical aim"
-      },
-      {
-        "tag": "tune",
-        "text": "Combo pass"
       }
     ]
   }
