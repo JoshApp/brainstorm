@@ -8,6 +8,30 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "content",
+        "text": "Centralize enemy-AI + drifting-mote tuning in config.ts"
+      },
+      {
+        "tag": "tune",
+        "text": "Extract dark-adapt light sampler out of main.ts loop"
+      },
+      {
+        "tag": "content",
+        "text": "Move enemy audio mapping into content layer"
+      },
+      {
+        "tag": "content",
+        "text": "Extract enemy model factories to content/enemy-models.ts"
+      },
+      {
+        "tag": "tune",
+        "text": "Dedup hex-colour helpers into src/style/color-utils"
+      },
+      {
+        "tag": "fix",
+        "text": "Geometry pool"
+      },
+      {
         "tag": "tune",
         "text": "Geometry pool: shared BufferGeometries across ModelSpec spawns + stairs"
       },
@@ -200,30 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Tone down archway proximity glow"
-      },
-      {
-        "tag": "tune",
-        "text": "Archway glow: whole frame outline, not just the lintel"
-      },
-      {
-        "tag": "tune",
-        "text": "Archway glow: tighten proximity (fade in from ~2.5m, full ~1m)"
-      },
-      {
-        "tag": "tune",
-        "text": "Archway glow far subtler (lintel/keystone only)"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix severe lag"
-      },
-      {
-        "tag": "tune",
-        "text": "Threshold haze: layered volume inside the archway (less portal)"
-      },
-      {
-        "tag": "tune",
-        "text": "Eye dark-adaptation off measured perceived brightness"
       }
     ]
   }
