@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
+import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import { resolveAbilities, meleeReachOf, aoeEffectOf, type Ability } from '../content/abilities';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
@@ -29,33 +30,15 @@ import { raiseAlert, sampleAlert } from './alerts';
 import type { Damageable } from '../combat/damageable';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
 
-// Map an EnemySpec → audio size bucket. Used by death + windup sounds so
-// big mobs sound big and the wraith reads as spectral, not physical.
+// Audio buckets are content data (see content/enemies.ts). These thin
+// lookups apply the runtime defaults: 'medium' for an unlisted size,
+// null (silent) for an unlisted voice.
 function audioSizeFor(spec: EnemySpec): EnemyDeathSize {
-  if (spec.id === 'wraith') return 'spectral';
-  if (spec.id === 'rat') return 'small';
-  return 'medium';
+  return ENEMY_AUDIO_SIZE[spec.id] ?? 'medium';
 }
 
-// Which idle/aware vocalisation a mob emits (mobs/enemy.ts ticks a timer and
-// calls playEnemyVocal positionally). Maps by spec id — same one-source-of-
-// truth pattern as audioSizeFor. null = silent (no betraying sound).
 function vocalArchetypeFor(spec: EnemySpec): VocalArchetype | null {
-  switch (spec.id) {
-    case 'spider': return 'skitter';
-    case 'skeleton': return 'rattle';
-    case 'wraith': return 'groan';
-    case 'ghoul': return 'groan';
-    case 'skirmisher': return 'groan';
-    case 'rat': return 'squeak';
-    case 'ooze':
-    case 'ooze-small': return 'gurgle';
-    case 'stoneguard': return 'grind';
-    case 'acid-spitter': return 'hiss';
-    case 'acolyte':
-    case 'defiler': return 'hiss';
-    default: return null;
-  }
+  return ENEMY_VOCAL_ARCHETYPE[spec.id] ?? null;
 }
 
 /** Release an enemy's ECS entity + registered combat stats. Called from level

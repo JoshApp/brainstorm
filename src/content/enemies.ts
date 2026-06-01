@@ -1,5 +1,6 @@
 import type { ModelSpec, Vec3 } from '../ecs/model-types';
 import type { DamageType } from '../combat/damage';
+import type { EnemyDeathSize, VocalArchetype } from '../audio/sfx';
 import type { Ability } from './abilities';
 import { creature } from './creature';
 import {
@@ -279,6 +280,35 @@ export interface DropTable {
   /** Weighted pool — one item picked if the rate gate succeeds. */
   pool?: DropPoolEntry[];
 }
+
+// --- Audio vocabulary ---------------------------------------------------
+// Which sound an enemy makes lives with the enemy data, not in the mob
+// runtime. mobs/enemy.ts reads these by spec id (default 'medium' / silent
+// for anything unlisted) so adding a creature's voice is a content edit.
+
+/** Death + windup size bucket — keeps big mobs sounding big and the
+ *  wraith reading as spectral rather than physical. Default: 'medium'. */
+export const ENEMY_AUDIO_SIZE: Record<string, EnemyDeathSize> = {
+  wraith: 'spectral',
+  rat: 'small',
+};
+
+/** Idle/aware vocalisation per enemy (mobs/enemy.ts ticks a timer and
+ *  plays it positionally). Unlisted = silent (no betraying sound). */
+export const ENEMY_VOCAL_ARCHETYPE: Record<string, VocalArchetype> = {
+  spider: 'skitter',
+  skeleton: 'rattle',
+  wraith: 'groan',
+  ghoul: 'groan',
+  skirmisher: 'groan',
+  rat: 'squeak',
+  ooze: 'gurgle',
+  'ooze-small': 'gurgle',
+  stoneguard: 'grind',
+  'acid-spitter': 'hiss',
+  acolyte: 'hiss',
+  defiler: 'hiss',
+};
 
 
 // --- Enemy registry -----------------------------------------------------
