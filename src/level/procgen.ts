@@ -92,6 +92,15 @@ function rollTableFor(depth: number): EnemyRoll[] {
       { enemyId: 'carrion-hound', weight: 2 },
       { enemyId: 'sump-wisp',     weight: 2 },
       { enemyId: 'plague-spore',  weight: 1 },
+      // Pit moth — high weight so when a room rolls one, several
+      // tiles tend to land on it. That's the natural way to get a
+      // swarm without adding a spawn-cluster mechanic. Low HP +
+      // moveSpeed > player retreat = the swarm IS the threat.
+      { enemyId: 'pit-moth',      weight: 3 },
+      // Lasher — stationary long-reach. One per room is plenty,
+      // weight kept low so encounters where it shows up read as a
+      // fixture, not a roomful.
+      { enemyId: 'lasher',        weight: 1 },
     ];
   }
   // Depth 8+: wraiths possible, ghouls common, acolytes regular threat,
@@ -115,6 +124,12 @@ function rollTableFor(depth: number): EnemyRoll[] {
     // Plague spore commits more at deep dungeon — Verdant Rot
     // theme owns this depth band.
     { enemyId: 'plague-spore',  weight: 2 },
+    // Pit moth + lasher show up here too — moth as a frequent
+    // swarmer at deep dungeon (still high weight for natural
+    // clustering), lasher a notch higher weight so the deep band
+    // has the room-control fixture available regularly.
+    { enemyId: 'pit-moth',      weight: 3 },
+    { enemyId: 'lasher',        weight: 2 },
   ];
 }
 

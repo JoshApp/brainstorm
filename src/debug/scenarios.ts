@@ -788,6 +788,76 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 2.5, lookAt: { x: 0, z: -1.5, y: 0.3 } },
   },
 
+  // Pit moth — small lit room with a single moth floating mid-room.
+  // Used for silhouette + wing + eye-glow review.
+  'mob-pit-moth': {
+    freeze: true, hideSword: true,
+    level: {
+      id: 'dbg-moth', depth: 6, displayName: 'pit moth', fogColor: 0x14100a,
+      startPos: { x: 0, z: 2.5, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 6, d: 6 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.0, z: -2.5, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  3.0, z: -2.5, height: 2.2, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'pit-moth', x: 0, z: -1.0, roomId: 'r' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 1.5, lookAt: { x: 0, z: -1.0, y: 1.5 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
+  },
+
+  // Pit moth swarm — five moths in the same room to verify the
+  // "swarm" silhouette read + that the noPlayerCollision lets the
+  // player move through them.
+  'mob-pit-moth-swarm': {
+    level: {
+      id: 'dbg-moth-swarm', depth: 6, displayName: 'pit moth swarm', fogColor: 0x14100a,
+      startPos: { x: 0, z: 3.0, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 8, d: 8 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -4.0, z: -3.5, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  4.0, z: -3.5, height: 2.2, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x: -4.0, z:  3.5, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x:  4.0, z:  3.5, height: 2.2, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [
+        { enemyId: 'pit-moth', x: -1.5, z: -1.0, roomId: 'r' },
+        { enemyId: 'pit-moth', x:  0.0, z: -1.5, roomId: 'r' },
+        { enemyId: 'pit-moth', x:  1.5, z: -1.0, roomId: 'r' },
+        { enemyId: 'pit-moth', x: -0.8, z: -2.2, roomId: 'r' },
+        { enemyId: 'pit-moth', x:  0.8, z: -2.2, roomId: 'r' },
+      ],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 2.5, lookAt: { x: 0, z: -1.5, y: 1.4 } },
+  },
+
+  // Lasher — stationary long-reach plant. Camera angled to catch
+  // the bulb, the stalk, and the maw on the whip arm.
+  'mob-lasher': {
+    freeze: true, hideSword: true,
+    level: {
+      id: 'dbg-lasher', depth: 6, displayName: 'lasher', fogColor: 0x14100a,
+      startPos: { x: 0, z: 3.0, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 7, d: 7 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.5, z: -3.0, height: 2.2, wall: 'W', colorTint: 0xa8d870, intensityMul: 0.9 },
+        { x:  3.5, z: -3.0, height: 2.2, wall: 'E', colorTint: 0xa8d870, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'lasher', x: 0, z: -1.0, roomId: 'r' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 2.0, lookAt: { x: 0, z: -1.0, y: 0.7 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
+  },
+
   // Mimic, frozen camera angle on the post-reveal mob — useful for
   // screenshotting the silhouette. Spawns a real mimic mob (not a
   // chest) so the toothy maw and legs are visible.

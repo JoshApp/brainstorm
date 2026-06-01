@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "snap: --frames=N animation grid"
+      },
+      {
+        "tag": "tune",
         "text": "Pilot: goto verb + cross-call persistence"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Audio: silence-first exploration — soundscape over melody"
-      },
-      {
-        "tag": "tune",
-        "text": "Auto-update"
       }
     ]
   }
