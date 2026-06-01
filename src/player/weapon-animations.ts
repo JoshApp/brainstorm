@@ -68,6 +68,13 @@ export function computeWeaponPose(pose: PoseKey, phase: SwingPhase, t: number): 
     case 'spear-lunge':        return spearLungePose(phase, t);
     case 'crossbow-fire':      return crossbowFirePose(phase, t);
     case 'wand-cast':          return wandCastPose(phase, t);
+    case 'scythe-reap-right':  return scytheReapRightPose(phase, t);
+    case 'scythe-reap-left':   return scytheReapLeftPose(phase, t);
+    case 'scythe-spin':        return scytheSpinPose(phase, t);
+    case 'whip-crack-right':   return whipCrackRightPose(phase, t);
+    case 'whip-crack-left':    return whipCrackLeftPose(phase, t);
+    case 'whip-wrap':          return whipWrapPose(phase, t);
+    case 'knife-throw':        return knifeThrowPose(phase, t);
     case 'sword-slash-left':
     default:                   return swordSlashLeftPose(phase, t);
   }
@@ -908,5 +915,192 @@ function wandCastPose(phase: SwingPhase, t: number): WeaponPose {
   scratch.rotX = WAND_CAST_RX + (WAND_DRAW_RX - WAND_CAST_RX) * e;
   scratch.rotY = ry;
   scratch.rotZ = WAND_CAST_RZ + (WAND_DRAW_RZ - WAND_CAST_RZ) * e;
+  return scratch;
+}
+
+// ── Scythe poses ────────────────────────────────────────────────
+// Wider arcs than sword sweeps, with the blade hanging lower (the
+// curve does the cutting). The spin finisher rotates the haft
+// through a large rotZ for a full clearance motion.
+
+function scytheReapRightPose(phase: SwingPhase, t: number): WeaponPose {
+  // Cocks high-LEFT (blade lifted over left shoulder), reaps through
+  // a wide low arc to the lower-RIGHT. Lower than the sword sweep
+  // because the scythe blade hangs below the haft.
+  return swordSweepBetween(phase, t,
+    ix - 0.26, iy + 0.20, iz + 0.10,
+    rx - 0.50, ry + 0.65, rz + 1.00,
+    ix + 0.30, iy - 0.22, iz - 0.08,
+    rx - 0.20, ry - 0.45, rz - 1.10,
+  );
+}
+
+function scytheReapLeftPose(phase: SwingPhase, t: number): WeaponPose {
+  // Mirror — cocks high-RIGHT, reaps to lower-LEFT.
+  return swordSweepBetween(phase, t,
+    ix + 0.26, iy + 0.20, iz + 0.10,
+    rx - 0.50, ry - 0.65, rz - 1.00,
+    ix - 0.30, iy - 0.22, iz - 0.08,
+    rx - 0.20, ry + 0.45, rz + 1.10,
+  );
+}
+
+function scytheSpinPose(phase: SwingPhase, t: number): WeaponPose {
+  // Spin finisher — blade lifted high overhead, then a sweeping
+  // 270° rotation through the rotZ axis. Reads as a clearing
+  // motion even though it's still parametric per phase.
+  if (phase === 'windup') {
+    scratch.x = ix;
+    scratch.y = iy + 0.30 * t;
+    scratch.z = iz + 0.10 * t;
+    scratch.rotX = rx - 0.30 * t;
+    scratch.rotY = ry;
+    scratch.rotZ = rz - 0.60 * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = -0.10 * ease;
+    scratch.y = iy + 0.30 - 0.55 * ease;
+    scratch.z = iz + 0.10 - 0.18 * ease;
+    scratch.rotX = rx - 0.30 + 0.20 * ease;
+    scratch.rotY = ry;
+    scratch.rotZ = rz - 0.60 + 2.40 * ease;     // big rotZ sweep
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = -0.10 + (ix - (-0.10)) * e;
+  scratch.y = (iy - 0.25) + (iy - (iy - 0.25)) * e;
+  scratch.z = (iz - 0.08) + (iz - (iz - 0.08)) * e;
+  scratch.rotX = (rx - 0.10) + (rx - (rx - 0.10)) * e;
+  scratch.rotY = ry;
+  scratch.rotZ = (rz + 1.80) + (rz - (rz + 1.80)) * e;
+  return scratch;
+}
+
+// ── Whip poses ──────────────────────────────────────────────────
+// Snappy — the WIND is the cock-back-and-coil; the STRIKE is the
+// flick forward. Recoveries are short so the next crack chains.
+
+function whipCrackRightPose(phase: SwingPhase, t: number): WeaponPose {
+  // Cocks behind right shoulder, snaps forward-and-out.
+  const WIND_X = ix + 0.18, WIND_Y = iy + 0.10, WIND_Z = iz + 0.10;
+  const WIND_RX = rx - 0.40, WIND_RY = ry - 0.35, WIND_RZ = rz - 0.20;
+  const END_X = ix + 0.18, END_Y = iy - 0.05, END_Z = iz - 0.30;
+  const END_RX = rx - 0.90, END_RY = ry + 0.10, END_RZ = rz - 0.10;
+  if (phase === 'windup') {
+    scratch.x = ix + (WIND_X - ix) * t;
+    scratch.y = iy + (WIND_Y - iy) * t;
+    scratch.z = iz + (WIND_Z - iz) * t;
+    scratch.rotX = rx + (WIND_RX - rx) * t;
+    scratch.rotY = ry + (WIND_RY - ry) * t;
+    scratch.rotZ = rz + (WIND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WIND_X + (END_X - WIND_X) * ease;
+    scratch.y = WIND_Y + (END_Y - WIND_Y) * ease;
+    scratch.z = WIND_Z + (END_Z - WIND_Z) * ease;
+    scratch.rotX = WIND_RX + (END_RX - WIND_RX) * ease;
+    scratch.rotY = WIND_RY + (END_RY - WIND_RY) * ease;
+    scratch.rotZ = WIND_RZ + (END_RZ - WIND_RZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = END_X + (ix - END_X) * e;
+  scratch.y = END_Y + (iy - END_Y) * e;
+  scratch.z = END_Z + (iz - END_Z) * e;
+  scratch.rotX = END_RX + (rx - END_RX) * e;
+  scratch.rotY = END_RY + (ry - END_RY) * e;
+  scratch.rotZ = END_RZ + (rz - END_RZ) * e;
+  return scratch;
+}
+
+function whipCrackLeftPose(phase: SwingPhase, t: number): WeaponPose {
+  // Mirror — cocks behind left shoulder, snaps forward-and-out.
+  const WIND_X = ix - 0.18, WIND_Y = iy + 0.10, WIND_Z = iz + 0.10;
+  const WIND_RX = rx - 0.40, WIND_RY = ry + 0.35, WIND_RZ = rz + 0.20;
+  const END_X = ix - 0.18, END_Y = iy - 0.05, END_Z = iz - 0.30;
+  const END_RX = rx - 0.90, END_RY = ry - 0.10, END_RZ = rz + 0.10;
+  if (phase === 'windup') {
+    scratch.x = ix + (WIND_X - ix) * t;
+    scratch.y = iy + (WIND_Y - iy) * t;
+    scratch.z = iz + (WIND_Z - iz) * t;
+    scratch.rotX = rx + (WIND_RX - rx) * t;
+    scratch.rotY = ry + (WIND_RY - ry) * t;
+    scratch.rotZ = rz + (WIND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WIND_X + (END_X - WIND_X) * ease;
+    scratch.y = WIND_Y + (END_Y - WIND_Y) * ease;
+    scratch.z = WIND_Z + (END_Z - WIND_Z) * ease;
+    scratch.rotX = WIND_RX + (END_RX - WIND_RX) * ease;
+    scratch.rotY = WIND_RY + (END_RY - WIND_RY) * ease;
+    scratch.rotZ = WIND_RZ + (END_RZ - WIND_RZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = END_X + (ix - END_X) * e;
+  scratch.y = END_Y + (iy - END_Y) * e;
+  scratch.z = END_Z + (iz - END_Z) * e;
+  scratch.rotX = END_RX + (rx - END_RX) * e;
+  scratch.rotY = END_RY + (ry - END_RY) * e;
+  scratch.rotZ = END_RZ + (rz - END_RZ) * e;
+  return scratch;
+}
+
+function whipWrapPose(phase: SwingPhase, t: number): WeaponPose {
+  // Wide horizontal arc — the wrap finisher. Cocks far right, sweeps
+  // across the front of the player to far left.
+  return swordSweepBetween(phase, t,
+    ix + 0.24, iy + 0.04, iz + 0.10,
+    rx - 0.50, ry - 0.40, rz - 0.40,
+    ix - 0.24, iy - 0.08, iz - 0.20,
+    rx - 0.50, ry + 0.40, rz + 0.40,
+  );
+}
+
+// ── Knife throw pose ───────────────────────────────────────────
+// Short snappy underhand toss — the hand whips forward from the
+// hip with the knife held by the blade tip, releasing on the
+// strike. Combat fires 3 projectiles in a fan; this animation
+// covers the gesture.
+
+function knifeThrowPose(phase: SwingPhase, t: number): WeaponPose {
+  // Wind: hand pulled back and to the hip with knife by the blade.
+  const WIND_X = ix + 0.16, WIND_Y = iy + 0.04, WIND_Z = iz + 0.14;
+  const WIND_RX = rx - 0.65, WIND_RY = ry - 0.15, WIND_RZ = rz - 0.30;
+  // Release: hand fully extended forward.
+  const END_X = ix - 0.04, END_Y = iy + 0.12, END_Z = iz - 0.28;
+  const END_RX = rx - 1.20, END_RY = ry + 0.10, END_RZ = rz + 0.15;
+  if (phase === 'windup') {
+    scratch.x = ix + (WIND_X - ix) * t;
+    scratch.y = iy + (WIND_Y - iy) * t;
+    scratch.z = iz + (WIND_Z - iz) * t;
+    scratch.rotX = rx + (WIND_RX - rx) * t;
+    scratch.rotY = ry + (WIND_RY - ry) * t;
+    scratch.rotZ = rz + (WIND_RZ - rz) * t;
+    return scratch;
+  }
+  if (phase === 'strike') {
+    const ease = 1 - (1 - t) * (1 - t);
+    scratch.x = WIND_X + (END_X - WIND_X) * ease;
+    scratch.y = WIND_Y + (END_Y - WIND_Y) * ease;
+    scratch.z = WIND_Z + (END_Z - WIND_Z) * ease;
+    scratch.rotX = WIND_RX + (END_RX - WIND_RX) * ease;
+    scratch.rotY = WIND_RY + (END_RY - WIND_RY) * ease;
+    scratch.rotZ = WIND_RZ + (END_RZ - WIND_RZ) * ease;
+    return scratch;
+  }
+  const e = 1 - (1 - t) * (1 - t);
+  scratch.x = END_X + (ix - END_X) * e;
+  scratch.y = END_Y + (iy - END_Y) * e;
+  scratch.z = END_Z + (iz - END_Z) * e;
+  scratch.rotX = END_RX + (rx - END_RX) * e;
+  scratch.rotY = END_RY + (ry - END_RY) * e;
+  scratch.rotZ = END_RZ + (rz - END_RZ) * e;
   return scratch;
 }

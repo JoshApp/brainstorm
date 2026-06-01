@@ -3,6 +3,7 @@ import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 import { SWORD_RUSTED } from './sword';
 import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WAND } from './weapons';
+import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES } from './new-weapons';
 import {
   HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
@@ -77,7 +78,10 @@ export const RARITY_AFFIX_BUDGET: Record<Rarity, { maxAffixes: number; continueC
  *   sword   balanced diagonal slash; medium reach + cone
  *   hammer  slow overhead smash; long reach, wide cone, no crits
  */
-export type WeaponClass = 'dagger' | 'sword' | 'hammer' | 'spear' | 'crossbow' | 'wand';
+export type WeaponClass =
+  | 'dagger' | 'sword' | 'hammer' | 'spear'
+  | 'crossbow' | 'wand'
+  | 'scythe' | 'whip' | 'throwing-knives';
 
 /** Combat stats — only set on items that are weapons. */
 export interface WeaponStats {
@@ -116,9 +120,34 @@ export interface WeaponStats {
    * auto-target on its strike instead of doing a melee cone hit. The
    * weapon's class (crossbow/wand) provides the slow draw/reload
    * cadence — the constraint that keeps ranged from obsoleting melee.
+   *
+   * `count` + `spread` make multi-projectile fan weapons (throwing
+   * knives): on each strike, `count` projectiles spawn with their
+   * aim direction rotated by ±`spread` radians around the centre.
+   * Default count = 1 (single shot, like crossbow / wand).
+   *
    * See docs/WEAPONS.md.
    */
-  ranged?: { projectileId: string };
+  ranged?: { projectileId: string; count?: number; spread?: number };
+  /**
+   * Signature CHARGED-ATTACK effect. When set, a swing released with
+   * charge progress at or above `minCharge` (default 0.7) triggers
+   * this effect on top of the normal melee resolution. Lets specific
+   * weapons FEEL different — a Howling Edge sword fires a wave of
+   * force forward on a fully charged release; a vampiric blade could
+   * lifesteal on charged hits; a stormhammer could detonate an AoE.
+   *
+   * Kinds today:
+   *   projectile — spawn a friendly projectile flying forward from
+   *                the player along the camera direction. Adds the
+   *                weapon's full damage to the projectile's payload.
+   *
+   * Future kinds: 'aoe' (radial blast), 'lifesteal' (heal on charged
+   * hit), 'cleave' (a free second swing). Keep the discriminator open
+   * so we can layer new effects without breaking the field shape.
+   */
+  chargedEffect?:
+    | { kind: 'projectile'; projectileId: string; minCharge?: number; damageMul?: number };
 }
 
 export interface ItemSpec {
@@ -293,6 +322,33 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'damage-multiplier', amount: 1.15 },
     ],
   },
+  // Howling Edge — fabled sword whose CHARGED RELEASE launches a
+  // wave of cutting force forward. Tap-and-tap plays like a normal
+  // sword; the magic appears the moment you hold to charge. Teaches
+  // players that the charge gesture isn't just "+damage" — some
+  // weapons rewrite it into a signature mechanic.
+  'howling-edge': {
+    id: 'howling-edge',
+    kind: 'weapon',
+    rarity: 'fabled',
+    name: 'Howling Edge',
+    flavor: 'The blade screams when it remembers.',
+    dropModel: HEARTBURN,        // reuse the fabled sword model for V1 — distinct mesh comes later
+    viewmodel: HEARTBURN,
+    weapon: {
+      class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 3, critChance: 0.18, critMultiplier: 2.4, attackSpeed: 1.10,
+      // Charged release fires the wave-slash projectile. Requires at
+      // least 60% charge — players quickly learn the moment to release.
+      // The projectile carries 1.5× the weapon's base damage; the
+      // standard charge multiplier still applies on top in attack.ts.
+      chargedEffect: { kind: 'projectile', projectileId: 'wave-slash', minCharge: 0.6, damageMul: 1.5 },
+    },
+    affixPool: ['vile', 'patience', 'gallows', 'keening', 'spine', 'searing'],
+    maxAffixes: 2,
+    modifiers: [
+      { kind: 'weapon-damage', amount: 1 },
+    ],
+  },
   // ── REACH MELEE ───────────────────────────────────────────────────
   // The in-between weapon. Melee, but its long reach lets it strike from
   // outside enemy range — spacing is the skill, not crit-fishing or
@@ -361,6 +417,61 @@ export const ITEMS: Record<string, ItemSpec> = {
     },
     affixPool: ['vile', 'keening', 'patience', 'gallows', 'hoarfrost', 'venom'],
     maxAffixes: 2,
+  },
+  // ── NEW MELEE WEAPONS ─────────────────────────────────────────────
+  // Three classes added alongside the existing roster. Each ships
+  // with its mechanics + moveset; signature effects (lifesteal on
+  // scythe, pull on whip) land in a follow-up pass.
+  'reapers-toll': {
+    id: 'reapers-toll',
+    kind: 'weapon',
+    rarity: 'rare',
+    name: "Reaper's Toll",
+    flavor: 'It harvests what little is left.',
+    dropModel: REAPERS_TOLL,
+    viewmodel: REAPERS_TOLL,
+    weapon: {
+      // Scythe: very wide cone, multi-target, moderate damage. Wades
+      // into swarms. The reap-vs-spin alternation is the rhythm.
+      class: 'scythe', reach: 2.6, coneHalfAngle: 1.05, damage: 2, critChance: 0.10, critMultiplier: 2.2,
+    },
+    affixPool: ['vile', 'gallows', 'keening', 'patience'],
+    maxAffixes: 1,
+  },
+  'penitents-chain': {
+    id: 'penitents-chain',
+    kind: 'weapon',
+    rarity: 'rare',
+    name: "Penitent's Chain",
+    flavor: 'The discipline of distance.',
+    dropModel: PENITENTS_CHAIN,
+    viewmodel: PENITENTS_CHAIN,
+    weapon: {
+      // Whip: long reach, narrow cone, snappy. The space-controller.
+      class: 'whip', reach: 3.4, coneHalfAngle: 0.40, damage: 2, critChance: 0.12, critMultiplier: 2.3,
+      onHit: { buffId: 'bleed', chance: 0.30, duration: 2.5 },
+    },
+    affixPool: ['keening', 'spine', 'gallows', 'serration'],
+    maxAffixes: 1,
+  },
+  'cord-of-knives': {
+    id: 'cord-of-knives',
+    kind: 'weapon',
+    rarity: 'rare',
+    name: 'A cord of knives',
+    flavor: 'Throw them all. Carry the rope.',
+    dropModel: CORD_OF_KNIVES,
+    viewmodel: CORD_OF_KNIVES,
+    weapon: {
+      // Throwing knives: fan of 3 projectiles per release, modest
+      // damage per knife. Coverage rather than precision; the
+      // damage spread is the identity. Spread = ±0.18 rad ≈ 10°
+      // total cone of arrival.
+      class: 'throwing-knives', reach: 12, coneHalfAngle: 0.6, damage: 2, critChance: 0.15, critMultiplier: 2.0,
+      ranged: { projectileId: 'crossbow-bolt', count: 3, spread: 0.18 },
+    },
+    affixPool: ['keening', 'serration', 'spine'],
+    maxAffixes: 1,
   },
   // ── ARMOR (chest slot) ─────────────────────────────────────────────
   'tattered-cloak': {
@@ -532,7 +643,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Tastes of iron and dust.',
     dropModel: HEALING_POTION,
     consumableHeal: 4,
-    carryLimit: 5,
+    carryLimit: 3,
   },
   'berserk-potion': {
     id: 'berserk-potion',

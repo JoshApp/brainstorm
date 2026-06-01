@@ -38,7 +38,15 @@ export type PoseKey =
   | 'spear-thrust'
   | 'spear-lunge'
   | 'crossbow-fire'
-  | 'wand-cast';
+  | 'wand-cast'
+  // New weapon classes:
+  | 'scythe-reap-right'
+  | 'scythe-reap-left'
+  | 'scythe-spin'
+  | 'whip-crack-right'
+  | 'whip-crack-left'
+  | 'whip-wrap'
+  | 'knife-throw';
 
 export interface ComboStep {
   pose: PoseKey;
@@ -85,9 +93,16 @@ export interface ResolvedWeaponStats {
   comboWindowMs: number;
   /** On-hit status infliction, passed through from the weapon spec. */
   onHit?: { buffId: string; chance: number; duration: number };
-  /** Ranged projectile (crossbow/wand) — strike fires this instead of a
-   *  melee cone hit. Passed through from the weapon spec. */
-  ranged?: { projectileId: string };
+  /** Ranged projectile (crossbow/wand/throwing-knives) — strike fires
+   *  this instead of a melee cone hit. Passed through from the weapon
+   *  spec. count + spread carry the fan parameters for multi-shot
+   *  weapons. */
+  ranged?: { projectileId: string; count?: number; spread?: number };
+  /** Signature charged-attack effect. Passed through from the weapon
+   *  spec; attack.ts reads this when a charged swing lands to trigger
+   *  the weapon's bonus effect (projectile, AoE, lifesteal, ...). */
+  chargedEffect?:
+    | { kind: 'projectile'; projectileId: string; minCharge?: number; damageMul?: number };
   /** Resolved directional move steps (lunge/sweeps/retreat) — the
    *  same speed multipliers as the combo are applied. Optional;
    *  not every weapon has movement variants. */
@@ -321,6 +336,72 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     combo: [{ pose: 'wand-cast', windup: 0.45, strike: 0.10, recover: 0.55 }],
     comboWindowMs: 0,
   },
+  // ── NEW MELEE: SCYTHE ───────────────────────────────────────────────
+  // Reaper aesthetic. Very wide horizontal arcs, slower than sword,
+  // multi-target by default. The combo finisher is a spin — full
+  // 360° (visual) clearance. Built around "wade into the swarm and
+  // sweep them down." Future: lifesteal on hit hook lands cleanly
+  // when we add that effect kind.
+  scythe: {
+    combo: [
+      { pose: 'scythe-reap-right', windup: 0.22, strike: 0.18, recover: 0.40,
+        reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 3 },
+      { pose: 'scythe-reap-left',  windup: 0.22, strike: 0.18, recover: 0.40,
+        reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 3 },
+      { pose: 'scythe-spin',       windup: 0.28, strike: 0.22, recover: 0.55,
+        reachMul: 1.15, coneHalfAngleMul: 1.9, maxTargets: 4 },
+    ],
+    comboWindowMs: 460,
+    directionalMoves: {
+      // Forward: a downward chop with the curved tip. Single target,
+      // big damage commit.
+      forward:     { pose: 'scythe-spin', windup: 0.18, strike: 0.18, recover: 0.50,
+                     reachMul: 1.40, coneHalfAngleMul: 0.8, maxTargets: 1 },
+      // Strafe: directional reap following the body's momentum.
+      strafeLeft:  { pose: 'scythe-reap-left',  windup: 0.18, strike: 0.16, recover: 0.36,
+                     reachMul: 1.15, coneHalfAngleMul: 1.7, maxTargets: 4 },
+      strafeRight: { pose: 'scythe-reap-right', windup: 0.18, strike: 0.16, recover: 0.36,
+                     reachMul: 1.15, coneHalfAngleMul: 1.7, maxTargets: 4 },
+      // Back: a quick defensive reap as you retreat.
+      back:        { pose: 'scythe-reap-right', windup: 0.14, strike: 0.14, recover: 0.28,
+                     reachMul: 1.05, coneHalfAngleMul: 1.3, maxTargets: 3 },
+    },
+  },
+  // ── NEW MELEE: WHIP ─────────────────────────────────────────────────
+  // Long reach, narrow cone, snappy timings. Built around "I can
+  // touch enemies from across the room." The wrap finisher catches a
+  // wider arc. Future: chargedEffect = pull-toward-player slot lands
+  // cleanly when we add that effect kind.
+  whip: {
+    combo: [
+      { pose: 'whip-crack-right', windup: 0.10, strike: 0.14, recover: 0.26,
+        reachMul: 1.35, coneHalfAngleMul: 0.55, maxTargets: 1 },
+      { pose: 'whip-crack-left',  windup: 0.10, strike: 0.14, recover: 0.26,
+        reachMul: 1.35, coneHalfAngleMul: 0.55, maxTargets: 1 },
+      { pose: 'whip-wrap',        windup: 0.16, strike: 0.22, recover: 0.42,
+        reachMul: 1.45, coneHalfAngleMul: 1.1, maxTargets: 2 },
+    ],
+    comboWindowMs: 380,
+    directionalMoves: {
+      forward:     { pose: 'whip-crack-right', windup: 0.08, strike: 0.14, recover: 0.30,
+                     reachMul: 1.65, coneHalfAngleMul: 0.45, maxTargets: 1 },
+      strafeLeft:  { pose: 'whip-crack-left',  windup: 0.12, strike: 0.16, recover: 0.28,
+                     reachMul: 1.30, coneHalfAngleMul: 0.85, maxTargets: 2 },
+      strafeRight: { pose: 'whip-crack-right', windup: 0.12, strike: 0.16, recover: 0.28,
+                     reachMul: 1.30, coneHalfAngleMul: 0.85, maxTargets: 2 },
+      back:        { pose: 'whip-crack-right', windup: 0.08, strike: 0.10, recover: 0.20,
+                     reachMul: 1.25, coneHalfAngleMul: 0.65, maxTargets: 1 },
+    },
+  },
+  // ── NEW RANGED: THROWING KNIVES ─────────────────────────────────────
+  // Multi-projectile fan. Spawns COUNT projectiles per shot with
+  // angular spread — coverage instead of precision. Faster cadence
+  // than crossbow + wand because the volley IS the damage. Combat
+  // resolves the fan in fireRanged.
+  'throwing-knives': {
+    combo: [{ pose: 'knife-throw', windup: 0.08, strike: 0.08, recover: 0.50 }],
+    comboWindowMs: 0,
+  },
 };
 
 // Per-proficiency bonus tuning. Each point of weapon-class proficiency
@@ -397,6 +478,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     comboWindowMs: baseT.comboWindowMs,
     onHit: spec.onHit,
     ranged: spec.ranged,
+    chargedEffect: spec.chargedEffect,
     directionalMoves,
     chargedMoves,
   };

@@ -318,6 +318,34 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 2, pos: { x: -10, z:  10 } },
     ],
   },
+  // New weapon viewmodels — scythe / whip / throwing knives.
+  'viewmodel-scythe': {
+    freeze: true,
+    equipWeaponId: 'reapers-toll',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+  'viewmodel-whip': {
+    freeze: true,
+    equipWeaponId: 'penitents-chain',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+  'viewmodel-knives': {
+    freeze: true,
+    equipWeaponId: 'cord-of-knives',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
   // Spear viewmodel — equip the reach weapon to review the thrust →
   // thrust → lunge combo against a posed enemy.
   'viewmodel-spear': {

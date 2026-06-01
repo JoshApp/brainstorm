@@ -44,6 +44,32 @@ function arcaneBoltGeometry(): THREE.BufferGeometry {
   return g;
 }
 
+/** Wave-slash — a flat horizontal crescent that streaks forward. The
+ *  signature projectile of charged sword releases. Wide + thin reads
+ *  as "the swing kept going past the blade" rather than a discrete
+ *  bolt. Bright orange/red emissive sells the rage theme. */
+function waveSlashGeometry(): THREE.BufferGeometry {
+  const shape = new THREE.Shape();
+  // Horizontal crescent in the XZ plane (we'll extrude tiny in Y).
+  // Wider outer arc + thinner inner makes the silhouette read as a
+  // sword stroke trailing through air.
+  shape.moveTo(-0.35, -0.02);
+  shape.lineTo(-0.20, -0.18);
+  shape.lineTo( 0.20, -0.18);
+  shape.lineTo( 0.35, -0.02);
+  shape.lineTo( 0.32,  0.02);
+  shape.lineTo( 0.10, -0.06);
+  shape.lineTo(-0.10, -0.06);
+  shape.lineTo(-0.32,  0.02);
+  shape.closePath();
+  const g = new THREE.ExtrudeGeometry(shape, { depth: 0.025, bevelEnabled: false });
+  // ExtrudeGeometry extrudes along +Z by default; we want the crescent
+  // FACING the camera (+Z up in the world) so it reads from above.
+  g.translate(0, 0, -0.0125);
+  g.rotateX(-Math.PI / 2);   // lay flat with crescent in XZ
+  return g;
+}
+
 // Projectile content registry. Add a new spell/dart/spit by adding a
 // ProjectileType here and exporting an id constant — ranged enemies
 // reference it from their spec (`ranged.projectileId`).
@@ -134,10 +160,27 @@ export const ARCANE_BOLT: ProjectileType = {
   orientToVelocity: true,
 };
 
+// Wave-slash — signature charged-sword release. Fast, big, bright
+// orange-red — it announces itself across the room. Physical (this
+// is the swing's force extending past the blade, not a spell).
+export const WAVE_SLASH: ProjectileType = {
+  id: 'wave-slash',
+  radius: 0.30,
+  speed: 14.0,
+  lifetime: 1.4,
+  damageType: 'physical',
+  color: 0xff5a20,
+  lightIntensity: 2.2,
+  lightRange: 4.0,
+  geometry: waveSlashGeometry,
+  orientToVelocity: true,
+};
+
 export function registerProjectiles(): void {
   registerProjectileType(ACOLYTE_SPIT);
   registerProjectileType(ACID_SPIT);
   registerProjectileType(BONE_SHARD);
   registerProjectileType(CROSSBOW_BOLT);
   registerProjectileType(ARCANE_BOLT);
+  registerProjectileType(WAVE_SLASH);
 }

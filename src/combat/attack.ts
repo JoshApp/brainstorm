@@ -153,18 +153,62 @@ export function createCombatSystem(
     // worth the wait.
     const chargeMul = 1 + currentSwingCharge * 0.80;
     const dmg = (crit ? weapon.damage * (weapon.critMultiplier ?? 2) : weapon.damage) * chargeMul;
-    spawnProjectile({
-      typeId: weapon.ranged.projectileId,
-      origin: tmpMuzzle,
-      target: tmpAim,
-      damage: dmg,
-      source: 'player',
-      friendly: true,
-      // Carry the player's on-hit statuses onto the bolt so a ranged
-      // weapon's base on-hit (the wand's chill) + on-hit affixes + set
-      // bonuses all land when it strikes an enemy — same rules as melee.
-      onHits: getPlayerOnHits(),
-    });
+
+    // Multi-projectile FAN — throwing knives spawn N projectiles per
+    // strike with angular spread around the aim line. count=1 (the
+    // default) collapses to a single shot identical to before. The
+    // spread is applied in the horizontal plane only; vertical aim
+    // (from camera pitch) is shared by every knife in the fan.
+    const count = weapon.ranged.count ?? 1;
+    const spread = weapon.ranged.spread ?? 0;
+    const onHits = getPlayerOnHits();
+    if (count === 1) {
+      spawnProjectile({
+        typeId: weapon.ranged.projectileId,
+        origin: tmpMuzzle,
+        target: tmpAim,
+        damage: dmg,
+        source: 'player',
+        friendly: true,
+        // Carry the player's on-hit statuses onto the bolt so a
+        // ranged weapon's base on-hit (the wand's chill) + on-hit
+        // affixes + set bonuses all land — same rules as melee.
+        onHits,
+      });
+    } else {
+      // Compute the centre aim direction (from muzzle to tmpAim) and
+      // rotate it by ±spread for each fan member. Fan is centred —
+      // an odd count puts one knife dead-centre; even counts split.
+      const baseDX = tmpAim.x - tmpMuzzle.x;
+      const baseDZ = tmpAim.z - tmpMuzzle.z;
+      const aimDist = Math.hypot(baseDX, baseDZ) || 0.001;
+      for (let i = 0; i < count; i++) {
+        // map i in [0, count-1] to t in [-1, +1]
+        const t = count === 1 ? 0 : (2 * i / (count - 1)) - 1;
+        const ang = t * spread;
+        const cosA = Math.cos(ang), sinA = Math.sin(ang);
+        const dx = baseDX * cosA - baseDZ * sinA;
+        const dz = baseDX * sinA + baseDZ * cosA;
+        // Each knife in the fan does a fraction of total damage so
+        // throwing 3 knives isn't strictly 3× a crossbow shot — it's
+        // ~1.5× (slightly more, since hits stack) traded for spread.
+        const perKnifeDmg = dmg * (0.55 + 0.20 / count);
+        const fanTarget = new THREE.Vector3(
+          tmpMuzzle.x + dx * (aimDist / aimDist),
+          tmpAim.y,
+          tmpMuzzle.z + dz * (aimDist / aimDist),
+        );
+        spawnProjectile({
+          typeId: weapon.ranged.projectileId,
+          origin: tmpMuzzle,
+          target: fanTarget,
+          damage: perKnifeDmg,
+          source: 'player',
+          friendly: true,
+          onHits,
+        });
+      }
+    }
     playWhoosh();
     hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
 
@@ -350,6 +394,39 @@ export function createCombatSystem(
       hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
       playImpact(impactAt);
     }
+
+    // SIGNATURE CHARGED EFFECT — only on real combat hits (anyHeavy)
+    // and only when charge crossed the weapon's threshold. Lets a
+    // sword "shoot a wave" or a hammer "thunderclap" only when the
+    // player committed to the charge. Projectile is the only kind
+    // wired today; AoE / lifesteal / cleave land on this same hook.
+    if (anyHeavy && stats.chargedEffect && currentSwingCharge >= (stats.chargedEffect.minCharge ?? 0.7)) {
+      const eff = stats.chargedEffect;
+      if (eff.kind === 'projectile') {
+        // Spawn from the muzzle (in front of the camera, slightly
+        // below — same offset as ranged shots) flying along the
+        // camera forward direction. Damage scales with the weapon's
+        // base damage and the optional damageMul; carries the charge
+        // bonus on top.
+        const tmpProjMuzzle = new THREE.Vector3()
+          .copy(camera.position)
+          .addScaledVector(forwardDir, 0.5);
+        tmpProjMuzzle.y -= 0.15;
+        const tmpProjTarget = new THREE.Vector3()
+          .copy(camera.position)
+          .addScaledVector(forwardDir, 14);
+        const chargeBonus = 1 + currentSwingCharge * 0.80;
+        spawnProjectile({
+          typeId: eff.projectileId,
+          origin: tmpProjMuzzle,
+          target: tmpProjTarget,
+          damage: stats.damage * (eff.damageMul ?? 1.5) * chargeBonus,
+          source: 'player',
+          friendly: true,
+        });
+      }
+    }
+
     void bestApplied;   // reserved for future "biggest hit wins crunch tier"
   }
 
