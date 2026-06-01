@@ -148,6 +148,57 @@ export function ceilingFor(
   return index % 2 === 0 ? { style: 'flat', rise: 0 } : { style: 'pitched', rise: 0.9 };
 }
 
+/** Build a faithful single-vault LevelSpec for inspection + piloting — the
+ *  SAME per-vault pipeline the composer runs (X enemies resolved via
+ *  populateTemplate, prop groups expanded + facings resolved, ceiling / wall /
+ *  void treatment) but standalone, no corridors or neighbours. Deterministic
+ *  per (id, depth, seed). Returns null if the id is unknown. Used by the
+ *  vault-inspector snaps and the `?vault=<id>` pilot entry. */
+export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSpec | null {
+  const vault = VAULTS.find((v) => v.id === vaultId);
+  if (!vault) return null;
+  // Small deterministic PRNG so X-enemy picks are reproducible per seed.
+  let s = (seed * 2654435761) >>> 0;
+  const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
+
+  const populated = populateTemplate(vault.map, depth, rand);
+  const ceil = ceilingFor(vault, depth, 1);
+  const sub = parseTileMap(populated, {
+    id: `vault-preview-${vault.id}`,
+    offsetX: 0, offsetZ: 0,
+    roomId: 'vault-0',
+    torchTint: vault.torchTint,
+    roomHeight: vault.roomHeight,
+    ceilingStyle: ceil.style,
+    ceilingRise: ceil.rise,
+    wallVariant: vault.wallVariant,
+    spawnYaw: Math.PI,
+  });
+
+  const props: PropSpec[] = [...sub.props];
+  if (vault.props) {
+    const dims = vaultDims(vault);
+    const vaultRect = { x: 0, z: 0, w: dims.w, d: dims.d };
+    for (const p of vault.props) {
+      if (p.kind === 'group') {
+        for (const child of expandGroup(p, vaultRect)) props.push(translateProp(child, 0, 0));
+      } else {
+        props.push(translateProp(p, 0, 0));
+      }
+    }
+  }
+
+  const spec: LevelSpec = {
+    ...sub,
+    id: `vault-preview-${vault.id}`,
+    depth,
+    props,
+    voids: (vault.voids ?? []).map((v) => ({ x: v.x, z: v.z, w: v.w, d: v.d })),
+  };
+  resolveAllFacings(spec);   // orient declarative-facing props (no full warp/clutter)
+  return spec;
+}
+
 /** Compose a LevelSpec for the given floor depth. */
 export function composeFloor(
   depth: number,

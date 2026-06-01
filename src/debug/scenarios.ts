@@ -8,10 +8,8 @@ import { setCameraYaw } from '../controls/camera';
 import { setWorldFrozen } from './freeze';
 import { generateFloor } from '../level/procgen';
 import { generateSafeRoom } from '../level/safe-room';
-import { parseTileMap } from '../level/tilemap';
-import { ceilingFor } from '../level/vault-compose';
+import { buildVaultPreview } from '../level/vault-compose';
 import { VAULTS } from '../level/vault-library';
-import type { Vault } from '../level/vault';
 import { debugUseAll, debugTickAll } from '../interactables/system';
 import { damagePlayer } from '../player/health';
 import { get as getEntity } from '../ecs/world';
@@ -808,35 +806,13 @@ export const SCENARIOS: Record<string, Scenario> = {
 // walking a whole floor hunting for the room. DEV-gated so it never runs (or
 // bloats) the production bundle.
 
-/** Single-vault LevelSpec mirroring how the composer would build this vault
- *  (ceiling shape, wall variant, voids) — for inspection snaps. */
-function vaultPreviewSpec(v: Vault): LevelSpec {
-  const ceil = ceilingFor(v, 5, 1);
-  const sub = parseTileMap(v.map, {
-    id: `vault-preview-${v.id}`,
-    offsetX: 0, offsetZ: 0,
-    roomId: 'vault-0',
-    torchTint: v.torchTint,
-    roomHeight: v.roomHeight,
-    ceilingStyle: ceil.style,
-    ceilingRise: ceil.rise,
-    wallVariant: v.wallVariant,
-    spawnYaw: Math.PI,
-  });
-  return {
-    ...sub,
-    depth: 5,
-    voids: (v.voids ?? []).map((z) => ({ x: z.x, z: z.z, w: z.w, d: z.d })),
-  };
-}
-
 /** Build a single-vault preview LevelSpec by vault id, or null if unknown.
- *  Used by the `?vault=<id>` harness entry (pilot driver) to walk an authored
- *  vault directly — the freeze lives on the SCENARIO, not the spec, so this
- *  same spec loads fine unfrozen under harness control. */
+ *  Delegates to the composer's faithful per-vault build (resolves X enemies,
+ *  expands prop groups, resolves facings) so previews + piloting match what
+ *  the room is in-game. The freeze lives on the SCENARIO, not the spec, so the
+ *  same spec loads frozen (inspector snap) or unfrozen (pilot). */
 export function buildVaultPreviewLevel(id: string): LevelSpec | null {
-  const v = VAULTS.find((x) => x.id === id);
-  return v ? vaultPreviewSpec(v) : null;
+  return buildVaultPreview(id);
 }
 
 if (import.meta.env.DEV) {
@@ -846,7 +822,7 @@ if (import.meta.env.DEV) {
       freeze: true,
       hideSword: true,
       inspect: true,
-      level: vaultPreviewSpec(v),
+      level: buildVaultPreview(v.id) ?? undefined,
       // Elevated interior view from the south edge, looking north across the
       // room — shows floor layout, walls, the ceiling underside, and any void.
       playerPos: { x: 0, z: innerD / 2 - 0.5, y: 2.3, lookAt: { x: 0, z: 0, y: 1.3 } },
