@@ -16,7 +16,8 @@
     "snap": "tsx scripts/snap.ts",
     "harness-smoke": "tsx scripts/harness-smoke.ts",
     "harness-continue": "tsx scripts/harness-continue.ts",
-    "play": "tsx scripts/play.ts"
+    "play": "tsx scripts/play.ts",
+    "pilot": "tsx scripts/pilot.ts"
   },
   "dependencies": {
     "three": "^0.160.0"
