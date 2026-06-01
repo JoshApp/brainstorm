@@ -27,7 +27,6 @@ import { getPropAABB, type PropAABB } from './prop-aabb';
 // its own props (floor glows, candle clusters) so a treasure vault
 // can shine warm even inside a cool act.
 
-const CORRIDOR_HEIGHT = 2.8;
 const ROOM_ID = (i: number) => `vault-${i}`;
 const BRANCH_ROOM_ID = (i: number) => `branch-${i}`;
 
@@ -49,17 +48,25 @@ interface CorridorPlacement {
 interface CorridorProfile {
   width: number;
   length: number;
+  height: number;
 }
 
-/** Roll a corridor profile. Skewed toward "normal" (2.2m × 3m) with
- *  occasional squeezes and galleries. */
+/** Roll a corridor profile. Skewed toward "normal" (2.2m wide × 2.8m
+ *  tall) with occasional squeezes and galleries. Width and HEIGHT share
+ *  the same roll so the silhouette reads coherent: a narrow corridor is
+ *  also low (a tight mine-shaft tunnel you duck through), a wide one is
+ *  tall (a vaulted gallery). That vertical variety is what keeps a long
+ *  traverse from feeling like one flat tube. */
 function pickCorridorProfile(rand: () => number): CorridorProfile {
   const r = rand();
   const width = r < 0.20 ? 1.6 + rand() * 0.4
               : r < 0.85 ? 2.0 + rand() * 0.6
                          : 2.8 + rand() * 0.6;
+  const height = r < 0.20 ? 2.3 + rand() * 0.3    // tight + low — mine-shaft tunnel
+               : r < 0.85 ? 2.7 + rand() * 0.4    // normal headroom
+                          : 3.4 + rand() * 0.6;    // wide + tall — vaulted gallery
   const length = 1.8 + rand() * 3.2;
-  return { width, length };
+  return { width, length, height };
 }
 
 /** Compose a LevelSpec for the given floor depth. */
@@ -137,7 +144,7 @@ export function composeFloor(
           w: profile.width,
           d: profile.length,
         },
-        height: CORRIDOR_HEIGHT,
+        height: profile.height,
         fromIdx: i - 1,
         toIdx: i,
       });
@@ -184,7 +191,7 @@ export function composeFloor(
           w: profile.length,
           d: profile.width,
         },
-        height: CORRIDOR_HEIGHT,
+        height: profile.height,
         fromIdx: branchIdx,
         toIdx: leafIdx,
       });
