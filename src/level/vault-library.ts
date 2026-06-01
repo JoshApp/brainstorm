@@ -770,6 +770,39 @@ const COMBAT_PITS: Vault = {
   weight: 1,
 };
 
+// Grand boss hall — bigger than the cathedral (18×16 walkable) for a real
+// set-piece. Drama comes from the auto-assigned grand barrel vault (boss tag
+// → rise 1.9), NOT god rays: god rays are the boss-floor overdraw culprit, so
+// this arena stays torch-lit and leans on ceiling geometry + scale instead.
+// Pillar-light (4) so it doesn't blow the draw-call budget like the cathedral.
+const BOSS_HALL: Vault = {
+  id: 'boss-hall',
+  tags: ['boss'],
+  map: [
+    '####################',
+    '#...T..........T...#',
+    '#..................#',
+    '#....P........P....#',
+    '#..................#',
+    '#..................#',
+    '#........X.........#',
+    '#..................#',
+    '#........B.........#',
+    '#..................#',
+    '#..X..........X....#',
+    '#..................#',
+    '#..................#',
+    '#....P........P....#',
+    '#..................#',
+    '#...t..........t...#',
+    '#........../.......#',
+    '####################',
+  ],
+  minDepth: 7,
+  weight: 1,
+  torchTint: TORCH_BLOOD,
+};
+
 export const VAULTS: Vault[] = [
   FOYER_SMALL, FOYER_PILLAR, FOYER_ALCOVE,
   COMBAT_OPEN, COMBAT_PILLARS, COMBAT_CHOKE, COMBAT_HALL, COMBAT_ARENA, COMBAT_DOORS,
@@ -779,7 +812,7 @@ export const VAULTS: Vault[] = [
   ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
   ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
   ENCOUNTER_ARENA, ENCOUNTER_OSSUARY,
-  BOSS_ANTECHAMBER, BOSS_CATHEDRAL,
+  BOSS_ANTECHAMBER, BOSS_CATHEDRAL, BOSS_HALL,
   EXIT_SIMPLE, EXIT_ALCOVE, EXIT_GRAND,
 ];
 
