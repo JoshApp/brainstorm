@@ -12,6 +12,10 @@ export const GENERATED_PATCHLOG = [
         "text": "Creator suite: validation tests + vault inspector + pre-push gate"
       },
       {
+        "tag": "tune",
+        "text": "First-class boss architecture: BossSpec registry + intro card"
+      },
+      {
         "tag": "fix",
         "text": "Fix: reassign reserved enemy tile chars (game-load crash)"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "Fix rare sharp camera flip on mouse look"
-      },
-      {
-        "tag": "tune",
-        "text": "Audio: procedural music engine — drone, plucks, combat throb"
       }
     ]
   }
