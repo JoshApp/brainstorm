@@ -302,3 +302,210 @@ export const TATTERED_CLOAK: ModelSpec = {
     },
   ],
 };
+
+// ── Expansion: Armor / Helmet / Gloves / Boots / Offhand / Amulet ─────
+// New visual specs for the content expansion. Where a similar piece
+// already exists we vary materials + scale rather than authoring from
+// scratch; the few that need a fresh silhouette get one.
+
+/** Penitent's Robe — variant of the tattered cloak, lighter tone +
+ *  longer drop. Reads as "ritual garment" vs. the cloak's "rag." */
+export const PENITENTS_ROBE: ModelSpec = {
+  id: 'penitents-robe',
+  materials: {
+    fabric: { color: 0x6a4030, roughness: 0.95, metalness: 0.0, flatShading: 'auto' },
+  },
+  parts: [
+    { kind: 'extrude', pos: [0, 0.18, 0], shape: [
+      [-0.10, 0.36], [-0.12, 0.22], [-0.16, 0.10], [-0.18, -0.02],
+      [-0.12, -0.04], [-0.06, -0.02], [ 0.00, -0.04],
+      [ 0.06, -0.02], [ 0.12, -0.04], [ 0.18, -0.02],
+      [ 0.16, 0.10], [ 0.12, 0.22], [ 0.10, 0.36],
+    ], depth: 0.018, mat: 'fabric' },
+  ],
+};
+
+/** Cuirass of Ash — boxy heavy chestplate. Reads "armoured" rather
+ *  than "clothed" by virtue of being a stout box with a chevron
+ *  notch on the front. Charred dark grey. */
+export const CUIRASS_OF_ASH: ModelSpec = {
+  id: 'cuirass-of-ash',
+  materials: {
+    plate: { color: 0x1e1a18, roughness: 0.55, metalness: 0.75, flatShading: 'auto' },
+    strap: { color: 0x180c08, roughness: 1.0, flatShading: 'auto' },
+  },
+  parts: [
+    // Main chestplate — slightly tapered toward the bottom.
+    { kind: 'box', pos: [0, 0.14, 0], size: [0.26, 0.30, 0.10], mat: 'plate' },
+    // Pauldron — small box on each shoulder edge.
+    { kind: 'box', pos: [-0.16, 0.24, 0], size: [0.08, 0.10, 0.10], mat: 'plate' },
+    { kind: 'box', pos: [ 0.16, 0.24, 0], size: [0.08, 0.10, 0.10], mat: 'plate' },
+    // Lower strap band.
+    { kind: 'box', pos: [0, 0.04, 0.045], size: [0.27, 0.04, 0.02], mat: 'strap' },
+  ],
+};
+
+/** Heretic's Hood — pointed cone hood reads as "cowled cultist."
+ *  Black-purple tinted fabric. */
+export const HERETICS_HOOD: ModelSpec = {
+  id: 'heretics-hood',
+  materials: {
+    fabric: { color: 0x231a26, roughness: 0.95, flatShading: 'auto' },
+  },
+  parts: [
+    // Cone shape — pointed apex, wider base.
+    { kind: 'cone', pos: [0, 0.16, 0], radius: 0.14, height: 0.32, segments: 8, mat: 'fabric' },
+    // Base lip — slightly wider band at the bottom for a "brim" read.
+    { kind: 'torus', pos: [0, 0.02, 0], rot: [Math.PI / 2, 0, 0], radius: 0.14, tube: 0.018, segments: [12, 8], mat: 'fabric' },
+  ],
+};
+
+/** Skullcap of the Hanged — coif variant, recoloured darker with a
+ *  small bone toggle on the crown. */
+export const SKULLCAP_HANGED: ModelSpec = {
+  id: 'skullcap-hanged',
+  materials: {
+    leather: { color: 0x1c1408, roughness: 0.92, metalness: 0.1, flatShading: 'auto' },
+    bone:    { color: 0xb09878, roughness: 0.9, flatShading: 'auto' },
+  },
+  parts: [
+    // Dome — hemisphere via slightly-flattened sphere.
+    { kind: 'sphere', pos: [0, 0.08, 0], scale: [1.0, 0.7, 1.0], radius: 0.13, segments: [12, 8], mat: 'leather' },
+    // Small bone fragment on top.
+    { kind: 'box', pos: [0, 0.18, 0], size: [0.025, 0.045, 0.020], mat: 'bone' },
+  ],
+};
+
+/** Gravecutter Gauntlets — variant of leather gloves with a brass
+ *  knuckle plate on the front. */
+export const GRAVECUTTER_GAUNTLETS: ModelSpec = {
+  id: 'gravecutter-gauntlets',
+  materials: {
+    leather: { color: 0x2a1c10, roughness: 0.95, flatShading: 'auto' },
+    binding: { color: 0x0c0805, roughness: 1.0 },
+    brass:   { color: 0xa07a3a, roughness: 0.5, metalness: 0.85, flatShading: 'auto' },
+  },
+  parts: [
+    { kind: 'box', pos: [0, 0.08, 0], size: [0.08, 0.12, 0.04], mat: 'leather' },
+    { kind: 'box', pos: [0, 0.02, 0], size: [0.09, 0.025, 0.05], mat: 'binding' },
+    { kind: 'box', pos: [0.045, 0.07, 0], size: [0.03, 0.05, 0.035], mat: 'leather' },
+    // Brass knuckle plate.
+    { kind: 'box', pos: [0, 0.10, 0.022], size: [0.07, 0.04, 0.012], mat: 'brass' },
+  ],
+};
+
+/** Vellum Wraps — light cloth hand wrappings. Cylindrical wraps
+ *  rather than a glove silhouette. Linen-pale colour. */
+export const VELLUM_WRAPS: ModelSpec = {
+  id: 'vellum-wraps',
+  materials: {
+    cloth: { color: 0xc8b890, roughness: 1.0, metalness: 0.0 },
+    ink:   { color: 0x1a0c08, roughness: 1.0 },
+  },
+  parts: [
+    // Stacked cloth rings around the wrist + hand.
+    { kind: 'cylinder', pos: [0, 0.04, 0], radius: 0.044, height: 0.04, segments: 10, mat: 'cloth' },
+    { kind: 'cylinder', pos: [0, 0.08, 0], radius: 0.042, height: 0.04, segments: 10, mat: 'cloth' },
+    { kind: 'cylinder', pos: [0, 0.12, 0], radius: 0.040, height: 0.04, segments: 10, mat: 'cloth' },
+    // Ink-stained finger wraps suggesting a scribe / caster.
+    { kind: 'cylinder', pos: [0, 0.18, 0], radius: 0.030, height: 0.05, segments: 8, mat: 'ink' },
+  ],
+};
+
+/** Shroud-Step Boots — slimmer profile than the worn boots; lighter
+ *  fabric uppers suggest mobility. */
+export const SHROUD_STEP_BOOTS: ModelSpec = {
+  id: 'shroud-step-boots',
+  materials: {
+    fabric: { color: 0x3a2a32, roughness: 0.9 },
+    sole:   { color: 0x140a08, roughness: 1.0 },
+  },
+  parts: [
+    // Sole.
+    { kind: 'box', pos: [0, 0.018, 0.02], size: [0.07, 0.020, 0.18], mat: 'sole' },
+    // Upper — taller than worn boot, slimmer.
+    { kind: 'box', pos: [0, 0.10, -0.02], size: [0.065, 0.16, 0.08], mat: 'fabric' },
+  ],
+};
+
+/** Sin-Eater Sandals — flat sole + crossed straps. Reads ascetic. */
+export const SIN_EATER_SANDALS: ModelSpec = {
+  id: 'sin-eater-sandals',
+  materials: {
+    leather: { color: 0x281c10, roughness: 0.95 },
+    strap:   { color: 0x180c06, roughness: 1.0 },
+  },
+  parts: [
+    { kind: 'box', pos: [0, 0.012, 0.02], size: [0.075, 0.016, 0.20], mat: 'leather' },
+    // Crossed straps.
+    { kind: 'box', pos: [0, 0.05, 0.02], rot: [0, 0,  0.45], size: [0.12, 0.012, 0.025], mat: 'strap' },
+    { kind: 'box', pos: [0, 0.05, 0.02], rot: [0, 0, -0.45], size: [0.12, 0.012, 0.025], mat: 'strap' },
+  ],
+};
+
+/** Splintered Aegis — small round shield, cracked, banded with iron. */
+export const SPLINTERED_AEGIS: ModelSpec = {
+  id: 'splintered-aegis',
+  materials: {
+    wood: { color: 0x4a2e1a, roughness: 0.95, flatShading: 'auto' },
+    iron: { color: 0x1e1a18, roughness: 0.5, metalness: 0.8, flatShading: 'auto' },
+  },
+  parts: [
+    // Round shield body.
+    { kind: 'cylinder', pos: [0, 0.08, 0], radius: 0.13, radiusTop: 0.13, height: 0.03, segments: 16, mat: 'wood' },
+    // Iron rim.
+    { kind: 'torus', pos: [0, 0.08, 0], rot: [Math.PI / 2, 0, 0], radius: 0.13, tube: 0.012, segments: [16, 8], mat: 'iron' },
+    // Center boss.
+    { kind: 'sphere', pos: [0, 0.08, 0.018], scale: [1, 1, 0.4], radius: 0.030, segments: [10, 8], mat: 'iron' },
+  ],
+};
+
+/** Mendicant's Locket — modest amulet variant. Tarnished bronze
+ *  pendant with a faint warm glow. */
+export const MENDICANT_LOCKET: ModelSpec = {
+  id: 'mendicant-locket',
+  materials: {
+    chain: { color: 0x2a2218, roughness: 0.6, metalness: 0.6, flatShading: 'auto' },
+    bronze: { color: 0x4a3018, roughness: 0.55, metalness: 0.7,
+              emissive: 0x884420, emissiveIntensity: 0.5, flatShading: 'auto' },
+  },
+  parts: [
+    { kind: 'torus', pos: [0, 0.16, 0], rot: [Math.PI / 2, 0, 0], radius: 0.06, tube: 0.005, segments: [16, 6], mat: 'chain' },
+    // Pendant — small round disc.
+    { kind: 'cylinder', pos: [0, 0.07, 0], radius: 0.035, radiusTop: 0.035, height: 0.012, segments: 12, mat: 'bronze' },
+  ],
+};
+
+/** Heart of the Drowned — amulet with a swollen blue-green stone. */
+export const HEART_OF_DROWNED: ModelSpec = {
+  id: 'heart-of-drowned',
+  materials: {
+    chain: { color: 0x1a2026, roughness: 0.7, metalness: 0.7, flatShading: 'auto' },
+    stone: { color: 0x0a1820, emissive: 0x66c0e0, emissiveIntensity: 1.4,
+             roughness: 0.3, metalness: 0.2, flatShading: 'auto' },
+  },
+  parts: [
+    { kind: 'torus', pos: [0, 0.16, 0], rot: [Math.PI / 2, 0, 0], radius: 0.06, tube: 0.005, segments: [16, 6], mat: 'chain' },
+    // Bulbous pendant.
+    { kind: 'sphere', pos: [0, 0.07, 0], scale: [0.95, 1.10, 0.85], radius: 0.045, segments: [12, 10], mat: 'stone' },
+  ],
+};
+
+// Ring colours — band style is generated via ringModel.
+export const RING_OF_IRON     = ringModel('ring-iron',     0x808488, 0.8);
+export const RING_OF_EMBER    = ringModel('ring-ember',    0xff5020, 2.4);
+export const RING_OF_QUICKENING = ringModel('ring-quickening', 0xfff099, 2.6);
+
+/** Steady Tonic — variant of HEALING_POTION, blue glow instead of red. */
+export const STEADY_TONIC: ModelSpec = {
+  id: 'steady-tonic',
+  materials: {
+    glass: { color: 0x0a1018, roughness: 0.18, metalness: 0.0, flatShading: 'auto',
+             emissive: 0x66a8e0, emissiveIntensity: 0.35 },
+    cork:  { color: 0x3a2a18, roughness: 0.95, flatShading: 'auto' },
+  },
+  parts: [
+    { kind: 'cylinder', pos: [0, 0.04, 0], radius: 0.038, radiusTop: 0.022, height: 0.08, segments: 12, mat: 'glass' },
+    { kind: 'cylinder', pos: [0, 0.09, 0], radius: 0.018, radiusTop: 0.018, height: 0.02, segments: 8, mat: 'cork' },
+  ],
+};
