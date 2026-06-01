@@ -8,10 +8,6 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
-        "tag": "tune",
-        "text": "Level gen: chasm voids + bridge (flat-playfield verticality)"
-      },
-      {
         "tag": "content",
         "text": "Mob variety: 3 new mobs + Boiling King now Act I boss + bigger arenas"
       },
@@ -212,6 +208,10 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Audio: positional pan + shared reverb send for in-world sounds"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix stray wall stubs by the boss stairwells"
       }
     ]
   }
