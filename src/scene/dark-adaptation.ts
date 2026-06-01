@@ -1,4 +1,7 @@
+import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { forEachLight } from './light-pool';
+import type { WalkableRegion } from '../level/walkable';
 
 // Eye dark-adaptation. When the player lingers in darkness, the scene lifts so
 // a torchless corridor becomes navigable; moving back toward torchlight drops
@@ -43,6 +46,111 @@ let adaptation = 0;   // 0..1
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
+}
+
+interface TorchLike { position: THREE.Vector3; }
+
+/**
+ * Analytic estimate of the light reaching the player's eye this frame, in the
+ * same 0..1 register tickDarkAdaptation expects. No GPU readback — sums two
+ * passes and takes the brighter:
+ *   - SURFACE: torches (LOS) + environment lights + lamp falloff at the point
+ *     the player is looking at, fogged by look distance.
+ *   - CAMERA: torches + environment lights within an FOV cone of the eye
+ *     itself (lamp excluded — it's the baseline you've already adapted past).
+ *
+ * `cx,cz` = camera position; `fx,fz` = normalised forward (x,z). Pulled out of
+ * main.ts's per-frame loop so the sampling math lives beside the adaptation it
+ * feeds.
+ */
+export function sampleLitSignal(
+  cx: number, cz: number,
+  fx: number, fz: number,
+  torches: readonly TorchLike[],
+  walkable: WalkableRegion | undefined,
+): number {
+  const lightRange = CONFIG.TORCH_DISTANCE;
+
+  // Surface sample — the point the player is looking at.
+  const hitDist = walkable ? walkable.rayWallDistance(cx, cz, fx, fz, 9) : 9;
+  const lookDist = Math.max(0.8, Math.min(hitDist - 0.3, 8));
+  const lx = cx + fx * lookDist;
+  const lz = cz + fz * lookDist;
+  let lookTorch = 0;
+  for (const t of torches) {
+    const dx = t.position.x - lx;
+    const dz = t.position.z - lz;
+    const d = Math.hypot(dx, dz);
+    if (d >= lightRange) continue;
+    if (walkable && !walkable.hasLineOfSight(lx, lz, t.position.x, t.position.z)) continue;
+    lookTorch += 1 - d / lightRange;
+  }
+  // Non-torch environment lights (bonfire, god rays, floor glows, candles).
+  // Without this, bonfire-lit rooms read "dark" and over-adapt. Torch sources
+  // are skipped (already counted above) — they prefix their id with 'torch-'.
+  let envLit = 0;
+  forEachLight('environment', (src) => {
+    if (src.id.startsWith('torch-')) return;
+    const dx = src.position.x - lx;
+    const dz = src.position.z - lz;
+    const d = Math.hypot(dx, dz);
+    const r = Math.max(2, src.distance);
+    if (d >= r) return;
+    if (walkable && !walkable.hasLineOfSight(lx, lz, src.position.x, src.position.z)) return;
+    // Weight by intensity (strong bonfire > small candle), normalised against
+    // a torch so it shares the 0..1 register.
+    const w = Math.min(1.5, src.intensity / CONFIG.TORCH_INTENSITY);
+    envLit += (1 - d / r) * w;
+  });
+  // Lamp reaches the looked-at surface by falloff over LAMP_DISTANCE.
+  const lampLit = Math.max(0, 1 - lookDist / CONFIG.LAMP_DISTANCE);
+
+  // Fog visibility — the analytic signal must agree with the fogged screen.
+  // 1 at distance ≤ FOG_NEAR, 0 at distance ≥ FOG_FAR, smooth between.
+  const fogVis = (d: number): number => {
+    const t = (CONFIG.FOG_FAR - d) / (CONFIG.FOG_FAR - CONFIG.FOG_NEAR);
+    return Math.max(0, Math.min(1, t));
+  };
+
+  // Camera-position sample — "what light is on MY eye." FOV-gated (lights
+  // behind the player don't light the screen) and fog-attenuated. Cutoff at
+  // ~110° total (cos(55°) ≈ 0.574), slightly wider than the frustum. Lamp
+  // excluded on purpose — counting it would mean lamp-lit corridors never adapt.
+  const COS_FOV_LIMIT = 0.574;
+  const inViewCone = (sx: number, sz: number): boolean => {
+    const ldx = sx - cx;
+    const ldz = sz - cz;
+    const ldist = Math.hypot(ldx, ldz) || 1e-6;
+    const dot = (fx * ldx + fz * ldz) / ldist;
+    return dot >= COS_FOV_LIMIT;
+  };
+  let camTorch = 0;
+  for (const t of torches) {
+    const dx = t.position.x - cx;
+    const dz = t.position.z - cz;
+    const d = Math.hypot(dx, dz);
+    if (d >= lightRange) continue;
+    if (!inViewCone(t.position.x, t.position.z)) continue;
+    if (walkable && !walkable.hasLineOfSight(cx, cz, t.position.x, t.position.z)) continue;
+    camTorch += (1 - d / lightRange) * fogVis(d);
+  }
+  let camEnv = 0;
+  forEachLight('environment', (src) => {
+    if (src.id.startsWith('torch-')) return;
+    const dx = src.position.x - cx;
+    const dz = src.position.z - cz;
+    const d = Math.hypot(dx, dz);
+    const r = Math.max(2, src.distance);
+    if (d >= r) return;
+    if (!inViewCone(src.position.x, src.position.z)) return;
+    if (walkable && !walkable.hasLineOfSight(cx, cz, src.position.x, src.position.z)) return;
+    const w = Math.min(1.5, src.intensity / CONFIG.TORCH_INTENSITY);
+    camEnv += (1 - d / r) * w * fogVis(d);
+  });
+  // Surface signal fogged by lookDist; camera signal omits the lamp.
+  const litSurface = (lookTorch + envLit + lampLit) * fogVis(lookDist);
+  const litCamera = camTorch + camEnv;
+  return Math.max(litSurface, litCamera);
 }
 
 /**
