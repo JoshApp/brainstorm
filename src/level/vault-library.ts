@@ -2,6 +2,7 @@ import type { Vault } from './vault';
 import { BONFIRE } from '../content/bonfire';
 import { godRay } from '../content/god-ray';
 import { COBWEB_CORNER } from '../content/cobweb';
+import { GREAT_BRAZIER } from '../content/light-props';
 
 // God-ray instances scoped per vault — used VERY sparingly (a few
 // signature chambers, not every room). Same visual family as the
@@ -826,6 +827,15 @@ const BOSS_HALL: Vault = {
   // feel undersized.
   weight: 3,
   torchTint: TORCH_BLOOD,
+  // Wall torches alone leave this 18×16 arena's centre black. Four great
+  // braziers ring the boss so the floor you fight on is actually lit —
+  // free-standing fire, not just sconces on the far walls.
+  props: [
+    { kind: 'model', model: GREAT_BRAZIER, x: -5, y: 0, z: -4 },
+    { kind: 'model', model: GREAT_BRAZIER, x:  5, y: 0, z: -4 },
+    { kind: 'model', model: GREAT_BRAZIER, x: -5, y: 0, z:  4 },
+    { kind: 'model', model: GREAT_BRAZIER, x:  5, y: 0, z:  4 },
+  ],
 };
 
 // Chasm bridge — a void splits the room; a narrow walkable bridge crosses it

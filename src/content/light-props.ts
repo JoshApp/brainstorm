@@ -325,6 +325,26 @@ export const CRESSET_PIKE: ModelSpec = {
 // tinting now. floorGlow's role is the local accent — a hint of
 // colour over a specific prop (an altar, a chest pile) — not the
 // room's lighting register.
+// Great brazier — the IRON_BRAZIER model with a HALL-grade light. A wall
+// torch (and the plain iron brazier) only reaches ~torch-distance, which
+// leaves the centre of a big arena (e.g. the 18×16 boss-hall) in the dark.
+// This variant throws light ~2× as far and brighter, so a few ringing an
+// arena actually light the floor the boss fights on — a free-standing,
+// not-on-the-wall light source for large rooms. Reuses the brazier parts;
+// only the light spec differs.
+export const GREAT_BRAZIER: ModelSpec = {
+  ...IRON_BRAZIER,
+  id: 'great-brazier',
+  light: {
+    color: CONFIG.TORCH_COLOR,
+    intensity: CONFIG.TORCH_INTENSITY * 1.8,
+    distance: CONFIG.TORCH_DISTANCE * 2.0,
+    decay: CONFIG.TORCH_DECAY,
+    pos: [0, 0.95, 0],
+    castShadow: false,
+  },
+};
+
 export function floorGlow(tint: number = 0x6cc6e0): ModelSpec {
   const id = `floor-glow-${tint.toString(16)}`;
   // Small additive motes scattered around the source. Tiny enough
