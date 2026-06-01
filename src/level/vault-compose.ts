@@ -311,6 +311,7 @@ export function composeFloor(
       roomHeight: pv.vault.roomHeight,
       ceilingStyle: ceil.style,
       ceilingRise: ceil.rise,
+      wallVariant: pv.vault.wallVariant,
       spawnYaw: pv.vault.tags.includes('start') ? Math.PI : undefined,
     });
     rooms.push(...sub.rooms);

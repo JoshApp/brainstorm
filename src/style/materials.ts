@@ -10,6 +10,8 @@ export interface StyleMaterials {
   wall: THREE.Material;
   floor: THREE.Material;
   ceiling: THREE.Material;
+  /** Aged dark timber — mine-shaft bracing + plank doors. */
+  timber: THREE.Material;
 }
 
 export function buildMaterials(): StyleMaterials {
@@ -53,9 +55,21 @@ export function buildMaterials(): StyleMaterials {
     emissiveIntensity: emissiveBoost,
   });
 
+  // Timber — aged dark wood for mine-shaft bracing and plank doors. Warmer
+  // and a touch lighter than the near-black stone so framing/doors read as a
+  // distinct material under torchlight without breaking the grimdark palette.
+  const timberBase = new THREE.MeshStandardMaterial({
+    color: 0x3a2a18,
+    roughness: 1.0,
+    metalness: 0.0,
+    emissive: 0x0a0703,
+    emissiveIntensity: emissiveBoost,
+  });
+
   return {
     wall: wallBase,
     floor: floorBase,
     ceiling: ceilingBase,
+    timber: timberBase,
   };
 }

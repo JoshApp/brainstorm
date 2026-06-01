@@ -54,6 +54,8 @@ export interface Vault {
   weight?: number;
   /** Optional ceiling height override (m). */
   roomHeight?: number;
+  /** Optional wall treatment — 'braced' adds mine-shaft timber framing. */
+  wallVariant?: 'stone' | 'braced';
   /**
    * Optional per-vault torch tint override. When set, torches
    * mounted on this vault's walls use this colour instead of

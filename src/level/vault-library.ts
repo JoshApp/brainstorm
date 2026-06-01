@@ -728,6 +728,7 @@ const MINESHAFT_GALLERY: Vault = {
   weight: 2,
   torchTint: TORCH_PALE,
   roomHeight: 2.6,
+  wallVariant: 'braced',   // timber support frames — the mine-shaft read
 };
 
 // Ossuary — a lore pocket: four corpses (Souls-style notes), a chest in

@@ -72,6 +72,8 @@ export interface TileMapOptions {
   ceilingStyle?: 'flat' | 'barrel' | 'pitched';
   /** Crown rise above roomHeight for a barrel/pitched ceiling (meters). */
   ceilingRise?: number;
+  /** Wall treatment for the main room ('braced' = mine-shaft timber). */
+  wallVariant?: 'stone' | 'braced';
   /** Color tint for the room's torches (applied to all torches in the map). */
   torchTint?: number;
   /**
@@ -263,6 +265,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     height: opts.roomHeight ?? 3.2,
     ceilingStyle: opts.ceilingStyle,
     ceilingRise: opts.ceilingRise,
+    wallVariant: opts.wallVariant,
   };
 
   // ── Flood fill walkable cells into sub-rooms ──────────────────────

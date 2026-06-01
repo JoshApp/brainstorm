@@ -280,6 +280,40 @@ function makeArchedCeilingGeometry(
   return geo;
 }
 
+// Mine-shaft timber bracing: square support frames (two posts + a lintel)
+// spanning the room's SHORTER axis at intervals along the longer one, all
+// merged into ONE geometry (one draw call). The iconic "dug tunnel" read.
+// World-space coords — the mesh sits at origin.
+function makeBracedFramesGeometry(rect: { x: number; z: number; w: number; d: number }, H: number): THREE.BufferGeometry | null {
+  const longAxisX = rect.w >= rect.d;
+  const longLen = longAxisX ? rect.w : rect.d;
+  const shortLen = longAxisX ? rect.d : rect.w;
+  const POST = 0.14;                       // beam thickness
+  const spanHalf = shortLen / 2 - 0.08;    // pull off the wall a touch
+  const lintelY = H - 0.22;
+  const frameCount = Math.max(1, Math.round(longLen / 2.6) - 1);
+  const geos: THREE.BufferGeometry[] = [];
+  const m4 = new THREE.Matrix4();
+  const pushBox = (w: number, h: number, d: number, px: number, py: number, pz: number) => {
+    const g = new THREE.BoxGeometry(w, h, d);
+    g.applyMatrix4(m4.makeTranslation(px, py, pz));
+    geos.push(g);
+  };
+  for (let i = 1; i <= frameCount; i++) {
+    const along = -longLen / 2 + (i / (frameCount + 1)) * longLen;
+    const cx = rect.x + (longAxisX ? along : 0);
+    const cz = rect.z + (longAxisX ? 0 : along);
+    for (const s of [-spanHalf, spanHalf]) {                 // two posts
+      pushBox(POST, H, POST, cx + (longAxisX ? 0 : s), H / 2, cz + (longAxisX ? s : 0));
+    }
+    pushBox(                                                  // lintel across the top
+      longAxisX ? POST : spanHalf * 2 + POST, POST, longAxisX ? spanHalf * 2 + POST : POST,
+      cx, lintelY, cz,
+    );
+  }
+  return geos.length ? mergeGeometries(geos, false) : null;
+}
+
 function buildRoomShell(
   scene: THREE.Object3D,
   room: RoomSpec,
@@ -366,6 +400,20 @@ function buildRoomShell(
         // wall runs along Z at x = we.perpCoord
         wallSegmentsOut.push({ ax: we.perpCoord, az: seg.start, bx: we.perpCoord, bz: seg.end });
       }
+    }
+  }
+
+  // Mine-shaft timber bracing (one merged mesh — see makeBracedFramesGeometry).
+  if (room.wallVariant === 'braced') {
+    const frames = makeBracedFramesGeometry(rect, H);
+    if (frames) {
+      const braces = new THREE.Mesh(frames, materials.timber);
+      braces.castShadow = true;
+      braces.receiveShadow = true;
+      braces.name = 'braces';
+      braces.userData.dbgKind = 'wall';
+      braces.userData.dbgSource = `braces · ${room.id}`;
+      scene.add(braces);
     }
   }
 }

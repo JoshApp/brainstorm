@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tech",
+        "text": "Perf: batch all pillar geometry into one mesh per floor"
+      },
+      {
+        "tag": "tune",
+        "text": "Level gen: grand boss-hall arena (18x16) for real set-piece fights"
+      },
+      {
         "tag": "tune",
         "text": "Level gen: four new variety vaults (attack the 'samey' feel)"
       },
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Combat feel: no-weapon gate, strike trail, wider cone + more reach"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt shader: less blue, more shimmer"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt rates"
       }
     ]
   }

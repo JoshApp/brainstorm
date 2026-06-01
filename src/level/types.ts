@@ -80,6 +80,12 @@ export type RoomSpec = {
   /** Crown rise above `height` for barrel/pitched ceilings (meters). */
   ceilingRise?: number;
   /**
+   * Wall treatment. 'stone' (default) is the bare jittered wall. 'braced'
+   * adds mine-shaft timber support frames (posts + lintels) at intervals,
+   * merged into one mesh — the "dug tunnel" read.
+   */
+  wallVariant?: 'stone' | 'braced';
+  /**
    * If true, the builder SKIPS shell generation (floor / ceiling /
    * walls) for this room. The rect is still used for ATTRIBUTION:
    * mob spawns find their roomId via findRoomContaining, arena

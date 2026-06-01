@@ -358,7 +358,9 @@ function buildHingedPanel(
   pivot: THREE.Group, length: number, height: number, materials: StyleMaterials,
 ) {
   const panelGeo = new THREE.BoxGeometry(length, height, DOOR_THICKNESS);
-  const panel = new THREE.Mesh(panelGeo, materials.wall);
+  // Timber plank (was stone) — with the existing iron bands it now reads as
+  // a banded wooden door rather than a sliding stone slab.
+  const panel = new THREE.Mesh(panelGeo, materials.timber);
   panel.position.set(length / 2, height / 2, 0);
   panel.castShadow = true;
   panel.receiveShadow = true;
