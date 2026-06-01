@@ -242,6 +242,14 @@ export function populateTemplate(
         // chest/loot pipeline handles it; '.' = empty this run. Per-slot, so
         // a room with several $ yields a varying subset run to run.
         out += rand() < Math.min(0.8, 0.5 + depth * 0.02) ? 'c' : '.';
+      } else if (ch === '?') {
+        // Event slot — rolls a feature (trap / fountain / altar) or nothing.
+        // Reuses the existing tile chars, so parseTileMap builds them AND the
+        // floor manifest caps fountains/altars across the floor (a random one
+        // can't break the heal economy — see reconcileManifest). '.' = nothing
+        // this run. Traps are the common event; fountain/altar rare (+ capped).
+        const r = rand();
+        out += r < 0.33 ? '.' : r < 0.77 ? '^' : r < 0.89 ? 'F' : 'A';
       } else {
         out += ch;
       }
