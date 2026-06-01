@@ -94,8 +94,11 @@ function closePanel() {
 
 // Active tab persists across opens within a session — convenient when
 // iterating on a tab's contents on the phone.
-type TabId = 'controls' | 'audio' | 'system' | 'run';
-let activeTab: TabId = 'controls';
+type TabId = 'run' | 'controls' | 'audio' | 'system';
+// Default to RUN when a live run is active (CHARACTER + quit + abandon
+// + exit are the most-reached affordances mid-game); fall back to
+// CONTROLS on the title screen where RUN doesn't exist yet.
+let activeTab: TabId = 'run';
 
 function buildPanelContents() {
   if (!panel) return;
@@ -134,15 +137,18 @@ function buildPanelContents() {
   panel.appendChild(header);
 
   // Tabs available depend on whether there's a live run — RUN tab
-  // appears only when actions are wired.
-  const tabs: Array<{ id: TabId; label: string }> = [
+  // appears only when actions are wired. When live, RUN sits FIRST so
+  // the most-reached affordances (CHARACTER, QUIT TO MENU, etc.) land
+  // under the thumb the moment settings open.
+  const tabs: Array<{ id: TabId; label: string }> = [];
+  if (runActions) tabs.push({ id: 'run', label: 'RUN' });
+  tabs.push(
     { id: 'controls', label: 'CONTROLS' },
     { id: 'audio',    label: 'AUDIO' },
     { id: 'system',   label: 'SYSTEM' },
-  ];
-  if (runActions) tabs.push({ id: 'run', label: 'RUN' });
+  );
   // If the previously-active tab disappeared (e.g. RUN gone after
-  // quitting), fall back to controls.
+  // quitting), fall back to CONTROLS — the first non-RUN tab.
   if (!tabs.find((t) => t.id === activeTab)) activeTab = 'controls';
 
   // Tab bar — horizontal row of buttons. Active tab is highlighted.

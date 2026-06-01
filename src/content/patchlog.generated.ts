@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Ranged auto-aim LOS + rename sword.ts → viewmodel.ts"
+      },
+      {
+        "tag": "tune",
         "text": "Settings tabs + staff upright + tight ranged aim + moveset all classes"
       },
       {
@@ -208,16 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Tap-target: screen-space proximity fallback for interactables"
-      }
-    ]
-  },
-  {
-    "version": "Build 7",
-    "date": "2026-05-31",
-    "entries": [
-      {
-        "tag": "tech",
-        "text": "Arena portcullis + prod-safe godmode / dev-mode gating"
       }
     ]
   }
