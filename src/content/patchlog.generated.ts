@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-01",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Level gen: varied corridor ceiling heights (mine-shaft tunnels vs galleries)"
+      },
+      {
         "tag": "tech",
         "text": "Perf meter"
       },
@@ -30,6 +34,10 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Sword pilot moveset: directional moves + combo + charge"
+      },
+      {
+        "tag": "tech",
+        "text": "Boss-floor perf"
       },
       {
         "tag": "tune",
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Dark-adapt"
-      },
-      {
-        "tag": "tune",
-        "text": "Dark-adapt: hybrid lit signal — max(surface, camera-at-eye)"
-      },
-      {
-        "tag": "content",
-        "text": "Dark-adapt: wider torch range, count env lights, brighter floor"
       }
     ]
   }
