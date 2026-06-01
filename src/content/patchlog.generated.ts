@@ -9,14 +9,6 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
-        "text": "Level gen: braced timber wall variant + timber plank doors"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf: batch all pillar geometry into one mesh per floor"
-      },
-      {
-        "tag": "tune",
         "text": "Effects: target 'attacker' resolution + 3 retaliation items"
       },
       {
@@ -212,6 +204,14 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Debug capture"
+      },
+      {
+        "tag": "tune",
+        "text": "Ranged pass: viewmodels, projectile shapes, vertical aim"
+      },
+      {
+        "tag": "tune",
+        "text": "Combo pass"
       }
     ]
   }

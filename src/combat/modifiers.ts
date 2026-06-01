@@ -30,6 +30,19 @@ export type StatModifier =
   | { kind: 'incoming-damage-mult';  amount: number }    // multiplicative on INCOMING (sunder/vulnerable: 1.35 = +35% taken)
   | { kind: 'move-speed-mult';       amount: number }    // multiplicative on move speed (chill: 0.5 = half)
   | { kind: 'action-speed-mult';     amount: number }    // multiplicative on attack/windup speed (chill: 0.6 = 40% slower)
+  // Crit additions: stack on top of the WEAPON's intrinsic crit. Each
+  // 'crit-chance' amount adds linearly to the roll probability (0.10 =
+  // +10%); 'crit-mult' adds linearly to the multiplier (0.25 = +0.25
+  // on top of the weapon's base 2.0). Both clamp at the use-site so a
+  // pile of items can't roll past 100% chance or infinite mult.
+  | { kind: 'crit-chance';           amount: number }    // additive 0..1
+  | { kind: 'crit-mult';             amount: number }    // additive multiplier offset
+  // Lifesteal — percentage of damage DEALT that heals the player.
+  // 0.20 = 20% heal on every successful melee hit (rounded down to
+  // integer HP). Stacks additively across all sources. Capped at 1.0
+  // at the use-site. Applied per-target so a 3-target cleave heals
+  // from each hit independently.
+  | { kind: 'lifesteal-pct';         amount: number }
 ;
 
 /**
@@ -105,6 +118,14 @@ export interface PlayerStats {
   magicArmor: number;
   /** Multiplier on INCOMING damage (sunder/vulnerable). 1.0 = normal. */
   vulnerability: number;
+  /** Additive bonus on the weapon's intrinsic crit chance (0..1).
+   *  Stacks across items + buffs. Clamped at 1.0 when rolled. */
+  critChanceBonus: number;
+  /** Additive bonus on the weapon's intrinsic crit multiplier
+   *  (e.g. +0.50 on a base 2.0 → effective ×2.5 on crit). */
+  critMultBonus: number;
+  /** Percentage of damage dealt that heals the player (0..1, clamped). */
+  lifestealPct: number;
 }
 
 /**
@@ -120,6 +141,9 @@ export function computePlayerStats(): PlayerStats {
   let physicalArmor = 0;
   let magicArmor = 0;
   let vulnerability = 1;
+  let critChanceBonus = 0;
+  let critMultBonus = 0;
+  let lifestealPct = 0;
 
   for (const m of aggregateModifiers('player')) {
     switch (m.kind) {
@@ -130,6 +154,9 @@ export function computePlayerStats(): PlayerStats {
       case 'physical-armor':       physicalArmor += m.amount; break;
       case 'magic-armor':          magicArmor += m.amount; break;
       case 'incoming-damage-mult': vulnerability *= m.amount; break;
+      case 'crit-chance':          critChanceBonus += m.amount; break;
+      case 'crit-mult':            critMultBonus += m.amount; break;
+      case 'lifesteal-pct':        lifestealPct += m.amount; break;
       // move/action-speed are handled by aggregateSpeed (movement +
       // attack timing), not the damage-stat path.
       case 'move-speed-mult':
@@ -144,7 +171,16 @@ export function computePlayerStats(): PlayerStats {
   maxHp += vigor;
   physicalArmor += resolve * 0.5;
   magicArmor    += resolve * 0.5;
-  return { maxHp, weaponDamageBonus, damageMultiplier, finisherDamageMultiplier, physicalArmor, magicArmor, vulnerability };
+  return {
+    maxHp, weaponDamageBonus, damageMultiplier, finisherDamageMultiplier,
+    physicalArmor, magicArmor, vulnerability,
+    // Clamp at use-site too, but cap chance at 1.0 here so the UI /
+    // tooltips don't show "115% crit chance"; a single pile of items
+    // shouldn't roll past every swing always critting.
+    critChanceBonus: Math.min(1, Math.max(0, critChanceBonus)),
+    critMultBonus,
+    lifestealPct: Math.min(1, Math.max(0, lifestealPct)),
+  };
 }
 
 /**

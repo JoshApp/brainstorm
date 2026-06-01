@@ -40,7 +40,16 @@ export function formatModifier(m: StatModifier): string {
     case 'incoming-damage-mult':  return `×${m.amount.toFixed(2)} Damage Taken`;
     case 'move-speed-mult':       return `×${m.amount.toFixed(2)} Move Speed`;
     case 'action-speed-mult':     return `×${m.amount.toFixed(2)} Attack Speed`;
+    case 'crit-chance':           return signedPct(m.amount) + ' Crit Chance';
+    case 'crit-mult':             return (m.amount >= 0 ? '+' : '') + m.amount.toFixed(2) + ' Crit Multiplier';
+    case 'lifesteal-pct':         return signedPct(m.amount) + ' Lifesteal';
   }
+}
+
+/** Format a 0..1 value as a signed percentage (e.g. 0.10 → "+10%"). */
+function signedPct(amount: number): string {
+  const pct = Math.round(amount * 100);
+  return (pct >= 0 ? '+' : '') + pct + '%';
 }
 
 export function formatPassive(p: PassiveSpec): string {
