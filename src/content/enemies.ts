@@ -1148,14 +1148,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
       gracePeriod: 1.0,              // a full second of "I'm in, get out" before damage starts
     },
     tiltPartName: 'rig',
-    // Damage flash hits the CORE, not the body. The body is
-    // translucent green at 0.55 opacity so a base-colour flash
-    // barely reads; the core's bright emissive pulses ×2.5 on hit
-    // (via the emissive boost in enemy.ts) which gives crisp,
-    // unambiguous "you connected" feedback consistent with the
-    // already-emergent "aim for the core" mechanic.
+    // Damage flash hits the CORE, not the body. The body is translucent
+    // green at 0.55 opacity so a base-colour flash barely reads; enemy.ts
+    // gives the core a heartbeat + a white-hot flare/pop on hit.
     flashMaterialName: 'core',
-    eyeMaterialName: 'core',
+    // The king has NO eyes (baseEyeEmissive 0). Pointing eyeMaterialName at
+    // 'core' made the eye system drive the core's emissive to 0 every frame
+    // — blacking out the very orb that's supposed to glow. Aim it at a
+    // material that doesn't exist so the eye system no-ops and the core
+    // hit-reaction in enemy.ts fully owns the orb.
+    eyeMaterialName: 'no-eyes',
     presence: 'twitch',              // pulsing blob feel even when idle
     physicalArmor: 0,
     magicArmor: 0,

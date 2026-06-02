@@ -565,11 +565,13 @@ export function kingOozeModel(bodyColor: number, innerColor: number): ModelSpec 
       // OUTER BODY — same squashed sphere as the small ooze; the
       // king's bulk comes from spec.scale, not from local scale here.
       { name: 'body', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], scale: [1.15, 0.85, 1.15], radius: 0.22, segments: [20, 14], mat: 'body', jitter: 0.018 },
-      // CORE — bright orb at the geometric centre. Slightly larger
-      // (0.10 vs the small ooze's 0.07) so it reads as the obvious
-      // target through the translucent body. At scale 7 this is a
-      // 0.7m radius glowing sphere — visible from across the arena.
-      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.10, segments: [12, 10], mat: 'core' },
+      // CORE — a defined glowing NUCLEUS, the player's target. Two layers
+      // so it reads as a real core through the 0.55-opacity body and so a
+      // hit unmistakably lights it up (enemy.ts beats it idly + flares +
+      // pops it on damage): a solid bright orb wrapped in an additive
+      // bloom that haloes it like energy.
+      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.12, segments: [18, 14], mat: 'core' },
+      { name: 'coreGlow', parent: 'rig', kind: 'sprite', pos: [0, 0, 0], size: [0.30, 0.30], texture: 'fire-wisp', blending: 'additive', color: innerColor },
 
       // ── SWALLOWED REGALIA — small geometry suspended inside the
       //    sphere's volume. Positions hand-picked to be within the

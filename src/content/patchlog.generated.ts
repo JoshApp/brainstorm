@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Slime King polish: hittable core, surface hitboxes, slow drop, slime puddle"
+      },
+      {
+        "tag": "tune",
         "text": "Slime King: leave a slow acid puddle on landing (field primitive)"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "snap"
-      },
-      {
-        "tag": "tune",
-        "text": "Two new mobs: pit moth (swarmer) + lasher (long-reach turret)"
       }
     ]
   }

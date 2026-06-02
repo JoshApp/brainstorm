@@ -348,6 +348,25 @@ export function createEnemy(
   const originalEmissiveIntensity = flashMat ? flashMat.emissiveIntensity : 0;
   const baseEyeEmissive = spec.baseEyeEmissive;
 
+  // ── Glowing-core hit reaction (the king's bright 'core' orb) ───────
+  // An enemy that ships a `coreGlow` sprite gets the "real core" treatment:
+  // an idle heartbeat that draws the eye to the weak point, and a punchy
+  // white-hot flare + scale pop + bloom on damage so a hit reads clearly
+  // even through the translucent body. Plain mobs (no coreGlow) keep the
+  // simple colour flash below. flashMat is the core orb's material here.
+  const coreMesh = built.parts.get(spec.flashMaterialName) as THREE.Mesh | undefined;
+  const coreMeshBaseScale = coreMesh ? coreMesh.scale.clone() : null;
+  const coreBaseEmissive = flashMat ? flashMat.emissive.clone() : new THREE.Color();
+  const coreGlow = built.parts.get('coreGlow') as THREE.Sprite | undefined;
+  const coreGlowMat = coreGlow?.material as THREE.SpriteMaterial | undefined;
+  const coreGlowBaseScale = coreGlow ? coreGlow.scale.clone() : null;
+  const hasGlowingCore = !!coreGlow && !!flashMat && originalEmissiveIntensity > 0;
+  const CORE_WHITE = new THREE.Color(0xffffff);
+  const tmpCoreEmissive = new THREE.Color();
+  const CORE_HIT_DECAY = 0.22;   // seconds for the hit flare/pop to fall off
+  let hitPulse = 0;              // 1 on hit, decays — drives flare + pop
+  let coreTime = 0;             // idle heartbeat clock
+
   let state: EnemyState = 'idle';
   let phaseTimer = 0;
   let aliveLocal = true;
@@ -624,6 +643,7 @@ export function createEnemy(
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
     flashTimer = CONFIG.ENEMY_HIT_FLASH_DURATION;
+    hitPulse = 1;   // drives the glowing-core flare + pop (king)
     // Damage from any source aggros (and keeps aggro for the full
     // loseSightTime window after the hit, even if the player breaks LOS
     // — a wounded mob doesn't forget). If we were idle/searching/etc,
@@ -1265,15 +1285,31 @@ export function createEnemy(
       return;
     }
 
-    if (flashMat) {
+    coreTime += dt;
+    if (hasGlowingCore && flashMat) {
+      // The king's nucleus: a slow idle heartbeat (so the eye is drawn to
+      // the weak point) overlaid with a punchy hit flare — white-hot
+      // emissive spike + a scale POP on the orb + a bloom flare on the
+      // halo sprite, all decaying over CORE_HIT_DECAY. Unmistakable even
+      // behind the 0.55-opacity body.
+      hitPulse = Math.max(0, hitPulse - dt / CORE_HIT_DECAY);
+      const beat = Math.sin(coreTime * 2.4);
+      flashMat.emissiveIntensity = originalEmissiveIntensity * (1 + 0.18 * beat + 4.5 * hitPulse);
+      tmpCoreEmissive.copy(coreBaseEmissive).lerp(CORE_WHITE, 0.85 * hitPulse);
+      flashMat.emissive.copy(tmpCoreEmissive);
+      if (coreMesh && coreMeshBaseScale) {
+        coreMesh.scale.copy(coreMeshBaseScale).multiplyScalar(1 + 0.55 * hitPulse + 0.04 * beat);
+      }
+      if (coreGlow && coreGlowMat && coreGlowBaseScale) {
+        coreGlowMat.opacity = 0.45 + 0.12 * beat + 0.95 * hitPulse;
+        coreGlow.scale.copy(coreGlowBaseScale).multiplyScalar(1 + 0.5 * hitPulse + 0.06 * beat);
+      }
+    } else if (flashMat) {
+      // Plain mobs — the existing brief colour flash on hit.
       if (flashTimer > 0) {
         flashTimer -= dt;
         const t = Math.max(0, flashTimer / CONFIG.ENEMY_HIT_FLASH_DURATION);
         flashMat.color.copy(originalColor).lerp(flashColor, t);
-        // Emissive boost — only visible on materials with non-zero
-        // base emissive (e.g. a glowing core orb). Peak 2.5× at hit
-        // moment, decays back to base. For non-emissive flash mats
-        // this is a no-op multiply on 0.
         if (originalEmissiveIntensity > 0) {
           flashMat.emissiveIntensity = originalEmissiveIntensity * (1 + 1.5 * t);
         }
