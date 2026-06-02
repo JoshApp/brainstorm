@@ -52,8 +52,8 @@ import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { recomputePlayerStats } from './state/player-stats';
 import { syncHudStores } from './state/hud-stores';
 import { tickDarkAdaptation, darkAdaptBrightness, darkAdaptAmbient, sampleLitSignal } from './scene/dark-adaptation';
-import { initDarkAdaptReadout, updateDarkAdaptReadout } from './debug/dark-adapt-readout';
-import { initBossEncounterReadout, updateBossEncounterReadout } from './debug/boss-encounter-readout';
+import { initDarkAdaptReadout, updateDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-adapt-readout';
+import { initBossEncounterReadout, updateBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
 import { tickThresholdDrafts } from './scene/threshold-draft';
 import { seedRng } from './engine/rng';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
@@ -1034,14 +1034,21 @@ function setDebugButton(on: boolean) {
   });
 }
 if (DEBUG_ENABLED) setDebugButton(true);
-if (DEBUG_ENABLED) initDarkAdaptReadout();
-if (DEBUG_ENABLED) initBossEncounterReadout();
+// Diagnostic readouts are always MOUNTED (cheap hidden DOM) and driven by
+// their own DEBUG-tab toggles — independent of DEBUG MODE, like the perf
+// overlay. tickers early-out while hidden.
+initDarkAdaptReadout();
+initBossEncounterReadout();
+setDarkAdaptReadoutVisible(getSettings().debugEyeAdapt);
+setBossEncounterReadoutVisible(getSettings().debugBossReadout);
 // React to the settings-menu toggle live (no reload needed to show/hide
 // the button). The URL flag forces it on regardless of the setting.
 onSettingsChanged((s) => {
   const urlForced = new URLSearchParams(window.location.search).get('debug') === '1';
   setDebugButton(urlForced || s.debugMode);
   setPerfOverlayVisible(s.perfMeter);
+  setDarkAdaptReadoutVisible(s.debugEyeAdapt);
+  setBossEncounterReadoutVisible(s.debugBossReadout);
   setShadowMode(s.shadows);
 });
 

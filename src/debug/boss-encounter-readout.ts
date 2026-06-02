@@ -6,6 +6,14 @@
 import { bossEncounterDebug } from '../mobs/boss-encounter';
 
 let el: HTMLDivElement | null = null;
+let visible = true;
+
+/** Show/hide the readout. Driven by the DEBUG settings tab. When on, the
+ *  panel still only PAINTS during an actual boss fight (members > 0). */
+export function setBossEncounterReadoutVisible(v: boolean): void {
+  visible = v;
+  if (el && !v) el.style.display = 'none';
+}
 
 export function initBossEncounterReadout(): void {
   if (el) return;
@@ -32,7 +40,7 @@ export function initBossEncounterReadout(): void {
 
 /** Per-frame. No-op when not mounted. Hidden until the encounter has bodies. */
 export function updateBossEncounterReadout(): void {
-  if (!el) return;
+  if (!el || !visible) return;
   const s = bossEncounterDebug();
   if (s.members.length === 0) { el.style.display = 'none'; return; }
   el.style.display = 'block';

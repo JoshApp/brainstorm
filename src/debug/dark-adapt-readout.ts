@@ -4,11 +4,19 @@
 // areas. Mounted only when debug mode is on (?debug=1 or the DEBUG setting).
 
 let el: HTMLDivElement | null = null;
+let visible = true;
+
+/** Show/hide the readout. Driven by the DEBUG settings tab. */
+export function setDarkAdaptReadoutVisible(v: boolean): void {
+  visible = v;
+  if (el) el.style.display = v ? 'block' : 'none';
+}
 
 export function initDarkAdaptReadout(): void {
   if (el) return;
   el = document.createElement('div');
   el.id = 'dark-adapt-debug';
+  el.style.display = visible ? 'block' : 'none';
   Object.assign(el.style, {
     position: 'fixed',
     left: 'calc(16px + env(safe-area-inset-left, 0px))',
@@ -31,7 +39,7 @@ export function initDarkAdaptReadout(): void {
 /** Per-frame update. No-op (and allocates nothing) when not mounted.
  *  `lit` = estimated light on the surface you're facing (torch + lamp). */
 export function updateDarkAdaptReadout(lit: number, adaptation: number, brightness: number): void {
-  if (!el) return;
+  if (!el || !visible) return;
   const filled = Math.round(adaptation * 12);
   const bar = '█'.repeat(filled) + '·'.repeat(12 - filled);
   el.textContent =

@@ -38,6 +38,10 @@ export interface Settings {
   /** Show the debug capture button (the ⊕ CAPTURE chip) during play.
    *  Same as the ?debug=1 URL flag, but persisted + toggleable in-menu. */
   debugMode: boolean;
+  /** DEBUG tab readout toggles — independent on-screen diagnostic overlays.
+   *  Each is its own panel so they can be turned on one at a time. */
+  debugEyeAdapt: boolean;   // eye dark-adaptation readout (torch prox / adapt / ambient)
+  debugBossReadout: boolean; // boss-encounter readout — only paints during a boss fight
   /** Touch control scheme. Only 'default' (left-joystick / right-aim,
    *  the current layout) ships today — the selector is a seam for
    *  alternate schemes (e.g. fixed-stick, swipe-move) we'll add later. */
@@ -84,6 +88,8 @@ const DEFAULTS: Settings = {
   devAutoUpdate: false,
   debugMode: false,
   perfMeter: false,
+  debugEyeAdapt: false,
+  debugBossReadout: false,
   controlScheme: 'default',
   // 'hero' by default: a single lamp-cast shadow is cheap and immediately
   // sells the torchlit-dungeon feel. Drop to 'off' on a struggling phone,

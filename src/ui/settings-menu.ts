@@ -100,7 +100,7 @@ function closePanel() {
 
 // Active tab persists across opens within a session — convenient when
 // iterating on a tab's contents on the phone.
-type TabId = 'run' | 'controls' | 'audio' | 'graphics' | 'system';
+type TabId = 'run' | 'controls' | 'audio' | 'graphics' | 'system' | 'debug';
 // Default to RUN when a live run is active (CHARACTER + quit + abandon
 // + exit are the most-reached affordances mid-game); fall back to
 // CONTROLS on the title screen where RUN doesn't exist yet.
@@ -153,6 +153,7 @@ function buildPanelContents() {
     { id: 'audio',    label: 'AUDIO' },
     { id: 'graphics', label: 'GRAPHICS' },
     { id: 'system',   label: 'SYSTEM' },
+    { id: 'debug',    label: 'DEBUG' },
   );
   // If the previously-active tab disappeared (e.g. RUN gone after
   // quitting), fall back to CONTROLS — the first non-RUN tab.
@@ -296,11 +297,30 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().debugMode,
       set: (v) => updateSettings({ debugMode: v }),
     }),
+  ],
+
+  // DEBUG tab — on-screen diagnostic overlays, each independently toggleable.
+  // Safe to ship (no cheats); off by default so a normal player never sees
+  // them. Visibility is applied live by the onSettingsChanged subscription
+  // in main.ts.
+  debug: () => [
     makeToggle({
-      label: 'PERF METER',
-      description: 'Top-right overlay with FPS, frame time, and renderer draw counts. For diagnosing slow moments in the field.',
+      label: 'FPS / PERF METER',
+      description: 'Top-right overlay: FPS, frame time, and renderer draw counts. For diagnosing slow moments in the field.',
       get: () => getSettings().perfMeter,
       set: (v) => updateSettings({ perfMeter: v }),
+    }),
+    makeToggle({
+      label: 'EYE ADAPT',
+      description: 'Left-side readout of eye dark-adaptation: torch proximity, the 0..1 adapt value, and resulting ambient brightness.',
+      get: () => getSettings().debugEyeAdapt,
+      set: (v) => updateSettings({ debugEyeAdapt: v }),
+    }),
+    makeToggle({
+      label: 'BOSS ENCOUNTER',
+      description: 'During a boss fight only: lists every tracked boss body with its alive/HP + the encounter engaged/done state. For diagnosing a stuck fight.',
+      get: () => getSettings().debugBossReadout,
+      set: (v) => updateSettings({ debugBossReadout: v }),
     }),
   ],
 
