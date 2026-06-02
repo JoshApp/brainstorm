@@ -791,8 +791,11 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
 
         // Find the abutting room's ceiling height (for tympanum
         // sizing). We pick the larger of the two abutting heights
-        // so the tympanum never falls short of the ceiling.
+        // so the tympanum never falls short of the ceiling. Also note
+        // whether the room on the far side CONTAINS A STAIR — if so, its
+        // mouth must stay column-free (see below).
         let ceiling = corridor.height;
+        let stairMouth = false;
         for (const other of [...spec.rooms, ...spec.corridors]) {
           const or = other.rect;
           if (or === c) continue;
@@ -802,12 +805,23 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
             (side === 'S' && Math.abs((or.z - or.d / 2) - (c.z + c.d / 2)) < 0.05) ||
             (side === 'W' && Math.abs((or.x + or.w / 2) - (c.x - c.w / 2)) < 0.05) ||
             (side === 'E' && Math.abs((or.x - or.w / 2) - (c.x + c.w / 2)) < 0.05);
-          if (adjacent) ceiling = Math.max(ceiling, other.height);
+          if (adjacent) {
+            ceiling = Math.max(ceiling, other.height);
+            if ((spec.stairs ?? []).some((st) =>
+              Math.abs(st.x - or.x) <= or.w / 2 && Math.abs(st.z - or.z) <= or.d / 2)) {
+              stairMouth = true;
+            }
+          }
         }
 
         // Narrow mouths get the light doorframe — its jambs are slim and it
         // emits NO collision, so it never chokes the gap. Only WIDE mouths get
-        // the full archway with column blockers.
+        // the full archway with column blockers — UNLESS this is the mouth of a
+        // STAIR ROOM: the stairwell footprint (2.56×1.95m) already eats most of
+        // a small exit room, so a column at the mouth can pinch the only path
+        // around it to the stair's interaction spot to <player-width — a
+        // soft-lock (you can SEE the stairs but can't reach them). Stair-room
+        // mouths therefore always get the collision-free doorframe.
         //
         // GUARANTEE (no archway can soft-lock a passage): the columns sit at
         // ±(width/2 − 0.16) with collision r 0.18, and the player radius is
@@ -817,7 +831,7 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
         // toward the knife-edge that soft-locked the chasm mouth, so those
         // openings get the collision-free doorframe instead. (Was 1.6m, which
         // left only a ~0.24m band — passable in theory, a trap in practice.)
-        if (width < 2.0) {
+        if (width < 2.0 || stairMouth) {
           spec.props.push({
             kind: 'model',
             model: doorframe({ width, ceilingHeight: ceiling }),

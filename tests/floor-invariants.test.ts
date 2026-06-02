@@ -97,6 +97,25 @@ test('no archway chokes a passage below the player', () => {
   }
 });
 
+test('no column-archway crowds a stair (would block the approach)', () => {
+  // The stairwell footprint already fills most of a small exit room; a
+  // collision column at its mouth can pinch the only way around to the
+  // stair's interaction spot below player-width (the d4-0wgr soft-lock).
+  // Stair-room mouths must be collision-free doorframes — assert no archway
+  // with collision lands near a stair.
+  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
+    const spec = generateFloor(d, s);
+    const stairs = spec.stairs ?? [];
+    for (const p of spec.props as Array<{ _dbg?: string; x: number; z: number; collision?: unknown[] }>) {
+      if (p._dbg !== 'archway' || !p.collision) continue;
+      for (const st of stairs) {
+        const dist = Math.hypot(p.x - st.x, p.z - st.z);
+        assert.ok(dist > 3.5, `depth ${d} seed ${s}: column-archway ${dist.toFixed(1)}m from a stair (should be a doorframe)`);
+      }
+    }
+  }
+});
+
 test('no two vaults overlap on any floor', () => {
   for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
     const spec = generateFloor(d, s);
