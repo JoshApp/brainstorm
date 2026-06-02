@@ -1296,7 +1296,11 @@ export function buildLevel(
   //
   // Room membership: an enemy belongs to the first rect whose AABB contains
   // its spawn (x,z). Used to know when a room is "cleared" for door gating.
-  const enemyRoom = new Map<Enemy, string | null>();
+  // Room membership keyed by the enemy's stable entityId (NOT the Enemy
+  // object or its position) so the split-on-death callback can look up the
+  // parent's room exactly — two enemies dying at the same spot used to
+  // collide in a position-proximity scan.
+  const roomByEntity = new Map<string, string | null>();
   const aliveByRoom = new Map<string, number>();
   const enemies: Enemy[] = [];
   const levelDepth = spec.depth ?? 1;
@@ -1319,7 +1323,7 @@ export function buildLevel(
       onEnemyDeath,
     );
     enemies.push(e);
-    enemyRoom.set(e, roomId);
+    roomByEntity.set(e.entityId, roomId);
     if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
     // Every boss body (the king + each split child) joins the one boss
     // encounter, so "boss done" means ALL of them are dead.
@@ -1333,22 +1337,16 @@ export function buildLevel(
   // tracked so split children stay attributed to the same room for
   // door-clear bookkeeping (kill the parent → kids spawn in the same
   // sealed combat room → you have to kill them too).
-  const onEnemyDeath = (deadSpec: EnemySpec, deathPos: THREE.Vector3) => {
+  const onEnemyDeath = (deadSpec: EnemySpec, deathPos: THREE.Vector3, deadEntityId: string) => {
     const split = deadSpec.splitsInto;
     if (!split) return;
     const childBase = ENEMIES[split.enemyId];
     if (!childBase) return;
     const radius = split.radius ?? 0.4;
-    // Find the parent's room by scanning the existing map — quick at
-    // this scale, and avoids passing room context through the enemy
-    // layer.
-    let parentRoom: string | null = null;
-    for (const [e, r] of enemyRoom) {
-      if (e.group.position.distanceToSquared(deathPos) < 0.01) {
-        parentRoom = r;
-        break;
-      }
-    }
+    // The parent's room, looked up EXACTLY by its entityId (set at spawn).
+    // Children inherit it so they stay attributed to the same sealed combat
+    // room for door-clear bookkeeping.
+    const parentRoom = roomByEntity.get(deadEntityId) ?? null;
     // A splitting "spit" — the parent bursts and flings the spawns
     // outward (a screen-shake thud + an outward knockback impulse on each
     // so they scatter dynamically, then settle), rather than just popping
@@ -1399,7 +1397,7 @@ export function buildLevel(
     // Room membership uses the resolved position so a mob nudged across
     // a doorway is attributed to the room it actually ended up in.
     const roomId = s.roomId ?? findRoomContaining(resolved.x, resolved.z, spec.rooms);
-    enemyRoom.set(enemy, roomId);
+    roomByEntity.set(enemy.entityId, roomId);
     if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
     // Authored boss spawns (the king) MUST join the encounter container too
     // — without this they're never a `liveBossMember`, so the boss bar never
@@ -1457,7 +1455,7 @@ export function buildLevel(
     for (const [roomId, count] of aliveByRoom) {
       let stillAlive = 0;
       for (const enemy of enemies) {
-        if (enemyRoom.get(enemy) === roomId && enemy.alive) stillAlive++;
+        if (roomByEntity.get(enemy.entityId) === roomId && enemy.alive) stillAlive++;
       }
       if (stillAlive === 0 && count > 0) {
         aliveByRoom.set(roomId, 0);
