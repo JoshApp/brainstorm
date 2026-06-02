@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Lash = a slime tentacle (lean + body-elongation deform); prince stuck fix + softer hop"
+      },
+      {
         "tag": "tune",
         "text": "Boss feel pass: desync, calmer cadence, lash windup, glowing prince cores, split spit, taller arena"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Event slots: rollable feature placeholders (?) through the manifest"
-      },
-      {
-        "tag": "fix",
-        "text": "snap"
       }
     ]
   }

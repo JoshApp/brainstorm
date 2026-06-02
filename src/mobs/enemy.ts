@@ -14,6 +14,7 @@ import {
 } from '../content/abilities';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
+import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
 import { TELEGRAPH_POSES, poseValue, type TelegraphStyle } from './pose-clips';
 import type { WalkableRegion } from '../level/walkable';
 import type { NavGrid, Waypoint } from '../level/nav-grid';
@@ -414,8 +415,14 @@ export function createEnemy(
   // The 'landing' anchor — where the last leap touched down, for a
   // follow-up step (a puddle) to build on.
   const landing = new THREE.Vector3();
+  // The lash tentacle — spawned for a 'lash' telegraph, reaches out over
+  // the windup, snaps on strike, retracts + disposes on recover.
+  let lashTendril: LashTendril | null = null;
   function clearAoeTelegraph() {
     if (aoeTelegraph) { aoeTelegraph.dispose(); aoeTelegraph = null; }
+  }
+  function clearLashTendril() {
+    if (lashTendril) { lashTendril.dispose(); lashTendril = null; }
   }
 
   // Perception state. lastSeenPos tracks the last known XZ of the player
@@ -666,9 +673,10 @@ export function createEnemy(
       phaseTimer = 0;
     }
     if (entity.hp.current <= 0) {
-      // Killed mid-windup — drop any pending AoE marker so it doesn't
-      // linger on the floor after the caster is gone.
+      // Killed mid-windup — drop any pending AoE marker / lash tentacle so
+      // it doesn't linger after the caster is gone.
       clearAoeTelegraph();
+      clearLashTendril();
       // Mark dead immediately for combat/gameplay purposes (no more
       // damage, no AI ticks, kill counter triggers, drops spawn). The
       // container stays in the scene for the duration of the death
@@ -1036,6 +1044,15 @@ export function createEnemy(
         aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, a.landingRadius);
         return;
       }
+    }
+    // Lash — grow a slime tentacle out of the body toward the player. It
+    // reaches over the windup (driven in the winding state), so it both
+    // telegraphs and IS the attack. Reach = the lash's melee reach.
+    if (ability.pose === 'lash') {
+      const melee = ability.steps.find((st) => st.action.kind === 'melee')?.action;
+      const reach = melee && melee.kind === 'melee' ? melee.reach : 3.0;
+      clearLashTendril();
+      lashTendril = spawnLashTendril(container, spec.aimHeight ?? 0.6 * (spec.scale ?? 1), reach, 0xa8ff44);
     }
   }
 
@@ -1628,6 +1645,7 @@ export function createEnemy(
         const t = Math.min(1, phaseTimer / currentWindupTime);
         applyTelegraph(currentAbility.pose, 'windup', t);
         if (aoeTelegraph) aoeTelegraph.setProgress(t);
+        if (lashTendril) lashTendril.setProgress(t);   // tentacle reaches out over the windup
         // Melee creep — close at half-speed during windup so a stationary
         // player still gets clipped (a backpedalling player out-runs it).
         // Charges DON'T creep: the dash strike is the approach.
@@ -1665,6 +1683,7 @@ export function createEnemy(
           if (done) stepDone[i] = true;
         }
         applyTelegraph(currentAbility.pose, 'strike', 1);
+        if (lashTendril) lashTendril.snap();            // tentacle snaps out + flares on the strike
         if (phaseTimer >= currentAbility.strike) {
           state = 'recovering';
           phaseTimer = 0;
@@ -1681,11 +1700,13 @@ export function createEnemy(
         phaseTimer += actionDt;
         const t = Math.min(1, phaseTimer / currentAbility.recover);
         applyTelegraph(currentAbility.pose, 'recover', t);
+        if (lashTendril) lashTendril.setProgress(Math.max(0, 1 - t));   // retract the tentacle
         if (phaseTimer >= currentAbility.recover) {
           // ±18% jitter so packs drift out of sync over the fight.
           cooldowns.set(currentAbility.id, (currentAbility.cooldown ?? 0) * (0.82 + gameRng() * 0.36));
           currentAbility = null;
           clearAoeTelegraph();   // safety — normally disposed at strike
+          clearLashTendril();
           state = 'chasing';
           phaseTimer = 0;
         }
