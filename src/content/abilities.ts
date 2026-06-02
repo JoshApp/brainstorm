@@ -36,14 +36,36 @@ export type AbilityEffect =
   // from the player, dealing one contact hit when within `contactReach`.
   // This is how "attacks that move the enemy" (charge / lunge / leap)
   // are expressed: a long-ish strike phase + a dash effect.
-  | { kind: 'dash'; speed: number; toward: 'player' | 'away'; contactReach: number; damageType?: DamageType }
+  | { kind: 'dash';
+      speed: number;
+      /** Direction of travel. 'aoeTarget' uses the LOCKED aoe target
+       *  (set at windup start) — for a leap that commits to its
+       *  landing zone instead of chasing the player. Only meaningful
+       *  if the ability also has an 'aoe' effect. */
+      toward: 'player' | 'away' | 'aoeTarget';
+      contactReach: number;
+      damageType?: DamageType;
+      /** Player knockback speed (m/s) applied when this dash makes
+       *  contact. Direction = away from the enemy. Decays naturally
+       *  via consumeKnockback. Default 0 (no knockback). */
+      knockbackSpeed?: number;
+    }
   // AoE — a telegraphed ground zone. A ring marker appears during the
   // WINDUP at the locked target (the player's feet for 'player', the
   // enemy's own feet for 'self'); at strike, anyone still inside the
   // radius takes the hit. Teaches "don't stand there" — move off the
   // marker before it resolves. 'player' = a stomp where-you-were
   // (move out to dodge); 'self' = a radial slam (don't be adjacent).
-  | { kind: 'aoe'; radius: number; targetMode: 'player' | 'self'; damageType?: DamageType };
+  | { kind: 'aoe';
+      radius: number;
+      targetMode: 'player' | 'self';
+      damageType?: DamageType;
+      /** Player knockback speed (m/s) applied when caught in the
+       *  splash. Direction = away from the AoE centre. Use for
+       *  leap landings that should clear the player out of the
+       *  enemy's body so they're not stuck inside. */
+      knockbackSpeed?: number;
+    };
 
 export interface Ability {
   /** Unique within the enemy — keys the cooldown timer. */

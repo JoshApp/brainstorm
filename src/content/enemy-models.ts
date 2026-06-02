@@ -497,6 +497,95 @@ export function stoneguardModel(bodyColor: number, eyeColor: number): ModelSpec 
 // "alive" reads even when the outer body is dim against a dark floor.
 // `scale` lets the same model serve the big parent and the smaller
 // split offspring without authoring two factories.
+/** King-slime variant of the ooze. Larger by default (scale comes
+ *  from the spec field anyway), but TRANSLUCENT body with visible
+ *  swallowed contents — crown, sword, skull — drifting inside.
+ *  Sells the "this thing has eaten kings" identity without needing
+ *  an entirely new model archetype. */
+export function kingOozeModel(bodyColor: number, innerColor: number): ModelSpec {
+  return {
+    id: 'king-ooze',
+    materials: {
+      // Translucent green flesh. opacity 0.55 = body silhouette
+      // visible but inner geometry shows through clearly. emissive
+      // bumped so the body still reads in dim light.
+      body: {
+        color: bodyColor,
+        roughness: 0.55,
+        emissive: 0x102008,
+        emissiveIntensity: 0.7,
+        flatShading: 'auto',
+        dissolvable: true,
+        transparent: true,
+        opacity: 0.55,
+        rim: { color: 0x88cc33, power: 2.2, intensity: 0.6 },
+      },
+      // Bright acid core — same as the normal ooze, it's the eye
+      // through the slime.
+      core: {
+        color: 0x000000,
+        emissive: innerColor,
+        emissiveIntensity: 2.4,
+        roughness: 1.0,
+      },
+      // Swallowed gold — crown band, scepter glints.
+      gold: {
+        color: 0xb88820,
+        emissive: 0x3a2808,
+        emissiveIntensity: 0.6,
+        roughness: 0.35,
+        metalness: 0.7,
+        flatShading: 'auto',
+      },
+      // Swallowed steel — sword blade.
+      steel: {
+        color: 0x607080,
+        emissive: 0x10141c,
+        emissiveIntensity: 0.4,
+        roughness: 0.45,
+        metalness: 0.8,
+        flatShading: 'auto',
+      },
+      // Yellowed bone — skulls of the eaten kings.
+      bone: {
+        color: 0xc0b08a,
+        roughness: 0.85,
+        emissive: 0x1a1408,
+        emissiveIntensity: 0.3,
+        flatShading: 'auto',
+      },
+    },
+    slots: {
+      rig: { pos: [0, 0.18, 0] },
+    },
+    parts: [
+      // OUTER BODY — same squashed sphere as the small ooze; the
+      // king's bulk comes from spec.scale, not from local scale here.
+      { name: 'body', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], scale: [1.15, 0.85, 1.15], radius: 0.22, segments: [20, 14], mat: 'body', jitter: 0.018 },
+      // CORE — bright orb at the geometric centre.
+      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.07, segments: [10, 8], mat: 'core' },
+
+      // ── SWALLOWED REGALIA — small geometry suspended inside the
+      //    sphere's volume. Positions hand-picked to be within the
+      //    body's radius after the (1.15, 0.85, 1.15) scale, and
+      //    not overlap each other or the core orb.
+      // Crown: a torus tilted forward, sitting upper-front of the body.
+      { parent: 'rig', kind: 'torus', pos: [0.04, 0.08, -0.10], rot: [-0.6, 0.3, 0], radius: 0.06, tube: 0.014, segments: [10, 6], mat: 'gold' },
+      // Sword: a long thin capsule tilted across the body's diagonal.
+      { parent: 'rig', kind: 'capsule', pos: [-0.04, -0.04, 0.02], rot: [0.4, 0.7, 0.9], radius: 0.008, height: 0.16, mat: 'steel' },
+      // Sword hilt — a small cross-shaped capsule perpendicular to
+      // the blade.
+      { parent: 'rig', kind: 'capsule', pos: [-0.075, -0.07, -0.045], rot: [0.4, 0.7, 2.5], radius: 0.010, height: 0.04, mat: 'gold' },
+      // Skull (back-bottom): small jittered sphere with two eye-
+      // socket dimples (tiny cones pressed into the surface to read
+      // as dark sockets at the slime's resolution).
+      { parent: 'rig', kind: 'sphere', pos: [0.06, -0.06, 0.07], radius: 0.045, segments: [10, 8], mat: 'bone', jitter: 0.005 },
+      // Tiny secondary skull at the bottom-front, smaller.
+      { parent: 'rig', kind: 'sphere', pos: [-0.05, -0.10, -0.06], radius: 0.030, segments: [8, 6], mat: 'bone', jitter: 0.004 },
+    ],
+  };
+}
+
 export function oozeModel(bodyColor: number, innerColor: number, scale: number = 1): ModelSpec {
   // s — geometry multiplier. Applied through size/radius rather than
   // a parent group transform so collision radius (set on the spec, not

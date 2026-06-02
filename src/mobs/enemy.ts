@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
+import { applyPlayerKnockback } from '../player/knockback';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
@@ -791,6 +792,12 @@ export function createEnemy(
         if (!strikeAlreadyHit) {
           if (eff.toward === 'player') {
             moveTowards(playerPos.x, playerPos.z, eff.speed, dt, walkable, nav);
+          } else if (eff.toward === 'aoeTarget') {
+            // Commit to the LOCKED landing zone — for a king-slime leap
+            // that wants to land on where the player WAS at windup
+            // start, not where they kited to. Pairs with an aoe effect
+            // that telegraphed the landing.
+            moveTowards(aoeTarget.x, aoeTarget.z, eff.speed, dt, walkable, nav);
           } else {
             const dx = container.position.x - playerPos.x;
             const dz = container.position.z - playerPos.z;
@@ -812,6 +819,15 @@ export function createEnemy(
               container.position.z - playerPos.z,
               KNOCKBACK_CHARGE,
             );
+            // Optional player knockback so the player isn't pinned
+            // inside the enemy's body after the hit.
+            if (eff.knockbackSpeed) {
+              applyPlayerKnockback(
+                playerPos.x - container.position.x,
+                playerPos.z - container.position.z,
+                eff.knockbackSpeed,
+              );
+            }
           }
         }
         break;
@@ -825,6 +841,16 @@ export function createEnemy(
           const dz = playerPos.z - aoeTarget.z;
           if (dx * dx + dz * dz <= eff.radius * eff.radius) {
             damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+            // Knockback radiates OUT from the AoE centre. For the
+            // king-slime leap, this clears the player off the landing
+            // zone so they're not stuck inside the body.
+            if (eff.knockbackSpeed) {
+              applyPlayerKnockback(
+                playerPos.x - aoeTarget.x,
+                playerPos.z - aoeTarget.z,
+                eff.knockbackSpeed,
+              );
+            }
           }
           clearAoeTelegraph();
           strikeAlreadyHit = true;

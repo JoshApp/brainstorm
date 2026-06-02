@@ -5,7 +5,7 @@ import type { Ability } from './abilities';
 import { creature } from './creature';
 import {
   humanoidGhoulModel, quadrupedRatModel, acolyteModel, skirmisherModel,
-  wraithModel, stoneguardModel, oozeModel, spiderModel,
+  wraithModel, stoneguardModel, oozeModel, kingOozeModel, spiderModel,
   pitMothModel, lasherModel,
 } from './enemy-models';
 import { mimicModel } from './mimic';
@@ -1065,19 +1065,21 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // as more bosses + named mobs land.
     isBoss: true,
     bossName: 'The Boiling King',
-    scale: 2.4,                     // looms — a king slime is BIG
-    hp: 16,                          // a real fight; mid-Act III gear should crack it in ~12 swings
+    scale: 4.0,                      // looms HARD — a translucent green wall of slime
+    hp: 22,                          // a real fight; bumped with the size
     moveSpeed: 0.9,                  // sluggish between hops
     attackDamage: 3,                 // hits hard — the AoE is the threat
-    attackRange: 4.5,                // long range — it'll hop from across the room
-    strikeRange: 1.8,                // landing-zone radius (mostly handled by the aoe effect)
+    attackRange: 7.0,                // long range — it leaps from across the room
+    strikeRange: 3.0,                // landing radius scaled with the body
     windupTime: 1.20,                // generous telegraph — readable on phone
-    strikeTime: 0.24,
-    recoverTime: 0.80,
+    strikeTime: 0.28,                // strike a touch longer so the leap completes
+    recoverTime: 0.90,
     damageType: 'magic',             // acid bypasses physical armour — boss earns its name
-    model: oozeModel(0x4a6a18, 0xa8ff44, 1.0),   // sickly green + bright acid core; scale field above does the looming
+    // Translucent green flesh with swallowed regalia (crown, sword,
+    // skull) drifting inside — sells the "it has eaten kings" line.
+    model: kingOozeModel(0x4a6a18, 0xa8ff44),
     baseEyeEmissive: 0,              // no eyes — core orb carries the read
-    collisionRadius: 0.55,           // wide footprint matches the visual
+    collisionRadius: 0.95,           // wider footprint matches the bigger silhouette
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'core',
@@ -1089,18 +1091,24 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 4,
     loseSightTime: 12,               // never really gives up
     abilities: [
-      // HOP — telegraphed AoE leap. The ring appears at the player's
-      // location during the long windup; if they're still standing on
-      // it at strike, they eat the splash. Long maxRange so the slime
-      // doesn't run out of attack just because the player kited away.
+      // LEAP — telegraphed AoE leap that COMMITS. Ring appears at the
+      // player's feet during windup; the king then physically dashes
+      // to that landing zone (toward: 'aoeTarget', not 'player' — so
+      // the king commits to where you WERE, kiting punishes him);
+      // landing applies AoE damage + radial knockback. The knockback
+      // is the key fix — without it the player ends up pinned inside
+      // the king's body after a hit and can't separate.
       {
-        id: 'hop',
-        minRange: 0, maxRange: 8,
-        windup: 1.20, strike: 0.24, recover: 0.80,
+        id: 'leap',
+        minRange: 0, maxRange: 9,
+        windup: 1.20, strike: 0.28, recover: 0.90,
         cooldown: 0.6,
         damage: 3,
-        telegraph: 'cast',           // body coils + pulses during windup
-        effects: [{ kind: 'aoe', radius: 1.8, targetMode: 'player', damageType: 'magic' }],
+        telegraph: 'cast',
+        effects: [
+          { kind: 'dash', toward: 'aoeTarget', speed: 7.0, contactReach: 0 },
+          { kind: 'aoe', radius: 3.0, targetMode: 'player', damageType: 'magic', knockbackSpeed: 5.0 },
+        ],
       },
     ],
     xp: 60,                          // significant haul — earns the depth

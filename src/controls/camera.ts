@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import type { InputState } from './input';
+import { consumeKnockback } from '../player/knockback';
 import type { WalkableRegion } from '../level/walkable';
 import type { Enemy } from '../mobs/enemy';
 import { getSettings } from '../settings/settings';
@@ -61,6 +62,21 @@ export function updateCamera(
   camera.rotation.order = 'YXZ';
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
+
+  // --- Knockback impulse (consumed BEFORE input so a hit + immediate
+  //     joystick push land in the same frame's clampMove). ---
+  const kb = consumeKnockback(dt);
+  if (kb.dx !== 0 || kb.dz !== 0) {
+    const newX = camera.position.x + kb.dx;
+    const newZ = camera.position.z + kb.dz;
+    const resolved = walkable.clampMove(
+      camera.position.x, camera.position.z,
+      newX, newZ,
+      PLAYER_RADIUS,
+    );
+    camera.position.x = resolved.x;
+    camera.position.z = resolved.z;
+  }
 
   // --- Move ---
   if (input.moveX !== 0 || input.moveY !== 0) {
