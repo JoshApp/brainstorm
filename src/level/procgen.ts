@@ -240,7 +240,16 @@ export function populateTemplate(
         out += packChars ? (packChars[packIdx++] ?? 'R') : (ENEMY_CHAR_BY_ID[id!] ?? 'R');
       } else if (ch === 'B') {
         const id = bossFor(depth);
-        out += ENEMY_CHAR_BY_ID[id] ?? 'W';
+        const bossChar = ENEMY_CHAR_BY_ID[id];
+        if (!bossChar) {
+          // Boss EnemySpec is missing a tileChar — the substitution
+          // pipeline can't place it. Without this guard we used to
+          // silently fall back to 'W' (wraith), which meant every
+          // boss floor spawned a wraith regardless of the act's
+          // configured boss. Loud failure beats a silent wrong-mob.
+          throw new Error(`Boss '${id}' has no tileChar — populateTemplate can't place it. Add tileChar to its EnemySpec.`);
+        }
+        out += bossChar;
       } else if (ch === '$') {
         // Loot slot — PARTIAL fill: a chest sometimes appears here, the
         // chance rising slightly with depth. Reuses 'c' so the existing
