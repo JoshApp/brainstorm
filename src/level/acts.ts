@@ -60,6 +60,11 @@ export const ACTS: Act[] = [
       light: { density: 'sparse' },
       decor: { style: 'pillared', density: 'light' },
       carve: { style: 'fissured', density: 'light' },
+      // 'light' encounter = some X slots stay empty so the
+      // refectory's earlier floors read as a quieter introductory
+      // act. Acts II/III stay at 'standard' (full fill).
+      encounter: { density: 'light' },
+      events:    { density: 'light' },
     },
   },
   {

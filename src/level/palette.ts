@@ -74,6 +74,20 @@ export interface PaletteV1 {
     style?: CarveStyle;
     density?: Density;
   };
+  /** Encounter density — multiplier on X-slot fill rate. 'off' and
+   *  'standard' both = 1.0 (current behaviour, every X fills).
+   *  'light' leaves some X slots empty so the room reads as half-
+   *  cleared. 'dense' is a v2 — needs new spawn placement, not just
+   *  gating, so for now it also resolves to 1.0. */
+  encounter?: {
+    density?: Density;
+  };
+  /** Event density — multiplier on $/? slot fire rate. Same
+   *  semantics as encounter: 'off'/'standard' = 1.0, 'light' rarer,
+   *  'dense' = v2. */
+  events?: {
+    density?: Density;
+  };
 }
 
 /** A palette with every field guaranteed filled — the type the
@@ -95,6 +109,12 @@ export interface ResolvedPaletteV1 {
   };
   carve: {
     style: CarveStyle;
+    density: Density;
+  };
+  encounter: {
+    density: Density;
+  };
+  events: {
     density: Density;
   };
 }
@@ -122,6 +142,12 @@ const PALETTE_DEFAULTS: ResolvedPaletteV1 = {
     style: 'off',
     density: 'off',
   },
+  // 'standard' = current behaviour (no rate change). The encounter
+  // and event passes apply a multiplier ONLY when density < standard;
+  // existing seeds keep producing identical floors until an act
+  // explicitly opts into 'sparse'.
+  encounter: { density: 'standard' },
+  events:    { density: 'standard' },
 };
 
 /**
@@ -140,6 +166,8 @@ export function resolvePalette(
     light: { ...PALETTE_DEFAULTS.light },
     decor: { ...PALETTE_DEFAULTS.decor },
     carve: { ...PALETTE_DEFAULTS.carve },
+    encounter: { ...PALETTE_DEFAULTS.encounter },
+    events: { ...PALETTE_DEFAULTS.events },
   };
   for (const layer of layers) {
     if (!layer) continue;
@@ -159,6 +187,18 @@ export function resolvePalette(
       if (layer.carve.style !== undefined) out.carve.style = layer.carve.style;
       if (layer.carve.density !== undefined) out.carve.density = layer.carve.density;
     }
+    if (layer.encounter?.density !== undefined) out.encounter.density = layer.encounter.density;
+    if (layer.events?.density !== undefined) out.events.density = layer.events.density;
   }
   return out;
+}
+
+/** Convert a density level to a multiplier (1.0 = current behaviour).
+ *  Used by the encounter + event passes inside populateTemplate to
+ *  scale fill rates. 'off' = 1.0 here (the pass is opted off, not
+ *  "no spawns at all" — that would be 'sparse'). */
+export function densityMultiplier(density: Density): number {
+  if (density === 'standard' || density === 'off') return 1.0;
+  if (density === 'light') return 0.6;
+  /* dense */ return 1.0;   // dense > 1.0 needs extra placement logic; v2.
 }

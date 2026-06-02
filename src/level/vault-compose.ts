@@ -206,8 +206,10 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   let s = (seed * 2654435761) >>> 0;
   const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
 
+  // Resolve once and reuse below for every pass.
+  const resolvedPalette = resolvePalette(actForDepth(depth).palette, vault.palette);
   const { map: populated, spawns: cellSpawns } = populateTemplate(
-    vault.map, depth, rand, encounterFor(vault),
+    vault.map, depth, rand, encounterFor(vault), resolvedPalette,
   );
   const ceil = ceilingFor(vault, depth, 1);
   const sub = parseTileMap(populated, {
@@ -265,8 +267,9 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
     props,
   });
 
-  // Cascade + pass pipeline mirroring composeFloor.
-  const resolvedPalette = resolvePalette(actForDepth(depth).palette, vault.palette);
+  // Cascade + pass pipeline mirroring composeFloor. resolvedPalette
+  // is declared above (passed into populateTemplate for encounter/
+  // event gating).
   const Wprev = vault.map[0]?.length ?? 0;
   const Dprev = vault.map.length;
   // Carve pass — runs first; voids become forbidden cells for the
@@ -478,8 +481,11 @@ export function composeFloor(
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
     roomVaults[pv.roomId] = pv.vault.id;
+    // Resolve palette once per vault — feeds populateTemplate's
+    // encounter/event gating AND the carve/light/decor passes below.
+    const resolvedPalette = resolvePalette(actForDepth(depth).palette, pv.vault.palette);
     const { map: populated, spawns: cellSpawns } = populateTemplate(
-      pv.vault.map, depth, rand, encounterFor(pv.vault),
+      pv.vault.map, depth, rand, encounterFor(pv.vault), resolvedPalette,
     );
     const ceil = ceilingFor(pv.vault, depth, i);
     const sub = parseTileMap(populated, {
@@ -584,7 +590,9 @@ export function composeFloor(
     // translation. See applyCellProps for the dispatch.
     applyCellProps(pv.vault, pv.offsetX, pv.offsetZ, pv.roomId, depth, rand, { spawns, torches, props });
 
-    const resolvedPalette = resolvePalette(actForDepth(depth).palette, pv.vault.palette);
+    // resolvedPalette is declared above (passed into populateTemplate
+    // for encounter/event gating — reused here for the carve/light/
+    // decor passes so the cascade is consistent).
 
     // ── Carve pass — must run FIRST so lighting + decor see the
     // post-carve walkable region and skip cells the holes occupy.

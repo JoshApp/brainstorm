@@ -9,6 +9,18 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Step 3 v3: carve pass — fissured floor cutouts as the first pass"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix floor non-determinism: corpse note used a global counter"
+      },
+      {
+        "tag": "tune",
+        "text": "Nerf bleed + burn DoTs (too brutal vs 8-HP player)"
+      },
+      {
+        "tag": "tune",
         "text": "Step 3 v2: decor pass — pillared style + density factor"
       },
       {
@@ -200,18 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Level gen: braced timber wall variant + timber plank doors"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf: batch all pillar geometry into one mesh per floor"
-      },
-      {
-        "tag": "tune",
-        "text": "Effects: target 'attacker' resolution + 3 retaliation items"
-      },
-      {
-        "tag": "tune",
-        "text": "Reactive item verbs"
       }
     ]
   }

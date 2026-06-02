@@ -24,6 +24,7 @@ import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type Role } from '../content
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
 import { bossById } from '../content/bosses';
 import { seedBuildRng } from '../engine/rng';
+import { densityMultiplier, type ResolvedPaletteV1 } from './palette';
 
 // Tiny seedable RNG (Mulberry32). 32-bit seed in, deterministic 0..1 floats.
 function rng(seed: number) {
@@ -239,7 +240,15 @@ export interface PopulatedTemplate {
 
 export function populateTemplate(
   template: TileMap, depth: number, rand: () => number, encounter?: EncounterSpec,
+  palette?: ResolvedPaletteV1,
 ): PopulatedTemplate {
+  // Encounter / event multipliers — both default to 1.0 (current
+  // behaviour) so existing seeds reproduce when the palette is
+  // omitted. < 1.0 gates the slot's fill via an extra rand() — the
+  // gate is SKIPPED when the multiplier is 1.0 so the rng sequence
+  // stays bit-identical to pre-pass output.
+  const encounterMul = palette ? densityMultiplier(palette.encounter.density) : 1.0;
+  const eventMul = palette ? densityMultiplier(palette.events.density) : 1.0;
   const table = rollTableFor(depth);
   // Pre-roll a coherent pack sized to the X-slot count when an archetype is set.
   let packIds: string[] | null = null;
@@ -261,26 +270,41 @@ export function populateTemplate(
     for (let colIdx = 0; colIdx < row.length; colIdx++) {
       const ch = row[colIdx];
       if (ch === 'X') {
-        const id = packIds ? (packIds[packIdx++] ?? 'rat') : pickWeighted(table, rand);
-        spawns.push({ col: colIdx, row: rowIdx, enemyId: id });
-        out += '.';
+        // Encounter pass gate: skip this slot when density-multiplier
+        // drops a roll. Gate is SKIPPED entirely at multiplier 1.0 so
+        // the rng sequence matches pre-pass output for existing seeds.
+        if (encounterMul < 1.0 && rand() >= encounterMul) {
+          out += '.';
+          // Note: we DON'T advance packIdx so the next surviving X
+          // gets the next pack slot in order.
+        } else {
+          const id = packIds ? (packIds[packIdx++] ?? 'rat') : pickWeighted(table, rand);
+          spawns.push({ col: colIdx, row: rowIdx, enemyId: id });
+          out += '.';
+        }
       } else if (ch === 'B') {
         spawns.push({ col: colIdx, row: rowIdx, enemyId: bossFor(depth) });
         out += '.';
       } else if (ch === '$') {
         // Loot slot — PARTIAL fill: a chest sometimes appears here, the
         // chance rising slightly with depth. Reuses 'c' so the existing
-        // chest/loot pipeline handles it; '.' = empty this run. Per-slot, so
-        // a room with several $ yields a varying subset run to run.
-        out += rand() < Math.min(0.8, 0.5 + depth * 0.02) ? 'c' : '.';
+        // chest/loot pipeline handles it; '.' = empty this run. Event pass
+        // gates this BEFORE the inner roll when eventMul < 1.0; same
+        // rng-skip rule as encounter so 1.0 reproduces exactly.
+        if (eventMul < 1.0 && rand() >= eventMul) {
+          out += '.';
+        } else {
+          out += rand() < Math.min(0.8, 0.5 + depth * 0.02) ? 'c' : '.';
+        }
       } else if (ch === '?') {
         // Event slot — rolls a feature (trap / fountain / altar) or nothing.
-        // Reuses the existing tile chars, so parseTileMap builds them AND the
-        // floor manifest caps fountains/altars across the floor (a random one
-        // can't break the heal economy — see reconcileManifest). '.' = nothing
-        // this run. Traps are the common event; fountain/altar rare (+ capped).
-        const r = rand();
-        out += r < 0.33 ? '.' : r < 0.77 ? '^' : r < 0.89 ? 'F' : 'A';
+        // Same gating treatment as $.
+        if (eventMul < 1.0 && rand() >= eventMul) {
+          out += '.';
+        } else {
+          const r = rand();
+          out += r < 0.33 ? '.' : r < 0.77 ? '^' : r < 0.89 ? 'F' : 'A';
+        }
       } else {
         out += ch;
       }
