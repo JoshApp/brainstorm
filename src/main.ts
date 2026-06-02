@@ -1,26 +1,23 @@
 import * as THREE from 'three';
 import { CONFIG } from './config';
-import { updateTorchlight } from './scene/torchlight';
 import { createTouchInput } from './controls/input';
-import { createFirstPersonCamera, updateCamera, setCameraYaw } from './controls/camera';
+import { createFirstPersonCamera, setCameraYaw } from './controls/camera';
 import { createWeaponViewmodel } from './player/viewmodel';
-import { attachLamp, detachLamp, tickLamp } from './player/handheld-lamp';
-import { attachOffhandViewmodel, detachOffhandViewmodel, tickOffhandViewmodel } from './player/handheld-offhand';
-import { setBobTarget, updateBob } from './player/viewmodel-bob';
+import { attachLamp, detachLamp } from './player/handheld-lamp';
+import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
 import { createCombatSystem } from './combat/attack';
 import { isWorldPaused } from './world-paused';
-import { tickShake } from './combat/screen-shake';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './player/death';
-import { initFogWalkthrough, isFogWalkthroughActive, tickFogWalkthrough } from './player/fog-walkthrough';
+import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthrough';
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setDarkAdapt } from './style/render-target';
+import { initRenderPipeline, renderWithStyle } from './style/render-target';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
   INSPECT_AMBIENT, INSPECT_REQUESTED,
@@ -28,7 +25,7 @@ import {
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
-import { setMasterVolume, setReverbEnabled, startAmbience, setTorchProximity, setAudioListenerPose, playWhoosh } from './audio/sfx';
+import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh } from './audio/sfx';
 import { startMusic, setMusicVolume } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
@@ -38,7 +35,6 @@ import { buildStarterChamber } from './level/starter-chamber';
 import { findTestChamber } from './level/test-chambers';
 import { showTestChambersScreen } from './ui/test-chambers-screen';
 import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad, getCurrentDepth } from './level/loader';
-import { tickAlerts, clearAlerts } from './mobs/alerts';
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
 import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
@@ -49,12 +45,9 @@ import { initCharacterTracking, resetCharacter } from './state/character';
 import { initRunStateListeners } from './state/run-state-listeners';
 import { isPlaying, getGameMode } from './state/game-mode';
 import { runSystems, type GameSystem, type TickContext } from './engine/loop';
-import { recomputePlayerStats } from './state/player-stats';
-import { syncHudStores } from './state/hud-stores';
-import { tickDarkAdaptation, darkAdaptBrightness, darkAdaptAmbient, sampleLitSignal } from './scene/dark-adaptation';
-import { initDarkAdaptReadout, updateDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-adapt-readout';
-import { initBossEncounterReadout, updateBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
-import { tickThresholdDrafts } from './scene/threshold-draft';
+import { buildSystems } from './engine/systems';
+import { initDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-adapt-readout';
+import { initBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
 import { seedRng } from './engine/rng';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
@@ -63,42 +56,31 @@ import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
 import { isAnyScreenOpen } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
-import { tickAllBuffs } from './ecs/buffs';
 import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
-import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
+import { getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
-import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
+import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
-import { initLightPool, tickLightPool, setShadowMode } from './scene/light-pool';
-import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
-import { tickHazardFields } from './combat/hazard-field';
+import { initLightPool, setShadowMode } from './scene/light-pool';
+import { initProjectilePool } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
 import { validateContent } from './content/validate';
-import { tickXpWisps, clearXpWisps } from './effects/xp-wisps';
-import { tickGoldCoins, clearGoldCoins } from './effects/gold-coins';
-import { tickTutorialHints, clearTutorialHints } from './effects/tutorial-hints';
-import { initDriftingMotes, tickDriftingMotes } from './effects/drifting-motes';
-import { tickShatterBurst } from './effects/shatter-burst';
-import { tickBloodBurst } from './effects/blood-burst';
-import { tickStatusVfx } from './effects/status-vfx';
+import { initDriftingMotes } from './effects/drifting-motes';
 import { actForDepth } from './level/acts';
-import { updateOutline } from './interactables/outline';
-import { ensureInteractLabel, updateInteractLabel } from './ui/interact-label';
-import { tickItemPreviews } from './ui/item-preview';
+import { ensureInteractLabel } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar } from './ui/hp-bar';
-import { createBossBar, tickBossBar, resetBossBar } from './ui/boss-bar';
-import { createBuffBar, updateBuffBar } from './ui/buff-bar';
+import { createBossBar, resetBossBar } from './ui/boss-bar';
+import { createBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
 import { createDepthCounter, setDepth as setDepthCounter } from './ui/depth-counter';
-import { createXpGoldHud, updateXpGoldHud } from './ui/xp-gold-hud';
-import { tickLowHpPulse } from './ui/vignette';
-import { getPlayerHp, getPlayerMaxHp, setGodMode } from './player/health';
+import { createXpGoldHud } from './ui/xp-gold-hud';
+import { setGodMode } from './player/health';
 import { setHarnessPaused } from './harness/pause';
 import { isDesktopLike } from './controls/platform';
 
@@ -560,266 +542,16 @@ const shakeOffset = new THREE.Vector3();
 const forwardScratch = new THREE.Vector3();
 
 // ── Per-frame systems ───────────────────────────────────────────────────
-// The frame is an ordered list of systems (engine/loop.ts). Each declares a
-// phase ('unpaused' skips while the world is paused; 'always' runs every
-// frame) so freeze behaviour is data, not nested control flow. Order below =
-// execution order. dt/pause/lifecycle come off the ctx; everything else is
-// closed over from the module scope above.
-const SYSTEMS: GameSystem[] = [
-  // Look/move input + camera. While dying, control input is dropped so
-  // nothing downstream (camera, bob) reads stale joystick values.
-  { name: 'input-camera', phase: 'unpaused', tick(ctx) {
-    if (isFogWalkthroughActive()) {
-      // Soulslike fog-gate entry has the camera — drop player input and let
-      // the forced walk drive position. realDt so the step is steady and
-      // never freezes on a hit-pause.
-      input.lookDx = 0;
-      input.lookDy = 0;
-      input.moveX = 0;
-      input.moveY = 0;
-      tickFogWalkthrough(ctx.realDt);
-    } else if (!isDying()) {
-      input.tickInput(ctx.scaledDt);   // hybrid-look continuous rotation, if enabled
-      updateCamera(camera, input, ctx.scaledDt, currentLevel.walkable, currentLevel.enemies);
-    } else {
-      input.lookDx = 0;
-      input.lookDy = 0;
-      input.moveX = 0;
-      input.moveY = 0;
-    }
-  } },
-
-  { name: 'torchlight', phase: 'unpaused', tick(ctx) {
-    for (const t of currentLevel.torches) updateTorchlight(t, ctx.scaledDt);
-    // Threshold dust + proximity haze. realDt so the drift doesn't stutter in
-    // slow-mo; haze blooms by player proximity.
-    tickThresholdDrafts(ctx.realDt, camera.position);
-  } },
-
-  // Effective torchlight at the player — torches within earshot AND with a
-  // clear line of sight (one behind a wall neither lights nor sounds here).
-  // Drives both the ambient crackle volume and the eye dark-adaptation signal.
-  { name: 'torch-audio', phase: 'unpaused', tick(ctx) {
-    // Earshot for the torch crackle audio — kept tight so distant
-    // wall torches don't bleed into the player's earpiece. Visual
-    // lit-signal below uses a much wider range so dark-adapt
-    // doesn't over-adapt in actually-torchlit halls.
-    const earRange = 6;
-    const walkable = currentLevel.walkable;
-    const cx = camera.position.x;
-    const cz = camera.position.z;
-
-    // Torch crackle volume — LOS torch proximity at the player's position.
-    let prox = 0;
-    for (const t of currentLevel.torches) {
-      const dx = t.position.x - cx;
-      const dz = t.position.z - cz;
-      const d = Math.hypot(dx, dz);
-      if (d >= earRange) continue;
-      if (walkable && !walkable.hasLineOfSight(cx, cz, t.position.x, t.position.z)) continue;
-      prox += 1 - d / earRange;
-    }
-    setTorchProximity(prox);
-
-    // Update the Web Audio listener pose so positional sounds (enemy
-    // growls, impacts, loot landing) pan + attenuate relative to the
-    // camera. forwardScratch is filled by the dark-adapt step below;
-    // here we use the camera's world direction directly so this tick
-    // doesn't depend on which block runs first.
-    camera.getWorldDirection(forwardScratch);
-    setAudioListenerPose(
-      camera.position.x, camera.position.y, camera.position.z,
-      forwardScratch.x, forwardScratch.y, forwardScratch.z,
-    );
-
-    // Eye dark-adaptation keys off an analytic estimate of the light reaching
-    // the eye (no GPU readback). The sampling math lives in dark-adaptation.ts;
-    // forwardScratch was filled with the camera direction above. realDt so it
-    // adjusts at real-time, not the death slow-mo.
-    const fl = Math.hypot(forwardScratch.x, forwardScratch.z) || 1;
-    const fx = forwardScratch.x / fl;
-    const fz = forwardScratch.z / fl;
-    const lit = sampleLitSignal(cx, cz, fx, fz, currentLevel.torches, walkable);
-
-    const adapt = tickDarkAdaptation(lit, ctx.realDt);
-    // PS1 path ignores renderer tone mapping (render-to-target), so the dark
-    // lift lives in the blit shader (additive shadow-raise). Ambient is a
-    // secondary fill (applied during the scene render, so it works there).
-    setDarkAdapt(adapt);
-    ambient.intensity = isInspectActive() ? INSPECT_AMBIENT : darkAdaptAmbient();
-    updateDarkAdaptReadout(lit, adapt, darkAdaptBrightness());
-  } },
-
-  { name: 'combat', phase: 'unpaused', tick(ctx) {
-    const attackPressed = isDying() ? false : consumeAttackPressed();
-    combat.tick(attackPressed, input.moveX, input.moveY, ctx.scaledDt);
-  } },
-
-  // Walk bob — sword + lamp + offhand viewmodels all read the same shared
-  // bob. realDt so the sway keeps a steady rhythm through slow-mo. Target
-  // intensity = joystick magnitude (zeroed when not in control so the
-  // viewmodel settles during death).
-  { name: 'viewmodel-bob', phase: 'unpaused', tick(ctx) {
-    const playing = ctx.playing;
-    setBobTarget(playing ? Math.hypot(input.moveX, input.moveY) : 0);
-    updateBob(ctx.realDt, playing);
-  } },
-
-  { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.scaledDt); } },
-
-  // Handheld lamp flicker + bob. realDt — flicker shouldn't slow during
-  // slow-mo (a frozen lamp looks broken).
-  { name: 'lamp', phase: 'unpaused', tick(ctx) { tickLamp(ctx.realDt); } },
-
-  { name: 'offhand', phase: 'unpaused', tick() { tickOffhandViewmodel(); } },
-
-  // Enemy sleep: skip update() for enemies far from the player — they can't
-  // influence gameplay outside perception range. Threshold 25m, past the
-  // deepest sight (wraith 12m). Damage path is unaffected (takeDamage
-  // doesn't go through update()).
-  { name: 'enemies', phase: 'unpaused', tick(ctx) {
-    const playerX = camera.position.x;
-    const playerZ = camera.position.z;
-    const sleepDist2 = 25 * 25;
-    for (const enemy of currentLevel.enemies) {
-      // Dying enemies still tick (death animation drives the dissolve).
-      if (!enemy.alive && !enemy.dying) continue;
-      const dx = enemy.group.position.x - playerX;
-      const dz = enemy.group.position.z - playerZ;
-      if (dx * dx + dz * dz > sleepDist2) continue;
-      // Phasing mobs (ghosts) use the obstacle-free nav grid.
-      const nav = enemy.phasing ? currentLevel.navPhasing : currentLevel.nav;
-      enemy.update(ctx.scaledDt, camera.position, currentLevel.walkable, nav);
-    }
-    // Boss bar — a view of the boss-encounter container (membership +
-    // authoritative "done"); it ticks the container internally.
-    tickBossBar(ctx.scaledDt);
-    updateBossEncounterReadout();   // DEV: no-op unless debug readout mounted
-  } },
-
-  // Decay active combat alerts so old broadcasts stop pulling mobs in long
-  // after the player has left.
-  { name: 'alerts', phase: 'unpaused', tick(ctx) { tickAlerts(ctx.scaledDt); } },
-
-  // XP wisps / gold coins — home in on the player and absorb on contact.
-  // Live outside the enemy loop so they survive past their spawner.
-  { name: 'xp-wisps', phase: 'unpaused', tick(ctx) { tickXpWisps(ctx.scaledDt, camera.position); } },
-  { name: 'gold-coins', phase: 'unpaused', tick(ctx) {
-    tickGoldCoins(ctx.scaledDt, camera.position, currentLevel.walkable);
-  } },
-
-  // Projectiles — integrate, hit-test player + walls, retire. Outside the
-  // enemy loop so a shot survives the shooter's death.
-  { name: 'projectiles', phase: 'unpaused', tick(ctx) {
-    tickProjectiles(ctx.scaledDt, camera.position, currentLevel.walkable);
-  } },
-
-  // Persistent ground hazard fields (the `field` ability action — e.g. the
-  // king's acid puddle). They outlive the cast that spawned them, so they
-  // tick here rather than in any enemy's update.
-  { name: 'hazard-fields', phase: 'unpaused', tick(ctx) { tickHazardFields(ctx.scaledDt, camera.position); } },
-
-  // Room-clear detection — fires room:cleared so doors flip SEALED→OPEN.
-  { name: 'room-clear', phase: 'unpaused', tick() { currentLevel.checkRoomClear?.(); } },
-
-  // Active buffs on all entities (heal-over-time, DoTs, etc.).
-  { name: 'buffs', phase: 'unpaused', tick(ctx) { tickAllBuffs(ctx.scaledDt); } },
-
-  // Status VFX — colored motes off anything carrying a buff with `vfx`
-  // (burn embers, poison/bleed drips). Runs after buffs so it reflects
-  // the current affliction.
-  { name: 'status-vfx', phase: 'unpaused', tick(ctx) {
-    tickStatusVfx(scene, currentLevel.enemies, camera.position, ctx.scaledDt);
-  } },
-
-  // ── always-on (run through pause/death so the screen stays live) ──
-
-  // Drifting motes — ambient dust keeps falling through hit-pauses, death,
-  // and menus. Real dt.
-  { name: 'motes', phase: 'always', tick(ctx) { tickDriftingMotes(ctx.realDt); } },
-  // Shatter / blood bursts — scaled dt so shards slow-mo with the
-  // hit-pause / death sequence (reads as crunchier).
-  { name: 'shatter', phase: 'always', tick(ctx) { tickShatterBurst(ctx.scaledDt); } },
-  { name: 'blood', phase: 'always', tick(ctx) { tickBloodBurst(ctx.scaledDt); } },
-
-  // Interact tick + world-anchored UI run OUTSIDE the freeze gate so
-  // in-range detection persists through hit-pauses. dt=0 when frozen so
-  // animations (chest lid, pickup bob) don't advance — only the "what's in
-  // range" pass refreshes.
-  { name: 'world-ui', phase: 'always', tick(ctx) {
-    camera.getWorldDirection(forwardScratch);
-    const interactDt = ctx.paused ? 0 : ctx.scaledDt;
-    tickInteractables(interactDt, camera.position, forwardScratch);
-    // Hidden while dying or any screen is open so the label doesn't poke
-    // through a panel's backdrop.
-    const inRange = (isDying() || isAnyScreenOpen()) ? null : getInRangeInteractable();
-    // Tutorial hints — only the tutorial level spawns these; elsewhere this
-    // early-returns instantly.
-    tickTutorialHints(ctx.realDt, camera, canvas, camera.position);
-    updateInteractLabel(inRange, camera, canvas);
-    // Item-preview labels (starter / blood altars) — world→screen projection.
-    tickItemPreviews(camera, canvas);
-    // Outline pulse on the in-range interactable. realDt so it animates at
-    // real-time even during hit-pause.
-    updateOutline(inRange, ctx.realDt, camera.position);
-  } },
-
-  // Player stats snapshot — recompute the single reactive PlayerSnapshot
-  // once per frame. Runs in 'always' so equipment/attribute changes made
-  // while a menu is open still update the snapshot (and its subscribers,
-  // e.g. the inventory stat column) live. Subscribers fire only on real
-  // change. Ordered before 'hud' so HUD readouts read this frame's values.
-  // Recompute the player snapshot, then push live values (HP) into the HUD
-  // stores. Order matters: snapshot first so hpStore's max reflects this
-  // frame's equipment/buffs. Bound HUD widgets (hp-bar, depth) re-render
-  // from here only when a value actually changes.
-  { name: 'player-stats', phase: 'always', tick() {
-    recomputePlayerStats();
-    syncHudStores();
-  } },
-
-  // HUD — the buff bar diffs the live buff list; the xp/gold bar polls +
-  // animates its pulses. (HP bar + depth are store-bound, updated above.)
-  { name: 'hud', phase: 'always', tick(ctx) {
-    updateBuffBar();
-    updateXpGoldHud(ctx.realDt);
-  } },
-
-  // Low-HP breathing vignette — peripheral red at <30% HP. realDt so it
-  // keeps breathing during scaled time.
-  { name: 'low-hp-vignette', phase: 'always', tick(ctx) {
-    const maxHp = getPlayerMaxHp();
-    tickLowHpPulse(ctx.realDt, maxHp > 0 ? getPlayerHp() / maxHp : 0);
-  } },
-
-  // Screen shake offset is applied to the camera before light-pool + render,
-  // then removed after, so it never accumulates. Three ordered systems.
-  { name: 'shake-apply', phase: 'always', tick(ctx) {
-    tickShake(ctx.realDt, shakeOffset);
-    camera.position.add(shakeOffset);
-  } },
-
-  // Bind the N nearest registered lights to the pool's PointLight slots.
-  // Runs every frame so lighting updates with camera movement even when
-  // frozen. LOS culls through-wall sources from the ranking.
-  { name: 'light-pool', phase: 'always', tick() {
-    const walkable = currentLevel?.walkable;
-    const los = walkable
-      ? (ax: number, az: number, bx: number, bz: number) =>
-          walkable.hasLineOfSight(ax, az, bx, bz)
-      : undefined;
-    tickLightPool(camera, los);
-  } },
-
-  // Deferred subject-preview framing — see src/debug/inspect-mode.ts. No-op in
-  // normal play (cheap early-return); only does work while an inspect snap is
-  // waiting for its subject mesh to spawn.
-  { name: 'inspect-frame', phase: 'always', tick() { tickInspectFraming(); } },
-
-  { name: 'render', phase: 'always', tick() { renderWithStyle(renderer, scene, camera); } },
-
-  { name: 'shake-restore', phase: 'always', tick() { camera.position.sub(shakeOffset); } },
-];
+// The frame is an ordered list of systems (engine/loop.ts), defined in
+// engine/systems.ts. buildSystems takes the world objects a frame touches as
+// an EXPLICIT dependency set (SystemDeps) rather than reaching into module
+// globals; getLevel reads the active level fresh each frame (reassigned on
+// every floor load).
+const SYSTEMS: GameSystem[] = buildSystems({
+  camera, scene, renderer, ambient, canvas,
+  input, combat, weapon, shakeOffset, forwardScratch,
+  getLevel: () => currentLevel,
+});
 
 function tick() {
   // Apply any pending level swap BEFORE any per-frame reads on the level.
