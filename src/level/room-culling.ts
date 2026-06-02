@@ -29,7 +29,7 @@ interface RectNode {
 
 // Doorway-reveal margin (metres): a neighbour room renders when its connecting
 // doorway is within this distance of the view frustum. Generous = less pop-in.
-const MARGIN = 2.5;
+const MARGIN = 1.5;
 const DOOR_Y = 1.2;   // sample height for the doorway-in-frustum test
 const EPS = 0.05;
 
@@ -46,6 +46,11 @@ export interface RoomCuller {
 
 export function createRoomCuller(level: LiveLevel): RoomCuller {
   const nodes = new Map<string, RectNode>();
+  // Occlusion comes from the walkable grid's line-of-sight (the same check the
+  // light pool uses): a doorway with a wall between it and the camera fails LOS
+  // and its room is culled. This is what frustum-alone can't see.
+  const los = (ax: number, az: number, bx: number, bz: number) =>
+    level.walkable.hasLineOfSight(ax, az, bx, bz);
 
   // 1) Rect nodes from rooms + corridors.
   const rects = [
@@ -128,8 +133,10 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         const node = nodes.get(queue.pop()!)!;
         for (const nb of node.neighbors) {
           if (visible.has(nb.id)) continue;
+          // In the view cone (frustum, with reveal margin) AND not occluded by
+          // a wall (line-of-sight from the camera to the doorway).
           sphere.center.set(nb.ox, DOOR_Y, nb.oz);
-          if (frustum.intersectsSphere(sphere)) {
+          if (frustum.intersectsSphere(sphere) && los(cx, cz, nb.ox, nb.oz)) {
             visible.add(nb.id);
             queue.push(nb.id);
           }

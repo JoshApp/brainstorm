@@ -215,6 +215,37 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 4, lookAt: { x: 0, z: -28, y: 1.2 } },
   },
 
+  // diag-behind: room B sits behind A's east wall (within the 13m far plane,
+  // inside the view cone) but is reachable only via a side corridor (cV→cH)
+  // whose doorway is OUT of the eastward view. Frustum culling can't hide B
+  // (it's in the cone); portal culling should, because no visible doorway
+  // leads to it. The case behind "draws go up when I face a corridor wall".
+  'diag-behind': {
+    freeze: true,
+    level: {
+      id: 'diag-behind', depth: 3, displayName: 'DIAG behind', fogColor: 0x000000,
+      startPos: { x: -2, z: 0, yaw: -Math.PI / 2 },
+      rooms: [
+        { id: 'A', rect: { x: 0,   z: 0,   w: 6, d: 6 }, height: 3.2 },
+        { id: 'B', rect: { x: 9.8, z: 4.5, w: 6, d: 6 }, height: 3.2 },
+      ],
+      corridors: [
+        { id: 'cV', rect: { x: 0,   z: 4.5, w: 1.6, d: 3 },   height: 3.0 },
+        { id: 'cH', rect: { x: 3.8, z: 4.5, w: 6,   d: 1.6 }, height: 3.0 },
+      ],
+      props: [],
+      torches: [
+        { x: -2.5, z: -2.5, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x:  2.5, z: -2.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.0 },
+        // B's torches — bright, so if B leaks through (it shouldn't) it's obvious.
+        { x:  7.5, z:  2.5, height: 2.2, wall: 'W', colorTint: 0x55ff88, intensityMul: 1.4 },
+        { x: 12.0, z:  6.5, height: 2.2, wall: 'E', colorTint: 0x55ff88, intensityMul: 1.4 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: -2, z: 0, lookAt: { x: 20, z: 0, y: 1.2 } },
+  },
+
   // perf-lights: blanket of torches — saturates the light pool many times
   // over to stress the per-frame cull + slot rebinding, and maxes the
   // count of lit materials in view.
