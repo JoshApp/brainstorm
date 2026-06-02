@@ -7,6 +7,7 @@ import { engageBoss, registerFogWall } from '../ui/boss-engagement';
 import { onBossEncounterComplete } from '../mobs/boss-encounter';
 import { setPlayerInvulnerable } from '../player/health';
 import { kickShake } from '../combat/screen-shake';
+import { playWhoosh } from '../audio/sfx';
 import type { WalkableRegion, Obstacle } from '../level/walkable';
 
 // Boss-arena fog gate — soulslike threshold seal you INTERACT with.
@@ -38,6 +39,29 @@ export function spawnBossMist(
   built.group.position.copy(pos);
   built.group.rotation.y = rotY;
   scene.add(built.group);
+
+  // Grab the translucent curtain materials so we can VISIBLY part the mist on
+  // open and re-solidify it on seal — the gate's state has to read at a glance
+  // (a silent obstacle that vanishes feels like nothing happened).
+  const mistMats: THREE.Material[] = [];
+  const baseOpacity = new Map<THREE.Material, number>();
+  built.group.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      if (m && (m as THREE.Material).transparent && !baseOpacity.has(m)) {
+        baseOpacity.set(m, (m as THREE.Material & { opacity: number }).opacity ?? 1);
+        mistMats.push(m);
+      }
+    }
+  });
+  function setMistOpen(open: boolean) {
+    for (const m of mistMats) {
+      const base = baseOpacity.get(m) ?? 0.55;
+      (m as THREE.Material & { opacity: number }).opacity = open ? base * 0.3 : base;
+    }
+  }
 
   // Plane normal pointing INTO the arena. -Z is the entering side, +Z the
   // arena side (rotated by rotY).
@@ -71,12 +95,14 @@ export function spawnBossMist(
     if (opened) return;
     opened = true;
     unblock();
+    setMistOpen(true);   // the curtain parts — you may pass
+    playWhoosh();
     engageBoss();
     setPlayerInvulnerable(2.5);
     kickShake(0.14, 0.32);
   }
 
-  const AUTO_OPEN_DIST = 1.4;   // the mist parts as you reach the threshold
+  const AUTO_OPEN_DIST = 1.0;   // the mist parts right AT the threshold, not 1.4m out
 
   const id = generateEntityId('boss-mist');
   registerInteractable({
@@ -105,6 +131,8 @@ export function spawnBossMist(
       if (prevSign < 0 && sign > 0) {
         block();            // crossed in — locked behind you
         sealed = true;
+        setMistOpen(false); // curtain re-solidifies — sealed in
+        playWhoosh();
         kickShake(0.10, 0.25);
       }
       prevSign = sign;
@@ -116,5 +144,5 @@ export function spawnBossMist(
   // Release when the boss ENCOUNTER is fully done (king + all spawns) —
   // the container is the single source of truth, so the seal can't lift
   // mid-fight when one body dropped but its spawns are still up.
-  onBossEncounterComplete(() => { unblock(); });
+  onBossEncounterComplete(() => { unblock(); setMistOpen(true); });
 }
