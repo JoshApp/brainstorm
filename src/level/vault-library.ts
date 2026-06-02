@@ -667,23 +667,28 @@ const ENCOUNTER_NEST: Vault = {
   minDepth: 4,
   weight: 1,
   torchTint: TORCH_GREEN,
-  // Guaranteed corner webs so the nest reads webbed (clutter's ambient
-  // webs are sparse). Vault-local coords: centre = (0,0). Slung high
-  // into the four chamber corners, hubs facing inward.
-  // Map is 14 cols × 11 rows → vault-local x ∈ [-7, +7], z ∈ [-5.5, +5.5].
-  props: [
-    { kind: 'model', model: COBWEB_CORNER, x: -5.5, y: 2.2, z: -1, rotY:  Math.PI * 0.25 },
-    { kind: 'model', model: COBWEB_CORNER, x:  5.5, y: 2.2, z: -1, rotY:  Math.PI * 0.75 },
-    { kind: 'model', model: COBWEB_CORNER, x: -5.5, y: 2.2, z:  4, rotY: -Math.PI * 0.25 },
-    { kind: 'model', model: COBWEB_CORNER, x:  5.5, y: 2.2, z:  4, rotY: -Math.PI * 0.75 },
-    // Set-piece spawns — specific mobs in specific corners. Original
-    // cells: 4 spider Ns (3,4)(10,4)(3,7)(10,7) + 1 skeleton L (6,6).
-    { kind: 'spawn', enemyId: 'spider', x: -3.5, z: -1.5 },
-    { kind: 'spawn', enemyId: 'spider', x:  3.5, z: -1.5 },
-    { kind: 'spawn', enemyId: 'spider', x: -3.5, z:  1.5 },
-    { kind: 'spawn', enemyId: 'spider', x:  3.5, z:  1.5 },
-    { kind: 'spawn', enemyId: 'skeleton', x: -0.5, z: 0.5 },
-  ],
+  // FORMAT C demo — corner cobwebs and set-piece spawns authored by
+  // cell, not by world coord. Reads in the same space as the ASCII
+  // above (count columns / rows in the map to verify each entry).
+  // Map is 14 cols × 11 rows. Cell (col, row) → world (col-6.5, row-5).
+  // The four cobweb models still want their non-default y (2.2m up
+  // in the corner) and rotation, so they get the full PropSpec
+  // entry without x/z — those come from the cell key.
+  cellProps: {
+    // Corner cobwebs at row 4 (just below the gate) and row 8 (back).
+    // Hubs face inward via rotY.
+    '1,4':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.25 }],
+    '12,4': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.75 }],
+    '1,9':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.25 }],
+    '12,9': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.75 }],
+    // Set-piece spawns — four spiders in a quad around the centre,
+    // one skeleton midway. The cell key reads the same as the ASCII.
+    '3,4':  [{ kind: 'spawn', enemyId: 'spider' }],
+    '10,4': [{ kind: 'spawn', enemyId: 'spider' }],
+    '3,7':  [{ kind: 'spawn', enemyId: 'spider' }],
+    '10,7': [{ kind: 'spawn', enemyId: 'spider' }],
+    '6,6':  [{ kind: 'spawn', enemyId: 'skeleton' }],
+  },
 };
 
 // ── EXIT vaults ───────────────────────────────────────────────────

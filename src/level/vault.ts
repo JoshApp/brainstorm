@@ -1,4 +1,4 @@
-import type { PropSpec, TileMap, TorchSpec } from './types';
+import type { PropSpec, TileMap, TorchSpec, CellBoundEntity, CellKey } from './types';
 import type { EncounterSpec } from '../content/encounters';
 
 // Vault system — pre-authored room chunks the procgen composer
@@ -94,4 +94,19 @@ export interface Vault {
    * "two torches in this combat room" placement.
    */
   torches?: TorchSpec[];
+
+  /**
+   * Cell-bound props (Format C). Each key is `${col},${row}`
+   * referencing the ASCII grid; the value is an array of entries
+   * that live in that cell — torches, spawns, decor, all stack
+   * naturally under one key. The composer translates cell coords
+   * into world coords and routes each entry to the right slot
+   * (torches → torches, spawn → spawns, everything else → props).
+   *
+   * Use this for nearly everything in new vaults. The legacy
+   * absolute-coord `props` array still works (and remains the
+   * escape hatch for the rare sub-cell case that doesn't bind to
+   * one cell — e.g. king-flanking sconces at x = ±2.5).
+   */
+  cellProps?: Partial<Record<CellKey, CellBoundEntity[]>>;
 }
