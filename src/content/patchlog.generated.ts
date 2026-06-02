@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Unify openings (2/2): route doors + cobweb through spawnFitting too"
+      },
+      {
         "tag": "fix",
         "text": "Unify openings (1/2): fix boss fog-gate placement via Opening + fitting"
       },
@@ -202,10 +206,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Migrate remaining spawn-prop vaults to cellProps"
-      },
-      {
-        "tag": "tune",
-        "text": "Extract inspect-mode into its own module"
       }
     ]
   }

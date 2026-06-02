@@ -27,8 +27,8 @@ import type { WalkableRegion, WallSegment } from '../level/walkable';
 //     seal lifts. The mist panel stays as a "cleared this place" marker.
 
 const CROSS_EPSILON = 0.05;    // signed-distance flip threshold
-const WALK_THROUGH_DIST = 3.0; // how far past the gate the forced walk ends
-const WALK_SECONDS = 1.4;      // duration of the soulslike step-through
+const WALK_THROUGH_DIST = 1.4; // end just past the threshold, not mid-arena
+const WALK_SECONDS = 2.1;      // slow, deliberate soulslike step-through
 
 export function spawnBossMist(
   scene: THREE.Object3D,
