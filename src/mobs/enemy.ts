@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
 import { applyPlayerKnockback } from '../player/knockback';
+import { setPlayerInAura } from '../player/inside-aura';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
@@ -369,6 +370,10 @@ export function createEnemy(
   // for now, read whatever rotation is on the container right now.
   let homeYaw = 0;                   // filled in on first idle-tick
   let homeYawSet = false;
+  // Inside-aura state — how long the player has been inside us +
+  // when the next dot tick is due. Resets to 0 when player leaves.
+  let auraInsideTime = 0;
+  let auraDamageTimer = 0;
   // Idle scan yaw target — rotates in place to feel watchful.
   let scanTimer = IDLE_SCAN_INTERVAL_MIN;  // pick a new target immediately
   let scanInterval = IDLE_SCAN_INTERVAL_MIN;
@@ -1150,6 +1155,33 @@ export function createEnemy(
 
     // Vocalisation — hear it before you see it. (see tickVocalisation)
     tickVocalisation(dt);
+
+    // ── Inside-aura tick (king-slime body, etc.) ─────────────────────
+    // Cheap distance check + state machine for the "you're standing
+    // INSIDE me" pressure. Grace period means a quick roll-through
+    // costs no HP; lingering does.
+    if (spec.aura) {
+      const dx = playerPos.x - container.position.x;
+      const dz = playerPos.z - container.position.z;
+      const distSq = dx * dx + dz * dz;
+      const r = spec.aura.radius;
+      if (distSq <= r * r) {
+        if (spec.aura.slowFactor !== undefined && spec.aura.slowFactor !== 1.0) {
+          setPlayerInAura(spec.aura.slowFactor);
+        }
+        auraInsideTime += dt;
+        if (auraInsideTime >= spec.aura.gracePeriod) {
+          auraDamageTimer += dt;
+          if (auraDamageTimer >= spec.aura.dotInterval) {
+            auraDamageTimer -= spec.aura.dotInterval;
+            damagePlayer(spec.aura.dotDamage, entityId, spec.damageType ?? 'magic');
+          }
+        }
+      } else {
+        auraInsideTime = 0;
+        auraDamageTimer = 0;
+      }
+    }
 
     // ── Perception ─────────────────────────────────────────────────────
     // Refresh sight check every frame. Once aggroed, we stay aggroed

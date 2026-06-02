@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
+import { getPlayerMoveScale } from '../player/inside-aura';
 import type { WalkableRegion } from '../level/walkable';
 import type { Enemy } from '../mobs/enemy';
 import { getSettings } from '../settings/settings';
@@ -88,7 +89,10 @@ export function updateCamera(
       .addScaledVector(right, input.moveX);
 
     if (move.lengthSq() > 0) {
-      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * dt);
+      // Aura-driven slow (e.g. inside the boiling king's body).
+      // Decays to 1.0 once nothing's refreshing it; multiplicative
+      // so the slow effect on existing MOVE_SPEED feels uniform.
+      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * getPlayerMoveScale() * dt);
       const newX = camera.position.x + move.x;
       const newZ = camera.position.z + move.z;
       // First pass: static collision (walls, pillars, altar, chest).

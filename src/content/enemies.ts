@@ -219,6 +219,32 @@ export interface EnemySpec {
    */
   noPlayerCollision?: boolean;
 
+  // --- Inside-aura (the "stuck in the body" mechanic) ---
+  /**
+   * If set, this enemy emits a movement-slow + damage-tick aura
+   * around its body. Player walking inside the radius is:
+   *   1. Slowed by `slowFactor` (e.g. 0.4 = 40% speed).
+   *   2. After `gracePeriod` seconds, takes `dotDamage` damage
+   *      every `dotInterval` seconds while still inside.
+   * Designed for the boiling king — pair with `noPlayerCollision`
+   * so the player can walk INTO the body. Getting out before the
+   * next tick is the skill expression; the slow makes that harder.
+   */
+  aura?: {
+    /** Distance from the enemy centre that counts as "inside." */
+    radius: number;
+    /** Move-speed multiplier while inside. 1.0 = no slow, 0.4 =
+     *  60% reduction. Default 1.0. */
+    slowFactor?: number;
+    /** Damage per tick while inside (after grace expires). */
+    dotDamage: number;
+    /** Seconds between damage ticks. */
+    dotInterval: number;
+    /** Seconds the player can be inside before damage starts.
+     *  Short contact (rolling through) costs no HP. */
+    gracePeriod: number;
+  };
+
   // --- Burrowed (floor ambush) ---
   /**
    * If set, this enemy spawns BURIED — its model sits below floor
@@ -1065,21 +1091,33 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // as more bosses + named mobs land.
     isBoss: true,
     bossName: 'The Boiling King',
-    scale: 4.0,                      // looms HARD — a translucent green wall of slime
-    hp: 22,                          // a real fight; bumped with the size
+    scale: 7.0,                      // WAY bigger than the player (~2× player height, 3.5m wide)
+    hp: 28,                          // bigger body, more HP — fight pacing stays similar
     moveSpeed: 0.9,                  // sluggish between hops
     attackDamage: 3,                 // hits hard — the AoE is the threat
-    attackRange: 7.0,                // long range — it leaps from across the room
-    strikeRange: 3.0,                // landing radius scaled with the body
+    attackRange: 10.0,               // proportional to body — leaps across the room
+    strikeRange: 4.0,                // landing splash radius matches the bulk
     windupTime: 1.20,                // generous telegraph — readable on phone
-    strikeTime: 0.28,                // strike a touch longer so the leap completes
+    strikeTime: 0.30,                // strike a touch longer so the leap completes
     recoverTime: 0.90,
     damageType: 'magic',             // acid bypasses physical armour — boss earns its name
     // Translucent green flesh with swallowed regalia (crown, sword,
     // skull) drifting inside — sells the "it has eaten kings" line.
     model: kingOozeModel(0x4a6a18, 0xa8ff44),
     baseEyeEmissive: 0,              // no eyes — core orb carries the read
-    collisionRadius: 0.95,           // wider footprint matches the bigger silhouette
+    collisionRadius: 1.5,            // bookkeeping radius for spawn-resolution; player passes THROUGH (noPlayerCollision)
+    // KEY MECHANIC: player walks INTO the king. No solid body. Once
+    // inside, the aura ticks (defined below): slowed move + acid damage
+    // after a grace window. The pressure is "get out before the next
+    // tick" not "knockback clears you instantly."
+    noPlayerCollision: true,
+    aura: {
+      radius: 1.6,                   // matches the visible body footprint at scale 7
+      slowFactor: 0.4,               // 60% slow — sticky slime feel, escapable but costly
+      dotDamage: 1,                  // tick is mild — the pressure is the slow + multiple ticks
+      dotInterval: 0.5,
+      gracePeriod: 0.5,              // a roll-through (~0.3s) costs no HP; lingering does
+    },
     tiltPartName: 'rig',
     flashMaterialName: 'body',
     eyeMaterialName: 'core',
@@ -1095,19 +1133,20 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // player's feet during windup; the king then physically dashes
       // to that landing zone (toward: 'aoeTarget', not 'player' — so
       // the king commits to where you WERE, kiting punishes him);
-      // landing applies AoE damage + radial knockback. The knockback
-      // is the key fix — without it the player ends up pinned inside
-      // the king's body after a hit and can't separate.
+      // landing applies AoE damage. NO knockback — the aura is the
+      // post-landing pressure: if you didn't dodge the landing zone
+      // you're now inside the body, slowed, taking acid ticks.
+      // Getting out is the skill expression.
       {
         id: 'leap',
-        minRange: 0, maxRange: 9,
-        windup: 1.20, strike: 0.28, recover: 0.90,
+        minRange: 0, maxRange: 12,
+        windup: 1.20, strike: 0.30, recover: 0.90,
         cooldown: 0.6,
         damage: 3,
         telegraph: 'cast',
         effects: [
-          { kind: 'dash', toward: 'aoeTarget', speed: 7.0, contactReach: 0 },
-          { kind: 'aoe', radius: 3.0, targetMode: 'player', damageType: 'magic', knockbackSpeed: 5.0 },
+          { kind: 'dash', toward: 'aoeTarget', speed: 9.0, contactReach: 0 },
+          { kind: 'aoe', radius: 4.0, targetMode: 'player', damageType: 'magic' },
         ],
       },
     ],
