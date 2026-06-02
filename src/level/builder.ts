@@ -296,68 +296,10 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
   }
 }
 
-// Find segments where another rect's edge coincides with this wall edge.
-// "Coincides" = on the same line (same perpendicular coord) AND overlapping
-// in the running-axis direction.
-function findOpenings(
-  we: { perpAxis: 'x' | 'z'; perpCoord: number; wallStart: number; wallEnd: number },
-  allRects: RoomSpec[],
-  selfRoom: RoomSpec,
-): Array<{ start: number; end: number }> {
-  const EPS = 0.01;
-  const openings: Array<{ start: number; end: number }> = [];
-  for (const other of allRects) {
-    if (other === selfRoom) continue;
-    // Sub-rooms (logical-only) are INSIDE their parent vault rect —
-    // their edges often coincide with the parent's exterior walls,
-    // which would spuriously punch openings through them. Skip.
-    if (other.logicalOnly) continue;
-    const o = other.rect;
-    if (we.perpAxis === 'z') {
-      // wall runs along X; coincide if any of other's Z-edges == we.perpCoord
-      const oSouth = o.z + o.d / 2;
-      const oNorth = o.z - o.d / 2;
-      const coincides = Math.abs(oSouth - we.perpCoord) < EPS || Math.abs(oNorth - we.perpCoord) < EPS;
-      if (!coincides) continue;
-      const a = Math.max(we.wallStart, o.x - o.w / 2);
-      const b = Math.min(we.wallEnd, o.x + o.w / 2);
-      if (b > a + EPS) openings.push({ start: a, end: b });
-    } else {
-      // wall runs along Z; coincide if any of other's X-edges == we.perpCoord
-      const oEast = o.x + o.w / 2;
-      const oWest = o.x - o.w / 2;
-      const coincides = Math.abs(oEast - we.perpCoord) < EPS || Math.abs(oWest - we.perpCoord) < EPS;
-      if (!coincides) continue;
-      const a = Math.max(we.wallStart, o.z - o.d / 2);
-      const b = Math.min(we.wallEnd, o.z + o.d / 2);
-      if (b > a + EPS) openings.push({ start: a, end: b });
-    }
-  }
-  return openings;
-}
-
-// Subtract a set of [start, end] openings from a [start, end] range.
-function subtractRanges(start: number, end: number, openings: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
-  const sorted = [...openings].sort((a, b) => a.start - b.start);
-  const segments: Array<{ start: number; end: number }> = [];
-  let cursor = start;
-  for (const op of sorted) {
-    if (op.start > cursor) segments.push({ start: cursor, end: Math.min(op.start, end) });
-    cursor = Math.max(cursor, op.end);
-    if (cursor >= end) break;
-  }
-  if (cursor < end) segments.push({ start: cursor, end });
-  return segments;
-}
-
-function torchYawForWall(wall: 'N' | 'S' | 'E' | 'W'): number {
-  switch (wall) {
-    case 'N': return 0;
-    case 'S': return Math.PI;
-    case 'E': return -Math.PI / 2;
-    case 'W': return Math.PI / 2;
-  }
-}
+// Wall-opening range math (findOpenings / subtractRanges) + torchYawForWall
+// live in wall-openings.ts. Mood-tint colour math lives in mood-tint.ts.
+import { findOpenings, subtractRanges, torchYawForWall } from './wall-openings';
+import { mixColors, moodTintForPosition, applyMoodTint, averageTorchTintInRect } from './mood-tint';
 
 export function buildLevel(
   scene: THREE.Scene,
@@ -1277,89 +1219,6 @@ export function buildLevel(
     // wrapper if needed. For now expose directly.
     ...({ checkRoomClear } as object),
   } as LiveLevel & { checkRoomClear: () => void };
-}
-
-/** Linear mix between two hex colors. t=0 returns a, t=1 returns b. */
-function mixColors(a: number, b: number, t: number): number {
-  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
-  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bl = Math.round(ab + (bb - ab) * t);
-  return (r << 16) | (g << 8) | bl;
-}
-
-/** Look up the mood tint (average torch palette) for a world point.
- *  Walks rooms smallest-first so a sub-room's local torches win over
- *  its parent vault's average; falls back to the parent if the sub
- *  has no torches. Returns null when the position is outside every
- *  room OR no torch sits inside any of its containing rects. */
-function moodTintForPosition(spec: LevelSpec, x: number, z: number): number | null {
-  const candidates: RoomSpec[] = [];
-  for (const r of spec.rooms) {
-    const hw = r.rect.w / 2;
-    const hd = r.rect.d / 2;
-    if (x >= r.rect.x - hw && x <= r.rect.x + hw &&
-        z >= r.rect.z - hd && z <= r.rect.z + hd) {
-      candidates.push(r);
-    }
-  }
-  candidates.sort((a, b) => (a.rect.w * a.rect.d) - (b.rect.w * b.rect.d));
-  for (const r of candidates) {
-    const tint = averageTorchTintInRect(spec.torches, r.rect);
-    if (tint !== null) return tint;
-  }
-  return null;
-}
-
-/** Recolour a built model's flame-family materials + additive sprite
- *  particles + (signalled out) attached light to `tint`. Used by the
- *  model-prop handler when the spec sets moodTintable. Wax / wick /
- *  iron / wood materials and non-additive sprites are left alone.
- *  The light's colour override is returned via a separate path
- *  (`lightColorOverride` in the caller) so we don't have to mutate
- *  the spec. */
-function applyMoodTint(built: import('../ecs/build-model').BuiltModel, tint: number): void {
-  // Named flame-family materials — mutate colour + emissive together
-  // so the tint reads in both lit and unlit paths.
-  for (const name of ['flame', 'core', 'orb', 'shine']) {
-    const mat = built.materials.get(name) as THREE.MeshStandardMaterial | undefined;
-    if (!mat) continue;
-    if (mat.color) mat.color.setHex(tint);
-    if (mat.emissive) mat.emissive.setHex(tint);
-  }
-  // Additive sprite tongues (flame, embers). These are unnamed in the
-  // materials map; walk the scene-graph instead and recolour any
-  // additive SpriteMaterial.
-  built.group.traverse((obj) => {
-    const sprite = obj as THREE.Sprite;
-    if (!sprite.isSprite) return;
-    const m = sprite.material as THREE.SpriteMaterial;
-    if (m.blending !== THREE.AdditiveBlending) return;
-    m.color.setHex(tint);
-  });
-}
-
-/** Average torch colorTint across every torch whose position falls
- *  inside `rect`. Returns null when the room has no torches — caller
- *  falls back to the default fill colour. Used so fill PointLights in
- *  a blood-tinted chamber read RED, not generic warm; sickly-green
- *  chambers get sickly-green fills; etc. */
-function averageTorchTintInRect(torches: TorchSpec[], rect: { x: number; z: number; w: number; d: number }): number | null {
-  const hw = rect.w / 2;
-  const hd = rect.d / 2;
-  let n = 0, r = 0, g = 0, b = 0;
-  for (const t of torches) {
-    if (t.x < rect.x - hw || t.x > rect.x + hw) continue;
-    if (t.z < rect.z - hd || t.z > rect.z + hd) continue;
-    const tint = t.colorTint ?? 0xffaa55;
-    r += (tint >> 16) & 0xff;
-    g += (tint >> 8) & 0xff;
-    b += tint & 0xff;
-    n++;
-  }
-  if (n === 0) return null;
-  return (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n);
 }
 
 /** Which room rect contains (x, z)? Prefers logical-only sub-rooms over
