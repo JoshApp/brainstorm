@@ -58,6 +58,11 @@ export interface Settings {
    *  The caster COUNT is constant within a mode so the light pool never
    *  triggers a per-frame shader recompile (see setShadowMode). */
   shadows: ShadowMode;
+  /** Adaptive resolution — auto-lower the scene-render scale on a struggling
+   *  phone (and raise it back when it recovers) to hold framerate. On-aesthetic
+   *  (a lower-res PS1 render reads as more PS1). Mobile only; no effect on
+   *  desktop debug. */
+  adaptiveResolution: boolean;
 }
 
 export type ShadowMode = 'off' | 'hero' | 'single' | 'all';
@@ -95,6 +100,7 @@ const DEFAULTS: Settings = {
   // sells the torchlit-dungeon feel. Drop to 'off' on a struggling phone,
   // crank to 'single'/'all' on desktop or a strong device.
   shadows: 'hero',
+  adaptiveResolution: true,
 };
 
 let current: Settings = load();

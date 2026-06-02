@@ -279,6 +279,15 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().shadows,
       set: (v) => updateSettings({ shadows: v }),
     }),
+    makeToggle({
+      label: 'ADAPTIVE RESOLUTION',
+      description:
+        'Auto-lower the render resolution when the phone struggles, and raise ' +
+        'it back when it recovers — holds framerate. Reads as a touch more PS1. ' +
+        'Mobile only; no effect on desktop.',
+      get: () => getSettings().adaptiveResolution,
+      set: (v) => updateSettings({ adaptiveResolution: v }),
+    }),
   ],
 
   system: () => [

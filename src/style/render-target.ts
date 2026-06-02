@@ -16,12 +16,18 @@ import * as THREE from 'three';
 //
 // All five sit in one cheap fragment shader pass. Mobile-friendly.
 
-const PS1_SCALE = 0.4;
+// Scene-render resolution as a fraction of the canvas. The scene renders to
+// this low-res target; the blit upscales it. 0.4 = ~16% the fragments — the
+// single biggest fill-rate lever. Mutable so the adaptive-resolution scaler
+// (scene/adaptive-resolution.ts) can nudge it down on a struggling phone.
+export const PS1_SCALE_DEFAULT = 0.4;
+let ps1Scale = PS1_SCALE_DEFAULT;
 
 let lowResTarget: THREE.WebGLRenderTarget | null = null;
 let blitScene: THREE.Scene | null = null;
 let blitCamera: THREE.OrthographicCamera | null = null;
 let blitMaterial: THREE.ShaderMaterial | null = null;
+let rendererRef: THREE.WebGLRenderer | null = null;
 
 const HORROR_BLIT_VERT = `
   varying vec2 vUv;
@@ -143,8 +149,9 @@ const HORROR_BLIT_FRAG = `
 `;
 
 export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
-  const w = Math.max(1, Math.floor(renderer.domElement.width * PS1_SCALE));
-  const h = Math.max(1, Math.floor(renderer.domElement.height * PS1_SCALE));
+  rendererRef = renderer;
+  const w = Math.max(1, Math.floor(renderer.domElement.width * ps1Scale));
+  const h = Math.max(1, Math.floor(renderer.domElement.height * ps1Scale));
 
   lowResTarget = new THREE.WebGLRenderTarget(w, h, {
     minFilter: THREE.NearestFilter,
@@ -174,12 +181,26 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
 
   window.addEventListener('resize', () => {
     if (!lowResTarget || !blitMaterial) return;
-    const nw = Math.max(1, Math.floor(renderer.domElement.width * PS1_SCALE));
-    const nh = Math.max(1, Math.floor(renderer.domElement.height * PS1_SCALE));
+    const nw = Math.max(1, Math.floor(renderer.domElement.width * ps1Scale));
+    const nh = Math.max(1, Math.floor(renderer.domElement.height * ps1Scale));
     lowResTarget.setSize(nw, nh);
     blitMaterial.uniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
   });
 }
+
+/** Set the scene-render resolution fraction (clamped sane). Resizes the
+ *  low-res target in place. Driven by the adaptive-resolution scaler; the
+ *  blit upscales whatever size this target is, so lowering it trades crispness
+ *  for fill-rate (and reads as more PS1, on-aesthetic). */
+export function setPS1Scale(scale: number): void {
+  ps1Scale = Math.min(0.6, Math.max(0.2, scale));
+  if (!lowResTarget || !rendererRef) return;
+  const nw = Math.max(1, Math.floor(rendererRef.domElement.width * ps1Scale));
+  const nh = Math.max(1, Math.floor(rendererRef.domElement.height * ps1Scale));
+  lowResTarget.setSize(nw, nh);
+}
+
+export function getPS1Scale(): number { return ps1Scale; }
 
 /** Set the eye dark-adaptation amount (0..1) applied by the blit shader's
  *  shadow-lift. No-op until the pipeline is initialised. */

@@ -208,6 +208,10 @@ async function main() {
     const shadowsArg = process.argv.find((a) => a.startsWith('--shadows='))?.split('=')[1];
     const shadowsOverride = shadowsArg ? `&shadows=${encodeURIComponent(shadowsArg)}` : '';
     if (shadowsArg) console.log(`Shadow mode: ${shadowsArg}`);
+    // --ps1=0.3 forces the scene-render scale (DEV override).
+    const ps1Arg = process.argv.find((a) => a.startsWith('--ps1='))?.split('=')[1];
+    const ps1Override = ps1Arg ? `&ps1=${encodeURIComponent(ps1Arg)}` : '';
+    if (ps1Arg) console.log(`PS1 scale: ${ps1Arg}`);
     let url: string;
     if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
@@ -224,7 +228,7 @@ async function main() {
       const itemId = scenario.slice('item-'.length);
       url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}`;
     }
-    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}${ps1Override}`;
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output

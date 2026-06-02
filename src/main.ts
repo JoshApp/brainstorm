@@ -17,7 +17,7 @@ import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthr
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale } from './style/render-target';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
   INSPECT_AMBIENT, INSPECT_REQUESTED,
@@ -67,6 +67,7 @@ import { findTapTarget } from './controls/tap-target';
 import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { initLightPool, setShadowMode } from './scene/light-pool';
+import { setAdaptiveResolution, tickAdaptiveResolution } from './scene/adaptive-resolution';
 import { initProjectilePool } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
 import { validateContent } from './content/validate';
@@ -467,6 +468,15 @@ initLightPool(scene);
 // 'off' internally; this lifts it to the user's setting). Live changes are
 // handled by the onSettingsChanged subscription further down.
 setShadowMode(getSettings().shadows);
+// Adaptive resolution runs on real phones only (desktop debug + snaps stay at
+// the fixed authored scale). Re-evaluated live by the onSettingsChanged block.
+setAdaptiveResolution(getSettings().adaptiveResolution && !isDesktopLike());
+// DEV-only: ?ps1=0.3 forces the scene-render scale for snap/compare. Stripped
+// from prod by the literal-false guard.
+if (import.meta.env.DEV) {
+  const ps1 = Number(new URLSearchParams(window.location.search).get('ps1'));
+  if (ps1 > 0) setPS1Scale(ps1);
+}
 // DEV-only: ?shadows=off|hero|single|all forces a mode for snap/compare
 // without touching the saved setting. Stripped from prod by the literal guard.
 if (import.meta.env.DEV) {
@@ -598,6 +608,8 @@ function tick() {
   // tris/draws numbers reflect what was actually drawn.
   reportRendererInfo(renderer);
   tickPerfOverlay(performance.now());
+  // Adaptive resolution — self-gates (no-op unless enabled on a real phone).
+  tickAdaptiveResolution(performance.now());
   // Programmatic perf probe (window.__perf for the headless perf runner).
   // DEV-only — the literal-false guard dead-code-eliminates it from prod
   // (and tickPerfProbe is itself a no-op in prod, belt-and-suspenders).
@@ -782,6 +794,7 @@ onSettingsChanged((s) => {
   setDarkAdaptReadoutVisible(s.debugEyeAdapt);
   setBossEncounterReadoutVisible(s.debugBossReadout);
   setShadowMode(s.shadows);
+  setAdaptiveResolution(s.adaptiveResolution && !isDesktopLike());
 });
 
 // Perf overlay (FPS / frame time / draw calls). Hidden until the PERF
