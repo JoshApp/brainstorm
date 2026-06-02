@@ -72,7 +72,7 @@ import { tickInteractables, getInRangeInteractable, getAllInteractables } from '
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
-import { initLightPool, tickLightPool } from './scene/light-pool';
+import { initLightPool, tickLightPool, setShadowMode } from './scene/light-pool';
 import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
 import { tickHazardFields } from './combat/hazard-field';
 import { registerProjectiles } from './content/projectiles';
@@ -477,6 +477,16 @@ warmupContent(renderer);
 // Must be initialized BEFORE any spawn that registers sources (torches,
 // fountains, lamp, fill, etc.).
 initLightPool(scene);
+// Apply the persisted dynamic-shadow quality (the light pool defaults to
+// 'off' internally; this lifts it to the user's setting). Live changes are
+// handled by the onSettingsChanged subscription further down.
+setShadowMode(getSettings().shadows);
+// DEV-only: ?shadows=off|hero|single|all forces a mode for snap/compare
+// without touching the saved setting. Stripped from prod by the literal guard.
+if (import.meta.env.DEV) {
+  const sm = new URLSearchParams(window.location.search).get('shadows');
+  if (sm === 'off' || sm === 'hero' || sm === 'single' || sm === 'all') setShadowMode(sm);
+}
 initPickupLightPool(scene);
 // Projectile pool — pre-allocates the meshes + trail sprites that ranged
 // enemies (and future spells/traps) rent at fire-time. Registers its own
@@ -1049,6 +1059,7 @@ onSettingsChanged((s) => {
   const urlForced = new URLSearchParams(window.location.search).get('debug') === '1';
   setDebugButton(urlForced || s.debugMode);
   setPerfOverlayVisible(s.perfMeter);
+  setShadowMode(s.shadows);
 });
 
 // Perf overlay (FPS / frame time / draw calls). Hidden until the PERF

@@ -1,4 +1,5 @@
-import { getSettings, updateSettings, CONTROL_SCHEMES } from '../settings/settings';
+import { getSettings, updateSettings, CONTROL_SCHEMES, SHADOW_MODES } from '../settings/settings';
+import type { ShadowMode } from '../settings/settings';
 import { setMasterVolume, setReverbEnabled } from '../audio/sfx';
 import { setMusicVolume } from '../audio/music';
 import { openScreen, closeScreen } from './screen-manager';
@@ -99,7 +100,7 @@ function closePanel() {
 
 // Active tab persists across opens within a session — convenient when
 // iterating on a tab's contents on the phone.
-type TabId = 'run' | 'controls' | 'audio' | 'system';
+type TabId = 'run' | 'controls' | 'audio' | 'graphics' | 'system';
 // Default to RUN when a live run is active (CHARACTER + quit + abandon
 // + exit are the most-reached affordances mid-game); fall back to
 // CONTROLS on the title screen where RUN doesn't exist yet.
@@ -150,6 +151,7 @@ function buildPanelContents() {
   tabs.push(
     { id: 'controls', label: 'CONTROLS' },
     { id: 'audio',    label: 'AUDIO' },
+    { id: 'graphics', label: 'GRAPHICS' },
     { id: 'system',   label: 'SYSTEM' },
   );
   // If the previously-active tab disappeared (e.g. RUN gone after
@@ -257,6 +259,20 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
         updateSettings({ reverb: v });
         setReverbEnabled(v);
       },
+    }),
+  ],
+
+  graphics: () => [
+    makeSelect<ShadowMode>({
+      label: 'SHADOWS',
+      description:
+        'Dynamic shadows are the most expensive thing on the GPU. ' +
+        'Off = none. Hero = your lamp casts (one shadow that follows you). ' +
+        'Single = the nearest torch/fire casts. All = lamp + a few nearby lights. ' +
+        'Drop it if the phone struggles in a busy room.',
+      options: SHADOW_MODES,
+      get: () => getSettings().shadows,
+      set: (v) => updateSettings({ shadows: v }),
     }),
   ],
 

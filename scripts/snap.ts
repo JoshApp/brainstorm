@@ -203,6 +203,11 @@ async function main() {
     const wantHudOnly = hudOnlyFlag || hudFamily;
     const hudOnlyOverride = wantHudOnly ? '&hudOnly=true' : '';
     if (wantHudOnly) console.log('HUD-only mode: canvas hidden, flat backdrop');
+    // --shadows=off|hero|single|all forces the dynamic-shadow mode (DEV URL
+    // override) so a scene can be snapped + compared across shadow settings.
+    const shadowsArg = process.argv.find((a) => a.startsWith('--shadows='))?.split('=')[1];
+    const shadowsOverride = shadowsArg ? `&shadows=${encodeURIComponent(shadowsArg)}` : '';
+    if (shadowsArg) console.log(`Shadow mode: ${shadowsArg}`);
     let url: string;
     if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
@@ -217,9 +222,9 @@ async function main() {
     // scenario row + one snap arg.
     else if (scenario.startsWith('item-')) {
       const itemId = scenario.slice('item-'.length);
-      url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}`;
+      url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}`;
     }
-    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}`;
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output
