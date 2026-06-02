@@ -47,20 +47,6 @@ export interface EnemySpec {
    *  come from the explicit stat fields. Default 1. */
   scale?: number;
 
-  /**
-   * ASCII tile character used to place this enemy in a vault map AND
-   * the char procgen emits for it. THE SINGLE SOURCE OF TRUTH for this
-   * enemy's map char — `tilemap.ts` (parsing + FLOOR_CHARS) and
-   * `procgen.ts` (roll → char) both DERIVE from this via the registry
-   * maps below, so the char can't drift out of sync across files.
-   *
-   * Must be unique and must not collide with a reserved structural /
-   * placeholder char (validated at module load — a clash throws). Omit
-   * for enemies that are never placed directly (e.g. ooze-small, which
-   * only appears via split-on-death).
-   */
-  tileChar?: string;
-
   // --- Stats ---
   hp: number;
   moveSpeed: number;          // m/s while chasing
@@ -355,7 +341,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   ghoul: {
     id: 'ghoul',
     name: 'ghoul',
-    tileChar: 'G',
     hp: 3,
     moveSpeed: 1.4,
     attackDamage: 1,
@@ -403,7 +388,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   rat: {
     id: 'rat',
     name: 'rat',
-    tileChar: 'R',
     hp: 1,           // dies in one hit — the trash mob
     moveSpeed: 2.3,  // slower than player retreat (player MOVE_SPEED = 2.5)
     attackDamage: 1,
@@ -453,7 +437,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   skirmisher: {
     id: 'skirmisher',
     name: 'skirmisher',
-    tileChar: 'K',
     hp: 2,
     moveSpeed: 2.0,        // player retreat (2.5) outruns the WALK...
     attackDamage: 1,
@@ -525,7 +508,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   acolyte: {
     id: 'acolyte',
     name: 'acolyte',
-    tileChar: 'Y',
     hp: 2,                  // squishy — closing on it pays off fast
     moveSpeed: 1.7,         // mobile enough to actually kite a retreating gap
     attackDamage: 1,
@@ -583,7 +565,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   wraith: {
     id: 'wraith',
     name: 'wraith',
-    tileChar: 'W',
     // BOSS — only ever spawned via the 'B' boss slot (never in roll tables),
     // so the boss treatment lives right on the spec. Bigger, far tankier than
     // trash, and named, so it reads as a set-piece, not a stray mob.
@@ -641,7 +622,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   ooze: {
     id: 'ooze',
     name: 'ooze',
-    tileChar: 'Z',
     hp: 2,
     moveSpeed: 1.4,
     attackDamage: 1,
@@ -729,7 +709,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'acid-spitter': {
     id: 'acid-spitter',
     name: 'acid spitter',
-    tileChar: 'Q',               // NOT 'X' — 'X' is procgen's generic slot
     hp: 4,                       // tanky — closing on it is a real commitment
     moveSpeed: 0.8,              // glacial — it holds ground, doesn't chase
     attackDamage: 1,
@@ -784,7 +763,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   stoneguard: {
     id: 'stoneguard',
     name: 'stoneguard',
-    tileChar: 'M',
     hp: 6,                       // tankiest non-boss
     moveSpeed: 1.0,              // glacial — player retreat (2.5) outruns easily
     attackDamage: 3,             // biggest single-hit damage in the roster
@@ -839,7 +817,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   defiler: {
     id: 'defiler',
     name: 'defiler',
-    tileChar: 'H',
     hp: 4,
     moveSpeed: 1.1,              // slow drifter — it controls space, doesn't chase
     attackDamage: 2,            // legacy/default mirror of the hex damage
@@ -918,7 +895,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   skeleton: {
     id: 'skeleton',
     name: 'skeleton',
-    tileChar: 'L',
     hp: 3,
     moveSpeed: 1.5,            // advances steadily (no kite, no preferredRange)
     attackDamage: 1,
@@ -1001,7 +977,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   spider: {
     id: 'spider',
     name: 'spider',
-    tileChar: 'N',
     hp: 2,
     moveSpeed: 2.2,            // fast scuttle
     attackDamage: 1,
@@ -1199,7 +1174,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'plague-spore': {
     id: 'plague-spore',
     name: 'plague spore',
-    tileChar: 'E',   // was 'F' — collided with the reserved fountain char
     hp: 3,
     moveSpeed: 0,                  // truly stationary
     attackDamage: 2,
@@ -1244,7 +1218,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'sump-wisp': {
     id: 'sump-wisp',
     name: 'sump wisp',
-    tileChar: 'I',
     hp: 2,                          // one-shot for most weapons — closing matters
     moveSpeed: 1.8,                 // fast — it kites
     attackDamage: 1,
@@ -1341,7 +1314,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'carrion-hound': {
     id: 'carrion-hound',
     name: 'carrion hound',
-    tileChar: 'J',   // was 'D' — collided with the reserved arena-door char
     hp: 3,
     moveSpeed: 2.6,                 // fast chase
     attackDamage: 2,
@@ -1389,7 +1361,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'pit-moth': {
     id: 'pit-moth',
     name: 'pit moth',
-    tileChar: 'm',
     hp: 1,
     moveSpeed: 2.6,                 // fast — outruns retreat
     attackDamage: 1,
@@ -1437,7 +1408,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   lasher: {
     id: 'lasher',
     name: 'lasher',
-    tileChar: 'U',
     hp: 4,
     moveSpeed: 0,                   // rooted in the floor
     attackDamage: 2,
@@ -1484,7 +1454,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
   burrower: {
     id: 'burrower',
     name: 'burrower',
-    tileChar: 'b',
     hp: 4,
     moveSpeed: 1.6,                  // moderate — the surprise IS the threat
     attackDamage: 2,
@@ -1584,46 +1553,8 @@ function wisp_modelV1(bodyColor: number, coreColor: number, coreEmissive: number
   };
 }
 
-// ── Tile-char registry — single source of truth ─────────────────────
-//
-// Derived from each EnemySpec's `tileChar`. Everything that maps an
-// enemy to a map character reads from HERE, never a hand-kept list:
-//   - tilemap.ts   parsing (char → spawn) + FLOOR_CHARS
-//   - procgen.ts   roll result (enemyId → char)
-//
-// So adding a placeable enemy = set its `tileChar`, done. No second
-// edit, nothing to forget. Collisions throw at module load (below), so
-// a clash with a structural tile, a placeholder, or another enemy is
-// caught the instant the module is imported (dev / build / CI / snap).
-
-// Chars the tile parser reserves for non-enemy use. Enemy tileChars
-// must avoid all of these. Mirror of the structural cases in
-// tilemap.ts's switch + the 'X'/'B' procgen slot placeholders + '#'
-// (wall) and ' ' (wall). Keep in sync if a new STRUCTURAL tile is
-// added — but enemies are now safe by construction.
-const RESERVED_TILE_CHARS = new Set(
-  ['#', ' ', 'X', 'B', '.', ',', 'S', 'o', 'O', 'D', '/', '^',
-   'F', 'C', 'P', 'A', 'c', 'v', 'V', 'T', 't', '<', '>', '%'],
-);
-
-/** char → enemyId. */
-export const ENEMY_BY_CHAR = new Map<string, string>();
-/** enemyId → char. */
-export const ENEMY_CHAR_BY_ID: Record<string, string> = {};
-
-for (const [id, spec] of Object.entries(ENEMIES)) {
-  const ch = spec.tileChar;
-  if (!ch) continue;
-  if (ch.length !== 1) {
-    throw new Error(`Enemy '${id}': tileChar must be a single character, got '${ch}'`);
-  }
-  if (RESERVED_TILE_CHARS.has(ch)) {
-    throw new Error(`Enemy '${id}': tileChar '${ch}' collides with a reserved structural/placeholder tile char`);
-  }
-  const existing = ENEMY_BY_CHAR.get(ch);
-  if (existing) {
-    throw new Error(`Tile char '${ch}' claimed by both '${existing}' and '${id}'`);
-  }
-  ENEMY_BY_CHAR.set(ch, id);
-  ENEMY_CHAR_BY_ID[id] = ch;
-}
+// Per-enemy ASCII tile chars are GONE. Placement is always either
+// procgen-driven (X / B slots in a vault map, expanded by
+// populateTemplate into SpawnCell records) or explicit (a vault
+// author drops { kind: 'spawn', enemyId, x, z } in the props array).
+// The 26-letter ceiling can't bite a new mob anymore.

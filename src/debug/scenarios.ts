@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { LevelSpec } from '../level/types';
 import type { LiveLevel } from '../level/builder';
 import type { WeaponViewmodel, SwingPhase } from '../player/viewmodel';
-import { LEVEL_1 } from '../level/specs';
 import { triggerDeath } from '../player/death';
 import { setCameraYaw } from '../controls/camera';
 import { setWorldFrozen } from './freeze';
@@ -32,7 +31,7 @@ import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
 type EnemyDebugState = 'chasing' | 'winding' | 'striking' | 'recovering';
 
 export interface Scenario {
-  /** Replace the default level (otherwise LEVEL_1). */
+  /** Replace the default level (otherwise the boot placeholder). */
   level?: LevelSpec;
   /** Freeze world updates after init — for deterministic screenshots. */
   freeze?: boolean;
@@ -259,11 +258,8 @@ export const SCENARIOS: Record<string, Scenario> = {
     triggerDeath: true,
   },
 
-  // Empty room, no enemy. For inspecting room architecture in isolation.
-  'empty-room': {
-    freeze: true,
-    level: { ...LEVEL_1, spawns: [] },
-  },
+  // ('empty-room' scenario removed alongside LEVEL_1 — use any
+  // vault-<id> preview for room-architecture inspection.)
 
   // Looking back at the south torch — orient the camera 180°.
   'south-torch': {

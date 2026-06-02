@@ -19,7 +19,7 @@
 import type { LevelSpec, EnemySpawnSpec, TileMap } from './types';
 import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
-import { ENEMY_CHAR_BY_ID } from '../content/enemies';
+import { ENEMIES } from '../content/enemies';
 import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type Role } from '../content/encounters';
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
 import { bossById } from '../content/bosses';
@@ -138,18 +138,18 @@ function rollTableFor(depth: number): EnemyRoll[] {
   ];
 }
 
-// Drift guard — every enemy a roll table can produce MUST have a tile
-// char (else populateTemplate would silently fall back to a rat).
-// Validated at module load so a typo'd or unplaceable id throws in
-// dev/build/CI the moment this file is imported, not 9 floors deep.
+// Drift guard — every enemy a roll table can produce MUST exist in
+// the ENEMIES registry. Validated at module load so a typo'd id
+// throws in dev/build/CI the moment this file is imported, not 9
+// floors deep.
 (function validateRollTables() {
   const ids = new Set<string>();
   for (const d of [3, 6, 9]) for (const r of rollTableFor(d)) ids.add(r.enemyId);
   // Encounter-archetype role buckets are placeable too — same guard.
   for (const bucket of Object.values(ROLE)) for (const id of bucket) ids.add(id);
   for (const id of ids) {
-    if (!ENEMY_CHAR_BY_ID[id]) {
-      throw new Error(`Roll table / encounter role references '${id}', which has no tileChar in the enemy registry`);
+    if (!ENEMIES[id]) {
+      throw new Error(`Roll table / encounter role references '${id}', which is not in the ENEMIES registry`);
     }
   }
 })();
@@ -215,11 +215,14 @@ function rollPack(spec: EncounterSpec, depth: number, slotCount: number, rand: (
  * (see rollPack) instead of rolled independently — so the room reads as a
  * designed fight, not a grab-bag. B (boss) is unaffected.
  */
-/** Vault-local cell coordinate for a boss spawn extracted from a
- *  B-tile during populateTemplate. The caller (vault-compose)
- *  converts cell → world coords via the vault's grid dimensions +
- *  placement offset, then adds it to the floor's spawns list. */
-export interface BossSpawnCell {
+/** Vault-local cell coordinate for a spawn extracted from an X or B
+ *  tile during populateTemplate. The caller (vault-compose) converts
+ *  cell → world coords via the vault's grid dimensions + placement
+ *  offset, then adds it to the floor's spawns list. ALL spawns (X
+ *  rolls + B boss expansions + future spawn-tile-chars) go through
+ *  this channel — the parser never sees a tile char that means
+ *  "spawn enemy X here." */
+export interface SpawnCell {
   col: number;
   row: number;
   enemyId: string;
@@ -227,12 +230,11 @@ export interface BossSpawnCell {
 
 export interface PopulatedTemplate {
   map: TileMap;
-  /** B-tile expansions — bosses don't go through the tile-char
-   *  substitution pipeline (it has a hard ceiling at 26 chars).
-   *  Instead the composer takes these cells, computes world coords,
-   *  and pushes spawn entries directly. Same end result, no char
-   *  needed per boss. */
-  bossSpawns: BossSpawnCell[];
+  /** Every X-rolled enemy + B-expanded boss from the template,
+   *  recorded as cell coords + concrete enemy id. The composer
+   *  translates these into world-coord spawn entries. Bypasses the
+   *  ASCII tile-char dictionary entirely — no 26-letter ceiling. */
+  spawns: SpawnCell[];
 }
 
 export function populateTemplate(
@@ -240,33 +242,30 @@ export function populateTemplate(
 ): PopulatedTemplate {
   const table = rollTableFor(depth);
   // Pre-roll a coherent pack sized to the X-slot count when an archetype is set.
-  let packChars: string[] | null = null;
+  let packIds: string[] | null = null;
   let packIdx = 0;
   if (encounter) {
     let n = 0;
     for (const row of template) for (const ch of row) if (ch === 'X') n++;
-    if (n > 0) packChars = rollPack(encounter, depth, n, rand).map((id) => ENEMY_CHAR_BY_ID[id] ?? 'R');
+    if (n > 0) packIds = rollPack(encounter, depth, n, rand);
   }
-  const bossSpawns: BossSpawnCell[] = [];
-  // enemyId → tile char comes from the SINGLE registry in
-  // content/enemies.ts (ENEMY_CHAR_BY_ID). No hand-kept map here, so a
-  // new enemy is roll-placeable the moment it declares a tileChar —
-  // and a roll-table id that lacks one is caught by validateRollTables
-  // at module load rather than silently spawning as a rat.
+  const spawns: SpawnCell[] = [];
+  // Walk the grid left-to-right, top-to-bottom. X cells roll an
+  // enemy id (from the pack if the vault declared an encounter,
+  // otherwise from the depth table); B cells resolve to the act's
+  // boss. Both cell types become '.' in the output map so
+  // parseTileMap walks through them; the actual mob instantiation
+  // is handled by the composer reading the spawns list.
   const map = template.map((row, rowIdx) => {
     let out = '';
     for (let colIdx = 0; colIdx < row.length; colIdx++) {
       const ch = row[colIdx];
       if (ch === 'X') {
-        const id = packChars ? null : pickWeighted(table, rand);
-        out += packChars ? (packChars[packIdx++] ?? 'R') : (ENEMY_CHAR_BY_ID[id!] ?? 'R');
+        const id = packIds ? (packIds[packIdx++] ?? 'rat') : pickWeighted(table, rand);
+        spawns.push({ col: colIdx, row: rowIdx, enemyId: id });
+        out += '.';
       } else if (ch === 'B') {
-        // Boss slot. The boiling-king (and any future boss) doesn't
-        // need its own tile char — we record the cell coords + boss
-        // id and the composer turns it into a spawn at parse time.
-        // The cell itself becomes empty floor so parseTileMap walks
-        // through it normally.
-        bossSpawns.push({ col: colIdx, row: rowIdx, enemyId: bossFor(depth) });
+        spawns.push({ col: colIdx, row: rowIdx, enemyId: bossFor(depth) });
         out += '.';
       } else if (ch === '$') {
         // Loot slot — PARTIAL fill: a chest sometimes appears here, the
@@ -288,7 +287,7 @@ export function populateTemplate(
     }
     return out;
   });
-  return { map, bossSpawns };
+  return { map, spawns };
 }
 
 // ── Public API ───────────────────────────────────────────────────────

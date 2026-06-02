@@ -27,7 +27,8 @@ import { setMasterVolume, setReverbEnabled, startAmbience, setTorchProximity, se
 import { startMusic, setMusicVolume } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
-import { LEVEL_1, LEVELS } from './level/specs';
+import { LEVELS } from './level/specs';
+import type { LevelSpec } from './level/types';
 import { buildStarterChamber } from './level/starter-chamber';
 import { findTestChamber } from './level/test-chambers';
 import { showTestChambersScreen } from './ui/test-chambers-screen';
@@ -179,7 +180,25 @@ initDeath(camera);
 // dead, and the bundler tree-shakes the entire debug/scenarios module (and
 // its fixed-seed test levels) out of the live site.
 const scenario = import.meta.env.DEV ? getScenarioFromUrl() : null;
-const levelSpec = scenario?.level ?? LEVEL_1;
+// Placeholder level used purely as a boot-time "give buildLevel
+// something to mount" — the title screen covers it, then the
+// first descent (startNewRun) replaces it with the real flow
+// (starter chamber → tutorial → procgen depth-1). The hand-authored
+// LEVEL_1 used to fill this slot; deleted along with all the other
+// legacy hand-authored floor specs.
+const PLACEHOLDER_LEVEL: LevelSpec = {
+  id: '__placeholder__',
+  depth: 1,
+  startPos: { x: 0, z: 0, yaw: 0 },
+  rooms: [{ id: 'p', rect: { x: 0, z: 0, w: 4, d: 4 }, height: 3 }],
+  corridors: [],
+  props: [],
+  torches: [],
+  spawns: [],
+  doors: [],
+  stairs: [],
+};
+const levelSpec = scenario?.level ?? PLACEHOLDER_LEVEL;
 
 // --- Player entity (HP + buffs + passives live in the world) ---
 // Spawn BEFORE buildLevel so enemies can already query player state during init.
@@ -929,7 +948,7 @@ function handleAutostart(): boolean {
 
   clearSave();
   if (depth === 1) {
-    LEVELS['starter'] = buildStarterChamber(LEVEL_1.id);
+    LEVELS['starter'] = buildStarterChamber('depth-1');
     startNewRun('starter', { seed: Number.isFinite(seed as number) ? seed : undefined });
     recordRunStart();
     resetRunDiscoveries();
@@ -1083,8 +1102,8 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   });
 } else if (scenario) {
   // Debug scenario — bypass title. Scenario may override the level
-  // spec or use the default LEVEL_1.
-  const floorId = scenario.level?.id ?? LEVEL_1.id;
+  // spec or use the procgen depth-1 fallback.
+  const floorId = scenario.level?.id ?? 'depth-1';
   if (scenario.level) LEVELS[scenario.level.id] = scenario.level;
   setSlot('weapon', ITEMS['rusted-sword']);
   // Don't pop the safe-room transition card when a scenario drops the
@@ -1211,8 +1230,8 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     onDescend() {
       clearSave();
       // First-ever run gets the tutorial chamber; everyone else lands
-      // straight in LEVEL_1. "Ever attempted a run" is tracked in
-      // meta-state and survives across saves/deaths.
+      // straight in procgen depth-1. "Ever attempted a run" is tracked
+      // in meta-state and survives across saves/deaths.
       //
       // Dev: ?tutorial=1 forces the tutorial path regardless of
       // meta-state, so you can iterate on the tutorial chamber
@@ -1225,7 +1244,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       // altars, one weapon each. The chamber's stair-target depends
       // on whether this is also the player's first-ever run (then
       // tutorial after picking; otherwise straight to depth-1).
-      const nextAfterStarter = wantTutorial ? 'tutorial' : LEVEL_1.id;
+      const nextAfterStarter = wantTutorial ? 'tutorial' : 'depth-1';
       LEVELS['starter'] = buildStarterChamber(nextAfterStarter);
       startNewRun('starter');
       recordRunStart();
@@ -1282,11 +1301,11 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       if (!s) {
         // Save vanished between title render + click. Fall back to fresh.
         clearSave();
-        startNewRun(LEVEL_1.id);
+        startNewRun('depth-1');
         recordRunStart();
         resetRunDiscoveries();
         applyState(null);
-        startRun(LEVEL_1.id, 1);
+        startRun('depth-1', 1);
         return;
       }
       adoptSave(s);

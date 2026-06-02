@@ -200,7 +200,7 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   let s = (seed * 2654435761) >>> 0;
   const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
 
-  const { map: populated, bossSpawns: bossCells } = populateTemplate(
+  const { map: populated, spawns: cellSpawns } = populateTemplate(
     vault.map, depth, rand, encounterFor(vault),
   );
   const ceil = ceilingFor(vault, depth, 1);
@@ -231,17 +231,17 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
       }
     }
   }
-  // Boss spawns extracted from B-tiles — same cell-to-world math as
-  // the composer; preview has no placement offset so just centre on
-  // the vault's grid.
-  if (bossCells.length) {
+  // X-roll + B-boss spawns from the populated template — same cell-
+  // to-world math as the composer; preview has no placement offset
+  // so just centre on the vault's grid.
+  if (cellSpawns.length) {
     const W = vault.map[0]?.length ?? 0;
     const D = vault.map.length;
-    for (const bc of bossCells) {
+    for (const cs of cellSpawns) {
       previewSpawns.push({
-        enemyId: bc.enemyId,
-        x: bc.col + 0.5 - W / 2,
-        z: bc.row + 0.5 - D / 2,
+        enemyId: cs.enemyId,
+        x: cs.col + 0.5 - W / 2,
+        z: cs.row + 0.5 - D / 2,
         roomId: 'vault-0',
       });
     }
@@ -428,7 +428,7 @@ export function composeFloor(
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
     roomVaults[pv.roomId] = pv.vault.id;
-    const { map: populated, bossSpawns: bossCells } = populateTemplate(
+    const { map: populated, spawns: cellSpawns } = populateTemplate(
       pv.vault.map, depth, rand, encounterFor(pv.vault),
     );
     const ceil = ceilingFor(pv.vault, depth, i);
@@ -467,19 +467,19 @@ export function composeFloor(
     }
     if (sub.extraWalls) extraWalls.push(...sub.extraWalls);
 
-    // Boss spawns extracted from B-tiles. Cell (col, row) → world
-    // coords via the same math parseTileMap uses (vault centred on
-    // its own midpoint, then translated by the vault's placement
-    // offset). The vault has its own room id; attribute the boss
-    // there so room-clear gating + boss-bar engagement work.
-    if (bossCells.length) {
+    // X-roll + B-boss spawns extracted from the populated template.
+    // Cell (col, row) → world coords via the same math parseTileMap
+    // uses (vault centred on its own midpoint, then translated by
+    // the vault's placement offset). Attribute every spawn to the
+    // vault's room so room-clear gating works.
+    if (cellSpawns.length) {
       const W = pv.vault.map[0]?.length ?? 0;
       const D = pv.vault.map.length;
-      for (const bc of bossCells) {
+      for (const cs of cellSpawns) {
         spawns.push({
-          enemyId: bc.enemyId,
-          x: bc.col + 0.5 - W / 2 + pv.offsetX,
-          z: bc.row + 0.5 - D / 2 + pv.offsetZ,
+          enemyId: cs.enemyId,
+          x: cs.col + 0.5 - W / 2 + pv.offsetX,
+          z: cs.row + 0.5 - D / 2 + pv.offsetZ,
           roomId: pv.roomId,
         });
       }

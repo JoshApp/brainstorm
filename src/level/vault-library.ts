@@ -180,10 +180,11 @@ const COMBAT_PILLARS: Vault = {
 const COMBAT_CHOKE: Vault = {
   id: 'combat-choke',
   tags: ['combat'],
+  // Map is 10 cols × 8 rows → vault-local x ∈ [-5, +5], z ∈ [-4, +4].
   map: [
     '##########',
     '#...*....#',
-    '#.X....Y.#',
+    '#.X......#',
     '#........#',
     '#.X......#',
     '#.X......#',
@@ -191,6 +192,12 @@ const COMBAT_CHOKE: Vault = {
     '##########',
   ],
   minDepth: 2,
+  props: [
+    // The acolyte that anchored this room — specific spot, kept as
+    // a fixed spawn now that per-enemy chars are gone. Original
+    // cell (7, 2) → vault-local (2.5, -1.5).
+    { kind: 'spawn', enemyId: 'acolyte', x: 2.5, z: -1.5 },
+  ],
 };
 
 const COMBAT_HALL: Vault = {
@@ -440,12 +447,13 @@ const ENCOUNTER_RITUAL: Vault = {
 const ENCOUNTER_PRISON: Vault = {
   id: 'encounter-prison',
   tags: ['encounter'],
+  // Map is 12 cols × 9 rows → vault-local x ∈ [-6, +6], z ∈ [-4.5, +4.5].
   map: [
     '############',
     '#....*.....#',
     '#.P......P.#',
     '#..........#',
-    '#..W.....c.#',
+    '#........c.#',
     '#..........#',
     '#.P......P.#',
     '#....*.....#',
@@ -454,6 +462,12 @@ const ENCOUNTER_PRISON: Vault = {
   minDepth: 2,   // wraith is a real threat — keep off depth 1
   weight: 1,
   torchTint: TORCH_BLOOD,
+  // The lone wraith guardian — specific mob, specific spot, no longer
+  // a 'W' char in the ASCII. The chest at row 4 col 9 stays as 'c'
+  // pending the decor → props migration.
+  props: [
+    { kind: 'spawn', enemyId: 'wraith', x: -3.5, z: -0.5 },
+  ],
 };
 
 // Arena encounter — the lock-on-enter test. The 'D' door starts
@@ -478,17 +492,18 @@ const ENCOUNTER_ARENA: Vault = {
   // The chest is declared as a PROP (not a 'c' tile) so we can ask
   // for the iron tier — the arena reward should LOOK like more than
   // a roadside supply box.
+  // Map is 14 cols × 12 rows → vault-local x ∈ [-7, +7], z ∈ [-6, +6].
   map: [
     '##############',
     '#....*....*..#',
     '#............#',
     '#............#',
     '#####DDD######',
-    '#.G........G.#',
     '#............#',
     '#............#',
     '#............#',
-    '#.G........G.#',
+    '#............#',
+    '#............#',
     '#....*....*..#',
     '##############',
   ],
@@ -497,6 +512,13 @@ const ENCOUNTER_ARENA: Vault = {
   torchTint: TORCH_BLOOD,
   props: [
     { kind: 'chest', x: 0, z: 1.5, tier: 'iron', facing: { kind: 'wall-away' } },
+    // Two pairs of ghoul guardians, specific spots — no longer 'G'
+    // chars in the ASCII (per-enemy chars are gone). Original cells:
+    // (2,5) (11,5) (2,9) (11,9) → vault-local (-4.5,-0.5) etc.
+    { kind: 'spawn', enemyId: 'ghoul', x: -4.5, z: -0.5 },
+    { kind: 'spawn', enemyId: 'ghoul', x:  4.5, z: -0.5 },
+    { kind: 'spawn', enemyId: 'ghoul', x: -4.5, z:  3.5 },
+    { kind: 'spawn', enemyId: 'ghoul', x:  4.5, z:  3.5 },
   ],
 };
 
@@ -634,10 +656,10 @@ const ENCOUNTER_NEST: Vault = {
     '#.....*......#',
     '#............#',
     '######%%######',   // cobweb gate (2-wide) — cut it to enter the nest
-    '#..N......N..#',
     '#............#',
-    '#.....L......#',
-    '#..N......N..#',
+    '#............#',
+    '#............#',
+    '#............#',
     '#.....c......#',
     '#.....*......#',
     '##############',
@@ -648,11 +670,19 @@ const ENCOUNTER_NEST: Vault = {
   // Guaranteed corner webs so the nest reads webbed (clutter's ambient
   // webs are sparse). Vault-local coords: centre = (0,0). Slung high
   // into the four chamber corners, hubs facing inward.
+  // Map is 14 cols × 11 rows → vault-local x ∈ [-7, +7], z ∈ [-5.5, +5.5].
   props: [
     { kind: 'model', model: COBWEB_CORNER, x: -5.5, y: 2.2, z: -1, rotY:  Math.PI * 0.25 },
     { kind: 'model', model: COBWEB_CORNER, x:  5.5, y: 2.2, z: -1, rotY:  Math.PI * 0.75 },
     { kind: 'model', model: COBWEB_CORNER, x: -5.5, y: 2.2, z:  4, rotY: -Math.PI * 0.25 },
     { kind: 'model', model: COBWEB_CORNER, x:  5.5, y: 2.2, z:  4, rotY: -Math.PI * 0.75 },
+    // Set-piece spawns — specific mobs in specific corners. Original
+    // cells: 4 spider Ns (3,4)(10,4)(3,7)(10,7) + 1 skeleton L (6,6).
+    { kind: 'spawn', enemyId: 'spider', x: -3.5, z: -1.5 },
+    { kind: 'spawn', enemyId: 'spider', x:  3.5, z: -1.5 },
+    { kind: 'spawn', enemyId: 'spider', x: -3.5, z:  1.5 },
+    { kind: 'spawn', enemyId: 'spider', x:  3.5, z:  1.5 },
+    { kind: 'spawn', enemyId: 'skeleton', x: -0.5, z: 0.5 },
   ],
 };
 
