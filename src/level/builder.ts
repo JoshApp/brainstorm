@@ -1122,6 +1122,7 @@ export function buildLevel(
     const m4 = new THREE.Matrix4();
     for (const w of spec.extraWalls) {
       const H = w.height ?? defaultH;
+      const baseY = w.baseY ?? 0;
       const dx = w.bx - w.ax;
       const dz = w.bz - w.az;
       const len = Math.hypot(dx, dz);
@@ -1130,10 +1131,12 @@ export function buildLevel(
       // X-running wall faces ±Z (yaw 0); Z-running faces ±X (yaw π/2).
       const yaw = Math.abs(dz) < Math.abs(dx) ? 0 : Math.PI / 2;
       m4.makeRotationY(yaw);
-      m4.setPosition((w.ax + w.bx) / 2, H / 2, (w.az + w.bz) / 2);
+      m4.setPosition((w.ax + w.bx) / 2, baseY + H / 2, (w.az + w.bz) / 2);
       geo.applyMatrix4(m4);
       extraGeos.push(geo);
-      wallSegments.push({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz });
+      // Elevated segments are lintels (doorway caps) — visual only. The gap
+      // below them must stay walkable, so they get NO collision segment.
+      if (baseY <= 0.01) wallSegments.push({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz });
     }
     if (extraGeos.length > 0) {
       const merged = mergeGeometries(extraGeos, false);
@@ -1265,6 +1268,8 @@ export function buildLevel(
       prop.rotY ?? 0,
       prop.color,
       bossRoomId,
+      prop.width,
+      prop.height,
     );
   }
 

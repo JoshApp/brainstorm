@@ -13,22 +13,29 @@
 
 import type { ModelSpec, Vec2 } from '../ecs/model-types';
 
-// Doorway-sized panel: 2.6m wide × 2.8m tall. Slight irregular top
-// edge so it doesn't read as a perfect quad.
-const PANEL_SHAPE: Vec2[] = [
-  [-1.30, 0.00],
-  [ 1.30, 0.00],
-  [ 1.32, 2.65],
-  [ 0.80, 2.78],
-  [ 0.20, 2.72],
-  [-0.40, 2.78],
-  [-1.00, 2.70],
-  [-1.32, 2.62],
-];
+// Doorway curtain silhouette, built to fill a given opening (halfWidth ×
+// height) with a slightly irregular top edge so it doesn't read as a
+// perfect quad. MUST span its doorway: a curtain narrower/shorter than the
+// carved gap (a) looks wrong and (b) lets a tap-raycast slip PAST it to
+// whatever boss is dormant behind it — which the tap resolver then reads as
+// "attack the enemy" instead of "open the gate".
+function panelShape(halfW: number, h: number): Vec2[] {
+  return [
+    [-halfW,        0.00],
+    [ halfW,        0.00],
+    [ halfW * 1.01, h * 0.95],
+    [ halfW * 0.62, h * 1.00],
+    [ halfW * 0.15, h * 0.97],
+    [-halfW * 0.31, h * 1.00],
+    [-halfW * 0.77, h * 0.97],
+    [-halfW * 1.01, h * 0.94],
+  ];
+}
 
-export function bossMistModel(tint: number): ModelSpec {
+export function bossMistModel(tint: number, halfWidth = 1.7, height = 4.6): ModelSpec {
+  const shape = panelShape(halfWidth, height);
   return {
-    id: `boss-mist-${tint.toString(16)}`,
+    id: `boss-mist-${tint.toString(16)}-${Math.round(halfWidth * 10)}x${Math.round(height * 10)}`,
     materials: {
       // Additive emissive — the panel GLOWS as a vertical curtain
       // of light rather than just being a tinted translucent slab.
@@ -62,10 +69,10 @@ export function bossMistModel(tint: number): ModelSpec {
     parts: [
       // Main glowing curtain — single extruded panel, thin in Z so
       // it reads as a wall not a slab. depth 0.04m.
-      { name: 'front', parent: 'rig', kind: 'extrude', pos: [0, 0, 0], shape: PANEL_SHAPE, depth: 0.04, mat: 'mist' },
+      { name: 'front', parent: 'rig', kind: 'extrude', pos: [0, 0, 0], shape, depth: 0.04, mat: 'mist' },
       // Back ghost — same shape, slightly bigger + offset behind,
       // dimmer. Gives the depth halo.
-      { name: 'back', parent: 'rig', kind: 'extrude', pos: [0, 0, -0.10], rot: [0, 0, 0], scale: [1.05, 1.02, 1], shape: PANEL_SHAPE, depth: 0.02, mat: 'mistBack' },
+      { name: 'back', parent: 'rig', kind: 'extrude', pos: [0, 0, -0.10], rot: [0, 0, 0], scale: [1.05, 1.02, 1], shape, depth: 0.02, mat: 'mistBack' },
     ],
   };
 }

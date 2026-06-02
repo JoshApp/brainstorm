@@ -23,7 +23,8 @@ import type { WalkableRegion, Obstacle } from '../level/walkable';
 //     the authoritative signal, not room-clear) the seal lifts so you can
 //     leave. The mist panel stays as a "cleared this place" marker.
 
-const SEAL_HALF_W = 1.7;       // half-width of the seal across the doorway
+const DEFAULT_WIDTH = 3.4;     // doorway width the curtain fills
+const DEFAULT_HEIGHT = 4.6;    // doorway height the curtain fills
 const SEAL_HALF_D = 0.35;      // thickness through the plane
 const CROSS_EPSILON = 0.05;    // signed-distance flip threshold
 
@@ -34,8 +35,11 @@ export function spawnBossMist(
   rotY: number,
   color: number,
   _bossRoomId: string,
+  width = DEFAULT_WIDTH,
+  height = DEFAULT_HEIGHT,
 ): void {
-  const built = buildModel(bossMistModel(color));
+  const SEAL_HALF_W = width / 2;   // seal spans the full doorway
+  const built = buildModel(bossMistModel(color, SEAL_HALF_W, height));
   built.group.position.copy(pos);
   built.group.rotation.y = rotY;
   scene.add(built.group);
@@ -102,28 +106,21 @@ export function spawnBossMist(
     kickShake(0.14, 0.32);
   }
 
-  const AUTO_OPEN_DIST = 1.0;   // the mist parts right AT the threshold, not 1.4m out
-
   const id = generateEntityId('boss-mist');
   registerInteractable({
     id,
     position: pos.clone(),
     radius: 2.8,
     promptLabel: 'enter the mist',
-    // Explicit interact (tap the gate / press) opens it.
+    // Explicit interact (tap the gate / press E) is the ONLY way through —
+    // a real soulslike commitment, not an auto-open you walk into. The
+    // curtain now fully fills the doorway so the tap-raycast reliably hits
+    // it (rather than slipping past to the dormant boss behind).
     onUse() { openGate(); },
     tick(_dt: number, playerPos: THREE.Vector3) {
+      if (!opened || sealed) return;
       const dx = playerPos.x - pos.x;
       const dz = playerPos.z - pos.z;
-      if (!opened) {
-        // Reliability fallback for mobile (tapping a translucent mist is
-        // finicky): the gate also parts when you walk up to the threshold,
-        // so you're never stuck behind a wall you can't open. The prompt
-        // shows from further out as the telegraph.
-        if (dx * dx + dz * dz <= AUTO_OPEN_DIST * AUTO_OPEN_DIST) openGate();
-        return;
-      }
-      if (sealed) return;
       // Watch for the player crossing to the arena side, then re-seal.
       const d = dx * normal.x + dz * normal.z;
       const sign = d > CROSS_EPSILON ? 1 : d < -CROSS_EPSILON ? -1 : 0;

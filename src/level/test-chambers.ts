@@ -210,9 +210,13 @@ function buildBoilingKing(): LevelSpec {
     // entry strip (south, z≈8) and the arena is north of it. The fog gate
     // fills the doorway, so the seal actually seals (you can't walk around
     // it) and it reads as a real soulslike fog gate, not a panel mid-room.
+    // Flanking walls run FULL room height; a lintel caps the opening so the
+    // door is framed (no empty slot to the ceiling above the mist).
     extraWalls: [
-      { ax: -10, az: 5, bx: -1.7, bz: 5, height: 5.0 },
-      { ax:  1.7, az: 5, bx:  10, bz: 5, height: 5.0 },
+      { ax: -10, az: 5, bx: -1.7, bz: 5, height: 10.0 },
+      { ax:  1.7, az: 5, bx:  10, bz: 5, height: 10.0 },
+      // Lintel: visual-only cap above the 4.6m door opening (no collision).
+      { ax: -1.7, az: 5, bx:  1.7, bz: 5, height: 5.4, baseY: 4.6 },
     ],
     props: [
       // Free-standing braziers ringing the centre so the floor under
@@ -233,7 +237,7 @@ function buildBoilingKing(): LevelSpec {
       // Soulslike fog GATE in the doorway. Walk up, INTERACT to enter; it
       // seals behind you once you cross and lifts when the boss encounter
       // (king + all spawns) is done. King's signature acid-green tint.
-      { kind: 'boss-mist', x: 0, z: 5, rotY: Math.PI, color: 0x8aff44 },
+      { kind: 'boss-mist', x: 0, z: 5, rotY: Math.PI, color: 0x8aff44, width: 3.4, height: 4.6 },
     ],
   }), 10.0);   // tall ceiling — the king is huge + leaps ~4m; a 3.2m roof clips it
 }

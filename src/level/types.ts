@@ -259,7 +259,10 @@ export type PropSpec =
   // via the `color` field. The composer places these automatically
   // on boss floors from the boss vault's `bossMist` declaration; a
   // test chamber can also drop one in its props array directly.
-  | { kind: 'boss-mist'; x: number; z: number; rotY?: number; color: number };
+  // width/height size the curtain to its doorway so it fully fills the
+  // carved gap (a curtain smaller than the opening looks wrong AND lets a
+  // tap-raycast slip past it to the boss behind). Default ~3.4m × 4.6m.
+  | { kind: 'boss-mist'; x: number; z: number; rotY?: number; color: number; width?: number; height?: number };
 
 // ── Cell-bound entities ───────────────────────────────────────────
 // Cell-bound authoring (vault.cellProps) stores entries keyed by
@@ -462,8 +465,14 @@ export type LevelSpec = {
    * Used by the tile-map parser to express interior walls (between '#'
    * cells and walkable cells). Each segment becomes a rendered wall
    * plane AND a collision segment. Segments must be axis-aligned.
+   *
+   * `baseY` lifts the plane off the floor — used for a LINTEL across the
+   * top of a doorway. An elevated segment (baseY > 0) is VISUAL ONLY (no
+   * collision): the gap below it stays walkable so you can pass through
+   * the door, but the opening is framed instead of an empty slot to the
+   * ceiling.
    */
-  extraWalls?: Array<{ ax: number; az: number; bx: number; bz: number; height?: number }>;
+  extraWalls?: Array<{ ax: number; az: number; bx: number; bz: number; height?: number; baseY?: number }>;
   /**
    * Chasm voids — rectangular floor holes the player can't cross (the floor
    * is cut, an edge barrier blocks entry, and drop geometry shows the abyss).

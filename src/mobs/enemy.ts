@@ -137,6 +137,9 @@ export interface Enemy extends Damageable {
   dying: boolean;
   /** Phases through obstacles (props). Walls still block. Ghost flag. */
   phasing: boolean;
+  /** Inert behind its fog gate until the player commits — can't perceive,
+   *  can't be tap-attacked (the tap should reach the gate, not the boss). */
+  dormant: boolean;
   hp: number;
   /** Spec-declared base HP. Useful for hp/max ratios in HUD/observation. */
   maxHp: number;
@@ -430,6 +433,7 @@ export function createEnemy(
   // Perception state. lastSeenPos tracks the last known XZ of the player
   // for searching. Updated each frame the enemy currently has LOS.
   let aggroed = false;
+  let dormantLocal = false;   // mirrored to the public `dormant` getter
   let timeSinceLOS = 0;             // seconds since enemy last had LOS to player
   const homePos = position.clone();  // post the enemy returns to when calm
   // Capture spawn yaw as "home yaw" so idle scan / returning faces back the
@@ -1409,6 +1413,7 @@ export function createEnemy(
     // Gated on the fog wall existing so a fog-less boss can't deadlock
     // (it would never engage without the cross trigger).
     const dormant = !!spec.dormantUntilEngaged && levelHasFogWall() && !isBossEncounterEngaged();
+    dormantLocal = dormant;
     if (dormant) {
       aggroed = false;
       if (state !== 'idle') { state = 'idle'; phaseTimer = 0; }
@@ -1836,6 +1841,9 @@ export function createEnemy(
     hitRadius: spec.hitRadius ?? 0,
     noPlayerCollision: !!spec.noPlayerCollision,
     phasing: !!spec.phasing,
+    get dormant() {
+      return dormantLocal;
+    },
     maxHp: spec.hp,
     get alive() {
       return aliveLocal;

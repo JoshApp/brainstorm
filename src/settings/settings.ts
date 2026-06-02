@@ -42,7 +42,29 @@ export interface Settings {
    *  the current layout) ships today — the selector is a seam for
    *  alternate schemes (e.g. fixed-stick, swipe-move) we'll add later. */
   controlScheme: 'default';
+  /** Dynamic-shadow quality. PointLight shadows are the most expensive
+   *  thing in the frame on mobile (each caster re-renders the scene as a
+   *  cube map), so this is a deliberate, capped quality knob:
+   *    off    — nothing casts. Zero GPU cost (the current baseline).
+   *    hero   — only the player's lamp casts. One shadow that travels
+   *             with you; cheapest real shadow.
+   *    single — only the nearest world light (a wall torch / bonfire)
+   *             casts, throwing the room across the floor.
+   *    all    — lamp + the few nearest world lights cast. Richest, dearest.
+   *  The caster COUNT is constant within a mode so the light pool never
+   *  triggers a per-frame shader recompile (see setShadowMode). */
+  shadows: ShadowMode;
 }
+
+export type ShadowMode = 'off' | 'hero' | 'single' | 'all';
+
+/** Source of truth for the SHADOWS selector in the graphics settings. */
+export const SHADOW_MODES: { id: ShadowMode; label: string }[] = [
+  { id: 'off',    label: 'Off' },
+  { id: 'hero',   label: 'Hero — lamp only' },
+  { id: 'single', label: 'Single — nearest light' },
+  { id: 'all',    label: 'All — nearby lights' },
+];
 
 /** Selectable touch control schemes. One entry for now; the list is the
  *  source of truth for the settings dropdown. */
@@ -63,6 +85,10 @@ const DEFAULTS: Settings = {
   debugMode: false,
   perfMeter: false,
   controlScheme: 'default',
+  // 'hero' by default: a single lamp-cast shadow is cheap and immediately
+  // sells the torchlit-dungeon feel. Drop to 'off' on a struggling phone,
+  // crank to 'single'/'all' on desktop or a strong device.
+  shadows: 'hero',
 };
 
 let current: Settings = load();
