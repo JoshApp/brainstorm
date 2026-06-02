@@ -97,20 +97,28 @@ test('no archway chokes a passage below the player', () => {
   }
 });
 
-test('no column-archway crowds a stair (would block the approach)', () => {
-  // The stairwell footprint already fills most of a small exit room; a
-  // collision column at its mouth can pinch the only way around to the
-  // stair's interaction spot below player-width (the d4-0wgr soft-lock).
-  // Stair-room mouths must be collision-free doorframes — assert no archway
-  // with collision lands near a stair.
+test('no column-archway on the perimeter of a stair room', () => {
+  // A collision column at a STAIR room's mouth can pinch the path around the
+  // stairwell to the interaction spot below player-width (the d4-0wgr
+  // soft-lock). The fix doorframes every opening of a stair-containing room,
+  // so assert no column-archway sits on such a room's edge. (A column-archway
+  // in a NEIGHBOUR a few metres away is fine — that's why the old crude
+  // distance check false-positived once stairs moved to back walls.)
+  const onPerimeter = (px: number, pz: number, r: { x: number; z: number; w: number; d: number }) => {
+    const onV = (Math.abs(px - (r.x - r.w / 2)) < 0.4 || Math.abs(px - (r.x + r.w / 2)) < 0.4)
+      && pz >= r.z - r.d / 2 - 0.4 && pz <= r.z + r.d / 2 + 0.4;
+    const onH = (Math.abs(pz - (r.z - r.d / 2)) < 0.4 || Math.abs(pz - (r.z + r.d / 2)) < 0.4)
+      && px >= r.x - r.w / 2 - 0.4 && px <= r.x + r.w / 2 + 0.4;
+    return onV || onH;
+  };
   for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
     const spec = generateFloor(d, s);
-    const stairs = spec.stairs ?? [];
+    const stairRooms = spec.rooms.filter((r) => !r.logicalOnly && (spec.stairs ?? []).some((st) =>
+      Math.abs(st.x - r.rect.x) <= r.rect.w / 2 && Math.abs(st.z - r.rect.z) <= r.rect.d / 2));
     for (const p of spec.props as Array<{ _dbg?: string; x: number; z: number; collision?: unknown[] }>) {
       if (p._dbg !== 'archway' || !p.collision) continue;
-      for (const st of stairs) {
-        const dist = Math.hypot(p.x - st.x, p.z - st.z);
-        assert.ok(dist > 3.5, `depth ${d} seed ${s}: column-archway ${dist.toFixed(1)}m from a stair (should be a doorframe)`);
+      for (const r of stairRooms) {
+        assert.ok(!onPerimeter(p.x, p.z, r.rect), `depth ${d} seed ${s}: column-archway on a stair room's edge (should be a doorframe)`);
       }
     }
   }
