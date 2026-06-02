@@ -14,22 +14,39 @@ const RAY_VIOLET = godRay({ tint: 0xa080ff });
 // Vault library — Pass A (variety) + Pass B (atmosphere).
 //
 // Tile dictionary (canonical list in src/level/tilemap.ts):
-//   #  wall      .  floor    S  player spawn   /  stairs DOWN
-//   o  door      O  sealed door (clear to open)   D  arena door (slams on enter)
-//   P  pillar    A  altar    c  chest          C  corpse
-//   F  fountain  ^  spike trap
-//   T  torch N   t  torch S  <  torch W       >  torch E
-//   G  ghoul     R  rat      K  skirmisher    W  wraith   Y  acolyte
-//   M  stoneguard (slow armoured tank)
-//   Z  ooze (splits in two on death)
-//   X  random enemy (composer fills depth-appropriate)   B  boss slot
 //
-// Each vault may also declare a `props` array of float-coord
-// placements (vault-local coordinates, vault centre = (0, 0)) for
-// things the 1m grid can't express: rotated fountains, off-grid
-// altars, decorative models, atmospheric floor glows, hint triggers.
-// The composer translates them to world space when stitching the
-// floor.
+//   STRUCTURE + SLOTS — what ASCII is for. Specific data goes to
+//   the `props` array (see below).
+//     #  wall          .  floor          ,  corridor floor
+//     S  player spawn  /  stairs DOWN
+//     o  door          O  sealed door (clears with room)
+//     D  arena door (slams on enter)
+//     X  rolled enemy (procgen picks from depth/encounter pack)
+//     B  boss slot (resolves to the act's bossId via vault-compose)
+//     $  optional loot (rolls chest-or-empty per slot)
+//     ?  random event (trap / fountain / altar / nothing)
+//     ^  spike trap (hazard placed deterministically)
+//     *  LIGHT — defaults to a wall-mounted torch on the nearest
+//        wall (auto-detected). For sub-cell precision, per-torch
+//        tint, intensity, or fixture kind, drop a TorchSpec into
+//        the vault's `torches?: TorchSpec[]` array instead.
+//
+//   LEGACY decor (still parsed, please migrate to props on touch):
+//     P pillar · A altar · F fountain · c chest · C corpse
+//     v vase · V vase-cluster
+//   LEGACY specific enemies (deprecated for vaults; LEVEL_1/2 still
+//   use them — those move when the hand-authored levels migrate):
+//     G ghoul · R rat · K skirmisher · W wraith · Y acolyte ·
+//     Z ooze · Q acid-spitter · M stoneguard · H defiler ·
+//     L skeleton · N spider · I sump-wisp · J carrion-hound ·
+//     E plague-spore · U lasher · m pit-moth · b burrower
+//
+// Each vault may declare a `props` array of vault-local-coord
+// placements for anything specific: spawn props for hand-placed
+// mobs ({kind:'spawn', enemyId, x, z}), torches with precise
+// position/tint/fixture, chests with set loot tier, model props,
+// prop groups. The composer translates them to world space when
+// stitching the floor.
 
 // Per-vault torch tint constants. The room's MOOD comes from
 // these now, not from a floor-glow spotlight: a treasure chamber
@@ -59,11 +76,11 @@ const FOYER_SMALL: Vault = {
   // diagonally opposed; the bonfire carries the rest of the warmth.
   map: [
     '##########',
-    '#..T.....#',
+    '#..*.....#',
     '#........#',
     '#...S....#',
     '#........#',
-    '#.....T..#',
+    '#.....*..#',
     '##########',
   ],
   props: [
@@ -78,7 +95,7 @@ const FOYER_PILLAR: Vault = {
   tags: ['start'],
   map: [
     '############',
-    '#....T.....#',
+    '#....*.....#',
     '#.P......P.#',
     '#..........#',
     '#....S.....#',
@@ -101,11 +118,11 @@ const FOYER_ALCOVE: Vault = {
   // light gradient rather than four symmetric pools.
   map: [
     '############',
-    '#..T.......#',
+    '#..*.......#',
     '#..........#',
     '#..C..S..C.#',
     '#..........#',
-    '#.......T..#',
+    '#.......*..#',
     '############',
   ],
   props: [
@@ -127,13 +144,13 @@ const COMBAT_OPEN: Vault = {
   // so dark-adapt has somewhere to engage.
   map: [
     '############',
-    '#..T.......#',
+    '#..*.......#',
     '#v........v#',
     '#....X.....#',
     '#....$.....#',
     '#..X....X..#',
     '#.........v#',
-    '#.......T..#',
+    '#.......*..#',
     '############',
   ],
   // $ = optional loot for clearing — sometimes a chest, sometimes nothing.
@@ -148,13 +165,13 @@ const COMBAT_PILLARS: Vault = {
   // most of the room past the pillars stays dim.
   map: [
     '##############',
-    '#....T.......#',
+    '#....*.......#',
     '#.P........P.#',
     '#....X.......#',
     '#............#',
     '#.....X......#',
     '#.P........P.#',
-    '#.........T..#',
+    '#.........*..#',
     '##############',
   ],
   torchTint: TORCH_VIOLET,
@@ -165,12 +182,12 @@ const COMBAT_CHOKE: Vault = {
   tags: ['combat'],
   map: [
     '##########',
-    '#...T....#',
+    '#...*....#',
     '#.X....Y.#',
     '#........#',
     '#.X......#',
     '#.X......#',
-    '#...t....#',
+    '#...*....#',
     '##########',
   ],
   minDepth: 2,
@@ -189,7 +206,7 @@ const COMBAT_HALL: Vault = {
   // colonnade.
   map: [
     '################',
-    '#..T..........T#',
+    '#..*..........*#',
     '#..............#',
     '#.P..P..P..P.P.#',
     '#..............#',
@@ -201,7 +218,7 @@ const COMBAT_HALL: Vault = {
     '#..............#',
     '#.P..P..P..P.P.#',
     '#..............#',
-    '#T..........T..#',
+    '#*..........*..#',
     '################',
   ],
   minDepth: 3,
@@ -229,7 +246,7 @@ const COMBAT_ARENA: Vault = {
   // around it. Blood-red wall torches set the tone — no spotlight.
   map: [
     '##############',
-    '#....T....T..#',
+    '#....*....*..#',
     '#............#',
     '#....X.......#',
     '#............#',
@@ -238,7 +255,7 @@ const COMBAT_ARENA: Vault = {
     '#.X........X.#',
     '#.....?......#',
     '#............#',
-    '#....t....t..#',
+    '#....*....*..#',
     '##############',
   ],
   minDepth: 2,
@@ -255,7 +272,7 @@ const COMBAT_DOORS: Vault = {
   // die. Player walks in, the doors lock behind, fight, escape.
   map: [
     '############',
-    '#....T.....#',
+    '#....*.....#',
     'O..........O',
     '#..X....X..#',
     '#..........#',
@@ -263,7 +280,7 @@ const COMBAT_DOORS: Vault = {
     '#..........#',
     '#..X....X..#',
     'O..........O',
-    '#....t.....#',
+    '#....*.....#',
     '############',
   ],
   minDepth: 4,
@@ -285,7 +302,7 @@ const TREASURE_ALTAR: Vault = {
   //     in non-altar rooms)
   map: [
     '##########',
-    '#...t....#',
+    '#...*....#',
     '#........#',
     '#...A....#',
     '#........#',
@@ -303,7 +320,7 @@ const TREASURE_CACHE: Vault = {
   // breakable for coins.
   map: [
     '########',
-    '#..T...#',
+    '#..*...#',
     '#.c..c.#',
     '#.v..v.#',
     '#......#',
@@ -322,7 +339,7 @@ const TREASURE_VAULT: Vault = {
   // baseline; the chest-cache group adds candles + a fallen guard.
   map: [
     '############',
-    '#...T....T.#',
+    '#...*....*.#',
     '#.P......P.#',
     '#...c....c.#',
     '#..........#',
@@ -330,7 +347,7 @@ const TREASURE_VAULT: Vault = {
     '#..........#',
     '#...c....c.#',
     '#.P......P.#',
-    '#...t....t.#',
+    '#...*....*.#',
     '############',
   ],
   minDepth: 5,
@@ -355,12 +372,12 @@ const ENCOUNTER_FOUNTAIN: Vault = {
   // wall torches push pale-cyan to match the basin.
   map: [
     '##########',
-    '#..T.....#',
+    '#..*.....#',
     '#........#',
     '#........#',
     '#........#',
     '#........#',
-    '#..t.....#',
+    '#..*.....#',
     '##########',
   ],
   props: [
@@ -378,13 +395,13 @@ const ENCOUNTER_CORPSES: Vault = {
   // the trap." Authored to look LIVED IN.
   map: [
     '############',
-    '#...T......#',
+    '#...*......#',
     '#.C........#',
     '#.....C....#',
     '#......$...#',
     '#...^......#',
     '#........C.#',
-    '#.....t....#',
+    '#.....*....#',
     '############',
   ],
   minDepth: 2,
@@ -398,7 +415,7 @@ const ENCOUNTER_RITUAL: Vault = {
   // + 4 candles + bone glow). Empty floor around — non-combat.
   map: [
     '############',
-    '#...T...T..#',
+    '#...*...*..#',
     '#..........#',
     '#..........#',
     '#..........#',
@@ -425,13 +442,13 @@ const ENCOUNTER_PRISON: Vault = {
   tags: ['encounter'],
   map: [
     '############',
-    '#....T.....#',
+    '#....*.....#',
     '#.P......P.#',
     '#..........#',
     '#..W.....c.#',
     '#..........#',
     '#.P......P.#',
-    '#....t.....#',
+    '#....*.....#',
     '############',
   ],
   minDepth: 2,   // wraith is a real threat — keep off depth 1
@@ -463,7 +480,7 @@ const ENCOUNTER_ARENA: Vault = {
   // a roadside supply box.
   map: [
     '##############',
-    '#....T....T..#',
+    '#....*....*..#',
     '#............#',
     '#............#',
     '#####DDD######',
@@ -472,7 +489,7 @@ const ENCOUNTER_ARENA: Vault = {
     '#............#',
     '#............#',
     '#.G........G.#',
-    '#....t....t..#',
+    '#....*....*..#',
     '##############',
   ],
   minDepth: 3,
@@ -494,13 +511,13 @@ const ENCOUNTER_BLOOD_ALTAR: Vault = {
   tags: ['encounter'],
   map: [
     '############',
-    '#....T.....#',
+    '#....*.....#',
     '#..........#',
     '#..........#',
     '#..........#',
     '#..........#',
     '#..........#',
-    '#....t.....#',
+    '#....*.....#',
     '############',
   ],
   minDepth: 2,
@@ -530,13 +547,13 @@ const ENCOUNTER_TRAPPED: Vault = {
   tags: ['encounter'],
   map: [
     '##########',
-    '#...T....#',
+    '#...*....#',
     '#^......^#',
     '#........#',
     '#...c....#',
     '#........#',
     '#^......^#',
-    '#...t....#',
+    '#...*....#',
     '##########',
   ],
   weight: 1,
@@ -554,7 +571,7 @@ const BOSS_ANTECHAMBER: Vault = {
   // auto-rotation; descent goes east into the back wall.
   map: [
     '#############',
-    '#....T..T...#',
+    '#....*..*...#',
     '#...........#',
     '#.....B.....#',
     '#...........#',
@@ -576,7 +593,7 @@ const BOSS_CATHEDRAL: Vault = {
   // inside the shrunk walkable rect.
   map: [
     '################',
-    '#....T....T....#',
+    '#....*....*....#',
     '#..............#',
     '#.P..........P.#',
     '#..............#',
@@ -588,7 +605,7 @@ const BOSS_CATHEDRAL: Vault = {
     '#..............#',
     '#....X....X....#',
     '#............./#',
-    '#....t....t....#',
+    '#....*....*....#',
     '################',
   ],
   minDepth: 7,
@@ -614,7 +631,7 @@ const ENCOUNTER_NEST: Vault = {
   tags: ['combat'],
   map: [
     '##############',
-    '#.....T......#',
+    '#.....*......#',
     '#............#',
     '######%%######',   // cobweb gate (2-wide) — cut it to enter the nest
     '#..N......N..#',
@@ -622,7 +639,7 @@ const ENCOUNTER_NEST: Vault = {
     '#.....L......#',
     '#..N......N..#',
     '#.....c......#',
-    '#.....t......#',
+    '#.....*......#',
     '##############',
   ],
   minDepth: 4,
@@ -648,12 +665,15 @@ const EXIT_SIMPLE: Vault = {
   // neighbour, so auto-rotation lands the descent against the wall.
   // The stair's own moonbeam + outline does the colour-anchor work.
   map: [
+    // Enlarged to 10×6 with the stair wall-centred: the 2.56×1.95m stairwell
+    // needs go-around clearance to reach its mouth, or the descent soft-locks
+    // (verified via `npm run reach`). The old 8×4 was too cramped.
     '############',
     '#..........#',
-    '#....T.....#',
+    '#....*.....#',
     '#........./#',
     '#..........#',
-    '#....t.....#',
+    '#....*.....#',
     '#..........#',
     '############',
   ],
@@ -665,7 +685,7 @@ const EXIT_ALCOVE: Vault = {
   tags: ['exit'],
   map: [
     '############',
-    '#....t.....#',
+    '#....*.....#',
     '#..........#',
     '#..........#',
     '#......../.#',
@@ -682,13 +702,13 @@ const EXIT_GRAND: Vault = {
   // Stair descends into the back wall behind the colonnade.
   map: [
     '##############',
-    '#....T....T..#',
+    '#....*....*..#',
     '#.P........P.#',
     '#............#',
     '#............#',
     '#.P........P.#',
     '#......./....#',
-    '#....t....t..#',
+    '#....*....*..#',
     '##############',
   ],
   minDepth: 3,
@@ -709,13 +729,13 @@ const COMBAT_CROSS: Vault = {
   tags: ['combat'],
   map: [
     '############',
-    '####.TT.####',
+    '####.**.####',
     '####....####',
     '#..........#',
     '#.X..X...X.#',
     '#..........#',
     '####....####',
-    '####.tt.####',
+    '####.**.####',
     '############',
   ],
   minDepth: 2,
@@ -734,10 +754,10 @@ const MINESHAFT_GALLERY: Vault = {
   tags: ['combat'],
   map: [
     '##############',
-    '#<..v...v...>#',
+    '#*..v...v...*#',
     '#....XX......#',
     '#......v.....#',
-    '#>..v...v...<#',
+    '#*..v...v...*#',
     '##############',
   ],
   minDepth: 1,
@@ -758,12 +778,12 @@ const ENCOUNTER_OSSUARY: Vault = {
   encounter: { archetype: 'mixed', intensity: 'light' },
   map: [
     '############',
-    '#.C..T..C..#',
+    '#.C..*..C..#',
     '#..........#',
     '#....c.....#',
     '#.X......X.#',
     '#..........#',
-    '#.C..t..C..#',
+    '#.C..*..C..#',
     '############',
   ],
   minDepth: 2,
@@ -780,13 +800,13 @@ const COMBAT_PITS: Vault = {
   encounter: { archetype: 'caster-pack', intensity: 'medium' },
   map: [
     '############',
-    '#..T....T..#',
+    '#..*....*..#',
     '#..........#',
     '#.^..X..^..#',
     '#....^.....#',
     '#.^..X..^..#',
     '#....?.....#',
-    '#..t....t..#',
+    '#..*....*..#',
     '############',
   ],
   minDepth: 3,
@@ -803,7 +823,7 @@ const BOSS_HALL: Vault = {
   tags: ['boss'],
   map: [
     '####################',
-    '#...T..........T...#',
+    '#...*..........*...#',
     '#..................#',
     '#....P........P....#',
     '#..................#',
@@ -817,7 +837,7 @@ const BOSS_HALL: Vault = {
     '#..................#',
     '#....P........P....#',
     '#..................#',
-    '#...t..........t...#',
+    '#...*..........*...#',
     '#........../.......#',
     '####################',
   ],
@@ -838,6 +858,16 @@ const BOSS_HALL: Vault = {
     { kind: 'model', model: GREAT_BRAZIER, x: -5, y: 0, z:  4 },
     { kind: 'model', model: GREAT_BRAZIER, x:  5, y: 0, z:  4 },
   ],
+  // Signature lighting: two king-gold wall sconces flank the boss,
+  // sub-cell-precise (x = ±2.5 — no T-char could land here), brighter
+  // and warmer than the room's blood-tinted ASCII torches. Reads as
+  // "throne-room altar" the moment the player crosses the threshold.
+  // Demonstrates the vault.torches array's sub-cell + per-torch tint
+  // + intensity control that the inline T/t/</> chars can't express.
+  torches: [
+    { x: -2.5, z: -8.6, wall: 'N', height: 2.3, colorTint: TORCH_GOLD, intensityMul: 1.3 },
+    { x:  2.5, z: -8.6, wall: 'N', height: 2.3, colorTint: TORCH_GOLD, intensityMul: 1.3 },
+  ],
 };
 
 // Chasm bridge — a void splits the room; a narrow walkable bridge crosses it
@@ -851,7 +881,7 @@ const CHASM_BRIDGE: Vault = {
   tags: ['combat'],
   map: [
     '################',
-    '#..X.......T...#',
+    '#..X.......*...#',
     '#..............#',
     '#..............#',
     '#..............#',
@@ -860,7 +890,7 @@ const CHASM_BRIDGE: Vault = {
     '#..............#',
     '#..............#',
     '#..............#',
-    '#...t......X...#',
+    '#...*......X...#',
     '################',
   ],
   minDepth: 3,

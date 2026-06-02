@@ -70,6 +70,14 @@ export interface Scenario {
    * applyPlayerBuff / etc.).
    */
   hudOnly?: boolean;
+  /**
+   * In inspect mode: hide every child of currentLevel.root EXCEPT
+   * meshes tagged userData.inspectSubject (the previewed mob /
+   * item / model). Used for subject-only previews (mob-*, item-*,
+   * model-*) where the dungeon room around the subject reads as
+   * noise. Vault previews leave this off — the room IS the subject.
+   */
+  inspectSubjectOnly?: boolean;
   /** Override one or more enemies' state by spawn index. */
   enemyOverrides?: Array<{
     index: number;
@@ -1122,6 +1130,10 @@ export function getScenarioFromUrl(): Scenario | null {
   const itemOverride = params.get('item');
   if (itemOverride) {
     result = { ...result, previewItemId: itemOverride };
+  }
+  const subjectOnlyOverride = params.get('inspectSubjectOnly');
+  if (subjectOnlyOverride !== null) {
+    result = { ...result, inspectSubjectOnly: subjectOnlyOverride === 'true' };
   }
   return result;
 }

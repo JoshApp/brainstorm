@@ -167,7 +167,11 @@ function rollChestLoot(tier: ChestTier, rand: () => number): import('../content/
 // floor automatically — no risk of forgetting to add it here. 'X' is
 // the procgen generic-enemy slot (replaced before parse, but kept
 // walkable as a safety net).
-const STRUCTURAL_FLOOR_CHARS = '.,SoOD/^FCPAcvVTt<>X%';
+// Walkable structural tiles. T t < > (directional torches) deprecated —
+// '*' is the unified light marker now. F C P A c v V (specific decor
+// chars) still here for backwards-compat while vault-library migrates;
+// new vaults should use vault.props instead.
+const STRUCTURAL_FLOOR_CHARS = '.,SoOD/^FCPAcvVX%*';
 const FLOOR_CHARS = new Set([
   ...STRUCTURAL_FLOOR_CHARS.split(''),
   ...ENEMY_BY_CHAR.keys(),
@@ -631,36 +635,22 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
           props.push({ kind: 'spike-trap', x, z, damage: 2 });
           break;
         }
-        case 'T':
-        case 't':
-        case '<':
-        case '>': {
-          // Torch on a specific wall edge of this cell. The
-          // character names a side, but several vaults in the
-          // library use 'T' (north) on cells whose north neighbour
-          // is interior floor — that puts the torch FLOATING in
-          // the middle of the room. We auto-correct: if the named
-          // side has no wall (the next cell is floor), fall back
-          // to whichever adjacent side IS a wall.
-          const requested: 'N' | 'S' | 'W' | 'E' =
-            ch === 'T' ? 'N' :
-            ch === 't' ? 'S' :
-            ch === '<' ? 'W' : 'E';
-          const opp = (s: 'N' | 'S' | 'W' | 'E'): 'N' | 'S' | 'W' | 'E' =>
-            s === 'N' ? 'S' : s === 'S' ? 'N' : s === 'W' ? 'E' : 'W';
+        case '*': {
+          // Generic "light here" — picks the nearest wall automatically.
+          // Replaces the legacy T/t/</> quartet (one char per cardinal
+          // wall) with a single intent-only marker: "I want a light
+          // adjacent to this cell, you figure out which wall." Power
+          // authoring (sub-cell position, custom tint, fixture kind)
+          // lives in vault.torches as a TorchSpec[].
           const sideIsWall = (s: 'N' | 'S' | 'W' | 'E') => {
             const nr = s === 'N' ? r - 1 : s === 'S' ? r + 1 : r;
             const nc = s === 'W' ? c - 1 : s === 'E' ? c + 1 : c;
             return !isFloor(nc, nr);
           };
-          // Try requested → opposite → perpendicular sides.
-          const order: Array<'N' | 'S' | 'W' | 'E'> = [
-            requested, opp(requested),
-            ...(requested === 'N' || requested === 'S'
-              ? (['W', 'E'] as const)
-              : (['N', 'S'] as const)),
-          ];
-          const wall = order.find(sideIsWall);
+          // Priority: N first (most vaults face south, so north walls
+          // are the back wall — sconces there light the room toward
+          // the player). Then E, W, S as fallback.
+          const wall = (['N', 'E', 'W', 'S'] as const).find(sideIsWall);
           if (!wall) break;     // truly interior cell, no wall on any side
           // Offset the torch position ~0.18m INTO the room from
           // the wall plane (which sits 0.5m off the cell centre

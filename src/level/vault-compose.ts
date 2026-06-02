@@ -175,7 +175,9 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   let s = (seed * 2654435761) >>> 0;
   const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
 
-  const populated = populateTemplate(vault.map, depth, rand, encounterFor(vault));
+  const { map: populated, bossSpawns: bossCells } = populateTemplate(
+    vault.map, depth, rand, encounterFor(vault),
+  );
   const ceil = ceilingFor(vault, depth, 1);
   const sub = parseTileMap(populated, {
     id: `vault-preview-${vault.id}`,
@@ -190,23 +192,48 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   });
 
   const props: PropSpec[] = [...sub.props];
+  const previewSpawns = [...sub.spawns];
   if (vault.props) {
     const dims = vaultDims(vault);
     const vaultRect = { x: 0, z: 0, w: dims.w, d: dims.d };
     for (const p of vault.props) {
       if (p.kind === 'group') {
         for (const child of expandGroup(p, vaultRect)) props.push(translateProp(child, 0, 0));
+      } else if (p.kind === 'spawn') {
+        previewSpawns.push({ enemyId: p.enemyId, x: p.x, z: p.z, roomId: p.roomId ?? 'vault-0' });
       } else {
         props.push(translateProp(p, 0, 0));
       }
     }
   }
+  // Boss spawns extracted from B-tiles — same cell-to-world math as
+  // the composer; preview has no placement offset so just centre on
+  // the vault's grid.
+  if (bossCells.length) {
+    const W = vault.map[0]?.length ?? 0;
+    const D = vault.map.length;
+    for (const bc of bossCells) {
+      previewSpawns.push({
+        enemyId: bc.enemyId,
+        x: bc.col + 0.5 - W / 2,
+        z: bc.row + 0.5 - D / 2,
+        roomId: 'vault-0',
+      });
+    }
+  }
+  // Sophisticated torches authored on the vault (offset 0 in
+  // preview — the vault is centred on origin).
+  const previewTorches = vault.torches
+    ? [...sub.torches, ...vault.torches]
+    : sub.torches;
 
   const spec: LevelSpec = {
     ...sub,
     id: `vault-preview-${vault.id}`,
     depth,
     props,
+    spawns: previewSpawns,
+    torches: previewTorches,
     voids: (vault.voids ?? []).map((v) => ({ x: v.x, z: v.z, w: v.w, d: v.d })),
   };
   resolveAllFacings(spec);   // orient declarative-facing props (no full warp/clutter)
@@ -376,7 +403,9 @@ export function composeFloor(
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
     roomVaults[pv.roomId] = pv.vault.id;
-    const populated = populateTemplate(pv.vault.map, depth, rand, encounterFor(pv.vault));
+    const { map: populated, bossSpawns: bossCells } = populateTemplate(
+      pv.vault.map, depth, rand, encounterFor(pv.vault),
+    );
     const ceil = ceilingFor(pv.vault, depth, i);
     const sub = parseTileMap(populated, {
       id: `${opts.id}-${pv.vault.id}`,
@@ -403,6 +432,24 @@ export function composeFloor(
     if (sub.stairs) stairs.push(...sub.stairs);
     if (sub.extraWalls) extraWalls.push(...sub.extraWalls);
 
+    // Boss spawns extracted from B-tiles. Cell (col, row) → world
+    // coords via the same math parseTileMap uses (vault centred on
+    // its own midpoint, then translated by the vault's placement
+    // offset). The vault has its own room id; attribute the boss
+    // there so room-clear gating + boss-bar engagement work.
+    if (bossCells.length) {
+      const W = pv.vault.map[0]?.length ?? 0;
+      const D = pv.vault.map.length;
+      for (const bc of bossCells) {
+        spawns.push({
+          enemyId: bc.enemyId,
+          x: bc.col + 0.5 - W / 2 + pv.offsetX,
+          z: bc.row + 0.5 - D / 2 + pv.offsetZ,
+          roomId: pv.roomId,
+        });
+      }
+    }
+
     if (pv.vault.props) {
       // Vault-local rect for clearance culling — used to drop group
       // children that would clip into a wall.
@@ -419,11 +466,32 @@ export function composeFloor(
             if (tp.kind === 'model') tp._dbg = `group:${p.groupId}@${pv.vault.id}`;
             props.push(tp);
           }
+        } else if (p.kind === 'spawn') {
+          // Spawn-prop: route into the spawns list rather than props
+          // (it's a mob instantiation, not a static mesh). World
+          // coords = vault-local + the vault's placement offset.
+          // Defaults the room id to the vault's room so room-clear
+          // gating attributes the kill correctly.
+          spawns.push({
+            enemyId: p.enemyId,
+            x: p.x + pv.offsetX,
+            z: p.z + pv.offsetZ,
+            roomId: p.roomId ?? pv.roomId,
+          });
         } else {
           const tp = translateProp(p, pv.offsetX, pv.offsetZ);
           if (tp.kind === 'model') tp._dbg = `vault:${pv.vault.id}`;
           props.push(tp);
         }
+      }
+    }
+    // Sophisticated torch placement — translate vault-local coords
+    // to world via the placement offset. Stacks on top of any
+    // T/t/</> chars in the ASCII map (those went through parseTileMap
+    // and are already in sub.torches).
+    if (pv.vault.torches) {
+      for (const t of pv.vault.torches) {
+        torches.push({ ...t, x: t.x + pv.offsetX, z: t.z + pv.offsetZ });
       }
     }
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;

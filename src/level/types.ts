@@ -246,7 +246,13 @@ export type PropSpec =
   // children that would clip into a wall are dropped. Use for
   // atmospheric setpieces (altar-ritual, fountain-shrine, etc.)
   // without forcing every vault to repeat the layout.
-  | { kind: 'group'; groupId: string; x: number; z: number; rotY?: number };
+  | { kind: 'group'; groupId: string; x: number; z: number; rotY?: number }
+  // Specific-mob spawn at a precise sub-cell position. Lets a vault
+  // author drop a particular enemy (boss, mini-boss, theme-pinned
+  // mob) without needing a per-id tile char in the ASCII map — the
+  // tile-char dictionary is finite, this is not. Procgen's boss-slot
+  // expansion (B tile) emits one of these per boss floor.
+  | { kind: 'spawn'; enemyId: string; x: number; z: number; roomId?: string };
 
 /** Wall-mounted lit fixture. Variant picked at emission time from
  *  the wall-fixture pool (torch or wall cresset). All variants share

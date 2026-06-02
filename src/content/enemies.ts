@@ -1083,13 +1083,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'boiling-king': {
     id: 'boiling-king',
     name: 'boiling king',
-    // 'k' is the boss expansion target for the King. 'B' (procgen
-    // boss-slot) gets rewritten to this char in populateTemplate
-    // before parsing. 'k' should NOT be authored directly in vault
-    // maps — bosses are placed via the act's bossId, not by hand.
-    // Without a tileChar here the expansion silently fell back to
-    // 'W' (wraith), spawning the wrong boss for every act.
-    tileChar: 'k',
+    // No tileChar — bosses bypass the ASCII char dictionary
+    // entirely. populateTemplate's B-tile expansion records the
+    // cell coords + boss id; vault-compose converts to a spawn
+    // entry directly. Keeps the 26-uppercase ceiling from biting
+    // as more bosses + named mobs land.
     isBoss: true,
     bossName: 'The Boiling King',
     scale: 2.4,                     // looms — a king slime is BIG

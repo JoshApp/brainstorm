@@ -1,4 +1,4 @@
-import type { PropSpec, TileMap } from './types';
+import type { PropSpec, TileMap, TorchSpec } from './types';
 import type { EncounterSpec } from '../content/encounters';
 
 // Vault system — pre-authored room chunks the procgen composer
@@ -79,4 +79,19 @@ export interface Vault {
    * from its torches, not from a floor spotlight.
    */
   torchTint?: number;
+  /**
+   * Sophisticated torch placement in VAULT-LOCAL coords. The ASCII
+   * chars T/t/</> are the quick path — one default-everything torch
+   * per cell on the indicated wall. When you want sub-cell position,
+   * a specific hex tint, a non-default height, or a different wall
+   * fixture (sconce / candle / cresset), drop a TorchSpec here.
+   *
+   * Both paths feed the same level torches array; sophisticated
+   * torches just bypass the cell-locked default. Use the array when
+   * a vault has signature lighting that defines the room
+   * (gold-tinted sconces flanking a boss altar, blood-red wall
+   * cressets in a ritual chamber). Use the ASCII chars for routine
+   * "two torches in this combat room" placement.
+   */
+  torches?: TorchSpec[];
 }

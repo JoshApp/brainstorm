@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Creator suite (delve CLI + faithful reach) + fix the real stairs soft-lock"
+      },
+      {
+        "tag": "fix",
         "text": "Fix stairs-unreachable soft-lock: stair-room mouths get doorframes"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Hold-to-charge prototype on the sword (touch)"
-      },
-      {
-        "tag": "content",
-        "text": "Separate enemy animation overlays from the AI core in update()"
       }
     ]
   }
