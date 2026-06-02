@@ -177,7 +177,7 @@ export type PropSpec =
   // 'corpse' = a slumped body with a note. Walk up, read it. Pure
   // atmosphere + (later) LLM-pluggable lore. The note text is short
   // and in the in-world grimdark tone.
-  | { kind: 'corpse'; x: number; z: number; rotY?: number; facing?: PropFacing; note: string }
+  | { kind: 'corpse'; x: number; z: number; rotY?: number; facing?: PropFacing; note?: string }
   // 'vase' = small destructible ceramic prop. Takes a hit from
   // the player's swing, shatters into a few stone-shard pieces,
   // and may drop a small reward (gold or potion). Tiny obstacle

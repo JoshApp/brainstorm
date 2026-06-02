@@ -9,6 +9,46 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "content",
+        "text": "Migrate remaining spawn-prop vaults to cellProps"
+      },
+      {
+        "tag": "tune",
+        "text": "Extract inspect-mode into its own module"
+      },
+      {
+        "tag": "fix",
+        "text": "Inspect previews: auto-frame subject, fix lighting, studio backdrop"
+      },
+      {
+        "tag": "content",
+        "text": "Vault format experiment — author same vault in 3 formats"
+      },
+      {
+        "tag": "tune",
+        "text": "Palette & Pass system DRAFT v0 (types only, no runtime)"
+      },
+      {
+        "tag": "tune",
+        "text": "tests"
+      },
+      {
+        "tag": "tune",
+        "text": "Make the pre-push test gate durable: prepare script wires core.hooksPath"
+      },
+      {
+        "tag": "content",
+        "text": "Delete LEVEL_1 + LEVEL_2 + all per-enemy tile-char machinery"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix stair-archway guard: precise (stair-room perimeter), not crude distance"
+      },
+      {
+        "tag": "tune",
+        "text": "Stairs: geometry-aware orientation — back of room, facing the entrance"
+      },
+      {
+        "tag": "content",
         "text": "vault-validate: recognize the '*' light char (post-merge with torch refactor)"
       },
       {
@@ -172,46 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Level gen: vaulted + pitched ceilings (kill the 'flat' feel)"
-      },
-      {
-        "tag": "tune",
-        "text": "Content expansion: 15 new equipment items + Penitent's Vigil set"
-      },
-      {
-        "tag": "content",
-        "text": "Level gen: winding 2D vault placement (corridors turn now)"
-      },
-      {
-        "tag": "tune",
-        "text": "Heal cap, charged-effect system + Howling Edge, three new weapons"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: varied corridor ceiling heights (mine-shaft tunnels vs galleries)"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf meter"
-      },
-      {
-        "tag": "tune",
-        "text": "Ranged auto-aim LOS + rename sword.ts → viewmodel.ts"
-      },
-      {
-        "tag": "tune",
-        "text": "Settings tabs + staff upright + tight ranged aim + moveset all classes"
-      },
-      {
-        "tag": "tune",
-        "text": "Charge ring: thumb-tracking + sweet-spot pulse"
-      },
-      {
-        "tag": "tune",
-        "text": "Sword moveset"
-      },
-      {
-        "tag": "tune",
-        "text": "Sword pilot moveset: directional moves + combo + charge"
       }
     ]
   }

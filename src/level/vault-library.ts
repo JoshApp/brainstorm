@@ -13,40 +13,36 @@ const RAY_VIOLET = godRay({ tint: 0xa080ff });
 
 // Vault library — Pass A (variety) + Pass B (atmosphere).
 //
-// Tile dictionary (canonical list in src/level/tilemap.ts):
+// Tile dictionary (canonical list in src/level/tilemap.ts) — ASCII
+// now holds STRUCTURE + SLOTS only. Everything else (decor, specific
+// mobs, sophisticated torches) lives in vault.cellProps + the rare
+// absolute-coord vault.props.
 //
-//   STRUCTURE + SLOTS — what ASCII is for. Specific data goes to
-//   the `props` array (see below).
-//     #  wall          .  floor          ,  corridor floor
-//     S  player spawn  /  stairs DOWN
-//     o  door          O  sealed door (clears with room)
-//     D  arena door (slams on enter)
-//     X  rolled enemy (procgen picks from depth/encounter pack)
-//     B  boss slot (resolves to the act's bossId via vault-compose)
-//     $  optional loot (rolls chest-or-empty per slot)
-//     ?  random event (trap / fountain / altar / nothing)
-//     ^  spike trap (hazard placed deterministically)
-//     *  LIGHT — defaults to a wall-mounted torch on the nearest
-//        wall (auto-detected). For sub-cell precision, per-torch
-//        tint, intensity, or fixture kind, drop a TorchSpec into
-//        the vault's `torches?: TorchSpec[]` array instead.
+//   #  wall          .  floor          ,  corridor floor
+//   S  player spawn  /  stairs DOWN
+//   o  door          O  sealed door (clears with room)
+//   D  arena door (slams on enter)
+//   X  ROLLED ENEMY  (procgen picks from depth/encounter pack)
+//   B  BOSS SLOT     (resolves to the act's bossId)
+//   $  OPTIONAL LOOT (rolls chest-or-empty per slot)
+//   ?  RANDOM EVENT  (trap / fountain / altar / nothing)
+//   ^  spike trap    (hazard placed deterministically)
+//   *  LIGHT         (wall torch on nearest wall, auto-detected)
+//   %  cobweb gate   (destructible; coalesced into a curtain)
 //
-//   LEGACY decor (still parsed, please migrate to props on touch):
-//     P pillar · A altar · F fountain · c chest · C corpse
-//     v vase · V vase-cluster
-//   LEGACY specific enemies (deprecated for vaults; LEVEL_1/2 still
-//   use them — those move when the hand-authored levels migrate):
-//     G ghoul · R rat · K skirmisher · W wraith · Y acolyte ·
-//     Z ooze · Q acid-spitter · M stoneguard · H defiler ·
-//     L skeleton · N spider · I sump-wisp · J carrion-hound ·
-//     E plague-spore · U lasher · m pit-moth · b burrower
+// Per-cell content (decor, hand-placed mobs, etc.) goes here:
 //
-// Each vault may declare a `props` array of vault-local-coord
-// placements for anything specific: spawn props for hand-placed
-// mobs ({kind:'spawn', enemyId, x, z}), torches with precise
-// position/tint/fixture, chests with set loot tier, model props,
-// prop groups. The composer translates them to world space when
-// stitching the floor.
+//   cellProps: {
+//     '3,2': [{ kind: 'pillar' }, { kind: 'torch', wall: 'N' }],
+//     '5,3': [{ kind: 'spawn', enemyId: 'boiling-king' }],
+//     '6,4': [{ kind: 'chest' }],                  // depth-rolled tier
+//     '7,5': [{ kind: 'chest', tier: 'iron' }],    // forced tier
+//     '8,1': [{ kind: 'pillar', offset: [0.2, 0] }],  // sub-cell nudge
+//   },
+//
+// For things that don't bind to one cell — sub-cell sconces, props
+// between cells — use the absolute-coord vault.props / vault.torches
+// arrays.
 
 // Per-vault torch tint constants. The room's MOOD comes from
 // these now, not from a floor-glow spotlight: a treasure chamber
@@ -96,11 +92,11 @@ const FOYER_PILLAR: Vault = {
   map: [
     '############',
     '#....*.....#',
-    '#.P......P.#',
+    '#..........#',
     '#..........#',
     '#....S.....#',
     '#..........#',
-    '#.P......P.#',
+    '#..........#',
     '############',
   ],
   props: [
@@ -109,6 +105,12 @@ const FOYER_PILLAR: Vault = {
     { kind: 'model', model: BONFIRE, x: 1.5, y: 0, z: 0.5 },
   ],
   torchTint: TORCH_WARM,
+  cellProps: {
+    '2,2': [{ kind: 'pillar' }],
+    '9,2': [{ kind: 'pillar' }],
+    '2,6': [{ kind: 'pillar' }],
+    '9,6': [{ kind: 'pillar' }],
+  },
 };
 
 const FOYER_ALCOVE: Vault = {
@@ -120,7 +122,7 @@ const FOYER_ALCOVE: Vault = {
     '############',
     '#..*.......#',
     '#..........#',
-    '#..C..S..C.#',
+    '#.....S....#',
     '#..........#',
     '#.......*..#',
     '############',
@@ -132,6 +134,10 @@ const FOYER_ALCOVE: Vault = {
     { kind: 'model', model: BONFIRE, x: 1.5, y: 0, z: -0.5 },
   ],
   torchTint: TORCH_AMBER,
+  cellProps: {
+    '3,3': [{ kind: 'corpse' }],
+    '9,3': [{ kind: 'corpse' }],
+  },
 };
 
 // ── COMBAT vaults ─────────────────────────────────────────────────
@@ -145,15 +151,20 @@ const COMBAT_OPEN: Vault = {
   map: [
     '############',
     '#..*.......#',
-    '#v........v#',
+    '#..........#',
     '#....X.....#',
     '#....$.....#',
     '#..X....X..#',
-    '#.........v#',
+    '#..........#',
     '#.......*..#',
     '############',
   ],
   // $ = optional loot for clearing — sometimes a chest, sometimes nothing.
+  cellProps: {
+    '1,2': [{ kind: 'vase' }],
+    '10,2': [{ kind: 'vase' }],
+    '10,6': [{ kind: 'vase' }],
+  },
 };
 
 const COMBAT_PILLARS: Vault = {
@@ -166,15 +177,21 @@ const COMBAT_PILLARS: Vault = {
   map: [
     '##############',
     '#....*.......#',
-    '#.P........P.#',
+    '#............#',
     '#....X.......#',
     '#............#',
     '#.....X......#',
-    '#.P........P.#',
+    '#............#',
     '#.........*..#',
     '##############',
   ],
   torchTint: TORCH_VIOLET,
+  cellProps: {
+    '2,2': [{ kind: 'pillar' }],
+    '11,2': [{ kind: 'pillar' }],
+    '2,6': [{ kind: 'pillar' }],
+    '11,6': [{ kind: 'pillar' }],
+  },
 };
 
 const COMBAT_CHOKE: Vault = {
@@ -213,15 +230,15 @@ const COMBAT_HALL: Vault = {
     '################',
     '#..*..........*#',
     '#..............#',
-    '#.P..P..P..P.P.#',
+    '#..............#',
     '#..............#',
     '#....X....X....#',
     '#..............#',
-    '#.P..P.B..P..P.#',
+    '#......B.......#',
     '#..............#',
     '#....X....X....#',
     '#..............#',
-    '#.P..P..P..P.P.#',
+    '#..............#',
     '#..............#',
     '#*..........*..#',
     '################',
@@ -242,6 +259,22 @@ const COMBAT_HALL: Vault = {
   // PROTOTYPE: a coherent bruiser pack fills the X slots around the boss —
   // a slow armoured grind in the big hall, not a random grab-bag.
   encounter: { archetype: 'bruisers', intensity: 'medium' },
+  cellProps: {
+    '2,3': [{ kind: 'pillar' }],
+    '5,3': [{ kind: 'pillar' }],
+    '8,3': [{ kind: 'pillar' }],
+    '11,3': [{ kind: 'pillar' }],
+    '13,3': [{ kind: 'pillar' }],
+    '2,7': [{ kind: 'pillar' }],
+    '5,7': [{ kind: 'pillar' }],
+    '10,7': [{ kind: 'pillar' }],
+    '13,7': [{ kind: 'pillar' }],
+    '2,11': [{ kind: 'pillar' }],
+    '5,11': [{ kind: 'pillar' }],
+    '8,11': [{ kind: 'pillar' }],
+    '11,11': [{ kind: 'pillar' }],
+    '13,11': [{ kind: 'pillar' }],
+  },
 };
 
 const COMBAT_ARENA: Vault = {
@@ -255,7 +288,7 @@ const COMBAT_ARENA: Vault = {
     '#............#',
     '#....X.......#',
     '#............#',
-    '#.....A......#',
+    '#............#',
     '#............#',
     '#.X........X.#',
     '#.....?......#',
@@ -266,6 +299,9 @@ const COMBAT_ARENA: Vault = {
   minDepth: 2,
   weight: 1,
   torchTint: TORCH_BLOOD,
+  cellProps: {
+    '6,5': [{ kind: 'altar' }],
+  },
 };
 
 const COMBAT_DOORS: Vault = {
@@ -309,13 +345,18 @@ const TREASURE_ALTAR: Vault = {
     '##########',
     '#...*....#',
     '#........#',
-    '#...A....#',
     '#........#',
-    '#c......c#',
+    '#........#',
+    '#........#',
     '#...X....#',
     '##########',
   ],
   torchTint: TORCH_GOLD,
+  cellProps: {
+    '4,3': [{ kind: 'altar' }],
+    '1,5': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '8,5': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+  },
 };
 
 const TREASURE_CACHE: Vault = {
@@ -326,14 +367,21 @@ const TREASURE_CACHE: Vault = {
   map: [
     '########',
     '#..*...#',
-    '#.c..c.#',
-    '#.v..v.#',
     '#......#',
-    '#..c...#',
+    '#......#',
+    '#......#',
+    '#......#',
     '########',
   ],
   minDepth: 3,
   torchTint: TORCH_GOLD,
+  cellProps: {
+    '2,2': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '5,2': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '2,3': [{ kind: 'vase' }],
+    '5,3': [{ kind: 'vase' }],
+    '3,5': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+  },
 };
 
 const TREASURE_VAULT: Vault = {
@@ -345,13 +393,13 @@ const TREASURE_VAULT: Vault = {
   map: [
     '############',
     '#...*....*.#',
-    '#.P......P.#',
-    '#...c....c.#',
     '#..........#',
     '#..........#',
     '#..........#',
-    '#...c....c.#',
-    '#.P......P.#',
+    '#..........#',
+    '#..........#',
+    '#..........#',
+    '#..........#',
     '#...*....*.#',
     '############',
   ],
@@ -365,6 +413,16 @@ const TREASURE_VAULT: Vault = {
     { kind: 'model', model: RAY_GOLD, x: 2.5, y: 0, z: 0, rotY: -0.3 },
   ],
   torchTint: TORCH_GOLD,
+  cellProps: {
+    '2,2': [{ kind: 'pillar' }],
+    '9,2': [{ kind: 'pillar' }],
+    '4,3': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '9,3': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '4,7': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '9,7': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '2,8': [{ kind: 'pillar' }],
+    '9,8': [{ kind: 'pillar' }],
+  },
 };
 
 // ── ENCOUNTER vaults (non-combat) ────────────────────────────────
@@ -401,16 +459,21 @@ const ENCOUNTER_CORPSES: Vault = {
   map: [
     '############',
     '#...*......#',
-    '#.C........#',
-    '#.....C....#',
+    '#..........#',
+    '#..........#',
     '#......$...#',
     '#...^......#',
-    '#........C.#',
+    '#..........#',
     '#.....*....#',
     '############',
   ],
   minDepth: 2,
   torchTint: TORCH_GREEN,
+  cellProps: {
+    '2,2': [{ kind: 'corpse' }],
+    '6,3': [{ kind: 'corpse' }],
+    '9,6': [{ kind: 'corpse' }],
+  },
 };
 
 const ENCOUNTER_RITUAL: Vault = {
@@ -449,11 +512,11 @@ const ENCOUNTER_PRISON: Vault = {
   map: [
     '############',
     '#....*.....#',
-    '#.P......P.#',
     '#..........#',
-    '#........c.#',
     '#..........#',
-    '#.P......P.#',
+    '#..........#',
+    '#..........#',
+    '#..........#',
     '#....*.....#',
     '############',
   ],
@@ -465,7 +528,14 @@ const ENCOUNTER_PRISON: Vault = {
   // coord entry had — should sit at cell (2,4) which is z=0,
   // not z=-0.5.)
   cellProps: {
+    // Wraith guardian + the four pillars that enclose it + the chest
+    // behind. All cell-bound, in reading order top→bottom.
+    '2,2': [{ kind: 'pillar' }],
+    '9,2': [{ kind: 'pillar' }],
     '2,4': [{ kind: 'spawn', enemyId: 'wraith' }],
+    '9,4': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '2,6': [{ kind: 'pillar' }],
+    '9,6': [{ kind: 'pillar' }],
   },
 };
 
@@ -575,7 +645,7 @@ const ENCOUNTER_TRAPPED: Vault = {
     '#...*....#',
     '#^......^#',
     '#........#',
-    '#...c....#',
+    '#........#',
     '#........#',
     '#^......^#',
     '#...*....#',
@@ -583,6 +653,9 @@ const ENCOUNTER_TRAPPED: Vault = {
   ],
   weight: 1,
   torchTint: TORCH_GREEN,
+  cellProps: {
+    '4,4': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+  },
 };
 
 // ── BOSS vaults ───────────────────────────────────────────────────
@@ -620,13 +693,13 @@ const BOSS_CATHEDRAL: Vault = {
     '################',
     '#....*....*....#',
     '#..............#',
-    '#.P..........P.#',
+    '#..............#',
     '#..............#',
     '#......B.......#',
     '#..............#',
-    '#.P....X....P..#',
+    '#......X.......#',
     '#..............#',
-    '#.P..........P.#',
+    '#..............#',
     '#..............#',
     '#....X....X....#',
     '#............./#',
@@ -643,6 +716,14 @@ const BOSS_CATHEDRAL: Vault = {
     { kind: 'model', model: RAY_PALE,   x: -3.5, y: 0, z: 1, rotY: 0.5 },
     { kind: 'model', model: RAY_VIOLET, x:  3.5, y: 0, z: 3, rotY: -0.5 },
   ],
+  cellProps: {
+    '2,3': [{ kind: 'pillar' }],
+    '13,3': [{ kind: 'pillar' }],
+    '2,7': [{ kind: 'pillar' }],
+    '12,7': [{ kind: 'pillar' }],
+    '2,9': [{ kind: 'pillar' }],
+    '13,9': [{ kind: 'pillar' }],
+  },
 };
 
 // Spider nest — a web-gated combat set-piece. The only way in is a
@@ -663,7 +744,7 @@ const ENCOUNTER_NEST: Vault = {
     '#............#',
     '#............#',
     '#............#',
-    '#.....c......#',
+    '#............#',
     '#.....*......#',
     '##############',
   ],
@@ -691,6 +772,8 @@ const ENCOUNTER_NEST: Vault = {
     '3,7':  [{ kind: 'spawn', enemyId: 'spider' }],
     '10,7': [{ kind: 'spawn', enemyId: 'spider' }],
     '6,6':  [{ kind: 'spawn', enemyId: 'skeleton' }],
+    // Reward chest at the back of the swarm.
+    '6,8':  [{ kind: 'chest', facing: { kind: 'wall-away' } }],
   },
 };
 
@@ -739,16 +822,22 @@ const EXIT_GRAND: Vault = {
   map: [
     '##############',
     '#....*....*..#',
-    '#.P........P.#',
     '#............#',
     '#............#',
-    '#.P........P.#',
+    '#............#',
+    '#............#',
     '#......./....#',
     '#....*....*..#',
     '##############',
   ],
   minDepth: 3,
   torchTint: TORCH_PALE,
+  cellProps: {
+    '2,2': [{ kind: 'pillar' }],
+    '11,2': [{ kind: 'pillar' }],
+    '2,5': [{ kind: 'pillar' }],
+    '11,5': [{ kind: 'pillar' }],
+  },
 };
 
 // ── New variety vaults (Pass C) ───────────────────────────────────
@@ -790,10 +879,10 @@ const MINESHAFT_GALLERY: Vault = {
   tags: ['combat'],
   map: [
     '##############',
-    '#*..v...v...*#',
+    '#*..........*#',
     '#....XX......#',
-    '#......v.....#',
-    '#*..v...v...*#',
+    '#............#',
+    '#*..........*#',
     '##############',
   ],
   minDepth: 1,
@@ -803,6 +892,13 @@ const MINESHAFT_GALLERY: Vault = {
   wallVariant: 'braced',   // timber support frames — the mine-shaft read
   // Vermin swarm — light + fast, scaling with depth instead of fixed rats.
   encounter: { archetype: 'swarm', intensity: 'light' },
+  cellProps: {
+    '4,1': [{ kind: 'vase' }],
+    '8,1': [{ kind: 'vase' }],
+    '7,3': [{ kind: 'vase' }],
+    '4,4': [{ kind: 'vase' }],
+    '8,4': [{ kind: 'vase' }],
+  },
 };
 
 // Ossuary — a lore pocket: four corpses (Souls-style notes), a chest in
@@ -814,17 +910,24 @@ const ENCOUNTER_OSSUARY: Vault = {
   encounter: { archetype: 'mixed', intensity: 'light' },
   map: [
     '############',
-    '#.C..*..C..#',
+    '#....*.....#',
     '#..........#',
-    '#....c.....#',
+    '#..........#',
     '#.X......X.#',
     '#..........#',
-    '#.C..*..C..#',
+    '#....*.....#',
     '############',
   ],
   minDepth: 2,
   weight: 1,
   torchTint: TORCH_GREEN,
+  cellProps: {
+    '2,1': [{ kind: 'corpse' }],
+    '8,1': [{ kind: 'corpse' }],
+    '5,3': [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '2,6': [{ kind: 'corpse' }],
+    '8,6': [{ kind: 'corpse' }],
+  },
 };
 
 // Spike gauntlet — a hazard-grid combat room. Spike traps stagger the
@@ -861,7 +964,7 @@ const BOSS_HALL: Vault = {
     '####################',
     '#...*..........*...#',
     '#..................#',
-    '#....P........P....#',
+    '#..................#',
     '#..................#',
     '#..................#',
     '#........X.........#',
@@ -871,7 +974,7 @@ const BOSS_HALL: Vault = {
     '#..X..........X....#',
     '#..................#',
     '#..................#',
-    '#....P........P....#',
+    '#..................#',
     '#..................#',
     '#...*..........*...#',
     '#........../.......#',
@@ -904,6 +1007,12 @@ const BOSS_HALL: Vault = {
     { x: -2.5, z: -8.6, wall: 'N', height: 2.3, colorTint: TORCH_GOLD, intensityMul: 1.3 },
     { x:  2.5, z: -8.6, wall: 'N', height: 2.3, colorTint: TORCH_GOLD, intensityMul: 1.3 },
   ],
+  cellProps: {
+    '5,3': [{ kind: 'pillar' }],
+    '14,3': [{ kind: 'pillar' }],
+    '5,13': [{ kind: 'pillar' }],
+    '14,13': [{ kind: 'pillar' }],
+  },
 };
 
 // Chasm bridge — a void splits the room; a narrow walkable bridge crosses it

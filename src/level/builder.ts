@@ -934,7 +934,7 @@ export function buildLevel(
         minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
       });
     } else if (prop.kind === 'corpse') {
-      spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note);
+      spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note ?? '');
       // No collision — player can step over the body. Walking right up
       // to READ it shouldn't be blocked.
     } else if (prop.kind === 'vase') {

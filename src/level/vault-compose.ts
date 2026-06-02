@@ -1,4 +1,5 @@
 import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec, CellBoundEntity } from './types';
+import { applyProcgenDefaults } from './decor-defaults';
 import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
 import { vaultsForTag, VAULTS } from './vault-library';
@@ -253,7 +254,7 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
 
   // Cell-bound entities (Format C) — preview has no placement
   // offset so the helper routes everything in vault-local space.
-  applyCellProps(vault, 0, 0, 'vault-0', {
+  applyCellProps(vault, 0, 0, 'vault-0', depth, rand, {
     spawns: previewSpawns,
     torches: previewTorches,
     props,
@@ -539,7 +540,7 @@ export function composeFloor(
     // Cell-bound entities (Format C) — torches / spawns / props
     // keyed by ASCII cell, routed to their slots after world-coord
     // translation. See applyCellProps for the dispatch.
-    applyCellProps(pv.vault, pv.offsetX, pv.offsetZ, pv.roomId, { spawns, torches, props });
+    applyCellProps(pv.vault, pv.offsetX, pv.offsetZ, pv.roomId, depth, rand, { spawns, torches, props });
 
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;
     // Chasm voids → world coords (vault-local + the vault's offset).
@@ -1005,6 +1006,8 @@ function applyCellProps(
   offsetX: number,
   offsetZ: number,
   roomId: string,
+  depth: number,
+  rand: () => number,
   out: { spawns: EnemySpawnSpec[]; torches: TorchSpec[]; props: PropSpec[] },
 ): void {
   if (!vault.cellProps) return;
@@ -1043,7 +1046,12 @@ function applyCellProps(
       } else {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { offset: _o, ...rest } = entity;
-        out.props.push({ ...rest, x, z } as PropSpec);
+        // Chests + corpses get procgen defaults filled (depth-rolled
+        // tier/mimic/loot for chests; note/rotY for corpses) so a
+        // bare `{ kind: 'chest' }` cellProps entry behaves the same
+        // as the legacy 'c' tile char did.
+        const propSpec = applyProcgenDefaults({ ...rest, x, z } as PropSpec, depth, rand);
+        out.props.push(propSpec);
       }
     }
   }
