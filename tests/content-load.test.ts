@@ -12,7 +12,7 @@
 // signal we want.
 
 import assert from 'node:assert/strict';
-import { ENEMIES, ENEMY_BY_CHAR, ENEMY_CHAR_BY_ID } from '../src/content/enemies';
+import { ENEMIES } from '../src/content/enemies';
 import { ITEMS } from '../src/content/items';
 import { BUFFS } from '../src/content/buffs';
 import { VAULTS, vaultsForTag } from '../src/level/vault-library';
@@ -29,14 +29,6 @@ test('registries are non-empty', () => {
   assert.ok(Object.keys(ITEMS).length > 0, 'no items');
   assert.ok(Object.keys(BUFFS).length > 0, 'no buffs');
   assert.ok(VAULTS.length > 0, 'no vaults');
-});
-
-test('enemy tile chars are bijective (char <-> id round-trips)', () => {
-  assert.equal(ENEMY_BY_CHAR.size, Object.keys(ENEMY_CHAR_BY_ID).length);
-  for (const [ch, id] of ENEMY_BY_CHAR) {
-    assert.equal(ENEMY_CHAR_BY_ID[id], ch, `char ${ch} -> ${id} doesn't round-trip`);
-    assert.ok(ENEMIES[id], `char ${ch} maps to unknown enemy ${id}`);
-  }
 });
 
 test('every enemy id is internally consistent', () => {

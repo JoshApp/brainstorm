@@ -17,8 +17,13 @@
 
 import assert from 'node:assert/strict';
 import { VAULTS } from '../src/level/vault-library';
-import { ENEMY_BY_CHAR } from '../src/content/enemies';
 import type { Vault } from '../src/level/vault';
+
+// Legacy per-enemy chars still parsed in maps (the dynamic ENEMY_BY_CHAR map
+// was removed — specific mobs now use {kind:'spawn'} props — but a few vaults
+// still carry these chars, and LEVEL_1/2 do too). Mirrors the vault-library
+// dictionary; new mobs don't need a char here.
+const LEGACY_ENEMY = new Set(['G', 'R', 'K', 'W', 'Y', 'Z', 'Q', 'M', 'H', 'L', 'N', 'J', 'E', 'U', 'm', 'b']);
 
 let passed = 0;
 let failed = 0;
@@ -36,7 +41,7 @@ const STRUCTURAL = new Set([
   '?',   // event slot (rolled to trap / fountain / altar / nothing)
   '*',   // light slot (auto-mounted wall torch — the current torch char)
 ]);
-const KNOWN = new Set([...STRUCTURAL, ...ENEMY_BY_CHAR.keys()]);
+const KNOWN = new Set([...STRUCTURAL, ...LEGACY_ENEMY]);
 const isFloorish = (ch: string) => ch !== '#' && ch !== ' ';
 
 function cols(v: Vault): number { return v.map[0].length; }
@@ -126,7 +131,7 @@ test('no enemy spawn sits on a void cell', () => {
     for (let r = 0; r < v.map.length; r++) {
       for (let c = 0; c < v.map[r].length; c++) {
         const ch = v.map[r][c];
-        const isEnemy = ch === 'X' || ch === 'B' || ENEMY_BY_CHAR.has(ch);
+        const isEnemy = ch === 'X' || ch === 'B' || LEGACY_ENEMY.has(ch);
         if (isEnemy) assert.ok(!inVoid(v, c, r), `vault '${v.id}': enemy '${ch}' at (${c},${r}) is over a void`);
       }
     }
