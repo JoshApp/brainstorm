@@ -19,7 +19,11 @@ import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './pla
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setDarkAdapt, setInspectBypass } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setDarkAdapt } from './style/render-target';
+import {
+  enterInspectMode, tickInspectFraming, isInspectActive,
+  INSPECT_AMBIENT, INSPECT_REQUESTED,
+} from './debug/inspect-mode';
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
@@ -103,13 +107,6 @@ const HARNESS_ENABLED =
   new URLSearchParams(window.location.search).get('harness') === '1';
 if (HARNESS_ENABLED) setHarnessPaused(true);
 
-// Inspection snaps (?inspect=true) preview a subject/vault cleanly. Known at
-// boot so we can skip ambient clutter (drifting dust motes) that otherwise
-// floats in front of the subject — the motes live on `scene`, not the level
-// root, so subject-only hiding wouldn't catch them.
-const INSPECT_BOOT =
-  new URLSearchParams(window.location.search).get('inspect') === 'true';
-
 // Debug capture tool: an on-screen CAPTURE button that grabs a rich
 // snapshot during NORMAL play. Enabled by EITHER the ?debug=1 URL flag
 // OR the persisted "DEBUG MODE" setting (toggled in the settings menu).
@@ -166,42 +163,10 @@ scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY);
 scene.add(ambient);
 
-// Inspection mode (vault-preview snaps) — flat bright fill so authored
-// geometry reads regardless of torchlight; overrides dark-adaptation.
-let inspectMode = false;
-// Subject-preview framing is deferred: the level (and its spawned mob meshes)
-// load asynchronously, so the subject doesn't exist when the inspect setup runs
-// synchronously after startRun. These hold the key/rim lights + a pending flag
-// so an 'always' tick can frame the camera and retarget the lights once the
-// subject mesh actually appears in the scene graph. (See the 'inspect-frame'
-// tick.)
-let inspectFramePending = false;
-let inspectKeyLight: THREE.DirectionalLight | null = null;
-let inspectRimLight: THREE.DirectionalLight | null = null;
-
-// Radial-gradient backdrop for subject previews: a lighter pool of light in the
-// centre (where the framed subject sits) falling to near-black at the edges.
-// Gives a near-black mob a brighter ground to read against while keeping the
-// frame dark and grimdark — a flat grey field hid the darkest subjects.
-function makeStudioBackdrop(): THREE.CanvasTexture {
-  const size = 512;
-  const cvs = document.createElement('canvas');
-  cvs.width = cvs.height = size;
-  const g = cvs.getContext('2d')!;
-  // Centre offset slightly below middle — the subject's lower body/feet read
-  // against the brightest part, the way a stage spotlight pools on the floor.
-  const grad = g.createRadialGradient(
-    size / 2, size * 0.58, size * 0.04,
-    size / 2, size * 0.58, size * 0.62);
-  grad.addColorStop(0, '#5b6068');   // pool centre — lifts dark silhouettes
-  grad.addColorStop(0.55, '#3b3e44');
-  grad.addColorStop(1, '#191b1f');   // edges fall to near-black to frame it
-  g.fillStyle = grad;
-  g.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(cvs);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
+// Inspection mode (preview snaps) lives in src/debug/inspect-mode.ts — the
+// studio lighting rig, PSX bypass, backdrop, and subject auto-framing are all
+// owned there. main.ts only calls enterInspectMode()/tickInspectFraming() and
+// asks isInspectActive().
 
 // --- Static surface materials (PS1) ---
 const materials = buildMaterials();
@@ -295,7 +260,7 @@ initLevelLoader({
       ...level.spec.rooms.map((r) => r.rect),
       ...level.spec.corridors.map((r) => r.rect),
     ];
-    if (!INSPECT_BOOT) initDriftingMotes(scene, rectsForMotes, tint);
+    if (!INSPECT_REQUESTED) initDriftingMotes(scene, rectsForMotes, tint);
     // Notify the harness (if booted) that a level is observable. Only
     // fires once — subsequent stair-driven swaps are transparent since
     // observation reads via the same getLevel() getter.
@@ -649,7 +614,7 @@ const SYSTEMS: GameSystem[] = [
     // lift lives in the blit shader (additive shadow-raise). Ambient is a
     // secondary fill (applied during the scene render, so it works there).
     setDarkAdapt(adapt);
-    ambient.intensity = inspectMode ? 1.6 : darkAdaptAmbient();
+    ambient.intensity = isInspectActive() ? INSPECT_AMBIENT : darkAdaptAmbient();
     updateDarkAdaptReadout(lit, adapt, darkAdaptBrightness());
   } },
 
@@ -807,56 +772,10 @@ const SYSTEMS: GameSystem[] = [
     tickLightPool(camera, los);
   } },
 
-  // Deferred subject-preview framing. The subject mesh (a mob, a model) spawns
-  // async after the inspect scenario is applied, so we can't frame it at setup.
-  // Each frame while pending, look for the inspectSubject-tagged objects; once
-  // found, pull the camera back to fill the frame, aim the key/rim lights at
-  // the subject's real centre (a floor mob sits ~0.5m up, not the 1.4m default),
-  // hide the surrounding level geometry, and clear the flag. Frozen scenario, so
-  // a one-shot frame sticks for the snap.
-  { name: 'inspect-frame', phase: 'always', tick() {
-    if (!inspectFramePending) return;
-    const box = new THREE.Box3();
-    scene.traverse((o) => { if (o.userData.inspectSubject) box.expandByObject(o); });
-    if (box.isEmpty()) return;   // subject not spawned yet — retry next frame
-    if (currentLevel?.root) {
-      for (const child of currentLevel.root.children) {
-        const o = child as THREE.Object3D;
-        if (!o.userData.inspectSubject) o.visible = false;
-      }
-    }
-    // Frame by the bounding SPHERE, not the longest box axis: a long, low mob
-    // (e.g. the carrion hound, 0.8m deep but 0.25m tall) framed by its depth
-    // axis pushes the camera back and leaves it a sliver on screen. The sphere
-    // radius fills the vertical FOV the same regardless of which way the
-    // subject is turned. 1.15× = a little air around the silhouette.
-    const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const center = sphere.center;
-    const r = sphere.radius || 0.5;
-    const fov = (camera.fov * Math.PI) / 180;
-    const dist = (r / Math.sin(fov / 2)) * 1.15;
-    // A 3/4 hero angle (front-right, slightly above) instead of dead-on: a
-    // head-on shot of a long-but-low mob sends its length INTO the screen and
-    // the silhouette reads tiny. Off-axis, the length spans the frame and the
-    // form reads in three dimensions. Direction = az 35°, el 22° from +z.
-    const az = (35 * Math.PI) / 180, el = (22 * Math.PI) / 180;
-    const dir = new THREE.Vector3(
-      Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
-    camera.position.copy(center).addScaledVector(dir, dist);
-    camera.lookAt(center);
-    camera.updateMatrixWorld();
-    if (inspectKeyLight) {
-      inspectKeyLight.position.set(center.x + 2, center.y + 3, center.z + 3);
-      inspectKeyLight.target.position.copy(center);
-      inspectKeyLight.target.updateMatrixWorld();
-    }
-    if (inspectRimLight) {
-      inspectRimLight.position.set(center.x - 2, center.y + 2, center.z - 3);
-      inspectRimLight.target.position.copy(center);
-      inspectRimLight.target.updateMatrixWorld();
-    }
-    inspectFramePending = false;
-  } },
+  // Deferred subject-preview framing — see src/debug/inspect-mode.ts. No-op in
+  // normal play (cheap early-return); only does work while an inspect snap is
+  // waiting for its subject mesh to spawn.
+  { name: 'inspect-frame', phase: 'always', tick() { tickInspectFraming(); } },
 
   { name: 'render', phase: 'always', tick() { renderWithStyle(renderer, scene, camera); } },
 
@@ -1211,85 +1130,14 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // Runs AFTER startRun so currentLevel is populated.
   applyScenario(scenario, { level: currentLevel, weapon, camera });
   if (scenario.inspect) {
-    inspectMode = true;
-    // Bypass the PSX blit shader (quantize / scanlines / amber tint /
-    // vignette / chromatic aberration / dark-adapt). All are gameplay
-    // grimdark crunchifiers that fight the inspection mode's clean
-    // material read — they squash a mid-grey backdrop to pure black.
-    setInspectBypass(true);
-    // Disable filmic tone mapping for the scene render too — ACES
-    // crushes mid-tones (a 0x404040 backdrop curves down to near
-    // black). NoToneMapping = linear pass-through so the backdrop
-    // and lit materials read their intended values.
-    renderer.toneMapping = THREE.NoToneMapping;
-    renderer.toneMappingExposure = 1.0;
-    // Subject-only previews (mob-*, item-*, model-*) hide the level
-    // geometry so the dungeon room around the subject doesn't read
-    // as noise behind it. Vault previews leave this OFF — the room
-    // IS the subject. Toggle by scenario.inspectSubjectOnly (snap.ts
-    // auto-sets it for the subject families).
-    if (scenario.inspectSubjectOnly) {
-      // The subject mesh doesn't exist yet (level + mob spawns load async after
-      // startRun), so defer the camera/light framing to the 'inspect-frame'
-      // tick, which retries each frame until the subject appears.
-      inspectFramePending = true;
-    }
-    // White ambient as the FILL light — at a moderate level so the
-    // shadow side of the silhouette stays readable but isn't blown
-    // out. Inspection wants the unmodulated material color (the
-    // default 0x1a1e24 ambient washes everything blue).
-    ambient.color.setHex(0xffffff);
-    ambient.intensity = 1.2;
-    // HEMISPHERE LIGHT — top-down sky/ground fill. Critical for
-    // metallic materials (sword blades, ring bands, helmets):
-    // without an environment map, metals get almost no contribution
-    // from AmbientLight (it lacks the directional gradient metals
-    // sample), but a HemisphereLight provides a per-fragment
-    // up-vs-down split that lifts them. Warm-from-below mimics
-    // torchlight bounce; cool-from-above feels like a museum top
-    // light.
-    const hemi = new THREE.HemisphereLight(0xeeeeff, 0x806040, 2.5);
-    hemi.position.set(0, 5, 0);
-    scene.add(hemi);
-    // KEY LIGHT — front-right, drives specular highlights + shading
-    // on whichever face the camera's looking at. Positioned to
-    // light the camera-facing side from above-right.
-    // Lights are placed for a floating-item default (~1.4m) here, then the
-    // 'inspect-frame' tick retargets them at the subject's true centre once it
-    // spawns (a floor mob sits lower). Vault previews keep this default.
-    const aim = new THREE.Vector3(0, 1.4, 0);
-    const key = new THREE.DirectionalLight(0xffffff, 3.0);
-    key.position.set(aim.x + 2, aim.y + 3, aim.z + 3);
-    key.target.position.copy(aim);
-    scene.add(key);
-    scene.add(key.target);
-    inspectKeyLight = key;
-    // BACK / RIM LIGHT — warm tint behind the subject, pops the
-    // silhouette off the grey backdrop with a torchlight-coloured
-    // edge so highlights read bronze, not stadium-white.
-    const rim = new THREE.DirectionalLight(0xffd0a0, 1.5);
-    rim.position.set(aim.x - 2, aim.y + 2, aim.z - 3);
-    rim.target.position.copy(aim);
-    scene.add(rim);
-    scene.add(rim.target);
-    inspectRimLight = rim;
-    // Radial "studio sweep" backdrop instead of a flat grey. A flat field
-    // gives a near-black mob nothing to read against — the user's complaint.
-    // A gradient that's lighter behind the subject and falls to near-black at
-    // the edges does double duty: dark subjects pop against the bright centre,
-    // bright items still sit in a darker frame, and the pool-of-light look is
-    // on-theme for the grimdark dungeon. CanvasTexture (browser-only, and
-    // inspect only ever runs in the browser).
-    scene.background = makeStudioBackdrop();
-    // Kill fog — even pushed to 1000+, a subtle grade across the
-    // room is visible in flat-lit inspection shots.
-    const fog = scene.fog as THREE.Fog | null;
-    if (fog) { fog.near = 1000; fog.far = 2000; }
-    // Strip all gameplay HUD so the snap shows the scene geometry
-    // alone. Same CSS class the screen-manager uses for full-screen
-    // panels — #perf-overlay, #depth-counter, #hp-bar, hotbar, boss
-    // bar etc. all hide.
-    document.body.classList.add('hud-hidden');
+    // All the studio-preview presentation (PSX bypass, lighting rig, backdrop,
+    // subject auto-framing) lives in src/debug/inspect-mode.ts. getLevelRoot is
+    // a getter because the level loads async — the framing pass reads it later.
+    enterInspectMode({
+      scene, camera, renderer, ambient,
+      subjectOnly: !!scenario.inspectSubjectOnly,
+      getLevelRoot: () => currentLevel?.root ?? null,
+    });
   }
   // HUD-ONLY mode — the inverse of inspect. Hide the 3D canvas
   // entirely and put a flat backdrop behind whichever HUD widgets
