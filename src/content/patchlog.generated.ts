@@ -8,8 +8,20 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "content",
+        "text": "vault-validate: recognize the '*' light char (post-merge with torch refactor)"
+      },
+      {
         "tag": "fix",
         "text": "Creator suite (delve CLI + faithful reach) + fix the real stairs soft-lock"
+      },
+      {
+        "tag": "tune",
+        "text": "Unified '*' light char + inspect-mode subject/scene split"
+      },
+      {
+        "tag": "content",
+        "text": "Migrate boss + specific mob spawns to PropSpec; vault.torches array"
       },
       {
         "tag": "fix",
@@ -200,18 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Sword pilot moveset: directional moves + combo + charge"
-      },
-      {
-        "tag": "tech",
-        "text": "Boss-floor perf"
-      },
-      {
-        "tag": "tune",
-        "text": "Charge prototype: aim-while-charging + heavier viewmodel + threshold"
-      },
-      {
-        "tag": "tune",
-        "text": "Hold-to-charge prototype on the sword (touch)"
       }
     ]
   }

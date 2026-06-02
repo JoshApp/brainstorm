@@ -9,6 +9,7 @@ import { applyGeometryWarp, applySurfaceClutter } from './clutter';
 import { resolveAllFacings } from './facing';
 import { rollManifest, reconcileManifest } from './floor-manifest';
 import { getPropAABB, type PropAABB } from './prop-aabb';
+import { STAIRWELL_TOTAL_DEPTH } from '../interactables/stairs';
 
 // Floor composition — pick a chain of vaults by depth, lay them out
 // with corridors between, and assemble a single LevelSpec the
@@ -36,6 +37,10 @@ interface PlacedVault {
   roomId: string;
   offsetX: number;
   offsetZ: number;
+  /** Direction this vault was placed from the previous one — i.e. the way the
+   *  player heads IN (the entrance corridor is on the opposite edge). Used to
+   *  face an exit vault's stair toward the entrance. Unset for the start. */
+  placeDir?: Dir;
 }
 
 interface CorridorPlacement {
@@ -147,6 +152,26 @@ export function ceilingFor(
   if (depth >= 4) return { style: 'pitched', rise: 1.1 };                 // mid — mine-tunnel A-frames
   // Shallow: alternate flat / low-pitched by index for grounded variety.
   return index % 2 === 0 ? { style: 'flat', rise: 0 } : { style: 'pitched', rise: 0.9 };
+}
+
+// rotY per descent direction (matches tilemap.ts: +Z→0, -Z→π, +X→π/2, -X→-π/2).
+const STAIR_ROTY: Record<Dir, number> = { S: 0, N: Math.PI, E: Math.PI / 2, W: -Math.PI / 2 };
+
+/** Geometry-aware exit-stair placement: put the stair at the BACK of the room
+ *  (the wall on the far side of the entrance) descending into that wall, so
+ *  its MOUTH faces the entrance and the player walks in and meets it head-on —
+ *  instead of arriving at the stair's back and having to skirt around it (the
+ *  d4-0wgr soft-lock). `dir` is the direction the vault was placed from the
+ *  previous one, i.e. the way the player heads in; the stair descends that way.
+ *  Centred on the perpendicular axis for maximal side clearance. */
+function reorientExitStair(st: StairsSpec, ox: number, oz: number, dims: { w: number; d: number }, dir: Dir): StairsSpec {
+  const INSET = 0.04, D = STAIRWELL_TOTAL_DEPTH, hw = dims.w / 2, hd = dims.d / 2;
+  let x = ox, z = oz;
+  if (dir === 'S') z = oz + hd - INSET - D;
+  else if (dir === 'N') z = oz - hd + INSET + D;
+  else if (dir === 'E') x = ox + hw - INSET - D;
+  else x = ox - hw + INSET + D;
+  return { ...st, x, z, rotY: STAIR_ROTY[dir] };
 }
 
 /** Resolve a vault's encounter archetype: explicit `encounter` wins, else
@@ -335,7 +360,7 @@ export function composeFloor(
       }
     }
 
-    placed.push({ vault, roomId: ROOM_ID(i), offsetX: chosen.vault.x, offsetZ: chosen.vault.z });
+    placed.push({ vault, roomId: ROOM_ID(i), offsetX: chosen.vault.x, offsetZ: chosen.vault.z, placeDir: chosen.dir });
     corridors.push({ rect: chosen.corridor, height: profile.height, fromIdx: i - 1, toIdx: i });
     occupied.push(chosen.vault);
     occupied.push(chosen.corridor);
@@ -373,7 +398,7 @@ export function composeFloor(
         const corrClear = !occupied.some((o) => !sameAsParent(o) && boxesOverlap(g.corridor, o, MARGIN));
         if (vaultClear && corrClear) {
           const leafIdx = placed.length;
-          placed.push({ vault: leaf, roomId: BRANCH_ROOM_ID(leafIdx), offsetX: g.vault.x, offsetZ: g.vault.z });
+          placed.push({ vault: leaf, roomId: BRANCH_ROOM_ID(leafIdx), offsetX: g.vault.x, offsetZ: g.vault.z, placeDir: dir });
           corridors.push({ rect: g.corridor, height: profile.height, fromIdx: branchIdx, toIdx: leafIdx });
           occupied.push(g.vault);
           occupied.push(g.corridor);
@@ -429,7 +454,17 @@ export function composeFloor(
     torches.push(...sub.torches);
     spawns.push(...sub.spawns);
     if (sub.doors) doors.push(...sub.doors);
-    if (sub.stairs) stairs.push(...sub.stairs);
+    if (sub.stairs && sub.stairs.length) {
+      // Exit-vault stairs: re-place at the back of the room facing the entrance
+      // (geometry-aware), so the player meets the mouth head-on. Other stairs
+      // (boss vaults, hand-authored) keep their authored orientation.
+      if (pv.vault.tags.includes('exit') && pv.placeDir) {
+        const dims = vaultDims(pv.vault);
+        for (const st of sub.stairs) stairs.push(reorientExitStair(st, pv.offsetX, pv.offsetZ, dims, pv.placeDir));
+      } else {
+        stairs.push(...sub.stairs);
+      }
+    }
     if (sub.extraWalls) extraWalls.push(...sub.extraWalls);
 
     // Boss spawns extracted from B-tiles. Cell (col, row) → world

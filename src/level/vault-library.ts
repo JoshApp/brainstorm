@@ -668,14 +668,12 @@ const EXIT_SIMPLE: Vault = {
     // Enlarged to 10×6 with the stair wall-centred: the 2.56×1.95m stairwell
     // needs go-around clearance to reach its mouth, or the descent soft-locks
     // (verified via `npm run reach`). The old 8×4 was too cramped.
-    '############',
-    '#..........#',
-    '#....*.....#',
-    '#........./#',
-    '#..........#',
-    '#....*.....#',
-    '#..........#',
-    '############',
+    '##########',
+    '#..*.....#',
+    '#........#',
+    '#......./#',
+    '#........#',
+    '##########',
   ],
   torchTint: TORCH_PALE,
 };
