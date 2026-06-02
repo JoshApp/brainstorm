@@ -1473,6 +1473,15 @@ export function createEnemy(
 
     switch (state) {
       case 'idle': {
+        // Dormant boss (king behind its fog gate): hold dead STILL — no
+        // gaze scan, no alerts. It's asleep, looming, until you commit.
+        // (The constant left-right idle scan reads as a twitchy giant.)
+        if (dormant) {
+          applyIdleEyes();
+          applyTilt(0);
+          built.group.position.y = 0;
+          break;
+        }
         // Shared aggro pickup — if a fellow mob has broadcast an alert
         // and we're inside its radius, join the fight. Sets lastSeenPos
         // to the alert location so 'searching' / 'chasing' have a

@@ -64,28 +64,41 @@ export function spawnBossMist(
   let sealed = false;
   let prevSign = 0;
 
+  // Commit: open the gate, raise the bar + intro, grant a beat of
+  // immortality (the boss wakes as you enter, dormant until now), punctuate
+  // it. Idempotent.
+  function openGate() {
+    if (opened) return;
+    opened = true;
+    unblock();
+    engageBoss();
+    setPlayerInvulnerable(2.5);
+    kickShake(0.14, 0.32);
+  }
+
+  const AUTO_OPEN_DIST = 1.4;   // the mist parts as you reach the threshold
+
   const id = generateEntityId('boss-mist');
   registerInteractable({
     id,
     position: pos.clone(),
     radius: 2.8,
     promptLabel: 'enter the mist',
-    onUse() {
-      if (opened) return;
-      // Commit: open the gate, raise the bar + intro, punctuate it. The
-      // boss wakes as you enter (it was dormant), so grant a beat of
-      // immortality to step through + orient before it can hurt you.
-      opened = true;
-      unblock();
-      engageBoss();
-      setPlayerInvulnerable(2.5);
-      kickShake(0.14, 0.32);
-    },
+    // Explicit interact (tap the gate / press) opens it.
+    onUse() { openGate(); },
     tick(_dt: number, playerPos: THREE.Vector3) {
-      if (!opened || sealed) return;
-      // Watch for the player crossing to the arena side, then re-seal.
       const dx = playerPos.x - pos.x;
       const dz = playerPos.z - pos.z;
+      if (!opened) {
+        // Reliability fallback for mobile (tapping a translucent mist is
+        // finicky): the gate also parts when you walk up to the threshold,
+        // so you're never stuck behind a wall you can't open. The prompt
+        // shows from further out as the telegraph.
+        if (dx * dx + dz * dz <= AUTO_OPEN_DIST * AUTO_OPEN_DIST) openGate();
+        return;
+      }
+      if (sealed) return;
+      // Watch for the player crossing to the arena side, then re-seal.
       const d = dx * normal.x + dz * normal.z;
       const sign = d > CROSS_EPSILON ? 1 : d < -CROSS_EPSILON ? -1 : 0;
       if (prevSign === 0) { prevSign = sign; return; }

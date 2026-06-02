@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Boss sleeps behind the fog gate; entry-grace immortality on cross"
+      },
+      {
+        "tag": "tune",
         "text": "Boss encounter container (source of truth) + 2 phases + a real Dark Souls fog gate"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Bosses: boiling-king fills every act (interim) — no more placeholder wraith"
-      },
-      {
-        "tag": "content",
-        "text": "Item viewer scenario + burrower (floor-emerge) mob"
       }
     ]
   }

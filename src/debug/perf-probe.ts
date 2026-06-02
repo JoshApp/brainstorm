@@ -82,6 +82,10 @@ export interface PerfSnapshot {
 }
 
 export function installPerfProbe(r: THREE.WebGLRenderer): void {
+  // Belt-and-suspenders: even if a stray call survives bundling, this
+  // literal-false guard folds the body away in prod so window.__perf can
+  // never be defined on the live site. (Same hardening as setGodMode.)
+  if (!import.meta.env.DEV) return;
   renderer = r;
   (window as unknown as { __perf: () => PerfSnapshot }).__perf = getPerfSnapshot;
 }
@@ -89,6 +93,7 @@ export function installPerfProbe(r: THREE.WebGLRenderer): void {
 /** Call once per frame from the main tick (DEV-gated). Cheap: a push, a
  *  shift loop, and one heap read. */
 export function tickPerfProbe(nowMs: number): void {
+  if (!import.meta.env.DEV) return;
   frameTimes.push(nowMs);
   while (frameTimes.length > 0 && nowMs - frameTimes[0] > FRAME_WINDOW_MS) {
     frameTimes.shift();

@@ -66,11 +66,7 @@ import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
-// perf-probe is DEV-only and dynamic-imported (below) so it tree-shakes out
-// of the production bundle entirely — a static import keeps its body alive
-// even behind a dead `if (DEV)` guard. perfProbeTick holds the per-frame
-// sampler once the module loads.
-let perfProbeTick: ((now: number) => void) | null = null;
+import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
@@ -847,8 +843,9 @@ function tick() {
   reportRendererInfo(renderer);
   tickPerfOverlay(performance.now());
   // Programmatic perf probe (window.__perf for the headless perf runner).
-  // DEV-only — the literal-false guard dead-code-eliminates it from prod.
-  if (import.meta.env.DEV) perfProbeTick?.(performance.now());
+  // DEV-only — the literal-false guard dead-code-eliminates it from prod
+  // (and tickPerfProbe is itself a no-op in prod, belt-and-suspenders).
+  if (import.meta.env.DEV) tickPerfProbe(performance.now());
 
   requestAnimationFrame(tick);
 }
@@ -1060,15 +1057,9 @@ onSettingsChanged((s) => {
 createPerfOverlay();
 setPerfOverlayVisible(getSettings().perfMeter);
 // Install window.__perf for the headless perf runner (scripts/perf.ts).
-// DEV-only + dynamic-imported so the whole probe module tree-shakes out of
-// the live build (the dead import() is unreachable in prod, so Rollup never
-// emits its chunk).
-if (import.meta.env.DEV) {
-  void import('./debug/perf-probe').then((m) => {
-    m.installPerfProbe(renderer);
-    perfProbeTick = m.tickPerfProbe;
-  });
-}
+// DEV-only — the literal-false guard strips the call, and installPerfProbe
+// itself early-returns unless DEV, so window.__perf can never be set live.
+if (import.meta.env.DEV) installPerfProbe(renderer);
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
 // the CODEX/STASH buttons without requiring real playthrough.
