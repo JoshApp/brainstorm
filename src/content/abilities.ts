@@ -102,7 +102,13 @@ export type AbilityAction =
   | { kind: 'leap';
       toward: Anchor; arcHeight: number; landingRadius: number; damage: number;
       shake?: number; shakeDuration?: number; knockbackSpeed?: number;
-      minDistance?: number; element?: Element }
+      minDistance?: number; element?: Element;
+      /** Fraction of the strike spent rising to the apex (default 0.5 =
+       *  symmetric). Below 0.5 the king launches fast and DESCENDS slowly —
+       *  more airtime over the marker for the player to read the drop and
+       *  step off. The horizontal travel eases to arrive over the target by
+       *  the apex, so the back half reads as a committed vertical drop. */
+      riseFraction?: number }
   // Drop a PERSISTENT hazard field at `origin` for `lifetime` seconds — a
   // stationary aura that slows + ticks (`dps`) anyone standing in it. The
   // king's body-aura, detached and left on the floor (the slow puddle).

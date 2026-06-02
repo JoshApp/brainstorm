@@ -66,6 +66,17 @@ export interface EnemySpec {
   /** Base emissive intensity for the 'eye' material (used by AI for windup flare). */
   baseEyeEmissive: number;
   collisionRadius: number;
+  /** Height the swing aims at + where the damage number floats from.
+   *  Defaults to 0.6 × scale, which assumes a body centred around that
+   *  height. Override when a model's mass (e.g. the king's core) sits
+   *  elsewhere — `0.6 × scale` badly overshoots a low-rigged giant. */
+  aimHeight?: number;
+  /** Combat hit radius — the swing's reach extends to the body's SURFACE
+   *  this far out from `position`, so a big enemy is hittable without
+   *  having to stand on its exact centre. Default 0 (point target).
+   *  Independent of collisionRadius (movement) — a translucent walk-into
+   *  boss can be small for movement yet large for hits. */
+  hitRadius?: number;
 
   // --- Animation hooks (part names within `model`) ---
   /** Part name to tilt forward during windup/strike. Usually 'body' or the root. */
@@ -1112,6 +1123,18 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // around obstacles instead of bumping off them. The aura (1.6)
     // remains the actual gameplay zone; this is just for movement.
     collisionRadius: 0.7,
+    // The core orb sits at the model's rig (local y 0.18) → ~1.3m up at
+    // scale 7. The default 0.6×scale = 4.2m would put the aim point WAY
+    // above the body, so only a long-lunge swing could reach it. Pin the
+    // aim to the actual core height so every swing connects with it.
+    aimHeight: 1.3,
+    // Hittable at the body's SURFACE, not its centre. With the aim pinned
+    // to the core, a 2.1-reach sword already connects ~2m out (the body is
+    // ~1.8m wide); this small radius is just grace so SHORTER swing
+    // variants (low reachMul) also land cleanly and you're not nudging the
+    // exact edge. Tunable — raise the aura (1.6) toward this if you want
+    // attacking to demand more aura exposure.
+    hitRadius: 0.6,
     // KEY MECHANIC: player walks INTO the king. No solid body. Once
     // inside, the aura ticks (defined below): slowed move + acid damage
     // after a grace window. The pressure is "get out before the next
@@ -1153,7 +1176,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
       {
         id: 'leap',
         minRange: 0, maxRange: 14,
-        windup: 1.20, strike: 0.50, recover: 1.40,
+        // strike 0.65 (was 0.50) + riseFraction 0.4 below = a faster launch
+        // and a longer, readable descent — the player gets time to dodge
+        // off the marker as the king hangs and drops.
+        windup: 1.20, strike: 0.65, recover: 1.40,
         // Full cycle ≈ 1.2 + 0.5 + 1.4 + 2.5 = 5.6s — ~4s of safety
         // between leaps to advance on the king or strike its core.
         cooldown: 2.5,
@@ -1181,6 +1207,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
               // Guarantee a real arc even if the player is hugging the body
               // at windup: the landing point is pushed out to ≥3m.
               minDistance: 3.0,
+              // Launch fast, descend slow — the drop is the dodge window.
+              riseFraction: 0.4,
             },
           },
           // SPILL — on touchdown, leave a slow acid puddle at the impact

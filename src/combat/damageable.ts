@@ -26,6 +26,12 @@ export interface Damageable {
   aimHeight: number;
   alive: boolean;
   collisionRadius: number;
+  /** Radius around `position` (at aimHeight) that a swing's reach extends
+   *  to — so a BIG enemy is hittable at its surface, not only its exact
+   *  centre point. The reach test becomes `distanceToCentre - hitRadius <=
+   *  reach`. Default 0 (a point target — current behaviour for normal
+   *  mobs + props, which are small enough that the centre point is fine). */
+  hitRadius?: number;
   hitFeedback: HitFeedback;
   /** Route a damage event through the pipeline, apply it to HP, return the
    *  amount actually applied (for the floating number). */

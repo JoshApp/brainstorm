@@ -15,6 +15,12 @@ import type { EntityId } from '../ecs/types';
 // Same slow + tick model as an enemy's body aura (inside-aura.ts), just
 // placed at a point and time-limited. The ~dotInterval before the first
 // tick gives a natural "I'm in it, get out" grace.
+//
+// Visually it reads as a wavy puddle of mucus, not a flat ring: a lumpy
+// translucent body, a thicker brighter core blob, and a wet gloss — the
+// whole thing jiggles gently like jelly and fades out over its last second.
+
+interface FadeMat { mat: THREE.MeshBasicMaterial; base: number; }
 
 interface HazardField {
   x: number; z: number; radius: number; radiusSq: number;
@@ -22,13 +28,11 @@ interface HazardField {
   slow: number; dps: number; dotInterval: number; dotAccum: number;
   damageType: DamageType; source: EntityId;
   group: THREE.Group;
-  fillMat: THREE.MeshBasicMaterial;
-  rimMat: THREE.MeshBasicMaterial;
+  mats: FadeMat[];
+  phase: number;
 }
 
 const fields: HazardField[] = [];
-const BASE_FILL_OPACITY = 0.30;
-const BASE_RIM_OPACITY = 0.5;
 
 export interface HazardFieldOpts {
   x: number; z: number; radius: number; lifetime: number;
@@ -38,29 +42,49 @@ export interface HazardFieldOpts {
   color?: number;
 }
 
+/** A circle whose rim is pushed in/out by smooth angular noise, so it reads
+ *  as an irregular organic blob rather than a clean disc. */
+function makeBlobGeometry(radius: number, segments: number, lumpiness: number, phase: number): THREE.BufferGeometry {
+  const geo = new THREE.CircleGeometry(radius, segments);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const r = Math.hypot(x, y);
+    if (r < 1e-4) continue;   // centre vertex stays put
+    const a = Math.atan2(y, x);
+    const lump = 1 + lumpiness * (0.6 * Math.sin(3 * a + phase) + 0.4 * Math.sin(5 * a - phase * 1.3));
+    pos.setXY(i, x * lump, y * lump);
+  }
+  pos.needsUpdate = true;
+  return geo;
+}
+
+function blobLayer(radius: number, segs: number, lump: number, color: number, opacity: number, blending: THREE.Blending, y: number): { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial } {
+  const mat = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity,
+    blending, depthWrite: false, fog: false, side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(makeBlobGeometry(radius, segs, lump, Math.random() * Math.PI * 2), mat);
+  mesh.position.z = -y;   // group is rotated -90° about X, so local -Z = world up
+  return { mesh, mat };
+}
+
 /** Spawn a hazard field at (x, z). Called from the `field` action handler. */
 export function spawnHazardField(scene: THREE.Object3D, o: HazardFieldOpts): void {
   const color = o.color ?? 0x6abf2a;
+  // A lighter, more saturated tint for the thick core + gloss.
+  const bright = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.35).getHex();
+
   const group = new THREE.Group();
-  group.position.set(o.x, 0.02, o.z);   // just above the floor (avoid z-fight)
+  group.position.set(o.x, 0.02, o.z);
   group.rotation.x = -Math.PI / 2;
 
-  // Filled disc — the hazard body. Translucent + faintly additive so it
-  // glows in the dark without washing to white.
-  const fillMat = new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity: BASE_FILL_OPACITY,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-    side: THREE.DoubleSide,
-  });
-  group.add(new THREE.Mesh(new THREE.CircleGeometry(o.radius, 36), fillMat));
-
-  // Darker rim so the edge reads as a defined puddle, not a soft glow.
-  const rimMat = new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity: BASE_RIM_OPACITY,
-    depthWrite: false, fog: false, side: THREE.DoubleSide,
-  });
-  group.add(new THREE.Mesh(new THREE.RingGeometry(o.radius * 0.86, o.radius, 36), rimMat));
-
+  // Layered blobs: spreading body → thick core → wet gloss highlight.
+  const body  = blobLayer(o.radius,        48, 0.13, color,  0.26, THREE.NormalBlending,   0.000);
+  const core  = blobLayer(o.radius * 0.62, 40, 0.20, color,  0.40, THREE.NormalBlending,   0.006);
+  const gloss = blobLayer(o.radius * 0.34, 28, 0.26, bright, 0.30, THREE.AdditiveBlending, 0.012);
+  group.add(body.mesh, core.mesh, gloss.mesh);
   scene.add(group);
 
   fields.push({
@@ -68,23 +92,34 @@ export function spawnHazardField(scene: THREE.Object3D, o: HazardFieldOpts): voi
     age: 0, lifetime: o.lifetime,
     slow: o.slow ?? 1, dps: o.dps ?? 0, dotInterval: o.dotInterval ?? 1, dotAccum: 0,
     damageType: o.damageType, source: o.source,
-    group, fillMat, rimMat,
+    group,
+    mats: [
+      { mat: body.mat,  base: 0.26 },
+      { mat: core.mat,  base: 0.40 },
+      { mat: gloss.mat, base: 0.30 },
+    ],
+    phase: Math.random() * Math.PI * 2,
   });
 }
 
-/** Per-frame: animate, apply slow + DoT to a player standing inside, and
- *  retire expired fields. Called from the main loop (unpaused). */
+/** Per-frame: animate (jiggle + fade), apply slow + DoT to a player standing
+ *  inside, and retire expired fields. Called from the main loop (unpaused). */
 export function tickHazardFields(dt: number, playerPos: THREE.Vector3): void {
   for (let i = fields.length - 1; i >= 0; i--) {
     const f = fields[i];
     f.age += dt;
 
-    // Fade out over the last second of life; gentle pulse while alive.
+    // Wet-jelly jiggle — non-uniform breathing in the floor plane (the
+    // group is rotated, so local x/y are the two ground axes).
+    const jx = 1 + 0.05 * Math.sin(f.age * 2.1 + f.phase);
+    const jy = 1 + 0.05 * Math.sin(f.age * 2.1 + f.phase + 1.6);
+    f.group.scale.set(jx, jy, 1);
+
+    // Fade out over the last second of life; gentle opacity shimmer.
     const remaining = f.lifetime - f.age;
     const fade = remaining < 1 ? Math.max(0, remaining) : 1;
-    const pulse = 0.85 + 0.15 * Math.sin(f.age * 3.2);
-    f.fillMat.opacity = BASE_FILL_OPACITY * fade * pulse;
-    f.rimMat.opacity = BASE_RIM_OPACITY * fade;
+    const shimmer = 0.9 + 0.1 * Math.sin(f.age * 3.4 + f.phase);
+    for (const m of f.mats) m.mat.opacity = m.base * fade * shimmer;
 
     // Player inside → slow (last-refresh-wins, shared with body auras) +
     // periodic DoT credited to the spawning unit.

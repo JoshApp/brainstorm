@@ -140,6 +140,9 @@ export interface Enemy extends Damageable {
   /** Current AI state machine phase. */
   aiState: EnemyState;
   collisionRadius: number;
+  /** Combat hit radius — swings reach the body's surface this far from
+   *  `position`. Default 0 (point). See Damageable.hitRadius. */
+  hitRadius: number;
   /** Height the swing cone aims at + where the damage number floats from. */
   aimHeight: number;
   /** Mobs take the full crunch + fire the player's on-hit passives. */
@@ -879,8 +882,15 @@ export function createEnemy(
         const strike = ability.strike > 0 ? ability.strike : 1;
         const t = Math.min(1, phaseTimer / strike);
         const dest = resolveAnchor(action.toward, playerPos);
-        const tx = leapStart.x + (dest.x - leapStart.x) * t;
-        const tz = leapStart.z + (dest.z - leapStart.z) * t;
+
+        // Horizontal: ease to arrive OVER the marker by ~the apex, then
+        // hold — so the back half reads as a committed vertical drop onto
+        // the locked spot, not a glide.
+        const riseFrac = action.riseFraction ?? 0.5;
+        const hu = Math.min(1, t / Math.min(0.85, riseFrac + 0.2));
+        const he = hu * hu * (3 - 2 * hu);               // smoothstep
+        const tx = leapStart.x + (dest.x - leapStart.x) * he;
+        const tz = leapStart.z + (dest.z - leapStart.z) * he;
         const resolved = walkable.clampMove(
           container.position.x, container.position.z, tx, tz,
           spec.collisionRadius,
@@ -888,7 +898,19 @@ export function createEnemy(
         );
         container.position.x = resolved.x;
         container.position.z = resolved.z;
-        container.position.y = 4 * action.arcHeight * t * (1 - t);
+
+        // Vertical: rise fast (ease into a brief hang at the apex), then a
+        // gentle smoothstep descent with a soft landing — riseFrac < 0.5
+        // stretches the drop so the player can read it and dodge off.
+        let vy: number;
+        if (t <= riseFrac) {
+          const u = riseFrac > 0 ? t / riseFrac : 1;
+          vy = Math.sin(u * Math.PI / 2);                // 0→1, decelerates into the apex
+        } else {
+          const u = (t - riseFrac) / (1 - riseFrac);     // 0→1 over the descent
+          vy = 1 - u * u * (3 - 2 * u);                  // 1→0, slow-fast-slow (soft landing)
+        }
+        container.position.y = action.arcHeight * vy;
         faceXZ(dest.x, dest.z);
 
         if (t >= 1) {
@@ -1673,10 +1695,13 @@ export function createEnemy(
     bossName: spec.bossName ?? spec.name,
     group: container,
     position: container.position,
-    aimHeight: 0.6 * (spec.scale ?? 1),   // taller body on a scaled boss
+    // Where the swing aims + the damage number floats. 0.6×scale assumes a
+    // body centred there; a low-rigged giant (the king) overrides it.
+    aimHeight: spec.aimHeight ?? 0.6 * (spec.scale ?? 1),
     hitFeedback: 'heavy',
     hitTargets: built.hitTargets,
     collisionRadius: spec.collisionRadius,
+    hitRadius: spec.hitRadius ?? 0,
     noPlayerCollision: !!spec.noPlayerCollision,
     phasing: !!spec.phasing,
     maxHp: spec.hp,
