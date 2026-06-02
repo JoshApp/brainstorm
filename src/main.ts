@@ -30,6 +30,7 @@ import { startMusic, setMusicVolume } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { createRoomCuller, type RoomCuller } from './level/room-culling';
+import { batchStaticFixtures } from './level/static-merge';
 import { LEVELS } from './level/specs';
 import type { LevelSpec } from './level/types';
 import { buildStarterChamber } from './level/starter-chamber';
@@ -255,6 +256,9 @@ initLevelLoader({
   levels: LEVELS,
   onLoaded(level) {
     currentLevel = level as LiveLevel & { checkRoomClear?: () => void };
+    // Batch each room's static fixture geometry (torch sconces/candles, opt-in
+    // decor) into per-room merged meshes — big draw-call cut, runs once here.
+    batchStaticFixtures(currentLevel);
     setCameraYaw(level.playerSpawn.yaw);
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-'));
     resetBossBar();   // new floor — clear any prior boss bar state
