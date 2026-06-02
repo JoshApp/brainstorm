@@ -192,12 +192,10 @@ const COMBAT_CHOKE: Vault = {
     '##########',
   ],
   minDepth: 2,
-  props: [
-    // The acolyte that anchored this room — specific spot, kept as
-    // a fixed spawn now that per-enemy chars are gone. Original
-    // cell (7, 2) → vault-local (2.5, -1.5).
-    { kind: 'spawn', enemyId: 'acolyte', x: 2.5, z: -1.5 },
-  ],
+  cellProps: {
+    // The acolyte that anchored this room.
+    '7,2': [{ kind: 'spawn', enemyId: 'acolyte' }],
+  },
 };
 
 const COMBAT_HALL: Vault = {
@@ -462,12 +460,13 @@ const ENCOUNTER_PRISON: Vault = {
   minDepth: 2,   // wraith is a real threat — keep off depth 1
   weight: 1,
   torchTint: TORCH_BLOOD,
-  // The lone wraith guardian — specific mob, specific spot, no longer
-  // a 'W' char in the ASCII. The chest at row 4 col 9 stays as 'c'
-  // pending the decor → props migration.
-  props: [
-    { kind: 'spawn', enemyId: 'wraith', x: -3.5, z: -0.5 },
-  ],
+  // The lone wraith guardian — cell-bound, no world-coord math.
+  // (Migration also fixes a 0.5m z drift the previous absolute-
+  // coord entry had — should sit at cell (2,4) which is z=0,
+  // not z=-0.5.)
+  cellProps: {
+    '2,4': [{ kind: 'spawn', enemyId: 'wraith' }],
+  },
 };
 
 // Arena encounter — the lock-on-enter test. The 'D' door starts
@@ -510,16 +509,20 @@ const ENCOUNTER_ARENA: Vault = {
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_BLOOD,
+  // Chest sits at world x=0 — exactly between cells (6,7) and
+  // (7,7) on a 14-wide grid. Stays in the absolute-coord array
+  // since neither cell is a clean fit; this is the legit
+  // sub-cell escape case.
   props: [
     { kind: 'chest', x: 0, z: 1.5, tier: 'iron', facing: { kind: 'wall-away' } },
-    // Two pairs of ghoul guardians, specific spots — no longer 'G'
-    // chars in the ASCII (per-enemy chars are gone). Original cells:
-    // (2,5) (11,5) (2,9) (11,9) → vault-local (-4.5,-0.5) etc.
-    { kind: 'spawn', enemyId: 'ghoul', x: -4.5, z: -0.5 },
-    { kind: 'spawn', enemyId: 'ghoul', x:  4.5, z: -0.5 },
-    { kind: 'spawn', enemyId: 'ghoul', x: -4.5, z:  3.5 },
-    { kind: 'spawn', enemyId: 'ghoul', x:  4.5, z:  3.5 },
   ],
+  // Two pairs of ghoul guardians flanking the arena.
+  cellProps: {
+    '2,5':  [{ kind: 'spawn', enemyId: 'ghoul' }],
+    '11,5': [{ kind: 'spawn', enemyId: 'ghoul' }],
+    '2,9':  [{ kind: 'spawn', enemyId: 'ghoul' }],
+    '11,9': [{ kind: 'spawn', enemyId: 'ghoul' }],
+  },
 };
 
 // Blood altar encounter. A single cursed offering (ring of marrow)
