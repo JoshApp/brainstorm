@@ -1,8 +1,13 @@
-import { getSettings, updateSettings } from '../settings/settings';
+import { getSettings, updateSettings, CONTROL_SCHEMES } from '../settings/settings';
 import { setMasterVolume, setReverbEnabled } from '../audio/sfx';
 import { setMusicVolume } from '../audio/music';
 import { openScreen, closeScreen } from './screen-manager';
 import { getUpdateStatus, applyUpdate, onUpdateStatusChange } from '../pwa-update';
+import { isDesktopLike } from '../controls/platform';
+import {
+  BINDABLE_ACTIONS, getBinding, setBinding, resetBindings, labelForCode,
+  type BindableAction,
+} from '../controls/keybindings';
 
 // Settings panel.
 //
@@ -221,21 +226,7 @@ function buildPanelContents() {
 // tab's controls are constructed.
 
 const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
-  controls: () => [
-    makeSlider({
-      label: 'LOOK SENSITIVITY',
-      min: 0.001, max: 0.012, step: 0.0005,
-      get: () => getSettings().lookSensitivity,
-      set: (v) => updateSettings({ lookSensitivity: v }),
-      format: (v) => v.toFixed(4),
-    }),
-    makeToggle({
-      label: 'HYBRID LOOK',
-      description: 'Drag past the aim zone to keep rotating (like a joystick).',
-      get: () => getSettings().hybridLook,
-      set: (v) => updateSettings({ hybridLook: v }),
-    }),
-  ],
+  controls: () => buildControlsTab(),
 
   audio: () => [
     makeSlider({
@@ -299,6 +290,144 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
 
   run: () => buildRunTab(),
 };
+
+/** CONTROLS tab — look sensitivity is shared; the rest splits by device.
+ *  Desktop gets rebindable key bindings; touch gets the control-scheme
+ *  selector + hybrid-look (a touch-only aim affordance). */
+function buildControlsTab(): HTMLElement[] {
+  const out: HTMLElement[] = [
+    makeSlider({
+      label: 'LOOK SENSITIVITY',
+      min: 0.001, max: 0.012, step: 0.0005,
+      get: () => getSettings().lookSensitivity,
+      set: (v) => updateSettings({ lookSensitivity: v }),
+      format: (v) => v.toFixed(4),
+    }),
+  ];
+
+  if (isDesktopLike()) {
+    out.push(makeKeybindingsSection());
+  } else {
+    out.push(makeSelect({
+      label: 'CONTROL SCHEME',
+      description: 'How touch controls are laid out. More schemes coming.',
+      options: CONTROL_SCHEMES,
+      get: () => getSettings().controlScheme,
+      set: (v) => updateSettings({ controlScheme: v }),
+    }));
+    out.push(makeToggle({
+      label: 'HYBRID LOOK',
+      description: 'Drag past the aim zone to keep rotating (like a joystick).',
+      get: () => getSettings().hybridLook,
+      set: (v) => updateSettings({ hybridLook: v }),
+    }));
+  }
+  return out;
+}
+
+/** KEY BINDINGS block (desktop). A row per action shows its current
+ *  key; tapping the key enters capture mode and the next press rebinds
+ *  it. A RESET restores defaults. Self-contained re-render — no global
+ *  subscription to leak. */
+function makeKeybindingsSection(): HTMLDivElement {
+  const section = document.createElement('div');
+  Object.assign(section.style, { display: 'flex', flexDirection: 'column', gap: '8px' } as Partial<CSSStyleDeclaration>);
+
+  // Heading row: label + RESET.
+  const head = document.createElement('div');
+  Object.assign(head.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } as Partial<CSSStyleDeclaration>);
+  const heading = document.createElement('span');
+  heading.textContent = 'KEY BINDINGS';
+  Object.assign(heading.style, {
+    fontSize: '11px', fontWeight: '600', letterSpacing: '0.22em',
+    color: 'rgba(255, 200, 140, 0.85)',
+  } as Partial<CSSStyleDeclaration>);
+  const reset = document.createElement('button');
+  reset.textContent = 'RESET';
+  Object.assign(reset.style, {
+    background: 'transparent', border: '1px solid rgba(180, 130, 90, 0.4)',
+    borderRadius: '3px', color: 'rgba(200, 170, 130, 0.75)',
+    fontFamily: 'inherit', fontSize: '10px', fontWeight: '600',
+    letterSpacing: '0.18em', padding: '4px 8px', cursor: 'pointer',
+  } as Partial<CSSStyleDeclaration>);
+  head.append(heading, reset);
+  section.appendChild(head);
+
+  const rows = document.createElement('div');
+  Object.assign(rows.style, { display: 'flex', flexDirection: 'column', gap: '5px' } as Partial<CSSStyleDeclaration>);
+  section.appendChild(rows);
+
+  // Only one capture is live at a time; the cleanup cancels a prior one.
+  let cancelCapture: (() => void) | null = null;
+
+  const renderRows = () => {
+    if (cancelCapture) { cancelCapture(); cancelCapture = null; }
+    rows.replaceChildren();
+    for (const { id, label } of BINDABLE_ACTIONS) {
+      rows.appendChild(makeKeybindRow(id, label));
+    }
+  };
+
+  const makeKeybindRow = (action: BindableAction, label: string): HTMLDivElement => {
+    const row = document.createElement('div');
+    Object.assign(row.style, {
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px',
+    } as Partial<CSSStyleDeclaration>);
+
+    const name = document.createElement('span');
+    name.textContent = label;
+    Object.assign(name.style, {
+      fontSize: '11px', letterSpacing: '0.12em', color: 'rgba(220, 180, 140, 0.85)',
+    } as Partial<CSSStyleDeclaration>);
+
+    const key = document.createElement('button');
+    key.textContent = labelForCode(getBinding(action));
+    Object.assign(key.style, {
+      minWidth: '64px', padding: '5px 10px',
+      background: 'rgba(40, 28, 20, 0.7)', border: '1px solid rgba(180, 130, 90, 0.5)',
+      borderRadius: '3px', color: 'rgba(255, 220, 180, 0.95)',
+      fontFamily: 'monospace', fontSize: '11px', fontWeight: '600',
+      letterSpacing: '0.06em', cursor: 'pointer', textAlign: 'center',
+    } as Partial<CSSStyleDeclaration>);
+
+    key.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (cancelCapture) { cancelCapture(); cancelCapture = null; }
+      // Drop focus so a Space/Enter rebind doesn't also re-activate
+      // this button on keyup (which would instantly re-open capture).
+      key.blur();
+      key.textContent = 'PRESS A KEY';
+      key.style.background = 'rgba(120, 70, 30, 0.85)';
+      key.style.borderColor = 'rgba(255, 200, 130, 0.85)';
+
+      // Capture phase + stopImmediatePropagation: run before the
+      // desktop scheme's bubble-phase keydown so the rebind keystroke
+      // never also fires a game action. Escape cancels without binding.
+      const onKey = (ev: KeyboardEvent) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        cancelCapture = null;
+        window.removeEventListener('keydown', onKey, true);
+        if (ev.code !== 'Escape') setBinding(action, ev.code);
+        renderRows();
+      };
+      window.addEventListener('keydown', onKey, { capture: true });
+      cancelCapture = () => {
+        window.removeEventListener('keydown', onKey, true);
+        key.textContent = labelForCode(getBinding(action));
+        key.style.background = 'rgba(40, 28, 20, 0.7)';
+        key.style.borderColor = 'rgba(180, 130, 90, 0.5)';
+      };
+    });
+
+    row.append(name, key);
+    return row;
+  };
+
+  reset.addEventListener('click', () => { resetBindings(); renderRows(); });
+  renderRows();
+  return section;
+}
 
 /** RUN tab — character + quit + abandon + exit. Lives behind a tab
  *  switch so destructive buttons can't be hit by accident while
@@ -561,6 +690,59 @@ function makeToggle(opts: ToggleOpts): HTMLDivElement {
     knob.style.left = newVal ? '18px' : '2px';
   });
 
+  return row;
+}
+
+interface SelectOpts<T extends string> {
+  label: string;
+  description?: string;
+  options: ReadonlyArray<{ id: T; label: string }>;
+  get: () => T;
+  set: (v: T) => void;
+}
+
+/** A labelled dropdown. Used for the touch control-scheme picker — a
+ *  one-option seam today, but the UI is ready for more. */
+function makeSelect<T extends string>(opts: SelectOpts<T>): HTMLDivElement {
+  const row = document.createElement('div');
+  Object.assign(row.style, { display: 'flex', flexDirection: 'column', gap: '6px' } as Partial<CSSStyleDeclaration>);
+
+  const top = document.createElement('div');
+  Object.assign(top.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' } as Partial<CSSStyleDeclaration>);
+
+  const label = document.createElement('span');
+  label.textContent = opts.label;
+  Object.assign(label.style, {
+    fontSize: '11px', fontWeight: '500', letterSpacing: '0.18em',
+    color: 'rgba(220, 180, 140, 0.9)',
+  } as Partial<CSSStyleDeclaration>);
+
+  const select = document.createElement('select');
+  Object.assign(select.style, {
+    background: 'rgba(40, 28, 20, 0.7)', border: '1px solid rgba(180, 130, 90, 0.5)',
+    borderRadius: '3px', color: 'rgba(230, 200, 170, 0.95)',
+    fontFamily: 'inherit', fontSize: '11px', padding: '5px 8px', cursor: 'pointer',
+  } as Partial<CSSStyleDeclaration>);
+  for (const o of opts.options) {
+    const optEl = document.createElement('option');
+    optEl.value = o.id;
+    optEl.textContent = o.label;
+    select.appendChild(optEl);
+  }
+  select.value = opts.get();
+  select.addEventListener('change', () => opts.set(select.value as T));
+
+  top.append(label, select);
+  row.appendChild(top);
+
+  if (opts.description) {
+    const desc = document.createElement('div');
+    desc.textContent = opts.description;
+    Object.assign(desc.style, {
+      fontSize: '11px', color: 'rgba(160, 130, 100, 0.7)', fontStyle: 'italic',
+    } as Partial<CSSStyleDeclaration>);
+    row.appendChild(desc);
+  }
   return row;
 }
 

@@ -38,7 +38,17 @@ export interface Settings {
   /** Show the debug capture button (the ⊕ CAPTURE chip) during play.
    *  Same as the ?debug=1 URL flag, but persisted + toggleable in-menu. */
   debugMode: boolean;
+  /** Touch control scheme. Only 'default' (left-joystick / right-aim,
+   *  the current layout) ships today — the selector is a seam for
+   *  alternate schemes (e.g. fixed-stick, swipe-move) we'll add later. */
+  controlScheme: 'default';
 }
+
+/** Selectable touch control schemes. One entry for now; the list is the
+ *  source of truth for the settings dropdown. */
+export const CONTROL_SCHEMES: { id: Settings['controlScheme']; label: string }[] = [
+  { id: 'default', label: 'Default (joystick + aim)' },
+];
 
 const STORAGE_KEY = 'delve-settings';
 
@@ -52,6 +62,7 @@ const DEFAULTS: Settings = {
   devAutoUpdate: false,
   debugMode: false,
   perfMeter: false,
+  controlScheme: 'default',
 };
 
 let current: Settings = load();

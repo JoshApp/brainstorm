@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Safe-room card: grace window before tap can dismiss it"
+      },
+      {
+        "tag": "tune",
+        "text": "Step 3 v4: encounter + event density passes — pipeline complete"
+      },
+      {
+        "tag": "tune",
         "text": "Step 3 v3: carve pass — fissured floor cutouts as the first pass"
       },
       {
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Crit + lifesteal modifiers + 6 items leaning into them"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf: merge static walls into one mesh per room"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: braced timber wall variant + timber plank doors"
       }
     ]
   }
