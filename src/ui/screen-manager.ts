@@ -131,11 +131,18 @@ export function dismissTopScreen(): boolean {
   return false;
 }
 
-/** True if any open screen has policy.pausesWorld. Used by the main loop
- *  to gate world updates and by attack-input to drop strikes during menus. */
+/** True if any open screen pauses the world. Used by the main loop to
+ *  gate world updates and by attack-input to drop strikes during menus.
+ *
+ *  pausesWorld DEFAULTS to true (see defaultPolicy) — every modal screen
+ *  freezes the world unless it explicitly opts out with
+ *  `pausesWorld: false`. So opening the inventory, settings, a note, or a
+ *  descent summary stops time: enemies can't hit you while you read a
+ *  menu, and the moment resumes cleanly on close. A non-modal overlay
+ *  that wants the world to keep running must say so. */
 export function isWorldPausedByScreen(): boolean {
   for (const s of openScreens.values()) {
-    if (s.policy?.pausesWorld) return true;
+    if (s.policy?.pausesWorld ?? defaultPolicy(s).pausesWorld) return true;
   }
   return false;
 }
