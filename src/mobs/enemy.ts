@@ -902,6 +902,17 @@ export function createEnemy(
         const strike = ability.strike > 0 ? ability.strike : 1;
         const t = Math.min(1, phaseTimer / strike);
         const dest = resolveAnchor(action.toward, playerPos);
+        // Cap the travel to maxDistance from takeoff (a small chase hop),
+        // else the arc covers the full gap in one leap.
+        if (action.maxDistance) {
+          const ddx = dest.x - leapStart.x;
+          const ddz = dest.z - leapStart.z;
+          const dd = Math.hypot(ddx, ddz);
+          if (dd > action.maxDistance) {
+            dest.x = leapStart.x + (ddx / dd) * action.maxDistance;
+            dest.z = leapStart.z + (ddz / dd) * action.maxDistance;
+          }
+        }
 
         // Horizontal: ease to arrive OVER the marker by ~the apex, then
         // hold — so the back half reads as a committed vertical drop onto
@@ -995,7 +1006,10 @@ export function createEnemy(
         aoeTelegraph = spawnAoeTelegraph(scene, o.x, o.z, a.radius);
         return;
       }
-      if (a.kind === 'leap') {
+      // Only a COMMITTED leap (onto the locked target) telegraphs a
+      // landing ring — that's the "step off the marker" attack. A homing
+      // hop (toward 'player') is just chase movement; no ring.
+      if (a.kind === 'leap' && a.toward === 'lockedTarget') {
         const minD = a.minDistance ?? 0;
         const dx = aoeTarget.x - container.position.x;
         const dz = aoeTarget.z - container.position.z;

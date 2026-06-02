@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "King core: real glowing nucleus + punchy hit feedback"
+      },
+      {
+        "tag": "tune",
         "text": "Slime King polish: hittable core, surface hitboxes, slow drop, slime puddle"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Encounters"
-      },
-      {
-        "tag": "content",
-        "text": "snap"
       }
     ]
   }

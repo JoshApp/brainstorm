@@ -1104,7 +1104,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     bossName: 'The Boiling King',
     scale: 7.0,                      // WAY bigger than the player (~2× player height, 3.5m wide)
     hp: 28,                          // bigger body, more HP — fight pacing stays similar
-    moveSpeed: 0.9,                  // sluggish between hops
+    moveSpeed: 1.2,                  // a touch less glacial; the chase HOP does the real closing
     attackDamage: 3,                 // hits hard — the AoE is the threat
     attackRange: 10.0,               // proportional to body — leaps across the room
     strikeRange: 4.0,                // landing splash radius matches the bulk
@@ -1166,6 +1166,18 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 4,
     loseSightTime: 12,               // never really gives up
     abilities: [
+      // LASH — a melee deterrent so you can't camp the core risk-free
+      // between leaps. The king coils (windup) then lashes a pseudopod
+      // out to ~3m — far enough to clip you at the body's edge where you
+      // strike the core. Highest priority at close range; cooldown keeps
+      // it from chaining. creep so a stationary player still gets caught.
+      {
+        id: 'lash',
+        minRange: 0, maxRange: 4.5,
+        windup: 0.55, strike: 0.22, recover: 0.70, cooldown: 2.6,
+        pose: 'charge', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 3.0, damage: 2, element: 'arcane' } }],
+      },
       // LEAP — a committed airborne jump. A ground ring telegraphs the
       // landing zone at the player's feet during windup; the king then
       // arcs ONTO that locked point (it commits to where you WERE, so
@@ -1175,9 +1187,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // the shove. If you eat the landing you're knocked to the body's
       // edge and the aura (slow + acid ticks, defined above) becomes the
       // inside-the-body pressure. Getting out is the skill expression.
+      // minRange 3 so it commits to a real gap, not an awkward point-blank
+      // leap (the lash/hop cover close range).
       {
         id: 'leap',
-        minRange: 0, maxRange: 14,
+        minRange: 3, maxRange: 14,
         // strike 0.65 (was 0.50) + riseFraction 0.4 below = a faster launch
         // and a longer, readable descent — the player gets time to dodge
         // off the marker as the king hangs and drops.
@@ -1229,6 +1243,23 @@ export const ENEMIES: Record<string, EnemySpec> = {
           },
         ],
       },
+      // HOP — small homing chase hop so the king actually closes on a
+      // kiting player BETWEEN big leaps (LAST priority: only fires when the
+      // lash/leap are on cooldown). Homes to where you ARE (toward
+      // 'player'), short windup + short cooldown, low arc, no ground ring
+      // (it's movement, not a committed AoE). A little chip if it lands on
+      // you. minRange 1.5 so it doesn't hop in your face when adjacent.
+      {
+        id: 'hop',
+        minRange: 1.5, maxRange: 9,
+        windup: 0.35, strike: 0.40, recover: 0.30, cooldown: 0.8,
+        pose: 'cast',
+        steps: [{ trigger: { at: 0 }, action: {
+          kind: 'leap', toward: 'player', arcHeight: 1.3, landingRadius: 0.8, damage: 1,
+          element: 'arcane', shake: 0.08, knockbackSpeed: 2.0, riseFraction: 0.42,
+          maxDistance: 3.5,   // small fixed step — closes a kiting player over several hops
+        } }],
+      },
     ],
     xp: 60,                          // significant haul — earns the depth
     gold: [40, 80],
@@ -1255,15 +1286,43 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'boiling-prince',
     name: 'boiling prince',
     // No tileChar — only spawned via the king's splitsInto.
+    // The split stays part of the boss fight: each prince is a boss, so
+    // the boss bar tracks all three (as three smaller bars). The fight
+    // ends only when the last prince dies.
+    isBoss: true,
+    bossName: 'Spawn of the King',
     hp: 3,
-    moveSpeed: 1.5,
+    moveSpeed: 1.6,                  // a touch faster so it can pressure a kiter
     attackDamage: 1,
-    attackRange: 1.0,
+    attackRange: 1.0,                // legacy fields (unused — `abilities` below drives it)
     strikeRange: 0.85,
     windupTime: 0.55,
     strikeTime: 0.18,
     recoverTime: 0.45,
     damageType: 'magic',             // still acid — keeps the king's theme
+    // A smaller version of the king's kit: a committed leap (telegraphed,
+    // dodgeable) + a close-range bite. No puddle — three princes spilling
+    // acid would carpet the arena.
+    abilities: [
+      {
+        id: 'prince-leap',
+        minRange: 2, maxRange: 7,
+        windup: 0.70, strike: 0.45, recover: 0.70, cooldown: 2.4,
+        pose: 'cast',
+        steps: [{ trigger: { at: 0 }, action: {
+          kind: 'leap', toward: 'lockedTarget', arcHeight: 1.8, landingRadius: 1.0, damage: 1,
+          element: 'arcane', shake: 0.12, shakeDuration: 0.3, knockbackSpeed: 2.5,
+          minDistance: 2.0, riseFraction: 0.42,
+        } }],
+      },
+      {
+        id: 'bite',
+        minRange: 0, maxRange: 1.6,
+        windup: 0.35, strike: 0.14, recover: 0.40,
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.2, damage: 1, element: 'arcane' } }],
+      },
+    ],
     model: oozeModel(0x4a6a18, 0xa8ff44, 0.85),
     baseEyeEmissive: 0,
     collisionRadius: 0.30,

@@ -103,6 +103,12 @@ export type AbilityAction =
       toward: Anchor; arcHeight: number; landingRadius: number; damage: number;
       shake?: number; shakeDuration?: number; knockbackSpeed?: number;
       minDistance?: number; element?: Element;
+      /** Cap the leap's horizontal travel to this many metres from the
+       *  takeoff point. Without it the leap covers the FULL distance to its
+       *  target in one arc; with it a homing chase HOP advances in small
+       *  fixed steps (so a slow giant closes a kiting player gradually
+       *  instead of teleporting onto them). */
+      maxDistance?: number;
       /** Fraction of the strike spent rising to the apex (default 0.5 =
        *  symmetric). Below 0.5 the king launches fast and DESCENDS slowly —
        *  more airtime over the marker for the player to read the drop and

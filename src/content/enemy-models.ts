@@ -570,8 +570,8 @@ export function kingOozeModel(bodyColor: number, innerColor: number): ModelSpec 
       // hit unmistakably lights it up (enemy.ts beats it idly + flares +
       // pops it on damage): a solid bright orb wrapped in an additive
       // bloom that haloes it like energy.
-      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.12, segments: [18, 14], mat: 'core' },
-      { name: 'coreGlow', parent: 'rig', kind: 'sprite', pos: [0, 0, 0], size: [0.30, 0.30], texture: 'fire-wisp', blending: 'additive', color: innerColor },
+      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.095, segments: [18, 14], mat: 'core' },
+      { name: 'coreGlow', parent: 'rig', kind: 'sprite', pos: [0, 0, 0], size: [0.25, 0.25], texture: 'fire-wisp', blending: 'additive', color: innerColor },
 
       // ── SWALLOWED REGALIA — small geometry suspended inside the
       //    sphere's volume. Positions hand-picked to be within the
