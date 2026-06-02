@@ -103,6 +103,13 @@ const HARNESS_ENABLED =
   new URLSearchParams(window.location.search).get('harness') === '1';
 if (HARNESS_ENABLED) setHarnessPaused(true);
 
+// Inspection snaps (?inspect=true) preview a subject/vault cleanly. Known at
+// boot so we can skip ambient clutter (drifting dust motes) that otherwise
+// floats in front of the subject — the motes live on `scene`, not the level
+// root, so subject-only hiding wouldn't catch them.
+const INSPECT_BOOT =
+  new URLSearchParams(window.location.search).get('inspect') === 'true';
+
 // Debug capture tool: an on-screen CAPTURE button that grabs a rich
 // snapshot during NORMAL play. Enabled by EITHER the ?debug=1 URL flag
 // OR the persisted "DEBUG MODE" setting (toggled in the settings menu).
@@ -162,6 +169,39 @@ scene.add(ambient);
 // Inspection mode (vault-preview snaps) — flat bright fill so authored
 // geometry reads regardless of torchlight; overrides dark-adaptation.
 let inspectMode = false;
+// Subject-preview framing is deferred: the level (and its spawned mob meshes)
+// load asynchronously, so the subject doesn't exist when the inspect setup runs
+// synchronously after startRun. These hold the key/rim lights + a pending flag
+// so an 'always' tick can frame the camera and retarget the lights once the
+// subject mesh actually appears in the scene graph. (See the 'inspect-frame'
+// tick.)
+let inspectFramePending = false;
+let inspectKeyLight: THREE.DirectionalLight | null = null;
+let inspectRimLight: THREE.DirectionalLight | null = null;
+
+// Radial-gradient backdrop for subject previews: a lighter pool of light in the
+// centre (where the framed subject sits) falling to near-black at the edges.
+// Gives a near-black mob a brighter ground to read against while keeping the
+// frame dark and grimdark — a flat grey field hid the darkest subjects.
+function makeStudioBackdrop(): THREE.CanvasTexture {
+  const size = 512;
+  const cvs = document.createElement('canvas');
+  cvs.width = cvs.height = size;
+  const g = cvs.getContext('2d')!;
+  // Centre offset slightly below middle — the subject's lower body/feet read
+  // against the brightest part, the way a stage spotlight pools on the floor.
+  const grad = g.createRadialGradient(
+    size / 2, size * 0.58, size * 0.04,
+    size / 2, size * 0.58, size * 0.62);
+  grad.addColorStop(0, '#5b6068');   // pool centre — lifts dark silhouettes
+  grad.addColorStop(0.55, '#3b3e44');
+  grad.addColorStop(1, '#191b1f');   // edges fall to near-black to frame it
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 // --- Static surface materials (PS1) ---
 const materials = buildMaterials();
@@ -255,7 +295,7 @@ initLevelLoader({
       ...level.spec.rooms.map((r) => r.rect),
       ...level.spec.corridors.map((r) => r.rect),
     ];
-    initDriftingMotes(scene, rectsForMotes, tint);
+    if (!INSPECT_BOOT) initDriftingMotes(scene, rectsForMotes, tint);
     // Notify the harness (if booted) that a level is observable. Only
     // fires once — subsequent stair-driven swaps are transparent since
     // observation reads via the same getLevel() getter.
@@ -767,6 +807,57 @@ const SYSTEMS: GameSystem[] = [
     tickLightPool(camera, los);
   } },
 
+  // Deferred subject-preview framing. The subject mesh (a mob, a model) spawns
+  // async after the inspect scenario is applied, so we can't frame it at setup.
+  // Each frame while pending, look for the inspectSubject-tagged objects; once
+  // found, pull the camera back to fill the frame, aim the key/rim lights at
+  // the subject's real centre (a floor mob sits ~0.5m up, not the 1.4m default),
+  // hide the surrounding level geometry, and clear the flag. Frozen scenario, so
+  // a one-shot frame sticks for the snap.
+  { name: 'inspect-frame', phase: 'always', tick() {
+    if (!inspectFramePending) return;
+    const box = new THREE.Box3();
+    scene.traverse((o) => { if (o.userData.inspectSubject) box.expandByObject(o); });
+    if (box.isEmpty()) return;   // subject not spawned yet — retry next frame
+    if (currentLevel?.root) {
+      for (const child of currentLevel.root.children) {
+        const o = child as THREE.Object3D;
+        if (!o.userData.inspectSubject) o.visible = false;
+      }
+    }
+    // Frame by the bounding SPHERE, not the longest box axis: a long, low mob
+    // (e.g. the carrion hound, 0.8m deep but 0.25m tall) framed by its depth
+    // axis pushes the camera back and leaves it a sliver on screen. The sphere
+    // radius fills the vertical FOV the same regardless of which way the
+    // subject is turned. 1.15× = a little air around the silhouette.
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const center = sphere.center;
+    const r = sphere.radius || 0.5;
+    const fov = (camera.fov * Math.PI) / 180;
+    const dist = (r / Math.sin(fov / 2)) * 1.15;
+    // A 3/4 hero angle (front-right, slightly above) instead of dead-on: a
+    // head-on shot of a long-but-low mob sends its length INTO the screen and
+    // the silhouette reads tiny. Off-axis, the length spans the frame and the
+    // form reads in three dimensions. Direction = az 35°, el 22° from +z.
+    const az = (35 * Math.PI) / 180, el = (22 * Math.PI) / 180;
+    const dir = new THREE.Vector3(
+      Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
+    camera.position.copy(center).addScaledVector(dir, dist);
+    camera.lookAt(center);
+    camera.updateMatrixWorld();
+    if (inspectKeyLight) {
+      inspectKeyLight.position.set(center.x + 2, center.y + 3, center.z + 3);
+      inspectKeyLight.target.position.copy(center);
+      inspectKeyLight.target.updateMatrixWorld();
+    }
+    if (inspectRimLight) {
+      inspectRimLight.position.set(center.x - 2, center.y + 2, center.z - 3);
+      inspectRimLight.target.position.copy(center);
+      inspectRimLight.target.updateMatrixWorld();
+    }
+    inspectFramePending = false;
+  } },
+
   { name: 'render', phase: 'always', tick() { renderWithStyle(renderer, scene, camera); } },
 
   { name: 'shake-restore', phase: 'always', tick() { camera.position.sub(shakeOffset); } },
@@ -1138,11 +1229,10 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     // IS the subject. Toggle by scenario.inspectSubjectOnly (snap.ts
     // auto-sets it for the subject families).
     if (scenario.inspectSubjectOnly) {
-      for (const child of currentLevel.root.children) {
-        if (!(child as THREE.Object3D).userData.inspectSubject) {
-          child.visible = false;
-        }
-      }
+      // The subject mesh doesn't exist yet (level + mob spawns load async after
+      // startRun), so defer the camera/light framing to the 'inspect-frame'
+      // tick, which retries each frame until the subject appears.
+      inspectFramePending = true;
     }
     // White ambient as the FILL light — at a moderate level so the
     // shadow side of the silhouette stays readable but isn't blown
@@ -1164,23 +1254,33 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     // KEY LIGHT — front-right, drives specular highlights + shading
     // on whichever face the camera's looking at. Positioned to
     // light the camera-facing side from above-right.
+    // Lights are placed for a floating-item default (~1.4m) here, then the
+    // 'inspect-frame' tick retargets them at the subject's true centre once it
+    // spawns (a floor mob sits lower). Vault previews keep this default.
+    const aim = new THREE.Vector3(0, 1.4, 0);
     const key = new THREE.DirectionalLight(0xffffff, 3.0);
-    key.position.set(2, 3, 3);
-    key.target.position.set(0, 1.4, 0);
+    key.position.set(aim.x + 2, aim.y + 3, aim.z + 3);
+    key.target.position.copy(aim);
     scene.add(key);
     scene.add(key.target);
+    inspectKeyLight = key;
     // BACK / RIM LIGHT — warm tint behind the subject, pops the
     // silhouette off the grey backdrop with a torchlight-coloured
     // edge so highlights read bronze, not stadium-white.
     const rim = new THREE.DirectionalLight(0xffd0a0, 1.5);
-    rim.position.set(-2, 2, -3);
-    rim.target.position.set(0, 1.4, 0);
+    rim.position.set(aim.x - 2, aim.y + 2, aim.z - 3);
+    rim.target.position.copy(aim);
     scene.add(rim);
     scene.add(rim.target);
-    // Mid-grey scene backdrop — dark enough that bright items pop,
-    // light enough that dark items don't disappear. Pure black or
-    // pure white both kill one end of the value range.
-    scene.background = new THREE.Color(0x404040);
+    inspectRimLight = rim;
+    // Radial "studio sweep" backdrop instead of a flat grey. A flat field
+    // gives a near-black mob nothing to read against — the user's complaint.
+    // A gradient that's lighter behind the subject and falls to near-black at
+    // the edges does double duty: dark subjects pop against the bright centre,
+    // bright items still sit in a darker frame, and the pool-of-light look is
+    // on-theme for the grimdark dungeon. CanvasTexture (browser-only, and
+    // inspect only ever runs in the browser).
+    scene.background = makeStudioBackdrop();
     // Kill fog — even pushed to 1000+, a subtle grade across the
     // room is visible in flat-lit inspection shots.
     const fog = scene.fog as THREE.Fog | null;
