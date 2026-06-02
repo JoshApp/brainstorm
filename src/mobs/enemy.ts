@@ -394,6 +394,10 @@ export function createEnemy(
   const commitDistance = abilities.reduce((m, a) => Math.max(m, a.maxRange), 0);
   let currentAbility: Ability | null = null;
   const cooldowns = new Map<string, number>();
+  // Stagger each ability's FIRST use by a small random delay so a pack
+  // spawned together (the king's split princes) doesn't cast in unison.
+  // Deterministic via the run-seeded rng.
+  for (const ab of abilities) cooldowns.set(ab.id, gameRng() * 0.9);
   // AoE telegraph state — the ground marker shown during an aoe ability's
   // windup, and the world point it's locked to (resolved at strike).
   let aoeTelegraph: AoeTelegraph | null = null;
@@ -1672,7 +1676,8 @@ export function createEnemy(
         const t = Math.min(1, phaseTimer / currentAbility.recover);
         applyTelegraph(currentAbility.pose, 'recover', t);
         if (phaseTimer >= currentAbility.recover) {
-          cooldowns.set(currentAbility.id, currentAbility.cooldown ?? 0);
+          // ±18% jitter so packs drift out of sync over the fight.
+          cooldowns.set(currentAbility.id, (currentAbility.cooldown ?? 0) * (0.82 + gameRng() * 0.36));
           currentAbility = null;
           clearAoeTelegraph();   // safety — normally disposed at strike
           state = 'chasing';

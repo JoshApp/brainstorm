@@ -10,6 +10,7 @@ import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
 import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
+import { kickShake } from '../combat/screen-shake';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
@@ -1339,14 +1340,24 @@ export function buildLevel(
         break;
       }
     }
+    // A splitting "spit" — the parent bursts and flings the spawns
+    // outward (a screen-shake thud + an outward knockback impulse on each
+    // so they scatter dynamically, then settle), rather than just popping
+    // into place. The parent's own death dissolve provides the goo.
+    const bigSplit = split.count >= 3;
+    if (bigSplit) kickShake(0.3, 0.4);
     for (let i = 0; i < split.count; i++) {
       const angle = (i / split.count) * Math.PI * 2 + Math.random() * 0.3;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
       const childPos = new THREE.Vector3(
-        deathPos.x + Math.cos(angle) * radius,
+        deathPos.x + cos * radius,
         0,
-        deathPos.z + Math.sin(angle) * radius,
+        deathPos.z + sin * radius,
       );
-      spawnInto(childBase, childPos, parentRoom);
+      const child = spawnInto(childBase, childPos, parentRoom);
+      // Fling it outward from the burst point.
+      child.applyKnockback(cos, sin, bigSplit ? 6.0 : 3.5);
     }
   };
 

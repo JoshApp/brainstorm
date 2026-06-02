@@ -23,6 +23,7 @@ function smallChamber(
   rows: number,
   cols: number,
   innerFill: () => Partial<Pick<LevelSpec, 'props' | 'spawns' | 'doors' | 'extraWalls'>>,
+  height: number = TEST_HEIGHT,
 ): LevelSpec {
   const w = cols - 2;
   const d = rows - 2;
@@ -38,7 +39,7 @@ function smallChamber(
       {
         id: `test-${id}-room`,
         rect: { x: 0, z: 0, w, d },
-        height: TEST_HEIGHT,
+        height,
       },
     ],
     corridors: [],
@@ -225,7 +226,7 @@ function buildBoilingKing(): LevelSpec {
       // the king is dead. King's signature acid-green tint.
       { kind: 'boss-mist', x: 0, z: 4, rotY: Math.PI, color: 0x8aff44 },
     ],
-  }));
+  }), 10.0);   // tall ceiling — the king is huge + leaps ~4m; a 3.2m roof clips it
 }
 
 // ── Dummy — empty room. Baseline for camera / movement / lighting

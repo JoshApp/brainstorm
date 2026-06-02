@@ -22,10 +22,12 @@ import { showBossIntro, hideBossIntro } from './boss-intro-card';
 let root: HTMLDivElement | null = null;
 let nameEl: HTMLDivElement | null = null;
 let barsEl: HTMLDivElement | null = null;
-// Pool of bar rows (track + trail + fill), grown to match the boss count.
-const barRows: Array<{ track: HTMLDivElement; trail: HTMLDivElement; fill: HTMLDivElement }> = [];
+// Pool of bar rows (track + trail + fill + 50% marker), grown to match the
+// boss count.
+interface BarRow { track: HTMLDivElement; trail: HTMLDivElement; fill: HTMLDivElement; marker: HTMLDivElement }
+const barRows: BarRow[] = [];
 
-function makeBarRow(): { track: HTMLDivElement; trail: HTMLDivElement; fill: HTMLDivElement } {
+function makeBarRow(): BarRow {
   const track = document.createElement('div');
   Object.assign(track.style, {
     position: 'relative',
@@ -49,9 +51,20 @@ function makeBarRow(): { track: HTMLDivElement; trail: HTMLDivElement; fill: HTM
     transition: 'width 0.16s ease-out',
   } as Partial<CSSStyleDeclaration>);
 
+  // Halfway notch — a thin dark tick at 50% (a Souls-style phase marker).
+  // Shown only on the king's single wide bar.
+  const marker = document.createElement('div');
+  Object.assign(marker.style, {
+    position: 'absolute', left: '50%', top: '-1px', bottom: '-1px', width: '2px',
+    marginLeft: '-1px',
+    background: 'rgba(20, 10, 8, 0.95)',
+    boxShadow: '0 0 2px rgba(0,0,0,0.9)',
+  } as Partial<CSSStyleDeclaration>);
+
   track.appendChild(trail);
   track.appendChild(fill);
-  return { track, trail, fill };
+  track.appendChild(marker);
+  return { track, trail, fill, marker };
 }
 
 export function createBossBar() {
@@ -90,7 +103,7 @@ export function createBossBar() {
   barsEl = document.createElement('div');
   Object.assign(barsEl.style, {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    gap: '3px', width: '100%',
+    gap: '8px', width: '100%',   // spaced so the stacked prince bars read separately
   } as Partial<CSSStyleDeclaration>);
 
   root.appendChild(nameEl);
@@ -122,6 +135,8 @@ function render(s: BossState) {
     row.track.style.display = 'block';
     row.track.style.height = multi ? '6px' : '9px';
     row.track.style.width = multi ? '64%' : '100%';
+    // 50% notch only on the king's single wide bar.
+    row.marker.style.display = multi ? 'none' : 'block';
     const bar = s.bars[i];
     const pct = bar.max > 0 ? Math.max(0, Math.min(1, bar.hp / bar.max)) * 100 : 0;
     row.fill.style.width = `${pct}%`;

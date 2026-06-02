@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Slime King: chase hops, a lash attack, smaller core + the split is now a 3-bar boss fight"
+      },
+      {
+        "tag": "tune",
         "text": "King core: real glowing nucleus + punchy hit feedback"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Loot slots: rollable, partial-fill reward placeholders ($)"
-      },
-      {
-        "tag": "tune",
-        "text": "Encounters"
       }
     ]
   }

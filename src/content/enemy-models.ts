@@ -594,13 +594,16 @@ export function kingOozeModel(bodyColor: number, innerColor: number): ModelSpec 
   };
 }
 
-export function oozeModel(bodyColor: number, innerColor: number, scale: number = 1): ModelSpec {
+export function oozeModel(bodyColor: number, innerColor: number, scale: number = 1, withGlow: boolean = false): ModelSpec {
   // s — geometry multiplier. Applied through size/radius rather than
   // a parent group transform so collision radius (set on the spec, not
   // the model) and visible size stay in sync at the spec level.
+  // withGlow adds an additive bloom around the core (an opt-in "real
+  // nucleus" like the king's) — used by the split princes; left off for
+  // the plain slimes so they're unchanged.
   const s = scale;
   return {
-    id: `ooze-${scale.toFixed(2)}`,
+    id: `ooze-${scale.toFixed(2)}${withGlow ? '-glow' : ''}`,
     materials: {
       body: {
         color: bodyColor,
@@ -633,8 +636,12 @@ export function oozeModel(bodyColor: number, innerColor: number, scale: number =
       // hint (faces forward via the head position).
       { parent: 'rig', kind: 'sphere', pos: [0, -0.02 * s, 0.12 * s], radius: 0.12 * s, segments: [10, 8], mat: 'body', jitter: 0.015 },
       // CORE — bright emissive orb inside. Reads as the nucleus you
-      // need to break.
-      { parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.07 * s, segments: [10, 8], mat: 'core' },
+      // need to break. Named so the hit-reaction (enemy.ts) can pop it.
+      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.07 * s, segments: [10, 8], mat: 'core' },
+      // Optional additive bloom haloing the core (the king-style glow).
+      ...(withGlow
+        ? [{ name: 'coreGlow', parent: 'rig', kind: 'sprite' as const, pos: [0, 0, 0] as Vec3, size: [0.22 * s, 0.22 * s] as [number, number], texture: 'fire-wisp', blending: 'additive' as const, color: innerColor }]
+        : []),
     ],
   };
 }

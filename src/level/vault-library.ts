@@ -981,6 +981,9 @@ const BOSS_HALL: Vault = {
     '####################',
   ],
   minDepth: 3,
+  // Tall vaulted ceiling — the king is huge and leaps ~4m; a normal
+  // ~3m roof clips the arc. Also just reads as a grand cathedral arena.
+  roomHeight: 10,
   // Weight 3 (vs 1 for the antechamber + cathedral) so the grand
   // arena wins the boss-vault roll most of the time. Tiny boss rooms
   // are still possible — they're the variant for the curious player

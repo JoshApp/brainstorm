@@ -1173,8 +1173,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // it from chaining. creep so a stationary player still gets caught.
       {
         id: 'lash',
-        minRange: 0, maxRange: 4.5,
-        windup: 0.55, strike: 0.22, recover: 0.70, cooldown: 2.6,
+        minRange: 0, maxRange: 4.0,
+        // Long, READABLE windup (0.9s) — the king visibly coils before it
+        // lashes. creep so it oozes toward you during the wind-up (extra
+        // tell + still catches a backpedaller).
+        windup: 0.90, strike: 0.25, recover: 0.80, cooldown: 3.2,
         pose: 'charge', creep: true,
         steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 3.0, damage: 2, element: 'arcane' } }],
       },
@@ -1187,18 +1190,20 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // the shove. If you eat the landing you're knocked to the body's
       // edge and the aura (slow + acid ticks, defined above) becomes the
       // inside-the-body pressure. Getting out is the skill expression.
-      // minRange 3 so it commits to a real gap, not an awkward point-blank
-      // leap (the lash/hop cover close range).
+      // minRange 4 so it commits to a real gap; maxRange 9 (was 14) so the
+      // king can't slam you from clear across the arena the instant it
+      // sees you — it has to HOP in first, then leap. The big leap is now
+      // a rarer, impactful punctuation (cooldown 4.5), not a spam.
       {
         id: 'leap',
-        minRange: 3, maxRange: 14,
+        minRange: 4, maxRange: 9,
         // strike 0.65 (was 0.50) + riseFraction 0.4 below = a faster launch
         // and a longer, readable descent — the player gets time to dodge
         // off the marker as the king hangs and drops.
         windup: 1.20, strike: 0.65, recover: 1.40,
-        // Full cycle ≈ 1.2 + 0.5 + 1.4 + 2.5 = 5.6s — ~4s of safety
-        // between leaps to advance on the king or strike its core.
-        cooldown: 2.5,
+        // Long cooldown — the big slam is occasional + impactful, not a
+        // constant barrage. Hops + the lash carry the in-between pressure.
+        cooldown: 4.5,
         pose: 'cast',
         steps: [
           // JUMP — committed airborne leap onto the locked landing zone.
@@ -1252,12 +1257,15 @@ export const ENEMIES: Record<string, EnemySpec> = {
       {
         id: 'hop',
         minRange: 1.5, maxRange: 9,
-        windup: 0.35, strike: 0.40, recover: 0.30, cooldown: 0.8,
+        // Calmer cadence (cooldown 1.2 + a readable 0.45 windup) so the
+        // king isn't constantly airborne — small deliberate hops with a
+        // crawl beat between, not a jitter.
+        windup: 0.45, strike: 0.40, recover: 0.35, cooldown: 1.2,
         pose: 'cast',
         steps: [{ trigger: { at: 0 }, action: {
-          kind: 'leap', toward: 'player', arcHeight: 1.3, landingRadius: 0.8, damage: 1,
-          element: 'arcane', shake: 0.08, knockbackSpeed: 2.0, riseFraction: 0.42,
-          maxDistance: 3.5,   // small fixed step — closes a kiting player over several hops
+          kind: 'leap', toward: 'player', arcHeight: 1.1, landingRadius: 0.8, damage: 1,
+          element: 'arcane', shake: 0.08, knockbackSpeed: 2.0, riseFraction: 0.45,
+          maxDistance: 3.2,   // small fixed step — closes a kiting player over several hops
         } }],
       },
     ],
@@ -1276,7 +1284,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // Death = bursts into three smaller slimes. The fight isn't over
     // yet; the prince spec terminates the recursion (no splitsInto on
     // it). 0.8m scatter radius spreads them around the corpse.
-    splitsInto: { enemyId: 'boiling-prince', count: 3, radius: 0.8 },
+    splitsInto: { enemyId: 'boiling-prince', count: 3, radius: 1.6 },
   },
 
   // Boiling Prince — the children of the king. Smaller, faster, no
@@ -1300,6 +1308,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.18,
     recoverTime: 0.45,
     damageType: 'magic',             // still acid — keeps the king's theme
+    // Aim/flash the CORE like the king (it has a glowing core now) — and
+    // float the damage number from roughly the core height.
+    aimHeight: 0.5,
     // A smaller version of the king's kit: a committed leap (telegraphed,
     // dodgeable) + a close-range bite. No puddle — three princes spilling
     // acid would carpet the arena.
@@ -1323,12 +1334,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
         steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.2, damage: 1, element: 'arcane' } }],
       },
     ],
-    model: oozeModel(0x4a6a18, 0xa8ff44, 0.85),
+    // Bigger than before (1.2 vs 0.85) + a glowing core like the king
+    // (withGlow), so the spawns read as miniature kings.
+    model: oozeModel(0x4a6a18, 0xa8ff44, 1.2, true),
     baseEyeEmissive: 0,
-    collisionRadius: 0.30,
+    collisionRadius: 0.38,
     tiltPartName: 'rig',
-    flashMaterialName: 'body',
-    eyeMaterialName: 'core',
+    // Flash the CORE (glowing, like the king) — and decouple the eyes so
+    // the eye system doesn't zero the core's emissive (it has no eyes).
+    flashMaterialName: 'core',
+    eyeMaterialName: 'no-eyes',
     presence: 'twitch',
     sightRange: 5,
     sightConeHalfAngle: 1.6,
