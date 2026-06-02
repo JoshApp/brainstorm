@@ -82,6 +82,11 @@ export function toggleSettings() {
 
 function openPanel() {
   if (!panel) return;
+  // Always open focused on RUN — the most-reached mid-game affordances
+  // (CHARACTER, QUIT, etc.) land under the thumb every time. buildPanelContents
+  // falls back to CONTROLS when there's no live run (title screen).
+  activeTab = 'run';
+  buildPanelContents();
   panel.style.display = 'flex';
   panelOpen = true;
   openScreen({
@@ -98,12 +103,11 @@ function closePanel() {
   closeScreen('settings');
 }
 
-// Active tab persists across opens within a session — convenient when
-// iterating on a tab's contents on the phone.
 type TabId = 'run' | 'controls' | 'audio' | 'graphics' | 'system' | 'debug';
-// Default to RUN when a live run is active (CHARACTER + quit + abandon
-// + exit are the most-reached affordances mid-game); fall back to
-// CONTROLS on the title screen where RUN doesn't exist yet.
+// Every open RESETS focus to RUN (see openPanel) — CHARACTER + quit +
+// abandon + exit are the most-reached affordances mid-game; falls back to
+// CONTROLS on the title screen where RUN doesn't exist yet. Within a single
+// open, the field tracks whichever tab the player switched to.
 let activeTab: TabId = 'run';
 
 function buildPanelContents() {
