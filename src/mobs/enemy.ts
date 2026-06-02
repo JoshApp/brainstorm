@@ -27,6 +27,7 @@ import {
   generateEntityId,
 } from '../ecs/world';
 import type { EntityId } from '../ecs/types';
+import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { buildModel } from '../ecs/build-model';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
@@ -281,55 +282,14 @@ export function createEnemy(
   const neck = built.slots.get('neck');
   const neckBaseX = neck ? neck.rotation.x : 0;
   let headPitch = 0;
-  const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
-  const eyeMat   = built.materials.get(spec.eyeMaterialName)   as THREE.MeshStandardMaterial | undefined;
-
-  // Windup telegraph: eyes blaze brighter and shift toward hot red as the
-  // enemy commits to a strike. We mutate the sprite halo material's color
-  // (and scale) since the visible eyes are sprite billboards. The mesh
-  // eye material is also mutated where it exists (rat) for consistency.
-  const eyeHaloL = built.parts.get('eyeHaloL') as THREE.Sprite | undefined;
-  const eyeHaloR = built.parts.get('eyeHaloR') as THREE.Sprite | undefined;
-  const haloMatL = eyeHaloL?.material as THREE.SpriteMaterial | undefined;
-  const haloMatR = eyeHaloR?.material as THREE.SpriteMaterial | undefined;
-  const haloBaseScaleL = eyeHaloL ? eyeHaloL.scale.clone() : new THREE.Vector3(1, 1, 1);
-  const haloBaseScaleR = eyeHaloR ? eyeHaloR.scale.clone() : new THREE.Vector3(1, 1, 1);
-  const haloBaseColorL = haloMatL ? haloMatL.color.clone() : new THREE.Color(0xff5500);
-  const haloBaseColorR = haloMatR ? haloMatR.color.clone() : new THREE.Color(0xff5500);
-
-  const eyeBaseColor = eyeMat ? eyeMat.emissive.clone() : new THREE.Color(0xff5500);
-  const eyeWindupColor = new THREE.Color(0xff1505);   // hot red at peak
-  const haloWindupColor = new THREE.Color(0xffffff);  // sprite goes white-hot
-  const tmpEyeColor = new THREE.Color();
-  const tmpHaloColor = new THREE.Color();
-  function setEyeFlare(t: number) {
-    // t in [0, 1] = neutral to full windup.
-
-    // Mesh eye material (for the rat — its eye spheres render fine).
-    if (eyeMat) {
-      eyeMat.emissiveIntensity = baseEyeEmissive * (1 + 7 * t);
-      tmpEyeColor.copy(eyeBaseColor).lerp(eyeWindupColor, t);
-      eyeMat.emissive.copy(tmpEyeColor);
-    }
-
-    // Sprite halos — the dominant visible cue on humanoid enemies.
-    // Scale up by ~1.6x at peak windup; color brightens toward white.
-    const haloScale = 1 + 0.6 * t;
-    if (eyeHaloL && haloMatL) {
-      eyeHaloL.scale.set(haloBaseScaleL.x * haloScale, haloBaseScaleL.y * haloScale, 1);
-      tmpHaloColor.copy(haloBaseColorL).lerp(haloWindupColor, t * 0.75);
-      // Boost overall brightness so additive blend cuts through even bright
-      // background pixels (e.g. silhouetted in front of a torch).
-      tmpHaloColor.multiplyScalar(1 + 1.2 * t);
-      haloMatL.color.copy(tmpHaloColor);
-    }
-    if (eyeHaloR && haloMatR) {
-      eyeHaloR.scale.set(haloBaseScaleR.x * haloScale, haloBaseScaleR.y * haloScale, 1);
-      tmpHaloColor.copy(haloBaseColorR).lerp(haloWindupColor, t * 0.75);
-      tmpHaloColor.multiplyScalar(1 + 1.2 * t);
-      haloMatR.color.copy(tmpHaloColor);
-    }
-  }
+  // Visual presentation controllers — the eye-flare windup telegraph and the
+  // hit/core-glow flash. Both own their material refs internally (see
+  // enemy-presentation.ts). Thin local aliases keep the AI state machine's
+  // setEyeFlare/applyIdleEyes call sites below unchanged.
+  const eyePresenter = createEyePresenter(built, spec);
+  const coreReactor = createCoreReactor(built, spec);
+  const setEyeFlare = eyePresenter.setFlare;
+  const applyIdleEyes = eyePresenter.applyIdle;
 
   // World entity (HP + buffs).
   const entityId = generateEntityId(`enemy-${spec.id}`);
@@ -352,36 +312,6 @@ export function createEnemy(
   // the source. takeDamage is a hoisted function declaration below.
   registerDamageSink(entityId, takeDamage);
 
-  // Per-instance presentation state.
-  let flashTimer = 0;
-  const originalColor = flashMat ? flashMat.color.clone() : new THREE.Color();
-  const flashColor = new THREE.Color(CONFIG.ENEMY_HIT_FLASH_COLOR);
-  // Capture the flash material's base emissive intensity so the
-  // damage pulse can boost it (for materials with bright emissive
-  // — e.g. the king-slime's core orb — base-color lerping alone is
-  // invisible because the emissive overwhelms diffuse). The pulse
-  // is a multiplier applied on top during flashTimer's decay.
-  const originalEmissiveIntensity = flashMat ? flashMat.emissiveIntensity : 0;
-  const baseEyeEmissive = spec.baseEyeEmissive;
-
-  // ── Glowing-core hit reaction (the king's bright 'core' orb) ───────
-  // An enemy that ships a `coreGlow` sprite gets the "real core" treatment:
-  // an idle heartbeat that draws the eye to the weak point, and a punchy
-  // white-hot flare + scale pop + bloom on damage so a hit reads clearly
-  // even through the translucent body. Plain mobs (no coreGlow) keep the
-  // simple colour flash below. flashMat is the core orb's material here.
-  const coreMesh = built.parts.get(spec.flashMaterialName) as THREE.Mesh | undefined;
-  const coreMeshBaseScale = coreMesh ? coreMesh.scale.clone() : null;
-  const coreBaseEmissive = flashMat ? flashMat.emissive.clone() : new THREE.Color();
-  const coreGlow = built.parts.get('coreGlow') as THREE.Sprite | undefined;
-  const coreGlowMat = coreGlow?.material as THREE.SpriteMaterial | undefined;
-  const coreGlowBaseScale = coreGlow ? coreGlow.scale.clone() : null;
-  const hasGlowingCore = !!coreGlow && !!flashMat && originalEmissiveIntensity > 0;
-  const CORE_WHITE = new THREE.Color(0xffffff);
-  const tmpCoreEmissive = new THREE.Color();
-  const CORE_HIT_DECAY = 0.22;   // seconds for the hit flare/pop to fall off
-  let hitPulse = 0;              // 1 on hit, decays — drives flare + pop
-  let coreTime = 0;             // idle heartbeat clock
   // Lash deform — eased 0..1 body elongation toward the player during a
   // 'lash' telegraph (the slime rears + reaches, then snaps on strike).
   let lashStretch = 0;
@@ -477,27 +407,8 @@ export function createEnemy(
   const hearingRangeSq = hearingRange * hearingRange;
   const loseSightTime = spec.loseSightTime ?? 4;
 
-  // Idle-state eye appearance: dim mesh emissive AND dim sprite halo. The
-  // setEyeFlare(0) path is for windup-reset and goes back to FULL base
-  // brightness, which is what aggroed-but-idle-frame should look like —
-  // not what we want for a truly unaware mob.
-  function applyIdleEyes() {
-    // Tuned against the PSX bloom pipeline — 0.45/0.4 multipliers still
-    // read as full-bright at distance. These low values give a faint
-    // "watching pinprick" feel: visible enough to know something's there,
-    // dim enough to read as unaware. Idle should be unsettling, not threatening.
-    if (eyeMat) eyeMat.emissiveIntensity = baseEyeEmissive * 0.18;
-    if (eyeHaloL && haloMatL) {
-      eyeHaloL.scale.set(haloBaseScaleL.x * 0.55, haloBaseScaleL.y * 0.55, 1);
-      haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.15);
-    }
-    if (eyeHaloR && haloMatR) {
-      eyeHaloR.scale.set(haloBaseScaleR.x * 0.55, haloBaseScaleR.y * 0.55, 1);
-      haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.15);
-    }
-  }
-  // Apply immediately so unseen enemies don't pop with full-bright eyes
-  // on the very first frame (before update runs even once).
+  // Apply idle eyes immediately so unseen enemies don't pop with full-bright
+  // eyes on the very first frame (before update runs even once).
   applyIdleEyes();
   // Per-cycle randomized windup duration so multiple enemies attacking in
   // unison de-synchronize over time (otherwise stacked mobs all strike on
@@ -672,8 +583,7 @@ export function createEnemy(
     if (!entity || !entity.hp) return 0;
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
-    flashTimer = CONFIG.ENEMY_HIT_FLASH_DURATION;
-    hitPulse = 1;   // drives the glowing-core flare + pop (king)
+    coreReactor.hit();   // hit flash + glowing-core flare/pop (king)
     // Damage from any source aggros (and keeps aggro for the full
     // loseSightTime window after the hit, even if the player breaks LOS
     // — a wounded mob doesn't forget). If we were idle/searching/etc,
@@ -791,10 +701,7 @@ export function createEnemy(
     if (tiltPart) tiltPart.rotation.x = angle;
   }
 
-  function setEyeEmissive(intensity: number) {
-    if (eyeMat) eyeMat.emissiveIntensity = intensity;
-  }
-  // (setEyeFlare lives above — combines intensity ramp + color shift.)
+  // (setEyeFlare / applyIdleEyes live above as eye-presenter aliases.)
 
   // ── Ability runner helpers ─────────────────────────────────────────
 
@@ -1122,8 +1029,7 @@ export function createEnemy(
     setEyeFlare(Math.max(0, eyeT));
 
     // Halo opacity fades alongside.
-    if (haloMatL) haloMatL.opacity = Math.max(0, 1 - t);
-    if (haloMatR) haloMatR.opacity = Math.max(0, 1 - t);
+    eyePresenter.setHaloOpacity(Math.max(0, 1 - t));
 
     // Essence emission — spawn XP motes incrementally during the
     // dissolve so the body visibly becomes essence flowing into the
@@ -1339,41 +1245,8 @@ export function createEnemy(
       return;
     }
 
-    coreTime += dt;
-    if (hasGlowingCore && flashMat) {
-      // The king's nucleus: a slow idle heartbeat (so the eye is drawn to
-      // the weak point) overlaid with a punchy hit flare — white-hot
-      // emissive spike + a scale POP on the orb + a bloom flare on the
-      // halo sprite, all decaying over CORE_HIT_DECAY. Unmistakable even
-      // behind the 0.55-opacity body.
-      hitPulse = Math.max(0, hitPulse - dt / CORE_HIT_DECAY);
-      const beat = Math.sin(coreTime * 2.4);
-      flashMat.emissiveIntensity = originalEmissiveIntensity * (1 + 0.18 * beat + 4.5 * hitPulse);
-      tmpCoreEmissive.copy(coreBaseEmissive).lerp(CORE_WHITE, 0.85 * hitPulse);
-      flashMat.emissive.copy(tmpCoreEmissive);
-      if (coreMesh && coreMeshBaseScale) {
-        coreMesh.scale.copy(coreMeshBaseScale).multiplyScalar(1 + 0.55 * hitPulse + 0.04 * beat);
-      }
-      if (coreGlow && coreGlowMat && coreGlowBaseScale) {
-        coreGlowMat.opacity = 0.45 + 0.12 * beat + 0.95 * hitPulse;
-        coreGlow.scale.copy(coreGlowBaseScale).multiplyScalar(1 + 0.5 * hitPulse + 0.06 * beat);
-      }
-    } else if (flashMat) {
-      // Plain mobs — the existing brief colour flash on hit.
-      if (flashTimer > 0) {
-        flashTimer -= dt;
-        const t = Math.max(0, flashTimer / CONFIG.ENEMY_HIT_FLASH_DURATION);
-        flashMat.color.copy(originalColor).lerp(flashColor, t);
-        if (originalEmissiveIntensity > 0) {
-          flashMat.emissiveIntensity = originalEmissiveIntensity * (1 + 1.5 * t);
-        }
-      } else {
-        flashMat.color.copy(originalColor);
-        if (originalEmissiveIntensity > 0) {
-          flashMat.emissiveIntensity = originalEmissiveIntensity;
-        }
-      }
-    }
+    // Hit flash + glowing-core heartbeat/flare (see enemy-presentation.ts).
+    coreReactor.tick(dt);
 
     // Capture home yaw the very first tick so idle scan rotates around the
     // actual placed-orientation (set by builder via faceWorld at spawn).
@@ -1574,9 +1447,7 @@ export function createEnemy(
           phaseTimer = 0;
         }
         // Dimmer eye flare during search — alert but not committed.
-        if (eyeMat) eyeMat.emissiveIntensity = baseEyeEmissive * 0.85;
-        if (haloMatL) haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.8);
-        if (haloMatR) haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.8);
+        eyePresenter.applySearch();
         applyTilt(0);
         built.group.position.y = 0;
         break;
