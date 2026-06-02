@@ -103,6 +103,10 @@ export type EnemyState =
 // player a reaction window.
 const ALERTED_DURATION = CONFIG.ENEMY_AI.ALERTED_DURATION;
 
+// Grace beat a fog-gate boss grants the player on waking — it closes the
+// distance but holds fire this long so you can orient out of the walk-in.
+const ENGAGE_GRACE = 2.4;
+
 // How long the enemy will search at the last-known position before giving
 // up. Doesn't override per-spec loseSightTime; this is the search PHASE
 // duration after sight is already lost.
@@ -371,6 +375,7 @@ export function createEnemy(
   // for searching. Updated each frame the enemy currently has LOS.
   let aggroed = false;
   let dormantLocal = false;   // mirrored to the public `dormant` getter
+  let wasDormant = false;     // edge-detect the wake to grant an engage grace
   let timeSinceLOS = 0;             // seconds since enemy last had LOS to player
   const homePos = position.clone();  // post the enemy returns to when calm
   // Capture spawn yaw as "home yaw" so idle scan / returning faces back the
@@ -1293,6 +1298,17 @@ export function createEnemy(
     // Gated on the fog wall existing so a fog-less boss can't deadlock
     // (it would never engage without the cross trigger).
     const dormant = !!spec.dormantUntilEngaged && levelHasFogWall() && !isBossEncounterEngaged();
+    if (wasDormant && !dormant) {
+      // Just woke (player committed at the fog gate). A grace beat before
+      // the first assault so the player can orient coming out of the
+      // walk-in — the boss closes the distance but holds fire. Push every
+      // ability onto a short cooldown (only lengthens, never shortens an
+      // already-staggered one).
+      for (const ab of abilities) {
+        cooldowns.set(ab.id, Math.max(cooldowns.get(ab.id) ?? 0, ENGAGE_GRACE));
+      }
+    }
+    wasDormant = dormant;
     dormantLocal = dormant;
     if (dormant) {
       aggroed = false;

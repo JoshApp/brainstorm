@@ -79,13 +79,39 @@ export function onBossEncounterComplete(fn: () => void): () => void {
 }
 
 /** Per-frame. Fires completion exactly once when the engaged fight's every
- *  registered body is dead. */
+ *  registered body is down.
+ *
+ *  "Down" = not alive OR reduced to 0 HP. The hp==0 clause is a deadlock
+ *  guard: if a body somehow reaches 0 HP without its death handler flipping
+ *  `alive` (a DoT race, an off-screen kill, a body that leaped to an
+ *  unreachable cell and bled out), the fight must still resolve — never hang
+ *  with a permanent empty bar and a sealed exit. A live body with HP left
+ *  still blocks completion, so this can't end the fight early.
+ *
+ *  Split children register synchronously on the parent's death (before this
+ *  tick), so the king dying — hp 0, alive false — never trips completion on
+ *  its own: its princes are already live members with HP by the time we run. */
 export function tickBossEncounter(): void {
   if (completed || !engaged || members.length === 0) return;
-  if (members.some((m) => m.alive)) return;
+  if (members.some((m) => m.alive && m.hp > 0)) return;
   completed = true;
   emit({ type: 'boss:defeated' });
   for (const fn of completeListeners) fn();
+}
+
+/** DEV diagnostic snapshot — what bodies the encounter is tracking and their
+ *  live/HP state. Used by the on-screen boss-encounter readout to surface a
+ *  stuck member (e.g. a 0-HP body that didn't die) instead of guessing. */
+export function bossEncounterDebug(): {
+  engaged: boolean; completed: boolean; phase: number;
+  members: Array<{ kind: string; alive: boolean; dying: boolean; hp: number; max: number }>;
+} {
+  return {
+    engaged, completed, phase,
+    members: members.map((m) => ({
+      kind: m.kind, alive: m.alive, dying: m.dying, hp: Math.round(m.hp * 10) / 10, max: m.maxHp,
+    })),
+  };
 }
 
 /** Clear all encounter state on level load / teardown. */

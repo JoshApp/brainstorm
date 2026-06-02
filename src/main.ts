@@ -52,6 +52,7 @@ import { recomputePlayerStats } from './state/player-stats';
 import { syncHudStores } from './state/hud-stores';
 import { tickDarkAdaptation, darkAdaptBrightness, darkAdaptAmbient, sampleLitSignal } from './scene/dark-adaptation';
 import { initDarkAdaptReadout, updateDarkAdaptReadout } from './debug/dark-adapt-readout';
+import { initBossEncounterReadout, updateBossEncounterReadout } from './debug/boss-encounter-readout';
 import { tickThresholdDrafts } from './scene/threshold-draft';
 import { seedRng } from './engine/rng';
 import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
@@ -693,6 +694,7 @@ const SYSTEMS: GameSystem[] = [
     // Boss bar — a view of the boss-encounter container (membership +
     // authoritative "done"); it ticks the container internally.
     tickBossBar(ctx.scaledDt);
+    updateBossEncounterReadout();   // DEV: no-op unless debug readout mounted
   } },
 
   // Decay active combat alerts so old broadcasts stop pulling mobs in long
@@ -1065,6 +1067,7 @@ function setDebugButton(on: boolean) {
 }
 if (DEBUG_ENABLED) setDebugButton(true);
 if (DEBUG_ENABLED) initDarkAdaptReadout();
+if (DEBUG_ENABLED) initBossEncounterReadout();
 // React to the settings-menu toggle live (no reload needed to show/hide
 // the button). The URL flag forces it on regardless of the setting.
 onSettingsChanged((s) => {
