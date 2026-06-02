@@ -25,12 +25,6 @@ const CORPSE_NOTES = [
   'If you find a blade that hums, leave it.',
 ];
 
-// Mutable counter so multiple corpse-cells across a floor pick
-// successive notes (rather than all settling on whichever the rng
-// happens to roll). Caller doesn't need to thread this — the
-// helper owns it module-level.
-const noteIndex = { value: 0 };
-
 export type ChestTier = 'supply' | 'iron' | 'boss';
 
 export function rollChestTier(depth: number, rand: () => number): ChestTier {
@@ -97,7 +91,7 @@ export function applyProcgenDefaults(
   if (prop.kind === 'corpse' && (!prop.note || prop.rotY === undefined)) {
     return {
       ...prop,
-      note: prop.note ?? CORPSE_NOTES[(noteIndex.value++) % CORPSE_NOTES.length],
+      note: prop.note ?? CORPSE_NOTES[Math.floor(rand() * CORPSE_NOTES.length)],
       rotY: prop.rotY ?? rand() * Math.PI * 2,
     };
   }
