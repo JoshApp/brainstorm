@@ -1,3 +1,5 @@
+import type { PaletteV1 } from './palette';
+
 // Act structure for the run — groups dungeon floors into themed
 // sequences, each ending in a boss + safe-room checkpoint.
 //
@@ -32,6 +34,12 @@ export interface Act {
   /** Atmosphere for floors in this act. */
   torchTint: number;
   fogColor: number;
+  /** Per-act palette defaults. Cascades through floor + vault
+   *  overrides at compose time (see resolvePalette in palette.ts).
+   *  The lighting pass (and future carve / decor passes) read
+   *  from the resolved palette. Omit to keep all passes 'off'
+   *  for this act — only hand-authored content. */
+  palette?: PaletteV1;
 }
 
 export const ACTS: Act[] = [
@@ -43,6 +51,14 @@ export const ACTS: Act[] = [
     bossId: 'boiling-king',
     torchTint: 0xffaa55,
     fogColor: 0x140a05,
+    // First act to opt into the palette/pass system. Sparse amber
+    // lighting — the refectory is mostly dim with a few torches at
+    // entries + back walls. tone.lightTint mirrors torchTint so the
+    // pass's procedural torches match the existing `*` aesthetic.
+    palette: {
+      tone: { lightTint: 0xffaa55, lightIntensity: 0.95 },
+      light: { density: 'sparse' },
+    },
   },
   {
     number: 2,

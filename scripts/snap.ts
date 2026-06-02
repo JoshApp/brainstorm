@@ -184,7 +184,7 @@ async function main() {
     // or vault-* (the inspection scenario family). --inspect forces it
     // on for anything else; --no-inspect turns it off if you actually
     // want torch-lit atmosphere on a mob shot.
-    const inspectFamily = /^(mob|model|item|vault)-/.test(scenario);
+    const inspectFamily = /^(mob|model|item|vault|palette)-/.test(scenario);
     const inspectFlag = process.argv.includes('--inspect');
     const noInspectFlag = process.argv.includes('--no-inspect');
     const wantInspect = noInspectFlag ? false : (inspectFlag || inspectFamily);

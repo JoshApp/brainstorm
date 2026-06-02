@@ -1,5 +1,8 @@
 import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec, CellBoundEntity } from './types';
 import { applyProcgenDefaults } from './decor-defaults';
+import { resolvePalette, type PaletteV1 } from './palette';
+import { lightingPass } from './lighting-pass';
+import { actForDepth } from './acts';
 import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
 import { vaultsForTag, VAULTS } from './vault-library';
@@ -259,6 +262,25 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
     torches: previewTorches,
     props,
   });
+
+  // Lighting pass — same cascade as composeFloor. Preview snaps
+  // use Act-for-depth to source the act-level palette so opting an
+  // act into the pass is visible in every vault-* preview at that
+  // depth.
+  const resolvedPalette = resolvePalette(actForDepth(depth).palette, vault.palette);
+  const existingTorchCellsPreview = new Set<string>();
+  const Wprev = vault.map[0]?.length ?? 0;
+  const Dprev = vault.map.length;
+  for (const t of previewTorches) {
+    const col = Math.round(t.x - 0.5 + Wprev / 2);
+    const row = Math.round(t.z - 0.5 + Dprev / 2);
+    existingTorchCellsPreview.add(`${col},${row}`);
+  }
+  for (const [key, entries] of Object.entries(vault.cellProps ?? {})) {
+    if (!entries) continue;
+    if (entries.some((e) => e.kind === 'torch')) existingTorchCellsPreview.add(key);
+  }
+  previewTorches.push(...lightingPass(vault, resolvedPalette, existingTorchCellsPreview, rand));
 
   const spec: LevelSpec = {
     ...sub,
@@ -541,6 +563,40 @@ export function composeFloor(
     // keyed by ASCII cell, routed to their slots after world-coord
     // translation. See applyCellProps for the dispatch.
     applyCellProps(pv.vault, pv.offsetX, pv.offsetZ, pv.roomId, depth, rand, { spawns, torches, props });
+
+    // ── Lighting pass (v1 of the palette / pass system) ──────────
+    // Procedural wall torches based on the resolved palette
+    // (act → vault). Author-placed torches (* chars in the ASCII,
+    // 'torch' entries in cellProps, vault.torches array) ALWAYS win;
+    // this pass only ADDS more. Set palette.light.density = 'off'
+    // on an act or vault to disable the pass for that scope.
+    const resolvedPalette = resolvePalette(actForDepth(depth).palette, pv.vault.palette);
+    // Collect cells the author already lit so the pass doesn't
+    // double up. (*'s land in sub.torches via parseTileMap; we
+    // reverse-map their world coords back to (col, row) within this
+    // vault's grid for the dedup check.)
+    const existingTorchCells = new Set<string>();
+    const W = pv.vault.map[0]?.length ?? 0;
+    const D = pv.vault.map.length;
+    for (const t of sub.torches) {
+      // sub.torches are already in world coords with the WALL_OFFSET
+      // applied; back out approximately to cell. Tolerance ±0.5 by
+      // rounding (this picks up corner-cell *'s too).
+      const localX = t.x - pv.offsetX;
+      const localZ = t.z - pv.offsetZ;
+      const col = Math.round(localX - 0.5 + W / 2);
+      const row = Math.round(localZ - 0.5 + D / 2);
+      existingTorchCells.add(`${col},${row}`);
+    }
+    // Cell-bound author torches (kind: 'torch' inside cellProps).
+    for (const [key, entries] of Object.entries(pv.vault.cellProps ?? {})) {
+      if (!entries) continue;
+      if (entries.some((e) => e.kind === 'torch')) existingTorchCells.add(key);
+    }
+    const procTorches = lightingPass(pv.vault, resolvedPalette, existingTorchCells, rand);
+    for (const t of procTorches) {
+      torches.push({ ...t, x: t.x + pv.offsetX, z: t.z + pv.offsetZ });
+    }
 
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;
     // Chasm voids → world coords (vault-local + the vault's offset).

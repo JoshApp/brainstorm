@@ -1097,6 +1097,17 @@ if (import.meta.env.DEV) {
       // room — shows floor layout, walls, the ceiling underside, and any void.
       playerPos: { x: 0, z: innerD / 2 - 0.5, y: 2.3, lookAt: { x: 0, z: 0, y: 1.3 } },
     };
+    // Palette / pass demo: re-snap each vault at depth=1 (Act I's
+    // sparse-amber palette) so the procedural lighting pass output
+    // is visible. Compare `palette-<id>` vs `vault-<id>` to see what
+    // the cascade added.
+    SCENARIOS[`palette-${v.id}`] = {
+      freeze: true,
+      hideSword: true,
+      inspect: true,
+      level: buildVaultPreview(v.id, 1) ?? undefined,
+      playerPos: { x: 0, z: innerD / 2 - 0.5, y: 2.3, lookAt: { x: 0, z: 0, y: 1.3 } },
+    };
   }
 }
 
