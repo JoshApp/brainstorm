@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Unify openings (1/2): fix boss fog-gate placement via Opening + fitting"
+      },
+      {
         "tag": "tech",
         "text": "Perf"
       },
@@ -202,10 +206,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Extract inspect-mode into its own module"
-      },
-      {
-        "tag": "fix",
-        "text": "Inspect previews: auto-frame subject, fix lighting, studio backdrop"
       }
     ]
   }

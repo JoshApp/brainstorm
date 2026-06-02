@@ -5,7 +5,7 @@ import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
-import { spawnVase, spawnVaseCluster, spawnCobweb, disposeDestructible, type Destructible } from './destructibles';
+import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
@@ -22,7 +22,6 @@ import { spawnStarterAltar } from '../interactables/starter-altar';
 import { spawnBloodAltar } from '../interactables/blood-altar';
 import { ITEMS } from '../content/items';
 import { spawnTutorialHint } from '../effects/tutorial-hints';
-import { spawnDoor } from '../interactables/door';
 import {
   spawnStairs,
   STAIRWELL_TOTAL_DEPTH,
@@ -497,7 +496,11 @@ export function buildLevel(
   // Boss-mist props need the WalkableRegion (for the seal obstacle)
   // which is constructed AFTER this loop. Collect them here, spawn
   // after the region exists.
-  const pendingBossMists: Array<Extract<PropSpec, { kind: 'boss-mist' }>> = [];
+  // Every wall-opening fitting — doors, portcullises, the boss fog-gate, and
+  // cobwebs — is installed through ONE deferred drain (spawnFitting) after the
+  // walkable region + room membership exist. Collected here from props +
+  // spec.doors so they all flow through the same placement + seal path.
+  const pendingFittings: OpeningSpec[] = [];
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
@@ -656,7 +659,13 @@ export function buildLevel(
       // walkable region is constructed (spawnBossMist takes a
       // WalkableRegion handle so it can add the seal obstacle on
       // cross). Collected here, processed below.
-      pendingBossMists.push(prop);
+      pendingFittings.push({
+        id: `fog-${Math.round(prop.x * 10)}-${Math.round(prop.z * 10)}`,
+        kind: 'fog-gate',
+        x: prop.x, z: prop.z, rotY: prop.rotY ?? 0,
+        widthM: prop.width ?? 3.4, height: prop.height,
+        color: prop.color,
+      });
     } else if (prop.kind === 'vase') {
       // Push the obstacle FIRST, keep a reference, and pass a
       // splice callback to spawnVase so the obstacle goes away
@@ -670,18 +679,14 @@ export function buildLevel(
       });
       destructibles.push(vase);
     } else if (prop.kind === 'cobweb') {
-      // Destructible web curtain — blocks the passage until slashed.
-      // Push the blocking obstacle + a splice callback so cutting the
-      // web opens the way. Radius scales with the opening width so a wide
-      // web gate is fully plugged (a single doorway stays ~0.9m).
-      const webWidth = prop.widthM ?? 1.9;
-      const webObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: Math.max(0.9, webWidth / 2 + 0.1) };
-      obstacles.push(webObs);
-      const web = spawnCobweb(root, prop.x, prop.z, prop.rotY ?? 0, webWidth, () => {
-        const idx = obstacles.indexOf(webObs);
-        if (idx >= 0) obstacles.splice(idx, 1);
+      // Destructible web curtain — installed as a unified fitting (wall-segment
+      // seal spanning the gap; slashing removes it). Deferred to the drain
+      // below so it shares the same path as doors + the fog-gate.
+      pendingFittings.push({
+        id: `cobweb-${Math.round(prop.x * 10)}-${Math.round(prop.z * 10)}`,
+        kind: 'cobweb',
+        x: prop.x, z: prop.z, rotY: prop.rotY ?? 0, widthM: prop.widthM ?? 1.9,
       });
-      destructibles.push(web);
     } else if (prop.kind === 'vase-cluster') {
       // Cluster of 2-4 vases jittered around (x, z). Each gets
       // its own destructible entry + its own collision circle.
@@ -964,35 +969,6 @@ export function buildLevel(
     wallSegments,
   );
 
-  // Boss-mist fog walls — spawn after walkable exists so the trigger
-  // can call walkable.addObstacle on cross. Visual + cross-trigger
-  // + room:cleared release subscription all wired by spawnBossMist.
-  for (const prop of pendingBossMists) {
-    // Boss fog-gate, now a unified Opening fitting: it builds its own stone
-    // frame (filling to the room ceiling) + a wall-segment seal, exactly like
-    // a door. The frame closes the gap above the curtain.
-    const room = spec.rooms.find((r) => {
-      const hw = r.rect.w / 2, hd = r.rect.d / 2;
-      return prop.x >= r.rect.x - hw && prop.x <= r.rect.x + hw
-          && prop.z >= r.rect.z - hd && prop.z <= r.rect.z + hd;
-    });
-    const ceilingH = room?.height ?? spec.rooms[0]?.height ?? 3.2;
-    const opening: OpeningSpec = {
-      id: `fog-${Math.round(prop.x * 10)}-${Math.round(prop.z * 10)}`,
-      kind: 'fog-gate',
-      x: prop.x, z: prop.z, rotY: prop.rotY ?? 0,
-      widthM: prop.width ?? 3.4, height: prop.height,
-      color: prop.color,
-    };
-    spawnFitting(root, opening, walkable, {
-      materials,
-      enemyRoomMembership: () => new Map(),
-      roomHeight: ceilingH,
-      addDestructible: (d) => destructibles.push(d),
-    });
-  }
-
-
   // --- Pathfinding grids ---
   // Built once at level construction. Covers the bounding box of every
   // walkable rect; cells inside the box that aren't passable become
@@ -1131,27 +1107,35 @@ export function buildLevel(
   // room:cleared events to flip to closed (interactable). Arena doors
   // are now driven by cross-axis trigger in door.ts; no level-side
   // lookup needed.
-  const doorTeardowns: Array<() => void> = [];
+  // Fold the legacy DoorSpec list into the unified opening list — a door is
+  // just a fitting in a wall opening. Centre + wall-line rotY + span come
+  // straight off the segment; endpoints carried through so the door builder's
+  // hinge math is byte-identical.
   for (const d of spec.doors ?? []) {
-    // Find the room rect this door sits in so its lintel fills to
-    // the right ceiling height. Doors sit on a wall edge — the
-    // midpoint should still be inside (or on the boundary of) one
-    // of the room rects. Fallback to the first room's height when
-    // no containing rect is found (degenerate vaults).
-    const dcx = (d.ax + d.bx) / 2;
-    const dcz = (d.az + d.bz) / 2;
-    let doorRoomH = spec.rooms[0]?.height ?? 3.2;
-    for (const r of spec.rooms) {
-      const hw = r.rect.w / 2;
-      const hd = r.rect.d / 2;
-      if (dcx >= r.rect.x - hw - 0.05 && dcx <= r.rect.x + hw + 0.05 &&
-          dcz >= r.rect.z - hd - 0.05 && dcz <= r.rect.z + hd + 0.05) {
-        doorRoomH = r.height;
-        break;
-      }
-    }
-    const h = spawnDoor(root, d, walkable, materials, () => aliveByRoom, doorRoomH);
-    doorTeardowns.push(h.teardown);
+    pendingFittings.push({
+      id: d.id,
+      kind: d.unlock?.kind === 'cleared' ? 'gate-cleared'
+          : d.unlock?.kind === 'arena'   ? 'gate-arena'
+          : 'door-hinged',
+      x: (d.ax + d.bx) / 2, z: (d.az + d.bz) / 2,
+      rotY: Math.atan2(d.bz - d.az, d.bx - d.ax),
+      widthM: Math.hypot(d.bx - d.ax, d.bz - d.az),
+      height: d.height,
+      ax: d.ax, az: d.az, bx: d.bx, bz: d.bz,
+      hinge: d.hinge, swingDir: d.swingDir, unlock: d.unlock,
+    });
+  }
+  // Drain — install every fitting at its opening. Per-opening room height so a
+  // door/gate/fog lintel fills to the right ceiling.
+  const doorTeardowns: Array<() => void> = [];
+  for (const o of pendingFittings) {
+    const r = spawnFitting(root, o, walkable, {
+      materials,
+      enemyRoomMembership: () => aliveByRoom,
+      roomHeight: roomHeightAt(spec.rooms, o.x, o.z),
+      addDestructible: (d) => destructibles.push(d),
+    });
+    if (r.teardown) doorTeardowns.push(r.teardown);
   }
 
   // --- Stairs --------------------------------------------------------
@@ -1236,6 +1220,20 @@ export function buildLevel(
 /** Which room rect contains (x, z)? Prefers logical-only sub-rooms over
  *  their parent vault rect — they're the finer-grained attribution
  *  emitted by multi-room vault parsing. Null if outside all. */
+/** Room ceiling height at (x,z) — for sizing a fitting's lintel fill. A
+ *  fitting sits on a wall edge; a small margin lets a boundary point still
+ *  resolve to its room. Falls back to the first room's height. */
+function roomHeightAt(rooms: RoomSpec[], x: number, z: number): number {
+  for (const r of rooms) {
+    const hw = r.rect.w / 2, hd = r.rect.d / 2;
+    if (x >= r.rect.x - hw - 0.05 && x <= r.rect.x + hw + 0.05 &&
+        z >= r.rect.z - hd - 0.05 && z <= r.rect.z + hd + 0.05) {
+      return r.height;
+    }
+  }
+  return rooms[0]?.height ?? 3.2;
+}
+
 function findRoomContaining(x: number, z: number, rooms: RoomSpec[]): string | null {
   const containsHere = (r: RoomSpec): boolean => {
     const hw = r.rect.w / 2;

@@ -29,6 +29,7 @@ import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh } from './
 import { startMusic, setMusicVolume } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
+import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { LEVELS } from './level/specs';
 import type { LevelSpec } from './level/types';
 import { buildStarterChamber } from './level/starter-chamber';
@@ -223,6 +224,29 @@ initTriggerListener('player');
 // The active-level handle lives in `currentLevel` here so the main-loop
 // tick code below can read it. Updated by the onLoaded callback below.
 let currentLevel: LiveLevel & { checkRoomClear?: () => void } = null as unknown as LiveLevel;
+
+// Portal/room culling (opt-in). The culler is rebuilt whenever the active
+// level changes and torn down when the setting is off. A 'room-culling' system
+// (engine/systems.ts) ticks it each frame between camera-move and render.
+let roomCuller: RoomCuller | null = null;
+let cullerLevel: LiveLevel | null = null;
+const PORTAL_CULL_FORCED =
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).get('portalcull') === '1';
+function syncRoomCuller() {
+  const want = (getSettings().portalCulling || PORTAL_CULL_FORCED) && !!currentLevel;
+  if (want) {
+    if (cullerLevel !== currentLevel) {
+      roomCuller?.dispose();
+      roomCuller = createRoomCuller(currentLevel);
+      cullerLevel = currentLevel;
+    }
+  } else if (roomCuller) {
+    roomCuller.dispose();   // restores all room visibility
+    roomCuller = null;
+    cullerLevel = null;
+  }
+}
 
 initLevelLoader({
   scene,
@@ -561,6 +585,7 @@ const SYSTEMS: GameSystem[] = buildSystems({
   camera, scene, renderer, ambient, canvas,
   input, combat, weapon, shakeOffset, forwardScratch,
   getLevel: () => currentLevel,
+  getRoomCuller: () => roomCuller,
 });
 
 function tick() {
@@ -568,6 +593,8 @@ function tick() {
   // Stairs interactables call loadLevel() during the previous frame's
   // interactables tick; the swap lands here at the top of the next frame.
   tickPendingLoad();
+  // Build/tear-down the room culler to match the active level + setting.
+  syncRoomCuller();
 
   const realDt = Math.min(clock.getDelta(), 0.1);
 

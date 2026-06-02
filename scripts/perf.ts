@@ -110,7 +110,11 @@ async function main() {
     page.on('pageerror', (err) => console.log(`  [browser pageerror] ${err.message}`));
 
     // freeze=false so the world ticks; this is a load test, not a snapshot.
-    const url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}&freeze=false`;
+    // --portalcull / --shadows= DEV overrides pass through for A/B perf runs.
+    const portalCull = process.argv.includes('--portalcull') ? '&portalcull=1' : '';
+    const shadowsArg = process.argv.find((a) => a.startsWith('--shadows='))?.split('=')[1];
+    const shadowsOverride = shadowsArg ? `&shadows=${encodeURIComponent(shadowsArg)}` : '';
+    const url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}&freeze=false${portalCull}${shadowsOverride}`;
     console.log(`\nPERF · scenario "${scenario}" · ${viewportArg} ${viewport.width}×${viewport.height} · ${secs}s sample`);
     console.log(`Opening ${url}`);
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { GameSystem } from './loop';
 import type { LiveLevel } from '../level/builder';
+import type { RoomCuller } from '../level/room-culling';
 import type { createTouchInput } from '../controls/input';
 import type { createCombatSystem } from '../combat/attack';
 import type { createWeaponViewmodel } from '../player/viewmodel';
@@ -73,12 +74,14 @@ export interface SystemDeps {
   forwardScratch: THREE.Vector3;
   /** The active level handle — read fresh each frame (reassigned on load). */
   getLevel: () => LiveLevelHandle;
+  /** The active room culler, or null when culling is off. */
+  getRoomCuller: () => RoomCuller | null;
 }
 
 export function buildSystems(deps: SystemDeps): GameSystem[] {
   const {
     camera, scene, renderer, ambient, canvas,
-    input, combat, weapon, shakeOffset, forwardScratch, getLevel,
+    input, combat, weapon, shakeOffset, forwardScratch, getLevel, getRoomCuller,
   } = deps;
 
   return [
@@ -312,6 +315,11 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       tickShake(ctx.realDt, shakeOffset);
       camera.position.add(shakeOffset);
     } },
+
+    // Portal/room culling — hide rooms not visible through doorways (no-op
+    // unless enabled). Runs AFTER camera movement, BEFORE light-pool + render
+    // so the frustum it tests is this frame's.
+    { name: 'room-culling', phase: 'always', tick() { getRoomCuller()?.tick(camera); } },
 
     // Bind the N nearest registered lights to the pool's PointLight slots.
     // Runs every frame so lighting updates with camera movement even when
