@@ -818,7 +818,15 @@ export function createEnemy(
               eff.speed, dt, walkable, nav,
             );
           }
-          if (distance <= eff.contactReach) {
+          // Contact damage gate. Skip the check entirely when
+          // contactReach is 0 — that means the dash is pure
+          // movement (e.g. the king's leap), and the paired AoE
+          // effect handles damage. Without this gate, an enemy
+          // overlapping the player at strike start (e.g. player
+          // inside the king's body from the aura) registers a
+          // false "contact" on frame 0, sets strikeAlreadyHit,
+          // and the dash never moves.
+          if (eff.contactReach > 0 && distance <= eff.contactReach) {
             damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
             inflictOnHit();
             strikeAlreadyHit = true;

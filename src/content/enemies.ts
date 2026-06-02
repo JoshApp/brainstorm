@@ -1121,8 +1121,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
       radius: 1.6,                   // matches the visible body footprint at scale 7
       slowFactor: 0.4,               // 60% slow — sticky slime feel, escapable but costly
       dotDamage: 1,                  // tick is mild — the pressure is the slow + multiple ticks
-      dotInterval: 0.5,
-      gracePeriod: 0.5,              // a roll-through (~0.3s) costs no HP; lingering does
+      dotInterval: 1.0,              // ticks once per second while inside
+      gracePeriod: 1.0,              // a full second of "I'm in, get out" before damage starts
     },
     tiltPartName: 'rig',
     flashMaterialName: 'body',
