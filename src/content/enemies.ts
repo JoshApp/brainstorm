@@ -481,8 +481,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'charge',
         minRange: 1.8, maxRange: 6.5,
         windup: 0.55, strike: 0.42, recover: 0.75, cooldown: 2.6,
-        damage: 1, telegraph: 'charge', creep: false,
-        effects: [{ kind: 'dash', speed: 7.5, toward: 'player', contactReach: 1.35, damageType: 'physical' }],
+        pose: 'charge', creep: false,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'dash', toward: 'player', speed: 7.5, contactReach: 1.35, damage: 1, element: 'physical' } }],
       },
       // SLASH — point-blank fallback when the player is already in melee
       // (or after a charge lands and they're still close).
@@ -490,8 +490,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'slash',
         minRange: 0, maxRange: 1.7,
         windup: 0.4, strike: 0.14, recover: 0.5,
-        damage: 1, telegraph: 'swing', creep: true,
-        effects: [{ kind: 'melee', reach: 1.5, damageType: 'physical' }],
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, element: 'physical' } }],
       },
     ],
     model: skirmisherModel(0x18130d, 0xffb060, 2.0),
@@ -860,16 +860,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'hex',
         minRange: 1.8, maxRange: 7,
         windup: 1.15, strike: 0.25, recover: 0.9, cooldown: 2.8,
-        damage: 2, telegraph: 'cast',
-        effects: [{ kind: 'aoe', radius: 1.9, targetMode: 'player', damageType: 'magic' }],
+        pose: 'cast',
+        steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 1.9, damage: 2, element: 'arcane' } }],
       },
       // SLASH — point-blank deterrent so hugging it isn't a free safe spot.
       {
         id: 'slash',
         minRange: 0, maxRange: 1.7,
         windup: 0.55, strike: 0.16, recover: 0.6,
-        damage: 1, telegraph: 'swing', creep: true,
-        effects: [{ kind: 'melee', reach: 1.5, damageType: 'magic' }],
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, element: 'arcane' } }],
       },
     ],
     // Own silhouette via the parametric builder: tall, gaunt, stooped,
@@ -939,16 +939,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'bone-throw',
         minRange: 2.4, maxRange: 8,
         windup: 0.6, strike: 0.15, recover: 0.5, cooldown: 2.0,
-        damage: 1, telegraph: 'cast',
-        effects: [{ kind: 'projectile', projectileId: 'bone-shard', muzzle: [0.28, 1.35, -0.1] }],
+        pose: 'cast',
+        steps: [{ trigger: { at: 0 }, action: { kind: 'projectile', projectileId: 'bone-shard', muzzle: [0.28, 1.35, -0.1], damage: 1 } }],
       },
       // SLASH — the close-range bite once it reaches you.
       {
         id: 'slash',
         minRange: 0, maxRange: 1.7,
         windup: 0.5, strike: 0.15, recover: 0.45,
-        damage: 1, telegraph: 'swing', creep: true,
-        effects: [{ kind: 'melee', reach: 1.5, damageType: 'physical' }],
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, element: 'physical' } }],
       },
     ],
     // Gaunt, pale, cold-eyed bones via the parametric builder — its own
@@ -1022,16 +1022,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'pounce',
         minRange: 1.6, maxRange: 5,
         windup: 0.45, strike: 0.38, recover: 0.55, cooldown: 2.0,
-        damage: 1, telegraph: 'charge', creep: false,
-        effects: [{ kind: 'dash', speed: 8.5, toward: 'player', contactReach: 1.2, damageType: 'physical' }],
+        pose: 'charge', creep: false,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'dash', toward: 'player', speed: 8.5, contactReach: 1.2, damage: 1, element: 'physical' } }],
       },
       // BITE — point-blank snap when already on top of the player.
       {
         id: 'bite',
         minRange: 0, maxRange: 1.5,
         windup: 0.35, strike: 0.12, recover: 0.38,
-        damage: 1, telegraph: 'swing', creep: true,
-        effects: [{ kind: 'melee', reach: 1.3, damageType: 'physical' }],
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.3, damage: 1, element: 'physical' } }],
       },
     ],
     model: spiderModel(0x1a1016, 0xff3a55, 2.4),   // near-black chitin, red eyes
@@ -1157,30 +1157,33 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // Full cycle ≈ 1.2 + 0.5 + 1.4 + 2.5 = 5.6s — ~4s of safety
         // between leaps to advance on the king or strike its core.
         cooldown: 2.5,
-        damage: 3,
-        telegraph: 'cast',
-        effects: [
+        pose: 'cast',
+        steps: [
+          // JUMP — committed airborne leap onto the locked landing zone.
+          // (Commit 2 adds a second step: leave a slow acid puddle here
+          // on landing.)
           {
-            kind: 'leap',
-            // 4m peak at mid-strike — reads unmistakably as airborne,
-            // not a flat charge. The horizontal travel is deterministic
-            // (takeoff → marker over the 0.5s strike), so the king lands
-            // exactly on the ring as it touches down.
-            arcHeight: 4.0,
-            // Splash radius ≈ the body/aura footprint (1.6) so the dodge
-            // is "step OFF the marker," not "sprint to the far wall."
-            landingRadius: 1.8,
-            damageType: 'magic',
-            // Chunky thud (player hit-pause is ~0.10, a normal mob hit
-            // ~0.06 — this is a boss slam).
-            shake: 0.35,
-            shakeDuration: 0.45,
-            // Shove the player to the body's edge on impact so they're in
-            // the aura, not pinned dead-centre — escapable, but costly.
-            knockbackSpeed: 4.0,
-            // Guarantee a real arc even if the player is hugging the body
-            // at windup: the landing point is pushed out to ≥3m.
-            minLeapDistance: 3.0,
+            id: 'jump', trigger: { at: 0 },
+            action: {
+              kind: 'leap', toward: 'lockedTarget',
+              // 4m peak at mid-strike — reads unmistakably as airborne,
+              // not a flat charge. Deterministic travel (takeoff → marker
+              // over the 0.5s strike) lands exactly on the ring.
+              arcHeight: 4.0,
+              // Splash radius ≈ the body/aura footprint (1.6) so the dodge
+              // is "step OFF the marker," not "sprint to the far wall."
+              landingRadius: 1.8,
+              damage: 3,
+              element: 'arcane',   // magic damage, no status (the aura carries acid)
+              shake: 0.35,         // chunky boss-slam thud
+              shakeDuration: 0.45,
+              // Shove the player to the body's edge on impact so they're in
+              // the aura, not pinned dead-centre — escapable, but costly.
+              knockbackSpeed: 4.0,
+              // Guarantee a real arc even if the player is hugging the body
+              // at windup: the landing point is pushed out to ≥3m.
+              minDistance: 3.0,
+            },
           },
         ],
       },
@@ -1279,8 +1282,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
       id: 'spore-burst',
       minRange: 0, maxRange: 2.4,
       windup: 1.10, strike: 0.18, recover: 1.40, cooldown: 1.0,
-      damage: 2, telegraph: 'cast',
-      effects: [{ kind: 'aoe', radius: 2.4, targetMode: 'self', damageType: 'magic' }],
+      pose: 'cast',
+      steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 2.4, damage: 2, element: 'arcane' } }],
     }],
     // Poison-on-hit because spores. Player who eats the cloud bleeds
     // damage for a few seconds after stepping out.

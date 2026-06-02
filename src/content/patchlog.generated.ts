@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Slime King: fix the leap so it actually travels to its landing zone"
+      },
+      {
         "tag": "tune",
         "text": "King: leap actually moves + landing damage + core damage flash"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "snap: --frames=N animation grid"
-      },
-      {
-        "tag": "tune",
-        "text": "Pilot: goto verb + cross-call persistence"
       }
     ]
   }

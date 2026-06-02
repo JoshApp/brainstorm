@@ -7,7 +7,10 @@ import { kickShake } from '../combat/screen-shake';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
-import { resolveAbilities, meleeReachOf, aoeEffectOf, leapEffectOf, type Ability } from '../content/abilities';
+import {
+  resolveAbilities, firstMeleeReach, wantsCreep, ELEMENTS,
+  type Ability, type AbilityAction, type Anchor, type Trigger, type Element,
+} from '../content/abilities';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { TELEGRAPH_POSES, poseValue, type TelegraphStyle } from './pose-clips';
@@ -343,8 +346,17 @@ export function createEnemy(
 
   let state: EnemyState = 'idle';
   let phaseTimer = 0;
-  let strikeAlreadyHit = false;
   let aliveLocal = true;
+  // ── Strike-phase timeline state ────────────────────────────────────
+  // Per-step latches for the ability currently striking: stepStarted[i]
+  // flips once step i's trigger fires; stepDone[i] once its action fully
+  // resolves (an instant hit, a melee landing, a dash contacting, a leap
+  // landing). stepEvents collects events ('jump:land') that later steps'
+  // triggers wait on. All reset at strike start. Per-step, never shared —
+  // so two steps can't latch each other off (the old shared-flag bug).
+  let stepStarted: boolean[] = [];
+  let stepDone: boolean[] = [];
+  const stepEvents = new Set<string>();
 
   // ── Abilities ──────────────────────────────────────────────────────
   // The attack runner is fully ability-driven. Enemies without an
@@ -362,7 +374,13 @@ export function createEnemy(
   // AoE telegraph state — the ground marker shown during an aoe ability's
   // windup, and the world point it's locked to (resolved at strike).
   let aoeTelegraph: AoeTelegraph | null = null;
+  // The locked landing/impact point — the 'lockedTarget' anchor. Snapshot
+  // of the player's position when the windup begins (an aoe resolves on
+  // it, a leap arcs onto it).
   const aoeTarget = new THREE.Vector3();
+  // The 'landing' anchor — where the last leap touched down, for a
+  // follow-up step (a puddle) to build on.
+  const landing = new THREE.Vector3();
   function clearAoeTelegraph() {
     if (aoeTelegraph) { aoeTelegraph.dispose(); aoeTelegraph = null; }
   }
@@ -381,12 +399,10 @@ export function createEnemy(
   // when the next dot tick is due. Resets to 0 when player leaves.
   let auraInsideTime = 0;
   let auraDamageTimer = 0;
-  // Leap state — takeoff position captured at strike start (the arc
-  // interpolates from here to the locked landing zone), plus a landing
-  // latch so the touchdown (shake + splash + knockback + Y snap) fires
-  // exactly once.
+  // Leap takeoff point, captured at strike start — a leap action arcs
+  // from here to the locked landing zone. (Its once-only touchdown is
+  // latched by the step's stepDone, like every other action.)
   const leapStart = new THREE.Vector3();
-  let leapLanded = false;
   // Idle scan yaw target — rotates in place to feel watchful.
   let scanTimer = IDLE_SCAN_INTERVAL_MIN;  // pick a new target immediately
   let scanInterval = IDLE_SCAN_INTERVAL_MIN;
@@ -743,7 +759,7 @@ export function createEnemy(
    *  body lean + rise on every enemy, plus an arm swing on models that
    *  have shoulder pivots (graceful no-op otherwise). Eye flare ramps
    *  with the windup, holds at strike, fades over recover. */
-  function applyTelegraph(style: Ability['telegraph'], phase: 'windup' | 'strike' | 'recover', t: number) {
+  function applyTelegraph(style: Ability['pose'], phase: 'windup' | 'strike' | 'recover', t: number) {
     const pose = TELEGRAPH_POSES[(style ?? 'swing') as TelegraphStyle];
     applyTilt(poseValue(pose.rigTilt, phase, t));
     built.group.position.y = poseValue(pose.bob, phase, t);
@@ -763,96 +779,107 @@ export function createEnemy(
     if (player) applyBuff(player, oh.buffId, oh.duration, entityId);
   }
 
-  /** Run one ability effect during the strike phase. Instantaneous
-   *  effects (melee/projectile) latch on strikeAlreadyHit so they fire
-   *  once; dash moves the enemy every frame and lands one contact hit. */
-  function runEffect(
-    eff: import('../content/abilities').AbilityEffect,
+  /** Resolve an anchor to a world XZ. self/player are live; lockedTarget
+   *  is the snapshot taken at windup start (aoeTarget); landing is written
+   *  by a leap on touchdown. */
+  function resolveAnchor(a: Anchor, playerPos: THREE.Vector3): { x: number; z: number } {
+    switch (a) {
+      case 'self':         return { x: container.position.x, z: container.position.z };
+      case 'lockedTarget': return { x: aoeTarget.x, z: aoeTarget.z };
+      case 'landing':      return { x: landing.x, z: landing.z };
+      default:             return { x: playerPos.x, z: playerPos.z };   // 'player'
+    }
+  }
+
+  /** Face a world XZ (head toward it) — see faceTarget for the convention. */
+  function faceXZ(x: number, z: number) {
+    tmpFlat.set(x, container.position.y, z);
+    container.lookAt(tmpFlat);
+    container.rotation.y += Math.PI;
+  }
+
+  /** Damage type for an action's element (the element table is the single
+   *  source — physical/arcane carry no status). */
+  function dmgTypeOf(element?: Element) {
+    return ELEMENTS[element ?? 'physical'].damageType;
+  }
+
+  /** Run one ability action this frame. Returns true when the action is
+   *  DONE (no more per-frame work): an instant hit resolves once; a melee
+   *  keeps trying until it lands or the strike ends; dash/leap run their
+   *  whole motion. Each action owns its own resolution — nothing is shared
+   *  between steps (that sharing is what broke the old leap). */
+  function runAction(
+    action: AbilityAction,
     ability: Ability,
+    stepId: string | undefined,
     playerPos: THREE.Vector3,
     distance: number,
     dt: number,
     walkable: WalkableRegion,
     nav?: NavGrid,
-  ) {
-    switch (eff.kind) {
+  ): boolean {
+    switch (action.kind) {
       case 'melee': {
-        if (!strikeAlreadyHit && distance <= eff.reach) {
-          damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+        if (distance <= action.reach) {
+          damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
-          strikeAlreadyHit = true;
+          return true;            // hit — done
         }
-        break;
+        return false;             // keep trying within the strike window
       }
       case 'projectile': {
-        if (!strikeAlreadyHit) {
-          tmpMuzzle.set(eff.muzzle[0], eff.muzzle[1], eff.muzzle[2]);
-          container.updateMatrixWorld();
-          tmpMuzzle.applyMatrix4(container.matrixWorld);
-          tmpTarget.set(playerPos.x, tmpMuzzle.y, playerPos.z);
-          spawnProjectile({
-            typeId: eff.projectileId,
-            origin: tmpMuzzle,
-            target: tmpTarget,
-            damage: ability.damage,
-            source: entityId,
-          });
-          strikeAlreadyHit = true;
-        }
-        break;
+        tmpMuzzle.set(action.muzzle[0], action.muzzle[1], action.muzzle[2]);
+        container.updateMatrixWorld();
+        tmpMuzzle.applyMatrix4(container.matrixWorld);
+        const t = resolveAnchor(action.toward ?? 'player', playerPos);
+        tmpTarget.set(t.x, tmpMuzzle.y, t.z);
+        spawnProjectile({
+          typeId: action.projectileId, origin: tmpMuzzle, target: tmpTarget,
+          damage: action.damage, source: entityId,
+        });
+        return true;
       }
       case 'dash': {
-        // Lunge ONLY until contact (or a miss runs out the strike). The
-        // moment it connects we stop driving forward and recoil OFF the
-        // player — otherwise the charger keeps moving into you for the
-        // rest of the strike and ends up stuck inside you (hard to hit,
-        // bad feel). Once strikeAlreadyHit is set, no more dash movement.
-        if (!strikeAlreadyHit) {
-          if (eff.toward === 'player') {
-            moveTowards(playerPos.x, playerPos.z, eff.speed, dt, walkable, nav);
-          } else {
-            const dx = container.position.x - playerPos.x;
-            const dz = container.position.z - playerPos.z;
-            const len = Math.hypot(dx, dz) || 1;
-            moveTowards(
-              container.position.x + (dx / len) * 2.0,
-              container.position.z + (dz / len) * 2.0,
-              eff.speed, dt, walkable, nav,
-            );
-          }
-          if (distance <= eff.contactReach) {
-            damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
-            inflictOnHit();
-            strikeAlreadyHit = true;
-            // Bounce back off the player so the charger separates to a
-            // readable, hittable distance instead of overlapping you.
-            applyKnockback(
-              container.position.x - playerPos.x,
-              container.position.z - playerPos.z,
-              KNOCKBACK_CHARGE,
-            );
-          }
+        // Lunge until contact (or the strike runs out). The moment it
+        // connects we hit + recoil OFF the player and stop driving forward,
+        // so the charger doesn't end up stuck inside you.
+        const tgt = resolveAnchor(action.toward, playerPos);
+        moveTowards(tgt.x, tgt.z, action.speed, dt, walkable, nav);
+        if (distance <= action.contactReach) {
+          damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
+          inflictOnHit();
+          applyKnockback(
+            container.position.x - playerPos.x,
+            container.position.z - playerPos.z,
+            KNOCKBACK_CHARGE,
+          );
+          return true;            // contact — stop dashing
         }
-        break;
+        return false;
+      }
+      case 'aoe': {
+        // Resolve against the action's origin (lockedTarget snapshot, or
+        // self) — the player dodges by leaving the marked circle.
+        const o = resolveAnchor(action.origin, playerPos);
+        const dx = playerPos.x - o.x;
+        const dz = playerPos.z - o.z;
+        if (dx * dx + dz * dz <= action.radius * action.radius) {
+          damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
+        }
+        clearAoeTelegraph();
+        return true;
       }
       case 'leap': {
-        // A committed airborne jump. Self-contained — it owns the whole
-        // arc AND the landing, and never touches strikeAlreadyHit, so it
-        // runs for the ENTIRE strike no matter what other effects do.
-        // (The old version expressed this as dash + aoe sharing
-        // strikeAlreadyHit; the aoe latched it on frame 0, which froze
-        // the dash's horizontal travel — the king jumped straight up and
-        // never crossed the ground. This is that bug's structural fix.)
+        // Committed airborne jump: deterministic interpolation from takeoff
+        // (leapStart) to the LOCKED landing zone, synced to a parabolic arc,
+        // so the king touches down exactly on the marker. Self-contained;
+        // never shares state, so it runs the whole strike.
         const strike = ability.strike > 0 ? ability.strike : 1;
         const t = Math.min(1, phaseTimer / strike);
-
-        // Horizontal: deterministic interpolation from takeoff to the
-        // LOCKED landing zone (aoeTarget), clamped against walls each
-        // frame so the giant can't phase through geometry. Arrival is
-        // synced to the arc — the king touches down exactly on the marker
-        // as t reaches 1, so "step off the ring" is always the clean dodge.
-        const tx = leapStart.x + (aoeTarget.x - leapStart.x) * t;
-        const tz = leapStart.z + (aoeTarget.z - leapStart.z) * t;
+        const dest = resolveAnchor(action.toward, playerPos);
+        const tx = leapStart.x + (dest.x - leapStart.x) * t;
+        const tz = leapStart.z + (dest.z - leapStart.z) * t;
         const resolved = walkable.clampMove(
           container.position.x, container.position.z, tx, tz,
           spec.collisionRadius,
@@ -860,45 +887,76 @@ export function createEnemy(
         );
         container.position.x = resolved.x;
         container.position.z = resolved.z;
+        container.position.y = 4 * action.arcHeight * t * (1 - t);
+        faceXZ(dest.x, dest.z);
 
-        // Vertical parabola: 0 at takeoff and landing, peak at mid-strike.
-        container.position.y = 4 * eff.arcHeight * t * (1 - t);
-        faceTarget(aoeTarget);
-
-        // Touchdown — fires once.
-        if (t >= 1 && !leapLanded) {
-          leapLanded = true;
+        if (t >= 1) {
           container.position.y = 0;
-          if (eff.shake) kickShake(eff.shake, eff.shakeDuration ?? 0.4);
-          // Splash at the ACTUAL impact point (where the king came down).
-          // Eat the landing and you take the hit and get shoved to the
-          // body's edge — from there the aura (slow + acid ticks) is the
-          // inside-the-body pressure. Dodgers who left the ring take none.
+          // Write the landing anchor so a follow-up step (a puddle) can
+          // build on the impact point, and emit the 'land' event.
+          landing.set(container.position.x, 0, container.position.z);
+          if (action.shake) kickShake(action.shake, action.shakeDuration ?? 0.4);
           const dx = playerPos.x - container.position.x;
           const dz = playerPos.z - container.position.z;
-          if (dx * dx + dz * dz <= eff.landingRadius * eff.landingRadius) {
-            damagePlayer(ability.damage, entityId, eff.damageType ?? 'magic');
+          if (dx * dx + dz * dz <= action.landingRadius * action.landingRadius) {
+            damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
             inflictOnHit();
-            if (eff.knockbackSpeed) applyPlayerKnockback(dx, dz, eff.knockbackSpeed);
+            if (action.knockbackSpeed) applyPlayerKnockback(dx, dz, action.knockbackSpeed);
           }
           clearAoeTelegraph();
+          if (stepId) stepEvents.add(stepId + ':land');
+          return true;            // landed — done
         }
-        break;
+        return false;
       }
-      case 'aoe': {
-        if (!strikeAlreadyHit) {
-          // Resolve against the LOCKED target (set at windup start),
-          // not the enemy's current position — the player dodges by
-          // leaving the marked circle, regardless of where the enemy is.
-          const dx = playerPos.x - aoeTarget.x;
-          const dz = playerPos.z - aoeTarget.z;
-          if (dx * dx + dz * dz <= eff.radius * eff.radius) {
-            damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
-          }
-          clearAoeTelegraph();
-          strikeAlreadyHit = true;
+      case 'field': {
+        // Persistent hazard field — wired in the next slice (the slow
+        // puddle). No enemy uses it yet, so this is inert.
+        return true;
+      }
+    }
+  }
+
+  /** True when a step's trigger condition holds this frame. */
+  function triggerMet(trigger: Trigger, clock: number): boolean {
+    if ('at' in trigger) return clock >= trigger.at;
+    return stepEvents.has(trigger.after + ':' + trigger.on);
+  }
+
+  /** At windup start: snapshot the locked target (the 'lockedTarget'
+   *  anchor) and raise the spatial ground ring for the ability's first
+   *  aoe/leap action — its "stand here and you eat it" tell. Melee/dash/
+   *  projectile abilities have no ground ring (the pose is the tell). A
+   *  leap clamps its landing zone outward to minDistance so a player
+   *  hugging the body still gets a real arc. */
+  function setupAbilityTelegraph(ability: Ability, playerPos: THREE.Vector3) {
+    aoeTarget.set(playerPos.x, 0, playerPos.z);
+    clearAoeTelegraph();
+    for (const step of ability.steps) {
+      const a = step.action;
+      if (a.kind === 'aoe') {
+        const o = a.origin === 'self'
+          ? { x: container.position.x, z: container.position.z }
+          : { x: aoeTarget.x, z: aoeTarget.z };
+        aoeTelegraph = spawnAoeTelegraph(scene, o.x, o.z, a.radius);
+        return;
+      }
+      if (a.kind === 'leap') {
+        const minD = a.minDistance ?? 0;
+        const dx = aoeTarget.x - container.position.x;
+        const dz = aoeTarget.z - container.position.z;
+        const d = Math.hypot(dx, dz);
+        if (minD > 0 && d < minD) {
+          const dir = d > 1e-4
+            ? { x: dx / d, z: dz / d }
+            : { x: Math.sin(container.rotation.y), z: -Math.cos(container.rotation.y) };
+          aoeTarget.set(
+            container.position.x + dir.x * minD, 0,
+            container.position.z + dir.z * minD,
+          );
         }
-        break;
+        aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, a.landingRadius);
+        return;
       }
     }
   }
@@ -1428,44 +1486,12 @@ export function createEnemy(
           currentAbility = ability;
           state = 'winding';
           phaseTimer = 0;
-          strikeAlreadyHit = false;
           rollWindupTime();
           playEnemyWindup(audioSizeFor(spec), container.position);
-          // AoE and leap abilities both LOCK a ground target + raise the
-          // ground telegraph the instant the windup begins, so the player
-          // has the full windup to step off the marker. (aoeTarget is the
-          // shared "locked landing/impact point" — the leap arcs onto it,
-          // the aoe resolves on it.)
-          const aoe = aoeEffectOf(ability);
-          const leap = leapEffectOf(ability);
-          if (aoe) {
-            if (aoe.targetMode === 'self') aoeTarget.set(container.position.x, 0, container.position.z);
-            else aoeTarget.set(playerPos.x, 0, playerPos.z);
-            clearAoeTelegraph();
-            aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, aoe.radius);
-          } else if (leap) {
-            // Lock the landing zone to the player's feet, clamped OUTWARD
-            // to minLeapDistance so a player hugging the body still gets a
-            // real arc (otherwise the king would "leap" onto its own
-            // position and go nowhere). Direction falls back to facing-
-            // forward when the player is exactly on the caster.
-            aoeTarget.set(playerPos.x, 0, playerPos.z);
-            const minD = leap.minLeapDistance ?? 0;
-            const dx = aoeTarget.x - container.position.x;
-            const dz = aoeTarget.z - container.position.z;
-            const d = Math.hypot(dx, dz);
-            if (minD > 0 && d < minD) {
-              const dir = d > 1e-4
-                ? { x: dx / d, z: dz / d }
-                : { x: Math.sin(container.rotation.y), z: -Math.cos(container.rotation.y) };
-              aoeTarget.set(
-                container.position.x + dir.x * minD, 0,
-                container.position.z + dir.z * minD,
-              );
-            }
-            clearAoeTelegraph();
-            aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, leap.landingRadius);
-          }
+          // Snapshot the committed target (the 'lockedTarget' anchor) +
+          // raise the spatial telegraph the instant the windup begins, so
+          // the player has the full windup to step off the marker.
+          setupAbilityTelegraph(ability, playerPos);
         } else {
           // No ability available (out of band, or on cooldown).
           const pref = spec.preferredRange ?? 0;
@@ -1506,24 +1532,23 @@ export function createEnemy(
         if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += actionDt;
         const t = Math.min(1, phaseTimer / currentWindupTime);
-        applyTelegraph(currentAbility.telegraph, 'windup', t);
+        applyTelegraph(currentAbility.pose, 'windup', t);
         if (aoeTelegraph) aoeTelegraph.setProgress(t);
         // Melee creep — close at half-speed during windup so a stationary
         // player still gets clipped (a backpedalling player out-runs it).
         // Charges DON'T creep: the dash strike is the approach.
-        const wantsCreep = currentAbility.creep
-          ?? (meleeReachOf(currentAbility) !== null);
-        const reach = meleeReachOf(currentAbility);
-        if (wantsCreep && reach !== null && distance > reach) {
+        const reach = firstMeleeReach(currentAbility);
+        if (wantsCreep(currentAbility) && reach !== null && distance > reach) {
           moveTowards(playerPos.x, playerPos.z, moveSpeed * 0.45, dt, walkable, nav);
         }
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
           phaseTimer = 0;
-          strikeAlreadyHit = false;
-          // Capture the leap takeoff point + arm the landing latch, so a
-          // leap effect interpolates from HERE to the locked landing zone.
-          leapLanded = false;
+          // Arm the timeline: clear per-step latches + events, capture the
+          // leap takeoff point.
+          stepStarted = currentAbility.steps.map(() => false);
+          stepDone = currentAbility.steps.map(() => false);
+          stepEvents.clear();
           leapStart.copy(container.position);
         }
         break;
@@ -1532,17 +1557,26 @@ export function createEnemy(
       case 'striking': {
         if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += actionDt;
-        for (const eff of currentAbility.effects) {
-          runEffect(eff, currentAbility, playerPos, distance, dt, walkable, nav);
+        // Run the timeline: fire each step once its trigger is met, then
+        // keep ticking it until its action latches done. Per-step state,
+        // so steps never interfere with each other.
+        const steps = currentAbility.steps;
+        for (let i = 0; i < steps.length; i++) {
+          if (stepDone[i]) continue;
+          if (!stepStarted[i]) {
+            if (!triggerMet(steps[i].trigger, phaseTimer)) continue;
+            stepStarted[i] = true;
+          }
+          const done = runAction(steps[i].action, currentAbility, steps[i].id, playerPos, distance, dt, walkable, nav);
+          if (done) stepDone[i] = true;
         }
-        applyTelegraph(currentAbility.telegraph, 'strike', 1);
+        applyTelegraph(currentAbility.pose, 'strike', 1);
         if (phaseTimer >= currentAbility.strike) {
           state = 'recovering';
           phaseTimer = 0;
-          // Safety: snap any arc-dash Y back to ground level if the
-          // landing latch didn't catch the final frame (e.g. dt
-          // overshoot). Without this the enemy could end up floating
-          // at the arc peak forever.
+          // Safety: snap any in-air leap Y back to ground if the touchdown
+          // didn't catch the final frame (dt overshoot), so the enemy
+          // can't end up floating at the arc peak.
           container.position.y = 0;
         }
         break;
@@ -1552,7 +1586,7 @@ export function createEnemy(
         if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += actionDt;
         const t = Math.min(1, phaseTimer / currentAbility.recover);
-        applyTelegraph(currentAbility.telegraph, 'recover', t);
+        applyTelegraph(currentAbility.pose, 'recover', t);
         if (phaseTimer >= currentAbility.recover) {
           cooldowns.set(currentAbility.id, currentAbility.cooldown ?? 0);
           currentAbility = null;
@@ -1577,7 +1611,10 @@ export function createEnemy(
   function setDebugState(s: EnemyState, t: number) {
     state = s;
     phaseTimer = t;
-    strikeAlreadyHit = false;
+    // Clear the timeline latches (debug poses don't run a real cast).
+    stepStarted = [];
+    stepDone = [];
+    stepEvents.clear();
     switch (s) {
       case 'chasing':
         setEyeFlare(0);
