@@ -1,7 +1,10 @@
 import { bossStore, type BossState } from '../state/hud-stores';
 import { bind } from './hud';
-import type { Enemy } from '../mobs/enemy';
-import { isBossEngaged, levelHasFogWall, resetBossEngagement } from './boss-engagement';
+import { isBossEngaged, levelHasFogWall } from './boss-engagement';
+import {
+  liveBossMembers, engageBossEncounter, isBossEncounterEngaged,
+  isBossEncounterComplete, tickBossEncounter,
+} from '../mobs/boss-encounter';
 import { ENEMIES } from '../content/enemies';
 import { bossSpecForEnemy } from '../content/bosses';
 import { showBossIntro, hideBossIntro } from './boss-intro-card';
@@ -131,69 +134,71 @@ function render(s: BossState) {
 }
 
 // ── Controller ────────────────────────────────────────────────────────────
+//
+// A pure VIEW of the boss-encounter container (mobs/boss-encounter.ts) — it
+// renders the encounter's live members as bars and lingers on the
+// encounter's authoritative "complete" signal. It does NOT decide when the
+// fight is over itself any more (the container owns that); it only owns the
+// player-commit trigger (fog cross / aggro) + the death-linger animation.
 
-let engaged = false;
 let fadeTimer = -1;          // >= 0 while counting down the post-death linger
 let lastName = '';
 let lastBars: { hp: number; max: number }[] = [];
 
 const DEATH_LINGER = 1.6;    // seconds the empty bar(s) hold before fading
 
-/** Per-frame. Finds ALL live boss enemies (the king, or its split princes)
- *  and shows a bar each once the fight is engaged; lingers empty on death,
- *  then hides. The split staying tracked here keeps it part of the fight. */
-export function tickBossBar(enemies: Enemy[], dt: number): void {
-  const bosses = enemies.filter((e) => e.isBoss && e.alive);
-  if (bosses.length > 0) {
-    // Engagement rule:
-    //   - If the level has a fog-wall (a boss-mist prop was spawned),
-    //     require the cross trigger to fire first.
-    //   - Otherwise (test scenarios, legacy levels), engage the moment any
-    //     boss aggros.
-    const fogWallReady = levelHasFogWall() && isBossEngaged();
-    const legacyAggro = !levelHasFogWall()
-      && bosses.some((b) => b.aiState !== 'idle' && b.aiState !== 'returning');
-    if (!engaged && (fogWallReady || legacyAggro)) {
-      engaged = true;
-      // Intro title card fires ONCE on first engagement (the king). The
-      // split princes inherit `engaged`, so they don't re-trigger it.
-      const lead = bosses[0];
-      const spec = ENEMIES[lead.kind];
-      const bs = spec ? bossSpecForEnemy(spec) : undefined;
-      showBossIntro(bs?.defaultName ?? lead.bossName, bs?.introLine ?? '');
+/** Per-frame. Drives the encounter container, then renders it: a bar per
+ *  live member (the king, or its split princes) once engaged; lingers on
+ *  the container's `complete` signal, then hides. */
+export function tickBossBar(dt: number): void {
+  tickBossEncounter();   // authoritative "boss done" detection (fires boss:defeated)
+  const members = liveBossMembers();
+
+  if (!isBossEncounterComplete()) {
+    // Engagement: fog cross (fog levels) or first aggro (fog-less levels).
+    if (!isBossEncounterEngaged() && members.length > 0) {
+      const fogWallReady = levelHasFogWall() && isBossEngaged();
+      const legacyAggro = !levelHasFogWall()
+        && members.some((b) => b.aiState !== 'idle' && b.aiState !== 'returning');
+      if (fogWallReady || legacyAggro) {
+        engageBossEncounter();
+        // Intro card fires ONCE (the king). The split princes inherit the
+        // engaged container, so they never re-trigger it.
+        const lead = members[0];
+        const spec = ENEMIES[lead.kind];
+        const bs = spec ? bossSpecForEnemy(spec) : undefined;
+        showBossIntro(bs?.defaultName ?? lead.bossName, bs?.introLine ?? '');
+      }
     }
-    if (engaged) {
-      const bars = bosses.map((b) => ({ hp: Math.max(0, b.hp), max: b.maxHp }));
-      lastName = bosses[0].bossName;
+    if (isBossEncounterEngaged() && members.length > 0) {
+      const bars = members.map((b) => ({ hp: Math.max(0, b.hp), max: b.maxHp }));
+      lastName = members[0].bossName;
       lastBars = bars.map((b) => ({ hp: 0, max: b.max }));   // empty copies for the linger
       fadeTimer = -1;
-      bossStore.set({ visible: true, name: bosses[0].bossName, bars });
+      bossStore.set({ visible: true, name: members[0].bossName, bars });
     }
     return;
   }
-  // No live boss. If we were engaged, the fight just ended (the last boss
-  // died) — hold the empty bar(s) a beat, then fade out.
-  if (engaged) {
-    if (fadeTimer < 0) {
-      fadeTimer = DEATH_LINGER;
-      bossStore.set({ visible: true, name: lastName, bars: lastBars });
-    }
-    fadeTimer -= dt;
-    if (fadeTimer <= 0) {
-      engaged = false;
-      fadeTimer = -1;
-      bossStore.set({ visible: false, name: '', bars: [] });
-    }
+
+  // The encounter is DONE — hold the empty bar(s) a beat, then fade out.
+  if (fadeTimer < 0) {
+    fadeTimer = DEATH_LINGER;
+    bossStore.set({ visible: true, name: lastName, bars: lastBars });
+  }
+  fadeTimer -= dt;
+  if (fadeTimer <= 0) {
+    fadeTimer = -1;
+    bossStore.set({ visible: false, name: '', bars: [] });
   }
 }
 
-/** Reset on level load / teardown — no boss, bar hidden. */
+/** Reset the BAR's view state on level load. The encounter + fog-wall
+ *  flags are reset earlier (in the loader, before the build registers the
+ *  new boss) — NOT here, which runs after the build. */
 export function resetBossBar(): void {
-  engaged = false;
   fadeTimer = -1;
   lastName = '';
   lastBars = [];
   hideBossIntro();
-  resetBossEngagement();
   bossStore.set({ visible: false, name: '', bars: [] });
 }

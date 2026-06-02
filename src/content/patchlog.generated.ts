@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Lash tentacle VFX + remove the 50% bar marker"
+      },
+      {
         "tag": "fix",
         "text": "Lash = a slime tentacle (lean + body-elongation deform); prince stuck fix + softer hop"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Lighting"
-      },
-      {
-        "tag": "tune",
-        "text": "Event slots: rollable feature placeholders (?) through the manifest"
       }
     ]
   }

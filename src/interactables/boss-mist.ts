@@ -4,34 +4,25 @@ import { generateEntityId } from '../ecs/world';
 import { bossMistModel } from '../content/boss-mist';
 import { registerInteractable } from './system';
 import { engageBoss, registerFogWall } from '../ui/boss-engagement';
+import { onBossEncounterComplete } from '../mobs/boss-encounter';
 import { kickShake } from '../combat/screen-shake';
 import type { WalkableRegion, Obstacle } from '../level/walkable';
-import { on as onEvent } from '../broadcast/event-bus';
 
-// Boss-arena fog wall — soulslike threshold seal.
+// Boss-arena fog gate — soulslike threshold seal you INTERACT with.
 //
-// On level build:
-//   - The visual (a tinted vertical mist panel) is added to the scene.
-//   - A cross-trigger interactable is registered with NO promptLabel
-//     (it never solicits a press; it just ticks and watches the player).
-//   - registerFogWall() flags this level as "fog-walled" so the boss
-//     bar knows to wait for the cross trigger before engaging.
-//
-// On cross:
-//   - The signed distance from the player to the plane changes sign
-//     (entering side → arena side).
-//   - We push an obstacle into the WalkableRegion at the plane's
-//     position — the player can no longer walk back through.
-//   - engageBoss() fires → boss bar appears, intro card plays.
-//   - A modest screen-shake punctuates the moment of commitment.
-//
-// On boss room cleared:
-//   - The room:cleared event fires; we remove the obstacle so the
-//     player can leave the arena. The visual stays (a tinted
-//     marker for "I cleared this place").
+//   - On build the gate BLOCKS the threshold (an obstacle in the
+//     walkable), so you can't wander into the arena — you walk up to it
+//     and it prompts you to enter.
+//   - Interacting OPENS it (obstacle removed) + engages the boss (bar +
+//     intro) + a commit shake. You step through.
+//   - The instant you cross to the arena side it RE-SEALS behind you
+//     (obstacle back) — locked in with the boss.
+//   - When the boss ENCOUNTER completes (every body incl. the split dead —
+//     the authoritative signal, not room-clear) the seal lifts so you can
+//     leave. The mist panel stays as a "cleared this place" marker.
 
-const SEAL_HALF_W = 1.6;       // half-width of the seal obstacle along the plane
-const SEAL_HALF_D = 0.30;      // thickness through the plane
+const SEAL_HALF_W = 1.7;       // half-width of the seal across the doorway
+const SEAL_HALF_D = 0.35;      // thickness through the plane
 const CROSS_EPSILON = 0.05;    // signed-distance flip threshold
 
 export function spawnBossMist(
@@ -40,69 +31,64 @@ export function spawnBossMist(
   pos: THREE.Vector3,
   rotY: number,
   color: number,
-  bossRoomId: string,
+  _bossRoomId: string,
 ): void {
   const built = buildModel(bossMistModel(color));
   built.group.position.copy(pos);
   built.group.rotation.y = rotY;
   scene.add(built.group);
 
-  // Plane normal pointing INTO the arena (the side the player must
-  // commit to). For rotY=0 the panel faces +/-Z; we choose -Z as
-  // the entering side, +Z as the arena side. Rotating rotY rotates
-  // the normal with it.
+  // Plane normal pointing INTO the arena. -Z is the entering side, +Z the
+  // arena side (rotated by rotY).
   const normal = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(0, rotY, 0));
 
-  // Signed distance from a point P to the plane (point, normal):
-  //   d = (P - pos) · normal
-  // Sign positive = arena side; sign negative = entering side.
-  let prevSign = 0;     // 0 = unknown (first tick latches without firing)
+  // The seal obstacle, sized to the threshold (world-axis-aligned bbox;
+  // exact rotation doesn't matter at our scale — the WALL reads).
+  const cos = Math.cos(rotY);
+  const sin = Math.sin(rotY);
+  const halfX = Math.abs(cos) * SEAL_HALF_W + Math.abs(sin) * SEAL_HALF_D;
+  const halfZ = Math.abs(sin) * SEAL_HALF_W + Math.abs(cos) * SEAL_HALF_D;
+  const obstacle: Obstacle = {
+    kind: 'aabb',
+    minX: pos.x - halfX, maxX: pos.x + halfX,
+    minZ: pos.z - halfZ, maxZ: pos.z + halfZ,
+  };
+  let blocking = false;
+  function block() { if (!blocking) { walkable.addObstacle(obstacle); blocking = true; } }
+  function unblock() { if (blocking) { walkable.removeObstacle(obstacle); blocking = false; } }
+
+  block();   // the gate is closed on arrival — you must commit to enter
+
+  let opened = false;
   let sealed = false;
-  let obstacle: Obstacle | null = null;
+  let prevSign = 0;
 
   const id = generateEntityId('boss-mist');
-
   registerInteractable({
     id,
     position: pos.clone(),
-    radius: 3.0,
-    promptLabel: '',         // no prompt — passive trigger
-    onUse() { /* passive — no interaction */ },
+    radius: 2.8,
+    promptLabel: 'enter the mist',
+    onUse() {
+      if (opened) return;
+      // Commit: open the gate, raise the bar + intro, punctuate it.
+      opened = true;
+      unblock();
+      engageBoss();
+      kickShake(0.14, 0.32);
+    },
     tick(_dt: number, playerPos: THREE.Vector3) {
-      if (sealed) return;
+      if (!opened || sealed) return;
+      // Watch for the player crossing to the arena side, then re-seal.
       const dx = playerPos.x - pos.x;
       const dz = playerPos.z - pos.z;
       const d = dx * normal.x + dz * normal.z;
       const sign = d > CROSS_EPSILON ? 1 : d < -CROSS_EPSILON ? -1 : 0;
-      if (prevSign === 0) {
-        prevSign = sign;
-        return;
-      }
+      if (prevSign === 0) { prevSign = sign; return; }
       if (prevSign < 0 && sign > 0) {
-        // Player just crossed from entering-side to arena-side.
-        // Solidify the seal: drop an axis-aligned-bbox obstacle at
-        // the plane. Rotation isn't supported on aabb obstacles, so
-        // for non-cardinal rotY a tighter bbox aligned to world axes
-        // is OK at our scale — the player notices the WALL is there,
-        // not its exact orientation.
-        const cos = Math.cos(rotY);
-        const sin = Math.sin(rotY);
-        // Half-extents in world space (after rotation):
-        //  along-plane half = SEAL_HALF_W
-        //  through-plane half = SEAL_HALF_D
-        const halfX = Math.abs(cos) * SEAL_HALF_W + Math.abs(sin) * SEAL_HALF_D;
-        const halfZ = Math.abs(sin) * SEAL_HALF_W + Math.abs(cos) * SEAL_HALF_D;
-        obstacle = {
-          kind: 'aabb',
-          minX: pos.x - halfX,
-          maxX: pos.x + halfX,
-          minZ: pos.z - halfZ,
-          maxZ: pos.z + halfZ,
-        };
-        walkable.addObstacle(obstacle);
+        block();            // crossed in — locked behind you
         sealed = true;
-        engageBoss();
-        kickShake(0.12, 0.30);
+        kickShake(0.10, 0.25);
       }
       prevSign = sign;
     },
@@ -110,15 +96,8 @@ export function spawnBossMist(
   });
   registerFogWall();
 
-  // Release on boss-room cleared: drop the obstacle so the player
-  // can leave. Visual stays as a cleared-marker.
-  const off = onEvent((ev) => {
-    if (ev.type !== 'room:cleared') return;
-    if (ev.roomId !== bossRoomId) return;
-    if (obstacle) {
-      walkable.removeObstacle(obstacle);
-      obstacle = null;
-    }
-    off();   // one-shot subscription
-  });
+  // Release when the boss ENCOUNTER is fully done (king + all spawns) —
+  // the container is the single source of truth, so the seal can't lift
+  // mid-fight when one body dropped but its spawns are still up.
+  onBossEncounterComplete(() => { unblock(); });
 }

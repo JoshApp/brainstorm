@@ -660,8 +660,9 @@ const SYSTEMS: GameSystem[] = [
       const nav = enemy.phasing ? currentLevel.navPhasing : currentLevel.nav;
       enemy.update(ctx.scaledDt, camera.position, currentLevel.walkable, nav);
     }
-    // Boss bar — show/drain/fade based on the live boss enemy.
-    tickBossBar(currentLevel.enemies, ctx.scaledDt);
+    // Boss bar — a view of the boss-encounter container (membership +
+    // authoritative "done"); it ticks the container internally.
+    tickBossBar(ctx.scaledDt);
   } },
 
   // Decay active combat alerts so old broadcasts stop pulling mobs in long

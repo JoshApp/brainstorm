@@ -5,6 +5,8 @@ import type { StyleMaterials } from '../style/materials';
 import { CONFIG } from '../config';
 import { clearProjectiles } from '../combat/projectile-pool';
 import { clearHazardFields } from '../combat/hazard-field';
+import { resetBossEncounter } from '../mobs/boss-encounter';
+import { resetBossEngagement } from '../ui/boss-engagement';
 import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
 import { clearStatusVfx } from '../effects/status-vfx';
@@ -160,6 +162,11 @@ export function tickPendingLoad() {
   // not a dungeon floor. The depth counter / title both read the
   // unchanged currentDepth, which matches the boss the player just beat.
   if (!isSafeRoom) currentDepth += 1;
+  // Reset the boss encounter + fog-wall flags BEFORE building — the build
+  // registers the boss + its fog gate's completion listener, so resetting
+  // afterward (the old resetBossBar timing) would wipe them.
+  resetBossEncounter();
+  resetBossEngagement();
   // Build the new level into the same scene.
   const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));
   activeLevel = level;

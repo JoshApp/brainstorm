@@ -11,6 +11,7 @@ import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
 import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
 import { kickShake } from '../combat/screen-shake';
+import { registerBossMember, advanceBossPhase } from '../mobs/boss-encounter';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
@@ -1315,6 +1316,9 @@ export function buildLevel(
     enemies.push(e);
     enemyRoom.set(e, roomId);
     if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
+    // Every boss body (the king + each split child) joins the one boss
+    // encounter, so "boss done" means ALL of them are dead.
+    if (e.isBoss) registerBossMember(e);
     return e;
   }
 
@@ -1346,6 +1350,8 @@ export function buildLevel(
     // into place. The parent's own death dissolve provides the goo.
     const bigSplit = split.count >= 3;
     if (bigSplit) kickShake(0.3, 0.4);
+    // A BOSS splitting is a phase transition (king → its spawns = phase 2).
+    if (deadSpec.isBoss) advanceBossPhase();
     for (let i = 0; i < split.count; i++) {
       const angle = (i / split.count) * Math.PI * 2 + Math.random() * 0.3;
       const cos = Math.cos(angle);

@@ -203,8 +203,16 @@ function buildStarterAltars(): LevelSpec {
 function buildBoilingKing(): LevelSpec {
   return smallChamber('boiling-king', 'boiling king', 20, 22, () => ({
     spawns: [
-      // King well to the north so the player can see him from spawn.
+      // King well to the north so the first leap reads as "across the room".
       { enemyId: 'boiling-king', x: 0, z: -7, roomId: 'test-boiling-king-room' },
+    ],
+    // Threshold wall at z=5 with a 3.4m doorway — the player spawns in the
+    // entry strip (south, z≈8) and the arena is north of it. The fog gate
+    // fills the doorway, so the seal actually seals (you can't walk around
+    // it) and it reads as a real soulslike fog gate, not a panel mid-room.
+    extraWalls: [
+      { ax: -10, az: 5, bx: -1.7, bz: 5, height: 5.0 },
+      { ax:  1.7, az: 5, bx:  10, bz: 5, height: 5.0 },
     ],
     props: [
       // Free-standing braziers ringing the centre so the floor under
@@ -215,16 +223,17 @@ function buildBoilingKing(): LevelSpec {
       { kind: 'model', model: GREAT_BRAZIER, x: -5, y: 0, z:  3 },
       { kind: 'model', model: GREAT_BRAZIER, x:  5, y: 0, z:  3 },
       {
+        // In the entry strip, south of the gate — advice before you commit.
         kind: 'hint',
         x: 0, z: 7,
         text: 'it has eaten kings. step OFF the marker.',
         triggerRadius: 3.0,
         lingerMs: 5000,
       },
-      // Soulslike fog wall at the south end of the chamber. Walking
-      // through it engages the boss bar + locks the player in until
-      // the king is dead. King's signature acid-green tint.
-      { kind: 'boss-mist', x: 0, z: 4, rotY: Math.PI, color: 0x8aff44 },
+      // Soulslike fog GATE in the doorway. Walk up, INTERACT to enter; it
+      // seals behind you once you cross and lifts when the boss encounter
+      // (king + all spawns) is done. King's signature acid-green tint.
+      { kind: 'boss-mist', x: 0, z: 5, rotY: Math.PI, color: 0x8aff44 },
     ],
   }), 10.0);   // tall ceiling — the king is huge + leaps ~4m; a 3.2m roof clips it
 }
