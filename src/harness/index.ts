@@ -63,6 +63,52 @@ export function bootHarness(ctx: HarnessContext): void {
         paused: isHarnessPaused(),
       };
     },
+    /** Flood-fill the LIVE walkable region from spawn using the player's real
+     *  collision radius, and report which stairs a reachable spot can actually
+     *  reach. Faithful (sees archway columns, stairwell footprints, every
+     *  obstacle the renderer-free rect tests can't) — used by `npm run reach`
+     *  to verify a seed isn't soft-locked. */
+    reachability(): { ok: boolean; reachableCells: number; stairs: Array<{ x: number; z: number; reachable: boolean; minDist: number }> } {
+      const c = tryGetContext();
+      const level = c?.getLevel();
+      if (!level) return { ok: false, reachableCells: 0, stairs: [] };
+      const W = level.walkable;
+      const spec = level.spec;
+      const R = 0.3;          // player collision radius (controls/camera.ts PLAYER_RADIUS)
+      const CELL = 0.25, INTERACT = 1.8;
+      const rects = [...spec.rooms.filter((r) => !r.logicalOnly), ...spec.corridors];
+      let mnX = Infinity, mxX = -Infinity, mnZ = Infinity, mxZ = -Infinity;
+      for (const r of rects) {
+        const b = r.rect;
+        mnX = Math.min(mnX, b.x - b.w / 2); mxX = Math.max(mxX, b.x + b.w / 2);
+        mnZ = Math.min(mnZ, b.z - b.d / 2); mxZ = Math.max(mxZ, b.z + b.d / 2);
+      }
+      const key = (x: number, z: number) => `${Math.round(x / CELL)},${Math.round(z / CELL)}`;
+      const sp = spec.startPos;
+      const seen = new Set<string>([key(sp.x, sp.z)]);
+      const q: Array<[number, number]> = [[sp.x, sp.z]];
+      while (q.length) {
+        const [x, z] = q.pop()!;
+        for (const [dx, dz] of [[CELL, 0], [-CELL, 0], [0, CELL], [0, -CELL]] as const) {
+          const nx = x + dx, nz = z + dz;
+          if (nx < mnX || nx > mxX || nz < mnZ || nz > mxZ) continue;
+          const k = key(nx, nz);
+          if (seen.has(k)) continue;
+          if (W.contains(nx, nz, R)) { seen.add(k); q.push([nx, nz]); }
+        }
+      }
+      const pts = [...seen].map((s) => s.split(',').map(Number));
+      const minDist = (tx: number, tz: number) => {
+        let m = Infinity;
+        for (const [a, b] of pts) { const d = Math.hypot(a * CELL - tx, b * CELL - tz); if (d < m) m = d; }
+        return m;
+      };
+      const stairs = (spec.stairs ?? []).map((st) => {
+        const md = minDist(st.x, st.z);
+        return { x: +st.x.toFixed(1), z: +st.z.toFixed(1), reachable: md <= INTERACT, minDist: +md.toFixed(2) };
+      });
+      return { ok: true, reachableCells: seen.size, stairs };
+    },
     pause() { setHarnessPaused(true); },
     resume() { setHarnessPaused(false); },
     updateStatus() { return getUpdateStatus(); },

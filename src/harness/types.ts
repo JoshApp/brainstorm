@@ -154,6 +154,9 @@ export interface HarnessApi {
     tickClock: number;
     paused: boolean;
   };
+  /** Flood-fill the live walkable region from spawn (real collision radius)
+   *  and report whether each stair is reachable — faithful soft-lock check. */
+  reachability(): { ok: boolean; reachableCells: number; stairs: Array<{ x: number; z: number; reachable: boolean; minDist: number }> };
   /** Force-pause (default) / force-unpause without running an action. */
   pause(): void;
   resume(): void;

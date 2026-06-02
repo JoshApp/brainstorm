@@ -4,9 +4,47 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 10",
+    "date": "2026-06-02",
+    "entries": [
+      {
+        "tag": "fix",
+        "text": "Fix stairs-unreachable soft-lock: stair-room mouths get doorframes"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix Act boss spawning the wrong creature (wraith instead of boiling king)"
+      }
+    ]
+  },
+  {
     "version": "Build 9",
     "date": "2026-06-01",
     "entries": [
+      {
+        "tag": "tune",
+        "text": "snap"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix archway choke (the real soft-lock cause) + guard it"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix chasm-bridge soft-lock: widen margins to >= 2m (collision-traversable)"
+      },
+      {
+        "tag": "tune",
+        "text": "snap: real lighting in inspect mode (key + rim, not flat ambient)"
+      },
+      {
+        "tag": "tune",
+        "text": "Bosses: boiling-king fills every act (interim) — no more placeholder wraith"
+      },
+      {
+        "tag": "content",
+        "text": "Item viewer scenario + burrower (floor-emerge) mob"
+      },
       {
         "tag": "tune",
         "text": "Lighting"
@@ -174,38 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Separate enemy animation overlays from the AI core in update()"
-      },
-      {
-        "tag": "content",
-        "text": "Centralize enemy-AI + drifting-mote tuning in config.ts"
-      },
-      {
-        "tag": "tune",
-        "text": "Extract dark-adapt light sampler out of main.ts loop"
-      },
-      {
-        "tag": "content",
-        "text": "Move enemy audio mapping into content layer"
-      },
-      {
-        "tag": "content",
-        "text": "Extract enemy model factories to content/enemy-models.ts"
-      },
-      {
-        "tag": "tune",
-        "text": "Dedup hex-colour helpers into src/style/color-utils"
-      },
-      {
-        "tag": "tune",
-        "text": "The Boiling King"
-      },
-      {
-        "tag": "fix",
-        "text": "Geometry pool"
-      },
-      {
-        "tag": "tune",
-        "text": "Geometry pool: shared BufferGeometries across ModelSpec spawns + stairs"
       }
     ]
   }

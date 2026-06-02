@@ -648,12 +648,14 @@ const EXIT_SIMPLE: Vault = {
   // neighbour, so auto-rotation lands the descent against the wall.
   // The stair's own moonbeam + outline does the colour-anchor work.
   map: [
-    '##########',
-    '#..T.....#',
-    '#........#',
-    '#......./#',
-    '#........#',
-    '##########',
+    '############',
+    '#..........#',
+    '#....T.....#',
+    '#........./#',
+    '#..........#',
+    '#....t.....#',
+    '#..........#',
+    '############',
   ],
   torchTint: TORCH_PALE,
 };
