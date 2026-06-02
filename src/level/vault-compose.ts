@@ -1,4 +1,4 @@
-import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec } from './types';
+import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec, CellBoundEntity } from './types';
 import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
 import { vaultsForTag, VAULTS } from './vault-library';
@@ -248,9 +248,16 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   }
   // Sophisticated torches authored on the vault (offset 0 in
   // preview — the vault is centred on origin).
-  const previewTorches = vault.torches
-    ? [...sub.torches, ...vault.torches]
-    : sub.torches;
+  const previewTorches: TorchSpec[] = [...sub.torches];
+  if (vault.torches) previewTorches.push(...vault.torches);
+
+  // Cell-bound entities (Format C) — preview has no placement
+  // offset so the helper routes everything in vault-local space.
+  applyCellProps(vault, 0, 0, 'vault-0', {
+    spawns: previewSpawns,
+    torches: previewTorches,
+    props,
+  });
 
   const spec: LevelSpec = {
     ...sub,
@@ -529,6 +536,11 @@ export function composeFloor(
         torches.push({ ...t, x: t.x + pv.offsetX, z: t.z + pv.offsetZ });
       }
     }
+    // Cell-bound entities (Format C) — torches / spawns / props
+    // keyed by ASCII cell, routed to their slots after world-coord
+    // translation. See applyCellProps for the dispatch.
+    applyCellProps(pv.vault, pv.offsetX, pv.offsetZ, pv.roomId, { spawns, torches, props });
+
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;
     // Chasm voids → world coords (vault-local + the vault's offset).
     if (pv.vault.voids) {
@@ -975,6 +987,66 @@ function weightedPick<T extends { weight?: number }>(pool: T[], rand: () => numb
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
+}
+
+/**
+ * Walk a vault's cellProps dict and route each entry into the right
+ * output slot. The cell key `${col},${row}` gives the ASCII cell;
+ * the helper computes vault-local coords from the grid dims, applies
+ * the optional sub-cell offset, then translates to world coords via
+ * the vault's placement offset. Torches go to `torches`, spawns to
+ * `spawns`, every other PropSpec kind to `props`.
+ *
+ * Out-of-bounds cell keys throw — better a loud failure at compose
+ * time than a prop silently landing in a wall.
+ */
+function applyCellProps(
+  vault: Vault,
+  offsetX: number,
+  offsetZ: number,
+  roomId: string,
+  out: { spawns: EnemySpawnSpec[]; torches: TorchSpec[]; props: PropSpec[] },
+): void {
+  if (!vault.cellProps) return;
+  const W = vault.map[0]?.length ?? 0;
+  const D = vault.map.length;
+  for (const [key, entries] of Object.entries(vault.cellProps)) {
+    if (!entries) continue;
+    // Parse `${col},${row}` — tolerate whitespace ("3, 1") since LLM
+    // output occasionally adds it. Two integers required; everything
+    // else is a hard error so the author can spot a typo.
+    const parts = key.split(',').map((s) => Number(s.trim()));
+    if (parts.length !== 2 || !Number.isInteger(parts[0]) || !Number.isInteger(parts[1])) {
+      throw new Error(`Vault '${vault.id}' cellProps key '${key}' is not a valid \`col,row\` pair`);
+    }
+    const [col, row] = parts;
+    if (col < 0 || col >= W || row < 0 || row >= D) {
+      throw new Error(`Vault '${vault.id}' cellProps key '${key}' is out of bounds (grid is ${W}×${D})`);
+    }
+    const cellLocalX = col + 0.5 - W / 2;
+    const cellLocalZ = row + 0.5 - D / 2;
+    for (const entity of entries as CellBoundEntity[]) {
+      const off = entity.offset ?? [0, 0];
+      const x = cellLocalX + off[0] + offsetX;
+      const z = cellLocalZ + off[1] + offsetZ;
+      if (entity.kind === 'torch') {
+        // Strip cellProps-only fields and stamp the world coords.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { offset: _o, kind: _k, ...torch } = entity;
+        out.torches.push({ ...torch, x, z });
+      } else if (entity.kind === 'spawn') {
+        out.spawns.push({
+          enemyId: entity.enemyId,
+          x, z,
+          roomId: entity.roomId ?? roomId,
+        });
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { offset: _o, ...rest } = entity;
+        out.props.push({ ...rest, x, z } as PropSpec);
+      }
+    }
+  }
 }
 
 function translateProp(p: PropSpec, dx: number, dz: number): PropSpec {

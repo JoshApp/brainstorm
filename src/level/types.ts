@@ -254,6 +254,46 @@ export type PropSpec =
   // expansion (B tile) emits one of these per boss floor.
   | { kind: 'spawn'; enemyId: string; x: number; z: number; roomId?: string };
 
+// ── Cell-bound entities ───────────────────────────────────────────
+// Cell-bound authoring (vault.cellProps) stores entries keyed by
+// ASCII cell coords (`${col},${row}`). The x/z fields aren't needed
+// in this form — the cell IS the position. Optional `offset` lets
+// the author nudge a prop sub-cell (cell-local units, range ~±0.5).
+//
+// The composer drops the cellProps entries, computes world coords
+// from the cell key + offset, and routes each entry to the right
+// floor-spec slot by `kind`: 'torch' → torches, 'spawn' → spawns,
+// everything else → props.
+//
+// Same expressive power as the absolute-coord props array, minus
+// the world-coord math the author would otherwise have to do.
+
+/** Distributive Omit so the discriminated union is preserved across
+ *  each PropSpec variant — without this, `Omit<PropSpec, 'x'|'z'>`
+ *  collapses to the shared keys (just `kind`) and the variant-
+ *  specific fields like `enemyId` get lost. */
+type DistributiveOmit<T, K extends PropertyKey> =
+  T extends unknown ? Omit<T, K> : never;
+
+export type CellBoundProp = DistributiveOmit<PropSpec, 'x' | 'z'> & {
+  /** Sub-cell nudge in cell-LOCAL meters. (0, 0) = cell center;
+   *  ±0.5 = cell edge. Default (0, 0). */
+  offset?: [number, number];
+};
+
+export type CellBoundTorch = Omit<TorchSpec, 'x' | 'z'> & {
+  /** Discriminant so cellProps entries can dispatch by kind. */
+  kind: 'torch';
+  offset?: [number, number];
+};
+
+export type CellBoundEntity = CellBoundProp | CellBoundTorch;
+
+/** Cell key: `${col},${row}`. Whitespace is tolerated by the parser
+ *  ("3, 1" works the same as "3,1") so LLM output that wanders into
+ *  spaces still resolves. */
+export type CellKey = `${number},${number}`;
+
 /** Wall-mounted lit fixture. Variant picked at emission time from
  *  the wall-fixture pool (torch or wall cresset). All variants share
  *  the torch-class light spec so the light pool treats them
