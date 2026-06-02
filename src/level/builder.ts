@@ -1401,6 +1401,11 @@ export function buildLevel(
     const roomId = s.roomId ?? findRoomContaining(resolved.x, resolved.z, spec.rooms);
     enemyRoom.set(enemy, roomId);
     if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
+    // Authored boss spawns (the king) MUST join the encounter container too
+    // — without this they're never a `liveBossMember`, so the boss bar never
+    // engages and a dormant boss stays asleep forever. (The split helper
+    // registers spawned children; this is the missing initial-spawn case.)
+    if (enemy.isBoss) registerBossMember(enemy);
   }
 
   // --- Doors ---------------------------------------------------------

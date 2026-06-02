@@ -16,6 +16,7 @@ import { isWorldPaused } from './world-paused';
 import { tickShake } from './combat/screen-shake';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './player/death';
+import { initFogWalkthrough, isFogWalkthroughActive, tickFogWalkthrough } from './player/fog-walkthrough';
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
@@ -184,6 +185,7 @@ initRenderPipeline(renderer);
 // --- Camera ---
 const camera = createFirstPersonCamera();
 scene.add(camera); // required for the sword (camera child) to render
+initFogWalkthrough(camera); // soulslike fog-gate forced walk drives this camera
 // Register camera with the death sequence so the death tick can
 // pitch + drop it during the collapse animation.
 initDeath(camera);
@@ -370,8 +372,9 @@ initEventLog();
 // attack button — less intrusive UI, larger hit area.
 const input = createTouchInput(canvas, {
   onTap(clientX, clientY) {
-    // Don't tap-target anything during dying or while screens are open.
-    if (isDying() || isAnyScreenOpen()) return false;
+    // Don't tap-target anything during dying, the fog-gate walk, or while
+    // screens are open.
+    if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return false;
     if (!currentLevel) return false;
     const hit = findTapTarget(
       clientX, clientY, canvas, camera,
@@ -403,7 +406,7 @@ const input = createTouchInput(canvas, {
     // E key (or future gamepad confirm) — use the currently in-range
     // interactable, no screen position needed. Same gate as the tap
     // path: not during dying or open screens.
-    if (isDying() || isAnyScreenOpen()) return;
+    if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
     const inRange = getInRangeInteractable();
     if (inRange) inRange.onUse();
   },
@@ -565,7 +568,16 @@ const SYSTEMS: GameSystem[] = [
   // Look/move input + camera. While dying, control input is dropped so
   // nothing downstream (camera, bob) reads stale joystick values.
   { name: 'input-camera', phase: 'unpaused', tick(ctx) {
-    if (!isDying()) {
+    if (isFogWalkthroughActive()) {
+      // Soulslike fog-gate entry has the camera — drop player input and let
+      // the forced walk drive position. realDt so the step is steady and
+      // never freezes on a hit-pause.
+      input.lookDx = 0;
+      input.lookDy = 0;
+      input.moveX = 0;
+      input.moveY = 0;
+      tickFogWalkthrough(ctx.realDt);
+    } else if (!isDying()) {
       input.tickInput(ctx.scaledDt);   // hybrid-look continuous rotation, if enabled
       updateCamera(camera, input, ctx.scaledDt, currentLevel.walkable, currentLevel.enemies);
     } else {

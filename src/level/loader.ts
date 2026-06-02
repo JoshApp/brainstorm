@@ -8,6 +8,7 @@ import { clearHazardFields } from '../combat/hazard-field';
 import { resetBossEncounter } from '../mobs/boss-encounter';
 import { resetBossEngagement } from '../ui/boss-engagement';
 import { resetPlayerInvuln } from '../player/health';
+import { cancelFogWalkthrough } from '../player/fog-walkthrough';
 import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
 import { clearStatusVfx } from '../effects/status-vfx';
@@ -169,6 +170,7 @@ export function tickPendingLoad() {
   resetBossEncounter();
   resetBossEngagement();
   resetPlayerInvuln();
+  cancelFogWalkthrough();   // never carry a half-played gate walk into a new level
   // Build the new level into the same scene.
   const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));
   activeLevel = level;

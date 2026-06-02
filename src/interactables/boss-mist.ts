@@ -8,6 +8,7 @@ import { onBossEncounterComplete } from '../mobs/boss-encounter';
 import { setPlayerInvulnerable } from '../player/health';
 import { kickShake } from '../combat/screen-shake';
 import { playWhoosh } from '../audio/sfx';
+import { startFogWalkthrough } from '../player/fog-walkthrough';
 import type { WalkableRegion, Obstacle } from '../level/walkable';
 
 // Boss-arena fog gate — soulslike threshold seal you INTERACT with.
@@ -27,6 +28,8 @@ const DEFAULT_WIDTH = 3.4;     // doorway width the curtain fills
 const DEFAULT_HEIGHT = 4.6;    // doorway height the curtain fills
 const SEAL_HALF_D = 0.35;      // thickness through the plane
 const CROSS_EPSILON = 0.05;    // signed-distance flip threshold
+const WALK_THROUGH_DIST = 3.0; // how far past the gate the forced walk ends
+const WALK_SECONDS = 1.4;      // duration of the soulslike step-through
 
 export function spawnBossMist(
   scene: THREE.Object3D,
@@ -92,18 +95,32 @@ export function spawnBossMist(
   let sealed = false;
   let prevSign = 0;
 
-  // Commit: open the gate, raise the bar + intro, grant a beat of
-  // immortality (the boss wakes as you enter, dormant until now), punctuate
-  // it. Idempotent.
+  // Commit: open the gate, engage the boss, then a soulslike forced walk
+  // THROUGH the mist into the arena. Idempotent.
+  //
+  // Gameplay-critical actions run FIRST (unblock + engage + invuln + the
+  // walk) so a cosmetic call throwing can never strand the player in a
+  // half-opened gate with a boss that never woke.
   function openGate() {
     if (opened) return;
     opened = true;
     unblock();
+    engageBoss();
+    // Immortal across the walk + a landing beat — the boss wakes the instant
+    // we engage, and we don't want it bombing the player during the cutscene.
+    setPlayerInvulnerable(WALK_SECONDS + 1.2);
+    // Forced step through the gate: end a few metres INTO the arena, along
+    // the threshold normal. Crossing the plane mid-walk re-seals behind us.
+    const through = new THREE.Vector3(
+      pos.x + normal.x * WALK_THROUGH_DIST,
+      0,
+      pos.z + normal.z * WALK_THROUGH_DIST,
+    );
+    startFogWalkthrough(through, WALK_SECONDS);
+    // Cosmetic.
     setMistOpen(true);   // the curtain parts — you may pass
     playWhoosh();
-    engageBoss();
-    setPlayerInvulnerable(2.5);
-    kickShake(0.14, 0.32);
+    kickShake(0.12, 0.30);
   }
 
   const id = generateEntityId('boss-mist');
