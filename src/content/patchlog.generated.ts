@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Boss encounter container (source of truth) + 2 phases + a real Dark Souls fog gate"
+      },
+      {
+        "tag": "tune",
         "text": "Lash tentacle VFX + remove the 50% bar marker"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Item viewer scenario + burrower (floor-emerge) mob"
-      },
-      {
-        "tag": "tune",
-        "text": "Lighting"
       }
     ]
   }

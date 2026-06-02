@@ -40,6 +40,11 @@ export interface EnemySpec {
   /** Boss flag — drives the Dark Souls-style boss bar + "this is a boss"
    *  treatment (the bar finds the live boss enemy by this). */
   isBoss?: boolean;
+  /** Stay dormant (no perception / aggro / attacks) until the boss
+   *  ENCOUNTER is engaged — i.e. the player crosses the fog gate. Souls-
+   *  style: the fight begins on commitment, not on line-of-sight. Requires
+   *  a fog wall in the level (else it would never wake). */
+  dormantUntilEngaged?: boolean;
   /** Name shown on the boss bar (grimdark, e.g. "The Hollow Choir"). */
   bossName?: string;
   /** Visual model scale multiplier — bosses loom larger than trash. The
@@ -1102,6 +1107,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // as more bosses + named mobs land.
     isBoss: true,
     bossName: 'The Boiling King',
+    // Sleeps behind the fog gate; the fight begins when you cross it.
+    dormantUntilEngaged: true,
     scale: 7.0,                      // WAY bigger than the player (~2× player height, 3.5m wide)
     hp: 28,                          // bigger body, more HP — fight pacing stays similar
     moveSpeed: 1.2,                  // a touch less glacial; the chase HOP does the real closing

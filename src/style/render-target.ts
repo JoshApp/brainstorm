@@ -199,6 +199,13 @@ export function renderWithStyle(
   scene: THREE.Scene,
   camera: THREE.Camera,
 ) {
+  // Reset renderer.info ONCE here so the per-frame draw/triangle counters
+  // accumulate across both passes below (the scene render + the blit). main.ts
+  // sets renderer.info.autoReset = false to hand us that control; without this
+  // the perf overlay / probe would only ever see the 1-draw blit quad. A no-op
+  // cost when info isn't being read.
+  renderer.info.reset();
+
   if (lowResTarget && blitScene && blitCamera) {
     // Scene → low-res target, then the PSX blit (dither/quantize/CA/scanlines/
     // exposure) to screen. NOTE: tone mapping is disabled on render-target

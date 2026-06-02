@@ -29,6 +29,21 @@ let godMode = false;
 export function setGodMode(on: boolean) { godMode = DEV && on; }
 export function isGodMode(): boolean { return godMode; }
 
+// Entry-grace invulnerability — a short, real (non-debug) window where the
+// player can't be hurt. Used by the soulslike fog gate: crossing the
+// threshold grants a beat of immortality so the boss (which wakes as you
+// enter) can't bomb you before you've stepped through and can act.
+let invulnUntil = 0;
+export function setPlayerInvulnerable(seconds: number): void {
+  invulnUntil = performance.now() + seconds * 1000;
+}
+export function isPlayerInvulnerable(): boolean {
+  return performance.now() < invulnUntil;
+}
+export function resetPlayerInvuln(): void {
+  invulnUntil = 0;
+}
+
 // Route damage-over-time ticks (poison/burn/bleed inflicted by enemies)
 // through the player's health with the QUIET flag, so they reduce HP +
 // can kill + flash the vignette, but don't strobe the screen with the
@@ -92,7 +107,7 @@ export function onPlayerDeath(cb: () => void) {
  * still be able to kill, with feedback).
  */
 export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical', quiet = false) {
-  if (dead || godMode) return;
+  if (dead || godMode || performance.now() < invulnUntil) return;
   const player = get(PLAYER_ENTITY_ID);
   if (!player || !player.hp) return;
 

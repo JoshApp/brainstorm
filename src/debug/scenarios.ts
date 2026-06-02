@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { LevelSpec } from '../level/types';
+import type { LevelSpec, EnemySpawnSpec, TorchSpec } from '../level/types';
 import type { LiveLevel } from '../level/builder';
 import type { WeaponViewmodel, SwingPhase } from '../player/viewmodel';
 import { triggerDeath } from '../player/death';
@@ -117,7 +117,101 @@ export interface Scenario {
   previewItemId?: string;
 }
 
+// ── Perf stress helpers ──────────────────────────────────────────────
+// Used by the `perf-*` stress scenarios below. These deliberately push
+// far past normal gameplay density so the headless perf runner
+// (scripts/perf.ts) can read worst-case structural load — draw calls,
+// triangles, active lights — off renderer.info. Run UNFROZEN (the runner
+// passes ?freeze=false) so AI, projectiles, and light binding all tick.
+
+/** Grid of enemy spawns filling a square room, cycling a kind mix so
+ *  melee bodies + ranged projectile pools are both exercised. Skips a
+ *  clear radius around the origin so nothing spawns on the camera. */
+function gridSpawns(
+  roomId: string,
+  count: number,
+  halfExtent: number,
+  kinds: string[] = ['ghoul', 'skeleton', 'acolyte', 'spider'],
+): EnemySpawnSpec[] {
+  const out: EnemySpawnSpec[] = [];
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const span = cols > 1 ? cols - 1 : 1;
+  for (let i = 0; i < count; i++) {
+    const x = ((i % cols) / span - 0.5) * 2 * halfExtent;
+    const z = (Math.floor(i / cols) / span - 0.5) * 2 * halfExtent;
+    if (Math.hypot(x, z) < 2.5) continue;
+    out.push({ enemyId: kinds[i % kinds.length], x, z, roomId });
+  }
+  return out;
+}
+
+/** Grid of wall torches blanketing a room — saturates the environment
+ *  light pool (10 slots) several times over so the LOS/frustum cull and
+ *  per-frame slot rebinding run at worst case. */
+function gridTorches(count: number, halfExtent: number): TorchSpec[] {
+  const out: TorchSpec[] = [];
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const span = cols > 1 ? cols - 1 : 1;
+  for (let i = 0; i < count; i++) {
+    const x = ((i % cols) / span - 0.5) * 2 * halfExtent;
+    const z = (Math.floor(i / cols) / span - 0.5) * 2 * halfExtent;
+    out.push({ x, z, height: 2.0, wall: 'N', colorTint: 0xffaa55, intensityMul: 0.9 });
+  }
+  return out;
+}
+
 export const SCENARIOS: Record<string, Scenario> = {
+  // ── PERF STRESS SCENARIOS ──────────────────────────────────────────
+  // perf-horde: a packed mob fight — many animated enemies + projectiles
+  // in view at once. The dynamic-entity draw-call stress.
+  'perf-horde': {
+    level: {
+      id: 'perf-horde', depth: 5, displayName: 'PERF horde', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 14, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 34, d: 34 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      torches: gridTorches(8, 14),
+      spawns: gridSpawns('r', 32, 14),
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 14, lookAt: { x: 0, z: 0, y: 1.0 } },
+  },
+
+  // perf-lights: blanket of torches — saturates the light pool many times
+  // over to stress the per-frame cull + slot rebinding, and maxes the
+  // count of lit materials in view.
+  'perf-lights': {
+    level: {
+      id: 'perf-lights', depth: 5, displayName: 'PERF lights', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 16, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 36, d: 36 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      torches: gridTorches(48, 15),
+      spawns: [],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 16, lookAt: { x: 0, z: 0, y: 1.0 } },
+  },
+
+  // perf-max: combined worst case — packed horde AND a torch blanket in
+  // one big arena. The number to watch for "do we have headroom".
+  'perf-max': {
+    level: {
+      id: 'perf-max', depth: 5, displayName: 'PERF max', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 16, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 38, d: 38 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      torches: gridTorches(40, 16),
+      spawns: gridSpawns('r', 40, 16),
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 16, lookAt: { x: 0, z: 0, y: 1.0 } },
+  },
+
+
   // Default spawn view, frozen so the snap captures the deterministic frame.
   spawn: { freeze: true },
 

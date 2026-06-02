@@ -5,6 +5,7 @@ import { bossMistModel } from '../content/boss-mist';
 import { registerInteractable } from './system';
 import { engageBoss, registerFogWall } from '../ui/boss-engagement';
 import { onBossEncounterComplete } from '../mobs/boss-encounter';
+import { setPlayerInvulnerable } from '../player/health';
 import { kickShake } from '../combat/screen-shake';
 import type { WalkableRegion, Obstacle } from '../level/walkable';
 
@@ -71,10 +72,13 @@ export function spawnBossMist(
     promptLabel: 'enter the mist',
     onUse() {
       if (opened) return;
-      // Commit: open the gate, raise the bar + intro, punctuate it.
+      // Commit: open the gate, raise the bar + intro, punctuate it. The
+      // boss wakes as you enter (it was dormant), so grant a beat of
+      // immortality to step through + orient before it can hurt you.
       opened = true;
       unblock();
       engageBoss();
+      setPlayerInvulnerable(2.5);
       kickShake(0.14, 0.32);
     },
     tick(_dt: number, playerPos: THREE.Vector3) {

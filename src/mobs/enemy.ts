@@ -15,6 +15,8 @@ import {
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
+import { isBossEncounterEngaged } from './boss-encounter';
+import { levelHasFogWall } from '../ui/boss-engagement';
 import { TELEGRAPH_POSES, poseValue, type TelegraphStyle } from './pose-clips';
 import type { WalkableRegion } from '../level/walkable';
 import type { NavGrid, Waypoint } from '../level/nav-grid';
@@ -1400,12 +1402,24 @@ export function createEnemy(
       }
     }
 
+    // A dormant boss (the king behind its fog gate) stays inert — no
+    // perception, no aggro — until the player COMMITS by entering the gate
+    // (the encounter engages). Souls-style: the fight starts when you cross
+    // the threshold, not when the boss spots you from across the room.
+    // Gated on the fog wall existing so a fog-less boss can't deadlock
+    // (it would never engage without the cross trigger).
+    const dormant = !!spec.dormantUntilEngaged && levelHasFogWall() && !isBossEncounterEngaged();
+    if (dormant) {
+      aggroed = false;
+      if (state !== 'idle') { state = 'idle'; phaseTimer = 0; }
+    }
+
     // ── Perception ─────────────────────────────────────────────────────
     // Refresh sight check every frame. Once aggroed, we stay aggroed
     // until loseSightTime seconds pass with no LOS AND we've transitioned
     // out of mid-attack states (winding/striking/recovering finish before
     // we drop aggro).
-    const seesPlayer = canSeePlayer(playerPos, walkable);
+    const seesPlayer = !dormant && canSeePlayer(playerPos, walkable);
     if (seesPlayer) {
       timeSinceLOS = 0;
       lastSeenPos.copy(playerPos);

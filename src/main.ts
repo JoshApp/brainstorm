@@ -66,6 +66,11 @@ import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
+// perf-probe is DEV-only and dynamic-imported (below) so it tree-shakes out
+// of the production bundle entirely — a static import keeps its body alive
+// even behind a dead `if (DEV)` guard. perfProbeTick holds the per-frame
+// sampler once the module loads.
+let perfProbeTick: ((now: number) => void) | null = null;
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { tickInteractables, getInRangeInteractable, getAllInteractables } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
@@ -152,6 +157,13 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, dprCap));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// The PSX pipeline renders TWICE per frame (scene → low-res target, then a
+// fullscreen blit quad → screen; see style/render-target.ts). Three.js
+// auto-resets renderer.info at the start of every render() call, so by
+// frame-end info.render would reflect ONLY the blit quad (1 draw, 2 tris).
+// Turn auto-reset off and reset once per frame inside renderWithStyle so the
+// counters ACCUMULATE across both passes — i.e. report the true frame total.
+renderer.info.autoReset = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
@@ -834,6 +846,9 @@ function tick() {
   // tris/draws numbers reflect what was actually drawn.
   reportRendererInfo(renderer);
   tickPerfOverlay(performance.now());
+  // Programmatic perf probe (window.__perf for the headless perf runner).
+  // DEV-only — the literal-false guard dead-code-eliminates it from prod.
+  if (import.meta.env.DEV) perfProbeTick?.(performance.now());
 
   requestAnimationFrame(tick);
 }
@@ -1044,6 +1059,16 @@ onSettingsChanged((s) => {
 // the per-frame cost is a single style read.
 createPerfOverlay();
 setPerfOverlayVisible(getSettings().perfMeter);
+// Install window.__perf for the headless perf runner (scripts/perf.ts).
+// DEV-only + dynamic-imported so the whole probe module tree-shakes out of
+// the live build (the dead import() is unreachable in prod, so Rollup never
+// emits its chunk).
+if (import.meta.env.DEV) {
+  void import('./debug/perf-probe').then((m) => {
+    m.installPerfProbe(renderer);
+    perfProbeTick = m.tickPerfProbe;
+  });
+}
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
 // the CODEX/STASH buttons without requiring real playthrough.
