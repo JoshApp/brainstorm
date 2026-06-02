@@ -27,25 +27,26 @@
 //   C   corpse (walkable, walk-up to read; note picked from a pool)
 //   F   fountain (walkable, walk-up to drink)
 //   ^   spike trap (walkable, hazard)
-//   T   torch on the NORTH wall behind this cell
-//   t   torch on the SOUTH wall ahead of this cell
-//   <   torch on the WEST wall left of this cell
-//   >   torch on the EAST wall right of this cell
-//   <enemy chars>  spawn an enemy — REGISTRY-DRIVEN. Each EnemySpec
-//                  declares its own `tileChar` (content/enemies.ts);
-//                  the parser, FLOOR_CHARS, and procgen all derive from
-//                  that one source (ENEMY_BY_CHAR) so chars can't drift.
-//                  Current: G ghoul · R rat · K skirmisher · W wraith ·
-//                  Y acolyte · M stoneguard · Z ooze · Q acid-spitter ·
-//                  H defiler. ('X'/'B' are procgen slot placeholders,
-//                  NOT enemy chars.)
+//   *   LIGHT — wall torch on the nearest wall (auto-detected).
+//        Sub-cell precision + per-torch tint / intensity / fixture
+//        kind goes via the vault's torches?: TorchSpec[] array.
+//   X   ROLLED ENEMY (procgen slot — populateTemplate fills from the
+//        depth table or the vault's encounter pack).
+//   B   BOSS SLOT (resolves to the act's bossId via populateTemplate).
+//   $   OPTIONAL LOOT (rolls chest-or-empty per slot).
+//   ?   RANDOM EVENT (trap / fountain / altar / nothing).
+//   ^   spike trap (hazard placed deterministically)
+//
+//   Specific mob placement no longer goes through the ASCII dict —
+//   use { kind: 'spawn', enemyId, x, z } in the vault's props array
+//   instead. The per-enemy chars (G/R/K/...) and ENEMY_BY_CHAR map
+//   are gone; the 26-letter ceiling can't bite.
 //   space  treated as wall (so authors can omit perimeter quoting)
 
 import type {
   LevelSpec, PropSpec, EnemySpawnSpec, TorchSpec, RoomSpec, DoorSpec, StairsSpec, TileMap,
 } from './types';
 import { ITEMS } from '../content/items';
-import { ENEMY_BY_CHAR } from '../content/enemies';
 import { doorframe } from '../content/doorframe';
 import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 import { pickWallFixture } from './lit-fixture-pool';
@@ -162,20 +163,16 @@ function rollChestLoot(tier: ChestTier, rand: () => number): import('../content/
 // exactly the same boundary edges as an isolated '#' would — which
 // after consolidation becomes the X-walls-in-mid-room artifact.
 //
-// STRUCTURAL chars are listed here literally; ENEMY chars are pulled
-// from the enemy registry (ENEMY_BY_CHAR) so a new enemy is walkable
-// floor automatically — no risk of forgetting to add it here. 'X' is
-// the procgen generic-enemy slot (replaced before parse, but kept
-// walkable as a safety net).
-// Walkable structural tiles. T t < > (directional torches) deprecated —
-// '*' is the unified light marker now. F C P A c v V (specific decor
-// chars) still here for backwards-compat while vault-library migrates;
-// new vaults should use vault.props instead.
-const STRUCTURAL_FLOOR_CHARS = '.,SoOD/^FCPAcvVX%*';
-const FLOOR_CHARS = new Set([
-  ...STRUCTURAL_FLOOR_CHARS.split(''),
-  ...ENEMY_BY_CHAR.keys(),
-]);
+// Per-enemy chars (G/R/K/...) are GONE — enemy placement now runs
+// through populateTemplate's X/B → SpawnCell pipeline or via vault
+// props ({ kind: 'spawn', enemyId, x, z }). Decor chars (P/A/F/c/
+// C/v/V) still here pending the decor → props migration.
+// Walkable structural tiles. The per-enemy specific chars (G/R/K/...)
+// are gone — placement runs through populateTemplate's X/B → spawn-
+// record pipeline or vault.props { kind: 'spawn', ... }. The static
+// decor chars (P/A/F/c/C/v/V) are still here pending the decor
+// migration to props.
+const FLOOR_CHARS = new Set('.,SoOD/^FCPAcvVX%*'.split(''));
 
 /**
  * Parse a TileMap into a LevelSpec the existing buildLevel consumes.
@@ -563,14 +560,13 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     for (let c = 0; c < cols; c++) {
       const ch = cellChar(c, r);
       const { x, z } = cellCenter(c, r);
-      // Enemy spawns are registry-driven (see ENEMY_BY_CHAR in
-      // content/enemies.ts) — one source of truth shared with procgen
-      // + FLOOR_CHARS, so a new enemy's char can't drift out of sync.
-      const enemyId = ENEMY_BY_CHAR.get(ch);
-      if (enemyId) {
-        spawns.push({ enemyId, x, z, roomId: cellRoomId(c, r) });
-        continue;
-      }
+      // Per-enemy specific chars (G/R/K/W/Y/Z/M/...) used to live
+      // here behind an ENEMY_BY_CHAR lookup — they're gone. Enemy
+      // placement now goes through one of two channels: (1) the X/B
+      // procgen slots, expanded by populateTemplate into SpawnCell
+      // records the composer turns into spawns; or (2) a vault
+      // author's { kind: 'spawn', enemyId, x, z } prop entry for
+      // hand-placed mobs. No tile-char dispatch left.
       switch (ch) {
         case 'S': {
           startPos = { x, z, yaw: opts.spawnYaw ?? 0 };
