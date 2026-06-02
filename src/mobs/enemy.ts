@@ -333,6 +333,12 @@ export function createEnemy(
   let flashTimer = 0;
   const originalColor = flashMat ? flashMat.color.clone() : new THREE.Color();
   const flashColor = new THREE.Color(CONFIG.ENEMY_HIT_FLASH_COLOR);
+  // Capture the flash material's base emissive intensity so the
+  // damage pulse can boost it (for materials with bright emissive
+  // — e.g. the king-slime's core orb — base-color lerping alone is
+  // invisible because the emissive overwhelms diffuse). The pulse
+  // is a multiplier applied on top during flashTimer's decay.
+  const originalEmissiveIntensity = flashMat ? flashMat.emissiveIntensity : 0;
   const baseEyeEmissive = spec.baseEyeEmissive;
 
   let state: EnemyState = 'idle';
@@ -848,12 +854,13 @@ export function createEnemy(
             }
           }
         }
-        // ── Arc + landing shake (used by boss leaps) ──────────────
+        // ── Arc + landing shake + landing damage (boss leaps) ─────
         // Vertical parabola during the strike phase: y = 4h·t·(1-t)
         // peaks at strike midpoint, returns to 0 at strike end. The
-        // landing shake fires ONCE — dashLanded latches it. Independent
-        // of strikeAlreadyHit so a leap that doesn't make contact
-        // still lands + shakes.
+        // landing latch fires ONCE: shake, optional body-impact
+        // damage, snap Y to 0. landingDamage is gated by
+        // strikeAlreadyHit so a paired AoE that already connected
+        // doesn't get double-damaged on landing.
         if (eff.arcHeight) {
           const t = Math.min(1, phaseTimer / ability.strike);
           container.position.y = 4 * eff.arcHeight * t * (1 - t);
@@ -862,6 +869,23 @@ export function createEnemy(
             dashLanded = true;
             if (eff.shakeOnLand) {
               kickShake(eff.shakeOnLand, eff.shakeOnLandDuration ?? 0.4);
+            }
+            // Body-impact damage at landing — the boss physically
+            // slams down on the player at the NEW position (after
+            // the leap). Distinct from the AoE marker damage which
+            // checks the LOCKED windup-start position. Skipped if
+            // the AoE already connected (avoids double-hit).
+            if (eff.landingDamageRadius && !strikeAlreadyHit) {
+              const dx = playerPos.x - container.position.x;
+              const dz = playerPos.z - container.position.z;
+              if (dx * dx + dz * dz <= eff.landingDamageRadius * eff.landingDamageRadius) {
+                damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+                inflictOnHit();
+                strikeAlreadyHit = true;
+                if (eff.knockbackSpeed) {
+                  applyPlayerKnockback(dx, dz, eff.knockbackSpeed);
+                }
+              }
             }
           }
         }
@@ -1170,8 +1194,18 @@ export function createEnemy(
         flashTimer -= dt;
         const t = Math.max(0, flashTimer / CONFIG.ENEMY_HIT_FLASH_DURATION);
         flashMat.color.copy(originalColor).lerp(flashColor, t);
+        // Emissive boost — only visible on materials with non-zero
+        // base emissive (e.g. a glowing core orb). Peak 2.5× at hit
+        // moment, decays back to base. For non-emissive flash mats
+        // this is a no-op multiply on 0.
+        if (originalEmissiveIntensity > 0) {
+          flashMat.emissiveIntensity = originalEmissiveIntensity * (1 + 1.5 * t);
+        }
       } else {
         flashMat.color.copy(originalColor);
+        if (originalEmissiveIntensity > 0) {
+          flashMat.emissiveIntensity = originalEmissiveIntensity;
+        }
       }
     }
 
@@ -1418,8 +1452,34 @@ export function createEnemy(
           // windup to step off the marker.
           const aoe = aoeEffectOf(ability);
           if (aoe) {
-            if (aoe.targetMode === 'self') aoeTarget.set(container.position.x, 0, container.position.z);
-            else aoeTarget.set(playerPos.x, 0, playerPos.z);
+            if (aoe.targetMode === 'self') {
+              aoeTarget.set(container.position.x, 0, container.position.z);
+            } else {
+              aoeTarget.set(playerPos.x, 0, playerPos.z);
+              // Min-distance clamp — if the locked point is too close
+              // to the caster (player was hugging the body), push it
+              // outward along the line. Otherwise an aoe paired with
+              // dash-toward-aoeTarget tells the dash to "go nowhere"
+              // and the boss never leaps. Direction defaults to
+              // facing forward (north) when player is exactly on
+              // caster's position.
+              const minD = aoe.minDistanceFromCaster ?? 0;
+              if (minD > 0) {
+                const dx = aoeTarget.x - container.position.x;
+                const dz = aoeTarget.z - container.position.z;
+                const d = Math.hypot(dx, dz);
+                if (d < minD) {
+                  const dir = d > 0
+                    ? { x: dx / d, z: dz / d }
+                    : { x: Math.sin(container.rotation.y), z: -Math.cos(container.rotation.y) };
+                  aoeTarget.set(
+                    container.position.x + dir.x * minD,
+                    0,
+                    container.position.z + dir.z * minD,
+                  );
+                }
+              }
+            }
             clearAoeTelegraph();
             aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, aoe.radius);
           }

@@ -1125,7 +1125,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
       gracePeriod: 1.0,              // a full second of "I'm in, get out" before damage starts
     },
     tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    // Damage flash hits the CORE, not the body. The body is
+    // translucent green at 0.55 opacity so a base-colour flash
+    // barely reads; the core's bright emissive pulses ×2.5 on hit
+    // (via the emissive boost in enemy.ts) which gives crisp,
+    // unambiguous "you connected" feedback consistent with the
+    // already-emergent "aim for the core" mechanic.
+    flashMaterialName: 'core',
     eyeMaterialName: 'core',
     presence: 'twitch',              // pulsing blob feel even when idle
     physicalArmor: 0,
@@ -1167,12 +1173,27 @@ export const ENEMIES: Record<string, EnemySpec> = {
             arcHeight: 4.0,
             shakeOnLand: 0.35,
             shakeOnLandDuration: 0.45,
+            // Body-impact damage at landing — if the king physically
+            // slams down on the player (after kiting away from the
+            // marker), they take ability.damage. Skipped when the
+            // AoE marker damage already connected, so this never
+            // double-hits. 2.5m matches the body's outer footprint.
+            landingDamageRadius: 2.5,
+            // Light shove to clear the player out of the slime body
+            // post-landing — they're still in the aura but at the
+            // edge of it, not pinned at the centre.
+            knockbackSpeed: 4.0,
           },
           // AoE radius matches the body footprint (aura radius is
           // 1.6) so the dodge is "step OFF the marker," not "run to
           // the far wall." If you eat the splash you're now inside
           // the body — the aura takes over from there.
-          { kind: 'aoe', radius: 1.8, targetMode: 'player', damageType: 'magic' },
+          // minDistanceFromCaster fixes the "leap goes nowhere"
+          // bug — when the player is inside the body at windup
+          // start, locking aoeTarget to playerPos would set it to
+          // the king's own position, so the dash had nowhere to
+          // go. 3m guarantees a real leap arc every time.
+          { kind: 'aoe', radius: 1.8, targetMode: 'player', damageType: 'magic', minDistanceFromCaster: 3 },
         ],
       },
     ],

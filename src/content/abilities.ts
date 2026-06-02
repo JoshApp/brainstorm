@@ -60,6 +60,18 @@ export type AbilityEffect =
       shakeOnLand?: number;
       /** Screen-shake duration (s) for the landing kick. Default 0.4. */
       shakeOnLandDuration?: number;
+      /** Body-impact damage radius around the ENEMY at landing
+       *  (when the dash arc completes). If the player is within
+       *  this radius when the king touches down, they eat
+       *  ability.damage + knockbackSpeed. Opt-in: leave undefined
+       *  to keep the legacy "marker damage only" behaviour. Pairs
+       *  with arcHeight to give a leap real physical consequence
+       *  on the actual landing spot, not just the telegraphed
+       *  marker — useful when the player kites and the marker no
+       *  longer covers their position but the boss's body now does.
+       *  strikeAlreadyHit is checked so the landing won't double-
+       *  damage if the paired AoE already connected. */
+      landingDamageRadius?: number;
     }
   // AoE — a telegraphed ground zone. A ring marker appears during the
   // WINDUP at the locked target (the player's feet for 'player', the
@@ -71,11 +83,13 @@ export type AbilityEffect =
       radius: number;
       targetMode: 'player' | 'self';
       damageType?: DamageType;
-      /** Player knockback speed (m/s) applied when caught in the
-       *  splash. Direction = away from the AoE centre. Use for
-       *  leap landings that should clear the player out of the
-       *  enemy's body so they're not stuck inside. */
       knockbackSpeed?: number;
+      /** Minimum distance from the caster the lock-point gets
+       *  clamped to. Prevents a player hugging the enemy from
+       *  locking the marker to the enemy's own position (which then
+       *  breaks dash-toward-aoeTarget — the leap has nowhere to
+       *  go). Default 0 (no clamp). */
+      minDistanceFromCaster?: number;
     };
 
 export interface Ability {

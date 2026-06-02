@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Boss fog wall — soulslike threshold mist + sealed engagement"
+      },
+      {
         "tag": "fix",
         "text": "King fixes: dash actually moves horizontally + aura tick slower"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Mimic mob + procgen chest tier rolls"
-      },
-      {
-        "tag": "content",
-        "text": "Pilot/inspector: faithful populated vault previews"
       }
     ]
   }
