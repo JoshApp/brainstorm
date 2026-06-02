@@ -246,6 +246,39 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: -2, z: 0, lookAt: { x: 20, z: 0, y: 1.2 } },
   },
 
+  // diag-cross: a central room with rooms on all 4 sides, camera facing NORTH.
+  // Expected visible with portal culling: {C, cN, N}. South (behind), East,
+  // West (sides) must cull — the test for "does it render rooms behind me".
+  'diag-cross': {
+    freeze: true,
+    level: {
+      id: 'diag-cross', depth: 3, displayName: 'DIAG cross', fogColor: 0x000000,
+      startPos: { x: 0, z: 0, yaw: Math.PI },
+      rooms: [
+        { id: 'C', rect: { x: 0,  z: 0,  w: 6, d: 6 }, height: 3.2 },
+        { id: 'N', rect: { x: 0,  z: -9, w: 6, d: 6 }, height: 3.2 },
+        { id: 'S', rect: { x: 0,  z: 9,  w: 6, d: 6 }, height: 3.2 },
+        { id: 'E', rect: { x: 9,  z: 0,  w: 6, d: 6 }, height: 3.2 },
+        { id: 'W', rect: { x: -9, z: 0,  w: 6, d: 6 }, height: 3.2 },
+      ],
+      corridors: [
+        { id: 'cN', rect: { x: 0,    z: -4.5, w: 1.6, d: 3 }, height: 3.0 },
+        { id: 'cS', rect: { x: 0,    z: 4.5,  w: 1.6, d: 3 }, height: 3.0 },
+        { id: 'cE', rect: { x: 4.5,  z: 0,    w: 3,   d: 1.6 }, height: 3.0 },
+        { id: 'cW', rect: { x: -4.5, z: 0,    w: 3,   d: 1.6 }, height: 3.0 },
+      ],
+      props: [],
+      torches: [
+        { x: 0, z: -8.5, height: 2.0, wall: 'N', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x: 0, z:  8.5, height: 2.0, wall: 'S', colorTint: 0xff5555, intensityMul: 1.2 },
+        { x: 8.5, z: 0,  height: 2.0, wall: 'E', colorTint: 0x55aaff, intensityMul: 1.2 },
+        { x: -8.5, z: 0, height: 2.0, wall: 'W', colorTint: 0x55ff88, intensityMul: 1.2 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 0, lookAt: { x: 0, z: -20, y: 1.2 } },
+  },
+
   // perf-lights: blanket of torches — saturates the light pool many times
   // over to stress the per-frame cull + slot rebinding, and maxes the
   // count of lit materials in view.
