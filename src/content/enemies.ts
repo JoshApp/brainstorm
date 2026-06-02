@@ -1098,14 +1098,20 @@ export const ENEMIES: Record<string, EnemySpec> = {
     attackRange: 10.0,               // proportional to body — leaps across the room
     strikeRange: 4.0,                // landing splash radius matches the bulk
     windupTime: 1.20,                // generous telegraph — readable on phone
-    strikeTime: 0.30,                // strike a touch longer so the leap completes
-    recoverTime: 0.90,
+    strikeTime: 0.50,                // longer strike so the leap actually crosses ground
+    recoverTime: 1.40,               // more downtime so the king doesn't spam-leap
     damageType: 'magic',             // acid bypasses physical armour — boss earns its name
     // Translucent green flesh with swallowed regalia (crown, sword,
     // skull) drifting inside — sells the "it has eaten kings" line.
     model: kingOozeModel(0x4a6a18, 0xa8ff44),
     baseEyeEmissive: 0,              // no eyes — core orb carries the read
-    collisionRadius: 1.5,            // bookkeeping radius for spawn-resolution; player passes THROUGH (noPlayerCollision)
+    // collisionRadius used to be 1.5 to match the visual bulk, but
+    // that meant the dash path couldn't get close to pillars / great
+    // braziers in the boss arena — the king slid sideways and never
+    // reached the AoE landing zone. Drop to 0.7 so the king navigates
+    // around obstacles instead of bumping off them. The aura (1.6)
+    // remains the actual gameplay zone; this is just for movement.
+    collisionRadius: 0.7,
     // KEY MECHANIC: player walks INTO the king. No solid body. Once
     // inside, the aura ticks (defined below): slowed move + acid damage
     // after a grace window. The pressure is "get out before the next
@@ -1139,14 +1145,23 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // Getting out is the skill expression.
       {
         id: 'leap',
-        minRange: 0, maxRange: 12,
-        windup: 1.20, strike: 0.30, recover: 0.90,
-        cooldown: 0.6,
+        minRange: 0, maxRange: 14,
+        windup: 1.20, strike: 0.50, recover: 1.40,
+        // Cooldown bumped — boss-rhythm pacing. Full cycle ≈ 1.2 +
+        // 0.5 + 1.4 + 2.5 = 5.6s, giving the player ~4s of safety
+        // between leaps to advance or hit the king.
+        cooldown: 2.5,
         damage: 3,
         telegraph: 'cast',
         effects: [
-          { kind: 'dash', toward: 'aoeTarget', speed: 9.0, contactReach: 0 },
-          { kind: 'aoe', radius: 4.0, targetMode: 'player', damageType: 'magic' },
+          // Speed 16 × strike 0.5 = ~8m leap arc — enough to actually
+          // CROSS the arena, which was missing at speed 9 × strike 0.3.
+          { kind: 'dash', toward: 'aoeTarget', speed: 16.0, contactReach: 0 },
+          // AoE radius matches the body footprint (aura radius is
+          // 1.6) so the dodge is "step OFF the marker," not "run to
+          // the far wall." If you eat the splash you're now inside
+          // the body — the aura takes over from there.
+          { kind: 'aoe', radius: 1.8, targetMode: 'player', damageType: 'magic' },
         ],
       },
     ],

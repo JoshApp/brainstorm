@@ -9,6 +9,22 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Boiling King: way bigger + inside-aura mechanic (slow + acid DoT)"
+      },
+      {
+        "tag": "tune",
+        "text": "Boiling King"
+      },
+      {
+        "tag": "tune",
+        "text": "Menus freeze the world + mobile menus scroll when too tall"
+      },
+      {
+        "tag": "tune",
+        "text": "Desktop: hold-to-charge attacks + rebindable keys + Controls tab"
+      },
+      {
+        "tag": "tune",
         "text": "Safe-room card: grace window before tap can dismiss it"
       },
       {
@@ -196,22 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "First-class boss architecture: BossSpec registry + intro card"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix: reassign reserved enemy tile chars (game-load crash)"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: chasm voids + bridge (flat-playfield verticality)"
-      },
-      {
-        "tag": "content",
-        "text": "Mob variety: 3 new mobs + Boiling King now Act I boss + bigger arenas"
-      },
-      {
-        "tag": "tune",
-        "text": "Crit + lifesteal modifiers + 6 items leaning into them"
       }
     ]
   }
