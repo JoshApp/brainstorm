@@ -20,9 +20,9 @@ import type { EnemySpec } from './enemies';
 //
 // Effects are a tagged union — same house style as StatModifier /
 // PropCollision / PropFacing. Implemented today: melee, projectile,
-// dash. Next to add (one handler each): aoe (zone denial), spawn
-// (in-combat summon). Split-on-death stays a death trigger in the
-// builder, not an ability.
+// dash, aoe, leap. Next to add (one handler each): spawn (in-combat
+// summon). Split-on-death stays a death trigger in the builder, not an
+// ability.
 
 export type AbilityEffect =
   // Melee — single contact hit at strike start if the player is within
@@ -34,62 +34,36 @@ export type AbilityEffect =
   | { kind: 'projectile'; projectileId: string; muzzle: Vec3 }
   // Dash — MOVE the enemy for the whole strike phase, toward or away
   // from the player, dealing one contact hit when within `contactReach`.
-  // This is how "attacks that move the enemy" (charge / lunge / leap)
-  // are expressed: a long-ish strike phase + a dash effect.
-  | { kind: 'dash';
-      speed: number;
-      /** Direction of travel. 'aoeTarget' uses the LOCKED aoe target
-       *  (set at windup start) — for a leap that commits to its
-       *  landing zone instead of chasing the player. Only meaningful
-       *  if the ability also has an 'aoe' effect. */
-      toward: 'player' | 'away' | 'aoeTarget';
-      contactReach: number;
-      damageType?: DamageType;
-      /** Player knockback speed (m/s) applied when this dash makes
-       *  contact. Direction = away from the enemy. Decays naturally
-       *  via consumeKnockback. Default 0 (no knockback). */
-      knockbackSpeed?: number;
-      /** Peak Y (m) of the parabolic arc this dash follows. Default
-       *  0 = ground-slide. > 0 lifts the enemy through a peak at
-       *  strike-midpoint and back to ground at strike-end. Use for
-       *  boss leaps that should READ as airborne, not a flat charge. */
-      arcHeight?: number;
-      /** Screen-shake amplitude fired when the dash lands (the moment
-       *  the strike phase ends OR the dash makes contact). Pairs
-       *  with arcHeight for a "boss slammed down" feel. Default 0. */
-      shakeOnLand?: number;
-      /** Screen-shake duration (s) for the landing kick. Default 0.4. */
-      shakeOnLandDuration?: number;
-      /** Body-impact damage radius around the ENEMY at landing
-       *  (when the dash arc completes). If the player is within
-       *  this radius when the king touches down, they eat
-       *  ability.damage + knockbackSpeed. Opt-in: leave undefined
-       *  to keep the legacy "marker damage only" behaviour. Pairs
-       *  with arcHeight to give a leap real physical consequence
-       *  on the actual landing spot, not just the telegraphed
-       *  marker — useful when the player kites and the marker no
-       *  longer covers their position but the boss's body now does.
-       *  strikeAlreadyHit is checked so the landing won't double-
-       *  damage if the paired AoE already connected. */
-      landingDamageRadius?: number;
-    }
+  // This is how flat "attacks that move the enemy" (charge / lunge) are
+  // expressed: a long-ish strike phase + a dash effect. For an airborne
+  // jump that commits to a landing zone, use `leap` instead.
+  | { kind: 'dash'; speed: number; toward: 'player' | 'away'; contactReach: number; damageType?: DamageType }
   // AoE — a telegraphed ground zone. A ring marker appears during the
   // WINDUP at the locked target (the player's feet for 'player', the
   // enemy's own feet for 'self'); at strike, anyone still inside the
   // radius takes the hit. Teaches "don't stand there" — move off the
   // marker before it resolves. 'player' = a stomp where-you-were
   // (move out to dodge); 'self' = a radial slam (don't be adjacent).
-  | { kind: 'aoe';
-      radius: number;
-      targetMode: 'player' | 'self';
+  | { kind: 'aoe'; radius: number; targetMode: 'player' | 'self'; damageType?: DamageType }
+  // Leap — a committed airborne JUMP to a landing zone. At windup start
+  // the landing point is LOCKED to the player's feet (clamped to
+  // `minLeapDistance` so a player hugging the body still gets a real
+  // arc) and a ground ring telegraphs it. During the strike the enemy
+  // interpolates from takeoff to that point along a parabolic arc
+  // (`arcHeight` peak at mid-strike), arriving exactly as it touches
+  // down — so kiting off the marker is the dodge. On landing it shakes
+  // the screen (`shake`), splashes `ability.damage` to anyone within
+  // `landingRadius`, and shoves them out (`knockbackSpeed`). Unlike
+  // dash this never homes — it commits to where you WERE, which is what
+  // makes a slow giant readable. Self-contained: no paired aoe needed.
+  | { kind: 'leap';
+      arcHeight: number;
+      landingRadius: number;
       damageType?: DamageType;
+      shake?: number;
+      shakeDuration?: number;
       knockbackSpeed?: number;
-      /** Minimum distance from the caster the lock-point gets
-       *  clamped to. Prevents a player hugging the enemy from
-       *  locking the marker to the enemy's own position (which then
-       *  breaks dash-toward-aoeTarget — the leap has nowhere to
-       *  go). Default 0 (no clamp). */
-      minDistanceFromCaster?: number;
+      minLeapDistance?: number;
     };
 
 export interface Ability {
@@ -131,6 +105,14 @@ export function meleeReachOf(ability: Ability): number | null {
  *  ground telegraph at windup start and resolves it at strike. */
 export function aoeEffectOf(ability: Ability): Extract<AbilityEffect, { kind: 'aoe' }> | null {
   for (const e of ability.effects) if (e.kind === 'aoe') return e;
+  return null;
+}
+
+/** The first leap effect on an ability, or null. Like aoe, the runner
+ *  locks its landing zone + raises the ground telegraph at windup start;
+ *  the strike phase then arcs the enemy onto it. */
+export function leapEffectOf(ability: Ability): Extract<AbilityEffect, { kind: 'leap' }> | null {
+  for (const e of ability.effects) if (e.kind === 'leap') return e;
   return null;
 }
 

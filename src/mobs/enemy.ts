@@ -7,7 +7,7 @@ import { kickShake } from '../combat/screen-shake';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
-import { resolveAbilities, meleeReachOf, aoeEffectOf, type Ability } from '../content/abilities';
+import { resolveAbilities, meleeReachOf, aoeEffectOf, leapEffectOf, type Ability } from '../content/abilities';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { TELEGRAPH_POSES, poseValue, type TelegraphStyle } from './pose-clips';
@@ -381,10 +381,12 @@ export function createEnemy(
   // when the next dot tick is due. Resets to 0 when player leaves.
   let auraInsideTime = 0;
   let auraDamageTimer = 0;
-  // Arc-dash landing latch — set once per strike when an arc dash
-  // touches down. Prevents the landing shake from re-firing every
-  // frame and lets us reset container.y to 0 cleanly.
-  let dashLanded = false;
+  // Leap state — takeoff position captured at strike start (the arc
+  // interpolates from here to the locked landing zone), plus a landing
+  // latch so the touchdown (shake + splash + knockback + Y snap) fires
+  // exactly once.
+  const leapStart = new THREE.Vector3();
+  let leapLanded = false;
   // Idle scan yaw target — rotates in place to feel watchful.
   let scanTimer = IDLE_SCAN_INTERVAL_MIN;  // pick a new target immediately
   let scanInterval = IDLE_SCAN_INTERVAL_MIN;
@@ -808,12 +810,6 @@ export function createEnemy(
         if (!strikeAlreadyHit) {
           if (eff.toward === 'player') {
             moveTowards(playerPos.x, playerPos.z, eff.speed, dt, walkable, nav);
-          } else if (eff.toward === 'aoeTarget') {
-            // Commit to the LOCKED landing zone — for a king-slime leap
-            // that wants to land on where the player WAS at windup
-            // start, not where they kited to. Pairs with an aoe effect
-            // that telegraphed the landing.
-            moveTowards(aoeTarget.x, aoeTarget.z, eff.speed, dt, walkable, nav);
           } else {
             const dx = container.position.x - playerPos.x;
             const dz = container.position.z - playerPos.z;
@@ -824,15 +820,7 @@ export function createEnemy(
               eff.speed, dt, walkable, nav,
             );
           }
-          // Contact damage gate. Skip the check entirely when
-          // contactReach is 0 — that means the dash is pure
-          // movement (e.g. the king's leap), and the paired AoE
-          // effect handles damage. Without this gate, an enemy
-          // overlapping the player at strike start (e.g. player
-          // inside the king's body from the aura) registers a
-          // false "contact" on frame 0, sets strikeAlreadyHit,
-          // and the dash never moves.
-          if (eff.contactReach > 0 && distance <= eff.contactReach) {
+          if (distance <= eff.contactReach) {
             damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
             inflictOnHit();
             strikeAlreadyHit = true;
@@ -843,51 +831,57 @@ export function createEnemy(
               container.position.z - playerPos.z,
               KNOCKBACK_CHARGE,
             );
-            // Optional player knockback so the player isn't pinned
-            // inside the enemy's body after the hit.
-            if (eff.knockbackSpeed) {
-              applyPlayerKnockback(
-                playerPos.x - container.position.x,
-                playerPos.z - container.position.z,
-                eff.knockbackSpeed,
-              );
-            }
           }
         }
-        // ── Arc + landing shake + landing damage (boss leaps) ─────
-        // Vertical parabola during the strike phase: y = 4h·t·(1-t)
-        // peaks at strike midpoint, returns to 0 at strike end. The
-        // landing latch fires ONCE: shake, optional body-impact
-        // damage, snap Y to 0. landingDamage is gated by
-        // strikeAlreadyHit so a paired AoE that already connected
-        // doesn't get double-damaged on landing.
-        if (eff.arcHeight) {
-          const t = Math.min(1, phaseTimer / ability.strike);
-          container.position.y = 4 * eff.arcHeight * t * (1 - t);
-          if (t >= 1.0 && !dashLanded) {
-            container.position.y = 0;
-            dashLanded = true;
-            if (eff.shakeOnLand) {
-              kickShake(eff.shakeOnLand, eff.shakeOnLandDuration ?? 0.4);
-            }
-            // Body-impact damage at landing — the boss physically
-            // slams down on the player at the NEW position (after
-            // the leap). Distinct from the AoE marker damage which
-            // checks the LOCKED windup-start position. Skipped if
-            // the AoE already connected (avoids double-hit).
-            if (eff.landingDamageRadius && !strikeAlreadyHit) {
-              const dx = playerPos.x - container.position.x;
-              const dz = playerPos.z - container.position.z;
-              if (dx * dx + dz * dz <= eff.landingDamageRadius * eff.landingDamageRadius) {
-                damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
-                inflictOnHit();
-                strikeAlreadyHit = true;
-                if (eff.knockbackSpeed) {
-                  applyPlayerKnockback(dx, dz, eff.knockbackSpeed);
-                }
-              }
-            }
+        break;
+      }
+      case 'leap': {
+        // A committed airborne jump. Self-contained — it owns the whole
+        // arc AND the landing, and never touches strikeAlreadyHit, so it
+        // runs for the ENTIRE strike no matter what other effects do.
+        // (The old version expressed this as dash + aoe sharing
+        // strikeAlreadyHit; the aoe latched it on frame 0, which froze
+        // the dash's horizontal travel — the king jumped straight up and
+        // never crossed the ground. This is that bug's structural fix.)
+        const strike = ability.strike > 0 ? ability.strike : 1;
+        const t = Math.min(1, phaseTimer / strike);
+
+        // Horizontal: deterministic interpolation from takeoff to the
+        // LOCKED landing zone (aoeTarget), clamped against walls each
+        // frame so the giant can't phase through geometry. Arrival is
+        // synced to the arc — the king touches down exactly on the marker
+        // as t reaches 1, so "step off the ring" is always the clean dodge.
+        const tx = leapStart.x + (aoeTarget.x - leapStart.x) * t;
+        const tz = leapStart.z + (aoeTarget.z - leapStart.z) * t;
+        const resolved = walkable.clampMove(
+          container.position.x, container.position.z, tx, tz,
+          spec.collisionRadius,
+          spec.phasing ? { ignoreObstacles: true } : undefined,
+        );
+        container.position.x = resolved.x;
+        container.position.z = resolved.z;
+
+        // Vertical parabola: 0 at takeoff and landing, peak at mid-strike.
+        container.position.y = 4 * eff.arcHeight * t * (1 - t);
+        faceTarget(aoeTarget);
+
+        // Touchdown — fires once.
+        if (t >= 1 && !leapLanded) {
+          leapLanded = true;
+          container.position.y = 0;
+          if (eff.shake) kickShake(eff.shake, eff.shakeDuration ?? 0.4);
+          // Splash at the ACTUAL impact point (where the king came down).
+          // Eat the landing and you take the hit and get shoved to the
+          // body's edge — from there the aura (slow + acid ticks) is the
+          // inside-the-body pressure. Dodgers who left the ring take none.
+          const dx = playerPos.x - container.position.x;
+          const dz = playerPos.z - container.position.z;
+          if (dx * dx + dz * dz <= eff.landingRadius * eff.landingRadius) {
+            damagePlayer(ability.damage, entityId, eff.damageType ?? 'magic');
+            inflictOnHit();
+            if (eff.knockbackSpeed) applyPlayerKnockback(dx, dz, eff.knockbackSpeed);
           }
+          clearAoeTelegraph();
         }
         break;
       }
@@ -900,16 +894,6 @@ export function createEnemy(
           const dz = playerPos.z - aoeTarget.z;
           if (dx * dx + dz * dz <= eff.radius * eff.radius) {
             damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
-            // Knockback radiates OUT from the AoE centre. For the
-            // king-slime leap, this clears the player off the landing
-            // zone so they're not stuck inside the body.
-            if (eff.knockbackSpeed) {
-              applyPlayerKnockback(
-                playerPos.x - aoeTarget.x,
-                playerPos.z - aoeTarget.z,
-                eff.knockbackSpeed,
-              );
-            }
           }
           clearAoeTelegraph();
           strikeAlreadyHit = true;
@@ -1447,41 +1431,40 @@ export function createEnemy(
           strikeAlreadyHit = false;
           rollWindupTime();
           playEnemyWindup(audioSizeFor(spec), container.position);
-          // AoE abilities lock their target + raise the ground telegraph
-          // the instant the windup begins, so the player has the full
-          // windup to step off the marker.
+          // AoE and leap abilities both LOCK a ground target + raise the
+          // ground telegraph the instant the windup begins, so the player
+          // has the full windup to step off the marker. (aoeTarget is the
+          // shared "locked landing/impact point" — the leap arcs onto it,
+          // the aoe resolves on it.)
           const aoe = aoeEffectOf(ability);
+          const leap = leapEffectOf(ability);
           if (aoe) {
-            if (aoe.targetMode === 'self') {
-              aoeTarget.set(container.position.x, 0, container.position.z);
-            } else {
-              aoeTarget.set(playerPos.x, 0, playerPos.z);
-              // Min-distance clamp — if the locked point is too close
-              // to the caster (player was hugging the body), push it
-              // outward along the line. Otherwise an aoe paired with
-              // dash-toward-aoeTarget tells the dash to "go nowhere"
-              // and the boss never leaps. Direction defaults to
-              // facing forward (north) when player is exactly on
-              // caster's position.
-              const minD = aoe.minDistanceFromCaster ?? 0;
-              if (minD > 0) {
-                const dx = aoeTarget.x - container.position.x;
-                const dz = aoeTarget.z - container.position.z;
-                const d = Math.hypot(dx, dz);
-                if (d < minD) {
-                  const dir = d > 0
-                    ? { x: dx / d, z: dz / d }
-                    : { x: Math.sin(container.rotation.y), z: -Math.cos(container.rotation.y) };
-                  aoeTarget.set(
-                    container.position.x + dir.x * minD,
-                    0,
-                    container.position.z + dir.z * minD,
-                  );
-                }
-              }
-            }
+            if (aoe.targetMode === 'self') aoeTarget.set(container.position.x, 0, container.position.z);
+            else aoeTarget.set(playerPos.x, 0, playerPos.z);
             clearAoeTelegraph();
             aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, aoe.radius);
+          } else if (leap) {
+            // Lock the landing zone to the player's feet, clamped OUTWARD
+            // to minLeapDistance so a player hugging the body still gets a
+            // real arc (otherwise the king would "leap" onto its own
+            // position and go nowhere). Direction falls back to facing-
+            // forward when the player is exactly on the caster.
+            aoeTarget.set(playerPos.x, 0, playerPos.z);
+            const minD = leap.minLeapDistance ?? 0;
+            const dx = aoeTarget.x - container.position.x;
+            const dz = aoeTarget.z - container.position.z;
+            const d = Math.hypot(dx, dz);
+            if (minD > 0 && d < minD) {
+              const dir = d > 1e-4
+                ? { x: dx / d, z: dz / d }
+                : { x: Math.sin(container.rotation.y), z: -Math.cos(container.rotation.y) };
+              aoeTarget.set(
+                container.position.x + dir.x * minD, 0,
+                container.position.z + dir.z * minD,
+              );
+            }
+            clearAoeTelegraph();
+            aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, leap.landingRadius);
           }
         } else {
           // No ability available (out of band, or on cooldown).
@@ -1538,7 +1521,10 @@ export function createEnemy(
           state = 'striking';
           phaseTimer = 0;
           strikeAlreadyHit = false;
-          dashLanded = false;
+          // Capture the leap takeoff point + arm the landing latch, so a
+          // leap effect interpolates from HERE to the locked landing zone.
+          leapLanded = false;
+          leapStart.copy(container.position);
         }
         break;
       }

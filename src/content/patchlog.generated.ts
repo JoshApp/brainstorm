@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "King: leap actually moves + landing damage + core damage flash"
+      },
+      {
+        "tag": "tune",
         "text": "Boss fog wall — soulslike threshold mist + sealed engagement"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Pilot: goto verb + cross-call persistence"
-      },
-      {
-        "tag": "content",
-        "text": "Mimic mob + procgen chest tier rolls"
       }
     ]
   }

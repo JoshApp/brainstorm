@@ -1141,59 +1141,47 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 4,
     loseSightTime: 12,               // never really gives up
     abilities: [
-      // LEAP — telegraphed AoE leap that COMMITS. Ring appears at the
-      // player's feet during windup; the king then physically dashes
-      // to that landing zone (toward: 'aoeTarget', not 'player' — so
-      // the king commits to where you WERE, kiting punishes him);
-      // landing applies AoE damage. NO knockback — the aura is the
-      // post-landing pressure: if you didn't dodge the landing zone
-      // you're now inside the body, slowed, taking acid ticks.
-      // Getting out is the skill expression.
+      // LEAP — a committed airborne jump. A ground ring telegraphs the
+      // landing zone at the player's feet during windup; the king then
+      // arcs ONTO that locked point (it commits to where you WERE, so
+      // kiting off the marker is the dodge — a slow giant can't course-
+      // correct mid-air). One self-contained `leap` effect owns the
+      // whole thing: the arc, the landing splash, the screen-shake, and
+      // the shove. If you eat the landing you're knocked to the body's
+      // edge and the aura (slow + acid ticks, defined above) becomes the
+      // inside-the-body pressure. Getting out is the skill expression.
       {
         id: 'leap',
         minRange: 0, maxRange: 14,
         windup: 1.20, strike: 0.50, recover: 1.40,
-        // Cooldown bumped — boss-rhythm pacing. Full cycle ≈ 1.2 +
-        // 0.5 + 1.4 + 2.5 = 5.6s, giving the player ~4s of safety
-        // between leaps to advance or hit the king.
+        // Full cycle ≈ 1.2 + 0.5 + 1.4 + 2.5 = 5.6s — ~4s of safety
+        // between leaps to advance on the king or strike its core.
         cooldown: 2.5,
         damage: 3,
         telegraph: 'cast',
         effects: [
-          // Real JUMP, not a ground-slide. arcHeight=4 lifts the king
-          // 4m up at strike midpoint and slams back down for the
-          // landing. Speed 16 × strike 0.5 covers ~8m horizontally.
-          // shakeOnLand=0.35 = chunky thud (compare: player hit-pause
-          // is ~0.10, normal mob hit ~0.06).
           {
-            kind: 'dash',
-            toward: 'aoeTarget',
-            speed: 16.0,
-            contactReach: 0,
+            kind: 'leap',
+            // 4m peak at mid-strike — reads unmistakably as airborne,
+            // not a flat charge. The horizontal travel is deterministic
+            // (takeoff → marker over the 0.5s strike), so the king lands
+            // exactly on the ring as it touches down.
             arcHeight: 4.0,
-            shakeOnLand: 0.35,
-            shakeOnLandDuration: 0.45,
-            // Body-impact damage at landing — if the king physically
-            // slams down on the player (after kiting away from the
-            // marker), they take ability.damage. Skipped when the
-            // AoE marker damage already connected, so this never
-            // double-hits. 2.5m matches the body's outer footprint.
-            landingDamageRadius: 2.5,
-            // Light shove to clear the player out of the slime body
-            // post-landing — they're still in the aura but at the
-            // edge of it, not pinned at the centre.
+            // Splash radius ≈ the body/aura footprint (1.6) so the dodge
+            // is "step OFF the marker," not "sprint to the far wall."
+            landingRadius: 1.8,
+            damageType: 'magic',
+            // Chunky thud (player hit-pause is ~0.10, a normal mob hit
+            // ~0.06 — this is a boss slam).
+            shake: 0.35,
+            shakeDuration: 0.45,
+            // Shove the player to the body's edge on impact so they're in
+            // the aura, not pinned dead-centre — escapable, but costly.
             knockbackSpeed: 4.0,
+            // Guarantee a real arc even if the player is hugging the body
+            // at windup: the landing point is pushed out to ≥3m.
+            minLeapDistance: 3.0,
           },
-          // AoE radius matches the body footprint (aura radius is
-          // 1.6) so the dodge is "step OFF the marker," not "run to
-          // the far wall." If you eat the splash you're now inside
-          // the body — the aura takes over from there.
-          // minDistanceFromCaster fixes the "leap goes nowhere"
-          // bug — when the player is inside the body at windup
-          // start, locking aoeTarget to playerPos would set it to
-          // the king's own position, so the dash had nowhere to
-          // go. 3m guarantees a real leap arc every time.
-          { kind: 'aoe', radius: 1.8, targetMode: 'player', damageType: 'magic', minDistanceFromCaster: 3 },
         ],
       },
     ],
