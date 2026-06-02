@@ -28,6 +28,7 @@ import {
 } from '../ecs/world';
 import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
+import { createBodyAnimator } from './enemy-animation';
 import { buildModel } from '../ecs/build-model';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
@@ -272,20 +273,10 @@ export function createEnemy(
   const shoulderR = built.slots.get('shoulderR');
   const shoulderBaseLX = shoulderL ? shoulderL.rotation.x : 0;
   const shoulderBaseRX = shoulderR ? shoulderR.rotation.x : 0;
-  // Hip pivots (optional) — legs swing from these as the enemy MOVES
-  // (distance-driven gait, see the locomotion block in update). Models
-  // without hips just slide (correct for floaters like the wraith).
-  const hipL = built.slots.get('hipL');
-  const hipR = built.slots.get('hipR');
-  const hipBaseLX = hipL ? hipL.rotation.x : 0;
-  const hipBaseRX = hipR ? hipR.rotation.x : 0;
-  // Neck pivot (optional) — holds the head + eyes so it can CRANE toward
-  // the player: the head tips down as the player gets close (the enemy
-  // looms / fixates), eases back to neutral when calm. Yaw is already
-  // handled by the body facing; this adds the pitch.
-  const neck = built.slots.get('neck');
-  const neckBaseX = neck ? neck.rotation.x : 0;
-  let headPitch = 0;
+  // Body-animation controller — gait, head-crane, knockback, and the presence
+  // idle overlay. Owns its own body refs (hips, neck, chant orb) + mutable
+  // state (see enemy-animation.ts); the factory no longer carries them.
+  const bodyAnim = createBodyAnimator(container, built, spec);
   // Visual presentation controllers — the eye-flare windup telegraph and the
   // hit/core-glow flash. Both own their material refs internally (see
   // enemy-presentation.ts). Thin local aliases keep the AI state machine's
@@ -425,44 +416,9 @@ export function createEnemy(
   }
   rollWindupTime();
 
-  // Presence — continuous animation overlay applied each frame on top of
-  // the per-state animation. Per-instance phase offset so two of the same
-  // mob drift out of sync. Cost = a couple of sin() per mob per frame.
-  const presence = spec.presence;
-  const presencePhase = Math.random() * Math.PI * 2;
-  let presenceTime = 0;
-
-  // Locomotion (gait) — drives the hip pivots from ACTUAL movement so
-  // legs swing in step with travel instead of the body moonwalking. The
-  // stride phase advances by distance covered (auto-syncs to real
-  // speed); gait amplitude eases in when moving, out when stopped so
-  // legs settle to rest. Only does anything on models with hip pivots.
-  let prevX = container.position.x;
-  let prevZ = container.position.z;
-  let stridePhase = Math.random() * Math.PI * 2;   // desync mobs
-  let gaitAmp = 0;
-  const STRIDE_LENGTH = 0.7;   // metres per full leg cycle
-  const GAIT_SWING = 0.5;      // peak hip rotation (rad) at full gait
-
-  // Knockback — a short decaying impulse on the enemy's position,
-  // applied on top of (and overriding) AI movement each frame. Used by
-  // the charge to recoil off the player on contact; also exposed so the
-  // player's melee hits can stagger enemies later. Walls clamp it.
-  let knockVX = 0;
-  let knockVZ = 0;
-  const KNOCKBACK_CHARGE = 4.5;   // recoil speed when a charge connects
-  function applyKnockback(dirX: number, dirZ: number, speed: number) {
-    const len = Math.hypot(dirX, dirZ);
-    if (len < 1e-5) return;
-    knockVX = (dirX / len) * speed;
-    knockVZ = (dirZ / len) * speed;
-  }
-  // 'chant' needs a reference to the orb material so the pulse can drive
-  // its emissive intensity. Grabbed once at build; null for non-chant.
-  const orbMat = presence === 'chant'
-    ? (built.materials.get('orb') as THREE.MeshStandardMaterial | undefined)
-    : undefined;
-  const orbBaseEmissive = orbMat?.emissiveIntensity ?? 0;
+  // Charge-recoil speed (the dash's contact knockback). The impulse itself is
+  // owned + integrated by the body animator (bodyAnim.applyKnockback / tick).
+  const KNOCKBACK_CHARGE = 4.5;
 
   // Pathfinding state — cached waypoints to the current target. Refreshed
   // every PATH_REFRESH seconds while LOS to the target is blocked. Phasing
@@ -816,7 +772,7 @@ export function createEnemy(
         if (distance <= action.contactReach) {
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
-          applyKnockback(
+          bodyAnim.applyKnockback(
             container.position.x - playerPos.x,
             container.position.z - playerPos.z,
             KNOCKBACK_CHARGE,
@@ -1021,7 +977,7 @@ export function createEnemy(
 
     // Body lifts as the soul leaves — spectral enemies rise more (sells
     // the float), physical creatures sag a touch.
-    const lift = presence === 'spectral'
+    const lift = spec.presence === 'spectral'
       ?  0.55 * t
       : -0.08 * t;
     built.group.position.y = lift;
@@ -1099,109 +1055,8 @@ export function createEnemy(
     }
   }
 
-  // Tip the head toward the player when aware — stronger the closer they
-  // are. Eases back to neutral when idle/returning. No-op without a neck.
-  function tickHeadCrane(dt: number, distance: number) {
-    if (!neck) return;
-    const aware = aggroed && state !== 'returning';
-    const prox = Math.max(0, 1 - distance / 5);   // 0 far → 1 point-blank
-    const targetPitch = aware ? -0.45 * prox : 0;
-    headPitch += (targetPitch - headPitch) * Math.min(1, dt * 6);
-    neck.rotation.x = neckBaseX + headPitch;
-  }
-
-  // Integrate + decay the recoil impulse, clamped against walls. Runs after
-  // AI movement so a connected charge recoils. Fast decay → a brief shove.
-  function tickKnockback(dt: number, walkable: WalkableRegion) {
-    if (knockVX === 0 && knockVZ === 0) return;
-    const r = walkable.clampMove(
-      container.position.x, container.position.z,
-      container.position.x + knockVX * dt,
-      container.position.z + knockVZ * dt,
-      spec.collisionRadius,
-      spec.phasing ? { ignoreObstacles: true } : undefined,
-    );
-    container.position.x = r.x;
-    container.position.z = r.z;
-    const decay = Math.exp(-dt * 9);
-    knockVX *= decay;
-    knockVZ *= decay;
-    if (Math.abs(knockVX) < 0.05 && Math.abs(knockVZ) < 0.05) { knockVX = 0; knockVZ = 0; }
-  }
-
-  // Swing the legs from how far the body actually moved this frame, so a
-  // walking enemy plants strides instead of sliding. No-op on floaters /
-  // non-humanoids (no hip pivots).
-  function tickLocomotion(dt: number) {
-    if (hipL || hipR) {
-      const movedX = container.position.x - prevX;
-      const movedZ = container.position.z - prevZ;
-      const moved = Math.hypot(movedX, movedZ);
-      // Advance the cycle by distance covered → feet roughly track the
-      // ground, less moonwalk than a time-based cycle.
-      stridePhase += (moved / STRIDE_LENGTH) * Math.PI * 2;
-      // Ease gait in/out so legs return to rest when the enemy stops
-      // (a frozen mid-stride pose reads worse than settling to neutral).
-      const targetAmp = moved > 0.0005 ? GAIT_SWING : 0;
-      gaitAmp += (targetAmp - gaitAmp) * Math.min(1, dt * 9);
-      const swing = Math.sin(stridePhase) * gaitAmp;
-      if (hipL) hipL.rotation.x = hipBaseLX + swing;
-      if (hipR) hipR.rotation.x = hipBaseRX - swing;
-      // Subtle vertical bob synced to the stride (up on each footfall).
-      built.group.position.y += Math.abs(Math.sin(stridePhase)) * gaitAmp * 0.05;
-    }
-    prevX = container.position.x;
-    prevZ = container.position.z;
-  }
-
-  // Idle "alive" overlay applied AFTER the state animation so it stacks on
-  // what the state set. position.y + container yaw are written by state code
-  // (so presence ADDS); built.group x/z + roll are untouched (writes direct).
-  function tickPresenceOverlay(dt: number) {
-    if (!presence) return;
-    presenceTime += dt;
-    const t = presenceTime + presencePhase;
-    switch (presence) {
-      case 'spectral': {
-        // Slow vertical bob + micro yaw sway. Wraith — float + drift.
-        built.group.position.y += Math.sin(t * 1.7) * 0.10;
-        container.rotation.y   += Math.sin(t * 0.9) * 0.05;
-        break;
-      }
-      case 'lurch': {
-        // Shambling corpse — lateral roll with a shamble-step dip
-        // synced to the roll. Reads as heavy + off-balance.
-        built.group.rotation.z  = Math.sin(t * 1.45) * 0.08;
-        built.group.position.y += Math.abs(Math.sin(t * 1.45)) * 0.05 - 0.025;
-        break;
-      }
-      case 'twitch': {
-        // Rat — fast yaw micro-shudder + scurry bob. Yaw is on
-        // container so the whole body twitches, not just the head.
-        container.rotation.y   += Math.sin(t * 7.0) * 0.045;
-        built.group.position.y += Math.abs(Math.sin(t * 8.5)) * 0.012;
-        break;
-      }
-      case 'coiled': {
-        // Skirmisher — taut shoulder bob + subtle weight-shift roll.
-        // Reads as ready to spring rather than at rest.
-        built.group.position.y += Math.sin(t * 2.4) * 0.022;
-        built.group.rotation.z  = Math.sin(t * 1.7) * 0.030;
-        break;
-      }
-      case 'chant': {
-        // Acolyte — slow ritual side rock + horizontal drift + orb
-        // emissive pulse. The orb pulse is what sells "channelling"
-        // even when the caster is just standing.
-        built.group.rotation.z  = Math.sin(t * 1.0) * 0.08;
-        built.group.position.x  = Math.sin(t * 0.8) * 0.025;
-        if (orbMat) {
-          orbMat.emissiveIntensity = orbBaseEmissive * (1 + 0.35 * Math.sin(t * 1.4));
-        }
-        break;
-      }
-    }
-  }
+  // Head-crane / knockback / locomotion / presence overlays live in the body
+  // animator (enemy-animation.ts), driven from update() below.
 
   function update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion, nav?: NavGrid) {
     if (!aliveLocal) {
@@ -1640,10 +1495,10 @@ export function createEnemy(
     // Order matters: head crane + knockback, then gait (reads this frame's
     // net movement), then the presence overlay last so its idle bob stacks
     // on top of whatever the state animation set.
-    tickHeadCrane(dt, distance);
-    tickKnockback(dt, walkable);
-    tickLocomotion(dt);
-    tickPresenceOverlay(dt);
+    bodyAnim.tickHeadCrane(dt, distance, aggroed && state !== 'returning');
+    bodyAnim.tickKnockback(dt, walkable);
+    bodyAnim.tickLocomotion(dt);
+    bodyAnim.tickPresence(dt);
     tickLashDeform(dt);
   }
 
@@ -1757,6 +1612,6 @@ export function createEnemy(
     setDebugState,
     setDebugPosition,
     faceWorld,
-    applyKnockback,
+    applyKnockback: bodyAnim.applyKnockback,
   };
 }
