@@ -178,6 +178,43 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 14, lookAt: { x: 0, z: 0, y: 1.0 } },
   },
 
+  // diag-rooms: a straight chain of 4 rooms (the last one boss-sized) down
+  // -Z, the player at the near end looking down the whole sightline. Repro
+  // for "draw calls double when looking through several rooms toward the
+  // boss room" — the far rooms sit 18-32m away, past FOG_FAR (9m), so they're
+  // fogged-invisible yet still inside the 50m camera frustum and drawn.
+  'diag-rooms': {
+    freeze: true,
+    level: {
+      id: 'diag-rooms', depth: 3, displayName: 'DIAG rooms', fogColor: 0x000000,
+      startPos: { x: 0, z: 4, yaw: Math.PI },
+      rooms: [
+        { id: 'r0', rect: { x: 0, z: 0,   w: 6, d: 6 }, height: 3.2 },
+        { id: 'r1', rect: { x: 0, z: -9,  w: 6, d: 6 }, height: 3.2 },
+        { id: 'r2', rect: { x: 0, z: -18, w: 6, d: 6 }, height: 3.2 },
+        { id: 'r3', rect: { x: 0, z: -28, w: 8, d: 8 }, height: 4.0 },
+      ],
+      corridors: [
+        { id: 'c0', rect: { x: 0, z: -4.5,  w: 1.6, d: 3 }, height: 3.0 },
+        { id: 'c1', rect: { x: 0, z: -13.5, w: 1.6, d: 3 }, height: 3.0 },
+        { id: 'c2', rect: { x: 0, z: -22.5, w: 1.6, d: 3 }, height: 3.0 },
+      ],
+      props: [],
+      torches: [
+        { x: -2.5, z: 0,   height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x:  2.5, z: 0,   height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x: -2.5, z: -9,  height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x:  2.5, z: -9,  height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x: -2.5, z: -18, height: 2.0, wall: 'W', colorTint: 0xff5533, intensityMul: 1.0 },
+        { x:  2.5, z: -18, height: 2.0, wall: 'E', colorTint: 0xff5533, intensityMul: 1.0 },
+        { x: -3.5, z: -28, height: 2.5, wall: 'W', colorTint: 0x55ff88, intensityMul: 1.4 },
+        { x:  3.5, z: -28, height: 2.5, wall: 'E', colorTint: 0x55ff88, intensityMul: 1.4 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 4, lookAt: { x: 0, z: -28, y: 1.2 } },
+  },
+
   // perf-lights: blanket of torches — saturates the light pool many times
   // over to stress the per-frame cull + slot rebinding, and maxes the
   // count of lit materials in view.

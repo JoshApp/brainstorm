@@ -28,7 +28,7 @@ export function createFirstPersonCamera(): THREE.PerspectiveCamera {
     CONFIG.FOV,
     window.innerWidth / window.innerHeight,
     0.05,
-    50,
+    CONFIG.CAMERA_FAR,
   );
 }
 

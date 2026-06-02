@@ -28,6 +28,15 @@ export const CONFIG = {
   FOG_COLOR: 0x000000,
   FOG_NEAR: 1.5,
   FOG_FAR: 9,
+  // Camera far clip plane. Kept JUST past FOG_FAR (not the old 50m) — fog is
+  // 100% opaque by FOG_FAR, so anything beyond is invisible black, yet a large
+  // far plane still SUBMITS all that geometry as draw calls (the dungeon has no
+  // occlusion culling, so a sightline through several rooms toward a distant
+  // room draws every one of them). Clipping at the fog distance frustum-culls
+  // the fogged-invisible geometry: ~halves draw calls on long room sightlines
+  // for ~zero visual change. The +4 buffer keeps the fog gradient on the
+  // immediate next room clean (no hard clip edge inside the visible range).
+  CAMERA_FAR: 13,
 
   // === TORCHLIGHT ===
   // Note: Three.js r155+ uses physical light units (candela). A torch needs
