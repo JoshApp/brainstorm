@@ -1242,6 +1242,9 @@ export function applyScenario(
     if (item && item.dropModel) {
       const built = buildModel(item.dropModel);
       built.group.position.set(0, 1.4, 0);
+      // Tag for inspect mode — main.ts hides level siblings (walls,
+      // floor, decor) but keeps anything tagged inspectSubject.
+      built.group.userData.inspectSubject = true;
       const startMs = performance.now();
       built.group.onBeforeRender = () => {
         const elapsed = (performance.now() - startMs) / 1000;

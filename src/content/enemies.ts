@@ -1083,8 +1083,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'boiling-king': {
     id: 'boiling-king',
     name: 'boiling king',
-    // 'B' is reserved for the procgen boss-slot — never placed
-    // directly. Procgen's bossFor(depth) returns this id at depth 12.
+    // 'k' is the boss expansion target for the King. 'B' (procgen
+    // boss-slot) gets rewritten to this char in populateTemplate
+    // before parsing. 'k' should NOT be authored directly in vault
+    // maps — bosses are placed via the act's bossId, not by hand.
+    // Without a tileChar here the expansion silently fell back to
+    // 'W' (wraith), spawning the wrong boss for every act.
+    tileChar: 'k',
     isBoss: true,
     bossName: 'The Boiling King',
     scale: 2.4,                     // looms — a king slime is BIG

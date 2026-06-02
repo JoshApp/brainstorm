@@ -186,6 +186,12 @@ export function createEnemy(
   if (spec.scale && spec.scale !== 1) built.group.scale.multiplyScalar(spec.scale);
   container.add(built.group);
 
+  // Tag this container as an inspection subject — main.ts's inspect
+  // block hides level siblings (walls/floor/torches/decor) but keeps
+  // anything tagged here visible. Zero cost in gameplay mode; the
+  // userData flag is just read in the one inspect setup branch.
+  container.userData.inspectSubject = true;
+
   scene.add(container);
 
   // ── Burrowed (floor ambush) state ────────────────────────────────
