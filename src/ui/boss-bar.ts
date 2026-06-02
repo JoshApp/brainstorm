@@ -142,6 +142,7 @@ function render(s: BossState) {
 // player-commit trigger (fog cross / aggro) + the death-linger animation.
 
 let fadeTimer = -1;          // >= 0 while counting down the post-death linger
+let faded = false;           // terminal: linger finished, bar stays hidden
 let lastName = '';
 let lastBars: { hp: number; max: number }[] = [];
 
@@ -180,13 +181,20 @@ export function tickBossBar(dt: number): void {
     return;
   }
 
-  // The encounter is DONE — hold the empty bar(s) a beat, then fade out.
+  // The encounter is DONE — hold the empty bar(s) a beat, then fade out and
+  // STAY out. `faded` is the terminal latch: without it, once the linger
+  // ends (fadeTimer back to -1) the `fadeTimer < 0` test below re-triggers
+  // the whole linger next frame, so the bar shows forever. In the real game
+  // a descent reloads the level (resetBossBar) before that bites; a test
+  // chamber never transitions, so the loop was visible there.
+  if (faded) return;
   if (fadeTimer < 0) {
     fadeTimer = DEATH_LINGER;
     bossStore.set({ visible: true, name: lastName, bars: lastBars });
   }
   fadeTimer -= dt;
   if (fadeTimer <= 0) {
+    faded = true;
     fadeTimer = -1;
     bossStore.set({ visible: false, name: '', bars: [] });
   }
@@ -197,6 +205,7 @@ export function tickBossBar(dt: number): void {
  *  new boss) — NOT here, which runs after the build. */
 export function resetBossBar(): void {
   fadeTimer = -1;
+  faded = false;
   lastName = '';
   lastBars = [];
   hideBossIntro();
