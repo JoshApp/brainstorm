@@ -49,6 +49,17 @@ export type AbilityEffect =
        *  contact. Direction = away from the enemy. Decays naturally
        *  via consumeKnockback. Default 0 (no knockback). */
       knockbackSpeed?: number;
+      /** Peak Y (m) of the parabolic arc this dash follows. Default
+       *  0 = ground-slide. > 0 lifts the enemy through a peak at
+       *  strike-midpoint and back to ground at strike-end. Use for
+       *  boss leaps that should READ as airborne, not a flat charge. */
+      arcHeight?: number;
+      /** Screen-shake amplitude fired when the dash lands (the moment
+       *  the strike phase ends OR the dash makes contact). Pairs
+       *  with arcHeight for a "boss slammed down" feel. Default 0. */
+      shakeOnLand?: number;
+      /** Screen-shake duration (s) for the landing kick. Default 0.4. */
+      shakeOnLandDuration?: number;
     }
   // AoE — a telegraphed ground zone. A ring marker appears during the
   // WINDUP at the locked target (the player's feet for 'player', the

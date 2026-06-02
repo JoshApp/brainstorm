@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
 import { applyPlayerKnockback } from '../player/knockback';
 import { setPlayerInAura } from '../player/inside-aura';
+import { kickShake } from '../combat/screen-shake';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
@@ -374,6 +375,10 @@ export function createEnemy(
   // when the next dot tick is due. Resets to 0 when player leaves.
   let auraInsideTime = 0;
   let auraDamageTimer = 0;
+  // Arc-dash landing latch — set once per strike when an arc dash
+  // touches down. Prevents the landing shake from re-firing every
+  // frame and lets us reset container.y to 0 cleanly.
+  let dashLanded = false;
   // Idle scan yaw target — rotates in place to feel watchful.
   let scanTimer = IDLE_SCAN_INTERVAL_MIN;  // pick a new target immediately
   let scanInterval = IDLE_SCAN_INTERVAL_MIN;
@@ -832,6 +837,23 @@ export function createEnemy(
                 playerPos.z - container.position.z,
                 eff.knockbackSpeed,
               );
+            }
+          }
+        }
+        // ── Arc + landing shake (used by boss leaps) ──────────────
+        // Vertical parabola during the strike phase: y = 4h·t·(1-t)
+        // peaks at strike midpoint, returns to 0 at strike end. The
+        // landing shake fires ONCE — dashLanded latches it. Independent
+        // of strikeAlreadyHit so a leap that doesn't make contact
+        // still lands + shakes.
+        if (eff.arcHeight) {
+          const t = Math.min(1, phaseTimer / ability.strike);
+          container.position.y = 4 * eff.arcHeight * t * (1 - t);
+          if (t >= 1.0 && !dashLanded) {
+            container.position.y = 0;
+            dashLanded = true;
+            if (eff.shakeOnLand) {
+              kickShake(eff.shakeOnLand, eff.shakeOnLandDuration ?? 0.4);
             }
           }
         }
@@ -1447,6 +1469,8 @@ export function createEnemy(
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
           phaseTimer = 0;
+          strikeAlreadyHit = false;
+          dashLanded = false;
         }
         break;
       }
@@ -1461,6 +1485,11 @@ export function createEnemy(
         if (phaseTimer >= currentAbility.strike) {
           state = 'recovering';
           phaseTimer = 0;
+          // Safety: snap any arc-dash Y back to ground level if the
+          // landing latch didn't catch the final frame (e.g. dt
+          // overshoot). Without this the enemy could end up floating
+          // at the arc peak forever.
+          container.position.y = 0;
         }
         break;
       }

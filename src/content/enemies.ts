@@ -1154,9 +1154,20 @@ export const ENEMIES: Record<string, EnemySpec> = {
         damage: 3,
         telegraph: 'cast',
         effects: [
-          // Speed 16 × strike 0.5 = ~8m leap arc — enough to actually
-          // CROSS the arena, which was missing at speed 9 × strike 0.3.
-          { kind: 'dash', toward: 'aoeTarget', speed: 16.0, contactReach: 0 },
+          // Real JUMP, not a ground-slide. arcHeight=4 lifts the king
+          // 4m up at strike midpoint and slams back down for the
+          // landing. Speed 16 × strike 0.5 covers ~8m horizontally.
+          // shakeOnLand=0.35 = chunky thud (compare: player hit-pause
+          // is ~0.10, normal mob hit ~0.06).
+          {
+            kind: 'dash',
+            toward: 'aoeTarget',
+            speed: 16.0,
+            contactReach: 0,
+            arcHeight: 4.0,
+            shakeOnLand: 0.35,
+            shakeOnLandDuration: 0.45,
+          },
           // AoE radius matches the body footprint (aura radius is
           // 1.6) so the dodge is "step OFF the marker," not "run to
           // the far wall." If you eat the splash you're now inside
