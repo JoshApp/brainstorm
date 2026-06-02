@@ -195,6 +195,9 @@ export function createEnemy(
   // stay driven by the explicit stat fields).
   if (spec.scale && spec.scale !== 1) built.group.scale.multiplyScalar(spec.scale);
   container.add(built.group);
+  // Base model scale, captured for the lash deform (which elongates the
+  // body toward the player on a 'lash' telegraph, then eases back here).
+  const groupBaseScale = built.group.scale.clone();
 
   // Tag this container as an inspection subject — main.ts's inspect
   // block hides level siblings (walls/floor/torches/decor) but keeps
@@ -366,6 +369,9 @@ export function createEnemy(
   const CORE_HIT_DECAY = 0.22;   // seconds for the hit flare/pop to fall off
   let hitPulse = 0;              // 1 on hit, decays — drives flare + pop
   let coreTime = 0;             // idle heartbeat clock
+  // Lash deform — eased 0..1 body elongation toward the player during a
+  // 'lash' telegraph (the slime rears + reaches, then snaps on strike).
+  let lashStretch = 0;
 
   let state: EnemyState = 'idle';
   let phaseTimer = 0;
@@ -1695,6 +1701,33 @@ export function createEnemy(
     tickKnockback(dt, walkable);
     tickLocomotion(dt);
     tickPresenceOverlay(dt);
+    tickLashDeform(dt);
+  }
+
+  // Lash deform — on a 'lash' telegraph the body ELONGATES toward the
+  // player (the slime rears + reaches a pseudopod), squashing slightly on
+  // the other axes (volume-ish), then SNAPS forward on the strike. Eases
+  // back to base scale whenever not lashing. Scale is otherwise untouched
+  // by the animation layers (which use position/rotation), so it's free.
+  function tickLashDeform(dt: number) {
+    const lashing = currentAbility?.pose === 'lash';
+    let target = 0;
+    let ease = dt * 9;
+    if (lashing && state === 'winding') {
+      target = 0.5 * Math.min(1, phaseTimer / currentWindupTime);   // rear up slowly
+    } else if (lashing && state === 'striking') {
+      target = 1.0;                                                  // snap forward
+      ease = dt * 26;
+    }
+    lashStretch += (target - lashStretch) * Math.min(1, ease);
+    if (target === 0 && lashStretch < 0.002) lashStretch = 0;
+    // Elongate along local Z (forward/back, the player axis since the
+    // container faces the player); squash X/Y a touch.
+    built.group.scale.set(
+      groupBaseScale.x * (1 - 0.12 * lashStretch),
+      groupBaseScale.y * (1 - 0.16 * lashStretch),
+      groupBaseScale.z * (1 + 0.55 * lashStretch),
+    );
   }
 
   function setDebugState(s: EnemyState, t: number) {

@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Boss feel pass: desync, calmer cadence, lash windup, glowing prince cores, split spit, taller arena"
+      },
+      {
+        "tag": "tune",
         "text": "Slime King: chase hops, a lash attack, smaller core + the split is now a 3-bar boss fight"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "snap"
-      },
-      {
-        "tag": "tune",
-        "text": "Loot slots: rollable, partial-fill reward placeholders ($)"
       }
     ]
   }

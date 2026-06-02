@@ -179,7 +179,7 @@ export interface Ability {
    *  should span multiple steps). */
   telegraphs?: Telegraph[];
   /** Body pose flavour for the intent telegraph. */
-  pose?: 'swing' | 'cast' | 'charge';
+  pose?: 'swing' | 'cast' | 'charge' | 'lash';
   /** Creep toward the player during windup so a stationary player still
    *  gets clipped by a melee. Charges/leaps don't. Default: true when the
    *  first step is a melee. */

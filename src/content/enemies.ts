@@ -1174,12 +1174,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
       {
         id: 'lash',
         minRange: 0, maxRange: 4.0,
-        // Long, READABLE windup (0.9s) — the king visibly coils before it
-        // lashes. creep so it oozes toward you during the wind-up (extra
-        // tell + still catches a backpedaller).
-        windup: 0.90, strike: 0.25, recover: 0.80, cooldown: 3.2,
-        pose: 'charge', creep: true,
-        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 3.0, damage: 2, element: 'arcane' } }],
+        // Slow, unmistakable wind-up (1.3s): the 'lash' pose leans the
+        // king slowly over toward you while the body ELONGATES (rears a
+        // pseudopod — see the lash deform in enemy.ts), then it snaps the
+        // tentacle out on the strike. creep so it also oozes toward you.
+        windup: 1.30, strike: 0.28, recover: 0.85, cooldown: 3.4,
+        pose: 'lash', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 3.2, damage: 2, element: 'arcane' } }],
       },
       // LEAP — a committed airborne jump. A ground ring telegraphs the
       // landing zone at the player's feet during windup; the king then
@@ -1317,13 +1318,15 @@ export const ENEMIES: Record<string, EnemySpec> = {
     abilities: [
       {
         id: 'prince-leap',
-        minRange: 2, maxRange: 7,
+        minRange: 2, maxRange: 5,
         windup: 0.70, strike: 0.45, recover: 0.70, cooldown: 2.4,
         pose: 'cast',
         steps: [{ trigger: { at: 0 }, action: {
-          kind: 'leap', toward: 'lockedTarget', arcHeight: 1.8, landingRadius: 1.0, damage: 1,
-          element: 'arcane', shake: 0.12, shakeDuration: 0.3, knockbackSpeed: 2.5,
-          minDistance: 2.0, riseFraction: 0.42,
+          // Toned down vs before — lower arc + shorter range so it's a
+          // small hop-pounce, not a king-sized slam.
+          kind: 'leap', toward: 'lockedTarget', arcHeight: 1.1, landingRadius: 1.0, damage: 1,
+          element: 'arcane', shake: 0.10, shakeDuration: 0.25, knockbackSpeed: 2.5,
+          minDistance: 1.5, riseFraction: 0.42,
         } }],
       },
       {
@@ -1339,6 +1342,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     model: oozeModel(0x4a6a18, 0xa8ff44, 1.2, true),
     baseEyeEmissive: 0,
     collisionRadius: 0.38,
+    // Walk-through like the king (slimes don't body-block). Fixes the
+    // prince pinning the player when it leaps onto them — you're never
+    // stuck inside one; the threat is its leap + bite, not a wall.
+    noPlayerCollision: true,
     tiltPartName: 'rig',
     // Flash the CORE (glowing, like the king) — and decouple the eyes so
     // the eye system doesn't zero the core's emissive (it has no eyes).

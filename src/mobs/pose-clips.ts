@@ -18,7 +18,7 @@
 // Positive rigTilt / armSwing pitches FORWARD (toward the player);
 // negative leans/coils back. bob is metres of vertical rise.
 
-export type TelegraphStyle = 'swing' | 'cast' | 'charge';
+export type TelegraphStyle = 'swing' | 'cast' | 'charge' | 'lash';
 
 interface Phased { windup: number; strike: number; }
 export interface TelegraphPose {
@@ -47,6 +47,15 @@ export const TELEGRAPH_POSES: Record<TelegraphStyle, TelegraphPose> = {
     rigTilt:  { windup: -0.45, strike: -0.55 },
     bob:      { windup:  0.04, strike:  0.0  },
     armSwing: { windup:  0.90, strike: -1.30 },   // wind arms back, hurl forward
+  },
+  // Slime tentacle lash — the body LEANS slowly over toward the player
+  // (positive = forward) through the windup, then pitches hard into the
+  // lash on strike. Pairs with the body-elongation deform in enemy.ts
+  // (keyed on pose 'lash') so the slime visibly rears + reaches at you.
+  lash: {
+    rigTilt:  { windup:  0.55, strike:  0.95 },
+    bob:      { windup:  0.0,  strike:  0.0  },
+    armSwing: { windup:  0.0,  strike:  0.0  },
   },
 };
 
