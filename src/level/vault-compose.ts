@@ -2,6 +2,7 @@ import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec
 import { applyProcgenDefaults } from './decor-defaults';
 import { resolvePalette, type PaletteV1 } from './palette';
 import { lightingPass } from './lighting-pass';
+import { decorPass } from './decor-pass';
 import { actForDepth } from './acts';
 import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
@@ -280,7 +281,19 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
     if (!entries) continue;
     if (entries.some((e) => e.kind === 'torch')) existingTorchCellsPreview.add(key);
   }
-  previewTorches.push(...lightingPass(vault, resolvedPalette, existingTorchCellsPreview, rand));
+  const procPreviewTorches = lightingPass(vault, resolvedPalette, existingTorchCellsPreview, rand);
+  previewTorches.push(...procPreviewTorches);
+  // Decor pass for the preview — same occupancy union as the
+  // composer path.
+  const occupiedCellsPreview = new Set<string>(existingTorchCellsPreview);
+  for (const key of Object.keys(vault.cellProps ?? {})) occupiedCellsPreview.add(key);
+  for (const t of procPreviewTorches) {
+    const col = Math.round(t.x - 0.5 + Wprev / 2);
+    const row = Math.round(t.z - 0.5 + Dprev / 2);
+    occupiedCellsPreview.add(`${col},${row}`);
+  }
+  props.push(...decorPass(vault, resolvedPalette, occupiedCellsPreview, rand));
+
 
   const spec: LevelSpec = {
     ...sub,
@@ -596,6 +609,23 @@ export function composeFloor(
     const procTorches = lightingPass(pv.vault, resolvedPalette, existingTorchCells, rand);
     for (const t of procTorches) {
       torches.push({ ...t, x: t.x + pv.offsetX, z: t.z + pv.offsetZ });
+    }
+
+    // ── Decor pass — pillars / debris / etc by intent ────────────
+    // Builds occupiedCells from the union of: every cellProps key
+    // (anything author-placed in a cell), every author torch cell,
+    // every procedural torch cell. Then runs the decor pass over
+    // wall-edge candidates and rejects collisions.
+    const occupiedCells = new Set<string>(existingTorchCells);
+    for (const key of Object.keys(pv.vault.cellProps ?? {})) occupiedCells.add(key);
+    for (const t of procTorches) {
+      const col = Math.round(t.x - 0.5 + W / 2);
+      const row = Math.round(t.z - 0.5 + D / 2);
+      occupiedCells.add(`${col},${row}`);
+    }
+    const procDecor = decorPass(pv.vault, resolvedPalette, occupiedCells, rand);
+    for (const p of procDecor) {
+      props.push(translateProp(p, pv.offsetX, pv.offsetZ));
     }
 
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;

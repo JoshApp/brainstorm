@@ -58,6 +58,7 @@ export const ACTS: Act[] = [
     palette: {
       tone: { lightTint: 0xffaa55, lightIntensity: 0.95 },
       light: { density: 'sparse' },
+      decor: { style: 'pillared', density: 'light' },
     },
   },
   {

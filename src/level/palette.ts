@@ -26,6 +26,15 @@
  *  composer emits only what the author wrote in cellProps / torches. */
 export type LightDensity = 'off' | 'dark' | 'sparse' | 'medium' | 'dense';
 
+/** Decor pass style — what KIND of procedural decor the pass emits.
+ *  'off' skips the pass entirely (author placements only). Other
+ *  styles each pull from a different prop palette: 'pillared' lines
+ *  walls with pillars, 'ruined' scatters broken debris, etc. */
+export type DecorStyle = 'off' | 'sparse' | 'pillared' | 'ruined' | 'bone' | 'verdant';
+
+/** Generic density used by decor / future encounter / event passes. */
+export type Density = 'off' | 'light' | 'standard' | 'dense';
+
 export interface PaletteV1 {
   /** Tonal defaults — colour / intensity / mood. Used by multiple
    *  passes; the lighting pass reads tone.lightTint as the per-torch
@@ -45,6 +54,12 @@ export interface PaletteV1 {
      *  touching the rest of the act palette. */
     tintOverride?: number;
   };
+  /** Decor pass intent — what fills the room. style picks WHICH props
+   *  (pillars vs ruins vs bone-piles), density picks HOW MANY. */
+  decor?: {
+    style?: DecorStyle;
+    density?: Density;
+  };
 }
 
 /** A palette with every field guaranteed filled — the type the
@@ -59,6 +74,10 @@ export interface ResolvedPaletteV1 {
   light: {
     density: LightDensity;
     tintOverride?: number;
+  };
+  decor: {
+    style: DecorStyle;
+    density: Density;
   };
 }
 
@@ -77,6 +96,10 @@ const PALETTE_DEFAULTS: ResolvedPaletteV1 = {
                             // it hasn't been opted into. Acts that want
                             // procedural torches set their own density.
   },
+  decor: {
+    style: 'off',           // same opt-in policy as light.
+    density: 'off',
+  },
 };
 
 /**
@@ -93,6 +116,7 @@ export function resolvePalette(
   const out: ResolvedPaletteV1 = {
     tone: { ...PALETTE_DEFAULTS.tone },
     light: { ...PALETTE_DEFAULTS.light },
+    decor: { ...PALETTE_DEFAULTS.decor },
   };
   for (const layer of layers) {
     if (!layer) continue;
@@ -103,6 +127,10 @@ export function resolvePalette(
     if (layer.light) {
       if (layer.light.density !== undefined) out.light.density = layer.light.density;
       if (layer.light.tintOverride !== undefined) out.light.tintOverride = layer.light.tintOverride;
+    }
+    if (layer.decor) {
+      if (layer.decor.style !== undefined) out.decor.style = layer.decor.style;
+      if (layer.decor.density !== undefined) out.decor.density = layer.decor.density;
     }
   }
   return out;
