@@ -189,6 +189,10 @@ async function main() {
     const noInspectFlag = process.argv.includes('--no-inspect');
     const wantInspect = noInspectFlag ? false : (inspectFlag || inspectFamily);
     const inspectOverride = wantInspect ? '&inspect=true' : '';
+    // Subject-only previews hide the level geometry around the mob/
+    // item/model. Vault previews opt OUT — the room IS the subject.
+    const subjectOnlyFamily = /^(mob|model|item)-/.test(scenario);
+    const subjectOnlyOverride = subjectOnlyFamily ? '&inspectSubjectOnly=true' : '';
     if (wantInspect) console.log('Inspect mode: flat-lit, HUD stripped, title suppressed');
     // HUD-only mode — auto-enabled for `hud-*` scenarios. Hides the
     // 3D canvas + puts a flat backdrop behind the HUD widgets so the
@@ -213,9 +217,9 @@ async function main() {
     // scenario row + one snap arg.
     else if (scenario.startsWith('item-')) {
       const itemId = scenario.slice('item-'.length);
-      url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}`;
+      url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}`;
     }
-    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}`;
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output

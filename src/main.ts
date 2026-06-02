@@ -1113,22 +1113,16 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     // and lit materials read their intended values.
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
-    // Hide the level geometry (walls, floor, torches, props). Dungeon
-    // materials are tuned VERY DARK by base colour so they read
-    // grimdark under torchlight; in flat-lit inspection they still
-    // appear near-black behind the subject and read as noise. The
-    // item/mob model we're inspecting is added DIRECTLY to
-    // currentLevel.root (via applyScenario / mob spawn), so hiding
-    // its sibling meshes won't hide the subject — wait, that's
-    // wrong, the subject is also a child of root. We need to hide
-    // SIBLINGS only. Walk root's children and hide everything that
-    // isn't the previewed item / mob.
-    // Cleanest: tag subject groups with userData.inspectSubject = true
-    // when adding them (item viewer + mob spawn paths) and hide every
-    // child without that tag.
-    for (const child of currentLevel.root.children) {
-      if (!(child as THREE.Object3D).userData.inspectSubject) {
-        child.visible = false;
+    // Subject-only previews (mob-*, item-*, model-*) hide the level
+    // geometry so the dungeon room around the subject doesn't read
+    // as noise behind it. Vault previews leave this OFF — the room
+    // IS the subject. Toggle by scenario.inspectSubjectOnly (snap.ts
+    // auto-sets it for the subject families).
+    if (scenario.inspectSubjectOnly) {
+      for (const child of currentLevel.root.children) {
+        if (!(child as THREE.Object3D).userData.inspectSubject) {
+          child.visible = false;
+        }
       }
     }
     // White ambient as the FILL light — at a moderate level so the
