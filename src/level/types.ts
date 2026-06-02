@@ -252,7 +252,14 @@ export type PropSpec =
   // mob) without needing a per-id tile char in the ASCII map — the
   // tile-char dictionary is finite, this is not. Procgen's boss-slot
   // expansion (B tile) emits one of these per boss floor.
-  | { kind: 'spawn'; enemyId: string; x: number; z: number; roomId?: string };
+  | { kind: 'spawn'; enemyId: string; x: number; z: number; roomId?: string }
+  // Boss-arena fog wall — vertical mist curtain at the threshold of
+  // a boss vault. Walking through it seals the arena (the mist
+  // becomes a collider) and engages the boss bar. Tinted per boss
+  // via the `color` field. The composer places these automatically
+  // on boss floors from the boss vault's `bossMist` declaration; a
+  // test chamber can also drop one in its props array directly.
+  | { kind: 'boss-mist'; x: number; z: number; rotY?: number; color: number };
 
 // ── Cell-bound entities ───────────────────────────────────────────
 // Cell-bound authoring (vault.cellProps) stores entries keyed by

@@ -1013,6 +1013,12 @@ const BOSS_HALL: Vault = {
     '5,13': [{ kind: 'pillar' }],
     '14,13': [{ kind: 'pillar' }],
   },
+  // Fog wall at the south edge — player enters from the corridor
+  // on the south side, walks NORTH into the arena. rotY=π so the
+  // plane's normal faces north (the cross-detect interprets +d as
+  // "arena side": player crosses negative → positive == entering).
+  // The mist colour is supplied by the act's BossSpec.mistColor.
+  bossMist: { x: 0, z: 4.5, rotY: Math.PI },
 };
 
 // Chasm bridge — a void splits the room; a narrow walkable bridge crosses it

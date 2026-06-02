@@ -335,6 +335,11 @@ export function composeFloor(
      *  preference isn't available (wrong depth, removed from
      *  library, etc) so a missing preference never breaks gen. */
     preferredBossVaultId?: string;
+    /** Hex tint for the boss-mist fog wall on the boss vault.
+     *  Sourced from BossSpec.mistColor by the procgen layer. The
+     *  composer emits a `boss-mist` prop at the boss vault's
+     *  declared bossMist position with this colour. */
+    bossMistColor?: number;
   },
 ): LevelSpec {
   // ── 1. Tag sequence for the main spine ─────────────────────────
@@ -539,6 +544,22 @@ export function composeFloor(
           roomId: pv.roomId,
         });
       }
+    }
+
+    // Boss-mist fog wall (boss floors only). The boss vault declares
+    // its threshold via vault.bossMist; we tint with the act's boss
+    // mistColor and emit a boss-mist prop at the world position. The
+    // builder picks up the kind and wires the cross trigger + seal.
+    if (opts.isBossFloor && pv.vault.tags.includes('boss')
+        && pv.vault.bossMist && opts.bossMistColor !== undefined) {
+      const m = pv.vault.bossMist;
+      props.push({
+        kind: 'boss-mist',
+        x: m.x + pv.offsetX,
+        z: m.z + pv.offsetZ,
+        rotY: m.rotY ?? 0,
+        color: opts.bossMistColor,
+      });
     }
 
     if (pv.vault.props) {

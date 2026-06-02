@@ -359,6 +359,10 @@ export function generateFloor(
     fogColor: act.fogColor,
     isBossFloor: bossFloor,
     preferredBossVaultId,
+    // Per-boss fog-wall tint. Default amber when the boss spec
+    // doesn't pick one — keeps the soulslike-mist colour
+    // recognisable even on bosses we haven't styled yet.
+    bossMistColor: bossFloor ? (bossById(act.bossId).mistColor ?? 0xffd060) : undefined,
   });
   // Apply X→enemy substitution per spawn. parseTileMap doesn't handle
   // 'X' itself (it's only in vault grids); the composer's spawn list

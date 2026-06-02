@@ -220,6 +220,10 @@ function buildBoilingKing(): LevelSpec {
         triggerRadius: 3.0,
         lingerMs: 5000,
       },
+      // Soulslike fog wall at the south end of the chamber. Walking
+      // through it engages the boss bar + locks the player in until
+      // the king is dead. King's signature acid-green tint.
+      { kind: 'boss-mist', x: 0, z: 4, rotY: Math.PI, color: 0x8aff44 },
     ],
   }));
 }

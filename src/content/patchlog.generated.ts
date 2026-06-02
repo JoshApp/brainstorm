@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "fix",
+        "text": "King fixes: dash actually moves horizontally + aura tick slower"
+      },
+      {
+        "tag": "add",
+        "text": "Add Boiling King test chamber to the title-screen TEST list"
+      },
+      {
         "tag": "tune",
         "text": "Boiling King: real vertical leap with landing screen shake"
       },
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Pilot/inspector: faithful populated vault previews"
-      },
-      {
-        "tag": "content",
-        "text": "Pilot: --vault entry — walk a single authored vault from the inside"
-      },
-      {
-        "tag": "tune",
-        "text": "Creator suite: pilot driver — Claude drives + inspects the live world"
       }
     ]
   }

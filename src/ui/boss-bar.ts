@@ -1,6 +1,7 @@
 import { bossStore, type BossState } from '../state/hud-stores';
 import { bind } from './hud';
 import type { Enemy } from '../mobs/enemy';
+import { isBossEngaged, levelHasFogWall, resetBossEngagement } from './boss-engagement';
 import { ENEMIES } from '../content/enemies';
 import { bossSpecForEnemy } from '../content/bosses';
 import { showBossIntro, hideBossIntro } from './boss-intro-card';
@@ -119,8 +120,17 @@ const DEATH_LINGER = 1.6;    // seconds the empty bar holds before fading
 export function tickBossBar(enemies: Enemy[], dt: number): void {
   const boss = enemies.find((e) => e.isBoss && e.alive);
   if (boss) {
-    // Engage on first awareness — the fog-gate moment.
-    if (!engaged && boss.aiState !== 'idle' && boss.aiState !== 'returning') {
+    // Engagement rule:
+    //   - If the level has a fog-wall (a boss-mist prop was
+    //     spawned), require the cross trigger to fire first. The
+    //     bar stays hidden until the player commits.
+    //   - If there's no fog wall (test scenarios, legacy levels),
+    //     fall back to the aiState-based check: engage the moment
+    //     the boss aggros.
+    const fogWallReady = levelHasFogWall() && isBossEngaged();
+    const legacyAggro = !levelHasFogWall()
+      && boss.aiState !== 'idle' && boss.aiState !== 'returning';
+    if (!engaged && (fogWallReady || legacyAggro)) {
       engaged = true;
       // Intro title card layers on top of the boss bar — fires once
       // per fight on first aggro. Reads identity from the BossSpec
@@ -161,5 +171,6 @@ export function resetBossBar(): void {
   lastName = '';
   lastMax = 0;
   hideBossIntro();
+  resetBossEngagement();
   bossStore.set({ visible: false, name: '', hp: 0, max: 0 });
 }

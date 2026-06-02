@@ -119,4 +119,13 @@ export interface Vault {
    * that wants 'dark' density even where the act is 'medium'.
    */
   palette?: PaletteV1;
+
+  /**
+   * Boss-arena fog wall. Position + rotation of the mist curtain
+   * at this vault's threshold (vault-local coords, vault centre =
+   * (0,0)). Only honoured when this vault is selected as the boss
+   * arena for a floor; ignored for non-boss tag use. Colour comes
+   * from BossSpec.mistColor (per-boss identity), not from here.
+   */
+  bossMist?: { x: number; z: number; rotY?: number };
 }

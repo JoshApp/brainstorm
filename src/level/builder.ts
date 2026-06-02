@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { LevelSpec, RoomSpec, TorchSpec } from './types';
+import type { LevelSpec, RoomSpec, TorchSpec, PropSpec } from './types';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
@@ -27,6 +27,7 @@ import {
   STAIRWELL_HALF_WIDTH,
 } from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
+import { spawnBossMist } from '../interactables/boss-mist';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -784,6 +785,10 @@ export function buildLevel(
   // boss cathedral alone was ~48 pillar draw calls.
   const pillarGeos: THREE.BufferGeometry[] = [];
 
+  // Boss-mist props need the WalkableRegion (for the seal obstacle)
+  // which is constructed AFTER this loop. Collect them here, spawn
+  // after the region exists.
+  const pendingBossMists: Array<Extract<PropSpec, { kind: 'boss-mist' }>> = [];
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
@@ -937,6 +942,12 @@ export function buildLevel(
       spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note ?? '');
       // No collision — player can step over the body. Walking right up
       // to READ it shouldn't be blocked.
+    } else if (prop.kind === 'boss-mist') {
+      // Soulslike fog wall. Spawn is DEFERRED until after the
+      // walkable region is constructed (spawnBossMist takes a
+      // WalkableRegion handle so it can add the seal obstacle on
+      // cross). Collected here, processed below.
+      pendingBossMists.push(prop);
     } else if (prop.kind === 'vase') {
       // Push the obstacle FIRST, keep a reference, and pass a
       // splice callback to spawnVase so the obstacle goes away
@@ -1240,6 +1251,21 @@ export function buildLevel(
     obstacles,
     wallSegments,
   );
+
+  // Boss-mist fog walls — spawn after walkable exists so the trigger
+  // can call walkable.addObstacle on cross. Visual + cross-trigger
+  // + room:cleared release subscription all wired by spawnBossMist.
+  for (const prop of pendingBossMists) {
+    const bossRoomId = findRoomContaining(prop.x, prop.z, spec.rooms) ?? 'main';
+    spawnBossMist(
+      root, walkable,
+      new THREE.Vector3(prop.x, 0, prop.z),
+      prop.rotY ?? 0,
+      prop.color,
+      bossRoomId,
+    );
+  }
+
 
   // --- Pathfinding grids ---
   // Built once at level construction. Covers the bounding box of every
