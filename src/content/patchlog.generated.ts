@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Boiling King: real vertical leap with landing screen shake"
+      },
+      {
+        "tag": "tune",
+        "text": "Boiling King: leap distance + AoE size + cooldown tuning"
+      },
+      {
+        "tag": "tune",
         "text": "Boiling King: way bigger + inside-aura mechanic (slow + acid DoT)"
       },
       {
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Creator suite: pilot driver — Claude drives + inspects the live world"
-      },
-      {
-        "tag": "content",
-        "text": "Creator suite: validation tests + vault inspector + pre-push gate"
-      },
-      {
-        "tag": "tune",
-        "text": "First-class boss architecture: BossSpec registry + intro card"
       }
     ]
   }

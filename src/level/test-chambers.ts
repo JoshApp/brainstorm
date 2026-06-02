@@ -1,5 +1,6 @@
 import type { LevelSpec } from './types';
 import { FLOOR_CANDLE } from '../content/candle';
+import { GREAT_BRAZIER } from '../content/light-props';
 
 // Test chambers — small standalone levels reachable from the title
 // screen for isolated feature testing. Each chamber spawns the player
@@ -194,6 +195,35 @@ function buildStarterAltars(): LevelSpec {
   }));
 }
 
+// ── Boiling King — Act I boss in a wide arena. Sized to match
+// boss-hall (~18×16 walkable) so the king's 8m leap actually has
+// room to commit. Player spawns at the south end, king at the
+// north end so the first leap reads as "across the whole room."
+function buildBoilingKing(): LevelSpec {
+  return smallChamber('boiling-king', 'boiling king', 20, 22, () => ({
+    spawns: [
+      // King well to the north so the player can see him from spawn.
+      { enemyId: 'boiling-king', x: 0, z: -7, roomId: 'test-boiling-king-room' },
+    ],
+    props: [
+      // Free-standing braziers ringing the centre so the floor under
+      // the fight is actually lit — wall torches alone leave a 20m
+      // arena's middle pitch black. Mirrors boss-hall's atmosphere.
+      { kind: 'model', model: GREAT_BRAZIER, x: -5, y: 0, z: -3 },
+      { kind: 'model', model: GREAT_BRAZIER, x:  5, y: 0, z: -3 },
+      { kind: 'model', model: GREAT_BRAZIER, x: -5, y: 0, z:  3 },
+      { kind: 'model', model: GREAT_BRAZIER, x:  5, y: 0, z:  3 },
+      {
+        kind: 'hint',
+        x: 0, z: 7,
+        text: 'it has eaten kings. step OFF the marker.',
+        triggerRadius: 3.0,
+        lingerMs: 5000,
+      },
+    ],
+  }));
+}
+
 // ── Dummy — empty room. Baseline for camera / movement / lighting
 // comparisons against the feature chambers.
 function buildDummy(): LevelSpec {
@@ -216,8 +246,10 @@ export interface TestChamber {
   description: string;
   build: () => LevelSpec;
   /** Force-equip these items before entering. Defaults to a rusted
-   *  sword so the player has something to swing with. */
-  loadout?: { weapon?: string; offhand?: string };
+   *  sword so the player has something to swing with. Consumables
+   *  go into the hotbar so a boss-test chamber can hand the player
+   *  potions without spawning chest props. */
+  loadout?: { weapon?: string; offhand?: string; consumables?: string[] };
 }
 
 export const TEST_CHAMBERS: TestChamber[] = [
@@ -248,6 +280,21 @@ export const TEST_CHAMBERS: TestChamber[] = [
     description: 'Slow, armoured, big windup, big punish. Read the telegraph.',
     build: buildStoneguard,
     loadout: { weapon: 'iron-maul', offhand: 'oil-lamp' },
+  },
+  {
+    id: 'boiling-king',
+    name: 'Boiling King',
+    description: 'Act I boss. He leaps, lands hard, and sticks you if you stand in the slime.',
+    build: buildBoilingKing,
+    // Give the player something with reach + a couple of potions
+    // so the fight is winnable on a first try.
+    loadout: {
+      weapon: 'scimitar',
+      offhand: 'oil-lamp',
+      // Three potions for the fight — generous enough that a first-try
+      // attempt isn't gated on perfect dodging.
+      consumables: ['healing-potion', 'healing-potion', 'healing-potion'],
+    },
   },
   {
     id: 'starter-altars',

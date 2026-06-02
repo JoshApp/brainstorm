@@ -1239,6 +1239,14 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
           const lo = chamber.loadout ?? { weapon: 'rusted-sword', offhand: 'oil-lamp' };
           if (lo.weapon && ITEMS[lo.weapon]) setSlot('weapon', ITEMS[lo.weapon]);
           if (lo.offhand && ITEMS[lo.offhand]) setSlot('offhand', ITEMS[lo.offhand]);
+          // Consumables → bag (auto-fills the hotbar). Used by the
+          // boss-test chamber so the player isn't starting with no
+          // potions in front of a boss.
+          if (lo.consumables) {
+            for (const id of lo.consumables) {
+              if (ITEMS[id]) addItemSilently(id);
+            }
+          }
           startRun(spec.id, 0);
         },
         () => openTitle(),   // BACK — re-show the title
