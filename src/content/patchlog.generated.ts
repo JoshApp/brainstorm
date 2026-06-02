@@ -8,6 +8,78 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "tech",
+        "text": "Perf"
+      },
+      {
+        "tag": "tech",
+        "text": "Perf: clip camera far plane at the fog distance (50m → 13m)"
+      },
+      {
+        "tag": "tech",
+        "text": "Refactor"
+      },
+      {
+        "tag": "tune",
+        "text": "Settings"
+      },
+      {
+        "tag": "content",
+        "text": "Refactor"
+      },
+      {
+        "tag": "tune",
+        "text": "Settings"
+      },
+      {
+        "tag": "tech",
+        "text": "Refactor"
+      },
+      {
+        "tag": "fix",
+        "text": "Boss bar: latch the fade-out so it stays hidden (fixes test-chamber hang)"
+      },
+      {
+        "tag": "tune",
+        "text": "Boss"
+      },
+      {
+        "tag": "content",
+        "text": "Refactor"
+      },
+      {
+        "tag": "tech",
+        "text": "Refactor"
+      },
+      {
+        "tag": "tech",
+        "text": "Refactor"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix: attribute split children to parent's room by entityId, not position"
+      },
+      {
+        "tag": "fix",
+        "text": "Fog gate: fix dormant-boss deadlock + soulslike forced walk-through"
+      },
+      {
+        "tag": "tune",
+        "text": "Graphics settings"
+      },
+      {
+        "tag": "tune",
+        "text": "Fog gate: real block+interact gate, fills the doorway, un-stealable tap"
+      },
+      {
+        "tag": "tune",
+        "text": "Fog gate"
+      },
+      {
+        "tag": "tune",
+        "text": "Fog gate: reliable open (auto-part on approach + tap) + dormant boss holds still"
+      },
+      {
         "tag": "tune",
         "text": "Boss sleeps behind the fog gate; entry-grace immortality on cross"
       },
@@ -134,84 +206,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "Inspect previews: auto-frame subject, fix lighting, studio backdrop"
-      },
-      {
-        "tag": "content",
-        "text": "Vault format experiment — author same vault in 3 formats"
-      },
-      {
-        "tag": "tune",
-        "text": "Palette & Pass system DRAFT v0 (types only, no runtime)"
-      },
-      {
-        "tag": "tune",
-        "text": "tests"
-      },
-      {
-        "tag": "tune",
-        "text": "Make the pre-push test gate durable: prepare script wires core.hooksPath"
-      },
-      {
-        "tag": "content",
-        "text": "Delete LEVEL_1 + LEVEL_2 + all per-enemy tile-char machinery"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix stair-archway guard: precise (stair-room perimeter), not crude distance"
-      },
-      {
-        "tag": "tune",
-        "text": "Stairs: geometry-aware orientation — back of room, facing the entrance"
-      },
-      {
-        "tag": "content",
-        "text": "vault-validate: recognize the '*' light char (post-merge with torch refactor)"
-      },
-      {
-        "tag": "fix",
-        "text": "Creator suite (delve CLI + faithful reach) + fix the real stairs soft-lock"
-      },
-      {
-        "tag": "tune",
-        "text": "Unified '*' light char + inspect-mode subject/scene split"
-      },
-      {
-        "tag": "content",
-        "text": "Migrate boss + specific mob spawns to PropSpec; vault.torches array"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix stairs-unreachable soft-lock: stair-room mouths get doorframes"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix Act boss spawning the wrong creature (wraith instead of boiling king)"
-      }
-    ]
-  },
-  {
-    "version": "Build 9",
-    "date": "2026-06-01",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "snap"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix archway choke (the real soft-lock cause) + guard it"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix chasm-bridge soft-lock: widen margins to >= 2m (collision-traversable)"
-      },
-      {
-        "tag": "tune",
-        "text": "snap: real lighting in inspect mode (key + rim, not flat ambient)"
-      },
-      {
-        "tag": "tune",
-        "text": "Bosses: boiling-king fills every act (interim) — no more placeholder wraith"
       }
     ]
   }

@@ -9,24 +9,23 @@ import { setPlayerInvulnerable } from '../player/health';
 import { kickShake } from '../combat/screen-shake';
 import { playWhoosh } from '../audio/sfx';
 import { startFogWalkthrough } from '../player/fog-walkthrough';
-import type { WalkableRegion, Obstacle } from '../level/walkable';
+import { openingNormal, openingEndpoints } from '../level/opening';
+import type { WalkableRegion, WallSegment } from '../level/walkable';
 
-// Boss-arena fog gate — soulslike threshold seal you INTERACT with.
+// Boss-arena fog gate — soulslike threshold seal you INTERACT with. Installed
+// via spawnFitting into a unified wall Opening (centre + wall-line rotY + gap
+// width), exactly like a door — so it sits at the real entrance, framed, no
+// special placement code.
 //
-//   - On build the gate BLOCKS the threshold (an obstacle in the
-//     walkable), so you can't wander into the arena — you walk up to it
-//     and it prompts you to enter.
-//   - Interacting OPENS it (obstacle removed) + engages the boss (bar +
-//     intro) + a commit shake. You step through.
-//   - The instant you cross to the arena side it RE-SEALS behind you
-//     (obstacle back) — locked in with the boss.
-//   - When the boss ENCOUNTER completes (every body incl. the split dead —
-//     the authoritative signal, not room-clear) the seal lifts so you can
-//     leave. The mist panel stays as a "cleared this place" marker.
+//   - On build the gate BLOCKS the threshold (a wall segment across the gap),
+//     so you can't wander into the arena — you walk up and it prompts you.
+//   - Interacting OPENS it (seal removed) + engages the boss (bar + intro) + a
+//     forced walk through. You step through.
+//   - The instant you cross to the arena side it RE-SEALS behind you — locked
+//     in with the boss.
+//   - When the boss ENCOUNTER completes (every body incl. the split dead) the
+//     seal lifts. The mist panel stays as a "cleared this place" marker.
 
-const DEFAULT_WIDTH = 3.4;     // doorway width the curtain fills
-const DEFAULT_HEIGHT = 4.6;    // doorway height the curtain fills
-const SEAL_HALF_D = 0.35;      // thickness through the plane
 const CROSS_EPSILON = 0.05;    // signed-distance flip threshold
 const WALK_THROUGH_DIST = 3.0; // how far past the gate the forced walk ends
 const WALK_SECONDS = 1.4;      // duration of the soulslike step-through
@@ -34,16 +33,12 @@ const WALK_SECONDS = 1.4;      // duration of the soulslike step-through
 export function spawnBossMist(
   scene: THREE.Object3D,
   walkable: WalkableRegion,
-  pos: THREE.Vector3,
-  rotY: number,
+  opening: { x: number; z: number; rotY: number; widthM: number; height: number },
   color: number,
-  _bossRoomId: string,
-  width = DEFAULT_WIDTH,
-  height = DEFAULT_HEIGHT,
-): void {
-  const SEAL_HALF_W = width / 2;   // seal spans the full doorway
-  const built = buildModel(bossMistModel(color, SEAL_HALF_W, height));
-  built.group.position.copy(pos);
+): { teardown?: () => void } {
+  const { x, z, rotY, widthM: width, height } = opening;
+  const built = buildModel(bossMistModel(color, width / 2, height));
+  built.group.position.set(x, 0, z);
   built.group.rotation.y = rotY;
   scene.add(built.group);
 
@@ -70,24 +65,19 @@ export function spawnBossMist(
     }
   }
 
-  // Plane normal pointing INTO the arena. -Z is the entering side, +Z the
-  // arena side (rotated by rotY).
-  const normal = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(0, rotY, 0));
+  // Plane normal pointing INTO the arena (the way you pass through), derived
+  // from the opening's wall-line rotY — the single shared convention.
+  const n = openingNormal(rotY);
+  const normal = { x: n.x, z: n.z };
 
-  // The seal obstacle, sized to the threshold (world-axis-aligned bbox;
-  // exact rotation doesn't matter at our scale — the WALL reads).
-  const cos = Math.cos(rotY);
-  const sin = Math.sin(rotY);
-  const halfX = Math.abs(cos) * SEAL_HALF_W + Math.abs(sin) * SEAL_HALF_D;
-  const halfZ = Math.abs(sin) * SEAL_HALF_W + Math.abs(cos) * SEAL_HALF_D;
-  const obstacle: Obstacle = {
-    kind: 'aabb',
-    minX: pos.x - halfX, maxX: pos.x + halfX,
-    minZ: pos.z - halfZ, maxZ: pos.z + halfZ,
-  };
+  // The seal — a wall segment spanning the gap (same primitive doors use), so
+  // every fitting blocks movement the same way. Identity matters: the walkable
+  // adds/removes by reference.
+  const ep = openingEndpoints({ x, z, rotY, widthM: width });
+  const seg: WallSegment = { ax: ep.ax, az: ep.az, bx: ep.bx, bz: ep.bz };
   let blocking = false;
-  function block() { if (!blocking) { walkable.addObstacle(obstacle); blocking = true; } }
-  function unblock() { if (blocking) { walkable.removeObstacle(obstacle); blocking = false; } }
+  function block() { if (!blocking) { walkable.addWall(seg); blocking = true; } }
+  function unblock() { if (blocking) { walkable.removeWall(seg); blocking = false; } }
 
   block();   // the gate is closed on arrival — you must commit to enter
 
@@ -112,9 +102,9 @@ export function spawnBossMist(
     // Forced step through the gate: end a few metres INTO the arena, along
     // the threshold normal. Crossing the plane mid-walk re-seals behind us.
     const through = new THREE.Vector3(
-      pos.x + normal.x * WALK_THROUGH_DIST,
+      x + normal.x * WALK_THROUGH_DIST,
       0,
-      pos.z + normal.z * WALK_THROUGH_DIST,
+      z + normal.z * WALK_THROUGH_DIST,
     );
     startFogWalkthrough(through, WALK_SECONDS);
     // Cosmetic.
@@ -126,7 +116,7 @@ export function spawnBossMist(
   const id = generateEntityId('boss-mist');
   registerInteractable({
     id,
-    position: pos.clone(),
+    position: new THREE.Vector3(x, 0, z),
     radius: 2.8,
     promptLabel: 'enter the mist',
     // Explicit interact (tap the gate / press E) is the ONLY way through —
@@ -136,8 +126,8 @@ export function spawnBossMist(
     onUse() { openGate(); },
     tick(_dt: number, playerPos: THREE.Vector3) {
       if (!opened || sealed) return;
-      const dx = playerPos.x - pos.x;
-      const dz = playerPos.z - pos.z;
+      const dx = playerPos.x - x;
+      const dz = playerPos.z - z;
       // Watch for the player crossing to the arena side, then re-seal.
       const d = dx * normal.x + dz * normal.z;
       const sign = d > CROSS_EPSILON ? 1 : d < -CROSS_EPSILON ? -1 : 0;
@@ -159,4 +149,5 @@ export function spawnBossMist(
   // the container is the single source of truth, so the seal can't lift
   // mid-fight when one body dropped but its spawns are still up.
   onBossEncounterComplete(() => { unblock(); setMistOpen(true); });
+  return {};
 }

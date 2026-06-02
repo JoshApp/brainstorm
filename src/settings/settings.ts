@@ -63,6 +63,11 @@ export interface Settings {
    *  (a lower-res PS1 render reads as more PS1). Mobile only; no effect on
    *  desktop debug. */
   adaptiveResolution: boolean;
+  /** Portal/room culling — skip rendering rooms hidden behind walls (only the
+   *  room you're in + rooms visible through doorways draw). Big draw-call win
+   *  in multi-room sightlines; experimental (watch for rooms popping in as you
+   *  turn). Opt-in. */
+  portalCulling: boolean;
 }
 
 export type ShadowMode = 'off' | 'hero' | 'single' | 'all';
@@ -101,6 +106,7 @@ const DEFAULTS: Settings = {
   // crank to 'single'/'all' on desktop or a strong device.
   shadows: 'hero',
   adaptiveResolution: true,
+  portalCulling: false,
 };
 
 let current: Settings = load();

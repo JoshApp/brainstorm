@@ -288,6 +288,15 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().adaptiveResolution,
       set: (v) => updateSettings({ adaptiveResolution: v }),
     }),
+    makeToggle({
+      label: 'PORTAL CULLING',
+      description:
+        'Skip rendering rooms hidden behind walls — only the room you’re in ' +
+        'and rooms visible through doorways draw. Big draw-call win in corridors. ' +
+        'Experimental: if a room ever pops in as you turn, toggle this off.',
+      get: () => getSettings().portalCulling,
+      set: (v) => updateSettings({ portalCulling: v }),
+    }),
   ],
 
   system: () => [

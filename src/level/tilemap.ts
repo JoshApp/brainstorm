@@ -47,6 +47,7 @@ import type {
   LevelSpec, PropSpec, EnemySpawnSpec, TorchSpec, RoomSpec, DoorSpec, StairsSpec, TileMap,
 } from './types';
 import { doorframe } from '../content/doorframe';
+import { orientationEW } from './opening';
 import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 import { pickWallFixture } from './lit-fixture-pool';
 import { buildRng } from '../engine/rng';
@@ -177,83 +178,67 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     return FLOOR_CHARS.has(cellChar(col, row));
   };
 
-  // ── Door runs: coalesce + variable width ──────────────────────────
-  // A horizontal/vertical run of adjacent door tiles ('o'/'O'/'D')
-  // becomes ONE door spanning the whole run (and one wide stone frame)
-  // instead of a stack of 1m doors. For GATED runs ('O'/'D') of 3+ cells
-  // we roll a kept width in [2, length] off the per-floor build RNG and
-  // seal the surplus back to wall — so an arena maw reads ~2m in one
-  // floor and ~3m in the next, never the same prefab twice. The doorframe
-  // model already takes a width, so the surround scales for free.
-  type DoorRun = { char: string; ew: boolean; cells: Array<[number, number]> };
-  const doorRuns: DoorRun[] = [];
-  const DOOR_TILE = new Set(['o', 'O', 'D']);
-  const runVisited = new Set<string>();
+  // ── Wall-opening runs: coalesce + size to the opening ─────────────
+  // A horizontal/vertical run of adjacent gate tiles — 'o'/'O'/'D' doors OR
+  // '%' cobwebs — becomes ONE fitting spanning the whole run (and one wide
+  // stone frame) instead of a stack of 1m pieces. For GATED door runs
+  // ('O'/'D') of 3+ cells we roll a kept width in [2, length] off the
+  // per-floor build RNG and seal the surplus back to wall, so an arena maw
+  // reads ~2m one floor and ~3m the next.
+  //
+  // ONE scan serves both door and web runs (the orientation rule + the
+  // forward coalescing were duplicated verbatim before). Doors are scanned
+  // FIRST and are the only kind that draws the RNG, so the per-floor build
+  // stream is byte-for-byte identical to the old two-pass version.
+  type TileRun = { char: string; ew: boolean; cells: Array<[number, number]> };
   const isFloorRaw = (col: number, row: number) => FLOOR_CHARS.has(rawChar(col, row));
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const ch = rawChar(c, r);
-      if (!DOOR_TILE.has(ch)) continue;
-      if (runVisited.has(`${c},${r}`)) continue;
-      // Orientation: a door whose N AND S are floor spans E↔W (runs along
-      // columns); otherwise it spans N↔S (runs along rows).
-      const ew = isFloorRaw(c, r - 1) && isFloorRaw(c, r + 1);
-      const cells: Array<[number, number]> = [[c, r]];
-      runVisited.add(`${c},${r}`);
-      // Extend forward along the run axis while same-char door tiles continue.
-      // (We scan top-left→bottom-right, so this cell is the run's start.)
-      let k = 1;
-      for (;;) {
-        const nc = ew ? c + k : c;
-        const nr = ew ? r : r + k;
-        if (nc >= cols || nr >= rows) break;
-        if (rawChar(nc, nr) !== ch) break;
-        cells.push([nc, nr]);
-        runVisited.add(`${nc},${nr}`);
-        k++;
-      }
-      // Variable-width roll for gated maws of 3+ cells.
-      if (cells.length >= 3 && (ch === 'O' || ch === 'D')) {
-        const keep = 2 + Math.floor(buildRng() * (cells.length - 1)); // [2..len]
-        for (let i = keep; i < cells.length; i++) {
-          const [sc, sr] = cells[i];
-          sealedCells.add(`${sc},${sr}`);
+  const coalesceRuns = (
+    matches: (ch: string) => boolean,
+    rollWidth: (ch: string) => boolean,
+  ): TileRun[] => {
+    const runs: TileRun[] = [];
+    const visited = new Set<string>();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const ch = rawChar(c, r);
+        if (!matches(ch)) continue;
+        if (visited.has(`${c},${r}`)) continue;
+        // Floor to BOTH N and S ⇒ the run spans E↔W (along columns);
+        // otherwise N↔S (along rows). Shared rule (opening.ts).
+        const ew = orientationEW(isFloorRaw(c, r - 1), isFloorRaw(c, r + 1));
+        const cells: Array<[number, number]> = [[c, r]];
+        visited.add(`${c},${r}`);
+        // Extend forward along the run axis while same-char tiles continue.
+        // (We scan top-left→bottom-right, so this cell is the run's start.)
+        let k = 1;
+        for (;;) {
+          const nc = ew ? c + k : c;
+          const nr = ew ? r : r + k;
+          if (nc >= cols || nr >= rows) break;
+          if (rawChar(nc, nr) !== ch) break;
+          cells.push([nc, nr]);
+          visited.add(`${nc},${nr}`);
+          k++;
         }
-        cells.length = Math.min(keep, cells.length);
+        // Variable-width roll for gated maws of 3+ cells (door 'O'/'D' only).
+        if (cells.length >= 3 && rollWidth(ch)) {
+          const keep = 2 + Math.floor(buildRng() * (cells.length - 1)); // [2..len]
+          for (let i = keep; i < cells.length; i++) {
+            const [sc, sr] = cells[i];
+            sealedCells.add(`${sc},${sr}`);
+          }
+          cells.length = Math.min(keep, cells.length);
+        }
+        runs.push({ char: ch, ew, cells });
       }
-      doorRuns.push({ char: ch, ew, cells });
     }
-  }
+    return runs;
+  };
 
-  // ── Cobweb runs: coalesce + size to opening ───────────────────────
-  // A run of adjacent '%' tiles becomes ONE destructible web curtain (and
-  // one stone frame) spanning the whole opening — mirrors the door-run
-  // coalescing above so a vault widens a web gate with '%%' the same way
-  // it widens an arena maw, instead of stacking 1m webs cell by cell.
-  type CobwebRun = { ew: boolean; cells: Array<[number, number]> };
-  const cobwebRuns: CobwebRun[] = [];
-  const cobwebVisited = new Set<string>();
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (rawChar(c, r) !== '%') continue;
-      if (cobwebVisited.has(`${c},${r}`)) continue;
-      // Same orientation rule as doors: N AND S floor ⇒ the gate spans E↔W.
-      const ew = isFloorRaw(c, r - 1) && isFloorRaw(c, r + 1);
-      const cells: Array<[number, number]> = [[c, r]];
-      cobwebVisited.add(`${c},${r}`);
-      let k = 1;
-      for (;;) {
-        const nc = ew ? c + k : c;
-        const nr = ew ? r : r + k;
-        if (nc >= cols || nr >= rows) break;
-        if (rawChar(nc, nr) !== '%') break;
-        cells.push([nc, nr]);
-        cobwebVisited.add(`${nc},${nr}`);
-        k++;
-      }
-      cobwebRuns.push({ ew, cells });
-    }
-  }
+  const DOOR_TILE = new Set(['o', 'O', 'D']);
+  const doorRuns = coalesceRuns((ch) => DOOR_TILE.has(ch), (ch) => ch === 'O' || ch === 'D');
+  const cobwebRuns = coalesceRuns((ch) => ch === '%', () => false)
+    .map((run) => ({ ew: run.ew, cells: run.cells }));
 
   // ── Room rect: single big bounding rect covering the map ──────────
   // (Walls inside it segment the space into "rooms" visually.)

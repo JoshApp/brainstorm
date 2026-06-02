@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { LevelSpec, RoomSpec, TorchSpec, PropSpec } from './types';
+import type { LevelSpec, RoomSpec, TorchSpec, PropSpec, OpeningSpec } from './types';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
@@ -29,7 +29,7 @@ import {
   STAIRWELL_HALF_WIDTH,
 } from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
-import { spawnBossMist } from '../interactables/boss-mist';
+import { spawnFitting } from '../interactables/fitting';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -968,16 +968,28 @@ export function buildLevel(
   // can call walkable.addObstacle on cross. Visual + cross-trigger
   // + room:cleared release subscription all wired by spawnBossMist.
   for (const prop of pendingBossMists) {
-    const bossRoomId = findRoomContaining(prop.x, prop.z, spec.rooms) ?? 'main';
-    spawnBossMist(
-      root, walkable,
-      new THREE.Vector3(prop.x, 0, prop.z),
-      prop.rotY ?? 0,
-      prop.color,
-      bossRoomId,
-      prop.width,
-      prop.height,
-    );
+    // Boss fog-gate, now a unified Opening fitting: it builds its own stone
+    // frame (filling to the room ceiling) + a wall-segment seal, exactly like
+    // a door. The frame closes the gap above the curtain.
+    const room = spec.rooms.find((r) => {
+      const hw = r.rect.w / 2, hd = r.rect.d / 2;
+      return prop.x >= r.rect.x - hw && prop.x <= r.rect.x + hw
+          && prop.z >= r.rect.z - hd && prop.z <= r.rect.z + hd;
+    });
+    const ceilingH = room?.height ?? spec.rooms[0]?.height ?? 3.2;
+    const opening: OpeningSpec = {
+      id: `fog-${Math.round(prop.x * 10)}-${Math.round(prop.z * 10)}`,
+      kind: 'fog-gate',
+      x: prop.x, z: prop.z, rotY: prop.rotY ?? 0,
+      widthM: prop.width ?? 3.4, height: prop.height,
+      color: prop.color,
+    };
+    spawnFitting(root, opening, walkable, {
+      materials,
+      enemyRoomMembership: () => new Map(),
+      roomHeight: ceilingH,
+      addDestructible: (d) => destructibles.push(d),
+    });
   }
 
 

@@ -180,6 +180,24 @@ function reorientExitStair(st: StairsSpec, ox: number, oz: number, dims: { w: nu
   return { ...st, x, z, rotY: STAIR_ROTY[dir] };
 }
 
+/** Where the boss fog-gate goes — the ENTRANCE edge of the boss vault (the
+ *  one the corridor abuts), so the gate seals the real way in instead of
+ *  floating mid-arena. Mirror of reorientExitStair but at the OPPOSITE edge:
+ *  the stair sits at the back (+placeDir), the gate at the entrance
+ *  (−placeDir), with its normal pointing INTO the arena (+placeDir, so
+ *  rotY = STAIR_ROTY[dir]). `dir` is the way the player heads in. */
+function bossGatePlacement(
+  ox: number, oz: number, dims: { w: number; d: number }, dir: Dir,
+): { x: number; z: number; rotY: number } {
+  const INSET = 0.5, hw = dims.w / 2, hd = dims.d / 2;
+  let x = ox, z = oz;
+  if (dir === 'S') z = oz - hd + INSET;        // entered from the N edge
+  else if (dir === 'N') z = oz + hd - INSET;   // entered from the S edge
+  else if (dir === 'E') x = ox - hw + INSET;   // entered from the W edge
+  else x = ox + hw - INSET;                    // entered from the E edge
+  return { x, z, rotY: STAIR_ROTY[dir] };
+}
+
 /** Resolve a vault's encounter archetype: explicit `encounter` wins, else
  *  every combat/boss room gets a coherent `mixed` pack by default (so the
  *  whole library benefits from pack coherence, not just tagged vaults).
@@ -551,15 +569,32 @@ export function composeFloor(
     // mistColor and emit a boss-mist prop at the world position. The
     // builder picks up the kind and wires the cross trigger + seal.
     if (opts.isBossFloor && pv.vault.tags.includes('boss')
-        && pv.vault.bossMist && opts.bossMistColor !== undefined) {
-      const m = pv.vault.bossMist;
-      props.push({
-        kind: 'boss-mist',
-        x: m.x + pv.offsetX,
-        z: m.z + pv.offsetZ,
-        rotY: m.rotY ?? 0,
-        color: opts.bossMistColor,
-      });
+        && opts.bossMistColor !== undefined) {
+      const dims = vaultDims(pv.vault);
+      // Place at the real entrance (derived from how the corridor connected),
+      // sized to the corridor it seals. Fall back to the authored bossMist
+      // coord only if this vault somehow wasn't placed off a connection.
+      if (pv.placeDir) {
+        const g = bossGatePlacement(pv.offsetX, pv.offsetZ, dims, pv.placeDir);
+        const conn = corridors.find((c) => c.toIdx === i);
+        const alongZ = pv.placeDir === 'N' || pv.placeDir === 'S';
+        const corridorWidth = conn
+          ? (alongZ ? conn.rect.w : conn.rect.d)
+          : 3.4;
+        props.push({
+          kind: 'boss-mist',
+          x: g.x, z: g.z, rotY: g.rotY,
+          color: opts.bossMistColor,
+          width: corridorWidth,
+        });
+      } else if (pv.vault.bossMist) {
+        const m = pv.vault.bossMist;
+        props.push({
+          kind: 'boss-mist',
+          x: m.x + pv.offsetX, z: m.z + pv.offsetZ, rotY: m.rotY ?? 0,
+          color: opts.bossMistColor,
+        });
+      }
     }
 
     if (pv.vault.props) {

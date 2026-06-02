@@ -5,6 +5,8 @@
 // All coordinates are world-space XZ unless otherwise noted. Y is computed
 // from props' implicit shapes (floors at y=0, ceilings at level height, etc.).
 
+import type { FittingKind, Edge } from './opening';
+
 export type Vec2 = { x: number; z: number };
 
 /**
@@ -390,6 +392,39 @@ export type DoorSpec = {
 };
 
 /**
+ * Unified wall-opening fitting (see src/level/opening.ts). One spec for every
+ * "thing installed in a doorway" — archway, door, portcullis, boss fog-gate,
+ * cobweb — so they share placement + a single seal path instead of each
+ * re-deriving coordinates. Position is WORLD-space center + wall-line rotY +
+ * gap width; the `kind` selects the behaviour/visual.
+ *
+ * The ax/az/bx/bz endpoints are carried alongside (computed from the centre +
+ * rotY + width) during the migration off DoorSpec, so the door builder's
+ * segment math keeps working unchanged; they collapse away once everything is
+ * on this spec.
+ */
+export type OpeningSpec = {
+  id: string;
+  kind: FittingKind;
+  x: number; z: number;        // world centre of the gap
+  rotY: number;                // wall-line orientation
+  widthM: number;              // span of the gap
+  height?: number;             // opening height (frame/lintel); default room height
+  edge?: Edge;                 // provenance — which vault edge (fog-gate needs it)
+  /** Segment endpoints (transitional — derived from centre/rotY/width). */
+  ax?: number; az?: number; bx?: number; bz?: number;
+  /** Portcullis unlock condition (gate-cleared / gate-arena). */
+  unlock?:
+    | { kind: 'cleared'; roomIds: string[] }
+    | { kind: 'arena'; roomIds: string[] };
+  /** Fog-gate tint (per-boss identity). */
+  color?: number;
+  /** Hinged-door swing config. */
+  hinge?: 'a' | 'b';
+  swingDir?: 1 | -1;
+};
+
+/**
  * Stairs descending to another level. On interact, the engine fades out
  * the current level and loads `targetLevel` from the LEVELS registry.
  * Player state (HP, inventory, equipment, buffs) carries forward; the
@@ -445,6 +480,9 @@ export type LevelSpec = {
   spawns: EnemySpawnSpec[];
   /** Doors that block passage until interacted with or unlocked. */
   doors?: DoorSpec[];
+  /** Unified wall-opening fittings (archway / door / portcullis / fog-gate /
+   *  cobweb). Migrating target for `doors` + the boss-mist/cobweb props. */
+  openings?: OpeningSpec[];
   /** Stairs leading to other floors. */
   stairs?: StairsSpec[];
   /**
