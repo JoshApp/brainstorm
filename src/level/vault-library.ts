@@ -836,6 +836,16 @@ const BOSS_HALL: Vault = {
     { kind: 'model', model: GREAT_BRAZIER, x: -5, y: 0, z:  4 },
     { kind: 'model', model: GREAT_BRAZIER, x:  5, y: 0, z:  4 },
   ],
+  // Signature lighting: two king-gold wall sconces flank the boss,
+  // sub-cell-precise (x = ±2.5 — no T-char could land here), brighter
+  // and warmer than the room's blood-tinted ASCII torches. Reads as
+  // "throne-room altar" the moment the player crosses the threshold.
+  // Demonstrates the vault.torches array's sub-cell + per-torch tint
+  // + intensity control that the inline T/t/</> chars can't express.
+  torches: [
+    { x: -2.5, z: -8.6, wall: 'N', height: 2.3, colorTint: TORCH_GOLD, intensityMul: 1.3 },
+    { x:  2.5, z: -8.6, wall: 'N', height: 2.3, colorTint: TORCH_GOLD, intensityMul: 1.3 },
+  ],
 };
 
 // Chasm bridge — a void splits the room; a narrow walkable bridge crosses it

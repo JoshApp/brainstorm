@@ -215,9 +215,29 @@ function rollPack(spec: EncounterSpec, depth: number, slotCount: number, rand: (
  * (see rollPack) instead of rolled independently — so the room reads as a
  * designed fight, not a grab-bag. B (boss) is unaffected.
  */
+/** Vault-local cell coordinate for a boss spawn extracted from a
+ *  B-tile during populateTemplate. The caller (vault-compose)
+ *  converts cell → world coords via the vault's grid dimensions +
+ *  placement offset, then adds it to the floor's spawns list. */
+export interface BossSpawnCell {
+  col: number;
+  row: number;
+  enemyId: string;
+}
+
+export interface PopulatedTemplate {
+  map: TileMap;
+  /** B-tile expansions — bosses don't go through the tile-char
+   *  substitution pipeline (it has a hard ceiling at 26 chars).
+   *  Instead the composer takes these cells, computes world coords,
+   *  and pushes spawn entries directly. Same end result, no char
+   *  needed per boss. */
+  bossSpawns: BossSpawnCell[];
+}
+
 export function populateTemplate(
   template: TileMap, depth: number, rand: () => number, encounter?: EncounterSpec,
-): TileMap {
+): PopulatedTemplate {
   const table = rollTableFor(depth);
   // Pre-roll a coherent pack sized to the X-slot count when an archetype is set.
   let packChars: string[] | null = null;
@@ -227,29 +247,27 @@ export function populateTemplate(
     for (const row of template) for (const ch of row) if (ch === 'X') n++;
     if (n > 0) packChars = rollPack(encounter, depth, n, rand).map((id) => ENEMY_CHAR_BY_ID[id] ?? 'R');
   }
+  const bossSpawns: BossSpawnCell[] = [];
   // enemyId → tile char comes from the SINGLE registry in
   // content/enemies.ts (ENEMY_CHAR_BY_ID). No hand-kept map here, so a
   // new enemy is roll-placeable the moment it declares a tileChar —
   // and a roll-table id that lacks one is caught by validateRollTables
   // at module load rather than silently spawning as a rat.
-  return template.map(row => {
+  const map = template.map((row, rowIdx) => {
     let out = '';
-    for (const ch of row) {
+    for (let colIdx = 0; colIdx < row.length; colIdx++) {
+      const ch = row[colIdx];
       if (ch === 'X') {
         const id = packChars ? null : pickWeighted(table, rand);
         out += packChars ? (packChars[packIdx++] ?? 'R') : (ENEMY_CHAR_BY_ID[id!] ?? 'R');
       } else if (ch === 'B') {
-        const id = bossFor(depth);
-        const bossChar = ENEMY_CHAR_BY_ID[id];
-        if (!bossChar) {
-          // Boss EnemySpec is missing a tileChar — the substitution
-          // pipeline can't place it. Without this guard we used to
-          // silently fall back to 'W' (wraith), which meant every
-          // boss floor spawned a wraith regardless of the act's
-          // configured boss. Loud failure beats a silent wrong-mob.
-          throw new Error(`Boss '${id}' has no tileChar — populateTemplate can't place it. Add tileChar to its EnemySpec.`);
-        }
-        out += bossChar;
+        // Boss slot. The boiling-king (and any future boss) doesn't
+        // need its own tile char — we record the cell coords + boss
+        // id and the composer turns it into a spawn at parse time.
+        // The cell itself becomes empty floor so parseTileMap walks
+        // through it normally.
+        bossSpawns.push({ col: colIdx, row: rowIdx, enemyId: bossFor(depth) });
+        out += '.';
       } else if (ch === '$') {
         // Loot slot — PARTIAL fill: a chest sometimes appears here, the
         // chance rising slightly with depth. Reuses 'c' so the existing
@@ -270,6 +288,7 @@ export function populateTemplate(
     }
     return out;
   });
+  return { map, bossSpawns };
 }
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -389,7 +408,7 @@ export function previewPopulated(depth: number, runSeed: number): string {
   const rand = rng(seedForFloor);
   const startVault = VAULTS.find((v) => v.tags.includes('start'));
   if (!startVault) return '';
-  return populateTemplate(startVault.map, depth, rand).join('\n');
+  return populateTemplate(startVault.map, depth, rand).map.join('\n');
 }
 
 // Re-export TileMap typedef ergonomically.
