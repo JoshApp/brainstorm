@@ -34,6 +34,7 @@ const STRUCTURAL = new Set([
   'P', 'A', 'c', 'v', 'V', 'T', 't', '<', '>', '%', 'X', 'B',
   '$',   // loot slot (rolled to chest / empty at gen time)
   '?',   // event slot (rolled to trap / fountain / altar / nothing)
+  '*',   // light slot (auto-mounted wall torch — the current torch char)
 ]);
 const KNOWN = new Set([...STRUCTURAL, ...ENEMY_BY_CHAR.keys()]);
 const isFloorish = (ch: string) => ch !== '#' && ch !== ' ';
