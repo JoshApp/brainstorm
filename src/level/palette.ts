@@ -35,6 +35,14 @@ export type DecorStyle = 'off' | 'sparse' | 'pillared' | 'ruined' | 'bone' | 've
 /** Generic density used by decor / future encounter / event passes. */
 export type Density = 'off' | 'light' | 'standard' | 'dense';
 
+/** Carve pass style — what KIND of floor cutouts the pass emits.
+ *  'off' skips the pass entirely. 'fissured' = thin scattered cracks
+ *  (organic erosion). 'pit-cluster' = one-or-two larger pits the
+ *  player has to walk around. 'chasm' = a single big rect that
+ *  bisects the room. 'eroded' = wall-edge cells get nibbled away
+ *  for an organic-cavern feel. */
+export type CarveStyle = 'off' | 'fissured' | 'pit-cluster' | 'chasm' | 'eroded';
+
 export interface PaletteV1 {
   /** Tonal defaults — colour / intensity / mood. Used by multiple
    *  passes; the lighting pass reads tone.lightTint as the per-torch
@@ -60,6 +68,12 @@ export interface PaletteV1 {
     style?: DecorStyle;
     density?: Density;
   };
+  /** Carve pass intent — floor cutouts. Runs FIRST in the pipeline
+   *  so downstream passes see post-carve walkable cells. */
+  carve?: {
+    style?: CarveStyle;
+    density?: Density;
+  };
 }
 
 /** A palette with every field guaranteed filled — the type the
@@ -77,6 +91,10 @@ export interface ResolvedPaletteV1 {
   };
   decor: {
     style: DecorStyle;
+    density: Density;
+  };
+  carve: {
+    style: CarveStyle;
     density: Density;
   };
 }
@@ -100,6 +118,10 @@ const PALETTE_DEFAULTS: ResolvedPaletteV1 = {
     style: 'off',           // same opt-in policy as light.
     density: 'off',
   },
+  carve: {
+    style: 'off',
+    density: 'off',
+  },
 };
 
 /**
@@ -117,6 +139,7 @@ export function resolvePalette(
     tone: { ...PALETTE_DEFAULTS.tone },
     light: { ...PALETTE_DEFAULTS.light },
     decor: { ...PALETTE_DEFAULTS.decor },
+    carve: { ...PALETTE_DEFAULTS.carve },
   };
   for (const layer of layers) {
     if (!layer) continue;
@@ -131,6 +154,10 @@ export function resolvePalette(
     if (layer.decor) {
       if (layer.decor.style !== undefined) out.decor.style = layer.decor.style;
       if (layer.decor.density !== undefined) out.decor.density = layer.decor.density;
+    }
+    if (layer.carve) {
+      if (layer.carve.style !== undefined) out.carve.style = layer.carve.style;
+      if (layer.carve.density !== undefined) out.carve.density = layer.carve.density;
     }
   }
   return out;

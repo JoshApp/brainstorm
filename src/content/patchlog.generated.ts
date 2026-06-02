@@ -8,6 +8,18 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Step 3 v2: decor pass — pillared style + density factor"
+      },
+      {
+        "tag": "tune",
+        "text": "Step 3 v1: Palette cascade + lighting pass"
+      },
+      {
+        "tag": "tune",
+        "text": "Decor migration"
+      },
+      {
         "tag": "content",
         "text": "Migrate remaining spawn-prop vaults to cellProps"
       },
@@ -200,18 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Reactive item verbs"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: grand boss-hall arena (18x16) for real set-piece fights"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: four new variety vaults (attack the 'samey' feel)"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: vaulted + pitched ceilings (kill the 'flat' feel)"
       }
     ]
   }

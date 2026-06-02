@@ -3,6 +3,7 @@ import { applyProcgenDefaults } from './decor-defaults';
 import { resolvePalette, type PaletteV1 } from './palette';
 import { lightingPass } from './lighting-pass';
 import { decorPass } from './decor-pass';
+import { carvePass, voidCellsCovered } from './carve-pass';
 import { actForDepth } from './acts';
 import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
@@ -264,14 +265,17 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
     props,
   });
 
-  // Lighting pass — same cascade as composeFloor. Preview snaps
-  // use Act-for-depth to source the act-level palette so opting an
-  // act into the pass is visible in every vault-* preview at that
-  // depth.
+  // Cascade + pass pipeline mirroring composeFloor.
   const resolvedPalette = resolvePalette(actForDepth(depth).palette, vault.palette);
-  const existingTorchCellsPreview = new Set<string>();
   const Wprev = vault.map[0]?.length ?? 0;
   const Dprev = vault.map.length;
+  // Carve pass — runs first; voids become forbidden cells for the
+  // light/decor passes that follow.
+  const carveOccupiedPrev = new Set<string>(Object.keys(vault.cellProps ?? {}));
+  const procPreviewVoids = carvePass(vault, resolvedPalette, carveOccupiedPrev, rand);
+  const carvedCellsPrev = voidCellsCovered(procPreviewVoids, Wprev, Dprev);
+  // Lighting pass — author lights + carved voids excluded.
+  const existingTorchCellsPreview = new Set<string>(carvedCellsPrev);
   for (const t of previewTorches) {
     const col = Math.round(t.x - 0.5 + Wprev / 2);
     const row = Math.round(t.z - 0.5 + Dprev / 2);
@@ -302,7 +306,10 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
     props,
     spawns: previewSpawns,
     torches: previewTorches,
-    voids: (vault.voids ?? []).map((v) => ({ x: v.x, z: v.z, w: v.w, d: v.d })),
+    voids: [
+      ...(vault.voids ?? []).map((v) => ({ x: v.x, z: v.z, w: v.w, d: v.d })),
+      ...procPreviewVoids,
+    ],
   };
   resolveAllFacings(spec);   // orient declarative-facing props (no full warp/clutter)
   return spec;
@@ -577,20 +584,26 @@ export function composeFloor(
     // translation. See applyCellProps for the dispatch.
     applyCellProps(pv.vault, pv.offsetX, pv.offsetZ, pv.roomId, depth, rand, { spawns, torches, props });
 
-    // ── Lighting pass (v1 of the palette / pass system) ──────────
-    // Procedural wall torches based on the resolved palette
-    // (act → vault). Author-placed torches (* chars in the ASCII,
-    // 'torch' entries in cellProps, vault.torches array) ALWAYS win;
-    // this pass only ADDS more. Set palette.light.density = 'off'
-    // on an act or vault to disable the pass for that scope.
     const resolvedPalette = resolvePalette(actForDepth(depth).palette, pv.vault.palette);
-    // Collect cells the author already lit so the pass doesn't
-    // double up. (*'s land in sub.torches via parseTileMap; we
-    // reverse-map their world coords back to (col, row) within this
-    // vault's grid for the dedup check.)
-    const existingTorchCells = new Set<string>();
+
+    // ── Carve pass — must run FIRST so lighting + decor see the
+    // post-carve walkable region and skip cells the holes occupy.
+    const carveOccupied = new Set<string>();
+    for (const key of Object.keys(pv.vault.cellProps ?? {})) carveOccupied.add(key);
+    const procVoids = carvePass(pv.vault, resolvedPalette, carveOccupied, rand);
     const W = pv.vault.map[0]?.length ?? 0;
     const D = pv.vault.map.length;
+    const carvedCells = voidCellsCovered(procVoids, W, D);
+    for (const v of procVoids) {
+      voids.push({ x: v.x + pv.offsetX, z: v.z + pv.offsetZ, w: v.w, d: v.d });
+    }
+
+    // ── Lighting pass — wall torches by intent ────────────────────
+    // Collect cells the author already lit + cells the carve pass
+    // punched holes in. Reverse-map sub.torches (world coords with
+    // WALL_OFFSET) back to (col, row) via rounding so corner-cell
+    // *'s land in the same dedup set.
+    const existingTorchCells = new Set<string>(carvedCells);
     for (const t of sub.torches) {
       // sub.torches are already in world coords with the WALL_OFFSET
       // applied; back out approximately to cell. Tolerance ±0.5 by
