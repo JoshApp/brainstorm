@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Abilities: migrate to a composable step-timeline model (engine swap)"
+      },
+      {
         "tag": "fix",
         "text": "Slime King: fix the leap so it actually travels to its landing zone"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Encounters: coherent room-level packs (prototype on 2 vaults)"
-      },
-      {
-        "tag": "tune",
-        "text": "snap: --frames=N animation grid"
       }
     ]
   }

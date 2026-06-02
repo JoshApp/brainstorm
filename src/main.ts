@@ -73,6 +73,7 @@ import { triggerAttack, consumeAttackPressed } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { initLightPool, tickLightPool } from './scene/light-pool';
 import { initProjectilePool, tickProjectiles } from './combat/projectile-pool';
+import { tickHazardFields } from './combat/hazard-field';
 import { registerProjectiles } from './content/projectiles';
 import { validateContent } from './content/validate';
 import { tickXpWisps, clearXpWisps } from './effects/xp-wisps';
@@ -679,6 +680,11 @@ const SYSTEMS: GameSystem[] = [
   { name: 'projectiles', phase: 'unpaused', tick(ctx) {
     tickProjectiles(ctx.scaledDt, camera.position, currentLevel.walkable);
   } },
+
+  // Persistent ground hazard fields (the `field` ability action — e.g. the
+  // king's acid puddle). They outlive the cast that spawned them, so they
+  // tick here rather than in any enemy's update.
+  { name: 'hazard-fields', phase: 'unpaused', tick(ctx) { tickHazardFields(ctx.scaledDt, camera.position); } },
 
   // Room-clear detection — fires room:cleared so doors flip SEALED→OPEN.
   { name: 'room-clear', phase: 'unpaused', tick() { currentLevel.checkRoomClear?.(); } },

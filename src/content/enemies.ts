@@ -1160,8 +1160,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
         pose: 'cast',
         steps: [
           // JUMP — committed airborne leap onto the locked landing zone.
-          // (Commit 2 adds a second step: leave a slow acid puddle here
-          // on landing.)
           {
             id: 'jump', trigger: { at: 0 },
             action: {
@@ -1183,6 +1181,20 @@ export const ENEMIES: Record<string, EnemySpec> = {
               // Guarantee a real arc even if the player is hugging the body
               // at windup: the landing point is pushed out to ≥3m.
               minDistance: 3.0,
+            },
+          },
+          // SPILL — on touchdown, leave a slow acid puddle at the impact
+          // point (the `landing` anchor the leap just wrote). It lingers 5s
+          // after the king has moved on: a denied tile that slows + ticks
+          // anyone who stands in it. Reuse over invention — a placed,
+          // time-limited copy of the king's own body aura.
+          {
+            id: 'spill', trigger: { after: 'jump', on: 'land' },
+            action: {
+              kind: 'field', origin: 'landing',
+              radius: 2.0, lifetime: 5.0,
+              slow: 0.5, dps: 1, dotInterval: 1.0,
+              element: 'acid',
             },
           },
         ],

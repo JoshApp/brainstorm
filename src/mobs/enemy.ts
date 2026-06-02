@@ -4,6 +4,7 @@ import { damagePlayer } from '../player/health';
 import { applyPlayerKnockback } from '../player/knockback';
 import { setPlayerInAura } from '../player/inside-aura';
 import { kickShake } from '../combat/screen-shake';
+import { spawnHazardField } from '../combat/hazard-field';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
@@ -910,8 +911,19 @@ export function createEnemy(
         return false;
       }
       case 'field': {
-        // Persistent hazard field — wired in the next slice (the slow
-        // puddle). No enemy uses it yet, so this is inert.
+        // Drop a persistent hazard field at the resolved origin (e.g. the
+        // king's leap spilling an acid puddle at its `landing` point). It
+        // ticks independently from here on — outliving this cast — and its
+        // DoT is credited to this enemy.
+        const o = resolveAnchor(action.origin, playerPos);
+        spawnHazardField(scene, {
+          x: o.x, z: o.z, radius: action.radius, lifetime: action.lifetime,
+          slow: action.slow, dps: action.dps, dotInterval: action.dotInterval,
+          damageType: dmgTypeOf(action.element), source: entityId,
+          color: action.element === 'fire' ? 0xff5a1e
+            : action.element === 'frost' ? 0x6ab8ff
+            : 0x6abf2a,   // acid / default green
+        });
         return true;
       }
     }

@@ -4,6 +4,7 @@ import type { LevelSpec } from './types';
 import type { StyleMaterials } from '../style/materials';
 import { CONFIG } from '../config';
 import { clearProjectiles } from '../combat/projectile-pool';
+import { clearHazardFields } from '../combat/hazard-field';
 import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
 import { clearStatusVfx } from '../effects/status-vfx';
@@ -132,6 +133,7 @@ export function tickPendingLoad() {
   // survive into the new floor's scene graph.
   if (activeLevel) {
     clearProjectiles();
+    clearHazardFields();
     clearXpWisps();
     clearGoldCoins();
     clearStatusVfx();
