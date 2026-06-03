@@ -413,62 +413,48 @@ initEventLog();
 // screen (in addition to the spacebar on desktop). No more on-screen
 // attack button — less intrusive UI, larger hit area.
 const input = createTouchInput(canvas, {
-  onTap(clientX, clientY) {
-    // Don't tap-target anything during dying, the fog-gate walk, or while
-    // screens are open.
-    if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return false;
-    // Swallow the straggler tap from a just-dismissed screen — the click
-    // that closed a corpse note / menu fires its mouseup/touchend AFTER
-    // the screen is gone, which would otherwise re-hit the object under it
-    // (e.g. re-open the note you just closed).
-    if (msSinceLastScreenClose() < 250) return false;
-    if (!currentLevel) return false;
+  // THE tap arbiter — single place that fully resolves a tap and acts
+  // (the input schemes no longer add their own attack fallback). canAttack
+  // is false for the touch joystick half: a direct tap on an object is
+  // still honoured, but the attack/interact fallback is suppressed there.
+  onTap(clientX, clientY, canAttack) {
+    // ── Gates: contexts where a tap is NOT a world action at all ──
+    // Dying / fog-walk / a screen open → ignore. And swallow the straggler
+    // tap from a JUST-dismissed screen: the click that closed a corpse
+    // note / menu fires its mouseup/touchend AFTER the screen is gone, so
+    // without this it would re-hit the object under it (re-open the note)
+    // or swing. Gating here — not via a return value — means NOTHING
+    // happens (no interact, no attack), which is what was broken before.
+    if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
+    if (msSinceLastScreenClose() < 250) return;
+    if (!currentLevel) return;
+
+    // ── Direct hits: you aimed at a specific thing → honour it (any zone) ──
     const hit = findTapTarget(
       clientX, clientY, canvas, camera,
       currentLevel.enemies,
       getAllInteractables(),
     );
-
-    // Smart intent arbiter — taps interact with a DELIBERATE target, never
-    // the whole screen:
-    //   1. Tap directly on an enemy → swing (combat intent is explicit).
-    //   2. Tap that resolved to an interactable (landed on its mesh, or a
-    //      near-miss snapped to it) → use it, as long as you're within its
-    //      own interact radius. You aimed at THIS object specifically, so we
-    //      honour it without also requiring it be the cone-facing prompt
-    //      target — that's what made picking one of three altars feel fussy.
-    //   3. Otherwise → return false so the right-side-swing fallback fires.
-    // The OTHER reliable target is the floating TAKE label, handled as a
-    // tappable UI element (setInteractLabelTapHandler below) — so we no
-    // longer grab loot on any random in-range tap (e.g. the far left of the
-    // screen). resolveUsable() lets a blocked item on top (full-carry
-    // potion) fall through to the takeable loot beneath it.
-
-    if (hit?.kind === 'enemy') {
-      triggerAttack();
-      return true;
-    }
+    if (hit?.kind === 'enemy') { triggerAttack(); return; }
     if (hit?.kind === 'interactable') {
       const it = hit.interactable;
       const dx = it.position.x - camera.position.x;
       const dz = it.position.z - camera.position.z;
       if (Math.hypot(dx, dz) <= it.radius) {
         resolveUsable(it, camera.position).onUse();
-        return true;
+        return;
       }
     }
-    // Fallback (tap didn't land directly on an enemy or in-range object).
-    // Priority: an ENEMY in range → attack (swing wins even next to a
-    // chest); else an interactable in range → interact (so a tap near a
-    // chest / stairs opens it instead of flailing); else → just attack.
-    // Returning false lets the right-side swing fire; true consumes it.
-    if (combat.hasEnemyInRange()) return false;        // enemy → swing
+
+    // ── Fallback (no direct hit) — gameplay zone only ──
+    // Priority: an ENEMY in range → attack (wins even next to a chest);
+    // else an interactable in range → interact (a tap near a chest/stairs
+    // opens it instead of flailing); else → just attack (empty swing).
+    if (!canAttack) return;                            // touch joystick half: do nothing
+    if (combat.hasEnemyInRange()) { triggerAttack(); return; }
     const inRange = getInRangeInteractable();
-    if (inRange) {                                     // else interactable → interact
-      resolveUsable(inRange, camera.position).onUse();
-      return true;
-    }
-    return false;                                      // nothing → just attack
+    if (inRange) { resolveUsable(inRange, camera.position).onUse(); return; }
+    triggerAttack();
   },
   onInteract() {
     // E key (or future gamepad confirm) — use the currently in-range

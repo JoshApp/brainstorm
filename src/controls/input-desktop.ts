@@ -198,13 +198,12 @@ export const desktopScheme: InputScheme = {
           cancelCharge();
           return;
         }
-        // Locked → smart tap: let the arbiter interact / target; only swing
-        // if it didn't consume the tap (same gate as touch — no flailing
-        // at empty space, but a tap on/near an enemy still swings).
-        const side: 'left' | 'right' =
-          e.clientX < window.innerWidth * LEFT_ZONE_FRACTION ? 'left' : 'right';
-        const consumed = options.onTap?.(e.clientX, e.clientY, side) ?? false;
-        if (!consumed) triggerAttack();
+        // Locked → hand the click to the single tap arbiter (interact /
+        // attack / nothing). canAttack=true: a desktop click anywhere is
+        // a combat zone (no joystick). No separate attack fallback here —
+        // the arbiter owns that, so a just-dismissed-screen tap can be
+        // fully suppressed (no stray swing).
+        options.onTap?.(e.clientX, e.clientY, true);
         cancelCharge();
         return;
       }

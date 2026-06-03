@@ -39,12 +39,15 @@ export interface SchemeContext {
 
 export interface InputOptions {
   /** Called for every tap-style input (short touch contact, mouse
-   *  click, or possibly a gamepad confirm in the future) with the
-   *  pixel coords + which half of the screen. Schemes use this to
-   *  route raycast lookups (see findTapTarget). Returns true if the
-   *  tap was consumed; if false, the scheme falls back to its default
-   *  behavior (e.g. right-half tap = attack). */
-  onTap?: (clientX: number, clientY: number, side: 'left' | 'right') => boolean;
+   *  click, or possibly a gamepad confirm in the future). This is the
+   *  SINGLE tap arbiter: it fully resolves the tap (interact / attack /
+   *  nothing) and acts. `canAttack` tells it whether this tap is in a
+   *  region where a swing is allowed — true for a desktop click and a
+   *  touch on the right (combat) half; false for the touch joystick
+   *  half (a direct tap on an object is still honoured, but the
+   *  attack/interact FALLBACK is suppressed). The scheme does NOT add
+   *  its own attack fallback — all of that logic lives behind this. */
+  onTap?: (clientX: number, clientY: number, canAttack: boolean) => void;
   /** Fire when the player asks to interact (E key, gamepad A, etc.)
    *  without a screen coordinate. Schemes call this when "use the
    *  currently in-range interactable" is the intent. */
