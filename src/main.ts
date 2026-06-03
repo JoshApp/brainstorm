@@ -397,21 +397,38 @@ const input = createTouchInput(canvas, {
 
     // Smart intent arbiter:
     //   1. Tap directly on an enemy → swing (combat intent is explicit).
-    //   2. Tap on an in-range interactable mesh → use it.
-    //   3. Any other tap WHILE an in-range interactable exists → use it.
+    //   2. Tap landing ON an interactable mesh (via 'raycast') → use it as
+    //      long as you're within its tapReach. A direct mesh tap is explicit
+    //      intent — you don't have to also be inside its walk-up prompt cone,
+    //      so you can pick a starter weapon from across the chamber.
+    //   3. A near-miss tap (via 'proximity') → use it only if it's actually
+    //      the in-range prompt target, or you're within tapReach. Looser
+    //      resolution, so we keep it honest about distance.
+    //   4. Any other tap WHILE an in-range interactable exists → use it.
     //      Catches the "I tapped near the chest but the raycast missed
     //      its hitbox" case, plus the "I tapped slightly off the stairs
     //      and the attack animation also fired" bug.
-    //   4. Otherwise → return false so the right-side-swing fallback
+    //   5. Otherwise → return false so the right-side-swing fallback
     //      can fire the attack.
 
     if (hit?.kind === 'enemy') {
       triggerAttack();
       return true;
     }
-    if (hit?.kind === 'interactable' && inRange?.id === hit.interactable.id) {
-      hit.interactable.onUse();
-      return true;
+    if (hit?.kind === 'interactable') {
+      const it = hit.interactable;
+      const dx = it.position.x - camera.position.x;
+      const dz = it.position.z - camera.position.z;
+      const dist = Math.hypot(dx, dz);
+      const reach = it.tapReach ?? CONFIG.INTERACT_TAP_REACH;
+      const within = dist <= reach;
+      // Direct mesh tap → honour within reach. Near-miss → require the
+      // in-range target or within reach.
+      if (hit.via === 'raycast' ? within
+                                : (inRange?.id === it.id || within)) {
+        it.onUse();
+        return true;
+      }
     }
     if (inRange) {
       // No explicit enemy tap, and something usable is right here.

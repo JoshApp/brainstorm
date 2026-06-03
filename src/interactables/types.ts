@@ -13,8 +13,17 @@ export interface Interactable {
   id: EntityId;
   /** World position of the interactable's pivot. */
   position: THREE.Vector3;
-  /** Player must be within this distance (XZ-plane) to interact. */
+  /** Player must be within this distance (XZ-plane) for the walk-up prompt
+   *  (and the auto-use fallback) to fire. */
   radius: number;
+  /**
+   * Optional: max XZ distance at which a DIRECT tap on this object's mesh
+   * will USE it, even when the player is outside `radius` / the facing
+   * cone. Defaults to CONFIG.INTERACT_TAP_REACH. A direct mesh tap is
+   * explicit intent, so this is deliberately generous; raise it for things
+   * meant to be picked from across a room (starter-weapon altars).
+   */
+  tapReach?: number;
   /** Short verb shown on the prompt: 'OPEN' / 'TAKE' / 'USE' / etc. */
   promptLabel: string;
   /** Called when the player presses USE while in range. */

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CONFIG } from '../config';
 import type { Enemy } from '../mobs/enemy';
 import type { Interactable } from '../interactables/types';
 
@@ -21,21 +22,22 @@ import type { Interactable } from '../interactables/types';
 // geometry — best for hit-targeting; (2) if the raycast misses, a
 // screen-space proximity fallback for interactables (NOT enemies)
 // finds the closest interactable's projected position within
-// PROXIMITY_PX. The fallback is what makes thin floating weapons
-// (starter-altar daggers etc.) tappable without pixel-perfect aim.
+// CONFIG.INTERACT_TAP_PROXIMITY_PX. The fallback is what makes thin
+// floating weapons (starter-altar daggers etc.) tappable without
+// pixel-perfect aim. The result carries `via` ('raycast' | 'proximity')
+// so callers can weigh how much to trust the tap's intent.
 
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 const tmpVec = new THREE.Vector3();
 
-/** Pixel radius for the "near-tap" fallback. ~70px is a comfortable
- *  thumb-tap radius and roughly matches the FORGIVING_TOUCH zones
- *  in input-touch.ts. */
-const PROXIMITY_PX = 72;
-
 export type TapTarget =
   | { kind: 'enemy'; enemy: Enemy }
-  | { kind: 'interactable'; interactable: Interactable };
+  // `via` records how the interactable was resolved so callers can weigh
+  // intent: 'raycast' = the tap landed ON the mesh (explicit — honour it
+  // generously), 'proximity' = a near-miss snapped to the closest mesh
+  // (looser — gate it on range).
+  | { kind: 'interactable'; interactable: Interactable; via: 'raycast' | 'proximity' };
 
 export function findTapTarget(
   clientX: number,
@@ -91,7 +93,7 @@ export function findTapTarget(
     }
     for (const r of interactableRoots) {
       if (isDescendantOrSelf(hitObj, r.root)) {
-        return { kind: 'interactable', interactable: r.it };
+        return { kind: 'interactable', interactable: r.it, via: 'raycast' };
       }
     }
   }
@@ -105,7 +107,7 @@ export function findTapTarget(
   const tapPxX = clientX - rect.left;
   const tapPxY = clientY - rect.top;
   let bestProx: Interactable | null = null;
-  let bestProxDist2 = PROXIMITY_PX * PROXIMITY_PX;
+  let bestProxDist2 = CONFIG.INTERACT_TAP_PROXIMITY_PX * CONFIG.INTERACT_TAP_PROXIMITY_PX;
   for (const r of interactableRoots) {
     // Project the interactable's anchor (use position rather than the
     // mesh group origin, so a tilted/rotated viewmodel doesn't shift
@@ -127,7 +129,7 @@ export function findTapTarget(
       bestProx = r.it;
     }
   }
-  if (bestProx) return { kind: 'interactable', interactable: bestProx };
+  if (bestProx) return { kind: 'interactable', interactable: bestProx, via: 'proximity' };
 
   return null;
 }
