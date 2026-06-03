@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-03",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Stats v2 (Stage 3): Might → stagger (the poise system)"
+      },
+      {
         "tag": "content",
         "text": "Weapon weight pass: timingMul stretches windup+recover (not strike)"
       },
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Fog gate: reliable open (auto-part on approach + tap) + dormant boss holds still"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss sleeps behind the fog gate; entry-grace immortality on cross"
       }
     ]
   }

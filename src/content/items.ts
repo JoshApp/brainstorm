@@ -106,6 +106,22 @@ export type ScalingGrade = 'S' | 'A' | 'B' | 'C' | 'D';
  *  how hard. Usually one entry (its family stat); hybrids set two. */
 export type WeaponScaling = Partial<Record<AttributeKind, ScalingGrade>>;
 
+/** What a weapon class's PROFICIENCY (use-based mastery) improves, as a
+ *  per-point amount. Each class picks the few that fit its identity
+ *  (PROFICIENCY_PROFILE_BY_CLASS in weapon-classes.ts) — e.g. daggers
+ *  get speed+crit, hammers get stagger+damage (NOT speed, which would
+ *  un-heavy them). A weapon can override its class default. All but
+ *  `crit` are fractions (0.005 = +0.5%/pt); the %-ish ones share the
+ *  proficiency cap. */
+export interface ProficiencyProfile {
+  speed?: number;        // shortens windup/recover (tempo)
+  damage?: number;       // +weapon damage
+  stagger?: number;      // +stagger power (poise break)
+  crit?: number;         // +crit chance (flat per point)
+  comboWindow?: number;  // +combo-window forgiveness
+  reach?: number;        // +reach
+}
+
 /** Combat stats — only set on items that are weapons. */
 export interface WeaponStats {
   /** Max melee reach in meters (camera-to-enemy distance). */
@@ -149,6 +165,13 @@ export interface WeaponStats {
    * that punches above or below its class weight.
    */
   staggerPower?: number;
+  /**
+   * Override what this weapon's class proficiency improves (per-point
+   * amounts). Omitted → the per-class default
+   * (PROFICIENCY_PROFILE_BY_CLASS in weapon-classes.ts). A merge:
+   * unspecified keys fall back to the class default.
+   */
+  proficiency?: ProficiencyProfile;
   /**
    * On-hit status infliction. When set, a landed hit rolls `chance` and,
    * on success, applies the buff (a status effect from content/buffs.ts)

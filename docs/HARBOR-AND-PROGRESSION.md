@@ -162,8 +162,14 @@ layer is ever added.
 
 Build order: **Stage 1** ✓ = rename + family scaling + universal floor +
 Finesse crit + Grit HP/armor. **Stage 2** ✓ = Lore affliction-scaling.
-**Stage 3** = Might stagger (the poise model below). All shipped except
-Stage 3.
+**Stage 3** ✓ = Might stagger (the poise model below). Plus the weapon
+**weight pass** (timingMul) shipped as a prerequisite. All four stats'
+scaling + signatures are now live.
+
+Still ahead: the **proficiency rework** (per-class config overridable
+per weapon + milestone tiers + item-card progress display), the
+in-world **"blessing" feedback** on tier-up, and the **mobile menu**
+(tabbed GEAR/CHARACTER/CODEX panel).
 
 ### Weapon weight is a prerequisite for stagger [DECIDED]
 

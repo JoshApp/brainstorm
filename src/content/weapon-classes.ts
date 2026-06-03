@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { WeaponStats, WeaponClass, WeaponScaling } from './items';
+import type { WeaponStats, WeaponClass, WeaponScaling, ProficiencyProfile } from './items';
 import { getCharacter, type AttributeKind } from '../state/character';
 
 // Weapon classes — pick the animation archetype and seed the default
@@ -423,8 +423,31 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
 // damage. Capped at PROFICIENCY_CAP so a long run doesn't trivialise
 // floor 1 — at the cap one weapon class is ~25% faster + 25% harder
 // hitting than its baseline.
-const PROFICIENCY_PER_POINT = 0.005;     // 0.5% per point
-const PROFICIENCY_CAP_PCT  = 0.25;       // hard cap at 25% (50 points)
+const PROFICIENCY_CAP_PCT  = 0.25;       // hard cap on %-ish prof bonuses (25%)
+const PROFICIENCY_CRIT_CAP = 0.15;       // hard cap on the flat crit prof bonus
+
+// What each weapon class's PROFICIENCY improves (per-point), reinforcing
+// its identity instead of the old one-size speed+damage. Heavies get
+// stagger+damage but NOT speed — mastery breaks poise harder without
+// un-heavying the swing. Override per weapon via WeaponStats.proficiency.
+// See docs/HARBOR-AND-PROGRESSION.md.
+const PROFICIENCY_PROFILE_BY_CLASS: Record<WeaponClass, ProficiencyProfile> = {
+  dagger: { speed: 0.005, crit: 0.003 },      // fast hands
+  whip:   { speed: 0.005, reach: 0.004 },     // snap + extend
+  sword:  { comboWindow: 0.006, damage: 0.005 }, // flow + bite
+  spear:  { reach: 0.004, damage: 0.005 },    // poke deeper, harder
+  hammer: { stagger: 0.010, damage: 0.005 },  // break poise harder (NO speed)
+  scythe: { stagger: 0.010, damage: 0.005 },  // ditto, the reaper
+  crossbow:        { damage: 0.006, speed: 0.004 },  // speed = faster re-cock
+  wand:            { damage: 0.006, speed: 0.004 },  // speed = faster cast/settle
+  'throwing-knives': { damage: 0.005, speed: 0.004 },
+};
+
+/** Clamp a per-point proficiency bonus at its cap. */
+function profBonus(points: number, perPoint: number | undefined, cap = PROFICIENCY_CAP_PCT): number {
+  if (!perPoint) return 0;
+  return Math.min(cap, points * perPoint);
+}
 
 // Default attribute scaling per weapon class — applied when a spec
 // doesn't set its own `scaling`. Each weapon family gets grade B on its
@@ -449,7 +472,7 @@ const DEFAULT_WEAPON_SCALING: Record<WeaponClass, WeaponScaling> = {
 // weapons break poise on their own (now earned by their slow swings);
 // light/ranged barely dent it without Might investment. Override per
 // weapon via WeaponStats.staggerPower. Tune feel here.
-const STAGGER_POWER_BY_CLASS: Record<WeaponClass, number> = {
+export const STAGGER_POWER_BY_CLASS: Record<WeaponClass, number> = {
   hammer: 3.0,
   scythe: 2.5,
   sword:  1.5,
@@ -475,8 +498,17 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   const speedMul = 1 / (spec.attackSpeed ?? 1);    // larger attackSpeed → SHORTER timings
 
   const char = getCharacter();
-  const profPct = Math.min(PROFICIENCY_CAP_PCT, char.proficiencies[cls] * PROFICIENCY_PER_POINT);
-  const profSpeed = 1 - profPct;      // shorter timings as proficiency rises (PROFICIENCY = tempo)
+  // PROFICIENCY (use-based mastery) — what it improves is per-class
+  // (profile), overridable per weapon. Each stat clamps at its cap.
+  const profPoints = char.proficiencies[cls];
+  const profile: ProficiencyProfile = { ...PROFICIENCY_PROFILE_BY_CLASS[cls], ...spec.proficiency };
+  const profSpeedPct   = profBonus(profPoints, profile.speed);
+  const profDmgPct     = profBonus(profPoints, profile.damage);
+  const profStaggerPct = profBonus(profPoints, profile.stagger);
+  const profCrit       = profBonus(profPoints, profile.crit, PROFICIENCY_CRIT_CAP);
+  const profComboPct   = profBonus(profPoints, profile.comboWindow);
+  const profReachPct   = profBonus(profPoints, profile.reach);
+  const profSpeed = 1 - profSpeedPct;      // shorter timings (only if the class profile has speed)
 
   // ATTRIBUTE damage (ATTRIBUTES = power). Two layers fold into one mul:
   //   family  — points in the weapon's scaling attribute(s) × grade coeff
@@ -491,13 +523,14 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   }
   const universalBonus =
     (char.attributes.might + char.attributes.lore) * CONFIG.ATTR.UNIVERSAL_DMG_PER_POINT;
-  const profDmgMul = (1 + profPct) * (1 + familyBonus + universalBonus);
+  const profDmgMul = (1 + profDmgPct) * (1 + familyBonus + universalBonus);
 
   const finesseCrit = char.attributes.finesse * CONFIG.ATTR.FINESSE_CRIT_PER_POINT;
 
-  // Might SIGNATURE — stagger power = weapon weight × Might.
+  // Might SIGNATURE — stagger power = weapon weight × Might × proficiency.
   const staggerBase = spec.staggerPower ?? STAGGER_POWER_BY_CLASS[cls];
-  const staggerPower = staggerBase * (1 + char.attributes.might * CONFIG.ATTR.MIGHT_STAGGER_PER_POINT);
+  const staggerPower =
+    staggerBase * (1 + char.attributes.might * CONFIG.ATTR.MIGHT_STAGGER_PER_POINT) * (1 + profStaggerPct);
 
   // WEIGHT: each class carries a timingMul that stretches the COMMITTAL
   // parts of a swing — windup + recover — WITHOUT touching the strike
@@ -531,15 +564,15 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   } : undefined;
 
   return {
-    reach: spec.reach,
+    reach: spec.reach * (1 + profReachPct),
     coneHalfAngle: spec.coneHalfAngle,
     damage: spec.damage * profDmgMul,
-    critChance: (spec.critChance ?? 0.05) + finesseCrit,
+    critChance: (spec.critChance ?? 0.05) + finesseCrit + profCrit,
     staggerPower,
     critMultiplier: spec.critMultiplier ?? 2.0,
     class: cls,
     combo,
-    comboWindowMs: baseT.comboWindowMs,
+    comboWindowMs: baseT.comboWindowMs * (1 + profComboPct),
     onHit: spec.onHit,
     ranged: spec.ranged,
     chargedEffect: spec.chargedEffect,

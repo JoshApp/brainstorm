@@ -108,6 +108,44 @@ export function resetCharacter(): void {
   notify();
 }
 
+// ── Proficiency tiers ─────────────────────────────────────────────
+// Named milestones over the smooth per-point curve. They give the
+// "Sword — Adept" recognition beat (a broadcast pop later) and the
+// tier line + progress bar shown on a weapon's item card.
+
+export interface ProficiencyTier {
+  /** Tier name for the current value. */
+  name: string;
+  /** 0-based tier index (0 = the lowest tier). */
+  index: number;
+  /** Points threshold where the current tier began. */
+  floor: number;
+  /** Points threshold of the NEXT tier, or null if at the top. */
+  nextAt: number | null;
+  /** Progress 0..1 through the current tier toward the next (1 at max). */
+  progress: number;
+}
+
+const PROF_TIER_THRESHOLDS: ReadonlyArray<{ name: string; at: number }> = [
+  { name: 'Untrained', at: 0 },
+  { name: 'Novice',    at: 10 },
+  { name: 'Adept',     at: 30 },
+  { name: 'Master',    at: 60 },
+];
+
+/** Resolve a proficiency point total into its tier + progress to next. */
+export function proficiencyTier(value: number): ProficiencyTier {
+  let i = 0;
+  for (let t = PROF_TIER_THRESHOLDS.length - 1; t >= 0; t--) {
+    if (value >= PROF_TIER_THRESHOLDS[t].at) { i = t; break; }
+  }
+  const floor = PROF_TIER_THRESHOLDS[i].at;
+  const next = PROF_TIER_THRESHOLDS[i + 1] ?? null;
+  const nextAt = next ? next.at : null;
+  const progress = nextAt === null ? 1 : (value - floor) / (nextAt - floor);
+  return { name: PROF_TIER_THRESHOLDS[i].name, index: i, floor, nextAt, progress };
+}
+
 // ── Lore signature: affliction scaling ───────────────────────────
 // The player's damage-over-time statuses last longer + tick harder
 // with Lore. Read live (cheap) at the buff apply + tick sites — Lore
