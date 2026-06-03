@@ -85,6 +85,10 @@ export interface Scenario {
     pos?: { x: number; z: number };
     state?: EnemyDebugState;
     phaseTimer?: number;
+    /** Jump a multi-phase boss to this 0-based phase (settled pose, no
+     *  collapse animation) — for snapping phase 2 (crawl) without grinding
+     *  phase 1 down in combat. */
+    bossPhase?: number;
   }>;
   /** Override the sword's phase + timer at startup. */
   swordPhase?: { phase: SwingPhase; phaseTimer: number };
@@ -1051,6 +1055,31 @@ export const SCENARIOS: Record<string, Scenario> = {
     enemyOverrides: [{ index: 0, pos: { x: 0, z: -2 }, state: 'chasing' }],
   },
 
+  // Marrow Sovereign PHASE 2 (the crawl) — same arena, but the boss is
+  // jumped straight to phase 2 (legs + scythe gone, torso lowered) via the
+  // bossPhase override, so the crawl pose can be inspected without fighting
+  // phase 1 down. lookAt aimed lower since he's on the floor now.
+  'marrow-sovereign-crawl': {
+    freeze: true,
+    level: {
+      id: 'dbg-marrow-crawl', depth: 7, displayName: 'marrow sovereign — crawl', fogColor: 0x100806,
+      startPos: { x: 0, z: 4.5, yaw: 0 },
+      rooms: [{ id: 'ms-room', rect: { x: 0, z: 0, w: 10, d: 11 }, height: 10 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -4.95, z: -4.5, height: 2.4, wall: 'W', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x:  4.95, z: -4.5, height: 2.4, wall: 'E', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x: -4.95, z:  4.5, height: 2.4, wall: 'W', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x:  4.95, z:  4.5, height: 2.4, wall: 'E', colorTint: 0xff6030, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'marrow-sovereign', x: 0, z: -2, roomId: 'ms-room' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 3.0, lookAt: { x: 0, z: -2, y: 0.5 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -2 }, state: 'chasing', bossPhase: 1 }],
+  },
+
   'boiling-king': {
     freeze: true,
     level: {
@@ -1443,6 +1472,7 @@ export function applyScenario(
       const enemy = ctx.level.enemies[ov.index];
       if (!enemy) continue;
       if (ov.pos) enemy.setDebugPosition(ov.pos.x, ov.pos.z);
+      if (ov.bossPhase !== undefined) enemy.setDebugBossPhase(ov.bossPhase);
       if (ov.state) enemy.setDebugState(ov.state, ov.phaseTimer ?? 0);
       // Always make the repositioned enemy face the camera. Without this,
       // frozen scenarios show enemies at default rotation (looking world -Z)

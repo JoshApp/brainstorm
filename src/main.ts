@@ -14,6 +14,7 @@ import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
 import { initWeaponDrop, dropHeldItem } from './player/weapon-drop';
+import { bossEncounterDebug } from './mobs/boss-encounter';
 import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthrough';
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
@@ -558,6 +559,22 @@ if (import.meta.env.DEV) {
 if (import.meta.env.DEV) {
   const sm = new URLSearchParams(window.location.search).get('shadows');
   if (sm === 'off' || sm === 'hero' || sm === 'single' || sm === 'all') setShadowMode(sm);
+}
+// DEV-only boss observation hook (window.__boss). Stripped from prod by the
+// literal-false guard. Drive + inspect multi-phase boss fights from the
+// console or a headless chrome-devtools session without grinding combat:
+//   __boss.info()      → { encounter, phase: { index, count } }
+//   __boss.phase(n)    → jump to phase n INSTANTLY (settled pose)
+//   __boss.advance()   → trigger the NEXT phase WITH its collapse animation
+// Reads the live boss lazily so it follows floor swaps.
+if (import.meta.env.DEV) {
+  const findBoss = () => currentLevel?.enemies.find((e) => e.isBoss && e.alive);
+  const bossApi = {
+    info: () => ({ encounter: bossEncounterDebug(), phase: findBoss()?.bossPhaseInfo() ?? null }),
+    phase: (n: number) => { findBoss()?.setDebugBossPhase(n); return bossApi.info(); },
+    advance: () => { findBoss()?.debugAdvanceBossPhase(); return bossApi.info(); },
+  };
+  (window as unknown as { __boss?: typeof bossApi }).__boss = bossApi;
 }
 initPickupLightPool(scene);
 // Projectile pool — pre-allocates the meshes + trail sprites that ranged

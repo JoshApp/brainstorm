@@ -183,6 +183,17 @@ export interface Enemy extends Damageable {
   ): void;
   setDebugState(state: EnemyState, phaseTimer: number): void;
   setDebugPosition(x: number, z: number): void;
+  /** Observation tooling: jump a multi-phase boss to phase `index`
+   *  (0-based), applying each transition's settled pose INSTANTLY (no
+   *  collapse animation) — for clean per-phase snaps. No-op for
+   *  single-phase enemies or an index ≤ current. */
+  setDebugBossPhase(index: number): void;
+  /** Observation tooling: trigger the NEXT phase transition WITH its
+   *  collapse animation (as if the current phase was just killed) — for
+   *  watching the transition live. No-op if already on the last phase. */
+  debugAdvanceBossPhase(): void;
+  /** Current 0-based phase index + count (1/1 for single-phase). */
+  bossPhaseInfo(): { index: number; count: number };
   /** Rotate the container so it faces a world point (head toward it). */
   faceWorld(x: number, z: number): void;
   /** Apply a decaying knockback impulse in world XZ direction (dirX,
@@ -345,6 +356,51 @@ export function createEnemy(
     built.group.traverse((o) => {
       if (o.name && want.has(o.name)) o.visible = false;
     });
+  }
+
+  // Advance the boss to its NEXT phase. Shared by the kill-triggered
+  // transition (combat) and the debug phase-jump (observation tooling).
+  // `animate`: true plays the collapse over the invuln window (the real
+  // fight); false snaps straight to the settled pose (clean phase snaps).
+  function enterNextPhase(animate: boolean): void {
+    if (!phases || phaseIndex + 1 >= phases.length) return;
+    const next = phases[phaseIndex + 1];
+    phaseIndex++;
+    currentMaxHp = next.hp;
+    currentAbilities = next.abilities;
+    abilities = resolveAbilities(spec, currentAbilities);
+    const ent = getEntity(entityId);
+    if (ent?.hp) { ent.hp.base = next.hp; ent.hp.current = next.hp; }
+    firedPartBreaks = new Set();
+    phaseInvulnTimer = animate ? (next.invulnEntryTime ?? 0) : 0;
+    if (next.hideParts) hidePartsByName(next.hideParts);
+    if (next.rigYOffset !== undefined || next.rigPitch !== undefined) {
+      // Lower / tilt the RIG node (not built.group): the per-frame pose bob
+      // OWNS built.group.position.y and would clobber an offset there. The
+      // rig's position.y is bob-safe; pitch goes on built.group (also safe).
+      const node = tiltPart ?? built.group;
+      if (animate) {
+        phaseFallNode = node;
+        phaseFallFromY = node.position.y;
+        phaseFallToY = node.position.y + (next.rigYOffset ?? 0);
+        phaseFallFromPitch = built.group.rotation.x;
+        phaseFallToPitch = next.rigPitch ?? built.group.rotation.x;
+        phaseFallElapsed = 0;
+        // Fall across the invuln window so he's untouchable + inert as he
+        // drops, then rises as the crawler. Floor at 0.4s for readability.
+        phaseFallDuration = Math.max(0.4, next.invulnEntryTime ?? 0.8);
+        phaseFallActive = true;
+      } else {
+        // Instant settle — snap the model to the new phase's crawl pose.
+        node.position.y += next.rigYOffset ?? 0;
+        if (next.rigPitch !== undefined) built.group.rotation.x = next.rigPitch;
+        phaseFallActive = false;
+      }
+    }
+    clearAoeTelegraph();
+    clearLashTendril();
+    state = 'chasing';
+    phaseTimer = 0;
   }
   // Register combat stats so the damage pipeline knows this enemy's armor +
   // (future) damage modifiers. Defaults to 0 armor, no bonuses — fields on
@@ -654,46 +710,10 @@ export function createEnemy(
       phaseTimer = 0;
     }
     if (entity.hp.current <= 0) {
-      // Multi-phase: if there's a next phase, transition INSTEAD of dying.
+      // Multi-phase: if there's a next phase, transition INSTEAD of dying —
+      // animated collapse over the invuln window (see enterNextPhase).
       if (phases && phaseIndex + 1 < phases.length) {
-        const next = phases[phaseIndex + 1];
-        phaseIndex++;
-        currentMaxHp = next.hp;
-        currentAbilities = next.abilities;
-        abilities = resolveAbilities(spec, currentAbilities);
-        entity.hp.base = next.hp;
-        entity.hp.current = next.hp;
-        firedPartBreaks = new Set();
-        phaseInvulnTimer = next.invulnEntryTime ?? 0;
-        // Drop the legs/scythe NOW (he loses them as he falls), then EASE
-        // the body down into the crawl over the invuln window rather than
-        // snapping — set up the collapse animation, advanced in tick().
-        if (next.hideParts) hidePartsByName(next.hideParts);
-        if (next.rigYOffset !== undefined || next.rigPitch !== undefined) {
-          // Lower / tilt the RIG node (not built.group): the per-frame pose
-          // bob OWNS built.group.position.y and would clobber an offset
-          // there every frame — which is why the legless torso never came
-          // down. The rig's position.y is untouched by the bob (applyTilt
-          // only writes rig.rotation.x), so it persists. Pitch goes on
-          // built.group (also bob-safe). Falls back to built.group if the
-          // model has no rig node.
-          phaseFallNode = tiltPart ?? built.group;
-          phaseFallFromY = phaseFallNode.position.y;
-          phaseFallToY = phaseFallNode.position.y + (next.rigYOffset ?? 0);
-          phaseFallFromPitch = built.group.rotation.x;
-          phaseFallToPitch = next.rigPitch ?? built.group.rotation.x;
-          phaseFallElapsed = 0;
-          // Fall across the invuln window so he's untouchable + inert as he
-          // drops, then rises as the crawler. Floor at 0.4s for a readable
-          // collapse even if invulnEntryTime is short.
-          phaseFallDuration = Math.max(0.4, next.invulnEntryTime ?? 0.8);
-          phaseFallActive = true;
-        }
-        // Reset state machine to chasing so the new abilities kick in cleanly.
-        clearAoeTelegraph();
-        clearLashTendril();
-        state = 'chasing';
-        phaseTimer = 0;
+        enterNextPhase(true);
         return result.applied;
       }
       // Killed mid-windup — drop any pending AoE marker / lash tentacle so
@@ -1804,6 +1824,23 @@ export function createEnemy(
     container.position.z = z;
   }
 
+  function setDebugBossPhase(index: number) {
+    if (!phases) return;
+    // Step instantly up to the target phase (settled poses, no animation).
+    while (phaseIndex < index && phaseIndex + 1 < phases.length) {
+      enterNextPhase(false);
+    }
+    phaseInvulnTimer = 0;   // a posed phase shouldn't be mid-invuln
+  }
+
+  function debugAdvanceBossPhase() {
+    enterNextPhase(true);   // animated collapse, as if just killed
+  }
+
+  function bossPhaseInfo() {
+    return { index: phaseIndex, count: phases ? phases.length : 1 };
+  }
+
   function faceWorld(x: number, z: number) {
     tmpFlat.set(x, container.position.y, z);
     container.lookAt(tmpFlat);
@@ -1856,6 +1893,9 @@ export function createEnemy(
     update,
     setDebugState,
     setDebugPosition,
+    setDebugBossPhase,
+    debugAdvanceBossPhase,
+    bossPhaseInfo,
     faceWorld,
     applyKnockback: bodyAnim.applyKnockback,
   };
