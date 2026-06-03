@@ -470,7 +470,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     // the reach weapon's pressure tool: poke, retreat, let the stacks
     // work while you keep spacing.
     weapon: {
-      class: 'spear', reach: 3.0, coneHalfAngle: 0.42, damage: 2, critChance: 0.12, critMultiplier: 2.2,
+      class: 'spear', reach: 2.5, coneHalfAngle: 0.42, damage: 2, critChance: 0.12, critMultiplier: 2.2,
       onHit: { buffId: 'bleed', chance: 0.4, duration: 3 },
     },
     affixPool: ['keening', 'gallows', 'patience', 'spine', 'serration', 'venom'],
@@ -506,7 +506,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     weapon: {
       // Spear class — long reach, narrow cone. Poke and retreat; the
       // spacing starter. Mundane: no bleed, just distance.
-      class: 'spear', reach: 2.85, coneHalfAngle: 0.42, damage: 1, critChance: 0.06, critMultiplier: 2.2,
+      class: 'spear', reach: 2.4, coneHalfAngle: 0.42, damage: 1, critChance: 0.06, critMultiplier: 2.2,
     },
     affixPool: ['keening', 'gallows', 'patience', 'spine'],
     maxAffixes: 1,
@@ -1062,7 +1062,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     name: 'A flask of steady tonic',
     flavor: 'The mending takes its time.',
     dropModel: STEADY_TONIC,
-    consumableBuff: { buffId: 'regen-pulse', duration: 6.0 },
+    consumableBuff: { buffId: 'regen-pulse', duration: 3.0 },   // ~7 HP over time (was 6s/~13 — playtest: too strong)
     carryLimit: 2,
   },
   // ── REACTIVE EQUIPMENT ────────────────────────────────────────────

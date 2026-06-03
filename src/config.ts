@@ -165,7 +165,7 @@ export const CONFIG = {
     // fabled weapons can scale harder (A/S), the Phase-5 LLM seam.
     SCALING_GRADE: { S: 0.04, A: 0.03, B: 0.02, C: 0.012, D: 0.006 } as Record<string, number>,
     FINESSE_CRIT_PER_POINT: 0.02,     // +2% crit chance / point (Finesse floor)
-    GRIT_HP_PER_POINT: 3,             // +3 max HP / point (Grit floor)
+    GRIT_HP_PER_POINT: 2,             // +2 max HP / point (was 3 — playtest: too much)
     GRIT_ARMOR_SCALE_PER_POINT: 0.03, // equipped armor ×(1 + 0.03·Grit)
     // Lore SIGNATURE — the player's afflictions (DoT statuses: poison/
     // bleed/burn) last longer AND tick harder. The hexer build.

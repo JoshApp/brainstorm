@@ -11,10 +11,8 @@ multi-hit is, etc.). Don't tune one in isolation.
 ---
 
 ## A. Weapon & combat balance
-- [ ] **[bal]** Spear reach **3m is way too much** → bring toward the saber's
-  comfortable **~2.2m** (saber = the good baseline). Dagger's short reach is
-  *fine* as the tradeoff for its speed/crit. (reach lives per-weapon /
-  per-class in weapon-classes.ts.)
+- [x] **[bal]** Spear reach **3.0/2.85 → 2.5/2.4** (still the longest melee, but
+  trimmed toward the comfortable saber baseline). Dagger short reach kept. *(done)*
 - [ ] **[bal]** **Crossbow + wand are way too strong** — no ammo, high damage,
   basically no drawback. Need a real cost (ammo? longer reload? the recover
   isn't enough). Ties to the stamina **[?]** below.
@@ -42,8 +40,7 @@ multi-hit is, etc.). Don't tune one in isolation.
   attributes + proficiencies reset to baseline (your build vanished). Now
   the save carries the character (serializeCharacter at floor entry,
   hydrateCharacter on resume); death still wipes it. *(done)*
-- [ ] **[bal]** **Grit = +3 max HP/point is too much** (I set this) → drop to
-  ~+1–2 (CONFIG.ATTR.GRIT_HP_PER_POINT).
+- [x] **[bal]** **Grit** +3 → **+2** max HP/point. *(done)*
 - [ ] **[bal]** **Lifesteal is way too strong** off raw damage → rework to
   **chance-on-kill** or **every-N-kills** proc, not per-hit %.
 - [ ] **[ux]** We **don't clearly explain which weapon scales with what** — the
@@ -53,7 +50,7 @@ multi-hit is, etc.). Don't tune one in isolation.
 ## D. Item balance
 - [ ] **[bal]** **Rings inconsistent** — some give flat damage, some only
   conditional. Normalise so picks feel comparable.
-- [ ] **[bal]** **Regen potion is way too strong** → reduce heal/rate.
+- [x] **[bal]** **Regen potion** (steady-tonic) 6s → **3s** (~13 HP → ~7). *(done)*
 - [ ] **[bal]** General **item balance pass** once the above land.
 
 ## E. Inventory UX
