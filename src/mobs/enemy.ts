@@ -1777,7 +1777,15 @@ export function createEnemy(
     get dormant() {
       return dormantLocal;
     },
-    maxHp: spec.hp,
+    // Phase-aware: a multi-phase boss's max HP is the CURRENT phase's
+    // pool (16 in P1, 12 in P2 for the Marrow Sovereign), not the
+    // top-level spec.hp (which is 1 for phase-driven bosses — unused as
+    // a real HP value). The boss bar reads this every frame to scale
+    // the fill, so without this getter the bar would render at 1600%
+    // fullness in P1 and look pinned to full until the boss dies.
+    get maxHp() {
+      return currentMaxHp;
+    },
     get alive() {
       return aliveLocal;
     },
