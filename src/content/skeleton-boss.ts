@@ -27,9 +27,12 @@ export function marrowSovereignModel(): ModelSpec {
   return {
     id: 'marrow-sovereign',
     materials: {
-      // Yellowed bone — off-white with a faint emissive so the
-      // skeleton reads even in dim light. A warm rim picks the
-      // silhouette out against the dark hall.
+      // Yellowed bone — off-white with a faint emissive so the skeleton
+      // reads even in dim light. DARKNESS-REACTIVE marrow-red rim: the
+      // contour self-draws in glowing red where the hall's light doesn't
+      // reach (no torch needed), and steps back to lit bone where a brazier
+      // catches it. This is the "revealed in the dark" look as a material —
+      // he carries his own dread-glow into the black.
       bone: {
         color: 0xcdc3b4,
         roughness: 0.85,
@@ -37,7 +40,7 @@ export function marrowSovereignModel(): ModelSpec {
         emissiveIntensity: 0.4,
         flatShading: 'auto',
         dissolvable: true,
-        rim: { color: 0xc46838, power: 2.5, intensity: 0.45 },
+        rim: { color: 0xff3a1e, power: 2.2, intensity: 0.85, darkReactive: 1.0 },
       },
       // Darker bone for cracks, jaw, brow ridge, joint sockets.
       boneShadow: {

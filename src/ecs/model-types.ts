@@ -35,7 +35,19 @@ export interface MaterialDef {
    * rim). `intensity` scales the additive contribution. Implemented as
    * a per-fragment addition after lighting, so it pops on dark mobs.
    */
-  rim?: { color: number; power?: number; intensity?: number };
+  rim?: {
+    color: number; power?: number; intensity?: number;
+    /**
+     * 0..1 — make the rim DARKNESS-REACTIVE. At 0 (default) the rim is a
+     * constant edge-sheen (the blade's hot rim). At 1 the rim carries the
+     * form where scene light DOESN'T: full-strength on fragments the
+     * torches leave dark, fading to a quarter where light catches them. The
+     * "revealed in the dark, not silhouette" look as a MATERIAL property —
+     * a creature self-draws its contour in glowing colour out of black,
+     * with no light source needed.
+     */
+    darkReactive?: number;
+  };
   /**
    * If true, the material is built with a `uDissolve` uniform (initially
    * 0). Setting it >0 at runtime ramps a top-down ragged dissolve effect
