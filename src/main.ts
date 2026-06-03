@@ -82,6 +82,7 @@ import { actForDepth } from './level/acts';
 import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar } from './ui/hp-bar';
+import { createStaminaBar } from './ui/stamina-bar';
 import { createBossBar, resetBossBar } from './ui/boss-bar';
 import { createBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
@@ -631,6 +632,7 @@ onEvent((e) => {
 
 // --- HUD ---
 createHpBar();
+createStaminaBar();
 createBossBar();
 createBuffBar();
 createChargeRing();

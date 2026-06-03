@@ -63,6 +63,26 @@ export const CONFIG = {
   LOOK_SENSITIVITY: 0.004,     // touch swipe to camera rotation
   JOYSTICK_DEADZONE: 0.1,
 
+  // === STAMINA ===
+  // A second resource (separate from HP) that gates the high-value
+  // actions the playtest found drawback-free: charged melee swings and
+  // ranged shots (and, later, sprint/dodge). Abstract 0..MAX points; the
+  // HUD shows a fraction. Regenerates after a short delay since the last
+  // spend, so steady tapping never touches it but spamming the strong
+  // stuff runs you dry. NOT saved — tops back up to full in a few seconds
+  // and is reset to full on every floor load (see save-hydration).
+  STAMINA: {
+    MAX: 100,
+    REGEN_PER_SEC: 36,       // empty → full in ~2.8s of not spending
+    REGEN_DELAY_S: 0.55,     // pause after a spend before regen resumes
+    CHARGED_COST: 36,        // a charged melee swing — ~2-3 before dry
+    RANGED_COST: 32,         // one crossbow/wand shot — the ranged drawback
+    // Sprint (movement) tuning — wired in a later increment.
+    SPRINT_DRAIN_PER_SEC: 22,
+    SPRINT_MIN: 6,           // need at least this to (keep) sprinting
+    SPRINT_SPEED_MUL: 1.5,
+  },
+
   // === RENDER ===
   PIXEL_RATIO_CAP: 2,          // cap DPR on desktop (debug) — crisp
   // Mobile caps DPR lower: phones are fragment/fillrate-bound, and a 2x

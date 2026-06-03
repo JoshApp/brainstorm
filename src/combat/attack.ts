@@ -20,6 +20,7 @@ import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleP
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
+import { spendStamina } from './stamina';
 import type { AttackDirection } from '../player/viewmodel';
 
 // Joystick magnitude below this counts as "not moving" → no
@@ -254,12 +255,30 @@ export function createCombatSystem(
       if (!getEquipped('weapon')) {
         return;
       }
+      // STAMINA gates the two drawback-free actions the playtest flagged.
+      // Read the resolved weapon once at press time to branch ranged/melee.
+      const pressWeapon = getCurrentWeapon();
+      // RANGED: every shot costs stamina (the crossbow/wand drawback —
+      // "too strong, no ammo, no drawback"). Spent atomically here so the
+      // commit is the press; if you can't afford it the press is swallowed
+      // (no empty dry-swing) and the shot simply doesn't happen.
+      if (pressWeapon.ranged && !spendStamina(CONFIG.STAMINA.RANGED_COST)) {
+        return;
+      }
       // Capture any pending charge for this swing — 0 if it was a
       // tap, 0..1 if the player held to charge. The strike-phase
       // resolution below reads currentSwingCharge to scale damage,
       // reach, and cone width. Reset per-press, so chained tap-combos
       // reset back to 0 naturally on the next press.
       currentSwingCharge = consumeChargedAmount();
+      // MELEE charged swings cost stamina. If you can't afford it the
+      // hold fizzles to a normal swing rather than locking the attack out
+      // — you always get to swing, you just don't get the charged bonus.
+      // (Ranged charge is free of this; its per-shot cost above covers it,
+      // and the charge there only buys the +80% damage curve.)
+      if (currentSwingCharge > 0 && !pressWeapon.ranged && !spendStamina(CONFIG.STAMINA.CHARGED_COST)) {
+        currentSwingCharge = 0;
+      }
       // Movement intent at press time. Picks a directional move
       // override (lunge / sweep / retreat) when the joystick is
       // held — null otherwise (= normal combo step). The sword

@@ -3,6 +3,7 @@ import { setSlot, type EquipSlot } from '../player/equipment';
 import { ITEMS } from '../content/items';
 import { get as getEntity } from '../ecs/world';
 import { hydrateCharacter } from './character';
+import { resetStamina } from '../combat/stamina';
 import type { loadSave } from './run-state';
 
 // Hydrate run state (inventory, equipment, HP) from a save — or apply the
@@ -48,4 +49,8 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
   if (player?.hp) {
     player.hp.current = saveData ? saveData.hp : player.hp.base;
   }
+
+  // Stamina is not persisted — it regenerates in seconds. Start every
+  // floor (and every resume) at full so you arrive ready, not winded.
+  resetStamina();
 }

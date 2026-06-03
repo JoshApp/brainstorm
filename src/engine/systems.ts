@@ -30,6 +30,7 @@ import { tickInteractables, getInRangeInteractable } from '../interactables/syst
 import { consumeAttackPressed } from '../controls/attack-input';
 import { tickLightPool } from '../scene/light-pool';
 import { tickProjectiles } from '../combat/projectile-pool';
+import { tickStamina } from '../combat/stamina';
 import { tickHazardFields } from '../combat/hazard-field';
 import { tickXpWisps } from '../effects/xp-wisps';
 import { tickGoldCoins } from '../effects/gold-coins';
@@ -187,6 +188,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     } },
 
     { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.scaledDt); } },
+
+    // Stamina regen. 'unpaused' so it pauses with the world (menus,
+    // hit-pause); scaledDt so a charged hit's freeze doesn't refill you.
+    { name: 'stamina', phase: 'unpaused', tick(ctx) { tickStamina(ctx.scaledDt); } },
 
     // Handheld lamp flicker + bob. realDt — flicker shouldn't slow during
     // slow-mo (a frozen lamp looks broken).

@@ -13,11 +13,12 @@ multi-hit is, etc.). Don't tune one in isolation.
 ## A. Weapon & combat balance
 - [x] **[bal]** Spear reach **3.0/2.85 → 2.5/2.4** (still the longest melee, but
   trimmed toward the comfortable saber baseline). Dagger short reach kept. *(done)*
-- [ ] **[bal]** **Crossbow + wand are way too strong** — no ammo, high damage,
-  basically no drawback. Need a real cost (ammo? longer reload? the recover
-  isn't enough). Ties to the stamina **[?]** below.
-- [ ] **[?][bal]** **Charged attack is the meta** — too strong. Either nerf the
-  charge bonus, or gate it behind **stamina** (see F).
+- [x] **[bal]** **Crossbow + wand are way too strong** — no ammo, no drawback.
+  Now each shot costs **stamina** (RANGED_COST 32 / MAX 100) → ~3 shots then a
+  forced beat while it refills. Sustained fire ~1 shot/0.9s. The drawback. *(done — stamina)*
+- [x] **[bal]** **Charged attack is the meta** — now costs **stamina**
+  (CHARGED_COST 36) so you get ~2-3 before dry; out of stamina, the hold
+  fizzles to a normal swing instead of locking you out. *(done — stamina)*
 - [x] **[bal]** **Multi-hit** trimmed: sword + dagger BASIC chains are now
   single-target; cleave kept on strafe SWEEPS, hammer side-swings/smash,
   the scythe (its identity), and charged moves. *(done)*
@@ -60,11 +61,19 @@ multi-hit is, etc.). Don't tune one in isolation.
   antialiased); bag is now one-per-row with FULL names. *(done)*
 
 ## F. Movement & stamina  [?] — the big design fork
-- [ ] **[?][feat]** **Stamina system?** Friend wants **sprint / dash-dodge**,
-  and charged-attack/ranged spam needs a drawback. Stamina could gate all
-  three. Question: **feasible on mobile without cluttering the HUD?**
-  (a thin stamina ring under the reticle / round the joystick, auto-hiding
-  when full?) Decide before touching charged-attack/ranged/dodge balance.
+- [x] **[feat]** **Stamina system — CORE shipped.** New module `src/combat/stamina.ts`
+  (a `canSpend/spend/drain/regen` API), HUD gauge `src/ui/stamina-bar.ts` (thin
+  cold-steel sliver above the HP pips, auto-hides when rested, reddens near
+  empty), regen tick in the `stamina` system (pauses with the world). Gates
+  charged melee + ranged shots (see B). Resets to full on every floor load.
+  Tuning in `CONFIG.STAMINA`. *(done)*
+- [ ] **[feat]** **Sprint** — next increment. Joystick is analog (rim-push =
+  magnitude ~1), so mobile-native sprint = push the stick to the rim → drains
+  `SPRINT_DRAIN_PER_SEC`, `SPRINT_SPEED_MUL` faster. Desktop: shift. Config
+  stubs already in `CONFIG.STAMINA`. Needs the rim-push-vs-button call.
+- [ ] **[feat]** **Dash / dodge-roll** — net-new movement ability: needs an
+  input gesture (double-tap-direction? dedicated button?), i-frames, and a
+  lunge animation. Largest of the three; do after sprint.
 
 ## G. Level / world bugs
 - [ ] **[bug]** **Props float above carved holes** — prop placement doesn't
