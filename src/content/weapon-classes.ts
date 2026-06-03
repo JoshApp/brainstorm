@@ -164,6 +164,12 @@ interface ClassDefaults {
   comboWindowMs: number;
   directionalMoves?: DirectionalMoves;
   chargedMoves?: ChargedMoves;
+  /** WEIGHT multiplier on windup + recover (NOT strike). 1.0 = as
+   *  authored (light/fast); >1 = heavier, more committal. Heavies
+   *  (hammer/scythe) sit high; the baseline sword + spear get a modest
+   *  bump; daggers/whip/ranged stay at 1.0. The single knob to tune a
+   *  class's felt weight. */
+  timingMul?: number;
 }
 
 export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
@@ -219,6 +225,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.25, coneHalfAngleMul: 0.6, maxTargets: 1 },
     ],
     comboWindowMs: 380,
+    timingMul: 1.25,   // baseline blade — a touch more committal than before
     // Move-driven variants — pick by joystick direction at press time.
     // Each one is a one-off (resets combo to step 0 after firing).
     directionalMoves: {
@@ -272,6 +279,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.15, coneHalfAngleMul: 1.4, maxTargets: 3 },
     ],
     comboWindowMs: 520,
+    timingMul: 1.7,   // HEAVY — wind up, commit, recover; the slow brute
     // Hammer directional moves — the overhead smash and the directional
     // swings carry the body's momentum into the strike.
     directionalMoves: {
@@ -302,6 +310,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.30, coneHalfAngleMul: 0.85, maxTargets: 1 },
     ],
     comboWindowMs: 420,
+    timingMul: 1.15,   // long poke — slightly more deliberate than a dagger
     // Spear directional moves — the long-reach poker. Forward = an
     // even-longer lunge; strafe = a quick poke that pivots; back =
     // a fast brace.
@@ -352,6 +361,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.15, coneHalfAngleMul: 1.9, maxTargets: 4 },
     ],
     comboWindowMs: 460,
+    timingMul: 1.5,   // HEAVY — big sweeping reaps, slow to wind + recover
     directionalMoves: {
       // Forward: a downward chop with the curved tip. Single target,
       // big damage commit.
@@ -464,29 +474,25 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
 
   const finesseCrit = char.attributes.finesse * CONFIG.ATTR.FINESSE_CRIT_PER_POINT;
 
-  // Same speed multipliers apply uniformly to every combo step.
-  const timeMul = speedMul * profSpeed;
-  const combo: ResolvedComboStep[] = baseT.combo.map(step => ({
-    pose: step.pose,
-    windupTime:  step.windup  * timeMul,
-    strikeTime:  step.strike  * timeMul,
-    recoverTime: step.recover * timeMul,
-    reachMul: step.reachMul ?? 1,
-    coneHalfAngleMul: step.coneHalfAngleMul ?? 1,
-    maxTargets: step.maxTargets ?? 1,
-  }));
-
-  // Directional move resolution mirrors the combo resolution — same
-  // proficiency-speed multiplier, no special-case math.
+  // WEIGHT: each class carries a timingMul that stretches the COMMITTAL
+  // parts of a swing — windup + recover — WITHOUT touching the strike
+  // (the hit window stays stable, so detection/balance don't shift).
+  // Heavy weapons (hammer/scythe) get the slow "wind up… SNAP… recover"
+  // feel; light weapons stay fast. attackSpeed + proficiency still apply
+  // on top. Tune the per-class numbers in WEAPON_CLASS_DEFAULTS.
+  const timingMul = baseT.timingMul ?? 1;
+  const windRecMul = speedMul * profSpeed * timingMul;   // windup + recover
+  const strikeMul  = speedMul * profSpeed;               // strike (hit window) — unscaled by weight
   const resolveStep = (step: ComboStep): ResolvedComboStep => ({
     pose: step.pose,
-    windupTime:  step.windup  * timeMul,
-    strikeTime:  step.strike  * timeMul,
-    recoverTime: step.recover * timeMul,
+    windupTime:  step.windup  * windRecMul,
+    strikeTime:  step.strike  * strikeMul,
+    recoverTime: step.recover * windRecMul,
     reachMul: step.reachMul ?? 1,
     coneHalfAngleMul: step.coneHalfAngleMul ?? 1,
     maxTargets: step.maxTargets ?? 1,
   });
+  const combo: ResolvedComboStep[] = baseT.combo.map(resolveStep);
   const directionalMoves = baseT.directionalMoves ? {
     forward:     baseT.directionalMoves.forward     && resolveStep(baseT.directionalMoves.forward),
     strafeLeft:  baseT.directionalMoves.strafeLeft  && resolveStep(baseT.directionalMoves.strafeLeft),

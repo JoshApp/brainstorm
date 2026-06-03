@@ -8,6 +8,18 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-03",
     "entries": [
       {
+        "tag": "content",
+        "text": "Shrouded relic — the cursed mystery gamble (find + reveal)"
+      },
+      {
+        "tag": "add",
+        "text": "Add 5 sharp-trade cursed items (risk/reward)"
+      },
+      {
+        "tag": "tune",
+        "text": "Stats v2 (Stage 2): Lore signature — afflictions last longer & tick harder"
+      },
+      {
         "tag": "tune",
         "text": "Stats v2 (Stage 1)"
       },
@@ -200,18 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Boss encounter container (source of truth) + 2 phases + a real Dark Souls fog gate"
-      },
-      {
-        "tag": "tune",
-        "text": "Lash tentacle VFX + remove the 50% bar marker"
-      },
-      {
-        "tag": "fix",
-        "text": "Lash = a slime tentacle (lean + body-elongation deform); prince stuck fix + softer hop"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss feel pass: desync, calmer cadence, lash windup, glowing prince cores, split spit, taller arena"
       }
     ]
   }
