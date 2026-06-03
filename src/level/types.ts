@@ -398,7 +398,7 @@ export type DoorSpec = {
    */
   unlock?:
     | { kind: 'cleared'; roomIds: string[] }
-    | { kind: 'arena'; roomIds: string[] };
+    | { kind: 'arena'; roomIds: string[]; trigger?: 'cross' | 'offering' };
 };
 
 /**
@@ -423,10 +423,12 @@ export type OpeningSpec = {
   edge?: Edge;                 // provenance — which vault edge (fog-gate needs it)
   /** Segment endpoints (transitional — derived from centre/rotY/width). */
   ax?: number; az?: number; bx?: number; bz?: number;
-  /** Portcullis unlock condition (gate-cleared / gate-arena). */
+  /** Portcullis unlock condition (gate-cleared / gate-arena). For an arena,
+   *  `trigger` selects what seals it: 'cross' (default — the trap, player
+   *  walks in) or 'offering' (the challenge — a loot offering activates it). */
   unlock?:
     | { kind: 'cleared'; roomIds: string[] }
-    | { kind: 'arena'; roomIds: string[] };
+    | { kind: 'arena'; roomIds: string[]; trigger?: 'cross' | 'offering' };
   /** Fog-gate tint (per-boss identity). */
   color?: number;
   /** Hinged-door swing config. */
