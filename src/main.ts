@@ -19,7 +19,7 @@ import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthr
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setOutlineEnabled } from './style/render-target';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
@@ -176,6 +176,8 @@ scene.add(ambient);
 installBandedLighting(getSettings().bandedLighting);
 const materials = buildMaterials();
 initRenderPipeline(renderer);
+// Apply the persisted ink-outline preference (the pipeline defaults it on).
+setOutlineEnabled(getSettings().outlines);
 
 // --- Camera ---
 const camera = createFirstPersonCamera();
@@ -900,6 +902,7 @@ onSettingsChanged((s) => {
   setBossEncounterReadoutVisible(s.debugBossReadout);
   setShadowMode(s.shadows);
   setAdaptiveResolution(s.adaptiveResolution && !isDesktopLike());
+  setOutlineEnabled(s.outlines);
   // Banded lighting toggle: swap the global lighting chunk, then force every
   // visible material to RECOMPILE so it re-reads the new chunk. Just setting
   // needsUpdate isn't enough — Three.js's program cache keys off material

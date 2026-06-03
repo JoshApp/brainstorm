@@ -72,6 +72,10 @@ export interface Settings {
    *  into hard bands for a graphic PSX-chiaroscuro look. Subtle in the dark
    *  dungeon; a stylistic taste toggle. */
   bandedLighting: boolean;
+  /** Ink outline — depth-silhouette contour lines drawn in the blit, so the
+   *  untextured primitive geometry reads as a deliberate drawing (cel +
+   *  outline). Stylistic taste toggle. */
+  outlines: boolean;
 }
 
 export type ShadowMode = 'off' | 'hero' | 'single' | 'all';
@@ -112,6 +116,7 @@ const DEFAULTS: Settings = {
   adaptiveResolution: true,
   portalCulling: false,
   bandedLighting: true,
+  outlines: true,
 };
 
 let current: Settings = load();
