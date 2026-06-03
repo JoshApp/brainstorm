@@ -100,40 +100,56 @@ export function marrowSovereignModel(): ModelSpec {
 // ~12% (cosmetic part-break in the spec), then phase 2 takes over.
 
 function buildLowerTorso(): PartSpec[] {
-  // Y coordinates (relative to rig, which sits high mid-torso):
-  //   pelvis:  -0.55     (wide hip block)
-  //   hip:     -0.70     (ball joints)
-  //   thigh:   -1.10     (capsule centre)
-  //   knee:    -1.55     (ball)
-  //   shin:    -2.05     (capsule centre)
-  //   ankle:   -2.50     (ball)
-  //   foot:    -2.62     (heavy planted box)
-  // So foot-bottom sits ~2.65 below rig. Rig at y=1.85 → foot near
-  // floor. Skull top ~1.2 above rig → ~3.05 above floor.
+  // Y coordinates relative to the rig (which sits high mid-torso at y=1.85).
+  // Foot-bottom lands ~2.65 below the rig so it rests near the floor; skull
+  // top sits ~1.2 above. Keep the foot height when retuning so he stays
+  // grounded.
   const parts: PartSpec[] = [];
 
-  // Pelvis — wider angular block bridging the legs.
-  parts.push({ name: 'pelvis', parent: 'rig', kind: 'box', pos: [0, -0.55, 0], size: [0.46, 0.16, 0.30], mat: 'bone' });
-  // Sacral wedge sitting on top — reads as the base of the spine.
-  parts.push({ parent: 'rig', kind: 'box', pos: [0, -0.43, -0.02], size: [0.18, 0.10, 0.20], mat: 'boneShadow' });
+  // ── Pelvis — a bony GIRDLE, not a block: a central body with two iliac
+  //    wings flaring up-and-out, a low pubic bridge, and the sacrum seated
+  //    where the spine meets it. Stays through phase 2 (the crawler keeps
+  //    its hips) — only the legs below are named for hiding.
+  parts.push({ name: 'pelvis', parent: 'rig', kind: 'box', pos: [0, -0.52, 0], size: [0.24, 0.15, 0.22], mat: 'bone' });
+  parts.push({ parent: 'rig', kind: 'box', pos: [-0.215, -0.45, -0.01], rot: [0, 0, 0.55], size: [0.20, 0.09, 0.19], mat: 'bone' });   // L iliac wing
+  parts.push({ parent: 'rig', kind: 'box', pos: [ 0.215, -0.45, -0.01], rot: [0, 0, -0.55], size: [0.20, 0.09, 0.19], mat: 'bone' });  // R iliac wing
+  parts.push({ parent: 'rig', kind: 'box', pos: [0, -0.63, 0.02], size: [0.30, 0.07, 0.15], mat: 'boneShadow' });                       // pubic / ischium bridge
+  parts.push({ parent: 'rig', kind: 'box', pos: [0, -0.40, -0.05], size: [0.15, 0.13, 0.15], mat: 'boneShadow' });                      // sacrum
 
-  for (const side of [-1, 1] as const) {
-    const name = side < 0 ? 'leg-left' : 'leg-right';
-    // Hip ball joint.
-    parts.push({ name, parent: 'rig', kind: 'sphere', pos: [side * 0.18, -0.70, 0], radius: 0.08, segments: [10, 8], mat: 'bone' });
-    // Thigh — long capsule angled very slightly outward (gaunt stance).
-    parts.push({ name, parent: 'rig', kind: 'capsule', pos: [side * 0.20, -1.10, 0.02], radius: 0.060, height: 0.62, mat: 'bone' });
-    // Knee cap.
-    parts.push({ name, parent: 'rig', kind: 'sphere', pos: [side * 0.22, -1.55, 0.02], radius: 0.062, segments: [10, 8], mat: 'bone' });
-    // Shin — slightly thinner than the thigh.
-    parts.push({ name, parent: 'rig', kind: 'capsule', pos: [side * 0.22, -2.05, 0.03], radius: 0.052, height: 0.66, mat: 'bone' });
-    // Ankle.
-    parts.push({ name, parent: 'rig', kind: 'sphere', pos: [side * 0.22, -2.50, 0.05], radius: 0.048, segments: [8, 6], mat: 'boneShadow' });
-    // Foot — heavier than current; reads "planted."
-    parts.push({ name, parent: 'rig', kind: 'box', pos: [side * 0.22, -2.62, 0.10], size: [0.16, 0.08, 0.28], mat: 'bone' });
-  }
-
+  parts.push(...buildLeg(-1));
+  parts.push(...buildLeg(1));
   return parts;
+}
+
+// One gaunt leg — femoral head, a faintly-bowed femur, a knobbly knee
+// (two condyles + a kneecap), the tibia paired with a thin parallel FIBULA,
+// an ankle knob, and a boned foot (heel + metatarsals + toe stubs). EVERY
+// primitive carries the leg's name so the phase system hides the whole limb
+// intact when it breaks.
+function buildLeg(side: -1 | 1): PartSpec[] {
+  const name = side < 0 ? 'leg-left' : 'leg-right';
+  const x = side * 0.19;
+  const p: PartSpec[] = [];
+  // Femoral head into the hip socket.
+  p.push({ name, parent: 'rig', kind: 'sphere', pos: [x, -0.70, 0], radius: 0.072, segments: [10, 8], mat: 'bone' });
+  // Femur — long shaft, faintly bowed outward.
+  p.push({ name, parent: 'rig', kind: 'capsule', pos: [x + side * 0.012, -1.08, 0.02], rot: [0, 0, side * 0.05], radius: 0.050, height: 0.62, mat: 'bone' });
+  // Knee — two condyle balls + a small kneecap in front.
+  p.push({ name, parent: 'rig', kind: 'sphere', pos: [x - 0.028, -1.50, 0.02], radius: 0.046, segments: [8, 6], mat: 'bone' });
+  p.push({ name, parent: 'rig', kind: 'sphere', pos: [x + 0.028, -1.50, 0.02], radius: 0.046, segments: [8, 6], mat: 'bone' });
+  p.push({ name, parent: 'rig', kind: 'sphere', pos: [x, -1.49, 0.075], radius: 0.032, segments: [8, 6], mat: 'boneShadow' });
+  // Tibia (shin) — the main lower bone.
+  p.push({ name, parent: 'rig', kind: 'capsule', pos: [x, -1.98, 0.03], radius: 0.044, height: 0.64, mat: 'bone' });
+  // Fibula — thin parallel bone, the boniest tell.
+  p.push({ name, parent: 'rig', kind: 'capsule', pos: [x + side * 0.052, -1.98, 0.0], radius: 0.018, height: 0.60, mat: 'boneShadow' });
+  // Ankle knob.
+  p.push({ name, parent: 'rig', kind: 'sphere', pos: [x, -2.44, 0.04], radius: 0.042, segments: [8, 6], mat: 'bone' });
+  // Foot — heel/tarsus, metatarsal plate (forward), toe stubs. Bottom kept
+  // at the old foot height so he stays grounded.
+  p.push({ name, parent: 'rig', kind: 'box', pos: [x, -2.58, -0.02], size: [0.10, 0.08, 0.11], mat: 'bone' });
+  p.push({ name, parent: 'rig', kind: 'box', pos: [x, -2.62, 0.13], size: [0.13, 0.06, 0.22], mat: 'bone' });
+  p.push({ name, parent: 'rig', kind: 'box', pos: [x, -2.615, 0.26], size: [0.13, 0.04, 0.06], mat: 'boneShadow' });
+  return p;
 }
 
 // ── Upper torso ──────────────────────────────────────────────────────
@@ -144,68 +160,87 @@ function buildLowerTorso(): PartSpec[] {
 function buildUpperTorso(): PartSpec[] {
   const parts: PartSpec[] = [];
 
-  // ── Spine — five vertebrae from pelvis to neck.
-  for (let i = 0; i < 5; i++) {
-    const y = -0.30 + i * 0.16;
-    parts.push({ parent: 'rig', kind: 'sphere', pos: [0, y, 0], radius: 0.058, segments: [8, 6], mat: 'bone' });
+  // ── Spine — a column of knobbly vertebrae from the sacrum to the neck,
+  //    each with a small spinous process so it reads as a bony spine, not
+  //    a string of beads.
+  for (let i = 0; i < 7; i++) {
+    const y = -0.32 + i * 0.115;
+    parts.push({ parent: 'rig', kind: 'sphere', pos: [0, y, -0.02], radius: 0.050, segments: [8, 6], mat: 'bone' });
+    parts.push({ parent: 'rig', kind: 'box', pos: [0, y, -0.07], size: [0.03, 0.055, 0.045], mat: 'boneShadow' });
   }
 
-  // ── Ribcage. The glow sits CONTAINED behind the ribs — smaller and
-  //    further back than the king's core, so the ribs frame it rather
-  //    than the glow swallowing the silhouette. The chest is where the
-  //    player aims; the ribs are what they see.
-  // Core marrow glow — contained inside the chest cavity.
-  parts.push({ name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0.18, 0.02], scale: [1.0, 1.3, 0.55], radius: 0.13, segments: [16, 12], mat: 'core' });
-  // Sternum bar (wider, thinner-front).
-  parts.push({ parent: 'rig', kind: 'box', pos: [0, 0.18, 0.20], size: [0.08, 0.44, 0.04], mat: 'bone' });
-  // Ribs curving from spine to sternum — four per side now (was three).
+  // ── Ribcage — a curved CAGE framing the contained marrow glow. The glow
+  //    sits deep behind the ribs so they read as the silhouette and the
+  //    fire as something caught inside it.
+  parts.push({ name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0.20, 0.0], scale: [1.0, 1.35, 0.6], radius: 0.12, segments: [16, 12], mat: 'core' });
+  // Sternum — a flat bone plate down the chest front, widening at the top.
+  parts.push({ parent: 'rig', kind: 'box', pos: [0, 0.20, 0.21], size: [0.06, 0.40, 0.035], mat: 'bone' });
+  parts.push({ parent: 'rig', kind: 'box', pos: [0, 0.40, 0.19], size: [0.13, 0.07, 0.04], mat: 'bone' });   // manubrium
   parts.push(...buildRibs());
-  // Clavicles — a small bone bar each side bridging the spine to the shoulders.
-  parts.push({ parent: 'rig', kind: 'capsule', pos: [-0.20, 0.42, 0.10], rot: [0, 0, -0.4], radius: 0.024, height: 0.20, mat: 'bone' });
-  parts.push({ parent: 'rig', kind: 'capsule', pos: [ 0.20, 0.42, 0.10], rot: [0, 0,  0.4], radius: 0.024, height: 0.20, mat: 'bone' });
 
-  // ── Shoulders + arms.
-  // Left shoulder + arm — hangs at the side, fingers curled.
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [-0.38, 0.42, 0], radius: 0.10, segments: [12, 10], mat: 'bone' });
-  parts.push({ parent: 'rig', kind: 'capsule', pos: [-0.46, 0.10, 0.05], rot: [0, 0, 0.30], radius: 0.045, height: 0.50, mat: 'bone' });  // upper arm
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [-0.56, -0.20, 0.07], radius: 0.045, segments: [8, 6], mat: 'bone' });                // elbow
-  parts.push({ parent: 'rig', kind: 'capsule', pos: [-0.60, -0.50, 0.10], rot: [0, 0, 0.12], radius: 0.038, height: 0.46, mat: 'bone' }); // forearm
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [-0.62, -0.74, 0.12], radius: 0.065, segments: [8, 6], mat: 'bone' });                // fist
+  // ── Shoulder girdle — clavicles bridging the spine to the shoulders +
+  //    angled scapula wings behind.
+  parts.push({ parent: 'rig', kind: 'capsule', pos: [-0.20, 0.45, 0.11], rot: [0, 0, -0.42], radius: 0.022, height: 0.22, mat: 'bone' });
+  parts.push({ parent: 'rig', kind: 'capsule', pos: [ 0.20, 0.45, 0.11], rot: [0, 0,  0.42], radius: 0.022, height: 0.22, mat: 'bone' });
+  parts.push({ parent: 'rig', kind: 'box', pos: [-0.31, 0.36, -0.10], rot: [0, -0.45, 0.22], size: [0.13, 0.19, 0.04], mat: 'boneShadow' });
+  parts.push({ parent: 'rig', kind: 'box', pos: [ 0.31, 0.36, -0.10], rot: [0,  0.45, -0.22], size: [0.13, 0.19, 0.04], mat: 'boneShadow' });
 
-  // Right shoulder + arm — gripping the scythe (it's parented to scytheHand).
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [ 0.38, 0.42, 0], radius: 0.10, segments: [12, 10], mat: 'bone' });
-  parts.push({ parent: 'rig', kind: 'capsule', pos: [ 0.40, 0.12, 0.05], rot: [0, 0, -0.22], radius: 0.045, height: 0.46, mat: 'bone' }); // upper arm
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [ 0.42, -0.14, 0.08], radius: 0.045, segments: [8, 6], mat: 'bone' });                // elbow
-  parts.push({ parent: 'rig', kind: 'capsule', pos: [ 0.42, -0.40, 0.10], rot: [0.4, 0, -0.05], radius: 0.038, height: 0.42, mat: 'bone' }); // forearm
-  // (no separate fist — the scythe haft visually emerges from the hand)
+  parts.push(...buildArm(-1));
+  parts.push(...buildArm(1));
 
-  // ── Neck — two small vertebrae stacked above the clavicles.
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [0, 0.58, 0], radius: 0.050, segments: [8, 6], mat: 'bone' });
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [0, 0.66, 0], radius: 0.048, segments: [8, 6], mat: 'bone' });
+  // ── Neck — three vertebrae stacked to the skull.
+  for (let i = 0; i < 3; i++) {
+    parts.push({ parent: 'rig', kind: 'sphere', pos: [0, 0.55 + i * 0.06, 0], radius: 0.046 - i * 0.003, segments: [8, 6], mat: 'bone' });
+  }
 
-  // ── Skull — oversized for a death's-head read from across the hall.
+  // ── Skull — the death's-head (see buildSkull).
   parts.push(...buildSkull());
 
   return parts;
 }
 
-/** Four ribs per side, curving forward from the spine to the sternum. */
+// One arm — shoulder ball, humerus, knobbly elbow, the TWO forearm bones
+// (radius + ulna, the boniest read), and — on the left — a skeletal hand of
+// palm + finger stubs. The right arm reaches toward the scytheHand slot so
+// the haft reads as gripped. Arms are unnamed: the crawler keeps them.
+function buildArm(side: -1 | 1): PartSpec[] {
+  const x = side * 0.33;
+  const p: PartSpec[] = [];
+  // Shoulder ball (humeral head).
+  p.push({ parent: 'rig', kind: 'sphere', pos: [x, 0.42, 0], radius: 0.082, segments: [12, 10], mat: 'bone' });
+  // Humerus — upper arm, angled out from the shoulder.
+  p.push({ parent: 'rig', kind: 'capsule', pos: [x + side * 0.05, 0.12, 0.04], rot: [0, 0, side * 0.26], radius: 0.042, height: 0.46, mat: 'bone' });
+  // Elbow knob.
+  p.push({ parent: 'rig', kind: 'sphere', pos: [x + side * 0.13, -0.16, 0.06], radius: 0.05, segments: [8, 6], mat: 'bone' });
+  // Forearm — radius + ulna, the boniest tell. Right arm tucks forward to
+  // the haft; left hangs a touch more open.
+  const fpitch = side > 0 ? 0.45 : 0.12;
+  p.push({ parent: 'rig', kind: 'capsule', pos: [x + side * 0.15, -0.44, 0.11], rot: [fpitch, 0, side * 0.06], radius: 0.034, height: 0.44, mat: 'bone' });
+  p.push({ parent: 'rig', kind: 'capsule', pos: [x + side * 0.195, -0.44, 0.08], rot: [fpitch, 0, side * 0.06], radius: 0.025, height: 0.42, mat: 'boneShadow' });
+  if (side < 0) {
+    // Left hand — carpal palm + three finger bones, fingers curling.
+    p.push({ parent: 'rig', kind: 'box', pos: [x + side * 0.17, -0.71, 0.15], size: [0.085, 0.09, 0.05], mat: 'bone' });
+    for (let i = -1; i <= 1; i++) {
+      p.push({ parent: 'rig', kind: 'capsule', pos: [x + side * 0.17 + i * 0.026, -0.80, 0.17], rot: [0.4, 0, 0], radius: 0.011, height: 0.085, mat: 'boneShadow' });
+    }
+  }
+  return p;
+}
+
+/** Five ribs per side, each in two angled segments so it CURVES from the
+ *  spine out and forward to the sternum — a cage, not a fence. The bottom
+ *  pair are short "floating" ribs. */
 function buildRibs(): PartSpec[] {
   const ribs: PartSpec[] = [];
-  for (let i = 0; i < 4; i++) {
-    const y = 0.34 - i * 0.10;          // stacked top → bottom
-    const w = 0.24 + i * 0.015;         // slightly wider toward the bottom
+  for (let i = 0; i < 5; i++) {
+    const y = 0.40 - i * 0.105;
+    const floating = i >= 4;
+    const w = 0.21 + i * 0.012 - (floating ? 0.07 : 0);
     for (const sx of [-1, 1] as const) {
-      ribs.push({
-        parent: 'rig',
-        kind: 'cylinder',
-        pos: [sx * w * 0.5, y, 0.08],
-        rot: [0.38, 0, sx * 0.95],
-        radius: 0.014,
-        height: 0.32,
-        segments: 6,
-        mat: 'bone',
-      });
+      // Back segment — leaves the spine, sweeping out + a touch forward.
+      ribs.push({ parent: 'rig', kind: 'capsule', pos: [sx * w * 0.34, y + 0.012, -0.05], rot: [0.18, 0, sx * 1.15], radius: 0.014, height: 0.18, mat: 'bone' });
+      // Front segment — curving in toward the sternum.
+      ribs.push({ parent: 'rig', kind: 'capsule', pos: [sx * w * 0.82, y - 0.02, 0.11], rot: [0.5, sx * 0.5, sx * 0.7], radius: 0.013, height: floating ? 0.14 : 0.20, mat: 'bone' });
     }
   }
   return ribs;
