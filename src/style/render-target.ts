@@ -45,9 +45,6 @@ const HORROR_BLIT_FRAG = `
   uniform vec2 uResolution;
   uniform float uDarkAdapt;  // eye dark-adaptation, 0 = none .. 1 = full dark
   uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
-  uniform float uBandCount;  // banded-shading step count (hard chiaroscuro)
-  uniform float uBandAmount; // 0 = smooth, 1 = fully banded
-  uniform vec3  uShadowTint; // multiplier the deepest bands drift toward (cool shadow)
   varying vec2 vUv;
 
   // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
@@ -134,21 +131,6 @@ const HORROR_BLIT_FRAG = `
     col += uDarkAdapt * vec3(0.034, 0.036, 0.040) * darkness;
     col *= 1.0 + uDarkAdapt * 0.55 * darkness;
 
-    // BANDED SHADING — step the shadow falloff into hard PSX bands (the
-    // stepped light-to-dark you'd paint, not a smooth gradient), preserving
-    // hue. Shadow-WEIGHTED: full in the dark, fading out before the
-    // highlights so bloom + embers stay smooth. The deepest bands drift
-    // toward uShadowTint — warm light, cool shadow, classic chiaroscuro.
-    {
-      float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
-      if (luma > 0.0008) {
-        float stepped = (floor(luma * uBandCount) + 0.5) / uBandCount;
-        float w = (1.0 - smoothstep(0.30, 0.72, luma)) * uBandAmount;
-        col *= mix(luma, stepped, w) / luma;
-        col = mix(col, col * uShadowTint, w * (1.0 - smoothstep(0.0, 0.5, luma)));
-      }
-    }
-
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;
     float d = bayer(pixCoord);
@@ -187,18 +169,6 @@ const BLOOM_THRESHOLD = 0.55;   // linear luma above which a pixel blooms
 const BLOOM_STRENGTH = 1.05;    // how much bloom adds back in the blit
 const BLOOM_BLUR_STEPS = 2;     // H+V blur pairs (more = wider, softer halo)
 let bloomEnabled = true;
-
-// Banded shading (step 2) — hard chiaroscuro on the shadow falloff.
-const BAND_COUNT = 4.0;                              // hard light→dark steps
-const BAND_AMOUNT = 0.7;                             // 0 = smooth, 1 = fully banded
-const SHADOW_TINT: [number, number, number] = [0.84, 0.90, 1.08];  // cool-blue shadow drift
-let bandedEnabled = true;
-
-/** Toggle banded shading (A/B the chiaroscuro). */
-export function setBandedEnabled(on: boolean): void {
-  bandedEnabled = on;
-  if (blitMaterial) blitMaterial.uniforms.uBandAmount.value = on ? BAND_AMOUNT : 0;
-}
 
 let bloomA: THREE.WebGLRenderTarget | null = null;
 let bloomB: THREE.WebGLRenderTarget | null = null;
@@ -290,9 +260,6 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
       uDarkAdapt: { value: 0 },
       uInspect: { value: 0 },
-      uBandCount: { value: BAND_COUNT },
-      uBandAmount: { value: bandedEnabled ? BAND_AMOUNT : 0 },
-      uShadowTint: { value: new THREE.Color(SHADOW_TINT[0], SHADOW_TINT[1], SHADOW_TINT[2]) },
     },
     vertexShader: HORROR_BLIT_VERT,
     fragmentShader: HORROR_BLIT_FRAG,
