@@ -70,10 +70,16 @@ multi-hit is, etc.). Don't tune one in isolation.
 - [ ] **[bug]** **Props float above carved holes** — prop placement doesn't
   account for the floor holes (related to the boss-hole carving). Don't
   place props over hole cells.
-- [ ] **[bug]** **Arena door never reopened** after the arena looked cleared
-  (clear-detection or the reopen trigger failed).
-- [ ] **[bug]** **Arena gate only sealed ONE random entrance** — an arena must
-  seal **ALL** entrances on engage and reopen them ALL on clear.
+- [x] **[bug]** **Arena door never reopened** — root cause: a wave cleared
+  only when every spawned mob was *dead*, so one unreachable mob (fell in a
+  hole / slipped an entrance / wedged on a prop) froze the gate forever.
+  Fixed (arena-waves.ts): a mob also counts as resolved if it *escaped the
+  arena bounds*, plus a 75s hard-timeout backstop. *(done)*
+- [ ] **[bug]** **Arena gate only sealed ONE random entrance** — proper fix is
+  level-gen (seal ALL openings of an arena room on engage, reopen all on
+  clear). PARTIALLY mitigated by the escape-resolve above (an escapee no
+  longer soft-locks), but the seal-all-entrances is still TODO (overlaps the
+  procgen/vault layer — coordinate).
 - [ ] **[bug]** **Levels lost on reload** — save/persistence not restoring the
   current floor properly.
 

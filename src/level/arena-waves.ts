@@ -50,6 +50,13 @@ const TELEGRAPH_S = 1.2;   // summon windup before a mob materialises
 const PRE_DELAY_S = 0.5;   // beat after the slam before the first wave
 const LULL_S = 1.1;        // breather between cleared waves
 const MIN_SPAWN_DIST = 2.5; // keep summons off the player's face
+// Anti-softlock: a wave used to clear ONLY when every spawned mob was
+// dead, so one unreachable mob (fell in a carved floor hole, slipped an
+// unsealed entrance, wedged behind a prop) froze the gate down forever.
+// Now a mob also counts as "resolved" if it has left the arena bounds,
+// and a hard timeout force-clears a wave as a last resort.
+const ARENA_ESCAPE_MARGIN = 2.0; // m outside the rect = escaped/fell, not fightable
+const FIGHT_TIMEOUT_S = 75;      // backstop: a 2–4 mob wave never legitimately takes this long
 
 export function createArenaController(opts: ArenaControllerOpts): ArenaController {
   type Phase = 'idle' | 'lull' | 'telegraph' | 'fighting' | 'done';
@@ -59,6 +66,14 @@ export function createArenaController(opts: ArenaControllerOpts): ArenaControlle
   let telegraphs: SummonTelegraph[] = [];
   let pending: Array<{ enemyId: string; pos: THREE.Vector3 }> = [];
   let waveEnemies: Enemy[] = [];
+  let fightTimer = 0;   // time the current wave has been in 'fighting'
+
+  // Is a position still inside the arena (with slop)? A mob well outside
+  // has escaped/fallen and can't be fought — it must not block the gate.
+  function inArena(p: THREE.Vector3): boolean {
+    return Math.abs(p.x - opts.rect.x) <= opts.rect.w / 2 + ARENA_ESCAPE_MARGIN
+        && Math.abs(p.z - opts.rect.z) <= opts.rect.d / 2 + ARENA_ESCAPE_MARGIN;
+  }
 
   function pickSpawnPoint(playerPos: THREE.Vector3): THREE.Vector3 {
     const hw = opts.rect.w / 2 - 0.8;
@@ -112,6 +127,7 @@ export function createArenaController(opts: ArenaControllerOpts): ArenaControlle
     telegraphs = [];
     pending = [];
     phase = 'fighting';
+    fightTimer = 0;
   }
 
   return {
@@ -136,11 +152,14 @@ export function createArenaController(opts: ArenaControllerOpts): ArenaControlle
           break;
         }
         case 'fighting': {
-          // Wave clears when every mob it spawned is dead. Require >0 spawned
-          // so a (bug) empty wave can't instantly "clear" and blow through the
-          // whole gauntlet in a few frames — that would recreate the very
-          // gate-reopens-immediately bug this system exists to fix.
-          if (waveEnemies.length > 0 && waveEnemies.every((e) => !e.alive)) {
+          fightTimer += dt;
+          // Wave clears when every spawned mob is RESOLVED — dead OR escaped
+          // the arena bounds (fell in a hole / slipped an entrance), so an
+          // unreachable straggler can't freeze the gate. Require >0 spawned
+          // so a (bug) empty wave can't instantly "clear". A hard timeout
+          // force-clears as a last-resort anti-softlock.
+          const allResolved = waveEnemies.every((e) => !e.alive || !inArena(e.position));
+          if (waveEnemies.length > 0 && (allResolved || fightTimer >= FIGHT_TIMEOUT_S)) {
             phase = 'lull';
             timer = LULL_S;
           }
