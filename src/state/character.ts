@@ -1,6 +1,7 @@
 import { on as onEvent } from '../broadcast/event-bus';
 import type { GameEvent } from '../broadcast/event-bus';
 import { ITEMS } from '../content/items';
+import { CONFIG } from '../config';
 
 // Character state — per-run "who is this delver becoming."
 //
@@ -105,6 +106,21 @@ export function onCharacterChanged(fn: Listener): () => void {
 export function resetCharacter(): void {
   state = baseline();
   notify();
+}
+
+// ── Lore signature: affliction scaling ───────────────────────────
+// The player's damage-over-time statuses last longer + tick harder
+// with Lore. Read live (cheap) at the buff apply + tick sites — Lore
+// only changes at the harbor, so no snapshotting needed.
+
+/** Duration multiplier for a player-applied affliction (1.0 at 0 Lore). */
+export function loreAfflictionDurationMul(): number {
+  return 1 + state.attributes.lore * CONFIG.ATTR.LORE_AFFLICT_DURATION_PER_POINT;
+}
+
+/** DoT tick-damage multiplier for a player-sourced affliction. */
+export function loreAfflictionPotencyMul(): number {
+  return 1 + state.attributes.lore * CONFIG.ATTR.LORE_AFFLICT_POTENCY_PER_POINT;
 }
 
 export function gainProficiency(kind: ProficiencyKind, delta = 1): void {

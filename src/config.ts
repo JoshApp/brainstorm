@@ -156,6 +156,10 @@ export const CONFIG = {
     FINESSE_CRIT_PER_POINT: 0.02,     // +2% crit chance / point (Finesse floor)
     GRIT_HP_PER_POINT: 3,             // +3 max HP / point (Grit floor)
     GRIT_ARMOR_SCALE_PER_POINT: 0.03, // equipped armor ×(1 + 0.03·Grit)
+    // Lore SIGNATURE — the player's afflictions (DoT statuses: poison/
+    // bleed/burn) last longer AND tick harder. The hexer build.
+    LORE_AFFLICT_DURATION_PER_POINT: 0.05, // +5% status duration / point
+    LORE_AFFLICT_POTENCY_PER_POINT:  0.04, // +4% DoT tick damage / point
   },
 
   // === PLAYER HEALTH ===

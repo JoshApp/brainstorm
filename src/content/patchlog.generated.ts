@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Stats v2 (Stage 1)"
+      },
+      {
+        "tag": "tune",
         "text": "Challenge arena — voluntary loot trial (the other arena kind)"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Boss feel pass: desync, calmer cadence, lash windup, glowing prince cores, split spit, taller arena"
-      },
-      {
-        "tag": "tune",
-        "text": "Slime King: chase hops, a lash attack, smaller core + the split is now a 3-bar boss fight"
       }
     ]
   }
