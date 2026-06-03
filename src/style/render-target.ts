@@ -29,6 +29,34 @@ let blitCamera: THREE.OrthographicCamera | null = null;
 let blitMaterial: THREE.ShaderMaterial | null = null;
 let rendererRef: THREE.WebGLRenderer | null = null;
 
+// Held viewmodels (weapon / lamp / offhand) registered for the depth-only
+// pass in renderWithStyle — see the note there. They render depthTest:false
+// for colour (always on top), so they need a separate pass to put their near
+// depth in the buffer or the depth-keyed post effects paint the world onto
+// them.
+const viewmodelRoots: THREE.Object3D[] = [];
+/** Register a held-viewmodel root for the near-depth pass. Idempotent. */
+export function registerViewmodel(root: THREE.Object3D): void {
+  if (!viewmodelRoots.includes(root)) viewmodelRoots.push(root);
+}
+/** Drop a viewmodel root (teardown). */
+export function unregisterViewmodel(root: THREE.Object3D): void {
+  const i = viewmodelRoots.indexOf(root);
+  if (i >= 0) viewmodelRoots.splice(i, 1);
+}
+function setMeshDepthOnly(o: THREE.Object3D): void {
+  const mesh = o as THREE.Mesh;
+  if (!mesh.isMesh) return;
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  for (const m of mats) { m.colorWrite = false; m.depthTest = true; m.depthWrite = true; }
+}
+function restoreMeshColor(o: THREE.Object3D): void {
+  const mesh = o as THREE.Mesh;
+  if (!mesh.isMesh) return;
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  for (const m of mats) { m.colorWrite = true; m.depthTest = false; m.depthWrite = false; }
+}
+
 const HORROR_BLIT_VERT = `
   varying vec2 vUv;
   void main() {
@@ -423,6 +451,27 @@ export function renderWithStyle(
     renderer.setRenderTarget(lowResTarget);
     renderer.clear();
     renderer.render(scene, camera);
+
+    // VIEWMODEL DEPTH PASS — the held weapon / lamp / offhand render
+    // depthTest:false (always on top of walls, no clip), which per GL means
+    // they NEVER write depth. So the depth-keyed post passes below (distance
+    // crush + fog inscatter) read the BACKGROUND depth behind the blade and
+    // paint the corridor/stairwell/mob onto it. Re-render the viewmodels
+    // DEPTH-ONLY (colorWrite off, test+write on) so the buffer carries their
+    // true near depth and the post passes treat them as the foreground they
+    // are. Colour is untouched (already drawn correctly above). Solid meshes
+    // only — additive flame sprites (not isMesh) are skipped.
+    if (viewmodelRoots.length) {
+      const prevAutoClear = renderer.autoClear;
+      renderer.autoClear = false;
+      for (const vm of viewmodelRoots) {
+        if (!vm.visible) continue;
+        vm.traverse(setMeshDepthOnly);
+        renderer.render(vm, camera);
+        vm.traverse(restoreMeshColor);
+      }
+      renderer.autoClear = prevAutoClear;
+    }
 
     // BLOOM passes — extract bright pixels, then ping-pong separable blur.
     // Builds the glow texture the blit composites. Skipped when disabled.

@@ -19,6 +19,7 @@ import * as THREE from 'three';
 
 import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
+import { registerViewmodel, unregisterViewmodel } from '../style/render-target';
 import { getLanternSwing } from './viewmodel-bob';
 import { getTexture } from '../style/procedural-textures';
 
@@ -74,6 +75,7 @@ export function attachLamp(camera: THREE.Camera) {
   hinge.position.copy(HINGE_LOCAL);
   hinge.scale.setScalar(1.8);
   camera.add(hinge);
+  registerViewmodel(hinge);   // near-depth pass (see render-target.ts)
 
   const body = new THREE.Group();
   body.position.y = BODY_OFFSET_Y;
@@ -209,11 +211,9 @@ export function attachLamp(camera: THREE.Camera) {
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of mats) {
         m.depthTest = false;
-        // WRITE depth (but don't TEST) so the depth-keyed post passes treat
-        // the lantern body as foreground, not see-through glass. The flame
-        // SPRITES stay depthWrite:false (additive) — the traverse only hits
-        // meshes. See the long note in viewmodel.ts.
-        m.depthWrite = true;
+        m.depthWrite = false;   // depth comes from the renderer's viewmodel
+                               // depth-only pass (render-target.ts); flame
+                               // SPRITES (not isMesh) are skipped there.
         // Sort into the transparent phase so renderOrder 998 actually
         // wins against world-space transparent sprites — see the same
         // pattern in sword.ts for the long version of why.
@@ -262,6 +262,7 @@ export function attachLamp(camera: THREE.Camera) {
 /** Remove the lamp viewmodel + unregister its light. Idempotent. */
 export function detachLamp() {
   if (!lamp) return;
+  unregisterViewmodel(lamp.hinge);
   lamp.hinge.parent?.remove(lamp.hinge);
   unregisterLight('player-lamp');
   // Dispose so we don't leak GPU memory when the player swaps offhand
