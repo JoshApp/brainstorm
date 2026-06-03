@@ -198,14 +198,31 @@ export function showStartScreen(opts: StartScreenOptions) {
     display: 'flex',
     flexWrap: 'wrap',            // wrap to a 2nd row instead of overflowing a narrow screen
     justifyContent: 'center',
-    gap: '8px 28px',
-    marginTop: '20px',
+    alignItems: 'center',
+    gap: '0 4px',                // tight — faint dot separators carry the spacing
+    marginTop: '24px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '11px',
-    letterSpacing: '0.28em',
+    fontSize: '10px',
+    letterSpacing: '0.22em',
     position: 'relative',
     zIndex: '1',
   } as Partial<CSSStyleDeclaration>);
+
+  // Append a link with a faint "·" separator before it (except the first)
+  // so the footer reads as one compact de-emphasized row.
+  const pushLink = (link: HTMLButtonElement) => {
+    if (links.childElementCount > 0) {
+      const sep = document.createElement('span');
+      sep.textContent = '·';
+      Object.assign(sep.style, {
+        color: 'rgba(150, 110, 70, 0.4)',
+        fontSize: '11px',
+        pointerEvents: 'none',
+      } as Partial<CSSStyleDeclaration>);
+      links.appendChild(sep);
+    }
+    links.appendChild(link);
+  };
 
   // TUTORIAL — small text link, always available. Returning players
   // can revisit the antechamber if they want to refresh the loop or
@@ -217,7 +234,7 @@ export function showStartScreen(opts: StartScreenOptions) {
       hide();
       opts.onTutorial!();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
 
   if (opts.onTestChambers) {
@@ -227,7 +244,7 @@ export function showStartScreen(opts: StartScreenOptions) {
       hide();
       opts.onTestChambers!();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
 
   const stash = getStash();
@@ -237,7 +254,7 @@ export function showStartScreen(opts: StartScreenOptions) {
       e.preventDefault();
       showStash();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
   if (meta.enemiesSlain.length || meta.itemsFound.length || meta.notesRead.length) {
     const link = makeSecondaryLink('CODEX', 0);
@@ -245,7 +262,7 @@ export function showStartScreen(opts: StartScreenOptions) {
       e.preventDefault();
       showCodex();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
   // DISPATCHES — the patch log. Always available; it's the public
   // record of what's changed. Factual now; the announcer voice is a
@@ -256,7 +273,7 @@ export function showStartScreen(opts: StartScreenOptions) {
       e.preventDefault();
       showPatchlog();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
   if (links.childElementCount > 0) root.appendChild(links);
 
@@ -294,22 +311,25 @@ function makePill(label: string, hint: string, primary: boolean): HTMLButtonElem
     flexDirection: 'column',
     alignItems: 'center',
     gap: '2px',
-    padding: '12px 32px',
-    minWidth: '180px',
+    // Hero vs secondary: DESCEND is bigger, glows, dominates; CONTINUE is
+    // a slim muted pill clearly beneath it.
+    padding: primary ? '15px 44px' : '9px 26px',
+    minWidth: primary ? '220px' : '160px',
+    minHeight: '44px',
     borderRadius: '36px',
     border: primary
-      ? '1px solid rgba(255, 190, 120, 0.6)'
-      : '1px solid rgba(150, 110, 70, 0.4)',
+      ? '1px solid rgba(255, 190, 120, 0.65)'
+      : '1px solid rgba(150, 110, 70, 0.35)',
     background: primary
-      ? 'linear-gradient(180deg, rgba(80, 42, 22, 0.85), rgba(50, 24, 10, 0.85))'
-      : 'rgba(30, 22, 16, 0.6)',
-    color: primary ? 'rgba(255, 230, 200, 0.98)' : 'rgba(200, 170, 140, 0.85)',
+      ? 'linear-gradient(180deg, rgba(86, 46, 24, 0.9), rgba(52, 26, 11, 0.9))'
+      : 'rgba(30, 22, 16, 0.5)',
+    color: primary ? 'rgba(255, 232, 202, 0.98)' : 'rgba(200, 170, 140, 0.8)',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     cursor: 'pointer',
     transition: 'transform 0.08s ease, background 0.15s ease, box-shadow 0.2s ease',
     boxShadow: primary
-      ? '0 0 26px rgba(255, 150, 60, 0.28), 0 2px 8px rgba(0,0,0,0.6)'
-      : '0 2px 8px rgba(0,0,0,0.5)',
+      ? '0 0 30px rgba(255, 150, 60, 0.32), 0 2px 10px rgba(0,0,0,0.6)'
+      : '0 2px 6px rgba(0,0,0,0.4)',
     userSelect: 'none',
     WebkitUserSelect: 'none',
     WebkitTapHighlightColor: 'transparent',
@@ -319,19 +339,19 @@ function makePill(label: string, hint: string, primary: boolean): HTMLButtonElem
   const main = document.createElement('div');
   main.textContent = label;
   Object.assign(main.style, {
-    fontSize: '18px',
-    fontWeight: '600',
-    letterSpacing: '0.24em',
+    fontSize: primary ? '21px' : '14px',
+    fontWeight: primary ? '700' : '600',
+    letterSpacing: primary ? '0.26em' : '0.20em',
   });
   b.appendChild(main);
 
   const sub = document.createElement('div');
   sub.textContent = hint;
   Object.assign(sub.style, {
-    fontSize: '10px',
+    fontSize: primary ? '10px' : '9px',
     letterSpacing: '0.18em',
     textTransform: 'uppercase',
-    color: 'rgba(220, 190, 160, 0.55)',
+    color: 'rgba(220, 190, 160, 0.5)',
   });
   b.appendChild(sub);
 
@@ -351,14 +371,14 @@ function makeSecondaryLink(label: string, badge: number): HTMLButtonElement {
     justifyContent: 'center',
     gap: '6px',
     minHeight: '44px',          // touch target (was a ~20px-tall text link)
-    padding: '6px 10px',
+    padding: '6px 8px',
     background: 'transparent',
     border: 'none',
-    color: 'rgba(200, 170, 140, 0.65)',
+    color: 'rgba(190, 160, 130, 0.55)',   // fainter — clearly subordinate to DESCEND
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '11px',
+    fontSize: '10px',
     fontWeight: '500',
-    letterSpacing: '0.28em',
+    letterSpacing: '0.16em',
     cursor: 'pointer',
     userSelect: 'none',
     WebkitUserSelect: 'none',
@@ -387,7 +407,7 @@ function makeSecondaryLink(label: string, badge: number): HTMLButtonElement {
     b.appendChild(dot);
   }
   b.addEventListener('pointerenter', () => { b.style.color = 'rgba(255, 220, 180, 0.95)'; });
-  b.addEventListener('pointerleave', () => { b.style.color = 'rgba(200, 170, 140, 0.65)'; });
+  b.addEventListener('pointerleave', () => { b.style.color = 'rgba(190, 160, 130, 0.55)'; });
   return b;
 }
 
