@@ -29,8 +29,7 @@ export function showStash() {
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    width: 'min(560px, 92vw)',
-    maxHeight: '92vh',
+    width: 'min(560px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))',
     overflowY: 'auto',
     padding: '24px 26px',
     background: 'linear-gradient(180deg, rgba(22, 16, 10, 0.97), rgba(10, 6, 4, 0.99))',
@@ -43,6 +42,9 @@ export function showStash() {
     transition: 'opacity 220ms ease',
     pointerEvents: 'auto',
   } as Partial<CSSStyleDeclaration>);
+  // Bounded height: vh fallback, then dvh + safe-area (same as menu-shell).
+  root.style.maxHeight = '92vh';
+  root.style.maxHeight = 'calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))';
 
   rebuild();
   document.body.appendChild(root);
@@ -71,6 +73,30 @@ function dismiss() {
 function rebuild() {
   if (!root) return;
   root.replaceChildren();
+
+  // Always-present ✕ — on a phone the panel fills the screen, so
+  // "tap outside" alone can be impossible to hit. Re-added each rebuild
+  // (replaceChildren above wipes it). 44px touch target.
+  const close = document.createElement('button');
+  close.textContent = '✕';
+  close.setAttribute('aria-label', 'close');
+  Object.assign(close.style, {
+    position: 'absolute',
+    top: '6px',
+    right: '6px',
+    width: '44px',
+    height: '44px',
+    background: 'transparent',
+    border: 'none',
+    color: 'rgba(220, 180, 140, 0.7)',
+    fontSize: '18px',
+    lineHeight: '1',
+    cursor: 'pointer',
+    touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
+  } as Partial<CSSStyleDeclaration>);
+  close.addEventListener('click', dismiss);
+  root.appendChild(close);
 
   // Header
   const header = document.createElement('div');

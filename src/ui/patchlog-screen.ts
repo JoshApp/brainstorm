@@ -6,12 +6,13 @@
 // can render the same data through the announcer voice; this one
 // stays the plain record (the "wiki / source-of-truth" view).
 
-import { openScreen, closeScreen } from './screen-manager';
+import { isScreenOpen } from './screen-manager';
+import { createSheet, type Sheet } from './menu-shell';
 import { PATCHLOG, type PatchTag } from '../content/patchlog';
 
 const SCREEN_ID = 'patchlog';
 
-let root: HTMLDivElement | null = null;
+let sheet: Sheet | null = null;
 
 // Tag → { label, colour }. Subtle, in-palette; the tag chips give the
 // log a scannable structure without shouting.
@@ -24,42 +25,16 @@ const TAG_META: Record<PatchTag, { label: string; color: string }> = {
 };
 
 export function showPatchlog() {
-  if (root) return;
+  if (isScreenOpen(SCREEN_ID)) return;
 
-  root = document.createElement('div');
-  root.id = 'patchlog-screen';
-  Object.assign(root.style, {
-    position: 'fixed',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    width: 'min(680px, 92vw)',
-    maxHeight: '92vh',
-    overflowY: 'auto',
-    padding: '24px 28px',
-    background: 'linear-gradient(180deg, rgba(20, 14, 10, 0.96), rgba(10, 6, 4, 0.98))',
-    border: '1px solid rgba(170, 130, 80, 0.35)',
-    borderRadius: '3px',
-    boxShadow: '0 10px 36px rgba(0,0,0,0.7)',
-    color: 'rgba(220, 180, 140, 0.92)',
-    fontFamily: '"Iowan Old Style", "Palatino", serif',
-    opacity: '0',
-    transition: 'opacity 220ms ease',
-    pointerEvents: 'auto',
-  } as Partial<CSSStyleDeclaration>);
-
-  // Header.
-  const header = document.createElement('div');
-  header.textContent = 'Dispatches';
-  Object.assign(header.style, {
-    fontSize: '22px',
-    letterSpacing: '0.18em',
-    textTransform: 'uppercase',
-    color: 'rgba(230, 180, 110, 0.92)',
-    textAlign: 'center',
-    marginBottom: '4px',
-  } as Partial<CSSStyleDeclaration>);
-  root.appendChild(header);
+  const s = createSheet({
+    id: SCREEN_ID,
+    title: 'DISPATCHES',
+    width: 680,
+    layer: 'title',   // above the start screen
+    onClose() { sheet = null; },
+  });
+  sheet = s;
 
   // Sub-header — sets expectation that this is the raw record.
   const sub = document.createElement('div');
@@ -70,9 +45,10 @@ export function showPatchlog() {
     letterSpacing: '0.06em',
     color: 'rgba(180, 140, 100, 0.6)',
     textAlign: 'center',
-    marginBottom: '22px',
+    marginBottom: '14px',
+    fontFamily: '"Iowan Old Style", "Palatino", serif',
   } as Partial<CSSStyleDeclaration>);
-  root.appendChild(sub);
+  s.body.appendChild(sub);
 
   for (const version of PATCHLOG) {
     // Version header row: label left, date right.
@@ -107,7 +83,7 @@ export function showPatchlog() {
       color: 'rgba(160, 120, 80, 0.6)',
     } as Partial<CSSStyleDeclaration>);
     vHeader.appendChild(vDate);
-    root.appendChild(vHeader);
+    s.body.appendChild(vHeader);
 
     // Entries.
     for (const entry of version.entries) {
@@ -147,43 +123,9 @@ export function showPatchlog() {
       } as Partial<CSSStyleDeclaration>);
       row.appendChild(text);
 
-      root.appendChild(row);
+      s.body.appendChild(row);
     }
   }
 
-  // Close hint.
-  const closeHint = document.createElement('div');
-  closeHint.textContent = 'tap outside to close';
-  Object.assign(closeHint.style, {
-    marginTop: '22px',
-    textAlign: 'center',
-    fontSize: '10px',
-    letterSpacing: '0.22em',
-    textTransform: 'uppercase',
-    color: 'rgba(160, 120, 80, 0.45)',
-    fontFamily: 'system-ui, sans-serif',
-  } as Partial<CSSStyleDeclaration>);
-  root.appendChild(closeHint);
-
-  document.body.appendChild(root);
-  openScreen({
-    id: SCREEN_ID,
-    root,
-    // 'title' layer so this renders above the start screen (same
-    // pattern as the codex viewer).
-    policy: { pausesWorld: true, needsBackdrop: true, layer: 'title' },
-    onDismissRequest: dismiss,
-  });
-  requestAnimationFrame(() => {
-    if (root) root.style.opacity = '1';
-  });
-}
-
-function dismiss() {
-  if (!root) return;
-  const r = root;
-  root = null;
-  r.style.opacity = '0';
-  setTimeout(() => r.remove(), 240);
-  closeScreen(SCREEN_ID);
+  s.open();
 }
