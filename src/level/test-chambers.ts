@@ -202,6 +202,9 @@ function buildStarterAltars(): LevelSpec {
 // instead of acid green. Dormant on spawn; wakes when the player
 // crosses the fog wall.
 function buildMarrowSovereign(): LevelSpec {
+  // Tall ceiling — the Sovereign towers to ~5m and his greatscythe sweeps
+  // to ~7m; a 3.2m test ceiling decapitated the arena. 11m gives the
+  // cathedral-of-bone headroom the silhouette needs to read.
   return smallChamber('marrow-sovereign', 'marrow sovereign', 20, 22, () => ({
     spawns: [
       { enemyId: 'marrow-sovereign', x: 0, z: -7, roomId: 'test-marrow-sovereign-room', dormant: true },
@@ -219,7 +222,7 @@ function buildMarrowSovereign(): LevelSpec {
       // side from a distance.
       { kind: 'boss-mist', x: 0, z: 4, rotY: Math.PI, color: 0xff6030 },
     ],
-  }));
+  }), 11);
 }
 
 // ── Boiling King — Act I boss in a wide arena. Sized to match

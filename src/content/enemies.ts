@@ -1461,8 +1461,15 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // out near chest height). Default 0.6×scale would float the aim
     // point WAY above the body for a model rigged this tall.
     aimHeight: 1.6,
-    // Hit radius proportional to the body's footprint at scale 1.7.
-    hitRadius: 0.7,
+    // Hit radius — kept tight. It does double duty: it extends the
+    // player's reach to the big body's surface AND widens the
+    // always-hittable point-blank zone (POINT_BLANK_RADIUS + hitRadius in
+    // attack.ts). At 0.7 that zone (~1.6m) sat OUTSIDE his 1.2m collision
+    // shell, so you connected from any angle while standing against him —
+    // "damage him anywhere". 0.45 pulls the always-hit zone back near the
+    // collision boundary so a swing has to roughly FACE him, while still
+    // reaching the chest cavity.
+    hitRadius: 0.45,
     hp: 1,                            // unused — phases own the HP pool
     moveSpeed: 1.0,                   // slow stride in phase 1
     attackDamage: 3,                  // mirrored by per-ability damage below

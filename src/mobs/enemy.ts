@@ -324,13 +324,17 @@ export function createEnemy(
   let phaseInvulnTimer = 0;
 
   // Helper used by phase transitions + intra-phase part-break thresholds
-  // to hide named model parts. Looks up by `name` field in the ModelSpec;
-  // unknown names are no-ops (avoid throwing on a typo).
+  // to hide named model parts. A single logical part (a whole leg) is
+  // authored as MANY primitives sharing one `name`, but built.parts is a
+  // Map (one entry per name) — so we traverse the live tree and hide EVERY
+  // object with a matching name, not just the one the map kept. Without
+  // this, "hide the legs" only dropped a single foot bone. Unknown names
+  // are silent no-ops.
   function hidePartsByName(names: readonly string[]): void {
-    for (const n of names) {
-      const part = built.parts.get(n);
-      if (part) part.visible = false;
-    }
+    const want = new Set(names);
+    built.group.traverse((o) => {
+      if (o.name && want.has(o.name)) o.visible = false;
+    });
   }
   // Register combat stats so the damage pipeline knows this enemy's armor +
   // (future) damage modifiers. Defaults to 0 armor, no bonuses — fields on
@@ -653,7 +657,15 @@ export function createEnemy(
         phaseInvulnTimer = next.invulnEntryTime ?? 0;
         // Apply visual + pose overrides for the new phase.
         if (next.hideParts) hidePartsByName(next.hideParts);
-        if (next.rigYOffset !== undefined) built.group.position.y += next.rigYOffset;
+        // Lower / tilt the RIG node (not built.group): the per-frame pose
+        // bob OWNS built.group.position.y and would clobber an offset there
+        // every frame — which is why the legless torso never came down to
+        // crawl height. The rig's position.y / base rotation are untouched
+        // by the bob (applyTilt only writes rig.rotation.x during a swing),
+        // so the offset persists. Falls back to built.group if the model
+        // has no rig node.
+        const rigNode = tiltPart ?? built.group;
+        if (next.rigYOffset !== undefined) rigNode.position.y += next.rigYOffset;
         if (next.rigPitch !== undefined) built.group.rotation.x = next.rigPitch;
         // Reset state machine to chasing so the new abilities kick in cleanly.
         clearAoeTelegraph();

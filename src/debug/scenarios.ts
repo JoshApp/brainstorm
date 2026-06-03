@@ -1035,7 +1035,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     level: {
       id: 'dbg-marrow-sovereign', depth: 7, displayName: 'marrow sovereign', fogColor: 0x100806,
       startPos: { x: 0, z: 4.5, yaw: 0 },
-      rooms: [{ id: 'ms-room', rect: { x: 0, z: 0, w: 10, d: 11 }, height: 4.5 }],
+      rooms: [{ id: 'ms-room', rect: { x: 0, z: 0, w: 10, d: 11 }, height: 10 }],
       corridors: [],
       props: [],
       torches: [
