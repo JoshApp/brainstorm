@@ -36,10 +36,15 @@ export function installBandedLighting(): void {
     vec3 dlvLight = reflectedLight.directDiffuse / dlvAlb;   // recover the pure light term
     float dlvMag = max(max(dlvLight.r, dlvLight.g), dlvLight.b);
     if (dlvMag > 0.0015) {
-      // Round the light magnitude to the nearest band (0 stays dark, top
-      // reaches full), preserving the light's hue, then re-apply albedo.
-      float dlvBand = floor(dlvMag * ${bands} + 0.5) / ${bands};
-      reflectedLight.directDiffuse = dlvLight * (dlvBand / dlvMag) * dlvAlb;
+      // Band in TONEMAPPED space so the steps span the PERCEIVED brightness
+      // range. The scene is HDR (no tonemap before the blit), so banding the
+      // raw magnitude barely touches bright torch-lit surfaces — the steps
+      // were invisible. Reinhard-map to 0..1, posterise, invert back.
+      float tone = dlvMag / (dlvMag + 1.0);
+      float bandedTone = floor(tone * ${bands} + 0.5) / ${bands};
+      bandedTone = min(bandedTone, 0.88);   // keep the inverse off the ∞ at tone=1
+      float bandedMag = bandedTone / max(1.0 - bandedTone, 0.001);
+      reflectedLight.directDiffuse = dlvLight * (bandedMag / dlvMag) * dlvAlb;
     }
   }
   `;
