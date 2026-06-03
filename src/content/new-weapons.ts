@@ -101,3 +101,70 @@ export const CORD_OF_KNIVES: ModelSpec = {
       mat: 'blade' },
   ],
 };
+
+// ── Bent sickle — a one-handed reaping hook. Short wood grip + a small
+// rusted crescent off the top. Same scythe class as Reaper's Toll but a
+// mundane, compact silhouette: a tool that was never meant for this.
+export const BENT_SICKLE: ModelSpec = {
+  id: 'bent-sickle',
+  materials: {
+    grip: { color: 0x32220f, roughness: 0.95, metalness: 0.05, flatShading: 'auto' },
+    binding: { color: 0x0e0a06, roughness: 1.0 },
+    blade: {
+      // Pitted, rust-bitten iron — dull, no glow (it is a mundane tool).
+      color: 0x6a5d4e, roughness: 0.75, metalness: 0.55, flatShading: 'auto',
+    },
+  },
+  parts: [
+    // Short haft along Y (held like the scythe, just stubbier).
+    { kind: 'cylinder', pos: [0, -0.07, 0], radius: 0.018, height: 0.30, segments: 10, mat: 'grip' },
+    // Leather grip wrap + a collar at the head.
+    { kind: 'cylinder', pos: [0, -0.16, 0], radius: 0.022, height: 0.07, segments: 8, mat: 'binding' },
+    { kind: 'cylinder', pos: [0,  0.07, 0], radius: 0.020, height: 0.04, segments: 8, mat: 'binding' },
+    // Crescent blade — extruded curve juts off the top, hooking forward.
+    { kind: 'extrude',
+      pos: [0.02, 0.10, 0],
+      rot: [0, 0, -0.30],
+      shape: [
+        [0.00,  0.00],
+        [0.26, -0.03],
+        [0.31, -0.10],
+        [0.28, -0.15],
+        [0.17, -0.07],
+        [0.07, -0.03],
+        [0.01, -0.01],
+      ],
+      depth: 0.008,
+      mat: 'blade' },
+    // Pommel bead.
+    { kind: 'sphere', pos: [0, -0.21, 0], radius: 0.020, segments: [10, 8], mat: 'grip' },
+  ],
+};
+
+// ── Pilgrim's pike — a crude boar-pike: long ashen haft running forward
+// (−Z) with a pitted iron spike + a single cross-lug. The reach IS the
+// read; it pokes from outside a rat's lunge. Mundane spear class.
+export const PILGRIMS_PIKE: ModelSpec = {
+  id: 'pilgrims-pike',
+  materials: {
+    haft: { color: 0x40301f, roughness: 0.92, metalness: 0.05, flatShading: 'auto' },
+    bind: { color: 0x24180e, roughness: 0.85, metalness: 0.1 },
+    head: { color: 0x6f6258, roughness: 0.7, metalness: 0.6, flatShading: 'auto' },
+  },
+  parts: [
+    // Long shaft forward along −Z.
+    { kind: 'cylinder', pos: [0, 0, -0.16], radius: 0.013, height: 0.84, rot: [Math.PI / 2, 0, 0], mat: 'haft', jitter: 0.004 },
+    // Grip binding toward the rear.
+    { kind: 'cylinder', pos: [0, 0, 0.12], radius: 0.019, height: 0.11, rot: [Math.PI / 2, 0, 0], mat: 'bind' },
+    // Socket binding behind the head.
+    { kind: 'cylinder', pos: [0, 0, -0.50], radius: 0.017, height: 0.05, rot: [Math.PI / 2, 0, 0], mat: 'bind' },
+    // Cross-lug — a short bar across the haft below the spike (the
+    // boar-pike stop). Reads as "crude" vs the clean leaf spear.
+    { kind: 'box', pos: [0, 0, -0.48], size: [0.10, 0.018, 0.018], mat: 'head' },
+    // Spike head — a long narrow cone at the tip.
+    { kind: 'cone', pos: [0, 0, -0.62], radius: 0.022, height: 0.20, rot: [-Math.PI / 2, 0, 0], mat: 'head', jitter: 0.003 },
+  ],
+  slots: {
+    muzzle: { pos: [0, 0, -0.72] },
+  },
+};

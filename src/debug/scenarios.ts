@@ -575,6 +575,25 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 2, pos: { x: -10, z:  10 } },
     ],
   },
+  // Mundane base starters — sickle (sweep) / pike (reach).
+  'viewmodel-sickle': {
+    freeze: true,
+    equipWeaponId: 'bent-sickle',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+  'viewmodel-pike': {
+    freeze: true,
+    equipWeaponId: 'pilgrims-pike',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
   // Spear viewmodel — equip the reach weapon to review the thrust →
   // thrust → lunge combo against a posed enemy.
   'viewmodel-spear': {

@@ -3,7 +3,7 @@ import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 import { SWORD_RUSTED } from './sword';
 import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WAND } from './weapons';
-import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES } from './new-weapons';
+import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES, BENT_SICKLE, PILGRIMS_PIKE } from './new-weapons';
 import {
   HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
@@ -392,6 +392,41 @@ export const ITEMS: Record<string, ItemSpec> = {
     },
     affixPool: ['keening', 'gallows', 'patience', 'spine', 'serration', 'venom'],
     maxAffixes: 2,
+  },
+  // ── MUNDANE BASE WEAPONS (starter-pool fodder) ─────────────────────
+  // Plain, honest tools. No on-hit, modest stats — distinct FEEL is the
+  // identity (reach, sweep), not power. These widen the starter roll.
+  'bent-sickle': {
+    id: 'bent-sickle',
+    kind: 'weapon',
+    rarity: 'mundane',
+    name: 'A bent sickle',
+    flavor: 'Curved for the harvest. The harvest was never wheat.',
+    dropModel: BENT_SICKLE,
+    viewmodel: BENT_SICKLE,
+    weapon: {
+      // Scythe class — wide cone catches a clutch of small things at once.
+      // Low damage; the sweep IS the value. The swarm-clearer starter.
+      class: 'scythe', reach: 2.0, coneHalfAngle: 0.95, damage: 1, critChance: 0.08, critMultiplier: 2.2,
+    },
+    affixPool: ['keening', 'gallows', 'serration', 'spine'],
+    maxAffixes: 1,
+  },
+  'pilgrims-pike': {
+    id: 'pilgrims-pike',
+    kind: 'weapon',
+    rarity: 'mundane',
+    name: "A pilgrim's pike",
+    flavor: 'Pitted iron on an ashen haft. Keeps things at arm’s length — for a while.',
+    dropModel: PILGRIMS_PIKE,
+    viewmodel: PILGRIMS_PIKE,
+    weapon: {
+      // Spear class — long reach, narrow cone. Poke and retreat; the
+      // spacing starter. Mundane: no bleed, just distance.
+      class: 'spear', reach: 2.85, coneHalfAngle: 0.42, damage: 1, critChance: 0.06, critMultiplier: 2.2,
+    },
+    affixPool: ['keening', 'gallows', 'patience', 'spine'],
+    maxAffixes: 1,
   },
   // ── RANGED WEAPONS ────────────────────────────────────────────────
   // The main-hand ranged class. A ranged weapon's `ranged.projectileId`

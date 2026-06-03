@@ -786,8 +786,9 @@ function handleAutostart(): boolean {
 
   clearSave();
   if (depth === 1) {
-    LEVELS['starter'] = buildStarterChamber('depth-1');
-    startNewRun('starter', { seed: Number.isFinite(seed as number) ? seed : undefined });
+    const starterSeed = Number.isFinite(seed as number) ? (seed as number) : undefined;
+    LEVELS['starter'] = buildStarterChamber('depth-1', starterSeed);
+    startNewRun('starter', { seed: starterSeed });
     recordRunStart();
     resetRunDiscoveries();
     applyState(null);

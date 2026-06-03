@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-03",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Combat feel v2: 3D capsule hit-reg, damage-scaled crunch (both ways), directional hit indicator"
+      },
+      {
+        "tag": "content",
+        "text": "Death v3: weapon tumbles from the hand to the floor as you collapse"
+      },
+      {
         "tag": "fix",
         "text": "Height-aware projectile collision — shots fly OVER low props (god-ray 'eaten shot' fix)"
       },
@@ -204,14 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "King fixes: dash actually moves horizontally + aura tick slower"
-      },
-      {
-        "tag": "add",
-        "text": "Add Boiling King test chamber to the title-screen TEST list"
-      },
-      {
-        "tag": "tune",
-        "text": "Boiling King: real vertical leap with landing screen shake"
       }
     ]
   }

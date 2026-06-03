@@ -29,6 +29,8 @@ import {
 } from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
 import { spawnFitting } from '../interactables/fitting';
+import { createArenaController, type ArenaController, type WaveSpec } from './arena-waves';
+import { registerArena, clearArenas } from './arena-state';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -314,6 +316,9 @@ export function buildLevel(
   // Per-level lights start fresh. Persistent sources (the camera-
   // attached lantern) survive — see light-pool.clearLightPool.
   clearLightPool();
+  // Drop any arena registrations from the previous floor before this one
+  // registers its own (the registry is module-global).
+  clearArenas();
 
   // Everything goes into this root group rather than directly into the
   // scene — teardown is a single scene.remove(root). Geometry/material
@@ -1143,6 +1148,49 @@ export function buildLevel(
     if (r.teardown) doorTeardowns.push(r.teardown);
   }
 
+  // --- Arenas --------------------------------------------------------
+  // A room sealed by an ARENA gate becomes a wave gauntlet. The gate's slam
+  // start()s the controller (via arena-state), which summons escalating
+  // waves and marks the room complete — letting the gate finally rise — only
+  // once the LAST wave is dead. This is the fix for "gate slams then instantly
+  // reopens": an arena room is no longer judged clear just because it happens
+  // to be empty (it's empty at slam, and again between waves).
+  const arenaControllers: ArenaController[] = [];
+  const seenArenaRooms = new Set<string>();
+  for (const d of spec.doors ?? []) {
+    if (d.unlock?.kind !== 'arena') continue;
+    for (const roomId of d.unlock.roomIds) {
+      if (seenArenaRooms.has(roomId)) continue;
+      seenArenaRooms.add(roomId);
+      const room = spec.rooms.find((r) => r.id === roomId);
+      if (!room) continue;
+      // Escalating gauntlet; per-mob difficulty is depth-scaled inside
+      // spawnInto. Ends on ranged pressure so the last wave isn't a pushover.
+      const waves: WaveSpec[] = [
+        { spawns: [{ enemyId: 'ghoul', count: 2 }] },
+        { spawns: [{ enemyId: 'ghoul', count: 2 }, { enemyId: 'skeleton', count: 1 }] },
+        { spawns: [{ enemyId: 'skeleton', count: 2 }, { enemyId: 'acid-spitter', count: 1 }] },
+      ];
+      const controller = createArenaController({
+        roomId,
+        scene: root,
+        rect: room.rect,
+        waves,
+        tint: 0xc01818,
+        walkable,
+        spawn: (enemyId, pos) => {
+          const base = ENEMIES[enemyId];
+          return base ? spawnInto(base, pos, roomId) : null;
+        },
+      });
+      arenaControllers.push(controller);
+      registerArena(roomId, () => controller.start());
+    }
+  }
+  function tickArenas(dt: number, playerPos: THREE.Vector3) {
+    for (const c of arenaControllers) c.tick(dt, playerPos);
+  }
+
   // --- Stairs --------------------------------------------------------
   for (const st of spec.stairs ?? []) {
     spawnStairs(root, st, materials, (target) => onDescend?.(target));
@@ -1218,8 +1266,8 @@ export function buildLevel(
     teardown,
     // Stash on the object via casting; main.ts pulls this out via a typed
     // wrapper if needed. For now expose directly.
-    ...({ checkRoomClear } as object),
-  } as LiveLevel & { checkRoomClear: () => void };
+    ...({ checkRoomClear, tickArenas } as object),
+  } as LiveLevel & { checkRoomClear: () => void; tickArenas: (dt: number, playerPos: THREE.Vector3) => void };
 }
 
 /** Which room rect contains (x, z)? Prefers logical-only sub-rooms over

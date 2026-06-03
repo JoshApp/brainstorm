@@ -1,11 +1,17 @@
 import type { LevelSpec } from './types';
 import { FLOOR_CANDLE } from '../content/candle';
 import { floorGlow } from '../content/light-props';
+import { rollStarterWeapons } from '../content/starter-weapons';
 
 // Starter chamber — the first room of EVERY fresh run. Three altars,
 // one weapon each. The player picks one (which auto-equips and
 // dismisses the other two offers) and only then can the stairs at
 // the back be descended.
+//
+// The three offered weapons are ROLLED from the starter pool (seeded by
+// the run), not a static triad — see content/starter-weapons.ts. The
+// chamber is built once per run and cached, so the offering is stable if
+// you wander back to it before choosing.
 //
 // Layout note (matters for stair body): the stair descends INTO the
 // back wall over STAIRWELL_TOTAL_DEPTH (~2.56m) along its rotY
@@ -15,7 +21,14 @@ import { floorGlow } from '../content/light-props';
 
 const STARTER_FLOOR_GLOW = floorGlow(0x6c5c40);
 
-export function buildStarterChamber(nextLevelId: string): LevelSpec {
+export function buildStarterChamber(nextLevelId: string, seed?: number): LevelSpec {
+  // Roll three distinct base weapons for the altars (left → centre →
+  // right). Seeded for reproducibility (?seed=N); an undefined seed picks
+  // a fresh roll, stable for the run because this spec is cached.
+  const rollSeed = seed ?? Math.floor(Math.random() * 0xffffffff);
+  const offered = rollStarterWeapons(rollSeed, 3);
+  const ALTAR_X = [-2.4, 0.0, 2.4];
+
   return {
     id: 'starter',
     depth: 0,
@@ -38,10 +51,10 @@ export function buildStarterChamber(nextLevelId: string): LevelSpec {
 
     props: [
       // ── THREE STARTER ALTARS ──────────────────────────────────────
-      // Centered front-to-back; needle / sword / maul left to right.
-      { kind: 'starter-altar', x: -2.4, z: 0.0, rotY: 0, weaponId: 'bone-needle' },
-      { kind: 'starter-altar', x:  0.0, z: 0.0, rotY: 0, weaponId: 'rusted-sword' },
-      { kind: 'starter-altar', x:  2.4, z: 0.0, rotY: 0, weaponId: 'iron-maul' },
+      // Rolled from the starter pool (left → centre → right).
+      ...offered.map((weaponId, i) => ({
+        kind: 'starter-altar' as const, x: ALTAR_X[i], z: 0.0, rotY: 0, weaponId,
+      })),
 
       // Floor candles in FRONT of each altar (player's approach side) —
       // warm halo per offering.
