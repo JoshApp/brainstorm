@@ -49,6 +49,9 @@ const HORROR_BLIT_FRAG = `
   uniform float uDepthEndM;       // metres where it reaches the floor
   uniform float uDepthFloor;      // brightness multiplier at uDepthEndM (0 = black)
   uniform float uDepthAmount;     // 0 = off, 1 = full crush
+  uniform float uInscatterStrength;  // fog-inscatter glow amount (0 = off)
+  uniform float uInscatterStartM;    // metres where the glowing haze begins
+  uniform float uInscatterEndM;      // metres where the haze is fully thick
   uniform vec2 uResolution;
   uniform float uDarkAdapt;  // eye dark-adaptation, 0 = none .. 1 = full dark
   uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
@@ -159,17 +162,28 @@ const HORROR_BLIT_FRAG = `
     float vig = 1.0 - dot(fromCenter, fromCenter) * 0.20;
     col *= vig;
 
-    // DEPTH CRUSH (step 3) — recede DISTANCE to black so the near focal pool
-    // (your lamp, the lit subject) pops and everything beyond it sinks into
-    // the dark. Linearise depth → world metres, fade toward uDepthFloor
-    // between uDepthStartM and uDepthEndM. Last in the chain so dark-adapt
-    // can't lift the crushed distance back up. uDepthAmount 0 = off.
+    // DEPTH-BASED ATMOSPHERICS (steps 3 + 4) — both key off linear eye-Z.
+    float depth = texture2D(tDepth, uv).x;
+    float ndc = depth * 2.0 - 1.0;
+    float eyeZ = (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
+
+    // STEP 3 — DEPTH CRUSH: recede DISTANCE to black so the near focal pool
+    // (your lamp, the lit subject) pops and the rest sinks into the dark.
+    // Last in the colour chain so dark-adapt can't lift it back.
     if (uDepthAmount > 0.0) {
-      float depth = texture2D(tDepth, uv).x;
-      float ndc = depth * 2.0 - 1.0;
-      float eyeZ = (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
       float t = smoothstep(uDepthStartM, uDepthEndM, eyeZ) * uDepthAmount;
       col *= mix(1.0, uDepthFloor, t);
+    }
+
+    // STEP 4 — FOG INSCATTER: the AIR glows the lights' colour, thickest in
+    // the distant fog. Reuses the blurred bright-pass (uBloom) as the glow
+    // source, weighted up with distance — so a torch's halo bleeds into the
+    // haze around it and the bloodlit hall's atmosphere picks up the red.
+    // Added AFTER the crush so the glowing haze survives in the far dark
+    // (the crush darkens empty distance; this relights it where lights are).
+    if (uInscatterStrength > 0.0) {
+      float fogW = smoothstep(uInscatterStartM, uInscatterEndM, eyeZ);
+      col += texture2D(uBloom, uv).rgb * fogW * uInscatterStrength;
     }
 
     gl_FragColor = vec4(col, 1.0);
@@ -232,11 +246,26 @@ const BLOOM_BLUR_FRAG = `
 `;
 
 // Depth crush (step 3) — the art-directed pool of reveal. World metres.
-const DEPTH_START_M = 5.0;    // near pool stays full-bright out to here
-const DEPTH_END_M = 12.0;     // crushed to the floor by here
-const DEPTH_FLOOR = 0.18;     // brightness at the far end (0 = pure black)
+// Loosened slightly from the first pass (start 5→6, floor 0.18→0.23) so the
+// near pool is a touch larger and the distance doesn't go quite as black.
+const DEPTH_START_M = 6.0;    // near pool stays full-bright out to here
+const DEPTH_END_M = 13.0;     // crushed to the floor by here
+const DEPTH_FLOOR = 0.23;     // brightness at the far end (0 = pure black)
 const DEPTH_AMOUNT = 0.8;     // 0 = off, 1 = full crush
 let depthCrushEnabled = true;
+
+// Fog inscatter (step 4) — the air itself glows the lights' colour, thickest
+// in the distant fog. Reuses the blurred bright-pass as the glow source.
+const INSCATTER_STRENGTH = 0.55;  // how much the haze picks up the light
+const INSCATTER_START_M = 2.5;    // metres where the haze begins
+const INSCATTER_END_M = 11.0;     // metres where it's fully thick
+let inscatterEnabled = true;
+
+/** Toggle fog inscatter (A/B the glowing-air). */
+export function setInscatterEnabled(on: boolean): void {
+  inscatterEnabled = on;
+  if (blitMaterial) blitMaterial.uniforms.uInscatterStrength.value = on ? INSCATTER_STRENGTH : 0;
+}
 
 /** Toggle the depth crush (A/B the distance-to-black pool). */
 export function setDepthCrushEnabled(on: boolean): void {
@@ -303,6 +332,9 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       uDepthEndM: { value: DEPTH_END_M },
       uDepthFloor: { value: DEPTH_FLOOR },
       uDepthAmount: { value: depthCrushEnabled ? DEPTH_AMOUNT : 0 },
+      uInscatterStrength: { value: inscatterEnabled ? INSCATTER_STRENGTH : 0 },
+      uInscatterStartM: { value: INSCATTER_START_M },
+      uInscatterEndM: { value: INSCATTER_END_M },
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
       uDarkAdapt: { value: 0 },
       uInspect: { value: 0 },
