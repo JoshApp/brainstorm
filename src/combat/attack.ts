@@ -8,7 +8,7 @@ import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
 import { playImpact, playWhoosh } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
-import { emit } from '../broadcast/event-bus';
+import { emit, on } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { getPlayerOnHits } from '../player/equipment';
 import type { ResolvedWeaponStats } from '../content/weapon-classes';
@@ -118,6 +118,18 @@ export function createCombatSystem(
   // provider — registered here so the projectile pool's tick needn't
   // take an extra arg (keeps the main-loop call site untouched).
   setProjectileEnemyProvider(getEnemies);
+
+  // LIFESTEAL is now a CHANCE-ON-KILL proc (was a per-hit damage drain,
+  // which the playtest found way too strong). On any enemy death (all
+  // enemy deaths are player-caused — melee, ranged, or DoT), roll the
+  // player's lifesteal chance and heal a flat amount. createCombatSystem
+  // is constructed once at boot, so this subscribes once.
+  on((e) => {
+    if (e.type !== 'enemy:killed') return;
+    if (gameRngChance(computePlayerStats().lifestealPct)) {
+      healPlayer(CONFIG.LIFESTEAL_ON_KILL_HEAL);
+    }
+  });
 
   /** Fire the equipped ranged weapon's projectile at the auto-target
    *  (nearest enemy in the forward arc) or straight ahead if none. */
@@ -381,17 +393,9 @@ export function createCombatSystem(
         // full charge hits poise hardest. staggerPower already folds in
         // weapon weight × Might (resolveWeaponStats).
         target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS));
-        // LIFESTEAL — heal a fraction of damage dealt per heavy target
-        // hit. Per-target so a 3-target cleave heals from each
-        // independently. Vases skipped (their hitFeedback is 'light'
-        // and they don't grant the on-hit pipeline). Rounded UP so a
-        // small lifesteal value still produces visible healing on
-        // chip damage; capped at 1 HP per hit to keep stacking
-        // meaningful without infinite-stalling on weak mobs.
-        if (ps.lifestealPct > 0 && applied > 0) {
-          const heal = Math.max(1, Math.ceil(applied * ps.lifestealPct));
-          healPlayer(heal);
-        }
+        // (Lifesteal is now a CHANCE-ON-KILL proc — see the enemy:killed
+        // listener in createCombatSystem — not a per-hit drain, which was
+        // far too strong in the playtest.)
       }
       if (crit) anyCrit = true;
       if (applied > bestApplied) bestApplied = applied;

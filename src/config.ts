@@ -149,6 +149,10 @@ export const CONFIG = {
   HAPTIC_HIT_MS: 22,           // navigator.vibrate on landing hit
   DAMAGE_NUMBER_LIFETIME: 0.7, // seconds before damage number removed
   DAMAGE_NUMBER_RISE: 60,      // pixels the number floats up over its lifetime
+  // Lifesteal is a CHANCE-ON-KILL proc (item's lifesteal % = the chance),
+  // not a per-hit drain — heals this flat amount when it procs. (Playtest:
+  // per-damage lifesteal was way too strong.)
+  LIFESTEAL_ON_KILL_HEAL: 2,
 
   // === ATTRIBUTES (Might / Finesse / Lore / Grit) ===
   // Spent at the harbor; see docs/HARBOR-AND-PROGRESSION.md. Each stat

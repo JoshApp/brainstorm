@@ -18,10 +18,9 @@ multi-hit is, etc.). Don't tune one in isolation.
   isn't enough). Ties to the stamina **[?]** below.
 - [ ] **[?][bal]** **Charged attack is the meta** — too strong. Either nerf the
   charge bonus, or gate it behind **stamina** (see F).
-- [ ] **[?][bal]** **Multi-hit/cleave is mostly OP.** Most attacks shouldn't
-  cleave. Decide deliberately which steps/specials hit multiple
-  (`maxTargets` per combo step in weapon-classes.ts) — e.g. only sweeps /
-  the scythe / charged finishers, not the basic chain.
+- [x] **[bal]** **Multi-hit** trimmed: sword + dagger BASIC chains are now
+  single-target; cleave kept on strafe SWEEPS, hammer side-swings/smash,
+  the scythe (its identity), and charged moves. *(done)*
 - [ ] **[bal]** **AoE hits everything** — needs a cap / falloff so an AoE
   doesn't clip every enemy + every prop in a wide radius.
 
@@ -41,8 +40,8 @@ multi-hit is, etc.). Don't tune one in isolation.
   the save carries the character (serializeCharacter at floor entry,
   hydrateCharacter on resume); death still wipes it. *(done)*
 - [x] **[bal]** **Grit** +3 → **+2** max HP/point. *(done)*
-- [ ] **[bal]** **Lifesteal is way too strong** off raw damage → rework to
-  **chance-on-kill** or **every-N-kills** proc, not per-hit %.
+- [x] **[bal]** **Lifesteal** reworked: per-hit drain → **chance-on-kill** proc
+  (item % = chance, heals CONFIG.LIFESTEAL_ON_KILL_HEAL). *(done)*
 - [ ] **[ux]** We **don't clearly explain which weapon scales with what** — the
   item card shows the gold bonus but not the scaling stat letter/attr.
   Surface "scales: Might (B)" on the weapon card.

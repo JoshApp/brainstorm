@@ -184,7 +184,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       { pose: 'dagger-stab',        windup: 0.08, strike: 0.13, recover: 0.22,
         reachMul: 0.95, coneHalfAngleMul: 0.7, maxTargets: 1 },
       { pose: 'dagger-slash',       windup: 0.10, strike: 0.15, recover: 0.24,
-        reachMul: 1.0,  coneHalfAngleMul: 1.3, maxTargets: 2 },
+        reachMul: 1.0,  coneHalfAngleMul: 1.3, maxTargets: 1 },
       { pose: 'dagger-double-stab', windup: 0.08, strike: 0.26, recover: 0.30,
         reachMul: 1.05, coneHalfAngleMul: 0.7, maxTargets: 1 },
     ],
@@ -212,19 +212,20 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     },
   },
   sword: {
-    // slash-left → slash-right → thrust. Two sweeping arcs that
-    // cleave up to two targets, then a deep thrust on one.
+    // slash-left → slash-right → thrust. The basic chain is SINGLE-TARGET
+    // (playtest: blanket cleave was OP). Cleave is reserved for the
+    // directional STRAFE sweeps below + the charged ward.
     combo: [
       { pose: 'sword-slash-left',
         windup:  CONFIG.SWORD_SWING_WINDUP,
         strike:  CONFIG.SWORD_SWING_STRIKE,
         recover: CONFIG.SWORD_SWING_RECOVER,
-        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 2 },
+        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 1 },
       { pose: 'sword-slash-right',
         windup:  CONFIG.SWORD_SWING_WINDUP,
         strike:  CONFIG.SWORD_SWING_STRIKE,
         recover: CONFIG.SWORD_SWING_RECOVER,
-        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 2 },
+        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 1 },
       { pose: 'sword-thrust', windup: 0.14, strike: 0.12, recover: 0.34,
         reachMul: 1.25, coneHalfAngleMul: 0.6, maxTargets: 1 },
     ],

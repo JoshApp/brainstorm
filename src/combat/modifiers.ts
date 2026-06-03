@@ -37,11 +37,10 @@ export type StatModifier =
   // pile of items can't roll past 100% chance or infinite mult.
   | { kind: 'crit-chance';           amount: number }    // additive 0..1
   | { kind: 'crit-mult';             amount: number }    // additive multiplier offset
-  // Lifesteal — percentage of damage DEALT that heals the player.
-  // 0.20 = 20% heal on every successful melee hit (rounded down to
-  // integer HP). Stacks additively across all sources. Capped at 1.0
-  // at the use-site. Applied per-target so a 3-target cleave heals
-  // from each hit independently.
+  // Lifesteal — CHANCE to heal a flat amount ON KILL (not a per-hit
+  // drain — that was far too strong). 0.20 = 20% chance per enemy killed
+  // to heal CONFIG.LIFESTEAL_ON_KILL_HEAL. Stacks additively, clamped to
+  // 1.0. Proc'd by the enemy:killed listener in attack.ts.
   | { kind: 'lifesteal-pct';         amount: number }
 ;
 
