@@ -42,6 +42,13 @@ const HORROR_BLIT_FRAG = `
   uniform sampler2D tDiffuse;
   uniform sampler2D uBloom;       // blurred bright-pass (glow bleeding into the dark)
   uniform float uBloomStrength;   // how much bloom adds back (0 = off)
+  uniform sampler2D tDepth;       // scene depth (for the distance crush)
+  uniform float uNear;            // camera near/far for depth linearisation
+  uniform float uFar;
+  uniform float uDepthStartM;     // world metres where the distance-crush begins
+  uniform float uDepthEndM;       // metres where it reaches the floor
+  uniform float uDepthFloor;      // brightness multiplier at uDepthEndM (0 = black)
+  uniform float uDepthAmount;     // 0 = off, 1 = full crush
   uniform vec2 uResolution;
   uniform float uDarkAdapt;  // eye dark-adaptation, 0 = none .. 1 = full dark
   uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
@@ -152,6 +159,19 @@ const HORROR_BLIT_FRAG = `
     float vig = 1.0 - dot(fromCenter, fromCenter) * 0.20;
     col *= vig;
 
+    // DEPTH CRUSH (step 3) — recede DISTANCE to black so the near focal pool
+    // (your lamp, the lit subject) pops and everything beyond it sinks into
+    // the dark. Linearise depth → world metres, fade toward uDepthFloor
+    // between uDepthStartM and uDepthEndM. Last in the chain so dark-adapt
+    // can't lift the crushed distance back up. uDepthAmount 0 = off.
+    if (uDepthAmount > 0.0) {
+      float depth = texture2D(tDepth, uv).x;
+      float ndc = depth * 2.0 - 1.0;
+      float eyeZ = (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
+      float t = smoothstep(uDepthStartM, uDepthEndM, eyeZ) * uDepthAmount;
+      col *= mix(1.0, uDepthFloor, t);
+    }
+
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -211,6 +231,19 @@ const BLOOM_BLUR_FRAG = `
   }
 `;
 
+// Depth crush (step 3) — the art-directed pool of reveal. World metres.
+const DEPTH_START_M = 5.0;    // near pool stays full-bright out to here
+const DEPTH_END_M = 12.0;     // crushed to the floor by here
+const DEPTH_FLOOR = 0.18;     // brightness at the far end (0 = pure black)
+const DEPTH_AMOUNT = 0.8;     // 0 = off, 1 = full crush
+let depthCrushEnabled = true;
+
+/** Toggle the depth crush (A/B the distance-to-black pool). */
+export function setDepthCrushEnabled(on: boolean): void {
+  depthCrushEnabled = on;
+  if (blitMaterial) blitMaterial.uniforms.uDepthAmount.value = on ? DEPTH_AMOUNT : 0;
+}
+
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
 export function setBloomEnabled(on: boolean): void {
   bloomEnabled = on;
@@ -241,6 +274,9 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
     depthBuffer: true,
     stencilBuffer: false,
   });
+  // Sampleable DEPTH so the blit can crush distance to black (step 3) —
+  // an art-directed pool of reveal independent of the fog's colour fade.
+  lowResTarget.depthTexture = new THREE.DepthTexture(w, h);
 
   // Bloom ping-pong targets at BLOOM_SCALE of the low-res target. LINEAR
   // filtering so the blur is smooth (not chunky like the scene target).
@@ -260,6 +296,13 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       tDiffuse: { value: lowResTarget.texture },
       uBloom: { value: bloomA.texture },
       uBloomStrength: { value: bloomEnabled ? BLOOM_STRENGTH : 0 },
+      tDepth: { value: lowResTarget.depthTexture },
+      uNear: { value: 0.1 },
+      uFar: { value: 50 },
+      uDepthStartM: { value: DEPTH_START_M },
+      uDepthEndM: { value: DEPTH_END_M },
+      uDepthFloor: { value: DEPTH_FLOOR },
+      uDepthAmount: { value: depthCrushEnabled ? DEPTH_AMOUNT : 0 },
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
       uDarkAdapt: { value: 0 },
       uInspect: { value: 0 },
@@ -333,6 +376,13 @@ export function renderWithStyle(
   // the perf overlay / probe would only ever see the 1-draw blit quad. A no-op
   // cost when info isn't being read.
   renderer.info.reset();
+
+  // Feed the camera's near/far so the blit can linearise depth for the crush.
+  if (blitMaterial && (camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
+    const pc = camera as THREE.PerspectiveCamera;
+    blitMaterial.uniforms.uNear.value = pc.near;
+    blitMaterial.uniforms.uFar.value = pc.far;
+  }
 
   if (lowResTarget && blitScene && blitCamera) {
     // Scene → low-res target, then the PSX blit (dither/quantize/CA/scanlines/
