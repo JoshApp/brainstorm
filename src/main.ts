@@ -448,13 +448,18 @@ const input = createTouchInput(canvas, {
         return true;
       }
     }
-    // Fallback (imprecise / empty tap): only SWING if a swing would
-    // actually connect — an eligible enemy/destructible in range. This is
-    // what stops a tap meant for a chest, stairs, or empty floor from
-    // flailing the weapon. Returning false lets the right-side-swing fire;
-    // returning true consumes the tap silently (no attack).
-    if (combat.hasTargetInRange()) return false;
-    return true;
+    // Fallback (tap didn't land directly on an enemy or in-range object).
+    // Priority: an ENEMY in range → attack (swing wins even next to a
+    // chest); else an interactable in range → interact (so a tap near a
+    // chest / stairs opens it instead of flailing); else → just attack.
+    // Returning false lets the right-side swing fire; true consumes it.
+    if (combat.hasEnemyInRange()) return false;        // enemy → swing
+    const inRange = getInRangeInteractable();
+    if (inRange) {                                     // else interactable → interact
+      resolveUsable(inRange, camera.position).onUse();
+      return true;
+    }
+    return false;                                      // nothing → just attack
   },
   onInteract() {
     // E key (or future gamepad confirm) — use the currently in-range
