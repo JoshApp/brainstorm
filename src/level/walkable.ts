@@ -24,9 +24,15 @@ export interface WallSegment {
   bx: number; bz: number;
 }
 
+// `height` (metres above the floor) is OPTIONAL and used ONLY by the
+// projectile pass (containsProjectile). Absent = full-height blocker (walls,
+// pillars, structural columns) — blocks movement AND every projectile.
+// A low prop (altar, chest, fountain) sets its height so a shot flying ABOVE
+// it sails over instead of dying on its 2D footprint. Movement (contains)
+// ignores height entirely — you still can't walk through a waist-high altar.
 export type Obstacle =
-  | { kind: 'circle'; x: number; z: number; r: number }
-  | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number };
+  | { kind: 'circle'; x: number; z: number; r: number; height?: number }
+  | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; height?: number };
 
 export class WalkableRegion {
   constructor(
@@ -128,6 +134,38 @@ export class WalkableRegion {
         if (dx * dx + dz * dz < rr * rr) return false;
       } else {
         // AABB: distance from circle center to closest point on box.
+        if (distSqPointToAabb(x, z, o.minX, o.maxX, o.minZ, o.maxZ) < r2) return false;
+      }
+    }
+    return true;
+  }
+
+  /** Projectile containment: like contains(), but obstacles only block if
+   *  they're as TALL as the projectile's current height `y`. A shot flying
+   *  over a waist-high altar/chest sails through; walls, full-height pillars,
+   *  and structural columns (height undefined) always block. Room rects +
+   *  wall segments apply exactly as for movement. */
+  containsProjectile(x: number, z: number, radius: number, y: number): boolean {
+    let inside = false;
+    for (const r of this.rects) {
+      const hw = r.w / 2;
+      const hd = r.d / 2;
+      if (x >= r.x - hw && x <= r.x + hw && z >= r.z - hd && z <= r.z + hd) { inside = true; break; }
+    }
+    if (!inside) return false;
+
+    const r2 = radius * radius;
+    for (const w of this.walls) {
+      if (distSqPointToSegment(x, z, w.ax, w.az, w.bx, w.bz) < r2) return false;
+    }
+    for (const o of this.obstacles) {
+      if (o.height !== undefined && y > o.height) continue;   // shot clears this low prop
+      if (o.kind === 'circle') {
+        const dx = x - o.x;
+        const dz = z - o.z;
+        const rr = o.r + radius;
+        if (dx * dx + dz * dz < rr * rr) return false;
+      } else {
         if (distSqPointToAabb(x, z, o.minX, o.maxX, o.minZ, o.maxZ) < r2) return false;
       }
     }

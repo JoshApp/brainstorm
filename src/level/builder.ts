@@ -522,7 +522,7 @@ export function buildLevel(
     } else if (prop.kind === 'altar') {
       const { group: altarGroup, obstacle } = buildAltarBlock(prop.x, prop.z, materials);
       root.add(altarGroup);
-      obstacles.push({ kind: 'aabb', ...obstacle });
+      obstacles.push({ kind: 'aabb', ...obstacle, height: 0.9 });   // waist-high — shots fly over
     } else if (prop.kind === 'model') {
       const built = buildModel(prop.model);
       built.group.position.set(prop.x, prop.y, prop.z);
@@ -641,6 +641,7 @@ export function buildLevel(
           kind: 'aabb',
           minX: prop.x - 0.28, maxX: prop.x + 0.28,
           minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
+          height: 0.7,   // chest-high — shots fly over
         });
       }
     } else if (prop.kind === 'stash-chest') {
@@ -649,6 +650,7 @@ export function buildLevel(
         kind: 'aabb',
         minX: prop.x - 0.28, maxX: prop.x + 0.28,
         minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
+        height: 0.7,
       });
     } else if (prop.kind === 'corpse') {
       spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note ?? '');
@@ -671,7 +673,7 @@ export function buildLevel(
       // splice callback to spawnVase so the obstacle goes away
       // when the vase shatters — otherwise the cell stays
       // blocked even after the vase mesh is gone.
-      const vaseObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.18 };
+      const vaseObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.18, height: 0.6 };
       obstacles.push(vaseObs);
       const vase = spawnVase(root, prop.x, prop.z, () => {
         const idx = obstacles.indexOf(vaseObs);
@@ -702,7 +704,7 @@ export function buildLevel(
       });
       for (const v of cluster) {
         destructibles.push(v);
-        const obs: Obstacle = { kind: 'circle', x: v.position.x, z: v.position.z, r: 0.18 };
+        const obs: Obstacle = { kind: 'circle', x: v.position.x, z: v.position.z, r: 0.18, height: 0.6 };
         clusterObs.push(obs);
         obstacles.push(obs);
       }
@@ -719,7 +721,7 @@ export function buildLevel(
       spawnFountain(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.variant ?? 'gamble');
       // Cylindrical collision — approximate the pedestal/bowl footprint.
       obstacles.push({
-        kind: 'circle', x: prop.x, z: prop.z, r: 0.45,
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 0.85,
       });
     } else if (prop.kind === 'blood-altar') {
       const item = ITEMS[prop.itemId];
@@ -731,6 +733,7 @@ export function buildLevel(
           kind: 'aabb',
           minX: prop.x - 0.44, maxX: prop.x + 0.44,
           minZ: prop.z - 0.36, maxZ: prop.z + 0.36,
+          height: 0.9,
         });
         spawnBloodAltar(
           root,
@@ -759,6 +762,7 @@ export function buildLevel(
           kind: 'aabb',
           minX: prop.x - 0.40, maxX: prop.x + 0.40,
           minZ: prop.z - 0.32, maxZ: prop.z + 0.32,
+          height: 1.0,
         };
         obstacles.push(altarObs);
         // onDestroy: no obstacle removal — stone block stays and
