@@ -7,6 +7,7 @@ import type { createCombatSystem } from '../combat/attack';
 import type { createWeaponViewmodel } from '../player/viewmodel';
 
 import { updateTorchlight } from '../scene/torchlight';
+import { tickEncounters } from '../encounters/registry';
 import { updateCamera } from '../controls/camera';
 import { tickLamp } from '../player/handheld-lamp';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
@@ -58,10 +59,7 @@ import { tickShake } from '../combat/screen-shake';
 // see everything a frame touches. `getLevel()` (not a captured value) because
 // the active level handle is reassigned on every floor load.
 
-export type LiveLevelHandle = LiveLevel & {
-  checkRoomClear?: () => void;
-  tickArenas?: (dt: number, playerPos: THREE.Vector3) => void;
-};
+export type LiveLevelHandle = LiveLevel & { checkRoomClear?: () => void };
 
 export interface SystemDeps {
   camera: THREE.PerspectiveCamera;
@@ -245,8 +243,9 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     // Room-clear detection — fires room:cleared so doors flip SEALED→OPEN.
     { name: 'room-clear', phase: 'unpaused', tick() { getLevel().checkRoomClear?.(); } },
-    // Arena wave controllers — telegraph + summon + advance through waves.
-    { name: 'arenas', phase: 'unpaused', tick(ctx) { getLevel().tickArenas?.(ctx.scaledDt, camera.position); } },
+    // Encounter layer — ticks every ACTIVE encounter (arena gauntlets today;
+    // boss/ritual later). Telegraph + wave advance happen inside the encounter.
+    { name: 'encounters', phase: 'unpaused', tick(ctx) { tickEncounters(ctx.scaledDt, camera.position); } },
 
     // Active buffs on all entities (heal-over-time, DoTs, etc.).
     { name: 'buffs', phase: 'unpaused', tick(ctx) { tickAllBuffs(ctx.scaledDt); } },

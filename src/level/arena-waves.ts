@@ -2,8 +2,13 @@ import * as THREE from 'three';
 import type { Enemy } from '../mobs/enemy';
 import type { WalkableRegion } from './walkable';
 import { spawnSummonTelegraph, type SummonTelegraph } from '../effects/summon-telegraph';
-import { markArenaComplete } from './arena-state';
 import { gameRng } from '../engine/rng';
+
+/** Stable encounter id for a room's arena gauntlet. The gate and the builder
+ *  both derive it from the roomId so they agree without sharing state. */
+export function arenaEncounterId(roomId: string): string {
+  return `arena:${roomId}`;
+}
 
 // Arena wave controller — the engine behind both arena kinds (the trap gate
 // and, later, the challenge offering). On start() it runs a sequence of
@@ -79,8 +84,7 @@ export function createArenaController(opts: ArenaControllerOpts): ArenaControlle
     waveIndex++;
     if (waveIndex >= opts.waves.length) {
       phase = 'done';
-      markArenaComplete(opts.roomId);
-      opts.onComplete?.();
+      opts.onComplete?.();   // resolves the encounter → the gate rises
       return;
     }
     pending = [];

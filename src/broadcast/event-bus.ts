@@ -18,6 +18,8 @@ export type GameEvent =
   | { type: 'boss:defeated' }
   | { type: 'boss:phase'; phase: number }
   | { type: 'level:loaded'; levelId: string }
+  | { type: 'encounter:activated'; id: string }
+  | { type: 'encounter:complete'; id: string }
   | { type: 'xp:absorbed' }
   | { type: 'gold:absorbed' }
   | { type: 'level:up'; level: number }

@@ -29,8 +29,8 @@ import {
 } from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
 import { spawnFitting } from '../interactables/fitting';
-import { createArenaController, type ArenaController, type WaveSpec } from './arena-waves';
-import { registerArena, clearArenas } from './arena-state';
+import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-waves';
+import { registerEncounter, clearEncounters, type EncounterHandle } from '../encounters/registry';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -316,9 +316,9 @@ export function buildLevel(
   // Per-level lights start fresh. Persistent sources (the camera-
   // attached lantern) survive — see light-pool.clearLightPool.
   clearLightPool();
-  // Drop any arena registrations from the previous floor before this one
-  // registers its own (the registry is module-global).
-  clearArenas();
+  // Drop the previous floor's encounters before this one registers its own
+  // (the registry is module-global).
+  clearEncounters();
 
   // Everything goes into this root group rather than directly into the
   // scene — teardown is a single scene.remove(root). Geometry/material
@@ -1149,13 +1149,13 @@ export function buildLevel(
   }
 
   // --- Arenas --------------------------------------------------------
-  // A room sealed by an ARENA gate becomes a wave gauntlet. The gate's slam
-  // start()s the controller (via arena-state), which summons escalating
-  // waves and marks the room complete — letting the gate finally rise — only
-  // once the LAST wave is dead. This is the fix for "gate slams then instantly
-  // reopens": an arena room is no longer judged clear just because it happens
-  // to be empty (it's empty at slam, and again between waves).
-  const arenaControllers: ArenaController[] = [];
+  // A room sealed by an ARENA gate becomes a wave-gauntlet ENCOUNTER. The
+  // gate's slam activates it; it summons escalating waves and resolves only
+  // once the LAST wave is dead — which is what lets the gate finally rise.
+  // The gate gates on the encounter's completion (not the momentary room-empty
+  // count), so it stays down at slam and through the inter-wave lulls. This is
+  // the first user of the Encounter layer (see encounters/registry.ts); ticks
+  // run globally via tickEncounters in the system loop.
   const seenArenaRooms = new Set<string>();
   for (const d of spec.doors ?? []) {
     if (d.unlock?.kind !== 'arena') continue;
@@ -1171,6 +1171,7 @@ export function buildLevel(
         { spawns: [{ enemyId: 'ghoul', count: 2 }, { enemyId: 'skeleton', count: 1 }] },
         { spawns: [{ enemyId: 'skeleton', count: 2 }, { enemyId: 'acid-spitter', count: 1 }] },
       ];
+      let handle: EncounterHandle;
       const controller = createArenaController({
         roomId,
         scene: root,
@@ -1182,13 +1183,13 @@ export function buildLevel(
           const base = ENEMIES[enemyId];
           return base ? spawnInto(base, pos, roomId) : null;
         },
+        onComplete: () => handle.complete(),
       });
-      arenaControllers.push(controller);
-      registerArena(roomId, () => controller.start());
+      handle = registerEncounter(arenaEncounterId(roomId), {
+        onActivate: () => controller.start(),
+        tick: (dt, pos) => controller.tick(dt, pos),
+      });
     }
-  }
-  function tickArenas(dt: number, playerPos: THREE.Vector3) {
-    for (const c of arenaControllers) c.tick(dt, playerPos);
   }
 
   // --- Stairs --------------------------------------------------------
@@ -1266,8 +1267,8 @@ export function buildLevel(
     teardown,
     // Stash on the object via casting; main.ts pulls this out via a typed
     // wrapper if needed. For now expose directly.
-    ...({ checkRoomClear, tickArenas } as object),
-  } as LiveLevel & { checkRoomClear: () => void; tickArenas: (dt: number, playerPos: THREE.Vector3) => void };
+    ...({ checkRoomClear } as object),
+  } as LiveLevel & { checkRoomClear: () => void };
 }
 
 /** Which room rect contains (x, z)? Prefers logical-only sub-rooms over
