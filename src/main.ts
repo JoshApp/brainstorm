@@ -3,7 +3,7 @@ import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw } from './controls/camera';
 import { createWeaponViewmodel } from './player/viewmodel';
-import { attachLamp } from './player/handheld-lamp';
+import { attachLamp, setLampStowed } from './player/handheld-lamp';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon } from './player/current-weapon';
@@ -367,12 +367,15 @@ onEquipmentChanged((eq) => {
   heldWeaponDropModel = eq.weapon?.dropModel ?? eq.weapon?.viewmodel ?? null;
   if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
   if (eq.offhand && eq.offhand.id !== 'oil-lamp') {
-    // Real offhand gear (shield / focus). The baked-in hip lantern
-    // stays lit underneath it.
+    // Real offhand gear (shield / focus). Drop the lantern to the hip so
+    // the item takes the hand; the lamp's light is unchanged.
+    setLampStowed(true);
     attachOffhandViewmodel(camera, eq.offhand.dropModel);
   } else {
     // Empty offhand, or a legacy oil-lamp (now a no-op — the lamp is
-    // baked in). No held offhand viewmodel either way.
+    // baked in). Raise the lantern back to the visible hand; no held
+    // offhand viewmodel either way.
+    setLampStowed(false);
     detachOffhandViewmodel();
   }
 });
