@@ -9,6 +9,7 @@ import { rollItemInstance, instanceDisplayName } from '../player/item-instance';
 import { getTexture } from '../style/procedural-textures';
 import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
 import { playLootLand, playPickupChime, playDenied } from '../audio/sfx';
+import { flashPickupGlow } from '../ui/vignette';
 import { emit } from '../broadcast/event-bus';
 import { getActiveLevel } from '../level/loader';
 import { registerLight, unregisterLight } from '../scene/light-pool';
@@ -18,6 +19,23 @@ import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 const RARITY_INDEX: Record<Rarity, number> = {
   mundane: 0, uncommon: 1, rare: 2, cursed: 3, fabled: 4,
 };
+
+// Rarity → haptic pattern (ms; arrays are vibrate/pause/vibrate…). The
+// preciousness ladder you can FEEL through the glass: a single soft tick for
+// junk, building to a strong double-thunk for a fabled find. Cursed gets a
+// deliberately uneven stutter — a "something's wrong with this one" pulse —
+// instead of a cleaner double, so the body reads the curse before the UI does.
+const PICKUP_HAPTIC: Record<number, number | number[]> = {
+  0: 8,                          // mundane — soft tick
+  1: 16,                         // uncommon — medium thunk
+  2: [14, 36, 14],               // rare — clean double
+  3: [10, 22, 10, 22, 10],       // cursed — uneven stutter
+  4: [28, 46, 30],               // fabled — strong double
+};
+function pickupHaptic(rarityIdx: number) {
+  if (typeof navigator === 'undefined' || !navigator.vibrate) return;
+  navigator.vibrate(PICKUP_HAPTIC[rarityIdx] ?? 8);
+}
 
 // Pickup interactable: a loot model on the floor that the player can walk up
 // to and TAKE. The model bobs + rotates; an emissive floor disc + a borrowed
@@ -208,8 +226,15 @@ export function createPickup(
         playDenied();
         return;
       }
-      // Pickup chime — rarity-tinted (mundane low/dull, fabled high/long).
-      playPickupChime(RARITY_INDEX[item.rarity ?? 'mundane']);
+      // Pickup feel — a rarity ladder across three channels so a real find
+      // lands as an EVENT without a celebratory UI pop (the dungeon doesn't
+      // cheer). Audio: rarity-tinted toll + low resonant swell / held tone
+      // on rare+. Haptic: a soft tick for mundane → a strong double-thunk
+      // for fabled. Screen: a deep-amber edge bloom on uncommon+ only.
+      const rarityIdx = RARITY_INDEX[item.rarity ?? 'mundane'];
+      playPickupChime(rarityIdx);
+      pickupHaptic(rarityIdx);
+      flashPickupGlow(rarityIdx);
       // Emit on the event bus so the run-state's "items found" set + any
       // future listeners (LLM narration of first-discovery, etc.) hear it.
       emit({ type: 'item:picked-up', itemId: item.id });

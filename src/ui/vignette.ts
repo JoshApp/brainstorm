@@ -69,6 +69,42 @@ export function setPersistentVignette(opacity: number, transitionMs?: number) {
   persistentEl.style.opacity = String(Math.max(0, Math.min(1, opacity)));
 }
 
+// ─── Rare-find pickup glow ───────────────────────────────────────────
+// A warm gold edge bloom that blooms once and fades — fired only on
+// uncommon+ pickups (intensity by rarity). The dungeon doesn't celebrate,
+// so this is restraint: mundane loot gets nothing, and even a fabled find
+// is a brief, deep-amber swell at the periphery, not a fireworks flash.
+// Deliberately gold (not the damage red) so it never reads as a threat.
+
+let pickupEl: HTMLDivElement | null = null;
+
+function ensurePickup() {
+  if (pickupEl) return;
+  ensureElements();
+  pickupEl = document.createElement('div');
+  pickupEl.id = 'vignette-pickup';
+  Object.assign(pickupEl.style, baseStyle());
+  pickupEl.style.background =
+    'radial-gradient(ellipse at center, transparent 45%, rgba(190, 140, 50, 0.32) 82%, rgba(120, 80, 20, 0.55) 100%)';
+  document.body.appendChild(pickupEl);
+}
+
+/** Pickup edge-glow. `rarityIndex` 0-4; only uncommon+ (>=1) shows, and
+ *  the bloom intensity + linger scale with rarity. Fabled is the headline. */
+export function flashPickupGlow(rarityIndex: number) {
+  if (rarityIndex < 1) return;   // mundane stays silent on the screen
+  ensurePickup();
+  if (!pickupEl) return;
+  const t = Math.min(1, (rarityIndex - 1) / 3);   // uncommon 0 → fabled 1
+  const intensity = 0.25 + t * 0.55;
+  const fade = 420 + rarityIndex * 200;
+  pickupEl.style.transition = 'none';
+  pickupEl.style.opacity = String(intensity);
+  void pickupEl.offsetWidth;
+  pickupEl.style.transition = `opacity ${fade}ms ease-out`;
+  pickupEl.style.opacity = '0';
+}
+
 // ─── Low-HP pulse overlay ────────────────────────────────────────────
 // A third layer, independent of flash + persistent. When the player's
 // HP drops below the threshold, a soft red breathing pulse appears at

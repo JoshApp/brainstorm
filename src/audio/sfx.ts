@@ -770,6 +770,24 @@ export function playPickupChime(rarityIndex: number = 0) {
     sh.connect(sg).connect(masterGain);
     sh.start(now + 0.02); sh.stop(now + tail * 1.2 + 0.05);
   }
+
+  // Rare+ resonant swell — a sub-octave sine UNDER the toll that blooms in
+  // slowly and decays, giving a real find weight/body without brightening
+  // it. Fabled holds it nearly 3× as long: the "held tone" that says THIS
+  // one matters. Routed through the warmth lowpass so it reads as a deep
+  // struck resonance, not a synth pad.
+  if (idx >= 2) {
+    const swellTail = tail * (idx >= 4 ? 2.8 : 1.7);
+    const sub = c.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.value = root * 0.5;
+    const subg = c.createGain();
+    subg.gain.setValueAtTime(0.0001, now);
+    subg.gain.exponentialRampToValueAtTime(0.16 + (idx - 2) * 0.05, now + 0.13);
+    subg.gain.exponentialRampToValueAtTime(0.0006, now + swellTail);
+    sub.connect(subg).connect(lp);
+    sub.start(now); sub.stop(now + swellTail + 0.1);
+  }
 }
 
 /** Chest opening — creaky wood hinge: pitch-rising filtered noise. */
