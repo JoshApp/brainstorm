@@ -1,4 +1,5 @@
-import { openScreen, closeScreen, isScreenOpen } from './screen-manager';
+import { isScreenOpen } from './screen-manager';
+import { createSheet, type Sheet } from './menu-shell';
 import {
   getCharacter,
   onCharacterChanged,
@@ -75,7 +76,7 @@ const PROF_GROUPS: Array<{ heading: string; rows: Array<{ kind: ProficiencyKind;
   },
 ];
 
-let root: HTMLDivElement | null = null;
+let sheet: Sheet | null = null;
 let summaryEl: HTMLDivElement | null = null;
 let unspentLabel: HTMLSpanElement | null = null;
 let attrRows: AttributeRow[] = [];
@@ -100,160 +101,99 @@ function atRestPoint(): boolean {
 export function openCharacterScreen(): void {
   if (isScreenOpen(SCREEN_ID)) return;
 
-  root = document.createElement('div');
-  root.id = 'character-screen';
-  Object.assign(root.style, {
-    position: 'fixed',
-    inset: '0',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    background: 'radial-gradient(ellipse at center, rgba(20, 14, 10, 0.95) 0%, rgba(6, 4, 2, 0.98) 70%)',
-    padding: '32px 24px',
-    overflowY: 'auto',
-    fontFamily: '"Iowan Old Style", "Palatino", "Times New Roman", serif',
-    color: 'rgba(220, 180, 140, 0.92)',
-    pointerEvents: 'auto',
-  } as Partial<CSSStyleDeclaration>);
-
-  // ── Title ─────────────────────────────────────────────────────────
-  const title = document.createElement('div');
-  title.textContent = 'CHARACTER';
-  Object.assign(title.style, {
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '14px',
-    letterSpacing: '0.40em',
-    color: 'rgba(220, 180, 140, 0.75)',
-    marginBottom: '6px',
-  } as Partial<CSSStyleDeclaration>);
-  root.appendChild(title);
+  const s = createSheet({
+    id: SCREEN_ID,
+    title: 'CHARACTER',
+    width: 720,
+    layer: 'modal',
+    policy: { hidesHud: true },
+    onClose() {
+      unsubscribe?.();
+      unsubscribe = null;
+      sheet = null;
+    },
+  });
+  sheet = s;
 
   // ── Summary ───────────────────────────────────────────────────────
   summaryEl = document.createElement('div');
   Object.assign(summaryEl.style, {
     fontStyle: 'italic',
-    fontSize: '14px',
+    fontSize: '13px',
     color: 'rgba(180, 140, 110, 0.72)',
-    marginBottom: '24px',
     textAlign: 'center',
+    marginBottom: '4px',
   } as Partial<CSSStyleDeclaration>);
-  root.appendChild(summaryEl);
+  s.body.appendChild(summaryEl);
 
-  // ── Body — two-column responsive ──────────────────────────────────
-  const body = document.createElement('div');
-  Object.assign(body.style, {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)',
-    gap: '36px',
-    maxWidth: '760px',
-    width: '100%',
+  // ── Two columns: attributes | proficiencies ───────────────────────
+  // flex-wrap means they sit side-by-side when there's width (landscape)
+  // and stack when there isn't — responsive with no JS breakpoint (the
+  // old window.innerWidth check fired once and never re-evaluated).
+  const cols = document.createElement('div');
+  Object.assign(cols.style, {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '14px 28px',
   } as Partial<CSSStyleDeclaration>);
-  // Collapse to single column on narrow viewports.
-  body.style.gridTemplateColumns = window.innerWidth < 720 ? '1fr' : 'minmax(280px, 1fr) minmax(280px, 1fr)';
-  root.appendChild(body);
+
+  const colHeader = (text: string): HTMLDivElement => {
+    const h = document.createElement('div');
+    h.textContent = text;
+    Object.assign(h.style, {
+      fontSize: '11px', letterSpacing: '0.30em',
+      color: 'rgba(220, 180, 140, 0.65)',
+      borderBottom: '1px solid rgba(180, 130, 90, 0.25)',
+      paddingBottom: '6px', marginBottom: '10px',
+    } as Partial<CSSStyleDeclaration>);
+    return h;
+  };
 
   // Left column — attributes.
   const attrCol = document.createElement('div');
-  const attrHeader = document.createElement('div');
-  Object.assign(attrHeader.style, {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '11px',
-    letterSpacing: '0.30em',
-    color: 'rgba(220, 180, 140, 0.65)',
-    marginBottom: '12px',
-    borderBottom: '1px solid rgba(180, 130, 90, 0.25)',
-    paddingBottom: '6px',
-  } as Partial<CSSStyleDeclaration>);
+  Object.assign(attrCol.style, { flex: '1 1 260px', minWidth: '240px' } as Partial<CSSStyleDeclaration>);
+  const attrHeader = colHeader('');
+  Object.assign(attrHeader.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' } as Partial<CSSStyleDeclaration>);
   const attrTitle = document.createElement('span');
   attrTitle.textContent = 'ATTRIBUTES';
   const unspentSpan = document.createElement('span');
-  Object.assign(unspentSpan.style, {
-    color: 'rgba(255, 220, 130, 0.90)',
-  } as Partial<CSSStyleDeclaration>);
-  attrHeader.appendChild(attrTitle);
-  attrHeader.appendChild(unspentSpan);
+  unspentSpan.style.color = 'rgba(255, 220, 130, 0.90)';
+  attrHeader.append(attrTitle, unspentSpan);
   attrCol.appendChild(attrHeader);
   unspentLabel = unspentSpan;
-
   attrRows = ATTR_DEFS.map((def) => buildAttributeRow(def, attrCol));
-  body.appendChild(attrCol);
+  cols.appendChild(attrCol);
 
   // Right column — proficiencies, grouped.
   const profCol = document.createElement('div');
-  const profHeader = document.createElement('div');
-  profHeader.textContent = 'PROFICIENCIES';
-  Object.assign(profHeader.style, {
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '11px',
-    letterSpacing: '0.30em',
-    color: 'rgba(220, 180, 140, 0.65)',
-    marginBottom: '12px',
-    borderBottom: '1px solid rgba(180, 130, 90, 0.25)',
-    paddingBottom: '6px',
-  } as Partial<CSSStyleDeclaration>);
-  profCol.appendChild(profHeader);
-
+  Object.assign(profCol.style, { flex: '1 1 260px', minWidth: '240px' } as Partial<CSSStyleDeclaration>);
+  profCol.appendChild(colHeader('PROFICIENCIES'));
   profRows = [];
   for (const group of PROF_GROUPS) {
     const groupHeading = document.createElement('div');
     groupHeading.textContent = group.heading;
     Object.assign(groupHeading.style, {
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontSize: '10px',
-      letterSpacing: '0.25em',
+      fontSize: '10px', letterSpacing: '0.25em',
       color: 'rgba(180, 130, 90, 0.55)',
-      marginTop: '14px',
-      marginBottom: '6px',
+      marginTop: '14px', marginBottom: '6px',
     } as Partial<CSSStyleDeclaration>);
     profCol.appendChild(groupHeading);
-    for (const row of group.rows) {
-      profRows.push(buildProficiencyRow(row, profCol));
-    }
+    for (const row of group.rows) profRows.push(buildProficiencyRow(row, profCol));
   }
-  body.appendChild(profCol);
+  cols.appendChild(profCol);
 
-  // ── Close button ──────────────────────────────────────────────────
-  const close = document.createElement('button');
-  close.textContent = 'CLOSE';
-  Object.assign(close.style, {
-    marginTop: '28px',
-    padding: '10px 28px',
-    background: 'rgba(40, 24, 14, 0.85)',
-    border: '1px solid rgba(180, 130, 90, 0.45)',
-    color: 'rgba(220, 180, 140, 0.95)',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '11px',
-    letterSpacing: '0.30em',
-    borderRadius: '3px',
-    cursor: 'pointer',
-  } as Partial<CSSStyleDeclaration>);
-  close.addEventListener('click', closeCharacterScreen);
-  root.appendChild(close);
+  s.body.appendChild(cols);
 
-  document.body.appendChild(root);
-  openScreen({
-    id: SCREEN_ID,
-    root,
-    policy: { pausesWorld: true, hidesHud: true, dimsScene: false, layer: 'modal' },
-    onDismissRequest: closeCharacterScreen,
-  });
+  s.open();
 
   // Reactive — character changes during the run (proficiency ticks)
-  // should reflect immediately without re-opening.
+  // reflect immediately without re-opening.
   unsubscribe = onCharacterChanged(rebuild);
   rebuild();
 }
 
 export function closeCharacterScreen(): void {
-  if (!root) return;
-  unsubscribe?.();
-  unsubscribe = null;
-  root.remove();
-  root = null;
-  closeScreen(SCREEN_ID);
+  sheet?.close();
 }
 
 export function isCharacterScreenOpen(): boolean {
@@ -306,17 +246,20 @@ function buildAttributeRow(def: typeof ATTR_DEFS[number], parent: HTMLElement): 
 
   const spendBtn = document.createElement('button');
   spendBtn.textContent = '+';
+  spendBtn.setAttribute('aria-label', `raise ${def.label}`);
   Object.assign(spendBtn.style, {
-    width: '28px',
-    height: '28px',
+    width: '44px',
+    height: '44px',
     background: 'rgba(40, 24, 14, 0.85)',
     border: '1px solid rgba(180, 130, 90, 0.45)',
     color: 'rgba(255, 220, 130, 0.95)',
-    fontSize: '16px',
+    fontSize: '18px',
     fontWeight: '700',
     borderRadius: '3px',
     cursor: 'pointer',
     padding: '0',
+    touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
   } as Partial<CSSStyleDeclaration>);
   spendBtn.addEventListener('click', () => {
     if (spendAttributePoint(def.kind)) {
@@ -383,7 +326,7 @@ function buildProficiencyRow(def: { kind: ProficiencyKind; label: string }, pare
 }
 
 function rebuild(): void {
-  if (!root || !summaryEl || !unspentLabel) return;
+  if (!sheet || !summaryEl || !unspentLabel) return;
   const c = getCharacter();
   const run = getRunState();
   const restPoint = atRestPoint();

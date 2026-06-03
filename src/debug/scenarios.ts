@@ -20,6 +20,7 @@ import { addItem, removeItem } from '../player/inventory';
 import { createPickup } from '../interactables/pickup';
 import { spawnShroudedRelic } from '../interactables/shrouded-relic';
 import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
+import { openCharacterScreen } from '../ui/character-screen';
 
 // Predefined game states loadable via ?scenario=name URL param.
 // Used by the snap CLI (scripts/snap.ts) to produce deterministic screenshots,
@@ -105,6 +106,8 @@ export interface Scenario {
   openInventoryPanel?: boolean;
   /** Pre-select an inventory item id so the details panel shows on snap. */
   selectItemId?: string;
+  /** Open the character sheet (for UI snaps). */
+  openCharacterScreen?: boolean;
   /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
   spawnPickups?: Array<{ itemId: string; x: number; z: number }>;
   /** Spawn shrouded relics (the cursed mystery gamble) near the camera. */
@@ -1517,6 +1520,9 @@ export function applyScenario(
   }
   if (scenario.selectItemId) {
     selectBagItem(scenario.selectItemId);
+  }
+  if (scenario.openCharacterScreen) {
+    openCharacterScreen();
   }
 
   // ── Item viewer ───────────────────────────────────────────────────

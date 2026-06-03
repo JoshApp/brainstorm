@@ -166,10 +166,16 @@ Finesse crit + Grit HP/armor. **Stage 2** ✓ = Lore affliction-scaling.
 **weight pass** (timingMul) shipped as a prerequisite. All four stats'
 scaling + signatures are now live.
 
-Still ahead: the **proficiency rework** (per-class config overridable
-per weapon + milestone tiers + item-card progress display), the
-in-world **"blessing" feedback** on tier-up, and the **mobile menu**
-(tabbed GEAR/CHARACTER/CODEX panel).
+**Proficiency rework** ✓ — per-class profile (overridable per weapon) of
+what mastery improves (dagger speed+crit, hammer/scythe stagger+damage,
+sword combo+damage, …); named tiers (Untrained/Novice/Adept/Master);
+item card shows base (white) + your bonus (gold = proficiency + Might/
+Finesse/Lore) + a class tier line & progress bar.
+
+Still ahead: the in-world **"blessing" feedback** + **broadcast pop** on
+tier-up (the recognition moment), **utility-proficiency perks** (alchemy/
+tinkering/… milestone effects), and the **mobile menu** (tabbed
+GEAR/CHARACTER/CODEX panel — character is still buried 3 taps deep).
 
 ### Weapon weight is a prerequisite for stagger [DECIDED]
 

@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Proficiency rework: per-class config (overridable) + tiers + item-card display"
+      },
+      {
+        "tag": "tune",
         "text": "Stats v2 (Stage 3): Might → stagger (the poise system)"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Fog gate"
-      },
-      {
-        "tag": "tune",
-        "text": "Fog gate: reliable open (auto-part on approach + tap) + dormant boss holds still"
       }
     ]
   }
