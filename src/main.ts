@@ -20,7 +20,7 @@ import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale } from './style/render-target';
-import { installBandedLighting } from './style/banded-lighting';
+import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
   INSPECT_AMBIENT, INSPECT_REQUESTED,
@@ -169,9 +169,10 @@ scene.add(ambient);
 // asks isInspectActive().
 
 // --- Static surface materials (PS1) ---
-// Patch the global lighting chunk FIRST so every material compiles with banded
-// direct lighting (cel chiaroscuro). Must precede any material compile.
-installBandedLighting();
+// Patch the global lighting chunk FIRST so every material compiles with the
+// chosen banded-lighting state. Must precede any material compile; runtime
+// toggle is handled in the onSettingsChanged subscription.
+installBandedLighting(getSettings().bandedLighting);
 const materials = buildMaterials();
 initRenderPipeline(renderer);
 
@@ -892,6 +893,28 @@ onSettingsChanged((s) => {
   setBossEncounterReadoutVisible(s.debugBossReadout);
   setShadowMode(s.shadows);
   setAdaptiveResolution(s.adaptiveResolution && !isDesktopLike());
+  // Banded lighting toggle: swap the global lighting chunk, then force every
+  // visible material to RECOMPILE so it re-reads the new chunk. Just setting
+  // needsUpdate isn't enough — Three.js's program cache keys off material
+  // params, not chunk content, so it'd reuse the old program. Flipping a
+  // (harmless, unused) define changes the cache key → guaranteed recompile.
+  if (setBandedLighting(s.bandedLighting)) {
+    const band = s.bandedLighting ? 1 : 0;
+    const seen = new Set<THREE.Material>();
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (!m) return;
+      for (const mat of Array.isArray(m) ? m : [m]) {
+        if (seen.has(mat)) continue;
+        seen.add(mat);
+        (mat as THREE.Material & { defines?: Record<string, unknown> }).defines = {
+          ...((mat as THREE.Material & { defines?: Record<string, unknown> }).defines ?? {}),
+          DELVE_BAND: band,
+        };
+        mat.needsUpdate = true;
+      }
+    });
+  }
 });
 
 // Perf overlay (FPS / frame time / draw calls). Hidden until the PERF

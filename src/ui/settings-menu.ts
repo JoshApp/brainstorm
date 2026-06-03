@@ -344,6 +344,15 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().portalCulling,
       set: (v) => updateSettings({ portalCulling: v }),
     }),
+    makeToggle({
+      label: 'BANDED LIGHT',
+      description:
+        'Step the light-to-dark falloff into hard bands — a graphic, painted ' +
+        'PSX-chiaroscuro look. Subtle in the dark dungeon; a stylistic taste. ' +
+        'Off keeps the smooth, dithered falloff.',
+      get: () => getSettings().bandedLighting,
+      set: (v) => updateSettings({ bandedLighting: v }),
+    }),
   ],
 
   system: () => [
