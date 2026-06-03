@@ -7,6 +7,7 @@ import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
 import { spawnVase, spawnVaseCluster, spawnCobweb, disposeDestructible, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
+import { getTexture } from '../style/procedural-textures';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
 import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
@@ -1493,8 +1494,25 @@ function moodTintForPosition(spec: LevelSpec, x: number, z: number): number | nu
     const tint = averageTorchTintInRect(spec.torches, r.rect);
     if (tint !== null) return tint;
   }
-  return null;
+  // Fallback: nearest torch within reach. A candle can sit in a sub-room or
+  // corridor that carries no torches of its own (multi-room vaults, composed
+  // floors) — the room-average above returns null and the prop kept its default
+  // warm flame. Next to a blood-red or sickly-green chamber that read as "some
+  // candles tinted, some left white" in the same space. Borrowing the closest
+  // torch's tint makes every moodTintable prop agree with the local mood.
+  let best: number | null = null;
+  let bestD2 = MOOD_TINT_FALLBACK_RADIUS * MOOD_TINT_FALLBACK_RADIUS;
+  for (const t of spec.torches) {
+    const d2 = (t.x - x) * (t.x - x) + (t.z - z) * (t.z - z);
+    if (d2 <= bestD2) { bestD2 = d2; best = t.colorTint ?? 0xffaa55; }
+  }
+  return best;
 }
+
+// How far a moodTintable prop will reach for a torch to borrow a tint from when
+// its own room has none. ~one large room across — close enough that the prop
+// and torch read as the same space, far enough to cross a sub-room boundary.
+const MOOD_TINT_FALLBACK_RADIUS = 9;
 
 /** Recolour a built model's flame-family materials + additive sprite
  *  particles + (signalled out) attached light to `tint`. Used by the
@@ -1515,12 +1533,24 @@ function applyMoodTint(built: import('../ecs/build-model').BuiltModel, tint: num
   // Additive sprite tongues (flame, embers). These are unnamed in the
   // materials map; walk the scene-graph instead and recolour any
   // additive SpriteMaterial.
+  //
+  // Crucially, also swap the map to the NEUTRAL 'moonbeam' texture. The
+  // default flame sprite uses 'fire-wisp', whose gradient bakes in a
+  // yellow-white→orange→red ramp. Additive `color` multiply can DARKEN that
+  // ramp but can't add the blue/green a cool tint needs — so a violet- or
+  // blood-tinted candle kept a warm core and read "white" next to the
+  // cleanly-recoloured wall torches (whose look is driven by the emissive
+  // flame sphere, not the sprite). moonbeam is a neutral white radial, so the
+  // tint colour alone decides the hue. (Same swap the stair shaft already
+  // does for exactly this reason — see stairs.ts.)
   built.group.traverse((obj) => {
     const sprite = obj as THREE.Sprite;
     if (!sprite.isSprite) return;
     const m = sprite.material as THREE.SpriteMaterial;
     if (m.blending !== THREE.AdditiveBlending) return;
     m.color.setHex(tint);
+    m.map = getTexture('moonbeam');
+    m.needsUpdate = true;
   });
 }
 
