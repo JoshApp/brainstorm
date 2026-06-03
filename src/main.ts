@@ -64,7 +64,7 @@ import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSn
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
-import { getInRangeInteractable, getAllInteractables } from './interactables/system';
+import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
@@ -397,19 +397,19 @@ const input = createTouchInput(canvas, {
 
     // Smart intent arbiter:
     //   1. Tap directly on an enemy → swing (combat intent is explicit).
-    //   2. Tap landing ON an interactable mesh (via 'raycast') → use it as
-    //      long as you're within its tapReach. A direct mesh tap is explicit
-    //      intent — you don't have to also be inside its walk-up prompt cone,
-    //      so you can pick a starter weapon from across the chamber.
-    //   3. A near-miss tap (via 'proximity') → use it only if it's actually
-    //      the in-range prompt target, or you're within tapReach. Looser
-    //      resolution, so we keep it honest about distance.
-    //   4. Any other tap WHILE an in-range interactable exists → use it.
+    //   2. Tap that resolved to an interactable (landed on its mesh, or a
+    //      near-miss snapped to it) → use it, as long as you're within its
+    //      own interact radius. You aimed at THIS object specifically, so we
+    //      honour it without also requiring it be the cone-facing prompt
+    //      target — that's what made picking one of three altars feel fussy.
+    //   3. Any other tap WHILE an in-range interactable exists → use it.
     //      Catches the "I tapped near the chest but the raycast missed
     //      its hitbox" case, plus the "I tapped slightly off the stairs
     //      and the attack animation also fired" bug.
-    //   5. Otherwise → return false so the right-side-swing fallback
+    //   4. Otherwise → return false so the right-side-swing fallback
     //      can fire the attack.
+    // resolveUsable() lets a blocked item on top (full-carry potion) fall
+    // through to the takeable loot beneath it.
 
     if (hit?.kind === 'enemy') {
       triggerAttack();
@@ -419,21 +419,15 @@ const input = createTouchInput(canvas, {
       const it = hit.interactable;
       const dx = it.position.x - camera.position.x;
       const dz = it.position.z - camera.position.z;
-      const dist = Math.hypot(dx, dz);
-      const reach = it.tapReach ?? CONFIG.INTERACT_TAP_REACH;
-      const within = dist <= reach;
-      // Direct mesh tap → honour within reach. Near-miss → require the
-      // in-range target or within reach.
-      if (hit.via === 'raycast' ? within
-                                : (inRange?.id === it.id || within)) {
-        it.onUse();
+      if (Math.hypot(dx, dz) <= it.radius) {
+        resolveUsable(it, camera.position).onUse();
         return true;
       }
     }
     if (inRange) {
       // No explicit enemy tap, and something usable is right here.
       // Consume the tap so the right-side fallback doesn't swing.
-      inRange.onUse();
+      resolveUsable(inRange, camera.position).onUse();
       return true;
     }
     return false;
@@ -444,7 +438,7 @@ const input = createTouchInput(canvas, {
     // path: not during dying or open screens.
     if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
     const inRange = getInRangeInteractable();
-    if (inRange) inRange.onUse();
+    if (inRange) resolveUsable(inRange, camera.position).onUse();
   },
 });
 // Floating world-anchored interact label only — the corner USE button

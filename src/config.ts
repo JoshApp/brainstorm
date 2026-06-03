@@ -88,16 +88,13 @@ export const CONFIG = {
                                //   precisely at the target (especially low rats).
   // Tap-to-use tuning (the diegetic "tap the object" interaction). One place
   // to tune how forgiving touch interaction feels.
-  INTERACT_TAP_PROXIMITY_PX: 84, // screen-space near-miss radius (px). A tap this
+  INTERACT_TAP_PROXIMITY_PX: 104, // screen-space near-miss radius (px). A tap this
                                  //   close to a thin floating viewmodel (starter
-                                 //   weapons, dropped rings) counts as hitting it.
-  INTERACT_TAP_REACH: 4.5,       // metres — max XZ distance a DIRECT tap on an
-                                 //   interactable's mesh will USE it, even if it's
-                                 //   outside the walk-up prompt radius/cone. A tap
-                                 //   landing on the mesh is explicit intent: you
-                                 //   looked at it and touched it. Lets you pick a
-                                 //   starter weapon from across the chamber instead
-                                 //   of having to stand on top of it.
+                                 //   weapons, dropped rings) counts as hitting it —
+                                 //   so you don't have to land precisely on a 30cm
+                                 //   sword. A generous thumb-sized radius; the
+                                 //   tap still resolves to the CLOSEST item, so
+                                 //   widening it doesn't grab the wrong one.
   SWORD_SWING_WINDUP: 0.12,    // seconds — sword raises
   SWORD_SWING_STRIKE: 0.10,    // seconds — sword chops through (hit window is here)
   SWORD_SWING_RECOVER: 0.28,   // seconds — return to idle; can't attack again

@@ -192,6 +192,14 @@ export function createPickup(
     // on a 30cm sword. 1.45× makes the silhouette properly pop without
     // looking like a halo balloon.
     outlineScale: 1.45,
+    // A consumable you have no room for is "in the way but not takeable":
+    // report it ineligible so a full potion landing on top of other loot
+    // doesn't trap the item beneath — selection falls through to the
+    // takeable item. (onUse still surfaces the "carry no more" message if
+    // the potion is the only thing here.)
+    canUse() {
+      return !(item.kind === 'consumable' && isAtCarryLimit(item.id));
+    },
     onUse() {
       // Carry cap (consumables): if full, leave the pickup on the ground and
       // tell the player — no chime, no destroy, so they can grab it later.

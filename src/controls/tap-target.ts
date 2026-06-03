@@ -24,8 +24,8 @@ import type { Interactable } from '../interactables/types';
 // finds the closest interactable's projected position within
 // CONFIG.INTERACT_TAP_PROXIMITY_PX. The fallback is what makes thin
 // floating weapons (starter-altar daggers etc.) tappable without
-// pixel-perfect aim. The result carries `via` ('raycast' | 'proximity')
-// so callers can weigh how much to trust the tap's intent.
+// pixel-perfect aim. The caller gates the result on the interactable's
+// own range, so this just answers "what did the player aim at".
 
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
@@ -33,11 +33,7 @@ const tmpVec = new THREE.Vector3();
 
 export type TapTarget =
   | { kind: 'enemy'; enemy: Enemy }
-  // `via` records how the interactable was resolved so callers can weigh
-  // intent: 'raycast' = the tap landed ON the mesh (explicit — honour it
-  // generously), 'proximity' = a near-miss snapped to the closest mesh
-  // (looser — gate it on range).
-  | { kind: 'interactable'; interactable: Interactable; via: 'raycast' | 'proximity' };
+  | { kind: 'interactable'; interactable: Interactable };
 
 export function findTapTarget(
   clientX: number,
@@ -93,7 +89,7 @@ export function findTapTarget(
     }
     for (const r of interactableRoots) {
       if (isDescendantOrSelf(hitObj, r.root)) {
-        return { kind: 'interactable', interactable: r.it, via: 'raycast' };
+        return { kind: 'interactable', interactable: r.it };
       }
     }
   }
@@ -129,7 +125,7 @@ export function findTapTarget(
       bestProx = r.it;
     }
   }
-  if (bestProx) return { kind: 'interactable', interactable: bestProx, via: 'proximity' };
+  if (bestProx) return { kind: 'interactable', interactable: bestProx };
 
   return null;
 }

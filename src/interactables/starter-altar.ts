@@ -120,10 +120,6 @@ export function spawnStarterAltar(
     id,
     position: pos.clone(),
     radius: 1.5,
-    // The chamber IS the picker: you survey all three offerings and tap the
-    // one you want from where you stand. A generous tap reach lets a direct
-    // tap on the floating weapon claim it across the room, no walk-up needed.
-    tapReach: 7,
     labelOffsetY: 1.1,
     promptLabel: 'TAKE',
     // built.group = weaponGroup so tap-target raycasts resolve when

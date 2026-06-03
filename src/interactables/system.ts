@@ -72,9 +72,16 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
   const fz = useCone ? fzRaw / fLen : 0;
   const dotMin = Math.cos(CONFIG.INTERACT_CONE_HALF_ANGLE);
 
-  // Pick the closest in-range that's ALSO in the forward cone.
+  // Pick the closest in-range that's ALSO in the forward cone. Track the
+  // closest ELIGIBLE one separately and prefer it: if a blocked item (a
+  // full-carry potion) overlaps takeable loot, the prompt + auto-use
+  // should point at the thing you can actually take. Fall back to the
+  // nearest of any kind so a lone blocked item still prompts (and its
+  // onUse can explain why it won't budge).
   let nearest: Interactable | null = null;
   let nearestD = Infinity;
+  let nearestUsable: Interactable | null = null;
+  let nearestUsableD = Infinity;
   for (const it of interactables) {
     // Empty promptLabel = interactable is currently inert (e.g. an open chest
     // that was already used). Don't show its prompt or claim the USE button.
@@ -91,8 +98,36 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
       nearest = it;
       nearestD = d;
     }
+    if (d < nearestUsableD && (it.canUse ? it.canUse() : true)) {
+      nearestUsable = it;
+      nearestUsableD = d;
+    }
   }
-  currentInRange = nearest;
+  currentInRange = nearestUsable ?? nearest;
+}
+
+/**
+ * Given the interactable the player aimed at (a tap result, or the in-range
+ * target), return the one to actually USE. If the aimed object is currently
+ * ineligible (canUse() false — e.g. a carry-full potion), fall through to the
+ * nearest ELIGIBLE interactable overlapping the same spot, so an item lying on
+ * top can't trap the loot beneath it. If nothing else is eligible, returns the
+ * aimed object unchanged (so its onUse can still surface feedback).
+ */
+export function resolveUsable(aimed: Interactable, playerPos: THREE.Vector3): Interactable {
+  if (aimed.canUse ? aimed.canUse() : true) return aimed;
+  let best: Interactable | null = null;
+  let bestD = Infinity;
+  for (const it of interactables) {
+    if (it === aimed || !it.promptLabel) continue;
+    if (it.canUse ? !it.canUse() : false) continue;
+    const dx = it.position.x - playerPos.x;
+    const dz = it.position.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > it.radius) continue;
+    if (d < bestD) { best = it; bestD = d; }
+  }
+  return best ?? aimed;
 }
 
 /** Fire the current in-range interactable's onUse handler (called by the USE button). */
