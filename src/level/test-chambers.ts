@@ -1,6 +1,6 @@
 import type { LevelSpec } from './types';
 import { FLOOR_CANDLE } from '../content/candle';
-import { GREAT_BRAZIER } from '../content/light-props';
+import { GREAT_BRAZIER, IRON_BRAZIER } from '../content/light-props';
 
 // Test chambers — small standalone levels reachable from the title
 // screen for isolated feature testing. Each chamber spawns the player
@@ -27,6 +27,9 @@ function smallChamber(
   /** Override all four wall torches to this tint (mood) — e.g. the Marrow
    *  Sovereign's charnel-red hall. Unset = the default warm sconces. */
   torchTint?: number,
+  /** Override the floor fog colour — the atmospheric wash. Pairs with
+   *  torchTint for a fully mood-lit chamber. Unset = the default. */
+  fogColor?: number,
 ): LevelSpec {
   const w = cols - 2;
   const d = rows - 2;
@@ -35,7 +38,7 @@ function smallChamber(
     id: `test-${id}`,
     depth: 0,
     displayName,
-    fogColor: 0x14100a,
+    fogColor: fogColor ?? 0x14100a,
     // Player spawn near the south wall, facing north.
     startPos: { x: 0, z: d / 2 - 1, yaw: 0 },
     rooms: [
@@ -199,11 +202,14 @@ function buildStarterAltars(): LevelSpec {
   }));
 }
 
-// ── Marrow Sovereign — two-phase skeleton boss. Same arena as
-// the king (20×22) but flavoured colder — pale torches, no
-// braziers, the soulslike fog wall is bone-white-with-marrow-red
-// instead of acid green. Dormant on spawn; wakes when the player
-// crosses the fog wall.
+// ── Marrow Sovereign — two-phase skeleton boss. 20×22 hall lit
+// charnel-RED (torches + bloodlit fog + braziers ringing the boss),
+// so the pale bones read as something dredged from a slaughterhouse.
+// The braziers are moodTintable — they ADAPT to the red torch palette,
+// so their flame + light glow red without hand-tinting. Without close
+// braziers the player's white hand-lamp washes the boss bone-white;
+// these give the arena strong red light near him. Dormant on spawn;
+// wakes when the player crosses the fog wall.
 function buildMarrowSovereign(): LevelSpec {
   // Tall ceiling — the Sovereign towers to ~5m and his greatscythe sweeps
   // to ~7m; a 3.2m test ceiling decapitated the arena. 11m gives the
@@ -224,8 +230,17 @@ function buildMarrowSovereign(): LevelSpec {
       // sovereign's ribcage glow — reads which boss is on the other
       // side from a distance.
       { kind: 'boss-mist', x: 0, z: 4, rotY: Math.PI, color: 0xff6030 },
+      // Braziers RINGING the boss (centre is too far from the wall
+      // torches). moodTintable → they adapt to the red torch palette and
+      // glow charnel-red, washing the bones in dread instead of leaving
+      // them to the white hand-lamp. Placed to the sides (x=±5) so they
+      // flank the fight without blocking the central lane.
+      { kind: 'model', model: IRON_BRAZIER, x: -5, y: 0, z: -4.5 },
+      { kind: 'model', model: IRON_BRAZIER, x:  5, y: 0, z: -4.5 },
+      { kind: 'model', model: IRON_BRAZIER, x: -5, y: 0, z: -8.5 },
+      { kind: 'model', model: IRON_BRAZIER, x:  5, y: 0, z: -8.5 },
     ],
-  }), 11, 0xff4a26);   // charnel-red hall — bones lit dread-red
+  }), 11, 0xff4a26, 0x140806);   // charnel-red hall — red torches + bloodlit fog
 }
 
 // ── Boiling King — Act I boss in a wide arena. Sized to match

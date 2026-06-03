@@ -1037,7 +1037,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   'marrow-sovereign': {
     freeze: true,
     level: {
-      id: 'dbg-marrow-sovereign', depth: 7, displayName: 'marrow sovereign', fogColor: 0x100806,
+      id: 'dbg-marrow-sovereign', depth: 7, displayName: 'marrow sovereign', fogColor: 0x140806,
       startPos: { x: 0, z: 4.5, yaw: 0 },
       rooms: [{ id: 'ms-room', rect: { x: 0, z: 0, w: 10, d: 11 }, height: 10 }],
       corridors: [],
@@ -1062,7 +1062,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   'marrow-sovereign-crawl': {
     freeze: true,
     level: {
-      id: 'dbg-marrow-crawl', depth: 7, displayName: 'marrow sovereign — crawl', fogColor: 0x100806,
+      id: 'dbg-marrow-crawl', depth: 7, displayName: 'marrow sovereign — crawl', fogColor: 0x140806,
       startPos: { x: 0, z: 4.5, yaw: 0 },
       rooms: [{ id: 'ms-room', rect: { x: 0, z: 0, w: 10, d: 11 }, height: 10 }],
       corridors: [],

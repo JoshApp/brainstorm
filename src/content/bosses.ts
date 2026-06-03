@@ -60,6 +60,11 @@ export interface BossSpec {
    *  rule). The Marrow Sovereign's hall glows charnel-red; leave unset to
    *  inherit the act palette. */
   arenaTorchTint?: number;
+  /** Hex FOG colour for the boss floor — the atmospheric WASH that tints
+   *  the whole frame (this is what made the bone snap read as a blood
+   *  overlay, vs the act's neutral fog). Pairs with arenaTorchTint for a
+   *  fully bloodlit hall; leave unset to inherit the act fog. */
+  arenaFogColor?: number;
 
   // ── Identity (LLM-fillable seam) ─────────────────────────────
   // For Phase 5, these will be filled per-run by an LLM call
@@ -119,6 +124,9 @@ export const BOSSES: Record<string, BossSpec> = {
     // so the pale bones read as something dredged from a slaughterhouse.
     // The dread comes from the LIGHT, not from tinting the model.
     arenaTorchTint: 0xff4a26,
+    // Bloodlit fog — the atmospheric red WASH over the whole frame (the
+    // thing that made the bone snap so dreadful). This is the "overlay".
+    arenaFogColor: 0x140806,
     defaultName: 'The Marrow Sovereign',
     introLine: 'He no longer knelt.',
     bestiaryEntry: 'A king of bones above and below. Breaking his legs only changes the angle.',
