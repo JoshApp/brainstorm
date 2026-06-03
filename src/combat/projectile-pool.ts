@@ -7,6 +7,7 @@ import type { EntityId } from '../ecs/types';
 import { applyBuff } from '../ecs/buffs';
 import { get as getEntity } from '../ecs/world';
 import { gameRngChance } from '../engine/rng';
+import { CONFIG } from '../config';
 
 /** On-hit status carried by a friendly projectile (player's weapon /
  *  affix / set on-hits). Rolled per enemy hit. */
@@ -337,12 +338,20 @@ export function tickProjectiles(
       }
       if (hit) continue;
     } else {
-      // Enemy projectile — hit-test the player. XZ distance; vertical
-      // alignment loose so a chest-height bolt still connects.
+      // Enemy projectile — hit-test the player as a 3D CAPSULE on the body,
+      // not the old flat cylinder × wide vertical band. Closest point on the
+      // body axis (vertical segment at the player's xz, from capsule bottom to
+      // top) to the projectile, then a true 3D distance. A shot sailing over
+      // the head or skimming the floor now MISSES; chest/torso shots connect.
+      const cy = Math.max(
+        CONFIG.PLAYER_HIT_CAPSULE_BOTTOM_Y,
+        Math.min(CONFIG.PLAYER_HIT_CAPSULE_TOP_Y, slot.position.y),
+      );
       const dx = slot.position.x - playerPos.x;
+      const dy = slot.position.y - cy;
       const dz = slot.position.z - playerPos.z;
-      const dy = slot.position.y - playerPos.y;
-      if (dx * dx + dz * dz < HIT_RADIUS_SQ && Math.abs(dy) < 1.2) {
+      const r = CONFIG.PLAYER_HIT_CAPSULE_RADIUS + slot.type.radius;
+      if (dx * dx + dy * dy + dz * dz < r * r) {
         damagePlayer(slot.damage, slot.source, slot.type.damageType);
         retire(slot);
         continue;

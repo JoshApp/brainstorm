@@ -395,13 +395,20 @@ export function createCombatSystem(
     // flat dry thud at the listener.
     const impactAt = targets[0].position;
     if (anyHeavy) {
-      const crunchPause = anyCrit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS;
-      const crunchShake = anyCrit
+      // Weight the crunch by the BEST hit's damage — a big blow freezes
+      // longer + shakes harder than a chip hit, on top of the crit bonus.
+      // Heavy hits land heavy; that's the offensive half of "crunchy".
+      const s = Math.min(
+        CONFIG.HIT_FEEDBACK_DMG_MAX,
+        1 + Math.max(0, bestApplied - 1) * CONFIG.HIT_FEEDBACK_DMG_SLOPE,
+      );
+      const crunchPause = (anyCrit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS) * s;
+      const crunchShake = (anyCrit
         ? CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 1.8
-        : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE;
+        : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE) * s;
       freezeFor(crunchPause);
       kickShake(crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
-      hapticVibrate(anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS);
+      hapticVibrate(Math.round((anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS) * s));
       playImpact(impactAt);
     } else {
       // Light targets only (vases) — token crunch, no on-hit passives.

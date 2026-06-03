@@ -36,6 +36,15 @@ export function setCameraYaw(y: number) {
   yaw = y;
 }
 
+// Last-known camera yaw + ground position, stashed each updateCamera tick so
+// non-camera systems (e.g. the directional damage indicator) can place a hit
+// relative to where the player is looking without threading the camera object
+// through the event bus.
+let camGroundX = 0;
+let camGroundZ = 0;
+export function getCameraYaw(): number { return yaw; }
+export function getCameraGroundPos(): { x: number; z: number } { return { x: camGroundX, z: camGroundZ }; }
+
 /** Direct pitch setter — used by dev-snapshot restore so the camera
  *  resumes at the same up/down angle after a hot reload. The input
  *  drag system reads from this module-level `pitch` each frame, so
@@ -51,6 +60,9 @@ export function updateCamera(
   walkable: WalkableRegion,
   enemies: readonly Enemy[],
 ) {
+  // Stash for off-camera consumers (directional damage indicator).
+  camGroundX = camera.position.x;
+  camGroundZ = camera.position.z;
   // --- Look ---
   const sensitivity = getSettings().lookSensitivity;
   yaw -= input.lookDx * sensitivity;

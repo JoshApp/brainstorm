@@ -2,6 +2,7 @@ import { CONFIG } from '../config';
 import { freezeFor } from '../combat/hit-pause';
 import { kickShake } from '../combat/screen-shake';
 import { flashVignette } from '../ui/vignette';
+import { flashDirectionalDamage } from '../ui/directional-damage';
 import { playPlayerHurt, playMagicHit, playPlayerDeathStinger } from '../audio/sfx';
 import { emit } from '../broadcast/event-bus';
 import { get } from '../ecs/world';
@@ -122,10 +123,19 @@ export function damagePlayer(amount: number, source: EntityId | null = null, typ
   }
 
   // --- The player-hit crunch stack (skipped for DoT ticks) ---
+  // Scale freeze / shake / haptic by how hard the blow landed: a 1-dmg graze
+  // is baseline, a heavy hit is up to HIT_FEEDBACK_DMG_MAX× — strong hits
+  // hit hard. Plus a directional edge-flash pointing at the attacker so a hit
+  // reads as a THREAT FROM somewhere, not just a screen-wide red wash.
   if (!quiet) {
-    freezeFor(CONFIG.PLAYER_HIT_PAUSE_MS);
-    kickShake(CONFIG.PLAYER_HIT_SHAKE_MAGNITUDE, CONFIG.PLAYER_HIT_SHAKE_DURATION);
-    hapticVibrate(CONFIG.PLAYER_HIT_HAPTIC_MS);
+    const s = Math.min(
+      CONFIG.HIT_FEEDBACK_DMG_MAX,
+      1 + Math.max(0, result.applied - 1) * CONFIG.HIT_FEEDBACK_DMG_SLOPE,
+    );
+    freezeFor(CONFIG.PLAYER_HIT_PAUSE_MS * s);
+    kickShake(CONFIG.PLAYER_HIT_SHAKE_MAGNITUDE * s, CONFIG.PLAYER_HIT_SHAKE_DURATION);
+    hapticVibrate(Math.round(CONFIG.PLAYER_HIT_HAPTIC_MS * s));
+    flashDirectionalDamage(source, result.applied);
   }
   flashVignette(result.applied);
   if (!quiet) {

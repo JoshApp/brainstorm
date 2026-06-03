@@ -145,6 +145,18 @@ export const CONFIG = {
   PLAYER_HIT_SHAKE_MAGNITUDE: 0.12, // stronger than landing-shake
   PLAYER_HIT_SHAKE_DURATION: 0.28,
   PLAYER_HIT_HAPTIC_MS: 60,         // longer buzz on damage
+  // Damage→feedback scaling. A hit's crunch (freeze/shake/haptic, both
+  // directions) multiplies by 1 + (dmg-1)*SLOPE, clamped to MAX — so a
+  // 1-dmg graze is baseline and a heavy blow really lands. Strong hits =
+  // strong feedback, the v2 ask.
+  HIT_FEEDBACK_DMG_SLOPE: 0.45,
+  HIT_FEEDBACK_DMG_MAX: 2.4,
+  // Player hurt-box: a vertical capsule on the player's body, NOT the old
+  // flat 0.4m cylinder × ±1.2m band. A shot over the head or at the feet
+  // now misses; hits register against the body. (eye/PLAYER_HEIGHT=1.6.)
+  PLAYER_HIT_CAPSULE_BOTTOM_Y: 0.45,
+  PLAYER_HIT_CAPSULE_TOP_Y: 1.75,
+  PLAYER_HIT_CAPSULE_RADIUS: 0.40,
   VIGNETTE_FLASH_OPACITY: 0.85,
   VIGNETTE_FLASH_FADE_MS: 280,
 
