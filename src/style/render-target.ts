@@ -40,6 +40,8 @@ const HORROR_BLIT_VERT = `
 const HORROR_BLIT_FRAG = `
   precision highp float;
   uniform sampler2D tDiffuse;
+  uniform sampler2D uBloom;       // blurred bright-pass (glow bleeding into the dark)
+  uniform float uBloomStrength;   // how much bloom adds back (0 = off)
   uniform vec2 uResolution;
   uniform float uDarkAdapt;  // eye dark-adaptation, 0 = none .. 1 = full dark
   uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
@@ -97,6 +99,12 @@ const HORROR_BLIT_FRAG = `
     float b = texture2D(tDiffuse, uv - caOffset).b;
     vec3 col = vec3(r, g, b);
 
+    // BLOOM — add the blurred bright-pass so emissive cores + dark-reactive
+    // rims BLEED their colour into the surrounding black (the glow actually
+    // radiating, not just sitting on the surface). Added BEFORE the dither/
+    // quantize so the halo gets the same PSX crunch as everything else.
+    col += texture2D(uBloom, uv).rgb * uBloomStrength;
+
     // EYE DARK-ADAPTATION (uDarkAdapt 0..1) — darkness-weighted
     // shadow detail, not a blue floodlight.
     //
@@ -148,6 +156,77 @@ const HORROR_BLIT_FRAG = `
   }
 `;
 
+// ── BLOOM ─────────────────────────────────────────────────────────────────
+// Cheap PS1-friendly bloom: extract the bright pixels from the (already
+// low-res) scene target, blur them with a couple of separable passes at HALF
+// that res, and add the result back in the blit. Total extra cost is ~3
+// fullscreen passes at 0.5× the low-res target (~5% of canvas pixels) — the
+// bloom only ever touches the few bright fragments (emissive cores, glowing
+// rims, torch flames), so it's the "glow radiating into the dark" payoff at
+// near-zero mobile cost.
+const BLOOM_SCALE = 0.5;        // bloom target res, as a fraction of the low-res target
+const BLOOM_THRESHOLD = 0.55;   // linear luma above which a pixel blooms
+const BLOOM_STRENGTH = 1.05;    // how much bloom adds back in the blit
+const BLOOM_BLUR_STEPS = 2;     // H+V blur pairs (more = wider, softer halo)
+let bloomEnabled = true;
+
+let bloomA: THREE.WebGLRenderTarget | null = null;
+let bloomB: THREE.WebGLRenderTarget | null = null;
+let bloomExtractMat: THREE.ShaderMaterial | null = null;
+let bloomBlurMat: THREE.ShaderMaterial | null = null;
+let bloomMesh: THREE.Mesh | null = null;
+
+const BLOOM_EXTRACT_FRAG = `
+  precision highp float;
+  uniform sampler2D tDiffuse;
+  uniform float uThreshold;
+  varying vec2 vUv;
+  void main() {
+    vec3 c = texture2D(tDiffuse, vUv).rgb;
+    float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    // Keep the bright COLOUR, scaled by how far it exceeds the threshold —
+    // so a red-hot core blooms red, a torch blooms amber.
+    float w = max(luma - uThreshold, 0.0) / max(luma, 1e-4);
+    gl_FragColor = vec4(c * w, 1.0);
+  }
+`;
+
+const BLOOM_BLUR_FRAG = `
+  precision highp float;
+  uniform sampler2D tDiffuse;
+  uniform vec2 uDir;   // (texel, 0) for horizontal, (0, texel) for vertical
+  varying vec2 vUv;
+  void main() {
+    vec3 s = texture2D(tDiffuse, vUv).rgb * 0.227027;
+    s += texture2D(tDiffuse, vUv + uDir * 1.0).rgb * 0.194594;
+    s += texture2D(tDiffuse, vUv - uDir * 1.0).rgb * 0.194594;
+    s += texture2D(tDiffuse, vUv + uDir * 2.0).rgb * 0.121622;
+    s += texture2D(tDiffuse, vUv - uDir * 2.0).rgb * 0.121622;
+    s += texture2D(tDiffuse, vUv + uDir * 3.0).rgb * 0.054054;
+    s += texture2D(tDiffuse, vUv - uDir * 3.0).rgb * 0.054054;
+    gl_FragColor = vec4(s, 1.0);
+  }
+`;
+
+/** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
+export function setBloomEnabled(on: boolean): void {
+  bloomEnabled = on;
+  if (blitMaterial) blitMaterial.uniforms.uBloomStrength.value = on ? BLOOM_STRENGTH : 0;
+}
+
+function bloomDims(): [number, number] {
+  const w = Math.max(1, Math.floor((rendererRef!.domElement.width * ps1Scale) * BLOOM_SCALE));
+  const h = Math.max(1, Math.floor((rendererRef!.domElement.height * ps1Scale) * BLOOM_SCALE));
+  return [w, h];
+}
+
+function resizeBloom(): void {
+  if (!bloomA || !bloomB || !rendererRef) return;
+  const [w, h] = bloomDims();
+  bloomA.setSize(w, h);
+  bloomB.setSize(w, h);
+}
+
 export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
   rendererRef = renderer;
   const w = Math.max(1, Math.floor(renderer.domElement.width * ps1Scale));
@@ -160,12 +239,24 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
     stencilBuffer: false,
   });
 
+  // Bloom ping-pong targets at BLOOM_SCALE of the low-res target. LINEAR
+  // filtering so the blur is smooth (not chunky like the scene target).
+  const [bw, bh] = [
+    Math.max(1, Math.floor(w * BLOOM_SCALE)),
+    Math.max(1, Math.floor(h * BLOOM_SCALE)),
+  ];
+  const bloomOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false };
+  bloomA = new THREE.WebGLRenderTarget(bw, bh, bloomOpts);
+  bloomB = new THREE.WebGLRenderTarget(bw, bh, bloomOpts);
+
   blitScene = new THREE.Scene();
   blitCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
   blitMaterial = new THREE.ShaderMaterial({
     uniforms: {
       tDiffuse: { value: lowResTarget.texture },
+      uBloom: { value: bloomA.texture },
+      uBloomStrength: { value: bloomEnabled ? BLOOM_STRENGTH : 0 },
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
       uDarkAdapt: { value: 0 },
       uInspect: { value: 0 },
@@ -179,11 +270,23 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
   const blitMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMaterial);
   blitScene.add(blitMesh);
 
+  // Bloom pass materials + a shared fullscreen quad (material swapped per pass).
+  bloomExtractMat = new THREE.ShaderMaterial({
+    uniforms: { tDiffuse: { value: lowResTarget.texture }, uThreshold: { value: BLOOM_THRESHOLD } },
+    vertexShader: HORROR_BLIT_VERT, fragmentShader: BLOOM_EXTRACT_FRAG, depthTest: false, depthWrite: false,
+  });
+  bloomBlurMat = new THREE.ShaderMaterial({
+    uniforms: { tDiffuse: { value: null }, uDir: { value: new THREE.Vector2() } },
+    vertexShader: HORROR_BLIT_VERT, fragmentShader: BLOOM_BLUR_FRAG, depthTest: false, depthWrite: false,
+  });
+  bloomMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bloomExtractMat);
+
   window.addEventListener('resize', () => {
     if (!lowResTarget || !blitMaterial) return;
     const nw = Math.max(1, Math.floor(renderer.domElement.width * ps1Scale));
     const nh = Math.max(1, Math.floor(renderer.domElement.height * ps1Scale));
     lowResTarget.setSize(nw, nh);
+    resizeBloom();
     blitMaterial.uniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
   });
 }
@@ -198,6 +301,7 @@ export function setPS1Scale(scale: number): void {
   const nw = Math.max(1, Math.floor(rendererRef.domElement.width * ps1Scale));
   const nh = Math.max(1, Math.floor(rendererRef.domElement.height * ps1Scale));
   lowResTarget.setSize(nw, nh);
+  resizeBloom();
 }
 
 export function getPS1Scale(): number { return ps1Scale; }
@@ -234,6 +338,36 @@ export function renderWithStyle(
     renderer.setRenderTarget(lowResTarget);
     renderer.clear();
     renderer.render(scene, camera);
+
+    // BLOOM passes — extract bright pixels, then ping-pong separable blur.
+    // Builds the glow texture the blit composites. Skipped when disabled.
+    if (bloomEnabled && bloomA && bloomB && bloomMesh && bloomExtractMat && bloomBlurMat && blitMaterial) {
+      const [bw, bh] = bloomDims();
+      // 1) bright-extract: lowResTarget → bloomA
+      bloomMesh.material = bloomExtractMat;
+      bloomExtractMat.uniforms.tDiffuse.value = lowResTarget.texture;
+      renderer.setRenderTarget(bloomA);
+      renderer.clear();
+      renderer.render(bloomMesh, blitCamera);
+      // 2) separable blur, ping-ponging A↔B (horizontal then vertical, ×steps)
+      bloomMesh.material = bloomBlurMat;
+      let src = bloomA, dst = bloomB;
+      for (let i = 0; i < BLOOM_BLUR_STEPS; i++) {
+        bloomBlurMat.uniforms.tDiffuse.value = src.texture;
+        bloomBlurMat.uniforms.uDir.value.set(1 / bw, 0);
+        renderer.setRenderTarget(dst); renderer.clear();
+        renderer.render(bloomMesh, blitCamera);
+        [src, dst] = [dst, src];
+        bloomBlurMat.uniforms.tDiffuse.value = src.texture;
+        bloomBlurMat.uniforms.uDir.value.set(0, 1 / bh);
+        renderer.setRenderTarget(dst); renderer.clear();
+        renderer.render(bloomMesh, blitCamera);
+        [src, dst] = [dst, src];
+      }
+      // `src` now holds the final blurred bloom; point the blit at it.
+      blitMaterial.uniforms.uBloom.value = src.texture;
+    }
+
     renderer.setRenderTarget(null);
     renderer.render(blitScene, blitCamera);
   } else {
