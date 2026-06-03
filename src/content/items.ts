@@ -749,6 +749,97 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'max-hp', amount: -1 },
     ],
   },
+  // ── SHARP-TRADE CURSED ITEMS ──────────────────────────────────────
+  // The risk/reward spine: each is a real power spike bought with a real
+  // wound. You feel both halves. They roll from the cursed band (rare —
+  // content/loot.ts) and read violet on the floor, so taking one is always
+  // a knowing choice. Gated to mid-game (drop.minDepth) — a curse is a
+  // commitment, not a floor-1 freebie. Flat modifiers (the negatives are
+  // the bite); weapons inherit default attribute scaling.
+  gravewake: {
+    id: 'gravewake',
+    kind: 'weapon',
+    rarity: 'cursed',
+    name: 'Gravewake',
+    flavor: 'It cuts deepest the hand that holds it.',
+    dropModel: WEAPON_SCIMITAR,
+    viewmodel: WEAPON_SCIMITAR,
+    // Big multiplier on a plain blade — but it eats four points of your
+    // flesh. Hits like a fabled, lives like a coward.
+    weapon: {
+      class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.3,
+    },
+    modifiers: [
+      { kind: 'damage-multiplier', amount: 1.35 },
+      { kind: 'max-hp', amount: -4 },
+    ],
+    affixPool: ['vile', 'gallows', 'keening', 'serration'],
+    maxAffixes: 1,
+    drop: { minDepth: 4 },
+  },
+  'eye-of-appetite': {
+    id: 'eye-of-appetite',
+    kind: 'amulet',
+    rarity: 'cursed',
+    name: 'Eye of Appetite',
+    flavor: 'It watches your enemies. It watches you longer.',
+    dropModel: ACID_TONGUE_AMULET,
+    // Glass-cannon crit: brutal on the swing, but every blow you TAKE
+    // lands 15% harder. Reward the kill, fear the miss.
+    modifiers: [
+      { kind: 'crit-chance', amount: 0.12 },
+      { kind: 'crit-mult', amount: 0.6 },
+      { kind: 'incoming-damage-mult', amount: 1.15 },
+    ],
+    drop: { minDepth: 4 },
+  },
+  'the-long-hunger': {
+    id: 'the-long-hunger',
+    kind: 'ring',
+    rarity: 'cursed',
+    name: 'The Long Hunger',
+    flavor: 'Feed it, or it feeds.',
+    dropModel: RING_OF_BLOODTHIRST,
+    // Heavy lifesteal turns your offence into your healing — but your
+    // pool is four shallower, so a dry spell is a death sentence.
+    modifiers: [
+      { kind: 'lifesteal-pct', amount: 0.30 },
+      { kind: 'max-hp', amount: -4 },
+    ],
+    drop: { minDepth: 3 },
+  },
+  'cowards-reward': {
+    id: 'cowards-reward',
+    kind: 'boots',
+    rarity: 'cursed',
+    name: "Coward's Reward",
+    flavor: 'Faster than the thing behind you. Barely.',
+    dropModel: SHROUD_STEP_BOOTS,
+    // Move + act faster than anything down here, at the cost of three
+    // points of flesh. Kiting becomes king; one mistake still kills.
+    modifiers: [
+      { kind: 'move-speed-mult', amount: 1.22 },
+      { kind: 'action-speed-mult', amount: 1.12 },
+      { kind: 'max-hp', amount: -3 },
+    ],
+    drop: { minDepth: 3 },
+  },
+  'martyrs-cilice': {
+    id: 'martyrs-cilice',
+    kind: 'armor',
+    rarity: 'cursed',
+    name: "Martyr's Cilice",
+    flavor: 'Pain sharpens. The dungeon is a patient teacher.',
+    dropModel: TATTERED_CLOAK,
+    // Offence bolted onto a defence slot: you hit much harder, and you
+    // are hit harder too (two less physical armour). Pure aggression.
+    modifiers: [
+      { kind: 'weapon-damage', amount: 2 },
+      { kind: 'damage-multiplier', amount: 1.1 },
+      { kind: 'physical-armor', amount: -2 },
+    ],
+    drop: { minDepth: 4 },
+  },
   // ── CONTENT EXPANSION ─────────────────────────────────────────────
   // Slot variety pass — most non-ring slots had a single mundane pick
   // and no uncommon/rare options. These add a clear identity per item
