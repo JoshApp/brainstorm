@@ -36,6 +36,11 @@ export type ItemKind = 'weapon' | 'armor' | 'ring' | 'consumable'
  */
 export type Rarity = 'mundane' | 'uncommon' | 'rare' | 'cursed' | 'fabled';
 
+/** Rarity tiers in ascending "richness" order — the axis the loot roller
+ *  walks (step down to a lower tier when a rolled rarity has nothing
+ *  eligible yet). Cursed sits above rare as a rarer risk/reward tier. */
+export const RARITY_ORDER: readonly Rarity[] = ['mundane', 'uncommon', 'rare', 'cursed', 'fabled'];
+
 /** Hex colors per rarity — atmospheric warm-cool palette, not gaudy RGB. */
 export const RARITY_COLORS: Record<Rarity, number> = {
   mundane:  0xa09080,  // bone gray — the default; visible but unimportant
@@ -232,6 +237,25 @@ export interface ItemSpec {
    *  enough pieces of the same set activates that set's threshold
    *  bonuses. Omit on items that belong to no set. */
   setId?: string;
+  /**
+   * Generic-loot distribution metadata — how this item flows through the
+   * central loot roller (src/content/loot.ts). Controls WHERE and HOW
+   * OFTEN it appears as a drop. Omit for sensible defaults (drops from
+   * depth 1, weight 1).
+   */
+  drop?: {
+    /** Earliest depth this can appear from a generic loot roll. Gates
+     *  powerful items out of the early floors. Default 1. */
+    minDepth?: number;
+    /** Relative weight within its rarity band when the roller has picked
+     *  that rarity. Default 1. Bump for "common" basics (potions), drop
+     *  for things that should be a rarer sight within their tier. */
+    weight?: number;
+    /** If true, NEVER appears in generic loot rolls — reserved for
+     *  starter altars, boss-signature drops, or hand-placed/quest items
+     *  distributed deliberately. Default false. */
+    noDrop?: boolean;
+  };
 }
 
 export const ITEMS: Record<string, ItemSpec> = {
@@ -343,6 +367,11 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'weapon-damage', amount: 1 },
       { kind: 'damage-multiplier', amount: 1.15 },
     ],
+    // A prototype power-piece — burn + crit + flat dmg + multiplier stacked.
+    // Gate it deep (Act III) so it can't drop casually on the early floors;
+    // its fabled rarity already makes it a once-in-a-run event, this makes
+    // it a DEEP once-in-a-run event.
+    drop: { minDepth: 8, weight: 0.6 },
   },
   // Howling Edge — fabled sword whose CHARGED RELEASE launches a
   // wave of cutting force forward. Tap-and-tap plays like a normal
@@ -370,6 +399,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     modifiers: [
       { kind: 'weapon-damage', amount: 1 },
     ],
+    // Signature charged mechanic + fabled stats — a late-game prize. Gate
+    // to late Act II so it isn't an early casual find.
+    drop: { minDepth: 7, weight: 0.7 },
   },
   // ── REACH MELEE ───────────────────────────────────────────────────
   // The in-between weapon. Melee, but its long reach lets it strike from
@@ -588,6 +620,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     // hit. Pairs with the existing combat:hit pipeline that reads
     // playerOnHits and rolls per swing.
     onHit: { buffId: 'poison', chance: 0.30, duration: 4.0 },
+    // Boss-signature: distributed by the Boiling King, never from a generic
+    // chest/kill roll.
+    drop: { noDrop: true },
   },
   // ── GLOVES ─────────────────────────────────────────────────────────
   'leather-gloves': {
@@ -624,6 +659,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     name: 'An oil lamp',
     flavor: 'The flame is your only friend down here.',
     dropModel: OIL_LAMP_MODEL,
+    // The player starts with one; a duplicate is near-useless. Keep it out
+    // of generic loot rolls (it's granted at run start / hand-placed).
+    drop: { noDrop: true },
   },
   'wooden-shield': {
     id: 'wooden-shield',
@@ -1159,6 +1197,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: HEALING_POTION,
     consumableHeal: 4,
     carryLimit: 3,
+    // The backbone of the heal economy — weight it heavily in the mundane
+    // band so the central roller keeps potions flowing as the common drop.
+    drop: { weight: 5 },
   },
   'berserk-potion': {
     id: 'berserk-potion',

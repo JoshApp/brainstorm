@@ -1,0 +1,133 @@
+// Central loot distribution — one place to decide WHAT drops, HOW RARE it
+// is, and WHERE in the descent it can appear. Every loot source (chests,
+// vases, enemy kills) can roll through here instead of hand-maintaining its
+// own pool, so distributing loot across acts / floors / monsters is a data
+// edit (item `drop` metadata + a source `bias`), not new code.
+//
+// The model, in two independent rolls:
+//
+//   1. RARITY by depth + bias — the scarcity engine. Floor 1 is almost all
+//      bone-and-rust; depth and a source bias (a boss chest, a deep kill)
+//      shift the curve upward. Tuning the dungeon's "generosity" is this
+//      one function. Scarcity is what makes the rare glow land.
+//
+//   2. ITEM of that rarity — picked by weight from everything eligible at
+//      this depth (rarity match + drop.minDepth gate + not drop.noDrop).
+//      If a rolled rarity has nothing eligible yet (e.g. fabled on floor
+//      1), it steps DOWN a tier until something fits, so a roll always
+//      yields an item.
+//
+// Add a new item → tag its rarity + drop.minDepth and it flows into the
+// right floors automatically. No pool editing.
+
+import { ITEMS, RARITY_ORDER, type ItemSpec, type Rarity } from './items';
+
+// ── Rarity curve ────────────────────────────────────────────────────────
+// Weight per rarity as a function of a "quality" scalar q (higher = richer
+// loot). q rises with depth and the source bias. Mundane stays present (a
+// floor so q never zeroes it) so commons remain the texture; the higher
+// tiers ramp in slowly so they always read as an event.
+function rarityWeights(q: number): Record<Rarity, number> {
+  return {
+    mundane:  Math.max(8, 62 - q * 3.5),
+    uncommon: 22 + q * 0.8,
+    rare:     Math.max(0, q * 1.10 - 2),  // chests/depth start surfacing these
+    cursed:   Math.max(0, q * 0.55 - 4),  // the risk/reward spice — rarer
+    fabled:   Math.max(0, q * 0.60 - 6),  // top tier — a deep-floor event
+  };
+}
+
+/**
+ * Roll a rarity for a drop. `bias` shifts the whole curve up: 0 for a
+ * basic drop (vase, common kill), ~2 for a mid chest / elite, ~4 for a
+ * boss chest / boss kill. Deterministic given `rand`.
+ */
+export function rollRarity(depth: number, bias: number, rand: () => number): Rarity {
+  const q = Math.max(0, depth + bias * 2 - 1);
+  const w = rarityWeights(q);
+  let total = 0;
+  for (const r of RARITY_ORDER) total += w[r];
+  let roll = rand() * total;
+  for (const r of RARITY_ORDER) {
+    roll -= w[r];
+    if (roll < 0) return r;
+  }
+  return 'mundane';
+}
+
+// ── Eligibility index ───────────────────────────────────────────────────
+// Built once from ITEMS, grouped by rarity. Each entry carries its minDepth
+// gate + weight so the item roll is a cheap filtered weighted pick.
+interface LootEntry { id: string; minDepth: number; weight: number }
+type LootIndex = Record<Rarity, LootEntry[]>;
+
+let indexCache: LootIndex | null = null;
+
+function buildIndex(): LootIndex {
+  const idx: LootIndex = { mundane: [], uncommon: [], rare: [], cursed: [], fabled: [] };
+  for (const id in ITEMS) {
+    const item = ITEMS[id];
+    if (item.drop?.noDrop) continue;              // hand-distributed only
+    const rarity = item.rarity ?? 'mundane';
+    idx[rarity].push({
+      id,
+      minDepth: item.drop?.minDepth ?? 1,
+      weight: item.drop?.weight ?? 1,
+    });
+  }
+  return idx;
+}
+
+function lootIndex(): LootIndex {
+  return (indexCache ??= buildIndex());
+}
+
+/** Test/hot-reload hook — drop the cached index so edits to ITEMS re-index. */
+export function resetLootIndex(): void {
+  indexCache = null;
+}
+
+function pickFromBand(band: LootEntry[], depth: number, rand: () => number): ItemSpec | null {
+  let total = 0;
+  for (const e of band) if (e.minDepth <= depth) total += e.weight;
+  if (total <= 0) return null;
+  let roll = rand() * total;
+  for (const e of band) {
+    if (e.minDepth > depth) continue;
+    roll -= e.weight;
+    if (roll < 0) return ITEMS[e.id];
+  }
+  return null;
+}
+
+export interface LootContext {
+  /** Current floor depth (1+). Gates items + drives the rarity curve. */
+  depth: number;
+  /** Source richness: 0 basic, ~2 mid chest/elite, ~4 boss chest/kill. */
+  bias?: number;
+}
+
+/**
+ * Roll one item from the central distribution. Picks a rarity (depth +
+ * bias), then an eligible item of that rarity by weight; steps down a
+ * tier if the rolled rarity has nothing available at this depth. Returns
+ * null only if NOTHING is eligible at all (shouldn't happen — mundane
+ * always has entries). Deterministic given `rand`.
+ */
+export function rollLoot(ctx: LootContext, rand: () => number): ItemSpec | null {
+  const depth = ctx.depth;
+  const idx = lootIndex();
+  const rolled = rollRarity(depth, ctx.bias ?? 0, rand);
+  // Step DOWN from the rolled rarity until a band has an eligible item.
+  const start = RARITY_ORDER.indexOf(rolled);
+  for (let i = start; i >= 0; i--) {
+    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand);
+    if (item) return item;
+  }
+  // Last resort: scan upward (covers a depth where only higher tiers exist).
+  for (let i = start + 1; i < RARITY_ORDER.length; i++) {
+    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand);
+    if (item) return item;
+  }
+  return null;
+}
