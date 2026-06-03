@@ -133,6 +133,17 @@ export const CONFIG = {
 
   // === COMBAT CRUNCH ===
   HIT_PAUSE_MS: 80,            // freeze duration on landing a hit — THE feel feature
+  // Landing-hit FREEZE is DECOUPLED from the shake/haptic crunch. The
+  // freeze is kept SHORT + hard-capped: a whole-screen first-person freeze
+  // tips into "lag" far sooner than a fighting-game fighter-only freeze
+  // (Smash's hitlag at 10 dmg is ~9 frames, and that only freezes the two
+  // fighters). The shake + haptic still scale up to HIT_FEEDBACK_DMG_MAX
+  // AND keep animating during the freeze (shake runs on an 'always' system)
+  // — that's what actually sells the weight, not a longer hang.
+  FREEZE_BASE_MS: 60,          // freeze for a minimal connecting hit
+  FREEZE_PER_DMG: 6,           // + this per point of damage dealt
+  FREEZE_MAX_MS: 130,          // hard cap (~8 frames @60fps); past this = lag
+  FREEZE_CRIT_BONUS_MS: 15,    // a crit nudges it a touch past the cap
   SCREEN_SHAKE_HIT_MAGNITUDE: 0.04,  // meters of camera offset
   SCREEN_SHAKE_HIT_DURATION: 0.14,   // seconds
   HAPTIC_HIT_MS: 22,           // navigator.vibrate on landing hit

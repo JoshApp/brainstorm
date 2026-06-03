@@ -414,7 +414,16 @@ export function createCombatSystem(
         CONFIG.HIT_FEEDBACK_DMG_MAX,
         1 + Math.max(0, bestApplied - 1) * CONFIG.HIT_FEEDBACK_DMG_SLOPE,
       );
-      const crunchPause = (anyCrit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS) * s;
+      // FREEZE: short, gently damage-scaled, HARD-CAPPED — decoupled from
+      // the shake so heavy hits stay punchy without the long hang that
+      // read as lag (10 dmg was 192ms / 336ms on a crit → now ~120 / ~135).
+      const crit = anyCrit ? CONFIG.FREEZE_CRIT_BONUS_MS : 0;
+      const crunchPause = Math.min(
+        CONFIG.FREEZE_MAX_MS + crit,
+        CONFIG.FREEZE_BASE_MS + bestApplied * CONFIG.FREEZE_PER_DMG + crit,
+      );
+      // Shake + haptic keep the full damage-scaled punch (they animate
+      // through the freeze, so they carry the "weight").
       const crunchShake = (anyCrit
         ? CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 1.8
         : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE) * s;
