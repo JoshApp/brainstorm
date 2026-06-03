@@ -10,7 +10,7 @@ import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
 import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
 import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus } from './item-format';
-import { resolveWeaponStats, STAGGER_POWER_BY_CLASS } from '../content/weapon-classes';
+import { resolveWeaponStats, STAGGER_POWER_BY_CLASS, weaponScalingSummary } from '../content/weapon-classes';
 import { getCharacter, proficiencyTier } from '../state/character';
 import { hexCss } from '../style/color-utils';
 import {
@@ -307,6 +307,11 @@ function buildWeaponStats(item: ItemSpec): HTMLDivElement[] {
     out.push(statRow('Stagger', baseStagger, r.staggerPower - baseStagger, trimNum));
   }
   out.push(statRow(ranged ? 'Range' : 'Reach', w.reach, r.reach - w.reach, (n) => `${trimNum(n)}m`));
+
+  // Which attribute powers this weapon (playtest: scaling wasn't explained).
+  const scaleRow = detailLine(`Scales ${weaponScalingSummary(w)}`, /*dim*/ true);
+  scaleRow.style.marginTop = '2px';
+  out.push(scaleRow);
 
   out.push(buildTierBar(cls));
   return out;

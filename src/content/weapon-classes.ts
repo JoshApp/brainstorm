@@ -444,6 +444,21 @@ const PROFICIENCY_PROFILE_BY_CLASS: Record<WeaponClass, ProficiencyProfile> = {
   'throwing-knives': { damage: 0.005, speed: 0.004 },
 };
 
+const ATTR_LABEL: Record<AttributeKind, string> = {
+  might: 'Might', finesse: 'Finesse', lore: 'Lore', grit: 'Grit',
+};
+
+/** Human-readable scaling summary for a weapon, e.g. "Might B" or
+ *  "Lore A · Finesse C" — shown on the item card so the player knows which
+ *  attribute powers this weapon (playtest: scaling wasn't explained). */
+export function weaponScalingSummary(spec: WeaponStats): string {
+  const cls: WeaponClass = spec.class ?? 'sword';
+  const scaling: WeaponScaling = spec.scaling ?? DEFAULT_WEAPON_SCALING[cls];
+  const parts = (Object.keys(scaling) as AttributeKind[])
+    .map((a) => `${ATTR_LABEL[a]} ${scaling[a]}`);
+  return parts.join(' · ');
+}
+
 /** Clamp a per-point proficiency bonus at its cap. */
 function profBonus(points: number, perPoint: number | undefined, cap = PROFICIENCY_CAP_PCT): number {
   if (!perPoint) return 0;

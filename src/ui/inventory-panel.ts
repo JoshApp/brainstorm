@@ -2,6 +2,8 @@ import { onEquipmentChanged } from '../player/equipment';
 import { onInventoryChanged } from '../player/inventory';
 import { onPlayerStatsChanged } from '../state/player-stats';
 import { ITEMS } from '../content/items';
+import { on as onEvent } from '../broadcast/event-bus';
+import { markItemNew, openInventoryView } from './item-new-flag';
 import { createSheet, type Sheet } from './menu-shell';
 import { buildSettingsContent } from './settings-menu';
 import { buildCharacterContent } from './character-screen';
@@ -107,6 +109,8 @@ export function createInventoryPanel() {
   onInventoryChanged(refreshGear);
   onEquipmentChanged(refreshGear);
   onPlayerStatsChanged(refreshGear);
+  // Flag picked-up items as NEW (badge + sort-first in the bag).
+  onEvent((e) => { if (e.type === 'item:picked-up') markItemNew(e.itemId); });
 }
 
 function isOpen(): boolean { return !!sheet; }
@@ -141,6 +145,7 @@ function open(tab: Tab) {
   if (sheet) { selectTab(tab); return; }
   activeTab = tab;
   selection = null;
+  openInventoryView();   // promote pending-new items → this view (badge + sort)
   const s = createSheet({
     id: 'inventory',
     width: 940,                 // GEAR's four columns want room (clamps on mobile)

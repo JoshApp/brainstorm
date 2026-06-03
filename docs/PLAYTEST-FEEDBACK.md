@@ -42,9 +42,8 @@ multi-hit is, etc.). Don't tune one in isolation.
 - [x] **[bal]** **Grit** +3 → **+2** max HP/point. *(done)*
 - [x] **[bal]** **Lifesteal** reworked: per-hit drain → **chance-on-kill** proc
   (item % = chance, heals CONFIG.LIFESTEAL_ON_KILL_HEAL). *(done)*
-- [ ] **[ux]** We **don't clearly explain which weapon scales with what** — the
-  item card shows the gold bonus but not the scaling stat letter/attr.
-  Surface "scales: Might (B)" on the weapon card.
+- [x] **[ux]** Weapon card now shows **"Scales Might B"** (the scaling attr +
+  grade). *(done)*
 
 ## D. Item balance
 - [ ] **[bal]** **Rings inconsistent** — some give flat damage, some only
@@ -53,10 +52,10 @@ multi-hit is, etc.). Don't tune one in isolation.
 - [ ] **[bal]** General **item balance pass** once the above land.
 
 ## E. Inventory UX
-- [ ] **[ux]** **Sort/flag NEW items** so the player instantly sees what they
-  just picked up. (A "new" badge + sort-new-first.)
-- [ ] **[ux]** **Item icons too small / unreadable** — "can barely tell it's a
-  cloak." Bigger, clearer thumbnails.
+- [x] **[ux]** **NEW items** flagged: orange NEW badge + sorted to the top of
+  the bag (cleared once viewed). *(done)*
+- [x] **[ux]** **Item icons** 32px crunchy → 48px smooth (source render 96→128,
+  antialiased); bag is now one-per-row with FULL names. *(done)*
 
 ## F. Movement & stamina  [?] — the big design fork
 - [ ] **[?][feat]** **Stamina system?** Friend wants **sprint / dash-dodge**,

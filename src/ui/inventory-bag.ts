@@ -1,12 +1,13 @@
 import { getAllItems } from '../player/inventory';
 import { ITEMS, RARITY_COLORS, type ItemSpec } from '../content/items';
 import { getItemThumbnail } from './item-thumbnail';
-import { abbrev } from './item-format';
 import { hexCss } from '../style/color-utils';
 import { CARD_BG, TEXT_DIM, TEXT_FAINT, ACCENT, sectionLabel, type InventoryCtx } from './inventory-shared';
+import { isNewInView } from './item-new-flag';
 
-// BAG column — every unequipped item, two-per-row. Tapping a cell selects it
-// (showing details + an EQUIP/USE action).
+// BAG column — every unequipped item, one per row (icon + full name).
+// New pickups get a NEW badge and sort to the top. Tapping a cell selects
+// it (showing details + an EQUIP/USE action).
 
 export function buildBagColumn(ctx: InventoryCtx): HTMLDivElement {
   const col = document.createElement('div');
@@ -19,13 +20,17 @@ export function buildBagColumn(ctx: InventoryCtx): HTMLDivElement {
 
   const grid = document.createElement('div');
   Object.assign(grid.style, {
-    display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+    // One item per row — bigger icons (recognise the item at a glance,
+    // playtest ask) + room for the full name instead of "sc...". Scrolls.
+    display: 'grid', gridTemplateColumns: '1fr',
     gap: '5px', alignContent: 'start',
     overflowY: 'auto', maxHeight: '230px',
     paddingRight: '4px',
   } as Partial<CSSStyleDeclaration>);
 
   const items = getAllItems().filter((i) => i.count > 0);
+  // Just-picked-up items sort to the TOP so you see them first.
+  items.sort((a, b) => (isNewInView(b.id) ? 1 : 0) - (isNewInView(a.id) ? 1 : 0));
   if (items.length === 0) {
     const empty = document.createElement('div');
     empty.textContent = 'EMPTY';
@@ -54,30 +59,47 @@ function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDiv
   const rarity = item.rarity ?? 'mundane';
   const rarityHex = hexCss(RARITY_COLORS[rarity]);
 
+  const isNew = isNewInView(item.id);
   const cell = document.createElement('div');
   Object.assign(cell.style, {
-    padding: '4px 6px',
+    position: 'relative',
+    padding: '5px 7px',
     background: selected ? 'rgba(80, 50, 28, 0.85)' : CARD_BG,
     border: selected ? `2px solid ${ACCENT}` : `1.5px solid ${rarityHex}`,
     borderRadius: '3px',
     display: 'grid',
     gridTemplateColumns: 'auto 1fr',
-    gap: '6px',
+    gap: '8px',
     alignItems: 'center',
     cursor: 'pointer',
     boxShadow: selected ? `0 0 12px ${ACCENT}` : `0 0 6px ${rarityHex}33`,
-    minHeight: '38px',
+    minHeight: '54px',
   } as Partial<CSSStyleDeclaration>);
 
-  // 3D thumbnail on the left.
+  // 3D thumbnail on the left — bigger + smooth (was a crunchy 32px). The
+  // source render is 128px, so this stays crisp.
   const img = document.createElement('img');
   img.src = getItemThumbnail(item);
   Object.assign(img.style, {
-    width: '32px', height: '32px',
-    objectFit: 'contain', imageRendering: 'pixelated',
+    width: '48px', height: '48px',
+    objectFit: 'contain',
     flexShrink: '0', pointerEvents: 'none',
   } as Partial<CSSStyleDeclaration>);
   cell.appendChild(img);
+
+  // NEW badge — top-right, only for items picked up since last bag view.
+  if (isNew) {
+    const badge = document.createElement('div');
+    badge.textContent = 'NEW';
+    Object.assign(badge.style, {
+      position: 'absolute', top: '-6px', right: '-4px',
+      padding: '1px 5px', borderRadius: '7px',
+      background: 'rgba(255, 150, 70, 0.95)', color: 'rgba(20, 8, 4, 0.95)',
+      fontSize: '8px', fontWeight: '700', letterSpacing: '0.08em',
+      pointerEvents: 'none',
+    } as Partial<CSSStyleDeclaration>);
+    cell.appendChild(badge);
+  }
 
   // Text block on the right.
   const text = document.createElement('div');
@@ -89,7 +111,7 @@ function buildBagCell(item: ItemSpec, count: number, ctx: InventoryCtx): HTMLDiv
   Object.assign(top.style, { display: 'flex', justifyContent: 'space-between' } as Partial<CSSStyleDeclaration>);
 
   const name = document.createElement('div');
-  name.textContent = abbrev(item);
+  name.textContent = item.name;   // full name — the wide 1-per-row cell has room
   Object.assign(name.style, {
     fontSize: '11px', color: rarityHex, fontWeight: '500',
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',

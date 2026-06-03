@@ -10,7 +10,7 @@ import type { ItemSpec } from '../content/items';
 // Rendering is intentionally low-res (96×96 with nearest-filter feel) so
 // it matches the PSX aesthetic of the rest of the game.
 
-const THUMB_SIZE = 96;
+const THUMB_SIZE = 128;   // source render res — displayed up to 48px, smooth + crisp
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
@@ -20,7 +20,7 @@ const cache = new Map<string, string>();
 function ensureRig() {
   if (renderer && scene && camera) return;
 
-  renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+  renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setSize(THUMB_SIZE, THUMB_SIZE);
   renderer.setPixelRatio(1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
