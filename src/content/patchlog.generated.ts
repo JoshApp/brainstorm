@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Mobile UI: menu Sheet shell + migrate character screen onto it"
+      },
+      {
+        "tag": "tune",
         "text": "Proficiency rework: per-class config (overridable) + tiers + item-card display"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Fog gate: real block+interact gate, fills the doorway, un-stealable tap"
-      },
-      {
-        "tag": "tune",
-        "text": "Fog gate"
       }
     ]
   }

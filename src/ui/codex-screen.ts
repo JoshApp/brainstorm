@@ -6,56 +6,28 @@
 // (things you've heard of but not seen) show as muted "???" so the
 // player has a "gotta see them all" target — the meta-progression hook.
 
-import { openScreen, closeScreen } from './screen-manager';
+import { isScreenOpen } from './screen-manager';
+import { createSheet, type Sheet } from './menu-shell';
 import { getMeta } from '../state/meta-state';
 import { ITEMS, RARITY_COLORS, type Rarity } from '../content/items';
 import { ENEMIES } from '../content/enemies';
 
 const SCREEN_ID = 'codex';
 
-let root: HTMLDivElement | null = null;
+let sheet: Sheet | null = null;
 
-export function showCodex() {
-  if (root) return;
-
+/** The codex body (lifetime stats line + Slain/Held/Read sections),
+ *  reusable as a tab in the unified game menu as well as the standalone
+ *  title-screen sheet. */
+export function buildCodexContent(): HTMLDivElement {
   const meta = getMeta();
-
-  root = document.createElement('div');
-  root.id = 'codex-screen';
-  Object.assign(root.style, {
-    position: 'fixed',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    width: 'min(720px, 92vw)',
-    maxHeight: '92vh',
-    overflowY: 'auto',
-    padding: '24px 28px',
-    background: 'linear-gradient(180deg, rgba(20, 14, 10, 0.96), rgba(10, 6, 4, 0.98))',
-    border: '1px solid rgba(170, 130, 80, 0.35)',
-    borderRadius: '3px',
-    boxShadow: '0 10px 36px rgba(0,0,0,0.7)',
-    color: 'rgba(220, 180, 140, 0.92)',
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, {
     fontFamily: '"Iowan Old Style", "Palatino", serif',
-    opacity: '0',
-    transition: 'opacity 220ms ease',
-    pointerEvents: 'auto',
+    color: 'rgba(220, 180, 140, 0.92)',
   } as Partial<CSSStyleDeclaration>);
 
-  // Header
-  const header = document.createElement('div');
-  header.textContent = 'What You Remember';
-  Object.assign(header.style, {
-    fontSize: '22px',
-    letterSpacing: '0.18em',
-    textTransform: 'uppercase',
-    color: 'rgba(230, 180, 110, 0.92)',
-    textAlign: 'center',
-    marginBottom: '4px',
-  });
-  root.appendChild(header);
-
-  // Sub-header: lifetime stats line
+  // Lifetime stats line.
   const sub = document.createElement('div');
   sub.textContent = `${meta.runsAttempted} descent${meta.runsAttempted === 1 ? '' : 's'}  ·  ${meta.totalKills} slain  ·  deepest ${meta.deepestDepth}`;
   Object.assign(sub.style, {
@@ -65,52 +37,28 @@ export function showCodex() {
     fontFamily: 'system-ui, sans-serif',
     textTransform: 'uppercase',
     textAlign: 'center',
-    marginBottom: '20px',
-  });
-  root.appendChild(sub);
+    marginBottom: '16px',
+  } as Partial<CSSStyleDeclaration>);
+  wrap.appendChild(sub);
 
-  // Three sections.
-  root.appendChild(buildEnemiesSection(meta.enemiesSlain));
-  root.appendChild(buildItemsSection(meta.itemsFound));
-  root.appendChild(buildNotesSection(meta.notesRead));
-
-  // Close hint
-  const closeHint = document.createElement('div');
-  closeHint.textContent = 'tap outside to close';
-  Object.assign(closeHint.style, {
-    marginTop: '20px',
-    textAlign: 'center',
-    fontSize: '10px',
-    letterSpacing: '0.22em',
-    textTransform: 'uppercase',
-    color: 'rgba(160, 120, 80, 0.45)',
-    fontFamily: 'system-ui, sans-serif',
-  });
-  root.appendChild(closeHint);
-
-  document.body.appendChild(root);
-  // Modal layer so this lives above the title screen.
-  openScreen({
-    id: SCREEN_ID,
-    root,
-    // 'title' layer so this renders ABOVE the start screen (also at
-    // 'title'); within the same layer, later-opened screens stack on
-    // top. Modal layer (z=200) would put the codex behind the title.
-    policy: { pausesWorld: true, needsBackdrop: true, layer: 'title' },
-    onDismissRequest: dismiss,
-  });
-  requestAnimationFrame(() => {
-    if (root) root.style.opacity = '1';
-  });
+  wrap.appendChild(buildEnemiesSection(meta.enemiesSlain));
+  wrap.appendChild(buildItemsSection(meta.itemsFound));
+  wrap.appendChild(buildNotesSection(meta.notesRead));
+  return wrap;
 }
 
-function dismiss() {
-  if (!root) return;
-  const r = root;
-  root = null;
-  r.style.opacity = '0';
-  setTimeout(() => r.remove(), 240);
-  closeScreen(SCREEN_ID);
+export function showCodex() {
+  if (isScreenOpen(SCREEN_ID)) return;
+  const s = createSheet({
+    id: SCREEN_ID,
+    title: 'WHAT YOU REMEMBER',
+    width: 720,
+    layer: 'title',   // above the start screen (also 'title'; later stacks on top)
+    onClose() { sheet = null; },
+  });
+  sheet = s;
+  s.body.appendChild(buildCodexContent());
+  s.open();
 }
 
 // ── Sections ────────────────────────────────────────────────────────

@@ -2,30 +2,35 @@ import { onEquipmentChanged } from '../player/equipment';
 import { onInventoryChanged } from '../player/inventory';
 import { onPlayerStatsChanged } from '../state/player-stats';
 import { ITEMS } from '../content/items';
-import { openScreen, closeScreen } from './screen-manager';
+import { createSheet, type Sheet } from './menu-shell';
 import { openSettings } from './settings-menu';
+import { buildCharacterContent } from './character-screen';
+import { buildCodexContent } from './codex-screen';
 import { FONT_UI } from './hud';
-import { PANEL_BG, PANEL_BORDER, TEXT_PRIMARY, type Selection, type InventoryCtx } from './inventory-shared';
+import { TEXT_PRIMARY, TEXT_DIM, type Selection, type InventoryCtx } from './inventory-shared';
 import { buildStatsColumn } from './inventory-stats';
 import { buildDollColumn } from './inventory-doll';
 import { buildBagColumn } from './inventory-bag';
 import { buildDetailsColumn } from './inventory-details';
 
-// Inventory + character stat sheet — the orchestrator. Owns the open/close
-// lifecycle + the selection state; each of the four columns is its own
-// component (inventory-{stats,doll,bag,details}.ts), built fresh on every
-// rebuild and handed an InventoryCtx to read the selection + request a new one.
-//
-// Horizontal four-column layout (mobile landscape):
-//   stats | paper-doll | bag | details
-// Selecting an item is non-destructive — you see what it does before
-// committing via the details column's EQUIP / USE / UNEQUIP button.
+// The unified in-game menu — one satchel button opens ONE sheet with a
+// tab row: GEAR · CHARACTER · CODEX (+ a settings gear). Character is no
+// longer buried three taps deep behind inventory→settings. Built on the
+// mobile-first menu shell (menu-shell.ts): fixed header (tabs + ✕),
+// scrolling body, safe-area + dvh bounds. GEAR is the old four-column
+// inventory; CHARACTER / CODEX reuse the content builders from their
+// screens so the standalone entry points still work too.
+
+type Tab = 'gear' | 'character' | 'codex';
+const TAB_LABELS: Record<Tab, string> = { gear: 'GEAR', character: 'CHARACTER', codex: 'CODEX' };
 
 // ── Module-level state ───────────────────────────────────────────────
 let openButton: HTMLButtonElement | null = null;
-let panel: HTMLDivElement | null = null;
-let panelOpen = false;
+let sheet: Sheet | null = null;
+let activeTab: Tab = 'gear';
 let selection: Selection = null;
+let charDispose: (() => void) | null = null;
+const tabButtons: Partial<Record<Tab, HTMLButtonElement>> = {};
 
 export function createInventoryPanel() {
   if (openButton) return;
@@ -65,7 +70,7 @@ export function createInventoryPanel() {
   } as Partial<CSSStyleDeclaration>);
   openButton.addEventListener('click', (e) => {
     e.stopPropagation();
-    togglePanel();
+    toggle();
   });
   // Keyboard hint badge — only shown on pure desktop. Tiny letter in
   // the corner of the satchel icon so players who have a keyboard
@@ -94,151 +99,175 @@ export function createInventoryPanel() {
   });
   document.body.appendChild(openButton);
 
-  panel = document.createElement('div');
-  panel.id = 'inventory-panel';
-  Object.assign(panel.style, {
-    position: 'fixed',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    width: 'min(880px, 98vw)',
-    maxHeight: '94vh',
-    overflowY: 'auto',
-    padding: '12px 14px',
-    background: PANEL_BG,
-    border: PANEL_BORDER,
-    borderRadius: '4px',
-    color: TEXT_PRIMARY,
-    fontFamily: FONT_UI,
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.9)',
-    zIndex: '100',
-    display: 'none',
-    flexDirection: 'column',
-    gap: '8px',
-  } as Partial<CSSStyleDeclaration>);
-  document.body.appendChild(panel);
-
-  onInventoryChanged(() => { if (panelOpen) rebuildPanel(); });
-  onEquipmentChanged(() => { if (panelOpen) rebuildPanel(); });
-  // Stat snapshot changes (proficiency gain, attribute spend, buff on/off)
-  // refresh the open panel so the readout never goes stale. Fires only on a
-  // real change, and only the panel-open case rebuilds.
-  onPlayerStatsChanged(() => { if (panelOpen) rebuildPanel(); });
+  // A live GEAR tab refreshes when its data changes; other tabs don't care.
+  const refreshGear = () => { if (sheet && activeTab === 'gear') renderGear(); };
+  onInventoryChanged(refreshGear);
+  onEquipmentChanged(refreshGear);
+  onPlayerStatsChanged(refreshGear);
 }
 
-function togglePanel() { panelOpen ? closePanel() : openPanel(); }
+function isOpen(): boolean { return !!sheet; }
+function toggle() { isOpen() ? close() : open('gear'); }
 
-/** Programmatic open — used by debug scenarios for snaps. */
-export function openInventoryPanel() {
-  openPanel();
-}
+/** Programmatic open — debug snaps + the I hotkey. */
+export function openInventoryPanel() { open('gear'); }
 
-/** Toggle open/close — used by the desktop 'I' hotkey + future
- *  controller binding. Opening via this path also releases pointer
- *  lock so the player can drive the panel with the mouse. */
+/** Open straight to the CHARACTER tab (desktop C / settings button). */
+export function openCharacterTab() { open('character'); }
+
+/** Toggle — desktop I hotkey. Releases pointer lock so the mouse can
+ *  drive the panel. */
 export function toggleInventoryPanel() {
-  togglePanel();
-  if (panelOpen) {
-    if (document.exitPointerLock) document.exitPointerLock();
-  }
+  toggle();
+  if (isOpen() && document.exitPointerLock) document.exitPointerLock();
 }
 
-/** Whether the inventory panel is currently open. */
-export function isInventoryPanelOpen(): boolean {
-  return panelOpen;
-}
+export function isInventoryPanelOpen(): boolean { return isOpen(); }
 
-/** Programmatically select a bag item by id (for snap scenarios). */
+/** Select a bag item by id (snap scenarios). Switches to GEAR. */
 export function selectBagItem(itemId: string) {
   const item = ITEMS[itemId];
   if (!item) return;
   selection = { kind: 'bag', item };
-  if (panelOpen) rebuildPanel();
+  activeTab = 'gear';
+  if (sheet) { syncTabStyles(); renderTab(); }
 }
 
-function openPanel() {
-  if (!panel) return;
+// ── Open / close ─────────────────────────────────────────────────────
+function open(tab: Tab) {
+  if (sheet) { selectTab(tab); return; }
+  activeTab = tab;
   selection = null;
-  rebuildPanel();
-  panel.style.display = 'flex';
-  panelOpen = true;
-  // Default policy is fine for the inventory: pauses world, backdrop on,
-  // panel layer. Dismiss request routes from a backdrop tap.
-  openScreen({
+  const s = createSheet({
     id: 'inventory',
-    root: panel,
-    onDismissRequest: () => { if (panelOpen) closePanel(); },
+    width: 940,                 // GEAR's four columns want room (clamps on mobile)
+    onClose: teardown,
   });
+  sheet = s;
+  buildTabRow(s.header);
+  renderTab();
+  s.open();
 }
-function closePanel() {
-  if (!panel) return;
-  panel.style.display = 'none';
-  panelOpen = false;
+
+function close() { sheet?.close(); }   // close() → onClose: teardown
+
+function teardown() {
+  charDispose?.();
+  charDispose = null;
+  sheet = null;
   selection = null;
-  closeScreen('inventory');
+  for (const k of Object.keys(tabButtons) as Tab[]) delete tabButtons[k];
 }
 
-function rebuildPanel() {
-  if (!panel) return;
-  panel.replaceChildren();
-
-  panel.appendChild(buildHeader());
-  panel.appendChild(buildColumns());
-}
-
-// ── Header ───────────────────────────────────────────────────────────
-function buildHeader(): HTMLDivElement {
-  const header = document.createElement('div');
-  Object.assign(header.style, {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    borderBottom: '1px solid rgba(180, 130, 90, 0.3)', paddingBottom: '8px',
+// ── Tab row (lives in the sheet header) ──────────────────────────────
+function buildTabRow(header: HTMLDivElement) {
+  const titleEl = header.firstElementChild;   // the shell's (empty) title slot
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    flex: '1 1 auto',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '2px',
+    minWidth: '0',
+    overflowX: 'auto',
   } as Partial<CSSStyleDeclaration>);
 
-  const title = document.createElement('div');
-  title.textContent = 'INVENTORY';
-  Object.assign(title.style, {
-    fontSize: '13px', fontWeight: '600', letterSpacing: '0.30em',
-    color: 'rgba(255, 200, 140, 0.95)',
-  } as Partial<CSSStyleDeclaration>);
+  (['gear', 'character', 'codex'] as Tab[]).forEach((t) => {
+    const b = tabButton(TAB_LABELS[t], () => selectTab(t));
+    tabButtons[t] = b;
+    row.appendChild(b);
+  });
 
-  // Right side: gear (settings) + close. Gear sits inside the inventory
-  // so the gameplay HUD doesn't carry a standalone settings button.
-  const right = document.createElement('div');
-  Object.assign(right.style, {
-    display: 'flex', alignItems: 'center', gap: '4px',
-  } as Partial<CSSStyleDeclaration>);
-
+  // Settings gear — pushed to the right edge of the tab row. Lives here
+  // (not the gameplay HUD) so the HUD stays clean.
   const gear = document.createElement('button');
   gear.textContent = '⚙';
   gear.setAttribute('aria-label', 'settings');
   Object.assign(gear.style, {
-    background: 'transparent', border: 'none',
-    color: 'rgba(200, 160, 110, 0.7)', fontSize: '18px', cursor: 'pointer',
-    padding: '4px 8px', lineHeight: '1',
+    marginLeft: 'auto',
+    flex: '0 0 auto',
+    minWidth: '40px',
+    height: '40px',
+    background: 'transparent',
+    border: 'none',
+    color: TEXT_DIM,
+    fontSize: '18px',
+    cursor: 'pointer',
+    touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
   } as Partial<CSSStyleDeclaration>);
-  gear.addEventListener('click', (e) => {
-    e.stopPropagation();
-    openSettings();
-  });
+  gear.addEventListener('click', (e) => { e.stopPropagation(); openSettings(); });
+  row.appendChild(gear);
 
-  const close = document.createElement('button');
-  close.textContent = '✕';
-  Object.assign(close.style, {
-    background: 'transparent', border: 'none',
-    color: 'rgba(220, 180, 140, 0.7)', fontSize: '18px', cursor: 'pointer',
-    padding: '4px 8px',
-  } as Partial<CSSStyleDeclaration>);
-  close.addEventListener('click', closePanel);
-
-  right.append(gear, close);
-  header.append(title, right);
-  return header;
+  titleEl?.replaceWith(row);
+  syncTabStyles();
 }
 
-// ── Columns: stats | doll | bag | details ─────────────────────────────
-// Landscape-phone-friendly: every region is side-by-side so we never run
-// out of vertical space. The details column on the far right is ALWAYS
-// visible — EQUIP / UNEQUIP / USE buttons never get cut off the bottom.
+function tabButton(label: string, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.textContent = label;
+  Object.assign(b.style, {
+    flex: '0 0 auto',
+    minHeight: '40px',
+    padding: '8px 12px',
+    background: 'transparent',
+    border: 'none',
+    borderBottom: '2px solid transparent',
+    color: TEXT_DIM,
+    fontFamily: FONT_UI,
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '0.18em',
+    cursor: 'pointer',
+    touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
+  } as Partial<CSSStyleDeclaration>);
+  b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+  return b;
+}
+
+function syncTabStyles() {
+  for (const t of Object.keys(tabButtons) as Tab[]) {
+    const b = tabButtons[t];
+    if (!b) continue;
+    const on = t === activeTab;
+    b.style.color = on ? 'rgba(255, 200, 140, 0.95)' : TEXT_DIM;
+    b.style.borderBottomColor = on ? 'rgba(255, 160, 80, 0.85)' : 'transparent';
+  }
+}
+
+function selectTab(tab: Tab) {
+  activeTab = tab;
+  syncTabStyles();
+  renderTab();
+}
+
+// ── Tab content ──────────────────────────────────────────────────────
+function renderTab() {
+  if (!sheet) return;
+  charDispose?.();
+  charDispose = null;
+  sheet.body.replaceChildren();
+  if (activeTab === 'gear') {
+    renderGear();
+  } else if (activeTab === 'character') {
+    const c = buildCharacterContent();
+    charDispose = c.dispose;
+    sheet.body.appendChild(c.el);
+  } else {
+    sheet.body.appendChild(buildCodexContent());
+  }
+}
+
+function renderGear() {
+  if (!sheet) return;
+  sheet.body.replaceChildren(buildColumns());
+}
+
+// ── GEAR columns: stats | doll | bag | details ───────────────────────
+// Landscape-friendly: side-by-side so we never run out of vertical space;
+// the details column on the far right is always present (EQUIP / USE /
+// UNEQUIP never get cut off).
 function buildColumns(): HTMLDivElement {
   const grid = document.createElement('div');
   Object.assign(grid.style, {
@@ -246,15 +275,14 @@ function buildColumns(): HTMLDivElement {
     gridTemplateColumns: '0.55fr 0.9fr 1fr 1.25fr',
     gap: '10px',
     alignItems: 'stretch',
-    flex: '1',
     minHeight: '0',
   } as Partial<CSSStyleDeclaration>);
 
   // The selection state lives here; columns read it + request changes
-  // through ctx.select, which updates state and rebuilds.
+  // through ctx.select, which updates state and re-renders GEAR.
   const ctx: InventoryCtx = {
     selection,
-    select(sel: Selection) { selection = sel; rebuildPanel(); },
+    select(sel: Selection) { selection = sel; renderGear(); },
   };
 
   grid.appendChild(buildStatsColumn());

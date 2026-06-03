@@ -81,7 +81,6 @@ let summaryEl: HTMLDivElement | null = null;
 let unspentLabel: HTMLSpanElement | null = null;
 let attrRows: AttributeRow[] = [];
 let profRows: ProficiencyRow[] = [];
-let unsubscribe: (() => void) | null = null;
 
 // Empirical cap for proficiency bar fill — bars saturate at this
 // value so a 100-hit sword run doesn't make a 5-greed run look empty
@@ -98,22 +97,13 @@ function atRestPoint(): boolean {
   return id.startsWith('safe-') || id === 'starter';
 }
 
-export function openCharacterScreen(): void {
-  if (isScreenOpen(SCREEN_ID)) return;
-
-  const s = createSheet({
-    id: SCREEN_ID,
-    title: 'CHARACTER',
-    width: 720,
-    layer: 'modal',
-    policy: { hidesHud: true },
-    onClose() {
-      unsubscribe?.();
-      unsubscribe = null;
-      sheet = null;
-    },
-  });
-  sheet = s;
+/** Build the character body (summary + attributes | proficiencies) into
+ *  a div, wire the reactive refresh, and return it + a dispose hook.
+ *  Reusable as a tab in the unified game menu and by the standalone
+ *  sheet below. */
+export function buildCharacterContent(): { el: HTMLDivElement; dispose: () => void } {
+  const el = document.createElement('div');
+  Object.assign(el.style, { display: 'flex', flexDirection: 'column', gap: '8px' } as Partial<CSSStyleDeclaration>);
 
   // ── Summary ───────────────────────────────────────────────────────
   summaryEl = document.createElement('div');
@@ -124,7 +114,7 @@ export function openCharacterScreen(): void {
     textAlign: 'center',
     marginBottom: '4px',
   } as Partial<CSSStyleDeclaration>);
-  s.body.appendChild(summaryEl);
+  el.appendChild(summaryEl);
 
   // ── Two columns: attributes | proficiencies ───────────────────────
   // flex-wrap means they sit side-by-side when there's width (landscape)
@@ -181,15 +171,40 @@ export function openCharacterScreen(): void {
     for (const row of group.rows) profRows.push(buildProficiencyRow(row, profCol));
   }
   cols.appendChild(profCol);
+  el.appendChild(cols);
 
-  s.body.appendChild(cols);
-
-  s.open();
-
-  // Reactive — character changes during the run (proficiency ticks)
-  // reflect immediately without re-opening.
-  unsubscribe = onCharacterChanged(rebuild);
+  const unsub = onCharacterChanged(rebuild);
   rebuild();
+  return {
+    el,
+    dispose() {
+      unsub();
+      // Drop refs so a stale rebuild (shouldn't fire post-dispose) no-ops.
+      summaryEl = null;
+      unspentLabel = null;
+      attrRows = [];
+      profRows = [];
+    },
+  };
+}
+
+export function openCharacterScreen(): void {
+  if (isScreenOpen(SCREEN_ID)) return;
+  const content = buildCharacterContent();
+  const s = createSheet({
+    id: SCREEN_ID,
+    title: 'CHARACTER',
+    width: 720,
+    layer: 'modal',
+    policy: { hidesHud: true },
+    onClose() {
+      content.dispose();
+      sheet = null;
+    },
+  });
+  sheet = s;
+  s.body.appendChild(content.el);
+  s.open();
 }
 
 export function closeCharacterScreen(): void {
@@ -326,7 +341,7 @@ function buildProficiencyRow(def: { kind: ProficiencyKind; label: string }, pare
 }
 
 function rebuild(): void {
-  if (!sheet || !summaryEl || !unspentLabel) return;
+  if (!summaryEl || !unspentLabel) return;
   const c = getCharacter();
   const run = getRunState();
   const restPoint = atRestPoint();
