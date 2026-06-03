@@ -358,12 +358,16 @@ export function tickProjectiles(
       }
     }
 
-    // Wall hit — walkable.contains uses a small radius so a projectile
-    // doesn't phase through corners. The fog-gate curtain is a separate
-    // projectile-only barrier (blocks shots even while open for walking),
-    // so a shot can't cross the mist in either direction.
+    // Wall hit — HEIGHT-AWARE: containsProjectile lets a shot fly OVER a
+    // low prop (vase, altar, chest — anything with an obstacle `height`)
+    // at the bolt's current y, while full-height blockers (walls, pillars,
+    // height-less obstacles) still stop it. (Was the 2D contains(), which
+    // killed every shot on a waist-high vase's footprint — the playtest
+    // "shot eaten by a small vase" bug.) The fog-gate curtain is a
+    // separate projectile-only barrier (blocks even while open for
+    // walking), so a shot can't cross the mist either way.
     if (
-      !walkable.contains(slot.position.x, slot.position.z, slot.type.radius) ||
+      !walkable.containsProjectile(slot.position.x, slot.position.z, slot.type.radius, slot.position.y) ||
       walkable.projectileBlocked(slot.position.x, slot.position.z, slot.type.radius)
     ) {
       retire(slot);

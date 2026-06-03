@@ -25,13 +25,15 @@ multi-hit is, etc.). Don't tune one in isolation.
   doesn't clip every enemy + every prop in a wide radius.
 
 ## B. Projectiles (needs a rework)
-- [ ] **[bug]** Projectiles **get stuck on obstacles**.
-- [ ] **[bug]** Shots **don't reach enemies behind a low prop** — even a small
-  floor vase blocks them. (We shipped "height-aware projectile collision /
-  shots fly OVER low props" before — this is a regression or it's also
-  catching the auto-aim LOS test on tiny props.)
-- [ ] **[feat]** General **projectile system rework** — collision + LOS height
-  awareness, not stopping on clutter.
+- [x] **[bug]** Projectiles **stuck/eaten on low props** — the tick used the 2D
+  `contains()`, killing any shot over a prop's footprint. Now uses the
+  height-aware `containsProjectile()`. *(done)*
+- [x] **[bug]** Shots **now reach enemies behind a low vase** — vases carry
+  height 0.6, the shot flies over (height-aware), and auto-aim LOS is
+  walls-only so the enemy is still locked. *(done)*
+- [x] **[feat]** Projectile collision is now height-aware end-to-end; the prop
+  collision-shape type gained an optional `height` so any low structural
+  prop can let shots over too. *(done)*
 
 ## C. Stats & scaling
 - [x] **[bug]** **Stats don't re-apply** — root cause: the run save persisted

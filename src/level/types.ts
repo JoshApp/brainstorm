@@ -32,10 +32,16 @@ export type ObstacleCircle = {
 
 /** Per-shape collision attached to a 'model' prop. Each shape may
  *  carry an optional offset relative to the prop's local origin;
- *  the offset is rotated by the prop's rotY at build time. */
+ *  the offset is rotated by the prop's rotY at build time.
+ *
+ *  `height` (m above floor) is OPTIONAL: omitted = full-height blocker
+ *  (columns, buttresses — block movement AND every projectile). Set it on
+ *  a LOW structural prop (a kerb, a fallen beam) so shots fly over it
+ *  (height-aware projectile pass — see WalkableRegion.containsProjectile).
+ *  Movement always collides regardless of height. */
 export type PropCollision =
-  | { kind: 'circle'; r: number; ox?: number; oz?: number }
-  | { kind: 'aabb'; halfW: number; halfD: number; ox?: number; oz?: number };
+  | { kind: 'circle'; r: number; ox?: number; oz?: number; height?: number }
+  | { kind: 'aabb'; halfW: number; halfD: number; ox?: number; oz?: number; height?: number };
 
 /** Declarative facing directive for a prop. Resolves to a
  *  concrete rotY at compose time via src/level/facing.ts. The
