@@ -16,7 +16,7 @@ import { computePlayerStats } from './modifiers';
 import { gameRngChance } from '../engine/rng';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
-import { spawnProjectile, setProjectileEnemyProvider } from './projectile-pool';
+import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
@@ -118,6 +118,7 @@ export function createCombatSystem(
   // provider — registered here so the projectile pool's tick needn't
   // take an extra arg (keeps the main-loop call site untouched).
   setProjectileEnemyProvider(getEnemies);
+  setProjectileDestructibleProvider(getDestructibles);   // bolts smash vases/crates too
 
   // LIFESTEAL is now a CHANCE-ON-KILL proc (was a per-hit damage drain,
   // which the playtest found way too strong). On any enemy death (all

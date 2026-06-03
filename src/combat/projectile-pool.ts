@@ -3,6 +3,7 @@ import type { WalkableRegion } from '../level/walkable';
 import { damagePlayer } from '../player/health';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { applyDamageVia, type DamageType } from './damage';
+import type { Damageable } from './damageable';
 import type { EntityId } from '../ecs/types';
 import { applyBuff } from '../ecs/buffs';
 import { get as getEntity } from '../ecs/world';
@@ -162,6 +163,14 @@ export interface EnemyHittable {
 }
 export function setProjectileEnemyProvider(fn: () => readonly EnemyHittable[]): void {
   enemyProvider = fn;
+}
+
+// Destructible (vase / crate / urn) provider — friendly projectiles smash
+// them like a melee hit. Mirrors the enemy provider; set once in
+// createCombatSystem. A Destructible IS a Damageable.
+let destructibleProvider: (() => readonly Damageable[]) | null = null;
+export function setProjectileDestructibleProvider(fn: () => readonly Damageable[]): void {
+  destructibleProvider = fn;
 }
 
 const POOL_SIZE = 16;
@@ -334,6 +343,24 @@ export function tickProjectiles(
           retire(slot);
           hit = true;
           break;
+        }
+      }
+      // Smash vases / crates the bolt flies INTO — but HEIGHT-GATED so a
+      // chest-height shot still sails OVER a low prop to the enemy behind
+      // it (the over-fly fix). Only a bolt down at the prop's low body
+      // breaks it. The destructible's own takeDamage handles shatter+drops.
+      if (!hit && destructibleProvider) {
+        for (const d of destructibleProvider()) {
+          if (!d.alive) continue;
+          const dx = slot.position.x - d.position.x;
+          const dz = slot.position.z - d.position.z;
+          const rr = (d.hitRadius ?? 0.4) + slot.type.radius;
+          if (dx * dx + dz * dz < rr * rr && slot.position.y <= d.aimHeight * 2 + 0.25) {
+            d.takeDamage({ source: slot.source, target: d.entityId, base: slot.damage, type: slot.type.damageType });
+            retire(slot);
+            hit = true;
+            break;
+          }
         }
       }
       if (hit) continue;
