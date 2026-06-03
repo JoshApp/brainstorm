@@ -98,6 +98,21 @@ export const BOSSES: Record<string, BossSpec> = {
     introLine: 'It is mostly absence.',
     bestiaryEntry: 'It sang once. The sound stayed.',
   },
+  // Act II / III — the giant skeleton. Two-phase fight: standing
+  // greatscythe-wielder, then a crawling torso once the legs go.
+  // Pilots the multi-phase boss system for future bosses (hydra
+  // heads, dragon wings, etc.).
+  'marrow-sovereign': {
+    id: 'marrow-sovereign',
+    enemyId: 'marrow-sovereign',
+    preferredVaultId: 'boss-hall',     // grand hall for the big silhouette
+    // Bone-white with a marrow-red edge — same family as his ribcage
+    // glow. Reads "boneyard" through the curtain.
+    mistColor: 0xff6030,
+    defaultName: 'The Marrow Sovereign',
+    introLine: 'He no longer knelt.',
+    bestiaryEntry: 'A king of bones above and below. Breaking his legs only changes the angle.',
+  },
 };
 
 /** Resolve a BossSpec by id, with a safe fallback to the wraith

@@ -229,7 +229,10 @@ export function defaultAbility(spec: EnemySpec): Ability {
 
 /** The enemy's abilities, highest-priority first. Explicit `spec.abilities`
  *  win; otherwise the legacy fields synthesize a single default. */
-export function resolveAbilities(spec: EnemySpec): Ability[] {
+export function resolveAbilities(spec: EnemySpec, override?: Ability[]): Ability[] {
+  // Phase-aware: callers (mobs/enemy.ts during phase transitions) pass
+  // an explicit ability list to override the spec's default.
+  if (override && override.length > 0) return override;
   if (spec.abilities && spec.abilities.length > 0) return spec.abilities;
   return [defaultAbility(spec)];
 }

@@ -10,6 +10,7 @@ import {
 } from './enemy-models';
 import { mimicModel } from './mimic';
 import { burrowerModel } from './burrower';
+import { marrowSovereignModel } from './skeleton-boss';
 
 // Ranged config — if present on a spec, the enemy fires a projectile from
 // `muzzleOffset` (local to the container) during the strike phase instead
@@ -297,6 +298,49 @@ export interface EnemySpec {
     /** Radial distance to scatter children. Default 0.4m. */
     radius?: number;
   };
+
+  // --- Multi-phase boss ---
+  /**
+   * Phase progression. When set, the enemy starts in phase[0] (its HP,
+   * abilities, and stat overrides replace the top-level ones for as long
+   * as the phase is active). When current phase HP hits 0 AND there's
+   * a next phase, the boss transitions: enters an invuln window, hides
+   * the phase's `hideParts` from the model, applies stat/rig overrides
+   * for the new phase. When the LAST phase HP hits 0, the boss dies
+   * normally.
+   *
+   * Existing single-phase enemies omit this field — top-level hp +
+   * abilities apply directly, no transitions. Backwards-compat.
+   */
+  phases?: PhaseSpec[];
+}
+
+export interface PhaseSpec {
+  /** Phase-specific HP pool. */
+  hp: number;
+  /** Phase-specific ability list. Replaces top-level abilities while
+   *  this phase is active. */
+  abilities: Ability[];
+  /** Optional move-speed override. Defaults to the spec's moveSpeed. */
+  moveSpeed?: number;
+  /** Names of model parts to HIDE when this phase begins (e.g. legs
+   *  for the skeleton's crawl phase). Cumulative — parts hidden in
+   *  earlier phases stay hidden. */
+  hideParts?: string[];
+  /** Rig Y offset applied when this phase begins. Negative = lower
+   *  the model (crawl). Stacks with the rig's authored y. */
+  rigYOffset?: number;
+  /** Rig X-rotation applied when this phase begins. Forward tilt for
+   *  a crawl pose. */
+  rigPitch?: number;
+  /** Invulnerability duration on phase entry (seconds). Use to play
+   *  the transition animation without taking damage. Default 0. */
+  invulnEntryTime?: number;
+  /** Intra-phase HP thresholds — when current phase HP drops below
+   *  `atHp`, hide the specified parts. Used for cosmetic feedback
+   *  like "kill the left leg first, then the right." Threshold check
+   *  fires once per threshold per phase. */
+  partBreaks?: Array<{ atHp: number; hideParts: string[] }>;
 }
 
 // ── Drop table ──────────────────────────────────────────────────────
@@ -344,6 +388,7 @@ export const ENEMY_AUDIO_SIZE: Record<string, EnemyDeathSize> = {
   // New mob audio sizes.
   'sump-wisp':   'spectral',   // floating, magical — same ethereal palette as the wraith
   'plague-spore':'small',      // small body, soft pop on death
+  'marrow-sovereign':'medium', // chunky bone-crack on phase change + death
   'carrion-hound':'medium',    // dog-sized — same as ghoul/skirmisher
   mimic:          'medium',    // chunky thud on death
   'pit-moth':     'small',     // tiny crunch
@@ -369,6 +414,7 @@ export const ENEMY_VOCAL_ARCHETYPE: Record<string, VocalArchetype> = {
   // New mobs.
   'sump-wisp':    'groan',     // low spectral hum — fits the wraith family
   'plague-spore': 'hiss',      // wet release
+  'marrow-sovereign': 'rattle', // dry bone-rattle, matches the skeleton family
   'carrion-hound':'squeak',    // panting/growling; nearest match in the existing pool
   mimic:          'groan',     // low chest-rattle from the throat
   'pit-moth':     'skitter',   // wing-rustle / tiny clicks
@@ -1381,6 +1427,150 @@ export const ENEMIES: Record<string, EnemySpec> = {
   //   - fast pack melee, bleed-on-hit (carrion hound)
   // Each ships with a distinct model so the silhouette reads
   // immediately, even in low-light corridors.
+
+  // Marrow Sovereign — Act II/III boss. Two-phase skeleton:
+  //   Phase 1: 4m standing, greatscythe. Three abilities — wide
+  //     scythe sweep, ground slam at player's feet (AoE), bone-
+  //     spike ring around himself. Player chips through Phase-1 HP
+  //     (cosmetic leg-breaks at HP thresholds let the legs literally
+  //     drop off as the player damages them).
+  //   Phase 2: legs gone, scythe abandoned. Skeleton crawls forward
+  //     on his arms — lower silhouette, faster than expected.
+  //     Different ability set: arm sweep, marrow projectile, bite.
+  //     Player has to AIM HIGH (skull is the target) and read new
+  //     telegraphs.
+  // Pilots the multi-phase system: HP-threshold transitions, per-phase
+  // ability lists, rig offset/pitch overrides, hide-parts visual.
+  'marrow-sovereign': {
+    id: 'marrow-sovereign',
+    name: 'marrow sovereign',
+    isBoss: true,
+    bossName: 'The Marrow Sovereign',
+    scale: 1.0,                       // model is authored at 1:1 already (~4m tall)
+    hp: 1,                            // unused — phases own the HP pool
+    moveSpeed: 1.0,                   // slow stride in phase 1
+    attackDamage: 3,                  // mirrored by per-ability damage below
+    attackRange: 5.0,
+    strikeRange: 2.0,
+    windupTime: 1.20,
+    strikeTime: 0.40,
+    recoverTime: 0.80,
+    damageType: 'physical',
+    model: marrowSovereignModel(),
+    baseEyeEmissive: 2.0,
+    collisionRadius: 0.8,
+    physicalArmor: 0,
+    tiltPartName: 'rig',
+    // Marrow glow inside the ribcage is both the eye-flare target
+    // (windup cue) and the damage-flash target (hit feedback). Same
+    // pattern as the king's core.
+    flashMaterialName: 'core',
+    eyeMaterialName: 'core',
+    presence: 'lurch',                // heavy, deliberate
+    sightRange: 14,
+    sightConeHalfAngle: Math.PI,
+    hearingRange: 6,
+    loseSightTime: 12,
+    phases: [
+      // ── PHASE 1 — Standing.
+      {
+        hp: 16,
+        moveSpeed: 1.0,
+        abilities: [
+          // Greatscythe sweep — wide horizontal cone, long reach.
+          // Player dodges by stepping INSIDE the arc (close to the
+          // skeleton's centre) or sidestepping perpendicular to it.
+          {
+            id: 'scythe-sweep',
+            minRange: 0, maxRange: 6,
+            windup: 1.40, strike: 0.30, recover: 0.70, cooldown: 2.2,
+            pose: 'swing',
+            steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 4.0, damage: 3, element: 'physical' } }],
+          },
+          // Ground chop — AoE at player's locked position. Step off
+          // the marker to dodge (classic king-style stomp).
+          {
+            id: 'chop',
+            minRange: 0, maxRange: 7,
+            windup: 1.10, strike: 0.20, recover: 0.80, cooldown: 2.8,
+            pose: 'cast',
+            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 2.0, damage: 3, element: 'physical' } }],
+          },
+          // Bone-spike ring — radial AoE around himself. Dodge by
+          // being CLOSE (inside the ring) or running outside its
+          // outer radius. Punishes mid-range stalling.
+          {
+            id: 'spike-ring',
+            minRange: 0, maxRange: 4,
+            windup: 1.40, strike: 0.20, recover: 0.80, cooldown: 3.5,
+            pose: 'cast',
+            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 3.0, damage: 3, element: 'physical' } }],
+          },
+        ],
+        // Intra-phase part-breaks: each leg visually drops off as
+        // phase-1 HP descends. Player sees their progress directly
+        // ("I knocked a leg off, half-way there"). Cosmetic only —
+        // doesn't change abilities. Order: right leg first (at 50%),
+        // then left (at ~12%), then phase transition at 0.
+        partBreaks: [
+          { atHp: 9, hideParts: ['leg-right'] },
+          { atHp: 3, hideParts: ['leg-left'] },
+        ],
+      },
+      // ── PHASE 2 — Crawling. Legs + scythe gone. Lower silhouette,
+      //    faster move (insectile crawl), shorter reach.
+      {
+        hp: 12,
+        moveSpeed: 1.8,
+        // Drop the rig low (legs are gone — torso has to sit at
+        // ground level). Tilt forward for the crawl pose.
+        rigYOffset: -1.0,
+        rigPitch: -0.5,
+        hideParts: ['leg-left', 'leg-right', 'scythe'],
+        invulnEntryTime: 1.5,         // downed-rising animation window
+        abilities: [
+          // Arm swipe — short-range melee, fast.
+          {
+            id: 'arm-swipe',
+            minRange: 0, maxRange: 3,
+            windup: 0.55, strike: 0.20, recover: 0.55, cooldown: 1.0,
+            pose: 'swing',
+            steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.6, damage: 2, element: 'physical' } }],
+          },
+          // Marrow claw — mid-range projectile. Reuses the acolyte
+          // spit projectile (re-tinted by the boss's eye material).
+          // Break LOS or sidestep.
+          {
+            id: 'marrow-claw',
+            minRange: 2, maxRange: 9,
+            windup: 0.90, strike: 0.14, recover: 0.60, cooldown: 2.5,
+            pose: 'cast',
+            steps: [{ trigger: { at: 0 }, action: { kind: 'projectile', projectileId: 'acolyte-spit', muzzle: [0, 0.2, 0], damage: 2 } }],
+          },
+          // Lunge bite — close-range with a tiny forward dash.
+          {
+            id: 'lunge-bite',
+            minRange: 0, maxRange: 2.5,
+            windup: 0.45, strike: 0.18, recover: 0.50, cooldown: 1.5,
+            pose: 'charge',
+            steps: [{ trigger: { at: 0 }, action: { kind: 'dash', toward: 'player', speed: 5.0, contactReach: 1.2, damage: 3, element: 'physical' } }],
+          },
+        ],
+      },
+    ],
+    xp: 80,
+    gold: [60, 100],
+    drops: {
+      // Guaranteed: healing potion + a unique boss drop (bone amulet
+      // for now; can swap to a sovereign-specific item later).
+      guaranteed: ['healing-potion', 'bone-amulet'],
+      rate: 1.0,
+      pool: [
+        { itemId: 'iron-coif',       weight: 1 },
+        { itemId: 'cuirass-of-ash',  weight: 1 },
+      ],
+    },
+  },
 
   // Plague Spore — stationary fungal turret. Doesn't move; periodically
   // inflates and releases a poison cloud AoE around itself. Reads as

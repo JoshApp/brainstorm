@@ -295,15 +295,37 @@ export function createEnemy(
   const setEyeFlare = eyePresenter.setFlare;
   const applyIdleEyes = eyePresenter.applyIdle;
 
-  // World entity (HP + buffs).
+  // World entity (HP + buffs). For multi-phase bosses, HP starts at
+  // phase[0].hp; phase transitions refill to the next phase's HP.
   const entityId = generateEntityId(`enemy-${spec.id}`);
+  let phaseIndex = 0;
+  const phases = spec.phases ?? null;
+  const initialHp = phases ? phases[0].hp : spec.hp;
+  const initialAbilities = phases ? phases[0].abilities : (spec.abilities ?? []);
   spawnEntity({
     id: entityId,
     kind: 'enemy',
-    hp: { base: spec.hp, current: spec.hp },
+    hp: { base: initialHp, current: initialHp },
     buffs: [],
     passives: [],
   });
+  // Per-phase mutable state (so we can reassign on transition).
+  let currentMaxHp = initialHp;
+  let currentAbilities = initialAbilities;
+  // Per-phase partBreaks: tracks which thresholds have fired so we
+  // don't re-hide parts every tick. Reset on phase entry.
+  let firedPartBreaks = new Set<number>();
+  let phaseInvulnTimer = 0;
+
+  // Helper used by phase transitions + intra-phase part-break thresholds
+  // to hide named model parts. Looks up by `name` field in the ModelSpec;
+  // unknown names are no-ops (avoid throwing on a typo).
+  function hidePartsByName(names: readonly string[]): void {
+    for (const n of names) {
+      const part = built.parts.get(n);
+      if (part) part.visible = false;
+    }
+  }
   // Register combat stats so the damage pipeline knows this enemy's armor +
   // (future) damage modifiers. Defaults to 0 armor, no bonuses — fields on
   // EnemySpec override per-enemy.
@@ -340,7 +362,7 @@ export function createEnemy(
   // their legacy fields (see resolveAbilities). `currentAbility` is the
   // one being executed across winding/striking/recovering; `cooldowns`
   // tracks per-ability lockout so a charge can't fire every second.
-  const abilities = resolveAbilities(spec);
+  let abilities = resolveAbilities(spec, phases ? currentAbilities : undefined);
   // Commit distance — the farthest range at which ANY ability triggers.
   // Beyond this the enemy just chases to close. Equals attackRange for a
   // pure melee mob, the cast range for a shooter.
@@ -564,10 +586,26 @@ export function createEnemy(
     // underground or mid-burst, not yet a valid target. Routes
     // through here normally; we short-circuit before HP changes.
     if (burrowState !== 'surfaced') return 0;
+    // Multi-phase boss: invuln window on phase entry (e.g. the
+    // skeleton's downed-and-rising animation).
+    if (phases && phaseInvulnTimer > 0) return 0;
     const entity = getEntity(entityId);
     if (!entity || !entity.hp) return 0;
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
+    // Phase part-break thresholds — fire at-most-once per threshold.
+    if (phases) {
+      const phase = phases[phaseIndex];
+      if (phase.partBreaks) {
+        for (let i = 0; i < phase.partBreaks.length; i++) {
+          if (firedPartBreaks.has(i)) continue;
+          if (entity.hp.current <= phase.partBreaks[i].atHp) {
+            firedPartBreaks.add(i);
+            hidePartsByName(phase.partBreaks[i].hideParts);
+          }
+        }
+      }
+    }
     coreReactor.hit();   // hit flash + glowing-core flare/pop (king)
     // Pained cry when it survives the blow — the creature's voice on top of
     // the weapon's impact, so every connecting hit reads as "I hurt it." The
@@ -585,6 +623,28 @@ export function createEnemy(
       phaseTimer = 0;
     }
     if (entity.hp.current <= 0) {
+      // Multi-phase: if there's a next phase, transition INSTEAD of dying.
+      if (phases && phaseIndex + 1 < phases.length) {
+        const next = phases[phaseIndex + 1];
+        phaseIndex++;
+        currentMaxHp = next.hp;
+        currentAbilities = next.abilities;
+        abilities = resolveAbilities(spec, currentAbilities);
+        entity.hp.base = next.hp;
+        entity.hp.current = next.hp;
+        firedPartBreaks = new Set();
+        phaseInvulnTimer = next.invulnEntryTime ?? 0;
+        // Apply visual + pose overrides for the new phase.
+        if (next.hideParts) hidePartsByName(next.hideParts);
+        if (next.rigYOffset !== undefined) built.group.position.y += next.rigYOffset;
+        if (next.rigPitch !== undefined) built.group.rotation.x = next.rigPitch;
+        // Reset state machine to chasing so the new abilities kick in cleanly.
+        clearAoeTelegraph();
+        clearLashTendril();
+        state = 'chasing';
+        phaseTimer = 0;
+        return result.applied;
+      }
       // Killed mid-windup — drop any pending AoE marker / lash tentacle so
       // it doesn't linger after the caster is gone.
       clearAoeTelegraph();
@@ -1141,6 +1201,9 @@ export function createEnemy(
 
     // Hit flash + glowing-core heartbeat/flare (see enemy-presentation.ts).
     coreReactor.tick(dt);
+
+    // Phase entry invuln window (e.g. skeleton's downed → crawl rise).
+    if (phases && phaseInvulnTimer > 0) phaseInvulnTimer = Math.max(0, phaseInvulnTimer - dt);
 
     // Capture home yaw the very first tick so idle scan rotates around the
     // actual placed-orientation (set by builder via faceWorld at spawn).

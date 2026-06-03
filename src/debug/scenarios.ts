@@ -982,6 +982,27 @@ export const SCENARIOS: Record<string, Scenario> = {
   // Boiling King — Act III boss preview. Drops you in a small lit arena
   // with the king slime spawned mid-room. Verifies model scale, palette,
   // and boss bar engagement.
+  'marrow-sovereign': {
+    freeze: true,
+    level: {
+      id: 'dbg-marrow-sovereign', depth: 7, displayName: 'marrow sovereign', fogColor: 0x100806,
+      startPos: { x: 0, z: 4.5, yaw: 0 },
+      rooms: [{ id: 'ms-room', rect: { x: 0, z: 0, w: 10, d: 11 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -4.95, z: -4.5, height: 2.4, wall: 'W', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x:  4.95, z: -4.5, height: 2.4, wall: 'E', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x: -4.95, z:  4.5, height: 2.4, wall: 'W', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x:  4.95, z:  4.5, height: 2.4, wall: 'E', colorTint: 0xff6030, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'marrow-sovereign', x: 0, z: -2, roomId: 'ms-room' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 3.0, lookAt: { x: 0, z: -2, y: 2.0 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -2 }, state: 'chasing' }],
+  },
+
   'boiling-king': {
     freeze: true,
     level: {

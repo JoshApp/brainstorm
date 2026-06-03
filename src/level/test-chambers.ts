@@ -196,6 +196,32 @@ function buildStarterAltars(): LevelSpec {
   }));
 }
 
+// ── Marrow Sovereign — two-phase skeleton boss. Same arena as
+// the king (20×22) but flavoured colder — pale torches, no
+// braziers, the soulslike fog wall is bone-white-with-marrow-red
+// instead of acid green. Dormant on spawn; wakes when the player
+// crosses the fog wall.
+function buildMarrowSovereign(): LevelSpec {
+  return smallChamber('marrow-sovereign', 'marrow sovereign', 20, 22, () => ({
+    spawns: [
+      { enemyId: 'marrow-sovereign', x: 0, z: -7, roomId: 'test-marrow-sovereign-room', dormant: true },
+    ],
+    props: [
+      {
+        kind: 'hint',
+        x: 0, z: 7,
+        text: 'break the legs first. then he crawls.',
+        triggerRadius: 3.0,
+        lingerMs: 5000,
+      },
+      // Fog wall at the south end. Marrow-red tint matches the
+      // sovereign's ribcage glow — reads which boss is on the other
+      // side from a distance.
+      { kind: 'boss-mist', x: 0, z: 4, rotY: Math.PI, color: 0xff6030 },
+    ],
+  }));
+}
+
 // ── Boiling King — Act I boss in a wide arena. Sized to match
 // boss-hall (~18×16 walkable) so the king's 8m leap actually has
 // room to commit. Player spawns at the south end, king at the
@@ -298,6 +324,17 @@ export const TEST_CHAMBERS: TestChamber[] = [
     description: 'Slow, armoured, big windup, big punish. Read the telegraph.',
     build: buildStoneguard,
     loadout: { weapon: 'iron-maul', offhand: 'oil-lamp' },
+  },
+  {
+    id: 'marrow-sovereign',
+    name: 'Marrow Sovereign',
+    description: 'Two-phase skeleton. Break the legs first — then he crawls.',
+    build: buildMarrowSovereign,
+    loadout: {
+      weapon: 'scimitar',
+      offhand: 'oil-lamp',
+      consumables: ['healing-potion', 'healing-potion', 'healing-potion'],
+    },
   },
   {
     id: 'boiling-king',
