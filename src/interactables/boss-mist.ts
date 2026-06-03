@@ -121,6 +121,14 @@ export function spawnBossMist(
       0,
       z + normal.z * WALK_THROUGH_DIST,
     );
+    // Snap the landing point onto a WALKABLE cell. The arena floor has
+    // carved holes (stairwell / chasm voids), and the forced walk just
+    // lerps the camera with NO collision check — so if a hole sits at the
+    // landing spot the player is deposited inside the non-walkable zone
+    // and movement collision can never push them out (stuck). resolveSpawn
+    // finds the nearest valid cell with player clearance (0.3 + margin).
+    const safe = walkable.resolveSpawn(through.x, through.z, 0.35);
+    through.set(safe.x, 0, safe.z);
     startFogWalkthrough(through, WALK_SECONDS);
     // Cosmetic.
     setMistOpen(true);   // the curtain parts — you may pass

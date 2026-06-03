@@ -103,8 +103,25 @@ export function openScreen(handle: ScreenHandle): void {
   applyState();
 }
 
+// When a screen last closed (performance.now ms). A world-tap arriving
+// immediately after a close is almost always the trailing half of the
+// SAME click that dismissed the screen (the note/menu closes on
+// pointerdown, but the canvas's tap fires on the later mouseup/touchend
+// — by then the screen is gone, so the tap would fall through to the
+// world and e.g. re-open the corpse note you just dismissed). Callers
+// gate world taps on msSinceLastScreenClose() to swallow that straggler.
+let lastClosedAt = -Infinity;
+
 export function closeScreen(id: string): void {
-  if (openScreens.delete(id)) applyState();
+  if (openScreens.delete(id)) {
+    lastClosedAt = performance.now();
+    applyState();
+  }
+}
+
+/** Milliseconds since the most recent screen close (Infinity if none). */
+export function msSinceLastScreenClose(): number {
+  return performance.now() - lastClosedAt;
 }
 
 export function isScreenOpen(id: string): boolean {
@@ -157,6 +174,17 @@ export function onScreenStateChanged(fn: () => void): () => void {
 // ── Internal: apply effective policy ─────────────────────────────────
 
 function applyState() {
+  // Desktop pointer-lock consistency: ANY open screen means the player
+  // needs the cursor, so release pointer lock automatically — no more
+  // "press Esc before you can click RISE AGAIN" on the death screen. The
+  // model is simply: in a screen → free cursor; in gameplay → mouse-look.
+  // Returning to gameplay (no screens) can't auto-re-lock (the browser
+  // requires a click gesture); the canvas click handler re-locks
+  // (input-desktop.ts). No-op on mobile (no pointerLockElement).
+  if (openScreens.size > 0 && document.pointerLockElement) {
+    document.exitPointerLock?.();
+  }
+
   let anyBackdrop = false;
   let hidesHud = false;
   let dimsScene = false;

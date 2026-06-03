@@ -60,7 +60,7 @@ import { showStartScreen } from './ui/start-screen';
 import { addItemSilently } from './player/inventory';
 import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
-import { isAnyScreenOpen } from './ui/screen-manager';
+import { isAnyScreenOpen, msSinceLastScreenClose } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
@@ -417,6 +417,11 @@ const input = createTouchInput(canvas, {
     // Don't tap-target anything during dying, the fog-gate walk, or while
     // screens are open.
     if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return false;
+    // Swallow the straggler tap from a just-dismissed screen — the click
+    // that closed a corpse note / menu fires its mouseup/touchend AFTER
+    // the screen is gone, which would otherwise re-hit the object under it
+    // (e.g. re-open the note you just closed).
+    if (msSinceLastScreenClose() < 250) return false;
     if (!currentLevel) return false;
     const hit = findTapTarget(
       clientX, clientY, canvas, camera,
