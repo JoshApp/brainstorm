@@ -6,6 +6,7 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { on as onEvent } from '../broadcast/event-bus';
 import { playChestOpen, playImpact } from '../audio/sfx';
+import { isArenaRoom, isArenaComplete, startArena } from '../level/arena-state';
 
 // Door = the thing that plugs a doorway. Two physical kinds, chosen by
 // whether the door is GATED (has an unlock condition):
@@ -210,6 +211,9 @@ export function spawnDoor(
             playImpact(interactable.position);
             thresholdMat.color.setHex(0xb04030);
             thresholdMat.opacity = 0.75;
+            // Trip the wave gauntlet — the controller summons the waves and
+            // holds isArenaComplete false until they're all dead.
+            for (const rid of spec.unlock?.roomIds ?? []) startArena(rid);
           }
           committedSide = newSide;
         }
@@ -279,9 +283,15 @@ export function spawnDoor(
   function isUnlocked(): boolean {
     if (!spec.unlock) return true;
     if (spec.unlock.kind === 'cleared' || spec.unlock.kind === 'arena') {
-      const counts = enemyRoomMembership();
       for (const roomId of spec.unlock.roomIds) {
-        if ((counts.get(roomId) ?? 0) > 0) return false;
+        // Arena rooms with a wave controller defer to it: the gauntlet must
+        // be fully done, not just momentarily empty (at slam, or between
+        // waves). Non-arena rooms use the live enemy count as before.
+        if (isArenaRoom(roomId)) {
+          if (!isArenaComplete(roomId)) return false;
+        } else if ((enemyRoomMembership().get(roomId) ?? 0) > 0) {
+          return false;
+        }
       }
       return true;
     }

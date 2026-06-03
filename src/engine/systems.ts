@@ -58,7 +58,10 @@ import { tickShake } from '../combat/screen-shake';
 // see everything a frame touches. `getLevel()` (not a captured value) because
 // the active level handle is reassigned on every floor load.
 
-export type LiveLevelHandle = LiveLevel & { checkRoomClear?: () => void };
+export type LiveLevelHandle = LiveLevel & {
+  checkRoomClear?: () => void;
+  tickArenas?: (dt: number, playerPos: THREE.Vector3) => void;
+};
 
 export interface SystemDeps {
   camera: THREE.PerspectiveCamera;
@@ -242,6 +245,8 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     // Room-clear detection — fires room:cleared so doors flip SEALED→OPEN.
     { name: 'room-clear', phase: 'unpaused', tick() { getLevel().checkRoomClear?.(); } },
+    // Arena wave controllers — telegraph + summon + advance through waves.
+    { name: 'arenas', phase: 'unpaused', tick(ctx) { getLevel().tickArenas?.(ctx.scaledDt, camera.position); } },
 
     // Active buffs on all entities (heal-over-time, DoTs, etc.).
     { name: 'buffs', phase: 'unpaused', tick(ctx) { tickAllBuffs(ctx.scaledDt); } },

@@ -132,8 +132,11 @@ export function createArenaController(opts: ArenaControllerOpts): ArenaControlle
           break;
         }
         case 'fighting': {
-          // Wave clears when every mob it spawned is dead.
-          if (waveEnemies.every((e) => !e.alive)) {
+          // Wave clears when every mob it spawned is dead. Require >0 spawned
+          // so a (bug) empty wave can't instantly "clear" and blow through the
+          // whole gauntlet in a few frames — that would recreate the very
+          // gate-reopens-immediately bug this system exists to fix.
+          if (waveEnemies.length > 0 && waveEnemies.every((e) => !e.alive)) {
             phase = 'lull';
             timer = LULL_S;
           }

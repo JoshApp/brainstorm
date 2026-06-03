@@ -586,13 +586,9 @@ const ENCOUNTER_ARENA: Vault = {
   props: [
     { kind: 'chest', x: 0, z: 1.5, tier: 'iron', facing: { kind: 'wall-away' } },
   ],
-  // Two pairs of ghoul guardians flanking the arena.
-  cellProps: {
-    '2,5':  [{ kind: 'spawn', enemyId: 'ghoul' }],
-    '11,5': [{ kind: 'spawn', enemyId: 'ghoul' }],
-    '2,9':  [{ kind: 'spawn', enemyId: 'ghoul' }],
-    '11,9': [{ kind: 'spawn', enemyId: 'ghoul' }],
-  },
+  // No static guardians — this is now a TRAP arena: crossing the 'D' gate
+  // slams it and the wave controller summons escalating waves (see
+  // arena-waves.ts). The gate only rises once the last wave is dead.
 };
 
 // Blood altar encounter. A single cursed offering (ring of marrow)
