@@ -68,6 +68,29 @@ export function isProjectileRegistered(id: string): boolean {
 // + spits where shape isn't important.
 const SHARED_GEOM = new THREE.SphereGeometry(1, 10, 8);
 
+// Soft radial glow texture for the trail sprite. Without a map a
+// SpriteMaterial renders as a hard SQUARE quad — under additive blending
+// that reads as an ugly bright box around every projectile (and clips
+// visibly into god-ray planes). A white→transparent radial gradient turns
+// the quad into a soft round halo: the dark edges add nothing under
+// additive blend, so only the round core glows. Built once, shared.
+let glowTexture: THREE.Texture | null = null;
+function softGlowTexture(): THREE.Texture {
+  if (glowTexture) return glowTexture;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0.0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+  g.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  glowTexture = new THREE.CanvasTexture(canvas);
+  return glowTexture;
+}
+
 // Per-type geometry cache. Types that declare a geometry() factory get
 // their own pre-built BufferGeometry (built lazily on first use) so
 // arrows look like arrows and bones look like bones without paying per-
@@ -160,6 +183,7 @@ export function initProjectilePool(sc: THREE.Scene): void {
     // Trail — additive sprite, scales with travel direction below.
     const trailMat = new THREE.SpriteMaterial({
       color: 0xffffff,
+      map: softGlowTexture(),
       transparent: true,
       opacity: 0.5,
       blending: THREE.AdditiveBlending,
@@ -326,8 +350,13 @@ export function tickProjectiles(
     }
 
     // Wall hit — walkable.contains uses a small radius so a projectile
-    // doesn't phase through corners.
-    if (!walkable.contains(slot.position.x, slot.position.z, slot.type.radius)) {
+    // doesn't phase through corners. The fog-gate curtain is a separate
+    // projectile-only barrier (blocks shots even while open for walking),
+    // so a shot can't cross the mist in either direction.
+    if (
+      !walkable.contains(slot.position.x, slot.position.z, slot.type.radius) ||
+      walkable.projectileBlocked(slot.position.x, slot.position.z, slot.type.radius)
+    ) {
       retire(slot);
       continue;
     }

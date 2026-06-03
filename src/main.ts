@@ -75,7 +75,7 @@ import { registerProjectiles } from './content/projectiles';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
 import { actForDepth } from './level/acts';
-import { ensureInteractLabel } from './ui/interact-label';
+import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar } from './ui/hp-bar';
 import { createBossBar, resetBossBar } from './ui/boss-bar';
@@ -393,23 +393,21 @@ const input = createTouchInput(canvas, {
       currentLevel.enemies,
       getAllInteractables(),
     );
-    const inRange = getInRangeInteractable();
 
-    // Smart intent arbiter:
+    // Smart intent arbiter — taps interact with a DELIBERATE target, never
+    // the whole screen:
     //   1. Tap directly on an enemy → swing (combat intent is explicit).
     //   2. Tap that resolved to an interactable (landed on its mesh, or a
     //      near-miss snapped to it) → use it, as long as you're within its
     //      own interact radius. You aimed at THIS object specifically, so we
     //      honour it without also requiring it be the cone-facing prompt
     //      target — that's what made picking one of three altars feel fussy.
-    //   3. Any other tap WHILE an in-range interactable exists → use it.
-    //      Catches the "I tapped near the chest but the raycast missed
-    //      its hitbox" case, plus the "I tapped slightly off the stairs
-    //      and the attack animation also fired" bug.
-    //   4. Otherwise → return false so the right-side-swing fallback
-    //      can fire the attack.
-    // resolveUsable() lets a blocked item on top (full-carry potion) fall
-    // through to the takeable loot beneath it.
+    //   3. Otherwise → return false so the right-side-swing fallback fires.
+    // The OTHER reliable target is the floating TAKE label, handled as a
+    // tappable UI element (setInteractLabelTapHandler below) — so we no
+    // longer grab loot on any random in-range tap (e.g. the far left of the
+    // screen). resolveUsable() lets a blocked item on top (full-carry
+    // potion) fall through to the takeable loot beneath it.
 
     if (hit?.kind === 'enemy') {
       triggerAttack();
@@ -423,12 +421,6 @@ const input = createTouchInput(canvas, {
         resolveUsable(it, camera.position).onUse();
         return true;
       }
-    }
-    if (inRange) {
-      // No explicit enemy tap, and something usable is right here.
-      // Consume the tap so the right-side fallback doesn't swing.
-      resolveUsable(inRange, camera.position).onUse();
-      return true;
     }
     return false;
   },
@@ -445,6 +437,13 @@ const input = createTouchInput(canvas, {
 // was removed. Interaction is now diegetic: tap the object directly
 // (handled by tap-target raycast in the touch input handler).
 ensureInteractLabel();
+// Tapping the floating prompt is a second, reliable way to interact —
+// same gating + blocked-loot fall-through as a tap on the object's model.
+setInteractLabelTapHandler(() => {
+  if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
+  const inRange = getInRangeInteractable();
+  if (inRange) resolveUsable(inRange, camera.position).onUse();
+});
 createConsumableBar();
 // Backdrop and HUD-hide are now owned by the screen manager — created
 // lazily when the first screen that needs them opens.

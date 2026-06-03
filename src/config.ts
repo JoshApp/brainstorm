@@ -88,13 +88,13 @@ export const CONFIG = {
                                //   precisely at the target (especially low rats).
   // Tap-to-use tuning (the diegetic "tap the object" interaction). One place
   // to tune how forgiving touch interaction feels.
-  INTERACT_TAP_PROXIMITY_PX: 104, // screen-space near-miss radius (px). A tap this
+  INTERACT_TAP_PROXIMITY_PX: 60, // screen-space near-miss radius (px). A tap this
                                  //   close to a thin floating viewmodel (starter
-                                 //   weapons, dropped rings) counts as hitting it —
-                                 //   so you don't have to land precisely on a 30cm
-                                 //   sword. A generous thumb-sized radius; the
-                                 //   tap still resolves to the CLOSEST item, so
-                                 //   widening it doesn't grab the wrong one.
+                                 //   weapons, dropped rings) still counts as hitting
+                                 //   it — forgives the 30cm-sword silhouette without
+                                 //   becoming a whole-screen grab. The big, reliable
+                                 //   target is the floating TAKE label (tappable);
+                                 //   this just softens near-misses on the model.
   SWORD_SWING_WINDUP: 0.12,    // seconds — sword raises
   SWORD_SWING_STRIKE: 0.10,    // seconds — sword chops through (hit window is here)
   SWORD_SWING_RECOVER: 0.28,   // seconds — return to idle; can't attack again

@@ -63,6 +63,29 @@ export class WalkableRegion {
     if (idx >= 0) this.obstacles.splice(idx, 1);
   }
 
+  /** Projectile-only barriers — segments that stop PROJECTILES but never
+   *  affect movement. The boss-mist curtain uses this: a flying shot can't
+   *  cross the mist even while the gate is open for the player to walk
+   *  through (or when an enemy has slipped to the far side). Movement
+   *  sealing is the separate addWall/removeWall channel. */
+  private readonly projectileBarriers: WallSegment[] = [];
+  addProjectileBarrier(seg: WallSegment) {
+    this.projectileBarriers.push(seg);
+  }
+  removeProjectileBarrier(seg: WallSegment) {
+    const idx = this.projectileBarriers.indexOf(seg);
+    if (idx >= 0) this.projectileBarriers.splice(idx, 1);
+  }
+  /** True when a projectile of the given radius at (x,z) is touching a
+   *  projectile barrier — independent of the walkable/movement test. */
+  projectileBlocked(x: number, z: number, radius: number): boolean {
+    const r2 = radius * radius;
+    for (const w of this.projectileBarriers) {
+      if (distSqPointToSegment(x, z, w.ax, w.az, w.bx, w.bz) < r2) return true;
+    }
+    return false;
+  }
+
   /** Debug-only: the live wall segment set (read-only) for the debug
    *  capture's geometry-overlay screenshot. Not for gameplay use. */
   getWallsForDebug(): readonly WallSegment[] {
