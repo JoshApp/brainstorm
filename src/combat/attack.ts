@@ -70,6 +70,13 @@ const STRIKE_TRAIL_DURATION = 0.10;     // seconds — Smash-Bros-style intent b
 
 export interface CombatSystem {
   tick(attackPressed: boolean, moveX: number, moveY: number, dt: number): void;
+  /** Would a swing RIGHT NOW connect with something? True iff an eligible
+   *  target is in range — melee: an enemy or destructible in the swing
+   *  cone; ranged: an enemy in the forward arc with line of sight. Used
+   *  to gate the tap-to-attack fallback so tapping near a chest / stairs
+   *  / empty floor doesn't flail a swing — you only attack when there's
+   *  actually something to hit. */
+  hasTargetInRange(): boolean;
 }
 
 function hapticVibrate(ms: number) {
@@ -458,7 +465,30 @@ export function createCombatSystem(
     void bestApplied;   // reserved for future "biggest hit wins crunch tier"
   }
 
-  return { tick };
+  /** See CombatSystem.hasTargetInRange. Mirrors what the next swing would
+   *  actually do: melee scans the weapon's cone (enemies + destructibles);
+   *  ranged scans the long forward arc (enemies, LOS-gated) like fireRanged. */
+  function hasTargetInRange(): boolean {
+    const stats = getCurrentWeapon();
+    camera.getWorldDirection(forwardDir);
+    const forwardLenXZ = Math.hypot(forwardDir.x, forwardDir.z) || 1;
+    if (stats.ranged) {
+      const walkable = getWalkable();
+      const losCheck = walkable
+        ? (cx: number, cz: number, tx: number, tz: number) => walkable.hasLineOfSight(cx, cz, tx, tz)
+        : undefined;
+      return !!pickTarget(getEnemies(), camera, forwardDir, forwardLenXZ, RANGED_REACH, RANGED_CONE_COS, losCheck);
+    }
+    // Melee — base reach/cone (no combo-step or charge mul): a slightly
+    // generous "is anything swing-able in front of me" test. Destructibles
+    // (vases) count so tap-to-break still works.
+    const cosConeHalf = Math.cos(stats.coneHalfAngle);
+    if (pickTargets(getEnemies(), camera, forwardDir, forwardLenXZ, stats.reach, cosConeHalf, 1).length > 0) return true;
+    if (pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, stats.reach, cosConeHalf, 1).length > 0) return true;
+    return false;
+  }
+
+  return { tick, hasTargetInRange };
 }
 
 /**

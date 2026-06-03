@@ -447,7 +447,13 @@ const input = createTouchInput(canvas, {
         return true;
       }
     }
-    return false;
+    // Fallback (imprecise / empty tap): only SWING if a swing would
+    // actually connect — an eligible enemy/destructible in range. This is
+    // what stops a tap meant for a chest, stairs, or empty floor from
+    // flailing the weapon. Returning false lets the right-side-swing fire;
+    // returning true consumes the tap silently (no attack).
+    if (combat.hasTargetInRange()) return false;
+    return true;
   },
   onInteract() {
     // E key (or future gamepad confirm) — use the currently in-range
