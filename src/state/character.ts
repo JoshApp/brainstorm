@@ -108,6 +108,45 @@ export function resetCharacter(): void {
   notify();
 }
 
+// ── Save / restore ────────────────────────────────────────────────
+// The run save persists character progression so a RELOAD/resume keeps
+// your spent attributes + earned proficiencies (death still wipes — the
+// save is cleared on death). Without this, resuming reset the character
+// to baseline ("stats don't reapply"). Committed at floor entry alongside
+// hp/inventory (see run-state.commitFloorEntry); restored in
+// save-hydration.applyState.
+
+export interface CharacterSave {
+  attributes: Record<AttributeKind, number>;
+  proficiencies: Record<ProficiencyKind, number>;
+  unspentPoints: number;
+  greedRemainder: number;
+}
+
+export function serializeCharacter(): CharacterSave {
+  return {
+    attributes: { ...state.attributes },
+    proficiencies: { ...state.proficiencies },
+    unspentPoints: state.unspentPoints,
+    greedRemainder: state.greedRemainder,
+  };
+}
+
+/** Restore character from a save. Merges over baseline so a save written
+ *  before a new attribute/proficiency existed still loads (missing keys
+ *  default to 0). No-op for a null/absent save (fresh run). */
+export function hydrateCharacter(data: CharacterSave | null | undefined): void {
+  if (!data) return;
+  const base = baseline();
+  state = {
+    attributes: { ...base.attributes, ...data.attributes },
+    proficiencies: { ...base.proficiencies, ...data.proficiencies },
+    unspentPoints: data.unspentPoints ?? 0,
+    greedRemainder: data.greedRemainder ?? 0,
+  };
+  notify();
+}
+
 // ── Proficiency tiers ─────────────────────────────────────────────
 // Named milestones over the smooth per-point curve. They give the
 // "Sword — Adept" recognition beat (a broadcast pop later) and the

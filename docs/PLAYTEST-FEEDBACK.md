@@ -37,8 +37,11 @@ multi-hit is, etc.). Don't tune one in isolation.
   awareness, not stopping on clutter.
 
 ## C. Stats & scaling
-- [ ] **[bug]** **Stats don't re-apply during a run** — investigate (spent
-  attributes / proficiency not taking effect mid-run, or resetting?).
+- [x] **[bug]** **Stats don't re-apply** — root cause: the run save persisted
+  hp/inventory/equipment/xp but **NOT character state**, so on reload/resume
+  attributes + proficiencies reset to baseline (your build vanished). Now
+  the save carries the character (serializeCharacter at floor entry,
+  hydrateCharacter on resume); death still wipes it. *(done)*
 - [ ] **[bal]** **Grit = +3 max HP/point is too much** (I set this) → drop to
   ~+1–2 (CONFIG.ATTR.GRIT_HP_PER_POINT).
 - [ ] **[bal]** **Lifesteal is way too strong** off raw damage → rework to
@@ -80,8 +83,13 @@ multi-hit is, etc.). Don't tune one in isolation.
   clear). PARTIALLY mitigated by the escape-resolve above (an escapee no
   longer soft-locks), but the seal-all-entrances is still TODO (overlaps the
   procgen/vault layer — coordinate).
-- [ ] **[bug]** **Levels lost on reload** — save/persistence not restoring the
-  current floor properly.
+- [~] **[bug]** **Levels lost on reload** — the save DOES store `floorId` +
+  `depth` and resume loads them; the big real loss was the character (fixed
+  above), which made a reload *feel* like a wiped run. Resume restores at the
+  saved floor's START (checkpoint-at-floor-entry, by design — mid-floor
+  position/cleared-rooms aren't kept). If a genuine floor-NUMBER regression
+  remains (e.g. resumes at floor 1 when you were deep), need a repro. Mostly
+  addressed; mid-floor resume = a bigger feature if wanted.
 
 ## H. Save & main menu
 - [x] **[bug/ux]** With a run ongoing, **CONTINUE is now the prominent

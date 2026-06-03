@@ -2,6 +2,7 @@ import { clearInventory, addItemSilently } from '../player/inventory';
 import { setSlot, type EquipSlot } from '../player/equipment';
 import { ITEMS } from '../content/items';
 import { get as getEntity } from '../ecs/world';
+import { hydrateCharacter } from './character';
 import type { loadSave } from './run-state';
 
 // Hydrate run state (inventory, equipment, HP) from a save — or apply the
@@ -37,6 +38,11 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
     // unarmed mid-dungeon on resume.
     if (!saveData.equipment.weapon) setSlot('weapon', ITEMS['rusted-sword']);
   }
+  // Character — restore the saved build (attributes/proficiencies/unspent)
+  // so a reload/resume keeps your progression. Null save (fresh run) →
+  // no-op; the run's resetCharacter has already set baseline.
+  if (saveData?.character) hydrateCharacter(saveData.character);
+
   // HP — restore to saved value, or full for new run.
   const player = getEntity('player');
   if (player?.hp) {
