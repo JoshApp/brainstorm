@@ -70,10 +70,15 @@ export function createInventoryPanel() {
   // Keyboard hint badge — only shown on pure desktop. Tiny letter in
   // the corner of the satchel icon so players who have a keyboard
   // discover the I shortcut without polluting the touch HUD.
-  import('../controls/platform').then(({ isDesktopLike }) => {
+  Promise.all([
+    import('../controls/platform'),
+    import('../controls/keybindings'),
+  ]).then(([{ isDesktopLike }, { getBinding, labelForCode, onBindingsChanged }]) => {
     if (!isDesktopLike() || !openButton) return;
     const hint = document.createElement('div');
-    hint.textContent = 'I';
+    hint.textContent = labelForCode(getBinding('inventory'));
+    // Keep the badge in sync if the player rebinds inventory.
+    onBindingsChanged(() => { hint.textContent = labelForCode(getBinding('inventory')); });
     Object.assign(hint.style, {
       position: 'absolute',
       bottom: '2px',

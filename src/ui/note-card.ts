@@ -26,6 +26,11 @@ export function showNote(text: string) {
     transform: 'translate(-50%, -50%) scale(0.94)',
     width: 'min(420px, 84vw)',
     maxWidth: '84vw',
+    // Cap height to the viewport and scroll a long note rather than
+    // letting it run off the top/bottom on a small screen. overflow-y
+    // also opts this card into touch-pan (see index.html).
+    maxHeight: '84vh',
+    overflowY: 'auto',
     // Aged parchment palette — warm sepia on dark, not white-paper
     background: 'linear-gradient(180deg, rgba(46, 32, 20, 0.96), rgba(28, 20, 14, 0.96))',
     border: '1px solid rgba(170, 130, 80, 0.45)',

@@ -13,6 +13,15 @@
 
 import type * as THREE from 'three';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
+import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
+
+// Chrome-only heap readout (absent on Firefox/Safari). Prod-safe: just a
+// number for the overlay, no behavioural effect.
+interface PerfMemory { usedJSHeapSize: number }
+function heapMB(): number | null {
+  const m = (performance as unknown as { memory?: PerfMemory }).memory;
+  return m ? Math.round((m.usedJSHeapSize / (1024 * 1024)) * 10) / 10 : null;
+}
 
 let root: HTMLDivElement | null = null;
 let fpsEl: HTMLDivElement | null = null;
@@ -31,6 +40,8 @@ const frameTimes: number[] = [];
 // stats arrive.
 let lastTris = 0;
 let lastCalls = 0;
+let lastGeo = 0;
+let lastTex = 0;
 
 export function createPerfOverlay(): void {
   if (root) return;
@@ -98,6 +109,8 @@ export function reportRendererInfo(renderer: THREE.WebGLRenderer): void {
   if (!root || root.style.display === 'none') return;   // skip work when hidden
   lastTris  = renderer.info.render.triangles;
   lastCalls = renderer.info.render.calls;
+  lastGeo   = renderer.info.memory.geometries;
+  lastTex   = renderer.info.memory.textures;
 }
 
 /** Called once per frame from the main loop. Records the frame time
@@ -147,9 +160,12 @@ export function tickPerfOverlay(nowMs: number): void {
   fpsEl.innerHTML =
     `${fps}<span style="font-size:11px;font-weight:500;letter-spacing:.15em;opacity:.65;margin-left:4px;">FPS</span>`;
 
+  const heap = heapMB();
   secondaryEl.textContent =
     `${lastMs.toFixed(1)} ms · p95 ${p95.toFixed(1)} ms\n` +
-    `${lastTris.toLocaleString()} tris · ${lastCalls} draws · ${getGeometryPoolSize()} pooled`;
+    `${lastCalls} draws · ${lastTris.toLocaleString()} tris\n` +
+    `lights ${getActiveSourceCount()}/${getRegisteredSourceCount()} · geo ${lastGeo} · tex ${lastTex}\n` +
+    `pool ${getGeometryPoolSize()}${heap !== null ? ` · heap ${heap}MB` : ''}`;
   // Preserve the newline for the secondary block.
   secondaryEl.style.whiteSpace = 'pre';
 }

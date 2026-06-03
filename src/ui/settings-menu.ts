@@ -1,8 +1,14 @@
-import { getSettings, updateSettings } from '../settings/settings';
+import { getSettings, updateSettings, CONTROL_SCHEMES, SHADOW_MODES } from '../settings/settings';
+import type { ShadowMode } from '../settings/settings';
 import { setMasterVolume, setReverbEnabled } from '../audio/sfx';
 import { setMusicVolume } from '../audio/music';
 import { openScreen, closeScreen } from './screen-manager';
 import { getUpdateStatus, applyUpdate, onUpdateStatusChange } from '../pwa-update';
+import { isDesktopLike } from '../controls/platform';
+import {
+  BINDABLE_ACTIONS, getBinding, setBinding, resetBindings, labelForCode,
+  type BindableAction,
+} from '../controls/keybindings';
 
 // Settings panel.
 //
@@ -76,6 +82,11 @@ export function toggleSettings() {
 
 function openPanel() {
   if (!panel) return;
+  // Always open focused on RUN — the most-reached mid-game affordances
+  // (CHARACTER, QUIT, etc.) land under the thumb every time. buildPanelContents
+  // falls back to CONTROLS when there's no live run (title screen).
+  activeTab = 'run';
+  buildPanelContents();
   panel.style.display = 'flex';
   panelOpen = true;
   openScreen({
@@ -92,12 +103,11 @@ function closePanel() {
   closeScreen('settings');
 }
 
-// Active tab persists across opens within a session — convenient when
-// iterating on a tab's contents on the phone.
-type TabId = 'run' | 'controls' | 'audio' | 'system';
-// Default to RUN when a live run is active (CHARACTER + quit + abandon
-// + exit are the most-reached affordances mid-game); fall back to
-// CONTROLS on the title screen where RUN doesn't exist yet.
+type TabId = 'run' | 'controls' | 'audio' | 'graphics' | 'system' | 'debug';
+// Every open RESETS focus to RUN (see openPanel) — CHARACTER + quit +
+// abandon + exit are the most-reached affordances mid-game; falls back to
+// CONTROLS on the title screen where RUN doesn't exist yet. Within a single
+// open, the field tracks whichever tab the player switched to.
 let activeTab: TabId = 'run';
 
 function buildPanelContents() {
@@ -145,7 +155,9 @@ function buildPanelContents() {
   tabs.push(
     { id: 'controls', label: 'CONTROLS' },
     { id: 'audio',    label: 'AUDIO' },
+    { id: 'graphics', label: 'GRAPHICS' },
     { id: 'system',   label: 'SYSTEM' },
+    { id: 'debug',    label: 'DEBUG' },
   );
   // If the previously-active tab disappeared (e.g. RUN gone after
   // quitting), fall back to CONTROLS — the first non-RUN tab.
@@ -221,21 +233,7 @@ function buildPanelContents() {
 // tab's controls are constructed.
 
 const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
-  controls: () => [
-    makeSlider({
-      label: 'LOOK SENSITIVITY',
-      min: 0.001, max: 0.012, step: 0.0005,
-      get: () => getSettings().lookSensitivity,
-      set: (v) => updateSettings({ lookSensitivity: v }),
-      format: (v) => v.toFixed(4),
-    }),
-    makeToggle({
-      label: 'HYBRID LOOK',
-      description: 'Drag past the aim zone to keep rotating (like a joystick).',
-      get: () => getSettings().hybridLook,
-      set: (v) => updateSettings({ hybridLook: v }),
-    }),
-  ],
+  controls: () => buildControlsTab(),
 
   audio: () => [
     makeSlider({
@@ -269,6 +267,38 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
     }),
   ],
 
+  graphics: () => [
+    makeSelect<ShadowMode>({
+      label: 'SHADOWS',
+      description:
+        'Dynamic shadows are the most expensive thing on the GPU. ' +
+        'Off = none. Hero = your lamp casts (one shadow that follows you). ' +
+        'Single = the nearest torch/fire casts. All = lamp + a few nearby lights. ' +
+        'Drop it if the phone struggles in a busy room.',
+      options: SHADOW_MODES,
+      get: () => getSettings().shadows,
+      set: (v) => updateSettings({ shadows: v }),
+    }),
+    makeToggle({
+      label: 'ADAPTIVE RESOLUTION',
+      description:
+        'Auto-lower the render resolution when the phone struggles, and raise ' +
+        'it back when it recovers — holds framerate. Reads as a touch more PS1. ' +
+        'Mobile only; no effect on desktop.',
+      get: () => getSettings().adaptiveResolution,
+      set: (v) => updateSettings({ adaptiveResolution: v }),
+    }),
+    makeToggle({
+      label: 'PORTAL CULLING',
+      description:
+        'Skip rendering rooms hidden behind walls — only the room you’re in ' +
+        'and rooms visible through doorways draw. Big draw-call win in corridors. ' +
+        'Experimental: if a room ever pops in as you turn, toggle this off.',
+      get: () => getSettings().portalCulling,
+      set: (v) => updateSettings({ portalCulling: v }),
+    }),
+  ],
+
   system: () => [
     makeToggle({
       label: 'AUTO UPDATE',
@@ -289,16 +319,173 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().debugMode,
       set: (v) => updateSettings({ debugMode: v }),
     }),
+  ],
+
+  // DEBUG tab — on-screen diagnostic overlays, each independently toggleable.
+  // Safe to ship (no cheats); off by default so a normal player never sees
+  // them. Visibility is applied live by the onSettingsChanged subscription
+  // in main.ts.
+  debug: () => [
     makeToggle({
-      label: 'PERF METER',
-      description: 'Top-right overlay with FPS, frame time, and renderer draw counts. For diagnosing slow moments in the field.',
+      label: 'FPS / PERF METER',
+      description: 'Top-right overlay: FPS, frame time, and renderer draw counts. For diagnosing slow moments in the field.',
       get: () => getSettings().perfMeter,
       set: (v) => updateSettings({ perfMeter: v }),
+    }),
+    makeToggle({
+      label: 'EYE ADAPT',
+      description: 'Left-side readout of eye dark-adaptation: torch proximity, the 0..1 adapt value, and resulting ambient brightness.',
+      get: () => getSettings().debugEyeAdapt,
+      set: (v) => updateSettings({ debugEyeAdapt: v }),
+    }),
+    makeToggle({
+      label: 'BOSS ENCOUNTER',
+      description: 'During a boss fight only: lists every tracked boss body with its alive/HP + the encounter engaged/done state. For diagnosing a stuck fight.',
+      get: () => getSettings().debugBossReadout,
+      set: (v) => updateSettings({ debugBossReadout: v }),
     }),
   ],
 
   run: () => buildRunTab(),
 };
+
+/** CONTROLS tab — look sensitivity is shared; the rest splits by device.
+ *  Desktop gets rebindable key bindings; touch gets the control-scheme
+ *  selector + hybrid-look (a touch-only aim affordance). */
+function buildControlsTab(): HTMLElement[] {
+  const out: HTMLElement[] = [
+    makeSlider({
+      label: 'LOOK SENSITIVITY',
+      min: 0.001, max: 0.012, step: 0.0005,
+      get: () => getSettings().lookSensitivity,
+      set: (v) => updateSettings({ lookSensitivity: v }),
+      format: (v) => v.toFixed(4),
+    }),
+  ];
+
+  if (isDesktopLike()) {
+    out.push(makeKeybindingsSection());
+  } else {
+    out.push(makeSelect({
+      label: 'CONTROL SCHEME',
+      description: 'How touch controls are laid out. More schemes coming.',
+      options: CONTROL_SCHEMES,
+      get: () => getSettings().controlScheme,
+      set: (v) => updateSettings({ controlScheme: v }),
+    }));
+    out.push(makeToggle({
+      label: 'HYBRID LOOK',
+      description: 'Drag past the aim zone to keep rotating (like a joystick).',
+      get: () => getSettings().hybridLook,
+      set: (v) => updateSettings({ hybridLook: v }),
+    }));
+  }
+  return out;
+}
+
+/** KEY BINDINGS block (desktop). A row per action shows its current
+ *  key; tapping the key enters capture mode and the next press rebinds
+ *  it. A RESET restores defaults. Self-contained re-render — no global
+ *  subscription to leak. */
+function makeKeybindingsSection(): HTMLDivElement {
+  const section = document.createElement('div');
+  Object.assign(section.style, { display: 'flex', flexDirection: 'column', gap: '8px' } as Partial<CSSStyleDeclaration>);
+
+  // Heading row: label + RESET.
+  const head = document.createElement('div');
+  Object.assign(head.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } as Partial<CSSStyleDeclaration>);
+  const heading = document.createElement('span');
+  heading.textContent = 'KEY BINDINGS';
+  Object.assign(heading.style, {
+    fontSize: '11px', fontWeight: '600', letterSpacing: '0.22em',
+    color: 'rgba(255, 200, 140, 0.85)',
+  } as Partial<CSSStyleDeclaration>);
+  const reset = document.createElement('button');
+  reset.textContent = 'RESET';
+  Object.assign(reset.style, {
+    background: 'transparent', border: '1px solid rgba(180, 130, 90, 0.4)',
+    borderRadius: '3px', color: 'rgba(200, 170, 130, 0.75)',
+    fontFamily: 'inherit', fontSize: '10px', fontWeight: '600',
+    letterSpacing: '0.18em', padding: '4px 8px', cursor: 'pointer',
+  } as Partial<CSSStyleDeclaration>);
+  head.append(heading, reset);
+  section.appendChild(head);
+
+  const rows = document.createElement('div');
+  Object.assign(rows.style, { display: 'flex', flexDirection: 'column', gap: '5px' } as Partial<CSSStyleDeclaration>);
+  section.appendChild(rows);
+
+  // Only one capture is live at a time; the cleanup cancels a prior one.
+  let cancelCapture: (() => void) | null = null;
+
+  const renderRows = () => {
+    if (cancelCapture) { cancelCapture(); cancelCapture = null; }
+    rows.replaceChildren();
+    for (const { id, label } of BINDABLE_ACTIONS) {
+      rows.appendChild(makeKeybindRow(id, label));
+    }
+  };
+
+  const makeKeybindRow = (action: BindableAction, label: string): HTMLDivElement => {
+    const row = document.createElement('div');
+    Object.assign(row.style, {
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px',
+    } as Partial<CSSStyleDeclaration>);
+
+    const name = document.createElement('span');
+    name.textContent = label;
+    Object.assign(name.style, {
+      fontSize: '11px', letterSpacing: '0.12em', color: 'rgba(220, 180, 140, 0.85)',
+    } as Partial<CSSStyleDeclaration>);
+
+    const key = document.createElement('button');
+    key.textContent = labelForCode(getBinding(action));
+    Object.assign(key.style, {
+      minWidth: '64px', padding: '5px 10px',
+      background: 'rgba(40, 28, 20, 0.7)', border: '1px solid rgba(180, 130, 90, 0.5)',
+      borderRadius: '3px', color: 'rgba(255, 220, 180, 0.95)',
+      fontFamily: 'monospace', fontSize: '11px', fontWeight: '600',
+      letterSpacing: '0.06em', cursor: 'pointer', textAlign: 'center',
+    } as Partial<CSSStyleDeclaration>);
+
+    key.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (cancelCapture) { cancelCapture(); cancelCapture = null; }
+      // Drop focus so a Space/Enter rebind doesn't also re-activate
+      // this button on keyup (which would instantly re-open capture).
+      key.blur();
+      key.textContent = 'PRESS A KEY';
+      key.style.background = 'rgba(120, 70, 30, 0.85)';
+      key.style.borderColor = 'rgba(255, 200, 130, 0.85)';
+
+      // Capture phase + stopImmediatePropagation: run before the
+      // desktop scheme's bubble-phase keydown so the rebind keystroke
+      // never also fires a game action. Escape cancels without binding.
+      const onKey = (ev: KeyboardEvent) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        cancelCapture = null;
+        window.removeEventListener('keydown', onKey, true);
+        if (ev.code !== 'Escape') setBinding(action, ev.code);
+        renderRows();
+      };
+      window.addEventListener('keydown', onKey, { capture: true });
+      cancelCapture = () => {
+        window.removeEventListener('keydown', onKey, true);
+        key.textContent = labelForCode(getBinding(action));
+        key.style.background = 'rgba(40, 28, 20, 0.7)';
+        key.style.borderColor = 'rgba(180, 130, 90, 0.5)';
+      };
+    });
+
+    row.append(name, key);
+    return row;
+  };
+
+  reset.addEventListener('click', () => { resetBindings(); renderRows(); });
+  renderRows();
+  return section;
+}
 
 /** RUN tab — character + quit + abandon + exit. Lives behind a tab
  *  switch so destructive buttons can't be hit by accident while
@@ -561,6 +748,59 @@ function makeToggle(opts: ToggleOpts): HTMLDivElement {
     knob.style.left = newVal ? '18px' : '2px';
   });
 
+  return row;
+}
+
+interface SelectOpts<T extends string> {
+  label: string;
+  description?: string;
+  options: ReadonlyArray<{ id: T; label: string }>;
+  get: () => T;
+  set: (v: T) => void;
+}
+
+/** A labelled dropdown. Used for the touch control-scheme picker — a
+ *  one-option seam today, but the UI is ready for more. */
+function makeSelect<T extends string>(opts: SelectOpts<T>): HTMLDivElement {
+  const row = document.createElement('div');
+  Object.assign(row.style, { display: 'flex', flexDirection: 'column', gap: '6px' } as Partial<CSSStyleDeclaration>);
+
+  const top = document.createElement('div');
+  Object.assign(top.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' } as Partial<CSSStyleDeclaration>);
+
+  const label = document.createElement('span');
+  label.textContent = opts.label;
+  Object.assign(label.style, {
+    fontSize: '11px', fontWeight: '500', letterSpacing: '0.18em',
+    color: 'rgba(220, 180, 140, 0.9)',
+  } as Partial<CSSStyleDeclaration>);
+
+  const select = document.createElement('select');
+  Object.assign(select.style, {
+    background: 'rgba(40, 28, 20, 0.7)', border: '1px solid rgba(180, 130, 90, 0.5)',
+    borderRadius: '3px', color: 'rgba(230, 200, 170, 0.95)',
+    fontFamily: 'inherit', fontSize: '11px', padding: '5px 8px', cursor: 'pointer',
+  } as Partial<CSSStyleDeclaration>);
+  for (const o of opts.options) {
+    const optEl = document.createElement('option');
+    optEl.value = o.id;
+    optEl.textContent = o.label;
+    select.appendChild(optEl);
+  }
+  select.value = opts.get();
+  select.addEventListener('change', () => opts.set(select.value as T));
+
+  top.append(label, select);
+  row.appendChild(top);
+
+  if (opts.description) {
+    const desc = document.createElement('div');
+    desc.textContent = opts.description;
+    Object.assign(desc.style, {
+      fontSize: '11px', color: 'rgba(160, 130, 100, 0.7)', fontStyle: 'italic',
+    } as Partial<CSSStyleDeclaration>);
+    row.appendChild(desc);
+  }
   return row;
 }
 

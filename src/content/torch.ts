@@ -84,23 +84,17 @@ export const WALL_TORCH: ModelSpec = {
     // These DON'T have the 'wisp' name so torchlight.ts won't
     // touch them; their own per-sprite flicker (scale wobble + Y
     // bob, desynced via random phase) does the work.
+    // A single flame tongue over the emissive sphere (the wisp halo above
+    // sells the rest). Was two stacked tongues; one is enough once batching
+    // makes torches cheap — keeps the flame shape at one fewer draw each.
     {
       kind: 'sprite',
-      pos: [0, 0.06, 0],
-      size: [0.14, 0.22],
+      pos: [0, 0.08, 0],
+      size: [0.14, 0.30],
       texture: 'fire-wisp',
       blending: 'additive',
-      color: 0xffd070,
-      flicker: { scale: 0.22, bob: 0.020, speed: 3.2 },
-    },
-    {
-      kind: 'sprite',
-      pos: [0, 0.14, 0],
-      size: [0.10, 0.22],
-      texture: 'fire-wisp',
-      blending: 'additive',
-      color: 0xff7028,
-      flicker: { scale: 0.30, bob: 0.030, speed: 2.6 },
+      color: 0xffc060,
+      flicker: { scale: 0.26, bob: 0.026, speed: 3.0 },
     },
   ],
   slots: {

@@ -8,6 +8,118 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-02",
     "entries": [
       {
+        "tag": "tune",
+        "text": "King: leap actually moves + landing damage + core damage flash"
+      },
+      {
+        "tag": "tune",
+        "text": "Boss fog wall — soulslike threshold mist + sealed engagement"
+      },
+      {
+        "tag": "fix",
+        "text": "King fixes: dash actually moves horizontally + aura tick slower"
+      },
+      {
+        "tag": "add",
+        "text": "Add Boiling King test chamber to the title-screen TEST list"
+      },
+      {
+        "tag": "tune",
+        "text": "Boiling King: real vertical leap with landing screen shake"
+      },
+      {
+        "tag": "tune",
+        "text": "Boiling King: leap distance + AoE size + cooldown tuning"
+      },
+      {
+        "tag": "tune",
+        "text": "Boiling King: way bigger + inside-aura mechanic (slow + acid DoT)"
+      },
+      {
+        "tag": "tune",
+        "text": "Boiling King"
+      },
+      {
+        "tag": "tune",
+        "text": "Menus freeze the world + mobile menus scroll when too tall"
+      },
+      {
+        "tag": "tune",
+        "text": "Desktop: hold-to-charge attacks + rebindable keys + Controls tab"
+      },
+      {
+        "tag": "tune",
+        "text": "Safe-room card: grace window before tap can dismiss it"
+      },
+      {
+        "tag": "tune",
+        "text": "Step 3 v4: encounter + event density passes — pipeline complete"
+      },
+      {
+        "tag": "tune",
+        "text": "Step 3 v3: carve pass — fissured floor cutouts as the first pass"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix floor non-determinism: corpse note used a global counter"
+      },
+      {
+        "tag": "tune",
+        "text": "Nerf bleed + burn DoTs (too brutal vs 8-HP player)"
+      },
+      {
+        "tag": "tune",
+        "text": "Step 3 v2: decor pass — pillared style + density factor"
+      },
+      {
+        "tag": "tune",
+        "text": "Step 3 v1: Palette cascade + lighting pass"
+      },
+      {
+        "tag": "tune",
+        "text": "Decor migration"
+      },
+      {
+        "tag": "content",
+        "text": "Migrate remaining spawn-prop vaults to cellProps"
+      },
+      {
+        "tag": "tune",
+        "text": "Extract inspect-mode into its own module"
+      },
+      {
+        "tag": "fix",
+        "text": "Inspect previews: auto-frame subject, fix lighting, studio backdrop"
+      },
+      {
+        "tag": "content",
+        "text": "Vault format experiment — author same vault in 3 formats"
+      },
+      {
+        "tag": "tune",
+        "text": "Palette & Pass system DRAFT v0 (types only, no runtime)"
+      },
+      {
+        "tag": "tune",
+        "text": "tests"
+      },
+      {
+        "tag": "tune",
+        "text": "Make the pre-push test gate durable: prepare script wires core.hooksPath"
+      },
+      {
+        "tag": "content",
+        "text": "Delete LEVEL_1 + LEVEL_2 + all per-enemy tile-char machinery"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix stair-archway guard: precise (stair-room perimeter), not crude distance"
+      },
+      {
+        "tag": "tune",
+        "text": "Stairs: geometry-aware orientation — back of room, facing the entrance"
+      },
+      {
         "tag": "content",
         "text": "vault-validate: recognize the '*' light char (post-merge with torch refactor)"
       },
@@ -100,118 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Pilot: goto verb + cross-call persistence"
-      },
-      {
-        "tag": "content",
-        "text": "Mimic mob + procgen chest tier rolls"
-      },
-      {
-        "tag": "content",
-        "text": "Pilot/inspector: faithful populated vault previews"
-      },
-      {
-        "tag": "content",
-        "text": "Pilot: --vault entry — walk a single authored vault from the inside"
-      },
-      {
-        "tag": "tune",
-        "text": "Creator suite: pilot driver — Claude drives + inspects the live world"
-      },
-      {
-        "tag": "content",
-        "text": "Creator suite: validation tests + vault inspector + pre-push gate"
-      },
-      {
-        "tag": "tune",
-        "text": "First-class boss architecture: BossSpec registry + intro card"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix: reassign reserved enemy tile chars (game-load crash)"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: chasm voids + bridge (flat-playfield verticality)"
-      },
-      {
-        "tag": "content",
-        "text": "Mob variety: 3 new mobs + Boiling King now Act I boss + bigger arenas"
-      },
-      {
-        "tag": "tune",
-        "text": "Crit + lifesteal modifiers + 6 items leaning into them"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf: merge static walls into one mesh per room"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: braced timber wall variant + timber plank doors"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf: batch all pillar geometry into one mesh per floor"
-      },
-      {
-        "tag": "tune",
-        "text": "Effects: target 'attacker' resolution + 3 retaliation items"
-      },
-      {
-        "tag": "tune",
-        "text": "Reactive item verbs"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: grand boss-hall arena (18x16) for real set-piece fights"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: four new variety vaults (attack the 'samey' feel)"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: vaulted + pitched ceilings (kill the 'flat' feel)"
-      },
-      {
-        "tag": "tune",
-        "text": "Content expansion: 15 new equipment items + Penitent's Vigil set"
-      },
-      {
-        "tag": "content",
-        "text": "Level gen: winding 2D vault placement (corridors turn now)"
-      },
-      {
-        "tag": "tune",
-        "text": "Heal cap, charged-effect system + Howling Edge, three new weapons"
-      },
-      {
-        "tag": "tune",
-        "text": "Level gen: varied corridor ceiling heights (mine-shaft tunnels vs galleries)"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf meter"
-      },
-      {
-        "tag": "tune",
-        "text": "Ranged auto-aim LOS + rename sword.ts → viewmodel.ts"
-      },
-      {
-        "tag": "tune",
-        "text": "Settings tabs + staff upright + tight ranged aim + moveset all classes"
-      },
-      {
-        "tag": "tune",
-        "text": "Charge ring: thumb-tracking + sweet-spot pulse"
-      },
-      {
-        "tag": "tune",
-        "text": "Sword moveset"
-      },
-      {
-        "tag": "tune",
-        "text": "Sword pilot moveset: directional moves + combo + charge"
       }
     ]
   }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { ShadowMode } from '../settings/settings';
 
 // Light slot pool — partitioned by category so each kind of light
 // plays by its own rules.
@@ -92,6 +93,29 @@ const scratchByCategory: Record<LightCategory, Array<{ src: LightSource; sortKey
   projectile: [],
 };
 
+// ── Shadows ──────────────────────────────────────────────────────────
+// PointLight shadows are the dearest thing in the frame on mobile (each
+// caster re-renders the scene as a 6-face cube map), so we cast from a
+// SMALL, FIXED set of slots chosen by the SHADOWS quality setting. The
+// caster COUNT is constant within a mode, so the number of shadow-casting
+// lights Three.js sees never changes per frame — no shader recompiles, the
+// same invariant the whole pool is built around. Which physical light fills
+// a caster slot does change (the env slots re-sort nearest-first each
+// frame), so "the nearest torch casts" without any recompile.
+const SHADOW_MAP_SIZE = 512;
+let shadowMode: ShadowMode = 'off';
+
+/** Pre-configure a slot's shadow camera + map. Cheap; the shadow map
+ *  itself isn't allocated until castShadow flips true on first render. */
+function configureSlotShadow(light: THREE.PointLight): void {
+  light.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+  light.shadow.bias = -0.004;
+  light.shadow.camera.near = 0.12;
+  // Tight far plane — torch/lamp reach is short, and a tight frustum keeps
+  // the depth precision (and cost) reasonable.
+  light.shadow.camera.far = 16;
+}
+
 /** One-time setup. Adds N PointLights per category to the scene. */
 export function initLightPool(sc: THREE.Scene): void {
   if (slotsByCategory.environment.length > 0) return;
@@ -101,10 +125,31 @@ export function initLightPool(sc: THREE.Scene): void {
     for (let i = 0; i < CATEGORY_SLOTS[cat]; i++) {
       const light = new THREE.PointLight(0xffffff, 0, 5, 1.4);
       light.position.set(0, PARK_Y, 0);
+      configureSlotShadow(light);
       sc.add(light);
       slotsByCategory[cat].push(light);
     }
   }
+  applyShadowMode();
+}
+
+/** Set the dynamic-shadow quality. Flips castShadow on the lamp slot and
+ *  the first K environment slots per the mode; counts are fixed per mode.
+ *  Changing mode is the only time the caster count changes, so the single
+ *  shader recompile it costs lands on a settings toggle, never mid-frame. */
+export function setShadowMode(mode: ShadowMode): void {
+  shadowMode = mode;
+  applyShadowMode();
+}
+
+function applyShadowMode(): void {
+  // hero = lamp only; single = nearest world light only; all = lamp + nearest few.
+  const lampCasts = shadowMode === 'hero' || shadowMode === 'all';
+  const envCasters = shadowMode === 'single' ? 1 : shadowMode === 'all' ? 4 : 0;
+  for (const light of slotsByCategory.lamp) light.castShadow = lampCasts;
+  const env = slotsByCategory.environment;
+  for (let i = 0; i < env.length; i++) env[i].castShadow = i < envCasters;
+  // pickup / projectile lights never cast — they're transient sparkle.
 }
 
 export function registerLight(src: LightSource): void {

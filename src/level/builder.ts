@@ -1,16 +1,17 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { LevelSpec, RoomSpec, TorchSpec } from './types';
+import type { LevelSpec, RoomSpec, TorchSpec, PropSpec, OpeningSpec } from './types';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
-import { spawnVase, spawnVaseCluster, spawnCobweb, disposeDestructible, type Destructible } from './destructibles';
+import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
-import { getTexture } from '../style/procedural-textures';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
 import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
+import { kickShake } from '../combat/screen-shake';
+import { registerBossMember, advanceBossPhase } from '../mobs/boss-encounter';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
@@ -21,18 +22,18 @@ import { spawnStarterAltar } from '../interactables/starter-altar';
 import { spawnBloodAltar } from '../interactables/blood-altar';
 import { ITEMS } from '../content/items';
 import { spawnTutorialHint } from '../effects/tutorial-hints';
-import { spawnDoor } from '../interactables/door';
 import {
   spawnStairs,
   STAIRWELL_TOTAL_DEPTH,
   STAIRWELL_HALF_WIDTH,
 } from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
+import { spawnFitting } from '../interactables/fitting';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
-import { seedBuildRng, buildRng, hashStringToSeed } from '../engine/rng';
+import { seedBuildRng, hashStringToSeed } from '../engine/rng';
 import { spawnThresholdDraft, registerArchwayGlow } from '../scene/threshold-draft';
 
 // Local Mulberry32 seeded RNG — kept here to avoid importing procgen.ts
@@ -93,252 +94,17 @@ export interface LiveLevel {
   teardown: () => void;
 }
 
-/** Floor mesh with rectangular holes punched for stairwells. Each hole
- *  is a polygon in shape-space (x, y) where shape Y maps to world -Z
- *  after the floor's -π/2 X rotation. Holes are passed in pre-projected
- *  to those coords. No vertex jitter on this path — losing the slight
- *  ripple is acceptable for rooms containing stairs, which is rare. */
-function makeFloorWithHoles(
-  width: number,
-  height: number,
-  holes: Array<Array<[number, number]>>,
-): THREE.ShapeGeometry {
-  const shape = new THREE.Shape();
-  shape.moveTo(-width / 2, -height / 2);
-  shape.lineTo( width / 2, -height / 2);
-  shape.lineTo( width / 2,  height / 2);
-  shape.lineTo(-width / 2,  height / 2);
-  shape.closePath();
-  for (const h of holes) {
-    const path = new THREE.Path();
-    for (let i = 0; i < h.length; i++) {
-      const [px, py] = h[i];
-      if (i === 0) path.moveTo(px, py);
-      else path.lineTo(px, py);
-    }
-    path.closePath();
-    shape.holes.push(path);
-  }
-  const geo = new THREE.ShapeGeometry(shape);
-  return geo;
-}
-
-function makeJitteredPlane(
-  width: number, height: number,
-  /** Walls bake a smooth low-frequency wave into the surface (`wavy`) so
-   *  they don't read as flat slabs. Floors pass `flat` to skip ALL vertex
-   *  displacement (no wave, no jitter) — a bumpy floor reads as warped next
-   *  to the dead-flat stairwell-room floors (makeFloorWithHoles), and lumps
-   *  push the player up. Flat floors keep the per-vertex colour tint below,
-   *  so they still have surface variation without geometry warp. */
-  opts: { wavy?: boolean; flat?: boolean } = {},
-): THREE.PlaneGeometry {
-  const geo = new THREE.PlaneGeometry(
-    width,
-    height,
-    CONFIG.WALL_SUBDIVISIONS_X,
-    CONFIG.WALL_SUBDIVISIONS_Y,
-  );
-  const pos = geo.attributes.position;
-  const jitter = CONFIG.WALL_VERTEX_JITTER;
-  // Per-plane random phase so neighbouring walls don't share
-  // the same wave pattern — every wall slab gets its own
-  // unique warp.
-  const wavy = !!opts.wavy;
-  const flat = !!opts.flat;
-  const wavePhaseA = buildRng() * 100;
-  const wavePhaseB = buildRng() * 100;
-  const WAVE_AMPL = 0.045;        // peak displacement in metres
-  const WAVE_SCALE_X = 1.2;       // metres / radian along the wall
-  const WAVE_SCALE_Y = 0.9;
-  const WAVE_SCALE_X2 = 0.55;     // higher-freq overlay
-  const WAVE_SCALE_Y2 = 0.7;
-  const EDGE_FADE = 0.5;          // metres from edge where wave fades to 0
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const onEdgeX = Math.abs(Math.abs(x) - width / 2) < 1e-4;
-    const onEdgeY = Math.abs(Math.abs(y) - height / 2) < 1e-4;
-    if (onEdgeX || onEdgeY) continue;
-    if (flat) continue;   // dead-flat surface; colour tint below still applies
-    let z = (buildRng() - 0.5) * 2 * jitter;
-    if (wavy) {
-      // Two superimposed waves — a slow primary undulation +
-      // a faster overlay — give a non-repeating warp pattern.
-      const waveLow  = Math.sin(x / WAVE_SCALE_X + wavePhaseA)
-                     * Math.cos(y / WAVE_SCALE_Y + wavePhaseB);
-      const waveHigh = Math.sin(x / WAVE_SCALE_X2 + wavePhaseB * 0.7 + y * 0.6)
-                     * 0.45;
-      // Taper toward the edges so neighbouring wall segments
-      // line up cleanly with no visible seam.
-      const dx = Math.min(width / 2 + x, width / 2 - x);
-      const dy = Math.min(height / 2 + y, height / 2 - y);
-      const fade = Math.min(1, dx / EDGE_FADE) * Math.min(1, dy / EDGE_FADE);
-      z += (waveLow + waveHigh) * WAVE_AMPL * fade;
-    }
-    pos.setZ(i, z);
-  }
-  pos.needsUpdate = true;
-  geo.computeVertexNormals();
-
-  // Per-vertex color tint jitter: each vertex gets an RGB multiplier in
-  // [0.7, 1.0]. The material multiplies this against its base color, so
-  // walls + floor get subtle dark/light splotches instead of one flat tone.
-  // Each channel is randomized slightly independently for color drift too.
-  const colors = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    const base = 0.7 + buildRng() * 0.3;     // overall darkness per vertex
-    const tintR = base * (0.94 + buildRng() * 0.06);
-    const tintG = base * (0.94 + buildRng() * 0.06);
-    const tintB = base * (0.94 + buildRng() * 0.06);
-    colors[i * 3 + 0] = tintR;
-    colors[i * 3 + 1] = tintG;
-    colors[i * 3 + 2] = tintB;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-  return geo;
-}
-
-// Double-sided clone of the ceiling material for vaulted/pitched ceilings.
-// Double-sided so the custom arch geometry is robust to winding direction
-// (it can never render as an invisible black hole), and MeshStandard flips
-// the normal per-face so lighting reads correctly from below either way.
-// Cached (re-cloned only if the base material instance changes across a
-// rebuild) so we don't leak a material per room.
-let _archCeilMat: THREE.Material | null = null;
-let _archCeilBase: THREE.Material | null = null;
-function archCeilingMaterial(base: THREE.Material): THREE.Material {
-  if (_archCeilBase !== base || !_archCeilMat) {
-    _archCeilMat = base.clone();
-    _archCeilMat.side = THREE.DoubleSide;
-    _archCeilBase = base;
-  }
-  return _archCeilMat;
-}
-
-// Build a barrel (curved) or pitched (A-frame) ceiling as ONE BufferGeometry:
-// an arch that springs from the wall-top height H along the longer axis and
-// rises to H+rise at the crown, PLUS the two end tympana that fill the arch
-// profile above the short walls (no gap). World-Y coords — place the mesh at
-// (rect.x, 0, rect.z) with no rotation.
-function makeArchedCeilingGeometry(
-  W: number, D: number, H: number, rise: number, profile: 'barrel' | 'pitched',
-): THREE.BufferGeometry {
-  // Arch across the SHORTER horizontal axis; run flat along the longer one.
-  const curveX = W <= D;                       // true → arch spans X, runs along Z
-  const acrossHalf = (curveX ? W : D) / 2;
-  const alongHalf = (curveX ? D : W) / 2;
-  const NA = 16;                               // segments across the arch (smoothness)
-  const NB = Math.max(1, Math.round((alongHalf * 2) / 3));   // along the run
-  const shape = (t: number) =>
-    profile === 'barrel' ? Math.cos(t * Math.PI / 2) : 1 - Math.abs(t);
-  const xz = (a: number, b: number): [number, number] => (curveX ? [a, b] : [b, a]);
-
-  const pos: number[] = [];
-  const idx: number[] = [];
-
-  // ── Arched surface ──
-  const rowLen = NA + 1;
-  for (let j = 0; j <= NB; j++) {
-    const b = -alongHalf + (j / NB) * (alongHalf * 2);
-    for (let i = 0; i <= NA; i++) {
-      const a = -acrossHalf + (i / NA) * (acrossHalf * 2);
-      const y = H + rise * shape(a / acrossHalf);
-      const [x, z] = xz(a, b);
-      pos.push(x, y, z);
-    }
-  }
-  for (let j = 0; j < NB; j++) {
-    for (let i = 0; i < NA; i++) {
-      const v0 = j * rowLen + i;
-      const v2 = v0 + rowLen;
-      idx.push(v0, v2, v0 + 1, v0 + 1, v2, v2 + 1);
-    }
-  }
-
-  // ── End tympana: fill above the short walls (between y=H and the arch) ──
-  for (const bEnd of [-alongHalf, alongHalf]) {
-    const base = pos.length / 3;
-    for (let i = 0; i <= NA; i++) {
-      const a = -acrossHalf + (i / NA) * (acrossHalf * 2);
-      const yTop = H + rise * shape(a / acrossHalf);
-      const [x, z] = xz(a, bEnd);
-      pos.push(x, H, z);       // bottom — wall-top line
-      pos.push(x, yTop, z);    // top — arch
-    }
-    for (let i = 0; i < NA; i++) {
-      const b0 = base + i * 2, t0 = base + i * 2 + 1;
-      const b1 = base + (i + 1) * 2, t1 = base + (i + 1) * 2 + 1;
-      idx.push(b0, b1, t0, t0, b1, t1);
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setIndex(idx);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-// Mine-shaft timber bracing: square support frames (two posts + a lintel)
-// spanning the room's SHORTER axis at intervals along the longer one, all
-// merged into ONE geometry (one draw call). The iconic "dug tunnel" read.
-// World-space coords — the mesh sits at origin.
-function makeBracedFramesGeometry(rect: { x: number; z: number; w: number; d: number }, H: number): THREE.BufferGeometry | null {
-  const longAxisX = rect.w >= rect.d;
-  const longLen = longAxisX ? rect.w : rect.d;
-  const shortLen = longAxisX ? rect.d : rect.w;
-  const POST = 0.14;                       // beam thickness
-  const spanHalf = shortLen / 2 - 0.08;    // pull off the wall a touch
-  const lintelY = H - 0.22;
-  const frameCount = Math.max(1, Math.round(longLen / 2.6) - 1);
-  const geos: THREE.BufferGeometry[] = [];
-  const m4 = new THREE.Matrix4();
-  const pushBox = (w: number, h: number, d: number, px: number, py: number, pz: number) => {
-    const g = new THREE.BoxGeometry(w, h, d);
-    g.applyMatrix4(m4.makeTranslation(px, py, pz));
-    geos.push(g);
-  };
-  for (let i = 1; i <= frameCount; i++) {
-    const along = -longLen / 2 + (i / (frameCount + 1)) * longLen;
-    const cx = rect.x + (longAxisX ? along : 0);
-    const cz = rect.z + (longAxisX ? 0 : along);
-    for (const s of [-spanHalf, spanHalf]) {                 // two posts
-      pushBox(POST, H, POST, cx + (longAxisX ? 0 : s), H / 2, cz + (longAxisX ? s : 0));
-    }
-    pushBox(                                                  // lintel across the top
-      longAxisX ? POST : spanHalf * 2 + POST, POST, longAxisX ? spanHalf * 2 + POST : POST,
-      cx, lintelY, cz,
-    );
-  }
-  return geos.length ? mergeGeometries(geos, false) : null;
-}
-
-// Chasm drop geometry — for each void, four inward pit walls descending from
-// the floor (y=0) to y=-drop plus a dark bottom, all merged into ONE mesh.
-// Rendered with the double-sided dark ceiling material (no vertex-colour
-// dependency, never culls from above) so it reads as an abyss.
-function makeChasmDropGeometry(voids: { x: number; z: number; w: number; d: number }[], drop: number): THREE.BufferGeometry | null {
-  const geos: THREE.BufferGeometry[] = [];
-  const m4 = new THREE.Matrix4();
-  for (const v of voids) {
-    const { x, z, w, d } = v;
-    const bottom = new THREE.PlaneGeometry(w, d);   // faces up
-    m4.makeRotationX(-Math.PI / 2); m4.setPosition(x, -drop, z); bottom.applyMatrix4(m4);
-    geos.push(bottom);
-    const wall = (len: number, yaw: number, px: number, pz: number) => {
-      const g = new THREE.PlaneGeometry(len, drop);
-      m4.makeRotationY(yaw); m4.setPosition(px, -drop / 2, pz); g.applyMatrix4(m4);
-      geos.push(g);
-    };
-    wall(w, 0, x, z - d / 2);            // north edge
-    wall(w, Math.PI, x, z + d / 2);      // south edge
-    wall(d, Math.PI / 2, x - w / 2, z);  // west edge
-    wall(d, -Math.PI / 2, x + w / 2, z); // east edge
-  }
-  return geos.length ? mergeGeometries(geos, false) : null;
-}
+// Procedural geometry factories (floor-with-holes, jittered planes, arched
+// ceilings, mine bracing, chasm drops) live in geometry-prims.ts — pure,
+// no game-state coupling. builder.ts composes the level from them.
+import {
+  makeFloorWithHoles,
+  makeJitteredPlane,
+  archCeilingMaterial,
+  makeArchedCeilingGeometry,
+  makeBracedFramesGeometry,
+  makeChasmDropGeometry,
+} from './geometry-prims';
 
 function buildRoomShell(
   scene: THREE.Object3D,
@@ -529,68 +295,10 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
   }
 }
 
-// Find segments where another rect's edge coincides with this wall edge.
-// "Coincides" = on the same line (same perpendicular coord) AND overlapping
-// in the running-axis direction.
-function findOpenings(
-  we: { perpAxis: 'x' | 'z'; perpCoord: number; wallStart: number; wallEnd: number },
-  allRects: RoomSpec[],
-  selfRoom: RoomSpec,
-): Array<{ start: number; end: number }> {
-  const EPS = 0.01;
-  const openings: Array<{ start: number; end: number }> = [];
-  for (const other of allRects) {
-    if (other === selfRoom) continue;
-    // Sub-rooms (logical-only) are INSIDE their parent vault rect —
-    // their edges often coincide with the parent's exterior walls,
-    // which would spuriously punch openings through them. Skip.
-    if (other.logicalOnly) continue;
-    const o = other.rect;
-    if (we.perpAxis === 'z') {
-      // wall runs along X; coincide if any of other's Z-edges == we.perpCoord
-      const oSouth = o.z + o.d / 2;
-      const oNorth = o.z - o.d / 2;
-      const coincides = Math.abs(oSouth - we.perpCoord) < EPS || Math.abs(oNorth - we.perpCoord) < EPS;
-      if (!coincides) continue;
-      const a = Math.max(we.wallStart, o.x - o.w / 2);
-      const b = Math.min(we.wallEnd, o.x + o.w / 2);
-      if (b > a + EPS) openings.push({ start: a, end: b });
-    } else {
-      // wall runs along Z; coincide if any of other's X-edges == we.perpCoord
-      const oEast = o.x + o.w / 2;
-      const oWest = o.x - o.w / 2;
-      const coincides = Math.abs(oEast - we.perpCoord) < EPS || Math.abs(oWest - we.perpCoord) < EPS;
-      if (!coincides) continue;
-      const a = Math.max(we.wallStart, o.z - o.d / 2);
-      const b = Math.min(we.wallEnd, o.z + o.d / 2);
-      if (b > a + EPS) openings.push({ start: a, end: b });
-    }
-  }
-  return openings;
-}
-
-// Subtract a set of [start, end] openings from a [start, end] range.
-function subtractRanges(start: number, end: number, openings: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
-  const sorted = [...openings].sort((a, b) => a.start - b.start);
-  const segments: Array<{ start: number; end: number }> = [];
-  let cursor = start;
-  for (const op of sorted) {
-    if (op.start > cursor) segments.push({ start: cursor, end: Math.min(op.start, end) });
-    cursor = Math.max(cursor, op.end);
-    if (cursor >= end) break;
-  }
-  if (cursor < end) segments.push({ start: cursor, end });
-  return segments;
-}
-
-function torchYawForWall(wall: 'N' | 'S' | 'E' | 'W'): number {
-  switch (wall) {
-    case 'N': return 0;
-    case 'S': return Math.PI;
-    case 'E': return -Math.PI / 2;
-    case 'W': return Math.PI / 2;
-  }
-}
+// Wall-opening range math (findOpenings / subtractRanges) + torchYawForWall
+// live in wall-openings.ts. Mood-tint colour math lives in mood-tint.ts.
+import { findOpenings, subtractRanges, torchYawForWall } from './wall-openings';
+import { mixColors, moodTintForPosition, applyMoodTint, averageTorchTintInRect } from './mood-tint';
 
 export function buildLevel(
   scene: THREE.Scene,
@@ -785,6 +493,14 @@ export function buildLevel(
   // boss cathedral alone was ~48 pillar draw calls.
   const pillarGeos: THREE.BufferGeometry[] = [];
 
+  // Boss-mist props need the WalkableRegion (for the seal obstacle)
+  // which is constructed AFTER this loop. Collect them here, spawn
+  // after the region exists.
+  // Every wall-opening fitting — doors, portcullises, the boss fog-gate, and
+  // cobwebs — is installed through ONE deferred drain (spawnFitting) after the
+  // walkable region + room membership exist. Collected here from props +
+  // spec.doors so they all flow through the same placement + seal path.
+  const pendingFittings: OpeningSpec[] = [];
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
@@ -935,9 +651,21 @@ export function buildLevel(
         minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
       });
     } else if (prop.kind === 'corpse') {
-      spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note);
+      spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note ?? '');
       // No collision — player can step over the body. Walking right up
       // to READ it shouldn't be blocked.
+    } else if (prop.kind === 'boss-mist') {
+      // Soulslike fog wall. Spawn is DEFERRED until after the
+      // walkable region is constructed (spawnBossMist takes a
+      // WalkableRegion handle so it can add the seal obstacle on
+      // cross). Collected here, processed below.
+      pendingFittings.push({
+        id: `fog-${Math.round(prop.x * 10)}-${Math.round(prop.z * 10)}`,
+        kind: 'fog-gate',
+        x: prop.x, z: prop.z, rotY: prop.rotY ?? 0,
+        widthM: prop.width ?? 3.4, height: prop.height,
+        color: prop.color,
+      });
     } else if (prop.kind === 'vase') {
       // Push the obstacle FIRST, keep a reference, and pass a
       // splice callback to spawnVase so the obstacle goes away
@@ -951,18 +679,14 @@ export function buildLevel(
       });
       destructibles.push(vase);
     } else if (prop.kind === 'cobweb') {
-      // Destructible web curtain — blocks the passage until slashed.
-      // Push the blocking obstacle + a splice callback so cutting the
-      // web opens the way. Radius scales with the opening width so a wide
-      // web gate is fully plugged (a single doorway stays ~0.9m).
-      const webWidth = prop.widthM ?? 1.9;
-      const webObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: Math.max(0.9, webWidth / 2 + 0.1) };
-      obstacles.push(webObs);
-      const web = spawnCobweb(root, prop.x, prop.z, prop.rotY ?? 0, webWidth, () => {
-        const idx = obstacles.indexOf(webObs);
-        if (idx >= 0) obstacles.splice(idx, 1);
+      // Destructible web curtain — installed as a unified fitting (wall-segment
+      // seal spanning the gap; slashing removes it). Deferred to the drain
+      // below so it shares the same path as doors + the fog-gate.
+      pendingFittings.push({
+        id: `cobweb-${Math.round(prop.x * 10)}-${Math.round(prop.z * 10)}`,
+        kind: 'cobweb',
+        x: prop.x, z: prop.z, rotY: prop.rotY ?? 0, widthM: prop.widthM ?? 1.9,
       });
-      destructibles.push(web);
     } else if (prop.kind === 'vase-cluster') {
       // Cluster of 2-4 vases jittered around (x, z). Each gets
       // its own destructible entry + its own collision circle.
@@ -1110,6 +834,7 @@ export function buildLevel(
     const m4 = new THREE.Matrix4();
     for (const w of spec.extraWalls) {
       const H = w.height ?? defaultH;
+      const baseY = w.baseY ?? 0;
       const dx = w.bx - w.ax;
       const dz = w.bz - w.az;
       const len = Math.hypot(dx, dz);
@@ -1118,10 +843,12 @@ export function buildLevel(
       // X-running wall faces ±Z (yaw 0); Z-running faces ±X (yaw π/2).
       const yaw = Math.abs(dz) < Math.abs(dx) ? 0 : Math.PI / 2;
       m4.makeRotationY(yaw);
-      m4.setPosition((w.ax + w.bx) / 2, H / 2, (w.az + w.bz) / 2);
+      m4.setPosition((w.ax + w.bx) / 2, baseY + H / 2, (w.az + w.bz) / 2);
       geo.applyMatrix4(m4);
       extraGeos.push(geo);
-      wallSegments.push({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz });
+      // Elevated segments are lintels (doorway caps) — visual only. The gap
+      // below them must stay walkable, so they get NO collision segment.
+      if (baseY <= 0.01) wallSegments.push({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz });
     }
     if (extraGeos.length > 0) {
       const merged = mergeGeometries(extraGeos, false);
@@ -1264,7 +991,11 @@ export function buildLevel(
   //
   // Room membership: an enemy belongs to the first rect whose AABB contains
   // its spawn (x,z). Used to know when a room is "cleared" for door gating.
-  const enemyRoom = new Map<Enemy, string | null>();
+  // Room membership keyed by the enemy's stable entityId (NOT the Enemy
+  // object or its position) so the split-on-death callback can look up the
+  // parent's room exactly — two enemies dying at the same spot used to
+  // collide in a position-proximity scan.
+  const roomByEntity = new Map<string, string | null>();
   const aliveByRoom = new Map<string, number>();
   const enemies: Enemy[] = [];
   const levelDepth = spec.depth ?? 1;
@@ -1287,8 +1018,11 @@ export function buildLevel(
       onEnemyDeath,
     );
     enemies.push(e);
-    enemyRoom.set(e, roomId);
+    roomByEntity.set(e.entityId, roomId);
     if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
+    // Every boss body (the king + each split child) joins the one boss
+    // encounter, so "boss done" means ALL of them are dead.
+    if (e.isBoss) registerBossMember(e);
     return e;
   }
 
@@ -1298,30 +1032,36 @@ export function buildLevel(
   // tracked so split children stay attributed to the same room for
   // door-clear bookkeeping (kill the parent → kids spawn in the same
   // sealed combat room → you have to kill them too).
-  const onEnemyDeath = (deadSpec: EnemySpec, deathPos: THREE.Vector3) => {
+  const onEnemyDeath = (deadSpec: EnemySpec, deathPos: THREE.Vector3, deadEntityId: string) => {
     const split = deadSpec.splitsInto;
     if (!split) return;
     const childBase = ENEMIES[split.enemyId];
     if (!childBase) return;
     const radius = split.radius ?? 0.4;
-    // Find the parent's room by scanning the existing map — quick at
-    // this scale, and avoids passing room context through the enemy
-    // layer.
-    let parentRoom: string | null = null;
-    for (const [e, r] of enemyRoom) {
-      if (e.group.position.distanceToSquared(deathPos) < 0.01) {
-        parentRoom = r;
-        break;
-      }
-    }
+    // The parent's room, looked up EXACTLY by its entityId (set at spawn).
+    // Children inherit it so they stay attributed to the same sealed combat
+    // room for door-clear bookkeeping.
+    const parentRoom = roomByEntity.get(deadEntityId) ?? null;
+    // A splitting "spit" — the parent bursts and flings the spawns
+    // outward (a screen-shake thud + an outward knockback impulse on each
+    // so they scatter dynamically, then settle), rather than just popping
+    // into place. The parent's own death dissolve provides the goo.
+    const bigSplit = split.count >= 3;
+    if (bigSplit) kickShake(0.3, 0.4);
+    // A BOSS splitting is a phase transition (king → its spawns = phase 2).
+    if (deadSpec.isBoss) advanceBossPhase();
     for (let i = 0; i < split.count; i++) {
       const angle = (i / split.count) * Math.PI * 2 + Math.random() * 0.3;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
       const childPos = new THREE.Vector3(
-        deathPos.x + Math.cos(angle) * radius,
+        deathPos.x + cos * radius,
         0,
-        deathPos.z + Math.sin(angle) * radius,
+        deathPos.z + sin * radius,
       );
-      spawnInto(childBase, childPos, parentRoom);
+      const child = spawnInto(childBase, childPos, parentRoom);
+      // Fling it outward from the burst point.
+      child.applyKnockback(cos, sin, bigSplit ? 6.0 : 3.5);
     }
   };
 
@@ -1346,14 +1086,20 @@ export function buildLevel(
       new THREE.Vector3(resolved.x, 0, resolved.z),
       enemySpec,
       onEnemyDeath,
+      { dormant: s.dormant },
     );
     enemy.faceWorld(spec.startPos.x, spec.startPos.z);
     enemies.push(enemy);
     // Room membership uses the resolved position so a mob nudged across
     // a doorway is attributed to the room it actually ended up in.
     const roomId = s.roomId ?? findRoomContaining(resolved.x, resolved.z, spec.rooms);
-    enemyRoom.set(enemy, roomId);
+    roomByEntity.set(enemy.entityId, roomId);
     if (roomId) aliveByRoom.set(roomId, (aliveByRoom.get(roomId) ?? 0) + 1);
+    // Authored boss spawns (the king) MUST join the encounter container too
+    // — without this they're never a `liveBossMember`, so the boss bar never
+    // engages and a dormant boss stays asleep forever. (The split helper
+    // registers spawned children; this is the missing initial-spawn case.)
+    if (enemy.isBoss) registerBossMember(enemy);
   }
 
   // --- Doors ---------------------------------------------------------
@@ -1362,27 +1108,35 @@ export function buildLevel(
   // room:cleared events to flip to closed (interactable). Arena doors
   // are now driven by cross-axis trigger in door.ts; no level-side
   // lookup needed.
-  const doorTeardowns: Array<() => void> = [];
+  // Fold the legacy DoorSpec list into the unified opening list — a door is
+  // just a fitting in a wall opening. Centre + wall-line rotY + span come
+  // straight off the segment; endpoints carried through so the door builder's
+  // hinge math is byte-identical.
   for (const d of spec.doors ?? []) {
-    // Find the room rect this door sits in so its lintel fills to
-    // the right ceiling height. Doors sit on a wall edge — the
-    // midpoint should still be inside (or on the boundary of) one
-    // of the room rects. Fallback to the first room's height when
-    // no containing rect is found (degenerate vaults).
-    const dcx = (d.ax + d.bx) / 2;
-    const dcz = (d.az + d.bz) / 2;
-    let doorRoomH = spec.rooms[0]?.height ?? 3.2;
-    for (const r of spec.rooms) {
-      const hw = r.rect.w / 2;
-      const hd = r.rect.d / 2;
-      if (dcx >= r.rect.x - hw - 0.05 && dcx <= r.rect.x + hw + 0.05 &&
-          dcz >= r.rect.z - hd - 0.05 && dcz <= r.rect.z + hd + 0.05) {
-        doorRoomH = r.height;
-        break;
-      }
-    }
-    const h = spawnDoor(root, d, walkable, materials, () => aliveByRoom, doorRoomH);
-    doorTeardowns.push(h.teardown);
+    pendingFittings.push({
+      id: d.id,
+      kind: d.unlock?.kind === 'cleared' ? 'gate-cleared'
+          : d.unlock?.kind === 'arena'   ? 'gate-arena'
+          : 'door-hinged',
+      x: (d.ax + d.bx) / 2, z: (d.az + d.bz) / 2,
+      rotY: Math.atan2(d.bz - d.az, d.bx - d.ax),
+      widthM: Math.hypot(d.bx - d.ax, d.bz - d.az),
+      height: d.height,
+      ax: d.ax, az: d.az, bx: d.bx, bz: d.bz,
+      hinge: d.hinge, swingDir: d.swingDir, unlock: d.unlock,
+    });
+  }
+  // Drain — install every fitting at its opening. Per-opening room height so a
+  // door/gate/fog lintel fills to the right ceiling.
+  const doorTeardowns: Array<() => void> = [];
+  for (const o of pendingFittings) {
+    const r = spawnFitting(root, o, walkable, {
+      materials,
+      enemyRoomMembership: () => aliveByRoom,
+      roomHeight: roomHeightAt(spec.rooms, o.x, o.z),
+      addDestructible: (d) => destructibles.push(d),
+    });
+    if (r.teardown) doorTeardowns.push(r.teardown);
   }
 
   // --- Stairs --------------------------------------------------------
@@ -1405,7 +1159,7 @@ export function buildLevel(
     for (const [roomId, count] of aliveByRoom) {
       let stillAlive = 0;
       for (const enemy of enemies) {
-        if (enemyRoom.get(enemy) === roomId && enemy.alive) stillAlive++;
+        if (roomByEntity.get(enemy.entityId) === roomId && enemy.alive) stillAlive++;
       }
       if (stillAlive === 0 && count > 0) {
         aliveByRoom.set(roomId, 0);
@@ -1464,121 +1218,23 @@ export function buildLevel(
   } as LiveLevel & { checkRoomClear: () => void };
 }
 
-/** Linear mix between two hex colors. t=0 returns a, t=1 returns b. */
-function mixColors(a: number, b: number, t: number): number {
-  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
-  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bl = Math.round(ab + (bb - ab) * t);
-  return (r << 16) | (g << 8) | bl;
-}
-
-/** Look up the mood tint (average torch palette) for a world point.
- *  Walks rooms smallest-first so a sub-room's local torches win over
- *  its parent vault's average; falls back to the parent if the sub
- *  has no torches. Returns null when the position is outside every
- *  room OR no torch sits inside any of its containing rects. */
-function moodTintForPosition(spec: LevelSpec, x: number, z: number): number | null {
-  const candidates: RoomSpec[] = [];
-  for (const r of spec.rooms) {
-    const hw = r.rect.w / 2;
-    const hd = r.rect.d / 2;
-    if (x >= r.rect.x - hw && x <= r.rect.x + hw &&
-        z >= r.rect.z - hd && z <= r.rect.z + hd) {
-      candidates.push(r);
-    }
-  }
-  candidates.sort((a, b) => (a.rect.w * a.rect.d) - (b.rect.w * b.rect.d));
-  for (const r of candidates) {
-    const tint = averageTorchTintInRect(spec.torches, r.rect);
-    if (tint !== null) return tint;
-  }
-  // Fallback: nearest torch within reach. A candle can sit in a sub-room or
-  // corridor that carries no torches of its own (multi-room vaults, composed
-  // floors) — the room-average above returns null and the prop kept its default
-  // warm flame. Next to a blood-red or sickly-green chamber that read as "some
-  // candles tinted, some left white" in the same space. Borrowing the closest
-  // torch's tint makes every moodTintable prop agree with the local mood.
-  let best: number | null = null;
-  let bestD2 = MOOD_TINT_FALLBACK_RADIUS * MOOD_TINT_FALLBACK_RADIUS;
-  for (const t of spec.torches) {
-    const d2 = (t.x - x) * (t.x - x) + (t.z - z) * (t.z - z);
-    if (d2 <= bestD2) { bestD2 = d2; best = t.colorTint ?? 0xffaa55; }
-  }
-  return best;
-}
-
-// How far a moodTintable prop will reach for a torch to borrow a tint from when
-// its own room has none. ~one large room across — close enough that the prop
-// and torch read as the same space, far enough to cross a sub-room boundary.
-const MOOD_TINT_FALLBACK_RADIUS = 9;
-
-/** Recolour a built model's flame-family materials + additive sprite
- *  particles + (signalled out) attached light to `tint`. Used by the
- *  model-prop handler when the spec sets moodTintable. Wax / wick /
- *  iron / wood materials and non-additive sprites are left alone.
- *  The light's colour override is returned via a separate path
- *  (`lightColorOverride` in the caller) so we don't have to mutate
- *  the spec. */
-function applyMoodTint(built: import('../ecs/build-model').BuiltModel, tint: number): void {
-  // Named flame-family materials — mutate colour + emissive together
-  // so the tint reads in both lit and unlit paths.
-  for (const name of ['flame', 'core', 'orb', 'shine']) {
-    const mat = built.materials.get(name) as THREE.MeshStandardMaterial | undefined;
-    if (!mat) continue;
-    if (mat.color) mat.color.setHex(tint);
-    if (mat.emissive) mat.emissive.setHex(tint);
-  }
-  // Additive sprite tongues (flame, embers). These are unnamed in the
-  // materials map; walk the scene-graph instead and recolour any
-  // additive SpriteMaterial.
-  //
-  // Crucially, also swap the map to the NEUTRAL 'moonbeam' texture. The
-  // default flame sprite uses 'fire-wisp', whose gradient bakes in a
-  // yellow-white→orange→red ramp. Additive `color` multiply can DARKEN that
-  // ramp but can't add the blue/green a cool tint needs — so a violet- or
-  // blood-tinted candle kept a warm core and read "white" next to the
-  // cleanly-recoloured wall torches (whose look is driven by the emissive
-  // flame sphere, not the sprite). moonbeam is a neutral white radial, so the
-  // tint colour alone decides the hue. (Same swap the stair shaft already
-  // does for exactly this reason — see stairs.ts.)
-  built.group.traverse((obj) => {
-    const sprite = obj as THREE.Sprite;
-    if (!sprite.isSprite) return;
-    const m = sprite.material as THREE.SpriteMaterial;
-    if (m.blending !== THREE.AdditiveBlending) return;
-    m.color.setHex(tint);
-    m.map = getTexture('moonbeam');
-    m.needsUpdate = true;
-  });
-}
-
-/** Average torch colorTint across every torch whose position falls
- *  inside `rect`. Returns null when the room has no torches — caller
- *  falls back to the default fill colour. Used so fill PointLights in
- *  a blood-tinted chamber read RED, not generic warm; sickly-green
- *  chambers get sickly-green fills; etc. */
-function averageTorchTintInRect(torches: TorchSpec[], rect: { x: number; z: number; w: number; d: number }): number | null {
-  const hw = rect.w / 2;
-  const hd = rect.d / 2;
-  let n = 0, r = 0, g = 0, b = 0;
-  for (const t of torches) {
-    if (t.x < rect.x - hw || t.x > rect.x + hw) continue;
-    if (t.z < rect.z - hd || t.z > rect.z + hd) continue;
-    const tint = t.colorTint ?? 0xffaa55;
-    r += (tint >> 16) & 0xff;
-    g += (tint >> 8) & 0xff;
-    b += tint & 0xff;
-    n++;
-  }
-  if (n === 0) return null;
-  return (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n);
-}
-
 /** Which room rect contains (x, z)? Prefers logical-only sub-rooms over
  *  their parent vault rect — they're the finer-grained attribution
  *  emitted by multi-room vault parsing. Null if outside all. */
+/** Room ceiling height at (x,z) — for sizing a fitting's lintel fill. A
+ *  fitting sits on a wall edge; a small margin lets a boundary point still
+ *  resolve to its room. Falls back to the first room's height. */
+function roomHeightAt(rooms: RoomSpec[], x: number, z: number): number {
+  for (const r of rooms) {
+    const hw = r.rect.w / 2, hd = r.rect.d / 2;
+    if (x >= r.rect.x - hw - 0.05 && x <= r.rect.x + hw + 0.05 &&
+        z >= r.rect.z - hd - 0.05 && z <= r.rect.z + hd + 0.05) {
+      return r.height;
+    }
+  }
+  return rooms[0]?.height ?? 3.2;
+}
+
 function findRoomContaining(x: number, z: number, rooms: RoomSpec[]): string | null {
   const containsHere = (r: RoomSpec): boolean => {
     const hw = r.rect.w / 2;

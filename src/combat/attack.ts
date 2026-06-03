@@ -122,7 +122,7 @@ export function createCombatSystem(
     const losCheck = walkable
       ? (cx: number, cz: number, tx: number, tz: number) => walkable.hasLineOfSight(cx, cz, tx, tz)
       : undefined;
-    const target = pickTarget(getEnemies(), camera, forwardDir, Math.hypot(forwardDir.x, forwardDir.z) || 1, RANGED_REACH * RANGED_REACH, RANGED_CONE_COS, losCheck);
+    const target = pickTarget(getEnemies(), camera, forwardDir, Math.hypot(forwardDir.x, forwardDir.z) || 1, RANGED_REACH, RANGED_CONE_COS, losCheck);
     // Muzzle just in front of + below the camera so the bolt reads as
     // leaving the weapon, not the eye.
     tmpMuzzle.copy(camera.position).addScaledVector(forwardDir, 0.5);
@@ -301,7 +301,6 @@ export function createCombatSystem(
     const step = weapon.getActiveStep();
     const c = currentSwingCharge;
     const reach = stats.reach * (step?.reachMul ?? 1) * (1 + c * 0.30);
-    const reachSq = reach * reach;
     const cosConeHalf = Math.cos(stats.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.40));
     const maxTargets = (step?.maxTargets ?? 1) + (c >= 0.7 ? 1 : 0);
 
@@ -317,10 +316,10 @@ export function createCombatSystem(
     // Multi-target cone scan. Enemies take priority; props only fall
     // through when no enemies are in the cone (a vase shouldn't soak
     // a swing meant for the mob behind it).
-    const enemyHits = pickTargets(getEnemies(), camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf, maxTargets);
+    const enemyHits = pickTargets(getEnemies(), camera, forwardDir, forwardLenXZ, reach, cosConeHalf, maxTargets);
     const targets = enemyHits.length > 0
       ? enemyHits
-      : pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf, maxTargets);
+      : pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, reach, cosConeHalf, maxTargets);
     if (targets.length === 0) return;
 
     strikeAlreadyHit = true;
@@ -474,12 +473,12 @@ function pickTargets<T extends Damageable>(
   camera: THREE.Camera,
   forwardDir: THREE.Vector3,
   forwardLenXZ: number,
-  reachSq: number,
+  reach: number,
   cosConeHalf: number,
   maxTargets: number,
 ): T[] {
   if (maxTargets <= 1) {
-    const single = pickTarget(targets, camera, forwardDir, forwardLenXZ, reachSq, cosConeHalf);
+    const single = pickTarget(targets, camera, forwardDir, forwardLenXZ, reach, cosConeHalf);
     return single ? [single] : [];
   }
   // Collect all in-cone targets with distance, then sort + cap.
@@ -490,9 +489,12 @@ function pickTargets<T extends Damageable>(
     const dy = (t.position.y + t.aimHeight) - camera.position.y;
     const dz = t.position.z - camera.position.z;
     const distSq = dx * dx + dy * dy + dz * dz;
-    if (distSq > reachSq) continue;
+    // Reach extends to the target's SURFACE (centre distance minus its
+    // hitRadius). A point target (hitRadius 0) keeps the old centre check.
+    const effReach = reach + (t.hitRadius ?? 0);
+    if (distSq > effReach * effReach) continue;
     const horDist = Math.hypot(dx, dz);
-    if (horDist < POINT_BLANK_RADIUS) {
+    if (horDist < POINT_BLANK_RADIUS + (t.hitRadius ?? 0)) {
       hits.push({ t, d2: distSq });
       continue;
     }
@@ -509,7 +511,7 @@ function pickTarget<T extends Damageable>(
   camera: THREE.Camera,
   forwardDir: THREE.Vector3,
   forwardLenXZ: number,
-  reachSq: number,
+  reach: number,
   cosConeHalf: number,
   /** Optional LOS predicate — called with camera + target X/Z. When
    *  provided, targets without a clear line through the walkable
@@ -520,14 +522,17 @@ function pickTarget<T extends Damageable>(
   hasLOS?: (cx: number, cz: number, tx: number, tz: number) => boolean,
 ): T | null {
   let best: T | null = null;
-  let bestDistSq = reachSq + 1;
+  let bestDistSq = Infinity;
   for (const t of targets) {
     if (!t.alive) continue;
     const dx = t.position.x - camera.position.x;
     const dy = (t.position.y + t.aimHeight) - camera.position.y;
     const dz = t.position.z - camera.position.z;
     const distSq = dx * dx + dy * dy + dz * dz;
-    if (distSq > reachSq) continue;
+    // Reach extends to the target's SURFACE (centre distance minus its
+    // hitRadius). A point target (hitRadius 0) keeps the old centre check.
+    const effReach = reach + (t.hitRadius ?? 0);
+    if (distSq > effReach * effReach) continue;
 
     const horDist = Math.hypot(dx, dz);
     // Point-blank: a target pressed against (or inside) you is ALWAYS
@@ -535,8 +540,10 @@ function pickTarget<T extends Damageable>(
     // close. Covers both the exact-overlap degenerate case and the
     // "enemy ended up adjacent / slightly behind" case (e.g. after a
     // charge), which the cone check would otherwise whiff. Without this,
-    // an enemy stuck on top of you is weirdly hard to hit.
-    if (horDist < POINT_BLANK_RADIUS) {
+    // an enemy stuck on top of you is weirdly hard to hit. The radius
+    // grows with the target so a big body counts as "in your face" out to
+    // its surface.
+    if (horDist < POINT_BLANK_RADIUS + (t.hitRadius ?? 0)) {
       if (distSq < bestDistSq) { bestDistSq = distSq; best = t; }
       continue;
     }

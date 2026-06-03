@@ -14,6 +14,11 @@ const SCREEN_ID = 'safe-room-transition';
 const AUTO_DISMISS_MS = 6000;
 const FADE_IN_MS = 600;
 const FADE_OUT_MS = 500;
+// The card pops over the world the instant the player crosses into the
+// safe room — often mid-tap from whatever they were just doing. Swallow
+// dismiss input until it has fully faded in (plus a beat), so a stray
+// tap on spawn can't blow past the moment. Auto-dismiss is unaffected.
+const DISMISS_GRACE_MS = FADE_IN_MS + 350;
 
 export interface SafeRoomTransitionStats {
   /** Act name that the player has just survived (e.g. 'The Old Refectory'). */
@@ -154,13 +159,20 @@ export function showSafeRoomTransition(stats: SafeRoomTransitionStats): void {
     hideSafeRoomTransition();
   };
 
+  // True once the grace window has elapsed — only then does player
+  // input dismiss the card. Until then we still swallow the event
+  // (preventDefault) so it doesn't leak to the paused canvas, it just
+  // doesn't close the card.
+  const openedAt = performance.now();
+  const pastGrace = () => performance.now() - openedAt >= DISMISS_GRACE_MS;
+
   // Tap/click/key anywhere to dismiss. Capture-phase so we beat any
   // pointer-locked canvas handler.
-  const onPointer = (e: Event) => { e.preventDefault(); dismiss(); };
+  const onPointer = (e: Event) => { e.preventDefault(); if (pastGrace()) dismiss(); };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter' || e.key.toLowerCase() === 'e') {
       e.preventDefault();
-      dismiss();
+      if (pastGrace()) dismiss();
     }
   };
   window.addEventListener('pointerdown', onPointer, { capture: true });

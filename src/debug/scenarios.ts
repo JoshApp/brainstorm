@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { LevelSpec } from '../level/types';
+import type { LevelSpec, EnemySpawnSpec, TorchSpec } from '../level/types';
 import type { LiveLevel } from '../level/builder';
 import type { WeaponViewmodel, SwingPhase } from '../player/viewmodel';
 import { triggerDeath } from '../player/death';
@@ -117,7 +117,169 @@ export interface Scenario {
   previewItemId?: string;
 }
 
+// ── Perf stress helpers ──────────────────────────────────────────────
+// Used by the `perf-*` stress scenarios below. These deliberately push
+// far past normal gameplay density so the headless perf runner
+// (scripts/perf.ts) can read worst-case structural load — draw calls,
+// triangles, active lights — off renderer.info. Run UNFROZEN (the runner
+// passes ?freeze=false) so AI, projectiles, and light binding all tick.
+
+/** Grid of enemy spawns filling a square room, cycling a kind mix so
+ *  melee bodies + ranged projectile pools are both exercised. Skips a
+ *  clear radius around the origin so nothing spawns on the camera. */
+function gridSpawns(
+  roomId: string,
+  count: number,
+  halfExtent: number,
+  kinds: string[] = ['ghoul', 'skeleton', 'acolyte', 'spider'],
+): EnemySpawnSpec[] {
+  const out: EnemySpawnSpec[] = [];
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const span = cols > 1 ? cols - 1 : 1;
+  for (let i = 0; i < count; i++) {
+    const x = ((i % cols) / span - 0.5) * 2 * halfExtent;
+    const z = (Math.floor(i / cols) / span - 0.5) * 2 * halfExtent;
+    if (Math.hypot(x, z) < 2.5) continue;
+    out.push({ enemyId: kinds[i % kinds.length], x, z, roomId });
+  }
+  return out;
+}
+
+/** Grid of wall torches blanketing a room — saturates the environment
+ *  light pool (10 slots) several times over so the LOS/frustum cull and
+ *  per-frame slot rebinding run at worst case. */
+function gridTorches(count: number, halfExtent: number): TorchSpec[] {
+  const out: TorchSpec[] = [];
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const span = cols > 1 ? cols - 1 : 1;
+  for (let i = 0; i < count; i++) {
+    const x = ((i % cols) / span - 0.5) * 2 * halfExtent;
+    const z = (Math.floor(i / cols) / span - 0.5) * 2 * halfExtent;
+    out.push({ x, z, height: 2.0, wall: 'N', colorTint: 0xffaa55, intensityMul: 0.9 });
+  }
+  return out;
+}
+
 export const SCENARIOS: Record<string, Scenario> = {
+  // ── PERF STRESS SCENARIOS ──────────────────────────────────────────
+  // perf-horde: a packed mob fight — many animated enemies + projectiles
+  // in view at once. The dynamic-entity draw-call stress.
+  'perf-horde': {
+    level: {
+      id: 'perf-horde', depth: 5, displayName: 'PERF horde', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 14, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 34, d: 34 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      torches: gridTorches(8, 14),
+      spawns: gridSpawns('r', 32, 14),
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 14, lookAt: { x: 0, z: 0, y: 1.0 } },
+  },
+
+  // diag-rooms: a straight chain of 4 rooms (the last one boss-sized) down
+  // -Z, the player at the near end looking down the whole sightline. Repro
+  // for "draw calls double when looking through several rooms toward the
+  // boss room" — the far rooms sit 18-32m away, past FOG_FAR (9m), so they're
+  // fogged-invisible yet still inside the 50m camera frustum and drawn.
+  'diag-rooms': {
+    freeze: true,
+    level: {
+      id: 'diag-rooms', depth: 3, displayName: 'DIAG rooms', fogColor: 0x000000,
+      startPos: { x: 0, z: 4, yaw: Math.PI },
+      rooms: [
+        { id: 'r0', rect: { x: 0, z: 0,   w: 6, d: 6 }, height: 3.2 },
+        { id: 'r1', rect: { x: 0, z: -9,  w: 6, d: 6 }, height: 3.2 },
+        { id: 'r2', rect: { x: 0, z: -18, w: 6, d: 6 }, height: 3.2 },
+        { id: 'r3', rect: { x: 0, z: -28, w: 8, d: 8 }, height: 4.0 },
+      ],
+      corridors: [
+        { id: 'c0', rect: { x: 0, z: -4.5,  w: 1.6, d: 3 }, height: 3.0 },
+        { id: 'c1', rect: { x: 0, z: -13.5, w: 1.6, d: 3 }, height: 3.0 },
+        { id: 'c2', rect: { x: 0, z: -22.5, w: 1.6, d: 3 }, height: 3.0 },
+      ],
+      props: [],
+      torches: [
+        { x: -2.5, z: 0,   height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x:  2.5, z: 0,   height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x: -2.5, z: -9,  height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x:  2.5, z: -9,  height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x: -2.5, z: -18, height: 2.0, wall: 'W', colorTint: 0xff5533, intensityMul: 1.0 },
+        { x:  2.5, z: -18, height: 2.0, wall: 'E', colorTint: 0xff5533, intensityMul: 1.0 },
+        { x: -3.5, z: -28, height: 2.5, wall: 'W', colorTint: 0x55ff88, intensityMul: 1.4 },
+        { x:  3.5, z: -28, height: 2.5, wall: 'E', colorTint: 0x55ff88, intensityMul: 1.4 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 4, lookAt: { x: 0, z: -28, y: 1.2 } },
+  },
+
+  // diag-behind: room B sits behind A's east wall (within the 13m far plane,
+  // inside the view cone) but is reachable only via a side corridor (cV→cH)
+  // whose doorway is OUT of the eastward view. Frustum culling can't hide B
+  // (it's in the cone); portal culling should, because no visible doorway
+  // leads to it. The case behind "draws go up when I face a corridor wall".
+  'diag-behind': {
+    freeze: true,
+    level: {
+      id: 'diag-behind', depth: 3, displayName: 'DIAG behind', fogColor: 0x000000,
+      startPos: { x: -2, z: 0, yaw: -Math.PI / 2 },
+      rooms: [
+        { id: 'A', rect: { x: 0,   z: 0,   w: 6, d: 6 }, height: 3.2 },
+        { id: 'B', rect: { x: 9.8, z: 4.5, w: 6, d: 6 }, height: 3.2 },
+      ],
+      corridors: [
+        { id: 'cV', rect: { x: 0,   z: 4.5, w: 1.6, d: 3 },   height: 3.0 },
+        { id: 'cH', rect: { x: 3.8, z: 4.5, w: 6,   d: 1.6 }, height: 3.0 },
+      ],
+      props: [],
+      torches: [
+        { x: -2.5, z: -2.5, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x:  2.5, z: -2.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.0 },
+        // B's torches — bright, so if B leaks through (it shouldn't) it's obvious.
+        { x:  7.5, z:  2.5, height: 2.2, wall: 'W', colorTint: 0x55ff88, intensityMul: 1.4 },
+        { x: 12.0, z:  6.5, height: 2.2, wall: 'E', colorTint: 0x55ff88, intensityMul: 1.4 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: -2, z: 0, lookAt: { x: 20, z: 0, y: 1.2 } },
+  },
+
+  // perf-lights: blanket of torches — saturates the light pool many times
+  // over to stress the per-frame cull + slot rebinding, and maxes the
+  // count of lit materials in view.
+  'perf-lights': {
+    level: {
+      id: 'perf-lights', depth: 5, displayName: 'PERF lights', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 16, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 36, d: 36 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      torches: gridTorches(48, 15),
+      spawns: [],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 16, lookAt: { x: 0, z: 0, y: 1.0 } },
+  },
+
+  // perf-max: combined worst case — packed horde AND a torch blanket in
+  // one big arena. The number to watch for "do we have headroom".
+  'perf-max': {
+    level: {
+      id: 'perf-max', depth: 5, displayName: 'PERF max', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 16, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 38, d: 38 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      torches: gridTorches(40, 16),
+      spawns: gridSpawns('r', 40, 16),
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 16, lookAt: { x: 0, z: 0, y: 1.0 } },
+  },
+
+
   // Default spawn view, frozen so the snap captures the deterministic frame.
   spawn: { freeze: true },
 
@@ -1095,6 +1257,17 @@ if (import.meta.env.DEV) {
       level: buildVaultPreview(v.id) ?? undefined,
       // Elevated interior view from the south edge, looking north across the
       // room — shows floor layout, walls, the ceiling underside, and any void.
+      playerPos: { x: 0, z: innerD / 2 - 0.5, y: 2.3, lookAt: { x: 0, z: 0, y: 1.3 } },
+    };
+    // Palette / pass demo: re-snap each vault at depth=1 (Act I's
+    // sparse-amber palette) so the procedural lighting pass output
+    // is visible. Compare `palette-<id>` vs `vault-<id>` to see what
+    // the cascade added.
+    SCENARIOS[`palette-${v.id}`] = {
+      freeze: true,
+      hideSword: true,
+      inspect: true,
+      level: buildVaultPreview(v.id, 1) ?? undefined,
       playerPos: { x: 0, z: innerD / 2 - 0.5, y: 2.3, lookAt: { x: 0, z: 0, y: 1.3 } },
     };
   }

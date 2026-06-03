@@ -46,21 +46,11 @@
 import type {
   LevelSpec, PropSpec, EnemySpawnSpec, TorchSpec, RoomSpec, DoorSpec, StairsSpec, TileMap,
 } from './types';
-import { ITEMS } from '../content/items';
 import { doorframe } from '../content/doorframe';
+import { orientationEW } from './opening';
 import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 import { pickWallFixture } from './lit-fixture-pool';
 import { buildRng } from '../engine/rng';
-
-// Pool of corpse notes. Procgen picks one per corpse-cell — deterministic
-// via the seed if we extend the API to take a Random.
-const CORPSE_NOTES = [
-  'I came down to forget. The dungeon obliged.',
-  'They told us it was one floor. They counted wrong.',
-  'The water is not safe. Nothing here is.',
-  'My name was almost a song once.',
-  'If you find a blade that hums, leave it.',
-];
 
 export interface TileMapOptions {
   id: string;
@@ -103,52 +93,11 @@ export interface TileMapOptions {
   depth?: number;
 }
 
-// ── Procgen chest tier + mimic + loot rolls ─────────────────────────
-//
-// The `c` tile in a procgen map is a "spawn a chest here" placeholder.
-// At parse time we roll:
-//   1. Tier (supply / iron / boss), weighted by depth.
-//   2. Mimic chance (small per-tier probability).
-//   3. Loot (only used when it's NOT a mimic — the mimic gives its
-//      own drops via the enemy spec, more generous than a real chest).
-//
-// All rolls go through buildRng() (the per-floor seeded stream) so a
-// given floor reproduces identically.
-
-type ChestTier = 'supply' | 'iron' | 'boss';
-
-function rollChestTier(depth: number, rand: () => number): ChestTier {
-  // Cumulative weights by depth band. Boss-tier never exceeds ~12%
-  // even very deep — it should stay a rare reward, not a regular.
-  let supplyW = 0.75, ironW = 0.22, bossW = 0.03;
-  if (depth >= 4 && depth <= 7) { supplyW = 0.55; ironW = 0.38; bossW = 0.07; }
-  else if (depth >= 8)           { supplyW = 0.40; ironW = 0.48; bossW = 0.12; }
-  const r = rand();
-  if (r < supplyW) return 'supply';
-  if (r < supplyW + ironW) return 'iron';
-  return 'boss';
-}
-
-function rollMimic(tier: ChestTier, rand: () => number): boolean {
-  // Rarer chests are likelier to be mimics — they're the gamble. The
-  // dungeon punishes greed in proportion to the reward you reached
-  // for. Wood mimic is the surprise; boss mimic is the choice.
-  const chance = tier === 'supply' ? 0.05 : tier === 'iron' ? 0.09 : 0.14;
-  return rand() < chance;
-}
-
-function rollChestLoot(tier: ChestTier, rand: () => number): import('../content/items').ItemSpec {
-  // Small hand-tuned pool per tier. Quality climbs visibly: supply
-  // mostly potions, iron mostly gear, boss mostly relics/rings.
-  // Picks once via uniform weighted choice — no cumulative rare-roll
-  // gating; the tier IS the gate.
-  const supplyPool = ['healing-potion', 'healing-potion', 'healing-potion', 'leather-gloves', 'worn-boots', 'oil-lamp'];
-  const ironPool = ['iron-coif', 'leather-gloves', 'worn-boots', 'wooden-shield', 'scimitar', 'bone-amulet', 'tattered-cloak', 'healing-potion'];
-  const bossPool = ['ring-of-vigor', 'ring-of-bloodthirst', 'ring-of-marrow', 'mendicants-locket', 'cuirass-of-ash', 'heretics-hood', 'reapers-toll'];
-  const pool = tier === 'supply' ? supplyPool : tier === 'iron' ? ironPool : bossPool;
-  const pick = pool[Math.floor(rand() * pool.length)];
-  return ITEMS[pick] ?? ITEMS['healing-potion'];
-}
+// ── Procgen chest tier + mimic + loot rolls + corpse note picks ─────
+// Implementation moved to level/decor-defaults.ts so the cellProps
+// pipeline (vault-compose.ts) shares the same defaults — a
+// `{ kind: 'chest' }` cellProps entry behaves identically to a 'c'
+// tile char. Re-imported here for the legacy parser cases.
 
 // TileMap type exported from level/types.ts so both tilemap + procgen share.
 
@@ -163,16 +112,13 @@ function rollChestLoot(tier: ChestTier, rand: () => number): import('../content/
 // exactly the same boundary edges as an isolated '#' would — which
 // after consolidation becomes the X-walls-in-mid-room artifact.
 //
-// Per-enemy chars (G/R/K/...) are GONE — enemy placement now runs
-// through populateTemplate's X/B → SpawnCell pipeline or via vault
-// props ({ kind: 'spawn', enemyId, x, z }). Decor chars (P/A/F/c/
-// C/v/V) still here pending the decor → props migration.
-// Walkable structural tiles. The per-enemy specific chars (G/R/K/...)
-// are gone — placement runs through populateTemplate's X/B → spawn-
-// record pipeline or vault.props { kind: 'spawn', ... }. The static
-// decor chars (P/A/F/c/C/v/V) are still here pending the decor
-// migration to props.
-const FLOOR_CHARS = new Set('.,SoOD/^FCPAcvVX%*'.split(''));
+// Walkable structural tiles. Per-enemy chars (G/R/K/...) and decor
+// chars (P/A/F/c/C/v/V) are GONE — enemy + decor placement run
+// through populateTemplate's X/B → SpawnCell pipeline or via
+// vault.cellProps. ASCII shrinks to structure + slots: walls,
+// floor, corridor, doors, stairs, spawn, lights, hazards, the four
+// procgen slots (X/B/$/?), cobweb gate (%).
+const FLOOR_CHARS = new Set('.,SoOD/^X%*'.split(''));
 
 /**
  * Parse a TileMap into a LevelSpec the existing buildLevel consumes.
@@ -232,83 +178,67 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     return FLOOR_CHARS.has(cellChar(col, row));
   };
 
-  // ── Door runs: coalesce + variable width ──────────────────────────
-  // A horizontal/vertical run of adjacent door tiles ('o'/'O'/'D')
-  // becomes ONE door spanning the whole run (and one wide stone frame)
-  // instead of a stack of 1m doors. For GATED runs ('O'/'D') of 3+ cells
-  // we roll a kept width in [2, length] off the per-floor build RNG and
-  // seal the surplus back to wall — so an arena maw reads ~2m in one
-  // floor and ~3m in the next, never the same prefab twice. The doorframe
-  // model already takes a width, so the surround scales for free.
-  type DoorRun = { char: string; ew: boolean; cells: Array<[number, number]> };
-  const doorRuns: DoorRun[] = [];
-  const DOOR_TILE = new Set(['o', 'O', 'D']);
-  const runVisited = new Set<string>();
+  // ── Wall-opening runs: coalesce + size to the opening ─────────────
+  // A horizontal/vertical run of adjacent gate tiles — 'o'/'O'/'D' doors OR
+  // '%' cobwebs — becomes ONE fitting spanning the whole run (and one wide
+  // stone frame) instead of a stack of 1m pieces. For GATED door runs
+  // ('O'/'D') of 3+ cells we roll a kept width in [2, length] off the
+  // per-floor build RNG and seal the surplus back to wall, so an arena maw
+  // reads ~2m one floor and ~3m the next.
+  //
+  // ONE scan serves both door and web runs (the orientation rule + the
+  // forward coalescing were duplicated verbatim before). Doors are scanned
+  // FIRST and are the only kind that draws the RNG, so the per-floor build
+  // stream is byte-for-byte identical to the old two-pass version.
+  type TileRun = { char: string; ew: boolean; cells: Array<[number, number]> };
   const isFloorRaw = (col: number, row: number) => FLOOR_CHARS.has(rawChar(col, row));
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const ch = rawChar(c, r);
-      if (!DOOR_TILE.has(ch)) continue;
-      if (runVisited.has(`${c},${r}`)) continue;
-      // Orientation: a door whose N AND S are floor spans E↔W (runs along
-      // columns); otherwise it spans N↔S (runs along rows).
-      const ew = isFloorRaw(c, r - 1) && isFloorRaw(c, r + 1);
-      const cells: Array<[number, number]> = [[c, r]];
-      runVisited.add(`${c},${r}`);
-      // Extend forward along the run axis while same-char door tiles continue.
-      // (We scan top-left→bottom-right, so this cell is the run's start.)
-      let k = 1;
-      for (;;) {
-        const nc = ew ? c + k : c;
-        const nr = ew ? r : r + k;
-        if (nc >= cols || nr >= rows) break;
-        if (rawChar(nc, nr) !== ch) break;
-        cells.push([nc, nr]);
-        runVisited.add(`${nc},${nr}`);
-        k++;
-      }
-      // Variable-width roll for gated maws of 3+ cells.
-      if (cells.length >= 3 && (ch === 'O' || ch === 'D')) {
-        const keep = 2 + Math.floor(buildRng() * (cells.length - 1)); // [2..len]
-        for (let i = keep; i < cells.length; i++) {
-          const [sc, sr] = cells[i];
-          sealedCells.add(`${sc},${sr}`);
+  const coalesceRuns = (
+    matches: (ch: string) => boolean,
+    rollWidth: (ch: string) => boolean,
+  ): TileRun[] => {
+    const runs: TileRun[] = [];
+    const visited = new Set<string>();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const ch = rawChar(c, r);
+        if (!matches(ch)) continue;
+        if (visited.has(`${c},${r}`)) continue;
+        // Floor to BOTH N and S ⇒ the run spans E↔W (along columns);
+        // otherwise N↔S (along rows). Shared rule (opening.ts).
+        const ew = orientationEW(isFloorRaw(c, r - 1), isFloorRaw(c, r + 1));
+        const cells: Array<[number, number]> = [[c, r]];
+        visited.add(`${c},${r}`);
+        // Extend forward along the run axis while same-char tiles continue.
+        // (We scan top-left→bottom-right, so this cell is the run's start.)
+        let k = 1;
+        for (;;) {
+          const nc = ew ? c + k : c;
+          const nr = ew ? r : r + k;
+          if (nc >= cols || nr >= rows) break;
+          if (rawChar(nc, nr) !== ch) break;
+          cells.push([nc, nr]);
+          visited.add(`${nc},${nr}`);
+          k++;
         }
-        cells.length = Math.min(keep, cells.length);
+        // Variable-width roll for gated maws of 3+ cells (door 'O'/'D' only).
+        if (cells.length >= 3 && rollWidth(ch)) {
+          const keep = 2 + Math.floor(buildRng() * (cells.length - 1)); // [2..len]
+          for (let i = keep; i < cells.length; i++) {
+            const [sc, sr] = cells[i];
+            sealedCells.add(`${sc},${sr}`);
+          }
+          cells.length = Math.min(keep, cells.length);
+        }
+        runs.push({ char: ch, ew, cells });
       }
-      doorRuns.push({ char: ch, ew, cells });
     }
-  }
+    return runs;
+  };
 
-  // ── Cobweb runs: coalesce + size to opening ───────────────────────
-  // A run of adjacent '%' tiles becomes ONE destructible web curtain (and
-  // one stone frame) spanning the whole opening — mirrors the door-run
-  // coalescing above so a vault widens a web gate with '%%' the same way
-  // it widens an arena maw, instead of stacking 1m webs cell by cell.
-  type CobwebRun = { ew: boolean; cells: Array<[number, number]> };
-  const cobwebRuns: CobwebRun[] = [];
-  const cobwebVisited = new Set<string>();
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (rawChar(c, r) !== '%') continue;
-      if (cobwebVisited.has(`${c},${r}`)) continue;
-      // Same orientation rule as doors: N AND S floor ⇒ the gate spans E↔W.
-      const ew = isFloorRaw(c, r - 1) && isFloorRaw(c, r + 1);
-      const cells: Array<[number, number]> = [[c, r]];
-      cobwebVisited.add(`${c},${r}`);
-      let k = 1;
-      for (;;) {
-        const nc = ew ? c + k : c;
-        const nr = ew ? r : r + k;
-        if (nc >= cols || nr >= rows) break;
-        if (rawChar(nc, nr) !== '%') break;
-        cells.push([nc, nr]);
-        cobwebVisited.add(`${nc},${nr}`);
-        k++;
-      }
-      cobwebRuns.push({ ew, cells });
-    }
-  }
+  const DOOR_TILE = new Set(['o', 'O', 'D']);
+  const doorRuns = coalesceRuns((ch) => DOOR_TILE.has(ch), (ch) => ch === 'O' || ch === 'D');
+  const cobwebRuns = coalesceRuns((ch) => ch === '%', () => false)
+    .map((run) => ({ ew: run.ew, cells: run.cells }));
 
   // ── Room rect: single big bounding rect covering the map ──────────
   // (Walls inside it segment the space into "rooms" visually.)
@@ -490,7 +420,6 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
   const doors: DoorSpec[] = [];
   const stairs: StairsSpec[] = [];
   let startPos = { x: 0, z: 0, yaw: opts.spawnYaw ?? 0 };
-  let noteIndex = 0;
 
   // ── Emit coalesced doors (one per run) + their stone surrounds ─────
   // Done here (not in the per-cell loop) so each multi-cell run produces
@@ -567,62 +496,13 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
       // records the composer turns into spawns; or (2) a vault
       // author's { kind: 'spawn', enemyId, x, z } prop entry for
       // hand-placed mobs. No tile-char dispatch left.
+      // P / A / F / c / C / v / V (decor) — GONE from the parser.
+      // All decor placement now lives in vault.cellProps, which
+      // shares applyProcgenDefaults with the depth-roll logic that
+      // used to be inline here. ASCII = structure + slots only.
       switch (ch) {
         case 'S': {
           startPos = { x, z, yaw: opts.spawnYaw ?? 0 };
-          break;
-        }
-        case 'P': {
-          props.push({ kind: 'pillar', x, z });
-          break;
-        }
-        case 'A': {
-          props.push({ kind: 'altar', x, z });
-          break;
-        }
-        case 'c': {
-          // Procgen chest: roll TIER (visual + loot quality) then a
-          // small per-tier MIMIC chance. A mimic chest gets no loot
-          // assigned — its drop pool lives on the mimic enemy spec
-          // and only fires if you survive opening it. Declarative
-          // facing: the back of the chest sits AGAINST the nearest
-          // wall, lid swings forward into the open room.
-          const depth = opts.depth ?? 1;
-          const tier = rollChestTier(depth, buildRng);
-          const mimic = rollMimic(tier, buildRng);
-          props.push({
-            kind: 'chest', x, z,
-            facing: { kind: 'wall-away' },
-            tier,
-            mimic,
-            // A real chest carries its tier-rolled loot; a mimic
-            // doesn't — opening it spawns the mob, not a pickup.
-            loot: mimic ? undefined : rollChestLoot(tier, buildRng),
-          });
-          break;
-        }
-        case 'C': {
-          props.push({
-            kind: 'corpse', x, z, rotY: buildRng() * Math.PI * 2,
-            note: CORPSE_NOTES[(noteIndex++) % CORPSE_NOTES.length],
-          });
-          break;
-        }
-        case 'F': {
-          props.push({ kind: 'fountain', x, z });
-          break;
-        }
-        case 'v': {
-          // Destructible ceramic vase. One-tile prop; smashes
-          // into a small loot drop on hit.
-          props.push({ kind: 'vase', x, z });
-          break;
-        }
-        case 'V': {
-          // Cluster of 2-4 jittered vases around this cell. The
-          // builder calls spawnVaseCluster which handles the
-          // random count + variants + spacing.
-          props.push({ kind: 'vase-cluster', x, z });
           break;
         }
         // '%' (cobweb gate) is handled by the cobweb-run pre-pass above —

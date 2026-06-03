@@ -1,4 +1,10 @@
 import type { LevelSpec, PropSpec, RoomSpec, EnemySpawnSpec, TorchSpec, DoorSpec, StairsSpec, CellBoundEntity } from './types';
+import { applyProcgenDefaults } from './decor-defaults';
+import { resolvePalette, type PaletteV1 } from './palette';
+import { lightingPass } from './lighting-pass';
+import { decorPass } from './decor-pass';
+import { carvePass, voidCellsCovered } from './carve-pass';
+import { actForDepth } from './acts';
 import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
 import { vaultsForTag, VAULTS } from './vault-library';
@@ -174,6 +180,24 @@ function reorientExitStair(st: StairsSpec, ox: number, oz: number, dims: { w: nu
   return { ...st, x, z, rotY: STAIR_ROTY[dir] };
 }
 
+/** Where the boss fog-gate goes — the ENTRANCE edge of the boss vault (the
+ *  one the corridor abuts), so the gate seals the real way in instead of
+ *  floating mid-arena. Mirror of reorientExitStair but at the OPPOSITE edge:
+ *  the stair sits at the back (+placeDir), the gate at the entrance
+ *  (−placeDir), with its normal pointing INTO the arena (+placeDir, so
+ *  rotY = STAIR_ROTY[dir]). `dir` is the way the player heads in. */
+function bossGatePlacement(
+  ox: number, oz: number, dims: { w: number; d: number }, dir: Dir,
+): { x: number; z: number; rotY: number } {
+  const INSET = 0.5, hw = dims.w / 2, hd = dims.d / 2;
+  let x = ox, z = oz;
+  if (dir === 'S') z = oz - hd + INSET;        // entered from the N edge
+  else if (dir === 'N') z = oz + hd - INSET;   // entered from the S edge
+  else if (dir === 'E') x = ox - hw + INSET;   // entered from the W edge
+  else x = ox + hw - INSET;                    // entered from the E edge
+  return { x, z, rotY: STAIR_ROTY[dir] };
+}
+
 /** Resolve a vault's encounter archetype: explicit `encounter` wins, else
  *  every combat/boss room gets a coherent `mixed` pack by default (so the
  *  whole library benefits from pack coherence, not just tagged vaults).
@@ -200,8 +224,15 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   let s = (seed * 2654435761) >>> 0;
   const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
 
+  // Resolve once and reuse below for every pass.
+  const resolvedPalette = resolvePalette(actForDepth(depth).palette, vault.palette);
+  // Vault preview: allow boss expansion only for boss-tagged
+  // vaults so a `vault-boss-hall` preview still shows the king,
+  // while a `vault-combat-hall` preview shows an X-rolled mob
+  // instead of a stray-B boss.
+  const allowBoss = vault.tags.includes('boss');
   const { map: populated, spawns: cellSpawns } = populateTemplate(
-    vault.map, depth, rand, encounterFor(vault),
+    vault.map, depth, rand, encounterFor(vault), resolvedPalette, allowBoss,
   );
   const ceil = ceilingFor(vault, depth, 1);
   const sub = parseTileMap(populated, {
@@ -253,11 +284,46 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
 
   // Cell-bound entities (Format C) — preview has no placement
   // offset so the helper routes everything in vault-local space.
-  applyCellProps(vault, 0, 0, 'vault-0', {
+  applyCellProps(vault, 0, 0, 'vault-0', depth, rand, {
     spawns: previewSpawns,
     torches: previewTorches,
     props,
   });
+
+  // Cascade + pass pipeline mirroring composeFloor. resolvedPalette
+  // is declared above (passed into populateTemplate for encounter/
+  // event gating).
+  const Wprev = vault.map[0]?.length ?? 0;
+  const Dprev = vault.map.length;
+  // Carve pass — runs first; voids become forbidden cells for the
+  // light/decor passes that follow.
+  const carveOccupiedPrev = new Set<string>(Object.keys(vault.cellProps ?? {}));
+  const procPreviewVoids = carvePass(vault, resolvedPalette, carveOccupiedPrev, rand);
+  const carvedCellsPrev = voidCellsCovered(procPreviewVoids, Wprev, Dprev);
+  // Lighting pass — author lights + carved voids excluded.
+  const existingTorchCellsPreview = new Set<string>(carvedCellsPrev);
+  for (const t of previewTorches) {
+    const col = Math.round(t.x - 0.5 + Wprev / 2);
+    const row = Math.round(t.z - 0.5 + Dprev / 2);
+    existingTorchCellsPreview.add(`${col},${row}`);
+  }
+  for (const [key, entries] of Object.entries(vault.cellProps ?? {})) {
+    if (!entries) continue;
+    if (entries.some((e) => e.kind === 'torch')) existingTorchCellsPreview.add(key);
+  }
+  const procPreviewTorches = lightingPass(vault, resolvedPalette, existingTorchCellsPreview, rand);
+  previewTorches.push(...procPreviewTorches);
+  // Decor pass for the preview — same occupancy union as the
+  // composer path.
+  const occupiedCellsPreview = new Set<string>(existingTorchCellsPreview);
+  for (const key of Object.keys(vault.cellProps ?? {})) occupiedCellsPreview.add(key);
+  for (const t of procPreviewTorches) {
+    const col = Math.round(t.x - 0.5 + Wprev / 2);
+    const row = Math.round(t.z - 0.5 + Dprev / 2);
+    occupiedCellsPreview.add(`${col},${row}`);
+  }
+  props.push(...decorPass(vault, resolvedPalette, occupiedCellsPreview, rand));
+
 
   const spec: LevelSpec = {
     ...sub,
@@ -266,7 +332,10 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
     props,
     spawns: previewSpawns,
     torches: previewTorches,
-    voids: (vault.voids ?? []).map((v) => ({ x: v.x, z: v.z, w: v.w, d: v.d })),
+    voids: [
+      ...(vault.voids ?? []).map((v) => ({ x: v.x, z: v.z, w: v.w, d: v.d })),
+      ...procPreviewVoids,
+    ],
   };
   resolveAllFacings(spec);   // orient declarative-facing props (no full warp/clutter)
   return spec;
@@ -289,6 +358,11 @@ export function composeFloor(
      *  preference isn't available (wrong depth, removed from
      *  library, etc) so a missing preference never breaks gen. */
     preferredBossVaultId?: string;
+    /** Hex tint for the boss-mist fog wall on the boss vault.
+     *  Sourced from BossSpec.mistColor by the procgen layer. The
+     *  composer emits a `boss-mist` prop at the boss vault's
+     *  declared bossMist position with this colour. */
+    bossMistColor?: number;
   },
 ): LevelSpec {
   // ── 1. Tag sequence for the main spine ─────────────────────────
@@ -435,8 +509,16 @@ export function composeFloor(
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
     roomVaults[pv.roomId] = pv.vault.id;
+    // Resolve palette once per vault — feeds populateTemplate's
+    // encounter/event gating AND the carve/light/decor passes below.
+    const resolvedPalette = resolvePalette(actForDepth(depth).palette, pv.vault.palette);
+    // Only the boss-tagged vault on a boss floor expands B → boss.
+    // Stray B chars in non-boss vaults (combat-hall, combat-doors)
+    // fall through to a rolled-enemy spawn — guards against a
+    // duplicate boss in a pre-arena room.
+    const allowBoss = opts.isBossFloor === true && pv.vault.tags.includes('boss');
     const { map: populated, spawns: cellSpawns } = populateTemplate(
-      pv.vault.map, depth, rand, encounterFor(pv.vault),
+      pv.vault.map, depth, rand, encounterFor(pv.vault), resolvedPalette, allowBoss,
     );
     const ceil = ceilingFor(pv.vault, depth, i);
     const sub = parseTileMap(populated, {
@@ -488,6 +570,40 @@ export function composeFloor(
           x: cs.col + 0.5 - W / 2 + pv.offsetX,
           z: cs.row + 0.5 - D / 2 + pv.offsetZ,
           roomId: pv.roomId,
+          dormant: cs.dormant,
+        });
+      }
+    }
+
+    // Boss-mist fog wall (boss floors only). The boss vault declares
+    // its threshold via vault.bossMist; we tint with the act's boss
+    // mistColor and emit a boss-mist prop at the world position. The
+    // builder picks up the kind and wires the cross trigger + seal.
+    if (opts.isBossFloor && pv.vault.tags.includes('boss')
+        && opts.bossMistColor !== undefined) {
+      const dims = vaultDims(pv.vault);
+      // Place at the real entrance (derived from how the corridor connected),
+      // sized to the corridor it seals. Fall back to the authored bossMist
+      // coord only if this vault somehow wasn't placed off a connection.
+      if (pv.placeDir) {
+        const g = bossGatePlacement(pv.offsetX, pv.offsetZ, dims, pv.placeDir);
+        const conn = corridors.find((c) => c.toIdx === i);
+        const alongZ = pv.placeDir === 'N' || pv.placeDir === 'S';
+        const corridorWidth = conn
+          ? (alongZ ? conn.rect.w : conn.rect.d)
+          : 3.4;
+        props.push({
+          kind: 'boss-mist',
+          x: g.x, z: g.z, rotY: g.rotY,
+          color: opts.bossMistColor,
+          width: corridorWidth,
+        });
+      } else if (pv.vault.bossMist) {
+        const m = pv.vault.bossMist;
+        props.push({
+          kind: 'boss-mist',
+          x: m.x + pv.offsetX, z: m.z + pv.offsetZ, rotY: m.rotY ?? 0,
+          color: opts.bossMistColor,
         });
       }
     }
@@ -539,7 +655,66 @@ export function composeFloor(
     // Cell-bound entities (Format C) — torches / spawns / props
     // keyed by ASCII cell, routed to their slots after world-coord
     // translation. See applyCellProps for the dispatch.
-    applyCellProps(pv.vault, pv.offsetX, pv.offsetZ, pv.roomId, { spawns, torches, props });
+    applyCellProps(pv.vault, pv.offsetX, pv.offsetZ, pv.roomId, depth, rand, { spawns, torches, props });
+
+    // resolvedPalette is declared above (passed into populateTemplate
+    // for encounter/event gating — reused here for the carve/light/
+    // decor passes so the cascade is consistent).
+
+    // ── Carve pass — must run FIRST so lighting + decor see the
+    // post-carve walkable region and skip cells the holes occupy.
+    const carveOccupied = new Set<string>();
+    for (const key of Object.keys(pv.vault.cellProps ?? {})) carveOccupied.add(key);
+    const procVoids = carvePass(pv.vault, resolvedPalette, carveOccupied, rand);
+    const W = pv.vault.map[0]?.length ?? 0;
+    const D = pv.vault.map.length;
+    const carvedCells = voidCellsCovered(procVoids, W, D);
+    for (const v of procVoids) {
+      voids.push({ x: v.x + pv.offsetX, z: v.z + pv.offsetZ, w: v.w, d: v.d });
+    }
+
+    // ── Lighting pass — wall torches by intent ────────────────────
+    // Collect cells the author already lit + cells the carve pass
+    // punched holes in. Reverse-map sub.torches (world coords with
+    // WALL_OFFSET) back to (col, row) via rounding so corner-cell
+    // *'s land in the same dedup set.
+    const existingTorchCells = new Set<string>(carvedCells);
+    for (const t of sub.torches) {
+      // sub.torches are already in world coords with the WALL_OFFSET
+      // applied; back out approximately to cell. Tolerance ±0.5 by
+      // rounding (this picks up corner-cell *'s too).
+      const localX = t.x - pv.offsetX;
+      const localZ = t.z - pv.offsetZ;
+      const col = Math.round(localX - 0.5 + W / 2);
+      const row = Math.round(localZ - 0.5 + D / 2);
+      existingTorchCells.add(`${col},${row}`);
+    }
+    // Cell-bound author torches (kind: 'torch' inside cellProps).
+    for (const [key, entries] of Object.entries(pv.vault.cellProps ?? {})) {
+      if (!entries) continue;
+      if (entries.some((e) => e.kind === 'torch')) existingTorchCells.add(key);
+    }
+    const procTorches = lightingPass(pv.vault, resolvedPalette, existingTorchCells, rand);
+    for (const t of procTorches) {
+      torches.push({ ...t, x: t.x + pv.offsetX, z: t.z + pv.offsetZ });
+    }
+
+    // ── Decor pass — pillars / debris / etc by intent ────────────
+    // Builds occupiedCells from the union of: every cellProps key
+    // (anything author-placed in a cell), every author torch cell,
+    // every procedural torch cell. Then runs the decor pass over
+    // wall-edge candidates and rejects collisions.
+    const occupiedCells = new Set<string>(existingTorchCells);
+    for (const key of Object.keys(pv.vault.cellProps ?? {})) occupiedCells.add(key);
+    for (const t of procTorches) {
+      const col = Math.round(t.x - 0.5 + W / 2);
+      const row = Math.round(t.z - 0.5 + D / 2);
+      occupiedCells.add(`${col},${row}`);
+    }
+    const procDecor = decorPass(pv.vault, resolvedPalette, occupiedCells, rand);
+    for (const p of procDecor) {
+      props.push(translateProp(p, pv.offsetX, pv.offsetZ));
+    }
 
     if (pv.vault.tags.includes('start')) startPos = sub.startPos;
     // Chasm voids → world coords (vault-local + the vault's offset).
@@ -1005,6 +1180,8 @@ function applyCellProps(
   offsetX: number,
   offsetZ: number,
   roomId: string,
+  depth: number,
+  rand: () => number,
   out: { spawns: EnemySpawnSpec[]; torches: TorchSpec[]; props: PropSpec[] },
 ): void {
   if (!vault.cellProps) return;
@@ -1043,7 +1220,12 @@ function applyCellProps(
       } else {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { offset: _o, ...rest } = entity;
-        out.props.push({ ...rest, x, z } as PropSpec);
+        // Chests + corpses get procgen defaults filled (depth-rolled
+        // tier/mimic/loot for chests; note/rotY for corpses) so a
+        // bare `{ kind: 'chest' }` cellProps entry behaves the same
+        // as the legacy 'c' tile char did.
+        const propSpec = applyProcgenDefaults({ ...rest, x, z } as PropSpec, depth, rand);
+        out.props.push(propSpec);
       }
     }
   }

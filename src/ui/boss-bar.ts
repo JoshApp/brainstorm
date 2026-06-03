@@ -1,6 +1,10 @@
 import { bossStore, type BossState } from '../state/hud-stores';
 import { bind } from './hud';
-import type { Enemy } from '../mobs/enemy';
+import { isBossEngaged, levelHasFogWall } from './boss-engagement';
+import {
+  liveBossMembers, engageBossEncounter, isBossEncounterEngaged,
+  isBossEncounterComplete, tickBossEncounter,
+} from '../mobs/boss-encounter';
 import { ENEMIES } from '../content/enemies';
 import { bossSpecForEnemy } from '../content/bosses';
 import { showBossIntro, hideBossIntro } from './boss-intro-card';
@@ -20,8 +24,39 @@ import { showBossIntro, hideBossIntro } from './boss-intro-card';
 
 let root: HTMLDivElement | null = null;
 let nameEl: HTMLDivElement | null = null;
-let fillEl: HTMLDivElement | null = null;
-let trailEl: HTMLDivElement | null = null;
+let barsEl: HTMLDivElement | null = null;
+// Pool of bar rows (track + trail + fill), grown to match the boss count.
+interface BarRow { track: HTMLDivElement; trail: HTMLDivElement; fill: HTMLDivElement }
+const barRows: BarRow[] = [];
+
+function makeBarRow(): BarRow {
+  const track = document.createElement('div');
+  Object.assign(track.style, {
+    position: 'relative',
+    width: '100%',
+    background: 'rgba(10, 6, 6, 0.82)',
+    border: '1px solid rgba(150, 40, 30, 0.55)',
+    boxShadow: '0 0 10px rgba(0,0,0,0.7), inset 0 0 6px rgba(0,0,0,0.8)',
+  } as Partial<CSSStyleDeclaration>);
+
+  const trail = document.createElement('div');
+  Object.assign(trail.style, {
+    position: 'absolute', left: '0', top: '0', bottom: '0', width: '100%',
+    background: 'rgba(200, 140, 90, 0.55)',   // warm amber lag
+    transition: 'width 0.55s ease-out',
+  } as Partial<CSSStyleDeclaration>);
+
+  const fill = document.createElement('div');
+  Object.assign(fill.style, {
+    position: 'absolute', left: '0', top: '0', bottom: '0', width: '100%',
+    background: 'linear-gradient(to bottom, rgba(170,30,24,0.98), rgba(110,16,14,0.98))',
+    transition: 'width 0.16s ease-out',
+  } as Partial<CSSStyleDeclaration>);
+
+  track.appendChild(trail);
+  track.appendChild(fill);
+  return { track, trail, fill };
+}
 
 export function createBossBar() {
   if (root) return;
@@ -55,111 +90,124 @@ export function createBossBar() {
     textShadow: '0 0 8px rgba(0,0,0,0.95)',
   } as Partial<CSSStyleDeclaration>);
 
-  // Track (the bar frame) holds the trailing + fill bars.
-  const track = document.createElement('div');
-  Object.assign(track.style, {
-    position: 'relative',
-    width: '100%',
-    height: '9px',
-    background: 'rgba(10, 6, 6, 0.82)',
-    border: '1px solid rgba(150, 40, 30, 0.55)',
-    boxShadow: '0 0 10px rgba(0,0,0,0.7), inset 0 0 6px rgba(0,0,0,0.8)',
+  // Bars container — a column of one-or-more tracks (one per live boss).
+  barsEl = document.createElement('div');
+  Object.assign(barsEl.style, {
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    gap: '8px', width: '100%',   // spaced so the stacked prince bars read separately
   } as Partial<CSSStyleDeclaration>);
 
-  // Trailing "chip" bar — lags behind the fill on damage.
-  trailEl = document.createElement('div');
-  Object.assign(trailEl.style, {
-    position: 'absolute',
-    left: '0', top: '0', bottom: '0',
-    width: '100%',
-    background: 'rgba(200, 140, 90, 0.55)',   // warm amber lag
-    transition: 'width 0.55s ease-out',
-  } as Partial<CSSStyleDeclaration>);
-
-  // Fill bar — the live HP. Deep blood red.
-  fillEl = document.createElement('div');
-  Object.assign(fillEl.style, {
-    position: 'absolute',
-    left: '0', top: '0', bottom: '0',
-    width: '100%',
-    background: 'linear-gradient(to bottom, rgba(170,30,24,0.98), rgba(110,16,14,0.98))',
-    transition: 'width 0.16s ease-out',
-  } as Partial<CSSStyleDeclaration>);
-
-  track.appendChild(trailEl);
-  track.appendChild(fillEl);
   root.appendChild(nameEl);
-  root.appendChild(track);
+  root.appendChild(barsEl);
   document.body.appendChild(root);
 
   bind(bossStore, render);
 }
 
 function render(s: BossState) {
-  if (!root || !nameEl || !fillEl || !trailEl) return;
+  if (!root || !nameEl || !barsEl) return;
   root.style.opacity = s.visible ? '1' : '0';
   if (!s.visible) return;
   nameEl.textContent = s.name;
-  const pct = s.max > 0 ? Math.max(0, Math.min(1, s.hp / s.max)) * 100 : 0;
-  fillEl.style.width = `${pct}%`;
-  trailEl.style.width = `${pct}%`;
+
+  const n = s.bars.length;
+  // Grow the row pool to match the boss count (rows are reused/hidden).
+  while (barRows.length < n) {
+    const row = makeBarRow();
+    barRows.push(row);
+    barsEl.appendChild(row.track);
+  }
+  // Multiple bosses (the split princes) → thinner, narrower bars so the
+  // stack reads as "lesser" than the king's single wide bar.
+  const multi = n > 1;
+  for (let i = 0; i < barRows.length; i++) {
+    const row = barRows[i];
+    if (i >= n) { row.track.style.display = 'none'; continue; }
+    row.track.style.display = 'block';
+    row.track.style.height = multi ? '6px' : '9px';
+    row.track.style.width = multi ? '64%' : '100%';
+    const bar = s.bars[i];
+    const pct = bar.max > 0 ? Math.max(0, Math.min(1, bar.hp / bar.max)) * 100 : 0;
+    row.fill.style.width = `${pct}%`;
+    row.trail.style.width = `${pct}%`;
+  }
 }
 
 // ── Controller ────────────────────────────────────────────────────────────
+//
+// A pure VIEW of the boss-encounter container (mobs/boss-encounter.ts) — it
+// renders the encounter's live members as bars and lingers on the
+// encounter's authoritative "complete" signal. It does NOT decide when the
+// fight is over itself any more (the container owns that); it only owns the
+// player-commit trigger (fog cross / aggro) + the death-linger animation.
 
-let engaged = false;
 let fadeTimer = -1;          // >= 0 while counting down the post-death linger
+let faded = false;           // terminal: linger finished, bar stays hidden
 let lastName = '';
-let lastMax = 0;
+let lastBars: { hp: number; max: number }[] = [];
 
-const DEATH_LINGER = 1.6;    // seconds the empty bar holds before fading
+const DEATH_LINGER = 1.6;    // seconds the empty bar(s) hold before fading
 
-/** Per-frame. Finds the live boss; shows + drains the bar once it's aware of
- *  the player; lingers empty on death, then hides. */
-export function tickBossBar(enemies: Enemy[], dt: number): void {
-  const boss = enemies.find((e) => e.isBoss && e.alive);
-  if (boss) {
-    // Engage on first awareness — the fog-gate moment.
-    if (!engaged && boss.aiState !== 'idle' && boss.aiState !== 'returning') {
-      engaged = true;
-      // Intro title card layers on top of the boss bar — fires once
-      // per fight on first aggro. Reads identity from the BossSpec
-      // (preferred + LLM-ready) and falls back to the runtime
-      // boss.bossName for any boss without a BossSpec yet.
-      const spec = ENEMIES[boss.kind];
-      const bs = spec ? bossSpecForEnemy(spec) : undefined;
-      showBossIntro(bs?.defaultName ?? boss.bossName, bs?.introLine ?? '');
+/** Per-frame. Drives the encounter container, then renders it: a bar per
+ *  live member (the king, or its split princes) once engaged; lingers on
+ *  the container's `complete` signal, then hides. */
+export function tickBossBar(dt: number): void {
+  tickBossEncounter();   // authoritative "boss done" detection (fires boss:defeated)
+  const members = liveBossMembers();
+
+  if (!isBossEncounterComplete()) {
+    // Engagement: fog cross (fog levels) or first aggro (fog-less levels).
+    if (!isBossEncounterEngaged() && members.length > 0) {
+      const fogWallReady = levelHasFogWall() && isBossEngaged();
+      const legacyAggro = !levelHasFogWall()
+        && members.some((b) => b.aiState !== 'idle' && b.aiState !== 'returning');
+      if (fogWallReady || legacyAggro) {
+        engageBossEncounter();
+        // Intro card fires ONCE (the king). The split princes inherit the
+        // engaged container, so they never re-trigger it.
+        const lead = members[0];
+        const spec = ENEMIES[lead.kind];
+        const bs = spec ? bossSpecForEnemy(spec) : undefined;
+        showBossIntro(bs?.defaultName ?? lead.bossName, bs?.introLine ?? '');
+      }
     }
-    if (engaged) {
-      lastName = boss.bossName;
-      lastMax = boss.maxHp;
+    if (isBossEncounterEngaged() && members.length > 0) {
+      const bars = members.map((b) => ({ hp: Math.max(0, b.hp), max: b.maxHp }));
+      lastName = members[0].bossName;
+      lastBars = bars.map((b) => ({ hp: 0, max: b.max }));   // empty copies for the linger
       fadeTimer = -1;
-      bossStore.set({ visible: true, name: boss.bossName, hp: Math.max(0, boss.hp), max: boss.maxHp });
+      bossStore.set({ visible: true, name: members[0].bossName, bars });
     }
     return;
   }
-  // No live boss. If we were engaged, the boss just died — hold the empty
-  // bar a beat (the kill lands), then fade out.
-  if (engaged) {
-    if (fadeTimer < 0) {
-      fadeTimer = DEATH_LINGER;
-      bossStore.set({ visible: true, name: lastName, hp: 0, max: lastMax });
-    }
-    fadeTimer -= dt;
-    if (fadeTimer <= 0) {
-      engaged = false;
-      fadeTimer = -1;
-      bossStore.set({ visible: false, name: '', hp: 0, max: 0 });
-    }
+
+  // The encounter is DONE — hold the empty bar(s) a beat, then fade out and
+  // STAY out. `faded` is the terminal latch: without it, once the linger
+  // ends (fadeTimer back to -1) the `fadeTimer < 0` test below re-triggers
+  // the whole linger next frame, so the bar shows forever. In the real game
+  // a descent reloads the level (resetBossBar) before that bites; a test
+  // chamber never transitions, so the loop was visible there.
+  if (faded) return;
+  if (fadeTimer < 0) {
+    fadeTimer = DEATH_LINGER;
+    bossStore.set({ visible: true, name: lastName, bars: lastBars });
+  }
+  fadeTimer -= dt;
+  if (fadeTimer <= 0) {
+    faded = true;
+    fadeTimer = -1;
+    bossStore.set({ visible: false, name: '', bars: [] });
   }
 }
 
-/** Reset on level load / teardown — no boss, bar hidden. */
+/** Reset the BAR's view state on level load. The encounter + fog-wall
+ *  flags are reset earlier (in the loader, before the build registers the
+ *  new boss) — NOT here, which runs after the build. */
 export function resetBossBar(): void {
-  engaged = false;
   fadeTimer = -1;
+  faded = false;
   lastName = '';
-  lastMax = 0;
+  lastBars = [];
   hideBossIntro();
-  bossStore.set({ visible: false, name: '', hp: 0, max: 0 });
+  bossStore.set({ visible: false, name: '', bars: [] });
 }

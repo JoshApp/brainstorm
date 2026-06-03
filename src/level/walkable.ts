@@ -50,6 +50,19 @@ export class WalkableRegion {
     if (idx >= 0) this.walls.splice(idx, 1);
   }
 
+  /** Push an obstacle in at runtime (e.g. boss-mist sealing the
+   *  entrance behind the player). Identity-based add/remove like
+   *  walls — caller holds the reference. */
+  addObstacle(o: Obstacle) {
+    this.obstacles.push(o);
+  }
+
+  /** Remove a previously-added obstacle by reference. */
+  removeObstacle(o: Obstacle) {
+    const idx = this.obstacles.indexOf(o);
+    if (idx >= 0) this.obstacles.splice(idx, 1);
+  }
+
   /** Debug-only: the live wall segment set (read-only) for the debug
    *  capture's geometry-overlay screenshot. Not for gameplay use. */
   getWallsForDebug(): readonly WallSegment[] {

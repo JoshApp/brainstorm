@@ -57,7 +57,10 @@ export function findTapTarget(
   // are skipped.
   const enemyRoots: THREE.Object3D[] = [];
   for (const e of enemies) {
-    if (e.alive) enemyRoots.push(e.group);
+    // A dormant boss (asleep behind its fog gate) is NOT a tap-attack
+    // target — a tap aimed at the gate must reach the gate, not swing at
+    // the boss looming behind the curtain.
+    if (e.alive && !e.dormant) enemyRoots.push(e.group);
   }
   const interactableRoots: Array<{ root: THREE.Object3D; it: Interactable }> = [];
   for (const it of interactables) {

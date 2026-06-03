@@ -47,6 +47,13 @@ export interface BossSpec {
    *  grand 18×16 hall while a future Abbot of Ash takes the
    *  cathedral with its god rays. */
   preferredVaultId?: string;
+  /** Hex tint for the boss-arena fog wall — the soulslike mist
+   *  curtain at the entrance. Tinted per-boss so the player reads
+   *  WHICH boss is on the other side before crossing the seal:
+   *  the king's mist is acid green, the wraith's silver-blue, etc.
+   *  Defaults to amber when unset (matches the act default torch
+   *  palette). */
+  mistColor?: number;
 
   // ── Identity (LLM-fillable seam) ─────────────────────────────
   // For Phase 5, these will be filled per-run by an LLM call
@@ -71,6 +78,9 @@ export const BOSSES: Record<string, BossSpec> = {
     id: 'boiling-king',
     enemyId: 'boiling-king',
     preferredVaultId: 'boss-hall',
+    // Acid-green mist matching the king's translucent body — the
+    // colour reads "you know what's behind this curtain."
+    mistColor: 0x8aff44,
     defaultName: 'The Boiling King',
     introLine: 'It has eaten kings.',
     bestiaryEntry: "A king slime, swollen with everything it's swallowed. The kings, mostly. They never come back out.",
@@ -82,6 +92,8 @@ export const BOSSES: Record<string, BossSpec> = {
     id: 'hollow-choir',
     enemyId: 'wraith',
     preferredVaultId: 'boss-cathedral',
+    // Pale silver-blue — spectral, matches the wraith's body palette.
+    mistColor: 0xa8c8ff,
     defaultName: 'The Hollow Choir',
     introLine: 'It is mostly absence.',
     bestiaryEntry: 'It sang once. The sound stayed.',

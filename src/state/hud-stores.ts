@@ -41,15 +41,28 @@ export const xpStore = writable<XpState>(
 
 export const goldStore = writable<number>(0);
 
-export interface BossState {
-  visible: boolean;
-  name: string;
+/** One health bar. The fight shows one (the king) or several (its split
+ *  princes — each tracked as its own bar so the split stays part of the
+ *  boss encounter). */
+export interface BossBar {
   hp: number;
   max: number;
 }
+export interface BossState {
+  visible: boolean;
+  name: string;
+  bars: BossBar[];
+}
+function bossEq(a: BossState, b: BossState): boolean {
+  if (a.visible !== b.visible || a.name !== b.name || a.bars.length !== b.bars.length) return false;
+  for (let i = 0; i < a.bars.length; i++) {
+    if (a.bars[i].hp !== b.bars[i].hp || a.bars[i].max !== b.bars[i].max) return false;
+  }
+  return true;
+}
 export const bossStore = writable<BossState>(
-  { visible: false, name: '', hp: 0, max: 0 },
-  (a, b) => a.visible === b.visible && a.name === b.name && a.hp === b.hp && a.max === b.max,
+  { visible: false, name: '', bars: [] },
+  bossEq,
 );
 
 /** Push current HP into the store. Called once per frame after the player

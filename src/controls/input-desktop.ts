@@ -1,15 +1,30 @@
 // Desktop input scheme: WASD to move, mouse to look (pointer lock),
 // Space to attack, E to interact, ESC to release pointer lock.
 //
+// All action keys (and WASD) are REBINDABLE — see controls/keybindings.ts.
+// Every keydown resolves through actionForCode(e.code); movement polls
+// the bound codes each frame. Numbered consumable slots (1-9) and the
+// Tab inventory alias stay hardwired — they're positional, not verbs.
+//
 // Click the canvas to request pointer lock — after that, mouse movement
 // rotates the camera without the player needing to hold the button.
-// Click while locked = left-click = attack. To interact, walk into
-// range and press E (the interactable's onUse fires). The same
-// raycast-on-tap path runs on first click before pointer lock acquires,
-// so a click that happens to land on an in-range object still uses it.
+// Click while locked = left-click = attack. HOLD the click (or the
+// attack key) to charge a charge-class weapon, release to loose it —
+// the desktop mirror of touch hold-to-charge. To interact, walk into
+// range and press the interact key. The same raycast-on-tap path runs
+// on first click before pointer lock acquires, so a click that happens
+// to land on an in-range object still uses it.
 
 import { dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
+import {
+  setChargeFromHeldMs,
+  setChargePosition,
+  tryReleaseChargedAttack,
+  cancelCharge,
+} from './charge-input';
+import { wantsHoldToCharge } from '../player/current-weapon';
+import { actionForCode, getBinding } from './keybindings';
 import { useFirstConsumable, useConsumableSlot } from './consumable-bar';
 import { toggleInventoryPanel } from '../ui/inventory-panel';
 import { openCharacterScreen, isCharacterScreenOpen, closeCharacterScreen } from '../ui/character-screen';
@@ -32,11 +47,22 @@ const LOOK_SPIKE_PX = 400;
 
 export const desktopScheme: InputScheme = {
   attach({ canvas, state, options }: SchemeContext): InputTick | null {
-    const keys: Record<string, boolean> = {};
+    // Physical keys currently held, by KeyboardEvent.code. Movement
+    // polls this against the bound codes each frame.
+    const codesDown = new Set<string>();
     let pointerLocked = false;
     // The first mousemove after lock engages carries the cursor→centre warp
     // delta; swallow it so the view doesn't jump on lock.
     let swallowNextMove = false;
+
+    // ── Charge state (mouse + key) ──────────────────────────────────
+    // A held attack key or mouse button ramps a charge each frame, then
+    // looses it on release. Eligibility is captured at press time so a
+    // mid-charge weapon swap can't change the gesture's meaning.
+    let keyChargeDown = false;
+    let keyChargeStart = 0;
+    let mouseChargeDown = false;
+    let mouseChargeEligible = false;
 
     // ── Pointer lock state ──────────────────────────────────────────
     document.addEventListener('pointerlockchange', () => {
@@ -47,60 +73,93 @@ export const desktopScheme: InputScheme = {
 
     // ── Keyboard ────────────────────────────────────────────────────
     window.addEventListener('keydown', (e) => {
-      const k = e.key.toLowerCase();
-      // Ignore repeats so holding a key doesn't refire one-shot actions.
-      if (!e.repeat) keys[k] = true;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        triggerAttack();
+      if (!e.repeat) codesDown.add(e.code);
+
+      const action = actionForCode(e.code);
+      if (action) {
+        // ATTACK — hold-to-charge on charge-class weapons, instant
+        // otherwise. Charge ramps in the per-frame tick; the swing
+        // looses on keyup.
+        if (action === 'attack') {
+          e.preventDefault();
+          if (!e.repeat) {
+            if (wantsHoldToCharge()) {
+              keyChargeDown = true;
+              keyChargeStart = performance.now();
+            } else {
+              triggerAttack();
+            }
+          }
+          return;
+        }
+        // Movement keys are polled in the tick — nothing to do on the
+        // edge except let codesDown carry the held state.
+        if (action === 'moveForward' || action === 'moveBack' || action === 'moveLeft' || action === 'moveRight') {
+          dismissHint();
+          return;
+        }
+        if (e.repeat) return;   // remaining verbs are one-shot
+        if (action === 'interact') {
+          e.preventDefault();
+          options.onInteract?.();
+          return;
+        }
+        if (action === 'inventory') {
+          e.preventDefault();
+          toggleInventoryPanel();
+          return;
+        }
+        if (action === 'quickUse') {
+          e.preventDefault();
+          useFirstConsumable();
+          return;
+        }
+        if (action === 'character') {
+          e.preventDefault();
+          if (isCharacterScreenOpen()) closeCharacterScreen();
+          else openCharacterScreen();
+          return;
+        }
+        if (action === 'menu') {
+          // Close the topmost open panel (mirrors the backdrop-tap
+          // gesture on touch). If nothing is open, open settings —
+          // desktop's pause-equivalent. Note: when bound to Escape and
+          // pointer-locked, the browser eats the first press to release
+          // lock (no keydown fires); a second press reaches us.
+          e.preventDefault();
+          if (dismissTopScreen()) return;
+          if (!isAnyScreenOpen()) openSettings();
+          return;
+        }
       }
+
       if (e.repeat) return;
-      if (k === 'e') {
-        e.preventDefault();
-        options.onInteract?.();
-      }
-      // Inventory: I or TAB. Releases pointer lock so the mouse can
-      // drive the panel.
-      if (k === 'i' || k === 'tab') {
+
+      // ── Non-bindable extras (only if no verb claimed the key) ──────
+      // Tab: inventory alias. Number keys: consumable hotbar slots.
+      if (e.code === 'Tab') {
         e.preventDefault();
         toggleInventoryPanel();
+        return;
       }
-      // Quick-use the first consumable (healing potion if HP is low,
-      // else whatever's on the bar).
-      if (k === 'q') {
-        e.preventDefault();
-        useFirstConsumable();
-      }
-      // Number keys: use the consumable in that hotbar slot (1 = heal).
-      if (k >= '1' && k <= '9') {
-        e.preventDefault();
-        useConsumableSlot(Number(k));
-      }
-      // Character screen — visible mid-run for status check. Spend
-      // buttons enable only at safe rooms.
-      if (k === 'c') {
-        e.preventDefault();
-        if (isCharacterScreenOpen()) closeCharacterScreen();
-        else openCharacterScreen();
-      }
-      // Escape: close the topmost open panel (mirrors the backdrop-tap
-      // gesture on touch). If nothing is open, open the settings menu
-      // — desktop's pause-equivalent of the touch inventory-gear flow.
-      // Note: the browser also intercepts Escape to release pointer
-      // lock. When locked, the first Escape unlocks (no keydown fires
-      // here); a second Escape then reaches us and dismisses/opens.
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        if (dismissTopScreen()) return;
-        // No dismissible top screen. Only open settings if nothing
-        // else is on screen — title and end-screen are non-dismissible
-        // and sit on a higher layer, so opening settings behind them
-        // would just be invisible churn.
-        if (!isAnyScreenOpen()) openSettings();
+      if (e.code.startsWith('Digit')) {
+        const n = Number(e.code.slice(5));
+        if (n >= 1 && n <= 9) {
+          e.preventDefault();
+          useConsumableSlot(n);
+        }
       }
     });
     window.addEventListener('keyup', (e) => {
-      keys[e.key.toLowerCase()] = false;
+      codesDown.delete(e.code);
+      // Attack-key release: loose the charge (charged if it cooked, a
+      // plain swing if it never reached the ramp).
+      if (keyChargeDown && actionForCode(e.code) === 'attack') {
+        keyChargeDown = false;
+        tryReleaseChargedAttack();
+        triggerAttack();
+        cancelCharge();
+      }
     });
 
     // ── Mouse ───────────────────────────────────────────────────────
@@ -114,31 +173,43 @@ export const desktopScheme: InputScheme = {
       mouseDownX = e.clientX;
       mouseDownY = e.clientY;
       mouseMovement = 0;
+      mouseChargeDown = true;
+      // Only charge once we're in mouse-look mode (locked) and the
+      // weapon supports it. A first click that's still acquiring lock
+      // never charges.
+      mouseChargeEligible = pointerLocked && wantsHoldToCharge();
       dismissHint();
     });
 
     canvas.addEventListener('mouseup', (e) => {
       const elapsed = performance.now() - mouseDownAt;
+      const wasChargeHold = mouseChargeDown && mouseChargeEligible;
+      mouseChargeDown = false;
       const isTap = elapsed < TAP_MAX_MS && mouseMovement < TAP_MAX_PX;
-      if (!isTap) return;
 
-      // Tap-route: even with pointer lock, the FIRST click is interpreted
-      // as a possible raycast tap. If it doesn't resolve to anything,
-      // and we're not locked yet, request pointer lock to start the
-      // "play with mouse look" mode.
-      const side: 'left' | 'right' =
-        e.clientX < window.innerWidth * LEFT_ZONE_FRACTION ? 'left' : 'right';
-      const consumed = options.onTap?.(e.clientX, e.clientY, side) ?? false;
-      if (consumed) return;
-
-      // Not consumed by an in-world object. If we're already locked,
-      // treat as an attack. If not, request lock — the player is asking
-      // to switch into mouse-look gameplay mode.
-      if (pointerLocked) {
-        triggerAttack();
-      } else {
-        canvas.requestPointerLock?.();
+      if (isTap) {
+        // Tap-route: even with pointer lock, a quick click is a possible
+        // raycast tap. If it doesn't resolve to an in-world object, and
+        // we're not locked yet, request pointer lock to enter mouse-look.
+        const side: 'left' | 'right' =
+          e.clientX < window.innerWidth * LEFT_ZONE_FRACTION ? 'left' : 'right';
+        const consumed = options.onTap?.(e.clientX, e.clientY, side) ?? false;
+        if (!consumed) {
+          if (pointerLocked) triggerAttack();
+          else canvas.requestPointerLock?.();
+        }
+        cancelCharge();
+        return;
       }
+
+      // Held past the tap window. On a charge-eligible weapon, loose the
+      // charge — fire either way so a hold that never reached the ramp
+      // still swings. (A non-eligible long hold does nothing, as before.)
+      if (wasChargeHold) {
+        tryReleaseChargedAttack();
+        triggerAttack();
+      }
+      cancelCharge();
     });
 
     canvas.addEventListener('mousemove', (e) => {
@@ -165,7 +236,7 @@ export const desktopScheme: InputScheme = {
 
     void mouseDownX; void mouseDownY;  // reserved for future use
 
-    // ── Per-frame WASD polling ─────────────────────────────────────
+    // ── Per-frame: WASD polling + charge ramp ──────────────────────
     // Returned as the scheme's tick. The orchestrator calls it once
     // per main-loop frame AFTER the touch scheme has run. On hybrid
     // devices the touch joystick may have written this frame; we
@@ -185,10 +256,10 @@ export const desktopScheme: InputScheme = {
     return (_dt: number) => {
       let kx = 0;
       let ky = 0;
-      if (keys['w']) ky -= 1;
-      if (keys['s']) ky += 1;
-      if (keys['a']) kx -= 1;
-      if (keys['d']) kx += 1;
+      if (codesDown.has(getBinding('moveForward'))) ky -= 1;
+      if (codesDown.has(getBinding('moveBack')))    ky += 1;
+      if (codesDown.has(getBinding('moveLeft')))    kx -= 1;
+      if (codesDown.has(getBinding('moveRight')))   kx += 1;
       if (kx !== 0 || ky !== 0) {
         const mag = Math.hypot(kx, ky);
         state.moveX = kx / mag;
@@ -205,6 +276,18 @@ export const desktopScheme: InputScheme = {
         }
         lastKbMoveX = 0;
         lastKbMoveY = 0;
+      }
+
+      // Charge ramp — feed the longest-held active charge (key or
+      // mouse) to the charge module. The ring anchors to screen centre,
+      // where the pointer-locked crosshair sits.
+      const now = performance.now();
+      let heldMs = 0;
+      if (keyChargeDown) heldMs = Math.max(heldMs, now - keyChargeStart);
+      if (mouseChargeDown && mouseChargeEligible) heldMs = Math.max(heldMs, now - mouseDownAt);
+      if (heldMs > 0) {
+        setChargeFromHeldMs(heldMs);
+        setChargePosition(window.innerWidth / 2, window.innerHeight / 2);
       }
     };
   },

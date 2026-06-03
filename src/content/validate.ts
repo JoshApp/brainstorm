@@ -84,9 +84,10 @@ function validateEnemy(id: string, spec: EnemySpec, errs: string[], warns: strin
     errs.push(`${w}: splitsInto.enemyId '${spec.splitsInto.enemyId}' is not a registered enemy`);
   }
   for (const ab of spec.abilities ?? []) {
-    for (const e of ab.effects) {
-      if (e.kind === 'projectile' && !isProjectileRegistered(e.projectileId)) {
-        errs.push(`${w}: ability '${ab.id}' projectile '${e.projectileId}' is not a registered projectile`);
+    for (const step of ab.steps) {
+      const a = step.action;
+      if (a.kind === 'projectile' && !isProjectileRegistered(a.projectileId)) {
+        errs.push(`${w}: ability '${ab.id}' projectile '${a.projectileId}' is not a registered projectile`);
       }
     }
   }

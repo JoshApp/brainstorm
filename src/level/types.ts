@@ -5,6 +5,8 @@
 // All coordinates are world-space XZ unless otherwise noted. Y is computed
 // from props' implicit shapes (floors at y=0, ceilings at level height, etc.).
 
+import type { FittingKind, Edge } from './opening';
+
 export type Vec2 = { x: number; z: number };
 
 /**
@@ -177,7 +179,7 @@ export type PropSpec =
   // 'corpse' = a slumped body with a note. Walk up, read it. Pure
   // atmosphere + (later) LLM-pluggable lore. The note text is short
   // and in the in-world grimdark tone.
-  | { kind: 'corpse'; x: number; z: number; rotY?: number; facing?: PropFacing; note: string }
+  | { kind: 'corpse'; x: number; z: number; rotY?: number; facing?: PropFacing; note?: string }
   // 'vase' = small destructible ceramic prop. Takes a hit from
   // the player's swing, shatters into a few stone-shard pieces,
   // and may drop a small reward (gold or potion). Tiny obstacle
@@ -252,7 +254,17 @@ export type PropSpec =
   // mob) without needing a per-id tile char in the ASCII map — the
   // tile-char dictionary is finite, this is not. Procgen's boss-slot
   // expansion (B tile) emits one of these per boss floor.
-  | { kind: 'spawn'; enemyId: string; x: number; z: number; roomId?: string };
+  | { kind: 'spawn'; enemyId: string; x: number; z: number; roomId?: string }
+  // Boss-arena fog wall — vertical mist curtain at the threshold of
+  // a boss vault. Walking through it seals the arena (the mist
+  // becomes a collider) and engages the boss bar. Tinted per boss
+  // via the `color` field. The composer places these automatically
+  // on boss floors from the boss vault's `bossMist` declaration; a
+  // test chamber can also drop one in its props array directly.
+  // width/height size the curtain to its doorway so it fully fills the
+  // carved gap (a curtain smaller than the opening looks wrong AND lets a
+  // tap-raycast slip past it to the boss behind). Default ~3.4m × 4.6m.
+  | { kind: 'boss-mist'; x: number; z: number; rotY?: number; color: number; width?: number; height?: number };
 
 // ── Cell-bound entities ───────────────────────────────────────────
 // Cell-bound authoring (vault.cellProps) stores entries keyed by
@@ -335,6 +347,16 @@ export type EnemySpawnSpec = {
    * procgen rolls them per spawn based on depth.
    */
   modifiers?: string[];
+  /**
+   * If true, this spawn starts in the `dormant` aiState — no
+   * perception, no movement, no idle scan, no vocalisation. Stays
+   * dormant until the boss-engagement flag flips (the fog wall is
+   * crossed). Used for boss-floor spawns so the boss doesn't aggro
+   * the moment the player enters the level; only when they cross
+   * into the arena. Debug scenarios that spawn a boss directly
+   * leave this off so the bar engages on legacy aggro.
+   */
+  dormant?: boolean;
 };
 
 /**
@@ -377,6 +399,39 @@ export type DoorSpec = {
   unlock?:
     | { kind: 'cleared'; roomIds: string[] }
     | { kind: 'arena'; roomIds: string[] };
+};
+
+/**
+ * Unified wall-opening fitting (see src/level/opening.ts). One spec for every
+ * "thing installed in a doorway" — archway, door, portcullis, boss fog-gate,
+ * cobweb — so they share placement + a single seal path instead of each
+ * re-deriving coordinates. Position is WORLD-space center + wall-line rotY +
+ * gap width; the `kind` selects the behaviour/visual.
+ *
+ * The ax/az/bx/bz endpoints are carried alongside (computed from the centre +
+ * rotY + width) during the migration off DoorSpec, so the door builder's
+ * segment math keeps working unchanged; they collapse away once everything is
+ * on this spec.
+ */
+export type OpeningSpec = {
+  id: string;
+  kind: FittingKind;
+  x: number; z: number;        // world centre of the gap
+  rotY: number;                // wall-line orientation
+  widthM: number;              // span of the gap
+  height?: number;             // opening height (frame/lintel); default room height
+  edge?: Edge;                 // provenance — which vault edge (fog-gate needs it)
+  /** Segment endpoints (transitional — derived from centre/rotY/width). */
+  ax?: number; az?: number; bx?: number; bz?: number;
+  /** Portcullis unlock condition (gate-cleared / gate-arena). */
+  unlock?:
+    | { kind: 'cleared'; roomIds: string[] }
+    | { kind: 'arena'; roomIds: string[] };
+  /** Fog-gate tint (per-boss identity). */
+  color?: number;
+  /** Hinged-door swing config. */
+  hinge?: 'a' | 'b';
+  swingDir?: 1 | -1;
 };
 
 /**
@@ -435,6 +490,9 @@ export type LevelSpec = {
   spawns: EnemySpawnSpec[];
   /** Doors that block passage until interacted with or unlocked. */
   doors?: DoorSpec[];
+  /** Unified wall-opening fittings (archway / door / portcullis / fog-gate /
+   *  cobweb). Migrating target for `doors` + the boss-mist/cobweb props. */
+  openings?: OpeningSpec[];
   /** Stairs leading to other floors. */
   stairs?: StairsSpec[];
   /**
@@ -455,8 +513,14 @@ export type LevelSpec = {
    * Used by the tile-map parser to express interior walls (between '#'
    * cells and walkable cells). Each segment becomes a rendered wall
    * plane AND a collision segment. Segments must be axis-aligned.
+   *
+   * `baseY` lifts the plane off the floor — used for a LINTEL across the
+   * top of a doorway. An elevated segment (baseY > 0) is VISUAL ONLY (no
+   * collision): the gap below it stays walkable so you can pass through
+   * the door, but the opening is framed instead of an empty slot to the
+   * ceiling.
    */
-  extraWalls?: Array<{ ax: number; az: number; bx: number; bz: number; height?: number }>;
+  extraWalls?: Array<{ ax: number; az: number; bx: number; bz: number; height?: number; baseY?: number }>;
   /**
    * Chasm voids — rectangular floor holes the player can't cross (the floor
    * is cut, an edge barrier blocks entry, and drop geometry shows the abyss).

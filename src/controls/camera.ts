@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import type { InputState } from './input';
+import { consumeKnockback } from '../player/knockback';
+import { getPlayerMoveScale } from '../player/inside-aura';
 import type { WalkableRegion } from '../level/walkable';
 import type { Enemy } from '../mobs/enemy';
 import { getSettings } from '../settings/settings';
@@ -26,7 +28,7 @@ export function createFirstPersonCamera(): THREE.PerspectiveCamera {
     CONFIG.FOV,
     window.innerWidth / window.innerHeight,
     0.05,
-    50,
+    CONFIG.CAMERA_FAR,
   );
 }
 
@@ -62,6 +64,21 @@ export function updateCamera(
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
 
+  // --- Knockback impulse (consumed BEFORE input so a hit + immediate
+  //     joystick push land in the same frame's clampMove). ---
+  const kb = consumeKnockback(dt);
+  if (kb.dx !== 0 || kb.dz !== 0) {
+    const newX = camera.position.x + kb.dx;
+    const newZ = camera.position.z + kb.dz;
+    const resolved = walkable.clampMove(
+      camera.position.x, camera.position.z,
+      newX, newZ,
+      PLAYER_RADIUS,
+    );
+    camera.position.x = resolved.x;
+    camera.position.z = resolved.z;
+  }
+
   // --- Move ---
   if (input.moveX !== 0 || input.moveY !== 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, yaw, 0));
@@ -72,7 +89,10 @@ export function updateCamera(
       .addScaledVector(right, input.moveX);
 
     if (move.lengthSq() > 0) {
-      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * dt);
+      // Aura-driven slow (e.g. inside the boiling king's body).
+      // Decays to 1.0 once nothing's refreshing it; multiplicative
+      // so the slow effect on existing MOVE_SPEED feels uniform.
+      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * getPlayerMoveScale() * dt);
       const newX = camera.position.x + move.x;
       const newZ = camera.position.z + move.z;
       // First pass: static collision (walls, pillars, altar, chest).

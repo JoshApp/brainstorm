@@ -38,7 +38,53 @@ export interface Settings {
   /** Show the debug capture button (the ⊕ CAPTURE chip) during play.
    *  Same as the ?debug=1 URL flag, but persisted + toggleable in-menu. */
   debugMode: boolean;
+  /** DEBUG tab readout toggles — independent on-screen diagnostic overlays.
+   *  Each is its own panel so they can be turned on one at a time. */
+  debugEyeAdapt: boolean;   // eye dark-adaptation readout (torch prox / adapt / ambient)
+  debugBossReadout: boolean; // boss-encounter readout — only paints during a boss fight
+  /** Touch control scheme. Only 'default' (left-joystick / right-aim,
+   *  the current layout) ships today — the selector is a seam for
+   *  alternate schemes (e.g. fixed-stick, swipe-move) we'll add later. */
+  controlScheme: 'default';
+  /** Dynamic-shadow quality. PointLight shadows are the most expensive
+   *  thing in the frame on mobile (each caster re-renders the scene as a
+   *  cube map), so this is a deliberate, capped quality knob:
+   *    off    — nothing casts. Zero GPU cost (the current baseline).
+   *    hero   — only the player's lamp casts. One shadow that travels
+   *             with you; cheapest real shadow.
+   *    single — only the nearest world light (a wall torch / bonfire)
+   *             casts, throwing the room across the floor.
+   *    all    — lamp + the few nearest world lights cast. Richest, dearest.
+   *  The caster COUNT is constant within a mode so the light pool never
+   *  triggers a per-frame shader recompile (see setShadowMode). */
+  shadows: ShadowMode;
+  /** Adaptive resolution — auto-lower the scene-render scale on a struggling
+   *  phone (and raise it back when it recovers) to hold framerate. On-aesthetic
+   *  (a lower-res PS1 render reads as more PS1). Mobile only; no effect on
+   *  desktop debug. */
+  adaptiveResolution: boolean;
+  /** Portal/room culling — skip rendering rooms hidden behind walls (only the
+   *  room you're in + rooms visible through doorways draw). Big draw-call win
+   *  in multi-room sightlines; experimental (watch for rooms popping in as you
+   *  turn). Opt-in. */
+  portalCulling: boolean;
 }
+
+export type ShadowMode = 'off' | 'hero' | 'single' | 'all';
+
+/** Source of truth for the SHADOWS selector in the graphics settings. */
+export const SHADOW_MODES: { id: ShadowMode; label: string }[] = [
+  { id: 'off',    label: 'Off' },
+  { id: 'hero',   label: 'Hero — lamp only' },
+  { id: 'single', label: 'Single — nearest light' },
+  { id: 'all',    label: 'All — nearby lights' },
+];
+
+/** Selectable touch control schemes. One entry for now; the list is the
+ *  source of truth for the settings dropdown. */
+export const CONTROL_SCHEMES: { id: Settings['controlScheme']; label: string }[] = [
+  { id: 'default', label: 'Default (joystick + aim)' },
+];
 
 const STORAGE_KEY = 'delve-settings';
 
@@ -52,6 +98,15 @@ const DEFAULTS: Settings = {
   devAutoUpdate: false,
   debugMode: false,
   perfMeter: false,
+  debugEyeAdapt: false,
+  debugBossReadout: false,
+  controlScheme: 'default',
+  // 'hero' by default: a single lamp-cast shadow is cheap and immediately
+  // sells the torchlit-dungeon feel. Drop to 'off' on a struggling phone,
+  // crank to 'single'/'all' on desktop or a strong device.
+  shadows: 'hero',
+  adaptiveResolution: true,
+  portalCulling: false,
 };
 
 let current: Settings = load();

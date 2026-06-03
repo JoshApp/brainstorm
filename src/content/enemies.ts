@@ -5,7 +5,7 @@ import type { Ability } from './abilities';
 import { creature } from './creature';
 import {
   humanoidGhoulModel, quadrupedRatModel, acolyteModel, skirmisherModel,
-  wraithModel, stoneguardModel, oozeModel, spiderModel,
+  wraithModel, stoneguardModel, oozeModel, kingOozeModel, spiderModel,
   pitMothModel, lasherModel,
 } from './enemy-models';
 import { mimicModel } from './mimic';
@@ -40,6 +40,11 @@ export interface EnemySpec {
   /** Boss flag — drives the Dark Souls-style boss bar + "this is a boss"
    *  treatment (the bar finds the live boss enemy by this). */
   isBoss?: boolean;
+  /** Stay dormant (no perception / aggro / attacks) until the boss
+   *  ENCOUNTER is engaged — i.e. the player crosses the fog gate. Souls-
+   *  style: the fight begins on commitment, not on line-of-sight. Requires
+   *  a fog wall in the level (else it would never wake). */
+  dormantUntilEngaged?: boolean;
   /** Name shown on the boss bar (grimdark, e.g. "The Hollow Choir"). */
   bossName?: string;
   /** Visual model scale multiplier — bosses loom larger than trash. The
@@ -66,6 +71,17 @@ export interface EnemySpec {
   /** Base emissive intensity for the 'eye' material (used by AI for windup flare). */
   baseEyeEmissive: number;
   collisionRadius: number;
+  /** Height the swing aims at + where the damage number floats from.
+   *  Defaults to 0.6 × scale, which assumes a body centred around that
+   *  height. Override when a model's mass (e.g. the king's core) sits
+   *  elsewhere — `0.6 × scale` badly overshoots a low-rigged giant. */
+  aimHeight?: number;
+  /** Combat hit radius — the swing's reach extends to the body's SURFACE
+   *  this far out from `position`, so a big enemy is hittable without
+   *  having to stand on its exact centre. Default 0 (point target).
+   *  Independent of collisionRadius (movement) — a translucent walk-into
+   *  boss can be small for movement yet large for hits. */
+  hitRadius?: number;
 
   // --- Animation hooks (part names within `model`) ---
   /** Part name to tilt forward during windup/strike. Usually 'body' or the root. */
@@ -218,6 +234,32 @@ export interface EnemySpec {
    * resolution + future mob-mob behaviour stays intact.
    */
   noPlayerCollision?: boolean;
+
+  // --- Inside-aura (the "stuck in the body" mechanic) ---
+  /**
+   * If set, this enemy emits a movement-slow + damage-tick aura
+   * around its body. Player walking inside the radius is:
+   *   1. Slowed by `slowFactor` (e.g. 0.4 = 40% speed).
+   *   2. After `gracePeriod` seconds, takes `dotDamage` damage
+   *      every `dotInterval` seconds while still inside.
+   * Designed for the boiling king — pair with `noPlayerCollision`
+   * so the player can walk INTO the body. Getting out before the
+   * next tick is the skill expression; the slow makes that harder.
+   */
+  aura?: {
+    /** Distance from the enemy centre that counts as "inside." */
+    radius: number;
+    /** Move-speed multiplier while inside. 1.0 = no slow, 0.4 =
+     *  60% reduction. Default 1.0. */
+    slowFactor?: number;
+    /** Damage per tick while inside (after grace expires). */
+    dotDamage: number;
+    /** Seconds between damage ticks. */
+    dotInterval: number;
+    /** Seconds the player can be inside before damage starts.
+     *  Short contact (rolling through) costs no HP. */
+    gracePeriod: number;
+  };
 
   // --- Burrowed (floor ambush) ---
   /**
@@ -455,8 +497,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'charge',
         minRange: 1.8, maxRange: 6.5,
         windup: 0.55, strike: 0.42, recover: 0.75, cooldown: 2.6,
-        damage: 1, telegraph: 'charge', creep: false,
-        effects: [{ kind: 'dash', speed: 7.5, toward: 'player', contactReach: 1.35, damageType: 'physical' }],
+        pose: 'charge', creep: false,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'dash', toward: 'player', speed: 7.5, contactReach: 1.35, damage: 1, element: 'physical' } }],
       },
       // SLASH — point-blank fallback when the player is already in melee
       // (or after a charge lands and they're still close).
@@ -464,8 +506,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'slash',
         minRange: 0, maxRange: 1.7,
         windup: 0.4, strike: 0.14, recover: 0.5,
-        damage: 1, telegraph: 'swing', creep: true,
-        effects: [{ kind: 'melee', reach: 1.5, damageType: 'physical' }],
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, element: 'physical' } }],
       },
     ],
     model: skirmisherModel(0x18130d, 0xffb060, 2.0),
@@ -834,16 +876,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'hex',
         minRange: 1.8, maxRange: 7,
         windup: 1.15, strike: 0.25, recover: 0.9, cooldown: 2.8,
-        damage: 2, telegraph: 'cast',
-        effects: [{ kind: 'aoe', radius: 1.9, targetMode: 'player', damageType: 'magic' }],
+        pose: 'cast',
+        steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 1.9, damage: 2, element: 'arcane' } }],
       },
       // SLASH — point-blank deterrent so hugging it isn't a free safe spot.
       {
         id: 'slash',
         minRange: 0, maxRange: 1.7,
         windup: 0.55, strike: 0.16, recover: 0.6,
-        damage: 1, telegraph: 'swing', creep: true,
-        effects: [{ kind: 'melee', reach: 1.5, damageType: 'magic' }],
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, element: 'arcane' } }],
       },
     ],
     // Own silhouette via the parametric builder: tall, gaunt, stooped,
@@ -913,16 +955,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'bone-throw',
         minRange: 2.4, maxRange: 8,
         windup: 0.6, strike: 0.15, recover: 0.5, cooldown: 2.0,
-        damage: 1, telegraph: 'cast',
-        effects: [{ kind: 'projectile', projectileId: 'bone-shard', muzzle: [0.28, 1.35, -0.1] }],
+        pose: 'cast',
+        steps: [{ trigger: { at: 0 }, action: { kind: 'projectile', projectileId: 'bone-shard', muzzle: [0.28, 1.35, -0.1], damage: 1 } }],
       },
       // SLASH — the close-range bite once it reaches you.
       {
         id: 'slash',
         minRange: 0, maxRange: 1.7,
         windup: 0.5, strike: 0.15, recover: 0.45,
-        damage: 1, telegraph: 'swing', creep: true,
-        effects: [{ kind: 'melee', reach: 1.5, damageType: 'physical' }],
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, element: 'physical' } }],
       },
     ],
     // Gaunt, pale, cold-eyed bones via the parametric builder — its own
@@ -996,16 +1038,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'pounce',
         minRange: 1.6, maxRange: 5,
         windup: 0.45, strike: 0.38, recover: 0.55, cooldown: 2.0,
-        damage: 1, telegraph: 'charge', creep: false,
-        effects: [{ kind: 'dash', speed: 8.5, toward: 'player', contactReach: 1.2, damageType: 'physical' }],
+        pose: 'charge', creep: false,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'dash', toward: 'player', speed: 8.5, contactReach: 1.2, damage: 1, element: 'physical' } }],
       },
       // BITE — point-blank snap when already on top of the player.
       {
         id: 'bite',
         minRange: 0, maxRange: 1.5,
         windup: 0.35, strike: 0.12, recover: 0.38,
-        damage: 1, telegraph: 'swing', creep: true,
-        effects: [{ kind: 'melee', reach: 1.3, damageType: 'physical' }],
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.3, damage: 1, element: 'physical' } }],
       },
     ],
     model: spiderModel(0x1a1016, 0xff3a55, 2.4),   // near-black chitin, red eyes
@@ -1065,22 +1107,64 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // as more bosses + named mobs land.
     isBoss: true,
     bossName: 'The Boiling King',
-    scale: 2.4,                     // looms — a king slime is BIG
-    hp: 16,                          // a real fight; mid-Act III gear should crack it in ~12 swings
-    moveSpeed: 0.9,                  // sluggish between hops
+    // Sleeps behind the fog gate; the fight begins when you cross it.
+    dormantUntilEngaged: true,
+    scale: 7.0,                      // WAY bigger than the player (~2× player height, 3.5m wide)
+    hp: 28,                          // bigger body, more HP — fight pacing stays similar
+    moveSpeed: 1.2,                  // a touch less glacial; the chase HOP does the real closing
     attackDamage: 3,                 // hits hard — the AoE is the threat
-    attackRange: 4.5,                // long range — it'll hop from across the room
-    strikeRange: 1.8,                // landing-zone radius (mostly handled by the aoe effect)
+    attackRange: 10.0,               // proportional to body — leaps across the room
+    strikeRange: 4.0,                // landing splash radius matches the bulk
     windupTime: 1.20,                // generous telegraph — readable on phone
-    strikeTime: 0.24,
-    recoverTime: 0.80,
+    strikeTime: 0.50,                // longer strike so the leap actually crosses ground
+    recoverTime: 1.40,               // more downtime so the king doesn't spam-leap
     damageType: 'magic',             // acid bypasses physical armour — boss earns its name
-    model: oozeModel(0x4a6a18, 0xa8ff44, 1.0),   // sickly green + bright acid core; scale field above does the looming
+    // Translucent green flesh with swallowed regalia (crown, sword,
+    // skull) drifting inside — sells the "it has eaten kings" line.
+    model: kingOozeModel(0x4a6a18, 0xa8ff44),
     baseEyeEmissive: 0,              // no eyes — core orb carries the read
-    collisionRadius: 0.55,           // wide footprint matches the visual
+    // collisionRadius used to be 1.5 to match the visual bulk, but
+    // that meant the dash path couldn't get close to pillars / great
+    // braziers in the boss arena — the king slid sideways and never
+    // reached the AoE landing zone. Drop to 0.7 so the king navigates
+    // around obstacles instead of bumping off them. The aura (1.6)
+    // remains the actual gameplay zone; this is just for movement.
+    collisionRadius: 0.7,
+    // The core orb sits at the model's rig (local y 0.18) → ~1.3m up at
+    // scale 7. The default 0.6×scale = 4.2m would put the aim point WAY
+    // above the body, so only a long-lunge swing could reach it. Pin the
+    // aim to the actual core height so every swing connects with it.
+    aimHeight: 1.3,
+    // Hittable at the body's SURFACE, not its centre. With the aim pinned
+    // to the core, a 2.1-reach sword already connects ~2m out (the body is
+    // ~1.8m wide); this small radius is just grace so SHORTER swing
+    // variants (low reachMul) also land cleanly and you're not nudging the
+    // exact edge. Tunable — raise the aura (1.6) toward this if you want
+    // attacking to demand more aura exposure.
+    hitRadius: 0.6,
+    // KEY MECHANIC: player walks INTO the king. No solid body. Once
+    // inside, the aura ticks (defined below): slowed move + acid damage
+    // after a grace window. The pressure is "get out before the next
+    // tick" not "knockback clears you instantly."
+    noPlayerCollision: true,
+    aura: {
+      radius: 1.6,                   // matches the visible body footprint at scale 7
+      slowFactor: 0.4,               // 60% slow — sticky slime feel, escapable but costly
+      dotDamage: 1,                  // tick is mild — the pressure is the slow + multiple ticks
+      dotInterval: 1.0,              // ticks once per second while inside
+      gracePeriod: 1.0,              // a full second of "I'm in, get out" before damage starts
+    },
     tiltPartName: 'rig',
-    flashMaterialName: 'body',
-    eyeMaterialName: 'core',
+    // Damage flash hits the CORE, not the body. The body is translucent
+    // green at 0.55 opacity so a base-colour flash barely reads; enemy.ts
+    // gives the core a heartbeat + a white-hot flare/pop on hit.
+    flashMaterialName: 'core',
+    // The king has NO eyes (baseEyeEmissive 0). Pointing eyeMaterialName at
+    // 'core' made the eye system drive the core's emissive to 0 every frame
+    // — blacking out the very orb that's supposed to glow. Aim it at a
+    // material that doesn't exist so the eye system no-ops and the core
+    // hit-reaction in enemy.ts fully owns the orb.
+    eyeMaterialName: 'no-eyes',
     presence: 'twitch',              // pulsing blob feel even when idle
     physicalArmor: 0,
     magicArmor: 0,
@@ -1089,18 +1173,108 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 4,
     loseSightTime: 12,               // never really gives up
     abilities: [
-      // HOP — telegraphed AoE leap. The ring appears at the player's
-      // location during the long windup; if they're still standing on
-      // it at strike, they eat the splash. Long maxRange so the slime
-      // doesn't run out of attack just because the player kited away.
+      // LASH — a melee deterrent so you can't camp the core risk-free
+      // between leaps. The king coils (windup) then lashes a pseudopod
+      // out to ~3m — far enough to clip you at the body's edge where you
+      // strike the core. Highest priority at close range; cooldown keeps
+      // it from chaining. creep so a stationary player still gets caught.
+      {
+        id: 'lash',
+        minRange: 0, maxRange: 4.0,
+        // Slow, unmistakable wind-up (1.3s): the 'lash' pose leans the
+        // king slowly over toward you while the body ELONGATES (rears a
+        // pseudopod — see the lash deform in enemy.ts), then it snaps the
+        // tentacle out on the strike. creep so it also oozes toward you.
+        windup: 1.30, strike: 0.28, recover: 0.85, cooldown: 3.4,
+        pose: 'lash', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 3.2, damage: 2, element: 'arcane' } }],
+      },
+      // LEAP — a committed airborne jump. A ground ring telegraphs the
+      // landing zone at the player's feet during windup; the king then
+      // arcs ONTO that locked point (it commits to where you WERE, so
+      // kiting off the marker is the dodge — a slow giant can't course-
+      // correct mid-air). One self-contained `leap` effect owns the
+      // whole thing: the arc, the landing splash, the screen-shake, and
+      // the shove. If you eat the landing you're knocked to the body's
+      // edge and the aura (slow + acid ticks, defined above) becomes the
+      // inside-the-body pressure. Getting out is the skill expression.
+      // minRange 4 so it commits to a real gap; maxRange 9 (was 14) so the
+      // king can't slam you from clear across the arena the instant it
+      // sees you — it has to HOP in first, then leap. The big leap is now
+      // a rarer, impactful punctuation (cooldown 4.5), not a spam.
+      {
+        id: 'leap',
+        minRange: 4, maxRange: 9,
+        // strike 0.65 (was 0.50) + riseFraction 0.4 below = a faster launch
+        // and a longer, readable descent — the player gets time to dodge
+        // off the marker as the king hangs and drops.
+        windup: 1.20, strike: 0.65, recover: 1.40,
+        // Long cooldown — the big slam is occasional + impactful, not a
+        // constant barrage. Hops + the lash carry the in-between pressure.
+        cooldown: 4.5,
+        pose: 'cast',
+        steps: [
+          // JUMP — committed airborne leap onto the locked landing zone.
+          {
+            id: 'jump', trigger: { at: 0 },
+            action: {
+              kind: 'leap', toward: 'lockedTarget',
+              // 4m peak at mid-strike — reads unmistakably as airborne,
+              // not a flat charge. Deterministic travel (takeoff → marker
+              // over the 0.5s strike) lands exactly on the ring.
+              arcHeight: 4.0,
+              // Splash radius ≈ the body/aura footprint (1.6) so the dodge
+              // is "step OFF the marker," not "sprint to the far wall."
+              landingRadius: 1.8,
+              damage: 3,
+              element: 'arcane',   // magic damage, no status (the aura carries acid)
+              shake: 0.35,         // chunky boss-slam thud
+              shakeDuration: 0.45,
+              // Shove the player to the body's edge on impact so they're in
+              // the aura, not pinned dead-centre — escapable, but costly.
+              knockbackSpeed: 4.0,
+              // Guarantee a real arc even if the player is hugging the body
+              // at windup: the landing point is pushed out to ≥3m.
+              minDistance: 3.0,
+              // Launch fast, descend slow — the drop is the dodge window.
+              riseFraction: 0.4,
+            },
+          },
+          // SPILL — on touchdown, leave a slow acid puddle at the impact
+          // point (the `landing` anchor the leap just wrote). It lingers 5s
+          // after the king has moved on: a denied tile that slows + ticks
+          // anyone who stands in it. Reuse over invention — a placed,
+          // time-limited copy of the king's own body aura.
+          {
+            id: 'spill', trigger: { after: 'jump', on: 'land' },
+            action: {
+              kind: 'field', origin: 'landing',
+              radius: 2.0, lifetime: 5.0,
+              slow: 0.5, dps: 1, dotInterval: 1.0,
+              element: 'acid',
+            },
+          },
+        ],
+      },
+      // HOP — small homing chase hop so the king actually closes on a
+      // kiting player BETWEEN big leaps (LAST priority: only fires when the
+      // lash/leap are on cooldown). Homes to where you ARE (toward
+      // 'player'), short windup + short cooldown, low arc, no ground ring
+      // (it's movement, not a committed AoE). A little chip if it lands on
+      // you. minRange 1.5 so it doesn't hop in your face when adjacent.
       {
         id: 'hop',
-        minRange: 0, maxRange: 8,
-        windup: 1.20, strike: 0.24, recover: 0.80,
-        cooldown: 0.6,
-        damage: 3,
-        telegraph: 'cast',           // body coils + pulses during windup
-        effects: [{ kind: 'aoe', radius: 1.8, targetMode: 'player', damageType: 'magic' }],
+        minRange: 1.5, maxRange: 9,
+        // Calmer cadence (cooldown 1.2 + a readable 0.45 windup) so the
+        // king isn't constantly airborne — small deliberate hops with a
+        // crawl beat between, not a jitter.
+        windup: 0.45, strike: 0.40, recover: 0.35, cooldown: 1.2,
+        pose: 'cast',
+        steps: [{ trigger: { at: 0 }, action: {
+          kind: 'leap', toward: 'player', arcHeight: 1.1, landingRadius: 0.8, damage: 1,
+          element: 'arcane', shake: 0.08, knockbackSpeed: 2.0, riseFraction: 0.45,
+          maxDistance: 3.2,   // small fixed step — closes a kiting player over several hops
+        } }],
       },
     ],
     xp: 60,                          // significant haul — earns the depth
@@ -1118,7 +1292,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // Death = bursts into three smaller slimes. The fight isn't over
     // yet; the prince spec terminates the recursion (no splitsInto on
     // it). 0.8m scatter radius spreads them around the corpse.
-    splitsInto: { enemyId: 'boiling-prince', count: 3, radius: 0.8 },
+    splitsInto: { enemyId: 'boiling-prince', count: 3, radius: 1.6 },
   },
 
   // Boiling Prince — the children of the king. Smaller, faster, no
@@ -1128,21 +1302,62 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'boiling-prince',
     name: 'boiling prince',
     // No tileChar — only spawned via the king's splitsInto.
+    // The split stays part of the boss fight: each prince is a boss, so
+    // the boss bar tracks all three (as three smaller bars). The fight
+    // ends only when the last prince dies.
+    isBoss: true,
+    bossName: 'Spawn of the King',
     hp: 3,
-    moveSpeed: 1.5,
+    moveSpeed: 1.6,                  // a touch faster so it can pressure a kiter
     attackDamage: 1,
-    attackRange: 1.0,
+    attackRange: 1.0,                // legacy fields (unused — `abilities` below drives it)
     strikeRange: 0.85,
     windupTime: 0.55,
     strikeTime: 0.18,
     recoverTime: 0.45,
     damageType: 'magic',             // still acid — keeps the king's theme
-    model: oozeModel(0x4a6a18, 0xa8ff44, 0.85),
+    // Aim/flash the CORE like the king (it has a glowing core now) — and
+    // float the damage number from roughly the core height.
+    aimHeight: 0.5,
+    // A smaller version of the king's kit: a committed leap (telegraphed,
+    // dodgeable) + a close-range bite. No puddle — three princes spilling
+    // acid would carpet the arena.
+    abilities: [
+      {
+        id: 'prince-leap',
+        minRange: 2, maxRange: 5,
+        windup: 0.70, strike: 0.45, recover: 0.70, cooldown: 2.4,
+        pose: 'cast',
+        steps: [{ trigger: { at: 0 }, action: {
+          // Toned down vs before — lower arc + shorter range so it's a
+          // small hop-pounce, not a king-sized slam.
+          kind: 'leap', toward: 'lockedTarget', arcHeight: 1.1, landingRadius: 1.0, damage: 1,
+          element: 'arcane', shake: 0.10, shakeDuration: 0.25, knockbackSpeed: 2.5,
+          minDistance: 1.5, riseFraction: 0.42,
+        } }],
+      },
+      {
+        id: 'bite',
+        minRange: 0, maxRange: 1.6,
+        windup: 0.35, strike: 0.14, recover: 0.40,
+        pose: 'swing', creep: true,
+        steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.2, damage: 1, element: 'arcane' } }],
+      },
+    ],
+    // Bigger than before (1.2 vs 0.85) + a glowing core like the king
+    // (withGlow), so the spawns read as miniature kings.
+    model: oozeModel(0x4a6a18, 0xa8ff44, 1.2, true),
     baseEyeEmissive: 0,
-    collisionRadius: 0.30,
+    collisionRadius: 0.38,
+    // Walk-through like the king (slimes don't body-block). Fixes the
+    // prince pinning the player when it leaps onto them — you're never
+    // stuck inside one; the threat is its leap + bite, not a wall.
+    noPlayerCollision: true,
     tiltPartName: 'rig',
-    flashMaterialName: 'body',
-    eyeMaterialName: 'core',
+    // Flash the CORE (glowing, like the king) — and decouple the eyes so
+    // the eye system doesn't zero the core's emissive (it has no eyes).
+    flashMaterialName: 'core',
+    eyeMaterialName: 'no-eyes',
     presence: 'twitch',
     sightRange: 5,
     sightConeHalfAngle: 1.6,
@@ -1197,8 +1412,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
       id: 'spore-burst',
       minRange: 0, maxRange: 2.4,
       windup: 1.10, strike: 0.18, recover: 1.40, cooldown: 1.0,
-      damage: 2, telegraph: 'cast',
-      effects: [{ kind: 'aoe', radius: 2.4, targetMode: 'self', damageType: 'magic' }],
+      pose: 'cast',
+      steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 2.4, damage: 2, element: 'arcane' } }],
     }],
     // Poison-on-hit because spores. Player who eats the cloud bleeds
     // damage for a few seconds after stepping out.

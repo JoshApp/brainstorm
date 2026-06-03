@@ -1,12 +1,23 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { damagePlayer } from '../player/health';
+import { applyPlayerKnockback } from '../player/knockback';
+import { setPlayerInAura } from '../player/inside-aura';
+import { kickShake } from '../combat/screen-shake';
+import { spawnHazardField } from '../combat/hazard-field';
+import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
-import { resolveAbilities, meleeReachOf, aoeEffectOf, type Ability } from '../content/abilities';
+import {
+  resolveAbilities, firstMeleeReach, wantsCreep, ELEMENTS,
+  type Ability, type AbilityAction, type Anchor, type Trigger, type Element,
+} from '../content/abilities';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
+import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
+import { isBossEncounterEngaged } from './boss-encounter';
+import { levelHasFogWall } from '../ui/boss-engagement';
 import { TELEGRAPH_POSES, poseValue, type TelegraphStyle } from './pose-clips';
 import type { WalkableRegion } from '../level/walkable';
 import type { NavGrid, Waypoint } from '../level/nav-grid';
@@ -17,6 +28,8 @@ import {
   generateEntityId,
 } from '../ecs/world';
 import type { EntityId } from '../ecs/types';
+import { createEyePresenter, createCoreReactor } from './enemy-presentation';
+import { createBodyAnimator } from './enemy-animation';
 import { buildModel } from '../ecs/build-model';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
@@ -76,6 +89,11 @@ export function disposeEnemy(e: Enemy): void {
 
 export type EnemyState =
   | 'idle'        // at post, scanning, has not seen player
+  | 'dormant'     // boss-style spawn: no AI, no perception, waits for an
+                  // external wake signal (e.g. boss-bar engagement).
+                  // Used so a procgen-placed boss doesn't aggro the
+                  // moment the player enters the LEVEL — only when the
+                  // player enters the ARENA (crosses the fog wall).
   | 'alerted'     // first sight — brief rear-up before committing
   | 'chasing'
   | 'winding'
@@ -91,6 +109,10 @@ export type EnemyState =
 // committing to chase. Sells the "I see you" moment — also gives the
 // player a reaction window.
 const ALERTED_DURATION = CONFIG.ENEMY_AI.ALERTED_DURATION;
+
+// Grace beat a fog-gate boss grants the player on waking — it closes the
+// distance but holds fire this long so you can orient out of the walk-in.
+const ENGAGE_GRACE = 2.4;
 
 // How long the enemy will search at the last-known position before giving
 // up. Doesn't override per-spec loseSightTime; this is the search PHASE
@@ -127,12 +149,18 @@ export interface Enemy extends Damageable {
   dying: boolean;
   /** Phases through obstacles (props). Walls still block. Ghost flag. */
   phasing: boolean;
+  /** Inert behind its fog gate until the player commits — can't perceive,
+   *  can't be tap-attacked (the tap should reach the gate, not the boss). */
+  dormant: boolean;
   hp: number;
   /** Spec-declared base HP. Useful for hp/max ratios in HUD/observation. */
   maxHp: number;
   /** Current AI state machine phase. */
   aiState: EnemyState;
   collisionRadius: number;
+  /** Combat hit radius — swings reach the body's surface this far from
+   *  `position`. Default 0 (point). See Damageable.hitRadius. */
+  hitRadius: number;
   /** Height the swing cone aims at + where the damage number floats from. */
   aimHeight: number;
   /** Mobs take the full crunch + fire the player's on-hit passives. */
@@ -166,14 +194,24 @@ const tmpEssenceOrigin = new THREE.Vector3();
 /** Optional callback fired right after an enemy reaches 0 HP — used by
  *  the builder to spawn split-on-death offspring. Runs AFTER drops +
  *  the kill event, so any spawned children appear in the same frame's
- *  enemy list and the kill is already recorded. */
-export type EnemyOnDeath = (spec: EnemySpec, deathPosition: THREE.Vector3) => void;
+ *  enemy list and the kill is already recorded. `entityId` identifies the
+ *  dying enemy exactly so the builder can attribute split children to the
+ *  parent's room without a fragile position lookup (two enemies dying at
+ *  the same spot used to mis-attribute). */
+export type EnemyOnDeath = (
+  spec: EnemySpec,
+  deathPosition: THREE.Vector3,
+  entityId: EntityId,
+) => void;
 
 export function createEnemy(
   scene: THREE.Object3D,
   position: THREE.Vector3,
   spec: EnemySpec,
   onDeath?: EnemyOnDeath,
+  /** Optional spawn-time flags. `dormant: true` skips perception
+   *  + AI + idle animation until the boss-engagement flag flips. */
+  options?: { dormant?: boolean },
 ): Enemy {
   // Container: world position + yaw to face player.
   const container = new THREE.Group();
@@ -185,6 +223,9 @@ export function createEnemy(
   // stay driven by the explicit stat fields).
   if (spec.scale && spec.scale !== 1) built.group.scale.multiplyScalar(spec.scale);
   container.add(built.group);
+  // Base model scale, captured for the lash deform (which elongates the
+  // body toward the player on a 'lash' telegraph, then eases back here).
+  const groupBaseScale = built.group.scale.clone();
 
   // Tag this container as an inspection subject — main.ts's inspect
   // block hides level siblings (walls/floor/torches/decor) but keeps
@@ -241,69 +282,18 @@ export function createEnemy(
   const shoulderR = built.slots.get('shoulderR');
   const shoulderBaseLX = shoulderL ? shoulderL.rotation.x : 0;
   const shoulderBaseRX = shoulderR ? shoulderR.rotation.x : 0;
-  // Hip pivots (optional) — legs swing from these as the enemy MOVES
-  // (distance-driven gait, see the locomotion block in update). Models
-  // without hips just slide (correct for floaters like the wraith).
-  const hipL = built.slots.get('hipL');
-  const hipR = built.slots.get('hipR');
-  const hipBaseLX = hipL ? hipL.rotation.x : 0;
-  const hipBaseRX = hipR ? hipR.rotation.x : 0;
-  // Neck pivot (optional) — holds the head + eyes so it can CRANE toward
-  // the player: the head tips down as the player gets close (the enemy
-  // looms / fixates), eases back to neutral when calm. Yaw is already
-  // handled by the body facing; this adds the pitch.
-  const neck = built.slots.get('neck');
-  const neckBaseX = neck ? neck.rotation.x : 0;
-  let headPitch = 0;
-  const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
-  const eyeMat   = built.materials.get(spec.eyeMaterialName)   as THREE.MeshStandardMaterial | undefined;
-
-  // Windup telegraph: eyes blaze brighter and shift toward hot red as the
-  // enemy commits to a strike. We mutate the sprite halo material's color
-  // (and scale) since the visible eyes are sprite billboards. The mesh
-  // eye material is also mutated where it exists (rat) for consistency.
-  const eyeHaloL = built.parts.get('eyeHaloL') as THREE.Sprite | undefined;
-  const eyeHaloR = built.parts.get('eyeHaloR') as THREE.Sprite | undefined;
-  const haloMatL = eyeHaloL?.material as THREE.SpriteMaterial | undefined;
-  const haloMatR = eyeHaloR?.material as THREE.SpriteMaterial | undefined;
-  const haloBaseScaleL = eyeHaloL ? eyeHaloL.scale.clone() : new THREE.Vector3(1, 1, 1);
-  const haloBaseScaleR = eyeHaloR ? eyeHaloR.scale.clone() : new THREE.Vector3(1, 1, 1);
-  const haloBaseColorL = haloMatL ? haloMatL.color.clone() : new THREE.Color(0xff5500);
-  const haloBaseColorR = haloMatR ? haloMatR.color.clone() : new THREE.Color(0xff5500);
-
-  const eyeBaseColor = eyeMat ? eyeMat.emissive.clone() : new THREE.Color(0xff5500);
-  const eyeWindupColor = new THREE.Color(0xff1505);   // hot red at peak
-  const haloWindupColor = new THREE.Color(0xffffff);  // sprite goes white-hot
-  const tmpEyeColor = new THREE.Color();
-  const tmpHaloColor = new THREE.Color();
-  function setEyeFlare(t: number) {
-    // t in [0, 1] = neutral to full windup.
-
-    // Mesh eye material (for the rat — its eye spheres render fine).
-    if (eyeMat) {
-      eyeMat.emissiveIntensity = baseEyeEmissive * (1 + 7 * t);
-      tmpEyeColor.copy(eyeBaseColor).lerp(eyeWindupColor, t);
-      eyeMat.emissive.copy(tmpEyeColor);
-    }
-
-    // Sprite halos — the dominant visible cue on humanoid enemies.
-    // Scale up by ~1.6x at peak windup; color brightens toward white.
-    const haloScale = 1 + 0.6 * t;
-    if (eyeHaloL && haloMatL) {
-      eyeHaloL.scale.set(haloBaseScaleL.x * haloScale, haloBaseScaleL.y * haloScale, 1);
-      tmpHaloColor.copy(haloBaseColorL).lerp(haloWindupColor, t * 0.75);
-      // Boost overall brightness so additive blend cuts through even bright
-      // background pixels (e.g. silhouetted in front of a torch).
-      tmpHaloColor.multiplyScalar(1 + 1.2 * t);
-      haloMatL.color.copy(tmpHaloColor);
-    }
-    if (eyeHaloR && haloMatR) {
-      eyeHaloR.scale.set(haloBaseScaleR.x * haloScale, haloBaseScaleR.y * haloScale, 1);
-      tmpHaloColor.copy(haloBaseColorR).lerp(haloWindupColor, t * 0.75);
-      tmpHaloColor.multiplyScalar(1 + 1.2 * t);
-      haloMatR.color.copy(tmpHaloColor);
-    }
-  }
+  // Body-animation controller — gait, head-crane, knockback, and the presence
+  // idle overlay. Owns its own body refs (hips, neck, chant orb) + mutable
+  // state (see enemy-animation.ts); the factory no longer carries them.
+  const bodyAnim = createBodyAnimator(container, built, spec);
+  // Visual presentation controllers — the eye-flare windup telegraph and the
+  // hit/core-glow flash. Both own their material refs internally (see
+  // enemy-presentation.ts). Thin local aliases keep the AI state machine's
+  // setEyeFlare/applyIdleEyes call sites below unchanged.
+  const eyePresenter = createEyePresenter(built, spec);
+  const coreReactor = createCoreReactor(built, spec);
+  const setEyeFlare = eyePresenter.setFlare;
+  const applyIdleEyes = eyePresenter.applyIdle;
 
   // World entity (HP + buffs).
   const entityId = generateEntityId(`enemy-${spec.id}`);
@@ -326,16 +316,23 @@ export function createEnemy(
   // the source. takeDamage is a hoisted function declaration below.
   registerDamageSink(entityId, takeDamage);
 
-  // Per-instance presentation state.
-  let flashTimer = 0;
-  const originalColor = flashMat ? flashMat.color.clone() : new THREE.Color();
-  const flashColor = new THREE.Color(CONFIG.ENEMY_HIT_FLASH_COLOR);
-  const baseEyeEmissive = spec.baseEyeEmissive;
+  // Lash deform — eased 0..1 body elongation toward the player during a
+  // 'lash' telegraph (the slime rears + reaches, then snaps on strike).
+  let lashStretch = 0;
 
-  let state: EnemyState = 'idle';
+  let state: EnemyState = options?.dormant ? 'dormant' : 'idle';
   let phaseTimer = 0;
-  let strikeAlreadyHit = false;
   let aliveLocal = true;
+  // ── Strike-phase timeline state ────────────────────────────────────
+  // Per-step latches for the ability currently striking: stepStarted[i]
+  // flips once step i's trigger fires; stepDone[i] once its action fully
+  // resolves (an instant hit, a melee landing, a dash contacting, a leap
+  // landing). stepEvents collects events ('jump:land') that later steps'
+  // triggers wait on. All reset at strike start. Per-step, never shared —
+  // so two steps can't latch each other off (the old shared-flag bug).
+  let stepStarted: boolean[] = [];
+  let stepDone: boolean[] = [];
+  const stepEvents = new Set<string>();
 
   // ── Abilities ──────────────────────────────────────────────────────
   // The attack runner is fully ability-driven. Enemies without an
@@ -350,17 +347,35 @@ export function createEnemy(
   const commitDistance = abilities.reduce((m, a) => Math.max(m, a.maxRange), 0);
   let currentAbility: Ability | null = null;
   const cooldowns = new Map<string, number>();
+  // Stagger each ability's FIRST use by a small random delay so a pack
+  // spawned together (the king's split princes) doesn't cast in unison.
+  // Deterministic via the run-seeded rng.
+  for (const ab of abilities) cooldowns.set(ab.id, gameRng() * 0.9);
   // AoE telegraph state — the ground marker shown during an aoe ability's
   // windup, and the world point it's locked to (resolved at strike).
   let aoeTelegraph: AoeTelegraph | null = null;
+  // The locked landing/impact point — the 'lockedTarget' anchor. Snapshot
+  // of the player's position when the windup begins (an aoe resolves on
+  // it, a leap arcs onto it).
   const aoeTarget = new THREE.Vector3();
+  // The 'landing' anchor — where the last leap touched down, for a
+  // follow-up step (a puddle) to build on.
+  const landing = new THREE.Vector3();
+  // The lash tentacle — spawned for a 'lash' telegraph, reaches out over
+  // the windup, snaps on strike, retracts + disposes on recover.
+  let lashTendril: LashTendril | null = null;
   function clearAoeTelegraph() {
     if (aoeTelegraph) { aoeTelegraph.dispose(); aoeTelegraph = null; }
+  }
+  function clearLashTendril() {
+    if (lashTendril) { lashTendril.dispose(); lashTendril = null; }
   }
 
   // Perception state. lastSeenPos tracks the last known XZ of the player
   // for searching. Updated each frame the enemy currently has LOS.
   let aggroed = false;
+  let dormantLocal = false;   // mirrored to the public `dormant` getter
+  let wasDormant = false;     // edge-detect the wake to grant an engage grace
   let timeSinceLOS = 0;             // seconds since enemy last had LOS to player
   const homePos = position.clone();  // post the enemy returns to when calm
   // Capture spawn yaw as "home yaw" so idle scan / returning faces back the
@@ -368,6 +383,14 @@ export function createEnemy(
   // for now, read whatever rotation is on the container right now.
   let homeYaw = 0;                   // filled in on first idle-tick
   let homeYawSet = false;
+  // Inside-aura state — how long the player has been inside us +
+  // when the next dot tick is due. Resets to 0 when player leaves.
+  let auraInsideTime = 0;
+  let auraDamageTimer = 0;
+  // Leap takeoff point, captured at strike start — a leap action arcs
+  // from here to the locked landing zone. (Its once-only touchdown is
+  // latched by the step's stepDone, like every other action.)
+  const leapStart = new THREE.Vector3();
   // Idle scan yaw target — rotates in place to feel watchful.
   let scanTimer = IDLE_SCAN_INTERVAL_MIN;  // pick a new target immediately
   let scanInterval = IDLE_SCAN_INTERVAL_MIN;
@@ -389,27 +412,8 @@ export function createEnemy(
   const hearingRangeSq = hearingRange * hearingRange;
   const loseSightTime = spec.loseSightTime ?? 4;
 
-  // Idle-state eye appearance: dim mesh emissive AND dim sprite halo. The
-  // setEyeFlare(0) path is for windup-reset and goes back to FULL base
-  // brightness, which is what aggroed-but-idle-frame should look like —
-  // not what we want for a truly unaware mob.
-  function applyIdleEyes() {
-    // Tuned against the PSX bloom pipeline — 0.45/0.4 multipliers still
-    // read as full-bright at distance. These low values give a faint
-    // "watching pinprick" feel: visible enough to know something's there,
-    // dim enough to read as unaware. Idle should be unsettling, not threatening.
-    if (eyeMat) eyeMat.emissiveIntensity = baseEyeEmissive * 0.18;
-    if (eyeHaloL && haloMatL) {
-      eyeHaloL.scale.set(haloBaseScaleL.x * 0.55, haloBaseScaleL.y * 0.55, 1);
-      haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.15);
-    }
-    if (eyeHaloR && haloMatR) {
-      eyeHaloR.scale.set(haloBaseScaleR.x * 0.55, haloBaseScaleR.y * 0.55, 1);
-      haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.15);
-    }
-  }
-  // Apply immediately so unseen enemies don't pop with full-bright eyes
-  // on the very first frame (before update runs even once).
+  // Apply idle eyes immediately so unseen enemies don't pop with full-bright
+  // eyes on the very first frame (before update runs even once).
   applyIdleEyes();
   // Per-cycle randomized windup duration so multiple enemies attacking in
   // unison de-synchronize over time (otherwise stacked mobs all strike on
@@ -421,44 +425,9 @@ export function createEnemy(
   }
   rollWindupTime();
 
-  // Presence — continuous animation overlay applied each frame on top of
-  // the per-state animation. Per-instance phase offset so two of the same
-  // mob drift out of sync. Cost = a couple of sin() per mob per frame.
-  const presence = spec.presence;
-  const presencePhase = Math.random() * Math.PI * 2;
-  let presenceTime = 0;
-
-  // Locomotion (gait) — drives the hip pivots from ACTUAL movement so
-  // legs swing in step with travel instead of the body moonwalking. The
-  // stride phase advances by distance covered (auto-syncs to real
-  // speed); gait amplitude eases in when moving, out when stopped so
-  // legs settle to rest. Only does anything on models with hip pivots.
-  let prevX = container.position.x;
-  let prevZ = container.position.z;
-  let stridePhase = Math.random() * Math.PI * 2;   // desync mobs
-  let gaitAmp = 0;
-  const STRIDE_LENGTH = 0.7;   // metres per full leg cycle
-  const GAIT_SWING = 0.5;      // peak hip rotation (rad) at full gait
-
-  // Knockback — a short decaying impulse on the enemy's position,
-  // applied on top of (and overriding) AI movement each frame. Used by
-  // the charge to recoil off the player on contact; also exposed so the
-  // player's melee hits can stagger enemies later. Walls clamp it.
-  let knockVX = 0;
-  let knockVZ = 0;
-  const KNOCKBACK_CHARGE = 4.5;   // recoil speed when a charge connects
-  function applyKnockback(dirX: number, dirZ: number, speed: number) {
-    const len = Math.hypot(dirX, dirZ);
-    if (len < 1e-5) return;
-    knockVX = (dirX / len) * speed;
-    knockVZ = (dirZ / len) * speed;
-  }
-  // 'chant' needs a reference to the orb material so the pulse can drive
-  // its emissive intensity. Grabbed once at build; null for non-chant.
-  const orbMat = presence === 'chant'
-    ? (built.materials.get('orb') as THREE.MeshStandardMaterial | undefined)
-    : undefined;
-  const orbBaseEmissive = orbMat?.emissiveIntensity ?? 0;
+  // Charge-recoil speed (the dash's contact knockback). The impulse itself is
+  // owned + integrated by the body animator (bodyAnim.applyKnockback / tick).
+  const KNOCKBACK_CHARGE = 4.5;
 
   // Pathfinding state — cached waypoints to the current target. Refreshed
   // every PATH_REFRESH seconds while LOS to the target is blocked. Phasing
@@ -584,7 +553,7 @@ export function createEnemy(
     if (!entity || !entity.hp) return 0;
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
-    flashTimer = CONFIG.ENEMY_HIT_FLASH_DURATION;
+    coreReactor.hit();   // hit flash + glowing-core flare/pop (king)
     // Damage from any source aggros (and keeps aggro for the full
     // loseSightTime window after the hit, even if the player breaks LOS
     // — a wounded mob doesn't forget). If we were idle/searching/etc,
@@ -597,9 +566,10 @@ export function createEnemy(
       phaseTimer = 0;
     }
     if (entity.hp.current <= 0) {
-      // Killed mid-windup — drop any pending AoE marker so it doesn't
-      // linger on the floor after the caster is gone.
+      // Killed mid-windup — drop any pending AoE marker / lash tentacle so
+      // it doesn't linger after the caster is gone.
       clearAoeTelegraph();
+      clearLashTendril();
       // Mark dead immediately for combat/gameplay purposes (no more
       // damage, no AI ticks, kill counter triggers, drops spawn). The
       // container stays in the scene for the duration of the death
@@ -655,7 +625,7 @@ export function createEnemy(
       // children appear in the same frame's enemy list. Pass a CLONE
       // of the death position because the builder may need it after
       // we've moved on (and clone is cheap).
-      if (onDeath) onDeath(spec, container.position.clone());
+      if (onDeath) onDeath(spec, container.position.clone(), entityId);
       // Start the death animation. Essence emits CONTINUOUSLY during
       // the dissolve — see tickDying. Gold coins drop now as physical
       // floor pickups with bundled value.
@@ -701,10 +671,7 @@ export function createEnemy(
     if (tiltPart) tiltPart.rotation.x = angle;
   }
 
-  function setEyeEmissive(intensity: number) {
-    if (eyeMat) eyeMat.emissiveIntensity = intensity;
-  }
-  // (setEyeFlare lives above — combines intensity ramp + color shift.)
+  // (setEyeFlare / applyIdleEyes live above as eye-presenter aliases.)
 
   // ── Ability runner helpers ─────────────────────────────────────────
 
@@ -724,7 +691,7 @@ export function createEnemy(
    *  body lean + rise on every enemy, plus an arm swing on models that
    *  have shoulder pivots (graceful no-op otherwise). Eye flare ramps
    *  with the windup, holds at strike, fades over recover. */
-  function applyTelegraph(style: Ability['telegraph'], phase: 'windup' | 'strike' | 'recover', t: number) {
+  function applyTelegraph(style: Ability['pose'], phase: 'windup' | 'strike' | 'recover', t: number) {
     const pose = TELEGRAPH_POSES[(style ?? 'swing') as TelegraphStyle];
     applyTilt(poseValue(pose.rigTilt, phase, t));
     built.group.position.y = poseValue(pose.bob, phase, t);
@@ -744,93 +711,238 @@ export function createEnemy(
     if (player) applyBuff(player, oh.buffId, oh.duration, entityId);
   }
 
-  /** Run one ability effect during the strike phase. Instantaneous
-   *  effects (melee/projectile) latch on strikeAlreadyHit so they fire
-   *  once; dash moves the enemy every frame and lands one contact hit. */
-  function runEffect(
-    eff: import('../content/abilities').AbilityEffect,
+  /** Resolve an anchor to a world XZ. self/player are live; lockedTarget
+   *  is the snapshot taken at windup start (aoeTarget); landing is written
+   *  by a leap on touchdown. */
+  function resolveAnchor(a: Anchor, playerPos: THREE.Vector3): { x: number; z: number } {
+    switch (a) {
+      case 'self':         return { x: container.position.x, z: container.position.z };
+      case 'lockedTarget': return { x: aoeTarget.x, z: aoeTarget.z };
+      case 'landing':      return { x: landing.x, z: landing.z };
+      default:             return { x: playerPos.x, z: playerPos.z };   // 'player'
+    }
+  }
+
+  /** Face a world XZ (head toward it) — see faceTarget for the convention. */
+  function faceXZ(x: number, z: number) {
+    tmpFlat.set(x, container.position.y, z);
+    container.lookAt(tmpFlat);
+    container.rotation.y += Math.PI;
+  }
+
+  /** Damage type for an action's element (the element table is the single
+   *  source — physical/arcane carry no status). */
+  function dmgTypeOf(element?: Element) {
+    return ELEMENTS[element ?? 'physical'].damageType;
+  }
+
+  /** Run one ability action this frame. Returns true when the action is
+   *  DONE (no more per-frame work): an instant hit resolves once; a melee
+   *  keeps trying until it lands or the strike ends; dash/leap run their
+   *  whole motion. Each action owns its own resolution — nothing is shared
+   *  between steps (that sharing is what broke the old leap). */
+  function runAction(
+    action: AbilityAction,
     ability: Ability,
+    stepId: string | undefined,
     playerPos: THREE.Vector3,
     distance: number,
     dt: number,
     walkable: WalkableRegion,
     nav?: NavGrid,
-  ) {
-    switch (eff.kind) {
+  ): boolean {
+    switch (action.kind) {
       case 'melee': {
-        if (!strikeAlreadyHit && distance <= eff.reach) {
-          damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+        if (distance <= action.reach) {
+          damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
-          strikeAlreadyHit = true;
+          return true;            // hit — done
         }
-        break;
+        return false;             // keep trying within the strike window
       }
       case 'projectile': {
-        if (!strikeAlreadyHit) {
-          tmpMuzzle.set(eff.muzzle[0], eff.muzzle[1], eff.muzzle[2]);
-          container.updateMatrixWorld();
-          tmpMuzzle.applyMatrix4(container.matrixWorld);
-          tmpTarget.set(playerPos.x, tmpMuzzle.y, playerPos.z);
-          spawnProjectile({
-            typeId: eff.projectileId,
-            origin: tmpMuzzle,
-            target: tmpTarget,
-            damage: ability.damage,
-            source: entityId,
-          });
-          strikeAlreadyHit = true;
-        }
-        break;
+        tmpMuzzle.set(action.muzzle[0], action.muzzle[1], action.muzzle[2]);
+        container.updateMatrixWorld();
+        tmpMuzzle.applyMatrix4(container.matrixWorld);
+        const t = resolveAnchor(action.toward ?? 'player', playerPos);
+        tmpTarget.set(t.x, tmpMuzzle.y, t.z);
+        spawnProjectile({
+          typeId: action.projectileId, origin: tmpMuzzle, target: tmpTarget,
+          damage: action.damage, source: entityId,
+        });
+        return true;
       }
       case 'dash': {
-        // Lunge ONLY until contact (or a miss runs out the strike). The
-        // moment it connects we stop driving forward and recoil OFF the
-        // player — otherwise the charger keeps moving into you for the
-        // rest of the strike and ends up stuck inside you (hard to hit,
-        // bad feel). Once strikeAlreadyHit is set, no more dash movement.
-        if (!strikeAlreadyHit) {
-          if (eff.toward === 'player') {
-            moveTowards(playerPos.x, playerPos.z, eff.speed, dt, walkable, nav);
-          } else {
-            const dx = container.position.x - playerPos.x;
-            const dz = container.position.z - playerPos.z;
-            const len = Math.hypot(dx, dz) || 1;
-            moveTowards(
-              container.position.x + (dx / len) * 2.0,
-              container.position.z + (dz / len) * 2.0,
-              eff.speed, dt, walkable, nav,
-            );
-          }
-          if (distance <= eff.contactReach) {
-            damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
-            inflictOnHit();
-            strikeAlreadyHit = true;
-            // Bounce back off the player so the charger separates to a
-            // readable, hittable distance instead of overlapping you.
-            applyKnockback(
-              container.position.x - playerPos.x,
-              container.position.z - playerPos.z,
-              KNOCKBACK_CHARGE,
-            );
-          }
+        // Lunge until contact (or the strike runs out). The moment it
+        // connects we hit + recoil OFF the player and stop driving forward,
+        // so the charger doesn't end up stuck inside you.
+        const tgt = resolveAnchor(action.toward, playerPos);
+        moveTowards(tgt.x, tgt.z, action.speed, dt, walkable, nav);
+        if (distance <= action.contactReach) {
+          damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
+          inflictOnHit();
+          bodyAnim.applyKnockback(
+            container.position.x - playerPos.x,
+            container.position.z - playerPos.z,
+            KNOCKBACK_CHARGE,
+          );
+          return true;            // contact — stop dashing
         }
-        break;
+        return false;
       }
       case 'aoe': {
-        if (!strikeAlreadyHit) {
-          // Resolve against the LOCKED target (set at windup start),
-          // not the enemy's current position — the player dodges by
-          // leaving the marked circle, regardless of where the enemy is.
-          const dx = playerPos.x - aoeTarget.x;
-          const dz = playerPos.z - aoeTarget.z;
-          if (dx * dx + dz * dz <= eff.radius * eff.radius) {
-            damagePlayer(ability.damage, entityId, eff.damageType ?? 'physical');
+        // Resolve against the action's origin (lockedTarget snapshot, or
+        // self) — the player dodges by leaving the marked circle.
+        const o = resolveAnchor(action.origin, playerPos);
+        const dx = playerPos.x - o.x;
+        const dz = playerPos.z - o.z;
+        if (dx * dx + dz * dz <= action.radius * action.radius) {
+          damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
+        }
+        clearAoeTelegraph();
+        return true;
+      }
+      case 'leap': {
+        // Committed airborne jump: deterministic interpolation from takeoff
+        // (leapStart) to the LOCKED landing zone, synced to a parabolic arc,
+        // so the king touches down exactly on the marker. Self-contained;
+        // never shares state, so it runs the whole strike.
+        const strike = ability.strike > 0 ? ability.strike : 1;
+        const t = Math.min(1, phaseTimer / strike);
+        const dest = resolveAnchor(action.toward, playerPos);
+        // Cap the travel to maxDistance from takeoff (a small chase hop),
+        // else the arc covers the full gap in one leap.
+        if (action.maxDistance) {
+          const ddx = dest.x - leapStart.x;
+          const ddz = dest.z - leapStart.z;
+          const dd = Math.hypot(ddx, ddz);
+          if (dd > action.maxDistance) {
+            dest.x = leapStart.x + (ddx / dd) * action.maxDistance;
+            dest.z = leapStart.z + (ddz / dd) * action.maxDistance;
+          }
+        }
+
+        // Horizontal: ease to arrive OVER the marker by ~the apex, then
+        // hold — so the back half reads as a committed vertical drop onto
+        // the locked spot, not a glide.
+        const riseFrac = action.riseFraction ?? 0.5;
+        const hu = Math.min(1, t / Math.min(0.85, riseFrac + 0.2));
+        const he = hu * hu * (3 - 2 * hu);               // smoothstep
+        const tx = leapStart.x + (dest.x - leapStart.x) * he;
+        const tz = leapStart.z + (dest.z - leapStart.z) * he;
+        const resolved = walkable.clampMove(
+          container.position.x, container.position.z, tx, tz,
+          spec.collisionRadius,
+          spec.phasing ? { ignoreObstacles: true } : undefined,
+        );
+        container.position.x = resolved.x;
+        container.position.z = resolved.z;
+
+        // Vertical: rise fast (ease into a brief hang at the apex), then a
+        // gentle smoothstep descent with a soft landing — riseFrac < 0.5
+        // stretches the drop so the player can read it and dodge off.
+        let vy: number;
+        if (t <= riseFrac) {
+          const u = riseFrac > 0 ? t / riseFrac : 1;
+          vy = Math.sin(u * Math.PI / 2);                // 0→1, decelerates into the apex
+        } else {
+          const u = (t - riseFrac) / (1 - riseFrac);     // 0→1 over the descent
+          vy = 1 - u * u * (3 - 2 * u);                  // 1→0, slow-fast-slow (soft landing)
+        }
+        container.position.y = action.arcHeight * vy;
+        faceXZ(dest.x, dest.z);
+
+        if (t >= 1) {
+          container.position.y = 0;
+          // Write the landing anchor so a follow-up step (a puddle) can
+          // build on the impact point, and emit the 'land' event.
+          landing.set(container.position.x, 0, container.position.z);
+          if (action.shake) kickShake(action.shake, action.shakeDuration ?? 0.4);
+          const dx = playerPos.x - container.position.x;
+          const dz = playerPos.z - container.position.z;
+          if (dx * dx + dz * dz <= action.landingRadius * action.landingRadius) {
+            damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
+            inflictOnHit();
+            if (action.knockbackSpeed) applyPlayerKnockback(dx, dz, action.knockbackSpeed);
           }
           clearAoeTelegraph();
-          strikeAlreadyHit = true;
+          if (stepId) stepEvents.add(stepId + ':land');
+          return true;            // landed — done
         }
-        break;
+        return false;
       }
+      case 'field': {
+        // Drop a persistent hazard field at the resolved origin (e.g. the
+        // king's leap spilling an acid puddle at its `landing` point). It
+        // ticks independently from here on — outliving this cast — and its
+        // DoT is credited to this enemy.
+        const o = resolveAnchor(action.origin, playerPos);
+        spawnHazardField(scene, {
+          x: o.x, z: o.z, radius: action.radius, lifetime: action.lifetime,
+          slow: action.slow, dps: action.dps, dotInterval: action.dotInterval,
+          damageType: dmgTypeOf(action.element), source: entityId,
+          color: action.element === 'fire' ? 0xff5a1e
+            : action.element === 'frost' ? 0x6ab8ff
+            : 0x6abf2a,   // acid / default green
+        });
+        return true;
+      }
+    }
+  }
+
+  /** True when a step's trigger condition holds this frame. */
+  function triggerMet(trigger: Trigger, clock: number): boolean {
+    if ('at' in trigger) return clock >= trigger.at;
+    return stepEvents.has(trigger.after + ':' + trigger.on);
+  }
+
+  /** At windup start: snapshot the locked target (the 'lockedTarget'
+   *  anchor) and raise the spatial ground ring for the ability's first
+   *  aoe/leap action — its "stand here and you eat it" tell. Melee/dash/
+   *  projectile abilities have no ground ring (the pose is the tell). A
+   *  leap clamps its landing zone outward to minDistance so a player
+   *  hugging the body still gets a real arc. */
+  function setupAbilityTelegraph(ability: Ability, playerPos: THREE.Vector3) {
+    aoeTarget.set(playerPos.x, 0, playerPos.z);
+    clearAoeTelegraph();
+    for (const step of ability.steps) {
+      const a = step.action;
+      if (a.kind === 'aoe') {
+        const o = a.origin === 'self'
+          ? { x: container.position.x, z: container.position.z }
+          : { x: aoeTarget.x, z: aoeTarget.z };
+        aoeTelegraph = spawnAoeTelegraph(scene, o.x, o.z, a.radius);
+        return;
+      }
+      // Only a COMMITTED leap (onto the locked target) telegraphs a
+      // landing ring — that's the "step off the marker" attack. A homing
+      // hop (toward 'player') is just chase movement; no ring.
+      if (a.kind === 'leap' && a.toward === 'lockedTarget') {
+        const minD = a.minDistance ?? 0;
+        const dx = aoeTarget.x - container.position.x;
+        const dz = aoeTarget.z - container.position.z;
+        const d = Math.hypot(dx, dz);
+        if (minD > 0 && d < minD) {
+          const dir = d > 1e-4
+            ? { x: dx / d, z: dz / d }
+            : { x: Math.sin(container.rotation.y), z: -Math.cos(container.rotation.y) };
+          aoeTarget.set(
+            container.position.x + dir.x * minD, 0,
+            container.position.z + dir.z * minD,
+          );
+        }
+        aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, a.landingRadius);
+        return;
+      }
+    }
+    // Lash — grow a slime tentacle out of the body toward the player. It
+    // reaches over the windup (driven in the winding state), so it both
+    // telegraphs and IS the attack. Reach = the lash's melee reach.
+    if (ability.pose === 'lash') {
+      const melee = ability.steps.find((st) => st.action.kind === 'melee')?.action;
+      const reach = melee && melee.kind === 'melee' ? melee.reach : 3.0;
+      clearLashTendril();
+      lashTendril = spawnLashTendril(container, spec.aimHeight ?? 0.6 * (spec.scale ?? 1), reach, 0xa8ff44);
     }
   }
 
@@ -874,7 +986,7 @@ export function createEnemy(
 
     // Body lifts as the soul leaves — spectral enemies rise more (sells
     // the float), physical creatures sag a touch.
-    const lift = presence === 'spectral'
+    const lift = spec.presence === 'spectral'
       ?  0.55 * t
       : -0.08 * t;
     built.group.position.y = lift;
@@ -887,8 +999,7 @@ export function createEnemy(
     setEyeFlare(Math.max(0, eyeT));
 
     // Halo opacity fades alongside.
-    if (haloMatL) haloMatL.opacity = Math.max(0, 1 - t);
-    if (haloMatR) haloMatR.opacity = Math.max(0, 1 - t);
+    eyePresenter.setHaloOpacity(Math.max(0, 1 - t));
 
     // Essence emission — spawn XP motes incrementally during the
     // dissolve so the body visibly becomes essence flowing into the
@@ -953,109 +1064,8 @@ export function createEnemy(
     }
   }
 
-  // Tip the head toward the player when aware — stronger the closer they
-  // are. Eases back to neutral when idle/returning. No-op without a neck.
-  function tickHeadCrane(dt: number, distance: number) {
-    if (!neck) return;
-    const aware = aggroed && state !== 'returning';
-    const prox = Math.max(0, 1 - distance / 5);   // 0 far → 1 point-blank
-    const targetPitch = aware ? -0.45 * prox : 0;
-    headPitch += (targetPitch - headPitch) * Math.min(1, dt * 6);
-    neck.rotation.x = neckBaseX + headPitch;
-  }
-
-  // Integrate + decay the recoil impulse, clamped against walls. Runs after
-  // AI movement so a connected charge recoils. Fast decay → a brief shove.
-  function tickKnockback(dt: number, walkable: WalkableRegion) {
-    if (knockVX === 0 && knockVZ === 0) return;
-    const r = walkable.clampMove(
-      container.position.x, container.position.z,
-      container.position.x + knockVX * dt,
-      container.position.z + knockVZ * dt,
-      spec.collisionRadius,
-      spec.phasing ? { ignoreObstacles: true } : undefined,
-    );
-    container.position.x = r.x;
-    container.position.z = r.z;
-    const decay = Math.exp(-dt * 9);
-    knockVX *= decay;
-    knockVZ *= decay;
-    if (Math.abs(knockVX) < 0.05 && Math.abs(knockVZ) < 0.05) { knockVX = 0; knockVZ = 0; }
-  }
-
-  // Swing the legs from how far the body actually moved this frame, so a
-  // walking enemy plants strides instead of sliding. No-op on floaters /
-  // non-humanoids (no hip pivots).
-  function tickLocomotion(dt: number) {
-    if (hipL || hipR) {
-      const movedX = container.position.x - prevX;
-      const movedZ = container.position.z - prevZ;
-      const moved = Math.hypot(movedX, movedZ);
-      // Advance the cycle by distance covered → feet roughly track the
-      // ground, less moonwalk than a time-based cycle.
-      stridePhase += (moved / STRIDE_LENGTH) * Math.PI * 2;
-      // Ease gait in/out so legs return to rest when the enemy stops
-      // (a frozen mid-stride pose reads worse than settling to neutral).
-      const targetAmp = moved > 0.0005 ? GAIT_SWING : 0;
-      gaitAmp += (targetAmp - gaitAmp) * Math.min(1, dt * 9);
-      const swing = Math.sin(stridePhase) * gaitAmp;
-      if (hipL) hipL.rotation.x = hipBaseLX + swing;
-      if (hipR) hipR.rotation.x = hipBaseRX - swing;
-      // Subtle vertical bob synced to the stride (up on each footfall).
-      built.group.position.y += Math.abs(Math.sin(stridePhase)) * gaitAmp * 0.05;
-    }
-    prevX = container.position.x;
-    prevZ = container.position.z;
-  }
-
-  // Idle "alive" overlay applied AFTER the state animation so it stacks on
-  // what the state set. position.y + container yaw are written by state code
-  // (so presence ADDS); built.group x/z + roll are untouched (writes direct).
-  function tickPresenceOverlay(dt: number) {
-    if (!presence) return;
-    presenceTime += dt;
-    const t = presenceTime + presencePhase;
-    switch (presence) {
-      case 'spectral': {
-        // Slow vertical bob + micro yaw sway. Wraith — float + drift.
-        built.group.position.y += Math.sin(t * 1.7) * 0.10;
-        container.rotation.y   += Math.sin(t * 0.9) * 0.05;
-        break;
-      }
-      case 'lurch': {
-        // Shambling corpse — lateral roll with a shamble-step dip
-        // synced to the roll. Reads as heavy + off-balance.
-        built.group.rotation.z  = Math.sin(t * 1.45) * 0.08;
-        built.group.position.y += Math.abs(Math.sin(t * 1.45)) * 0.05 - 0.025;
-        break;
-      }
-      case 'twitch': {
-        // Rat — fast yaw micro-shudder + scurry bob. Yaw is on
-        // container so the whole body twitches, not just the head.
-        container.rotation.y   += Math.sin(t * 7.0) * 0.045;
-        built.group.position.y += Math.abs(Math.sin(t * 8.5)) * 0.012;
-        break;
-      }
-      case 'coiled': {
-        // Skirmisher — taut shoulder bob + subtle weight-shift roll.
-        // Reads as ready to spring rather than at rest.
-        built.group.position.y += Math.sin(t * 2.4) * 0.022;
-        built.group.rotation.z  = Math.sin(t * 1.7) * 0.030;
-        break;
-      }
-      case 'chant': {
-        // Acolyte — slow ritual side rock + horizontal drift + orb
-        // emissive pulse. The orb pulse is what sells "channelling"
-        // even when the caster is just standing.
-        built.group.rotation.z  = Math.sin(t * 1.0) * 0.08;
-        built.group.position.x  = Math.sin(t * 0.8) * 0.025;
-        if (orbMat) {
-          orbMat.emissiveIntensity = orbBaseEmissive * (1 + 0.35 * Math.sin(t * 1.4));
-        }
-        break;
-      }
-    }
-  }
+  // Head-crane / knockback / locomotion / presence overlays live in the body
+  // animator (enemy-animation.ts), driven from update() below.
 
   function update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion, nav?: NavGrid) {
     if (!aliveLocal) {
@@ -1104,15 +1114,8 @@ export function createEnemy(
       return;
     }
 
-    if (flashMat) {
-      if (flashTimer > 0) {
-        flashTimer -= dt;
-        const t = Math.max(0, flashTimer / CONFIG.ENEMY_HIT_FLASH_DURATION);
-        flashMat.color.copy(originalColor).lerp(flashColor, t);
-      } else {
-        flashMat.color.copy(originalColor);
-      }
-    }
+    // Hit flash + glowing-core heartbeat/flare (see enemy-presentation.ts).
+    coreReactor.tick(dt);
 
     // Capture home yaw the very first tick so idle scan rotates around the
     // actual placed-orientation (set by builder via faceWorld at spawn).
@@ -1125,12 +1128,63 @@ export function createEnemy(
     // Vocalisation — hear it before you see it. (see tickVocalisation)
     tickVocalisation(dt);
 
+    // ── Inside-aura tick (king-slime body, etc.) ─────────────────────
+    // Cheap distance check + state machine for the "you're standing
+    // INSIDE me" pressure. Grace period means a quick roll-through
+    // costs no HP; lingering does.
+    if (spec.aura) {
+      const dx = playerPos.x - container.position.x;
+      const dz = playerPos.z - container.position.z;
+      const distSq = dx * dx + dz * dz;
+      const r = spec.aura.radius;
+      if (distSq <= r * r) {
+        if (spec.aura.slowFactor !== undefined && spec.aura.slowFactor !== 1.0) {
+          setPlayerInAura(spec.aura.slowFactor);
+        }
+        auraInsideTime += dt;
+        if (auraInsideTime >= spec.aura.gracePeriod) {
+          auraDamageTimer += dt;
+          if (auraDamageTimer >= spec.aura.dotInterval) {
+            auraDamageTimer -= spec.aura.dotInterval;
+            damagePlayer(spec.aura.dotDamage, entityId, spec.damageType ?? 'magic');
+          }
+        }
+      } else {
+        auraInsideTime = 0;
+        auraDamageTimer = 0;
+      }
+    }
+
+    // A dormant boss (the king behind its fog gate) stays inert — no
+    // perception, no aggro — until the player COMMITS by entering the gate
+    // (the encounter engages). Souls-style: the fight starts when you cross
+    // the threshold, not when the boss spots you from across the room.
+    // Gated on the fog wall existing so a fog-less boss can't deadlock
+    // (it would never engage without the cross trigger).
+    const dormant = !!spec.dormantUntilEngaged && levelHasFogWall() && !isBossEncounterEngaged();
+    if (wasDormant && !dormant) {
+      // Just woke (player committed at the fog gate). A grace beat before
+      // the first assault so the player can orient coming out of the
+      // walk-in — the boss closes the distance but holds fire. Push every
+      // ability onto a short cooldown (only lengthens, never shortens an
+      // already-staggered one).
+      for (const ab of abilities) {
+        cooldowns.set(ab.id, Math.max(cooldowns.get(ab.id) ?? 0, ENGAGE_GRACE));
+      }
+    }
+    wasDormant = dormant;
+    dormantLocal = dormant;
+    if (dormant) {
+      aggroed = false;
+      if (state !== 'idle') { state = 'idle'; phaseTimer = 0; }
+    }
+
     // ── Perception ─────────────────────────────────────────────────────
     // Refresh sight check every frame. Once aggroed, we stay aggroed
     // until loseSightTime seconds pass with no LOS AND we've transitioned
     // out of mid-attack states (winding/striking/recovering finish before
     // we drop aggro).
-    const seesPlayer = canSeePlayer(playerPos, walkable);
+    const seesPlayer = !dormant && canSeePlayer(playerPos, walkable);
     if (seesPlayer) {
       timeSinceLOS = 0;
       lastSeenPos.copy(playerPos);
@@ -1183,7 +1237,29 @@ export function createEnemy(
     }
 
     switch (state) {
+      case 'dormant': {
+        // No perception, no movement, no idle scan, no vocalisation.
+        // Only check is "did the boss-bar engagement flip on?" — the
+        // fog-wall cross trigger flips it, and that's our wake
+        // signal. We jump straight to chasing so the bar appearing,
+        // the boss intro, and the boss starting to hunt all land on
+        // the SAME frame the player crosses the threshold.
+        if (isBossEngaged()) {
+          state = 'chasing';
+          phaseTimer = 0;
+        }
+        break;
+      }
       case 'idle': {
+        // Dormant boss (king behind its fog gate): hold dead STILL — no
+        // gaze scan, no alerts. It's asleep, looming, until you commit.
+        // (The constant left-right idle scan reads as a twitchy giant.)
+        if (dormant) {
+          applyIdleEyes();
+          applyTilt(0);
+          built.group.position.y = 0;
+          break;
+        }
         // Shared aggro pickup — if a fellow mob has broadcast an alert
         // and we're inside its radius, join the fight. Sets lastSeenPos
         // to the alert location so 'searching' / 'chasing' have a
@@ -1264,9 +1340,7 @@ export function createEnemy(
           phaseTimer = 0;
         }
         // Dimmer eye flare during search — alert but not committed.
-        if (eyeMat) eyeMat.emissiveIntensity = baseEyeEmissive * 0.85;
-        if (haloMatL) haloMatL.color.copy(haloBaseColorL).multiplyScalar(0.8);
-        if (haloMatR) haloMatR.color.copy(haloBaseColorR).multiplyScalar(0.8);
+        eyePresenter.applySearch();
         applyTilt(0);
         built.group.position.y = 0;
         break;
@@ -1322,19 +1396,12 @@ export function createEnemy(
           currentAbility = ability;
           state = 'winding';
           phaseTimer = 0;
-          strikeAlreadyHit = false;
           rollWindupTime();
           playEnemyWindup(audioSizeFor(spec), container.position);
-          // AoE abilities lock their target + raise the ground telegraph
-          // the instant the windup begins, so the player has the full
-          // windup to step off the marker.
-          const aoe = aoeEffectOf(ability);
-          if (aoe) {
-            if (aoe.targetMode === 'self') aoeTarget.set(container.position.x, 0, container.position.z);
-            else aoeTarget.set(playerPos.x, 0, playerPos.z);
-            clearAoeTelegraph();
-            aoeTelegraph = spawnAoeTelegraph(scene, aoeTarget.x, aoeTarget.z, aoe.radius);
-          }
+          // Snapshot the committed target (the 'lockedTarget' anchor) +
+          // raise the spatial telegraph the instant the windup begins, so
+          // the player has the full windup to step off the marker.
+          setupAbilityTelegraph(ability, playerPos);
         } else {
           // No ability available (out of band, or on cooldown).
           const pref = spec.preferredRange ?? 0;
@@ -1375,20 +1442,25 @@ export function createEnemy(
         if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += actionDt;
         const t = Math.min(1, phaseTimer / currentWindupTime);
-        applyTelegraph(currentAbility.telegraph, 'windup', t);
+        applyTelegraph(currentAbility.pose, 'windup', t);
         if (aoeTelegraph) aoeTelegraph.setProgress(t);
+        if (lashTendril) lashTendril.setProgress(t);   // tentacle reaches out over the windup
         // Melee creep — close at half-speed during windup so a stationary
         // player still gets clipped (a backpedalling player out-runs it).
         // Charges DON'T creep: the dash strike is the approach.
-        const wantsCreep = currentAbility.creep
-          ?? (meleeReachOf(currentAbility) !== null);
-        const reach = meleeReachOf(currentAbility);
-        if (wantsCreep && reach !== null && distance > reach) {
+        const reach = firstMeleeReach(currentAbility);
+        if (wantsCreep(currentAbility) && reach !== null && distance > reach) {
           moveTowards(playerPos.x, playerPos.z, moveSpeed * 0.45, dt, walkable, nav);
         }
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
           phaseTimer = 0;
+          // Arm the timeline: clear per-step latches + events, capture the
+          // leap takeoff point.
+          stepStarted = currentAbility.steps.map(() => false);
+          stepDone = currentAbility.steps.map(() => false);
+          stepEvents.clear();
+          leapStart.copy(container.position);
         }
         break;
       }
@@ -1396,13 +1468,28 @@ export function createEnemy(
       case 'striking': {
         if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += actionDt;
-        for (const eff of currentAbility.effects) {
-          runEffect(eff, currentAbility, playerPos, distance, dt, walkable, nav);
+        // Run the timeline: fire each step once its trigger is met, then
+        // keep ticking it until its action latches done. Per-step state,
+        // so steps never interfere with each other.
+        const steps = currentAbility.steps;
+        for (let i = 0; i < steps.length; i++) {
+          if (stepDone[i]) continue;
+          if (!stepStarted[i]) {
+            if (!triggerMet(steps[i].trigger, phaseTimer)) continue;
+            stepStarted[i] = true;
+          }
+          const done = runAction(steps[i].action, currentAbility, steps[i].id, playerPos, distance, dt, walkable, nav);
+          if (done) stepDone[i] = true;
         }
-        applyTelegraph(currentAbility.telegraph, 'strike', 1);
+        applyTelegraph(currentAbility.pose, 'strike', 1);
+        if (lashTendril) lashTendril.snap();            // tentacle snaps out + flares on the strike
         if (phaseTimer >= currentAbility.strike) {
           state = 'recovering';
           phaseTimer = 0;
+          // Safety: snap any in-air leap Y back to ground if the touchdown
+          // didn't catch the final frame (dt overshoot), so the enemy
+          // can't end up floating at the arc peak.
+          container.position.y = 0;
         }
         break;
       }
@@ -1411,11 +1498,14 @@ export function createEnemy(
         if (!currentAbility) { state = 'chasing'; break; }
         phaseTimer += actionDt;
         const t = Math.min(1, phaseTimer / currentAbility.recover);
-        applyTelegraph(currentAbility.telegraph, 'recover', t);
+        applyTelegraph(currentAbility.pose, 'recover', t);
+        if (lashTendril) lashTendril.setProgress(Math.max(0, 1 - t));   // retract the tentacle
         if (phaseTimer >= currentAbility.recover) {
-          cooldowns.set(currentAbility.id, currentAbility.cooldown ?? 0);
+          // ±18% jitter so packs drift out of sync over the fight.
+          cooldowns.set(currentAbility.id, (currentAbility.cooldown ?? 0) * (0.82 + gameRng() * 0.36));
           currentAbility = null;
           clearAoeTelegraph();   // safety — normally disposed at strike
+          clearLashTendril();
           state = 'chasing';
           phaseTimer = 0;
         }
@@ -1427,16 +1517,46 @@ export function createEnemy(
     // Order matters: head crane + knockback, then gait (reads this frame's
     // net movement), then the presence overlay last so its idle bob stacks
     // on top of whatever the state animation set.
-    tickHeadCrane(dt, distance);
-    tickKnockback(dt, walkable);
-    tickLocomotion(dt);
-    tickPresenceOverlay(dt);
+    bodyAnim.tickHeadCrane(dt, distance, aggroed && state !== 'returning');
+    bodyAnim.tickKnockback(dt, walkable);
+    bodyAnim.tickLocomotion(dt);
+    bodyAnim.tickPresence(dt);
+    tickLashDeform(dt);
+  }
+
+  // Lash deform — on a 'lash' telegraph the body ELONGATES toward the
+  // player (the slime rears + reaches a pseudopod), squashing slightly on
+  // the other axes (volume-ish), then SNAPS forward on the strike. Eases
+  // back to base scale whenever not lashing. Scale is otherwise untouched
+  // by the animation layers (which use position/rotation), so it's free.
+  function tickLashDeform(dt: number) {
+    const lashing = currentAbility?.pose === 'lash';
+    let target = 0;
+    let ease = dt * 9;
+    if (lashing && state === 'winding') {
+      target = 0.5 * Math.min(1, phaseTimer / currentWindupTime);   // rear up slowly
+    } else if (lashing && state === 'striking') {
+      target = 1.0;                                                  // snap forward
+      ease = dt * 26;
+    }
+    lashStretch += (target - lashStretch) * Math.min(1, ease);
+    if (target === 0 && lashStretch < 0.002) lashStretch = 0;
+    // Elongate along local Z (forward/back, the player axis since the
+    // container faces the player); squash X/Y a touch.
+    built.group.scale.set(
+      groupBaseScale.x * (1 - 0.12 * lashStretch),
+      groupBaseScale.y * (1 - 0.16 * lashStretch),
+      groupBaseScale.z * (1 + 0.55 * lashStretch),
+    );
   }
 
   function setDebugState(s: EnemyState, t: number) {
     state = s;
     phaseTimer = t;
-    strikeAlreadyHit = false;
+    // Clear the timeline latches (debug poses don't run a real cast).
+    stepStarted = [];
+    stepDone = [];
+    stepEvents.clear();
     switch (s) {
       case 'chasing':
         setEyeFlare(0);
@@ -1483,12 +1603,18 @@ export function createEnemy(
     bossName: spec.bossName ?? spec.name,
     group: container,
     position: container.position,
-    aimHeight: 0.6 * (spec.scale ?? 1),   // taller body on a scaled boss
+    // Where the swing aims + the damage number floats. 0.6×scale assumes a
+    // body centred there; a low-rigged giant (the king) overrides it.
+    aimHeight: spec.aimHeight ?? 0.6 * (spec.scale ?? 1),
     hitFeedback: 'heavy',
     hitTargets: built.hitTargets,
     collisionRadius: spec.collisionRadius,
+    hitRadius: spec.hitRadius ?? 0,
     noPlayerCollision: !!spec.noPlayerCollision,
     phasing: !!spec.phasing,
+    get dormant() {
+      return dormantLocal;
+    },
     maxHp: spec.hp,
     get alive() {
       return aliveLocal;
@@ -1508,6 +1634,6 @@ export function createEnemy(
     setDebugState,
     setDebugPosition,
     faceWorld,
-    applyKnockback,
+    applyKnockback: bodyAnim.applyKnockback,
   };
 }

@@ -74,28 +74,31 @@ export const BUFFS: Record<string, BuffSpec> = {
   // not reskins. All are buff entries: the runtime already knows how to
   // tick them, scale by stacks, route the kill, and draw the VFX.
 
-  // BURN — bursty: high, fast ticks, short, does NOT stack (re-applying
-  // just refreshes). Physical. "Light it and back off." A blade that
-  // remembers heat.
+  // BURN — bursty: does NOT stack (re-applying just refreshes). Physical.
+  // "Light it and back off." A blade that remembers heat. Ticked every
+  // 0.4s it shaved ~6 of the player's 8 HP off a single proc — slowed to
+  // 0.6s so a burn stings without being a near-kill on its own.
   burn: {
     id: 'burn',
     displayName: 'BURN',
     color: 0xff6020,
-    tickInterval: 0.4,
+    tickInterval: 0.6,
     tickEffect: { type: 'damage', amount: 1, damageType: 'physical' },
     vfx: { color: 0xff6824, style: 'rise' },
   },
 
-  // BLEED — builds with each hit: medium, STACKS (per strike) up to 5,
-  // physical. Rewards fast weapons — daggers shred. Short-ish so you
-  // have to keep the pressure on to ramp it.
+  // BLEED — builds with each hit: STACKS (per strike), physical. Rewards
+  // fast weapons — daggers shred. At 5 stacks / 0.5s it hit 10 dmg/sec,
+  // more than the player's whole 8-HP bar in a second. Slowed to 0.8s and
+  // capped at 4 stacks (peak ~5/sec) so it still ramps under pressure but
+  // doesn't melt you — mirrors the poison attrition tune.
   bleed: {
     id: 'bleed',
     displayName: 'BLEED',
     color: 0xcc1418,
-    tickInterval: 0.5,
+    tickInterval: 0.8,
     tickEffect: { type: 'damage', amount: 1, damageType: 'physical' },
-    maxStacks: 5,
+    maxStacks: 4,
     vfx: { color: 0xcc1418, style: 'drip' },
   },
 

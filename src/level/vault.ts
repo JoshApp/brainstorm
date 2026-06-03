@@ -1,5 +1,6 @@
 import type { PropSpec, TileMap, TorchSpec, CellBoundEntity, CellKey } from './types';
 import type { EncounterSpec } from '../content/encounters';
+import type { PaletteV1 } from './palette';
 
 // Vault system — pre-authored room chunks the procgen composer
 // stitches into multi-room floors. Each vault is a small ASCII map
@@ -109,4 +110,22 @@ export interface Vault {
    * one cell — e.g. king-flanking sconces at x = ±2.5).
    */
   cellProps?: Partial<Record<CellKey, CellBoundEntity[]>>;
+
+  /**
+   * Per-vault palette override. Last layer of the cascade
+   * (act → floor → boss → vault). Use for vaults that intentionally
+   * differ from their act's defaults — e.g. a treasure room that
+   * stays warm-gold even in a cool-blue act, or a ritual chamber
+   * that wants 'dark' density even where the act is 'medium'.
+   */
+  palette?: PaletteV1;
+
+  /**
+   * Boss-arena fog wall. Position + rotation of the mist curtain
+   * at this vault's threshold (vault-local coords, vault centre =
+   * (0,0)). Only honoured when this vault is selected as the boss
+   * arena for a floor; ignored for non-boss tag use. Colour comes
+   * from BossSpec.mistColor (per-boss identity), not from here.
+   */
+  bossMist?: { x: number; z: number; rotY?: number };
 }
