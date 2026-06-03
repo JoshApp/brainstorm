@@ -203,8 +203,11 @@ function buildStarterAltars(): LevelSpec {
 function buildBoilingKing(): LevelSpec {
   return smallChamber('boiling-king', 'boiling king', 20, 22, () => ({
     spawns: [
-      // King well to the north so the first leap reads as "across the room".
-      { enemyId: 'boiling-king', x: 0, z: -7, roomId: 'test-boiling-king-room' },
+      // King well to the north so the first leap reads as "across
+      // the room", dormant until the fog wall is crossed. Test
+      // chamber mirrors the production boss-floor behaviour
+      // (procgen B-tile spawns are also dormant + woken on cross).
+      { enemyId: 'boiling-king', x: 0, z: -7, roomId: 'test-boiling-king-room', dormant: true },
     ],
     // Threshold wall at z=5 with a 3.4m doorway — the player spawns in the
     // entry strip (south, z≈8) and the arena is north of it. These full-height

@@ -347,6 +347,16 @@ export type EnemySpawnSpec = {
    * procgen rolls them per spawn based on depth.
    */
   modifiers?: string[];
+  /**
+   * If true, this spawn starts in the `dormant` aiState — no
+   * perception, no movement, no idle scan, no vocalisation. Stays
+   * dormant until the boss-engagement flag flips (the fog wall is
+   * crossed). Used for boss-floor spawns so the boss doesn't aggro
+   * the moment the player enters the level; only when they cross
+   * into the arena. Debug scenarios that spawn a boss directly
+   * leave this off so the bar engages on legacy aggro.
+   */
+  dormant?: boolean;
 };
 
 /**

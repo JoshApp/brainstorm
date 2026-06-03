@@ -227,6 +227,11 @@ export interface SpawnCell {
   col: number;
   row: number;
   enemyId: string;
+  /** True for boss spawns extracted from the B tile — the spawn
+   *  starts in the dormant aiState so the boss doesn't aggro until
+   *  the player crosses the fog wall. Composer copies this onto the
+   *  EnemySpawnSpec.dormant field. */
+  dormant?: boolean;
 }
 
 export interface PopulatedTemplate {
@@ -241,6 +246,12 @@ export interface PopulatedTemplate {
 export function populateTemplate(
   template: TileMap, depth: number, rand: () => number, encounter?: EncounterSpec,
   palette?: ResolvedPaletteV1,
+  /** When false, B tiles are treated as X (rolled enemy) instead of
+   *  expanding to the boss spawn. Set this for any vault that
+   *  ISN'T the boss arena — guards against a stray B in a combat
+   *  vault accidentally spawning a second boss in a pre-arena
+   *  room. composeFloor opts only the boss-tagged vault in. */
+  allowBossExpansion: boolean = true,
 ): PopulatedTemplate {
   // Encounter / event multipliers — both default to 1.0 (current
   // behaviour) so existing seeds reproduce when the palette is
@@ -283,7 +294,18 @@ export function populateTemplate(
           out += '.';
         }
       } else if (ch === 'B') {
-        spawns.push({ col: colIdx, row: rowIdx, enemyId: bossFor(depth) });
+        if (allowBossExpansion) {
+          // dormant: boss waits in the arena until the player crosses
+          // the fog wall + the engagement flag flips.
+          spawns.push({ col: colIdx, row: rowIdx, enemyId: bossFor(depth), dormant: true });
+        } else {
+          // Stray B in a non-boss vault — treat as X so a centerpiece
+          // encounter spawns a rolled mob instead of a duplicate
+          // boss. (Prevents the "two slime kings, one in the room
+          // before the arena" bug.)
+          const id = packIds ? (packIds[packIdx++] ?? 'rat') : pickWeighted(table, rand);
+          spawns.push({ col: colIdx, row: rowIdx, enemyId: id });
+        }
         out += '.';
       } else if (ch === '$') {
         // Loot slot — PARTIAL fill: a chest sometimes appears here, the

@@ -9,130 +9,6 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
-        "text": "Unify openings (2/2): route doors + cobweb through spawnFitting too"
-      },
-      {
-        "tag": "fix",
-        "text": "Unify openings (1/2): fix boss fog-gate placement via Opening + fitting"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf: clip camera far plane at the fog distance (50m → 13m)"
-      },
-      {
-        "tag": "tech",
-        "text": "Refactor"
-      },
-      {
-        "tag": "tune",
-        "text": "Settings"
-      },
-      {
-        "tag": "content",
-        "text": "Refactor"
-      },
-      {
-        "tag": "tune",
-        "text": "Settings"
-      },
-      {
-        "tag": "tech",
-        "text": "Refactor"
-      },
-      {
-        "tag": "fix",
-        "text": "Boss bar: latch the fade-out so it stays hidden (fixes test-chamber hang)"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss"
-      },
-      {
-        "tag": "content",
-        "text": "Refactor"
-      },
-      {
-        "tag": "tech",
-        "text": "Refactor"
-      },
-      {
-        "tag": "tech",
-        "text": "Refactor"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix: attribute split children to parent's room by entityId, not position"
-      },
-      {
-        "tag": "fix",
-        "text": "Fog gate: fix dormant-boss deadlock + soulslike forced walk-through"
-      },
-      {
-        "tag": "tune",
-        "text": "Graphics settings"
-      },
-      {
-        "tag": "tune",
-        "text": "Fog gate: real block+interact gate, fills the doorway, un-stealable tap"
-      },
-      {
-        "tag": "tune",
-        "text": "Fog gate"
-      },
-      {
-        "tag": "tune",
-        "text": "Fog gate: reliable open (auto-part on approach + tap) + dormant boss holds still"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss sleeps behind the fog gate; entry-grace immortality on cross"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss encounter container (source of truth) + 2 phases + a real Dark Souls fog gate"
-      },
-      {
-        "tag": "tune",
-        "text": "Lash tentacle VFX + remove the 50% bar marker"
-      },
-      {
-        "tag": "fix",
-        "text": "Lash = a slime tentacle (lean + body-elongation deform); prince stuck fix + softer hop"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss feel pass: desync, calmer cadence, lash windup, glowing prince cores, split spit, taller arena"
-      },
-      {
-        "tag": "tune",
-        "text": "Slime King: chase hops, a lash attack, smaller core + the split is now a 3-bar boss fight"
-      },
-      {
-        "tag": "tune",
-        "text": "King core: real glowing nucleus + punchy hit feedback"
-      },
-      {
-        "tag": "tune",
-        "text": "Slime King polish: hittable core, surface hitboxes, slow drop, slime puddle"
-      },
-      {
-        "tag": "tune",
-        "text": "Slime King: leave a slow acid puddle on landing (field primitive)"
-      },
-      {
-        "tag": "tune",
-        "text": "Abilities: migrate to a composable step-timeline model (engine swap)"
-      },
-      {
-        "tag": "fix",
-        "text": "Slime King: fix the leap so it actually travels to its landing zone"
-      },
-      {
-        "tag": "tune",
         "text": "King: leap actually moves + landing damage + core damage flash"
       },
       {
@@ -206,6 +82,136 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Migrate remaining spawn-prop vaults to cellProps"
+      },
+      {
+        "tag": "tune",
+        "text": "Extract inspect-mode into its own module"
+      },
+      {
+        "tag": "fix",
+        "text": "Inspect previews: auto-frame subject, fix lighting, studio backdrop"
+      },
+      {
+        "tag": "content",
+        "text": "Vault format experiment — author same vault in 3 formats"
+      },
+      {
+        "tag": "tune",
+        "text": "Palette & Pass system DRAFT v0 (types only, no runtime)"
+      },
+      {
+        "tag": "tune",
+        "text": "tests"
+      },
+      {
+        "tag": "tune",
+        "text": "Make the pre-push test gate durable: prepare script wires core.hooksPath"
+      },
+      {
+        "tag": "content",
+        "text": "Delete LEVEL_1 + LEVEL_2 + all per-enemy tile-char machinery"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix stair-archway guard: precise (stair-room perimeter), not crude distance"
+      },
+      {
+        "tag": "tune",
+        "text": "Stairs: geometry-aware orientation — back of room, facing the entrance"
+      },
+      {
+        "tag": "content",
+        "text": "vault-validate: recognize the '*' light char (post-merge with torch refactor)"
+      },
+      {
+        "tag": "fix",
+        "text": "Creator suite (delve CLI + faithful reach) + fix the real stairs soft-lock"
+      },
+      {
+        "tag": "tune",
+        "text": "Unified '*' light char + inspect-mode subject/scene split"
+      },
+      {
+        "tag": "content",
+        "text": "Migrate boss + specific mob spawns to PropSpec; vault.torches array"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix stairs-unreachable soft-lock: stair-room mouths get doorframes"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix Act boss spawning the wrong creature (wraith instead of boiling king)"
+      }
+    ]
+  },
+  {
+    "version": "Build 9",
+    "date": "2026-06-01",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "snap"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix archway choke (the real soft-lock cause) + guard it"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix chasm-bridge soft-lock: widen margins to >= 2m (collision-traversable)"
+      },
+      {
+        "tag": "tune",
+        "text": "snap: real lighting in inspect mode (key + rim, not flat ambient)"
+      },
+      {
+        "tag": "tune",
+        "text": "Bosses: boiling-king fills every act (interim) — no more placeholder wraith"
+      },
+      {
+        "tag": "content",
+        "text": "Item viewer scenario + burrower (floor-emerge) mob"
+      },
+      {
+        "tag": "tune",
+        "text": "Lighting"
+      },
+      {
+        "tag": "tune",
+        "text": "Event slots: rollable feature placeholders (?) through the manifest"
+      },
+      {
+        "tag": "fix",
+        "text": "snap"
+      },
+      {
+        "tag": "tune",
+        "text": "Loot slots: rollable, partial-fill reward placeholders ($)"
+      },
+      {
+        "tag": "tune",
+        "text": "Encounters"
+      },
+      {
+        "tag": "content",
+        "text": "snap"
+      },
+      {
+        "tag": "tune",
+        "text": "Two new mobs: pit moth (swarmer) + lasher (long-reach turret)"
+      },
+      {
+        "tag": "tune",
+        "text": "Encounters: coherent room-level packs (prototype on 2 vaults)"
+      },
+      {
+        "tag": "tune",
+        "text": "snap: --frames=N animation grid"
+      },
+      {
+        "tag": "tune",
+        "text": "Pilot: goto verb + cross-call persistence"
       }
     ]
   }

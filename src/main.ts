@@ -393,25 +393,32 @@ const input = createTouchInput(canvas, {
       currentLevel.enemies,
       getAllInteractables(),
     );
-    if (!hit) return false;
-    if (hit.kind === 'enemy') {
-      // Tapped an enemy anywhere on screen → fire an attack. Combat's
-      // cone check handles whether the swing actually lands; tap just
-      // signals intent.
+    const inRange = getInRangeInteractable();
+
+    // Smart intent arbiter:
+    //   1. Tap directly on an enemy → swing (combat intent is explicit).
+    //   2. Tap on an in-range interactable mesh → use it.
+    //   3. Any other tap WHILE an in-range interactable exists → use it.
+    //      Catches the "I tapped near the chest but the raycast missed
+    //      its hitbox" case, plus the "I tapped slightly off the stairs
+    //      and the attack animation also fired" bug.
+    //   4. Otherwise → return false so the right-side-swing fallback
+    //      can fire the attack.
+
+    if (hit?.kind === 'enemy') {
       triggerAttack();
       return true;
     }
-    // Interactable: only if it's in range AND has an active prompt.
-    // Range is owned by the interactables system via getInRangeInteractable;
-    // anything else would let the player use a chest from across the room.
-    const inRange = getInRangeInteractable();
-    if (inRange && inRange.id === hit.interactable.id) {
+    if (hit?.kind === 'interactable' && inRange?.id === hit.interactable.id) {
       hit.interactable.onUse();
       return true;
     }
-    // Out of range — let the tap fall through (right-side becomes a swing,
-    // left-side does nothing). Some feedback "too far" would help here
-    // later; ignoring is fine for V1.
+    if (inRange) {
+      // No explicit enemy tap, and something usable is right here.
+      // Consume the tap so the right-side fallback doesn't swing.
+      inRange.onUse();
+      return true;
+    }
     return false;
   },
   onInteract() {

@@ -5,6 +5,7 @@ import { applyPlayerKnockback } from '../player/knockback';
 import { setPlayerInAura } from '../player/inside-aura';
 import { kickShake } from '../combat/screen-shake';
 import { spawnHazardField } from '../combat/hazard-field';
+import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
@@ -88,6 +89,11 @@ export function disposeEnemy(e: Enemy): void {
 
 export type EnemyState =
   | 'idle'        // at post, scanning, has not seen player
+  | 'dormant'     // boss-style spawn: no AI, no perception, waits for an
+                  // external wake signal (e.g. boss-bar engagement).
+                  // Used so a procgen-placed boss doesn't aggro the
+                  // moment the player enters the LEVEL — only when the
+                  // player enters the ARENA (crosses the fog wall).
   | 'alerted'     // first sight — brief rear-up before committing
   | 'chasing'
   | 'winding'
@@ -203,6 +209,9 @@ export function createEnemy(
   position: THREE.Vector3,
   spec: EnemySpec,
   onDeath?: EnemyOnDeath,
+  /** Optional spawn-time flags. `dormant: true` skips perception
+   *  + AI + idle animation until the boss-engagement flag flips. */
+  options?: { dormant?: boolean },
 ): Enemy {
   // Container: world position + yaw to face player.
   const container = new THREE.Group();
@@ -311,7 +320,7 @@ export function createEnemy(
   // 'lash' telegraph (the slime rears + reaches, then snaps on strike).
   let lashStretch = 0;
 
-  let state: EnemyState = 'idle';
+  let state: EnemyState = options?.dormant ? 'dormant' : 'idle';
   let phaseTimer = 0;
   let aliveLocal = true;
   // ── Strike-phase timeline state ────────────────────────────────────
@@ -1228,6 +1237,19 @@ export function createEnemy(
     }
 
     switch (state) {
+      case 'dormant': {
+        // No perception, no movement, no idle scan, no vocalisation.
+        // Only check is "did the boss-bar engagement flip on?" — the
+        // fog-wall cross trigger flips it, and that's our wake
+        // signal. We jump straight to chasing so the bar appearing,
+        // the boss intro, and the boss starting to hunt all land on
+        // the SAME frame the player crosses the threshold.
+        if (isBossEngaged()) {
+          state = 'chasing';
+          phaseTimer = 0;
+        }
+        break;
+      }
       case 'idle': {
         // Dormant boss (king behind its fog gate): hold dead STILL — no
         // gaze scan, no alerts. It's asleep, looming, until you commit.

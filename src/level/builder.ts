@@ -1086,6 +1086,7 @@ export function buildLevel(
       new THREE.Vector3(resolved.x, 0, resolved.z),
       enemySpec,
       onEnemyDeath,
+      { dormant: s.dormant },
     );
     enemy.faceWorld(spec.startPos.x, spec.startPos.z);
     enemies.push(enemy);

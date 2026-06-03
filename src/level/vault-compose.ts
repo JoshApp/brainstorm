@@ -226,8 +226,13 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
 
   // Resolve once and reuse below for every pass.
   const resolvedPalette = resolvePalette(actForDepth(depth).palette, vault.palette);
+  // Vault preview: allow boss expansion only for boss-tagged
+  // vaults so a `vault-boss-hall` preview still shows the king,
+  // while a `vault-combat-hall` preview shows an X-rolled mob
+  // instead of a stray-B boss.
+  const allowBoss = vault.tags.includes('boss');
   const { map: populated, spawns: cellSpawns } = populateTemplate(
-    vault.map, depth, rand, encounterFor(vault), resolvedPalette,
+    vault.map, depth, rand, encounterFor(vault), resolvedPalette, allowBoss,
   );
   const ceil = ceilingFor(vault, depth, 1);
   const sub = parseTileMap(populated, {
@@ -507,8 +512,13 @@ export function composeFloor(
     // Resolve palette once per vault — feeds populateTemplate's
     // encounter/event gating AND the carve/light/decor passes below.
     const resolvedPalette = resolvePalette(actForDepth(depth).palette, pv.vault.palette);
+    // Only the boss-tagged vault on a boss floor expands B → boss.
+    // Stray B chars in non-boss vaults (combat-hall, combat-doors)
+    // fall through to a rolled-enemy spawn — guards against a
+    // duplicate boss in a pre-arena room.
+    const allowBoss = opts.isBossFloor === true && pv.vault.tags.includes('boss');
     const { map: populated, spawns: cellSpawns } = populateTemplate(
-      pv.vault.map, depth, rand, encounterFor(pv.vault), resolvedPalette,
+      pv.vault.map, depth, rand, encounterFor(pv.vault), resolvedPalette, allowBoss,
     );
     const ceil = ceilingFor(pv.vault, depth, i);
     const sub = parseTileMap(populated, {
@@ -560,6 +570,7 @@ export function composeFloor(
           x: cs.col + 0.5 - W / 2 + pv.offsetX,
           z: cs.row + 0.5 - D / 2 + pv.offsetZ,
           roomId: pv.roomId,
+          dormant: cs.dormant,
         });
       }
     }
