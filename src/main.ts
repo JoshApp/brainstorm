@@ -20,6 +20,7 @@ import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale } from './style/render-target';
+import { installBandedLighting } from './style/banded-lighting';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
   INSPECT_AMBIENT, INSPECT_REQUESTED,
@@ -168,6 +169,9 @@ scene.add(ambient);
 // asks isInspectActive().
 
 // --- Static surface materials (PS1) ---
+// Patch the global lighting chunk FIRST so every material compiles with banded
+// direct lighting (cel chiaroscuro). Must precede any material compile.
+installBandedLighting();
 const materials = buildMaterials();
 initRenderPipeline(renderer);
 
