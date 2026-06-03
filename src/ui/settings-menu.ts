@@ -54,7 +54,10 @@ export function createSettingsMenu() {
     // viewport minus side safe-area (landscape notches), bound height by
     // the DYNAMIC viewport minus vertical safe-area so it never clips
     // under a notch or runs off a short landscape phone.
-    width: 'min(380px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))',
+    // Landscape-locked → use the horizontal room. Wide enough that all
+    // six tabs sit in one row without clipping; clamps to the viewport
+    // (minus side safe-area) on smaller phones.
+    width: 'min(620px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))',
     padding: '16px 18px',
     background: PANEL_BG,
     border: BORDER,
@@ -222,16 +225,19 @@ function buildPanelContents() {
     btn.textContent = t.label;
     btn.dataset.tabId = t.id;
     Object.assign(btn.style, {
-      flex: '1 1 auto',
+      flex: '1 1 0',          // equal share of the row → all six fit, none clip
+      minWidth: '0',
       minHeight: '42px',
-      padding: '8px 4px',
+      padding: '8px 6px',
       border: 'none',
       background: 'transparent',
       color: 'rgba(200, 170, 130, 0.65)',
       fontFamily: 'inherit',
-      fontSize: '11px',
+      fontSize: '10px',
       fontWeight: '600',
-      letterSpacing: '0.18em',
+      letterSpacing: '0.06em',
+      whiteSpace: 'nowrap',
+      textAlign: 'center',
       cursor: 'pointer',
       borderBottom: '2px solid transparent',
       touchAction: 'manipulation',
