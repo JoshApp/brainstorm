@@ -3,7 +3,7 @@ import { onInventoryChanged } from '../player/inventory';
 import { onPlayerStatsChanged } from '../state/player-stats';
 import { ITEMS } from '../content/items';
 import { createSheet, type Sheet } from './menu-shell';
-import { openSettings } from './settings-menu';
+import { buildSettingsContent } from './settings-menu';
 import { buildCharacterContent } from './character-screen';
 import { buildCodexContent } from './codex-screen';
 import { FONT_UI } from './hud';
@@ -21,8 +21,11 @@ import { buildDetailsColumn } from './inventory-details';
 // inventory; CHARACTER / CODEX reuse the content builders from their
 // screens so the standalone entry points still work too.
 
-type Tab = 'gear' | 'character' | 'codex';
-const TAB_LABELS: Record<Tab, string> = { gear: 'GEAR', character: 'CHARACTER', codex: 'CODEX' };
+type Tab = 'gear' | 'character' | 'codex' | 'settings';
+const TAB_LABELS: Record<Tab, string> = {
+  gear: 'GEAR', character: 'CHARACTER', codex: 'CODEX', settings: '⚙',
+};
+const TABS: readonly Tab[] = ['gear', 'character', 'codex', 'settings'];
 
 // ── Module-level state ───────────────────────────────────────────────
 let openButton: HTMLButtonElement | null = null;
@@ -172,32 +175,20 @@ function buildTabRow(header: HTMLDivElement) {
     overflowX: 'auto',
   } as Partial<CSSStyleDeclaration>);
 
-  (['gear', 'character', 'codex'] as Tab[]).forEach((t) => {
+  // Tabs, including SETTINGS (⚙) as a peer — tapping it swaps the body
+  // to settings IN-PLACE, never a second overlay on top of the menu.
+  TABS.forEach((t) => {
     const b = tabButton(TAB_LABELS[t], () => selectTab(t));
     tabButtons[t] = b;
+    // The ⚙ tab floats to the right edge, set apart from the loadout tabs.
+    if (t === 'settings') {
+      b.style.marginLeft = 'auto';
+      b.style.fontSize = '18px';
+      b.style.letterSpacing = '0';
+      b.setAttribute('aria-label', 'settings');
+    }
     row.appendChild(b);
   });
-
-  // Settings gear — pushed to the right edge of the tab row. Lives here
-  // (not the gameplay HUD) so the HUD stays clean.
-  const gear = document.createElement('button');
-  gear.textContent = '⚙';
-  gear.setAttribute('aria-label', 'settings');
-  Object.assign(gear.style, {
-    marginLeft: 'auto',
-    flex: '0 0 auto',
-    minWidth: '40px',
-    height: '40px',
-    background: 'transparent',
-    border: 'none',
-    color: TEXT_DIM,
-    fontSize: '18px',
-    cursor: 'pointer',
-    touchAction: 'manipulation',
-    WebkitTapHighlightColor: 'transparent',
-  } as Partial<CSSStyleDeclaration>);
-  gear.addEventListener('click', (e) => { e.stopPropagation(); openSettings(); });
-  row.appendChild(gear);
 
   titleEl?.replaceWith(row);
   syncTabStyles();
@@ -254,8 +245,10 @@ function renderTab() {
     const c = buildCharacterContent();
     charDispose = c.dispose;
     sheet.body.appendChild(c.el);
-  } else {
+  } else if (activeTab === 'codex') {
     sheet.body.appendChild(buildCodexContent());
+  } else {
+    sheet.body.appendChild(buildSettingsContent());
   }
 }
 

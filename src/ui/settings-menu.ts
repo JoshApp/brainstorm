@@ -125,7 +125,8 @@ function buildPanelContents() {
   if (!panel) return;
   panel.replaceChildren();
 
-  // Header row — title + close. Stays at panel top above the tabs.
+  // Header row — title + close. Standalone panel only (title screen /
+  // ESC); the in-menu SYSTEM tab gets its chrome from the menu shell.
   const header = document.createElement('div');
   Object.assign(header.style, {
     display: 'flex',
@@ -163,6 +164,17 @@ function buildPanelContents() {
   header.append(title, close);
   panel.appendChild(header);
 
+  // Standalone panel scrolls its own content area (header + tabs stay
+  // fixed above it).
+  buildSettingsBody(panel, true);
+}
+
+/** Build the settings tab bar + active-tab content into `container`.
+ *  Reusable as the in-menu SYSTEM tab (see inventory-panel.ts) as well as
+ *  the standalone panel. `scrollContent` true → the content area is its
+ *  own bounded scroller (standalone, header/tabs fixed); false → content
+ *  grows naturally and the enclosing menu body scrolls (tab context). */
+export function buildSettingsBody(container: HTMLElement, scrollContent: boolean) {
   // Tabs available depend on whether there's a live run — RUN tab
   // appears only when actions are wired. When live, RUN sits FIRST so
   // the most-reached affordances (CHARACTER, QUIT TO MENU, etc.) land
@@ -189,24 +201,23 @@ function buildPanelContents() {
     paddingBottom: '6px',
     flexShrink: '0',
   } as Partial<CSSStyleDeclaration>);
-  panel.appendChild(tabBar);
+  container.appendChild(tabBar);
 
-  // Content area — scrollable when contents exceed viewport. Body of
-  // the active tab is rendered into this on each tab switch.
+  // Content area. Standalone → its own bounded scroller (flex+overflow);
+  // tab context → grows naturally so the menu body does the scrolling.
   const content = document.createElement('div');
   Object.assign(content.style, {
     display: 'flex',
     flexDirection: 'column',
     gap: '14px',
-    overflowY: 'auto',
-    paddingRight: '4px',
-    flex: '1 1 auto',
-    minHeight: '0',
     // Cushion the bottom so a swipe-up doesn't overshoot past the
     // last control under iOS overscroll.
     paddingBottom: '8px',
+    ...(scrollContent
+      ? { overflowY: 'auto', paddingRight: '4px', flex: '1 1 auto', minHeight: '0' }
+      : {}),
   } as Partial<CSSStyleDeclaration>);
-  panel.appendChild(content);
+  container.appendChild(content);
 
   const renderTab = (id: TabId) => {
     activeTab = id;
@@ -247,6 +258,20 @@ function buildPanelContents() {
     tabBar.appendChild(btn);
   }
   renderTab(activeTab);
+}
+
+/** Settings rendered as the in-menu SYSTEM tab (see inventory-panel.ts):
+ *  no header/close (the menu shell provides those), and content grows
+ *  naturally so the menu body scrolls. Always opens focused on RUN when a
+ *  run is live (the most-reached mid-game affordances). */
+export function buildSettingsContent(): HTMLElement {
+  activeTab = 'run';
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, {
+    display: 'flex', flexDirection: 'column', gap: '12px',
+  } as Partial<CSSStyleDeclaration>);
+  buildSettingsBody(wrap, false);
+  return wrap;
 }
 
 // ── Tab content builders ───────────────────────────────────────────
