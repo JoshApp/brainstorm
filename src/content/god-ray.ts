@@ -1,7 +1,13 @@
 import type { ModelSpec } from '../ecs/model-types';
 
 // God ray — a shaft of light pouring through a crack in the ceiling
-// down to the floor. Pure atmosphere; no gameplay function.
+// down to the floor. The PROP itself does nothing when touched, but it
+// is NOT free decoration: under DELVE's "Lighting as signal" pillar an
+// uncommon light source is a PROMISE that something is there. A god ray
+// ANCHORS CONTENT — it must land on or beside something the player can
+// engage with (altar, chest, corpse-with-note, boss spawn). A beam over
+// empty floor trains the player to distrust light, which quietly breaks
+// the whole signalling language. See the Usage rules below.
 //
 // Built in the stair-beam pattern (see src/interactables/stairs.ts):
 //   - Bright ceiling-crack emitter at the top — the visible source.
@@ -18,13 +24,17 @@ import type { ModelSpec } from '../ecs/model-types';
 // red bleed from a fire-wisp gradient.
 //
 // Usage rules:
-//   - Sparingly. A god ray loses meaning if every room has one;
-//     they should read as "this chamber is special." The
-//     composer/library should drop them in maybe one in every
-//     few vaults, not as a default decoration.
-//   - Place where the player can WALK INTO the beam — that's
-//     the strongest mood payoff (you cross a shaft of light,
-//     dust glints around you).
+//   - ANCHOR, never decorate. Every god ray must illuminate or sit
+//     beside engageable content. Never place one to "fill" an empty
+//     room — if a room feels empty, give it a reason to exist
+//     (encounter, hint, interactable), don't light up a corner.
+//   - Land the beam ON the anchor (≤~1.5m). The payoff is "I crossed
+//     the light AND arrived at the thing." A beam offset several
+//     metres into open floor, with the altar/boss across the room,
+//     reads as a random shaft — anchored on paper, noise in play.
+//   - Sparingly. A god ray loses meaning if every room has one; they
+//     should read as "this chamber is special." Maybe one in every
+//     few vaults — and only where there's content to anchor.
 
 export interface GodRayOpts {
   /** Hex color tint. Default pale moonlight blue. */
