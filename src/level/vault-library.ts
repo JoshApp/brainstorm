@@ -591,6 +591,39 @@ const ENCOUNTER_ARENA: Vault = {
   // arena-waves.ts). The gate only rises once the last wave is dead.
 };
 
+// CHALLENGE arena — the VOLUNTARY twin of the trap. Same shape (entry alcove,
+// 'D' gate, arena below) but the centrepiece is a chained CHALLENGE OFFERING
+// instead of a chest. The gate does NOT slam on entry — placing an offering in
+// the room flips its arena gate to the 'offering' trigger (builder.ts). You
+// walk in, read the bound reliquary, and CHOOSE to accept: the gate slams, the
+// same wave gauntlet summons, and surviving it shatters the chains for a
+// generous hoard. Risk you opt into, for loot you can see.
+const CHALLENGE_ARENA: Vault = {
+  id: 'challenge-arena',
+  tags: ['treasure'],
+  map: [
+    '##############',
+    '#....*....*..#',
+    '#............#',
+    '#............#',
+    '#####DDD######',
+    '#............#',
+    '#............#',
+    '#............#',
+    '#............#',
+    '#............#',
+    '#....*....*..#',
+    '##############',
+  ],
+  minDepth: 3,
+  weight: 1,
+  torchTint: TORCH_BLOOD,
+  // The reliquary sits in the centre of the arena proper (below the gate).
+  props: [
+    { kind: 'challenge-offering', x: 0, z: 2 },
+  ],
+};
+
 // Blood altar encounter. A single cursed offering (ring of marrow)
 // floats over a basin in the centre of the chamber. Walking into the
 // glow does nothing; TAKE costs 4 HP and erupts in blood — the item
@@ -1066,7 +1099,7 @@ export const VAULTS: Vault[] = [
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
   ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
-  ENCOUNTER_ARENA, ENCOUNTER_OSSUARY,
+  ENCOUNTER_ARENA, CHALLENGE_ARENA, ENCOUNTER_OSSUARY,
   BOSS_ANTECHAMBER, BOSS_CATHEDRAL, BOSS_HALL,
   EXIT_SIMPLE, EXIT_ALCOVE, EXIT_GRAND,
 ];

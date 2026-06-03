@@ -20,6 +20,7 @@ import { spawnChest } from '../interactables/chest';
 import { spawnStashChest } from '../interactables/stash-chest';
 import { spawnStarterAltar } from '../interactables/starter-altar';
 import { spawnBloodAltar } from '../interactables/blood-altar';
+import { spawnChallengeOffering } from '../interactables/challenge-offering';
 import { ITEMS } from '../content/items';
 import { spawnTutorialHint } from '../effects/tutorial-hints';
 import {
@@ -506,6 +507,10 @@ export function buildLevel(
   // walkable region + room membership exist. Collected here from props +
   // spec.doors so they all flow through the same placement + seal path.
   const pendingFittings: OpeningSpec[] = [];
+  // Rooms that hold a challenge offering → their arena gate becomes a
+  // voluntary 'offering' trigger (set on the door spec below) instead of a
+  // trap that slams on entry.
+  const offeringRooms = new Set<string>();
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
@@ -528,6 +533,17 @@ export function buildLevel(
       const { group: altarGroup, obstacle } = buildAltarBlock(prop.x, prop.z, materials);
       root.add(altarGroup);
       obstacles.push({ kind: 'aabb', ...obstacle, height: 0.9 });   // waist-high — shots fly over
+    } else if (prop.kind === 'challenge-offering') {
+      const rid = findRoomContaining(prop.x, prop.z, spec.rooms);
+      spawnChallengeOffering(root, new THREE.Vector3(prop.x, 0, prop.z), rid ?? '', spec.depth ?? 1, materials);
+      if (rid) offeringRooms.add(rid);
+      // Coffer footprint blocks movement; waist-high so shots clear it.
+      obstacles.push({
+        kind: 'aabb',
+        minX: prop.x - 0.36, maxX: prop.x + 0.36,
+        minZ: prop.z - 0.28, maxZ: prop.z + 0.28,
+        height: 0.7,
+      });
     } else if (prop.kind === 'model') {
       const built = buildModel(prop.model);
       built.group.position.set(prop.x, prop.y, prop.z);
@@ -1132,7 +1148,13 @@ export function buildLevel(
       widthM: Math.hypot(d.bx - d.ax, d.bz - d.az),
       height: d.height,
       ax: d.ax, az: d.az, bx: d.bx, bz: d.bz,
-      hinge: d.hinge, swingDir: d.swingDir, unlock: d.unlock,
+      hinge: d.hinge, swingDir: d.swingDir,
+      // An arena gate whose room holds a challenge offering becomes a
+      // voluntary 'offering' trigger — it won't slam on entry; the offering
+      // starts the trial. Otherwise it's the default trap (slam on cross).
+      unlock: d.unlock?.kind === 'arena' && d.unlock.roomIds.some((r) => offeringRooms.has(r))
+        ? { ...d.unlock, trigger: 'offering' as const }
+        : d.unlock,
     });
   }
   // Drain — install every fitting at its opening. Per-opening room height so a

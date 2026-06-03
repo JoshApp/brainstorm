@@ -104,6 +104,12 @@ export type RoomSpec = {
 export type PropSpec =
   | { kind: 'pillar'; x: number; z: number; size?: number }
   | { kind: 'altar'; x: number; z: number }
+  // Challenge-arena centrepiece: a chained reliquary. Interacting activates
+  // the room's wave encounter (the gate seals as a reactor); surviving the
+  // waves shatters the chains + yields a generous hoard. Placing one in an
+  // arena room flips that room's arena gate to the 'offering' trigger (the
+  // gate no longer slams on entry — you choose to start the trial).
+  | { kind: 'challenge-offering'; x: number; z: number; rotY?: number }
   // 'model' = any ModelSpec placed in the world as static decoration.
   // Defaults to NO COLLISION — pure visuals. Use for relics, debris,
   // sigils, anything atmospheric that doesn't move or react.
