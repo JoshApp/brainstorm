@@ -3,7 +3,7 @@ import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw } from './controls/camera';
 import { createWeaponViewmodel } from './player/viewmodel';
-import { attachLamp, detachLamp } from './player/handheld-lamp';
+import { attachLamp } from './player/handheld-lamp';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon } from './player/current-weapon';
@@ -344,12 +344,17 @@ const weapon = createWeaponViewmodel(camera, {
 // inventory panel, save restore), this listener swaps the visible model
 // + the active stats. Single source of truth: equipment.
 //
-// Offhand handling — the lamp is a special offhand item that owns its
-// own viewmodel + a registered PointLight (handheld-lamp.ts). Any other
-// offhand item (shield, future spell focus, etc.) renders through the
-// generic offhand-viewmodel manager. Equipping a shield silently
-// removes the lamp's light — that's the design tradeoff: visibility
-// vs defence.
+// Offhand handling — the lamp is NO LONGER an offhand item. It's baked
+// into the player as a permanent worn hip-lantern (attachLamp below,
+// once), so the offhand slot is free for shields / foci and the player
+// can always see. Any offhand item renders through the generic
+// offhand-viewmodel manager. A saved/equipped oil-lamp is a harmless
+// no-op (the light is already there) — it just shows no extra model.
+//
+// The player's lamp is the BASELINE light everywhere (CLAUDE.md
+// "Lighting as signal"). Attach it once, permanently — never detached.
+attachLamp(camera);
+
 // The world-scale model to fling to the floor on death — tracked from the
 // equipped weapon. Drop model (correct world size + depth) over the
 // first-person viewmodel; null while empty-handed.
@@ -361,14 +366,13 @@ onEquipmentChanged((eq) => {
   weapon.equip(eq.weapon?.viewmodel ?? null);
   heldWeaponDropModel = eq.weapon?.dropModel ?? eq.weapon?.viewmodel ?? null;
   if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
-  if (eq.offhand?.id === 'oil-lamp') {
-    detachOffhandViewmodel();
-    attachLamp(camera);
-  } else if (eq.offhand) {
-    detachLamp();
+  if (eq.offhand && eq.offhand.id !== 'oil-lamp') {
+    // Real offhand gear (shield / focus). The baked-in hip lantern
+    // stays lit underneath it.
     attachOffhandViewmodel(camera, eq.offhand.dropModel);
   } else {
-    detachLamp();
+    // Empty offhand, or a legacy oil-lamp (now a no-op — the lamp is
+    // baked in). No held offhand viewmodel either way.
     detachOffhandViewmodel();
   }
 });
@@ -786,7 +790,6 @@ function handleAutostart(): boolean {
       resetRunDiscoveries();
       applyState(null);
       setSlot('weapon', ITEMS['rusted-sword']);
-      setSlot('offhand', ITEMS['oil-lamp']);
       startRun(spec.id, 5);
       return true;
     }
@@ -829,7 +832,6 @@ function handleAutostart(): boolean {
     resetRunDiscoveries();
     applyState(null);
     setSlot('weapon', ITEMS['rusted-sword']);
-    setSlot('offhand', ITEMS['oil-lamp']);
     startRun(floorId, depth);
   }
   return true;
@@ -1125,7 +1127,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
           recordRunStart();
           resetRunDiscoveries();
           applyState(null);
-          const lo = chamber.loadout ?? { weapon: 'rusted-sword', offhand: 'oil-lamp' };
+          const lo = chamber.loadout ?? { weapon: 'rusted-sword' };
           if (lo.weapon && ITEMS[lo.weapon]) setSlot('weapon', ITEMS[lo.weapon]);
           if (lo.offhand && ITEMS[lo.offhand]) setSlot('offhand', ITEMS[lo.offhand]);
           // Consumables → bag (auto-fills the hotbar). Used by the

@@ -1,9 +1,17 @@
 import * as THREE from 'three';
 
-// Handheld lamp — a small lantern model parented to the player camera
-// at the LEFT-hand mirror of the sword's right-hand position. Holds a
-// warm flickering PointLight inside its cage so the lamp visibly is
-// the source of the light.
+// Worn hip lantern — a small lantern model parented to the player
+// camera, hanging LOW at the hip (not in a hand). Holds a warm
+// flickering PointLight inside its cage so the lamp visibly is the
+// source of the light.
+//
+// This is the player's BASELINE light (CLAUDE.md "Lighting as signal":
+// "The player's lamp is the BASELINE everywhere"). It is baked into the
+// player permanently — attached once at startup, never detached — so
+// the immediate surroundings are always lit and the OFFHAND slot is
+// free for shields/foci. It sits at the hip rather than the off-hand so
+// it never competes with a held shield (the old position overlapped the
+// offhand viewmodel almost exactly).
 //
 // Scene-graph shape (matters for the pendulum):
 //
@@ -56,9 +64,12 @@ interface LampState {
 
 let lamp: LampState | null = null;
 
-// HINGE position — where the pendulum's pivot sits. Higher up than the
-// old single-group origin so the lantern hangs visibly BELOW it.
-const HINGE_LOCAL = new THREE.Vector3(-0.34, -0.066, -0.55);
+// HINGE position — where the pendulum's pivot sits. Dropped to the HIP:
+// lower + further outboard than the off-hand viewmodel (-0.32,-0.28) so
+// the swinging lantern body lands below and to the side of a held
+// shield, clear of the hand zone. The body offset below hangs the
+// lantern visibly under this pivot.
+const HINGE_LOCAL = new THREE.Vector3(-0.5, -0.32, -0.5);
 // Body offset DOWN from the hinge (in scaled body local). Tuned so the
 // visible centre of the lantern lands roughly where the old single
 // group sat (~y = -0.26 worldspace at scale 1.8).
