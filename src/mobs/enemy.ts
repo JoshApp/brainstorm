@@ -765,7 +765,13 @@ export function createEnemy(
         container.updateMatrixWorld();
         tmpMuzzle.applyMatrix4(container.matrixWorld);
         const t = resolveAnchor(action.toward ?? 'player', playerPos);
-        tmpTarget.set(t.x, tmpMuzzle.y, t.z);
+        // Aim at the player's eye height (playerPos IS camera.position — the
+        // same reference the projectile hit-test uses), NOT flat at the muzzle
+        // height. A low muzzle (e.g. the ground-hugging acid-spitter at y≈0.4)
+        // would otherwise fly level UNDER the player's vertical hit window
+        // (|dy| < 1.2) and never connect. Chest-height shooters (acolyte) are
+        // unaffected — their muzzle already sits at player height.
+        tmpTarget.set(t.x, playerPos.y, t.z);
         spawnProjectile({
           typeId: action.projectileId, origin: tmpMuzzle, target: tmpTarget,
           damage: action.damage, source: entityId,

@@ -82,7 +82,15 @@ export function mimicModel(): ModelSpec {
     slots: {
       // 'rig' is the part the tilt-anim looks up. Sits at the
       // body's center so the whole creature leans forward.
-      rig: { pos: [0, 0.20, 0] },
+      //
+      // Yawed 180° because the model is authored with its maw at local
+      // +Z, but the engine faces a mob at the player with the model's
+      // -Z (container.lookAt + π — see enemy.ts). Without this the mimic
+      // showed the player its BACK: hinge + closed-looking lid toward the
+      // camera, teeth pointing away. The flip is on the rig (the tilt
+      // target) and survives the per-frame tilt, which only writes
+      // rotation.x — so the maw now both FACES and LUNGES at the player.
+      rig: { pos: [0, 0.20, 0], rot: [0, Math.PI, 0] },
       // Hinge at the back-top edge of the body — same hinge geometry
       // as a real chest, so a future open-and-eat animation can use
       // the same swing.
@@ -115,7 +123,7 @@ export function mimicModel(): ModelSpec {
         parent: 'hinge',
         kind: 'box',
         pos: [0, 0.025, 0.18],
-        rot: [-1.45, 0, 0],         // ~83° back — lid almost vertical, leaning away
+        rot: [-2.0, 0, 0],          // ~115° — flung well back off the hinge, maw gaping open
         size: [0.5, 0.05, 0.4],
         mat: 'wood_dark',
       },

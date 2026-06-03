@@ -81,6 +81,12 @@ export function spawnBossMist(
 
   block();   // the gate is closed on arrival — you must commit to enter
 
+  // Projectiles never cross the mist, in EITHER direction, for the gate's
+  // whole active life — independent of the movement seal above. So an enemy
+  // that slipped to the far side can't shoot you through the curtain, and the
+  // player can shelter behind it. Removed only when the encounter is cleared.
+  walkable.addProjectileBarrier(seg);
+
   let opened = false;
   let sealed = false;
   let prevSign = 0;
@@ -148,6 +154,6 @@ export function spawnBossMist(
   // Release when the boss ENCOUNTER is fully done (king + all spawns) —
   // the container is the single source of truth, so the seal can't lift
   // mid-fight when one body dropped but its spawns are still up.
-  onBossEncounterComplete(() => { unblock(); setMistOpen(true); });
+  onBossEncounterComplete(() => { unblock(); walkable.removeProjectileBarrier(seg); setMistOpen(true); });
   return {};
 }
