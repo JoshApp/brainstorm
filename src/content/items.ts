@@ -1,6 +1,7 @@
 import type { ModelSpec } from '../ecs/model-types';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
+import type { AttributeKind } from '../state/character';
 import { SWORD_RUSTED } from './sword';
 import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WAND } from './weapons';
 import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES, BENT_SICKLE, PILGRIMS_PIKE } from './new-weapons';
@@ -97,6 +98,14 @@ export type WeaponClass =
   | 'crossbow' | 'wand'
   | 'scythe' | 'whip' | 'throwing-knives';
 
+/** Attribute scaling grade — S best, D weakest. Coefficients per point
+ *  live in CONFIG.ATTR.SCALING_GRADE. */
+export type ScalingGrade = 'S' | 'A' | 'B' | 'C' | 'D';
+
+/** A weapon's attribute scaling: which attributes drive its damage and
+ *  how hard. Usually one entry (its family stat); hybrids set two. */
+export type WeaponScaling = Partial<Record<AttributeKind, ScalingGrade>>;
+
 /** Combat stats — only set on items that are weapons. */
 export interface WeaponStats {
   /** Max melee reach in meters (camera-to-enemy distance). */
@@ -121,6 +130,17 @@ export interface WeaponStats {
    * timings), 0.8 = slower. Proficiency points feed in alongside it.
    */
   attackSpeed?: number;
+  /**
+   * Attribute SCALING grades (Souls/WC3-style). Maps an attribute to a
+   * letter grade; the player's points in that attribute multiply this
+   * weapon's damage by grade-coeff·points (CONFIG.ATTR.SCALING_GRADE).
+   * Omitted → resolveWeaponStats applies the per-class default
+   * (DEFAULT_WEAPON_SCALING in weapon-classes.ts): heavy→Might,
+   * light/ranged→Finesse, wand→Lore, all grade B. Set explicitly on
+   * named/fabled weapons (or LLM-authored ones) for harder or hybrid
+   * scaling — e.g. `{ lore: 'A', finesse: 'C' }` for a hexed blade.
+   */
+  scaling?: WeaponScaling;
   /**
    * On-hit status infliction. When set, a landed hit rolls `chance` and,
    * on success, applies the buff (a status effect from content/buffs.ts)

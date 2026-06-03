@@ -11,13 +11,25 @@ import { ITEMS } from '../content/items';
 //
 // Two layers:
 //
-//   Attributes  — Vigor / Resolve / Acuity / Lore. Slow, deliberate
-//                 growth: you earn UNSPENT POINTS by levelling (one
-//                 point per level reached), then spend them at safe
-//                 rooms — the Dark-Souls-bonfire moment. Nothing else
-//                 raises an attribute. Auto-grants would cheapen the
-//                 choice; safe-room spending makes who-you-become a
-//                 real decision tied to the act-clear pacing.
+//   Attributes  — Might / Finesse / Lore / Grit (the WC3-style set;
+//                 see docs/HARBOR-AND-PROGRESSION.md). Each scales ONE
+//                 weapon/gear family + carries a signature, and Might/
+//                 Lore add a small universal damage floor so no point
+//                 is ever dead. Slow, deliberate growth: you earn
+//                 UNSPENT POINTS by levelling (one per level reached),
+//                 then spend them at safe rooms — the Dark-Souls-
+//                 bonfire moment. Nothing else raises an attribute.
+//                 Auto-grants would cheapen the choice; safe-room
+//                 spending makes who-you-become a real decision tied to
+//                 the act-clear pacing.
+//
+//                   Might   — heavy weapons (hammer/scythe/sword/spear),
+//                             stagger, +1% all dmg/pt
+//                   Finesse — light & ranged (dagger/whip/crossbow/
+//                             knives), +crit/pt
+//                   Lore    — arcane (wand), affliction potency,
+//                             +1% all dmg/pt
+//                   Grit    — armor scaling, +max HP/pt
 //
 //   Proficiencies — Ten of them, see ProficiencyKind. Activity
 //                   counters: each ticks up as you DO the relevant
@@ -27,7 +39,7 @@ import { ITEMS } from '../content/items';
 //                   character screen + the Phase 5 LLM signal vector —
 //                   mechanical effects roll in as we tune each one.
 
-export type AttributeKind = 'vigor' | 'resolve' | 'acuity' | 'lore';
+export type AttributeKind = 'might' | 'finesse' | 'lore' | 'grit';
 
 export type ProficiencyKind =
   // Weapon classes — combat math hookup lives in resolveWeaponStats.
@@ -57,7 +69,7 @@ export interface CharacterState {
 
 function baseline(): CharacterState {
   return {
-    attributes: { vigor: 0, resolve: 0, acuity: 0, lore: 0 },
+    attributes: { might: 0, finesse: 0, lore: 0, grit: 0 },
     proficiencies: {
       sword: 0, dagger: 0, hammer: 0, spear: 0, crossbow: 0, wand: 0,
       scythe: 0, whip: 0, 'throwing-knives': 0,

@@ -9,6 +9,38 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Challenge arena — voluntary loot trial (the other arena kind)"
+      },
+      {
+        "tag": "tune",
+        "text": "Unify arena gate seal as an encounter reactor (+ offering trigger mode)"
+      },
+      {
+        "tag": "tune",
+        "text": "Fold boss, fog gate, and room-clear into the Encounter layer"
+      },
+      {
+        "tag": "tune",
+        "text": "Central loot distribution + depth-gating (foundation)"
+      },
+      {
+        "tag": "tune",
+        "text": "Encounter layer v1 + migrate the arena onto it"
+      },
+      {
+        "tag": "fix",
+        "text": "Arena trap: wave gauntlet + summon telegraph + gate-reopen fix (wiring)"
+      },
+      {
+        "tag": "add",
+        "text": "Starter weapons roll from a pool + add 2 mundane base weapons"
+      },
+      {
+        "tag": "tune",
+        "text": "Marrow Sovereign towering rework + fog gate polish"
+      },
+      {
+        "tag": "tune",
         "text": "Combat feel v2: 3D capsule hit-reg, damage-scaled crunch (both ways), directional hit indicator"
       },
       {
@@ -180,38 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Slime King: chase hops, a lash attack, smaller core + the split is now a 3-bar boss fight"
-      },
-      {
-        "tag": "tune",
-        "text": "King core: real glowing nucleus + punchy hit feedback"
-      },
-      {
-        "tag": "tune",
-        "text": "Slime King polish: hittable core, surface hitboxes, slow drop, slime puddle"
-      },
-      {
-        "tag": "tune",
-        "text": "Slime King: leave a slow acid puddle on landing (field primitive)"
-      },
-      {
-        "tag": "tune",
-        "text": "Abilities: migrate to a composable step-timeline model (engine swap)"
-      },
-      {
-        "tag": "fix",
-        "text": "Slime King: fix the leap so it actually travels to its landing zone"
-      },
-      {
-        "tag": "tune",
-        "text": "King: leap actually moves + landing damage + core damage flash"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss fog wall — soulslike threshold mist + sealed engagement"
-      },
-      {
-        "tag": "fix",
-        "text": "King fixes: dash actually moves horizontally + aura tick slower"
       }
     ]
   }

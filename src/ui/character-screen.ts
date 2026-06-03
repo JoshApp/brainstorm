@@ -35,10 +35,10 @@ interface ProficiencyRow {
 }
 
 const ATTR_DEFS: Array<{ kind: AttributeKind; label: string; effect: string }> = [
-  { kind: 'vigor',   label: 'VIGOR',   effect: '+1 max HP per point' },
-  { kind: 'resolve', label: 'RESOLVE', effect: '+0.5 armour (both kinds) per point' },
-  { kind: 'acuity',  label: 'ACUITY',  effect: '+2% crit chance per point' },
-  { kind: 'lore',    label: 'LORE',    effect: 'narrator signal (no mechanical effect yet)' },
+  { kind: 'might',   label: 'MIGHT',   effect: 'heavy weapons · stagger · +1% all damage' },
+  { kind: 'finesse', label: 'FINESSE', effect: 'light & ranged · +2% crit chance' },
+  { kind: 'lore',    label: 'LORE',    effect: 'arcane · stronger afflictions · +1% all damage' },
+  { kind: 'grit',    label: 'GRIT',    effect: 'armour scaling · +3 max HP' },
 ];
 
 const PROF_GROUPS: Array<{ heading: string; rows: Array<{ kind: ProficiencyKind; label: string }> }> = [

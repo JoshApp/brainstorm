@@ -163,14 +163,18 @@ export function computePlayerStats(): PlayerStats {
       case 'action-speed-mult':    break;
     }
   }
-  // Character attributes — spent at safe rooms. Vigor → max HP,
-  // Resolve → +0.5 armour to BOTH kinds. Acuity feeds crit chance in
-  // the weapon-resolve path (not this function). Lore has no
-  // mechanical effect yet — it's the narrator/LLM signal.
-  const { vigor, resolve } = getCharacter().attributes;
-  maxHp += vigor;
-  physicalArmor += resolve * 0.5;
-  magicArmor    += resolve * 0.5;
+  // Character attributes — spent at safe rooms (ATTRIBUTES = power).
+  // GRIT is the survival stat: +max HP per point (its universal floor)
+  // AND it SCALES equipped armour — both physical + magic counts for
+  // more, the way Might scales a heavy weapon. So the same plate on a
+  // high-Grit delver is meaningfully tougher. (Finesse → crit and
+  // Might/Lore → weapon damage are applied in the weapon-resolve path,
+  // not here; Lore's affliction signature lives in the buff pipeline.)
+  const { grit } = getCharacter().attributes;
+  maxHp += grit * CONFIG.ATTR.GRIT_HP_PER_POINT;
+  const gritArmorMul = 1 + grit * CONFIG.ATTR.GRIT_ARMOR_SCALE_PER_POINT;
+  physicalArmor *= gritArmorMul;
+  magicArmor    *= gritArmorMul;
   return {
     maxHp, weaponDamageBonus, damageMultiplier, finisherDamageMultiplier,
     physicalArmor, magicArmor, vulnerability,

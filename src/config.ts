@@ -139,6 +139,25 @@ export const CONFIG = {
   DAMAGE_NUMBER_LIFETIME: 0.7, // seconds before damage number removed
   DAMAGE_NUMBER_RISE: 60,      // pixels the number floats up over its lifetime
 
+  // === ATTRIBUTES (Might / Finesse / Lore / Grit) ===
+  // Spent at the harbor; see docs/HARBOR-AND-PROGRESSION.md. Each stat
+  // has a UNIVERSAL floor (wanted by every build), FAMILY scaling (only
+  // its matching weapon, by per-item grade), and a SIGNATURE verb.
+  // Iterate feel here.
+  ATTR: {
+    // Might + Lore each add this much to ALL weapon damage per point —
+    // the "no dead points" floor. Kept below the matching-family rate
+    // so concentrating in your weapon's stat always wins.
+    UNIVERSAL_DMG_PER_POINT: 0.01,    // +1% all weapon damage / point
+    // Matching-family damage per point, by the weapon's scaling grade.
+    // A default weapon is grade B (+2%/pt for its family stat); named /
+    // fabled weapons can scale harder (A/S), the Phase-5 LLM seam.
+    SCALING_GRADE: { S: 0.04, A: 0.03, B: 0.02, C: 0.012, D: 0.006 } as Record<string, number>,
+    FINESSE_CRIT_PER_POINT: 0.02,     // +2% crit chance / point (Finesse floor)
+    GRIT_HP_PER_POINT: 3,             // +3 max HP / point (Grit floor)
+    GRIT_ARMOR_SCALE_PER_POINT: 0.03, // equipped armor ×(1 + 0.03·Grit)
+  },
+
   // === PLAYER HEALTH ===
   PLAYER_HP_MAX: 8,    // bumped from 5 — multiple enemies stacking damage is brutal at 5
   PLAYER_HIT_PAUSE_MS: 110,         // longer freeze than landing — getting hit hurts more

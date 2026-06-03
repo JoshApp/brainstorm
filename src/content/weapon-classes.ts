@@ -1,6 +1,6 @@
 import { CONFIG } from '../config';
-import type { WeaponStats, WeaponClass } from './items';
-import { getCharacter } from '../state/character';
+import type { WeaponStats, WeaponClass, WeaponScaling } from './items';
+import { getCharacter, type AttributeKind } from '../state/character';
 
 // Weapon classes — pick the animation archetype and seed the default
 // timings. Each weapon spec can override individual fields; class is
@@ -411,11 +411,28 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
 // hitting than its baseline.
 const PROFICIENCY_PER_POINT = 0.005;     // 0.5% per point
 const PROFICIENCY_CAP_PCT  = 0.25;       // hard cap at 25% (50 points)
-// Acuity adds 2% crit chance per point.
-const ACUITY_CRIT_PER_POINT = 0.02;
+
+// Default attribute scaling per weapon class — applied when a spec
+// doesn't set its own `scaling`. Each weapon family gets grade B on its
+// stat (see the attribute table in docs/HARBOR-AND-PROGRESSION.md):
+//   Might   — heavy / forceful: hammer, scythe, sword, spear
+//   Finesse — quick / precise / ranged: dagger, whip, crossbow, knives
+//   Lore    — arcane: wand
+const DEFAULT_WEAPON_SCALING: Record<WeaponClass, WeaponScaling> = {
+  hammer:  { might: 'B' },
+  scythe:  { might: 'B' },
+  sword:   { might: 'B' },
+  spear:   { might: 'B' },
+  dagger:  { finesse: 'B' },
+  whip:    { finesse: 'B' },
+  crossbow:        { finesse: 'B' },
+  'throwing-knives': { finesse: 'B' },
+  wand:    { lore: 'B' },
+};
 
 /** Flatten class defaults + per-spec overrides + attackSpeed +
- *  character proficiency + Acuity into a single resolved stat block.
+ *  character proficiency (tempo) + attribute scaling (power: family +
+ *  universal floor) + Finesse crit into a single resolved stat block.
  *  Cheap; called per-frame from combat + sword animation.
  *
  *  When the player has zero character points across the board (start
@@ -428,9 +445,24 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
 
   const char = getCharacter();
   const profPct = Math.min(PROFICIENCY_CAP_PCT, char.proficiencies[cls] * PROFICIENCY_PER_POINT);
-  const profSpeed = 1 - profPct;      // shorter timings as proficiency rises
-  const profDmgMul = 1 + profPct;     // damage scales the same direction
-  const acuityCrit = char.attributes.acuity * ACUITY_CRIT_PER_POINT;
+  const profSpeed = 1 - profPct;      // shorter timings as proficiency rises (PROFICIENCY = tempo)
+
+  // ATTRIBUTE damage (ATTRIBUTES = power). Two layers fold into one mul:
+  //   family  — points in the weapon's scaling attribute(s) × grade coeff
+  //   floor   — Might + Lore each add a small flat % to ALL weapon damage
+  //             so no point is ever dead (see CONFIG.ATTR).
+  const scaling: WeaponScaling = spec.scaling ?? DEFAULT_WEAPON_SCALING[cls];
+  let familyBonus = 0;
+  for (const key in scaling) {
+    const attr = key as AttributeKind;
+    const grade = scaling[attr];
+    if (grade) familyBonus += char.attributes[attr] * CONFIG.ATTR.SCALING_GRADE[grade];
+  }
+  const universalBonus =
+    (char.attributes.might + char.attributes.lore) * CONFIG.ATTR.UNIVERSAL_DMG_PER_POINT;
+  const profDmgMul = (1 + profPct) * (1 + familyBonus + universalBonus);
+
+  const finesseCrit = char.attributes.finesse * CONFIG.ATTR.FINESSE_CRIT_PER_POINT;
 
   // Same speed multipliers apply uniformly to every combo step.
   const timeMul = speedMul * profSpeed;
@@ -471,7 +503,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     reach: spec.reach,
     coneHalfAngle: spec.coneHalfAngle,
     damage: spec.damage * profDmgMul,
-    critChance: (spec.critChance ?? 0.05) + acuityCrit,
+    critChance: (spec.critChance ?? 0.05) + finesseCrit,
     critMultiplier: spec.critMultiplier ?? 2.0,
     class: cls,
     combo,
