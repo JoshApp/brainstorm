@@ -548,10 +548,13 @@ function buildRunTab(): HTMLElement[] {
     description: 'View attributes + proficiencies. Spend points at safe rooms.',
     destructive: false,
     onClick: () => {
+      // Route to the CHARACTER TAB of the unified menu rather than a
+      // separate sheet (no stacked overlay). closePanel() is a no-op when
+      // settings is the in-menu ⚙ tab, and closes the standalone panel
+      // when reached via Esc. Lazy import avoids a static cycle
+      // (inventory-panel imports settings for the ⚙ tab content).
       closePanel();
-      // Lazy import to avoid the settings menu pulling the screen at
-      // module load.
-      import('./character-screen').then(({ openCharacterScreen }) => openCharacterScreen());
+      import('./inventory-panel').then(({ openCharacterTab }) => openCharacterTab());
     },
   }));
   out.push(makeRunButton({
