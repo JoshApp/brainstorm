@@ -165,8 +165,11 @@ const HORROR_BLIT_FRAG = `
 // rims, torch flames), so it's the "glow radiating into the dark" payoff at
 // near-zero mobile cost.
 const BLOOM_SCALE = 0.5;        // bloom target res, as a fraction of the low-res target
-const BLOOM_THRESHOLD = 0.55;   // linear luma above which a pixel blooms
-const BLOOM_STRENGTH = 1.05;    // how much bloom adds back in the blit
+const BLOOM_THRESHOLD = 0.62;   // linear luma above which a pixel blooms (raised so
+                               //   mid-bright volumetrics like the staircase god ray
+                               //   bloom less; the hot emissive cores still pop)
+const BLOOM_STRENGTH = 0.82;    // how much bloom adds back (eased from 1.05 — was a
+                               //   tad too strong on the phone)
 const BLOOM_BLUR_STEPS = 2;     // H+V blur pairs (more = wider, softer halo)
 let bloomEnabled = true;
 
