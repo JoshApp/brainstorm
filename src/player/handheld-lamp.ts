@@ -209,7 +209,11 @@ export function attachLamp(camera: THREE.Camera) {
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of mats) {
         m.depthTest = false;
-        m.depthWrite = false;
+        // WRITE depth (but don't TEST) so the depth-keyed post passes treat
+        // the lantern body as foreground, not see-through glass. The flame
+        // SPRITES stay depthWrite:false (additive) — the traverse only hits
+        // meshes. See the long note in viewmodel.ts.
+        m.depthWrite = true;
         // Sort into the transparent phase so renderOrder 998 actually
         // wins against world-space transparent sprites — see the same
         // pattern in sword.ts for the long version of why.

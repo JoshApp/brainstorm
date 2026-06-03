@@ -40,7 +40,9 @@ export function attachOffhandViewmodel(camera: THREE.Camera, spec: ModelSpec) {
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
       m.depthTest = false;
-      m.depthWrite = false;
+      // Write depth (don't test) so the depth-keyed post passes don't paint
+      // the background through this held model — see viewmodel.ts.
+      m.depthWrite = true;
       m.transparent = true;
       m.needsUpdate = true;
     }

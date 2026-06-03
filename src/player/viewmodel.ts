@@ -119,7 +119,16 @@ export function createWeaponViewmodel(
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const m of mats) {
           m.depthTest = false;
-          m.depthWrite = false;
+          // WRITE depth even though we don't TEST it. depthTest:false keeps
+          // the weapon drawing on top of walls (no clip); depthWrite:true
+          // puts its true NEAR depth into the depth buffer so the
+          // depth-keyed post passes (distance crush + fog inscatter in
+          // render-target.ts) treat the held model as the foreground it is.
+          // With depthWrite:false the buffer held the BACKGROUND depth at the
+          // blade's pixels, so those passes painted the enemy/wall behind it
+          // onto the blade — it read like see-through glass. Nothing is drawn
+          // after the renderOrder-999 weapon, so writing depth is safe.
+          m.depthWrite = true;
           // CRITICAL for the renderOrder to actually win against the
           // world's transparent sprites (fountain shine, eye halos,
           // moonbeams, etc.). Three.js renders opaque objects first,
