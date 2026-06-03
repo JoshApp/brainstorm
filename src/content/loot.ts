@@ -131,3 +131,17 @@ export function rollLoot(ctx: LootContext, rand: () => number): ItemSpec | null 
   }
   return null;
 }
+
+/**
+ * Roll one CURSED item eligible at this depth, by weight. The supply for
+ * blood altars and shrouded relics — the risk/reward gamble pool. Falls
+ * back to a shallower cursed item, then null if the cursed band is empty
+ * at this depth (deterministic given `rand`).
+ */
+export function rollCursedItem(depth: number, rand: () => number): ItemSpec | null {
+  const item = pickFromBand(lootIndex().cursed, depth, rand);
+  if (item) return item;
+  // No cursed item gated in yet this shallow — relax the depth gate so an
+  // early shrouded relic still resolves to *something* cursed.
+  return pickFromBand(lootIndex().cursed.map((e) => ({ ...e, minDepth: 1 })), depth, rand);
+}

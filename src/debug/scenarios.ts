@@ -18,6 +18,7 @@ import { buildModel } from '../ecs/build-model';
 import { setSlot, tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
 import { createPickup } from '../interactables/pickup';
+import { spawnShroudedRelic } from '../interactables/shrouded-relic';
 import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
 
 // Predefined game states loadable via ?scenario=name URL param.
@@ -106,6 +107,8 @@ export interface Scenario {
   selectItemId?: string;
   /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
   spawnPickups?: Array<{ itemId: string; x: number; z: number }>;
+  /** Spawn shrouded relics (the cursed mystery gamble) near the camera. */
+  spawnShrouded?: Array<{ x: number; z: number; depth?: number }>;
   /**
    * Item viewer: float a single item's dropModel at eye level in front
    * of the camera, slowly rotating. For previewing weapon/armor/ring
@@ -636,6 +639,27 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
       { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
+  // Shrouded relics — the cursed mystery gamble. Three veiled relics
+  // floating in violet light ahead of the player. Walk up + TAKE to
+  // reveal which curse you bought. NOT frozen (the bob/rotate + grant
+  // need to run). depth 6 so the deeper cursed items are eligible.
+  shrouded: {
+    playerPos: {
+      x: 0, z: 1.0,
+      lookAt: { x: 0, z: -2, y: 0.4 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -12, z: -12 } },
+      { index: 1, pos: { x:  12, z: -12 } },
+      { index: 2, pos: { x: -12, z:  12 } },
+    ],
+    spawnShrouded: [
+      { x: -1.4, z: -1.6, depth: 6 },
+      { x:  0.0, z: -2.0, depth: 6 },
+      { x:  1.4, z: -1.6, depth: 6 },
     ],
   },
 
@@ -1478,6 +1502,13 @@ export function applyScenario(
       const item = ITEMS[p.itemId];
       if (!item) continue;
       createPickup(scene, new THREE.Vector3(p.x, 0, p.z), item);
+    }
+  }
+
+  if (scenario.spawnShrouded) {
+    const scene = ctx.camera.parent as THREE.Scene;
+    for (const s of scenario.spawnShrouded) {
+      spawnShroudedRelic(scene, new THREE.Vector3(s.x, 0, s.z), s.depth ?? 5);
     }
   }
 
