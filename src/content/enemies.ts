@@ -1446,19 +1446,31 @@ export const ENEMIES: Record<string, EnemySpec> = {
     name: 'marrow sovereign',
     isBoss: true,
     bossName: 'The Marrow Sovereign',
-    scale: 1.0,                       // model is authored at 1:1 already (~4m tall)
+    // Authored ~3m floor-to-skull; scale 1.7 makes him tower at ~5m,
+    // greatscythe sweeping to ~7m — reads as a giant from anywhere in
+    // the hall. The aim-height + hitRadius below are pinned to that
+    // scale so swings still land on the chest cavity.
+    scale: 1.7,
+    // Aim at the marrow glow (rig y ≈ 0.18 above hip → scaled, comes
+    // out near chest height). Default 0.6×scale would float the aim
+    // point WAY above the body for a model rigged this tall.
+    aimHeight: 1.6,
+    // Hit radius proportional to the body's footprint at scale 1.7.
+    hitRadius: 0.7,
     hp: 1,                            // unused — phases own the HP pool
     moveSpeed: 1.0,                   // slow stride in phase 1
     attackDamage: 3,                  // mirrored by per-ability damage below
-    attackRange: 5.0,
-    strikeRange: 2.0,
+    attackRange: 7.0,                 // bigger reach to match the bigger body
+    strikeRange: 3.0,
     windupTime: 1.20,
     strikeTime: 0.40,
     recoverTime: 0.80,
     damageType: 'physical',
     model: marrowSovereignModel(),
     baseEyeEmissive: 2.0,
-    collisionRadius: 0.8,
+    // Body footprint at scale 1.7 — wider than a trash mob; the player
+    // can't slip THROUGH his legs but can walk past them at arm's length.
+    collisionRadius: 1.2,
     physicalArmor: 0,
     tiltPartName: 'rig',
     // Marrow glow inside the ribcage is both the eye-flare target
@@ -1480,31 +1492,32 @@ export const ENEMIES: Record<string, EnemySpec> = {
           // Greatscythe sweep — wide horizontal cone, long reach.
           // Player dodges by stepping INSIDE the arc (close to the
           // skeleton's centre) or sidestepping perpendicular to it.
+          // Reach proportional to the now-towering scythe arm.
           {
             id: 'scythe-sweep',
-            minRange: 0, maxRange: 6,
+            minRange: 0, maxRange: 8,
             windup: 1.40, strike: 0.30, recover: 0.70, cooldown: 2.2,
             pose: 'swing',
-            steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 4.0, damage: 3, element: 'physical' } }],
+            steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 6.0, damage: 3, element: 'physical' } }],
           },
           // Ground chop — AoE at player's locked position. Step off
           // the marker to dodge (classic king-style stomp).
           {
             id: 'chop',
-            minRange: 0, maxRange: 7,
+            minRange: 0, maxRange: 9,
             windup: 1.10, strike: 0.20, recover: 0.80, cooldown: 2.8,
             pose: 'cast',
-            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 2.0, damage: 3, element: 'physical' } }],
+            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 3.0, damage: 3, element: 'physical' } }],
           },
           // Bone-spike ring — radial AoE around himself. Dodge by
           // being CLOSE (inside the ring) or running outside its
           // outer radius. Punishes mid-range stalling.
           {
             id: 'spike-ring',
-            minRange: 0, maxRange: 4,
+            minRange: 0, maxRange: 5,
             windup: 1.40, strike: 0.20, recover: 0.80, cooldown: 3.5,
             pose: 'cast',
-            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 3.0, damage: 3, element: 'physical' } }],
+            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 4.0, damage: 3, element: 'physical' } }],
           },
         ],
         // Intra-phase part-breaks: each leg visually drops off as
@@ -1523,8 +1536,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
         hp: 12,
         moveSpeed: 1.8,
         // Drop the rig low (legs are gone — torso has to sit at
-        // ground level). Tilt forward for the crawl pose.
-        rigYOffset: -1.0,
+        // ground level). The rig was authored high (y=1.85) to put
+        // the body above the long legs; with the legs hidden it has
+        // to come WAY down to read as crawling. Tilt forward for
+        // the crawl pose.
+        rigYOffset: -1.7,
         rigPitch: -0.5,
         hideParts: ['leg-left', 'leg-right', 'scythe'],
         invulnEntryTime: 1.5,         // downed-rising animation window
