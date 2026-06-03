@@ -44,8 +44,15 @@ export function showStartScreen(opts: StartScreenOptions) {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: '14px',
+    // Scroll when the content can't fit a short landscape phone (was a
+    // fixed centered column that overflowed off-screen unreachably). The
+    // flex spacers below center the content when it DOES fit. Horizontal
+    // safe-area so nothing sits under a landscape notch.
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    paddingLeft: 'env(safe-area-inset-left, 0px)',
+    paddingRight: 'env(safe-area-inset-right, 0px)',
     // z-index managed by the screen manager via policy.layer = 'title'.
     fontFamily: '"Iowan Old Style", "Palatino", "Times New Roman", serif',
     color: 'rgba(220, 180, 140, 0.9)',
@@ -53,6 +60,13 @@ export function showStartScreen(opts: StartScreenOptions) {
     opacity: '0',
     transition: 'opacity 0.6s ease',
   } as Partial<CSSStyleDeclaration>);
+
+  // Top spacer — grows to vertically centre the content when it fits,
+  // collapses to its min (clearing the top safe-area) when content is
+  // tall enough to scroll, keeping the title reachable from the top.
+  const spacerTop = document.createElement('div');
+  spacerTop.style.flex = '1 0 calc(20px + env(safe-area-inset-top, 0px))';
+  root.appendChild(spacerTop);
 
   // Animated subtle vignette behind everything — a flicker of warm light
   // pulsing slowly, like a distant torch you're walking toward.
@@ -182,8 +196,10 @@ export function showStartScreen(opts: StartScreenOptions) {
   const links = document.createElement('div');
   Object.assign(links.style, {
     display: 'flex',
-    gap: '32px',
-    marginTop: '26px',
+    flexWrap: 'wrap',            // wrap to a 2nd row instead of overflowing a narrow screen
+    justifyContent: 'center',
+    gap: '8px 28px',
+    marginTop: '20px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: '11px',
     letterSpacing: '0.28em',
@@ -243,6 +259,11 @@ export function showStartScreen(opts: StartScreenOptions) {
     links.appendChild(link);
   }
   if (links.childElementCount > 0) root.appendChild(links);
+
+  // Bottom spacer — balances spacerTop so content centres when it fits.
+  const spacerBottom = document.createElement('div');
+  spacerBottom.style.flex = '1 0 calc(20px + env(safe-area-inset-bottom, 0px))';
+  root.appendChild(spacerBottom);
 
   document.body.appendChild(root);
 
@@ -327,8 +348,10 @@ function makeSecondaryLink(label: string, badge: number): HTMLButtonElement {
   Object.assign(b.style, {
     display: 'inline-flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: '6px',
-    padding: '6px 4px',
+    minHeight: '44px',          // touch target (was a ~20px-tall text link)
+    padding: '6px 10px',
     background: 'transparent',
     border: 'none',
     color: 'rgba(200, 170, 140, 0.65)',
