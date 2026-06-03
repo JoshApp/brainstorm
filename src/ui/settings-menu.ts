@@ -50,8 +50,11 @@ export function createSettingsMenu() {
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    width: 'min(360px, 92vw)',
-    maxHeight: '88vh',
+    // Mobile-first sizing (matches menu-shell.ts rules): clamp to the
+    // viewport minus side safe-area (landscape notches), bound height by
+    // the DYNAMIC viewport minus vertical safe-area so it never clips
+    // under a notch or runs off a short landscape phone.
+    width: 'min(380px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))',
     padding: '16px 18px',
     background: PANEL_BG,
     border: BORDER,
@@ -67,6 +70,11 @@ export function createSettingsMenu() {
     // the panel height and let the body scroll.
     overflow: 'hidden',
   } as Partial<CSSStyleDeclaration>);
+  // Height bound with a fallback chain (vh universal, then dvh refine) so
+  // it's always bounded even if the browser chokes on dvh-in-calc — same
+  // pattern as menu-shell.ts.
+  panel.style.maxHeight = '92vh';
+  panel.style.maxHeight = 'calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))';
   document.body.appendChild(panel);
 
   buildPanelContents();
@@ -134,13 +142,19 @@ function buildPanelContents() {
   } as Partial<CSSStyleDeclaration>);
   const close = document.createElement('button');
   close.textContent = '✕';
+  close.setAttribute('aria-label', 'close');
   Object.assign(close.style, {
     background: 'transparent',
     border: 'none',
     color: 'rgba(220, 180, 140, 0.7)',
     fontSize: '18px',
+    lineHeight: '1',
     cursor: 'pointer',
-    padding: '2px 6px',
+    width: '44px',
+    height: '44px',
+    margin: '-8px -8px -8px 0',   // 44px hit area without bloating the header
+    touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
   } as Partial<CSSStyleDeclaration>);
   close.addEventListener('click', closePanel);
   header.append(title, close);
@@ -209,6 +223,7 @@ function buildPanelContents() {
     btn.dataset.tabId = t.id;
     Object.assign(btn.style, {
       flex: '1 1 auto',
+      minHeight: '42px',
       padding: '8px 4px',
       border: 'none',
       background: 'transparent',
@@ -219,6 +234,7 @@ function buildPanelContents() {
       letterSpacing: '0.18em',
       cursor: 'pointer',
       borderBottom: '2px solid transparent',
+      touchAction: 'manipulation',
       transition: 'background 0.12s ease, color 0.12s ease',
     } as Partial<CSSStyleDeclaration>);
     btn.addEventListener('click', () => renderTab(t.id));

@@ -83,10 +83,6 @@ export function createSheet(opts: SheetOptions): Sheet {
     // Width clamps to the viewport minus edge gaps + horizontal safe-area
     // (landscape notches live on the sides).
     width: `min(${width}px, calc(100vw - ${EDGE * 2}px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))`,
-    // Height bounded by the DYNAMIC viewport minus edge gaps + vertical
-    // safe-area. dvh tracks the real visible height as mobile browser
-    // chrome shows/hides — the classic `vh` overflow trap.
-    maxHeight: `calc(100dvh - ${EDGE * 2}px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))`,
     background: PANEL_BG,
     border: PANEL_BORDER,
     borderRadius: '6px',
@@ -95,6 +91,14 @@ export function createSheet(opts: SheetOptions): Sheet {
     fontFamily: FONT_UI,
     overflow: 'hidden',   // root clips; the body scrolls (NB: not "overflow-y")
   } as Partial<CSSStyleDeclaration>);
+  // Height bound, set as a fallback chain so it survives a browser that
+  // chokes on dvh-inside-calc: plain vh first (universal), then the
+  // dynamic-viewport refinement (dvh tracks the real visible height as
+  // mobile browser chrome shows/hides). If the second value is invalid
+  // on this browser it's rejected and the vh fallback stays — so the
+  // sheet is ALWAYS bounded and never runs off a short landscape screen.
+  root.style.maxHeight = '92vh';
+  root.style.maxHeight = `calc(100dvh - ${EDGE * 2}px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))`;
 
   // ── Header ───────────────────────────────────────────────────────────
   const header = document.createElement('div');
@@ -150,6 +154,7 @@ export function createSheet(opts: SheetOptions): Sheet {
     flex: '1 1 auto',
     minHeight: '0',               // lets the flex child shrink → scroll engages
     overflowY: 'auto',            // the inline "overflow-y" opts into touch pan-y (index.html)
+    touchAction: 'pan-y',         // explicit, belt-and-suspenders over the index.html rule
     WebkitOverflowScrolling: 'touch',
     padding: '12px 14px',
     display: 'flex',
