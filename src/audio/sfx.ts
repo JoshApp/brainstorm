@@ -621,6 +621,162 @@ export function playEnemyVocal(archetype: VocalArchetype, pos: Vec3Sound, agitat
   }
 }
 
+// ── Combat & locomotion creature sounds ──────────────────────────────────
+// Hurt cries (struck but alive), strike grunts (the attack RELEASE, after
+// the windup growl), and footstep foley (locomotion you hear approaching).
+// All positional, all sourced from a real mob — the same "sound means
+// something lives/acts HERE" contract as the idle vocalisations. Each has its
+// own light global throttle so a swarm stays legible instead of walling up.
+
+let lastHurtAt = -1;
+let lastFootstepAt = -1;
+
+/** Pained stab when a mob is struck and SURVIVES. Short + sharp — the idle
+ *  archetype's character compressed into a flinch. Pairs with the weapon
+ *  impact (metal/flesh) to make every connecting hit read as "I hurt it." */
+export function playEnemyHurt(archetype: VocalArchetype, pos: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  if (lastHurtAt >= 0 && now - lastHurtAt < 0.05) return;   // de-stack cone multi-hits
+  lastHurtAt = now;
+  const out = createPositionalChain(pos, 0.3);
+  const r = () => Math.random();
+
+  switch (archetype) {
+    case 'gurgle': {
+      // Wet splat — struck jelly.
+      const src = c.createBufferSource(); src.buffer = shortNoise(c, 0.18);
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 380 + r() * 120; bp.Q.value = 1.6;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.22, now + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0006, now + 0.16);
+      src.connect(bp).connect(g).connect(out); src.start(now); src.stop(now + 0.18);
+      break;
+    }
+    case 'rattle':
+    case 'grind': {
+      // Dry crack — bone/stone taking the blow.
+      const src = c.createBufferSource(); src.buffer = shortNoise(c, 0.08);
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass';
+      bp.frequency.value = archetype === 'grind' ? 520 : 1400; bp.Q.value = 4;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.26, now + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0006, now + 0.09);
+      src.connect(bp).connect(g).connect(out); src.start(now); src.stop(now + 0.1);
+      break;
+    }
+    case 'skitter':
+    case 'squeak': {
+      // High pained screech — vermin/chitin.
+      const osc = c.createOscillator(); osc.type = 'sawtooth';
+      const f = (archetype === 'squeak' ? 900 : 1300) + r() * 300;
+      osc.frequency.setValueAtTime(f, now);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.5, now + 0.12);
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.16, now + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0006, now + 0.13);
+      osc.connect(lp).connect(g).connect(out); osc.start(now); osc.stop(now + 0.15);
+      break;
+    }
+    case 'hiss': {
+      // Sharp shriek — caster's breath cut short.
+      const src = c.createBufferSource(); src.buffer = shortNoise(c, 0.16);
+      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2600;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.2, now + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0006, now + 0.14);
+      src.connect(hp).connect(g).connect(out); src.start(now); src.stop(now + 0.16);
+      break;
+    }
+    case 'groan':
+    default: {
+      // Pained grunt — short low sawtooth punched down.
+      const base = 120 + r() * 40;
+      const osc = c.createOscillator(); osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(base, now);
+      osc.frequency.exponentialRampToValueAtTime(base * 0.6, now + 0.16);
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 320; bp.Q.value = 3;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.2, now + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0006, now + 0.18);
+      osc.connect(bp).connect(g).connect(out); osc.start(now); osc.stop(now + 0.2);
+      break;
+    }
+  }
+}
+
+/** The attack RELEASE — a short aggressive exhale/bark as the mob commits to
+ *  its strike, after the rising windup growl. Sized like death/windup. */
+export function playEnemyStrike(size: EnemyDeathSize = 'medium', pos?: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const out = pos ? createPositionalChain(pos, 0.3) : masterGain;
+  const base = size === 'small' ? 220 : size === 'spectral' ? 150 : 130;
+  // Body — a fast downward grunt.
+  const osc = c.createOscillator();
+  osc.type = size === 'spectral' ? 'sine' : 'sawtooth';
+  osc.frequency.setValueAtTime(base * 1.5, now);
+  osc.frequency.exponentialRampToValueAtTime(base * 0.7, now + 0.14);
+  const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = base * 2.4; bp.Q.value = 2;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.2, now + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0006, now + 0.16);
+  osc.connect(bp).connect(g).connect(out);
+  osc.start(now); osc.stop(now + 0.18);
+  // Transient — a noisy "huff" of air at the front of the bark.
+  const src = c.createBufferSource(); src.buffer = shortNoise(c, 0.06);
+  const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1400;
+  const ng = c.createGain();
+  ng.gain.setValueAtTime(0.0001, now);
+  ng.gain.exponentialRampToValueAtTime(0.12, now + 0.004);
+  ng.gain.exponentialRampToValueAtTime(0.0006, now + 0.07);
+  src.connect(hp).connect(ng).connect(out);
+  src.start(now); src.stop(now + 0.08);
+}
+
+/** One locomotion tick — quiet, per-archetype. Driven by a mob's ACTUAL
+ *  distance travelled (stride cadence in mobs/enemy.ts), so it only sounds
+ *  when something is really moving and falls silent the instant it's pinned
+ *  or idle. Globally throttled so a pack doesn't blur into static. */
+export function playEnemyFootstep(archetype: VocalArchetype, pos: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  if (lastFootstepAt >= 0 && now - lastFootstepAt < 0.07) return;
+  lastFootstepAt = now;
+  const out = createPositionalChain(pos, 0.2);
+  const r = () => Math.random();
+
+  // Each archetype is one short filtered-noise tick. [filterType, freq, Q, peak, dur].
+  const P: Record<VocalArchetype, ['highpass' | 'lowpass' | 'bandpass', number, number, number, number]> = {
+    gurgle: ['bandpass', 300, 1.4, 0.07, 0.06],   // wet squelch
+    rattle: ['bandpass', 1300, 5, 0.06, 0.04],    // bone tick
+    skitter: ['highpass', 3000, 0.7, 0.05, 0.025],// chitin click
+    grind: ['lowpass', 420, 0.8, 0.085, 0.10],    // stone scuff
+    groan: ['lowpass', 700, 0.7, 0.05, 0.07],     // heavy drag
+    squeak: ['highpass', 2500, 0.7, 0.04, 0.025], // light scurry
+    hiss: ['highpass', 4200, 0.7, 0.035, 0.05],   // cloth rustle (robed)
+  };
+  const [ft, freq, q, peak, dur] = P[archetype];
+  const src = c.createBufferSource(); src.buffer = shortNoise(c, dur);
+  const f = c.createBiquadFilter(); f.type = ft; f.frequency.value = freq * (0.9 + r() * 0.2); f.Q.value = q;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(peak, now + 0.003);
+  g.gain.exponentialRampToValueAtTime(0.0006, now + dur);
+  src.connect(f).connect(g).connect(out);
+  src.start(now); src.stop(now + dur + 0.02);
+}
+
 /** A withheld/denied action — pickup refused (carry full), or drinking at
  *  full HP. Deliberately NOT a chime: a dull, low, lowpassed double-knock
  *  that falls in pitch (a flat "no"), so it reads as "blocked" without the

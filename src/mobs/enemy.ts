@@ -35,7 +35,7 @@ import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
 import { aggregateSpeed } from '../combat/modifiers';
-import { playEnemyDeath, playEnemyWindup, playEnemyVocal, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
+import { playEnemyDeath, playEnemyWindup, playEnemyVocal, playEnemyHurt, playEnemyStrike, playEnemyFootstep, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins } from '../effects/gold-coins';
@@ -401,6 +401,7 @@ export function createEnemy(
   // in unison; the global throttle in sfx caps overlap.
   const vocalArch = vocalArchetypeFor(spec);
   let vocalTimer = 2 + gameRng() * 8;
+  let strideAccum = gameRng() * 0.4;   // footstep cadence accumulator (m); jittered so a pack doesn't step in lockstep
   // Last position we saw the player at. Used by 'searching' state.
   const lastSeenPos = new THREE.Vector3();
 
@@ -511,6 +512,20 @@ export function createEnemy(
       spec.collisionRadius,
       spec.phasing ? { ignoreObstacles: true } : undefined,
     );
+    // Footstep foley — accumulate the distance ACTUALLY moved (post-clamp, so
+    // a mob pinned against a wall goes silent) and tick a locomotion sound
+    // every stride. Stride scales with body size so a stoneguard plods and a
+    // rat patters. Spectral mobs (wraiths) drift in silence — they don't walk.
+    if (vocalArch && spec.presence !== 'spectral') {
+      const mdx = resolved.x - container.position.x;
+      const mdz = resolved.z - container.position.z;
+      strideAccum += Math.sqrt(mdx * mdx + mdz * mdz);
+      const stride = 0.42 + spec.collisionRadius * 0.9;
+      if (strideAccum >= stride) {
+        strideAccum = 0;
+        playEnemyFootstep(vocalArch, container.position);
+      }
+    }
     container.position.x = resolved.x;
     container.position.z = resolved.z;
   }
@@ -554,6 +569,10 @@ export function createEnemy(
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
     coreReactor.hit();   // hit flash + glowing-core flare/pop (king)
+    // Pained cry when it survives the blow — the creature's voice on top of
+    // the weapon's impact, so every connecting hit reads as "I hurt it." The
+    // death path has its own (heavier) collapse sound, so skip if this killed.
+    if (entity.hp.current > 0 && vocalArch) playEnemyHurt(vocalArch, container.position);
     // Damage from any source aggros (and keeps aggro for the full
     // loseSightTime window after the hit, even if the player breaks LOS
     // — a wounded mob doesn't forget). If we were idle/searching/etc,
@@ -1461,6 +1480,7 @@ export function createEnemy(
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
           phaseTimer = 0;
+          playEnemyStrike(audioSizeFor(spec), container.position);  // the attack RELEASE bark
           // Arm the timeline: clear per-step latches + events, capture the
           // leap takeoff point.
           stepStarted = currentAbility.steps.map(() => false);
