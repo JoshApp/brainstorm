@@ -249,9 +249,11 @@ const COMBAT_HALL: Vault = {
     { kind: 'group', groupId: 'ritual-circle', x: 0, z: 0 },
     { kind: 'group', groupId: 'bone-shrine',   x: -5, z: -5 },
     { kind: 'group', groupId: 'bone-shrine',   x:  5, z:  5 },
-    // One violet god ray off to the side of the central ritual,
-    // so the player can walk through the beam on their approach.
-    { kind: 'model', model: RAY_VIOLET, x: -4, y: 0, z: 3, rotY: 0.4 },
+    // Violet god ray landing ON the central ritual altar — just
+    // outside the front-right candle so the shaft falls on the altar
+    // + skull, not on empty floor. Crossing the beam = arriving at
+    // the ritual (Lighting-as-signal: anchor the beam, don't decorate).
+    { kind: 'model', model: RAY_VIOLET, x: 1.4, y: 0, z: 0.5, rotY: 0.4 },
   ],
   // Ritual-circle group already has its own focal glow + the
   // bone-shrines colour the corners. Wall torches push violet.
@@ -407,10 +409,11 @@ const TREASURE_VAULT: Vault = {
   weight: 1,
   props: [
     { kind: 'group', groupId: 'altar-ritual', x: 0, z: 0 },
-    // Warm gold shaft falling on the centre — the treasure
-    // signature beat. Offset slightly so it lands beside the
-    // altar group rather than overlapping it.
-    { kind: 'model', model: RAY_GOLD, x: 2.5, y: 0, z: 0, rotY: -0.3 },
+    // Warm gold shaft landing ON the treasure altar — the signature
+    // beat. Just off the altar's side (clear of the flanking candles
+    // + the corpse at the foot) so the shaft falls on the altar
+    // itself, not several metres into open floor.
+    { kind: 'model', model: RAY_GOLD, x: 1.4, y: 0, z: 0, rotY: -0.3 },
   ],
   torchTint: TORCH_GOLD,
   cellProps: {
