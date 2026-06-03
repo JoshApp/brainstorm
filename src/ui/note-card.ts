@@ -139,7 +139,11 @@ export function showNote(text: string) {
   openScreen({
     id: NOTE_SCREEN_ID,
     root: card,
-    policy: { layer: 'modal' },
+    // needsCursor:false → stay in mouse-look while reading; tap-anywhere /
+    // any-key dismisses (handled below), so dismissing returns straight to
+    // FPS with no stray cursor. The window-capture handlers below catch
+    // the click even while pointer-locked.
+    policy: { layer: 'modal', needsCursor: false },
     onDismissRequest: dismiss,
   });
 

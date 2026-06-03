@@ -29,6 +29,12 @@ export interface ScreenPolicy {
   dimsScene?: boolean;
   needsBackdrop?: boolean;
   layer?: ScreenLayer;
+  /** Does this screen need the mouse cursor (PC)? Menus with buttons do
+   *  (inventory, settings, death screen) → opening one auto-releases
+   *  pointer lock. Transient tap-anywhere/press-key overlays (the note
+   *  card) do NOT — they stay in mouse-look so dismissing returns you to
+   *  FPS without a stray cursor. Default true. */
+  needsCursor?: boolean;
 }
 
 export interface ScreenHandle {
@@ -181,7 +187,13 @@ function applyState() {
   // Returning to gameplay (no screens) can't auto-re-lock (the browser
   // requires a click gesture); the canvas click handler re-locks
   // (input-desktop.ts). No-op on mobile (no pointerLockElement).
-  if (openScreens.size > 0 && document.pointerLockElement) {
+  // Only screens that NEED the cursor force this — a note card stays in
+  // mouse-look so dismissing it doesn't leave a stray cursor.
+  let needsCursor = false;
+  for (const s of openScreens.values()) {
+    if (s.policy?.needsCursor ?? true) { needsCursor = true; break; }
+  }
+  if (needsCursor && document.pointerLockElement) {
     document.exitPointerLock?.();
   }
 
@@ -233,5 +245,6 @@ function defaultPolicy(_h: ScreenHandle): Required<ScreenPolicy> {
     dimsScene: false,
     needsBackdrop: true,
     layer: 'panel',
+    needsCursor: true,
   };
 }
