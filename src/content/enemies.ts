@@ -1533,14 +1533,14 @@ export const ENEMIES: Record<string, EnemySpec> = {
             steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 4.0, damage: 3, element: 'physical' } }],
           },
         ],
-        // Intra-phase part-breaks: each leg visually drops off as
-        // phase-1 HP descends. Player sees their progress directly
-        // ("I knocked a leg off, half-way there"). Cosmetic only —
-        // doesn't change abilities. Order: right leg first (at 50%),
-        // then left (at ~12%), then phase transition at 0.
+        // Intra-phase part-break: the RIGHT leg drops at the half-way mark
+        // (a clear "I'm wearing him down" beat). The LEFT leg is NOT broken
+        // early — it gives out exactly at 0% phase-1 HP, when the phase-2
+        // transition hides it AND collapses him. So there's no awkward
+        // legless-standing gap: one leg at 50%, then at zero the other goes
+        // and he falls. Phase 1 hp = 16, so atHp 8 == 50%.
         partBreaks: [
-          { atHp: 9, hideParts: ['leg-right'] },
-          { atHp: 3, hideParts: ['leg-left'] },
+          { atHp: 8, hideParts: ['leg-right'] },
         ],
       },
       // ── PHASE 2 — Crawling. Legs + scythe gone. Lower silhouette,

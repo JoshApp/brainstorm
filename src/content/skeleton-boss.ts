@@ -211,28 +211,51 @@ function buildRibs(): PartSpec[] {
   return ribs;
 }
 
-/** Skull — cranium, jaw, eye sockets (embers), brow ridge, nasal hollow. */
+/** Skull — a proper death's-head: domed cranium, heavy brow, two large
+ *  recessed eye sockets with embers sunk deep inside, a triangular nasal
+ *  cavity, gaunt cheekbones, and a toothed maxilla over a slightly-gaping
+ *  mandible. Built to read unmistakably as a SKULL from across the hall,
+ *  not a glowing blob. Front of the face is −Z (toward the player). */
 function buildSkull(): PartSpec[] {
   const parts: PartSpec[] = [];
-  // Cranium — slightly elongated for a gaunt skull silhouette.
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [0, 0.92, 0], scale: [1.0, 1.15, 1.05], radius: 0.20, segments: [18, 14], mat: 'bone' });
-  // Cheek hollows — small darker spheres pressed into the cranium sides.
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [-0.18, 0.86, -0.02], radius: 0.045, segments: [8, 6], mat: 'boneShadow' });
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [ 0.18, 0.86, -0.02], radius: 0.045, segments: [8, 6], mat: 'boneShadow' });
-  // Jaw — wedged under the skull bottom, narrower than the cranium.
-  parts.push({ parent: 'rig', kind: 'box', pos: [0, 0.74, 0.02], size: [0.22, 0.09, 0.24], mat: 'boneShadow' });
-  // Lower jaw — a small bone box framing the chin.
-  parts.push({ parent: 'rig', kind: 'box', pos: [0, 0.71, 0.08], size: [0.18, 0.06, 0.10], mat: 'bone' });
-  // Eye sockets (embers). Set a touch deeper into the skull than the
-  // cranium centre so they READ as recessed wells of fire.
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [-0.075, 0.95, -0.16], radius: 0.034, segments: [8, 6], mat: 'ember' });
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [ 0.075, 0.95, -0.16], radius: 0.034, segments: [8, 6], mat: 'ember' });
-  // Brow ridge — angular shadow above the eyes.
-  parts.push({ parent: 'rig', kind: 'box', pos: [0, 1.03, -0.14], size: [0.26, 0.05, 0.05], mat: 'boneShadow' });
-  // Nasal hollow.
-  parts.push({ parent: 'rig', kind: 'sphere', pos: [0, 0.88, -0.18], radius: 0.026, segments: [6, 6], mat: 'boneShadow' });
-  // Tooth row — a thin pale strip across the upper jaw for a grin.
-  parts.push({ parent: 'rig', kind: 'box', pos: [0, 0.78, -0.10], size: [0.18, 0.025, 0.02], mat: 'bone' });
+  const cy = 0.95;   // skull centre on the rig
+
+  // ── Cranium — a domed vault, a touch taller than wide, flattened at the
+  //    face so the front reads as a plane rather than a ball.
+  parts.push({ parent: 'rig', kind: 'sphere', pos: [0, cy + 0.05, -0.01], scale: [0.96, 1.08, 1.0], radius: 0.205, segments: [20, 16], mat: 'bone' });
+  // Temple hollows — shadow presses at the sides above the cheeks.
+  parts.push({ parent: 'rig', kind: 'sphere', pos: [-0.185, cy + 0.03, 0.01], radius: 0.05, segments: [8, 6], mat: 'boneShadow' });
+  parts.push({ parent: 'rig', kind: 'sphere', pos: [ 0.185, cy + 0.03, 0.01], radius: 0.05, segments: [8, 6], mat: 'boneShadow' });
+
+  // ── EYE SOCKETS — the defining read: two LARGE black wells sunk into the
+  //    face, each with an ember floating deep inside (a gaze in the dark).
+  for (const sx of [-1, 1] as const) {
+    parts.push({ parent: 'rig', kind: 'sphere', pos: [sx * 0.088, cy, -0.135], scale: [1.15, 1.0, 0.75], radius: 0.075, segments: [12, 10], mat: 'boneShadow' });
+    parts.push({ parent: 'rig', kind: 'sphere', pos: [sx * 0.088, cy, -0.175], radius: 0.030, segments: [8, 6], mat: 'ember' });
+  }
+  // Brow ridge — a heavy angular bar shadowing the sockets from above.
+  parts.push({ parent: 'rig', kind: 'box', pos: [0, cy + 0.11, -0.165], size: [0.32, 0.05, 0.07], mat: 'bone' });
+  // Glabella — the bone bridge between the sockets.
+  parts.push({ parent: 'rig', kind: 'box', pos: [0, cy, -0.195], size: [0.04, 0.14, 0.05], mat: 'bone' });
+
+  // ── NASAL CAVITY — an inverted dark triangle below the brow.
+  parts.push({ parent: 'rig', kind: 'cone', pos: [0, cy - 0.09, -0.185], rot: [Math.PI, 0, 0], radius: 0.05, height: 0.13, segments: 3, mat: 'boneShadow' });
+
+  // ── CHEEKBONES (zygomatic) — angular wedges flaring under the eyes; the
+  //    gaunt, hollow-cheeked read.
+  parts.push({ parent: 'rig', kind: 'box', pos: [-0.155, cy - 0.05, -0.10], rot: [0, 0.6, -0.25], size: [0.13, 0.05, 0.07], mat: 'bone' });
+  parts.push({ parent: 'rig', kind: 'box', pos: [ 0.155, cy - 0.05, -0.10], rot: [0, -0.6, 0.25], size: [0.13, 0.05, 0.07], mat: 'bone' });
+
+  // ── UPPER JAW (maxilla) + a row of teeth — the death grin.
+  parts.push({ parent: 'rig', kind: 'box', pos: [0, cy - 0.15, -0.115], size: [0.235, 0.07, 0.11], mat: 'bone' });
+  for (let i = -3; i <= 3; i++) {
+    parts.push({ parent: 'rig', kind: 'box', pos: [i * 0.032, cy - 0.195, -0.17], size: [0.024, 0.05, 0.022], mat: 'bone' });
+  }
+  // ── LOWER JAW (mandible) — hung slightly open under the teeth, with its
+  //    own tooth strip: the gaping skeletal maw.
+  parts.push({ parent: 'rig', kind: 'box', pos: [0, cy - 0.235, -0.095], size: [0.215, 0.055, 0.12], mat: 'boneShadow' });
+  parts.push({ parent: 'rig', kind: 'box', pos: [0, cy - 0.215, -0.165], size: [0.17, 0.045, 0.022], mat: 'bone' });
+
   return parts;
 }
 

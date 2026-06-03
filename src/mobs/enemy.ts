@@ -322,6 +322,16 @@ export function createEnemy(
   // don't re-hide parts every tick. Reset on phase entry.
   let firedPartBreaks = new Set<number>();
   let phaseInvulnTimer = 0;
+  // Phase-transition COLLAPSE animation (the skeleton's downed fall). While
+  // active the boss is inert (no AI) AND invulnerable, and the rig EASES to
+  // the new phase's crawl pose instead of snapping there — so the transition
+  // reads as a fall, not a teleport. Set up on transition, advanced in tick.
+  let phaseFallActive = false;
+  let phaseFallElapsed = 0;
+  let phaseFallDuration = 0;
+  let phaseFallNode: THREE.Object3D | null = null;
+  let phaseFallFromY = 0, phaseFallToY = 0;
+  let phaseFallFromPitch = 0, phaseFallToPitch = 0;
 
   // Helper used by phase transitions + intra-phase part-break thresholds
   // to hide named model parts. A single logical part (a whole leg) is
@@ -655,18 +665,30 @@ export function createEnemy(
         entity.hp.current = next.hp;
         firedPartBreaks = new Set();
         phaseInvulnTimer = next.invulnEntryTime ?? 0;
-        // Apply visual + pose overrides for the new phase.
+        // Drop the legs/scythe NOW (he loses them as he falls), then EASE
+        // the body down into the crawl over the invuln window rather than
+        // snapping — set up the collapse animation, advanced in tick().
         if (next.hideParts) hidePartsByName(next.hideParts);
-        // Lower / tilt the RIG node (not built.group): the per-frame pose
-        // bob OWNS built.group.position.y and would clobber an offset there
-        // every frame — which is why the legless torso never came down to
-        // crawl height. The rig's position.y / base rotation are untouched
-        // by the bob (applyTilt only writes rig.rotation.x during a swing),
-        // so the offset persists. Falls back to built.group if the model
-        // has no rig node.
-        const rigNode = tiltPart ?? built.group;
-        if (next.rigYOffset !== undefined) rigNode.position.y += next.rigYOffset;
-        if (next.rigPitch !== undefined) built.group.rotation.x = next.rigPitch;
+        if (next.rigYOffset !== undefined || next.rigPitch !== undefined) {
+          // Lower / tilt the RIG node (not built.group): the per-frame pose
+          // bob OWNS built.group.position.y and would clobber an offset
+          // there every frame — which is why the legless torso never came
+          // down. The rig's position.y is untouched by the bob (applyTilt
+          // only writes rig.rotation.x), so it persists. Pitch goes on
+          // built.group (also bob-safe). Falls back to built.group if the
+          // model has no rig node.
+          phaseFallNode = tiltPart ?? built.group;
+          phaseFallFromY = phaseFallNode.position.y;
+          phaseFallToY = phaseFallNode.position.y + (next.rigYOffset ?? 0);
+          phaseFallFromPitch = built.group.rotation.x;
+          phaseFallToPitch = next.rigPitch ?? built.group.rotation.x;
+          phaseFallElapsed = 0;
+          // Fall across the invuln window so he's untouchable + inert as he
+          // drops, then rises as the crawler. Floor at 0.4s for a readable
+          // collapse even if invulnEntryTime is short.
+          phaseFallDuration = Math.max(0.4, next.invulnEntryTime ?? 0.8);
+          phaseFallActive = true;
+        }
         // Reset state machine to chasing so the new abilities kick in cleanly.
         clearAoeTelegraph();
         clearLashTendril();
@@ -1261,6 +1283,24 @@ export function createEnemy(
 
     // Phase entry invuln window (e.g. skeleton's downed → crawl rise).
     if (phases && phaseInvulnTimer > 0) phaseInvulnTimer = Math.max(0, phaseInvulnTimer - dt);
+
+    // Phase-transition collapse — ease the body into the crawl pose while
+    // he's down. He's INERT here (early return skips all AI/movement/
+    // abilities) and already invulnerable (phaseInvulnTimer gate above), so
+    // the fall plays out untouched, then normal AI resumes as the crawler.
+    if (phaseFallActive && phaseFallNode) {
+      phaseFallElapsed += dt;
+      const t = phaseFallDuration > 0 ? Math.min(1, phaseFallElapsed / phaseFallDuration) : 1;
+      const e = t * t;   // ease-IN: knees buckle slow, then he drops fast
+      phaseFallNode.position.y = phaseFallFromY + (phaseFallToY - phaseFallFromY) * e;
+      built.group.rotation.x = phaseFallFromPitch + (phaseFallToPitch - phaseFallFromPitch) * e;
+      if (t >= 1) {
+        phaseFallNode.position.y = phaseFallToY;
+        built.group.rotation.x = phaseFallToPitch;
+        phaseFallActive = false;
+      }
+      return;
+    }
 
     // Capture home yaw the very first tick so idle scan rotates around the
     // actual placed-orientation (set by builder via faceWorld at spawn).
