@@ -12,7 +12,8 @@ import { warmupContent } from './content/warmup';
 import { createCombatSystem } from './combat/attack';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
-import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './player/death';
+import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
+import { initWeaponDrop, dropHeldItem } from './player/weapon-drop';
 import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthrough';
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
@@ -33,6 +34,7 @@ import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { batchStaticFixtures } from './level/static-merge';
 import { LEVELS } from './level/specs';
 import type { LevelSpec } from './level/types';
+import type { ModelSpec } from './ecs/model-types';
 import { buildStarterChamber } from './level/starter-chamber';
 import { findTestChamber } from './level/test-chambers';
 import { showTestChambersScreen } from './ui/test-chambers-screen';
@@ -175,6 +177,8 @@ initFogWalkthrough(camera); // soulslike fog-gate forced walk drives this camera
 // Register camera with the death sequence so the death tick can
 // pitch + drop it during the collapse animation.
 initDeath(camera);
+// Death weapon-drop spawns world-space tumbling weapons into the scene.
+initWeaponDrop(scene);
 
 // --- Scenario (URL param ?scenario=...) ---
 // DEV-only. In a production build `import.meta.env.DEV` is the literal
@@ -340,11 +344,16 @@ const weapon = createWeaponViewmodel(camera, {
 // generic offhand-viewmodel manager. Equipping a shield silently
 // removes the lamp's light — that's the design tradeoff: visibility
 // vs defence.
+// The world-scale model to fling to the floor on death — tracked from the
+// equipped weapon. Drop model (correct world size + depth) over the
+// first-person viewmodel; null while empty-handed.
+let heldWeaponDropModel: ModelSpec | null = null;
 onEquipmentChanged((eq) => {
   // Pass null when no weapon equipped — the sword viewmodel
   // clears and the player walks empty-handed. This is the
   // starter-chamber default until they take from an altar.
   weapon.equip(eq.weapon?.viewmodel ?? null);
+  heldWeaponDropModel = eq.weapon?.dropModel ?? eq.weapon?.viewmodel ?? null;
   if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
   if (eq.offhand?.id === 'oil-lamp') {
     detachOffhandViewmodel();
@@ -371,6 +380,22 @@ const combat = createCombatSystem(
 
 // --- Player death wiring ---
 onPlayerDeath(() => triggerDeath());
+// At the first instant of death, fling the held weapon from the hand to
+// the floor (it tumbles down as the camera collapses over it). Computed
+// from the flattened camera basis; the sword sits in the right hand, so
+// it tosses out to the +right side.
+const _dropFwd = new THREE.Vector3();
+const _dropRight = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
+setOnDeathStart(() => {
+  if (!heldWeaponDropModel) return;
+  camera.getWorldDirection(_dropFwd);
+  _dropFwd.y = 0;
+  if (_dropFwd.lengthSq() < 1e-6) _dropFwd.set(0, 0, -1);
+  _dropFwd.normalize();
+  _dropRight.crossVectors(_dropFwd, _worldUp).normalize();
+  dropHeldItem(heldWeaponDropModel, weapon.group, _dropFwd, _dropRight, +1);
+});
 
 // --- Broadcast / DCC tribute layer ---
 initAchievements();

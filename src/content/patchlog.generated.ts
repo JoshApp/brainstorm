@@ -9,6 +9,42 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Height-aware projectile collision — shots fly OVER low props (god-ray 'eaten shot' fix)"
+      },
+      {
+        "tag": "tune",
+        "text": "Marrow Sovereign — two-phase skeleton boss + phase system pilot"
+      },
+      {
+        "tag": "tune",
+        "text": "Monster sound: hurt cries, strike-release barks, and footstep foley"
+      },
+      {
+        "tag": "tune",
+        "text": "Loot pickup feel"
+      },
+      {
+        "tag": "fix",
+        "text": "Phone-feedback fixes: spitter damage, whole-body flash, mimic facing, fog projectile block"
+      },
+      {
+        "tag": "tune",
+        "text": "Tap-to-use"
+      },
+      {
+        "tag": "tune",
+        "text": "Tap-to-use: forgiving tap area + skip blocked loot to the item beneath"
+      },
+      {
+        "tag": "tune",
+        "text": "Unify tap-to-use: direct mesh taps honour intent within a tunable reach"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix mood-tint not reaching candles (warm flames in tinted rooms)"
+      },
+      {
+        "tag": "fix",
         "text": "3 boss UX fixes: stray-B fix, dormancy, smart tap arbiter"
       }
     ]
@@ -17,6 +53,10 @@ export const GENERATED_PATCHLOG = [
     "version": "Build 10",
     "date": "2026-06-02",
     "entries": [
+      {
+        "tag": "add",
+        "text": "Add diag-cross scenario (rooms on 4 sides) for portal-cull verification"
+      },
       {
         "tag": "tune",
         "text": "Fog gate: slower walk-through that stops just past the threshold"
@@ -172,46 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Boiling King: real vertical leap with landing screen shake"
-      },
-      {
-        "tag": "tune",
-        "text": "Boiling King: leap distance + AoE size + cooldown tuning"
-      },
-      {
-        "tag": "tune",
-        "text": "Boiling King: way bigger + inside-aura mechanic (slow + acid DoT)"
-      },
-      {
-        "tag": "tune",
-        "text": "Boiling King"
-      },
-      {
-        "tag": "tune",
-        "text": "Menus freeze the world + mobile menus scroll when too tall"
-      },
-      {
-        "tag": "tune",
-        "text": "Desktop: hold-to-charge attacks + rebindable keys + Controls tab"
-      },
-      {
-        "tag": "tune",
-        "text": "Safe-room card: grace window before tap can dismiss it"
-      },
-      {
-        "tag": "tune",
-        "text": "Step 3 v4: encounter + event density passes — pipeline complete"
-      },
-      {
-        "tag": "tune",
-        "text": "Step 3 v3: carve pass — fissured floor cutouts as the first pass"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix floor non-determinism: corpse note used a global counter"
-      },
-      {
-        "tag": "tune",
-        "text": "Nerf bleed + burn DoTs (too brutal vs 8-HP player)"
       }
     ]
   }

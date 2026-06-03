@@ -448,8 +448,10 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
 
   // Death sequence active. NOT frozen — needs time to ramp the vignette.
-  // Snap script waits longer for this scenario.
+  // Snap script waits longer for this scenario. Equips a weapon so the
+  // on-death hand-drop (weapon tumbles to the floor) is exercised.
   death: {
+    equipWeaponId: 'rusted-sword',
     triggerDeath: true,
   },
 
@@ -1408,6 +1410,18 @@ export function applyScenario(
     ctx.weapon.setDebugPhase(scenario.swordPhase.phase, scenario.swordPhase.phaseTimer);
   }
 
+  // Equip BEFORE triggerDeath so the death sequence sees the held weapon
+  // (the on-death hand-drop reads the equipped weapon at the instant of
+  // death) — and so generally "you die holding your gear".
+  if (scenario.equipWeaponId) {
+    const item = ITEMS[scenario.equipWeaponId];
+    if (item) {
+      // Use the equipment system so viewmodel + stats both update via the
+      // main.ts listener — same code path as a real pickup.
+      setSlot('weapon', item);
+    }
+  }
+
   if (scenario.triggerDeath) {
     triggerDeath();
   }
@@ -1424,15 +1438,6 @@ export function applyScenario(
   if (scenario.applyPlayerBuff) {
     const player = getEntity('player');
     if (player) applyBuff(player, scenario.applyPlayerBuff.id, scenario.applyPlayerBuff.duration);
-  }
-
-  if (scenario.equipWeaponId) {
-    const item = ITEMS[scenario.equipWeaponId];
-    if (item) {
-      // Use the equipment system so viewmodel + stats both update via the
-      // main.ts listener — same code path as a real pickup.
-      setSlot('weapon', item);
-    }
   }
 
   if (scenario.giveItems) {
