@@ -1,5 +1,10 @@
 import { emit } from '../broadcast/event-bus';
+import { registerEncounter, activateEncounter, type EncounterHandle } from '../encounters/registry';
 import type { Enemy } from './enemy';
+
+/** This fight's id in the unified Encounter registry. The fog gate, rewards,
+ *  and future reactors bind to it via onEncounterComplete(BOSS_ENCOUNTER_ID). */
+export const BOSS_ENCOUNTER_ID = 'boss';
 
 // Boss ENCOUNTER container — the single source of truth for "is the boss
 // fight done." A boss is often several bodies over its lifetime (the king,
@@ -26,6 +31,10 @@ let engaged = false;
 let completed = false;
 let phase = 1;
 const completeListeners = new Set<() => void>();
+// Handle into the unified Encounter registry. The boss fight IS an Encounter:
+// engage = activate, all-bodies-down = complete. Registered on engage (which
+// happens after the level build's clearEncounters, so no load-order coupling).
+let encounter: EncounterHandle | null = null;
 
 /** Current fight phase (1 = the king; 2 = the spawns it split into; …).
  *  A phase is a designed beat of the SAME encounter — distinct from
@@ -48,9 +57,13 @@ export function registerBossMember(e: Enemy): void {
 }
 
 /** Mark the fight as joined (the player committed). Gates completion so an
- *  un-engaged boss can't "complete" before the fight starts. */
+ *  un-engaged boss can't "complete" before the fight starts. Also registers +
+ *  activates the boss Encounter so reactors (fog gate, rewards) can bind. */
 export function engageBossEncounter(): void {
+  if (engaged) return;
   engaged = true;
+  encounter = registerEncounter(BOSS_ENCOUNTER_ID, {});
+  activateEncounter(BOSS_ENCOUNTER_ID);
 }
 
 export function isBossEncounterEngaged(): boolean {
@@ -96,6 +109,7 @@ export function tickBossEncounter(): void {
   if (members.some((m) => m.alive && m.hp > 0)) return;
   completed = true;
   emit({ type: 'boss:defeated' });
+  encounter?.complete();   // → emits encounter:complete('boss') for reactors
   for (const fn of completeListeners) fn();
 }
 
@@ -121,4 +135,5 @@ export function resetBossEncounter(): void {
   completed = false;
   phase = 1;
   completeListeners.clear();
+  encounter = null;   // the registry itself is wiped by the build's clearEncounters
 }

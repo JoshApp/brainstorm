@@ -30,7 +30,7 @@ import {
 import { spawnCorpse } from '../interactables/corpse';
 import { spawnFitting } from '../interactables/fitting';
 import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-waves';
-import { registerEncounter, clearEncounters, type EncounterHandle } from '../encounters/registry';
+import { registerEncounter, activateEncounter, clearEncounters, roomClearEncounterId, type EncounterHandle } from '../encounters/registry';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -1189,6 +1189,30 @@ export function buildLevel(
         onActivate: () => controller.start(),
         tick: (dt, pos) => controller.tick(dt, pos),
       });
+    }
+  }
+
+  // Plain room-clear gates ('cleared') become the degenerate encounter:
+  // active from the start, resolves the frame the room is empty. Folds the
+  // old aliveByRoom gate check into the same lifecycle as everything else —
+  // a room with no mobs completes on its first tick (so the gate isn't stuck).
+  const seenClearRooms = new Set<string>();
+  for (const d of spec.doors ?? []) {
+    if (d.unlock?.kind !== 'cleared') continue;
+    for (const roomId of d.unlock.roomIds) {
+      if (seenClearRooms.has(roomId)) continue;
+      seenClearRooms.add(roomId);
+      let handle: EncounterHandle;
+      handle = registerEncounter(roomClearEncounterId(roomId), {
+        tick: () => {
+          let alive = 0;
+          for (const en of enemies) {
+            if (roomByEntity.get(en.entityId) === roomId && en.alive) alive++;
+          }
+          if (alive === 0) handle.complete();
+        },
+      });
+      activateEncounter(roomClearEncounterId(roomId));
     }
   }
 

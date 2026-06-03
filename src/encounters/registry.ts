@@ -112,3 +112,14 @@ export function onEncounterActivated(id: string, cb: () => void): () => void {
 export function onEncounterComplete(id: string, cb: () => void): () => void {
   return on((e) => { if (e.type === 'encounter:complete' && e.id === id) cb(); });
 }
+
+// ── Canonical encounter ids ──────────────────────────────────────────────
+// Derived from a roomId so a gate and the builder agree on the id without
+// sharing state. (arenaEncounterId lives in level/arena-waves.ts.)
+
+/** A plain room-clear gate ('O' / unlock 'cleared') — active from build,
+ *  resolves when the room is empty. The degenerate encounter: no trigger, no
+ *  waves, just "open when clear", unified with everything else. */
+export function roomClearEncounterId(roomId: string): string {
+  return `clear:${roomId}`;
+}

@@ -6,7 +6,7 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { on as onEvent } from '../broadcast/event-bus';
 import { playChestOpen, playImpact } from '../audio/sfx';
-import { hasEncounter, isEncounterComplete, activateEncounter } from '../encounters/registry';
+import { hasEncounter, isEncounterComplete, activateEncounter, roomClearEncounterId } from '../encounters/registry';
 import { arenaEncounterId } from '../level/arena-waves';
 
 // Door = the thing that plugs a doorway. Two physical kinds, chosen by
@@ -285,12 +285,16 @@ export function spawnDoor(
     if (!spec.unlock) return true;
     if (spec.unlock.kind === 'cleared' || spec.unlock.kind === 'arena') {
       for (const roomId of spec.unlock.roomIds) {
-        // Arena rooms run a wave-gauntlet ENCOUNTER: defer to it, so the gate
-        // stays down through the slam + inter-wave lulls and only rises when
-        // the gauntlet is fully resolved. Non-arena rooms use the live enemy
-        // count as before.
-        if (hasEncounter(arenaEncounterId(roomId))) {
-          if (!isEncounterComplete(arenaEncounterId(roomId))) return false;
+        // Both gate kinds now run an ENCOUNTER (arena = wave gauntlet, cleared
+        // = degenerate "open when empty"); the gate defers to its completion.
+        // This keeps an arena down through the slam + inter-wave lulls, and a
+        // cleared gate down until the room is dead. Fallback to the live count
+        // only if no encounter was registered (defensive).
+        const encId = spec.unlock.kind === 'arena'
+          ? arenaEncounterId(roomId)
+          : roomClearEncounterId(roomId);
+        if (hasEncounter(encId)) {
+          if (!isEncounterComplete(encId)) return false;
         } else if ((enemyRoomMembership().get(roomId) ?? 0) > 0) {
           return false;
         }

@@ -5,7 +5,8 @@ import { bossMistModel } from '../content/boss-mist';
 import { registerInteractable } from './system';
 import type { Interactable } from './types';
 import { engageBoss, registerFogWall } from '../ui/boss-engagement';
-import { onBossEncounterComplete } from '../mobs/boss-encounter';
+import { BOSS_ENCOUNTER_ID } from '../mobs/boss-encounter';
+import { onEncounterComplete } from '../encounters/registry';
 import { setPlayerInvulnerable } from '../player/health';
 import { kickShake } from '../combat/screen-shake';
 import { playWhoosh } from '../audio/sfx';
@@ -166,7 +167,11 @@ export function spawnBossMist(
   // mid-fight when one body dropped but its spawns are still up. Vanish
   // the curtain entirely (visual + interactable) so the cleared threshold
   // reads by ABSENCE rather than a lingering parted mist.
-  onBossEncounterComplete(() => {
+  // Reactor: the fog gate releases when the BOSS encounter completes — bound
+  // through the unified Encounter registry rather than the boss-specific
+  // callback, so the fog gate is just "a gate that opens when its encounter
+  // ends" (same shape as the arena gate).
+  onEncounterComplete(BOSS_ENCOUNTER_ID, () => {
     unblock();
     walkable.removeProjectileBarrier(seg);
     interactable.promptLabel = '';
