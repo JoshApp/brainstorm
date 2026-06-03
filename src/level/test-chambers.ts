@@ -24,6 +24,9 @@ function smallChamber(
   cols: number,
   innerFill: () => Partial<Pick<LevelSpec, 'props' | 'spawns' | 'doors' | 'extraWalls'>>,
   height: number = TEST_HEIGHT,
+  /** Override all four wall torches to this tint (mood) — e.g. the Marrow
+   *  Sovereign's charnel-red hall. Unset = the default warm sconces. */
+  torchTint?: number,
 ): LevelSpec {
   const w = cols - 2;
   const d = rows - 2;
@@ -45,10 +48,10 @@ function smallChamber(
     corridors: [],
     props: filled.props ?? [],
     torches: [
-      { x: -(w / 2 + 0.05), z: -(d / 2) + 1.0, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
-      { x:  (w / 2 + 0.05), z: -(d / 2) + 1.0, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
-      { x: -(w / 2 + 0.05), z:  (d / 2) - 1.0, height: 2.0, wall: 'W', colorTint: 0xc8a060, intensityMul: 0.7 },
-      { x:  (w / 2 + 0.05), z:  (d / 2) - 1.0, height: 2.0, wall: 'E', colorTint: 0xc8a060, intensityMul: 0.7 },
+      { x: -(w / 2 + 0.05), z: -(d / 2) + 1.0, height: 2.0, wall: 'W', colorTint: torchTint ?? 0xffaa55, intensityMul: 0.9 },
+      { x:  (w / 2 + 0.05), z: -(d / 2) + 1.0, height: 2.0, wall: 'E', colorTint: torchTint ?? 0xffaa55, intensityMul: 0.9 },
+      { x: -(w / 2 + 0.05), z:  (d / 2) - 1.0, height: 2.0, wall: 'W', colorTint: torchTint ?? 0xc8a060, intensityMul: 0.7 },
+      { x:  (w / 2 + 0.05), z:  (d / 2) - 1.0, height: 2.0, wall: 'E', colorTint: torchTint ?? 0xc8a060, intensityMul: 0.7 },
     ],
     spawns: filled.spawns ?? [],
     doors: filled.doors ?? [],
@@ -222,7 +225,7 @@ function buildMarrowSovereign(): LevelSpec {
       // side from a distance.
       { kind: 'boss-mist', x: 0, z: 4, rotY: Math.PI, color: 0xff6030 },
     ],
-  }), 11);
+  }), 11, 0xff4a26);   // charnel-red hall — bones lit dread-red
 }
 
 // ── Boiling King — Act I boss in a wide arena. Sized to match
