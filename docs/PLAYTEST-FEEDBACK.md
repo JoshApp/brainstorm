@@ -78,10 +78,10 @@ multi-hit is, etc.). Don't tune one in isolation.
   current floor properly.
 
 ## H. Save & main menu
-- [ ] **[bug/ux]** With a run ongoing, **CONTINUE should be the prominent
-  button**, not DESCEND — DESCEND **wipes the save**, so it's a footgun.
-- [ ] **[?][feat]** **Accidental run deletion** → at least a **confirm prompt**
-  before wiping a live save; maybe **save slots**.
+- [x] **[bug/ux]** With a run ongoing, **CONTINUE is now the prominent
+  button**; starting anew is a muted "NEW RUN" behind a confirm. *(done)*
+- [x] **[feat]** **Accidental run deletion** → "ABANDON RUN?" confirm before
+  wiping (safe "keep" is the prominent choice). Save slots deferred. *(done)*
 
 ## I. Content
 - [ ] **[content]** Promote the **new skeleton boss to the Floor-2 boss.**
@@ -100,10 +100,15 @@ multi-hit is, etc.). Don't tune one in isolation.
 6. **Stamina + sprint/dodge** (F) — the feature, after the design decision.
 7. Item balance polish (D) last, once systems settle.
 
-## Decisions needed (let's talk)
-- **Stamina: yes/no**, and if yes, the mobile HUD treatment. Gates
-  charged-attack + ranged + dodge — changes a lot of balance, so decide early.
-- **Save slots vs. just a confirm prompt** for run deletion.
-- **Multi-hit philosophy** — which exact attacks are allowed to cleave.
-- **Projectile rework scope** — fix the LOS/collision height test, or a
-  broader redo.
+## Decisions (resolved 2026-06-03)
+- **Stamina: YES.** A stamina pool gates charged attacks + ranged shots +
+  the new sprint/dash-dodge. Mobile HUD: a thin auto-hiding gauge (ring
+  around the joystick or under the reticle). Built LAST (step 6); the
+  charged-attack/ranged nerfs hang off it.
+- **Run deletion: confirm prompt** (CONTINUE prominent when a run is live;
+  "abandon run?" confirm before DESCEND wipes). Save slots = later, maybe.
+- Starting with the **correctness bugs** (step 1).
+
+## Still to decide (when we reach them)
+- **Multi-hit philosophy** — which exact attacks may cleave.
+- **Projectile rework scope** — fix the LOS/collision height test, or broader.

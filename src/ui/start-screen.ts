@@ -9,6 +9,7 @@
 // no sponsor energy, no fanfare.
 
 import { openScreen, closeScreen } from './screen-manager';
+import { createSheet, menuButton } from './menu-shell';
 import { getMeta, getStash } from '../state/meta-state';
 import { showCodex } from './codex-screen';
 import { showStash } from './stash-screen';
@@ -166,25 +167,34 @@ export function showStartScreen(opts: StartScreenOptions) {
     zIndex: '1',
   });
 
-  // DESCEND — primary action.
-  const descend = makePill('DESCEND', 'begin a fresh run', true);
-  descend.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    hide();
-    opts.onDescend();
-  });
-  buttons.appendChild(descend);
-
-  // CONTINUE — only if save exists.
   if (opts.hasSave) {
+    // A run is live → CONTINUE is the hero; starting anew is a MUTED,
+    // CONFIRM-GATED action (DESCEND wipes the save — was a footgun as the
+    // big primary button).
     const sub2 = opts.saveDepth ? `resume at depth ${opts.saveDepth}` : 'resume previous run';
-    const cont = makePill('CONTINUE', sub2, false);
+    const cont = makePill('CONTINUE', sub2, true);
     cont.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       hide();
       opts.onContinue();
     });
     buttons.appendChild(cont);
+
+    const fresh = makePill('NEW RUN', 'abandons your descent', false);
+    fresh.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      confirmAbandon(opts.saveDepth, () => { hide(); opts.onDescend(); });
+    });
+    buttons.appendChild(fresh);
+  } else {
+    // No save → DESCEND is the primary (nothing to lose, no confirm).
+    const descend = makePill('DESCEND', 'begin a fresh run', true);
+    descend.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      hide();
+      opts.onDescend();
+    });
+    buttons.appendChild(descend);
   }
 
   root.appendChild(buttons);
@@ -409,6 +419,38 @@ function makeSecondaryLink(label: string, badge: number): HTMLButtonElement {
   b.addEventListener('pointerenter', () => { b.style.color = 'rgba(255, 220, 180, 0.95)'; });
   b.addEventListener('pointerleave', () => { b.style.color = 'rgba(190, 160, 130, 0.55)'; });
   return b;
+}
+
+/** Confirm before abandoning a live run (DESCEND wipes the save). The
+ *  SAFE choice (keep) is the prominent button; abandon is muted. Built on
+ *  the menu shell so it's dismissable (✕ / backdrop = cancel) and frees
+ *  the cursor on PC. */
+function confirmAbandon(depth: number | undefined, onConfirm: () => void) {
+  const sheet = createSheet({
+    id: 'abandon-confirm',
+    title: 'ABANDON RUN?',
+    width: 440,
+    layer: 'title',   // above the start screen (both 'title'; later stacks on top)
+  });
+  const msg = document.createElement('div');
+  msg.textContent = depth
+    ? `Your descent reached depth ${depth}. To begin anew is to leave it behind — the dungeon keeps what it took.`
+    : 'To begin anew is to leave your current descent behind — there is no returning to it.';
+  Object.assign(msg.style, {
+    fontFamily: '"Iowan Old Style", "Palatino", serif',
+    fontStyle: 'italic',
+    fontSize: '14px',
+    lineHeight: '1.55',
+    color: 'rgba(205, 175, 140, 0.85)',
+    textAlign: 'center',
+    padding: '4px 2px',
+  } as Partial<CSSStyleDeclaration>);
+  sheet.body.appendChild(msg);
+
+  const abandon = menuButton('ABANDON', () => { sheet.close(); onConfirm(); });
+  const keep = menuButton('KEEP DESCENDING', () => sheet.close(), { primary: true });
+  sheet.footer.append(abandon, keep);
+  sheet.open();
 }
 
 function hide() {
