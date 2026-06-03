@@ -55,6 +55,12 @@ export interface EnemySpec {
 
   // --- Stats ---
   hp: number;
+  /** Poise — the stagger pool the player's heavy/Might-scaled hits chip
+   *  at; break it and the enemy is staggered (action cancelled, free-hit
+   *  window). Omitted → default scales with hp (bosses get a much larger
+   *  pool). Set explicitly to make a mob tankier or flimsier vs stagger
+   *  independent of its HP. See the poise system in mobs/enemy.ts. */
+  poise?: number;
   moveSpeed: number;          // m/s while chasing
   attackDamage: number;       // HP removed from player per successful strike
 

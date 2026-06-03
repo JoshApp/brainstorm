@@ -86,6 +86,30 @@ perk (alchemy Master → potions heal more; toughness → the
 get-hit-get-harder loop the code already hints at). Demote the rest to
 pure LLM-signal — don't show them as if they're stats.
 
+**Proficiency = a per-class config, overridable per weapon [DECIDED].**
+Same pattern as `scaling` / `timingMul` (class default + per-item
+override; LLM-authorable). Today proficiency does ONE thing for every
+class — shave timings + add damage — which *erodes* the weight we just
+built (speeding up a hammer un-heavies it). Instead each class's
+proficiency improves what FITS it, from a SMALL bonus vocabulary
+(speed, damage, stagger, combo-window, crit, reach):
+  - dagger → attack speed + crit
+  - hammer/scythe → **stagger power + damage** (NOT speed — mastery
+    breaks poise harder, keeping heavies heavy)
+  - sword → combo window + damage
+  - wand → affliction potency
+This is also how proficiency feeds the poise system without coupling:
+heavy-class proficiency raises stagger power alongside Might.
+
+**Show proficiency on the item card [DECIDED].** The "see the reward"
+fix: a weapon's card shows its class tier (Novice→Adept→Master) + a
+slim progress bar to the next tier + the net bonus it's currently
+granting ("Sword — Adept · +15% dmg, +10% combo window"). Tier + bar +
+net bonus only — never every sub-stat. Pairs with the milestone pops.
+
+These three — per-class config, milestone tiers, item-card display —
+are ONE workstream: the **proficiency rework**.
+
 ### Attributes: spend at the harbor [DECIDED]
 
 Keep the deliberate Souls-style model: **earn points by leveling,
@@ -136,10 +160,50 @@ with Might) — same "smash through, they reel" fantasy via offense, no
 new downside. Revisit poise only if a deliberate swing-interrupt risk
 layer is ever added.
 
-Build order: **Stage 1** = rename + family scaling + universal floor +
-Finesse crit + Grit HP/armor (self-contained, compiles, feelable).
-**Stage 2** = Lore affliction-scaling (touches buff-apply sites).
-**Stage 3** = Might stagger (touches attack.ts hit + enemy `winding`).
+Build order: **Stage 1** ✓ = rename + family scaling + universal floor +
+Finesse crit + Grit HP/armor. **Stage 2** ✓ = Lore affliction-scaling.
+**Stage 3** = Might stagger (the poise model below). All shipped except
+Stage 3.
+
+### Weapon weight is a prerequisite for stagger [DECIDED]
+
+Stagger and slow heavies are the SAME fantasy — a hammer that staggers
+but swings as fast as a dagger isn't heavy, it's a dagger that
+interrupts. Weight must be *earned* by the slow committal swing, then
+stagger is the reward for committing. The combat also just felt too
+fast across the board.
+
+Shipped: a per-class **`timingMul`** (weapon-classes.ts) stretches
+**windup + recover** (NOT the strike/hit-window, so detection + balance
+stay stable → the "wind up… SNAP… recover" cadence). hammer 1.7 /
+scythe 1.5 (heavy), sword 1.25 / spear 1.15 (modest), light + ranged
+1.0 (stay fast). Proficiency still shaves timings (left as-is for now;
+may later re-point off speed onto stagger/combo/reach so mastery doesn't
+erode weight). Tune the per-class number to taste.
+
+### Might stagger = poise / stagger-damage model [DECIDED]
+
+NOT chance-based (defensive RNG = random punishment, no payoff loop).
+Instead the Souls/Sekiro **poise** model — deterministic, legible
+(pillar 4), with a stagger→punish reward loop:
+
+- Each enemy has a hidden **poise** pool (default derived from maxHp,
+  per-spec override; bosses high/immune).
+- A player melee hit deals **stagger damage** =
+  `weaponWeight[class] × (1 + Might·MIGHT_STAGGER_PER_POINT) × chargeBonus`.
+  Heavy weapons have high weaponWeight (stagger even at 0 Might — now
+  justified by their slowness); Might amplifies and lets lighter weapons
+  stagger too; charged heavies hit poise hardest.
+- `poiseLeft -= staggerDamage`; at ≤ 0 → **STAGGER**: cancel the
+  enemy's current ability/`winding` telegraph, enter a brief
+  `staggered` stun (~0.6s, a free damage window), reset poise.
+- Poise **regenerates** when not recently hit, so you must sustain
+  pressure to break it.
+
+Wiring: `poise` on EnemySpec + per-enemy `poiseLeft`/regen/`staggered`
+state in enemy.ts; an optional `applyStaggerDamage()` on the Damageable
+interface called from attack.ts on heavy-target melee hits (vases
+ignore). Generalizes to boss stance-breaks later.
 
 | Attribute | Scales | Base stat | The verb |
 |---|---|---|---|

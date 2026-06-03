@@ -100,7 +100,9 @@ export type EnemyState =
   | 'striking'
   | 'recovering'
   | 'searching'   // lost sight, heading to last known position
-  | 'returning';  // gave up search, walking back to post
+  | 'returning'   // gave up search, walking back to post
+  | 'staggered';  // poise broken by a heavy hit — reeling, can't act,
+                  // a free-hit window (see the poise system + Might)
 
 // AI timing/feel constants are tuned in src/config.ts (CONFIG.ENEMY_AI);
 // the rationale for each stays here at the use site.
@@ -169,6 +171,10 @@ export interface Enemy extends Damageable {
    *  See EnemySpec.noPlayerCollision. */
   noPlayerCollision: boolean;
   takeDamage(event: DamageEvent): number;
+  /** Chip the poise pool; breaking it staggers the enemy (cancels its
+   *  action, opens a free-hit window). Called by the combat cone on a
+   *  heavy melee hit. */
+  applyStaggerDamage(amount: number): void;
   update(
     dt: number,
     playerPos: THREE.Vector3,
@@ -345,6 +351,17 @@ export function createEnemy(
   let state: EnemyState = options?.dormant ? 'dormant' : 'idle';
   let phaseTimer = 0;
   let aliveLocal = true;
+
+  // ── Poise / stagger ────────────────────────────────────────────────
+  // A hidden pool the player's heavy/Might-scaled hits chip at; break it
+  // and the enemy is STAGGERED (its action cancelled, a brief free-hit
+  // window). Pool resets on break and regenerates after a grace window
+  // so chip pressure must be SUSTAINED. Default scales with HP; bosses
+  // get a much larger pool (rarely staggered unless spec-tuned).
+  const poiseMax = spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(3, initialHp));
+  let poiseLeft = poiseMax;
+  let poiseRegenCd = 0;     // grace countdown before the pool refills
+  let staggerTimer = 0;     // > 0 while in the 'staggered' state
   // ── Strike-phase timeline state ────────────────────────────────────
   // Per-step latches for the ability currently striking: stepStarted[i]
   // flips once step i's trigger fires; stepDone[i] once its action fully
@@ -727,6 +744,34 @@ export function createEnemy(
       }
     }
     return result.applied;
+  }
+
+  // Chip the poise pool; break it → STAGGER. Called from the combat
+  // cone on a heavy melee hit, with the attacker's already-resolved
+  // stagger power (weapon weight × Might × charge — see attack.ts).
+  function applyStaggerDamage(amount: number): void {
+    if (!aliveLocal || burrowState !== 'surfaced' || amount <= 0) return;
+    if (state === 'staggered') return;            // already reeling
+    if (phases && phaseInvulnTimer > 0) return;   // boss phase-entry invuln
+    poiseLeft -= amount;
+    poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
+    if (poiseLeft <= 0) triggerStagger();
+  }
+
+  function triggerStagger(): void {
+    // Cancel whatever it was doing — the wind-up/strike is INTERRUPTED.
+    currentAbility = null;
+    clearAoeTelegraph();
+    clearLashTendril();
+    setEyeFlare(0);
+    state = 'staggered';
+    staggerTimer = CONFIG.POISE.STAGGER_DURATION;
+    phaseTimer = 0;
+    poiseLeft = poiseMax;          // reset — must be broken again
+    poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
+    aggroed = true;                // a staggered mob is very much aware of you
+    // (Audio: the breaking hit's own hurt cry — via takeDamage — covers
+    // the moment. A dedicated heavier "stagger" SFX is future polish.)
   }
 
   function distToXZ(target: THREE.Vector3): number {
@@ -1318,9 +1363,20 @@ export function createEnemy(
       }
     }
 
+    // Poise regen — once the player stops landing stagger pressure, the
+    // pool refills (a grace delay, then a steady rate) so you must
+    // SUSTAIN hits to break it. A staggered enemy doesn't regen (its
+    // pool is already reset for the next break).
+    if (state !== 'staggered') {
+      if (poiseRegenCd > 0) poiseRegenCd = Math.max(0, poiseRegenCd - dt);
+      else if (poiseLeft < poiseMax) {
+        poiseLeft = Math.min(poiseMax, poiseLeft + CONFIG.POISE.REGEN_RATE * dt);
+      }
+    }
+
     // Face target is conditional — idle/returning faces the scan target,
-    // not the player.
-    if (state !== 'idle' && state !== 'returning') {
+    // not the player; a staggered enemy is reeling and doesn't track you.
+    if (state !== 'idle' && state !== 'returning' && state !== 'staggered') {
       faceTarget(playerPos);
     }
 
@@ -1333,6 +1389,22 @@ export function createEnemy(
         // the boss intro, and the boss starting to hunt all land on
         // the SAME frame the player crosses the threshold.
         if (isBossEngaged()) {
+          state = 'chasing';
+          phaseTimer = 0;
+        }
+        break;
+      }
+      case 'staggered': {
+        // Poise broken — reel in place, can't act. A backward recoil
+        // lean (eased toward neutral as it recovers) reads the flinch;
+        // no movement, no attack. The free-hit window the player earned.
+        staggerTimer -= dt;
+        const f = Math.max(0, Math.min(1, staggerTimer / CONFIG.POISE.STAGGER_DURATION));
+        applyTilt(-0.4 * f);
+        setEyeFlare(0);
+        built.group.position.y = 0;
+        if (staggerTimer <= 0) {
+          applyTilt(0);
           state = 'chasing';
           phaseTimer = 0;
         }
@@ -1648,8 +1720,9 @@ export function createEnemy(
     stepEvents.clear();
     switch (s) {
       case 'chasing':
+      case 'staggered':
         setEyeFlare(0);
-        applyTilt(0);
+        applyTilt(s === 'staggered' ? -0.4 : 0);
         built.group.position.y = 0;
         break;
       case 'winding': {
@@ -1719,6 +1792,7 @@ export function createEnemy(
       return state;
     },
     takeDamage,
+    applyStaggerDamage,
     update,
     setDebugState,
     setDebugPosition,

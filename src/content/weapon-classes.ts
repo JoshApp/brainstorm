@@ -84,6 +84,10 @@ export interface ResolvedWeaponStats {
   damage: number;
   critChance: number;
   critMultiplier: number;
+  /** Stagger power per hit (weapon weight × Might). The combat cone
+   *  passes this to the target's applyStaggerDamage on a heavy hit;
+   *  accumulated past the enemy's poise → stagger. */
+  staggerPower: number;
   class: WeaponClass;
   /** Ordered combo steps. A press while idle within comboWindowMs of
    *  the previous step's recover-end advances to the next step;
@@ -440,6 +444,23 @@ const DEFAULT_WEAPON_SCALING: Record<WeaponClass, WeaponScaling> = {
   wand:    { lore: 'B' },
 };
 
+// Base STAGGER POWER per class — how hard a single hit chips enemy poise
+// BEFORE Might scaling (resolveWeaponStats multiplies by Might). Heavy
+// weapons break poise on their own (now earned by their slow swings);
+// light/ranged barely dent it without Might investment. Override per
+// weapon via WeaponStats.staggerPower. Tune feel here.
+const STAGGER_POWER_BY_CLASS: Record<WeaponClass, number> = {
+  hammer: 3.0,
+  scythe: 2.5,
+  sword:  1.5,
+  spear:  1.3,
+  whip:   0.7,
+  dagger: 0.6,
+  crossbow: 1.0,
+  'throwing-knives': 0.4,
+  wand:   0.5,
+};
+
 /** Flatten class defaults + per-spec overrides + attackSpeed +
  *  character proficiency (tempo) + attribute scaling (power: family +
  *  universal floor) + Finesse crit into a single resolved stat block.
@@ -473,6 +494,10 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   const profDmgMul = (1 + profPct) * (1 + familyBonus + universalBonus);
 
   const finesseCrit = char.attributes.finesse * CONFIG.ATTR.FINESSE_CRIT_PER_POINT;
+
+  // Might SIGNATURE — stagger power = weapon weight × Might.
+  const staggerBase = spec.staggerPower ?? STAGGER_POWER_BY_CLASS[cls];
+  const staggerPower = staggerBase * (1 + char.attributes.might * CONFIG.ATTR.MIGHT_STAGGER_PER_POINT);
 
   // WEIGHT: each class carries a timingMul that stretches the COMMITTAL
   // parts of a swing — windup + recover — WITHOUT touching the strike
@@ -510,6 +535,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     coneHalfAngle: spec.coneHalfAngle,
     damage: spec.damage * profDmgMul,
     critChance: (spec.critChance ?? 0.05) + finesseCrit,
+    staggerPower,
     critMultiplier: spec.critMultiplier ?? 2.0,
     class: cls,
     combo,

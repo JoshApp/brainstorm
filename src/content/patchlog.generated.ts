@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "content",
+        "text": "Weapon weight pass: timingMul stretches windup+recover (not strike)"
+      },
+      {
+        "tag": "content",
         "text": "Shrouded relic — the cursed mystery gamble (find + reveal)"
       },
       {
@@ -208,10 +212,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Boss sleeps behind the fog gate; entry-grace immortality on cross"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss encounter container (source of truth) + 2 phases + a real Dark Souls fog gate"
       }
     ]
   }

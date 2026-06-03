@@ -160,6 +160,22 @@ export const CONFIG = {
     // bleed/burn) last longer AND tick harder. The hexer build.
     LORE_AFFLICT_DURATION_PER_POINT: 0.05, // +5% status duration / point
     LORE_AFFLICT_POTENCY_PER_POINT:  0.04, // +4% DoT tick damage / point
+    // Might SIGNATURE — stagger. A hit's stagger power (weapon weight,
+    // see weapon-classes.ts) is multiplied by this per Might point, so
+    // 10 Might ≈ +150% stagger. At 0 Might only heavy weapons break
+    // poise reliably; Might lets lighter weapons stagger too.
+    MIGHT_STAGGER_PER_POINT: 0.15,
+  },
+
+  // === POISE / STAGGER ===
+  // The enemy stagger pool the player chips with Might-scaled hits.
+  // Break it → the enemy's action is cancelled and it reels (a free-hit
+  // window). See the poise system in src/mobs/enemy.ts.
+  POISE: {
+    STAGGER_DURATION: 0.6,  // s the enemy reels after a poise break
+    REGEN_DELAY: 1.2,       // s of no stagger pressure before the pool refills
+    REGEN_RATE: 4,          // poise points / s once regen kicks in
+    CHARGE_BONUS: 1.0,      // a FULL charged swing adds this ×stagger (×2 total)
   },
 
   // === PLAYER HEALTH ===

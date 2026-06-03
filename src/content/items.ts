@@ -142,6 +142,14 @@ export interface WeaponStats {
    */
   scaling?: WeaponScaling;
   /**
+   * Stagger power per hit BEFORE Might scaling — how hard this weapon
+   * chips enemy poise (see the poise system in mobs/enemy.ts). Omitted →
+   * the per-class default (STAGGER_POWER_BY_CLASS in weapon-classes.ts:
+   * heavy weapons high, light/ranged low). Set explicitly for a weapon
+   * that punches above or below its class weight.
+   */
+  staggerPower?: number;
+  /**
    * On-hit status infliction. When set, a landed hit rolls `chance` and,
    * on success, applies the buff (a status effect from content/buffs.ts)
    * to the struck enemy for `duration` seconds. This is how a serrated

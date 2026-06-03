@@ -369,6 +369,11 @@ export function createCombatSystem(
           }
         }
         emit({ type: 'attack:hit', damage: applied, crit, cls: stats.class });
+        // Might SIGNATURE — chip the target's poise; break it and the
+        // enemy staggers (its action cancelled, a free-hit window). A
+        // full charge hits poise hardest. staggerPower already folds in
+        // weapon weight × Might (resolveWeaponStats).
+        target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS));
         // LIFESTEAL — heal a fraction of damage dealt per heavy target
         // hit. Per-target so a 3-target cleave heals from each
         // independently. Vases skipped (their hitFeedback is 'light'
