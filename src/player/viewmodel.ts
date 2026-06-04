@@ -3,41 +3,32 @@ import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { getBobOffset } from './viewmodel-bob';
 import { computeWeaponPose } from './weapon-animations';
-import { getCurrentWeapon } from './current-weapon';
 import { getChargeProgress } from '../controls/charge-input';
 import { registerViewmodel } from '../style/render-target';
+import { createSwingState } from '../combat/swing-state';
+import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep } from '../content/weapon-classes';
 
-// First-person held weapon viewmodel.
+// First-person held weapon viewmodel — the VIEW half of the attack system.
 //
-// Despite its old name (this file used to be sword.ts back when the
-// only weapon was a sword), it drives EVERY player weapon: sword,
-// dagger, hammer, spear, crossbow, wand/staff. Geometry comes from a
-// ModelSpec (data); animation state (swing phases) is procedural and
-// operates on the model group.
+// Despite its old name (this file used to be sword.ts back when the only
+// weapon was a sword), it drives EVERY player weapon: sword, dagger, hammer,
+// spear, crossbow, wand/staff. Geometry comes from a ModelSpec (data).
 //
-// The wielded weapon can be swapped at runtime via equip(spec) —
-// picking up a different weapon swaps the visible model under the
-// same animation state machine.
+// The SIMULATION — swing phases, combo progression, input buffering,
+// directional/charged overrides — lives in `combat/swing-state.ts`, a pure,
+// presentation-free, unit-tested module. This file is now just a view: each
+// frame it advances that sim and poses the THREE.Group from it. Combat reads
+// the same sim (through this facade) for hit windows + the onSwingStart
+// lifecycle event. Separating model from view is what keeps the feel-critical
+// timing logic testable and keeps "did a swing happen" single-authority.
 //
-// State machine:
-//   idle    — at rest pose (per-weapon; sword hip-held, staff upright)
-//   windup  — winding up (animated toward end-of-windup pose)
-//   strike  — the swing's HIT WINDOW. combat reads isStriking to
-//             gate raycasts. directional/charged moves can SKIP
-//             windup and start here.
-//   recover — locked-out follow-through. comboStep advances when
-//             this completes.
+// The wielded weapon can be swapped at runtime via equip(spec).
 
-/** Movement intent at the moment the player presses attack. Picked
- *  from the joystick magnitude + direction in combat/attack.ts and
- *  passed into startSwing — if a directional move is registered for
- *  this weapon class, it overrides the normal combo step. Strafe is
- *  split L/R so the swing follows the body's momentum direction. */
-export type AttackDirection = 'forward' | 'back' | 'strafe-left' | 'strafe-right' | null;
-
-export type SwingPhase = 'idle' | 'windup' | 'strike' | 'recover';
+// Re-exported so existing callers (combat/attack.ts) keep importing these from
+// the viewmodel; the definitions now live in combat/swing-state.ts.
+export type { SwingPhase, AttackDirection };
 
 export interface WeaponViewmodel {
   /** The live THREE.Group for the wielded weapon. Updated by equip(). */
@@ -73,7 +64,8 @@ export interface WeaponViewmodelOptions {
    *  just the first press. `charged` is true only for a charged release
    *  (skipWindup) — combat uses it to bill the heavier stamina cost.
    *  This is the single per-real-swing event, so stamina is spent here
-   *  (once per swing), NOT per button press. */
+   *  (once per swing), NOT per button press. Forwarded straight to the
+   *  swing-state sim, which is what actually owns the lifecycle. */
   onSwingStart?: (info: { charged: boolean }) => void;
 }
 
@@ -85,11 +77,11 @@ export function createWeaponViewmodel(
   const [rx, ry, rz] = CONFIG.SWORD_IDLE_ROT;
 
   // `group` is the animated HOLDER — always exists, parented to the
-  // camera, position + rotation driven by the swing state machine.
-  // The wielded weapon model lives as a CHILD of group, added by
-  // mount(); empty hand = no child. Starting empty (no mount at boot)
-  // is the starter-chamber default — the equipment listener calls
-  // equip(...) the moment the player takes a weapon at an altar.
+  // camera, position + rotation driven (by repose) from the swing sim.
+  // The wielded weapon model lives as a CHILD of group, added by mount();
+  // empty hand = no child. Starting empty (no mount at boot) is the
+  // starter-chamber default — the equipment listener calls equip(...) the
+  // moment the player takes a weapon at an altar.
   const group = new THREE.Group();
   group.position.set(ix, iy, iz);
   group.rotation.set(rx, ry, rz);
@@ -98,6 +90,10 @@ export function createWeaponViewmodel(
   // render-target.ts. Without it the distance-crush / fog-inscatter post
   // passes read the background depth behind the blade and paint it on.
   registerViewmodel(group);
+
+  // The swing/combo SIMULATION (phases, combo, buffering, overrides) lives in
+  // its own pure module; this viewmodel only reads it to pose `group`.
+  const swing = createSwingState({ onSwingStart: options.onSwingStart });
 
   function unmount() {
     while (group.children.length > 0) {
@@ -151,130 +147,27 @@ export function createWeaponViewmodel(
     group.add(built.group);
   }
 
-  // --- Swing state machine + combo tracking ---
-  // comboStep is the index into the current weapon's combo array. It
-  // advances when the player presses attack inside the combo window
-  // AFTER the previous step's recover ends — OR via the press buffer
-  // below.
-  //
-  // Press buffering:
-  //   A press during ANY non-finisher step buffers and chains the
-  //   next step at recover-end. This lets the player press
-  //   step 0 → during it press for step 1 → during step 1 press for
-  //   step 2, walking through the full combo. The FINISHER (the last
-  //   step) does NOT accept a buffer — otherwise a spam-burst on the
-  //   last step would wrap the combo back to step 0 and start over.
-  let phase: SwingPhase = 'idle';
-  let phaseTimer = 0;
-  let comboStep = 0;
-  let comboWindowExpiresAt = 0;     // ms (performance.now() basis)
-  let queuedPress = false;
-  // Directional move override — set at startSwing when the player's
-  // joystick was held in a direction at press time. Used in place of
-  // the combo step until cleared on idle.
-  let activeDirectionalStep: ResolvedComboStep | null = null;
+  /** Pose `group` from the current swing-state — a pure read of the sim into a
+   *  THREE transform. Called every frame after the sim advances, and on a
+   *  debug pose. */
+  function repose() {
+    const phase = swing.getPhase();
+    // Always-resolved step (the sim returns the rest step when idle too) — the
+    // pose curve comes from the step, so daggers walk stab→slash→stab as the
+    // combo advances and the wand carries upright.
+    const step = swing.getCurrentStep();
 
-  function nowMs(): number { return performance.now(); }
-
-  /** Pull the resolved step for the CURRENT combo index, defensively
-   *  wrapping in case the weapon was swapped to one with a shorter
-   *  combo while we were mid-swing. */
-  function currentStep() {
-    const w = getCurrentWeapon();
-    // Directional override beats the combo. Cleared on idle so the
-    // next neutral press resumes the standard combo sequence.
-    if (activeDirectionalStep) return { w, step: activeDirectionalStep };
-    const idx = ((comboStep % w.combo.length) + w.combo.length) % w.combo.length;
-    return { w, step: w.combo[idx] };
-  }
-
-  function startSwing(opts?: { skipWindup?: boolean; direction?: AttackDirection }): boolean {
-    if (phase !== 'idle') {
-      // Mid-swing press: buffer the next combo step UNLESS the
-      // current step is the finisher (last in the array). A spam
-      // burst on the finisher would otherwise wrap the combo and
-      // start step 0 of a fresh chain automatically.
-      const w = getCurrentWeapon();
-      const isFinisher = comboStep >= w.combo.length - 1;
-      if (!isFinisher) queuedPress = true;
-      return false;
-    }
-    // Pick the active step.
-    //
-    // Lookup order (highest priority first):
-    //   1. CHARGED + direction → chargedMoves[direction] (specials —
-    //      back-ward, strafe-spin, forward-plunge; today only ward).
-    //   2. direction → directionalMoves[direction] (lunge / sweeps /
-    //      retreat). Charge modifiers (+30% reach / +40% cone / +80%
-    //      damage) still stack on top in attack.ts.
-    //   3. neither → normal combo step. Charge modifiers stack too.
-    //
-    // Firing a directional or charged-special override RESETS the
-    // combo to step 0 so the next neutral press starts a fresh 1-2-3.
-    const w = getCurrentWeapon();
-    activeDirectionalStep = null;
-    const dir = opts?.direction;
-    const isCharged = !!opts?.skipWindup;
-    if (dir) {
-      // Map strafe-left / strafe-right onto a single 'strafe' key for
-      // chargedMoves lookup (the spin is rotationally symmetric).
-      const chargeKey: 'forward' | 'back' | 'strafe' =
-        dir === 'forward' ? 'forward' :
-        dir === 'back'    ? 'back' :
-                            'strafe';
-      const dirKey =
-        dir === 'forward'      ? 'forward' :
-        dir === 'back'         ? 'back' :
-        dir === 'strafe-left'  ? 'strafeLeft' :
-                                  'strafeRight';
-      const chargedMove = isCharged && w.chargedMoves ? w.chargedMoves[chargeKey] : undefined;
-      const directional = w.directionalMoves ? w.directionalMoves[dirKey] : undefined;
-      activeDirectionalStep = chargedMove ?? directional ?? null;
-      if (activeDirectionalStep) comboStep = 0;
-    }
-    // No override: if we're past the combo window the previous chain
-    // is dead and the next press restarts from step 0. If we're still
-    // inside it, comboStep was pre-advanced when the last recover
-    // ended, so we just fire whatever it currently is.
-    if (!activeDirectionalStep && nowMs() >= comboWindowExpiresAt) {
-      comboStep = 0;
-    }
-    // Charged release skips the windup phase — the player ALREADY
-    // paid for it by holding. The cocked-back idle pose blends seam-
-    // lessly into the strike's t=0 pose (which IS the end-of-windup
-    // pose for the same combo step), so the visual transition is
-    // continuous: held back → swings forward.
-    phase = opts?.skipWindup ? 'strike' : 'windup';
-    phaseTimer = 0;
-    options.onSwingStart?.({ charged: isCharged });
-    return true;
-  }
-
-  function update(dt: number) {
     if (phase === 'idle') {
-      // If the combo window has expired since we went idle, drop back
-      // to step 0 so the held-pose preview (if/when we add one) and
-      // any future combo-step HUD reflect the reset.
-      if (comboStep !== 0 && nowMs() >= comboWindowExpiresAt) {
-        comboStep = 0;
-      }
-      // Idle pose + walk bop. Per-weapon idle (the wand is held
-      // upright like a staff; sword/dagger/etc. stay hip-held) is
-      // resolved through computeWeaponPose so each weapon class
-      // gets its native carry stance. The bob system layers on top
-      // of the baseline; the bob isn't applied to swing animations
-      // because it would muddy their snap.
+      // Idle pose + walk bob. The bob layers on the baseline; it isn't applied
+      // to swing animations because it would muddy their snap.
       const b = getBobOffset();
-      const { step } = currentStep();
       const idle = computeWeaponPose(step.pose, 'idle', 0);
       let px = idle.x + b.x, py = idle.y + b.y, pz = idle.z;
       let prx = idle.rotX, pry = idle.rotY, prz = idle.rotZ + b.rotZ;
-      // CHARGED HOLD blend: if the player is mid-charge, lerp the
-      // resting pose toward the END-OF-WINDUP pose of the current
-      // combo step. Weapon visibly cocks back the longer they hold.
-      // The end-of-windup pose is the same one a strike starts from,
-      // so when the player releases (skipWindup → phase='strike')
-      // the visual transition is seamless — no snap.
+      // CHARGED HOLD blend: mid-charge, lerp the resting pose toward the
+      // END-OF-WINDUP pose of the current step — the weapon visibly cocks back
+      // the longer you hold. That end pose IS the strike's t=0 pose, so on
+      // release (skipWindup → strike) the transition is seamless, no snap.
       const charge = getChargeProgress();
       if (charge > 0) {
         const cocked = computeWeaponPose(step.pose, 'windup', 1.0);
@@ -290,61 +183,21 @@ export function createWeaponViewmodel(
       return;
     }
 
-    phaseTimer += dt;
-
-    // Phase timings come from the CURRENT combo step. Pose curve
-    // comes from the step's pose key — daggers walk through
-    // stab → slash → stab-stab as the combo advances.
-    const { w, step } = currentStep();
-    const phaseDur =
-      phase === 'windup' ? step.windupTime :
-      phase === 'strike' ? step.strikeTime :
-                            step.recoverTime;
-    const t = Math.min(1, phaseTimer / Math.max(phaseDur, 0.001));
-    const pose = computeWeaponPose(step.pose, phase, t);
+    // windup / strike / recover — interpolate the step's pose curve by the
+    // sim's reported progress through the current phase.
+    const pose = computeWeaponPose(step.pose, phase, swing.getPhaseProgress());
     group.position.set(pose.x, pose.y, pose.z);
     group.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
+  }
 
-    if (phaseTimer >= phaseDur) {
-      if (phase === 'windup') {
-        phase = 'strike';
-        phaseTimer = 0;
-      } else if (phase === 'strike') {
-        phase = 'recover';
-        phaseTimer = 0;
-      } else {
-        // Recover ended. Pre-advance the combo step and either
-        // chain straight into the next windup (if a press buffered)
-        // or open the idle combo window.
-        comboStep = (comboStep + 1) % w.combo.length;
-        if (queuedPress) {
-          queuedPress = false;
-          // Buffered chain advances the COMBO — directional moves
-          // are one-off, so a buffered press always falls back to
-          // the next combo step regardless of what we just fired.
-          activeDirectionalStep = null;
-          phase = 'windup';
-          phaseTimer = 0;
-          // Buffered combo steps are always light taps (a charged release
-          // can't be buffered) → bill the light cost via charged:false.
-          options.onSwingStart?.({ charged: false });
-        } else {
-          // Recover ended without a buffered chain — return to idle
-          // and clear the directional override so the next press
-          // (if not directional) starts a fresh combo at step 0.
-          activeDirectionalStep = null;
-          comboWindowExpiresAt = nowMs() + w.comboWindowMs;
-          phase = 'idle';
-          phaseTimer = 0;
-        }
-      }
-    }
+  function update(dt: number) {
+    swing.advance(dt);
+    repose();
   }
 
   function setDebugPhase(p: SwingPhase, t: number) {
-    phase = p;
-    phaseTimer = t;
-    update(0);
+    swing.setDebugPhase(p, t);
+    repose();
   }
 
   function equip(spec: ModelSpec | null) {
@@ -353,14 +206,9 @@ export function createWeaponViewmodel(
     } else {
       mount(spec);
     }
-    // Weapon swap kills any in-flight combo state — the new weapon's
-    // combo starts fresh on the next press.
-    phase = 'idle';
-    phaseTimer = 0;
-    comboStep = 0;
-    comboWindowExpiresAt = 0;
-    queuedPress = false;
-    activeDirectionalStep = null;
+    // Weapon swap kills any in-flight combo state — the new weapon's combo
+    // starts fresh on the next press.
+    swing.reset();
   }
 
   return {
@@ -368,21 +216,18 @@ export function createWeaponViewmodel(
       return group;
     },
     get isStriking() {
-      return phase === 'strike';
+      return swing.isStriking();
     },
     get isSwinging() {
-      return phase !== 'idle';
+      return swing.isSwinging();
     },
     get isFinisherStrike() {
-      if (phase !== 'strike') return false;
-      const w = getCurrentWeapon();
-      return comboStep === w.combo.length - 1;
+      return swing.isFinisherStrike();
     },
     getActiveStep(): ResolvedComboStep | null {
-      if (phase === 'idle') return null;
-      return currentStep().step;
+      return swing.getActiveStep();
     },
-    startSwing,
+    startSwing: swing.requestSwing,
     update,
     equip,
     setDebugPhase,
