@@ -31,6 +31,12 @@ export interface SwingStateOptions {
    *  so cost is billed once per swing, never per button press. `charged` is
    *  true only for a charged release (skipWindup). */
   onSwingStart?: (info: { charged: boolean }) => void;
+  /** Gate: may a swing START right now? Combat passes the stamina check (a
+   *  sliver is enough — Elden Ring-style), so a swing won't begin OR a combo
+   *  chain into an empty bar. Defaults to always-allowed. The initial press is
+   *  also gated by combat before requestSwing, but this keeps the sim
+   *  self-consistent and stops buffered chains continuing while gassed. */
+  canSwing?: () => boolean;
 }
 
 export interface SwingState {
@@ -61,6 +67,7 @@ export interface SwingState {
 }
 
 export function createSwingState(options: SwingStateOptions = {}): SwingState {
+  const canSwing = options.canSwing ?? (() => true);
   let phase: SwingPhase = 'idle';
   let phaseTimer = 0;            // seconds into the current phase
   let comboStep = 0;            // index into the weapon's combo array
@@ -92,6 +99,9 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
   }
 
   function requestSwing(opts?: { skipWindup?: boolean; direction?: AttackDirection }): boolean {
+    // Can't START a swing on an empty bar (combat gates this too, with the HUD
+    // flash; this is the sim staying self-consistent).
+    if (phase === 'idle' && !canSwing()) return false;
     if (phase !== 'idle') {
       // Mid-swing press buffers the next combo step UNLESS the current step is
       // the finisher (last in the array) — a finisher spam-burst would
@@ -161,7 +171,7 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       // the next windup (a press buffered) or open the idle combo window.
       const w = getCurrentWeapon();
       comboStep = (comboStep + 1) % w.combo.length;
-      if (queuedPress) {
+      if (queuedPress && canSwing()) {
         queuedPress = false;
         // A buffered chain always advances the COMBO — directional moves are
         // one-off, so a buffered press falls back to the next combo step.
@@ -172,6 +182,8 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
         // buffered) → bill the light cost via charged:false.
         options.onSwingStart?.({ charged: false });
       } else {
+        // No buffer, or gassed (a chain can't continue into an empty bar).
+        queuedPress = false;
         activeDirectionalStep = null;
         comboWindowExpiresAt = clock + w.comboWindowMs / 1000;
         phase = 'idle';

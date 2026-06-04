@@ -554,9 +554,12 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   // Heavy weapons (hammer/scythe) get the slow "wind up… SNAP… recover"
   // feel; light weapons stay fast. attackSpeed + proficiency still apply
   // on top. Tune the per-class numbers in WEAPON_CLASS_DEFAULTS.
+  // SWING_TIME_SCALE slows windup + recover across ALL classes (global cadence
+  // knob, >1 = slower); the strike/hit window stays unscaled so it doesn't
+  // touch detection or per-class weight balance.
   const timingMul = baseT.timingMul ?? 1;
-  const windRecMul = speedMul * profSpeed * timingMul;   // windup + recover
-  const strikeMul  = speedMul * profSpeed;               // strike (hit window) — unscaled by weight
+  const windRecMul = speedMul * profSpeed * timingMul * CONFIG.SWING_TIME_SCALE;   // windup + recover
+  const strikeMul  = speedMul * profSpeed;               // strike (hit window) — unscaled by weight + cadence
   const resolveStep = (step: ComboStep): ResolvedComboStep => ({
     pose: step.pose,
     windupTime:  step.windup  * windRecMul,

@@ -67,6 +67,10 @@ export interface WeaponViewmodelOptions {
    *  (once per swing), NOT per button press. Forwarded straight to the
    *  swing-state sim, which is what actually owns the lifecycle. */
   onSwingStart?: (info: { charged: boolean }) => void;
+  /** Gate forwarded to the sim: may a swing start / a combo chain continue?
+   *  Combat passes the stamina check so swings can't begin (or chains continue)
+   *  on an empty bar. */
+  canSwing?: () => boolean;
 }
 
 export function createWeaponViewmodel(
@@ -93,7 +97,7 @@ export function createWeaponViewmodel(
 
   // The swing/combo SIMULATION (phases, combo, buffering, overrides) lives in
   // its own pure module; this viewmodel only reads it to pose `group`.
-  const swing = createSwingState({ onSwingStart: options.onSwingStart });
+  const swing = createSwingState({ onSwingStart: options.onSwingStart, canSwing: options.canSwing });
 
   function unmount() {
     while (group.children.length > 0) {

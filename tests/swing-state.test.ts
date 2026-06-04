@@ -127,6 +127,27 @@ test('combo window: a press inside it continues the chain', () => {
   assert.equal(s.getComboStep(), 1, 'chain continued, not reset');
 });
 
+test('canSwing gate blocks starting a swing on empty', () => {
+  let allowed = false;
+  const s = createSwingState({ canSwing: () => allowed });
+  assert.equal(s.requestSwing(), false, 'refused while gassed');
+  assert.equal(s.isSwinging(), false);
+  allowed = true;
+  assert.equal(s.requestSwing(), true, 'allowed once stamina returns');
+});
+
+test('a buffered combo will not chain into an empty bar', () => {
+  let allowed = true;
+  let count = 0;
+  const s = createSwingState({ canSwing: () => allowed, onSwingStart: () => count++ });
+  s.requestSwing();              // step 0 (count=1)
+  s.requestSwing();              // buffer the next step
+  allowed = false;              // ...but we run dry before recover ends
+  walkToIdleOrChain(s);
+  assert.equal(s.isSwinging(), false, 'gassed → chain dropped, back to idle');
+  assert.equal(count, 1, 'no extra swing billed when the chain is gated');
+});
+
 test('reset() wipes in-flight swing state (weapon swap)', () => {
   const s = createSwingState();
   s.requestSwing();

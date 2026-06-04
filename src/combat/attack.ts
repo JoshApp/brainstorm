@@ -20,7 +20,7 @@ import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleP
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
-import { spendStamina, spendStaminaSoft, canSpendStamina, gainStamina } from './stamina';
+import { spendStamina, spendStaminaSoft, canSpendStamina, gainStamina, getStamina } from './stamina';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import type { AttackDirection } from '../player/viewmodel';
 
@@ -281,34 +281,42 @@ export function createCombatSystem(
         flashStaminaBar();
         return;
       }
-      // Capture any pending charge for this swing — 0 if it was a
-      // tap, 0..1 if the player held to charge. The strike-phase
-      // resolution below reads currentSwingCharge to scale damage,
-      // reach, and cone width. Reset per-press, so chained tap-combos
-      // reset back to 0 naturally on the next press.
-      currentSwingCharge = consumeChargedAmount();
-      // MELEE charged swings cost stamina. Decide affordability HERE (so an
-      // unaffordable hold fizzles to a normal swing — you always get to swing,
-      // you just lose the charged bonus) but DON'T spend yet: melee stamina is
-      // billed once, on the actual swing, in spendSwingStamina (wired to the
-      // viewmodel's onSwingStart). That keeps drain bound to swings, not taps —
-      // mashing faster than the animation buffers and only pays per real swing,
-      // and buffered combo steps pay too. (Ranged is billed per-shot above.)
-      if (currentSwingCharge > 0 && !pressWeapon.ranged && !canSpendStamina(CONFIG.STAMINA.CHARGED_COST)) {
-        currentSwingCharge = 0;
+      // MELEE at EMPTY: the Elden Ring rule — you need a SLIVER of stamina to
+      // start a swing; at exactly empty the attack is refused (HUD flash)
+      // rather than swinging for free. A sliver still commits and drains you
+      // negative (the soft spend in spendSwingStamina). We only SKIP the swing,
+      // never `return`, so an in-flight swing still resolves its hit below.
+      if (!pressWeapon.ranged && getStamina() <= 0) {
+        flashStaminaBar();
+      } else {
+        // Capture any pending charge for this swing — 0 if it was a
+        // tap, 0..1 if the player held to charge. The strike-phase
+        // resolution below reads currentSwingCharge to scale damage,
+        // reach, and cone width. Reset per-press, so chained tap-combos
+        // reset back to 0 naturally on the next press.
+        currentSwingCharge = consumeChargedAmount();
+        // MELEE charged swings cost stamina. Decide affordability HERE (so an
+        // unaffordable hold fizzles to a normal swing — you always get to swing,
+        // you just lose the charged bonus) but DON'T spend yet: melee stamina is
+        // billed once, on the actual swing, in spendSwingStamina (wired to the
+        // viewmodel's onSwingStart). That keeps drain bound to swings, not taps —
+        // mashing faster than the animation buffers and only pays per real swing,
+        // and buffered combo steps pay too. (Ranged is billed per-shot above.)
+        if (currentSwingCharge > 0 && !pressWeapon.ranged && !canSpendStamina(CONFIG.STAMINA.CHARGED_COST)) {
+          currentSwingCharge = 0;
+        }
+        // Movement intent at press time. Picks a directional move
+        // override (lunge / sweep / retreat) when the joystick is
+        // held — null otherwise (= normal combo step). The sword
+        // class spec decides whether a directional move is registered.
+        const direction = pickAttackDirection(moveX, moveY);
+        // Whoosh + 'attack:swing' fire from the viewmodel's onSwingStart so
+        // chained combo steps make sound too, not just the first press.
+        // Charged releases SKIP the windup phase — the player paid for
+        // it by holding; the cocked-back idle pose blends continuously into
+        // the strike's t=0 pose so it reads as "held back, now released".
+        weapon.startSwing({ skipWindup: currentSwingCharge > 0, direction });
       }
-      // Movement intent at press time. Picks a directional move
-      // override (lunge / sweep / retreat) when the joystick is
-      // held — null otherwise (= normal combo step). The sword
-      // class spec decides whether a directional move is registered.
-      const direction = pickAttackDirection(moveX, moveY);
-      // Whoosh + 'attack:swing' fire from sword.ts's onSwingStart so
-      // chained combo steps make sound too, not just the first press.
-      // Charged releases SKIP the windup phase — the player paid for
-      // it by holding; the viewmodel's cocked-back idle pose blends
-      // continuously into the strike's t=0 pose so the swing reads as
-      // "held back, now released" rather than "extra windup."
-      weapon.startSwing({ skipWindup: currentSwingCharge > 0, direction });
     }
 
     const striking = weapon.isStriking;

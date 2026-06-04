@@ -78,9 +78,9 @@ export const CONFIG = {
     // full), and a LONGER recovery once you bottom the bar out ("gassed").
     // Not punishing — ~7 light swings or 2-3 heavies before dry, full refill
     // in a few seconds of not acting.
-    REGEN_PER_SEC: 30,        // empty → full in ~3.3s of not spending
-    REGEN_DELAY_S: 0.7,       // pause after any spend before regen resumes
-    EXHAUST_RECOVERY_S: 1.3,  // longer pause once the bar bottoms out (gassed)
+    REGEN_PER_SEC: 24,        // empty → full in ~4.2s of not spending
+    REGEN_DELAY_S: 1.0,       // pause after any spend before regen resumes
+    EXHAUST_RECOVERY_S: 2.0,  // longer pause once the bar bottoms out (gassed)
     EXHAUST_CLEAR: 25,        // regen must climb back to this to clear "gassed"
     // Costs. Light swings always fire (never a dead tap on touch) but drain a
     // little — over-mashing empties the pool the impactful actions need.
@@ -169,6 +169,12 @@ export const CONFIG = {
   },
 
   // === COMBAT CRUNCH ===
+  // Global swing-cadence scale. Stretches the COMMITTAL parts of every swing
+  // (windup + recover) across ALL weapon classes — >1 = slower attacks, more
+  // deliberate/weighty; 1 = the old speed. The strike (hit window) is left
+  // unscaled so detection + balance don't shift. Per-class weight (timingMul),
+  // attackSpeed, and proficiency still layer on top of this.
+  SWING_TIME_SCALE: 1.2,
   HIT_PAUSE_MS: 80,            // freeze duration on landing a hit — THE feel feature
   // Landing-hit FREEZE is DECOUPLED from the shake/haptic crunch. The
   // freeze is kept SHORT + hard-capped: a whole-screen first-person freeze
