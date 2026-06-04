@@ -1,10 +1,14 @@
 name: Deploy to GitHub Pages
 
+# Deploys ONLY from `main`. Session branches (claude/<task-name>) are
+# work branches — agents push there freely without racing on the live
+# URL. Going live = merging the session branch into main, which is what
+# `npm run live` does in one step. Keep this file in sync with the
+# README + the `Deploy` section of CLAUDE.md.
 on:
   push:
     branches:
       - main
-      - claude/dungeon-crawler-carl-discussion-faen9
   workflow_dispatch:
 
 permissions:

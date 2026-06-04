@@ -188,23 +188,59 @@ Example of the split on a single event (player dies on Floor 1 in their underwea
 
 ## Deploy
 
-Deployed via **GitHub Pages**, built by GitHub Actions on every push to the active branch.
+Deployed via **GitHub Pages**, built by GitHub Actions on push to **`main`**.
 
-**Always push with `npm run ship`, never bare `git push`.** It typechecks
-(pre-push hook), pushes, watches the GitHub Pages run to completion, and
-prints the failed step's log if it goes red — so a broken deploy surfaces
-on its own instead of on the next manual check.
+### Two commands, two purposes
 
-**Run it in the background (Claude Code: `run_in_background: true`), never
-in the foreground.** The deploy takes ~45–60s; backgrounding means it
-never blocks — keep working, and the harness re-invokes you with the
-result (success, or the failed-step log to fix) when it finishes. This is
-the standard push: fire `npm run ship` to the background and move on.
+Multiple Claude sessions work this repo in parallel. To avoid races on the
+live URL, the **session branch** you commit to (`claude/<task-name>`) is
+NOT auto-deployed; only **`main`** is. Going live is a deliberate step.
 
-Pass git args through with `npm run ship -- <args>`. (`SKIP_PREPUSH=1`
-bypasses the typecheck for an emergency push.)
+- **`npm run ship`** — push your session branch to origin. Frequent. No
+  deploy is triggered. Safe to run any time without coordinating with
+  other agents.
+- **`npm run live`** — promote your session branch into `main` (fast-
+  forward merge) and push main. THIS is what triggers the deploy. Run
+  when the work is ready to be on the phone.
 
-- Workflow: `.github/workflows/deploy.yml`
+If `main` has diverged (another session shipped first), `npm run live`
+aborts and tells you how to rebase. You decide what to integrate; the
+script never silently merges someone else's work into your tip.
+
+### Iteration loop (the normal case)
+
+1. Make changes on the session branch.
+2. `npm run ship` (often). Backup + checkpoint.
+3. When ready to feel it on the phone: `npm run live`.
+4. ~90s later the URL is fresh.
+
+### `npm run ship` mechanics
+
+- Pre-push hook typechecks; a type error aborts before anything reaches
+  the remote. `SKIP_PREPUSH=1` bypasses the typecheck for an emergency push.
+- Exit 0 = push landed on the session branch. (Deploy is decoupled —
+  `ship` does not start a deploy.)
+- Pass git args through: `npm run ship -- --force-with-lease`.
+
+### `npm run live` mechanics
+
+- Fetches origin, fast-forwards local `main` from `origin/main` (or
+  bootstraps `main` from your session HEAD if it doesn't exist yet).
+- Fast-forward merges your session tip into `main`. Aborts on
+  divergence rather than create a merge commit.
+- Pushes `main`, then watches the deploy via `scripts/watch-deploy.sh`:
+  exit 0 = deploy green or still cooking; exit 1 = deploy failed
+  (failed-step log dumped inline).
+- Returns you to your session branch when done.
+
+**Run `npm run live` in the background**: the agent harness re-wakes you
+when it completes (~90s typical). The patient watch-deploy distinguishes
+"queued behind another run" (exit 0, push is safe) from "deploy explicitly
+failed" (exit 1, fix it).
+
+### Configuration
+
+- Workflow: `.github/workflows/deploy.yml` — triggers only on push to `main`.
 - Live URL: `https://joshapp.github.io/brainstorm/`
 - Vite is configured with `base: '/brainstorm/'` so the sub-path works.
 - PWA manifest `scope`/`start_url` also use `/brainstorm/` — install-to-home-screen launches at the right URL.
