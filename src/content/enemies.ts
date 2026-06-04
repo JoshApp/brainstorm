@@ -2,6 +2,7 @@ import type { ModelSpec, Vec3 } from '../ecs/model-types';
 import type { DamageType } from '../combat/damage';
 import type { EnemyDeathSize, VocalArchetype } from '../audio/sfx';
 import type { Ability } from './abilities';
+import type { Clip } from '../anim/types';
 import { creature } from './creature';
 import {
   humanoidGhoulModel, quadrupedRatModel, acolyteModel, skirmisherModel,
@@ -11,6 +12,7 @@ import {
 import { mimicModel } from './mimic';
 import { burrowerModel } from './burrower';
 import { marrowSovereignModel } from './skeleton-boss';
+import { MARROW_CLIPS, MARROW_JOINTS } from '../anim/clips-marrow';
 
 // Ranged config — if present on a spec, the enemy fires a projectile from
 // `muzzleOffset` (local to the container) during the strike phase instead
@@ -319,6 +321,32 @@ export interface EnemySpec {
    * abilities apply directly, no transitions. Backwards-compat.
    */
   phases?: PhaseSpec[];
+
+  /**
+   * Optional keyframe animation bundle. When set, the mob spawns with
+   * a clip Animator driving the model's joint slots — idle/walk loops
+   * for locomotion, one-shot ability clips on windup. The bundle's
+   * `joints` array names the slots; only mobs whose ModelSpec exposes
+   * those slots get animated. Omitted = the legacy body-anim only
+   * (head crane + gait hips), unchanged.
+   */
+  animation?: AnimationBundle;
+}
+
+/**
+ * Animation bundle — the clip set + joint set a mob uses. `walk` plays
+ * while chasing, `idle` everywhere else; `crawl` overrides walk when a
+ * phase declares `useCrawlAnimation`. Ability clips are looked up by
+ * `Ability.id` and stretched to fit the ability's full window.
+ */
+export interface AnimationBundle {
+  idle: Clip;
+  walk: Clip;
+  crawl?: Clip;
+  abilities: Record<string, Clip>;
+  /** Joint slot names the animator may write into. Slots the model
+   *  doesn't declare are silently skipped. */
+  joints: readonly string[];
 }
 
 export interface PhaseSpec {
@@ -342,6 +370,10 @@ export interface PhaseSpec {
   /** Invulnerability duration on phase entry (seconds). Use to play
    *  the transition animation without taking damage. Default 0. */
   invulnEntryTime?: number;
+  /** If true, the keyframe animator uses the bundle's `crawl` clip in
+   *  place of `walk` while this phase is active (and `idle` still plays
+   *  when stopped — falls back to walk if the bundle has no crawl). */
+  useCrawlAnimation?: boolean;
   /** Intra-phase HP thresholds — when current phase HP drops below
    *  `atHp`, hide the specified parts. Used for cosmetic feedback
    *  like "kill the left leg first, then the right." Threshold check
@@ -1496,18 +1528,21 @@ export const ENEMIES: Record<string, EnemySpec> = {
     sightConeHalfAngle: Math.PI,
     hearingRange: 6,
     loseSightTime: 12,
+    // Keyframe animation bundle — idle / walk / crawl + ability clips
+    // (bone-arm-sweep, chop, spike-ring, arm-swipe, marrow-claw,
+    // lunge-bite). See src/anim/clips-marrow.ts.
+    animation: { ...MARROW_CLIPS, joints: MARROW_JOINTS },
     phases: [
       // ── PHASE 1 — Standing.
       {
         hp: 16,
         moveSpeed: 1.0,
         abilities: [
-          // Greatscythe sweep — wide horizontal cone, long reach.
+          // Bone-arm cleave — wide horizontal arm sweep, long reach.
           // Player dodges by stepping INSIDE the arc (close to the
           // skeleton's centre) or sidestepping perpendicular to it.
-          // Reach proportional to the now-towering scythe arm.
           {
-            id: 'scythe-sweep',
+            id: 'bone-arm-sweep',
             minRange: 0, maxRange: 8,
             windup: 1.40, strike: 0.30, recover: 0.70, cooldown: 2.2,
             pose: 'swing',
@@ -1555,8 +1590,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // the crawl pose.
         rigYOffset: -1.7,
         rigPitch: -0.5,
-        hideParts: ['leg-left', 'leg-right', 'scythe'],
+        hideParts: ['leg-left', 'leg-right'],
         invulnEntryTime: 1.5,         // downed-rising animation window
+        useCrawlAnimation: true,
         abilities: [
           // Arm swipe — short-range melee, fast.
           {

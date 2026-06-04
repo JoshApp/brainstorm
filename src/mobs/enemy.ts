@@ -30,6 +30,7 @@ import {
 import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { createBodyAnimator } from './enemy-animation';
+import { Animator } from '../anim/animator';
 import { buildModel } from '../ecs/build-model';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
@@ -303,6 +304,17 @@ export function createEnemy(
   // idle overlay. Owns its own body refs (hips, neck, chant orb) + mutable
   // state (see enemy-animation.ts); the factory no longer carries them.
   const bodyAnim = createBodyAnimator(container, built, spec);
+  // Keyframe animator — drives joint slots via clips when the spec has
+  // an animation bundle. Runs AFTER bodyAnim each tick so its writes
+  // win on the joints it owns (the legacy gait/head-crane harmlessly
+  // pre-writes the same slots, gets overwritten). prevState tracks
+  // AI transitions to fire override clips on ability windup.
+  const clipAnimator = spec.animation
+    ? new Animator(built.slots, spec.animation.joints)
+    : null;
+  let prevAnimState: EnemyState | null = null;
+  let prevAnimAbilityId: string | null = null;
+  let prevAnimPhaseIndex = -1;
   // Visual presentation controllers — the eye-flare windup telegraph and the
   // hit/core-glow flash. Both own their material refs internally (see
   // enemy-presentation.ts). Thin local aliases keep the AI state machine's
@@ -1755,6 +1767,49 @@ export function createEnemy(
     bodyAnim.tickLocomotion(dt);
     bodyAnim.tickPresence(dt);
     tickLashDeform(dt);
+    tickClipAnimator(dt);
+  }
+
+  /** Drive the keyframe animator from AI state. setBase responds to
+   *  locomotion changes (idle ↔ walk ↔ crawl); playOverride fires once
+   *  on the windup edge with the ability's clip stretched to the FULL
+   *  windup+strike+recover window. */
+  function tickClipAnimator(dt: number): void {
+    if (!clipAnimator || !spec.animation) return;
+    const bundle = spec.animation;
+    // Decide base layer from state + phase.
+    const phase = phases ? phases[phaseIndex] : null;
+    const useCrawl = phase?.useCrawlAnimation && bundle.crawl;
+    const movingState =
+      state === 'chasing' || state === 'searching' || state === 'returning';
+    const baseClip = movingState
+      ? (useCrawl ? bundle.crawl! : bundle.walk)
+      : bundle.idle;
+    clipAnimator.setBase(baseClip);
+    // Fire an override on the WINDUP edge — exactly once per ability cast.
+    // We watch for (state, ability) tuple changes; entering 'winding' with
+    // a different ability than last time = new cast.
+    const inWindup = state === 'winding' && currentAbility;
+    const abId = inWindup ? currentAbility!.id : null;
+    const transitioned =
+      prevAnimState !== state ||
+      prevAnimAbilityId !== abId ||
+      prevAnimPhaseIndex !== phaseIndex;
+    if (transitioned && inWindup && abId) {
+      const clip = bundle.abilities[abId];
+      if (clip && currentAbility) {
+        const total = currentWindupTime + currentAbility.strike + currentAbility.recover;
+        clipAnimator.playOverride(clip, total);
+      }
+    }
+    // Stagger drops any in-flight override so the reel reads.
+    if (state === 'staggered' && prevAnimState !== 'staggered') {
+      clipAnimator.cancelOverride();
+    }
+    prevAnimState = state;
+    prevAnimAbilityId = abId;
+    prevAnimPhaseIndex = phaseIndex;
+    clipAnimator.update(dt);
   }
 
   // Lash deform — on a 'lash' telegraph the body ELONGATES toward the
