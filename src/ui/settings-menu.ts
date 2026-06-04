@@ -1,4 +1,4 @@
-import { getSettings, updateSettings, CONTROL_SCHEMES, SHADOW_MODES } from '../settings/settings';
+import { getSettings, updateSettings, CONTROL_SCHEMES, DASH_GESTURES, SHADOW_MODES } from '../settings/settings';
 import type { ShadowMode } from '../settings/settings';
 import { setMasterVolume, setReverbEnabled } from '../audio/sfx';
 import { setMusicVolume } from '../audio/music';
@@ -443,6 +443,13 @@ function buildControlsTab(): HTMLElement[] {
       description: 'Drag past the aim zone to keep rotating (like a joystick).',
       get: () => getSettings().hybridLook,
       set: (v) => updateSettings({ hybridLook: v }),
+    }));
+    out.push(makeSelect({
+      label: 'DASH GESTURE',
+      description: 'Flick: swipe the move side to dodge that way. Double-tap: double-tap to dodge, hold & steer the second tap. No direction = backstep.',
+      options: DASH_GESTURES,
+      get: () => getSettings().dashGesture,
+      set: (v) => updateSettings({ dashGesture: v }),
     }));
   }
   return out;

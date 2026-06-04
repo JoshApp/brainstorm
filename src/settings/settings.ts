@@ -46,6 +46,15 @@ export interface Settings {
    *  the current layout) ships today — the selector is a seam for
    *  alternate schemes (e.g. fixed-stick, swipe-move) we'll add later. */
   controlScheme: 'default';
+  /** Dash/dodge gesture on touch. Two feels to try on the phone:
+   *    'flick'     — a fast swipe on the move side dodges in the swipe
+   *                  direction (directional, immediate; resolves intent at
+   *                  the moment it fires).
+   *    'doubleTap' — double-tap the move side to dodge; hold & steer the
+   *                  second tap to pick a direction, or a quick neutral
+   *                  double-tap backsteps.
+   *  Either way, no clear direction (inside the deadzone) = a backstep. */
+  dashGesture: 'flick' | 'doubleTap';
   /** Dynamic-shadow quality. PointLight shadows are the most expensive
    *  thing in the frame on mobile (each caster re-renders the scene as a
    *  cube map), so this is a deliberate, capped quality knob:
@@ -94,6 +103,11 @@ export const CONTROL_SCHEMES: { id: Settings['controlScheme']; label: string }[]
   { id: 'default', label: 'Default (joystick + aim)' },
 ];
 
+export const DASH_GESTURES: { id: Settings['dashGesture']; label: string }[] = [
+  { id: 'flick', label: 'Flick' },
+  { id: 'doubleTap', label: 'Double-tap' },
+];
+
 const STORAGE_KEY = 'delve-settings';
 
 const DEFAULTS: Settings = {
@@ -109,6 +123,9 @@ const DEFAULTS: Settings = {
   debugEyeAdapt: false,
   debugBossReadout: false,
   controlScheme: 'default',
+  // Flick by default — the most directional/immediate dodge; switch to
+  // double-tap in the controls menu to feel the difference on the phone.
+  dashGesture: 'flick',
   // 'hero' by default: a single lamp-cast shadow is cheap and immediately
   // sells the torchlit-dungeon feel. Drop to 'off' on a struggling phone,
   // crank to 'single'/'all' on desktop or a strong device.

@@ -3,6 +3,9 @@ import { getPlayerHp } from '../player/health';
 import { getPlayerSnapshot } from './player-stats';
 import { getGold, getLevel, getXpInLevel, getXpForNextLevel } from './run-state';
 import { staminaFraction, isStaminaRegenHeld, isStaminaExhausted } from '../combat/stamina';
+import { getChargeProgress } from '../controls/charge-input';
+import { wantsHoldToCharge, getCurrentWeapon } from '../player/current-weapon';
+import { CONFIG } from '../config';
 
 // Reactive stores backing the live HUD readouts. Synced once per frame from
 // the source-of-truth getters (frame-coherent: any direct mutation is caught
@@ -50,12 +53,18 @@ export interface StaminaState {
   /** Bottomed out ("gassed") — the bar flashes so a blocked dash/shot reads
    *  as "you're out", not an unresponsive tap. */
   exhausted: boolean;
+  /** 0..1 — stamina RESERVED by an in-flight charged attack. Elden Ring bills
+   *  the heavy on release, not while held; this previews the pending spend as a
+   *  marked band at the leading edge of the fill so you can see where it'll
+   *  land. 0 when not charging a melee heavy. */
+  reserved: number;
 }
 export const staminaStore = writable<StaminaState>(
-  { frac: 1, rested: true, exhausted: false },
+  { frac: 1, rested: true, exhausted: false, reserved: 0 },
   // Sub-pixel changes don't warrant a DOM write; ~0.4% steps keep the
   // bar smooth while idling at full produces no churn at all.
-  (a, b) => Math.abs(a.frac - b.frac) < 0.004 && a.rested === b.rested && a.exhausted === b.exhausted,
+  (a, b) => Math.abs(a.frac - b.frac) < 0.004 && a.rested === b.rested
+    && a.exhausted === b.exhausted && Math.abs(a.reserved - b.reserved) < 0.004,
 );
 
 /** One health bar. The fight shows one (the king) or several (its split
@@ -89,10 +98,17 @@ export function syncHudStores(): void {
   xpStore.set({ level: getLevel(), inLevel: getXpInLevel(), next: getXpForNextLevel() });
   goldStore.set(getGold());
   const frac = staminaFraction();
+  // Reserve the heavy's pending cost while a MELEE charge is in flight (ranged
+  // charge is stamina-free). The band is clamped to what's left — when it would
+  // exceed the fill, you can't afford the heavy and it'll fizzle to a light
+  // swing (the bar renders that case as a warning).
+  const chargingMelee = getChargeProgress() > 0 && wantsHoldToCharge() && !getCurrentWeapon().ranged;
+  const reserved = chargingMelee ? CONFIG.STAMINA.CHARGED_COST / CONFIG.STAMINA.MAX : 0;
   staminaStore.set({
     frac,
-    rested: frac >= 0.999 && !isStaminaRegenHeld(),
+    rested: frac >= 0.999 && !isStaminaRegenHeld() && reserved === 0,
     exhausted: isStaminaExhausted(),
+    reserved,
   });
 }
 

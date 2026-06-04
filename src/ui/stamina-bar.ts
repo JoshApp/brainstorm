@@ -18,6 +18,7 @@ import { bind } from './hud';
 
 let container: HTMLDivElement | null = null;
 let fill: HTMLDivElement | null = null;
+let reservedEl: HTMLDivElement | null = null;
 
 const BAR_W = 200;   // matches the HP pip row's rough footprint
 const BAR_H = 5;
@@ -54,6 +55,22 @@ export function createStaminaBar() {
     boxShadow: '0 0 6px rgba(120, 180, 210, 0.35)',
   } as Partial<CSSStyleDeclaration>);
   container.appendChild(fill);
+
+  // Reserved band — overlaid at the leading edge of the fill while a charged
+  // melee swing is held, previewing the stamina it will spend on release
+  // (Elden Ring bills on release; this shows where the bar will land). Hatched
+  // so it reads as "pending", not "spent". Width/offset/colour set in render.
+  reservedEl = document.createElement('div');
+  Object.assign(reservedEl.style, {
+    position: 'absolute',
+    top: '0', height: '100%',
+    left: '0', width: '0%',
+    backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,225,170,0.85) 0 3px, rgba(255,225,170,0.25) 3px 6px)',
+    opacity: '0',
+    transition: 'opacity 0.12s ease-out',
+  } as Partial<CSSStyleDeclaration>);
+  container.appendChild(reservedEl);
+
   document.body.appendChild(container);
 
   // Exhausted flash — a brief red pulse on the whole bar when the player
@@ -84,17 +101,36 @@ export function flashStaminaBar(): void {
   container.style.animation = 'staminaGassed 0.5s ease-out';
 }
 
-function render({ frac, rested, exhausted }: StaminaState) {
-  if (!container || !fill) return;
-  fill.style.transform = `scaleX(${Math.max(0, Math.min(1, frac))})`;
+function render({ frac, rested, exhausted, reserved }: StaminaState) {
+  if (!container || !fill || !reservedEl) return;
+  const f = Math.max(0, Math.min(1, frac));
+  fill.style.transform = `scaleX(${f})`;
   // Tint red when nearly empty so a dry meter reads as "you can't" at a
   // glance, not just "low".
   fill.style.background = frac < 0.2
     ? 'linear-gradient(180deg, rgba(210, 110, 90, 0.92), rgba(150, 50, 40, 0.92))'
     : 'linear-gradient(180deg, rgba(150, 195, 215, 0.92), rgba(70, 110, 140, 0.92))';
+  // Reserved band: the pending charged cost, drawn at the leading edge of the
+  // fill (from frac-reserved up to frac). If it would run past the fill you
+  // can't afford the heavy — clamp to the fill and warn (red hatch): the swing
+  // will fizzle to a light one.
+  if (reserved > 0) {
+    const shown = Math.min(reserved, f);
+    const left = f - shown;
+    reservedEl.style.left = `${left * 100}%`;
+    reservedEl.style.width = `${shown * 100}%`;
+    reservedEl.style.opacity = '1';
+    const fizzle = reserved > f + 0.001;
+    reservedEl.style.backgroundImage = fizzle
+      ? 'repeating-linear-gradient(135deg, rgba(235,110,90,0.9) 0 3px, rgba(235,110,90,0.3) 3px 6px)'
+      : 'repeating-linear-gradient(135deg, rgba(255,225,170,0.85) 0 3px, rgba(255,225,170,0.25) 3px 6px)';
+  } else {
+    reservedEl.style.opacity = '0';
+  }
   // Gassed pulse — restart the animation each time we (re-)enter exhausted by
   // toggling the property off then on.
   container.style.animation = exhausted ? 'staminaGassed 0.5s ease-out' : 'none';
-  // Stay visible while gassed even if somehow rested, so the flash is seen.
-  container.style.opacity = rested && !exhausted ? '0' : '1';
+  // Stay visible while gassed or while a charge is reserving, even if otherwise
+  // rested, so the flash and the preview are always seen.
+  container.style.opacity = rested && !exhausted && reserved === 0 ? '0' : '1';
 }
