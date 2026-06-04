@@ -4,9 +4,203 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 12",
+    "date": "2026-06-04",
+    "entries": [
+      {
+        "tag": "fix",
+        "text": "Fix clutter props (pillars) floating over pits/voids"
+      },
+      {
+        "tag": "tune",
+        "text": "Style: ink edge-outlines (depth-silhouette contours) — new shader step"
+      },
+      {
+        "tag": "tune",
+        "text": "Stamina system"
+      }
+    ]
+  },
+  {
     "version": "Build 11",
     "date": "2026-06-03",
     "entries": [
+      {
+        "tag": "tune",
+        "text": "Projectiles"
+      },
+      {
+        "tag": "tune",
+        "text": "Light: lamp rides at the visible hand by default, stows to hip on equip"
+      },
+      {
+        "tag": "tune",
+        "text": "Projectiles: height-aware collision (shots fly over low props, not eaten)"
+      },
+      {
+        "tag": "content",
+        "text": "Inventory UX"
+      },
+      {
+        "tag": "tune",
+        "text": "Balance: lifesteal → chance-on-kill, trim basic-chain cleave (playtest)"
+      },
+      {
+        "tag": "tune",
+        "text": "Balance pass 1"
+      },
+      {
+        "tag": "tune",
+        "text": "God ray"
+      },
+      {
+        "tag": "tune",
+        "text": "God ray"
+      },
+      {
+        "tag": "tune",
+        "text": "Save"
+      },
+      {
+        "tag": "tune",
+        "text": "Light: bake the lamp into the player; free the offhand slot"
+      },
+      {
+        "tag": "content",
+        "text": "Arena: don't soft-lock when a wave mob becomes unreachable"
+      },
+      {
+        "tag": "tune",
+        "text": "Title"
+      },
+      {
+        "tag": "tune",
+        "text": "docs: playtest feedback triage + plan (grouped, tagged, ordered)"
+      },
+      {
+        "tag": "tune",
+        "text": "Hitstop: decouple freeze from shake, cap it short (heavy hits read as impact not lag)"
+      },
+      {
+        "tag": "tune",
+        "text": "Settings"
+      },
+      {
+        "tag": "tune",
+        "text": "Input: one tap arbiter (no stray attack after dismissing a note)"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix (properly): depth-keyed post passes painted over the held viewmodel"
+      },
+      {
+        "tag": "tune",
+        "text": "Notes stay in mouse-look (no stray cursor after dismissing a note)"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix boss-gate stuck, corpse-note reopen, and pointer-lock consistency"
+      },
+      {
+        "tag": "tune",
+        "text": "Banded lighting: band in tonemapped space so the steps are actually visible"
+      },
+      {
+        "tag": "tune",
+        "text": "Shader step 2/4 (redo)"
+      },
+      {
+        "tag": "tune",
+        "text": "Shader step 4/4: fog inscatter + loosen the depth crush"
+      },
+      {
+        "tag": "tune",
+        "text": "Shader step 3/4: depth-keyed darkness — an art-directed pool of reveal"
+      },
+      {
+        "tag": "tune",
+        "text": "Bloom: ease strength + raise threshold (god ray was a tad strong)"
+      },
+      {
+        "tag": "tune",
+        "text": "Shader step 2/4: banded shading — hard chiaroscuro on the shadow falloff"
+      },
+      {
+        "tag": "tune",
+        "text": "Shader step 1/4: bloom — emissive + rims bleed into the dark"
+      },
+      {
+        "tag": "tune",
+        "text": "Title screen"
+      },
+      {
+        "tag": "tune",
+        "text": "Shader: darkness-reactive rim — forms self-draw in the dark (art-direction proto)"
+      },
+      {
+        "tag": "tune",
+        "text": "Menus"
+      },
+      {
+        "tag": "tune",
+        "text": "Marrow arena: bloodlit fog + adaptive braziers (the red dread overlay)"
+      },
+      {
+        "tag": "content",
+        "text": "Touch: correct tap priority — enemy→attack, else interact, else attack"
+      },
+      {
+        "tag": "tune",
+        "text": "Start screen: scrolls on short landscape + bigger link targets"
+      },
+      {
+        "tag": "fix",
+        "text": "Desktop: click always re-enters mouse-look (fix lost pointer-lock)"
+      },
+      {
+        "tag": "tune",
+        "text": "Menus: settings is a ⚙ tab in the unified menu, not a stacked overlay"
+      },
+      {
+        "tag": "tune",
+        "text": "Marrow Sovereign: charnel-red arena lighting (dread on purpose)"
+      },
+      {
+        "tag": "tune",
+        "text": "Marrow Sovereign: bony body to match the skull"
+      },
+      {
+        "tag": "tune",
+        "text": "Settings: widen for landscape + tabs share the row (no clipping)"
+      },
+      {
+        "tag": "tune",
+        "text": "Boss-phase observation tooling"
+      },
+      {
+        "tag": "tune",
+        "text": "Touch"
+      },
+      {
+        "tag": "fix",
+        "text": "Mobile menus: fix touch-scroll (descendants) + harden height bound"
+      },
+      {
+        "tag": "tune",
+        "text": "Marrow Sovereign: animated collapse, legs gone at 0%, skull redesign"
+      },
+      {
+        "tag": "fix",
+        "text": "Marrow Sovereign fixes: taller arena, real leg-hide, crawl-lower, tighter hurtbox"
+      },
+      {
+        "tag": "tune",
+        "text": "docs: menu system canon (mobile-first Sheet shell + tabbed game menu)"
+      },
+      {
+        "tag": "tune",
+        "text": "Mobile UI"
+      },
       {
         "tag": "tune",
         "text": "Mobile UI: menu Sheet shell + migrate character screen onto it"
@@ -17,201 +211,7 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "tune",
-        "text": "Stats v2 (Stage 3): Might → stagger (the poise system)"
-      },
-      {
-        "tag": "content",
-        "text": "Weapon weight pass: timingMul stretches windup+recover (not strike)"
-      },
-      {
-        "tag": "content",
-        "text": "Shrouded relic — the cursed mystery gamble (find + reveal)"
-      },
-      {
-        "tag": "add",
-        "text": "Add 5 sharp-trade cursed items (risk/reward)"
-      },
-      {
-        "tag": "tune",
-        "text": "Stats v2 (Stage 2): Lore signature — afflictions last longer & tick harder"
-      },
-      {
-        "tag": "tune",
-        "text": "Stats v2 (Stage 1)"
-      },
-      {
-        "tag": "tune",
-        "text": "Challenge arena — voluntary loot trial (the other arena kind)"
-      },
-      {
-        "tag": "tune",
-        "text": "Unify arena gate seal as an encounter reactor (+ offering trigger mode)"
-      },
-      {
-        "tag": "tune",
-        "text": "Fold boss, fog gate, and room-clear into the Encounter layer"
-      },
-      {
-        "tag": "tune",
-        "text": "Central loot distribution + depth-gating (foundation)"
-      },
-      {
-        "tag": "tune",
-        "text": "Encounter layer v1 + migrate the arena onto it"
-      },
-      {
-        "tag": "fix",
-        "text": "Arena trap: wave gauntlet + summon telegraph + gate-reopen fix (wiring)"
-      },
-      {
-        "tag": "add",
-        "text": "Starter weapons roll from a pool + add 2 mundane base weapons"
-      },
-      {
-        "tag": "tune",
-        "text": "Marrow Sovereign towering rework + fog gate polish"
-      },
-      {
-        "tag": "tune",
-        "text": "Combat feel v2: 3D capsule hit-reg, damage-scaled crunch (both ways), directional hit indicator"
-      },
-      {
-        "tag": "content",
-        "text": "Death v3: weapon tumbles from the hand to the floor as you collapse"
-      },
-      {
-        "tag": "fix",
-        "text": "Height-aware projectile collision — shots fly OVER low props (god-ray 'eaten shot' fix)"
-      },
-      {
-        "tag": "tune",
-        "text": "Marrow Sovereign — two-phase skeleton boss + phase system pilot"
-      },
-      {
-        "tag": "tune",
-        "text": "Monster sound: hurt cries, strike-release barks, and footstep foley"
-      },
-      {
-        "tag": "tune",
-        "text": "Loot pickup feel"
-      },
-      {
-        "tag": "fix",
-        "text": "Phone-feedback fixes: spitter damage, whole-body flash, mimic facing, fog projectile block"
-      },
-      {
-        "tag": "tune",
-        "text": "Tap-to-use"
-      },
-      {
-        "tag": "tune",
-        "text": "Tap-to-use: forgiving tap area + skip blocked loot to the item beneath"
-      },
-      {
-        "tag": "tune",
-        "text": "Unify tap-to-use: direct mesh taps honour intent within a tunable reach"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix mood-tint not reaching candles (warm flames in tinted rooms)"
-      },
-      {
-        "tag": "fix",
-        "text": "3 boss UX fixes: stray-B fix, dormancy, smart tap arbiter"
-      }
-    ]
-  },
-  {
-    "version": "Build 10",
-    "date": "2026-06-02",
-    "entries": [
-      {
-        "tag": "add",
-        "text": "Add diag-cross scenario (rooms on 4 sides) for portal-cull verification"
-      },
-      {
-        "tag": "tune",
-        "text": "Fog gate: slower walk-through that stops just past the threshold"
-      },
-      {
-        "tag": "content",
-        "text": "Perf: batch per-room static fixtures (torches) — ~50% fewer torch draws"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf"
-      },
-      {
-        "tag": "tune",
-        "text": "Unify openings (2/2): route doors + cobweb through spawnFitting too"
-      },
-      {
-        "tag": "fix",
-        "text": "Unify openings (1/2): fix boss fog-gate placement via Opening + fitting"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf"
-      },
-      {
-        "tag": "tech",
-        "text": "Perf: clip camera far plane at the fog distance (50m → 13m)"
-      },
-      {
-        "tag": "tech",
-        "text": "Refactor"
-      },
-      {
-        "tag": "tune",
-        "text": "Settings"
-      },
-      {
-        "tag": "content",
-        "text": "Refactor"
-      },
-      {
-        "tag": "tune",
-        "text": "Settings"
-      },
-      {
-        "tag": "tech",
-        "text": "Refactor"
-      },
-      {
-        "tag": "fix",
-        "text": "Boss bar: latch the fade-out so it stays hidden (fixes test-chamber hang)"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss"
-      },
-      {
-        "tag": "content",
-        "text": "Refactor"
-      },
-      {
-        "tag": "tech",
-        "text": "Refactor"
-      },
-      {
-        "tag": "tech",
-        "text": "Refactor"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix: attribute split children to parent's room by entityId, not position"
-      },
-      {
-        "tag": "fix",
-        "text": "Fog gate: fix dormant-boss deadlock + soulslike forced walk-through"
-      },
-      {
-        "tag": "tune",
-        "text": "Graphics settings"
-      },
-      {
-        "tag": "tune",
-        "text": "Fog gate: real block+interact gate, fills the doorway, un-stealable tap"
+        "text": "Boss bar max-HP getter is phase-aware; boss-hall ceiling 14m"
       }
     ]
   }
