@@ -74,6 +74,12 @@ interface TouchTracker {
    *  double-tap — a steerable dash aim, not a joystick. Drag picks the dodge
    *  direction; it does NOT drive movement. */
   dashAim: boolean;
+  /** Left-side only, flick dash: a trailing ring of recent {x,y,t} samples
+   *  (pruned to the last ~FLICK_MAX_MS). The flick is detected from the
+   *  velocity in this window at release — NOT from the touch's total duration
+   *  — so a swipe-and-release works even when you were already holding the
+   *  joystick to move. */
+  flickSamples: { x: number; y: number; t: number }[];
 }
 
 export const touchScheme: InputScheme = {
@@ -105,6 +111,7 @@ export const touchScheme: InputScheme = {
           chargeEligible: side === 'right' && wantsHoldToCharge(),
           chargeCommitted: false,
           dashAim,
+          flickSamples: side === 'left' ? [{ x: t.clientX, y: t.clientY, t: performance.now() }] : [],
         });
         if (side === 'left' && !dashAim && activeJoystickId === null) {
           activeJoystickId = t.identifier;
@@ -128,6 +135,15 @@ export const touchScheme: InputScheme = {
           // A dash-aim touch (doubleTap second tap) only steers the dodge —
           // it does not move the player or animate the joystick.
           if (tracker.dashAim) continue;
+          // Feed the flick velocity window: record this sample and prune the
+          // ones older than FLICK_MAX_MS (keep ≥2 so a sub-frame-fast flick
+          // still has a reference). At release we measure the swipe across this
+          // trailing window, so a flick reads even after a long hold.
+          const now = performance.now();
+          tracker.flickSamples.push({ x: t.clientX, y: t.clientY, t: now });
+          while (tracker.flickSamples.length > 2 && now - tracker.flickSamples[0].t > FLICK_MAX_MS) {
+            tracker.flickSamples.shift();
+          }
           let mx = Math.max(-1, Math.min(1, dx / JOYSTICK_RADIUS));
           let my = Math.max(-1, Math.min(1, dy / JOYSTICK_RADIUS));
           const mag = Math.hypot(mx, my);
@@ -187,11 +203,21 @@ export const touchScheme: InputScheme = {
             triggerDash(mx, my);
             lastLeftTapMs = 0;
             dashed = true;
-          } else if (gesture === 'flick' && elapsed <= FLICK_MAX_MS && tracker.totalMovement >= FLICK_MIN_PX) {
-            // flick: a fast swipe — dodge along the swipe vector.
-            const { mx, my } = dashDirFromDelta(dxFromStart, dyFromStart);
-            triggerDash(mx, my);
-            dashed = true;
+          } else if (gesture === 'flick') {
+            // flick: a fast swipe measured over the trailing velocity window
+            // (not the whole touch), so it fires whether you flicked from rest
+            // OR were already holding the joystick and swiped before lifting.
+            // Direction = that recent swipe vector, not the displacement from
+            // touch-start (which, after a hold, points where you walked).
+            const ref = tracker.flickSamples[0];
+            const swDx = t.clientX - ref.x;
+            const swDy = t.clientY - ref.y;
+            const swDt = performance.now() - ref.t;
+            if (swDt <= FLICK_MAX_MS * 1.5 && Math.hypot(swDx, swDy) >= FLICK_MIN_PX) {
+              const { mx, my } = dashDirFromDelta(swDx, swDy);
+              triggerDash(mx, my);
+              dashed = true;
+            }
           } else if (gesture === 'doubleTap' && isTap) {
             // First quick tap — arm the next touch as a dash aim.
             lastLeftTapMs = performance.now();
