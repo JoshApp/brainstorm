@@ -1,6 +1,6 @@
 # Project: DELVE
 
-A grimdark first-person dungeon crawler for mobile browser. Async multiplayer in the Dark Souls tradition. LLM-augmented item, lore, and event system.
+A grimdark first-person dungeon crawler for mobile browser. Async multiplayer in the Dark Souls tradition. Designed and built by a layered LLM system (see **Authoring Model**); items, lore, and events are LLM-generated.
 
 ## Core Design Pillars
 
@@ -10,7 +10,44 @@ A grimdark first-person dungeon crawler for mobile browser. Async multiplayer in
 4. **Solo descent, async multiplayer.** Players play alone but encounter traces of others — bloodstains, messages, corpses, phantom NPCs.
 5. **Delve structure, not extraction.** Players descend, going deeper is the progression. They will eventually die. Meta-progression carries forward.
 6. **Code-generated visuals.** No 3D model files, no texture pipelines. Geometry composed from Three.js primitives. Style emerges from lighting, shaders, and palette.
-7. **LLM is narrative flavor, never mechanics.** The LLM layer generates names, descriptions, epitaphs, lore. It never touches combat math or game rules.
+7. **LLM-authored, in layers.** This game is *designed and built* by a layered LLM system — an orchestrating design layer, a coding layer, a content/items layer, a narration layer (see **Authoring Model**) — not a hand-built game with LLM text bolted on. Whether an LLM also acts at *runtime* (live, mid-run, on the player's device), and how far into mechanics it may reach there, is deliberately **left open** for now.
+
+## Authoring Model — a layered LLM system
+
+DELVE is the *output* of a layered LLM authoring system, and increasingly its
+*subject*. The paradigm: distinct LLM layers each own a slice of making the
+game, and this repository is the shared substrate they read and write.
+
+- **Design / orchestration layer** — holds the vision (this CLAUDE.md is its
+  charter), sets direction, and delegates to the layers below.
+- **Coding layer** — all the engineering: systems, refactors, build, deploy.
+  (The layer authoring these very lines.)
+- **Content / items layer** — items, affixes, enemies, vaults, events authored
+  as DATA that the coding layer's systems consume.
+- **Narration layer** — names, descriptions, epitaphs, bloodstain narration,
+  the broadcast/announcer voice.
+
+Two consequences for how we build:
+
+1. **Code is an interface between layers, so it must be legible as data.** A
+   system the coding layer writes should expose its tunable surface as *data*
+   — config knobs, content specs — with clear names and stated intent, so a
+   content or design layer can author against it without reading the
+   implementation. "One concern per file", data-driven specs, and named
+   constants in `config.ts` aren't just tidiness here; they're the seam the
+   other layers plug into. Prefer extracting pure, named, testable logic over
+   clever-but-opaque code.
+2. **Build-time vs run-time is the load-bearing distinction (and run-time is
+   TBD).** At build/design time the layers may touch anything, mechanics
+   included — that's the point. Whether an LLM acts at RUNTIME is a separate
+   question with real constraints — determinism, fair play, latency, cost,
+   offline/PWA, aggressive caching — and is **currently undecided**. Until it's
+   decided: keep runtime LLM use in the content/narrative lane (the
+   `broadcast/` seams), and keep combat math + game rules computed locally and
+   deterministically. Architect so the line *can* move later without a rewrite
+   — route any LLM-authored values through the same data surfaces (config /
+   specs) the build-time layers already use, rather than into bespoke code
+   paths.
 
 ## What's Built
 
