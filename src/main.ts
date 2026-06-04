@@ -9,7 +9,7 @@ import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
-import { createCombatSystem } from './combat/attack';
+import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
@@ -336,9 +336,12 @@ initLevelLoader({
 // play through the whole stab → slash → stab-stab routine, not just
 // the first press.
 const weapon = createWeaponViewmodel(camera, {
-  onSwingStart: () => {
+  onSwingStart: ({ charged }) => {
     playWhoosh();
     emit({ type: 'attack:swing' });
+    // Stamina is billed HERE — once per real swing — so mashing faster than
+    // the animation no longer over-drains, and buffered combo steps pay too.
+    spendSwingStamina(charged);
   },
 });
 

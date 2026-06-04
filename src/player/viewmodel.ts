@@ -70,8 +70,11 @@ export interface WeaponViewmodelOptions {
   /** Fired every time a NEW windup begins — whether from an idle
    *  press or from a queued combo chain. Combat wires playWhoosh +
    *  'attack:swing' emit here so chained combo steps make sound, not
-   *  just the first press. */
-  onSwingStart?: () => void;
+   *  just the first press. `charged` is true only for a charged release
+   *  (skipWindup) — combat uses it to bill the heavier stamina cost.
+   *  This is the single per-real-swing event, so stamina is spent here
+   *  (once per swing), NOT per button press. */
+  onSwingStart?: (info: { charged: boolean }) => void;
 }
 
 export function createWeaponViewmodel(
@@ -243,7 +246,7 @@ export function createWeaponViewmodel(
     // continuous: held back → swings forward.
     phase = opts?.skipWindup ? 'strike' : 'windup';
     phaseTimer = 0;
-    options.onSwingStart?.();
+    options.onSwingStart?.({ charged: isCharged });
     return true;
   }
 
@@ -322,7 +325,9 @@ export function createWeaponViewmodel(
           activeDirectionalStep = null;
           phase = 'windup';
           phaseTimer = 0;
-          options.onSwingStart?.();
+          // Buffered combo steps are always light taps (a charged release
+          // can't be buffered) → bill the light cost via charged:false.
+          options.onSwingStart?.({ charged: false });
         } else {
           // Recover ended without a buffered chain — return to idle
           // and clear the directional override so the next press

@@ -20,9 +20,22 @@ import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleP
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
-import { spendStamina, spendStaminaSoft } from './stamina';
+import { spendStamina, spendStaminaSoft, canSpendStamina } from './stamina';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import type { AttackDirection } from '../player/viewmodel';
+
+/** Bill a melee swing's stamina — called once per ACTUAL swing from the
+ *  viewmodel's onSwingStart (initial press AND every buffered combo step), so
+ *  drain is bound to swings, not button taps. Mashing faster than the animation
+ *  buffers and pays only per real swing. Ranged is billed per-shot at press
+ *  time (the discrete-fire path), so it's skipped here. Light swings use the
+ *  soft spend (always fire, never a dead tap); a charged release was already
+ *  vetted as affordable, so it hard-spends the heavier cost. */
+export function spendSwingStamina(charged: boolean): void {
+  if (getCurrentWeapon().ranged) return;
+  if (charged) spendStamina(CONFIG.STAMINA.CHARGED_COST);
+  else spendStaminaSoft(CONFIG.STAMINA.LIGHT_COST);
+}
 
 // Joystick magnitude below this counts as "not moving" → no
 // directional override. Tuned so a tiny accidental thumb shift on
@@ -274,20 +287,15 @@ export function createCombatSystem(
       // reach, and cone width. Reset per-press, so chained tap-combos
       // reset back to 0 naturally on the next press.
       currentSwingCharge = consumeChargedAmount();
-      // MELEE charged swings cost stamina. If you can't afford it the
-      // hold fizzles to a normal swing rather than locking the attack out
-      // — you always get to swing, you just don't get the charged bonus.
-      // (Ranged charge is free of this; its per-shot cost above covers it,
-      // and the charge there only buys the +80% damage curve.)
-      if (currentSwingCharge > 0 && !pressWeapon.ranged && !spendStamina(CONFIG.STAMINA.CHARGED_COST)) {
+      // MELEE charged swings cost stamina. Decide affordability HERE (so an
+      // unaffordable hold fizzles to a normal swing — you always get to swing,
+      // you just lose the charged bonus) but DON'T spend yet: melee stamina is
+      // billed once, on the actual swing, in spendSwingStamina (wired to the
+      // viewmodel's onSwingStart). That keeps drain bound to swings, not taps —
+      // mashing faster than the animation buffers and only pays per real swing,
+      // and buffered combo steps pay too. (Ranged is billed per-shot above.)
+      if (currentSwingCharge > 0 && !pressWeapon.ranged && !canSpendStamina(CONFIG.STAMINA.CHARGED_COST)) {
         currentSwingCharge = 0;
-      }
-      // LIGHT melee swing (a plain tap, no charge): drains a little, but ALWAYS
-      // fires — never a dead tap on touch. Soft spend, result ignored: the swing
-      // happens regardless; over-mashing just empties the pool the dash / heavy /
-      // shot need. (A charged swing already paid CHARGED_COST above.)
-      if (!pressWeapon.ranged && currentSwingCharge === 0) {
-        spendStaminaSoft(CONFIG.STAMINA.LIGHT_COST);
       }
       // Movement intent at press time. Picks a directional move
       // override (lunge / sweep / retreat) when the joystick is
