@@ -124,6 +124,26 @@ test('no column-archway on the perimeter of a stair room', () => {
   }
 });
 
+test('no clutter prop floats inside a void (pit)', () => {
+  // A pillar / brazier / debris dropped over a chasm cutout floats in mid-air
+  // with no floor under it. The clutter passes shape the room from spec.voids
+  // FIRST, then place props that avoid those rects (tooClose rejects void
+  // cells). Guards against clutter regressing to ignore voids.
+  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
+    const spec = generateFloor(d, s);
+    for (const p of spec.props as Array<{ _dbg?: string; x?: number; z?: number; kind: string }>) {
+      // Only clutter-generated props — authored vault props are the author's
+      // problem, and some intentionally sit at a void edge.
+      if (p._dbg !== 'geometry-warp' && p._dbg !== 'surface-clutter') continue;
+      if (typeof p.x !== 'number' || typeof p.z !== 'number') continue;
+      for (const v of spec.voids ?? []) {
+        const inside = Math.abs(p.x - v.x) < v.w / 2 && Math.abs(p.z - v.z) < v.d / 2;
+        assert.ok(!inside, `depth ${d} seed ${s}: clutter '${p.kind}' at (${p.x.toFixed(1)},${p.z.toFixed(1)}) floats inside void (${v.x},${v.z})`);
+      }
+    }
+  }
+});
+
 test('no two vaults overlap on any floor', () => {
   for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
     const spec = generateFloor(d, s);

@@ -67,6 +67,11 @@ const CORNER_MOUND_VARIANTS: Array<{ model: typeof CORNER_MOUND; weight: number 
   { model: CORNER_MOUND_LARGE, weight: 1 },
 ];
 
+// Clearance kept between a clutter prop and the edge of a pit/void, on top of
+// the void's own footprint. Stops a column/brazier body from overhanging the
+// hole even when its centre is just outside.
+const VOID_MARGIN = 0.4;
+
 interface PlacedPoint {
   x: number;
   z: number;
@@ -116,8 +121,9 @@ export function applyGeometryWarp(spec: LevelSpec, rand: () => number): void {
     .filter((p) => 'kind' in p && centrepieceKinds.has(p.kind) && 'x' in p && 'z' in p)
     .map((p) => ({ x: p.x as number, z: p.z as number }));
   const out: PropSpec[] = [];
+  const voids = spec.voids ?? [];
   for (const room of spec.rooms) {
-    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand);
+    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand, voids);
     const hasCentrepiece = centrepiecePoints.some(
       (p) => p.x >= ctx.minX && p.x <= ctx.maxX && p.z >= ctx.minZ && p.z <= ctx.maxZ,
     );
@@ -151,12 +157,13 @@ export function applySurfaceClutter(spec: LevelSpec, rand: () => number): void {
   const stairs = allStairFootprints(spec);
   const allRectsFlat = [...spec.rooms, ...spec.corridors].map((r) => r.rect);
   const out: PropSpec[] = [];
+  const voids = spec.voids ?? [];
   for (const room of spec.rooms) {
-    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand);
+    const ctx = buildRoomContext(room, allRectsFlat, existing, stairs, rand, voids);
     surfacePass(ctx, out, rand);
   }
   for (const corridor of spec.corridors) {
-    const ctx = buildRoomContext(corridor, allRectsFlat, existing, stairs, rand);
+    const ctx = buildRoomContext(corridor, allRectsFlat, existing, stairs, rand, voids);
     corridorSurfacePass(ctx, out, rand);
   }
   stampDbg(out, 'surface-clutter');
@@ -191,6 +198,7 @@ function buildRoomContext(
   existing: PlacedPoint[],
   stairs: StairFootprint[],
   rand: () => number,
+  voids: WalkableRect[] = [],
 ): RoomContext {
   const rect = room.rect;
   const minX = rect.x - rect.w / 2;
@@ -220,6 +228,16 @@ function buildRoomContext(
     for (const s of stairs) {
       if (x >= s.minX - STAIR_MARGIN && x <= s.maxX + STAIR_MARGIN &&
           z >= s.minZ - STAIR_MARGIN && z <= s.maxZ + STAIR_MARGIN) return true;
+    }
+    // Voids (pits / chasm cutouts) — a prop here floats over the abyss with no
+    // floor under it. Reject the cell, inflated by VOID_MARGIN so the prop's
+    // body doesn't overhang the hole's edge either. Voids are shaped FIRST (the
+    // carve pass + authored vault.voids both land in spec.voids before clutter
+    // runs); the placement stage just has to honour them.
+    for (const v of voids) {
+      const hw = v.w / 2 + VOID_MARGIN;
+      const hd = v.d / 2 + VOID_MARGIN;
+      if (x >= v.x - hw && x <= v.x + hw && z >= v.z - hd && z <= v.z + hd) return true;
     }
     return false;
   };
