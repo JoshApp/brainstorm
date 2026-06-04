@@ -33,6 +33,19 @@ sha="$(git rev-parse HEAD)"
 branch="$(git rev-parse --abbrev-ref HEAD)"
 short="${sha:0:8}"
 
+# Cloud-container environments (Claude Code on the web) don't have `gh`
+# installed. Without it we can't poll the workflow run — every check
+# silently returns nothing, and we'd just burn FIND_TIMEOUT for no
+# information. Detect early + degrade gracefully: the push went through
+# (caller already verified that), so exit 0 with a hint that the agent
+# should use the GitHub MCP tools to verify the deploy if needed.
+if ! command -v gh >/dev/null 2>&1; then
+  echo "[watch-deploy] ${short} on ${branch} — gh CLI not available in this environment."
+  echo "               push is safe. To verify deploy, use the GitHub MCP tools"
+  echo "               (mcp__github__actions_list / actions_get) or check the live URL."
+  exit 0
+fi
+
 echo "[watch-deploy] HEAD ${short} on ${branch}"
 
 # ── Phase 1: find the workflow run for this commit ──────────────────

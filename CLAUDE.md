@@ -238,6 +238,15 @@ when it completes (~90s typical). The patient watch-deploy distinguishes
 "queued behind another run" (exit 0, push is safe) from "deploy explicitly
 failed" (exit 1, fix it).
 
+**Cloud agents don't have `gh` installed.** When Claude runs in the web
+cloud container, `gh` isn't available, so the watch-deploy step exits
+immediately with "push is safe, use MCP to verify." If you actually want
+to confirm a deploy outcome from the agent, call the GitHub MCP tools
+directly after running live (e.g. `mcp__github__actions_list` filtered
+to `branch: main`, look for `head_sha` matching `git rev-parse HEAD`).
+On your own machine `gh` is presumably installed and the script will
+poll as designed.
+
 ### Configuration
 
 - Workflow: `.github/workflows/deploy.yml` — triggers only on push to `main`.
