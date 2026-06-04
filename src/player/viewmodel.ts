@@ -46,6 +46,9 @@ export interface WeaponViewmodel {
    *  by combat to apply per-step reach/cone/maxTargets overrides.
    *  Returns null when no swing is in progress. */
   getActiveStep(): ResolvedComboStep | null;
+  /** Current swing phase — read by the commitment system to scale player
+   *  agency (idle = full freedom). */
+  getPhase(): SwingPhase;
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
   startSwing(opts?: { skipWindup?: boolean; direction?: AttackDirection }): boolean;
   update(dt: number): void;
@@ -231,6 +234,7 @@ export function createWeaponViewmodel(
     getActiveStep(): ResolvedComboStep | null {
       return swing.getActiveStep();
     },
+    getPhase: swing.getPhase,
     startSwing: swing.requestSwing,
     update,
     equip,

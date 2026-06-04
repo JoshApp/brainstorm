@@ -89,6 +89,10 @@ export interface ResolvedWeaponStats {
    *  accumulated past the enemy's poise → stagger. */
   staggerPower: number;
   class: WeaponClass;
+  /** Attack commitment 0..1 — drives how much movement/turn agency is lost
+   *  during a swing (swing-agency.ts). 0 = weightless (no lock), 1 = fully
+   *  committed (hammer). */
+  commitment: number;
   /** Ordered combo steps. A press while idle within comboWindowMs of
    *  the previous step's recover-end advances to the next step;
    *  outside the window, the combo resets to step 0. The array wraps
@@ -174,6 +178,12 @@ interface ClassDefaults {
    *  bump; daggers/whip/ranged stay at 1.0. The single knob to tune a
    *  class's felt weight. */
   timingMul?: number;
+  /** Attack COMMITMENT (0..1): how much movement/turn agency you lose mid-swing
+   *  (see CONFIG.COMMITMENT + swing-agency.ts). Optional — defaults to a value
+   *  DERIVED from timingMul so weight is one knob (a heavier weapon commits
+   *  harder). Set explicitly only to decouple a class's commitment from its
+   *  animation weight. */
+  commitment?: number;
 }
 
 export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
@@ -560,6 +570,11 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   const timingMul = baseT.timingMul ?? 1;
   const windRecMul = speedMul * profSpeed * timingMul * CONFIG.SWING_TIME_SCALE;   // windup + recover
   const strikeMul  = speedMul * profSpeed;               // strike (hit window) — unscaled by weight + cadence
+  // Commitment derives from the same WEIGHT axis (timingMul) unless a class
+  // overrides it: a baseline (timingMul 1.0) weapon commits 0.30; each +1.0 of
+  // weight adds ~0.9, capped at 1.0. So dagger/ranged (1.0) stay nimble at 0.30,
+  // sword (1.25) ≈ 0.53, scythe (1.5) ≈ 0.75, hammer (1.7) ≈ 0.93.
+  const commitment = baseT.commitment ?? Math.max(0.3, Math.min(1, 0.3 + (timingMul - 1) * 0.9));
   const resolveStep = (step: ComboStep): ResolvedComboStep => ({
     pose: step.pose,
     windupTime:  step.windup  * windRecMul,
@@ -590,6 +605,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     staggerPower,
     critMultiplier: spec.critMultiplier ?? 2.0,
     class: cls,
+    commitment,
     combo,
     comboWindowMs: baseT.comboWindowMs * (1 + profComboPct),
     onHit: spec.onHit,

@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
 import { getPlayerMoveScale } from '../player/inside-aura';
+import { getMoveMul, getTurnMul } from '../combat/swing-agency';
 import type { WalkableRegion } from '../level/walkable';
 import type { Enemy } from '../mobs/enemy';
 import { getSettings } from '../settings/settings';
@@ -64,7 +65,10 @@ export function updateCamera(
   camGroundX = camera.position.x;
   camGroundZ = camera.position.z;
   // --- Look ---
-  const sensitivity = getSettings().lookSensitivity;
+  // Turn rate is scaled by attack commitment — mid-swing you can't whip-aim
+  // (weight-scaled; idle = 1.0). This clamps the camera AND, since the swing
+  // cone reads camera-forward, how much you can adjust where the hit lands.
+  const sensitivity = getSettings().lookSensitivity * getTurnMul();
   yaw -= input.lookDx * sensitivity;
   pitch -= input.lookDy * sensitivity;
   pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
@@ -101,10 +105,10 @@ export function updateCamera(
       .addScaledVector(right, input.moveX);
 
     if (move.lengthSq() > 0) {
-      // Aura-driven slow (e.g. inside the boiling king's body).
-      // Decays to 1.0 once nothing's refreshing it; multiplicative
-      // so the slow effect on existing MOVE_SPEED feels uniform.
-      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * getPlayerMoveScale() * dt);
+      // Aura-driven slow (e.g. inside the boiling king's body) × attack
+      // commitment (mid-swing you root/slow, weight-scaled; idle = 1.0). Both
+      // multiplicative so they compose uniformly on MOVE_SPEED.
+      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * dt);
       const newX = camera.position.x + move.x;
       const newZ = camera.position.z + move.z;
       // First pass: static collision (walls, pillars, altar, chest).

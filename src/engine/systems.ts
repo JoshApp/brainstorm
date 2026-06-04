@@ -30,6 +30,8 @@ import { tickInteractables, getInRangeInteractable } from '../interactables/syst
 import { consumeAttackPressed } from '../controls/attack-input';
 import { consumeDash } from '../controls/dash-input';
 import { tryDash } from '../combat/dash';
+import { updateSwingAgency, isDashLocked } from '../combat/swing-agency';
+import { getCurrentWeapon } from '../player/current-weapon';
 import { tickLightPool } from '../scene/light-pool';
 import { tickProjectiles } from '../combat/projectile-pool';
 import { tickStamina } from '../combat/stamina';
@@ -89,6 +91,13 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
   } = deps;
 
   return [
+    // Publish this frame's attack COMMITMENT (move/turn agency + dash-lock) from
+    // the live swing phase + equipped weapon's weight, BEFORE input-camera and
+    // dash read it. One frame of latency vs the sim's advance (later in the
+    // frame) is imperceptible for feel.
+    { name: 'swing-agency', phase: 'unpaused', tick() {
+      updateSwingAgency(weapon.getPhase(), getCurrentWeapon().commitment);
+    } },
     // Look/move input + camera. While dying, control input is dropped so
     // nothing downstream (camera, bob) reads stale joystick values.
     { name: 'input-camera', phase: 'unpaused', tick(ctx) {
@@ -120,6 +129,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // input-camera so it reads this frame's facing.
     { name: 'dash', phase: 'unpaused', tick() {
       if (isDying() || isFogWalkthroughActive()) return;
+      // Committed mid-strike: can't dash-cancel the active frames. Check the
+      // lock BEFORE consuming, so the input stays pending and fires the instant
+      // the strike ends (a natural roll-cancel buffer into recovery).
+      if (isDashLocked()) return;
       const d = consumeDash();
       if (!d) return;
       camera.getWorldDirection(forwardScratch);
