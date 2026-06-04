@@ -4,214 +4,214 @@
 
 export const GENERATED_PATCHLOG = [
   {
-    "version": "Build 10",
-    "date": "2026-06-02",
+    "version": "Build 11",
+    "date": "2026-06-03",
     "entries": [
       {
         "tag": "tune",
-        "text": "King: leap actually moves + landing damage + core damage flash"
+        "text": "Mobile UI: menu Sheet shell + migrate character screen onto it"
       },
       {
         "tag": "tune",
-        "text": "Boss fog wall — soulslike threshold mist + sealed engagement"
+        "text": "Proficiency rework: per-class config (overridable) + tiers + item-card display"
       },
       {
-        "tag": "fix",
-        "text": "King fixes: dash actually moves horizontally + aura tick slower"
+        "tag": "tune",
+        "text": "Stats v2 (Stage 3): Might → stagger (the poise system)"
+      },
+      {
+        "tag": "content",
+        "text": "Weapon weight pass: timingMul stretches windup+recover (not strike)"
+      },
+      {
+        "tag": "content",
+        "text": "Shrouded relic — the cursed mystery gamble (find + reveal)"
       },
       {
         "tag": "add",
-        "text": "Add Boiling King test chamber to the title-screen TEST list"
+        "text": "Add 5 sharp-trade cursed items (risk/reward)"
       },
       {
         "tag": "tune",
-        "text": "Boiling King: real vertical leap with landing screen shake"
+        "text": "Stats v2 (Stage 2): Lore signature — afflictions last longer & tick harder"
       },
       {
         "tag": "tune",
-        "text": "Boiling King: leap distance + AoE size + cooldown tuning"
+        "text": "Stats v2 (Stage 1)"
       },
       {
         "tag": "tune",
-        "text": "Boiling King: way bigger + inside-aura mechanic (slow + acid DoT)"
+        "text": "Challenge arena — voluntary loot trial (the other arena kind)"
       },
       {
         "tag": "tune",
-        "text": "Boiling King"
+        "text": "Unify arena gate seal as an encounter reactor (+ offering trigger mode)"
       },
       {
         "tag": "tune",
-        "text": "Menus freeze the world + mobile menus scroll when too tall"
+        "text": "Fold boss, fog gate, and room-clear into the Encounter layer"
       },
       {
         "tag": "tune",
-        "text": "Desktop: hold-to-charge attacks + rebindable keys + Controls tab"
+        "text": "Central loot distribution + depth-gating (foundation)"
       },
       {
         "tag": "tune",
-        "text": "Safe-room card: grace window before tap can dismiss it"
-      },
-      {
-        "tag": "tune",
-        "text": "Step 3 v4: encounter + event density passes — pipeline complete"
-      },
-      {
-        "tag": "tune",
-        "text": "Step 3 v3: carve pass — fissured floor cutouts as the first pass"
+        "text": "Encounter layer v1 + migrate the arena onto it"
       },
       {
         "tag": "fix",
-        "text": "Fix floor non-determinism: corpse note used a global counter"
+        "text": "Arena trap: wave gauntlet + summon telegraph + gate-reopen fix (wiring)"
+      },
+      {
+        "tag": "add",
+        "text": "Starter weapons roll from a pool + add 2 mundane base weapons"
       },
       {
         "tag": "tune",
-        "text": "Nerf bleed + burn DoTs (too brutal vs 8-HP player)"
+        "text": "Marrow Sovereign towering rework + fog gate polish"
       },
       {
         "tag": "tune",
-        "text": "Step 3 v2: decor pass — pillared style + density factor"
-      },
-      {
-        "tag": "tune",
-        "text": "Step 3 v1: Palette cascade + lighting pass"
-      },
-      {
-        "tag": "tune",
-        "text": "Decor migration"
+        "text": "Combat feel v2: 3D capsule hit-reg, damage-scaled crunch (both ways), directional hit indicator"
       },
       {
         "tag": "content",
-        "text": "Migrate remaining spawn-prop vaults to cellProps"
-      },
-      {
-        "tag": "tune",
-        "text": "Extract inspect-mode into its own module"
+        "text": "Death v3: weapon tumbles from the hand to the floor as you collapse"
       },
       {
         "tag": "fix",
-        "text": "Inspect previews: auto-frame subject, fix lighting, studio backdrop"
-      },
-      {
-        "tag": "content",
-        "text": "Vault format experiment — author same vault in 3 formats"
+        "text": "Height-aware projectile collision — shots fly OVER low props (god-ray 'eaten shot' fix)"
       },
       {
         "tag": "tune",
-        "text": "Palette & Pass system DRAFT v0 (types only, no runtime)"
+        "text": "Marrow Sovereign — two-phase skeleton boss + phase system pilot"
       },
       {
         "tag": "tune",
-        "text": "tests"
+        "text": "Monster sound: hurt cries, strike-release barks, and footstep foley"
       },
       {
         "tag": "tune",
-        "text": "Make the pre-push test gate durable: prepare script wires core.hooksPath"
-      },
-      {
-        "tag": "content",
-        "text": "Delete LEVEL_1 + LEVEL_2 + all per-enemy tile-char machinery"
+        "text": "Loot pickup feel"
       },
       {
         "tag": "fix",
-        "text": "Fix stair-archway guard: precise (stair-room perimeter), not crude distance"
+        "text": "Phone-feedback fixes: spitter damage, whole-body flash, mimic facing, fog projectile block"
       },
       {
         "tag": "tune",
-        "text": "Stairs: geometry-aware orientation — back of room, facing the entrance"
-      },
-      {
-        "tag": "content",
-        "text": "vault-validate: recognize the '*' light char (post-merge with torch refactor)"
-      },
-      {
-        "tag": "fix",
-        "text": "Creator suite (delve CLI + faithful reach) + fix the real stairs soft-lock"
+        "text": "Tap-to-use"
       },
       {
         "tag": "tune",
-        "text": "Unified '*' light char + inspect-mode subject/scene split"
+        "text": "Tap-to-use: forgiving tap area + skip blocked loot to the item beneath"
       },
       {
-        "tag": "content",
-        "text": "Migrate boss + specific mob spawns to PropSpec; vault.torches array"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix stairs-unreachable soft-lock: stair-room mouths get doorframes"
+        "tag": "tune",
+        "text": "Unify tap-to-use: direct mesh taps honour intent within a tunable reach"
       },
       {
         "tag": "fix",
-        "text": "Fix Act boss spawning the wrong creature (wraith instead of boiling king)"
+        "text": "Fix mood-tint not reaching candles (warm flames in tinted rooms)"
+      },
+      {
+        "tag": "fix",
+        "text": "3 boss UX fixes: stray-B fix, dormancy, smart tap arbiter"
       }
     ]
   },
   {
-    "version": "Build 9",
-    "date": "2026-06-01",
+    "version": "Build 10",
+    "date": "2026-06-02",
     "entries": [
       {
-        "tag": "tune",
-        "text": "snap"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix archway choke (the real soft-lock cause) + guard it"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix chasm-bridge soft-lock: widen margins to >= 2m (collision-traversable)"
+        "tag": "add",
+        "text": "Add diag-cross scenario (rooms on 4 sides) for portal-cull verification"
       },
       {
         "tag": "tune",
-        "text": "snap: real lighting in inspect mode (key + rim, not flat ambient)"
-      },
-      {
-        "tag": "tune",
-        "text": "Bosses: boiling-king fills every act (interim) — no more placeholder wraith"
+        "text": "Fog gate: slower walk-through that stops just past the threshold"
       },
       {
         "tag": "content",
-        "text": "Item viewer scenario + burrower (floor-emerge) mob"
+        "text": "Perf: batch per-room static fixtures (torches) — ~50% fewer torch draws"
+      },
+      {
+        "tag": "tech",
+        "text": "Perf"
       },
       {
         "tag": "tune",
-        "text": "Lighting"
-      },
-      {
-        "tag": "tune",
-        "text": "Event slots: rollable feature placeholders (?) through the manifest"
+        "text": "Unify openings (2/2): route doors + cobweb through spawnFitting too"
       },
       {
         "tag": "fix",
-        "text": "snap"
+        "text": "Unify openings (1/2): fix boss fog-gate placement via Opening + fitting"
+      },
+      {
+        "tag": "tech",
+        "text": "Perf"
+      },
+      {
+        "tag": "tech",
+        "text": "Perf: clip camera far plane at the fog distance (50m → 13m)"
+      },
+      {
+        "tag": "tech",
+        "text": "Refactor"
       },
       {
         "tag": "tune",
-        "text": "Loot slots: rollable, partial-fill reward placeholders ($)"
-      },
-      {
-        "tag": "tune",
-        "text": "Encounters"
+        "text": "Settings"
       },
       {
         "tag": "content",
-        "text": "snap"
+        "text": "Refactor"
       },
       {
         "tag": "tune",
-        "text": "Two new mobs: pit moth (swarmer) + lasher (long-reach turret)"
+        "text": "Settings"
+      },
+      {
+        "tag": "tech",
+        "text": "Refactor"
+      },
+      {
+        "tag": "fix",
+        "text": "Boss bar: latch the fade-out so it stays hidden (fixes test-chamber hang)"
       },
       {
         "tag": "tune",
-        "text": "Encounters: coherent room-level packs (prototype on 2 vaults)"
+        "text": "Boss"
+      },
+      {
+        "tag": "content",
+        "text": "Refactor"
+      },
+      {
+        "tag": "tech",
+        "text": "Refactor"
+      },
+      {
+        "tag": "tech",
+        "text": "Refactor"
+      },
+      {
+        "tag": "fix",
+        "text": "Fix: attribute split children to parent's room by entityId, not position"
+      },
+      {
+        "tag": "fix",
+        "text": "Fog gate: fix dormant-boss deadlock + soulslike forced walk-through"
       },
       {
         "tag": "tune",
-        "text": "snap: --frames=N animation grid"
+        "text": "Graphics settings"
       },
       {
         "tag": "tune",
-        "text": "Pilot: goto verb + cross-call persistence"
+        "text": "Fog gate: real block+interact gate, fills the doorway, un-stealable tap"
       }
     ]
   }

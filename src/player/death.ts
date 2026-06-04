@@ -6,6 +6,7 @@ import { showEndScreen } from '../ui/end-screen';
 import { getRunState, elapsedString, clearSave } from '../state/run-state';
 import { recordRunDeath, getRunDiscoveries } from '../state/meta-state';
 import { setGameMode } from '../state/game-mode';
+import { tickWeaponDrops } from './weapon-drop';
 
 // Death sequence — Dark-Souls-esque collapse + world freeze.
 //
@@ -34,6 +35,14 @@ let elapsed = 0;
 let camera: THREE.PerspectiveCamera | null = null;
 let startPitch = 0;
 let startHeight = 0;
+// Fired once at the very start of the death sequence — main.ts wires this
+// to fling the held weapon(s) out of the player's hands (weapon-drop.ts).
+let onDeathStart: (() => void) | null = null;
+
+/** Register the death-start hook (the hand-lets-go weapon drop). */
+export function setOnDeathStart(fn: () => void): void {
+  onDeathStart = fn;
+}
 
 const FALL_DURATION = 1.4;       // seconds to finish the camera collapse
 const STILL_AT      = 2.0;       // seconds before time-scale hits zero
@@ -98,6 +107,11 @@ export function triggerDeath() {
     startPitch = camera.rotation.x;
     startHeight = camera.position.y;
   }
+  // Let go of everything — the weapon tumbles from the hand to the floor
+  // BEFORE the camera starts its collapse, so you watch your blade fall
+  // away as you go down. Captured here (hands still up) so the spawn
+  // transform is the held pose, not the collapsed one.
+  onDeathStart?.();
   setPersistentVignette(1, CONFIG.DEATH_VIGNETTE_DARKEN_MS);
   const epitaph = showDeathOverlay();
   // Snapshot the run BEFORE clearing save so the recap shows real numbers.
@@ -141,15 +155,18 @@ export function tickDeath(realDt: number) {
   if (!dying) return;
   elapsed += realDt;
 
+  // Weapon(s) tumbling to the floor — REAL dt so they land promptly
+  // (within the first ~0.7s) and then lie still through the rest of the
+  // collapse + freeze.
+  tickWeaponDrops(realDt);
+
   if (camera) {
     // Camera collapse — pitch + roll + drop, all eased-out so the
     // fall starts fast and settles softly into the floor. The roll
-    // is the big addition vs the older "face-down" pose: the player
-    // collapses onto their SIDE so the sword viewmodel attached to
-    // the camera ends up visibly sprawled on the floor (right hand
-    // still gripping it). That's the Dark-Souls-y "see your
-    // character" beat in a first-person rig — your own hand IS the
-    // character.
+    // collapses the body onto its SIDE; with the weapon already flung
+    // from the hand (onDeathStart), the empty hand sinks to the floor
+    // beside the dropped blade — the Dark-Souls-y "see your character
+    // fall" beat, now with the loss of the weapon made literal.
     const t = Math.min(1, elapsed / FALL_DURATION);
     const eased = 1 - Math.pow(1 - t, 2);   // easeOutQuad
     camera.rotation.x = startPitch + (FALL_PITCH - startPitch) * eased;

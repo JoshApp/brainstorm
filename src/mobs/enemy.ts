@@ -35,7 +35,7 @@ import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
 import { aggregateSpeed } from '../combat/modifiers';
-import { playEnemyDeath, playEnemyWindup, playEnemyVocal, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
+import { playEnemyDeath, playEnemyWindup, playEnemyVocal, playEnemyHurt, playEnemyStrike, playEnemyFootstep, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins } from '../effects/gold-coins';
@@ -100,7 +100,9 @@ export type EnemyState =
   | 'striking'
   | 'recovering'
   | 'searching'   // lost sight, heading to last known position
-  | 'returning';  // gave up search, walking back to post
+  | 'returning'   // gave up search, walking back to post
+  | 'staggered';  // poise broken by a heavy hit — reeling, can't act,
+                  // a free-hit window (see the poise system + Might)
 
 // AI timing/feel constants are tuned in src/config.ts (CONFIG.ENEMY_AI);
 // the rationale for each stays here at the use site.
@@ -169,6 +171,10 @@ export interface Enemy extends Damageable {
    *  See EnemySpec.noPlayerCollision. */
   noPlayerCollision: boolean;
   takeDamage(event: DamageEvent): number;
+  /** Chip the poise pool; breaking it staggers the enemy (cancels its
+   *  action, opens a free-hit window). Called by the combat cone on a
+   *  heavy melee hit. */
+  applyStaggerDamage(amount: number): void;
   update(
     dt: number,
     playerPos: THREE.Vector3,
@@ -177,6 +183,17 @@ export interface Enemy extends Damageable {
   ): void;
   setDebugState(state: EnemyState, phaseTimer: number): void;
   setDebugPosition(x: number, z: number): void;
+  /** Observation tooling: jump a multi-phase boss to phase `index`
+   *  (0-based), applying each transition's settled pose INSTANTLY (no
+   *  collapse animation) — for clean per-phase snaps. No-op for
+   *  single-phase enemies or an index ≤ current. */
+  setDebugBossPhase(index: number): void;
+  /** Observation tooling: trigger the NEXT phase transition WITH its
+   *  collapse animation (as if the current phase was just killed) — for
+   *  watching the transition live. No-op if already on the last phase. */
+  debugAdvanceBossPhase(): void;
+  /** Current 0-based phase index + count (1/1 for single-phase). */
+  bossPhaseInfo(): { index: number; count: number };
   /** Rotate the container so it faces a world point (head toward it). */
   faceWorld(x: number, z: number): void;
   /** Apply a decaying knockback impulse in world XZ direction (dirX,
@@ -295,15 +312,96 @@ export function createEnemy(
   const setEyeFlare = eyePresenter.setFlare;
   const applyIdleEyes = eyePresenter.applyIdle;
 
-  // World entity (HP + buffs).
+  // World entity (HP + buffs). For multi-phase bosses, HP starts at
+  // phase[0].hp; phase transitions refill to the next phase's HP.
   const entityId = generateEntityId(`enemy-${spec.id}`);
+  let phaseIndex = 0;
+  const phases = spec.phases ?? null;
+  const initialHp = phases ? phases[0].hp : spec.hp;
+  const initialAbilities = phases ? phases[0].abilities : (spec.abilities ?? []);
   spawnEntity({
     id: entityId,
     kind: 'enemy',
-    hp: { base: spec.hp, current: spec.hp },
+    hp: { base: initialHp, current: initialHp },
     buffs: [],
     passives: [],
   });
+  // Per-phase mutable state (so we can reassign on transition).
+  let currentMaxHp = initialHp;
+  let currentAbilities = initialAbilities;
+  // Per-phase partBreaks: tracks which thresholds have fired so we
+  // don't re-hide parts every tick. Reset on phase entry.
+  let firedPartBreaks = new Set<number>();
+  let phaseInvulnTimer = 0;
+  // Phase-transition COLLAPSE animation (the skeleton's downed fall). While
+  // active the boss is inert (no AI) AND invulnerable, and the rig EASES to
+  // the new phase's crawl pose instead of snapping there — so the transition
+  // reads as a fall, not a teleport. Set up on transition, advanced in tick.
+  let phaseFallActive = false;
+  let phaseFallElapsed = 0;
+  let phaseFallDuration = 0;
+  let phaseFallNode: THREE.Object3D | null = null;
+  let phaseFallFromY = 0, phaseFallToY = 0;
+  let phaseFallFromPitch = 0, phaseFallToPitch = 0;
+
+  // Helper used by phase transitions + intra-phase part-break thresholds
+  // to hide named model parts. A single logical part (a whole leg) is
+  // authored as MANY primitives sharing one `name`, but built.parts is a
+  // Map (one entry per name) — so we traverse the live tree and hide EVERY
+  // object with a matching name, not just the one the map kept. Without
+  // this, "hide the legs" only dropped a single foot bone. Unknown names
+  // are silent no-ops.
+  function hidePartsByName(names: readonly string[]): void {
+    const want = new Set(names);
+    built.group.traverse((o) => {
+      if (o.name && want.has(o.name)) o.visible = false;
+    });
+  }
+
+  // Advance the boss to its NEXT phase. Shared by the kill-triggered
+  // transition (combat) and the debug phase-jump (observation tooling).
+  // `animate`: true plays the collapse over the invuln window (the real
+  // fight); false snaps straight to the settled pose (clean phase snaps).
+  function enterNextPhase(animate: boolean): void {
+    if (!phases || phaseIndex + 1 >= phases.length) return;
+    const next = phases[phaseIndex + 1];
+    phaseIndex++;
+    currentMaxHp = next.hp;
+    currentAbilities = next.abilities;
+    abilities = resolveAbilities(spec, currentAbilities);
+    const ent = getEntity(entityId);
+    if (ent?.hp) { ent.hp.base = next.hp; ent.hp.current = next.hp; }
+    firedPartBreaks = new Set();
+    phaseInvulnTimer = animate ? (next.invulnEntryTime ?? 0) : 0;
+    if (next.hideParts) hidePartsByName(next.hideParts);
+    if (next.rigYOffset !== undefined || next.rigPitch !== undefined) {
+      // Lower / tilt the RIG node (not built.group): the per-frame pose bob
+      // OWNS built.group.position.y and would clobber an offset there. The
+      // rig's position.y is bob-safe; pitch goes on built.group (also safe).
+      const node = tiltPart ?? built.group;
+      if (animate) {
+        phaseFallNode = node;
+        phaseFallFromY = node.position.y;
+        phaseFallToY = node.position.y + (next.rigYOffset ?? 0);
+        phaseFallFromPitch = built.group.rotation.x;
+        phaseFallToPitch = next.rigPitch ?? built.group.rotation.x;
+        phaseFallElapsed = 0;
+        // Fall across the invuln window so he's untouchable + inert as he
+        // drops, then rises as the crawler. Floor at 0.4s for readability.
+        phaseFallDuration = Math.max(0.4, next.invulnEntryTime ?? 0.8);
+        phaseFallActive = true;
+      } else {
+        // Instant settle — snap the model to the new phase's crawl pose.
+        node.position.y += next.rigYOffset ?? 0;
+        if (next.rigPitch !== undefined) built.group.rotation.x = next.rigPitch;
+        phaseFallActive = false;
+      }
+    }
+    clearAoeTelegraph();
+    clearLashTendril();
+    state = 'chasing';
+    phaseTimer = 0;
+  }
   // Register combat stats so the damage pipeline knows this enemy's armor +
   // (future) damage modifiers. Defaults to 0 armor, no bonuses — fields on
   // EnemySpec override per-enemy.
@@ -323,6 +421,17 @@ export function createEnemy(
   let state: EnemyState = options?.dormant ? 'dormant' : 'idle';
   let phaseTimer = 0;
   let aliveLocal = true;
+
+  // ── Poise / stagger ────────────────────────────────────────────────
+  // A hidden pool the player's heavy/Might-scaled hits chip at; break it
+  // and the enemy is STAGGERED (its action cancelled, a brief free-hit
+  // window). Pool resets on break and regenerates after a grace window
+  // so chip pressure must be SUSTAINED. Default scales with HP; bosses
+  // get a much larger pool (rarely staggered unless spec-tuned).
+  const poiseMax = spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(3, initialHp));
+  let poiseLeft = poiseMax;
+  let poiseRegenCd = 0;     // grace countdown before the pool refills
+  let staggerTimer = 0;     // > 0 while in the 'staggered' state
   // ── Strike-phase timeline state ────────────────────────────────────
   // Per-step latches for the ability currently striking: stepStarted[i]
   // flips once step i's trigger fires; stepDone[i] once its action fully
@@ -340,7 +449,7 @@ export function createEnemy(
   // their legacy fields (see resolveAbilities). `currentAbility` is the
   // one being executed across winding/striking/recovering; `cooldowns`
   // tracks per-ability lockout so a charge can't fire every second.
-  const abilities = resolveAbilities(spec);
+  let abilities = resolveAbilities(spec, phases ? currentAbilities : undefined);
   // Commit distance — the farthest range at which ANY ability triggers.
   // Beyond this the enemy just chases to close. Equals attackRange for a
   // pure melee mob, the cast range for a shooter.
@@ -401,6 +510,7 @@ export function createEnemy(
   // in unison; the global throttle in sfx caps overlap.
   const vocalArch = vocalArchetypeFor(spec);
   let vocalTimer = 2 + gameRng() * 8;
+  let strideAccum = gameRng() * 0.4;   // footstep cadence accumulator (m); jittered so a pack doesn't step in lockstep
   // Last position we saw the player at. Used by 'searching' state.
   const lastSeenPos = new THREE.Vector3();
 
@@ -511,6 +621,20 @@ export function createEnemy(
       spec.collisionRadius,
       spec.phasing ? { ignoreObstacles: true } : undefined,
     );
+    // Footstep foley — accumulate the distance ACTUALLY moved (post-clamp, so
+    // a mob pinned against a wall goes silent) and tick a locomotion sound
+    // every stride. Stride scales with body size so a stoneguard plods and a
+    // rat patters. Spectral mobs (wraiths) drift in silence — they don't walk.
+    if (vocalArch && spec.presence !== 'spectral') {
+      const mdx = resolved.x - container.position.x;
+      const mdz = resolved.z - container.position.z;
+      strideAccum += Math.sqrt(mdx * mdx + mdz * mdz);
+      const stride = 0.42 + spec.collisionRadius * 0.9;
+      if (strideAccum >= stride) {
+        strideAccum = 0;
+        playEnemyFootstep(vocalArch, container.position);
+      }
+    }
     container.position.x = resolved.x;
     container.position.z = resolved.z;
   }
@@ -549,11 +673,31 @@ export function createEnemy(
     // underground or mid-burst, not yet a valid target. Routes
     // through here normally; we short-circuit before HP changes.
     if (burrowState !== 'surfaced') return 0;
+    // Multi-phase boss: invuln window on phase entry (e.g. the
+    // skeleton's downed-and-rising animation).
+    if (phases && phaseInvulnTimer > 0) return 0;
     const entity = getEntity(entityId);
     if (!entity || !entity.hp) return 0;
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
+    // Phase part-break thresholds — fire at-most-once per threshold.
+    if (phases) {
+      const phase = phases[phaseIndex];
+      if (phase.partBreaks) {
+        for (let i = 0; i < phase.partBreaks.length; i++) {
+          if (firedPartBreaks.has(i)) continue;
+          if (entity.hp.current <= phase.partBreaks[i].atHp) {
+            firedPartBreaks.add(i);
+            hidePartsByName(phase.partBreaks[i].hideParts);
+          }
+        }
+      }
+    }
     coreReactor.hit();   // hit flash + glowing-core flare/pop (king)
+    // Pained cry when it survives the blow — the creature's voice on top of
+    // the weapon's impact, so every connecting hit reads as "I hurt it." The
+    // death path has its own (heavier) collapse sound, so skip if this killed.
+    if (entity.hp.current > 0 && vocalArch) playEnemyHurt(vocalArch, container.position);
     // Damage from any source aggros (and keeps aggro for the full
     // loseSightTime window after the hit, even if the player breaks LOS
     // — a wounded mob doesn't forget). If we were idle/searching/etc,
@@ -566,6 +710,12 @@ export function createEnemy(
       phaseTimer = 0;
     }
     if (entity.hp.current <= 0) {
+      // Multi-phase: if there's a next phase, transition INSTEAD of dying —
+      // animated collapse over the invuln window (see enterNextPhase).
+      if (phases && phaseIndex + 1 < phases.length) {
+        enterNextPhase(true);
+        return result.applied;
+      }
       // Killed mid-windup — drop any pending AoE marker / lash tentacle so
       // it doesn't linger after the caster is gone.
       clearAoeTelegraph();
@@ -648,6 +798,34 @@ export function createEnemy(
       }
     }
     return result.applied;
+  }
+
+  // Chip the poise pool; break it → STAGGER. Called from the combat
+  // cone on a heavy melee hit, with the attacker's already-resolved
+  // stagger power (weapon weight × Might × charge — see attack.ts).
+  function applyStaggerDamage(amount: number): void {
+    if (!aliveLocal || burrowState !== 'surfaced' || amount <= 0) return;
+    if (state === 'staggered') return;            // already reeling
+    if (phases && phaseInvulnTimer > 0) return;   // boss phase-entry invuln
+    poiseLeft -= amount;
+    poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
+    if (poiseLeft <= 0) triggerStagger();
+  }
+
+  function triggerStagger(): void {
+    // Cancel whatever it was doing — the wind-up/strike is INTERRUPTED.
+    currentAbility = null;
+    clearAoeTelegraph();
+    clearLashTendril();
+    setEyeFlare(0);
+    state = 'staggered';
+    staggerTimer = CONFIG.POISE.STAGGER_DURATION;
+    phaseTimer = 0;
+    poiseLeft = poiseMax;          // reset — must be broken again
+    poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
+    aggroed = true;                // a staggered mob is very much aware of you
+    // (Audio: the breaking hit's own hurt cry — via takeDamage — covers
+    // the moment. A dedicated heavier "stagger" SFX is future polish.)
   }
 
   function distToXZ(target: THREE.Vector3): number {
@@ -765,7 +943,13 @@ export function createEnemy(
         container.updateMatrixWorld();
         tmpMuzzle.applyMatrix4(container.matrixWorld);
         const t = resolveAnchor(action.toward ?? 'player', playerPos);
-        tmpTarget.set(t.x, tmpMuzzle.y, t.z);
+        // Aim at the player's eye height (playerPos IS camera.position — the
+        // same reference the projectile hit-test uses), NOT flat at the muzzle
+        // height. A low muzzle (e.g. the ground-hugging acid-spitter at y≈0.4)
+        // would otherwise fly level UNDER the player's vertical hit window
+        // (|dy| < 1.2) and never connect. Chest-height shooters (acolyte) are
+        // unaffected — their muzzle already sits at player height.
+        tmpTarget.set(t.x, playerPos.y, t.z);
         spawnProjectile({
           typeId: action.projectileId, origin: tmpMuzzle, target: tmpTarget,
           damage: action.damage, source: entityId,
@@ -1117,6 +1301,27 @@ export function createEnemy(
     // Hit flash + glowing-core heartbeat/flare (see enemy-presentation.ts).
     coreReactor.tick(dt);
 
+    // Phase entry invuln window (e.g. skeleton's downed → crawl rise).
+    if (phases && phaseInvulnTimer > 0) phaseInvulnTimer = Math.max(0, phaseInvulnTimer - dt);
+
+    // Phase-transition collapse — ease the body into the crawl pose while
+    // he's down. He's INERT here (early return skips all AI/movement/
+    // abilities) and already invulnerable (phaseInvulnTimer gate above), so
+    // the fall plays out untouched, then normal AI resumes as the crawler.
+    if (phaseFallActive && phaseFallNode) {
+      phaseFallElapsed += dt;
+      const t = phaseFallDuration > 0 ? Math.min(1, phaseFallElapsed / phaseFallDuration) : 1;
+      const e = t * t;   // ease-IN: knees buckle slow, then he drops fast
+      phaseFallNode.position.y = phaseFallFromY + (phaseFallToY - phaseFallFromY) * e;
+      built.group.rotation.x = phaseFallFromPitch + (phaseFallToPitch - phaseFallFromPitch) * e;
+      if (t >= 1) {
+        phaseFallNode.position.y = phaseFallToY;
+        built.group.rotation.x = phaseFallToPitch;
+        phaseFallActive = false;
+      }
+      return;
+    }
+
     // Capture home yaw the very first tick so idle scan rotates around the
     // actual placed-orientation (set by builder via faceWorld at spawn).
     if (!homeYawSet) {
@@ -1230,9 +1435,20 @@ export function createEnemy(
       }
     }
 
+    // Poise regen — once the player stops landing stagger pressure, the
+    // pool refills (a grace delay, then a steady rate) so you must
+    // SUSTAIN hits to break it. A staggered enemy doesn't regen (its
+    // pool is already reset for the next break).
+    if (state !== 'staggered') {
+      if (poiseRegenCd > 0) poiseRegenCd = Math.max(0, poiseRegenCd - dt);
+      else if (poiseLeft < poiseMax) {
+        poiseLeft = Math.min(poiseMax, poiseLeft + CONFIG.POISE.REGEN_RATE * dt);
+      }
+    }
+
     // Face target is conditional — idle/returning faces the scan target,
-    // not the player.
-    if (state !== 'idle' && state !== 'returning') {
+    // not the player; a staggered enemy is reeling and doesn't track you.
+    if (state !== 'idle' && state !== 'returning' && state !== 'staggered') {
       faceTarget(playerPos);
     }
 
@@ -1245,6 +1461,22 @@ export function createEnemy(
         // the boss intro, and the boss starting to hunt all land on
         // the SAME frame the player crosses the threshold.
         if (isBossEngaged()) {
+          state = 'chasing';
+          phaseTimer = 0;
+        }
+        break;
+      }
+      case 'staggered': {
+        // Poise broken — reel in place, can't act. A backward recoil
+        // lean (eased toward neutral as it recovers) reads the flinch;
+        // no movement, no attack. The free-hit window the player earned.
+        staggerTimer -= dt;
+        const f = Math.max(0, Math.min(1, staggerTimer / CONFIG.POISE.STAGGER_DURATION));
+        applyTilt(-0.4 * f);
+        setEyeFlare(0);
+        built.group.position.y = 0;
+        if (staggerTimer <= 0) {
+          applyTilt(0);
           state = 'chasing';
           phaseTimer = 0;
         }
@@ -1455,6 +1687,7 @@ export function createEnemy(
         if (phaseTimer >= currentWindupTime) {
           state = 'striking';
           phaseTimer = 0;
+          playEnemyStrike(audioSizeFor(spec), container.position);  // the attack RELEASE bark
           // Arm the timeline: clear per-step latches + events, capture the
           // leap takeoff point.
           stepStarted = currentAbility.steps.map(() => false);
@@ -1559,8 +1792,9 @@ export function createEnemy(
     stepEvents.clear();
     switch (s) {
       case 'chasing':
+      case 'staggered':
         setEyeFlare(0);
-        applyTilt(0);
+        applyTilt(s === 'staggered' ? -0.4 : 0);
         built.group.position.y = 0;
         break;
       case 'winding': {
@@ -1590,6 +1824,23 @@ export function createEnemy(
     container.position.z = z;
   }
 
+  function setDebugBossPhase(index: number) {
+    if (!phases) return;
+    // Step instantly up to the target phase (settled poses, no animation).
+    while (phaseIndex < index && phaseIndex + 1 < phases.length) {
+      enterNextPhase(false);
+    }
+    phaseInvulnTimer = 0;   // a posed phase shouldn't be mid-invuln
+  }
+
+  function debugAdvanceBossPhase() {
+    enterNextPhase(true);   // animated collapse, as if just killed
+  }
+
+  function bossPhaseInfo() {
+    return { index: phaseIndex, count: phases ? phases.length : 1 };
+  }
+
   function faceWorld(x: number, z: number) {
     tmpFlat.set(x, container.position.y, z);
     container.lookAt(tmpFlat);
@@ -1615,7 +1866,15 @@ export function createEnemy(
     get dormant() {
       return dormantLocal;
     },
-    maxHp: spec.hp,
+    // Phase-aware: a multi-phase boss's max HP is the CURRENT phase's
+    // pool (16 in P1, 12 in P2 for the Marrow Sovereign), not the
+    // top-level spec.hp (which is 1 for phase-driven bosses — unused as
+    // a real HP value). The boss bar reads this every frame to scale
+    // the fill, so without this getter the bar would render at 1600%
+    // fullness in P1 and look pinned to full until the boss dies.
+    get maxHp() {
+      return currentMaxHp;
+    },
     get alive() {
       return aliveLocal;
     },
@@ -1630,9 +1889,13 @@ export function createEnemy(
       return state;
     },
     takeDamage,
+    applyStaggerDamage,
     update,
     setDebugState,
     setDebugPosition,
+    setDebugBossPhase,
+    debugAdvanceBossPhase,
+    bossPhaseInfo,
     faceWorld,
     applyKnockback: bodyAnim.applyKnockback,
   };

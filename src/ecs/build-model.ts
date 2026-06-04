@@ -155,6 +155,7 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
   const uRimColor   = { value: new THREE.Color(def.rim?.color ?? 0xffffff) };
   const uRimPower   = { value: def.rim?.power ?? 2.5 };
   const uRimIntens  = { value: def.rim?.intensity ?? 1.0 };
+  const uRimDark    = { value: def.rim?.darkReactive ?? 0 };
   const uDissolve   = { value: 0 };
 
   // Expose for external mutation. Death sequence reads userData.uDissolve.
@@ -170,6 +171,7 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       shader.uniforms.uRimColor  = uRimColor;
       shader.uniforms.uRimPower  = uRimPower;
       shader.uniforms.uRimIntens = uRimIntens;
+      shader.uniforms.uRimDark   = uRimDark;
     }
     if (hasDissolve) {
       shader.uniforms.uDissolve  = uDissolve;
@@ -196,7 +198,7 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       frag += 'varying vec3 vLocalPos;\nuniform float uDissolve;\n';
     }
     if (hasRim) {
-      frag += 'uniform vec3 uRimColor;\nuniform float uRimPower;\nuniform float uRimIntens;\n';
+      frag += 'uniform vec3 uRimColor;\nuniform float uRimPower;\nuniform float uRimIntens;\nuniform float uRimDark;\n';
     }
     shader.fragmentShader = frag + shader.fragmentShader;
 
@@ -222,7 +224,13 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       vec3 viewDir = normalize(vViewPosition);
       float rim = 1.0 - max(dot(viewDir, normalize(vNormal)), 0.0);
       rim = pow(rim, uRimPower);
-      gl_FragColor.rgb += uRimColor * rim * uRimIntens;
+      // DARKNESS-REACTIVE (uRimDark): the rim carries the form where scene
+      // light doesn't. gl_FragColor is the fully-lit colour here, so its
+      // luma tells us how lit this fragment already is — scale the rim up in
+      // shadow, down in light. uRimDark 0 = constant rim (unchanged).
+      float litLuma = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+      float darkGate = mix(1.0, mix(1.0, 0.22, clamp(litLuma, 0.0, 1.0)), uRimDark);
+      gl_FragColor.rgb += uRimColor * rim * uRimIntens * darkGate;
       ` : ''}
     `;
 

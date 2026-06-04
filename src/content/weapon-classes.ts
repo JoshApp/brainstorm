@@ -1,6 +1,6 @@
 import { CONFIG } from '../config';
-import type { WeaponStats, WeaponClass } from './items';
-import { getCharacter } from '../state/character';
+import type { WeaponStats, WeaponClass, WeaponScaling, ProficiencyProfile } from './items';
+import { getCharacter, type AttributeKind } from '../state/character';
 
 // Weapon classes — pick the animation archetype and seed the default
 // timings. Each weapon spec can override individual fields; class is
@@ -84,6 +84,10 @@ export interface ResolvedWeaponStats {
   damage: number;
   critChance: number;
   critMultiplier: number;
+  /** Stagger power per hit (weapon weight × Might). The combat cone
+   *  passes this to the target's applyStaggerDamage on a heavy hit;
+   *  accumulated past the enemy's poise → stagger. */
+  staggerPower: number;
   class: WeaponClass;
   /** Ordered combo steps. A press while idle within comboWindowMs of
    *  the previous step's recover-end advances to the next step;
@@ -164,6 +168,12 @@ interface ClassDefaults {
   comboWindowMs: number;
   directionalMoves?: DirectionalMoves;
   chargedMoves?: ChargedMoves;
+  /** WEIGHT multiplier on windup + recover (NOT strike). 1.0 = as
+   *  authored (light/fast); >1 = heavier, more committal. Heavies
+   *  (hammer/scythe) sit high; the baseline sword + spear get a modest
+   *  bump; daggers/whip/ranged stay at 1.0. The single knob to tune a
+   *  class's felt weight. */
+  timingMul?: number;
 }
 
 export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
@@ -174,7 +184,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       { pose: 'dagger-stab',        windup: 0.08, strike: 0.13, recover: 0.22,
         reachMul: 0.95, coneHalfAngleMul: 0.7, maxTargets: 1 },
       { pose: 'dagger-slash',       windup: 0.10, strike: 0.15, recover: 0.24,
-        reachMul: 1.0,  coneHalfAngleMul: 1.3, maxTargets: 2 },
+        reachMul: 1.0,  coneHalfAngleMul: 1.3, maxTargets: 1 },
       { pose: 'dagger-double-stab', windup: 0.08, strike: 0.26, recover: 0.30,
         reachMul: 1.05, coneHalfAngleMul: 0.7, maxTargets: 1 },
     ],
@@ -202,23 +212,25 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     },
   },
   sword: {
-    // slash-left → slash-right → thrust. Two sweeping arcs that
-    // cleave up to two targets, then a deep thrust on one.
+    // slash-left → slash-right → thrust. The basic chain is SINGLE-TARGET
+    // (playtest: blanket cleave was OP). Cleave is reserved for the
+    // directional STRAFE sweeps below + the charged ward.
     combo: [
       { pose: 'sword-slash-left',
         windup:  CONFIG.SWORD_SWING_WINDUP,
         strike:  CONFIG.SWORD_SWING_STRIKE,
         recover: CONFIG.SWORD_SWING_RECOVER,
-        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 2 },
+        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 1 },
       { pose: 'sword-slash-right',
         windup:  CONFIG.SWORD_SWING_WINDUP,
         strike:  CONFIG.SWORD_SWING_STRIKE,
         recover: CONFIG.SWORD_SWING_RECOVER,
-        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 2 },
+        reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 1 },
       { pose: 'sword-thrust', windup: 0.14, strike: 0.12, recover: 0.34,
         reachMul: 1.25, coneHalfAngleMul: 0.6, maxTargets: 1 },
     ],
     comboWindowMs: 380,
+    timingMul: 1.25,   // baseline blade — a touch more committal than before
     // Move-driven variants — pick by joystick direction at press time.
     // Each one is a one-off (resets combo to step 0 after firing).
     directionalMoves: {
@@ -272,6 +284,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.15, coneHalfAngleMul: 1.4, maxTargets: 3 },
     ],
     comboWindowMs: 520,
+    timingMul: 1.7,   // HEAVY — wind up, commit, recover; the slow brute
     // Hammer directional moves — the overhead smash and the directional
     // swings carry the body's momentum into the strike.
     directionalMoves: {
@@ -302,6 +315,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.30, coneHalfAngleMul: 0.85, maxTargets: 1 },
     ],
     comboWindowMs: 420,
+    timingMul: 1.15,   // long poke — slightly more deliberate than a dagger
     // Spear directional moves — the long-reach poker. Forward = an
     // even-longer lunge; strafe = a quick poke that pivots; back =
     // a fast brace.
@@ -352,6 +366,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.15, coneHalfAngleMul: 1.9, maxTargets: 4 },
     ],
     comboWindowMs: 460,
+    timingMul: 1.5,   // HEAVY — big sweeping reaps, slow to wind + recover
     directionalMoves: {
       // Forward: a downward chop with the curved tip. Single target,
       // big damage commit.
@@ -409,13 +424,85 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
 // damage. Capped at PROFICIENCY_CAP so a long run doesn't trivialise
 // floor 1 — at the cap one weapon class is ~25% faster + 25% harder
 // hitting than its baseline.
-const PROFICIENCY_PER_POINT = 0.005;     // 0.5% per point
-const PROFICIENCY_CAP_PCT  = 0.25;       // hard cap at 25% (50 points)
-// Acuity adds 2% crit chance per point.
-const ACUITY_CRIT_PER_POINT = 0.02;
+const PROFICIENCY_CAP_PCT  = 0.25;       // hard cap on %-ish prof bonuses (25%)
+const PROFICIENCY_CRIT_CAP = 0.15;       // hard cap on the flat crit prof bonus
+
+// What each weapon class's PROFICIENCY improves (per-point), reinforcing
+// its identity instead of the old one-size speed+damage. Heavies get
+// stagger+damage but NOT speed — mastery breaks poise harder without
+// un-heavying the swing. Override per weapon via WeaponStats.proficiency.
+// See docs/HARBOR-AND-PROGRESSION.md.
+const PROFICIENCY_PROFILE_BY_CLASS: Record<WeaponClass, ProficiencyProfile> = {
+  dagger: { speed: 0.005, crit: 0.003 },      // fast hands
+  whip:   { speed: 0.005, reach: 0.004 },     // snap + extend
+  sword:  { comboWindow: 0.006, damage: 0.005 }, // flow + bite
+  spear:  { reach: 0.004, damage: 0.005 },    // poke deeper, harder
+  hammer: { stagger: 0.010, damage: 0.005 },  // break poise harder (NO speed)
+  scythe: { stagger: 0.010, damage: 0.005 },  // ditto, the reaper
+  crossbow:        { damage: 0.006, speed: 0.004 },  // speed = faster re-cock
+  wand:            { damage: 0.006, speed: 0.004 },  // speed = faster cast/settle
+  'throwing-knives': { damage: 0.005, speed: 0.004 },
+};
+
+const ATTR_LABEL: Record<AttributeKind, string> = {
+  might: 'Might', finesse: 'Finesse', lore: 'Lore', grit: 'Grit',
+};
+
+/** Human-readable scaling summary for a weapon, e.g. "Might B" or
+ *  "Lore A · Finesse C" — shown on the item card so the player knows which
+ *  attribute powers this weapon (playtest: scaling wasn't explained). */
+export function weaponScalingSummary(spec: WeaponStats): string {
+  const cls: WeaponClass = spec.class ?? 'sword';
+  const scaling: WeaponScaling = spec.scaling ?? DEFAULT_WEAPON_SCALING[cls];
+  const parts = (Object.keys(scaling) as AttributeKind[])
+    .map((a) => `${ATTR_LABEL[a]} ${scaling[a]}`);
+  return parts.join(' · ');
+}
+
+/** Clamp a per-point proficiency bonus at its cap. */
+function profBonus(points: number, perPoint: number | undefined, cap = PROFICIENCY_CAP_PCT): number {
+  if (!perPoint) return 0;
+  return Math.min(cap, points * perPoint);
+}
+
+// Default attribute scaling per weapon class — applied when a spec
+// doesn't set its own `scaling`. Each weapon family gets grade B on its
+// stat (see the attribute table in docs/HARBOR-AND-PROGRESSION.md):
+//   Might   — heavy / forceful: hammer, scythe, sword, spear
+//   Finesse — quick / precise / ranged: dagger, whip, crossbow, knives
+//   Lore    — arcane: wand
+const DEFAULT_WEAPON_SCALING: Record<WeaponClass, WeaponScaling> = {
+  hammer:  { might: 'B' },
+  scythe:  { might: 'B' },
+  sword:   { might: 'B' },
+  spear:   { might: 'B' },
+  dagger:  { finesse: 'B' },
+  whip:    { finesse: 'B' },
+  crossbow:        { finesse: 'B' },
+  'throwing-knives': { finesse: 'B' },
+  wand:    { lore: 'B' },
+};
+
+// Base STAGGER POWER per class — how hard a single hit chips enemy poise
+// BEFORE Might scaling (resolveWeaponStats multiplies by Might). Heavy
+// weapons break poise on their own (now earned by their slow swings);
+// light/ranged barely dent it without Might investment. Override per
+// weapon via WeaponStats.staggerPower. Tune feel here.
+export const STAGGER_POWER_BY_CLASS: Record<WeaponClass, number> = {
+  hammer: 3.0,
+  scythe: 2.5,
+  sword:  1.5,
+  spear:  1.3,
+  whip:   0.7,
+  dagger: 0.6,
+  crossbow: 1.0,
+  'throwing-knives': 0.4,
+  wand:   0.5,
+};
 
 /** Flatten class defaults + per-spec overrides + attackSpeed +
- *  character proficiency + Acuity into a single resolved stat block.
+ *  character proficiency (tempo) + attribute scaling (power: family +
+ *  universal floor) + Finesse crit into a single resolved stat block.
  *  Cheap; called per-frame from combat + sword animation.
  *
  *  When the player has zero character points across the board (start
@@ -427,34 +514,59 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   const speedMul = 1 / (spec.attackSpeed ?? 1);    // larger attackSpeed → SHORTER timings
 
   const char = getCharacter();
-  const profPct = Math.min(PROFICIENCY_CAP_PCT, char.proficiencies[cls] * PROFICIENCY_PER_POINT);
-  const profSpeed = 1 - profPct;      // shorter timings as proficiency rises
-  const profDmgMul = 1 + profPct;     // damage scales the same direction
-  const acuityCrit = char.attributes.acuity * ACUITY_CRIT_PER_POINT;
+  // PROFICIENCY (use-based mastery) — what it improves is per-class
+  // (profile), overridable per weapon. Each stat clamps at its cap.
+  const profPoints = char.proficiencies[cls];
+  const profile: ProficiencyProfile = { ...PROFICIENCY_PROFILE_BY_CLASS[cls], ...spec.proficiency };
+  const profSpeedPct   = profBonus(profPoints, profile.speed);
+  const profDmgPct     = profBonus(profPoints, profile.damage);
+  const profStaggerPct = profBonus(profPoints, profile.stagger);
+  const profCrit       = profBonus(profPoints, profile.crit, PROFICIENCY_CRIT_CAP);
+  const profComboPct   = profBonus(profPoints, profile.comboWindow);
+  const profReachPct   = profBonus(profPoints, profile.reach);
+  const profSpeed = 1 - profSpeedPct;      // shorter timings (only if the class profile has speed)
 
-  // Same speed multipliers apply uniformly to every combo step.
-  const timeMul = speedMul * profSpeed;
-  const combo: ResolvedComboStep[] = baseT.combo.map(step => ({
-    pose: step.pose,
-    windupTime:  step.windup  * timeMul,
-    strikeTime:  step.strike  * timeMul,
-    recoverTime: step.recover * timeMul,
-    reachMul: step.reachMul ?? 1,
-    coneHalfAngleMul: step.coneHalfAngleMul ?? 1,
-    maxTargets: step.maxTargets ?? 1,
-  }));
+  // ATTRIBUTE damage (ATTRIBUTES = power). Two layers fold into one mul:
+  //   family  — points in the weapon's scaling attribute(s) × grade coeff
+  //   floor   — Might + Lore each add a small flat % to ALL weapon damage
+  //             so no point is ever dead (see CONFIG.ATTR).
+  const scaling: WeaponScaling = spec.scaling ?? DEFAULT_WEAPON_SCALING[cls];
+  let familyBonus = 0;
+  for (const key in scaling) {
+    const attr = key as AttributeKind;
+    const grade = scaling[attr];
+    if (grade) familyBonus += char.attributes[attr] * CONFIG.ATTR.SCALING_GRADE[grade];
+  }
+  const universalBonus =
+    (char.attributes.might + char.attributes.lore) * CONFIG.ATTR.UNIVERSAL_DMG_PER_POINT;
+  const profDmgMul = (1 + profDmgPct) * (1 + familyBonus + universalBonus);
 
-  // Directional move resolution mirrors the combo resolution — same
-  // proficiency-speed multiplier, no special-case math.
+  const finesseCrit = char.attributes.finesse * CONFIG.ATTR.FINESSE_CRIT_PER_POINT;
+
+  // Might SIGNATURE — stagger power = weapon weight × Might × proficiency.
+  const staggerBase = spec.staggerPower ?? STAGGER_POWER_BY_CLASS[cls];
+  const staggerPower =
+    staggerBase * (1 + char.attributes.might * CONFIG.ATTR.MIGHT_STAGGER_PER_POINT) * (1 + profStaggerPct);
+
+  // WEIGHT: each class carries a timingMul that stretches the COMMITTAL
+  // parts of a swing — windup + recover — WITHOUT touching the strike
+  // (the hit window stays stable, so detection/balance don't shift).
+  // Heavy weapons (hammer/scythe) get the slow "wind up… SNAP… recover"
+  // feel; light weapons stay fast. attackSpeed + proficiency still apply
+  // on top. Tune the per-class numbers in WEAPON_CLASS_DEFAULTS.
+  const timingMul = baseT.timingMul ?? 1;
+  const windRecMul = speedMul * profSpeed * timingMul;   // windup + recover
+  const strikeMul  = speedMul * profSpeed;               // strike (hit window) — unscaled by weight
   const resolveStep = (step: ComboStep): ResolvedComboStep => ({
     pose: step.pose,
-    windupTime:  step.windup  * timeMul,
-    strikeTime:  step.strike  * timeMul,
-    recoverTime: step.recover * timeMul,
+    windupTime:  step.windup  * windRecMul,
+    strikeTime:  step.strike  * strikeMul,
+    recoverTime: step.recover * windRecMul,
     reachMul: step.reachMul ?? 1,
     coneHalfAngleMul: step.coneHalfAngleMul ?? 1,
     maxTargets: step.maxTargets ?? 1,
   });
+  const combo: ResolvedComboStep[] = baseT.combo.map(resolveStep);
   const directionalMoves = baseT.directionalMoves ? {
     forward:     baseT.directionalMoves.forward     && resolveStep(baseT.directionalMoves.forward),
     strafeLeft:  baseT.directionalMoves.strafeLeft  && resolveStep(baseT.directionalMoves.strafeLeft),
@@ -468,14 +580,15 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   } : undefined;
 
   return {
-    reach: spec.reach,
+    reach: spec.reach * (1 + profReachPct),
     coneHalfAngle: spec.coneHalfAngle,
     damage: spec.damage * profDmgMul,
-    critChance: (spec.critChance ?? 0.05) + acuityCrit,
+    critChance: (spec.critChance ?? 0.05) + finesseCrit + profCrit,
+    staggerPower,
     critMultiplier: spec.critMultiplier ?? 2.0,
     class: cls,
     combo,
-    comboWindowMs: baseT.comboWindowMs,
+    comboWindowMs: baseT.comboWindowMs * (1 + profComboPct),
     onHit: spec.onHit,
     ranged: spec.ranged,
     chargedEffect: spec.chargedEffect,

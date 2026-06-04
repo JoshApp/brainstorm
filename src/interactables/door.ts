@@ -6,6 +6,8 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { on as onEvent } from '../broadcast/event-bus';
 import { playChestOpen, playImpact } from '../audio/sfx';
+import { hasEncounter, isEncounterComplete, activateEncounter, onEncounterActivated, roomClearEncounterId } from '../encounters/registry';
+import { arenaEncounterId } from '../level/arena-waves';
 
 // Door = the thing that plugs a doorway. Two physical kinds, chosen by
 // whether the door is GATED (has an unlock condition):
@@ -175,6 +177,20 @@ export function spawnDoor(
     else group.rotation.y = initialYaw + targetAngle;
   };
 
+  // Slam the gate shut. Idempotent — only fires from the raised 'arena-open'
+  // state. Wired as a REACTOR on the encounter activating, so the trap (player
+  // crosses → activates) and the challenge (offering accepted → activates)
+  // seal through the exact same path.
+  function sealGate() {
+    if (state !== 'arena-open') return;
+    state = 'closing';
+    closeTimer = 0;
+    walkable.addWall(wallSeg);
+    playImpact(interactable.position);
+    thresholdMat.color.setHex(0xb04030);
+    thresholdMat.opacity = 0.75;
+  }
+
   const interactable = {
     id: generateEntityId(`door-${spec.id}`),
     position: new THREE.Vector3(cx, 0, cz),
@@ -196,20 +212,22 @@ export function spawnDoor(
       // Arena trigger: while raised + passable, watch the player's COMMITTED
       // side of the door axis. Drop the grate when the committed side flips
       // (player walked through AND stepped clear).
-      if (state === 'arena-open' && spec.unlock?.kind === 'arena') {
+      // TRAP arenas (default trigger): the player committing across the
+      // threshold trips the gauntlet. CHALLENGE arenas (trigger 'offering')
+      // skip this — the loot offering activates the encounter instead. Either
+      // way the SEAL is the sealGate reactor on the encounter activating.
+      if (
+        state === 'arena-open' &&
+        spec.unlock?.kind === 'arena' &&
+        spec.unlock.trigger !== 'offering'
+      ) {
         const ox = playerPos.x - doorMidX;
         const oz = playerPos.z - doorMidZ;
         const dot = perpX * ox + perpZ * oz;
         if (Math.abs(dot) >= COMMIT_THRESHOLD) {
           const newSide: 1 | -1 = dot >= 0 ? 1 : -1;
           if (committedSide !== null && newSide !== committedSide) {
-            // SLAM. Wall up immediately, heavy impact, threshold flashes red.
-            state = 'closing';
-            closeTimer = 0;
-            walkable.addWall(wallSeg);
-            playImpact(interactable.position);
-            thresholdMat.color.setHex(0xb04030);
-            thresholdMat.opacity = 0.75;
+            for (const rid of spec.unlock.roomIds) activateEncounter(arenaEncounterId(rid));
           }
           committedSide = newSide;
         }
@@ -279,9 +297,20 @@ export function spawnDoor(
   function isUnlocked(): boolean {
     if (!spec.unlock) return true;
     if (spec.unlock.kind === 'cleared' || spec.unlock.kind === 'arena') {
-      const counts = enemyRoomMembership();
       for (const roomId of spec.unlock.roomIds) {
-        if ((counts.get(roomId) ?? 0) > 0) return false;
+        // Both gate kinds now run an ENCOUNTER (arena = wave gauntlet, cleared
+        // = degenerate "open when empty"); the gate defers to its completion.
+        // This keeps an arena down through the slam + inter-wave lulls, and a
+        // cleared gate down until the room is dead. Fallback to the live count
+        // only if no encounter was registered (defensive).
+        const encId = spec.unlock.kind === 'arena'
+          ? arenaEncounterId(roomId)
+          : roomClearEncounterId(roomId);
+        if (hasEncounter(encId)) {
+          if (!isEncounterComplete(encId)) return false;
+        } else if ((enemyRoomMembership().get(roomId) ?? 0) > 0) {
+          return false;
+        }
       }
       return true;
     }
@@ -340,9 +369,18 @@ export function spawnDoor(
     }
   });
 
+  // Reactor: seal the gate whenever its arena encounter ACTIVATES — covers
+  // both the trap (cross trips it) and the challenge (offering trips it).
+  const reactorUnsubs: Array<() => void> = [];
+  if (spec.unlock?.kind === 'arena') {
+    for (const rid of spec.unlock.roomIds) {
+      reactorUnsubs.push(onEncounterActivated(arenaEncounterId(rid), sealGate));
+    }
+  }
+
   registerInteractable(interactable);
 
-  return { teardown: () => { unsubscribe(); } };
+  return { teardown: () => { unsubscribe(); for (const u of reactorUnsubs) u(); } };
 }
 
 /** Rotate a hinged pivot to initialYaw + targetAngle * frac. */

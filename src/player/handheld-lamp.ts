@@ -1,9 +1,17 @@
 import * as THREE from 'three';
 
-// Handheld lamp — a small lantern model parented to the player camera
-// at the LEFT-hand mirror of the sword's right-hand position. Holds a
-// warm flickering PointLight inside its cage so the lamp visibly is
-// the source of the light.
+// Worn hip lantern — a small lantern model parented to the player
+// camera, hanging LOW at the hip (not in a hand). Holds a warm
+// flickering PointLight inside its cage so the lamp visibly is the
+// source of the light.
+//
+// This is the player's BASELINE light (CLAUDE.md "Lighting as signal":
+// "The player's lamp is the BASELINE everywhere"). It is baked into the
+// player permanently — attached once at startup, never detached — so
+// the immediate surroundings are always lit and the OFFHAND slot is
+// free for shields/foci. It sits at the hip rather than the off-hand so
+// it never competes with a held shield (the old position overlapped the
+// offhand viewmodel almost exactly).
 //
 // Scene-graph shape (matters for the pendulum):
 //
@@ -19,6 +27,7 @@ import * as THREE from 'three';
 
 import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
+import { registerViewmodel, unregisterViewmodel } from '../style/render-target';
 import { getLanternSwing } from './viewmodel-bob';
 import { getTexture } from '../style/procedural-textures';
 
@@ -55,9 +64,26 @@ interface LampState {
 
 let lamp: LampState | null = null;
 
-// HINGE position — where the pendulum's pivot sits. Higher up than the
-// old single-group origin so the lantern hangs visibly BELOW it.
-const HINGE_LOCAL = new THREE.Vector3(-0.34, -0.066, -0.55);
+// HINGE position — where the pendulum's pivot sits. Two carry poses,
+// swapped on equip (setLampStowed); tickLamp eases between them:
+//   RAISED — the default. Up at the visible lower-LEFT of the frame so
+//     the lantern is clearly on screen (it carries the player's light,
+//     it should read). Used whenever the offhand is empty (the common
+//     case — most runs have no shield yet).
+//   STOWED — dropped to the hip when an offhand item (shield/focus) is
+//     equipped, so the item takes the hand. The lamp's LIGHT is
+//     unchanged; the lantern just slides down rather than vanishing, so
+//     there's never a "light from nowhere" moment.
+// The body offset below hangs the lantern visibly under whichever pivot.
+const LAMP_RAISED = new THREE.Vector3(-0.36, -0.11, -0.52);
+// STOWED sits at the lower-LEFT corner — further left than the offhand
+// viewmodel (-0.32) and lower than RAISED, so a held shield gets the
+// hand while the lantern still PEEKS on screen (not dropped fully out
+// of frame).
+const LAMP_STOWED = new THREE.Vector3(-0.47, -0.29, -0.5);
+// Live target the hinge eases toward each frame. Mutated by
+// setLampStowed; starts RAISED.
+const lampTarget = LAMP_RAISED.clone();
 // Body offset DOWN from the hinge (in scaled body local). Tuned so the
 // visible centre of the lantern lands roughly where the old single
 // group sat (~y = -0.26 worldspace at scale 1.8).
@@ -71,9 +97,10 @@ export function attachLamp(camera: THREE.Camera) {
   // Hinge owns the position + scale; rotation drives the pendulum.
   // Body is the visible lantern, hanging below the hinge.
   const hinge = new THREE.Group();
-  hinge.position.copy(HINGE_LOCAL);
+  hinge.position.copy(lampTarget);
   hinge.scale.setScalar(1.8);
   camera.add(hinge);
+  registerViewmodel(hinge);   // near-depth pass (see render-target.ts)
 
   const body = new THREE.Group();
   body.position.y = BODY_OFFSET_Y;
@@ -209,7 +236,9 @@ export function attachLamp(camera: THREE.Camera) {
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of mats) {
         m.depthTest = false;
-        m.depthWrite = false;
+        m.depthWrite = false;   // depth comes from the renderer's viewmodel
+                               // depth-only pass (render-target.ts); flame
+                               // SPRITES (not isMesh) are skipped there.
         // Sort into the transparent phase so renderOrder 998 actually
         // wins against world-space transparent sprites — see the same
         // pattern in sword.ts for the long version of why.
@@ -258,6 +287,7 @@ export function attachLamp(camera: THREE.Camera) {
 /** Remove the lamp viewmodel + unregister its light. Idempotent. */
 export function detachLamp() {
   if (!lamp) return;
+  unregisterViewmodel(lamp.hinge);
   lamp.hinge.parent?.remove(lamp.hinge);
   unregisterLight('player-lamp');
   // Dispose so we don't leak GPU memory when the player swaps offhand
@@ -275,6 +305,14 @@ export function detachLamp() {
   lamp = null;
 }
 
+/** Stow the lamp to the hip (true) or raise it to the visible hand
+ *  (false). Called when an offhand item is equipped/removed. The light
+ *  is unaffected — only the lantern's carry pose changes, eased in
+ *  tickLamp. Safe to call before attachLamp (just sets the target). */
+export function setLampStowed(stowed: boolean) {
+  lampTarget.copy(stowed ? LAMP_STOWED : LAMP_RAISED);
+}
+
 /** Per-frame tick. Layered-sine flicker on intensity + flame brightness,
  *  plus pendulum swing on the hinge. */
 export function tickLamp(dt: number) {
@@ -287,6 +325,11 @@ export function tickLamp(dt: number) {
       Math.sin(f * 13.1) * 0.03 +
       Math.sin(f * 23.7) * 0.02;
   lamp.currentIntensity = lamp.baseIntensity * (1 + flicker);
+
+  // Ease the carry pose toward the current target (RAISED ↔ STOWED) so
+  // equipping/removing an offhand slides the lantern between hand + hip
+  // instead of snapping. Independent of the pendulum (rotation, below).
+  lamp.hinge.position.lerp(lampTarget, Math.min(1, dt * 7));
 
   // Pendulum swing — rotation on the hinge. Body is a child offset
   // downward, so rotating the hinge automatically swings the body

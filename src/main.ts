@@ -3,7 +3,7 @@ import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw } from './controls/camera';
 import { createWeaponViewmodel } from './player/viewmodel';
-import { attachLamp, detachLamp } from './player/handheld-lamp';
+import { attachLamp, setLampStowed } from './player/handheld-lamp';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon } from './player/current-weapon';
@@ -12,12 +12,15 @@ import { warmupContent } from './content/warmup';
 import { createCombatSystem } from './combat/attack';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
-import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath } from './player/death';
+import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
+import { initWeaponDrop, dropHeldItem } from './player/weapon-drop';
+import { bossEncounterDebug } from './mobs/boss-encounter';
 import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthrough';
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setOutlineEnabled } from './style/render-target';
+import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
   INSPECT_AMBIENT, INSPECT_REQUESTED,
@@ -33,6 +36,7 @@ import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { batchStaticFixtures } from './level/static-merge';
 import { LEVELS } from './level/specs';
 import type { LevelSpec } from './level/types';
+import type { ModelSpec } from './ecs/model-types';
 import { buildStarterChamber } from './level/starter-chamber';
 import { findTestChamber } from './level/test-chambers';
 import { showTestChambersScreen } from './ui/test-chambers-screen';
@@ -56,7 +60,7 @@ import { showStartScreen } from './ui/start-screen';
 import { addItemSilently } from './player/inventory';
 import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
-import { isAnyScreenOpen } from './ui/screen-manager';
+import { isAnyScreenOpen, msSinceLastScreenClose } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
@@ -64,7 +68,7 @@ import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSn
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
-import { getInRangeInteractable, getAllInteractables } from './interactables/system';
+import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
 import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
@@ -75,9 +79,10 @@ import { registerProjectiles } from './content/projectiles';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
 import { actForDepth } from './level/acts';
-import { ensureInteractLabel } from './ui/interact-label';
+import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar } from './ui/hp-bar';
+import { createStaminaBar } from './ui/stamina-bar';
 import { createBossBar, resetBossBar } from './ui/boss-bar';
 import { createBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
@@ -165,8 +170,14 @@ scene.add(ambient);
 // asks isInspectActive().
 
 // --- Static surface materials (PS1) ---
+// Patch the global lighting chunk FIRST so every material compiles with the
+// chosen banded-lighting state. Must precede any material compile; runtime
+// toggle is handled in the onSettingsChanged subscription.
+installBandedLighting(getSettings().bandedLighting);
 const materials = buildMaterials();
 initRenderPipeline(renderer);
+// Apply the persisted ink-outline preference (the pipeline defaults it on).
+setOutlineEnabled(getSettings().outlines);
 
 // --- Camera ---
 const camera = createFirstPersonCamera();
@@ -175,6 +186,8 @@ initFogWalkthrough(camera); // soulslike fog-gate forced walk drives this camera
 // Register camera with the death sequence so the death tick can
 // pitch + drop it during the collapse animation.
 initDeath(camera);
+// Death weapon-drop spawns world-space tumbling weapons into the scene.
+initWeaponDrop(scene);
 
 // --- Scenario (URL param ?scenario=...) ---
 // DEV-only. In a production build `import.meta.env.DEV` is the literal
@@ -334,26 +347,38 @@ const weapon = createWeaponViewmodel(camera, {
 // inventory panel, save restore), this listener swaps the visible model
 // + the active stats. Single source of truth: equipment.
 //
-// Offhand handling — the lamp is a special offhand item that owns its
-// own viewmodel + a registered PointLight (handheld-lamp.ts). Any other
-// offhand item (shield, future spell focus, etc.) renders through the
-// generic offhand-viewmodel manager. Equipping a shield silently
-// removes the lamp's light — that's the design tradeoff: visibility
-// vs defence.
+// Offhand handling — the lamp is NO LONGER an offhand item. It's baked
+// into the player as a permanent worn hip-lantern (attachLamp below,
+// once), so the offhand slot is free for shields / foci and the player
+// can always see. Any offhand item renders through the generic
+// offhand-viewmodel manager. A saved/equipped oil-lamp is a harmless
+// no-op (the light is already there) — it just shows no extra model.
+//
+// The player's lamp is the BASELINE light everywhere (CLAUDE.md
+// "Lighting as signal"). Attach it once, permanently — never detached.
+attachLamp(camera);
+
+// The world-scale model to fling to the floor on death — tracked from the
+// equipped weapon. Drop model (correct world size + depth) over the
+// first-person viewmodel; null while empty-handed.
+let heldWeaponDropModel: ModelSpec | null = null;
 onEquipmentChanged((eq) => {
   // Pass null when no weapon equipped — the sword viewmodel
   // clears and the player walks empty-handed. This is the
   // starter-chamber default until they take from an altar.
   weapon.equip(eq.weapon?.viewmodel ?? null);
+  heldWeaponDropModel = eq.weapon?.dropModel ?? eq.weapon?.viewmodel ?? null;
   if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
-  if (eq.offhand?.id === 'oil-lamp') {
-    detachOffhandViewmodel();
-    attachLamp(camera);
-  } else if (eq.offhand) {
-    detachLamp();
+  if (eq.offhand && eq.offhand.id !== 'oil-lamp') {
+    // Real offhand gear (shield / focus). Drop the lantern to the hip so
+    // the item takes the hand; the lamp's light is unchanged.
+    setLampStowed(true);
     attachOffhandViewmodel(camera, eq.offhand.dropModel);
   } else {
-    detachLamp();
+    // Empty offhand, or a legacy oil-lamp (now a no-op — the lamp is
+    // baked in). Raise the lantern back to the visible hand; no held
+    // offhand viewmodel either way.
+    setLampStowed(false);
     detachOffhandViewmodel();
   }
 });
@@ -371,6 +396,22 @@ const combat = createCombatSystem(
 
 // --- Player death wiring ---
 onPlayerDeath(() => triggerDeath());
+// At the first instant of death, fling the held weapon from the hand to
+// the floor (it tumbles down as the camera collapses over it). Computed
+// from the flattened camera basis; the sword sits in the right hand, so
+// it tosses out to the +right side.
+const _dropFwd = new THREE.Vector3();
+const _dropRight = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
+setOnDeathStart(() => {
+  if (!heldWeaponDropModel) return;
+  camera.getWorldDirection(_dropFwd);
+  _dropFwd.y = 0;
+  if (_dropFwd.lengthSq() < 1e-6) _dropFwd.set(0, 0, -1);
+  _dropFwd.normalize();
+  _dropRight.crossVectors(_dropFwd, _worldUp).normalize();
+  dropHeldItem(heldWeaponDropModel, weapon.group, _dropFwd, _dropRight, +1);
+});
 
 // --- Broadcast / DCC tribute layer ---
 initAchievements();
@@ -383,43 +424,48 @@ initEventLog();
 // screen (in addition to the spacebar on desktop). No more on-screen
 // attack button — less intrusive UI, larger hit area.
 const input = createTouchInput(canvas, {
-  onTap(clientX, clientY) {
-    // Don't tap-target anything during dying, the fog-gate walk, or while
-    // screens are open.
-    if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return false;
-    if (!currentLevel) return false;
+  // THE tap arbiter — single place that fully resolves a tap and acts
+  // (the input schemes no longer add their own attack fallback). canAttack
+  // is false for the touch joystick half: a direct tap on an object is
+  // still honoured, but the attack/interact fallback is suppressed there.
+  onTap(clientX, clientY, canAttack) {
+    // ── Gates: contexts where a tap is NOT a world action at all ──
+    // Dying / fog-walk / a screen open → ignore. And swallow the straggler
+    // tap from a JUST-dismissed screen: the click that closed a corpse
+    // note / menu fires its mouseup/touchend AFTER the screen is gone, so
+    // without this it would re-hit the object under it (re-open the note)
+    // or swing. Gating here — not via a return value — means NOTHING
+    // happens (no interact, no attack), which is what was broken before.
+    if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
+    if (msSinceLastScreenClose() < 250) return;
+    if (!currentLevel) return;
+
+    // ── Direct hits: you aimed at a specific thing → honour it (any zone) ──
     const hit = findTapTarget(
       clientX, clientY, canvas, camera,
       currentLevel.enemies,
       getAllInteractables(),
     );
+    if (hit?.kind === 'enemy') { triggerAttack(); return; }
+    if (hit?.kind === 'interactable') {
+      const it = hit.interactable;
+      const dx = it.position.x - camera.position.x;
+      const dz = it.position.z - camera.position.z;
+      if (Math.hypot(dx, dz) <= it.radius) {
+        resolveUsable(it, camera.position).onUse();
+        return;
+      }
+    }
+
+    // ── Fallback (no direct hit) — gameplay zone only ──
+    // Priority: an ENEMY in range → attack (wins even next to a chest);
+    // else an interactable in range → interact (a tap near a chest/stairs
+    // opens it instead of flailing); else → just attack (empty swing).
+    if (!canAttack) return;                            // touch joystick half: do nothing
+    if (combat.hasEnemyInRange()) { triggerAttack(); return; }
     const inRange = getInRangeInteractable();
-
-    // Smart intent arbiter:
-    //   1. Tap directly on an enemy → swing (combat intent is explicit).
-    //   2. Tap on an in-range interactable mesh → use it.
-    //   3. Any other tap WHILE an in-range interactable exists → use it.
-    //      Catches the "I tapped near the chest but the raycast missed
-    //      its hitbox" case, plus the "I tapped slightly off the stairs
-    //      and the attack animation also fired" bug.
-    //   4. Otherwise → return false so the right-side-swing fallback
-    //      can fire the attack.
-
-    if (hit?.kind === 'enemy') {
-      triggerAttack();
-      return true;
-    }
-    if (hit?.kind === 'interactable' && inRange?.id === hit.interactable.id) {
-      hit.interactable.onUse();
-      return true;
-    }
-    if (inRange) {
-      // No explicit enemy tap, and something usable is right here.
-      // Consume the tap so the right-side fallback doesn't swing.
-      inRange.onUse();
-      return true;
-    }
-    return false;
+    if (inRange) { resolveUsable(inRange, camera.position).onUse(); return; }
+    triggerAttack();
   },
   onInteract() {
     // E key (or future gamepad confirm) — use the currently in-range
@@ -427,13 +473,20 @@ const input = createTouchInput(canvas, {
     // path: not during dying or open screens.
     if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
     const inRange = getInRangeInteractable();
-    if (inRange) inRange.onUse();
+    if (inRange) resolveUsable(inRange, camera.position).onUse();
   },
 });
 // Floating world-anchored interact label only — the corner USE button
 // was removed. Interaction is now diegetic: tap the object directly
 // (handled by tap-target raycast in the touch input handler).
 ensureInteractLabel();
+// Tapping the floating prompt is a second, reliable way to interact —
+// same gating + blocked-loot fall-through as a tap on the object's model.
+setInteractLabelTapHandler(() => {
+  if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
+  const inRange = getInRangeInteractable();
+  if (inRange) resolveUsable(inRange, camera.position).onUse();
+});
 createConsumableBar();
 // Backdrop and HUD-hide are now owned by the screen manager — created
 // lazily when the first screen that needs them opens.
@@ -518,6 +571,22 @@ if (import.meta.env.DEV) {
   const sm = new URLSearchParams(window.location.search).get('shadows');
   if (sm === 'off' || sm === 'hero' || sm === 'single' || sm === 'all') setShadowMode(sm);
 }
+// DEV-only boss observation hook (window.__boss). Stripped from prod by the
+// literal-false guard. Drive + inspect multi-phase boss fights from the
+// console or a headless chrome-devtools session without grinding combat:
+//   __boss.info()      → { encounter, phase: { index, count } }
+//   __boss.phase(n)    → jump to phase n INSTANTLY (settled pose)
+//   __boss.advance()   → trigger the NEXT phase WITH its collapse animation
+// Reads the live boss lazily so it follows floor swaps.
+if (import.meta.env.DEV) {
+  const findBoss = () => currentLevel?.enemies.find((e) => e.isBoss && e.alive);
+  const bossApi = {
+    info: () => ({ encounter: bossEncounterDebug(), phase: findBoss()?.bossPhaseInfo() ?? null }),
+    phase: (n: number) => { findBoss()?.setDebugBossPhase(n); return bossApi.info(); },
+    advance: () => { findBoss()?.debugAdvanceBossPhase(); return bossApi.info(); },
+  };
+  (window as unknown as { __boss?: typeof bossApi }).__boss = bossApi;
+}
 initPickupLightPool(scene);
 // Projectile pool — pre-allocates the meshes + trail sprites that ranged
 // enemies (and future spells/traps) rent at fire-time. Registers its own
@@ -565,6 +634,7 @@ onEvent((e) => {
 
 // --- HUD ---
 createHpBar();
+createStaminaBar();
 createBossBar();
 createBuffBar();
 createChargeRing();
@@ -727,7 +797,6 @@ function handleAutostart(): boolean {
       resetRunDiscoveries();
       applyState(null);
       setSlot('weapon', ITEMS['rusted-sword']);
-      setSlot('offhand', ITEMS['oil-lamp']);
       startRun(spec.id, 5);
       return true;
     }
@@ -751,8 +820,9 @@ function handleAutostart(): boolean {
 
   clearSave();
   if (depth === 1) {
-    LEVELS['starter'] = buildStarterChamber('depth-1');
-    startNewRun('starter', { seed: Number.isFinite(seed as number) ? seed : undefined });
+    const starterSeed = Number.isFinite(seed as number) ? (seed as number) : undefined;
+    LEVELS['starter'] = buildStarterChamber('depth-1', starterSeed);
+    startNewRun('starter', { seed: starterSeed });
     recordRunStart();
     resetRunDiscoveries();
     applyState(null);
@@ -769,7 +839,6 @@ function handleAutostart(): boolean {
     resetRunDiscoveries();
     applyState(null);
     setSlot('weapon', ITEMS['rusted-sword']);
-    setSlot('offhand', ITEMS['oil-lamp']);
     startRun(floorId, depth);
   }
   return true;
@@ -833,6 +902,29 @@ onSettingsChanged((s) => {
   setBossEncounterReadoutVisible(s.debugBossReadout);
   setShadowMode(s.shadows);
   setAdaptiveResolution(s.adaptiveResolution && !isDesktopLike());
+  setOutlineEnabled(s.outlines);
+  // Banded lighting toggle: swap the global lighting chunk, then force every
+  // visible material to RECOMPILE so it re-reads the new chunk. Just setting
+  // needsUpdate isn't enough — Three.js's program cache keys off material
+  // params, not chunk content, so it'd reuse the old program. Flipping a
+  // (harmless, unused) define changes the cache key → guaranteed recompile.
+  if (setBandedLighting(s.bandedLighting)) {
+    const band = s.bandedLighting ? 1 : 0;
+    const seen = new Set<THREE.Material>();
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (!m) return;
+      for (const mat of Array.isArray(m) ? m : [m]) {
+        if (seen.has(mat)) continue;
+        seen.add(mat);
+        (mat as THREE.Material & { defines?: Record<string, unknown> }).defines = {
+          ...((mat as THREE.Material & { defines?: Record<string, unknown> }).defines ?? {}),
+          DELVE_BAND: band,
+        };
+        mat.needsUpdate = true;
+      }
+    });
+  }
 });
 
 // Perf overlay (FPS / frame time / draw calls). Hidden until the PERF
@@ -1043,7 +1135,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
           recordRunStart();
           resetRunDiscoveries();
           applyState(null);
-          const lo = chamber.loadout ?? { weapon: 'rusted-sword', offhand: 'oil-lamp' };
+          const lo = chamber.loadout ?? { weapon: 'rusted-sword' };
           if (lo.weapon && ITEMS[lo.weapon]) setSlot('weapon', ITEMS[lo.weapon]);
           if (lo.offhand && ITEMS[lo.offhand]) setSlot('offhand', ITEMS[lo.offhand]);
           // Consumables → bag (auto-fills the hotbar). Used by the

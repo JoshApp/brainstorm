@@ -24,12 +24,10 @@ export function showNote(text: string) {
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%) scale(0.94)',
-    width: 'min(420px, 84vw)',
-    maxWidth: '84vw',
+    width: 'min(420px, calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))',
     // Cap height to the viewport and scroll a long note rather than
     // letting it run off the top/bottom on a small screen. overflow-y
-    // also opts this card into touch-pan (see index.html).
-    maxHeight: '84vh',
+    // also opts this card + its descendants into touch-pan (see index.html).
     overflowY: 'auto',
     // Aged parchment palette — warm sepia on dark, not white-paper
     background: 'linear-gradient(180deg, rgba(46, 32, 20, 0.96), rgba(28, 20, 14, 0.96))',
@@ -47,6 +45,10 @@ export function showNote(text: string) {
     transition: 'opacity 220ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)',
     opacity: '0',
   });
+  // Bounded height: vh fallback, then dvh + safe-area (same pattern as
+  // menu-shell) so a long note never runs off a short landscape screen.
+  card.style.maxHeight = '84vh';
+  card.style.maxHeight = 'calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))';
 
   // Mark — a small inscribed sigil at the top of the note. Sets the tone
   // before any text is read.
@@ -137,7 +139,11 @@ export function showNote(text: string) {
   openScreen({
     id: NOTE_SCREEN_ID,
     root: card,
-    policy: { layer: 'modal' },
+    // needsCursor:false → stay in mouse-look while reading; tap-anywhere /
+    // any-key dismisses (handled below), so dismissing returns straight to
+    // FPS with no stray cursor. The window-capture handlers below catch
+    // the click even while pointer-locked.
+    policy: { layer: 'modal', needsCursor: false },
     onDismissRequest: dismiss,
   });
 

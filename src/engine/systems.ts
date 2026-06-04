@@ -7,6 +7,7 @@ import type { createCombatSystem } from '../combat/attack';
 import type { createWeaponViewmodel } from '../player/viewmodel';
 
 import { updateTorchlight } from '../scene/torchlight';
+import { tickEncounters } from '../encounters/registry';
 import { updateCamera } from '../controls/camera';
 import { tickLamp } from '../player/handheld-lamp';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
@@ -29,6 +30,7 @@ import { tickInteractables, getInRangeInteractable } from '../interactables/syst
 import { consumeAttackPressed } from '../controls/attack-input';
 import { tickLightPool } from '../scene/light-pool';
 import { tickProjectiles } from '../combat/projectile-pool';
+import { tickStamina } from '../combat/stamina';
 import { tickHazardFields } from '../combat/hazard-field';
 import { tickXpWisps } from '../effects/xp-wisps';
 import { tickGoldCoins } from '../effects/gold-coins';
@@ -187,6 +189,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.scaledDt); } },
 
+    // Stamina regen. 'unpaused' so it pauses with the world (menus,
+    // hit-pause); scaledDt so a charged hit's freeze doesn't refill you.
+    { name: 'stamina', phase: 'unpaused', tick(ctx) { tickStamina(ctx.scaledDt); } },
+
     // Handheld lamp flicker + bob. realDt — flicker shouldn't slow during
     // slow-mo (a frozen lamp looks broken).
     { name: 'lamp', phase: 'unpaused', tick(ctx) { tickLamp(ctx.realDt); } },
@@ -242,6 +248,9 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     // Room-clear detection — fires room:cleared so doors flip SEALED→OPEN.
     { name: 'room-clear', phase: 'unpaused', tick() { getLevel().checkRoomClear?.(); } },
+    // Encounter layer — ticks every ACTIVE encounter (arena gauntlets today;
+    // boss/ritual later). Telegraph + wave advance happen inside the encounter.
+    { name: 'encounters', phase: 'unpaused', tick(ctx) { tickEncounters(ctx.scaledDt, camera.position); } },
 
     // Active buffs on all entities (heal-over-time, DoTs, etc.).
     { name: 'buffs', phase: 'unpaused', tick(ctx) { tickAllBuffs(ctx.scaledDt); } },

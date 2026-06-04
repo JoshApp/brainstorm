@@ -3,10 +3,12 @@ import type { WalkableRegion } from '../level/walkable';
 import { damagePlayer } from '../player/health';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { applyDamageVia, type DamageType } from './damage';
+import type { Damageable } from './damageable';
 import type { EntityId } from '../ecs/types';
 import { applyBuff } from '../ecs/buffs';
 import { get as getEntity } from '../ecs/world';
 import { gameRngChance } from '../engine/rng';
+import { CONFIG } from '../config';
 
 /** On-hit status carried by a friendly projectile (player's weapon /
  *  affix / set on-hits). Rolled per enemy hit. */
@@ -67,6 +69,29 @@ export function isProjectileRegistered(id: string): boolean {
 // Default shared sphere geometry — cheap, low-poly, used by spell bolts
 // + spits where shape isn't important.
 const SHARED_GEOM = new THREE.SphereGeometry(1, 10, 8);
+
+// Soft radial glow texture for the trail sprite. Without a map a
+// SpriteMaterial renders as a hard SQUARE quad — under additive blending
+// that reads as an ugly bright box around every projectile (and clips
+// visibly into god-ray planes). A white→transparent radial gradient turns
+// the quad into a soft round halo: the dark edges add nothing under
+// additive blend, so only the round core glows. Built once, shared.
+let glowTexture: THREE.Texture | null = null;
+function softGlowTexture(): THREE.Texture {
+  if (glowTexture) return glowTexture;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0.0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+  g.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  glowTexture = new THREE.CanvasTexture(canvas);
+  return glowTexture;
+}
 
 // Per-type geometry cache. Types that declare a geometry() factory get
 // their own pre-built BufferGeometry (built lazily on first use) so
@@ -140,6 +165,14 @@ export function setProjectileEnemyProvider(fn: () => readonly EnemyHittable[]): 
   enemyProvider = fn;
 }
 
+// Destructible (vase / crate / urn) provider — friendly projectiles smash
+// them like a melee hit. Mirrors the enemy provider; set once in
+// createCombatSystem. A Destructible IS a Damageable.
+let destructibleProvider: (() => readonly Damageable[]) | null = null;
+export function setProjectileDestructibleProvider(fn: () => readonly Damageable[]): void {
+  destructibleProvider = fn;
+}
+
 const POOL_SIZE = 16;
 const HIT_RADIUS = 0.4;   // generous — projectiles aren't precision tests
 const HIT_RADIUS_SQ = HIT_RADIUS * HIT_RADIUS;
@@ -160,6 +193,7 @@ export function initProjectilePool(sc: THREE.Scene): void {
     // Trail — additive sprite, scales with travel direction below.
     const trailMat = new THREE.SpriteMaterial({
       color: 0xffffff,
+      map: softGlowTexture(),
       transparent: true,
       opacity: 0.5,
       blending: THREE.AdditiveBlending,
@@ -311,23 +345,58 @@ export function tickProjectiles(
           break;
         }
       }
+      // Smash vases / crates the bolt flies INTO — but HEIGHT-GATED so a
+      // chest-height shot still sails OVER a low prop to the enemy behind
+      // it (the over-fly fix). Only a bolt down at the prop's low body
+      // breaks it. The destructible's own takeDamage handles shatter+drops.
+      if (!hit && destructibleProvider) {
+        for (const d of destructibleProvider()) {
+          if (!d.alive) continue;
+          const dx = slot.position.x - d.position.x;
+          const dz = slot.position.z - d.position.z;
+          const rr = (d.hitRadius ?? 0.4) + slot.type.radius;
+          if (dx * dx + dz * dz < rr * rr && slot.position.y <= d.aimHeight * 2 + 0.25) {
+            d.takeDamage({ source: slot.source, target: d.entityId, base: slot.damage, type: slot.type.damageType });
+            retire(slot);
+            hit = true;
+            break;
+          }
+        }
+      }
       if (hit) continue;
     } else {
-      // Enemy projectile — hit-test the player. XZ distance; vertical
-      // alignment loose so a chest-height bolt still connects.
+      // Enemy projectile — hit-test the player as a 3D CAPSULE on the body,
+      // not the old flat cylinder × wide vertical band. Closest point on the
+      // body axis (vertical segment at the player's xz, from capsule bottom to
+      // top) to the projectile, then a true 3D distance. A shot sailing over
+      // the head or skimming the floor now MISSES; chest/torso shots connect.
+      const cy = Math.max(
+        CONFIG.PLAYER_HIT_CAPSULE_BOTTOM_Y,
+        Math.min(CONFIG.PLAYER_HIT_CAPSULE_TOP_Y, slot.position.y),
+      );
       const dx = slot.position.x - playerPos.x;
+      const dy = slot.position.y - cy;
       const dz = slot.position.z - playerPos.z;
-      const dy = slot.position.y - playerPos.y;
-      if (dx * dx + dz * dz < HIT_RADIUS_SQ && Math.abs(dy) < 1.2) {
+      const r = CONFIG.PLAYER_HIT_CAPSULE_RADIUS + slot.type.radius;
+      if (dx * dx + dy * dy + dz * dz < r * r) {
         damagePlayer(slot.damage, slot.source, slot.type.damageType);
         retire(slot);
         continue;
       }
     }
 
-    // Wall hit — walkable.contains uses a small radius so a projectile
-    // doesn't phase through corners.
-    if (!walkable.contains(slot.position.x, slot.position.z, slot.type.radius)) {
+    // Wall hit — HEIGHT-AWARE: containsProjectile lets a shot fly OVER a
+    // low prop (vase, altar, chest — anything with an obstacle `height`)
+    // at the bolt's current y, while full-height blockers (walls, pillars,
+    // height-less obstacles) still stop it. (Was the 2D contains(), which
+    // killed every shot on a waist-high vase's footprint — the playtest
+    // "shot eaten by a small vase" bug.) The fog-gate curtain is a
+    // separate projectile-only barrier (blocks even while open for
+    // walking), so a shot can't cross the mist either way.
+    if (
+      !walkable.containsProjectile(slot.position.x, slot.position.z, slot.type.radius, slot.position.y) ||
+      walkable.projectileBlocked(slot.position.x, slot.position.z, slot.type.radius)
+    ) {
       retire(slot);
       continue;
     }

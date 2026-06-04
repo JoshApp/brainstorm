@@ -20,6 +20,7 @@ import { spawnChest } from '../interactables/chest';
 import { spawnStashChest } from '../interactables/stash-chest';
 import { spawnStarterAltar } from '../interactables/starter-altar';
 import { spawnBloodAltar } from '../interactables/blood-altar';
+import { spawnChallengeOffering } from '../interactables/challenge-offering';
 import { ITEMS } from '../content/items';
 import { spawnTutorialHint } from '../effects/tutorial-hints';
 import {
@@ -29,6 +30,8 @@ import {
 } from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
 import { spawnFitting } from '../interactables/fitting';
+import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-waves';
+import { registerEncounter, activateEncounter, clearEncounters, roomClearEncounterId, type EncounterHandle } from '../encounters/registry';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -314,6 +317,9 @@ export function buildLevel(
   // Per-level lights start fresh. Persistent sources (the camera-
   // attached lantern) survive — see light-pool.clearLightPool.
   clearLightPool();
+  // Drop the previous floor's encounters before this one registers its own
+  // (the registry is module-global).
+  clearEncounters();
 
   // Everything goes into this root group rather than directly into the
   // scene — teardown is a single scene.remove(root). Geometry/material
@@ -501,6 +507,10 @@ export function buildLevel(
   // walkable region + room membership exist. Collected here from props +
   // spec.doors so they all flow through the same placement + seal path.
   const pendingFittings: OpeningSpec[] = [];
+  // Rooms that hold a challenge offering → their arena gate becomes a
+  // voluntary 'offering' trigger (set on the door spec below) instead of a
+  // trap that slams on entry.
+  const offeringRooms = new Set<string>();
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
@@ -522,7 +532,18 @@ export function buildLevel(
     } else if (prop.kind === 'altar') {
       const { group: altarGroup, obstacle } = buildAltarBlock(prop.x, prop.z, materials);
       root.add(altarGroup);
-      obstacles.push({ kind: 'aabb', ...obstacle });
+      obstacles.push({ kind: 'aabb', ...obstacle, height: 0.9 });   // waist-high — shots fly over
+    } else if (prop.kind === 'challenge-offering') {
+      const rid = findRoomContaining(prop.x, prop.z, spec.rooms);
+      spawnChallengeOffering(root, new THREE.Vector3(prop.x, 0, prop.z), rid ?? '', spec.depth ?? 1, materials);
+      if (rid) offeringRooms.add(rid);
+      // Coffer footprint blocks movement; waist-high so shots clear it.
+      obstacles.push({
+        kind: 'aabb',
+        minX: prop.x - 0.36, maxX: prop.x + 0.36,
+        minZ: prop.z - 0.28, maxZ: prop.z + 0.28,
+        height: 0.7,
+      });
     } else if (prop.kind === 'model') {
       const built = buildModel(prop.model);
       built.group.position.set(prop.x, prop.y, prop.z);
@@ -577,7 +598,7 @@ export function buildLevel(
           const cx = prop.x + wox;
           const cz = prop.z + woz;
           if (shape.kind === 'circle') {
-            obstacles.push({ kind: 'circle', x: cx, z: cz, r: shape.r });
+            obstacles.push({ kind: 'circle', x: cx, z: cz, r: shape.r, height: shape.height });
           } else {
             // Swap halfW/halfD if rotation is perpendicular (±π/2).
             const swap = Math.abs(ca) < 0.5;
@@ -587,6 +608,7 @@ export function buildLevel(
               kind: 'aabb',
               minX: cx - hw, maxX: cx + hw,
               minZ: cz - hd, maxZ: cz + hd,
+              height: shape.height,
             });
           }
         }
@@ -641,6 +663,7 @@ export function buildLevel(
           kind: 'aabb',
           minX: prop.x - 0.28, maxX: prop.x + 0.28,
           minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
+          height: 0.7,   // chest-high — shots fly over
         });
       }
     } else if (prop.kind === 'stash-chest') {
@@ -649,6 +672,7 @@ export function buildLevel(
         kind: 'aabb',
         minX: prop.x - 0.28, maxX: prop.x + 0.28,
         minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
+        height: 0.7,
       });
     } else if (prop.kind === 'corpse') {
       spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note ?? '');
@@ -671,7 +695,7 @@ export function buildLevel(
       // splice callback to spawnVase so the obstacle goes away
       // when the vase shatters — otherwise the cell stays
       // blocked even after the vase mesh is gone.
-      const vaseObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.18 };
+      const vaseObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.18, height: 0.6 };
       obstacles.push(vaseObs);
       const vase = spawnVase(root, prop.x, prop.z, () => {
         const idx = obstacles.indexOf(vaseObs);
@@ -702,7 +726,7 @@ export function buildLevel(
       });
       for (const v of cluster) {
         destructibles.push(v);
-        const obs: Obstacle = { kind: 'circle', x: v.position.x, z: v.position.z, r: 0.18 };
+        const obs: Obstacle = { kind: 'circle', x: v.position.x, z: v.position.z, r: 0.18, height: 0.6 };
         clusterObs.push(obs);
         obstacles.push(obs);
       }
@@ -719,7 +743,7 @@ export function buildLevel(
       spawnFountain(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.variant ?? 'gamble');
       // Cylindrical collision — approximate the pedestal/bowl footprint.
       obstacles.push({
-        kind: 'circle', x: prop.x, z: prop.z, r: 0.45,
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 0.85,
       });
     } else if (prop.kind === 'blood-altar') {
       const item = ITEMS[prop.itemId];
@@ -731,6 +755,7 @@ export function buildLevel(
           kind: 'aabb',
           minX: prop.x - 0.44, maxX: prop.x + 0.44,
           minZ: prop.z - 0.36, maxZ: prop.z + 0.36,
+          height: 0.9,
         });
         spawnBloodAltar(
           root,
@@ -759,6 +784,7 @@ export function buildLevel(
           kind: 'aabb',
           minX: prop.x - 0.40, maxX: prop.x + 0.40,
           minZ: prop.z - 0.32, maxZ: prop.z + 0.32,
+          height: 1.0,
         };
         obstacles.push(altarObs);
         // onDestroy: no obstacle removal — stone block stays and
@@ -1123,7 +1149,13 @@ export function buildLevel(
       widthM: Math.hypot(d.bx - d.ax, d.bz - d.az),
       height: d.height,
       ax: d.ax, az: d.az, bx: d.bx, bz: d.bz,
-      hinge: d.hinge, swingDir: d.swingDir, unlock: d.unlock,
+      hinge: d.hinge, swingDir: d.swingDir,
+      // An arena gate whose room holds a challenge offering becomes a
+      // voluntary 'offering' trigger — it won't slam on entry; the offering
+      // starts the trial. Otherwise it's the default trap (slam on cross).
+      unlock: d.unlock?.kind === 'arena' && d.unlock.roomIds.some((r) => offeringRooms.has(r))
+        ? { ...d.unlock, trigger: 'offering' as const }
+        : d.unlock,
     });
   }
   // Drain — install every fitting at its opening. Per-opening room height so a
@@ -1137,6 +1169,74 @@ export function buildLevel(
       addDestructible: (d) => destructibles.push(d),
     });
     if (r.teardown) doorTeardowns.push(r.teardown);
+  }
+
+  // --- Arenas --------------------------------------------------------
+  // A room sealed by an ARENA gate becomes a wave-gauntlet ENCOUNTER. The
+  // gate's slam activates it; it summons escalating waves and resolves only
+  // once the LAST wave is dead — which is what lets the gate finally rise.
+  // The gate gates on the encounter's completion (not the momentary room-empty
+  // count), so it stays down at slam and through the inter-wave lulls. This is
+  // the first user of the Encounter layer (see encounters/registry.ts); ticks
+  // run globally via tickEncounters in the system loop.
+  const seenArenaRooms = new Set<string>();
+  for (const d of spec.doors ?? []) {
+    if (d.unlock?.kind !== 'arena') continue;
+    for (const roomId of d.unlock.roomIds) {
+      if (seenArenaRooms.has(roomId)) continue;
+      seenArenaRooms.add(roomId);
+      const room = spec.rooms.find((r) => r.id === roomId);
+      if (!room) continue;
+      // Escalating gauntlet; per-mob difficulty is depth-scaled inside
+      // spawnInto. Ends on ranged pressure so the last wave isn't a pushover.
+      const waves: WaveSpec[] = [
+        { spawns: [{ enemyId: 'ghoul', count: 2 }] },
+        { spawns: [{ enemyId: 'ghoul', count: 2 }, { enemyId: 'skeleton', count: 1 }] },
+        { spawns: [{ enemyId: 'skeleton', count: 2 }, { enemyId: 'acid-spitter', count: 1 }] },
+      ];
+      let handle: EncounterHandle;
+      const controller = createArenaController({
+        roomId,
+        scene: root,
+        rect: room.rect,
+        waves,
+        tint: 0xc01818,
+        walkable,
+        spawn: (enemyId, pos) => {
+          const base = ENEMIES[enemyId];
+          return base ? spawnInto(base, pos, roomId) : null;
+        },
+        onComplete: () => handle.complete(),
+      });
+      handle = registerEncounter(arenaEncounterId(roomId), {
+        onActivate: () => controller.start(),
+        tick: (dt, pos) => controller.tick(dt, pos),
+      });
+    }
+  }
+
+  // Plain room-clear gates ('cleared') become the degenerate encounter:
+  // active from the start, resolves the frame the room is empty. Folds the
+  // old aliveByRoom gate check into the same lifecycle as everything else —
+  // a room with no mobs completes on its first tick (so the gate isn't stuck).
+  const seenClearRooms = new Set<string>();
+  for (const d of spec.doors ?? []) {
+    if (d.unlock?.kind !== 'cleared') continue;
+    for (const roomId of d.unlock.roomIds) {
+      if (seenClearRooms.has(roomId)) continue;
+      seenClearRooms.add(roomId);
+      let handle: EncounterHandle;
+      handle = registerEncounter(roomClearEncounterId(roomId), {
+        tick: () => {
+          let alive = 0;
+          for (const en of enemies) {
+            if (roomByEntity.get(en.entityId) === roomId && en.alive) alive++;
+          }
+          if (alive === 0) handle.complete();
+        },
+      });
+      activateEncounter(roomClearEncounterId(roomId));
+    }
   }
 
   // --- Stairs --------------------------------------------------------

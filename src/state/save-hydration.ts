@@ -2,6 +2,8 @@ import { clearInventory, addItemSilently } from '../player/inventory';
 import { setSlot, type EquipSlot } from '../player/equipment';
 import { ITEMS } from '../content/items';
 import { get as getEntity } from '../ecs/world';
+import { hydrateCharacter } from './character';
+import { resetStamina } from '../combat/stamina';
 import type { loadSave } from './run-state';
 
 // Hydrate run state (inventory, equipment, HP) from a save — or apply the
@@ -21,23 +23,34 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
   // Equipment — set saved slots, OR defaults for new runs.
   // Fresh runs deliberately START WITHOUT a weapon — the player picks
   // one at an altar in the starter chamber (the first room of every
-  // run). Offhand defaults to the lamp regardless.
+  // run). The OFFHAND starts EMPTY: the lamp is no longer an item, it's
+  // baked into the player (a permanent worn hip-lantern — see
+  // handheld-lamp.ts / attachLamp in main.ts), so the slot is free for
+  // a shield or focus.
   if (saveData) {
     for (const [slot, itemId] of Object.entries(saveData.equipment)) {
+      // Legacy saves carry an equipped oil-lamp offhand — drop it so the
+      // slot frees up now that the lamp is baked in.
+      if (slot === 'offhand' && itemId === 'oil-lamp') continue;
       if (itemId && ITEMS[itemId]) setSlot(slot as EquipSlot, ITEMS[itemId]);
     }
     // Safety: legacy saves predating the starter chamber may have no
     // weapon recorded; give them a rusted sword so they're not stuck
     // unarmed mid-dungeon on resume.
     if (!saveData.equipment.weapon) setSlot('weapon', ITEMS['rusted-sword']);
-    // Same safety for offhand — pre-offhand-slot saves won't have one.
-    if (!saveData.equipment.offhand) setSlot('offhand', ITEMS['oil-lamp']);
-  } else {
-    setSlot('offhand', ITEMS['oil-lamp']);
   }
+  // Character — restore the saved build (attributes/proficiencies/unspent)
+  // so a reload/resume keeps your progression. Null save (fresh run) →
+  // no-op; the run's resetCharacter has already set baseline.
+  if (saveData?.character) hydrateCharacter(saveData.character);
+
   // HP — restore to saved value, or full for new run.
   const player = getEntity('player');
   if (player?.hp) {
     player.hp.current = saveData ? saveData.hp : player.hp.base;
   }
+
+  // Stamina is not persisted — it regenerates in seconds. Start every
+  // floor (and every resume) at full so you arrive ready, not winded.
+  resetStamina();
 }

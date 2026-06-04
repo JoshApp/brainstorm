@@ -8,7 +8,7 @@ import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
 import { playImpact, playWhoosh } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
-import { emit } from '../broadcast/event-bus';
+import { emit, on } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { getPlayerOnHits } from '../player/equipment';
 import type { ResolvedWeaponStats } from '../content/weapon-classes';
@@ -16,10 +16,11 @@ import { computePlayerStats } from './modifiers';
 import { gameRngChance } from '../engine/rng';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
-import { spawnProjectile, setProjectileEnemyProvider } from './projectile-pool';
+import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
+import { spendStamina } from './stamina';
 import type { AttackDirection } from '../player/viewmodel';
 
 // Joystick magnitude below this counts as "not moving" → no
@@ -70,6 +71,13 @@ const STRIKE_TRAIL_DURATION = 0.10;     // seconds — Smash-Bros-style intent b
 
 export interface CombatSystem {
   tick(attackPressed: boolean, moveX: number, moveY: number, dt: number): void;
+  /** Is an ENEMY in range right now? Melee: an enemy in the swing cone;
+   *  ranged: an enemy in the forward arc with line of sight. The tap
+   *  arbiter uses this for priority — an enemy in range means a tap
+   *  ATTACKS even when an interactable is also nearby (see main.ts onTap).
+   *  (Destructibles aren't counted — they're handled by the always-attack
+   *  fallback, so a vase never out-prioritises a chest.) */
+  hasEnemyInRange(): boolean;
 }
 
 function hapticVibrate(ms: number) {
@@ -111,6 +119,19 @@ export function createCombatSystem(
   // provider — registered here so the projectile pool's tick needn't
   // take an extra arg (keeps the main-loop call site untouched).
   setProjectileEnemyProvider(getEnemies);
+  setProjectileDestructibleProvider(getDestructibles);   // bolts smash vases/crates too
+
+  // LIFESTEAL is now a CHANCE-ON-KILL proc (was a per-hit damage drain,
+  // which the playtest found way too strong). On any enemy death (all
+  // enemy deaths are player-caused — melee, ranged, or DoT), roll the
+  // player's lifesteal chance and heal a flat amount. createCombatSystem
+  // is constructed once at boot, so this subscribes once.
+  on((e) => {
+    if (e.type !== 'enemy:killed') return;
+    if (gameRngChance(computePlayerStats().lifestealPct)) {
+      healPlayer(CONFIG.LIFESTEAL_ON_KILL_HEAL);
+    }
+  });
 
   /** Fire the equipped ranged weapon's projectile at the auto-target
    *  (nearest enemy in the forward arc) or straight ahead if none. */
@@ -234,12 +255,30 @@ export function createCombatSystem(
       if (!getEquipped('weapon')) {
         return;
       }
+      // STAMINA gates the two drawback-free actions the playtest flagged.
+      // Read the resolved weapon once at press time to branch ranged/melee.
+      const pressWeapon = getCurrentWeapon();
+      // RANGED: every shot costs stamina (the crossbow/wand drawback —
+      // "too strong, no ammo, no drawback"). Spent atomically here so the
+      // commit is the press; if you can't afford it the press is swallowed
+      // (no empty dry-swing) and the shot simply doesn't happen.
+      if (pressWeapon.ranged && !spendStamina(CONFIG.STAMINA.RANGED_COST)) {
+        return;
+      }
       // Capture any pending charge for this swing — 0 if it was a
       // tap, 0..1 if the player held to charge. The strike-phase
       // resolution below reads currentSwingCharge to scale damage,
       // reach, and cone width. Reset per-press, so chained tap-combos
       // reset back to 0 naturally on the next press.
       currentSwingCharge = consumeChargedAmount();
+      // MELEE charged swings cost stamina. If you can't afford it the
+      // hold fizzles to a normal swing rather than locking the attack out
+      // — you always get to swing, you just don't get the charged bonus.
+      // (Ranged charge is free of this; its per-shot cost above covers it,
+      // and the charge there only buys the +80% damage curve.)
+      if (currentSwingCharge > 0 && !pressWeapon.ranged && !spendStamina(CONFIG.STAMINA.CHARGED_COST)) {
+        currentSwingCharge = 0;
+      }
       // Movement intent at press time. Picks a directional move
       // override (lunge / sweep / retreat) when the joystick is
       // held — null otherwise (= normal combo step). The sword
@@ -369,17 +408,14 @@ export function createCombatSystem(
           }
         }
         emit({ type: 'attack:hit', damage: applied, crit, cls: stats.class });
-        // LIFESTEAL — heal a fraction of damage dealt per heavy target
-        // hit. Per-target so a 3-target cleave heals from each
-        // independently. Vases skipped (their hitFeedback is 'light'
-        // and they don't grant the on-hit pipeline). Rounded UP so a
-        // small lifesteal value still produces visible healing on
-        // chip damage; capped at 1 HP per hit to keep stacking
-        // meaningful without infinite-stalling on weak mobs.
-        if (ps.lifestealPct > 0 && applied > 0) {
-          const heal = Math.max(1, Math.ceil(applied * ps.lifestealPct));
-          healPlayer(heal);
-        }
+        // Might SIGNATURE — chip the target's poise; break it and the
+        // enemy staggers (its action cancelled, a free-hit window). A
+        // full charge hits poise hardest. staggerPower already folds in
+        // weapon weight × Might (resolveWeaponStats).
+        target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS));
+        // (Lifesteal is now a CHANCE-ON-KILL proc — see the enemy:killed
+        // listener in createCombatSystem — not a per-hit drain, which was
+        // far too strong in the playtest.)
       }
       if (crit) anyCrit = true;
       if (applied > bestApplied) bestApplied = applied;
@@ -395,13 +431,29 @@ export function createCombatSystem(
     // flat dry thud at the listener.
     const impactAt = targets[0].position;
     if (anyHeavy) {
-      const crunchPause = anyCrit ? CONFIG.HIT_PAUSE_MS + 60 : CONFIG.HIT_PAUSE_MS;
-      const crunchShake = anyCrit
+      // Weight the crunch by the BEST hit's damage — a big blow freezes
+      // longer + shakes harder than a chip hit, on top of the crit bonus.
+      // Heavy hits land heavy; that's the offensive half of "crunchy".
+      const s = Math.min(
+        CONFIG.HIT_FEEDBACK_DMG_MAX,
+        1 + Math.max(0, bestApplied - 1) * CONFIG.HIT_FEEDBACK_DMG_SLOPE,
+      );
+      // FREEZE: short, gently damage-scaled, HARD-CAPPED — decoupled from
+      // the shake so heavy hits stay punchy without the long hang that
+      // read as lag (10 dmg was 192ms / 336ms on a crit → now ~120 / ~135).
+      const crit = anyCrit ? CONFIG.FREEZE_CRIT_BONUS_MS : 0;
+      const crunchPause = Math.min(
+        CONFIG.FREEZE_MAX_MS + crit,
+        CONFIG.FREEZE_BASE_MS + bestApplied * CONFIG.FREEZE_PER_DMG + crit,
+      );
+      // Shake + haptic keep the full damage-scaled punch (they animate
+      // through the freeze, so they carry the "weight").
+      const crunchShake = (anyCrit
         ? CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 1.8
-        : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE;
+        : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE) * s;
       freezeFor(crunchPause);
       kickShake(crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
-      hapticVibrate(anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS);
+      hapticVibrate(Math.round((anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS) * s));
       playImpact(impactAt);
     } else {
       // Light targets only (vases) — token crunch, no on-hit passives.
@@ -446,7 +498,26 @@ export function createCombatSystem(
     void bestApplied;   // reserved for future "biggest hit wins crunch tier"
   }
 
-  return { tick };
+  /** See CombatSystem.hasEnemyInRange. Mirrors what the next swing would
+   *  hit, ENEMIES only: melee scans the weapon's cone; ranged scans the
+   *  long forward arc (LOS-gated) like fireRanged. */
+  function hasEnemyInRange(): boolean {
+    const stats = getCurrentWeapon();
+    camera.getWorldDirection(forwardDir);
+    const forwardLenXZ = Math.hypot(forwardDir.x, forwardDir.z) || 1;
+    if (stats.ranged) {
+      const walkable = getWalkable();
+      const losCheck = walkable
+        ? (cx: number, cz: number, tx: number, tz: number) => walkable.hasLineOfSight(cx, cz, tx, tz)
+        : undefined;
+      return !!pickTarget(getEnemies(), camera, forwardDir, forwardLenXZ, RANGED_REACH, RANGED_CONE_COS, losCheck);
+    }
+    // Melee — base reach/cone (no combo-step or charge mul).
+    const cosConeHalf = Math.cos(stats.coneHalfAngle);
+    return pickTargets(getEnemies(), camera, forwardDir, forwardLenXZ, stats.reach, cosConeHalf, 1).length > 0;
+  }
+
+  return { tick, hasEnemyInRange };
 }
 
 /**

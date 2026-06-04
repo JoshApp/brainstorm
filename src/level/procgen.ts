@@ -377,8 +377,12 @@ export function generateFloor(
   const spec = composeFloor(depth, rand, nextLevelId, {
     id,
     displayName: `${romanize(depth)} — ${act.name}`,
-    torchTint: act.torchTint,
-    fogColor: act.fogColor,
+    // Boss floors can recolour their whole arena to the boss's nature
+    // (the Marrow Sovereign's charnel-red hall) — both the torches AND the
+    // fog wash. Falls back to the act palette when the boss leaves them
+    // unset, so other bosses are unaffected until styled.
+    torchTint: bossFloor ? (bossById(act.bossId).arenaTorchTint ?? act.torchTint) : act.torchTint,
+    fogColor: bossFloor ? (bossById(act.bossId).arenaFogColor ?? act.fogColor) : act.fogColor,
     isBossFloor: bossFloor,
     preferredBossVaultId,
     // Per-boss fog-wall tint. Default amber when the boss spec

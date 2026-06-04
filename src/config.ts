@@ -63,6 +63,26 @@ export const CONFIG = {
   LOOK_SENSITIVITY: 0.004,     // touch swipe to camera rotation
   JOYSTICK_DEADZONE: 0.1,
 
+  // === STAMINA ===
+  // A second resource (separate from HP) that gates the high-value
+  // actions the playtest found drawback-free: charged melee swings and
+  // ranged shots (and, later, sprint/dodge). Abstract 0..MAX points; the
+  // HUD shows a fraction. Regenerates after a short delay since the last
+  // spend, so steady tapping never touches it but spamming the strong
+  // stuff runs you dry. NOT saved — tops back up to full in a few seconds
+  // and is reset to full on every floor load (see save-hydration).
+  STAMINA: {
+    MAX: 100,
+    REGEN_PER_SEC: 36,       // empty → full in ~2.8s of not spending
+    REGEN_DELAY_S: 0.55,     // pause after a spend before regen resumes
+    CHARGED_COST: 36,        // a charged melee swing — ~2-3 before dry
+    RANGED_COST: 32,         // one crossbow/wand shot — the ranged drawback
+    // Sprint (movement) tuning — wired in a later increment.
+    SPRINT_DRAIN_PER_SEC: 22,
+    SPRINT_MIN: 6,           // need at least this to (keep) sprinting
+    SPRINT_SPEED_MUL: 1.5,
+  },
+
   // === RENDER ===
   PIXEL_RATIO_CAP: 2,          // cap DPR on desktop (debug) — crisp
   // Mobile caps DPR lower: phones are fragment/fillrate-bound, and a 2x
@@ -86,6 +106,15 @@ export const CONFIG = {
                                  //   "TAKE" about loot directly behind them.
                                //   Generous so the player doesn't have to look
                                //   precisely at the target (especially low rats).
+  // Tap-to-use tuning (the diegetic "tap the object" interaction). One place
+  // to tune how forgiving touch interaction feels.
+  INTERACT_TAP_PROXIMITY_PX: 60, // screen-space near-miss radius (px). A tap this
+                                 //   close to a thin floating viewmodel (starter
+                                 //   weapons, dropped rings) still counts as hitting
+                                 //   it — forgives the 30cm-sword silhouette without
+                                 //   becoming a whole-screen grab. The big, reliable
+                                 //   target is the floating TAKE label (tappable);
+                                 //   this just softens near-misses on the model.
   SWORD_SWING_WINDUP: 0.12,    // seconds — sword raises
   SWORD_SWING_STRIKE: 0.10,    // seconds — sword chops through (hit window is here)
   SWORD_SWING_RECOVER: 0.28,   // seconds — return to idle; can't attack again
@@ -124,11 +153,65 @@ export const CONFIG = {
 
   // === COMBAT CRUNCH ===
   HIT_PAUSE_MS: 80,            // freeze duration on landing a hit — THE feel feature
+  // Landing-hit FREEZE is DECOUPLED from the shake/haptic crunch. The
+  // freeze is kept SHORT + hard-capped: a whole-screen first-person freeze
+  // tips into "lag" far sooner than a fighting-game fighter-only freeze
+  // (Smash's hitlag at 10 dmg is ~9 frames, and that only freezes the two
+  // fighters). The shake + haptic still scale up to HIT_FEEDBACK_DMG_MAX
+  // AND keep animating during the freeze (shake runs on an 'always' system)
+  // — that's what actually sells the weight, not a longer hang.
+  FREEZE_BASE_MS: 60,          // freeze for a minimal connecting hit
+  FREEZE_PER_DMG: 6,           // + this per point of damage dealt
+  FREEZE_MAX_MS: 130,          // hard cap (~8 frames @60fps); past this = lag
+  FREEZE_CRIT_BONUS_MS: 15,    // a crit nudges it a touch past the cap
   SCREEN_SHAKE_HIT_MAGNITUDE: 0.04,  // meters of camera offset
   SCREEN_SHAKE_HIT_DURATION: 0.14,   // seconds
   HAPTIC_HIT_MS: 22,           // navigator.vibrate on landing hit
   DAMAGE_NUMBER_LIFETIME: 0.7, // seconds before damage number removed
   DAMAGE_NUMBER_RISE: 60,      // pixels the number floats up over its lifetime
+  // Lifesteal is a CHANCE-ON-KILL proc (item's lifesteal % = the chance),
+  // not a per-hit drain — heals this flat amount when it procs. (Playtest:
+  // per-damage lifesteal was way too strong.)
+  LIFESTEAL_ON_KILL_HEAL: 2,
+
+  // === ATTRIBUTES (Might / Finesse / Lore / Grit) ===
+  // Spent at the harbor; see docs/HARBOR-AND-PROGRESSION.md. Each stat
+  // has a UNIVERSAL floor (wanted by every build), FAMILY scaling (only
+  // its matching weapon, by per-item grade), and a SIGNATURE verb.
+  // Iterate feel here.
+  ATTR: {
+    // Might + Lore each add this much to ALL weapon damage per point —
+    // the "no dead points" floor. Kept below the matching-family rate
+    // so concentrating in your weapon's stat always wins.
+    UNIVERSAL_DMG_PER_POINT: 0.01,    // +1% all weapon damage / point
+    // Matching-family damage per point, by the weapon's scaling grade.
+    // A default weapon is grade B (+2%/pt for its family stat); named /
+    // fabled weapons can scale harder (A/S), the Phase-5 LLM seam.
+    SCALING_GRADE: { S: 0.04, A: 0.03, B: 0.02, C: 0.012, D: 0.006 } as Record<string, number>,
+    FINESSE_CRIT_PER_POINT: 0.02,     // +2% crit chance / point (Finesse floor)
+    GRIT_HP_PER_POINT: 2,             // +2 max HP / point (was 3 — playtest: too much)
+    GRIT_ARMOR_SCALE_PER_POINT: 0.03, // equipped armor ×(1 + 0.03·Grit)
+    // Lore SIGNATURE — the player's afflictions (DoT statuses: poison/
+    // bleed/burn) last longer AND tick harder. The hexer build.
+    LORE_AFFLICT_DURATION_PER_POINT: 0.05, // +5% status duration / point
+    LORE_AFFLICT_POTENCY_PER_POINT:  0.04, // +4% DoT tick damage / point
+    // Might SIGNATURE — stagger. A hit's stagger power (weapon weight,
+    // see weapon-classes.ts) is multiplied by this per Might point, so
+    // 10 Might ≈ +150% stagger. At 0 Might only heavy weapons break
+    // poise reliably; Might lets lighter weapons stagger too.
+    MIGHT_STAGGER_PER_POINT: 0.15,
+  },
+
+  // === POISE / STAGGER ===
+  // The enemy stagger pool the player chips with Might-scaled hits.
+  // Break it → the enemy's action is cancelled and it reels (a free-hit
+  // window). See the poise system in src/mobs/enemy.ts.
+  POISE: {
+    STAGGER_DURATION: 0.6,  // s the enemy reels after a poise break
+    REGEN_DELAY: 1.2,       // s of no stagger pressure before the pool refills
+    REGEN_RATE: 4,          // poise points / s once regen kicks in
+    CHARGE_BONUS: 1.0,      // a FULL charged swing adds this ×stagger (×2 total)
+  },
 
   // === PLAYER HEALTH ===
   PLAYER_HP_MAX: 8,    // bumped from 5 — multiple enemies stacking damage is brutal at 5
@@ -136,6 +219,18 @@ export const CONFIG = {
   PLAYER_HIT_SHAKE_MAGNITUDE: 0.12, // stronger than landing-shake
   PLAYER_HIT_SHAKE_DURATION: 0.28,
   PLAYER_HIT_HAPTIC_MS: 60,         // longer buzz on damage
+  // Damage→feedback scaling. A hit's crunch (freeze/shake/haptic, both
+  // directions) multiplies by 1 + (dmg-1)*SLOPE, clamped to MAX — so a
+  // 1-dmg graze is baseline and a heavy blow really lands. Strong hits =
+  // strong feedback, the v2 ask.
+  HIT_FEEDBACK_DMG_SLOPE: 0.45,
+  HIT_FEEDBACK_DMG_MAX: 2.4,
+  // Player hurt-box: a vertical capsule on the player's body, NOT the old
+  // flat 0.4m cylinder × ±1.2m band. A shot over the head or at the feet
+  // now misses; hits register against the body. (eye/PLAYER_HEIGHT=1.6.)
+  PLAYER_HIT_CAPSULE_BOTTOM_Y: 0.45,
+  PLAYER_HIT_CAPSULE_TOP_Y: 1.75,
+  PLAYER_HIT_CAPSULE_RADIUS: 0.40,
   VIGNETTE_FLASH_OPACITY: 0.85,
   VIGNETTE_FLASH_FADE_MS: 280,
 

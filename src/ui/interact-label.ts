@@ -7,10 +7,12 @@ import { worldToScreen } from './hud';
 // position of the currently in-range interactable. Reads diegetically:
 // you look at the chest, the OPEN icon appears just above the chest.
 //
-// Works alongside the corner button (still primary tap target for
-// players who reach there). The label is a SECONDARY visual cue —
-// pointerEvents:none so it never steals taps, and it sits at modest
-// opacity so it doesn't obscure the object's outline+ring.
+// The label is ALSO a tap target: tapping it uses the in-range
+// interactable (handler registered via setInteractLabelTapHandler). So
+// the player has two reliable, deliberate ways to interact — tap the
+// object's model, or tap this prompt — without the old whole-screen
+// "any in-range tap grabs it" breadth. pointerEvents is toggled with
+// visibility so a hidden/stale label never eats a tap.
 //
 // Implementation: one DOM element pinned to a screen coord computed
 // each frame from the target's world position via camera.project.
@@ -24,8 +26,17 @@ let labelEl: HTMLDivElement | null = null;
 let iconEl: HTMLDivElement | null = null;
 let textEl: HTMLDivElement | null = null;
 let currentLabel: string | null = null;
+let shown = false;  // mirrors opacity 1/0 so we can toggle pointerEvents
+let tapHandler: (() => void) | null = null;
 
 const tmpVec = new THREE.Vector3();
+
+/** Register what happens when the floating prompt is tapped. main.ts wires
+ *  this to "use the currently in-range interactable" (same gating + the
+ *  blocked-loot fall-through as the model-tap path). */
+export function setInteractLabelTapHandler(fn: () => void): void {
+  tapHandler = fn;
+}
 
 export function ensureInteractLabel(): void {
   if (labelEl) return;
@@ -42,7 +53,9 @@ export function ensureInteractLabel(): void {
     flexDirection: 'column',
     alignItems: 'center',
     gap: '2px',
-    padding: '4px 10px 5px',
+    // Roomy padding so the prompt is a comfortable thumb-sized tap target,
+    // not a pixel-thin strip.
+    padding: '9px 16px 10px',
     background: 'rgba(20, 12, 8, 0.5)',
     border: '1px solid rgba(255, 200, 130, 0.4)',
     borderRadius: '4px',
@@ -56,11 +69,24 @@ export function ensureInteractLabel(): void {
     textShadow: '0 1px 0 rgba(0,0,0,0.8)',
     boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
     zIndex: '11',
-    pointerEvents: 'none',
+    pointerEvents: 'none',  // toggled to 'auto' only while visible
+    touchAction: 'manipulation',
+    cursor: 'pointer',
     opacity: '0',
     transition: 'opacity 180ms ease-out',
     willChange: 'transform, opacity, left, top',
   } as Partial<CSSStyleDeclaration>);
+
+  // Tap/click the prompt → fire the registered handler. pointerup covers
+  // both touch and mouse; stop propagation so the canvas swing handler
+  // underneath doesn't also fire.
+  const fire = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    tapHandler?.();
+  };
+  labelEl.addEventListener('pointerup', fire);
+  labelEl.addEventListener('click', (e) => { e.stopPropagation(); });
 
   iconEl = document.createElement('div');
   Object.assign(iconEl.style, {
@@ -91,7 +117,7 @@ export function updateInteractLabel(
 ): void {
   if (!labelEl || !iconEl || !textEl) return;
   if (!target || !target.promptLabel) {
-    if (labelEl.style.opacity !== '0') labelEl.style.opacity = '0';
+    hide();
     return;
   }
 
@@ -131,10 +157,22 @@ export function updateInteractLabel(
   const p = worldToScreen(tmpVec, camera, canvas.getBoundingClientRect());
   // If behind the camera, hide.
   if (p.behind) {
-    if (labelEl.style.opacity !== '0') labelEl.style.opacity = '0';
+    hide();
     return;
   }
   labelEl.style.left = `${p.x}px`;
   labelEl.style.top = `${p.y}px`;
-  if (labelEl.style.opacity !== '1') labelEl.style.opacity = '1';
+  if (!shown) {
+    shown = true;
+    labelEl.style.opacity = '1';
+    labelEl.style.pointerEvents = 'auto';  // tappable only while visible
+  }
+}
+
+/** Hide + make the (now stale-positioned) label inert to taps. */
+function hide(): void {
+  if (!labelEl || !shown) return;
+  shown = false;
+  labelEl.style.opacity = '0';
+  labelEl.style.pointerEvents = 'none';
 }

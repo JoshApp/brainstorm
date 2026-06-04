@@ -5,6 +5,7 @@ import { getBobOffset } from './viewmodel-bob';
 import { computeWeaponPose } from './weapon-animations';
 import { getCurrentWeapon } from './current-weapon';
 import { getChargeProgress } from '../controls/charge-input';
+import { registerViewmodel } from '../style/render-target';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep } from '../content/weapon-classes';
 
@@ -90,6 +91,10 @@ export function createWeaponViewmodel(
   group.position.set(ix, iy, iz);
   group.rotation.set(rx, ry, rz);
   camera.add(group);
+  // Register for the renderer's viewmodel depth-only pass — see the note in
+  // render-target.ts. Without it the distance-crush / fog-inscatter post
+  // passes read the background depth behind the blade and paint it on.
+  registerViewmodel(group);
 
   function unmount() {
     while (group.children.length > 0) {
@@ -118,6 +123,11 @@ export function createWeaponViewmodel(
         const mesh = obj as THREE.Mesh;
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const m of mats) {
+          // depthTest:false → always on top of walls (no clip). It can't
+          // write depth (GL skips depth writes when the test is off), so the
+          // renderer does a separate depth-only pass for the viewmodel to put
+          // its near depth in the buffer (see render-target.ts). depthWrite
+          // here is moot for colour; the depth pass toggles it.
           m.depthTest = false;
           m.depthWrite = false;
           // CRITICAL for the renderOrder to actually win against the

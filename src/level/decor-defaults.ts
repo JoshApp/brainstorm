@@ -13,6 +13,7 @@
 
 import type { PropSpec } from './types';
 import { ITEMS } from '../content/items';
+import { rollLoot } from '../content/loot';
 
 // Pool of corpse notes. applyProcgenDefaults picks one per corpse
 // entry whose `note` is undefined — deterministic via the rng the
@@ -47,15 +48,22 @@ export function rollMimic(tier: ChestTier, rand: () => number): boolean {
   return rand() < chance;
 }
 
-export function rollChestLoot(tier: ChestTier, rand: () => number): import('../content/items').ItemSpec {
-  // Small hand-tuned pool per tier. Quality climbs visibly: supply
-  // mostly potions, iron mostly gear, boss mostly relics/rings.
-  const supplyPool = ['healing-potion', 'healing-potion', 'healing-potion', 'leather-gloves', 'worn-boots', 'oil-lamp'];
-  const ironPool = ['iron-coif', 'leather-gloves', 'worn-boots', 'wooden-shield', 'scimitar', 'bone-amulet', 'tattered-cloak', 'healing-potion'];
-  const bossPool = ['ring-of-vigor', 'ring-of-bloodthirst', 'ring-of-marrow', 'mendicants-locket', 'cuirass-of-ash', 'heretics-hood', 'reapers-toll'];
-  const pool = tier === 'supply' ? supplyPool : tier === 'iron' ? ironPool : bossPool;
-  const pick = pool[Math.floor(rand() * pool.length)];
-  return ITEMS[pick] ?? ITEMS['healing-potion'];
+// Chest tier → loot richness bias fed to the central roller. The tier IS
+// the chest's promise: supply is humble, iron is gear, boss is a prize.
+// Bias shifts the rarity curve up; depth still gates what's eligible, so a
+// boss chest on floor 1 is generous-for-floor-1, not a free fabled.
+const TIER_BIAS: Record<ChestTier, number> = { supply: 0, iron: 2, boss: 4 };
+
+export function rollChestLoot(
+  tier: ChestTier,
+  rand: () => number,
+  depth = 1,
+): import('../content/items').ItemSpec {
+  // Pull from the central distribution (content/loot.ts): the full eligible
+  // item set at this depth, rarity-weighted by the tier bias. This is what
+  // gives floor-1 chests real variety instead of the same three mundanes,
+  // while keeping powerful/late items gated by depth + rarity.
+  return rollLoot({ depth, bias: TIER_BIAS[tier] }, rand) ?? ITEMS['healing-potion'];
 }
 
 /**
@@ -83,7 +91,7 @@ export function applyProcgenDefaults(
         ...prop,
         tier,
         mimic,
-        loot: mimic ? undefined : rollChestLoot(tier, rand),
+        loot: mimic ? undefined : rollChestLoot(tier, rand, depth),
       };
     }
     return prop;

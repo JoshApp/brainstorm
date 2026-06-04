@@ -1,9 +1,10 @@
 import type { ModelSpec } from '../ecs/model-types';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
+import type { AttributeKind } from '../state/character';
 import { SWORD_RUSTED } from './sword';
 import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WAND } from './weapons';
-import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES } from './new-weapons';
+import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES, BENT_SICKLE, PILGRIMS_PIKE } from './new-weapons';
 import {
   HEALING_POTION, RING_OF_VIGOR, RING_OF_PREDATION, RING_OF_BLOODTHIRST,
   RING_OF_FRENZY, TATTERED_CLOAK, BERSERK_POTION,
@@ -35,6 +36,11 @@ export type ItemKind = 'weapon' | 'armor' | 'ring' | 'consumable'
  * floor-pickup glow color. Higher rarity = stronger / more numerous effects.
  */
 export type Rarity = 'mundane' | 'uncommon' | 'rare' | 'cursed' | 'fabled';
+
+/** Rarity tiers in ascending "richness" order — the axis the loot roller
+ *  walks (step down to a lower tier when a rolled rarity has nothing
+ *  eligible yet). Cursed sits above rare as a rarer risk/reward tier. */
+export const RARITY_ORDER: readonly Rarity[] = ['mundane', 'uncommon', 'rare', 'cursed', 'fabled'];
 
 /** Hex colors per rarity — atmospheric warm-cool palette, not gaudy RGB. */
 export const RARITY_COLORS: Record<Rarity, number> = {
@@ -92,6 +98,30 @@ export type WeaponClass =
   | 'crossbow' | 'wand'
   | 'scythe' | 'whip' | 'throwing-knives';
 
+/** Attribute scaling grade — S best, D weakest. Coefficients per point
+ *  live in CONFIG.ATTR.SCALING_GRADE. */
+export type ScalingGrade = 'S' | 'A' | 'B' | 'C' | 'D';
+
+/** A weapon's attribute scaling: which attributes drive its damage and
+ *  how hard. Usually one entry (its family stat); hybrids set two. */
+export type WeaponScaling = Partial<Record<AttributeKind, ScalingGrade>>;
+
+/** What a weapon class's PROFICIENCY (use-based mastery) improves, as a
+ *  per-point amount. Each class picks the few that fit its identity
+ *  (PROFICIENCY_PROFILE_BY_CLASS in weapon-classes.ts) — e.g. daggers
+ *  get speed+crit, hammers get stagger+damage (NOT speed, which would
+ *  un-heavy them). A weapon can override its class default. All but
+ *  `crit` are fractions (0.005 = +0.5%/pt); the %-ish ones share the
+ *  proficiency cap. */
+export interface ProficiencyProfile {
+  speed?: number;        // shortens windup/recover (tempo)
+  damage?: number;       // +weapon damage
+  stagger?: number;      // +stagger power (poise break)
+  crit?: number;         // +crit chance (flat per point)
+  comboWindow?: number;  // +combo-window forgiveness
+  reach?: number;        // +reach
+}
+
 /** Combat stats — only set on items that are weapons. */
 export interface WeaponStats {
   /** Max melee reach in meters (camera-to-enemy distance). */
@@ -116,6 +146,32 @@ export interface WeaponStats {
    * timings), 0.8 = slower. Proficiency points feed in alongside it.
    */
   attackSpeed?: number;
+  /**
+   * Attribute SCALING grades (Souls/WC3-style). Maps an attribute to a
+   * letter grade; the player's points in that attribute multiply this
+   * weapon's damage by grade-coeff·points (CONFIG.ATTR.SCALING_GRADE).
+   * Omitted → resolveWeaponStats applies the per-class default
+   * (DEFAULT_WEAPON_SCALING in weapon-classes.ts): heavy→Might,
+   * light/ranged→Finesse, wand→Lore, all grade B. Set explicitly on
+   * named/fabled weapons (or LLM-authored ones) for harder or hybrid
+   * scaling — e.g. `{ lore: 'A', finesse: 'C' }` for a hexed blade.
+   */
+  scaling?: WeaponScaling;
+  /**
+   * Stagger power per hit BEFORE Might scaling — how hard this weapon
+   * chips enemy poise (see the poise system in mobs/enemy.ts). Omitted →
+   * the per-class default (STAGGER_POWER_BY_CLASS in weapon-classes.ts:
+   * heavy weapons high, light/ranged low). Set explicitly for a weapon
+   * that punches above or below its class weight.
+   */
+  staggerPower?: number;
+  /**
+   * Override what this weapon's class proficiency improves (per-point
+   * amounts). Omitted → the per-class default
+   * (PROFICIENCY_PROFILE_BY_CLASS in weapon-classes.ts). A merge:
+   * unspecified keys fall back to the class default.
+   */
+  proficiency?: ProficiencyProfile;
   /**
    * On-hit status infliction. When set, a landed hit rolls `chance` and,
    * on success, applies the buff (a status effect from content/buffs.ts)
@@ -232,6 +288,25 @@ export interface ItemSpec {
    *  enough pieces of the same set activates that set's threshold
    *  bonuses. Omit on items that belong to no set. */
   setId?: string;
+  /**
+   * Generic-loot distribution metadata — how this item flows through the
+   * central loot roller (src/content/loot.ts). Controls WHERE and HOW
+   * OFTEN it appears as a drop. Omit for sensible defaults (drops from
+   * depth 1, weight 1).
+   */
+  drop?: {
+    /** Earliest depth this can appear from a generic loot roll. Gates
+     *  powerful items out of the early floors. Default 1. */
+    minDepth?: number;
+    /** Relative weight within its rarity band when the roller has picked
+     *  that rarity. Default 1. Bump for "common" basics (potions), drop
+     *  for things that should be a rarer sight within their tier. */
+    weight?: number;
+    /** If true, NEVER appears in generic loot rolls — reserved for
+     *  starter altars, boss-signature drops, or hand-placed/quest items
+     *  distributed deliberately. Default false. */
+    noDrop?: boolean;
+  };
 }
 
 export const ITEMS: Record<string, ItemSpec> = {
@@ -343,6 +418,11 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'weapon-damage', amount: 1 },
       { kind: 'damage-multiplier', amount: 1.15 },
     ],
+    // A prototype power-piece — burn + crit + flat dmg + multiplier stacked.
+    // Gate it deep (Act III) so it can't drop casually on the early floors;
+    // its fabled rarity already makes it a once-in-a-run event, this makes
+    // it a DEEP once-in-a-run event.
+    drop: { minDepth: 8, weight: 0.6 },
   },
   // Howling Edge — fabled sword whose CHARGED RELEASE launches a
   // wave of cutting force forward. Tap-and-tap plays like a normal
@@ -370,6 +450,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     modifiers: [
       { kind: 'weapon-damage', amount: 1 },
     ],
+    // Signature charged mechanic + fabled stats — a late-game prize. Gate
+    // to late Act II so it isn't an early casual find.
+    drop: { minDepth: 7, weight: 0.7 },
   },
   // ── REACH MELEE ───────────────────────────────────────────────────
   // The in-between weapon. Melee, but its long reach lets it strike from
@@ -387,11 +470,46 @@ export const ITEMS: Record<string, ItemSpec> = {
     // the reach weapon's pressure tool: poke, retreat, let the stacks
     // work while you keep spacing.
     weapon: {
-      class: 'spear', reach: 3.0, coneHalfAngle: 0.42, damage: 2, critChance: 0.12, critMultiplier: 2.2,
+      class: 'spear', reach: 2.5, coneHalfAngle: 0.42, damage: 2, critChance: 0.12, critMultiplier: 2.2,
       onHit: { buffId: 'bleed', chance: 0.4, duration: 3 },
     },
     affixPool: ['keening', 'gallows', 'patience', 'spine', 'serration', 'venom'],
     maxAffixes: 2,
+  },
+  // ── MUNDANE BASE WEAPONS (starter-pool fodder) ─────────────────────
+  // Plain, honest tools. No on-hit, modest stats — distinct FEEL is the
+  // identity (reach, sweep), not power. These widen the starter roll.
+  'bent-sickle': {
+    id: 'bent-sickle',
+    kind: 'weapon',
+    rarity: 'mundane',
+    name: 'A bent sickle',
+    flavor: 'Curved for the harvest. The harvest was never wheat.',
+    dropModel: BENT_SICKLE,
+    viewmodel: BENT_SICKLE,
+    weapon: {
+      // Scythe class — wide cone catches a clutch of small things at once.
+      // Low damage; the sweep IS the value. The swarm-clearer starter.
+      class: 'scythe', reach: 2.0, coneHalfAngle: 0.95, damage: 1, critChance: 0.08, critMultiplier: 2.2,
+    },
+    affixPool: ['keening', 'gallows', 'serration', 'spine'],
+    maxAffixes: 1,
+  },
+  'pilgrims-pike': {
+    id: 'pilgrims-pike',
+    kind: 'weapon',
+    rarity: 'mundane',
+    name: "A pilgrim's pike",
+    flavor: 'Pitted iron on an ashen haft. Keeps things at arm’s length — for a while.',
+    dropModel: PILGRIMS_PIKE,
+    viewmodel: PILGRIMS_PIKE,
+    weapon: {
+      // Spear class — long reach, narrow cone. Poke and retreat; the
+      // spacing starter. Mundane: no bleed, just distance.
+      class: 'spear', reach: 2.4, coneHalfAngle: 0.42, damage: 1, critChance: 0.06, critMultiplier: 2.2,
+    },
+    affixPool: ['keening', 'gallows', 'patience', 'spine'],
+    maxAffixes: 1,
   },
   // ── RANGED WEAPONS ────────────────────────────────────────────────
   // The main-hand ranged class. A ranged weapon's `ranged.projectileId`
@@ -553,6 +671,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     // hit. Pairs with the existing combat:hit pipeline that reads
     // playerOnHits and rolls per swing.
     onHit: { buffId: 'poison', chance: 0.30, duration: 4.0 },
+    // Boss-signature: distributed by the Boiling King, never from a generic
+    // chest/kill roll.
+    drop: { noDrop: true },
   },
   // ── GLOVES ─────────────────────────────────────────────────────────
   'leather-gloves': {
@@ -589,6 +710,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     name: 'An oil lamp',
     flavor: 'The flame is your only friend down here.',
     dropModel: OIL_LAMP_MODEL,
+    // The player starts with one; a duplicate is near-useless. Keep it out
+    // of generic loot rolls (it's granted at run start / hand-placed).
+    drop: { noDrop: true },
   },
   'wooden-shield': {
     id: 'wooden-shield',
@@ -655,6 +779,97 @@ export const ITEMS: Record<string, ItemSpec> = {
       { kind: 'weapon-damage', amount: 2 },
       { kind: 'max-hp', amount: -1 },
     ],
+  },
+  // ── SHARP-TRADE CURSED ITEMS ──────────────────────────────────────
+  // The risk/reward spine: each is a real power spike bought with a real
+  // wound. You feel both halves. They roll from the cursed band (rare —
+  // content/loot.ts) and read violet on the floor, so taking one is always
+  // a knowing choice. Gated to mid-game (drop.minDepth) — a curse is a
+  // commitment, not a floor-1 freebie. Flat modifiers (the negatives are
+  // the bite); weapons inherit default attribute scaling.
+  gravewake: {
+    id: 'gravewake',
+    kind: 'weapon',
+    rarity: 'cursed',
+    name: 'Gravewake',
+    flavor: 'It cuts deepest the hand that holds it.',
+    dropModel: WEAPON_SCIMITAR,
+    viewmodel: WEAPON_SCIMITAR,
+    // Big multiplier on a plain blade — but it eats four points of your
+    // flesh. Hits like a fabled, lives like a coward.
+    weapon: {
+      class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.3,
+    },
+    modifiers: [
+      { kind: 'damage-multiplier', amount: 1.35 },
+      { kind: 'max-hp', amount: -4 },
+    ],
+    affixPool: ['vile', 'gallows', 'keening', 'serration'],
+    maxAffixes: 1,
+    drop: { minDepth: 4 },
+  },
+  'eye-of-appetite': {
+    id: 'eye-of-appetite',
+    kind: 'amulet',
+    rarity: 'cursed',
+    name: 'Eye of Appetite',
+    flavor: 'It watches your enemies. It watches you longer.',
+    dropModel: ACID_TONGUE_AMULET,
+    // Glass-cannon crit: brutal on the swing, but every blow you TAKE
+    // lands 15% harder. Reward the kill, fear the miss.
+    modifiers: [
+      { kind: 'crit-chance', amount: 0.12 },
+      { kind: 'crit-mult', amount: 0.6 },
+      { kind: 'incoming-damage-mult', amount: 1.15 },
+    ],
+    drop: { minDepth: 4 },
+  },
+  'the-long-hunger': {
+    id: 'the-long-hunger',
+    kind: 'ring',
+    rarity: 'cursed',
+    name: 'The Long Hunger',
+    flavor: 'Feed it, or it feeds.',
+    dropModel: RING_OF_BLOODTHIRST,
+    // Heavy lifesteal turns your offence into your healing — but your
+    // pool is four shallower, so a dry spell is a death sentence.
+    modifiers: [
+      { kind: 'lifesteal-pct', amount: 0.30 },
+      { kind: 'max-hp', amount: -4 },
+    ],
+    drop: { minDepth: 3 },
+  },
+  'cowards-reward': {
+    id: 'cowards-reward',
+    kind: 'boots',
+    rarity: 'cursed',
+    name: "Coward's Reward",
+    flavor: 'Faster than the thing behind you. Barely.',
+    dropModel: SHROUD_STEP_BOOTS,
+    // Move + act faster than anything down here, at the cost of three
+    // points of flesh. Kiting becomes king; one mistake still kills.
+    modifiers: [
+      { kind: 'move-speed-mult', amount: 1.22 },
+      { kind: 'action-speed-mult', amount: 1.12 },
+      { kind: 'max-hp', amount: -3 },
+    ],
+    drop: { minDepth: 3 },
+  },
+  'martyrs-cilice': {
+    id: 'martyrs-cilice',
+    kind: 'armor',
+    rarity: 'cursed',
+    name: "Martyr's Cilice",
+    flavor: 'Pain sharpens. The dungeon is a patient teacher.',
+    dropModel: TATTERED_CLOAK,
+    // Offence bolted onto a defence slot: you hit much harder, and you
+    // are hit harder too (two less physical armour). Pure aggression.
+    modifiers: [
+      { kind: 'weapon-damage', amount: 2 },
+      { kind: 'damage-multiplier', amount: 1.1 },
+      { kind: 'physical-armor', amount: -2 },
+    ],
+    drop: { minDepth: 4 },
   },
   // ── CONTENT EXPANSION ─────────────────────────────────────────────
   // Slot variety pass — most non-ring slots had a single mundane pick
@@ -847,7 +1062,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     name: 'A flask of steady tonic',
     flavor: 'The mending takes its time.',
     dropModel: STEADY_TONIC,
-    consumableBuff: { buffId: 'regen-pulse', duration: 6.0 },
+    consumableBuff: { buffId: 'regen-pulse', duration: 3.0 },   // ~7 HP over time (was 6s/~13 — playtest: too strong)
     carryLimit: 2,
   },
   // ── REACTIVE EQUIPMENT ────────────────────────────────────────────
@@ -1124,6 +1339,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: HEALING_POTION,
     consumableHeal: 4,
     carryLimit: 3,
+    // The backbone of the heal economy — weight it heavily in the mundane
+    // band so the central roller keeps potions flowing as the common drop.
+    drop: { weight: 5 },
   },
   'berserk-potion': {
     id: 'berserk-potion',

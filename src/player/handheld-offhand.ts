@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { getOffhandOffset } from './viewmodel-bob';
+import { registerViewmodel, unregisterViewmodel } from '../style/render-target';
 import type { ModelSpec } from '../ecs/model-types';
 
 // Generic offhand viewmodel — a model parented to the camera at the
@@ -40,13 +41,15 @@ export function attachOffhandViewmodel(camera: THREE.Camera, spec: ModelSpec) {
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
       m.depthTest = false;
-      m.depthWrite = false;
+      m.depthWrite = false;   // near depth comes from the renderer's
+                             // viewmodel depth-only pass (render-target.ts)
       m.transparent = true;
       m.needsUpdate = true;
     }
     mesh.renderOrder = 998;   // just under the sword (999), same as the lamp
   });
   camera.add(group);
+  registerViewmodel(group);   // near-depth pass (see render-target.ts)
 }
 
 /** Per-frame — apply subtle bob on top of the base offhand position
@@ -63,6 +66,7 @@ export function tickOffhandViewmodel() {
 /** Detach the current offhand viewmodel and dispose. Idempotent. */
 export function detachOffhandViewmodel() {
   if (!group) return;
+  unregisterViewmodel(group);
   group.parent?.remove(group);
   group.traverse((obj) => {
     const mesh = obj as THREE.Mesh;

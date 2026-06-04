@@ -3,6 +3,7 @@ import { BUFFS } from '../content/buffs';
 import { applyEffect } from './effects';
 import { all } from './world';
 import { applyDamageVia } from '../combat/damage';
+import { loreAfflictionDurationMul, loreAfflictionPotencyMul } from '../state/character';
 
 // Buff lifecycle:
 // - applyBuff() adds a new ActiveBuff (or, for an already-active buff,
@@ -17,6 +18,13 @@ export function applyBuff(entity: Entity, buffId: string, duration: number, sour
   const spec = BUFFS[buffId];
   if (!spec) return;
   const maxStacks = spec.maxStacks ?? 1;
+
+  // Lore SIGNATURE — the player's afflictions (DoT statuses) last
+  // longer. Scoped to player-sourced damaging-tick buffs so it never
+  // touches self-buffs (berserk/regen) or enemy-applied statuses.
+  if (sourceId === 'player' && spec.tickEffect?.type === 'damage') {
+    duration *= loreAfflictionDurationMul();
+  }
 
   const existing = entity.buffs.find((b) => b.specId === buffId);
   if (existing) {
@@ -59,10 +67,13 @@ function tickEntityBuffs(entity: Entity, dt: number) {
         if (eff.type === 'damage') {
           // DoT — scale by stacks + route through the damage sink so a
           // kill resolves drops/credit (and a quiet path for the player).
+          // Lore SIGNATURE: a player-sourced affliction ticks harder.
+          let base = (eff.amount ?? 0) * buff.stacks;
+          if (buff.sourceId === 'player') base *= loreAfflictionPotencyMul();
           applyDamageVia({
             source: buff.sourceId ?? null,
             target: entity.id,
-            base: (eff.amount ?? 0) * buff.stacks,
+            base,
             type: eff.damageType ?? 'physical',
           });
         } else {

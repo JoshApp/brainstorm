@@ -32,10 +32,16 @@ export type ObstacleCircle = {
 
 /** Per-shape collision attached to a 'model' prop. Each shape may
  *  carry an optional offset relative to the prop's local origin;
- *  the offset is rotated by the prop's rotY at build time. */
+ *  the offset is rotated by the prop's rotY at build time.
+ *
+ *  `height` (m above floor) is OPTIONAL: omitted = full-height blocker
+ *  (columns, buttresses — block movement AND every projectile). Set it on
+ *  a LOW structural prop (a kerb, a fallen beam) so shots fly over it
+ *  (height-aware projectile pass — see WalkableRegion.containsProjectile).
+ *  Movement always collides regardless of height. */
 export type PropCollision =
-  | { kind: 'circle'; r: number; ox?: number; oz?: number }
-  | { kind: 'aabb'; halfW: number; halfD: number; ox?: number; oz?: number };
+  | { kind: 'circle'; r: number; ox?: number; oz?: number; height?: number }
+  | { kind: 'aabb'; halfW: number; halfD: number; ox?: number; oz?: number; height?: number };
 
 /** Declarative facing directive for a prop. Resolves to a
  *  concrete rotY at compose time via src/level/facing.ts. The
@@ -104,6 +110,12 @@ export type RoomSpec = {
 export type PropSpec =
   | { kind: 'pillar'; x: number; z: number; size?: number }
   | { kind: 'altar'; x: number; z: number }
+  // Challenge-arena centrepiece: a chained reliquary. Interacting activates
+  // the room's wave encounter (the gate seals as a reactor); surviving the
+  // waves shatters the chains + yields a generous hoard. Placing one in an
+  // arena room flips that room's arena gate to the 'offering' trigger (the
+  // gate no longer slams on entry — you choose to start the trial).
+  | { kind: 'challenge-offering'; x: number; z: number; rotY?: number }
   // 'model' = any ModelSpec placed in the world as static decoration.
   // Defaults to NO COLLISION — pure visuals. Use for relics, debris,
   // sigils, anything atmospheric that doesn't move or react.
@@ -398,7 +410,7 @@ export type DoorSpec = {
    */
   unlock?:
     | { kind: 'cleared'; roomIds: string[] }
-    | { kind: 'arena'; roomIds: string[] };
+    | { kind: 'arena'; roomIds: string[]; trigger?: 'cross' | 'offering' };
 };
 
 /**
@@ -423,10 +435,12 @@ export type OpeningSpec = {
   edge?: Edge;                 // provenance — which vault edge (fog-gate needs it)
   /** Segment endpoints (transitional — derived from centre/rotY/width). */
   ax?: number; az?: number; bx?: number; bz?: number;
-  /** Portcullis unlock condition (gate-cleared / gate-arena). */
+  /** Portcullis unlock condition (gate-cleared / gate-arena). For an arena,
+   *  `trigger` selects what seals it: 'cross' (default — the trap, player
+   *  walks in) or 'offering' (the challenge — a loot offering activates it). */
   unlock?:
     | { kind: 'cleared'; roomIds: string[] }
-    | { kind: 'arena'; roomIds: string[] };
+    | { kind: 'arena'; roomIds: string[]; trigger?: 'cross' | 'offering' };
   /** Fog-gate tint (per-boss identity). */
   color?: number;
   /** Hinged-door swing config. */

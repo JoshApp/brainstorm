@@ -13,10 +13,16 @@
          The universal `touch-action: none` above — which stops the browser
          hijacking touches over the game (pinch-zoom, pull-to-refresh) — also
          kills touch-scrolling inside those panels on a phone. Re-enable a
-         vertical pan on exactly the scroll containers (any element that sets
-         overflow-y inline), so tall menus scroll on mobile. Gameplay HUD,
-         which never sets overflow-y, keeps `none`. */
-      [style*="overflow-y"] { touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+         vertical pan on the scroll containers AND ALL THEIR DESCENDANTS:
+         touch-action is decided by the element your finger lands on, so the
+         container alone isn't enough — a drag that starts on the panel's
+         content (text/rows/buttons, which inherit the universal `none`)
+         would otherwise refuse to scroll. The `*` descendant rule is what
+         makes dense menus (character/codex) actually pan on a phone.
+         Gameplay HUD, which never sets overflow-y, keeps `none`. */
+      [style*="overflow-y"] { -webkit-overflow-scrolling: touch; }
+      [style*="overflow-y"],
+      [style*="overflow-y"] * { touch-action: pan-y; }
       html, body { width: 100%; height: 100%; overflow: hidden; background: #000; overscroll-behavior: none; }
       body { position: fixed; inset: 0; }
       canvas { display: block; width: 100%; height: 100%; }

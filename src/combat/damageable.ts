@@ -36,4 +36,8 @@ export interface Damageable {
   /** Route a damage event through the pipeline, apply it to HP, return the
    *  amount actually applied (for the floating number). */
   takeDamage(event: DamageEvent): number;
+  /** Chip this target's poise; breaking it staggers (interrupts) the
+   *  target. Optional — enemies implement it, clutter (vases) doesn't,
+   *  so the combat cone calls it conditionally on heavy hits. */
+  applyStaggerDamage?(amount: number): void;
 }

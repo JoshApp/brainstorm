@@ -13,12 +13,21 @@ export interface Interactable {
   id: EntityId;
   /** World position of the interactable's pivot. */
   position: THREE.Vector3;
-  /** Player must be within this distance (XZ-plane) to interact. */
+  /** Player must be within this distance (XZ-plane) to interact — both the
+   *  walk-up prompt and a tap (direct or near-miss) gate on this. */
   radius: number;
   /** Short verb shown on the prompt: 'OPEN' / 'TAKE' / 'USE' / etc. */
   promptLabel: string;
   /** Called when the player presses USE while in range. */
   onUse: () => void;
+  /**
+   * Optional eligibility check. When it returns false the object is "in
+   * the way but can't be taken right now" — e.g. a consumable when the
+   * carry slot is full. Selection + tap resolution prefer an ELIGIBLE
+   * interactable at the same spot, so a blocked item lying on top of
+   * loot can't trap the item beneath it. Omitted = always usable.
+   */
+  canUse?: () => boolean;
   /**
    * Optional: called every frame. Receives dt + the current player XZ
    * position so proximity-driven interactables (traps, pressure plates,

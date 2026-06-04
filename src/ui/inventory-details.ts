@@ -1,7 +1,7 @@
 import { equipFromInventory, unequipSlot, getEquipment, getSlotAffixes } from '../player/equipment';
 import { addItemSilently, removeItem } from '../player/inventory';
 import { getPlayerHp, getPlayerMaxHp, healPlayer } from '../player/health';
-import { RARITY_COLORS, type ItemSpec } from '../content/items';
+import { RARITY_COLORS, type ItemSpec, type WeaponClass } from '../content/items';
 import type { AffixInstance } from '../content/affixes';
 import { SETS } from '../content/sets';
 import { BUFFS } from '../content/buffs';
@@ -9,7 +9,9 @@ import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
 import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
-import { formatWeapon, formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus } from './item-format';
+import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus } from './item-format';
+import { resolveWeaponStats, STAGGER_POWER_BY_CLASS, weaponScalingSummary } from '../content/weapon-classes';
+import { getCharacter, proficiencyTier } from '../state/character';
 import { hexCss } from '../style/color-utils';
 import {
   CARD_BG, TEXT_PRIMARY, TEXT_DIM, TEXT_FAINT, sectionLabel,
@@ -227,7 +229,10 @@ function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] = []): H
   const lines: HTMLDivElement[] = [];
 
   if (item.weapon) {
-    lines.push(detailLine(formatWeapon(item.weapon)));
+    // Resolved-vs-base stat rows: what YOU bring (proficiency + Might/
+    // Finesse/Lore) is tinted gold over the item's white base — "this is
+    // bigger because you're good with its class." Plus the class tier bar.
+    lines.push(...buildWeaponStats(item));
     if (item.weapon.onHit) lines.push(detailLine(formatOnHit(item.weapon.onHit)));
   }
   if (item.modifiers && item.modifiers.length) {
@@ -279,6 +284,97 @@ function countEquippedInSet(setId: string): number {
     if (slot?.setId === setId) n++;
   }
   return n;
+}
+
+// The warm gold of the proficiency bars — "mastery" tint for any bonus
+// the player brings to a weapon over its intrinsic base.
+const MASTERY_GOLD = 'rgba(255, 200, 130, 0.95)';
+
+/** Build the weapon stat rows (base + gold bonus) + the class tier bar. */
+function buildWeaponStats(item: ItemSpec): HTMLDivElement[] {
+  const w = item.weapon!;
+  const cls = w.class ?? 'sword';
+  const r = resolveWeaponStats(w);   // resolved with the CURRENT character
+  const ranged = !!w.ranged;
+  const out: HTMLDivElement[] = [];
+
+  const trimNum = (n: number) => n.toFixed(1).replace(/\.0$/, '');
+  out.push(statRow('Damage', w.damage, r.damage - w.damage, trimNum));
+  const baseCrit = w.critChance ?? 0.05;
+  out.push(statRow('Crit', baseCrit * 100, (r.critChance - baseCrit) * 100, (n) => `${Math.round(n)}%`));
+  if (!ranged) {
+    const baseStagger = w.staggerPower ?? STAGGER_POWER_BY_CLASS[cls];
+    out.push(statRow('Stagger', baseStagger, r.staggerPower - baseStagger, trimNum));
+  }
+  out.push(statRow(ranged ? 'Range' : 'Reach', w.reach, r.reach - w.reach, (n) => `${trimNum(n)}m`));
+
+  // Which attribute powers this weapon (playtest: scaling wasn't explained).
+  const scaleRow = detailLine(`Scales ${weaponScalingSummary(w)}`, /*dim*/ true);
+  scaleRow.style.marginTop = '2px';
+  out.push(scaleRow);
+
+  out.push(buildTierBar(cls));
+  return out;
+}
+
+/** A "Label  base  +bonus" row; the bonus (if any) reads gold. */
+function statRow(label: string, base: number, bonus: number, fmt: (n: number) => string): HTMLDivElement {
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    display: 'flex', alignItems: 'baseline', gap: '8px',
+    fontSize: '12px', lineHeight: '1.5', letterSpacing: '0.04em',
+  } as Partial<CSSStyleDeclaration>);
+  const l = document.createElement('span');
+  l.textContent = label;
+  Object.assign(l.style, { color: TEXT_DIM, minWidth: '64px' } as Partial<CSSStyleDeclaration>);
+  const v = document.createElement('span');
+  v.textContent = fmt(base);
+  v.style.color = TEXT_PRIMARY;
+  row.append(l, v);
+  if (bonus > 0.05) {
+    const b = document.createElement('span');
+    b.textContent = `+${fmt(bonus)}`;
+    Object.assign(b.style, { color: MASTERY_GOLD, fontWeight: '600' } as Partial<CSSStyleDeclaration>);
+    row.append(b);
+  }
+  return row;
+}
+
+/** Class proficiency tier line + progress bar (gold). */
+function buildTierBar(cls: WeaponClass): HTMLDivElement {
+  const pts = getCharacter().proficiencies[cls];
+  const tier = proficiencyTier(pts);
+  const clsName = cls.charAt(0).toUpperCase() + cls.slice(1);
+
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, { marginTop: '6px' } as Partial<CSSStyleDeclaration>);
+
+  const label = document.createElement('div');
+  Object.assign(label.style, {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+    fontSize: '11px', letterSpacing: '0.06em', marginBottom: '3px',
+  } as Partial<CSSStyleDeclaration>);
+  const left = document.createElement('span');
+  left.innerHTML = `${clsName} · <span style="color:${MASTERY_GOLD};font-weight:700">${tier.name.toUpperCase()}</span>`;
+  left.style.color = TEXT_DIM;
+  const right = document.createElement('span');
+  right.textContent = tier.nextAt === null ? 'mastered' : `${pts} → ${tier.nextAt}`;
+  right.style.color = TEXT_FAINT;
+  label.append(left, right);
+
+  const track = document.createElement('div');
+  Object.assign(track.style, {
+    height: '4px', background: 'rgba(40, 28, 18, 0.85)', borderRadius: '2px', overflow: 'hidden',
+  } as Partial<CSSStyleDeclaration>);
+  const fill = document.createElement('div');
+  Object.assign(fill.style, {
+    height: '100%', width: `${Math.round(tier.progress * 100)}%`,
+    background: 'linear-gradient(to right, rgba(180, 130, 90, 0.95), rgba(255, 200, 130, 0.95))',
+  } as Partial<CSSStyleDeclaration>);
+  track.appendChild(fill);
+
+  wrap.append(label, track);
+  return wrap;
 }
 
 function detailLine(text: string, dim = false): HTMLDivElement {

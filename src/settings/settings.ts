@@ -68,6 +68,14 @@ export interface Settings {
    *  in multi-room sightlines; experimental (watch for rooms popping in as you
    *  turn). Opt-in. */
   portalCulling: boolean;
+  /** Banded (cel/posterized) direct lighting — steps the light-to-dark falloff
+   *  into hard bands for a graphic PSX-chiaroscuro look. Subtle in the dark
+   *  dungeon; a stylistic taste toggle. */
+  bandedLighting: boolean;
+  /** Ink outline — depth-silhouette contour lines drawn in the blit, so the
+   *  untextured primitive geometry reads as a deliberate drawing (cel +
+   *  outline). Stylistic taste toggle. */
+  outlines: boolean;
 }
 
 export type ShadowMode = 'off' | 'hero' | 'single' | 'all';
@@ -107,6 +115,8 @@ const DEFAULTS: Settings = {
   shadows: 'hero',
   adaptiveResolution: true,
   portalCulling: false,
+  bandedLighting: true,
+  outlines: true,
 };
 
 let current: Settings = load();

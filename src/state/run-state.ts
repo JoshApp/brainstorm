@@ -12,6 +12,7 @@
 import type { EquipSlot } from '../player/equipment';
 import { emit } from '../broadcast/event-bus';
 import { levelForXp, xpInLevel, xpForNextLevel } from './leveling';
+import { serializeCharacter, type CharacterSave } from './character';
 
 const STORAGE_KEY = 'delve:save';
 const SAVE_VERSION = 2;
@@ -47,6 +48,10 @@ export interface SaveData {
   actEntryKills?: number;
   actEntryXp?: number;
   actEntryGold?: number;
+  /** Character progression snapshot (attributes, proficiencies, unspent
+   *  points) at floor entry — so a reload/resume keeps your build.
+   *  Optional for older saves (treated as baseline). */
+  character?: CharacterSave;
 }
 
 // ── In-memory run state (mid-floor mutable counters) ─────────────────
@@ -193,6 +198,7 @@ export function commitFloorEntry(args: {
   inMemory.hp = args.hp;
   inMemory.inventory = { ...args.inventory };
   inMemory.equipment = { ...args.equipment };
+  inMemory.character = serializeCharacter();   // persist the build at this floor entry
   persist();
 }
 

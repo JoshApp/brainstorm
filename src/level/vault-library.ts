@@ -249,9 +249,11 @@ const COMBAT_HALL: Vault = {
     { kind: 'group', groupId: 'ritual-circle', x: 0, z: 0 },
     { kind: 'group', groupId: 'bone-shrine',   x: -5, z: -5 },
     { kind: 'group', groupId: 'bone-shrine',   x:  5, z:  5 },
-    // One violet god ray off to the side of the central ritual,
-    // so the player can walk through the beam on their approach.
-    { kind: 'model', model: RAY_VIOLET, x: -4, y: 0, z: 3, rotY: 0.4 },
+    // Violet god ray landing ON the central ritual altar — just
+    // outside the front-right candle so the shaft falls on the altar
+    // + skull, not on empty floor. Crossing the beam = arriving at
+    // the ritual (Lighting-as-signal: anchor the beam, don't decorate).
+    { kind: 'model', model: RAY_VIOLET, x: 1.4, y: 0, z: 0.5, rotY: 0.4 },
   ],
   // Ritual-circle group already has its own focal glow + the
   // bone-shrines colour the corners. Wall torches push violet.
@@ -407,10 +409,11 @@ const TREASURE_VAULT: Vault = {
   weight: 1,
   props: [
     { kind: 'group', groupId: 'altar-ritual', x: 0, z: 0 },
-    // Warm gold shaft falling on the centre — the treasure
-    // signature beat. Offset slightly so it lands beside the
-    // altar group rather than overlapping it.
-    { kind: 'model', model: RAY_GOLD, x: 2.5, y: 0, z: 0, rotY: -0.3 },
+    // Warm gold shaft landing ON the treasure altar — the signature
+    // beat. Just off the altar's side (clear of the flanking candles
+    // + the corpse at the foot) so the shaft falls on the altar
+    // itself, not several metres into open floor.
+    { kind: 'model', model: RAY_GOLD, x: 1.4, y: 0, z: 0, rotY: -0.3 },
   ],
   torchTint: TORCH_GOLD,
   cellProps: {
@@ -586,13 +589,42 @@ const ENCOUNTER_ARENA: Vault = {
   props: [
     { kind: 'chest', x: 0, z: 1.5, tier: 'iron', facing: { kind: 'wall-away' } },
   ],
-  // Two pairs of ghoul guardians flanking the arena.
-  cellProps: {
-    '2,5':  [{ kind: 'spawn', enemyId: 'ghoul' }],
-    '11,5': [{ kind: 'spawn', enemyId: 'ghoul' }],
-    '2,9':  [{ kind: 'spawn', enemyId: 'ghoul' }],
-    '11,9': [{ kind: 'spawn', enemyId: 'ghoul' }],
-  },
+  // No static guardians — this is now a TRAP arena: crossing the 'D' gate
+  // slams it and the wave controller summons escalating waves (see
+  // arena-waves.ts). The gate only rises once the last wave is dead.
+};
+
+// CHALLENGE arena — the VOLUNTARY twin of the trap. Same shape (entry alcove,
+// 'D' gate, arena below) but the centrepiece is a chained CHALLENGE OFFERING
+// instead of a chest. The gate does NOT slam on entry — placing an offering in
+// the room flips its arena gate to the 'offering' trigger (builder.ts). You
+// walk in, read the bound reliquary, and CHOOSE to accept: the gate slams, the
+// same wave gauntlet summons, and surviving it shatters the chains for a
+// generous hoard. Risk you opt into, for loot you can see.
+const CHALLENGE_ARENA: Vault = {
+  id: 'challenge-arena',
+  tags: ['treasure'],
+  map: [
+    '##############',
+    '#....*....*..#',
+    '#............#',
+    '#............#',
+    '#####DDD######',
+    '#............#',
+    '#............#',
+    '#............#',
+    '#............#',
+    '#............#',
+    '#....*....*..#',
+    '##############',
+  ],
+  minDepth: 3,
+  weight: 1,
+  torchTint: TORCH_BLOOD,
+  // The reliquary sits in the centre of the arena proper (below the gate).
+  props: [
+    { kind: 'challenge-offering', x: 0, z: 2 },
+  ],
 };
 
 // Blood altar encounter. A single cursed offering (ring of marrow)
@@ -981,9 +1013,10 @@ const BOSS_HALL: Vault = {
     '####################',
   ],
   minDepth: 3,
-  // Tall vaulted ceiling — the king is huge and leaps ~4m; a normal
-  // ~3m roof clips the arc. Also just reads as a grand cathedral arena.
-  roomHeight: 10,
+  // Tall vaulted ceiling — the king's leap arc and the Marrow Sovereign's
+  // 5m frame + greatscythe both want headroom. 14m so the giant skeleton
+  // doesn't scrape the rafters and the eye actually lifts to find his skull.
+  roomHeight: 14,
   // Weight 3 (vs 1 for the antechamber + cathedral) so the grand
   // arena wins the boss-vault roll most of the time. Tiny boss rooms
   // are still possible — they're the variant for the curious player
@@ -1070,7 +1103,7 @@ export const VAULTS: Vault[] = [
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
   ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
-  ENCOUNTER_ARENA, ENCOUNTER_OSSUARY,
+  ENCOUNTER_ARENA, CHALLENGE_ARENA, ENCOUNTER_OSSUARY,
   BOSS_ANTECHAMBER, BOSS_CATHEDRAL, BOSS_HALL,
   EXIT_SIMPLE, EXIT_ALCOVE, EXIT_GRAND,
 ];

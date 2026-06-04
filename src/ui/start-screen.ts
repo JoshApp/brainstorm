@@ -9,6 +9,7 @@
 // no sponsor energy, no fanfare.
 
 import { openScreen, closeScreen } from './screen-manager';
+import { createSheet, menuButton } from './menu-shell';
 import { getMeta, getStash } from '../state/meta-state';
 import { showCodex } from './codex-screen';
 import { showStash } from './stash-screen';
@@ -44,8 +45,15 @@ export function showStartScreen(opts: StartScreenOptions) {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: '14px',
+    // Scroll when the content can't fit a short landscape phone (was a
+    // fixed centered column that overflowed off-screen unreachably). The
+    // flex spacers below center the content when it DOES fit. Horizontal
+    // safe-area so nothing sits under a landscape notch.
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    paddingLeft: 'env(safe-area-inset-left, 0px)',
+    paddingRight: 'env(safe-area-inset-right, 0px)',
     // z-index managed by the screen manager via policy.layer = 'title'.
     fontFamily: '"Iowan Old Style", "Palatino", "Times New Roman", serif',
     color: 'rgba(220, 180, 140, 0.9)',
@@ -53,6 +61,13 @@ export function showStartScreen(opts: StartScreenOptions) {
     opacity: '0',
     transition: 'opacity 0.6s ease',
   } as Partial<CSSStyleDeclaration>);
+
+  // Top spacer — grows to vertically centre the content when it fits,
+  // collapses to its min (clearing the top safe-area) when content is
+  // tall enough to scroll, keeping the title reachable from the top.
+  const spacerTop = document.createElement('div');
+  spacerTop.style.flex = '1 0 calc(20px + env(safe-area-inset-top, 0px))';
+  root.appendChild(spacerTop);
 
   // Animated subtle vignette behind everything — a flicker of warm light
   // pulsing slowly, like a distant torch you're walking toward.
@@ -152,25 +167,34 @@ export function showStartScreen(opts: StartScreenOptions) {
     zIndex: '1',
   });
 
-  // DESCEND — primary action.
-  const descend = makePill('DESCEND', 'begin a fresh run', true);
-  descend.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    hide();
-    opts.onDescend();
-  });
-  buttons.appendChild(descend);
-
-  // CONTINUE — only if save exists.
   if (opts.hasSave) {
+    // A run is live → CONTINUE is the hero; starting anew is a MUTED,
+    // CONFIRM-GATED action (DESCEND wipes the save — was a footgun as the
+    // big primary button).
     const sub2 = opts.saveDepth ? `resume at depth ${opts.saveDepth}` : 'resume previous run';
-    const cont = makePill('CONTINUE', sub2, false);
+    const cont = makePill('CONTINUE', sub2, true);
     cont.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       hide();
       opts.onContinue();
     });
     buttons.appendChild(cont);
+
+    const fresh = makePill('NEW RUN', 'abandons your descent', false);
+    fresh.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      confirmAbandon(opts.saveDepth, () => { hide(); opts.onDescend(); });
+    });
+    buttons.appendChild(fresh);
+  } else {
+    // No save → DESCEND is the primary (nothing to lose, no confirm).
+    const descend = makePill('DESCEND', 'begin a fresh run', true);
+    descend.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      hide();
+      opts.onDescend();
+    });
+    buttons.appendChild(descend);
   }
 
   root.appendChild(buttons);
@@ -182,14 +206,33 @@ export function showStartScreen(opts: StartScreenOptions) {
   const links = document.createElement('div');
   Object.assign(links.style, {
     display: 'flex',
-    gap: '32px',
-    marginTop: '26px',
+    flexWrap: 'wrap',            // wrap to a 2nd row instead of overflowing a narrow screen
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '0 4px',                // tight — faint dot separators carry the spacing
+    marginTop: '24px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '11px',
-    letterSpacing: '0.28em',
+    fontSize: '10px',
+    letterSpacing: '0.22em',
     position: 'relative',
     zIndex: '1',
   } as Partial<CSSStyleDeclaration>);
+
+  // Append a link with a faint "·" separator before it (except the first)
+  // so the footer reads as one compact de-emphasized row.
+  const pushLink = (link: HTMLButtonElement) => {
+    if (links.childElementCount > 0) {
+      const sep = document.createElement('span');
+      sep.textContent = '·';
+      Object.assign(sep.style, {
+        color: 'rgba(150, 110, 70, 0.4)',
+        fontSize: '11px',
+        pointerEvents: 'none',
+      } as Partial<CSSStyleDeclaration>);
+      links.appendChild(sep);
+    }
+    links.appendChild(link);
+  };
 
   // TUTORIAL — small text link, always available. Returning players
   // can revisit the antechamber if they want to refresh the loop or
@@ -201,7 +244,7 @@ export function showStartScreen(opts: StartScreenOptions) {
       hide();
       opts.onTutorial!();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
 
   if (opts.onTestChambers) {
@@ -211,7 +254,7 @@ export function showStartScreen(opts: StartScreenOptions) {
       hide();
       opts.onTestChambers!();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
 
   const stash = getStash();
@@ -221,7 +264,7 @@ export function showStartScreen(opts: StartScreenOptions) {
       e.preventDefault();
       showStash();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
   if (meta.enemiesSlain.length || meta.itemsFound.length || meta.notesRead.length) {
     const link = makeSecondaryLink('CODEX', 0);
@@ -229,7 +272,7 @@ export function showStartScreen(opts: StartScreenOptions) {
       e.preventDefault();
       showCodex();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
   // DISPATCHES — the patch log. Always available; it's the public
   // record of what's changed. Factual now; the announcer voice is a
@@ -240,9 +283,14 @@ export function showStartScreen(opts: StartScreenOptions) {
       e.preventDefault();
       showPatchlog();
     });
-    links.appendChild(link);
+    pushLink(link);
   }
   if (links.childElementCount > 0) root.appendChild(links);
+
+  // Bottom spacer — balances spacerTop so content centres when it fits.
+  const spacerBottom = document.createElement('div');
+  spacerBottom.style.flex = '1 0 calc(20px + env(safe-area-inset-bottom, 0px))';
+  root.appendChild(spacerBottom);
 
   document.body.appendChild(root);
 
@@ -273,22 +321,25 @@ function makePill(label: string, hint: string, primary: boolean): HTMLButtonElem
     flexDirection: 'column',
     alignItems: 'center',
     gap: '2px',
-    padding: '12px 32px',
-    minWidth: '180px',
+    // Hero vs secondary: DESCEND is bigger, glows, dominates; CONTINUE is
+    // a slim muted pill clearly beneath it.
+    padding: primary ? '15px 44px' : '9px 26px',
+    minWidth: primary ? '220px' : '160px',
+    minHeight: '44px',
     borderRadius: '36px',
     border: primary
-      ? '1px solid rgba(255, 190, 120, 0.6)'
-      : '1px solid rgba(150, 110, 70, 0.4)',
+      ? '1px solid rgba(255, 190, 120, 0.65)'
+      : '1px solid rgba(150, 110, 70, 0.35)',
     background: primary
-      ? 'linear-gradient(180deg, rgba(80, 42, 22, 0.85), rgba(50, 24, 10, 0.85))'
-      : 'rgba(30, 22, 16, 0.6)',
-    color: primary ? 'rgba(255, 230, 200, 0.98)' : 'rgba(200, 170, 140, 0.85)',
+      ? 'linear-gradient(180deg, rgba(86, 46, 24, 0.9), rgba(52, 26, 11, 0.9))'
+      : 'rgba(30, 22, 16, 0.5)',
+    color: primary ? 'rgba(255, 232, 202, 0.98)' : 'rgba(200, 170, 140, 0.8)',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     cursor: 'pointer',
     transition: 'transform 0.08s ease, background 0.15s ease, box-shadow 0.2s ease',
     boxShadow: primary
-      ? '0 0 26px rgba(255, 150, 60, 0.28), 0 2px 8px rgba(0,0,0,0.6)'
-      : '0 2px 8px rgba(0,0,0,0.5)',
+      ? '0 0 30px rgba(255, 150, 60, 0.32), 0 2px 10px rgba(0,0,0,0.6)'
+      : '0 2px 6px rgba(0,0,0,0.4)',
     userSelect: 'none',
     WebkitUserSelect: 'none',
     WebkitTapHighlightColor: 'transparent',
@@ -298,19 +349,19 @@ function makePill(label: string, hint: string, primary: boolean): HTMLButtonElem
   const main = document.createElement('div');
   main.textContent = label;
   Object.assign(main.style, {
-    fontSize: '18px',
-    fontWeight: '600',
-    letterSpacing: '0.24em',
+    fontSize: primary ? '21px' : '14px',
+    fontWeight: primary ? '700' : '600',
+    letterSpacing: primary ? '0.26em' : '0.20em',
   });
   b.appendChild(main);
 
   const sub = document.createElement('div');
   sub.textContent = hint;
   Object.assign(sub.style, {
-    fontSize: '10px',
+    fontSize: primary ? '10px' : '9px',
     letterSpacing: '0.18em',
     textTransform: 'uppercase',
-    color: 'rgba(220, 190, 160, 0.55)',
+    color: 'rgba(220, 190, 160, 0.5)',
   });
   b.appendChild(sub);
 
@@ -327,15 +378,17 @@ function makeSecondaryLink(label: string, badge: number): HTMLButtonElement {
   Object.assign(b.style, {
     display: 'inline-flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: '6px',
-    padding: '6px 4px',
+    minHeight: '44px',          // touch target (was a ~20px-tall text link)
+    padding: '6px 8px',
     background: 'transparent',
     border: 'none',
-    color: 'rgba(200, 170, 140, 0.65)',
+    color: 'rgba(190, 160, 130, 0.55)',   // fainter — clearly subordinate to DESCEND
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '11px',
+    fontSize: '10px',
     fontWeight: '500',
-    letterSpacing: '0.28em',
+    letterSpacing: '0.16em',
     cursor: 'pointer',
     userSelect: 'none',
     WebkitUserSelect: 'none',
@@ -364,8 +417,40 @@ function makeSecondaryLink(label: string, badge: number): HTMLButtonElement {
     b.appendChild(dot);
   }
   b.addEventListener('pointerenter', () => { b.style.color = 'rgba(255, 220, 180, 0.95)'; });
-  b.addEventListener('pointerleave', () => { b.style.color = 'rgba(200, 170, 140, 0.65)'; });
+  b.addEventListener('pointerleave', () => { b.style.color = 'rgba(190, 160, 130, 0.55)'; });
   return b;
+}
+
+/** Confirm before abandoning a live run (DESCEND wipes the save). The
+ *  SAFE choice (keep) is the prominent button; abandon is muted. Built on
+ *  the menu shell so it's dismissable (✕ / backdrop = cancel) and frees
+ *  the cursor on PC. */
+function confirmAbandon(depth: number | undefined, onConfirm: () => void) {
+  const sheet = createSheet({
+    id: 'abandon-confirm',
+    title: 'ABANDON RUN?',
+    width: 440,
+    layer: 'title',   // above the start screen (both 'title'; later stacks on top)
+  });
+  const msg = document.createElement('div');
+  msg.textContent = depth
+    ? `Your descent reached depth ${depth}. To begin anew is to leave it behind — the dungeon keeps what it took.`
+    : 'To begin anew is to leave your current descent behind — there is no returning to it.';
+  Object.assign(msg.style, {
+    fontFamily: '"Iowan Old Style", "Palatino", serif',
+    fontStyle: 'italic',
+    fontSize: '14px',
+    lineHeight: '1.55',
+    color: 'rgba(205, 175, 140, 0.85)',
+    textAlign: 'center',
+    padding: '4px 2px',
+  } as Partial<CSSStyleDeclaration>);
+  sheet.body.appendChild(msg);
+
+  const abandon = menuButton('ABANDON', () => { sheet.close(); onConfirm(); });
+  const keep = menuButton('KEEP DESCENDING', () => sheet.close(), { primary: true });
+  sheet.footer.append(abandon, keep);
+  sheet.open();
 }
 
 function hide() {

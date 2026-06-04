@@ -37,11 +37,10 @@ export type StatModifier =
   // pile of items can't roll past 100% chance or infinite mult.
   | { kind: 'crit-chance';           amount: number }    // additive 0..1
   | { kind: 'crit-mult';             amount: number }    // additive multiplier offset
-  // Lifesteal — percentage of damage DEALT that heals the player.
-  // 0.20 = 20% heal on every successful melee hit (rounded down to
-  // integer HP). Stacks additively across all sources. Capped at 1.0
-  // at the use-site. Applied per-target so a 3-target cleave heals
-  // from each hit independently.
+  // Lifesteal — CHANCE to heal a flat amount ON KILL (not a per-hit
+  // drain — that was far too strong). 0.20 = 20% chance per enemy killed
+  // to heal CONFIG.LIFESTEAL_ON_KILL_HEAL. Stacks additively, clamped to
+  // 1.0. Proc'd by the enemy:killed listener in attack.ts.
   | { kind: 'lifesteal-pct';         amount: number }
 ;
 
@@ -163,14 +162,18 @@ export function computePlayerStats(): PlayerStats {
       case 'action-speed-mult':    break;
     }
   }
-  // Character attributes — spent at safe rooms. Vigor → max HP,
-  // Resolve → +0.5 armour to BOTH kinds. Acuity feeds crit chance in
-  // the weapon-resolve path (not this function). Lore has no
-  // mechanical effect yet — it's the narrator/LLM signal.
-  const { vigor, resolve } = getCharacter().attributes;
-  maxHp += vigor;
-  physicalArmor += resolve * 0.5;
-  magicArmor    += resolve * 0.5;
+  // Character attributes — spent at safe rooms (ATTRIBUTES = power).
+  // GRIT is the survival stat: +max HP per point (its universal floor)
+  // AND it SCALES equipped armour — both physical + magic counts for
+  // more, the way Might scales a heavy weapon. So the same plate on a
+  // high-Grit delver is meaningfully tougher. (Finesse → crit and
+  // Might/Lore → weapon damage are applied in the weapon-resolve path,
+  // not here; Lore's affliction signature lives in the buff pipeline.)
+  const { grit } = getCharacter().attributes;
+  maxHp += grit * CONFIG.ATTR.GRIT_HP_PER_POINT;
+  const gritArmorMul = 1 + grit * CONFIG.ATTR.GRIT_ARMOR_SCALE_PER_POINT;
+  physicalArmor *= gritArmorMul;
+  magicArmor    *= gritArmorMul;
   return {
     maxHp, weaponDamageBonus, damageMultiplier, finisherDamageMultiplier,
     physicalArmor, magicArmor, vulnerability,

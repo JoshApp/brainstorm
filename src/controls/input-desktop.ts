@@ -188,16 +188,22 @@ export const desktopScheme: InputScheme = {
       const isTap = elapsed < TAP_MAX_MS && mouseMovement < TAP_MAX_PX;
 
       if (isTap) {
-        // Tap-route: even with pointer lock, a quick click is a possible
-        // raycast tap. If it doesn't resolve to an in-world object, and
-        // we're not locked yet, request pointer lock to enter mouse-look.
-        const side: 'left' | 'right' =
-          e.clientX < window.innerWidth * LEFT_ZONE_FRACTION ? 'left' : 'right';
-        const consumed = options.onTap?.(e.clientX, e.clientY, side) ?? false;
-        if (!consumed) {
-          if (pointerLocked) triggerAttack();
-          else canvas.requestPointerLock?.();
+        // NOT locked yet → this click's only job is to enter mouse-look.
+        // Request pointer lock UNCONDITIONALLY (never gate it on the tap
+        // arbiter — that's what broke re-focusing after Esc: an empty tap
+        // now "consumes" without a target, so the old !consumed branch
+        // skipped the lock request). A focusing click never attacks.
+        if (!pointerLocked) {
+          canvas.requestPointerLock?.();
+          cancelCharge();
+          return;
         }
+        // Locked → hand the click to the single tap arbiter (interact /
+        // attack / nothing). canAttack=true: a desktop click anywhere is
+        // a combat zone (no joystick). No separate attack fallback here —
+        // the arbiter owns that, so a just-dismissed-screen tap can be
+        // fully suppressed (no stray swing).
+        options.onTap?.(e.clientX, e.clientY, true);
         cancelCharge();
         return;
       }

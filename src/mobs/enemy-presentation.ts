@@ -117,12 +117,25 @@ export interface CoreReactor {
 
 export function createCoreReactor(built: BuiltModel, spec: EnemySpec): CoreReactor {
   const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
-  const originalColor = flashMat ? flashMat.color.clone() : new THREE.Color();
   const flashColor = new THREE.Color(CONFIG.ENEMY_HIT_FLASH_COLOR);
   // Base emissive intensity so the damage pulse can boost it (for materials
   // with bright emissive — e.g. the king-slime's core orb — base-color
   // lerping alone is invisible because the emissive overwhelms diffuse).
   const originalEmissiveIntensity = flashMat ? flashMat.emissiveIntensity : 0;
+
+  // Whole-body flash set: EVERY material on the model, not just
+  // spec.flashMaterialName. Previously only the single named material lit
+  // up on hit — so the acolyte (flashMaterialName 'body' = just the head
+  // sphere) flashed its head while the robe + hood ('robe' material) stayed
+  // dark, which read as "only part of it reacts." Flashing all materials
+  // makes the whole creature register the blow. Emissive parts get an
+  // intensity bump too so the pulse shows through their glow.
+  const bodyFlashMats: { mat: THREE.MeshStandardMaterial; color: THREE.Color; emissive: number }[] = [];
+  for (const m of built.materials.values()) {
+    const sm = m as THREE.MeshStandardMaterial;
+    if (!sm.color) continue;
+    bodyFlashMats.push({ mat: sm, color: sm.color.clone(), emissive: sm.emissiveIntensity ?? 0 });
+  }
 
   // Glowing-core hit reaction (the king's bright 'core' orb): an enemy that
   // ships a `coreGlow` sprite gets the "real core" treatment — idle heartbeat
@@ -167,19 +180,20 @@ export function createCoreReactor(built: BuiltModel, spec: EnemySpec): CoreReact
         coreGlowMat.opacity = 0.45 + 0.12 * beat + 0.95 * hitPulse;
         coreGlow.scale.copy(coreGlowBaseScale).multiplyScalar(1 + 0.5 * hitPulse + 0.06 * beat);
       }
-    } else if (flashMat) {
-      // Plain mobs — the existing brief colour flash on hit.
-      if (flashTimer > 0) {
-        flashTimer -= dt;
-        const t = Math.max(0, flashTimer / CONFIG.ENEMY_HIT_FLASH_DURATION);
-        flashMat.color.copy(originalColor).lerp(flashColor, t);
-        if (originalEmissiveIntensity > 0) {
-          flashMat.emissiveIntensity = originalEmissiveIntensity * (1 + 1.5 * t);
-        }
-      } else {
-        flashMat.color.copy(originalColor);
-        if (originalEmissiveIntensity > 0) {
-          flashMat.emissiveIntensity = originalEmissiveIntensity;
+    } else if (flashTimer > 0) {
+      // Plain mobs — brief colour flash across the WHOLE body on hit.
+      flashTimer -= dt;
+      const t = Math.max(0, flashTimer / CONFIG.ENEMY_HIT_FLASH_DURATION);
+      for (const b of bodyFlashMats) {
+        b.mat.color.copy(b.color).lerp(flashColor, t);
+        if (b.emissive > 0) b.mat.emissiveIntensity = b.emissive * (1 + 1.5 * t);
+      }
+      // Snap everything back to base the frame the flash ends — no per-frame
+      // writes once idle.
+      if (flashTimer <= 0) {
+        for (const b of bodyFlashMats) {
+          b.mat.color.copy(b.color);
+          if (b.emissive > 0) b.mat.emissiveIntensity = b.emissive;
         }
       }
     }

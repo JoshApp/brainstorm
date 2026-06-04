@@ -132,8 +132,9 @@ export const touchScheme: InputScheme = {
           }
         }
         if (isTap) {
-          const consumed = options.onTap?.(t.clientX, t.clientY, tracker.side) ?? false;
-          if (!consumed && tracker.side === 'right') triggerAttack();
+          // Single arbiter handles interact/attack/nothing. canAttack =
+          // right (combat) half only — the left half is the joystick.
+          options.onTap?.(t.clientX, t.clientY, tracker.side === 'right');
         } else if (tracker.side === 'right' && tracker.chargeCommitted) {
           // Committed-charge release. Drag may have happened post-
           // commit (the player was aiming) — that's fine, the charge

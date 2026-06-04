@@ -3,8 +3,10 @@ import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { bossMistModel } from '../content/boss-mist';
 import { registerInteractable } from './system';
+import type { Interactable } from './types';
 import { engageBoss, registerFogWall } from '../ui/boss-engagement';
-import { onBossEncounterComplete } from '../mobs/boss-encounter';
+import { BOSS_ENCOUNTER_ID } from '../mobs/boss-encounter';
+import { onEncounterComplete } from '../encounters/registry';
 import { setPlayerInvulnerable } from '../player/health';
 import { kickShake } from '../combat/screen-shake';
 import { playWhoosh } from '../audio/sfx';
@@ -24,7 +26,14 @@ import type { WalkableRegion, WallSegment } from '../level/walkable';
 //   - The instant you cross to the arena side it RE-SEALS behind you — locked
 //     in with the boss.
 //   - When the boss ENCOUNTER completes (every body incl. the split dead) the
-//     seal lifts. The mist panel stays as a "cleared this place" marker.
+//     seal lifts and the curtain VANISHES — the threshold reads "done with
+//     this place" by its absence, not a lingering decoration.
+//
+// Prompt etiquette: the 'enter the mist' label only makes sense from the
+// OUTSIDE. Once the player crosses to the arena side we clear `promptLabel`
+// so the floating prompt + the USE button don't latch onto the seal-from-
+// inside (you can't walk back out during the fight, and after the fight
+// the curtain is gone anyway).
 
 const CROSS_EPSILON = 0.05;    // signed-distance flip threshold
 const WALK_THROUGH_DIST = 1.4; // end just past the threshold, not mid-arena
@@ -81,6 +90,12 @@ export function spawnBossMist(
 
   block();   // the gate is closed on arrival — you must commit to enter
 
+  // Projectiles never cross the mist, in EITHER direction, for the gate's
+  // whole active life — independent of the movement seal above. So an enemy
+  // that slipped to the far side can't shoot you through the curtain, and the
+  // player can shelter behind it. Removed only when the encounter is cleared.
+  walkable.addProjectileBarrier(seg);
+
   let opened = false;
   let sealed = false;
   let prevSign = 0;
@@ -106,6 +121,14 @@ export function spawnBossMist(
       0,
       z + normal.z * WALK_THROUGH_DIST,
     );
+    // Snap the landing point onto a WALKABLE cell. The arena floor has
+    // carved holes (stairwell / chasm voids), and the forced walk just
+    // lerps the camera with NO collision check — so if a hole sits at the
+    // landing spot the player is deposited inside the non-walkable zone
+    // and movement collision can never push them out (stuck). resolveSpawn
+    // finds the nearest valid cell with player clearance (0.3 + margin).
+    const safe = walkable.resolveSpawn(through.x, through.z, 0.35);
+    through.set(safe.x, 0, safe.z);
     startFogWalkthrough(through, WALK_SECONDS);
     // Cosmetic.
     setMistOpen(true);   // the curtain parts — you may pass
@@ -114,7 +137,7 @@ export function spawnBossMist(
   }
 
   const id = generateEntityId('boss-mist');
-  registerInteractable({
+  const interactable: Interactable = {
     id,
     position: new THREE.Vector3(x, 0, z),
     radius: 2.8,
@@ -133,21 +156,34 @@ export function spawnBossMist(
       const sign = d > CROSS_EPSILON ? 1 : d < -CROSS_EPSILON ? -1 : 0;
       if (prevSign === 0) { prevSign = sign; return; }
       if (prevSign < 0 && sign > 0) {
-        block();            // crossed in — locked behind you
+        block();              // crossed in — locked behind you
         sealed = true;
-        setMistOpen(false); // curtain re-solidifies — sealed in
+        setMistOpen(false);   // curtain re-solidifies — sealed in
+        interactable.promptLabel = '';  // hide the prompt from the arena side
         playWhoosh();
         kickShake(0.10, 0.25);
       }
       prevSign = sign;
     },
     built,
-  });
+  };
+  registerInteractable(interactable);
   registerFogWall();
 
   // Release when the boss ENCOUNTER is fully done (king + all spawns) —
   // the container is the single source of truth, so the seal can't lift
-  // mid-fight when one body dropped but its spawns are still up.
-  onBossEncounterComplete(() => { unblock(); setMistOpen(true); });
+  // mid-fight when one body dropped but its spawns are still up. Vanish
+  // the curtain entirely (visual + interactable) so the cleared threshold
+  // reads by ABSENCE rather than a lingering parted mist.
+  // Reactor: the fog gate releases when the BOSS encounter completes — bound
+  // through the unified Encounter registry rather than the boss-specific
+  // callback, so the fog gate is just "a gate that opens when its encounter
+  // ends" (same shape as the arena gate).
+  onEncounterComplete(BOSS_ENCOUNTER_ID, () => {
+    unblock();
+    walkable.removeProjectileBarrier(seg);
+    interactable.promptLabel = '';
+    interactable.destroyed = true;   // system removes built.group next tick
+  });
   return {};
 }

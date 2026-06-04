@@ -18,7 +18,9 @@ import { buildModel } from '../ecs/build-model';
 import { setSlot, tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
 import { createPickup } from '../interactables/pickup';
+import { spawnShroudedRelic } from '../interactables/shrouded-relic';
 import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
+import { openCharacterScreen } from '../ui/character-screen';
 
 // Predefined game states loadable via ?scenario=name URL param.
 // Used by the snap CLI (scripts/snap.ts) to produce deterministic screenshots,
@@ -83,6 +85,10 @@ export interface Scenario {
     pos?: { x: number; z: number };
     state?: EnemyDebugState;
     phaseTimer?: number;
+    /** Jump a multi-phase boss to this 0-based phase (settled pose, no
+     *  collapse animation) — for snapping phase 2 (crawl) without grinding
+     *  phase 1 down in combat. */
+    bossPhase?: number;
   }>;
   /** Override the sword's phase + timer at startup. */
   swordPhase?: { phase: SwingPhase; phaseTimer: number };
@@ -104,8 +110,12 @@ export interface Scenario {
   openInventoryPanel?: boolean;
   /** Pre-select an inventory item id so the details panel shows on snap. */
   selectItemId?: string;
+  /** Open the character sheet (for UI snaps). */
+  openCharacterScreen?: boolean;
   /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
   spawnPickups?: Array<{ itemId: string; x: number; z: number }>;
+  /** Spawn shrouded relics (the cursed mystery gamble) near the camera. */
+  spawnShrouded?: Array<{ x: number; z: number; depth?: number }>;
   /**
    * Item viewer: float a single item's dropModel at eye level in front
    * of the camera, slowly rotating. For previewing weapon/armor/ring
@@ -244,6 +254,39 @@ export const SCENARIOS: Record<string, Scenario> = {
       spawns: [], doors: [], stairs: [],
     },
     playerPos: { x: -2, z: 0, lookAt: { x: 20, z: 0, y: 1.2 } },
+  },
+
+  // diag-cross: a central room with rooms on all 4 sides, camera facing NORTH.
+  // Expected visible with portal culling: {C, cN, N}. South (behind), East,
+  // West (sides) must cull — the test for "does it render rooms behind me".
+  'diag-cross': {
+    freeze: true,
+    level: {
+      id: 'diag-cross', depth: 3, displayName: 'DIAG cross', fogColor: 0x000000,
+      startPos: { x: 0, z: 0, yaw: Math.PI },
+      rooms: [
+        { id: 'C', rect: { x: 0,  z: 0,  w: 6, d: 6 }, height: 3.2 },
+        { id: 'N', rect: { x: 0,  z: -9, w: 6, d: 6 }, height: 3.2 },
+        { id: 'S', rect: { x: 0,  z: 9,  w: 6, d: 6 }, height: 3.2 },
+        { id: 'E', rect: { x: 9,  z: 0,  w: 6, d: 6 }, height: 3.2 },
+        { id: 'W', rect: { x: -9, z: 0,  w: 6, d: 6 }, height: 3.2 },
+      ],
+      corridors: [
+        { id: 'cN', rect: { x: 0,    z: -4.5, w: 1.6, d: 3 }, height: 3.0 },
+        { id: 'cS', rect: { x: 0,    z: 4.5,  w: 1.6, d: 3 }, height: 3.0 },
+        { id: 'cE', rect: { x: 4.5,  z: 0,    w: 3,   d: 1.6 }, height: 3.0 },
+        { id: 'cW', rect: { x: -4.5, z: 0,    w: 3,   d: 1.6 }, height: 3.0 },
+      ],
+      props: [],
+      torches: [
+        { x: 0, z: -8.5, height: 2.0, wall: 'N', colorTint: 0xffaa55, intensityMul: 1.0 },
+        { x: 0, z:  8.5, height: 2.0, wall: 'S', colorTint: 0xff5555, intensityMul: 1.2 },
+        { x: 8.5, z: 0,  height: 2.0, wall: 'E', colorTint: 0x55aaff, intensityMul: 1.2 },
+        { x: -8.5, z: 0, height: 2.0, wall: 'W', colorTint: 0x55ff88, intensityMul: 1.2 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 0, lookAt: { x: 0, z: -20, y: 1.2 } },
   },
 
   // perf-lights: blanket of torches — saturates the light pool many times
@@ -415,8 +458,10 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
 
   // Death sequence active. NOT frozen — needs time to ramp the vignette.
-  // Snap script waits longer for this scenario.
+  // Snap script waits longer for this scenario. Equips a weapon so the
+  // on-death hand-drop (weapon tumbles to the floor) is exercised.
   death: {
+    equipWeaponId: 'rusted-sword',
     triggerDeath: true,
   },
 
@@ -540,6 +585,25 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 2, pos: { x: -10, z:  10 } },
     ],
   },
+  // Mundane base starters — sickle (sweep) / pike (reach).
+  'viewmodel-sickle': {
+    freeze: true,
+    equipWeaponId: 'bent-sickle',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+  'viewmodel-pike': {
+    freeze: true,
+    equipWeaponId: 'pilgrims-pike',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
   // Spear viewmodel — equip the reach weapon to review the thrust →
   // thrust → lunge combo against a posed enemy.
   'viewmodel-spear': {
@@ -582,6 +646,27 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 0, pos: { x: -10, z: -10 } },
       { index: 1, pos: { x:  10, z: -10 } },
       { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
+
+  // Shrouded relics — the cursed mystery gamble. Three veiled relics
+  // floating in violet light ahead of the player. Walk up + TAKE to
+  // reveal which curse you bought. NOT frozen (the bob/rotate + grant
+  // need to run). depth 6 so the deeper cursed items are eligible.
+  shrouded: {
+    playerPos: {
+      x: 0, z: 1.0,
+      lookAt: { x: 0, z: -2, y: 0.4 },
+    },
+    enemyOverrides: [
+      { index: 0, pos: { x: -12, z: -12 } },
+      { index: 1, pos: { x:  12, z: -12 } },
+      { index: 2, pos: { x: -12, z:  12 } },
+    ],
+    spawnShrouded: [
+      { x: -1.4, z: -1.6, depth: 6 },
+      { x:  0.0, z: -2.0, depth: 6 },
+      { x:  1.4, z: -1.6, depth: 6 },
     ],
   },
 
@@ -949,6 +1034,52 @@ export const SCENARIOS: Record<string, Scenario> = {
   // Boiling King — Act III boss preview. Drops you in a small lit arena
   // with the king slime spawned mid-room. Verifies model scale, palette,
   // and boss bar engagement.
+  'marrow-sovereign': {
+    freeze: true,
+    level: {
+      id: 'dbg-marrow-sovereign', depth: 7, displayName: 'marrow sovereign', fogColor: 0x140806,
+      startPos: { x: 0, z: 4.5, yaw: 0 },
+      rooms: [{ id: 'ms-room', rect: { x: 0, z: 0, w: 10, d: 11 }, height: 10 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -4.95, z: -4.5, height: 2.4, wall: 'W', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x:  4.95, z: -4.5, height: 2.4, wall: 'E', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x: -4.95, z:  4.5, height: 2.4, wall: 'W', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x:  4.95, z:  4.5, height: 2.4, wall: 'E', colorTint: 0xff6030, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'marrow-sovereign', x: 0, z: -2, roomId: 'ms-room' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 3.0, lookAt: { x: 0, z: -2, y: 2.0 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -2 }, state: 'chasing' }],
+  },
+
+  // Marrow Sovereign PHASE 2 (the crawl) — same arena, but the boss is
+  // jumped straight to phase 2 (legs + scythe gone, torso lowered) via the
+  // bossPhase override, so the crawl pose can be inspected without fighting
+  // phase 1 down. lookAt aimed lower since he's on the floor now.
+  'marrow-sovereign-crawl': {
+    freeze: true,
+    level: {
+      id: 'dbg-marrow-crawl', depth: 7, displayName: 'marrow sovereign — crawl', fogColor: 0x140806,
+      startPos: { x: 0, z: 4.5, yaw: 0 },
+      rooms: [{ id: 'ms-room', rect: { x: 0, z: 0, w: 10, d: 11 }, height: 10 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -4.95, z: -4.5, height: 2.4, wall: 'W', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x:  4.95, z: -4.5, height: 2.4, wall: 'E', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x: -4.95, z:  4.5, height: 2.4, wall: 'W', colorTint: 0xff6030, intensityMul: 0.9 },
+        { x:  4.95, z:  4.5, height: 2.4, wall: 'E', colorTint: 0xff6030, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'marrow-sovereign', x: 0, z: -2, roomId: 'ms-room' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 3.0, lookAt: { x: 0, z: -2, y: 0.5 } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -2 }, state: 'chasing', bossPhase: 1 }],
+  },
+
   'boiling-king': {
     freeze: true,
     level: {
@@ -1341,6 +1472,7 @@ export function applyScenario(
       const enemy = ctx.level.enemies[ov.index];
       if (!enemy) continue;
       if (ov.pos) enemy.setDebugPosition(ov.pos.x, ov.pos.z);
+      if (ov.bossPhase !== undefined) enemy.setDebugBossPhase(ov.bossPhase);
       if (ov.state) enemy.setDebugState(ov.state, ov.phaseTimer ?? 0);
       // Always make the repositioned enemy face the camera. Without this,
       // frozen scenarios show enemies at default rotation (looking world -Z)
@@ -1352,6 +1484,18 @@ export function applyScenario(
 
   if (scenario.swordPhase) {
     ctx.weapon.setDebugPhase(scenario.swordPhase.phase, scenario.swordPhase.phaseTimer);
+  }
+
+  // Equip BEFORE triggerDeath so the death sequence sees the held weapon
+  // (the on-death hand-drop reads the equipped weapon at the instant of
+  // death) — and so generally "you die holding your gear".
+  if (scenario.equipWeaponId) {
+    const item = ITEMS[scenario.equipWeaponId];
+    if (item) {
+      // Use the equipment system so viewmodel + stats both update via the
+      // main.ts listener — same code path as a real pickup.
+      setSlot('weapon', item);
+    }
   }
 
   if (scenario.triggerDeath) {
@@ -1370,15 +1514,6 @@ export function applyScenario(
   if (scenario.applyPlayerBuff) {
     const player = getEntity('player');
     if (player) applyBuff(player, scenario.applyPlayerBuff.id, scenario.applyPlayerBuff.duration);
-  }
-
-  if (scenario.equipWeaponId) {
-    const item = ITEMS[scenario.equipWeaponId];
-    if (item) {
-      // Use the equipment system so viewmodel + stats both update via the
-      // main.ts listener — same code path as a real pickup.
-      setSlot('weapon', item);
-    }
   }
 
   if (scenario.giveItems) {
@@ -1403,11 +1538,21 @@ export function applyScenario(
     }
   }
 
+  if (scenario.spawnShrouded) {
+    const scene = ctx.camera.parent as THREE.Scene;
+    for (const s of scenario.spawnShrouded) {
+      spawnShroudedRelic(scene, new THREE.Vector3(s.x, 0, s.z), s.depth ?? 5);
+    }
+  }
+
   if (scenario.openInventoryPanel) {
     openInventoryPanel();
   }
   if (scenario.selectItemId) {
     selectBagItem(scenario.selectItemId);
+  }
+  if (scenario.openCharacterScreen) {
+    openCharacterScreen();
   }
 
   // ── Item viewer ───────────────────────────────────────────────────

@@ -7,7 +7,7 @@
     "dev": "vite --host",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "verify": "tsc --noEmit",
-    "test": "tsx tests/combat-math.test.ts && tsx tests/floor-determinism.test.ts && tsx tests/item-format.test.ts && tsx tests/affix.test.ts && tsx tests/content-load.test.ts && tsx tests/vault-validate.test.ts && tsx tests/floor-invariants.test.ts && tsx tests/opening.test.ts",
+    "test": "tsx tests/combat-math.test.ts && tsx tests/floor-determinism.test.ts && tsx tests/item-format.test.ts && tsx tests/affix.test.ts && tsx tests/content-load.test.ts && tsx tests/vault-validate.test.ts && tsx tests/floor-invariants.test.ts && tsx tests/opening.test.ts && tsx tests/loot.test.ts",
     "ship": "bash scripts/ship.sh",
     "watch-deploy": "bash scripts/watch-deploy.sh",
     "gen-patchlog": "tsx scripts/gen-patchlog.ts",
