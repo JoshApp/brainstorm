@@ -2,7 +2,7 @@ import { writable } from './store';
 import { getPlayerHp } from '../player/health';
 import { getPlayerSnapshot } from './player-stats';
 import { getGold, getLevel, getXpInLevel, getXpForNextLevel } from './run-state';
-import { staminaFraction, isStaminaRegenHeld } from '../combat/stamina';
+import { staminaFraction, isStaminaRegenHeld, isStaminaExhausted } from '../combat/stamina';
 
 // Reactive stores backing the live HUD readouts. Synced once per frame from
 // the source-of-truth getters (frame-coherent: any direct mutation is caught
@@ -47,12 +47,15 @@ export interface StaminaState {
   frac: number;
   /** Full and not mid-refill — the gauge fades out when true. */
   rested: boolean;
+  /** Bottomed out ("gassed") — the bar flashes so a blocked dash/shot reads
+   *  as "you're out", not an unresponsive tap. */
+  exhausted: boolean;
 }
 export const staminaStore = writable<StaminaState>(
-  { frac: 1, rested: true },
+  { frac: 1, rested: true, exhausted: false },
   // Sub-pixel changes don't warrant a DOM write; ~0.4% steps keep the
   // bar smooth while idling at full produces no churn at all.
-  (a, b) => Math.abs(a.frac - b.frac) < 0.004 && a.rested === b.rested,
+  (a, b) => Math.abs(a.frac - b.frac) < 0.004 && a.rested === b.rested && a.exhausted === b.exhausted,
 );
 
 /** One health bar. The fight shows one (the king) or several (its split
@@ -86,7 +89,11 @@ export function syncHudStores(): void {
   xpStore.set({ level: getLevel(), inLevel: getXpInLevel(), next: getXpForNextLevel() });
   goldStore.set(getGold());
   const frac = staminaFraction();
-  staminaStore.set({ frac, rested: frac >= 0.999 && !isStaminaRegenHeld() });
+  staminaStore.set({
+    frac,
+    rested: frac >= 0.999 && !isStaminaRegenHeld(),
+    exhausted: isStaminaExhausted(),
+  });
 }
 
 /** Set the depth readout. Event-driven — called on level load, not polled. */

@@ -4,6 +4,7 @@ import { ITEMS } from '../content/items';
 import { get as getEntity } from '../ecs/world';
 import { hydrateCharacter } from './character';
 import { resetStamina } from '../combat/stamina';
+import { resetDashInput } from '../controls/dash-input';
 import type { loadSave } from './run-state';
 
 // Hydrate run state (inventory, equipment, HP) from a save — or apply the
@@ -53,4 +54,7 @@ export function applyState(saveData: ReturnType<typeof loadSave>) {
   // Stamina is not persisted — it regenerates in seconds. Start every
   // floor (and every resume) at full so you arrive ready, not winded.
   resetStamina();
+  // Drop any dash queued right as the floor swapped, so it can't fire a
+  // phantom lunge on the first frame of the new level.
+  resetDashInput();
 }

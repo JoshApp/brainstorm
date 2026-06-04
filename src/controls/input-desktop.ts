@@ -17,6 +17,7 @@
 
 import { dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
+import { triggerDash } from './dash-input';
 import {
   setChargeFromHeldMs,
   setChargePosition,
@@ -74,6 +75,15 @@ export const desktopScheme: InputScheme = {
     // ── Keyboard ────────────────────────────────────────────────────
     window.addEventListener('keydown', (e) => {
       if (!e.repeat) codesDown.add(e.code);
+
+      // DASH (debug desktop) — Shift dodges in the current move direction, or
+      // backsteps if standing still. Movement is polled into state each frame,
+      // so moveX/moveY are live here.
+      if (!e.repeat && (e.code === 'ShiftLeft' || e.code === 'ShiftRight')) {
+        e.preventDefault();
+        triggerDash(state.moveX, state.moveY);
+        return;
+      }
 
       const action = actionForCode(e.code);
       if (action) {

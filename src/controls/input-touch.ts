@@ -11,6 +11,7 @@
 import { showJoystick, moveJoystickKnob, hideJoystick } from './joystick-hud';
 import { showFirstTimeHint, dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
+import { triggerDash } from './dash-input';
 import { setChargeFromHeldMs, tryReleaseChargedAttack, cancelCharge, setChargePosition } from './charge-input';
 import { getSettings } from '../settings/settings';
 import { wantsHoldToCharge } from '../player/current-weapon';
@@ -28,6 +29,14 @@ const LEFT_ZONE_FRACTION = 0.4;
 // touch held STILL for this long commits to a charge; once committed,
 // subsequent drag aims the camera instead of cancelling the charge.
 const CHARGE_COMMIT_MS = 320;
+// Double-tap on the MOVE (left) side = dash/dodge. Two quick taps within this
+// window trigger it; the dash goes in the direction the joystick was last held
+// (if recent) or backsteps. Mobile-native — no extra on-screen button, mirrors
+// the Souls roll.
+const DOUBLE_TAP_MS = 280;
+// How recently the joystick must have held a direction for the dash to inherit
+// it; older than this and the dash is a neutral backstep.
+const DASH_DIR_FRESH_MS = 400;
 
 interface TouchTracker {
   id: number;
@@ -52,6 +61,10 @@ export const touchScheme: InputScheme = {
   attach({ canvas, state, options }: SchemeContext): InputTick | null {
     const touches: Map<number, TouchTracker> = new Map();
     let activeJoystickId: number | null = null;
+    // Dash double-tap state: time of the last left-side tap, and the last
+    // direction the joystick was actually held (for a directional dodge).
+    let lastLeftTapMs = 0;
+    let lastJoyX = 0, lastJoyY = 0, lastJoyMs = 0;
 
     showFirstTimeHint();
 
@@ -90,6 +103,9 @@ export const touchScheme: InputScheme = {
           if (mag < DEADZONE) { mx = 0; my = 0; }
           state.moveX = mx;
           state.moveY = my;
+          // Remember the last real direction so a dash right after release can
+          // travel that way instead of always backstepping.
+          if (mag >= DEADZONE) { lastJoyX = mx; lastJoyY = my; lastJoyMs = performance.now(); }
           if (t.identifier === activeJoystickId) {
             moveJoystickKnob(tracker.startX, tracker.startY, dx, dy, JOYSTICK_RADIUS);
           }
@@ -131,7 +147,22 @@ export const touchScheme: InputScheme = {
             activeJoystickId = null;
           }
         }
-        if (isTap) {
+        // DASH double-tap (move side). Two quick taps fire a dodge in the last
+        // held direction (or a backstep if none recent). Consume the gesture so
+        // the second tap doesn't ALSO fall through to onTap below.
+        let dashed = false;
+        if (isTap && tracker.side === 'left') {
+          const now = performance.now();
+          if (now - lastLeftTapMs < DOUBLE_TAP_MS) {
+            const fresh = now - lastJoyMs < DASH_DIR_FRESH_MS;
+            triggerDash(fresh ? lastJoyX : 0, fresh ? lastJoyY : 0);
+            lastLeftTapMs = 0;   // consumed — needs a fresh pair
+            dashed = true;
+          } else {
+            lastLeftTapMs = now;
+          }
+        }
+        if (isTap && !dashed) {
           // Single arbiter handles interact/attack/nothing. canAttack =
           // right (combat) half only — the left half is the joystick.
           options.onTap?.(t.clientX, t.clientY, tracker.side === 'right');

@@ -28,6 +28,8 @@ import { isAnyScreenOpen } from '../ui/screen-manager';
 import { tickAllBuffs } from '../ecs/buffs';
 import { tickInteractables, getInRangeInteractable } from '../interactables/system';
 import { consumeAttackPressed } from '../controls/attack-input';
+import { consumeDash } from '../controls/dash-input';
+import { tryDash } from '../combat/dash';
 import { tickLightPool } from '../scene/light-pool';
 import { tickProjectiles } from '../combat/projectile-pool';
 import { tickStamina } from '../combat/stamina';
@@ -109,6 +111,30 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
         input.moveX = 0;
         input.moveY = 0;
       }
+    } },
+
+    // Dash / dodge. Resolves the pending double-tap (touch) / Shift (desktop)
+    // into a world-space lunge. Camera-relative direction (dx strafe, dy
+    // forward-sign like the joystick) → world via the camera's facing; (0,0)
+    // backsteps. Runs in 'unpaused' so it stops with the world, and after
+    // input-camera so it reads this frame's facing.
+    { name: 'dash', phase: 'unpaused', tick() {
+      if (isDying() || isFogWalkthroughActive()) return;
+      const d = consumeDash();
+      if (!d) return;
+      camera.getWorldDirection(forwardScratch);
+      const flen = Math.hypot(forwardScratch.x, forwardScratch.z) || 1;
+      const fX = forwardScratch.x / flen, fZ = forwardScratch.z / flen;
+      // right = forward rotated -90° about Y (matches updateCamera's basis).
+      const rX = -fZ, rZ = fX;
+      let wx: number, wz: number;
+      if (d.dx === 0 && d.dy === 0) {
+        wx = -fX; wz = -fZ;                         // neutral → backstep
+      } else {
+        wx = rX * d.dx + fX * (-d.dy);              // strafe + forward(−dy)
+        wz = rZ * d.dx + fZ * (-d.dy);
+      }
+      tryDash(wx, wz);
     } },
 
     { name: 'torchlight', phase: 'unpaused', tick(ctx) {

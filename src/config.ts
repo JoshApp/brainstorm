@@ -73,14 +73,25 @@ export const CONFIG = {
   // and is reset to full on every floor load (see save-hydration).
   STAMINA: {
     MAX: 100,
-    REGEN_PER_SEC: 36,       // empty → full in ~2.8s of not spending
-    REGEN_DELAY_S: 0.55,     // pause after a spend before regen resumes
-    CHARGED_COST: 36,        // a charged melee swing — ~2-3 before dry
-    RANGED_COST: 32,         // one crossbow/wand shot — the ranged drawback
-    // Sprint (movement) tuning — wired in a later increment.
-    SPRINT_DRAIN_PER_SEC: 22,
-    SPRINT_MIN: 6,           // need at least this to (keep) sprinting
-    SPRINT_SPEED_MUL: 1.5,
+    // Regen tuned for the Elden Ring "the bar means something" feel: a real
+    // pause after spending (so a single action doesn't snap straight back to
+    // full), and a LONGER recovery once you bottom the bar out ("gassed").
+    // Not punishing — ~7 light swings or 2-3 heavies before dry, full refill
+    // in a few seconds of not acting.
+    REGEN_PER_SEC: 30,        // empty → full in ~3.3s of not spending
+    REGEN_DELAY_S: 0.7,       // pause after any spend before regen resumes
+    EXHAUST_RECOVERY_S: 1.3,  // longer pause once the bar bottoms out (gassed)
+    EXHAUST_CLEAR: 25,        // regen must climb back to this to clear "gassed"
+    // Costs. Light swings always fire (never a dead tap on touch) but drain a
+    // little — over-mashing empties the pool the impactful actions need.
+    // Charged / ranged / dash are the committal actions that respect the bar.
+    LIGHT_COST: 14,           // a normal tap swing — ~7 before dry
+    CHARGED_COST: 36,         // a charged melee swing
+    RANGED_COST: 30,          // one crossbow / wand shot
+    // Dash / dodge — a discrete lunge with brief i-frames (the Souls roll).
+    DASH_COST: 30,
+    DASH_SPEED: 15,           // impulse speed (m/s) fed to player knockback
+    DASH_IFRAME_S: 0.30,      // invulnerability window during the lunge
   },
 
   // === RENDER ===

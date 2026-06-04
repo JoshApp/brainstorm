@@ -20,7 +20,8 @@ import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleP
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
-import { spendStamina } from './stamina';
+import { spendStamina, spendStaminaSoft } from './stamina';
+import { flashStaminaBar } from '../ui/stamina-bar';
 import type { AttackDirection } from '../player/viewmodel';
 
 // Joystick magnitude below this counts as "not moving" → no
@@ -259,10 +260,12 @@ export function createCombatSystem(
       // Read the resolved weapon once at press time to branch ranged/melee.
       const pressWeapon = getCurrentWeapon();
       // RANGED: every shot costs stamina (the crossbow/wand drawback —
-      // "too strong, no ammo, no drawback"). Spent atomically here so the
-      // commit is the press; if you can't afford it the press is swallowed
-      // (no empty dry-swing) and the shot simply doesn't happen.
-      if (pressWeapon.ranged && !spendStamina(CONFIG.STAMINA.RANGED_COST)) {
+      // "too strong, no ammo, no drawback"). Soft spend — it fires as long as
+      // you have a sliver and just gasses you, so a low-stamina shot still
+      // goes off. It's gated ONLY when the bar is visibly empty, and then the
+      // HUD flashes so the rejected tap reads as "you're out", not a dead tap.
+      if (pressWeapon.ranged && !spendStaminaSoft(CONFIG.STAMINA.RANGED_COST)) {
+        flashStaminaBar();
         return;
       }
       // Capture any pending charge for this swing — 0 if it was a
@@ -278,6 +281,13 @@ export function createCombatSystem(
       // and the charge there only buys the +80% damage curve.)
       if (currentSwingCharge > 0 && !pressWeapon.ranged && !spendStamina(CONFIG.STAMINA.CHARGED_COST)) {
         currentSwingCharge = 0;
+      }
+      // LIGHT melee swing (a plain tap, no charge): drains a little, but ALWAYS
+      // fires — never a dead tap on touch. Soft spend, result ignored: the swing
+      // happens regardless; over-mashing just empties the pool the dash / heavy /
+      // shot need. (A charged swing already paid CHARGED_COST above.)
+      if (!pressWeapon.ranged && currentSwingCharge === 0) {
+        spendStaminaSoft(CONFIG.STAMINA.LIGHT_COST);
       }
       // Movement intent at press time. Picks a directional move
       // override (lunge / sweep / retreat) when the joystick is

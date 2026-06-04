@@ -56,10 +56,35 @@ export function createStaminaBar() {
   container.appendChild(fill);
   document.body.appendChild(container);
 
+  // Exhausted flash — a brief red pulse on the whole bar when the player
+  // bottoms out, so a gated dash / shot reads as "you're gassed" rather than
+  // an unresponsive tap. Injected once.
+  if (!document.getElementById('stamina-flash-kf')) {
+    const style = document.createElement('style');
+    style.id = 'stamina-flash-kf';
+    style.textContent =
+      '@keyframes staminaGassed{0%{box-shadow:0 0 0 1px rgba(230,90,70,0)}' +
+      '35%{box-shadow:0 0 8px 2px rgba(230,90,70,0.85)}' +
+      '100%{box-shadow:0 0 0 1px rgba(230,90,70,0)}}';
+    document.head.appendChild(style);
+  }
+
   bind(staminaStore, render);
 }
 
-function render({ frac, rested }: StaminaState) {
+/** Re-pulse the gassed flash imperatively. Called when a committal action
+ *  (dash / shot) is gated because the bar's empty, so the rejected tap reads
+ *  as "you're out" right then, not just from the ambient red. */
+export function flashStaminaBar(): void {
+  if (!container) return;
+  container.style.opacity = '1';
+  container.style.animation = 'none';
+  // Force reflow so re-assigning the same animation restarts it.
+  void container.offsetWidth;
+  container.style.animation = 'staminaGassed 0.5s ease-out';
+}
+
+function render({ frac, rested, exhausted }: StaminaState) {
   if (!container || !fill) return;
   fill.style.transform = `scaleX(${Math.max(0, Math.min(1, frac))})`;
   // Tint red when nearly empty so a dry meter reads as "you can't" at a
@@ -67,5 +92,9 @@ function render({ frac, rested }: StaminaState) {
   fill.style.background = frac < 0.2
     ? 'linear-gradient(180deg, rgba(210, 110, 90, 0.92), rgba(150, 50, 40, 0.92))'
     : 'linear-gradient(180deg, rgba(150, 195, 215, 0.92), rgba(70, 110, 140, 0.92))';
-  container.style.opacity = rested ? '0' : '1';
+  // Gassed pulse — restart the animation each time we (re-)enter exhausted by
+  // toggling the property off then on.
+  container.style.animation = exhausted ? 'staminaGassed 0.5s ease-out' : 'none';
+  // Stay visible while gassed even if somehow rested, so the flash is seen.
+  container.style.opacity = rested && !exhausted ? '0' : '1';
 }
