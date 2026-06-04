@@ -20,7 +20,7 @@ import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleP
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
-import { spendStamina, spendStaminaSoft, canSpendStamina } from './stamina';
+import { spendStamina, spendStaminaSoft, canSpendStamina, gainStamina } from './stamina';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import type { AttackDirection } from '../player/viewmodel';
 
@@ -437,6 +437,14 @@ export function createCombatSystem(
       }
       if (crit) anyCrit = true;
       if (applied > bestApplied) bestApplied = applied;
+    }
+
+    // Aggression reward: a melee swing that landed on a real enemy (heavy
+    // feedback — not a vase) refunds stamina, once per swing. Lands here in the
+    // melee strike path only, so ranged never refunds. Keeps offense fueled
+    // without making attacks free (net cost stays positive).
+    if (anyHeavy && CONFIG.STAMINA.REFUND_ON_HIT > 0) {
+      gainStamina(CONFIG.STAMINA.REFUND_ON_HIT);
     }
 
     // --- THE CRUNCH ---

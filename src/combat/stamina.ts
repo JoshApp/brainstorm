@@ -101,6 +101,16 @@ export function drainStamina(perSec: number, dt: number): number {
   return got;
 }
 
+/** Grant stamina back, clamped at MAX — the aggression-reward path (a melee
+ *  hit refunds some) and any future on-hit/on-kill effects. Doesn't touch the
+ *  regen delay (it's an instant top-up, not a spend), but a big enough refund
+ *  can lift you out of the gassed state just like regen crossing EXHAUST_CLEAR. */
+export function gainStamina(amount: number): void {
+  if (amount <= 0) return;
+  current = Math.min(CONFIG.STAMINA.MAX, current + amount);
+  if (exhausted && current >= CONFIG.STAMINA.EXHAUST_CLEAR) exhausted = false;
+}
+
 /** Per-frame regen. Holds during the post-spend delay, then refills at
  *  REGEN_PER_SEC. Clears the gassed flag once it climbs past EXHAUST_CLEAR.
  *  Call from an 'unpaused' system so it pauses with the world. */

@@ -92,6 +92,12 @@ export const CONFIG = {
     DASH_COST: 30,
     DASH_SPEED: 15,           // impulse speed (m/s) fed to player knockback
     DASH_IFRAME_S: 0.30,      // invulnerability window during the lunge
+    // Aggression reward (Nightreign-style): a MELEE swing that CONNECTS with an
+    // enemy refunds this much stamina, once per swing (ranged is excluded;
+    // whiffs and vase-smashes don't pay). Net drain stays positive — a light
+    // swing costs LIGHT_COST and refunds REFUND_ON_HIT — so landing hits keeps
+    // you fueled to keep pressing without making attacks free. 0 disables.
+    REFUND_ON_HIT: 7,
   },
 
   // === RENDER ===

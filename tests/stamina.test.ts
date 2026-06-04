@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config';
 import {
-  getStamina, spendStamina, spendStaminaSoft, tickStamina,
+  getStamina, spendStamina, spendStaminaSoft, tickStamina, gainStamina,
   isStaminaExhausted, canSpendStamina, resetStamina, getMaxStamina,
 } from '../src/combat/stamina';
 
@@ -71,6 +71,18 @@ test('regen holds during the post-spend delay then refills', () => {
   tickStamina(0.1);                       // crosses the boundary (clears delay)
   tickStamina(0.5);                       // now regen runs
   assert.ok(getStamina() > afterSpend, 'regen resumed');
+});
+
+test('gainStamina refunds, clamps at max, and can clear gassed', () => {
+  spendStaminaSoft(S.MAX);                 // → 0, gassed
+  assert.equal(isStaminaExhausted(), true);
+  gainStamina(S.REFUND_ON_HIT);            // a small refund…
+  assert.equal(getStamina(), S.REFUND_ON_HIT);
+  // …below EXHAUST_CLEAR doesn't un-gas you on its own.
+  assert.equal(isStaminaExhausted(), S.REFUND_ON_HIT < S.EXHAUST_CLEAR);
+  gainStamina(S.MAX);                      // overfill
+  assert.equal(getStamina(), S.MAX, 'clamped at max');
+  assert.equal(isStaminaExhausted(), false, 'a refund past EXHAUST_CLEAR clears gassed');
 });
 
 test('canSpend reflects current', () => {
