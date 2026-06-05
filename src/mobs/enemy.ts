@@ -207,6 +207,7 @@ const tmpDir = new THREE.Vector3();
 const tmpFlat = new THREE.Vector3();
 const tmpMuzzle = new THREE.Vector3();
 const tmpTarget = new THREE.Vector3();
+const tmpFanTarget = new THREE.Vector3();
 const tmpEssenceOrigin = new THREE.Vector3();
 
 /** Optional callback fired right after an enemy reaches 0 HP — used by
@@ -962,10 +963,39 @@ export function createEnemy(
         // (|dy| < 1.2) and never connect. Chest-height shooters (acolyte) are
         // unaffected — their muzzle already sits at player height.
         tmpTarget.set(t.x, playerPos.y, t.z);
-        spawnProjectile({
-          typeId: action.projectileId, origin: tmpMuzzle, target: tmpTarget,
-          damage: action.damage, source: entityId,
-        });
+        const count = action.count ?? 1;
+        if (count <= 1) {
+          spawnProjectile({
+            typeId: action.projectileId, origin: tmpMuzzle, target: tmpTarget,
+            damage: action.damage, source: entityId,
+          });
+        } else {
+          // Fan: spread `count` projectiles around the centreline by
+          // rotating the muzzle→target vector horizontally. Total spread
+          // is symmetric around 0 (centre shard goes straight at the
+          // anchor; outer shards lean ±spreadDeg/2). The shard radius
+          // each carries `damage` independently — stacking is real.
+          const spreadRad = ((action.spreadDeg ?? 18) * Math.PI) / 180;
+          const dx0 = tmpTarget.x - tmpMuzzle.x;
+          const dz0 = tmpTarget.z - tmpMuzzle.z;
+          const dist = Math.hypot(dx0, dz0) || 1;
+          for (let i = 0; i < count; i++) {
+            // -0.5..+0.5 across the count, scaled to spreadRad.
+            const f = count === 1 ? 0 : i / (count - 1) - 0.5;
+            const ang = f * spreadRad;
+            const c = Math.cos(ang), s = Math.sin(ang);
+            const dxR = dx0 * c - dz0 * s;
+            const dzR = dx0 * s + dz0 * c;
+            // Re-project to roughly the same distance so all shards
+            // share a launch speed and arc.
+            const k = dist / Math.hypot(dxR, dzR);
+            tmpFanTarget.set(tmpMuzzle.x + dxR * k, tmpTarget.y, tmpMuzzle.z + dzR * k);
+            spawnProjectile({
+              typeId: action.projectileId, origin: tmpMuzzle, target: tmpFanTarget,
+              damage: action.damage, source: entityId,
+            });
+          }
+        }
         return true;
       }
       case 'dash': {

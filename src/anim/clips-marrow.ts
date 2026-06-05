@@ -270,21 +270,30 @@ export const MARROW_EARTHSHATTER_STOMP: Clip = {
  *  run + the after-shock recovery. */
 export const MARROW_SKULL_CHARGE: Clip = {
   id: 'marrow-skull-charge',
-  duration: 2.6,        // 1.0 + 0.6 + 1.0 (long strike = the actual run)
+  duration: 3.2,        // 1.30 + 0.80 + 1.10 (long windup = clear commit lock-in tell)
   loop: false,
   smooth: true,
   keyframes: [
     { t: 0.00, pose: {} },
-    // Cock — torso winds back, head reads UP, arms pull in.
-    { t: 0.25, pose: {
-      spine:     { rot: [-0.30, 0, 0] },
-      neck:      { rot: [-0.20, 0, 0] },
-      shoulderL: { rot: [-0.40, 0,  0.20] },
-      shoulderR: { rot: [-0.40, 0, -0.20] },
+    // Mid-cock — torso winds back, head reads UP, arms pull in.
+    { t: 0.20, pose: {
+      spine:     { rot: [-0.25, 0, 0] },
+      neck:      { rot: [-0.18, 0, 0] },
+      shoulderL: { rot: [-0.35, 0,  0.20] },
+      shoulderR: { rot: [-0.35, 0, -0.20] },
       pelvis:    { pos: [0, 0.04, 0] },
     } },
-    // Commit pose at strike start — head DROPS forward, body angles low.
+    // Lock-in — windup peak, the body fully cocked. Reads "he's
+    // committed; the lane is set." (Strike begins at t ≈ 0.406.)
     { t: 0.38, pose: {
+      spine:     { rot: [-0.40, 0, 0] },
+      neck:      { rot: [-0.25, 0, 0] },
+      shoulderL: { rot: [-0.50, 0,  0.25] },
+      shoulderR: { rot: [-0.50, 0, -0.25] },
+      pelvis:    { pos: [0, 0.06, 0] },
+    } },
+    // Commit pose at strike start — head DROPS forward, body angles low.
+    { t: 0.43, pose: {
       spine:     { rot: [ 0.55, 0, 0] },
       neck:      { rot: [ 0.60, 0, 0] },
       shoulderL: { rot: [-0.80, 0,  0.10] },
@@ -292,8 +301,9 @@ export const MARROW_SKULL_CHARGE: Clip = {
       pelvis:    { pos: [0, -0.10, 0] },
     } },
     // Run — held through the strike window. Body stays low + forward
-    // while the dash action drives horizontal travel.
-    { t: 0.62, pose: {
+    // while the dash action drives horizontal travel. (Strike ends at
+    // t ≈ 0.656.)
+    { t: 0.65, pose: {
       spine:     { rot: [ 0.60, 0, 0] },
       neck:      { rot: [ 0.65, 0, 0] },
       shoulderL: { rot: [-0.60, 0,  0.10] },
@@ -302,7 +312,7 @@ export const MARROW_SKULL_CHARGE: Clip = {
     } },
     // Skid-stop — body straightens up, arms fling for balance, head
     // shakes off the impact.
-    { t: 0.78, pose: {
+    { t: 0.82, pose: {
       spine:     { rot: [-0.10, 0, 0] },
       neck:      { rot: [-0.05, 0, 0] },
       shoulderL: { rot: [ 0.20, 0,  0.50] },

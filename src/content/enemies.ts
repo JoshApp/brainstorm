@@ -1574,19 +1574,22 @@ export const ENEMIES: Record<string, EnemySpec> = {
             pose: 'cast',
             steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 4.0, damage: 3, element: 'physical' } }],
           },
-          // Skull-crush charge — committed straight-line dash through
-          // the player's locked-target position. The long strike window
-          // IS the run; the body-low charge pose holds for the whole
-          // travel. Dodge: step OUT of the lane (perpendicular).
-          // minRange forces it to be a gap-closer, not an in-close move.
+          // Skull-crush charge — COMMITTED straight-line dash to the
+          // snapshot of the player's position at cast start. He locks
+          // direction during the long windup, then BARRELS in a fixed
+          // line — no homing, no course correction. If the player
+          // walks two steps perpendicular during the windup+run, he
+          // misses entirely (the punishment for not reading the
+          // wind-back). minRange 5 makes it a long-range gap-closer
+          // only — he doesn't use it from medium-range stalling.
           {
             id: 'skull-crush-charge',
-            minRange: 4, maxRange: 12,
-            windup: 1.00, strike: 0.60, recover: 1.00, cooldown: 4.5,
+            minRange: 5, maxRange: 14,
+            windup: 1.30, strike: 0.80, recover: 1.10, cooldown: 5.0,
             pose: 'charge',
             steps: [{
               trigger: { at: 0 },
-              action: { kind: 'dash', toward: 'lockedTarget', speed: 8.0, contactReach: 1.6, damage: 5, element: 'physical' },
+              action: { kind: 'dash', toward: 'lockedTarget', speed: 9.0, contactReach: 1.6, damage: 6, element: 'physical' },
             }],
           },
         ],
@@ -1624,16 +1627,24 @@ export const ENEMIES: Record<string, EnemySpec> = {
             pose: 'swing',
             steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.6, damage: 2, element: 'physical' } }],
           },
-          // Bone fragments — he reaches into his own ribcage, RIPS a
-          // rib shard loose, and hurls it at the player. Mid-range
-          // physical projectile (uses the existing 'bone-shard' type).
-          // Break LOS or sidestep.
+          // Bone splinters — reaches into his own ribcage, RIPS a
+          // handful of rib shards loose, and hurls them in a FAN at
+          // the player. Five splinters in a ~26° cone — each carries
+          // 1 damage, so eating the entire burst caps at 5. Dodge:
+          // sidestep PERPENDICULAR to the cone, or break LOS.
           {
             id: 'bone-fragments',
             minRange: 2, maxRange: 9,
             windup: 0.90, strike: 0.14, recover: 0.60, cooldown: 2.5,
             pose: 'cast',
-            steps: [{ trigger: { at: 0 }, action: { kind: 'projectile', projectileId: 'bone-shard', muzzle: [0, 0.2, 0], damage: 2 } }],
+            steps: [{
+              trigger: { at: 0 },
+              action: {
+                kind: 'projectile', projectileId: 'bone-shard',
+                muzzle: [0, 0.2, 0], damage: 1,
+                count: 5, spreadDeg: 26,
+              },
+            }],
           },
           // Lunge bite — close-range with a tiny forward dash.
           {

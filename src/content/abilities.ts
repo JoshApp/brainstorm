@@ -88,7 +88,12 @@ export type AbilityAction =
   // Contact swing at trigger time if the player is within reach.
   | { kind: 'melee'; reach: number; damage: number; element?: Element }
   // Fire a bolt from a muzzle toward an anchor (default: player).
-  | { kind: 'projectile'; projectileId: string; muzzle: Vec3; damage: number; toward?: Anchor }
+  // `count` (default 1) fires that many projectiles in one beat. With
+  // `spreadDeg` they spread in a horizontal FAN around the toward-
+  // direction — used for the marrow sovereign's bone splinters. Each
+  // shard carries the same `damage` independently, so a 3-shard burst
+  // can stack if the player eats the cone.
+  | { kind: 'projectile'; projectileId: string; muzzle: Vec3; damage: number; toward?: Anchor; count?: number; spreadDeg?: number }
   // Drive the caster toward/away from an anchor for the strike, contact-
   // hitting within reach. toward:'player' homes; 'lockedTarget' commits.
   | { kind: 'dash'; toward: Anchor; speed: number; contactReach: number; damage: number; element?: Element }
