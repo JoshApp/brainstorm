@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-05",
     "entries": [
       {
+        "tag": "tech",
+        "text": "Combat feel: just-dodge — perfect-dodge slow-mo + counter window"
+      },
+      {
         "tag": "tune",
         "text": "Combat feel"
       }
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Marrow arena: bloodlit fog + adaptive braziers (the red dread overlay)"
-      },
-      {
-        "tag": "content",
-        "text": "Touch: correct tap priority — enemy→attack, else interact, else attack"
       }
     ]
   }

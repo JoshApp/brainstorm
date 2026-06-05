@@ -20,7 +20,7 @@ import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleP
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
-import { spendStamina, spendStaminaSoft, canSpendStamina, gainStamina, getStamina } from './stamina';
+import { spendStaminaSoft, gainStamina, getStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import type { AttackDirection } from '../player/viewmodel';
@@ -29,13 +29,18 @@ import type { AttackDirection } from '../player/viewmodel';
  *  viewmodel's onSwingStart (initial press AND every buffered combo step), so
  *  drain is bound to swings, not button taps. Mashing faster than the animation
  *  buffers and pays only per real swing. Ranged is billed per-shot at press
- *  time (the discrete-fire path), so it's skipped here. Light swings use the
- *  soft spend (always fire, never a dead tap); a charged release was already
- *  vetted as affordable, so it hard-spends the heavier cost. */
+ *  time (the discrete-fire path), so it's skipped here.
+ *
+ *  No fizzle: a CHARGED swing SOFT-spends — it commits fully and takes whatever
+ *  is left, gassing you if it empties the bar (the press gate already ensured
+ *  you had a sliver; at exactly empty the charge was downgraded to a free
+ *  light). It never degrades to a normal swing mid-commit. LIGHT swings are free
+ *  (LIGHT_COST 0) — they don't touch the resource at all, so the natural
+ *  thumb-mash is never punished. */
 export function spendSwingStamina(charged: boolean): void {
   if (getCurrentWeapon().ranged) return;
-  if (charged) spendStamina(CONFIG.STAMINA.CHARGED_COST);
-  else spendStaminaSoft(CONFIG.STAMINA.LIGHT_COST);
+  if (charged) { spendStaminaSoft(CONFIG.STAMINA.CHARGED_COST); return; }
+  if (CONFIG.STAMINA.LIGHT_COST > 0) spendStaminaSoft(CONFIG.STAMINA.LIGHT_COST);
 }
 
 // Joystick magnitude below this counts as "not moving" → no
@@ -282,42 +287,32 @@ export function createCombatSystem(
         flashStaminaBar();
         return;
       }
-      // MELEE at EMPTY: the Elden Ring rule — you need a SLIVER of stamina to
-      // start a swing; at exactly empty the attack is refused (HUD flash)
-      // rather than swinging for free. A sliver still commits and drains you
-      // negative (the soft spend in spendSwingStamina). We only SKIP the swing,
-      // never `return`, so an in-flight swing still resolves its hit below.
-      if (!pressWeapon.ranged && getStamina() <= 0) {
+      // Capture any pending charge for this press — 0 if it was a tap, 0..1 if
+      // the player held to charge. The strike-phase resolution below reads
+      // currentSwingCharge to scale damage, reach, and cone width. Reset
+      // per-press, so chained tap-combos reset back to 0 on the next press.
+      currentSwingCharge = consumeChargedAmount();
+      // No-fizzle commitment for the CHARGED release: as long as you have ANY
+      // stamina, the charge commits FULLY — the soft spend in spendSwingStamina
+      // (billed on the actual swing via onSwingStart) takes whatever's left and
+      // gasses you if it empties the bar. It never degrades because it can't
+      // afford the *full* cost. Only at EXACTLY empty can't you commit the heavy
+      // — it falls back to a free LIGHT swing (never a dead tap, never a charge
+      // robbed mid-hold) and the HUD flashes so the missing heavy reads as
+      // "you're out". Light swings are free, so a tap always swings.
+      if (currentSwingCharge > 0 && !pressWeapon.ranged && getStamina() <= 0) {
+        currentSwingCharge = 0;
         flashStaminaBar();
-      } else {
-        // Capture any pending charge for this swing — 0 if it was a
-        // tap, 0..1 if the player held to charge. The strike-phase
-        // resolution below reads currentSwingCharge to scale damage,
-        // reach, and cone width. Reset per-press, so chained tap-combos
-        // reset back to 0 naturally on the next press.
-        currentSwingCharge = consumeChargedAmount();
-        // MELEE charged swings cost stamina. Decide affordability HERE (so an
-        // unaffordable hold fizzles to a normal swing — you always get to swing,
-        // you just lose the charged bonus) but DON'T spend yet: melee stamina is
-        // billed once, on the actual swing, in spendSwingStamina (wired to the
-        // viewmodel's onSwingStart). That keeps drain bound to swings, not taps —
-        // mashing faster than the animation buffers and only pays per real swing,
-        // and buffered combo steps pay too. (Ranged is billed per-shot above.)
-        if (currentSwingCharge > 0 && !pressWeapon.ranged && !canSpendStamina(CONFIG.STAMINA.CHARGED_COST)) {
-          currentSwingCharge = 0;
-        }
-        // Movement intent at press time. Picks a directional move
-        // override (lunge / sweep / retreat) when the joystick is
-        // held — null otherwise (= normal combo step). The sword
-        // class spec decides whether a directional move is registered.
-        const direction = pickAttackDirection(moveX, moveY);
-        // Whoosh + 'attack:swing' fire from the viewmodel's onSwingStart so
-        // chained combo steps make sound too, not just the first press.
-        // Charged releases SKIP the windup phase — the player paid for
-        // it by holding; the cocked-back idle pose blends continuously into
-        // the strike's t=0 pose so it reads as "held back, now released".
-        weapon.startSwing({ skipWindup: currentSwingCharge > 0, direction });
       }
+      // Movement intent at press time. Picks a directional move override
+      // (lunge / sweep / retreat) when the joystick is held — null otherwise
+      // (= normal combo step). The class spec decides whether one is registered.
+      const direction = pickAttackDirection(moveX, moveY);
+      // Whoosh + 'attack:swing' fire from the viewmodel's onSwingStart so chained
+      // combo steps make sound too, not just the first press. Charged releases
+      // SKIP the windup phase — the player paid for it by holding; the cocked-
+      // back idle pose blends continuously into the strike's t=0 pose.
+      weapon.startSwing({ skipWindup: currentSwingCharge > 0, direction });
     }
 
     const striking = weapon.isStriking;

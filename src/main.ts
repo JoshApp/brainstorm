@@ -10,7 +10,6 @@ import { setCurrentWeapon } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
-import { getStamina } from './combat/stamina';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
@@ -345,11 +344,11 @@ const weapon = createWeaponViewmodel(camera, {
     // the animation no longer over-drains, and buffered combo steps pay too.
     spendSwingStamina(charged);
   },
-  // A swing can't START (or a combo chain into) an empty bar — Elden Ring's
-  // rule that a sliver is enough but empty is empty. Combat also gates the
-  // initial press with a HUD flash; this stops buffered chains continuing
-  // once you've bottomed out mid-combo.
-  canSwing: () => getStamina() > 0,
+  // Light swings are FREE now, so a swing (and a buffered combo chain) can
+  // always start — never a dead tap, never a punishment for the natural
+  // thumb-mash. Stamina only gates the POWER moves (charged / ranged / dash),
+  // which respect the bar at their own spend sites with a HUD flash.
+  canSwing: () => true,
 });
 
 // Weapon + offhand viewmodels are driven REACTIVELY by the equipment

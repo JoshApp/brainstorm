@@ -82,21 +82,33 @@ export const CONFIG = {
     REGEN_DELAY_S: 1.0,       // pause after any spend before regen resumes
     EXHAUST_RECOVERY_S: 2.0,  // longer pause once the bar bottoms out (gassed)
     EXHAUST_CLEAR: 25,        // regen must climb back to this to clear "gassed"
-    // Costs. Light swings always fire (never a dead tap on touch) but drain a
-    // little — over-mashing empties the pool the impactful actions need.
-    // Charged / ranged / dash are the committal actions that respect the bar.
-    LIGHT_COST: 14,           // a normal tap swing — ~7 before dry
-    CHARGED_COST: 36,         // a charged melee swing
-    RANGED_COST: 30,          // one crossbow / wand shot
+    // GASSED is FELT, not read: while exhausted the phone pulses a slow
+    // heartbeat (see combat/exhaustion-haptic.ts) so "you're winded, power moves
+    // are locked out" lands in your hand without a glance at the HUD. Interval
+    // between beats, in seconds.
+    EXHAUST_HEARTBEAT_S: 0.85,
+    // Costs. The COMMITMENT rule (no fizzle): a committal action either commits
+    // FULLY — taking whatever stamina is left (soft spend) and gassing you if it
+    // empties the bar — or, at exactly empty, is cleanly refused (HUD flash). It
+    // NEVER degrades to a weaker version. Going empty is punished by the gassed
+    // stalled-recovery (EXHAUST_RECOVERY_S) below.
+    //
+    // Light swings are FREE (LIGHT_COST 0): the natural thumb-mash is never a
+    // dead tap and never a punishment for just playing. Stamina is the budget
+    // for the POWER moves — charged melee, ranged, dash. (Raise LIGHT_COST > 0
+    // to re-arm a per-swing light drain; 0 keeps light fully off the resource.)
+    LIGHT_COST: 0,            // free — light tap swings don't touch stamina
+    CHARGED_COST: 36,         // a charged melee swing (soft-commits; gasses if it empties you)
+    RANGED_COST: 30,          // one crossbow / wand shot (soft-commits; refused at empty)
     // Dash / dodge — a discrete lunge with brief i-frames (the Souls roll).
     DASH_COST: 30,
     DASH_SPEED: 15,           // impulse speed (m/s) fed to player knockback
     DASH_IFRAME_S: 0.30,      // invulnerability window during the lunge
     // Aggression reward (Nightreign-style): a MELEE swing that CONNECTS with an
     // enemy refunds this much stamina, once per swing (ranged is excluded;
-    // whiffs and vase-smashes don't pay). Net drain stays positive — a light
-    // swing costs LIGHT_COST and refunds REFUND_ON_HIT — so landing hits keeps
-    // you fueled to keep pressing without making attacks free. 0 disables.
+    // whiffs and vase-smashes don't pay). Light swings are free, so this is pure
+    // upside on the power budget — pressing the attack and landing hits keeps you
+    // fueled for the next charged swing or dodge. 0 disables.
     REFUND_ON_HIT: 7,
   },
 
