@@ -21,6 +21,7 @@ import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
 import { consumeChargedAmount } from '../controls/charge-input';
 import { spendStamina, spendStaminaSoft, canSpendStamina, gainStamina, getStamina } from './stamina';
+import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import type { AttackDirection } from '../player/viewmodel';
 
@@ -406,12 +407,19 @@ export function createCombatSystem(
     // linearly from charge progress (c).
     const chargeDamageMul = 1 + c * 0.80;
 
+    // Just-dodge counter — if a perfectly-timed dodge opened a counter window,
+    // this swing punishes harder AND cracks poise harder. Read once; consumed
+    // below only if a real enemy is hit (a whiff shouldn't waste the opening).
+    const counterActive = isJustDodgeCounterActive();
+    const counterDmgMul = counterActive ? CONFIG.JUST_DODGE.COUNTER_DAMAGE_MUL : 1;
+    const counterStaggerMul = counterActive ? CONFIG.JUST_DODGE.COUNTER_STAGGER_MUL : 1;
+
     let anyCrit = false;
     let bestApplied = 0;
     let anyHeavy = false;
     for (const target of targets) {
       const crit = gameRngChance(critChance);
-      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul;
+      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul;
       const applied = target.takeDamage({
         source: 'player',
         target: target.entityId,
@@ -438,7 +446,7 @@ export function createCombatSystem(
         // enemy staggers (its action cancelled, a free-hit window). A
         // full charge hits poise hardest. staggerPower already folds in
         // weapon weight × Might (resolveWeaponStats).
-        target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS));
+        target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS) * counterStaggerMul);
         // (Lifesteal is now a CHANCE-ON-KILL proc — see the enemy:killed
         // listener in createCombatSystem — not a per-hit drain, which was
         // far too strong in the playtest.)
@@ -454,6 +462,9 @@ export function createCombatSystem(
     if (anyHeavy && CONFIG.STAMINA.REFUND_ON_HIT > 0) {
       gainStamina(CONFIG.STAMINA.REFUND_ON_HIT);
     }
+    // Spend the just-dodge counter on a connecting hit — one discrete punish,
+    // not a free DPS window (a whiff during the window keeps it open).
+    if (anyHeavy && counterActive) consumeJustDodgeCounter();
 
     // --- THE CRUNCH ---
     // One hit-pause + shake per swing regardless of target count —

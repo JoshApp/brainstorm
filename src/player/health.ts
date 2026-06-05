@@ -8,6 +8,7 @@ import { emit } from '../broadcast/event-bus';
 import { get } from '../ecs/world';
 import { computeStats } from './equipment-stats';
 import { computeDamage, registerDamageSink, type DamageType, type DamageEvent } from '../combat/damage';
+import { notePlayerHitNegated } from '../combat/just-dodge';
 import type { EntityId } from '../ecs/types';
 import { recordHpRecovered, recordDamageTaken, recordShieldedHit } from '../state/character';
 import { getEquipped } from './equipment';
@@ -108,7 +109,13 @@ export function onPlayerDeath(cb: () => void) {
  * still be able to kill, with feedback).
  */
 export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical', quiet = false) {
-  if (dead || godMode || performance.now() < invulnUntil) return;
+  if (dead || godMode) return;
+  if (performance.now() < invulnUntil) {
+    // Hit negated by i-frames. If it was a perfectly-timed dodge (recent dash,
+    // tight window) this fires the just-dodge reward; otherwise it's a no-op.
+    notePlayerHitNegated();
+    return;
+  }
   const player = get(PLAYER_ENTITY_ID);
   if (!player || !player.hp) return;
 

@@ -100,6 +100,29 @@ export const CONFIG = {
     REFUND_ON_HIT: 7,
   },
 
+  // === JUST-DODGE — the skill-ceiling reward layered on the baseline dodge ===
+  // A dodge whose i-frames negate an incoming hit in the FIRST sliver of the
+  // window was a last-second, REACTIVE dodge — reward it. This is Bloodborne's
+  // parry payoff routed through the dodge, because on a phone the dodge is the
+  // defensive verb that survives touch latency. An ordinary safe dodge (the hit
+  // negated later in the i-frame window, or with no recent dash at all) gets
+  // nothing — the TIMING is what's rewarded. Tuned forgiving.
+  //
+  // The reward is three-part: a brief slow-mo "clarity" beat, a COUNTER window
+  // where your next landed hit punishes harder AND cracks poise harder (feeding
+  // the future stagger→execute loop), and a stamina kickback so a clean dodge
+  // fuels the counter — aggression-as-defense, the combat identity in one beat.
+  JUST_DODGE: {
+    PERFECT_WINDOW_S: 0.18,    // negation within this of the dash = perfect (< DASH_IFRAME_S)
+    SLOWMO_SCALE: 0.40,        // world speed at the dip's deepest
+    SLOWMO_DURATION_S: 0.45,   // real-time length of the dip, easing back to full
+    COUNTER_WINDOW_S: 1.10,    // how long the counter opening stays live
+    COUNTER_DAMAGE_MUL: 1.6,   // your next landed hit hits this much harder
+    COUNTER_STAGGER_MUL: 2.0,  // and cracks poise this much harder
+    STAMINA_REFUND: 22,        // a clean dodge refuels you to press the counter
+    HAPTIC_MS: 26,             // firmer phone pulse than the dodge's own tick
+  },
+
   // === RENDER ===
   PIXEL_RATIO_CAP: 2,          // cap DPR on desktop (debug) — crisp
   // Mobile caps DPR lower: phones are fragment/fillrate-bound, and a 2x

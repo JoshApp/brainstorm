@@ -4,9 +4,79 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 13",
+    "date": "2026-06-05",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "Combat feel"
+      }
+    ]
+  },
+  {
     "version": "Build 12",
     "date": "2026-06-04",
     "entries": [
+      {
+        "tag": "tune",
+        "text": "Player attack commitment"
+      },
+      {
+        "tag": "tune",
+        "text": "Combat feel: gate attacks at empty stamina, slower regen, slower swings"
+      },
+      {
+        "tag": "tune",
+        "text": "Flick dash: detect from trailing-window velocity, so hold-then-swipe works"
+      },
+      {
+        "tag": "tech",
+        "text": "refactor"
+      },
+      {
+        "tag": "tune",
+        "text": "docs"
+      },
+      {
+        "tag": "tune",
+        "text": "Stamina: aggression reward — melee hit refunds stamina (Nightreign-style)"
+      },
+      {
+        "tag": "tune",
+        "text": "test"
+      },
+      {
+        "tag": "tune",
+        "text": "Dash gestures (flick / double-tap, switchable) + charge reservation preview"
+      },
+      {
+        "tag": "tune",
+        "text": "watch-deploy"
+      },
+      {
+        "tag": "tune",
+        "text": "Stamina: bind melee drain to the actual swing, not the button press"
+      },
+      {
+        "tag": "tune",
+        "text": "ship.sh: stop chaining watch-deploy (session pushes no longer trigger deploys)"
+      },
+      {
+        "tag": "tune",
+        "text": "Multi-branch deploy flow: ship to session branch, live promotes to main"
+      },
+      {
+        "tag": "tune",
+        "text": "watch-deploy: patient + decouple push from deploy outcome"
+      },
+      {
+        "tag": "tune",
+        "text": "Stamina v1"
+      },
+      {
+        "tag": "tune",
+        "text": "Keyframe animation system + Marrow joint rig (scythe out)"
+      },
       {
         "tag": "fix",
         "text": "Fix clutter props (pillars) floating over pits/voids"
@@ -148,70 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Touch: correct tap priority — enemy→attack, else interact, else attack"
-      },
-      {
-        "tag": "tune",
-        "text": "Start screen: scrolls on short landscape + bigger link targets"
-      },
-      {
-        "tag": "fix",
-        "text": "Desktop: click always re-enters mouse-look (fix lost pointer-lock)"
-      },
-      {
-        "tag": "tune",
-        "text": "Menus: settings is a ⚙ tab in the unified menu, not a stacked overlay"
-      },
-      {
-        "tag": "tune",
-        "text": "Marrow Sovereign: charnel-red arena lighting (dread on purpose)"
-      },
-      {
-        "tag": "tune",
-        "text": "Marrow Sovereign: bony body to match the skull"
-      },
-      {
-        "tag": "tune",
-        "text": "Settings: widen for landscape + tabs share the row (no clipping)"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss-phase observation tooling"
-      },
-      {
-        "tag": "tune",
-        "text": "Touch"
-      },
-      {
-        "tag": "fix",
-        "text": "Mobile menus: fix touch-scroll (descendants) + harden height bound"
-      },
-      {
-        "tag": "tune",
-        "text": "Marrow Sovereign: animated collapse, legs gone at 0%, skull redesign"
-      },
-      {
-        "tag": "fix",
-        "text": "Marrow Sovereign fixes: taller arena, real leg-hide, crawl-lower, tighter hurtbox"
-      },
-      {
-        "tag": "tune",
-        "text": "docs: menu system canon (mobile-first Sheet shell + tabbed game menu)"
-      },
-      {
-        "tag": "tune",
-        "text": "Mobile UI"
-      },
-      {
-        "tag": "tune",
-        "text": "Mobile UI: menu Sheet shell + migrate character screen onto it"
-      },
-      {
-        "tag": "tune",
-        "text": "Proficiency rework: per-class config (overridable) + tiers + item-card display"
-      },
-      {
-        "tag": "tune",
-        "text": "Boss bar max-HP getter is phase-aware; boss-hall ceiling 14m"
       }
     ]
   }

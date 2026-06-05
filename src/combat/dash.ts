@@ -11,6 +11,7 @@
 
 import { CONFIG } from '../config';
 import { spendStaminaSoft } from './stamina';
+import { noteDashStarted } from './just-dodge';
 import { applyPlayerKnockback } from '../player/knockback';
 import { setPlayerInvulnerable } from '../player/health';
 import { flashStaminaBar } from '../ui/stamina-bar';
@@ -27,6 +28,8 @@ export function tryDash(dirX: number, dirZ: number): boolean {
   }
   applyPlayerKnockback(dirX, dirZ, CONFIG.STAMINA.DASH_SPEED);
   setPlayerInvulnerable(CONFIG.STAMINA.DASH_IFRAME_S);
+  // Mark the dodge so a hit negated in the next sliver counts as a just-dodge.
+  noteDashStarted();
   playWhoosh();
   // Light haptic tick so the dodge has a physical "snap" on a phone.
   try { navigator.vibrate?.(12); } catch { /* unsupported */ }

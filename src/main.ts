@@ -14,6 +14,7 @@ import { getStamina } from './combat/stamina';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
+import { tickJustDodge, getJustDodgeTimeScale } from './combat/just-dodge';
 import { initWeaponDrop, dropHeldItem } from './player/weapon-drop';
 import { bossEncounterDebug } from './mobs/boss-encounter';
 import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthrough';
@@ -694,7 +695,8 @@ function tick() {
   harnessTickFn?.(realDt, !isWorldPaused());
 
   tickDeath(realDt);
-  const scaledDt = realDt * getTimeScale();
+  tickJustDodge(realDt);   // real-time so the slow-mo dip isn't slowed by itself
+  const scaledDt = realDt * getTimeScale() * getJustDodgeTimeScale();
   // Snapshot pause state AFTER the harness so a just-ended budget gates this
   // frame's unpaused systems.
   const paused = isWorldPaused();
