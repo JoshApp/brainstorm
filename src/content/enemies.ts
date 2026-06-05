@@ -1529,18 +1529,20 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 6,
     loseSightTime: 12,
     // Keyframe animation bundle — idle / walk / crawl + ability clips
-    // (bone-arm-sweep, chop, spike-ring, arm-swipe, marrow-claw,
-    // lunge-bite). See src/anim/clips-marrow.ts.
+    // (bone-arm-sweep, pile-driver, earthshatter-stomp, skull-crush-charge,
+    // arm-swipe, lunge-bite, bone-fragments). See src/anim/clips-marrow.ts.
     animation: { ...MARROW_CLIPS, joints: MARROW_JOINTS },
     phases: [
-      // ── PHASE 1 — Standing.
+      // ── PHASE 1 — Standing. Four-move physical-heavy kit covering
+      //    every range, each with a distinct dodge tell so the player
+      //    has to READ the silhouette before committing.
       {
         hp: 16,
         moveSpeed: 1.0,
         abilities: [
           // Bone-arm cleave — wide horizontal arm sweep, long reach.
-          // Player dodges by stepping INSIDE the arc (close to the
-          // skeleton's centre) or sidestepping perpendicular to it.
+          // Dodge: step INSIDE the arc (close to centre) or sidestep
+          // perpendicular.
           {
             id: 'bone-arm-sweep',
             minRange: 0, maxRange: 8,
@@ -1548,24 +1550,44 @@ export const ENEMIES: Record<string, EnemySpec> = {
             pose: 'swing',
             steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 6.0, damage: 3, element: 'physical' } }],
           },
-          // Ground chop — AoE at player's locked position. Step off
-          // the marker to dodge (classic king-style stomp).
+          // Two-hand pile-driver — both arms hoist overhead, body rears
+          // back, then a committed slam at the locked target. Heavier
+          // than the old chop (more damage, slower recovery). Dodge:
+          // step OFF the marker.
           {
-            id: 'chop',
+            id: 'pile-driver',
             minRange: 0, maxRange: 9,
-            windup: 1.10, strike: 0.20, recover: 0.80, cooldown: 2.8,
+            windup: 1.30, strike: 0.20, recover: 0.90, cooldown: 3.0,
             pose: 'cast',
-            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 3.0, damage: 3, element: 'physical' } }],
+            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 3.0, damage: 4, element: 'physical' } }],
           },
-          // Bone-spike ring — radial AoE around himself. Dodge by
-          // being CLOSE (inside the ring) or running outside its
-          // outer radius. Punishes mid-range stalling.
+          // Earthshatter stomp — radial AoE under the skeleton, with
+          // the giant-step foot-lift as the tell. Replaces the old
+          // spike-ring; a stomp pose reads cleaner than an arm slam at
+          // this range. Dodge: be OUTSIDE the radius when the foot
+          // lands; only safe at point-blank for the bone-arm sweep
+          // pose tell, never both.
           {
-            id: 'spike-ring',
+            id: 'earthshatter-stomp',
             minRange: 0, maxRange: 5,
             windup: 1.40, strike: 0.20, recover: 0.80, cooldown: 3.5,
             pose: 'cast',
             steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 4.0, damage: 3, element: 'physical' } }],
+          },
+          // Skull-crush charge — committed straight-line dash through
+          // the player's locked-target position. The long strike window
+          // IS the run; the body-low charge pose holds for the whole
+          // travel. Dodge: step OUT of the lane (perpendicular).
+          // minRange forces it to be a gap-closer, not an in-close move.
+          {
+            id: 'skull-crush-charge',
+            minRange: 4, maxRange: 12,
+            windup: 1.00, strike: 0.60, recover: 1.00, cooldown: 4.5,
+            pose: 'charge',
+            steps: [{
+              trigger: { at: 0 },
+              action: { kind: 'dash', toward: 'lockedTarget', speed: 8.0, contactReach: 1.6, damage: 5, element: 'physical' },
+            }],
           },
         ],
         // Intra-phase part-break: the RIGHT leg drops at the half-way mark
@@ -1602,15 +1624,16 @@ export const ENEMIES: Record<string, EnemySpec> = {
             pose: 'swing',
             steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.6, damage: 2, element: 'physical' } }],
           },
-          // Marrow claw — mid-range projectile. Reuses the acolyte
-          // spit projectile (re-tinted by the boss's eye material).
+          // Bone fragments — he reaches into his own ribcage, RIPS a
+          // rib shard loose, and hurls it at the player. Mid-range
+          // physical projectile (uses the existing 'bone-shard' type).
           // Break LOS or sidestep.
           {
-            id: 'marrow-claw',
+            id: 'bone-fragments',
             minRange: 2, maxRange: 9,
             windup: 0.90, strike: 0.14, recover: 0.60, cooldown: 2.5,
             pose: 'cast',
-            steps: [{ trigger: { at: 0 }, action: { kind: 'projectile', projectileId: 'acolyte-spit', muzzle: [0, 0.2, 0], damage: 2 } }],
+            steps: [{ trigger: { at: 0 }, action: { kind: 'projectile', projectileId: 'bone-shard', muzzle: [0, 0.2, 0], damage: 2 } }],
           },
           // Lunge bite — close-range with a tiny forward dash.
           {

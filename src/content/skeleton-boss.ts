@@ -17,6 +17,7 @@
 //
 //   - 'pelvis'                — hip-cluster pivot; the walk bob
 //   - 'hipL' / 'hipR'         — leg swing
+//   - 'ankleL' / 'ankleR'     — foot lift / plant (the stomp tell)
 //   - 'spine'                 — upper-body twist/lean
 //   - 'shoulderL' / 'shoulderR' — arm swing
 //   - 'neck'                  — head tilt
@@ -84,6 +85,12 @@ export function marrowSovereignModel(): ModelSpec {
       // Hip joints — child of pelvis so they inherit the bob.
       hipL: { pos: [-0.19, -0.15, 0], parent: 'pelvis' },
       hipR: { pos: [ 0.19, -0.15, 0], parent: 'pelvis' },
+      // Ankle joints — sit at the ankle knob (hip-local y -1.74), so
+      // foot parts parented here pivot around the ankle. Lets the stomp
+      // raise the foot pose-wise (toes up) before the slam, and lets a
+      // walk cycle naturally lift the foot on the back-swing.
+      ankleL: { pos: [0, -1.74, 0.04], parent: 'hipL' },
+      ankleR: { pos: [0, -1.74, 0.04], parent: 'hipR' },
       // Spine — mid-torso pivot. Rotates the whole upper body for
       // a sweep/lean. Direct child of rig (NOT pelvis) so an upper-
       // body twist doesn't move the legs.
@@ -133,6 +140,7 @@ function buildLowerTorso(): PartSpec[] {
 function buildLeg(side: -1 | 1): PartSpec[] {
   const name = side < 0 ? 'leg-left' : 'leg-right';
   const joint = side < 0 ? 'hipL' : 'hipR';
+  const ankle = side < 0 ? 'ankleL' : 'ankleR';
   const p: PartSpec[] = [];
   // Femoral head — sits at the hip joint origin.
   p.push({ name, parent: joint, kind: 'sphere',  pos: [0, 0, 0],                        radius: 0.072, segments: [10, 8], mat: 'bone' });
@@ -146,12 +154,16 @@ function buildLeg(side: -1 | 1): PartSpec[] {
   p.push({ name, parent: joint, kind: 'capsule', pos: [0, -1.28, 0.03],            radius: 0.044, height: 0.64, mat: 'bone' });
   // Fibula — thin parallel bone, the boniest tell.
   p.push({ name, parent: joint, kind: 'capsule', pos: [side * 0.052, -1.28, 0.0],  radius: 0.018, height: 0.60, mat: 'boneShadow' });
-  // Ankle knob.
+  // Ankle knob — sits AT the ankle joint origin; stays hip-parented so
+  // it acts as the visual joint surface that the foot pivots around.
   p.push({ name, parent: joint, kind: 'sphere',  pos: [0, -1.74, 0.04],            radius: 0.042, segments: [8, 6], mat: 'bone' });
-  // Foot — heel/tarsus, metatarsal plate (forward), toe stubs.
-  p.push({ name, parent: joint, kind: 'box',     pos: [0, -1.88, -0.02],           size: [0.10, 0.08, 0.11], mat: 'bone' });
-  p.push({ name, parent: joint, kind: 'box',     pos: [0, -1.92, 0.13],            size: [0.13, 0.06, 0.22], mat: 'bone' });
-  p.push({ name, parent: joint, kind: 'box',     pos: [0, -1.915, 0.26],           size: [0.13, 0.04, 0.06], mat: 'boneShadow' });
+  // Foot — heel/tarsus, metatarsal plate (forward), toe stubs. All
+  // ANKLE-parented (positions are ankle-local, with the ankle pivot
+  // at hip-local y -1.74) so the stomp animator can pitch them around
+  // the ankle without rotating the whole shin.
+  p.push({ name, parent: ankle, kind: 'box',     pos: [0, -0.14,  -0.06],          size: [0.10, 0.08, 0.11], mat: 'bone' });
+  p.push({ name, parent: ankle, kind: 'box',     pos: [0, -0.18,   0.09],          size: [0.13, 0.06, 0.22], mat: 'bone' });
+  p.push({ name, parent: ankle, kind: 'box',     pos: [0, -0.175,  0.22],          size: [0.13, 0.04, 0.06], mat: 'boneShadow' });
   return p;
 }
 
