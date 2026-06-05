@@ -92,11 +92,12 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
   return [
     // Publish this frame's attack COMMITMENT (move/turn agency + dash-lock) from
-    // the live swing phase + equipped weapon's weight, BEFORE input-camera and
-    // dash read it. One frame of latency vs the sim's advance (later in the
-    // frame) is imperceptible for feel.
+    // the live swing phase + progress + equipped weapon's weight, BEFORE
+    // input-camera and dash read it. Progress shapes the arc (ease in on windup,
+    // ease out on recover). One frame of latency vs the sim's advance (later in
+    // the frame) is imperceptible for feel.
     { name: 'swing-agency', phase: 'unpaused', tick() {
-      updateSwingAgency(weapon.getPhase(), getCurrentWeapon().commitment);
+      updateSwingAgency(weapon.getPhase(), getCurrentWeapon().commitment, weapon.getPhaseProgress());
     } },
     // Look/move input + camera. While dying, control input is dropped so
     // nothing downstream (camera, bob) reads stale joystick values.

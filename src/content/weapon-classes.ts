@@ -290,17 +290,19 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.0, coneHalfAngleMul: 1.2, maxTargets: 2 },
       { pose: 'hammer-swing-left',  windup: 0.20, strike: 0.12, recover: 0.36,
         reachMul: 1.0, coneHalfAngleMul: 1.2, maxTargets: 2 },
-      { pose: 'hammer-smash',       windup: 0.28, strike: 0.14, recover: 0.50,
+      { pose: 'hammer-smash',       windup: 0.28, strike: 0.14, recover: 0.44,
         reachMul: 1.15, coneHalfAngleMul: 1.4, maxTargets: 3 },
     ],
     comboWindowMs: 520,
-    timingMul: 1.7,   // HEAVY — wind up, commit, recover; the slow brute
+    timingMul: 1.6,   // HEAVY — wind up, commit, recover; the slow brute (tail
+                      // trimmed from 1.7; the commitment ARC now carries the
+                      // weight, so the animation needn't run as long)
     // Hammer directional moves — the overhead smash and the directional
     // swings carry the body's momentum into the strike.
     directionalMoves: {
       // FORWARD: a commit-and-step overhead smash. Bigger reach + the
       // smash's wide AoE catches up to 3 mobs in front of you.
-      forward:     { pose: 'hammer-smash', windup: 0.26, strike: 0.16, recover: 0.55,
+      forward:     { pose: 'hammer-smash', windup: 0.26, strike: 0.16, recover: 0.48,
                      reachMul: 1.35, coneHalfAngleMul: 1.5, maxTargets: 3 },
       // STRAFE: the directional swing IN the strafe direction —
       // body's momentum drives the cut. Sweep that catches 2 to your side.
@@ -372,15 +374,16 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 3 },
       { pose: 'scythe-reap-left',  windup: 0.22, strike: 0.18, recover: 0.40,
         reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 3 },
-      { pose: 'scythe-spin',       windup: 0.28, strike: 0.22, recover: 0.55,
+      { pose: 'scythe-spin',       windup: 0.28, strike: 0.22, recover: 0.48,
         reachMul: 1.15, coneHalfAngleMul: 1.9, maxTargets: 4 },
     ],
     comboWindowMs: 460,
-    timingMul: 1.5,   // HEAVY — big sweeping reaps, slow to wind + recover
+    timingMul: 1.45,  // HEAVY — big sweeping reaps, slow to wind + recover (tail
+                      // trimmed from 1.5; the commitment ARC carries the weight)
     directionalMoves: {
       // Forward: a downward chop with the curved tip. Single target,
       // big damage commit.
-      forward:     { pose: 'scythe-spin', windup: 0.18, strike: 0.18, recover: 0.50,
+      forward:     { pose: 'scythe-spin', windup: 0.18, strike: 0.18, recover: 0.44,
                      reachMul: 1.40, coneHalfAngleMul: 0.8, maxTargets: 1 },
       // Strafe: directional reap following the body's momentum.
       strafeLeft:  { pose: 'scythe-reap-left',  windup: 0.18, strike: 0.16, recover: 0.36,

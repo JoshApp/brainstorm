@@ -177,17 +177,26 @@ export const CONFIG = {
   SWING_TIME_SCALE: 1.2,
   // Player attack COMMITMENT — during a swing you lose movement + turn agency,
   // scaled by weapon weight. These are the per-phase floors a FULLY committed
-  // weapon (commitment=1, e.g. the hammer) reaches; lighter weapons lerp back
-  // toward 1.0 (= full freedom). 1 = full agency, 0 = rooted. The STRIKE is the
-  // committed window: agency is lowest AND dash is hard-locked (you eat the
-  // active frames). windup + recovery are dash-cancelable. Per-weapon
-  // commitment derives from timingMul (see weapon-classes.ts) — weight is one
-  // knob. Tune the FEEL of being committed here; tune which weapons commit
-  // there.
+  // weapon (commitment=1, e.g. the hammer) reaches at the DEEPEST point of the
+  // phase; the swing arc eases commitment in (windup) and out (recover) around
+  // them rather than holding them flat (see swing-agency.ts). Lighter weapons
+  // lerp back toward 1.0 (= full freedom). 1 = full agency, 0 = rooted. The
+  // STRIKE is the committed window: agency is lowest AND dash is hard-locked
+  // (you eat the active frames). windup + recovery are dash-cancelable.
+  //
+  // MOVE and TURN are decoupled on purpose:
+  //   - MOVE bites hard — planting your feet is what sells WEIGHT.
+  //   - TURN stays gentle — on a phone the look-drag IS your aim, and choking it
+  //     reads as a laggy camera, not a heavy weapon. Turn only really bites at
+  //     the brief strike.
+  //
+  // Per-weapon commitment derives from timingMul (see weapon-classes.ts) —
+  // weight is one knob. Tune the FEEL of being committed here; tune which
+  // weapons commit there.
   COMMITMENT: {
-    WINDUP_MOVE: 0.70, WINDUP_TURN: 0.55,
-    STRIKE_MOVE: 0.25, STRIKE_TURN: 0.20,
-    RECOVER_MOVE: 0.55, RECOVER_TURN: 0.50,
+    WINDUP_MOVE: 0.70, WINDUP_TURN: 0.85,
+    STRIKE_MOVE: 0.25, STRIKE_TURN: 0.50,
+    RECOVER_MOVE: 0.55, RECOVER_TURN: 0.80,
   },
   HIT_PAUSE_MS: 80,            // freeze duration on landing a hit — THE feel feature
   // Landing-hit FREEZE is DECOUPLED from the shake/haptic crunch. The

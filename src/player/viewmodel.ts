@@ -49,6 +49,9 @@ export interface WeaponViewmodel {
   /** Current swing phase — read by the commitment system to scale player
    *  agency (idle = full freedom). */
   getPhase(): SwingPhase;
+  /** 0..1 progress through the current phase — read by the commitment system to
+   *  ease agency in on windup and out on recover (idle = 0). */
+  getPhaseProgress(): number;
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
   startSwing(opts?: { skipWindup?: boolean; direction?: AttackDirection }): boolean;
   update(dt: number): void;
@@ -235,6 +238,7 @@ export function createWeaponViewmodel(
       return swing.getActiveStep();
     },
     getPhase: swing.getPhase,
+    getPhaseProgress: swing.getPhaseProgress,
     startSwing: swing.requestSwing,
     update,
     equip,
