@@ -1,6 +1,7 @@
 import { CONFIG } from '../config';
 import type { PoseKey } from '../content/weapon-classes';
 import type { SwingPhase } from './viewmodel';
+import { evalPoseSpec, type PoseSpec, type Pose6 } from './weapon-pose-spec';
 
 // Per-step viewmodel pose curves. Each function takes the current
 // phase + a normalised phase progress (0..1) and returns the local
@@ -32,6 +33,110 @@ const rz = CONFIG.SWORD_IDLE_ROT[2];
 
 const scratch: WeaponPose = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 };
 
+// The shared rest pose for all hip-held weapons (everything but the wand, which
+// idles upright). Data poses (POSE_SPECS) author their keyframes as deltas off
+// this.
+const STANDARD_IDLE: Pose6 = { x: ix, y: iy, z: iz, rotX: rx, rotY: ry, rotZ: rz };
+
+// ── DATA-DRIVEN POSES (the authoring surface) ────────────────────
+// Poses authored as two keyframes (WIND/END deltas off STANDARD_IDLE) + the odd
+// sine modifier — see weapon-pose-spec.ts. computeWeaponPose evaluates these
+// before falling back to the hand-coded functions below, so new weapons can be
+// authored as pure data. Every entry is pinned to its original function by
+// tests/weapon-pose-spec.test.ts, so the data can't drift from the tuned anim.
+// Poses that don't fit the envelope (sword-slash-left's discontinuity, the
+// double-stab pulses, the crossbow reload dip, the wand tremble, the scythe
+// spin) are intentionally absent and stay hand-coded.
+const POSE_SPECS: Partial<Record<PoseKey, PoseSpec>> = {
+  'sword-slash-right': {
+    wind: { x: 0.10, y: -0.15, z: 0.08, rotX: 0.55, rotZ: -0.10 },
+    end:  { x: 0.18, y: 0.10, z: -0.24, rotX: -0.45, rotY: -0.10, rotZ: 0.50 },
+  },
+  'sword-thrust': {
+    wind: { x: -0.08, y: 0.10, z: 0.12, rotX: -1.15, rotY: 0.15, rotZ: -0.40 },
+    end:  { x: -0.08, y: 0.10, z: -0.43, rotX: -1.15, rotY: 0.15, rotZ: -0.40 },
+  },
+  'sword-lunge-forward': {
+    wind: { x: -0.10, y: 0.14, z: 0.16, rotX: -1.30, rotY: 0.18, rotZ: -0.45 },
+    end:  { x: -0.10, y: 0.14, z: -0.64, rotX: -1.30, rotY: 0.18, rotZ: -0.45 },
+  },
+  'sword-sweep-left': {
+    wind: { x: 0.22, y: 0.10, z: 0.06, rotX: -0.45, rotY: -0.55, rotZ: -0.85 },
+    end:  { x: -0.28, y: -0.16, z: -0.05, rotX: -0.30, rotY: 0.40, rotZ: 1.00 },
+  },
+  'sword-sweep-right': {
+    wind: { x: -0.22, y: 0.10, z: 0.06, rotX: -0.45, rotY: 0.55, rotZ: 0.85 },
+    end:  { x: 0.28, y: -0.16, z: -0.05, rotX: -0.30, rotY: -0.40, rotZ: -1.00 },
+  },
+  'sword-ward-back': {
+    wind: { x: 0.04, y: 0.18, z: 0.10, rotX: -0.30, rotY: -0.40, rotZ: -0.10 },
+    end:  { x: -0.10, y: 0.02, z: -0.32, rotX: -0.95, rotY: 0.30, rotZ: 0.40 },
+  },
+  'sword-retreat-slash': {
+    wind: { x: -0.04, y: 0.06, z: 0.08, rotX: -0.85, rotY: 0.10, rotZ: -0.25 },
+    end:  { x: -0.04, y: 0.06, z: -0.28, rotX: -0.85, rotY: 0.10, rotZ: -0.25 },
+  },
+  'dagger-stab': {
+    wind: { x: -0.06, y: 0.05, z: 0.10, rotX: -1.30, rotY: 0.15, rotZ: -0.40 },
+    end:  { x: -0.06, y: 0.05, z: -0.22, rotX: -1.30, rotY: 0.15, rotZ: -0.40 },
+  },
+  'dagger-slash': {
+    wind: { x: -0.42, y: 0.10, z: 0.06, rotX: -0.55, rotY: 0.95, rotZ: -0.40 },
+    end:  { x: 0.42, y: 0.00, z: -0.10, rotX: -0.25, rotY: -0.95, rotZ: 0.25 },
+  },
+  'hammer-smash': {
+    wind: { x: -0.10, y: 0.55, z: 0.08, rotX: 1.40, rotZ: -0.20 },
+    end:  { x: 0.00, y: -0.30, z: -0.12, rotX: -1.10, rotZ: 0.25 },
+  },
+  'hammer-swing-left': {
+    wind: { x: 0.40, y: 0.18, z: 0.18, rotZ: -1.15 },
+    end:  { x: -0.45, y: 0.18, z: 0.18, rotZ: 1.45 },
+    arcForwardPush: 0.42,
+  },
+  'hammer-swing-right': {
+    wind: { x: -0.45, y: 0.18, z: 0.18, rotZ: 1.45 },
+    end:  { x: 0.40, y: 0.18, z: 0.18, rotZ: -1.15 },
+    arcForwardPush: 0.42,
+  },
+  'spear-thrust': {
+    wind: { x: -0.10, y: 0.06, z: 0.12, rotX: 0.20, rotY: 0.15, rotZ: -0.34 },
+    end:  { x: -0.10, y: 0.06, z: -0.30, rotX: 0.20, rotY: 0.15, rotZ: -0.34 },
+    dropSin: 0.04,
+  },
+  'spear-lunge': {
+    wind: { x: -0.10, y: 0.06, z: 0.12, rotX: 0.20, rotY: 0.15, rotZ: -0.34 },
+    end:  { x: -0.10, y: 0.06, z: -0.50, rotX: 0.20, rotY: 0.15, rotZ: -0.34 },
+    dropSin: 0.12,
+  },
+  'scythe-reap-right': {
+    wind: { x: -0.26, y: 0.20, z: 0.10, rotX: -0.50, rotY: 0.65, rotZ: 1.00 },
+    end:  { x: 0.30, y: -0.22, z: -0.08, rotX: -0.20, rotY: -0.45, rotZ: -1.10 },
+  },
+  'scythe-reap-left': {
+    wind: { x: 0.26, y: 0.20, z: 0.10, rotX: -0.50, rotY: -0.65, rotZ: -1.00 },
+    end:  { x: -0.30, y: -0.22, z: -0.08, rotX: -0.20, rotY: 0.45, rotZ: 1.10 },
+  },
+  'whip-crack-right': {
+    wind: { x: 0.18, y: 0.10, z: 0.10, rotX: -0.40, rotY: -0.35, rotZ: -0.20 },
+    end:  { x: 0.18, y: -0.05, z: -0.30, rotX: -0.90, rotY: 0.10, rotZ: -0.10 },
+  },
+  'whip-crack-left': {
+    wind: { x: -0.18, y: 0.10, z: 0.10, rotX: -0.40, rotY: 0.35, rotZ: 0.20 },
+    end:  { x: -0.18, y: -0.05, z: -0.30, rotX: -0.90, rotY: -0.10, rotZ: 0.10 },
+  },
+  'whip-wrap': {
+    wind: { x: 0.24, y: 0.04, z: 0.10, rotX: -0.50, rotY: -0.40, rotZ: -0.40 },
+    end:  { x: -0.24, y: -0.08, z: -0.20, rotX: -0.50, rotY: 0.40, rotZ: 0.40 },
+  },
+  'knife-throw': {
+    wind: { x: 0.16, y: 0.04, z: 0.14, rotX: -0.65, rotY: -0.15, rotZ: -0.30 },
+    end:  { x: -0.04, y: 0.12, z: -0.28, rotX: -1.20, rotY: 0.10, rotZ: 0.15 },
+  },
+};
+
+/** The pose keys currently authored as data — for the equivalence test. */
+export const MIGRATED_POSE_KEYS = Object.keys(POSE_SPECS) as PoseKey[];
+
 /** Pose for the current swing phase. Caller passes the pose key for
  *  the current combo step + the phase + the PROGRESS within that
  *  phase (0..1). Returns a shared scratch object — read it, don't
@@ -50,6 +155,15 @@ export function computeWeaponPose(pose: PoseKey, phase: SwingPhase, t: number): 
     scratch.rotX = rx; scratch.rotY = ry; scratch.rotZ = rz;
     return scratch;
   }
+  // Data-driven poses first (the authoring path); fall back to hand-coded ones.
+  const spec = POSE_SPECS[pose];
+  if (spec) return evalPoseSpec(spec, STANDARD_IDLE, phase, t, scratch);
+  return legacyComputeWeaponPose(pose, phase, t);
+}
+
+/** The hand-coded pose dispatch — fallback for poses not (yet) authored as data,
+ *  and the oracle the data specs are tested against. Exported only for the test. */
+export function legacyComputeWeaponPose(pose: PoseKey, phase: SwingPhase, t: number): WeaponPose {
   switch (pose) {
     case 'dagger-stab':        return daggerStabPose(phase, t);
     case 'dagger-slash':       return daggerSlashPose(phase, t);

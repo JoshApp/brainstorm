@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "content",
+        "text": "Combat feel: felt-exhaustion — breathing audio + camera chest-heave"
+      },
+      {
+        "tag": "content",
         "text": "Combat polish: dodge-cancels-charge (refund) + perfect-release gleam on weapon"
       },
       {
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Bloom: ease strength + raise threshold (god ray was a tad strong)"
-      },
-      {
-        "tag": "tune",
-        "text": "Shader step 2/4: banded shading — hard chiaroscuro on the shadow falloff"
       }
     ]
   }
