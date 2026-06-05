@@ -13,7 +13,7 @@ import { getCurrentWeapon } from '../player/current-weapon';
 import { getPlayerOnHits } from '../player/equipment';
 import type { ResolvedWeaponStats } from '../content/weapon-classes';
 import { computePlayerStats } from './modifiers';
-import { gameRngChance } from '../engine/rng';
+import { gameRngChance, gameRng } from '../engine/rng';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleProvider } from './projectile-pool';
@@ -134,6 +134,9 @@ export function createCombatSystem(
   // strike resolution to scale damage / reach / cone. Reset on each
   // new press (taps reset it to 0, charged swings to their progress).
   let currentSwingCharge = 0;
+  // Player movement intent (joystick magnitude, 0..1) captured each tick — read
+  // by fireRanged to bloom shots when moving (ranged commitment: plant to aim).
+  let lastMoveMag = 0;
 
   // Friendly projectiles (crossbow/wand) hit-test enemies via this
   // provider — registered here so the projectile pool's tick needn't
@@ -188,6 +191,21 @@ export function createCombatSystem(
       );
     } else {
       tmpAim.copy(camera.position).addScaledVector(forwardDir, RANGED_REACH);
+    }
+    // RANGED COMMITMENT — accuracy demands stillness. Moving (kiting) blooms the
+    // shot off-aim; planted = dead-on. Rotate the aim about the muzzle in the XZ
+    // plane by a random angle scaled by movement intent, so backpedal-spam
+    // scatters and a real shot means stopping and exposing yourself. Auto-aimed
+    // shots bloom too (rotation applied after lock-on), so lock-spam can't dodge
+    // the rule. Uses the seeded rng so the scatter is deterministic for replays.
+    const bloom = CONFIG.RANGED_MOVE_SPREAD_RAD * lastMoveMag;
+    if (bloom > 0) {
+      const ang = (gameRng() * 2 - 1) * bloom;
+      const cosA = Math.cos(ang), sinA = Math.sin(ang);
+      const rx = tmpAim.x - tmpMuzzle.x;
+      const rz = tmpAim.z - tmpMuzzle.z;
+      tmpAim.x = tmpMuzzle.x + (rx * cosA - rz * sinA);
+      tmpAim.z = tmpMuzzle.z + (rx * sinA + rz * cosA);
     }
     const crit = gameRngChance(weapon.critChance ?? 0);
     // Same charge-damage curve as melee — a fully-cooked shot does
@@ -267,6 +285,8 @@ export function createCombatSystem(
   }
 
   function tick(attackPressed: boolean, moveX: number, moveY: number, dt: number) {
+    // Track movement intent for ranged accuracy bloom (plant to aim).
+    lastMoveMag = Math.min(1, Math.hypot(moveX, moveY));
     if (attackPressed) {
       // Gate: if nothing is equipped in the weapon slot, swallow the
       // press silently. Avoids the bare-hands attack sound + the

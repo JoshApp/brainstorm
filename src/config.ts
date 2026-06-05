@@ -149,6 +149,16 @@ export const CONFIG = {
   WALL_SUBDIVISIONS_Y: 12,
   WALL_VERTEX_JITTER: 0.04,    // meters of inward/outward perturbation per vertex
 
+  // === RANGED COMMITMENT ===
+  // Accuracy demands stillness — the fix for "ranged is too spammable". A shot
+  // fired while MOVING blooms off-aim; planted = dead-on. So kiting-while-firing
+  // scatters, and to land a real shot you must stop and expose yourself — the
+  // front-loaded RISK that makes ranged deliberate instead of a safe DPS faucet.
+  // This is the max horizontal jitter (radians, ~9°) at full movement; it scales
+  // linearly with joystick magnitude and is 0 when standing still. Auto-aimed
+  // (locked-on) shots bloom too, so lock-spam can't dodge the rule.
+  RANGED_MOVE_SPREAD_RAD: 0.16,
+
   // === SWORD (first-person held weapon) ===
   SWORD_REACH: 1.9,            // meters — distance enemies must be within to be hit
   SWORD_CONE_HALF_ANGLE: 0.7,  // radians (~40°) — forward arc that registers hits.
