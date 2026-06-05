@@ -135,6 +135,26 @@ export const CONFIG = {
     HAPTIC_MS: 26,             // firmer phone pulse than the dodge's own tick
   },
 
+  // === CHARGE — heavy attack as a stamina POUR (Model B) + a perfect release ===
+  // Holding a melee charge DRAINS stamina (regen paused while you pour): power is
+  // literally how much you decided to spend, it auto-caps when you run dry, and
+  // the charge ring just stops filling — so a heavy can never "fizzle" because
+  // you only ever build the charge you can pay for. A full charge pours
+  // CHARGED_COST stamina; DRAIN_PER_SEC sets how fast (and thus the time to
+  // full = CHARGED_COST / DRAIN_PER_SEC). Light taps and ranged are unaffected.
+  //
+  // PERFECT RELEASE — the offense mirror of the just-dodge. Release within a
+  // tight window the instant the charge tops out and it OVERCHARGES past max
+  // (extra damage + poise crack). The ring flashes white during the window;
+  // hold past it and you keep a normal full charge (no bonus, no extra cost).
+  CHARGE: {
+    DRAIN_PER_SEC: 60,         // melee charge pours stamina at this rate while held
+    PERFECT_RELEASE_MS: 160,   // window after hitting full where a release overcharges
+    PERFECT_DAMAGE_MUL: 1.35,  // overcharge bonus ON TOP of a full charge's damage
+    PERFECT_STAGGER_MUL: 1.5,  // and an extra poise crack
+    PERFECT_HAPTIC_MS: 30,     // a firm "clean!" pulse on a perfect release
+  },
+
   // === RENDER ===
   PIXEL_RATIO_CAP: 2,          // cap DPR on desktop (debug) — crisp
   // Mobile caps DPR lower: phones are fragment/fillrate-bound, and a 2x

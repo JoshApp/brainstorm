@@ -15,7 +15,7 @@
 // Cheap: one DOM element + an SVG circle. No per-frame allocations.
 // Updated by setting stroke-dashoffset + style.left/top/transform.
 
-import { getChargeProgress, getChargePosition } from '../controls/charge-input';
+import { getChargeProgress, getChargePosition, isChargePerfectWindow } from '../controls/charge-input';
 
 const SIZE = 96;                  // px — outer SVG dimension
 const STROKE = 6;                 // ring stroke width
@@ -128,7 +128,13 @@ export function tickChargeRing(): void {
   // pulse on a sine wave so the eye locks onto the moment to
   // release. Frequency tuned to feel "ready, ready, ready" without
   // being strobe-y.
-  if (p >= 1) {
+  if (isChargePerfectWindow()) {
+    // PERFECT-RELEASE window — flash bright white so "release NOW" is
+    // unmistakable. Distinct from the gold full-charge pulse below: white =
+    // overcharge available, gold = full but you've held past the window.
+    arc.setAttribute('stroke', 'rgba(255, 255, 255, 1)');
+    glow.setAttribute('stroke', 'rgba(235, 245, 255, 0.95)');
+  } else if (p >= 1) {
     const phase = (performance.now() / 1000) * (Math.PI * 2 * PULSE_HZ);
     const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(phase));   // 0.55..1.0
     arc.setAttribute('stroke', `rgba(255, 240, 180, ${(0.85 + 0.15 * pulse).toFixed(3)})`);

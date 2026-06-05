@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Combat feel: ranged commitment — accuracy demands stillness"
+      },
+      {
+        "tag": "tune",
         "text": "Combat feel: no-fizzle stamina commitment + free light swings + gassed heartbeat"
       },
       {
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Shader: darkness-reactive rim — forms self-draw in the dark (art-direction proto)"
-      },
-      {
-        "tag": "tune",
-        "text": "Menus"
       }
     ]
   }

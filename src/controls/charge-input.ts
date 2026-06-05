@@ -13,17 +13,29 @@
 // crossbow / focus / future greataxe will follow.
 
 import { isWorldPausedByScreen } from '../ui/screen-manager';
+import { CONFIG } from '../config';
+import { drainStamina } from '../combat/stamina';
+import { getCurrentWeapon } from '../player/current-weapon';
 
 // Aligned with TAP_MAX_MS in input-touch (320). Quick releases below
 // this fire a normal tap; longer holds are intentional charges. Tuned
 // up from 220 to reduce accidental-charges on slow taps — a thumb-
 // down landing then immediate release commonly takes ~250ms.
 const CHARGE_RAMP_START_MS = 320;
-const CHARGE_FULL_MS       = 900;   // at this point, charge is fully cooked
+const CHARGE_FULL_MS       = 900;   // RANGED time-ramp: fully cooked at this hold
 
 let liveProgress = 0;                // 0..1 — current visible charge, updated by setChargeProgress
 let chargedPending = false;          // a charged attack release is queued for the game loop
 let chargedAmount  = 0;              // the progress level at the moment of release (0..1)
+let chargedPerfect = false;          // was the queued release inside the perfect window?
+
+// MELEE charge is a stamina POUR (CONFIG.CHARGE): holding drains stamina and the
+// charge level = stamina poured / CHARGED_COST, so it auto-caps when you run
+// dry. Tracked here across frames; ranged keeps the old time-ramp (no drain).
+let poured = 0;                      // stamina spent into the current melee charge
+let lastHeldMs = 0;                  // previous frame's heldMs, for the per-frame delta
+let perfectUntil = 0;                // performance.now() ms — end of the perfect-release window
+let wasFull = false;                 // latched once liveProgress hits 1 (opens the window once)
 // Live touch position of the charging finger (clientX/Y). The
 // charge-ring overlay reads these so the visual anchors to the
 // thumb instead of a fixed corner. -1 means "no live charge".
@@ -53,12 +65,51 @@ export function setChargePosition(x: number, y: number): void {
 }
 
 /** Set by the input layer each frame as a touch is held. Pass the
- *  elapsed-since-touchstart in ms; this module computes the 0..1
- *  progress and stores it for the overlay. */
+ *  elapsed-since-touchstart in ms; this module computes the 0..1 progress and
+ *  stores it for the overlay.
+ *
+ *  MELEE: a stamina POUR — each frame drains stamina at CONFIG.CHARGE.DRAIN_PER_SEC
+ *  (regen pauses, since drainStamina notes a spend), and the charge level is the
+ *  fraction of CHARGED_COST poured so far. When stamina runs out the drain
+ *  returns 0, the charge stops filling, and you're left holding whatever you
+ *  could afford — no fizzle, ever. Hitting full opens the perfect-release window.
+ *  RANGED: unchanged — a time-ramp with no stamina drain (its cost is the flat
+ *  per-shot spend + the accuracy bloom). */
 export function setChargeFromHeldMs(heldMs: number): void {
-  if (heldMs < CHARGE_RAMP_START_MS) { liveProgress = 0; return; }
-  const t = (heldMs - CHARGE_RAMP_START_MS) / (CHARGE_FULL_MS - CHARGE_RAMP_START_MS);
-  liveProgress = Math.max(0, Math.min(1, t));
+  if (heldMs < CHARGE_RAMP_START_MS) {
+    liveProgress = 0;
+    poured = 0;
+    wasFull = false;
+    lastHeldMs = heldMs;   // track so the first charging frame has a small delta
+    return;
+  }
+  if (getCurrentWeapon().ranged) {
+    // Ranged: the original time-based ramp, no stamina pour.
+    const t = (heldMs - CHARGE_RAMP_START_MS) / (CHARGE_FULL_MS - CHARGE_RAMP_START_MS);
+    liveProgress = Math.max(0, Math.min(1, t));
+    lastHeldMs = heldMs;
+    return;
+  }
+  // Melee pour. Clamp the per-frame delta so a frame hitch can't dump the whole
+  // bar into one charge step.
+  const dtMs = Math.max(0, Math.min(50, heldMs - lastHeldMs));
+  lastHeldMs = heldMs;
+  const cost = CONFIG.STAMINA.CHARGED_COST;
+  if (poured < cost) {
+    poured += drainStamina(CONFIG.CHARGE.DRAIN_PER_SEC, dtMs / 1000);
+    liveProgress = Math.min(1, poured / cost);
+    if (liveProgress >= 1 && !wasFull) {
+      // Just topped out — open the perfect-release window.
+      wasFull = true;
+      perfectUntil = performance.now() + CONFIG.CHARGE.PERFECT_RELEASE_MS;
+    }
+  }
+}
+
+/** True while the perfect-release window is open (charge full, within the timing
+ *  window). The charge-ring flashes on this so the player can read the moment. */
+export function isChargePerfectWindow(): boolean {
+  return wasFull && liveProgress >= 1 && performance.now() <= perfectUntil;
 }
 
 /** Called by the input layer when a charge-eligible touch ends. If the
@@ -73,8 +124,11 @@ export function tryReleaseChargedAttack(): boolean {
   }
   if (liveProgress <= 0) return false;
   chargedAmount  = liveProgress;
+  chargedPerfect = isChargePerfectWindow();
   chargedPending = true;
   liveProgress   = 0;
+  poured = 0;
+  wasFull = false;
   return true;
 }
 
@@ -83,6 +137,8 @@ export function tryReleaseChargedAttack(): boolean {
  *  WITHOUT firing. */
 export function cancelCharge(): void {
   liveProgress = 0;
+  poured = 0;
+  wasFull = false;
   chargePosX = -1;
   chargePosY = -1;
 }
@@ -96,4 +152,13 @@ export function consumeChargedAmount(): number {
   const amt = chargedAmount;
   chargedAmount = 0;
   return amt;
+}
+
+/** Whether the just-consumed charged release landed in the perfect window. Read
+ *  by combat right AFTER consumeChargedAmount, in the same press. Cleared on
+ *  read so it bills once. */
+export function consumeChargedPerfect(): boolean {
+  const p = chargedPerfect;
+  chargedPerfect = false;
+  return p;
 }

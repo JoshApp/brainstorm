@@ -6,7 +6,7 @@ import type { Destructible } from '../level/destructibles';
 import type { Damageable } from './damageable';
 import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
-import { playImpact, playWhoosh } from '../audio/sfx';
+import { playImpact, playWhoosh, playBuffApply } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit, on } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
@@ -19,8 +19,8 @@ import { applyBuff } from '../ecs/buffs';
 import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
-import { consumeChargedAmount } from '../controls/charge-input';
-import { spendStaminaSoft, gainStamina, getStamina } from './stamina';
+import { consumeChargedAmount, consumeChargedPerfect } from '../controls/charge-input';
+import { spendStaminaSoft, gainStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import type { AttackDirection } from '../player/viewmodel';
@@ -31,15 +31,14 @@ import type { AttackDirection } from '../player/viewmodel';
  *  buffers and pays only per real swing. Ranged is billed per-shot at press
  *  time (the discrete-fire path), so it's skipped here.
  *
- *  No fizzle: a CHARGED swing SOFT-spends — it commits fully and takes whatever
- *  is left, gassing you if it empties the bar (the press gate already ensured
- *  you had a sliver; at exactly empty the charge was downgraded to a free
- *  light). It never degrades to a normal swing mid-commit. LIGHT swings are free
- *  (LIGHT_COST 0) — they don't touch the resource at all, so the natural
+ *  No fizzle: a CHARGED melee swing already paid its stamina by DRAINING it
+ *  during the hold (the pour in charge-input) — the charge level is exactly what
+ *  you could afford — so there's nothing to bill here on release. LIGHT swings
+ *  are free (LIGHT_COST 0) and don't touch the resource at all, so the natural
  *  thumb-mash is never punished. */
 export function spendSwingStamina(charged: boolean): void {
   if (getCurrentWeapon().ranged) return;
-  if (charged) { spendStaminaSoft(CONFIG.STAMINA.CHARGED_COST); return; }
+  if (charged) return;   // melee charge was paid via the pour during the hold
   if (CONFIG.STAMINA.LIGHT_COST > 0) spendStaminaSoft(CONFIG.STAMINA.LIGHT_COST);
 }
 
@@ -134,6 +133,9 @@ export function createCombatSystem(
   // strike resolution to scale damage / reach / cone. Reset on each
   // new press (taps reset it to 0, charged swings to their progress).
   let currentSwingCharge = 0;
+  // Whether the current swing was released in the perfect-charge window (melee
+  // overcharge — extra damage + poise crack). Captured with currentSwingCharge.
+  let currentSwingPerfect = false;
   // Player movement intent (joystick magnitude, 0..1) captured each tick — read
   // by fireRanged to bloom shots when moving (ranged commitment: plant to aim).
   let lastMoveMag = 0;
@@ -308,21 +310,22 @@ export function createCombatSystem(
         return;
       }
       // Capture any pending charge for this press — 0 if it was a tap, 0..1 if
-      // the player held to charge. The strike-phase resolution below reads
-      // currentSwingCharge to scale damage, reach, and cone width. Reset
-      // per-press, so chained tap-combos reset back to 0 on the next press.
+      // the player held to charge — plus whether it was a PERFECT release. The
+      // strike-phase resolution below reads currentSwingCharge to scale damage,
+      // reach, and cone, and currentSwingPerfect for the overcharge bonus. Reset
+      // per-press, so chained tap-combos reset to 0 on the next press.
+      //
+      // No fizzle, by construction: a MELEE charge is a stamina pour
+      // (charge-input drains as you hold), so the charge level already reflects
+      // exactly what you could afford — at empty it never builds, so a tap just
+      // does a free light swing. Nothing to downgrade here.
       currentSwingCharge = consumeChargedAmount();
-      // No-fizzle commitment for the CHARGED release: as long as you have ANY
-      // stamina, the charge commits FULLY — the soft spend in spendSwingStamina
-      // (billed on the actual swing via onSwingStart) takes whatever's left and
-      // gasses you if it empties the bar. It never degrades because it can't
-      // afford the *full* cost. Only at EXACTLY empty can't you commit the heavy
-      // — it falls back to a free LIGHT swing (never a dead tap, never a charge
-      // robbed mid-hold) and the HUD flashes so the missing heavy reads as
-      // "you're out". Light swings are free, so a tap always swings.
-      if (currentSwingCharge > 0 && !pressWeapon.ranged && getStamina() <= 0) {
-        currentSwingCharge = 0;
-        flashStaminaBar();
+      currentSwingPerfect = consumeChargedPerfect();
+      if (currentSwingPerfect) {
+        // Confirm the clean timing the instant they release — same "nailed it"
+        // language as the just-dodge (a sharp sting + a firm pulse).
+        playBuffApply();
+        hapticVibrate(CONFIG.CHARGE.PERFECT_HAPTIC_MS);
       }
       // Movement intent at press time. Picks a directional move override
       // (lunge / sweep / retreat) when the joystick is held — null otherwise
@@ -419,8 +422,12 @@ export function createCombatSystem(
     const finisherMult = weapon.isFinisherStrike ? ps.finisherDamageMultiplier : 1;
 
     // Charged-swing damage multiplier — fully charged ×1.8, ramps
-    // linearly from charge progress (c).
-    const chargeDamageMul = 1 + c * 0.80;
+    // linearly from charge progress (c). A PERFECT release (timed the instant
+    // the charge topped out) OVERCHARGES on top of that — the offense mirror of
+    // the just-dodge's perfect-timing reward.
+    const perfectDmgMul = currentSwingPerfect ? CONFIG.CHARGE.PERFECT_DAMAGE_MUL : 1;
+    const perfectStaggerMul = currentSwingPerfect ? CONFIG.CHARGE.PERFECT_STAGGER_MUL : 1;
+    const chargeDamageMul = (1 + c * 0.80) * perfectDmgMul;
 
     // Just-dodge counter — if a perfectly-timed dodge opened a counter window,
     // this swing punishes harder AND cracks poise harder. Read once; consumed
@@ -461,7 +468,7 @@ export function createCombatSystem(
         // enemy staggers (its action cancelled, a free-hit window). A
         // full charge hits poise hardest. staggerPower already folds in
         // weapon weight × Might (resolveWeaponStats).
-        target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS) * counterStaggerMul);
+        target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS) * counterStaggerMul * perfectStaggerMul);
         // (Lifesteal is now a CHANCE-ON-KILL proc — see the enemy:killed
         // listener in createCombatSystem — not a per-hit drain, which was
         // far too strong in the playtest.)
