@@ -2,10 +2,7 @@ import { writable } from './store';
 import { getPlayerHp } from '../player/health';
 import { getPlayerSnapshot } from './player-stats';
 import { getGold, getLevel, getXpInLevel, getXpForNextLevel } from './run-state';
-import { staminaFraction, isStaminaRegenHeld, isStaminaExhausted } from '../combat/stamina';
-import { getChargeProgress } from '../controls/charge-input';
-import { wantsHoldToCharge, getCurrentWeapon } from '../player/current-weapon';
-import { CONFIG } from '../config';
+import { staminaFraction, reservedFraction, isStaminaRegenHeld, isStaminaExhausted } from '../combat/stamina';
 
 // Reactive stores backing the live HUD readouts. Synced once per frame from
 // the source-of-truth getters (frame-coherent: any direct mutation is caught
@@ -98,12 +95,10 @@ export function syncHudStores(): void {
   xpStore.set({ level: getLevel(), inLevel: getXpInLevel(), next: getXpForNextLevel() });
   goldStore.set(getGold());
   const frac = staminaFraction();
-  // Reserve the heavy's pending cost while a MELEE charge is in flight (ranged
-  // charge is stamina-free). The band is clamped to what's left — when it would
-  // exceed the fill, you can't afford the heavy and it'll fizzle to a light
-  // swing (the bar renders that case as a warning).
-  const chargingMelee = getChargeProgress() > 0 && wantsHoldToCharge() && !getCurrentWeapon().ranged;
-  const reserved = chargingMelee ? CONFIG.STAMINA.CHARGED_COST / CONFIG.STAMINA.MAX : 0;
+  // The real locked-charge amount (stamina.reserveStamina has actually moved it
+  // out of usable). The HUD draws it as a "ghost" segment past the usable fill,
+  // so you watch your bar convert into a heavy as you hold.
+  const reserved = reservedFraction();
   staminaStore.set({
     frac,
     rested: frac >= 0.999 && !isStaminaRegenHeld() && reserved === 0,

@@ -1,46 +1,58 @@
 // Stamina — a second player resource, separate from HP.
 //
-// One pool, drawn by every committal physical action: light swings (a little),
-// charged swings, ranged shots, and the dash/dodge (a lot). Walking is free.
-// It's a RHYTHM meter, not a wall — regen pauses the instant you act and
-// resumes after a short delay, so the loop is "commit a burst, then breathe."
+// Two pools, one budget:
+//   - current  — usable stamina you spend on the power moves (dodge, ranged,
+//                and any future committal action). Light swings are free.
+//   - reserved — stamina LOCKED by an in-progress heavy charge. Charging
+//                RESERVES (doesn't drain) from current; releasing the swing
+//                COMMITS it (gone); canceling (or dodging out) REFUNDS it back.
+// Invariant: current >= 0, reserved >= 0, current + reserved <= MAX.
 //
-// Two feel rules borrowed from Elden Ring:
-//   - Never a dead tap: light swings always fire (see attack.ts); only the
-//     committal actions (ranged/dash) gate, and only when the bar is *visibly*
-//     empty, with a HUD flash so it's never a mystery.
-//   - Bottoming out costs you: emptying the bar sets a LONGER recovery delay
-//     ("gassed") than a normal spend, and the gassed state holds until regen
-//     climbs back past EXHAUST_CLEAR. A single action no longer snaps straight
-//     back to full.
+// Why reservation, not drain: you can never "fizzle" a heavy — you only ever
+// build the charge you could afford to lock — AND backing out is free (look
+// around mid-charge, or dodge-cancel, and you get it back). Regen keeps running
+// while you hold a charge, just SLOWED (HOLD_REGEN_MUL), so a patient hold
+// trickles regen into current → which the charge can keep reserving. It's never
+// fully frozen, just less effective than actually cooling down.
 //
-// Module-level mutable state with a getter/setter API, the project's standard
-// pattern. NOT persisted: regenerates in a few seconds, reset to full on every
-// floor load (save-hydration).
+// It's still a RHYTHM meter: regen pauses briefly after a real spend and resumes
+// after a short delay. Bottoming out ("gassed") sets a longer recovery. Module-
+// level mutable state with a getter/setter API. NOT persisted: reset to full on
+// every floor load (save-hydration / loader).
 
 import { CONFIG } from '../config';
 
 let current = CONFIG.STAMINA.MAX;
-// Seconds remaining before regen resumes. Refreshed on every spend/drain so a
+let reserved = 0;
+// Seconds remaining before regen resumes. Refreshed on every real spend so a
 // burst of spending holds regen off until the player stops.
 let regenCooldown = 0;
 // "Gassed" — set when a spend bottoms the bar out, cleared once regen climbs
-// back past EXHAUST_CLEAR. Drives the HUD's exhausted flash and the longer
-// recovery pause.
+// back past EXHAUST_CLEAR. Drives the HUD's exhausted flash + the longer pause.
 let exhausted = false;
 
-/** Current stamina, 0..MAX. */
+/** Current (usable) stamina, 0..MAX. */
 export function getStamina(): number {
   return current;
+}
+
+/** Stamina locked by an in-flight charge, 0..MAX. */
+export function getReserved(): number {
+  return reserved;
 }
 
 export function getMaxStamina(): number {
   return CONFIG.STAMINA.MAX;
 }
 
-/** 0..1 — for the HUD gauge. */
+/** 0..1 usable fraction — for the HUD gauge. */
 export function staminaFraction(): number {
   return current / CONFIG.STAMINA.MAX;
+}
+
+/** 0..1 reserved fraction — for the HUD's "locked charge" ghost segment. */
+export function reservedFraction(): number {
+  return reserved / CONFIG.STAMINA.MAX;
 }
 
 /** True while the bar is bottomed out ("gassed"). HUD flashes red; the longer
@@ -49,13 +61,14 @@ export function isStaminaExhausted(): boolean {
   return exhausted;
 }
 
-/** Can the player afford `cost` right now? Cheap, side-effect-free. */
+/** Can the player afford `cost` from usable stamina right now? Cheap, side-
+ *  effect-free. */
 export function canSpendStamina(cost: number): boolean {
   return current >= cost;
 }
 
-// After any drain, set the regen delay — longer ("gassed") if we bottomed out,
-// normal otherwise — and update the exhausted flag.
+// After any real drain (spend/commit), set the regen delay — longer ("gassed")
+// if we bottomed out, normal otherwise — and update the exhausted flag.
 function noteSpent(): void {
   if (current <= 0) {
     current = 0;
@@ -66,9 +79,8 @@ function noteSpent(): void {
   }
 }
 
-/** Hard spend: only goes through if you can afford the FULL `cost`. Returns
- *  false (no change) otherwise. Used where partial payment makes no sense —
- *  a charged swing that can't afford its bonus fizzles to a normal swing. */
+/** Hard spend from usable stamina: only goes through if you can afford the FULL
+ *  `cost`. Returns false (no change) otherwise. */
 export function spendStamina(cost: number): boolean {
   if (current < cost) return false;
   current -= cost;
@@ -76,12 +88,9 @@ export function spendStamina(cost: number): boolean {
   return true;
 }
 
-/** Soft spend: fires as long as you have ANY stamina, draining up to `cost`
- *  (clamped at 0). Returns false ONLY when the bar is already empty. This is
- *  the "never a dead tap" path — an action with a sliver of stamina still
- *  commits and just gasses you, rather than being swallowed. Light swings call
- *  it and ignore the result (they always swing); ranged/dash respect false to
- *  gate when visibly empty. */
+/** Soft spend from usable stamina: fires as long as you have ANY, draining up to
+ *  `cost` (clamped at 0). Returns false ONLY when usable is already empty — the
+ *  "never a dead tap" path. */
 export function spendStaminaSoft(cost: number): boolean {
   if (current <= 0) return false;
   current = Math.max(0, current - cost);
@@ -89,38 +98,67 @@ export function spendStaminaSoft(cost: number): boolean {
   return true;
 }
 
-/** Continuous drain (reserved for a future hold-action). Drains up to
- *  `perSec * dt`, clamped to what's left; returns the amount actually drained. */
-export function drainStamina(perSec: number, dt: number): number {
-  const want = perSec * dt;
-  const got = Math.min(current, want);
-  if (got > 0) {
-    current -= got;
-    noteSpent();
-  }
+/** Reserve up to `amount` from usable into the locked pool (the heavy-charge
+ *  pour). Returns how much was actually reserved (limited by what's usable).
+ *  Does NOT note a spend — reservation isn't a commitment yet, and regen keeps
+ *  trickling (slowed) so a held charge can keep reserving off it. */
+export function reserveStamina(amount: number): number {
+  if (amount <= 0) return 0;
+  const got = Math.min(amount, current);
+  current -= got;
+  reserved += got;
   return got;
 }
 
-/** Grant stamina back, clamped at MAX — the aggression-reward path (a melee
- *  hit refunds some) and any future on-hit/on-kill effects. Doesn't touch the
- *  regen delay (it's an instant top-up, not a spend), but a big enough refund
- *  can lift you out of the gassed state just like regen crossing EXHAUST_CLEAR. */
+/** Commit the reserved pool — the heavy actually swung. The locked stamina is
+ *  spent (gone) and the regen delay / gassed check kicks in. Returns the amount
+ *  committed. */
+export function commitReserved(): number {
+  const spent = reserved;
+  reserved = 0;
+  if (spent > 0) noteSpent();
+  return spent;
+}
+
+/** Refund the reserved pool back to usable — the charge was canceled (looked
+ *  away, or dodge-canceled). Free: no spend, no regen penalty. */
+export function refundReserved(): void {
+  current = Math.min(CONFIG.STAMINA.MAX, current + reserved);
+  reserved = 0;
+}
+
+/** Force the gassed recovery delay WITHOUT a spend — for the desperate "stumble"
+ *  dodge thrown on an empty bar: it never blocks, but it still stalls your
+ *  recovery so a no-stamina escape is a punishing last resort, not free. */
+export function stallRegen(): void {
+  exhausted = true;
+  regenCooldown = CONFIG.STAMINA.EXHAUST_RECOVERY_S;
+}
+
+/** Grant usable stamina back, clamped at MAX − reserved (locked stamina holds
+ *  its room). The aggression-reward path (a melee hit refunds some). A big
+ *  enough refund can lift you out of the gassed state. */
 export function gainStamina(amount: number): void {
   if (amount <= 0) return;
-  current = Math.min(CONFIG.STAMINA.MAX, current + amount);
+  current = Math.min(CONFIG.STAMINA.MAX - reserved, current + amount);
   if (exhausted && current >= CONFIG.STAMINA.EXHAUST_CLEAR) exhausted = false;
 }
 
-/** Per-frame regen. Holds during the post-spend delay, then refills at
- *  REGEN_PER_SEC. Clears the gassed flag once it climbs past EXHAUST_CLEAR.
- *  Call from an 'unpaused' system so it pauses with the world. */
+/** Per-frame regen into usable stamina, up to (MAX − reserved). Holds during the
+ *  post-spend delay, then refills at REGEN_PER_SEC — SLOWED to HOLD_REGEN_MUL of
+ *  that while a charge is reserved (held), so it's less effective than actually
+ *  cooling down but never frozen. Call from an 'unpaused' system. */
 export function tickStamina(dt: number): void {
   if (regenCooldown > 0) {
     regenCooldown = Math.max(0, regenCooldown - dt);
     return;
   }
-  if (current < CONFIG.STAMINA.MAX) {
-    current = Math.min(CONFIG.STAMINA.MAX, current + CONFIG.STAMINA.REGEN_PER_SEC * dt);
+  const cap = CONFIG.STAMINA.MAX - reserved;
+  if (current < cap) {
+    const rate = reserved > 0
+      ? CONFIG.STAMINA.REGEN_PER_SEC * CONFIG.STAMINA.HOLD_REGEN_MUL
+      : CONFIG.STAMINA.REGEN_PER_SEC;
+    current = Math.min(cap, current + rate * dt);
   }
   if (exhausted && current >= CONFIG.STAMINA.EXHAUST_CLEAR) {
     exhausted = false;
@@ -133,9 +171,10 @@ export function isStaminaRegenHeld(): boolean {
   return regenCooldown > 0;
 }
 
-/** Reset to full — called on floor load / run start (save-hydration). */
+/** Reset to full — called on floor load / run start (save-hydration / loader). */
 export function resetStamina(): void {
   current = CONFIG.STAMINA.MAX;
+  reserved = 0;
   regenCooldown = 0;
   exhausted = false;
 }

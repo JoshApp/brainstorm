@@ -56,10 +56,10 @@ export function createStaminaBar() {
   } as Partial<CSSStyleDeclaration>);
   container.appendChild(fill);
 
-  // Reserved band — overlaid at the leading edge of the fill while a charged
-  // melee swing is held, previewing the stamina it will spend on release
-  // (Elden Ring bills on release; this shows where the bar will land). Hatched
-  // so it reads as "pending", not "spent". Width/offset/colour set in render.
+  // Reserved band — the LOCKED charge stamina, drawn as a hatched "ghost"
+  // segment just past the usable fill while a heavy is held. As you charge, the
+  // bright fill recedes and this ghost grows into it: you watch usable stamina
+  // convert into a heavy. Released = committed (gone); canceled = refunded back.
   reservedEl = document.createElement('div');
   Object.assign(reservedEl.style, {
     position: 'absolute',
@@ -110,20 +110,16 @@ function render({ frac, rested, exhausted, reserved }: StaminaState) {
   fill.style.background = frac < 0.2
     ? 'linear-gradient(180deg, rgba(210, 110, 90, 0.92), rgba(150, 50, 40, 0.92))'
     : 'linear-gradient(180deg, rgba(150, 195, 215, 0.92), rgba(70, 110, 140, 0.92))';
-  // Reserved band: the pending charged cost, drawn at the leading edge of the
-  // fill (from frac-reserved up to frac). If it would run past the fill you
-  // can't afford the heavy — clamp to the fill and warn (red hatch): the swing
-  // will fizzle to a light one.
+  // Reserved (locked charge) ghost: drawn just PAST the usable fill, from frac
+  // up to frac+reserved — the stamina you've locked into the held heavy. The
+  // usable fill (above) already shrank as this grew, so the two meet at frac and
+  // total your committed-or-available stamina. Clamped so it never overflows the
+  // bar. No "fizzle" case any more — you can only ever reserve what you had.
   if (reserved > 0) {
-    const shown = Math.min(reserved, f);
-    const left = f - shown;
-    reservedEl.style.left = `${left * 100}%`;
+    const shown = Math.min(reserved, 1 - f);
+    reservedEl.style.left = `${f * 100}%`;
     reservedEl.style.width = `${shown * 100}%`;
     reservedEl.style.opacity = '1';
-    const fizzle = reserved > f + 0.001;
-    reservedEl.style.backgroundImage = fizzle
-      ? 'repeating-linear-gradient(135deg, rgba(235,110,90,0.9) 0 3px, rgba(235,110,90,0.3) 3px 6px)'
-      : 'repeating-linear-gradient(135deg, rgba(255,225,170,0.85) 0 3px, rgba(255,225,170,0.25) 3px 6px)';
   } else {
     reservedEl.style.opacity = '0';
   }

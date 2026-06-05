@@ -14,7 +14,7 @@
 
 import { isWorldPausedByScreen } from '../ui/screen-manager';
 import { CONFIG } from '../config';
-import { drainStamina } from '../combat/stamina';
+import { reserveStamina, commitReserved, refundReserved } from '../combat/stamina';
 import { getCurrentWeapon } from '../player/current-weapon';
 
 // Aligned with TAP_MAX_MS in input-touch (320). Quick releases below
@@ -68,13 +68,13 @@ export function setChargePosition(x: number, y: number): void {
  *  elapsed-since-touchstart in ms; this module computes the 0..1 progress and
  *  stores it for the overlay.
  *
- *  MELEE: a stamina POUR — each frame drains stamina at CONFIG.CHARGE.DRAIN_PER_SEC
- *  (regen pauses, since drainStamina notes a spend), and the charge level is the
- *  fraction of CHARGED_COST poured so far. When stamina runs out the drain
+ *  MELEE: a stamina RESERVATION — each frame reserves stamina at
+ *  CONFIG.CHARGE.RESERVE_PER_SEC, and the charge level is the fraction of
+ *  CHARGED_COST reserved so far. When usable stamina runs out reserveStamina
  *  returns 0, the charge stops filling, and you're left holding whatever you
- *  could afford — no fizzle, ever. Hitting full opens the perfect-release window.
- *  RANGED: unchanged — a time-ramp with no stamina drain (its cost is the flat
- *  per-shot spend + the accuracy bloom). */
+ *  could lock — no fizzle, ever. Release COMMITS the reservation, cancel REFUNDS
+ *  it. Hitting full opens the perfect-release window. RANGED: unchanged — a
+ *  time-ramp with no reservation (cost is the flat per-shot spend + bloom). */
 export function setChargeFromHeldMs(heldMs: number): void {
   if (heldMs < CHARGE_RAMP_START_MS) {
     liveProgress = 0;
@@ -96,7 +96,8 @@ export function setChargeFromHeldMs(heldMs: number): void {
   lastHeldMs = heldMs;
   const cost = CONFIG.STAMINA.CHARGED_COST;
   if (poured < cost) {
-    poured += drainStamina(CONFIG.CHARGE.DRAIN_PER_SEC, dtMs / 1000);
+    const want = Math.min(CONFIG.CHARGE.RESERVE_PER_SEC * (dtMs / 1000), cost - poured);
+    poured += reserveStamina(want);
     liveProgress = Math.min(1, poured / cost);
     if (liveProgress >= 1 && !wasFull) {
       // Just topped out — open the perfect-release window.
@@ -122,10 +123,15 @@ export function tryReleaseChargedAttack(): boolean {
     liveProgress = 0;
     return false;
   }
-  if (liveProgress <= 0) return false;
+  if (liveProgress <= 0) {
+    refundReserved();   // nothing to fire — hand back any stray reservation
+    poured = 0;
+    return false;
+  }
   chargedAmount  = liveProgress;
   chargedPerfect = isChargePerfectWindow();
   chargedPending = true;
+  commitReserved();   // the heavy swung — spend the locked stamina
   liveProgress   = 0;
   poured = 0;
   wasFull = false;
@@ -136,6 +142,7 @@ export function tryReleaseChargedAttack(): boolean {
  *  the tap-movement threshold, screen rotation, etc). Clears progress
  *  WITHOUT firing. */
 export function cancelCharge(): void {
+  refundReserved();   // backed out — give the locked stamina back, free
   liveProgress = 0;
   poured = 0;
   wasFull = false;

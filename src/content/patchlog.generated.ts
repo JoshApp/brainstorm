@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-05",
     "entries": [
       {
+        "tag": "tech",
+        "text": "Combat feel: charge = stamina pour (Model B) + perfect-release overcharge"
+      },
+      {
         "tag": "tune",
         "text": "Combat feel: ranged commitment — accuracy demands stillness"
       },
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Title screen"
-      },
-      {
-        "tag": "tune",
-        "text": "Shader: darkness-reactive rim — forms self-draw in the dark (art-direction proto)"
       }
     ]
   }

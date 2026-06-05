@@ -9,6 +9,7 @@ import { CONFIG } from '../src/config';
 import {
   getStamina, spendStamina, spendStaminaSoft, tickStamina, gainStamina,
   isStaminaExhausted, canSpendStamina, resetStamina, getMaxStamina,
+  reserveStamina, commitReserved, refundReserved, getReserved, stallRegen,
 } from '../src/combat/stamina';
 
 const S = CONFIG.STAMINA;
@@ -89,6 +90,59 @@ test('canSpend reflects current', () => {
   assert.equal(canSpendStamina(S.MAX), true);
   spendStamina(S.MAX);
   assert.equal(canSpendStamina(1), false);
+});
+
+// --- Reservation (heavy-charge pour) ---
+
+test('reserve moves usable → locked, capped at what is usable', () => {
+  const got = reserveStamina(S.CHARGED_COST);
+  assert.equal(got, S.CHARGED_COST, 'reserved the full ask when affordable');
+  assert.equal(getStamina(), S.MAX - S.CHARGED_COST, 'usable dropped by the reservation');
+  assert.equal(getReserved(), S.CHARGED_COST, 'locked pool holds it');
+  // Reserve more than usable → only gets what's left.
+  const rest = reserveStamina(S.MAX);
+  assert.equal(rest, S.MAX - S.CHARGED_COST, 'capped at usable');
+  assert.equal(getStamina(), 0);
+  assert.equal(getReserved(), S.MAX, 'everything locked');
+});
+
+test('commit spends the reservation (and gasses if it emptied usable)', () => {
+  reserveStamina(S.MAX);                 // all locked, usable → 0
+  const spent = commitReserved();
+  assert.equal(spent, S.MAX);
+  assert.equal(getReserved(), 0, 'reservation consumed');
+  assert.equal(getStamina(), 0, 'usable was already poured in');
+  assert.equal(isStaminaExhausted(), true, 'committing on empty usable gasses you');
+});
+
+test('refund hands the reservation back to usable, free', () => {
+  reserveStamina(S.CHARGED_COST);
+  refundReserved();
+  assert.equal(getReserved(), 0);
+  assert.equal(getStamina(), S.MAX, 'fully restored — cancel costs nothing');
+  assert.equal(isStaminaExhausted(), false);
+});
+
+test('regen is SLOWED, not frozen, while a charge is reserved', () => {
+  reserveStamina(S.CHARGED_COST);        // usable = MAX - cost, locked = cost
+  spendStaminaSoft(getStamina());        // drain usable → 0 (sets a regen delay)
+  tickStamina(S.EXHAUST_RECOVERY_S + 0.01); // wait out the gassed delay
+  const before = getStamina();
+  tickStamina(1.0);                      // one second of (slowed) regen
+  const gained = getStamina() - before;
+  assert.ok(gained > 0, 'regen still runs while holding');
+  assert.ok(gained < S.REGEN_PER_SEC, 'but slower than full-speed cooldown');
+  // And it can never refill past the locked room.
+  tickStamina(100);
+  assert.ok(getStamina() <= S.MAX - getReserved() + 1e-9, 'capped at MAX − reserved');
+});
+
+test('stallRegen gasses you without a spend (the empty stumble dodge)', () => {
+  // Usable is full, but a stumble forces the gassed recovery anyway.
+  stallRegen();
+  assert.equal(isStaminaExhausted(), true);
+  tickStamina(0.1);
+  assert.equal(getStamina(), S.MAX, 'regen held during the stall');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
