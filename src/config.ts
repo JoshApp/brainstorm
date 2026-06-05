@@ -166,6 +166,21 @@ export const CONFIG = {
     PERFECT_HAPTIC_MS: 30,     // a firm "clean!" pulse on a perfect release
   },
 
+  // === EXHAUSTION FEEDBACK — felt stamina, not read ===
+  // When you've spent yourself down, "winded" is communicated through the body,
+  // not a HUD number: breathing audio that quickens + a subtle camera chest-
+  // heave, both ramping with exertion (silent/still when rested, light when low,
+  // heavy panting + bigger heave when gassed). Pairs with the gassed heartbeat
+  // haptic (exhaustion-haptic.ts) and the ghost stamina bar.
+  EXHAUSTION: {
+    WINDED_THRESHOLD: 0.45,    // usable-stamina fraction below which breathing fades in
+    SUBGASSED_MAX: 0.7,        // exertion cap while low-but-not-gassed (gassed = 1.0)
+    BREATH_HZ_MIN: 0.45,       // breaths/sec when just winded
+    BREATH_HZ_MAX: 1.15,       // breaths/sec when gassed (panting)
+    HEAVE_Y: 0.035,            // metres of vertical chest-heave at full exertion
+    HEAVE_PITCH: 0.012,        // radians of pitch heave at full exertion
+  },
+
   // === RENDER ===
   PIXEL_RATIO_CAP: 2,          // cap DPR on desktop (debug) — crisp
   // Mobile caps DPR lower: phones are fragment/fillrate-bound, and a 2x

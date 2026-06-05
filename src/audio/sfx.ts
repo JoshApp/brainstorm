@@ -225,6 +225,44 @@ export function playWhoosh() {
   src.stop(c.currentTime + duration);
 }
 
+/** A single breath PUFF — soft filtered noise, airy attack/decay. `intensity`
+ *  0..1 scales volume + lowers/darkens the breath (a tired, voiced exhale gets
+ *  louder, longer, and lower). Used by the exhaustion feedback so "winded" is
+ *  audible — the felt-stamina channel, not a HUD readout. */
+export function playBreath(intensity: number) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const i = Math.max(0, Math.min(1, intensity));
+  const now = c.currentTime;
+  const duration = 0.30 + 0.18 * i;        // heavier breaths last a touch longer
+  const bufferSize = Math.floor(c.sampleRate * duration);
+  const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let k = 0; k < bufferSize; k++) data[k] = Math.random() * 2 - 1;
+
+  const src = c.createBufferSource();
+  src.buffer = buffer;
+
+  // Breathy bandpass — lower + wider than the whoosh so it reads as air, not a
+  // swoosh; a tired breath sits lower and sweeps down (an exhale).
+  const filter = c.createBiquadFilter();
+  filter.type = 'bandpass';
+  const centre = 900 - 320 * i;            // 900Hz light → ~580Hz heavy
+  filter.frequency.setValueAtTime(centre * 1.3, now);
+  filter.frequency.exponentialRampToValueAtTime(centre * 0.7, now + duration);
+  filter.Q.value = 0.7;                     // wide → airy, not whistly
+
+  const gain = c.createGain();
+  const peak = 0.045 + 0.20 * i;            // quiet when lightly winded, present when gassed
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(peak, now + duration * 0.35);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+  src.connect(filter).connect(gain).connect(masterGain);
+  src.start();
+  src.stop(now + duration);
+}
+
 /** Heavy impact — low-frequency body thud + a brief high-mid crack on top. */
 export function playImpact(pos?: Vec3Sound) {
   const c = ensureCtx();

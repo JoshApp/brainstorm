@@ -9,6 +9,7 @@ import { resetBossEncounter } from '../mobs/boss-encounter';
 import { resetBossEngagement } from '../ui/boss-engagement';
 import { resetPlayerInvuln } from '../player/health';
 import { resetJustDodge } from '../combat/just-dodge';
+import { resetExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { cancelFogWalkthrough } from '../player/fog-walkthrough';
 import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
@@ -172,6 +173,7 @@ export function tickPendingLoad() {
   resetBossEngagement();
   resetPlayerInvuln();
   resetJustDodge();         // clear any in-flight counter window / slow-mo
+  resetExhaustionFeedback(); // clear breath phase / heave on a fresh floor
   cancelFogWalkthrough();   // never carry a half-played gate walk into a new level
   // Build the new level into the same scene.
   const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));

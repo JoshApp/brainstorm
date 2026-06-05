@@ -36,6 +36,7 @@ import { tickLightPool } from '../scene/light-pool';
 import { tickProjectiles } from '../combat/projectile-pool';
 import { tickStamina } from '../combat/stamina';
 import { tickExhaustionHaptic } from '../combat/exhaustion-haptic';
+import { tickExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { tickHazardFields } from '../combat/hazard-field';
 import { tickXpWisps } from '../effects/xp-wisps';
 import { tickGoldCoins } from '../effects/gold-coins';
@@ -237,6 +238,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // Gassed = felt: a heartbeat haptic while exhausted. realDt so the cadence
     // is steady through slow-mo / hit-pause; 'unpaused' so it stops in menus.
     { name: 'exhaustion-haptic', phase: 'unpaused', tick(ctx) { tickExhaustionHaptic(ctx.realDt); } },
+
+    // Felt-stamina: breathing audio + camera chest-heave that ramp as you tire.
+    // realDt for a steady breath cadence; 'unpaused' so it quiets in menus.
+    { name: 'exhaustion-feedback', phase: 'unpaused', tick(ctx) { tickExhaustionFeedback(ctx.realDt); } },
 
     // Handheld lamp flicker + bob. realDt — flicker shouldn't slow during
     // slow-mo (a frozen lamp looks broken).

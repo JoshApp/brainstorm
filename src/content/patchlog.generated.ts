@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-05",
     "entries": [
       {
+        "tag": "content",
+        "text": "Combat polish: dodge-cancels-charge (refund) + perfect-release gleam on weapon"
+      },
+      {
         "tag": "tune",
         "text": "Combat: stamina reservation model + dodge stumble (never blocks)"
       },
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Shader step 2/4: banded shading — hard chiaroscuro on the shadow falloff"
-      },
-      {
-        "tag": "tune",
-        "text": "Shader step 1/4: bloom — emissive + rims bleed into the dark"
       }
     ]
   }
