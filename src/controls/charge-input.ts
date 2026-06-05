@@ -36,6 +36,7 @@ let poured = 0;                      // stamina spent into the current melee cha
 let lastHeldMs = 0;                  // previous frame's heldMs, for the per-frame delta
 let perfectUntil = 0;                // performance.now() ms — end of the perfect-release window
 let wasFull = false;                 // latched once liveProgress hits 1 (opens the window once)
+let suppressed = false;              // dodge-canceled: don't rebuild until the touch releases
 // Live touch position of the charging finger (clientX/Y). The
 // charge-ring overlay reads these so the visual anchors to the
 // thumb instead of a fixed corner. -1 means "no live charge".
@@ -80,7 +81,15 @@ export function setChargeFromHeldMs(heldMs: number): void {
     liveProgress = 0;
     poured = 0;
     wasFull = false;
+    suppressed = false;    // a fresh press (back in the tap window) clears suppression
     lastHeldMs = heldMs;   // track so the first charging frame has a small delta
+    return;
+  }
+  if (suppressed) {
+    // Dodge-canceled while the attack finger is still down — stay at zero until
+    // they release and press again (the ramp-start branch above clears it).
+    liveProgress = 0;
+    lastHeldMs = heldMs;
     return;
   }
   if (getCurrentWeapon().ranged) {
@@ -108,9 +117,20 @@ export function setChargeFromHeldMs(heldMs: number): void {
 }
 
 /** True while the perfect-release window is open (charge full, within the timing
- *  window). The charge-ring flashes on this so the player can read the moment. */
+ *  window). The charge-ring + weapon gleam flash on this. */
 export function isChargePerfectWindow(): boolean {
   return wasFull && liveProgress >= 1 && performance.now() <= perfectUntil;
+}
+
+/** Dodge-cancel: drop an in-flight charge and REFUND its reservation (free), and
+ *  keep it from rebuilding until the held attack touch is released. Call before
+ *  the dodge spends, so the refunded stamina can fund the escape. */
+export function suppressChargeUntilRelease(): void {
+  refundReserved();
+  suppressed = true;
+  liveProgress = 0;
+  poured = 0;
+  wasFull = false;
 }
 
 /** Called by the input layer when a charge-eligible touch ends. If the
@@ -126,6 +146,7 @@ export function tryReleaseChargedAttack(): boolean {
   if (liveProgress <= 0) {
     refundReserved();   // nothing to fire — hand back any stray reservation
     poured = 0;
+    suppressed = false; // touch released → clear any dodge-cancel suppression
     return false;
   }
   chargedAmount  = liveProgress;
@@ -146,6 +167,7 @@ export function cancelCharge(): void {
   liveProgress = 0;
   poured = 0;
   wasFull = false;
+  suppressed = false;
   chargePosX = -1;
   chargePosY = -1;
 }

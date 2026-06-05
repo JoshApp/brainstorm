@@ -15,6 +15,7 @@
 
 import { CONFIG } from '../config';
 import { spendStaminaSoft, stallRegen } from './stamina';
+import { suppressChargeUntilRelease } from '../controls/charge-input';
 import { noteDashStarted } from './just-dodge';
 import { applyPlayerKnockback } from '../player/knockback';
 import { setPlayerInvulnerable } from '../player/health';
@@ -26,6 +27,10 @@ import { playWhoosh } from '../audio/sfx';
 export function tryDash(dirX: number, dirZ: number): boolean {
   const len = Math.hypot(dirX, dirZ);
   if (len === 0) return false;   // no resolvable direction
+  // Dodge-cancel: drop any held heavy and REFUND its reservation FIRST, so that
+  // stamina is back in the pool to fund this escape (panic-cancel a big charge
+  // straight into a clean dodge). Suppresses re-charge until the finger lifts.
+  suppressChargeUntilRelease();
   // Soft spend: true if we had a sliver (full dodge), false if empty (stumble).
   const full = spendStaminaSoft(CONFIG.STAMINA.DASH_COST);
   const speed = CONFIG.STAMINA.DASH_SPEED * (full ? 1 : CONFIG.STAMINA.DASH_STUMBLE_SPEED_MUL);

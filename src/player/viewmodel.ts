@@ -3,7 +3,7 @@ import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { getBobOffset } from './viewmodel-bob';
 import { computeWeaponPose } from './weapon-animations';
-import { getChargeProgress } from '../controls/charge-input';
+import { getChargeProgress, isChargePerfectWindow } from '../controls/charge-input';
 import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
@@ -105,6 +105,15 @@ export function createWeaponViewmodel(
   // its own pure module; this viewmodel only reads it to pose `group`.
   const swing = createSwingState({ onSwingStart: options.onSwingStart, canSwing: options.canSwing });
 
+  // PERFECT-RELEASE gleam — the weapon's emissive flashes white during the
+  // perfect-charge window so "release NOW" reads on the weapon itself (in your
+  // eyeline), not just the HUD ring. Collected per weapon at mount (built mats
+  // are this viewmodel's own clones, safe to mutate); each remembers its base
+  // emissive so we can restore it. Only mats with an emissive channel qualify.
+  type FlashMat = { mat: THREE.MeshStandardMaterial; base: number };
+  const flashMats: FlashMat[] = [];
+  let gleaming = false;
+
   function unmount() {
     while (group.children.length > 0) {
       const child = group.children[0];
@@ -121,6 +130,8 @@ export function createWeaponViewmodel(
 
   function mount(spec: ModelSpec) {
     unmount();
+    flashMats.length = 0;
+    gleaming = false;
     const built = buildModel(spec);
     // Held weapon always renders ON TOP of scene geometry, so it never
     // clips into walls. Standard PSX-era FPS trick. We don't change the
@@ -150,6 +161,12 @@ export function createWeaponViewmodel(
           // puts it last overall.
           m.transparent = true;
           m.needsUpdate = true;
+          // Remember the base emissive so the perfect-release gleam can flash
+          // white and restore. Only materials that have an emissive channel.
+          const em = (m as THREE.MeshStandardMaterial).emissive;
+          if (em && typeof em.getHex === 'function') {
+            flashMats.push({ mat: m as THREE.MeshStandardMaterial, base: em.getHex() });
+          }
         }
         mesh.renderOrder = 999;
       }
@@ -203,6 +220,16 @@ export function createWeaponViewmodel(
   function update(dt: number) {
     swing.advance(dt);
     repose();
+    // Perfect-release gleam: flash the weapon's emissive white inside the
+    // window, restore on exit. Only writes on the edge, so it's free otherwise.
+    const wantGleam = isChargePerfectWindow();
+    if (wantGleam !== gleaming) {
+      gleaming = wantGleam;
+      for (const f of flashMats) {
+        if (wantGleam) f.mat.emissive.setHex(0xdfefff);
+        else f.mat.emissive.setHex(f.base);
+      }
+    }
   }
 
   function setDebugPhase(p: SwingPhase, t: number) {

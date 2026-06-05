@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-05",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Combat: stamina reservation model + dodge stumble (never blocks)"
+      },
+      {
         "tag": "tech",
         "text": "Combat feel: charge = stamina pour (Model B) + perfect-release overcharge"
       },
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Shader step 1/4: bloom — emissive + rims bleed into the dark"
-      },
-      {
-        "tag": "tune",
-        "text": "Title screen"
       }
     ]
   }
