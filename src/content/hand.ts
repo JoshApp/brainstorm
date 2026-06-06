@@ -79,14 +79,14 @@ const PHALANX = {
 };
 
 // Per-joint baseline curl (rotX). MCP/PIP/DIP each contribute; the
-// total ~140° wraps comfortably around a standard grip without any
-// single joint having to bend past 90° (the lo-fi-but-still-real-anat
-// constraint). Per-weapon grip-radius adjustment in
-// held-weapon-compose.ts still tweaks the MCP layer; PIP + DIP stay
-// at these baseline angles.
-const MCP_CURL = -1.10;   // ≈ 63°
-const PIP_CURL = -0.85;   // ≈ 49°
-const DIP_CURL = -0.30;   // ≈ 17°
+// total ~170° wraps fingertips through the grip cylinder's palm-side
+// surface. Each joint stays under ~90° individually, so no single
+// joint hinges past anatomical max. Per-weapon grip-radius adjustment
+// in held-weapon-compose.ts still nudges the MCP layer; PIP + DIP
+// carry their authored baselines.
+const MCP_CURL = -1.40;   // ≈ 80°
+const PIP_CURL = -1.05;   // ≈ 60°
+const DIP_CURL = -0.50;   // ≈ 29°
 
 export const HAND_RIGHT: ModelSpec = {
   id: 'hand-right-bone',
@@ -107,16 +107,17 @@ export const HAND_RIGHT: ModelSpec = {
     },
   },
   parts: [
-    // ── HUMERUS ─ upper-arm bone. Pre-rotated to tilt back+down so
-    // it disappears into the bottom-right of the player's view (the
-    // delver's "shoulder" being behind-and-below the camera, which
-    // is everyone-knows-this off-screen for first-person). Even the
-    // stub that pokes into frame sells "this is a real arm, not a
-    // floating fist."
+    // ── HUMERUS ─ upper-arm bone spanning elbow → shoulder. Authored
+    // in ELBOW-LOCAL space; centered at the midpoint between elbow
+    // (0,0,0) and shoulder (which sits at elbow-local (0.10, -0.10,
+    // 0.155) given the slot positions below). Length matches that
+    // 0.21m gap; rotation aligns the cylinder's local +Y axis with
+    // the elbow→shoulder direction so the bone visibly connects the
+    // two slots instead of floating off into space.
     { name: 'humerus', parent: 'elbow', kind: 'cylinder',
-      pos: [0.040, -0.130, -0.080],
-      radius: 0.022, radiusTop: 0.020, height: 0.30, segments: 12,
-      rot: [-0.85, 0, 0.30],          // tilt back-and-out toward the off-screen shoulder
+      pos: [0.050, -0.050, 0.0775],
+      radius: 0.022, radiusTop: 0.018, height: 0.22, segments: 12,
+      rot: [2.31, 0, 0.79],
       mat: 'bone' },
 
     // ── FOREARM ─ radius (thumb-side, −X) + ulna (pinky-side, +X).
@@ -302,11 +303,13 @@ export const HAND_RIGHT: ModelSpec = {
     // current forearm so the rest of the rig didn't have to move.
     elbow: { parent: 'shoulder', pos: [-0.10, 0.10, -0.155] },
 
-    // ── WRIST ─ the joint between forearm and hand. Pre-rotated
-    // forward so the WHOLE FIST (carpus + metacarpals + fingers +
-    // held weapon) bends at the wrist relative to the forearm, the
-    // way a real hand grips a weapon.
-    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.55, 0, 0] },
+    // ── WRIST ─ the joint between forearm and hand. Pre-flexed ≈50°
+    // so the FIST visibly angles AWAY from the forearm axis — the
+    // weapon then extends out of the fist at an angle to the arm
+    // instead of being a straight continuation of it. Smaller
+    // bend reads as "weapon parallel with arm"; larger pushes the
+    // blade out of the visible frustum because it dives forward.
+    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.85, 0, 0] },
 
     // The grip anchor a held weapon aligns to. A child of WRIST so
     // it inherits the wrist bend along with the fingers. No further
@@ -362,7 +365,7 @@ export const HAND_RIGHT: ModelSpec = {
     finger_pinky:  { parent: 'wrist', pos: [-0.023, 0.121, 0.007], rot: [MCP_CURL + 0.10, 0,  0.14] },
     // Thumb MCP — pre-rotated so the proximal phalanx wraps over the
     // top of where the closed fingers + grip sit.
-    finger_thumb:  { parent: 'wrist', pos: [-0.048, 0.086, 0.007], rot: [-0.55, 0, -1.10] },
+    finger_thumb:  { parent: 'wrist', pos: [-0.048, 0.086, 0.007], rot: [-0.85, 0, -1.30] },
 
     // ── PIP (middle knuckle) ─ children of their MCP slot. Pre-curled
     // ≈49°. PIP-local pos is the END of the proximal phalanx.
@@ -381,6 +384,6 @@ export const HAND_RIGHT: ModelSpec = {
 
     // ── THUMB IP ─ the thumb's only inter-phalangeal joint (no PIP
     // / DIP distinction since the thumb has just two phalanges).
-    finger_thumb_ip:   { parent: 'finger_thumb', pos: [0, PHALANX.thumb.proximal, 0], rot: [-0.65, 0, 0] },
+    finger_thumb_ip:   { parent: 'finger_thumb', pos: [0, PHALANX.thumb.proximal, 0], rot: [-0.95, 0, 0] },
   },
 };

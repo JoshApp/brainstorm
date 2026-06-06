@@ -90,32 +90,36 @@ export function addSlotOverlay(
     const hit = highlight.has(name);
     const kind = classifySlot(name);
     let labelOffset: number;
+    // Labels for ARROW / TARGET slots are always drawn (they ARE the
+    // call-out — the bench overlay's whole point). Labels for joint
+    // AXES are HIDDEN by default to keep the rig readable on a
+    // multi-joint hand; --highlight selectively turns them back on
+    // for the slots Josh actually wants to inspect.
+    let showLabel = kind !== 'axes' || hit;
     if (kind === 'arrow') {
-      // Intent anchor — bright arrow along local +Y, longer than the
-      // joint axes so it reads as a direction call-out.
       const len = (hit ? axisLength * 3.0 : axisLength * 2.2);
       const arrow = makeIntentArrow(len, hit);
       anchor.add(arrow);
       labelOffset = len * 0.55;
     } else if (kind === 'target') {
-      // Contact-target — small sphere on the grip cylinder surface
-      // where the fingertip is supposed to land. Magenta-pink so it
-      // pops on bone-coloured geometry.
       const sphere = makeTargetSphere(hit ? 0.014 : 0.008, hit);
       anchor.add(sphere);
       labelOffset = (hit ? 0.014 : 0.008) * 1.6;
     } else {
-      // Joint — standard RGB axes triad.
-      const axes = new THREE.AxesHelper(hit ? axisLength * 2.0 : axisLength);
+      // Joint — small RGB axes triad; halve the default length so
+      // 20+ joint markers don't dominate the render.
+      const axes = new THREE.AxesHelper(hit ? axisLength * 2.0 : axisLength * 0.55);
       setDepthTestOff(axes);
       axes.renderOrder = 999;
       anchor.add(axes);
       labelOffset = axisLength * (hit ? 1.6 : 1.3);
     }
-    const sprite = makeTextSprite(name, hit ? 1.15 : 0.85, hit);
-    sprite.position.set(labelOffset, labelOffset, 0);
-    anchor.add(sprite);
-    group.userData[name] = { sprite };
+    if (showLabel) {
+      const sprite = makeTextSprite(name, hit ? 1.15 : 0.85, hit);
+      sprite.position.set(labelOffset, labelOffset, 0);
+      anchor.add(sprite);
+      group.userData[name] = { sprite };
+    }
   }
   parent.add(group);
 }
