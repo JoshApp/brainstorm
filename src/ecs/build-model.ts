@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import type { MaterialDef, ModelSpec, PartSpec, Vec3 } from './model-types';
 import { getTexture } from '../style/procedural-textures';
 import {
@@ -258,10 +259,24 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'box': {
-      const geo = pooled
-        ? pooledBox(part.size[0], part.size[1], part.size[2])
-        : new THREE.BoxGeometry(part.size[0], part.size[1], part.size[2]);
-      if (!pooled) jitterGeometry(geo, part.jitter);
+      // Bevelled boxes use RoundedBoxGeometry — softens hard edges so
+      // chunky shapes (bracers, chests, benches) catch light instead
+      // of reading as cheap cubes. Bypass the pool: per-instance bevel
+      // tuning makes geometry sharing impractical, and these are rare
+      // enough that the duplicate allocation is fine.
+      const bevel = part.bevel ?? 0;
+      let geo: THREE.BufferGeometry;
+      if (bevel > 0) {
+        const segments = part.bevelSegments ?? 3;
+        geo = new RoundedBoxGeometry(
+          part.size[0], part.size[1], part.size[2], segments, bevel,
+        );
+      } else {
+        geo = pooled
+          ? pooledBox(part.size[0], part.size[1], part.size[2])
+          : new THREE.BoxGeometry(part.size[0], part.size[1], part.size[2]);
+        if (!pooled) jitterGeometry(geo, part.jitter);
+      }
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
     case 'capsule': {
@@ -313,9 +328,19 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
         shape.lineTo(part.shape[i][0], part.shape[i][1]);
       }
       shape.closePath();
+      // Bevel params — when the author opts in via `bevel: true`, three's
+      // ExtrudeGeometry rounds the entry/exit faces. Tunable per-spec
+      // via bevelSize/Thickness/Segments; omitted fields fall back to
+      // three's defaults (0.1 / 0.1 / 3).
+      const bevelEnabled = part.bevel ?? false;
       const geo = new THREE.ExtrudeGeometry(shape, {
         depth: part.depth,
-        bevelEnabled: part.bevel ?? false,
+        bevelEnabled,
+        ...(bevelEnabled ? {
+          bevelSize: part.bevelSize,
+          bevelThickness: part.bevelThickness,
+          bevelSegments: part.bevelSegments,
+        } : {}),
       });
       // Center the extrusion on its origin (ExtrudeGeometry extrudes from z=0
       // to z=depth; shift back by half so `pos` means the part's center).

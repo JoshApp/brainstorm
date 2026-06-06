@@ -16,8 +16,29 @@ import { HAND_RIGHT } from '../content/hand';
 // the bench resolves under the `model-` prefix: `bench model-hand-right`.
 // Add new entries here whenever you need a debug subject for a spec that
 // the game owns but the authorable registry doesn't.
+
+// Demo subject: a row of boxes with increasing bevel radius — left = hard
+// cube, right = fully rounded. Lets me eyeball whether the bevel knob is
+// reading right after a future tuning pass.
+const BEVEL_DEMO: ModelSpec = {
+  id: 'bevel-demo',
+  materials: {
+    a: { color: 0x4a3a26, roughness: 0.7, metalness: 0.2, flatShading: 'auto' },
+    b: { color: 0x6a4a28, roughness: 0.55, metalness: 0.5, flatShading: 'auto' },
+  },
+  parts: [
+    // Five identical 0.2m cubes spaced 0.25m apart, each with more bevel.
+    { kind: 'box', pos: [-0.50, 0, 0], size: [0.20, 0.20, 0.20], mat: 'a' },
+    { kind: 'box', pos: [-0.25, 0, 0], size: [0.20, 0.20, 0.20], bevel: 0.02, mat: 'a' },
+    { kind: 'box', pos: [ 0.00, 0, 0], size: [0.20, 0.20, 0.20], bevel: 0.05, mat: 'a' },
+    { kind: 'box', pos: [ 0.25, 0, 0], size: [0.20, 0.20, 0.20], bevel: 0.08, mat: 'a' },
+    { kind: 'box', pos: [ 0.50, 0, 0], size: [0.20, 0.20, 0.20], bevel: 0.099, mat: 'b' },
+  ],
+};
+
 const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
-  'hand-right': { label: 'Right hand viewmodel', spec: HAND_RIGHT },
+  'hand-right':  { label: 'Right hand viewmodel', spec: HAND_RIGHT },
+  'bevel-demo':  { label: 'Bevel radius demo (0 → 0.099m)', spec: BEVEL_DEMO },
 };
 
 export interface BenchSubject {

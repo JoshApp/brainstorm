@@ -96,7 +96,18 @@ interface PartCommon {
 export type PartSpec =
   // --- Primitives ---
   | (PartCommon & { kind: 'sphere'; radius: number; segments?: [number, number]; mat: string })
-  | (PartCommon & { kind: 'box'; size: Vec3; mat: string })
+  | (PartCommon & {
+      kind: 'box'; size: Vec3; mat: string;
+      /** Rounded edges. When > 0, the box is built with RoundedBoxGeometry
+       *  using `bevel` as the corner radius (meters). Use a value smaller
+       *  than half of the smallest size dimension; otherwise the corners
+       *  collapse into one another. Default = unrounded (hard edges).
+       *  Per-edge subdivision count controlled by `bevelSegments`
+       *  (default 3 — enough to read as soft without exploding the
+       *  triangle budget). */
+      bevel?: number;
+      bevelSegments?: number;
+    })
   | (PartCommon & { kind: 'capsule'; radius: number; height: number; mat: string })
   | (PartCommon & { kind: 'cylinder'; radius: number; radiusTop?: number; height: number; segments?: number; mat: string })
   | (PartCommon & { kind: 'cone'; radius: number; height: number; segments?: number; mat: string })
@@ -106,7 +117,19 @@ export type PartSpec =
   | (PartCommon & { kind: 'lathe'; profile: Vec2[]; segments?: number; mat: string })
   // Extrude: push a closed 2D shape (defined as [x, y] points) into 3D depth.
   // Good for keys, skull silhouettes, runes, gears, irregular flat objects.
-  | (PartCommon & { kind: 'extrude'; shape: Vec2[]; depth: number; bevel?: boolean; mat: string })
+  //
+  // Bevel knobs — three's ExtrudeGeometry already does these; we just
+  // surface them. `bevel: true` enables the bevel with sensible defaults
+  // (a small rounded edge); `bevelSize`/`bevelThickness`/`bevelSegments`
+  // let an author tune it further (e.g. a deep blade fuller). All omitted
+  // bevel fields fall back to three's defaults.
+  | (PartCommon & {
+      kind: 'extrude'; shape: Vec2[]; depth: number; mat: string;
+      bevel?: boolean;
+      bevelSize?: number;        // how far the bevel sticks out past the outline
+      bevelThickness?: number;   // how deep into the shape the bevel cuts
+      bevelSegments?: number;    // curve resolution
+    })
   // Torus (ring/donut). Centered at pos with the hole's axis along local Z.
   // Useful for: jewelry, rings, halo geometry, lamp shades.
   | (PartCommon & { kind: 'torus'; radius: number; tube: number; segments?: Vec2; mat: string })
