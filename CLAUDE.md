@@ -240,16 +240,19 @@ NOT auto-deployed; only **`main`** is. Going live is a deliberate step.
   forward merge) and push main. THIS is what triggers the deploy. Run
   when the work is ready to be on the phone.
 
-If `main` has diverged (another session shipped first), `npm run live`
-aborts and tells you how to rebase. You decide what to integrate; the
-script never silently merges someone else's work into your tip.
+If `main` has moved ahead of your session branch (another session
+shipped first), `npm run live` **auto-rebases** the session onto the
+new main and force-with-lease-pushes the rebased branch back to
+origin — silently in the no-conflict case. Conflict aborts loud so
+you decide what to integrate; we still don't paper over work that
+touches the same lines.
 
 ### Session lifecycle (start every session this way)
 
 The deploy branch is `main`. Other agents land work on it through their
-own session branches; if you START a session on stale code, your first
-`npm run live` will abort on divergence and force you to rebase anyway.
-Pull main FIRST and you avoid that whole detour.
+own session branches; auto-rebase in `live` papers over the no-conflict
+cases, but pulling main at session start is still cheaper than hitting
+a conflict at deploy time when you've forgotten what you changed.
 
 **At the start of every session, before any code changes:**
 
@@ -277,14 +280,16 @@ on the first ever session.
 4. When the work is ready to feel on the phone: `npm run live`.
 5. ~90s later the URL is fresh.
 
-If you forgot the rebase at step 1 and `npm run live` aborts with
-"main has diverged," do it then:
+If you forgot the rebase at step 1, `npm run live` will rebase for you
+on the fly. Only stops if a conflict shows up — then:
 
 ```
-git checkout <session-branch>
-git fetch origin main
-git rebase origin/main
+# in the rebase-in-progress state live left you in:
+# (resolve conflicts in the working tree, then)
+git rebase --continue
 npm run live
+# or to back out:
+git rebase --abort
 ```
 
 ### `npm run ship` mechanics
@@ -299,6 +304,12 @@ npm run live
 
 - Fetches origin, fast-forwards local `main` from `origin/main` (or
   bootstraps `main` from your session HEAD if it doesn't exist yet).
+- If main has moved ahead of where the session branch is based,
+  rebases the session branch onto main automatically and
+  force-with-lease-pushes the rebased branch back to origin. A real
+  conflict aborts with the rebase left in progress so you can
+  resolve and continue — we never silently merge changes that touch
+  the same lines.
 - Fast-forward merges your session tip into `main`. Aborts on
   divergence rather than create a merge commit.
 - Pushes `main`, then watches the deploy via `scripts/watch-deploy.sh`:
