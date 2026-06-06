@@ -90,6 +90,7 @@ export const PROVING_EVENTS: ProvingEvent[] = [
   { id: 'fountain-rest', label: 'Fountain (rest)', prop: { kind: 'fountain', x: 0, z: -2.5, variant: 'rest' } },
   { id: 'fountain-tainted', label: 'Fountain (tainted)', prop: { kind: 'fountain', x: 0, z: -2.5, variant: 'tainted' } },
   { id: 'spike-trap', label: 'Spike trap', prop: { kind: 'spike-trap', x: 0, z: -2.5 } },
+  { id: 'merchant', label: 'Wandering merchant', prop: { kind: 'merchant', x: 0, z: -2.5 } },
   { id: 'corpse-note', label: 'Corpse + note', prop: { kind: 'corpse', x: 0, z: -2.5, note: 'a proving-grounds corpse. it tested nothing and died anyway.' } },
 ];
 

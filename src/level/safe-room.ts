@@ -95,6 +95,12 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
         variant: 'gamble',
       },
 
+      // The merchant — a hooded trader tucked at the back, the harbor's
+      // gold sink. Faces the fire so you find them as you arrive. (The
+      // wandering-on-dungeon-floors spawn comes later; this is the
+      // reliable between-acts stall.)
+      { kind: 'merchant', x: 3.0, z: -2.6, rotY: Math.PI },
+
       // ── HEARTH (centre) — iron brazier + flanking stone benches ─────
       // Carries warm light + the room's focal point. Benches sell
       // "you can rest here" without an interaction slot.

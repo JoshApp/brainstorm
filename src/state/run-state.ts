@@ -132,6 +132,15 @@ export function getGold(): number {
   return inMemory?.gold ?? 0;
 }
 
+/** Attempt to spend gold. Returns true and deducts when affordable; false
+ *  (no change) when the run can't afford it. The merchant/shop sink. */
+export function spendGold(amount: number): boolean {
+  if (!inMemory || amount <= 0) return false;
+  if (inMemory.gold < amount) return false;
+  inMemory.gold -= amount;
+  return true;
+}
+
 // ── Leveling curve ──────────────────────────────────────────────────
 // Pure curve math lives in state/leveling.ts (unit-tested). These wrap it
 // with the live XP total. The late-floor mob XP scaling matches the curve so

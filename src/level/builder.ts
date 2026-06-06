@@ -34,6 +34,7 @@ import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-
 import { registerEncounter, activateEncounter, clearEncounters, roomClearEncounterId, type EncounterHandle } from '../encounters/registry';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
+import { spawnMerchant } from '../interactables/merchant';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
@@ -745,6 +746,12 @@ export function buildLevel(
       // Cylindrical collision — approximate the pedestal/bowl footprint.
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 0.85,
+      });
+    } else if (prop.kind === 'merchant') {
+      spawnMerchant(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, spec.depth ?? 1);
+      // Slim footprint — step around the hooded figure on the path.
+      obstacles.push({
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.35, height: 1.6,
       });
     } else if (prop.kind === 'tome-pillar') {
       spawnTomePillar(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0);

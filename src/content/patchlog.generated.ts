@@ -8,6 +8,50 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "add",
+        "text": "A hooded merchant waits in the dark now, and your gold finally buys something — reach them before the dungeon reaches you.",
+        "area": [
+          "content",
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The thumb stops floating off the hand. Joints, after all, should connect.",
+        "area": [
+          "weapons"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Your hand wears its bones now. Five fingers curl around what they hold, and the dungeon recognises one of its own.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "Geometry learns to carve and fuse. Skulls can have eye sockets, chests can have keyholes, the dungeon's masonry stops being legos glued together.",
+        "area": [
+          "tooling"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The builder learns to round corners. Every chest, bracer, bench has the option to stop looking like Minecraft.",
+        "area": [
+          "tooling"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The asset bench grows new debug eyes — front/side/top/iso at once, named-part colours, slot labels. Claude can finally see what Claude made.",
+        "area": [
+          "tooling"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "Tab away and the dungeon holds its breath — the sound pauses instead of murmuring to an empty room, and picks up where it left off when you return.",
         "area": [
