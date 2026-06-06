@@ -22,6 +22,10 @@ export interface PatchEntry {
   tag: PatchTag;
   /** Factual, terse, player-readable. No voice. */
   text: string;
+  /** Optional system tags from a commit's `Patch-area` trailer
+   *  (combat, ui, level, etc.). Used by future filtered views — the
+   *  in-game patchlog screen doesn't render this today. */
+  area?: readonly string[];
 }
 
 export interface PatchVersion {

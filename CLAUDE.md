@@ -223,6 +223,54 @@ Example of the split on a single event (player dies on Floor 1 in their underwea
 - When in doubt, ask Josh which direction. Do not over-architect.
 - This is not a long-running production codebase. It is an evolving prototype. Optimize for iteration speed, not enterprise patterns.
 
+## Commit message format
+
+Commit messages feed the in-game patch-log screen (and, later, the
+LLM-narrated dispatch feed). They have two parts:
+
+- **The subject + body** — same as any well-written commit. Subject is
+  one terse line, body explains *why* and what changed at a level a
+  human reviewer cares about.
+- **`Patch-*` trailers** at the end of the body — machine-readable
+  key:value lines that drive what surfaces to players. All optional;
+  commits without trailers still appear via subject/keyword inference,
+  but trailers are how you author with intent.
+
+Recognized trailer keys:
+
+| Key             | Values                          | Effect                                                                |
+| --------------- | ------------------------------- | --------------------------------------------------------------------- |
+| `Patch-tag`     | `add` `fix` `tune` `content` `tech` | Explicit tag (overrides keyword inference)                            |
+| `Patch-summary` | one line                        | Player-facing text (overrides the cleaned subject)                    |
+| `Patch-area`    | comma-separated tokens          | Systems touched: `combat`, `ui`, `level`, `atmosphere`, etc. Drives future filtered views. |
+| `Patch-audience`| `player` `dev` `both` (default `both`) | `dev` keeps the entry out of the player-facing log                    |
+| `Patch-skip`    | `true`                          | Hard-exclude from the changelog                                       |
+
+Example:
+
+```
+Whip ripples instead of swinging rigid
+
+Procedural chain physics on the whip — a per-link spring solver runs
+each frame so the crack lags-and-snaps when the player swings…
+
+Patch-tag: tune
+Patch-summary: Whip cracks now ripple along the chain when you swing.
+Patch-area: combat, weapons
+
+https://claude.ai/code/session_...
+```
+
+`Patch-summary` is what the patchlog screen displays — write it for
+*the player reading it on their phone*, not for the reviewer reading
+the diff. Keep it short, factual, and in the game's voice register
+(grimdark for in-world facts; the broadcast layer's snark is added by
+the future LLM narrator, not by you).
+
+When the change shouldn't surface — script changes, CI tweaks,
+session-hook plumbing, work the player can't see — set `Patch-skip:
+true`. The user-facing log stays tight.
+
 ## Deploy
 
 Deployed via **GitHub Pages**, built by GitHub Actions on push to **`main`**.
