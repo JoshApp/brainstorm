@@ -1,5 +1,14 @@
 import { getSettings, updateSettings, CONTROL_SCHEMES, DASH_GESTURES, SHADOW_MODES } from '../settings/settings';
 import type { ShadowMode } from '../settings/settings';
+import { HUD_STYLES, setHudStyle, type HudStyleId } from './hud-style';
+
+// Settings selector options for the HUD-style preset — derived from
+// the registry so adding a style in hud-style.ts surfaces here for free.
+const HUD_STYLE_OPTIONS: { id: HudStyleId; label: string }[] =
+  (Object.keys(HUD_STYLES) as HudStyleId[]).map((id) => ({
+    id,
+    label: HUD_STYLES[id].label,
+  }));
 import { setMasterVolume, setReverbEnabled } from '../audio/sfx';
 import { setMusicVolume } from '../audio/music';
 import { openScreen, closeScreen } from './screen-manager';
@@ -315,6 +324,17 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
   ],
 
   graphics: () => [
+    makeSelect<HudStyleId>({
+      label: 'HUD STYLE',
+      description:
+        'Classic = bars at the screen edges, always visible. ' +
+        'Minimal = pips, breath, sigil — fades when idle. ' +
+        'Cinematic = no bars, info comes through vignette + heartbeat + camera bob. ' +
+        'Iterate on the phone — the right pick depends on the screen size and your reading style.',
+      options: HUD_STYLE_OPTIONS,
+      get: () => getSettings().hudStyle,
+      set: (v) => { updateSettings({ hudStyle: v }); setHudStyle(v); },
+    }),
     makeSelect<ShadowMode>({
       label: 'SHADOWS',
       description:

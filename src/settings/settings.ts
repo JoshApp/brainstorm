@@ -85,6 +85,10 @@ export interface Settings {
    *  untextured primitive geometry reads as a deliberate drawing (cel +
    *  outline). Stylistic taste toggle. */
   outlines: boolean;
+  /** HUD style preset — controls which HUD elements render and how
+   *  loud the diegetic feedback (vignette, heartbeat, breath) is. Use
+   *  with the registry in src/ui/hud-style.ts. Default 'minimal'. */
+  hudStyle: 'classic' | 'minimal' | 'diegetic';
 }
 
 export type ShadowMode = 'off' | 'hero' | 'single' | 'all';
@@ -134,6 +138,7 @@ const DEFAULTS: Settings = {
   portalCulling: false,
   bandedLighting: true,
   outlines: true,
+  hudStyle: 'minimal',
 };
 
 let current: Settings = load();
