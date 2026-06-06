@@ -10,9 +10,16 @@
  *   npm run bench mob-wraith --grid=12       12-angle turntable contact sheet
  *   npm run bench mob-ghoul --anim=8         telegraph windup→strike→recover sheet
  *   npm run bench mob-ghoul --az=60 --el=25  explicit camera angle
+ *
+ *   ── Debug-iteration flags (compose freely) ─────────────────────────
+ *   npm run bench viewmodel-rusted --ortho   FRONT/SIDE/TOP/ISO 2×2 contact sheet
+ *   npm run bench viewmodel-rusted --gnomon  overlay an RGB axis at origin
+ *   npm run bench viewmodel-rusted --debug   color-by-part + slot markers + bbox
+ *   npm run bench viewmodel-rusted --ortho --debug    both at once (recommended)
+ *
  *   npm run bench --list                     print every subject id
  *
- * Output: /tmp/bench-<subject>.png (+ -grid.png in grid mode), readout to stdout.
+ * Output: /tmp/bench-<subject>.png (+ -grid.png in grid mode, -ortho/-debug as needed).
  */
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -32,6 +39,9 @@ async function main() {
   const animN = Number(process.argv.find((a) => a.startsWith('--anim='))?.split('=')[1] ?? 0);
   const az = process.argv.find((a) => a.startsWith('--az='))?.split('=')[1];
   const el = process.argv.find((a) => a.startsWith('--el='))?.split('=')[1];
+  const orthoMode = process.argv.includes('--ortho');
+  const gnomonMode = process.argv.includes('--gnomon');
+  const debugMode = process.argv.includes('--debug');
   const port = Number(process.argv.find((a) => a.startsWith('--port='))?.split('=')[1] ?? 5190 + Math.floor(Math.random() * 60));
 
   if (!subject && !listOnly) {
@@ -70,6 +80,9 @@ async function main() {
     if (animN > 0) q.set('anim', String(animN));
     if (az) q.set('az', az);
     if (el) q.set('el', el);
+    if (orthoMode) q.set('ortho', '1');
+    if (gnomonMode) q.set('gnomon', '1');
+    if (debugMode) q.set('debug', '1');
     const url = `http://127.0.0.1:${port}/brainstorm/bench.html?${q.toString()}`;
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => window.__bench?.ready === true, { timeout: 10000 });
@@ -81,9 +94,21 @@ async function main() {
       console.log(`\n${subjects.length} subjects`);
     } else {
       const readout = await page.evaluate(() => window.__bench.readout());
-      const suffix = animN > 0 ? '-anim' : gridN > 0 ? '-grid' : '';
+      // Suffix mirrors the active mode so different debug snaps don't clobber
+      // each other when you run them back-to-back.
+      const suffix =
+        animN > 0 ? '-anim'
+        : orthoMode && debugMode ? '-ortho-debug'
+        : orthoMode ? '-ortho'
+        : debugMode ? '-debug'
+        : gridN > 0 ? '-grid'
+        : '';
       const outPath = `/tmp/bench-${subject}${suffix}.png`;
-      await page.locator('#bench').screenshot({ path: outPath });
+      // Screenshot the FULL PAGE instead of just the canvas — the new
+      // ortho mode paints per-tile labels via DOM overlay, and we want
+      // those baked into the capture too. Debug snaps also benefit from
+      // catching the gnomon HUD if we add one later.
+      await page.screenshot({ path: outPath, clip: { x: 0, y: 0, width: 1200, height: 900 } });
       console.log(JSON.stringify(readout, null, 2));
       console.log(`\nSaved ${outPath}`);
     }

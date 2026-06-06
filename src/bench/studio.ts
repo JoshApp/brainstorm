@@ -19,6 +19,12 @@ export interface Studio {
   show(object: THREE.Object3D): void;
   renderView(azDeg: number, elDeg: number): void;
   renderTurntable(n: number, elDeg: number): void;
+  /** Four-view contact sheet: front (az=0, el=0), side (az=90, el=0),
+   *  top (az=0, el=89), iso (az=35, el=18). Each tile gets a corner
+   *  label via DOM overlay. Use this as the default debug-iteration
+   *  view — published LLM-CAD research finds single-screenshot
+   *  feedback degrades iteration; multi-view doesn't. */
+  renderOrthoQuad(): void;
   /** Contact sheet from a fixed camera, calling poseAt(i, n) before each tile
    *  to mutate the subject — for animation arcs (windup→strike→recover). */
   renderPoseGrid(n: number, azDeg: number, elDeg: number, poseAt: (i: number, n: number) => void): void;
@@ -133,6 +139,26 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
     grid(n, (i, aspect) => placeCamera((i / n) * 360, elDeg, aspect));
   }
 
+  // Four canonical views for spatial debugging: front (looking down -Z),
+  // side (looking down -X), top (looking down -Y), iso (the established
+  // 35°/18° hero angle). The published research (Picard et al., 3DCodeBench)
+  // is explicit that single-view critique hurts LLM iteration; this is the
+  // mitigation. Top uses 89° to avoid Three's gimbal-lock at 90.
+  const ORTHO_VIEWS: ReadonlyArray<{ az: number; el: number; label: string }> = [
+    { az: 0,  el: 0,  label: 'FRONT' },
+    { az: 90, el: 0,  label: 'SIDE' },
+    { az: 0,  el: 89, label: 'TOP' },
+    { az: 35, el: 18, label: 'ISO' },
+  ];
+
+  function renderOrthoQuad(): void {
+    grid(ORTHO_VIEWS.length, (i, aspect) => {
+      const v = ORTHO_VIEWS[i];
+      placeCamera(v.az, v.el, aspect);
+    });
+    paintViewLabels(ORTHO_VIEWS.map((v) => v.label));
+  }
+
   function renderPoseGrid(n: number, azDeg: number, elDeg: number, poseAt: (i: number, n: number) => void): void {
     grid(n, (i, aspect) => {
       poseAt(i, n);
@@ -154,7 +180,7 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
 
   resize(canvas.clientWidth || 1200, canvas.clientHeight || 900);
   return {
-    show, renderView, renderTurntable, renderPoseGrid, renderHeldGrid,
+    show, renderView, renderTurntable, renderOrthoQuad, renderPoseGrid, renderHeldGrid,
     root: () => subject, frame: (r) => { radius = r; pivot.set(0, 0, 0); }, resize,
   };
 }
@@ -162,9 +188,41 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
 // Even-ish column count so a contact sheet reads left-to-right, top-to-bottom.
 function gridCols(n: number): number {
   if (n <= 1) return 1;
-  if (n <= 4) return n;
+  if (n <= 4) return Math.min(n, 2);   // 4-up is 2×2, not 1×4 (orthos read square)
   if (n <= 8) return 4;
   return Math.ceil(Math.sqrt(n));
+}
+
+// DOM overlay for per-tile labels — drawn on top of the canvas at each
+// tile's screen-space corner. The headless screenshot captures the body,
+// not just the canvas, so these end up baked into the snap as-is.
+const LABEL_LAYER_ID = 'bench-view-labels';
+function paintViewLabels(labels: string[]): void {
+  let layer = document.getElementById(LABEL_LAYER_ID);
+  if (layer) layer.remove();
+  layer = document.createElement('div');
+  layer.id = LABEL_LAYER_ID;
+  Object.assign(layer.style, {
+    position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '10',
+    font: 'bold 12px ui-monospace, monospace', letterSpacing: '0.18em',
+    color: 'rgba(220, 230, 240, 0.85)',
+    textShadow: '0 0 4px rgba(0,0,0,0.95), 0 1px 0 rgba(0,0,0,0.85)',
+  } as CSSStyleDeclaration);
+  const cols = gridCols(labels.length);
+  const rows = Math.ceil(labels.length / cols);
+  for (let i = 0; i < labels.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const tag = document.createElement('div');
+    tag.textContent = labels[i];
+    Object.assign(tag.style, {
+      position: 'absolute',
+      left: `calc(${(col / cols) * 100}% + 10px)`,
+      top:  `calc(${(row / rows) * 100}% + 8px)`,
+    } as CSSStyleDeclaration);
+    layer.appendChild(tag);
+  }
+  document.body.appendChild(layer);
 }
 
 // Radial studio sweep: a lighter pool behind the subject falling to near-black

@@ -9,6 +9,16 @@ import { ITEMS, type ItemSpec } from '../content/items';
 import type { ModelSpec } from '../ecs/model-types';
 import { listAuthorables, type AuthorableKind } from '../debug/authorables';
 import { EFFECT_DEMOS } from './effects';
+import { HAND_RIGHT } from '../content/hand';
+
+// Standalone ModelSpec subjects — assets that aren't items/mobs/effects but
+// the LLM author still wants to inspect on the bench. Keyed by an id that
+// the bench resolves under the `model-` prefix: `bench model-hand-right`.
+// Add new entries here whenever you need a debug subject for a spec that
+// the game owns but the authorable registry doesn't.
+const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
+  'hand-right': { label: 'Right hand viewmodel', spec: HAND_RIGHT },
+};
 
 export interface BenchSubject {
   id: string;             // the subject id (= authorable.scenario), e.g. 'mob-ghoul'
@@ -41,16 +51,26 @@ export function resolveSubject(subjectId: string): BenchSubject | null {
     if (!it?.dropModel) return null;
     return { id: subjectId, kind: 'item', label: it.name ?? id, spec: it.dropModel };
   }
+  if (subjectId.startsWith('model-')) {
+    const id = subjectId.slice('model-'.length);
+    const m = STANDALONE_MODELS[id];
+    if (!m) return null;
+    return { id: subjectId, kind: 'item', label: m.label, spec: m.spec };
+  }
   return null;
 }
 
 export interface SubjectEntry { id: string; label: string; kind: string; }
 
-/** Everything the bench can render — authorable models (mob/weapon/item) plus
- *  the effect demos — for the picker + the CLI's --list. */
+/** Everything the bench can render — authorable models (mob/weapon/item),
+ *  effect demos, and standalone debug models — for the picker + the CLI's
+ *  --list. */
 export function listSubjects(): SubjectEntry[] {
   return [
     ...listAuthorables().map((a) => ({ id: a.scenario, label: a.label, kind: a.kind as string })),
     ...EFFECT_DEMOS.map((e) => ({ id: e.id, label: e.label, kind: 'effect' })),
+    ...Object.entries(STANDALONE_MODELS).map(([id, m]) => ({
+      id: `model-${id}`, label: m.label, kind: 'model',
+    })),
   ];
 }

@@ -19,6 +19,7 @@ import { resolveSubject, listSubjects } from './subjects';
 import { computeReadout, type Readout } from './readout';
 import { makeMobAnimator, makeWeaponAnimator, type SubjectAnimator } from './animate';
 import { effectDemo } from './effects';
+import { addGnomon, addSlotOverlay, addBoundingBox, colorByPart } from './debug-overlay';
 
 const FP_FOV = 70;   // matches CONFIG.FOV — the player's eye for held-weapon swings
 
@@ -28,6 +29,8 @@ interface BenchApi {
   ready: boolean;
   view(az: number, el: number): void;
   turntable(n: number, el: number): void;
+  /** Render the four-view ortho contact sheet (front/side/top/iso). */
+  ortho(): void;
   /** Render the subject's animation arc (mob telegraph / effect lifetime). */
   anim(n: number, el: number): void;
   readout(): Readout | null;
@@ -40,7 +43,7 @@ declare global {
 const params = new URLSearchParams(location.search);
 const subjectId = params.get('subject');
 const NOOP: BenchApi = {
-  ready: true, view() {}, turntable() {}, anim() {},
+  ready: true, view() {}, turntable() {}, ortho() {}, anim() {},
   readout: () => null, subjects: () => listSubjects().map((s) => s.id),
 };
 
@@ -93,6 +96,9 @@ if (!subjectId) {
     const el = Number(params.get('el') ?? 18);
     const gridN = Number(params.get('grid') ?? 0);
     const animN = Number(params.get('anim') ?? 0);
+    const orthoMode = params.get('ortho') === '1';
+    const gnomonMode = params.get('gnomon') === '1';
+    const debugMode = params.get('debug') === '1';
 
     const mobAnim = subject.enemy ? makeMobAnimator(built, subject.enemy) : null;
     const weaponAnim = subject.kind === 'weapon' && subject.item
@@ -105,13 +111,33 @@ if (!subjectId) {
       mounted.root().add(built.group);
       draw = () => mounted!.renderHeldGrid(animN, FP_FOV, weaponAnim.poseAt);
     } else {
-      // Static / turntable / mob telegraph — wrap so recentering doesn't fight
-      // a telegraph's vertical bob (on built.group.position.y).
+      // Static / turntable / ortho / mob telegraph — wrap so recentering
+      // doesn't fight a telegraph's vertical bob (on built.group.position.y).
       const holder = new THREE.Group();
       holder.add(built.group);
       mounted.show(holder);
+
+      // Debug overlays — paint AFTER show() so the bounding box uses the
+      // recentered geometry, and the slot/gnomon helpers attach to the
+      // already-mounted built.group (whose world matrix has settled).
+      // `debug` is a SUPERSET of `gnomon` (you always want axes when
+      // you're debugging) but each can still be toggled independently.
+      const studioRoot = mounted.root();
+      // The studio's framing radius — pulled from the bounding sphere
+      // it computed inside show(). Approximated from the AABB extents
+      // so the debug helpers scale with the subject.
+      const bbox = new THREE.Box3().setFromObject(built.group);
+      const subjectRadius = bbox.getBoundingSphere(new THREE.Sphere()).radius;
+      if (gnomonMode || debugMode) addGnomon(studioRoot, subjectRadius);
+      if (debugMode) {
+        addSlotOverlay(studioRoot, built, subjectRadius);
+        addBoundingBox(studioRoot, built.group);
+        colorByPart(built);   // mutates materials in place (bench is throwaway)
+      }
+
       draw = () => {
         if (animN > 0 && mobAnim) mounted!.renderPoseGrid(animN, az, el, mobAnim.poseAt);
+        else if (orthoMode) mounted!.renderOrthoQuad();
         else if (gridN > 0) mounted!.renderTurntable(gridN, el);
         else mounted!.renderView(az, el);
       };
@@ -122,6 +148,7 @@ if (!subjectId) {
       ready: true,
       view: (a, e) => mounted!.renderView(a, e),
       turntable: (m, e) => mounted!.renderTurntable(m, e),
+      ortho: () => mounted!.renderOrthoQuad(),
       anim: (m, e) => {
         if (weaponAnim) mounted!.renderHeldGrid(m, FP_FOV, weaponAnim.poseAt);
         else if (mobAnim) mounted!.renderPoseGrid(m, az, e, mobAnim.poseAt);
