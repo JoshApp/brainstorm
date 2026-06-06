@@ -14,6 +14,46 @@ import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
 
+// ── Finger curl tuning for held grips ──────────────────────────────
+// The hand's finger joint slots (finger_index, finger_middle, finger_ring,
+// finger_pinky, finger_thumb) are pre-curled in the spec for a grip of
+// the BASELINE_GRIP_RADIUS — a standard sword hilt. Thinner grips
+// (daggers, wands) close the fist tighter; thicker grips (hammer hafts)
+// open it. The adjustment is purely a uniform rotation.x delta applied
+// to every finger joint, so the authored per-finger asymmetry is
+// preserved.
+
+const FINGER_SLOT_NAMES = [
+  'finger_index', 'finger_middle', 'finger_ring', 'finger_pinky', 'finger_thumb',
+] as const;
+const BASELINE_GRIP_RADIUS = 0.022;       // what the spec curls are authored for
+const GRIP_CURL_SCALE = 25;               // empirical: dagger (0.014m) → +0.20 rad tighter
+
+/** Walk `spec.parts` for the first part named 'grip' or 'haft' (the
+ *  conventional grip-cylinder name across every authored weapon) and
+ *  return its radius. Falls back to the baseline if no grip is named. */
+function inferGripRadius(spec: ModelSpec): number {
+  for (const part of spec.parts) {
+    if (part.name !== 'grip' && part.name !== 'haft') continue;
+    if (part.kind === 'cylinder' || part.kind === 'cone' || part.kind === 'capsule') {
+      return part.radius;
+    }
+  }
+  return BASELINE_GRIP_RADIUS;
+}
+
+/** Adjust every finger joint's curl so the fingers wrap THIS weapon's
+ *  grip. Tighter grip → more curl; wider grip → less. Mutates the live
+ *  slot rotations on the just-built hand. */
+function adjustFingersForGrip(handSlots: Map<string, THREE.Object3D>, gripRadius: number): void {
+  const delta = (BASELINE_GRIP_RADIUS - gripRadius) * GRIP_CURL_SCALE;
+  if (delta === 0) return;
+  for (const name of FINGER_SLOT_NAMES) {
+    const slot = handSlots.get(name);
+    if (slot) slot.rotation.x -= delta;     // -= because rest curl is negative; tighten by going further negative
+  }
+}
+
 /** The wind pose to TELEGRAPH for a held charge direction — the directional
  *  move's pose for the live joystick direction, or null when centered / the
  *  weapon has no directional move that way (cock toward the combo step instead). */
@@ -205,6 +245,11 @@ export function createWeaponViewmodel(
       // Whip-class weapons have a named bead chain — wire its ripple
       // animator off the WEAPON's parts (not the hand's).
       whippy = setupWhipChain(built.parts);
+      // Curl the fingers to the THIS WEAPON's grip — a dagger's slim
+      // wrap closes the fist tighter, a chunky hammer-haft opens it.
+      // Authored finger curl is tuned for a 0.022m radius (a standard
+      // sword grip); every other weapon nudges from that baseline.
+      adjustFingersForGrip(hand.slots, inferGripRadius(spec));
     } else {
       whippy = false;
     }
