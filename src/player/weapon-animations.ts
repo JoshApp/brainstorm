@@ -984,7 +984,7 @@ function crossbowFirePose(phase: SwingPhase, t: number): WeaponPose {
 const WAND_DRAW_X = ix + 0.18;       // out to the right of centre
 const WAND_DRAW_Y = iy - 0.12;       // base low so the orb sits at eye level
 const WAND_DRAW_Z = iz + 0.05;       // close to chest, slightly back
-const WAND_DRAW_RX = -1.35;          // strongly tilted UP — close to vertical
+const WAND_DRAW_RX = 1.35;           // tilted UP — close to vertical (orb crown at top)
 const WAND_DRAW_RZ = rz - 0.12;      // slight outward roll, natural hold
 // Cast pose — shaft tips FORWARD from vertical to about 45°,
 // pointing the orb crown at the target while staying high. The
@@ -992,7 +992,7 @@ const WAND_DRAW_RZ = rz - 0.12;      // slight outward roll, natural hold
 const WAND_CAST_X = ix + 0.10;
 const WAND_CAST_Y = iy - 0.04;
 const WAND_CAST_Z = iz - 0.10;
-const WAND_CAST_RX = -0.65;          // tipped forward, orb pointing target-ish
+const WAND_CAST_RX = 0.65;           // tipped forward from upright, orb toward target
 const WAND_CAST_RZ = rz - 0.10;
 
 function wandCastPose(phase: SwingPhase, t: number): WeaponPose {

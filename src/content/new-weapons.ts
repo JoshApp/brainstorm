@@ -29,20 +29,20 @@ export const REAPERS_TOLL: ModelSpec = {
     // Leather wraps near the grip + at the head.
     { kind: 'cylinder', pos: [0, -0.32, 0], radius: 0.028, height: 0.10, segments: 8, mat: 'binding' },
     { kind: 'cylinder', pos: [0,  0.26, 0], radius: 0.026, height: 0.05, segments: 8, mat: 'binding' },
-    // Blade — curved crescent extruded from a 2D shape. Authored in
-    // the XY plane (blade-local +X is the tip direction), rotated so
-    // it juts off the top of the haft.
+    // Blade — curved crescent extruded from a 2D shape. Mirrored to −X so the
+    // hook curves INWARD (toward the wielder / screen-centre when held), the way
+    // a reaping blade should, instead of jutting outward.
     { kind: 'extrude',
-      pos: [0.14, 0.32, 0],
-      rot: [0, 0, -0.25],
+      pos: [-0.14, 0.32, 0],
+      rot: [0, 0, 0.25],
       shape: [
-        [0.00,  0.00],
-        [0.42, -0.04],
-        [0.48, -0.12],
-        [0.46, -0.18],
-        [0.30, -0.10],
-        [0.12, -0.05],
-        [0.02, -0.02],
+        [ 0.00,  0.00],
+        [-0.42, -0.04],
+        [-0.48, -0.12],
+        [-0.46, -0.18],
+        [-0.30, -0.10],
+        [-0.12, -0.05],
+        [-0.02, -0.02],
       ],
       depth: 0.010,
       mat: 'blade' },
@@ -121,18 +121,19 @@ export const BENT_SICKLE: ModelSpec = {
     // Leather grip wrap + a collar at the head.
     { kind: 'cylinder', pos: [0, -0.16, 0], radius: 0.022, height: 0.07, segments: 8, mat: 'binding' },
     { kind: 'cylinder', pos: [0,  0.07, 0], radius: 0.020, height: 0.04, segments: 8, mat: 'binding' },
-    // Crescent blade — extruded curve juts off the top, hooking forward.
+    // Crescent blade — mirrored to −X so the hook curves INWARD (toward the
+    // wielder when held), like a reaping blade, not outward.
     { kind: 'extrude',
-      pos: [0.02, 0.10, 0],
-      rot: [0, 0, -0.30],
+      pos: [-0.02, 0.10, 0],
+      rot: [0, 0, 0.30],
       shape: [
-        [0.00,  0.00],
-        [0.26, -0.03],
-        [0.31, -0.10],
-        [0.28, -0.15],
-        [0.17, -0.07],
-        [0.07, -0.03],
-        [0.01, -0.01],
+        [ 0.00,  0.00],
+        [-0.26, -0.03],
+        [-0.31, -0.10],
+        [-0.28, -0.15],
+        [-0.17, -0.07],
+        [-0.07, -0.03],
+        [-0.01, -0.01],
       ],
       depth: 0.008,
       mat: 'blade' },

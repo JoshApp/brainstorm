@@ -8,6 +8,22 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Weapons"
+      },
+      {
+        "tag": "tune",
+        "text": "HUD: gate gassed flash + rework inventory icon to match heart treatment"
+      },
+      {
+        "tag": "tune",
+        "text": "HUD Minimal: swap crosshair stamina arc for a green bar above hearts"
+      },
+      {
+        "tag": "tune",
+        "text": "HUD Minimal style"
+      },
+      {
         "tag": "tune",
         "text": "HUD design system foundation — tokens, style presets, switcher"
       },
@@ -208,22 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "God ray"
-      },
-      {
-        "tag": "tune",
-        "text": "God ray"
-      },
-      {
-        "tag": "tune",
-        "text": "Save"
-      },
-      {
-        "tag": "tune",
-        "text": "Light: bake the lamp into the player; free the offhand slot"
-      },
-      {
-        "tag": "content",
-        "text": "Arena: don't soft-lock when a wave mob becomes unreachable"
       }
     ]
   }
