@@ -145,6 +145,112 @@ When in doubt about what to do next: ask Josh.
 - **No premature optimization.** Build it working first, optimize when measured.
 - **Mobile is the primary target, desktop is debug.** Test on phone every change.
 
+## Model authoring (Claude is the model author)
+
+You — this session, every future session — are the layer that writes
+ModelSpec geometry. The codebase has tools, conventions, and known
+LLM-CAD failure modes that the research literature has identified.
+Honour them and your first attempt will be much closer to right.
+
+### Coordinate convention (pin this in your head before authoring)
+
+Three.js is **right-handed, Y-up, metres**. ALWAYS:
+
+- **+X** = right
+- **+Y** = up
+- **+Z** = toward the camera (so a forward-facing weapon points in **−Z**)
+- **rot** = `[rotX, rotY, rotZ]` Euler in **radians**, applied in
+  Three's default XYZ order. Rotation-order confusion is the #2
+  documented LLM-CAD failure mode after axis confusion — if a part
+  ends up wildly mis-oriented, suspect order, not magnitude.
+
+Most of the codebase's existing models follow these conventions. When
+in doubt, look at how an adjacent weapon authors its hilt + blade.
+
+### Primitives you can compose
+
+`box` `sphere` `capsule` `cylinder` `cone` `lathe` `extrude` `torus`
+`sprite` `decal` — plus the **`csg`** node (boolean op between two
+child specs). New as of recent work:
+
+- **`box.bevel`** — corner radius in metres, swaps to
+  `RoundedBoxGeometry`. Default 0 (hard edges). Use sparingly; most
+  shapes don't need it. Set when authoring chunky surfaces that
+  should catch light (bracers, chests, benches).
+- **`extrude.bevel*`** — `bevel: true` + optional
+  `bevelSize/Thickness/Segments` rounds the front + back faces of an
+  extrusion. Good for fullers in blades, raised emblems, key bits.
+- **`kind: 'csg'`** — `{ op: 'subtract'|'add'|'intersect', a, b }`.
+  The "ProBuilder in code" tool. Use for: skulls with eye sockets,
+  chests with keyholes, hands with finger grooves, weapons with
+  fullers cut from a blade. Both operands must be CLOSED solids
+  (sphere/box/capsule/cylinder/cone/lathe/extrude/csg). **Stay
+  shallow** — the research finds LLM CSG state tracking degrades
+  past 2-3 nesting levels.
+
+### Named anchors > raw coordinates (this is load-bearing)
+
+Recent academic CAD work ([LL4CAD-DSL], [AIDL]) identifies
+**symbolic anchor reference** as the single biggest mitigation for
+LLM spatial-reasoning collapse. Coordinates rot — change the parent
+and every absolute child position needs re-tuning. Anchor references
+survive refactors.
+
+In ModelSpec:
+
+- **Declare `slots`** on every model that other things attach to —
+  `grip_anchor`, `blade_tip`, `palm_anchor`, `mount_point`. A slot is
+  a named `Object3D` with a local pos/rot; child models or weapons
+  attach to it.
+- **Reference slots by name** when composing (e.g. the viewmodel
+  parents a weapon's `grip_anchor` to the hand's `palm_anchor`)
+  rather than measuring an offset and pasting the magic numbers
+  somewhere.
+- **Name your parts** (`name: 'blade'`, `name: 'palm'`) — debug
+  overlays use these names, and a content-layer animation can
+  reference them.
+
+### The bench is your iteration loop
+
+`scripts/bench.ts` + `bench.html` give you the fast author → render
+→ look loop with no game underneath. Flags that matter when
+debugging a model:
+
+- **`--ortho`** — 2×2 contact sheet: FRONT / SIDE / TOP / ISO.
+  *Default for any geometry iteration.* The research is explicit
+  that single-view critique degrades LLM iteration; multi-view
+  reverses it.
+- **`--debug`** — color-by-part + slot markers + bounding box. The
+  "what did I actually build" debug eye. Pair with `--ortho` for
+  the recommended `--ortho --debug` combo.
+- **`--gnomon`** — RGB axis overlay at origin (subset of `--debug`,
+  use alone when you want production materials + just the axes).
+- **`--grid=N`** — N-angle turntable (for hero shots once you've
+  committed to a design).
+- **`--anim=N`** — N-frame animation arc (for weapons / mob
+  telegraphs, NOT model debugging).
+
+Static-model debug subjects live in `src/bench/subjects.ts` under
+the `model-` prefix (e.g. `model-hand-right`). Add a new entry
+whenever you're authoring a spec the authorable registry doesn't own.
+
+### Known failure modes (read this before you author)
+
+The CAD LLM literature is explicit about where models go wrong. Most
+of these are mitigated by the conventions above; the rest are flagged
+here so you can self-check.
+
+1. **Axis confusion** — Z-up vs Y-up flip, +Z vs −Z forward. Three is
+   Y-up, −Z forward.
+2. **Rotation order** — XYZ Euler order in Three. If a part looks
+   wildly off, halve one axis and see if it's not the wrong axis.
+3. **CSG state tracking** — past 2-3 nest levels, the model loses
+   track of "what's solid vs void." Flatten.
+4. **Coordinate-vs-symbolic.** Prefer slot names over magic offsets.
+5. **One-blob-of-leather** — same material on every part = silhouette
+   collapse. Either vary materials (named differently even if
+   close-coloured), or run `--debug` to see per-part colours.
+
 ## Visual Style Reference
 
 - **Lunacid** (PS1-era lo-fi 3D, fog, torchlight)
