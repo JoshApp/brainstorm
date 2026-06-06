@@ -303,12 +303,24 @@ export const HAND_RIGHT: ModelSpec = {
     // current forearm so the rest of the rig didn't have to move.
     elbow: { parent: 'shoulder', pos: [-0.10, 0.10, -0.155] },
 
-    // ── WRIST ─ the joint between forearm and hand. Modest forward
-    // flexion (≈30°) — the wrist's job here is just to angle the
-    // hand slightly forward; the perpendicular grip is now done by
-    // palm_anchor's rotation, so the wrist doesn't need to do
-    // heroic bending to produce a perpendicular weapon.
-    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.55, 0, 0] },
+    // ── WRIST ─ the joint between forearm and hand. Combined
+    // rotation: a forward flexion (≈30° around X) PLUS a 90° twist
+    // around Z. The twist exists to cancel palm_anchor's Z rotation
+    // in WORLD space — without it the perpendicular grip Josh wanted
+    // also tilted the BLADE 90° (the weapon's grip + blade are
+    // colinear in the mesh), which broke every weapon animation. The
+    // wrist twist puts the BLADE back in its original world direction
+    // while leaving palm_anchor's perpendicular grip intact:
+    //
+    //   weapon-local +Y  →  palm_anchor +X  →  wrist +X  →  elbow-local Y'
+    //
+    //   where Y' is the SAME direction the old weapon used to point
+    //   (mostly hand-local +Y, slight forward tilt). The fingers
+    //   (parented to wrist but NOT palm_anchor) follow wrist's +Y,
+    //   which is now pointing INBOARD (hand-local −X) — i.e.
+    //   perpendicular to the weapon. Grip + finger axis stay
+    //   orthogonal; weapon world direction is unchanged.
+    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.55, 0, 1.5708] },
 
     // The grip anchor a held weapon aligns to. A child of WRIST so it
     // inherits the wrist bend. The Z rotation here is the LOAD-BEARING
