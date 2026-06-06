@@ -1,20 +1,20 @@
-// Patch log — the raw, factual record of what changed, newest first.
+// Patch log — what the player reads on the title screen, newest first.
 //
-// THIS IS DATA, NOT VOICE. Every entry here is terse and literal: what
-// changed, no flavour, no announcer snark. That's deliberate and it
-// mirrors how the rest of the game is built —
+// AUTHORED, NOT INFERRED. Every entry's `text` is written by Claude at
+// commit time as a `Patch-summary` trailer in the broadcast voice
+// (cosmic-announcer / DCC tribute) — present tense, terse, fourth-
+// wall-aware. The generator at scripts/gen-patchlog.ts assembles the
+// log from those trailers; it doesn't parse subjects or guess tags
+// for un-trailered commits.
 //
-//   raw event/record now  →  presentation derived from it later
+// The layered LLM authorship paradigm in action: the narration layer
+// (Claude, today) produces the player-facing text at COMMIT TIME, the
+// build pipeline collates it, the screen displays it. No runtime LLM
+// call needed for the log — Phase 5's planned "announcer transform"
+// already happened when the commit was written.
 //
-// Phase 5 (the LLM layer) will read this same structure and TRANSFORM
-// it into the cosmic-announcer voice for an in-game "dispatches" feed
-// ("Patch 0.4.1: the braziers have stopped eating you. The dungeon
-// regrets nothing."). The wiki / changelog export reads the same data.
-// Keep entries factual so the transform has clean material to work
-// from — the voice is a VIEW over this log, never baked into it.
-//
-// Authoring: add a new PatchVersion at the TOP of PATCHLOG for each
-// shippable batch. Keep each entry to one line. Pick the closest tag.
+// See CLAUDE.md "Commit message format" for the contract + voice
+// guidance future Claude sessions read.
 
 export type PatchTag = 'add' | 'fix' | 'tune' | 'content' | 'tech';
 

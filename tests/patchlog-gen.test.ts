@@ -1,16 +1,15 @@
 // scripts/gen-patchlog.ts — trailer parser + commit-to-entry mapping.
 //
-// The generator runs unattended on every build, so a regression that
-// silently drops entries or mis-parses trailers would land on the
-// next deploy with no warning. These tests pin the contract.
+// The contract: a commit appears in the patch log iff it carries a
+// `Patch-summary` trailer. Tag + area are optional. Nothing else
+// matters (no keyword inference, no subject cleanup, no housekeeping
+// heuristics — those went away when Claude took over authoring the
+// patch text directly).
 
 import assert from 'node:assert/strict';
 import {
   parseTrailers,
   entryForCommit,
-  inferTag,
-  cleanSubject,
-  isHousekeeping,
   type ParsedCommit,
 } from '../scripts/gen-patchlog';
 
@@ -33,11 +32,11 @@ test('parseTrailers: standard trailer block at the end', () => {
 Long explanation.
 
 Patch-tag: tune
-Patch-summary: Widget is faster.
+Patch-summary: The widget hums quieter now.
 Patch-area: ui, render`;
   assert.deepEqual(parseTrailers(body), {
     'patch-tag': 'tune',
-    'patch-summary': 'Widget is faster.',
+    'patch-summary': 'The widget hums quieter now.',
     'patch-area': 'ui, render',
   });
 });
@@ -47,45 +46,34 @@ test('parseTrailers: session URL alongside trailers is not itself a trailer', ()
 
 Patch-tag: fix
 https://claude.ai/code/session_abc`;
-  // The URL is tolerated (sits in the trailer block) but doesn't
-  // become a trailer with key "https".
   assert.deepEqual(parseTrailers(body), { 'patch-tag': 'fix' });
 });
 
 test('parseTrailers: blank line between trailers and URL is transparent', () => {
   // The Claude Code commit convention writes the session URL on its
-  // own line, often blank-separated from the Patch-* block above. We
-  // need both blocks to count as one footer region — otherwise the
-  // trailers get stranded above an isolated URL "block."
+  // own line, often blank-separated from the Patch-* block above.
+  // Both belong to the same footer region.
   const body = `Body.
 
 Patch-tag: tech
-Patch-summary: Trailer parser handles blank-separated URL.
+Patch-summary: Trailer parser stomached the blank-separated URL.
 
 https://claude.ai/code/session_xyz`;
   assert.deepEqual(parseTrailers(body), {
     'patch-tag': 'tech',
-    'patch-summary': 'Trailer parser handles blank-separated URL.',
+    'patch-summary': 'Trailer parser stomached the blank-separated URL.',
   });
 });
 
-test('parseTrailers: looks at the LAST block only', () => {
-  // A mid-body "Patch-tag: tune" should be ignored; only the trailer
-  // block at the very end counts. The mid-body line has prose after
-  // it (the next two lines), so the block-finder walks past it.
+test('parseTrailers: looks at the LAST footer block only', () => {
+  // A mid-body line that LOOKS like a trailer should be ignored — only
+  // the trailer block at the very end counts.
   const body = `Body line 1.
 Patch-tag: tune (this looks like a trailer but isn't — it's mid-body)
 Body line 3.
 
 Patch-tag: fix`;
   assert.deepEqual(parseTrailers(body), { 'patch-tag': 'fix' });
-});
-
-test('parseTrailers: no trailers, prose only', () => {
-  const body = `Plain commit body without any structured trailers.
-
-Just prose.`;
-  assert.deepEqual(parseTrailers(body), {});
 });
 
 test('parseTrailers: case-insensitive keys', () => {
@@ -110,113 +98,94 @@ function commit(opts: { subject: string; trailers?: Record<string, string> }): P
   };
 }
 
-test('entryForCommit: explicit Patch-tag wins over inference', () => {
-  const e = entryForCommit(commit({
-    subject: 'Add a new ooze enemy',
-    trailers: { 'patch-tag': 'tech' },
-  }));
-  // "ooze" would infer 'content'; the explicit trailer overrides.
-  assert.equal(e?.tag, 'tech');
+test('entryForCommit: no Patch-summary → skipped', () => {
+  // No matter how informative the subject is, without an authored
+  // Patch-summary we have nothing player-facing to show.
+  assert.equal(
+    entryForCommit(commit({ subject: 'Fix the swing handler' })),
+    null,
+  );
+  assert.equal(
+    entryForCommit(commit({
+      subject: 'Anything',
+      trailers: { 'patch-tag': 'tune', 'patch-area': 'combat' },
+    })),
+    null,
+  );
 });
 
-test('entryForCommit: invalid Patch-tag falls back to inference', () => {
-  const e = entryForCommit(commit({
-    subject: 'Fix the swing handler',
-    trailers: { 'patch-tag': 'nonsense' },
-  }));
-  assert.equal(e?.tag, 'fix');
-});
-
-test('entryForCommit: Patch-summary overrides the subject', () => {
+test('entryForCommit: Patch-summary is the displayed text verbatim', () => {
   const e = entryForCommit(commit({
     subject: 'Rework swing handler in attack.ts',
-    trailers: { 'patch-summary': 'Swings feel snappier.' },
+    trailers: {
+      'patch-tag': 'tune',
+      'patch-summary': 'Swings hit harder. The mob is not pleased.',
+    },
   }));
-  assert.equal(e?.text, 'Swings feel snappier.');
+  assert.equal(e?.text, 'Swings hit harder. The mob is not pleased.');
+  assert.equal(e?.tag, 'tune');
+});
+
+test('entryForCommit: missing Patch-tag defaults to tune', () => {
+  const e = entryForCommit(commit({
+    subject: 'Anything',
+    trailers: { 'patch-summary': 'Something changed. The dungeon noticed.' },
+  }));
+  assert.equal(e?.tag, 'tune');
+});
+
+test('entryForCommit: invalid Patch-tag falls back to default', () => {
+  const e = entryForCommit(commit({
+    subject: 'Anything',
+    trailers: {
+      'patch-tag': 'apocrypha',
+      'patch-summary': 'Something changed. The dungeon noticed.',
+    },
+  }));
+  assert.equal(e?.tag, 'tune');
+});
+
+test('entryForCommit: each valid Patch-tag passes through', () => {
+  for (const tag of ['add', 'fix', 'tune', 'content', 'tech'] as const) {
+    const e = entryForCommit(commit({
+      subject: 'Anything',
+      trailers: {
+        'patch-tag': tag,
+        'patch-summary': 'Something changed. The dungeon noticed.',
+      },
+    }));
+    assert.equal(e?.tag, tag, `tag ${tag} should pass through`);
+  }
 });
 
 test('entryForCommit: Patch-area splits + lowercases + dedupes', () => {
   const e = entryForCommit(commit({
     subject: 'Tune combat',
-    trailers: { 'patch-area': 'Combat, UI, combat ' },
+    trailers: {
+      'patch-summary': 'The blade is hungrier than yesterday.',
+      'patch-area': 'Combat, UI, combat ',
+    },
   }));
   assert.deepEqual(e?.area, ['combat', 'ui']);
 });
 
-test('entryForCommit: Patch-skip true drops the entry', () => {
+test('entryForCommit: missing Patch-area → entry has no area field', () => {
   const e = entryForCommit(commit({
     subject: 'Anything',
-    trailers: { 'patch-skip': 'true' },
+    trailers: { 'patch-summary': 'A thing happened. The dungeon kept score.' },
+  }));
+  assert.equal(e?.area, undefined);
+});
+
+test('entryForCommit: Patch-summary under 4 chars → skipped', () => {
+  // A summary shorter than 4 chars is almost certainly noise. The
+  // generator never displays it; this catches a typo'd trailer
+  // ("Patch-summary: x") before it lands in the log.
+  const e = entryForCommit(commit({
+    subject: 'Anything',
+    trailers: { 'patch-summary': 'no' },
   }));
   assert.equal(e, null);
-});
-
-test('entryForCommit: Patch-audience dev drops the entry from the player log', () => {
-  const e = entryForCommit(commit({
-    subject: 'Internal dev tooling improvement',
-    trailers: { 'patch-audience': 'dev' },
-  }));
-  assert.equal(e, null);
-});
-
-test('entryForCommit: no trailers → infer + clean subject', () => {
-  const e = entryForCommit(commit({
-    subject: 'Fix the swing handler',
-  }));
-  assert.equal(e?.tag, 'fix');
-  assert.equal(e?.text, 'Fix the swing handler');
-});
-
-test('entryForCommit: no trailers + housekeeping subject → null', () => {
-  const e = entryForCommit(commit({
-    subject: 'chore: bump deps',
-  }));
-  assert.equal(e, null);
-});
-
-test('entryForCommit: trailers BYPASS the housekeeping skip', () => {
-  // If a commit explicitly declares trailers, we trust the author —
-  // a subject the legacy housekeeping regex would skip can still
-  // become an entry if Patch-tag/summary are set.
-  const e = entryForCommit(commit({
-    subject: 'chore: bump three.js',
-    trailers: { 'patch-tag': 'tech', 'patch-summary': 'Three.js upgrade.' },
-  }));
-  assert.equal(e?.tag, 'tech');
-  assert.equal(e?.text, 'Three.js upgrade.');
-});
-
-// ── inferTag / cleanSubject / isHousekeeping (regression coverage) ──
-
-test('inferTag: fix wins over content keywords', () => {
-  assert.equal(inferTag('Fix the ooze targeting bug'), 'fix');
-});
-
-test('inferTag: content keywords pick content', () => {
-  assert.equal(inferTag('Add new brazier variants'), 'content');
-});
-
-test('inferTag: tech keywords pick tech', () => {
-  assert.equal(inferTag('Refactor the projectile pool'), 'tech');
-});
-
-test('cleanSubject: strips trailing technical colon clauses', () => {
-  assert.equal(
-    cleanSubject('Tune projectiles: PROJECTILE_POOL_SIZE 64→128'),
-    'Tune projectiles',
-  );
-});
-
-test('cleanSubject: keeps natural colon clauses', () => {
-  // No ALL_CAPS / no path → keep the full subject.
-  const s = 'Combat: heavy combos for the rest of the weapons';
-  assert.equal(cleanSubject(s), s);
-});
-
-test('isHousekeeping: skips ci/chore/build prefixes', () => {
-  assert.equal(isHousekeeping('chore: prune unused'), true);
-  assert.equal(isHousekeeping('ci: bump action'), true);
-  assert.equal(isHousekeeping('Tune projectiles'), false);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

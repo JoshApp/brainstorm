@@ -225,51 +225,88 @@ Example of the split on a single event (player dies on Floor 1 in their underwea
 
 ## Commit message format
 
-Commit messages feed the in-game patch-log screen (and, later, the
-LLM-narrated dispatch feed). They have two parts:
+**YOU (Claude) are the narration layer.** The in-game patch-log screen
+is one of your output surfaces — every entry in it was authored by a
+Claude session at the moment of its commit. There is no separate
+"changelog generator" that summarizes your code for the player; the
+generator only collates lines you already wrote.
 
-- **The subject + body** — same as any well-written commit. Subject is
-  one terse line, body explains *why* and what changed at a level a
-  human reviewer cares about.
-- **`Patch-*` trailers** at the end of the body — machine-readable
-  key:value lines that drive what surfaces to players. All optional;
-  commits without trailers still appear via subject/keyword inference,
-  but trailers are how you author with intent.
+So every commit you author has two audiences and two parts:
 
-Recognized trailer keys:
+- **Subject + body** — for the human reviewer (Josh, future you).
+  Subject is one terse line. Body explains the *why* and what changed
+  at the level a code review wants.
+- **`Patch-*` trailers** at the end of the body — for the player. The
+  `Patch-summary` you write here is *the literal line they read on
+  their phone* when they open the patchlog screen.
 
-| Key             | Values                          | Effect                                                                |
-| --------------- | ------------------------------- | --------------------------------------------------------------------- |
-| `Patch-tag`     | `add` `fix` `tune` `content` `tech` | Explicit tag (overrides keyword inference)                            |
-| `Patch-summary` | one line                        | Player-facing text (overrides the cleaned subject)                    |
-| `Patch-area`    | comma-separated tokens          | Systems touched: `combat`, `ui`, `level`, `atmosphere`, etc. Drives future filtered views. |
-| `Patch-audience`| `player` `dev` `both` (default `both`) | `dev` keeps the entry out of the player-facing log                    |
-| `Patch-skip`    | `true`                          | Hard-exclude from the changelog                                       |
+### Trailers
 
-Example:
+| Key             | Values                              | Effect                                                                                     |
+| --------------- | ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `Patch-summary` | one sentence                        | **REQUIRED** to appear in the player log. No summary → silently skipped (the right call for infra / refactors / WIP). |
+| `Patch-tag`     | `add` `fix` `tune` `content` `tech` | Optional, defaults to `tune`. Picks the icon/category.                                     |
+| `Patch-area`    | comma-separated tokens              | Optional: `combat`, `ui`, `level`, `atmosphere`, `controls`, `content`, etc. Drives future filtered views — "all combat changes since Build 12." |
+
+### The Patch-summary voice
+
+This is **broadcast-layer text** (per the Tone Layering section
+earlier): the cosmic-announcer / DCC tribute register. Snarky,
+fourth-wall-aware, terse, *present tense*, one sentence. NOT the
+in-world grimdark register that item flavor and room descriptions
+use — the patchlog is the announcer talking ABOUT the dungeon, not
+the dungeon talking to itself.
+
+Good:
+- "Whip cracks ripple along the chain now. The mob does not appreciate the improvement."
+- "Drink the wrong fountain. Become something new. The dungeon does not regret this for you."
+- "Fountains stopped poisoning you. The basin agrees, reluctantly."
+- "The tome pillar opens your sheet. Yes, you've earned a look."
+
+Bad:
+- "Tuned whip damage values" → no voice, dry, dev-speak.
+- "Whip cracks ripple, dealing more damage and triggering bleed procs at 0.6s intervals." → too long, mechanic-dump.
+- "💥 NEW WHIP MECHANICS!!! 🔥" → not the register at all.
+
+Constraints from the Tone Bible (still apply):
+- No emoji. No exclamation points outside player input.
+- No modern slang, no "you guys", no marketing voice.
+- Present tense. The thing *is now this way*, not "was changed to be."
+
+If you can't compose a Patch-summary that earns its place in the
+log, omit the trailer — that commit just doesn't surface, which is
+the right outcome for plumbing.
+
+### When to OMIT Patch-summary
+
+- CI / scripts / session-hook changes the player can't observe
+- Pure refactors with no behaviour delta
+- Type-only changes
+- Backup checkpoints (`npm run ship` mid-feature)
+- Anything where you'd struggle to write the player-facing line without lying
+
+### Example
 
 ```
 Whip ripples instead of swinging rigid
 
-Procedural chain physics on the whip — a per-link spring solver runs
-each frame so the crack lags-and-snaps when the player swings…
+Procedural chain physics — a per-link spring solver runs each frame so
+the crack lags the swing and snaps back to centre on release. Costs
+~0.2ms per whip equipped.
 
 Patch-tag: tune
-Patch-summary: Whip cracks now ripple along the chain when you swing.
+Patch-summary: Whip cracks ripple along the chain now. The mob doesn't appreciate the improvement.
 Patch-area: combat, weapons
 
 https://claude.ai/code/session_...
 ```
 
-`Patch-summary` is what the patchlog screen displays — write it for
-*the player reading it on their phone*, not for the reviewer reading
-the diff. Keep it short, factual, and in the game's voice register
-(grimdark for in-world facts; the broadcast layer's snark is added by
-the future LLM narrator, not by you).
+### Future-Claude commitment
 
-When the change shouldn't surface — script changes, CI tweaks,
-session-hook plumbing, work the player can't see — set `Patch-skip:
-true`. The user-facing log stays tight.
+You're reading this because you're about to commit. The format above
+is **required**, not aspirational, on every commit you make. The
+log's quality is your responsibility — there's no fallback parser to
+make a dry subject sound right.
 
 ## Deploy
 
