@@ -206,21 +206,20 @@ function applyTaintedDrink(): void {
 
   // Reconcile current HP against the new max. Positive max-hp deltas
   // top the player up by exactly the gain (so a +4 KINDNESS feels
-  // like a reward, not a missed window); negative deltas clamp current
-  // HP down so the bar can't show 8/5.
+  // like a reward, not a missed window). Negative deltas leave current
+  // HP ALONE — a brand that cuts your cap should cut your cap, not
+  // also damage you. If you happen to be over-cap after, healing won't
+  // raise you (healPlayer's clamp), but the dungeon hasn't taken HP
+  // you already had — just the room to gain more.
   let maxHpDelta = 0;
   for (const m of mutation.modifiers) {
     if (m.kind === 'max-hp') maxHpDelta += m.amount;
   }
-  if (maxHpDelta !== 0) {
+  if (maxHpDelta > 0) {
     const player = get('player');
     if (player?.hp) {
       const newMax = getPlayerMaxHp();
-      if (maxHpDelta > 0) {
-        player.hp.current = Math.min(newMax, player.hp.current + maxHpDelta);
-      } else {
-        player.hp.current = Math.min(player.hp.current, newMax);
-      }
+      player.hp.current = Math.min(newMax, player.hp.current + maxHpDelta);
     }
   }
 
