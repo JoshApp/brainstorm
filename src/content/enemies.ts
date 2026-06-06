@@ -1505,7 +1505,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hp: 1,                            // unused — phases own the HP pool
     moveSpeed: 1.0,                   // slow stride in phase 1
     attackDamage: 3,                  // mirrored by per-ability damage below
-    attackRange: 7.0,                 // bigger reach to match the bigger body
+    // Aggro range stays long (he sees from across the hall), but the
+    // per-ability maxRange below keeps him from attempting attacks
+    // from ranges he can't actually reach. He's melee-to-midrange:
+    // skull-crush is the only long-range tool and it's on a slow
+    // cooldown, not spammable.
+    attackRange: 6.0,
     strikeRange: 3.0,
     windupTime: 1.20,
     strikeTime: 0.40,
@@ -1540,52 +1545,46 @@ export const ENEMIES: Record<string, EnemySpec> = {
         hp: 16,
         moveSpeed: 1.0,
         abilities: [
-          // Bone-arm cleave — wide horizontal arm sweep, long reach.
-          // Dodge: step INSIDE the arc (close to centre) or sidestep
-          // perpendicular.
+          // Bone-arm cleave — melee sweep. maxRange tightened so he
+          // doesn't open a windup from out of reach. Longer recovery +
+          // cooldown so the kit doesn't loop straight back to it.
+          // Dodge: step INSIDE the arc or sidestep perpendicular.
           {
             id: 'bone-arm-sweep',
-            minRange: 0, maxRange: 8,
-            windup: 1.40, strike: 0.30, recover: 0.70, cooldown: 2.2,
+            minRange: 0, maxRange: 5,
+            windup: 1.40, strike: 0.30, recover: 0.90, cooldown: 3.4,
             pose: 'swing',
-            steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 6.0, damage: 3, element: 'physical' } }],
+            steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 5.0, damage: 3, element: 'physical' } }],
           },
-          // Two-hand pile-driver — both arms hoist overhead, body rears
-          // back, then a committed slam at the locked target. Heavier
-          // than the old chop (more damage, slower recovery). Dodge:
-          // step OFF the marker.
+          // Two-hand pile-driver — committed slam at the locked target.
+          // Mid-range only; long cooldown so it punctuates, not spams.
+          // Dodge: step OFF the marker.
           {
             id: 'pile-driver',
-            minRange: 0, maxRange: 9,
-            windup: 1.30, strike: 0.20, recover: 0.90, cooldown: 3.0,
+            minRange: 0, maxRange: 7,
+            windup: 1.30, strike: 0.20, recover: 1.10, cooldown: 4.5,
             pose: 'cast',
             steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 3.0, damage: 4, element: 'physical' } }],
           },
-          // Earthshatter stomp — radial AoE under the skeleton, with
-          // the giant-step foot-lift as the tell. Replaces the old
-          // spike-ring; a stomp pose reads cleaner than an arm slam at
-          // this range. Dodge: be OUTSIDE the radius when the foot
-          // lands; only safe at point-blank for the bone-arm sweep
-          // pose tell, never both.
+          // Earthshatter stomp — radial AoE under the skeleton with the
+          // giant-step foot-lift tell. Close-range only; you can't get
+          // hit by this unless you've been hugging.
+          // Dodge: outside the radius before the foot lands.
           {
             id: 'earthshatter-stomp',
-            minRange: 0, maxRange: 5,
-            windup: 1.40, strike: 0.20, recover: 0.80, cooldown: 3.5,
+            minRange: 0, maxRange: 4,
+            windup: 1.40, strike: 0.20, recover: 1.10, cooldown: 5.0,
             pose: 'cast',
             steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 4.0, damage: 3, element: 'physical' } }],
           },
-          // Skull-crush charge — COMMITTED straight-line dash to the
-          // snapshot of the player's position at cast start. He locks
-          // direction during the long windup, then BARRELS in a fixed
-          // line — no homing, no course correction. If the player
-          // walks two steps perpendicular during the windup+run, he
-          // misses entirely (the punishment for not reading the
-          // wind-back). minRange 5 makes it a long-range gap-closer
-          // only — he doesn't use it from medium-range stalling.
+          // Skull-crush charge — the ONLY long-range tool. On a heavy
+          // cooldown so it reads as the signature "oh no he's coming"
+          // moment, not a gap-closing spam. Snapshot dash; sidestep
+          // two paces perpendicular during the wind-back and he misses.
           {
             id: 'skull-crush-charge',
-            minRange: 5, maxRange: 14,
-            windup: 1.30, strike: 0.80, recover: 1.10, cooldown: 5.0,
+            minRange: 7, maxRange: 11,
+            windup: 1.30, strike: 0.80, recover: 1.40, cooldown: 8.0,
             pose: 'charge',
             steps: [{
               trigger: { at: 0 },
@@ -1608,34 +1607,37 @@ export const ENEMIES: Record<string, EnemySpec> = {
       {
         hp: 12,
         moveSpeed: 1.8,
-        // Drop the rig low (legs are gone — torso has to sit at
-        // ground level). The rig was authored high (y=1.85) to put
-        // the body above the long legs; with the legs hidden it has
-        // to come WAY down to read as crawling. Tilt forward for
-        // the crawl pose.
-        rigYOffset: -1.7,
+        // Drop the rig (legs are gone — torso has to sit low to read
+        // as crawling). Was -1.7 but the pelvis + dragging hands
+        // clipped the floor at scale 1.7. -1.35 raises him just enough
+        // that the lowest body parts hover JUST above the floor at the
+        // forward-pitched crawl pose. Tune in pairs with rigPitch:
+        // steeper pitch sinks the head further, so the offset has to
+        // come up to compensate.
+        rigYOffset: -1.35,
         rigPitch: -0.5,
         hideParts: ['leg-left', 'leg-right'],
         invulnEntryTime: 1.5,         // downed-rising animation window
         useCrawlAnimation: true,
         abilities: [
-          // Arm swipe — short-range melee, fast.
+          // Arm swipe — short-range melee. Cooldown was 1.0 which let
+          // him chain swipes back-to-back; bumped to 2.0 so there's a
+          // breathing window between attacks.
           {
             id: 'arm-swipe',
             minRange: 0, maxRange: 3,
-            windup: 0.55, strike: 0.20, recover: 0.55, cooldown: 1.0,
+            windup: 0.55, strike: 0.20, recover: 0.70, cooldown: 2.0,
             pose: 'swing',
             steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.6, damage: 2, element: 'physical' } }],
           },
-          // Bone splinters — reaches into his own ribcage, RIPS a
-          // handful of rib shards loose, and hurls them in a FAN at
-          // the player. Five splinters in a ~26° cone — each carries
-          // 1 damage, so eating the entire burst caps at 5. Dodge:
-          // sidestep PERPENDICULAR to the cone, or break LOS.
+          // Bone splinters — five-shard fan from the ribcage. Range
+          // tightened (was 9m, way past his bone-arm reach) and
+          // cooldown bumped — a 5-shard burst should be a felt event,
+          // not a constant pressure.
           {
             id: 'bone-fragments',
-            minRange: 2, maxRange: 9,
-            windup: 0.90, strike: 0.14, recover: 0.60, cooldown: 2.5,
+            minRange: 2, maxRange: 7,
+            windup: 0.90, strike: 0.14, recover: 0.80, cooldown: 4.0,
             pose: 'cast',
             steps: [{
               trigger: { at: 0 },
@@ -1646,11 +1648,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
               },
             }],
           },
-          // Lunge bite — close-range with a tiny forward dash.
+          // Lunge bite — short forward dash. Cooldown 1.5 → 2.8 so it
+          // doesn't gap-close every breath.
           {
             id: 'lunge-bite',
             minRange: 0, maxRange: 2.5,
-            windup: 0.45, strike: 0.18, recover: 0.50, cooldown: 1.5,
+            windup: 0.45, strike: 0.18, recover: 0.60, cooldown: 2.8,
             pose: 'charge',
             steps: [{ trigger: { at: 0 }, action: { kind: 'dash', toward: 'player', speed: 5.0, contactReach: 1.2, damage: 3, element: 'physical' } }],
           },
