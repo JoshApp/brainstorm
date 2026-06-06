@@ -9,6 +9,8 @@ import { generateFloor } from '../level/procgen';
 import { generateSafeRoom } from '../level/safe-room';
 import { buildVaultPreview } from '../level/vault-compose';
 import { VAULTS } from '../level/vault-library';
+import { ENEMIES } from '../content/enemies';
+import { listMobs, listWeapons, listItems } from './authorables';
 import { debugUseAll, debugTickAll } from '../interactables/system';
 import { damagePlayer } from '../player/health';
 import { get as getEntity } from '../ecs/world';
@@ -1401,6 +1403,71 @@ if (import.meta.env.DEV) {
       level: buildVaultPreview(v.id, 1) ?? undefined,
       playerPos: { x: 0, z: innerD / 2 - 0.5, y: 2.3, lookAt: { x: 0, z: 0, y: 1.3 } },
     };
+  }
+}
+
+// ── Auto-generated subject previews ──────────────────────────────────
+// Every mob/weapon/item in the registries gets a preview scenario for free,
+// derived from src/debug/authorables.ts. This is what makes `npm run snap
+// mob-<anyid>` / `viewmodel-<id>` / `item-<id>` work for EVERY subject without
+// hand-authoring a block each (the dozens of near-identical entries above used
+// to be copy-pasted). Hand-authored scenarios WIN — we only fill ids that
+// don't already have a tuned entry — so the bespoke ones (mob-mimic's three
+// chests, the burrower's buried/emerging states, etc.) are preserved.
+
+/** The repeated "single mob, lit, posed facing the camera" room. lookAt height
+ *  tracks the mob's own aim point × scale so tall casters and low hounds both
+ *  frame sensibly without a hand-tuned camera per mob. */
+function buildMobPreviewScenario(id: string): Scenario {
+  const spec = ENEMIES[id];
+  const eyeY = (spec?.aimHeight ?? 0.6) * (spec?.scale ?? 1);
+  return {
+    freeze: true,
+    hideSword: true,
+    level: {
+      id: `dbg-mob-${id}`,
+      depth: 6,
+      displayName: spec?.bossName ?? spec?.name ?? id,
+      fogColor: 0x14100a,
+      startPos: { x: 0, z: 2.5, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 6, d: 6 }, height: 3.0 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.0, z: -2.5, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x: 3.0, z: -2.5, height: 2.2, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: id, x: 0, z: -1.0, roomId: 'r' }],
+      doors: [],
+      stairs: [],
+    },
+    playerPos: { x: 0, z: 1.5, lookAt: { x: 0, z: -1.0, y: eyeY } },
+    enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.0 }, state: 'chasing' }],
+  };
+}
+
+/** Equip a weapon and freeze — the first-person viewmodel fills the lower frame.
+ *  Pair with `?phase=windup|strike|recover` to scrub the swing. No inspect: the
+ *  held viewmodel is camera-anchored, so the studio reframe would fight it. */
+function buildWeaponPreviewScenario(id: string): Scenario {
+  return { freeze: true, equipWeaponId: id };
+}
+
+/** Float the item's drop-model, studio-lit and slowly rotating (see the
+ *  previewItemId handler in applyScenario). Subject-only so the room falls away.*/
+function buildItemPreviewScenario(id: string): Scenario {
+  return { freeze: true, hideSword: true, inspect: true, inspectSubjectOnly: true, previewItemId: id };
+}
+
+if (import.meta.env.DEV) {
+  for (const a of listMobs()) {
+    if (!SCENARIOS[a.scenario]) SCENARIOS[a.scenario] = buildMobPreviewScenario(a.id);
+  }
+  for (const a of listWeapons()) {
+    if (!SCENARIOS[a.scenario]) SCENARIOS[a.scenario] = buildWeaponPreviewScenario(a.id);
+  }
+  for (const a of listItems()) {
+    if (!SCENARIOS[a.scenario]) SCENARIOS[a.scenario] = buildItemPreviewScenario(a.id);
   }
 }
 
