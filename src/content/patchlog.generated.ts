@@ -8,6 +8,13 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Hearts hold two souls apiece now — one hit cracks a heart in half, and your last heart shudders like a held breath.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "The wrist twists; the weapon stops rotating when the grip becomes perpendicular; the existing animations stop looking sideways.",
         "area": [

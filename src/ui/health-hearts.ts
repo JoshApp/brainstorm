@@ -1,24 +1,24 @@
 import { hpStore, type HpState } from '../state/hud-stores';
 import { hudStyleStore, getHudStyle } from './hud-style';
 import { HEALTH_COLORS } from './hud-design';
+import { heartFillFractions, heartCount, HEART_HP } from './heart-fill';
 import { bind } from './hud';
 
-// TotK-style heart row for the MINIMAL HUD style. One heart per HP with
-// quarter-heart granularity (4 chunks per heart, like Zelda). Brick-red
-// fill, dark-iron empty frame, hairline gold edge so the silhouette
-// reads on a torchlit floor without shouting.
+// TotK-style heart row for the MINIMAL HUD style. Each heart is worth TWO HP,
+// so a single point of damage leaves a HALF-broken heart (left half filled,
+// right half empty — the classic Zelda read, produced by the right-to-left
+// horizontal clip). Brick-red fill, dark-iron empty frame, hairline gold edge.
 //
 // Layout:
-//   - Up to 10 hearts per row, wraps UP to a second row when max HP > 10.
-//   - Sits at the bottom-center, above the XP bar slot. Hidden under
-//     Classic (pip bar wins) and Cinematic (all HUD off — feel only).
+//   - ceil(maxHP / 2) hearts, up to 10 per row, wraps UP to a second row.
+//   - Bottom-center, above the XP bar slot. Hidden under Classic / Cinematic.
 //
 // Rendering:
-//   - Each heart is an inline <svg> with two paths: a frame (always
-//     drawn) and a fill (clipped horizontally by a <rect> whose width
-//     = fraction × heart width). Right-to-left quarter wipe so chunks
-//     fall off the right edge as you take damage — the classic Zelda
-//     read.
+//   - Each heart is an inline <svg>: a frame (always drawn) + a fill clipped
+//     by a <rect> whose width = fraction × heart width. Damage wipes the fill
+//     from the right, so 1 HP into a 2-HP heart reads as a half heart.
+//   - When health is LOW the whole row pulses (scale + red glow), the
+//     "you're about to die" heartbeat à la Tears of the Kingdom.
 //
 // Data flow: bound to hpStore + hudStyleStore. No per-frame work.
 
@@ -27,12 +27,13 @@ const HEART_GAP = 4;
 const ROW_GAP = 4;
 const PER_ROW = 10;
 
-// Quarter-heart granularity: damage chunks of 0.25 HP. With integer HP
-// this is effectively whole hearts, but the same code handles fractional
-// HP (DoT ticks, % damage) without flicker.
-const STEPS = 4;
+// HP-per-heart + the half-heart fill math live in ./heart-fill (pure, testable).
+
+// Health fraction at/below which the row pulses (your last heart-ish).
+const LOW_BLINK_FRAC = 0.25;
 
 let root: HTMLDivElement | null = null;
+let bar: HTMLDivElement | null = null;   // inner wrapper that carries the low-HP pulse
 let hearts: HeartSvg[] = [];
 let builtMax = -1;
 let unsubStyle: (() => void) | null = null;
@@ -61,10 +62,6 @@ export function createHealthHearts(): void {
     // Above the XP bar (which sits at bottom: env(safe-area-inset-bottom)).
     bottom: `calc(14px + env(safe-area-inset-bottom, 0px))`,
     transform: 'translateX(-50%)',
-    display: 'flex',
-    flexDirection: 'column-reverse',
-    alignItems: 'center',
-    gap: `${ROW_GAP}px`,
     pointerEvents: 'none',
     zIndex: '10',
     userSelect: 'none',
@@ -72,6 +69,37 @@ export function createHealthHearts(): void {
     opacity: '0',
     transition: 'opacity 240ms ease-out',
   } as Partial<CSSStyleDeclaration>);
+
+  // Inner bar carries the heart rows AND the low-HP pulse animation, so the
+  // root keeps owning centering + base opacity without the two fighting.
+  bar = document.createElement('div');
+  Object.assign(bar.style, {
+    display: 'flex',
+    flexDirection: 'column-reverse',
+    alignItems: 'center',
+    gap: `${ROW_GAP}px`,
+    transformOrigin: 'center bottom',
+  } as Partial<CSSStyleDeclaration>);
+  root.appendChild(bar);
+
+  // Inject the low-HP heartbeat keyframes once (no stylesheet otherwise).
+  if (!document.getElementById('health-hearts-keyframes')) {
+    const style = document.createElement('style');
+    style.id = 'health-hearts-keyframes';
+    // A double-thump heartbeat: two quick swells then a rest — the TotK
+    // "danger" pulse. Scale + a red glow/brightness flash on the row.
+    style.textContent = `
+      @keyframes heartLowPulse {
+        0%   { transform: scale(1);    filter: none; }
+        12%  { transform: scale(1.10); filter: drop-shadow(0 0 6px rgba(255,70,50,0.95)) brightness(1.35); }
+        24%  { transform: scale(1);    filter: none; }
+        36%  { transform: scale(1.08); filter: drop-shadow(0 0 5px rgba(255,70,50,0.85)) brightness(1.25); }
+        48%  { transform: scale(1);    filter: none; }
+        100% { transform: scale(1);    filter: none; }
+      }`;
+    document.head.appendChild(style);
+  }
+
   document.body.appendChild(root);
 
   // Re-evaluate visibility when the style switches.
@@ -87,12 +115,13 @@ function applyVisibility(): void {
 }
 
 function buildHearts(max: number): void {
-  if (!root) return;
-  root.replaceChildren();
+  if (!bar) return;
+  bar.replaceChildren();
   hearts = [];
-  // Build rows bottom-up; flexDirection: column-reverse means the FIRST
-  // row appended is at the BOTTOM, the second row stacks above.
-  const rows = Math.max(1, Math.ceil(max / PER_ROW));
+  const total = heartCount(max);
+  // Build rows bottom-up; flexDirection: column-reverse means the FIRST row
+  // appended is at the BOTTOM, the second row stacks above.
+  const rows = Math.max(1, Math.ceil(total / PER_ROW));
   let idx = 0;
   for (let r = 0; r < rows; r++) {
     const row = document.createElement('div');
@@ -100,14 +129,14 @@ function buildHearts(max: number): void {
       display: 'flex',
       gap: `${HEART_GAP}px`,
     } as Partial<CSSStyleDeclaration>);
-    const count = Math.min(PER_ROW, max - idx);
+    const count = Math.min(PER_ROW, total - idx);
     for (let i = 0; i < count; i++) {
       const heart = buildHeart(idx);
       hearts.push(heart);
       row.appendChild(heart.el);
       idx++;
     }
-    root.appendChild(row);
+    bar.appendChild(row);
   }
   builtMax = max;
 }
@@ -158,13 +187,13 @@ function buildHeart(i: number): HeartSvg {
 }
 
 function render({ hp, max }: HpState): void {
-  if (!root) return;
+  if (!root || !bar) return;
   if (max <= 0) return;
   if (max !== builtMax) buildHearts(max);
 
   const frac = max > 0 ? Math.max(0, Math.min(1, hp / max)) : 0;
-  // Resting opacity dims when full so the row recedes; critical pins to
-  // full opacity so a near-death heart still SHOUTS.
+  // Resting opacity dims when full so the row recedes; critical pins to full
+  // opacity so a near-death heart still SHOUTS.
   const critical = frac < 0.2;
   const warning = frac < 0.4;
   root.style.opacity = getHudStyle().health === 'pips'
@@ -175,18 +204,16 @@ function render({ hp, max }: HpState): void {
                   : warning  ? HEALTH_COLORS.warning
                   :            HEALTH_COLORS.full;
 
-  // Walk each heart, fill from left (heart 0) to right with quarter-heart
-  // steps. Damage drops from the right edge of the last partially-full
-  // heart, classic Zelda style.
-  let remaining = hp;
+  // Low-HP heartbeat pulse (TotK): on while alive and at/below the threshold.
+  const low = hp > 0 && frac <= LOW_BLINK_FRAC;
+  bar.style.animation = low ? 'heartLowPulse 0.85s ease-in-out infinite' : 'none';
+
+  // Each heart spans HEART_HP (2) HP; damage wipes from the right, so 1 HP
+  // leaves a half heart.
+  const fractions = heartFillFractions(hp, hearts.length);
   for (let i = 0; i < hearts.length; i++) {
-    const h = hearts[i];
-    const heartFrac = Math.max(0, Math.min(1, remaining));
-    // Quantize to STEPS-quarter granularity.
-    const quantized = Math.round(heartFrac * STEPS) / STEPS;
-    h.clip.setAttribute('width', String(24 * quantized));
-    h.fill.setAttribute('fill', fillColor);
-    remaining = Math.max(0, remaining - 1);
+    hearts[i].clip.setAttribute('width', String(24 * fractions[i]));
+    hearts[i].fill.setAttribute('fill', fillColor);
   }
 }
 
@@ -195,7 +222,7 @@ export function disposeHealthHearts(): void {
   unsubStyle = null;
   if (root?.parentNode) root.parentNode.removeChild(root);
   root = null;
+  bar = null;
   hearts = [];
   builtMax = -1;
 }
-
