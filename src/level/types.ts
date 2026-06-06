@@ -216,12 +216,22 @@ export type PropSpec =
   // damage. Resets after a cooldown.
   | { kind: 'spike-trap'; x: number; z: number; damage?: number; telegraphTime?: number }
   // 'fountain' = a basin of liquid.
-  //   variant 'gamble' (default, DUNGEON): DRINK — 50/50 heal/curse.
-  //   variant 'rest'                (SAFE): REST  — always heals to full,
-  //                                          warm amber glow, no risk.
+  //   variant 'gamble'  (default, DUNGEON): DRINK — heals to full.
+  //                                          Sickly green basin, but the
+  //                                          dungeon is being kind today.
+  //   variant 'rest'              (SAFE):    REST — heals to full, warm
+  //                                          amber glow, clean refuge.
+  //   variant 'tainted'           (SAFE):    DRINK — applies one permanent
+  //                                          run-lifetime tainted mutation
+  //                                          (TAINTED_MUTATIONS). The deliberate
+  //                                          Faustian bargain between acts.
   // One-use per fountain.
   | { kind: 'fountain'; x: number; z: number; rotY?: number; facing?: PropFacing;
-      variant?: 'gamble' | 'rest' }
+      variant?: 'gamble' | 'rest' | 'tainted' }
+  // 'tome-pillar' = a stone pedestal with an open ledger on top, pages
+  // lit from within. Interacting opens the CHARACTER screen — the moment
+  // to review your delver's shape before stepping deeper.
+  | { kind: 'tome-pillar'; x: number; z: number; rotY?: number; facing?: PropFacing }
   | {
       kind: 'starter-altar';
       x: number;

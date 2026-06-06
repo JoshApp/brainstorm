@@ -2,27 +2,28 @@ import type { LevelSpec } from './types';
 import type { ModelSpec } from '../ecs/model-types';
 import { ITEMS } from '../content/items';
 
-// Safe room — the small chamber between dungeon floors where the
-// player catches their breath. No enemies. No traps. Just a calm beat.
+// Safe room — the calm chamber between dungeon floors. No enemies, no
+// traps, every interactable visible from the spawn end.
 //
-// V3 layout (smaller + warmer than V2):
-//   - 9 × 11 m chamber, lower ceiling (2.8m). Cozier proportions —
-//     V2's 12×14×3.4 read as "vast empty prototype" once the dark-
-//     adaptation pass made the dungeon navigable; we cut volume so
-//     the candle-and-brazier light fully claims the room.
-//   - Central IRON BRAZIER as the room's heart — warm radial light
-//     anchor, replaces V2's altar-as-centerpiece. Two stone benches
-//     flank it (decorative, no interaction yet — but they sell
-//     "you can rest here").
-//   - Stash + REST FOUNTAIN on opposite walls (variant: 'rest' —
-//     guaranteed heal, warm amber glow; no curse gamble like the
-//     dungeon variant).
-//   - 6 wall torches, ALL warm amber (V2's cool-blue back torches
-//     pushed "more dark ahead" — wrong signal for a refuge).
-//   - Two candles flanking the descent stairs to frame the way
-//     forward. The stair itself uses the warm-passive variant
-//     when leading to a next-act first depth (handled in
-//     interactables/stairs.ts based on targetLevel id).
+// V4 layout (the "everything visible between spawn and stairs" pass):
+//   - 9 × 11m chamber, ceiling 2.8m (kept from V3 — cozy proportions
+//     that earned their keep).
+//   - TOME PILLAR on the central axis, ~1.2m in front of spawn —
+//     the first thing the player walks into, the moment to review
+//     their build before stepping deeper. Pillar+book lit from
+//     within (see interactables/tome-pillar.ts).
+//   - STASH and REST FOUNTAIN flanking the path closer in to the
+//     central walk-line than V3, so the player passes between them
+//     on the way to the hearth rather than having to detour to the
+//     side walls.
+//   - Central IRON BRAZIER with two stone benches — visual anchor
+//     and "rest here" tell.
+//   - TAINTED FOUNTAIN off to the left of the stair mouth — the
+//     Faustian commit-point. Visible from spawn, deliberately
+//     placed BEYOND the hearth so it reads as "decide before you
+//     descend." Asymmetric placement makes it pop against the
+//     mirror-symmetric stash/rest pair.
+//   - 6 wall torches, ALL warm amber. Stair frame candles.
 //
 // Future fixtures (placeholders to wire later):
 //   - Smith pedestal (upgrade a weapon)
@@ -73,33 +74,59 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     corridors: [],
 
     props: [
-      // ── HEARTH (centre) — iron brazier + flanking stone benches.
-      // The brazier carries warm light + the room's focal point;
-      // benches sell "rest here" without needing interaction yet.
-      { kind: 'model', model: IRON_BRAZIER, x: 0, y: 0, z: 0.6 },
-      { kind: 'model', model: STONE_BENCH,  x: -1.6, y: 0, z: 0.6, rotY: Math.PI / 2 },
-      { kind: 'model', model: STONE_BENCH,  x:  1.6, y: 0, z: 0.6, rotY: -Math.PI / 2 },
+      // ── TOME PILLAR (centre, 1.2m in front of spawn) ────────────────
+      // First thing the player walks into. The "review your delver"
+      // beat — opens the character sheet on interact. Slightly off
+      // the dead-axis so the path past it splits naturally; a step
+      // either side clears it.
+      { kind: 'tome-pillar', x: 0, z: 2.8 },
 
-      // ── STASH (west wall, between spawn and hearth).
+      // ── STASH (left flank, between tome and hearth) ─────────────────
+      // Pulled in from V3's x=-3.7 to x=-2.4 so it sits closer to the
+      // central walking path — visible from spawn over the tome.
       {
         kind: 'stash-chest',
-        x: -3.7, z: 2.6,
-        rotY: Math.PI / 2,   // face east (toward room centre)
+        x: -2.4, z: 1.2,
+        rotY: Math.PI / 2,   // face east, toward the central path
       },
-      { kind: 'model', model: FLOOR_CANDLE, x: -3.7, y: 0, z: 1.6 },
-      { kind: 'model', model: FLOOR_CANDLE, x: -3.7, y: 0, z: 3.6 },
 
-      // ── REST FOUNTAIN (east wall, mirror of stash). Guaranteed
-      // heal, no curse — the safe-room variant.
+      // ── REST FOUNTAIN (right flank, mirror of stash) ────────────────
+      // Guaranteed heal, no curse, warm amber glow — the clean kindness.
       {
         kind: 'fountain',
-        x: 3.7, z: 2.6,
+        x: 2.4, z: 1.2,
         rotY: -Math.PI / 2,
         variant: 'rest',
       },
-      { kind: 'model', model: FLOOR_CANDLE, x: 3.7, y: 0, z: 1.6 },
-      { kind: 'model', model: FLOOR_CANDLE, x: 3.7, y: 0, z: 3.6 },
 
+      // ── HEARTH (centre) — iron brazier + flanking stone benches ─────
+      // Carries warm light + the room's focal point. Benches sell
+      // "you can rest here" without an interaction slot.
+      { kind: 'model', model: IRON_BRAZIER, x: 0, y: 0, z: -0.2 },
+      { kind: 'model', model: STONE_BENCH,  x: -1.6, y: 0, z: -0.2, rotY: Math.PI / 2 },
+      { kind: 'model', model: STONE_BENCH,  x:  1.6, y: 0, z: -0.2, rotY: -Math.PI / 2 },
+
+      // ── TAINTED FOUNTAIN (left of stair mouth) ──────────────────────
+      // The Faustian beat — drink and commit to a permanent run-
+      // lifetime mutation. Off-axis from the stair so the player can
+      // walk straight to the descent if they want; the offer is here
+      // for those who reach for it. Dark crimson basin reads "wrong"
+      // at a glance, but unlike V3's gamble it is YOUR choice now.
+      {
+        kind: 'fountain',
+        x: -2.2, z: -1.4,
+        rotY: Math.PI / 2,
+        variant: 'tainted',
+      },
+
+      // ── Candles ─────────────────────────────────────────────────────
+      // Flanking the stash and the rest fountain so each is lit from
+      // its side of the path — sells "things, here, in the dark."
+      { kind: 'model', model: FLOOR_CANDLE, x: -2.4, y: 0, z: 2.6 },
+      { kind: 'model', model: FLOOR_CANDLE, x:  2.4, y: 0, z: 2.6 },
+      // Candle by the tainted fountain — same lit-attendant read, but
+      // singular (matches the off-axis, "one offer" feeling).
+      { kind: 'model', model: FLOOR_CANDLE, x: -2.2, y: 0, z: 0.0 },
       // Candles immediately south of the stair mouth — frame the descent.
       { kind: 'model', model: FLOOR_CANDLE, x: -1.4, y: 0, z: -1.2 },
       { kind: 'model', model: FLOOR_CANDLE, x:  1.4, y: 0, z: -1.2 },
@@ -107,8 +134,8 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
       // Warm floor glow near the spawn end (greets the player as they
       // arrive) and a second smaller glow under the hearth so the floor
       // around the brazier reads as warmed stone.
-      { kind: 'model', model: SAFE_FLOOR_GLOW_SPAWN,  x: 0, y: 0, z: 3.5 },
-      { kind: 'model', model: SAFE_FLOOR_GLOW_HEARTH, x: 0, y: 0, z: 0.6 },
+      { kind: 'model', model: SAFE_FLOOR_GLOW_SPAWN,  x: 0, y: 0, z: 3.6 },
+      { kind: 'model', model: SAFE_FLOOR_GLOW_HEARTH, x: 0, y: 0, z: -0.2 },
     ],
 
     torches: [

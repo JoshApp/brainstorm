@@ -70,6 +70,22 @@ export interface Interactable {
    * over the object's middle, not at its feet.
    */
   labelOffsetY?: number;
+  /**
+   * Optional floating-NAME label drawn over this interactable at all
+   * times while it's on-screen and within view distance (handled by
+   * src/ui/world-labels.ts). Reads as "what is this thing" at a glance
+   * — distinct from `promptLabel` (the verb shown when in range +
+   * focused). Fades with distance, suppressed while this is the
+   * in-range target (the prompt overlay covers it).
+   *
+   * Use short, terse names — "FOUNTAIN", "STASH", "TOME". The label is
+   * italic serif and small; long strings will dwarf the silhouette.
+   *
+   * Omit for interactables that don't read well as static labels —
+   * pickups (already have an item card), corpses (the note IS the
+   * payload), doors (the room is the read).
+   */
+  nameLabel?: string;
 }
 
 /** Spec for a level-spec-placed interactable. Engine-agnostic data. */

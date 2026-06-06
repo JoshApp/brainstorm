@@ -1,32 +1,70 @@
 import * as THREE from 'three';
-import { generateEntityId } from '../ecs/world';
+import { generateEntityId, get } from '../ecs/world';
 import { registerInteractable } from './system';
-import { gameRngChance } from '../engine/rng';
+import { gameRng } from '../engine/rng';
 import { registerLight } from '../scene/light-pool';
 import { healPlayer, getPlayerMaxHp, getPlayerHp } from '../player/health';
-import { applyBuff } from '../ecs/buffs';
-import { get } from '../ecs/world';
 import { playHealSlurp, playBuffApply } from '../audio/sfx';
 import { showNote } from '../ui/note-card';
+import { TAINTED_MUTATIONS } from '../content/tainted-mutations';
+import { addMutation, getMutationIds } from '../state/run-mutations';
 
-// Fountain = a basin of suspect liquid. Two variants:
+// Fountain — a basin of suspect liquid. Three variants today:
 //
-//   'gamble' (DUNGEON): DRINK gambles 50/50. Heal-to-full or a -1 weapon
-//                       damage & -1 physical armour curse for ~5 minutes.
-//                       Sickly green emissive, sells "this is suspect."
+//   'gamble' (DUNGEON): DRINK. Always heals to full. Sickly green-amber
+//                       basin reads "found in the dark, drink at your own
+//                       risk" — but the dungeon, today, is being kind.
+//                       (Was a 50/50 heal/curse gamble; the curse moved
+//                       to the tainted variant where the choice is in
+//                       the player's hands, not in a coin flip.)
 //
-//   'rest'   (SAFE ROOM): REST always heals to full. No curse. Warm
-//                         amber emissive — reads as clean water,
-//                         a kindness between acts.
+//   'rest'   (SAFE):    REST. Always heals to full. Warm amber glow.
+//                       The clean kindness between acts.
+//
+//   'tainted' (SAFE):   DRINK. Applies one PERMANENT run-lifetime
+//                       mutation rolled from TAINTED_MUTATIONS — mostly
+//                       Faustian (gift + cost), some pure ruin, some
+//                       pure gift. Dark crimson basin, slow-glowing
+//                       like coals under the surface. The deliberate
+//                       trade you commit to between acts.
 //
 // One-use per fountain. After interacting, the prompt disappears and the
-// liquid drains visually (basin shows the dry stone bottom). A short note
-// pops describing what happened — both because feedback matters and
-// because it fits the dungeon's in-world voice better than a number popup.
+// liquid drains visually. A short note pops describing what happened —
+// in-world voice, never numbers.
 
-const CURSE_DURATION = 300;  // 5 minutes — effectively rest of an early run
+export type FountainVariant = 'gamble' | 'rest' | 'tainted';
 
-export type FountainVariant = 'gamble' | 'rest';
+interface VariantStyle {
+  liquidColor: number;
+  liquidEmissive: number;
+  lightColor: number;
+  promptLabel: string;
+  nameLabel: string;
+}
+
+const VARIANT_STYLE: Record<FountainVariant, VariantStyle> = {
+  gamble: {
+    liquidColor:    0x2a3a22,
+    liquidEmissive: 0x66ff88,   // sickly green — but no longer cursed
+    lightColor:     0x88ffaa,
+    promptLabel:    'DRINK',
+    nameLabel:      'FOUNTAIN',
+  },
+  rest: {
+    liquidColor:    0x3a2818,
+    liquidEmissive: 0xffb070,   // warm amber — clean refuge water
+    lightColor:     0xffc890,
+    promptLabel:    'REST',
+    nameLabel:      'FOUNTAIN',
+  },
+  tainted: {
+    liquidColor:    0x2a0a0a,
+    liquidEmissive: 0xa01828,   // dark crimson — coals under the skin
+    lightColor:     0xc83838,
+    promptLabel:    'DRINK',
+    nameLabel:      'TAINTED FOUNT',
+  },
+};
 
 export function spawnFountain(
   parent: THREE.Object3D,
@@ -34,6 +72,8 @@ export function spawnFountain(
   rotY: number,
   variant: FountainVariant = 'gamble',
 ) {
+  const style = VARIANT_STYLE[variant];
+
   const group = new THREE.Group();
   group.position.copy(pos);
   group.rotation.y = rotY;
@@ -78,14 +118,10 @@ export function spawnFountain(
   dryDisc.position.y = 0.81;
   group.add(dryDisc);
 
-  // Liquid — emissive disc on top.
-  //   'gamble' — sickly green; reads as "wrong" the moment the player
-  //              sees it. The 50/50 risk is in the colour.
-  //   'rest'   — warm amber; reads as clean firelight in the basin,
-  //              a refuge between acts.
+  // Liquid — emissive disc on top. Colour per variant; reads at a glance.
   const liquidMat = new THREE.MeshStandardMaterial({
-    color:     variant === 'rest' ? 0x3a2818 : 0x2a3a22,
-    emissive:  variant === 'rest' ? 0xffb070 : 0x66ff88,
+    color:     style.liquidColor,
+    emissive:  style.liquidEmissive,
     emissiveIntensity: 0.9,
     roughness: 0.3,
     metalness: 0.0,
@@ -108,7 +144,7 @@ export function spawnFountain(
     id: `fountain-${generateEntityId('fountain-light')}`,
     category: 'environment',
     position: new THREE.Vector3(pos.x, pos.y + 0.95, pos.z),
-    color: variant === 'rest' ? 0xffc890 : 0x88ffaa,
+    color: style.lightColor,
     intensity: 1.8,
     distance: 2.4,
     decay: 1.6,
@@ -121,7 +157,8 @@ export function spawnFountain(
     id: generateEntityId('fountain'),
     position: pos.clone(),
     radius: 1.3,
-    promptLabel: variant === 'rest' ? 'REST' : 'DRINK',
+    promptLabel: style.promptLabel,
+    nameLabel: style.nameLabel,
     onUse() {
       if (used) return;
       used = true;
@@ -131,41 +168,62 @@ export function spawnFountain(
       liquid.visible = false;
       fountainState.intensity = 0.2;
 
-      if (variant === 'rest') {
-        // Safe-room fountain — no gamble. Always a clean mend.
-        const before = getPlayerHp();
-        healPlayer(getPlayerMaxHp());
-        const healed = getPlayerMaxHp() - before;
-        playHealSlurp();
-        showNote(
-          healed > 0
-            ? 'The water is clean. Something in you settles.'
-            : 'The water is clean. You were already whole.',
-        );
+      if (variant === 'tainted') {
+        applyTaintedDrink();
         return;
       }
-
-      // Dungeon fountain — 50/50 gamble. Seeded so a run is reproducible.
-      const blessed = gameRngChance(0.5);
-      if (blessed) {
-        const before = getPlayerHp();
-        healPlayer(getPlayerMaxHp());
-        const healed = getPlayerMaxHp() - before;
-        playHealSlurp();
-        showNote(
-          healed > 0
-            ? 'The water is cold. Something inside you mends.'
-            : 'The water is cold. You were already whole.',
-        );
-      } else {
-        const player = get('player');
-        if (player) applyBuff(player, 'cursed', CURSE_DURATION);
-        playBuffApply();
-        showNote('The water is bitter. Something inside you settles in to stay.');
-      }
+      // Both 'gamble' and 'rest' now do the same thing — a full heal.
+      // The variants still look different (green vs amber), but neither
+      // gambles. The dungeon is indifferent, sometimes kind.
+      const before = getPlayerHp();
+      healPlayer(getPlayerMaxHp());
+      const healed = getPlayerMaxHp() - before;
+      playHealSlurp();
+      showNote(
+        healed > 0
+          ? (variant === 'rest'
+              ? 'The water is clean. Something in you settles.'
+              : 'The water is cold. Something inside you mends.')
+          : 'The water is clean. You were already whole.',
+      );
     },
     destroyed: false,
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
   };
   registerInteractable(interactable);
+}
+
+// Roll one tainted mutation, apply it, reconcile current HP against any
+// max-hp delta, and surface the moment as a note. Prefers mutations the
+// player hasn't already taken so a single fountain run doesn't roll the
+// same brand twice; falls through if every mutation is already on them.
+function applyTaintedDrink(): void {
+  const already = new Set(getMutationIds());
+  const fresh = TAINTED_MUTATIONS.filter((m) => !already.has(m.id));
+  const pool = fresh.length > 0 ? fresh : TAINTED_MUTATIONS;
+  const mutation = pool[Math.floor(gameRng() * pool.length)];
+  addMutation(mutation.id);
+
+  // Reconcile current HP against the new max. Positive max-hp deltas
+  // top the player up by exactly the gain (so a +4 KINDNESS feels
+  // like a reward, not a missed window); negative deltas clamp current
+  // HP down so the bar can't show 8/5.
+  let maxHpDelta = 0;
+  for (const m of mutation.modifiers) {
+    if (m.kind === 'max-hp') maxHpDelta += m.amount;
+  }
+  if (maxHpDelta !== 0) {
+    const player = get('player');
+    if (player?.hp) {
+      const newMax = getPlayerMaxHp();
+      if (maxHpDelta > 0) {
+        player.hp.current = Math.min(newMax, player.hp.current + maxHpDelta);
+      } else {
+        player.hp.current = Math.min(player.hp.current, newMax);
+      }
+    }
+  }
+
+  playBuffApply();
+  showNote(`${mutation.flavor}\n\n— ${mutation.name} —`);
 }

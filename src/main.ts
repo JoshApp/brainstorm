@@ -81,6 +81,7 @@ import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
 import { actForDepth } from './level/acts';
 import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-label';
+import { ensureWorldLabels } from './ui/world-labels';
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar } from './ui/hp-bar';
 import { createStaminaBar } from './ui/stamina-bar';
@@ -492,6 +493,7 @@ const input = createTouchInput(canvas, {
 // was removed. Interaction is now diegetic: tap the object directly
 // (handled by tap-target raycast in the touch input handler).
 ensureInteractLabel();
+ensureWorldLabels();
 // Tapping the floating prompt is a second, reliable way to interact —
 // same gating + blocked-loot fall-through as a tap on the object's model.
 setInteractLabelTapHandler(() => {

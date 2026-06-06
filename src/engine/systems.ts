@@ -49,6 +49,7 @@ import { tickBloodBurst } from '../effects/blood-burst';
 import { tickStatusVfx } from '../effects/status-vfx';
 import { updateOutline } from '../interactables/outline';
 import { updateInteractLabel } from '../ui/interact-label';
+import { updateWorldLabels, clearWorldLabels } from '../ui/world-labels';
 import { tickItemPreviews } from '../ui/item-preview';
 import { tickBossBar } from '../ui/boss-bar';
 import { updateBuffBar } from '../ui/buff-bar';
@@ -351,6 +352,15 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // early-returns instantly.
       tickTutorialHints(ctx.realDt, camera, canvas, camera.position);
       updateInteractLabel(inRange, camera, canvas);
+      // Floating NAME plates over every interactable that declares a
+      // nameLabel — the "what's in this room" read at a glance. Hidden
+      // while dying or while any sheet is open (same gate as the
+      // in-range prompt) so labels don't poke through a modal.
+      if (isDying() || isAnyScreenOpen()) {
+        clearWorldLabels();
+      } else {
+        updateWorldLabels(camera, canvas);
+      }
       // Item-preview labels (starter / blood altars) — world→screen projection.
       tickItemPreviews(camera, canvas);
       // Outline pulse on the in-range interactable. realDt so it animates at

@@ -34,6 +34,7 @@ import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-
 import { registerEncounter, activateEncounter, clearEncounters, roomClearEncounterId, type EncounterHandle } from '../encounters/registry';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
+import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
 import { seedBuildRng, hashStringToSeed } from '../engine/rng';
@@ -744,6 +745,13 @@ export function buildLevel(
       // Cylindrical collision — approximate the pedestal/bowl footprint.
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 0.85,
+      });
+    } else if (prop.kind === 'tome-pillar') {
+      spawnTomePillar(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0);
+      // Narrow pedestal footprint — tighter than the fountain so the
+      // player can step around it on the central path without snagging.
+      obstacles.push({
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.32, height: 1.1,
       });
     } else if (prop.kind === 'blood-altar') {
       const item = ITEMS[prop.itemId];

@@ -4,6 +4,7 @@ import { get } from '../ecs/world';
 import { getEquipment, aggregateAffixModifiers, aggregateSetModifiers } from '../player/equipment';
 import { BUFFS } from '../content/buffs';
 import { getCharacter } from '../state/character';
+import { aggregateMutationModifiers } from '../state/run-mutations';
 
 // Central stat-modifier abstraction.
 //
@@ -78,6 +79,10 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
     out.push(...aggregateAffixModifiers());
     // Active set-bonus modifiers (enough matched pieces equipped).
     out.push(...aggregateSetModifiers());
+    // Run-lifetime tainted-fountain mutations — permanent for the rest of
+    // the run, gone on death. Composes through this pipeline identically
+    // to anything else.
+    out.push(...aggregateMutationModifiers());
   }
 
   // 2. Active buffs ticking on this entity.

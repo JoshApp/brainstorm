@@ -38,6 +38,7 @@ export function spawnStashChest(
     position: pos.clone(),
     radius: 1.5,
     promptLabel: 'OPEN STASH',
+    nameLabel: 'STASH',
     onUse() {
       // First-tap: play the open animation. Subsequent taps reopen
       // the UI without re-animating.

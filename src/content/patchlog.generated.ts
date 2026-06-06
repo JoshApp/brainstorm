@@ -8,6 +8,18 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "tune",
+        "text": "SessionStart hook"
+      },
+      {
+        "tag": "add",
+        "text": "Add SessionStart hook to set git committer identity"
+      },
+      {
+        "tag": "tune",
+        "text": "Whip: procedural chain ripple — a crack now whips instead of swinging rigid"
+      },
+      {
         "tag": "content",
         "text": "Dev tooling: snap --phase=strike to pose any equipped weapon mid-swing"
       },
@@ -212,18 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Projectiles"
-      },
-      {
-        "tag": "tune",
-        "text": "Light: lamp rides at the visible hand by default, stows to hip on equip"
-      },
-      {
-        "tag": "tune",
-        "text": "Projectiles: height-aware collision (shots fly over low props, not eaten)"
-      },
-      {
-        "tag": "content",
-        "text": "Inventory UX"
       }
     ]
   }

@@ -13,6 +13,7 @@ import type { EquipSlot } from '../player/equipment';
 import { emit } from '../broadcast/event-bus';
 import { levelForXp, xpInLevel, xpForNextLevel } from './leveling';
 import { serializeCharacter, type CharacterSave } from './character';
+import { clearMutations, serializeMutations, hydrateMutations } from './run-mutations';
 
 const STORAGE_KEY = 'delve:save';
 const SAVE_VERSION = 2;
@@ -52,6 +53,10 @@ export interface SaveData {
    *  points) at floor entry — so a reload/resume keeps your build.
    *  Optional for older saves (treated as baseline). */
   character?: CharacterSave;
+  /** Active tainted-fountain mutations as ids into TAINTED_MUTATIONS.
+   *  Permanent for the run, cleared on death. Optional for older saves
+   *  (treated as empty). */
+  mutations?: string[];
 }
 
 // ── In-memory run state (mid-floor mutable counters) ─────────────────
@@ -85,6 +90,9 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
     actEntryXp: 0,
     actEntryGold: 0,
   };
+  // Fresh run = no inherited mutations. Any prior run's tainted brands
+  // die with their delver.
+  clearMutations();
 }
 
 /** Hydrate memory state from a saved run. Used on CONTINUE. Fills in
@@ -95,6 +103,7 @@ export function adoptSave(save: SaveData) {
     xp: save.xp ?? 0,
     gold: save.gold ?? 0,
   };
+  hydrateMutations(save.mutations);
 }
 
 export function grantXp(amount: number): void {
@@ -199,6 +208,7 @@ export function commitFloorEntry(args: {
   inMemory.inventory = { ...args.inventory };
   inMemory.equipment = { ...args.equipment };
   inMemory.character = serializeCharacter();   // persist the build at this floor entry
+  inMemory.mutations = serializeMutations();   // persist active tainted brands
   persist();
 }
 
