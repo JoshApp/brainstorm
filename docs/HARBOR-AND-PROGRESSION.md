@@ -394,6 +394,121 @@ climb — not boss #4.
 
 ---
 
+## 2026-06-06 thread — game identity, verbs, magic, NPC recruitment
+
+> **These are DIRECTIONS, not canon.** Tagged `[LEANING]`/`[OPEN]` on
+> purpose: we fully expect to iterate, and a later call may **supersede**
+> any of this (strike through + date + a pointer to what replaced it —
+> never a silent deletion or a quiet contradiction). Nothing here
+> graduates into DESIGN.md / CLAUDE.md until it's been *felt on the phone*.
+> This section is the scratchpad, not the verdict.
+
+### The skeleton: the run IS the build [LEANING]
+
+The influences pull two ways — Souls/Lunacid (a *persistent character* you
+level over many sessions) vs Isaac/Hades/Dead Cells (a *run-scoped*
+character whose build **emerges from what you find**). We pick the
+roguelike: **run-build skeleton, Souls *skin*.** Weighty deliberate
+combat, weapon identity, scaling, cruel restraint, the harbor — that's the
+skin. The engine underneath is "descend, the build comes together this
+run, you die, the dungeon forgets you, you build anew."
+
+This is *consistent with* the attribute model already decided above
+(attributes are locked-per-run and wiped on death) — it's the lens that
+explains *why* that's right, and why the old per-level point-drip felt
+hollow (wrong engine for a die-and-rebuild game).
+
+**Why it's also the right call for the LLM layer:** a build-from-found
+roguelike is *content-hungry* — it needs a big, surprising item/ability
+pool, which is exactly what a layered LLM authoring system produces
+endlessly. And it makes the "LLM-tailored loot from your build vector"
+decision (above) load-bearing: the dungeon authors gear *toward (or
+cruelly against)* what you're becoming. No hand-built roguelike does
+adaptive, build-aware authoring at scale. Structure and authoring model
+want the same thing.
+
+### Verbs come from equipment — no skill tree [LEANING]
+
+The missing channel. Today we have **proficiency (tempo)** and
+**attributes (power)**; we add **equipment (verbs)**:
+- **Weapon art** ← bound to the weapon you hold (Souls/Dead Cells). Your
+  gear *is* your moveset.
+- **Spell** ← bound to an **offhand focus** or a **scroll** (consumable).
+- Proficiency is *mastery of the verb*; the equipment *is* the verb.
+
+No separate skill tree to manage — build = what's in your hands. Mobile
+fits: one dedicated **art button** on top of the existing dodge/charge
+gestures.
+
+### Magic [LEANING]
+
+A **weapon family** (Lore/wand) + **offhand foci** + **scrolls**, framed
+grim (hexes, afflictions, blood/bone sorcery — never Hogwarts), routed
+through the buff/affliction/projectile systems that already exist. **No
+mana bar** (one resource too many for thumbs). Resource:
+- light, repeatable arts pay **stamina** (unify with the tuned economy);
+- signature spells/arts use a **cooldown or limited charges** so they stay
+  *events*, not spam.
+
+Start with stamina (it's built); add cooldowns where spam would erode the
+feel.
+
+### Items as the build engine — incl. rule-changers [LEANING]
+
+Stat-mods / on-hit / triggered passives already exist (the modifier
+pipeline). The **Isaac layer** is the frontier: **rule-changers** — "your
+dodge leaves a burning wake," "every third swing hurls a bone shard,"
+"crits arc to a second enemy." Those need a few combat hooks
+(on-dodge / on-Nth-hit / on-crit); some exist via passives/triggers, some
+we'd add. This is where "what will this run *become*" lives — and it's
+pure data for the content layer to author forever.
+
+### Meta-progression = who you've saved [LEANING]
+
+Make meta **human and diegetic**, not a stat menu. "What have I unlocked"
+becomes **"who have I saved and brought home."** This *resolves the open
+question below* ("do wild NPCs persist?") — the answer is **both**:
+
+1. **Encounter (rare).** A roaming figure in a god-ray-lit room (an NPC is
+   an *event*, per lighting-as-signal). Hollow Knight's bench beat.
+2. **Transient by default.** They help *this run* — a hint, a gift, mend
+   you, a moment beside you — then they're gone. Most encounters end here.
+3. **Costly rescue → Harbor resident.** Inviting one home is *earned*:
+   escort them out alive (fragile), carry their ember down-and-back, give
+   up loot, beat what holds them. **Die and they're lost.**
+4. **Resident grants a pool/service unlock, never raw stats** — smith →
+   a weapon family starts appearing; hexer → spell scrolls seed into loot;
+   alchemist → new potions; bellkeeper → summon a phantom. Expands *what
+   the run can become* (honours "meta = unlock the pool, not power").
+
+**Grimdark catch:** rescue sometimes **curdles** (they succumb at the
+fire, or ask something dark). Cozy *by contrast*, never cheerful — same
+"held breath" rule as the harbor.
+
+**Async bridge (Phase 4):** a *failed* rescue can persist as a trace
+another player finds — and you may find someone another player abandoned.
+Shares the corpse/phantom vessel already noted under Presence.
+
+### "Metroidvania-of-the-meta" [LEANING]
+
+A *literal* metroidvania (one persistent, backtracked map) **fights the
+procgen descent** — don't build it. The Hollow-Knight "the world is
+opening up as I meet people" feel lives in the **meta layer instead**: the
+possibility space (item / region / spell pools) is gated by **who you've
+saved**. Ability- and character-gated content *across runs*, not terrain
+*within* one.
+
+### Open calls from this thread [OPEN]
+
+- **Harbor capacity** — scarce / mutually-exclusive (saving one can cost
+  another) *vs* accumulate-all over time. *(Lean: scarce — it makes your
+  harbor an identity and honours "a held breath, not a tavern.")*
+- **Saved NPC as a summonable phantom** in-dungeon (a gorgeous async
+  bridge) *vs* home-only service. *(Lean: later phase — touches combat.)*
+- **Magic resource split** — which arts are stamina vs cooldown/charges.
+
+---
+
 ## Open questions
 
 - **Harbor layout** — how do the functions sit in the space without
@@ -401,7 +516,9 @@ climb — not boss #4.
 - **NPC presence system** — what's the minimum that sells "a person is
   here": idle pose + a hum (audio) + a dialogue card (generalize
   `note-card.ts`)? (next to discuss)
-- Do wild NPCs persist across a run, or are they one-shot encounters?
+- ~~Do wild NPCs persist across a run, or are they one-shot encounters?~~
+  *(answered 2026-06-06: **both** — transient by default, recruitable to
+  the Harbor as meta. See the 2026-06-06 thread above.)*
 - Achievement crates: which achievements grant them, and how is the
   reward scaled so it's a treat, not a power spike?
 - How early does the first NPC appear — does the tutorial introduce the
