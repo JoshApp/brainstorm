@@ -4,7 +4,7 @@
 // all speak the same names. The registry is the single source of WHAT exists;
 // this maps each entry to WHICH model to build.
 
-import { ENEMIES } from '../content/enemies';
+import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { ITEMS } from '../content/items';
 import type { ModelSpec } from '../ecs/model-types';
 import { listAuthorables, type Authorable, type AuthorableKind } from '../debug/authorables';
@@ -14,6 +14,8 @@ export interface BenchSubject {
   kind: AuthorableKind;
   label: string;
   spec: ModelSpec;
+  /** For mobs: the full spec, so the bench can drive its telegraph animation. */
+  enemy?: EnemySpec;
 }
 
 export function resolveSubject(subjectId: string): BenchSubject | null {
@@ -21,7 +23,7 @@ export function resolveSubject(subjectId: string): BenchSubject | null {
     const id = subjectId.slice(4);
     const e = ENEMIES[id];
     if (!e) return null;
-    return { id: subjectId, kind: 'mob', label: e.bossName ?? e.name ?? id, spec: e.model };
+    return { id: subjectId, kind: 'mob', label: e.bossName ?? e.name ?? id, spec: e.model, enemy: e };
   }
   if (subjectId.startsWith('viewmodel-')) {
     const id = subjectId.slice('viewmodel-'.length);

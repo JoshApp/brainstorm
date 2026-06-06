@@ -18,7 +18,7 @@ import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
 import { isBossEncounterEngaged } from './boss-encounter';
 import { levelHasFogWall } from '../ui/boss-engagement';
-import { TELEGRAPH_POSES, poseValue, type TelegraphStyle } from './pose-clips';
+import { applyTelegraphPose, type TelegraphNodes, type TelegraphStyle } from './pose-clips';
 import type { WalkableRegion } from '../level/walkable';
 import type { NavGrid, Waypoint } from '../level/nav-grid';
 import {
@@ -301,6 +301,12 @@ export function createEnemy(
   const shoulderR = built.slots.get('shoulderR');
   const shoulderBaseLX = shoulderL ? shoulderL.rotation.x : 0;
   const shoulderBaseRX = shoulderR ? shoulderR.rotation.x : 0;
+  // Telegraph rig — the nodes the windup/strike/recover pose drives. Built
+  // once, shared with the asset bench via applyTelegraphPose so the live mob
+  // and the bench animate through one code path.
+  const telegraphNodes: TelegraphNodes = {
+    tiltPart, root: built.group, shoulderL, shoulderR, shoulderBaseLX, shoulderBaseRX,
+  };
   // Body-animation controller — gait, head-crane, knockback, and the presence
   // idle overlay. Owns its own body refs (hips, neck, chant orb) + mutable
   // state (see enemy-animation.ts); the factory no longer carries them.
@@ -883,12 +889,7 @@ export function createEnemy(
    *  have shoulder pivots (graceful no-op otherwise). Eye flare ramps
    *  with the windup, holds at strike, fades over recover. */
   function applyTelegraph(style: Ability['pose'], phase: 'windup' | 'strike' | 'recover', t: number) {
-    const pose = TELEGRAPH_POSES[(style ?? 'swing') as TelegraphStyle];
-    applyTilt(poseValue(pose.rigTilt, phase, t));
-    built.group.position.y = poseValue(pose.bob, phase, t);
-    const arm = poseValue(pose.armSwing, phase, t);
-    if (shoulderL) shoulderL.rotation.x = shoulderBaseLX + arm;
-    if (shoulderR) shoulderR.rotation.x = shoulderBaseRX + arm;
+    applyTelegraphPose(telegraphNodes, style as TelegraphStyle | undefined, phase, t);
     setEyeFlare(phase === 'windup' ? t : phase === 'strike' ? 1 : 1 - t);
   }
 

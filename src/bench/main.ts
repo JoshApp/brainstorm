@@ -10,10 +10,12 @@
 //
 // The headless CLI (scripts/bench.ts) drives the same page via window.__bench.
 
+import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { mountStudio } from './studio';
 import { resolveSubject, listSubjects } from './subjects';
 import { computeReadout, type Readout } from './readout';
+import { makeMobAnimator, type SubjectAnimator } from './animate';
 
 const canvas = document.getElementById('bench') as HTMLCanvasElement;
 
@@ -21,6 +23,8 @@ interface BenchApi {
   ready: boolean;
   view(az: number, el: number): void;
   turntable(n: number, el: number): void;
+  /** Render the subject's animation arc (mob telegraph) as a contact sheet. */
+  anim(n: number, el: number): void;
   readout(): Readout | null;
   subjects(): string[];
 }
@@ -35,7 +39,7 @@ if (!subjectId) {
   renderPicker();
   window.__bench = {
     ready: true,
-    view() {}, turntable() {},
+    view() {}, turntable() {}, anim() {},
     readout: () => null,
     subjects: () => listSubjects().map((a) => a.scenario),
   };
@@ -46,16 +50,24 @@ if (!subjectId) {
   if (!subject) {
     document.body.insertAdjacentHTML('beforeend',
       `<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#c66;font:14px monospace">unknown subject: ${subjectId}</div>`);
-    window.__bench = { ready: true, view() {}, turntable() {}, readout: () => null, subjects: () => [] };
+    window.__bench = { ready: true, view() {}, turntable() {}, anim() {}, readout: () => null, subjects: () => [] };
   } else {
     const built = buildModel(subject.spec);
-    studio.show(built.group);
+    // Wrap the model so the studio's recentering (on the holder) doesn't fight
+    // a telegraph's vertical bob (on built.group.position.y).
+    const holder = new THREE.Group();
+    holder.add(built.group);
+    studio.show(holder);
 
+    const animator: SubjectAnimator | null = subject.enemy ? makeMobAnimator(built, subject.enemy) : null;
+    const az = Number(params.get('az') ?? 35);
     const el = Number(params.get('el') ?? 18);
     const gridN = Number(params.get('grid') ?? 0);
+    const animN = Number(params.get('anim') ?? 0);
     const draw = () => {
-      if (gridN > 0) studio.renderTurntable(gridN, el);
-      else studio.renderView(Number(params.get('az') ?? 35), el);
+      if (animN > 0 && animator) studio.renderPoseGrid(animN, az, el, animator.poseAt);
+      else if (gridN > 0) studio.renderTurntable(gridN, el);
+      else studio.renderView(az, el);
     };
 
     window.addEventListener('resize', () => {
@@ -71,8 +83,9 @@ if (!subjectId) {
 
     window.__bench = {
       ready: true,
-      view: (az, e) => studio.renderView(az, e),
+      view: (a, e) => studio.renderView(a, e),
       turntable: (n, e) => studio.renderTurntable(n, e),
+      anim: (n, e) => { if (animator) studio.renderPoseGrid(n, az, e, animator.poseAt); },
       readout: () => computeReadout(subject, built),
       subjects: () => listSubjects().map((a) => a.scenario),
     };

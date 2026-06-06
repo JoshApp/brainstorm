@@ -8,6 +8,7 @@
  *   npm run bench viewmodel-reapers-toll     a weapon's held model
  *   npm run bench item-healing-potion        an item's drop model
  *   npm run bench mob-wraith --grid=12       12-angle turntable contact sheet
+ *   npm run bench mob-ghoul --anim=8         telegraph windup→strike→recover sheet
  *   npm run bench mob-ghoul --az=60 --el=25  explicit camera angle
  *   npm run bench --list                     print every subject id
  *
@@ -28,6 +29,7 @@ async function main() {
   const subject = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : null;
   const listOnly = process.argv.includes('--list');
   const gridN = Number(process.argv.find((a) => a.startsWith('--grid='))?.split('=')[1] ?? 0);
+  const animN = Number(process.argv.find((a) => a.startsWith('--anim='))?.split('=')[1] ?? 0);
   const az = process.argv.find((a) => a.startsWith('--az='))?.split('=')[1];
   const el = process.argv.find((a) => a.startsWith('--el='))?.split('=')[1];
   const port = Number(process.argv.find((a) => a.startsWith('--port='))?.split('=')[1] ?? 5190 + Math.floor(Math.random() * 60));
@@ -65,6 +67,7 @@ async function main() {
     const q = new URLSearchParams();
     if (subject) q.set('subject', subject);
     if (gridN > 0) q.set('grid', String(gridN));
+    if (animN > 0) q.set('anim', String(animN));
     if (az) q.set('az', az);
     if (el) q.set('el', el);
     const url = `http://127.0.0.1:${port}/brainstorm/bench.html?${q.toString()}`;
@@ -78,7 +81,7 @@ async function main() {
       console.log(`\n${subjects.length} subjects`);
     } else {
       const readout = await page.evaluate(() => window.__bench.readout());
-      const suffix = gridN > 0 ? '-grid' : '';
+      const suffix = animN > 0 ? '-anim' : gridN > 0 ? '-grid' : '';
       const outPath = `/tmp/bench-${subject}${suffix}.png`;
       await page.locator('#bench').screenshot({ path: outPath });
       console.log(JSON.stringify(readout, null, 2));

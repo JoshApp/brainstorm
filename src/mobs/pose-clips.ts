@@ -65,3 +65,58 @@ export function poseValue(p: Phased, phase: 'windup' | 'strike' | 'recover', t: 
   if (phase === 'strike') return p.strike;
   return p.strike * (1 - t);   // recover: ease back to neutral
 }
+
+// ── Shared telegraph applicator ──────────────────────────────────────
+// The node-level application of a telegraph pose, extracted so the live mob
+// (mobs/enemy.ts) and the asset bench drive animation through ONE code path —
+// the bench never drifts from the game. Operates on explicitly-passed rig
+// nodes (all optional: a limbless blob has no shoulders) so it needs nothing
+// from the enemy AI or the scene.
+
+import * as THREE from 'three';
+import type { BuiltModel } from '../ecs/build-model';
+import type { EnemySpec } from '../content/enemies';
+
+export interface TelegraphNodes {
+  /** Body part pitched on windup/strike (rotation.x). spec.tiltPartName. */
+  tiltPart?: THREE.Object3D | null;
+  /** Model root — owns the vertical bob (position.y). */
+  root: THREE.Object3D;
+  shoulderL?: THREE.Object3D | null;
+  shoulderR?: THREE.Object3D | null;
+  /** Resting shoulder pitch, so armSwing is additive (not absolute). */
+  shoulderBaseLX: number;
+  shoulderBaseRX: number;
+}
+
+/** Resolve the rig nodes a telegraph drives from a built model + its spec.
+ *  Mirrors the lookups mobs/enemy.ts caches at spawn. */
+export function telegraphNodesFor(built: BuiltModel, spec: EnemySpec): TelegraphNodes {
+  const shoulderL = built.slots.get('shoulderL');
+  const shoulderR = built.slots.get('shoulderR');
+  return {
+    tiltPart: built.parts.get(spec.tiltPartName) ?? built.slots.get(spec.tiltPartName),
+    root: built.group,
+    shoulderL,
+    shoulderR,
+    shoulderBaseLX: shoulderL ? shoulderL.rotation.x : 0,
+    shoulderBaseRX: shoulderR ? shoulderR.rotation.x : 0,
+  };
+}
+
+/** Apply a telegraph pose to the rig: body tilt + vertical bob + arm swing.
+ *  Reads the shared TELEGRAPH_POSES data, so the silhouette is identical
+ *  whether driven by the AI or the bench. */
+export function applyTelegraphPose(
+  n: TelegraphNodes,
+  style: TelegraphStyle | undefined,
+  phase: 'windup' | 'strike' | 'recover',
+  t: number,
+): void {
+  const pose = TELEGRAPH_POSES[(style ?? 'swing') as TelegraphStyle];
+  if (n.tiltPart) n.tiltPart.rotation.x = poseValue(pose.rigTilt, phase, t);
+  n.root.position.y = poseValue(pose.bob, phase, t);
+  const arm = poseValue(pose.armSwing, phase, t);
+  if (n.shoulderL) n.shoulderL.rotation.x = n.shoulderBaseLX + arm;
+  if (n.shoulderR) n.shoulderR.rotation.x = n.shoulderBaseRX + arm;
+}

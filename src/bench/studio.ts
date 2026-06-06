@@ -19,6 +19,9 @@ export interface Studio {
   show(object: THREE.Object3D): void;
   renderView(azDeg: number, elDeg: number): void;
   renderTurntable(n: number, elDeg: number): void;
+  /** Contact sheet from a fixed camera, calling poseAt(i, n) before each tile
+   *  to mutate the subject — for animation arcs (windup→strike→recover). */
+  renderPoseGrid(n: number, azDeg: number, elDeg: number, poseAt: (i: number, n: number) => void): void;
   resize(w: number, h: number): void;
 }
 
@@ -92,13 +95,16 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
     renderer.render(scene, camera);
   }
 
-  function renderTurntable(n: number, elDeg: number): void {
+  // Shared scissor-tile contact-sheet loop. perTile(i, aspect) positions the
+  // camera (and may pose the subject) for cell i, then the tile renders.
+  function grid(n: number, perTile: (i: number, aspect: number) => void): void {
     const cols = gridCols(n);
     const rows = Math.ceil(n / cols);
     const W = canvas.width, H = canvas.height;
     const tw = Math.floor(W / cols), th = Math.floor(H / rows);
+    const aspect = tw / th;
     renderer.setScissorTest(true);   // per-tile clear stays inside its cell
-    camera.aspect = tw / th;
+    camera.aspect = aspect;
     camera.updateProjectionMatrix();
     for (let i = 0; i < n; i++) {
       const col = i % cols, row = Math.floor(i / cols);
@@ -106,10 +112,22 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
       const y = H - (row + 1) * th;   // GL viewport origin is bottom-left
       renderer.setViewport(x, y, tw, th);
       renderer.setScissor(x, y, tw, th);
-      placeCamera((i / n) * 360, elDeg, camera.aspect);
+      perTile(i, aspect);
       renderer.render(scene, camera);
     }
     renderer.setScissorTest(false);
+  }
+
+  function renderTurntable(n: number, elDeg: number): void {
+    grid(n, (i, aspect) => placeCamera((i / n) * 360, elDeg, aspect));
+  }
+
+  function renderPoseGrid(n: number, azDeg: number, elDeg: number, poseAt: (i: number, n: number) => void): void {
+    grid(n, (i, aspect) => {
+      poseAt(i, n);
+      subject.updateMatrixWorld(true);   // re-resolve the posed rig before render
+      placeCamera(azDeg, elDeg, aspect);
+    });
   }
 
   function resize(w: number, h: number): void {
@@ -117,7 +135,7 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
   }
 
   resize(canvas.clientWidth || 1200, canvas.clientHeight || 900);
-  return { show, renderView, renderTurntable, resize };
+  return { show, renderView, renderTurntable, renderPoseGrid, resize };
 }
 
 // Even-ish column count so a contact sheet reads left-to-right, top-to-bottom.
