@@ -1435,6 +1435,15 @@ export function getScenarioFromUrl(): Scenario | null {
   if (subjectOnlyOverride !== null) {
     result = { ...result, inspectSubjectOnly: subjectOnlyOverride === 'true' };
   }
+  // Pose the held weapon at a swing phase — lets a snap capture any equipped
+  // weapon mid-strike (animation review), not just the idle pose. `&phase=strike`
+  // grabs the struck-through pose; windup/recover available too.
+  const phaseOverride = params.get('phase');
+  if (phaseOverride === 'windup' || phaseOverride === 'strike' || phaseOverride === 'recover') {
+    // strike → a big phaseTimer clamps getPhaseProgress to ~1 (the struck pose).
+    const phaseTimer = phaseOverride === 'strike' ? 0.2 : phaseOverride === 'windup' ? 0.1 : 0.02;
+    result = { ...result, swordPhase: { phase: phaseOverride, phaseTimer } };
+  }
   return result;
 }
 

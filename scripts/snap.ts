@@ -215,6 +215,10 @@ async function main() {
     // --portalcull forces room culling on (DEV override) for A/B.
     const portalCull = process.argv.includes('--portalcull') ? '&portalcull=1' : '';
     if (portalCull) console.log('Portal culling: ON');
+    // --phase=strike poses the equipped weapon at a swing phase (animation review).
+    const phaseArg = process.argv.find((a) => a.startsWith('--phase='))?.split('=')[1];
+    const phaseOverride = phaseArg ? `&phase=${encodeURIComponent(phaseArg)}` : '';
+    if (phaseArg) console.log(`Weapon phase: ${phaseArg}`);
     let url: string;
     if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
@@ -231,7 +235,7 @@ async function main() {
       const itemId = scenario.slice('item-'.length);
       url = `http://127.0.0.1:${port}/brainstorm/?scenario=item&item=${encodeURIComponent(itemId)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}`;
     }
-    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}${ps1Override}${portalCull}`;
+    else url = `http://127.0.0.1:${port}/brainstorm/?scenario=${encodeURIComponent(scenario)}${freezeOverride}${inspectOverride}${hudOnlyOverride}${subjectOnlyOverride}${shadowsOverride}${ps1Override}${portalCull}${phaseOverride}`;
     console.log(`Opening ${url}`);
 
     // Forward browser console messages (log/warn/error) to CLI output
