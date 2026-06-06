@@ -97,7 +97,10 @@ export function showProvingGroundsScreen(
   // ── Footer: Back + Descend ───────────────────────────────────────
   const footer = document.createElement('div');
   Object.assign(footer.style, {
-    position: 'fixed', left: '0', right: '0', bottom: '0', zIndex: '1',
+    // ABOVE the screen root (z 8000): the footer is a body sibling, so without
+    // a higher z-index the full-screen root paints over it and eats every tap —
+    // you could select chips but never reach Back / Descend.
+    position: 'fixed', left: '0', right: '0', bottom: '0', zIndex: '8001',
     display: 'flex', gap: '10px', padding: '10px 12px calc(env(safe-area-inset-bottom,8px) + 10px)',
     background: '#0b0c0eee', borderTop: '1px solid #23262b',
   } as CSSStyleDeclaration);

@@ -8,6 +8,21 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The Proving Grounds buttons answer your taps again — Descend and Back were hiding behind the screen.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The bones tighten on what they carry. A dagger closes the fist; a haft opens it.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
         "tag": "add",
         "text": "A hooded merchant waits in the dark now, and your gold finally buys something — reach them before the dungeon reaches you.",
         "area": [
