@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "content",
+        "text": "Bench animation: mob telegraph arcs as contact sheets (--anim)"
+      },
+      {
         "tag": "tune",
         "text": "SessionStart hook"
       },
@@ -210,10 +214,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Style: ink edge-outlines (depth-silhouette contours) — new shader step"
-      },
-      {
-        "tag": "tune",
-        "text": "Stamina system"
       }
     ]
   },

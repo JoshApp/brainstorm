@@ -6,6 +6,8 @@
 //   /brainstorm/bench.html                     → picker (browse all subjects)
 //   /brainstorm/bench.html?subject=mob-ghoul   → hero shot of the ghoul model
 //   ?subject=...&grid=12                        → 12-angle turntable contact sheet
+//   ?subject=mob-ghoul&anim=8                   → telegraph windup→strike→recover
+//   ?subject=fx-shatter-burst&anim=8            → an effect's lifetime
 //   ?subject=...&az=35&el=18                    → explicit azimuth/elevation
 //
 // The headless CLI (scripts/bench.ts) drives the same page via window.__bench.
@@ -16,6 +18,7 @@ import { mountStudio } from './studio';
 import { resolveSubject, listSubjects } from './subjects';
 import { computeReadout, type Readout } from './readout';
 import { makeMobAnimator, type SubjectAnimator } from './animate';
+import { effectDemo } from './effects';
 
 const canvas = document.getElementById('bench') as HTMLCanvasElement;
 
@@ -23,7 +26,7 @@ interface BenchApi {
   ready: boolean;
   view(az: number, el: number): void;
   turntable(n: number, el: number): void;
-  /** Render the subject's animation arc (mob telegraph) as a contact sheet. */
+  /** Render the subject's animation arc (mob telegraph / effect lifetime). */
   anim(n: number, el: number): void;
   readout(): Readout | null;
   subjects(): string[];
@@ -34,62 +37,87 @@ declare global {
 
 const params = new URLSearchParams(location.search);
 const subjectId = params.get('subject');
+const NOOP: BenchApi = {
+  ready: true, view() {}, turntable() {}, anim() {},
+  readout: () => null, subjects: () => listSubjects().map((s) => s.id),
+};
+
+function titleChip(text: string): void {
+  document.body.insertAdjacentHTML('beforeend',
+    `<div style="position:fixed;left:10px;top:8px;color:#9aa1ab;font:12px monospace;letter-spacing:.05em">${text}</div>`);
+}
+
+function onResize(draw: () => void): void {
+  window.addEventListener('resize', () => { mounted!.resize(window.innerWidth, window.innerHeight); draw(); });
+  mounted!.resize(window.innerWidth, window.innerHeight);
+  draw();
+}
+
+let mounted: ReturnType<typeof mountStudio> | null = null;
 
 if (!subjectId) {
   renderPicker();
-  window.__bench = {
-    ready: true,
-    view() {}, turntable() {}, anim() {},
-    readout: () => null,
-    subjects: () => listSubjects().map((a) => a.scenario),
-  };
+  window.__bench = NOOP;
+} else if (subjectId.startsWith('fx-')) {
+  // ── Effect demo ──────────────────────────────────────────────────
+  const demo = effectDemo(subjectId);
+  mounted = mountStudio(canvas);
+  if (!demo) {
+    unknown(subjectId);
+    window.__bench = NOOP;
+  } else {
+    mounted.frame(demo.radius);
+    const animator = demo.start(mounted.root());
+    const az = Number(params.get('az') ?? 35);
+    const el = Number(params.get('el') ?? demo.el);
+    const n = Math.max(1, Number(params.get('anim') ?? params.get('grid') ?? animator.frames));
+    onResize(() => mounted!.renderPoseGrid(n, az, el, animator.poseAt));
+    titleChip(`${animator.label} · effect · ${subjectId}`);
+    window.__bench = {
+      ...NOOP,
+      anim: (m, e) => mounted!.renderPoseGrid(m, az, e, animator.poseAt),
+    };
+  }
 } else {
+  // ── Model / mob ──────────────────────────────────────────────────
   const subject = resolveSubject(subjectId);
-  const studio = mountStudio(canvas);
-
+  mounted = mountStudio(canvas);
   if (!subject) {
-    document.body.insertAdjacentHTML('beforeend',
-      `<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#c66;font:14px monospace">unknown subject: ${subjectId}</div>`);
-    window.__bench = { ready: true, view() {}, turntable() {}, anim() {}, readout: () => null, subjects: () => [] };
+    unknown(subjectId);
+    window.__bench = NOOP;
   } else {
     const built = buildModel(subject.spec);
     // Wrap the model so the studio's recentering (on the holder) doesn't fight
     // a telegraph's vertical bob (on built.group.position.y).
     const holder = new THREE.Group();
     holder.add(built.group);
-    studio.show(holder);
+    mounted.show(holder);
 
     const animator: SubjectAnimator | null = subject.enemy ? makeMobAnimator(built, subject.enemy) : null;
     const az = Number(params.get('az') ?? 35);
     const el = Number(params.get('el') ?? 18);
     const gridN = Number(params.get('grid') ?? 0);
     const animN = Number(params.get('anim') ?? 0);
-    const draw = () => {
-      if (animN > 0 && animator) studio.renderPoseGrid(animN, az, el, animator.poseAt);
-      else if (gridN > 0) studio.renderTurntable(gridN, el);
-      else studio.renderView(az, el);
-    };
-
-    window.addEventListener('resize', () => {
-      studio.resize(window.innerWidth, window.innerHeight);
-      draw();
+    onResize(() => {
+      if (animN > 0 && animator) mounted!.renderPoseGrid(animN, az, el, animator.poseAt);
+      else if (gridN > 0) mounted!.renderTurntable(gridN, el);
+      else mounted!.renderView(az, el);
     });
-    studio.resize(window.innerWidth, window.innerHeight);
-    draw();
-
-    // Title chip (dev-side convenience; harmless headless).
-    document.body.insertAdjacentHTML('beforeend',
-      `<div style="position:fixed;left:10px;top:8px;color:#9aa1ab;font:12px monospace;letter-spacing:.05em">${subject.label} · ${subject.kind} · ${subjectId}</div>`);
-
+    titleChip(`${subject.label} · ${subject.kind} · ${subjectId}`);
     window.__bench = {
       ready: true,
-      view: (a, e) => studio.renderView(a, e),
-      turntable: (n, e) => studio.renderTurntable(n, e),
-      anim: (n, e) => { if (animator) studio.renderPoseGrid(n, az, e, animator.poseAt); },
+      view: (a, e) => mounted!.renderView(a, e),
+      turntable: (m, e) => mounted!.renderTurntable(m, e),
+      anim: (m, e) => { if (animator) mounted!.renderPoseGrid(m, az, e, animator.poseAt); },
       readout: () => computeReadout(subject, built),
-      subjects: () => listSubjects().map((a) => a.scenario),
+      subjects: () => listSubjects().map((s) => s.id),
     };
   }
+}
+
+function unknown(id: string): void {
+  document.body.insertAdjacentHTML('beforeend',
+    `<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#c66;font:14px monospace">unknown subject: ${id}</div>`);
 }
 
 // ── Picker ───────────────────────────────────────────────────────────
@@ -102,10 +130,10 @@ function renderPicker(): void {
     padding: '14px',
   } as CSSStyleDeclaration);
   root.innerHTML = `<div style="letter-spacing:.25em;color:#6b7280;text-transform:uppercase;margin-bottom:10px">Delve · Asset Bench</div>`;
-  for (const a of listSubjects()) {
+  for (const s of listSubjects()) {
     const link = document.createElement('a');
-    link.href = `?subject=${encodeURIComponent(a.scenario)}`;
-    link.textContent = `${a.label}  ·  ${a.scenario}`;
+    link.href = `?subject=${encodeURIComponent(s.id)}`;
+    link.textContent = `${s.label}  ·  ${s.id}`;
     Object.assign(link.style, {
       display: 'block', padding: '7px 4px', color: '#cdd2d8',
       textDecoration: 'none', borderBottom: '1px solid #16181c',

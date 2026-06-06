@@ -22,6 +22,12 @@ export interface Studio {
   /** Contact sheet from a fixed camera, calling poseAt(i, n) before each tile
    *  to mutate the subject — for animation arcs (windup→strike→recover). */
   renderPoseGrid(n: number, azDeg: number, elDeg: number, poseAt: (i: number, n: number) => void): void;
+  /** The framed group — spawn effects into this so they sit at the studio
+   *  origin and read against the backdrop. */
+  root(): THREE.Group;
+  /** Fix the framing distance manually (for effects, whose extent changes over
+   *  their lifetime so auto-fit from a single frame would mis-frame). */
+  frame(radiusM: number): void;
   resize(w: number, h: number): void;
 }
 
@@ -135,7 +141,7 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
   }
 
   resize(canvas.clientWidth || 1200, canvas.clientHeight || 900);
-  return { show, renderView, renderTurntable, renderPoseGrid, resize };
+  return { show, renderView, renderTurntable, renderPoseGrid, root: () => subject, frame: (r) => { radius = r; pivot.set(0, 0, 0); }, resize };
 }
 
 // Even-ish column count so a contact sheet reads left-to-right, top-to-bottom.

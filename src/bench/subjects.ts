@@ -7,7 +7,8 @@
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { ITEMS } from '../content/items';
 import type { ModelSpec } from '../ecs/model-types';
-import { listAuthorables, type Authorable, type AuthorableKind } from '../debug/authorables';
+import { listAuthorables, type AuthorableKind } from '../debug/authorables';
+import { EFFECT_DEMOS } from './effects';
 
 export interface BenchSubject {
   id: string;             // the subject id (= authorable.scenario), e.g. 'mob-ghoul'
@@ -41,7 +42,13 @@ export function resolveSubject(subjectId: string): BenchSubject | null {
   return null;
 }
 
-/** Every authorable, for the bench picker + the CLI's subject list. */
-export function listSubjects(): Authorable[] {
-  return listAuthorables();
+export interface SubjectEntry { id: string; label: string; kind: string; }
+
+/** Everything the bench can render — authorable models (mob/weapon/item) plus
+ *  the effect demos — for the picker + the CLI's --list. */
+export function listSubjects(): SubjectEntry[] {
+  return [
+    ...listAuthorables().map((a) => ({ id: a.scenario, label: a.label, kind: a.kind as string })),
+    ...EFFECT_DEMOS.map((e) => ({ id: e.id, label: e.label, kind: 'effect' })),
+  ];
 }
