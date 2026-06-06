@@ -859,3 +859,23 @@ export function stopMusic(): void {
   if (ambientScheduler !== null) { clearTimeout(ambientScheduler); ambientScheduler = null; }
   applyState('off');
 }
+
+/** Pause the scheduler timers for tab-out — paired with sfx.suspendAudio().
+ *  Unlike stopMusic, this leaves the layer gains + drone/oscillator graph
+ *  intact so resumeMusic() picks up where it left off. Clearing the
+ *  self-rescheduling timers is what prevents a burst of stale-timestamped
+ *  notes from piling up against the frozen (suspended) audio clock. */
+export function pauseMusic(): void {
+  if (heatTicker !== null) { clearInterval(heatTicker); heatTicker = null; }
+  if (motifScheduler !== null) { clearTimeout(motifScheduler); motifScheduler = null; }
+  if (ambientScheduler !== null) { clearTimeout(ambientScheduler); ambientScheduler = null; }
+}
+
+/** Restart the scheduler loops after pauseMusic() (tab back in). No-op if
+ *  music never started or a loop is already running. */
+export function resumeMusic(): void {
+  if (!started) return;
+  if (heatTicker === null) heatTicker = window.setInterval(tickHeat, 250);
+  if (motifScheduler === null) scheduleMotifLoop();
+  if (ambientScheduler === null) scheduleAmbientLoop();
+}

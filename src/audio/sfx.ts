@@ -128,6 +128,21 @@ export function getAudioContext(): AudioContext | null {
   ensureCtx();
   return ctx;
 }
+
+/** Suspend the audio clock — pauses ALL sound (sfx + music share this one
+ *  context) WITHOUT tearing down the graph. For tab-out: the render loop is
+ *  throttled when the page is hidden, but Web Audio keeps running, so the
+ *  ambient bed would play on in the background. No-op until the context exists
+ *  (first gesture) or if already suspended. resumeAudio() continues exactly
+ *  where it left off. */
+export function suspendAudio(): void {
+  if (ctx && ctx.state === 'running') void ctx.suspend();
+}
+
+/** Resume after suspendAudio() (tab back in). No-op if not suspended. */
+export function resumeAudio(): void {
+  if (ctx && ctx.state === 'suspended') void ctx.resume();
+}
 /** Master output bus — every dry path terminates here. */
 export function getMasterGain(): GainNode | null {
   ensureCtx();

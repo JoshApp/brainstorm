@@ -9,6 +9,38 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Tab away and the dungeon holds its breath — the sound pauses instead of murmuring to an empty room, and picks up where it left off when you return.",
+        "area": [
+          "audio"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The hand stops looking like a robot. One fist, one thumb, one chunky bracer. The dungeon expected this all along.",
+        "area": [
+          "ui",
+          "weapons"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Hands appear in your view, holding the things you took. Empty hands make fists. The dungeon will accept this.",
+        "area": [
+          "combat",
+          "weapons",
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Proving Grounds finally tells you where to tap. The Descend button was always there; now it admits it.",
+        "area": [
+          "ui",
+          "controls"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "Trailer parser now handles the blank-separated session URL convention.",
         "area": [
           "tooling",

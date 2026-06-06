@@ -29,8 +29,8 @@ import {
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
-import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh } from './audio/sfx';
-import { startMusic, setMusicVolume } from './audio/music';
+import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh, suspendAudio, resumeAudio } from './audio/sfx';
+import { startMusic, setMusicVolume, pauseMusic, resumeMusic } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { createRoomCuller, type RoomCuller } from './level/room-culling';
@@ -570,6 +570,22 @@ setReverbEnabled(getSettings().reverb);
   window.addEventListener('touchstart', startOnce, { once: true });
   window.addEventListener('keydown', startOnce, { once: true });
 }
+
+// Pause audio when the tab / app is backgrounded. The browser already throttles
+// the render loop when the page is hidden (and realDt is clamped, so the world
+// doesn't lurch on return), but Web Audio runs on its own clock — so the
+// ambient bed + music would keep playing in the background. Suspend the audio
+// clock + pause the music schedulers on hide; resume on return. Suspend, not
+// teardown, so it picks up exactly where it left off.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    pauseMusic();
+    suspendAudio();
+  } else {
+    resumeAudio();
+    resumeMusic();
+  }
+});
 
 // Pre-warm: build/render every drop + enemy model once at boot so the first
 // kill in-game doesn't pay shader-compile / JIT cost mid-fight. Also primes
