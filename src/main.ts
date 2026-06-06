@@ -106,6 +106,15 @@ const HARNESS_ENABLED =
   new URLSearchParams(window.location.search).get('harness') === '1';
 if (HARNESS_ENABLED) setHarnessPaused(true);
 
+// Asset viewer: `?viewer=1` opens the DEV-only browser screen for browsing +
+// inspecting any mob/weapon/item live (src/debug/viewer.ts). With no scenario
+// it shows the picker (in place of the title); with a scenario it mounts the
+// orbit + playback control bar over the loaded subject. DEV-gated so the whole
+// viewer module tree-shakes out of the production bundle.
+const VIEWER_ENABLED =
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).get('viewer') === '1';
+
 // Debug capture tool: an on-screen CAPTURE button that grabs a rich
 // snapshot during NORMAL play. Enabled by EITHER the ?debug=1 URL flag
 // OR the persisted "DEBUG MODE" setting (toggled in the settings menu).
@@ -1064,6 +1073,17 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   if (scenario.hudOnly) {
     document.body.classList.add('hud-only');
   }
+  // Asset-viewer control bar — orbit + play/pause + weapon-phase scrub over the
+  // just-loaded subject. The scenario already froze the world (preview default),
+  // so orbit owns the camera from frame one.
+  if (VIEWER_ENABLED) {
+    const scenarioName = new URLSearchParams(window.location.search).get('scenario')!;
+    void import('./debug/viewer').then((m) =>
+      m.mountViewerControls({ camera, weapon, scenarioName }));
+  }
+} else if (VIEWER_ENABLED) {
+  // ?viewer=1 with no scenario → the picker, in place of the title screen.
+  void import('./debug/viewer').then((m) => m.mountViewerLauncher());
 } else if (hasPendingDevSnapshot() && loadSave()) {
   // Dev hot-reload returning from DEV AUTO-UPDATE: a pending pose/HP/buffs
   // snapshot means the page just reloaded mid-floor. Skip the title and
