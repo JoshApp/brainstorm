@@ -16,6 +16,7 @@ import { setChargeFromHeldMs, tryReleaseChargedAttack, cancelCharge, setChargePo
 import { getSettings } from '../settings/settings';
 import { wantsHoldToCharge } from '../player/current-weapon';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
+import { markTouchActivity } from './touch-activity';
 
 const TAP_MAX_MS = 320;
 const TAP_MAX_PX = 18;
@@ -95,6 +96,7 @@ export const touchScheme: InputScheme = {
     const screenMid = () => window.innerWidth * LEFT_ZONE_FRACTION;
 
     function handleStart(e: TouchEvent) {
+      markTouchActivity();   // beacon: suppress the ghost mouse events this tap will synthesize
       for (const t of Array.from(e.changedTouches)) {
         const side: 'left' | 'right' = t.clientX < screenMid() ? 'left' : 'right';
         // doubleTap dash: a left touch landing right after a quick tap is the
@@ -178,6 +180,7 @@ export const touchScheme: InputScheme = {
     }
 
     function handleEnd(e: TouchEvent) {
+      markTouchActivity();   // refresh the beacon so the post-tap ghost click is ignored
       for (const t of Array.from(e.changedTouches)) {
         const tracker = touches.get(t.identifier);
         if (!tracker) continue;

@@ -8,6 +8,13 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Opening a chest or grabbing loot no longer ghost-swings your weapon — the dungeon stopped hearing a tap as two inputs.",
+        "area": [
+          "controls"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "The summoning sigils smoulder a beat longer now — you see what is coming before it lands on you.",
         "area": [

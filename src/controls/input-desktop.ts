@@ -17,6 +17,7 @@
 
 import { dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
+import { touchWasRecent } from './touch-activity';
 import { triggerDash } from './dash-input';
 import {
   setChargeFromHeldMs,
@@ -179,6 +180,11 @@ export const desktopScheme: InputScheme = {
     let mouseMovement = 0;
 
     canvas.addEventListener('mousedown', (e) => {
+      // Ignore the ghost mouse events a touch device synthesizes after a tap —
+      // the touch scheme already handled the tap; acting again here double-
+      // fires (a tapped-open chest also requesting pointer-lock → later taps
+      // re-run onTap → phantom swing).
+      if (touchWasRecent()) return;
       mouseDownAt = performance.now();
       mouseDownX = e.clientX;
       mouseDownY = e.clientY;
@@ -192,6 +198,7 @@ export const desktopScheme: InputScheme = {
     });
 
     canvas.addEventListener('mouseup', (e) => {
+      if (touchWasRecent()) return;   // touch-synthesized ghost — the touch scheme owns this tap
       const elapsed = performance.now() - mouseDownAt;
       const wasChargeHold = mouseChargeDown && mouseChargeEligible;
       mouseChargeDown = false;
