@@ -303,18 +303,25 @@ export const HAND_RIGHT: ModelSpec = {
     // current forearm so the rest of the rig didn't have to move.
     elbow: { parent: 'shoulder', pos: [-0.10, 0.10, -0.155] },
 
-    // ── WRIST ─ the joint between forearm and hand. Pre-flexed ≈50°
-    // so the FIST visibly angles AWAY from the forearm axis — the
-    // weapon then extends out of the fist at an angle to the arm
-    // instead of being a straight continuation of it. Smaller
-    // bend reads as "weapon parallel with arm"; larger pushes the
-    // blade out of the visible frustum because it dives forward.
-    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.85, 0, 0] },
+    // ── WRIST ─ the joint between forearm and hand. Modest forward
+    // flexion (≈30°) — the wrist's job here is just to angle the
+    // hand slightly forward; the perpendicular grip is now done by
+    // palm_anchor's rotation, so the wrist doesn't need to do
+    // heroic bending to produce a perpendicular weapon.
+    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.55, 0, 0] },
 
-    // The grip anchor a held weapon aligns to. A child of WRIST so
-    // it inherits the wrist bend along with the fingers. No further
-    // rotation needed — the wrist does the work.
-    palm_anchor: { parent: 'wrist', pos: [0, 0.092, -0.011] },
+    // The grip anchor a held weapon aligns to. A child of WRIST so it
+    // inherits the wrist bend. The Z rotation here is the LOAD-BEARING
+    // bit Josh kept flagging: a weapon's grip cylinder extends along
+    // its local +Y, and palm_anchor's +Y inherits the wrist's +Y —
+    // which is ALSO the direction the closed fingers point along.
+    // Without rotating, the grip is CO-AXIAL with the fingers, so
+    // "weapon parallel with arm" no matter what the wrist does. The
+    // −π/2 around Z maps weapon-local +Y → palm-anchor-local +X
+    // (across the palm), so the grip passes THROUGH the closed fist
+    // perpendicular to the finger axis — the way a sword is actually
+    // held.
+    palm_anchor: { parent: 'wrist', pos: [0, 0.092, -0.011], rot: [0, 0, -1.5708] },
 
     // ── SEMANTIC INTENT ANCHORS ─────────────────────────────────────
     // These slots carry MEANING, not just position. Their local +Y
