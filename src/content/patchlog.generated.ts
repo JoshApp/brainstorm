@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Combat: directional charge-switching telegraph (For Honor feint)"
+      },
+      {
+        "tag": "fix",
+        "text": "Combat fix: melee swings respect line-of-sight (no hitting through walls)"
+      },
+      {
+        "tag": "tune",
         "text": "Combat: heavy combo chain + light->heavy ender (hammer)"
       },
       {
@@ -216,14 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Hitstop: decouple freeze from shake, cap it short (heavy hits read as impact not lag)"
-      },
-      {
-        "tag": "tune",
-        "text": "Settings"
-      },
-      {
-        "tag": "tune",
-        "text": "Input: one tap arbiter (no stray attack after dismissing a note)"
       }
     ]
   }

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { getBobOffset } from './viewmodel-bob';
-import { computeWeaponPose } from './weapon-animations';
+import { computeWeaponPose, type WeaponPose } from './weapon-animations';
 import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '../controls/charge-input';
 import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
@@ -147,6 +147,7 @@ export function createWeaponViewmodel(
     unmount();
     flashMats.length = 0;
     gleaming = false;
+    heldInit = false;   // new weapon snaps to its own pose, doesn't ease from the old
     const built = buildModel(spec);
     // Held weapon always renders ON TOP of scene geometry, so it never
     // clips into walls. Standard PSX-era FPS trick. We don't change the
@@ -189,10 +190,24 @@ export function createWeaponViewmodel(
     group.add(built.group);
   }
 
-  /** Pose `group` from the current swing-state — a pure read of the sim into a
-   *  THREE transform. Called every frame after the sim advances, and on a
-   *  debug pose. */
-  function repose() {
+  // Smoothed held pose for the IDLE / charge-hold state, so discrete changes
+  // (a directional charge switch, a combo-step change, a charge started right
+  // after a swing) EASE instead of snapping. Synced to the live swing pose
+  // during a swing, so the swing→idle handoff is continuous. Active swing frames
+  // are written to `group` directly (crisp — never smoothed).
+  const heldPose: WeaponPose = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 };
+  let heldInit = false;
+
+  function setHeld(x: number, y: number, z: number, rx: number, ry: number, rz: number): void {
+    heldPose.x = x; heldPose.y = y; heldPose.z = z;
+    heldPose.rotX = rx; heldPose.rotY = ry; heldPose.rotZ = rz;
+    heldInit = true;
+  }
+
+  /** Pose `group` from the current swing-state — a read of the sim into a THREE
+   *  transform, with held-pose smoothing on the idle/charge state. `dt` drives
+   *  the smoothing rate; Infinity (a debug pose) snaps instantly. */
+  function repose(dt = Infinity) {
     const phase = swing.getPhase();
     // Always-resolved step (the sim returns the rest step when idle too) — the
     // pose curve comes from the step, so daggers walk stab→slash→stab as the
@@ -227,21 +242,37 @@ export function createWeaponViewmodel(
         pry = pry + (cocked.rotY - pry) * charge;
         prz = prz + (cocked.rotZ - prz) * charge;
       }
-      group.position.set(px, py, pz);
-      group.rotation.set(prx, pry, prz);
+      // Ease the held pose toward this target (snap on first frame / debug).
+      if (!heldInit || !isFinite(dt)) {
+        setHeld(px, py, pz, prx, pry, prz);
+      } else {
+        const a = 1 - Math.exp(-dt * CONFIG.HELD_POSE_SMOOTH_RATE);
+        setHeld(
+          heldPose.x + (px - heldPose.x) * a,
+          heldPose.y + (py - heldPose.y) * a,
+          heldPose.z + (pz - heldPose.z) * a,
+          heldPose.rotX + (prx - heldPose.rotX) * a,
+          heldPose.rotY + (pry - heldPose.rotY) * a,
+          heldPose.rotZ + (prz - heldPose.rotZ) * a,
+        );
+      }
+      group.position.set(heldPose.x, heldPose.y, heldPose.z);
+      group.rotation.set(heldPose.rotX, heldPose.rotY, heldPose.rotZ);
       return;
     }
 
     // windup / strike / recover — interpolate the step's pose curve by the
-    // sim's reported progress through the current phase.
+    // sim's reported progress through the current phase. Crisp (no smoothing),
+    // but sync heldPose so the swing→idle handoff continues from exactly here.
     const pose = computeWeaponPose(step.pose, phase, swing.getPhaseProgress());
     group.position.set(pose.x, pose.y, pose.z);
     group.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
+    setHeld(pose.x, pose.y, pose.z, pose.rotX, pose.rotY, pose.rotZ);
   }
 
   function update(dt: number) {
     swing.advance(dt);
-    repose();
+    repose(dt);
     // Perfect-release gleam: flash the weapon's emissive white inside the
     // window, restore on exit. Only writes on the edge, so it's free otherwise.
     const wantGleam = isChargePerfectWindow();

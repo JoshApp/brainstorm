@@ -222,6 +222,12 @@ export const CONFIG = {
   RANGED_MOVE_SPREAD_RAD: 0.16,
 
   // === SWORD (first-person held weapon) ===
+  // Held-pose smoothing rate (per second) for the IDLE / charge-hold state only
+  // — eases discrete pose changes (a directional charge SWITCH, a combo-step
+  // change, starting a charge right after a swing) instead of snapping. Active
+  // swing animations are NOT smoothed (they keep their crisp snap). Higher =
+  // snappier; ~22 reaches 90% in ~0.1s, a quick swing-over not a teleport.
+  HELD_POSE_SMOOTH_RATE: 22,
   SWORD_REACH: 1.9,            // meters — distance enemies must be within to be hit
   SWORD_CONE_HALF_ANGLE: 0.7,  // radians (~40°) — forward arc that registers hits.
   INTERACT_CONE_HALF_ANGLE: 0.9, // radians (~52°) — must look roughly at an
