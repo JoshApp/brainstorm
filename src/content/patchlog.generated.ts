@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "content",
+        "text": "Dev tooling: snap --phase=strike to pose any equipped weapon mid-swing"
+      },
+      {
         "tag": "tune",
         "text": "Combat: heavy combos + enders for the rest of the melee weapons"
       },
@@ -220,10 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Inventory UX"
-      },
-      {
-        "tag": "tune",
-        "text": "Balance: lifesteal → chance-on-kill, trim basic-chain cleave (playtest)"
       }
     ]
   }

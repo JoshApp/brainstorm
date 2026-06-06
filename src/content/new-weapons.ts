@@ -66,13 +66,15 @@ export const PENITENTS_CHAIN: ModelSpec = {
     { kind: 'cylinder', pos: [0, -0.16, 0], radius: 0.032, height: 0.06, segments: 10, mat: 'binding' },
     // Metal collar where the cord starts.
     { kind: 'cylinder', pos: [0, -0.02, 0], radius: 0.030, height: 0.02, segments: 10, mat: 'cord' },
-    // Cord segments — falling chain of beads, each a touch smaller.
-    { kind: 'sphere', pos: [0.02, 0.02, 0], radius: 0.024, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', pos: [0.06, 0.06, 0], radius: 0.022, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', pos: [0.12, 0.10, 0], radius: 0.019, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', pos: [0.20, 0.13, 0], radius: 0.016, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', pos: [0.28, 0.15, 0], radius: 0.013, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', pos: [0.36, 0.16, 0], radius: 0.010, segments: [8, 6], mat: 'cord' },
+    // Cord segments — falling chain of beads, each a touch smaller. Named
+    // chain0..chain5 (base→tip) so the viewmodel can RIPPLE them: a whip crack
+    // sends a trailing wave down the chain instead of moving a rigid string.
+    { kind: 'sphere', name: 'chain0', pos: [0.02, 0.02, 0], radius: 0.024, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain1', pos: [0.06, 0.06, 0], radius: 0.022, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain2', pos: [0.12, 0.10, 0], radius: 0.019, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain3', pos: [0.20, 0.13, 0], radius: 0.016, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain4', pos: [0.28, 0.15, 0], radius: 0.013, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain5', pos: [0.36, 0.16, 0], radius: 0.010, segments: [8, 6], mat: 'cord' },
   ],
 };
 

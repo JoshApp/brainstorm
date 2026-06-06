@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { getBobOffset } from './viewmodel-bob';
 import { getWeaponSway } from './viewmodel-sway';
+import { setupWhipChain, clearWhipChain, tickWhipChain } from './whip-chain';
 import { computeWeaponPose, type WeaponPose } from './weapon-animations';
 import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '../controls/charge-input';
 import { registerViewmodel } from '../style/render-target';
@@ -129,8 +130,11 @@ export function createWeaponViewmodel(
   type FlashMat = { mat: THREE.MeshStandardMaterial; base: number };
   const flashMats: FlashMat[] = [];
   let gleaming = false;
+  // True when the wielded weapon has a bead chain to ripple (the whip).
+  let whippy = false;
 
   function unmount() {
+    clearWhipChain();   // drop bead refs before the meshes are disposed
     while (group.children.length > 0) {
       const child = group.children[0];
       group.remove(child);
@@ -189,6 +193,8 @@ export function createWeaponViewmodel(
       }
     });
     group.add(built.group);
+    // Whip-class weapons have a named bead chain — wire its ripple animator.
+    whippy = setupWhipChain(built.parts);
   }
 
   // Smoothed held pose for the IDLE / charge-hold state, so discrete changes
@@ -209,6 +215,10 @@ export function createWeaponViewmodel(
    *  transform, with held-pose smoothing on the idle/charge state. `dt` drives
    *  the smoothing rate; Infinity (a debug pose) snaps instantly. */
   function repose(dt = Infinity) {
+    // Whip ripple — secondary motion on the bead chain (no-op for other weapons).
+    // In repose (not update) so a debug-posed frozen snap shows it too. Bead
+    // positions are local children, independent of the group pose below.
+    if (whippy) tickWhipChain(swing.getPhase(), swing.getPhaseProgress(), Number.isFinite(dt) ? dt : 0);
     const phase = swing.getPhase();
     // Always-resolved step (the sim returns the rest step when idle too) — the
     // pose curve comes from the step, so daggers walk stab→slash→stab as the
