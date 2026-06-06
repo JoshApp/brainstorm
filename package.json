@@ -16,6 +16,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host",
     "snap": "tsx scripts/snap.ts",
+    "bench": "tsx scripts/bench.ts",
     "perf": "tsx scripts/perf.ts",
     "harness-smoke": "tsx scripts/harness-smoke.ts",
     "harness-continue": "tsx scripts/harness-continue.ts",
