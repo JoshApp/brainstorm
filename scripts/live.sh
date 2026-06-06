@@ -145,4 +145,13 @@ watch_rc=$?
 # Hop back to the session branch so subsequent commits keep landing there.
 git checkout "$orig_branch" >/dev/null 2>&1 || true
 
+# Also push the session branch to origin so it tracks the new tip
+# (== main). Without this, origin/${orig_branch} lags behind local
+# every time we live without a prior ship, and the stop-hook
+# complains "N unpushed commit(s) on branch X." Skip-on-error: if
+# the session branch was already pushed during the rebase step
+# above, this is a no-op; if origin's branch moved, we don't want
+# to force-with-lease here (the rebase path already handles that).
+git push origin "$orig_branch" 2>/dev/null || true
+
 exit "$watch_rc"

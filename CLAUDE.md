@@ -276,9 +276,11 @@ on the first ever session.
 
 1. Start of session: `git fetch origin main && git rebase origin/main`.
 2. Make changes on the session branch.
-3. `npm run ship` (often). Backup + checkpoint. No deploy.
-4. When the work is ready to feel on the phone: `npm run live`.
-5. ~90s later the URL is fresh.
+3. Commit. **Then run `npm run live`** — don't ask, just live it.
+   Every Claude-made commit goes live; `ship` is reserved for backup
+   checkpoints during in-progress work (refactors, half-built
+   features) that aren't meant to deploy yet.
+4. ~90s later the URL is fresh.
 
 If you forgot the rebase at step 1, `npm run live` will rebase for you
 on the fly. Only stops if a conflict shows up — then:
