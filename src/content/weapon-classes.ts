@@ -46,7 +46,11 @@ export type PoseKey =
   | 'whip-crack-right'
   | 'whip-crack-left'
   | 'whip-wrap'
-  | 'knife-throw';
+  | 'knife-throw'
+  // Unarmed:
+  | 'fist-jab'
+  | 'fist-cross'
+  | 'fist-hook';
 
 export interface ComboStep {
   pose: PoseKey;
@@ -203,6 +207,26 @@ interface ClassDefaults {
 }
 
 export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
+  // FIST — unarmed. The floor of the weapon system: no weapon equipped
+  // resolves to this. Short reach, low damage, fast cadence. Boxing
+  // 1-2-3 combo (jab → cross → hook). The cross is the finisher.
+  // No directional moves and no charged variants for v1 — the punch
+  // pool is intentionally tight.
+  fist: {
+    combo: [
+      // jab — light, snappy, leads the chain. Narrow cone.
+      { pose: 'fist-jab',   windup: 0.06, strike: 0.10, recover: 0.18,
+        reachMul: 0.85, coneHalfAngleMul: 0.7, maxTargets: 1 },
+      // cross — straight, longer reach as the body rotates into it.
+      { pose: 'fist-cross', windup: 0.08, strike: 0.12, recover: 0.22,
+        reachMul: 1.05, coneHalfAngleMul: 0.8, maxTargets: 1 },
+      // hook — wide arc, the finisher; clips a second target if close.
+      { pose: 'fist-hook',  windup: 0.10, strike: 0.14, recover: 0.30,
+        reachMul: 1.00, coneHalfAngleMul: 1.4, maxTargets: 2 },
+    ],
+    comboWindowMs: 320,
+    timingMul: 0.9,         // a touch quicker than the baseline sword
+  },
   dagger: {
     // stab → slash → double-stab. Stab one, slash cleaves two,
     // double-stab finisher commits on one target with extra damage.
@@ -536,6 +560,10 @@ const PROFICIENCY_CRIT_CAP = 0.15;       // hard cap on the flat crit prof bonus
 // un-heavying the swing. Override per weapon via WeaponStats.proficiency.
 // See docs/HARBOR-AND-PROGRESSION.md.
 const PROFICIENCY_PROFILE_BY_CLASS: Record<WeaponClass, ProficiencyProfile> = {
+  // FIST mastery — punching more makes you punch faster + harder. No
+  // crit fishing, no combo window — it's the bare-hands floor of the
+  // system, not a deep skill expression.
+  fist:   { speed: 0.005, damage: 0.005 },
   dagger: { speed: 0.005, crit: 0.003 },      // fast hands
   whip:   { speed: 0.005, reach: 0.004 },     // snap + extend
   sword:  { comboWindow: 0.006, damage: 0.005 }, // flow + bite
@@ -575,6 +603,7 @@ function profBonus(points: number, perPoint: number | undefined, cap = PROFICIEN
 //   Finesse — quick / precise / ranged: dagger, whip, crossbow, knives
 //   Lore    — arcane: wand
 const DEFAULT_WEAPON_SCALING: Record<WeaponClass, WeaponScaling> = {
+  fist:    { might: 'C' },   // bare hands scale with strength, but weaker grade — gear is the answer
   hammer:  { might: 'B' },
   scythe:  { might: 'B' },
   sword:   { might: 'B' },
@@ -596,11 +625,12 @@ export const STAGGER_POWER_BY_CLASS: Record<WeaponClass, number> = {
   scythe: 2.5,
   sword:  1.5,
   spear:  1.3,
+  crossbow: 1.0,
   whip:   0.7,
   dagger: 0.6,
-  crossbow: 1.0,
-  'throwing-knives': 0.4,
+  fist:   0.5,
   wand:   0.5,
+  'throwing-knives': 0.4,
 };
 
 /** Flatten class defaults + per-spec overrides + attackSpeed +

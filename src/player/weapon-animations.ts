@@ -132,10 +132,44 @@ const POSE_SPECS: Partial<Record<PoseKey, PoseSpec>> = {
     wind: { x: 0.16, y: 0.04, z: 0.14, rotX: -0.65, rotY: -0.15, rotZ: -0.30 },
     end:  { x: -0.04, y: 0.12, z: -0.28, rotX: -1.20, rotY: 0.10, rotZ: 0.15 },
   },
+  // ── FIST poses — unarmed punches. Authored as deltas off the shared
+  // hip-held rest pose (the fist is "down by the body" the same way a
+  // dagger or sword would be). All three end with the fist driven
+  // forward in -Z; what differs is the wind path + the cock-back angle.
+  'fist-jab': {
+    // Snap forward. Minimal wind (it's a quick lead) and a clean
+    // straight-line drive into the target.
+    wind: { x: 0.02, y: 0.04, z: 0.06, rotX: -0.30, rotY: 0.05, rotZ: -0.15 },
+    end:  { x: -0.10, y: 0.06, z: -0.32, rotX: -0.95, rotY: 0.10, rotZ: -0.10 },
+  },
+  'fist-cross': {
+    // Body rotates into the punch — cock further back, drive across.
+    wind: { x: 0.14, y: 0.06, z: 0.10, rotX: -0.20, rotY: 0.25, rotZ: -0.30 },
+    end:  { x: -0.16, y: 0.08, z: -0.40, rotX: -1.10, rotY: -0.10, rotZ: -0.05 },
+  },
+  'fist-hook': {
+    // Wide arc — wind out to the right, swing through to the left.
+    wind: { x: 0.26, y: 0.10, z: 0.06, rotX: -0.40, rotY: -0.50, rotZ: -0.55 },
+    end:  { x: -0.22, y: 0.06, z: -0.24, rotX: -0.65, rotY: 0.50, rotZ: 0.50 },
+  },
 };
 
-/** The pose keys currently authored as data — for the equivalence test. */
-export const MIGRATED_POSE_KEYS = Object.keys(POSE_SPECS) as PoseKey[];
+/** Poses whose data spec is BORN data — they never had a hand-coded
+ *  legacy function. The equivalence test below pins migrated specs
+ *  against their original `legacyComputeWeaponPose` switch case, so
+ *  data-native keys (which would fall through to the default case +
+ *  fail the equivalence) are excluded from that loop. Add new
+ *  data-native poses here as you author them. */
+const DATA_NATIVE_POSE_KEYS = new Set<PoseKey>([
+  'fist-jab',
+  'fist-cross',
+  'fist-hook',
+]);
+
+/** Pose keys whose data spec is pinned to a legacy hand-coded function
+ *  (the equivalence oracle). Data-native specs are excluded. */
+export const MIGRATED_POSE_KEYS = (Object.keys(POSE_SPECS) as PoseKey[])
+  .filter((k) => !DATA_NATIVE_POSE_KEYS.has(k));
 
 /** Pose for the current swing phase. Caller passes the pose key for
  *  the current combo step + the phase + the PROGRESS within that

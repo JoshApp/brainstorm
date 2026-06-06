@@ -6,7 +6,7 @@ import { createWeaponViewmodel } from './player/viewmodel';
 import { attachLamp, setLampStowed } from './player/handheld-lamp';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
 import { setSlot, onEquipmentChanged } from './player/equipment';
-import { setCurrentWeapon } from './player/current-weapon';
+import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
@@ -398,12 +398,13 @@ attachLamp(camera);
 // first-person viewmodel; null while empty-handed.
 let heldWeaponDropModel: ModelSpec | null = null;
 onEquipmentChanged((eq) => {
-  // Pass null when no weapon equipped — the sword viewmodel
-  // clears and the player walks empty-handed. This is the
-  // starter-chamber default until they take from an altar.
+  // Pass null when no weapon equipped — the viewmodel falls back to
+  // the bare hand (FIST viewmodel), and current-weapon flips to fist
+  // stats so attacks resolve as punches with short reach + low damage.
+  // Starter-chamber default until the player takes from an altar.
   weapon.equip(eq.weapon?.viewmodel ?? null);
   heldWeaponDropModel = eq.weapon?.dropModel ?? eq.weapon?.viewmodel ?? null;
-  if (eq.weapon?.weapon) setCurrentWeapon(eq.weapon.weapon);
+  setCurrentWeapon(eq.weapon?.weapon ?? FIST_STATS);
   if (eq.offhand && eq.offhand.id !== 'oil-lamp') {
     // Real offhand gear (shield / focus). Drop the lantern to the hip so
     // the item takes the hand; the lamp's light is unchanged.

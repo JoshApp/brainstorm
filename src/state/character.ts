@@ -44,6 +44,7 @@ export type AttributeKind = 'might' | 'finesse' | 'lore' | 'grit';
 
 export type ProficiencyKind =
   // Weapon classes — combat math hookup lives in resolveWeaponStats.
+  | 'fist'
   | 'sword' | 'dagger' | 'hammer' | 'spear' | 'crossbow' | 'wand'
   | 'scythe' | 'whip' | 'throwing-knives'
   // Defensive — block (shield-equipped + hit taken) / toughness
@@ -72,6 +73,7 @@ function baseline(): CharacterState {
   return {
     attributes: { might: 0, finesse: 0, lore: 0, grit: 0 },
     proficiencies: {
+      fist: 0,
       sword: 0, dagger: 0, hammer: 0, spear: 0, crossbow: 0, wand: 0,
       scythe: 0, whip: 0, 'throwing-knives': 0,
       block: 0, toughness: 0,

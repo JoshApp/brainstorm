@@ -9,6 +9,7 @@ import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '..
 import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
 import { getCurrentWeapon } from './current-weapon';
+import { HAND_RIGHT } from '../content/hand';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
@@ -148,53 +149,67 @@ export function createWeaponViewmodel(
     }
   }
 
-  function mount(spec: ModelSpec) {
+  // Apply the held-weapon render trick to every mesh in a subtree:
+  // depthTest off (won't clip into walls — handled by a separate
+  // depth-only pass in render-target.ts), transparent so it sorts into
+  // the last render phase, and a high renderOrder so it draws over
+  // every world sprite. `gleamCollect` controls whether each mesh's
+  // emissive material is added to the perfect-release flashMats list —
+  // weapons opt in, the hand opts out (it should never gleam).
+  function applyViewmodelRender(root: THREE.Object3D, order: number, gleamCollect: boolean) {
+    root.traverse((obj) => {
+      if (!(obj as THREE.Mesh).isMesh) return;
+      const mesh = obj as THREE.Mesh;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) {
+        m.depthTest = false;
+        m.depthWrite = false;
+        m.transparent = true;
+        m.needsUpdate = true;
+        const em = (m as THREE.MeshStandardMaterial).emissive;
+        if (gleamCollect && em && typeof em.getHex === 'function') {
+          flashMats.push({ mat: m as THREE.MeshStandardMaterial, base: em.getHex() });
+        }
+      }
+      mesh.renderOrder = order;
+    });
+  }
+
+  function mount(spec: ModelSpec | null) {
     unmount();
     flashMats.length = 0;
     gleaming = false;
     heldInit = false;   // new weapon snaps to its own pose, doesn't ease from the old
-    const built = buildModel(spec);
-    // Held weapon always renders ON TOP of scene geometry, so it never
-    // clips into walls. Standard PSX-era FPS trick. We don't change the
-    // ModelSpec materials (so the same model on the floor as a pickup
-    // still depth-tests normally) — only the live built meshes get
-    // depthTest off + a high renderOrder so they're drawn last.
-    built.group.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        const mesh = obj as THREE.Mesh;
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) {
-          // depthTest:false → always on top of walls (no clip). It can't
-          // write depth (GL skips depth writes when the test is off), so the
-          // renderer does a separate depth-only pass for the viewmodel to put
-          // its near depth in the buffer (see render-target.ts). depthWrite
-          // here is moot for colour; the depth pass toggles it.
-          m.depthTest = false;
-          m.depthWrite = false;
-          // CRITICAL for the renderOrder to actually win against the
-          // world's transparent sprites (fountain shine, eye halos,
-          // moonbeams, etc.). Three.js renders opaque objects first,
-          // then transparent — within EACH pass renderOrder controls.
-          // An opaque weapon with renderOrder 999 still renders BEFORE
-          // any transparent sprite, so sprites paint over it. Mark
-          // transparent (opacity stays 1, so visually identical) and
-          // the viewmodel sorts into the transparent phase where 999
-          // puts it last overall.
-          m.transparent = true;
-          m.needsUpdate = true;
-          // Remember the base emissive so the perfect-release gleam can flash
-          // white and restore. Only materials that have an emissive channel.
-          const em = (m as THREE.MeshStandardMaterial).emissive;
-          if (em && typeof em.getHex === 'function') {
-            flashMats.push({ mat: m as THREE.MeshStandardMaterial, base: em.getHex() });
-          }
-        }
-        mesh.renderOrder = 999;
-      }
-    });
-    group.add(built.group);
-    // Whip-class weapons have a named bead chain — wire its ripple animator.
-    whippy = setupWhipChain(built.parts);
+
+    // Always build the hand first — it's the visible "you" in every
+    // pose, whether you're holding a weapon or punching. The weapon
+    // (if any) parents to the hand's palm slot.
+    const hand = buildModel(HAND_RIGHT);
+    // Hand renders one step under the weapon's renderOrder so the
+    // weapon visually wraps in front of the closed fist where they
+    // overlap (the blade emerges from the top of the fist, not
+    // behind it). Hand opts out of gleamCollect — it has no emissive.
+    applyViewmodelRender(hand.group, 998, false);
+
+    if (spec) {
+      const built = buildModel(spec);
+      // Align the weapon's grip_anchor to the hand's palm slot so the
+      // blade emerges from the closed fist. If the weapon doesn't
+      // declare a grip_anchor, treat its origin as the grip — most
+      // weapons that pre-date this system were authored that way.
+      const gripPos = spec.slots?.grip_anchor?.pos ?? [0, 0, 0];
+      built.group.position.set(-gripPos[0], -gripPos[1], -gripPos[2]);
+      const palm = hand.slots.get('palm_anchor') ?? hand.group;
+      palm.add(built.group);
+      applyViewmodelRender(built.group, 999, true);
+      // Whip-class weapons have a named bead chain — wire its ripple
+      // animator off the WEAPON's parts (not the hand's).
+      whippy = setupWhipChain(built.parts);
+    } else {
+      whippy = false;
+    }
+
+    group.add(hand.group);
   }
 
   // Smoothed held pose for the IDLE / charge-hold state, so discrete changes
@@ -299,17 +314,21 @@ export function createWeaponViewmodel(
     }
   }
 
+  // Mount the hand from frame 0 — the viewmodel is never truly empty,
+  // even before the starter altar runs its first equip(). An empty
+  // weapon slot reads as "fists raised", not "nothing on screen."
+  mount(null);
+
   function setDebugPhase(p: SwingPhase, t: number) {
     swing.setDebugPhase(p, t);
     repose();
   }
 
   function equip(spec: ModelSpec | null) {
-    if (!spec) {
-      unmount();
-    } else {
-      mount(spec);
-    }
+    // Always mount — null = fists only (no weapon parented). The hand
+    // is the floor of the viewmodel; there's no "empty viewmodel"
+    // state in this build.
+    mount(spec);
     // Weapon swap kills any in-flight combo state — the new weapon's combo
     // starts fresh on the next press.
     swing.reset();

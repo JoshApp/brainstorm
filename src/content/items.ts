@@ -94,6 +94,7 @@ export const RARITY_AFFIX_BUDGET: Record<Rarity, { maxAffixes: number; continueC
  *   hammer  slow overhead smash; long reach, wide cone, no crits
  */
 export type WeaponClass =
+  | 'fist'
   | 'dagger' | 'sword' | 'hammer' | 'spear'
   | 'crossbow' | 'wand'
   | 'scythe' | 'whip' | 'throwing-knives';

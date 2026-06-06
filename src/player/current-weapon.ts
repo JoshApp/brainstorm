@@ -7,14 +7,22 @@ import { resolveWeaponStats, type ResolvedWeaponStats } from '../content/weapon-
 // immediately without an explicit "re-equip" tick. Resolve is cheap
 // (a handful of multiplies); even at 60Hz it's noise.
 
-let rawSpec: WeaponStats = {
-  reach: 2.1,
-  coneHalfAngle: 0.80,
+// FISTS — the unarmed baseline. Short reach (≈chest height), narrow
+// cone (a punch lands forward, not in a cleave), low damage. Used as
+// the bootstrap default AND as the live stats when no weapon is
+// equipped — main.ts swaps to this on equipment changes where the
+// weapon slot is empty, so the player can punch their way through
+// the starter chamber if they decline the altar.
+export const FIST_STATS: WeaponStats = {
+  reach: 1.3,
+  coneHalfAngle: 0.55,
   damage: 1,
-  critChance: 0.05,
-  critMultiplier: 2.0,
-  class: 'sword',
+  critChance: 0.04,
+  critMultiplier: 1.5,
+  class: 'fist',
 };
+
+let rawSpec: WeaponStats = FIST_STATS;
 
 export function getCurrentWeapon(): ResolvedWeaponStats {
   return resolveWeaponStats(rawSpec);
