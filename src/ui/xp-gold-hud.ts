@@ -1,5 +1,6 @@
 import { on } from '../broadcast/event-bus';
 import { xpStore, goldStore, type XpState } from '../state/hud-stores';
+import { hudStyleStore, getHudStyle } from './hud-style';
 import { bind } from './hud';
 
 // Wide ARPG-style XP bar pinned along the BOTTOM edge of the screen,
@@ -137,6 +138,15 @@ export function createXpGoldHud(): void {
   xpContainer.appendChild(xpBarEl);
   xpContainer.appendChild(xpFractionEl);
   document.body.appendChild(xpContainer);
+
+  // Bottom-edge XP bar belongs to the CLASSIC style; minimal/cinematic
+  // use the corner sigil instead. Gold stays visible across all styles.
+  const applyXpVisibility = () => {
+    if (!xpContainer) return;
+    xpContainer.style.display = getHudStyle().xp === 'bar' ? 'flex' : 'none';
+  };
+  hudStyleStore.subscribe(applyXpVisibility);
+  applyXpVisibility();
 
   // ── Level-up toast (centre screen) ─────────────────────────────
   levelToast = document.createElement('div');

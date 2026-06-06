@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "tune",
+        "text": "HUD design system foundation — tokens, style presets, switcher"
+      },
+      {
+        "tag": "tune",
+        "text": "Combat"
+      },
+      {
         "tag": "fix",
         "text": "Viewmodel"
       },
@@ -216,14 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "Arena: don't soft-lock when a wave mob becomes unreachable"
-      },
-      {
-        "tag": "tune",
-        "text": "Title"
-      },
-      {
-        "tag": "tune",
-        "text": "docs: playtest feedback triage + plan (grouped, tagged, ordered)"
       }
     ]
   }

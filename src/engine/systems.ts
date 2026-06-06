@@ -52,6 +52,7 @@ import { tickItemPreviews } from '../ui/item-preview';
 import { tickBossBar } from '../ui/boss-bar';
 import { updateBuffBar } from '../ui/buff-bar';
 import { updateXpGoldHud } from '../ui/xp-gold-hud';
+import { tickXpSigil } from '../ui/xp-sigil';
 import { tickLowHpPulse } from '../ui/vignette';
 import { getPlayerHp, getPlayerMaxHp } from '../player/health';
 import { tickShake } from '../combat/screen-shake';
@@ -363,6 +364,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'hud', phase: 'always', tick(ctx) {
       updateBuffBar();
       updateXpGoldHud(ctx.realDt);
+      tickXpSigil(ctx.realDt);
     } },
 
     // Low-HP breathing vignette — peripheral red at <30% HP. realDt so it

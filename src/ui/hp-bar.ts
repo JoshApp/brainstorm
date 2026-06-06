@@ -1,4 +1,5 @@
 import { hpStore, type HpState } from '../state/hud-stores';
+import { hudStyleStore, getHudStyle } from './hud-style';
 import { bind } from './hud';
 
 // Segmented HP indicator at the bottom-center of the screen. One pip per HP
@@ -35,7 +36,17 @@ export function createHpBar() {
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(container);
 
+  // Hide under HUD styles that delegate health to other widgets
+  // (minimal → hearts, cinematic → vignette-only).
+  hudStyleStore.subscribe(() => applyVisibility());
+  applyVisibility();
+
   bind(hpStore, render);
+}
+
+function applyVisibility(): void {
+  if (!container) return;
+  container.style.display = getHudStyle().health === 'bar' ? 'flex' : 'none';
 }
 
 function render({ hp, max }: HpState) {

@@ -84,6 +84,9 @@ import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-l
 import { createConsumableBar } from './controls/consumable-bar';
 import { createHpBar } from './ui/hp-bar';
 import { createStaminaBar } from './ui/stamina-bar';
+import { createHealthHearts } from './ui/health-hearts';
+import { createStaminaArc } from './ui/stamina-arc';
+import { createXpSigil } from './ui/xp-sigil';
 import { createBossBar, resetBossBar } from './ui/boss-bar';
 import { createBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
@@ -644,6 +647,9 @@ onEvent((e) => {
 // --- HUD ---
 createHpBar();
 createStaminaBar();
+createHealthHearts();
+createStaminaArc();
+createXpSigil();
 createBossBar();
 createBuffBar();
 createChargeRing();

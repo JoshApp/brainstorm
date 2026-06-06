@@ -1,4 +1,5 @@
 import { staminaStore, type StaminaState } from '../state/hud-stores';
+import { hudStyleStore, getHudStyle } from './hud-style';
 import { bind } from './hud';
 
 // Thin stamina gauge, sitting just above the HP pips at bottom-center.
@@ -87,6 +88,13 @@ export function createStaminaBar() {
   }
 
   bind(staminaStore, render);
+
+  // Re-evaluate visibility immediately on style switch (don't wait for
+  // the next stamina sync). The render() guard above does the rest.
+  hudStyleStore.subscribe(() => {
+    if (!container) return;
+    if (getHudStyle().stamina !== 'bar') container.style.opacity = '0';
+  });
 }
 
 /** Re-pulse the gassed flash imperatively. Called when a committal action
@@ -103,6 +111,12 @@ export function flashStaminaBar(): void {
 
 function render({ frac, rested, exhausted, reserved }: StaminaState) {
   if (!container || !fill || !reservedEl) return;
+  // Other styles (minimal → arc, cinematic → breath/audio) own stamina;
+  // suppress the bar entirely under those.
+  if (getHudStyle().stamina !== 'bar') {
+    container.style.opacity = '0';
+    return;
+  }
   const f = Math.max(0, Math.min(1, frac));
   fill.style.transform = `scaleX(${f})`;
   // Tint red when nearly empty so a dry meter reads as "you can't" at a
