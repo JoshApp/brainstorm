@@ -20,6 +20,7 @@ import { computeReadout, type Readout } from './readout';
 import { makeMobAnimator, makeWeaponAnimator, type SubjectAnimator } from './animate';
 import { effectDemo } from './effects';
 import { addGnomon, addSlotOverlay, addBoundingBox, colorByPart } from './debug-overlay';
+import { composeHeldWeapon } from '../player/held-weapon-compose';
 
 const FP_FOV = 70;   // matches CONFIG.FOV — the player's eye for held-weapon swings
 
@@ -91,7 +92,6 @@ if (!subjectId) {
     unknown(subjectId);
     window.__bench = NOOP;
   } else {
-    const built = buildModel(subject.spec);
     const az = Number(params.get('az') ?? 35);
     const el = Number(params.get('el') ?? 18);
     const gridN = Number(params.get('grid') ?? 0);
@@ -99,9 +99,23 @@ if (!subjectId) {
     const orthoMode = params.get('ortho') === '1';
     const gnomonMode = params.get('gnomon') === '1';
     const debugMode = params.get('debug') === '1';
+    // --hand: for a weapon subject, build the same hand+weapon
+    // composition the game's viewmodel uses (held-weapon-compose.ts) so
+    // we can iterate on grip wrap, joint curl, and palm fit with the
+    // weapon ACTUALLY HELD instead of floating alone. Silently ignored
+    // on non-weapon subjects.
+    const handMode = params.get('hand') === '1' && subject.kind === 'weapon';
+
+    // `built` is the model we'll show on screen. For a held composition
+    // it's the wrapper's hand BuiltModel (so colour-by-part / slot
+    // overlays light up the hand's structure); the weapon is parented
+    // into the palm slot already. Otherwise it's just the subject's
+    // spec built fresh.
+    const composition = handMode ? composeHeldWeapon(subject.spec) : null;
+    const built = composition ? composition.hand : buildModel(subject.spec);
 
     const mobAnim = subject.enemy ? makeMobAnimator(built, subject.enemy) : null;
-    const weaponAnim = subject.kind === 'weapon' && subject.item
+    const weaponAnim = subject.kind === 'weapon' && subject.item && !handMode
       ? makeWeaponAnimator(built.group, subject.item) : null;
 
     let draw: () => void;

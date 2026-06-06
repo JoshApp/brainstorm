@@ -17,6 +17,13 @@
  *   npm run bench viewmodel-rusted --debug   color-by-part + slot markers + bbox
  *   npm run bench viewmodel-rusted --ortho --debug    both at once (recommended)
  *
+ *   ── Composition (weapon subjects only) ─────────────────────────────
+ *   npm run bench viewmodel-rusted --hand    drop the weapon into the hand
+ *                                            (same composition as the game
+ *                                            viewmodel — grip aligned to palm,
+ *                                            finger curl adapted to grip radius)
+ *   npm run bench viewmodel-rusted --hand --ortho --debug    the full iteration view
+ *
  *   npm run bench --list                     print every subject id
  *
  * Output: /tmp/bench-<subject>.png (+ -grid.png in grid mode, -ortho/-debug as needed).
@@ -42,6 +49,7 @@ async function main() {
   const orthoMode = process.argv.includes('--ortho');
   const gnomonMode = process.argv.includes('--gnomon');
   const debugMode = process.argv.includes('--debug');
+  const handMode = process.argv.includes('--hand');
   const port = Number(process.argv.find((a) => a.startsWith('--port='))?.split('=')[1] ?? 5190 + Math.floor(Math.random() * 60));
 
   if (!subject && !listOnly) {
@@ -83,6 +91,7 @@ async function main() {
     if (orthoMode) q.set('ortho', '1');
     if (gnomonMode) q.set('gnomon', '1');
     if (debugMode) q.set('debug', '1');
+    if (handMode) q.set('hand', '1');
     const url = `http://127.0.0.1:${port}/brainstorm/bench.html?${q.toString()}`;
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => window.__bench?.ready === true, { timeout: 10000 });
@@ -98,6 +107,10 @@ async function main() {
       // each other when you run them back-to-back.
       const suffix =
         animN > 0 ? '-anim'
+        : handMode && orthoMode && debugMode ? '-hand-ortho-debug'
+        : handMode && orthoMode ? '-hand-ortho'
+        : handMode && debugMode ? '-hand-debug'
+        : handMode ? '-hand'
         : orthoMode && debugMode ? '-ortho-debug'
         : orthoMode ? '-ortho'
         : debugMode ? '-debug'

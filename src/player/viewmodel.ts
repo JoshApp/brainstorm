@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import { buildModel } from '../ecs/build-model';
 import { getBobOffset } from './viewmodel-bob';
 import { getWeaponSway } from './viewmodel-sway';
 import { setupWhipChain, clearWhipChain, tickWhipChain } from './whip-chain';
@@ -9,50 +8,10 @@ import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '..
 import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
 import { getCurrentWeapon } from './current-weapon';
-import { HAND_RIGHT } from '../content/hand';
+import { composeHeldWeapon } from './held-weapon-compose';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
-
-// ── Finger curl tuning for held grips ──────────────────────────────
-// The hand's finger joint slots (finger_index, finger_middle, finger_ring,
-// finger_pinky, finger_thumb) are pre-curled in the spec for a grip of
-// the BASELINE_GRIP_RADIUS — a standard sword hilt. Thinner grips
-// (daggers, wands) close the fist tighter; thicker grips (hammer hafts)
-// open it. The adjustment is purely a uniform rotation.x delta applied
-// to every finger joint, so the authored per-finger asymmetry is
-// preserved.
-
-const FINGER_SLOT_NAMES = [
-  'finger_index', 'finger_middle', 'finger_ring', 'finger_pinky', 'finger_thumb',
-] as const;
-const BASELINE_GRIP_RADIUS = 0.022;       // what the spec curls are authored for
-const GRIP_CURL_SCALE = 25;               // empirical: dagger (0.014m) → +0.20 rad tighter
-
-/** Walk `spec.parts` for the first part named 'grip' or 'haft' (the
- *  conventional grip-cylinder name across every authored weapon) and
- *  return its radius. Falls back to the baseline if no grip is named. */
-function inferGripRadius(spec: ModelSpec): number {
-  for (const part of spec.parts) {
-    if (part.name !== 'grip' && part.name !== 'haft') continue;
-    if (part.kind === 'cylinder' || part.kind === 'cone' || part.kind === 'capsule') {
-      return part.radius;
-    }
-  }
-  return BASELINE_GRIP_RADIUS;
-}
-
-/** Adjust every finger joint's curl so the fingers wrap THIS weapon's
- *  grip. Tighter grip → more curl; wider grip → less. Mutates the live
- *  slot rotations on the just-built hand. */
-function adjustFingersForGrip(handSlots: Map<string, THREE.Object3D>, gripRadius: number): void {
-  const delta = (BASELINE_GRIP_RADIUS - gripRadius) * GRIP_CURL_SCALE;
-  if (delta === 0) return;
-  for (const name of FINGER_SLOT_NAMES) {
-    const slot = handSlots.get(name);
-    if (slot) slot.rotation.x -= delta;     // -= because rest curl is negative; tighten by going further negative
-  }
-}
 
 /** The wind pose to TELEGRAPH for a held charge direction — the directional
  *  move's pose for the live joystick direction, or null when centered / the
@@ -221,40 +180,26 @@ export function createWeaponViewmodel(
     gleaming = false;
     heldInit = false;   // new weapon snaps to its own pose, doesn't ease from the old
 
-    // Always build the hand first — it's the visible "you" in every
-    // pose, whether you're holding a weapon or punching. The weapon
-    // (if any) parents to the hand's palm slot.
-    const hand = buildModel(HAND_RIGHT);
-    // Hand renders one step under the weapon's renderOrder so the
-    // weapon visually wraps in front of the closed fist where they
-    // overlap (the blade emerges from the top of the fist, not
-    // behind it). Hand opts out of gleamCollect — it has no emissive.
-    applyViewmodelRender(hand.group, 998, false);
-
-    if (spec) {
-      const built = buildModel(spec);
-      // Align the weapon's grip_anchor to the hand's palm slot so the
-      // blade emerges from the closed fist. If the weapon doesn't
-      // declare a grip_anchor, treat its origin as the grip — most
-      // weapons that pre-date this system were authored that way.
-      const gripPos = spec.slots?.grip_anchor?.pos ?? [0, 0, 0];
-      built.group.position.set(-gripPos[0], -gripPos[1], -gripPos[2]);
-      const palm = hand.slots.get('palm_anchor') ?? hand.group;
-      palm.add(built.group);
-      applyViewmodelRender(built.group, 999, true);
+    // Shared composition: build hand + weapon, align grip → palm,
+    // curl fingers to the grip's thickness. Same code path the bench
+    // uses, so what we see in the iteration tool is what we get
+    // in-game (minus this file's depth-test trick).
+    const composed = composeHeldWeapon(spec);
+    // Hand renders one step under the weapon so the weapon visually
+    // wraps in front of the closed fist where they overlap (blade
+    // emerges from the top of the fist, not behind it). Hand opts
+    // out of gleamCollect — it has no emissive.
+    applyViewmodelRender(composed.hand.group, 998, false);
+    if (composed.weapon) {
+      applyViewmodelRender(composed.weapon.group, 999, true);
       // Whip-class weapons have a named bead chain — wire its ripple
       // animator off the WEAPON's parts (not the hand's).
-      whippy = setupWhipChain(built.parts);
-      // Curl the fingers to the THIS WEAPON's grip — a dagger's slim
-      // wrap closes the fist tighter, a chunky hammer-haft opens it.
-      // Authored finger curl is tuned for a 0.022m radius (a standard
-      // sword grip); every other weapon nudges from that baseline.
-      adjustFingersForGrip(hand.slots, inferGripRadius(spec));
+      whippy = setupWhipChain(composed.weapon.parts);
     } else {
       whippy = false;
     }
 
-    group.add(hand.group);
+    group.add(composed.hand.group);
   }
 
   // Smoothed held pose for the IDLE / charge-hold state, so discrete changes
