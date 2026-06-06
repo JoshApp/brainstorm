@@ -53,13 +53,28 @@ function setDepthTestOff(obj: { material: THREE.Material | THREE.Material[] }): 
   for (const m of mats) m.depthTest = false;
 }
 
-/** Add an axis helper at every slot in the built model, with a small
- *  HTML label sprite naming each one. The label is a CanvasTexture so
- *  it ends up in the screenshot like everything else.
+/** Classify a slot name into the kind of overlay it gets. Slots whose
+ *  name carries semantic intent (palm_up, blade_emerge, grip_axis)
+ *  get an arrow along +Y instead of axes. Per-finger contact targets
+ *  (contact_*) get a small magenta-ish sphere. Everything else gets
+ *  the standard RGB axes triad. */
+function classifySlot(name: string): 'arrow' | 'target' | 'axes' {
+  if (name.startsWith('contact_')) return 'target';
+  if (name === 'palm_up' || name.endsWith('_up') ||
+      name === 'blade_emerge' || name.endsWith('_emerge') ||
+      name === 'grip_axis' || name.endsWith('_axis')) return 'arrow';
+  return 'axes';
+}
+
+/** Add a visual marker at every slot in the built model, with a small
+ *  HTML label sprite naming each one. The kind of marker depends on
+ *  the slot's name (see classifySlot above): joints get axes, intent
+ *  anchors get a labeled arrow along their +Y, contact targets get a
+ *  small sphere where the fingertip should land.
  *
- *  `highlight` (optional) — names that get bigger axes + the label
- *  rendered in magenta. The rest of the slot overlay stays as a quiet
- *  reference layer so the highlighted slots pop. */
+ *  `highlight` (optional) — names that get an enlarged marker + the
+ *  label rendered in magenta. The rest stays as a quiet reference
+ *  layer so the highlighted slots pop. */
 export function addSlotOverlay(
   parent: THREE.Object3D,
   built: BuiltModel,
@@ -73,17 +88,68 @@ export function addSlotOverlay(
   const axisLength = Math.max(0.02, radius * 0.18);
   for (const [name, anchor] of built.slots) {
     const hit = highlight.has(name);
-    const axes = new THREE.AxesHelper(hit ? axisLength * 2.0 : axisLength);
-    setDepthTestOff(axes);
-    axes.renderOrder = 999;
-    anchor.add(axes);
+    const kind = classifySlot(name);
+    let labelOffset: number;
+    if (kind === 'arrow') {
+      // Intent anchor — bright arrow along local +Y, longer than the
+      // joint axes so it reads as a direction call-out.
+      const len = (hit ? axisLength * 3.0 : axisLength * 2.2);
+      const arrow = makeIntentArrow(len, hit);
+      anchor.add(arrow);
+      labelOffset = len * 0.55;
+    } else if (kind === 'target') {
+      // Contact-target — small sphere on the grip cylinder surface
+      // where the fingertip is supposed to land. Magenta-pink so it
+      // pops on bone-coloured geometry.
+      const sphere = makeTargetSphere(hit ? 0.014 : 0.008, hit);
+      anchor.add(sphere);
+      labelOffset = (hit ? 0.014 : 0.008) * 1.6;
+    } else {
+      // Joint — standard RGB axes triad.
+      const axes = new THREE.AxesHelper(hit ? axisLength * 2.0 : axisLength);
+      setDepthTestOff(axes);
+      axes.renderOrder = 999;
+      anchor.add(axes);
+      labelOffset = axisLength * (hit ? 1.6 : 1.3);
+    }
     const sprite = makeTextSprite(name, hit ? 1.15 : 0.85, hit);
-    const labelOffset = axisLength * (hit ? 1.6 : 1.3);
     sprite.position.set(labelOffset, labelOffset, 0);
     anchor.add(sprite);
-    group.userData[name] = { axes, sprite };
+    group.userData[name] = { sprite };
   }
   parent.add(group);
+}
+
+/** A bright arrow along +Y, for intent anchors. ArrowHelper uses a
+ *  cone + cylinder which look much more like "DIRECTION" than a
+ *  three-axis triad. */
+function makeIntentArrow(length: number, highlight: boolean): THREE.ArrowHelper {
+  const dir = new THREE.Vector3(0, 1, 0);
+  const color = highlight ? 0xff3aff : 0xffd866;
+  const arrow = new THREE.ArrowHelper(
+    dir, new THREE.Vector3(0, 0, 0), length,
+    color, length * 0.30, length * 0.18,
+  );
+  // ArrowHelper has line + cone children; turn off depth on both.
+  setDepthTestOff(arrow.line);
+  setDepthTestOff(arrow.cone);
+  arrow.line.renderOrder = 999;
+  arrow.cone.renderOrder = 999;
+  return arrow;
+}
+
+/** A small magenta-pink sphere for contact-target anchors. */
+function makeTargetSphere(radius: number, highlight: boolean): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(radius, 12, 10);
+  const mat = new THREE.MeshBasicMaterial({
+    color: highlight ? 0xff3aff : 0xff80b0,
+    transparent: true,
+    opacity: highlight ? 1 : 0.85,
+    depthTest: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 999;
+  return mesh;
 }
 
 /** Replace every mesh's material in `built.group` with a flat unlit

@@ -210,6 +210,31 @@ In ModelSpec:
   overlays use these names, and a content-layer animation can
   reference them.
 
+### Anchors with INTENT (the next level up)
+
+A position slot is mute: "something is here." An *intent* anchor
+carries MEANING — what should be here, which way it should face,
+what something should ALIGN to. Two naming conventions the bench
+treats specially when it renders the debug overlay:
+
+- **`*_up` / `*_emerge` / `*_axis`** — the slot's local +Y direction
+  is meaningful. Bench renders it as a labeled arrow instead of an
+  axis triad. Use for:
+  - `palm_up` — the palm's outward normal (which way the palm faces)
+  - `blade_emerge` — where a blade exits the closed fist
+  - `grip_axis` — the direction along which a weapon's grip extends
+- **`contact_*`** — a target POINT (no direction). Bench renders it
+  as a small magenta sphere; the readout reports the distance from a
+  paired live slot (`contact_index` ↔ `finger_index_dip`, etc.) as
+  the `fingerContactErrors` array. This converts "tune curl angles
+  by eye" into "drive these distances to zero."
+
+A model authored with intent anchors lets a future Claude (or a
+future content layer) reason about it abstractly — "where should the
+weapon sit" reads off `palm_up` and `palm_anchor`, not by measuring
+the bones. Annotated models survive refactors that absolute
+coordinates don't.
+
 ### The bench is your iteration loop
 
 `scripts/bench.ts` + `bench.html` give you the fast author → render

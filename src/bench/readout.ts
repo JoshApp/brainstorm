@@ -33,6 +33,10 @@ export interface Readout {
      *  palm_anchor — these should be essentially identical after
      *  alignment; non-zero means the math broke. */
     gripAlignmentError: number;
+    /** Distance from each fingertip DIP/IP slot to its matching
+     *  contact_* target on the grip surface. THE iteration metric —
+     *  drive these to 0 and the fingers wrap perfectly. */
+    fingerContactErrors: Array<{ finger: string; d: number }>;
   };
 }
 
@@ -96,7 +100,28 @@ export function computeReadout(
         distances.push({ a: tipSlot, b: 'palm_anchor', d: r3(tipWorld.distanceTo(palmWorld!)) });
       }
     }
-    composition = { distances, gripAlignmentError: r3(gripAlignmentError) };
+    // THE iteration metric — fingertip → contact-target distance. Each
+    // finger's DIP/IP gets paired with its semantically-named target
+    // (contact_index, contact_middle, …); the readout shows the gap
+    // in metres. Drive these to 0 and the wrap is geometrically
+    // correct, regardless of how the eye reads the snapshot.
+    const fingerPairs: Array<[string, string]> = [
+      ['finger_index_dip',  'contact_index'],
+      ['finger_middle_dip', 'contact_middle'],
+      ['finger_ring_dip',   'contact_ring'],
+      ['finger_pinky_dip',  'contact_pinky'],
+      ['finger_thumb_ip',   'contact_thumb'],
+    ];
+    const fingerContactErrors: Array<{ finger: string; d: number }> = [];
+    for (const [tipSlot, targetSlot] of fingerPairs) {
+      const tipNode = built.slots.get(tipSlot);
+      const targetNode = built.slots.get(targetSlot);
+      if (!tipNode || !targetNode) continue;
+      const tipWorld = tipNode.getWorldPosition(new THREE.Vector3());
+      const targetWorld = targetNode.getWorldPosition(new THREE.Vector3());
+      fingerContactErrors.push({ finger: tipSlot, d: r3(tipWorld.distanceTo(targetWorld)) });
+    }
+    composition = { distances, gripAlignmentError: r3(gripAlignmentError), fingerContactErrors };
   }
 
   return {

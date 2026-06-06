@@ -59,6 +59,12 @@ import type { ModelSpec } from '../ecs/model-types';
 const WRIST_Y = -0.080;
 const WRIST_Z =  0.005;
 
+// Baseline grip cylinder radius (sword-hilt-class). Contact-target
+// anchors below sit on a grip cylinder of this radius around the
+// palm_anchor — gives each fingertip a SPECIFIC LANDING POINT to
+// tune curl against instead of "wherever the bones happen to end up."
+const GRIP_RADIUS = 0.022;
+
 // Per-finger phalanx lengths (proximal / middle / distal). Tuned so
 // each finger's total length matches the v3 single-capsule reach and
 // the relative proximal:middle:distal ≈ 0.45:0.30:0.25 (close to real
@@ -101,19 +107,31 @@ export const HAND_RIGHT: ModelSpec = {
     },
   },
   parts: [
-    // ── FOREARM ─ radius (thumb-side, −X) + ulna (pinky-side, +X),
-    // NOT children of the wrist — these stay rigid along the forearm
-    // axis even when the wrist bends.
-    { name: 'radius', kind: 'cylinder',
-      pos: [-0.013, -0.27, 0.005],
+    // ── HUMERUS ─ upper-arm bone. Pre-rotated to tilt back+down so
+    // it disappears into the bottom-right of the player's view (the
+    // delver's "shoulder" being behind-and-below the camera, which
+    // is everyone-knows-this off-screen for first-person). Even the
+    // stub that pokes into frame sells "this is a real arm, not a
+    // floating fist."
+    { name: 'humerus', parent: 'elbow', kind: 'cylinder',
+      pos: [0.040, -0.130, -0.080],
+      radius: 0.022, radiusTop: 0.020, height: 0.30, segments: 12,
+      rot: [-0.85, 0, 0.30],          // tilt back-and-out toward the off-screen shoulder
+      mat: 'bone' },
+
+    // ── FOREARM ─ radius (thumb-side, −X) + ulna (pinky-side, +X).
+    // Children of the ELBOW so they bend at the elbow as one unit;
+    // still rigid along their own axis (no wrist bend at the elbow).
+    { name: 'radius', parent: 'elbow', kind: 'cylinder',
+      pos: [-0.013, 0.18, 0],
       radius: 0.018, radiusTop: 0.014, height: 0.36, segments: 12,
       mat: 'bone' },
-    { name: 'ulna',   kind: 'cylinder',
-      pos: [ 0.013, -0.27, 0.005],
+    { name: 'ulna',   parent: 'elbow', kind: 'cylinder',
+      pos: [ 0.013, 0.18, 0],
       radius: 0.017, radiusTop: 0.013, height: 0.36, segments: 12,
       mat: 'bone' },
-    { kind: 'cylinder',
-      pos: [0, -0.27, 0.005],
+    { parent: 'elbow', kind: 'cylinder',
+      pos: [0, 0.18, 0],
       radius: 0.012, height: 0.34, segments: 8,
       mat: 'boneDark' },
 
@@ -271,16 +289,69 @@ export const HAND_RIGHT: ModelSpec = {
       radius: PHALANX.thumb.radius * 0.86, segments: [8, 6], mat: 'bone' },
   ],
   slots: {
-    // ── WRIST ─ the top of the kinematic chain. Pre-rotated forward
-    // so the WHOLE FIST (carpus + metacarpals + fingers + held weapon)
-    // bends at the wrist relative to the forearm, the way a real
-    // hand grips a weapon.
-    wrist: { pos: [0, WRIST_Y, WRIST_Z], rot: [-0.55, 0, 0] },
+    // ── SHOULDER ─ top of the kinematic chain. Sits off-screen
+    // behind+below the camera (the delver's own body is mostly
+    // behind their eyes). FK-only — no IK solver; if some future
+    // feature wants the hand to reach for a doorknob, this is the
+    // anchor an IK solver would target.
+    shoulder: { pos: [0.10, -0.55, 0.15] },
+
+    // ── ELBOW ─ child of shoulder, sits at the bottom of the visible
+    // forearm. Bending it would swing the whole forearm + wrist +
+    // fingers as one rigid unit. Authored at the bottom of the
+    // current forearm so the rest of the rig didn't have to move.
+    elbow: { parent: 'shoulder', pos: [-0.10, 0.10, -0.155] },
+
+    // ── WRIST ─ the joint between forearm and hand. Pre-rotated
+    // forward so the WHOLE FIST (carpus + metacarpals + fingers +
+    // held weapon) bends at the wrist relative to the forearm, the
+    // way a real hand grips a weapon.
+    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.55, 0, 0] },
 
     // The grip anchor a held weapon aligns to. A child of WRIST so
     // it inherits the wrist bend along with the fingers. No further
     // rotation needed — the wrist does the work.
     palm_anchor: { parent: 'wrist', pos: [0, 0.092, -0.011] },
+
+    // ── SEMANTIC INTENT ANCHORS ─────────────────────────────────────
+    // These slots carry MEANING, not just position. Their local +Y
+    // is the meaningful direction; the debug overlay renders them as
+    // a labeled arrow instead of an axis triad so the convention is
+    // visible in every snapshot.
+    //
+    //   palm_up      — the palm's outward-facing normal (away from
+    //                  the closed fingers). Tells the rest of the
+    //                  rig "this is which way the palm points." A
+    //                  child of palm_anchor so it bends with the
+    //                  wrist; its +Y becomes the live palm normal.
+    //   blade_emerge — where a held blade should poke OUT of the
+    //                  closed fist (the +Y top of the grip cylinder
+    //                  at palm-anchor-local height GRIP_RADIUS * 2 — i.e.
+    //                  just above where the four-finger curl
+    //                  closes). Visible in debug as the spot to
+    //                  verify the cross-guard sits above, not buried
+    //                  inside the fist.
+    palm_up:       { parent: 'palm_anchor', pos: [0, 0, 0], rot: [0, 0, 0] },
+    blade_emerge:  { parent: 'palm_anchor', pos: [0, GRIP_RADIUS * 2, 0] },
+
+    // ── PER-FINGER CONTACT TARGETS ─────────────────────────────────
+    // Five named anchors on the grip cylinder surface marking WHERE
+    // each fingertip is supposed to land. Authored in palm-anchor-
+    // local; each sits at distance GRIP_RADIUS from the cylinder
+    // axis (= palm_anchor's local +Y). The debug overlay renders
+    // these as small spheres; the readout reports the distance from
+    // each fingertip's DIP/IP slot to its matching contact target.
+    //
+    // The four long fingers wrap from BACK (+Z) to PALM (-Z) so
+    // their contacts sit on the −Z (palm) side. The thumb wraps
+    // from inboard across the TOP of the closed fingers, so its
+    // contact sits on the +X (outboard) side, slightly above the
+    // palm-anchor plane.
+    contact_index:  { parent: 'palm_anchor', pos: [ 0.014, 0.006, -GRIP_RADIUS] },
+    contact_middle: { parent: 'palm_anchor', pos: [ 0.002, 0.012, -GRIP_RADIUS] },
+    contact_ring:   { parent: 'palm_anchor', pos: [-0.006, 0.008, -GRIP_RADIUS] },
+    contact_pinky:  { parent: 'palm_anchor', pos: [-0.014, 0.000, -GRIP_RADIUS] },
+    contact_thumb:  { parent: 'palm_anchor', pos: [ GRIP_RADIUS, 0.012, -0.004] },
 
     // ── MCP (knuckle row) ─ children of WRIST. Pre-curled ≈63° each;
     // viewmodel.ts's per-weapon grip-radius adjustment lerps from
