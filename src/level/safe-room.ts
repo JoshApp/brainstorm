@@ -10,19 +10,13 @@ import { ITEMS } from '../content/items';
 //     that earned their keep).
 //   - TOME PILLAR on the central axis, ~1.2m in front of spawn —
 //     the first thing the player walks into, the moment to review
-//     their build before stepping deeper. Pillar+book lit from
-//     within (see interactables/tome-pillar.ts).
-//   - STASH and REST FOUNTAIN flanking the path closer in to the
+//     their build before stepping deeper.
+//   - STASH and GREEN FOUNTAIN flanking the path closer in to the
 //     central walk-line than V3, so the player passes between them
 //     on the way to the hearth rather than having to detour to the
 //     side walls.
 //   - Central IRON BRAZIER with two stone benches — visual anchor
 //     and "rest here" tell.
-//   - TAINTED FOUNTAIN off to the left of the stair mouth — the
-//     Faustian commit-point. Visible from spawn, deliberately
-//     placed BEYOND the hearth so it reads as "decide before you
-//     descend." Asymmetric placement makes it pop against the
-//     mirror-symmetric stash/rest pair.
 //   - 6 wall torches, ALL warm amber. Stair frame candles.
 //
 // Future fixtures (placeholders to wire later):
@@ -90,13 +84,15 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
         rotY: Math.PI / 2,   // face east, toward the central path
       },
 
-      // ── REST FOUNTAIN (right flank, mirror of stash) ────────────────
-      // Guaranteed heal, no curse, warm amber glow — the clean kindness.
+      // ── GREEN FOUNTAIN (right flank, mirror of stash) ───────────────
+      // Sickly green basin — looks suspect, drinks clean. Always heals
+      // to full. (The 'gamble' variant; was a 50/50 heal/curse before,
+      // is unconditionally a heal now.)
       {
         kind: 'fountain',
         x: 2.4, z: 1.2,
         rotY: -Math.PI / 2,
-        variant: 'rest',
+        variant: 'gamble',
       },
 
       // ── HEARTH (centre) — iron brazier + flanking stone benches ─────
@@ -106,27 +102,11 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
       { kind: 'model', model: STONE_BENCH,  x: -1.6, y: 0, z: -0.2, rotY: Math.PI / 2 },
       { kind: 'model', model: STONE_BENCH,  x:  1.6, y: 0, z: -0.2, rotY: -Math.PI / 2 },
 
-      // ── TAINTED FOUNTAIN (left of stair mouth) ──────────────────────
-      // The Faustian beat — drink and commit to a permanent run-
-      // lifetime mutation. Off-axis from the stair so the player can
-      // walk straight to the descent if they want; the offer is here
-      // for those who reach for it. Dark crimson basin reads "wrong"
-      // at a glance, but unlike V3's gamble it is YOUR choice now.
-      {
-        kind: 'fountain',
-        x: -2.2, z: -1.4,
-        rotY: Math.PI / 2,
-        variant: 'tainted',
-      },
-
       // ── Candles ─────────────────────────────────────────────────────
-      // Flanking the stash and the rest fountain so each is lit from
-      // its side of the path — sells "things, here, in the dark."
+      // Flanking the stash and the fountain so each is lit from its
+      // side of the path — sells "things, here, in the dark."
       { kind: 'model', model: FLOOR_CANDLE, x: -2.4, y: 0, z: 2.6 },
       { kind: 'model', model: FLOOR_CANDLE, x:  2.4, y: 0, z: 2.6 },
-      // Candle by the tainted fountain — same lit-attendant read, but
-      // singular (matches the off-axis, "one offer" feeling).
-      { kind: 'model', model: FLOOR_CANDLE, x: -2.2, y: 0, z: 0.0 },
       // Candles immediately south of the stair mouth — frame the descent.
       { kind: 'model', model: FLOOR_CANDLE, x: -1.4, y: 0, z: -1.2 },
       { kind: 'model', model: FLOOR_CANDLE, x:  1.4, y: 0, z: -1.2 },

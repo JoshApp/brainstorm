@@ -39,7 +39,6 @@ interface VariantStyle {
   liquidEmissive: number;
   lightColor: number;
   promptLabel: string;
-  nameLabel: string;
 }
 
 const VARIANT_STYLE: Record<FountainVariant, VariantStyle> = {
@@ -48,21 +47,18 @@ const VARIANT_STYLE: Record<FountainVariant, VariantStyle> = {
     liquidEmissive: 0x66ff88,   // sickly green — but no longer cursed
     lightColor:     0x88ffaa,
     promptLabel:    'DRINK',
-    nameLabel:      'FOUNTAIN',
   },
   rest: {
     liquidColor:    0x3a2818,
     liquidEmissive: 0xffb070,   // warm amber — clean refuge water
     lightColor:     0xffc890,
     promptLabel:    'REST',
-    nameLabel:      'FOUNTAIN',
   },
   tainted: {
     liquidColor:    0x2a0a0a,
     liquidEmissive: 0xa01828,   // dark crimson — coals under the skin
     lightColor:     0xc83838,
     promptLabel:    'DRINK',
-    nameLabel:      'TAINTED FOUNT',
   },
 };
 
@@ -158,7 +154,6 @@ export function spawnFountain(
     position: pos.clone(),
     radius: 1.3,
     promptLabel: style.promptLabel,
-    nameLabel: style.nameLabel,
     onUse() {
       if (used) return;
       used = true;

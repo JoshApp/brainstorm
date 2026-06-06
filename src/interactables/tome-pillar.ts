@@ -109,8 +109,7 @@ export function spawnTomePillar(
     position: pos.clone(),
     radius: 1.3,
     promptLabel: 'STUDY',
-    nameLabel: 'TOME',
-    // Label floats over the book itself, not at the floor.
+    // Prompt floats over the book itself, not at the floor.
     labelOffsetY: 1.5,
     onUse() {
       openCharacterScreen();
