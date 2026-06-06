@@ -19,7 +19,7 @@ import { applyBuff } from '../ecs/buffs';
 import { spawnProjectile, setProjectileEnemyProvider, setProjectileDestructibleProvider } from './projectile-pool';
 import { getEquipped } from '../player/equipment';
 import { healPlayer } from '../player/health';
-import { consumeChargedAmount, consumeChargedPerfect } from '../controls/charge-input';
+import { consumeChargedAmount, consumeChargedPerfect, getChargeProgress, setChargeDirection } from '../controls/charge-input';
 import { spendStaminaSoft, gainStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { flashStaminaBar } from '../ui/stamina-bar';
@@ -289,6 +289,11 @@ export function createCombatSystem(
   function tick(attackPressed: boolean, moveX: number, moveY: number, dt: number) {
     // Track movement intent for ranged accuracy bloom (plant to aim).
     lastMoveMag = Math.min(1, Math.hypot(moveX, moveY));
+    // Telegraph the live joystick direction while a melee charge is held, so the
+    // viewmodel can foretell (and switch) which way the heavy will strike.
+    setChargeDirection(
+      getChargeProgress() > 0 && !getCurrentWeapon().ranged ? pickAttackDirection(moveX, moveY) : null,
+    );
     if (attackPressed) {
       // Gate: if nothing is equipped in the weapon slot, swallow the
       // press silently. Avoids the bare-hands attack sound + the
@@ -397,13 +402,18 @@ export function createCombatSystem(
     // your feet by looking down.
     const forwardLenXZ = Math.hypot(forwardDir.x, forwardDir.z) || 1;
 
+    // LOS: a swing can't poke through a wall to hit a hidden enemy (or vase).
+    const walkable = getWalkable();
+    const losCheck = walkable
+      ? (cx: number, cz: number, tx: number, tz: number) => walkable.hasLineOfSight(cx, cz, tx, tz)
+      : undefined;
     // Multi-target cone scan. Enemies take priority; props only fall
     // through when no enemies are in the cone (a vase shouldn't soak
     // a swing meant for the mob behind it).
-    const enemyHits = pickTargets(getEnemies(), camera, forwardDir, forwardLenXZ, reach, cosConeHalf, maxTargets);
+    const enemyHits = pickTargets(getEnemies(), camera, forwardDir, forwardLenXZ, reach, cosConeHalf, maxTargets, losCheck);
     const targets = enemyHits.length > 0
       ? enemyHits
-      : pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, reach, cosConeHalf, maxTargets);
+      : pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, reach, cosConeHalf, maxTargets, losCheck);
     if (targets.length === 0) return;
 
     strikeAlreadyHit = true;
@@ -614,9 +624,13 @@ function pickTargets<T extends Damageable>(
   reach: number,
   cosConeHalf: number,
   maxTargets: number,
+  /** LOS predicate — a target with a wall between you and it is skipped, so a
+   *  swing can't poke through geometry to hit a hidden enemy. Point-blank
+   *  (overlapping) targets bypass it (nothing can be between you). */
+  hasLOS?: (cx: number, cz: number, tx: number, tz: number) => boolean,
 ): T[] {
   if (maxTargets <= 1) {
-    const single = pickTarget(targets, camera, forwardDir, forwardLenXZ, reach, cosConeHalf);
+    const single = pickTarget(targets, camera, forwardDir, forwardLenXZ, reach, cosConeHalf, hasLOS);
     return single ? [single] : [];
   }
   // Collect all in-cone targets with distance, then sort + cap.
@@ -633,11 +647,13 @@ function pickTargets<T extends Damageable>(
     if (distSq > effReach * effReach) continue;
     const horDist = Math.hypot(dx, dz);
     if (horDist < POINT_BLANK_RADIUS + (t.hitRadius ?? 0)) {
-      hits.push({ t, d2: distSq });
+      hits.push({ t, d2: distSq });   // point-blank: bypasses cone AND LOS
       continue;
     }
     const horDot = (forwardDir.x * dx + forwardDir.z * dz) / (forwardLenXZ * horDist);
     if (horDot < cosConeHalf) continue;
+    // LOS last (most expensive) — a wall between you and the target → no hit.
+    if (hasLOS && !hasLOS(camera.position.x, camera.position.z, t.position.x, t.position.z)) continue;
     hits.push({ t, d2: distSq });
   }
   hits.sort((a, b) => a.d2 - b.d2);
@@ -651,12 +667,11 @@ function pickTarget<T extends Damageable>(
   forwardLenXZ: number,
   reach: number,
   cosConeHalf: number,
-  /** Optional LOS predicate — called with camera + target X/Z. When
-   *  provided, targets without a clear line through the walkable
-   *  region (i.e. a wall is between you) are skipped. Ranged auto-
-   *  aim passes this; melee swings don't need it (the cone reach is
-   *  short enough that you're swinging through the air, not past
-   *  walls). */
+  /** Optional LOS predicate — called with camera + target X/Z. When provided,
+   *  targets without a clear line through the walkable region (a wall is between
+   *  you) are skipped. BOTH ranged auto-aim and melee swings pass it — a melee
+   *  reach is long enough to poke past a thin wall, so a fully hidden enemy must
+   *  not be hittable (only AoE/explosion damage, applied directly, ignores LOS). */
   hasLOS?: (cx: number, cz: number, tx: number, tz: number) => boolean,
 ): T | null {
   let best: T | null = null;
