@@ -16,6 +16,7 @@ import { isWorldPausedByScreen } from '../ui/screen-manager';
 import { CONFIG } from '../config';
 import { reserveStamina, commitReserved, refundReserved } from '../combat/stamina';
 import { getCurrentWeapon } from '../player/current-weapon';
+import type { AttackDirection } from '../combat/swing-state';
 
 // Aligned with TAP_MAX_MS in input-touch (320). Quick releases below
 // this fire a normal tap; longer holds are intentional charges. Tuned
@@ -37,6 +38,23 @@ let lastHeldMs = 0;                  // previous frame's heldMs, for the per-fra
 let perfectUntil = 0;                // performance.now() ms — end of the perfect-release window
 let wasFull = false;                 // latched once liveProgress hits 1 (opens the window once)
 let suppressed = false;              // dodge-canceled: don't rebuild until the touch releases
+// Live joystick direction WHILE charging — published by combat each tick so the
+// viewmodel can TELEGRAPH which way a directional heavy will strike (For Honor
+// feint: flick mid-charge and the wind pose swings to the new side). The actual
+// strike still resolves its direction at release, so the two always agree.
+let chargeDir: AttackDirection = null;
+
+/** Set the live charge-telegraph direction (combat publishes the joystick each
+ *  tick while a melee charge is held; null when centered or not charging). */
+export function setChargeDirection(d: AttackDirection): void {
+  chargeDir = d;
+}
+
+/** The live charge-telegraph direction — read by the viewmodel's charge-hold
+ *  blend to cock toward that direction's wind pose. */
+export function getChargeDirection(): AttackDirection {
+  return chargeDir;
+}
 // Live touch position of the charging finger (clientX/Y). The
 // charge-ring overlay reads these so the visual anchors to the
 // thumb instead of a fixed corner. -1 means "no live charge".

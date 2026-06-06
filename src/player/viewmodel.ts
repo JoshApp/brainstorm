@@ -3,12 +3,27 @@ import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { getBobOffset } from './viewmodel-bob';
 import { computeWeaponPose } from './weapon-animations';
-import { getChargeProgress, isChargePerfectWindow } from '../controls/charge-input';
+import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '../controls/charge-input';
 import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
+import { getCurrentWeapon } from './current-weapon';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
-import type { ResolvedComboStep } from '../content/weapon-classes';
+import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
+
+/** The wind pose to TELEGRAPH for a held charge direction — the directional
+ *  move's pose for the live joystick direction, or null when centered / the
+ *  weapon has no directional move that way (cock toward the combo step instead). */
+function telegraphPoseKey(dir: AttackDirection): PoseKey | null {
+  if (!dir) return null;
+  const m = getCurrentWeapon().directionalMoves;
+  if (!m) return null;
+  const step = dir === 'forward' ? m.forward
+    : dir === 'back' ? m.back
+    : dir === 'strafe-left' ? m.strafeLeft
+    : m.strafeRight;
+  return step?.pose ?? null;
+}
 
 // First-person held weapon viewmodel — the VIEW half of the attack system.
 //
@@ -192,12 +207,19 @@ export function createWeaponViewmodel(
       let px = idle.x + b.x, py = idle.y + b.y, pz = idle.z;
       let prx = idle.rotX, pry = idle.rotY, prz = idle.rotZ + b.rotZ;
       // CHARGED HOLD blend: mid-charge, lerp the resting pose toward the
-      // END-OF-WINDUP pose of the current step — the weapon visibly cocks back
-      // the longer you hold. That end pose IS the strike's t=0 pose, so on
-      // release (skipWindup → strike) the transition is seamless, no snap.
+      // END-OF-WINDUP pose — the weapon visibly cocks back the longer you hold.
+      // That end pose IS the strike's t=0 pose, so on release (skipWindup →
+      // strike) the transition is seamless, no snap.
+      //
+      // DIRECTIONAL TELEGRAPH: if the joystick is held in a direction that maps
+      // to a directional move, cock toward THAT move's wind pose instead of the
+      // combo step's — so a held heavy foretells which way it'll come from, and
+      // flicking left↔right mid-charge swings the weapon over to the new side
+      // (For Honor feint). The strike resolves the same direction at release.
       const charge = getChargeProgress();
       if (charge > 0) {
-        const cocked = computeWeaponPose(step.pose, 'windup', 1.0);
+        const cockPose = telegraphPoseKey(getChargeDirection()) ?? step.pose;
+        const cocked = computeWeaponPose(cockPose, 'windup', 1.0);
         px  = px  + (cocked.x    - px)  * charge;
         py  = py  + (cocked.y    - py)  * charge;
         pz  = pz  + (cocked.z    - pz)  * charge;

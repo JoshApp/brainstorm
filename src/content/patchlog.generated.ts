@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Combat: heavy combo chain + light->heavy ender (hammer)"
+      },
+      {
+        "tag": "tune",
+        "text": "Act II boss: Marrow Sovereign replaces the interim Boiling King"
+      },
+      {
+        "tag": "tune",
         "text": "Combat feel: weaker stumble + camera lurch, slower gassed cadence, dodge cooldown"
       },
       {
@@ -216,14 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Input: one tap arbiter (no stray attack after dismissing a note)"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix (properly): depth-keyed post passes painted over the held viewmodel"
-      },
-      {
-        "tag": "tune",
-        "text": "Notes stay in mouse-look (no stray cursor after dismissing a note)"
       }
     ]
   }
