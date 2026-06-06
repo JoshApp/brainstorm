@@ -11,6 +11,7 @@ import { resetPlayerInvuln } from '../player/health';
 import { resetJustDodge } from '../combat/just-dodge';
 import { resetExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { resetCameraStumble } from '../combat/camera-stumble';
+import { resetViewSway } from '../player/viewmodel-sway';
 import { resetDashCooldown } from '../combat/dash';
 import { cancelFogWalkthrough } from '../player/fog-walkthrough';
 import { clearXpWisps } from '../effects/xp-wisps';
@@ -197,6 +198,8 @@ export function tickPendingLoad() {
   camera.position.set(resolved.x, CONFIG.PLAYER_HEIGHT, resolved.z);
   camera.rotation.order = 'YXZ';
   camera.rotation.y = level.playerSpawn.yaw;
+  // Floor-load camera jump shouldn't fling the lamp on respawn.
+  resetViewSway();
 
   onLoaded(level);
 

@@ -12,6 +12,7 @@ import { updateCamera } from '../controls/camera';
 import { tickLamp } from '../player/handheld-lamp';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
 import { setBobTarget, updateBob } from '../player/viewmodel-bob';
+import { updateViewSway } from '../player/viewmodel-sway';
 import { isDying } from '../player/death';
 import { isFogWalkthroughActive, tickFogWalkthrough } from '../player/fog-walkthrough';
 import { renderWithStyle, setDarkAdapt } from '../style/render-target';
@@ -229,6 +230,14 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       const playing = ctx.playing;
       setBobTarget(playing ? Math.hypot(input.moveX, input.moveY) : 0);
       updateBob(ctx.realDt, playing);
+    } },
+
+    // View-sway — held viewmodels lag behind the camera when you turn,
+    // then settle. realDt so the inertia reads steady through slow-mo.
+    // Must precede 'weapon' / 'lamp' / 'offhand' so they all read this
+    // frame's value.
+    { name: 'view-sway', phase: 'unpaused', tick(ctx) {
+      updateViewSway(ctx.realDt, camera);
     } },
 
     { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.scaledDt); } },

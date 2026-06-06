@@ -29,6 +29,7 @@ import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { registerViewmodel, unregisterViewmodel } from '../style/render-target';
 import { getLanternSwing } from './viewmodel-bob';
+import { getLampSway } from './viewmodel-sway';
 import { getTexture } from '../style/procedural-textures';
 
 interface FlameSprite {
@@ -333,8 +334,10 @@ export function tickLamp(dt: number) {
 
   // Pendulum swing — rotation on the hinge. Body is a child offset
   // downward, so rotating the hinge automatically swings the body
-  // around the handle in a true pendulum arc.
-  lamp.hinge.rotation.z = getLanternSwing();
+  // around the handle in a true pendulum arc. Walk swing + view-sway
+  // (camera-rotation lag) compose into one angle: stride bob continues
+  // while a hard look-around sets the lamp swinging.
+  lamp.hinge.rotation.z = getLanternSwing() + getLampSway();
 
   // Update the light's world position from the BODY's transform — the
   // light should track the visibly-swinging lantern, not the static

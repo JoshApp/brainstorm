@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { getOffhandOffset } from './viewmodel-bob';
+import { getOffhandSway } from './viewmodel-sway';
 import { registerViewmodel, unregisterViewmodel } from '../style/render-target';
 import type { ModelSpec } from '../ecs/model-types';
 
@@ -60,7 +61,9 @@ export function tickOffhandViewmodel() {
   if (!group) return;
   const b = getOffhandOffset();
   group.position.set(OFFHAND_LOCAL.x + b.x, OFFHAND_LOCAL.y + b.y, OFFHAND_LOCAL.z);
-  group.rotation.set(0, OFFHAND_ROT_Y, b.rotZ);
+  // Bracing yaw plus a soft view-sway so a shield drifts with the
+  // camera whip instead of staying rigidly oriented.
+  group.rotation.set(0, OFFHAND_ROT_Y + getOffhandSway(), b.rotZ);
 }
 
 /** Detach the current offhand viewmodel and dispose. Idempotent. */

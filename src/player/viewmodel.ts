@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { getBobOffset } from './viewmodel-bob';
+import { getWeaponSway } from './viewmodel-sway';
 import { computeWeaponPose, type WeaponPose } from './weapon-animations';
 import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '../controls/charge-input';
 import { registerViewmodel } from '../style/render-target';
@@ -256,14 +257,17 @@ export function createWeaponViewmodel(
           heldPose.rotZ + (prz - heldPose.rotZ) * a,
         );
       }
+      const sway = getWeaponSway();
       group.position.set(heldPose.x, heldPose.y, heldPose.z);
-      group.rotation.set(heldPose.rotX, heldPose.rotY, heldPose.rotZ);
+      group.rotation.set(heldPose.rotX + sway.pitch, heldPose.rotY + sway.yaw, heldPose.rotZ);
       return;
     }
 
     // windup / strike / recover — interpolate the step's pose curve by the
     // sim's reported progress through the current phase. Crisp (no smoothing),
     // but sync heldPose so the swing→idle handoff continues from exactly here.
+    // Sway is INTENTIONALLY skipped mid-swing — the strike animation is the
+    // feel-critical motion; layering sway on top muddies the snap.
     const pose = computeWeaponPose(step.pose, phase, swing.getPhaseProgress());
     group.position.set(pose.x, pose.y, pose.z);
     group.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
