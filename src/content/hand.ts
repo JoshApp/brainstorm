@@ -178,7 +178,12 @@ export const HAND_RIGHT: ModelSpec = {
     { kind: 'sphere', pos: [-0.008, 0.054, 0.012], radius: 0.013, segments: [10, 8], mat: 'bone' },
     { kind: 'sphere', pos: [ 0.008, 0.050, 0.012], radius: 0.012, segments: [10, 8], mat: 'bone' },
     { kind: 'sphere', pos: [ 0.023, 0.041, 0.012], radius: 0.011, segments: [10, 8], mat: 'bone' },
-    { kind: 'sphere', pos: [ 0.030, 0.018, 0.025], radius: 0.012, segments: [10, 8], mat: 'bone' },   // thumb knuckle
+    // Thumb knuckle — at the ACTUAL end of the thumb metacarpal
+    // cylinder (its Z-tilt of -0.65 rad lands the top at this XY,
+    // not at the originally-authored back-of-hand position). Putting
+    // the knuckle + the finger_thumb slot here eliminates the visible
+    // gap between the thumb metacarpal and its phalanx.
+    { kind: 'sphere', pos: [ 0.048, 0.006, 0.012], radius: 0.012, segments: [10, 8], mat: 'bone' },
 
     // ── PHALANGES ─ each finger's bone parented to its joint slot.
     // Authored in slot-local space as a capsule extending +Y. The
@@ -218,9 +223,11 @@ export const HAND_RIGHT: ModelSpec = {
     finger_middle: { pos: [-0.008, 0.054, 0.012], rot: [-1.15, 0, 0.04] },
     finger_ring:   { pos: [ 0.008, 0.050, 0.012], rot: [-1.10, 0, -0.04] },
     finger_pinky:  { pos: [ 0.023, 0.041, 0.012], rot: [-0.95, 0, -0.12] },
-    // Thumb wraps from the SIDE, not the top — rotation around X
-    // gives the same forward curl, plus extra Z-rotation tilts it
-    // across the closed fingers.
-    finger_thumb:  { pos: [ 0.030, 0.018, 0.025], rot: [-0.55, -0.20, -1.10] },
+    // Thumb wraps from the SIDE, not the top. Joint sits at the
+    // actual end of the thumb metacarpal (same point as its knuckle
+    // sphere above). Pre-rotation curls the phalanx forward-down +
+    // inward across the closed fingers — the natural "thumb wrapped
+    // over a grip" pose.
+    finger_thumb:  { pos: [ 0.048, 0.006, 0.012], rot: [-0.70, 0, 1.00] },
   },
 };
