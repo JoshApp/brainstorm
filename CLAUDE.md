@@ -244,12 +244,48 @@ If `main` has diverged (another session shipped first), `npm run live`
 aborts and tells you how to rebase. You decide what to integrate; the
 script never silently merges someone else's work into your tip.
 
+### Session lifecycle (start every session this way)
+
+The deploy branch is `main`. Other agents land work on it through their
+own session branches; if you START a session on stale code, your first
+`npm run live` will abort on divergence and force you to rebase anyway.
+Pull main FIRST and you avoid that whole detour.
+
+**At the start of every session, before any code changes:**
+
+```
+git fetch origin main
+git rebase origin/main
+```
+
+That replays this session branch's commits on top of the latest main.
+If there are no local commits yet, you fast-forward to whatever main
+currently has — you're starting from the canonical state. If there ARE
+local commits (continuing a session, or someone pushed to your branch),
+the rebase replays them; resolve any conflicts now, when you're fresh,
+not at deploy time.
+
+If `origin/main` doesn't exist yet (very-first-deploy bootstrap),
+`npm run live` creates it from your session HEAD — no rebase needed
+on the first ever session.
+
 ### Iteration loop (the normal case)
 
-1. Make changes on the session branch.
-2. `npm run ship` (often). Backup + checkpoint.
-3. When ready to feel it on the phone: `npm run live`.
-4. ~90s later the URL is fresh.
+1. Start of session: `git fetch origin main && git rebase origin/main`.
+2. Make changes on the session branch.
+3. `npm run ship` (often). Backup + checkpoint. No deploy.
+4. When the work is ready to feel on the phone: `npm run live`.
+5. ~90s later the URL is fresh.
+
+If you forgot the rebase at step 1 and `npm run live` aborts with
+"main has diverged," do it then:
+
+```
+git checkout <session-branch>
+git fetch origin main
+git rebase origin/main
+npm run live
+```
 
 ### `npm run ship` mechanics
 
