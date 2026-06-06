@@ -24,6 +24,17 @@
  *                                            finger curl adapted to grip radius)
  *   npm run bench viewmodel-rusted --hand --ortho --debug    the full iteration view
  *
+ *   ── Targeted call-outs ─────────────────────────────────────────────
+ *   npm run bench model-hand-right --debug --highlight=finger_thumb,finger_index
+ *                                            magenta-flag the named slots/parts,
+ *                                            dim the rest
+ *
+ *   ── Live edit (browser only) ───────────────────────────────────────
+ *   npm run dev — then visit /brainstorm/bench.html?subject=model-hand-right&edit=1
+ *   for sliders on every slot's pos/rot, with a "Copy spec" button that
+ *   dumps the edited values to the dev console. (NOT supported via the
+ *   CLI — needs an interactive browser session.)
+ *
  *   npm run bench --list                     print every subject id
  *
  * Output: /tmp/bench-<subject>.png (+ -grid.png in grid mode, -ortho/-debug as needed).

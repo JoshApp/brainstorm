@@ -21,6 +21,7 @@ import { makeMobAnimator, makeWeaponAnimator, type SubjectAnimator } from './ani
 import { effectDemo } from './effects';
 import { addGnomon, addSlotOverlay, addBoundingBox, colorByPart } from './debug-overlay';
 import { composeHeldWeapon } from '../player/held-weapon-compose';
+import { attachLiveEdit } from './live-edit';
 
 const FP_FOV = 70;   // matches CONFIG.FOV — the player's eye for held-weapon swings
 
@@ -112,6 +113,10 @@ if (!subjectId) {
     const highlight = new Set(
       (params.get('highlight') ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     );
+    // ?edit=1 — mount the live-edit sidebar (lil-gui sliders for each
+    // slot's pos/rot). Browser-only; headless snaps never set this
+    // flag so the panel never bakes into a screenshot.
+    const editMode = params.get('edit') === '1';
 
     // `built` is the model we'll show on screen. For a held composition
     // it's the wrapper's hand BuiltModel (so colour-by-part / slot
@@ -173,6 +178,17 @@ if (!subjectId) {
     }
     onResize(draw);
     titleChip(`${subject.label} · ${subject.kind} · ${subjectId}`);
+    // Live-edit sidebar — wires the just-built BuiltModels to
+    // sliders. Each slider change calls draw() so the studio
+    // re-renders against the mutated transforms. Edit mode is
+    // browser-only (?edit=1); never enabled for the CLI snap path.
+    if (editMode) {
+      attachLiveEdit({
+        hand: built,
+        weapon: composition?.weapon,
+        redraw: () => draw(),
+      });
+    }
     window.__bench = {
       ready: true,
       view: (a, e) => mounted!.renderView(a, e),
