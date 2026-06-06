@@ -9,10 +9,49 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The summoning sigils smoulder a beat longer now — you see what is coming before it lands on you.",
+        "area": [
+          "combat",
+          "level"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The hand earns a real arm and learns to say what it's for. Anchors with intent, contact targets, the iteration metric in millimetres.",
+        "area": [
+          "combat",
+          "weapons",
+          "tooling"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The bench grows sliders. The iteration loop stops being \"edit code, snap, look\" and starts being \"drag, look, copy.\"",
+        "area": [
+          "tooling"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The bench grows two new eyes: bright call-outs and per-joint distance numbers. Less squinting at the bones.",
+        "area": [
+          "tooling"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Taps know what you mean now — loot before stairs, a mob means a swing, and reaching for a chest never flails.",
         "area": [
           "controls",
           "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Each finger learns three joints. The fist closes like one, the wrist bends like one. The dungeon notices.",
+        "area": [
+          "combat",
+          "weapons"
         ]
       },
       {

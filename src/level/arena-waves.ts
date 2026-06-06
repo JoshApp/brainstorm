@@ -46,7 +46,7 @@ export interface ArenaController {
   isComplete(): boolean;
 }
 
-const TELEGRAPH_S = 1.2;   // summon windup before a mob materialises
+const TELEGRAPH_S = 2.0;   // summon windup before a mob materialises (longer = more read time)
 const PRE_DELAY_S = 0.5;   // beat after the slam before the first wave
 const LULL_S = 1.1;        // breather between cleared waves
 const MIN_SPAWN_DIST = 2.5; // keep summons off the player's face
