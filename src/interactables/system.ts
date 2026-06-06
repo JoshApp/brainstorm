@@ -72,16 +72,17 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
   const fz = useCone ? fzRaw / fLen : 0;
   const dotMin = Math.cos(CONFIG.INTERACT_CONE_HALF_ANGLE);
 
-  // Pick the closest in-range that's ALSO in the forward cone. Track the
-  // closest ELIGIBLE one separately and prefer it: if a blocked item (a
-  // full-carry potion) overlaps takeable loot, the prompt + auto-use
-  // should point at the thing you can actually take. Fall back to the
-  // nearest of any kind so a lone blocked item still prompts (and its
-  // onUse can explain why it won't budge).
-  let nearest: Interactable | null = null;
-  let nearestD = Infinity;
-  let nearestUsable: Interactable | null = null;
-  let nearestUsableD = Infinity;
+  // Pick the BEST in-range + in-cone interactable, ranked by `priority` first
+  // (pickup > descend > other — see INTERACT_PRIORITY), then by distance. This
+  // is what makes a tap reach for loot over the stairs you're standing on.
+  // Track the best ELIGIBLE one separately and prefer it: if a blocked item (a
+  // full-carry potion) overlaps takeable loot, the prompt + auto-use should
+  // point at the thing you can actually take. Fall back to the best of any kind
+  // so a lone blocked item still prompts (and its onUse can explain itself).
+  let best: Interactable | null = null;
+  let bestPr = -Infinity, bestD = Infinity;
+  let bestUsable: Interactable | null = null;
+  let bestUsablePr = -Infinity, bestUsableD = Infinity;
   for (const it of interactables) {
     // Empty promptLabel = interactable is currently inert (e.g. an open chest
     // that was already used). Don't show its prompt or claim the USE button.
@@ -94,16 +95,16 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
       const dot = (fx * dx + fz * dz) / d;
       if (dot < dotMin) continue;
     }
-    if (d < nearestD) {
-      nearest = it;
-      nearestD = d;
+    const pr = it.priority ?? 0;
+    // Higher priority wins; equal priority → the nearer one.
+    if (pr > bestPr || (pr === bestPr && d < bestD)) {
+      best = it; bestPr = pr; bestD = d;
     }
-    if (d < nearestUsableD && (it.canUse ? it.canUse() : true)) {
-      nearestUsable = it;
-      nearestUsableD = d;
+    if ((it.canUse ? it.canUse() : true) && (pr > bestUsablePr || (pr === bestUsablePr && d < bestUsableD))) {
+      bestUsable = it; bestUsablePr = pr; bestUsableD = d;
     }
   }
-  currentInRange = nearestUsable ?? nearest;
+  currentInRange = bestUsable ?? best;
 }
 
 /**

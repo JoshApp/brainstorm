@@ -8,6 +8,22 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Taps know what you mean now — loot before stairs, a mob means a swing, and reaching for a chest never flails.",
+        "area": [
+          "controls",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The wrist bends. The sword tilts forward like an actual person is holding it.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "Reach for a chest or grab loot and your blade stays still now — no more phantom swing when you meant to open, not strike.",
         "area": [

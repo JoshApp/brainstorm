@@ -73,6 +73,7 @@ import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
+import { resolveTap } from './controls/tap-resolve';
 import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { initLightPool, setShadowMode } from './scene/light-pool';
@@ -476,40 +477,31 @@ const input = createTouchInput(canvas, {
     if (msSinceLastScreenClose() < 250) return;
     if (!currentLevel) return;
 
-    // ── Direct hits: you aimed at a specific thing → honour it (any zone) ──
-    const hit = findTapTarget(
+    // Gather the inputs, then let the pure rule decide (src/controls/tap-
+    // resolve.ts holds the whole priority ladder — attack vs interact vs
+    // nothing — so it reads in one place and is unit-tested). This handler
+    // only gathers + executes.
+    const aimed = findTapTarget(
       clientX, clientY, canvas, camera,
       currentLevel.enemies,
       getAllInteractables(),
     );
-    if (hit?.kind === 'enemy') { triggerAttack(); return; }
-    if (hit?.kind === 'interactable') {
-      // You aimed at a specific object — honour it, and NEVER fall through to
-      // a swing. Tapping a chest / pickup must not flail: if it's reachable
-      // (its own radius, OR the system's cone-aware in-range check for a hair
-      // more reach), use it; if you're genuinely too far, do nothing — but
-      // don't attack. (Previously an out-of-radius hit fell through and swung.)
-      const it = hit.interactable;
-      const dx = it.position.x - camera.position.x;
-      const dz = it.position.z - camera.position.z;
-      if (Math.hypot(dx, dz) <= it.radius) {
-        resolveUsable(it, camera.position).onUse();
-      } else {
-        const reachable = getInRangeInteractable();
-        if (reachable) resolveUsable(reachable, camera.position).onUse();
-      }
-      return;
+    let aimedReachable = false;
+    if (aimed?.kind === 'interactable') {
+      const it = aimed.interactable;
+      aimedReachable =
+        Math.hypot(it.position.x - camera.position.x, it.position.z - camera.position.z) <= it.radius;
     }
-
-    // ── Fallback (no direct hit) — gameplay zone only ──
-    // Priority: an ENEMY in range → attack (wins even next to a chest);
-    // else an interactable in range → interact (a tap near a chest/stairs
-    // opens it instead of flailing); else → just attack (empty swing).
-    if (!canAttack) return;                            // touch joystick half: do nothing
-    if (combat.hasEnemyInRange()) { triggerAttack(); return; }
-    const inRange = getInRangeInteractable();
-    if (inRange) { resolveUsable(inRange, camera.position).onUse(); return; }
-    triggerAttack();
+    const action = resolveTap({
+      aimed,
+      aimedReachable,
+      mobInRange: combat.hasEnemyInRange(),
+      bestInRange: getInRangeInteractable(),
+      canAttack,
+    });
+    if (action.kind === 'attack') triggerAttack();
+    else if (action.kind === 'interact') resolveUsable(action.interactable, camera.position).onUse();
+    // 'none' → deliberately do nothing (e.g. tapped a chest you're too far from).
   },
   onInteract() {
     // E key (or future gamepad confirm) — use the currently in-range

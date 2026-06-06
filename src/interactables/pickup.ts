@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
+import { INTERACT_PRIORITY } from './types';
 import { addItem, removeItem, isAtCarryLimit } from '../player/inventory';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { tryAutoEquip } from '../player/equipment';
@@ -202,6 +203,8 @@ export function createPickup(
     id,
     position: pos.clone(),
     radius: 1.0,
+    // Loot wins a tap over a chest / fountain / the stairs you're standing on.
+    priority: INTERACT_PRIORITY.pickup,
     // Promptless during flight — the interactables system filters out
     // empty-label items, so the player can't grab an item mid-arc. We
     // flip to 'TAKE' the moment it lands (mode → 'settled').

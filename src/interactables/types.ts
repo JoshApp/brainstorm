@@ -70,7 +70,27 @@ export interface Interactable {
    * over the object's middle, not at its feet.
    */
   labelOffsetY?: number;
+  /**
+   * Selection priority among in-range interactables (higher wins; ties break
+   * to the nearer one). The authorable knob for "what a tap reaches for first"
+   * when several overlap. Default 0 (generic). See INTERACT_PRIORITY.
+   */
+  priority?: number;
 }
+
+/**
+ * Standard interactable selection priorities — the ONE place to retune the
+ * "what does a tap reach for first" ordering. Higher = preferred.
+ *   pickup > descend > generic (everything else)
+ * i.e. grabbing loot beats taking the stairs beats opening a chest / fountain /
+ * altar. To reorder, change these numbers — selection (system.ts) and tap
+ * resolution both read `priority` off the interactable, nothing else.
+ */
+export const INTERACT_PRIORITY = {
+  pickup: 100,   // loot first — never fiddle to grab an item off the floor
+  descend: 50,   // a floor's down-stairs
+  generic: 0,    // chests, fountains, altars, corpses, the merchant…
+} as const;
 
 /** Spec for a level-spec-placed interactable. Engine-agnostic data. */
 export interface InteractableSpec {
