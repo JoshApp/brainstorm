@@ -54,6 +54,7 @@ export function showStartScreen(opts: StartScreenOptions) {
     // flex spacers below center the content when it DOES fit. Horizontal
     // safe-area so nothing sits under a landscape notch.
     overflowY: 'auto',
+    overflowX: 'hidden',
     WebkitOverflowScrolling: 'touch',
     paddingLeft: 'env(safe-area-inset-left, 0px)',
     paddingRight: 'env(safe-area-inset-right, 0px)',
@@ -74,13 +75,17 @@ export function showStartScreen(opts: StartScreenOptions) {
 
   // Animated subtle vignette behind everything — a flicker of warm light
   // pulsing slowly, like a distant torch you're walking toward.
+  // `fixed` (not absolute): a 600px glow centered in a short landscape phone
+  // would otherwise spill past the top/bottom of this overflow-y:auto root and
+  // make the whole title SCROLL even when the content fits. Fixed positions it
+  // against the viewport so it's excluded from the scroll region entirely.
   const flicker = document.createElement('div');
   Object.assign(flicker.style, {
-    position: 'absolute',
+    position: 'fixed',
     top: '50%',
     left: '50%',
-    width: '600px',
-    height: '600px',
+    width: 'min(600px, 90vw)',
+    height: 'min(600px, 90vh)',
     transform: 'translate(-50%, -50%)',
     background: 'radial-gradient(circle, rgba(255, 140, 60, 0.10) 0%, transparent 60%)',
     pointerEvents: 'none',
@@ -250,26 +255,6 @@ export function showStartScreen(opts: StartScreenOptions) {
     pushLink(link);
   }
 
-  if (opts.onTestChambers) {
-    const link = makeSecondaryLink('TEST', 0);
-    link.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      hide();
-      opts.onTestChambers!();
-    });
-    pushLink(link);
-  }
-
-  if (opts.onProvingGrounds) {
-    const link = makeSecondaryLink('PROVING', 0);
-    link.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      hide();
-      opts.onProvingGrounds!();
-    });
-    pushLink(link);
-  }
-
   const stash = getStash();
   if (stash.length > 0) {
     const link = makeSecondaryLink('STASH', stash.length);
@@ -298,6 +283,29 @@ export function showStartScreen(opts: StartScreenOptions) {
     });
     pushLink(link);
   }
+
+  // Testing tools last — TEST (hand-authored feature chambers) and PROVING
+  // (generate a floor around any weapon / mob / boss / event). Grouped at the
+  // end so the player-facing records read first.
+  if (opts.onTestChambers) {
+    const link = makeSecondaryLink('TEST', 0);
+    link.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      hide();
+      opts.onTestChambers!();
+    });
+    pushLink(link);
+  }
+  if (opts.onProvingGrounds) {
+    const link = makeSecondaryLink('PROVING', 0);
+    link.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      hide();
+      opts.onProvingGrounds!();
+    });
+    pushLink(link);
+  }
+
   if (links.childElementCount > 0) root.appendChild(links);
 
   // Bottom spacer — balances spacerTop so content centres when it fits.
