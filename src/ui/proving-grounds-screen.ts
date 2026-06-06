@@ -102,17 +102,48 @@ export function showProvingGroundsScreen(
     background: '#0b0c0eee', borderTop: '1px solid #23262b',
   } as CSSStyleDeclaration);
   const back = chip('‹ Back', () => { root.remove(); onBack(); });
-  const go = chip('Descend ⟶', () => {
+  // Descend is the primary call-to-action — it needs to read as
+  // OBVIOUSLY-a-button, not as another row chip. Bigger, bolder, solid
+  // green fill once a target's locked in; the disabled state spells
+  // out the next step instead of just dimming opacity.
+  const go = document.createElement('button');
+  Object.assign(go.style, {
+    flex: '1',
+    minHeight: '52px',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    border: '1px solid',
+    fontWeight: '700',
+    letterSpacing: '.06em',
+    textAlign: 'center',
+    font: '14px ui-monospace, monospace',
+    cursor: 'pointer',
+    touchAction: 'manipulation',
+    userSelect: 'none',
+    WebkitTapHighlightColor: 'transparent',
+  } as Partial<CSSStyleDeclaration>);
+  go.addEventListener('click', () => {
     if (!target) return;
     root.remove();
     onLaunch({ weaponId, mode, target });
   });
-  go.style.flex = '1';
-  go.style.textAlign = 'center';
   footer.append(back, go);
   function refreshGo() {
-    go.style.opacity = target ? '1' : '0.4';
-    go.style.borderColor = target ? '#4a7a4a' : '#2b2f36';
+    if (target) {
+      go.textContent = 'DESCEND ⟶';
+      go.style.background = '#3a6b3a';
+      go.style.borderColor = '#7ab07a';
+      go.style.color = '#eaf6ea';
+      go.style.cursor = 'pointer';
+      go.disabled = false;
+    } else {
+      go.textContent = 'Pick a target first';
+      go.style.background = '#16181c';
+      go.style.borderColor = '#2b2f36';
+      go.style.color = '#6b727c';
+      go.style.cursor = 'not-allowed';
+      go.disabled = true;
+    }
   }
 
   document.body.appendChild(root);
