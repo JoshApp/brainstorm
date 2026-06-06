@@ -9,6 +9,31 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The wrist twists; the weapon stops rotating when the grip becomes perpendicular; the existing animations stop looking sideways.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The grip stops being a hot dog inside a hand-tube. The blade extends OUT of the closed fist now, the way a hand actually holds a sword.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Wrist bends more deliberately; the humerus reattaches; the rig debug view stops drowning in labels.",
+        "area": [
+          "combat",
+          "weapons",
+          "tooling"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "Opening a chest or grabbing loot no longer ghost-swings your weapon — the dungeon stopped hearing a tap as two inputs.",
         "area": [
           "controls"
