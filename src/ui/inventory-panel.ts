@@ -43,16 +43,38 @@ export function createInventoryPanel() {
   openButton = document.createElement('button');
   openButton.id = 'inventory-button';
   openButton.setAttribute('aria-label', 'inventory');
-  // Satchel/bag SVG — fits the dungeon-delver register better than the
-  // abstract ▦ grid glyph that was here before. Strap arc + body box
-  // + clasp line.
+  // Leather satchel — same visual register as the Minimal-style hearts:
+  // filled dark-leather body, hairline gold edge, gold buckle as the
+  // hot accent, drop shadow for weight. Replaces the earlier
+  // pure-stroke glyph (which read flat next to the hearts).
   openButton.innerHTML = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
-         stroke-linejoin="round" stroke-linecap="round" width="22" height="22"
-         style="display:block;margin:auto;">
-      <path d="M5 9 L5 19.5 Q5 21 6.5 21 L17.5 21 Q19 21 19 19.5 L19 9 Z" />
-      <path d="M8 9 L8 7 Q8 4.5 12 4.5 Q16 4.5 16 7 L16 9" />
-      <line x1="9" y1="13" x2="15" y2="13" />
+    <svg viewBox="0 0 24 24" width="22" height="22"
+         style="display:block;margin:auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.85));">
+      <!-- Shoulder strap arc -->
+      <path d="M8 9 L8 7 Q8 4 12 4 Q16 4 16 7 L16 9"
+            fill="none"
+            stroke="rgba(150, 100, 60, 0.95)"
+            stroke-width="1.3"
+            stroke-linejoin="round"
+            stroke-linecap="round" />
+      <!-- Body — filled dark leather, hairline gold edge -->
+      <path d="M4.5 9.5 Q4.5 9 5 9 L19 9 Q19.5 9 19.5 9.5 L19.5 19.5 Q19.5 21 18 21 L6 21 Q4.5 21 4.5 19.5 Z"
+            fill="rgba(40, 26, 18, 0.92)"
+            stroke="rgba(200, 150, 80, 0.55)"
+            stroke-width="1.1"
+            stroke-linejoin="round" />
+      <!-- Flap fold line across the top of the body -->
+      <line x1="5" y1="13" x2="19" y2="13"
+            stroke="rgba(200, 150, 80, 0.32)"
+            stroke-width="0.8" />
+      <!-- Buckle — gold accent, the hot spot -->
+      <rect x="10.5" y="14.5" width="3" height="2.2" rx="0.4"
+            fill="rgba(230, 180, 90, 0.95)"
+            stroke="rgba(80, 50, 20, 0.85)"
+            stroke-width="0.4" />
+      <!-- Buckle prong -->
+      <line x1="12" y1="14.5" x2="12" y2="16.7"
+            stroke="rgba(60, 35, 15, 0.9)" stroke-width="0.5" />
     </svg>
   `;
   Object.assign(openButton.style, {

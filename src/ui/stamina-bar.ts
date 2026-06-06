@@ -102,6 +102,9 @@ export function createStaminaBar() {
  *  as "you're out" right then, not just from the ambient red. */
 export function flashStaminaBar(): void {
   if (!container) return;
+  // Suppress when another HUD style owns stamina — the bar shouldn't
+  // briefly pop into view under the Minimal sliver / Cinematic breath.
+  if (getHudStyle().stamina !== 'bar') return;
   container.style.opacity = '1';
   container.style.animation = 'none';
   // Force reflow so re-assigning the same animation restarts it.
