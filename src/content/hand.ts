@@ -203,10 +203,13 @@ export const HAND_RIGHT: ModelSpec = {
   ],
   slots: {
     // The grip anchor a held weapon aligns to. Sits IN the palm cup —
-    // below the knuckle row + on the PALM side (−Z) of hand-origin,
-    // so a held grip rests in the fingers' cradle rather than
-    // floating above the back of the hand.
-    palm_anchor: { pos: [0, 0.012, -0.006] },
+    // below the knuckle row + on the PALM side (−Z) of hand-origin —
+    // and is PRE-ROTATED forward so the weapon comes out of the fist
+    // at a wrist-bent angle rather than parallel with the forearm.
+    // Real grip: arm straight, wrist bent ≈30° forward, blade tilts
+    // away from camera. rotX < 0 rotates the weapon's local +Y axis
+    // (blade direction) toward the palm side (−Z = forward in world).
+    palm_anchor: { pos: [0, 0.012, -0.006], rot: [-0.55, 0, 0] },
 
     // ── FINGER JOINTS ─ one per finger at the metacarpal-phalanx
     // pivot. Pre-rotated to a CURLED rest pose at ≈80° (rotX ≈ -1.4).
