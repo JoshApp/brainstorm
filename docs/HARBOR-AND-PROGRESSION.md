@@ -498,8 +498,53 @@ possibility space (item / region / spell pools) is gated by **who you've
 saved**. Ability- and character-gated content *across runs*, not terrain
 *within* one.
 
+### Spending gold — sinks, not a bank [LEANING]
+
+Gold drops (enemies, breakables) and shows on the HUD, but `run-state.ts`
+spends none of it ("a counter only — spending [not implemented]"). Make
+it real without turning it into a grind:
+
+- **Run-scoped, lost on death** (as it already is). The tension is *spend
+  it before the dark takes it* (Isaac coins / Hades obols / Souls souls).
+  **Not** a meta-currency you grind into permanent power — that fights
+  "meta = unlock the pool, not raw power." If we ever want a *meta*
+  currency it's a separate rare thing (a boss "ember"), never gold.
+- **Death-drop → bloodstain [OPEN, Phase 4]:** on death, gold could drop
+  as a recoverable bloodstain — which *is* the planned async-multiplayer
+  trace. Currency-on-death and the multiplayer echo are the same feature.
+
+**Sinks, in impact order:**
+
+1. **Wandering dungeon merchant [LEANING] — build first.** A rare,
+   lantern-lit stall on a floor (lighting-as-signal: a merchant is an
+   *event*). Small rotating stock — 2–4 items rolled from the loot pool
+   at depth, priced by rarity. This is the one that makes gold matter
+   *mid-run* — the Isaac/Hades shop-room beat. **Doubles as a wild NPC:**
+   recruit them to the Harbor → a permanent shop (meta = who you've
+   saved). `floor-manifest.ts` already reserves "shops at depth 4+".
+2. **Harbor vendor + Smith [LEANING].** Already sketched in
+   `safe-room.ts` comments — buy a consumable/scroll; upgrade a weapon.
+   The reliable between-acts beat.
+3. **Services [OPEN, later].** Reroll / identify affixes, remove a curse,
+   buy a key into a locked vault.
+
+**What you buy** wires into the other threads: consumables, a gear piece,
+a **spell scroll** (*how spells enter a run*), weapon upgrades / affix
+rerolls (build-tinkering).
+
+**Build shape — one shop system, two placements.** `{ stock, prices }` +
+a small mobile buy-panel (reuse the screen-manager + the inventory/stash
+panel patterns) + a `spendGold()` beside `grantGold()`. Buying reuses the
+loot-roll + pickup/equip flow — mostly composition, no new combat. Drop
+instance #1 as the wandering merchant; the same system later powers the
+Harbor stall.
+
 ### Open calls from this thread [OPEN]
 
+- **Gold death-drop** — recover as a bloodstain (Phase 4 async); how much
+  is recoverable, and does it expire?
+- **Sell-back to merchants?** *(Lean: no in v1 — keeps gold scarce and
+  the spend decisions sharp.)*
 - **Harbor capacity** — scarce / mutually-exclusive (saving one can cost
   another) *vs* accumulate-all over time. *(Lean: scarce — it makes your
   harbor an identity and honours "a held breath, not a tavern.")*
