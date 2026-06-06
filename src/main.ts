@@ -61,6 +61,8 @@ import { showStartScreen } from './ui/start-screen';
 import { addItemSilently } from './player/inventory';
 import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
+import { showProvingGroundsScreen } from './ui/proving-grounds-screen';
+import { buildFightLevel, buildEventLevel } from './level/proving-grounds';
 import { isAnyScreenOpen, msSinceLastScreenClose } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { initTriggerListener } from './ecs/triggers';
@@ -326,6 +328,18 @@ initLevelLoader({
   // same floors. The safe room geometry is static so it doesn't need
   // a seed.
   generate(id, depth) {
+    // Proving Grounds descent — a real procgen floor, but kept under the
+    // `proving-` id prefix (chained via the nextLevel override) so the whole
+    // descent stays save-safe. Depth is read from the id, not the loader's
+    // counter, so a direct jump to depth N works.
+    if (id.startsWith('proving-depth-')) {
+      const d = parseInt(id.slice('proving-depth-'.length), 10) || 1;
+      const run = getRunState();
+      const runSeed = run?.startedAt ?? Date.now();
+      const spec = generateFloor(d, runSeed, `proving-depth-${d + 1}`);
+      spec.id = id;
+      return spec;
+    }
     if (id.startsWith('safe-')) {
       // safe-N marks the safe room AFTER depth N (a BOSS depth). Pass
       // N along so the safe-room generator wires its exit stairs to
@@ -1185,6 +1199,34 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
           startRun(spec.id, 0);
         },
         () => openTitle(),   // BACK — re-show the title
+      );
+    },
+    onProvingGrounds() {
+      showProvingGroundsScreen(
+        (launch) => {
+          let floorId: string;
+          let depth = 0;
+          if (launch.mode === 'descent') {
+            depth = parseInt(launch.target, 10) || 1;
+            floorId = `proving-depth-${depth}`;
+          } else {
+            const spec = launch.mode === 'fight'
+              ? buildFightLevel(launch.target)
+              : buildEventLevel(launch.target);
+            if (!spec) { openTitle(); return; }
+            LEVELS[spec.id] = spec;
+            floorId = spec.id;
+          }
+          // Save-safe: NO clearSave (the real on-disk save is untouched —
+          // proving- floors are never persisted) and NO recordRunStart (don't
+          // inflate meta). startNewRun only swaps the in-memory run.
+          startNewRun(floorId, depth ? { depth } : undefined);
+          resetRunDiscoveries();
+          applyState(null);
+          if (ITEMS[launch.weaponId]) setSlot('weapon', ITEMS[launch.weaponId]);
+          startRun(floorId, depth);
+        },
+        () => openTitle(),
       );
     },
     onContinue() {

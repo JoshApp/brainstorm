@@ -9,6 +9,18 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "content",
+        "text": "Proving Grounds: pick a weapon + what to test, drop into a generated floor"
+      },
+      {
+        "tag": "fix",
+        "text": "Trailer parser now handles the blank-separated session URL convention.",
+        "area": [
+          "tooling",
+          "build"
+        ]
+      },
+      {
         "tag": "tech",
         "text": "Commit messages now drive the patch log via structured Patch-* trailers.",
         "area": [
@@ -215,14 +227,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "docs"
-      },
-      {
-        "tag": "tune",
-        "text": "Stamina: aggression reward — melee hit refunds stamina (Nightreign-style)"
-      },
-      {
-        "tag": "tune",
-        "text": "test"
       }
     ]
   }

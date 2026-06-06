@@ -29,6 +29,9 @@ export interface StartScreenOptions {
    *  individual features (arena door, blood altar, ooze split, etc.)
    *  in isolation. */
   onTestChambers?: () => void;
+  /** Proving Grounds — pick a weapon + a thing to test (mob/boss/event/depth)
+   *  and drop into a generated, save-safe floor. */
+  onProvingGrounds?: () => void;
 }
 
 let root: HTMLDivElement | null = null;
@@ -253,6 +256,16 @@ export function showStartScreen(opts: StartScreenOptions) {
       e.preventDefault();
       hide();
       opts.onTestChambers!();
+    });
+    pushLink(link);
+  }
+
+  if (opts.onProvingGrounds) {
+    const link = makeSecondaryLink('PROVING', 0);
+    link.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      hide();
+      opts.onProvingGrounds!();
     });
     pushLink(link);
   }

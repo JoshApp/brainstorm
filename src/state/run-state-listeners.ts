@@ -53,6 +53,9 @@ export function initRunStateListeners() {
       // Same skip for test chambers — they're dev affordances and
       // shouldn't poison the real save with `test-arena` floor ids.
       if (event.levelId.startsWith('test-')) return;
+      // Proving Grounds floors are a testing tool — never persisted, so
+      // practising a fight/event can't overwrite or inflate the real run.
+      if (event.levelId.startsWith('proving-')) return;
       const inv: Record<string, number> = {};
       for (const { id, count } of getAllItems()) inv[id] = count;
       const eq = getEquipment();
