@@ -7,10 +7,15 @@
 //
 // Next drivers on this same interface: weapon swing-state, effect lifetimes.
 
+import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
 import type { EnemySpec } from '../content/enemies';
+import type { ItemSpec } from '../content/items';
 import { resolveAbilities } from '../content/abilities';
 import { applyTelegraphPose, telegraphNodesFor, type TelegraphNodes } from '../mobs/pose-clips';
+import { WEAPON_CLASS_DEFAULTS } from '../content/weapon-classes';
+import { computeWeaponPose } from '../player/weapon-animations';
+import type { SwingPhase } from '../combat/swing-state';
 
 export interface SubjectAnimator {
   /** Suggested frame count for a balanced contact sheet. */
@@ -45,4 +50,42 @@ export function makeMobAnimator(built: BuiltModel, spec: EnemySpec): SubjectAnim
   }
 
   return { frames: 8, poseAt, label: `${style} · ${w}/${s}/${r}s` };
+}
+
+interface SwingSeg { pose: import('../content/weapon-classes').PoseKey; phase: SwingPhase; dur: number; }
+
+/** Drive a weapon viewmodel through its FULL combo chain — every step's
+ *  windup→strike→recover — in the camera-space first-person pose the player
+ *  sees, via the same computeWeaponPose the live viewmodel uses. Returns null
+ *  for items with no weapon class (nothing to swing). */
+export function makeWeaponAnimator(group: THREE.Object3D, item: ItemSpec): SubjectAnimator | null {
+  const cls = item.weapon?.class;
+  if (!cls) return null;
+  const combo = WEAPON_CLASS_DEFAULTS[cls].combo;
+
+  const segs: SwingSeg[] = [];
+  for (const step of combo) {
+    segs.push({ pose: step.pose, phase: 'windup', dur: step.windup });
+    segs.push({ pose: step.pose, phase: 'strike', dur: step.strike });
+    segs.push({ pose: step.pose, phase: 'recover', dur: step.recover });
+  }
+  const total = Math.max(segs.reduce((a, s) => a + s.dur, 0), 0.001);
+
+  function poseAt(i: number, n: number): void {
+    const tau = (i / Math.max(1, n - 1)) * total;
+    let acc = 0;
+    for (let k = 0; k < segs.length; k++) {
+      const seg = segs[k];
+      if (tau < acc + seg.dur || k === segs.length - 1) {
+        const t = seg.dur > 0 ? (tau - acc) / seg.dur : 1;
+        const p = computeWeaponPose(seg.pose, seg.phase, Math.min(Math.max(t, 0), 1));
+        group.position.set(p.x, p.y, p.z);
+        group.rotation.set(p.rotX, p.rotY, p.rotZ);
+        return;
+      }
+      acc += seg.dur;
+    }
+  }
+
+  return { frames: combo.length * 3, poseAt, label: `${cls} combo · ${combo.length} steps` };
 }

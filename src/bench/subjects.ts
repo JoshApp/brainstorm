@@ -5,7 +5,7 @@
 // this maps each entry to WHICH model to build.
 
 import { ENEMIES, type EnemySpec } from '../content/enemies';
-import { ITEMS } from '../content/items';
+import { ITEMS, type ItemSpec } from '../content/items';
 import type { ModelSpec } from '../ecs/model-types';
 import { listAuthorables, type AuthorableKind } from '../debug/authorables';
 import { EFFECT_DEMOS } from './effects';
@@ -17,6 +17,8 @@ export interface BenchSubject {
   spec: ModelSpec;
   /** For mobs: the full spec, so the bench can drive its telegraph animation. */
   enemy?: EnemySpec;
+  /** For weapons: the item, so the bench can drive its combo swing. */
+  item?: ItemSpec;
 }
 
 export function resolveSubject(subjectId: string): BenchSubject | null {
@@ -31,7 +33,7 @@ export function resolveSubject(subjectId: string): BenchSubject | null {
     const it = ITEMS[id];
     const spec = it?.viewmodel ?? it?.dropModel;
     if (!spec) return null;
-    return { id: subjectId, kind: 'weapon', label: it.name ?? id, spec };
+    return { id: subjectId, kind: 'weapon', label: it.name ?? id, spec, item: it };
   }
   if (subjectId.startsWith('item-')) {
     const id = subjectId.slice('item-'.length);

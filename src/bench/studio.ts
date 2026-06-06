@@ -22,8 +22,13 @@ export interface Studio {
   /** Contact sheet from a fixed camera, calling poseAt(i, n) before each tile
    *  to mutate the subject — for animation arcs (windup→strike→recover). */
   renderPoseGrid(n: number, azDeg: number, elDeg: number, poseAt: (i: number, n: number) => void): void;
-  /** The framed group — spawn effects into this so they sit at the studio
-   *  origin and read against the backdrop. */
+  /** First-person contact sheet: camera fixed at the eye (origin, looking -Z)
+   *  at the given FOV, calling poseAt(i, n) before each tile. For weapon
+   *  viewmodels, whose swing is authored in camera space and reads wrong from
+   *  an orbit. */
+  renderHeldGrid(n: number, fovDeg: number, poseAt: (i: number, n: number) => void): void;
+  /** The framed group — spawn effects (or mount a held weapon) into this so it
+   *  sits at the studio origin and reads against the backdrop. */
   root(): THREE.Group;
   /** Fix the framing distance manually (for effects, whose extent changes over
    *  their lifetime so auto-fit from a single frame would mis-frame). */
@@ -136,12 +141,22 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
     });
   }
 
+  function renderHeldGrid(n: number, fovDeg: number, poseAt: (i: number, n: number) => void): void {
+    camera.fov = fovDeg;
+    camera.position.set(0, 0, 0);
+    camera.rotation.set(0, 0, 0);   // identity → looks down world -Z, the player's eye
+    grid(n, (i) => { poseAt(i, n); subject.updateMatrixWorld(true); });
+  }
+
   function resize(w: number, h: number): void {
     renderer.setSize(w, h, false);
   }
 
   resize(canvas.clientWidth || 1200, canvas.clientHeight || 900);
-  return { show, renderView, renderTurntable, renderPoseGrid, root: () => subject, frame: (r) => { radius = r; pivot.set(0, 0, 0); }, resize };
+  return {
+    show, renderView, renderTurntable, renderPoseGrid, renderHeldGrid,
+    root: () => subject, frame: (r) => { radius = r; pivot.set(0, 0, 0); }, resize,
+  };
 }
 
 // Even-ish column count so a contact sheet reads left-to-right, top-to-bottom.

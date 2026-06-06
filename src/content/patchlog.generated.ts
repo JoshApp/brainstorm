@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Bench effects: spawn + sample any effect's lifetime as a contact sheet"
+      },
+      {
         "tag": "content",
         "text": "Bench animation: mob telegraph arcs as contact sheets (--anim)"
       },
@@ -210,10 +214,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "Fix clutter props (pillars) floating over pits/voids"
-      },
-      {
-        "tag": "tune",
-        "text": "Style: ink edge-outlines (depth-silhouette contours) — new shader step"
       }
     ]
   },

@@ -17,8 +17,10 @@ import { buildModel } from '../ecs/build-model';
 import { mountStudio } from './studio';
 import { resolveSubject, listSubjects } from './subjects';
 import { computeReadout, type Readout } from './readout';
-import { makeMobAnimator, type SubjectAnimator } from './animate';
+import { makeMobAnimator, makeWeaponAnimator, type SubjectAnimator } from './animate';
 import { effectDemo } from './effects';
+
+const FP_FOV = 70;   // matches CONFIG.FOV — the player's eye for held-weapon swings
 
 const canvas = document.getElementById('bench') as HTMLCanvasElement;
 
@@ -87,28 +89,43 @@ if (!subjectId) {
     window.__bench = NOOP;
   } else {
     const built = buildModel(subject.spec);
-    // Wrap the model so the studio's recentering (on the holder) doesn't fight
-    // a telegraph's vertical bob (on built.group.position.y).
-    const holder = new THREE.Group();
-    holder.add(built.group);
-    mounted.show(holder);
-
-    const animator: SubjectAnimator | null = subject.enemy ? makeMobAnimator(built, subject.enemy) : null;
     const az = Number(params.get('az') ?? 35);
     const el = Number(params.get('el') ?? 18);
     const gridN = Number(params.get('grid') ?? 0);
     const animN = Number(params.get('anim') ?? 0);
-    onResize(() => {
-      if (animN > 0 && animator) mounted!.renderPoseGrid(animN, az, el, animator.poseAt);
-      else if (gridN > 0) mounted!.renderTurntable(gridN, el);
-      else mounted!.renderView(az, el);
-    });
+
+    const mobAnim = subject.enemy ? makeMobAnimator(built, subject.enemy) : null;
+    const weaponAnim = subject.kind === 'weapon' && subject.item
+      ? makeWeaponAnimator(built.group, subject.item) : null;
+
+    let draw: () => void;
+    if (animN > 0 && weaponAnim) {
+      // Held first-person swing — the weapon is posed in camera space, so it
+      // mounts at the studio origin un-recentered and renders from the eye.
+      mounted.root().add(built.group);
+      draw = () => mounted!.renderHeldGrid(animN, FP_FOV, weaponAnim.poseAt);
+    } else {
+      // Static / turntable / mob telegraph — wrap so recentering doesn't fight
+      // a telegraph's vertical bob (on built.group.position.y).
+      const holder = new THREE.Group();
+      holder.add(built.group);
+      mounted.show(holder);
+      draw = () => {
+        if (animN > 0 && mobAnim) mounted!.renderPoseGrid(animN, az, el, mobAnim.poseAt);
+        else if (gridN > 0) mounted!.renderTurntable(gridN, el);
+        else mounted!.renderView(az, el);
+      };
+    }
+    onResize(draw);
     titleChip(`${subject.label} · ${subject.kind} · ${subjectId}`);
     window.__bench = {
       ready: true,
       view: (a, e) => mounted!.renderView(a, e),
       turntable: (m, e) => mounted!.renderTurntable(m, e),
-      anim: (m, e) => { if (animator) mounted!.renderPoseGrid(m, az, e, animator.poseAt); },
+      anim: (m, e) => {
+        if (weaponAnim) mounted!.renderHeldGrid(m, FP_FOV, weaponAnim.poseAt);
+        else if (mobAnim) mounted!.renderPoseGrid(m, az, e, mobAnim.poseAt);
+      },
       readout: () => computeReadout(subject, built),
       subjects: () => listSubjects().map((s) => s.id),
     };
