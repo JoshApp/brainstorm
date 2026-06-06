@@ -136,15 +136,21 @@ export function parseTrailers(body: string): Record<string, string> {
   // first.
   const lines = body.replace(/\s+$/, '').split('\n');
   // Find the start of the trailer block by walking back from the end.
+  // A footer in our convention is a contiguous run of trailer-shaped
+  // lines + URL lines + blank separators. We only break on a real
+  // PROSE line — that's the body-to-footer boundary.
   let blockStart = lines.length;
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
-    if (line === '') break;
-    // Standard git trailer shape: <Token>: <value> where token has no
-    // whitespace. Also accept lines that aren't trailers (e.g. a
-    // session URL) interleaved — they don't break the block, just
-    // skip them.
-    if (/^[A-Za-z][A-Za-z0-9_-]*:\s/.test(line) || /^https?:\/\//i.test(line)) {
+    // Trailer-shaped (Key: value), URL, or a blank separator — keep
+    // walking back. Blank lines are transparent inside the footer so
+    // a `Patch-tag: …` block above a blank-separated session URL
+    // still counts as one footer region.
+    if (
+      line === '' ||
+      /^[A-Za-z][A-Za-z0-9_-]*:\s/.test(line) ||
+      /^https?:\/\//i.test(line)
+    ) {
       blockStart = i;
       continue;
     }

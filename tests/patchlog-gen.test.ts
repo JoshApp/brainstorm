@@ -52,6 +52,23 @@ https://claude.ai/code/session_abc`;
   assert.deepEqual(parseTrailers(body), { 'patch-tag': 'fix' });
 });
 
+test('parseTrailers: blank line between trailers and URL is transparent', () => {
+  // The Claude Code commit convention writes the session URL on its
+  // own line, often blank-separated from the Patch-* block above. We
+  // need both blocks to count as one footer region — otherwise the
+  // trailers get stranded above an isolated URL "block."
+  const body = `Body.
+
+Patch-tag: tech
+Patch-summary: Trailer parser handles blank-separated URL.
+
+https://claude.ai/code/session_xyz`;
+  assert.deepEqual(parseTrailers(body), {
+    'patch-tag': 'tech',
+    'patch-summary': 'Trailer parser handles blank-separated URL.',
+  });
+});
+
 test('parseTrailers: looks at the LAST block only', () => {
   // A mid-body "Patch-tag: tune" should be ignored; only the trailer
   // block at the very end counts. The mid-body line has prose after

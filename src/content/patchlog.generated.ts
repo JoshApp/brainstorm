@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "tech",
+        "text": "Commit messages now drive the patch log via structured Patch-* trailers.",
+        "area": [
+          "tooling",
+          "build"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Live every commit: codify the preference + auto-push session branch"
       },
@@ -215,10 +223,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "test"
-      },
-      {
-        "tag": "tune",
-        "text": "Dash gestures (flick / double-tap, switchable) + charge reservation preview"
       }
     ]
   }
