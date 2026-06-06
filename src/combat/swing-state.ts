@@ -70,25 +70,40 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
   const canSwing = options.canSwing ?? (() => true);
   let phase: SwingPhase = 'idle';
   let phaseTimer = 0;            // seconds into the current phase
-  let comboStep = 0;            // index into the weapon's combo array
+  let comboStep = 0;            // index into the ACTIVE track's combo array
   let comboWindowExpiresAt = 0;  // seconds (internal clock basis)
   let queuedPress = false;
+  // Which combo TRACK comboStep indexes — the light tap chain or the heavy
+  // charged chain (hold→hold→hold). Switches on press type; resets to light on
+  // window lapse / reset.
+  let track: 'light' | 'heavy' = 'light';
   // Directional/charged move override — set at requestSwing when a direction
   // was held. Used in place of the combo step until cleared on idle.
   let activeDirectionalStep: ResolvedComboStep | null = null;
+  // ENDER override — a charged release that cashed out a light chain. One-off
+  // finisher (like a directional move); cleared on the next recover-end.
+  let activeEnderStep: ResolvedComboStep | null = null;
   // Internal monotonic clock in SECONDS, advanced by advance(dt). Replaces
   // performance.now() so the machine is deterministic + testable: ticks are
   // the only source of time, so a test drives behaviour purely by advance().
   let clock = 0;
 
+  /** The combo array comboStep indexes — the heavy chain when on the heavy track
+   *  (and the weapon has one), else the light combo. */
+  function comboArray(w: ReturnType<typeof getCurrentWeapon>): ResolvedComboStep[] {
+    return track === 'heavy' && w.heavyCombo && w.heavyCombo.length ? w.heavyCombo : w.combo;
+  }
+
   /** Resolve the step for the CURRENT combo index, defensively wrapping in
-   *  case the weapon was swapped to a shorter combo mid-swing. Directional
-   *  override beats the combo. */
+   *  case the weapon was swapped to a shorter combo mid-swing. Directional /
+   *  ender overrides beat the combo. */
   function currentStep(): { combo: ResolvedComboStep[]; step: ResolvedComboStep } {
     const w = getCurrentWeapon();
     if (activeDirectionalStep) return { combo: w.combo, step: activeDirectionalStep };
-    const idx = ((comboStep % w.combo.length) + w.combo.length) % w.combo.length;
-    return { combo: w.combo, step: w.combo[idx] };
+    if (activeEnderStep) return { combo: w.combo, step: activeEnderStep };
+    const arr = comboArray(w);
+    const idx = ((comboStep % arr.length) + arr.length) % arr.length;
+    return { combo: arr, step: arr[idx] };
   }
 
   function phaseDuration(): number {
@@ -103,24 +118,25 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     // flash; this is the sim staying self-consistent).
     if (phase === 'idle' && !canSwing()) return false;
     if (phase !== 'idle') {
-      // Mid-swing press buffers the next combo step UNLESS the current step is
-      // the finisher (last in the array) — a finisher spam-burst would
-      // otherwise wrap the combo and auto-start a fresh chain at step 0.
+      // Only the LIGHT tap chain buffers — heavy steps are discrete charged
+      // presses, charged releases can't buffer, and overrides are finishers.
+      // (A finisher spam-burst would otherwise wrap the combo to step 0.)
       const w = getCurrentWeapon();
-      const isFinisher = comboStep >= w.combo.length - 1;
-      if (!isFinisher) queuedPress = true;
+      const canBuffer = track === 'light' && !opts?.skipWindup
+        && activeDirectionalStep === null && activeEnderStep === null
+        && comboStep < w.combo.length - 1;
+      if (canBuffer) queuedPress = true;
       return false;
     }
-    // Pick the active step. Lookup order (highest priority first):
-    //   1. CHARGED + direction → chargedMoves[dir] (ward / spin / plunge)
-    //   2. direction → directionalMoves[dir] (lunge / sweeps / retreat)
-    //   3. neither → normal combo step
-    // Charge modifiers (+reach/+cone/+damage) still stack in attack.ts.
-    // Firing a directional/charged override resets the combo to step 0.
+    // Pick the active step. Priority: directional/charged-directional override,
+    // then the heavy chain / ender (non-directional charged), else the light
+    // combo. Charge modifiers (+reach/+cone/+damage) still stack in attack.ts.
     const w = getCurrentWeapon();
     activeDirectionalStep = null;
+    activeEnderStep = null;
     const dir = opts?.direction;
     const isCharged = !!opts?.skipWindup;
+    const inWindow = clock < comboWindowExpiresAt;
     if (dir) {
       const chargeKey: 'forward' | 'back' | 'strafe' =
         dir === 'forward' ? 'forward' : dir === 'back' ? 'back' : 'strafe';
@@ -131,13 +147,28 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       const chargedMove = isCharged && w.chargedMoves ? w.chargedMoves[chargeKey] : undefined;
       const directional = w.directionalMoves ? w.directionalMoves[dirKey] : undefined;
       activeDirectionalStep = chargedMove ?? directional ?? null;
-      if (activeDirectionalStep) comboStep = 0;
+      // A directional override resets the chain to a fresh light step 0.
+      if (activeDirectionalStep) { comboStep = 0; track = 'light'; }
     }
-    // No override + past the combo window → previous chain is dead, restart at
-    // step 0. Inside the window, comboStep was pre-advanced at the last
-    // recover-end, so fire whatever it currently is.
-    if (!activeDirectionalStep && clock >= comboWindowExpiresAt) {
-      comboStep = 0;
+    if (!activeDirectionalStep) {
+      const heavy = w.heavyCombo && w.heavyCombo.length ? w.heavyCombo : null;
+      if (isCharged && heavy) {
+        if (track === 'light' && comboStep > 0 && inWindow && w.ender) {
+          // Cash out a light chain → ENDER (one-off finisher).
+          activeEnderStep = w.ender;
+        } else if (track === 'heavy' && inWindow) {
+          // Continue the heavy chain at the pre-advanced comboStep.
+        } else {
+          // Start the heavy chain fresh.
+          track = 'heavy';
+          comboStep = 0;
+        }
+      } else {
+        // Light tap (or a charged release on a weapon with no heavy combo) →
+        // the light track, preserving the original window/reset behaviour.
+        if (track === 'heavy') { track = 'light'; comboStep = 0; }
+        else if (!inWindow) comboStep = 0;
+      }
     }
     // Charged release skips windup — the player already paid by holding; the
     // cocked-back idle pose blends seamlessly into the strike's t=0 pose.
@@ -151,9 +182,12 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     clock += dt;
 
     if (phase === 'idle') {
-      // Combo window lapsed while idle → drop back to step 0 so any combo HUD
-      // / held-pose preview reflects the reset.
-      if (comboStep !== 0 && clock >= comboWindowExpiresAt) comboStep = 0;
+      // Combo window lapsed while idle → drop back to a fresh light step 0 so any
+      // combo HUD / held-pose preview reflects the reset.
+      if ((comboStep !== 0 || track !== 'light') && clock >= comboWindowExpiresAt) {
+        comboStep = 0;
+        track = 'light';
+      }
       return;
     }
 
@@ -170,12 +204,19 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       // Recover ended — pre-advance the combo and either chain straight into
       // the next windup (a press buffered) or open the idle combo window.
       const w = getCurrentWeapon();
-      comboStep = (comboStep + 1) % w.combo.length;
+      if (activeEnderStep) {
+        // The ender finishes the chain — back to a fresh light step 0.
+        comboStep = 0;
+        track = 'light';
+      } else {
+        comboStep = (comboStep + 1) % comboArray(w).length;
+      }
       if (queuedPress && canSwing()) {
         queuedPress = false;
-        // A buffered chain always advances the COMBO — directional moves are
-        // one-off, so a buffered press falls back to the next combo step.
+        // A buffered chain is always a LIGHT tap (only the light track buffers) —
+        // directional / ender overrides are one-off, so clear them.
         activeDirectionalStep = null;
+        activeEnderStep = null;
         phase = 'windup';
         phaseTimer = 0;
         // Buffered steps are always light taps (a charged release can't be
@@ -185,6 +226,7 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
         // No buffer, or gassed (a chain can't continue into an empty bar).
         queuedPress = false;
         activeDirectionalStep = null;
+        activeEnderStep = null;
         comboWindowExpiresAt = clock + w.comboWindowMs / 1000;
         phase = 'idle';
         phaseTimer = 0;
@@ -202,14 +244,20 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     getComboStep: () => comboStep,
     isStriking: () => phase === 'strike',
     isSwinging: () => phase !== 'idle',
-    isFinisherStrike: () => phase === 'strike' && comboStep === getCurrentWeapon().combo.length - 1,
+    isFinisherStrike: () => {
+      if (phase !== 'strike') return false;
+      if (activeEnderStep) return true;   // the ender is itself a finisher
+      return comboStep === comboArray(getCurrentWeapon()).length - 1;
+    },
     reset() {
       phase = 'idle';
       phaseTimer = 0;
       comboStep = 0;
       comboWindowExpiresAt = 0;
       queuedPress = false;
+      track = 'light';
       activeDirectionalStep = null;
+      activeEnderStep = null;
     },
     setDebugPhase(p: SwingPhase, t: number) {
       phase = p;

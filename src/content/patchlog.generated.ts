@@ -4,9 +4,35 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 14",
+    "date": "2026-06-06",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "Combat feel: weaker stumble + camera lurch, slower gassed cadence, dodge cooldown"
+      },
+      {
+        "tag": "tune",
+        "text": "CLAUDE.md: document the rebase-main-first session lifecycle"
+      },
+      {
+        "tag": "tune",
+        "text": "Marrow"
+      }
+    ]
+  },
+  {
     "version": "Build 13",
     "date": "2026-06-05",
     "entries": [
+      {
+        "tag": "tune",
+        "text": "Marrow: bone splinter fan + harder-committed charge"
+      },
+      {
+        "tag": "tune",
+        "text": "Marrow Sovereign: physical-heavy moveset overhaul"
+      },
       {
         "tag": "content",
         "text": "Authoring: data-driven weapon poses (additive) + 20 poses migrated, test-locked"
@@ -198,26 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Notes stay in mouse-look (no stray cursor after dismissing a note)"
-      },
-      {
-        "tag": "fix",
-        "text": "Fix boss-gate stuck, corpse-note reopen, and pointer-lock consistency"
-      },
-      {
-        "tag": "tune",
-        "text": "Banded lighting: band in tonemapped space so the steps are actually visible"
-      },
-      {
-        "tag": "tune",
-        "text": "Shader step 2/4 (redo)"
-      },
-      {
-        "tag": "tune",
-        "text": "Shader step 4/4: fog inscatter + loosen the depth crush"
-      },
-      {
-        "tag": "tune",
-        "text": "Shader step 3/4: depth-keyed darkness — an art-directed pool of reveal"
       }
     ]
   }

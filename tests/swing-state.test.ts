@@ -148,6 +148,70 @@ test('a buffered combo will not chain into an empty bar', () => {
   assert.equal(count, 1, 'no extra swing billed when the chain is gated');
 });
 
+// ── Heavy combo chain + light→heavy ender (the hammer) ───────────
+const HAMMER = { reach: 2.4, coneHalfAngle: 0.9, damage: 2, critChance: 0.05, critMultiplier: 2.0, class: 'hammer' as const };
+// A CHARGED swing skips windup (strike→recover→idle), so it reaches idle in TWO
+// advances — a third would lapse the combo window. Stops at idle, window open.
+function walkChargedToIdle(s: ReturnType<typeof createSwingState>) {
+  s.advance(BIG); // strike→recover
+  s.advance(BIG); // recover→idle (pre-advance, window opens)
+}
+
+test('heavy chain: charged releases walk the escalating heavy combo', () => {
+  setCurrentWeapon(HAMMER);
+  const s = createSwingState();
+  const heavy = W().heavyCombo!;
+  assert.ok(heavy && heavy.length >= 3, 'hammer has a heavy 1-2-3');
+  // H1 — a charged release starts the heavy track at step 0.
+  assert.equal(s.requestSwing({ skipWindup: true }), true);
+  assert.equal(s.getPhase(), 'strike', 'charged skips windup');
+  assert.deepEqual(s.getActiveStep(), heavy[0], 'H1 is heavy step 0');
+  walkChargedToIdle(s);
+  assert.equal(s.getComboStep(), 1, 'heavy chain pre-advances to H2');
+  // H2 — another charged release inside the window continues the heavy chain.
+  assert.equal(s.requestSwing({ skipWindup: true }), true);
+  assert.deepEqual(s.getActiveStep(), heavy[1], 'H2 is heavy step 1');
+  walkChargedToIdle(s);
+  assert.equal(s.getComboStep(), 2);
+  // H3 — the finisher.
+  assert.equal(s.requestSwing({ skipWindup: true }), true);
+  assert.deepEqual(s.getActiveStep(), heavy[2], 'H3 is heavy step 2');
+  assert.equal(s.isFinisherStrike(), true, 'H3 is the heavy finisher');
+});
+
+test('ender: a charged release at the end of a LIGHT chain fires the ender', () => {
+  setCurrentWeapon(HAMMER);
+  const s = createSwingState();
+  s.requestSwing();              // light tap — step 0
+  walkToIdleOrChain(s);          // light swing: idle, comboStep pre-advanced to 1, window open
+  assert.equal(s.getComboStep(), 1);
+  // Charged release while mid-light-chain → the ENDER, not a fresh heavy.
+  assert.equal(s.requestSwing({ skipWindup: true }), true);
+  assert.deepEqual(s.getActiveStep(), W().ender, 'cashed the light chain into the ender');
+  assert.equal(s.isFinisherStrike(), true, 'the ender is a finisher');
+  walkChargedToIdle(s);
+  assert.equal(s.getComboStep(), 0, 'ender ends the chain → back to light step 0');
+});
+
+test('a cold charged release (no light chain) starts the heavy chain, not the ender', () => {
+  setCurrentWeapon(HAMMER);
+  const s = createSwingState();
+  assert.equal(s.requestSwing({ skipWindup: true }), true);
+  assert.deepEqual(s.getActiveStep(), W().heavyCombo![0], 'fresh charge = H1, not the ender');
+});
+
+test('heavy chain resets to the light track after the combo window lapses', () => {
+  setCurrentWeapon(HAMMER);
+  const s = createSwingState();
+  s.requestSwing({ skipWindup: true });   // H1
+  walkChargedToIdle(s);                    // idle, heavy comboStep 1, window open
+  assert.equal(s.getComboStep(), 1);
+  s.advance(W().comboWindowMs / 1000 + 0.5);   // lapse the window
+  assert.equal(s.getComboStep(), 0, 'lapse resets to a fresh step 0');
+  s.requestSwing({ skipWindup: true });   // a fresh charge starts heavy at 0
+  assert.deepEqual(s.getActiveStep(), W().heavyCombo![0]);
+});
+
 test('reset() wipes in-flight swing state (weapon swap)', () => {
   const s = createSwingState();
   s.requestSwing();

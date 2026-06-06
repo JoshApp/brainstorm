@@ -130,6 +130,14 @@ export interface ResolvedWeaponStats {
     strafe?: ResolvedComboStep;
     back?: ResolvedComboStep;
   };
+  /** Resolved HEAVY combo chain — an escalating heavy 1-2-3 walked by repeated
+   *  CHARGED releases (hold→hold→hold), separate from the light tap combo. Each
+   *  step is more committed; the last is the finisher. Optional (only weapons
+   *  built for it). */
+  heavyCombo?: ResolvedComboStep[];
+  /** Resolved ENDER — a special finisher fired by cashing out a LIGHT chain with
+   *  a charged release (tap, tap → hold). Stronger than a cold heavy. Optional. */
+  ender?: ResolvedComboStep;
 }
 
 /** Movement-driven attack variants. When the joystick is held past a
@@ -172,6 +180,12 @@ interface ClassDefaults {
   comboWindowMs: number;
   directionalMoves?: DirectionalMoves;
   chargedMoves?: ChargedMoves;
+  /** HEAVY combo chain (hold→hold→hold) — an escalating heavy 1-2-3 walked by
+   *  charged releases. Optional; only weapons designed for it. */
+  heavyCombo?: ComboStep[];
+  /** ENDER — the special finisher a charged release fires at the end of a light
+   *  chain (tap, tap → hold). Optional. */
+  ender?: ComboStep;
   /** WEIGHT multiplier on windup + recover (NOT strike). 1.0 = as
    *  authored (light/fast); >1 = heavier, more committal. Heavies
    *  (hammer/scythe) sit high; the baseline sword + spear get a modest
@@ -314,6 +328,24 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       back:        { pose: 'hammer-swing-right', windup: 0.16, strike: 0.12, recover: 0.30,
                      reachMul: 1.05, coneHalfAngleMul: 1.2, maxTargets: 2 },
     },
+    // HEAVY combo — hold→hold→hold for an escalating heavy 1-2-3, walked by
+    // charged releases (each pours stamina, so the chain drains hard). The third
+    // is the finisher (gets finisherDamageMultiplier via isFinisherStrike).
+    heavyCombo: [
+      // H1 — overhead smash: single target, big stagger, the opener.
+      { pose: 'hammer-smash', windup: 0.26, strike: 0.16, recover: 0.50,
+        reachMul: 1.20, coneHalfAngleMul: 1.0, maxTargets: 1 },
+      // H2 — wide horizontal sweep: cleaves, knockback, momentum into the third.
+      { pose: 'hammer-swing-left', windup: 0.22, strike: 0.14, recover: 0.46,
+        reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 3 },
+      // H3 — ground-slam finisher: widest AoE, longest commit, devastating.
+      { pose: 'hammer-smash', windup: 0.34, strike: 0.18, recover: 0.62,
+        reachMul: 1.45, coneHalfAngleMul: 1.7, maxTargets: 4 },
+    ],
+    // ENDER — a light tap chain cashed out with a charged release: a big
+    // committed smash, stronger than a cold heavy (a finisher).
+    ender: { pose: 'hammer-smash', windup: 0.28, strike: 0.16, recover: 0.52,
+             reachMul: 1.35, coneHalfAngleMul: 1.5, maxTargets: 3 },
   },
   spear: {
     // thrust → thrust → lunge. Spear stays narrow + single-target
@@ -616,5 +648,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     chargedEffect: spec.chargedEffect,
     directionalMoves,
     chargedMoves,
+    heavyCombo: baseT.heavyCombo ? baseT.heavyCombo.map(resolveStep) : undefined,
+    ender: baseT.ender ? resolveStep(baseT.ender) : undefined,
   };
 }
