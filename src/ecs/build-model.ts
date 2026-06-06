@@ -1,10 +1,15 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import type { MaterialDef, ModelSpec, PartSpec, Vec3 } from './model-types';
 import { getTexture } from '../style/procedural-textures';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
 } from '../scene/geometry-pool';
+
+// One Evaluator instance reused across every CSG build — internally
+// reusable state, no shared output. Cheap to keep around.
+const CSG_EVAL = new Evaluator();
 
 // buildModel — turn a ModelSpec into a live THREE.Group with named parts,
 // slot anchors, fresh per-instance materials, and an optional attached light.
@@ -348,6 +353,9 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
       jitterGeometry(geo, part.jitter);
       return makeMesh(geo, materials.get(part.mat)!, part);
     }
+    case 'csg': {
+      return buildCsg(part, materials);
+    }
     case 'sprite': {
       const spriteMat = new THREE.SpriteMaterial({
         map: getTexture(part.texture),
@@ -428,6 +436,63 @@ function makeMesh(geo: THREE.BufferGeometry, mat: THREE.Material, part: PartSpec
   mesh.castShadow = part.castShadow ?? true;
   mesh.receiveShadow = part.receiveShadow ?? true;
   return mesh;
+}
+
+// Build a CSG node — a boolean op between two child specs. Each
+// operand is built via buildPart (so it can itself be a CSG node — nest
+// at your own risk; research finds LLM state tracking degrades past 2-3
+// levels). The operands' pos/rot/scale get BAKED into their geometry
+// before the boolean runs, so the outer CSG spec's transform can apply
+// on top of the resulting carving like any other primitive.
+//
+// CSG only works on meshes. If an operand resolves to anything else (a
+// Sprite, a Group, a no-op Object3D from a too-short shape), the build
+// throws — the spec is bad data and crashing early is the right
+// failure mode.
+function buildCsg(
+  part: Extract<PartSpec, { kind: 'csg' }>,
+  materials: Map<string, THREE.Material>,
+): THREE.Mesh {
+  const a = buildPart(part.a, materials);
+  const b = buildPart(part.b, materials);
+  // Authored transforms for the operands — the caller's main loop applies
+  // these for ordinary parts. We apply them manually here because we
+  // immediately bake them into the geometry instead of letting them ride
+  // as live Object3D transforms.
+  applyTransform(a, part.a);
+  applyTransform(b, part.b);
+
+  if (!(a as THREE.Mesh).isMesh) throw new Error(`csg operand A is not a mesh: kind=${part.a.kind}`);
+  if (!(b as THREE.Mesh).isMesh) throw new Error(`csg operand B is not a mesh: kind=${part.b.kind}`);
+
+  const meshA = a as THREE.Mesh;
+  const meshB = b as THREE.Mesh;
+  meshA.updateMatrix();
+  meshB.updateMatrix();
+  const geoA = meshA.geometry.clone();
+  const geoB = meshB.geometry.clone();
+  geoA.applyMatrix4(meshA.matrix);
+  geoB.applyMatrix4(meshB.matrix);
+
+  const brushA = new Brush(geoA);
+  const brushB = new Brush(geoB);
+  brushA.updateMatrixWorld();
+  brushB.updateMatrixWorld();
+
+  const op =
+    part.op === 'subtract'  ? SUBTRACTION :
+    part.op === 'add'       ? ADDITION :
+                              INTERSECTION;
+  const result = CSG_EVAL.evaluate(brushA, brushB, op);
+
+  // Replace the result's material with the CSG spec's chosen one and
+  // free the operand geometries — they're no longer referenced.
+  result.material = materials.get(part.mat)!;
+  geoA.dispose();
+  geoB.dispose();
+  result.castShadow = part.castShadow ?? true;
+  result.receiveShadow = part.receiveShadow ?? true;
+  return result;
 }
 
 function applyTransform(obj: THREE.Object3D, part: PartSpec) {

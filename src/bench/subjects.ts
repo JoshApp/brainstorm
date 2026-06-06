@@ -36,9 +36,42 @@ const BEVEL_DEMO: ModelSpec = {
   ],
 };
 
+// CSG demo: a row showing each boolean op on the SAME pair of
+// primitives (a sphere and a box). Confirms the pipeline + lets me
+// eyeball whether a future tuning pass broke watertightness.
+const CSG_DEMO: ModelSpec = {
+  id: 'csg-demo',
+  materials: {
+    stone: { color: 0x6a6258, roughness: 0.85, metalness: 0.2, flatShading: 'auto' },
+  },
+  parts: [
+    // 0. ORIGINAL — sphere alone for reference.
+    { kind: 'sphere', pos: [-0.45, 0, 0], radius: 0.10, segments: [16, 12], mat: 'stone' },
+    // 1. ADD — sphere fused with a box. One continuous lump.
+    {
+      kind: 'csg', pos: [-0.15, 0, 0], op: 'add', mat: 'stone',
+      a: { kind: 'sphere', radius: 0.10, segments: [16, 12], mat: 'stone' },
+      b: { kind: 'box',    pos: [0.07, 0, 0], size: [0.10, 0.10, 0.10], mat: 'stone' },
+    },
+    // 2. SUBTRACT — sphere with the box carved out of it.
+    {
+      kind: 'csg', pos: [0.15, 0, 0], op: 'subtract', mat: 'stone',
+      a: { kind: 'sphere', radius: 0.10, segments: [16, 12], mat: 'stone' },
+      b: { kind: 'box',    pos: [0.07, 0, 0], size: [0.10, 0.10, 0.10], mat: 'stone' },
+    },
+    // 3. INTERSECT — the lens-shaped overlap region only.
+    {
+      kind: 'csg', pos: [0.45, 0, 0], op: 'intersect', mat: 'stone',
+      a: { kind: 'sphere', radius: 0.10, segments: [16, 12], mat: 'stone' },
+      b: { kind: 'box',    pos: [0.07, 0, 0], size: [0.10, 0.10, 0.10], mat: 'stone' },
+    },
+  ],
+};
+
 const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'hand-right':  { label: 'Right hand viewmodel', spec: HAND_RIGHT },
   'bevel-demo':  { label: 'Bevel radius demo (0 → 0.099m)', spec: BEVEL_DEMO },
+  'csg-demo':    { label: 'CSG: original / add / subtract / intersect', spec: CSG_DEMO },
 };
 
 export interface BenchSubject {

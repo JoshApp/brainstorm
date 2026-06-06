@@ -130,6 +130,31 @@ export type PartSpec =
       bevelThickness?: number;   // how deep into the shape the bevel cuts
       bevelSegments?: number;    // curve resolution
     })
+  // --- Constructive Solid Geometry ---
+  // CSG: boolean op between two child specs. Powered by three-bvh-csg
+  // (BVH-accelerated, build-time only; we don't re-evaluate per frame).
+  // Resulting mesh's pos/rot/scale + material come from THIS spec, NOT
+  // from the children — children only contribute their shape. The two
+  // operands ARE built at their authored local positions, so the child
+  // pos/rot are how you place B relative to A.
+  //
+  // Operations:
+  //   'subtract'   — A minus B (carve B out of A)
+  //   'add'        — A union B (fuse into one watertight shape)
+  //   'intersect'  — keep only the overlap region
+  //
+  // Watertight input matters: closed primitives (sphere, capsule,
+  // closed cylinder/cone, box, lathe with a closed profile) are safe.
+  // Open shapes (sprite, decal, line, anything 2D) will produce
+  // garbage and are runtime-rejected. Nest with care — the research
+  // says LLM CSG state tracking degrades after 2-3 levels of nesting.
+  | (PartCommon & {
+      kind: 'csg';
+      op: 'subtract' | 'add' | 'intersect';
+      a: PartSpec;
+      b: PartSpec;
+      mat: string;
+    })
   // Torus (ring/donut). Centered at pos with the hole's axis along local Z.
   // Useful for: jewelry, rings, halo geometry, lamp shades.
   | (PartCommon & { kind: 'torus'; radius: number; tube: number; segments?: Vec2; mat: string })

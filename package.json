@@ -26,7 +26,9 @@
     "delve": "tsx scripts/delve.ts"
   },
   "dependencies": {
-    "three": "^0.160.0"
+    "three": "^0.160.0",
+    "three-bvh-csg": "^0.0.16",
+    "three-mesh-bvh": "^0.7.5"
   },
   "devDependencies": {
     "@types/three": "^0.160.0",
