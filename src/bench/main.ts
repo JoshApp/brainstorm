@@ -105,6 +105,13 @@ if (!subjectId) {
     // weapon ACTUALLY HELD instead of floating alone. Silently ignored
     // on non-weapon subjects.
     const handMode = params.get('hand') === '1' && subject.kind === 'weapon';
+    // --highlight=name1,name2 — bright-magenta colour-by-part for the
+    // named slots/parts; dim everything else. Use to call out a
+    // specific part of a busy rig (e.g. "show me where finger_thumb
+    // ended up").
+    const highlight = new Set(
+      (params.get('highlight') ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    );
 
     // `built` is the model we'll show on screen. For a held composition
     // it's the wrapper's hand BuiltModel (so colour-by-part / slot
@@ -144,9 +151,17 @@ if (!subjectId) {
       const subjectRadius = bbox.getBoundingSphere(new THREE.Sphere()).radius;
       if (gnomonMode || debugMode) addGnomon(studioRoot, subjectRadius);
       if (debugMode) {
-        addSlotOverlay(studioRoot, built, subjectRadius);
+        addSlotOverlay(studioRoot, built, subjectRadius, highlight);
         addBoundingBox(studioRoot, built.group);
-        colorByPart(built);   // mutates materials in place (bench is throwaway)
+        colorByPart(built, highlight);   // mutates materials in place (bench is throwaway)
+        // When composed, the WEAPON's parts/slots are nested under
+        // the hand's palm_anchor. Colour-by-part already coloured
+        // every mesh in the hand subtree; do the same for the
+        // weapon so highlight names like "blade" / "grip" work too.
+        if (composition?.weapon) {
+          colorByPart(composition.weapon, highlight);
+          addSlotOverlay(studioRoot, composition.weapon, subjectRadius, highlight);
+        }
       }
 
       draw = () => {
@@ -167,7 +182,7 @@ if (!subjectId) {
         if (weaponAnim) mounted!.renderHeldGrid(m, FP_FOV, weaponAnim.poseAt);
         else if (mobAnim) mounted!.renderPoseGrid(m, az, e, mobAnim.poseAt);
       },
-      readout: () => computeReadout(subject, built),
+      readout: () => computeReadout(subject, built, composition?.weapon),
       subjects: () => listSubjects().map((s) => s.id),
     };
   }

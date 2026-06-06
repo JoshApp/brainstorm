@@ -21,12 +21,30 @@ export interface Readout {
   vertices: number;
   materials: string[];
   slots: Array<{ name: string; pos: [number, number, number] }>;
+  /** Composition diagnostics — populated only when the bench is in
+   *  `--hand` mode (hand + weapon composed). Each entry shows a
+   *  notable geometric relationship (e.g. distance from a finger DIP
+   *  tip to the palm anchor) so the author can VERIFY the wrap
+   *  numerically instead of squinting at a screenshot. */
+  composition?: {
+    /** Distance from named-A slot world-pos to named-B slot world-pos. */
+    distances: Array<{ a: string; b: string; d: number }>;
+    /** Where the weapon's grip_anchor actually landed vs the hand's
+     *  palm_anchor — these should be essentially identical after
+     *  alignment; non-zero means the math broke. */
+    gripAlignmentError: number;
+  };
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
-export function computeReadout(subject: BenchSubject, built: BuiltModel): Readout {
+export function computeReadout(
+  subject: BenchSubject,
+  built: BuiltModel,
+  weapon?: BuiltModel | null,
+): Readout {
   built.group.updateMatrixWorld(true);
+  if (weapon) weapon.group.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(built.group);
   const size = box.getSize(new THREE.Vector3());
 
@@ -48,6 +66,38 @@ export function computeReadout(subject: BenchSubject, built: BuiltModel): Readou
     node.getWorldPosition(v);
     slots.push({ name, pos: [r3(v.x), r3(v.y), r3(v.z)] });
   }
+  // Weapon slots get a `weapon:` prefix so the two namespaces stay
+  // distinct in the readout.
+  if (weapon) {
+    for (const [name, node] of weapon.slots) {
+      node.getWorldPosition(v);
+      slots.push({ name: `weapon:${name}`, pos: [r3(v.x), r3(v.y), r3(v.z)] });
+    }
+  }
+
+  // ── Composition diagnostics (hand mode only) ─────────────────────
+  let composition: Readout['composition'] = undefined;
+  if (weapon) {
+    const palmAnchor = built.slots.get('palm_anchor');
+    const gripAnchor = weapon.slots.get('grip_anchor');
+    const palmWorld = palmAnchor ? palmAnchor.getWorldPosition(new THREE.Vector3()) : null;
+    const gripWorld = gripAnchor ? gripAnchor.getWorldPosition(new THREE.Vector3()) : null;
+    const gripAlignmentError = palmWorld && gripWorld ? palmWorld.distanceTo(gripWorld) : 0;
+    // Distances from each finger's DISTAL slot to palm_anchor — the
+    // single number that says "fingers are wrapped" vs "fingers are
+    // flailing somewhere out in front."
+    const distances: Array<{ a: string; b: string; d: number }> = [];
+    const fingerDips = ['finger_index_dip', 'finger_middle_dip', 'finger_ring_dip', 'finger_pinky_dip', 'finger_thumb_ip'];
+    if (palmAnchor) {
+      for (const tipSlot of fingerDips) {
+        const node = built.slots.get(tipSlot);
+        if (!node) continue;
+        const tipWorld = node.getWorldPosition(new THREE.Vector3());
+        distances.push({ a: tipSlot, b: 'palm_anchor', d: r3(tipWorld.distanceTo(palmWorld!)) });
+      }
+    }
+    composition = { distances, gripAlignmentError: r3(gripAlignmentError) };
+  }
 
   return {
     id: subject.id,
@@ -63,5 +113,6 @@ export function computeReadout(subject: BenchSubject, built: BuiltModel): Readou
     vertices,
     materials: [...built.materials.keys()],
     slots,
+    composition,
   };
 }

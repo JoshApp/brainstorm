@@ -55,48 +55,79 @@ function setDepthTestOff(obj: { material: THREE.Material | THREE.Material[] }): 
 
 /** Add an axis helper at every slot in the built model, with a small
  *  HTML label sprite naming each one. The label is a CanvasTexture so
- *  it ends up in the screenshot like everything else. */
-export function addSlotOverlay(parent: THREE.Object3D, built: BuiltModel, radius: number): void {
+ *  it ends up in the screenshot like everything else.
+ *
+ *  `highlight` (optional) — names that get bigger axes + the label
+ *  rendered in magenta. The rest of the slot overlay stays as a quiet
+ *  reference layer so the highlighted slots pop. */
+export function addSlotOverlay(
+  parent: THREE.Object3D,
+  built: BuiltModel,
+  radius: number,
+  highlight: ReadonlySet<string> = new Set(),
+): void {
   const existing = parent.getObjectByName(SLOT_GROUP_NAME);
   if (existing) parent.remove(existing);
   const group = new THREE.Group();
   group.name = SLOT_GROUP_NAME;
   const axisLength = Math.max(0.02, radius * 0.18);
   for (const [name, anchor] of built.slots) {
-    const axes = new THREE.AxesHelper(axisLength);
+    const hit = highlight.has(name);
+    const axes = new THREE.AxesHelper(hit ? axisLength * 2.0 : axisLength);
     setDepthTestOff(axes);
     axes.renderOrder = 999;
-    // Slots are children of built.group (or of named parts when
-    // nested) — copy world matrix at render time. Add to the slot
-    // anchor directly so it inherits any nested transform automatically.
     anchor.add(axes);
-    // Sprite label so the slot name floats next to its axes.
-    const sprite = makeTextSprite(name, 0.85);
-    const labelOffset = axisLength * 1.3;
+    const sprite = makeTextSprite(name, hit ? 1.15 : 0.85, hit);
+    const labelOffset = axisLength * (hit ? 1.6 : 1.3);
     sprite.position.set(labelOffset, labelOffset, 0);
     anchor.add(sprite);
     group.userData[name] = { axes, sprite };
   }
-  // Empty marker group on the parent so we can find + remove this overlay later.
   parent.add(group);
 }
 
 /** Replace every mesh's material in `built.group` with a flat unlit
  *  colour derived from the mesh's part name (or its index when
- *  unnamed). Stash the original materials so they can be restored. */
-export function colorByPart(built: BuiltModel): () => void {
+ *  unnamed). If `highlight` is non-empty, every mesh whose name
+ *  matches gets a bright magenta; everything else FADES to a quarter
+ *  brightness so the highlighted parts pop out of the model.
+ *
+ *  Stash the original materials so they can be restored. */
+export function colorByPart(
+  built: BuiltModel,
+  highlight: ReadonlySet<string> = new Set(),
+): () => void {
   const saved: Array<{ mesh: THREE.Mesh; mat: THREE.Material | THREE.Material[] }> = [];
   let i = 0;
-  // Index → part name lookup so unnamed parts inherit a stable, ordered colour.
   const nameByMesh = new Map<THREE.Object3D, string>();
   for (const [name, obj] of built.parts) nameByMesh.set(obj, name);
+  // Highlight resolution also walks each named PART's subtree (the
+  // mesh hierarchy under `built.parts.get('hand')` etc.) so a name
+  // match colours every descendant mesh too.
+  const subtreeHighlight = new Set<THREE.Object3D>();
+  if (highlight.size > 0) {
+    for (const name of highlight) {
+      const node = built.parts.get(name);
+      if (!node) continue;
+      node.traverse((obj) => { if ((obj as THREE.Mesh).isMesh) subtreeHighlight.add(obj); });
+    }
+  }
+  const hasHighlight = highlight.size > 0;
 
   built.group.traverse((obj) => {
     if (!(obj as THREE.Mesh).isMesh) return;
     const mesh = obj as THREE.Mesh;
     saved.push({ mesh, mat: mesh.material });
     const tag = nameByMesh.get(mesh) ?? `_${i++}`;
-    const color = hashColor(tag);
+    const hit = subtreeHighlight.has(mesh) || highlight.has(tag);
+    let color: THREE.Color;
+    if (hit) {
+      color = new THREE.Color(0xff3aff);  // hot magenta — pops on any background
+    } else if (hasHighlight) {
+      color = hashColor(tag).multiplyScalar(0.25);  // dim non-targets
+    } else {
+      color = hashColor(tag);
+    }
     mesh.material = new THREE.MeshBasicMaterial({ color });
   });
 
@@ -129,8 +160,10 @@ function hashColor(s: string): THREE.Color {
 }
 
 /** Tiny canvas-backed sprite for a single line of label text. Cheap; we
- *  only ever create a handful per render. */
-function makeTextSprite(text: string, scale: number): THREE.Sprite {
+ *  only ever create a handful per render. Highlighted labels pull a
+ *  magenta border + brighter fill so they stand out from the quiet
+ *  amber default. */
+function makeTextSprite(text: string, scale: number, highlight = false): THREE.Sprite {
   const dpr = 2;
   const padding = 6;
   const fontSize = 24;
@@ -144,12 +177,12 @@ function makeTextSprite(text: string, scale: number): THREE.Sprite {
   cvs.height = h * dpr;
   ctx.scale(dpr, dpr);
   ctx.font = `bold ${fontSize}px ui-monospace, monospace`;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillStyle = highlight ? 'rgba(40, 0, 40, 0.85)' : 'rgba(0, 0, 0, 0.7)';
   ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = 'rgba(255, 220, 130, 0.55)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = highlight ? 'rgba(255, 80, 255, 0.95)' : 'rgba(255, 220, 130, 0.55)';
+  ctx.lineWidth = highlight ? 2 : 1;
   ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
-  ctx.fillStyle = 'rgba(255, 230, 180, 0.95)';
+  ctx.fillStyle = highlight ? 'rgba(255, 200, 255, 1)' : 'rgba(255, 230, 180, 0.95)';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, padding, h / 2);
   const tex = new THREE.CanvasTexture(cvs);
