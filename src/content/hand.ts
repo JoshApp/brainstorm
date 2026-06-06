@@ -217,14 +217,14 @@ export const HAND_RIGHT: ModelSpec = {
     // by design — a stamped row of identical fingers reads as a comb,
     // not a hand). Z-rotations are mirrored to match the +X = pinky
     // convention.
-    finger_index:  { pos: [ 0.025, 0.048, 0.012], rot: [-1.40, 0, -0.10] },
-    finger_middle: { pos: [ 0.008, 0.054, 0.012], rot: [-1.50, 0, -0.04] },
-    finger_ring:   { pos: [-0.008, 0.050, 0.012], rot: [-1.45, 0,  0.04] },
-    finger_pinky:  { pos: [-0.023, 0.041, 0.012], rot: [-1.30, 0,  0.12] },
+    finger_index:  { pos: [ 0.025, 0.048, 0.012], rot: [-1.95, 0, -0.12] },
+    finger_middle: { pos: [ 0.008, 0.054, 0.012], rot: [-2.05, 0, -0.04] },
+    finger_ring:   { pos: [-0.008, 0.050, 0.012], rot: [-2.00, 0,  0.04] },
+    finger_pinky:  { pos: [-0.023, 0.041, 0.012], rot: [-1.85, 0,  0.14] },
     // Thumb wraps from the SIDE (across the front of the closed
     // fingers). Same XYZ Euler order; rotation puts the phalanx
     // perpendicular to the metacarpal, wrapping over the top of the
     // grip area.
-    finger_thumb:  { pos: [-0.048, 0.006, 0.012], rot: [-0.90, 0, -1.00] },
+    finger_thumb:  { pos: [-0.048, 0.006, 0.012], rot: [-1.10, 0, -1.20] },
   },
 };
