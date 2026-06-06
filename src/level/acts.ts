@@ -72,9 +72,11 @@ export const ACTS: Act[] = [
     name: 'The Cistern',
     depths: [4, 5, 6, 7],
     bossDepth: 7,
-    // INTERIM: the boiling-king fills every act's boss slot until Act II/III
-    // get distinct bosses (was 'hollow-choir', the wraith placeholder).
-    bossId: 'boiling-king',
+    // Act II: the Marrow Sovereign — towering greatscythe… clawed
+    // skeleton, two-phase fight (standing → crawl after the legs go).
+    // Boss-mist is bone-red so the silhouette behind the curtain reads
+    // unmistakably "skeleton" through the Cistern's blue palette.
+    bossId: 'marrow-sovereign',
     torchTint: 0x66ccdd,
     fogColor: 0x05101a,
   },
