@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Combat: heavy combos + enders for the rest of the melee weapons"
+      },
+      {
+        "tag": "tune",
+        "text": "Viewmodels sway when the camera turns"
+      },
+      {
         "tag": "fix",
         "text": "Weapons"
       },
@@ -216,14 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Balance: lifesteal → chance-on-kill, trim basic-chain cleave (playtest)"
-      },
-      {
-        "tag": "tune",
-        "text": "Balance pass 1"
-      },
-      {
-        "tag": "tune",
-        "text": "God ray"
       }
     ]
   }

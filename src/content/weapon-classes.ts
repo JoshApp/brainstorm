@@ -236,6 +236,18 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       back:        { pose: 'dagger-slash', windup: 0.06, strike: 0.10, recover: 0.18,
                      reachMul: 1.0,  coneHalfAngleMul: 0.9, maxTargets: 1 },
     },
+    // HEAVY combo (hold→hold→hold) — a committed assassin's flurry into the
+    // double-stab finisher. Drains hard (each step is a charged pour).
+    heavyCombo: [
+      { pose: 'dagger-stab',        windup: 0.12, strike: 0.14, recover: 0.28,
+        reachMul: 1.25, coneHalfAngleMul: 0.6, maxTargets: 1 },
+      { pose: 'dagger-slash',       windup: 0.12, strike: 0.16, recover: 0.30,
+        reachMul: 1.10, coneHalfAngleMul: 1.4, maxTargets: 2 },
+      { pose: 'dagger-double-stab', windup: 0.10, strike: 0.30, recover: 0.40,
+        reachMul: 1.20, coneHalfAngleMul: 0.7, maxTargets: 1 },
+    ],
+    ender: { pose: 'dagger-double-stab', windup: 0.10, strike: 0.28, recover: 0.36,
+             reachMul: 1.20, coneHalfAngleMul: 0.8, maxTargets: 2 },
   },
   sword: {
     // slash-left → slash-right → thrust. The basic chain is SINGLE-TARGET
@@ -296,6 +308,17 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       // V1 those fall back to the regular directional move with the
       // standard charge modifiers stacked.)
     },
+    // HEAVY combo — a committed power-slash → wide sweep → driving lunge finisher.
+    heavyCombo: [
+      { pose: 'sword-slash-right',   windup: 0.18, strike: 0.12, recover: 0.40,
+        reachMul: 1.20, coneHalfAngleMul: 1.2, maxTargets: 2 },
+      { pose: 'sword-sweep-left',    windup: 0.18, strike: 0.14, recover: 0.42,
+        reachMul: 1.25, coneHalfAngleMul: 1.5, maxTargets: 3 },
+      { pose: 'sword-lunge-forward', windup: 0.22, strike: 0.16, recover: 0.52,
+        reachMul: 1.50, coneHalfAngleMul: 0.7, maxTargets: 2 },
+    ],
+    ender: { pose: 'sword-thrust', windup: 0.20, strike: 0.14, recover: 0.46,
+             reachMul: 1.40, coneHalfAngleMul: 0.9, maxTargets: 2 },
   },
   hammer: {
     // swing-right → swing-left → smash. Wide horizontal sweeps
@@ -379,6 +402,17 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       back:        { pose: 'spear-thrust', windup: 0.08, strike: 0.10, recover: 0.20,
                      reachMul: 1.1, coneHalfAngleMul: 0.9, maxTargets: 1 },
     },
+    // HEAVY combo — braced thrusts at escalating reach into a deep driving lunge.
+    heavyCombo: [
+      { pose: 'spear-thrust', windup: 0.16, strike: 0.14, recover: 0.40,
+        reachMul: 1.40, coneHalfAngleMul: 0.7, maxTargets: 1 },
+      { pose: 'spear-thrust', windup: 0.16, strike: 0.14, recover: 0.40,
+        reachMul: 1.50, coneHalfAngleMul: 0.9, maxTargets: 2 },
+      { pose: 'spear-lunge',  windup: 0.22, strike: 0.18, recover: 0.56,
+        reachMul: 1.80, coneHalfAngleMul: 0.7, maxTargets: 2 },
+    ],
+    ender: { pose: 'spear-lunge', windup: 0.20, strike: 0.16, recover: 0.50,
+             reachMul: 1.70, coneHalfAngleMul: 0.8, maxTargets: 2 },
   },
   // RANGED classes — a single "fire" step (no combo chain). The strike
   // spawns the weapon's projectile (combat/attack.ts) instead of a melee
@@ -428,6 +462,17 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       back:        { pose: 'scythe-reap-right', windup: 0.14, strike: 0.14, recover: 0.28,
                      reachMul: 1.05, coneHalfAngleMul: 1.3, maxTargets: 3 },
     },
+    // HEAVY combo — wide reaps both sides into the clearing spin finisher.
+    heavyCombo: [
+      { pose: 'scythe-reap-right', windup: 0.22, strike: 0.16, recover: 0.46,
+        reachMul: 1.25, coneHalfAngleMul: 1.7, maxTargets: 4 },
+      { pose: 'scythe-reap-left',  windup: 0.22, strike: 0.16, recover: 0.46,
+        reachMul: 1.30, coneHalfAngleMul: 1.8, maxTargets: 4 },
+      { pose: 'scythe-spin',       windup: 0.32, strike: 0.22, recover: 0.62,
+        reachMul: 1.40, coneHalfAngleMul: 2.0, maxTargets: 5 },
+    ],
+    ender: { pose: 'scythe-spin', windup: 0.28, strike: 0.20, recover: 0.56,
+             reachMul: 1.35, coneHalfAngleMul: 1.9, maxTargets: 5 },
   },
   // ── NEW MELEE: WHIP ─────────────────────────────────────────────────
   // Long reach, narrow cone, snappy timings. Built around "I can
@@ -454,6 +499,17 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       back:        { pose: 'whip-crack-right', windup: 0.08, strike: 0.10, recover: 0.20,
                      reachMul: 1.25, coneHalfAngleMul: 0.65, maxTargets: 1 },
     },
+    // HEAVY combo — long cracks into the wide wrap finisher.
+    heavyCombo: [
+      { pose: 'whip-crack-right', windup: 0.12, strike: 0.14, recover: 0.30,
+        reachMul: 1.50, coneHalfAngleMul: 0.6, maxTargets: 1 },
+      { pose: 'whip-crack-left',  windup: 0.12, strike: 0.14, recover: 0.30,
+        reachMul: 1.50, coneHalfAngleMul: 0.6, maxTargets: 1 },
+      { pose: 'whip-wrap',        windup: 0.18, strike: 0.24, recover: 0.46,
+        reachMul: 1.60, coneHalfAngleMul: 1.3, maxTargets: 3 },
+    ],
+    ender: { pose: 'whip-wrap', windup: 0.16, strike: 0.22, recover: 0.42,
+             reachMul: 1.55, coneHalfAngleMul: 1.2, maxTargets: 3 },
   },
   // ── NEW RANGED: THROWING KNIVES ─────────────────────────────────────
   // Multi-projectile fan. Spawns COUNT projectiles per shot with
