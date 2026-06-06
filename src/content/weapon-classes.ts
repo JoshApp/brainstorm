@@ -147,9 +147,11 @@ export interface ResolvedWeaponStats {
  *  sweeps (wide cone, mirrored arc), back = retreat-slash (quick
  *  poke + repositioning recovery).
  *
- *  Firing a directional move RESETS the normal combo to step 0 — it
- *  doesn't advance the chain. Players who want the 1-2-3 keep the
- *  joystick centred; players who want intent-driven moves point. */
+ *  A held direction flavors the combo OPENER only: a TAP in a direction
+ *  swaps step 0 for that directional move, but the chain still ADVANCES
+ *  (so moving never breaks your 1-2-3 — the second step + finisher are
+ *  always the fixed combo). The same moves also fire as deliberate
+ *  CHARGED specials (charge + direction), telegraphed during the hold. */
 export interface DirectionalMoves {
   forward?: ComboStep;
   strafeLeft?: ComboStep;

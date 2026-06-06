@@ -22,6 +22,15 @@ import type { ResolvedComboStep } from '../content/weapon-classes';
  *  step (lunge, sweep, retreat, ward). Strafe splits L/R. */
 export type AttackDirection = 'forward' | 'back' | 'strafe-left' | 'strafe-right' | null;
 
+/** The directionalMoves key for an AttackDirection (strafe split L/R). */
+type DirKey = 'forward' | 'back' | 'strafeLeft' | 'strafeRight';
+function dirKeyOf(dir: AttackDirection): DirKey | null {
+  return !dir ? null
+    : dir === 'forward' ? 'forward'
+    : dir === 'back' ? 'back'
+    : dir === 'strafe-left' ? 'strafeLeft' : 'strafeRight';
+}
+
 export type SwingPhase = 'idle' | 'windup' | 'strike' | 'recover';
 
 export interface SwingStateOptions {
@@ -83,6 +92,12 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
   // ENDER override — a charged release that cashed out a light chain. One-off
   // finisher (like a directional move); cleared on the next recover-end.
   let activeEnderStep: ResolvedComboStep | null = null;
+  // Direction flavor for the combo OPENER only (comboStep 0). A tap held in a
+  // direction swaps step 0 for that directional move's pose/stats, but the combo
+  // still ADVANCES — moving never breaks the chain, and the second step +
+  // finisher are always the fixed combo. Distinct from activeDirectionalStep so
+  // the opener still buffers/chains like a normal step. Cleared each recover-end.
+  let openerDirKey: DirKey | null = null;
   // Internal monotonic clock in SECONDS, advanced by advance(dt). Replaces
   // performance.now() so the machine is deterministic + testable: ticks are
   // the only source of time, so a test drives behaviour purely by advance().
@@ -101,6 +116,12 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     const w = getCurrentWeapon();
     if (activeDirectionalStep) return { combo: w.combo, step: activeDirectionalStep };
     if (activeEnderStep) return { combo: w.combo, step: activeEnderStep };
+    // OPENER flavor: a held direction swaps the light combo's step 0 for that
+    // directional move — moving leans your entry, but the chain still advances.
+    if (track === 'light' && comboStep === 0 && openerDirKey) {
+      const v = w.directionalMoves?.[openerDirKey];
+      if (v) return { combo: w.combo, step: v };
+    }
     const arr = comboArray(w);
     const idx = ((comboStep % arr.length) + arr.length) % arr.length;
     return { combo: arr, step: arr[idx] };
@@ -137,17 +158,17 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     const dir = opts?.direction;
     const isCharged = !!opts?.skipWindup;
     const inWindow = clock < comboWindowExpiresAt;
-    if (dir) {
+    const dirKey = dirKeyOf(dir ?? null);
+    openerDirKey = null;
+    // CHARGED + direction → a deliberate directional SPECIAL (charged move or the
+    // directional move with charge bonuses), telegraphed during the hold. One-off,
+    // resets the chain.
+    if (isCharged && dir) {
       const chargeKey: 'forward' | 'back' | 'strafe' =
         dir === 'forward' ? 'forward' : dir === 'back' ? 'back' : 'strafe';
-      const dirKey =
-        dir === 'forward' ? 'forward' :
-        dir === 'back' ? 'back' :
-        dir === 'strafe-left' ? 'strafeLeft' : 'strafeRight';
-      const chargedMove = isCharged && w.chargedMoves ? w.chargedMoves[chargeKey] : undefined;
-      const directional = w.directionalMoves ? w.directionalMoves[dirKey] : undefined;
+      const chargedMove = w.chargedMoves ? w.chargedMoves[chargeKey] : undefined;
+      const directional = dirKey ? w.directionalMoves?.[dirKey] : undefined;
       activeDirectionalStep = chargedMove ?? directional ?? null;
-      // A directional override resets the chain to a fresh light step 0.
       if (activeDirectionalStep) { comboStep = 0; track = 'light'; }
     }
     if (!activeDirectionalStep) {
@@ -168,6 +189,13 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
         // the light track, preserving the original window/reset behaviour.
         if (track === 'heavy') { track = 'light'; comboStep = 0; }
         else if (!inWindow) comboStep = 0;
+        // TAP + direction flavors ONLY the OPENER (comboStep 0). The chain still
+        // advances on taps — moving never breaks it — and the second step +
+        // finisher are always the fixed combo. (A charged release is handled
+        // above as a special, not an opener.)
+        if (!isCharged && dirKey && comboStep === 0 && w.directionalMoves?.[dirKey]) {
+          openerDirKey = dirKey;
+        }
       }
     }
     // Charged release skips windup — the player already paid by holding; the
@@ -187,6 +215,7 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       if ((comboStep !== 0 || track !== 'light') && clock >= comboWindowExpiresAt) {
         comboStep = 0;
         track = 'light';
+        openerDirKey = null;
       }
       return;
     }
@@ -211,6 +240,10 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       } else {
         comboStep = (comboStep + 1) % comboArray(w).length;
       }
+      // The opener's direction flavor is spent once the swing completes — the
+      // chain is now on its fixed middle/finisher (a buffered chain is a tap, no
+      // direction).
+      openerDirKey = null;
       if (queuedPress && canSwing()) {
         queuedPress = false;
         // A buffered chain is always a LIGHT tap (only the light track buffers) —
@@ -258,6 +291,7 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       track = 'light';
       activeDirectionalStep = null;
       activeEnderStep = null;
+      openerDirKey = null;
     },
     setDebugPhase(p: SwingPhase, t: number) {
       phase = p;

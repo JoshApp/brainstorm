@@ -8,6 +8,10 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-06",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Viewmodel"
+      },
+      {
         "tag": "tune",
         "text": "Combat: directional charge-switching telegraph (For Honor feint)"
       },
@@ -220,10 +224,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "docs: playtest feedback triage + plan (grouped, tagged, ordered)"
-      },
-      {
-        "tag": "tune",
-        "text": "Hitstop: decouple freeze from shake, cap it short (heavy hits read as impact not lag)"
       }
     ]
   }

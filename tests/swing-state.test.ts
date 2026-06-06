@@ -148,6 +148,29 @@ test('a buffered combo will not chain into an empty bar', () => {
   assert.equal(count, 1, 'no extra swing billed when the chain is gated');
 });
 
+// ── Directional input flavors only the combo OPENER ──────────────
+
+test('directional input flavors the OPENER but the chain stays fixed + advances', () => {
+  // (sword is set by the test harness — it has directional moves)
+  const s = createSwingState();
+  const w = W();
+  assert.ok(w.directionalMoves?.strafeLeft, 'sword has a strafe-left directional move');
+  // Opener with a held direction → the directional variant (not the combo step 0).
+  s.requestSwing({ direction: 'strafe-left' });
+  assert.deepEqual(s.getActiveStep(), w.directionalMoves!.strafeLeft, 'opener uses the directional variant');
+  walkToIdleOrChain(s);                    // light swing → idle, combo advanced to 1
+  assert.equal(s.getComboStep(), 1, 'the chain still advances (moving never breaks it)');
+  // Mid-chain press WITH a direction → ignored; the fixed combo step 1 plays.
+  s.requestSwing({ direction: 'strafe-left' });
+  assert.deepEqual(s.getActiveStep(), W().combo[1], 'step 1 is the fixed combo — direction ignored past the opener');
+});
+
+test('a centered opener (no direction) plays the normal combo step 0', () => {
+  const s = createSwingState();
+  s.requestSwing();   // no direction
+  assert.deepEqual(s.getActiveStep(), W().combo[0], 'centered → the normal opener');
+});
+
 // ── Heavy combo chain + light→heavy ender (the hammer) ───────────
 const HAMMER = { reach: 2.4, coneHalfAngle: 0.9, damage: 2, critChance: 0.05, critMultiplier: 2.0, class: 'hammer' as const };
 // A CHARGED swing skips windup (strike→recover→idle), so it reaches idle in TWO
