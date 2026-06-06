@@ -9,6 +9,37 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Reach for a chest or grab loot and your blade stays still now — no more phantom swing when you meant to open, not strike.",
+        "area": [
+          "combat",
+          "controls"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The bones close on what they hold. The grip lives inside the fist now; the dungeon is less amused.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The bench learns to compose. You can finally see what's holding what before it ships.",
+        "area": [
+          "tooling"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The hand finally remembers which side it's on. The bones close on the steel they carry.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The Proving Grounds buttons answer your taps again — Descend and Back were hiding behind the screen.",
         "area": [
           "ui"

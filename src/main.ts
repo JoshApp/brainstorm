@@ -484,13 +484,21 @@ const input = createTouchInput(canvas, {
     );
     if (hit?.kind === 'enemy') { triggerAttack(); return; }
     if (hit?.kind === 'interactable') {
+      // You aimed at a specific object — honour it, and NEVER fall through to
+      // a swing. Tapping a chest / pickup must not flail: if it's reachable
+      // (its own radius, OR the system's cone-aware in-range check for a hair
+      // more reach), use it; if you're genuinely too far, do nothing — but
+      // don't attack. (Previously an out-of-radius hit fell through and swung.)
       const it = hit.interactable;
       const dx = it.position.x - camera.position.x;
       const dz = it.position.z - camera.position.z;
       if (Math.hypot(dx, dz) <= it.radius) {
         resolveUsable(it, camera.position).onUse();
-        return;
+      } else {
+        const reachable = getInRangeInteractable();
+        if (reachable) resolveUsable(reachable, camera.position).onUse();
       }
+      return;
     }
 
     // ── Fallback (no direct hit) — gameplay zone only ──
