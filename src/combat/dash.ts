@@ -17,16 +17,23 @@ import { CONFIG } from '../config';
 import { spendStaminaSoft, stallRegen } from './stamina';
 import { suppressChargeUntilRelease } from '../controls/charge-input';
 import { noteDashStarted } from './just-dodge';
+import { stumble } from './camera-stumble';
 import { applyPlayerKnockback } from '../player/knockback';
 import { setPlayerInvulnerable } from '../player/health';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import { playWhoosh } from '../audio/sfx';
 
+// A short cooldown after a dodge so it can't be mashed — refreshed on each dash,
+// longer when the dodge was a gassed stumble.
+let cooldownUntil = 0;
+
 /** Fire a dash in WORLD direction (dirX, dirZ) — normalised internally. Always
- *  fires (returns true) given a direction; an empty bar yields a weaker stumble. */
+ *  fires (returns true) given a direction; an empty bar yields a weaker stumble.
+ *  Gated only by the brief post-dodge cooldown. */
 export function tryDash(dirX: number, dirZ: number): boolean {
   const len = Math.hypot(dirX, dirZ);
   if (len === 0) return false;   // no resolvable direction
+  if (performance.now() < cooldownUntil) return false;   // still in the post-dodge cooldown
   // Dodge-cancel: drop any held heavy and REFUND its reservation FIRST, so that
   // stamina is back in the pool to fund this escape (panic-cancel a big charge
   // straight into a clean dodge). Suppresses re-charge until the finger lifts.
@@ -39,9 +46,14 @@ export function tryDash(dirX: number, dirZ: number): boolean {
   setPlayerInvulnerable(iframes);
   // Mark the dodge so a hit negated in the next sliver counts as a just-dodge.
   noteDashStarted();
+  // Post-dodge cooldown — longer when this was a gassed stumble (over-extending
+  // on empty leaves you committed).
+  cooldownUntil = performance.now()
+    + (full ? CONFIG.STAMINA.DASH_COOLDOWN_S : CONFIG.STAMINA.DASH_COOLDOWN_GASSED_S) * 1000;
   if (!full) {
-    // Desperate stumble on an empty bar — stall regen + flash so it reads as
-    // "you're out, that was your last gasp", not a free escape.
+    // Desperate stumble on an empty bar — a camera lurch + stall regen + flash,
+    // so it reads as "you're out, that was your last gasp", not a free escape.
+    stumble();
     stallRegen();
     flashStaminaBar();
   }
@@ -50,4 +62,9 @@ export function tryDash(dirX: number, dirZ: number): boolean {
   // a stumble).
   try { navigator.vibrate?.(full ? 12 : 7); } catch { /* unsupported */ }
   return true;
+}
+
+/** Reset the dodge cooldown — floor load. */
+export function resetDashCooldown(): void {
+  cooldownUntil = 0;
 }

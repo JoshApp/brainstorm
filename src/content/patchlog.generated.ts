@@ -9,6 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "content",
+        "text": "Authoring: data-driven weapon poses (additive) + 20 poses migrated, test-locked"
+      },
+      {
+        "tag": "content",
         "text": "Combat feel: felt-exhaustion — breathing audio + camera chest-heave"
       },
       {
@@ -214,10 +218,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Shader step 3/4: depth-keyed darkness — an art-directed pool of reveal"
-      },
-      {
-        "tag": "tune",
-        "text": "Bloom: ease strength + raise threshold (god ray was a tad strong)"
       }
     ]
   }

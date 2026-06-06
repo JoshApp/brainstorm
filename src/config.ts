@@ -109,10 +109,15 @@ export const CONFIG = {
     DASH_SPEED: 15,           // impulse speed (m/s) fed to player knockback
     DASH_IFRAME_S: 0.30,      // invulnerability window during the lunge
     // Dodge NEVER blocks — at empty it still fires as a desperate STUMBLE:
-    // shorter i-frames + a weaker lunge, and it stalls your regen (stallRegen)
-    // so a no-stamina escape is a punishing last resort, not free.
+    // shorter i-frames + a much weaker, shorter lunge, a camera lurch (see
+    // CAMERA_STUMBLE), and it stalls your regen (stallRegen) so a no-stamina
+    // escape is a punishing last resort, not free.
     DASH_STUMBLE_IFRAME_MUL: 0.45,  // i-frames as a fraction of full when gassed
-    DASH_STUMBLE_SPEED_MUL: 0.7,    // weaker lunge when gassed
+    DASH_STUMBLE_SPEED_MUL: 0.5,    // weaker, shorter lunge when gassed
+    // A small cooldown after a dodge so it can't be mashed — longer when the
+    // dodge was a gassed stumble, so over-extending on empty leaves you committed.
+    DASH_COOLDOWN_S: 0.22,
+    DASH_COOLDOWN_GASSED_S: 0.42,
     // Aggression reward (Nightreign-style): a MELEE swing that CONNECTS with an
     // enemy refunds this much stamina, once per swing (ranged is excluded;
     // whiffs and vase-smashes don't pay). Light swings are free, so this is pure
@@ -175,10 +180,21 @@ export const CONFIG = {
   EXHAUSTION: {
     WINDED_THRESHOLD: 0.45,    // usable-stamina fraction below which breathing fades in
     SUBGASSED_MAX: 0.7,        // exertion cap while low-but-not-gassed (gassed = 1.0)
-    BREATH_HZ_MIN: 0.45,       // breaths/sec when just winded
-    BREATH_HZ_MAX: 1.15,       // breaths/sec when gassed (panting)
+    BREATH_HZ_MIN: 0.40,       // breaths/sec when just winded
+    BREATH_HZ_MAX: 0.85,       // breaths/sec when gassed (slow, heavy panting — not frantic)
     HEAVE_Y: 0.035,            // metres of vertical chest-heave at full exertion
     HEAVE_PITCH: 0.012,        // radians of pitch heave at full exertion
+  },
+
+  // === CAMERA STUMBLE — the off-balance lurch of a no-stamina dodge ===
+  // A single smooth roll + forward-pitch + drop that peaks and recovers, so a
+  // gassed stumble-dodge reads as losing your footing (distinct from the jittery
+  // hit-shake). Triggered from dash.ts only on an empty-bar dodge.
+  CAMERA_STUMBLE: {
+    ROLL: 0.10,        // radians (~5.7°) peak roll, random L/R
+    PITCH: 0.05,       // radians of forward/down pitch at the peak
+    DIP: 0.06,         // metres the view drops at the peak
+    DURATION_S: 0.5,   // lurch-and-recover length
   },
 
   // === RENDER ===

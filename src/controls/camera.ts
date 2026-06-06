@@ -5,6 +5,7 @@ import { consumeKnockback } from '../player/knockback';
 import { getPlayerMoveScale } from '../player/inside-aura';
 import { getMoveMul, getTurnMul } from '../combat/swing-agency';
 import { getExhaustionHeave } from '../combat/exhaustion-feedback';
+import { getStumbleOffset } from '../combat/camera-stumble';
 import type { WalkableRegion } from '../level/walkable';
 import type { Enemy } from '../mobs/enemy';
 import { getSettings } from '../settings/settings';
@@ -148,10 +149,11 @@ export function updateCamera(
   // "out of breath" is FELT in the view, not read off a bar. 0 when rested; the
   // sine is shared with the breathing audio so the heave and the puff agree.
   const heave = getExhaustionHeave();
-  if (heave !== 0) {
-    camera.position.y += heave * CONFIG.EXHAUSTION.HEAVE_Y;
-    camera.rotation.x += heave * CONFIG.EXHAUSTION.HEAVE_PITCH;
-  }
+  // Stumble lurch — a one-off roll/pitch/drop on an empty-bar dodge (off-balance).
+  const st = getStumbleOffset();
+  camera.position.y += heave * CONFIG.EXHAUSTION.HEAVE_Y + st.dip;
+  camera.rotation.x += heave * CONFIG.EXHAUSTION.HEAVE_PITCH + st.pitch;
+  camera.rotation.z = st.roll;   // roll is otherwise unused — set, don't accumulate
 }
 
 // Axis-decomposed slide against the set of live enemies. Try the X-only
