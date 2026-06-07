@@ -17,6 +17,7 @@ import { bind } from './hud';
 interface Segment {
   track: HTMLDivElement;
   fill: HTMLDivElement;
+  reserved: HTMLDivElement;
 }
 
 const BAR_W = 220;
@@ -51,7 +52,24 @@ function makeSegment(): Segment {
   } as Partial<CSSStyleDeclaration>);
   track.appendChild(fill);
 
-  return { track, fill };
+  // Reserved (locked charge) overlay — a hatched amber strip that
+  // appears just past the leading edge of the live fill while a heavy
+  // is held. Per-segment so a reservation that crosses the gap between
+  // two segments visibly does so without bridging the gap. Tinted
+  // warm against the green Minimal palette so the lock reads as a
+  // distinct "this is committed" beat.
+  const reserved = document.createElement('div');
+  Object.assign(reserved.style, {
+    position: 'absolute',
+    top: '0', height: '100%',
+    left: '0', width: '0%',
+    backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,225,170,0.85) 0 3px, rgba(255,225,170,0.25) 3px 6px)',
+    opacity: '0',
+    transition: 'opacity 0.12s ease-out',
+  } as Partial<CSSStyleDeclaration>);
+  track.appendChild(reserved);
+
+  return { track, fill, reserved };
 }
 
 export function createStaminaArc(): void {
@@ -91,27 +109,49 @@ function applyVisibility(): void {
   if (getHudStyle().stamina !== 'breath') root.style.opacity = '0';
 }
 
-function render({ frac, rested, exhausted }: StaminaState): void {
+function render({ frac, rested, exhausted, reserved }: StaminaState): void {
   if (!root) return;
   if (getHudStyle().stamina !== 'breath') {
     root.style.opacity = '0';
     return;
   }
   const f = Math.max(0, Math.min(1, frac));
-  // Hide entirely when rested and full — the bar should ONLY appear
-  // when stamina is in motion.
-  const visible = !rested || exhausted || f < 0.999;
+  // Stay visible while a charge is reserving so the hatched preview
+  // is actually seen even when otherwise rested.
+  const visible = !rested || exhausted || f < 0.999 || reserved > 0;
   root.style.opacity = visible ? (exhausted ? '1' : '0.88') : '0';
+
+  const reservedEnd = Math.min(f + Math.max(0, reserved), 1);
 
   for (let i = 0; i < SEGMENTS; i++) {
     const seg = segments[i];
     const segMin = i / SEGMENTS;
     const segMax = (i + 1) / SEGMENTS;
-    const segFill = Math.max(0, Math.min(1, (f - segMin) / (segMax - segMin)));
+    const span = segMax - segMin;
+    const segFill = Math.max(0, Math.min(1, (f - segMin) / span));
     seg.fill.style.transform = `scaleX(${segFill.toFixed(3)})`;
     seg.fill.style.background = f < 0.2
       ? 'linear-gradient(180deg, rgba(220, 110, 90, 0.92), rgba(160, 60, 50, 0.92))'
       : 'linear-gradient(180deg, rgba(150, 220, 160, 0.92), rgba(60, 140, 90, 0.92))';
+
+    // Reserved slice within this segment — intersect [f, reservedEnd]
+    // with [segMin, segMax]. Mirrors the Classic bar's per-segment
+    // reservation math.
+    if (reserved > 0) {
+      const sliceStart = Math.max(f, segMin);
+      const sliceEnd = Math.min(reservedEnd, segMax);
+      if (sliceEnd > sliceStart) {
+        const left = (sliceStart - segMin) / span;
+        const width = (sliceEnd - sliceStart) / span;
+        seg.reserved.style.left = `${left * 100}%`;
+        seg.reserved.style.width = `${width * 100}%`;
+        seg.reserved.style.opacity = '1';
+      } else {
+        seg.reserved.style.opacity = '0';
+      }
+    } else {
+      seg.reserved.style.opacity = '0';
+    }
   }
 }
 
