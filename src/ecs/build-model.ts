@@ -91,14 +91,20 @@ export function buildModel(spec: ModelSpec): BuiltModel {
   // PASS 3: reparent any part with a `parent` field to its parent node.
   // Names are NOT required — we look up the built object by index. Without
   // this, unnamed children stayed at the model root, often INSIDE other meshes.
+  //
+  // Bones get an IMPLICIT parent of their `from` slot — the geometry was
+  // computed in that slot's local frame, so the mesh has to live there too
+  // or it renders at the model root using shoulder-local coords (= floating
+  // far from the joint).
   for (let i = 0; i < spec.parts.length; i++) {
     const part = spec.parts[i];
-    if (!part.parent) continue;
+    const parentName = part.parent ?? (part.kind === 'bone' ? part.from : undefined);
+    if (!parentName) continue;
     const child = builtParts[i];
-    const parentNode = parts.get(part.parent) ?? slots.get(part.parent);
+    const parentNode = parts.get(parentName) ?? slots.get(parentName);
     if (!parentNode) {
       // eslint-disable-next-line no-console
-      console.warn(`Part references unknown parent "${part.parent}"`);
+      console.warn(`Part references unknown parent "${parentName}"`);
       continue;
     }
     parentNode.add(child);
