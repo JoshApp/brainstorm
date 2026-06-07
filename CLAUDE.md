@@ -312,6 +312,32 @@ yourself authoring `rot: [a, b, c]` and the file would compile
 without you understanding what the result LOOKS like, you reached
 for the wrong tool — use `orient()`.
 
+**Counter-rotating a child to keep it fixed in world space** —
+`localFromWorld(worldRot, parentRot)` returns the local rotation
+that, combined with the parent, gives the requested world rotation.
+Use when you want to rotate a parent (say, the wrist) while a child
+slot (say, palm_anchor and the weapon attached to it) stays at its
+pre-rotation orientation:
+
+```ts
+const newWristRot = orient({ yAxisTo: tilt(DIR.UP, DIR.FORWARD, 0.5) });
+
+slots: {
+  wrist: { rot: newWristRot },
+  palm_anchor: {
+    parent: 'wrist',
+    pos: [0, 0.092, -0.011],
+    // Keep the weapon at "identity rotation in the hand's root frame"
+    // regardless of how the wrist itself is rotated above it.
+    rot: localFromWorld([0, 0, 0], newWristRot),
+  },
+}
+```
+
+You author intent in the frame you think in (hand-root, world,
+whatever the parent's frame is), and the helper handles the
+counter-rotation math.
+
 ## Visual Style Reference
 
 - **Lunacid** (PS1-era lo-fi 3D, fog, torchlight)

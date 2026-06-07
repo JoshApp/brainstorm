@@ -81,6 +81,47 @@ export function tilt(principal: Vec3Tuple, secondary: Vec3Tuple, amount = 0.20):
  * "back" faces. If the two directions aren't perpendicular, `upTo`
  * is projected onto the plane perpendicular to `yAxisTo`.
  */
+/**
+ * Convert a "desired rotation in the parent's REFERENCE frame" into a
+ * "rotation expressed in PARENT-LOCAL" — i.e. handle the counter-
+ * rotation math when you want a child's orientation to be specified
+ * independently of how its parent is oriented.
+ *
+ * Example: you've rotated the wrist 30° so the hand reads differently,
+ * but you DON'T want the palm_anchor (and therefore the weapon
+ * attached to it) to rotate with the wrist. You want the palm anchor
+ * to stay at its previous orientation in the hand's frame.
+ *
+ *   const newWristRot = orient({ yAxisTo: tilt(DIR.UP, DIR.FORWARD, 0.5) });
+ *
+ *   slots: {
+ *     wrist: { rot: newWristRot },
+ *     palm_anchor: {
+ *       parent: 'wrist',
+ *       // Whatever orientation you want the palm anchor to have IN THE
+ *       // HAND's reference frame (not the wrist's local frame). The
+ *       // helper computes the wrist-local rotation that achieves it.
+ *       rot: localFromWorld([0, 0, 0], newWristRot),  // identity in hand-root
+ *     },
+ *   }
+ *
+ * Reads as: "what local Euler do I need, given parent has THIS Euler,
+ * so my orientation in the parent's parent frame ends up THAT."
+ *
+ * Works in pure quaternion space internally so there's no Euler-order
+ * surprise.
+ */
+export function localFromWorld(
+  worldRot: Vec3Tuple,
+  parentWorldRot: Vec3Tuple,
+): [number, number, number] {
+  const wQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...worldRot, 'XYZ'));
+  const pQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...parentWorldRot, 'XYZ'));
+  const localQ = pQ.invert().multiply(wQ);
+  const e = new THREE.Euler().setFromQuaternion(localQ, 'XYZ');
+  return [e.x, e.y, e.z];
+}
+
 export function orient(opts: {
   yAxisTo: Vec3Tuple,
   upTo?: Vec3Tuple,

@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { orient, tilt, DIR } from '../src/anim/orient';
+import { orient, tilt, DIR, localFromWorld } from '../src/anim/orient';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -102,6 +102,39 @@ test('orient degenerate: y parallel to up falls back gracefully', () => {
   assert(Number.isFinite(e[0]) && Number.isFinite(e[1]) && Number.isFinite(e[2]),
     'all components finite');
   vecCloseTo(Y(e), new THREE.Vector3(0, 1, 0));
+});
+
+test('localFromWorld: identity world rot + identity parent → identity local', () => {
+  const r = localFromWorld([0, 0, 0], [0, 0, 0]);
+  vecCloseTo(Y(r), new THREE.Vector3(0, 1, 0));
+});
+
+test('localFromWorld: child stays world-fixed when parent rotates', () => {
+  // Parent rotates by some Euler. Child has world rotation = identity.
+  // Local rotation should COUNTER the parent so the chain's world rot is identity.
+  const parentRot: [number, number, number] = [0.3, 0.5, 0.2];
+  const childLocal = localFromWorld([0, 0, 0], parentRot);
+  // Compose parent ∘ child should equal identity (modulo Euler equivalence).
+  const pQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...parentRot, 'XYZ'));
+  const cQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...childLocal, 'XYZ'));
+  const combined = pQ.multiply(cQ);
+  const identity = new THREE.Quaternion();
+  // Check that combined is close to identity (or its negation, which is same rotation).
+  const dot = Math.abs(combined.dot(identity));
+  assert(closeTo(dot, 1, 1e-5), `combined should be identity quaternion, dot=${dot}`);
+});
+
+test('localFromWorld: arbitrary world + parent reproduces world rotation', () => {
+  const worldRot: [number, number, number] = [0.4, -0.3, 0.6];
+  const parentRot: [number, number, number] = [0.1, 0.2, -0.1];
+  const local = localFromWorld(worldRot, parentRot);
+  // parent ∘ local should equal world rotation.
+  const pQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...parentRot, 'XYZ'));
+  const cQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...local, 'XYZ'));
+  const combined = pQ.multiply(cQ);
+  const wQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...worldRot, 'XYZ'));
+  const dot = Math.abs(combined.dot(wQ));
+  assert(closeTo(dot, 1, 1e-5), `combined should equal world rotation, dot=${dot}`);
 });
 
 // eslint-disable-next-line no-console
