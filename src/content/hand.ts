@@ -1,19 +1,35 @@
 import type { ModelSpec } from '../ecs/model-types';
 import { localFromWorld } from '../anim/orient';
 
-// Wrist rotation: pitch forward + twist clockwise from POV.
+// Wrist rotation: pitch forward + twist clockwise + plane tilt.
 //
-//   PITCH = a slight wrist flexion (palm tipping toward the forearm).
-//           Negative X bends the +Y axis (saber direction) toward the
-//           palm side (−Z), which reads as "wrist tipped forward."
+// The hand-local XY plane spans the thumb bone and the other finger
+// bones (back-of-hand plane). Three independent intent-axes shape its
+// orientation; each is named, has its own constant, and is applied
+// once to the wrist Euler.
 //
-//   TWIST = 40° clockwise from the player's POV, around the wrist's
-//           local +Y axis (the forearm/saber direction). Positive Y
-//           in Three's right-handed system reads as CLOCKWISE when
-//           viewed from −Y → +Y, which is the player's view.
+//   PITCH FORWARD = slight wrist flexion (palm tipping toward
+//                   forearm). Negative X bends +Y toward −Z (the
+//                   palm side), which reads as "wrist tipped forward."
+//
+//   PLANE INTO SCREEN = additional forward pitch that tilts the
+//                       back-of-hand PLANE further into the screen
+//                       (fingertip edge tips further toward camera
+//                       −Z; the plane's normal rotates away from
+//                       the camera). Sums with PITCH on the X axis.
+//
+//   TWIST CW 40 = 40° clockwise from POV around the wrist's local
+//                 +Y axis (saber direction). Positive Y reads as
+//                 CLOCKWISE when viewed from −Y → +Y, the player's
+//                 view of the wrist.
 const WRIST_PITCH_FORWARD = -0.20;
+const WRIST_PLANE_INTO_SCREEN = -0.15;
 const WRIST_TWIST_CW_40 = (40 * Math.PI) / 180;
-const NEW_WRIST_ROT: [number, number, number] = [WRIST_PITCH_FORWARD, WRIST_TWIST_CW_40, 0];
+const NEW_WRIST_ROT: [number, number, number] = [
+  WRIST_PITCH_FORWARD + WRIST_PLANE_INTO_SCREEN,
+  WRIST_TWIST_CW_40,
+  0,
+];
 // The orientation the palm_anchor (and the weapon attached to it) had
 // BEFORE the wrist twist, expressed in hand-root frame. We keep this
 // constant so the weapon doesn't rotate just because the wrist did.
