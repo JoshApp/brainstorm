@@ -550,6 +550,15 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 2, pos: { x: -10, z:  10 } },
     ],
   },
+  'viewmodel-maul': {
+    freeze: true,
+    equipWeaponId: 'iron-maul',
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x:  10, z: -10 } },
+      { index: 2, pos: { x: -10, z:  10 } },
+    ],
+  },
   'viewmodel-scimitar': {
     freeze: true,
     equipWeaponId: 'scimitar',

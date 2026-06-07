@@ -218,7 +218,11 @@ export const IRON_MAUL: ModelSpec = {
   ],
   slots: {
     head_top: { pos: [0, 0.54, 0] },
-    grip_anchor: { pos: [0, 0.18, 0] },
+    // Player grips LOW on the haft (closer to the pommel-end) so the
+    // hammer head reads high above the fist — proper two-handed-maul
+    // silhouette. Previously sat at the haft's mid-point (0.18) which
+    // had the head only just clearing the knuckles.
+    grip_anchor: { pos: [0, 0.04, 0] },
   },
 };
 

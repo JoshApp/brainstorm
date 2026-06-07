@@ -9,6 +9,7 @@ import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
 import { getCurrentWeapon } from './current-weapon';
 import { composeHeldWeapon } from './held-weapon-compose';
+import { ArmIK } from '../anim/arm-ik';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
@@ -130,6 +131,22 @@ export function createWeaponViewmodel(
   type FlashMat = { mat: THREE.MeshStandardMaterial; base: number };
   const flashMats: FlashMat[] = [];
   let gleaming = false;
+
+  // ── Arm IK ───────────────────────────────────────────────────────
+  // The arm gets a 2-bone IK driver so the shoulder/elbow react to the
+  // hand's swing instead of being a static-folded spec pose. See
+  // src/anim/arm-ik.ts for the math + the three features that prevent
+  // the wonky-clamped look (spring-anchored shoulder, elbow pole bias,
+  // temporal joint smoothing).
+  //
+  // We re-create the IK per equip because shoulder rest + bone lengths
+  // depend on the hand spec; an equip with no spec just leaves these
+  // null and skips IK in update().
+  let armIK: ArmIK | null = null;
+  let shoulderSlot: THREE.Object3D | null = null;
+  let elbowSlot: THREE.Object3D | null = null;
+  let palmAnchorSlot: THREE.Object3D | null = null;
+  const _palmWorld = new THREE.Vector3();
   // True when the wielded weapon has a bead chain to ripple (the whip).
   let whippy = false;
 
@@ -200,6 +217,37 @@ export function createWeaponViewmodel(
     }
 
     group.add(composed.hand.group);
+
+    // Wire IK to the just-built rig. Bone lengths are read off the slot
+    // positions in the hand spec, so a future spec rebalance flows
+    // through here without retuning the IK. The shoulder REST is the
+    // spec's authored shoulder position — the spring lets the IK pull
+    // the live shoulder a small amount toward the hand under fast
+    // motion (Josh's "wiggle room") and tugs it back.
+    shoulderSlot = composed.hand.slots.get('shoulder') ?? null;
+    elbowSlot = composed.hand.slots.get('elbow') ?? null;
+    palmAnchorSlot = composed.hand.slots.get('palm_anchor') ?? null;
+    if (shoulderSlot && elbowSlot && palmAnchorSlot) {
+      // Bone lengths come from the slot positions in the spec.
+      const elbowPosLocal = elbowSlot.position;
+      const wristSlot = composed.hand.slots.get('wrist');
+      const humerusLength = elbowPosLocal.length();
+      const forearmLength = wristSlot ? wristSlot.position.length() : 0.37;
+      armIK = new ArmIK({
+        shoulderRest: [shoulderSlot.position.x, shoulderSlot.position.y, shoulderSlot.position.z],
+        shoulderSpringFreq: 1.8,           // gentle Hz — body inertia, not a twitch
+        shoulderSpringDamping: 1.0,        // critical — no oscillation
+        shoulderHandBias: 0.12,            // 12% pull toward the hand — visible follow without uncoupling
+        humerusLength, forearmLength,
+        // Right arm: elbow bends DOWN-AND-OUT (positive X = outboard,
+        // negative Y = down). Pole is a hint, not strict — the
+        // solver biases without locking it there.
+        elbowPole: [1, -0.5, 0.2],
+        jointDampHalfLife: 0.06,           // ~60ms smoothing — visibly damped, not laggy
+      });
+    } else {
+      armIK = null;
+    }
   }
 
   // Smoothed held pose for the IDLE / charge-hold state, so discrete changes
@@ -292,6 +340,19 @@ export function createWeaponViewmodel(
   function update(dt: number) {
     swing.advance(dt);
     repose(dt);
+    // After the weapon's swing pose is applied to the outer group, solve
+    // the arm so the shoulder/elbow visibly articulate around the
+    // moving hand instead of rotating as a single block. The IK reads
+    // the palm anchor's WORLD position (post-pose) and writes Euler
+    // rotations onto the shoulder + elbow slots; the dampers inside
+    // the IK make the joint angles change smoothly across frames so a
+    // single bad sample can't snap the arm.
+    if (armIK && shoulderSlot && elbowSlot && palmAnchorSlot && dt > 0) {
+      palmAnchorSlot.getWorldPosition(_palmWorld);
+      const r = armIK.solve(_palmWorld, dt);
+      shoulderSlot.rotation.set(r.shoulderRot[0], r.shoulderRot[1], r.shoulderRot[2]);
+      elbowSlot.rotation.set(r.elbowRot[0], r.elbowRot[1], r.elbowRot[2]);
+    }
     // Perfect-release gleam: flash the weapon's emissive white inside the
     // window, restore on exit. Only writes on the edge, so it's free otherwise.
     const wantGleam = isChargePerfectWindow();
