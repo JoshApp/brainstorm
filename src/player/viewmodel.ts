@@ -3,7 +3,7 @@ import { CONFIG } from '../config';
 import { getBobOffset } from './viewmodel-bob';
 import { getWeaponSway } from './viewmodel-sway';
 import { setupWhipChain, clearWhipChain, tickWhipChain } from './whip-chain';
-import { computeWeaponPose, type WeaponPose } from './weapon-animations';
+import { computeWeaponPose, shoulderPivot, type WeaponPose } from './weapon-animations';
 import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '../controls/charge-input';
 import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
@@ -133,6 +133,12 @@ export function createWeaponViewmodel(
 
   // True when the wielded weapon has a bead chain to ripple (the whip).
   let whippy = false;
+  // SHOULDER PIVOT — the slot the swing-animation rotates so the arm
+  // arcs as one chain from the shoulder (proven FPS technique). Re-
+  // resolved per mount because each weapon's composed rig is fresh.
+  // null when the rig has no shoulder slot (bare hand, future
+  // hand-only viewmodels, etc.).
+  let shoulderSlot: THREE.Object3D | null = null;
 
   function unmount() {
     clearWhipChain();   // drop bead refs before the meshes are disposed
@@ -201,6 +207,10 @@ export function createWeaponViewmodel(
     }
 
     group.add(composed.hand.group);
+    // Wire the shoulder slot so swing clips can pivot the whole arm
+    // chain by writing to its rotation. Hand specs without a shoulder
+    // (some future hand-only viewmodel) just opt out.
+    shoulderSlot = composed.hand.slots.get('shoulder') ?? null;
   }
 
   // Smoothed held pose for the IDLE / charge-hold state, so discrete changes
@@ -276,6 +286,9 @@ export function createWeaponViewmodel(
       const sway = getWeaponSway();
       group.position.set(heldPose.x, heldPose.y, heldPose.z);
       group.rotation.set(heldPose.rotX + sway.pitch, heldPose.rotY + sway.yaw, heldPose.rotZ);
+      // Idle / charge-hold: shoulder stays at rest (no pivot during
+      // hold). When a swing begins the strike path overwrites this.
+      if (shoulderSlot) shoulderSlot.rotation.set(0, 0, 0);
       return;
     }
 
@@ -288,6 +301,13 @@ export function createWeaponViewmodel(
     group.position.set(pose.x, pose.y, pose.z);
     group.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
     setHeld(pose.x, pose.y, pose.z, pose.rotX, pose.rotY, pose.rotZ);
+    // Shoulder pivot: rotate the SHOULDER SLOT, swinging the entire
+    // arm + hand + weapon chain as one (proven FPS technique). Clips
+    // write to shoulderPivot during computeWeaponPose; non-clip
+    // swings leave it at zero so the shoulder stays at rest.
+    if (shoulderSlot) {
+      shoulderSlot.rotation.set(shoulderPivot.x, shoulderPivot.y, shoulderPivot.z);
+    }
   }
 
   function update(dt: number) {

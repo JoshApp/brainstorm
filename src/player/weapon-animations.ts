@@ -26,6 +26,14 @@ export interface WeaponPose {
   rotX: number; rotY: number; rotZ: number;
 }
 
+// SHOULDER PIVOT — populated by clip-based poses only (legacy + pose-
+// spec poses leave it at zero). The viewmodel reads this each frame
+// and writes it onto the shoulder slot's rotation; the whole arm +
+// hand + weapon chain swings together (proven FPS technique). Kept
+// separate from WeaponPose so existing pose-spec / legacy functions
+// don't need to know about it.
+export const shoulderPivot = { x: 0, y: 0, z: 0 };
+
 const ix = CONFIG.SWORD_IDLE_POS[0];
 const iy = CONFIG.SWORD_IDLE_POS[1];
 const iz = CONFIG.SWORD_IDLE_POS[2];
@@ -182,6 +190,10 @@ export const MIGRATED_POSE_KEYS = (Object.keys(POSE_SPECS) as PoseKey[])
  *  phase (0..1). Returns a shared scratch object — read it, don't
  *  retain. */
 export function computeWeaponPose(pose: PoseKey, phase: SwingPhase, t: number): WeaponPose {
+  // Reset the shared shoulder-pivot scratch — only clip-based poses
+  // write it; legacy / pose-spec swings leave it at zero so the
+  // shoulder stays at rest.
+  shoulderPivot.x = 0; shoulderPivot.y = 0; shoulderPivot.z = 0;
   if (phase === 'idle') {
     // Idle = the rest pose for THIS weapon type. Default = hip-held
     // (sword/dagger/hammer/spear). Wand idle is upright like a
@@ -234,6 +246,12 @@ function evalClipPose(
   out.rotX = rx + (sample['weapon.rot.x'] ?? 0);
   out.rotY = ry + (sample['weapon.rot.y'] ?? 0);
   out.rotZ = rz + (sample['weapon.rot.z'] ?? 0);
+  // Shoulder pivot — absolute rotation relative to the slot's
+  // spec-authored rest (which is 0). Written to the shared
+  // shoulderPivot scratch the viewmodel reads each frame.
+  shoulderPivot.x = sample['shoulder.rot.x'] ?? 0;
+  shoulderPivot.y = sample['shoulder.rot.y'] ?? 0;
+  shoulderPivot.z = sample['shoulder.rot.z'] ?? 0;
   return out;
 }
 

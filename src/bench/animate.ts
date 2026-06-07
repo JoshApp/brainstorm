@@ -14,7 +14,7 @@ import type { ItemSpec } from '../content/items';
 import { resolveAbilities } from '../content/abilities';
 import { applyTelegraphPose, telegraphNodesFor, type TelegraphNodes } from '../mobs/pose-clips';
 import { WEAPON_CLASS_DEFAULTS } from '../content/weapon-classes';
-import { computeWeaponPose } from '../player/weapon-animations';
+import { computeWeaponPose, shoulderPivot } from '../player/weapon-animations';
 import type { SwingPhase } from '../combat/swing-state';
 
 export interface SubjectAnimator {
@@ -58,7 +58,11 @@ interface SwingSeg { pose: import('../content/weapon-classes').PoseKey; phase: S
  *  windup→strike→recover — in the camera-space first-person pose the player
  *  sees, via the same computeWeaponPose the live viewmodel uses. Returns null
  *  for items with no weapon class (nothing to swing). */
-export function makeWeaponAnimator(group: THREE.Object3D, item: ItemSpec): SubjectAnimator | null {
+export function makeWeaponAnimator(
+  group: THREE.Object3D,
+  item: ItemSpec,
+  shoulderSlot: THREE.Object3D | null = null,
+): SubjectAnimator | null {
   const cls = item.weapon?.class;
   if (!cls) return null;
   const combo = WEAPON_CLASS_DEFAULTS[cls].combo;
@@ -81,6 +85,11 @@ export function makeWeaponAnimator(group: THREE.Object3D, item: ItemSpec): Subje
         const p = computeWeaponPose(seg.pose, seg.phase, Math.min(Math.max(t, 0), 1));
         group.position.set(p.x, p.y, p.z);
         group.rotation.set(p.rotX, p.rotY, p.rotZ);
+        // Apply the shoulder pivot the clip wrote during computeWeaponPose.
+        // Mirrors the live viewmodel — same code path for the swing arc.
+        if (shoulderSlot) {
+          shoulderSlot.rotation.set(shoulderPivot.x, shoulderPivot.y, shoulderPivot.z);
+        }
         return;
       }
       acc += seg.dur;
