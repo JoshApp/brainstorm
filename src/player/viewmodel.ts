@@ -292,6 +292,7 @@ export function createWeaponViewmodel(
   // perfect-release gleam's, and the two would otherwise fight).
   let chargedSwingLevel = 0;     // 0..1 — captured at setSwingCharge()
   let chargedGlow = 0;            // 0..1 — live, eased toward target
+  let emissiveElevated = false;   // tracks whether flashMats are above their base intensity right now
   const CHARGED_GLOW_MAX = 2.4;   // peak emissiveIntensity multiplier above 1×
   const CHARGED_GLOW_EASE = 18;   // 1/sec exponential ease toward target
 
@@ -526,29 +527,31 @@ export function createWeaponViewmodel(
       }
     }
     // CHARGED-STRIKE GLOW — amplify each flashMat's emissive intensity in
-    // proportion to the captured charge during STRIKE, fade through RECOVER,
-    // clear on IDLE. The colour comes from the material itself (or from the
-    // perfect-release gleam above when active), so this only ever scales the
-    // brightness — the two systems compose without fighting.
+    // proportion to the captured charge during STRIKE ONLY. The glow ramps
+    // in smoothly so a charged release lights the blade as the strike fires,
+    // then SNAPS OFF the instant the strike ends — no residual amber during
+    // the recover / pull-back. The blade is hot during the stab, dark after.
+    // (The blade-trail effect reads chargedGlow too, so its head also stops
+    // sampling new points the moment we leave strike.)
     {
       const ph = swing.getPhase();
-      const t = swing.getPhaseProgress();
-      let glowTarget = 0;
-      if (chargedSwingLevel > 0) {
-        if (ph === 'strike') glowTarget = chargedSwingLevel;
-        else if (ph === 'recover') glowTarget = chargedSwingLevel * (1 - t);
-      }
+      const glowTarget = (chargedSwingLevel > 0 && ph === 'strike') ? chargedSwingLevel : 0;
       if (ph === 'idle') chargedSwingLevel = 0;
-      const effDt = dt === Infinity ? 0.016 : Math.max(0, dt);
-      const k = 1 - Math.exp(-CHARGED_GLOW_EASE * effDt);
-      chargedGlow += (glowTarget - chargedGlow) * k;
-      // Tiny dead-band so frame-after-frame writes stop when fully settled.
-      const intensityMul = 1 + chargedGlow * CHARGED_GLOW_MAX;
-      if (chargedGlow > 0.0005 || glowTarget > 0) {
-        for (const f of flashMats) f.mat.emissiveIntensity = f.baseIntensity * intensityMul;
-      } else if (chargedGlow !== 0) {
+      if (glowTarget === 0) {
         chargedGlow = 0;
+      } else {
+        const effDt = dt === Infinity ? 0.016 : Math.max(0, dt);
+        const k = 1 - Math.exp(-CHARGED_GLOW_EASE * effDt);
+        chargedGlow += (glowTarget - chargedGlow) * k;
+      }
+      if (chargedGlow > 0.0005) {
+        const intensityMul = 1 + chargedGlow * CHARGED_GLOW_MAX;
+        for (const f of flashMats) f.mat.emissiveIntensity = f.baseIntensity * intensityMul;
+        emissiveElevated = true;
+      } else if (emissiveElevated) {
         for (const f of flashMats) f.mat.emissiveIntensity = f.baseIntensity;
+        emissiveElevated = false;
+        chargedGlow = 0;
       }
     }
   }
