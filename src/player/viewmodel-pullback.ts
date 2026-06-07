@@ -19,8 +19,13 @@ import * as THREE from 'three';
 const PULL_THRESHOLD = 0.75;   // start retracting when wall closer than this (metres)
 const MAX_PULLBACK   = 0.45;   // never retract more than this (metres)
 const PULL_RATE      = 14;     // 1/sec exponential lerp toward target
+// One-shot kickback impulse fired when the blade clanks into a wall — the
+// viewmodel visibly recoils back toward the camera, then decays. Stacks on
+// top of `pullback` (which is the continuous wall-proximity retract).
+const KICKBACK_DECAY = 9;      // 1/sec exponential decay (≈ 250ms half-life)
 
 let pullback = 0;
+let kickback = 0;
 const _forward  = new THREE.Vector3();
 const _camWorld = new THREE.Vector3();
 
@@ -35,6 +40,8 @@ export function tickViewmodelPullback(
   camera: THREE.Camera,
   walkable: WalkableLike | null,
 ): void {
+  // Decay the one-shot clank kickback regardless of walkable presence.
+  kickback *= Math.exp(-KICKBACK_DECAY * dt);
   if (!walkable) {
     pullback += (0 - pullback) * (1 - Math.exp(-PULL_RATE * dt));
     return;
@@ -51,11 +58,23 @@ export function tickViewmodelPullback(
   pullback += (target - pullback) * k;
 }
 
+/** Fire a one-shot CLANK kickback — the held viewmodel visibly recoils
+ *  toward the camera, then decays back. Stacks on top of the continuous
+ *  wall-proximity pullback (so a clank against a wall reads as "shoved
+ *  back by the wall" on TOP of "weapon was already retracting"). The
+ *  amount is in metres of camera-local Z; 0.30 reads as a sharp jolt,
+ *  0.15 as a tap. Calls TAKE-MAX so a stronger clank during an
+ *  already-decaying one wins. */
+export function applyViewmodelKickback(amount: number): void {
+  if (amount > kickback) kickback = amount;
+}
+
 /** Current pullback amount (≥ 0) — viewmodel modules ADD this to their
  *  camera-local Z so a positive value retracts the held thing toward
- *  the camera. */
+ *  the camera. The wall-proximity retract and any live clank kickback
+ *  fold into one number; callers don't need to know about either. */
 export function getViewmodelPullback(): number {
-  return pullback;
+  return pullback + kickback;
 }
 
 /** Current pullback as a 0..1 fraction of the maximum. Used by the lamp

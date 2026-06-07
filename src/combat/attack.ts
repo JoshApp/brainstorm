@@ -7,6 +7,7 @@ import type { Damageable } from './damageable';
 import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
 import { playImpact, playWhoosh, playBuffApply, playWallHit } from '../audio/sfx';
+import { applyViewmodelKickback } from '../player/viewmodel-pullback';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit, on } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
@@ -434,6 +435,11 @@ export function createCombatSystem(
           playWallHit({ x: hx, y: camera.position.y, z: hz });
           hapticVibrate(18);
           kickShake(0.05, 0.10);
+          // CLANK back — the wall shoves the blade home. Visible recoil on
+          // the viewmodel + the swing INTERRUPTS into recover so the strike
+          // visibly ends short instead of grinding through the wall surface.
+          applyViewmodelKickback(0.30);
+          weapon.interruptSwing();
           strikeAlreadyHit = true;
         }
       }

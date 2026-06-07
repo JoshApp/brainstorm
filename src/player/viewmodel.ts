@@ -129,6 +129,9 @@ export interface WeaponViewmodel {
   getPhaseProgress(): number;
   /** Trigger a new swing if not already swinging. Returns whether it started one. */
   startSwing(opts?: { skipWindup?: boolean; direction?: AttackDirection }): boolean;
+  /** Abort the current swing into its recover phase — used when the blade
+   *  CLANKS into a wall: the strike ends short, the recoil plays. */
+  interruptSwing(): void;
   update(dt: number): void;
   /** Swap the wielded weapon model. Passing null leaves the player
    *  empty-handed (used at run start before the player picks at the
@@ -553,6 +556,7 @@ export function createWeaponViewmodel(
     getPhase: swing.getPhase,
     getPhaseProgress: swing.getPhaseProgress,
     startSwing: swing.requestSwing,
+    interruptSwing: swing.interruptSwing,
     update,
     equip,
     setDebugPhase,

@@ -85,6 +85,11 @@ export interface SwingState {
   isFinisherStrike(): boolean;
   /** Wipe in-flight swing/combo state (weapon swap). */
   reset(): void;
+  /** Abort the current windup/strike — jump straight to recover so the swing
+   *  visibly ends short. Used when the blade clanks into a wall: the wall
+   *  bounced you off, the strike is done, the recover plays from here. No-op
+   *  when not actively swinging. */
+  interruptSwing(): void;
   /** Debug-only: jump straight to a phase + phase timer (no transition). */
   setDebugPhase(phase: SwingPhase, phaseTimer: number): void;
 }
@@ -351,6 +356,18 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     setDebugPhase(p: SwingPhase, t: number) {
       phase = p;
       phaseTimer = t;
+    },
+    interruptSwing() {
+      // Only meaningful from windup / strike. Jump to recover with phaseTimer
+      // zeroed so the recover curve plays from its start pose (= the strike's
+      // END pose) toward idle. The clank-back impulse on the viewmodel masks
+      // the brief snap from current-strike-pose to recover-start.
+      if (phase === 'windup' || phase === 'strike') {
+        phase = 'recover';
+        phaseTimer = 0;
+        // Drop any buffered chain — you can't chain through a wall.
+        queuedPress = false;
+      }
     },
   };
 }
