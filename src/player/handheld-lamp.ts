@@ -61,6 +61,10 @@ interface LampState {
   /** Computed each frame by tickLamp; pool reads via getIntensity. */
   currentIntensity: number;
   flickerT: number;
+  /** The off-hand grip target — an empty Object3D at the ring centre,
+   *  inside the body group so it swings with the pendulum. lamp-arm.ts
+   *  reads its world position each frame to drive the left arm's IK. */
+  ringAnchor: THREE.Object3D;
 }
 
 let lamp: LampState | null = null;
@@ -172,6 +176,15 @@ export function attachLamp(camera: THREE.Camera) {
   // ring is VERTICAL (its plane contains the up axis).
   body.add(ring);
 
+  // Grip anchor — the SLOT the off-hand's palm_anchor aligns to,
+  // the same pattern weapons use (their grip_anchor matches the
+  // hand's palm_anchor). Sits at the ring centre; lamp-arm.ts reads
+  // its world position each frame and computes the IK wrist target
+  // such that the palm lands here.
+  const ringAnchor = new THREE.Object3D();
+  ringAnchor.position.copy(ring.position);
+  body.add(ringAnchor);
+
   // ── Flame stack ───────────────────────────────────────────────────
   // Same pattern as the bonfire / candle flame stacks but scaled to
   // lantern-cage size: white-hot core → yellow body → orange tongue
@@ -278,6 +291,7 @@ export function attachLamp(camera: THREE.Camera) {
     baseIntensity: CONFIG.LAMP_INTENSITY,
     currentIntensity: CONFIG.LAMP_INTENSITY,
     flickerT: 0,
+    ringAnchor,
   };
   lamp = state;
 
@@ -294,13 +308,13 @@ export function attachLamp(camera: THREE.Camera) {
   });
 }
 
-/** World-space position of the lantern's hinge (= the O-ring centre,
- *  where the off-hand grips). Used by src/player/lamp-arm.ts to drive
- *  the left-arm IK target each frame. Returns null when the lamp
- *  hasn't been attached yet. */
-export function getLampHingeWorldPosition(out: THREE.Vector3): THREE.Vector3 | null {
+/** World-space position of the lantern's RING ANCHOR — the slot the
+ *  off-hand's palm aligns to (the saber-grip pattern, but for a ring
+ *  instead of a hilt). Lives inside the body group, so it swings with
+ *  the pendulum. Returns null when the lamp hasn't been attached yet. */
+export function getLampRingAnchorWorldPosition(out: THREE.Vector3): THREE.Vector3 | null {
   if (!lamp) return null;
-  return lamp.hinge.getWorldPosition(out);
+  return lamp.ringAnchor.getWorldPosition(out);
 }
 
 /** Remove the lamp viewmodel + unregister its light. Idempotent. */

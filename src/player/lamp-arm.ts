@@ -6,7 +6,7 @@ import {
 import { HAND_RIGHT } from '../content/hand';
 import { ArmIK } from '../anim/arm-ik';
 import { registerViewmodel } from '../style/render-target';
-import { getLampHingeWorldPosition } from './handheld-lamp';
+import { getLampRingAnchorWorldPosition } from './handheld-lamp';
 
 // Left arm holding the lantern.
 //
@@ -29,6 +29,12 @@ let radiusMesh: THREE.Mesh | undefined;
 let ulnaMesh: THREE.Mesh | undefined;
 let sinewMesh: THREE.Mesh | undefined;
 let wristAnchor: THREE.Group | null = null;
+// The constant offset from the wrist (= IK target) to the hand's
+// palm_anchor, in arm-group-local space. Computed once at attach
+// time by querying the built hand's palm_anchor slot relative to the
+// wristAnchor. Used each frame so the IK wrist target = ring_anchor -
+// palm_offset; the palm then lands ON the ring instead of the wrist.
+const _palmOffsetInArm = new THREE.Vector3();
 
 const _wristWorld    = new THREE.Vector3();
 const _wristArmLocal = new THREE.Vector3();
@@ -97,6 +103,25 @@ export function attachLampArm(camera: THREE.Camera): void {
     mesh.renderOrder = 998;
   });
 
+  // Compute palm_anchor's offset from the wristAnchor (= the IK
+  // wrist target) so we can subtract it from the ring anchor each
+  // frame and put the PALM at the ring instead of the wrist.
+  //
+  // The chain: wristAnchor → hand.group (identity) → wrist slot (with
+  // NEW_WRIST_ROT) → palm_anchor (offset (0, 0.092, -0.011) in wrist-
+  // local). The composed offset in arm-group-local depends on
+  // NEW_WRIST_ROT, but it's CONSTANT (doesn't change at runtime), so
+  // we just measure it once via Three's matrix utilities.
+  const palmAnchorSlot = hand.slots.get('palm_anchor');
+  if (palmAnchorSlot) {
+    armGroup.updateMatrixWorld(true);
+    palmAnchorSlot.getWorldPosition(_palmOffsetInArm);
+    armGroup.worldToLocal(_palmOffsetInArm);
+    // _palmOffsetInArm is now palm_anchor's position in arm-group-
+    // local with wristAnchor at the arm-group origin — i.e. exactly
+    // the offset from wristAnchor to palm_anchor.
+  }
+
   // Viewmodel render settings — match the rest of the viewmodel
   // layer (depth-test enabled, depth-write off, opaque) so the arm
   // depth-tests correctly against the lantern and the right arm.
@@ -114,29 +139,19 @@ export function attachLampArm(camera: THREE.Camera): void {
   });
 }
 
-// Wrist target offset from the lantern's ring centre. The hand's
-// palm_anchor sits ~9cm UP and slightly back from the wrist (in
-// hand-local, after wrist rotation). If the IK targets the ring
-// directly the WRIST lands at the ring (so the ring sits around
-// the wrist joint and the forearm goes THROUGH the ring). Offsetting
-// the wrist target DOWN and BACK puts the wrist behind the ring; the
-// palm then reaches forward to grip it.
-const PALM_TO_RING_OFFSET_Y = -0.07;
-const PALM_TO_RING_OFFSET_Z = 0.03;
-
 /** Solve the left arm so the HAND'S PALM (not its wrist) sits at the
- *  lantern's ring centre. Called each frame from the engine systems
+ *  lantern's ring anchor. Called each frame from the engine systems
  *  loop. */
 export function tickLampArm(dt: number): void {
   if (!armIK || !armGroup || !shoulderSlot || dt <= 0) return;
-  const target = getLampHingeWorldPosition(_wristWorld);
+  const target = getLampRingAnchorWorldPosition(_wristWorld);
   if (!target) return;
-  // Shift the wrist target so the hand's palm — offset up-and-forward
-  // from the wrist in hand-local — lands at the ring instead of the
-  // wrist landing there.
-  _wristWorld.y += PALM_TO_RING_OFFSET_Y;
-  _wristWorld.z += PALM_TO_RING_OFFSET_Z;
+  // Convert the ring world position to arm-group-local, then SUBTRACT
+  // the precomputed palm offset. The IK targets the wrist at this
+  // shifted position; the hand's palm_anchor (still offset by the
+  // same vector) then lands EXACTLY at the ring.
   armGroup.worldToLocal(_wristArmLocal.copy(_wristWorld));
+  _wristArmLocal.sub(_palmOffsetInArm);
   const r = armIK.solve(_wristArmLocal, dt);
   poseBone(humerusMesh, r.shoulderPos, r.elbowPos);
   poseBone(radiusMesh,  r.elbowPos, r.wristPos, -0.013);
