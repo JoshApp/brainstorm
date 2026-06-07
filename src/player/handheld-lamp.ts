@@ -80,11 +80,12 @@ let lamp: LampState | null = null;
 //     unchanged; the lantern just slides down rather than vanishing, so
 //     there's never a "light from nowhere" moment.
 // The body offset below hangs the lantern visibly under whichever pivot.
-// Lamp pushed back from Z=-0.52 to -0.60 so the off-hand has visible
-// distance to reach forward to the ring — without this the wrist
-// target sits so close to the camera that the forearm reads as
-// foreshortened.
-const LAMP_RAISED = new THREE.Vector3(-0.36, -0.11, -0.60);
+// Lamp position trimmed down for less screen footprint: pushed
+// further BACK (Z: -0.60 → -0.78), DROPPED lower (Y: -0.11 → -0.26),
+// X unchanged. Combined with a smaller hinge scale below, the lantern
+// reads as a peripheral light source rather than dominating the lower-
+// left corner of the frame.
+const LAMP_RAISED = new THREE.Vector3(-0.36, -0.26, -0.78);
 // STOWED sits at the lower-LEFT corner — further left than the offhand
 // viewmodel (-0.32) and lower than RAISED, so a held shield gets the
 // hand while the lantern still PEEKS on screen (not dropped fully out
@@ -107,7 +108,9 @@ export function attachLamp(camera: THREE.Camera) {
   // Body is the visible lantern, hanging below the hinge.
   const hinge = new THREE.Group();
   hinge.position.copy(lampTarget);
-  hinge.scale.setScalar(1.8);
+  // Scale 1.8 → 1.4 — smaller lantern, takes less screen real estate
+  // and pairs with the lower / further-back LAMP_RAISED above.
+  hinge.scale.setScalar(1.4);
   camera.add(hinge);
   registerViewmodel(hinge);   // near-depth pass (see render-target.ts)
 
