@@ -210,10 +210,16 @@ export const HAND_RIGHT: ModelSpec = {
     // ── METACARPALS ─ children of wrist; fan from the carpus up to
     // the knuckle row. Positions are wrist-local (original hand-local
     // minus (0, WRIST_Y, WRIST_Z)).
-    { name: 'mc_thumb',  parent: 'wrist', kind: 'cylinder',
-      pos: [-0.030, 0.062, 0.007],
-      radius: 0.013, radiusTop: 0.011, height: 0.060, segments: 10,
-      rot: [0, 0, 0.65],
+    // mc_thumb is a BONE — it spans from the thumb's CMC joint
+    // (mc_thumb_base, on the wrist's thumb side) up to the MCP
+    // (finger_thumb). When the MCP slot moves (e.g. shifted to the
+    // palm side for proper opposition), the metacarpal auto-reflows
+    // to stay flush with it. Previously this was a hand-positioned
+    // cylinder with hard-coded pos / rot / length that drifted out
+    // of contact every time the MCP moved.
+    { name: 'mc_thumb', kind: 'bone',
+      from: 'mc_thumb_base', to: 'finger_thumb',
+      radius: 0.013, radiusTop: 0.011, segments: 10,
       mat: 'bone' },
     { name: 'mc_index',  parent: 'wrist', kind: 'cylinder',
       pos: [ 0.025, 0.092, 0],
@@ -443,6 +449,12 @@ export const HAND_RIGHT: ModelSpec = {
     // — the way a real thumb's proximal sits below the fingers'
     // plane in a grip pose.
     finger_thumb: { parent: 'wrist', pos: [-0.040, 0.082, -0.015], rot: FINGER_THUMB_ROT },
+
+    // CMC joint — where the thumb metacarpal starts (the carpal-
+    // metacarpal joint on the thumb side of the wrist). The mc_thumb
+    // BONE primitive spans from here to finger_thumb, so moving
+    // either end reflows the metacarpal automatically.
+    mc_thumb_base: { parent: 'wrist', pos: [-0.012, 0.038, 0.007] },
 
     // ── PIP (middle knuckle) ─ children of their MCP slot. Pre-curled
     // ≈49°. PIP-local pos is the END of the proximal phalanx.
