@@ -1,12 +1,19 @@
 import type { ModelSpec } from '../ecs/model-types';
 import { localFromWorld } from '../anim/orient';
 
-// 30° clockwise twist from the player's POV, applied around the
-// wrist's local +Y axis (forearm/saber direction). Positive Y rotation
-// in Three's right-handed system reads as CLOCKWISE when viewed from
-// −Y looking toward +Y — which is the player's view of the wrist.
-const WRIST_TWIST_CW_30 = Math.PI / 6;
-const NEW_WRIST_ROT: [number, number, number] = [0, WRIST_TWIST_CW_30, 0];
+// Wrist rotation: pitch forward + twist clockwise from POV.
+//
+//   PITCH = a slight wrist flexion (palm tipping toward the forearm).
+//           Negative X bends the +Y axis (saber direction) toward the
+//           palm side (−Z), which reads as "wrist tipped forward."
+//
+//   TWIST = 40° clockwise from the player's POV, around the wrist's
+//           local +Y axis (the forearm/saber direction). Positive Y
+//           in Three's right-handed system reads as CLOCKWISE when
+//           viewed from −Y → +Y, which is the player's view.
+const WRIST_PITCH_FORWARD = -0.20;
+const WRIST_TWIST_CW_40 = (40 * Math.PI) / 180;
+const NEW_WRIST_ROT: [number, number, number] = [WRIST_PITCH_FORWARD, WRIST_TWIST_CW_40, 0];
 // The orientation the palm_anchor (and the weapon attached to it) had
 // BEFORE the wrist twist, expressed in hand-root frame. We keep this
 // constant so the weapon doesn't rotate just because the wrist did.
