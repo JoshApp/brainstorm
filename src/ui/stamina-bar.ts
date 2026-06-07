@@ -72,6 +72,26 @@ export function createStaminaBar() {
   } as Partial<CSSStyleDeclaration>);
   container.appendChild(reservedEl);
 
+  // ── Segment dividers ───────────────────────────────────────────────
+  // Two thin opaque slivers at 1/3 + 2/3 of the bar's width, drawn ON
+  // TOP of the fill (and reserved overlay). They visually carve the
+  // continuous bar into three pip-style segments without changing the
+  // underlying continuous fill semantics — a heavy spends half a
+  // segment, a dodge spends a full one, depletion stays right-to-left.
+  for (const x of [33.33, 66.67]) {
+    const div = document.createElement('div');
+    Object.assign(div.style, {
+      position: 'absolute',
+      left: `${x}%`,
+      top: '0', bottom: '0',
+      width: '2px',
+      marginLeft: '-1px',          // centre the line ON the percentage point
+      background: 'rgba(0, 0, 0, 0.85)',
+      pointerEvents: 'none',
+    } as Partial<CSSStyleDeclaration>);
+    container.appendChild(div);
+  }
+
   document.body.appendChild(container);
 
   // Exhausted flash — a brief red pulse on the whole bar when the player

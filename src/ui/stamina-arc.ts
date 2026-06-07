@@ -57,6 +57,23 @@ export function createStaminaArc(): void {
   } as Partial<CSSStyleDeclaration>);
   root.appendChild(fill);
 
+  // ── Segment dividers (matches the Classic bar's split) ─────────────
+  // Continuous fill, three pips' worth of visual budget. Dodge / ranged
+  // = one segment; heavy = half a segment.
+  for (const x of [33.33, 66.67]) {
+    const div = document.createElement('div');
+    Object.assign(div.style, {
+      position: 'absolute',
+      left: `${x}%`,
+      top: '0', bottom: '0',
+      width: '2px',
+      marginLeft: '-1px',
+      background: 'rgba(0, 0, 0, 0.85)',
+      pointerEvents: 'none',
+    } as Partial<CSSStyleDeclaration>);
+    root.appendChild(div);
+  }
+
   document.body.appendChild(root);
 
   unsubStyle = hudStyleStore.subscribe(() => applyVisibility());

@@ -101,11 +101,17 @@ export const CONFIG = {
     // dead tap and never a punishment for just playing. Stamina is the budget
     // for the POWER moves — charged melee, ranged, dash. (Raise LIGHT_COST > 0
     // to re-arm a per-swing light drain; 0 keeps light fully off the resource.)
+    // Costs are tuned against a **3-SEGMENT** mental model: the bar
+    // reads as three pips' worth of action budget (visually divided
+    // in the HUD by two dark gap markers at 1/3 + 2/3). A dodge OR a
+    // ranged shot eats one full segment; a heavy eats half. So a
+    // full bar buys "3 dodges, OR 6 heavies, OR a heavy + 2 dodges,
+    // OR …" — legible at a glance without per-action arithmetic.
     LIGHT_COST: 0,            // free — light tap swings don't touch stamina
-    CHARGED_COST: 36,         // a charged melee swing (soft-commits; gasses if it empties you)
-    RANGED_COST: 30,          // one crossbow / wand shot (soft-commits; refused at empty)
+    CHARGED_COST: 17,         // ½ segment — a heavy melee (soft-commits; gasses if it empties you)
+    RANGED_COST: 33,          // 1 segment — one crossbow / wand shot
     // Dash / dodge — a discrete lunge with brief i-frames (the Souls roll).
-    DASH_COST: 30,
+    DASH_COST: 33,            // 1 segment
     DASH_SPEED: 15,           // impulse speed (m/s) fed to player knockback
     DASH_IFRAME_S: 0.30,      // invulnerability window during the lunge
     // Dodge NEVER blocks — at empty it still fires as a desperate STUMBLE:
@@ -164,7 +170,11 @@ export const CONFIG = {
   // (extra damage + poise crack). The ring flashes white during the window;
   // hold past it and you keep a normal full charge (no bonus, no extra cost).
   CHARGE: {
-    RESERVE_PER_SEC: 60,       // melee charge reserves stamina at this rate while held
+    // Charge time = CHARGED_COST / RESERVE_PER_SEC. With the new half-
+    // segment cost (17), 30/sec keeps the hold-to-full window around
+    // ~0.55s — the same "deliberate squeeze" feel as before the cost
+    // dropped (was 36 / 60 = 0.60s).
+    RESERVE_PER_SEC: 30,       // melee charge reserves stamina at this rate while held
     PERFECT_RELEASE_MS: 160,   // window after hitting full where a release overcharges
     PERFECT_DAMAGE_MUL: 1.35,  // overcharge bonus ON TOP of a full charge's damage
     PERFECT_STAGGER_MUL: 1.5,  // and an extra poise crack
