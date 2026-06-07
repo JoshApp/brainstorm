@@ -15,6 +15,32 @@ import { ArmIK } from '../anim/arm-ik';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
+import type { HeldWeaponCompose } from './held-weapon-compose';
+
+// DEV-only: attach an RGB axis triad to every slot in the composed
+// hand + weapon so authors can SEE which way each part's local +X
+// (red), +Y (green), +Z (blue) actually points in world. Then they
+// can describe rotations as "around the green axis" instead of
+// guessing Euler signs. Activated by URL flag `?handAxes=1`.
+//
+// DEV-gated so the production build strips it via Vite's dead-code
+// elimination — meaning no extra meshes, no extra render cost, in
+// the live game.
+function attachHandAxesOverlay(composed: HeldWeaponCompose): void {
+  if (!import.meta.env.DEV) return;
+  if (typeof window === 'undefined') return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('handAxes') !== '1') return;
+  const length = 0.04;   // 4cm — visible without dominating the frame
+  for (const [, slot] of composed.hand.slots) {
+    slot.add(new THREE.AxesHelper(length));
+  }
+  if (composed.weapon) {
+    for (const [, slot] of composed.weapon.slots) {
+      slot.add(new THREE.AxesHelper(length));
+    }
+  }
+}
 
 /** The wind pose to TELEGRAPH for a held charge direction — the directional
  *  move's pose for the live joystick direction, or null when centered / the
@@ -273,6 +299,12 @@ export function createWeaponViewmodel(
     // IK reads this slot's world position to know where to point the
     // arm chain.
     handWristSlot = composed.hand.slots.get('wrist') ?? null;
+    // DEV-only axis overlay: ?handAxes=1 attaches an RGB axis triad to
+    // each hand + weapon slot so an author can SEE the local +X (red),
+    // +Y (green), +Z (blue) of any joint and describe rotations
+    // relative to those colours instead of guessing Euler signs. Lives
+    // behind the DEV gate so it strips from production builds.
+    attachHandAxesOverlay(composed);
   }
 
   // Smoothed held pose for the IDLE / charge-hold state, so discrete changes

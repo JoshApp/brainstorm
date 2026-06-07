@@ -2,35 +2,29 @@ import type { ModelSpec } from '../ecs/model-types';
 import { localFromWorld } from '../anim/orient';
 
 // Wrist rotation: a sum of NAMED INTENTS, each landing on whichever
-// Euler channel its axis corresponds to. The composition pattern is
-// always "constant + constant + constant" on a channel, so editing
-// one intent never disturbs another.
+// Euler channel its axis corresponds to.
 //
-// X channel (pitch / hand-local +X axis — thumb-to-pinky):
+// X channel (pitch around hand-local +X — thumb-to-pinky axis):
 //
 //   PITCH FORWARD     — slight wrist flexion (palm tips toward forearm).
 //   PLANE INTO SCREEN — additional forward pitch tilting the back-of-
 //                       hand plane (hand-local XY) into the screen.
 //
-// Y channel (twist / roll / hand-local +Y axis — saber/forearm direction):
+// Y channel (roll around hand-local +Y — saber/forearm direction):
 //
-//   TWIST CW 40       — 40° clockwise from the PLAYER'S POV around the
-//                       wrist's local +Y. Positive Y is clockwise when
-//                       viewed from −Y → +Y, which is the player's view.
-//   TILT RIGHT 20     — 20° tilt to the right IN THE HAND'S OWN SPACE
-//                       (right = pinky side = hand-local +X). The right
-//                       side of the hand drops toward the palm side.
-//                       Same axis as TWIST_CW (hand-local +Y), so the
-//                       two compose by addition on the Y channel.
-//                       Different INTENT (frame of reference is the
-//                       hand, not the player), same MATH.
+//   PINKY TO GROUND   — 30° rotation where the hand's pinky side rolls
+//                       DOWN and the thumb side rolls UP. Positive Y
+//                       rotation drops hand-local +X (pinky) toward the
+//                       hand-local −Z (palm side). Single intent
+//                       replacing the previous TWIST + TILT_RIGHT
+//                       sum — same axis (saber direction), simpler
+//                       naming.
 const WRIST_PITCH_FORWARD = -0.20;
 const WRIST_PLANE_INTO_SCREEN = -0.15;
-const WRIST_TWIST_CW_40 = (40 * Math.PI) / 180;
-const WRIST_TILT_RIGHT_20 = (20 * Math.PI) / 180;
+const WRIST_PINKY_TO_GROUND_30 = (30 * Math.PI) / 180;
 const NEW_WRIST_ROT: [number, number, number] = [
   WRIST_PITCH_FORWARD + WRIST_PLANE_INTO_SCREEN,
-  WRIST_TWIST_CW_40 + WRIST_TILT_RIGHT_20,
+  WRIST_PINKY_TO_GROUND_30,
   0,
 ];
 // The orientation the palm_anchor (and the weapon attached to it) had
