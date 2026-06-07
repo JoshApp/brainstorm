@@ -117,34 +117,35 @@ export const HAND_RIGHT: ModelSpec = {
       radius: 0.028, segments: [12, 10],
       mat: 'bone' },
 
-    // ── HUMERUS ─ upper-arm bone spanning elbow → shoulder. Authored
-    // in ELBOW-LOCAL space; the bottom (=cylinder's −Y end) sits at
-    // the elbow origin, the top (=+Y end) at the shoulder. Slot
-    // positions below put the shoulder at elbow-local (0.10, -0.17,
-    // 0.205) — distance 0.284m, direction (0.352, -0.598, 0.721).
-    // The Euler [2.34, 0, 0.53] aligns the cylinder's +Y to that
-    // direction; height matches the actual gap so the bone visibly
-    // joins both joints without overshoot or shortfall.
-    { name: 'humerus', parent: 'elbow', kind: 'cylinder',
-      pos: [0.050, -0.085, 0.1025],
-      radius: 0.022, radiusTop: 0.018, height: 0.284, segments: 12,
-      rot: [2.34, 0, 0.53],
+    // ── HUMERUS ─ upper-arm bone spanning shoulder → elbow. Joint-
+    // first authoring: the cylinder's pos, rotation, and length are
+    // computed from the SHOULDER and ELBOW slot positions at build
+    // time. Move either joint and the bone reflows — no possibility
+    // of a "humerus floating off the shoulder" gap.
+    //
+    // Parent defaults to `from` (shoulder), so when the shoulder
+    // rotates the bone rotates with it (the elbow + everything below
+    // are also children of shoulder, so the whole arm swings as one).
+    { name: 'humerus', kind: 'bone',
+      from: 'shoulder', to: 'elbow',
+      radius: 0.022, radiusTop: 0.018,
       mat: 'bone' },
 
-    // ── FOREARM ─ radius (thumb-side, −X) + ulna (pinky-side, +X).
-    // Children of the ELBOW so they bend at the elbow as one unit;
-    // still rigid along their own axis (no wrist bend at the elbow).
-    { name: 'radius', parent: 'elbow', kind: 'cylinder',
-      pos: [-0.013, 0.18, 0],
-      radius: 0.018, radiusTop: 0.014, height: 0.36, segments: 12,
+    // ── FOREARM ─ radius (thumb-side, −X) + ulna (pinky-side, +X) +
+    // central sinew. All span elbow → wrist; `offset` shifts the
+    // pair off the centerline. Parented to elbow so they swing when
+    // the elbow rotates (and inherit shoulder rotation transitively).
+    { name: 'radius', kind: 'bone',
+      from: 'elbow', to: 'wrist', offset: [-0.013, 0, 0],
+      radius: 0.018, radiusTop: 0.014,
       mat: 'bone' },
-    { name: 'ulna',   parent: 'elbow', kind: 'cylinder',
-      pos: [ 0.013, 0.18, 0],
-      radius: 0.017, radiusTop: 0.013, height: 0.36, segments: 12,
+    { name: 'ulna', kind: 'bone',
+      from: 'elbow', to: 'wrist', offset: [0.013, 0, 0],
+      radius: 0.017, radiusTop: 0.013,
       mat: 'bone' },
-    { parent: 'elbow', kind: 'cylinder',
-      pos: [0, 0.18, 0],
-      radius: 0.012, height: 0.34, segments: 8,
+    { kind: 'bone',
+      from: 'elbow', to: 'wrist',
+      radius: 0.012, segments: 8,
       mat: 'boneDark' },
 
     // ── CARPUS ─ child of wrist; rotates with the wrist bend.

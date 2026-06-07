@@ -111,6 +111,32 @@ export type PartSpec =
   | (PartCommon & { kind: 'capsule'; radius: number; height: number; mat: string })
   | (PartCommon & { kind: 'cylinder'; radius: number; radiusTop?: number; height: number; segments?: number; mat: string })
   | (PartCommon & { kind: 'cone'; radius: number; height: number; segments?: number; mat: string })
+  // --- Bones (joint-first authoring) ---
+  // A cylinder that automatically spans two named slots. Author the
+  // JOINTS (slots) at the angles you want; the bone's position,
+  // rotation, and length are computed from the slot positions at
+  // build time. Moving a joint reflows every bone connected to it —
+  // no more humerus-floating-off-the-shoulder gap bugs.
+  //
+  // Convention: `from` is the PROXIMAL joint (closer to the rig's
+  // root), `to` is DISTAL. `parent` defaults to the `from` slot, so
+  // rotating that joint swings the bone naturally. Set `parent`
+  // explicitly only for unusual rigs.
+  //
+  // The bone's pos/rot in PartCommon are IGNORED — they're computed.
+  // `offset` (in parent-local, perpendicular to the bone) lets two
+  // bones share endpoints (radius + ulna in a forearm) without each
+  // needing its own slot pair.
+  | (PartCommon & {
+      kind: 'bone';
+      from: string;
+      to: string;
+      radius: number;
+      radiusTop?: number;
+      segments?: number;
+      offset?: Vec3;
+      mat: string;
+    })
   // --- Profiled / extruded geometry ---
   // Lathe: rotate a 2D profile (defined as [r, y] points) around the Y axis.
   // Good for chalices, columns, bottles, fluted blades, lantern globes.

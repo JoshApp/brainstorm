@@ -43,7 +43,12 @@ export function buildModel(spec: ModelSpec): BuiltModel {
   const parts = new Map<string, THREE.Object3D>();
   const hitTargets: THREE.Object3D[] = [];
 
-  // Slots first (parts may parent to slots, so slots must exist first).
+  // PASS 1: create slots + reparent slot-to-slot. We do the slot
+  // reparenting BEFORE building parts so that the 'bone' primitive
+  // (which spans two slots) can read the slots' world transforms
+  // when computing its position/rotation/length. Slots that parent
+  // to NAMED PARTS get reparented later in pass 4 (parts don't exist
+  // yet here).
   const slots = new Map<string, THREE.Object3D>();
   if (spec.slots) {
     for (const [name, slotSpec] of Object.entries(spec.slots)) {
@@ -54,24 +59,36 @@ export function buildModel(spec: ModelSpec): BuiltModel {
       group.add(anchor);
       slots.set(name, anchor);
     }
+    for (const [name, slotSpec] of Object.entries(spec.slots)) {
+      if (!slotSpec.parent) continue;
+      const parentSlot = slots.get(slotSpec.parent);
+      if (!parentSlot) continue;   // slot-parented-to-part is handled in pass 4
+      const node = slots.get(name);
+      if (node) parentSlot.add(node);
+    }
   }
+  // Slot world transforms are now correct; bone primitives will read
+  // them via getWorldPosition + worldToLocal.
+  group.updateMatrixWorld(true);
 
-  // First pass: build all parts, track them by index in a parallel array
-  // (so unnamed parts can still be reparented in pass 2).
+  // PASS 2: build all parts (non-bone go through the regular path;
+  // bone parts get the slot context they need to compute their pose).
   const builtParts: THREE.Object3D[] = [];
   for (const part of spec.parts) {
-    const obj = buildPart(part, materials);
+    const obj = part.kind === 'bone'
+      ? buildBone(part, slots, parts, group, materials)
+      : buildPart(part, materials);
     applyTransform(obj, part);
     if (part.name) {
       obj.name = part.name;
       parts.set(part.name, obj);
     }
     group.add(obj);
-    if (part.kind !== 'sprite') hitTargets.push(obj);
+    if (part.kind !== 'sprite' && part.kind !== 'bone') hitTargets.push(obj);
     builtParts.push(obj);
   }
 
-  // Second pass: reparent any part with a `parent` field to its parent node.
+  // PASS 3: reparent any part with a `parent` field to its parent node.
   // Names are NOT required — we look up the built object by index. Without
   // this, unnamed children stayed at the model root, often INSIDE other meshes.
   for (let i = 0; i < spec.parts.length; i++) {
@@ -87,16 +104,16 @@ export function buildModel(spec: ModelSpec): BuiltModel {
     parentNode.add(child);
   }
 
-  // Third pass: nest any SLOT that declares a parent (slot or part).
-  // Enables jointed rigs — a shoulder slot parented to the body `rig`
-  // both swings its arm and inherits the body's lean. Runs after parts
-  // are built so a slot can parent to a named part too; the slot keeps
-  // its authored local pos/rot (now interpreted in the parent's space).
+  // PASS 4: nest any SLOT that declares a parent on a named PART (slot-
+  // to-slot already happened in pass 1). Enables jointed rigs where a
+  // slot's transform should follow a part — e.g. a candle slot
+  // parented to a 'base' part.
   if (spec.slots) {
     for (const [name, slotSpec] of Object.entries(spec.slots)) {
       if (!slotSpec.parent) continue;
+      if (slots.has(slotSpec.parent)) continue;   // already reparented in pass 1
       const node = slots.get(name);
-      const parentNode = slots.get(slotSpec.parent) ?? parts.get(slotSpec.parent);
+      const parentNode = parts.get(slotSpec.parent);
       if (!node) continue;
       if (!parentNode) {
         // eslint-disable-next-line no-console
@@ -428,6 +445,11 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
       mesh.receiveShadow = part.receiveShadow ?? false;
       return mesh;
     }
+    case 'bone':
+      // Bones are routed through buildBone() in the outer loop because
+      // they need slot context that buildPart doesn't see. Reaching
+      // here means the dispatcher missed a case.
+      throw new Error('bone parts must be built via buildBone()');
   }
 }
 
@@ -496,9 +518,92 @@ function buildCsg(
 }
 
 function applyTransform(obj: THREE.Object3D, part: PartSpec) {
+  // Bones compute their own pos/rot from slot positions — never
+  // overwrite with the spec's pos/rot (they're ignored fields on bones).
+  if (part.kind === 'bone') {
+    if (part.scale) obj.scale.fromArray(part.scale as Vec3);
+    return;
+  }
   if (part.pos) obj.position.fromArray(part.pos as Vec3);
   if (part.rot) obj.rotation.fromArray(part.rot as Vec3);
   if (part.scale) obj.scale.fromArray(part.scale as Vec3);
+}
+
+// Scratch vectors so buildBone doesn't churn allocations.
+const _boneFromWorld = new THREE.Vector3();
+const _boneToWorld   = new THREE.Vector3();
+const _boneDir       = new THREE.Vector3();
+const _boneY         = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Build a 'bone' primitive: a cylinder that spans two named slots.
+ * The from/to slots' world positions are read off the (already-
+ * reparented) slot scene graph; positions are converted into the
+ * bone's parent-local frame, then the cylinder is positioned at the
+ * midpoint, oriented so its +Y axis points from→to, and sized to the
+ * exact distance. No magic numbers, no gap bugs.
+ *
+ * Parent defaults to the FROM slot — i.e. the proximal joint — so
+ * rotating that joint swings the bone naturally. Override with the
+ * `parent` field for unusual rigs.
+ *
+ * `offset` (parent-local) shifts the bone perpendicular to its axis;
+ * used for dual-bone forearms where the radius + ulna share endpoints
+ * but sit on either side of the centerline.
+ */
+function buildBone(
+  part: Extract<PartSpec, { kind: 'bone' }>,
+  slots: Map<string, THREE.Object3D>,
+  parts: Map<string, THREE.Object3D>,
+  group: THREE.Group,
+  materials: Map<string, THREE.Material>,
+): THREE.Object3D {
+  const fromSlot = slots.get(part.from);
+  const toSlot = slots.get(part.to);
+  if (!fromSlot || !toSlot) {
+    // eslint-disable-next-line no-console
+    console.warn(`bone: unknown slot "${!fromSlot ? part.from : part.to}"`);
+    return new THREE.Group();
+  }
+  // Resolve parent: explicit `parent` if present, otherwise from-slot
+  // (the proximal-joint default). Parent must be a slot or a part
+  // that exists by now — parts in pass 2 are built in source order,
+  // and we run after slots are reparented, so any part-typed parent
+  // referenced before its own definition would fail naturally here.
+  const parentName = part.parent ?? part.from;
+  const parentObj = slots.get(parentName) ?? parts.get(parentName) ?? group;
+  // Both endpoints in parent-local frame. worldToLocal mutates its
+  // arg, so we re-fetch the world positions each call.
+  fromSlot.getWorldPosition(_boneFromWorld);
+  toSlot.getWorldPosition(_boneToWorld);
+  parentObj.worldToLocal(_boneFromWorld);
+  parentObj.worldToLocal(_boneToWorld);
+  _boneDir.subVectors(_boneToWorld, _boneFromWorld);
+  const length = _boneDir.length();
+  if (length < 1e-6) {
+    // eslint-disable-next-line no-console
+    console.warn(`bone: from "${part.from}" and to "${part.to}" coincide`);
+    return new THREE.Group();
+  }
+  _boneDir.divideScalar(length);
+
+  const rTop = part.radiusTop ?? part.radius;
+  const segs = part.segments ?? 12;
+  // Bones share geometry through the cylinder pool — the rare 3-decimal
+  // length difference between equipped instances is the only thing
+  // preventing cache hits, and cylinders are cheap to instantiate.
+  const geo = pooledCylinder(rTop, part.radius, length, segs);
+  const mesh = makeMesh(geo, materials.get(part.mat)!, part);
+  // Midpoint + perpendicular offset for dual-bone arrangements.
+  mesh.position.addVectors(_boneFromWorld, _boneToWorld).multiplyScalar(0.5);
+  if (part.offset) {
+    mesh.position.x += part.offset[0];
+    mesh.position.y += part.offset[1];
+    mesh.position.z += part.offset[2];
+  }
+  // Cylinder's local +Y is the bone axis; align to from→to direction.
+  mesh.quaternion.setFromUnitVectors(_boneY, _boneDir);
+  return mesh;
 }
 
 /**
