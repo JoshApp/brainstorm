@@ -50,17 +50,6 @@ function setMeshDepthOnly(o: THREE.Object3D): void {
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   for (const m of mats) { m.colorWrite = false; m.depthTest = true; m.depthWrite = true; }
 }
-function setMeshColorWithDepth(o: THREE.Object3D): void {
-  // After the depth-only pass has written viewmodel depths, re-render
-  // viewmodel COLOR with proper depth-testing so closer parts occlude
-  // farther ones. This is what makes a finger wrapping a weapon visibly
-  // grip it — without this, the weapon's higher renderOrder always wins
-  // and the finger reads as buried inside the haft.
-  const mesh = o as THREE.Mesh;
-  if (!mesh.isMesh) return;
-  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  for (const m of mats) { m.colorWrite = true; m.depthTest = true; m.depthWrite = false; }
-}
 function restoreMeshColor(o: THREE.Object3D): void {
   const mesh = o as THREE.Mesh;
   if (!mesh.isMesh) return;
@@ -519,37 +508,21 @@ export function renderWithStyle(
     renderer.clear();
     renderer.render(scene, camera);
 
-    // VIEWMODEL PASSES — the held weapon / lamp / offhand render with
-    // depthTest:false in the main scene render above (so they're always
-    // on top of walls and never clip). That makes them draw above world,
-    // but as a side effect they don't depth-test EACH OTHER — the weapon
-    // (highest renderOrder) always wins shared pixels, so a finger
-    // wrapped around the haft reads as buried inside it.
-    //
-    // We fix that in two passes here:
-    //   1. DEPTH-ONLY: write viewmodel depth into the buffer (depthTest
-    //      + depthWrite both on). Closer parts win the buffer's depth at
-    //      each pixel. Also makes the depth-keyed post passes (distance
-    //      crush + fog inscatter) treat the viewmodel as foreground.
-    //   2. COLOR WITH DEPTH-TEST: re-render viewmodel COLOR with depth
-    //      testing against the depth values just written. Closer parts
-    //      now win the visible pixel — fingers properly occlude weapon
-    //      where they wrap around it.
+    // VIEWMODEL DEPTH PASS — the held weapon / lamp / offhand render
+    // depthTest:false (always on top of walls, no clip), which per GL means
+    // they NEVER write depth. So the depth-keyed post passes below (distance
+    // crush + fog inscatter) read the BACKGROUND depth behind the blade and
+    // paint the corridor/stairwell/mob onto it. Re-render the viewmodels
+    // DEPTH-ONLY (colorWrite off, test+write on) so the buffer carries their
+    // true near depth and the post passes treat them as the foreground they
+    // are. Colour is untouched (already drawn correctly above). Solid meshes
+    // only — additive flame sprites (not isMesh) are skipped.
     if (viewmodelRoots.length) {
       const prevAutoClear = renderer.autoClear;
       renderer.autoClear = false;
-      // Pass 1: depth-only.
       for (const vm of viewmodelRoots) {
         if (!vm.visible) continue;
         vm.traverse(setMeshDepthOnly);
-        renderer.render(vm, camera);
-        vm.traverse(restoreMeshColor);
-      }
-      // Pass 2: color with depth-test (overwrites the wrong-order
-      // composition from the main scene render).
-      for (const vm of viewmodelRoots) {
-        if (!vm.visible) continue;
-        vm.traverse(setMeshColorWithDepth);
         renderer.render(vm, camera);
         vm.traverse(restoreMeshColor);
       }
