@@ -137,7 +137,7 @@ const DEFAULTS: Settings = {
   adaptiveResolution: true,
   portalCulling: false,
   bandedLighting: true,
-  outlines: true,
+  outlines: false,
   hudStyle: 'minimal',
 };
 

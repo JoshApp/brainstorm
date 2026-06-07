@@ -146,7 +146,13 @@ export function createWeaponViewmodel(
   let shoulderSlot: THREE.Object3D | null = null;
   let elbowSlot: THREE.Object3D | null = null;
   let palmAnchorSlot: THREE.Object3D | null = null;
-  const _palmWorld = new THREE.Vector3();
+  // The IK operates in HAND-GROUP local space — that's the frame the
+  // shoulderRest lives in (it's the spec's local slot pos). If we fed
+  // the IK world coords, camera rotation would permanently displace
+  // the shoulder spring (the palm's world position changes as you look
+  // around but the rest position doesn't move with it).
+  let handGroup: THREE.Object3D | null = null;
+  const _palmLocal = new THREE.Vector3();
   // True when the wielded weapon has a bead chain to ripple (the whip).
   let whippy = false;
 
@@ -227,6 +233,7 @@ export function createWeaponViewmodel(
     shoulderSlot = composed.hand.slots.get('shoulder') ?? null;
     elbowSlot = composed.hand.slots.get('elbow') ?? null;
     palmAnchorSlot = composed.hand.slots.get('palm_anchor') ?? null;
+    handGroup = composed.hand.group;
     if (shoulderSlot && elbowSlot && palmAnchorSlot) {
       // Bone lengths come from the slot positions in the spec.
       const elbowPosLocal = elbowSlot.position;
@@ -347,9 +354,14 @@ export function createWeaponViewmodel(
     // rotations onto the shoulder + elbow slots; the dampers inside
     // the IK make the joint angles change smoothly across frames so a
     // single bad sample can't snap the arm.
-    if (armIK && shoulderSlot && elbowSlot && palmAnchorSlot && dt > 0) {
-      palmAnchorSlot.getWorldPosition(_palmWorld);
-      const r = armIK.solve(_palmWorld, dt);
+    if (armIK && shoulderSlot && elbowSlot && palmAnchorSlot && handGroup && dt > 0) {
+      // Get palm position in hand-group LOCAL space so the IK frame is
+      // independent of camera yaw/pitch and the outer group's swing
+      // pose. Feeding world coords here would leak both into the
+      // shoulder spring and permanently displace the rest.
+      palmAnchorSlot.getWorldPosition(_palmLocal);
+      handGroup.worldToLocal(_palmLocal);
+      const r = armIK.solve(_palmLocal, dt);
       shoulderSlot.rotation.set(r.shoulderRot[0], r.shoulderRot[1], r.shoulderRot[2]);
       elbowSlot.rotation.set(r.elbowRot[0], r.elbowRot[1], r.elbowRot[2]);
     }

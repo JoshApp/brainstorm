@@ -107,28 +107,28 @@ export const HAND_RIGHT: ModelSpec = {
     },
   },
   parts: [
-    // ── ELBOW JOINT bulb ─ a small sphere at the elbow position. Hides
-    // the visible seam where the humerus angle meets the forearm
-    // angle (the two cylinders converge at the elbow but their axes
-    // don't align, so you see a kink without the bulb). Sits at the
-    // elbow slot's origin (which is also the bottom of the forearm
-    // and the top of the humerus).
+    // ── ELBOW JOINT bulb ─ sphere at the elbow position. Big enough
+    // to fully cover the humerus → forearm junction so any small
+    // residual mis-alignment between cylinders reads as a joint, not
+    // a gap. Sits at the elbow slot's origin (= bottom of the forearm
+    // = top of the humerus).
     { parent: 'elbow', kind: 'sphere',
       pos: [0, 0, 0],
-      radius: 0.024, segments: [10, 8],
+      radius: 0.028, segments: [12, 10],
       mat: 'bone' },
 
     // ── HUMERUS ─ upper-arm bone spanning elbow → shoulder. Authored
-    // in ELBOW-LOCAL space; centered at the midpoint between elbow
-    // (0,0,0) and shoulder (which sits at elbow-local (0.10, -0.10,
-    // 0.155) given the slot positions below). Length matches that
-    // 0.21m gap; rotation aligns the cylinder's local +Y axis with
-    // the elbow→shoulder direction so the bone visibly connects the
-    // two slots instead of floating off into space.
+    // in ELBOW-LOCAL space; the bottom (=cylinder's −Y end) sits at
+    // the elbow origin, the top (=+Y end) at the shoulder. Slot
+    // positions below put the shoulder at elbow-local (0.10, -0.17,
+    // 0.205) — distance 0.284m, direction (0.352, -0.598, 0.721).
+    // The Euler [2.34, 0, 0.53] aligns the cylinder's +Y to that
+    // direction; height matches the actual gap so the bone visibly
+    // joins both joints without overshoot or shortfall.
     { name: 'humerus', parent: 'elbow', kind: 'cylinder',
-      pos: [0.050, -0.050, 0.0775],
-      radius: 0.022, radiusTop: 0.018, height: 0.22, segments: 12,
-      rot: [2.31, 0, 0.79],
+      pos: [0.050, -0.085, 0.1025],
+      radius: 0.022, radiusTop: 0.018, height: 0.284, segments: 12,
+      rot: [2.34, 0, 0.53],
       mat: 'bone' },
 
     // ── FOREARM ─ radius (thumb-side, −X) + ulna (pinky-side, +X).
@@ -306,13 +306,16 @@ export const HAND_RIGHT: ModelSpec = {
     // behind their eyes). FK-only — no IK solver; if some future
     // feature wants the hand to reach for a doorknob, this is the
     // anchor an IK solver would target.
-    shoulder: { pos: [0.10, -0.55, 0.15] },
+    shoulder: { pos: [0.10, -0.62, 0.20] },
 
     // ── ELBOW ─ child of shoulder, sits at the bottom of the visible
-    // forearm. Bending it would swing the whole forearm + wrist +
-    // fingers as one rigid unit. Authored at the bottom of the
-    // current forearm so the rest of the rig didn't have to move.
-    elbow: { parent: 'shoulder', pos: [-0.10, 0.10, -0.155] },
+    // forearm. Pushed slightly further "down + back" from shoulder
+    // than before so the external elbow angle opens from ~118° toward
+    // ~127° — closer to a relaxed neutral hold instead of the over-
+    // flexed look. Hand-local elbow position stays at (0, -0.45, 0)
+    // so the wrist + fingers don't need to move; only the shoulder
+    // and humerus rearranged.
+    elbow: { parent: 'shoulder', pos: [-0.10, 0.17, -0.205] },
 
     // ── WRIST ─ the joint between forearm and hand. Combined
     // rotation: a forward flexion (≈30° around X) PLUS a 90° twist
@@ -331,7 +334,7 @@ export const HAND_RIGHT: ModelSpec = {
     //   which is now pointing INBOARD (hand-local −X) — i.e.
     //   perpendicular to the weapon. Grip + finger axis stay
     //   orthogonal; weapon world direction is unchanged.
-    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.55, 0, 1.5708] },
+    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.30, 0, 1.5708] },
 
     // The grip anchor a held weapon aligns to. A child of WRIST so it
     // inherits the wrist bend. The Z rotation here is the LOAD-BEARING
