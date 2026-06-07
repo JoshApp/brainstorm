@@ -7,22 +7,36 @@
 // Camera-parented sprites (a tiny pool), so the puff sits in the player's view
 // and follows the head. Emission is driven by exhaustion-feedback's existing
 // breath cycle (emitBreath), so cadence already matches the breath SOUND.
+//
+// Each puff carries its OWN randomized size / spawn point / drift / lifespan
+// and lags the breath beat by a small random delay, so no two exhales look
+// alike and they don't pop in lockstep with the audio — natural, not a
+// metronome. A breath occasionally throws a second smaller trailing wisp.
 // Tunable via CONFIG.EXHAUSTION.BREATH_PUFF_*. Browser-only (canvas texture).
 
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 
-const COUNT = 5;                 // pool size — only a couple are live at once
+const COUNT = 8;                 // pool size — a few live at once (puff + wisps)
 const START_Y = -0.14;           // camera-local: just below eye line ("mouth")
 const START_Z = -0.42;           // a touch in front of the face
 
 interface Puff {
   sprite: THREE.Sprite;
   mat: THREE.SpriteMaterial;
+  active: boolean;   // claimed (counting down delay or alive)
+  delay: number;     // seconds left before it appears
   life: number;
   ttl: number;
   peak: number;
-  drift: number;   // lateral m/s
+  size0: number;
+  size1: number;
+  rise: number;
+  fwd: number;
+  driftX: number;    // lateral m/s
+  driftY: number;    // extra vertical wander m/s
+  ox: number;        // spawn offset x
+  oy: number;        // spawn offset y
 }
 
 let cam: THREE.Camera | null = null;
@@ -66,44 +80,75 @@ export function initBreath(camera: THREE.Camera): void {
     sprite.visible = false;
     sprite.renderOrder = 12;    // over the weapon viewmodel
     camera.add(sprite);
-    puffs.push({ sprite, mat, life: 0, ttl: 0, peak: 0, drift: 0 });
+    puffs.push({
+      sprite, mat, active: false, delay: 0, life: 0, ttl: 0, peak: 0,
+      size0: 0, size1: 0, rise: 0, fwd: 0, driftX: 0, driftY: 0, ox: 0, oy: 0,
+    });
   }
+}
+
+// ±frac random multiplier around 1.
+function jitter(frac: number): number {
+  return 1 + (Math.random() * 2 - 1) * frac;
+}
+
+// Spawn one puff with randomized character. `scale` shrinks a trailing wisp.
+function spawn(exertion: number, scale: number): void {
+  const p = puffs.find((x) => !x.active);
+  if (!p) return;
+  const E = CONFIG.EXHAUSTION;
+  p.active = true;
+  p.delay = Math.random() * E.BREATH_PUFF_DELAY;
+  p.life = 0;
+  p.ttl = E.BREATH_PUFF_LIFE * jitter(E.BREATH_PUFF_LIFE_VAR);
+  p.peak = E.BREATH_PUFF_OPACITY * Math.min(1, exertion) * scale;
+  p.size0 = E.BREATH_PUFF_SIZE0 * scale * jitter(E.BREATH_PUFF_SIZE_VAR);
+  p.size1 = E.BREATH_PUFF_SIZE1 * scale * jitter(E.BREATH_PUFF_SIZE_VAR);
+  p.rise = E.BREATH_PUFF_RISE * jitter(E.BREATH_PUFF_RISE_VAR);
+  p.fwd = E.BREATH_PUFF_FWD * jitter(E.BREATH_PUFF_FWD_VAR);
+  p.driftX = (Math.random() * 2 - 1) * E.BREATH_PUFF_DRIFT;
+  p.driftY = (Math.random() * 2 - 1) * E.BREATH_PUFF_DRIFT * 0.4;
+  p.ox = (Math.random() * 2 - 1) * E.BREATH_PUFF_POS_JITTER;
+  p.oy = (Math.random() * 2 - 1) * E.BREATH_PUFF_POS_JITTER * 0.6;
+  // Sprite stays hidden until its delay elapses (see tickBreath).
+  p.sprite.visible = false;
+  p.mat.opacity = 0;
 }
 
 /** Emit one exhale, scaled by exertion (0..1). Called once per breath cycle. */
 export function emitBreath(exertion: number): void {
   if (!cam || exertion <= 0) return;
-  const p = puffs.find((x) => !x.sprite.visible);
-  if (!p) return;
-  const E = CONFIG.EXHAUSTION;
-  p.ttl = E.BREATH_PUFF_LIFE;
-  p.life = 0;
-  p.peak = E.BREATH_PUFF_OPACITY * Math.min(1, exertion);
-  p.drift = (Math.random() - 0.5) * 0.1;
-  p.sprite.visible = true;
-  p.sprite.position.set((Math.random() - 0.5) * 0.06, START_Y, START_Z);
-  p.sprite.scale.setScalar(E.BREATH_PUFF_SIZE0);
-  p.mat.opacity = 0;
+  spawn(exertion, 1);
+  // Sometimes a smaller trailing wisp tags along, so breaths feel uneven.
+  if (Math.random() < CONFIG.EXHAUSTION.BREATH_PUFF_WISP_CHANCE) {
+    spawn(exertion, 0.55);
+  }
 }
 
-/** Advance live puffs: rise + drift forward, expand, fade in then out. */
+/** Advance live puffs: wait out delay, then rise + drift + expand + fade. */
 export function tickBreath(dt: number): void {
   if (!puffs.length) return;
-  const E = CONFIG.EXHAUSTION;
   for (const p of puffs) {
-    if (!p.sprite.visible) continue;
+    if (!p.active) continue;
+    if (p.delay > 0) {
+      p.delay -= dt;
+      if (p.delay > 0) continue;
+      // Delay just elapsed — appear at the (jittered) mouth position.
+      p.sprite.visible = true;
+      p.sprite.position.set(p.ox, START_Y + p.oy, START_Z);
+    }
     p.life += dt;
     const t = p.ttl > 0 ? p.life / p.ttl : 1;
-    if (t >= 1) { p.sprite.visible = false; p.mat.opacity = 0; continue; }
-    p.sprite.scale.setScalar(THREE.MathUtils.lerp(E.BREATH_PUFF_SIZE0, E.BREATH_PUFF_SIZE1, t));
-    p.sprite.position.y = START_Y + E.BREATH_PUFF_RISE * t;
-    p.sprite.position.z = START_Z - E.BREATH_PUFF_FWD * t;
-    p.sprite.position.x += p.drift * dt;
+    if (t >= 1) { p.active = false; p.sprite.visible = false; p.mat.opacity = 0; continue; }
+    p.sprite.scale.setScalar(THREE.MathUtils.lerp(p.size0, p.size1, t));
+    p.sprite.position.y = START_Y + p.oy + (p.rise + p.driftY) * t;
+    p.sprite.position.z = START_Z - p.fwd * t;
+    p.sprite.position.x = p.ox + p.driftX * t;
     p.mat.opacity = p.peak * Math.sin(t * Math.PI);   // fade in → out
   }
 }
 
 /** Hide all puffs (floor change). */
 export function clearBreath(): void {
-  for (const p of puffs) { p.sprite.visible = false; p.mat.opacity = 0; }
+  for (const p of puffs) { p.active = false; p.sprite.visible = false; p.mat.opacity = 0; }
 }

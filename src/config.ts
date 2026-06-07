@@ -193,6 +193,16 @@ export const CONFIG = {
     BREATH_PUFF_RISE: 0.18,    // metres it drifts UP over its life (warm air rising)
     BREATH_PUFF_FWD: 0.35,     // metres it drifts forward (away from the face)
     BREATH_PUFF_OPACITY: 0.30, // peak opacity at full exertion (scaled down when just winded)
+    // Per-puff randomness so no two exhales read identically (natural, not a
+    // metronome). Each is a ± fraction / spread applied at spawn.
+    BREATH_PUFF_SIZE_VAR: 0.30,    // ±30% on start+end scale
+    BREATH_PUFF_LIFE_VAR: 0.25,    // ±25% on lifespan
+    BREATH_PUFF_RISE_VAR: 0.35,    // ±35% on how far it floats up
+    BREATH_PUFF_FWD_VAR: 0.30,     // ±30% on how far it drifts forward
+    BREATH_PUFF_POS_JITTER: 0.05,  // metres of random offset on the spawn point (x/y)
+    BREATH_PUFF_DRIFT: 0.14,       // max lateral drift speed (m/s), random sign
+    BREATH_PUFF_DELAY: 0.22,       // max seconds a puff lags behind the breath beat
+    BREATH_PUFF_WISP_CHANCE: 0.4,  // chance a breath also throws a smaller trailing wisp
   },
 
   // === CAMERA STUMBLE — the off-balance lurch of a no-stamina dodge ===
