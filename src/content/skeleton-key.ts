@@ -7,9 +7,9 @@ import type { ModelSpec } from '../ecs/model-types';
 // sockets — so per the "Lighting as signal" rule, the glow reads as "this
 // key MEANS something" rather than decoration.
 //
-// Authored along the codebase convention: shaft runs along +Y/-Y, skull
-// bow at the TOP (+Y), bit/teeth at the BOTTOM (-Y), the skull's face
-// (eye sockets) toward -Z so it reads from the bench FRONT view. All
+// Authored along the codebase convention: shaft runs along +Y/-Y, a small
+// STYLIZED skull bow at the TOP (+Y), bit/teeth at the BOTTOM (-Y), the
+// skull's face toward +Z so it greets the default inspect camera. All
 // materials fog:false — this is an inspected/held item, always lit.
 //
 // Delivered as a STANDALONE model (bench subject `model-skeleton-key`),
@@ -46,6 +46,13 @@ export const SKELETON_KEY: ModelSpec = {
       fog: false,
       flatShading: 'auto',
     },
+    // Dark accent for the stylized nose + mouth recess — reads as a hole.
+    socket: {
+      color: 0x05030a,
+      roughness: 1.0,
+      metalness: 0.0,
+      fog: false,
+    },
     // The signal: hot amber embers burning inside the sockets. Bright
     // emissive, harmonised with the gold + torchlight palette.
     ember: {
@@ -58,57 +65,41 @@ export const SKELETON_KEY: ModelSpec = {
   },
   parts: [
     // --- SKULL BOW (the grip) -------------------------------------------
-    // Cranium — a single CSG solid: an elongated skull dome with the two
-    // eye sockets and the nasal aperture CARVED OUT with boolean subtracts
-    // (concave wells, not faked dark spheres). Kept to three nested subtracts
-    // (the documented safe CSG depth) and the mental model stays trivial: the
-    // dome is the only solid, every `b` operand is a void scooped from it.
+    // A SMALL STYLIZED skull — not anatomical. The icon read: a rounded
+    // cranium, two BIG round eye sockets that glow, a triangle nose, and a
+    // simple grin. Bold simple shapes at key scale beat fussy realism.
     //
-    // Local skull space (the CSG node sits at world [0,0.104,0], face → +Z
-    // so the skull greets the default bench/inspect camera):
-    //   dome center = local origin; sockets carved on the front-upper face;
-    //   nasal carved below + between them.
+    // Just ONE CSG: the cranium with its two big eye sockets subtracted
+    // (two nested subtracts — well within the safe depth). The nose +
+    // mouth are dark-accent shapes, not carves, to keep it clean. Skull
+    // sits at world y≈0.10, face → +Z so it greets the default camera.
     {
-      name: 'cranium', kind: 'csg', op: 'subtract', pos: [0, 0.104, 0], mat: 'goldPale',
-      // 3rd subtract: carve the nasal aperture out of (dome - both sockets).
+      name: 'cranium', kind: 'csg', op: 'subtract', pos: [0, 0.100, 0], mat: 'goldPale',
+      // 2nd subtract: carve the RIGHT eye out of (dome - left eye).
       a: {
         kind: 'csg', op: 'subtract', mat: 'goldPale',
-        // 2nd subtract: carve the RIGHT socket out of (dome - left socket).
-        a: {
-          kind: 'csg', op: 'subtract', mat: 'goldPale',
-          // 1st subtract: carve the LEFT socket out of the bare dome.
-          a: { kind: 'sphere', radius: 0.052, scale: [0.96, 1.14, 1.08], segments: [24, 20], mat: 'goldPale' },
-          b: { kind: 'sphere', pos: [-0.026, 0.006, 0.044], radius: 0.020, segments: [18, 14], mat: 'goldPale' },
-        },
-        b: { kind: 'sphere', pos: [0.026, 0.006, 0.044], radius: 0.020, segments: [18, 14], mat: 'goldPale' },
+        // Rounded cranium — a touch wider than tall, flattened front-to-back.
+        a: { kind: 'sphere', radius: 0.040, scale: [1.08, 1.02, 0.92], segments: [24, 18], mat: 'goldPale' },
+        // Big left eye socket.
+        b: { kind: 'sphere', pos: [-0.019, 0.004, 0.030], radius: 0.0165, segments: [18, 14], mat: 'goldPale' },
       },
-      // Nasal aperture — a tilted box scooped below/between the sockets.
-      b: { kind: 'box', pos: [0, -0.020, 0.046], rot: [-0.28, 0, 0], size: [0.013, 0.028, 0.030], mat: 'goldPale' },
+      // Big right eye socket.
+      b: { kind: 'sphere', pos: [0.019, 0.004, 0.030], radius: 0.0165, segments: [18, 14], mat: 'goldPale' },
     },
-    // Brow ridge — a thin bar over the carved sockets, casts a shadow line.
-    { name: 'brow', kind: 'box', pos: [0, 0.120, 0.046], size: [0.066, 0.011, 0.013], bevel: 0.004, mat: 'goldPale' },
-    // Embers — glowing spheres burning DEEP inside each carved socket. The
-    // concave well rim now shades them naturally for real socket depth.
-    { name: 'ember_l', kind: 'sphere', pos: [-0.026, 0.110, 0.050], radius: 0.0105, segments: [12, 10], mat: 'ember' },
-    { name: 'ember_r', kind: 'sphere', pos: [ 0.026, 0.110, 0.050], radius: 0.0105, segments: [12, 10], mat: 'ember' },
-    // Zygomatic cheekbones — two angled struts sweeping out below the eyes.
-    { name: 'cheek_l', kind: 'box', pos: [-0.034, 0.082, 0.030], rot: [0, -0.3, 0.28], size: [0.013, 0.013, 0.034], bevel: 0.004, mat: 'goldPale' },
-    { name: 'cheek_r', kind: 'box', pos: [ 0.034, 0.082, 0.030], rot: [0, 0.3, -0.28], size: [0.013, 0.013, 0.034], bevel: 0.004, mat: 'goldPale' },
-    // Maxilla — the upper-jaw bar the front teeth hang from.
-    { name: 'maxilla', kind: 'box', pos: [0, 0.050, 0.024], size: [0.046, 0.014, 0.030], bevel: 0.004, mat: 'goldPale' },
-    // Upper teeth — the grin. A row of six small bright-gold blocks so the
-    // teeth pop against the paler cranium (contrast, not one gold blob).
-    { name: 'tooth_u0', kind: 'box', pos: [-0.0205, 0.039, 0.034], size: [0.006, 0.014, 0.008], mat: 'gold' },
-    { name: 'tooth_u1', kind: 'box', pos: [-0.0123, 0.039, 0.035], size: [0.006, 0.014, 0.008], mat: 'gold' },
-    { name: 'tooth_u2', kind: 'box', pos: [-0.0041, 0.039, 0.0355], size: [0.006, 0.014, 0.008], mat: 'gold' },
-    { name: 'tooth_u3', kind: 'box', pos: [ 0.0041, 0.039, 0.0355], size: [0.006, 0.014, 0.008], mat: 'gold' },
-    { name: 'tooth_u4', kind: 'box', pos: [ 0.0123, 0.039, 0.035], size: [0.006, 0.014, 0.008], mat: 'gold' },
-    { name: 'tooth_u5', kind: 'box', pos: [ 0.0205, 0.039, 0.034], size: [0.006, 0.014, 0.008], mat: 'gold' },
-    // Mandible — the lower jaw, hung slightly open under the grin.
-    { name: 'mandible', kind: 'box', pos: [0, 0.026, 0.018], size: [0.048, 0.011, 0.034], bevel: 0.005, mat: 'goldPale' },
-    // Jaw rami — vertical struts joining the mandible back to the cranium.
-    { name: 'ramus_l', kind: 'box', pos: [-0.026, 0.040, 0.008], size: [0.009, 0.030, 0.018], mat: 'goldPale' },
-    { name: 'ramus_r', kind: 'box', pos: [ 0.026, 0.040, 0.008], size: [0.009, 0.030, 0.018], mat: 'goldPale' },
+    // Embers — fat glowing eyes filling the big sockets.
+    { name: 'ember_l', kind: 'sphere', pos: [-0.019, 0.104, 0.034], radius: 0.0115, segments: [14, 12], mat: 'ember' },
+    { name: 'ember_r', kind: 'sphere', pos: [ 0.019, 0.104, 0.034], radius: 0.0115, segments: [14, 12], mat: 'ember' },
+    // Nose — a tiny dark inverted triangle between + below the eyes.
+    { name: 'nose', kind: 'cone', pos: [0, 0.089, 0.036], rot: [Math.PI, 0, 0], radius: 0.006, height: 0.012, segments: 3, mat: 'socket' },
+    // Jaw — a smaller rounded block under the cranium (the chin mass).
+    { name: 'jaw', kind: 'box', pos: [0, 0.068, 0.008], size: [0.044, 0.024, 0.040], bevel: 0.010, mat: 'goldPale' },
+    // Mouth — a dark recess slot across the jaw front; the grin's shadow.
+    { name: 'mouth', kind: 'box', pos: [0, 0.072, 0.030], size: [0.030, 0.011, 0.008], mat: 'socket' },
+    // Grin teeth — three little bright-gold blocks sitting in the dark mouth,
+    // the gaps between them reading as the iconic skull grin.
+    { name: 'tooth_l', kind: 'box', pos: [-0.010, 0.072, 0.033], size: [0.006, 0.012, 0.006], mat: 'gold' },
+    { name: 'tooth_c', kind: 'box', pos: [ 0.000, 0.072, 0.033], size: [0.006, 0.012, 0.006], mat: 'gold' },
+    { name: 'tooth_r', kind: 'box', pos: [ 0.010, 0.072, 0.033], size: [0.006, 0.012, 0.006], mat: 'gold' },
 
     // --- COLLAR ----------------------------------------------------------
     // Ring between the skull and the shaft — a shadow line + a place for
@@ -130,11 +121,11 @@ export const SKELETON_KEY: ModelSpec = {
   slots: {
     // grip_anchor — where a hand grasps the key (on the skull bow, per the
     // brief: "the key's grip" IS the skeleton head).
-    grip_anchor: { pos: [0, 0.104, 0] },
+    grip_anchor: { pos: [0, 0.100, 0] },
     // bit_tip — the business end, for lock-insertion / "turn" effects.
     bit_tip: { pos: [0.038, -0.197, 0] },
     // eye_glow — the lit focal point, for attaching a light or glow effect
     // if the key is ever placed as a world interactable.
-    eye_glow: { pos: [0, 0.110, 0.050] },
+    eye_glow: { pos: [0, 0.104, 0.034] },
   },
 };
