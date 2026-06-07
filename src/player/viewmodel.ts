@@ -16,28 +16,37 @@ import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
 import type { HeldWeaponCompose } from './held-weapon-compose';
+import { getSettings, onSettingsChanged } from '../settings/settings';
+
+const HAND_AXES_LENGTH = 0.04;        // 4cm — visible without dominating the frame
+const HAND_AXES_GROUP_NAME = '__handAxesOverlay';
 
 // DEV-only: attach an RGB axis triad to every slot in the composed
 // hand + weapon so authors can SEE which way each part's local +X
 // (red), +Y (green), +Z (blue) actually points in world. Then they
 // can describe rotations as "around the green axis" instead of
-// guessing Euler signs. Activated by URL flag `?handAxes=1`.
+// guessing Euler signs. Toggled by the HAND AXES checkbox in the
+// settings menu (Settings → Debug); persists across reloads via
+// localStorage.
 //
 // DEV-gated so the production build strips it via Vite's dead-code
 // elimination — meaning no extra meshes, no extra render cost, in
 // the live game.
-function attachHandAxesOverlay(composed: HeldWeaponCompose): void {
+function setHandAxesOverlay(composed: HeldWeaponCompose, on: boolean): void {
   if (!import.meta.env.DEV) return;
-  if (typeof window === 'undefined') return;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('handAxes') !== '1') return;
-  const length = 0.04;   // 4cm — visible without dominating the frame
-  for (const [, slot] of composed.hand.slots) {
-    slot.add(new THREE.AxesHelper(length));
-  }
-  if (composed.weapon) {
-    for (const [, slot] of composed.weapon.slots) {
-      slot.add(new THREE.AxesHelper(length));
+  const slots: THREE.Object3D[] = [];
+  for (const [, s] of composed.hand.slots) slots.push(s);
+  if (composed.weapon) for (const [, s] of composed.weapon.slots) slots.push(s);
+  for (const slot of slots) {
+    // Remove any previous axis helper to keep the toggle idempotent.
+    for (let i = slot.children.length - 1; i >= 0; i--) {
+      const c = slot.children[i];
+      if (c.name === HAND_AXES_GROUP_NAME) slot.remove(c);
+    }
+    if (on) {
+      const ax = new THREE.AxesHelper(HAND_AXES_LENGTH);
+      ax.name = HAND_AXES_GROUP_NAME;
+      slot.add(ax);
     }
   }
 }
@@ -202,6 +211,16 @@ export function createWeaponViewmodel(
   const _yAxis         = new THREE.Vector3(0, 1, 0);
   // Cached reference to the hand's wrist slot, refreshed at each mount.
   let handWristSlot: THREE.Object3D | null = null;
+  // The currently composed hand+weapon — kept so the settings-change
+  // subscription below can re-apply DEV overlays (axis triads, etc.)
+  // without waiting for the next equip().
+  let currentComposed: HeldWeaponCompose | null = null;
+  // Settings subscription: when the HAND AXES toggle flips, attach or
+  // detach the axis triads on the live rig immediately. DEV-gated at
+  // setHandAxesOverlay itself, so prod builds strip the call body.
+  const offSettings = onSettingsChanged((s) => {
+    if (currentComposed) setHandAxesOverlay(currentComposed, s.debugHandAxes);
+  });
 
   // Apply the arm's meshes to the viewmodel depth pass too so they
   // don't z-fight with world geometry behind them.
@@ -299,12 +318,11 @@ export function createWeaponViewmodel(
     // IK reads this slot's world position to know where to point the
     // arm chain.
     handWristSlot = composed.hand.slots.get('wrist') ?? null;
-    // DEV-only axis overlay: ?handAxes=1 attaches an RGB axis triad to
-    // each hand + weapon slot so an author can SEE the local +X (red),
-    // +Y (green), +Z (blue) of any joint and describe rotations
-    // relative to those colours instead of guessing Euler signs. Lives
-    // behind the DEV gate so it strips from production builds.
-    attachHandAxesOverlay(composed);
+    // Track the live composed so the settings-change handler can flip
+    // the axes overlay on the current rig without waiting for the next
+    // weapon equip.
+    currentComposed = composed;
+    setHandAxesOverlay(composed, getSettings().debugHandAxes);
   }
 
   // Smoothed held pose for the IDLE / charge-hold state, so discrete changes

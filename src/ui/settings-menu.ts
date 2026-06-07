@@ -429,6 +429,12 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().debugBossReadout,
       set: (v) => updateSettings({ debugBossReadout: v }),
     }),
+    makeToggle({
+      label: 'HAND AXES',
+      description: 'Attach RGB axis triads to every hand + weapon slot — red is +X, green is +Y, blue is +Z. So you can name rotations by colour ("around the green axis") instead of guessing Euler signs. Equip a weapon to see the axes on the viewmodel.',
+      get: () => getSettings().debugHandAxes,
+      set: (v) => updateSettings({ debugHandAxes: v }),
+    }),
   ],
 
   run: () => buildRunTab(),

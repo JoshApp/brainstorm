@@ -42,6 +42,12 @@ export interface Settings {
    *  Each is its own panel so they can be turned on one at a time. */
   debugEyeAdapt: boolean;   // eye dark-adaptation readout (torch prox / adapt / ambient)
   debugBossReadout: boolean; // boss-encounter readout — only paints during a boss fight
+  /** Attach RGB axis triads to every hand + weapon slot in the
+   *  viewmodel so authors can name rotations by colour (red +X / green
+   *  +Y / blue +Z) instead of guessing Euler signs. DEV-only — stripped
+   *  from production builds by Vite's dead-code elimination via the
+   *  import.meta.env.DEV gate at the read site. */
+  debugHandAxes: boolean;
   /** Touch control scheme. Only 'default' (left-joystick / right-aim,
    *  the current layout) ships today — the selector is a seam for
    *  alternate schemes (e.g. fixed-stick, swipe-move) we'll add later. */
@@ -126,6 +132,7 @@ const DEFAULTS: Settings = {
   perfMeter: false,
   debugEyeAdapt: false,
   debugBossReadout: false,
+  debugHandAxes: false,
   controlScheme: 'default',
   // Flick by default — the most directional/immediate dodge; switch to
   // double-tap in the controls menu to feel the difference on the phone.
