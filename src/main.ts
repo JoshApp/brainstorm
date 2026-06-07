@@ -4,6 +4,7 @@ import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw } from './controls/camera';
 import { createWeaponViewmodel } from './player/viewmodel';
 import { attachLamp, setLampStowed } from './player/handheld-lamp';
+import { initBreath } from './effects/breath';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
@@ -393,6 +394,9 @@ const weapon = createWeaponViewmodel(camera, {
 // The player's lamp is the BASELINE light everywhere (CLAUDE.md
 // "Lighting as signal"). Attach it once, permanently — never detached.
 attachLamp(camera);
+
+// Visible cold-breath puff pool, parented to the camera (winded exhale).
+initBreath(camera);
 
 // The world-scale model to fling to the floor on death — tracked from the
 // equipped weapon. Drop model (correct world size + depth) over the

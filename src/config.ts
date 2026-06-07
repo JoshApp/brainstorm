@@ -184,6 +184,15 @@ export const CONFIG = {
     BREATH_HZ_MAX: 0.85,       // breaths/sec when gassed (slow, heavy panting — not frantic)
     HEAVE_Y: 0.035,            // metres of vertical chest-heave at full exertion
     HEAVE_PITCH: 0.012,        // radians of pitch heave at full exertion
+    // Visible cold-breath puff (breath.ts) — a pale fog dab exhaled once per
+    // breath cycle when winded, drifting up + forward and fading. Heavier
+    // (more opaque) the more gassed you are. Sells "cold dungeon, spent lungs".
+    BREATH_PUFF_LIFE: 1.1,     // seconds a puff lives
+    BREATH_PUFF_SIZE0: 0.06,   // starting sprite scale (metres) — small at the mouth
+    BREATH_PUFF_SIZE1: 0.34,   // ending sprite scale — billows out as it dissipates
+    BREATH_PUFF_RISE: 0.18,    // metres it drifts UP over its life (warm air rising)
+    BREATH_PUFF_FWD: 0.35,     // metres it drifts forward (away from the face)
+    BREATH_PUFF_OPACITY: 0.30, // peak opacity at full exertion (scaled down when just winded)
   },
 
   // === CAMERA STUMBLE — the off-balance lurch of a no-stamina dodge ===

@@ -13,6 +13,7 @@
 import { CONFIG } from '../config';
 import { staminaFraction, isStaminaExhausted } from './stamina';
 import { playBreath } from '../audio/sfx';
+import { emitBreath } from '../effects/breath';
 
 let phase = 0;             // continuous breath phase (in cycles)
 let currentExertion = 0;   // last computed 0..1, baked into the heave
@@ -37,7 +38,10 @@ export function tickExhaustionFeedback(realDt: number): void {
     + (CONFIG.EXHAUSTION.BREATH_HZ_MAX - CONFIG.EXHAUSTION.BREATH_HZ_MIN) * ex;
   const prev = phase;
   phase += realDt * rate;
-  if (Math.floor(phase) > Math.floor(prev)) playBreath(ex);   // one puff per cycle
+  if (Math.floor(phase) > Math.floor(prev)) {
+    playBreath(ex);     // audible exhale...
+    emitBreath(ex);     // ...and the visible cold puff, in lockstep
+  }
 }
 
 /** Breath oscillation for the camera chest-heave, in [−exertion, +exertion].

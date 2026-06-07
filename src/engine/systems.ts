@@ -38,6 +38,7 @@ import { tickProjectiles } from '../combat/projectile-pool';
 import { tickStamina } from '../combat/stamina';
 import { tickExhaustionHaptic } from '../combat/exhaustion-haptic';
 import { tickExhaustionFeedback } from '../combat/exhaustion-feedback';
+import { tickBreath } from '../effects/breath';
 import { tickCameraStumble } from '../combat/camera-stumble';
 import { tickHazardFields } from '../combat/hazard-field';
 import { tickXpWisps } from '../effects/xp-wisps';
@@ -252,7 +253,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     // Felt-stamina: breathing audio + camera chest-heave that ramp as you tire.
     // realDt for a steady breath cadence; 'unpaused' so it quiets in menus.
-    { name: 'exhaustion-feedback', phase: 'unpaused', tick(ctx) { tickExhaustionFeedback(ctx.realDt); } },
+    { name: 'exhaustion-feedback', phase: 'unpaused', tick(ctx) { tickExhaustionFeedback(ctx.realDt); tickBreath(ctx.realDt); } },
 
     // Stumble lurch decay — realDt so the off-balance recover is steady.
     { name: 'camera-stumble', phase: 'unpaused', tick(ctx) { tickCameraStumble(ctx.realDt); } },

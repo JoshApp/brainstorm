@@ -36,6 +36,8 @@ let root: HTMLDivElement | null = null;
 let bar: HTMLDivElement | null = null;   // inner wrapper that carries the low-HP pulse
 let hearts: HeartSvg[] = [];
 let builtMax = -1;
+let prevHp = Infinity;   // last rendered hp — detects a fresh wound to re-alarm
+let wasLow = false;      // was the previous frame in the low-HP band
 let unsubStyle: (() => void) | null = null;
 
 interface HeartSvg {
@@ -204,9 +206,23 @@ function render({ hp, max }: HpState): void {
                   : warning  ? HEALTH_COLORS.warning
                   :            HEALTH_COLORS.full;
 
-  // Low-HP heartbeat pulse (TotK): on while alive and at/below the threshold.
+  // Low-HP heartbeat: a finite BURST when you DROP into low health (or take a
+  // hit while already low), then it settles — low health stays a steady red
+  // read instead of strobing forever (which becomes noise you stop seeing).
+  // Each new wound re-alarms.
   const low = hp > 0 && frac <= LOW_BLINK_FRAC;
-  bar.style.animation = low ? 'heartLowPulse 0.85s ease-in-out infinite' : 'none';
+  const tookDamage = hp < prevHp;
+  if (low && (tookDamage || !wasLow)) {
+    // Restart the finite pulse: 'none' + reflow + re-set replays the same
+    // animation name. Two double-thumps (~1.6s) then quiet.
+    bar.style.animation = 'none';
+    void bar.offsetWidth;
+    bar.style.animation = 'heartLowPulse 0.8s ease-in-out 2';
+  } else if (!low) {
+    bar.style.animation = 'none';
+  }
+  prevHp = hp;
+  wasLow = low;
 
   // Each heart spans HEART_HP (2) HP; damage wipes from the right, so 1 HP
   // leaves a half heart.
@@ -225,4 +241,6 @@ export function disposeHealthHearts(): void {
   bar = null;
   hearts = [];
   builtMax = -1;
+  prevHp = Infinity;
+  wasLow = false;
 }

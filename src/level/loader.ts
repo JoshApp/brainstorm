@@ -10,6 +10,7 @@ import { resetBossEngagement } from '../ui/boss-engagement';
 import { resetPlayerInvuln } from '../player/health';
 import { resetJustDodge } from '../combat/just-dodge';
 import { resetExhaustionFeedback } from '../combat/exhaustion-feedback';
+import { clearBreath } from '../effects/breath';
 import { resetCameraStumble } from '../combat/camera-stumble';
 import { resetViewSway } from '../player/viewmodel-sway';
 import { resetDashCooldown } from '../combat/dash';
@@ -177,6 +178,7 @@ export function tickPendingLoad() {
   resetPlayerInvuln();
   resetJustDodge();         // clear any in-flight counter window / slow-mo
   resetExhaustionFeedback(); // clear breath phase / heave on a fresh floor
+  clearBreath();            // hide any in-flight breath puffs
   resetCameraStumble();     // clear any in-flight stumble lurch
   resetDashCooldown();      // a fresh floor starts dodge-ready
   cancelFogWalkthrough();   // never carry a half-played gate walk into a new level
