@@ -1,45 +1,49 @@
 import type { ModelSpec } from '../ecs/model-types';
 import { localFromWorld, rotateLocally } from '../anim/orient';
 
-// Wrist rotation: a stack of NAMED INTENTS, each one composed on top
-// of the previous via additive Euler channels OR — when the rotation
-// is around the wrist's CURRENT LOCAL axis (as seen in the in-game
-// HAND AXES overlay) — via rotateLocally(). The order of composition
-// is the order the author thinks about it: pitch first, then twist,
-// then any "look at the axes and rotate around blue" passes.
+// Wrist rotation: a stack of NAMED INTENTS, applied IN ORDER. The
+// first two land on the Euler's X and Y channels directly (additive
+// composition works for the FIRST rotations applied to a slot, where
+// "local" and "parent" are the same axis). After that, each
+// additional intent goes through rotateLocally() because the local
+// axes have rotated — adding to an Euler channel after this point
+// would rotate around the PARENT's axis, not the visible axis in the
+// HAND AXES overlay.
 //
-// X channel (pitch around hand-local +X — thumb-to-pinky axis):
+// X / Y channels (initial pitch + roll, additive):
 //   PITCH FORWARD     — slight wrist flexion (palm tips toward forearm).
 //   PLANE INTO SCREEN — additional forward pitch tilting the back-of-
 //                       hand plane (hand-local XY) into the screen.
+//   PINKY TO GROUND   — 30° rotation around +Y where pinky drops,
+//                       thumb rises.
 //
-// Y channel (roll around hand-local +Y — saber/forearm direction):
-//   PINKY TO GROUND   — 30° rotation where pinky drops, thumb rises.
-//
-// Local +Z axis (= the BLUE axis in the HAND AXES overlay — the
-// back-of-hand normal AFTER the pitch + pinky-to-ground rotations):
-//   ROLL BLUE CW 25   — 25° clockwise FROM THE PLAYER'S POV around
-//                       the wrist's local +Z. Negative radians because
-//                       right-hand rule says positive Z is counter-
-//                       clockwise from the +Z end (the back of the
-//                       hand, which faces the player). Applied via
-//                       rotateLocally() because adding to the Euler's
-//                       Z channel would instead rotate around the
-//                       PARENT'S Z (a different axis once the wrist
-//                       has any pitch / twist).
+// Local-axis passes (rotateLocally, intrinsic):
+//   ROLL BLUE CW 30   — 30° clockwise FROM POV around the wrist's
+//                       LOCAL +Z (= the BLUE axis after pitch +
+//                       pinky-to-ground). Negative radians: +Z points
+//                       at the player (back of hand visible),
+//                       right-hand rule says positive is CCW from
+//                       that end, so CW from POV is negative.
+//   TILT GREEN CW 30  — 30° clockwise FROM POV around the wrist's
+//                       LOCAL +Y (= the GREEN axis after all prior
+//                       rotations including the blue one). Positive
+//                       radians: +Y points away from the player
+//                       (saber direction), and CW from POV (which is
+//                       the −Y end) corresponds to POSITIVE rotation
+//                       under the right-hand rule.
 const WRIST_PITCH_FORWARD = -0.20;
 const WRIST_PLANE_INTO_SCREEN = -0.15;
 const WRIST_PINKY_TO_GROUND_30 = (30 * Math.PI) / 180;
-const WRIST_ROLL_BLUE_CW_25 = -(25 * Math.PI) / 180;
-const NEW_WRIST_ROT: [number, number, number] = rotateLocally(
-  [
-    WRIST_PITCH_FORWARD + WRIST_PLANE_INTO_SCREEN,
-    WRIST_PINKY_TO_GROUND_30,
-    0,
-  ],
-  'z',
-  WRIST_ROLL_BLUE_CW_25,
-);
+const WRIST_ROLL_BLUE_CW_30 = -(30 * Math.PI) / 180;
+const WRIST_TILT_GREEN_CW_30 = (30 * Math.PI) / 180;
+
+const BASE_WRIST_ROT: [number, number, number] = [
+  WRIST_PITCH_FORWARD + WRIST_PLANE_INTO_SCREEN,
+  WRIST_PINKY_TO_GROUND_30,
+  0,
+];
+const AFTER_BLUE_ROT = rotateLocally(BASE_WRIST_ROT, 'z', WRIST_ROLL_BLUE_CW_30);
+const NEW_WRIST_ROT = rotateLocally(AFTER_BLUE_ROT, 'y', WRIST_TILT_GREEN_CW_30);
 // The orientation the palm_anchor (and the weapon attached to it) had
 // BEFORE the wrist twist, expressed in hand-root frame. We keep this
 // constant so the weapon doesn't rotate just because the wrist did.
