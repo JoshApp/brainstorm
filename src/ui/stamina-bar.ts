@@ -2,27 +2,77 @@ import { staminaStore, type StaminaState } from '../state/hud-stores';
 import { hudStyleStore, getHudStyle } from './hud-style';
 import { bind } from './hud';
 
-// Thin stamina gauge, sitting just above the HP pips at bottom-center.
-// Deliberately quieter than the HP bar: HP is discrete warm-orange pips
-// (count your hits); stamina is one continuous cold steel-blue sliver
-// (a breath meter). The cool/warm split keeps the two resources instantly
-// distinct in peripheral vision.
+// Stamina gauge — three rectangular pip-style segments in a flex row
+// at the bottom-centre. The bar's value is continuous internally
+// (frac 0..1); we map it across three segments with REAL gaps between
+// them so the read is "you have N actions in the tank" at a glance.
 //
-// Auto-hides when rested. Stamina is irrelevant most of the time — you
-// only spend it on charged swings and shots — so a permanent gauge would
-// be HUD clutter against the grimdark restraint. It fades in the instant
-// you spend and fades back out once it's full again, so it reads as a
-// transient "you're winded" signal rather than chrome.
+// Depletion is right-to-left: the rightmost segment drains first,
+// then the middle, then the left. A heavy attack spends half a
+// segment, a dodge or ranged shot spends a full one.
 //
-// Store-bound (staminaStore), so the fill only writes to the DOM when the
+// Auto-hides when rested. Stamina is irrelevant most of the time —
+// you only spend it on heavy swings, ranged shots, dodges — so a
+// permanent gauge would be HUD clutter. It fades in the instant
+// you spend and fades back out once it's full again, so it reads
+// as a transient "you're winded" signal rather than chrome.
+//
+// Store-bound (staminaStore), so the DOM only updates when the
 // fraction actually moves; idling at full produces zero churn.
 
-let container: HTMLDivElement | null = null;
-let fill: HTMLDivElement | null = null;
-let reservedEl: HTMLDivElement | null = null;
+interface Segment {
+  track: HTMLDivElement;
+  fill: HTMLDivElement;
+  reserved: HTMLDivElement;
+}
 
-const BAR_W = 200;   // matches the HP pip row's rough footprint
-const BAR_H = 5;
+let container: HTMLDivElement | null = null;
+const segments: Segment[] = [];
+
+const BAR_W = 200;       // matches the HP pip row's rough footprint
+const BAR_H = 8;         // taller than the previous 5px sliver — easier to read
+const SEGMENTS = 3;      // dodge / ranged = 1 each, heavy = ½
+const GAP_PX = 4;        // visible gap between segments
+
+function makeSegment(): Segment {
+  const track = document.createElement('div');
+  Object.assign(track.style, {
+    position: 'relative',
+    flex: '1',
+    height: '100%',
+    border: '1px solid rgba(150, 180, 200, 0.30)',
+    background: 'rgba(8, 12, 16, 0.5)',
+    boxShadow: 'inset 0 0 4px rgba(0,0,0,0.7)',
+    overflow: 'hidden',
+  } as Partial<CSSStyleDeclaration>);
+
+  const fill = document.createElement('div');
+  Object.assign(fill.style, {
+    width: '100%',
+    height: '100%',
+    transformOrigin: 'left center',
+    background: 'linear-gradient(180deg, rgba(150, 195, 215, 0.92), rgba(70, 110, 140, 0.92))',
+    boxShadow: '0 0 6px rgba(120, 180, 210, 0.35)',
+  } as Partial<CSSStyleDeclaration>);
+  track.appendChild(fill);
+
+  // Reserved (locked charge) overlay — a hatched amber strip that
+  // appears just past the leading edge of the live fill while a heavy
+  // is held. Per-segment, so a reservation that crosses the gap
+  // between two segments visibly does so without bridging the gap.
+  const reserved = document.createElement('div');
+  Object.assign(reserved.style, {
+    position: 'absolute',
+    top: '0', height: '100%',
+    left: '0', width: '0%',
+    backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,225,170,0.85) 0 3px, rgba(255,225,170,0.25) 3px 6px)',
+    opacity: '0',
+    transition: 'opacity 0.12s ease-out',
+  } as Partial<CSSStyleDeclaration>);
+  track.appendChild(reserved);
+
+  return { track, fill, reserved };
+}
 
 export function createStaminaBar() {
   if (container) return;
@@ -31,79 +81,36 @@ export function createStaminaBar() {
   Object.assign(container.style, {
     position: 'fixed',
     left: '50%',
-    // Sits above the HP pips (those are at bottom 20 + 12 tall).
     bottom: 'calc(40px + env(safe-area-inset-bottom, 0px))',
     transform: 'translateX(-50%)',
     width: `${BAR_W}px`,
     height: `${BAR_H}px`,
-    borderRadius: '3px',
-    border: '1px solid rgba(150, 180, 200, 0.30)',
-    background: 'rgba(8, 12, 16, 0.5)',
-    boxShadow: 'inset 0 0 4px rgba(0,0,0,0.7)',
-    overflow: 'hidden',
+    display: 'flex',
+    gap: `${GAP_PX}px`,
     zIndex: '10',
     pointerEvents: 'none',
     opacity: '0',
     transition: 'opacity 0.45s ease-out',
   } as Partial<CSSStyleDeclaration>);
 
-  fill = document.createElement('div');
-  Object.assign(fill.style, {
-    width: '100%',
-    height: '100%',
-    transformOrigin: 'left center',
-    background: 'linear-gradient(180deg, rgba(150, 195, 215, 0.92), rgba(70, 110, 140, 0.92))',
-    boxShadow: '0 0 6px rgba(120, 180, 210, 0.35)',
-  } as Partial<CSSStyleDeclaration>);
-  container.appendChild(fill);
-
-  // Reserved band — the LOCKED charge stamina, drawn as a hatched "ghost"
-  // segment just past the usable fill while a heavy is held. As you charge, the
-  // bright fill recedes and this ghost grows into it: you watch usable stamina
-  // convert into a heavy. Released = committed (gone); canceled = refunded back.
-  reservedEl = document.createElement('div');
-  Object.assign(reservedEl.style, {
-    position: 'absolute',
-    top: '0', height: '100%',
-    left: '0', width: '0%',
-    backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,225,170,0.85) 0 3px, rgba(255,225,170,0.25) 3px 6px)',
-    opacity: '0',
-    transition: 'opacity 0.12s ease-out',
-  } as Partial<CSSStyleDeclaration>);
-  container.appendChild(reservedEl);
-
-  // ── Segment dividers ───────────────────────────────────────────────
-  // Two thin opaque slivers at 1/3 + 2/3 of the bar's width, drawn ON
-  // TOP of the fill (and reserved overlay). They visually carve the
-  // continuous bar into three pip-style segments without changing the
-  // underlying continuous fill semantics — a heavy spends half a
-  // segment, a dodge spends a full one, depletion stays right-to-left.
-  for (const x of [33.33, 66.67]) {
-    const div = document.createElement('div');
-    Object.assign(div.style, {
-      position: 'absolute',
-      left: `${x}%`,
-      top: '0', bottom: '0',
-      width: '2px',
-      marginLeft: '-1px',          // centre the line ON the percentage point
-      background: 'rgba(0, 0, 0, 0.85)',
-      pointerEvents: 'none',
-    } as Partial<CSSStyleDeclaration>);
-    container.appendChild(div);
+  for (let i = 0; i < SEGMENTS; i++) {
+    const seg = makeSegment();
+    segments.push(seg);
+    container.appendChild(seg.track);
   }
 
   document.body.appendChild(container);
 
-  // Exhausted flash — a brief red pulse on the whole bar when the player
-  // bottoms out, so a gated dash / shot reads as "you're gassed" rather than
-  // an unresponsive tap. Injected once.
+  // Exhausted flash — a brief red glow around the whole row when the
+  // player bottoms out, so a gated dash / shot reads as "you're gassed"
+  // rather than an unresponsive tap. Injected once.
   if (!document.getElementById('stamina-flash-kf')) {
     const style = document.createElement('style');
     style.id = 'stamina-flash-kf';
     style.textContent =
-      '@keyframes staminaGassed{0%{box-shadow:0 0 0 1px rgba(230,90,70,0)}' +
-      '35%{box-shadow:0 0 8px 2px rgba(230,90,70,0.85)}' +
-      '100%{box-shadow:0 0 0 1px rgba(230,90,70,0)}}';
+      '@keyframes staminaGassed{0%{filter:drop-shadow(0 0 0 rgba(230,90,70,0))}' +
+      '35%{filter:drop-shadow(0 0 4px rgba(230,90,70,0.95))}' +
+      '100%{filter:drop-shadow(0 0 0 rgba(230,90,70,0))}}';
     document.head.appendChild(style);
   }
 
@@ -122,48 +129,56 @@ export function createStaminaBar() {
  *  as "you're out" right then, not just from the ambient red. */
 export function flashStaminaBar(): void {
   if (!container) return;
-  // Suppress when another HUD style owns stamina — the bar shouldn't
-  // briefly pop into view under the Minimal sliver / Cinematic breath.
   if (getHudStyle().stamina !== 'bar') return;
   container.style.opacity = '1';
   container.style.animation = 'none';
-  // Force reflow so re-assigning the same animation restarts it.
-  void container.offsetWidth;
+  void container.offsetWidth;       // force reflow so the animation restarts
   container.style.animation = 'staminaGassed 0.5s ease-out';
 }
 
 function render({ frac, rested, exhausted, reserved }: StaminaState) {
-  if (!container || !fill || !reservedEl) return;
-  // Other styles (minimal → arc, cinematic → breath/audio) own stamina;
-  // suppress the bar entirely under those.
+  if (!container) return;
   if (getHudStyle().stamina !== 'bar') {
     container.style.opacity = '0';
     return;
   }
   const f = Math.max(0, Math.min(1, frac));
-  fill.style.transform = `scaleX(${f})`;
-  // Tint red when nearly empty so a dry meter reads as "you can't" at a
-  // glance, not just "low".
-  fill.style.background = frac < 0.2
-    ? 'linear-gradient(180deg, rgba(210, 110, 90, 0.92), rgba(150, 50, 40, 0.92))'
-    : 'linear-gradient(180deg, rgba(150, 195, 215, 0.92), rgba(70, 110, 140, 0.92))';
-  // Reserved (locked charge) ghost: drawn just PAST the usable fill, from frac
-  // up to frac+reserved — the stamina you've locked into the held heavy. The
-  // usable fill (above) already shrank as this grew, so the two meet at frac and
-  // total your committed-or-available stamina. Clamped so it never overflows the
-  // bar. No "fizzle" case any more — you can only ever reserve what you had.
-  if (reserved > 0) {
-    const shown = Math.min(reserved, 1 - f);
-    reservedEl.style.left = `${f * 100}%`;
-    reservedEl.style.width = `${shown * 100}%`;
-    reservedEl.style.opacity = '1';
-  } else {
-    reservedEl.style.opacity = '0';
+  const reservedEnd = Math.min(f + Math.max(0, reserved), 1);
+
+  // Per-segment fill — right-to-left depletion. The leftmost segment
+  // covers value range [0, 1/3]; the rightmost covers [2/3, 1]. As
+  // `f` drops from 1 → 0, the rightmost segment's `(f - 2/3) / (1/3)`
+  // ratio hits zero first, then the middle's, then the left's.
+  for (let i = 0; i < SEGMENTS; i++) {
+    const seg = segments[i];
+    const segMin = i / SEGMENTS;
+    const segMax = (i + 1) / SEGMENTS;
+    const span = segMax - segMin;
+    const segFill = Math.max(0, Math.min(1, (f - segMin) / span));
+    seg.fill.style.transform = `scaleX(${segFill})`;
+    seg.fill.style.background = frac < 0.2
+      ? 'linear-gradient(180deg, rgba(210, 110, 90, 0.92), rgba(150, 50, 40, 0.92))'
+      : 'linear-gradient(180deg, rgba(150, 195, 215, 0.92), rgba(70, 110, 140, 0.92))';
+
+    // Reserved slice within this segment — intersect [f, reservedEnd]
+    // with [segMin, segMax].
+    if (reserved > 0) {
+      const sliceStart = Math.max(f, segMin);
+      const sliceEnd = Math.min(reservedEnd, segMax);
+      if (sliceEnd > sliceStart) {
+        const left = (sliceStart - segMin) / span;
+        const width = (sliceEnd - sliceStart) / span;
+        seg.reserved.style.left = `${left * 100}%`;
+        seg.reserved.style.width = `${width * 100}%`;
+        seg.reserved.style.opacity = '1';
+      } else {
+        seg.reserved.style.opacity = '0';
+      }
+    } else {
+      seg.reserved.style.opacity = '0';
+    }
   }
-  // Gassed pulse — restart the animation each time we (re-)enter exhausted by
-  // toggling the property off then on.
+
   container.style.animation = exhausted ? 'staminaGassed 0.5s ease-out' : 'none';
-  // Stay visible while gassed or while a charge is reserving, even if otherwise
-  // rested, so the flash and the preview are always seen.
   container.style.opacity = rested && !exhausted && reserved === 0 ? '0' : '1';
 }
