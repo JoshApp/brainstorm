@@ -44,9 +44,10 @@ export interface Settings {
   debugBossReadout: boolean; // boss-encounter readout — only paints during a boss fight
   /** Attach RGB axis triads to every hand + weapon slot in the
    *  viewmodel so authors can name rotations by colour (red +X / green
-   *  +Y / blue +Z) instead of guessing Euler signs. DEV-only — stripped
-   *  from production builds by Vite's dead-code elimination via the
-   *  import.meta.env.DEV gate at the read site. */
+   *  +Y / blue +Z) instead of guessing Euler signs. Off by default;
+   *  ships in production so it works on the live URL where authoring
+   *  iteration happens (deploy → look on phone → describe rotation by
+   *  colour → edit spec). */
   debugHandAxes: boolean;
   /** Touch control scheme. Only 'default' (left-joystick / right-aim,
    *  the current layout) ships today — the selector is a seam for

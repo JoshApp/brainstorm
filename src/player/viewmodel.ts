@@ -21,19 +21,23 @@ import { getSettings, onSettingsChanged } from '../settings/settings';
 const HAND_AXES_LENGTH = 0.04;        // 4cm — visible without dominating the frame
 const HAND_AXES_GROUP_NAME = '__handAxesOverlay';
 
-// DEV-only: attach an RGB axis triad to every slot in the composed
-// hand + weapon so authors can SEE which way each part's local +X
-// (red), +Y (green), +Z (blue) actually points in world. Then they
-// can describe rotations as "around the green axis" instead of
-// guessing Euler signs. Toggled by the HAND AXES checkbox in the
-// settings menu (Settings → Debug); persists across reloads via
-// localStorage.
+// Attach an RGB axis triad to every slot in the composed hand +
+// weapon so authors can SEE which way each part's local +X (red),
+// +Y (green), +Z (blue) actually points in world. Then they can
+// describe rotations as "around the green axis" instead of guessing
+// Euler signs. Toggled by the HAND AXES checkbox in the settings
+// menu (Settings → Debug); persists across reloads via localStorage.
 //
-// DEV-gated so the production build strips it via Vite's dead-code
-// elimination — meaning no extra meshes, no extra render cost, in
-// the live game.
+// SHIPS IN PRODUCTION — this is an AUTHOR'S TOOL but the loop
+// (deploy → look on phone → describe rotation by colour → edit spec)
+// NEEDS the toggle to actually work on the live build. Settings flag
+// is off by default; flipping it costs ~30 line segments per equip.
+//
+// Render trick: AxesHelper materials are forced to depthTest:false +
+// high renderOrder so the lines draw ON TOP of the hand / weapon
+// meshes regardless of depth. Otherwise the slot-origin lines get
+// buried inside the carpus sphere or the palm.
 function setHandAxesOverlay(composed: HeldWeaponCompose, on: boolean): void {
-  if (!import.meta.env.DEV) return;
   const slots: THREE.Object3D[] = [];
   for (const [, s] of composed.hand.slots) slots.push(s);
   if (composed.weapon) for (const [, s] of composed.weapon.slots) slots.push(s);
@@ -46,6 +50,15 @@ function setHandAxesOverlay(composed: HeldWeaponCompose, on: boolean): void {
     if (on) {
       const ax = new THREE.AxesHelper(HAND_AXES_LENGTH);
       ax.name = HAND_AXES_GROUP_NAME;
+      ax.traverse((o) => {
+        const m = (o as THREE.LineSegments).material as THREE.LineBasicMaterial | undefined;
+        if (m) {
+          m.depthTest = false;
+          m.depthWrite = false;
+          m.transparent = true;
+        }
+        o.renderOrder = 10_000;
+      });
       slot.add(ax);
     }
   }
