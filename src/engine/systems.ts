@@ -47,6 +47,7 @@ import { tickXpWisps } from '../effects/xp-wisps';
 import { tickGoldCoins } from '../effects/gold-coins';
 import { tickTutorialHints } from '../effects/tutorial-hints';
 import { tickDriftingMotes } from '../effects/drifting-motes';
+import { tickBladeTrail, setBladeTrailIntensity } from '../effects/blade-trail';
 import { tickShatterBurst } from '../effects/shatter-burst';
 import { tickBloodBurst } from '../effects/blood-burst';
 import { tickStatusVfx } from '../effects/status-vfx';
@@ -97,6 +98,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     camera, scene, renderer, ambient, canvas,
     input, combat, weapon, shakeOffset, forwardScratch, getLevel, getRoomCuller,
   } = deps;
+  // Scratch vectors for the blade-trail tick — held here so we don't allocate
+  // per frame inside the system closure.
+  const _trailTipScratch = new THREE.Vector3();
+  const _trailCamScratch = new THREE.Vector3();
 
   return [
     // Publish this frame's attack COMMITMENT (move/turn agency + dash-lock) from
@@ -251,6 +256,18 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     } },
 
     { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.scaledDt); } },
+
+    // Blade trail — sampled from the wielded weapon's blade_tip in WORLD
+    // space (scene-local), brightness driven by the viewmodel's charged-
+    // strike glow. Runs AFTER 'weapon' so the just-updated tip position
+    // and live glow are this-frame fresh. realDt so the trail's fade
+    // cadence is real-time even through hit-pause.
+    { name: 'blade-trail', phase: 'unpaused', tick(ctx) {
+      setBladeTrailIntensity(weapon.getChargedStrikeGlow());
+      const tip = weapon.getBladeTipWorldPos(_trailTipScratch);
+      camera.getWorldPosition(_trailCamScratch);
+      tickBladeTrail(ctx.realDt, tip, _trailCamScratch);
+    } },
 
     // Stamina regen. 'unpaused' so it pauses with the world (menus,
     // hit-pause); scaledDt so a charged hit's freeze doesn't refill you.

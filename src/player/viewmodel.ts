@@ -137,6 +137,13 @@ export interface WeaponViewmodel {
    *  upcoming strike phase in proportion to this level, fades during recover.
    *  Call IMMEDIATELY before startSwing so the glow lands on the right swing. */
   setSwingCharge(level: number): void;
+  /** Current charged-strike glow brightness (0..1). The blade-trail effect
+   *  reads this each frame so the trail's brightness matches the blade's. */
+  getChargedStrikeGlow(): number;
+  /** Write the blade tip's WORLD position into `out`, or return null if the
+   *  wielded weapon has no `blade_tip` slot (wands, crossbows, fist). Used by
+   *  the blade-trail effect to source ribbon positions. */
+  getBladeTipWorldPos(out: THREE.Vector3): THREE.Vector3 | null;
   update(dt: number): void;
   /** Swap the wielded weapon model. Passing null leaves the player
    *  empty-handed (used at run start before the player picks at the
@@ -288,6 +295,11 @@ export function createWeaponViewmodel(
   const CHARGED_GLOW_MAX = 2.4;   // peak emissiveIntensity multiplier above 1×
   const CHARGED_GLOW_EASE = 18;   // 1/sec exponential ease toward target
 
+  // Live blade_tip slot from the wielded weapon (null when the spec doesn't
+  // declare one — wand, crossbow, fist). The blade-trail effect calls
+  // getBladeTipWorldPos each frame; we just propagate the slot's world transform.
+  let bladeTipSlot: THREE.Object3D | null = null;
+
   // True when the wielded weapon has a bead chain to ripple (the whip).
   let whippy = false;
 
@@ -358,8 +370,10 @@ export function createWeaponViewmodel(
       // Whip-class weapons have a named bead chain — wire its ripple
       // animator off the WEAPON's parts (not the hand's).
       whippy = setupWhipChain(composed.weapon.parts);
+      bladeTipSlot = composed.weapon.slots.get('blade_tip') ?? null;
     } else {
       whippy = false;
+      bladeTipSlot = null;
     }
 
     group.add(composed.hand.group);
@@ -608,6 +622,14 @@ export function createWeaponViewmodel(
     interruptSwing: swing.interruptSwing,
     setSwingCharge(level: number) {
       chargedSwingLevel = Math.max(0, Math.min(1, level));
+    },
+    getChargedStrikeGlow() {
+      return chargedGlow;
+    },
+    getBladeTipWorldPos(out: THREE.Vector3): THREE.Vector3 | null {
+      if (!bladeTipSlot) return null;
+      bladeTipSlot.getWorldPosition(out);
+      return out;
     },
     update,
     equip,
