@@ -30,6 +30,7 @@ import { registerLight, unregisterLight } from '../scene/light-pool';
 import { registerViewmodel, unregisterViewmodel } from '../style/render-target';
 import { getLanternSwing, getBobOffset } from './viewmodel-bob';
 import { getLampSway, getWeaponSway } from './viewmodel-sway';
+import { getViewmodelPullback, getViewmodelPullbackFrac } from './viewmodel-pullback';
 import { getTexture } from '../style/procedural-textures';
 
 interface FlameSprite {
@@ -100,6 +101,7 @@ const lampTarget = LAMP_RAISED.clone();
 // momentary offset.
 const lampCarryPos = LAMP_RAISED.clone();
 const _lampPosOffset = new THREE.Vector3();
+const _camWorldScratch = new THREE.Vector3();
 // Body offset DOWN from the hinge (in scaled body local). Tuned so the
 // visible centre of the lantern lands roughly where the old single
 // group sat (~y = -0.26 worldspace at scale 1.8).
@@ -390,10 +392,17 @@ export function tickLamp(dt: number) {
   //     budges the IK target.
   const bob = getBobOffset();
   const sway = getWeaponSway();
+  // Pull-back: retract the whole lantern toward camera when a wall is
+  // closer than the pull threshold. Same global pullback the weapon
+  // viewmodel reads; camera-local +Z = toward camera. Camera-local Z is
+  // also what the lamp hinge already lives in, so adding here pulls the
+  // entire lamp + arm assembly back as one unit (the lamp-arm's IK
+  // re-solves toward the moved ring anchor).
+  const pull = getViewmodelPullback();
   _lampPosOffset.set(
     bob.x * 0.6 + sway.yaw * 0.05,
     bob.y * 0.6,
-    0,
+    pull,
   );
   lamp.hinge.position.copy(lampCarryPos).add(_lampPosOffset);
 
@@ -413,6 +422,21 @@ export function tickLamp(dt: number) {
   // lags by a frame and the sway reads soft.
   lamp.hinge.updateMatrixWorld(true);
   lamp.worldPos.setFromMatrixPosition(lamp.body.matrixWorld);
+  // Wall-proximity light shift — as the viewmodel pull-back retracts the
+  // lantern body toward the camera, slide the LIGHT source itself toward
+  // the camera too, by the same fraction. Otherwise the body retracts but
+  // the light still emits from where the body USED to be — which can be
+  // beyond the wall the player has pressed into, so the room reads
+  // pitch-black even with the lamp visibly in frame. Lerp on world
+  // position, not local: lamp.hinge.parent IS the camera, so
+  // parent.getWorldPosition gives us the camera world position cheaply.
+  const pullFrac = getViewmodelPullbackFrac();
+  if (pullFrac > 0 && lamp.hinge.parent) {
+    lamp.hinge.parent.getWorldPosition(_camWorldScratch);
+    // Cap the lerp at ~0.85 so the light still trails the body slightly
+    // (a light at exactly the camera position looks like a flashlight).
+    lamp.worldPos.lerp(_camWorldScratch, pullFrac * 0.85);
+  }
 
   // Per-sprite flicker — bonfire pattern: two superimposed sines at
   // slightly different rates so each layer wobbles on its own clock,

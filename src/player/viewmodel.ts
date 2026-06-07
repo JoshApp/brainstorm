@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getBobOffset } from './viewmodel-bob';
 import { getWeaponSway } from './viewmodel-sway';
+import { getViewmodelPullback } from './viewmodel-pullback';
 import { setupWhipChain, clearWhipChain, tickWhipChain } from './whip-chain';
 import { computeWeaponPose, shoulderPivot, type WeaponPose } from './weapon-animations';
 import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '../controls/charge-input';
@@ -421,7 +422,10 @@ export function createWeaponViewmodel(
         );
       }
       const sway = getWeaponSway();
-      group.position.set(heldPose.x, heldPose.y, heldPose.z);
+      // Pull-back: retract Z toward camera when a wall is closer than the
+      // pull threshold (viewmodel-pullback.ts). Camera-local +Z = toward camera.
+      const pull = getViewmodelPullback();
+      group.position.set(heldPose.x, heldPose.y, heldPose.z + pull);
       group.rotation.set(heldPose.rotX + sway.pitch, heldPose.rotY + sway.yaw, heldPose.rotZ);
       return;
     }
@@ -432,7 +436,8 @@ export function createWeaponViewmodel(
     // Sway is INTENTIONALLY skipped mid-swing — the strike animation is the
     // feel-critical motion; layering sway on top muddies the snap.
     const pose = computeWeaponPose(step.pose, phase, swing.getPhaseProgress());
-    group.position.set(pose.x, pose.y, pose.z);
+    const pull = getViewmodelPullback();
+    group.position.set(pose.x, pose.y, pose.z + pull);
     group.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
     setHeld(pose.x, pose.y, pose.z, pose.rotX, pose.rotY, pose.rotZ);
   }

@@ -14,6 +14,7 @@ import { tickLampArm } from '../player/lamp-arm';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
 import { setBobTarget, updateBob } from '../player/viewmodel-bob';
 import { updateViewSway } from '../player/viewmodel-sway';
+import { tickViewmodelPullback } from '../player/viewmodel-pullback';
 import { isDying } from '../player/death';
 import { isFogWalkthroughActive, tickFogWalkthrough } from '../player/fog-walkthrough';
 import { renderWithStyle, setDarkAdapt } from '../style/render-target';
@@ -240,6 +241,13 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // frame's value.
     { name: 'view-sway', phase: 'unpaused', tick(ctx) {
       updateViewSway(ctx.realDt, camera);
+    } },
+
+    // Viewmodel pull-back — retract held weapon + lamp + arms toward
+    // the camera when a wall is closer than the pull threshold. MUST
+    // run BEFORE 'weapon' and 'lamp' so they read this frame's value.
+    { name: 'viewmodel-pullback', phase: 'unpaused', tick(ctx) {
+      tickViewmodelPullback(ctx.realDt, camera, getLevel()?.walkable ?? null);
     } },
 
     { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.scaledDt); } },

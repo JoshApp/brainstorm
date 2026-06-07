@@ -6,7 +6,7 @@ import type { Destructible } from '../level/destructibles';
 import type { Damageable } from './damageable';
 import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
-import { playImpact, playWhoosh, playBuffApply } from '../audio/sfx';
+import { playImpact, playWhoosh, playBuffApply, playWallHit } from '../audio/sfx';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit, on } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
@@ -124,7 +124,10 @@ export function createCombatSystem(
   weapon: WeaponViewmodel,
   getEnemies: () => readonly Enemy[],
   getDestructibles: () => readonly Destructible[] = () => [],
-  getWalkable: () => { hasLineOfSight: (x1: number, z1: number, x2: number, z2: number) => boolean } | undefined = () => undefined,
+  getWalkable: () => {
+    hasLineOfSight: (x1: number, z1: number, x2: number, z2: number) => boolean;
+    rayWallDistance: (ox: number, oz: number, dx: number, dz: number, maxDist: number) => number;
+  } | undefined = () => undefined,
 ): CombatSystem {
   let strikeAlreadyHit = false;
   let wasStriking = false;
@@ -414,7 +417,28 @@ export function createCombatSystem(
     const targets = enemyHits.length > 0
       ? enemyHits
       : pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, reach, cosConeHalf, maxTargets, losCheck);
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+      // No enemy / vase in cone — check if we whiffed INTO A WALL. The
+      // dungeon acknowledges it: a short metallic tink, a brief haptic,
+      // a tiny camera kick. Only fires ONCE per swing (strikeAlreadyHit
+      // latches), and only if a wall is genuinely inside the swing's
+      // reach in the forward direction — a swing into open space stays
+      // silent (the whoosh from onSwingStart already played).
+      if (striking && walkable) {
+        const dxn = forwardDir.x / forwardLenXZ;
+        const dzn = forwardDir.z / forwardLenXZ;
+        const wallDist = walkable.rayWallDistance(camera.position.x, camera.position.z, dxn, dzn, reach);
+        if (wallDist < reach) {
+          const hx = camera.position.x + dxn * wallDist;
+          const hz = camera.position.z + dzn * wallDist;
+          playWallHit({ x: hx, y: camera.position.y, z: hz });
+          hapticVibrate(18);
+          kickShake(0.05, 0.10);
+          strikeAlreadyHit = true;
+        }
+      }
+      return;
+    }
 
     strikeAlreadyHit = true;
 

@@ -834,6 +834,51 @@ export function playEnemyFootstep(archetype: VocalArchetype, pos: Vec3Sound) {
  *  full HP. Deliberately NOT a chime: a dull, low, lowpassed double-knock
  *  that falls in pitch (a flat "no"), so it reads as "blocked" without the
  *  bright UI-bleep register. */
+// Sword hitting a wall — a short metallic tink (steel on stone). Two
+// quick high oscillators tuned a perfect-fifth apart with a high-pass
+// crackle, all decayed under 100ms. Grimdark tone: the dungeon
+// acknowledges the strike without celebrating it; the player FEELS the
+// wall through one sharp confirmation, not a long clang.
+export function playWallHit(pos?: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const out: AudioNode = pos ? createPositionalChain(pos, 0.30) : masterGain;
+
+  // Tink: two short high tones, second slightly off so it doesn't ring as a chord.
+  const tones: Array<[number, number]> = [[2800, now], [1850, now + 0.010]];
+  for (const [f, t] of tones) {
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(f, t);
+    osc.frequency.exponentialRampToValueAtTime(f * 0.45, t + 0.06);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0006, t + 0.07);
+    osc.connect(g).connect(out);
+    osc.start(t); osc.stop(t + 0.09);
+  }
+
+  // Crackle: 25ms of high-passed noise — the spark / chip.
+  const noiseDur = 0.025;
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate * noiseDur), c.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  }
+  const noise = c.createBufferSource();
+  noise.buffer = buf;
+  const hp = c.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 4000;
+  const ng = c.createGain();
+  ng.gain.value = 0.18;
+  noise.connect(hp).connect(ng).connect(out);
+  noise.start(now);
+  noise.stop(now + noiseDur);
+}
+
 export function playDenied() {
   const c = ensureCtx();
   if (!c || !masterGain) return;
