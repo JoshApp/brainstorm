@@ -1,5 +1,6 @@
 import type { ModelSpec } from '../ecs/model-types';
 import { localFromWorld, rotateLocally } from '../anim/orient';
+import { mirrorModelSpec } from '../ecs/mirror-model';
 
 // Wrist rotation: a stack of NAMED INTENTS, applied IN ORDER. The
 // first two land on the Euler's X and Y channels directly (additive
@@ -505,3 +506,17 @@ export const HAND_RIGHT: ModelSpec = {
     fingertip_thumb:  { parent: 'finger_thumb_ip',   pos: [0, PHALANX.thumb.distal,  0], debug: 'axes' },
   },
 };
+
+// ── LEFT HAND ────────────────────────────────────────────────────
+//
+// Derived from HAND_RIGHT by reflecting across the YZ plane. The
+// thumb lands on the OTHER side (+X = inboard for a left hand worn
+// on the LEFT side of the body), every Y/Z rotation sign-flips, and
+// the long-finger MCP fan inverts so the same close-around-grip
+// motion now closes the OPPOSITE way — a real mirror, not a fake one.
+//
+// Names + radii + curl constants are shared, so future tuning of
+// MCP_CURL / PHALANX / WRIST_* in this file applies to both hands
+// automatically. lamp-arm.ts mounts THIS spec on the left arm to
+// grip the lantern's O-ring.
+export const HAND_LEFT: ModelSpec = mirrorModelSpec(HAND_RIGHT, 'hand-left-bone');

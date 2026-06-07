@@ -3,7 +3,7 @@ import { buildModel } from '../ecs/build-model';
 import {
   ARM_LEFT, ARM_LEFT_HUMERUS_LENGTH, ARM_LEFT_FOREARM_LENGTH,
 } from '../content/arm';
-import { HAND_RIGHT } from '../content/hand';
+import { HAND_LEFT } from '../content/hand';
 import { ArmIK } from '../anim/arm-ik';
 import { registerViewmodel } from '../style/render-target';
 import { getLampRingAnchorWorldPosition } from './handheld-lamp';
@@ -86,7 +86,7 @@ export function attachLampArm(camera: THREE.Camera): void {
   // slot is at a STATIC elbow-local offset; can't use it for this.)
   wristAnchor = new THREE.Group();
   armGroup.add(wristAnchor);
-  const hand = buildModel(HAND_RIGHT);
+  const hand = buildModel(HAND_LEFT);
   wristAnchor.add(hand.group);
   // Same viewmodel render settings as the arm bones so the hand
   // depth-tests right against the lantern + the other arm.

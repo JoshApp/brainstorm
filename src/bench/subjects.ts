@@ -9,7 +9,7 @@ import { ITEMS, type ItemSpec } from '../content/items';
 import type { ModelSpec } from '../ecs/model-types';
 import { listAuthorables, type AuthorableKind } from '../debug/authorables';
 import { EFFECT_DEMOS } from './effects';
-import { HAND_RIGHT } from '../content/hand';
+import { HAND_RIGHT, HAND_LEFT } from '../content/hand';
 
 // Standalone ModelSpec subjects — assets that aren't items/mobs/effects but
 // the LLM author still wants to inspect on the bench. Keyed by an id that
@@ -70,6 +70,7 @@ const CSG_DEMO: ModelSpec = {
 
 const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'hand-right':  { label: 'Right hand viewmodel', spec: HAND_RIGHT },
+  'hand-left':   { label: 'Left hand viewmodel (mirrored)', spec: HAND_LEFT },
   'bevel-demo':  { label: 'Bevel radius demo (0 → 0.099m)', spec: BEVEL_DEMO },
   'csg-demo':    { label: 'CSG: original / add / subtract / intersect', spec: CSG_DEMO },
 };
