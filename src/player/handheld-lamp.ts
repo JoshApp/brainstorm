@@ -28,8 +28,8 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { registerViewmodel, unregisterViewmodel } from '../style/render-target';
-import { getLanternSwing } from './viewmodel-bob';
-import { getLampSway } from './viewmodel-sway';
+import { getLanternSwing, getBobOffset } from './viewmodel-bob';
+import { getLampSway, getWeaponSway } from './viewmodel-sway';
 import { getTexture } from '../style/procedural-textures';
 
 interface FlameSprite {
@@ -94,6 +94,12 @@ const LAMP_STOWED = new THREE.Vector3(-0.47, -0.29, -0.5);
 // Live target the hinge eases toward each frame. Mutated by
 // setLampStowed; starts RAISED.
 const lampTarget = LAMP_RAISED.clone();
+// Eased carry pose — separate from the live hinge.position so frame-
+// by-frame bob/sway offsets don't feed back into the lerp. tickLamp
+// lerps THIS toward lampTarget, then writes hinge.position = carry +
+// momentary offset.
+const lampCarryPos = LAMP_RAISED.clone();
+const _lampPosOffset = new THREE.Vector3();
 // Body offset DOWN from the hinge (in scaled body local). Tuned so the
 // visible centre of the lantern lands roughly where the old single
 // group sat (~y = -0.26 worldspace at scale 1.8).
@@ -364,8 +370,32 @@ export function tickLamp(dt: number) {
 
   // Ease the carry pose toward the current target (RAISED ↔ STOWED) so
   // equipping/removing an offhand slides the lantern between hand + hip
-  // instead of snapping. Independent of the pendulum (rotation, below).
-  lamp.hinge.position.lerp(lampTarget, Math.min(1, dt * 7));
+  // instead of snapping. Lerp the SEPARATE carry vector so the per-
+  // frame bob/sway offset added below doesn't feed back into the ease.
+  lampCarryPos.lerp(lampTarget, Math.min(1, dt * 7));
+
+  // Per-frame translation offset — the lamp + hand + arm assembly
+  // translates as ONE rigid unit on top of the carry pose. The arm IK
+  // re-solves toward the moved ring anchor each frame, so the visible
+  // result is "the whole left-hand viewmodel sways with player motion."
+  //
+  //   - Walk bob → small vertical + horizontal translation (the lamp
+  //     bobs with each footfall). Scaled to ~60 % of the weapon bob so
+  //     the off-hand reads as the "calmer" hand.
+  //   - Look-around yaw lag → horizontal translation in the camera-
+  //     local X axis (the lamp trails behind a quick head turn). The
+  //     hinge's existing rotation.z covers the pendulum response; this
+  //     adds the positional component so the ARM visibly trails too —
+  //     the ring sits ~3 mm from the pivot, so rotation alone barely
+  //     budges the IK target.
+  const bob = getBobOffset();
+  const sway = getWeaponSway();
+  _lampPosOffset.set(
+    bob.x * 0.6 + sway.yaw * 0.05,
+    bob.y * 0.6,
+    0,
+  );
+  lamp.hinge.position.copy(lampCarryPos).add(_lampPosOffset);
 
   // Pendulum swing — rotation on the hinge. Body is a child offset
   // downward, so rotating the hinge automatically swings the body
@@ -376,9 +406,12 @@ export function tickLamp(dt: number) {
 
   // Update the light's world position from the BODY's transform — the
   // light should track the visibly-swinging lantern, not the static
-  // hinge. updateMatrixWorld(true) flushes the camera-parented chain
-  // since it may not have updated yet this frame.
-  lamp.body.updateMatrixWorld(true);
+  // hinge. updateMatrixWorld on the HINGE (not the body) so the chain
+  // hinge→body→ringAnchor is all-current this frame — lamp-arm.ts runs
+  // immediately after this and reads ringAnchor.getWorldPosition(),
+  // and if the hinge's own matrixWorld is stale the arm's IK target
+  // lags by a frame and the sway reads soft.
+  lamp.hinge.updateMatrixWorld(true);
   lamp.worldPos.setFromMatrixPosition(lamp.body.matrixWorld);
 
   // Per-sprite flicker — bonfire pattern: two superimposed sines at
