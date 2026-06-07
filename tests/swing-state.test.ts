@@ -250,13 +250,36 @@ test('heavy chain with direction: opener gets flavored, chain still runs', () =>
   assert.equal(s.isFinisherStrike(), true);
 });
 
+test('heavy chain survives the inter-heavy charge time', () => {
+  // A back-to-back heavy needs the player to HOLD to charge again (~570ms).
+  // The cadence-set comboWindowMs alone (~520ms hammer) would lapse during
+  // that hold, snapping the chain back to step 0. Window must extend with a
+  // charge-time grace so chaining heavies actually works.
+  setCurrentWeapon(HAMMER);
+  const s = createSwingState();
+  const heavy = W().heavyCombo!;
+  // H1
+  assert.equal(s.requestSwing({ skipWindup: true }), true);
+  walkChargedToIdle(s);
+  assert.equal(s.getComboStep(), 1, 'pre-advanced to H2');
+  // Sim a full-charge hold — longer than comboWindowMs alone.
+  s.advance(0.60);
+  assert.equal(s.getComboStep(), 1, 'window still open through the charge');
+  // H2 fires inside the extended window → continues the heavy chain.
+  assert.equal(s.requestSwing({ skipWindup: true }), true);
+  assert.deepEqual(s.getActiveStep(), heavy[1], 'H2 chains after the charge wait');
+});
+
 test('heavy chain resets to the light track after the combo window lapses', () => {
   setCurrentWeapon(HAMMER);
   const s = createSwingState();
   s.requestSwing({ skipWindup: true });   // H1
   walkChargedToIdle(s);                    // idle, heavy comboStep 1, window open
   assert.equal(s.getComboStep(), 1);
-  s.advance(W().comboWindowMs / 1000 + 0.5);   // lapse the window
+  // Heavy windows are extended by a charge-time grace (~570ms) on top of
+  // comboWindowMs; bump the lapse by more than that so the test really clears
+  // the extended window.
+  s.advance(W().comboWindowMs / 1000 + 1.5);
   assert.equal(s.getComboStep(), 0, 'lapse resets to a fresh step 0');
   s.requestSwing({ skipWindup: true });   // a fresh charge starts heavy at 0
   assert.deepEqual(s.getActiveStep(), W().heavyCombo![0]);

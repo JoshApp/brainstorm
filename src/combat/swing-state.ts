@@ -1,5 +1,19 @@
 import { getCurrentWeapon } from '../player/current-weapon';
 import type { ResolvedComboStep } from '../content/weapon-classes';
+import { CONFIG } from '../config';
+
+// Extra grace ms added to the combo window when the just-finished step was on
+// the HEAVY track. Sized to a full melee charge time (CHARGED_COST /
+// RESERVE_PER_SEC) so chaining heavies actually works: a heavy release pre-
+// advances comboStep, the player then HAS to hold to charge the next one, and
+// the cadence-set comboWindowMs alone (~380-520ms) lapses before the charge
+// completes — so by the time the next release fires it's "out of window" and
+// the chain resets. This pushes the window out far enough that a back-to-back
+// charged release lands inside it, while a fully-cooled-down press still
+// starts a fresh chain.
+function heavyChargeGraceMs(): number {
+  return (CONFIG.STAMINA.CHARGED_COST / CONFIG.CHARGE.RESERVE_PER_SEC) * 1000;
+}
 
 // The swing/combo SIMULATION — extracted from the viewmodel so the
 // feel-critical logic (phase machine, combo progression, input buffering,
@@ -297,7 +311,11 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
         queuedPress = false;
         activeDirectionalStep = null;
         activeEnderStep = null;
-        comboWindowExpiresAt = clock + w.comboWindowMs / 1000;
+        // Heavy chain → extend the window by the typical charge time so the
+        // player has room to hold the next heavy to full. Light chain → bare
+        // comboWindowMs (taps are fast, no charge to wait through).
+        const graceMs = track === 'heavy' ? heavyChargeGraceMs() : 0;
+        comboWindowExpiresAt = clock + (w.comboWindowMs + graceMs) / 1000;
         phase = 'idle';
         phaseTimer = 0;
       }
