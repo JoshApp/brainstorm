@@ -69,6 +69,30 @@ const PALM_ANCHOR_PRESERVED_WORLD_ROT: [number, number, number] = rotateLocally(
   WEAPON_UPRIGHT_TOWARD_CAMERA_25,
 );
 
+// ── THUMB MCP composition ────────────────────────────────────────
+//
+//   BASE FLEX  + SIDE FAN = the previous Euler [-0.85, 0, -1.30]:
+//     forward-bend + sideways fan that put the thumb in the SAME
+//     plane as the other fingers (flat against the back of the
+//     palm).
+//
+//   OPPOSE GRIP = rotation around the THUMB'S OWN BONE AXIS (local
+//     +Y). This is the missing motion that makes a real thumb wrap
+//     a hilt: the bone direction barely changes, but the thumb's
+//     PAD (-Z side) swings AROUND the grip cylinder so the pad
+//     faces the back of the index finger instead of the open air.
+//     Applied via rotateLocally because the base Euler has X+Z
+//     components — simply setting the Y channel would rotate around
+//     the parent's Y, not the thumb's own bone direction.
+const THUMB_BASE_FLEX = -0.85;
+const THUMB_SIDE_FAN = -1.30;
+const THUMB_OPPOSE_GRIP = 1.4;
+const FINGER_THUMB_ROT: [number, number, number] = rotateLocally(
+  [THUMB_BASE_FLEX, 0, THUMB_SIDE_FAN],
+  'y',
+  THUMB_OPPOSE_GRIP,
+);
+
 // First-person RIGHT hand — a skeletal bone hand with FULL articulated
 // finger joints (MCP + PIP + DIP per finger, MCP + IP for the thumb).
 //
@@ -170,10 +194,13 @@ export const HAND_RIGHT: ModelSpec = {
     },
   },
   parts: [
-    // ── CARPUS ─ child of wrist; rotates with the wrist bend.
+    // ── CARPUS ─ child of wrist; rotates with the wrist bend. Sphere
+    // is sized to read as a knuckle of bone at the wrist seam, NOT a
+    // big bubble where the forearm meets the hand. Previously 0.034
+    // which dominated the silhouette; 0.020 sits flush.
     { name: 'carpus', parent: 'wrist', kind: 'sphere',
       pos: [0, 0.010, 0],
-      radius: 0.034, segments: [12, 8],
+      radius: 0.020, segments: [12, 8],
       mat: 'bone' },
 
     // ── METACARPALS ─ children of wrist; fan from the carpus up to
@@ -404,9 +431,13 @@ export const HAND_RIGHT: ModelSpec = {
     finger_middle: { parent: 'wrist', pos: [ 0.008, 0.134, 0.007], rot: [MCP_CURL - 0.05, 0, -0.04] },
     finger_ring:   { parent: 'wrist', pos: [-0.008, 0.130, 0.007], rot: [MCP_CURL - 0.02, 0,  0.04] },
     finger_pinky:  { parent: 'wrist', pos: [-0.023, 0.121, 0.007], rot: [MCP_CURL + 0.10, 0,  0.14] },
-    // Thumb MCP — pre-rotated so the proximal phalanx wraps over the
-    // top of where the closed fingers + grip sit.
-    finger_thumb:  { parent: 'wrist', pos: [-0.048, 0.086, 0.007], rot: [-0.85, 0, -1.30] },
+    // Thumb MCP — rotation built up by intent rather than a hand-
+    // tuned Euler. The BASE flex + side-fan put the thumb beside the
+    // index finger in the same plane (the previous look); the
+    // OPPOSE_GRIP pass rotates the thumb around its own bone axis so
+    // the THUMB PAD swings around the grip cylinder, the way a real
+    // thumb wraps over the top of the hilt.
+    finger_thumb: { parent: 'wrist', pos: [-0.048, 0.086, 0.007], rot: FINGER_THUMB_ROT },
 
     // ── PIP (middle knuckle) ─ children of their MCP slot. Pre-curled
     // ≈49°. PIP-local pos is the END of the proximal phalanx.
