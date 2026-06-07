@@ -42,12 +42,32 @@ const BASE_WRIST_ROT: [number, number, number] = [
   WRIST_PINKY_TO_GROUND_30,
   0,
 ];
-const AFTER_BLUE_ROT = rotateLocally(BASE_WRIST_ROT, 'z', WRIST_ROLL_BLUE_CW_30);
-const NEW_WRIST_ROT = rotateLocally(AFTER_BLUE_ROT, 'y', WRIST_TILT_GREEN_CW_30);
-// The orientation the palm_anchor (and the weapon attached to it) had
-// BEFORE the wrist twist, expressed in hand-root frame. We keep this
-// constant so the weapon doesn't rotate just because the wrist did.
-const PALM_ANCHOR_PRESERVED_WORLD_ROT: [number, number, number] = [-0.30, 0, 0];
+const AFTER_BLUE_ROT  = rotateLocally(BASE_WRIST_ROT, 'z', WRIST_ROLL_BLUE_CW_30);
+const AFTER_GREEN_ROT = rotateLocally(AFTER_BLUE_ROT,  'y', WRIST_TILT_GREEN_CW_30);
+// Additional pass: 15° CW from POV around the CURRENT visible blue
+// axis (= the wrist's local +Z AFTER the blue + green passes).
+const WRIST_ADJUST_BLUE_CW_15 = -(15 * Math.PI) / 180;
+const NEW_WRIST_ROT = rotateLocally(AFTER_GREEN_ROT, 'z', WRIST_ADJUST_BLUE_CW_15);
+
+// PALM_ANCHOR's preserved world rotation (in hand-root frame). Same
+// rotateLocally pattern: a named base + named intent passes.
+//
+//   BASE PITCH FORWARD — original forward tilt that the weapon used
+//                        to read as "leaning into the screen."
+//   UPRIGHT TOWARD CAMERA 25 — pitches the weapon BACK 25° around
+//                              the palm's local +X axis so it stands
+//                              more upright in the hand (less leaning
+//                              into the scene, slightly toward the
+//                              player). Positive radians around X
+//                              takes hand-local +Y toward +Z (back-
+//                              of-hand side, which is camera-ward).
+const PALM_ANCHOR_BASE_PITCH_FORWARD = -0.30;
+const WEAPON_UPRIGHT_TOWARD_CAMERA_25 = (25 * Math.PI) / 180;
+const PALM_ANCHOR_PRESERVED_WORLD_ROT: [number, number, number] = rotateLocally(
+  [PALM_ANCHOR_BASE_PITCH_FORWARD, 0, 0],
+  'x',
+  WEAPON_UPRIGHT_TOWARD_CAMERA_25,
+);
 
 // First-person RIGHT hand — a skeletal bone hand with FULL articulated
 // finger joints (MCP + PIP + DIP per finger, MCP + IP for the thumb).
