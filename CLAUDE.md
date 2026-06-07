@@ -276,6 +276,42 @@ here so you can self-check.
    collapse. Either vary materials (named differently even if
    close-coloured), or run `--debug` to see per-part colours.
 
+### Author rotations by INTENT, not by guessing Euler decimals
+
+The single biggest source of "iterate three times with the wrong
+sign" in this codebase is hand-tuning Euler rotations. `rot: [-0.2,
+-0.15, 0.4]` reads as nothing to anyone and the sign of any one
+component depends on which axis you're projecting to — half the
+"invert that" guesses go the wrong way.
+
+When you're authoring a NEW rotation (an idle pose, a slot
+orientation, a clip endpoint), use `src/anim/orient.ts` instead:
+
+```ts
+import { orient, tilt, DIR } from '../anim/orient';
+
+// "I want the weapon's grip axis (= the model's local +Y) to point
+//  mostly forward with a slight downward lean. The back of the hand
+//  (local +Z) should mostly face up."
+const SWORD_IDLE_ROT = orient({
+  yAxisTo: tilt(DIR.FORWARD, DIR.DOWN, 0.2),
+  upTo:    tilt(DIR.UP, DIR.LEFT, 0.3),
+});
+```
+
+The function solves for the Euler — sign-correct, order-correct,
+orthogonalised. You only ever name directions (UP, DOWN, LEFT,
+RIGHT, FORWARD, BACKWARD) and `tilt(principal, secondary, amount)`
+between them. `amount` is a feel knob (0.05 subtle, 0.20 slight,
+0.40 moderate, 0.80 strong).
+
+Existing tuned rotations (like the current `SWORD_IDLE_ROT`) can
+stay as decimals — don't refactor what's already feeling right.
+But any NEW pose should go through `orient()`. If you find
+yourself authoring `rot: [a, b, c]` and the file would compile
+without you understanding what the result LOOKS like, you reached
+for the wrong tool — use `orient()`.
+
 ## Visual Style Reference
 
 - **Lunacid** (PS1-era lo-fi 3D, fog, torchlight)
