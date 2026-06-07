@@ -117,7 +117,15 @@ export const ARM_RIGHT: ModelSpec = {
     // REACH (0.684m gap vs 0.654m arm). Pulled it slightly down
     // and forward so it's within reach AND the elbow bend lands
     // on-screen, not off the top-left.
-    shoulder: { pos: [0.05, -0.40, -0.10], debug: 'axes' },
+    // Dropped from Y=-0.40 to -0.55 to pull the shoulder lower in
+    // camera-local. Effect: the shoulder→wrist line leans more
+    // vertical (the wrist is at Y=-0.32, so the shoulder is now 23cm
+    // BELOW the wrist instead of 8cm). The IK follows that line and
+    // positions the elbow so the forearm comes up more in line with
+    // the hand's saber axis — reducing the visible kink at the
+    // forearm-to-wrist seam that the wrist's own rotations couldn't
+    // fix.
+    shoulder: { pos: [0.05, -0.55, -0.10], debug: 'axes' },
 
     // ── UPPER ARM ANCHOR ─ midway up the humerus. A handle for the
     // "upper arm segment" the in-game axes overlay can target — its
