@@ -127,13 +127,13 @@ if (!subjectId) {
     const built = composition ? composition.hand : buildModel(subject.spec);
 
     const mobAnim = subject.enemy ? makeMobAnimator(built, subject.enemy) : null;
-    // Weapon animator runs in BOTH modes. Hand mode: the animator gets
-    // the composed hand group so its outer transform animates AND the
-    // shoulder slot inside the hand can be pivoted by the swing's
-    // shoulder.rot.* channels — same path the live viewmodel uses.
+    // Weapon animator runs in BOTH modes. The bench renders the hand
+    // and weapon; the arm (now a separate spec) lives only in the
+    // live viewmodel where IK chases the hand's wrist each frame.
+    // Iterate on the ARM in-game via snap.ts; here we focus on the
+    // hand/weapon composition.
     const weaponAnim = subject.kind === 'weapon' && subject.item
-      ? makeWeaponAnimator(built.group, subject.item,
-          handMode ? built.slots.get('shoulder') ?? null : null) : null;
+      ? makeWeaponAnimator(built.group, subject.item, null) : null;
 
     let draw: () => void;
     if (animN > 0 && weaponAnim) {

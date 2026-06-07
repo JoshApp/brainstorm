@@ -3,6 +3,13 @@ import type { ModelSpec } from '../ecs/model-types';
 // First-person RIGHT hand — a skeletal bone hand with FULL articulated
 // finger joints (MCP + PIP + DIP per finger, MCP + IP for the thumb).
 //
+// SCOPE: this spec is JUST the hand (carpus, metacarpals, fingers,
+// palm). The ARM (shoulder, elbow, humerus, forearm bones) lives in
+// src/content/arm.ts and is mounted separately under the camera. The
+// arm's IK chases this hand's wrist slot world position each frame,
+// the way real animation systems separate hand-on-weapon motion from
+// the arm that follows.
+//
 // Anatomy and naming:
 //
 //   Each long finger has three phalanges connected by three joints:
@@ -14,9 +21,9 @@ import type { ModelSpec } from '../ecs/model-types';
 //   and everything below them — a single, physically-correct curl.
 //
 // Coordinate convention (Y-up, −Z forward — per CLAUDE.md):
-//   - origin       = centre of the closed fist (= where a weapon's
-//                    grip_anchor lines up)
-//   - +Y           = up, out of the top of the fist
+//   - origin       = the WRIST point — where the forearm would meet
+//                    the hand (the arm IK targets this slot)
+//   - +Y           = up, toward the fingertips
 //   - +X           = OUTBOARD (pinky side, away from body)
 //   - −X           = INBOARD  (thumb side, toward body)
 //   - +Z           = back of hand (faces camera)
@@ -24,10 +31,9 @@ import type { ModelSpec } from '../ecs/model-types';
 //
 // ── Rig hierarchy ───────────────────────────────────────────────────
 //
-//   forearm bones, sinew gap          (top-level, NOT under wrist)
-//   wrist slot                        (top-level, pre-tilted forward)
+//   wrist slot                        (root, identity)
 //     ├── carpus                      ─┐
-//     ├── metacarpals × 5             ─┤  all bend with the wrist
+//     ├── metacarpals × 5             ─┤  all live in wrist-local space
 //     ├── knuckle bumps × 5           ─┤
 //     ├── palm_anchor                 ─┘
 //     └── finger_X (MCP, one per finger)
@@ -41,23 +47,11 @@ import type { ModelSpec } from '../ecs/model-types';
 // Thumb has the same shape minus a middle phalanx + PIP/DIP rename
 // (finger_thumb + finger_thumb_ip).
 //
-// All positions inside the wrist-rooted subtree are WRIST-LOCAL —
-// they bend with the wrist as one rigid rotation. Forearm + sinew
-// stay outside so the bones don't bend with the wrist (the wrist is
-// where the fist meets the arm, not where the arm meets the elbow).
-//
 // Sub-slot positions (PIP relative to MCP, DIP relative to PIP) are
 // PHALANX-LOCAL — placed at the proximal phalanx's TOP in MCP-local
 // space, the middle phalanx's top in PIP-local space, etc. So when a
 // joint rotates, every distal segment cascades the rotation
 // correctly without any per-finger re-tuning.
-
-// ── Anchor + length constants ───────────────────────────────────────
-// Wrist sits at hand-local (0, WRIST_Y, WRIST_Z). Everything in the
-// wrist-rooted subtree is authored in wrist-local space — i.e. with
-// these constants subtracted from the prior hand-local positions.
-const WRIST_Y = -0.080;
-const WRIST_Z =  0.005;
 
 // Baseline grip cylinder radius (sword-hilt-class). Contact-target
 // anchors below sit on a grip cylinder of this radius around the
@@ -107,47 +101,6 @@ export const HAND_RIGHT: ModelSpec = {
     },
   },
   parts: [
-    // ── ELBOW JOINT bulb ─ sphere at the elbow position. Big enough
-    // to fully cover the humerus → forearm junction so any small
-    // residual mis-alignment between cylinders reads as a joint, not
-    // a gap. Sits at the elbow slot's origin (= bottom of the forearm
-    // = top of the humerus).
-    { parent: 'elbow', kind: 'sphere',
-      pos: [0, 0, 0],
-      radius: 0.028, segments: [12, 10],
-      mat: 'bone' },
-
-    // ── HUMERUS ─ upper-arm bone spanning shoulder → elbow. Joint-
-    // first authoring: the cylinder's pos, rotation, and length are
-    // computed from the SHOULDER and ELBOW slot positions at build
-    // time. Move either joint and the bone reflows — no possibility
-    // of a "humerus floating off the shoulder" gap.
-    //
-    // Parent defaults to `from` (shoulder), so when the shoulder
-    // rotates the bone rotates with it (the elbow + everything below
-    // are also children of shoulder, so the whole arm swings as one).
-    { name: 'humerus', kind: 'bone',
-      from: 'shoulder', to: 'elbow',
-      radius: 0.022, radiusTop: 0.018,
-      mat: 'bone' },
-
-    // ── FOREARM ─ radius (thumb-side, −X) + ulna (pinky-side, +X) +
-    // central sinew. All span elbow → wrist; `offset` shifts the
-    // pair off the centerline. Parented to elbow so they swing when
-    // the elbow rotates (and inherit shoulder rotation transitively).
-    { name: 'radius', kind: 'bone',
-      from: 'elbow', to: 'wrist', offset: [-0.013, 0, 0],
-      radius: 0.018, radiusTop: 0.014,
-      mat: 'bone' },
-    { name: 'ulna', kind: 'bone',
-      from: 'elbow', to: 'wrist', offset: [0.013, 0, 0],
-      radius: 0.017, radiusTop: 0.013,
-      mat: 'bone' },
-    { kind: 'bone',
-      from: 'elbow', to: 'wrist',
-      radius: 0.012, segments: 8,
-      mat: 'boneDark' },
-
     // ── CARPUS ─ child of wrist; rotates with the wrist bend.
     { name: 'carpus', parent: 'wrist', kind: 'sphere',
       pos: [0, 0.010, 0],
@@ -302,38 +255,13 @@ export const HAND_RIGHT: ModelSpec = {
       radius: PHALANX.thumb.radius * 0.86, segments: [8, 6], mat: 'bone' },
   ],
   slots: {
-    // ── SHOULDER ─ top of the kinematic chain. Sits off-screen
-    // behind+below the camera (the delver's own body is mostly
-    // behind their eyes). FK-only — no IK solver; if some future
-    // feature wants the hand to reach for a doorknob, this is the
-    // anchor an IK solver would target.
-    shoulder: { pos: [0.10, -0.62, 0.20] },
-
-    // ── ELBOW ─ child of shoulder, sits at the bottom of the visible
-    // forearm. Pushed slightly further "down + back" from shoulder
-    // than before so the external elbow angle opens from ~118° toward
-    // ~127° — closer to a relaxed neutral hold instead of the over-
-    // flexed look. Hand-local elbow position stays at (0, -0.45, 0)
-    // so the wrist + fingers don't need to move; only the shoulder
-    // and humerus rearranged.
-    elbow: { parent: 'shoulder', pos: [-0.10, 0.17, -0.205] },
-
-    // ── WRIST ─ the joint between forearm and hand. Forward flexion
-    // ONLY (≈17° around X). Previously we also twisted the wrist
-    // +90° around Z to compensate for the palm_anchor's "perpendicular
-    // grip" rotation — but the visual 90°-bent wrist read as
-    // unnatural, and the compensation only existed because we WANTED
-    // the grip perpendicular to the fingers.
-    //
-    // New approach: SABER GRIP. The weapon's grip axis runs COLINEAR
-    // with the fingers (and with the forearm continuation). Fingers
-    // wrap around the grip naturally — the cylinder runs along the
-    // direction the fingers extend, and the curl perpendicular to
-    // that closes the fist around it. This is how a fencer / katana
-    // practitioner holds a sword: forearm and blade as one line.
-    //
-    // No more compensating twist needed. Wrist stays anatomical.
-    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.30, 0, 0] },
+    // ── WRIST ─ now the ROOT of the hand spec (no parent, identity
+    // pose). The arm lives in its own spec (src/content/arm.ts), is
+    // mounted separately under the camera, and the IK chases this
+    // hand's wrist position each frame. Children of wrist are still
+    // authored in wrist-local space, so the entire fingers + palm +
+    // metacarpals hierarchy stayed untouched by the split.
+    wrist: { pos: [0, 0, 0] },
 
     // The grip anchor a held weapon aligns to. A child of WRIST so it
     // inherits the wrist bend. Identity rotation: weapon's grip axis

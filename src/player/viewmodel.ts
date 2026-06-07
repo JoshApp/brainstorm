@@ -9,6 +9,9 @@ import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
 import { getCurrentWeapon } from './current-weapon';
 import { composeHeldWeapon } from './held-weapon-compose';
+import { buildModel } from '../ecs/build-model';
+import { ARM_RIGHT, ARM_RIGHT_HUMERUS_LENGTH, ARM_RIGHT_FOREARM_LENGTH } from '../content/arm';
+import { ArmIK } from '../anim/arm-ik';
 import type { SwingPhase, AttackDirection } from '../combat/swing-state';
 import type { ModelSpec } from '../ecs/model-types';
 import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
@@ -118,6 +121,47 @@ export function createWeaponViewmodel(
   // passes read the background depth behind the blade and paint it on.
   registerViewmodel(group);
 
+  // ── ARM RIG ──────────────────────────────────────────────────────
+  // Mounted as a SEPARATE child of the camera (NOT under `group`), so
+  // when the swing animation translates the weapon-and-hand, the arm
+  // stays anchored to the camera. The IK then bridges the fixed
+  // shoulder to wherever the hand's wrist ended up. This is the
+  // textbook 2-bone IK setup: external anchor + external target,
+  // no circular dependency.
+  const armBuilt = buildModel(ARM_RIGHT);
+  const armGroup = armBuilt.group;
+  camera.add(armGroup);
+  registerViewmodel(armGroup);
+  const armShoulderSlot = armBuilt.slots.get('shoulder');
+  const armElbowSlot    = armBuilt.slots.get('elbow');
+  const armIK = armShoulderSlot && armElbowSlot
+    ? new ArmIK({
+        shoulderRest: [
+          armShoulderSlot.position.x,
+          armShoulderSlot.position.y,
+          armShoulderSlot.position.z,
+        ],
+        shoulderSpringFreq: 1.8,
+        shoulderSpringDamping: 1.0,
+        shoulderHandBias: 0.10,
+        humerusLength: ARM_RIGHT_HUMERUS_LENGTH,
+        forearmLength: ARM_RIGHT_FOREARM_LENGTH,
+        // Right arm: elbow biases DOWN-AND-OUT (camera-local +X /
+        // -Y) so it never flips to the inside of the body.
+        elbowPole: [1, -0.5, 0.2],
+        jointDampHalfLife: 0.05,
+      })
+    : null;
+  // Scratch — populated each frame from the hand's wrist slot.
+  const _wristWorld = new THREE.Vector3();
+  const _wristArmLocal = new THREE.Vector3();
+  // Cached reference to the hand's wrist slot, refreshed at each mount.
+  let handWristSlot: THREE.Object3D | null = null;
+
+  // Apply the arm's meshes to the viewmodel depth pass too so they
+  // don't z-fight with world geometry behind them.
+  applyViewmodelRender(armGroup, 997, false);
+
   // The swing/combo SIMULATION (phases, combo, buffering, overrides) lives in
   // its own pure module; this viewmodel only reads it to pose `group`.
   const swing = createSwingState({ onSwingStart: options.onSwingStart, canSwing: options.canSwing });
@@ -133,12 +177,6 @@ export function createWeaponViewmodel(
 
   // True when the wielded weapon has a bead chain to ripple (the whip).
   let whippy = false;
-  // SHOULDER PIVOT — the slot the swing-animation rotates so the arm
-  // arcs as one chain from the shoulder (proven FPS technique). Re-
-  // resolved per mount because each weapon's composed rig is fresh.
-  // null when the rig has no shoulder slot (bare hand, future
-  // hand-only viewmodels, etc.).
-  let shoulderSlot: THREE.Object3D | null = null;
 
   function unmount() {
     clearWhipChain();   // drop bead refs before the meshes are disposed
@@ -207,10 +245,11 @@ export function createWeaponViewmodel(
     }
 
     group.add(composed.hand.group);
-    // Wire the shoulder slot so swing clips can pivot the whole arm
-    // chain by writing to its rotation. Hand specs without a shoulder
-    // (some future hand-only viewmodel) just opt out.
-    shoulderSlot = composed.hand.slots.get('shoulder') ?? null;
+    // Capture the hand's wrist slot for the arm IK to target each
+    // frame. The arm spec is mounted separately under the camera; the
+    // IK reads this slot's world position to know where to point the
+    // arm chain.
+    handWristSlot = composed.hand.slots.get('wrist') ?? null;
   }
 
   // Smoothed held pose for the IDLE / charge-hold state, so discrete changes
@@ -286,9 +325,6 @@ export function createWeaponViewmodel(
       const sway = getWeaponSway();
       group.position.set(heldPose.x, heldPose.y, heldPose.z);
       group.rotation.set(heldPose.rotX + sway.pitch, heldPose.rotY + sway.yaw, heldPose.rotZ);
-      // Idle / charge-hold: shoulder stays at rest (no pivot during
-      // hold). When a swing begins the strike path overwrites this.
-      if (shoulderSlot) shoulderSlot.rotation.set(0, 0, 0);
       return;
     }
 
@@ -301,18 +337,29 @@ export function createWeaponViewmodel(
     group.position.set(pose.x, pose.y, pose.z);
     group.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
     setHeld(pose.x, pose.y, pose.z, pose.rotX, pose.rotY, pose.rotZ);
-    // Shoulder pivot: rotate the SHOULDER SLOT, swinging the entire
-    // arm + hand + weapon chain as one (proven FPS technique). Clips
-    // write to shoulderPivot during computeWeaponPose; non-clip
-    // swings leave it at zero so the shoulder stays at rest.
-    if (shoulderSlot) {
-      shoulderSlot.rotation.set(shoulderPivot.x, shoulderPivot.y, shoulderPivot.z);
-    }
   }
 
   function update(dt: number) {
     swing.advance(dt);
     repose(dt);
+    // ── ARM IK ──────────────────────────────────────────────────────
+    // The hand has been posed by the swing animation; its wrist slot
+    // is wherever the weapon ended up. Solve the 2-bone IK in the
+    // arm's local frame so the shoulder + elbow chase the wrist. The
+    // arm group lives under the camera independently of the weapon's
+    // animation group, so the shoulder stays anchored.
+    if (armIK && armShoulderSlot && armElbowSlot && handWristSlot && dt > 0) {
+      // Three.js needs world matrices fresh — the swing animation
+      // just wrote to `group` but matrixWorld hasn't been recomputed
+      // yet. Update only the hand chain to avoid touching the rest
+      // of the scene.
+      group.updateMatrixWorld(true);
+      handWristSlot.getWorldPosition(_wristWorld);
+      armGroup.worldToLocal(_wristArmLocal.copy(_wristWorld));
+      const r = armIK.solve(_wristArmLocal, dt);
+      armShoulderSlot.rotation.set(r.shoulderRot[0], r.shoulderRot[1], r.shoulderRot[2]);
+      armElbowSlot.rotation.set(r.elbowRot[0], r.elbowRot[1], r.elbowRot[2]);
+    }
     // Perfect-release gleam: flash the weapon's emissive white inside the
     // window, restore on exit. Only writes on the edge, so it's free otherwise.
     const wantGleam = isChargePerfectWindow();

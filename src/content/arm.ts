@@ -1,0 +1,126 @@
+import type { ModelSpec } from '../ecs/model-types';
+
+// First-person RIGHT arm — shoulder + elbow joints + the bones that
+// span them. Mounted as a SEPARATE rig from the hand (which lives in
+// src/content/hand.ts and grips the weapon directly). The arm is
+// anchored to the camera at a fixed shoulder position; each frame the
+// 2-bone IK in src/anim/arm-ik.ts targets the hand's WRIST slot world
+// position, and the resulting shoulder + elbow rotations make the arm
+// visibly follow the hand.
+//
+// Why split arm from hand: the previous monolithic spec had palm and
+// shoulder in the SAME chain, which made any kind of arm-follows-hand
+// solver circular (the palm is a child of the shoulder, so the IK was
+// reading its own output). With the split, the IK has an external
+// target (the hand's wrist, driven by the weapon's swing animation)
+// and an external anchor (the shoulder, fixed in camera-local) — the
+// textbook 2-bone IK setup that actually works.
+//
+// Joint convention (THIS is what makes IK clean):
+//
+//   - shoulder slot is the ROOT of the arm spec.
+//   - elbow slot sits at shoulder-local (0, HUMERUS_LENGTH, 0) — i.e.
+//     along shoulder's local +Y. So the IK only needs to ROTATE
+//     SHOULDER such that its +Y points at the desired elbow position;
+//     the elbow lands where it should via static offset.
+//   - wrist slot sits at elbow-local (0, FOREARM_LENGTH, 0) — same
+//     idea: IK rotates elbow's +Y at the wrist target, wrist lands
+//     at the right world position automatically.
+//   - Bones are authored as kind: 'bone' (humerus) or static
+//     cylinders aligned along +Y (forearm). The IK never moves the
+//     bones directly — joint rotations cascade through them.
+//
+// To re-pose the arm: just tweak the slot positions (shoulder anchor,
+// bone lengths). The bones reflow. The IK retunes via its
+// humerusLength / forearmLength constants the viewmodel passes in.
+
+const HUMERUS_LENGTH = 0.284;
+const FOREARM_LENGTH = 0.370;
+
+export const ARM_RIGHT: ModelSpec = {
+  id: 'arm-right',
+  materials: {
+    bone: {
+      color: 0xc8b89a,
+      roughness: 0.85,
+      metalness: 0.05,
+      fog: false,
+      flatShading: 'auto',
+    },
+    boneDark: {
+      color: 0x6e5d44,
+      roughness: 0.90,
+      metalness: 0.05,
+      fog: false,
+      flatShading: 'auto',
+    },
+  },
+  parts: [
+    // ── SHOULDER joint sphere — sits at shoulder origin. Mostly off-
+    // screen behind/below the camera anyway; this is a marker for
+    // the IK anchor, not a focal mesh.
+    { parent: 'shoulder', kind: 'sphere',
+      pos: [0, 0, 0],
+      radius: 0.030, segments: [12, 10],
+      mat: 'bone' },
+
+    // ── HUMERUS ─ static bone spanning shoulder → elbow. Bone
+    // primitive computes pos/rot/length from the slot positions; the
+    // elbow's static offset along shoulder's +Y means the bone
+    // always points along shoulder +Y, and when the IK rotates the
+    // shoulder the bone visibly arcs with it.
+    { name: 'humerus', kind: 'bone',
+      from: 'shoulder', to: 'elbow',
+      radius: 0.022, radiusTop: 0.018,
+      mat: 'bone' },
+
+    // ── ELBOW joint sphere — covers the humerus → forearm seam.
+    { parent: 'elbow', kind: 'sphere',
+      pos: [0, 0, 0],
+      radius: 0.028, segments: [12, 10],
+      mat: 'bone' },
+
+    // ── FOREARM ─ radius / ulna / sinew. Static cylinders along
+    // elbow's +Y axis. When the IK rotates the elbow such that its
+    // +Y points at the wrist target, these rotate with it and end
+    // up aimed correctly. Centered at FOREARM_LENGTH / 2 (cylinder
+    // midpoint coincides with elbow-local Y = halfway to wrist).
+    { name: 'radius', parent: 'elbow', kind: 'cylinder',
+      pos: [-0.013, FOREARM_LENGTH / 2, 0],
+      radius: 0.018, radiusTop: 0.014,
+      height: FOREARM_LENGTH, segments: 12,
+      mat: 'bone' },
+    { name: 'ulna', parent: 'elbow', kind: 'cylinder',
+      pos: [0.013, FOREARM_LENGTH / 2, 0],
+      radius: 0.017, radiusTop: 0.013,
+      height: FOREARM_LENGTH, segments: 12,
+      mat: 'bone' },
+    { name: 'sinew', parent: 'elbow', kind: 'cylinder',
+      pos: [0, FOREARM_LENGTH / 2, 0],
+      radius: 0.012, height: FOREARM_LENGTH * 0.94, segments: 8,
+      mat: 'boneDark' },
+  ],
+  slots: {
+    // ── SHOULDER ─ camera-local rest anchor. The 2-bone IK spring-
+    // tethers the live shoulder here; a hard hand-move pulls it
+    // slightly toward the hand for "body inertia" follow-through,
+    // and the spring tugs it back to here when the hand settles.
+    // Approximate human shoulder position relative to eye level —
+    // roughly 10cm right of camera centerline, 25cm below, slight
+    // forward of camera (since the eye is forward of the shoulder).
+    shoulder: { pos: [0.15, -0.25, 0.10] },
+
+    // ── ELBOW ─ shoulder-local +Y offset. The IK rotates SHOULDER
+    // such that its +Y points at the desired elbow direction; the
+    // elbow's world position is then shoulder.matrixWorld * (0, h, 0).
+    elbow: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH, 0] },
+
+    // ── WRIST ─ elbow-local +Y offset. Same idea — IK rotates the
+    // elbow so its +Y points at the hand's wrist; this slot lands at
+    // the targeted position via static offset.
+    wrist: { parent: 'elbow', pos: [0, FOREARM_LENGTH, 0] },
+  },
+};
+
+export const ARM_RIGHT_HUMERUS_LENGTH = HUMERUS_LENGTH;
+export const ARM_RIGHT_FOREARM_LENGTH = FOREARM_LENGTH;
