@@ -318,37 +318,29 @@ export const HAND_RIGHT: ModelSpec = {
     // and humerus rearranged.
     elbow: { parent: 'shoulder', pos: [-0.10, 0.17, -0.205] },
 
-    // ── WRIST ─ the joint between forearm and hand. Combined
-    // rotation: a forward flexion (≈30° around X) PLUS a 90° twist
-    // around Z. The twist exists to cancel palm_anchor's Z rotation
-    // in WORLD space — without it the perpendicular grip Josh wanted
-    // also tilted the BLADE 90° (the weapon's grip + blade are
-    // colinear in the mesh), which broke every weapon animation. The
-    // wrist twist puts the BLADE back in its original world direction
-    // while leaving palm_anchor's perpendicular grip intact:
+    // ── WRIST ─ the joint between forearm and hand. Forward flexion
+    // ONLY (≈17° around X). Previously we also twisted the wrist
+    // +90° around Z to compensate for the palm_anchor's "perpendicular
+    // grip" rotation — but the visual 90°-bent wrist read as
+    // unnatural, and the compensation only existed because we WANTED
+    // the grip perpendicular to the fingers.
     //
-    //   weapon-local +Y  →  palm_anchor +X  →  wrist +X  →  elbow-local Y'
+    // New approach: SABER GRIP. The weapon's grip axis runs COLINEAR
+    // with the fingers (and with the forearm continuation). Fingers
+    // wrap around the grip naturally — the cylinder runs along the
+    // direction the fingers extend, and the curl perpendicular to
+    // that closes the fist around it. This is how a fencer / katana
+    // practitioner holds a sword: forearm and blade as one line.
     //
-    //   where Y' is the SAME direction the old weapon used to point
-    //   (mostly hand-local +Y, slight forward tilt). The fingers
-    //   (parented to wrist but NOT palm_anchor) follow wrist's +Y,
-    //   which is now pointing INBOARD (hand-local −X) — i.e.
-    //   perpendicular to the weapon. Grip + finger axis stay
-    //   orthogonal; weapon world direction is unchanged.
-    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.30, 0, 1.5708] },
+    // No more compensating twist needed. Wrist stays anatomical.
+    wrist: { parent: 'elbow', pos: [0, 0.37, 0], rot: [-0.30, 0, 0] },
 
     // The grip anchor a held weapon aligns to. A child of WRIST so it
-    // inherits the wrist bend. The Z rotation here is the LOAD-BEARING
-    // bit Josh kept flagging: a weapon's grip cylinder extends along
-    // its local +Y, and palm_anchor's +Y inherits the wrist's +Y —
-    // which is ALSO the direction the closed fingers point along.
-    // Without rotating, the grip is CO-AXIAL with the fingers, so
-    // "weapon parallel with arm" no matter what the wrist does. The
-    // −π/2 around Z maps weapon-local +Y → palm-anchor-local +X
-    // (across the palm), so the grip passes THROUGH the closed fist
-    // perpendicular to the finger axis — the way a sword is actually
-    // held.
-    palm_anchor: { parent: 'wrist', pos: [0, 0.092, -0.011], rot: [0, 0, -1.5708] },
+    // inherits the wrist bend. Identity rotation: weapon's grip axis
+    // (weapon-local +Y) maps directly to wrist's +Y — colinear with
+    // the closed fingers and the forearm continuation. The fingers
+    // naturally curl AROUND this axis without any wrist gymnastics.
+    palm_anchor: { parent: 'wrist', pos: [0, 0.092, -0.011] },
 
     // ── SEMANTIC INTENT ANCHORS ─────────────────────────────────────
     // These slots carry MEANING, not just position. Their local +Y
