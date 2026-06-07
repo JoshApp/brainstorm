@@ -834,49 +834,79 @@ export function playEnemyFootstep(archetype: VocalArchetype, pos: Vec3Sound) {
  *  full HP. Deliberately NOT a chime: a dull, low, lowpassed double-knock
  *  that falls in pitch (a flat "no"), so it reads as "blocked" without the
  *  bright UI-bleep register. */
-// Sword hitting a wall — a short metallic tink (steel on stone). Two
-// quick high oscillators tuned a perfect-fifth apart with a high-pass
-// crackle, all decayed under 100ms. Grimdark tone: the dungeon
-// acknowledges the strike without celebrating it; the player FEELS the
-// wall through one sharp confirmation, not a long clang.
+// Sword hitting a wall — a low CLANK with stone grit. Three layers:
+//   1. BODY  — a fast pitch-drop sine from ~360 → 90 Hz, the dull stone
+//              thud. Lowpassed so it doesn't poke through.
+//   2. CLANK — a brief sawtooth at ~520 → 240 Hz, bandpassed mid-range,
+//              the steel's bite against the rock.
+//   3. GRIT  — ~60ms of bandpassed noise (centred at 1.5 kHz) — the
+//              chipping and skitter at the impact point. Quieter than the
+//              body so it accents rather than dominates.
+// Decays under 200ms total. Grimdark tone: weighted, terse, no ring.
+// The previous version stacked two triangles at 1.8-2.8 kHz — a bird
+// chitter, not a steel-on-stone impact.
 export function playWallHit(pos?: Vec3Sound) {
   const c = ensureCtx();
   if (!c || !masterGain) return;
   const now = c.currentTime;
   const out: AudioNode = pos ? createPositionalChain(pos, 0.30) : masterGain;
 
-  // Tink: two short high tones, second slightly off so it doesn't ring as a chord.
-  const tones: Array<[number, number]> = [[2800, now], [1850, now + 0.010]];
-  for (const [f, t] of tones) {
-    const osc = c.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(f, t);
-    osc.frequency.exponentialRampToValueAtTime(f * 0.45, t + 0.06);
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.22, t + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.0006, t + 0.07);
-    osc.connect(g).connect(out);
-    osc.start(t); osc.stop(t + 0.09);
-  }
+  // (1) BODY — the dull stone thud. Lowpassed so only the weight comes through.
+  const bodyLp = c.createBiquadFilter();
+  bodyLp.type = 'lowpass';
+  bodyLp.frequency.value = 420;
+  bodyLp.Q.value = 0.7;
+  bodyLp.connect(out);
+  const body = c.createOscillator();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(360, now);
+  body.frequency.exponentialRampToValueAtTime(90, now + 0.18);
+  const bodyG = c.createGain();
+  bodyG.gain.setValueAtTime(0.0001, now);
+  bodyG.gain.exponentialRampToValueAtTime(0.55, now + 0.004);
+  bodyG.gain.exponentialRampToValueAtTime(0.0006, now + 0.20);
+  body.connect(bodyG).connect(bodyLp);
+  body.start(now);
+  body.stop(now + 0.22);
 
-  // Crackle: 25ms of high-passed noise — the spark / chip.
-  const noiseDur = 0.025;
-  const buf = c.createBuffer(1, Math.floor(c.sampleRate * noiseDur), c.sampleRate);
+  // (2) CLANK — bandpassed sawtooth, the steel bite. Just enough harmonic
+  // edge to read as METAL on stone, not stone on stone.
+  const clankBp = c.createBiquadFilter();
+  clankBp.type = 'bandpass';
+  clankBp.frequency.value = 700;
+  clankBp.Q.value = 2.0;
+  clankBp.connect(out);
+  const clank = c.createOscillator();
+  clank.type = 'sawtooth';
+  clank.frequency.setValueAtTime(520, now);
+  clank.frequency.exponentialRampToValueAtTime(240, now + 0.08);
+  const clankG = c.createGain();
+  clankG.gain.setValueAtTime(0.0001, now);
+  clankG.gain.exponentialRampToValueAtTime(0.18, now + 0.003);
+  clankG.gain.exponentialRampToValueAtTime(0.0005, now + 0.11);
+  clank.connect(clankG).connect(clankBp);
+  clank.start(now);
+  clank.stop(now + 0.12);
+
+  // (3) GRIT — bandpassed noise burst, the chip / skitter at the contact
+  // point. Accent, not focus.
+  const gritDur = 0.06;
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate * gritDur), c.sampleRate);
   const data = buf.getChannelData(0);
   for (let i = 0; i < data.length; i++) {
     data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
   }
-  const noise = c.createBufferSource();
-  noise.buffer = buf;
-  const hp = c.createBiquadFilter();
-  hp.type = 'highpass';
-  hp.frequency.value = 4000;
-  const ng = c.createGain();
-  ng.gain.value = 0.18;
-  noise.connect(hp).connect(ng).connect(out);
-  noise.start(now);
-  noise.stop(now + noiseDur);
+  const grit = c.createBufferSource();
+  grit.buffer = buf;
+  const gritBp = c.createBiquadFilter();
+  gritBp.type = 'bandpass';
+  gritBp.frequency.value = 1500;
+  gritBp.Q.value = 0.9;
+  const gritG = c.createGain();
+  gritG.gain.value = 0.13;
+  grit.connect(gritBp).connect(gritG).connect(out);
+  grit.start(now);
+  grit.stop(now + gritDur);
 }
 
 export function playDenied() {
