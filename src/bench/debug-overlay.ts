@@ -54,15 +54,25 @@ function setDepthTestOff(obj: { material: THREE.Material | THREE.Material[] }): 
 }
 
 /** Classify a slot name into the kind of overlay it gets. Slots whose
- *  name carries semantic intent (palm_up, blade_emerge, grip_axis)
- *  get an arrow along +Y instead of axes. Per-finger contact targets
- *  (contact_*) get a small magenta-ish sphere. Everything else gets
- *  the standard RGB axes triad. */
+ *  name carries semantic intent (palm_up, blade_emerge, grip_axis,
+ *  strike_face, strike_point) get an arrow along +Y instead of axes.
+ *  Per-finger contact targets (contact_*) get a small magenta-ish
+ *  sphere. Everything else gets the standard RGB axes triad.
+ *
+ *  Strike-intent anchors:
+ *    strike_face   — the direction the cutting edge or hammer face
+ *                    should be POINTING at the target at impact frame.
+ *                    A swing's clip is "correct" if the face's world
+ *                    +Y aligns with the camera's −Z at impact.
+ *    strike_point  — the direction a thrust's point goes. Same align-
+ *                    ment rule at impact, used for spears and daggers. */
 function classifySlot(name: string): 'arrow' | 'target' | 'axes' {
   if (name.startsWith('contact_')) return 'target';
   if (name === 'palm_up' || name.endsWith('_up') ||
       name === 'blade_emerge' || name.endsWith('_emerge') ||
-      name === 'grip_axis' || name.endsWith('_axis')) return 'arrow';
+      name === 'grip_axis' || name.endsWith('_axis') ||
+      name === 'strike_face' || name.endsWith('_face') ||
+      name === 'strike_point' || name.endsWith('_point')) return 'arrow';
   return 'axes';
 }
 

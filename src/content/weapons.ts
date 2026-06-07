@@ -223,6 +223,14 @@ export const IRON_MAUL: ModelSpec = {
     // silhouette. Previously sat at the haft's mid-point (0.18) which
     // had the head only just clearing the knuckles.
     grip_anchor: { pos: [0, 0.04, 0] },
+    // STRIKE INTENT — the hammer face that should be pointing AT the
+    // target at impact frame. Sits at the head's centre; local +Y
+    // points along the hammer's "down" direction (mesh −Y, where the
+    // smashing face is). A correctly-authored hammer clip will have
+    // this slot's WORLD +Y aligned with the camera's −Z at the impact
+    // keyframe — the bench debug overlay shows it as a labeled arrow
+    // so the alignment is verifiable, not eyeballed.
+    strike_face: { pos: [0, 0.51, 0], rot: [Math.PI, 0, 0] },
   },
 };
 
@@ -319,6 +327,11 @@ export const SPEAR: ModelSpec = {
   ],
   slots: {
     muzzle: { pos: [0, 0, -0.62] },
+    // STRIKE INTENT — the spear-point's direction of travel at impact.
+    // Local +Y points along the thrust axis (toward −Z, the way the
+    // tip extends). A correctly-authored spear thrust has this slot's
+    // world +Y aligned with the camera's −Z at the impact keyframe.
+    strike_point: { pos: [0, 0, -0.62], rot: [-Math.PI / 2, 0, 0] },
   },
 };
 
