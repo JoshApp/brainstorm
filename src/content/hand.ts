@@ -88,9 +88,9 @@ const PALM_ANCHOR_PRESERVED_WORLD_ROT: [number, number, number] = rotateLocally(
 //                 the bone's frame swings around the grip so the
 //                 thumb pad reaches the OPPOSITE side of the cylinder
 //                 from the fingers — closing the circle.
-const THUMB_BASE_FLEX = -0.60;
+const THUMB_BASE_FLEX = -0.85;
 const THUMB_SIDE_FAN = -1.10;
-const THUMB_OPPOSE_GRIP = 1.90;
+const THUMB_OPPOSE_GRIP = 2.10;
 const FINGER_THUMB_ROT: [number, number, number] = rotateLocally(
   [THUMB_BASE_FLEX, 0, THUMB_SIDE_FAN],
   'y',
@@ -345,7 +345,7 @@ export const HAND_RIGHT: ModelSpec = {
       radius: PHALANX.thumb.radius, height: PHALANX.thumb.proximal, segments: 10,
       mat: 'bone' },
     { parent: 'finger_thumb_ip', kind: 'sphere', pos: [0, 0, 0],
-      radius: PHALANX.thumb.radius * 1.10, segments: [8, 6], mat: 'bone' },
+      radius: PHALANX.thumb.radius * 1.50, segments: [8, 6], mat: 'bone' },
     { parent: 'finger_thumb_ip', kind: 'cylinder',
       pos: [0, PHALANX.thumb.distal / 2, 0],
       radius: PHALANX.thumb.radius * 0.92, height: PHALANX.thumb.distal, segments: 10,
