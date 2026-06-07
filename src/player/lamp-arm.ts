@@ -114,13 +114,29 @@ export function attachLampArm(camera: THREE.Camera): void {
   });
 }
 
-/** Solve the left arm so the wrist sits at the lantern's hinge.
- *  Called each frame from the engine systems loop. */
+// Wrist target offset from the lantern's ring centre. The hand's
+// palm_anchor sits ~9cm UP and slightly back from the wrist (in
+// hand-local, after wrist rotation). If the IK targets the ring
+// directly the WRIST lands at the ring (so the ring sits around
+// the wrist joint and the forearm goes THROUGH the ring). Offsetting
+// the wrist target DOWN and BACK puts the wrist behind the ring; the
+// palm then reaches forward to grip it.
+const PALM_TO_RING_OFFSET_Y = -0.07;
+const PALM_TO_RING_OFFSET_Z = 0.03;
+
+/** Solve the left arm so the HAND'S PALM (not its wrist) sits at the
+ *  lantern's ring centre. Called each frame from the engine systems
+ *  loop. */
 export function tickLampArm(dt: number): void {
   if (!armIK || !armGroup || !shoulderSlot || dt <= 0) return;
   const target = getLampHingeWorldPosition(_wristWorld);
   if (!target) return;
-  armGroup.worldToLocal(_wristArmLocal.copy(target));
+  // Shift the wrist target so the hand's palm — offset up-and-forward
+  // from the wrist in hand-local — lands at the ring instead of the
+  // wrist landing there.
+  _wristWorld.y += PALM_TO_RING_OFFSET_Y;
+  _wristWorld.z += PALM_TO_RING_OFFSET_Z;
+  armGroup.worldToLocal(_wristArmLocal.copy(_wristWorld));
   const r = armIK.solve(_wristArmLocal, dt);
   poseBone(humerusMesh, r.shoulderPos, r.elbowPos);
   poseBone(radiusMesh,  r.elbowPos, r.wristPos, -0.013);

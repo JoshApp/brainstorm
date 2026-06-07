@@ -76,7 +76,11 @@ let lamp: LampState | null = null;
 //     unchanged; the lantern just slides down rather than vanishing, so
 //     there's never a "light from nowhere" moment.
 // The body offset below hangs the lantern visibly under whichever pivot.
-const LAMP_RAISED = new THREE.Vector3(-0.36, -0.11, -0.52);
+// Lamp pushed back from Z=-0.52 to -0.60 so the off-hand has visible
+// distance to reach forward to the ring — without this the wrist
+// target sits so close to the camera that the forearm reads as
+// foreshortened.
+const LAMP_RAISED = new THREE.Vector3(-0.36, -0.11, -0.60);
 // STOWED sits at the lower-LEFT corner — further left than the offhand
 // viewmodel (-0.32) and lower than RAISED, so a held shield gets the
 // hand while the lantern still PEEKS on screen (not dropped fully out
