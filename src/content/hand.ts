@@ -268,7 +268,14 @@ export const HAND_RIGHT: ModelSpec = {
     // (weapon-local +Y) maps directly to wrist's +Y — colinear with
     // the closed fingers and the forearm continuation. The fingers
     // naturally curl AROUND this axis without any wrist gymnastics.
-    palm_anchor: { parent: 'wrist', pos: [0, 0.092, -0.011] },
+    // The grip anchor a held weapon aligns to. A child of WRIST so it
+    // inherits the wrist bend. Slightly tilted FORWARD (rot X = -0.30)
+    // so the weapon's grip axis no longer runs perfectly colinear
+    // with the fingers — they get a non-zero perpendicular component
+    // to bend AROUND instead of along the cylinder. The blade still
+    // reads as "extending forward from the fist" because the tilt is
+    // small (~17°), but the fingers now have something to wrap.
+    palm_anchor: { parent: 'wrist', pos: [0, 0.092, -0.011], rot: [-0.30, 0, 0] },
 
     // ── SEMANTIC INTENT ANCHORS ─────────────────────────────────────
     // These slots carry MEANING, not just position. Their local +Y
