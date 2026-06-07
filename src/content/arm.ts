@@ -208,14 +208,9 @@ export const ARM_LEFT: ModelSpec = {
       pos: [0, FOREARM_LENGTH / 2, 0],
       radius: 0.012, height: FOREARM_LENGTH * 0.94, segments: 8,
       mat: 'boneDark' },
-    // Simple closed-fist sphere at the wrist. No finger detail
-    // here — the off-hand grips the lantern's O-ring, and a fist
-    // sphere reads cleanly as "hand holding it" without authoring
-    // a whole second bone-finger rig.
-    { parent: 'wrist', kind: 'sphere',
-      pos: [0, 0, 0],
-      radius: 0.045, segments: [12, 10],
-      mat: 'bone' },
+    // No fist sphere — the actual hand spec (HAND_RIGHT) is attached
+    // to the wrist slot at mount time by src/player/lamp-arm.ts. The
+    // fingers grip the lantern's O-ring directly.
   ],
   slots: {
     // Mirror of the right shoulder's −X. The wrist target (the

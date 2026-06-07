@@ -147,11 +147,12 @@ export function attachLamp(camera: THREE.Camera) {
   bottom.position.y = -barH / 2 - 0.005;
   body.add(bottom);
 
-  // Small upright post + O-ring for the handle. Ring is sized
-  // generously so it reads clearly as "the thing the off-hand is
-  // gripping" — `src/player/lamp-arm.ts` mounts a left arm whose
-  // wrist targets the hinge (which sits at the ring centre), so the
-  // hand visibly closes around this ring.
+  // Small upright post + VERTICAL O-ring. Ring sits in the XY plane
+  // (torus default axis along Z = horizontal) — its hole faces the
+  // camera and the lantern dangles from it like a real lamp on a
+  // wrist hook. `src/player/lamp-arm.ts` mounts a left arm whose
+  // wrist targets the ring centre, so the fingers visibly close
+  // around it.
   const post = new THREE.Mesh(
     new THREE.CylinderGeometry(0.005, 0.005, 0.04, 6),
     ironMat,
@@ -159,11 +160,12 @@ export function attachLamp(camera: THREE.Camera) {
   post.position.y = barH / 2 + 0.035;
   body.add(post);
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.028, 0.008, 6, 16),
+    new THREE.TorusGeometry(0.020, 0.005, 6, 16),
     ironMat,
   );
-  ring.position.y = barH / 2 + 0.068;
-  ring.rotation.x = Math.PI / 2;
+  ring.position.y = barH / 2 + 0.060;
+  // No rotation.x — torus axis stays along Z (horizontal), so the
+  // ring is VERTICAL (its plane contains the up axis).
   body.add(ring);
 
   // ── Flame stack ───────────────────────────────────────────────────

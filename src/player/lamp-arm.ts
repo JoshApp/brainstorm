@@ -3,6 +3,7 @@ import { buildModel } from '../ecs/build-model';
 import {
   ARM_LEFT, ARM_LEFT_HUMERUS_LENGTH, ARM_LEFT_FOREARM_LENGTH,
 } from '../content/arm';
+import { HAND_RIGHT } from '../content/hand';
 import { ArmIK } from '../anim/arm-ik';
 import { registerViewmodel } from '../style/render-target';
 import { getLampHingeWorldPosition } from './handheld-lamp';
@@ -27,6 +28,7 @@ let humerusMesh: THREE.Mesh | undefined;
 let radiusMesh: THREE.Mesh | undefined;
 let ulnaMesh: THREE.Mesh | undefined;
 let sinewMesh: THREE.Mesh | undefined;
+let wristAnchor: THREE.Group | null = null;
 
 const _wristWorld    = new THREE.Vector3();
 const _wristArmLocal = new THREE.Vector3();
@@ -72,6 +74,29 @@ export function attachLampArm(camera: THREE.Camera): void {
     if (m) armGroup.add(m);
   }
 
+  // Attach the actual hand spec to a wrist anchor — its position is
+  // updated each frame from the IK's wrist output, so the hand
+  // follows the lantern hinge as it swings. (The arm spec's wrist
+  // slot is at a STATIC elbow-local offset; can't use it for this.)
+  wristAnchor = new THREE.Group();
+  armGroup.add(wristAnchor);
+  const hand = buildModel(HAND_RIGHT);
+  wristAnchor.add(hand.group);
+  // Same viewmodel render settings as the arm bones so the hand
+  // depth-tests right against the lantern + the other arm.
+  hand.group.traverse((obj) => {
+    if (!(obj as THREE.Mesh).isMesh) return;
+    const mesh = obj as THREE.Mesh;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      m.depthTest = true;
+      m.depthWrite = false;
+      m.transparent = false;
+      m.needsUpdate = true;
+    }
+    mesh.renderOrder = 998;
+  });
+
   // Viewmodel render settings — match the rest of the viewmodel
   // layer (depth-test enabled, depth-write off, opaque) so the arm
   // depth-tests correctly against the lantern and the right arm.
@@ -101,6 +126,8 @@ export function tickLampArm(dt: number): void {
   poseBone(radiusMesh,  r.elbowPos, r.wristPos, -0.013);
   poseBone(ulnaMesh,    r.elbowPos, r.wristPos,  0.013);
   poseBone(sinewMesh,   r.elbowPos, r.wristPos);
+  // Pin the hand at the IK wrist position (arm-local).
+  if (wristAnchor) wristAnchor.position.copy(r.wristPos);
 }
 
 /** Position a bone mesh to span two arm-local endpoints — same
