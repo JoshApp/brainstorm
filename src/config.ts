@@ -268,11 +268,7 @@ export const CONFIG = {
   SWORD_SWING_STRIKE: 0.10,    // seconds — sword chops through (hit window is here)
   SWORD_SWING_RECOVER: 0.28,   // seconds — return to idle; can't attack again
   SWORD_IDLE_POS: [0.35, -0.32, -0.55] as const,  // bottom-right of view
-  SWORD_IDLE_ROT: [-0.10, -0.15, -0.85] as const, // rolled so the thumb sits ON TOP of the grip,
-                                                   // not under it (which is where the previous +0.85 Z
-                                                   // and -0.30 X were putting it). Z is now the opposite
-                                                   // sign — rolls the thumb-side UP — and X is less
-                                                   // pitch-down so the hand isn't tipped forward.
+  SWORD_IDLE_ROT: [-0.2, -0.15, 0.4] as const,    // tilted across body
 
   // === ENEMY (cross-instance constants only — per-enemy values live in src/content/enemies.ts) ===
   ENEMY_HIT_FLASH_COLOR: 0xffeedd,
