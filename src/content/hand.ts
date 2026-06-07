@@ -107,6 +107,17 @@ export const HAND_RIGHT: ModelSpec = {
     },
   },
   parts: [
+    // ── ELBOW JOINT bulb ─ a small sphere at the elbow position. Hides
+    // the visible seam where the humerus angle meets the forearm
+    // angle (the two cylinders converge at the elbow but their axes
+    // don't align, so you see a kink without the bulb). Sits at the
+    // elbow slot's origin (which is also the bottom of the forearm
+    // and the top of the humerus).
+    { parent: 'elbow', kind: 'sphere',
+      pos: [0, 0, 0],
+      radius: 0.024, segments: [10, 8],
+      mat: 'bone' },
+
     // ── HUMERUS ─ upper-arm bone spanning elbow → shoulder. Authored
     // in ELBOW-LOCAL space; centered at the midpoint between elbow
     // (0,0,0) and shoulder (which sits at elbow-local (0.10, -0.10,
