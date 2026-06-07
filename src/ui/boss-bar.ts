@@ -66,8 +66,14 @@ export function createBossBar() {
   Object.assign(root.style, {
     position: 'fixed',
     left: '50%',
-    // Sits above the player HP pips (which live at bottom ~20px).
-    bottom: 'calc(48px + env(safe-area-inset-bottom, 0px))',
+    // Sits ABOVE the entire bottom-centre player HUD stack: hearts
+    // (top ~42px) → stamina-bar / stamina-arc (top ~45-54px) → buff
+    // pills (top ~81px). The old 48px sat ON TOP of the stamina-arc
+    // (Minimal style's breath bar at 50-54px) so the boss bar
+    // visibly buried it. Anchor at 88px so the boss bar's bottom
+    // edge clears the tallest player widget (buffs at ~81px) with a
+    // small breathing gap.
+    bottom: 'calc(88px + env(safe-area-inset-bottom, 0px))',
     transform: 'translateX(-50%)',
     width: 'min(560px, 78vw)',
     zIndex: '11',
