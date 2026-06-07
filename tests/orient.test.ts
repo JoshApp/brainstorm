@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { orient, tilt, DIR, localFromWorld } from '../src/anim/orient';
+import { orient, tilt, DIR, localFromWorld, rotateLocally } from '../src/anim/orient';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -135,6 +135,48 @@ test('localFromWorld: arbitrary world + parent reproduces world rotation', () =>
   const wQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...worldRot, 'XYZ'));
   const dot = Math.abs(combined.dot(wQ));
   assert(closeTo(dot, 1, 1e-5), `combined should equal world rotation, dot=${dot}`);
+});
+
+test('rotateLocally: identity base + identity rotation → identity', () => {
+  const r = rotateLocally([0, 0, 0], 'z', 0);
+  vecCloseTo(Y(r), new THREE.Vector3(0, 1, 0));
+  vecCloseTo(Z(r), new THREE.Vector3(0, 0, 1));
+});
+
+test('rotateLocally: identity base + Z rotation = same as Euler Z', () => {
+  // With no prior rotation, rotating around local Z equals just
+  // setting the Euler's Z component.
+  const r = rotateLocally([0, 0, 0], 'z', 0.5);
+  const direct: [number, number, number] = [0, 0, 0.5];
+  const qr = new THREE.Quaternion().setFromEuler(new THREE.Euler(...r, 'XYZ'));
+  const qd = new THREE.Quaternion().setFromEuler(new THREE.Euler(...direct, 'XYZ'));
+  assert(closeTo(Math.abs(qr.dot(qd)), 1, 1e-5), 'same rotation');
+});
+
+test('rotateLocally: with non-zero X+Y, Z rotation rotates around the ROTATED Z, not parent Z', () => {
+  // Base has pitch + twist. A local-Z rotation should rotate around
+  // the wrist's CURRENT +Z (which has been rotated by pitch + twist),
+  // not the parent's +Z. Verify by checking the BLUE axis (local +Z)
+  // direction is preserved (it's the rotation axis, so it stays put).
+  const base: [number, number, number] = [-0.35, 0.524, 0];
+  const baseZAxis = Z(base).clone();
+  const rotated = rotateLocally(base, 'z', 0.436);
+  const rotatedZAxis = Z(rotated);
+  // The local +Z axis should be IN THE SAME WORLD DIRECTION before
+  // and after the local-Z rotation (you don't move an axis you spin
+  // around).
+  vecCloseTo(rotatedZAxis, baseZAxis);
+});
+
+test('rotateLocally: positive Z is counterclockwise from +Z POV', () => {
+  // Standard right-hand rule. Rotating +X (red) by π/2 around +Z (blue)
+  // should land it on +Y (green) when viewed from +Z. From the
+  // OPPOSITE end (looking from −Z toward origin), this appears
+  // CLOCKWISE — which is the player's POV when the wrist's +Z
+  // points at the camera.
+  const r = rotateLocally([0, 0, 0], 'z', Math.PI / 2);
+  const rotatedX = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(...r, 'XYZ'));
+  vecCloseTo(rotatedX, new THREE.Vector3(0, 1, 0));
 });
 
 // eslint-disable-next-line no-console

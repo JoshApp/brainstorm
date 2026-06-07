@@ -122,6 +122,46 @@ export function localFromWorld(
   return [e.x, e.y, e.z];
 }
 
+/**
+ * Compose an INTRINSIC rotation onto an existing Euler — i.e. apply
+ * an additional rotation around the OBJECT'S CURRENT LOCAL axis
+ * after its existing rotation has been applied.
+ *
+ * This is what you need when the author looks at a debug axis triad
+ * in the viewport and says "rotate 25° around the blue axis." That
+ * blue axis is the object's local +Z AFTER its existing X/Y/Z
+ * rotation is applied — not the parent's +Z. Simply adding to the
+ * Euler's Z channel rotates around the PARENT axis instead, which
+ * is a different operation when the object already has non-zero X
+ * or Y components.
+ *
+ * Implementation: quaternion-multiply on the right (intrinsic).
+ *   q_new = q_existing * q_axis_rotation
+ *
+ *   const BASE = [PITCH, TWIST, 0];
+ *   const NEW  = rotateLocally(BASE, 'z', -25 * Math.PI / 180);
+ *   //         ^ adds a 25° clockwise-from-POV rotation around the
+ *   //         BLUE axis (local +Z) on top of the base.
+ */
+export function rotateLocally(
+  baseRot: Vec3Tuple,
+  axis: 'x' | 'y' | 'z',
+  radians: number,
+): [number, number, number] {
+  const qBase = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(baseRot[0], baseRot[1], baseRot[2], 'XYZ'),
+  );
+  const axisVec = new THREE.Vector3(
+    axis === 'x' ? 1 : 0,
+    axis === 'y' ? 1 : 0,
+    axis === 'z' ? 1 : 0,
+  );
+  const qDelta = new THREE.Quaternion().setFromAxisAngle(axisVec, radians);
+  qBase.multiply(qDelta);
+  const e = new THREE.Euler().setFromQuaternion(qBase, 'XYZ');
+  return [e.x, e.y, e.z];
+}
+
 export function orient(opts: {
   yAxisTo: Vec3Tuple,
   upTo?: Vec3Tuple,
