@@ -1,6 +1,11 @@
 // All tuning constants live here. Change values, save, see the result.
 // This is the file Josh will iterate on most during atmosphere tuning.
 
+// Stamina capacity. Extracted so STAMINA cost values below can be
+// expressed as exact fractions of it (DASH = MAX/3, CHARGED = MAX/6).
+// Tweaking it auto-updates the costs.
+const STAMINA_MAX = 100;
+
 export const CONFIG = {
   // === PALETTE ===
   // Restrained, grimdark. No saturated colors.
@@ -71,8 +76,15 @@ export const CONFIG = {
   // spend, so steady tapping never touches it but spamming the strong
   // stuff runs you dry. NOT saved — tops back up to full in a few seconds
   // and is reset to full on every floor load (see save-hydration).
+  // Stamina capacity is divided into THREE PIPS (= segments) by the HUD
+  // renderers. Costs are computed as fractions of MAX so the math is
+  // exact: 3 dodges drain MAX exactly (no leftover sliver after the
+  // third that would let a fourth squeak through as a soft-commit),
+  // and 6 heavies drain MAX exactly. Tweaking MAX or rebalancing
+  // segment counts only needs to change values here — the renderers
+  // already key off frac (= current/MAX).
   STAMINA: {
-    MAX: 100,
+    MAX: STAMINA_MAX,
     // Regen tuned for the Elden Ring "the bar means something" feel: a real
     // pause after spending (so a single action doesn't snap straight back to
     // full), and a LONGER recovery once you bottom the bar out ("gassed").
@@ -102,16 +114,21 @@ export const CONFIG = {
     // for the POWER moves — charged melee, ranged, dash. (Raise LIGHT_COST > 0
     // to re-arm a per-swing light drain; 0 keeps light fully off the resource.)
     // Costs are tuned against a **3-SEGMENT** mental model: the bar
-    // reads as three pips' worth of action budget (visually divided
-    // in the HUD by two dark gap markers at 1/3 + 2/3). A dodge OR a
-    // ranged shot eats one full segment; a heavy eats half. So a
-    // full bar buys "3 dodges, OR 6 heavies, OR a heavy + 2 dodges,
-    // OR …" — legible at a glance without per-action arithmetic.
+    // reads as three pips' worth of action budget (real gaps between
+    // them in the HUD). A dodge OR a ranged shot eats one full
+    // segment; a heavy eats half. So a full bar buys "3 dodges, OR 6
+    // heavies, OR a heavy + 2 dodges, OR …" — legible at a glance
+    // without per-action arithmetic.
+    //
+    // EXPRESSED AS FRACTIONS OF MAX so 3 × DASH_COST = MAX exactly
+    // and 6 × CHARGED_COST = MAX exactly. Earlier integer rounding
+    // (DASH 33, MAX 100) left a 1-stamina sliver after 3 dodges that
+    // soft-committed into an unintended 4th stumble-dodge.
     LIGHT_COST: 0,            // free — light tap swings don't touch stamina
-    CHARGED_COST: 17,         // ½ segment — a heavy melee (soft-commits; gasses if it empties you)
-    RANGED_COST: 33,          // 1 segment — one crossbow / wand shot
+    CHARGED_COST: STAMINA_MAX / 6,    // ½ segment — a heavy melee
+    RANGED_COST: STAMINA_MAX / 3,     // 1 segment — one crossbow / wand shot
     // Dash / dodge — a discrete lunge with brief i-frames (the Souls roll).
-    DASH_COST: 33,            // 1 segment
+    DASH_COST: STAMINA_MAX / 3,       // 1 segment
     DASH_SPEED: 15,           // impulse speed (m/s) fed to player knockback
     DASH_IFRAME_S: 0.30,      // invulnerability window during the lunge
     // Dodge NEVER blocks — at empty it still fires as a desperate STUMBLE:
