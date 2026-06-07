@@ -218,11 +218,11 @@ export const IRON_MAUL: ModelSpec = {
   ],
   slots: {
     head_top: { pos: [0, 0.54, 0] },
-    // Player grips LOW on the haft (closer to the pommel-end) so the
-    // hammer head reads high above the fist — proper two-handed-maul
-    // silhouette. Previously sat at the haft's mid-point (0.18) which
-    // had the head only just clearing the knuckles.
-    grip_anchor: { pos: [0, 0.04, 0] },
+    // Grip a bit higher on the haft — at Y=0.12 the fist sits in the
+    // lower-middle of the shaft, which reads as a proper "carrying
+    // grip" silhouette: hammer head clearly elevated above the fist
+    // without being so far up the haft that the leverage looks wrong.
+    grip_anchor: { pos: [0, 0.12, 0] },
     // STRIKE INTENT — the hammer face that should be pointing AT the
     // target at impact frame. Sits at the head's centre; local +Y
     // points along the hammer's "down" direction (mesh −Y, where the

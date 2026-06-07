@@ -31,15 +31,22 @@ import { localFromWorld, rotateLocally } from '../anim/orient';
 //                       (saber direction), and CW from POV (which is
 //                       the −Y end) corresponds to POSITIVE rotation
 //                       under the right-hand rule.
-const WRIST_PITCH_FORWARD = -0.20;
+// REDUCED from -0.20 → -0.10 to lift the back of the hand "a tad
+// up" — less forward flexion at the wrist reads as the wrist sitting
+// in a more neutral, less-bent posture.
+const WRIST_PITCH_FORWARD = -0.10;
 const WRIST_PLANE_INTO_SCREEN = -0.15;
-const WRIST_PINKY_TO_GROUND_30 = (30 * Math.PI) / 180;
+// REDUCED from 30° → 20° to take the "bent outward" look off the
+// wrist — the previous 30° rolled the pinky down so aggressively
+// that the wrist read as ulnar-deviated. 20° keeps the saber-grip
+// hint without the contortion.
+const WRIST_PINKY_TO_GROUND_20 = (20 * Math.PI) / 180;
 const WRIST_ROLL_BLUE_CW_30 = -(30 * Math.PI) / 180;
 const WRIST_TILT_GREEN_CW_30 = (30 * Math.PI) / 180;
 
 const BASE_WRIST_ROT: [number, number, number] = [
   WRIST_PITCH_FORWARD + WRIST_PLANE_INTO_SCREEN,
-  WRIST_PINKY_TO_GROUND_30,
+  WRIST_PINKY_TO_GROUND_20,
   0,
 ];
 const AFTER_BLUE_ROT  = rotateLocally(BASE_WRIST_ROT, 'z', WRIST_ROLL_BLUE_CW_30);
