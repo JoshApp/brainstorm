@@ -1,4 +1,16 @@
 import type { ModelSpec } from '../ecs/model-types';
+import { localFromWorld } from '../anim/orient';
+
+// 30° clockwise twist from the player's POV, applied around the
+// wrist's local +Y axis (forearm/saber direction). Positive Y rotation
+// in Three's right-handed system reads as CLOCKWISE when viewed from
+// −Y looking toward +Y — which is the player's view of the wrist.
+const WRIST_TWIST_CW_30 = Math.PI / 6;
+const NEW_WRIST_ROT: [number, number, number] = [0, WRIST_TWIST_CW_30, 0];
+// The orientation the palm_anchor (and the weapon attached to it) had
+// BEFORE the wrist twist, expressed in hand-root frame. We keep this
+// constant so the weapon doesn't rotate just because the wrist did.
+const PALM_ANCHOR_PRESERVED_WORLD_ROT: [number, number, number] = [-0.30, 0, 0];
 
 // First-person RIGHT hand — a skeletal bone hand with FULL articulated
 // finger joints (MCP + PIP + DIP per finger, MCP + IP for the thumb).
@@ -261,7 +273,7 @@ export const HAND_RIGHT: ModelSpec = {
     // hand's wrist position each frame. Children of wrist are still
     // authored in wrist-local space, so the entire fingers + palm +
     // metacarpals hierarchy stayed untouched by the split.
-    wrist: { pos: [0, 0, 0] },
+    wrist: { pos: [0, 0, 0], rot: NEW_WRIST_ROT },
 
     // The grip anchor a held weapon aligns to. A child of WRIST so it
     // inherits the wrist bend. Identity rotation: weapon's grip axis
@@ -275,7 +287,15 @@ export const HAND_RIGHT: ModelSpec = {
     // to bend AROUND instead of along the cylinder. The blade still
     // reads as "extending forward from the fist" because the tilt is
     // small (~17°), but the fingers now have something to wrap.
-    palm_anchor: { parent: 'wrist', pos: [0, 0.092, -0.011], rot: [-0.30, 0, 0] },
+    palm_anchor: {
+      parent: 'wrist',
+      pos: [0, 0.092, -0.011],
+      // Counter the wrist's new twist so the weapon's world rotation
+      // matches PALM_ANCHOR_PRESERVED_WORLD_ROT — i.e. exactly where
+      // it was before the wrist rotated. The helper handles the
+      // quaternion inverse-multiply.
+      rot: localFromWorld(PALM_ANCHOR_PRESERVED_WORLD_ROT, NEW_WRIST_ROT),
+    },
 
     // ── SEMANTIC INTENT ANCHORS ─────────────────────────────────────
     // These slots carry MEANING, not just position. Their local +Y
