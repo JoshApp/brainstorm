@@ -6,7 +6,7 @@ import type { Destructible } from '../level/destructibles';
 import type { Damageable } from './damageable';
 import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
-import { playImpact, playWhoosh, playBuffApply, playWallHit } from '../audio/sfx';
+import { playImpact, playWhoosh, playBuffApply, playSurfaceHit } from '../audio/sfx';
 import { applyViewmodelKickback } from '../player/viewmodel-pullback';
 import { spawnDamageNumber } from '../ui/damage-numbers';
 import { emit, on } from '../broadcast/event-bus';
@@ -432,7 +432,7 @@ export function createCombatSystem(
         if (wallDist < reach) {
           const hx = camera.position.x + dxn * wallDist;
           const hz = camera.position.z + dzn * wallDist;
-          playWallHit({ x: hx, y: camera.position.y, z: hz });
+          playSurfaceHit('stone', { x: hx, y: camera.position.y, z: hz });
           hapticVibrate(18);
           kickShake(0.05, 0.10);
           // CLANK back — the wall shoves the blade home. Visible recoil on
@@ -563,11 +563,17 @@ export function createCombatSystem(
       hapticVibrate(Math.round((anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS) * s));
       playImpact(impactAt);
     } else {
-      // Light targets only (vases) — token crunch, no on-hit passives.
+      // Light targets only (vases / crates / etc.) — token crunch, no on-hit
+      // passives. Voice the strike by the prop's hitMaterial when set so a
+      // vase rings ceramic / a chest knocks wood / etc.; fall back to the
+      // generic playImpact thump if none is declared so a new destructible
+      // doesn't go silent before its material is set.
       freezeFor(Math.min(40, CONFIG.HIT_PAUSE_MS * 0.4));
       kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 0.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 0.5);
       hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
-      playImpact(impactAt);
+      const material = targets.find((t) => t.hitMaterial)?.hitMaterial;
+      if (material) playSurfaceHit(material, impactAt);
+      else          playImpact(impactAt);
     }
 
     // SIGNATURE CHARGED EFFECT — only on real combat hits (anyHeavy)

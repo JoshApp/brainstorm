@@ -111,6 +111,7 @@ export function spawnVase(
     aimHeight: 0.25,
     collisionRadius: 0.18,
     hitFeedback: 'light',
+    hitMaterial: 'ceramic',
     alive: true,
     takeDamage(event: DamageEvent) {
       if (!dest.alive) return 0;

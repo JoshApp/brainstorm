@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import type { EntityId } from '../ecs/types';
 import type { DamageEvent } from './damage';
+import type { HitMaterial } from '../audio/sfx';
 
 // Shared contract for anything a swing can connect with. Enemies and
 // destructible props both implement it, so the combat system runs ONE
@@ -33,6 +34,13 @@ export interface Damageable {
    *  mobs + props, which are small enough that the centre point is fine). */
   hitRadius?: number;
   hitFeedback: HitFeedback;
+  /** Surface material for the per-hit sound voice — see sfx.playSurfaceHit.
+   *  Optional and meaningful only on LIGHT targets (props): a vase rings as
+   *  ceramic, a chest as wood. Enemies leave this unset and continue to use
+   *  the fleshy playImpact thump (different audio category — bone/meat, not
+   *  surface contact). Light targets without a value also fall back to
+   *  playImpact so a stray destructible doesn't go silent. */
+  hitMaterial?: HitMaterial;
   /** Route a damage event through the pipeline, apply it to HP, return the
    *  amount actually applied (for the floating number). */
   takeDamage(event: DamageEvent): number;

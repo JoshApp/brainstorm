@@ -834,28 +834,51 @@ export function playEnemyFootstep(archetype: VocalArchetype, pos: Vec3Sound) {
  *  full HP. Deliberately NOT a chime: a dull, low, lowpassed double-knock
  *  that falls in pitch (a flat "no"), so it reads as "blocked" without the
  *  bright UI-bleep register. */
-// Sword hitting a wall — a low CLANK with stone grit. Three layers:
-//   1. BODY  — a fast pitch-drop sine from ~360 → 90 Hz, the dull stone
-//              thud. Lowpassed so it doesn't poke through.
-//   2. CLANK — a brief sawtooth at ~520 → 240 Hz, bandpassed mid-range,
-//              the steel's bite against the rock.
-//   3. GRIT  — ~60ms of bandpassed noise (centred at 1.5 kHz) — the
-//              chipping and skitter at the impact point. Quieter than the
-//              body so it accents rather than dominates.
-// Decays under 200ms total. Grimdark tone: weighted, terse, no ring.
-// The previous version stacked two triangles at 1.8-2.8 kHz — a bird
-// chitter, not a steel-on-stone impact.
-export function playWallHit(pos?: Vec3Sound) {
+// Surface materials the player's weapon can strike. Each maps to a
+// dedicated synth voicing in playSurfaceHit. Use 'stone' for walls /
+// pillars; 'ceramic' for vases + pottery; 'wood' for chests + crates;
+// 'metal' for grates + iron banding. Add a new value here, then teach
+// playSurfaceHit how to voice it — callers stay unchanged.
+export type HitMaterial = 'stone' | 'ceramic' | 'wood' | 'metal';
+
+/** Play a sword-on-surface impact at `pos`, voiced for `material`. The
+ *  blade is the same; the SURFACE swallows the strike differently.
+ *
+ *  Authoring a new material:
+ *    1) Add it to `HitMaterial`.
+ *    2) Add a case below. Three-layer template (body / mid / grit)
+ *       keeps the family coherent so all hit sounds belong to the
+ *       same world.
+ *
+ *  All voicings decay under ~250ms — surfaces don't ring. The blade's
+ *  pre-impact whoosh has already played (onSwingStart); this is the
+ *  CONTACT report. */
+export function playSurfaceHit(material: HitMaterial, pos?: Vec3Sound) {
   const c = ensureCtx();
   if (!c || !masterGain) return;
   const now = c.currentTime;
   const out: AudioNode = pos ? createPositionalChain(pos, 0.30) : masterGain;
+  switch (material) {
+    case 'stone':   return voiceStone(c, out, now);
+    case 'ceramic': return voiceCeramic(c, out, now);
+    case 'wood':    return voiceWood(c, out, now);
+    case 'metal':   return voiceMetal(c, out, now);
+  }
+}
 
-  // (1) BODY — the dull stone thud. Lowpassed so only the weight comes through.
+/** Compat alias — earlier callers used playWallHit. Same sound as
+ *  playSurfaceHit('stone', pos). */
+export function playWallHit(pos?: Vec3Sound) {
+  playSurfaceHit('stone', pos);
+}
+
+// ── STONE ─ walls, pillars, altars. Low CLANK with grit. ─────────────
+//   BODY  sine 360 → 90 Hz, lowpassed @ 420 Hz       (dull stone weight)
+//   CLANK sawtooth 520 → 240 Hz, bandpassed @ 700 Hz (steel's bite)
+//   GRIT  60ms noise, bandpassed @ 1.5 kHz           (chip / skitter)
+function voiceStone(c: AudioContext, out: AudioNode, now: number): void {
   const bodyLp = c.createBiquadFilter();
-  bodyLp.type = 'lowpass';
-  bodyLp.frequency.value = 420;
-  bodyLp.Q.value = 0.7;
+  bodyLp.type = 'lowpass'; bodyLp.frequency.value = 420; bodyLp.Q.value = 0.7;
   bodyLp.connect(out);
   const body = c.createOscillator();
   body.type = 'sine';
@@ -866,15 +889,10 @@ export function playWallHit(pos?: Vec3Sound) {
   bodyG.gain.exponentialRampToValueAtTime(0.55, now + 0.004);
   bodyG.gain.exponentialRampToValueAtTime(0.0006, now + 0.20);
   body.connect(bodyG).connect(bodyLp);
-  body.start(now);
-  body.stop(now + 0.22);
+  body.start(now); body.stop(now + 0.22);
 
-  // (2) CLANK — bandpassed sawtooth, the steel bite. Just enough harmonic
-  // edge to read as METAL on stone, not stone on stone.
   const clankBp = c.createBiquadFilter();
-  clankBp.type = 'bandpass';
-  clankBp.frequency.value = 700;
-  clankBp.Q.value = 2.0;
+  clankBp.type = 'bandpass'; clankBp.frequency.value = 700; clankBp.Q.value = 2.0;
   clankBp.connect(out);
   const clank = c.createOscillator();
   clank.type = 'sawtooth';
@@ -885,28 +903,134 @@ export function playWallHit(pos?: Vec3Sound) {
   clankG.gain.exponentialRampToValueAtTime(0.18, now + 0.003);
   clankG.gain.exponentialRampToValueAtTime(0.0005, now + 0.11);
   clank.connect(clankG).connect(clankBp);
-  clank.start(now);
-  clank.stop(now + 0.12);
+  clank.start(now); clank.stop(now + 0.12);
 
-  // (3) GRIT — bandpassed noise burst, the chip / skitter at the contact
-  // point. Accent, not focus.
-  const gritDur = 0.06;
-  const buf = c.createBuffer(1, Math.floor(c.sampleRate * gritDur), c.sampleRate);
+  attachNoiseBurst(c, out, now, 0.06, 'bandpass', 1500, 0.9, 0.13);
+}
+
+// ── CERAMIC ─ vases, pottery. Sharp CRACK + a quick shard tinkle. ─────
+//   SNAP  sine 700 → 220 Hz, fast 80ms decay        (the crack)
+//   CHIP  highpassed noise @ 3 kHz, very short      (the chip-off)
+//   TINK  two short tones around 2.4 / 3.1 kHz      (shards scattering)
+function voiceCeramic(c: AudioContext, out: AudioNode, now: number): void {
+  const snap = c.createOscillator();
+  snap.type = 'sine';
+  snap.frequency.setValueAtTime(700, now);
+  snap.frequency.exponentialRampToValueAtTime(220, now + 0.06);
+  const snapG = c.createGain();
+  snapG.gain.setValueAtTime(0.0001, now);
+  snapG.gain.exponentialRampToValueAtTime(0.42, now + 0.003);
+  snapG.gain.exponentialRampToValueAtTime(0.0005, now + 0.10);
+  snap.connect(snapG).connect(out);
+  snap.start(now); snap.stop(now + 0.11);
+
+  attachNoiseBurst(c, out, now, 0.035, 'highpass', 3000, 0, 0.22);
+
+  const tinks: Array<[number, number]> = [[2400, now + 0.030], [3100, now + 0.060]];
+  for (const [f, t] of tinks) {
+    const o = c.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(f, t);
+    o.frequency.exponentialRampToValueAtTime(f * 0.65, t + 0.10);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.10, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0004, t + 0.11);
+    o.connect(g).connect(out);
+    o.start(t); o.stop(t + 0.12);
+  }
+}
+
+// ── WOOD ─ chests, crates, doors. Dull THOCK, no ring. ────────────────
+//   BODY  sine 200 → 60 Hz, 150ms                   (low dull weight)
+//   KNOCK triangle 320 → 140 Hz, bandpassed @ 450 Hz (wooden strike)
+//   GRAIN tight noise burst @ 800 Hz                 (splinter grit)
+function voiceWood(c: AudioContext, out: AudioNode, now: number): void {
+  const bodyLp = c.createBiquadFilter();
+  bodyLp.type = 'lowpass'; bodyLp.frequency.value = 280; bodyLp.Q.value = 0.6;
+  bodyLp.connect(out);
+  const body = c.createOscillator();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(200, now);
+  body.frequency.exponentialRampToValueAtTime(60, now + 0.16);
+  const bodyG = c.createGain();
+  bodyG.gain.setValueAtTime(0.0001, now);
+  bodyG.gain.exponentialRampToValueAtTime(0.45, now + 0.005);
+  bodyG.gain.exponentialRampToValueAtTime(0.0006, now + 0.17);
+  body.connect(bodyG).connect(bodyLp);
+  body.start(now); body.stop(now + 0.19);
+
+  const knockBp = c.createBiquadFilter();
+  knockBp.type = 'bandpass'; knockBp.frequency.value = 450; knockBp.Q.value = 1.4;
+  knockBp.connect(out);
+  const knock = c.createOscillator();
+  knock.type = 'triangle';
+  knock.frequency.setValueAtTime(320, now);
+  knock.frequency.exponentialRampToValueAtTime(140, now + 0.07);
+  const knockG = c.createGain();
+  knockG.gain.setValueAtTime(0.0001, now);
+  knockG.gain.exponentialRampToValueAtTime(0.20, now + 0.004);
+  knockG.gain.exponentialRampToValueAtTime(0.0005, now + 0.09);
+  knock.connect(knockG).connect(knockBp);
+  knock.start(now); knock.stop(now + 0.10);
+
+  attachNoiseBurst(c, out, now, 0.04, 'bandpass', 800, 0.7, 0.07);
+}
+
+// ── METAL ─ grates, iron banding, helms. Edged CLANG + brief ring. ───
+//   BODY  square 480 → 220 Hz, lowpass envelope     (the strike)
+//   RING  sine 1600 Hz, ~180ms exponential decay    (the metal's hum)
+//   BURR  bandpassed noise @ 1.8 kHz                (the bite)
+function voiceMetal(c: AudioContext, out: AudioNode, now: number): void {
+  const bodyLp = c.createBiquadFilter();
+  bodyLp.type = 'lowpass'; bodyLp.frequency.value = 1100; bodyLp.Q.value = 0.8;
+  bodyLp.connect(out);
+  const body = c.createOscillator();
+  body.type = 'square';
+  body.frequency.setValueAtTime(480, now);
+  body.frequency.exponentialRampToValueAtTime(220, now + 0.10);
+  const bodyG = c.createGain();
+  bodyG.gain.setValueAtTime(0.0001, now);
+  bodyG.gain.exponentialRampToValueAtTime(0.28, now + 0.003);
+  bodyG.gain.exponentialRampToValueAtTime(0.0005, now + 0.13);
+  body.connect(bodyG).connect(bodyLp);
+  body.start(now); body.stop(now + 0.14);
+
+  const ring = c.createOscillator();
+  ring.type = 'sine';
+  ring.frequency.value = 1600;
+  const ringG = c.createGain();
+  ringG.gain.setValueAtTime(0.0001, now);
+  ringG.gain.exponentialRampToValueAtTime(0.15, now + 0.005);
+  ringG.gain.exponentialRampToValueAtTime(0.0005, now + 0.20);
+  ring.connect(ringG).connect(out);
+  ring.start(now); ring.stop(now + 0.22);
+
+  attachNoiseBurst(c, out, now, 0.05, 'bandpass', 1800, 1.2, 0.10);
+}
+
+// Shared noise-burst helper for the GRIT / CHIP / BURR layer. Builds a
+// one-off short noise sample, filters it, gains it, plays it.
+function attachNoiseBurst(
+  c: AudioContext, out: AudioNode, now: number,
+  dur: number, filter: 'bandpass' | 'highpass' | 'lowpass',
+  freq: number, q: number, gain: number,
+): void {
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
   const data = buf.getChannelData(0);
   for (let i = 0; i < data.length; i++) {
     data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
   }
-  const grit = c.createBufferSource();
-  grit.buffer = buf;
-  const gritBp = c.createBiquadFilter();
-  gritBp.type = 'bandpass';
-  gritBp.frequency.value = 1500;
-  gritBp.Q.value = 0.9;
-  const gritG = c.createGain();
-  gritG.gain.value = 0.13;
-  grit.connect(gritBp).connect(gritG).connect(out);
-  grit.start(now);
-  grit.stop(now + gritDur);
+  const node = c.createBufferSource();
+  node.buffer = buf;
+  const f = c.createBiquadFilter();
+  f.type = filter;
+  f.frequency.value = freq;
+  if (filter === 'bandpass' && q > 0) f.Q.value = q;
+  const g = c.createGain();
+  g.gain.value = gain;
+  node.connect(f).connect(g).connect(out);
+  node.start(now); node.stop(now + dur);
 }
 
 export function playDenied() {
