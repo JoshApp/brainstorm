@@ -117,17 +117,28 @@ export const ARM_RIGHT: ModelSpec = {
     // REACH (0.684m gap vs 0.654m arm). Pulled it slightly down
     // and forward so it's within reach AND the elbow bend lands
     // on-screen, not off the top-left.
-    shoulder: { pos: [0.05, -0.40, -0.10] },
+    shoulder: { pos: [0.05, -0.40, -0.10], debug: 'axes' },
+
+    // ── UPPER ARM ANCHOR ─ midway up the humerus. A handle for the
+    // "upper arm segment" the in-game axes overlay can target — its
+    // local axes inherit the shoulder's rotation, so authors can
+    // rotate around the upper arm in its OWN frame.
+    upper_arm_anchor: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH / 2, 0], debug: 'axes' },
 
     // ── ELBOW ─ shoulder-local +Y offset. The IK rotates SHOULDER
     // such that its +Y points at the desired elbow direction; the
     // elbow's world position is then shoulder.matrixWorld * (0, h, 0).
-    elbow: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH, 0] },
+    elbow: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH, 0], debug: 'axes' },
+
+    // ── LOWER ARM ANCHOR ─ midway down the forearm. Same idea as
+    // upper_arm_anchor — gives the forearm SEGMENT a named editor
+    // anchor distinct from the elbow / wrist joints.
+    lower_arm_anchor: { parent: 'elbow', pos: [0, FOREARM_LENGTH / 2, 0], debug: 'axes' },
 
     // ── WRIST ─ elbow-local +Y offset. Same idea — IK rotates the
     // elbow so its +Y points at the hand's wrist; this slot lands at
     // the targeted position via static offset.
-    wrist: { parent: 'elbow', pos: [0, FOREARM_LENGTH, 0] },
+    wrist: { parent: 'elbow', pos: [0, FOREARM_LENGTH, 0], debug: 'axes' },
   },
 };
 

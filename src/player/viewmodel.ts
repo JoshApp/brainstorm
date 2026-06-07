@@ -18,7 +18,7 @@ import type { ResolvedComboStep, PoseKey } from '../content/weapon-classes';
 import type { HeldWeaponCompose } from './held-weapon-compose';
 import { getSettings, onSettingsChanged } from '../settings/settings';
 
-const HAND_AXES_LENGTH = 0.04;        // 4cm — visible without dominating the frame
+const HAND_AXES_LENGTH = 0.07;        // ~7cm — visible without dominating the frame
 const HAND_AXES_GROUP_NAME = '__handAxesOverlay';
 
 // Attach an RGB axis triad to every slot in the composed hand +
@@ -37,17 +37,23 @@ const HAND_AXES_GROUP_NAME = '__handAxesOverlay';
 // high renderOrder so the lines draw ON TOP of the hand / weapon
 // meshes regardless of depth. Otherwise the slot-origin lines get
 // buried inside the carpus sphere or the palm.
-function setHandAxesOverlay(composed: HeldWeaponCompose, on: boolean): void {
-  const slots: THREE.Object3D[] = [];
-  for (const [, s] of composed.hand.slots) slots.push(s);
-  if (composed.weapon) for (const [, s] of composed.weapon.slots) slots.push(s);
-  for (const slot of slots) {
+function setHandAxesOverlay(
+  slotMaps: Array<Map<string, THREE.Object3D>>,
+  on: boolean,
+): void {
+  // Only slots flagged with `debug: 'axes'` in their spec opt into
+  // the overlay. Keeps the screen from being a wall of axis crosses
+  // (every PIP/DIP/contact slot would otherwise show up); the author
+  // tags the small list of slots they actually iterate against.
+  const allSlots: THREE.Object3D[] = [];
+  for (const map of slotMaps) for (const [, s] of map) allSlots.push(s);
+  for (const slot of allSlots) {
     // Remove any previous axis helper to keep the toggle idempotent.
     for (let i = slot.children.length - 1; i >= 0; i--) {
       const c = slot.children[i];
       if (c.name === HAND_AXES_GROUP_NAME) slot.remove(c);
     }
-    if (on) {
+    if (on && slot.userData.debug === 'axes') {
       const ax = new THREE.AxesHelper(HAND_AXES_LENGTH);
       ax.name = HAND_AXES_GROUP_NAME;
       ax.traverse((o) => {
@@ -232,7 +238,11 @@ export function createWeaponViewmodel(
   // detach the axis triads on the live rig immediately. DEV-gated at
   // setHandAxesOverlay itself, so prod builds strip the call body.
   const offSettings = onSettingsChanged((s) => {
-    if (currentComposed) setHandAxesOverlay(currentComposed, s.debugHandAxes);
+    if (currentComposed) {
+      const maps: Array<Map<string, THREE.Object3D>> = [currentComposed.hand.slots, armBuilt.slots];
+      if (currentComposed.weapon) maps.push(currentComposed.weapon.slots);
+      setHandAxesOverlay(maps, s.debugHandAxes);
+    }
   });
 
   // Apply the arm's meshes to the viewmodel depth pass too so they
@@ -335,7 +345,9 @@ export function createWeaponViewmodel(
     // the axes overlay on the current rig without waiting for the next
     // weapon equip.
     currentComposed = composed;
-    setHandAxesOverlay(composed, getSettings().debugHandAxes);
+    const axesMaps: Array<Map<string, THREE.Object3D>> = [composed.hand.slots, armBuilt.slots];
+    if (composed.weapon) axesMaps.push(composed.weapon.slots);
+    setHandAxesOverlay(axesMaps, getSettings().debugHandAxes);
   }
 
   // Smoothed held pose for the IDLE / charge-hold state, so discrete changes

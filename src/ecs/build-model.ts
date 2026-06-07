@@ -56,6 +56,10 @@ export function buildModel(spec: ModelSpec): BuiltModel {
       anchor.position.fromArray(slotSpec.pos);
       if (slotSpec.rot) anchor.rotation.fromArray(slotSpec.rot);
       anchor.name = `slot:${name}`;
+      // Surface the spec's `debug` flag onto userData so runtime
+      // overlays (e.g. the in-game HAND AXES) can filter to author-
+      // tagged anchors without re-walking the spec tree.
+      if (slotSpec.debug) anchor.userData.debug = slotSpec.debug;
       group.add(anchor);
       slots.set(name, anchor);
     }

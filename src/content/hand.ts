@@ -293,7 +293,10 @@ export const HAND_RIGHT: ModelSpec = {
     // hand's wrist position each frame. Children of wrist are still
     // authored in wrist-local space, so the entire fingers + palm +
     // metacarpals hierarchy stayed untouched by the split.
-    wrist: { pos: [0, 0, 0], rot: NEW_WRIST_ROT },
+    // The root of the hand spec — effectively the HAND ANCHOR. Marked
+    // for the in-game axes overlay so the author can refer to its
+    // local +X / +Y / +Z when iterating on the whole-hand orientation.
+    wrist: { pos: [0, 0, 0], rot: NEW_WRIST_ROT, debug: 'axes' },
 
     // The grip anchor a held weapon aligns to. A child of WRIST so it
     // inherits the wrist bend. Identity rotation: weapon's grip axis
@@ -386,5 +389,16 @@ export const HAND_RIGHT: ModelSpec = {
     // ── THUMB IP ─ the thumb's only inter-phalangeal joint (no PIP
     // / DIP distinction since the thumb has just two phalanges).
     finger_thumb_ip:   { parent: 'finger_thumb', pos: [0, PHALANX.thumb.proximal, 0], rot: [-0.95, 0, 0] },
+
+    // ── FINGERTIP ANCHORS ─ at the very end of each finger's distal
+    // phalanx. Marked for the in-game axes overlay so the author can
+    // refer to any fingertip's local axes when iterating on finger
+    // pose. Parented to the DIP (or IP for the thumb) so they inherit
+    // the full curl chain.
+    fingertip_index:  { parent: 'finger_index_dip',  pos: [0, PHALANX.index.distal,  0], debug: 'axes' },
+    fingertip_middle: { parent: 'finger_middle_dip', pos: [0, PHALANX.middle.distal, 0], debug: 'axes' },
+    fingertip_ring:   { parent: 'finger_ring_dip',   pos: [0, PHALANX.ring.distal,   0], debug: 'axes' },
+    fingertip_pinky:  { parent: 'finger_pinky_dip',  pos: [0, PHALANX.pinky.distal,  0], debug: 'axes' },
+    fingertip_thumb:  { parent: 'finger_thumb_ip',   pos: [0, PHALANX.thumb.distal,  0], debug: 'axes' },
   },
 };

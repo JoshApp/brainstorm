@@ -254,6 +254,18 @@ export interface SlotSpec {
    * arm AND follows the body's lean. Default: direct child of the model
    * root. */
   parent?: string;
+  /**
+   * Marks the slot as an EDITOR ANCHOR — a part of the model the
+   * author cares about referring to by axis when iterating. The
+   * in-game HAND AXES overlay (Settings → Debug) draws an RGB triad
+   * at every slot whose `debug === 'axes'`. Slots without this flag
+   * are invisible to the overlay even when toggled on.
+   *
+   * Use sparingly — one per "thing you might want to rotate" (wrist,
+   * fingertips, upper arm, lower arm). Don't tag PIP / DIP / contact
+   * slots; you don't want 30 axis crosses fighting for attention.
+   */
+  debug?: 'axes';
 }
 
 export interface LightSpec {
