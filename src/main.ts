@@ -4,6 +4,7 @@ import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw } from './controls/camera';
 import { createWeaponViewmodel } from './player/viewmodel';
 import { attachLamp, setLampStowed } from './player/handheld-lamp';
+import { attachLampArm } from './player/lamp-arm';
 import { initBreath } from './effects/breath';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
 import { setSlot, onEquipmentChanged } from './player/equipment';
@@ -394,6 +395,10 @@ const weapon = createWeaponViewmodel(camera, {
 // The player's lamp is the BASELINE light everywhere (CLAUDE.md
 // "Lighting as signal"). Attach it once, permanently — never detached.
 attachLamp(camera);
+// Left arm holding the lantern's O-ring — IK-driven, mirrors the
+// right arm (which holds the weapon). Must attach AFTER attachLamp
+// so the hinge it targets exists.
+attachLampArm(camera);
 
 // Visible cold-breath puff pool, parented to the camera (winded exhale).
 initBreath(camera);

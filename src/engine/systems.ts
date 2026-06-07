@@ -10,6 +10,7 @@ import { updateTorchlight } from '../scene/torchlight';
 import { tickEncounters } from '../encounters/registry';
 import { updateCamera } from '../controls/camera';
 import { tickLamp } from '../player/handheld-lamp';
+import { tickLampArm } from '../player/lamp-arm';
 import { tickOffhandViewmodel } from '../player/handheld-offhand';
 import { setBobTarget, updateBob } from '../player/viewmodel-bob';
 import { updateViewSway } from '../player/viewmodel-sway';
@@ -261,6 +262,9 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // Handheld lamp flicker + bob. realDt — flicker shouldn't slow during
     // slow-mo (a frozen lamp looks broken).
     { name: 'lamp', phase: 'unpaused', tick(ctx) { tickLamp(ctx.realDt); } },
+    // Left arm IK — must run AFTER 'lamp' so the hinge it targets has
+    // its latest position from this frame's pendulum + stowed-ease.
+    { name: 'lamp-arm', phase: 'unpaused', tick(ctx) { tickLampArm(ctx.realDt); } },
 
     { name: 'offhand', phase: 'unpaused', tick() { tickOffhandViewmodel(); } },
 

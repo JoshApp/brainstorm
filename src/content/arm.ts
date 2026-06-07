@@ -152,3 +152,83 @@ export const ARM_RIGHT: ModelSpec = {
 
 export const ARM_RIGHT_HUMERUS_LENGTH = HUMERUS_LENGTH;
 export const ARM_RIGHT_FOREARM_LENGTH = FOREARM_LENGTH;
+
+// ── LEFT ARM ─────────────────────────────────────────────────────
+//
+// Mirror of ARM_RIGHT for the off-hand. Same bone lengths + joint
+// convention; only the shoulder position's X is flipped to the left
+// side. Mounted by src/player/lamp-arm.ts holding the lantern at
+// its O-ring instead of holding a weapon.
+//
+// The elbow-pole bias is supplied by the runtime (mirrored to −X for
+// the left arm to bend outboard the same way the right does in
+// camera-local).
+export const ARM_LEFT: ModelSpec = {
+  id: 'arm-left',
+  materials: {
+    bone: {
+      color: 0xc8b89a,
+      roughness: 0.85,
+      metalness: 0.05,
+      fog: false,
+      flatShading: 'auto',
+    },
+    boneDark: {
+      color: 0x6e5d44,
+      roughness: 0.90,
+      metalness: 0.05,
+      fog: false,
+      flatShading: 'auto',
+    },
+  },
+  parts: [
+    { parent: 'shoulder', kind: 'sphere',
+      pos: [0, 0, 0],
+      radius: 0.030, segments: [12, 10],
+      mat: 'bone' },
+    { name: 'humerus', kind: 'bone',
+      from: 'shoulder', to: 'elbow',
+      radius: 0.022, radiusTop: 0.018,
+      mat: 'bone' },
+    { parent: 'elbow', kind: 'sphere',
+      pos: [0, 0, 0],
+      radius: 0.028, segments: [12, 10],
+      mat: 'bone' },
+    { name: 'radius', parent: 'elbow', kind: 'cylinder',
+      pos: [-0.013, FOREARM_LENGTH / 2, 0],
+      radius: 0.018, radiusTop: 0.014,
+      height: FOREARM_LENGTH, segments: 12,
+      mat: 'bone' },
+    { name: 'ulna', parent: 'elbow', kind: 'cylinder',
+      pos: [0.013, FOREARM_LENGTH / 2, 0],
+      radius: 0.017, radiusTop: 0.013,
+      height: FOREARM_LENGTH, segments: 12,
+      mat: 'bone' },
+    { name: 'sinew', parent: 'elbow', kind: 'cylinder',
+      pos: [0, FOREARM_LENGTH / 2, 0],
+      radius: 0.012, height: FOREARM_LENGTH * 0.94, segments: 8,
+      mat: 'boneDark' },
+    // Simple closed-fist sphere at the wrist. No finger detail
+    // here — the off-hand grips the lantern's O-ring, and a fist
+    // sphere reads cleanly as "hand holding it" without authoring
+    // a whole second bone-finger rig.
+    { parent: 'wrist', kind: 'sphere',
+      pos: [0, 0, 0],
+      radius: 0.045, segments: [12, 10],
+      mat: 'bone' },
+  ],
+  slots: {
+    // Mirror of the right shoulder's −X. The wrist target (the
+    // lantern's hinge / O-ring) is at camera-local roughly (−0.36,
+    // −0.11, −0.52); shoulder at (−0.10, −0.55, −0.05) sits about
+    // 0.49m away, comfortable within the 0.74m max reach.
+    shoulder: { pos: [-0.10, -0.55, -0.05], debug: 'axes' },
+    upper_arm_anchor: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH / 2, 0], debug: 'axes' },
+    elbow: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH, 0], debug: 'axes' },
+    lower_arm_anchor: { parent: 'elbow', pos: [0, FOREARM_LENGTH / 2, 0], debug: 'axes' },
+    wrist: { parent: 'elbow', pos: [0, FOREARM_LENGTH, 0], debug: 'axes' },
+  },
+};
+
+export const ARM_LEFT_HUMERUS_LENGTH = HUMERUS_LENGTH;
+export const ARM_LEFT_FOREARM_LENGTH = FOREARM_LENGTH;
