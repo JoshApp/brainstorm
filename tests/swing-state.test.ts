@@ -223,6 +223,33 @@ test('a cold charged release (no light chain) starts the heavy chain, not the en
   assert.deepEqual(s.getActiveStep(), W().heavyCombo![0], 'fresh charge = H1, not the ender');
 });
 
+test('heavy chain with direction: opener gets flavored, chain still runs', () => {
+  // Sword has heavyCombo + chargedMoves.back (ward) + directionalMoves.back.
+  // Previously: charged + direction always overrode → heavy 1-2-3 never started.
+  // Now: direction flavors heavy opener (same pattern as light), 2 + 3 are the
+  // fixed heavy chain.
+  setCurrentWeapon({ reach: 2.1, coneHalfAngle: 0.8, damage: 1, critChance: 0.05, critMultiplier: 2.0, class: 'sword' });
+  const s = createSwingState();
+  const w = W();
+  const heavy = w.heavyCombo!;
+  const ward = w.chargedMoves!.back!;
+  assert.ok(heavy && heavy.length >= 3, 'sword has a heavy 1-2-3');
+  assert.ok(ward, 'sword has chargedMoves.back (the ward)');
+  // H1 with `back` held → the WARD pose, not a flat heavy step 0.
+  assert.equal(s.requestSwing({ skipWindup: true, direction: 'back' }), true);
+  assert.deepEqual(s.getActiveStep(), ward, 'heavy opener flavored by direction → ward');
+  walkChargedToIdle(s);
+  assert.equal(s.getComboStep(), 1, 'heavy chain still pre-advances to step 1');
+  // H2 still as `back` held → step 1 is the FIXED heavy chain, direction ignored.
+  assert.equal(s.requestSwing({ skipWindup: true, direction: 'back' }), true);
+  assert.deepEqual(s.getActiveStep(), heavy[1], 'heavy step 1 is fixed; direction ignored past opener');
+  walkChargedToIdle(s);
+  // H3 with direction → finisher (heavy[2]).
+  assert.equal(s.requestSwing({ skipWindup: true, direction: 'back' }), true);
+  assert.deepEqual(s.getActiveStep(), heavy[2], 'heavy finisher is fixed too');
+  assert.equal(s.isFinisherStrike(), true);
+});
+
 test('heavy chain resets to the light track after the combo window lapses', () => {
   setCurrentWeapon(HAMMER);
   const s = createSwingState();

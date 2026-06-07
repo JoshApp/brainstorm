@@ -97,6 +97,13 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
   // still ADVANCES — moving never breaks the chain, and the second step +
   // finisher are always the fixed combo. Distinct from activeDirectionalStep so
   // the opener still buffers/chains like a normal step. Cleared each recover-end.
+  //
+  // Applies to BOTH tracks:
+  //   - LIGHT track → looks up w.directionalMoves[openerDirKey] for the opener.
+  //   - HEAVY track → looks up w.chargedMoves[chargeKey] first (the dedicated
+  //     charged variant — sword's ward-back, etc.), falling back to
+  //     w.directionalMoves[openerDirKey]. The heavy chain then advances 2, 3
+  //     unflavored, same as the light pattern.
   let openerDirKey: DirKey | null = null;
   // Internal monotonic clock in SECONDS, advanced by advance(dt). Replaces
   // performance.now() so the machine is deterministic + testable: ticks are
@@ -116,11 +123,26 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     const w = getCurrentWeapon();
     if (activeDirectionalStep) return { combo: w.combo, step: activeDirectionalStep };
     if (activeEnderStep) return { combo: w.combo, step: activeEnderStep };
-    // OPENER flavor: a held direction swaps the light combo's step 0 for that
-    // directional move — moving leans your entry, but the chain still advances.
-    if (track === 'light' && comboStep === 0 && openerDirKey) {
-      const v = w.directionalMoves?.[openerDirKey];
-      if (v) return { combo: w.combo, step: v };
+    // OPENER flavor: a held direction swaps step 0 for the directional variant.
+    // The chain still advances on the next press — direction flavors the
+    // OPENER ONLY, never the middle or finisher. Symmetric across light/heavy:
+    //   - LIGHT → directionalMoves[dirKey]
+    //   - HEAVY → chargedMoves[chargeKey] (dedicated charged variant, e.g.
+    //     sword's ward-back) first, then directionalMoves[dirKey] as fallback.
+    if (comboStep === 0 && openerDirKey) {
+      if (track === 'heavy') {
+        const chargeKey: 'forward' | 'back' | 'strafe' =
+          openerDirKey === 'forward' ? 'forward'
+          : openerDirKey === 'back'  ? 'back'
+          : 'strafe';
+        const chargedMove = w.chargedMoves?.[chargeKey];
+        if (chargedMove) return { combo: comboArray(w), step: chargedMove };
+        const directional = w.directionalMoves?.[openerDirKey];
+        if (directional) return { combo: comboArray(w), step: directional };
+      } else {
+        const v = w.directionalMoves?.[openerDirKey];
+        if (v) return { combo: w.combo, step: v };
+      }
     }
     const arr = comboArray(w);
     const idx = ((comboStep % arr.length) + arr.length) % arr.length;
@@ -160,42 +182,57 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     const inWindow = clock < comboWindowExpiresAt;
     const dirKey = dirKeyOf(dir ?? null);
     openerDirKey = null;
-    // CHARGED + direction → a deliberate directional SPECIAL (charged move or the
-    // directional move with charge bonuses), telegraphed during the hold. One-off,
-    // resets the chain.
-    if (isCharged && dir) {
+    const heavy = w.heavyCombo && w.heavyCombo.length ? w.heavyCombo : null;
+    if (isCharged && heavy) {
+      // CHARGED + heavy combo present → enter / advance the heavy 1-2-3.
+      // Direction (if any) FLAVORS the heavy opener — same pattern as a light
+      // tap with direction — and then the heavy chain runs unflavored on the
+      // next press. The previous behaviour overrode the chain entirely whenever
+      // direction was held, so heavy 1-2-3 never actually started against a
+      // moving player.
+      if (track === 'light' && comboStep > 0 && inWindow && w.ender) {
+        // Cash out a light chain → ENDER (one-off finisher).
+        activeEnderStep = w.ender;
+      } else if (track === 'heavy' && inWindow) {
+        // Continue the heavy chain at the pre-advanced comboStep — direction
+        // ignored past the opener.
+      } else {
+        // Start the heavy chain fresh.
+        track = 'heavy';
+        comboStep = 0;
+      }
+      // Opener flavor: heavy step 0 only. currentStep() resolves chargedMoves
+      // first, then directionalMoves, so the dedicated charged variants (e.g.
+      // sword's ward-back) front the heavy chain when held.
+      if (track === 'heavy' && comboStep === 0 && dirKey
+          && (w.chargedMoves || w.directionalMoves?.[dirKey])) {
+        openerDirKey = dirKey;
+      }
+    } else if (isCharged && dir) {
+      // Charged + direction on a weapon WITHOUT a heavy chain → the original
+      // one-off directional / charged-directional special (no chain to feed
+      // into). Resets to light for the recover, like an ender.
       const chargeKey: 'forward' | 'back' | 'strafe' =
         dir === 'forward' ? 'forward' : dir === 'back' ? 'back' : 'strafe';
       const chargedMove = w.chargedMoves ? w.chargedMoves[chargeKey] : undefined;
       const directional = dirKey ? w.directionalMoves?.[dirKey] : undefined;
       activeDirectionalStep = chargedMove ?? directional ?? null;
       if (activeDirectionalStep) { comboStep = 0; track = 'light'; }
-    }
-    if (!activeDirectionalStep) {
-      const heavy = w.heavyCombo && w.heavyCombo.length ? w.heavyCombo : null;
-      if (isCharged && heavy) {
-        if (track === 'light' && comboStep > 0 && inWindow && w.ender) {
-          // Cash out a light chain → ENDER (one-off finisher).
-          activeEnderStep = w.ender;
-        } else if (track === 'heavy' && inWindow) {
-          // Continue the heavy chain at the pre-advanced comboStep.
-        } else {
-          // Start the heavy chain fresh.
-          track = 'heavy';
-          comboStep = 0;
-        }
-      } else {
-        // Light tap (or a charged release on a weapon with no heavy combo) →
-        // the light track, preserving the original window/reset behaviour.
-        if (track === 'heavy') { track = 'light'; comboStep = 0; }
-        else if (!inWindow) comboStep = 0;
-        // TAP + direction flavors ONLY the OPENER (comboStep 0). The chain still
-        // advances on taps — moving never breaks it — and the second step +
-        // finisher are always the fixed combo. (A charged release is handled
-        // above as a special, not an opener.)
-        if (!isCharged && dirKey && comboStep === 0 && w.directionalMoves?.[dirKey]) {
-          openerDirKey = dirKey;
-        }
+    } else if (isCharged && track === 'light' && comboStep > 0 && inWindow && w.ender) {
+      // Charged release with no direction cashing out a light chain → ENDER,
+      // for weapons without a heavy chain that still ship an ender.
+      activeEnderStep = w.ender;
+    } else {
+      // Light tap (or a charged release on a weapon with no heavy combo / no
+      // ender path) → the light track, preserving the original window/reset
+      // behaviour.
+      if (track === 'heavy') { track = 'light'; comboStep = 0; }
+      else if (!inWindow) comboStep = 0;
+      // TAP + direction flavors ONLY the OPENER (comboStep 0). The chain still
+      // advances on taps — moving never breaks it — and the second step +
+      // finisher are always the fixed combo.
+      if (!isCharged && dirKey && comboStep === 0 && w.directionalMoves?.[dirKey]) {
+        openerDirKey = dirKey;
       }
     }
     // Charged release skips windup — the player already paid by holding; the
