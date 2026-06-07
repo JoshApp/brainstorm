@@ -41,16 +41,21 @@ const WRIST_PLANE_INTO_SCREEN = -0.15;
 // that the wrist read as ulnar-deviated. 20° keeps the saber-grip
 // hint without the contortion.
 const WRIST_PINKY_TO_GROUND_20 = (20 * Math.PI) / 180;
-const WRIST_ROLL_BLUE_CW_30 = -(30 * Math.PI) / 180;
-const WRIST_TILT_GREEN_CW_30 = (30 * Math.PI) / 180;
+// Halved from 30° → 15° each. The two 30° intrinsic passes were
+// stacking into a forced ulnar-deviation look at the wrist (visibly
+// "bent outward" relative to the forearm). 15° each keeps the
+// authorial intent (the wrist still rolls + tilts in the same
+// directions) without the contortion.
+const WRIST_ROLL_BLUE_CW_15 = -(15 * Math.PI) / 180;
+const WRIST_TILT_GREEN_CW_15 = (15 * Math.PI) / 180;
 
 const BASE_WRIST_ROT: [number, number, number] = [
   WRIST_PITCH_FORWARD + WRIST_PLANE_INTO_SCREEN,
   WRIST_PINKY_TO_GROUND_20,
   0,
 ];
-const AFTER_BLUE_ROT  = rotateLocally(BASE_WRIST_ROT, 'z', WRIST_ROLL_BLUE_CW_30);
-const AFTER_GREEN_ROT = rotateLocally(AFTER_BLUE_ROT,  'y', WRIST_TILT_GREEN_CW_30);
+const AFTER_BLUE_ROT  = rotateLocally(BASE_WRIST_ROT, 'z', WRIST_ROLL_BLUE_CW_15);
+const AFTER_GREEN_ROT = rotateLocally(AFTER_BLUE_ROT,  'y', WRIST_TILT_GREEN_CW_15);
 // Additional pass: 15° CW from POV around the CURRENT visible blue
 // axis (= the wrist's local +Z AFTER the blue + green passes).
 const WRIST_ADJUST_BLUE_CW_15 = -(15 * Math.PI) / 180;
