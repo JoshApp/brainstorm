@@ -34,8 +34,12 @@ import type { ModelSpec } from '../ecs/model-types';
 // bone lengths). The bones reflow. The IK retunes via its
 // humerusLength / forearmLength constants the viewmodel passes in.
 
-const HUMERUS_LENGTH = 0.284;
-const FOREARM_LENGTH = 0.370;
+// Arm-bone lengths. Tuned so the SUM (= max IK reach) generously
+// exceeds the camera-to-hand distance at SWORD_IDLE_POS (~0.69m),
+// otherwise the IK clamps and leaves a visible gap between the
+// forearm tip and the hand's wrist.
+const HUMERUS_LENGTH = 0.32;
+const FOREARM_LENGTH = 0.42;
 
 export const ARM_RIGHT: ModelSpec = {
   id: 'arm-right',
@@ -101,14 +105,19 @@ export const ARM_RIGHT: ModelSpec = {
       mat: 'boneDark' },
   ],
   slots: {
-    // ── SHOULDER ─ camera-local rest anchor. The 2-bone IK spring-
-    // tethers the live shoulder here; a hard hand-move pulls it
-    // slightly toward the hand for "body inertia" follow-through,
-    // and the spring tugs it back to here when the hand settles.
-    // Approximate human shoulder position relative to eye level —
-    // roughly 10cm right of camera centerline, 25cm below, slight
-    // forward of camera (since the eye is forward of the shoulder).
-    shoulder: { pos: [0.15, -0.25, 0.10] },
+    // ── SHOULDER ─ camera-local rest anchor. Positioned so the
+    // shoulder-to-wrist segment fits comfortably within max arm
+    // reach (= HUMERUS + FOREARM = 0.654m), and so the bones extend
+    // through visible screen real estate instead of going off the
+    // top/left of frame.
+    //
+    // Approximate human shoulder pose is "10cm right, 25cm below,
+    // slight forward" — but with the weapon held at SWORD_IDLE_POS
+    // (0.35, -0.32, -0.55), that anatomical shoulder is OUT OF
+    // REACH (0.684m gap vs 0.654m arm). Pulled it slightly down
+    // and forward so it's within reach AND the elbow bend lands
+    // on-screen, not off the top-left.
+    shoulder: { pos: [0.05, -0.40, -0.10] },
 
     // ── ELBOW ─ shoulder-local +Y offset. The IK rotates SHOULDER
     // such that its +Y points at the desired elbow direction; the

@@ -133,8 +133,7 @@ export function createWeaponViewmodel(
   camera.add(armGroup);
   registerViewmodel(armGroup);
   const armShoulderSlot = armBuilt.slots.get('shoulder');
-  const armElbowSlot    = armBuilt.slots.get('elbow');
-  const armIK = armShoulderSlot && armElbowSlot
+  const armIK = armShoulderSlot
     ? new ArmIK({
         shoulderRest: [
           armShoulderSlot.position.x,
@@ -152,9 +151,29 @@ export function createWeaponViewmodel(
         jointDampHalfLife: 0.05,
       })
     : null;
-  // Scratch — populated each frame from the hand's wrist slot.
-  const _wristWorld = new THREE.Vector3();
+  // We bypass the IK's joint-rotation cascade because the rotational
+  // form is approximate (the elbow swings around its local X, which
+  // doesn't always coincide with the swing plane after the shoulder
+  // rotation). Instead we position the bone MESHES directly from the
+  // IK's POSITION output each frame — guaranteed: humerus spans
+  // shoulderPos→elbowPos, forearm spans elbowPos→wristPos. The mesh
+  // tips touch the joints by construction.
+  const armHumerusMesh = armBuilt.parts.get('humerus') as THREE.Mesh | undefined;
+  const armRadiusMesh  = armBuilt.parts.get('radius')  as THREE.Mesh | undefined;
+  const armUlnaMesh    = armBuilt.parts.get('ulna')    as THREE.Mesh | undefined;
+  const armSinewMesh   = armBuilt.parts.get('sinew')   as THREE.Mesh | undefined;
+  // Reparent the dynamic meshes to the arm group's root so we can
+  // write their positions in arm-local space directly each frame
+  // (without their original from-slot parent's transform mixing in).
+  for (const m of [armHumerusMesh, armRadiusMesh, armUlnaMesh, armSinewMesh]) {
+    if (m) armGroup.add(m);
+  }
+  // Reusable scratch.
+  const _wristWorld    = new THREE.Vector3();
   const _wristArmLocal = new THREE.Vector3();
+  const _midpoint      = new THREE.Vector3();
+  const _direction     = new THREE.Vector3();
+  const _yAxis         = new THREE.Vector3(0, 1, 0);
   // Cached reference to the hand's wrist slot, refreshed at each mount.
   let handWristSlot: THREE.Object3D | null = null;
 
@@ -343,22 +362,34 @@ export function createWeaponViewmodel(
     swing.advance(dt);
     repose(dt);
     // ── ARM IK ──────────────────────────────────────────────────────
-    // The hand has been posed by the swing animation; its wrist slot
-    // is wherever the weapon ended up. Solve the 2-bone IK in the
-    // arm's local frame so the shoulder + elbow chase the wrist. The
-    // arm group lives under the camera independently of the weapon's
-    // animation group, so the shoulder stays anchored.
-    if (armIK && armShoulderSlot && armElbowSlot && handWristSlot && dt > 0) {
-      // Three.js needs world matrices fresh — the swing animation
-      // just wrote to `group` but matrixWorld hasn't been recomputed
-      // yet. Update only the hand chain to avoid touching the rest
-      // of the scene.
+    // Solve in arm-local (= camera-local) space, then DIRECTLY
+    // position the bone meshes from the IK's shoulderPos/elbowPos/
+    // wristPos. Bypassing the joint-rotation cascade guarantees the
+    // bones span their endpoints exactly — no rotation-axis
+    // approximation can leave a gap at the wrist.
+    if (armIK && armShoulderSlot && handWristSlot && dt > 0) {
       group.updateMatrixWorld(true);
       handWristSlot.getWorldPosition(_wristWorld);
       armGroup.worldToLocal(_wristArmLocal.copy(_wristWorld));
       const r = armIK.solve(_wristArmLocal, dt);
-      armShoulderSlot.rotation.set(r.shoulderRot[0], r.shoulderRot[1], r.shoulderRot[2]);
-      armElbowSlot.rotation.set(r.elbowRot[0], r.elbowRot[1], r.elbowRot[2]);
+      poseBone(armHumerusMesh, r.shoulderPos, r.elbowPos);
+      poseBone(armRadiusMesh,  r.elbowPos, r.wristPos, -0.013);
+      poseBone(armUlnaMesh,    r.elbowPos, r.wristPos,  0.013);
+      poseBone(armSinewMesh,   r.elbowPos, r.wristPos);
+      // Pin the shoulder + elbow joint slots so the joint-marker
+      // spheres parented to them follow the IK positions.
+      armShoulderSlot.position.copy(r.shoulderPos);
+      const elbowMarkerSlot = armBuilt.slots.get('elbow');
+      if (elbowMarkerSlot) {
+        // Elbow slot is parented to shoulder. Convert elbow world
+        // (= elbow arm-local since arm-local frame is world frame
+        // for the arm group when armGroup is at camera identity)
+        // into shoulder-local.
+        elbowMarkerSlot.parent?.worldToLocal(_midpoint.copy(r.elbowPos));
+        elbowMarkerSlot.position.copy(_midpoint);
+        elbowMarkerSlot.rotation.set(0, 0, 0);
+      }
+      armShoulderSlot.rotation.set(0, 0, 0);
     }
     // Perfect-release gleam: flash the weapon's emissive white inside the
     // window, restore on exit. Only writes on the edge, so it's free otherwise.
@@ -380,6 +411,33 @@ export function createWeaponViewmodel(
   function setDebugPhase(p: SwingPhase, t: number) {
     swing.setDebugPhase(p, t);
     repose();
+  }
+
+  /** Position a bone-cylinder mesh to span two arm-local endpoints.
+   *  Sits at the midpoint, +Y aligned with the from→to direction,
+   *  height left untouched (the mesh was built at the right length).
+   *  `lateral` shifts the midpoint perpendicular to the bone axis for
+   *  dual-bone forearms (radius / ulna). */
+  function poseBone(
+    mesh: THREE.Mesh | undefined,
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    lateral = 0,
+  ): void {
+    if (!mesh) return;
+    _midpoint.addVectors(from, to).multiplyScalar(0.5);
+    _direction.subVectors(to, from);
+    const len = _direction.length();
+    if (len < 1e-6) return;
+    _direction.divideScalar(len);
+    mesh.position.copy(_midpoint);
+    if (lateral !== 0) {
+      // Perpendicular shift in the arm-local X direction — for
+      // radius/ulna paired bones. Small enough to read as "side-by-
+      // side" without needing a frame-by-frame perpendicular basis.
+      mesh.position.x += lateral;
+    }
+    mesh.quaternion.setFromUnitVectors(_yAxis, _direction);
   }
 
   function equip(spec: ModelSpec | null) {
