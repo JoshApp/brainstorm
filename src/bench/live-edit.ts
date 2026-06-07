@@ -1,6 +1,8 @@
 import GUI from 'lil-gui';
 import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
+import { sampleClip } from '../anim/keyframes';
+import { POSE_CLIPS } from '../content/clips-weapons';
 
 // Live-edit sidebar — a lil-gui panel on the bench page that lets
 // Josh drag a slot's position / rotation and SEE the result while
@@ -99,6 +101,49 @@ export function attachLiveEdit(opts: LiveEditOpts): () => void {
       sub.add(node.rotation, 'y', -ROT_RANGE, ROT_RANGE, ROT_STEP).name('rotY').onChange(opts.redraw);
       sub.add(node.rotation, 'z', -ROT_RANGE, ROT_RANGE, ROT_STEP).name('rotZ').onChange(opts.redraw);
     }
+  }
+
+  // ── ANIMATION SCRUBBER ─────────────────────────────────────────────
+  // Time-scrub through any clip in POSE_CLIPS by applying the clip
+  // sample's deltas to the composed hand group (mirrors what the live
+  // viewmodel does to the swing group). Iteration tightens from
+  // "author clip → run bench --anim → look" to "author clip → drag
+  // slider → look in real time."
+  const clipNames = Object.keys(POSE_CLIPS);
+  if (clipNames.length > 0 && opts.weapon) {
+    const animFolder = gui.addFolder('animation');
+    const animState = {
+      clip: clipNames[0],
+      time: 0,
+    };
+    const baselinePos = opts.hand.group.position.clone();
+    const baselineRot = opts.hand.group.rotation.clone();
+    const onAnimChange = () => {
+      const clip = (POSE_CLIPS as Record<string, Parameters<typeof sampleClip>[0]>)[animState.clip];
+      if (!clip) {
+        opts.hand.group.position.copy(baselinePos);
+        opts.hand.group.rotation.copy(baselineRot);
+        opts.redraw();
+        return;
+      }
+      const sample = sampleClip(clip, animState.time);
+      opts.hand.group.position.set(
+        baselinePos.x + (sample['weapon.pos.x'] ?? 0),
+        baselinePos.y + (sample['weapon.pos.y'] ?? 0),
+        baselinePos.z + (sample['weapon.pos.z'] ?? 0),
+      );
+      opts.hand.group.rotation.set(
+        baselineRot.x + (sample['weapon.rot.x'] ?? 0),
+        baselineRot.y + (sample['weapon.rot.y'] ?? 0),
+        baselineRot.z + (sample['weapon.rot.z'] ?? 0),
+      );
+      opts.redraw();
+    };
+    animFolder.add(animState, 'clip', clipNames).onChange(onAnimChange);
+    animFolder.add(animState, 'time', 0, 1, 0.001).onChange(onAnimChange);
+    animFolder.add({ resetPose: () => { animState.time = 0; onAnimChange();
+      gui.controllersRecursive().forEach((c) => c.updateDisplay()); } },
+      'resetPose').name('Reset to idle');
   }
 
   // Top-level action row — copy + reset.
