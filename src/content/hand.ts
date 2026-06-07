@@ -256,7 +256,12 @@ export const HAND_RIGHT: ModelSpec = {
     { parent: 'wrist', kind: 'sphere', pos: [ 0.008, 0.134, 0.007], radius: 0.013, segments: [10, 8], mat: 'bone' },
     { parent: 'wrist', kind: 'sphere', pos: [-0.008, 0.130, 0.007], radius: 0.012, segments: [10, 8], mat: 'bone' },
     { parent: 'wrist', kind: 'sphere', pos: [-0.023, 0.121, 0.007], radius: 0.011, segments: [10, 8], mat: 'bone' },
-    { parent: 'wrist', kind: 'sphere', pos: [-0.048, 0.086, 0.007], radius: 0.012, segments: [10, 8], mat: 'bone' },
+    // Thumb MCP knuckle bump — parented to the MCP slot itself so it
+    // always sits at the joint position regardless of where the MCP
+    // is in wrist-local. Was previously a hand-positioned sphere at
+    // the OLD MCP position, which drifted off when the MCP moved to
+    // the palm side for proper opposition.
+    { parent: 'finger_thumb', kind: 'sphere', pos: [0, 0, 0], radius: 0.014, segments: [10, 8], mat: 'bone' },
 
     // ── INDEX FINGER ─ proximal phalanx (in MCP) + PIP joint bump +
     // middle phalanx (in PIP) + DIP joint bump + distal phalanx + tip.
@@ -352,19 +357,25 @@ export const HAND_RIGHT: ModelSpec = {
       pos: [0, PHALANX.pinky.distal, 0],
       radius: PHALANX.pinky.radius * 0.86, segments: [8, 6], mat: 'bone' },
 
-    // ── THUMB ─ only TWO phalanges (proximal + distal) + IP joint.
-    { parent: 'finger_thumb', kind: 'cylinder',
-      pos: [0, PHALANX.thumb.proximal / 2, 0],
-      radius: PHALANX.thumb.radius, height: PHALANX.thumb.proximal, segments: 10,
+    // ── THUMB ─ proximal + distal phalanges as BONES + IP joint
+    // bump + fingertip sphere. Bones span slot-to-slot so the whole
+    // thumb forms a chain (mc_thumb_base → finger_thumb →
+    // finger_thumb_ip → fingertip_thumb) that auto-reflows when any
+    // joint moves. The previous cylinders extended along the parent
+    // slot's local +Y direction, which was fine geometrically but
+    // tightly coupled to the parent's rotation; bone primitives let
+    // the slot positions be the source of truth for the geometry.
+    { kind: 'bone',
+      from: 'finger_thumb', to: 'finger_thumb_ip',
+      radius: PHALANX.thumb.radius, segments: 10,
       mat: 'bone' },
     { parent: 'finger_thumb_ip', kind: 'sphere', pos: [0, 0, 0],
       radius: PHALANX.thumb.radius * 1.50, segments: [8, 6], mat: 'bone' },
-    { parent: 'finger_thumb_ip', kind: 'cylinder',
-      pos: [0, PHALANX.thumb.distal / 2, 0],
-      radius: PHALANX.thumb.radius * 0.92, height: PHALANX.thumb.distal, segments: 10,
+    { kind: 'bone',
+      from: 'finger_thumb_ip', to: 'fingertip_thumb',
+      radius: PHALANX.thumb.radius * 0.92, segments: 10,
       mat: 'bone' },
-    { parent: 'finger_thumb_ip', kind: 'sphere',
-      pos: [0, PHALANX.thumb.distal, 0],
+    { parent: 'fingertip_thumb', kind: 'sphere', pos: [0, 0, 0],
       radius: PHALANX.thumb.radius * 0.86, segments: [8, 6], mat: 'bone' },
   ],
   slots: {
