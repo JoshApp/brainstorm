@@ -132,6 +132,11 @@ export interface WeaponViewmodel {
   /** Abort the current swing into its recover phase — used when the blade
    *  CLANKS into a wall: the strike ends short, the recoil plays. */
   interruptSwing(): void;
+  /** Record the charge level (0..1) consumed for the swing about to start.
+   *  Drives the blade's CHARGED-STRIKE GLOW — emissive ramps up during the
+   *  upcoming strike phase in proportion to this level, fades during recover.
+   *  Call IMMEDIATELY before startSwing so the glow lands on the right swing. */
+  setSwingCharge(level: number): void;
   update(dt: number): void;
   /** Swap the wielded weapon model. Passing null leaves the player
    *  empty-handed (used at run start before the player picks at the
@@ -262,9 +267,26 @@ export function createWeaponViewmodel(
   // eyeline), not just the HUD ring. Collected per weapon at mount (built mats
   // are this viewmodel's own clones, safe to mutate); each remembers its base
   // emissive so we can restore it. Only mats with an emissive channel qualify.
-  type FlashMat = { mat: THREE.MeshStandardMaterial; base: number };
+  // The FlashMat record also carries the BASE intensity, used by the charged-
+  // strike glow further below (which scales the live intensity above base
+  // during a charged strike instead of swapping the colour outright).
+  type FlashMat = {
+    mat: THREE.MeshStandardMaterial;
+    base: number;
+    baseIntensity: number;
+  };
   const flashMats: FlashMat[] = [];
   let gleaming = false;
+
+  // CHARGED-STRIKE GLOW state. setSwingCharge() records the next swing's
+  // charge level; repose() drives the blade's emissiveIntensity toward
+  // 1 + ramp during the strike, then back toward base during recover.
+  // Pure amplitude — never touches emissive COLOUR (that lane is the
+  // perfect-release gleam's, and the two would otherwise fight).
+  let chargedSwingLevel = 0;     // 0..1 — captured at setSwingCharge()
+  let chargedGlow = 0;            // 0..1 — live, eased toward target
+  const CHARGED_GLOW_MAX = 2.4;   // peak emissiveIntensity multiplier above 1×
+  const CHARGED_GLOW_EASE = 18;   // 1/sec exponential ease toward target
 
   // True when the wielded weapon has a bead chain to ripple (the whip).
   let whippy = false;
@@ -307,7 +329,8 @@ export function createWeaponViewmodel(
         m.needsUpdate = true;
         const em = (m as THREE.MeshStandardMaterial).emissive;
         if (gleamCollect && em && typeof em.getHex === 'function') {
-          flashMats.push({ mat: m as THREE.MeshStandardMaterial, base: em.getHex() });
+          const mat = m as THREE.MeshStandardMaterial;
+          flashMats.push({ mat, base: em.getHex(), baseIntensity: mat.emissiveIntensity ?? 1 });
         }
       }
       mesh.renderOrder = order;
@@ -488,6 +511,32 @@ export function createWeaponViewmodel(
         else f.mat.emissive.setHex(f.base);
       }
     }
+    // CHARGED-STRIKE GLOW — amplify each flashMat's emissive intensity in
+    // proportion to the captured charge during STRIKE, fade through RECOVER,
+    // clear on IDLE. The colour comes from the material itself (or from the
+    // perfect-release gleam above when active), so this only ever scales the
+    // brightness — the two systems compose without fighting.
+    {
+      const ph = swing.getPhase();
+      const t = swing.getPhaseProgress();
+      let glowTarget = 0;
+      if (chargedSwingLevel > 0) {
+        if (ph === 'strike') glowTarget = chargedSwingLevel;
+        else if (ph === 'recover') glowTarget = chargedSwingLevel * (1 - t);
+      }
+      if (ph === 'idle') chargedSwingLevel = 0;
+      const effDt = dt === Infinity ? 0.016 : Math.max(0, dt);
+      const k = 1 - Math.exp(-CHARGED_GLOW_EASE * effDt);
+      chargedGlow += (glowTarget - chargedGlow) * k;
+      // Tiny dead-band so frame-after-frame writes stop when fully settled.
+      const intensityMul = 1 + chargedGlow * CHARGED_GLOW_MAX;
+      if (chargedGlow > 0.0005 || glowTarget > 0) {
+        for (const f of flashMats) f.mat.emissiveIntensity = f.baseIntensity * intensityMul;
+      } else if (chargedGlow !== 0) {
+        chargedGlow = 0;
+        for (const f of flashMats) f.mat.emissiveIntensity = f.baseIntensity;
+      }
+    }
   }
 
   // Mount the hand from frame 0 — the viewmodel is never truly empty,
@@ -557,6 +606,9 @@ export function createWeaponViewmodel(
     getPhaseProgress: swing.getPhaseProgress,
     startSwing: swing.requestSwing,
     interruptSwing: swing.interruptSwing,
+    setSwingCharge(level: number) {
+      chargedSwingLevel = Math.max(0, Math.min(1, level));
+    },
     update,
     equip,
     setDebugPhase,

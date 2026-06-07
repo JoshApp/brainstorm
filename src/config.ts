@@ -316,7 +316,7 @@ export const CONFIG = {
 
   // === EFFECTS — DRIFTING MOTES (ambient dust atmosphere) ===
   EFFECTS_MOTES: {
-    COUNT: 38,            // sparse — feedback was "not too crowded"
+    COUNT: 52,            // bumped 38 → 52 — slightly denser dust catches the torchlight better; still well under "particle storm"
     SPAWN_Y_MIN: 0.25,
     SPAWN_Y_MAX: 2.60,
     LIFE_MIN: 6.0,        // seconds

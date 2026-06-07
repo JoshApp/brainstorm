@@ -4,7 +4,7 @@ import {
   FLOOR_CRACK, WALL_SCORCH, WALL_GOUGE,
   CORNER_MOUND, CORNER_MOUND_LARGE, CORNER_MOUND_SMALL,
   WALL_PILE, WALL_BUTTRESS, RUINED_COLUMN,
-  FALLEN_PILLAR_SEGMENT, IRON_BARS,
+  FALLEN_PILLAR_SEGMENT, IRON_BARS, LURKER,
 } from '../content/clutter';
 import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
 import { COBWEB_CORNER } from '../content/cobweb';
@@ -65,6 +65,11 @@ const CORNER_MOUND_VARIANTS: Array<{ model: typeof CORNER_MOUND; weight: number 
   { model: CORNER_MOUND_SMALL, weight: 5 },
   { model: CORNER_MOUND,       weight: 4 },
   { model: CORNER_MOUND_LARGE, weight: 1 },
+  // LURKER — weight 0.4 against a 10-sum pool ≈ 4% per corner slot. A small
+  // session of ~15-30 rooms will see one or two; players will notice it
+  // PRESENT before they notice what it is. The art-direction goal isn't a
+  // jump scare — it's the paranoia of "was that there before?"
+  { model: LURKER,             weight: 0.4 },
 ];
 
 // Clearance kept between a clutter prop and the edge of a pit/void, on top of

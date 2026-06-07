@@ -382,3 +382,46 @@ export const WALL_GOUGE: ModelSpec = {
     { kind: 'box', pos: [-0.07, -0.06, 0.020], size: [0.08, 0.06, 0.03], rot: [0, 0, -0.5], mat: 'chip' },
   ],
 };
+
+// ── Things in the darkness ────────────────────────────────────────
+//
+// LURKER — a hunched humanoid silhouette in a corner. Stands ~1.5m
+// tall, body almost black so it reads as a void in the room until
+// the lantern reaches it. Two pinprick emissive eye-dots a degree
+// dimmer than the world's torches — the player notices PRESENCE
+// before they notice WHAT. Doesn't move, doesn't react, doesn't
+// have AI. The wrongness IS the point: there's a person in your
+// dungeon. Or there isn't, and you're imagining it. Either reading
+// works.
+//
+// Authored facing local +Z (toward the camera) so the placer rotates
+// it to face INTO the room from the corner it sits in. Eye dots are
+// tiny additive spheres so they pop in the bloom without lighting
+// anything around them.
+export const LURKER: ModelSpec = {
+  id: 'lurker',
+  materials: {
+    // Almost-black with the faintest cool tint so it reads as cloth
+    // and not pure black geometry. Roughness 1.0 so it never catches
+    // a specular highlight that would reveal it as solid mesh.
+    shroud:    { color: 0x0a0c10, roughness: 1.0, flatShading: true },
+    // Eye dots — emissive only, no diffuse colour. Dim enough to be
+    // mistaken for a stuck pixel until the player is sure.
+    eyeglow:   { color: 0x000000, emissive: 0xa86028, emissiveIntensity: 1.6, roughness: 1.0, flatShading: true, fog: false },
+  },
+  parts: [
+    // Hunched torso — slight forward lean (negative rotX) and a tilt
+    // (positive rotZ) so it doesn't read as a soldier at attention.
+    { kind: 'capsule', pos: [0, 0.65, 0], rot: [-0.18, 0, 0.06], radius: 0.22, height: 0.55, mat: 'shroud' },
+    // Bowed head, leaned forward + down past the shoulders.
+    { kind: 'sphere',  pos: [0, 1.07, 0.08], radius: 0.16, segments: [10, 8], mat: 'shroud' },
+    // Robe skirt — wider base flowing to the floor.
+    { kind: 'cone',    pos: [0, 0.20, 0], radius: 0.34, height: 0.42, segments: 10, mat: 'shroud' },
+    // Arms wrapped across the body — two short capsules at the chest.
+    { kind: 'capsule', pos: [-0.12, 0.74, 0.10], rot: [0, 0, 0.5],  radius: 0.07, height: 0.18, mat: 'shroud' },
+    { kind: 'capsule', pos: [ 0.12, 0.74, 0.10], rot: [0, 0, -0.5], radius: 0.07, height: 0.18, mat: 'shroud' },
+    // Eye dots — small additive spheres at face height, narrow spacing.
+    { kind: 'sphere', pos: [-0.05, 1.08, 0.20], radius: 0.012, segments: [6, 5], mat: 'eyeglow' },
+    { kind: 'sphere', pos: [ 0.05, 1.08, 0.20], radius: 0.012, segments: [6, 5], mat: 'eyeglow' },
+  ],
+};

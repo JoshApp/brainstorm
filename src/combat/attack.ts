@@ -343,7 +343,10 @@ export function createCombatSystem(
       // Whoosh + 'attack:swing' fire from the viewmodel's onSwingStart so chained
       // combo steps make sound too, not just the first press. Charged releases
       // SKIP the windup phase — the player paid for it by holding; the cocked-
-      // back idle pose blends continuously into the strike's t=0 pose.
+      // back idle pose blends continuously into the strike's t=0 pose. Set the
+      // charged-strike glow IMMEDIATELY before so the emissive ramp lands on
+      // this swing's strike phase, not the next one's.
+      weapon.setSwingCharge(currentSwingCharge);
       weapon.startSwing({ skipWindup: currentSwingCharge > 0, direction });
     }
 

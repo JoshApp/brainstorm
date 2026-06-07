@@ -144,9 +144,12 @@ const HORROR_BLIT_FRAG = `
       return;
     }
 
-    // CHROMATIC ABERRATION — red/blue split scaling with distance from center
+    // CHROMATIC ABERRATION — red/blue split scaling with distance from center.
+    // Reduced 0.006 → 0.004 — strong CA was reading as a rendering bug on phone
+    // screenshots; this dial keeps the analog wobble at the edges without
+    // smearing the centre.
     vec2 fromCenter = uv - 0.5;
-    vec2 caOffset = fromCenter * 0.006;
+    vec2 caOffset = fromCenter * 0.004;
     float r = texture2D(tDiffuse, uv + caOffset).r;
     float g = texture2D(tDiffuse, uv).g;
     float b = texture2D(tDiffuse, uv - caOffset).b;
@@ -315,12 +318,14 @@ const BLOOM_BLUR_FRAG = `
 `;
 
 // Depth crush (step 3) — the art-directed pool of reveal. World metres.
-// Loosened slightly from the first pass (start 5→6, floor 0.18→0.23) so the
-// near pool is a touch larger and the distance doesn't go quite as black.
+// Tuned to push more contrast into the distance — the previous floor (0.23)
+// left far walls clearly readable on phone screenshots, which fought the
+// "lantern is the pool of vision" pillar. Bringing the floor down to 0.16
+// crushes more aggressively while the near pool stays full-bright.
 const DEPTH_START_M = 6.0;    // near pool stays full-bright out to here
-const DEPTH_END_M = 13.0;     // crushed to the floor by here
-const DEPTH_FLOOR = 0.23;     // brightness at the far end (0 = pure black)
-const DEPTH_AMOUNT = 0.8;     // 0 = off, 1 = full crush
+const DEPTH_END_M = 12.0;     // crushed to the floor by here (was 13)
+const DEPTH_FLOOR = 0.16;     // brightness at the far end (was 0.23)
+const DEPTH_AMOUNT = 0.85;    // 0 = off, 1 = full crush (was 0.8)
 let depthCrushEnabled = true;
 
 // Fog inscatter (step 4) — the air itself glows the lights' colour, thickest
