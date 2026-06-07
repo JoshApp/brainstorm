@@ -51,10 +51,14 @@ function setMeshDepthOnly(o: THREE.Object3D): void {
   for (const m of mats) { m.colorWrite = false; m.depthTest = true; m.depthWrite = true; }
 }
 function restoreMeshColor(o: THREE.Object3D): void {
+  // Restore viewmodel materials to their MAIN-PASS state: depthTest on
+  // so they occlude each other, depthWrite off so they don't overwrite
+  // the depth values the pre-pass already wrote (which would lose the
+  // closest-wins composition between viewmodel parts).
   const mesh = o as THREE.Mesh;
   if (!mesh.isMesh) return;
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  for (const m of mats) { m.colorWrite = true; m.depthTest = false; m.depthWrite = false; }
+  for (const m of mats) { m.colorWrite = true; m.depthTest = true; m.depthWrite = false; }
 }
 
 const HORROR_BLIT_VERT = `
@@ -506,17 +510,23 @@ export function renderWithStyle(
     // passes, so all post + exposure must live in the blit shader.
     renderer.setRenderTarget(lowResTarget);
     renderer.clear();
-    renderer.render(scene, camera);
 
-    // VIEWMODEL DEPTH PASS — the held weapon / lamp / offhand render
-    // depthTest:false (always on top of walls, no clip), which per GL means
-    // they NEVER write depth. So the depth-keyed post passes below (distance
-    // crush + fog inscatter) read the BACKGROUND depth behind the blade and
-    // paint the corridor/stairwell/mob onto it. Re-render the viewmodels
-    // DEPTH-ONLY (colorWrite off, test+write on) so the buffer carries their
-    // true near depth and the post passes treat them as the foreground they
-    // are. Colour is untouched (already drawn correctly above). Solid meshes
-    // only — additive flame sprites (not isMesh) are skipped.
+    // VIEWMODEL DEPTH PRE-PASS — runs BEFORE the main scene render so:
+    //   1. The world depth-tests against viewmodel depth and gets
+    //      properly occluded where the viewmodel covers (so walls don't
+    //      paint over the hand at the seam).
+    //   2. Viewmodel parts in the scene render then depth-test against
+    //      each other via the pre-pass depth (depthTest:true,
+    //      depthWrite:false on the materials), so a finger wrapping a
+    //      weapon visibly OCCLUDES the weapon at that pixel — the
+    //      weapon's higher renderOrder no longer wins shared pixels.
+    //   3. The depth-keyed post passes (distance crush, fog inscatter)
+    //      see the viewmodel as foreground.
+    //
+    // setMeshDepthOnly writes depth with test+write on (closer wins);
+    // restoreMeshColor sets the materials back to test:true / write:false
+    // for the upcoming scene render.
+    const prevAutoClearDepth = renderer.autoClearDepth;
     if (viewmodelRoots.length) {
       const prevAutoClear = renderer.autoClear;
       renderer.autoClear = false;
@@ -527,7 +537,13 @@ export function renderWithStyle(
         vm.traverse(restoreMeshColor);
       }
       renderer.autoClear = prevAutoClear;
+      // Keep the depth values we just wrote; the scene render below
+      // would otherwise auto-clear them and erase the pre-pass work.
+      renderer.autoClearDepth = false;
     }
+
+    renderer.render(scene, camera);
+    renderer.autoClearDepth = prevAutoClearDepth;
 
     // BLOOM passes — extract bright pixels, then ping-pong separable blur.
     // Builds the glow texture the blit composites. Skipped when disabled.

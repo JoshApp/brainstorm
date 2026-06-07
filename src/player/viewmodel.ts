@@ -225,9 +225,13 @@ export function createWeaponViewmodel(
       const mesh = obj as THREE.Mesh;
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of mats) {
-        m.depthTest = false;
+        // depthTest TRUE so viewmodel parts depth-test each other
+        // (fingers can occlude weapon where they wrap around it).
+        // depthWrite FALSE so the main render preserves the viewmodel
+        // depth values written by render-target.ts's pre-pass.
+        m.depthTest = true;
         m.depthWrite = false;
-        m.transparent = true;
+        m.transparent = false;
         m.needsUpdate = true;
         const em = (m as THREE.MeshStandardMaterial).emissive;
         if (gleamCollect && em && typeof em.getHex === 'function') {
