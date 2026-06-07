@@ -2,6 +2,8 @@ import { CONFIG } from '../config';
 import type { PoseKey } from '../content/weapon-classes';
 import type { SwingPhase } from './viewmodel';
 import { evalPoseSpec, type PoseSpec, type Pose6 } from './weapon-pose-spec';
+import { sampleClip } from '../anim/keyframes';
+import { POSE_CLIPS } from '../content/clips-weapons';
 
 // Per-step viewmodel pose curves. Each function takes the current
 // phase + a normalised phase progress (0..1) and returns the local
@@ -167,9 +169,13 @@ const DATA_NATIVE_POSE_KEYS = new Set<PoseKey>([
 ]);
 
 /** Pose keys whose data spec is pinned to a legacy hand-coded function
- *  (the equivalence oracle). Data-native specs are excluded. */
+ *  (the equivalence oracle). Data-native specs are excluded; so are
+ *  poses overridden by a ClipSpec (the new authoring path produces a
+ *  richer curve than the wind/end form, and the legacy function is the
+ *  oracle for that wind/end form — not for the clip).
+ *  See src/content/clips-weapons.ts. */
 export const MIGRATED_POSE_KEYS = (Object.keys(POSE_SPECS) as PoseKey[])
-  .filter((k) => !DATA_NATIVE_POSE_KEYS.has(k));
+  .filter((k) => !DATA_NATIVE_POSE_KEYS.has(k) && !POSE_CLIPS[k]);
 
 /** Pose for the current swing phase. Caller passes the pose key for
  *  the current combo step + the phase + the PROGRESS within that
@@ -189,10 +195,46 @@ export function computeWeaponPose(pose: PoseKey, phase: SwingPhase, t: number): 
     scratch.rotX = rx; scratch.rotY = ry; scratch.rotZ = rz;
     return scratch;
   }
-  // Data-driven poses first (the authoring path); fall back to hand-coded ones.
+  // CLIP-based poses (the new authoring path) — richer than wind/end,
+  // with anticipation pulses, peak holds, impact overshoot, settle
+  // bobble. See src/content/clips-weapons.ts for the pose→clip table.
+  const clip = POSE_CLIPS[pose];
+  if (clip) return evalClipPose(clip, phase, t, scratch);
+  // Data-driven poses (wind/end format); fall back to hand-coded ones.
   const spec = POSE_SPECS[pose];
   if (spec) return evalPoseSpec(spec, STANDARD_IDLE, phase, t, scratch);
   return legacyComputeWeaponPose(pose, phase, t);
+}
+
+// Phase boundaries inside the clip's normalized [0, 1] timeline. Authors
+// keyframe to these conventions; the evaluator maps the live (phase, t)
+// of the swing into the corresponding clip time. Approximates "windup
+// ≈ strike ≈ recover × 2" which is roughly true across the existing
+// weapon classes; per-weapon proportions are fudged inside the
+// segments by where the author places the keyframes.
+const CLIP_WINDUP_END = 0.25;
+const CLIP_STRIKE_END = 0.50;
+
+function evalClipPose(
+  clip: { duration?: number; tracks: Record<string, Array<{ t: number; v: number; ease?: string }>> },
+  phase: SwingPhase,
+  t: number,
+  out: WeaponPose,
+): WeaponPose {
+  let clipT: number;
+  if (phase === 'windup')      clipT = t * CLIP_WINDUP_END;
+  else if (phase === 'strike') clipT = CLIP_WINDUP_END + t * (CLIP_STRIKE_END - CLIP_WINDUP_END);
+  else                         clipT = CLIP_STRIKE_END + t * (1 - CLIP_STRIKE_END);
+  // Sample at clip-local time. ClipSpec defaults to duration 1.0 so
+  // normalized t equals clip-local t for our 0..1 keyframe convention.
+  const sample = sampleClip(clip as Parameters<typeof sampleClip>[0], clipT);
+  out.x    = ix + (sample['weapon.pos.x'] ?? 0);
+  out.y    = iy + (sample['weapon.pos.y'] ?? 0);
+  out.z    = iz + (sample['weapon.pos.z'] ?? 0);
+  out.rotX = rx + (sample['weapon.rot.x'] ?? 0);
+  out.rotY = ry + (sample['weapon.rot.y'] ?? 0);
+  out.rotZ = rz + (sample['weapon.rot.z'] ?? 0);
+  return out;
 }
 
 /** The hand-coded pose dispatch — fallback for poses not (yet) authored as data,
