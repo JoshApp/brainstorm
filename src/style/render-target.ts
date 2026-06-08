@@ -129,16 +129,20 @@ const HORROR_BLIT_FRAG = `
     return (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
   }
 
-  // One contact-AO axis: how CONCAVE the surface is along this axis. Sampling
-  // BOTH sides and summing the depth deltas rejects a flat SLOPE — one side is
-  // nearer, the other farther by the same amount, so they cancel — while a real
-  // contact step or crevice leaves a positive residual. This curvature (second-
-  // derivative) measure is what stops grazing/slanted surfaces from streaking,
-  // which a one-sided "neighbour is closer" test can't tell from occlusion.
-  // Big residuals are silhouette pockets → faded out so they don't halo.
+  // One contact-AO axis. Samples BOTH sides:
+  //   curv  = (eC-a) + (eC-b)  → concavity; a flat slope cancels to ~0.
+  //   slope = |a - b|          → how tilted the surface is along this axis.
+  // On the LOW-RES depth buffer a grazing surface is coarsely stepped, and the
+  // steps spike curv even though the surface is flat — so the trigger is
+  // RAISED by the local slope (the false curvature scales with it). Only
+  // curvature BEYOND the slope-explained amount — a real contact / crevice —
+  // darkens. Big residuals (silhouette pockets) fade out so they don't halo.
   float aoAxis(vec2 uv, vec2 off, float eC) {
-    float curv = (eC - linDepth(uv + off)) + (eC - linDepth(uv - off));
-    return smoothstep(0.04, 0.16, curv) * (1.0 - smoothstep(0.5, 1.1, curv));
+    float a = linDepth(uv + off);
+    float b = linDepth(uv - off);
+    float curv = (eC - a) + (eC - b);
+    float thr = 0.05 + abs(a - b) * 0.7;
+    return smoothstep(thr, thr + 0.14, curv) * (1.0 - smoothstep(0.6, 1.2, curv));
   }
 
   void main() {
@@ -238,8 +242,12 @@ const HORROR_BLIT_FRAG = `
     // re-reads the depth already in the buffer. Six taps on a hexagon at a radius
     // that shrinks with distance (so far surfaces don't smear). Placed before the
     // dither/quantize so the darkening takes the same PSX crunch as everything else.
-    if (uAOStrength > 0.0 && uInspect < 0.5) {
-      float eC = linDepth(uv);
+    float eC = linDepth(uv);
+    // AO is a NEAR-pool grounding effect — fade it out by ~7m (where depth
+    // precision drops and the far is crushed to black anyway). This is also
+    // exactly where the grazing-surface streaks lived.
+    float aoFade = 1.0 - smoothstep(4.5, 7.5, eC);
+    if (uAOStrength > 0.0 && uInspect < 0.5 && aoFade > 0.0) {
       // Three hexagon AXES (each samples ±, so 6 taps total). Radius shrinks
       // with distance so far surfaces don't smear.
       vec2 px = uOutlineTexel * uAORadius * (3.0 / (3.0 + eC));
@@ -247,7 +255,7 @@ const HORROR_BLIT_FRAG = `
           aoAxis(uv, vec2( 1.0,  0.0)  * px, eC)
         + aoAxis(uv, vec2( 0.5,  0.87) * px, eC)
         + aoAxis(uv, vec2(-0.5,  0.87) * px, eC);
-      col *= 1.0 - clamp(occ / 3.0, 0.0, 1.0) * uAOStrength;
+      col *= 1.0 - clamp(occ / 3.0, 0.0, 1.0) * uAOStrength * aoFade;
     }
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
