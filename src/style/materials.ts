@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { installSurfaceAO } from './surface-ao';
 
 // Material library for the BIG STATIC SURFACES of the level (walls, floor,
 // ceiling). Dynamic entities (enemies, sword, torches, chests) own their
@@ -65,6 +66,10 @@ export function buildMaterials(): StyleMaterials {
     emissive: 0x0a0703,
     emissiveIntensity: emissiveBoost,
   });
+
+  // Live-controllable baked surface AO (wall/floor vertex colours).
+  installSurfaceAO(wallBase);
+  installSurfaceAO(floorBase);
 
   return {
     wall: wallBase,

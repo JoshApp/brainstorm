@@ -382,6 +382,13 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().outlines,
       set: (v) => updateSettings({ outlines: v }),
     }),
+    makeSlider({
+      label: 'SURFACE AO',
+      min: 0, max: 2, step: 0.05,
+      get: () => getSettings().aoStrength,
+      set: (v) => updateSettings({ aoStrength: v }),
+      format: (v) => (v === 0 ? 'off' : v.toFixed(2) + '×'),
+    }),
   ],
 
   system: () => [

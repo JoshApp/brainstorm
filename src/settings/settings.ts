@@ -99,6 +99,9 @@ export interface Settings {
    *  untextured primitive geometry reads as a deliberate drawing (cel +
    *  outline). Stylistic taste toggle. */
   outlines: boolean;
+  /** Surface AO strength — scales the baked corner/base darkening on walls +
+   *  floors live (0 = off/flat, 1 = as baked, up to 2 = amplified). */
+  aoStrength: number;
   /** HUD style preset — controls which HUD elements render and how
    *  loud the diegetic feedback (vignette, heartbeat, breath) is. Use
    *  with the registry in src/ui/hud-style.ts. Default 'minimal'. */
@@ -154,6 +157,7 @@ const DEFAULTS: Settings = {
   portalCulling: false,
   bandedLighting: true,
   outlines: false,
+  aoStrength: 1.0,
   hudStyle: 'minimal',
 };
 
