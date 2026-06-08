@@ -125,9 +125,22 @@ export async function captureDrawReport(): Promise<void> {
   let meshes = 0, sprites = 0, points = 0, instanced = 0, sceneTris = 0;
   let mergedDraws = 0, mergeableNow = 0, dynamicDraws = 0;
   let shadowCasters = 0, transparentMeshes = 0, spriteOverdraw = 0;
+  // Lights drive a PER-FRAGMENT cost: every active PointLight is another
+  // iteration of the lighting loop on every lit pixel, which the 0.4× render
+  // scale does NOT reduce away (it's already the dominant fragment cost). A
+  // shadow-caster additionally re-renders the scene into its cube map.
+  let lightSlots = 0, lightsActive = 0, lightsShadow = 0;
 
   const walk = (o: THREE.Object3D): void => {
     if (!o.visible) return;   // respect room-culling / hidden subtrees
+    const lit = o as unknown as { isLight?: boolean; isPointLight?: boolean; intensity?: number; castShadow?: boolean };
+    if (lit.isLight) {
+      if (lit.isPointLight) lightSlots++;
+      if ((lit.intensity ?? 0) > 0.001) {
+        lightsActive++;
+        if (lit.castShadow) lightsShadow++;
+      }
+    }
     const a = o as unknown as { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean; isInstancedMesh?: boolean };
     const isSprite = a.isSprite === true;
     const isPoints = a.isPoints === true;
@@ -210,6 +223,8 @@ export async function captureDrawReport(): Promise<void> {
   L.push(`scene: ${meshes} meshes · ${sprites} sprites · ${points} points · ${(sceneTris / 1000) | 0}k tris · ${instanced} instanced`);
   L.push(`  shadow casters: ${shadowCasters} (redrawn in the shadow pass — CPU draws + cube-map fill)`);
   L.push(`  transparent/additive: ${transparentMeshes} (overdraw — GPU fill), of which ${spriteOverdraw} are sprites (full camera-facing quads)`);
+  L.push(`  lights: ${lightsActive} active of ${lightSlots} slots · ${lightsShadow} casting shadow`);
+  L.push(`    (each active light = one more lighting-loop pass per LIT FRAGMENT — the 0.4x scale doesn't reduce this; a shadow-caster also re-draws the scene into a cube map)`);
   L.push('');
   L.push(`WHERE THE DRAWS GO (visible meshes by owner)`);
   for (const [cat, n] of (Object.entries(bySource) as [Cat, number][]).sort((a, b) => b[1] - a[1])) {
