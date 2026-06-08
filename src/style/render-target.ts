@@ -45,6 +45,11 @@ export function unregisterViewmodel(root: THREE.Object3D): void {
   const i = viewmodelRoots.indexOf(root);
   if (i >= 0) viewmodelRoots.splice(i, 1);
 }
+/** The registered held-viewmodel roots — for the draw report to classify hand/
+ *  weapon/lamp meshes as dynamic (they animate) rather than static decor. */
+export function getViewmodelRoots(): readonly THREE.Object3D[] {
+  return viewmodelRoots;
+}
 function setMeshDepthOnly(o: THREE.Object3D): void {
   const mesh = o as THREE.Mesh;
   if (!mesh.isMesh) return;

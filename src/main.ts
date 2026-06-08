@@ -1045,7 +1045,7 @@ function ensureProfilingInited(): void {
   if (profilingInited) return;
   profilingInited = true;
   initFrameTiming(renderer);
-  initDrawReport(scene, renderer);
+  initDrawReport(scene, renderer, () => currentLevel);
   createProfilerHud();
 }
 function applyProfilerEnabled(): void {
