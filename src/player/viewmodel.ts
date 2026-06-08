@@ -10,6 +10,7 @@ import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
 import { getCurrentWeapon } from './current-weapon';
 import { composeHeldWeapon } from './held-weapon-compose';
+import { mergeRigidViewmodel } from './viewmodel-merge';
 import { buildModel } from '../ecs/build-model';
 import { ARM_RIGHT, ARM_RIGHT_HUMERUS_LENGTH, ARM_RIGHT_FOREARM_LENGTH } from '../content/arm';
 import { ArmIK } from '../anim/arm-ik';
@@ -361,6 +362,12 @@ export function createWeaponViewmodel(
     // uses, so what we see in the iteration tool is what we get
     // in-game (minus this file's depth-test trick).
     const composed = composeHeldWeapon(spec);
+    // The hand is rigid in play (finger curl baked per weapon; only the whole
+    // group bobs), so collapse its ~88 bone meshes into a handful — it's drawn
+    // twice a frame (depth pre-pass + main), so this is a big always-on win.
+    // Slots survive (arm IK reads the wrist; weapon stays on palm_anchor); the
+    // weapon subtree is excluded.
+    mergeRigidViewmodel(composed.hand.group, composed.weapon?.group ?? null);
     // Hand renders one step under the weapon so the weapon visually
     // wraps in front of the closed fist where they overlap (blade
     // emerges from the top of the fist, not behind it). Hand opts

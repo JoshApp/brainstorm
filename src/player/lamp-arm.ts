@@ -6,6 +6,7 @@ import {
 import { HAND_RIGHT } from '../content/hand';
 import { ArmIK } from '../anim/arm-ik';
 import { registerViewmodel } from '../style/render-target';
+import { mergeRigidViewmodel } from './viewmodel-merge';
 import { getLampRingAnchorWorldPosition } from './handheld-lamp';
 
 // Left arm holding the lantern.
@@ -95,6 +96,9 @@ export function attachLampArm(camera: THREE.Camera): void {
   // saber pose — TBD pass.
   const hand = buildModel(HAND_RIGHT);
   wristAnchor.add(hand.group);
+  // The lantern hand is rigid (it just grips the ring); collapse its ~39 bone
+  // meshes into one. Slots (palm_anchor, read below for the offset) survive.
+  mergeRigidViewmodel(hand.group, null);
   // Same viewmodel render settings as the arm bones so the hand
   // depth-tests right against the lantern + the other arm.
   hand.group.traverse((obj) => {
