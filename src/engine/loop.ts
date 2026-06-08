@@ -42,9 +42,31 @@ export interface GameSystem {
   tick(ctx: TickContext): void;
 }
 
+// Optional per-system timing hook. Null in the normal (and production) path,
+// so runSystems takes its zero-overhead fast loop. The DEV profiler HUD sets
+// this to measure each system's wall-clock cost — the "which system got
+// slower" breakdown. Kept as a plain nullable so the engine never imports the
+// debug layer; the profiler reaches IN to install itself.
+export type SystemProbe = (name: string, ms: number) => void;
+let systemProbe: SystemProbe | null = null;
+export function setSystemProbe(probe: SystemProbe | null): void {
+  systemProbe = probe;
+}
+
 /** Dispatch one frame across an ordered system list, honouring each system's
  *  phase + mode gates. Order is the array order — top to bottom. */
 export function runSystems(systems: readonly GameSystem[], ctx: TickContext): void {
+  // Instrumented path — only taken when the DEV profiler is recording.
+  if (systemProbe) {
+    for (const sys of systems) {
+      if (sys.phase === 'unpaused' && ctx.paused) continue;
+      if (sys.modes && !sys.modes.includes(ctx.mode)) continue;
+      const t0 = performance.now();
+      sys.tick(ctx);
+      systemProbe(sys.name, performance.now() - t0);
+    }
+    return;
+  }
   for (const sys of systems) {
     if (sys.phase === 'unpaused' && ctx.paused) continue;
     if (sys.modes && !sys.modes.includes(ctx.mode)) continue;

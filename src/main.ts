@@ -72,6 +72,7 @@ import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } fro
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
+import { createProfilerHud, setProfilerVisible, toggleProfiler, profilerBeginFrame, profilerEndFrame } from './debug/profiler-hud';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
@@ -774,7 +775,12 @@ function tick() {
     mode: getGameMode(),
     playing: isPlaying(),
   };
+  // DEV profiler brackets the system pass: begin opens the GPU timer + marks
+  // the CPU start, end closes them and refreshes the HUD. Both no-op unless
+  // the profiler is visible, and the whole pair is stripped from prod.
+  if (import.meta.env.DEV) profilerBeginFrame();
   runSystems(SYSTEMS, ctx);
+  if (import.meta.env.DEV) profilerEndFrame();
 
   // Charge-ring HUD — early-outs on no-progress so it's free when no
   // hold is in flight. Always ticked; the visual itself opts in.
@@ -1006,6 +1012,22 @@ setPerfOverlayVisible(getSettings().perfMeter);
 // DEV-only — the literal-false guard strips the call, and installPerfProbe
 // itself early-returns unless DEV, so window.__perf can never be set live.
 if (import.meta.env.DEV) installPerfProbe(renderer);
+
+// DEV profiler HUD — per-system CPU breakdown + GPU timing + live graph, for
+// hunting "what got slower?" regressions. DEV-only (tree-shaken from prod).
+// Enable with ?profile=1, the F2 key, or window.__profiler() in the console.
+if (import.meta.env.DEV) {
+  createProfilerHud(renderer);
+  if (new URLSearchParams(window.location.search).get('profile') === '1') {
+    setProfilerVisible(true);
+  }
+  // F2 toggles it live. Capture phase so it fires regardless of focus, and
+  // it's a function key so it never collides with movement/action binds.
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'F2') { e.preventDefault(); toggleProfiler(); }
+  }, true);
+  (window as unknown as { __profiler: () => void }).__profiler = toggleProfiler;
+}
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
 // the CODEX/STASH buttons without requiring real playthrough.
