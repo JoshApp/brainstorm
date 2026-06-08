@@ -105,9 +105,10 @@ export function installSurfaceDetail(material: THREE.Material): void {
     float crack = crackable * (1.0 - smoothstep(0.0, 0.015 + aaw, abs(inb.x - cpos + wob)));
     float recess = max(mortar, crack * 0.85);
 
-    // RELIEF — smooth groove valley, low strength, faded to NEAR distance only,
-    // so the normal derivative never buzzes (smooth h + small footprint).
-    float reliefFade = 1.0 - smoothstep(0.012, 0.045, fp);
+    // RELIEF — smooth groove valley, low strength, faded over a GENTLE near
+    // range so it eases in (not a hard pop) and the normal derivative never
+    // buzzes (smooth h + small footprint).
+    float reliefFade = 1.0 - smoothstep(0.02, 0.085, fp);
     if (reliefFade > 0.001) {
       float groove = (1.0 - smoothstep(0.0, MORTAR_M * 3.0, dseam)) + crack * 0.6;
       vec3 sp = -vViewPosition;
@@ -124,8 +125,18 @@ export function installSurfaceDetail(material: THREE.Material): void {
     float bt = dHash(vec3(cell, 3.7));
     float blockTone = mix(TONE_LO, 1.0, bt) * mix(0.97, 1.0, dVNoise(vWorldPos * 1.7));
     float shade = mix(blockTone, MORTAR_DARK, recess);
-    float vis = 1.0 - smoothstep(0.09, 0.2, fp);
+    // Persist seams to ALL distances. The analytic AA above smooths a sub-pixel
+    // seam to a gentle darkening (no shimmer), so detail no longer needs to fade
+    // out — that fade was what made distant floor read flat and "form" crevices
+    // as you walked up. Only a very-far safety fade settles the extreme distance.
+    float vis = 1.0 - smoothstep(0.5, 1.1, fp);
     diffuseColor.rgb *= mix(1.0, shade, vis);
+
+    // Subtle per-surface tint so floor / walls / ceiling don't read as one stone.
+    vec3 surfTint = !horiz ? vec3(1.0)                                  // walls: neutral
+                  : (vWorldNormal.y > 0.0 ? vec3(1.0, 0.95, 0.88) * 0.9    // floor: warmer, worn, darker
+                                          : vec3(0.9, 0.93, 1.0) * 0.82);  // ceiling: cooler, in shadow
+    diffuseColor.rgb *= surfTint;
 
     // Subtle per-block roughness variation — specular breaks block to block.
     roughnessFactor = clamp(roughnessFactor * mix(0.93, 1.05, bt), 0.04, 1.0);
