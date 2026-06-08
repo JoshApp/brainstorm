@@ -96,16 +96,17 @@ export function makeJitteredPlane(
   pos.needsUpdate = true;
   geo.computeVertexNormals();
 
-  // Per-vertex color tint jitter: each vertex gets an RGB multiplier in
-  // [0.7, 1.0]. The material multiplies this against its base color, so
-  // walls + floor get subtle dark/light splotches instead of one flat tone.
-  // Each channel is randomized slightly independently for color drift too.
+  // Per-vertex color tint: each vertex gets an RGB multiplier. Range narrowed
+  // to [0.85, 1.0] — the old [0.7, 1.0] random tint read as noisy splotches on
+  // the subdivided grid (worst in the dim, tight corridors). This is the GENTLE
+  // baseline; COHERENT, intentional vertex colouring (grime, weathering, moss
+  // pooling low) is part of the richness pass — see docs/surface-richness.md.
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
-    const base = 0.7 + buildRng() * 0.3;     // overall darkness per vertex
-    const tintR = base * (0.94 + buildRng() * 0.06);
-    const tintG = base * (0.94 + buildRng() * 0.06);
-    const tintB = base * (0.94 + buildRng() * 0.06);
+    const base = 0.85 + buildRng() * 0.15;   // overall darkness per vertex
+    const tintR = base * (0.96 + buildRng() * 0.04);
+    const tintG = base * (0.96 + buildRng() * 0.04);
+    const tintB = base * (0.96 + buildRng() * 0.04);
     colors[i * 3 + 0] = tintR;
     colors[i * 3 + 1] = tintG;
     colors[i * 3 + 2] = tintB;

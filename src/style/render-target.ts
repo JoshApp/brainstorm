@@ -97,8 +97,6 @@ const HORROR_BLIT_FRAG = `
   uniform float uOutlineThresh;   // metres of depth-gap to start an edge
   uniform float uOutlineWidth;    // sample step, in low-res texels
   uniform vec2  uOutlineTexel;    // 1.0 / low-res target size (texel step)
-  uniform float uAOStrength;      // fake contact-AO darkness (0 = off)
-  uniform float uAORadius;        // AO sample radius, in low-res texels
   varying vec2 vUv;
 
   // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
@@ -127,22 +125,6 @@ const HORROR_BLIT_FRAG = `
     float dRaw = texture2D(tDepth, uv).x;
     float ndc = dRaw * 2.0 - 1.0;
     return (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
-  }
-
-  // One contact-AO axis. Samples BOTH sides:
-  //   curv  = (eC-a) + (eC-b)  → concavity; a flat slope cancels to ~0.
-  //   slope = |a - b|          → how tilted the surface is along this axis.
-  // On the LOW-RES depth buffer a grazing surface is coarsely stepped, and the
-  // steps spike curv even though the surface is flat — so the trigger is
-  // RAISED by the local slope (the false curvature scales with it). Only
-  // curvature BEYOND the slope-explained amount — a real contact / crevice —
-  // darkens. Big residuals (silhouette pockets) fade out so they don't halo.
-  float aoAxis(vec2 uv, vec2 off, float eC) {
-    float a = linDepth(uv + off);
-    float b = linDepth(uv - off);
-    float curv = (eC - a) + (eC - b);
-    float thr = 0.05 + abs(a - b) * 0.7;
-    return smoothstep(thr, thr + 0.14, curv) * (1.0 - smoothstep(0.6, 1.2, curv));
   }
 
   void main() {
@@ -235,27 +217,6 @@ const HORROR_BLIT_FRAG = `
       // Don't ink the far void itself — only edges on near geometry.
       edge *= 1.0 - smoothstep(uDepthEndM, uFar, eC);
       col *= 1.0 - edge * uOutlineStrength;
-    }
-
-    // FAKE CONTACT AO — cheap screen-space crevice/contact darkening that grounds
-    // objects (props, enemies, the hand) without any extra geometry pass: it just
-    // re-reads the depth already in the buffer. Six taps on a hexagon at a radius
-    // that shrinks with distance (so far surfaces don't smear). Placed before the
-    // dither/quantize so the darkening takes the same PSX crunch as everything else.
-    float eC = linDepth(uv);
-    // AO is a NEAR-pool grounding effect — fade it out by ~7m (where depth
-    // precision drops and the far is crushed to black anyway). This is also
-    // exactly where the grazing-surface streaks lived.
-    float aoFade = 1.0 - smoothstep(4.5, 7.5, eC);
-    if (uAOStrength > 0.0 && uInspect < 0.5 && aoFade > 0.0) {
-      // Three hexagon AXES (each samples ±, so 6 taps total). Radius shrinks
-      // with distance so far surfaces don't smear.
-      vec2 px = uOutlineTexel * uAORadius * (3.0 / (3.0 + eC));
-      float occ =
-          aoAxis(uv, vec2( 1.0,  0.0)  * px, eC)
-        + aoAxis(uv, vec2( 0.5,  0.87) * px, eC)
-        + aoAxis(uv, vec2(-0.5,  0.87) * px, eC);
-      col *= 1.0 - clamp(occ / 3.0, 0.0, 1.0) * uAOStrength * aoFade;
     }
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
@@ -387,13 +348,6 @@ const OUTLINE_THRESH = 0.12;    // metres of depth-gap before an edge starts
 const OUTLINE_WIDTH = 1.3;      // sample step in low-res texels (line thickness)
 let outlineEnabled = true;
 
-// Fake contact AO — cheap screen-space grounding in the blit (no extra pass).
-// Tunable knobs; defaults are deliberately gentle so it reads as grounding, not
-// as the harsh point-light blobs it replaces.
-const AO_STRENGTH = 0.55;   // darkness at full occlusion (0..1)
-const AO_RADIUS = 2.5;      // sample radius in low-res texels
-let aoEnabled = true;
-
 /** Toggle fog inscatter (A/B the glowing-air). */
 export function setInscatterEnabled(on: boolean): void {
   inscatterEnabled = on;
@@ -410,12 +364,6 @@ export function setDepthCrushEnabled(on: boolean): void {
 export function setOutlineEnabled(on: boolean): void {
   outlineEnabled = on;
   if (blitMaterial) blitMaterial.uniforms.uOutlineStrength.value = on ? OUTLINE_STRENGTH : 0;
-}
-
-/** Toggle the fake contact-AO grounding (A/B it on the phone). */
-export function setContactAOEnabled(on: boolean): void {
-  aoEnabled = on;
-  if (blitMaterial) blitMaterial.uniforms.uAOStrength.value = on ? AO_STRENGTH : 0;
 }
 
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
@@ -487,8 +435,6 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       uOutlineThresh: { value: OUTLINE_THRESH },
       uOutlineWidth: { value: OUTLINE_WIDTH },
       uOutlineTexel: { value: new THREE.Vector2(1 / w, 1 / h) },
-      uAOStrength: { value: aoEnabled ? AO_STRENGTH : 0 },
-      uAORadius: { value: AO_RADIUS },
     },
     vertexShader: HORROR_BLIT_VERT,
     fragmentShader: HORROR_BLIT_FRAG,

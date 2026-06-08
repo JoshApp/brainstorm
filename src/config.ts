@@ -255,7 +255,11 @@ export const CONFIG = {
   // === WALLS — surface variation ===
   WALL_SUBDIVISIONS_X: 16,     // segments along width — more = finer noise
   WALL_SUBDIVISIONS_Y: 12,
-  WALL_VERTEX_JITTER: 0.04,    // meters of inward/outward perturbation per vertex
+  WALL_VERTEX_JITTER: 0,       // random per-vertex perturbation. 0 = OFF — the
+                               // high-noise random wobble read as melted/glitchy,
+                               // not stone. Walls keep the smooth low-freq WAVE
+                               // for gentle undulation; deliberate surface texture
+                               // is the richness pass (docs/surface-richness.md).
 
   // === RANGED COMMITMENT ===
   // Accuracy demands stillness — the fix for "ranged is too spammable". A shot
