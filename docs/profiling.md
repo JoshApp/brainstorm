@@ -26,7 +26,7 @@ When enabled, an **on-screen toolbar** appears (top-left): `HUD` · `● REC` ·
 | **DevTools marks** | Native flame chart, incl. remote-over-USB from a phone | `F4` · `?marks=1` |
 | **GPU probe** | Real GPU ms on devices without the timer-query extension | toolbar `GPU` · `F5` |
 | **Draw report** | "What's eating the draw calls?" + instancing wins, shareable | toolbar `DRAWS` · `F6` |
-| **spector.js** | Every GL command of a frame (deep, DESKTOP only) | `window.__spector()` |
+| **spector.js** | Every GL command of a frame (deep; its result view exports) | toolbar `SPCT` · `window.__spector()` |
 
 ### Reading GPU time
 
