@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ITEMS } from './items';
 import { ENEMIES } from './enemies';
-import { buildModel } from '../ecs/build-model';
+import { buildModel, mergeRigidSegments } from '../ecs/build-model';
 import { getItemThumbnail } from '../ui/item-thumbnail';
 
 // Pre-warm caches and JIT paths so the first kill/drop/pickup doesn't hitch.
@@ -34,6 +34,23 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
   cam.position.set(0, 0, 2);
   cam.lookAt(0, 0, 0);
 
+  // A shadow-casting point light + a receiver floor, so the render below also
+  // compiles the SHADOW depth program (point-light cube-map depth). Without it
+  // the depth variant compiled the first time a mob cast a shadow in-game — a
+  // visible hitch on the first encounter. Mirrors the runtime lamp.
+  const shadowLight = new THREE.PointLight(0xffffff, 1, 12, 1.4);
+  shadowLight.position.set(0.5, 1.2, 1.5);
+  shadowLight.castShadow = true;
+  scratch.add(shadowLight);
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(6, 6),
+    new THREE.MeshStandardMaterial({ color: 0x222222 }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -1;
+  floor.receiveShadow = true;
+  scratch.add(floor);
+
   const models: THREE.Object3D[] = [];
   for (const item of Object.values(ITEMS)) {
     const built = buildModel(item.dropModel);
@@ -42,16 +59,27 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
   }
   for (const enemy of Object.values(ENEMIES)) {
     const built = buildModel(enemy.model);
+    // JIT the merge path (mergeGeometries) + match the in-game mesh layout so
+    // the warmed shader set is exactly what the merged enemy renders.
+    if (enemy.model.mergeRigid !== false) mergeRigidSegments(built);
+    built.group.traverse((o) => { (o as THREE.Mesh).castShadow = true; });
     scratch.add(built.group);
     models.push(built.group);
   }
 
-  // One render — primes shader compile for every material that just got added.
-  // Saved viewport restored after so we don't disturb the main render loop.
+  // One render — primes shader compile for every material that just got added,
+  // INCLUDING the shadow depth pass (shadowMap on + a caster + a receiver).
+  // Saved viewport + shadow flag restored after so the main loop is undisturbed.
   const prevTarget = mainRenderer.getRenderTarget();
+  const prevShadow = mainRenderer.shadowMap.enabled;
+  mainRenderer.shadowMap.enabled = true;
   mainRenderer.setRenderTarget(null);
   mainRenderer.render(scratch, cam);
+  mainRenderer.shadowMap.enabled = prevShadow;
   mainRenderer.setRenderTarget(prevTarget);
+  scratch.remove(shadowLight, floor);
+  floor.geometry.dispose();
+  (floor.material as THREE.Material).dispose();
 
   // Dispose — the geometries/materials live in WebGL forever via the program
   // cache; we just don't need the JS Object3Ds anymore.
