@@ -515,6 +515,18 @@ export function buildLevel(
   // voluntary 'offering' trigger (set on the door spec below) instead of a
   // trap that slams on entry.
   const offeringRooms = new Set<string>();
+  // Tag a static decoration group so the per-room static-merge pass
+  // (batchStaticFixtures) folds it into one mesh per material — the single
+  // biggest draw-call win on procgen floors, where loose `model`/`altar` decor
+  // is otherwise one draw per prop part. Flames are skipped (they animate); the
+  // CALLER excludes props whose materials animate (proximity glow / mood-tint)
+  // or that carry a light. Pillars are already merged separately above.
+  const markMergeStatic = (obj: THREE.Object3D): void => {
+    obj.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.name !== 'flame') m.userData.mergeStatic = true;
+    });
+  };
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
@@ -536,6 +548,7 @@ export function buildLevel(
     } else if (prop.kind === 'altar') {
       const { group: altarGroup, obstacle } = buildAltarBlock(prop.x, prop.z, materials);
       root.add(altarGroup);
+      markMergeStatic(altarGroup);   // static stone — fold into the per-room merge
       obstacles.push({ kind: 'aabb', ...obstacle, height: 0.9 });   // waist-high — shots fly over
     } else if (prop.kind === 'challenge-offering') {
       const rid = findRoomContaining(prop.x, prop.z, spec.rooms);
@@ -581,6 +594,13 @@ export function buildLevel(
         }
       }
       root.add(built.group);
+      // Fold purely-static model decor into the per-room static-merge pass.
+      // Skip props whose materials animate (proximity-glow archways, mood-tinted
+      // flames) or that carry a light (candles/braziers — their flame + glow
+      // must stay live, per-instance). The biggest draw-call win on a floor.
+      if (!prop.proximityGlow && !prop.model.moodTintable && !prop.model.light) {
+        markMergeStatic(built.group);
+      }
       // Optional collision shape(s) — used by structural model
       // props (buttresses, ruined columns, archway columns). For
       // AABB the half-extents rotate with the prop's rotY; we
