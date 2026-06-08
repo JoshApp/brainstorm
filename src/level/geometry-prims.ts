@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config';
 import { buildRng } from '../engine/rng';
+import { installSurfaceDetail } from '../style/surface-detail';
 
 // Pure procedural-geometry factories for level assembly. Extracted from
 // builder.ts — these take plain dimensions and return THREE geometry/material
@@ -252,6 +253,12 @@ export function archCeilingMaterial(base: THREE.Material): THREE.Material {
   if (_archCeilBase !== base || !_archCeilMat) {
     _archCeilMat = base.clone();
     _archCeilMat.side = THREE.DoubleSide;
+    // clone() does NOT carry the base's onBeforeCompile, so the cloned arch
+    // material would lose the brick surface-detail (tilted ceilings rendered
+    // flat). Reset then install exactly once — double-installing would duplicate
+    // the injected GLSL and fail to compile. Shares the live toggle uniform.
+    _archCeilMat.onBeforeCompile = () => {};
+    installSurfaceDetail(_archCeilMat);
     _archCeilBase = base;
   }
   return _archCeilMat;

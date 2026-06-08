@@ -114,7 +114,7 @@ export function installSurfaceDetail(material: THREE.Material): void {
     // RELIEF — smooth groove valley, low strength, faded over a GENTLE near
     // range so it eases in (not a hard pop) and the normal derivative never
     // buzzes (smooth h + small footprint).
-    float reliefFade = (1.0 - smoothstep(0.02, 0.085, fp)) * graze;
+    float reliefFade = (1.0 - smoothstep(0.03, 0.16, fp)) * graze;
     if (reliefFade > 0.001) {
       float groove = (1.0 - smoothstep(0.0, MORTAR_M * 3.0, dseam)) + crack * 0.6;
       vec3 sp = -vViewPosition;
@@ -137,6 +137,14 @@ export function installSurfaceDetail(material: THREE.Material): void {
     // as you walked up. Only a very-far safety fade settles the extreme distance.
     float vis = 1.0 - smoothstep(0.5, 1.1, fp);
     diffuseColor.rgb *= mix(1.0, shade, vis);
+
+    // Per-surface tint so floor / walls / ceiling read as DISTINCT stone, not one
+    // continuous material. Floor = warm worn sandstone, ceiling = cold shadowed
+    // stone, walls neutral. Deliberately obvious (hue shift, not a faint nudge).
+    vec3 surfTint = !horiz ? vec3(1.0)
+                  : (vWorldNormal.y > 0.0 ? vec3(1.08, 0.9, 0.64)    // floor: warm
+                                          : vec3(0.7, 0.8, 1.05));   // ceiling: cold
+    diffuseColor.rgb *= surfTint;
 
     // Subtle per-block roughness variation — specular breaks block to block.
     roughnessFactor = clamp(roughnessFactor * mix(0.93, 1.05, bt), 0.04, 1.0);
