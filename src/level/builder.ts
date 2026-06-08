@@ -1212,7 +1212,14 @@ export function buildLevel(
       { perpAxis: 'z' as const, perpCoord: rect.z + hd, wallStart: rect.x - hw, wallEnd: rect.x + hw },
     ];
     for (const w of walls) {
-      const openings = findOpenings(w, spec.rooms, room);
+      // Rect adjacency for openings includes CORRIDORS as well as rooms —
+      // the composer connects vaults via corridors, so a room→corridor
+      // opening is the most common entrance shape. allRects (= rooms +
+      // corridors) is what the wall-shell builder uses for the same reason.
+      // Passing spec.rooms alone here was the bug that made the challenge
+      // arena spawn ZERO portcullises when the composer routed every
+      // entrance through a corridor.
+      const openings = findOpenings(w, allRects, room);
       for (const op of openings) {
         const seg = w.perpAxis === 'x'
           ? { ax: w.perpCoord, az: op.start, bx: w.perpCoord, bz: op.end }
@@ -1332,7 +1339,10 @@ export function buildLevel(
         { perpAxis: 'z' as const, perpCoord: rect.z + hd, wallStart: rect.x - hw, wallEnd: rect.x + hw },
       ];
       for (const w of walls) {
-        const openings = findOpenings(w, spec.rooms, room);
+        // allRects (rooms + corridors) — see the auto-install loop above
+        // for why corridors must be included; the seal logic has the same
+        // requirement (room→corridor openings are the common entrance).
+        const openings = findOpenings(w, allRects, room);
         for (const op of openings) {
           externalSegs.push(
             w.perpAxis === 'x'
