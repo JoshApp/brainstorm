@@ -172,7 +172,12 @@ const dprCap = isDesktopLike() ? CONFIG.PIXEL_RATIO_CAP : CONFIG.PIXEL_RATIO_CAP
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, dprCap));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// PCF (not PCFSoft): the point-light cube shadow is the heaviest fragment shader
+// we run, and PCFSoft adds a wide multi-tap softening loop on top. On mobile that
+// complex variant is the most likely to hit a slow driver path under load (the
+// "shadows get worse, a recompile/idle fixes it" symptom). PCF is a simpler,
+// cheaper sample — and at the 256² shadow map the softening was barely visible.
+renderer.shadowMap.type = THREE.PCFShadowMap;
 // The PSX pipeline renders TWICE per frame (scene → low-res target, then a
 // fullscreen blit quad → screen; see style/render-target.ts). Three.js
 // auto-resets renderer.info at the start of every render() call, so by
