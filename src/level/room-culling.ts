@@ -163,6 +163,7 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     for (const node of nodes.values()) {
       for (const o of node.objects) o.visible = true;
     }
+    for (const e of level.enemies) e.group.visible = true;
   }
 
   function tick(camera: THREE.Camera) {
@@ -221,6 +222,20 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       for (const o of node.objects) {
         if (o.visible !== vis) o.visible = vis;
       }
+    }
+
+    // Enemies are occlusion-culled DYNAMICALLY. Unlike shells (assigned once),
+    // a mob walks between rooms, so we resolve its room from its live position
+    // every frame and hide it when that room isn't rendered. This is the big
+    // one: frustum culling alone can't occlusion-cull, so a wall between you and
+    // a packed room still draws every enemy behind it — full geometry AND a
+    // shadow-cube redraw each — for nothing (you see only the wall). The mob's
+    // AI keeps ticking; only its rendering is culled. An enemy that doesn't
+    // resolve to a rect (straddling a doorway) stays visible, erring to render.
+    for (const e of level.enemies) {
+      const node = rectAt(nodes, e.group.position.x, e.group.position.z);
+      const vis = !node || visible.has(node.id);
+      if (e.group.visible !== vis) e.group.visible = vis;
     }
   }
 
