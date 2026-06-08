@@ -418,9 +418,15 @@ export function createCombatSystem(
     // through when no enemies are in the cone (a vase shouldn't soak
     // a swing meant for the mob behind it).
     const enemyHits = pickTargets(getEnemies(), camera, forwardDir, forwardLenXZ, reach, cosConeHalf, maxTargets, losCheck);
+    // Destructibles (vases/crates) use a MORE GENEROUS cone + reach than enemies:
+    // smashing pots should feel easy and forgiving, and a near-miss that would
+    // otherwise clank off the wall behind a pot should just break the pot. Only
+    // runs when no enemy was in the cone (a vase never steals a mob's swing).
+    const destrReach = reach * 1.3;
+    const destrCone = Math.max(-1, cosConeHalf - 0.22);   // widen the half-angle
     const targets = enemyHits.length > 0
       ? enemyHits
-      : pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, reach, cosConeHalf, maxTargets, losCheck);
+      : pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, destrReach, destrCone, maxTargets, losCheck);
     if (targets.length === 0) {
       // No enemy / vase in cone — check if we whiffed INTO A WALL. The
       // dungeon acknowledges it: a short metallic tink, a brief haptic,

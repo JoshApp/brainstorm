@@ -134,8 +134,8 @@ void dressed(vec2 p, float aa, out float shade, out float height){
   height=mix(1.0,0.65,joint);         // shallow, clean joint
 }
 
-// Periodic value noise (period P) — tileable fine grain.
-float vnoiseP(vec2 x, float P){
+// Periodic value noise (vec2 period) — tileable, supports anisotropic frequency.
+float vnoiseP(vec2 x, vec2 P){
   vec2 i=floor(x), f=fract(x); f=f*f*(3.0-2.0*f);
   float a=dHash(vec3(mod(i,P),0.7));
   float b=dHash(vec3(mod(i+vec2(1.,0.),P),0.7));
@@ -143,13 +143,14 @@ float vnoiseP(vec2 x, float P){
   float d=dHash(vec3(mod(i+vec2(1.,1.),P),0.7));
   return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
 }
-// STONE GRAIN — low-contrast, structureless micro-variation. For columns: lets
-// them catch torchlight instead of reading as plastic, with NO joints/blocks
-// (which would smear around a round shaft under world-projection anyway).
+// STONE GRAIN — VERTICAL streaks: high frequency AROUND the shaft (U), low along
+// it (V). A planar projection on a vertical column then shows vertical grain,
+// never horizontal banding. Lets columns catch torchlight without joints/blocks.
 void grain(vec2 uv, out float shade, out float height){
-  float n = vnoiseP(uv*8.0,8.0)*0.65 + vnoiseP(uv*16.0,16.0)*0.35;
-  shade = mix(0.9,1.06,n);
-  height = mix(0.46,0.54,n);          // near-flat
+  vec2 P1=vec2(16.,2.), P2=vec2(32.,4.);
+  float n = vnoiseP(uv*P1,P1)*0.7 + vnoiseP(uv*P2,P2)*0.3;
+  shade = mix(0.92,1.05,n);
+  height = mix(0.48,0.52,n);          // near-flat
 }
 
 void main(){

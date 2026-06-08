@@ -79,7 +79,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
   return {
     id,
     materials: {
-      stone: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'dressed' },
+      stone: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'dressed' },
       // Lintel + keystone use this — identical to stone at rest (emissive 0),
       // but the threshold system raises its warm emissive as the player nears,
       // so the gate's crown glows to mark "a way through." Modulated by id
@@ -90,7 +90,7 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       // reading as "glowing" too aggressively when the player came close.
       // The proximity system still drives the intensity up, but the peak
       // now sits in a more subtle range.
-      glow: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xc05a18, emissiveIntensity: 0, detail: 'dressed' },
+      glow: { color: 0x262a30, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xc05a18, emissiveIntensity: 0, detail: 'dressed' },
     },
     parts: [
       // Whole frame glows on approach (the 'glow' material) — columns,

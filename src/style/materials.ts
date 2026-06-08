@@ -126,7 +126,7 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
   registerSurfaceDetail('dressed', dressedCfg);
   registerSurfaceDetail('grain', {
     tex: bakeSurfaceTexture(renderer, 'grain'),
-    tile: SURFACE_TILE.grain, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.08,
+    tile: SURFACE_TILE.grain, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.05,
   });
   installNamedSurfaceDetail(propStone, 'grain');   // columns: faint grain only
 

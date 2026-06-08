@@ -67,7 +67,10 @@ let moteTex: THREE.Texture | null = null;
 // Combined with the emissive colour shift on the 'glow' material
 // (0xff8c3a → 0xc05a18 in content/archway.ts), the peak proximity
 // glow now sits at a much more restrained register.
-const GLOW_MAX_EMISSIVE = 0.13;
+const GLOW_MAX_EMISSIVE = 0.16;
+// As the player nears, the frame stone also POLISHES — roughness drops so the
+// proximity glow + torchlight catch a faint sheen (more reflective up close).
+const GLOW_MIN_ROUGHNESS = 0.6;
 interface FrameGlow { mat: THREE.MeshStandardMaterial; x: number; z: number; }
 const frameGlows: FrameGlow[] = [];
 
@@ -208,7 +211,9 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
   for (const f of frameGlows) {
     const dist = Math.hypot(f.x - playerPos.x, f.z - playerPos.z);
     // Only kicks in up close — fades in from ~2.5m, full by ~1m.
-    f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
+    const prox = smoothstep(2.5, 1.0, dist);
+    f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * prox;
+    f.mat.roughness = 1.0 - (1.0 - GLOW_MIN_ROUGHNESS) * prox;   // polish up close
   }
   for (const d of drafts) {
     d.t += dt;
