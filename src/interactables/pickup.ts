@@ -152,6 +152,9 @@ export function createPickup(
   // since every ground item's draws are live CPU cost (the thing that heats the
   // chip into a throttle). Flames/sprites are preserved by the merge.
   mergeRigidSegments(built);
+  // A small trinket on the floor doesn't need to cast into the lamp's cube
+  // shadow (6 face re-renders) — its glow + the disc carry it. Still receives.
+  built.group.traverse((o) => { (o as THREE.Mesh).castShadow = false; });
   pickupGroup.add(built.group);
 
   // Fountain state. itemX/Y/Z are LOCAL to pickupGroup (which sits at
