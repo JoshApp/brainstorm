@@ -9,7 +9,7 @@ import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
 import { vaultsForTag, VAULTS } from './vault-library';
 import { parseTileMap } from './tilemap';
-import { populateTemplate } from './procgen';
+import { populateTemplate, type FeatureCell } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { applyGeometryWarp, applySurfaceClutter } from './clutter';
 import { resolveAllFacings } from './facing';
@@ -231,7 +231,7 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   // while a `vault-combat-hall` preview shows an X-rolled mob
   // instead of a stray-B boss.
   const allowBoss = vault.tags.includes('boss');
-  const { map: populated, spawns: cellSpawns } = populateTemplate(
+  const { map: populated, spawns: cellSpawns, features: cellFeatures } = populateTemplate(
     vault.map, depth, rand, encounterFor(vault), resolvedPalette, allowBoss,
   );
   const ceil = ceilingFor(vault, depth, 1);
@@ -290,6 +290,8 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
     torches: previewTorches,
     props,
   });
+  // $ / ? slot rolls (chest / fountain / altar) — vault-local in preview.
+  routeFeatures(cellFeatures, vault.map[0]?.length ?? 0, vault.map.length, 0, 0, depth, rand, props);
 
   // Cascade + pass pipeline mirroring composeFloor. resolvedPalette
   // is declared above (passed into populateTemplate for encounter/
@@ -518,7 +520,7 @@ export function composeFloor(
     // fall through to a rolled-enemy spawn — guards against a
     // duplicate boss in a pre-arena room.
     const allowBoss = opts.isBossFloor === true && pv.vault.tags.includes('boss');
-    const { map: populated, spawns: cellSpawns } = populateTemplate(
+    const { map: populated, spawns: cellSpawns, features: cellFeatures } = populateTemplate(
       pv.vault.map, depth, rand, encounterFor(pv.vault), resolvedPalette, allowBoss,
     );
     const ceil = ceilingFor(pv.vault, depth, i);
@@ -576,6 +578,12 @@ export function composeFloor(
         });
       }
     }
+    // $ / ? slot rolls (chest / fountain / altar) → world-coord props
+    // through the same applyProcgenDefaults path as authored cellProps.
+    routeFeatures(
+      cellFeatures, pv.vault.map[0]?.length ?? 0, pv.vault.map.length,
+      pv.offsetX, pv.offsetZ, depth, rand, props,
+    );
 
     // Boss-mist fog wall (boss floors only). The boss vault declares
     // its threshold via vault.bossMist; we tint with the act's boss
@@ -1230,6 +1238,31 @@ function applyCellProps(
         out.props.push(propSpec);
       }
     }
+  }
+}
+
+/**
+ * Route procgen $/? FEATURE rolls (chest / fountain / altar from
+ * populateTemplate) into world-coord props. Same cell→world math and
+ * applyProcgenDefaults pass as authored cellProps — so a rolled chest
+ * gets its depth-tier + loot — just sourced from the slot roll instead
+ * of the vault dict. Keeps decor OUT of the populated map string (a raw
+ * decor char there has no parser case and stands up a wall cross).
+ */
+function routeFeatures(
+  features: FeatureCell[],
+  W: number,
+  D: number,
+  offsetX: number,
+  offsetZ: number,
+  depth: number,
+  rand: () => number,
+  props: PropSpec[],
+): void {
+  for (const f of features) {
+    const x = f.col + 0.5 - W / 2 + offsetX;
+    const z = f.row + 0.5 - D / 2 + offsetZ;
+    props.push(applyProcgenDefaults({ ...f.prop, x, z } as PropSpec, depth, rand));
   }
 }
 

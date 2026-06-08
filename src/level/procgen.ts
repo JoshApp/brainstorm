@@ -16,7 +16,7 @@
 // The loader checks the LEVELS registry first; if the id isn't found,
 // it calls generateFloor with the depth implied by the id ('depth-3').
 
-import type { LevelSpec, EnemySpawnSpec, TileMap } from './types';
+import type { LevelSpec, EnemySpawnSpec, TileMap, PropSpec } from './types';
 import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
 import { ENEMIES } from '../content/enemies';
@@ -234,6 +234,19 @@ export interface SpawnCell {
   dormant?: boolean;
 }
 
+/** A procgen-rolled FEATURE (chest / fountain / altar) from a $ or ?
+ *  slot, recorded as cell coords + a bare PropSpec. Routed through the
+ *  SAME cellProps → applyProcgenDefaults path as authored props (so a
+ *  rolled chest gets its tier/loot), NOT injected as a map char — a raw
+ *  decor char in the populated map has no parser case anymore and the
+ *  boundary scanner reads it as a wall, standing up an X of wall faces
+ *  in the middle of the room. */
+export interface FeatureCell {
+  col: number;
+  row: number;
+  prop: PropSpec;
+}
+
 export interface PopulatedTemplate {
   map: TileMap;
   /** Every X-rolled enemy + B-expanded boss from the template,
@@ -241,6 +254,8 @@ export interface PopulatedTemplate {
    *  translates these into world-coord spawn entries. Bypasses the
    *  ASCII tile-char dictionary entirely — no 26-letter ceiling. */
   spawns: SpawnCell[];
+  /** $ / ? slot rolls that landed a chest / fountain / altar. */
+  features: FeatureCell[];
 }
 
 export function populateTemplate(
@@ -270,6 +285,7 @@ export function populateTemplate(
     if (n > 0) packIds = rollPack(encounter, depth, n, rand);
   }
   const spawns: SpawnCell[] = [];
+  const features: FeatureCell[] = [];
   // Walk the grid left-to-right, top-to-bottom. X cells roll an
   // enemy id (from the pack if the vault declared an encounter,
   // otherwise from the depth table); B cells resolve to the act's
@@ -309,23 +325,35 @@ export function populateTemplate(
         out += '.';
       } else if (ch === '$') {
         // Loot slot — PARTIAL fill: a chest sometimes appears here, the
-        // chance rising slightly with depth. Reuses 'c' so the existing
-        // chest/loot pipeline handles it; '.' = empty this run. Event pass
-        // gates this BEFORE the inner roll when eventMul < 1.0; same
-        // rng-skip rule as encounter so 1.0 reproduces exactly.
+        // chance rising slightly with depth. The cell ALWAYS becomes '.'
+        // in the map (a chest is a floor cell with a prop on it, carrying
+        // its own collision); a hit pushes a `chest` FEATURE routed through
+        // the cellProps/applyProcgenDefaults path. Event pass gates this
+        // BEFORE the inner roll when eventMul < 1.0; same rng-skip rule as
+        // encounter so 1.0 reproduces exactly.
+        out += '.';
         if (eventMul < 1.0 && rand() >= eventMul) {
-          out += '.';
-        } else {
-          out += rand() < Math.min(0.8, 0.5 + depth * 0.02) ? 'c' : '.';
+          // gated out — empty
+        } else if (rand() < Math.min(0.8, 0.5 + depth * 0.02)) {
+          features.push({ col: colIdx, row: rowIdx, prop: { kind: 'chest', x: 0, z: 0 } });
         }
       } else if (ch === '?') {
         // Event slot — rolls a feature (trap / fountain / altar) or nothing.
-        // Same gating treatment as $.
+        // Same gating treatment as $. Trap stays an in-map '^' (the parser
+        // still emits the spike-trap); fountain/altar route as features.
         if (eventMul < 1.0 && rand() >= eventMul) {
           out += '.';
         } else {
           const r = rand();
-          out += r < 0.33 ? '.' : r < 0.77 ? '^' : r < 0.89 ? 'F' : 'A';
+          if (r < 0.33) {
+            out += '.';
+          } else if (r < 0.77) {
+            out += '^';
+          } else {
+            out += '.';
+            const kind = r < 0.89 ? 'fountain' : 'altar';
+            features.push({ col: colIdx, row: rowIdx, prop: { kind, x: 0, z: 0 } });
+          }
         }
       } else {
         out += ch;
@@ -333,7 +361,7 @@ export function populateTemplate(
     }
     return out;
   });
-  return { map, spawns };
+  return { map, spawns, features };
 }
 
 // ── Public API ───────────────────────────────────────────────────────

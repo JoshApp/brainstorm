@@ -21,12 +21,15 @@
 //   /   stairs DOWN cell (walkable; one allowed)
 //   o   door cell (walkable when open; defaults closed)
 //   O   door SEALED until room cleared (walkable when open)
-//   P   pillar (obstacle)
-//   A   altar (obstacle + visual)
-//   c   chest (obstacle + visual + loot — random loot for procgen)
-//   C   corpse (walkable, walk-up to read; note picked from a pool)
-//   F   fountain (walkable, walk-up to drink)
 //   ^   spike trap (walkable, hazard)
+//   --- DECOR IS NOT A RAW TILE ANYMORE ---
+//   pillar / altar / chest / corpse / fountain are placed via the
+//   vault's cellProps ({ kind: 'chest' } at "col,row"), NOT a map char.
+//   The parser has NO case for A/c/C/F/P: a stray decor char falls
+//   through to the boundary scanner as a non-floor cell and stands up
+//   an X of wall faces in the middle of the room. Procgen $/? slots emit
+//   their rolled chest/fountain/altar as FEATURE cells (see procgen.ts),
+//   routed through the same cellProps path — never back into the map.
 //   *   LIGHT — wall torch on the nearest wall (auto-detected).
 //        Sub-cell precision + per-torch tint / intensity / fixture
 //        kind goes via the vault's torches?: TorchSpec[] array.
