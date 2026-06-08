@@ -19,6 +19,8 @@ export interface StyleMaterials {
   stone: THREE.Material;
   /** Dressed/ashlar stone for FRAMING — archways, doorframes, lintels. */
   dressed: THREE.Material;
+  /** Wall brick, no vertex colours, double-sided — for chasm/crack drop walls. */
+  chasmWall: THREE.Material;
 }
 
 export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
@@ -95,6 +97,19 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
     emissiveIntensity: emissiveBoost,
   });
 
+  // Chasm/crack drop walls — the vertical sides of floor voids. Wall BRICK
+  // (their walls are vertical, so they texture correctly) but NO vertex colours
+  // (the drop geometry carries none — vertexColors:true would render it black)
+  // and double-sided so the inner faces show. Shares the wall texture (below).
+  const chasmWall = new THREE.MeshStandardMaterial({
+    color: CONFIG.WALL_COLOR,
+    roughness: 0.95,
+    metalness: 0.0,
+    emissive: wallEmissive,
+    emissiveIntensity: emissiveBoost,
+    side: THREE.DoubleSide,
+  });
+
   // Live-controllable baked surface AO (wall/floor vertex colours).
   installSurfaceAO(wallBase);
   installSurfaceAO(floorBase);
@@ -103,8 +118,13 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
   // CEILING = coffered panels (its own language). Warm tint on the floor, cold
   // on the ceiling, neutral walls. Mipmaps + anisotropy keep it stable under
   // the 0.4x render scale (no crawl/flicker).
+  const wallTex = bakeSurfaceTexture(renderer, 'wall');
   installSurfaceDetail(wallBase, {
-    tex: bakeSurfaceTexture(renderer, 'wall'),
+    tex: wallTex,
+    tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.25,
+  });
+  installSurfaceDetail(chasmWall, {
+    tex: wallTex,
     tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.25,
   });
   installSurfaceDetail(floorBase, {
@@ -137,5 +157,6 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
     timber: timberBase,
     stone: propStone,
     dressed: dressedBase,
+    chasmWall,
   };
 }

@@ -942,12 +942,16 @@ export function buildLevel(
     }
   }
 
-  // Chasm drop geometry — one merged abyss mesh for all voids on the floor.
-  // (The floor holes + edge barriers were added per-room above.)
+  // Chasm drop geometry — one merged mesh for the vertical walls of every floor
+  // void/crack. Uses the WALL material: its walls are VERTICAL, so the wall
+  // material's projection textures them with brick correctly. (The ceiling
+  // material projects horizontally and smeared the texture straight down the
+  // drop — the carvings read as untextured.) materials.wall is double-sided, so
+  // the inner faces render without a clone.
   if (spec.voids && spec.voids.length > 0) {
     const dropGeo = makeChasmDropGeometry(spec.voids, 6);
     if (dropGeo) {
-      const chasm = new THREE.Mesh(dropGeo, archCeilingMaterial(materials.ceiling));
+      const chasm = new THREE.Mesh(dropGeo, materials.chasmWall);
       chasm.receiveShadow = true;
       chasm.name = 'chasm-drop';
       chasm.userData.dbgKind = 'wall';
