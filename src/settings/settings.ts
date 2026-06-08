@@ -157,7 +157,7 @@ const DEFAULTS: Settings = {
   portalCulling: false,
   bandedLighting: true,
   outlines: false,
-  aoStrength: 1.0,
+  aoStrength: 1.6,
   hudStyle: 'minimal',
 };
 

@@ -196,7 +196,6 @@ function buildRoomShell(
   // wall draw calls). Per-room (not per-floor) so each room's wall set still
   // frustum-culls as a unit. Collision is recorded per segment as before.
   const wallGeos: THREE.BufferGeometry[] = [];
-  const segStart = wallSegmentsOut.length;   // this room's segments for floor contact-AO
   for (const we of wallEdges) {
     const openings = findOpenings(we, allRects, room);
     const segments = subtractRanges(we.wallStart, we.wallEnd, openings);
@@ -227,13 +226,10 @@ function buildRoomShell(
       scene.add(walls);
     }
   }
-
-  // Floor wall-contact AO — darken the floor near this room's SOLID walls (the
-  // segments just collected), seamless across open passages. Skipped for
-  // stairwell floors (holes path = ShapeGeometry, no per-vertex colour).
-  if (floorHoles.length === 0) {
-    bakeFloorContactAO(floorGeo, { x: rect.x, z: rect.z }, wallSegmentsOut.slice(segStart));
-  }
+  // NOTE: floor wall-contact AO is baked in a POST-pass (bakeFloorWallContacts),
+  // not here — it needs EVERY room's wall segments so the darkening is continuous
+  // across a room↔corridor junction (a floor vertex at a passage mouth must see
+  // the neighbour's walls too, or the two plates seam).
 
   // Mine-shaft timber bracing (one merged mesh — see makeBracedFramesGeometry).
   if (room.wallVariant === 'braced') {
@@ -305,6 +301,30 @@ function bakePropContactShadows(root: THREE.Object3D, props: PropSpec[]): void {
     );
     if (local.length > 0) {
       bakeFloorPropContactAO(mesh.geometry as THREE.BufferGeometry, { x: rect.x, z: rect.z }, local);
+    }
+  });
+}
+
+// Floor wall-contact AO — darken each floor near walls, using EVERY room's solid
+// wall segments (filtered to those reaching the floor's rect) rather than just
+// its own. Continuous across room↔corridor junctions: a floor vertex at a
+// passage mouth sees the neighbour's walls too, so the two plates ramp together
+// instead of seaming. Run as a post-pass once all rooms' segments exist.
+function bakeFloorWallContacts(root: THREE.Object3D, segs: WallSegment[]): void {
+  const R = 0.9;   // reach: a touch beyond bakeFloorContactAO's radius
+  root.traverse((o) => {
+    const rect = o.userData?.aoRect as { x: number; z: number; w: number; d: number } | undefined;
+    const mesh = o as THREE.Mesh;
+    if (!rect || !mesh.isMesh) return;
+    const exMinX = rect.x - rect.w / 2 - R, exMaxX = rect.x + rect.w / 2 + R;
+    const exMinZ = rect.z - rect.d / 2 - R, exMaxZ = rect.z + rect.d / 2 + R;
+    const local = segs.filter((s) => {
+      const sMinX = Math.min(s.ax, s.bx), sMaxX = Math.max(s.ax, s.bx);
+      const sMinZ = Math.min(s.az, s.bz), sMaxZ = Math.max(s.az, s.bz);
+      return sMinX <= exMaxX && sMaxX >= exMinX && sMinZ <= exMaxZ && sMaxZ >= exMinZ;
+    });
+    if (local.length > 0) {
+      bakeFloorContactAO(mesh.geometry as THREE.BufferGeometry, { x: rect.x, z: rect.z }, local);
     }
   });
 }
@@ -906,11 +926,6 @@ export function buildLevel(
     }
   }
 
-  // Ground free-standing props: bake a contact shadow into the floor beneath
-  // each prop's footprint (before the pillar merge — operates on floor meshes,
-  // which aren't merged).
-  bakePropContactShadows(root, spec.props);
-
   // Merge every pillar's baked parts into a SINGLE mesh — one draw call for
   // all pillars on the floor (they were ~8 meshes each). Non-pooled, so the
   // teardown traversal disposes it. mergeGeometries(…, false) → one material
@@ -982,6 +997,12 @@ export function buildLevel(
       }
     }
   }
+
+  // Floor grounding (post-passes — every wall segment now exists and props are
+  // placed): wall-contact AO baked from ALL nearby walls so it's continuous
+  // across room↔corridor junctions (no seam), then prop contact shadows.
+  bakeFloorWallContacts(root, wallSegments);
+  bakePropContactShadows(root, spec.props);
 
   // --- Torches / wall cressets ---
   // Each TorchSpec carries a fixtureKind set at emission time by
