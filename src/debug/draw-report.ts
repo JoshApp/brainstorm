@@ -28,7 +28,17 @@ export function initDrawReport(s: THREE.Scene, r: THREE.WebGLRenderer, gl: () =>
   getLevel = gl;
 }
 
-type Cat = 'enemy' | 'destructible' | 'viewmodel' | 'fixture' | 'shell' | 'prop' | 'decor';
+type Cat = 'enemy' | 'destructible' | 'viewmodel' | 'fixture' | 'shell' | 'prop' | 'decor'
+  // Drawables the old walk missed or mislabeled:
+  //   sprite   — THREE.Sprite (motes, wisps, coin/blood/puff halos, projectile
+  //              trails). Each is a draw AND additive overdraw; the mesh-only
+  //              walk counted ZERO of them.
+  //   particle — THREE.Points clouds.
+  //   fx       — pooled/transient effect MESHES (coin disc, shatter shard, blood
+  //              drop, blade-trail, telegraph ring, projectile). Dynamic — they
+  //              are NOT mergeable static decor, which is how the old walk scored
+  //              them. Tagged at the source via userData.dbgKind === 'fx'.
+  | 'sprite' | 'particle' | 'fx';
 
 interface Group { count: number; tris: number; label: string; cats: Set<Cat> }
 
@@ -62,10 +72,11 @@ function matKey(m: THREE.Material): string {
   return m.name || `${m.type}·${c}${e}${r}${mm}`;
 }
 
-function looseCat(m: THREE.Mesh): Cat {
+function looseCat(m: THREE.Object3D): Cat {
   const k = m.userData?.dbgKind as string | undefined;
   if (k === 'wall' || k === 'floor' || k === 'ceiling' || k === 'fixtures') return 'shell';
   if (k === 'prop') return 'prop';
+  if (k === 'fx') return 'fx';
   return 'decor';
 }
 
@@ -86,9 +97,13 @@ export async function captureDrawReport(): Promise<void> {
   // Ownership map: tag every mesh under an enemy / torch / destructible group so
   // the walk can attribute it. Everything else is loose level geometry.
   const owner = new Map<THREE.Object3D, Cat>();
+  const isDrawable = (c: THREE.Object3D): boolean => {
+    const a = c as unknown as { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean };
+    return a.isMesh === true || a.isSprite === true || a.isPoints === true;
+  };
   const tag = (root: THREE.Object3D | undefined, cat: Cat) => {
     if (!root) return;
-    root.traverse((c) => { if ((c as THREE.Mesh).isMesh) owner.set(c, cat); });
+    root.traverse((c) => { if (isDrawable(c)) owner.set(c, cat); });
   };
   const level = getLevel?.();
   if (level) {
@@ -102,38 +117,60 @@ export async function captureDrawReport(): Promise<void> {
   const byMat = new Map<string, Group>();
   const byPairStatic = new Map<string, Group>();    // mergeable now
   const byPairDynamic = new Map<string, Group>();    // need instancing + pooling
-  const bySource: Record<Cat, number> = { enemy: 0, destructible: 0, viewmodel: 0, fixture: 0, shell: 0, prop: 0, decor: 0 };
+  const bySource: Record<Cat, number> = {
+    enemy: 0, destructible: 0, viewmodel: 0, fixture: 0, shell: 0, prop: 0, decor: 0,
+    sprite: 0, particle: 0, fx: 0,
+  };
 
-  let meshes = 0, instanced = 0, sceneTris = 0;
+  let meshes = 0, sprites = 0, points = 0, instanced = 0, sceneTris = 0;
   let mergedDraws = 0, mergeableNow = 0, dynamicDraws = 0;
-  let shadowCasters = 0, transparentMeshes = 0;
+  let shadowCasters = 0, transparentMeshes = 0, spriteOverdraw = 0;
 
   const walk = (o: THREE.Object3D): void => {
     if (!o.visible) return;   // respect room-culling / hidden subtrees
+    const a = o as unknown as { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean; isInstancedMesh?: boolean };
+    const isSprite = a.isSprite === true;
+    const isPoints = a.isPoints === true;
     const m = o as THREE.Mesh;
-    if (m.isMesh && m.geometry) {
-      meshes++;
-      const cat: Cat = owner.get(m) ?? looseCat(m);
-      bySource[cat]++;
-      const inst = (m as unknown as { isInstancedMesh?: boolean }).isInstancedMesh === true;
-      if (inst) instanced++;
-      if (m.castShadow) shadowCasters++;
-      const g = m.geometry;
-      const tris = triCount(g);
-      sceneTris += tris;
+    // A drawable is a Mesh, a Sprite, or a Points cloud — each is ONE GL draw.
+    // The old walk only saw Mesh, so every sprite (motes/wisps/halos/trails)
+    // and every Points cloud was missing from the accounting entirely.
+    if ((m.isMesh && m.geometry) || isSprite || (isPoints && m.geometry)) {
+      const inst = a.isInstancedMesh === true;
       const mats = Array.isArray(m.material) ? m.material : [m.material];
-      if (mats.some(isTransparent)) transparentMeshes++;
+      // Sprites are always camera-facing transparent quads → guaranteed overdraw.
+      const transparent = isSprite || mats.some((mm) => mm && isTransparent(mm));
 
-      const merged = isMerged(m, cat);
-      // Animated → can't simple-merge: enemies, shards, the held viewmodel, and
-      // torch flames (which flicker/scale per frame).
-      const dynamic = cat === 'enemy' || cat === 'destructible' || cat === 'viewmodel' || m.name === 'flame';
+      let cat: Cat = owner.get(o)
+        ?? (isSprite ? 'sprite' : isPoints ? 'particle' : looseCat(m));
+      // A LOOSE transparent/additive mesh (not owned, not tagged shell/prop) is
+      // an effect — blade-trail, telegraph ring, lash tendril, projectile,
+      // shatter shard, god-ray plane — NOT static decor we could merge. The old
+      // walk scored every one of these as a mergeable static-decor win.
+      if (cat === 'decor' && transparent) cat = 'fx';
+      bySource[cat]++;
+      if (inst) instanced++;
+      if ((o as THREE.Mesh).castShadow) shadowCasters++;
+      if (transparent) transparentMeshes++;
+      if (isSprite) spriteOverdraw++;
+
+      const tris = (m.isMesh || isPoints) && m.geometry ? triCount(m.geometry) : 0;
+      sceneTris += tris;
+      if (isSprite) sprites++; else if (isPoints) points++; else meshes++;
+
+      const merged = !isSprite && !isPoints && isMerged(m, cat);
+      // Animated / pooled → can't simple-merge: enemies, shards, the held
+      // viewmodel, torch flames, and now EVERY sprite / particle / fx mesh.
+      const dynamic = cat === 'enemy' || cat === 'destructible' || cat === 'viewmodel'
+        || cat === 'sprite' || cat === 'particle' || cat === 'fx' || m.name === 'flame';
       if (merged) mergedDraws++;
       else if (dynamic) dynamicDraws++;
       else mergeableNow++;
 
-      const gk = geomKey(m, g);
-      const mk = mats.map(matKey).join('+');
+      const gk = isSprite ? 'Sprite·quad'
+        : isPoints ? `Points·${(m.geometry.attributes?.position?.count ?? 0)}p`
+        : geomKey(m, m.geometry);
+      const mk = mats.map((mm) => (mm ? matKey(mm) : '∅')).join('+');
       bump(byGeom, gk, gk, tris, cat);
       bump(byMat, mk, mk, tris, cat);
       if (!inst && !merged) {
@@ -162,11 +199,17 @@ export async function captureDrawReport(): Promise<void> {
   L.push(`DELVE DRAW-CALL REPORT`);
   L.push(`depth ${getCurrentDepth()} · ${new Date().toISOString()}`);
   L.push('');
+  const drawables = meshes + sprites + points;
+  // The renderer total spans the SCENE pass (every visible drawable), the SHADOW
+  // pass (each caster redrawn into the lamp's cube map), and the post passes
+  // (bloom downsample/blur/upsample + blit). Reconcile so the shadow + post
+  // share is explicit instead of hidden in the gap.
+  const accounted = drawables + shadowCasters;
   L.push(`renderer: ${draws} draws · ${(rtris / 1000).toFixed(0)}k tris · ${programs} shader programs`);
-  L.push(`  (renderer total spans scene + shadow + bloom + blit passes)`);
-  L.push(`scene: ${meshes} visible meshes · ${(sceneTris / 1000) | 0}k tris · ${instanced} instanced`);
-  L.push(`  shadow casters: ${shadowCasters} (redrawn in the shadow pass when in the light's frustum)`);
-  L.push(`  transparent/additive: ${transparentMeshes} (overdraw — GPU fill cost)`);
+  L.push(`  scene drawables ${drawables} + shadow casters ${shadowCasters} ≈ ${accounted}; remaining ${Math.max(0, draws - accounted)} = bloom/blit post`);
+  L.push(`scene: ${meshes} meshes · ${sprites} sprites · ${points} points · ${(sceneTris / 1000) | 0}k tris · ${instanced} instanced`);
+  L.push(`  shadow casters: ${shadowCasters} (redrawn in the shadow pass — CPU draws + cube-map fill)`);
+  L.push(`  transparent/additive: ${transparentMeshes} (overdraw — GPU fill), of which ${spriteOverdraw} are sprites (full camera-facing quads)`);
   L.push('');
   L.push(`WHERE THE DRAWS GO (visible meshes by owner)`);
   for (const [cat, n] of (Object.entries(bySource) as [Cat, number][]).sort((a, b) => b[1] - a[1])) {
