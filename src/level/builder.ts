@@ -1214,68 +1214,65 @@ export function buildLevel(
   // the first user of the Encounter layer (see encounters/registry.ts); ticks
   // run globally via tickEncounters in the system loop.
   const seenArenaRooms = new Set<string>();
+  function registerArenaForRoom(roomId: string): void {
+    if (seenArenaRooms.has(roomId)) return;
+    seenArenaRooms.add(roomId);
+    const room = spec.rooms.find((r) => r.id === roomId);
+    if (!room) return;
+    // Escalating gauntlet; per-mob difficulty is depth-scaled inside
+    // spawnInto. Ends on ranged pressure so the last wave isn't a pushover.
+    const waves: WaveSpec[] = [
+      { spawns: [{ enemyId: 'ghoul', count: 2 }] },
+      { spawns: [{ enemyId: 'ghoul', count: 2 }, { enemyId: 'skeleton', count: 1 }] },
+      { spawns: [{ enemyId: 'skeleton', count: 2 }, { enemyId: 'acid-spitter', count: 1 }] },
+    ];
+    let handle: EncounterHandle;
+    const controller = createArenaController({
+      roomId,
+      scene: root,
+      rect: room.rect,
+      waves,
+      tint: 0xc01818,
+      walkable,
+      spawn: (enemyId, pos) => {
+        const base = ENEMIES[enemyId];
+        return base ? spawnInto(base, pos, roomId) : null;
+      },
+      onComplete: () => handle.complete(),
+    });
+    handle = registerEncounter(arenaEncounterId(roomId), {
+      onActivate: () => controller.start(),
+      tick: (dt, pos) => controller.tick(dt, pos),
+    });
+  }
+  // Door-based arenas — the trap variant: a 'D' gate slams on cross.
   for (const d of spec.doors ?? []) {
     if (d.unlock?.kind !== 'arena') continue;
-    for (const roomId of d.unlock.roomIds) {
-      if (seenArenaRooms.has(roomId)) continue;
-      seenArenaRooms.add(roomId);
-      const room = spec.rooms.find((r) => r.id === roomId);
-      if (!room) continue;
-      // Escalating gauntlet; per-mob difficulty is depth-scaled inside
-      // spawnInto. Ends on ranged pressure so the last wave isn't a pushover.
-      const waves: WaveSpec[] = [
-        { spawns: [{ enemyId: 'ghoul', count: 2 }] },
-        { spawns: [{ enemyId: 'ghoul', count: 2 }, { enemyId: 'skeleton', count: 1 }] },
-        { spawns: [{ enemyId: 'skeleton', count: 2 }, { enemyId: 'acid-spitter', count: 1 }] },
-      ];
-      let handle: EncounterHandle;
-      const controller = createArenaController({
-        roomId,
-        scene: root,
-        rect: room.rect,
-        waves,
-        tint: 0xc01818,
-        walkable,
-        spawn: (enemyId, pos) => {
-          const base = ENEMIES[enemyId];
-          return base ? spawnInto(base, pos, roomId) : null;
-        },
-        onComplete: () => handle.complete(),
-      });
-      handle = registerEncounter(arenaEncounterId(roomId), {
-        onActivate: () => controller.start(),
-        tick: (dt, pos) => controller.tick(dt, pos),
-      });
-    }
+    for (const roomId of d.unlock.roomIds) registerArenaForRoom(roomId);
   }
+  // Offering-based arenas — the challenge variant: no gate, no alcove. The
+  // altar's onUse activates the encounter, the encounter's activate reactor
+  // walls every external opening of the room (see seal-external-openings
+  // loop below).
+  for (const roomId of offeringRooms) registerArenaForRoom(roomId);
 
-  // ARENA EXTERNAL-OPENING SEAL — while the arena's encounter is ACTIVE, the
-  // whole arena complex (sealed-side sub-room + alcove/trigger-side sub-room)
-  // is sealed off from neighbour vaults. Without this, the composer can cut a
-  // doorway in the alcove's vault edge to a sibling room and the player can
-  // slip around the portcullis, breaking the trial. The complex is detected
-  // by the gate's wall segment touching two rooms (one in unlock.roomIds, one
-  // outside it — the trigger side). External openings on either room's
-  // perimeter to NON-complex neighbours are walled off on encounter:activated
-  // and reopened on encounter:complete.
-  for (const arenaGate of pendingFittings) {
-    if (arenaGate.unlock?.kind !== 'arena') continue;
-    const arenaRoomIds = new Set(arenaGate.unlock.roomIds);
-    const gateSeg = openingEndpoints(arenaGate);
-    // Identify the trigger-side room: any room not yet in the complex whose
-    // perimeter the gate's segment lies on. With sub-rooms being logical
-    // bounding rects, both sides of an arena gate are typically logical
-    // children of the same parent vault rect — that's fine, the perimeter
-    // test still matches.
-    for (const room of spec.rooms) {
-      if (arenaRoomIds.has(room.id)) continue;
-      if (segOnRectPerimeter(gateSeg, room.rect)) {
-        arenaRoomIds.add(room.id);
-      }
-    }
-    // Collect every external opening on the complex's perimeter. findOpenings
-    // skips logicalOnly rooms automatically, so the gate (between two logical
-    // sub-rooms) is never returned — only true external connections.
+  // ARENA EXTERNAL-OPENING SEAL — while the arena's encounter is ACTIVE,
+  // every external opening on the room(s) of the arena is walled off so the
+  // player or an escaped enemy can't slip around the trial. Two flavours:
+  //
+  //   GATE-based (combat arena, the trap):
+  //     complex = sealed-side room + alcove. The gate detects via the
+  //     wall segment between them; external openings to NON-complex rooms
+  //     are walled. Internal openings between sealed/alcove are the gate
+  //     itself (logicalOnly sub-rooms — findOpenings auto-skips them).
+  //
+  //   OFFERING-based (challenge arena, the altar):
+  //     complex = the altar's single room. No alcove, no gate. EVERY
+  //     external opening on the room's perimeter is walled by the
+  //     encounter's activation reactor; restored on completion.
+  //
+  // Both flavours fold through the same wireSeal() helper.
+  function wireSealForArena(encId: string, arenaRoomIds: Set<string>): void {
     const externalSegs: Array<{ ax: number; az: number; bx: number; bz: number }> = [];
     for (const roomId of arenaRoomIds) {
       const room = spec.rooms.find((r) => r.id === roomId);
@@ -1300,8 +1297,7 @@ export function buildLevel(
         }
       }
     }
-    if (externalSegs.length === 0) continue;
-    const encId = arenaEncounterId(arenaGate.unlock.roomIds[0]);
+    if (externalSegs.length === 0) return;
     const sealedSegs: Array<{ ax: number; az: number; bx: number; bz: number }> = [];
     doorTeardowns.push(onEncounterActivated(encId, () => {
       for (const seg of externalSegs) {
@@ -1312,6 +1308,21 @@ export function buildLevel(
     doorTeardowns.push(onEncounterComplete(encId, () => {
       while (sealedSegs.length) walkable.removeWall(sealedSegs.pop()!);
     }));
+  }
+  // Door-based arena complexes — sealed room + alcove (gate-perimeter match).
+  for (const arenaGate of pendingFittings) {
+    if (arenaGate.unlock?.kind !== 'arena') continue;
+    const arenaRoomIds = new Set(arenaGate.unlock.roomIds);
+    const gateSeg = openingEndpoints(arenaGate);
+    for (const room of spec.rooms) {
+      if (arenaRoomIds.has(room.id)) continue;
+      if (segOnRectPerimeter(gateSeg, room.rect)) arenaRoomIds.add(room.id);
+    }
+    wireSealForArena(arenaEncounterId(arenaGate.unlock.roomIds[0]), arenaRoomIds);
+  }
+  // Offering-based arenas — the altar's room is the entire complex.
+  for (const roomId of offeringRooms) {
+    wireSealForArena(arenaEncounterId(roomId), new Set([roomId]));
   }
 
   // Plain room-clear gates ('cleared') become the degenerate encounter:

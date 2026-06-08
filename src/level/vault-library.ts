@@ -597,10 +597,16 @@ const ENCOUNTER_ARENA: Vault = {
 // CHALLENGE arena — the VOLUNTARY twin of the trap. Same shape (entry alcove,
 // 'D' gate, arena below) but the centrepiece is a chained CHALLENGE OFFERING
 // instead of a chest. The gate does NOT slam on entry — placing an offering in
-// the room flips its arena gate to the 'offering' trigger (builder.ts). You
-// walk in, read the bound reliquary, and CHOOSE to accept: the gate slams, the
-// same wave gauntlet summons, and surviving it shatters the chains for a
+// the room. You walk in (no gate, no slam, no alcove), read the altar, and
+// CHOOSE to accept: the room seals at every entrance (the encounter's
+// activate reactor walls every external opening on the room's perimeter —
+// see builder.ts), the wave gauntlet summons, and surviving it yields a
 // generous hoard. Risk you opt into, for loot you can see.
+//
+// (The combat-arena to the north of this file still uses the alcove + 'D'
+// gate layout — it NEEDS the gate to detect the slam-on-entry crossing.
+// The challenge variant doesn't; the offering is the trigger, the encounter
+// is the seal.)
 const CHALLENGE_ARENA: Vault = {
   id: 'challenge-arena',
   tags: ['treasure'],
@@ -608,8 +614,6 @@ const CHALLENGE_ARENA: Vault = {
     '##############',
     '#....*....*..#',
     '#............#',
-    '#............#',
-    '#####DDD######',
     '#............#',
     '#............#',
     '#............#',
@@ -621,9 +625,9 @@ const CHALLENGE_ARENA: Vault = {
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_BLOOD,
-  // The reliquary sits in the centre of the arena proper (below the gate).
+  // Altar sits in the centre of the chamber (vault-local origin).
   props: [
-    { kind: 'challenge-offering', x: 0, z: 2 },
+    { kind: 'challenge-offering', x: 0, z: 0 },
   ],
 };
 

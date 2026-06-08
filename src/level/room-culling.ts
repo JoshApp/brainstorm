@@ -122,10 +122,24 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   //    Shells (floor/ceiling/walls) carry userData.dbgSource = "<kind> · <id> …".
   for (const child of level.root.children) {
     const src = child.userData?.dbgSource;
-    if (typeof src !== 'string') continue;
-    const id = parseRectId(src);
-    const node = id ? nodes.get(id) : undefined;
-    if (node) node.objects.push(child);
+    if (typeof src === 'string') {
+      const id = parseRectId(src);
+      const node = id ? nodes.get(id) : undefined;
+      if (node) {
+        node.objects.push(child);
+        continue;
+      }
+    }
+    // Decoration PROPS tagged with userData.dbgKind = 'prop' (clutter, chests,
+    // braziers, ritual altars, everything authored through the prop pipeline)
+    // don't carry a per-rect dbgSource — they're assigned by world position
+    // to the smallest non-logical containing rect. Without this they stayed
+    // visible inside a culled room (the player would see floor decoration
+    // through a wall the culler had hidden).
+    if (child.userData?.dbgKind === 'prop') {
+      const node = rectAt(nodes, child.position.x, child.position.z);
+      if (node) node.objects.push(child);
+    }
   }
   //    Torches by position (their group is a direct root child not tagged above).
   for (const torch of level.torches) {
