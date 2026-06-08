@@ -60,9 +60,18 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   const los = (ax: number, az: number, bx: number, bz: number) =>
     level.walkable.hasLineOfSight(ax, az, bx, bz);
 
-  // 1) Rect nodes from rooms + corridors.
+  // 1) Rect nodes from rooms + corridors. SKIP logicalOnly sub-rooms — they
+  //    have no baked walls/floor/ceiling and exist only as bounding rects for
+  //    enemy attribution. If we kept them, rectAt() (which prefers the smallest
+  //    containing rect) would return the LOGICAL sub-room as the player's start
+  //    node — but that node has no geometry, and the parent vault rect that DOES
+  //    own the geometry is not its rect-edge neighbour (parent contains sub-
+  //    room rather than sharing an edge), so the parent culls out. Symptom:
+  //    floor + walls disappear when you look at certain angles while standing
+  //    in an arena's alcove/proper. Excluding logical rooms makes rectAt fall
+  //    through to the parent automatically.
   const rects = [
-    ...level.spec.rooms.map((r) => ({ id: r.id, rect: r.rect })),
+    ...level.spec.rooms.filter((r) => !r.logicalOnly).map((r) => ({ id: r.id, rect: r.rect })),
     ...level.spec.corridors.map((c) => ({ id: c.id, rect: c.rect })),
   ];
   for (const { id, rect } of rects) {
@@ -70,6 +79,28 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       id, cx: rect.x, cz: rect.z, hw: rect.w / 2, hd: rect.d / 2,
       objects: [], neighbors: [],
     });
+  }
+
+  // Logical sub-room id → containing parent rect id. Encounters reference
+  // sub-room ids (e.g. arena:<subRoomId>); the culler's force-visible set
+  // operates on real rect ids, so we translate at the event boundary.
+  const subroomToParent = new Map<string, string>();
+  for (const sub of level.spec.rooms) {
+    if (!sub.logicalOnly) continue;
+    let bestParent: { id: string; area: number } | null = null;
+    for (const candidate of level.spec.rooms) {
+      if (candidate.logicalOnly) continue;
+      const cw2 = candidate.rect.w / 2, cd2 = candidate.rect.d / 2;
+      const sw2 = sub.rect.w / 2, sd2 = sub.rect.d / 2;
+      const containsX = candidate.rect.x - cw2 <= sub.rect.x - sw2 + 1e-3
+                     && candidate.rect.x + cw2 >= sub.rect.x + sw2 - 1e-3;
+      const containsZ = candidate.rect.z - cd2 <= sub.rect.z - sd2 + 1e-3
+                     && candidate.rect.z + cd2 >= sub.rect.z + sd2 - 1e-3;
+      if (!containsX || !containsZ) continue;
+      const area = candidate.rect.w * candidate.rect.d;
+      if (!bestParent || area < bestParent.area) bestParent = { id: candidate.id, area };
+    }
+    if (bestParent) subroomToParent.set(sub.id, bestParent.id);
   }
 
   // 2) Adjacency: two rects are connected if a wall edge coincides and overlaps
@@ -211,11 +242,15 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   // room visible through the gate's see-through bars while the encounter
   // runs, without the builder having to plumb a reference to the culler.
   const ARENA_PREFIX = 'arena:';
+  function arenaRectId(eventId: string): string {
+    const subId = eventId.slice(ARENA_PREFIX.length);
+    return subroomToParent.get(subId) ?? subId;
+  }
   const unsubEvents = onEvent((event) => {
     if (event.type === 'encounter:activated' && event.id.startsWith(ARENA_PREFIX)) {
-      culler.addForceVisible([event.id.slice(ARENA_PREFIX.length)]);
+      culler.addForceVisible([arenaRectId(event.id)]);
     } else if (event.type === 'encounter:complete' && event.id.startsWith(ARENA_PREFIX)) {
-      culler.removeForceVisible([event.id.slice(ARENA_PREFIX.length)]);
+      culler.removeForceVisible([arenaRectId(event.id)]);
     }
   });
 

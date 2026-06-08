@@ -1588,3 +1588,58 @@ export function playBroadcastChime() {
     osc.stop(t + 0.34);
   });
 }
+
+// Deep ritual bell — a slow, mournful toll. Real bells have INHARMONIC
+// partials (the overtones aren't integer multiples of the fundamental),
+// so three sines tuned to a strike-bell-style spectrum carry the
+// character: fundamental near C3, "hum" tone a third above (inharmonic),
+// "prime" tone an octave-and-a-bit higher. A tiny strike noise burst
+// stamps the front. Slow exponential decay across ~2s; the bell
+// sustains while the ritual gate seals.
+export function playRitualBell(pos?: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const out: AudioNode = pos ? createPositionalChain(pos, 0.55) : masterGain;
+
+  // Three partials — fundamental + two inharmonic overtones. Bell-like
+  // strikes are characterised by these non-integer ratios, so the toll
+  // reads as "a real bell" instead of an organ chord.
+  const partials: Array<[number, number, number]> = [
+    [130, 0.40, 2.20],   // fundamental — deep, big amplitude, long decay
+    [320, 0.22, 1.50],   // "hum" partial — minor-3rdish above the doubled root
+    [560, 0.14, 1.10],   // "prime" partial — high, dims fastest
+  ];
+  for (const [f, amp, decay] of partials) {
+    const osc = c.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(f, now);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(amp, now + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0006, now + decay);
+    osc.connect(g).connect(out);
+    osc.start(now);
+    osc.stop(now + decay + 0.05);
+  }
+
+  // Strike — a brief lowpassed noise click for the hammer's contact. Stamps
+  // the leading edge so the toll has a felt onset, not just a swell.
+  const strikeDur = 0.05;
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate * strikeDur), c.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  }
+  const strike = c.createBufferSource();
+  strike.buffer = buf;
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 800;
+  lp.Q.value = 0.7;
+  const sg = c.createGain();
+  sg.gain.value = 0.22;
+  strike.connect(lp).connect(sg).connect(out);
+  strike.start(now);
+  strike.stop(now + strikeDur);
+}

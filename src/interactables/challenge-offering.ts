@@ -9,7 +9,7 @@ import { rollLoot } from '../content/loot';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { gameRng } from '../engine/rng';
 import { showInWorldMessage } from '../ui/pickup-notification';
-import { playImpact, playMagicHit } from '../audio/sfx';
+import { playImpact, playRitualBell } from '../audio/sfx';
 import { kickShake } from '../combat/screen-shake';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 
@@ -175,7 +175,7 @@ export function spawnChallengeOffering(
       // gate slam.
       activateEncounter(encId);
       showInWorldMessage('The candles take. The waves are called.');
-      playMagicHit();
+      playRitualBell({ x: pos.x, y: pos.y + 0.6, z: pos.z });
       kickShake(0.10, 0.22);
     },
     tick(dt: number) {
