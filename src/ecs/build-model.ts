@@ -149,12 +149,16 @@ function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Ma
     def.flatShading === 'auto' ? defaultFlatShading : (def.flatShading ?? false);
   const mat = new THREE.MeshStandardMaterial({
     color: def.color,
-    emissive: def.emissive,
+    // Default the optional fields — passing `undefined` to the material
+    // constructor makes THREE warn ("parameter 'emissive' has value of
+    // undefined") on EVERY built model, which spammed the console on each
+    // enemy/prop spawn. Equivalent to THREE's own defaults, just stated.
+    emissive: def.emissive ?? 0x000000,
     emissiveIntensity: def.emissiveIntensity ?? 1,
     roughness: def.roughness ?? 0.95,
     metalness: def.metalness ?? 0,
     flatShading,
-    transparent: def.transparent,
+    transparent: def.transparent ?? false,
     opacity: def.opacity ?? 1,
     fog: def.fog ?? true,
   });
