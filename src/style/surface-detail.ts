@@ -2,25 +2,25 @@ import type * as THREE from 'three';
 
 // Stylized surface detail for the big stone surfaces (walls / floor / ceiling).
 //
-// Earlier this was organic fbm bump — but that read as a low-res noisy photo
-// texture and fought the clean flat-shaded primitive look (no "shape language",
-// and it stole the eye from the lighting, which is the game's actual signal).
-// This version draws DELIBERATE carved STONE BLOCKS instead:
+// Deliberate carved STONE BLOCKS, not organic noise — readable macro forms that
+// give the dungeon an architectural identity and sit with the flat-shaded
+// primitives, while staying quiet enough that the LIGHT leads the eye.
 //
-//  - A world-space running-bond block grid (chunky, readable macro forms).
-//  - Mortar = a recessed groove: darkened (light-DIRECTION-independent, so it
-//    reads evenly) + a small normal tilt so the SEAMS catch raking light. The
-//    relief lives only at the seams, not all over, so it stays quiet and barely
-//    couples to bright light (the old "torch makes it rocky" problem).
-//  - Per-block flat tone + a whisper of break-up so blocks aren't dead flat.
-//  - A subtle per-block roughness variation for lo-fi specular life.
-//  - Footprint AA fades the whole thing where a pixel can't resolve the mortar
-//    (far / grazing), so seams never shimmer and distant walls stay clean.
+//  - WALLS: running-bond brick courses. FLOOR/CEILING: larger square slabs — a
+//    different language so the three surfaces don't read as one continuous grid.
+//  - Mortar = a recessed, darkened seam (light-DIRECTION-independent → reads
+//    evenly, doesn't fight the lighting signal). ANALYTICALLY ANTI-ALIASED: each
+//    seam is kept ~1px wide and fades cleanly when sub-pixel, so it does NOT
+//    shimmer as you walk toward a wall (that flicker was motion-sickness-y).
+//  - Relief (normal tilt at seams) is SMOOTH + faded to near-distance only, so
+//    the screen-space derivative never buzzes.
+//  - Broken up: per-block seam-intensity variation (some edges vanish), ~some
+//    merged vertical seams (varied block widths), occasional cracked block.
+//  - Per-block flat tone + subtle per-block roughness for lo-fi life.
 //
-// World-anchored, no texture maps, derivative-based (no tangents). Free GPU-wise
-// (we're CPU-bound). Toggleable live via a uniform (coherent branch, no
-// recompile). Chains the surface-AO onBeforeCompile and touches a different
-// chunk, so they compose.
+// World-anchored, no texture maps, derivative-based (no tangents), free GPU-wise
+// (CPU-bound). Toggleable live via a uniform. Chains the surface-AO
+// onBeforeCompile and touches a different chunk, so they compose.
 
 const uDetailStrength = { value: 1 };   // 0 = off, 1 = on
 
@@ -42,13 +42,6 @@ float dVNoise(vec3 x){
 }
 `;
 
-// --- tunables (metres / 0..1) ---
-const BLOCK = 'vec2(1.2, 0.62)';   // block size: width × height (chunky dungeon stone)
-const MORTAR_M = '0.035';          // mortar half-width in metres
-const MORTAR_DARK = '0.55';        // mortar groove darkness
-const GROOVE = '0.45';             // seam relief (normal tilt) strength
-const TONE_LO = '0.86';            // darkest per-block flat tone (1.0 = base)
-
 export function installSurfaceDetail(material: THREE.Material): void {
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = function (shader, renderer) {
@@ -69,49 +62,73 @@ export function installSurfaceDetail(material: THREE.Material): void {
       '#include <normal_fragment_maps>',
       `#include <normal_fragment_maps>
   if (uDetailStrength > 0.0) {
-    // Surface-plane coords: pick the two in-plane axes by the dominant world
-    // normal (floor/ceiling = XZ, walls = the vertical plane).
-    vec3 an = abs(vWorldNormal);
-    vec2 uv = (an.y >= an.x && an.y >= an.z) ? vWorldPos.xz
-            : (an.x >= an.z) ? vWorldPos.zy : vWorldPos.xy;
+    // --- tunables (metres / 0..1) ---
+    const float MORTAR_M = 0.03;     // seam half-width
+    const float MORTAR_DARK = 0.5;   // seam/groove darkness
+    const float GROOVE = 0.4;        // near-field seam relief strength
+    const float TONE_LO = 0.86;      // darkest per-block flat tone
 
-    // Running-bond block grid.
-    vec2 g = uv / ${BLOCK};
+    // Surface plane + block scheme by dominant world normal: floor/ceiling get
+    // LARGE SQUARE SLABS, walls get brick running-bond — different languages.
+    vec3 an = abs(vWorldNormal);
+    bool horiz = (an.y >= an.x && an.y >= an.z);
+    vec2 uv = horiz ? vWorldPos.xz : (an.x >= an.z ? vWorldPos.zy : vWorldPos.xy);
+    vec2 bsz = horiz ? vec2(1.5) : vec2(1.15, 0.6);
+    float bond = horiz ? 0.0 : 0.5;
+
+    vec2 g = uv / bsz;
     float row = floor(g.y);
-    g.x += 0.5 * mod(row, 2.0);
+    g.x += bond * mod(row, 2.0);
     vec2 cell = vec2(floor(g.x), row);
     vec2 inb = fract(g);
 
-    // Mortar groove: uniform metric width around each block.
-    vec2 dM = min(inb, 1.0 - inb) * ${BLOCK};
-    float d = min(dM.x, dM.y);
-    float mortar = 1.0 - smoothstep(${MORTAR_M}, ${MORTAR_M} + 0.03, d);
-
-    // Footprint AA — fade the whole treatment where a pixel can't resolve the
-    // mortar (far / grazing); keeps seams from shimmering, distant walls clean.
+    // Pixel footprint (world m) drives BOTH analytic AA and the far fade.
     float fp = max(length(dFdx(vWorldPos)), length(dFdy(vWorldPos)));
-    float aa = 1.0 - smoothstep(0.045, 0.14, fp);
+    float aaw = max(fp, 0.004);                 // seam edge softness = ~1px
 
-    if (aa > 0.001) {
-      // RELIEF — recess the seams so raking light catches the carved edges.
-      float h = -mortar;
+    // Seam distances (metres). ~18% of vertical seams MERGE → varied widths.
+    float dH = min(inb.y, 1.0 - inb.y) * bsz.y;
+    float dV = min(inb.x, 1.0 - inb.x) * bsz.x;
+    float vKeep = step(0.18, dHash(vec3(floor(g.x + 0.5), row, 9.1)));
+    float dseam = min(dH, (vKeep > 0.5) ? dV : 1e3);
+
+    // Per-block seam intensity — some blocks' edges nearly vanish (de-grid).
+    float seamVar = mix(0.4, 1.0, dHash(vec3(cell, 2.3)));
+    // Analytic-AA'd mortar line: constant ~px width, fades cleanly sub-pixel
+    // (this is what stops the walk-toward-wall shimmer).
+    float mortar = (1.0 - smoothstep(MORTAR_M - aaw, MORTAR_M + aaw, dseam)) * seamVar;
+
+    // Occasional cracked block (~8%) — a thin, slightly wavering fissure.
+    float crackable = step(0.92, dHash(vec3(cell, 5.5)));
+    float cpos = mix(0.3, 0.7, dHash(vec3(cell, 7.7)));
+    float wob = (dVNoise(vec3(inb.y * 5.0, cell)) - 0.5) * 0.07;
+    float crack = crackable * (1.0 - smoothstep(0.0, 0.015 + aaw, abs(inb.x - cpos + wob)));
+    float recess = max(mortar, crack * 0.85);
+
+    // RELIEF — smooth groove valley, low strength, faded to NEAR distance only,
+    // so the normal derivative never buzzes (smooth h + small footprint).
+    float reliefFade = 1.0 - smoothstep(0.012, 0.045, fp);
+    if (reliefFade > 0.001) {
+      float groove = (1.0 - smoothstep(0.0, MORTAR_M * 3.0, dseam)) + crack * 0.6;
       vec3 sp = -vViewPosition;
       vec3 sx = dFdx(sp), sy = dFdy(sp);
       vec3 R1 = cross(sy, normal);
       vec3 R2 = cross(normal, sx);
       float fDet = dot(sx, R1) * faceDirection;
-      normal = normalize(abs(fDet) * normal - (${GROOVE} * aa) * sign(fDet) * (dFdx(h) * R1 + dFdy(h) * R2));
-
-      // ALBEDO — per-block flat tone (quiet, never brightens), darkened mortar,
-      // a whisper of break-up. Light-direction-independent so it stays even.
-      float bt = dHash(vec3(cell, 3.7));
-      float blockTone = mix(${TONE_LO}, 1.0, bt) * mix(0.97, 1.0, dVNoise(vWorldPos * 1.7));
-      float shade = mix(blockTone, ${MORTAR_DARK}, mortar);
-      diffuseColor.rgb *= mix(1.0, shade, aa);
-
-      // Subtle per-block roughness variation — specular breaks block to block.
-      roughnessFactor = clamp(roughnessFactor * mix(0.93, 1.05, bt), 0.04, 1.0);
+      normal = normalize(abs(fDet) * normal + (GROOVE * reliefFade) * sign(fDet) * (dFdx(groove) * R1 + dFdy(groove) * R2));
     }
+
+    // ALBEDO — per-block flat tone (quiet, never brightens) + recessed seams.
+    // Whole treatment fades toward base at distance (footprint) to settle the
+    // far field. Light-direction-independent, so it reads evenly everywhere.
+    float bt = dHash(vec3(cell, 3.7));
+    float blockTone = mix(TONE_LO, 1.0, bt) * mix(0.97, 1.0, dVNoise(vWorldPos * 1.7));
+    float shade = mix(blockTone, MORTAR_DARK, recess);
+    float vis = 1.0 - smoothstep(0.09, 0.2, fp);
+    diffuseColor.rgb *= mix(1.0, shade, vis);
+
+    // Subtle per-block roughness variation — specular breaks block to block.
+    roughnessFactor = clamp(roughnessFactor * mix(0.93, 1.05, bt), 0.04, 1.0);
   }`,
     );
   };
