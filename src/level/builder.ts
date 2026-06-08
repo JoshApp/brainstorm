@@ -1192,6 +1192,51 @@ export function buildLevel(
         : d.unlock,
     });
   }
+  // PERIMETER-FITTING AUTO-INSTALL — for any room declaring a perimeterFitting
+  // policy, walk its 4 walls and add the matching fitting at every external
+  // opening the composer cut. This is what lets a CHALLENGE arena seal every
+  // entrance visually (a portcullis drops at each one when the encounter
+  // activates) instead of relying on a single authored gate at one entrance.
+  // Authored fittings already at the same opening centre are skipped so a
+  // mixed layout (one authored door + auto-installed perimeter elsewhere)
+  // works without duplicates.
+  for (const room of spec.rooms) {
+    if (!room.perimeterFitting) continue;
+    if (room.logicalOnly) continue;
+    const rect = room.rect;
+    const hw = rect.w / 2, hd = rect.d / 2;
+    const walls = [
+      { perpAxis: 'x' as const, perpCoord: rect.x - hw, wallStart: rect.z - hd, wallEnd: rect.z + hd },
+      { perpAxis: 'x' as const, perpCoord: rect.x + hw, wallStart: rect.z - hd, wallEnd: rect.z + hd },
+      { perpAxis: 'z' as const, perpCoord: rect.z - hd, wallStart: rect.x - hw, wallEnd: rect.x + hw },
+      { perpAxis: 'z' as const, perpCoord: rect.z + hd, wallStart: rect.x - hw, wallEnd: rect.x + hw },
+    ];
+    for (const w of walls) {
+      const openings = findOpenings(w, spec.rooms, room);
+      for (const op of openings) {
+        const seg = w.perpAxis === 'x'
+          ? { ax: w.perpCoord, az: op.start, bx: w.perpCoord, bz: op.end }
+          : { ax: op.start, az: w.perpCoord, bx: op.end, bz: w.perpCoord };
+        const cx = (seg.ax + seg.bx) / 2;
+        const cz = (seg.az + seg.bz) / 2;
+        if (pendingFittings.some((p) => Math.abs(p.x - cx) < 0.1 && Math.abs(p.z - cz) < 0.1)) continue;
+        const widthM = Math.hypot(seg.bx - seg.ax, seg.bz - seg.az);
+        const rotY = Math.atan2(seg.bz - seg.az, seg.bx - seg.ax);
+        if (room.perimeterFitting === 'arena-portcullis') {
+          pendingFittings.push({
+            id: `auto-portcullis-${room.id}-${pendingFittings.length}`,
+            kind: 'gate-arena',
+            x: cx, z: cz, rotY, widthM,
+            ax: seg.ax, az: seg.az, bx: seg.bx, bz: seg.bz,
+            // Sealed-side is THIS room; trigger 'offering' so the gate doesn't
+            // slam on cross — the room's altar activates the encounter, which
+            // seals all of these in unison.
+            unlock: { kind: 'arena', roomIds: [room.id], trigger: 'offering' as const },
+          });
+        }
+      }
+    }
+  }
   // Drain — install every fitting at its opening. Per-opening room height so a
   // door/gate/fog lintel fills to the right ceiling.
   const doorTeardowns: Array<() => void> = [];
@@ -1320,8 +1365,16 @@ export function buildLevel(
     }
     wireSealForArena(arenaEncounterId(arenaGate.unlock.roomIds[0]), arenaRoomIds);
   }
-  // Offering-based arenas — the altar's room is the entire complex.
+  // Offering-based arenas — the altar's room is the entire complex. SKIP
+  // rooms whose perimeter is already handled by visible fittings (the
+  // perimeter-fitting auto-install pass dropped a portcullis at every
+  // opening; each one seals on the encounter activate reactor, so an
+  // invisible-wall layer on top would double-seal and leave a residual
+  // wall when the encounter completes — distinct seg references defeat
+  // walkable.removeWall's identity match).
   for (const roomId of offeringRooms) {
+    const room = spec.rooms.find((r) => r.id === roomId);
+    if (room?.perimeterFitting) continue;
     wireSealForArena(arenaEncounterId(roomId), new Set([roomId]));
   }
 

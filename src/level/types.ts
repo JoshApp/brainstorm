@@ -105,6 +105,26 @@ export type RoomSpec = {
    * flood-fill component carries the finer attribution.
    */
   logicalOnly?: boolean;
+  /**
+   * Declarative entrance/exit policy. When set, the builder installs the
+   * matching fitting at EVERY external opening on this room's perimeter —
+   * authors don't have to enumerate each doorway in `spec.doors`. Pairs
+   * with the room's encounter (arena, boss, etc.) so visible seals appear
+   * wherever the composer cuts an opening into this room.
+   *
+   *   'arena-portcullis' — every entrance is a portcullis whose
+   *                        unlock kind is 'arena' + trigger 'offering'.
+   *                        Activating the room's arena encounter slams
+   *                        ALL of them; completing the encounter raises
+   *                        ALL of them. The CHALLENGE ARENA's altar uses
+   *                        this so a player can't slip in through a
+   *                        side passage and skip the gate visual.
+   *
+   * Combat arenas (the trap with the alcove + 'D' tile gate) authored a
+   * single explicit door; they don't need this. Set ONLY on rooms that
+   * want every external opening to share one barrier behaviour.
+   */
+  perimeterFitting?: 'arena-portcullis';
 };
 
 export type PropSpec =

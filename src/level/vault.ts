@@ -59,6 +59,14 @@ export interface Vault {
   /** Optional wall treatment — 'braced' adds mine-shaft timber framing. */
   wallVariant?: 'stone' | 'braced';
   /**
+   * Perimeter-fitting policy for the main room — see
+   * RoomSpec.perimeterFitting. Set 'arena-portcullis' on a challenge-altar
+   * vault to install a slammable portcullis at EVERY external opening the
+   * composer cuts, so the seal is visible (and consistent) regardless of
+   * how the floor connects to it.
+   */
+  perimeterFitting?: 'arena-portcullis';
+  /**
    * Optional encounter archetype. When set, the room's X spawn slots are
    * filled from ONE coherent depth-scaled pack (swarm / bruisers / caster-
    * pack / mixed) instead of rolled independently — so the fight reads as a

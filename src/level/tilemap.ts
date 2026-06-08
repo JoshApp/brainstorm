@@ -65,6 +65,9 @@ export interface TileMapOptions {
   ceilingRise?: number;
   /** Wall treatment for the main room ('braced' = mine-shaft timber). */
   wallVariant?: 'stone' | 'braced';
+  /** Perimeter-fitting policy — see RoomSpec.perimeterFitting. Passed through
+   *  to the main RoomSpec so the builder can iterate rooms with a policy. */
+  perimeterFitting?: 'arena-portcullis';
   /** Color tint for the room's torches (applied to all torches in the map). */
   torchTint?: number;
   /**
@@ -249,6 +252,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     ceilingStyle: opts.ceilingStyle,
     ceilingRise: opts.ceilingRise,
     wallVariant: opts.wallVariant,
+    perimeterFitting: opts.perimeterFitting,
   };
 
   // ── Flood fill walkable cells into sub-rooms ──────────────────────

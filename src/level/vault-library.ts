@@ -625,6 +625,11 @@ const CHALLENGE_ARENA: Vault = {
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_BLOOD,
+  // Declarative perimeter: every entrance the composer cuts into this
+  // chamber becomes a portcullis. The altar's encounter activate reactor
+  // slams them all in unison and raises them on completion — the player
+  // can't slip in through a side passage and skip the gate visual.
+  perimeterFitting: 'arena-portcullis',
   // Altar sits in the centre of the chamber (vault-local origin).
   props: [
     { kind: 'challenge-offering', x: 0, z: 0 },
