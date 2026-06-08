@@ -79,7 +79,12 @@ export class GpuTimer {
       const available = this.gl.getQueryParameter(q, this.gl.QUERY_RESULT_AVAILABLE) as boolean;
       if (!available) break;
       const ns = this.gl.getQueryParameter(q, this.gl.QUERY_RESULT) as number;
-      this.lastMs = ns / 1e6;   // nanoseconds → milliseconds
+      const ms = ns / 1e6;   // nanoseconds → milliseconds
+      // Guard against driver garbage: some return 2^64-1 (≈1.8e13 ms once
+      // divided) when the result is actually invalid even though
+      // QUERY_RESULT_AVAILABLE reported true. A real GPU frame is never near a
+      // second, so reject anything implausible rather than report nonsense.
+      if (Number.isFinite(ms) && ms >= 0 && ms < 1000) this.lastMs = ms;
       this.inFlight.shift();
       this.free.push(q);
     }

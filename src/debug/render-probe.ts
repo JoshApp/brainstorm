@@ -9,20 +9,18 @@
 // for players.
 
 type PhaseSink = (name: string, ms: number) => void;
-type GpuSink = (ms: number) => void;
 
 let phaseSink: PhaseSink | null = null;
-let gpuSink: GpuSink | null = null;
 let gpuProbe = false;
 
-/** Profiler installs (or clears) the sinks. */
-export function installRenderProbe(phase: PhaseSink | null, gpu: GpuSink | null): void {
+/** Profiler installs (or clears) the sub-phase sink. */
+export function installRenderProbe(phase: PhaseSink | null): void {
   phaseSink = phase;
-  gpuSink = gpu;
 }
 
-/** Arm/disarm the gl.finish() GPU probe (intrusive — stalls the pipeline on the
- *  frames it samples, so it's an opt-in measurement mode). */
+/** Arm/disarm the GPU probe flag. The actual readback runs in frame-timing's
+ *  frameEnd (so its stall is excluded from the frame timing); render-target
+ *  doesn't touch it — this flag just records the user's intent. */
 export function setRenderGpuProbe(on: boolean): void { gpuProbe = on; }
 export function renderGpuProbeOn(): boolean { return gpuProbe; }
 
@@ -31,4 +29,3 @@ export function renderGpuProbeOn(): boolean { return gpuProbe; }
 export function renderProbeActive(): boolean { return phaseSink !== null; }
 
 export function reportRenderPhase(name: string, ms: number): void { phaseSink?.(name, ms); }
-export function reportRenderGpu(ms: number): void { gpuSink?.(ms); }

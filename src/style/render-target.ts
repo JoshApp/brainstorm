@@ -1,18 +1,5 @@
 import * as THREE from 'three';
-import {
-  renderProbeActive, reportRenderPhase, renderGpuProbeOn, reportRenderGpu,
-} from '../debug/render-probe';
-
-// GPU probe state. We measure GPU time with a 1×1 readPixels rather than
-// gl.finish(): in Chrome the GPU runs out-of-process behind a command buffer,
-// so finish() returns after flushing (≈0ms) WITHOUT waiting for the GPU. A
-// readback is a synchronous round-trip that forces the GPU to actually complete
-// the frame, so the wall-clock around it ≈ GPU execution time. It's intrusive
-// (kills pipelining), so we sample only every Nth frame. The 1-pixel buffer is
-// reused so the probe doesn't allocate.
-let gpuProbeFrame = 0;
-const GPU_PROBE_EVERY = 8;
-const GPU_PROBE_PIXEL = new Uint8Array(4);
+import { renderProbeActive, reportRenderPhase } from '../debug/render-probe';
 
 // PS1-era render pipeline, PSX-horror flavor.
 //
@@ -610,17 +597,7 @@ export function renderWithStyle(
     // Before initRenderPipeline runs (shouldn't happen in practice).
     renderer.render(scene, camera);
   }
-
-  // GPU PROBE — on devices without the WebGL2 timer-query extension (most
-  // Android Chrome), a 1×1 readback is the only reliable way to read real GPU
-  // time: it forces a synchronous round-trip that waits for the GPU to finish
-  // the frame (gl.finish() doesn't, behind Chrome's out-of-process GPU). It
-  // STALLS the pipeline, so we sample only every Nth frame. Opt-in.
-  if (renderGpuProbeOn() && (gpuProbeFrame++ % GPU_PROBE_EVERY === 0)) {
-    const gl = renderer.getContext();
-    renderer.setRenderTarget(null);   // read from the default framebuffer (the just-drawn canvas)
-    const t0 = performance.now();
-    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, GPU_PROBE_PIXEL);
-    reportRenderGpu(performance.now() - t0);
-  }
+  // NB: the gl.finish/readPixels GPU probe lives in frame-timing's frameEnd
+  // (AFTER this system + the frame's timing is captured), so its synchronous
+  // stall doesn't inflate the render system's CPU time or the frame's dt.
 }

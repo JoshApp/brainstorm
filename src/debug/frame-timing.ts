@@ -55,9 +55,12 @@ let frameStart = 0;
 let lastEnd = 0;
 let lastHeap: number | null = null;
 let marks = false;
-// GPU time measured by the render pipeline's gl.finish() probe this frame, if
-// any. Takes precedence over the (often-unavailable) timer-query path.
+// GPU time measured by the readPixels probe (see frameEnd). Takes precedence
+// over the (often-unavailable, and on some drivers garbage) timer-query path.
 let probedGpu: number | null = null;
+let gpuProbeCount = 0;
+const GPU_PROBE_EVERY = 8;
+const GPU_PROBE_PIXEL = new Uint8Array(4);
 
 type FrameListener = (s: FrameSample) => void;
 const listeners = new Set<FrameListener>();
@@ -94,15 +97,14 @@ export function gpuProbeOn(): boolean { return renderGpuProbeOn(); }
 function onSystem(name: string, ms: number): void {
   frameMs.set(name, (frameMs.get(name) ?? 0) + ms);
 }
-function onGpuProbe(ms: number): void { probedGpu = ms; }
 
 function ensureHooks(): void {
   const want = listeners.size > 0 || marks;
   setSystemProbe(want ? onSystem : null);
   setMarksEnabled(marks);
-  // Render sub-phase timing + finish() GPU samples flow through the same
-  // frameMs map (sub-phases) and probedGpu (GPU) while anything is listening.
-  installRenderProbe(want ? onSystem : null, listeners.size > 0 ? onGpuProbe : null);
+  // Render sub-phase timings flow through the same frameMs map while anything
+  // is listening (the GPU probe runs directly in frameEnd, not via a sink).
+  installRenderProbe(want ? onSystem : null);
 }
 
 export function addFrameListener(l: FrameListener): void { listeners.add(l); ensureHooks(); }
@@ -164,4 +166,23 @@ export function frameEnd(): void {
 
   lastEnd = now;
   for (const l of listeners) l(sample);
+
+  // GPU PROBE — runs HERE, after the frame's cpu/dt are already captured and
+  // listeners fired, so its synchronous stall pollutes neither. On devices
+  // without the WebGL2 timer-query extension (most Android Chrome) a 1×1
+  // readback is the only reliable GPU read: it forces a round-trip that waits
+  // for the GPU to finish the frame (gl.finish() returns early behind Chrome's
+  // out-of-process GPU). Sampled every Nth frame; the value feeds NEXT frame's
+  // sample (probedGpu is sticky). We then restart the dt clock past the stall
+  // so it's excluded from the following frame's dt too — the probe costs real
+  // fps but never shows up as a fake "dropped frame" in the recording.
+  if (renderGpuProbeOn() && renderer && (gpuProbeCount++ % GPU_PROBE_EVERY === 0)) {
+    const gl = renderer.getContext();
+    renderer.setRenderTarget(null);
+    const t0 = performance.now();
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, GPU_PROBE_PIXEL);
+    const ms = performance.now() - t0;
+    if (Number.isFinite(ms) && ms >= 0 && ms < 1000) probedGpu = ms;
+    lastEnd = performance.now();
+  }
 }
