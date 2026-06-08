@@ -26,7 +26,6 @@ function loadScript(): Promise<void> {
 }
 
 export async function launchSpector(): Promise<void> {
-  if (!import.meta.env.DEV) return;
   try {
     await loadScript();
   } catch (e) {

@@ -98,8 +98,15 @@ export function isRecording(): boolean {
   return recording;
 }
 
+// State callback so an on-screen control (the profiler toolbar) can reflect
+// recording on/off — including the automatic stop at the duration cap.
+let stateListener: ((rec: boolean) => void) | null = null;
+export function onRecordingState(cb: ((rec: boolean) => void) | null): void {
+  stateListener = cb;
+}
+
 export function startRecording(label?: string): void {
-  if (!import.meta.env.DEV || recording) return;
+  if (recording) return;
   recording = true;
   t0 = performance.now();
   frames = [];
@@ -108,6 +115,7 @@ export function startRecording(label?: string): void {
   pendingLabel = label;
   addFrameListener(onFrame);
   showBadge();
+  stateListener?.(true);
 }
 
 let pendingLabel: string | undefined;
@@ -117,6 +125,7 @@ export async function stopRecording(): Promise<void> {
   recording = false;
   removeFrameListener(onFrame);
   hideBadge();
+  stateListener?.(false);
 
   // Normalise every frame's sys array to the final system count (late-appearing
   // systems left earlier rows short).

@@ -1,18 +1,39 @@
 # Profiling DELVE
 
-The performance toolkit, layered from "glance" to "deep autopsy". Everything
-here is **DEV-only** — gated behind `import.meta.env.DEV`, verified stripped
-from the production GitHub Pages build. None of it ships to players.
+The performance toolkit, layered from "glance" to "deep autopsy".
+
+**These tools ship in the production build**, behind the **PROFILER TOOLS**
+setting (Settings → DEBUG), off by default. They're safe diagnostics — no
+gameplay effect — so they ride the same "diagnostics are the exception"
+carve-out as the perf meter, rather than being `import.meta.env.DEV`-stripped.
+Zero footprint until the toggle is flipped: the timing core, HUD, and toolbar
+are lazily created the first time it's enabled.
+
+**Enable it** with the PROFILER TOOLS setting, or a `?profiler=1` (also
+`?profile/record/marks=1`) URL flag for a one-session enable — works on the
+**live site, on the phone**, which is the whole point.
+
+When enabled, an **on-screen toolbar** appears (top-left): `HUD` · `● REC` ·
+`SPCT` — so you can drive everything by tapping, no keyboard needed.
 
 ## The layers
 
 | Tool | Answers | Where |
 | --- | --- | --- |
-| **PERF METER** | "How fast am I right now?" | Settings → PERF METER (ships, player-safe) |
-| **Profiler HUD** | "Which system is eating the frame?" | `F2` / `?profile=1` |
-| **Session recorder** | "Where did frames drop over the last minute?" | `F3` / `?record=1` → review page |
-| **DevTools marks** | Native flame chart, incl. remote-over-USB from a phone | `F4` / `?marks=1` |
-| **spector.js** | "What's eating the draw calls?" (every GL command) | `F6` |
+| **PERF METER** | "How fast am I right now?" | Settings → PERF METER |
+| **Profiler HUD** | "Which system is eating the frame?" | toolbar `HUD` · `F2` · `?profile=1` |
+| **Session recorder** | "Where did frames drop over the last minute?" | toolbar `● REC` · `F3` · `?record=1` → review page |
+| **DevTools marks** | Native flame chart, incl. remote-over-USB from a phone | `F4` · `?marks=1` |
+| **spector.js** | "What's eating the draw calls?" (every GL command) | toolbar `SPCT` · `F6` |
+
+On a phone, use the on-screen toolbar buttons (no F-keys). On desktop, the
+hotkeys are quicker.
+
+### Reviewing a recording made on the live site
+
+The live build has no dev server to POST to, so stopping a recording
+**downloads** the JSON instead. Review it at **`/brainstorm/perf-review.html`**
+(deployed alongside the game) — drag the downloaded `.json` onto the page.
 
 ## Hotkeys (desktop)
 

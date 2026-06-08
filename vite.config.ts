@@ -47,4 +47,16 @@ export default defineConfig({
     host: true,
     port: 5173,
   },
+  build: {
+    rollupOptions: {
+      // Ship the perf-review viewer alongside the game so a recording made on
+      // the live build (which downloads a JSON, no dev server to POST to) can
+      // be reviewed at /brainstorm/perf-review.html — just drag the JSON onto
+      // it. (bench.html stays dev-only — not listed, so it isn't built.)
+      input: {
+        main: 'index.html',
+        'perf-review': 'perf-review.html',
+      },
+    },
+  },
 });

@@ -49,6 +49,13 @@ export interface Settings {
    *  iteration happens (deploy → look on phone → describe rotation by
    *  colour → edit spec). */
   debugHandAxes: boolean;
+  /** Profiler tools — the per-system CPU/GPU profiler HUD, the session
+   *  recorder, and spector.js draw-call capture, plus their on-screen
+   *  toolbar (so it's usable on a phone without function keys). A safe
+   *  diagnostic (no gameplay effect), so it ships behind this toggle the
+   *  same way the perf meter does — off by default; zero footprint until
+   *  flipped on. */
+  profilerTools: boolean;
   /** Touch control scheme. Only 'default' (left-joystick / right-aim,
    *  the current layout) ships today — the selector is a seam for
    *  alternate schemes (e.g. fixed-stick, swipe-move) we'll add later. */
@@ -134,6 +141,7 @@ const DEFAULTS: Settings = {
   debugEyeAdapt: false,
   debugBossReadout: false,
   debugHandAxes: false,
+  profilerTools: false,
   controlScheme: 'default',
   // Flick by default — the most directional/immediate dodge; switch to
   // double-tap in the controls menu to feel the difference on the phone.

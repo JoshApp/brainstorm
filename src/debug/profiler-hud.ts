@@ -43,7 +43,6 @@ let lastDisplay = 0;
 let last: FrameSample | null = null;
 
 export function createProfilerHud(): void {
-  if (!import.meta.env.DEV) return;
   if (root) return;
 
   root = document.createElement('div');
@@ -99,7 +98,7 @@ export function isProfilerVisible(): boolean {
 }
 
 export function setProfilerVisible(visible: boolean): void {
-  if (!import.meta.env.DEV || !root) return;
+  if (!root) return;
   if (visible === active) return;
   active = visible;
   root.style.display = visible ? 'block' : 'none';

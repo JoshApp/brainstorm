@@ -418,6 +418,12 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       set: (v) => updateSettings({ perfMeter: v }),
     }),
     makeToggle({
+      label: 'PROFILER TOOLS',
+      description: 'On-screen toolbar to record a session, open the per-system CPU/GPU profiler, or capture draw calls (spector). Recordings review at perf-review.html.',
+      get: () => getSettings().profilerTools,
+      set: (v) => updateSettings({ profilerTools: v }),
+    }),
+    makeToggle({
       label: 'EYE ADAPT',
       description: 'Left-side readout of eye dark-adaptation: torch proximity, the 0..1 adapt value, and resulting ambient brightness.',
       get: () => getSettings().debugEyeAdapt,
