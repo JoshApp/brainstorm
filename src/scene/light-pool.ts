@@ -102,7 +102,12 @@ const scratchByCategory: Record<LightCategory, Array<{ src: LightSource; sortKey
 // same invariant the whole pool is built around. Which physical light fills
 // a caster slot does change (the env slots re-sort nearest-first each
 // frame), so "the nearest torch casts" without any recompile.
-const SHADOW_MAP_SIZE = 512;
+// 256 (not 512): a torch/lamp shadow is soft anyway, and the FAR plane below
+// is tightened to the light's actual lit reach — so a 256 map over an ~8m
+// frustum holds the SAME texel density the old 512 map had over 16m, at a
+// quarter of the shadow-map fill. The look Josh likes is preserved; the cost
+// isn't. Memory + GPU fill scale with this squared.
+const SHADOW_MAP_SIZE = 256;
 let shadowMode: ShadowMode = 'off';
 
 /** Pre-configure a slot's shadow camera + map. Cheap; the shadow map
@@ -111,9 +116,13 @@ function configureSlotShadow(light: THREE.PointLight): void {
   light.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
   light.shadow.bias = -0.004;
   light.shadow.camera.near = 0.12;
-  // Tight far plane — torch/lamp reach is short, and a tight frustum keeps
-  // the depth precision (and cost) reasonable.
-  light.shadow.camera.far = 16;
+  // Tight far plane = the light's actual reach. The lamp lights ~5.5m
+  // (CONFIG.LAMP_DISTANCE); nothing past that is lit, so nothing past that
+  // can show a shadow. Was 16 — that rendered (and fill-tested) casters out
+  // to 16m for nothing. Tightening to 8m culls those casters from the shadow
+  // pass AND tightens the depth frustum, which is what lets the 256 map stay
+  // crisp. The single biggest lamp-shadow cost cut.
+  light.shadow.camera.far = 8;
 }
 
 /** One-time setup. Adds N PointLights per category to the scene. */
