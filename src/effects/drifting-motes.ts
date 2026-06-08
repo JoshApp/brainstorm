@@ -9,14 +9,23 @@ import type { WalkableRect } from '../level/types';
 // They don't try to be a particle storm; the eye should notice
 // them peripherally, not be overwhelmed.
 //
-// Motes have a lifetime + scale-based fade-in/out (no per-sprite
-// opacity mutation so all motes share one material — cheap). On
-// despawn they respawn at a random walkable position weighted by
-// room area so big halls have more motes than small alcoves.
+// ONE DRAW for the whole pool. Each mote used to be its own
+// THREE.Sprite (N motes = N draw calls + N objects the renderer
+// sorts), which the draw-report flagged as the dominant sprite
+// count on a floor. They're now a SINGLE camera-billboarded quad
+// batch: one BufferGeometry of N quads whose 4 corners are rewritten
+// each frame to face the camera (the same screen-aligned facing a
+// Sprite does), one additive material, one mesh. 52 draws → 1.
+//
+// Motes have a lifetime + scale-based fade-in/out (the quad shrinks
+// to nothing at birth/death — no per-mote opacity, so the whole
+// batch stays one material). On despawn they respawn at a random
+// walkable position weighted by room area so big halls have more
+// motes than small alcoves.
 //
 // Lifecycle matches the xpWisps / goldCoins module pattern:
 //   initDriftingMotes(scene, rects, tint) at level load
-//   tickDriftingMotes(dt) each frame
+//   tickDriftingMotes(dt, camera) each frame
 //   clearDriftingMotes() at level teardown
 
 // Atmosphere tuning lives in src/config.ts (CONFIG.EFFECTS_MOTES).
@@ -31,17 +40,24 @@ const BASE_SIZE        = CONFIG.EFFECTS_MOTES.BASE_SIZE;
 const FADE_FRACTION    = CONFIG.EFFECTS_MOTES.FADE_FRACTION;
 
 interface Mote {
-  sprite: THREE.Sprite;
   px: number; py: number; pz: number;
   vx: number; vy: number; vz: number;
   life: number;
   age: number;
+  size: number;     // current half-extent, after the fade ramp
   rect: WalkableRect;
 }
 
 let motes: Mote[] = [];
 let rects: WalkableRect[] = [];
-let material: THREE.SpriteMaterial | null = null;
+let material: THREE.MeshBasicMaterial | null = null;
+let geometry: THREE.BufferGeometry | null = null;
+let mesh: THREE.Mesh | null = null;
+let positions: Float32Array | null = null;
+
+// Reused per-frame billboard basis (camera right / up in world space).
+const right = new THREE.Vector3();
+const up = new THREE.Vector3();
 
 export function initDriftingMotes(
   scene: THREE.Object3D,
@@ -52,7 +68,7 @@ export function initDriftingMotes(
   if (walkableRects.length === 0) return;
   rects = walkableRects;
 
-  material = new THREE.SpriteMaterial({
+  material = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'),
     color: tint,
     transparent: true,
@@ -62,17 +78,36 @@ export function initDriftingMotes(
     // Fog catches the motes naturally — far ones fade out which
     // is exactly the volumetric feel we want.
     fog: true,
+    side: THREE.DoubleSide,
   });
 
+  // One quad per mote: 4 verts, 2 tris. UVs + indices are static; only
+  // the corner POSITIONS are rewritten each frame (billboarded).
+  positions = new Float32Array(MOTE_COUNT * 4 * 3);
+  const uvs = new Float32Array(MOTE_COUNT * 4 * 2);
+  const index = new Uint16Array(MOTE_COUNT * 6);
   for (let i = 0; i < MOTE_COUNT; i++) {
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(BASE_SIZE, BASE_SIZE, 1);
-    scene.add(sprite);
+    const v = i * 4;
+    uvs.set([0, 0, 1, 0, 1, 1, 0, 1], i * 8);
+    index.set([v, v + 1, v + 2, v, v + 2, v + 3], i * 6);
+  }
+  geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geometry.setIndex(new THREE.BufferAttribute(index, 1));
+  // Motes blanket the whole level; per-batch frustum culling would either
+  // pop the entire pool or never cull. Leave it on always — it's one draw.
+  mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 2;   // additive ambient — after opaque, before the held viewmodel
+  mesh.userData.dbgKind = 'fx';
+  scene.add(mesh);
+
+  for (let i = 0; i < MOTE_COUNT; i++) {
     const m: Mote = {
-      sprite,
       px: 0, py: 0, pz: 0,
       vx: 0, vy: 0, vz: 0,
-      life: 0, age: 0,
+      life: 0, age: 0, size: 0,
       rect: rects[0],
     };
     respawn(m, /*ageJitter*/ true);
@@ -80,37 +115,54 @@ export function initDriftingMotes(
   }
 }
 
-export function tickDriftingMotes(dt: number): void {
-  for (const m of motes) {
+export function tickDriftingMotes(dt: number, camera: THREE.Camera): void {
+  if (!geometry || !positions) return;
+
+  // Screen-aligned billboard basis: the camera's world right + up. Writing
+  // each quad's corners along these gives the same facing a Sprite has.
+  const e = camera.matrixWorld.elements;
+  right.set(e[0], e[1], e[2]).normalize();
+  up.set(e[4], e[5], e[6]).normalize();
+
+  for (let i = 0; i < motes.length; i++) {
+    const m = motes[i];
     m.px += m.vx * dt;
     m.py += m.vy * dt;
     m.pz += m.vz * dt;
     m.age += dt;
-    if (m.age >= m.life) {
-      respawn(m, false);
-      continue;
-    }
-    // Scale-based fade in / fade out so we don't need per-sprite
-    // opacity (shared material). Ramps up over the first 18% of
-    // life and down over the last 18%.
+    if (m.age >= m.life) respawn(m, false);
+
+    // Scale-based fade in / fade out — ramps up over the first 18% of life
+    // and down over the last 18%, so a mote is born and dies as a vanishing
+    // speck. Keeps the whole pool on one (opacity-static) material.
     const t = m.age / m.life;
     let sizeMul = 1.0;
     if (t < FADE_FRACTION) sizeMul = t / FADE_FRACTION;
     else if (t > 1 - FADE_FRACTION) sizeMul = (1 - t) / FADE_FRACTION;
-    const s = BASE_SIZE * sizeMul;
-    m.sprite.scale.set(s, s, 1);
-    m.sprite.position.set(m.px, m.py, m.pz);
+    const h = (BASE_SIZE * sizeMul) * 0.5;   // half-extent
+
+    // Four corners around the mote centre, along the camera basis.
+    const rx = right.x * h, ry = right.y * h, rz = right.z * h;
+    const ux = up.x * h,    uy = up.y * h,    uz = up.z * h;
+    const o = i * 12;
+    positions[o]     = m.px - rx - ux; positions[o + 1]  = m.py - ry - uy; positions[o + 2]  = m.pz - rz - uz;
+    positions[o + 3] = m.px + rx - ux; positions[o + 4]  = m.py + ry - uy; positions[o + 5]  = m.pz + rz - uz;
+    positions[o + 6] = m.px + rx + ux; positions[o + 7]  = m.py + ry + uy; positions[o + 8]  = m.pz + rz + uz;
+    positions[o + 9] = m.px - rx + ux; positions[o + 10] = m.py - ry + uy; positions[o + 11] = m.pz - rz + uz;
   }
+  geometry.attributes.position.needsUpdate = true;
 }
 
 export function clearDriftingMotes(): void {
-  for (const m of motes) {
-    m.sprite.parent?.remove(m.sprite);
-  }
+  mesh?.parent?.remove(mesh);
+  geometry?.dispose();
+  material?.dispose();
   motes = [];
   rects = [];
-  material?.dispose();
+  mesh = null;
+  geometry = null;
   material = null;
+  positions = null;
 }
 
 function respawn(m: Mote, ageJitter: boolean): void {

@@ -361,7 +361,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     // Drifting motes — ambient dust keeps falling through hit-pauses, death,
     // and menus. Real dt.
-    { name: 'motes', phase: 'always', tick(ctx) { tickDriftingMotes(ctx.realDt); } },
+    { name: 'motes', phase: 'always', tick(ctx) { tickDriftingMotes(ctx.realDt, camera); } },
 
     // Per-room mood — smoothly blend torches + bound lights toward the room's
     // current override colour. realDt so the ease is real-time even through
