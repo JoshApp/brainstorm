@@ -14,6 +14,8 @@ export interface StyleMaterials {
   ceiling: THREE.Material;
   /** Aged dark timber — mine-shaft bracing + plank doors. */
   timber: THREE.Material;
+  /** Plain stone for PROPS (pillars, etc.) — wall colour, no brick detail. */
+  stone: THREE.Material;
 }
 
 export function buildMaterials(): StyleMaterials {
@@ -68,6 +70,18 @@ export function buildMaterials(): StyleMaterials {
     emissiveIntensity: emissiveBoost,
   });
 
+  // Plain stone for props (pillars). Same near-black stone as the walls, but
+  // WITHOUT the brick surface-detail — the running-bond pattern is for the big
+  // architectural planes; wrapping it around a round shaft read wrong and no
+  // other prop uses it. Kept as its own material so props share one draw state.
+  const propStone = new THREE.MeshStandardMaterial({
+    color: CONFIG.WALL_COLOR,
+    roughness: 0.95,
+    metalness: 0.0,
+    emissive: wallEmissive,
+    emissiveIntensity: emissiveBoost,
+  });
+
   // Live-controllable baked surface AO (wall/floor vertex colours).
   installSurfaceAO(wallBase);
   installSurfaceAO(floorBase);
@@ -81,5 +95,6 @@ export function buildMaterials(): StyleMaterials {
     floor: floorBase,
     ceiling: ceilingBase,
     timber: timberBase,
+    stone: propStone,
   };
 }

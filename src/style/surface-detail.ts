@@ -84,7 +84,13 @@ export function installSurfaceDetail(material: THREE.Material): void {
 
     // Pixel footprint (world m) drives BOTH analytic AA and the far fade.
     float fp = max(length(dFdx(vWorldPos)), length(dFdy(vWorldPos)));
-    float aaw = max(fp, 0.004);                 // seam edge softness = ~1px
+    float aaw = max(fp, 0.006);                 // seam edge softness = ~1px
+
+    // GRAZING fade: on glancing side walls the PS1 vertex jitter swims the
+    // world-anchored seam pattern. Fade the seams out as a surface turns
+    // edge-on to the view (where the swim is worst + you can't read them anyway).
+    float ndv = abs(dot(normalize(vViewPosition), normal));
+    float graze = smoothstep(0.12, 0.4, ndv);
 
     // Seam distances (metres). ~18% of vertical seams MERGE → varied widths.
     float dH = min(inb.y, 1.0 - inb.y) * bsz.y;
@@ -103,12 +109,12 @@ export function installSurfaceDetail(material: THREE.Material): void {
     float cpos = mix(0.3, 0.7, dHash(vec3(cell, 7.7)));
     float wob = (dVNoise(vec3(inb.y * 5.0, cell)) - 0.5) * 0.07;
     float crack = crackable * (1.0 - smoothstep(0.0, 0.015 + aaw, abs(inb.x - cpos + wob)));
-    float recess = max(mortar, crack * 0.85);
+    float recess = max(mortar, crack * 0.85) * graze;
 
     // RELIEF — smooth groove valley, low strength, faded over a GENTLE near
     // range so it eases in (not a hard pop) and the normal derivative never
     // buzzes (smooth h + small footprint).
-    float reliefFade = 1.0 - smoothstep(0.02, 0.085, fp);
+    float reliefFade = (1.0 - smoothstep(0.02, 0.085, fp)) * graze;
     if (reliefFade > 0.001) {
       float groove = (1.0 - smoothstep(0.0, MORTAR_M * 3.0, dseam)) + crack * 0.6;
       vec3 sp = -vViewPosition;
@@ -131,12 +137,6 @@ export function installSurfaceDetail(material: THREE.Material): void {
     // as you walked up. Only a very-far safety fade settles the extreme distance.
     float vis = 1.0 - smoothstep(0.5, 1.1, fp);
     diffuseColor.rgb *= mix(1.0, shade, vis);
-
-    // Subtle per-surface tint so floor / walls / ceiling don't read as one stone.
-    vec3 surfTint = !horiz ? vec3(1.0)                                  // walls: neutral
-                  : (vWorldNormal.y > 0.0 ? vec3(1.0, 0.95, 0.88) * 0.9    // floor: warmer, worn, darker
-                                          : vec3(0.9, 0.93, 1.0) * 0.82);  // ceiling: cooler, in shadow
-    diffuseColor.rgb *= surfTint;
 
     // Subtle per-block roughness variation — specular breaks block to block.
     roughnessFactor = clamp(roughnessFactor * mix(0.93, 1.05, bt), 0.04, 1.0);

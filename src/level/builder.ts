@@ -934,7 +934,7 @@ export function buildLevel(
     const merged = mergeGeometries(pillarGeos, false);
     for (const g of pillarGeos) g.dispose();
     if (merged) {
-      const pillarsMesh = new THREE.Mesh(merged, materials.wall);
+      const pillarsMesh = new THREE.Mesh(merged, materials.stone);
       pillarsMesh.castShadow = true;
       pillarsMesh.receiveShadow = true;
       pillarsMesh.name = 'pillars-merged';
