@@ -4,6 +4,7 @@ import { shareOrDownload, flash } from './share-file';
 import { getCurrentDepth } from '../level/loader';
 import {
   setBloomEnabled, setInscatterEnabled, setDepthCrushEnabled, setOutlineEnabled,
+  getBloomEnabled, getInscatterEnabled, getDepthCrushEnabled, getOutlineEnabled,
 } from '../style/render-target';
 import { setShadowMode, getShadowMode } from '../scene/light-pool';
 import { setMotesHidden } from '../effects/drifting-motes';
@@ -77,11 +78,18 @@ export async function runGpuAttribution(): Promise<void> {
   flash('GPU attribution: hold still ~4s…');
 
   const root = scene;
+  // Capture the REAL prior state of everything we toggle, so restore puts it
+  // back exactly — not to a hardcoded default (the old bug that left ink
+  // outlines / bloom force-enabled after a sweep).
   const prevShadow = getShadowMode();
+  const prevBloom = getBloomEnabled();
+  const prevInscatter = getInscatterEnabled();
+  const prevDepth = getDepthCrushEnabled();
+  const prevOutline = getOutlineEnabled();
   // Order: cheap → expensive doesn't matter (each is isolated), but keep the
   // headline suspects first.
   const probes: Probe[] = [
-    { name: 'bloom', off: () => setBloomEnabled(false), restore: () => setBloomEnabled(true) },
+    { name: 'bloom', off: () => setBloomEnabled(false), restore: () => setBloomEnabled(prevBloom) },
     {
       name: 'shadows',
       note: 'lamp cube-map render + extra scene draws',
@@ -94,7 +102,7 @@ export async function runGpuAttribution(): Promise<void> {
       name: 'blit post-fx',
       note: 'fog inscatter + depth crush + outline',
       off: () => { setInscatterEnabled(false); setDepthCrushEnabled(false); setOutlineEnabled(false); },
-      restore: () => { setInscatterEnabled(true); setDepthCrushEnabled(true); setOutlineEnabled(true); },
+      restore: () => { setInscatterEnabled(prevInscatter); setDepthCrushEnabled(prevDepth); setOutlineEnabled(prevOutline); },
     },
   ];
 
@@ -140,9 +148,10 @@ export async function runGpuAttribution(): Promise<void> {
     addFrameListener(onFrame);
   });
 
-  // Be paranoid: make sure everything is restored even if a stage threw.
-  setBloomEnabled(true); setShadowMode(prevShadow); setMotesHidden(false);
-  setInscatterEnabled(true); setDepthCrushEnabled(true); setOutlineEnabled(true);
+  // Be paranoid: make sure everything is restored to its REAL prior state even
+  // if a stage threw.
+  setBloomEnabled(prevBloom); setShadowMode(prevShadow); setMotesHidden(false);
+  setInscatterEnabled(prevInscatter); setDepthCrushEnabled(prevDepth); setOutlineEnabled(prevOutline);
 
   const baseline = measured.get('baseline') ?? null;
   const recheck = measured.get('baseline·recheck') ?? null;

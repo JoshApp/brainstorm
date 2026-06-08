@@ -372,6 +372,14 @@ export function setBloomEnabled(on: boolean): void {
   if (blitMaterial) blitMaterial.uniforms.uBloomStrength.value = on ? BLOOM_STRENGTH : 0;
 }
 
+// Current-state getters — so a temporary A/B probe (GPU attribution) can capture
+// the real setting and restore to IT, not to a hardcoded default (which is what
+// left ink-outlines force-enabled after a sweep).
+export function getBloomEnabled(): boolean { return bloomEnabled; }
+export function getInscatterEnabled(): boolean { return inscatterEnabled; }
+export function getDepthCrushEnabled(): boolean { return depthCrushEnabled; }
+export function getOutlineEnabled(): boolean { return outlineEnabled; }
+
 function bloomDims(): [number, number] {
   const w = Math.max(1, Math.floor((rendererRef!.domElement.width * ps1Scale) * BLOOM_SCALE));
   const h = Math.max(1, Math.floor((rendererRef!.domElement.height * ps1Scale) * BLOOM_SCALE));
