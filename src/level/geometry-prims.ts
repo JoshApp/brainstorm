@@ -150,6 +150,46 @@ export function makeJitteredPlane(
   return geo;
 }
 
+export interface PropContact { x: number; z: number; r: number; }
+
+/**
+ * Bake PROP-CONTACT ambient occlusion into a floor mesh: darken floor vertices
+ * around each prop's footprint, strongest right at the prop's edge and fading
+ * out over `band` metres — the contact shadow that grounds a free-standing prop
+ * sitting in open floor (no extra draws, no blob decal). Multiplies the existing
+ * colour, so wall-contact AO + the SURFACE AO slider both still compose.
+ *
+ * Each contact is a circle (footprint centre + radius r); occlusion is driven by
+ * distance-to-edge (dist − r), so it hugs the footprint regardless of prop size
+ * and a vertex UNDER the prop is fully occluded.
+ */
+export function bakeFloorPropContactAO(
+  geo: THREE.BufferGeometry,
+  origin: { x: number; z: number },
+  contacts: PropContact[],
+  band = 0.5,
+  occ = 0.72,
+): void {
+  const color = geo.getAttribute('color') as THREE.BufferAttribute | undefined;
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute | undefined;
+  if (!color || !pos || contacts.length === 0) return;
+  const rgb: [number, number, number] = [0, 0, 0];
+  for (let i = 0; i < pos.count; i++) {
+    const wx = origin.x + pos.getX(i);
+    const wz = origin.z - pos.getY(i);
+    let edge = Infinity;
+    for (const c of contacts) {
+      const e = Math.hypot(wx - c.x, wz - c.z) - c.r;
+      if (e < edge) edge = e;
+    }
+    if (edge >= band) continue;                            // out of reach
+    rgb[0] = color.getX(i); rgb[1] = color.getY(i); rgb[2] = color.getZ(i);
+    applyOcc(rgb, aoSmooth(1 - edge / band) * occ);         // edge<=0 (under prop) → full
+    color.setXYZ(i, rgb[0], rgb[1], rgb[2]);
+  }
+  color.needsUpdate = true;
+}
+
 /** XZ distance from point (px,pz) to segment (ax,az)-(bx,bz). */
 function distPointSeg(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
   const dx = bx - ax, dz = bz - az;

@@ -108,11 +108,14 @@ import {
   makeFloorWithHoles,
   makeJitteredPlane,
   bakeFloorContactAO,
+  bakeFloorPropContactAO,
+  type PropContact,
   archCeilingMaterial,
   makeArchedCeilingGeometry,
   makeBracedFramesGeometry,
   makeChasmDropGeometry,
 } from './geometry-prims';
+import { getPropAABB } from './prop-aabb';
 
 function buildRoomShell(
   scene: THREE.Object3D,
@@ -138,6 +141,9 @@ function buildRoomShell(
   floor.position.set(rect.x, 0, rect.z);
   floor.receiveShadow = true;
   floor.name = 'floor';
+  // Rect (+ whether it carries per-vertex colour) so the prop-contact AO pass
+  // can find floors and darken them under props after props are placed.
+  if (floorHoles.length === 0) floor.userData.aoRect = { x: rect.x, z: rect.z, w: W, d: D };
   floor.userData.dbgKind = 'floor';
   floor.userData.dbgSource = `floor · ${room.id} @(${rect.x.toFixed(1)},${rect.z.toFixed(1)})`;
   scene.add(floor);
@@ -272,6 +278,36 @@ function bakeWallSegmentGeometry(
 // locate the gaps; dedups shared thresholds; skips any opening near a door
 // (those already signal). Onward passages get a diegetic dust/haze cue without
 // rimming the architecture.
+// Prop-contact AO — darken each room's floor under the props standing on it,
+// so a free-standing prop grounds to the floor (no decal, no extra draws). Prop
+// footprints come straight off the specs (getPropAABB); each floor mesh (stamped
+// with its aoRect in buildRoomShell) takes only the contacts that fall on it.
+function bakePropContactShadows(root: THREE.Object3D, props: PropSpec[]): void {
+  const contacts: PropContact[] = [];
+  for (const p of props) {
+    const a = getPropAABB(p);
+    if (!a) continue;
+    contacts.push({
+      x: (a.minX + a.maxX) / 2,
+      z: (a.minZ + a.maxZ) / 2,
+      r: Math.max((a.maxX - a.minX) / 2, (a.maxZ - a.minZ) / 2),
+    });
+  }
+  if (contacts.length === 0) return;
+  root.traverse((o) => {
+    const rect = o.userData?.aoRect as { x: number; z: number; w: number; d: number } | undefined;
+    const mesh = o as THREE.Mesh;
+    if (!rect || !mesh.isMesh) return;
+    const hx = rect.w / 2 + 0.5, hz = rect.d / 2 + 0.5;   // rect + contact band reach
+    const local = contacts.filter(
+      (c) => Math.abs(c.x - rect.x) <= hx + c.r && Math.abs(c.z - rect.z) <= hz + c.r,
+    );
+    if (local.length > 0) {
+      bakeFloorPropContactAO(mesh.geometry as THREE.BufferGeometry, { x: rect.x, z: rect.z }, local);
+    }
+  });
+}
+
 function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: RoomSpec[]) {
   const doors = spec.doors ?? [];
   const seen = new Set<string>();
@@ -864,6 +900,11 @@ export function buildLevel(
       });
     }
   }
+
+  // Ground free-standing props: bake a contact shadow into the floor beneath
+  // each prop's footprint (before the pillar merge — operates on floor meshes,
+  // which aren't merged).
+  bakePropContactShadows(root, spec.props);
 
   // Merge every pillar's baked parts into a SINGLE mesh — one draw call for
   // all pillars on the floor (they were ~8 meshes each). Non-pooled, so the
