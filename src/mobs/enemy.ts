@@ -238,11 +238,14 @@ export function createEnemy(
 
   // Built model: meshes + named parts + per-instance materials.
   const built = buildModel(spec.model);
-  // Lego-figure merge: collapse the unnamed limb/torso meshes per joint (opt-in
-  // via spec.model.mergeRigid). Runs before the model is added to the scene, so
-  // the originals are never uploaded. Joints + named parts + eye sprites survive,
-  // so the presentation/animation below still finds what it references.
-  if (spec.model.mergeRigid) mergeRigidSegments(built);
+  // Lego-figure merge: collapse the unnamed limb/torso meshes per joint. Runs
+  // before the model is added to the scene, so the originals are never uploaded.
+  // Joints + named parts + eye sprites survive, so the presentation/animation
+  // below still finds what it references. Default ON for EVERY enemy — the merge
+  // only touches UNNAMED non-sprite meshes, and the animation never moves an
+  // unnamed part (it drives named parts + joint slots), so it's pixel-identical
+  // for any creature. A model can set `mergeRigid: false` to keep a bare part.
+  if (spec.model.mergeRigid !== false) mergeRigidSegments(built);
   // Bosses loom larger — scale the visual model (gameplay reach/collision
   // stay driven by the explicit stat fields).
   if (spec.scale && spec.scale !== 1) built.group.scale.multiplyScalar(spec.scale);
