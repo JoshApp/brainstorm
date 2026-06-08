@@ -72,7 +72,10 @@ import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } fro
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
-import { createProfilerHud, setProfilerVisible, toggleProfiler, profilerBeginFrame, profilerEndFrame } from './debug/profiler-hud';
+import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
+import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn } from './debug/frame-timing';
+import { startRecording, stopRecording, toggleRecording } from './debug/perf-recorder';
+import { launchSpector } from './debug/spector-launch';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
 import { findTapTarget } from './controls/tap-target';
@@ -775,12 +778,13 @@ function tick() {
     mode: getGameMode(),
     playing: isPlaying(),
   };
-  // DEV profiler brackets the system pass: begin opens the GPU timer + marks
-  // the CPU start, end closes them and refreshes the HUD. Both no-op unless
-  // the profiler is visible, and the whole pair is stripped from prod.
-  if (import.meta.env.DEV) profilerBeginFrame();
+  // DEV profiling brackets the system pass: begin opens the GPU timer + marks
+  // the CPU start, end closes them and fans the frame sample out to the HUD +
+  // recorder. Both no-op unless something is listening (HUD visible, recording,
+  // or marks on), and the whole pair is stripped from prod.
+  if (import.meta.env.DEV) frameBegin();
   runSystems(SYSTEMS, ctx);
-  if (import.meta.env.DEV) profilerEndFrame();
+  if (import.meta.env.DEV) frameEnd();
 
   // Charge-ring HUD — early-outs on no-progress so it's free when no
   // hold is in flight. Always ticked; the visual itself opts in.
@@ -1013,20 +1017,38 @@ setPerfOverlayVisible(getSettings().perfMeter);
 // itself early-returns unless DEV, so window.__perf can never be set live.
 if (import.meta.env.DEV) installPerfProbe(renderer);
 
-// DEV profiler HUD — per-system CPU breakdown + GPU timing + live graph, for
-// hunting "what got slower?" regressions. DEV-only (tree-shaken from prod).
-// Enable with ?profile=1, the F2 key, or window.__profiler() in the console.
+// DEV profiling suite — shared frame-timing core feeds (a) the live profiler
+// HUD, (b) the session recorder, and (c) Chrome DevTools User Timing marks.
+// All DEV-only (tree-shaken from prod). Hotkeys (function keys, so they never
+// collide with movement/action binds; capture phase so focus doesn't matter):
+//   F2  toggle the live HUD            (?profile=1 to auto-open)
+//   F3  start/stop a session recording (?record=1 to auto-start)
+//   F4  toggle DevTools timing marks   (?marks=1 to auto-enable)
+//   F6  capture a frame with spector.js (draw-call autopsy)
+// Console: window.__profiler(), window.__perfRec.{start,stop,toggle}(), window.__marks(), window.__spector().
 if (import.meta.env.DEV) {
-  createProfilerHud(renderer);
-  if (new URLSearchParams(window.location.search).get('profile') === '1') {
-    setProfilerVisible(true);
-  }
-  // F2 toggles it live. Capture phase so it fires regardless of focus, and
-  // it's a function key so it never collides with movement/action binds.
+  initFrameTiming(renderer);
+  createProfilerHud();
+  const q = new URLSearchParams(window.location.search);
+  if (q.get('profile') === '1') setProfilerVisible(true);
+  if (q.get('marks') === '1') setMarks(true);
+  if (q.get('record') === '1') startRecording('auto');
   window.addEventListener('keydown', (e) => {
     if (e.code === 'F2') { e.preventDefault(); toggleProfiler(); }
+    else if (e.code === 'F3') { e.preventDefault(); toggleRecording(); }
+    else if (e.code === 'F4') { e.preventDefault(); setMarks(!marksOn()); }
+    else if (e.code === 'F6') { e.preventDefault(); void launchSpector(); }
   }, true);
-  (window as unknown as { __profiler: () => void }).__profiler = toggleProfiler;
+  const w = window as unknown as {
+    __profiler: () => void;
+    __perfRec: { start: (l?: string) => void; stop: () => void; toggle: () => void };
+    __marks: () => void;
+    __spector: () => void;
+  };
+  w.__profiler = toggleProfiler;
+  w.__perfRec = { start: startRecording, stop: stopRecording, toggle: toggleRecording };
+  w.__marks = () => setMarks(!marksOn());
+  w.__spector = () => void launchSpector();
 }
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +

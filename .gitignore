@@ -10,3 +10,6 @@ dist-ssr
 
 # Debug capture bundles (written by the dev-server capture endpoint)
 debug-captures/
+
+# Performance recordings (written by the dev-server /__perf endpoint)
+perf-recordings/

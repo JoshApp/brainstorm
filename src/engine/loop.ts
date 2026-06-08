@@ -42,28 +42,38 @@ export interface GameSystem {
   tick(ctx: TickContext): void;
 }
 
-// Optional per-system timing hook. Null in the normal (and production) path,
-// so runSystems takes its zero-overhead fast loop. The DEV profiler HUD sets
-// this to measure each system's wall-clock cost — the "which system got
-// slower" breakdown. Kept as a plain nullable so the engine never imports the
-// debug layer; the profiler reaches IN to install itself.
+// Optional per-system timing hooks. Both null/false in the normal (and
+// production) path, so runSystems takes its zero-overhead fast loop. The DEV
+// profiler sets these to measure each system's wall-clock cost — the "which
+// system got slower" breakdown. Kept as plain module state so the engine never
+// imports the debug layer; the profiler reaches IN to install itself.
 export type SystemProbe = (name: string, ms: number) => void;
 let systemProbe: SystemProbe | null = null;
 export function setSystemProbe(probe: SystemProbe | null): void {
   systemProbe = probe;
 }
+// When true, each system also emits a User Timing `performance.measure` named
+// after the system. That puts a labeled span per system into the browser's
+// Timings track, so a Chrome DevTools Performance recording (incl. remote
+// over USB from a phone) shows the same per-system flame chart natively.
+let marksEnabled = false;
+export function setMarksEnabled(on: boolean): void {
+  marksEnabled = on;
+}
 
 /** Dispatch one frame across an ordered system list, honouring each system's
  *  phase + mode gates. Order is the array order — top to bottom. */
 export function runSystems(systems: readonly GameSystem[], ctx: TickContext): void {
-  // Instrumented path — only taken when the DEV profiler is recording.
-  if (systemProbe) {
+  // Instrumented path — only taken when the DEV profiler is recording / marking.
+  if (systemProbe || marksEnabled) {
     for (const sys of systems) {
       if (sys.phase === 'unpaused' && ctx.paused) continue;
       if (sys.modes && !sys.modes.includes(ctx.mode)) continue;
       const t0 = performance.now();
       sys.tick(ctx);
-      systemProbe(sys.name, performance.now() - t0);
+      const t1 = performance.now();
+      if (systemProbe) systemProbe(sys.name, t1 - t0);
+      if (marksEnabled) performance.measure(sys.name, { start: t0, end: t1 });
     }
     return;
   }
