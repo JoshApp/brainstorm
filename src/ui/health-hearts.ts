@@ -43,6 +43,7 @@ let unsubStyle: (() => void) | null = null;
 interface HeartSvg {
   el: SVGSVGElement;
   clip: SVGRectElement;
+  frameClip: SVGRectElement;
   frame: SVGPathElement;
   fill: SVGPathElement;
 }
@@ -152,9 +153,11 @@ function buildHeart(i: number): HeartSvg {
   el.style.display = 'block';
   el.style.filter = 'drop-shadow(0 1px 2px rgba(0,0,0,0.85))';
 
-  // Per-heart clipPath that wipes the fill from right to left.
-  const clipId = `heart-clip-${i}-${Math.random().toString(36).slice(2, 7)}`;
+  const rnd = Math.random().toString(36).slice(2, 7);
   const defs = document.createElementNS(svgNs, 'defs');
+
+  // Per-heart clipPath that wipes the FILL from right to left.
+  const clipId = `heart-clip-${i}-${rnd}`;
   const clipPath = document.createElementNS(svgNs, 'clipPath');
   clipPath.setAttribute('id', clipId);
   const clip = document.createElementNS(svgNs, 'rect');
@@ -164,6 +167,21 @@ function buildHeart(i: number): HeartSvg {
   clip.setAttribute('height', '24');
   clipPath.appendChild(clip);
   defs.appendChild(clipPath);
+
+  // A SECOND clip for the empty FRAME. Normally full-width (a whole heart
+  // container), but the trailing heart of an ODD max HP only HOLDS half a
+  // heart — clip its container to the left half so it reads as a true half-
+  // heart, not a full heart with a healable-looking empty right half.
+  const frameClipId = `heart-frameclip-${i}-${rnd}`;
+  const frameClipPath = document.createElementNS(svgNs, 'clipPath');
+  frameClipPath.setAttribute('id', frameClipId);
+  const frameClip = document.createElementNS(svgNs, 'rect');
+  frameClip.setAttribute('x', '0');
+  frameClip.setAttribute('y', '0');
+  frameClip.setAttribute('width', '24');
+  frameClip.setAttribute('height', '24');
+  frameClipPath.appendChild(frameClip);
+  defs.appendChild(frameClipPath);
   el.appendChild(defs);
 
   // Empty heart frame — dark iron + hairline gold edge.
@@ -173,6 +191,7 @@ function buildHeart(i: number): HeartSvg {
   frame.setAttribute('stroke', 'rgba(180, 140, 80, 0.55)');
   frame.setAttribute('stroke-width', '1.2');
   frame.setAttribute('stroke-linejoin', 'round');
+  frame.setAttribute('clip-path', `url(#${frameClipId})`);
   el.appendChild(frame);
 
   // Filled heart — clipped by the rect above.
@@ -185,7 +204,7 @@ function buildHeart(i: number): HeartSvg {
   fill.setAttribute('clip-path', `url(#${clipId})`);
   el.appendChild(fill);
 
-  return { el, clip, frame, fill };
+  return { el, clip, frameClip, frame, fill };
 }
 
 function render({ hp, max }: HpState): void {
@@ -225,9 +244,14 @@ function render({ hp, max }: HpState): void {
   wasLow = low;
 
   // Each heart spans HEART_HP (2) HP; damage wipes from the right, so 1 HP
-  // leaves a half heart.
+  // leaves a half heart. The frame CONTAINER is clipped to the heart's real HP
+  // capacity: full for every heart except the trailing one of an ODD max, whose
+  // slot is only half a heart — so at full health it reads as a whole half-heart
+  // token, not a damaged (healable) heart.
   const fractions = heartFillFractions(hp, hearts.length);
   for (let i = 0; i < hearts.length; i++) {
+    const capacity = Math.max(0, Math.min(1, (max - i * HEART_HP) / HEART_HP));
+    hearts[i].frameClip.setAttribute('width', String(24 * capacity));
     hearts[i].clip.setAttribute('width', String(24 * fractions[i]));
     hearts[i].fill.setAttribute('fill', fillColor);
   }
