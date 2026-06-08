@@ -79,13 +79,7 @@ export function batchStaticFixtures(level: LiveLevel): void {
     mesh.name = 'fixtures-merged';
     mesh.userData.dbgKind = 'fixtures';
     mesh.userData.dbgSource = `fixtures · ${roomId}`;
-    // Do NOT cast into the lamp's shadow. This batch is torches + decor (candles,
-    // braziers, clutter, altars) — most are light SOURCES or small props whose
-    // lamp-cast shadow is near-invisible, yet each is a caster re-drawn into all
-    // 6 faces of the point-light cube map every frame. The lamp's meaningful
-    // shadows come from walls / pillars / enemies (which still cast). Still
-    // RECEIVES, so this geometry still sits in the lamp's shadows.
-    mesh.castShadow = false;
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     level.root.add(mesh);
     // Remove the now-batched originals (their geometry is pooled/shared — do
