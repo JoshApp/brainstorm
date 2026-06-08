@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { LiveLevel } from './builder';
 import { on as onEvent } from '../broadcast/event-bus';
+import { getAllInteractables } from '../interactables/system';
 
 // Portal/room visibility culling. Three.js frustum-culls (the view cone) but
 // never OCCLUSION-culls — a wall doesn't stop the frustum, so a room hidden
@@ -164,6 +165,10 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       for (const o of node.objects) o.visible = true;
     }
     for (const e of level.enemies) e.group.visible = true;
+    for (const it of getAllInteractables()) {
+      const g = it.built?.group as THREE.Object3D | undefined;
+      if (g && g.userData?.dbgKind !== 'prop') g.visible = true;
+    }
   }
 
   function tick(camera: THREE.Camera) {
@@ -236,6 +241,20 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
       const node = rectAt(nodes, e.group.position.x, e.group.position.z);
       const vis = !node || visible.has(node.id);
       if (e.group.visible !== vis) e.group.visible = vis;
+    }
+
+    // Runtime-spawned interactables — loot PICKUPS dropped during play. These
+    // never went through the builder, so they carry no per-rect tag and the
+    // static assignment above can't see them; their mesh + ring + glow render
+    // through walls like the enemies did. Cull them by live position too. Skip
+    // anything tagged 'prop' (builder-placed chests/corpses already handled by
+    // their static assignment) so we don't fight that path.
+    for (const it of getAllInteractables()) {
+      const g = it.built?.group as THREE.Object3D | undefined;
+      if (!g || g.userData?.dbgKind === 'prop') continue;
+      const node = rectAt(nodes, it.position.x, it.position.z);
+      const vis = !node || visible.has(node.id);
+      if (g.visible !== vis) g.visible = vis;
     }
   }
 
