@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildModel } from '../ecs/build-model';
+import { buildModel, mergeRigidSegments } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
 import { INTERACT_PRIORITY } from './types';
@@ -158,6 +158,12 @@ export function createPickup(
 
   // ── Item model — bobs + rotates ────────────────────────────────────
   const built = buildModel(item.dropModel);
+  // Lego-merge the item's static meshes into one-per-material. The whole model
+  // bobs/rotates as a group (no per-part animation, no name lookups), so this
+  // is pure draw-call savings — important when a pack of loot litters the floor,
+  // since every ground item's draws are live CPU cost (the thing that heats the
+  // chip into a throttle). Flames/sprites are preserved by the merge.
+  mergeRigidSegments(built);
   pickupGroup.add(built.group);
 
   // Fountain state. itemX/Y/Z are LOCAL to pickupGroup (which sits at
