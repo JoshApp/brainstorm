@@ -8,6 +8,23 @@ import { buildRng } from '../engine/rng';
 // with no game-state coupling, so they're easy to read and test in isolation.
 // builder.ts composes the live level by calling these.
 
+// === Baked AO model (shared by walls, floors, prop contact) ===
+// Occlusion ∈ [0,1] lerps a surface's vertex colour toward SHADOW_TINT — a COOL,
+// desaturated dark rather than pure black, so a shadowed face reads as
+// "stone in shadow", not "brightness turned down". This is the single shadow
+// colour every AO source agrees on, and the seam where the coherent moss/grime
+// colour pass plugs in next (docs/surface-richness.md).
+const SHADOW_TINT = [0.40, 0.45, 0.55] as const;   // r,g,b multiplier at full occlusion
+const aoClamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+const aoSmooth = (t: number): number => { const c = aoClamp01(t); return c * c * (3 - 2 * c); };
+/** Multiply rgb (in place) toward SHADOW_TINT by occlusion amount `occ`. */
+function applyOcc(rgb: [number, number, number], occ: number): void {
+  const o = aoClamp01(occ);
+  rgb[0] *= 1 + (SHADOW_TINT[0] - 1) * o;
+  rgb[1] *= 1 + (SHADOW_TINT[1] - 1) * o;
+  rgb[2] *= 1 + (SHADOW_TINT[2] - 1) * o;
+}
+
 /** Floor mesh with rectangular holes punched for stairwells. Each hole
  *  is a polygon in shape-space (x, y) where shape Y maps to world -Z
  *  after the floor's -π/2 X rotation. Holes are passed in pre-projected
@@ -96,38 +113,37 @@ export function makeJitteredPlane(
   pos.needsUpdate = true;
   geo.computeVertexNormals();
 
-  // Per-vertex color: a gentle random tint × BAKED wall AO. WALLS darken toward
-  // the FLOOR (strong) + gently toward the CEILING, so shadow pools where the
-  // wall meets floor/ceiling — the dungeon's grime + ambient occlusion. Free
-  // per-frame, no depth-buffer streaks (unlike the dead screen-space attempt).
+  // Per-vertex color: a gentle random tint × BAKED wall AO. WALLS occlude toward
+  // the FLOOR (strong), gently toward the CEILING, and toward their VERTICAL
+  // ENDS (room corners / doorway jambs) — so shadow pools in every edge where a
+  // wall meets another surface. Smooth (smoothstep) falloff + cool SHADOW_TINT,
+  // free per-frame, no depth-buffer streaks.
   //
   // FLOORS get only the random tint here — their AO is WALL-CONTACT, baked
   // separately (bakeFloorContactAO) from the room's real wall segments so it
-  // skips open passages and floors flow seamlessly room↔corridor. Random tint
-  // range is narrow ([0.85,1.0]); coherent colouring (moss low) is next —
-  // docs/surface-richness.md.
-  const H2 = height / 2;
-  const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
-  const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
-  // Wall AO tunables. Walls in DELVE stand local-Y up (bottom = -H2).
-  const FLOOR_DARK = 0.5, FLOOR_FADE = 1.3;   // darkness at base, fade metres
-  const CEIL_DARK = 0.74, CEIL_FADE = 1.0;    // gentler darkness at top
+  // skips open passages and floors flow seamlessly room↔corridor.
+  const H2 = height / 2, W2 = width / 2;
+  // Wall AO tunables. Walls stand local-Y up (bottom = -H2), run along local X.
+  const FLOOR_OCC = 0.85, FLOOR_FADE = 1.3;    // base: strength, fade metres
+  const CEIL_OCC = 0.45, CEIL_FADE = 1.0;      // top: gentler
+  const CORNER_OCC = 0.6, CORNER_FADE = 0.7;   // vertical ends (corners/jambs)
   const colors = new Float32Array(pos.count * 3);
+  const rgb: [number, number, number] = [0, 0, 0];
   for (let i = 0; i < pos.count; i++) {
-    let ao = 1.0;
-    if (wavy) {            // WALL — vertical gradient
-      const py = pos.getY(i);
-      const up   = mix(FLOOR_DARK, 1.0, clamp01((py + H2) / FLOOR_FADE));
-      const down = mix(CEIL_DARK,  1.0, clamp01((H2 - py) / CEIL_FADE));
-      ao = up * down;
+    const base = 0.85 + buildRng() * 0.15;
+    rgb[0] = base * (0.96 + buildRng() * 0.04);
+    rgb[1] = base * (0.96 + buildRng() * 0.04);
+    rgb[2] = base * (0.96 + buildRng() * 0.04);
+    if (wavy) {            // WALL — combine the three edge occlusions (take max)
+      const py = pos.getY(i), px = pos.getX(i);
+      const floorOcc  = aoSmooth(1 - (py + H2) / FLOOR_FADE) * FLOOR_OCC;
+      const ceilOcc   = aoSmooth(1 - (H2 - py) / CEIL_FADE) * CEIL_OCC;
+      const cornerOcc = aoSmooth(1 - (W2 - Math.abs(px)) / CORNER_FADE) * CORNER_OCC;
+      applyOcc(rgb, Math.max(floorOcc, ceilOcc, cornerOcc));
     }
-    const base = (0.85 + buildRng() * 0.15) * ao;
-    const tintR = base * (0.96 + buildRng() * 0.04);
-    const tintG = base * (0.96 + buildRng() * 0.04);
-    const tintB = base * (0.96 + buildRng() * 0.04);
-    colors[i * 3 + 0] = tintR;
-    colors[i * 3 + 1] = tintG;
-    colors[i * 3 + 2] = tintB;
+    colors[i * 3 + 0] = rgb[0];
+    colors[i * 3 + 1] = rgb[1];
+    colors[i * 3 + 2] = rgb[2];
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
@@ -161,12 +177,13 @@ export function bakeFloorContactAO(
   geo: THREE.BufferGeometry,
   origin: { x: number; z: number },
   segments: WallSeg[],
-  radius = 0.75,
-  darkness = 0.5,
+  radius = 0.85,
+  occ = 0.8,
 ): void {
   const color = geo.getAttribute('color') as THREE.BufferAttribute | undefined;
   const pos = geo.getAttribute('position') as THREE.BufferAttribute | undefined;
   if (!color || !pos || segments.length === 0) return;
+  const rgb: [number, number, number] = [0, 0, 0];
   for (let i = 0; i < pos.count; i++) {
     const wx = origin.x + pos.getX(i);
     const wz = origin.z - pos.getY(i);
@@ -175,11 +192,10 @@ export function bakeFloorContactAO(
       const d = distPointSeg(wx, wz, s.ax, s.az, s.bx, s.bz);
       if (d < dmin) dmin = d;
     }
-    const t = dmin >= radius ? 1 : dmin / radius;   // 0 at wall → 1 beyond
-    const ao = darkness + (1 - darkness) * t;
-    color.setX(i, color.getX(i) * ao);
-    color.setY(i, color.getY(i) * ao);
-    color.setZ(i, color.getZ(i) * ao);
+    if (dmin >= radius) continue;                          // beyond reach — untouched
+    rgb[0] = color.getX(i); rgb[1] = color.getY(i); rgb[2] = color.getZ(i);
+    applyOcc(rgb, aoSmooth(1 - dmin / radius) * occ);       // 1 at wall → 0 beyond
+    color.setXYZ(i, rgb[0], rgb[1], rgb[2]);
   }
   color.needsUpdate = true;
 }
