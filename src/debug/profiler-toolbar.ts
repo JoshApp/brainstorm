@@ -13,7 +13,7 @@
 import { toggleProfiler, isProfilerVisible } from './profiler-hud';
 import { toggleRecording, isRecording, onRecordingState, saveLastSeconds } from './perf-recorder';
 import { setGpuProbe, gpuProbeOn } from './frame-timing';
-import { launchSpector } from './spector-launch';
+import { captureDrawReport } from './draw-report';
 
 let root: HTMLDivElement | null = null;
 let hudBtn: HTMLButtonElement | null = null;
@@ -69,10 +69,13 @@ function mount(): void {
   gpuBtn = makeBtn('GPU');
   gpuBtn.addEventListener('click', (e) => { e.stopPropagation(); setGpuProbe(!gpuProbeOn()); paintGpu(); });
 
-  const spcBtn = makeBtn('SPCT');
-  spcBtn.addEventListener('click', (e) => { e.stopPropagation(); void launchSpector(); });
+  // DRAWS — analyze the scene's draw calls + instancing wins, share as text.
+  // (The mobile-friendly, shareable replacement for spector, which stays on
+  // desktop via window.__spector.)
+  const drawBtn = makeBtn('DRAWS');
+  drawBtn.addEventListener('click', (e) => { e.stopPropagation(); void captureDrawReport(); });
 
-  root.append(hudBtn, recBtn, saveBtn, gpuBtn, spcBtn);
+  root.append(hudBtn, recBtn, saveBtn, gpuBtn, drawBtn);
   document.body.appendChild(root);
 
   onRecordingState(paintRec);

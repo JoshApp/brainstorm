@@ -76,6 +76,7 @@ import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/p
 import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn } from './debug/frame-timing';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds } from './debug/perf-recorder';
 import { launchSpector } from './debug/spector-launch';
+import { initDrawReport, captureDrawReport } from './debug/draw-report';
 import { setProfilerToolbarVisible } from './debug/profiler-toolbar';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
@@ -1032,8 +1033,8 @@ if (import.meta.env.DEV) installPerfProbe(renderer);
 // turns it on.
 //
 // Drive it from the on-screen toolbar (phone) or, on desktop, the hotkeys:
-//   F2 HUD · F3 record · F4 DevTools marks · F5 GPU probe · F6 spector. URL: ?profile/record/marks=1.
-//   Console: window.__profiler / __perfRec.{start,stop,toggle,saveLast} / __marks / __gpuProbe / __spector.
+//   F2 HUD · F3 record · F4 DevTools marks · F5 GPU probe · F6 draw report. URL: ?profile/record/marks=1.
+//   Console: window.__profiler / __perfRec.{...} / __marks / __gpuProbe / __draws / __spector (desktop).
 const profilerSessionFlag = ['profiler', 'profile', 'record', 'marks']
   .some((k) => new URLSearchParams(window.location.search).get(k) === '1');
 function profilingEnabled(): boolean {
@@ -1044,6 +1045,7 @@ function ensureProfilingInited(): void {
   if (profilingInited) return;
   profilingInited = true;
   initFrameTiming(renderer);
+  initDrawReport(scene, renderer);
   createProfilerHud();
 }
 function applyProfilerEnabled(): void {
@@ -1071,13 +1073,14 @@ window.addEventListener('keydown', (e) => {
   else if (e.code === 'F3') { e.preventDefault(); toggleRecording(); }
   else if (e.code === 'F4') { e.preventDefault(); setMarks(!marksOn()); }
   else if (e.code === 'F5') { e.preventDefault(); setGpuProbe(!gpuProbeOn()); }
-  else if (e.code === 'F6') { e.preventDefault(); void launchSpector(); }
+  else if (e.code === 'F6') { e.preventDefault(); void captureDrawReport(); }
 }, true);
 const profWin = window as unknown as {
   __profiler: () => void;
   __perfRec: { start: (l?: string) => void; stop: () => void; toggle: () => void; saveLast: (secs?: number) => void };
   __marks: () => void;
   __gpuProbe: () => void;
+  __draws: () => void;
   __spector: () => void;
 };
 profWin.__profiler = () => { ensureProfilingInited(); toggleProfiler(); };
@@ -1089,7 +1092,8 @@ profWin.__perfRec = {
 };
 profWin.__marks = () => { ensureProfilingInited(); setMarks(!marksOn()); };
 profWin.__gpuProbe = () => { ensureProfilingInited(); setGpuProbe(!gpuProbeOn()); };
-profWin.__spector = () => void launchSpector();
+profWin.__draws = () => { ensureProfilingInited(); void captureDrawReport(); };
+profWin.__spector = () => void launchSpector();   // desktop only — heavy UI
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
 // the CODEX/STASH buttons without requiring real playthrough.

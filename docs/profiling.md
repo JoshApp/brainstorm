@@ -25,7 +25,8 @@ When enabled, an **on-screen toolbar** appears (top-left): `HUD` · `● REC` ·
 | **Session recorder** | "Where did frames drop over the last minute?" | toolbar `● REC` · `F3` · `?record=1` → review page |
 | **DevTools marks** | Native flame chart, incl. remote-over-USB from a phone | `F4` · `?marks=1` |
 | **GPU probe** | Real GPU ms on devices without the timer-query extension | toolbar `GPU` · `F5` |
-| **spector.js** | "What's eating the draw calls?" (every GL command) | toolbar `SPCT` · `F6` |
+| **Draw report** | "What's eating the draw calls?" + instancing wins, shareable | toolbar `DRAWS` · `F6` |
+| **spector.js** | Every GL command of a frame (deep, DESKTOP only) | `window.__spector()` |
 
 ### Reading GPU time
 
@@ -131,19 +132,26 @@ from a Mac over USB.)
 
 ---
 
-## Draw-call autopsy with spector.js
+## Draw-call autopsy
 
-When you're GPU-bound or the draw count looks too high, the `SPCT` button / `F6`
-captures the next frame's GL command stream — every draw, state change, shader,
-texture. It loads from a CDN on demand (nothing in the bundle).
+### Draw report (`DRAWS` / `F6`) — the phone-friendly one
 
-It uses spector's **quick-capture** mode: a DELVE frame is ~660+ draws across
-four passes, and spector's default capture snapshots the framebuffer after every
-command (a synchronous readback per draw) — which locks the main thread for
-seconds and reads as a freeze. Quick-capture records the command list without
-those per-command thumbnails, so you still get the full draw breakdown without
-the hang. It's still a heavy one-shot, so it's nicer on desktop; offline, use the
-[spector.js browser extension](https://spector.babylonjs.com/) instead.
+Walks the live scene graph and reports what's generating the draws, ranked by
+the biggest **instancing wins**: groups of meshes that share a shape + material
+and could collapse into one `InstancedMesh`. Grouped semantically (by shape +
+material params, not object identity), so "64 identical dark spheres" reads as
+one line, not 64. Output is a text report shared via the OS share sheet — so you
+can send it off the phone (to yourself, or to review). This is the practical
+"what's eating the draws" tool on mobile.
+
+### spector.js (`window.__spector()`) — DESKTOP only
+
+The deep option: captures the next frame's entire GL command stream (every draw,
+state change, shader, texture). Loads from a CDN on demand. Its UI is heavy and
+desktop-oriented and there's no good way to export or even close it on a phone —
+so it's console-only now (`window.__spector()`), best used on desktop or via the
+[spector.js browser extension](https://spector.babylonjs.com/). On mobile, use
+the draw report above.
 
 ---
 
