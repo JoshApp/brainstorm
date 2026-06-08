@@ -96,14 +96,35 @@ export function makeJitteredPlane(
   pos.needsUpdate = true;
   geo.computeVertexNormals();
 
-  // Per-vertex color tint: each vertex gets an RGB multiplier. Range narrowed
-  // to [0.85, 1.0] — the old [0.7, 1.0] random tint read as noisy splotches on
-  // the subdivided grid (worst in the dim, tight corridors). This is the GENTLE
-  // baseline; COHERENT, intentional vertex colouring (grime, weathering, moss
-  // pooling low) is part of the richness pass — see docs/surface-richness.md.
+  // Per-vertex color: a gentle random tint × BAKED AO. The AO grounds the room
+  // for free (no per-frame cost, no depth-buffer streaks — unlike the dead
+  // screen-space attempt):
+  //   - WALLS darken toward the FLOOR (strong) + gently toward the CEILING, so
+  //     shadow pools where the wall meets floor/ceiling — the dungeon's grime.
+  //   - FLOORS darken in a thin band at their EDGES (where they meet the walls).
+  // Random tint range is narrow ([0.85,1.0]); coherent intentional colouring
+  // (moss low, weathering) is the next richness step — docs/surface-richness.md.
+  const W2 = width / 2, H2 = height / 2;
+  const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
+  // Tunables. Walls in DELVE stand local-Y up (bottom = -H2); floors lie flat
+  // so both local axes are horizontal (the rect's extent).
+  const FLOOR_DARK = 0.5, FLOOR_FADE = 1.3;   // wall: darkness at base, fade metres
+  const CEIL_DARK = 0.74, CEIL_FADE = 1.0;    // wall: gentler darkness at top
+  const FLOOR_EDGE_DARK = 0.55, FLOOR_EDGE_FADE = 0.55;   // floor: edge-band darkness + width
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
-    const base = 0.85 + buildRng() * 0.15;   // overall darkness per vertex
+    let ao = 1.0;
+    if (wavy) {            // WALL — vertical gradient
+      const py = pos.getY(i);
+      const up   = mix(FLOOR_DARK, 1.0, clamp01((py + H2) / FLOOR_FADE));
+      const down = mix(CEIL_DARK,  1.0, clamp01((H2 - py) / CEIL_FADE));
+      ao = up * down;
+    } else if (flat) {     // FLOOR — darken a band at the rect edges
+      const dEdge = Math.min(W2 - Math.abs(pos.getX(i)), H2 - Math.abs(pos.getY(i)));
+      ao = mix(FLOOR_EDGE_DARK, 1.0, clamp01(dEdge / FLOOR_EDGE_FADE));
+    }
+    const base = (0.85 + buildRng() * 0.15) * ao;
     const tintR = base * (0.96 + buildRng() * 0.04);
     const tintG = base * (0.96 + buildRng() * 0.04);
     const tintB = base * (0.96 + buildRng() * 0.04);
