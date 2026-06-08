@@ -151,6 +151,11 @@ export function setShadowMode(mode: ShadowMode): void {
   applyShadowMode();
 }
 
+/** Current dynamic-shadow mode — so a profiler can toggle it off and restore. */
+export function getShadowMode(): ShadowMode {
+  return shadowMode;
+}
+
 function applyShadowMode(): void {
   // hero = lamp only; single = nearest world light only; all = lamp + nearest few.
   const lampCasts = shadowMode === 'hero' || shadowMode === 'all';

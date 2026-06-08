@@ -14,6 +14,7 @@ import { toggleProfiler, isProfilerVisible } from './profiler-hud';
 import { toggleRecording, isRecording, onRecordingState, saveLastSeconds } from './perf-recorder';
 import { setGpuProbe, gpuProbeOn } from './frame-timing';
 import { captureDrawReport } from './draw-report';
+import { runGpuAttribution } from './gpu-attribution';
 import { launchSpector } from './spector-launch';
 
 let root: HTMLDivElement | null = null;
@@ -75,12 +76,17 @@ function mount(): void {
   const drawBtn = makeBtn('DRAWS');
   drawBtn.addEventListener('click', (e) => { e.stopPropagation(); void captureDrawReport(); });
 
+  // ATTR — GPU cost attribution. A/B-toggles bloom/shadows/sprites/motes/post
+  // and reports each one's GPU-timer cost. Stand still for the ~4s sweep.
+  const attrBtn = makeBtn('ATTR');
+  attrBtn.addEventListener('click', (e) => { e.stopPropagation(); void runGpuAttribution(); });
+
   // SPCT — spector.js full GL-command capture. Heavy, but its result view has
   // an export so the capture can be saved + sent on.
   const spcBtn = makeBtn('SPCT');
   spcBtn.addEventListener('click', (e) => { e.stopPropagation(); void launchSpector(); });
 
-  root.append(hudBtn, recBtn, saveBtn, gpuBtn, drawBtn, spcBtn);
+  root.append(hudBtn, recBtn, saveBtn, gpuBtn, drawBtn, attrBtn, spcBtn);
   document.body.appendChild(root);
 
   onRecordingState(paintRec);

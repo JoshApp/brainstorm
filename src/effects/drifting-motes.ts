@@ -153,6 +153,12 @@ export function tickDriftingMotes(dt: number, camera: THREE.Camera): void {
   geometry.attributes.position.needsUpdate = true;
 }
 
+/** Hide/show the whole mote batch — used by the GPU-attribution probe to
+ *  measure what the motes cost. No-op if motes aren't initialised. */
+export function setMotesHidden(hidden: boolean): void {
+  if (mesh) mesh.visible = !hidden;
+}
+
 export function clearDriftingMotes(): void {
   mesh?.parent?.remove(mesh);
   geometry?.dispose();

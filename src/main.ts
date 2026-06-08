@@ -79,6 +79,7 @@ import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, 
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds } from './debug/perf-recorder';
 import { launchSpector } from './debug/spector-launch';
 import { initDrawReport, captureDrawReport } from './debug/draw-report';
+import { initGpuAttribution, runGpuAttribution } from './debug/gpu-attribution';
 import { setProfilerToolbarVisible } from './debug/profiler-toolbar';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
@@ -1052,6 +1053,7 @@ function ensureProfilingInited(): void {
   profilingInited = true;
   initFrameTiming(renderer);
   initDrawReport(scene, renderer, () => currentLevel);
+  initGpuAttribution(scene);
   createProfilerHud();
 }
 function applyProfilerEnabled(): void {
@@ -1080,6 +1082,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.code === 'F4') { e.preventDefault(); setMarks(!marksOn()); }
   else if (e.code === 'F5') { e.preventDefault(); setGpuProbe(!gpuProbeOn()); }
   else if (e.code === 'F6') { e.preventDefault(); void captureDrawReport(); }
+  else if (e.code === 'F7') { e.preventDefault(); void runGpuAttribution(); }
 }, true);
 const profWin = window as unknown as {
   __profiler: () => void;
@@ -1087,6 +1090,7 @@ const profWin = window as unknown as {
   __marks: () => void;
   __gpuProbe: () => void;
   __draws: () => void;
+  __gpuAttr: () => void;
   __spector: () => void;
 };
 profWin.__profiler = () => { ensureProfilingInited(); toggleProfiler(); };
@@ -1099,6 +1103,7 @@ profWin.__perfRec = {
 profWin.__marks = () => { ensureProfilingInited(); setMarks(!marksOn()); };
 profWin.__gpuProbe = () => { ensureProfilingInited(); setGpuProbe(!gpuProbeOn()); };
 profWin.__draws = () => { ensureProfilingInited(); void captureDrawReport(); };
+profWin.__gpuAttr = () => { ensureProfilingInited(); void runGpuAttribution(); };
 profWin.__spector = () => void launchSpector();   // desktop only — heavy UI
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
