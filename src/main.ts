@@ -24,6 +24,7 @@ import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setOutlineEnabled } from './style/render-target';
 import { setSurfaceAOStrength } from './style/surface-ao';
+import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
@@ -205,6 +206,7 @@ initRenderPipeline(renderer);
 // Apply the persisted ink-outline preference (the pipeline defaults it on).
 setOutlineEnabled(getSettings().outlines);
 setSurfaceAOStrength(getSettings().aoStrength);
+setSurfaceDetailEnabled(getSettings().surfaceDetail);
 
 // --- Camera ---
 const camera = createFirstPersonCamera();
@@ -992,6 +994,7 @@ onSettingsChanged((s) => {
   setAdaptiveResolution(s.adaptiveResolution && !isDesktopLike());
   setOutlineEnabled(s.outlines);
   setSurfaceAOStrength(s.aoStrength);
+  setSurfaceDetailEnabled(s.surfaceDetail);
   // Banded lighting toggle: swap the global lighting chunk, then force every
   // visible material to RECOMPILE so it re-reads the new chunk. Just setting
   // needsUpdate isn't enough — Three.js's program cache keys off material

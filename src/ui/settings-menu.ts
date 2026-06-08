@@ -389,6 +389,15 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       set: (v) => updateSettings({ aoStrength: v }),
       format: (v) => (v === 0 ? 'off' : v.toFixed(2) + '×'),
     }),
+    makeToggle({
+      label: 'SURFACE DETAIL',
+      description:
+        'Procedural stone roughness — perturbs the surface normals so torchlight ' +
+        'catches fake bumps and grime across walls and floors. No texture maps; ' +
+        'the flicker brings the stone alive. Off keeps the smooth surfaces.',
+      get: () => getSettings().surfaceDetail,
+      set: (v) => updateSettings({ surfaceDetail: v }),
+    }),
   ],
 
   system: () => [

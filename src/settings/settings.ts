@@ -102,6 +102,9 @@ export interface Settings {
   /** Surface AO strength — scales the baked corner/base darkening on walls +
    *  floors live (0 = off/flat, 1 = as baked, up to 2 = amplified). */
   aoStrength: number;
+  /** Procedural surface detail — world-space normal perturbation + grime on the
+   *  big stone surfaces, so torchlight catches fake roughness. No texture maps. */
+  surfaceDetail: boolean;
   /** HUD style preset — controls which HUD elements render and how
    *  loud the diegetic feedback (vignette, heartbeat, breath) is. Use
    *  with the registry in src/ui/hud-style.ts. Default 'minimal'. */
@@ -158,6 +161,7 @@ const DEFAULTS: Settings = {
   bandedLighting: true,
   outlines: false,
   aoStrength: 1.6,
+  surfaceDetail: true,
   hudStyle: 'minimal',
 };
 
