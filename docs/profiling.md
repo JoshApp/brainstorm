@@ -133,11 +133,17 @@ from a Mac over USB.)
 
 ## Draw-call autopsy with spector.js
 
-When you're GPU-bound or the draw count looks too high, `F6` captures the next
-frame's entire GL command stream — every draw, state change, shader, texture.
-It loads from a CDN on demand (nothing in the bundle). Offline? Install the
-[spector.js browser extension](https://spector.babylonjs.com/) and click its
-capture button — same tool, no code.
+When you're GPU-bound or the draw count looks too high, the `SPCT` button / `F6`
+captures the next frame's GL command stream — every draw, state change, shader,
+texture. It loads from a CDN on demand (nothing in the bundle).
+
+It uses spector's **quick-capture** mode: a DELVE frame is ~660+ draws across
+four passes, and spector's default capture snapshots the framebuffer after every
+command (a synchronous readback per draw) — which locks the main thread for
+seconds and reads as a freeze. Quick-capture records the command list without
+those per-command thumbnails, so you still get the full draw breakdown without
+the hang. It's still a heavy one-shot, so it's nicer on desktop; offline, use the
+[spector.js browser extension](https://spector.babylonjs.com/) instead.
 
 ---
 
