@@ -1,39 +1,43 @@
-// Performance session RECORDER. Captures every frame's timing to a ring buffer
-// while you play, then ships the whole timeline somewhere you can review it
-// with dropped-frame markers against a 60fps target. This is the part the live
-// HUD can't do: catch the hitch that happened 8 seconds ago while you were
-// fighting, not just the one you're staring at.
+// Performance session RECORDER — with a "dashcam" rolling buffer.
 //
-// Delivery (in order):
-//   1. POST the recording JSON to the dev server's /__perf endpoint, which
-//      writes it to perf-recordings/ on the PC. Because the phone loaded the
-//      game FROM the dev server, this "phone → PC" hop is just a same-origin
-//      fetch — no USB, no cable. Review it on the PC at /brainstorm/perf-review.html.
-//   2. If there's no dev server (e.g. a static build, or offline), fall back to
-//      a file download so you still get the JSON.
+// The problem with a plain start/stop recorder: it only helps if you pressed
+// REC *before* the hitch. But the drops you most want to catch are the ones you
+// can't predict ("fps dropped at some point and I couldn't tell when"). So
+// while the profiler tools are enabled, this ALWAYS keeps the last ~60s of
+// frames in a ring buffer. Three ways to get a recording out of it:
 //
-// DEV-only. Enable recording with F3, ?record=1 (auto-start), or
-// window.__perfRec.toggle(). It works whether or not the HUD is visible — both
-// read from the shared frame-timing core.
+//   • SAVE LAST 15s — snapshot the tail of the ring. Felt a hitch? Hit save,
+//     it's already captured. This is the dashcam.
+//   • ● REC / ■ STOP — mark an explicit span (a whole boss fight, say).
+//   • window.__perfRec.{start,stop,saveLast}().
+//
+// Delivery picks the best channel for where you are:
+//   • On a dev server (localhost / LAN) → POST to /__perf, lands on the PC.
+//   • On the live build (a phone) → navigator.share() into the OS share sheet
+//     (AirDrop / email-to-self), falling back to a file download.
+// Review either way at /brainstorm/perf-review.html.
+//
+// Ships behind the PROFILER TOOLS setting (not DEV-gated). The ring only fills
+// while the tools are enabled, so there's no cost for players. Note: buffering
+// allocates a small per-frame record, so the profiler's own GC/alloc readout
+// carries a little constant overhead while the tools are on — expected.
 
 import { addFrameListener, removeFrameListener, gpuSupported, type FrameSample } from './frame-timing';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
-const MAX_DURATION_MS = 60_000;       // auto-stop cap so memory stays bounded
+const RING_CAP_MS = 60_000;           // keep the last 60s; also the explicit-record cap
+const DASHCAM_SECS = 15;              // default "save last N"
 
-// One recorded frame. Per-system costs are a flat array aligned to the
-// recording's `systemNames` index table — compact, and lets the viewer draw a
-// stacked per-system timeline.
 interface RecFrame {
-  t: number;            // ms since record start
-  dt: number;           // frame interval ms
+  t: number;            // absolute performance.now() in the ring; rebased on export
+  dt: number;
   cpu: number;
   gpu: number | null;
   draws: number;
   tris: number;
   heap: number | null;  // MB
   gc: boolean;
-  sys: number[];        // per-system ms, aligned to systemNames
+  sys: number[];        // per-system ms, aligned to sysNames
 }
 
 export interface Recording {
@@ -52,88 +56,112 @@ export interface Recording {
   frames: RecFrame[];
 }
 
-let recording = false;
-let t0 = 0;
-let frames: RecFrame[] = [];
+let rolling = false;
+let ring: RecFrame[] = [];
 const sysIndex = new Map<string, number>();
 const sysNames: string[] = [];
 
+let recording = false;
+let recordStartAbs = 0;
+let pendingLabel: string | undefined;
+
 function systemIdx(name: string): number {
   let i = sysIndex.get(name);
-  if (i === undefined) {
-    i = sysNames.length;
-    sysNames.push(name);
-    sysIndex.set(name, i);
-  }
+  if (i === undefined) { i = sysNames.length; sysNames.push(name); sysIndex.set(name, i); }
   return i;
 }
+function r2(n: number): number { return Math.round(n * 100) / 100; }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+function snapshotSys(systems: Map<string, number>): number[] {
+  const arr = new Array<number>(sysNames.length).fill(0);
+  for (const [name, ms] of systems) {
+    const i = systemIdx(name);
+    if (i >= arr.length) arr.length = i + 1;
+    arr[i] = r2(ms);
+  }
+  return arr;
 }
 
-function onFrame(s: FrameSample): void {
-  const t = performance.now() - t0;
-  const sys = new Array<number>(sysNames.length).fill(0);
-  for (const [name, ms] of s.systems) {
-    const i = systemIdx(name);
-    if (i >= sys.length) sys.length = i + 1;   // grow if a new system appeared
-    sys[i] = round2(ms);
-  }
-  frames.push({
-    t: round2(t),
-    dt: round2(s.dt),
-    cpu: round2(s.cpuMs),
-    gpu: s.gpuMs !== null ? round2(s.gpuMs) : null,
+function onRingFrame(s: FrameSample): void {
+  const now = performance.now();
+  ring.push({
+    t: now,
+    dt: r2(s.dt),
+    cpu: r2(s.cpuMs),
+    gpu: s.gpuMs !== null ? r2(s.gpuMs) : null,
     draws: s.draws,
     tris: s.tris,
     heap: s.heapMB !== null ? Math.round(s.heapMB) : null,
     gc: s.gc,
-    sys,
+    sys: snapshotSys(s.systems),
   });
-  if (t >= MAX_DURATION_MS) void stopRecording();
+  const cutoff = now - RING_CAP_MS;
+  while (ring.length && ring[0].t < cutoff) ring.shift();
+  // Cap an explicit recording at the ring length so it can't outrun the buffer.
+  if (recording && now - recordStartAbs >= RING_CAP_MS) void stopRecording();
 }
 
-export function isRecording(): boolean {
-  return recording;
+/** Turn the dashcam ring on/off. Driven by the PROFILER TOOLS setting. */
+export function setRollingEnabled(on: boolean): void {
+  if (on === rolling) return;
+  rolling = on;
+  if (on) {
+    ring = [];
+    sysIndex.clear();
+    sysNames.length = 0;
+    addFrameListener(onRingFrame);
+  } else {
+    removeFrameListener(onRingFrame);
+    ring = [];
+    if (recording) { recording = false; hideBadge(); stateListener?.(false); }
+  }
 }
 
-// State callback so an on-screen control (the profiler toolbar) can reflect
-// recording on/off — including the automatic stop at the duration cap.
+export function isRecording(): boolean { return recording; }
+
 let stateListener: ((rec: boolean) => void) | null = null;
-export function onRecordingState(cb: ((rec: boolean) => void) | null): void {
-  stateListener = cb;
-}
+export function onRecordingState(cb: ((rec: boolean) => void) | null): void { stateListener = cb; }
 
 export function startRecording(label?: string): void {
   if (recording) return;
+  if (!rolling) setRollingEnabled(true);   // self-arm if called directly
   recording = true;
-  t0 = performance.now();
-  frames = [];
-  sysIndex.clear();
-  sysNames.length = 0;
+  recordStartAbs = performance.now();
   pendingLabel = label;
-  addFrameListener(onFrame);
   showBadge();
   stateListener?.(true);
 }
 
-let pendingLabel: string | undefined;
-
 export async function stopRecording(): Promise<void> {
   if (!recording) return;
   recording = false;
-  removeFrameListener(onFrame);
   hideBadge();
   stateListener?.(false);
+  const slice = ring.filter((f) => f.t >= recordStartAbs);
+  await deliver(buildExport(slice, pendingLabel));
+}
 
-  // Normalise every frame's sys array to the final system count (late-appearing
-  // systems left earlier rows short).
-  for (const f of frames) {
-    while (f.sys.length < sysNames.length) f.sys.push(0);
-  }
+export function toggleRecording(): void {
+  if (recording) void stopRecording();
+  else startRecording();
+}
 
-  const rec: Recording = {
+/** Dashcam: export the last `secs` seconds from the ring. */
+export async function saveLastSeconds(secs = DASHCAM_SECS, label?: string): Promise<void> {
+  if (!rolling || !ring.length) return;
+  const cutoff = performance.now() - secs * 1000;
+  const slice = ring.filter((f) => f.t >= cutoff);
+  await deliver(buildExport(slice, label ?? `last-${secs}s`));
+}
+
+function buildExport(slice: RecFrame[], label?: string): Recording {
+  const base = slice.length ? slice[0].t : 0;
+  const frames: RecFrame[] = slice.map((f) => {
+    const sys = f.sys.slice();
+    while (sys.length < sysNames.length) sys.push(0);   // pad late-appearing systems
+    return { ...f, t: r2(f.t - base), sys };
+  });
+  return {
     meta: {
       startedAt: new Date().toISOString(),
       durationMs: frames.length ? frames[frames.length - 1].t : 0,
@@ -143,42 +171,61 @@ export async function stopRecording(): Promise<void> {
       ua: navigator.userAgent,
       dpr: window.devicePixelRatio,
       viewport: [window.innerWidth, window.innerHeight],
-      label: pendingLabel,
+      label,
     },
     systemNames: sysNames.slice(),
     frames,
   };
-  await deliver(rec);
 }
 
-export function toggleRecording(): void {
-  if (recording) void stopRecording();
-  else startRecording();
+// --- Delivery ------------------------------------------------------------
+
+function isLocalDevHost(): boolean {
+  // localhost or a private-LAN IP (the phone hitting `vite --host`) → a dev
+  // server is there to POST to. Public hosts (github.io) → no server.
+  return /^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname)
+    || location.hostname.endsWith('.local');
 }
 
 async function deliver(rec: Recording): Promise<void> {
   const id = `rec-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
-  let savedTo: string | null = null;
-  try {
-    const res = await fetch('/__perf', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id, recording: rec }),
-    });
-    if (res.ok) {
-      const j = (await res.json()) as { id?: string; dir?: string };
-      savedTo = j.dir ?? j.id ?? id;
-    }
-  } catch {
-    // No dev server reachable — fall through to download.
+  const json = JSON.stringify(rec);
+
+  if (isLocalDevHost()) {
+    try {
+      const res = await fetch('/__perf', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, recording: rec }),
+      });
+      if (res.ok) {
+        const j = (await res.json()) as { dir?: string; id?: string };
+        toast(`saved → ${j.dir ?? id}\nreview at /brainstorm/perf-review.html`);
+        return;
+      }
+    } catch { /* fall through to download */ }
+    download(`${id}.json`, json);
+    toast('downloaded JSON\ndrop it on perf-review.html');
+    return;
   }
 
-  if (savedTo) {
-    toast(`saved → ${savedTo}\nreview at /brainstorm/perf-review.html`);
-  } else {
-    download(`${id}.json`, JSON.stringify(rec));
-    toast('no dev server — downloaded JSON\ndrop it on perf-review.html');
-  }
+  // Live build (phone): share sheet first, then download. Called synchronously
+  // from the button tap so the share gesture stays valid (no awaited fetch
+  // ahead of it on this path).
+  const nav = navigator as Navigator & {
+    canShare?: (d: { files: File[] }) => boolean;
+    share?: (d: { files: File[]; title?: string; text?: string }) => Promise<void>;
+  };
+  try {
+    const file = new File([json], `${id}.json`, { type: 'application/json' });
+    if (nav.canShare && nav.share && nav.canShare({ files: [file] })) {
+      await nav.share({ files: [file], title: 'DELVE perf recording', text: rec.meta.label ?? '' });
+      toast('shared recording');
+      return;
+    }
+  } catch { /* user cancelled or share failed — fall through */ }
+  download(`${id}.json`, json);
+  toast('downloaded JSON\nopen perf-review.html, drop it in');
 }
 
 function download(name: string, text: string): void {
@@ -191,7 +238,7 @@ function download(name: string, text: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-// --- Tiny on-screen affordances (recording badge + toast) ----------------
+// --- On-screen affordances (recording badge + toast) ---------------------
 
 let badge: HTMLDivElement | null = null;
 function showBadge(): void {

@@ -74,7 +74,7 @@ import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRender
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
 import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn } from './debug/frame-timing';
-import { startRecording, stopRecording, toggleRecording, isRecording } from './debug/perf-recorder';
+import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds } from './debug/perf-recorder';
 import { launchSpector } from './debug/spector-launch';
 import { setProfilerToolbarVisible } from './debug/profiler-toolbar';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
@@ -1049,10 +1049,10 @@ function ensureProfilingInited(): void {
 function applyProfilerEnabled(): void {
   const on = profilingEnabled();
   if (on) ensureProfilingInited();
+  setRollingEnabled(on);          // dashcam ring fills only while enabled
   setProfilerToolbarVisible(on);
   if (!on) {
     setProfilerVisible(false);
-    if (isRecording()) void stopRecording();
     setMarks(false);
   }
 }
@@ -1073,12 +1073,17 @@ window.addEventListener('keydown', (e) => {
 }, true);
 const profWin = window as unknown as {
   __profiler: () => void;
-  __perfRec: { start: (l?: string) => void; stop: () => void; toggle: () => void };
+  __perfRec: { start: (l?: string) => void; stop: () => void; toggle: () => void; saveLast: (secs?: number) => void };
   __marks: () => void;
   __spector: () => void;
 };
 profWin.__profiler = () => { ensureProfilingInited(); toggleProfiler(); };
-profWin.__perfRec = { start: (l) => { ensureProfilingInited(); startRecording(l); }, stop: stopRecording, toggle: () => { ensureProfilingInited(); toggleRecording(); } };
+profWin.__perfRec = {
+  start: (l) => { ensureProfilingInited(); startRecording(l); },
+  stop: stopRecording,
+  toggle: () => { ensureProfilingInited(); toggleRecording(); },
+  saveLast: (secs) => void saveLastSeconds(secs),
+};
 profWin.__marks = () => { ensureProfilingInited(); setMarks(!marksOn()); };
 profWin.__spector = () => void launchSpector();
 

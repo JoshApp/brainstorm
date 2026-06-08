@@ -11,7 +11,7 @@
 // Not DEV-gated — ships behind the setting, like the rest of the suite.
 
 import { toggleProfiler, isProfilerVisible } from './profiler-hud';
-import { toggleRecording, isRecording, onRecordingState } from './perf-recorder';
+import { toggleRecording, isRecording, onRecordingState, saveLastSeconds } from './perf-recorder';
 import { launchSpector } from './spector-launch';
 
 let root: HTMLDivElement | null = null;
@@ -56,10 +56,15 @@ function mount(): void {
   recBtn = makeBtn('● REC');
   recBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleRecording(); });
 
+  // Dashcam: snapshot the last 15s from the always-on ring. Called straight
+  // from the tap so the share-sheet gesture stays valid on the phone.
+  const saveBtn = makeBtn('SAVE 15s');
+  saveBtn.addEventListener('click', (e) => { e.stopPropagation(); void saveLastSeconds(15); });
+
   const spcBtn = makeBtn('SPCT');
   spcBtn.addEventListener('click', (e) => { e.stopPropagation(); void launchSpector(); });
 
-  root.append(hudBtn, recBtn, spcBtn);
+  root.append(hudBtn, recBtn, saveBtn, spcBtn);
   document.body.appendChild(root);
 
   onRecordingState(paintRec);
