@@ -129,14 +129,16 @@ const HORROR_BLIT_FRAG = `
     return (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
   }
 
-  // One contact-AO tap: how much a neighbour OCCLUDES the centre. A neighbour
-  // CLOSER than the centre (d > 0) leans in front of this surface point — a
-  // pocket, or the floor at the base of a prop. Banded so only MILD steps
-  // (contacts / crevices, ~2–10cm) darken; tiny steps are noise, and BIG steps
-  // are silhouette edges (which would halo the background) so they're rejected.
-  float aoTap(vec2 uv, vec2 off, float eC) {
-    float d = eC - linDepth(uv + off);
-    return smoothstep(0.02, 0.10, d) * (1.0 - smoothstep(0.30, 0.7, d));
+  // One contact-AO axis: how CONCAVE the surface is along this axis. Sampling
+  // BOTH sides and summing the depth deltas rejects a flat SLOPE — one side is
+  // nearer, the other farther by the same amount, so they cancel — while a real
+  // contact step or crevice leaves a positive residual. This curvature (second-
+  // derivative) measure is what stops grazing/slanted surfaces from streaking,
+  // which a one-sided "neighbour is closer" test can't tell from occlusion.
+  // Big residuals are silhouette pockets → faded out so they don't halo.
+  float aoAxis(vec2 uv, vec2 off, float eC) {
+    float curv = (eC - linDepth(uv + off)) + (eC - linDepth(uv - off));
+    return smoothstep(0.04, 0.16, curv) * (1.0 - smoothstep(0.5, 1.1, curv));
   }
 
   void main() {
@@ -238,15 +240,14 @@ const HORROR_BLIT_FRAG = `
     // dither/quantize so the darkening takes the same PSX crunch as everything else.
     if (uAOStrength > 0.0 && uInspect < 0.5) {
       float eC = linDepth(uv);
+      // Three hexagon AXES (each samples ±, so 6 taps total). Radius shrinks
+      // with distance so far surfaces don't smear.
       vec2 px = uOutlineTexel * uAORadius * (3.0 / (3.0 + eC));
       float occ =
-          aoTap(uv, vec2( 1.0,  0.0) * px, eC)
-        + aoTap(uv, vec2(-1.0,  0.0) * px, eC)
-        + aoTap(uv, vec2( 0.5,  0.87) * px, eC)
-        + aoTap(uv, vec2(-0.5,  0.87) * px, eC)
-        + aoTap(uv, vec2( 0.5, -0.87) * px, eC)
-        + aoTap(uv, vec2(-0.5, -0.87) * px, eC);
-      col *= 1.0 - clamp(occ / 6.0, 0.0, 1.0) * uAOStrength;
+          aoAxis(uv, vec2( 1.0,  0.0)  * px, eC)
+        + aoAxis(uv, vec2( 0.5,  0.87) * px, eC)
+        + aoAxis(uv, vec2(-0.5,  0.87) * px, eC);
+      col *= 1.0 - clamp(occ / 3.0, 0.0, 1.0) * uAOStrength;
     }
 
     // DITHER — add Bayer pattern below quantization to break smooth bands

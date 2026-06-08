@@ -158,7 +158,10 @@ const DEFAULTS: Settings = {
   portalCulling: false,
   bandedLighting: true,
   outlines: false,
-  contactAO: true,
+  // Off by default while the look is dialed in (a first cut streaked on grazing
+  // surfaces; the curvature-based version fixes that). Flip on in Settings to
+  // evaluate; make it the default once it's confirmed clean on-device.
+  contactAO: false,
   hudStyle: 'minimal',
 };
 
