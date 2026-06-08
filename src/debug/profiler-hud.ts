@@ -12,7 +12,7 @@
 // session recorder so the two can run together). DEV-only; tree-shaken from
 // prod. Enable with ?profile=1, F2, or window.__profiler().
 
-import { addFrameListener, removeFrameListener, gpuSupported, type FrameSample } from './frame-timing';
+import { addFrameListener, removeFrameListener, gpuActive, type FrameSample } from './frame-timing';
 
 const GRAPH_W = 200;
 const GRAPH_H = 46;
@@ -151,7 +151,7 @@ function refresh(): void {
   const fps = frameStamps.length;
 
   const cpuC = msColor(cpuEma, 16.7);
-  const gpuStr = gpuSupported()
+  const gpuStr = gpuActive()
     ? `<span style="color:${msColor(gpuEma, 16.7)}">${gpuEma.toFixed(1)}</span>gpu`
     : `<span style="opacity:.5">n/a gpu</span>`;
   headEl.innerHTML =
@@ -163,8 +163,11 @@ function refresh(): void {
   drawGraph();
 
   const heapMB = last.heapMB !== null ? last.heapMB.toFixed(0) : '—';
+  // "wait" = frame interval minus CPU = GPU + vsync/compositor. When it's the
+  // big number and GPU timing is n/a, you're GPU/fill-bound (arm the GPU probe).
+  const wait = Math.max(0, last.dt - last.cpuMs);
   statsEl.textContent =
-    `${last.draws} draws · ${(last.tris / 1000).toFixed(0)}k tris\n` +
+    `${last.draws} draws · ${(last.tris / 1000).toFixed(0)}k tris · wait ${wait.toFixed(1)}ms\n` +
     `prog ${last.programs} · geo ${last.geometries} · tex ${last.textures} · pool ${last.geometryPool}\n` +
     `lights ${last.lightsActive}/${last.lightsRegistered}\n` +
     `heap ${heapMB}MB${last.gc ? ' · GC' : ''}`;
@@ -215,7 +218,7 @@ function drawGraph(): void {
     const h = GRAPH_H - y(cpuHist[i]);
     g.fillRect(x0 + i, GRAPH_H - h, 1, h);
   }
-  if (gpuSupported() && gpuHist.length) {
+  if (gpuActive() && gpuHist.length) {
     g.strokeStyle = 'rgba(255, 130, 220, 0.9)';
     g.lineWidth = 1;
     g.beginPath();

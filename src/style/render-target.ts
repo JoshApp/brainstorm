@@ -1,4 +1,18 @@
 import * as THREE from 'three';
+import {
+  renderProbeActive, reportRenderPhase, renderGpuProbeOn, reportRenderGpu,
+} from '../debug/render-probe';
+
+// GPU probe state. We measure GPU time with a 1×1 readPixels rather than
+// gl.finish(): in Chrome the GPU runs out-of-process behind a command buffer,
+// so finish() returns after flushing (≈0ms) WITHOUT waiting for the GPU. A
+// readback is a synchronous round-trip that forces the GPU to actually complete
+// the frame, so the wall-clock around it ≈ GPU execution time. It's intrusive
+// (kills pipelining), so we sample only every Nth frame. The 1-pixel buffer is
+// reused so the probe doesn't allocate.
+let gpuProbeFrame = 0;
+const GPU_PROBE_EVERY = 8;
+const GPU_PROBE_PIXEL = new Uint8Array(4);
 
 // PS1-era render pipeline, PSX-horror flavor.
 //
@@ -509,6 +523,13 @@ export function renderWithStyle(
     blitMaterial.uniforms.uFar.value = pc.far;
   }
 
+  // Profiler sub-phase timing — split the render system's cost into
+  // prepass / scene / bloom / blit so "render: 11ms" becomes actionable.
+  // Gated on renderProbeActive() so the performance.now() calls (and any
+  // allocation) are skipped entirely for players. `pt` is the phase cursor.
+  const prof = renderProbeActive();
+  let pt = prof ? performance.now() : 0;
+
   if (lowResTarget && blitScene && blitCamera) {
     // Scene → low-res target, then the PSX blit (dither/quantize/CA/scanlines/
     // exposure) to screen. NOTE: tone mapping is disabled on render-target
@@ -546,9 +567,11 @@ export function renderWithStyle(
       // would otherwise auto-clear them and erase the pre-pass work.
       renderer.autoClearDepth = false;
     }
+    if (prof) { const n = performance.now(); reportRenderPhase('render·prepass', n - pt); pt = n; }   // viewmodel depth pre-pass
 
     renderer.render(scene, camera);
     renderer.autoClearDepth = prevAutoClearDepth;
+    if (prof) { const n = performance.now(); reportRenderPhase('render·scene', n - pt); pt = n; }      // main scene draw — incl. auto shadow-map passes (the bulk of the draws)
 
     // BLOOM passes — extract bright pixels, then ping-pong separable blur.
     // Builds the glow texture the blit composites. Skipped when disabled.
@@ -578,11 +601,26 @@ export function renderWithStyle(
       // `src` now holds the final blurred bloom; point the blit at it.
       blitMaterial.uniforms.uBloom.value = src.texture;
     }
+    if (prof) { const n = performance.now(); reportRenderPhase('render·bloom', n - pt); pt = n; }      // bright-extract + separable blur
 
     renderer.setRenderTarget(null);
     renderer.render(blitScene, blitCamera);
+    if (prof) { const n = performance.now(); reportRenderPhase('render·blit', n - pt); pt = n; }        // fullscreen PSX post pass to the canvas
   } else {
     // Before initRenderPipeline runs (shouldn't happen in practice).
     renderer.render(scene, camera);
+  }
+
+  // GPU PROBE — on devices without the WebGL2 timer-query extension (most
+  // Android Chrome), a 1×1 readback is the only reliable way to read real GPU
+  // time: it forces a synchronous round-trip that waits for the GPU to finish
+  // the frame (gl.finish() doesn't, behind Chrome's out-of-process GPU). It
+  // STALLS the pipeline, so we sample only every Nth frame. Opt-in.
+  if (renderGpuProbeOn() && (gpuProbeFrame++ % GPU_PROBE_EVERY === 0)) {
+    const gl = renderer.getContext();
+    renderer.setRenderTarget(null);   // read from the default framebuffer (the just-drawn canvas)
+    const t0 = performance.now();
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, GPU_PROBE_PIXEL);
+    reportRenderGpu(performance.now() - t0);
   }
 }

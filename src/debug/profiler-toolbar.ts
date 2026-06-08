@@ -12,11 +12,13 @@
 
 import { toggleProfiler, isProfilerVisible } from './profiler-hud';
 import { toggleRecording, isRecording, onRecordingState, saveLastSeconds } from './perf-recorder';
+import { setGpuProbe, gpuProbeOn } from './frame-timing';
 import { launchSpector } from './spector-launch';
 
 let root: HTMLDivElement | null = null;
 let hudBtn: HTMLButtonElement | null = null;
 let recBtn: HTMLButtonElement | null = null;
+let gpuBtn: HTMLButtonElement | null = null;
 
 function makeBtn(label: string): HTMLButtonElement {
   const b = document.createElement('button');
@@ -61,15 +63,30 @@ function mount(): void {
   const saveBtn = makeBtn('SAVE 15s');
   saveBtn.addEventListener('click', (e) => { e.stopPropagation(); void saveLastSeconds(15); });
 
+  // GPU probe — real GPU ms via gl.finish() on devices without the timer-query
+  // extension. Stalls the pipeline on sampled frames (fps dips while on), so
+  // it's a deliberate measurement toggle.
+  gpuBtn = makeBtn('GPU');
+  gpuBtn.addEventListener('click', (e) => { e.stopPropagation(); setGpuProbe(!gpuProbeOn()); paintGpu(); });
+
   const spcBtn = makeBtn('SPCT');
   spcBtn.addEventListener('click', (e) => { e.stopPropagation(); void launchSpector(); });
 
-  root.append(hudBtn, recBtn, saveBtn, spcBtn);
+  root.append(hudBtn, recBtn, saveBtn, gpuBtn, spcBtn);
   document.body.appendChild(root);
 
   onRecordingState(paintRec);
   paintRec(isRecording());
   paintHud();
+  paintGpu();
+}
+
+function paintGpu(): void {
+  if (!gpuBtn) return;
+  const on = gpuProbeOn();
+  gpuBtn.style.opacity = on ? '1' : '0.55';
+  gpuBtn.style.borderColor = on ? 'rgba(255, 130, 220, 0.7)' : 'rgba(150, 180, 255, 0.4)';
+  gpuBtn.style.color = on ? 'rgba(255, 180, 235, 0.95)' : 'rgba(200, 225, 255, 0.92)';
 }
 
 function paintRec(rec: boolean): void {

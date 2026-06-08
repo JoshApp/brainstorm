@@ -24,7 +24,33 @@ When enabled, an **on-screen toolbar** appears (top-left): `HUD` · `● REC` ·
 | **Profiler HUD** | "Which system is eating the frame?" | toolbar `HUD` · `F2` · `?profile=1` |
 | **Session recorder** | "Where did frames drop over the last minute?" | toolbar `● REC` · `F3` · `?record=1` → review page |
 | **DevTools marks** | Native flame chart, incl. remote-over-USB from a phone | `F4` · `?marks=1` |
+| **GPU probe** | Real GPU ms on devices without the timer-query extension | toolbar `GPU` · `F5` |
 | **spector.js** | "What's eating the draw calls?" (every GL command) | toolbar `SPCT` · `F6` |
+
+### Reading GPU time
+
+Three signals, in order of preference:
+
+1. **Timer query (passive, free).** If the WebGL2 `EXT_disjoint_timer_query_webgl2`
+   extension is present, GPU ms is measured for free. Chrome hides it behind a
+   flag on most phones — enable **`chrome://flags/#enable-webgl-developer-extensions`**
+   (Enabled, relaunch) to try to turn it on for your device.
+2. **GPU probe (`GPU` button / `F5`).** When the extension isn't available, this
+   does a 1×1 `readPixels` every 8th frame — a synchronous readback that forces
+   the GPU to finish, so the wall-clock around it is real GPU time. It STALLS the
+   pipeline on sampled frames (fps dips while on), so treat it as a measurement
+   mode, not always-on.
+3. **`wait` = dt − cpu (always shown).** Frame interval minus CPU work ≈ GPU +
+   vsync/compositor. When `wait` is the big number and GPU is `n/a`, you're
+   GPU/fill-bound — arm the GPU probe to quantify it.
+
+### Reading the `render` breakdown
+
+`render` is split into sub-phases so it's not one opaque blob:
+`render·prepass` (viewmodel depth) · `render·scene` (main draw, **includes shadow
+maps** — usually the bulk) · `render·bloom` · `render·blit` (the PSX post pass).
+These are CPU *submission* times; pair them with the GPU number above to tell
+"too many draws" (high `render·scene` CPU) from "too much fill/shading" (high GPU).
 
 On a phone, use the on-screen toolbar buttons (no F-keys). On desktop, the
 hotkeys are quicker.

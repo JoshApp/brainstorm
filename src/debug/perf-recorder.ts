@@ -22,7 +22,7 @@
 // allocates a small per-frame record, so the profiler's own GC/alloc readout
 // carries a little constant overhead while the tools are on — expected.
 
-import { addFrameListener, removeFrameListener, gpuSupported, type FrameSample } from './frame-timing';
+import { addFrameListener, removeFrameListener, gpuActive, type FrameSample } from './frame-timing';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
 const RING_CAP_MS = 60_000;           // keep the last 60s; also the explicit-record cap
@@ -167,7 +167,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       durationMs: frames.length ? frames[frames.length - 1].t : 0,
       frameCount: frames.length,
       targetMs: TARGET_MS,
-      gpuSupported: gpuSupported(),
+      gpuSupported: gpuActive(),
       ua: navigator.userAgent,
       dpr: window.devicePixelRatio,
       viewport: [window.innerWidth, window.innerHeight],

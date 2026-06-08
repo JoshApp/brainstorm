@@ -14,6 +14,7 @@ import { GpuTimer } from './gpu-timer';
 import { setSystemProbe, setMarksEnabled } from '../engine/loop';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
+import { installRenderProbe, setRenderGpuProbe, renderGpuProbeOn } from './render-probe';
 
 export interface FrameSample {
   /** ms since the previous frame's end — the true frame interval (≈ 1000/fps). */
@@ -54,6 +55,9 @@ let frameStart = 0;
 let lastEnd = 0;
 let lastHeap: number | null = null;
 let marks = false;
+// GPU time measured by the render pipeline's gl.finish() probe this frame, if
+// any. Takes precedence over the (often-unavailable) timer-query path.
+let probedGpu: number | null = null;
 
 type FrameListener = (s: FrameSample) => void;
 const listeners = new Set<FrameListener>();
@@ -72,18 +76,33 @@ export function initFrameTiming(r: THREE.WebGLRenderer): void {
   gpu = new GpuTimer(r.getContext());
 }
 
+/** GPU time is recorded by the passive timer-query extension. */
 export function gpuSupported(): boolean {
   return !!gpu?.supported;
 }
+/** GPU numbers are AVAILABLE if either the timer query works or the finish()
+ *  probe is armed — the HUD/recorder use this to decide "n/a" vs a value. */
+export function gpuActive(): boolean {
+  return !!gpu?.supported || renderGpuProbeOn();
+}
+
+/** Arm/disarm the gl.finish() GPU probe (real GPU ms on devices without the
+ *  timer-query extension; stalls the pipeline on sampled frames). */
+export function setGpuProbe(on: boolean): void { setRenderGpuProbe(on); if (!on) probedGpu = null; }
+export function gpuProbeOn(): boolean { return renderGpuProbeOn(); }
 
 function onSystem(name: string, ms: number): void {
   frameMs.set(name, (frameMs.get(name) ?? 0) + ms);
 }
+function onGpuProbe(ms: number): void { probedGpu = ms; }
 
 function ensureHooks(): void {
-  const wantProbe = listeners.size > 0 || marks;
-  setSystemProbe(wantProbe ? onSystem : null);
+  const want = listeners.size > 0 || marks;
+  setSystemProbe(want ? onSystem : null);
   setMarksEnabled(marks);
+  // Render sub-phase timing + finish() GPU samples flow through the same
+  // frameMs map (sub-phases) and probedGpu (GPU) while anything is listening.
+  installRenderProbe(want ? onSystem : null, listeners.size > 0 ? onGpuProbe : null);
 }
 
 export function addFrameListener(l: FrameListener): void { listeners.add(l); ensureHooks(); }
@@ -126,7 +145,10 @@ export function frameEnd(): void {
   const info = renderer?.info;
   sample.dt = lastEnd ? now - lastEnd : 0;
   sample.cpuMs = now - frameStart;
-  sample.gpuMs = gpu?.supported ? (gpu.lastMs ?? null) : null;
+  // Prefer the finish() probe (works on devices without the timer-query ext);
+  // fall back to the passive timer query. probedGpu sticks between samples so a
+  // probe that fires every Nth frame still reads on the frames in between.
+  sample.gpuMs = probedGpu !== null ? probedGpu : (gpu?.supported ? (gpu.lastMs ?? null) : null);
   sample.draws = info ? info.render.calls : 0;
   sample.tris = info ? info.render.triangles : 0;
   sample.programs = info?.programs?.length ?? 0;

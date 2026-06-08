@@ -57,6 +57,9 @@ const g = canvas.getContext('2d')!;
 let rec: Recording | null = null;
 let targetMs = TARGET_DEFAULT;
 let topSystems: number[] = [];        // indices into systemNames, by total cost desc
+let leaves = new Set<number>();       // stackable systems = leaves (a parent like
+                                      // 'render' is excluded when 'render·scene' etc. exist,
+                                      // so the stacked area doesn't double-count)
 let cursorFrame = -1;
 
 function hue(i: number): number { return (i * 47 + 13) % 360; }
@@ -100,9 +103,14 @@ function setRecording(r: Recording): void {
   targetMs = r.meta.targetMs || TARGET_DEFAULT;
 
   // Rank systems by total cost so the stack shows the heaviest at the bottom
-  // and everything past the top-8 collapses into "other".
-  const totals = r.systemNames.map((_, i) => r.frames.reduce((s, f) => s + (f.sys[i] || 0), 0));
-  topSystems = totals.map((_, i) => i).sort((a, b) => totals[b] - totals[a]).slice(0, 8);
+  // and everything past the top-8 collapses into "other". Exclude PARENT
+  // systems (a name X with a child X·… present, e.g. 'render' vs 'render·scene')
+  // from the stack so it sums leaves only and doesn't double-count.
+  const names = r.systemNames;
+  const isParent = (i: number) => names.some((o, j) => j !== i && o.startsWith(names[i] + '·'));
+  leaves = new Set(names.map((_, i) => i).filter((i) => !isParent(i)));
+  const totals = names.map((_, i) => r.frames.reduce((s, f) => s + (f.sys[i] || 0), 0));
+  topSystems = [...leaves].sort((a, b) => totals[b] - totals[a]).slice(0, 8);
 
   buildSummary();
   buildLegend();
@@ -204,9 +212,10 @@ function draw(): void {
   for (let x = 0; x < W; x++) {
     const f = frames[colFrame[x]];
     let acc = 0;
-    // Draw top systems first (bottom of stack), then everything else as "other".
+    // Draw top systems first (bottom of stack), then the remaining LEAVES as
+    // "other" (parents excluded so we don't double-count their children).
     let otherSum = 0;
-    for (let i = 0; i < f.sys.length; i++) if (topSystems.indexOf(i) < 0) otherSum += f.sys[i];
+    for (let i = 0; i < f.sys.length; i++) if (leaves.has(i) && topSystems.indexOf(i) < 0) otherSum += f.sys[i];
     for (const idx of topSystems) {
       const v = f.sys[idx] || 0;
       if (v <= 0) continue;
@@ -278,6 +287,7 @@ function showFrame(i: number): void {
       `<span style="color:${dropped ? '#ff8a8a' : '#cdd9e8'}">dt ${f.dt.toFixed(1)}ms (${(1000 / f.dt).toFixed(0)}fps)${dropped ? ' ⚠ DROPPED' : ''}</span>` +
       `<span>cpu ${f.cpu.toFixed(1)}ms</span>` +
       `<span style="color:#ff82dc">gpu ${f.gpu != null ? f.gpu.toFixed(1) + 'ms' : 'n/a'}</span>` +
+      `<span style="color:#9fb4cc">wait ${Math.max(0, f.dt - f.cpu).toFixed(1)}ms</span>` +
       `<span>${f.draws} draws · ${(f.tris / 1000).toFixed(0)}k tris</span>` +
       `<span>heap ${f.heap ?? '—'}MB${f.gc ? ' · GC' : ''}</span>` +
     `</div>` +

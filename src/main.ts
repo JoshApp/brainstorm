@@ -73,7 +73,7 @@ import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSn
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
-import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn } from './debug/frame-timing';
+import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn } from './debug/frame-timing';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds } from './debug/perf-recorder';
 import { launchSpector } from './debug/spector-launch';
 import { setProfilerToolbarVisible } from './debug/profiler-toolbar';
@@ -1032,8 +1032,8 @@ if (import.meta.env.DEV) installPerfProbe(renderer);
 // turns it on.
 //
 // Drive it from the on-screen toolbar (phone) or, on desktop, the hotkeys:
-//   F2 HUD · F3 record · F4 DevTools marks · F6 spector. URL: ?profile/record/marks=1.
-//   Console: window.__profiler / __perfRec.{start,stop,toggle} / __marks / __spector.
+//   F2 HUD · F3 record · F4 DevTools marks · F5 GPU probe · F6 spector. URL: ?profile/record/marks=1.
+//   Console: window.__profiler / __perfRec.{start,stop,toggle,saveLast} / __marks / __gpuProbe / __spector.
 const profilerSessionFlag = ['profiler', 'profile', 'record', 'marks']
   .some((k) => new URLSearchParams(window.location.search).get(k) === '1');
 function profilingEnabled(): boolean {
@@ -1054,6 +1054,7 @@ function applyProfilerEnabled(): void {
   if (!on) {
     setProfilerVisible(false);
     setMarks(false);
+    setGpuProbe(false);
   }
 }
 applyProfilerEnabled();
@@ -1069,12 +1070,14 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'F2') { e.preventDefault(); toggleProfiler(); }
   else if (e.code === 'F3') { e.preventDefault(); toggleRecording(); }
   else if (e.code === 'F4') { e.preventDefault(); setMarks(!marksOn()); }
+  else if (e.code === 'F5') { e.preventDefault(); setGpuProbe(!gpuProbeOn()); }
   else if (e.code === 'F6') { e.preventDefault(); void launchSpector(); }
 }, true);
 const profWin = window as unknown as {
   __profiler: () => void;
   __perfRec: { start: (l?: string) => void; stop: () => void; toggle: () => void; saveLast: (secs?: number) => void };
   __marks: () => void;
+  __gpuProbe: () => void;
   __spector: () => void;
 };
 profWin.__profiler = () => { ensureProfilingInited(); toggleProfiler(); };
@@ -1085,6 +1088,7 @@ profWin.__perfRec = {
   saveLast: (secs) => void saveLastSeconds(secs),
 };
 profWin.__marks = () => { ensureProfilingInited(); setMarks(!marksOn()); };
+profWin.__gpuProbe = () => { ensureProfilingInited(); setGpuProbe(!gpuProbeOn()); };
 profWin.__spector = () => void launchSpector();
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
