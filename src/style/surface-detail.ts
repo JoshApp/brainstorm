@@ -18,12 +18,14 @@ import type * as THREE from 'three';
 //  - Chains any existing onBeforeCompile (surface AO) and touches a DIFFERENT
 //    chunk than it, so the two compose cleanly.
 
-const DETAIL_STRENGTH = 0.16;   // bump intensity when ON
-const uDetailStrength = { value: DETAIL_STRENGTH };
+// uDetailStrength is now an ON/OFF flag (0 or 1); the actual intensities are the
+// GLSL constants below, split so the harsh light-coupled BUMP can stay low while
+// the light-direction-independent TEXTURE carries the stone read.
+const uDetailStrength = { value: 1 };
 const uDetailFreq = { value: 3.4 };   // base-octave noise cycles per metre (finer = more masonry, less blob)
 
 export function setSurfaceDetailEnabled(on: boolean): void {
-  uDetailStrength.value = on ? DETAIL_STRENGTH : 0;
+  uDetailStrength.value = on ? 1 : 0;
 }
 
 // 3-octave value-noise fbm. Cheap hash, trilinear, world-space input.
@@ -62,24 +64,27 @@ export function installSurfaceDetail(material: THREE.Material): void {
     vec3 sx = dFdx(sp), sy = dFdy(sp);
     // Pixel FOOTPRINT on the surface (world metres). Where it's large — far away
     // or at a grazing angle — the noise is sub-pixel and would alias into soft
-    // "cottage-cheese" lumps, so fade the detail out there. This is what keeps
-    // the look CONSISTENT as the camera moves (no blow-up at distance/grazing)
-    // and kills the shimmer; up close where pixels are dense, full roughness.
+    // "cottage-cheese" lumps, so fade the detail out there. Keeps the look
+    // CONSISTENT as the camera moves and kills the shimmer.
     float fp = max(length(dFdx(vWorldPos)), length(dFdy(vWorldPos)));
     float period = 1.0 / uDetailFreq;
     float aa = 1.0 - smoothstep(period * 0.35, period * 1.2, fp);
-    float str = uDetailStrength * aa;
-    if (str > 0.001) {
-      // Normal perturbation — bump the lighting normal by the height gradient.
+    if (aa > 0.001) {
+      // RELIEF (normal) — deliberately LOW. The normal couples hard to light
+      // intensity, so a bright torch on the wall would read as exaggerated rock;
+      // we keep just enough to catch RAKING light and let the albedo below carry
+      // the rest. (bump intensity)
       float h = dFbm(vWorldPos * uDetailFreq);
       vec3 R1 = cross(sy, normal);
       vec3 R2 = cross(normal, sx);
       float fDet = dot(sx, R1) * faceDirection;
       vec3 vGrad = sign(fDet) * (dFdx(h) * R1 + dFdy(h) * R2);
-      normal = normalize(abs(fDet) * normal - str * vGrad);
-      // Subtle albedo grime on the coarser octave — crevices read a touch dirtier.
-      float grime = dFbm(vWorldPos * uDetailFreq * 0.5);
-      diffuseColor.rgb *= 1.0 - str * 0.55 * (1.0 - grime);
+      normal = normalize(abs(fDet) * normal - (0.08 * aa) * vGrad);
+      // STONE TEXTURE (albedo) — light-DIRECTION-independent, so it reads evenly
+      // everywhere (not just under raking light). Stylised: smoothstep'd into
+      // defined patches rather than mush, darkening the low patches like grime.
+      float tex = smoothstep(0.28, 0.78, dFbm(vWorldPos * uDetailFreq * 0.6 + 11.3));
+      diffuseColor.rgb *= mix(1.0 - 0.18 * aa, 1.0, tex);
     }
   }`,
     );
