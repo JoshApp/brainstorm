@@ -79,6 +79,10 @@ export function creature(opts: CreatureOptions): ModelSpec {
 
   return {
     id: opts.id,
+    // Rigged upright — opt into the lego-figure merge. The joints (rig /
+    // shoulders / hips / neck) still animate; the unnamed limb/torso meshes
+    // collapse per joint. Cuts these ~27-mesh creatures to ~8-10 draws.
+    mergeRigid: true,
     materials: {
       body: {
         color: opts.palette.body,

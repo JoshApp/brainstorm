@@ -295,6 +295,13 @@ export interface LightSpec {
 export interface ModelSpec {
   id: string;
   parts: PartSpec[];
+  /**
+   * Opt into the "lego-figure" merge (see mergeRigidSegments): after build,
+   * collapse the unnamed non-sprite meshes under each joint into one mesh per
+   * material. Joints still move (arms/legs/head animate), named parts + sprites
+   * stay separate. Big draw + shadow-caster win for many-part rigs (enemies).
+   */
+  mergeRigid?: boolean;
   /** Named anchor points for attaching other models / lights / effects. */
   slots?: Record<string, SlotSpec>;
   /** Optional attached light (e.g. torch glow). */

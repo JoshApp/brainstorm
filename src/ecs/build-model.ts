@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import type { MaterialDef, ModelSpec, PartSpec, Vec3 } from './model-types';
 import { getTexture } from '../style/procedural-textures';
@@ -142,6 +143,60 @@ export function buildModel(spec: ModelSpec): BuiltModel {
   // pool. This is the architectural change that lets us have many more
   // logical light sources than the GPU could afford as real PointLights.
   return { group, parts, slots, materials, hitTargets, light: undefined };
+}
+
+/**
+ * "Lego-figure" merge for rigged models. Under EACH node, the unnamed,
+ * non-sprite child meshes are collapsed into one mesh per material, their local
+ * transforms baked into the geometry. What's preserved:
+ *   - JOINT NODES (rig / shoulders / hips / neck slots) keep their own
+ *     transform, so each joint's merged chunk still moves as a unit — arms
+ *     swing, legs gait, head cranes. The merge is per-node, never across a joint.
+ *   - NAMED parts (the animation/presentation looks them up by name — 'body',
+ *     'head', a glowing core) stay separate.
+ *   - SPRITES (eye halos, billboards) stay separate.
+ * A ~27-mesh skeleton collapses to ~8-10 meshes — and the same drop in shadow
+ * casters — with zero animation change. Call right after buildModel; opt in via
+ * ModelSpec.mergeRigid so only rigged content (enemies) takes it.
+ */
+export function mergeRigidSegments(built: BuiltModel): void {
+  const nodes: THREE.Object3D[] = [];
+  built.group.traverse((o) => nodes.push(o));   // snapshot — we mutate children below
+  for (const node of nodes) {
+    const byMat = new Map<THREE.Material, THREE.Mesh[]>();
+    for (const child of node.children) {
+      const m = child as THREE.Mesh;
+      const isSprite = (m as unknown as { isSprite?: boolean }).isSprite === true;
+      if (!m.isMesh || isSprite || m.name || !m.geometry) continue;
+      const mat = m.material as THREE.Material;
+      const arr = byMat.get(mat);
+      if (arr) arr.push(m); else byMat.set(mat, [m]);
+    }
+    for (const [mat, meshes] of byMat) {
+      if (meshes.length < 2) continue;   // nothing to save
+      const geos: THREE.BufferGeometry[] = [];
+      for (const m of meshes) {
+        m.updateMatrix();
+        geos.push(m.geometry.clone().applyMatrix4(m.matrix));   // bake LOCAL transform
+      }
+      const merged = mergeGeometries(geos, false);
+      for (const g of geos) g.dispose();
+      if (!merged) continue;   // attribute mismatch — leave the originals intact
+      const mesh = new THREE.Mesh(merged, mat);
+      mesh.castShadow = meshes[0].castShadow;
+      mesh.receiveShadow = meshes[0].receiveShadow;
+      node.add(mesh);
+      // Originals were never rendered (merge runs before the model is added to
+      // the scene), so their GPU buffers were never uploaded — just detach.
+      for (const m of meshes) node.remove(m);
+    }
+  }
+  // Hit targets referenced the now-removed meshes; rebuild from survivors.
+  built.hitTargets.length = 0;
+  built.group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) built.hitTargets.push(m);
+  });
 }
 
 function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Material {

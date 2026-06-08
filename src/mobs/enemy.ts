@@ -31,7 +31,7 @@ import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { createBodyAnimator } from './enemy-animation';
 import { Animator } from '../anim/animator';
-import { buildModel } from '../ecs/build-model';
+import { buildModel, mergeRigidSegments } from '../ecs/build-model';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
@@ -238,6 +238,11 @@ export function createEnemy(
 
   // Built model: meshes + named parts + per-instance materials.
   const built = buildModel(spec.model);
+  // Lego-figure merge: collapse the unnamed limb/torso meshes per joint (opt-in
+  // via spec.model.mergeRigid). Runs before the model is added to the scene, so
+  // the originals are never uploaded. Joints + named parts + eye sprites survive,
+  // so the presentation/animation below still finds what it references.
+  if (spec.model.mergeRigid) mergeRigidSegments(built);
   // Bosses loom larger — scale the visual model (gameplay reach/collision
   // stay driven by the explicit stat fields).
   if (spec.scale && spec.scale !== 1) built.group.scale.multiplyScalar(spec.scale);
