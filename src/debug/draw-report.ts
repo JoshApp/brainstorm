@@ -198,6 +198,11 @@ export async function captureDrawReport(): Promise<void> {
   const draws = info ? info.render.calls : 0;
   const rtris = info ? info.render.triangles : 0;
   const programs = info?.programs?.length ?? 0;
+  // GPU-resource counts — capture two reports (fresh vs after the slowdown sets
+  // in); if these climb while the JS heap stays flat, that's the leak (created-
+  // not-disposed geometry/texture, or a growing shader-program cache).
+  const geoCount = info ? info.memory.geometries : 0;
+  const texCount = info ? info.memory.textures : 0;
 
   const wins = (map: Map<string, Group>) =>
     [...map.values()].filter((g) => g.count > 1).sort((a, b) => b.count - a.count);
@@ -218,7 +223,8 @@ export async function captureDrawReport(): Promise<void> {
   // (bloom downsample/blur/upsample + blit). Reconcile so the shadow + post
   // share is explicit instead of hidden in the gap.
   const accounted = drawables + shadowCasters;
-  L.push(`renderer: ${draws} draws · ${(rtris / 1000).toFixed(0)}k tris · ${programs} shader programs`);
+  L.push(`renderer: ${draws} draws · ${(rtris / 1000).toFixed(0)}k tris · ${programs} programs · ${geoCount} geo · ${texCount} tex`);
+  L.push(`  (programs/geo/tex climbing across a session while heap is flat = a GPU-resource leak — the degradation that a tab-out resets)`);
   L.push(`  scene drawables ${drawables} + shadow casters ${shadowCasters} ≈ ${accounted}; remaining ${Math.max(0, draws - accounted)} = bloom/blit post`);
   L.push(`scene: ${meshes} meshes · ${sprites} sprites · ${points} points · ${(sceneTris / 1000) | 0}k tris · ${instanced} instanced`);
   L.push(`  shadow casters: ${shadowCasters} (redrawn in the shadow pass — CPU draws + cube-map fill)`);

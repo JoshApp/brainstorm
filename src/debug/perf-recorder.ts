@@ -37,6 +37,13 @@ interface RecFrame {
   tris: number;
   heap: number | null;  // MB
   gc: boolean;
+  // GPU-resource counts (renderer.info) — these catch a leak the JS heap can't:
+  // geometries/textures created-not-disposed, or the shader program cache
+  // growing. If these climb over a session while heap stays flat, that's the
+  // degradation (and a WebGL context-loss on tab-out clears it — "tab fixed it").
+  geo: number;
+  tex: number;
+  prog: number;
   sys: number[];        // per-system ms, aligned to sysNames
 }
 
@@ -93,6 +100,9 @@ function onRingFrame(s: FrameSample): void {
     tris: s.tris,
     heap: s.heapMB !== null ? Math.round(s.heapMB) : null,
     gc: s.gc,
+    geo: s.geometries,
+    tex: s.textures,
+    prog: s.programs,
     sys: snapshotSys(s.systems),
   });
   const cutoff = now - RING_CAP_MS;

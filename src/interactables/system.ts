@@ -52,6 +52,18 @@ export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerFo
       //    keep some of it standing (e.g. starter altars: the stone
       //    block stays as a monument after the weapon offer is taken).
       if (it.built && !it.keepBuiltOnDestroy) {
+        // Dispose the per-instance MATERIALS before detaching. buildModel mints
+        // fresh materials (+ their shader programs / uniforms) per model, so
+        // just removing the group leaked them every time a pickup was collected
+        // or a destructible broke — invisible to the JS heap (GPU-side), but it
+        // climbs all session and drags the renderer down until a context-loss
+        // (tab-out) frees it. Geometry is left alone: buildModel SHARES pooled
+        // primitives across instances, so disposing it would corrupt live models.
+        it.built.group.traverse((o) => {
+          const mm = o as THREE.Mesh;
+          const mats = Array.isArray(mm.material) ? mm.material : (mm.material ? [mm.material] : []);
+          for (const m of mats) m.dispose();
+        });
         const parent = it.built.group.parent;
         parent?.remove(it.built.group);
       }
