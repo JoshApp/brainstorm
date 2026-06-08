@@ -48,6 +48,7 @@ import { tickGoldCoins } from '../effects/gold-coins';
 import { tickTutorialHints } from '../effects/tutorial-hints';
 import { tickDriftingMotes } from '../effects/drifting-motes';
 import { tickBladeTrail, setBladeTrailIntensity } from '../effects/blade-trail';
+import { tickRoomMood } from '../level/room-mood';
 import { tickShatterBurst } from '../effects/shatter-burst';
 import { tickBloodBurst } from '../effects/blood-burst';
 import { tickStatusVfx } from '../effects/status-vfx';
@@ -361,6 +362,11 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // Drifting motes — ambient dust keeps falling through hit-pauses, death,
     // and menus. Real dt.
     { name: 'motes', phase: 'always', tick(ctx) { tickDriftingMotes(ctx.realDt); } },
+
+    // Per-room mood — smoothly blend torches + bound lights toward the room's
+    // current override colour. realDt so the ease is real-time even through
+    // hit-pause. Cheap: idle rooms early-out.
+    { name: 'room-mood', phase: 'always', tick(ctx) { tickRoomMood(ctx.realDt); } },
     // Shatter / blood bursts — scaled dt so shards slow-mo with the
     // hit-pause / death sequence (reads as crunchier).
     { name: 'shatter', phase: 'always', tick(ctx) { tickShatterBurst(ctx.scaledDt); } },

@@ -37,6 +37,11 @@ export interface Torch {
   currentIntensity: number;
   /** Source id for unregistering (level teardown). */
   sourceId: string;
+  /** The actual LightSource object registered with the light pool — the
+   *  pool reads `.color` each frame, so mutating it from outside (e.g.
+   *  the room-mood blender) recolours the live light without re-register.
+   *  Same reference as what was passed to registerLight; never re-pointed. */
+  source: { color: number };
   time: number;
   n1: number;
   n2: number;
@@ -106,6 +111,7 @@ export function createTorchlight(
     baseEmissive: flameMaterial?.emissiveIntensity ?? 0,
     currentIntensity: baseIntensity,
     sourceId: torchSourceId,
+    source: { color: 0 },   // re-pointed below right after registerLight()
     time: 0,
     n1: Math.random() * 1000,
     n2: Math.random() * 1000,
@@ -113,17 +119,20 @@ export function createTorchlight(
   };
 
   // Register with the light pool. The pool reads currentIntensity each
-  // frame when this torch is one of the N nearest sources.
-  registerLight({
+  // frame when this torch is one of the N nearest sources. Source is held
+  // by reference so room-mood can mutate `.color` to re-tint the torch live.
+  const source = {
     id: torchSourceId,
-    category: 'environment',
+    category: 'environment' as const,
     position: worldPos,
     color: effectiveColor,
     intensity: baseIntensity,
     distance: CONFIG.TORCH_DISTANCE,
     decay: CONFIG.TORCH_DECAY,
     getIntensity: () => torch.currentIntensity,
-  });
+  };
+  registerLight(source);
+  torch.source = source;
 
   return torch;
 }

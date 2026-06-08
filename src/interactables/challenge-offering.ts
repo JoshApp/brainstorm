@@ -12,6 +12,7 @@ import { showInWorldMessage } from '../ui/pickup-notification';
 import { playImpact, playRitualBell } from '../audio/sfx';
 import { kickShake } from '../combat/screen-shake';
 import { registerLight, unregisterLight } from '../scene/light-pool';
+import { setRoomMood } from '../level/room-mood';
 
 // Challenge offering — the VOLUNTARY arena, framed as a RITUAL ALTAR.
 // A dark stone altar with two unlit candles sits in the centre. Approach
@@ -224,6 +225,11 @@ export function spawnChallengeOffering(
       c.flame.scale.setScalar(1);
       c.flameMat.opacity = 0.92;
     }
+    // Tint the WHOLE arena room blood-red. Per-room mood override eases in
+    // over ~1.5s — first the candles take, then the room's torches drift
+    // toward the ritual hue. The room's own torches keep their flicker; the
+    // mood blender mutates their colour each frame, not their behaviour.
+    setRoomMood(roomId, SEAM_ACTIVE, 1.5);
   });
 
   // REACTOR 2: the trial is WON → settle the altar to a warm hold + yield the
@@ -233,6 +239,9 @@ export function spawnChallengeOffering(
     if (claimed) return;
     claimed = true;
     applyRitualState('won');
+    // Drop the room mood back to its baked palette — the dungeon's normal
+    // warmth returns as the dark releases.
+    setRoomMood(roomId, null, 2.0);
     playImpact(interactable.position);
     kickShake(0.08, 0.2);
     showInWorldMessage('The dark was fed. The altar holds.');

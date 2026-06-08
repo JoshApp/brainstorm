@@ -33,6 +33,7 @@ import { spawnFitting } from '../interactables/fitting';
 import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-waves';
 import { registerEncounter, activateEncounter, clearEncounters, onEncounterActivated, onEncounterComplete, roomClearEncounterId, type EncounterHandle } from '../encounters/registry';
 import { openingEndpoints } from './opening';
+import { bindLight as bindRoomMoodLight, bindFlame as bindRoomMoodFlame, clearRoomMoodBindings } from './room-mood';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { spawnMerchant } from '../interactables/merchant';
@@ -914,16 +915,33 @@ export function buildLevel(
   // which is now model-agnostic.
   const torches: Torch[] = [];
   for (const t of spec.torches) {
-    torches.push(
-      createTorchlight(
-        root,
-        new THREE.Vector3(t.x, t.height, t.z),
-        torchYawForWall(t.wall),
-        t.colorTint,
-        t.intensityMul,
-        wallFixtureModel(t.fixtureKind),
-      ),
+    const torch = createTorchlight(
+      root,
+      new THREE.Vector3(t.x, t.height, t.z),
+      torchYawForWall(t.wall),
+      t.colorTint,
+      t.intensityMul,
+      wallFixtureModel(t.fixtureKind),
     );
+    torches.push(torch);
+    // Bind to its containing room (and any LOGICAL sub-rooms it sits in) for
+    // runtime mood overrides — e.g. the ritual altar paints its arena sub-
+    // room red while the encounter runs. setRoomMood(subRoomId) only finds
+    // torches bound to that exact id, so we bind through every containing
+    // rect, smallest first.
+    const ownerRoom = smallestNonLogicalContaining(spec.rooms, t.x, t.z);
+    if (ownerRoom) {
+      bindRoomMoodLight(ownerRoom, torch.source);
+      if (torch.flameMaterial) bindRoomMoodFlame(ownerRoom, torch.flameMaterial);
+    }
+    for (const r of spec.rooms) {
+      if (!r.logicalOnly) continue;
+      const hw = r.rect.w / 2, hd = r.rect.d / 2;
+      if (t.x < r.rect.x - hw || t.x > r.rect.x + hw) continue;
+      if (t.z < r.rect.z - hd || t.z > r.rect.z + hd) continue;
+      bindRoomMoodLight(r.id, torch.source);
+      if (torch.flameMaterial) bindRoomMoodFlame(r.id, torch.flameMaterial);
+    }
   }
 
   // --- Stationary fill lights ---
@@ -1355,6 +1373,9 @@ export function buildLevel(
     torndown = true;
     // Detach event-bus listeners owned by the level (door listeners).
     for (const td of doorTeardowns) td();
+    // Drop room-mood bindings — a stale mood from this floor mustn't tint
+    // a torch on the next that happens to reuse the room id.
+    clearRoomMoodBindings();
     // Release ECS entities for anything the player left behind on this floor
     // so they don't leak into the world map across descents (killed mobs +
     // smashed vases already clean up on death). Idempotent.
@@ -1433,6 +1454,21 @@ function findRoomContaining(x: number, z: number, rooms: RoomSpec[]): string | n
     if (containsHere(r)) return r.id;
   }
   return null;
+}
+
+/** Smallest non-logical room containing (x, z), or null. Used to give
+ *  every torch/light a stable owner room so room-mood overrides apply
+ *  to the right set of bound items. */
+function smallestNonLogicalContaining(rooms: RoomSpec[], x: number, z: number): string | null {
+  let best: RoomSpec | null = null;
+  for (const r of rooms) {
+    if (r.logicalOnly) continue;
+    const hw = r.rect.w / 2, hd = r.rect.d / 2;
+    if (x < r.rect.x - hw || x > r.rect.x + hw) continue;
+    if (z < r.rect.z - hd || z > r.rect.z + hd) continue;
+    if (!best || r.rect.w * r.rect.d < best.rect.w * best.rect.d) best = r;
+  }
+  return best?.id ?? null;
 }
 
 /** True if a wall segment lies on a rect's perimeter (both endpoints sit on
