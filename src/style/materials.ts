@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { installSurfaceAO } from './surface-ao';
 import { installSurfaceDetail } from './surface-detail';
+import { bakeSurfaceTexture, SURFACE_TILE } from './surface-textures';
 
 // Material library for the BIG STATIC SURFACES of the level (walls, floor,
 // ceiling). Dynamic entities (enemies, sword, torches, chests) own their
@@ -18,7 +19,7 @@ export interface StyleMaterials {
   stone: THREE.Material;
 }
 
-export function buildMaterials(): StyleMaterials {
+export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
   // Emissive baseline: a tiny self-luminance on every static surface so
   // even unlit corners imply geometry ("stone, but barely") instead of
   // reading as black void. Way better than cranking global ambient,
@@ -85,10 +86,23 @@ export function buildMaterials(): StyleMaterials {
   // Live-controllable baked surface AO (wall/floor vertex colours).
   installSurfaceAO(wallBase);
   installSurfaceAO(floorBase);
-  // Procedural surface detail — normal perturbation + grime on the big surfaces.
-  installSurfaceDetail(wallBase);
-  installSurfaceDetail(floorBase);
-  installSurfaceDetail(ceilingBase);
+
+  // Baked, mipmapped tiling stone detail. WALLS = brick, FLOOR = flagstones,
+  // CEILING = coffered panels (its own language). Warm tint on the floor, cold
+  // on the ceiling, neutral walls. Mipmaps + anisotropy keep it stable under
+  // the 0.4x render scale (no crawl/flicker).
+  installSurfaceDetail(wallBase, {
+    tex: bakeSurfaceTexture(renderer, 'wall'),
+    tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.25,
+  });
+  installSurfaceDetail(floorBase, {
+    tex: bakeSurfaceTexture(renderer, 'floor'),
+    tile: SURFACE_TILE.floor, proj: 'horiz', tint: [1.08, 0.9, 0.64], relief: 0.22,
+  });
+  installSurfaceDetail(ceilingBase, {
+    tex: bakeSurfaceTexture(renderer, 'ceiling'),
+    tile: SURFACE_TILE.ceiling, proj: 'horiz', tint: [0.7, 0.8, 1.05], relief: 0.32,
+  });
 
   return {
     wall: wallBase,

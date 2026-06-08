@@ -201,7 +201,7 @@ scene.add(ambient);
 // chosen banded-lighting state. Must precede any material compile; runtime
 // toggle is handled in the onSettingsChanged subscription.
 installBandedLighting(getSettings().bandedLighting);
-const materials = buildMaterials();
+const materials = buildMaterials(renderer);
 initRenderPipeline(renderer);
 // Apply the persisted ink-outline preference (the pipeline defaults it on).
 setOutlineEnabled(getSettings().outlines);
