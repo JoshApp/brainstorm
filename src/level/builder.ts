@@ -7,6 +7,7 @@ import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
 import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
+import { installPropHeightAO } from '../style/surface-ao';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
 import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
@@ -608,6 +609,10 @@ export function buildLevel(
       });
     } else if (prop.kind === 'model') {
       const built = buildModel(prop.model);
+      // Height AO — darken the prop's base toward the floor so it sits in its
+      // own shadow (world-Y driven, survives the static merge). Scaled by the
+      // same SURFACE AO slider as the rest of the grounding.
+      for (const m of built.materials.values()) installPropHeightAO(m);
       built.group.position.set(prop.x, prop.y, prop.z);
       if (prop.rotX) built.group.rotation.x = prop.rotX;
       if (prop.rotY) built.group.rotation.y = prop.rotY;
