@@ -96,22 +96,22 @@ export function makeJitteredPlane(
   pos.needsUpdate = true;
   geo.computeVertexNormals();
 
-  // Per-vertex color: a gentle random tint × BAKED AO. The AO grounds the room
-  // for free (no per-frame cost, no depth-buffer streaks — unlike the dead
-  // screen-space attempt):
-  //   - WALLS darken toward the FLOOR (strong) + gently toward the CEILING, so
-  //     shadow pools where the wall meets floor/ceiling — the dungeon's grime.
-  //   - FLOORS darken in a thin band at their EDGES (where they meet the walls).
-  // Random tint range is narrow ([0.85,1.0]); coherent intentional colouring
-  // (moss low, weathering) is the next richness step — docs/surface-richness.md.
-  const W2 = width / 2, H2 = height / 2;
+  // Per-vertex color: a gentle random tint × BAKED wall AO. WALLS darken toward
+  // the FLOOR (strong) + gently toward the CEILING, so shadow pools where the
+  // wall meets floor/ceiling — the dungeon's grime + ambient occlusion. Free
+  // per-frame, no depth-buffer streaks (unlike the dead screen-space attempt).
+  //
+  // FLOORS get only the random tint here — their AO is WALL-CONTACT, baked
+  // separately (bakeFloorContactAO) from the room's real wall segments so it
+  // skips open passages and floors flow seamlessly room↔corridor. Random tint
+  // range is narrow ([0.85,1.0]); coherent colouring (moss low) is next —
+  // docs/surface-richness.md.
+  const H2 = height / 2;
   const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
   const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
-  // Tunables. Walls in DELVE stand local-Y up (bottom = -H2); floors lie flat
-  // so both local axes are horizontal (the rect's extent).
-  const FLOOR_DARK = 0.5, FLOOR_FADE = 1.3;   // wall: darkness at base, fade metres
-  const CEIL_DARK = 0.74, CEIL_FADE = 1.0;    // wall: gentler darkness at top
-  const FLOOR_EDGE_DARK = 0.55, FLOOR_EDGE_FADE = 0.55;   // floor: edge-band darkness + width
+  // Wall AO tunables. Walls in DELVE stand local-Y up (bottom = -H2).
+  const FLOOR_DARK = 0.5, FLOOR_FADE = 1.3;   // darkness at base, fade metres
+  const CEIL_DARK = 0.74, CEIL_FADE = 1.0;    // gentler darkness at top
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
     let ao = 1.0;
@@ -120,9 +120,6 @@ export function makeJitteredPlane(
       const up   = mix(FLOOR_DARK, 1.0, clamp01((py + H2) / FLOOR_FADE));
       const down = mix(CEIL_DARK,  1.0, clamp01((H2 - py) / CEIL_FADE));
       ao = up * down;
-    } else if (flat) {     // FLOOR — darken a band at the rect edges
-      const dEdge = Math.min(W2 - Math.abs(pos.getX(i)), H2 - Math.abs(pos.getY(i)));
-      ao = mix(FLOOR_EDGE_DARK, 1.0, clamp01(dEdge / FLOOR_EDGE_FADE));
     }
     const base = (0.85 + buildRng() * 0.15) * ao;
     const tintR = base * (0.96 + buildRng() * 0.04);
@@ -135,6 +132,56 @@ export function makeJitteredPlane(
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
   return geo;
+}
+
+/** XZ distance from point (px,pz) to segment (ax,az)-(bx,bz). */
+function distPointSeg(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const dx = bx - ax, dz = bz - az;
+  const len2 = dx * dx + dz * dz;
+  let t = len2 > 1e-9 ? ((px - ax) * dx + (pz - az) * dz) / len2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const cx = ax + t * dx, cz = az + t * dz;
+  return Math.hypot(px - cx, pz - cz);
+}
+
+export interface WallSeg { ax: number; az: number; bx: number; bz: number; }
+
+/**
+ * Bake WALL-CONTACT ambient occlusion into a floor mesh's vertex colours:
+ * darken floor vertices within `radius` of a real wall segment, strongest right
+ * at the wall. Unlike a per-plate edge band, this is driven by the room's actual
+ * solid walls — so OPEN passages (no wall) stay full-bright and the floor flows
+ * seamlessly into the next room/corridor with no false seam.
+ *
+ * Floor is a plane rotated −90° about X at world `origin`, so a local vertex
+ * (lx,ly) sits at world (origin.x+lx, origin.z−ly). Multiplies the existing
+ * colour (tint), so the SURFACE AO slider still scales it.
+ */
+export function bakeFloorContactAO(
+  geo: THREE.BufferGeometry,
+  origin: { x: number; z: number },
+  segments: WallSeg[],
+  radius = 0.75,
+  darkness = 0.5,
+): void {
+  const color = geo.getAttribute('color') as THREE.BufferAttribute | undefined;
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute | undefined;
+  if (!color || !pos || segments.length === 0) return;
+  for (let i = 0; i < pos.count; i++) {
+    const wx = origin.x + pos.getX(i);
+    const wz = origin.z - pos.getY(i);
+    let dmin = Infinity;
+    for (const s of segments) {
+      const d = distPointSeg(wx, wz, s.ax, s.az, s.bx, s.bz);
+      if (d < dmin) dmin = d;
+    }
+    const t = dmin >= radius ? 1 : dmin / radius;   // 0 at wall → 1 beyond
+    const ao = darkness + (1 - darkness) * t;
+    color.setX(i, color.getX(i) * ao);
+    color.setY(i, color.getY(i) * ao);
+    color.setZ(i, color.getZ(i) * ao);
+  }
+  color.needsUpdate = true;
 }
 
 // Double-sided clone of the ceiling material for vaulted/pitched ceilings.

@@ -107,6 +107,7 @@ export interface LiveLevel {
 import {
   makeFloorWithHoles,
   makeJitteredPlane,
+  bakeFloorContactAO,
   archCeilingMaterial,
   makeArchedCeilingGeometry,
   makeBracedFramesGeometry,
@@ -188,6 +189,7 @@ function buildRoomShell(
   // wall draw calls). Per-room (not per-floor) so each room's wall set still
   // frustum-culls as a unit. Collision is recorded per segment as before.
   const wallGeos: THREE.BufferGeometry[] = [];
+  const segStart = wallSegmentsOut.length;   // this room's segments for floor contact-AO
   for (const we of wallEdges) {
     const openings = findOpenings(we, allRects, room);
     const segments = subtractRanges(we.wallStart, we.wallEnd, openings);
@@ -217,6 +219,13 @@ function buildRoomShell(
       walls.userData.dbgSource = `walls · ${room.id}`;
       scene.add(walls);
     }
+  }
+
+  // Floor wall-contact AO — darken the floor near this room's SOLID walls (the
+  // segments just collected), seamless across open passages. Skipped for
+  // stairwell floors (holes path = ShapeGeometry, no per-vertex colour).
+  if (floorHoles.length === 0) {
+    bakeFloorContactAO(floorGeo, { x: rect.x, z: rect.z }, wallSegmentsOut.slice(segStart));
   }
 
   // Mine-shaft timber bracing (one merged mesh — see makeBracedFramesGeometry).
