@@ -157,7 +157,12 @@ const DEFAULTS: Settings = {
   // crank to 'single'/'all' on desktop or a strong device.
   shadows: 'hero',
   adaptiveResolution: true,
-  portalCulling: false,
+  // ON by default: occlusion-culls rooms (and now enemies) hidden behind walls —
+  // the big win on enemy-heavy floors, where the frustum cone otherwise draws a
+  // whole packed room (and its shadow casters) through the wall you're facing.
+  // The culler is conservative (generous doorway reveal margins) to keep pop-in
+  // low; toggle off in Settings if a turn ever reveals a room too late.
+  portalCulling: true,
   bandedLighting: true,
   outlines: false,
   aoStrength: 1.6,
