@@ -664,11 +664,16 @@ export function buildLevel(
         }
       }
       root.add(built.group);
-      // Fold purely-static model decor into the per-room static-merge pass.
-      // Skip props whose materials animate (proximity-glow archways, mood-tinted
-      // flames) or that carry a light (candles/braziers — their flame + glow
-      // must stay live, per-instance). The biggest draw-call win on a floor.
-      if (!prop.proximityGlow && !prop.model.moodTintable && !prop.model.light) {
+      // Fold the prop's STATIC meshes into the per-room static-merge pass — the
+      // biggest draw-call win on a floor (candles/braziers were the bulk of the
+      // unmerged decor). The merge already protects what must stay live: it skips
+      // meshes named 'flame' (the flicker) and all sprites (additive tongues),
+      // and the prop's LIGHT is a separately-registered pool source, untouched by
+      // a mesh merge. Mood-tint only sets colour once at spawn (not per frame),
+      // so a tinted static body bakes fine. ONLY proximity-glow stays out — its
+      // non-flame 'glow' mesh raises emissive per frame as the player nears, so
+      // it genuinely can't be baked into a shared mesh.
+      if (!prop.proximityGlow) {
         markMergeStatic(built.group);
       }
       // Optional collision shape(s) — used by structural model
