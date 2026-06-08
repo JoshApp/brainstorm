@@ -425,6 +425,10 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
     case 'decal': {
       const geo = new THREE.PlaneGeometry(part.size[0], part.size[1]);
       const additive = part.blending === 'additive';
+      // CUTOUT — opaque, alpha-tested. No transparency (robust on mobile tilers,
+      // which mis-sort/mis-blend stacked transparent quads) and it writes depth,
+      // so it casts a real texture-shaped shadow.
+      const cutout = part.alphaTest != null;
       const mat = additive
         ? new THREE.MeshBasicMaterial({
             map: getTexture(part.texture),
@@ -434,6 +438,19 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
             blending: THREE.AdditiveBlending,
             fog: part.fog ?? false,
             depthWrite: part.depthWrite ?? false,
+            side: THREE.DoubleSide,
+          })
+        : cutout
+        ? new THREE.MeshStandardMaterial({
+            map: getTexture(part.texture),
+            color: part.color ?? 0xffffff,
+            emissive: part.emissive ?? 0x000000,
+            emissiveIntensity: part.emissiveIntensity ?? 0,
+            transparent: false,
+            alphaTest: part.alphaTest,
+            depthWrite: true,
+            fog: part.fog ?? true,
+            roughness: 0.95,
             side: THREE.DoubleSide,
           })
         : new THREE.MeshStandardMaterial({
@@ -455,8 +472,10 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
             polygonOffsetUnits: -1,
           });
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = false;
-      mesh.receiveShadow = part.receiveShadow ?? false;
+      // Cutout decals can cast a real (texture-shaped) shadow; blended/additive
+      // ones never do (a transparent quad would cast a solid black rectangle).
+      mesh.castShadow = cutout ? (part.castShadow ?? true) : false;
+      mesh.receiveShadow = part.receiveShadow ?? cutout;
       return mesh;
     }
     case 'bone':

@@ -11,9 +11,14 @@ import type { ModelSpec } from '../ecs/model-types';
 //                    and clears its collision on break. Author-placed
 //                    with the '%' tile.
 //
-// Additive + low opacity so the threads read as gossamer catching the
-// torchlight, not a solid sheet — grimdark restraint, and it never
-// fully hides what's behind it.
+// Opaque alpha-CUTOUT threads (not alpha-blended): the gaps are discarded, so
+// the web is real geometry — lit by torchlight, and the BARRIER casts a real
+// thread-shaped shadow. This is the robust path; stacked transparent quads were
+// mis-rendering as a dark sticker on mobile tile GPUs. Muted dusty grey keeps it
+// grimdark (a long-undisturbed web), not bright cotton.
+
+const WEB_GREY = 0x9aa0a8;
+const WEB_CUT = 0.18;   // keep spokes (a 0.42) + rings (a 0.30), discard gaps
 
 export const COBWEB_CORNER: ModelSpec = {
   id: 'cobweb-corner',
@@ -21,17 +26,16 @@ export const COBWEB_CORNER: ModelSpec = {
   parts: [
     // Single angled web quad. The 'cobweb' texture anchors its dense
     // hub at a corner of the quad; rot tilts it so the hub tucks into
-    // the room corner and the web fans out across it.
+    // the room corner and the web fans out across it. Cosmetic — no shadow.
     {
       kind: 'decal',
       pos: [0, 0, 0],
       rot: [0, 0, Math.PI * 0.25],
       size: [1.3, 1.3],
       texture: 'cobweb',
-      color: 0xc8ccd2,
-      blending: 'additive',
-      opacity: 0.40,
-      fog: false,
+      color: WEB_GREY,
+      alphaTest: WEB_CUT,
+      castShadow: false,
     },
   ],
 };
@@ -45,8 +49,8 @@ export const COBWEB_BARRIER: ModelSpec = {
     // of web rather than one flat sheet. Centred ~1.2m up, spanning a
     // ~1.9m doorway. Faces the prop's local +Z; placement rotY aims it
     // across the passage.
-    { kind: 'decal', pos: [0, 1.2, 0],    rot: [0, 0, 0.0],   size: [2.0, 2.5], texture: 'cobweb', color: 0xd2d6dc, blending: 'additive', opacity: 0.55, fog: false },
-    { kind: 'decal', pos: [-0.1, 1.1, 0.02], rot: [0, 0, 1.9], size: [1.7, 2.2], texture: 'cobweb', color: 0xc4c8ce, blending: 'additive', opacity: 0.45, fog: false },
-    { kind: 'decal', pos: [0.12, 1.3, -0.02], rot: [0, 0, 3.6], size: [1.5, 2.0], texture: 'cobweb', color: 0xbcc0c6, blending: 'additive', opacity: 0.40, fog: false },
+    { kind: 'decal', pos: [0, 1.2, 0],    rot: [0, 0, 0.0],   size: [2.0, 2.5], texture: 'cobweb', color: WEB_GREY, alphaTest: WEB_CUT, castShadow: true },
+    { kind: 'decal', pos: [-0.1, 1.1, 0.02], rot: [0, 0, 1.9], size: [1.7, 2.2], texture: 'cobweb', color: 0x8e949c, alphaTest: WEB_CUT, castShadow: true },
+    { kind: 'decal', pos: [0.12, 1.3, -0.02], rot: [0, 0, 3.6], size: [1.5, 2.0], texture: 'cobweb', color: 0x868c94, alphaTest: WEB_CUT, castShadow: true },
   ],
 };

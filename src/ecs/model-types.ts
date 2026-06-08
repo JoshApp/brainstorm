@@ -240,6 +240,10 @@ export type PartSpec =
       emissive?: number;
       emissiveIntensity?: number;
       blending?: 'normal' | 'additive';
+      /** Set to render as an OPAQUE alpha-CUTOUT (transparent gaps discarded at
+       *  this threshold) instead of alpha-blended. Writes depth and casts a real
+       *  texture-shaped shadow — robust on mobile (no transparency sorting). */
+      alphaTest?: number;
       /** Default true for normal, false for additive. */
       fog?: boolean;
       /** Default true for normal, false for additive. */
