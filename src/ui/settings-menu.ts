@@ -382,6 +382,15 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().outlines,
       set: (v) => updateSettings({ outlines: v }),
     }),
+    makeToggle({
+      label: 'CONTACT SHADOWS (AO)',
+      description:
+        'Cheap fake ambient occlusion — soft darkening where surfaces meet ' +
+        '(prop bases, crevices) so objects feel grounded. No real shadow cost. ' +
+        'Off keeps the flat-lit image.',
+      get: () => getSettings().contactAO,
+      set: (v) => updateSettings({ contactAO: v }),
+    }),
   ],
 
   system: () => [

@@ -99,6 +99,10 @@ export interface Settings {
    *  untextured primitive geometry reads as a deliberate drawing (cel +
    *  outline). Stylistic taste toggle. */
   outlines: boolean;
+  /** Fake contact AO — cheap screen-space crevice/contact darkening in the
+   *  blit (no extra geometry pass) that grounds props/enemies/the hand. Cheaper
+   *  and more on-aesthetic than real point-light shadows for grounding. */
+  contactAO: boolean;
   /** HUD style preset — controls which HUD elements render and how
    *  loud the diegetic feedback (vignette, heartbeat, breath) is. Use
    *  with the registry in src/ui/hud-style.ts. Default 'minimal'. */
@@ -154,6 +158,7 @@ const DEFAULTS: Settings = {
   portalCulling: false,
   bandedLighting: true,
   outlines: false,
+  contactAO: true,
   hudStyle: 'minimal',
 };
 

@@ -97,6 +97,8 @@ const HORROR_BLIT_FRAG = `
   uniform float uOutlineThresh;   // metres of depth-gap to start an edge
   uniform float uOutlineWidth;    // sample step, in low-res texels
   uniform vec2  uOutlineTexel;    // 1.0 / low-res target size (texel step)
+  uniform float uAOStrength;      // fake contact-AO darkness (0 = off)
+  uniform float uAORadius;        // AO sample radius, in low-res texels
   varying vec2 vUv;
 
   // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
@@ -125,6 +127,16 @@ const HORROR_BLIT_FRAG = `
     float dRaw = texture2D(tDepth, uv).x;
     float ndc = dRaw * 2.0 - 1.0;
     return (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
+  }
+
+  // One contact-AO tap: how much a neighbour OCCLUDES the centre. A neighbour
+  // CLOSER than the centre (d > 0) leans in front of this surface point — a
+  // pocket, or the floor at the base of a prop. Banded so only MILD steps
+  // (contacts / crevices, ~2–10cm) darken; tiny steps are noise, and BIG steps
+  // are silhouette edges (which would halo the background) so they're rejected.
+  float aoTap(vec2 uv, vec2 off, float eC) {
+    float d = eC - linDepth(uv + off);
+    return smoothstep(0.02, 0.10, d) * (1.0 - smoothstep(0.30, 0.7, d));
   }
 
   void main() {
@@ -217,6 +229,24 @@ const HORROR_BLIT_FRAG = `
       // Don't ink the far void itself — only edges on near geometry.
       edge *= 1.0 - smoothstep(uDepthEndM, uFar, eC);
       col *= 1.0 - edge * uOutlineStrength;
+    }
+
+    // FAKE CONTACT AO — cheap screen-space crevice/contact darkening that grounds
+    // objects (props, enemies, the hand) without any extra geometry pass: it just
+    // re-reads the depth already in the buffer. Six taps on a hexagon at a radius
+    // that shrinks with distance (so far surfaces don't smear). Placed before the
+    // dither/quantize so the darkening takes the same PSX crunch as everything else.
+    if (uAOStrength > 0.0 && uInspect < 0.5) {
+      float eC = linDepth(uv);
+      vec2 px = uOutlineTexel * uAORadius * (3.0 / (3.0 + eC));
+      float occ =
+          aoTap(uv, vec2( 1.0,  0.0) * px, eC)
+        + aoTap(uv, vec2(-1.0,  0.0) * px, eC)
+        + aoTap(uv, vec2( 0.5,  0.87) * px, eC)
+        + aoTap(uv, vec2(-0.5,  0.87) * px, eC)
+        + aoTap(uv, vec2( 0.5, -0.87) * px, eC)
+        + aoTap(uv, vec2(-0.5, -0.87) * px, eC);
+      col *= 1.0 - clamp(occ / 6.0, 0.0, 1.0) * uAOStrength;
     }
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
@@ -348,6 +378,13 @@ const OUTLINE_THRESH = 0.12;    // metres of depth-gap before an edge starts
 const OUTLINE_WIDTH = 1.3;      // sample step in low-res texels (line thickness)
 let outlineEnabled = true;
 
+// Fake contact AO — cheap screen-space grounding in the blit (no extra pass).
+// Tunable knobs; defaults are deliberately gentle so it reads as grounding, not
+// as the harsh point-light blobs it replaces.
+const AO_STRENGTH = 0.55;   // darkness at full occlusion (0..1)
+const AO_RADIUS = 2.5;      // sample radius in low-res texels
+let aoEnabled = true;
+
 /** Toggle fog inscatter (A/B the glowing-air). */
 export function setInscatterEnabled(on: boolean): void {
   inscatterEnabled = on;
@@ -364,6 +401,12 @@ export function setDepthCrushEnabled(on: boolean): void {
 export function setOutlineEnabled(on: boolean): void {
   outlineEnabled = on;
   if (blitMaterial) blitMaterial.uniforms.uOutlineStrength.value = on ? OUTLINE_STRENGTH : 0;
+}
+
+/** Toggle the fake contact-AO grounding (A/B it on the phone). */
+export function setContactAOEnabled(on: boolean): void {
+  aoEnabled = on;
+  if (blitMaterial) blitMaterial.uniforms.uAOStrength.value = on ? AO_STRENGTH : 0;
 }
 
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
@@ -435,6 +478,8 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       uOutlineThresh: { value: OUTLINE_THRESH },
       uOutlineWidth: { value: OUTLINE_WIDTH },
       uOutlineTexel: { value: new THREE.Vector2(1 / w, 1 / h) },
+      uAOStrength: { value: aoEnabled ? AO_STRENGTH : 0 },
+      uAORadius: { value: AO_RADIUS },
     },
     vertexShader: HORROR_BLIT_VERT,
     fragmentShader: HORROR_BLIT_FRAG,
