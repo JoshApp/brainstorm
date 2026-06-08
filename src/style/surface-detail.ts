@@ -18,9 +18,9 @@ import type * as THREE from 'three';
 //  - Chains any existing onBeforeCompile (surface AO) and touches a DIFFERENT
 //    chunk than it, so the two compose cleanly.
 
-const DETAIL_STRENGTH = 0.22;   // bump intensity when ON
+const DETAIL_STRENGTH = 0.16;   // bump intensity when ON
 const uDetailStrength = { value: DETAIL_STRENGTH };
-const uDetailFreq = { value: 2.6 };   // base-octave noise cycles per metre
+const uDetailFreq = { value: 3.4 };   // base-octave noise cycles per metre (finer = more masonry, less blob)
 
 export function setSurfaceDetailEnabled(on: boolean): void {
   uDetailStrength.value = on ? DETAIL_STRENGTH : 0;
@@ -58,17 +58,29 @@ export function installSurfaceDetail(material: THREE.Material): void {
       '#include <normal_fragment_maps>',
       `#include <normal_fragment_maps>
   if (uDetailStrength > 0.0) {
-    // Normal perturbation — bump the lighting normal by the height gradient.
-    float dh = uDetailStrength * dFbm(vWorldPos * uDetailFreq);
     vec3 sp = -vViewPosition;
     vec3 sx = dFdx(sp), sy = dFdy(sp);
-    vec3 R1 = cross(sy, normal);
-    vec3 R2 = cross(normal, sx);
-    float fDet = dot(sx, R1) * faceDirection;
-    normal = normalize(abs(fDet) * normal - sign(fDet) * (dFdx(dh) * R1 + dFdy(dh) * R2));
-    // Subtle albedo grime on the coarser octave — crevices read a touch dirtier.
-    float grime = dFbm(vWorldPos * uDetailFreq * 0.5);
-    diffuseColor.rgb *= 1.0 - uDetailStrength * 0.55 * (1.0 - grime);
+    // Pixel FOOTPRINT on the surface (world metres). Where it's large — far away
+    // or at a grazing angle — the noise is sub-pixel and would alias into soft
+    // "cottage-cheese" lumps, so fade the detail out there. This is what keeps
+    // the look CONSISTENT as the camera moves (no blow-up at distance/grazing)
+    // and kills the shimmer; up close where pixels are dense, full roughness.
+    float fp = max(length(dFdx(vWorldPos)), length(dFdy(vWorldPos)));
+    float period = 1.0 / uDetailFreq;
+    float aa = 1.0 - smoothstep(period * 0.35, period * 1.2, fp);
+    float str = uDetailStrength * aa;
+    if (str > 0.001) {
+      // Normal perturbation — bump the lighting normal by the height gradient.
+      float h = dFbm(vWorldPos * uDetailFreq);
+      vec3 R1 = cross(sy, normal);
+      vec3 R2 = cross(normal, sx);
+      float fDet = dot(sx, R1) * faceDirection;
+      vec3 vGrad = sign(fDet) * (dFdx(h) * R1 + dFdy(h) * R2);
+      normal = normalize(abs(fDet) * normal - str * vGrad);
+      // Subtle albedo grime on the coarser octave — crevices read a touch dirtier.
+      float grime = dFbm(vWorldPos * uDetailFreq * 0.5);
+      diffuseColor.rgb *= 1.0 - str * 0.55 * (1.0 - grime);
+    }
   }`,
     );
   };
