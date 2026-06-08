@@ -17,15 +17,17 @@ import * as THREE from 'three';
 // slabs, ~7% missing). CEILING = coffered panels (raised beam grid, recessed
 // panels) — its own architectural language, distinct from the floor.
 
-export type SurfaceKind = 'wall' | 'floor' | 'ceiling';
+export type SurfaceKind = 'wall' | 'floor' | 'ceiling' | 'dressed' | 'grain';
 
 // World-space repeat period (metres) of each baked texture. Chosen so the
 // pattern tiles seamlessly: walls = 4 bricks x 8 courses, floor = 5x5 flagstone
-// cells, ceiling = 3x3 coffer panels.
+// cells, ceiling = 3x3 coffer panels, dressed = 3x4 ashlar blocks, grain = fine.
 export const SURFACE_TILE: Record<SurfaceKind, [number, number]> = {
   wall: [4.6, 4.8],
   floor: [5.25, 5.25],
   ceiling: [4.8, 4.8],
+  dressed: [4.8, 3.2],
+  grain: [1.5, 1.5],
 };
 
 const TEX = 512;
@@ -114,13 +116,51 @@ void coffer(vec2 p, float aa, out float shade, out float height){
   height=mix(0.45,1.0,beam);          // beams proud, panels sunk
 }
 
+// DRESSED ASHLAR — large, evenly-cut blocks with thin CLEAN joints. Smoother and
+// quieter than the rough wall brick: this is the "finished" stone that frames a
+// passage (archways, doorframes, lintels), contrasting the rough masonry walls.
+void dressed(vec2 p, float aa, out float shade, out float height){
+  vec2 bsz=vec2(1.6,0.8);
+  vec2 g=p/bsz; float row=floor(g.y);
+  g.x += 0.5*mod(row,2.0);
+  vec2 cell=vec2(floor(g.x),row);
+  vec2 id=vec2(mod(cell.x,3.0),mod(cell.y,4.0));
+  vec2 inb=fract(g);
+  float dseam=min(min(inb.y,1.0-inb.y)*bsz.y, min(inb.x,1.0-inb.x)*bsz.x);
+  float joint=1.0-smoothstep(0.018-aa,0.018+aa,dseam);
+  float bt=dHash(vec3(id,3.1));
+  float tone=mix(0.92,1.0,bt);        // dressed stone is even-toned
+  shade=mix(tone,0.62,joint);
+  height=mix(1.0,0.65,joint);         // shallow, clean joint
+}
+
+// Periodic value noise (period P) — tileable fine grain.
+float vnoiseP(vec2 x, float P){
+  vec2 i=floor(x), f=fract(x); f=f*f*(3.0-2.0*f);
+  float a=dHash(vec3(mod(i,P),0.7));
+  float b=dHash(vec3(mod(i+vec2(1.,0.),P),0.7));
+  float c=dHash(vec3(mod(i+vec2(0.,1.),P),0.7));
+  float d=dHash(vec3(mod(i+vec2(1.,1.),P),0.7));
+  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
+}
+// STONE GRAIN — low-contrast, structureless micro-variation. For columns: lets
+// them catch torchlight instead of reading as plastic, with NO joints/blocks
+// (which would smear around a round shaft under world-projection anyway).
+void grain(vec2 uv, out float shade, out float height){
+  float n = vnoiseP(uv*8.0,8.0)*0.65 + vnoiseP(uv*16.0,16.0)*0.35;
+  shade = mix(0.9,1.06,n);
+  height = mix(0.46,0.54,n);          // near-flat
+}
+
 void main(){
   vec2 p = vUv * uTile;
   float aa = (uTile.x / float(${TEX})) * 0.7;
   float shade=1.0, height=1.0;
   if (uMode==0) brick(p,aa,shade,height);
   else if (uMode==1) flag(p,aa,shade,height);
-  else coffer(p,aa,shade,height);
+  else if (uMode==2) coffer(p,aa,shade,height);
+  else if (uMode==3) dressed(p,aa,shade,height);
+  else grain(vUv,shade,height);
   gl_FragColor = vec4(vec3(shade), height);
 }
 `;
@@ -151,7 +191,7 @@ function ensureQuad(): { scene: THREE.Scene; cam: THREE.OrthographicCamera; mat:
 // reliably (RT mipmap regeneration is fiddly by comparison).
 export function bakeSurfaceTexture(renderer: THREE.WebGLRenderer, kind: SurfaceKind): THREE.DataTexture {
   const tile = SURFACE_TILE[kind];
-  const mode = kind === 'wall' ? 0 : kind === 'floor' ? 1 : 2;
+  const mode = kind === 'wall' ? 0 : kind === 'floor' ? 1 : kind === 'ceiling' ? 2 : kind === 'dressed' ? 3 : 4;
   const { scene, cam, mat } = ensureQuad();
   mat.uniforms.uMode.value = mode;
   mat.uniforms.uTile.value.set(tile[0], tile[1]);

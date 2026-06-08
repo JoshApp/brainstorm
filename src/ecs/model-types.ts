@@ -29,6 +29,13 @@ export interface MaterialDef {
   /** If false, the material ignores scene fog (use for first-person held items). */
   fog?: boolean;
   /**
+   * Opt this material into a baked, mipmapped surface detail by NAME (see
+   * style/surface-textures.ts) — e.g. 'dressed' (ashlar framing for archways /
+   * doorframes), 'grain' (faint column grain). World-projected, so no UVs
+   * needed. Registered at material-build time; unknown names no-op.
+   */
+  detail?: 'dressed' | 'grain';
+  /**
    * Fresnel rim glow — brightens fragments where the surface normal
    * grazes the view direction (the silhouette edge). Classic "ghost
    * edge brightness" effect. `power` controls falloff (higher = thinner

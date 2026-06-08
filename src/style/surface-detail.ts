@@ -32,8 +32,30 @@ export function setSurfaceDetailEnabled(on: boolean): void {
 // clone re-install from its base (see reinstallSurfaceDetail).
 const cfgMap = new WeakMap<THREE.Material, SurfaceTexConfig>();
 
+// Named configs (registered at material-build time) so the ModelSpec material
+// compiler (build-model.ts) can opt a material into a detail by NAME — e.g. a
+// 'dressed' archway, a 'grain' column — without importing the baked textures.
+const namedConfigs = new Map<string, SurfaceTexConfig>();
+export function registerSurfaceDetail(name: string, cfg: SurfaceTexConfig): void {
+  namedConfigs.set(name, cfg);
+}
+export function installNamedSurfaceDetail(material: THREE.Material, name: string): void {
+  const cfg = namedConfigs.get(name);
+  if (cfg) installSurfaceDetail(material, cfg);
+}
+
 export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexConfig): void {
   cfgMap.set(material, cfg);
+  // The injected onBeforeCompile has identical .toString() across every detail
+  // material, and the projection branch is baked into the fragment STRING (not
+  // the function source) — so two materials with the same params but different
+  // proj could collide in three's program cache. customProgramCacheKey is
+  // ADDITIVE to the default param key, so composing a proj tag here keeps the
+  // wall vs floor/ceiling programs distinct while still sharing within a proj.
+  const prevKey = material.customProgramCacheKey;
+  material.customProgramCacheKey = function () {
+    return (prevKey ? prevKey.call(this) + '|' : '') + 'sd-' + cfg.proj;
+  };
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = function (shader, renderer) {
     if (prev) prev.call(this, shader, renderer);

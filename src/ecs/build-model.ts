@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import type { MaterialDef, ModelSpec, PartSpec, Vec3 } from './model-types';
 import { getTexture } from '../style/procedural-textures';
+import { installNamedSurfaceDetail } from '../style/surface-detail';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
 } from '../scene/geometry-pool';
@@ -162,6 +163,9 @@ function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Ma
   // build time so the shader compiles during warmup; the death sequence
   // mutates uniform values at runtime, which doesn't trigger a recompile.
   attachShaderExtensions(mat, def);
+  // Opt-in baked surface detail (dressed framing / column grain). Chains after
+  // the rim/dissolve onBeforeCompile; no-ops if the named config isn't found.
+  if (def.detail) installNamedSurfaceDetail(mat, def.detail);
   return mat;
 }
 

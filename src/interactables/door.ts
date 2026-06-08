@@ -106,7 +106,7 @@ export function spawnDoor(
   const lintelHeight = Math.max(0, wallHeight - height);
   if (lintelHeight > 0.02) {
     const lintelGeo = new THREE.BoxGeometry(length, lintelHeight, DOOR_THICKNESS);
-    const lintel = new THREE.Mesh(lintelGeo, materials.wall);
+    const lintel = new THREE.Mesh(lintelGeo, materials.dressed);
     lintel.position.set(cx, height + lintelHeight / 2, cz);
     lintel.rotation.y = doorYaw;
     lintel.receiveShadow = true;

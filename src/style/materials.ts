@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { installSurfaceAO } from './surface-ao';
-import { installSurfaceDetail } from './surface-detail';
+import { installSurfaceDetail, installNamedSurfaceDetail, registerSurfaceDetail } from './surface-detail';
 import { bakeSurfaceTexture, SURFACE_TILE } from './surface-textures';
 
 // Material library for the BIG STATIC SURFACES of the level (walls, floor,
@@ -15,8 +15,10 @@ export interface StyleMaterials {
   ceiling: THREE.Material;
   /** Aged dark timber — mine-shaft bracing + plank doors. */
   timber: THREE.Material;
-  /** Plain stone for PROPS (pillars, etc.) — wall colour, no brick detail. */
+  /** Stone for PROPS (pillars, etc.) — wall colour, faint grain (no brick). */
   stone: THREE.Material;
+  /** Dressed/ashlar stone for FRAMING — archways, doorframes, lintels. */
+  dressed: THREE.Material;
 }
 
 export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
@@ -71,13 +73,23 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
     emissiveIntensity: emissiveBoost,
   });
 
-  // Plain stone for props (pillars). Same near-black stone as the walls, but
-  // WITHOUT the brick surface-detail — the running-bond pattern is for the big
-  // architectural planes; wrapping it around a round shaft read wrong and no
-  // other prop uses it. Kept as its own material so props share one draw state.
+  // Stone for props (pillars). Same near-black stone as the walls. Gets a FAINT
+  // grain (below) — not brick — so a round shaft catches torchlight without the
+  // masonry pattern smearing around its curve.
   const propStone = new THREE.MeshStandardMaterial({
     color: CONFIG.WALL_COLOR,
     roughness: 0.95,
+    metalness: 0.0,
+    emissive: wallEmissive,
+    emissiveIntensity: emissiveBoost,
+  });
+
+  // Dressed/ashlar stone for architectural FRAMING (archways, doorframes,
+  // lintels). Big even blocks, thin clean joints — "finished" stone that frames
+  // a passage, contrasting the rough masonry walls. Detail installed below.
+  const dressedBase = new THREE.MeshStandardMaterial({
+    color: CONFIG.WALL_COLOR,
+    roughness: 0.92,
     metalness: 0.0,
     emissive: wallEmissive,
     emissiveIntensity: emissiveBoost,
@@ -104,11 +116,26 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
     tile: SURFACE_TILE.ceiling, proj: 'horiz', tint: [0.7, 0.8, 1.05], relief: 0.32,
   });
 
+  // Framing (dressed ashlar) + prop columns (faint grain). Register the dressed
+  // config by name too, so the ModelSpec compiler can opt archways/doorframes in.
+  const dressedCfg = {
+    tex: bakeSurfaceTexture(renderer, 'dressed'),
+    tile: SURFACE_TILE.dressed, proj: 'wall' as const, tint: [1.0, 1.0, 1.0] as const, relief: 0.16,
+  };
+  installSurfaceDetail(dressedBase, dressedCfg);
+  registerSurfaceDetail('dressed', dressedCfg);
+  registerSurfaceDetail('grain', {
+    tex: bakeSurfaceTexture(renderer, 'grain'),
+    tile: SURFACE_TILE.grain, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.08,
+  });
+  installNamedSurfaceDetail(propStone, 'grain');   // columns: faint grain only
+
   return {
     wall: wallBase,
     floor: floorBase,
     ceiling: ceilingBase,
     timber: timberBase,
     stone: propStone,
+    dressed: dressedBase,
   };
 }

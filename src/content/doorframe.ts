@@ -58,11 +58,11 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
   return {
     id,
     materials: {
-      stone: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true },
+      stone: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, detail: 'dressed' },
       // Same 'glow' contract as the archway: emissive 0 at rest, raised by the
       // threshold proximity system so the frame warms as the player nears,
       // marking the way through (see builder's proximityGlow handling).
-      glow: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xff8c3a, emissiveIntensity: 0 },
+      glow: { color: 0x231d16, roughness: 1.0, metalness: 0.0, flatShading: true, emissive: 0xff8c3a, emissiveIntensity: 0, detail: 'dressed' },
     },
     parts: [
       // Side jambs — slim posts framing the opening, with depth so the thin
