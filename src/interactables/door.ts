@@ -6,7 +6,7 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { on as onEvent } from '../broadcast/event-bus';
 import { playChestOpen, playImpact } from '../audio/sfx';
-import { hasEncounter, isEncounterComplete, activateEncounter, onEncounterActivated, roomClearEncounterId } from '../encounters/registry';
+import { hasEncounter, isEncounterComplete, activateEncounter, onEncounterActivated, onEncounterComplete, roomClearEncounterId } from '../encounters/registry';
 import { arenaEncounterId } from '../level/arena-waves';
 
 // Door = the thing that plugs a doorway. Two physical kinds, chosen by
@@ -347,10 +347,15 @@ export function spawnDoor(
     interactable.promptLabel = 'OPEN';
   }
 
-  // Sealed-state UX punch — when the unlock flips via the room-clear event,
-  // kick the gate into its rise immediately (don't wait for the next tick).
-  const unsubscribe = onEvent((event) => {
-    if (event.type !== 'room:cleared') return;
+  // Try to start raising the gate / unlocking the hinged door — used by both
+  // the room:cleared bus event AND the encounter:complete reactor. For an
+  // arena the final wave's death emits room:cleared a beat BEFORE the
+  // encounter ticks itself to 'done' (lull → done transition), so the
+  // room:cleared listener fires while isUnlocked() is still false. The
+  // encounter:complete reactor then fires moments later and is what
+  // ACTUALLY opens the gate. Without it, an arena's gate stays sealed
+  // forever after the last enemy dies.
+  function tryOpenIfUnlocked() {
     if (state !== 'sealed') return;
     if (!isUnlocked()) return;
     if (isGate) {
@@ -367,14 +372,25 @@ export function spawnDoor(
       thresholdMat.color.setHex(0x8c5a30);
       thresholdMat.opacity = 0.6;
     }
+  }
+
+  // Sealed-state UX punch — when the unlock flips via the room-clear event,
+  // kick the gate into its rise immediately (don't wait for the next tick).
+  const unsubscribe = onEvent((event) => {
+    if (event.type !== 'room:cleared') return;
+    tryOpenIfUnlocked();
   });
 
   // Reactor: seal the gate whenever its arena encounter ACTIVATES — covers
   // both the trap (cross trips it) and the challenge (offering trips it).
+  // Open it again whenever the encounter COMPLETES — the room:cleared event
+  // fires just before the encounter resolves its lull→done transition, so
+  // without this reactor the gate would stay down.
   const reactorUnsubs: Array<() => void> = [];
   if (spec.unlock?.kind === 'arena') {
     for (const rid of spec.unlock.roomIds) {
       reactorUnsubs.push(onEncounterActivated(arenaEncounterId(rid), sealGate));
+      reactorUnsubs.push(onEncounterComplete(arenaEncounterId(rid), tryOpenIfUnlocked));
     }
   }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { LiveLevel } from './builder';
+import { on as onEvent } from '../broadcast/event-bus';
 
 // Portal/room visibility culling. Three.js frustum-culls (the view cone) but
 // never OCCLUSION-culls — a wall doesn't stop the frustum, so a room hidden
@@ -42,6 +43,13 @@ export interface RoomCuller {
   dispose(): void;
   /** Count of currently-visible rects (debug readout). */
   visibleCount(): number;
+  /** Force a set of rooms to always render this frame onward — used by ARENAS
+   *  while their encounter is active so a portcullis (which blocks LOS for
+   *  walkable but is visually see-through bars) doesn't make the arena pop
+   *  out from inside the alcove. Cleared by clearForceVisible(). */
+  addForceVisible(roomIds: readonly string[]): void;
+  /** Drop a previously-forced set. */
+  removeForceVisible(roomIds: readonly string[]): void;
 }
 
 export function createRoomCuller(level: LiveLevel): RoomCuller {
@@ -96,6 +104,10 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
 
   let enabled = true;
   const visible = new Set<string>();
+  // Rooms forced to render every frame regardless of frustum / LOS — counted
+  // by reference, so two encounters can claim the same room without one
+  // dropping the other's claim when it ends.
+  const forceVisibleCounts = new Map<string, number>();
 
   // Frustum scratch (no per-frame alloc).
   const frustum = new THREE.Frustum();
@@ -123,6 +135,17 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     const start = rectAt(nodes, cx, cz) ?? nearestRect(nodes, cx, cz);
 
     visible.clear();
+    // Force-visible rooms (active arenas etc.) always render — PLUS every
+    // direct neighbour, so the alcove on the other side of an arena gate is
+    // also rendered while the arena is active even though the gate's wall
+    // segment blocks LOS. (The portcullis is visually bars; you should see
+    // through it. Walking through it is what's sealed.)
+    for (const id of forceVisibleCounts.keys()) {
+      const node = nodes.get(id);
+      if (!node) continue;
+      visible.add(id);
+      for (const nb of node.neighbors) visible.add(nb.id);
+    }
     if (start) {
       // Flood-fill: from the current rect, cross any doorway that's in view;
       // from each newly-visible rect, cross ITS in-view doorways (handles
@@ -156,16 +179,47 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     }
   }
 
-  return {
+  const culler: RoomCuller = {
     tick,
     setEnabled(on: boolean) {
       if (on === enabled) return;
       enabled = on;
       if (!on) showAll();
     },
-    dispose() { showAll(); },
+    dispose() {
+      showAll();
+      unsubEvents();
+    },
     visibleCount() { return visible.size; },
+    addForceVisible(roomIds: readonly string[]) {
+      for (const id of roomIds) {
+        forceVisibleCounts.set(id, (forceVisibleCounts.get(id) ?? 0) + 1);
+      }
+    },
+    removeForceVisible(roomIds: readonly string[]) {
+      for (const id of roomIds) {
+        const n = (forceVisibleCounts.get(id) ?? 0) - 1;
+        if (n <= 0) forceVisibleCounts.delete(id);
+        else forceVisibleCounts.set(id, n);
+      }
+    },
   };
+
+  // Auto-track arena encounters via the bus: 'arena:<roomId>' encounter
+  // activates → force-visible that roomId; completes → drop. This means
+  // ANY arena (combat, challenge, future variants) automatically keeps its
+  // room visible through the gate's see-through bars while the encounter
+  // runs, without the builder having to plumb a reference to the culler.
+  const ARENA_PREFIX = 'arena:';
+  const unsubEvents = onEvent((event) => {
+    if (event.type === 'encounter:activated' && event.id.startsWith(ARENA_PREFIX)) {
+      culler.addForceVisible([event.id.slice(ARENA_PREFIX.length)]);
+    } else if (event.type === 'encounter:complete' && event.id.startsWith(ARENA_PREFIX)) {
+      culler.removeForceVisible([event.id.slice(ARENA_PREFIX.length)]);
+    }
+  });
+
+  return culler;
 }
 
 /** Centre-of-overlap doorway between two edge-adjacent rects, or null. */

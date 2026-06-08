@@ -31,7 +31,8 @@ import {
 import { spawnCorpse } from '../interactables/corpse';
 import { spawnFitting } from '../interactables/fitting';
 import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-waves';
-import { registerEncounter, activateEncounter, clearEncounters, roomClearEncounterId, type EncounterHandle } from '../encounters/registry';
+import { registerEncounter, activateEncounter, clearEncounters, onEncounterActivated, onEncounterComplete, roomClearEncounterId, type EncounterHandle } from '../encounters/registry';
+import { openingEndpoints } from './opening';
 import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { spawnMerchant } from '../interactables/merchant';
@@ -1230,6 +1231,71 @@ export function buildLevel(
     }
   }
 
+  // ARENA EXTERNAL-OPENING SEAL — while the arena's encounter is ACTIVE, the
+  // whole arena complex (sealed-side sub-room + alcove/trigger-side sub-room)
+  // is sealed off from neighbour vaults. Without this, the composer can cut a
+  // doorway in the alcove's vault edge to a sibling room and the player can
+  // slip around the portcullis, breaking the trial. The complex is detected
+  // by the gate's wall segment touching two rooms (one in unlock.roomIds, one
+  // outside it — the trigger side). External openings on either room's
+  // perimeter to NON-complex neighbours are walled off on encounter:activated
+  // and reopened on encounter:complete.
+  for (const arenaGate of pendingFittings) {
+    if (arenaGate.unlock?.kind !== 'arena') continue;
+    const arenaRoomIds = new Set(arenaGate.unlock.roomIds);
+    const gateSeg = openingEndpoints(arenaGate);
+    // Identify the trigger-side room: any room not yet in the complex whose
+    // perimeter the gate's segment lies on. With sub-rooms being logical
+    // bounding rects, both sides of an arena gate are typically logical
+    // children of the same parent vault rect — that's fine, the perimeter
+    // test still matches.
+    for (const room of spec.rooms) {
+      if (arenaRoomIds.has(room.id)) continue;
+      if (segOnRectPerimeter(gateSeg, room.rect)) {
+        arenaRoomIds.add(room.id);
+      }
+    }
+    // Collect every external opening on the complex's perimeter. findOpenings
+    // skips logicalOnly rooms automatically, so the gate (between two logical
+    // sub-rooms) is never returned — only true external connections.
+    const externalSegs: Array<{ ax: number; az: number; bx: number; bz: number }> = [];
+    for (const roomId of arenaRoomIds) {
+      const room = spec.rooms.find((r) => r.id === roomId);
+      if (!room) continue;
+      const rect = room.rect;
+      const hw = rect.w / 2;
+      const hd = rect.d / 2;
+      const walls = [
+        { perpAxis: 'x' as const, perpCoord: rect.x - hw, wallStart: rect.z - hd, wallEnd: rect.z + hd },
+        { perpAxis: 'x' as const, perpCoord: rect.x + hw, wallStart: rect.z - hd, wallEnd: rect.z + hd },
+        { perpAxis: 'z' as const, perpCoord: rect.z - hd, wallStart: rect.x - hw, wallEnd: rect.x + hw },
+        { perpAxis: 'z' as const, perpCoord: rect.z + hd, wallStart: rect.x - hw, wallEnd: rect.x + hw },
+      ];
+      for (const w of walls) {
+        const openings = findOpenings(w, spec.rooms, room);
+        for (const op of openings) {
+          externalSegs.push(
+            w.perpAxis === 'x'
+              ? { ax: w.perpCoord, az: op.start, bx: w.perpCoord, bz: op.end }
+              : { ax: op.start, az: w.perpCoord, bx: op.end, bz: w.perpCoord },
+          );
+        }
+      }
+    }
+    if (externalSegs.length === 0) continue;
+    const encId = arenaEncounterId(arenaGate.unlock.roomIds[0]);
+    const sealedSegs: Array<{ ax: number; az: number; bx: number; bz: number }> = [];
+    doorTeardowns.push(onEncounterActivated(encId, () => {
+      for (const seg of externalSegs) {
+        walkable.addWall(seg);
+        sealedSegs.push(seg);
+      }
+    }));
+    doorTeardowns.push(onEncounterComplete(encId, () => {
+      while (sealedSegs.length) walkable.removeWall(sealedSegs.pop()!);
+    }));
+  }
+
   // Plain room-clear gates ('cleared') become the degenerate encounter:
   // active from the start, resolves the frame the room is empty. Folds the
   // old aliveByRoom gate check into the same lifecycle as everything else —
@@ -1367,4 +1433,33 @@ function findRoomContaining(x: number, z: number, rooms: RoomSpec[]): string | n
     if (containsHere(r)) return r.id;
   }
   return null;
+}
+
+/** True if a wall segment lies on a rect's perimeter (both endpoints sit on
+ *  the same edge). Used by the arena-seal logic to identify which rooms a
+ *  gate splits between (sealed side + alcove). */
+function segOnRectPerimeter(
+  seg: { ax: number; az: number; bx: number; bz: number },
+  rect: { x: number; z: number; w: number; d: number },
+): boolean {
+  const EPS = 0.05;
+  const east  = rect.x + rect.w / 2;
+  const west  = rect.x - rect.w / 2;
+  const north = rect.z - rect.d / 2;
+  const south = rect.z + rect.d / 2;
+  for (const wallX of [east, west]) {
+    if (Math.abs(seg.ax - wallX) < EPS && Math.abs(seg.bx - wallX) < EPS) {
+      const zmin = Math.min(seg.az, seg.bz);
+      const zmax = Math.max(seg.az, seg.bz);
+      if (zmin >= north - EPS && zmax <= south + EPS) return true;
+    }
+  }
+  for (const wallZ of [north, south]) {
+    if (Math.abs(seg.az - wallZ) < EPS && Math.abs(seg.bz - wallZ) < EPS) {
+      const xmin = Math.min(seg.ax, seg.bx);
+      const xmax = Math.max(seg.ax, seg.bx);
+      if (xmin >= west - EPS && xmax <= east + EPS) return true;
+    }
+  }
+  return false;
 }
