@@ -925,35 +925,58 @@ export const ENEMIES: Record<string, EnemySpec> = {
     creature: {
       id: 'stoneguard',
       archetype: 'biped',
-      proportions: { height: 1.9, girth: 0.34 },
+      proportions: { height: 1.95, girth: 0.36, armLength: 0.86 },
       materials: {
         stone: { color: 0x3a3530, roughness: 1, flatShading: 'auto' },
-        eyes: { color: 0xff5530, emissive: 0xff5530, emissiveIntensity: 1.2 },
+        dark: { color: 0x222019, roughness: 1, flatShading: 'auto' },   // recesses / joints
+        iron: { color: 0x16161a, roughness: 0.6, metalness: 0.35, flatShading: 'auto' }, // maul head
+        eyes: { color: 0xff5530, emissive: 0xff5530, emissiveIntensity: 1.4 },
       },
-      eyes: { material: 'eyes', emissive: 1.2 },
+      eyes: { material: 'eyes', emissive: 1.4 },
       flash: { material: 'stone' },
       zones: [
-        { id: 'core', shape: { kind: 'sphere', center: [0, 0, -0.25], radius: 0.3 },
+        { id: 'core', shape: { kind: 'sphere', center: [0, 0, -0.26], radius: 0.3 },
           role: 'weak', damageMul: 2.4, openWhenStaggered: true, follow: 'spine' },
       ],
       skin: [
-        { kind: 'box', joint: 'spine', size: [0.7, 0.85, 0.5], mat: 'stone' },
-        { kind: 'box', joint: 'pelvis', size: [0.6, 0.4, 0.45], mat: 'stone' },
-        { kind: 'box', joint: 'head', size: [0.4, 0.42, 0.42], mat: 'stone' },
-        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [-0.12, 0.02, -0.2], mat: 'eyes' },
-        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [0.12, 0.02, -0.2], mat: 'eyes' },
-        { kind: 'box', joint: 'shoulderL', size: [0.3, 0.3, 0.35], mat: 'stone' },
-        { kind: 'box', joint: 'shoulderR', size: [0.3, 0.3, 0.35], mat: 'stone' },
-        { kind: 'bone', from: 'shoulderL', to: 'elbowL', radius: 0.12, mat: 'stone' },
-        { kind: 'bone', from: 'elbowL', to: 'handL', radius: 0.10, mat: 'stone' },
-        { kind: 'bone', from: 'shoulderR', to: 'elbowR', radius: 0.12, mat: 'stone' },
-        { kind: 'bone', from: 'elbowR', to: 'handR', radius: 0.10, mat: 'stone' },
-        { kind: 'bone', from: 'hipL', to: 'kneeL', radius: 0.14, mat: 'stone' },
-        { kind: 'bone', from: 'kneeL', to: 'footL', radius: 0.12, mat: 'stone' },
-        { kind: 'bone', from: 'hipR', to: 'kneeR', radius: 0.14, mat: 'stone' },
-        { kind: 'bone', from: 'kneeR', to: 'footR', radius: 0.12, mat: 'stone' },
-        { kind: 'box', joint: 'footL', size: [0.22, 0.12, 0.34], pos: [0, 0.06, -0.05], mat: 'stone' },
-        { kind: 'box', joint: 'footR', size: [0.22, 0.12, 0.34], pos: [0, 0.06, -0.05], mat: 'stone' },
+        // Torso — a layered chest block + a raised front plate, bevelled so the
+        // torchlight catches the edges.
+        { kind: 'box', joint: 'spine', size: [0.84, 0.94, 0.56], bevel: 0.05, mat: 'stone' },
+        { kind: 'box', joint: 'spine', size: [0.62, 0.5, 0.16], pos: [0, 0.08, -0.3], bevel: 0.04, mat: 'dark' },
+        { kind: 'box', joint: 'pelvis', size: [0.7, 0.44, 0.5], bevel: 0.04, mat: 'stone' },
+        { kind: 'cylinder', joint: 'neck', radius: 0.15, height: 0.16, mat: 'dark' },
+        // Head — craggy: skull block + heavy brow ridge + a shadowed jaw, eyes
+        // sunk under the brow.
+        { kind: 'box', joint: 'head', size: [0.44, 0.46, 0.46], bevel: 0.06, mat: 'stone' },
+        { kind: 'box', joint: 'head', size: [0.48, 0.13, 0.22], pos: [0, 0.13, -0.18], mat: 'stone' },
+        { kind: 'box', joint: 'head', size: [0.34, 0.14, 0.34], pos: [0, -0.24, 0.02], mat: 'dark' },
+        { kind: 'sphere', joint: 'head', radius: 0.052, pos: [-0.12, 0.0, -0.22], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.052, pos: [0.12, 0.0, -0.22], mat: 'eyes' },
+        // Shoulders — big angled pauldrons.
+        { kind: 'box', joint: 'shoulderL', size: [0.38, 0.36, 0.44], rot: [0, 0, 0.18], bevel: 0.05, mat: 'stone' },
+        { kind: 'box', joint: 'shoulderR', size: [0.38, 0.36, 0.44], rot: [0, 0, -0.18], bevel: 0.05, mat: 'stone' },
+        // Arms — thick stone, dark elbow joints, blocky fists.
+        { kind: 'bone', from: 'shoulderL', to: 'elbowL', radius: 0.13, mat: 'stone' },
+        { kind: 'bone', from: 'elbowL', to: 'handL', radius: 0.11, mat: 'stone' },
+        { kind: 'bone', from: 'shoulderR', to: 'elbowR', radius: 0.13, mat: 'stone' },
+        { kind: 'bone', from: 'elbowR', to: 'handR', radius: 0.11, mat: 'stone' },
+        { kind: 'sphere', joint: 'elbowL', radius: 0.13, mat: 'dark' },
+        { kind: 'sphere', joint: 'elbowR', radius: 0.13, mat: 'dark' },
+        { kind: 'box', joint: 'handL', size: [0.2, 0.2, 0.2], bevel: 0.04, mat: 'stone' },
+        { kind: 'box', joint: 'handR', size: [0.22, 0.22, 0.22], bevel: 0.04, mat: 'stone' },
+        // Legs — thick, with knee guards and slab feet.
+        { kind: 'bone', from: 'hipL', to: 'kneeL', radius: 0.15, mat: 'stone' },
+        { kind: 'bone', from: 'kneeL', to: 'footL', radius: 0.13, mat: 'stone' },
+        { kind: 'bone', from: 'hipR', to: 'kneeR', radius: 0.15, mat: 'stone' },
+        { kind: 'bone', from: 'kneeR', to: 'footR', radius: 0.13, mat: 'stone' },
+        { kind: 'box', joint: 'kneeL', size: [0.24, 0.2, 0.24], bevel: 0.04, mat: 'stone' },
+        { kind: 'box', joint: 'kneeR', size: [0.24, 0.2, 0.24], bevel: 0.04, mat: 'stone' },
+        { kind: 'box', joint: 'footL', size: [0.26, 0.14, 0.4], pos: [0, 0.07, -0.06], bevel: 0.03, mat: 'stone' },
+        { kind: 'box', joint: 'footR', size: [0.26, 0.14, 0.4], pos: [0, 0.07, -0.06], bevel: 0.03, mat: 'stone' },
+        // MAUL — a long haft in the right fist, a heavy iron head near the
+        // ground (the brute drags it). Rides handR, so it swings with the arm.
+        { kind: 'cylinder', joint: 'handR', radius: 0.05, height: 1.05, pos: [0.18, -0.42, -0.04], mat: 'dark' },
+        { kind: 'box', joint: 'handR', size: [0.28, 0.36, 0.28], pos: [0.18, -0.95, -0.04], bevel: 0.04, mat: 'iron' },
       ],
     },
     baseEyeEmissive: 1.2,
