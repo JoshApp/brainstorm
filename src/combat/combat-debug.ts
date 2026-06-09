@@ -1,20 +1,31 @@
 import * as THREE from 'three';
 import { getSettings } from '../settings/settings';
+import { CONFIG } from '../config';
 
 // Combat hit debug overlay (Settings → Debug → HIT CONES).
 //
-// Draws the ACTUAL melee hit volume each swing AND every enemy's hurtbox, so you
-// can see exactly what a swing covers and whether a target overlapped it:
-//   - red fan   = the enemy swing capsule, swept across the swing's arc, posed
-//                 along your TRUE look direction (pitch included)
-//   - cyan fan  = the wider/longer destructible (vase) capsule
-//   - yellow spheres = each enemy's hurtbox (position + aimHeight, hitRadius)
-// The swing fans snapshot at the strike and linger ~0.6s fading out (a 100ms
-// strike would be invisible otherwise). Read-only; gated on the setting.
+// Draws the ACTUAL melee hit geometry each swing AND every enemy's hurtbox, as
+// real 3D solids that sit in the world (depth-tested — a wall in front occludes
+// them), so you can see exactly what a swing covers and whether a target
+// overlapped it:
+//   - red capsules  = the enemy swing hitbox. The hit test sweeps a capsule
+//                     (radius = SWORD_HITBOX_RADIUS) across the swing's arc; we
+//                     draw one capsule per swept sample, posed along your TRUE
+//                     look direction (pitch included). The fan of capsules IS
+//                     the swept volume.
+//   - cyan capsules = the wider/longer destructible (vase) hitbox.
+//   - yellow spheres = each enemy's hurtbox (centre = position + aimHeight,
+//                     radius = hitRadius). A hit lands when the sphere's centre
+//                     comes within (hitRadius + capsule radius) of a capsule
+//                     segment — i.e. when a sphere touches a capsule here.
+// The swing capsules snapshot at the strike and linger ~0.6s fading out (a
+// 100ms strike would be invisible otherwise). Read-only; gated on the setting.
 
-const SEGMENTS = 24;           // fan arc resolution
 const LINGER_S = 0.6;
 const HURTBOX_POOL = 48;
+const MAX_SAMPLES = 8;         // matches swingEnds[] in attack.ts
+const HURTBOX_MIN_R = 0.12;    // most enemies have hitRadius 0 (a point); show a
+                               // small marker so the aim point is still visible.
 
 /** The shaped swing capsule, produced by attack.ts and consumed here. */
 export interface SwingShape {
@@ -24,55 +35,57 @@ export interface SwingShape {
   sweepBias: number;   // lateral centre offset (radians)
 }
 
-interface Fan {
-  mesh: THREE.Mesh;
-  geom: THREE.BufferGeometry;
-  pos: Float32Array;
-  mat: THREE.MeshBasicMaterial;
-}
-
 interface Hurtbox { position: THREE.Vector3; aimHeight: number; hitRadius?: number; alive: boolean }
 
+/** A pooled set of capsule meshes for one swing colour. The capsule geometry is
+ *  rebuilt only when the swing's radius/reach changes (cheap — strikes only). */
+interface CapsulePool {
+  meshes: THREE.Mesh[];
+  mat: THREE.MeshBasicMaterial;
+  geom: THREE.CapsuleGeometry | null;
+  radius: number;   // dims the current geom was built for
+  length: number;
+}
+
 let scene: THREE.Object3D | null = null;
-let enemyFan: Fan | null = null;
-let destrFan: Fan | null = null;
+let enemyPool: CapsulePool | null = null;
+let destrPool: CapsulePool | null = null;
 let hurtboxes: THREE.Mesh[] = [];
 let hurtMat: THREE.MeshBasicMaterial | null = null;
+let hurtGeom: THREE.SphereGeometry | null = null;
 let linger = 0;
 
-function makeFan(color: number): Fan {
-  const vertCount = 1 + (SEGMENTS + 1);
-  const pos = new Float32Array(vertCount * 3);
-  const index: number[] = [];
-  for (let i = 0; i < SEGMENTS; i++) index.push(0, 1 + i, 2 + i);
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geom.setIndex(index);
+function makeCapsulePool(color: number): CapsulePool {
   const mat = new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity: 0.22, side: THREE.DoubleSide,
-    depthWrite: false, depthTest: false, fog: false,
+    color, transparent: true, opacity: 0.18, side: THREE.DoubleSide,
+    depthWrite: false, depthTest: true, fog: false,
   });
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.frustumCulled = false;
-  mesh.renderOrder = 9000;
-  mesh.visible = false;
-  return { mesh, geom, pos, mat };
+  const meshes: THREE.Mesh[] = [];
+  for (let i = 0; i < MAX_SAMPLES; i++) {
+    const m = new THREE.Mesh(undefined as unknown as THREE.BufferGeometry, mat);
+    m.frustumCulled = false;
+    m.renderOrder = 9000;
+    m.visible = false;
+    meshes.push(m);
+  }
+  return { meshes, mat, geom: null, radius: -1, length: -1 };
 }
 
 export function initCombatDebug(sc: THREE.Object3D): void {
-  if (enemyFan) return;
+  if (enemyPool) return;
   scene = sc;
-  enemyFan = makeFan(0xff3040);   // enemy capsule — red
-  destrFan = makeFan(0x40d0ff);   // destructible capsule — cyan
-  scene.add(destrFan.mesh, enemyFan.mesh);
-  // Enemy hurtbox spheres — a small pool, shown only for alive enemies in view.
+  enemyPool = makeCapsulePool(0xff3040);   // enemy hitbox — red
+  destrPool = makeCapsulePool(0x40d0ff);   // destructible hitbox — cyan
+  for (const m of destrPool.meshes) scene.add(m);
+  for (const m of enemyPool.meshes) scene.add(m);
+  // Enemy hurtbox spheres — a small pool, shown only for alive enemies.
   hurtMat = new THREE.MeshBasicMaterial({
-    color: 0xffe040, transparent: true, opacity: 0.16, depthWrite: false,
-    depthTest: false, fog: false, wireframe: true,
+    color: 0xffe040, transparent: true, opacity: 0.22, depthWrite: false,
+    depthTest: true, fog: false,
   });
-  const sph = new THREE.SphereGeometry(1, 12, 8);
+  hurtGeom = new THREE.SphereGeometry(1, 16, 12);
   for (let i = 0; i < HURTBOX_POOL; i++) {
-    const m = new THREE.Mesh(sph, hurtMat);
+    const m = new THREE.Mesh(hurtGeom, hurtMat);
     m.frustumCulled = false;
     m.renderOrder = 9001;
     m.visible = false;
@@ -82,8 +95,13 @@ export function initCombatDebug(sc: THREE.Object3D): void {
 }
 
 // Scratch.
-const fwd = new THREE.Vector3();
-const rot = new THREE.Vector3();
+const _aim = new THREE.Vector3();
+const _rot = new THREE.Vector3();
+const _end = new THREE.Vector3();
+const _mid = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+const _quat = new THREE.Quaternion();
 
 /** Rotate a vector around world-up by `a` radians (keeps pitch). */
 function rotY(v: THREE.Vector3, a: number, out: THREE.Vector3): void {
@@ -91,51 +109,69 @@ function rotY(v: THREE.Vector3, a: number, out: THREE.Vector3): void {
   out.set(v.x * c + v.z * s, v.y, -v.x * s + v.z * c);
 }
 
-/** Rewrite a fan to the swept-capsule centreline arc: origin + (aim rotated
- *  across [bias - arc/2, bias + arc/2]) × reach. 3D aim → the fan tilts with
- *  pitch. (The capsule RADIUS isn't drawn; the hurtbox spheres show the target
- *  sizes the radius is matched against.) */
-function writeFan(fan: Fan, ox: number, oy: number, oz: number, aim: THREE.Vector3, shape: SwingShape): void {
-  const p = fan.pos;
-  p[0] = ox; p[1] = oy; p[2] = oz;
-  const start = shape.sweepBias - shape.sweepArc / 2;
-  for (let i = 0; i <= SEGMENTS; i++) {
-    const a = start + shape.sweepArc * (i / SEGMENTS);
-    rotY(aim, a, rot);
-    const o = (1 + i) * 3;
-    p[o] = ox + rot.x * shape.reach;
-    p[o + 1] = oy + rot.y * shape.reach;
-    p[o + 2] = oz + rot.z * shape.reach;
+/** Pose a pool's capsules as the swept hit volume: one capsule per swept sample,
+ *  each from origin → origin + (aim rotated across the arc) × reach, with the
+ *  swing's true radius. This mirrors swingHitTest() in attack.ts exactly. */
+function poseCapsules(pool: CapsulePool, ox: number, oy: number, oz: number, aim: THREE.Vector3, shape: SwingShape): void {
+  // Rebuild geometry only when dims drift (CapsuleGeometry bakes radius/length;
+  // scaling would squash the round caps, so we recreate instead of scale).
+  const length = shape.reach;            // distance between the two cap centres
+  if (!pool.geom || Math.abs(pool.radius - shape.radius) > 1e-3 || Math.abs(pool.length - length) > 1e-3) {
+    pool.geom?.dispose();
+    pool.geom = new THREE.CapsuleGeometry(shape.radius, length, 6, 12);
+    pool.radius = shape.radius;
+    pool.length = length;
+    for (const m of pool.meshes) m.geometry = pool.geom;
   }
-  fan.geom.attributes.position.needsUpdate = true;
-  fan.geom.computeBoundingSphere();
+
+  const samples = Math.max(1, Math.min(MAX_SAMPLES, CONFIG.SWORD_HITBOX_SWEEP_SAMPLES));
+  const start = shape.sweepBias - shape.sweepArc / 2;
+  const stepA = samples > 1 ? shape.sweepArc / (samples - 1) : 0;
+  for (let s = 0; s < MAX_SAMPLES; s++) {
+    const m = pool.meshes[s];
+    if (s >= samples) { m.visible = false; continue; }
+    rotY(aim, samples > 1 ? start + stepA * s : shape.sweepBias, _rot);
+    _end.set(ox + _rot.x * shape.reach, oy + _rot.y * shape.reach, oz + _rot.z * shape.reach);
+    // Capsule default axis is +Y, centred at its midpoint — place at the segment
+    // midpoint, rotate +Y onto the segment direction.
+    _mid.set((ox + _end.x) / 2, (oy + _end.y) / 2, (oz + _end.z) / 2);
+    _dir.set(_end.x - ox, _end.y - oy, _end.z - oz).normalize();
+    _quat.setFromUnitVectors(_up, _dir);
+    m.position.copy(_mid);
+    m.quaternion.copy(_quat);
+    m.visible = true;
+  }
 }
 
 /** Snapshot the swing capsules at strike + relight the linger. No-op unless on. */
 export function showHitCones(camera: THREE.Camera, aimDir: THREE.Vector3, enemy: SwingShape, destr: SwingShape): void {
-  if (!enemyFan || !destrFan || !getSettings().debugHitCones) return;
-  fwd.copy(aimDir);
+  if (!enemyPool || !destrPool || !getSettings().debugHitCones) return;
+  _aim.copy(aimDir);
   const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
-  writeFan(enemyFan, ox, oy, oz, fwd, enemy);
-  writeFan(destrFan, ox, oy, oz, fwd, destr);
+  poseCapsules(enemyPool, ox, oy, oz, _aim, enemy);
+  poseCapsules(destrPool, ox, oy, oz, _aim, destr);
   linger = LINGER_S;
 }
 
-/** Per-frame: fade the swing fans + draw the live enemy hurtbox spheres. */
+function setPoolVisible(pool: CapsulePool, on: boolean): void {
+  for (const m of pool.meshes) if (m.visible !== on) m.visible = on;
+}
+
+/** Per-frame: fade the swing capsules + draw the live enemy hurtbox spheres. */
 export function tickCombatDebug(dt: number, enemies: readonly Hurtbox[]): void {
-  if (!enemyFan || !destrFan) return;
+  if (!enemyPool || !destrPool) return;
   const on = getSettings().debugHitCones;
 
-  // Swing fans (lingering, fading).
+  // Swing capsules (lingering, fading).
   if (!on || linger <= 0) {
-    if (enemyFan.mesh.visible) { enemyFan.mesh.visible = false; destrFan.mesh.visible = false; }
+    setPoolVisible(enemyPool, false);
+    setPoolVisible(destrPool, false);
     linger = 0;
   } else {
     linger = Math.max(0, linger - dt);
     const k = linger / LINGER_S;
-    enemyFan.mesh.visible = true; destrFan.mesh.visible = true;
-    enemyFan.mat.opacity = 0.28 * k;
-    destrFan.mat.opacity = 0.18 * k;
+    enemyPool.mat.opacity = 0.22 * k;
+    destrPool.mat.opacity = 0.14 * k;
   }
 
   // Enemy hurtbox spheres — always shown (while the setting is on) so you can
@@ -145,7 +181,7 @@ export function tickCombatDebug(dt: number, enemies: readonly Hurtbox[]): void {
     for (const e of enemies) {
       if (i >= HURTBOX_POOL) break;
       if (!e.alive) continue;
-      const r = e.hitRadius ?? 0.35;
+      const r = Math.max(e.hitRadius ?? 0, HURTBOX_MIN_R);
       const m = hurtboxes[i++];
       m.position.set(e.position.x, e.position.y + e.aimHeight, e.position.z);
       m.scale.setScalar(r);
