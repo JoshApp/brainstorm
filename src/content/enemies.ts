@@ -1434,7 +1434,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
         id: 'bone-throw',
         minRange: 2.4, maxRange: 8,
         windup: 0.6, strike: 0.15, recover: 0.5, cooldown: 2.0,
-        pose: 'cast',
+        // 'swing', not 'cast' — a big overhand HURL (arm winds back, then
+        // throws) so the skeleton visibly throws the shard rather than a
+        // limp two-hand caster push.
+        pose: 'swing',
         steps: [{ trigger: { at: 0 }, action: { kind: 'projectile', projectileId: 'bone-shard', muzzle: [0.28, 1.35, -0.1], damage: 1 } }],
       },
       // SLASH — the close-range bite once it reaches you.
@@ -1455,8 +1458,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
     creature: {
       id: 'skeleton',
       archetype: 'biped',
-      // Gaunt: thin girth so the ribcage doesn't read as a barrel chest.
-      proportions: { height: 1.55, girth: 0.1, armLength: 0.66, legLength: 0.62, headSize: 0.13, hunch: 0.08 },
+      // Gaunt: thin girth so the ribcage doesn't read as a barrel chest. TALL +
+      // bolt-upright (hunch 0, long legs) so its silhouette reads distinct from
+      // the SHORT, HUNCHED ghoul — a looming skeletal sentinel, not a stooped
+      // ghoul.
+      proportions: { height: 1.72, girth: 0.1, armLength: 0.72, legLength: 0.72, headSize: 0.13, hunch: 0 },
       materials: {
         // Pale bone, lifted brighter than before so it catches the lamp out
         // of the dark; cold blue rim so the brittle edges glow in shadow.
