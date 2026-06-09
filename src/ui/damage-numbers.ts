@@ -19,8 +19,11 @@ export function spawnDamageNumber(
    *  clipped" against the solid number on the primary target. Crit wins over
    *  graze (a grazed crit is still a crit visually). */
   graze: boolean = false,
+  /** An EXECUTE — a finisher on a staggered/low-HP foe. The loudest number:
+   *  big, blood-red with a white core. Wins over crit/graze styling. */
+  execute: boolean = false,
 ) {
-  graze = graze && !crit;
+  graze = graze && !crit && !execute;
   const p = worldToScreen(worldPos, camera);
   if (p.z < -1 || p.behind) return; // outside the camera frustum
   const x = p.x;
@@ -28,25 +31,31 @@ export function spawnDamageNumber(
 
   const el = document.createElement('div');
   el.textContent = crit ? `${amount}!` : String(amount);
-  // Crits live a touch longer so the player sees the burst clearly.
-  const lifetime = crit ? CONFIG.DAMAGE_NUMBER_LIFETIME * 1.4 : CONFIG.DAMAGE_NUMBER_LIFETIME;
-  const rise = crit ? CONFIG.DAMAGE_NUMBER_RISE * 1.4 : CONFIG.DAMAGE_NUMBER_RISE;
+  // Executes + crits live a touch longer so the player sees the burst clearly.
+  const big = crit || execute;
+  const lifetime = big ? CONFIG.DAMAGE_NUMBER_LIFETIME * 1.4 : CONFIG.DAMAGE_NUMBER_LIFETIME;
+  const rise = big ? CONFIG.DAMAGE_NUMBER_RISE * 1.4 : CONFIG.DAMAGE_NUMBER_RISE;
   Object.assign(el.style, {
     position: 'fixed',
     left: `${x}px`,
     top: `${y}px`,
-    // Crits start LARGER and we let CSS transition scale it down.
-    transform: crit
+    // Executes + crits start LARGER and we let CSS transition scale it down.
+    transform: execute
+      ? 'translate(-50%, -50%) scale(1.9)'
+      : crit
       ? 'translate(-50%, -50%) scale(1.6)'
       : 'translate(-50%, -50%) scale(1.0)',
-    color: crit ? 'rgba(255, 235, 130, 0.98)'
+    color: execute ? 'rgba(255, 250, 245, 0.99)'
+      : crit ? 'rgba(255, 235, 130, 0.98)'
       : graze ? 'rgba(190, 205, 215, 0.85)'
       : 'rgba(255, 220, 200, 0.95)',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: crit ? '34px' : graze ? '15px' : '20px',
-    fontWeight: crit ? '800' : graze ? '500' : '600',
-    letterSpacing: crit ? '0.06em' : '0.04em',
-    textShadow: crit
+    fontSize: execute ? '40px' : crit ? '34px' : graze ? '15px' : '20px',
+    fontWeight: execute ? '900' : crit ? '800' : graze ? '500' : '600',
+    letterSpacing: big ? '0.06em' : '0.04em',
+    textShadow: execute
+      ? '0 0 10px rgba(220, 20, 20, 0.98), 0 0 26px rgba(150, 0, 0, 0.85), 0 0 3px rgba(0,0,0,0.98)'
+      : crit
       ? '0 0 8px rgba(255, 200, 60, 0.95), 0 0 22px rgba(255, 140, 30, 0.7), 0 0 2px rgba(0,0,0,0.95)'
       : graze
       ? '0 0 4px rgba(0,0,0,0.9)'
@@ -63,7 +72,7 @@ export function spawnDamageNumber(
   // Kick off the animation on next frame. Crit transform settles to a
   // slightly tilted, smaller scale so the burst → linger reads.
   requestAnimationFrame(() => {
-    if (crit) {
+    if (big) {
       el.style.transform = `translate(-50%, calc(-50% - ${rise}px)) scale(1.0) rotate(-2deg)`;
     } else {
       el.style.transform = `translate(-50%, calc(-50% - ${rise}px)) scale(1.0)`;

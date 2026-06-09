@@ -155,6 +155,24 @@ separate destructible hit-test; a prop is just a target with one `body` zone and
 no head/weak. `hurtbox` is part of the `Damageable` contract, so everything a
 swing can hit presents zones.
 
+### Executions / finishers (the poise payoff + the sustain loop)
+
+Poise/stagger was invisible because trash dies before it breaks. The fix is a
+*payoff*: an enemy is **executable** when it's **staggered** (poise broken — the
+Dark Souls riposte path, finally a reason to break guard) OR at/below
+`EXECUTE.HP_FRAC` of max HP (the DOOM chip path, seen on any meatier foe). A
+heavy hit on an executable enemy is a **finisher**: ×`EXECUTE.DAMAGE_MUL` damage
+(lethal in nearly all cases), a heavier crunch, the loud white-on-blood "EXECUTE"
+number, and a **reward** — `EXECUTE.HEAL` + `EXECUTE.STAMINA`. Sustain is therefore
+**earned + kill-based**, never a per-hit drain.
+
+This is the per-weapon identity surface: a dagger executes at a *higher* HP
+threshold (assassinate) + backstab; a hammer's whole job is to *make* foes
+executable (stagger) → the riposte weapon; a scythe *heals more* on execute → the
+vampiric reaper (sustain via finishers, not per-hit). All knobs are data
+(`CONFIG.EXECUTE`); frequency vs. power is `HP_FRAC` × `DAMAGE_MUL` — raise
+`HP_FRAC` for more finishers, lower it to make them special.
+
 ### Forgiveness — precise but tunable
 
 Author volumes **precise** (≈ the visual). One global `HITBOX_INFLATION` knob in

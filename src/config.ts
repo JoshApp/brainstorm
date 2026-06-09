@@ -303,6 +303,21 @@ export const CONFIG = {
   // grimdark point). Single-target moves never see this (they only ever hit one).
   CLEAVE_DAMAGE_FALLOFF: 0.6,     // each successive cleaved target's share of the last
   CLEAVE_DAMAGE_MIN: 0.3,         // floor — a cleaved target never drops below this ×
+  // EXECUTION / FINISHERS — the payoff that makes the poise game visible and
+  // feeds the DOOM/Dark-Souls "weaken → finish → sustain" loop. An enemy is
+  // EXECUTABLE when it's STAGGERED (poise broken — the riposte path, finally a
+  // reason to break poise) OR at/below HP_FRAC of its max HP (the chip path,
+  // seen on any meatier foe). A heavy hit on an executable enemy is a FINISHER:
+  // damage ×MUL (lethal in nearly all cases) + a heavier crunch + the reward
+  // below. Sustain is EARNED + KILL-BASED here, not a per-hit drain. All knobs
+  // are the per-weapon identity surface later (dagger executes higher, scythe
+  // heals more). See docs/COMBAT-HIT-SYSTEM.md.
+  EXECUTE: {
+    HP_FRAC: 0.35,    // executable at/below this fraction of max HP
+    DAMAGE_MUL: 4,    // finisher damage multiplier
+    HEAL: 2,          // HP restored on a finisher (matches lifesteal-on-kill)
+    STAMINA: 30,      // stamina restored on a finisher (aggression → sustain)
+  },
   INTERACT_CONE_HALF_ANGLE: 0.9, // radians (~52°) — must look roughly at an
                                  //   interactable before its prompt + USE button
                                  //   appear. Otherwise the player would be told

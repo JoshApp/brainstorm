@@ -600,19 +600,25 @@ export function createCombatSystem(
     let anyCrit = false;
     let bestApplied = 0;
     let anyHeavy = false;
+    let anyExecute = false;
     // targets are sorted NEAREST-first, so index 0 is the primary (full) hit and
     // each subsequent cleaved target takes the geometric falloff cut.
     for (let ti = 0; ti < targets.length; ti++) {
       const { target, zone } = targets[ti];
+      // FINISHER: a heavy hit on a staggered/low-HP foe executes — damage ×MUL
+      // (lethal in nearly all cases) + the sustain reward below. Captured BEFORE
+      // the hit (the target's pre-hit state is what's executable).
+      const isExecute = target.hitFeedback === 'heavy' && !!target.executable;
       // Locational zone: head/weak points multiply damage; head forces a crit.
       // Armor zones (damageMul 0) soak the blow to nothing.
       const zoneMul = zone?.damageMul ?? 1;
       // Cleave falloff: nearest target full, the rest diminish (floored). A graze
       // is any non-primary cleaved hit — shown small + dim so you read who ate it.
       const cleaveMul = ti === 0 ? 1 : Math.max(CONFIG.CLEAVE_DAMAGE_MIN, CONFIG.CLEAVE_DAMAGE_FALLOFF ** ti);
-      const graze = ti > 0;
+      const graze = ti > 0 && !isExecute;
       const crit = (zone?.crit ?? false) || gameRngChance(critChance);
-      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul * zoneMul * cleaveMul;
+      const execMul = isExecute ? CONFIG.EXECUTE.DAMAGE_MUL : 1;
+      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul * zoneMul * cleaveMul * execMul;
       const applied = target.takeDamage({
         source: 'player',
         target: target.entityId,
@@ -622,7 +628,16 @@ export function createCombatSystem(
 
       // Damage number floats from this target's aim point.
       hitPoint.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
-      if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit, graze);
+      if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit, graze, isExecute);
+
+      // Finisher reward — earned, kill-based sustain (heal + stamina). The loop
+      // resolves per target, so an execute on each of two staggered foes pays
+      // twice; that's the aggression payoff.
+      if (isExecute) {
+        anyExecute = true;
+        if (CONFIG.EXECUTE.HEAL > 0) healPlayer(CONFIG.EXECUTE.HEAL);
+        if (CONFIG.EXECUTE.STAMINA > 0) gainStamina(CONFIG.EXECUTE.STAMINA);
+      }
 
       // On-hit statuses roll per-target on heavies (mobs) — vases
       // don't bleed.
@@ -693,6 +708,14 @@ export function createCombatSystem(
       kickShake(crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
       hapticVibrate(Math.round((anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS) * s));
       playImpact(impactAt);
+      // FINISHER emphasis — a hard hitch + a second heavier thud so the kill
+      // lands with the weight of a DOOM glory-kill / Souls riposte.
+      if (anyExecute) {
+        freezeFor(CONFIG.FREEZE_MAX_MS + CONFIG.FREEZE_CRIT_BONUS_MS);
+        kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 2.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 1.3);
+        hapticVibrate(CONFIG.HAPTIC_HIT_MS * 2);
+        playImpact(impactAt);
+      }
     } else {
       // Light targets only (vases / crates / etc.) — token crunch, no on-hit
       // passives. Voice the strike by the prop's hitMaterial when set so a

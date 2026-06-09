@@ -176,6 +176,9 @@ export interface Enemy extends Damageable {
   setZoneEnabled(id: string, on: boolean): boolean;
   /** Mobs take the full crunch + fire the player's on-hit passives. */
   hitFeedback: 'heavy';
+  /** Finisher window — true when STAGGERED (poise broken) or at/below
+   *  CONFIG.EXECUTE.HP_FRAC of max HP. A heavy hit here executes. */
+  executable: boolean;
   /** If true, the player walks through this mob (movement-only).
    *  See EnemySpec.noPlayerCollision. */
   noPlayerCollision: boolean;
@@ -2009,6 +2012,15 @@ export function createEnemy(
     },
     get aiState() {
       return state;
+    },
+    // Finisher window: poise broken (riposte) OR chipped to the HP threshold
+    // (the chip path). A heavy hit here executes — see attack.ts + CONFIG.EXECUTE.
+    get executable() {
+      if (!aliveLocal || phaseInvulnTimer > 0) return false;
+      if (state === 'staggered') return true;
+      const e = getEntity(entityId);
+      const cur = e?.hp?.current ?? 0;
+      return cur > 0 && cur <= currentMaxHp * CONFIG.EXECUTE.HP_FRAC;
     },
     takeDamage,
     applyStaggerDamage,

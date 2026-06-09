@@ -38,6 +38,9 @@ export interface Damageable {
    *  body zone. Enemies derive body+head (+authored weak/armor); props build a
    *  single body zone. ONE hit path for everything. See src/combat/hurtbox.ts. */
   hurtbox: Hurtbox;
+  /** True when a finisher should trigger on the next heavy hit — staggered or
+   *  low-HP (see CONFIG.EXECUTE). Enemies implement it; props leave it unset. */
+  executable?: boolean;
   hitFeedback: HitFeedback;
   /** Surface material for the per-hit sound voice — see sfx.playSurfaceHit.
    *  Optional and meaningful only on LIGHT targets (props): a vase rings as
