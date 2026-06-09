@@ -8,6 +8,87 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-09",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The title screen no longer flashes the entire bestiary in a heap. They wait their turn.",
+        "area": [
+          "atmosphere",
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The mimic stops guarding the spot where it used to be furniture. You can walk there now.",
+        "area": [
+          "level",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Torches down a hall stop bleeding through the dark they're meant to be lost in.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Only what has the mass to throw a shadow throws one now — pillars and rubble, not every bone and pebble. The dark renders lighter.",
+        "area": [
+          "atmosphere",
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The things in the dark are anchored to the floor by their own shadow now, and the dungeon renders them far cheaper for it.",
+        "area": [
+          "atmosphere",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The glow around what you can grab got cheaper and cleaner — one hull, not a halo per splinter. A floor full of loot stops dragging.",
+        "area": [
+          "ui",
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Loot stops throwing shadows it never needed. A floor strewn with the dead's gear no longer drags the frame.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Monsters rehearse their shaders in the dark before you arrive. No more world-stutter the first time you meet each horror.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Pit moths beat their wings now, hover or charge. The swarm is harder to ignore.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The Marrow Sovereign and the mimic move onto the same bones as everything else. They do not look a day different.",
+        "area": [
+          "content"
+        ]
+      },
+      {
         "tag": "content",
         "text": "The Boiling King wears its eaten crowns on new bones. Hit the body, pop the core — same as ever, only bigger underneath.",
         "area": [
@@ -305,85 +386,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The gates keep their warmth but lose the wet shine. Stone should look like stone.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Pots break if you so much as look at them sternly, the gates wear a colder stone and a wet sheen as you approach, and the columns grain runs the right way at last.",
-        "area": [
-          "combat",
-          "atmosphere",
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The gates wear dressed stone now, and the columns a quiet grain. The dungeon was built by hands that knew the difference.",
-        "area": [
-          "atmosphere",
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The flagstones sit a little deeper now. Mind the uneven footing.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The stone holds still now — brick, flagstone, and a vaulted coffered ceiling, carved once and lit forever instead of crawling underfoot.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The floor remembers it was laid by hand — uneven flagstones, and here and there a stone gone missing.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Floor runs warm, the ceiling runs cold, and the arched halls finally remember they're made of stone.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Torchlight snags on the grain of the stone now. The walls were always this rough; the dark just kept it to itself.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Shadow settles into the corners and under your feet now. The dungeon stops pretending it was ever flat.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Portcullises finally fall when the candles take. The corridor adjacency check was missing.",
-        "area": [
-          "level"
         ]
       }
     ]

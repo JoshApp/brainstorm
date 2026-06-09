@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
-import type { MaterialDef, ModelSpec, PartSpec, Vec3 } from './model-types';
+import type { MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
 import {
@@ -37,7 +37,7 @@ export interface BuiltModel {
 // makeMesh / buildCsg / decal call. A per-part castShadow/receiveShadow still
 // overrides it (`part.castShadow ?? curShadow.cast`).
 let curShadow: { cast: boolean; receive: boolean } = { cast: true, receive: true };
-function shadowFlags(role?: ModelSpec['shadow']): { cast: boolean; receive: boolean } {
+function shadowFlags(role?: ShadowRole): { cast: boolean; receive: boolean } {
   switch (role) {
     case 'cast':    return { cast: true,  receive: false };
     case 'receive': return { cast: false, receive: true };
@@ -46,9 +46,25 @@ function shadowFlags(role?: ModelSpec['shadow']): { cast: boolean; receive: bool
   }
 }
 
+// Render policy per prop class — the single table the `class` knob resolves
+// through. Casting is the expensive half (the lamp re-renders every caster into
+// its 6 cube faces each frame), so the class declares what a prop IS and the
+// shadow role follows. See PropClass for the intent behind each row.
+const PROP_CLASS_POLICY: Record<PropClass, { shadow: ShadowRole }> = {
+  clutter:    { shadow: 'none' },      // flat dull scatter — casts nothing
+  structural: { shadow: 'both' },      // architectural mass — casts + receives
+  decor:      { shadow: 'receive' },   // material character, needn't cast
+};
+
+/** Effective shadow role for a model: class default, overridden by the raw
+ *  `shadow` knob, falling back to legacy (cast+receive) when neither is set. */
+export function propClassShadow(spec: ModelSpec): ShadowRole | undefined {
+  return spec.shadow ?? (spec.class ? PROP_CLASS_POLICY[spec.class].shadow : undefined);
+}
+
 export function buildModel(spec: ModelSpec): BuiltModel {
   const flatShadingDefault = false;   // PS1 is the only style; smooth shading
-  curShadow = shadowFlags(spec.shadow);
+  curShadow = shadowFlags(propClassShadow(spec));
 
   // Fresh material instances per-model (so hit-flash on one ghoul doesn't
   // tint another, etc.).

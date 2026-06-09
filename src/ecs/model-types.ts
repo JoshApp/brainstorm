@@ -310,10 +310,28 @@ export interface LightSpec {
  */
 export type ShadowRole = 'both' | 'cast' | 'receive' | 'none';
 
+/**
+ * A prop's render CLASS — its nature — from which its shadow role is derived
+ * (see PROP_CLASS_POLICY in build-model). One word instead of reasoning about
+ * shadow flags per prop:
+ *   - 'clutter'    small flat dull scatter (rubble, bones, sand, shards): casts
+ *                  nothing (too small to read a cast; cast is the costly half).
+ *   - 'structural' architectural mass (pillars, buttresses, fallen columns, big
+ *                  mounds): casts + receives.
+ *   - 'decor'      an object with material character that needn't cast (vases,
+ *                  braziers, glowing decals): receives, doesn't cast.
+ * The raw `shadow` field still overrides the class default for an edge case
+ * (see LURKER). No class set = legacy default (cast + receive).
+ */
+export type PropClass = 'clutter' | 'structural' | 'decor';
+
 export interface ModelSpec {
   id: string;
   parts: PartSpec[];
-  /** Whole-model shadow intent (see ShadowRole). Default 'both'. */
+  /** Render class — the prop's nature; derives its shadow role (see PropClass). */
+  class?: PropClass;
+  /** Whole-model shadow intent (see ShadowRole). Overrides the class default.
+   *  Unset → from class, or 'both' if no class. */
   shadow?: ShadowRole;
   /**
    * Opt into the "lego-figure" merge (see mergeRigidSegments): after build,

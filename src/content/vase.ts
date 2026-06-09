@@ -17,7 +17,7 @@ import type { ModelSpec } from '../ecs/model-types';
 // Tall, slender vase. Reads as "amphora" silhouette.
 export const VASE_TALL: ModelSpec = {
   id: 'vase-tall',
-  shadow: 'receive',    // breakable near the player — grounded by shadow, doesn't pay the cast
+  class: 'decor',       // breakable with material character — receives, own draw, doesn't cast
   materials: {
     clay: {
       color: 0x6a4a30,
@@ -49,7 +49,7 @@ export const VASE_TALL: ModelSpec = {
 // "alchemical bottle" rather than urn.
 export const VASE_FLASK: ModelSpec = {
   id: 'vase-flask',
-  shadow: 'receive',
+  class: 'decor',
   materials: {
     clay: { color: 0x4a3a26, roughness: 0.85, flatShading: true },
     rim:  { color: 0x251810, roughness: 0.9, flatShading: true },
@@ -74,7 +74,7 @@ export const VASE_FLASK: ModelSpec = {
 // it as a destructible — just rolls a no-drop most of the time).
 export const VASE_BROKEN: ModelSpec = {
   id: 'vase-broken',
-  shadow: 'receive',
+  class: 'decor',
   materials: {
     clay: { color: 0x5a3a26, roughness: 0.95, flatShading: true },
     rim:  { color: 0x251810, roughness: 0.9, flatShading: true },
@@ -96,7 +96,7 @@ export const VASE_BROKEN: ModelSpec = {
 // Short, squat vase / urn.
 export const VASE_SQUAT: ModelSpec = {
   id: 'vase-squat',
-  shadow: 'receive',
+  class: 'decor',
   materials: {
     clay: {
       color: 0x5a3a26,
