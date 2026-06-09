@@ -30,6 +30,10 @@ export interface Torch {
   wispSprite?: THREE.Sprite;
   wispBaseColor?: THREE.Color;
   wispBaseScale?: THREE.Vector3;
+  /** The flame's draw-only children (emissive mesh + additive sprite stack) —
+   *  toggled by distance for the fog-fade cull. NOT the static sconce (merged
+   *  out) nor the group (the room-culler owns that). */
+  flameVisuals?: THREE.Object3D[];
   baseIntensity: number;
   baseEmissive: number;
   /** Computed each frame by updateTorchlight; read by the pool via the
@@ -86,6 +90,15 @@ export function createTorchlight(
   }
   const wispBaseColor = wispSprite ? (wispSprite.material as THREE.SpriteMaterial).color.clone() : undefined;
   const wispBaseScale = wispSprite ? wispSprite.scale.clone() : undefined;
+  // Collect the flame's draw-only children — every Sprite (wisp + flame-tongue
+  // stack) plus the named 'flame' mesh — for the distance fog-cull. The static
+  // sconce meshes get merged out by batchStaticFixtures; sprites + 'flame' are
+  // skipped by that merge, so these refs stay valid.
+  const flameVisuals: THREE.Object3D[] = [];
+  built.group.traverse((o) => {
+    const isSprite = (o as unknown as { isSprite?: boolean }).isSprite === true;
+    if (isSprite || o.name === 'flame') flameVisuals.push(o);
+  });
 
   // World position of the actual light: model group position + light's
   // local offset (the torch's flame sits a bit above the bracket). The
@@ -107,6 +120,7 @@ export function createTorchlight(
     wispSprite,
     wispBaseColor,
     wispBaseScale,
+    flameVisuals,
     baseIntensity,
     baseEmissive: flameMaterial?.emissiveIntensity ?? 0,
     currentIntensity: baseIntensity,
@@ -144,7 +158,23 @@ export function destroyTorch(torch: Torch) {
   unregisterLight(torch.sourceId);
 }
 
-export function updateTorchlight(torch: Torch, dt: number) {
+// Distance past which a torch's VISIBLE flame (the emissive mesh + its additive
+// sprite stack) stops drawing. The flame sprites set fog:false so they glow AS
+// the torch — but that means past the fog wall they shine through solid black:
+// a visual bug AND wasted additive fill/draws for revealed-but-fogged rooms
+// down a corridor. By ~11m the fog (opaque at FOG_FAR=9) is ~99% black, so
+// dropping the flame there is imperceptible. We toggle the flame CHILDREN (mesh
+// + sprites), not group.visible — the room-culler owns the group's visibility
+// (per-room), so the two compose: a torch shows only if its room is in view AND
+// it's within range. The torch's LIGHT is a separate pool slot, unaffected.
+const FLAME_CULL_DIST = (CONFIG.FOG_FAR + CONFIG.CAMERA_FAR) / 2;   // ~11m, deep in the fog
+
+export function updateTorchlight(torch: Torch, dt: number, camDist?: number) {
+  // Flame visibility by distance (composes with the room-culler's group toggle).
+  if (camDist !== undefined && torch.flameVisuals) {
+    const show = camDist < FLAME_CULL_DIST;
+    for (const v of torch.flameVisuals) if (v.visible !== show) v.visible = show;
+  }
   torch.time += dt;
   const t = torch.time;
   const { n1, n2, n3 } = torch;

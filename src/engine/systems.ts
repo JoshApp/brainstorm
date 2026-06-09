@@ -166,7 +166,11 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     } },
 
     { name: 'torchlight', phase: 'unpaused', tick(ctx) {
-      for (const t of getLevel().torches) updateTorchlight(t, ctx.scaledDt);
+      const cam = camera.position;
+      for (const t of getLevel().torches) {
+        const dx = t.position.x - cam.x, dz = t.position.z - cam.z;
+        updateTorchlight(t, ctx.scaledDt, Math.hypot(dx, dz));
+      }
       // Threshold dust + proximity haze. realDt so the drift doesn't stutter in
       // slow-mo; haze blooms by player proximity.
       tickThresholdDrafts(ctx.realDt, camera.position);
