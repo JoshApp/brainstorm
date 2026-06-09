@@ -743,8 +743,26 @@ export function buildLevel(
       const chestRoomId = prop.mimic
         ? findRoomContaining(prop.x, prop.z, spec.rooms)
         : null;
+      // Push the chest's blocker FIRST and keep a reference, so a mimic
+      // reveal can splice it out — the disguise mesh is removed on reveal
+      // and the mob walks free, so leaving the AABB would block the cell
+      // where the chest used to sit (same fix as the vase pattern below).
+      let chestObs: Obstacle | null = null;
+      if (!prop.noCollision) {
+        chestObs = {
+          kind: 'aabb',
+          minX: prop.x - 0.28, maxX: prop.x + 0.28,
+          minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
+          height: 0.7,   // chest-high — shots fly over
+        };
+        obstacles.push(chestObs);
+      }
       const onMimic = prop.mimic
         ? (worldPos: THREE.Vector3) => {
+            if (chestObs) {
+              const idx = obstacles.indexOf(chestObs);
+              if (idx >= 0) obstacles.splice(idx, 1);
+            }
             spawnInto(ENEMIES.mimic, worldPos, chestRoomId);
           }
         : undefined;
@@ -757,14 +775,6 @@ export function buildLevel(
         prop.mimic ?? false,
         onMimic,
       );
-      if (!prop.noCollision) {
-        obstacles.push({
-          kind: 'aabb',
-          minX: prop.x - 0.28, maxX: prop.x + 0.28,
-          minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
-          height: 0.7,   // chest-high — shots fly over
-        });
-      }
     } else if (prop.kind === 'stash-chest') {
       spawnStashChest(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0);
       obstacles.push({
