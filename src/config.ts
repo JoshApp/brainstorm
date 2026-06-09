@@ -356,6 +356,14 @@ export const CONFIG = {
     IDLE_SCAN_HALF_ARC: 0.5,          // rad — ±29° max from home yaw
     IDLE_SCAN_STEP: 0.35,             // rad — ±20° gentle step per gaze change
     IDLE_SCAN_HOLD_CHANCE: 0.4,       // fraction of changes that just pause
+    NAV_STUCK_TIME: 0.2,              // s pinned against geometry before a chasing mob sidesteps to flow around it
+    // Peripheral awareness — within this range the mob notices a player in ANY
+    // direction (LOS required), not just its sight cone. Fixes "only aggros when
+    // I'm right on top of it": you can still sneak up from FAR (outside the
+    // narrow long cone), but once you're reasonably close it senses you
+    // regardless of which way it's looking. Bigger than hearing (which is a
+    // through-wall smell); this needs line of sight. Per-spec override below.
+    PERIPHERAL_RANGE: 4.5,            // m
     // PACK — a crowd of chasers behaves as a SURROUNDING ring, not a pile on
     // the player's point (src/mobs/pack.ts). Phase 1: ring + separation.
     PACK: {

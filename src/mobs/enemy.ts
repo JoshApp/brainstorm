@@ -141,6 +141,7 @@ const IDLE_SCAN_INTERVAL_JITTER = CONFIG.ENEMY_AI.IDLE_SCAN_INTERVAL_JITTER;
 const IDLE_SCAN_HALF_ARC = CONFIG.ENEMY_AI.IDLE_SCAN_HALF_ARC;
 const IDLE_SCAN_STEP = CONFIG.ENEMY_AI.IDLE_SCAN_STEP;
 const IDLE_SCAN_HOLD_CHANCE = CONFIG.ENEMY_AI.IDLE_SCAN_HOLD_CHANCE;
+const NAV_STUCK_TIME = CONFIG.ENEMY_AI.NAV_STUCK_TIME;
 
 export interface Enemy extends Damageable {
   entityId: EntityId;
@@ -612,6 +613,10 @@ export function createEnemy(
   const sightConeCos = Math.cos(spec.sightConeHalfAngle ?? 1.05);
   const hearingRange = spec.hearingRange ?? 2.5;
   const hearingRangeSq = hearingRange * hearingRange;
+  // Peripheral sight — notice a player in ANY direction (with LOS) within this
+  // range, even outside the cone. Fixes "only aggros when I'm on top of it".
+  const peripheralRange = spec.peripheralRange ?? CONFIG.ENEMY_AI.PERIPHERAL_RANGE;
+  const peripheralRangeSq = peripheralRange * peripheralRange;
   const loseSightTime = spec.loseSightTime ?? 4;
 
   // Apply idle eyes immediately so unseen enemies don't pop with full-bright
@@ -636,6 +641,7 @@ export function createEnemy(
   // mobs (wraith) skip pathfinding entirely; they steer through props.
   let path: Waypoint[] = [];
   let pathTime = 0;
+  let stuckT = 0;   // time spent pinned against geometry (drives the sidestep)
   const PATH_REFRESH = 0.5;
   const WAYPOINT_REACHED_SQ = 0.35 * 0.35;
 
@@ -705,14 +711,31 @@ export function createEnemy(
     if (distSq < 1e-6) return;
     const inv = 1 / Math.sqrt(distSq);
     const step = speed * dt;
-    const newX = container.position.x + dx * inv * step;
-    const newZ = container.position.z + dz * inv * step;
-    const resolved = walkable.clampMove(
-      container.position.x, container.position.z,
-      newX, newZ,
-      spec.collisionRadius,
-      spec.phasing ? { ignoreObstacles: true } : undefined,
-    );
+    const clampOpts = spec.phasing ? { ignoreObstacles: true } : undefined;
+    const cx = container.position.x, cz = container.position.z;
+    let resolved = walkable.clampMove(cx, cz, cx + dx * inv * step, cz + dz * inv * step, spec.collisionRadius, clampOpts);
+
+    // Stuck → sidestep. If the forward move was almost fully blocked by geometry
+    // (a prop corner, a wall), accumulate stuck time; once pinned, try sliding
+    // PERPENDICULAR to the target — both sides, take whichever makes progress —
+    // so the mob flows AROUND the obstacle instead of grinding into its face
+    // ("tries to go around but can't"). Cheap: the two extra clamps only run
+    // while genuinely pinned.
+    const fwdMoved = Math.hypot(resolved.x - cx, resolved.z - cz);
+    if (fwdMoved < step * 0.3) {
+      stuckT += dt;
+      if (stuckT > NAV_STUCK_TIME) {
+        const px = -dz * inv, pz = dx * inv;   // unit perpendicular to the target dir
+        const left = walkable.clampMove(cx, cz, cx + px * step, cz + pz * step, spec.collisionRadius, clampOpts);
+        const right = walkable.clampMove(cx, cz, cx - px * step, cz - pz * step, spec.collisionRadius, clampOpts);
+        const lMov = Math.hypot(left.x - cx, left.z - cz);
+        const rMov = Math.hypot(right.x - cx, right.z - cz);
+        const best = lMov >= rMov ? left : right;
+        if (Math.max(lMov, rMov) > step * 0.3) resolved = best;   // a side is open — slide
+      }
+    } else {
+      stuckT = 0;
+    }
     // Footstep foley — accumulate the distance ACTUALLY moved (post-clamp, so
     // a mob pinned against a wall goes silent) and tick a locomotion sound
     // every stride. Stride scales with body size so a stoneguard plods and a
@@ -1268,6 +1291,14 @@ export function createEnemy(
     const dz = playerPos.z - container.position.z;
     const distSq = dx * dx + dz * dz;
     if (distSq < hearingRangeSq) return true;
+    // Peripheral sight: within peripheralRange, a clear line of sight is enough
+    // — no cone. (Long-range detection past peripheralRange still needs the cone
+    // below, so a distant player outside the gaze stays unseen — stealth holds.)
+    if (distSq < peripheralRangeSq) {
+      return walkable.hasLineOfSight(
+        container.position.x, container.position.z, playerPos.x, playerPos.z,
+      );
+    }
     if (distSq > sightRangeSq) return false;
     // Cone check (uses current container yaw — the enemy's facing).
     // Container facing: container's "forward" is -Z in local space (per

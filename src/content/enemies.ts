@@ -141,6 +141,15 @@ export interface EnemySpec {
    */
   hearingRange?: number;
   /**
+   * Peripheral-sight radius — within this, the enemy notices the player in ANY
+   * direction provided it has line of sight (no cone), even while idle/looking
+   * away. Bigger than hearingRange (which is through-wall); needs LOS. Stops
+   * "only aggros when you're on top of it" while keeping long-range stealth past
+   * this radius (the cone still gates distant detection). Default
+   * CONFIG.ENEMY_AI.PERIPHERAL_RANGE (4.5). Raise for an alert predator.
+   */
+  peripheralRange?: number;
+  /**
    * Seconds without LOS before deaggro. Default 4. Damage taken refreshes
    * this timer (a hurt enemy stays aware).
    */
