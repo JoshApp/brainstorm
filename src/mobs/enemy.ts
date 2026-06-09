@@ -31,7 +31,7 @@ import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { createBodyAnimator } from './enemy-animation';
 import { Animator } from '../anim/animator';
-import { buildModel, mergeRigidSegments, type BuiltModel } from '../ecs/build-model';
+import { type BuiltModel } from '../ecs/build-model';
 import { buildCreature } from '../content/build-creature';
 import type { Creature } from '../content/creature-types';
 import { ITEMS } from '../content/items';
@@ -44,7 +44,7 @@ import { spawnXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
 import type { Damageable } from '../combat/damageable';
-import { deriveHurtbox, applyZoneSpecs, setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
+import { setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { createStunStars, type StunStars } from './stun-stars';
 import { ARCHETYPE_CLIPS } from '../anim/clips-biped';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
@@ -72,8 +72,8 @@ export function disposeEnemy(e: Enemy): void {
 
 // Enemy = a mob driven by its EnemySpec.
 //
-// Geometry/materials come from spec.model via buildModel(). This module owns
-// only the behavior glue:
+// Geometry/materials/hurtbox come from spec.creature via buildCreature(). This
+// module owns only the behavior glue:
 //   - AI state machine + perception:
 //       idle → alerted → chasing → winding → striking → recovering
 //                                         ↓
@@ -251,52 +251,31 @@ export function createEnemy(
   const container = new THREE.Group();
   container.position.copy(position);
 
-  // Two build paths. NEW: skeleton-first `creature` — dimensions + hurtbox are
-  // MEASURED/derived by buildCreature (docs/CREATURE-SYSTEM.md). LEGACY: the
-  // early-days flat `model` + hand-typed aimHeight + deriveHurtbox. The rest of
-  // this module consumes the same shape (group/parts/slots/materials/hitTargets)
-  // either way, so presentation + animation are unchanged.
-  let aimHeightResolved: number;
-  let hurtbox: Hurtbox;
-  let essenceRigYDefault: number;
-  let built: BuiltModel;
-  let creatureRef: Creature | null = null;   // set on the creature path (for setJointVisible)
-  if (spec.creature) {
-    const creature = buildCreature(spec.creature);     // builds + merges + measures internally
-    creatureRef = creature;
-    // Creature → BuiltModel shape (joints ARE the slots) so the rest of the
-    // module (presentation/animation) consumes it unchanged.
-    built = {
-      group: creature.group, parts: creature.parts, slots: creature.joints,
-      materials: creature.materials, hitTargets: creature.hitTargets,
-    };
-    // Bosses loom larger via spec.scale. localToWorld carries the group scale
-    // into the zone endpoints automatically, but a zone's radius is a raw scalar
-    // — scale it by hand so the hitboxes grow with the body. aimHeight tracks
-    // scale too (unless explicitly pinned).
-    const sc = spec.scale ?? 1;
-    if (sc !== 1) {
-      creature.group.scale.multiplyScalar(sc);
-      for (const z of creature.hurtbox.zones) z.shape.radius *= sc;
-    }
-    aimHeightResolved = spec.aimHeight ?? creature.bounds.aimHeight * sc;   // MEASURED body centre × scale
-    hurtbox = creature.hurtbox;                         // auto per-bone + authored zones
-    essenceRigYDefault = aimHeightResolved;
-    container.add(creature.group);
-  } else {
-    const m = buildModel(spec.model!);
-    // Lego-figure merge: collapse the unnamed limb/torso meshes per joint.
-    if (spec.model!.mergeRigid !== false) mergeRigidSegments(m);
-    // Bosses loom larger — scale the visual model (gameplay reach/collision
-    // stay driven by the explicit stat fields).
-    if (spec.scale && spec.scale !== 1) m.group.scale.multiplyScalar(spec.scale);
-    built = m;
-    container.add(m.group);
-    aimHeightResolved = spec.aimHeight ?? 0.6 * (spec.scale ?? 1);
-    hurtbox = deriveHurtbox(spec, m, aimHeightResolved);
-    applyZoneSpecs(hurtbox, spec.hurtZones, m);
-    essenceRigYDefault = spec.model!.slots?.rig?.pos[1] ?? 0.6;
+  // Skeleton-first creature: dimensions + hurtbox are MEASURED/derived by
+  // buildCreature (docs/CREATURE-SYSTEM.md). The rest of this module consumes
+  // `built` (group/parts/slots/materials/hitTargets) the same way regardless of
+  // archetype, so presentation + animation are archetype-agnostic.
+  const creature = buildCreature(spec.creature);        // builds + merges + measures internally
+  const creatureRef: Creature = creature;               // for setJointVisible (part-breaks)
+  // Creature → BuiltModel shape (joints ARE the slots) so the rest of the
+  // module (presentation/animation) consumes it unchanged.
+  const built: BuiltModel = {
+    group: creature.group, parts: creature.parts, slots: creature.joints,
+    materials: creature.materials, hitTargets: creature.hitTargets,
+  };
+  // Bosses loom larger via spec.scale. localToWorld carries the group scale
+  // into the zone endpoints automatically, but a zone's radius is a raw scalar
+  // — scale it by hand so the hitboxes grow with the body. aimHeight tracks
+  // scale too (unless explicitly pinned).
+  const sc = spec.scale ?? 1;
+  if (sc !== 1) {
+    creature.group.scale.multiplyScalar(sc);
+    for (const z of creature.hurtbox.zones) z.shape.radius *= sc;
   }
+  const aimHeightResolved = spec.aimHeight ?? creature.bounds.aimHeight * sc;   // MEASURED body centre × scale
+  const hurtbox: Hurtbox = creature.hurtbox;            // auto per-bone + authored zones
+  const essenceRigYDefault = aimHeightResolved;
+  container.add(creature.group);
   // Base model scale, captured for the lash deform (which elongates the
   // body toward the player on a 'lash' telegraph, then eases back here).
   const groupBaseScale = built.group.scale.clone();

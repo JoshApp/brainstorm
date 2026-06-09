@@ -86,20 +86,18 @@ export interface EnemySpec {
   recoverTime: number;        // s — locked out after strike
 
   // --- Visuals ---
-  /** Legacy model path (early-days enemies). Mutually exclusive with `creature`.
-   *  New enemies author `creature` instead (skeleton-first — measured dimensions
-   *  + auto hitzones; see docs/CREATURE-SYSTEM.md). */
-  model?: ModelSpec;
-  /** Skeleton-first creature (the rebuild). When set, dimensions + hurtbox come
-   *  from the built Creature, not from aimHeight/deriveHurtbox. */
-  creature?: CreatureSpec;
+  /** Skeleton-first creature — the one model path. Dimensions + hurtbox are
+   *  MEASURED from the built Creature (see docs/CREATURE-SYSTEM.md). Bespoke
+   *  bosses (marrow, mimic) reach their old geometry through a custom skeleton
+   *  on the spec, so they ride this path too. */
+  creature: CreatureSpec;
   /** Base emissive intensity for the 'eye' material (used by AI for windup flare). */
   baseEyeEmissive: number;
   collisionRadius: number;
   /** Height the swing aims at + where the damage number floats from.
-   *  Defaults to 0.6 × scale, which assumes a body centred around that
-   *  height. Override when a model's mass (e.g. the king's core) sits
-   *  elsewhere — `0.6 × scale` badly overshoots a low-rigged giant. */
+   *  Defaults to the creature's MEASURED body centre × scale. Pin it only to
+   *  override that measurement (e.g. aim at a boss's core rather than its
+   *  bounding-box centre). */
   aimHeight?: number;
   /** Combat hit radius — the swing's reach extends to the body's SURFACE
    *  this far out from `position`, so a big enemy is hittable without
@@ -107,14 +105,7 @@ export interface EnemySpec {
    *  Independent of collisionRadius (movement) — a translucent walk-into
    *  boss can be small for movement yet large for hits. */
   hitRadius?: number;
-  /** Authored hurtbox zones (weak points / armor plates) layered over the
-   *  derived body+head. Coords are local metres (relative to a `follow` part
-   *  if named, else the enemy root). An openWhenStaggered zone is exposed only
-   *  during the poise-break free-hit window. See src/combat/hurtbox.ts +
-   *  docs/COMBAT-HIT-SYSTEM.md. */
-  hurtZones?: HurtZoneSpec[];
-
-  // --- Animation hooks (part names within `model`) ---
+  // --- Animation hooks (part / material names within `creature`) ---
   /** Part name to tilt forward during windup/strike. Usually 'body' or the root. */
   tiltPartName: string;
   /** Material name to lerp during hit-flash. Usually 'body'. */
@@ -2589,63 +2580,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     },
   },
 };
-
-// ── Inline model builders for the variety pass ────────────────────
-// Kept next to the specs that use them — small enough not to deserve
-// their own enemy-models.ts entry. Both share the existing material
-// + sprite vocabulary so they slot into the style cleanly.
-
-/** Spore — short stem + flattened mushroom cap + a few drooping
- *  tendrils. The cap has a glowing core that pulses on windup. */
-function spore_modelV1(bodyColor: number, coreColor: number): ModelSpec {
-  return {
-    id: `spore-${bodyColor.toString(16)}`,
-    materials: {
-      body: { color: bodyColor, roughness: 1.0, flatShading: 'auto' },
-      core: { color: 0x000000, emissive: coreColor, emissiveIntensity: 1.4, roughness: 1.0 },
-      tendril: { color: bodyColor, roughness: 1.0 },
-    },
-    slots: { rig: { pos: [0, 0.18, 0] } },
-    parts: [
-      // Stem.
-      { kind: 'cylinder', pos: [0, 0.08, 0], radius: 0.10, radiusTop: 0.08, height: 0.16, segments: 8, mat: 'body' },
-      // Cap — flattened oblate sphere on top of the stem.
-      { name: 'body', parent: 'rig', kind: 'sphere', pos: [0, 0.04, 0], scale: [1.0, 0.55, 1.0], radius: 0.28, segments: [12, 10], mat: 'body', jitter: 0.02 },
-      // Glowing core inside the cap — pulses on windup via the
-      // existing eyeMaterialName hook.
-      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0.04, 0], radius: 0.10, segments: [10, 8], mat: 'core' },
-      // Drooping tendrils — small cylinders splayed out.
-      { kind: 'cylinder', pos: [-0.18, 0.16, 0],    rot: [0, 0,  0.6], radius: 0.014, height: 0.18, segments: 6, mat: 'tendril' },
-      { kind: 'cylinder', pos: [ 0.18, 0.16, 0],    rot: [0, 0, -0.6], radius: 0.014, height: 0.18, segments: 6, mat: 'tendril' },
-      { kind: 'cylinder', pos: [ 0.00, 0.18, -0.18], rot: [-0.6, 0, 0], radius: 0.014, height: 0.18, segments: 6, mat: 'tendril' },
-    ],
-  };
-}
-
-/** Wisp — a floating sphere with a brighter glowing core. Designed
- *  to read as "ambient light gone wrong" rather than a creature
- *  with body parts. The spectral presence overlay adds the float. */
-function wisp_modelV1(bodyColor: number, coreColor: number, coreEmissive: number): ModelSpec {
-  return {
-    id: `wisp-${bodyColor.toString(16)}`,
-    materials: {
-      body: {
-        color: bodyColor, roughness: 0.4, metalness: 0.0,
-        emissive: bodyColor, emissiveIntensity: 0.6,
-        rim: { color: coreColor, power: 2.0, intensity: 0.7 },
-        dissolvable: true,
-      },
-      core: { color: 0x000000, emissive: coreColor, emissiveIntensity: coreEmissive, roughness: 1.0 },
-    },
-    slots: { rig: { pos: [0, 0.85, 0] } },
-    parts: [
-      // Outer luminous body — translucent-looking sphere.
-      { name: 'body', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.20, segments: [14, 10], mat: 'body', jitter: 0.012 },
-      // Inner bright core — the windup tell pulses this.
-      { name: 'core', parent: 'rig', kind: 'sphere', pos: [0, 0, 0], radius: 0.09, segments: [10, 8], mat: 'core' },
-    ],
-  };
-}
 
 // Per-enemy ASCII tile chars are GONE. Placement is always either
 // procgen-driven (X / B slots in a vault map, expanded by

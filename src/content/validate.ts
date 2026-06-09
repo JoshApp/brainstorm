@@ -100,7 +100,6 @@ function validateEnemy(id: string, spec: EnemySpec, errs: string[], warns: strin
       if (!isItem(p.itemId)) errs.push(`${w}: drop pool '${p.itemId}' is not a registered item`);
     }
   }
-  if (spec.model) validateModel(spec.model, w, warns);
 }
 
 function validateAffixesAndSets(errs: string[]): void {

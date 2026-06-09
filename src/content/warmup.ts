@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { ITEMS } from './items';
 import { ENEMIES } from './enemies';
-import { buildModel, mergeRigidSegments } from '../ecs/build-model';
+import { buildModel } from '../ecs/build-model';
+import { buildCreature } from './build-creature';
 import { getItemThumbnail } from '../ui/item-thumbnail';
 
 // Pre-warm caches and JIT paths so the first kill/drop/pickup doesn't hitch.
@@ -58,14 +59,16 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
     models.push(built.group);
   }
   for (const enemy of Object.values(ENEMIES)) {
-    if (!enemy.model) continue;   // creature-based enemies warm via their own path
-    const built = buildModel(enemy.model);
-    // JIT the merge path (mergeGeometries) + match the in-game mesh layout so
-    // the warmed shader set is exactly what the merged enemy renders.
-    if (enemy.model.mergeRigid !== false) mergeRigidSegments(built);
-    built.group.traverse((o) => { (o as THREE.Mesh).castShadow = true; });
-    scratch.add(built.group);
-    models.push(built.group);
+    // The whole roster is creature-based now. buildCreature runs the same
+    // buildModel + mergeRigidSegments pipeline internally, so one build per
+    // enemy spec primes the merged mesh layout AND its shader set — exactly
+    // what the in-game mob renders. (Legacy `enemy.model` enemies are gone;
+    // the bespoke marrow/mimic geometry is reached through their creature
+    // specs' custom skeletons, so it warms here too.)
+    const group = buildCreature(enemy.creature).group;
+    group.traverse((o) => { (o as THREE.Mesh).castShadow = true; });
+    scratch.add(group);
+    models.push(group);
   }
 
   // One render — primes shader compile for every material that just got added,

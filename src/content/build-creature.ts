@@ -11,12 +11,14 @@ import { SKELETONS, resolveProportions } from './skeletons';
 // the result and auto-derives the hurtbox from the skeleton. Everything the game
 // needs (bounds, joints, hitzones) comes from one source of truth.
 
-/** Build a creature: skeleton → geometry → measured bounds → auto hitzones. */
-export function buildCreature(spec: CreatureSpec): Creature {
+/** Compile a CreatureSpec's skeleton + skin into a flat ModelSpec (joints →
+ *  parent-local slots, skin parts → parts parented to their joint). This is the
+ *  geometry source buildCreature builds; exposed so other tools (the model
+ *  bench) can render a creature through the plain buildModel path. */
+export function compileCreatureModelSpec(spec: CreatureSpec): ModelSpec {
   const p = resolveProportions(spec.archetype, spec.proportions);
   const skel = spec.skeleton ?? SKELETONS[spec.archetype](p);
 
-  // ── Compile skeleton → slots (parent-local), skin → parts ──
   const absByName = new Map<string, Vec3>();
   for (const j of skel.joints) absByName.set(j.name, j.abs);
   const slots: Record<string, SlotSpec> = {};
@@ -29,8 +31,18 @@ export function buildCreature(spec: CreatureSpec): Creature {
     const { joint, ...rest } = sp;
     return { ...rest, parent: joint ?? rest.parent } as PartSpec;
   });
+  return { id: spec.id, slots, parts, materials: spec.materials };
+}
 
-  const modelSpec: ModelSpec = { id: spec.id, slots, parts, materials: spec.materials };
+/** Build a creature: skeleton → geometry → measured bounds → auto hitzones. */
+export function buildCreature(spec: CreatureSpec): Creature {
+  const p = resolveProportions(spec.archetype, spec.proportions);
+  const skel = spec.skeleton ?? SKELETONS[spec.archetype](p);
+  const absByName = new Map<string, Vec3>();
+  for (const j of skel.joints) absByName.set(j.name, j.abs);
+
+  // ── Compile skeleton → slots (parent-local), skin → parts ──
+  const modelSpec = compileCreatureModelSpec(spec);
   const built = buildModel(modelSpec);
   // Validate presentation bindings up front — a missing material is a build
   // error with a clear message, not a silent runtime crash later.

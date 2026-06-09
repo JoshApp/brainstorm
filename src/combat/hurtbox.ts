@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import type { EnemySpec } from '../content/enemies';
 import type { BuiltModel } from '../ecs/build-model';
 
 // Hurtbox zones — the TARGET side of the combat hit system (see
@@ -59,55 +58,6 @@ export interface Hurtbox {
 }
 
 // ── Derivation ──────────────────────────────────────────────────────────────
-
-/** Build a sensible default hurtbox from the enemy's spec + built model:
- *  always a body capsule; a head sphere when the model exposes a `head` part.
- *  A spec can later override/extend (a boss authoring its `core`). The numbers
- *  are world-scale metres (aimHeight is already × scale), so they don't apply
- *  the model group's scale again. Heuristic — tuned by eye on-device; the
- *  resolver reads exactly these volumes, so what you see in debug is the truth. */
-export function deriveHurtbox(spec: EnemySpec, built: BuiltModel, aimHeight: number): Hurtbox {
-  const bodyRadius = Math.max(spec.hitRadius ?? 0, spec.collisionRadius, 0.16);
-  // Body capsule spans roughly knees → shoulders, centred on aimHeight. Authored
-  // generously tall so a swing that reads as "on the body" connects vertically.
-  const bottom = Math.max(0.08, aimHeight * 0.35);
-  const top = aimHeight * 1.45;
-  const zones: HurtZone[] = [
-    {
-      id: 'body',
-      shape: { kind: 'capsule', a: new THREE.Vector3(0, bottom, 0), b: new THREE.Vector3(0, top, 0), radius: bodyRadius },
-      role: 'body',
-      damageMul: 1,
-      enabled: true,
-      priority: 0,
-      crit: false,
-      critBonus: 0,
-      follow: null,
-      openWhenStaggered: false,
-    },
-  ];
-
-  // Head sphere — follows the model's `head` part when present, so it tracks the
-  // head-crane/telegraph animation. Radius is a heuristic fraction of the body;
-  // bosses/specials can override. Locational bonus + crit.
-  const headNode = built.parts.get('head') ?? built.slots.get('head') ?? null;
-  if (headNode) {
-    zones.push({
-      id: 'head',
-      shape: { kind: 'sphere', center: new THREE.Vector3(0, 0, 0), radius: Math.max(0.14, bodyRadius * 0.85) },
-      role: 'head',
-      damageMul: 1.5,            // reliable "aim up pays" reward …
-      enabled: true,
-      priority: 10,
-      crit: false,              // … but NOT a guaranteed crit (that was too strong)
-      critBonus: 0.25,          // it just crits +25% more often — precision → spikes
-      follow: headNode,
-      openWhenStaggered: false,
-    });
-  }
-
-  return { root: built.group.parent ?? built.group, zones };
-}
 
 /** A single-zone body hurtbox for a PROP (vase, crate, cobweb) — no head, no
  *  AI, just a sphere the swing resolver tests like any other body. `root` is the

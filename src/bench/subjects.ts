@@ -6,6 +6,7 @@
 
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { ITEMS, type ItemSpec } from '../content/items';
+import { compileCreatureModelSpec } from '../content/build-creature';
 import type { ModelSpec } from '../ecs/model-types';
 import { listAuthorables, type AuthorableKind } from '../debug/authorables';
 import { EFFECT_DEMOS } from './effects';
@@ -94,8 +95,11 @@ export function resolveSubject(subjectId: string): BenchSubject | null {
   if (subjectId.startsWith('mob-')) {
     const id = subjectId.slice(4);
     const e = ENEMIES[id];
-    if (!e || !e.model) return null;   // creature-based mobs aren't bench-wired yet
-    return { id: subjectId, kind: 'mob', label: e.bossName ?? e.name ?? id, spec: e.model, enemy: e };
+    if (!e) return null;
+    // Render the creature through the plain buildModel path: compile its
+    // skeleton+skin to a flat ModelSpec. The mob animator still drives it via
+    // the EnemySpec animation hooks (tiltPartName/eyeMaterialName/…).
+    return { id: subjectId, kind: 'mob', label: e.bossName ?? e.name ?? id, spec: compileCreatureModelSpec(e.creature), enemy: e };
   }
   if (subjectId.startsWith('viewmodel-')) {
     const id = subjectId.slice('viewmodel-'.length);
