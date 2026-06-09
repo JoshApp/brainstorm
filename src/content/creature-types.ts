@@ -81,6 +81,7 @@ export interface CreatureBounds {
   radius: number;             // fitted horizontal half-extent
   center: THREE.Vector3;      // bbox centre
   aimHeight: number;          // body centre the swing aims at + numbers float from
+  groundOffset: number;       // lift (m, model-space) to seat the lowest geometry on y=0
 }
 
 export interface Creature {

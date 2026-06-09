@@ -65,6 +65,12 @@ export function buildCreature(spec: CreatureSpec): Creature {
     radius: Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2,
     center,
     aimHeight: center.y,                 // measured body centre — replaces 0.6×scale guess
+    // How far the lowest geometry dips BELOW the rig floor (y=0). The enemy
+    // placer lifts the group by this so the model rests ON the floor instead
+    // of sinking into it (the boiling-king's squashed body bottomed out below
+    // 0). Clamped at 0 so an intentional FLOATER — a ghost whose wisp hovers
+    // above the floor — is never dragged DOWN to touch it.
+    groundOffset: Math.max(0, -box.min.y),
   };
 
   // ── Auto hurtbox from the skeleton, then layer authored zones ──
