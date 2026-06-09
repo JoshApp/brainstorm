@@ -91,6 +91,16 @@ export interface Settings {
    *  (a lower-res PS1 render reads as more PS1). Mobile only; no effect on
    *  desktop debug. */
   adaptiveResolution: boolean;
+  /** Scene render scale — the fraction of native resolution the world is drawn
+   *  at before the PSX blit upscales it (fill rate is the #1 mobile cost, so
+   *  this is the biggest GPU knob; a lower scale reads as more PS1). This is the
+   *  CEILING adaptive resolution scales down FROM on mobile, and the fixed scale
+   *  when adaptive is off / on desktop. Default 0.4 (the authored look). */
+  renderScale: number;
+  /** Bloom — the bright-pass + blur that bleeds glow off emissive cores (torch
+   *  flames, hot rims). A few fullscreen passes of GPU fill; off is a real win
+   *  on weak devices, at the cost of the soft glow. */
+  bloom: boolean;
   /** Portal/room culling — skip rendering rooms hidden behind walls (only the
    *  room you're in + rooms visible through doorways draw). Big draw-call win
    *  in multi-room sightlines; experimental (watch for rooms popping in as you
@@ -167,6 +177,8 @@ const DEFAULTS: Settings = {
   // crank to 'single'/'all' on desktop or a strong device.
   shadows: 'hero',
   adaptiveResolution: true,
+  renderScale: 0.4,    // = PS1_SCALE_DEFAULT (the authored look / adaptive ceiling)
+  bloom: true,
   // ON by default: occlusion-culls rooms (and now enemies) hidden behind walls —
   // the big win on enemy-heavy floors, where the frustum cone otherwise draws a
   // whole packed room (and its shadow casters) through the wall you're facing.

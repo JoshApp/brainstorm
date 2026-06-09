@@ -16,7 +16,9 @@ import { setPS1Scale, PS1_SCALE_DEFAULT } from '../style/render-target';
 // Under vsync a comfortable 60fps reads as ~16.7ms, which trips the raise
 // threshold; missed frames push the average past the drop threshold.
 
-const MAX_SCALE = PS1_SCALE_DEFAULT;   // 0.4 — the authored look, the ceiling
+// The ceiling adaptive scales DOWN from = the player's RENDER SCALE setting
+// (default PS1_SCALE_DEFAULT). setAdaptiveCeiling updates it live.
+let maxScale = PS1_SCALE_DEFAULT;
 const MIN_SCALE = 0.28;                // floor — chunky but still legibly PS1
 const STEP = 0.04;
 const WINDOW_MS = 1500;                // frame-time averaging window
@@ -26,19 +28,30 @@ const RAISE_MS = 17;                   // avg frame ms below this → scale up (
 const MIN_SAMPLES = 24;                // don't act until the window has data
 
 let enabled = false;
-let scale = MAX_SCALE;
+let scale = maxScale;
 const frames: number[] = [];
 let lastStep = 0;
 
-/** Enable/disable. Disabling restores the full authored resolution. */
+/** Enable/disable. Disabling restores the ceiling (render-scale) resolution. */
 export function setAdaptiveResolution(on: boolean): void {
   if (on === enabled) return;
   enabled = on;
   frames.length = 0;
   lastStep = 0;
   if (!on) {
-    scale = MAX_SCALE;
-    setPS1Scale(MAX_SCALE);
+    scale = maxScale;
+    setPS1Scale(maxScale);
+  }
+}
+
+/** Set the resolution ceiling (the RENDER SCALE setting). Clamps the current
+ *  scale to it; applies immediately when adaptive is on (when off, the caller
+ *  sets the fixed scale via setPS1Scale). */
+export function setAdaptiveCeiling(v: number): void {
+  maxScale = v;
+  if (scale > maxScale) {
+    scale = maxScale;
+    if (enabled) setPS1Scale(scale);
   }
 }
 
@@ -57,8 +70,8 @@ export function tickAdaptiveResolution(nowMs: number): void {
     scale = Math.round((scale - STEP) * 100) / 100;
     setPS1Scale(scale);
     lastStep = nowMs;
-  } else if (avgMs < RAISE_MS && scale < MAX_SCALE) {
-    scale = Math.round((scale + STEP) * 100) / 100;
+  } else if (avgMs < RAISE_MS && scale < maxScale) {
+    scale = Math.min(maxScale, Math.round((scale + STEP) * 100) / 100);
     setPS1Scale(scale);
     lastStep = nowMs;
   }

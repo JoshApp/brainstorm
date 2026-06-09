@@ -346,14 +346,35 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().shadows,
       set: (v) => updateSettings({ shadows: v }),
     }),
+    makeSlider({
+      label: 'RENDER SCALE',
+      description:
+        'The fraction of native resolution the world is drawn at before the PSX ' +
+        'blit upscales it — the single biggest GPU knob (fill rate is the #1 ' +
+        'mobile cost). Lower = faster + chunkier (reads as more PS1); higher = ' +
+        'sharper. On mobile this is the CEILING adaptive resolution lowers from.',
+      min: 0.3, max: 0.6, step: 0.05,
+      get: () => getSettings().renderScale,
+      set: (v) => updateSettings({ renderScale: v }),
+      format: (v) => Math.round(v * 100) + '%',
+    }),
     makeToggle({
       label: 'ADAPTIVE RESOLUTION',
       description:
         'Auto-lower the render resolution when the phone struggles, and raise ' +
-        'it back when it recovers — holds framerate. Reads as a touch more PS1. ' +
-        'Mobile only; no effect on desktop.',
+        'it back (up to RENDER SCALE) when it recovers — holds framerate. Reads ' +
+        'as a touch more PS1. Mobile only; no effect on desktop.',
       get: () => getSettings().adaptiveResolution,
       set: (v) => updateSettings({ adaptiveResolution: v }),
+    }),
+    makeToggle({
+      label: 'BLOOM',
+      description:
+        'The soft glow that bleeds off emissive cores — torch flames, hot rims, ' +
+        'glowing eyes. A few fullscreen blur passes; turning it off is a real ' +
+        'GPU win on a weak device, at the cost of the glow.',
+      get: () => getSettings().bloom,
+      set: (v) => updateSettings({ bloom: v }),
     }),
     makeToggle({
       label: 'PORTAL CULLING',
@@ -751,6 +772,7 @@ function makeRunButton(opts: RunButtonOpts): HTMLDivElement {
 
 interface SliderOpts {
   label: string;
+  description?: string;
   min: number;
   max: number;
   step: number;
@@ -803,6 +825,16 @@ function makeSlider(opts: SliderOpts): HTMLDivElement {
   });
 
   row.append(labelRow, slider);
+  if (opts.description) {
+    const desc = document.createElement('div');
+    desc.textContent = opts.description;
+    Object.assign(desc.style, {
+      fontSize: '11px',
+      color: 'rgba(160, 130, 100, 0.7)',
+      fontStyle: 'italic',
+    } as Partial<CSSStyleDeclaration>);
+    row.appendChild(desc);
+  }
   return row;
 }
 

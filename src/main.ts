@@ -22,7 +22,7 @@ import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthr
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setOutlineEnabled } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setOutlineEnabled, setBloomEnabled } from './style/render-target';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
@@ -90,7 +90,7 @@ import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
 import { initLightPool, setShadowMode } from './scene/light-pool';
-import { setAdaptiveResolution, tickAdaptiveResolution } from './scene/adaptive-resolution';
+import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
 import { initProjectilePool } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
 import { validateContent } from './content/validate';
@@ -649,9 +649,19 @@ initLightPool(scene);
 // 'off' internally; this lifts it to the user's setting). Live changes are
 // handled by the onSettingsChanged subscription further down.
 setShadowMode(getSettings().shadows);
-// Adaptive resolution runs on real phones only (desktop debug + snaps stay at
-// the fixed authored scale). Re-evaluated live by the onSettingsChanged block.
-setAdaptiveResolution(getSettings().adaptiveResolution && !isDesktopLike());
+// Video settings — render scale (the adaptive ceiling + fixed value when
+// adaptive is off), adaptive resolution (phones only), and bloom. One helper so
+// boot + the onSettingsChanged subscription apply them identically.
+function applyVideoSettings(s = getSettings()): void {
+  setAdaptiveCeiling(s.renderScale);
+  const adaptiveOn = s.adaptiveResolution && !isDesktopLike();
+  setAdaptiveResolution(adaptiveOn);
+  // setAdaptiveResolution early-returns when the flag is unchanged, so set the
+  // fixed scale explicitly whenever adaptive is off (desktop, or toggled off).
+  if (!adaptiveOn) setPS1Scale(s.renderScale);
+  setBloomEnabled(s.bloom);
+}
+applyVideoSettings();
 // DEV-only: ?ps1=0.3 forces the scene-render scale for snap/compare. Stripped
 // from prod by the literal-false guard.
 if (import.meta.env.DEV) {
@@ -1014,7 +1024,7 @@ onSettingsChanged((s) => {
   // down) live when the toggle flips. Defined below; hoisted.
   applyProfilerEnabled();
   setShadowMode(s.shadows);
-  setAdaptiveResolution(s.adaptiveResolution && !isDesktopLike());
+  applyVideoSettings(s);   // render scale + adaptive resolution + bloom
   setOutlineEnabled(s.outlines);
   setSurfaceAOStrength(s.aoStrength);
   setSurfaceDetailEnabled(s.surfaceDetail);
