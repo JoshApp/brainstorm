@@ -45,6 +45,7 @@ import { raiseAlert, sampleAlert } from './alerts';
 import type { Damageable } from '../combat/damageable';
 import { deriveHurtbox, applyZoneSpecs, setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { createStunStars, type StunStars } from './stun-stars';
+import { ARCHETYPE_CLIPS } from '../anim/clips-biped';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
 
 // Audio buckets are content data (see content/enemies.ts). These thin
@@ -360,13 +361,16 @@ export function createEnemy(
   // idle overlay. Owns its own body refs (hips, neck, chant orb) + mutable
   // state (see enemy-animation.ts); the factory no longer carries them.
   const bodyAnim = createBodyAnimator(container, built, spec);
-  // Keyframe animator — drives joint slots via clips when the spec has
-  // an animation bundle. Runs AFTER bodyAnim each tick so its writes
-  // win on the joints it owns (the legacy gait/head-crane harmlessly
-  // pre-writes the same slots, gets overwritten). prevState tracks
-  // AI transitions to fire override clips on ability windup.
-  const clipAnimator = spec.animation
-    ? new Animator(built.slots, spec.animation.joints)
+  // Keyframe animator — drives joint slots via clips. Source: an explicit
+  // spec.animation bundle (marrow boss) OR, for a creature, its ARCHETYPE clip
+  // library (docs/CREATURE-SYSTEM.md) — so every biped gets attack animation for
+  // free. Runs AFTER bodyAnim so its writes win on the joints it owns.
+  const animBundle = spec.animation ?? (spec.creature ? ARCHETYPE_CLIPS[spec.creature.archetype] : undefined);
+  // When a creature drives attacks via clips, the legacy telegraph POSE is gated
+  // off (below) so the clip is the sole driver of the swing.
+  const usesClipAttacks = !!spec.creature && !!animBundle;
+  const clipAnimator = animBundle
+    ? new Animator(built.slots, animBundle.joints)
     : null;
   let prevAnimState: EnemyState | null = null;
   let prevAnimAbilityId: string | null = null;
@@ -946,7 +950,10 @@ export function createEnemy(
    *  have shoulder pivots (graceful no-op otherwise). Eye flare ramps
    *  with the windup, holds at strike, fades over recover. */
   function applyTelegraph(style: Ability['pose'], phase: 'windup' | 'strike' | 'recover', t: number) {
-    applyTelegraphPose(telegraphNodes, style as TelegraphStyle | undefined, phase, t);
+    // Creatures drive the swing through their archetype clip (the override fires
+    // on the windup edge); skip the legacy pose so they don't fight over the
+    // shoulders. The eye-flare telegraph still plays for everyone.
+    if (!usesClipAttacks) applyTelegraphPose(telegraphNodes, style as TelegraphStyle | undefined, phase, t);
     setEyeFlare(phase === 'windup' ? t : phase === 'strike' ? 1 : 1 - t);
   }
 
@@ -1886,8 +1893,8 @@ export function createEnemy(
    *  on the windup edge with the ability's clip stretched to the FULL
    *  windup+strike+recover window. */
   function tickClipAnimator(dt: number): void {
-    if (!clipAnimator || !spec.animation) return;
-    const bundle = spec.animation;
+    if (!clipAnimator || !animBundle) return;
+    const bundle = animBundle;
     // Decide base layer from state + phase.
     const phase = phases ? phases[phaseIndex] : null;
     const useCrawl = phase?.useCrawlAnimation && bundle.crawl;

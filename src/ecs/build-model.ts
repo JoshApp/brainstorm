@@ -177,7 +177,13 @@ export function mergeRigidSegments(built: BuiltModel): void {
       const geos: THREE.BufferGeometry[] = [];
       for (const m of meshes) {
         m.updateMatrix();
-        geos.push(m.geometry.clone().applyMatrix4(m.matrix));   // bake LOCAL transform
+        const baked = m.geometry.clone().applyMatrix4(m.matrix);   // bake LOCAL transform
+        // Normalize to NON-INDEXED so a group mixing indexed (box/cylinder) and
+        // non-indexed (RoundedBox/bevel, CSG) geometries still merges — otherwise
+        // mergeGeometries rejects the mismatch. Creatures freely mix shapes per
+        // joint, so this must be robust.
+        if (baked.index) { const ni = baked.toNonIndexed(); baked.dispose(); geos.push(ni); }
+        else geos.push(baked);
       }
       const merged = mergeGeometries(geos, false);
       for (const g of geos) g.dispose();
