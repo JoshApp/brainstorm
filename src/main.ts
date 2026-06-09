@@ -90,7 +90,7 @@ import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
 import { initLightPool, setShadowMode } from './scene/light-pool';
-import { clearPack } from './mobs/pack';
+import { packTokenCount } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
 import { initProjectilePool } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
@@ -323,9 +323,6 @@ initLevelLoader({
     // Batch each room's static fixture geometry (torch sconces/candles, opt-in
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
-    // Drop pack-coordinator members from the previous level (mobs re-join on
-    // spawn). Belt-and-suspenders; disposeEnemy also leaves per-mob.
-    clearPack();
     setCameraYaw(level.playerSpawn.yaw);
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-'));
     resetBossBar();   // new floor — clear any prior boss bar state
@@ -704,7 +701,7 @@ if (import.meta.env.DEV) {
   (window as unknown as { __mobPack?: () => unknown }).__mobPack = () => {
     const lvl = currentLevel; if (!lvl) return null;
     const px = camera.position.x, pz = camera.position.z;
-    return lvl.enemies.filter((e) => e.alive).map((e) => {
+    const mobs = lvl.enemies.filter((e) => e.alive).map((e) => {
       const dx = e.position.x - px, dz = e.position.z - pz;
       return {
         kind: e.kind, state: e.aiState,
@@ -712,6 +709,7 @@ if (import.meta.env.DEV) {
         ang: Math.round(Math.atan2(dx, dz) * 100) / 100,   // bearing, radians
       };
     });
+    return { tokens: packTokenCount(), mobs };
   };
 }
 initPickupLightPool(scene);

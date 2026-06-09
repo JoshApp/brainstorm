@@ -27,7 +27,8 @@ async function main() {
   const secs = Number(process.argv[3]) || 5;
 
   await withHarness({ viewport: VIEWPORTS.phone, onLog: (l) => console.log('  ' + l) }, async (h) => {
-    const mobs = await h.read<Mob[] | null>({ scenario, secs }, '__mobPack');
+    const data = await h.read<{ tokens: number; mobs: Mob[] } | null>({ scenario, secs }, '__mobPack');
+    const mobs = data?.mobs;
     if (!mobs || !mobs.length) { console.log('  no mobs (DEV server? scenario?)'); return; }
 
     const chasing = mobs.filter((m) => ['chasing', 'winding', 'striking', 'recovering'].includes(m.state));
@@ -39,6 +40,7 @@ async function main() {
     for (const m of mobs) byState[m.state] = (byState[m.state] ?? 0) + 1;
 
     console.log(`\nMOB PACK · "${scenario}" · ${secs}s settle`);
+    console.log(`  attack tokens held: ${data?.tokens}`);
     console.log(`  states: ${Object.entries(byState).map(([s, n]) => `${n} ${s}`).join(' · ')}`);
     if (chasing.length) {
       const min = Math.min(...dists), max = Math.max(...dists);
@@ -47,6 +49,7 @@ async function main() {
       console.log(`  dist to player: min ${min.toFixed(2)} · avg ${avg.toFixed(2)} · max ${max.toFixed(2)}  (ring = clustered, NOT ~0)`);
       console.log(`  piled (<0.6m): ${near}/${chasing.length}  (lower = better)`);
       console.log(`  bearing spread: ${circStd(angs).toFixed(2)}  (0 = one direction, ~1 = surrounded)`);
+    console.log(`  chasers (dist@bearing): ${chasing.slice(0, 12).map((m) => `${m.kind[0]}:${m.dist}`).join(' ')}`);
     }
     console.log('');
   });

@@ -1,120 +1,147 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 
-// Pack coordinator — makes a crowd of chasing mobs behave as a SURROUNDING ring
-// instead of a pile on the player's exact point. Two forces, computed once per
-// frame for the whole crowd (the one place that sees every mob at once):
+// Pack coordinator — makes a crowd of chasing mobs behave as a SURROUNDING,
+// TAKING-TURNS pack instead of a pile that all swing at once. Computed once per
+// frame for the whole crowd (the one place that sees every mob at the same
+// time). Three layers:
 //
-//   1. ENCIRCLEMENT — each chaser's goal is a point at its own strike distance
-//      along ITS bearing to the player, so mobs fan out around you by the angle
-//      they approached from instead of all converging on one spot.
-//   2. SEPARATION — chasers within SEPARATION_RADIUS push apart, so they never
-//      stack (the "dumb blob" look) and a group reads as a group.
+//   1. ENCIRCLEMENT — each chaser's goal is a point at its strike distance
+//      along ITS bearing to the player, so mobs fan out by approach angle.
+//   2. SEPARATION — chasers within SEPARATION_RADIUS push apart, never stack.
+//   3. ATTACK TOKENS — only ATTACK_TOKENS mobs may COMMIT to an attack at once.
+//      The rest hold the ring and PROWL (slow orbit), waiting their turn. This
+//      turns a swarm from a damage-blob stunlock into a choreographed pack that
+//      circles and darts in — overwhelming but survivable, and it reads as
+//      having intent.
 //
-// Mobs register once (on spawn) with live accessors and leave on death; the
-// member's `active()` gate decides who's actually in the fight this frame (so
-// idle/searching/returning mobs aren't dragged into the ring). enemy.ts reads
-// packMoveTarget(id, player) as its chase goal during 'chasing'.
-//
-// Module-level state (the codebase's pattern). The player is a single point;
-// keyed per enemy id. If co-op ever lands, key the crowd by target too.
-//
-// Phase 2 (tokens) will layer on top: only N members may COMMIT to an attack at
-// once; the rest hold the ring and circle. The hooks (active members, who's in
-// band) live here so that lands without touching enemy.ts movement again.
+// Mobs register once on spawn with live accessors and leave on death. enemy.ts
+// reads packMoveTarget(id) as its chase goal and requestToken(id) to gate a
+// commit. Module-level state (the codebase's pattern); the player is one point.
 
 interface Member {
   id: string;
   pos: THREE.Vector3;          // LIVE ref to the mob's world position (container.position)
   reach: number;               // ring radius for this mob (≈ its strike range)
   active: () => boolean;       // in the fight this frame (chasing/attacking)?
-  sepX: number; sepZ: number;  // separation push computed each tick
+  attacking: () => boolean;    // mid-attack (winding/striking/recovering)?
+  tx: number; tz: number;      // computed ring target (slot + separation + prowl) for this frame
+  sepX: number; sepZ: number;  // separation push
+  orbitDir: number;            // ±1 stable prowl direction (some go clockwise, some not)
+  tokenCd: number;             // s before this mob may grab a token again
 }
 
 const members = new Map<string, Member>();
+const tokens = new Set<string>();   // ids currently holding an attack commit token
 
-const { RING_RADIUS_BONUS, SEPARATION_RADIUS, SEPARATION_FORCE } = CONFIG.ENEMY_AI.PACK;
-const SEP_RADIUS_SQ = SEPARATION_RADIUS * SEPARATION_RADIUS;
+const P = CONFIG.ENEMY_AI.PACK;
+const SEP_RADIUS_SQ = P.SEPARATION_RADIUS * P.SEPARATION_RADIUS;
 
-/** Register a mob with the pack (call once on spawn). `pos` is held by
- *  reference — the coordinator reads the mob's live world position each frame.
- *  `reach` is the ring radius (the mob's strike range). `active` gates whether
- *  the mob is in the fight this frame. */
-export function joinPack(id: string, pos: THREE.Vector3, reach: number, active: () => boolean): void {
-  members.set(id, { id, pos, reach, active, sepX: 0, sepZ: 0 });
+/** Register a mob (call once on spawn). `pos` is held by reference. `reach` is
+ *  the ring radius (strike range). `active` = in the fight this frame;
+ *  `attacking` = mid-attack (token-holding window). */
+export function joinPack(
+  id: string, pos: THREE.Vector3, reach: number,
+  active: () => boolean, attacking: () => boolean,
+): void {
+  members.set(id, {
+    id, pos, reach, active, attacking,
+    tx: pos.x, tz: pos.z, sepX: 0, sepZ: 0,
+    // Deterministic prowl direction from the id so a swarm doesn't all spin the
+    // same way, without Math.random (snaps stay stable).
+    orbitDir: (id.length & 1) ? 1 : -1,
+    tokenCd: 0,
+  });
 }
 
 /** Drop a mob from the pack (call on death / level teardown). */
 export function leavePack(id: string): void {
   members.delete(id);
+  tokens.delete(id);
 }
 
-/** Recompute separation for every active member. Call ONCE per frame, before
- *  the enemy update loop. Cheap: O(n²) over active chasers, which is a handful. */
-export function tickPack(): void {
-  // Snapshot the active members once (active() may be a closure over AI state).
+/** Recompute the whole crowd: separation, ring targets (with prowl for waiters),
+ *  and auto-release tokens from mobs that stopped attacking. Call ONCE per frame,
+ *  BEFORE the enemy update loop, with dt + the player position. */
+export function tickPack(dt: number, player: THREE.Vector3): void {
   const active: Member[] = [];
   for (const m of members.values()) {
     m.sepX = 0; m.sepZ = 0;
+    if (m.tokenCd > 0) m.tokenCd = Math.max(0, m.tokenCd - dt);
+    // Auto-release a token the instant its holder stops attacking (or goes
+    // inactive) — and start its re-acquire cooldown so a waiter gets the turn.
+    if (tokens.has(m.id) && !m.attacking()) {
+      tokens.delete(m.id);
+      m.tokenCd = P.TOKEN_REACQUIRE_CD;
+    }
     if (m.active()) active.push(m);
   }
   const n = active.length;
-  if (n < 2) return;
-  // Pairwise separation: each pair within SEPARATION_RADIUS pushes apart,
-  // weighted by how far INSIDE the radius they are (closer = stronger).
+
+  // Pairwise separation (O(n²) over a handful of active chasers).
   for (let i = 0; i < n; i++) {
     const a = active[i];
     for (let j = i + 1; j < n; j++) {
       const b = active[j];
-      const dx = a.pos.x - b.pos.x;
-      const dz = a.pos.z - b.pos.z;
+      const dx = a.pos.x - b.pos.x, dz = a.pos.z - b.pos.z;
       const d2 = dx * dx + dz * dz;
       if (d2 >= SEP_RADIUS_SQ || d2 < 1e-6) continue;
       const d = Math.sqrt(d2);
-      // Overlap fraction 0..1 → push magnitude.
-      const push = (1 - d / SEPARATION_RADIUS) * SEPARATION_FORCE;
+      const push = (1 - d / P.SEPARATION_RADIUS) * P.SEPARATION_FORCE;
       const ux = dx / d, uz = dz / d;
       a.sepX += ux * push; a.sepZ += uz * push;
       b.sepX -= ux * push; b.sepZ -= uz * push;
     }
   }
+
+  // Ring target per active member: a slot at strike distance along its bearing,
+  // + separation. WAITERS (no token) advance a slow prowl angle so they circle
+  // the player instead of standing; token-holders hold their bearing to strike.
+  for (const m of active) {
+    let bx = m.pos.x - player.x, bz = m.pos.z - player.z;
+    let bl = Math.hypot(bx, bz);
+    if (bl < 1e-3) { bx = m.sepX; bz = m.sepZ; bl = Math.hypot(bx, bz) || 1; }
+    let bearing = Math.atan2(bx, bz);
+    // Waiters (no token) aim a FIXED angle ahead along the ring → they prowl/
+    // circle the player. Fixed lead (not an accumulating phase) keeps the target
+    // at full ring radius each frame, so it orbits without spiralling inward.
+    if (!tokens.has(m.id) && !m.attacking()) bearing += m.orbitDir * P.ORBIT_LEAD;
+    const ring = m.reach + P.RING_RADIUS_BONUS;
+    m.tx = player.x + Math.sin(bearing) * ring + m.sepX;
+    m.tz = player.z + Math.cos(bearing) * ring + m.sepZ;
+  }
 }
 
 const tmp = new THREE.Vector3();
 
-/** The world point a chasing mob should move toward: a slot on the ring at its
- *  strike distance along its own bearing to the player, plus its separation
- *  push. Returns null if the mob isn't registered (caller falls back to the
- *  player's position). Writes into `out` and returns it. */
-export function packMoveTarget(id: string, player: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 | null {
+/** The world point a chasing mob should move toward (ring slot + separation +
+ *  prowl), as computed by the last tickPack. Null if unregistered (caller falls
+ *  back to the player's position). Writes into `out`. */
+export function packMoveTarget(id: string, _player: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 | null {
   const m = members.get(id);
   if (!m) return null;
-  // Bearing from the player to the mob (its approach angle); ring point sits at
-  // `reach` out along that bearing. If the mob is right on top of the player,
-  // fall back to its separation direction so it still fans out.
-  let bx = m.pos.x - player.x;
-  let bz = m.pos.z - player.z;
-  let bl = Math.hypot(bx, bz);
-  if (bl < 1e-3) { bx = m.sepX; bz = m.sepZ; bl = Math.hypot(bx, bz) || 1; }
-  const ring = m.reach + RING_RADIUS_BONUS;
-  out.set(
-    player.x + (bx / bl) * ring + m.sepX,
-    m.pos.y,
-    player.z + (bz / bl) * ring + m.sepZ,
-  );
+  out.set(m.tx, m.pos.y, m.tz);
   return out;
 }
 
-/** The separation-only push for a mob (for states that shouldn't ring up but
- *  still mustn't overlap — e.g. a kiter holding range). Writes into `out`. */
-export function packSeparation(id: string, out: THREE.Vector3): THREE.Vector3 {
+/** Try to claim an attack-commit token. Returns true if this mob already holds
+ *  one OR a slot is free and it's off its re-acquire cooldown. Call at the
+ *  moment of committing to an attack; the token auto-releases (tickPack) when
+ *  the mob leaves its attack states. */
+export function requestToken(id: string): boolean {
+  if (tokens.has(id)) return true;
   const m = members.get(id);
-  if (m) out.set(m.sepX, 0, m.sepZ); else out.set(0, 0, 0);
-  return out;
+  if (!m || m.tokenCd > 0) return false;
+  if (tokens.size >= P.ATTACK_TOKENS) return false;
+  tokens.add(id);
+  return true;
 }
 
-/** Reusable scratch the caller can borrow for packMoveTarget/packSeparation. */
+/** Reusable scratch the caller can borrow for packMoveTarget. */
 export function packScratch(): THREE.Vector3 { return tmp; }
 
+/** Diagnostic: how many attack tokens are held right now (≤ ATTACK_TOKENS). */
+export function packTokenCount(): number { return tokens.size; }
+
 /** Clear the whole pack (level teardown). */
-export function clearPack(): void { members.clear(); }
+export function clearPack(): void { members.clear(); tokens.clear(); }

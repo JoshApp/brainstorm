@@ -308,9 +308,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       const playerX = camera.position.x;
       const playerZ = camera.position.z;
       const sleepDist2 = 25 * 25;
-      // Pack coordinator: recompute encirclement/separation for the crowd once,
-      // before the per-enemy update reads its ring target (src/mobs/pack.ts).
-      tickPack();
+      // Pack coordinator: recompute encirclement/separation/tokens for the crowd
+      // once, before the per-enemy update reads its ring target + asks to attack
+      // (src/mobs/pack.ts).
+      tickPack(ctx.scaledDt, camera.position);
       for (const enemy of level.enemies) {
         // Dying enemies still tick (death animation drives the dissolve).
         if (!enemy.alive && !enemy.dying) continue;

@@ -362,7 +362,9 @@ export const CONFIG = {
       RING_RADIUS_BONUS: 0.15,        // m — ring sits at strikeRange + this (hold AT reach, just off the body)
       SEPARATION_RADIUS: 1.05,        // m — chasers within this push apart
       SEPARATION_FORCE: 1.4,          // strength of the apart-push (scaled by overlap, in m/s-ish)
-      ATTACK_TOKENS: 3,               // Phase 2 — max mobs allowed to COMMIT to an attack at once
+      ATTACK_TOKENS: 3,               // max mobs allowed to COMMIT to an attack at once (the rest prowl)
+      TOKEN_REACQUIRE_CD: 0.7,        // s — a mob that just attacked waits this long before it can grab a token again (so others get a turn)
+      ORBIT_LEAD: 0.45,               // rad — a WAITING chaser aims this far AHEAD along the ring (a fixed lead → it prowls/circles the player). 0 = hold still
     },
   },
 

@@ -44,7 +44,7 @@ import { spawnXpWisps } from '../effects/xp-wisps';
 import { createBlobShadow } from '../effects/blob-shadow';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
-import { joinPack, leavePack, packMoveTarget, packScratch } from './pack';
+import { joinPack, leavePack, packMoveTarget, packScratch, requestToken } from './pack';
 import type { Damageable } from '../combat/damageable';
 import { setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { createStunStars, type StunStars } from './stun-stars';
@@ -576,8 +576,9 @@ export function createEnemy(
   // piling on one point (src/mobs/pack.ts). `active` = actually in the fight
   // this frame; reach = strike range (the ring radius). Left on teardown via
   // disposeEnemy. The ring is for MELEE; ranged kiters keep their own standoff.
-  joinPack(entityId, container.position, spec.strikeRange, () =>
-    aliveLocal && (state === 'chasing' || state === 'winding' || state === 'striking' || state === 'recovering'));
+  joinPack(entityId, container.position, spec.strikeRange,
+    () => aliveLocal && (state === 'chasing' || state === 'winding' || state === 'striking' || state === 'recovering'),
+    () => state === 'winding' || state === 'striking' || state === 'recovering');
   // Capture spawn yaw as "home yaw" so idle scan / returning faces back the
   // way the level placed us. Set after initial faceWorld() in builder.ts —
   // for now, read whatever rotation is on the container right now.
@@ -821,6 +822,7 @@ export function createEnemy(
       clearEntityCombatStats(entityId);
       unregisterDamageSink(entityId);
       destroyEntity(entityId);
+      leavePack(entityId);   // killed mobs don't hit disposeEnemy — leave here
       playEnemyDeath(audioSizeFor(spec), container.position);
       // Drop table: each entry rolls independently. Multiple successful
       // drops are spread in a small arc around the death position so they
@@ -1770,8 +1772,13 @@ export function createEnemy(
         // first, so an acolyte (which the faster player can always stay
         // close to) fled forever and never cast. Now it shoots whenever
         // it can; the cooldown between shots is its window to reposition.
+        // Gate the commit on a pack ATTACK TOKEN — only ATTACK_TOKENS mobs may
+        // be mid-attack at once. A mob that wants to attack but can't get a
+        // token falls through to movement below: it holds the ring and prowls,
+        // waiting its turn (the pack takes turns lunging instead of all swinging
+        // at once). Bosses + lone mobs are unaffected (a token is always free).
         const ability = selectAbility(distance);
-        if (ability) {
+        if (ability && requestToken(entityId)) {
           currentAbility = ability;
           state = 'winding';
           phaseTimer = 0;
@@ -1806,11 +1813,11 @@ export function createEnemy(
             // would creep toward you between shots, which looked wrong for
             // a ranged enemy.
           } else if (distance > 0.1) {
-            // Melee/charger, or a kiter that's genuinely out of range — close
-            // the gap. Aim at the PACK target (a slot on the ring at strike
-            // distance along this mob's bearing, + separation) so a crowd
-            // surrounds the player instead of stacking on one point. Falls back
-            // to the player's position if unregistered.
+            // Melee/charger, or a kiter that's genuinely out of range — move to
+            // the PACK target: a slot on the ring at strike distance along this
+            // mob's bearing (+ separation), so a crowd surrounds the player
+            // instead of stacking on one point. Falls back to the player's
+            // position if unregistered.
             const ringTarget = packMoveTarget(entityId, playerPos, packScratch());
             const tx = ringTarget ? ringTarget.x : playerPos.x;
             const tz = ringTarget ? ringTarget.z : playerPos.z;
