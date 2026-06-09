@@ -26,7 +26,6 @@ import {
   pitMothModel, lasherModel,
 } from './enemy-models';
 import { mimicModel } from './mimic';
-import { burrowerModel } from './burrower';
 import { marrowSovereignModel } from './skeleton-boss';
 import { MARROW_CLIPS, MARROW_JOINTS } from '../anim/clips-marrow';
 
@@ -2426,12 +2425,64 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.16,
     recoverTime: 0.55,
     damageType: 'physical',
-    model: burrowerModel(),
-    baseEyeEmissive: 2.4,
+    // Worm-predator on the blob skeleton: a tapering trunk rising from the
+    // floor, capped by an oversized fanged maw with a glowing gullet. All skin
+    // hangs on the single 'core' joint (at height*0.5), so the 'lurch'/lash
+    // tilt lunges the whole creature at the player on a strike. No head zone —
+    // it's one mass. The burrow rise (enemy.ts) drives built.group.y directly,
+    // so it still works unchanged on a creature.
+    creature: {
+      id: 'burrower',
+      archetype: 'blob',
+      proportions: { height: 1.3, girth: 0.36 },
+      materials: {
+        // Pale corpse-flesh with a faint internal glow so it reads at low light.
+        body: { color: 0xa89880, roughness: 0.95, emissive: 0x2a1810, emissiveIntensity: 0.4, flatShading: 'auto', dissolvable: true },
+        // Darker leathery claws.
+        hide: { color: 0x382820, roughness: 0.95, flatShading: 'auto' },
+        // Wet red gullet — this is what the windup flare drives (eyeMaterialName).
+        throat: { color: 0x4a0a0c, emissive: 0xc4202a, emissiveIntensity: 1.6, roughness: 0.7 },
+        // Yellowed bone fangs.
+        fang: { color: 0xb8a87a, emissive: 0x2a1808, emissiveIntensity: 0.4, roughness: 0.6, flatShading: 'auto' },
+      },
+      // The maw has no eyes; route the eye-flare hook onto the gullet so the
+      // throat FLARES on windup instead of pinprick eyes.
+      eyes: { material: 'throat', emissive: 1.6 },
+      flash: { material: 'body' },
+      skin: [
+        // Trunk — three tapering jittered cylinders, widest at the floor.
+        { kind: 'cylinder', joint: 'core', pos: [0, -0.50, 0], radius: 0.32, radiusTop: 0.28, height: 0.30, segments: 10, jitter: 0.022, mat: 'body' },
+        { kind: 'cylinder', joint: 'core', pos: [0, -0.15, 0], radius: 0.28, radiusTop: 0.22, height: 0.40, segments: 10, jitter: 0.020, mat: 'body' },
+        { kind: 'cylinder', joint: 'core', pos: [0,  0.23, 0], radius: 0.22, radiusTop: 0.17, height: 0.34, segments: 10, jitter: 0.018, mat: 'body' },
+        // Maw — flattened bulb where the head would be, with an inset glowing gullet.
+        { kind: 'sphere', joint: 'core', pos: [0, 0.40, 0],     scale: [1.2, 0.8, 1.2], radius: 0.20, segments: [14, 10], jitter: 0.018, mat: 'body' },
+        { kind: 'sphere', joint: 'core', pos: [0, 0.40, -0.06], scale: [1.0, 0.6, 1.3], radius: 0.14, segments: [12, 8], mat: 'throat' },
+        // Fang ring — 8 cones around the maw rim, points outward like a closing trap.
+        ...Array.from({ length: 8 }, (_, i) => {
+          const a = (i / 8) * Math.PI * 2;
+          const r = 0.21;
+          return {
+            joint: 'core', kind: 'cone' as const,
+            pos: [Math.cos(a) * r, 0.40 + Math.sin(a) * r * 0.55, -0.04] as Vec3,
+            rot: [Math.PI / 2 + 0.05, 0, -a] as Vec3,
+            radius: 0.025, height: 0.10, segments: 6, mat: 'fang',
+          };
+        }),
+        // Forelimbs — stubby shoulders, thin arms, hooked claws. The lateral
+        // menace silhouette that reads as "predator," not "tube with teeth."
+        { kind: 'sphere',  joint: 'core', pos: [-0.26, 0.20, 0.04], radius: 0.07, segments: [8, 6], jitter: 0.010, mat: 'body' },
+        { kind: 'sphere',  joint: 'core', pos: [ 0.26, 0.20, 0.04], radius: 0.07, segments: [8, 6], jitter: 0.010, mat: 'body' },
+        { kind: 'capsule', joint: 'core', pos: [-0.32, 0.05, 0.08], rot: [-0.3, 0,  0.5], radius: 0.035, height: 0.16, jitter: 0.010, mat: 'body' },
+        { kind: 'capsule', joint: 'core', pos: [ 0.32, 0.05, 0.08], rot: [-0.3, 0, -0.5], radius: 0.035, height: 0.16, jitter: 0.010, mat: 'body' },
+        { kind: 'cone',    joint: 'core', pos: [-0.42, -0.09, 0.16], rot: [-0.6, 0,  0.5], radius: 0.025, height: 0.12, segments: 6, mat: 'hide' },
+        { kind: 'cone',    joint: 'core', pos: [ 0.42, -0.09, 0.16], rot: [-0.6, 0, -0.5], radius: 0.025, height: 0.12, segments: 6, mat: 'hide' },
+      ],
+    },
+    baseEyeEmissive: 1.6,
     collisionRadius: 0.32,
-    tiltPartName: 'rig',
+    tiltPartName: 'core',
     flashMaterialName: 'body',
-    eyeMaterialName: 'eyes',
+    eyeMaterialName: 'throat',
     presence: 'lurch',
     // Buried — emerge at 2m. The trigger distance is generous so
     // the player has half a beat to react; the emergeTime is short
