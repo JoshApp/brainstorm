@@ -797,16 +797,21 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.15,
     recoverTime: 0.80,
     damageType: 'magic',
-    // Robed caster — a hooded humanoid in a dark robe, green eyes, gripping a
-    // staff topped with a glowing orb. The orb material is named 'orb' so the
-    // 'chant' presence pulses it as it channels.
+    // Floating robed caster — a LEGLESS ghost-archetype form: the dark robe
+    // flares from the shoulders and draws down into a hovering wisp (no feet),
+    // so it drifts rather than walks. Deep cowl over a shadowed face with cold
+    // green eyes; a staff topped with a glowing orb in one hand, an ember
+    // gathering in the other. The robe is one smooth LATHE-revolved shroud (not
+    // stacked cones — the old build read as an upside-down pyramid). The orb
+    // material is named 'orb' so the 'chant' presence pulses it as it channels.
     creature: {
       id: 'acolyte',
-      archetype: 'biped',
-      proportions: { height: 1.55, girth: 0.16, armLength: 0.7, legLength: 0.6, headSize: 0.16 },
+      archetype: 'ghost',
+      proportions: { height: 1.7, girth: 0.2, armLength: 0.52, headSize: 0.15 },
       materials: {
         robe: { color: 0x1a1a22, roughness: 1, flatShading: 'auto', rim: { color: 0x66ffaa, power: 3, intensity: 0.4, darkReactive: 0.5 } },
-        flesh: { color: 0x12120f, roughness: 0.9, flatShading: 'auto' },
+        // Near-black shadow under the hood — the face we never quite see.
+        flesh: { color: 0x0a0a09, roughness: 1, flatShading: 'auto' },
         staff: { color: 0x2a2018, roughness: 0.9, flatShading: 'auto' },
         orb: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 2.2 },
         eyes: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 2.5 },
@@ -814,13 +819,37 @@ export const ENEMIES: Record<string, EnemySpec> = {
       eyes: { material: 'eyes', emissive: 2.5 },
       flash: { material: 'robe' },
       skin: [
-        ...humanoidBipedSkin({ body: 'robe', eye: 'eyes', limb: 'flesh', limbRadius: 0.045, headRadius: 0.16 }),
-        // Robe skirt + hood.
-        { kind: 'cone', joint: 'spine', radius: 0.32, height: 1.28, pos: [0, -0.64, 0], rot: [Math.PI, 0, 0], jitter: 0.02, mat: 'robe' },
-        { kind: 'cone', joint: 'head', radius: 0.24, height: 0.42, pos: [0, 0.13, 0.03], mat: 'robe' },
-        // Staff in the right fist — shaft + a glowing orb at the top.
-        { kind: 'cylinder', joint: 'handR', radius: 0.025, height: 1.2, pos: [0.07, -0.18, -0.05], mat: 'staff' },
-        { kind: 'sphere', joint: 'handR', radius: 0.09, pos: [0.07, 0.44, -0.05], mat: 'orb' },
+        // The robe: one revolved profile from collar → flared body → wisp tip
+        // hovering just above the floor. A flowing shroud, no hard cone seams.
+        { kind: 'lathe', joint: 'spine', profile: [
+            [0.075, 0.34],   // collar (under the neck)
+            [0.19, 0.16],    // shoulders
+            [0.24, -0.06],   // chest
+            [0.30, -0.34],   // flare
+            [0.31, -0.5],    // fullest
+            [0.22, -0.66],   // gather
+            [0.10, -0.80],   // wisp
+            [0.02, -0.93],   // wisp tip (≈0.09 off the floor → it floats)
+          ], jitter: 0.012, mat: 'robe' },
+        // Shoulders — soft robe lumps the sleeves hang from.
+        { kind: 'sphere', joint: 'shoulderL', radius: 0.1, jitter: 0.015, mat: 'robe' },
+        { kind: 'sphere', joint: 'shoulderR', radius: 0.1, jitter: 0.015, mat: 'robe' },
+        // Sleeved arms drifting down to the hands (ghost rig: no elbow).
+        { kind: 'bone', from: 'shoulderL', to: 'handL', radius: 0.06, radiusTop: 0.045, mat: 'robe' },
+        { kind: 'bone', from: 'shoulderR', to: 'handR', radius: 0.06, radiusTop: 0.045, mat: 'robe' },
+        // Shadowed face + a deep cowl drawn over it (rounded, not a peak).
+        { kind: 'sphere', joint: 'head', radius: 0.11, mat: 'flesh' },
+        { kind: 'sphere', joint: 'head', radius: 0.145, scale: [1.0, 1.05, 1.0], pos: [0, 0.04, 0.05], mat: 'robe' },
+        { kind: 'cone', joint: 'head', radius: 0.165, height: 0.22, pos: [0, 0.12, 0.04], rot: [0.18, 0, 0], jitter: 0.02, mat: 'robe' },
+        // Cold green eyes set deep in the cowl shadow.
+        { kind: 'sphere', joint: 'head', radius: 0.032, pos: [-0.05, -0.01, -0.092], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.032, pos: [0.05, -0.01, -0.092], mat: 'eyes' },
+        // Staff in the right hand — shaft standing up, glowing orb near the top
+        // (≈1.66m world, matching the ranged muzzle).
+        { kind: 'cylinder', joint: 'handR', radius: 0.022, height: 1.15, pos: [0.04, 0.34, -0.05], mat: 'staff' },
+        { kind: 'sphere', joint: 'handR', radius: 0.08, pos: [0.04, 0.92, -0.05], mat: 'orb' },
+        // An ember gathering in the open left hand — the spell, half-cast.
+        { kind: 'sphere', joint: 'handL', radius: 0.045, mat: 'orb' },
       ],
     },
     baseEyeEmissive: 2.5,
@@ -888,36 +917,67 @@ export const ENEMIES: Record<string, EnemySpec> = {
     creature: {
       id: 'wraith',
       archetype: 'ghost',
-      proportions: { height: 2.3, girth: 0.42, armLength: 1.0, headSize: 0.24 },
+      // Bigger + looming — it should fill the doorway and read as a set-piece.
+      proportions: { height: 2.85, girth: 0.52, armLength: 1.25, headSize: 0.3 },
       materials: {
-        robe: { color: 0x1a2a32, roughness: 1, flatShading: 'auto', transparent: true, opacity: 0.6,
-          dissolvable: true, rim: { color: 0x66ffaa, power: 2.2, intensity: 0.8, darkReactive: 0.75 } },
+        robe: { color: 0x1a2a32, roughness: 1, flatShading: 'auto', transparent: true, opacity: 0.62,
+          dissolvable: true, rim: { color: 0x66ffaa, power: 2.0, intensity: 0.95, darkReactive: 0.8 } },
         bone: { color: 0xaebcae, roughness: 0.8, flatShading: 'auto', transparent: true, opacity: 0.7 },
-        eyes: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 3.0 },
+        // The hollow — the lightless cavity under the hood, where the face
+        // should be. Nearly opaque so the glow reads AGAINST a true void.
+        void: { color: 0x05080a, roughness: 1, flatShading: 'auto', transparent: true, opacity: 0.92 },
+        eyes: { color: 0x8effc6, emissive: 0x8effc6, emissiveIntensity: 3.2 },
       },
-      eyes: { material: 'eyes', emissive: 3.0 },
+      eyes: { material: 'eyes', emissive: 3.2 },
       flash: { material: 'robe' },
       skin: [
-        // Robe torso (wide, irregular) tapering into a long wisp skirt below
-        // (cone flipped so its point trails toward the floor).
-        { kind: 'sphere', joint: 'spine', radius: 0.42, scale: [1.0, 1.15, 0.9], jitter: 0.05, mat: 'robe' },
-        { kind: 'cone', joint: 'spine', radius: 0.44, height: 1.25, pos: [0, -0.62, 0], rot: [Math.PI, 0, 0], jitter: 0.05, mat: 'robe' },
-        // Hooded head — skull + a peaked hood cowl; sunken green eyes.
-        { kind: 'sphere', joint: 'head', radius: 0.2, jitter: 0.03, mat: 'robe' },
-        { kind: 'cone', joint: 'head', radius: 0.28, height: 0.46, pos: [0, 0.14, 0.03], jitter: 0.04, mat: 'robe' },
-        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [-0.09, 0.0, -0.18], mat: 'eyes' },
-        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [0.09, 0.0, -0.18], mat: 'eyes' },
-        // Shoulders (robe lumps) + thin spectral bone arms ending in wisp claws.
-        { kind: 'sphere', joint: 'shoulderL', radius: 0.16, jitter: 0.04, mat: 'robe' },
-        { kind: 'sphere', joint: 'shoulderR', radius: 0.16, jitter: 0.04, mat: 'robe' },
-        { kind: 'bone', from: 'shoulderL', to: 'handL', radius: 0.05, mat: 'bone' },
-        { kind: 'bone', from: 'shoulderR', to: 'handR', radius: 0.05, mat: 'bone' },
-        { kind: 'cone', joint: 'handL', radius: 0.05, height: 0.2, rot: [2.8, 0, 0], mat: 'bone' },
-        { kind: 'cone', joint: 'handR', radius: 0.05, height: 0.2, rot: [2.8, 0, 0], mat: 'bone' },
+        // Billowing tattered shroud — one revolved profile that swells broad at
+        // the shoulders and trails into a long wisp near the floor. Ragged
+        // (jitter) so the edges read as torn cloth, not a clean bell.
+        { kind: 'lathe', joint: 'spine', profile: [
+            [0.12, 0.5],     // collar high on the chest
+            [0.34, 0.25],    // broad shoulders
+            [0.46, -0.05],   // billow
+            [0.52, -0.4],    // fullest — it looms wide
+            [0.46, -0.78],
+            [0.34, -1.08],   // taper
+            [0.18, -1.32],   // wisp
+            [0.03, -1.55],   // trailing tip (≈0.16 off the floor)
+          ], jitter: 0.06, mat: 'robe' },
+        // Torn trailing tatters off the lower shroud — three ragged streamers.
+        { kind: 'cone', joint: 'spine', radius: 0.08, height: 0.7, pos: [-0.22, -1.15, 0.05], rot: [Math.PI, 0, 0], jitter: 0.05, mat: 'robe' },
+        { kind: 'cone', joint: 'spine', radius: 0.07, height: 0.85, pos: [0.18, -1.25, -0.08], rot: [Math.PI, 0, 0], jitter: 0.05, mat: 'robe' },
+        { kind: 'cone', joint: 'spine', radius: 0.06, height: 0.6, pos: [0.05, -1.1, 0.18], rot: [Math.PI, 0, 0], jitter: 0.05, mat: 'robe' },
+        // Hunched shoulders rising into a deep peaked hood (grim, overhanging).
+        { kind: 'sphere', joint: 'shoulderL', radius: 0.2, jitter: 0.05, mat: 'robe' },
+        { kind: 'sphere', joint: 'shoulderR', radius: 0.2, jitter: 0.05, mat: 'robe' },
+        // The HOLLOW: a lightless cavity where a face should be, the hood drawn
+        // forward over it so the glow stares out of pure shadow.
+        { kind: 'sphere', joint: 'head', radius: 0.2, scale: [0.95, 1.05, 1.0], mat: 'void' },
+        { kind: 'sphere', joint: 'head', radius: 0.235, scale: [1.0, 1.1, 1.0], pos: [0, 0.06, 0.09], jitter: 0.04, mat: 'robe' },
+        { kind: 'cone', joint: 'head', radius: 0.27, height: 0.6, pos: [0, 0.26, 0.05], rot: [0.22, 0, 0], jitter: 0.05, mat: 'robe' },
+        // Two hollow eye-lights + a gaping, stretched screaming maw — and a
+        // pair of fainter glints deeper in the void (the "Hollow CHOIR": more
+        // than one thing is looking out).
+        { kind: 'sphere', joint: 'head', radius: 0.052, pos: [-0.085, 0.04, -0.16], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.052, pos: [0.085, 0.04, -0.16], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.07, scale: [0.55, 1.25, 0.5], pos: [0, -0.12, -0.14], mat: 'void' },
+        { kind: 'sphere', joint: 'head', radius: 0.022, pos: [-0.04, 0.1, -0.12], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.018, pos: [0.05, 0.0, -0.13], mat: 'eyes' },
+        // Long reaching spectral arms — thin bone, ending in elongated claws
+        // that splay forward like it's about to take you.
+        { kind: 'bone', from: 'shoulderL', to: 'handL', radius: 0.055, radiusTop: 0.04, mat: 'bone' },
+        { kind: 'bone', from: 'shoulderR', to: 'handR', radius: 0.055, radiusTop: 0.04, mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.03, height: 0.34, pos: [-0.05, -0.04, -0.04], rot: [2.5, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.03, height: 0.4, pos: [0, -0.05, -0.04], rot: [2.6, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.03, height: 0.34, pos: [0.05, -0.04, -0.04], rot: [2.5, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.03, height: 0.34, pos: [-0.05, -0.04, -0.04], rot: [2.5, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.03, height: 0.4, pos: [0, -0.05, -0.04], rot: [2.6, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.03, height: 0.34, pos: [0.05, -0.04, -0.04], rot: [2.5, 0, 0], mat: 'bone' },
       ],
     },
-    baseEyeEmissive: 3.0,
-    collisionRadius: 0.55,
+    baseEyeEmissive: 3.2,
+    collisionRadius: 0.62,  // bigger body — fills more of the doorway
     physicalArmor: 0,       // vulnerable to physical (your sword cuts it)
     magicArmor: 2,          // but resistant to magic
     tiltPartName: 'spine',
