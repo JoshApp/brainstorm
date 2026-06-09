@@ -929,7 +929,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
       materials: {
         stone: { color: 0x3a3530, roughness: 1, flatShading: 'auto' },
         dark: { color: 0x222019, roughness: 1, flatShading: 'auto' },   // recesses / joints
-        iron: { color: 0x16161a, roughness: 0.6, metalness: 0.35, flatShading: 'auto' }, // maul head
         eyes: { color: 0xff5530, emissive: 0xff5530, emissiveIntensity: 1.4 },
       },
       eyes: { material: 'eyes', emissive: 1.4 },
@@ -945,13 +944,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'box', joint: 'spine', size: [0.62, 0.5, 0.16], pos: [0, 0.08, -0.3], bevel: 0.04, mat: 'dark' },
         { kind: 'box', joint: 'pelvis', size: [0.7, 0.44, 0.5], bevel: 0.04, mat: 'stone' },
         { kind: 'cylinder', joint: 'neck', radius: 0.15, height: 0.16, mat: 'dark' },
-        // Head — craggy: skull block + heavy brow ridge + a shadowed jaw, eyes
-        // sunk under the brow.
+        // Head — a clean stone skull, glowing eyes on the front face (the brow
+        // + jaw blocks were occluding the eyes, so they're gone).
         { kind: 'box', joint: 'head', size: [0.44, 0.46, 0.46], bevel: 0.06, mat: 'stone' },
-        { kind: 'box', joint: 'head', size: [0.48, 0.13, 0.22], pos: [0, 0.13, -0.18], mat: 'stone' },
-        { kind: 'box', joint: 'head', size: [0.34, 0.14, 0.34], pos: [0, -0.24, 0.02], mat: 'dark' },
-        { kind: 'sphere', joint: 'head', radius: 0.052, pos: [-0.12, 0.0, -0.22], mat: 'eyes' },
-        { kind: 'sphere', joint: 'head', radius: 0.052, pos: [0.12, 0.0, -0.22], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.055, pos: [-0.12, 0.03, -0.24], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.055, pos: [0.12, 0.03, -0.24], mat: 'eyes' },
         // Shoulders — big angled pauldrons.
         { kind: 'box', joint: 'shoulderL', size: [0.38, 0.36, 0.44], rot: [0, 0, 0.18], bevel: 0.05, mat: 'stone' },
         { kind: 'box', joint: 'shoulderR', size: [0.38, 0.36, 0.44], rot: [0, 0, -0.18], bevel: 0.05, mat: 'stone' },
@@ -973,10 +970,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'box', joint: 'kneeR', size: [0.24, 0.2, 0.24], bevel: 0.04, mat: 'stone' },
         { kind: 'box', joint: 'footL', size: [0.26, 0.14, 0.4], pos: [0, 0.07, -0.06], bevel: 0.03, mat: 'stone' },
         { kind: 'box', joint: 'footR', size: [0.26, 0.14, 0.4], pos: [0, 0.07, -0.06], bevel: 0.03, mat: 'stone' },
-        // MAUL — a long haft in the right fist, a heavy iron head near the
-        // ground (the brute drags it). Rides handR, so it swings with the arm.
-        { kind: 'cylinder', joint: 'handR', radius: 0.05, height: 1.05, pos: [0.18, -0.42, -0.04], mat: 'dark' },
-        { kind: 'box', joint: 'handR', size: [0.28, 0.36, 0.28], pos: [0.18, -0.95, -0.04], bevel: 0.04, mat: 'iron' },
+        // (Maul removed for now — it sat awkwardly in the fist. The overhead
+        // smash still swings the arm; a weapon comes back once attachment is
+        // tuned.)
       ],
     },
     baseEyeEmissive: 1.2,

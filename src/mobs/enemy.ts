@@ -1877,6 +1877,11 @@ export function createEnemy(
     // Order matters: head crane + knockback, then gait (reads this frame's
     // net movement), then the presence overlay last so its idle bob stacks
     // on top of whatever the state animation set.
+    // Zero the vertical base BEFORE the overlays. They ADD their bob/dip to
+    // group.position.y each frame; without a clean base, any AI state that
+    // forgets to reset y lets the presence dip ACCUMULATE (~+0.4 m/s upward —
+    // the "floating away" bug). One reset here makes the overlays drift-proof.
+    built.group.position.y = 0;
     bodyAnim.tickHeadCrane(dt, distance, aggroed && state !== 'returning');
     bodyAnim.tickKnockback(dt, walkable);
     bodyAnim.tickLocomotion(dt);
