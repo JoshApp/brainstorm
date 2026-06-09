@@ -21,6 +21,7 @@ interface DrawData {
   lightsActive: number; lightsShadow: number;
   bySource: Record<string, number>;
   mergedDraws: number; mergeableNow: number; dynamicDraws: number;
+  looseBySource: Record<string, number>;
 }
 
 function flagsOf(token: string): { flags: Record<string, string>; label: string } {
@@ -74,7 +75,9 @@ async function main() {
     const srcEntries = Object.entries(last.bySource).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
     console.log(`\n  WHERE THE DRAWABLES GO (${rows[rows.length - 1].label}):`);
     console.log('  ' + srcEntries.map(([k, n]) => `${n} ${k}`).join('  ·  '));
-    console.log(`  MERGEABILITY: ${last.mergedDraws} merged · ${last.mergeableNow} loose-static (mergeable now) · ${last.dynamicDraws} dynamic\n`);
+    console.log(`  MERGEABILITY: ${last.mergedDraws} merged · ${last.mergeableNow} loose-static (mergeable now) · ${last.dynamicDraws} dynamic`);
+    const loose = Object.entries(last.looseBySource).sort((a, b) => b[1] - a[1]);
+    console.log(`  LOOSE-STATIC BY SOURCE: ${loose.map(([k, n]) => `${n} ${k}`).join('  ·  ')}\n`);
   });
 }
 

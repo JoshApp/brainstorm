@@ -47,6 +47,10 @@ export interface DrawReportData {
   /** Mergeability split: already merged/instanced · loose STATIC that could
    *  fold into the per-room merge (the achievable win) · dynamic (can't merge). */
   mergedDraws: number; mergeableNow: number; dynamicDraws: number;
+  /** Loose-static (decor/prop) drawables tallied by GENERATING SYSTEM (the
+   *  nearest ancestor's userData.dbgSource — surface-clutter / geometry-warp /
+   *  doorframe / authored / …). Answers "what ARE the unmerged props". */
+  looseBySource: Record<string, number>;
 }
 
 export function drawReportData(): DrawReportData | null {
@@ -78,6 +82,26 @@ export function drawReportData(): DrawReportData | null {
   let meshes = 0, sprites = 0, points = 0, shadowCasters = 0, transparent = 0, sceneTris = 0;
   let lightsActive = 0, lightsShadow = 0;
   let mergedDraws = 0, mergeableNow = 0, dynamicDraws = 0;
+  const looseBySource: Record<string, number> = {};
+  // Walk up to the nearest ancestor carrying a dbgSource tag (props set it on
+  // the group; the renderable meshes are untagged children) — coarsened to the
+  // generating-system prefix before the first separator.
+  const provenance = (o: THREE.Object3D): string => {
+    let n: THREE.Object3D | null = o;
+    while (n) {
+      const src = (n.userData?.dbgSource as string | undefined);
+      if (src) return src.split(/[ ·:@]/)[0] || src;
+      const dk = n.userData?.dbgKind as string | undefined;
+      if (dk && dk !== 'prop') return dk;
+      n = n.parent;
+    }
+    // No tag anywhere up the chain — fall back to a geometry/material hint so
+    // the "untagged" bucket is still identifiable.
+    const m = o as THREE.Mesh;
+    const v = m.geometry?.attributes?.position?.count ?? 0;
+    const name = m.name || (m.material as THREE.MeshStandardMaterial)?.color?.getHexString?.() || m.type;
+    return `untagged:${name}·${v}v`;
+  };
   const walk = (o: THREE.Object3D): void => {
     if (!o.visible) return;   // respect room-culling / hidden subtrees (matches the report)
     const lit = o as unknown as { isLight?: boolean; intensity?: number; castShadow?: boolean };
@@ -102,7 +126,11 @@ export function drawReportData(): DrawReportData | null {
       const merged = !isSprite && !isPoints && isMerged(m, cat);
       const dynamic = cat === 'enemy' || cat === 'destructible' || cat === 'viewmodel'
         || cat === 'sprite' || cat === 'particle' || cat === 'fx' || m.name === 'flame';
-      if (merged) mergedDraws++; else if (dynamic) dynamicDraws++; else mergeableNow++;
+      if (merged) mergedDraws++; else if (dynamic) dynamicDraws++; else {
+        mergeableNow++;
+        const src = provenance(o);
+        looseBySource[src] = (looseBySource[src] ?? 0) + 1;
+      }
     }
     for (const c of o.children) walk(c);
   };
@@ -117,7 +145,7 @@ export function drawReportData(): DrawReportData | null {
     geometries: info ? info.memory.geometries : 0,
     textures: info ? info.memory.textures : 0,
     lightsActive, lightsShadow, bySource,
-    mergedDraws, mergeableNow, dynamicDraws,
+    mergedDraws, mergeableNow, dynamicDraws, looseBySource,
   };
 }
 
