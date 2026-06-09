@@ -759,7 +759,6 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // trash, and named, so it reads as a set-piece, not a stray mob.
     isBoss: true,
     bossName: 'The Hollow Choir',
-    scale: 1.5,
     hp: 12,                 // boss HP — a real fight, gives the bar range
     moveSpeed: 1.5,         // slow — heavily telegraphed bossier feel
     attackDamage: 2,        // hits twice as hard as the trash mobs
@@ -769,13 +768,47 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.22,
     recoverTime: 0.75,
     damageType: 'magic',    // bypasses physical armor entirely
-    model: wraithModel(0x1a2a32, 0x66ffaa, 3.0),
+    // GHOST archetype — a hovering spectral form (no legs), tapering into a
+    // wisp. Float + sway come from 'spectral' presence; the reach from the
+    // telegraph (no clip bundle → telegraph pose stays on). Translucent teal
+    // robe with a darkReactive rim so it's drawn out of the black.
+    creature: {
+      id: 'wraith',
+      archetype: 'ghost',
+      proportions: { height: 2.3, girth: 0.42, armLength: 1.0, headSize: 0.24 },
+      materials: {
+        robe: { color: 0x1a2a32, roughness: 1, flatShading: 'auto', transparent: true, opacity: 0.6,
+          dissolvable: true, rim: { color: 0x66ffaa, power: 2.2, intensity: 0.8, darkReactive: 0.75 } },
+        bone: { color: 0xaebcae, roughness: 0.8, flatShading: 'auto', transparent: true, opacity: 0.7 },
+        eyes: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 3.0 },
+      },
+      eyes: { material: 'eyes', emissive: 3.0 },
+      flash: { material: 'robe' },
+      skin: [
+        // Robe torso (wide, irregular) tapering into a long wisp skirt below
+        // (cone flipped so its point trails toward the floor).
+        { kind: 'sphere', joint: 'spine', radius: 0.42, scale: [1.0, 1.15, 0.9], jitter: 0.05, mat: 'robe' },
+        { kind: 'cone', joint: 'spine', radius: 0.44, height: 1.25, pos: [0, -0.62, 0], rot: [Math.PI, 0, 0], jitter: 0.05, mat: 'robe' },
+        // Hooded head — skull + a peaked hood cowl; sunken green eyes.
+        { kind: 'sphere', joint: 'head', radius: 0.2, jitter: 0.03, mat: 'robe' },
+        { kind: 'cone', joint: 'head', radius: 0.28, height: 0.46, pos: [0, 0.14, 0.03], jitter: 0.04, mat: 'robe' },
+        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [-0.09, 0.0, -0.18], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [0.09, 0.0, -0.18], mat: 'eyes' },
+        // Shoulders (robe lumps) + thin spectral bone arms ending in wisp claws.
+        { kind: 'sphere', joint: 'shoulderL', radius: 0.16, jitter: 0.04, mat: 'robe' },
+        { kind: 'sphere', joint: 'shoulderR', radius: 0.16, jitter: 0.04, mat: 'robe' },
+        { kind: 'bone', from: 'shoulderL', to: 'handL', radius: 0.05, mat: 'bone' },
+        { kind: 'bone', from: 'shoulderR', to: 'handR', radius: 0.05, mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.05, height: 0.2, rot: [2.8, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.05, height: 0.2, rot: [2.8, 0, 0], mat: 'bone' },
+      ],
+    },
     baseEyeEmissive: 3.0,
     collisionRadius: 0.55,
     physicalArmor: 0,       // vulnerable to physical (your sword cuts it)
     magicArmor: 2,          // but resistant to magic
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'spine',
+    flashMaterialName: 'robe',
     eyeMaterialName: 'eyes',
     presence: 'spectral',       // continuous bob + sway so it never reads as a statue
     phasing: true,              // ghost — drifts through pillars/altars/chests
