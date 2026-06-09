@@ -73,14 +73,20 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
 
   // One render — primes shader compile for every material that just got added,
   // INCLUDING the shadow depth pass (shadowMap on + a caster + a receiver).
-  // Saved viewport + shadow flag restored after so the main loop is undisturbed.
+  // WebGL compiles a program the moment a material is rendered, regardless of
+  // render target — so we render into a throwaway offscreen target, NOT the
+  // canvas (setRenderTarget(null)). Rendering to the canvas flashed the whole
+  // roster clustered at the origin on the title screen for a frame.
+  // Saved target + shadow flag restored after so the main loop is undisturbed.
+  const warmTarget = new THREE.WebGLRenderTarget(8, 8);
   const prevTarget = mainRenderer.getRenderTarget();
   const prevShadow = mainRenderer.shadowMap.enabled;
   mainRenderer.shadowMap.enabled = true;
-  mainRenderer.setRenderTarget(null);
+  mainRenderer.setRenderTarget(warmTarget);
   mainRenderer.render(scratch, cam);
   mainRenderer.shadowMap.enabled = prevShadow;
   mainRenderer.setRenderTarget(prevTarget);
+  warmTarget.dispose();
   scratch.remove(shadowLight, floor);
   floor.geometry.dispose();
   (floor.material as THREE.Material).dispose();
