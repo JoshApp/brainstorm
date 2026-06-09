@@ -42,7 +42,7 @@ import { spawnXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
 import type { Damageable } from '../combat/damageable';
-import { deriveHurtbox, setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
+import { deriveHurtbox, applyZoneSpecs, setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
 
 // Audio buckets are content data (see content/enemies.ts). These thin
@@ -271,6 +271,12 @@ export function createEnemy(
   // unified swing resolver (next increment) tests against them. Specials/bosses
   // can mutate zones at runtime via setZoneEnabled (e.g. open a weak point).
   const hurtbox = deriveHurtbox(spec, built, aimHeightResolved);
+  // Spec-authored zones (weak points / armor) layer over the derived body+head.
+  applyZoneSpecs(hurtbox, spec.hurtZones, built);
+  /** Toggle stagger-window weak points (zones flagged openWhenStaggered). */
+  function setStaggerVuln(on: boolean): void {
+    for (const z of hurtbox.zones) if (z.openWhenStaggered) z.enabled = on;
+  }
 
   // Tag this container as an inspection subject — main.ts's inspect
   // block hides level siblings (walls/floor/torches/decor) but keeps
@@ -869,6 +875,7 @@ export function createEnemy(
     poiseLeft = poiseMax;          // reset — must be broken again
     poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
     aggroed = true;                // a staggered mob is very much aware of you
+    setStaggerVuln(true);          // expose any openWhenStaggered weak points
     // (Audio: the breaking hit's own hurt cry — via takeDamage — covers
     // the moment. A dedicated heavier "stagger" SFX is future polish.)
   }
@@ -1546,6 +1553,7 @@ export function createEnemy(
         built.group.position.y = 0;
         if (staggerTimer <= 0) {
           applyTilt(0);
+          setStaggerVuln(false);   // close the exposed weak point
           state = 'chasing';
           phaseTimer = 0;
         }

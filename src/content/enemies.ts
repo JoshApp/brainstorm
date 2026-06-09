@@ -2,6 +2,7 @@ import type { ModelSpec, Vec3 } from '../ecs/model-types';
 import type { DamageType } from '../combat/damage';
 import type { EnemyDeathSize, VocalArchetype } from '../audio/sfx';
 import type { Ability } from './abilities';
+import type { HurtZoneSpec } from '../combat/hurtbox';
 import type { Clip } from '../anim/types';
 import { creature } from './creature';
 import {
@@ -91,6 +92,12 @@ export interface EnemySpec {
    *  Independent of collisionRadius (movement) — a translucent walk-into
    *  boss can be small for movement yet large for hits. */
   hitRadius?: number;
+  /** Authored hurtbox zones (weak points / armor plates) layered over the
+   *  derived body+head. Coords are local metres (relative to a `follow` part
+   *  if named, else the enemy root). An openWhenStaggered zone is exposed only
+   *  during the poise-break free-hit window. See src/combat/hurtbox.ts +
+   *  docs/COMBAT-HIT-SYSTEM.md. */
+  hurtZones?: HurtZoneSpec[];
 
   // --- Animation hooks (part names within `model`) ---
   /** Part name to tilt forward during windup/strike. Usually 'body' or the root. */
@@ -901,6 +908,14 @@ export const ENEMIES: Record<string, EnemySpec> = {
     model: stoneguardModel(0x3a3530, 0xff5530),
     baseEyeEmissive: 1.2,
     collisionRadius: 0.55,       // wider footprint — harder to slip around
+    // Poise-break weak point: break the stone brute's guard (a heavy/Might
+    // hit) and a molten core is exposed at the chest for the free-hit window —
+    // a flat 2.4× + guaranteed crit. Drawn red in the HIT CONES debug overlay,
+    // off until staggered. Demonstrates the activate/deactivate zone system.
+    hurtZones: [
+      { id: 'core', shape: { kind: 'sphere', center: [0, 0.62, -0.32], radius: 0.3 },
+        role: 'weak', damageMul: 2.4, openWhenStaggered: true },
+    ],
     physicalArmor: 2,            // the defining stat — chips through trash weapons
     magicArmor: 0,
     tiltPartName: 'rig',

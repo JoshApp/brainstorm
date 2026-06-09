@@ -41,6 +41,10 @@ export interface HurtZone {
   /** If set, the zone tracks this animated bone's world transform; the shape's
    *  local coords become offsets from the bone. Null → static in the root frame. */
   follow: THREE.Object3D | null;
+  /** Runtime trigger: the enemy enables this zone only while STAGGERED (poise
+   *  broken) and disables it otherwise — an exposed weak point in the free-hit
+   *  window. Such zones start disabled. */
+  openWhenStaggered: boolean;
 }
 
 export interface Hurtbox {
@@ -73,6 +77,7 @@ export function deriveHurtbox(spec: EnemySpec, built: BuiltModel, aimHeight: num
       priority: 0,
       crit: false,
       follow: null,
+      openWhenStaggered: false,
     },
   ];
 
@@ -90,10 +95,67 @@ export function deriveHurtbox(spec: EnemySpec, built: BuiltModel, aimHeight: num
       priority: 10,
       crit: true,
       follow: headNode,
+      openWhenStaggered: false,
     });
   }
 
   return { root: built.group.parent ?? built.group, zones };
+}
+
+// ── Authoring surface — spec-declared zones (content layer) ───────────────────
+// A spec adds/overrides zones declaratively (weak points, armor plates) without
+// touching the resolver. Coords are local metres (relative to `follow` if named,
+// else the enemy root). See docs/COMBAT-HIT-SYSTEM.md.
+
+export interface HurtZoneSpec {
+  id: string;
+  shape:
+    | { kind: 'capsule'; a: [number, number, number]; b: [number, number, number]; radius: number }
+    | { kind: 'sphere'; center: [number, number, number]; radius: number };
+  /** Default 'weak'. */
+  role?: ZoneRole;
+  /** Default by role: weak 2, armor 0.25, head 1.5, body 1. */
+  damageMul?: number;
+  /** Default true, unless openWhenStaggered (then starts disabled). */
+  enabled?: boolean;
+  /** Default by role: weak 20, armor 5, head 10, body 0. Highest wins. */
+  priority?: number;
+  /** Default true for weak/head. */
+  crit?: boolean;
+  /** Part/slot name to track (the zone rides that animated bone). */
+  follow?: string;
+  /** Enable only while the enemy is staggered (an exposed window). */
+  openWhenStaggered?: boolean;
+}
+
+const ROLE_DEFAULT_MUL: Record<ZoneRole, number> = { body: 1, head: 1.5, weak: 2, armor: 0.25 };
+const ROLE_DEFAULT_PRIORITY: Record<ZoneRole, number> = { body: 0, head: 10, weak: 20, armor: 5 };
+
+/** Merge spec-declared zones into a derived hurtbox: same id replaces, new id
+ *  appends. Resolves `follow` part names against the built model. */
+export function applyZoneSpecs(hb: Hurtbox, specs: HurtZoneSpec[] | undefined, built: BuiltModel): void {
+  if (!specs) return;
+  for (const sp of specs) {
+    const role = sp.role ?? 'weak';
+    const shape: ZoneShape = sp.shape.kind === 'capsule'
+      ? { kind: 'capsule', a: new THREE.Vector3(...sp.shape.a), b: new THREE.Vector3(...sp.shape.b), radius: sp.shape.radius }
+      : { kind: 'sphere', center: new THREE.Vector3(...sp.shape.center), radius: sp.shape.radius };
+    const follow = sp.follow ? (built.parts.get(sp.follow) ?? built.slots.get(sp.follow) ?? null) : null;
+    const open = sp.openWhenStaggered ?? false;
+    const zone: HurtZone = {
+      id: sp.id,
+      shape,
+      role,
+      damageMul: sp.damageMul ?? ROLE_DEFAULT_MUL[role],
+      enabled: sp.enabled ?? !open,
+      priority: sp.priority ?? ROLE_DEFAULT_PRIORITY[role],
+      crit: sp.crit ?? (role === 'weak' || role === 'head'),
+      follow,
+      openWhenStaggered: open,
+    };
+    const idx = hb.zones.findIndex((z) => z.id === sp.id);
+    if (idx >= 0) hb.zones[idx] = zone; else hb.zones.push(zone);
+  }
 }
 
 // ── World-space resolution ────────────────────────────────────────────────────
