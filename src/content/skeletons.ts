@@ -21,8 +21,8 @@ function defaultsFor(a: Archetype, height: number): Proportions {
       };
     case 'quadruped':
       return {
-        height, girth: height * 0.30, headSize: height * 0.26,
-        armLength: height * 0.9, legLength: height * 0.9, neckLength: height * 0.2, hunch: 0,
+        height, girth: height * 0.7, headSize: height * 0.85,
+        armLength: 0, legLength: height * 0.9, neckLength: height * 0.4, hunch: 0,
       };
     case 'blob':
       return {
@@ -87,16 +87,38 @@ function bipedSkeleton(p: Proportions): SkeletonDef {
   };
 }
 
-// ── Quadruped (stub — fleshed out when we migrate the rat/hound) ─────────────
+// ── Quadruped (HORIZONTAL body, four legs) ───────────────────────────────────
+// root(floor) → spine(centre) → chest(front) / hips(back); chest → neck → head;
+// chest → frontL/R → footF*; hips → hindL/R → footH*. The body runs front
+// (−Z) to back (+Z). `height` = body height off the ground, `legLength` = leg
+// drop. The trot gait lives in enemy-animation.ts (front/hind leg slots).
 function quadrupedSkeleton(p: Proportions): SkeletonDef {
-  const backY = p.legLength;
+  const backY = p.legLength;                 // body rides at leg height; feet at y=0
+  const half = p.height * 1.0;               // body half-length (front↔back)
+  const trackX = p.girth * 0.8;              // leg lateral spread
+  const fz = -half * 0.65, hz = half * 0.65; // front / hind leg Z
   const j: JointDef[] = [
     { name: 'root', abs: [0, 0, 0] },
     { name: 'spine', parent: 'root', abs: [0, backY, 0] },
-    { name: 'neck', parent: 'spine', abs: [0, backY + p.neckLength, -p.girth] },
-    { name: 'head', parent: 'neck', abs: [0, backY + p.neckLength, -p.girth - p.headSize] },
+    { name: 'chest', parent: 'spine', abs: [0, backY, fz] },
+    { name: 'hips', parent: 'spine', abs: [0, backY, hz] },
+    { name: 'neck', parent: 'chest', abs: [0, backY + p.height * 0.35, fz - p.height * 0.4] },
+    { name: 'head', parent: 'neck', abs: [0, backY + p.height * 0.45, -half - p.headSize * 0.6] },
+    { name: 'frontL', parent: 'chest', abs: [-trackX, backY, fz] },
+    { name: 'frontR', parent: 'chest', abs: [trackX, backY, fz] },
+    { name: 'footFL', parent: 'frontL', abs: [-trackX, 0, fz] },
+    { name: 'footFR', parent: 'frontR', abs: [trackX, 0, fz] },
+    { name: 'hindL', parent: 'hips', abs: [-trackX, backY, hz] },
+    { name: 'hindR', parent: 'hips', abs: [trackX, backY, hz] },
+    { name: 'footHL', parent: 'hindL', abs: [-trackX, 0, hz] },
+    { name: 'footHR', parent: 'hindR', abs: [trackX, 0, hz] },
   ];
-  return { joints: j, root: 'root', spine: ['spine', 'neck'], head: 'head', limbs: [] };
+  return {
+    joints: j, root: 'root',
+    spine: ['chest', 'spine', 'hips'],   // horizontal body capsule (front→back)
+    head: 'head',
+    limbs: [['frontL', 'footFL'], ['frontR', 'footFR'], ['hindL', 'footHL'], ['hindR', 'footHR']],
+  };
 }
 
 // ── Blob (headless; a core, no limbs) ────────────────────────────────────────

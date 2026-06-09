@@ -38,6 +38,16 @@ export function createBodyAnimator(
   const hipBaseRX = hipR ? hipR.rotation.x : 0;
   const neck = built.slots.get('neck');
   const neckBaseX = neck ? neck.rotation.x : 0;
+  // Quadruped legs (trot gait). Present only on quadruped creatures; the gait
+  // swings diagonal pairs. Base rotations captured so we offset, not overwrite.
+  const frontL = built.slots.get('frontL');
+  const frontR = built.slots.get('frontR');
+  const hindL = built.slots.get('hindL');
+  const hindR = built.slots.get('hindR');
+  const fLB = frontL ? frontL.rotation.x : 0;
+  const fRB = frontR ? frontR.rotation.x : 0;
+  const hLB = hindL ? hindL.rotation.x : 0;
+  const hRB = hindR ? hindR.rotation.x : 0;
 
   // Presence — continuous overlay applied each frame on top of the per-state
   // animation. Per-instance phase so two of the same mob drift out of sync.
@@ -94,7 +104,8 @@ export function createBodyAnimator(
   }
 
   function tickLocomotion(dt: number) {
-    if (hipL || hipR) {
+    const quad = !!(frontL || frontR || hindL || hindR);
+    if (hipL || hipR || quad) {
       const movedX = container.position.x - prevX;
       const movedZ = container.position.z - prevZ;
       const moved = Math.hypot(movedX, movedZ);
@@ -106,10 +117,21 @@ export function createBodyAnimator(
       const targetAmp = moved > 0.0005 ? GAIT_SWING : 0;
       gaitAmp += (targetAmp - gaitAmp) * Math.min(1, dt * 9);
       const swing = Math.sin(stridePhase) * gaitAmp;
-      if (hipL) hipL.rotation.x = hipBaseLX + swing;
-      if (hipR) hipR.rotation.x = hipBaseRX - swing;
-      // Subtle vertical bob synced to the stride (up on each footfall).
-      built.group.position.y += Math.abs(Math.sin(stridePhase)) * gaitAmp * 0.05;
+      if (quad) {
+        // Trot — diagonal pairs swing together (FL+HR, FR+HL). Shorter throw
+        // than a biped stride; a quick double-frequency bob.
+        const s = swing * 0.7;
+        if (frontL) frontL.rotation.x = fLB + s;
+        if (hindR) hindR.rotation.x = hRB + s;
+        if (frontR) frontR.rotation.x = fRB - s;
+        if (hindL) hindL.rotation.x = hLB - s;
+        built.group.position.y += Math.abs(Math.sin(stridePhase * 2)) * gaitAmp * 0.02;
+      } else {
+        if (hipL) hipL.rotation.x = hipBaseLX + swing;
+        if (hipR) hipR.rotation.x = hipBaseRX - swing;
+        // Subtle vertical bob synced to the stride (up on each footfall).
+        built.group.position.y += Math.abs(Math.sin(stridePhase)) * gaitAmp * 0.05;
+      }
     }
     prevX = container.position.x;
     prevZ = container.position.z;

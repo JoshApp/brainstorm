@@ -107,8 +107,10 @@ function autoHurtbox(
     const followName = skel.spine[Math.floor(skel.spine.length / 2)] ?? skel.root;
     const fAbs = abs.get(followName) ?? [0, 0, 0];
     const bottom = local(skel.spine[0], fAbs);
-    const topName = skel.head ?? skel.spine[skel.spine.length - 1];
-    const top = local(topName, fAbs);
+    // Span the spine chain's ends — works for a VERTICAL body (biped pelvis→neck,
+    // ghost tail→head) AND a HORIZONTAL one (quadruped chest→hips). The head is
+    // its own sphere, so the body capsule needn't reach it.
+    const top = local(skel.spine[skel.spine.length - 1], fAbs);
     zones.push(followZone('body', 'body', {
       kind: 'capsule',
       a: new THREE.Vector3(...bottom),

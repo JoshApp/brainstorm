@@ -585,7 +585,38 @@ export const ENEMIES: Record<string, EnemySpec> = {
     windupTime: 0.70,    // even the trash mob has a clear tell now
     strikeTime: 0.12,
     recoverTime: 0.65,
-    model: quadrupedRatModel(0x2a1a14, 0xff2a0a, 2.0),
+    // First QUADRUPED creature: a low horizontal body on four legs (trot gait),
+    // snout + ears, a long tapering tail, red eyes. Bite uses the telegraph
+    // (body lean) — no clip bundle for quadrupeds yet.
+    creature: {
+      id: 'rat',
+      archetype: 'quadruped',
+      proportions: { height: 0.3, girth: 0.16, legLength: 0.15, headSize: 0.12, neckLength: 0.08 },
+      materials: {
+        fur: { color: 0x2a1a14, roughness: 1, flatShading: 'auto' },
+        eyes: { color: 0xff2a0a, emissive: 0xff2a0a, emissiveIntensity: 2.0 },
+      },
+      eyes: { material: 'eyes', emissive: 2.0 },
+      flash: { material: 'fur' },
+      skin: [
+        // Horizontal body (capsule laid along Z), mangy (jitter).
+        { kind: 'capsule', joint: 'spine', radius: 0.16, height: 0.34, rot: [1.5708, 0, 0], jitter: 0.02, mat: 'fur' },
+        // Head: skull + a tapering snout forward (−Z), two ears up, red eyes.
+        { kind: 'sphere', joint: 'head', radius: 0.13, jitter: 0.02, mat: 'fur' },
+        { kind: 'cone', joint: 'head', radius: 0.075, height: 0.18, pos: [0, -0.02, -0.12], rot: [1.5708, 0, 0], mat: 'fur' },
+        { kind: 'cone', joint: 'head', radius: 0.045, height: 0.12, pos: [-0.08, 0.11, 0.02], mat: 'fur' },
+        { kind: 'cone', joint: 'head', radius: 0.045, height: 0.12, pos: [0.08, 0.11, 0.02], mat: 'fur' },
+        { kind: 'sphere', joint: 'head', radius: 0.03, pos: [-0.08, 0.04, -0.07], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.03, pos: [0.08, 0.04, -0.07], mat: 'eyes' },
+        // Four thin legs (bones span hip→foot; the trot gait swings them).
+        { kind: 'bone', from: 'frontL', to: 'footFL', radius: 0.03, mat: 'fur' },
+        { kind: 'bone', from: 'frontR', to: 'footFR', radius: 0.03, mat: 'fur' },
+        { kind: 'bone', from: 'hindL', to: 'footHL', radius: 0.03, mat: 'fur' },
+        { kind: 'bone', from: 'hindR', to: 'footHR', radius: 0.03, mat: 'fur' },
+        // Long tapering tail trailing back (+Z) off the hips.
+        { kind: 'cone', joint: 'hips', radius: 0.045, height: 0.5, pos: [0, 0, 0.32], rot: [-1.5708, 0, 0], mat: 'fur' },
+      ],
+    },
     baseEyeEmissive: 2.0,
     collisionRadius: 0.18,
     // Player walks RIGHT THROUGH rats — they're foot-high scurriers
@@ -593,8 +624,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // pathfind / take damage / deal damage normally; just no
     // movement collision against the player.
     noPlayerCollision: true,
-    tiltPartName: 'rig',     // 'rig' slot — pre-rotated body rotates correctly when this tilts
-    flashMaterialName: 'body',
+    tiltPartName: 'spine',
+    flashMaterialName: 'fur',
     eyeMaterialName: 'eyes',
     presence: 'twitch',      // fast yaw micro-shudder + scurry bob
     // Rats hear / smell better than they see. Bad eyes, wide nose. Easy
