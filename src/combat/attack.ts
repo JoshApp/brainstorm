@@ -24,6 +24,7 @@ import { consumeChargedAmount, consumeChargedPerfect, getChargeProgress, setChar
 import { spendStaminaSoft, gainStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { flashStaminaBar } from '../ui/stamina-bar';
+import { showHitCones } from './combat-debug';
 import type { AttackDirection } from '../player/viewmodel';
 
 /** Bill a melee swing's stamina — called once per ACTUAL swing from the
@@ -426,6 +427,12 @@ export function createCombatSystem(
     const destrReach = reach * 1.15;
     const destrCone = Math.max(-1, cosConeHalf - 0.08);   // gently widen the half-angle
     const destrMax = Math.min(maxTargets, 2);
+    // Combat debug: draw the live cones (no-op unless the setting is on).
+    showHitCones(
+      camera,
+      reach, Math.acos(Math.max(-1, Math.min(1, cosConeHalf))),
+      destrReach, Math.acos(Math.max(-1, Math.min(1, destrCone))),
+    );
     const targets = enemyHits.length > 0
       ? enemyHits
       : pickTargets(getDestructibles(), camera, forwardDir, forwardLenXZ, destrReach, destrCone, destrMax, losCheck);

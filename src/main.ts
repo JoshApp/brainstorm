@@ -39,6 +39,7 @@ import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { batchStaticFixtures } from './level/static-merge';
+import { initCombatDebug, tickCombatDebug } from './combat/combat-debug';
 import { LEVELS } from './level/specs';
 import type { LevelSpec } from './level/types';
 import type { ModelSpec } from './ecs/model-types';
@@ -221,6 +222,7 @@ scene.add(camera); // required for the sword (camera child) to render
 // reads in world space and depth-tests correctly against geometry. Persistent
 // across levels — one buffer, dynamic updates.
 initBladeTrail(scene);
+initCombatDebug(scene);
 initFogWalkthrough(camera); // soulslike fog-gate forced walk drives this camera
 // Register camera with the death sequence so the death tick can
 // pitch + drop it during the collapse animation.
@@ -811,6 +813,7 @@ function tick() {
   tickPerfOverlay(performance.now());
   // Adaptive resolution — self-gates (no-op unless enabled on a real phone).
   tickAdaptiveResolution(performance.now());
+  tickCombatDebug(realDt);
   // Programmatic perf probe (window.__perf for the headless perf runner).
   // DEV-only — the literal-false guard dead-code-eliminates it from prod
   // (and tickPerfProbe is itself a no-op in prod, belt-and-suspenders).

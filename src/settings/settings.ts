@@ -49,6 +49,11 @@ export interface Settings {
    *  iteration happens (deploy → look on phone → describe rotation by
    *  colour → edit spec). */
   debugHandAxes: boolean;
+  /** Combat debug — draw the actual melee hit cones (the horizontal arc + reach
+   *  the swing tests against) as a translucent fan each swing, so you can SEE
+   *  exactly what a swing covers. Separate fans for the enemy cone and the wider
+   *  destructible cone. Off by default. */
+  debugHitCones: boolean;
   /** Profiler tools — the per-system CPU/GPU profiler HUD, the session
    *  recorder, and spector.js draw-call capture, plus their on-screen
    *  toolbar (so it's usable on a phone without function keys). A safe
@@ -147,6 +152,7 @@ const DEFAULTS: Settings = {
   debugEyeAdapt: false,
   debugBossReadout: false,
   debugHandAxes: false,
+  debugHitCones: false,
   profilerTools: false,
   controlScheme: 'default',
   // Flick by default — the most directional/immediate dodge; switch to

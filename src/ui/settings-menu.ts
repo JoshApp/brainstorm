@@ -457,6 +457,12 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().debugHandAxes,
       set: (v) => updateSettings({ debugHandAxes: v }),
     }),
+    makeToggle({
+      label: 'HIT CONES',
+      description: 'Draw the actual melee hit cones on each swing — a red fan for the enemy reach + arc, a wider cyan fan for the destructible (vase) cone. Shows exactly what a swing covers, lingering ~0.6s so the 100ms strike is visible.',
+      get: () => getSettings().debugHitCones,
+      set: (v) => updateSettings({ debugHitCones: v }),
+    }),
   ],
 
   run: () => buildRunTab(),
