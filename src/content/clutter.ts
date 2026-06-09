@@ -17,6 +17,13 @@ import type { ModelSpec } from '../ecs/model-types';
 //     LEVEL, not chest-high.
 //   - Avoid additive / glowing materials. The wall cracks have a
 //     faint emissive only to hint at the moonlight beyond.
+//   - SHADOWS (ModelSpec.shadow, see ShadowRole): casting is the
+//     expensive half (every caster re-renders into the lamp's 6
+//     cube faces each frame), so small clutter sets `shadow: 'none'`
+//     — it's too small to read a cast anyway. Medium debris that
+//     should sit in the light without paying the cast uses
+//     `'receive'`. Only STRUCTURAL mass (buttress / fallen pillar /
+//     ruined column / large mound) earns `'both'`.
 
 // ── Floor debris ──────────────────────────────────────────────────
 
@@ -24,6 +31,7 @@ import type { ModelSpec } from '../ecs/model-types';
 // per-instance variety despite the shared mesh.
 export const RUBBLE_CHUNK: ModelSpec = {
   id: 'rubble-chunk',
+  shadow: 'none',            // small stone scatter — too small to read a cast
   materials: {
     stone: { color: 0x3a342c, roughness: 1.0, flatShading: true },
   },
@@ -38,6 +46,7 @@ export const RUBBLE_CHUNK: ModelSpec = {
 // flatter than rubble (the bones lie sideways).
 export const BONE_PILE: ModelSpec = {
   id: 'bone-pile',
+  shadow: 'none',
   materials: {
     bone: { color: 0x7a7060, roughness: 0.9, flatShading: true },
   },
@@ -54,6 +63,7 @@ export const BONE_PILE: ModelSpec = {
 // debris.
 export const SAND_DRIFT: ModelSpec = {
   id: 'sand-drift',
+  shadow: 'none',            // flat floor decal
   materials: {},
   parts: [
     {
@@ -74,6 +84,7 @@ export const SAND_DRIFT: ModelSpec = {
 // surface — no two corners look identical.
 export const CORNER_MOUND: ModelSpec = {
   id: 'corner-mound',
+  shadow: 'receive',         // debris pile — sits in the light, doesn't cast
   materials: {
     silt: { color: 0x382d22, roughness: 1.0, flatShading: true },
   },
@@ -104,6 +115,7 @@ export const CORNER_MOUND: ModelSpec = {
 // placed against a north wall, the pile leans south into the room).
 export const WALL_PILE: ModelSpec = {
   id: 'wall-pile',
+  shadow: 'receive',
   materials: {
     pile: { color: 0x2c2418, roughness: 1.0, flatShading: true },
   },
@@ -119,6 +131,7 @@ export const WALL_PILE: ModelSpec = {
 // large rooms. Reads as "the corner collapsed in on itself."
 export const CORNER_MOUND_LARGE: ModelSpec = {
   id: 'corner-mound-large',
+  shadow: 'both',            // big rubble mound — structural enough to cast
   materials: {
     silt: { color: 0x342a20, roughness: 1.0, flatShading: true },
   },
@@ -143,6 +156,7 @@ export const CORNER_MOUND_LARGE: ModelSpec = {
 // scatter pass picks between the three sizes per corner.
 export const CORNER_MOUND_SMALL: ModelSpec = {
   id: 'corner-mound-small',
+  shadow: 'none',
   materials: {
     silt: { color: 0x3a2f24, roughness: 1.0, flatShading: true },
   },
@@ -176,6 +190,7 @@ export const CORNER_MOUND_SMALL: ModelSpec = {
 // Sticks out ~0.55m from its wall, runs 0.85m wide along the wall.
 export const WALL_BUTTRESS: ModelSpec = {
   id: 'wall-buttress',
+  shadow: 'both',            // floor-to-ceiling mass — anchors the room
   materials: {
     stone: { color: 0x2a241c, roughness: 1.0, metalness: 0.0, flatShading: true },
   },
@@ -206,6 +221,7 @@ export const WALL_BUTTRESS: ModelSpec = {
 // "broken stone" feel rather than a clean cylinder.
 export const FALLEN_PILLAR_SEGMENT: ModelSpec = {
   id: 'fallen-pillar-segment',
+  shadow: 'both',
   materials: {
     stone: { color: 0x2c2620, roughness: 1.0, flatShading: true },
   },
@@ -247,6 +263,7 @@ export const FALLEN_PILLAR_SEGMENT: ModelSpec = {
 // — it's flat enough that the player can step on it.
 export const IRON_BARS: ModelSpec = {
   id: 'iron-bars',
+  shadow: 'none',            // floor-level grate
   materials: {
     iron: { color: 0x1a1612, roughness: 0.85, metalness: 0.4, flatShading: true },
   },
@@ -266,6 +283,7 @@ export const IRON_BARS: ModelSpec = {
 // but doesn't block view.
 export const RUINED_COLUMN: ModelSpec = {
   id: 'ruined-column',
+  shadow: 'both',            // chest-high stone stub — structural
   materials: {
     stone: { color: 0x2e2820, roughness: 1.0, flatShading: true },
   },
@@ -285,6 +303,7 @@ export const RUINED_COLUMN: ModelSpec = {
 // door. Two long pieces + a couple of shorter chips.
 export const BROKEN_PLANKS: ModelSpec = {
   id: 'broken-planks',
+  shadow: 'none',
   materials: {
     wood: { color: 0x2a1d12, roughness: 1.0, flatShading: true },
   },
@@ -299,6 +318,7 @@ export const BROKEN_PLANKS: ModelSpec = {
 // remains of something burned where it stood.
 export const ASH_MOUND: ModelSpec = {
   id: 'ash-mound',
+  shadow: 'none',
   materials: {
     ash: { color: 0x18120e, roughness: 1.0, flatShading: true },
   },
@@ -319,6 +339,7 @@ export const ASH_MOUND: ModelSpec = {
 // pottery / tile / glass even without textures.
 export const STONE_SHARDS: ModelSpec = {
   id: 'stone-shards',
+  shadow: 'none',
   materials: {
     shard: { color: 0x504438, roughness: 1.0, flatShading: true },
   },
@@ -336,6 +357,7 @@ export const STONE_SHARDS: ModelSpec = {
 // Lifted slightly to avoid z-fighting with the floor mesh.
 export const FLOOR_CRACK: ModelSpec = {
   id: 'floor-crack',
+  shadow: 'none',            // floor decal
   materials: {
     crack: { color: 0x000000, emissive: 0x100804, emissiveIntensity: 0.6, roughness: 1.0 },
   },
@@ -355,6 +377,7 @@ export const FLOOR_CRACK: ModelSpec = {
 // charred edge.
 export const WALL_SCORCH: ModelSpec = {
   id: 'wall-scorch',
+  shadow: 'none',            // wall decal
   materials: {},
   parts: [
     {
@@ -373,6 +396,7 @@ export const WALL_SCORCH: ModelSpec = {
 // of a wall surface. Gives the wall plane some 3D break.
 export const WALL_GOUGE: ModelSpec = {
   id: 'wall-gouge',
+  shadow: 'none',
   materials: {
     chip: { color: 0x14100c, roughness: 1.0, flatShading: true },
   },
@@ -400,6 +424,7 @@ export const WALL_GOUGE: ModelSpec = {
 // anything around them.
 export const LURKER: ModelSpec = {
   id: 'lurker',
+  shadow: 'none',            // atmospheric silhouette — it IS a shadow; don't throw one
   materials: {
     // Almost-black with the faintest cool tint so it reads as cloth
     // and not pure black geometry. Roughness 1.0 so it never catches

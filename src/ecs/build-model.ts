@@ -31,8 +31,24 @@ export interface BuiltModel {
   light?: THREE.PointLight;
 }
 
+// Model-level shadow default for the build currently in flight. buildModel is
+// fully synchronous (no await) and never re-entrant across models, so a module
+// scalar is safe and saves threading the default through every buildPart /
+// makeMesh / buildCsg / decal call. A per-part castShadow/receiveShadow still
+// overrides it (`part.castShadow ?? curShadow.cast`).
+let curShadow: { cast: boolean; receive: boolean } = { cast: true, receive: true };
+function shadowFlags(role?: ModelSpec['shadow']): { cast: boolean; receive: boolean } {
+  switch (role) {
+    case 'cast':    return { cast: true,  receive: false };
+    case 'receive': return { cast: false, receive: true };
+    case 'none':    return { cast: false, receive: false };
+    default:        return { cast: true,  receive: true };   // 'both' / undefined
+  }
+}
+
 export function buildModel(spec: ModelSpec): BuiltModel {
   const flatShadingDefault = false;   // PS1 is the only style; smooth shading
+  curShadow = shadowFlags(spec.shadow);
 
   // Fresh material instances per-model (so hit-flash on one ghoul doesn't
   // tint another, etc.).
@@ -545,8 +561,8 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
       const mesh = new THREE.Mesh(geo, mat);
       // Cutout decals can cast a real (texture-shaped) shadow; blended/additive
       // ones never do (a transparent quad would cast a solid black rectangle).
-      mesh.castShadow = cutout ? (part.castShadow ?? true) : false;
-      mesh.receiveShadow = part.receiveShadow ?? cutout;
+      mesh.castShadow = cutout ? (part.castShadow ?? curShadow.cast) : false;
+      mesh.receiveShadow = part.receiveShadow ?? (cutout && curShadow.receive);
       return mesh;
     }
     case 'bone':
@@ -559,8 +575,8 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
 
 function makeMesh(geo: THREE.BufferGeometry, mat: THREE.Material, part: PartSpec): THREE.Mesh {
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow = part.castShadow ?? true;
-  mesh.receiveShadow = part.receiveShadow ?? true;
+  mesh.castShadow = part.castShadow ?? curShadow.cast;
+  mesh.receiveShadow = part.receiveShadow ?? curShadow.receive;
   return mesh;
 }
 
@@ -616,8 +632,8 @@ function buildCsg(
   result.material = materials.get(part.mat)!;
   geoA.dispose();
   geoB.dispose();
-  result.castShadow = part.castShadow ?? true;
-  result.receiveShadow = part.receiveShadow ?? true;
+  result.castShadow = part.castShadow ?? curShadow.cast;
+  result.receiveShadow = part.receiveShadow ?? curShadow.receive;
   return result;
 }
 

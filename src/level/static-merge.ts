@@ -29,16 +29,21 @@ export function batchStaticFixtures(level: LiveLevel): void {
     ...level.spec.corridors.map((c) => ({ id: c.id, cx: c.rect.x, cz: c.rect.z, hw: c.rect.w / 2, hd: c.rect.d / 2 })),
   ];
 
-  // group key = roomId | materialSignature → { material, items }
-  const groups = new Map<string, { mat: THREE.Material; items: Array<{ mesh: THREE.Mesh; geo: THREE.BufferGeometry }> }>();
+  // group key = roomId | materialSignature | shadowFlags → { material, items }.
+  // Shadow flags are part of the key so a prop that opts OUT of casting (small
+  // clutter, ShadowRole 'none'/'receive') doesn't get forced back into the
+  // shadow pass by sharing a merged mesh with a caster — and the merged mesh
+  // inherits the group's cast/receive intent instead of a hardcoded true.
+  const groups = new Map<string, { mat: THREE.Material; cast: boolean; receive: boolean; items: Array<{ mesh: THREE.Mesh; geo: THREE.BufferGeometry }> }>();
 
   const collect = (mesh: THREE.Mesh, roomId: string) => {
     const mat = mesh.material as THREE.Material;
-    const key = `${roomId}|${matSig(mat)}`;
+    const cast = mesh.castShadow, receive = mesh.receiveShadow;
+    const key = `${roomId}|${matSig(mat)}|${cast ? 'c' : ''}${receive ? 'r' : ''}`;
     const geo = (mesh.geometry as THREE.BufferGeometry).clone();
     geo.applyMatrix4(mesh.matrixWorld);
     let g = groups.get(key);
-    if (!g) { g = { mat, items: [] }; groups.set(key, g); }
+    if (!g) { g = { mat, cast, receive, items: [] }; groups.set(key, g); }
     g.items.push({ mesh, geo });
   };
 
@@ -65,7 +70,7 @@ export function batchStaticFixtures(level: LiveLevel): void {
   });
 
   // Merge each group; on success, swap the originals out for one merged mesh.
-  for (const [key, { mat, items }] of groups) {
+  for (const [key, { mat, cast, receive, items }] of groups) {
     if (items.length < 2) {            // nothing to save — drop the clones, keep originals
       for (const it of items) it.geo.dispose();
       continue;
@@ -79,8 +84,8 @@ export function batchStaticFixtures(level: LiveLevel): void {
     mesh.name = 'fixtures-merged';
     mesh.userData.dbgKind = 'fixtures';
     mesh.userData.dbgSource = `fixtures · ${roomId}`;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    mesh.castShadow = cast;          // inherit the group's intent, not a forced true
+    mesh.receiveShadow = receive;
     level.root.add(mesh);
     // Remove the now-batched originals (their geometry is pooled/shared — do
     // NOT dispose it; just detach the mesh).

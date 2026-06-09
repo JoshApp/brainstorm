@@ -292,9 +292,29 @@ export interface LightSpec {
 
 // --- The model spec itself ---------------------------------------------
 
+/**
+ * Shadow participation for a whole model — the prop-author intent knob. The
+ * player's lamp is a PointLight, so a CASTER re-renders into the shadow cube's
+ * 6 faces every frame; casting is the expensive half, receiving is cheap. Pick
+ * by what the prop IS:
+ *   - 'both'    cast + receive. Structural mass that anchors a room — pillars,
+ *               buttresses, fallen columns, large rubble mounds, statues.
+ *               (Default — unchanged from before this knob existed.)
+ *   - 'receive' catch shadows but throw none. Medium floor clutter that should
+ *               sit IN the lighting without paying the cast — small mounds,
+ *               vases, breakables near the player.
+ *   - 'cast'    throw a shadow, don't receive (rare).
+ *   - 'none'    neither. Tiny floor/wall clutter + decals too small to read a
+ *               cast — bones, shards, sand, ash, cracks, scorch, planks, grates.
+ * A per-part `castShadow`/`receiveShadow` still overrides this for one mesh.
+ */
+export type ShadowRole = 'both' | 'cast' | 'receive' | 'none';
+
 export interface ModelSpec {
   id: string;
   parts: PartSpec[];
+  /** Whole-model shadow intent (see ShadowRole). Default 'both'. */
+  shadow?: ShadowRole;
   /**
    * Opt into the "lego-figure" merge (see mergeRigidSegments): after build,
    * collapse the unnamed non-sprite meshes under each joint into one mesh per
