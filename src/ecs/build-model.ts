@@ -158,8 +158,14 @@ export function buildModel(spec: ModelSpec): BuiltModel {
  * A ~27-mesh skeleton collapses to ~8-10 meshes — and the same drop in shadow
  * casters — with zero animation change. Call right after buildModel; opt in via
  * ModelSpec.mergeRigid so only rigged content (enemies) takes it.
+ *
+ * `ignoreNames`: also fold NAMED parts in. Use only for content that never
+ * animates or looks up parts by name after build — e.g. a ground PICKUP, whose
+ * drop model is often a weapon viewmodel with named parts (for the held swing)
+ * that are dead weight once it's a static, whole-group-bobbing pickup.
  */
-export function mergeRigidSegments(built: BuiltModel): void {
+export function mergeRigidSegments(built: BuiltModel, opts?: { ignoreNames?: boolean }): void {
+  const ignoreNames = opts?.ignoreNames ?? false;
   const nodes: THREE.Object3D[] = [];
   built.group.traverse((o) => nodes.push(o));   // snapshot — we mutate children below
   for (const node of nodes) {
@@ -167,7 +173,7 @@ export function mergeRigidSegments(built: BuiltModel): void {
     for (const child of node.children) {
       const m = child as THREE.Mesh;
       const isSprite = (m as unknown as { isSprite?: boolean }).isSprite === true;
-      if (!m.isMesh || isSprite || m.name || !m.geometry) continue;
+      if (!m.isMesh || isSprite || (!ignoreNames && m.name) || !m.geometry) continue;
       const mat = m.material as THREE.Material;
       const arr = byMat.get(mat);
       if (arr) arr.push(m); else byMat.set(mat, [m]);

@@ -150,8 +150,18 @@ export function createPickup(
   // bobs/rotates as a group (no per-part animation, no name lookups), so this
   // is pure draw-call savings — important when a pack of loot litters the floor,
   // since every ground item's draws are live CPU cost (the thing that heats the
-  // chip into a throttle). Flames/sprites are preserved by the merge.
-  mergeRigidSegments(built);
+  // chip into a throttle). ignoreNames: the drop model is usually the weapon's
+  // VIEWMODEL, whose parts are named for swing animation — but a pickup never
+  // animates parts, so collapse by material regardless of name. Flames/sprites
+  // are still preserved.
+  mergeRigidSegments(built, { ignoreNames: true });
+  // A dropped item must not cast shadows. The drop model defaults every part to
+  // castShadow=true (buildModel), so a litter of loot re-renders into the lamp's
+  // 6-face cube map every frame for nothing — measured at ~5-6 draws PER ITEM,
+  // doubling a pile's cost. The loot glow comes from the emissive disc + bloom,
+  // not a cast shadow, so dropping it is free visually. (receiveShadow stays:
+  // it's cheap and lets the item sit in the lamp's light naturally.)
+  built.group.traverse((o) => { (o as THREE.Mesh).castShadow = false; });
   pickupGroup.add(built.group);
 
   // Fountain state. itemX/Y/Z are LOCAL to pickupGroup (which sits at
