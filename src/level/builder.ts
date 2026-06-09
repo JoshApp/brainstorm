@@ -584,9 +584,13 @@ export function buildLevel(
   // Tag a static decoration group so the per-room static-merge pass
   // (batchStaticFixtures) folds it into one mesh per material — the single
   // biggest draw-call win on procgen floors, where loose `model`/`altar` decor
-  // is otherwise one draw per prop part. Flames are skipped (they animate); the
-  // CALLER excludes props whose materials animate (proximity glow / mood-tint)
-  // or that carry a light. Pillars are already merged separately above.
+  // is otherwise one draw per prop part. Flames are skipped (they animate via a
+  // mesh that must stay live). Everything else — including an archway's
+  // proximity-GLOW parts — is safe to fold: the merge is per-room/corridor and
+  // groups by material instance, so one corridor's archway collapses to a single
+  // mesh that STILL carries that archway's own glow material (registerArchwayGlow
+  // animates the material, which the merged mesh shares — so it still pulses by
+  // the player's distance to THAT gate). Pillars are merged separately above.
   const markMergeStatic = (obj: THREE.Object3D): void => {
     obj.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -639,7 +643,9 @@ export function buildLevel(
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
       if (prop.scale && prop.scale !== 1) built.group.scale.setScalar(prop.scale);
       // Proximity glow (archways): hand the 'glow' material to the threshold
-      // system, which raises its emissive as the player nears.
+      // system, which raises its emissive as the player nears. The material
+      // instance is per-archway and survives the static merge, so the gate still
+      // pulses correctly after its geometry is batched.
       if (prop.proximityGlow) {
         const gm = built.materials.get('glow');
         if (gm) registerArchwayGlow(gm as THREE.MeshStandardMaterial, prop.x, prop.z);
@@ -665,17 +671,14 @@ export function buildLevel(
       }
       root.add(built.group);
       // Fold the prop's STATIC meshes into the per-room static-merge pass — the
-      // biggest draw-call win on a floor (candles/braziers were the bulk of the
-      // unmerged decor). The merge already protects what must stay live: it skips
-      // meshes named 'flame' (the flicker) and all sprites (additive tongues),
-      // and the prop's LIGHT is a separately-registered pool source, untouched by
-      // a mesh merge. Mood-tint only sets colour once at spawn (not per frame),
-      // so a tinted static body bakes fine. ONLY proximity-glow stays out — its
-      // non-flame 'glow' mesh raises emissive per frame as the player nears, so
-      // it genuinely can't be baked into a shared mesh.
-      if (!prop.proximityGlow) {
-        markMergeStatic(built.group);
-      }
+      // biggest draw-call win on a floor. The merge skips meshes named 'flame'
+      // (the flicker) and all sprites; the prop's LIGHT is a separate pool
+      // source, untouched. Mood-tint sets colour once at spawn so a tinted body
+      // bakes fine. Archways/doorframes (proximityGlow) ARE folded now — their
+      // glow material is per-gate and the merge is per-corridor, so each gate
+      // collapses to ~one mesh that still pulses. They were the single biggest
+      // bucket of loose draws down a long hall.
+      markMergeStatic(built.group);
       // Optional collision shape(s) — used by structural model
       // props (buttresses, ruined columns, archway columns). For
       // AABB the half-extents rotate with the prop's rotY; we
