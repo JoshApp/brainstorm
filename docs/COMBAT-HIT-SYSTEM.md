@@ -147,6 +147,14 @@ touches, the **highest-priority enabled** zone wins and supplies the
 predicate — today they use a *different* test, which is a real source of "tapped
 and it did the wrong thing."
 
+**Props go through the same path.** Destructibles (vases, crates, cobwebs) are
+already ECS entities implementing `Damageable`; they now carry a `hurtbox` too —
+a single forgiving body sphere (`propHurtbox`) — so the swing resolver tests
+them exactly like enemies (`swingHitTargets` over any `Damageable`). There is no
+separate destructible hit-test; a prop is just a target with one `body` zone and
+no head/weak. `hurtbox` is part of the `Damageable` contract, so everything a
+swing can hit presents zones.
+
 ### Forgiveness — precise but tunable
 
 Author volumes **precise** (≈ the visual). One global `HITBOX_INFLATION` knob in

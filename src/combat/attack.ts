@@ -133,24 +133,11 @@ const RANGED_CONE_COS = Math.cos(0.12);  // ~7° half-angle = 14° total cone
 // Preallocated swept-segment endpoints (max samples) — no per-swing alloc.
 const swingEnds: THREE.Vector3[] = Array.from({ length: 8 }, () => new THREE.Vector3());
 const _swingAim = new THREE.Vector3();
-const _swingSeg = new THREE.Vector3();
-const _swingPt = new THREE.Vector3();
 
 /** Rotate `v` around world-up by `a` radians (keeps pitch). */
 function rotateAroundY(v: THREE.Vector3, a: number, out: THREE.Vector3): void {
   const c = Math.cos(a), s = Math.sin(a);
   out.set(v.x * c + v.z * s, v.y, -v.x * s + v.z * c);
-}
-
-/** Distance² from point p to segment a→b. */
-function pointSegDistSq(p: THREE.Vector3, ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
-  _swingSeg.set(bx - ax, by - ay, bz - az);
-  const segLen2 = _swingSeg.lengthSq() || 1e-6;
-  let t = ((p.x - ax) * _swingSeg.x + (p.y - ay) * _swingSeg.y + (p.z - az) * _swingSeg.z) / segLen2;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
-  const cx = ax + _swingSeg.x * t, cy = ay + _swingSeg.y * t, cz = az + _swingSeg.z * t;
-  const dx = p.x - cx, dy = p.y - cy, dz = p.z - cz;
-  return dx * dx + dy * dy + dz * dz;
 }
 
 /** Shape the swing capsule from the swing's direction + the resolved cone width.
@@ -169,69 +156,25 @@ function swingShape(dir: AttackDirection, reach: number, baseHalfAngle: number, 
   return { reach, radius: r, sweepArc, sweepBias, rise };
 }
 
-/** Swept-capsule hit test. origin = camera; aimDir = unit 3D look dir. Sweeps
- *  aimDir around world-up across the shape's arc, sampling N capsules, returns
- *  the nearest in-volume targets (deduped) up to maxTargets. */
-function swingHitTest<T extends Damageable>(
+// ── Swing resolver — swept weapon capsule vs. locational hurtbox ZONES ────────
+// ONE hit path for everything Damageable (docs/COMBAT-HIT-SYSTEM.md): the weapon
+// capsule is swept across the swing arc, and each sample is tested against the
+// target's hurtbox zones (enemy body/head/weak/armor; a prop's single body
+// sphere). It reports WHICH zone it caught — driving the damage/crit multiplier.
+// Enemies and destructibles run through the same function; props just present a
+// body zone with no head/weak, so they resolve cleanly with no special-casing.
+const _worldZones: WorldZone[] = [];
+
+export interface ZoneTargetHit<T extends Damageable = Damageable> { target: T; zoneHit: ZoneHit; d2: number }
+
+function swingHitTargets<T extends Damageable>(
   targets: readonly T[],
   origin: THREE.Vector3,
   aimDir: THREE.Vector3,
   shape: SwingShape,
   maxTargets: number,
   hasLOS?: (cx: number, cz: number, tx: number, tz: number) => boolean,
-): T[] {
-  const samples = Math.max(1, Math.min(swingEnds.length, CONFIG.SWORD_HITBOX_SWEEP_SAMPLES));
-  const start = shape.sweepBias - shape.sweepArc / 2;
-  const stepA = samples > 1 ? shape.sweepArc / (samples - 1) : 0;
-  for (let s = 0; s < samples; s++) {
-    rotateAroundY(aimDir, samples > 1 ? start + stepA * s : shape.sweepBias, _swingAim);
-    swingEnds[s].set(
-      origin.x + _swingAim.x * shape.reach,
-      origin.y + _swingAim.y * shape.reach + shape.rise,
-      origin.z + _swingAim.z * shape.reach,
-    );
-  }
-  const hits: Array<{ t: T; d2: number }> = [];
-  for (const t of targets) {
-    if (!t.alive) continue;
-    const hr = (t.hitRadius ?? 0) + shape.radius;
-    _swingPt.set(t.position.x, t.position.y + t.aimHeight, t.position.z);
-    const ox = _swingPt.x - origin.x, oy = _swingPt.y - origin.y, oz = _swingPt.z - origin.z;
-    const distOrigin2 = ox * ox + oy * oy + oz * oz;
-    let best = Infinity;
-    for (let s = 0; s < samples; s++) {
-      const e = swingEnds[s];
-      const d2 = pointSegDistSq(_swingPt, origin.x, origin.y, origin.z, e.x, e.y, e.z);
-      if (d2 < best) best = d2;
-    }
-    if (best > hr * hr) continue;
-    const pbR = POINT_BLANK_RADIUS + (t.hitRadius ?? 0);
-    const pointBlank = distOrigin2 < pbR * pbR;
-    if (!pointBlank && hasLOS && !hasLOS(origin.x, origin.z, t.position.x, t.position.z)) continue;
-    hits.push({ t, d2: distOrigin2 });
-  }
-  hits.sort((a, b) => a.d2 - b.d2);
-  return hits.slice(0, maxTargets).map((h) => h.t);
-}
-
-// ── Enemy swing resolver — swept weapon capsule vs. locational hurtbox ZONES ──
-// The enemy path of the hit system (docs/COMBAT-HIT-SYSTEM.md). Same swept-arc
-// geometry as swingHitTest, but each weapon sample is tested against the enemy's
-// resolved hurtbox zones (body capsule + head sphere + weak/armor), so a hit
-// reports WHICH zone it caught — driving the damage/crit multiplier. Destructibles
-// stay on swingHitTest above (they have no zones).
-const _worldZones: WorldZone[] = [];
-
-export interface EnemyZoneHit { enemy: Enemy; zoneHit: ZoneHit; d2: number }
-
-function swingHitEnemies(
-  enemies: readonly Enemy[],
-  origin: THREE.Vector3,
-  aimDir: THREE.Vector3,
-  shape: SwingShape,
-  maxTargets: number,
-  hasLOS?: (cx: number, cz: number, tx: number, tz: number) => boolean,
-): EnemyZoneHit[] {
+): ZoneTargetHit<T>[] {
   const samples = Math.max(1, Math.min(swingEnds.length, CONFIG.SWORD_HITBOX_SWEEP_SAMPLES));
   const start = shape.sweepBias - shape.sweepArc / 2;
   const stepA = samples > 1 ? shape.sweepArc / (samples - 1) : 0;
@@ -244,10 +187,10 @@ function swingHitEnemies(
     );
   }
   const wr = shape.radius;
-  const hits: EnemyZoneHit[] = [];
-  for (const e of enemies) {
-    if (!e.alive) continue;
-    const count = resolveWorldZones(e.hurtbox, _worldZones);
+  const hits: ZoneTargetHit<T>[] = [];
+  for (const t of targets) {
+    if (!t.alive) continue;
+    const count = resolveWorldZones(t.hurtbox, _worldZones);
     if (count === 0) continue;
     // Best zone across all swept samples — highest priority wins (head over body).
     let best: ZoneHit | null = null;
@@ -256,15 +199,15 @@ function swingHitEnemies(
       if (zh && (!best || zh.zone.priority > best.zone.priority)) best = zh;
     }
     if (!best) continue;
-    const dx = e.position.x - origin.x;
-    const dy = (e.position.y + e.aimHeight) - origin.y;
-    const dz = e.position.z - origin.z;
+    const dx = t.position.x - origin.x;
+    const dy = (t.position.y + t.aimHeight) - origin.y;
+    const dz = t.position.z - origin.z;
     const distOrigin2 = dx * dx + dy * dy + dz * dz;
     // Point-blank (overlapping body) bypasses LOS — nothing can be between you.
-    const pbR = POINT_BLANK_RADIUS + e.collisionRadius;
+    const pbR = POINT_BLANK_RADIUS + t.collisionRadius;
     const pointBlank = (dx * dx + dz * dz) < pbR * pbR;
-    if (!pointBlank && hasLOS && !hasLOS(origin.x, origin.z, e.position.x, e.position.z)) continue;
-    hits.push({ enemy: e, zoneHit: best, d2: distOrigin2 });
+    if (!pointBlank && hasLOS && !hasLOS(origin.x, origin.z, t.position.x, t.position.z)) continue;
+    hits.push({ target: t, zoneHit: best, d2: distOrigin2 });
   }
   hits.sort((a, b) => a.d2 - b.d2);
   return hits.slice(0, maxTargets);
@@ -578,20 +521,22 @@ export function createCombatSystem(
       : undefined;
     // Enemies take priority; props only fall through when no enemy was in the
     // volume (a vase shouldn't soak a swing meant for the mob behind it).
-    const enemyHits = swingHitEnemies(getEnemies(), camera.position, forwardDir, enemyShape, maxTargets, losCheck);
-    // Destructibles keep the simple point/capsule test (no zones) — a fatter,
-    // slightly longer capsule so smashing pots stays forgiving. Capped at 2.
+    const enemyHits = swingHitTargets(getEnemies(), camera.position, forwardDir, enemyShape, maxTargets, losCheck);
+    // Destructibles run the SAME resolver — they just present a single forgiving
+    // body zone. A fatter, slightly longer capsule keeps smashing pots generous;
+    // capped at 2. Only tested when no enemy was hit (a vase shouldn't soak a
+    // swing meant for the mob behind it).
     const destrShape = swingShape(currentSwingDirection, reach * 1.15, baseHalfAngle, CONFIG.SWORD_HITBOX_RADIUS + 0.15, moveRise);
     const destrMax = Math.min(maxTargets, 2);
+    const hitList: ZoneTargetHit[] = enemyHits.length > 0
+      ? enemyHits
+      : swingHitTargets(getDestructibles(), camera.position, forwardDir, destrShape, destrMax, losCheck);
     // Combat debug: draw the live capsules + hurtbox zones (no-op unless on),
-    // and flash the exact zone(s) this swing connected with.
+    // and flash + echo the exact zone(s) this swing connected with.
     showHitCones(camera, forwardDir, enemyShape, destrShape);
-    if (enemyHits.length > 0) markSwingHits(enemyHits.map((h) => ({ hurtbox: h.enemy.hurtbox, zone: h.zoneHit.zone })));
-    // Unified target list: enemies (carrying the zone they presented) take
-    // priority; destructibles fall through with no zone.
-    const targets: Array<{ target: Damageable; zone?: ZoneHit }> = enemyHits.length > 0
-      ? enemyHits.map((h) => ({ target: h.enemy, zone: h.zoneHit }))
-      : swingHitTest(getDestructibles(), camera.position, forwardDir, destrShape, destrMax, losCheck).map((t) => ({ target: t }));
+    if (hitList.length > 0) markSwingHits(hitList.map((h) => ({ hurtbox: h.target.hurtbox, zone: h.zoneHit.zone })));
+    const targets: Array<{ target: Damageable; zone?: ZoneHit }> =
+      hitList.map((h) => ({ target: h.target, zone: h.zoneHit }));
     if (targets.length === 0) {
       // No enemy / vase in cone — check if we whiffed INTO A WALL. The
       // dungeon acknowledges it: a short metallic tink, a brief haptic,
@@ -812,7 +757,7 @@ export function createCombatSystem(
       ? (cx: number, cz: number, tx: number, tz: number) => walkable.hasLineOfSight(cx, cz, tx, tz)
       : undefined;
     const shape = swingShape(null, stats.reach, stats.coneHalfAngle, CONFIG.MELEE_HITBOX_RADIUS + CONFIG.MELEE_HITBOX_INFLATION);
-    return swingHitEnemies(getEnemies(), camera.position, forwardDir, shape, 1, losCheck).length > 0;
+    return swingHitTargets(getEnemies(), camera.position, forwardDir, shape, 1, losCheck).length > 0;
   }
 
   return { tick, hasEnemyInRange };

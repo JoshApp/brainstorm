@@ -20,6 +20,7 @@ import {
   type DamageEvent,
 } from '../combat/damage';
 import type { Damageable } from '../combat/damageable';
+import { propHurtbox } from '../combat/hurtbox';
 import { gameRngInt, gameRngChance, buildRng, buildRngInt } from '../engine/rng';
 
 // Destructible props — a parallel hit-test target list for the
@@ -110,6 +111,10 @@ export function spawnVase(
     // body, not the floor.
     aimHeight: 0.25,
     collisionRadius: 0.18,
+    // One body sphere — forgiving (props are clutter, not a fight). Same hit
+    // path as enemies. Local to the (uniformly-scaled) group, so it tracks the
+    // vase's scale jitter.
+    hurtbox: propHurtbox(group, 0.28, 0.34),
     hitFeedback: 'light',
     hitMaterial: 'ceramic',
     alive: true,
@@ -208,6 +213,9 @@ export function spawnCobweb(
     position: group.position,
     aimHeight: 1.1,            // chest-height curtain — aim the cone at the web
     collisionRadius: Math.max(0.9, widthM / 2 + 0.1),  // covers the whole opening for aim-assist
+    // A big body sphere spanning the doorway curtain (centre on the X axis, so
+    // the group's X-only stretch doesn't distort it). Same hit path as enemies.
+    hurtbox: propHurtbox(group, 1.0, Math.max(0.9, widthM / 2 + 0.1)),
     hitFeedback: 'light',
     alive: true,
     takeDamage(event: DamageEvent) {

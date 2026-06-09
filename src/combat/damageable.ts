@@ -2,6 +2,7 @@ import type * as THREE from 'three';
 import type { EntityId } from '../ecs/types';
 import type { DamageEvent } from './damage';
 import type { HitMaterial } from '../audio/sfx';
+import type { Hurtbox } from './hurtbox';
 
 // Shared contract for anything a swing can connect with. Enemies and
 // destructible props both implement it, so the combat system runs ONE
@@ -33,6 +34,10 @@ export interface Damageable {
    *  reach`. Default 0 (a point target — current behaviour for normal
    *  mobs + props, which are small enough that the centre point is fine). */
   hitRadius?: number;
+  /** Locational hit volumes the swing resolver tests against — at minimum a
+   *  body zone. Enemies derive body+head (+authored weak/armor); props build a
+   *  single body zone. ONE hit path for everything. See src/combat/hurtbox.ts. */
+  hurtbox: Hurtbox;
   hitFeedback: HitFeedback;
   /** Surface material for the per-hit sound voice — see sfx.playSurfaceHit.
    *  Optional and meaningful only on LIGHT targets (props): a vase rings as

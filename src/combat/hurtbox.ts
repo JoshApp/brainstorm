@@ -102,6 +102,27 @@ export function deriveHurtbox(spec: EnemySpec, built: BuiltModel, aimHeight: num
   return { root: built.group.parent ?? built.group, zones };
 }
 
+/** A single-zone body hurtbox for a PROP (vase, crate, cobweb) — no head, no
+ *  AI, just a sphere the swing resolver tests like any other body. `root` is the
+ *  prop's group; `centerY`/`radius` are local metres. Keeps props on the exact
+ *  same hit path as enemies (one resolver, no special-casing). */
+export function propHurtbox(root: THREE.Object3D, centerY: number, radius: number): Hurtbox {
+  return {
+    root,
+    zones: [{
+      id: 'body',
+      shape: { kind: 'sphere', center: new THREE.Vector3(0, centerY, 0), radius },
+      role: 'body',
+      damageMul: 1,
+      enabled: true,
+      priority: 0,
+      crit: false,
+      follow: null,
+      openWhenStaggered: false,
+    }],
+  };
+}
+
 // ── Authoring surface — spec-declared zones (content layer) ───────────────────
 // A spec adds/overrides zones declaratively (weak points, armor plates) without
 // touching the resolver. Coords are local metres (relative to `follow` if named,
