@@ -863,7 +863,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // trash, and named, so it reads as a set-piece, not a stray mob.
     isBoss: true,
     bossName: 'The Hollow Choir',
-    hp: 12,                 // boss HP — a real fight, gives the bar range
+    hp: 13,                 // boss HP — a real fight, gives the bar range
     moveSpeed: 1.5,         // slow — heavily telegraphed bossier feel
     attackDamage: 2,        // hits twice as hard as the trash mobs
     attackRange: 1.9,
@@ -1074,7 +1074,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   'acid-spitter': {
     id: 'acid-spitter',
     name: 'acid spitter',
-    hp: 4,                       // tanky — closing on it is a real commitment
+    hp: 5,                       // tanky — closing on it is a real commitment
     moveSpeed: 0.8,              // glacial — it holds ground, doesn't chase
     attackDamage: 1,
     attackRange: 7,              // ranged commit distance; no preferredRange (holds)
@@ -1144,13 +1144,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
   stoneguard: {
     id: 'stoneguard',
     name: 'stoneguard',
-    hp: 14,                      // tankiest non-boss — bumped so it SURVIVES long
+    hp: 16,                      // tankiest non-boss — bumped so it SURVIVES long
                                  //   enough for sustained heavy hits to break its
                                  //   guard (poise) before it dies; staggering it is
                                  //   the intended way in (then the core opens).
-    poise: 6,                    // explicit (< hp): ~2 hammer hits crack it open
-                                 //   while standing (a light weapon won't — that's
-                                 //   the heavy-weapon identity).
+    poise: 8,                    // explicit (< hp): ~2 CHARGED hammer hits crack it
+                                 //   open while standing (light weapons barely dent
+                                 //   it — that's the heavy-weapon identity).
     moveSpeed: 1.0,              // glacial — player retreat (2.5) outruns easily
     attackDamage: 3,             // biggest single-hit damage in the roster
     attackRange: 1.9,            // long reach (maul + heavy frame)
@@ -1260,7 +1260,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   defiler: {
     id: 'defiler',
     name: 'defiler',
-    hp: 4,
+    hp: 5,
     moveSpeed: 1.1,              // slow drifter — it controls space, doesn't chase
     attackDamage: 2,            // legacy/default mirror of the hex damage
     attackRange: 7,
@@ -1278,7 +1278,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
         minRange: 1.8, maxRange: 7,
         windup: 1.15, strike: 0.25, recover: 0.9, cooldown: 2.8,
         pose: 'cast',
-        steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 1.9, damage: 2, element: 'arcane' } }],
+        steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 1.7, damage: 2, element: 'arcane' } }],
       },
       // SLASH — point-blank deterrent so hugging it isn't a free safe spot.
       {
@@ -1614,7 +1614,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // Sleeps behind the fog gate; the fight begins when you cross it.
     dormantUntilEngaged: true,
     scale: 7.0,                      // WAY bigger than the player (~2× player height, 3.5m wide)
-    hp: 28,                          // bigger body, more HP — fight pacing stays similar
+    hp: 30,                          // bigger body, more HP — fight pacing stays similar
     moveSpeed: 1.2,                  // a touch less glacial; the chase HOP does the real closing
     attackDamage: 3,                 // hits hard — the AoE is the threat
     attackRange: 10.0,               // proportional to body — leaps across the room
@@ -1757,7 +1757,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
               arcHeight: 4.0,
               // Splash radius ≈ the body/aura footprint (1.6) so the dodge
               // is "step OFF the marker," not "sprint to the far wall."
-              landingRadius: 1.8,
+              landingRadius: 1.6,
               damage: 3,
               element: 'arcane',   // magic damage, no status (the aura carries acid)
               shake: 0.35,         // chunky boss-slam thud
@@ -2030,7 +2030,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
             minRange: 0, maxRange: 7,
             windup: 1.30, strike: 0.20, recover: 1.10, cooldown: 4.5,
             pose: 'cast',
-            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 3.0, damage: 4, element: 'physical' } }],
+            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'lockedTarget', radius: 2.7, damage: 4, element: 'physical' } }],
           },
           // Earthshatter stomp — radial AoE under the skeleton with the
           // giant-step foot-lift tell. Close-range only; you can't get
@@ -2041,7 +2041,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
             minRange: 0, maxRange: 4,
             windup: 1.40, strike: 0.20, recover: 1.10, cooldown: 5.0,
             pose: 'cast',
-            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 4.0, damage: 3, element: 'physical' } }],
+            steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 3.5, damage: 3, element: 'physical' } }],
           },
           // Skull-crush charge — the ONLY long-range tool. On a heavy
           // cooldown so it reads as the signature "oh no he's coming"
@@ -2197,7 +2197,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       minRange: 0, maxRange: 2.4,
       windup: 1.10, strike: 0.18, recover: 1.40, cooldown: 1.0,
       pose: 'cast',
-      steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 2.4, damage: 2, element: 'arcane' } }],
+      steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 2.2, damage: 2, element: 'arcane' } }],
     }],
     // Poison-on-hit because spores. Player who eats the cloud bleeds
     // damage for a few seconds after stepping out.

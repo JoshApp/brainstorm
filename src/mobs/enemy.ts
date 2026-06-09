@@ -183,8 +183,8 @@ export interface Enemy extends Damageable {
   setZoneEnabled(id: string, on: boolean): boolean;
   /** Mobs take the full crunch + fire the player's on-hit passives. */
   hitFeedback: 'heavy';
-  /** Finisher window — true when STAGGERED (poise broken) or at/below
-   *  CONFIG.EXECUTE.HP_FRAC of max HP. A heavy hit here executes. */
+  /** Finisher window — true only when STAGGERED (poise broken). A heavy hit
+   *  here executes. */
   executable: boolean;
   /** If true, the player walks through this mob (movement-only).
    *  See EnemySpec.noPlayerCollision. */
@@ -506,11 +506,13 @@ export function createEnemy(
 
   // ── Poise / stagger ────────────────────────────────────────────────
   // A hidden pool the player's heavy/Might-scaled hits chip at; break it
-  // and the enemy is STAGGERED (its action cancelled, a brief free-hit
-  // window). Pool resets on break and regenerates after a grace window
-  // so chip pressure must be SUSTAINED. Default scales with HP; bosses
-  // get a much larger pool (rarely staggered unless spec-tuned).
-  const poiseMax = spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(3, initialHp));
+  // and the enemy is STAGGERED (its action cancelled, a free-hit + EXECUTE
+  // window). Pool resets on break and regenerates after a grace window so
+  // chip pressure must be SUSTAINED. Default scales a bit above HP so a
+  // stagger weapon earns the break over ~2-3 committed hits (a charged heavy
+  // halves that); tanks set an explicit higher `poise`. Bosses get a much
+  // larger pool (rarely staggered unless spec-tuned).
+  const poiseMax = spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(4, Math.round(initialHp * 1.4)));
   let poiseLeft = poiseMax;
   let poiseRegenCd = 0;     // grace countdown before the pool refills
   let staggerTimer = 0;     // > 0 while in the 'staggered' state
@@ -2102,14 +2104,13 @@ export function createEnemy(
     get aiState() {
       return state;
     },
-    // Finisher window: poise broken (riposte) OR chipped to the HP threshold
-    // (the chip path). A heavy hit here executes — see attack.ts + CONFIG.EXECUTE.
+    // Finisher window: ONLY a poise-broken (STAGGERED) enemy is executable.
+    // The old low-HP "chip execute" path is gone — execution is now purely the
+    // reward for breaking poise, which is what makes the stagger game matter.
+    // A heavy hit here executes — see attack.ts + CONFIG.EXECUTE.
     get executable() {
       if (!aliveLocal || phaseInvulnTimer > 0) return false;
-      if (state === 'staggered') return true;
-      const e = getEntity(entityId);
-      const cur = e?.hp?.current ?? 0;
-      return cur > 0 && cur <= currentMaxHp * CONFIG.EXECUTE.HP_FRAC;
+      return state === 'staggered';
     },
     takeDamage,
     applyStaggerDamage,

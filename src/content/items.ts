@@ -392,7 +392,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     // but it softens whatever it hits for everything that follows
     // (your next swings, a bleed, an ally-less combo).
     weapon: {
-      class: 'hammer', reach: 2.0, coneHalfAngle: 0.85, damage: 2, critChance: 0, critMultiplier: 1,
+      class: 'hammer', reach: 2.0, coneHalfAngle: 0.85, damage: 3, critChance: 0, critMultiplier: 1,
       onHit: { buffId: 'sunder', chance: 0.5, duration: 4 },
     },
     affixPool: ['gallows', 'spine', 'patience', 'rending', 'searing'],

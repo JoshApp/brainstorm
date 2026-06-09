@@ -301,19 +301,21 @@ export const CONFIG = {
   // …) floored at MIN. So wide swings still clear chip damage + feel great, but
   // a crowd isn't deleted by one arc — being outnumbered stays dangerous (the
   // grimdark point). Single-target moves never see this (they only ever hit one).
-  CLEAVE_DAMAGE_FALLOFF: 0.6,     // each successive cleaved target's share of the last
-  CLEAVE_DAMAGE_MIN: 0.3,         // floor — a cleaved target never drops below this ×
+  CLEAVE_DAMAGE_FALLOFF: 0.5,     // each successive cleaved target's share of the last
+                                  //   (steeper than before: the 2nd target eats 50%,
+                                  //   the 3rd 25% — a crowd is chipped, not deleted, so
+                                  //   being outnumbered stays dangerous — the grimdark point)
+  CLEAVE_DAMAGE_MIN: 0.25,        // floor — a cleaved target never drops below this ×
   // EXECUTION / FINISHERS — the payoff that makes the poise game visible and
-  // feeds the DOOM/Dark-Souls "weaken → finish → sustain" loop. An enemy is
-  // EXECUTABLE when it's STAGGERED (poise broken — the riposte path, finally a
-  // reason to break poise) OR at/below HP_FRAC of its max HP (the chip path,
-  // seen on any meatier foe). A heavy hit on an executable enemy is a FINISHER:
-  // damage ×MUL (lethal in nearly all cases) + a heavier crunch + the reward
-  // below. Sustain is EARNED + KILL-BASED here, not a per-hit drain. All knobs
-  // are the per-weapon identity surface later (dagger executes higher, scythe
-  // heals more). See docs/COMBAT-HIT-SYSTEM.md.
+  // feeds the Dark-Souls "break poise → riposte" loop. An enemy is EXECUTABLE
+  // ONLY while STAGGERED (poise broken). That's the single reason to chase a
+  // stagger: a heavy hit on a staggered enemy is a FINISHER — damage ×MUL
+  // (lethal on nearly all trash) + a heavier crunch + the stamina reward below.
+  // (The old low-HP "chip execute" path is gone; execution is now earned, not
+  // free.) Sustain is EARNED + KILL-BASED here, not a per-hit drain. These are
+  // the per-weapon identity surface later (scythe heals more, etc).
+  // See docs/COMBAT-HIT-SYSTEM.md.
   EXECUTE: {
-    HP_FRAC: 0.35,    // executable at/below this fraction of max HP
     DAMAGE_MUL: 2,    // finisher damage multiplier — DOUBLE, not a delete button
     HEAL: 0,          // no heal — sustain stays scarce/grimdark (tune up if wanted)
     STAMINA: 30,      // refund stamina on the finishing heavy hit — fuels aggression

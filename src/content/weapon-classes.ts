@@ -260,9 +260,9 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       // sideways. Same pose as the combo finisher with strafe-fit
       // timing and a slightly wider catch.
       strafeLeft:  { pose: 'dagger-slash', windup: 0.08, strike: 0.18, recover: 0.26,
-                     reachMul: 1.0,  coneHalfAngleMul: 1.5, maxTargets: 2 },
+                     reachMul: 1.0,  coneHalfAngleMul: 1.5, maxTargets: 1 },
       strafeRight: { pose: 'dagger-slash', windup: 0.08, strike: 0.18, recover: 0.26,
-                     reachMul: 1.0,  coneHalfAngleMul: 1.5, maxTargets: 2 },
+                     reachMul: 1.0,  coneHalfAngleMul: 1.5, maxTargets: 1 },
       // BACK: a defensive slash on the retreat — short windup, short
       // recover, modest reach. The dagger's answer to a charging mob.
       back:        { pose: 'dagger-slash', windup: 0.06, strike: 0.10, recover: 0.18,
@@ -315,11 +315,11 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       // shoulder, sweeps across to the lower left. Crowd-clearance
       // when a mob is on your right side.
       strafeLeft:  { pose: 'sword-sweep-left', windup: 0.16, strike: 0.18, recover: 0.40,
-                     reachMul: 1.0, coneHalfAngleMul: 1.7, maxTargets: 3 },
+                     reachMul: 1.0, coneHalfAngleMul: 1.7, maxTargets: 2 },
       // STRAFE-RIGHT sweep — mirror. Cocks behind the left shoulder,
       // sweeps to the lower right.
       strafeRight: { pose: 'sword-sweep-right', windup: 0.16, strike: 0.18, recover: 0.40,
-                     reachMul: 1.0, coneHalfAngleMul: 1.7, maxTargets: 3 },
+                     reachMul: 1.0, coneHalfAngleMul: 1.7, maxTargets: 2 },
       // BACK retreating slash — fast poke as the player backs off.
       // Modest damage, but the SHORT recover lets you reposition
       // immediately. The "fighting retreat" answer to a charge.
@@ -334,7 +334,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       // long recover sells the commit. Pairs with the charge's +80%
       // damage bonus to make it the punisher of an over-extended foe.
       back: { pose: 'sword-ward-back', windup: 0.18, strike: 0.20, recover: 0.55,
-              reachMul: 1.25, coneHalfAngleMul: 1.3, maxTargets: 3 },
+              reachMul: 1.25, coneHalfAngleMul: 1.3, maxTargets: 2 },
       // (Future: chargedMoves.strafe = spinning 360° sweep, and
       // chargedMoves.forward = an even bigger plunging strike. For
       // V1 those fall back to the regular directional move with the
@@ -345,7 +345,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       { pose: 'sword-slash-right',   windup: 0.18, strike: 0.12, recover: 0.40,
         reachMul: 1.20, coneHalfAngleMul: 1.2, maxTargets: 2 },
       { pose: 'sword-sweep-left',    windup: 0.18, strike: 0.14, recover: 0.42,
-        reachMul: 1.25, coneHalfAngleMul: 1.5, maxTargets: 3 },
+        reachMul: 1.25, coneHalfAngleMul: 1.5, maxTargets: 2 },
       { pose: 'sword-lunge-forward', windup: 0.22, strike: 0.16, recover: 0.52,
         reachMul: 1.50, coneHalfAngleMul: 0.7, maxTargets: 2 },
     ],
@@ -394,10 +394,10 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.20, coneHalfAngleMul: 1.0, maxTargets: 1 },
       // H2 — wide horizontal sweep: cleaves, knockback, momentum into the third.
       { pose: 'hammer-swing-left', windup: 0.22, strike: 0.14, recover: 0.46,
-        reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 3 },
-      // H3 — ground-slam finisher: widest AoE, longest commit, devastating.
+        reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 2 },
+      // H3 — ground-slam finisher: widest hammer AoE, longest commit, devastating.
       { pose: 'hammer-smash', windup: 0.34, strike: 0.18, recover: 0.62,
-        reachMul: 1.45, coneHalfAngleMul: 1.7, maxTargets: 4, rise: -0.55 },
+        reachMul: 1.45, coneHalfAngleMul: 1.7, maxTargets: 3, rise: -0.55 },
     ],
     // ENDER — a light tap chain cashed out with a charged release: a big
     // committed smash, stronger than a cold heavy (a finisher).
@@ -427,9 +427,9 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       // STRAFE: pivot thrust — same pose, slight cone widening to
       // catch a flanker.
       strafeLeft:  { pose: 'spear-thrust', windup: 0.10, strike: 0.12, recover: 0.24,
-                     reachMul: 1.1, coneHalfAngleMul: 1.2, maxTargets: 2 },
+                     reachMul: 1.1, coneHalfAngleMul: 1.2, maxTargets: 1 },
       strafeRight: { pose: 'spear-thrust', windup: 0.10, strike: 0.12, recover: 0.24,
-                     reachMul: 1.1, coneHalfAngleMul: 1.2, maxTargets: 2 },
+                     reachMul: 1.1, coneHalfAngleMul: 1.2, maxTargets: 1 },
       // BACK: short defensive jab + step.
       back:        { pose: 'spear-thrust', windup: 0.08, strike: 0.10, recover: 0.20,
                      reachMul: 1.1, coneHalfAngleMul: 0.9, maxTargets: 1 },
@@ -439,7 +439,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       { pose: 'spear-thrust', windup: 0.16, strike: 0.14, recover: 0.40,
         reachMul: 1.40, coneHalfAngleMul: 0.7, maxTargets: 1 },
       { pose: 'spear-thrust', windup: 0.16, strike: 0.14, recover: 0.40,
-        reachMul: 1.50, coneHalfAngleMul: 0.9, maxTargets: 2 },
+        reachMul: 1.50, coneHalfAngleMul: 0.9, maxTargets: 1 },
       { pose: 'spear-lunge',  windup: 0.22, strike: 0.18, recover: 0.56,
         reachMul: 1.80, coneHalfAngleMul: 0.7, maxTargets: 2 },
     ],
@@ -471,11 +471,11 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
   scythe: {
     combo: [
       { pose: 'scythe-reap-right', windup: 0.22, strike: 0.18, recover: 0.40,
-        reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 3 },
+        reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 2 },
       { pose: 'scythe-reap-left',  windup: 0.22, strike: 0.18, recover: 0.40,
-        reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 3 },
+        reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 2 },
       { pose: 'scythe-spin',       windup: 0.28, strike: 0.22, recover: 0.48,
-        reachMul: 1.15, coneHalfAngleMul: 1.9, maxTargets: 4 },
+        reachMul: 1.15, coneHalfAngleMul: 1.9, maxTargets: 3 },
     ],
     comboWindowMs: 460,
     timingMul: 1.45,  // HEAVY — big sweeping reaps, slow to wind + recover (tail
@@ -487,9 +487,9 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
                      reachMul: 1.40, coneHalfAngleMul: 0.8, maxTargets: 1, rise: -0.4 },
       // Strafe: directional reap following the body's momentum.
       strafeLeft:  { pose: 'scythe-reap-left',  windup: 0.18, strike: 0.16, recover: 0.36,
-                     reachMul: 1.15, coneHalfAngleMul: 1.7, maxTargets: 4 },
+                     reachMul: 1.15, coneHalfAngleMul: 1.7, maxTargets: 3 },
       strafeRight: { pose: 'scythe-reap-right', windup: 0.18, strike: 0.16, recover: 0.36,
-                     reachMul: 1.15, coneHalfAngleMul: 1.7, maxTargets: 4 },
+                     reachMul: 1.15, coneHalfAngleMul: 1.7, maxTargets: 3 },
       // Back: a quick defensive reap as you retreat.
       back:        { pose: 'scythe-reap-right', windup: 0.14, strike: 0.14, recover: 0.28,
                      reachMul: 1.05, coneHalfAngleMul: 1.3, maxTargets: 3 },
@@ -497,14 +497,14 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     // HEAVY combo — wide reaps both sides into the clearing spin finisher.
     heavyCombo: [
       { pose: 'scythe-reap-right', windup: 0.22, strike: 0.16, recover: 0.46,
-        reachMul: 1.25, coneHalfAngleMul: 1.7, maxTargets: 4 },
+        reachMul: 1.25, coneHalfAngleMul: 1.7, maxTargets: 3 },
       { pose: 'scythe-reap-left',  windup: 0.22, strike: 0.16, recover: 0.46,
-        reachMul: 1.30, coneHalfAngleMul: 1.8, maxTargets: 4 },
+        reachMul: 1.30, coneHalfAngleMul: 1.8, maxTargets: 3 },
       { pose: 'scythe-spin',       windup: 0.32, strike: 0.22, recover: 0.62,
-        reachMul: 1.40, coneHalfAngleMul: 2.0, maxTargets: 5 },
+        reachMul: 1.40, coneHalfAngleMul: 2.0, maxTargets: 4 },
     ],
     ender: { pose: 'scythe-spin', windup: 0.28, strike: 0.20, recover: 0.56,
-             reachMul: 1.35, coneHalfAngleMul: 1.9, maxTargets: 5 },
+             reachMul: 1.35, coneHalfAngleMul: 1.9, maxTargets: 4 },
   },
   // ── NEW MELEE: WHIP ─────────────────────────────────────────────────
   // Long reach, narrow cone, snappy timings. Built around "I can
@@ -538,10 +538,10 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       { pose: 'whip-crack-left',  windup: 0.12, strike: 0.14, recover: 0.30,
         reachMul: 1.50, coneHalfAngleMul: 0.6, maxTargets: 1 },
       { pose: 'whip-wrap',        windup: 0.18, strike: 0.24, recover: 0.46,
-        reachMul: 1.60, coneHalfAngleMul: 1.3, maxTargets: 3 },
+        reachMul: 1.60, coneHalfAngleMul: 1.3, maxTargets: 2 },
     ],
     ender: { pose: 'whip-wrap', windup: 0.16, strike: 0.22, recover: 0.42,
-             reachMul: 1.55, coneHalfAngleMul: 1.2, maxTargets: 3 },
+             reachMul: 1.55, coneHalfAngleMul: 1.2, maxTargets: 2 },
   },
   // ── NEW RANGED: THROWING KNIVES ─────────────────────────────────────
   // Multi-projectile fan. Spawns COUNT projectiles per shot with
@@ -628,17 +628,21 @@ const DEFAULT_WEAPON_SCALING: Record<WeaponClass, WeaponScaling> = {
 // weapons break poise on their own (now earned by their slow swings);
 // light/ranged barely dent it without Might investment. Override per
 // weapon via WeaponStats.staggerPower. Tune feel here.
+// Tuned for the "deliberate" poise economy (enemy poise ~ max(4, hp·1.4),
+// tanks higher): a stagger weapon should EARN a break over ~2-3 hits, and a
+// fully-charged heavy (×2 via CHARGE_BONUS) should break a standard trash mob
+// in one committed blow — not a single light tap (the old hammer problem).
 export const STAGGER_POWER_BY_CLASS: Record<WeaponClass, number> = {
-  hammer: 3.0,
-  scythe: 2.5,
-  sword:  1.5,
-  spear:  1.3,
-  crossbow: 1.0,
-  whip:   0.7,
-  dagger: 0.6,
-  fist:   0.5,
-  wand:   0.5,
-  'throwing-knives': 0.4,
+  hammer: 2.2,   // the poise-breaker: ~2 light hits, 1 charged. Identity = stagger.
+  scythe: 1.8,
+  sword:  1.2,
+  spear:  1.0,
+  crossbow: 0.8,
+  whip:   0.6,
+  dagger: 0.5,   // barely dents poise — daggers bleed, they don't break.
+  fist:   0.45,
+  wand:   0.4,
+  'throwing-knives': 0.35,
 };
 
 /** Flatten class defaults + per-spec overrides + attackSpeed +
