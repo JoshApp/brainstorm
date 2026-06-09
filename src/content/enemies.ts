@@ -1176,7 +1176,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       flash: { material: 'stone' },
       zones: [
         { id: 'core', shape: { kind: 'sphere', center: [0, 0, -0.26], radius: 0.3 },
-          role: 'weak', damageMul: 2.4, openWhenStaggered: true, follow: 'spine' },
+          role: 'weak', damageMul: 1.4, openWhenStaggered: true, follow: 'spine' },
       ],
       skin: [
         // Torso — a layered chest block + a raised front plate, bevelled so the
