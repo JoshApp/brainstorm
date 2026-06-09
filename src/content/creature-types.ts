@@ -79,6 +79,8 @@ export interface Creature {
   joints: Map<string, THREE.Object3D>;
   parts: Map<string, THREE.Object3D>;
   materials: Map<string, THREE.Material>;
+  /** Raycast targets for tap-to-attack (meshes; excludes sprites). */
+  hitTargets: THREE.Object3D[];
   hurtbox: Hurtbox;
   // anim + presentation controllers attach in the next increment.
 }

@@ -31,7 +31,8 @@ import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { createBodyAnimator } from './enemy-animation';
 import { Animator } from '../anim/animator';
-import { buildModel, mergeRigidSegments } from '../ecs/build-model';
+import { buildModel, mergeRigidSegments, type BuiltModel } from '../ecs/build-model';
+import { buildCreature } from '../content/build-creature';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
@@ -248,35 +249,44 @@ export function createEnemy(
   const container = new THREE.Group();
   container.position.copy(position);
 
-  // Built model: meshes + named parts + per-instance materials.
-  const built = buildModel(spec.model);
-  // Lego-figure merge: collapse the unnamed limb/torso meshes per joint. Runs
-  // before the model is added to the scene, so the originals are never uploaded.
-  // Joints + named parts + eye sprites survive, so the presentation/animation
-  // below still finds what it references. Default ON for EVERY enemy — the merge
-  // only touches UNNAMED non-sprite meshes, and the animation never moves an
-  // unnamed part (it drives named parts + joint slots), so it's pixel-identical
-  // for any creature. A model can set `mergeRigid: false` to keep a bare part.
-  if (spec.model.mergeRigid !== false) mergeRigidSegments(built);
-  // Bosses loom larger — scale the visual model (gameplay reach/collision
-  // stay driven by the explicit stat fields).
-  if (spec.scale && spec.scale !== 1) built.group.scale.multiplyScalar(spec.scale);
-  container.add(built.group);
+  // Two build paths. NEW: skeleton-first `creature` — dimensions + hurtbox are
+  // MEASURED/derived by buildCreature (docs/CREATURE-SYSTEM.md). LEGACY: the
+  // early-days flat `model` + hand-typed aimHeight + deriveHurtbox. The rest of
+  // this module consumes the same shape (group/parts/slots/materials/hitTargets)
+  // either way, so presentation + animation are unchanged.
+  let aimHeightResolved: number;
+  let hurtbox: Hurtbox;
+  let essenceRigYDefault: number;
+  let built: BuiltModel;
+  if (spec.creature) {
+    const creature = buildCreature(spec.creature);     // builds + merges + measures internally
+    // Creature → BuiltModel shape (joints ARE the slots) so the rest of the
+    // module (presentation/animation) consumes it unchanged.
+    built = {
+      group: creature.group, parts: creature.parts, slots: creature.joints,
+      materials: creature.materials, hitTargets: creature.hitTargets,
+    };
+    aimHeightResolved = creature.bounds.aimHeight;      // MEASURED body centre
+    hurtbox = creature.hurtbox;                         // auto per-bone + authored zones
+    essenceRigYDefault = creature.bounds.aimHeight;
+    container.add(creature.group);
+  } else {
+    const m = buildModel(spec.model!);
+    // Lego-figure merge: collapse the unnamed limb/torso meshes per joint.
+    if (spec.model!.mergeRigid !== false) mergeRigidSegments(m);
+    // Bosses loom larger — scale the visual model (gameplay reach/collision
+    // stay driven by the explicit stat fields).
+    if (spec.scale && spec.scale !== 1) m.group.scale.multiplyScalar(spec.scale);
+    built = m;
+    container.add(m.group);
+    aimHeightResolved = spec.aimHeight ?? 0.6 * (spec.scale ?? 1);
+    hurtbox = deriveHurtbox(spec, m, aimHeightResolved);
+    applyZoneSpecs(hurtbox, spec.hurtZones, m);
+    essenceRigYDefault = spec.model!.slots?.rig?.pos[1] ?? 0.6;
+  }
   // Base model scale, captured for the lash deform (which elongates the
   // body toward the player on a 'lash' telegraph, then eases back here).
   const groupBaseScale = built.group.scale.clone();
-
-  // Resolved aim height — body centre. Shared by the hurtbox, the returned
-  // Damageable field, and the lash tendril origin so they agree.
-  const aimHeightResolved = spec.aimHeight ?? 0.6 * (spec.scale ?? 1);
-  // Hurtbox ZONES — the target side of the hit system (docs/COMBAT-HIT-SYSTEM.md).
-  // A body capsule + (when the model has a head part) a head sphere, derived now
-  // that built.parts/slots exist. The combat debug overlay draws these live; the
-  // unified swing resolver (next increment) tests against them. Specials/bosses
-  // can mutate zones at runtime via setZoneEnabled (e.g. open a weak point).
-  const hurtbox = deriveHurtbox(spec, built, aimHeightResolved);
-  // Spec-authored zones (weak points / armor) layer over the derived body+head.
-  applyZoneSpecs(hurtbox, spec.hurtZones, built);
   /** Toggle stagger-window weak points (zones flagged openWhenStaggered). */
   function setStaggerVuln(on: boolean): void {
     for (const z of hurtbox.zones) if (z.openWhenStaggered) z.enabled = on;
@@ -841,7 +851,7 @@ export function createEnemy(
       // the dissolve — see tickDying. Gold coins drop now as physical
       // floor pickups with bundled value.
       deathTimer = 0;
-      essenceRigY = spec.model.slots?.rig?.pos[1] ?? 0.6;
+      essenceRigY = essenceRigYDefault;
       essenceTotal = spec.xp ?? 1;
       essenceSpawned = 0;
       // Gold coins — bundled into 1–3 chunky drops. The roll picks a
@@ -1216,7 +1226,7 @@ export function createEnemy(
       const melee = ability.steps.find((st) => st.action.kind === 'melee')?.action;
       const reach = melee && melee.kind === 'melee' ? melee.reach : 3.0;
       clearLashTendril();
-      lashTendril = spawnLashTendril(container, spec.aimHeight ?? 0.6 * (spec.scale ?? 1), reach, 0xa8ff44);
+      lashTendril = spawnLashTendril(container, aimHeightResolved, reach, 0xa8ff44);
     }
   }
 

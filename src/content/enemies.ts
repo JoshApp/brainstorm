@@ -3,6 +3,7 @@ import type { DamageType } from '../combat/damage';
 import type { EnemyDeathSize, VocalArchetype } from '../audio/sfx';
 import type { Ability } from './abilities';
 import type { HurtZoneSpec } from '../combat/hurtbox';
+import type { CreatureSpec } from './creature-types';
 import type { Clip } from '../anim/types';
 import { creature } from './creature';
 import {
@@ -77,7 +78,13 @@ export interface EnemySpec {
   recoverTime: number;        // s — locked out after strike
 
   // --- Visuals ---
-  model: ModelSpec;
+  /** Legacy model path (early-days enemies). Mutually exclusive with `creature`.
+   *  New enemies author `creature` instead (skeleton-first — measured dimensions
+   *  + auto hitzones; see docs/CREATURE-SYSTEM.md). */
+  model?: ModelSpec;
+  /** Skeleton-first creature (the rebuild). When set, dimensions + hurtbox come
+   *  from the built Creature, not from aimHeight/deriveHurtbox. */
+  creature?: CreatureSpec;
   /** Base emissive intensity for the 'eye' material (used by AI for windup flare). */
   baseEyeEmissive: number;
   collisionRadius: number;
@@ -911,21 +918,50 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.22,
     recoverTime: 1.00,           // long recovery — missed swings are exploitable
     damageType: 'physical',
-    model: stoneguardModel(0x3a3530, 0xff5530),
+    // FIRST creature-system enemy (docs/CREATURE-SYSTEM.md): a biped skeleton,
+    // stone skin hung on joints, dimensions + per-bone hitzones MEASURED at
+    // build. The molten-core weak point (opens on stagger) lives as a creature
+    // zone, following the spine.
+    creature: {
+      id: 'stoneguard',
+      archetype: 'biped',
+      proportions: { height: 1.9, girth: 0.34 },
+      materials: {
+        stone: { color: 0x3a3530, roughness: 1, flatShading: 'auto' },
+        eyes: { color: 0xff5530, emissive: 0xff5530, emissiveIntensity: 1.2 },
+      },
+      eyes: { material: 'eyes', emissive: 1.2 },
+      flash: { material: 'stone' },
+      zones: [
+        { id: 'core', shape: { kind: 'sphere', center: [0, 0, -0.25], radius: 0.3 },
+          role: 'weak', damageMul: 2.4, openWhenStaggered: true, follow: 'spine' },
+      ],
+      skin: [
+        { kind: 'box', joint: 'spine', size: [0.7, 0.85, 0.5], mat: 'stone' },
+        { kind: 'box', joint: 'pelvis', size: [0.6, 0.4, 0.45], mat: 'stone' },
+        { kind: 'box', joint: 'head', size: [0.4, 0.42, 0.42], mat: 'stone' },
+        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [-0.12, 0.02, -0.2], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [0.12, 0.02, -0.2], mat: 'eyes' },
+        { kind: 'box', joint: 'shoulderL', size: [0.3, 0.3, 0.35], mat: 'stone' },
+        { kind: 'box', joint: 'shoulderR', size: [0.3, 0.3, 0.35], mat: 'stone' },
+        { kind: 'bone', from: 'shoulderL', to: 'elbowL', radius: 0.12, mat: 'stone' },
+        { kind: 'bone', from: 'elbowL', to: 'handL', radius: 0.10, mat: 'stone' },
+        { kind: 'bone', from: 'shoulderR', to: 'elbowR', radius: 0.12, mat: 'stone' },
+        { kind: 'bone', from: 'elbowR', to: 'handR', radius: 0.10, mat: 'stone' },
+        { kind: 'bone', from: 'hipL', to: 'kneeL', radius: 0.14, mat: 'stone' },
+        { kind: 'bone', from: 'kneeL', to: 'footL', radius: 0.12, mat: 'stone' },
+        { kind: 'bone', from: 'hipR', to: 'kneeR', radius: 0.14, mat: 'stone' },
+        { kind: 'bone', from: 'kneeR', to: 'footR', radius: 0.12, mat: 'stone' },
+        { kind: 'box', joint: 'footL', size: [0.22, 0.12, 0.34], pos: [0, 0.06, -0.05], mat: 'stone' },
+        { kind: 'box', joint: 'footR', size: [0.22, 0.12, 0.34], pos: [0, 0.06, -0.05], mat: 'stone' },
+      ],
+    },
     baseEyeEmissive: 1.2,
     collisionRadius: 0.55,       // wider footprint — harder to slip around
-    // Poise-break weak point: break the stone brute's guard (a heavy/Might
-    // hit) and a molten core is exposed at the chest for the free-hit window —
-    // a flat 2.4× + guaranteed crit. Drawn red in the HIT CONES debug overlay,
-    // off until staggered. Demonstrates the activate/deactivate zone system.
-    hurtZones: [
-      { id: 'core', shape: { kind: 'sphere', center: [0, 0.62, -0.32], radius: 0.3 },
-        role: 'weak', damageMul: 2.4, openWhenStaggered: true },
-    ],
     physicalArmor: 2,            // the defining stat — chips through trash weapons
     magicArmor: 0,
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'spine',
+    flashMaterialName: 'stone',
     eyeMaterialName: 'eyes',
     presence: 'lurch',           // shambling weight-shift; reads heavy
     // Sees and hears poorly — slow, lumbering. Easy to sneak past if

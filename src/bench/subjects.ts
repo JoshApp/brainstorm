@@ -94,7 +94,7 @@ export function resolveSubject(subjectId: string): BenchSubject | null {
   if (subjectId.startsWith('mob-')) {
     const id = subjectId.slice(4);
     const e = ENEMIES[id];
-    if (!e) return null;
+    if (!e || !e.model) return null;   // creature-based mobs aren't bench-wired yet
     return { id: subjectId, kind: 'mob', label: e.bossName ?? e.name ?? id, spec: e.model, enemy: e };
   }
   if (subjectId.startsWith('viewmodel-')) {

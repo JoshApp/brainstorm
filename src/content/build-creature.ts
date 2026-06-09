@@ -65,6 +65,7 @@ export function buildCreature(spec: CreatureSpec): Creature {
     joints: built.slots,
     parts: built.parts,
     materials: built.materials,
+    hitTargets: built.hitTargets,
     hurtbox,
   };
 }

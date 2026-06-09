@@ -58,6 +58,7 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
     models.push(built.group);
   }
   for (const enemy of Object.values(ENEMIES)) {
+    if (!enemy.model) continue;   // creature-based enemies warm via their own path
     const built = buildModel(enemy.model);
     // JIT the merge path (mergeGeometries) + match the in-game mesh layout so
     // the warmed shader set is exactly what the merged enemy renders.
