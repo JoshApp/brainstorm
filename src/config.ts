@@ -354,6 +354,14 @@ export const CONFIG = {
     IDLE_SCAN_HALF_ARC: 0.5,          // rad — ±29° max from home yaw
     IDLE_SCAN_STEP: 0.35,             // rad — ±20° gentle step per gaze change
     IDLE_SCAN_HOLD_CHANCE: 0.4,       // fraction of changes that just pause
+    // PACK — a crowd of chasers behaves as a SURROUNDING ring, not a pile on
+    // the player's point (src/mobs/pack.ts). Phase 1: ring + separation.
+    PACK: {
+      RING_RADIUS_BONUS: 0.15,        // m — ring sits at strikeRange + this (hold AT reach, just off the body)
+      SEPARATION_RADIUS: 1.05,        // m — chasers within this push apart
+      SEPARATION_FORCE: 1.4,          // strength of the apart-push (scaled by overlap, in m/s-ish)
+      ATTACK_TOKENS: 3,               // Phase 2 — max mobs allowed to COMMIT to an attack at once
+    },
   },
 
   // === EFFECTS — DRIFTING MOTES (ambient dust atmosphere) ===

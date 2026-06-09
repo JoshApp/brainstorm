@@ -44,6 +44,7 @@ import { spawnXpWisps } from '../effects/xp-wisps';
 import { createBlobShadow } from '../effects/blob-shadow';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
+import { joinPack, leavePack, packMoveTarget, packScratch } from './pack';
 import type { Damageable } from '../combat/damageable';
 import { setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { createStunStars, type StunStars } from './stun-stars';
@@ -69,6 +70,7 @@ export function disposeEnemy(e: Enemy): void {
   clearEntityCombatStats(e.entityId);
   unregisterDamageSink(e.entityId);
   destroyEntity(e.entityId);
+  leavePack(e.entityId);
 }
 
 // Enemy = a mob driven by its EnemySpec.
@@ -567,6 +569,13 @@ export function createEnemy(
   let wasDormant = false;     // edge-detect the wake to grant an engage grace
   let timeSinceLOS = 0;             // seconds since enemy last had LOS to player
   const homePos = position.clone();  // post the enemy returns to when calm
+
+  // Join the pack coordinator so a crowd of chasers rings the player instead of
+  // piling on one point (src/mobs/pack.ts). `active` = actually in the fight
+  // this frame; reach = strike range (the ring radius). Left on teardown via
+  // disposeEnemy. The ring is for MELEE; ranged kiters keep their own standoff.
+  joinPack(entityId, container.position, spec.strikeRange, () =>
+    aliveLocal && (state === 'chasing' || state === 'winding' || state === 'striking' || state === 'recovering'));
   // Capture spawn yaw as "home yaw" so idle scan / returning faces back the
   // way the level placed us. Set after initial faceWorld() in builder.ts —
   // for now, read whatever rotation is on the container right now.
@@ -1795,9 +1804,15 @@ export function createEnemy(
             // would creep toward you between shots, which looked wrong for
             // a ranged enemy.
           } else if (distance > 0.1) {
-            // Melee/charger, or a kiter that's genuinely out of range —
-            // close the gap.
-            moveTowards(playerPos.x, playerPos.z, moveSpeed, dt, walkable, nav);
+            // Melee/charger, or a kiter that's genuinely out of range — close
+            // the gap. Aim at the PACK target (a slot on the ring at strike
+            // distance along this mob's bearing, + separation) so a crowd
+            // surrounds the player instead of stacking on one point. Falls back
+            // to the player's position if unregistered.
+            const ringTarget = packMoveTarget(entityId, playerPos, packScratch());
+            const tx = ringTarget ? ringTarget.x : playerPos.x;
+            const tz = ringTarget ? ringTarget.z : playerPos.z;
+            moveTowards(tx, tz, moveSpeed, dt, walkable, nav);
           }
         }
         setEyeFlare(0);

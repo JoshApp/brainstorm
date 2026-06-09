@@ -167,6 +167,9 @@ export async function withHarness(
 
     const read = async <T>(cfg: SampleConfig, probe: string): Promise<T> => {
       await goto(cfg);
+      // Optional extra settle (cfg.secs) — for probes that need the world to run
+      // a while first (e.g. mobs aggroing + ringing up before __mobPack reads).
+      if (cfg.secs) await page.waitForTimeout(cfg.secs * 1000);
       return page.evaluate((p) => (window as unknown as Record<string, () => unknown>)[p](), probe) as Promise<T>;
     };
 

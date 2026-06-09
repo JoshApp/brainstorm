@@ -90,6 +90,7 @@ import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
 import { initLightPool, setShadowMode } from './scene/light-pool';
+import { clearPack } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
 import { initProjectilePool } from './combat/projectile-pool';
 import { registerProjectiles } from './content/projectiles';
@@ -322,6 +323,9 @@ initLevelLoader({
     // Batch each room's static fixture geometry (torch sconces/candles, opt-in
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
+    // Drop pack-coordinator members from the previous level (mobs re-join on
+    // spawn). Belt-and-suspenders; disposeEnemy also leaves per-mob.
+    clearPack();
     setCameraYaw(level.playerSpawn.yaw);
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-'));
     resetBossBar();   // new floor — clear any prior boss bar state
@@ -694,6 +698,21 @@ if (import.meta.env.DEV) {
     advance: () => { findBoss()?.debugAdvanceBossPhase(); return bossApi.info(); },
   };
   (window as unknown as { __boss?: typeof bossApi }).__boss = bossApi;
+  // Pack/AI observation: per-enemy distance + bearing to the player + AI state.
+  // Lets a headless probe confirm a crowd RINGS (bearings spread, dist ≈ strike
+  // range) vs PILES (dist ≈ 0, bearings clustered). Drives pack tuning.
+  (window as unknown as { __mobPack?: () => unknown }).__mobPack = () => {
+    const lvl = currentLevel; if (!lvl) return null;
+    const px = camera.position.x, pz = camera.position.z;
+    return lvl.enemies.filter((e) => e.alive).map((e) => {
+      const dx = e.position.x - px, dz = e.position.z - pz;
+      return {
+        kind: e.kind, state: e.aiState,
+        dist: Math.round(Math.hypot(dx, dz) * 100) / 100,
+        ang: Math.round(Math.atan2(dx, dz) * 100) / 100,   // bearing, radians
+      };
+    });
+  };
 }
 initPickupLightPool(scene);
 // Projectile pool — pre-allocates the meshes + trail sprites that ranged

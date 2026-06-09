@@ -21,6 +21,7 @@ import { renderWithStyle, setDarkAdapt } from '../style/render-target';
 import { isInspectActive, INSPECT_AMBIENT, tickInspectFraming } from '../debug/inspect-mode';
 import { setTorchProximity, setAudioListenerPose } from '../audio/sfx';
 import { tickAlerts } from '../mobs/alerts';
+import { tickPack } from '../mobs/pack';
 import { recomputePlayerStats } from '../state/player-stats';
 import { syncHudStores } from '../state/hud-stores';
 import { tickDarkAdaptation, darkAdaptBrightness, darkAdaptAmbient, sampleLitSignal } from '../scene/dark-adaptation';
@@ -307,6 +308,9 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       const playerX = camera.position.x;
       const playerZ = camera.position.z;
       const sleepDist2 = 25 * 25;
+      // Pack coordinator: recompute encirclement/separation for the crowd once,
+      // before the per-enemy update reads its ring target (src/mobs/pack.ts).
+      tickPack();
       for (const enemy of level.enemies) {
         // Dying enemies still tick (death animation drives the dissolve).
         if (!enemy.alive && !enemy.dying) continue;
