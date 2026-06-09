@@ -155,13 +155,18 @@ export function createPickup(
   // animates parts, so collapse by material regardless of name. Flames/sprites
   // are still preserved.
   mergeRigidSegments(built, { ignoreNames: true });
-  // A dropped item must not cast shadows. The drop model defaults every part to
-  // castShadow=true (buildModel), so a litter of loot re-renders into the lamp's
-  // 6-face cube map every frame for nothing — measured at ~5-6 draws PER ITEM,
-  // doubling a pile's cost. The loot glow comes from the emissive disc + bloom,
-  // not a cast shadow, so dropping it is free visually. (receiveShadow stays:
-  // it's cheap and lets the item sit in the lamp's light naturally.)
-  built.group.traverse((o) => { (o as THREE.Mesh).castShadow = false; });
+  // A dropped item neither casts NOR receives shadows. The drop model defaults
+  // every part to cast+receive (buildModel), so a litter of loot re-renders into
+  // the lamp's 6-face cube map every frame for nothing — measured at ~5-6 draws
+  // PER ITEM. The loot glow comes from the emissive disc + bloom, not a cast
+  // shadow; grounding (the soft contact shadow under an item) is better done as
+  // a cheap dedicated blob in a future shadow pass than by paying full cube-map
+  // cast/receive here.
+  built.group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    m.castShadow = false;
+    m.receiveShadow = false;
+  });
   pickupGroup.add(built.group);
 
   // Fountain state. itemX/Y/Z are LOCAL to pickupGroup (which sits at

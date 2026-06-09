@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Interactable } from './types';
 import { getAllInteractables } from './system';
 
@@ -6,11 +7,22 @@ import { getAllInteractables } from './system';
 // geometry, rendered with an additive emissive material. The classic
 // inverted-hull trick:
 //
-//   - clone each mesh's geometry, scaled ~1.07×
+//   - take the object's solid geometry, scaled ~1.07×
 //   - render with side: BackSide so only the back faces poke out
 //   - depthWrite: false so the silhouette doesn't occlude the original
 //
 // Cheap (no shaders), reads well on PSX-style geometry.
+//
+// ONE HULL PER ANIMATED PARENT. The naive version cloned EVERY mesh under the
+// interactable — including flat UI-ish bits (a pickup's emissive floor disc +
+// in-range ring) that have no business wearing an inverted hull, and one extra
+// transparent additive draw PER PART. A 4-part sword pickup near the player was
+// 6 outline clones (disc + ring + 4 parts), all overdraw, EVERY frame. Instead
+// we now: skip sprites + TRANSPARENT source meshes (glow planes aren't
+// silhouette), then merge the remaining solids per PARENT node into a single
+// hull. Per-parent (not whole-object) so an animated child — a pickup's bobbing
+// item group, a chest lid — still carries its own hull. A pickup drops from 6
+// outline draws to 1; a chest/altar from N to ~1.
 //
 // TWO tiers, same trick:
 //   - ARMED   the in-range interactable — bright amber, breathing. The active
@@ -33,10 +45,8 @@ const SEALED_BASE_OPACITY = 0.45;
 
 interface OutlineRef {
   clone: THREE.Mesh;
-  src: THREE.Mesh;
   /** Per-target material so opacity + color can differ by tier/distance. */
   mat: THREE.MeshBasicMaterial;
-  scaleFactor: number;
 }
 
 // One entry per interactable currently showing an outline.
@@ -45,17 +55,72 @@ let pulseT = 0;
 
 const tmpColor = new THREE.Color();
 
+// Test/perf escape hatch: `?nooutline=1` (DEV) skips the whole system so a perf
+// scenario can isolate the rest of the frame from the outline's overdraw.
+let disabled = false;
+export function setOutlinesDisabled(on: boolean): void { disabled = on; }
+
+const tmpCenter = new THREE.Vector3();
+
+/** Solid (non-sprite, non-transparent, non-outline) source mesh? Transparent
+ *  meshes — a pickup's emissive disc/ring, glow planes — are NOT silhouette
+ *  geometry; an inverted hull around them is meaningless overdraw. */
+function isSolidSource(mesh: THREE.Mesh): boolean {
+  if (!mesh.isMesh || !mesh.geometry) return false;
+  if ((mesh as unknown as { isSprite?: boolean }).isSprite) return false;
+  if (mesh.userData.outline) return false;
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  return !mats.some((m) => m && (m as THREE.Material).transparent);
+}
+
+/** One inverted-hull outline per ANIMATED PARENT: collect each parent's solid
+ *  child meshes, merge their geometry (baked into the parent's local frame),
+ *  and emit a single BackSide hull scaled around its own centre. The hull is a
+ *  child of that parent, so it rides the parent's animation for free — no
+ *  per-frame transform sync. */
 function buildOutlinesFor(target: Interactable): OutlineRef[] {
   const root = target.built?.group;
   if (!root) return [];
   const scaleFactor = target.outlineScale ?? OUTLINE_SCALE_DEFAULT;
-  const refs: OutlineRef[] = [];
+
+  // Group solid meshes by their parent node (so animated sub-parts keep a hull
+  // that follows them).
+  const byParent = new Map<THREE.Object3D, THREE.Mesh[]>();
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    // Skip sprites — camera-facing geometry makes the back-side trick halo.
-    if ((mesh as unknown as { isSprite?: boolean }).isSprite) return;
-    if (!mesh.geometry) return;
+    if (!isSolidSource(mesh) || !mesh.parent) return;
+    const arr = byParent.get(mesh.parent);
+    if (arr) arr.push(mesh); else byParent.set(mesh.parent, [mesh]);
+  });
+
+  const refs: OutlineRef[] = [];
+  for (const [parent, meshes] of byParent) {
+    // Bake each mesh's local transform into a POSITION-ONLY geometry (position
+    // is all the hull needs; stripping the rest lets mixed primitives merge).
+    const geos: THREE.BufferGeometry[] = [];
+    for (const m of meshes) {
+      m.updateMatrix();
+      const src = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry;
+      const pos = src.getAttribute('position');
+      if (!pos) { if (src !== m.geometry) src.dispose(); continue; }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', pos.clone());
+      g.applyMatrix4(m.matrix);
+      geos.push(g);
+      if (src !== m.geometry) src.dispose();
+    }
+    if (!geos.length) continue;
+    const merged = geos.length === 1 ? geos[0] : (mergeGeometries(geos, false) ?? geos[0]);
+    if (merged !== geos[0]) geos[0].dispose();
+    for (let i = 1; i < geos.length; i++) if (geos[i] !== merged) geos[i].dispose();
+
+    // Re-centre the geometry on its bounding box so a uniform scale inflates the
+    // silhouette outward from the middle (the inverted-hull look) rather than
+    // drifting off the parent origin.
+    merged.computeBoundingBox();
+    merged.boundingBox!.getCenter(tmpCenter);
+    merged.translate(-tmpCenter.x, -tmpCenter.y, -tmpCenter.z);
+
     const mat = new THREE.MeshBasicMaterial({
       color: COLOR_ARMED,
       side: THREE.BackSide,
@@ -65,15 +130,15 @@ function buildOutlinesFor(target: Interactable): OutlineRef[] {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const clone = new THREE.Mesh(mesh.geometry, mat);
-    clone.position.copy(mesh.position);
-    clone.rotation.copy(mesh.rotation);
-    clone.scale.copy(mesh.scale).multiplyScalar(scaleFactor);
-    clone.renderOrder = mesh.renderOrder + 1;
+    const clone = new THREE.Mesh(merged, mat);
+    clone.position.copy(tmpCenter);
+    clone.scale.setScalar(scaleFactor);
+    clone.renderOrder = 999;
     clone.userData.outline = true;
-    mesh.parent?.add(clone);
-    refs.push({ clone, src: mesh, mat, scaleFactor });
-  });
+    clone.frustumCulled = false;   // its source may be tiny; avoid pop at the edge
+    parent.add(clone);
+    refs.push({ clone, mat });
+  }
   return refs;
 }
 
@@ -82,6 +147,7 @@ function removeOutline(target: Interactable) {
   if (!refs) return;
   for (const r of refs) {
     r.clone.parent?.remove(r.clone);
+    r.clone.geometry.dispose();   // merged geometry is owned by this hull
     r.mat.dispose();
   }
   outlines.delete(target);
@@ -94,6 +160,10 @@ export function updateOutline(
   dt: number,
   playerPos: THREE.Vector3,
 ) {
+  if (disabled) {
+    if (outlines.size) clearAllOutlines();
+    return;
+  }
   pulseT += dt;
   const pulse = 0.5 + 0.5 * Math.sin(pulseT * Math.PI * 2 / 1.1);
 
@@ -132,12 +202,12 @@ export function updateOutline(
     }
     tmpColor.set(sealed ? COLOR_SEALED : COLOR_ARMED);
 
+    // Transform sync is unnecessary now: each hull is a child of its source's
+    // parent and baked in that frame, so it rides the parent's animation. Only
+    // the tier-driven opacity/color change per frame.
     for (const r of refs) {
       r.mat.opacity = opacity;
       r.mat.color.copy(tmpColor);
-      r.clone.position.copy(r.src.position);
-      r.clone.rotation.copy(r.src.rotation);
-      r.clone.scale.copy(r.src.scale).multiplyScalar(r.scaleFactor);
     }
   }
 }

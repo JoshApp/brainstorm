@@ -79,7 +79,7 @@ import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/p
 import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn } from './debug/frame-timing';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds } from './debug/perf-recorder';
 import { launchSpector } from './debug/spector-launch';
-import { initDrawReport, captureDrawReport } from './debug/draw-report';
+import { initDrawReport, captureDrawReport, drawReportData } from './debug/draw-report';
 import { initGpuAttribution, runGpuAttribution } from './debug/gpu-attribution';
 import { setProfilerToolbarVisible } from './debug/profiler-toolbar';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
@@ -88,6 +88,7 @@ import { findTapTarget } from './controls/tap-target';
 import { resolveTap } from './controls/tap-resolve';
 import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
+import { setOutlinesDisabled } from './interactables/outline';
 import { initLightPool, setShadowMode } from './scene/light-pool';
 import { setAdaptiveResolution, tickAdaptiveResolution } from './scene/adaptive-resolution';
 import { initProjectilePool } from './combat/projectile-pool';
@@ -658,6 +659,11 @@ if (import.meta.env.DEV) {
   const sm = new URLSearchParams(window.location.search).get('shadows');
   if (sm === 'off' || sm === 'hero' || sm === 'single' || sm === 'all') setShadowMode(sm);
 }
+// DEV-only: ?nooutline=1 disables the interaction-outline system so a perf
+// scenario can isolate the rest of the frame from its inverted-hull overdraw.
+if (import.meta.env.DEV) {
+  if (new URLSearchParams(window.location.search).get('nooutline') === '1') setOutlinesDisabled(true);
+}
 // DEV-only boss observation hook (window.__boss). Stripped from prod by the
 // literal-false guard. Drive + inspect multi-phase boss fights from the
 // console or a headless chrome-devtools session without grinding combat:
@@ -1101,6 +1107,7 @@ const profWin = window as unknown as {
   __marks: () => void;
   __gpuProbe: () => void;
   __draws: () => void;
+  __drawData: () => ReturnType<typeof drawReportData>;
   __gpuAttr: () => void;
   __spector: () => void;
 };
@@ -1114,6 +1121,7 @@ profWin.__perfRec = {
 profWin.__marks = () => { ensureProfilingInited(); setMarks(!marksOn()); };
 profWin.__gpuProbe = () => { ensureProfilingInited(); setGpuProbe(!gpuProbeOn()); };
 profWin.__draws = () => { ensureProfilingInited(); void captureDrawReport(); };
+profWin.__drawData = () => { ensureProfilingInited(); return drawReportData(); };
 profWin.__gpuAttr = () => { ensureProfilingInited(); void runGpuAttribution(); };
 profWin.__spector = () => void launchSpector();   // desktop only — heavy UI
 
