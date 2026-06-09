@@ -21,17 +21,32 @@ const BIPED_REST: Clip = {
   keyframes: [{ t: 0, pose: {} }],
 };
 
-// Overhead smash — the heavy two-beat: wind the weapon arm up and back, then
-// drive it down and forward on the strike, recover to rest. Stretched to the
-// ability's full windup+strike+recover at play time, so t≈0.5 lands at the
-// windup peak and t≈0.62 at the strike for a typical heavy.
+// Author limb swings by INTENT, not Euler guesses. A limb bone hangs along its
+// joint's local −Y at rest; rotating the shoulder about its local +X sweeps the
+// arm in the sagittal plane. We verified the SIGN: POSITIVE pitch swings the arm
+// FORWARD/UP, negative swings it BACK (the old [-2.6,…] "arm twists behind" bug).
+// Single-axis on purpose — the Animator lerps Euler linearly between keyframes,
+// so a planar one-axis swing tweens cleanly (orient()'s multi-axis/near-±π
+// outputs can take a wrong-way path when tweened — great for static poses, risky
+// for keyframes). amount in radians: ~0.8 ≈ 45°, ~1.6 ≈ 90°, ~2.4 ≈ 137°.
+function limbPitch(forward: number): [number, number, number] {
+  return [forward, 0, 0];
+}
+const ARM_REST = limbPitch(0);
+const ARM_RAISED = limbPitch(2.4);  // overhead, swung FORWARD (not behind)
+const ARM_SLAM = limbPitch(0.6);    // driven down + forward through the strike
+
+// Overhead smash — the heavy two-beat: both arms wind up overhead-forward, then
+// drive down on the strike, recover to rest. Stretched to the ability's full
+// windup+strike+recover at play time, so t≈0.5 is the windup peak, t≈0.62 the
+// strike.
 const BIPED_SMASH: Clip = {
   id: 'biped-smash', duration: 1, loop: false,
   keyframes: [
-    { t: 0.0,  pose: { shoulderR: { rot: [0, 0, 0] }, shoulderL: { rot: [0, 0, 0] } } },
-    { t: 0.50, pose: { shoulderR: { rot: [-2.6, 0, 0] }, shoulderL: { rot: [-0.5, 0, 0] } } }, // raised overhead
-    { t: 0.62, pose: { shoulderR: { rot: [0.7, 0, 0] }, shoulderL: { rot: [0.1, 0, 0] } } },    // slam down/forward
-    { t: 1.0,  pose: { shoulderR: { rot: [0, 0, 0] }, shoulderL: { rot: [0, 0, 0] } } },
+    { t: 0.0,  pose: { shoulderR: { rot: ARM_REST }, shoulderL: { rot: ARM_REST } } },
+    { t: 0.50, pose: { shoulderR: { rot: ARM_RAISED }, shoulderL: { rot: ARM_RAISED } } },
+    { t: 0.62, pose: { shoulderR: { rot: ARM_SLAM }, shoulderL: { rot: ARM_SLAM } } },
+    { t: 1.0,  pose: { shoulderR: { rot: ARM_REST }, shoulderL: { rot: ARM_REST } } },
   ],
 };
 
