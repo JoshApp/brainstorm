@@ -296,6 +296,13 @@ export const CONFIG = {
   // volume, so total reach to a body = RADIUS + INFLATION + bodyRadius.
   MELEE_HITBOX_RADIUS: 0.12,      // blade thickness — the precise core
   MELEE_HITBOX_INFLATION: 0.30,   // forgiveness added on top (tune on phone)
+  // CLEAVE FALLOFF — a multi-target sweep hits its NEAREST target full, then each
+  // further target takes a diminishing cut (geometric: full, ×FALLOFF, ×FALLOFF²
+  // …) floored at MIN. So wide swings still clear chip damage + feel great, but
+  // a crowd isn't deleted by one arc — being outnumbered stays dangerous (the
+  // grimdark point). Single-target moves never see this (they only ever hit one).
+  CLEAVE_DAMAGE_FALLOFF: 0.6,     // each successive cleaved target's share of the last
+  CLEAVE_DAMAGE_MIN: 0.3,         // floor — a cleaved target never drops below this ×
   INTERACT_CONE_HALF_ANGLE: 0.9, // radians (~52°) — must look roughly at an
                                  //   interactable before its prompt + USE button
                                  //   appear. Otherwise the player would be told

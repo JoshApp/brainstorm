@@ -600,12 +600,19 @@ export function createCombatSystem(
     let anyCrit = false;
     let bestApplied = 0;
     let anyHeavy = false;
-    for (const { target, zone } of targets) {
+    // targets are sorted NEAREST-first, so index 0 is the primary (full) hit and
+    // each subsequent cleaved target takes the geometric falloff cut.
+    for (let ti = 0; ti < targets.length; ti++) {
+      const { target, zone } = targets[ti];
       // Locational zone: head/weak points multiply damage; head forces a crit.
       // Armor zones (damageMul 0) soak the blow to nothing.
       const zoneMul = zone?.damageMul ?? 1;
+      // Cleave falloff: nearest target full, the rest diminish (floored). A graze
+      // is any non-primary cleaved hit — shown small + dim so you read who ate it.
+      const cleaveMul = ti === 0 ? 1 : Math.max(CONFIG.CLEAVE_DAMAGE_MIN, CONFIG.CLEAVE_DAMAGE_FALLOFF ** ti);
+      const graze = ti > 0;
       const crit = (zone?.crit ?? false) || gameRngChance(critChance);
-      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul * zoneMul;
+      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul * zoneMul * cleaveMul;
       const applied = target.takeDamage({
         source: 'player',
         target: target.entityId,
@@ -615,7 +622,7 @@ export function createCombatSystem(
 
       // Damage number floats from this target's aim point.
       hitPoint.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
-      if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit);
+      if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit, graze);
 
       // On-hit statuses roll per-target on heavies (mobs) — vases
       // don't bleed.

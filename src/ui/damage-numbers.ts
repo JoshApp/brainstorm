@@ -14,7 +14,13 @@ export function spawnDamageNumber(
   worldPos: THREE.Vector3,
   amount: number,
   crit: boolean = false,
+  /** A GRAZE — a cleaved secondary target that took reduced (falloff) damage.
+   *  Rendered small + dim + cool-toned so the player reads "this one only got
+   *  clipped" against the solid number on the primary target. Crit wins over
+   *  graze (a grazed crit is still a crit visually). */
+  graze: boolean = false,
 ) {
+  graze = graze && !crit;
   const p = worldToScreen(worldPos, camera);
   if (p.z < -1 || p.behind) return; // outside the camera frustum
   const x = p.x;
@@ -33,13 +39,17 @@ export function spawnDamageNumber(
     transform: crit
       ? 'translate(-50%, -50%) scale(1.6)'
       : 'translate(-50%, -50%) scale(1.0)',
-    color: crit ? 'rgba(255, 235, 130, 0.98)' : 'rgba(255, 220, 200, 0.95)',
+    color: crit ? 'rgba(255, 235, 130, 0.98)'
+      : graze ? 'rgba(190, 205, 215, 0.85)'
+      : 'rgba(255, 220, 200, 0.95)',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: crit ? '34px' : '20px',
-    fontWeight: crit ? '800' : '600',
+    fontSize: crit ? '34px' : graze ? '15px' : '20px',
+    fontWeight: crit ? '800' : graze ? '500' : '600',
     letterSpacing: crit ? '0.06em' : '0.04em',
     textShadow: crit
       ? '0 0 8px rgba(255, 200, 60, 0.95), 0 0 22px rgba(255, 140, 30, 0.7), 0 0 2px rgba(0,0,0,0.95)'
+      : graze
+      ? '0 0 4px rgba(0,0,0,0.9)'
       : '0 0 6px rgba(0,0,0,0.95), 0 0 14px rgba(255,80,40,0.45)',
     pointerEvents: 'none',
     zIndex: '15',
