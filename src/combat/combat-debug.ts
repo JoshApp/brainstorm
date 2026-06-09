@@ -35,6 +35,7 @@ export interface SwingShape {
   radius: number;
   sweepArc: number;    // total lateral sweep (radians); 0 = straight thrust
   sweepBias: number;   // lateral centre offset (radians)
+  rise: number;        // world-Y offset of the capsule's far end (overhead = negative)
 }
 
 /** What the overlay needs from each live enemy. */
@@ -118,7 +119,7 @@ function poseCapsules(pool: CapsulePool, ox: number, oy: number, oz: number, aim
     const m = pool.meshes[s];
     if (s >= samples) { m.visible = false; continue; }
     rotY(aim, samples > 1 ? start + stepA * s : shape.sweepBias, _rot);
-    _end.set(ox + _rot.x * shape.reach, oy + _rot.y * shape.reach, oz + _rot.z * shape.reach);
+    _end.set(ox + _rot.x * shape.reach, oy + _rot.y * shape.reach + shape.rise, oz + _rot.z * shape.reach);
     _mid.set((ox + _end.x) / 2, (oy + _end.y) / 2, (oz + _end.z) / 2);
     _dir.set(_end.x - ox, _end.y - oy, _end.z - oz).normalize();
     _quat.setFromUnitVectors(_up, _dir);

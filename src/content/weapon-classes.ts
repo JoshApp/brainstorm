@@ -70,6 +70,13 @@ export interface ComboStep {
    *  When >1, the cone-scan returns the N nearest in-cone
    *  targets in distance order and damages each. */
   maxTargets?: number;
+  /** Vertical 3D shaping (metres): how far the FAR end of the swing capsule
+   *  drops below (negative) or rises above (positive) the look line, in world
+   *  up. An overhead smash dips its reach toward the floor in front (≈ -0.4) so
+   *  it crushes what's at your feet without aiming down; an uppercut rises.
+   *  Default 0 (a level swing — the current behaviour). The KEY knob that makes
+   *  a move's hit volume match its animation in 3D. See docs/COMBAT-HIT-SYSTEM.md. */
+  rise?: number;
 }
 
 export interface ResolvedComboStep {
@@ -80,6 +87,7 @@ export interface ResolvedComboStep {
   reachMul: number;
   coneHalfAngleMul: number;
   maxTargets: number;
+  rise: number;
 }
 
 export interface ResolvedWeaponStats {
@@ -354,7 +362,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       { pose: 'hammer-swing-left',  windup: 0.20, strike: 0.12, recover: 0.36,
         reachMul: 1.0, coneHalfAngleMul: 1.2, maxTargets: 2 },
       { pose: 'hammer-smash',       windup: 0.28, strike: 0.14, recover: 0.44,
-        reachMul: 1.15, coneHalfAngleMul: 1.4, maxTargets: 3 },
+        reachMul: 1.15, coneHalfAngleMul: 1.4, maxTargets: 3, rise: -0.45 },
     ],
     comboWindowMs: 520,
     timingMul: 1.6,   // HEAVY — wind up, commit, recover; the slow brute (tail
@@ -366,7 +374,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       // FORWARD: a commit-and-step overhead smash. Bigger reach + the
       // smash's wide AoE catches up to 3 mobs in front of you.
       forward:     { pose: 'hammer-smash', windup: 0.26, strike: 0.16, recover: 0.48,
-                     reachMul: 1.35, coneHalfAngleMul: 1.5, maxTargets: 3 },
+                     reachMul: 1.35, coneHalfAngleMul: 1.5, maxTargets: 3, rise: -0.5 },
       // STRAFE: the directional swing IN the strafe direction —
       // body's momentum drives the cut. Sweep that catches 2 to your side.
       strafeLeft:  { pose: 'hammer-swing-left', windup: 0.18, strike: 0.14, recover: 0.34,
@@ -389,12 +397,12 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         reachMul: 1.10, coneHalfAngleMul: 1.5, maxTargets: 3 },
       // H3 — ground-slam finisher: widest AoE, longest commit, devastating.
       { pose: 'hammer-smash', windup: 0.34, strike: 0.18, recover: 0.62,
-        reachMul: 1.45, coneHalfAngleMul: 1.7, maxTargets: 4 },
+        reachMul: 1.45, coneHalfAngleMul: 1.7, maxTargets: 4, rise: -0.55 },
     ],
     // ENDER — a light tap chain cashed out with a charged release: a big
     // committed smash, stronger than a cold heavy (a finisher).
     ender: { pose: 'hammer-smash', windup: 0.28, strike: 0.16, recover: 0.52,
-             reachMul: 1.35, coneHalfAngleMul: 1.5, maxTargets: 3 },
+             reachMul: 1.35, coneHalfAngleMul: 1.5, maxTargets: 3, rise: -0.5 },
   },
   spear: {
     // thrust → thrust → lunge. Spear stays narrow + single-target
@@ -476,7 +484,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       // Forward: a downward chop with the curved tip. Single target,
       // big damage commit.
       forward:     { pose: 'scythe-spin', windup: 0.18, strike: 0.18, recover: 0.44,
-                     reachMul: 1.40, coneHalfAngleMul: 0.8, maxTargets: 1 },
+                     reachMul: 1.40, coneHalfAngleMul: 0.8, maxTargets: 1, rise: -0.4 },
       // Strafe: directional reap following the body's momentum.
       strafeLeft:  { pose: 'scythe-reap-left',  windup: 0.18, strike: 0.16, recover: 0.36,
                      reachMul: 1.15, coneHalfAngleMul: 1.7, maxTargets: 4 },
@@ -706,6 +714,7 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     reachMul: step.reachMul ?? 1,
     coneHalfAngleMul: step.coneHalfAngleMul ?? 1,
     maxTargets: step.maxTargets ?? 1,
+    rise: step.rise ?? 0,
   });
   const combo: ResolvedComboStep[] = baseT.combo.map(resolveStep);
   const directionalMoves = baseT.directionalMoves ? {

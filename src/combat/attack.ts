@@ -159,14 +159,14 @@ function pointSegDistSq(p: THREE.Vector3, ax: number, ay: number, az: number, bx
  *    forward  → thrust: narrow, no sweep
  *    strafe-R/L → slash: sweep, biased to the swung side
  *    back / neutral → a wide frontal sweep ≈ the old cone. */
-function swingShape(dir: AttackDirection, reach: number, baseHalfAngle: number, radius: number): SwingShape {
+function swingShape(dir: AttackDirection, reach: number, baseHalfAngle: number, radius: number, rise = 0): SwingShape {
   let sweepArc = baseHalfAngle * 2;   // ≈ the old cone's full width
   let sweepBias = 0;
   let r = radius;
   if (dir === 'forward') { sweepArc *= 0.30; r *= 0.9; }
   else if (dir === 'strafe-right') { sweepBias = sweepArc * 0.35; }
   else if (dir === 'strafe-left') { sweepBias = -sweepArc * 0.35; }
-  return { reach, radius: r, sweepArc, sweepBias };
+  return { reach, radius: r, sweepArc, sweepBias, rise };
 }
 
 /** Swept-capsule hit test. origin = camera; aimDir = unit 3D look dir. Sweeps
@@ -187,7 +187,7 @@ function swingHitTest<T extends Damageable>(
     rotateAroundY(aimDir, samples > 1 ? start + stepA * s : shape.sweepBias, _swingAim);
     swingEnds[s].set(
       origin.x + _swingAim.x * shape.reach,
-      origin.y + _swingAim.y * shape.reach,
+      origin.y + _swingAim.y * shape.reach + shape.rise,
       origin.z + _swingAim.z * shape.reach,
     );
   }
@@ -239,7 +239,7 @@ function swingHitEnemies(
     rotateAroundY(aimDir, samples > 1 ? start + stepA * s : shape.sweepBias, _swingAim);
     swingEnds[s].set(
       origin.x + _swingAim.x * shape.reach,
-      origin.y + _swingAim.y * shape.reach,
+      origin.y + _swingAim.y * shape.reach + shape.rise,
       origin.z + _swingAim.z * shape.reach,
     );
   }
@@ -565,7 +565,11 @@ export function createCombatSystem(
     // inflation, charge-scaled. Swept along the arc and tested against each
     // enemy's hurtbox ZONES (body / head / weak / armor) — see hurtbox.ts.
     const enemyRadius = (CONFIG.MELEE_HITBOX_RADIUS + CONFIG.MELEE_HITBOX_INFLATION) * (1 + c * 0.2);
-    const enemyShape = swingShape(currentSwingDirection, reach, baseHalfAngle, enemyRadius);
+    // Per-move 3D shaping: the step's `rise` drops/raises the capsule's far end
+    // (overhead smash crushes low-forward; thrust stays level). Charge extends
+    // the drop slightly so a charged smash reaches even further down.
+    const moveRise = (step?.rise ?? 0) * (1 + c * 0.2);
+    const enemyShape = swingShape(currentSwingDirection, reach, baseHalfAngle, enemyRadius, moveRise);
 
     // LOS: a swing can't poke through a wall to hit a hidden enemy (or vase).
     const walkable = getWalkable();
@@ -577,7 +581,7 @@ export function createCombatSystem(
     const enemyHits = swingHitEnemies(getEnemies(), camera.position, forwardDir, enemyShape, maxTargets, losCheck);
     // Destructibles keep the simple point/capsule test (no zones) — a fatter,
     // slightly longer capsule so smashing pots stays forgiving. Capped at 2.
-    const destrShape = swingShape(currentSwingDirection, reach * 1.15, baseHalfAngle, CONFIG.SWORD_HITBOX_RADIUS + 0.15);
+    const destrShape = swingShape(currentSwingDirection, reach * 1.15, baseHalfAngle, CONFIG.SWORD_HITBOX_RADIUS + 0.15, moveRise);
     const destrMax = Math.min(maxTargets, 2);
     // Combat debug: draw the live capsules + hurtbox zones (no-op unless on).
     showHitCones(camera, forwardDir, enemyShape, destrShape);
@@ -828,52 +832,10 @@ export function createCombatSystem(
 // adjacent or overlapping enemy is reliably hittable.
 const POINT_BLANK_RADIUS = 0.9;
 
-/** Multi-target variant — returns up to `maxTargets` in-cone targets,
- *  nearest first. Used by combo steps that cleave (sword slash, hammer
- *  smash). Single-target callers pass maxTargets=1 and unwrap [0]. */
-function pickTargets<T extends Damageable>(
-  targets: readonly T[],
-  camera: THREE.Camera,
-  forwardDir: THREE.Vector3,
-  forwardLenXZ: number,
-  reach: number,
-  cosConeHalf: number,
-  maxTargets: number,
-  /** LOS predicate — a target with a wall between you and it is skipped, so a
-   *  swing can't poke through geometry to hit a hidden enemy. Point-blank
-   *  (overlapping) targets bypass it (nothing can be between you). */
-  hasLOS?: (cx: number, cz: number, tx: number, tz: number) => boolean,
-): T[] {
-  if (maxTargets <= 1) {
-    const single = pickTarget(targets, camera, forwardDir, forwardLenXZ, reach, cosConeHalf, hasLOS);
-    return single ? [single] : [];
-  }
-  // Collect all in-cone targets with distance, then sort + cap.
-  const hits: Array<{ t: T; d2: number }> = [];
-  for (const t of targets) {
-    if (!t.alive) continue;
-    const dx = t.position.x - camera.position.x;
-    const dy = (t.position.y + t.aimHeight) - camera.position.y;
-    const dz = t.position.z - camera.position.z;
-    const distSq = dx * dx + dy * dy + dz * dz;
-    // Reach extends to the target's SURFACE (centre distance minus its
-    // hitRadius). A point target (hitRadius 0) keeps the old centre check.
-    const effReach = reach + (t.hitRadius ?? 0);
-    if (distSq > effReach * effReach) continue;
-    const horDist = Math.hypot(dx, dz);
-    if (horDist < POINT_BLANK_RADIUS + (t.hitRadius ?? 0)) {
-      hits.push({ t, d2: distSq });   // point-blank: bypasses cone AND LOS
-      continue;
-    }
-    const horDot = (forwardDir.x * dx + forwardDir.z * dz) / (forwardLenXZ * horDist);
-    if (horDot < cosConeHalf) continue;
-    // LOS last (most expensive) — a wall between you and the target → no hit.
-    if (hasLOS && !hasLOS(camera.position.x, camera.position.z, t.position.x, t.position.z)) continue;
-    hits.push({ t, d2: distSq });
-  }
-  hits.sort((a, b) => a.d2 - b.d2);
-  return hits.slice(0, maxTargets).map((h) => h.t);
-}
+// (The old multi-target horizontal-cone `pickTargets` was retired with the
+//  combat hit rework — enemies now resolve through swingHitEnemies (swept
+//  capsule vs hurtbox zones). The single-target `pickTarget` below survives for
+//  RANGED auto-aim, a different concern. See docs/COMBAT-HIT-SYSTEM.md.)
 
 function pickTarget<T extends Damageable>(
   targets: readonly T[],
