@@ -617,7 +617,9 @@ export function createCombatSystem(
       // is any non-primary cleaved hit — shown small + dim so you read who ate it.
       const cleaveMul = ti === 0 ? 1 : Math.max(CONFIG.CLEAVE_DAMAGE_MIN, CONFIG.CLEAVE_DAMAGE_FALLOFF ** ti);
       const graze = ti > 0 && !isExecute;
-      const crit = (zone?.crit ?? false) || gameRngChance(critChance);
+      // Zone crit: a forced crit (earned weak point) OR a roll boosted by the
+      // zone's additive critBonus (the head — crits more often, not always).
+      const crit = (zone?.crit ?? false) || gameRngChance(critChance + (zone?.critBonus ?? 0));
       const execMul = isExecute ? CONFIG.EXECUTE.DAMAGE_MUL : 1;
       const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul * zoneMul * cleaveMul * execMul;
       const applied = target.takeDamage({

@@ -36,8 +36,13 @@ export interface HurtZone {
   enabled: boolean;
   /** When a hit overlaps several enabled zones, the highest priority wins. */
   priority: number;
-  /** Force a crit when this is the zone hit (head defaults true). */
+  /** Force a crit when this is the zone hit. Reserved for rare/earned windows
+   *  (a staggered weak point), NOT the head — see critBonus. */
   crit: boolean;
+  /** ADDITIVE crit-chance bonus applied to the roll when this zone is hit. The
+   *  head's reward: it doesn't auto-crit (too strong), it just crits MORE OFTEN
+   *  on top of a modest damage multiplier. 0 = no effect. */
+  critBonus: number;
   /** If set, the zone tracks this animated bone's world transform; the shape's
    *  local coords become offsets from the bone. Null → static in the root frame. */
   follow: THREE.Object3D | null;
@@ -76,6 +81,7 @@ export function deriveHurtbox(spec: EnemySpec, built: BuiltModel, aimHeight: num
       enabled: true,
       priority: 0,
       crit: false,
+      critBonus: 0,
       follow: null,
       openWhenStaggered: false,
     },
@@ -90,10 +96,11 @@ export function deriveHurtbox(spec: EnemySpec, built: BuiltModel, aimHeight: num
       id: 'head',
       shape: { kind: 'sphere', center: new THREE.Vector3(0, 0, 0), radius: Math.max(0.14, bodyRadius * 0.85) },
       role: 'head',
-      damageMul: 1.5,
+      damageMul: 1.5,            // reliable "aim up pays" reward …
       enabled: true,
       priority: 10,
-      crit: true,
+      crit: false,              // … but NOT a guaranteed crit (that was too strong)
+      critBonus: 0.25,          // it just crits +25% more often — precision → spikes
       follow: headNode,
       openWhenStaggered: false,
     });
@@ -117,6 +124,7 @@ export function propHurtbox(root: THREE.Object3D, centerY: number, radius: numbe
       enabled: true,
       priority: 0,
       crit: false,
+      critBonus: 0,
       follow: null,
       openWhenStaggered: false,
     }],
@@ -141,8 +149,11 @@ export interface HurtZoneSpec {
   enabled?: boolean;
   /** Default by role: weak 20, armor 5, head 10, body 0. Highest wins. */
   priority?: number;
-  /** Default true for weak/head. */
+  /** Force a crit on hit. Default true only for an EARNED weak point; the head
+   *  defaults FALSE (use critBonus instead — auto-crit was too strong). */
   crit?: boolean;
+  /** Additive crit-chance bonus on hit. Default by role (head 0.25). */
+  critBonus?: number;
   /** Part/slot name to track (the zone rides that animated bone). */
   follow?: string;
   /** Enable only while the enemy is staggered (an exposed window). */
@@ -151,6 +162,7 @@ export interface HurtZoneSpec {
 
 const ROLE_DEFAULT_MUL: Record<ZoneRole, number> = { body: 1, head: 1.5, weak: 2, armor: 0.25 };
 const ROLE_DEFAULT_PRIORITY: Record<ZoneRole, number> = { body: 0, head: 10, weak: 20, armor: 5 };
+const ROLE_DEFAULT_CRITBONUS: Record<ZoneRole, number> = { body: 0, head: 0.25, weak: 0, armor: 0 };
 
 /** Merge spec-declared zones into a derived hurtbox: same id replaces, new id
  *  appends. Resolves `follow` part names against the built model. */
@@ -170,7 +182,8 @@ export function applyZoneSpecs(hb: Hurtbox, specs: HurtZoneSpec[] | undefined, b
       damageMul: sp.damageMul ?? ROLE_DEFAULT_MUL[role],
       enabled: sp.enabled ?? !open,
       priority: sp.priority ?? ROLE_DEFAULT_PRIORITY[role],
-      crit: sp.crit ?? (role === 'weak' || role === 'head'),
+      crit: sp.crit ?? (role === 'weak'),
+      critBonus: sp.critBonus ?? ROLE_DEFAULT_CRITBONUS[role],
       follow,
       openWhenStaggered: open,
     };
@@ -272,6 +285,8 @@ export interface ZoneHit {
   zone: HurtZone;
   damageMul: number;
   crit: boolean;
+  /** Additive crit-chance bonus from the zone (head precision spike). */
+  critBonus: number;
 }
 
 /** Test a weapon capsule (segA→segB, radius wr) against a hurtbox's ENABLED
@@ -296,7 +311,7 @@ export function queryHurtbox(hb: Hurtbox, segA: THREE.Vector3, segB: THREE.Vecto
     if (!best || z.priority > best.priority) best = z;
   }
   if (!best) return null;
-  return { zone: best, damageMul: best.damageMul, crit: best.crit };
+  return { zone: best, damageMul: best.damageMul, crit: best.crit, critBonus: best.critBonus };
 }
 
 // ── Swept-resolution path (the resolver's hot loop) ──────────────────────────
@@ -354,7 +369,7 @@ export function testSegmentZones(world: WorldZone[], count: number, segA: THREE.
     }
   }
   if (!best) return null;
-  return { zone: best.zone, damageMul: best.zone.damageMul, crit: best.zone.crit };
+  return { zone: best.zone, damageMul: best.zone.damageMul, crit: best.zone.crit, critBonus: best.zone.critBonus };
 }
 
 /** Flip a zone on/off by id. Returns true if a zone matched. */
