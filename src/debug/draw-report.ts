@@ -41,12 +41,43 @@ export interface DrawReportData {
   shadowCasters: number; transparent: number; sceneTris: number;
   programs: number; geometries: number; textures: number;
   lightsActive: number; lightsShadow: number;
+  /** Visible drawables by owner (enemy/fixture/shell/prop/decor/sprite/fx/…) —
+   *  "where do the draws go", so an optimization targets the biggest bucket. */
+  bySource: Record<Cat, number>;
+  /** Mergeability split: already merged/instanced · loose STATIC that could
+   *  fold into the per-room merge (the achievable win) · dynamic (can't merge). */
+  mergedDraws: number; mergeableNow: number; dynamicDraws: number;
 }
 
 export function drawReportData(): DrawReportData | null {
   if (!scene) return null;
+
+  // Owner map (same tagging as captureDrawReport): attribute each drawable to
+  // its enemy / fixture / destructible / viewmodel group; everything else falls
+  // to looseCat (shell/prop/decor by dbgKind).
+  const owner = new Map<THREE.Object3D, Cat>();
+  const isDrawable = (c: THREE.Object3D): boolean => {
+    const a = c as unknown as { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean };
+    return a.isMesh === true || a.isSprite === true || a.isPoints === true;
+  };
+  const tag = (root: THREE.Object3D | undefined, cat: Cat) => {
+    if (root) root.traverse((c) => { if (isDrawable(c)) owner.set(c, cat); });
+  };
+  const level = getLevel?.();
+  if (level) {
+    for (const e of level.enemies) tag(e.group, 'enemy');
+    for (const t of level.torches) tag(t.group, 'fixture');
+    for (const d of level.destructibles) tag(d.group, 'destructible');
+  }
+  for (const vm of getViewmodelRoots()) tag(vm, 'viewmodel');
+
+  const bySource: Record<Cat, number> = {
+    enemy: 0, destructible: 0, viewmodel: 0, fixture: 0, shell: 0, prop: 0, decor: 0,
+    sprite: 0, particle: 0, fx: 0,
+  };
   let meshes = 0, sprites = 0, points = 0, shadowCasters = 0, transparent = 0, sceneTris = 0;
   let lightsActive = 0, lightsShadow = 0;
+  let mergedDraws = 0, mergeableNow = 0, dynamicDraws = 0;
   const walk = (o: THREE.Object3D): void => {
     if (!o.visible) return;   // respect room-culling / hidden subtrees (matches the report)
     const lit = o as unknown as { isLight?: boolean; intensity?: number; castShadow?: boolean };
@@ -62,8 +93,16 @@ export function drawReportData(): DrawReportData | null {
       if (isSprite) sprites++; else if (isPoints) points++; else meshes++;
       if (m.castShadow) shadowCasters++;
       const mats = Array.isArray(m.material) ? m.material : [m.material];
-      if (isSprite || mats.some((mm) => mm && isTransparent(mm))) transparent++;
+      const isTrans = isSprite || mats.some((mm) => mm && isTransparent(mm));
+      if (isTrans) transparent++;
       if ((m.isMesh || isPoints) && m.geometry) sceneTris += triCount(m.geometry);
+      let cat: Cat = owner.get(o) ?? (isSprite ? 'sprite' : isPoints ? 'particle' : looseCat(m));
+      if (cat === 'decor' && isTrans) cat = 'fx';   // loose transparent = effect, not mergeable decor
+      bySource[cat]++;
+      const merged = !isSprite && !isPoints && isMerged(m, cat);
+      const dynamic = cat === 'enemy' || cat === 'destructible' || cat === 'viewmodel'
+        || cat === 'sprite' || cat === 'particle' || cat === 'fx' || m.name === 'flame';
+      if (merged) mergedDraws++; else if (dynamic) dynamicDraws++; else mergeableNow++;
     }
     for (const c of o.children) walk(c);
   };
@@ -77,7 +116,8 @@ export function drawReportData(): DrawReportData | null {
     programs: info?.programs?.length ?? 0,
     geometries: info ? info.memory.geometries : 0,
     textures: info ? info.memory.textures : 0,
-    lightsActive, lightsShadow,
+    lightsActive, lightsShadow, bySource,
+    mergedDraws, mergeableNow, dynamicDraws,
   };
 }
 

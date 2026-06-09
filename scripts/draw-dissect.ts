@@ -19,6 +19,8 @@ interface DrawData {
   shadowCasters: number; transparent: number; sceneTris: number;
   programs: number; geometries: number; textures: number;
   lightsActive: number; lightsShadow: number;
+  bySource: Record<string, number>;
+  mergedDraws: number; mergeableNow: number; dynamicDraws: number;
 }
 
 function flagsOf(token: string): { flags: Record<string, string>; label: string } {
@@ -65,7 +67,14 @@ async function main() {
       prev = d;
     }
     console.log('  ' + '─'.repeat(16 + cols.length * W));
-    console.log('  drawables = scene-pass objects · draws = all passes (scene+shadow+post)\n');
+    console.log('  drawables = scene-pass objects · draws = all passes (scene+shadow+post)');
+
+    // Per-owner breakdown of the LAST variant — "where do the draws go".
+    const last = rows[rows.length - 1].d;
+    const srcEntries = Object.entries(last.bySource).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+    console.log(`\n  WHERE THE DRAWABLES GO (${rows[rows.length - 1].label}):`);
+    console.log('  ' + srcEntries.map(([k, n]) => `${n} ${k}`).join('  ·  '));
+    console.log(`  MERGEABILITY: ${last.mergedDraws} merged · ${last.mergeableNow} loose-static (mergeable now) · ${last.dynamicDraws} dynamic\n`);
   });
 }
 
