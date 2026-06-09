@@ -33,6 +33,7 @@ import { createBodyAnimator } from './enemy-animation';
 import { Animator } from '../anim/animator';
 import { buildModel, mergeRigidSegments, type BuiltModel } from '../ecs/build-model';
 import { buildCreature } from '../content/build-creature';
+import type { Creature } from '../content/creature-types';
 import { ITEMS } from '../content/items';
 import { createPickup } from '../interactables/pickup';
 import { computeDamage, setEntityCombatStats, clearEntityCombatStats, registerDamageSink, unregisterDamageSink, type DamageEvent } from '../combat/damage';
@@ -259,8 +260,10 @@ export function createEnemy(
   let hurtbox: Hurtbox;
   let essenceRigYDefault: number;
   let built: BuiltModel;
+  let creatureRef: Creature | null = null;   // set on the creature path (for setJointVisible)
   if (spec.creature) {
     const creature = buildCreature(spec.creature);     // builds + merges + measures internally
+    creatureRef = creature;
     // Creature → BuiltModel shape (joints ARE the slots) so the rest of the
     // module (presentation/animation) consumes it unchanged.
     built = {
@@ -425,6 +428,11 @@ export function createEnemy(
   // are silent no-ops.
   function hidePartsByName(names: readonly string[]): void {
     const want = new Set(names);
+    // Creature path: names are JOINTs — hide the joint subtree + its zones
+    // (the clean part-break). Legacy path: traverse + hide meshes by name.
+    if (creatureRef) {
+      for (const n of names) creatureRef.setJointVisible(n, false);
+    }
     built.group.traverse((o) => {
       if (o.name && want.has(o.name)) o.visible = false;
     });

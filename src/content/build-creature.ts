@@ -59,6 +59,13 @@ export function buildCreature(spec: CreatureSpec): Creature {
   const hurtbox = autoHurtbox(spec, skel, absByName, built, p.girth);
   applyZoneSpecs(hurtbox, spec.zones, built);
 
+  // Hide a joint subtree + the zones following it (part-breaks / phase reveals).
+  const setJointVisible = (jointName: string, on: boolean): void => {
+    const j = built.slots.get(jointName);
+    if (j) j.visible = on;
+    for (const z of hurtbox.zones) if (z.follow && z.follow === j) z.enabled = on;
+  };
+
   return {
     group: built.group,
     bounds,
@@ -67,6 +74,7 @@ export function buildCreature(spec: CreatureSpec): Creature {
     materials: built.materials,
     hitTargets: built.hitTargets,
     hurtbox,
+    setJointVisible,
   };
 }
 

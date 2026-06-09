@@ -82,5 +82,9 @@ export interface Creature {
   /** Raycast targets for tap-to-attack (meshes; excludes sprites). */
   hitTargets: THREE.Object3D[];
   hurtbox: Hurtbox;
-  // anim + presentation controllers attach in the next increment.
+  /** Show/hide a joint and its entire subtree (skin + child joints), AND
+   *  enable/disable the hurtbox zones that follow it. The clean way bosses do
+   *  part-breaks / lose-a-limb and phase reveals — `setJointVisible('shoulderL',
+   *  false)` drops the whole left arm, geometry and hitbox together. */
+  setJointVisible(jointName: string, on: boolean): void;
 }

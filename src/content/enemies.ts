@@ -2044,12 +2044,38 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.18,
     recoverTime: 1.40,             // long cooldown — sprint past is viable
     damageType: 'magic',
-    model: spore_modelV1(0x6a4a18, 0xa8d870),
-    baseEyeEmissive: 0,
+    // Stationary fungal turret — a stalk under a flattened cap with a glowing
+    // spore-sac core + drooping gills. The 'gelatinous' presence gives it a
+    // slow living inflate; the core brightens as it readies a burst.
+    creature: {
+      id: 'plague-spore',
+      archetype: 'blob',
+      proportions: { height: 0.9, girth: 0.42 },
+      materials: {
+        flesh: { color: 0x6a4a18, roughness: 0.9, flatShading: 'auto', rim: { color: 0xa8d870, power: 2, intensity: 0.4, darkReactive: 0.4 } },
+        core: { color: 0xa8d870, emissive: 0xa8d870, emissiveIntensity: 1.6 },
+      },
+      eyes: { material: 'core', emissive: 1.6 },
+      flash: { material: 'flesh' },
+      skin: [
+        // Stalk (widens upward) + flattened cap.
+        { kind: 'cylinder', joint: 'core', radius: 0.1, radiusTop: 0.15, height: 0.42, pos: [0, -0.24, 0], jitter: 0.02, mat: 'flesh' },
+        { kind: 'sphere', joint: 'core', radius: 0.34, scale: [1.1, 0.55, 1.1], pos: [0, 0.14, 0], jitter: 0.04, mat: 'flesh' },
+        // Glowing spore-sac under the cap.
+        { kind: 'sphere', joint: 'core', radius: 0.17, pos: [0, 0.04, 0], mat: 'core' },
+        // Drooping gill tendrils around the cap rim.
+        { kind: 'cone', joint: 'core', radius: 0.03, height: 0.2, pos: [0.24, 0.05, 0], rot: [0, 0, 0.6], mat: 'flesh' },
+        { kind: 'cone', joint: 'core', radius: 0.03, height: 0.2, pos: [-0.24, 0.05, 0], rot: [0, 0, -0.6], mat: 'flesh' },
+        { kind: 'cone', joint: 'core', radius: 0.03, height: 0.2, pos: [0, 0.05, 0.24], rot: [-0.6, 0, 0], mat: 'flesh' },
+        { kind: 'cone', joint: 'core', radius: 0.03, height: 0.2, pos: [0, 0.05, -0.24], rot: [0.6, 0, 0], mat: 'flesh' },
+      ],
+    },
+    baseEyeEmissive: 1.6,
     collisionRadius: 0.40,
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'core',
+    flashMaterialName: 'flesh',
     eyeMaterialName: 'core',
+    presence: 'gelatinous',        // slow living inflate
     sightRange: 6,
     sightConeHalfAngle: 1.8,       // near-omnidirectional — it's a fungus
     hearingRange: 4,
@@ -2184,14 +2210,40 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.14,
     recoverTime: 0.40,
     damageType: 'physical',
-    // Bigger than a rat (scale 3.0 vs rat's 2.0) + black-brown
-    // palette + yellow-green sickly eyes. Reads as "starving dog,
-    // not vermin."
-    model: quadrupedRatModel(0x18120c, 0xc8d030, 3.0),
+    // Bigger, leaner quadruped than the rat — long dog snout, back-swept ears,
+    // a whip tail, sickly yellow-green eyes. "Starving dog, not vermin."
+    creature: {
+      id: 'carrion-hound',
+      archetype: 'quadruped',
+      proportions: { height: 0.52, girth: 0.18, legLength: 0.36, headSize: 0.15, neckLength: 0.12 },
+      materials: {
+        hide: { color: 0x18120c, roughness: 1, flatShading: 'auto', rim: { color: 0xc8d030, power: 3, intensity: 0.3, darkReactive: 0.4 } },
+        eyes: { color: 0xc8d030, emissive: 0xc8d030, emissiveIntensity: 2.0 },
+      },
+      eyes: { material: 'eyes', emissive: 2.0 },
+      flash: { material: 'hide' },
+      skin: [
+        { kind: 'capsule', joint: 'spine', radius: 0.16, height: 0.44, rot: [1.5708, 0, 0], jitter: 0.02, mat: 'hide' },
+        // Elongated skull + long snout, back-swept ears, glowing eyes.
+        { kind: 'sphere', joint: 'head', radius: 0.13, scale: [0.9, 1, 1.15], jitter: 0.02, mat: 'hide' },
+        { kind: 'cone', joint: 'head', radius: 0.07, height: 0.22, pos: [0, -0.03, -0.13], rot: [1.5708, 0, 0], mat: 'hide' },
+        { kind: 'cone', joint: 'head', radius: 0.04, height: 0.11, pos: [-0.08, 0.1, 0.05], rot: [-0.5, 0, 0], mat: 'hide' },
+        { kind: 'cone', joint: 'head', radius: 0.04, height: 0.11, pos: [0.08, 0.1, 0.05], rot: [-0.5, 0, 0], mat: 'hide' },
+        { kind: 'sphere', joint: 'head', radius: 0.028, pos: [-0.08, 0.03, -0.08], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.028, pos: [0.08, 0.03, -0.08], mat: 'eyes' },
+        // Four lean legs (the trot gait swings them).
+        { kind: 'bone', from: 'frontL', to: 'footFL', radius: 0.035, mat: 'hide' },
+        { kind: 'bone', from: 'frontR', to: 'footFR', radius: 0.035, mat: 'hide' },
+        { kind: 'bone', from: 'hindL', to: 'footHL', radius: 0.04, mat: 'hide' },
+        { kind: 'bone', from: 'hindR', to: 'footHR', radius: 0.04, mat: 'hide' },
+        // Whip tail, angled up/back.
+        { kind: 'cone', joint: 'hips', radius: 0.04, height: 0.42, pos: [0, 0.06, 0.3], rot: [-1.3, 0, 0], mat: 'hide' },
+      ],
+    },
     baseEyeEmissive: 2.0,
     collisionRadius: 0.30,
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'spine',
+    flashMaterialName: 'hide',
     eyeMaterialName: 'eyes',
     sightRange: 8,
     sightConeHalfAngle: 1.4,
