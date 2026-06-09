@@ -584,36 +584,63 @@ export const ENEMIES: Record<string, EnemySpec> = {
     windupTime: 0.70,    // even the trash mob has a clear tell now
     strikeTime: 0.12,
     recoverTime: 0.65,
-    // First QUADRUPED creature: a low horizontal body on four legs (trot gait),
-    // snout + ears, a long tapering tail, red eyes. Bite uses the telegraph
-    // (body lean) — no clip bundle for quadrupeds yet.
+    // First QUADRUPED creature: a low, lean horizontal body on four legs (trot
+    // gait), a pointed snout, big rounded ears, beady red eyes and a long bald
+    // tail. The naked parts (tail, ear membranes, paws, nose) use a second
+    // pinkish-grey "skin" material — that bald-skin contrast is what reads as
+    // RAT instead of a chubby furred lump. Bite uses the telegraph (body lean)
+    // — no clip bundle for quadrupeds yet.
     creature: {
       id: 'rat',
       archetype: 'quadruped',
-      proportions: { height: 0.3, girth: 0.16, legLength: 0.15, headSize: 0.12, neckLength: 0.08 },
+      // Low and lean: short legs (legLength), a long body (height drives body
+      // length), a small head so the snout dominates the face.
+      proportions: { height: 0.28, girth: 0.18, legLength: 0.12, headSize: 0.09, neckLength: 0.06 },
       materials: {
         fur: { color: 0x2a1a14, roughness: 1, flatShading: 'auto' },
+        // Bald rat skin — desaturated mauve-grey, NOT cute pink (grimdark).
+        skin: { color: 0x5a4744, roughness: 0.9, flatShading: 'auto' },
         eyes: { color: 0xff2a0a, emissive: 0xff2a0a, emissiveIntensity: 2.0 },
       },
       eyes: { material: 'eyes', emissive: 2.0 },
       flash: { material: 'fur' },
       skin: [
-        // Horizontal body (capsule laid along Z), mangy (jitter).
-        { kind: 'capsule', joint: 'spine', radius: 0.16, height: 0.34, rot: [1.5708, 0, 0], jitter: 0.02, mat: 'fur' },
-        // Head: skull + a tapering snout forward (−Z), two ears up, red eyes.
-        { kind: 'sphere', joint: 'head', radius: 0.13, jitter: 0.02, mat: 'fur' },
-        { kind: 'cone', joint: 'head', radius: 0.075, height: 0.18, pos: [0, -0.02, -0.12], rot: [1.5708, 0, 0], mat: 'fur' },
-        { kind: 'cone', joint: 'head', radius: 0.045, height: 0.12, pos: [-0.08, 0.11, 0.02], mat: 'fur' },
-        { kind: 'cone', joint: 'head', radius: 0.045, height: 0.12, pos: [0.08, 0.11, 0.02], mat: 'fur' },
-        { kind: 'sphere', joint: 'head', radius: 0.03, pos: [-0.08, 0.04, -0.07], mat: 'eyes' },
-        { kind: 'sphere', joint: 'head', radius: 0.03, pos: [0.08, 0.04, -0.07], mat: 'eyes' },
-        // Four thin legs (bones span hip→foot; the trot gait swings them).
-        { kind: 'bone', from: 'frontL', to: 'footFL', radius: 0.03, mat: 'fur' },
-        { kind: 'bone', from: 'frontR', to: 'footFR', radius: 0.03, mat: 'fur' },
-        { kind: 'bone', from: 'hindL', to: 'footHL', radius: 0.03, mat: 'fur' },
-        { kind: 'bone', from: 'hindR', to: 'footHR', radius: 0.03, mat: 'fur' },
-        // Long tapering tail trailing back (+Z) off the hips.
-        { kind: 'cone', joint: 'hips', radius: 0.045, height: 0.5, pos: [0, 0, 0.32], rot: [-1.5708, 0, 0], mat: 'fur' },
+        // Lean body: a slim tube down the spine with a rounded rump at the hips
+        // tapering to narrower shoulders — a rat's silhouette, not a fat barrel.
+        { kind: 'capsule', joint: 'spine', radius: 0.092, height: 0.2, rot: [1.5708, 0, 0], jitter: 0.015, mat: 'fur' },
+        { kind: 'sphere', joint: 'hips', radius: 0.112, jitter: 0.015, mat: 'fur' },   // haunches
+        { kind: 'sphere', joint: 'chest', radius: 0.086, jitter: 0.015, mat: 'fur' },  // shoulders
+        // Hunched neck bridging shoulders → skull (tapers toward the head).
+        { kind: 'bone', from: 'chest', to: 'neck', radius: 0.07, radiusTop: 0.055, mat: 'fur' },
+        { kind: 'bone', from: 'neck', to: 'head', radius: 0.055, radiusTop: 0.05, mat: 'fur' },
+        // Small wedge skull + a long pointed snout forward (−Z). Skull kept
+        // small so the snout — not a round face — defines the head.
+        { kind: 'sphere', joint: 'head', radius: 0.068, jitter: 0.01, mat: 'fur' },
+        { kind: 'cone', joint: 'head', radius: 0.05, height: 0.16, pos: [0, -0.012, -0.12], rot: [1.5708, 0, 0], mat: 'fur' },
+        { kind: 'sphere', joint: 'head', radius: 0.018, pos: [0, -0.018, -0.2], mat: 'skin' },   // wet nose tip
+        // Big rounded ears — flattened discs set high, angled outward. Bald
+        // inner membrane in skin over a furred outer cup.
+        { kind: 'sphere', joint: 'head', radius: 0.052, scale: [1, 1, 0.38], pos: [-0.07, 0.072, 0.012], rot: [0, -0.5, 0], mat: 'fur' },
+        { kind: 'sphere', joint: 'head', radius: 0.052, scale: [1, 1, 0.38], pos: [0.07, 0.072, 0.012], rot: [0, 0.5, 0], mat: 'fur' },
+        { kind: 'sphere', joint: 'head', radius: 0.032, scale: [1, 1, 0.3], pos: [-0.068, 0.07, -0.004], rot: [0, -0.5, 0], mat: 'skin' },
+        { kind: 'sphere', joint: 'head', radius: 0.032, scale: [1, 1, 0.3], pos: [0.068, 0.07, -0.004], rot: [0, 0.5, 0], mat: 'skin' },
+        // Beady red eyes on the snout sides.
+        { kind: 'sphere', joint: 'head', radius: 0.021, pos: [-0.05, 0.012, -0.082], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.021, pos: [0.05, 0.012, -0.082], mat: 'eyes' },
+        // Four thin legs (bones span hip→foot; the trot gait swings them) +
+        // tiny bald paws.
+        { kind: 'bone', from: 'frontL', to: 'footFL', radius: 0.022, mat: 'fur' },
+        { kind: 'bone', from: 'frontR', to: 'footFR', radius: 0.022, mat: 'fur' },
+        { kind: 'bone', from: 'hindL', to: 'footHL', radius: 0.024, mat: 'fur' },
+        { kind: 'bone', from: 'hindR', to: 'footHR', radius: 0.024, mat: 'fur' },
+        { kind: 'box', joint: 'footFL', size: [0.034, 0.02, 0.06], pos: [0, 0.01, -0.014], mat: 'skin' },
+        { kind: 'box', joint: 'footFR', size: [0.034, 0.02, 0.06], pos: [0, 0.01, -0.014], mat: 'skin' },
+        { kind: 'box', joint: 'footHL', size: [0.036, 0.02, 0.064], pos: [0, 0.01, -0.014], mat: 'skin' },
+        { kind: 'box', joint: 'footHR', size: [0.036, 0.02, 0.064], pos: [0, 0.01, -0.014], mat: 'skin' },
+        // Long bald tail trailing back (+Z), tapering in two segments with an
+        // upward flick at the tip — the unmistakable rat tail.
+        { kind: 'cylinder', joint: 'hips', radius: 0.03, radiusTop: 0.02, height: 0.32, pos: [0, 0.0, 0.28], rot: [-1.45, 0, 0], mat: 'skin' },
+        { kind: 'cone', joint: 'hips', radius: 0.019, height: 0.26, pos: [0, 0.07, 0.5], rot: [-2.0, 0, 0], mat: 'skin' },
       ],
     },
     baseEyeEmissive: 2.0,
@@ -1350,32 +1377,86 @@ export const ENEMIES: Record<string, EnemySpec> = {
         steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, element: 'physical' } }],
       },
     ],
-    // Gaunt, pale, cold-eyed bones via the parametric builder — its own
-    // brittle silhouette, and it inherits the full rig (arms gesture the
-    // throw + slash, it strides in, skull cranes at you).
-    // Gaunt, pale, cold-eyed bones — thin limbs, an exposed ribcage, a skull
-    // with sunken blue eye-lights. Throws bone shards + slashes.
+    // A TRUE skeleton, not a clay mannequin: a skull with a hinged jaw and
+    // sunken blue eye-lights, a visible spinal column, a barrel ribcage of
+    // descending hoops, a pelvic girdle, and thin limb bones with knobbed
+    // joints. The gaps between the bones ARE the silhouette — nothing solid.
+    // It inherits the full biped rig (arms gesture the throw + slash, it
+    // strides in, the skull cranes at you).
     creature: {
       id: 'skeleton',
       archetype: 'biped',
-      proportions: { height: 1.55, girth: 0.11, armLength: 0.66, legLength: 0.62, headSize: 0.15, hunch: 0.05 },
+      // Gaunt: thin girth so the ribcage doesn't read as a barrel chest.
+      proportions: { height: 1.55, girth: 0.1, armLength: 0.66, legLength: 0.62, headSize: 0.13, hunch: 0.08 },
       materials: {
-        bone: { color: 0x7c7464, roughness: 0.8, flatShading: 'auto', rim: { color: 0xb8d4f0, power: 3, intensity: 0.4, darkReactive: 0.5 } },
-        socket: { color: 0x0c0f12, roughness: 1, flatShading: 'auto' },
+        // Pale bone, lifted brighter than before so it catches the lamp out
+        // of the dark; cold blue rim so the brittle edges glow in shadow.
+        bone: { color: 0x938974, roughness: 0.75, flatShading: 'auto', rim: { color: 0xb8d4f0, power: 3, intensity: 0.45, darkReactive: 0.55 } },
+        socket: { color: 0x080a0c, roughness: 1, flatShading: 'auto' },
         eyes: { color: 0x9fd8ff, emissive: 0x9fd8ff, emissiveIntensity: 2.4 },
       },
       eyes: { material: 'eyes', emissive: 2.4 },
       flash: { material: 'bone' },
       skin: [
-        ...humanoidBipedSkin({ body: 'bone', eye: 'eyes', limbRadius: 0.04, bodyRadius: 0.11, headRadius: 0.15, eyeR: 0.035, jitter: 0.01 }),
-        // Exposed ribs — three thin cross-bars on the chest.
-        { kind: 'cylinder', joint: 'spine', radius: 0.02, height: 0.32, pos: [0, 0.1, -0.02], rot: [0, 0, 1.5708], mat: 'bone' },
-        { kind: 'cylinder', joint: 'spine', radius: 0.02, height: 0.3, pos: [0, 0.0, -0.02], rot: [0, 0, 1.5708], mat: 'bone' },
-        { kind: 'cylinder', joint: 'spine', radius: 0.02, height: 0.26, pos: [0, -0.1, -0.02], rot: [0, 0, 1.5708], mat: 'bone' },
-        // Skull detail — dark eye sockets behind the eye-lights + a jaw.
-        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [-0.065, 0.0, -0.1], mat: 'socket' },
-        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [0.065, 0.0, -0.1], mat: 'socket' },
-        { kind: 'box', joint: 'head', size: [0.16, 0.07, 0.16], pos: [0, -0.13, -0.03], mat: 'bone' },
+        // ── Spinal column: lumbar → chest → neck → skull, a stack of bones
+        //    running up the centre. The ribcage hangs off it. ─────────────
+        { kind: 'bone', from: 'pelvis', to: 'spine', radius: 0.024, mat: 'bone' },
+        { kind: 'bone', from: 'spine', to: 'neck', radius: 0.022, mat: 'bone' },
+        { kind: 'bone', from: 'neck', to: 'head', radius: 0.024, mat: 'bone' },
+        // ── Ribcage: four hoops descending + narrowing (widest at the top,
+        //    floating ribs at the bottom). Flattened front-back so it reads
+        //    as a chest cavity, not a tube. Plus a thin sternum down the front.
+        { kind: 'torus', joint: 'spine', radius: 0.108, tube: 0.013, pos: [0, 0.06, -0.005], rot: [1.5708, 0, 0], scale: [1, 0.8, 1], mat: 'bone' },
+        { kind: 'torus', joint: 'spine', radius: 0.1, tube: 0.013, pos: [0, -0.02, -0.005], rot: [1.5708, 0, 0], scale: [1, 0.8, 1], mat: 'bone' },
+        { kind: 'torus', joint: 'spine', radius: 0.086, tube: 0.012, pos: [0, -0.1, -0.005], rot: [1.5708, 0, 0], scale: [1, 0.8, 1], mat: 'bone' },
+        { kind: 'torus', joint: 'spine', radius: 0.07, tube: 0.011, pos: [0, -0.18, -0.005], rot: [1.5708, 0, 0], scale: [1, 0.8, 1], mat: 'bone' },
+        { kind: 'cylinder', joint: 'spine', radius: 0.011, height: 0.24, pos: [0, -0.05, -0.082], mat: 'bone' },
+        // ── Shoulder girdle: scapula knobs + collarbones out to each shoulder.
+        { kind: 'sphere', joint: 'shoulderL', radius: 0.04, mat: 'bone' },
+        { kind: 'sphere', joint: 'shoulderR', radius: 0.04, mat: 'bone' },
+        { kind: 'bone', from: 'neck', to: 'shoulderL', radius: 0.014, mat: 'bone' },
+        { kind: 'bone', from: 'neck', to: 'shoulderR', radius: 0.014, mat: 'bone' },
+        // ── Arms: humerus + forearm, knobbed elbows, skeletal claw-hands. ──
+        { kind: 'bone', from: 'shoulderL', to: 'elbowL', radius: 0.023, mat: 'bone' },
+        { kind: 'bone', from: 'elbowL', to: 'handL', radius: 0.019, mat: 'bone' },
+        { kind: 'bone', from: 'shoulderR', to: 'elbowR', radius: 0.023, mat: 'bone' },
+        { kind: 'bone', from: 'elbowR', to: 'handR', radius: 0.019, mat: 'bone' },
+        { kind: 'sphere', joint: 'elbowL', radius: 0.027, mat: 'bone' },
+        { kind: 'sphere', joint: 'elbowR', radius: 0.027, mat: 'bone' },
+        // Bony fingers — three thin phalanges per hand, curled down/forward.
+        { kind: 'sphere', joint: 'handL', radius: 0.022, mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.011, height: 0.075, pos: [-0.025, -0.04, 0], rot: [2.7, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.011, height: 0.085, pos: [0, -0.045, 0], rot: [2.85, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handL', radius: 0.011, height: 0.075, pos: [0.025, -0.04, 0], rot: [2.7, 0, 0], mat: 'bone' },
+        { kind: 'sphere', joint: 'handR', radius: 0.022, mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.011, height: 0.075, pos: [-0.025, -0.04, 0], rot: [2.7, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.011, height: 0.085, pos: [0, -0.045, 0], rot: [2.85, 0, 0], mat: 'bone' },
+        { kind: 'cone', joint: 'handR', radius: 0.011, height: 0.075, pos: [0.025, -0.04, 0], rot: [2.7, 0, 0], mat: 'bone' },
+        // ── Pelvis: an open girdle ring instead of a solid block. ──────────
+        { kind: 'torus', joint: 'pelvis', radius: 0.082, tube: 0.022, rot: [1.5708, 0, 0], scale: [1, 0.78, 1], mat: 'bone' },
+        { kind: 'sphere', joint: 'hipL', radius: 0.036, mat: 'bone' },
+        { kind: 'sphere', joint: 'hipR', radius: 0.036, mat: 'bone' },
+        // ── Legs: femur + tibia, knobbed knees, flat splayed bone-feet. ────
+        { kind: 'bone', from: 'hipL', to: 'kneeL', radius: 0.029, mat: 'bone' },
+        { kind: 'bone', from: 'kneeL', to: 'footL', radius: 0.025, mat: 'bone' },
+        { kind: 'bone', from: 'hipR', to: 'kneeR', radius: 0.029, mat: 'bone' },
+        { kind: 'bone', from: 'kneeR', to: 'footR', radius: 0.025, mat: 'bone' },
+        { kind: 'sphere', joint: 'kneeL', radius: 0.031, mat: 'bone' },
+        { kind: 'sphere', joint: 'kneeR', radius: 0.031, mat: 'bone' },
+        { kind: 'box', joint: 'footL', size: [0.06, 0.035, 0.17], pos: [0, 0.02, -0.045], mat: 'bone' },
+        { kind: 'box', joint: 'footR', size: [0.06, 0.035, 0.17], pos: [0, 0.02, -0.045], mat: 'bone' },
+        // ── Skull: a slightly elongated cranium, sunken sockets with the
+        //    eye-lights set deep, a hollow nasal cavity, and a hinged jaw. ──
+        { kind: 'sphere', joint: 'head', radius: 0.115, scale: [0.86, 1.02, 1.14], jitter: 0.008, mat: 'bone' },
+        { kind: 'sphere', joint: 'head', radius: 0.046, pos: [-0.05, 0.014, -0.078], mat: 'socket' },
+        { kind: 'sphere', joint: 'head', radius: 0.046, pos: [0.05, 0.014, -0.078], mat: 'socket' },
+        // Eye-lights set proud in the socket openings so they actually glow.
+        { kind: 'sphere', joint: 'head', radius: 0.024, pos: [-0.05, 0.014, -0.116], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.024, pos: [0.05, 0.014, -0.116], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.022, scale: [0.7, 1.2, 1], pos: [0, -0.04, -0.11], mat: 'socket' },
+        // Upper teeth ridge + hinged jaw.
+        { kind: 'box', joint: 'head', size: [0.09, 0.022, 0.05], pos: [0, -0.072, -0.07], mat: 'bone' },
+        { kind: 'box', joint: 'head', size: [0.12, 0.05, 0.12], pos: [0, -0.105, -0.025], mat: 'bone' },
       ],
     },
     baseEyeEmissive: 2.4,
