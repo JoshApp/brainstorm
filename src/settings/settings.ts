@@ -114,6 +114,10 @@ export interface Settings {
    *  loud the diegetic feedback (vignette, heartbeat, breath) is. Use
    *  with the registry in src/ui/hud-style.ts. Default 'minimal'. */
   hudStyle: 'classic' | 'minimal' | 'diegetic';
+  /** Internal one-time-migration marker (not a user toggle). Set once portal
+   *  culling flipped to default-on, so existing saves that carried the old
+   *  explicit `false` get force-enabled exactly once — see load(). */
+  migratedPortalCulling?: boolean;
 }
 
 export type ShadowMode = 'off' | 'hero' | 'single' | 'all';
@@ -174,6 +178,7 @@ const DEFAULTS: Settings = {
   aoStrength: 1.6,
   surfaceDetail: true,
   hudStyle: 'minimal',
+  migratedPortalCulling: true,   // fresh installs are already on (no migration needed)
 };
 
 let current: Settings = load();
@@ -185,7 +190,18 @@ function load(): Settings {
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw) as Partial<Settings>;
     // Merge with defaults — older saves may lack newer fields.
-    return { ...DEFAULTS, ...parsed };
+    const merged = { ...DEFAULTS, ...parsed };
+    // One-time migration: portal culling became default-on, but a save that
+    // predates that carries the old explicit `false`, which shadows the new
+    // default forever. Force it on ONCE (keyed by a marker that the merge can't
+    // fake — we check `parsed`, not `merged`), then persist the marker so a
+    // later deliberate toggle-off still sticks.
+    if (parsed.migratedPortalCulling !== true) {
+      merged.portalCulling = true;
+      merged.migratedPortalCulling = true;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+    }
+    return merged;
   } catch {
     return { ...DEFAULTS };
   }
