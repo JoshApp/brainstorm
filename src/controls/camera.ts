@@ -142,6 +142,46 @@ export function updateCamera(
     }
   }
 
+  // --- Depenetration ---
+  // The slide passes above only PREVENT entering an enemy; once we're already
+  // INSIDE one (we dashed into it, it dashed/leapt onto us, or a mimic spawned
+  // on top of us) every exit direction also reads as "inside", so the slide
+  // wedges us stuck. This pushes the player back OUT along the overlap normal
+  // each frame until clear — the one thing the prevent-only model can't do.
+  // Runs unconditionally (even with no input) so an enemy landing on a still
+  // player still ejects us. Clamped against walls so we never push into stone.
+  {
+    let pushX = 0, pushZ = 0;
+    for (const e of enemies) {
+      if (!e.alive || e.noPlayerCollision) continue;
+      const dx = camera.position.x - e.group.position.x;
+      const dz = camera.position.z - e.group.position.z;
+      const minDist = PLAYER_RADIUS + e.collisionRadius;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= minDist * minDist) continue;             // not overlapping
+      if (d2 > 1e-4) {
+        const d = Math.sqrt(d2);
+        const overlap = minDist - d + 0.02;              // + small margin so we clear
+        pushX += (dx / d) * overlap;
+        pushZ += (dz / d) * overlap;
+      } else {
+        // Concentric (e.g. spawned dead-on) — no normal to push along, so pick
+        // a stable direction off the look yaw to break the tie.
+        pushX += Math.sin(yaw) * minDist;
+        pushZ += Math.cos(yaw) * minDist;
+      }
+    }
+    if (pushX !== 0 || pushZ !== 0) {
+      const out = walkable.clampMove(
+        camera.position.x, camera.position.z,
+        camera.position.x + pushX, camera.position.z + pushZ,
+        PLAYER_RADIUS,
+      );
+      camera.position.x = out.x;
+      camera.position.z = out.z;
+    }
+  }
+
   // Eye height locked
   camera.position.y = CONFIG.PLAYER_HEIGHT;
 
