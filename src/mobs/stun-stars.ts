@@ -58,13 +58,16 @@ export function createStunStars(parent: THREE.Object3D, y: number): StunStars {
   const sprites: THREE.Sprite[] = [];
   for (let i = 0; i < STAR_COUNT; i++) {
     const mat = new THREE.SpriteMaterial({
-      map: tex, color: 0xcfe0ff, transparent: true, opacity: 0,
-      depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending, fog: false,
+      // depthTest OFF + high renderOrder → an OVERLAY cue that always reads
+      // above the head, never buried inside the (often tall) body mesh.
+      map: tex, color: 0xeaf2ff, transparent: true, opacity: 0,
+      depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false,
     });
     const sp = new THREE.Sprite(mat);
+    sp.renderOrder = 9500;
     const a = (i / STAR_COUNT) * Math.PI * 2;
     sp.position.set(Math.cos(a) * ORBIT_RADIUS, 0, Math.sin(a) * ORBIT_RADIUS);
-    sp.scale.setScalar(0.16);
+    sp.scale.setScalar(0.24);
     group.add(sp);
     sprites.push(sp);
   }

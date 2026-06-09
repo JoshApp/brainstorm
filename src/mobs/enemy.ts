@@ -1563,14 +1563,25 @@ export function createEnemy(
         // stun-star ring orbiting overhead. The openWhenStaggered weak points
         // are exposed this whole window. The free-hit the player earned.
         staggerTimer -= dt;
-        const f = Math.max(0, Math.min(1, staggerTimer / CONFIG.POISE.STAGGER_DURATION));
         const elapsed = CONFIG.POISE.STAGGER_DURATION - staggerTimer;
-        applyTilt(-0.6 * f);
-        built.group.rotation.y = Math.sin(elapsed * 15) * 0.45 * f;   // dizzy spin wobble
-        built.group.rotation.z = Math.sin(elapsed * 11) * 0.20 * f;   // drunken lean
+        // Dizzy for the first ~1.5s (spin + drunken lean), then SETTLE into a
+        // slumped, head-down stun with a gentle sway for the rest of the long
+        // window — reads "down for a beat", not spinning forever.
+        const wob = Math.max(0, 1 - elapsed / 1.5);
+        applyTilt(-0.45 - 0.25 * wob);                                  // stays slumped back
+        built.group.rotation.y = Math.sin(elapsed * 15) * 0.4 * wob;    // dizzy spin
+        built.group.rotation.z = Math.sin(elapsed * 11) * 0.18 * wob + Math.sin(elapsed * 2.2) * 0.06;
         applyIdleEyes();              // eyes go dim — visibly stunned, not glaring
         built.group.position.y = 0;
-        if (!stunStars) stunStars = createStunStars(container, aimHeightResolved * 1.6 + 0.5);
+        if (!stunStars) {
+          // Place the ring above the model's ACTUAL top (bounding box), not a
+          // guessed height — a tall body (stoneguard) otherwise buries the
+          // stars in its chest. Computed once, on the first stagger.
+          built.group.updateWorldMatrix(true, true);
+          const box = new THREE.Box3().setFromObject(built.group);
+          const top = isFinite(box.max.y) ? box.max.y - container.position.y : aimHeightResolved * 1.5;
+          stunStars = createStunStars(container, top + 0.4);
+        }
         if (staggerTimer <= 0) {
           applyTilt(0);
           built.group.rotation.y = 0;

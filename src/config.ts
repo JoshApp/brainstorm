@@ -454,11 +454,11 @@ export const CONFIG = {
   // Break it → the enemy's action is cancelled and it reels (a free-hit
   // window). See the poise system in src/mobs/enemy.ts.
   POISE: {
-    STAGGER_DURATION: 1.4,  // s the enemy reels after a poise break — a real
-                            //   "it's down for a beat" window: read the dizzy
-                            //   tumble + stars, land your riposte/execute, THEN it
-                            //   shakes it off (poise already reset full) and the
-                            //   fight continues. Not instant.
+    STAGGER_DURATION: 4.0,  // s the enemy reels after a poise break — a long,
+                            //   committed "it's DOWN" window: dizzy spin settles
+                            //   into a slumped stun, stars wheeling overhead. Land
+                            //   your riposte/execute at leisure, THEN it shakes it
+                            //   off (poise already reset full) and the fight goes on.
     REGEN_DELAY: 1.2,       // s of no stagger pressure before the pool refills
     REGEN_RATE: 4,          // poise points / s once regen kicks in
     CHARGE_BONUS: 1.0,      // a FULL charged swing adds this ×stagger (×2 total)
