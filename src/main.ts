@@ -813,7 +813,7 @@ function tick() {
   tickPerfOverlay(performance.now());
   // Adaptive resolution — self-gates (no-op unless enabled on a real phone).
   tickAdaptiveResolution(performance.now());
-  tickCombatDebug(realDt);
+  tickCombatDebug(realDt, currentLevel?.enemies ?? []);
   // Programmatic perf probe (window.__perf for the headless perf runner).
   // DEV-only — the literal-false guard dead-code-eliminates it from prod
   // (and tickPerfProbe is itself a no-op in prod, belt-and-suspenders).

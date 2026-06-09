@@ -280,6 +280,13 @@ export const CONFIG = {
   HELD_POSE_SMOOTH_RATE: 22,
   SWORD_REACH: 1.9,            // meters — distance enemies must be within to be hit
   SWORD_CONE_HALF_ANGLE: 0.7,  // radians (~40°) — forward arc that registers hits.
+  // Melee hit is a 3D capsule (genre-standard weapon hitbox), swept across the
+  // swing's arc, tested vs each enemy's hurtbox sphere (position + aimHeight,
+  // hitRadius). RADIUS is the forgiveness knob — fat capsule = forgiving, but
+  // since it's posed along your TRUE look direction, pitch (ground vs upright)
+  // matters. SWEEP_SAMPLES sub-steps the sweep so nothing tunnels.
+  SWORD_HITBOX_RADIUS: 0.45,
+  SWORD_HITBOX_SWEEP_SAMPLES: 5,
   INTERACT_CONE_HALF_ANGLE: 0.9, // radians (~52°) — must look roughly at an
                                  //   interactable before its prompt + USE button
                                  //   appear. Otherwise the player would be told
