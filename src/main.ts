@@ -289,11 +289,16 @@ let currentLevel: LiveLevel & { checkRoomClear?: () => void } = null as unknown 
 // (engine/systems.ts) ticks it each frame between camera-move and render.
 let roomCuller: RoomCuller | null = null;
 let cullerLevel: LiveLevel | null = null;
-const PORTAL_CULL_FORCED =
-  import.meta.env.DEV &&
-  new URLSearchParams(window.location.search).get('portalcull') === '1';
+// DEV: ?portalcull=1 forces it ON (over a saved 'off'), =0 forces it OFF — so a
+// perf scenario can A/B the culler's contribution. Stripped from prod.
+const PORTAL_CULL_FLAG = import.meta.env.DEV
+  ? new URLSearchParams(window.location.search).get('portalcull')
+  : null;
+const PORTAL_CULL_FORCED = PORTAL_CULL_FLAG === '1';
+const PORTAL_CULL_DISABLED = PORTAL_CULL_FLAG === '0';
 function syncRoomCuller() {
-  const want = (getSettings().portalCulling || PORTAL_CULL_FORCED) && !!currentLevel;
+  const want = !PORTAL_CULL_DISABLED
+    && (getSettings().portalCulling || PORTAL_CULL_FORCED) && !!currentLevel;
   if (want) {
     if (cullerLevel !== currentLevel) {
       roomCuller?.dispose();
