@@ -4,6 +4,7 @@ import type { EnemyDeathSize, VocalArchetype } from '../audio/sfx';
 import type { Ability } from './abilities';
 import type { HurtZoneSpec } from '../combat/hurtbox';
 import type { CreatureSpec, SkinPart } from './creature-types';
+import { humanoidBipedSkin } from './creature-skins';
 
 /** The 16 leg bones (hip→knee→foot, eight legs) for an arachnid creature,
  *  referencing the joint names the arachnid skeleton generates. Tapered. */
@@ -701,11 +702,33 @@ export const ENEMIES: Record<string, EnemySpec> = {
         steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.5, damage: 1, element: 'physical' } }],
       },
     ],
-    model: skirmisherModel(0x18130d, 0xffb060, 2.0),
+    // Lean armed scout — a wiry humanoid with wrapped cloth + a crude blade.
+    creature: {
+      id: 'skirmisher',
+      archetype: 'biped',
+      proportions: { height: 1.6, girth: 0.14, armLength: 0.72, legLength: 0.66, headSize: 0.16 },
+      materials: {
+        flesh: { color: 0x18130d, roughness: 0.9, flatShading: 'auto', rim: { color: 0xffb060, power: 3, intensity: 0.3, darkReactive: 0.5 } },
+        cloth: { color: 0x2a201a, roughness: 1, flatShading: 'auto' },
+        blade: { color: 0x3a3e44, roughness: 0.4, metalness: 0.5, flatShading: 'auto' },
+        eyes: { color: 0xffb060, emissive: 0xffb060, emissiveIntensity: 2.0 },
+      },
+      eyes: { material: 'eyes', emissive: 2.0 },
+      flash: { material: 'flesh' },
+      skin: [
+        ...humanoidBipedSkin({ body: 'flesh', eye: 'eyes', limbRadius: 0.055, headRadius: 0.15, jitter: 0.01 }),
+        // Cloth wraps — a chest sash + a loincloth over the pelvis.
+        { kind: 'box', joint: 'spine', size: [0.42, 0.16, 0.4], pos: [0, -0.1, 0], rot: [0, 0, 0.4], mat: 'cloth' },
+        { kind: 'box', joint: 'pelvis', size: [0.38, 0.3, 0.3], pos: [0, -0.06, 0], mat: 'cloth' },
+        // Crude blade gripped in the right fist (held low/ready).
+        { kind: 'box', joint: 'handR', size: [0.05, 0.6, 0.015], pos: [0.04, -0.28, -0.04], bevel: 0.01, mat: 'blade' },
+        { kind: 'box', joint: 'handR', size: [0.14, 0.04, 0.05], pos: [0.04, 0.0, -0.04], mat: 'blade' },
+      ],
+    },
     baseEyeEmissive: 2.0,
     collisionRadius: 0.35,
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'spine',
+    flashMaterialName: 'flesh',
     eyeMaterialName: 'eyes',
     presence: 'coiled',      // taut shoulder bob — reads as ready to spring
     // Skirmisher is a scout — best vision of the trash mobs. Tighter
@@ -1200,17 +1223,26 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // long reaching arms (it pulls the hex down), violet with a sickly
     // rim. Distinct from the bulky ghoul + lean skirmisher. Inherits
     // the full rig (arm-swing, gait, head-crane) for free.
-    model: creature({
-      id: 'defiler-creature',
-      palette: { body: 0x281830, eye: 0xbb55ff, eyeEmissive: 2.6, bodyEmissive: 0x140a1e },
-      rim: { color: 0x7a4ac0, power: 3.0, intensity: 0.7 },
-      height: 1.15,      // tall
-      build: 0.82,       // gaunt
-      armLength: 0.62,   // long, reaching
-      legLength: 0.5,
-      headRadius: 0.21,
-      hunch: 0.12,       // stooped, head thrust forward
-    }),
+    // Tall, gaunt, stooped violet hex-caster — long reaching arms, a draped
+    // robe, sickly violet rim. Pulls the hex down from above.
+    creature: {
+      id: 'defiler',
+      archetype: 'biped',
+      proportions: { height: 1.78, girth: 0.13, armLength: 0.92, legLength: 0.74, headSize: 0.18, hunch: 0.22 },
+      materials: {
+        flesh: { color: 0x281830, roughness: 1, flatShading: 'auto', rim: { color: 0x7a4ac0, power: 3, intensity: 0.7, darkReactive: 0.6 } },
+        robe: { color: 0x1a1024, roughness: 1, flatShading: 'auto' },
+        eyes: { color: 0xbb55ff, emissive: 0xbb55ff, emissiveIntensity: 2.6 },
+      },
+      eyes: { material: 'eyes', emissive: 2.6 },
+      flash: { material: 'flesh' },
+      skin: [
+        ...humanoidBipedSkin({ body: 'flesh', eye: 'eyes', limbRadius: 0.045, bodyRadius: 0.15, headRadius: 0.17, jitter: 0.02 }),
+        // Robe drape — a wide cone skirt from the chest tapering to the floor.
+        { kind: 'cone', joint: 'spine', radius: 0.34, height: 1.4, pos: [0, -0.72, 0], rot: [Math.PI, 0, 0], jitter: 0.03, mat: 'robe' },
+        { kind: 'sphere', joint: 'head', radius: 0.2, scale: [1, 1.05, 1], pos: [0, 0.04, 0.04], jitter: 0.03, mat: 'robe' },  // hood lump
+      ],
+    },
     baseEyeEmissive: 2.6,
     collisionRadius: 0.42,
     physicalArmor: 0,
@@ -1278,25 +1310,37 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // Gaunt, pale, cold-eyed bones via the parametric builder — its own
     // brittle silhouette, and it inherits the full rig (arms gesture the
     // throw + slash, it strides in, skull cranes at you).
-    model: creature({
-      id: 'skeleton-creature',
-      palette: { body: 0x7c7464, eye: 0x9fd8ff, eyeEmissive: 2.4, bodyEmissive: 0x0c0f12 },
-      rim: { color: 0xb8d4f0, power: 3.0, intensity: 0.4 },
-      height: 1.05,
-      build: 0.78,        // skeletal — thin
-      armLength: 0.54,
-      legLength: 0.5,
-      headRadius: 0.2,
-      hunch: 0.04,
-      head: 'skull',      // cranium + jaw + dark eye-sockets
-      torso: 'ribcage',   // thin spine + exposed rib slats
-    }),
+    // Gaunt, pale, cold-eyed bones — thin limbs, an exposed ribcage, a skull
+    // with sunken blue eye-lights. Throws bone shards + slashes.
+    creature: {
+      id: 'skeleton',
+      archetype: 'biped',
+      proportions: { height: 1.55, girth: 0.11, armLength: 0.66, legLength: 0.62, headSize: 0.15, hunch: 0.05 },
+      materials: {
+        bone: { color: 0x7c7464, roughness: 0.8, flatShading: 'auto', rim: { color: 0xb8d4f0, power: 3, intensity: 0.4, darkReactive: 0.5 } },
+        socket: { color: 0x0c0f12, roughness: 1, flatShading: 'auto' },
+        eyes: { color: 0x9fd8ff, emissive: 0x9fd8ff, emissiveIntensity: 2.4 },
+      },
+      eyes: { material: 'eyes', emissive: 2.4 },
+      flash: { material: 'bone' },
+      skin: [
+        ...humanoidBipedSkin({ body: 'bone', eye: 'eyes', limbRadius: 0.04, bodyRadius: 0.11, headRadius: 0.15, eyeR: 0.035, jitter: 0.01 }),
+        // Exposed ribs — three thin cross-bars on the chest.
+        { kind: 'cylinder', joint: 'spine', radius: 0.02, height: 0.32, pos: [0, 0.1, -0.02], rot: [0, 0, 1.5708], mat: 'bone' },
+        { kind: 'cylinder', joint: 'spine', radius: 0.02, height: 0.3, pos: [0, 0.0, -0.02], rot: [0, 0, 1.5708], mat: 'bone' },
+        { kind: 'cylinder', joint: 'spine', radius: 0.02, height: 0.26, pos: [0, -0.1, -0.02], rot: [0, 0, 1.5708], mat: 'bone' },
+        // Skull detail — dark eye sockets behind the eye-lights + a jaw.
+        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [-0.065, 0.0, -0.1], mat: 'socket' },
+        { kind: 'sphere', joint: 'head', radius: 0.05, pos: [0.065, 0.0, -0.1], mat: 'socket' },
+        { kind: 'box', joint: 'head', size: [0.16, 0.07, 0.16], pos: [0, -0.13, -0.03], mat: 'bone' },
+      ],
+    },
     baseEyeEmissive: 2.4,
     collisionRadius: 0.34,
     physicalArmor: 0,
     magicArmor: 0,
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'spine',
+    flashMaterialName: 'bone',
     eyeMaterialName: 'eyes',
     presence: 'lurch',         // bony shamble
     sightRange: 8,
