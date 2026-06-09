@@ -128,11 +128,14 @@ function quadrupedSkeleton(p: Proportions): SkeletonDef {
   };
 }
 
-// ── Blob (headless; a core, no limbs) ────────────────────────────────────────
+// ── Blob (headless; a single core, no limbs) ─────────────────────────────────
+// The core sits at height/2 — so a low blob (ooze) uses a small height and a
+// floating one (wisp, maw-on-a-stalk lasher) uses a tall height to lift the
+// core (and its skin + body zone) off the floor.
 function blobSkeleton(p: Proportions): SkeletonDef {
   const j: JointDef[] = [
     { name: 'root', abs: [0, 0, 0] },
-    { name: 'core', parent: 'root', abs: [0, p.girth, 0] },
+    { name: 'core', parent: 'root', abs: [0, p.height * 0.5, 0] },
   ];
   return { joints: j, root: 'root', spine: ['core'], head: null, limbs: [] };
 }

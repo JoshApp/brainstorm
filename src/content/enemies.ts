@@ -951,7 +951,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     creature: {
       id: 'ooze',
       archetype: 'blob',
-      proportions: { height: 0.5, girth: 0.36 },
+      proportions: { height: 0.72, girth: 0.36 },
       materials: {
         body: { color: 0x355230, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
           dissolvable: true, rim: { color: 0x88dd33, power: 2, intensity: 0.5, darkReactive: 0.5 } },
@@ -1009,7 +1009,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     creature: {
       id: 'ooze-small',
       archetype: 'blob',
-      proportions: { height: 0.3, girth: 0.2 },
+      proportions: { height: 0.4, girth: 0.2 },
       materials: {
         body: { color: 0x355230, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
           dissolvable: true, rim: { color: 0x88dd33, power: 2, intensity: 0.5, darkReactive: 0.5 } },
@@ -1076,7 +1076,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     creature: {
       id: 'acid-spitter',
       archetype: 'blob',
-      proportions: { height: 0.52, girth: 0.36 },
+      proportions: { height: 0.72, girth: 0.36 },
       materials: {
         body: { color: 0x1a3a78, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
           dissolvable: true, rim: { color: 0x66ccff, power: 2, intensity: 0.55, darkReactive: 0.5 } },
@@ -2114,12 +2114,32 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.14,
     recoverTime: 0.55,
     damageType: 'magic',
-    model: wisp_modelV1(0x66a8e0, 0xaaccff, 2.8),
+    // Floating will-o'-wisp — a translucent blue orb (lifted by a tall blob
+    // height) with a bright core + trailing wisps. 'spectral' floats it.
+    creature: {
+      id: 'sump-wisp',
+      archetype: 'blob',
+      proportions: { height: 1.6, girth: 0.26 },
+      materials: {
+        glow: { color: 0x66a8e0, roughness: 0.3, flatShading: 'auto', transparent: true, opacity: 0.45,
+          dissolvable: true, rim: { color: 0xaaccff, power: 2, intensity: 0.8, darkReactive: 0.8 } },
+        core: { color: 0xaaccff, emissive: 0xaaccff, emissiveIntensity: 2.6 },
+      },
+      eyes: { material: 'core', emissive: 2.6 },
+      flash: { material: 'glow' },
+      skin: [
+        { kind: 'sphere', joint: 'core', radius: 0.26, jitter: 0.05, mat: 'glow' },
+        { kind: 'sphere', joint: 'core', radius: 0.12, mat: 'core' },
+        { kind: 'cone', joint: 'core', radius: 0.06, height: 0.4, pos: [0.1, -0.22, 0], rot: [2.9, 0, 0], mat: 'glow' },
+        { kind: 'cone', joint: 'core', radius: 0.05, height: 0.35, pos: [-0.1, -0.2, 0.05], rot: [3.0, 0, 0], mat: 'glow' },
+        { kind: 'cone', joint: 'core', radius: 0.045, height: 0.3, pos: [0, -0.18, -0.08], rot: [3.05, 0, 0], mat: 'glow' },
+      ],
+    },
     baseEyeEmissive: 2.2,           // the core pulses on windup
     collisionRadius: 0.22,
     noPlayerCollision: true,        // ghosts through you, doesn't body-block
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'core',
+    flashMaterialName: 'glow',
     eyeMaterialName: 'core',
     presence: 'spectral',           // floats + bobs
     phasing: true,                  // drifts through obstacles like the wraith
@@ -2330,12 +2350,42 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.20,
     recoverTime: 0.85,
     damageType: 'physical',
-    model: lasherModel(),
+    // Rooted carnivorous plant — a fanged maw bulb atop a thick stalk (lifted
+    // by a tall blob height), inner red gullet, jaundiced eyes. The lash deform
+    // already elongates it toward the player on the strike.
+    creature: {
+      id: 'lasher',
+      archetype: 'blob',
+      proportions: { height: 2.0, girth: 0.34 },
+      materials: {
+        flesh: { color: 0x2a3a1a, roughness: 0.9, flatShading: 'auto', rim: { color: 0x88dd44, power: 3, intensity: 0.4, darkReactive: 0.5 } },
+        maw: { color: 0x4a1a1a, roughness: 0.7, flatShading: 'auto' },
+        teeth: { color: 0xddd8c0, roughness: 0.5, flatShading: 'auto' },
+        eyes: { color: 0xffdd44, emissive: 0xffdd44, emissiveIntensity: 2.4 },
+      },
+      eyes: { material: 'eyes', emissive: 2.4 },
+      flash: { material: 'flesh' },
+      skin: [
+        // Thick stalk rooted in the floor, tapering up to the maw.
+        { kind: 'cylinder', joint: 'core', radius: 0.3, radiusTop: 0.16, height: 1.0, pos: [0, -0.5, 0], jitter: 0.04, mat: 'flesh' },
+        // Maw bulb + inner red gullet opening forward.
+        { kind: 'sphere', joint: 'core', radius: 0.3, jitter: 0.05, mat: 'flesh' },
+        { kind: 'sphere', joint: 'core', radius: 0.2, pos: [0, 0, -0.16], scale: [1, 1, 0.6], mat: 'maw' },
+        // A ring of teeth around the gullet.
+        { kind: 'cone', joint: 'core', radius: 0.03, height: 0.12, pos: [0, 0.16, -0.24], rot: [-1.9, 0, 0], mat: 'teeth' },
+        { kind: 'cone', joint: 'core', radius: 0.03, height: 0.12, pos: [0, -0.16, -0.24], rot: [1.9, 0, 0], mat: 'teeth' },
+        { kind: 'cone', joint: 'core', radius: 0.03, height: 0.12, pos: [-0.16, 0, -0.24], rot: [0, 0, -1.9], mat: 'teeth' },
+        { kind: 'cone', joint: 'core', radius: 0.03, height: 0.12, pos: [0.16, 0, -0.24], rot: [0, 0, 1.9], mat: 'teeth' },
+        // Jaundiced eyes above the maw.
+        { kind: 'sphere', joint: 'core', radius: 0.05, pos: [-0.13, 0.18, -0.2], mat: 'eyes' },
+        { kind: 'sphere', joint: 'core', radius: 0.05, pos: [0.13, 0.18, -0.2], mat: 'eyes' },
+      ],
+    },
     baseEyeEmissive: 2.4,
     collisionRadius: 0.40,          // the bulb is wide
     physicalArmor: 1,
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'core',
+    flashMaterialName: 'flesh',
     eyeMaterialName: 'eyes',
     // 'coiled' fits — a tense plant ready to strike. The shoulder-
     // bob shows up faintly on the maw segment.
