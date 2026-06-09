@@ -37,11 +37,27 @@ and optionally overrides **zones**/**materials**. Everything else is computed.
 
 | archetype    | skeleton (joints)                                               | covers |
 | ------------ | --------------------------------------------------------------- | ------ |
-| `biped`      | root→pelvis→spine→neck→head; pelvis→hipL/R→kneeL/R→footL/R; spine→shoulderL/R→elbowL/R→handL/R | ghoul, skirmisher, defiler, skeleton, stoneguard, acolyte, wraith, marrow |
-| `quadruped`  | root→spine→neck→head; spine→(fore/hind)(L/R) leg chains          | rat, hound |
-| `blob`       | root→core (+ optional wobble ring joints)                       | ooze, king-ooze, spore, wisp |
-| `arachnid`   | root→cephalothorax→head; 4–8 leg chains                          | spider |
-| `serpentine`/`flier` | root→segment chain / wing joints                        | (as needed) |
+| `biped`      | root→pelvis→spine→neck→head; pelvis→hipL/R→kneeL/R→footL/R; spine→shoulderL/R→elbowL/R→handL/R | ghoul, skirmisher, defiler, skeleton, stoneguard, acolyte |
+| `quadruped`  | root→spine(chest/hips)→neck→head; chest/hips→(front/hind)(L/R) leg chains | rat, carrion-hound |
+| `blob`       | root→core (core at `height×0.5`, so a tall height floats it)    | ooze, king/boiling bosses, plague-spore, sump-wisp, lasher, burrower |
+| `ghost`      | root→tail/spine→neck→head; spine→shoulderL/R→handL/R (no legs)  | wraith |
+| `arachnid`   | root→body→abdomen/head; 8 bent leg chains (hip/knee/foot ×L/R0..3) | spider |
+| `flier`      | root→core→wing{L,R}{,2}; head:null, no limbs (wings carry NO hitzone) | pit-moth |
+
+**Custom-skeleton escape hatch.** A bespoke boss whose rig + keyframe clips
+predate the archetypes sets `CreatureSpec.skeleton?: SkeletonDef` to supply its
+OWN joints (and runs its own clip bundle via `EnemySpec.animation`). The Marrow
+Sovereign and the mimic use it: `skeletonFromSlots(model.slots, …)` lifts a
+ModelSpec's parent-local slots into a `SkeletonDef` (`JointDef.rot` preserves a
+slot's orientation — e.g. the mimic's 180° rig yaw), and buildCreature compiles
+them straight back, so the geometry is byte-identical to the old model. Leave
+`spine`/`head`/`limbs` empty to suppress the auto hurtbox and author the exact
+hitbox the boss always had via `zones`.
+
+**Scale.** `EnemySpec.scale` blows a creature up to boss bulk: the build path
+scales the group, every zone radius (a raw scalar `localToWorld` can't carry),
+and `aimHeight` together — so a scale-7 King's hitboxes grow with it. Pin
+`spec.aimHeight` to override the measured centre when needed.
 
 Each archetype ships a **clip library** authored once in its joint space
 (`walk`, `idle`, `stagger-tumble`, `windup-overhead`, `lunge`, …). Any creature
@@ -154,3 +170,14 @@ running on the old path until each is migrated.
    remove the shim.
 
 Combat work never freezes — every step ships, old enemies keep fighting.
+
+### Status: COMPLETE
+
+The whole roster runs on creatures. Trash + casters + swarm are archetype
+skeletons; the ooze bosses are scaled blobs; the Marrow Sovereign and mimic use
+the custom-skeleton hatch (their bespoke rigs/clips kept verbatim). The legacy
+`ModelSpec` factories that backed them are deleted, except `marrowSovereignModel`
++ `mimicModel`, which now serve only as the geometry source their
+`CreatureSpec`s reuse. The consumer shim in `enemy.ts` (the `spec.model` else
+branch) stays for now — it's also the prop/destructible path — but no enemy
+takes it.
