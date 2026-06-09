@@ -20,7 +20,6 @@ function spiderLegSkin(mat: string): SkinPart[] {
 }
 import type { Clip } from '../anim/types';
 import { creature } from './creature';
-import { oozeModel, kingOozeModel } from './enemy-models';
 import { mimicModel } from './mimic';
 import { marrowSovereignModel } from './skeleton-boss';
 import { MARROW_CLIPS, MARROW_JOINTS } from '../anim/clips-marrow';
@@ -1300,7 +1299,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     collisionRadius: 0.42,
     physicalArmor: 0,
     magicArmor: 1,
-    tiltPartName: 'rig',
+    tiltPartName: 'spine',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
     presence: 'chant',           // ritual side-rock; sells "calling something down"
@@ -1552,9 +1551,37 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.50,                // longer strike so the leap actually crosses ground
     recoverTime: 1.40,               // more downtime so the king doesn't spam-leap
     damageType: 'magic',             // acid bypasses physical armour — boss earns its name
-    // Translucent green flesh with swallowed regalia (crown, sword,
-    // skull) drifting inside — sells the "it has eaten kings" line.
-    model: kingOozeModel(0x4a6a18, 0xa8ff44),
+    // Translucent green flesh with swallowed regalia (crown, sword, skull)
+    // drifting inside — sells the "it has eaten kings" line. A blob creature
+    // authored at scale-1 coordinates; spec.scale (7.0) blows it up to boss
+    // bulk — the creature path scales the group, hitbox radii, and aimHeight
+    // together. No eyes — the glowing core orb is the read and the target.
+    creature: {
+      id: 'king-ooze',
+      archetype: 'blob',
+      proportions: { height: 0.36, girth: 0.25 },   // core at 0.18 (= old rig); ×7 → boss
+      materials: {
+        body: { color: 0x4a6a18, roughness: 0.55, emissive: 0x102008, emissiveIntensity: 0.7, flatShading: 'auto', dissolvable: true, transparent: true, opacity: 0.55, rim: { color: 0x88cc33, power: 2.2, intensity: 0.6 } },
+        core: { color: 0x000000, emissive: 0xa8ff44, emissiveIntensity: 3.6, roughness: 1.0 },
+        gold: { color: 0xb88820, emissive: 0x3a2808, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.7, flatShading: 'auto' },
+        steel: { color: 0x607080, emissive: 0x10141c, emissiveIntensity: 0.4, roughness: 0.45, metalness: 0.8, flatShading: 'auto' },
+        bone: { color: 0xc0b08a, roughness: 0.85, emissive: 0x1a1408, emissiveIntensity: 0.3, flatShading: 'auto' },
+      },
+      flash: { material: 'core' },
+      skin: [
+        // Outer body — translucent squashed sphere; the bulk is from spec.scale.
+        { kind: 'sphere', joint: 'core', pos: [0, 0, 0], scale: [1.15, 0.85, 1.15], radius: 0.22, segments: [20, 14], jitter: 0.018, mat: 'body' },
+        // Core nucleus + additive bloom halo (the obvious target through the body).
+        { name: 'core', kind: 'sphere', joint: 'core', pos: [0, 0, 0], radius: 0.095, segments: [18, 14], mat: 'core' },
+        { name: 'coreGlow', kind: 'sprite', joint: 'core', pos: [0, 0, 0], size: [0.25, 0.25], texture: 'fire-wisp', blending: 'additive', color: 0xa8ff44 },
+        // Swallowed regalia, suspended inside the body's volume.
+        { kind: 'torus', joint: 'core', pos: [0.04, 0.08, -0.10], rot: [-0.6, 0.3, 0], radius: 0.06, tube: 0.014, segments: [10, 6], mat: 'gold' },
+        { kind: 'capsule', joint: 'core', pos: [-0.04, -0.04, 0.02], rot: [0.4, 0.7, 0.9], radius: 0.008, height: 0.16, mat: 'steel' },
+        { kind: 'capsule', joint: 'core', pos: [-0.075, -0.07, -0.045], rot: [0.4, 0.7, 2.5], radius: 0.010, height: 0.04, mat: 'gold' },
+        { kind: 'sphere', joint: 'core', pos: [0.06, -0.06, 0.07], radius: 0.045, segments: [10, 8], jitter: 0.005, mat: 'bone' },
+        { kind: 'sphere', joint: 'core', pos: [-0.05, -0.10, -0.06], radius: 0.030, segments: [8, 6], jitter: 0.004, mat: 'bone' },
+      ],
+    },
     baseEyeEmissive: 0,              // no eyes — core orb carries the read
     // collisionRadius used to be 1.5 to match the visual bulk, but
     // that meant the dash path couldn't get close to pillars / great
@@ -1587,7 +1614,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       dotInterval: 1.0,              // ticks once per second while inside
       gracePeriod: 1.0,              // a full second of "I'm in, get out" before damage starts
     },
-    tiltPartName: 'rig',
+    tiltPartName: 'core',
     // Damage flash hits the CORE, not the body. The body is translucent
     // green at 0.55 opacity so a base-colour flash barely reads; enemy.ts
     // gives the core a heartbeat + a white-hot flare/pop on hit.
@@ -1777,21 +1804,36 @@ export const ENEMIES: Record<string, EnemySpec> = {
         steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.2, damage: 1, element: 'arcane' } }],
       },
     ],
-    // Bigger than before (1.2 vs 0.85) + a glowing core like the king
-    // (withGlow), so the spawns read as miniature kings.
-    model: oozeModel(0x4a6a18, 0xa8ff44, 1.2, true),
+    // A miniature king: translucent body with a glowing core orb + additive
+    // bloom (the withGlow look), so the spawns read as the king's children.
+    creature: {
+      id: 'boiling-prince',
+      archetype: 'blob',
+      proportions: { height: 0.9, girth: 0.4 },
+      materials: {
+        body: { color: 0x4a6a18, roughness: 0.55, emissive: 0x102008, emissiveIntensity: 0.7, flatShading: 'auto', dissolvable: true, transparent: true, opacity: 0.55, rim: { color: 0x88cc33, power: 2.2, intensity: 0.6 } },
+        core: { color: 0x000000, emissive: 0xa8ff44, emissiveIntensity: 3.0, roughness: 1.0 },
+      },
+      flash: { material: 'core' },
+      skin: [
+        { kind: 'sphere', joint: 'core', radius: 0.4, scale: [1.1, 0.78, 1.1], jitter: 0.05, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.18, pos: [0, -0.03, 0.16], jitter: 0.04, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.14, pos: [0, -0.02, 0], mat: 'core' },
+        { name: 'coreGlow', kind: 'sprite', joint: 'core', pos: [0, -0.02, 0], size: [0.3, 0.3], texture: 'fire-wisp', blending: 'additive', color: 0xa8ff44 },
+      ],
+    },
     baseEyeEmissive: 0,
     collisionRadius: 0.38,
     // Walk-through like the king (slimes don't body-block). Fixes the
     // prince pinning the player when it leaps onto them — you're never
     // stuck inside one; the threat is its leap + bite, not a wall.
     noPlayerCollision: true,
-    tiltPartName: 'rig',
+    tiltPartName: 'core',
     // Flash the CORE (glowing, like the king) — and decouple the eyes so
     // the eye system doesn't zero the core's emissive (it has no eyes).
     flashMaterialName: 'core',
     eyeMaterialName: 'no-eyes',
-    presence: 'twitch',
+    presence: 'gelatinous',
     sightRange: 5,
     sightConeHalfAngle: 1.6,
     hearingRange: 2.5,

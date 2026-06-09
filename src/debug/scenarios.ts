@@ -1432,7 +1432,7 @@ function buildMobPreviewScenario(id: string): Scenario {
   // Frame at ~mid-body. Creature enemies measure their own height, so use the
   // authored proportion height; legacy mobs use aimHeight × scale.
   const eyeY = spec?.creature
-    ? (spec.creature.proportions?.height ?? 1.6) * 0.55
+    ? (spec.creature.proportions?.height ?? 1.6) * 0.55 * (spec?.scale ?? 1)
     : (spec?.aimHeight ?? 0.6) * (spec?.scale ?? 1);
   return {
     freeze: true,

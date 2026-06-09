@@ -270,9 +270,18 @@ export function createEnemy(
       group: creature.group, parts: creature.parts, slots: creature.joints,
       materials: creature.materials, hitTargets: creature.hitTargets,
     };
-    aimHeightResolved = creature.bounds.aimHeight;      // MEASURED body centre
+    // Bosses loom larger via spec.scale. localToWorld carries the group scale
+    // into the zone endpoints automatically, but a zone's radius is a raw scalar
+    // — scale it by hand so the hitboxes grow with the body. aimHeight tracks
+    // scale too (unless explicitly pinned).
+    const sc = spec.scale ?? 1;
+    if (sc !== 1) {
+      creature.group.scale.multiplyScalar(sc);
+      for (const z of creature.hurtbox.zones) z.shape.radius *= sc;
+    }
+    aimHeightResolved = spec.aimHeight ?? creature.bounds.aimHeight * sc;   // MEASURED body centre × scale
     hurtbox = creature.hurtbox;                         // auto per-bone + authored zones
-    essenceRigYDefault = creature.bounds.aimHeight;
+    essenceRigYDefault = aimHeightResolved;
     container.add(creature.group);
   } else {
     const m = buildModel(spec.model!);
