@@ -92,7 +92,11 @@ export function num(n: number, d = 0): string {
 
 /** A live harness: one Vite server + one browser page, sample many configs. */
 export interface Harness {
+  /** Navigate to a config + aggregate window.__perf() over the sample window. */
   sample(cfg: SampleConfig): Promise<PerfAggregate>;
+  /** Navigate to a config, wait for the build, then read ANY DEV probe once
+   *  (e.g. window.__drawData()). For one-shot structural dissection. */
+  read<T>(cfg: SampleConfig, probe: string): Promise<T>;
 }
 
 function buildUrl(port: number, cfg: SampleConfig): string {
@@ -153,13 +157,22 @@ export async function withHarness(
     const page: Page = await context.newPage();
     page.on('pageerror', (err) => opts.onLog?.(`[browser pageerror] ${err.message}`));
 
-    const sample = async (cfg: SampleConfig): Promise<PerfAggregate> => {
-      const secs = cfg.secs ?? 6;
+    // Navigate to a config + wait for the level to build. Shared by sample/read.
+    const goto = async (cfg: SampleConfig): Promise<void> => {
       const url = buildUrl(port, cfg);
       opts.onLog?.(`opening ${url}`);
       await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
-      // Let the level build + enemies wake before sampling.
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(1500);   // level build + enemies wake
+    };
+
+    const read = async <T>(cfg: SampleConfig, probe: string): Promise<T> => {
+      await goto(cfg);
+      return page.evaluate((p) => (window as unknown as Record<string, () => unknown>)[p](), probe) as Promise<T>;
+    };
+
+    const sample = async (cfg: SampleConfig): Promise<PerfAggregate> => {
+      const secs = cfg.secs ?? 6;
+      await goto(cfg);
 
       const hasProbe = await page.evaluate(() => typeof (window as { __perf?: unknown }).__perf === 'function');
       if (!hasProbe) {
@@ -194,7 +207,7 @@ export async function withHarness(
       };
     };
 
-    await fn({ sample });
+    await fn({ sample, read });
   } finally {
     if (browser) await browser.close().catch(() => { /* best effort */ });
     if (vite.pid) { try { process.kill(-vite.pid, 'SIGKILL'); } catch { /* group gone */ } }

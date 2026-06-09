@@ -28,6 +28,59 @@ export function initDrawReport(s: THREE.Scene, r: THREE.WebGLRenderer, gl: () =>
   getLevel = gl;
 }
 
+/** Structured totals (no formatting, no share) — the numbers `captureDrawReport`
+ *  prints, returned as data so a headless probe can A/B them. The key pair is
+ *  `drawables` (actual visible meshes/sprites/points = the SCENE pass) vs
+ *  `draws` (renderer.info.render.calls = scene + shadow + bloom/blit). When a
+ *  per-object delta in `draws` exceeds the delta in `drawables`, the gap is the
+ *  shadow + post passes, not geometry — the distinction every absolute reading
+ *  needs. Exposed as window.__drawData() (DEV). */
+export interface DrawReportData {
+  draws: number; rtris: number;
+  drawables: number; meshes: number; sprites: number; points: number;
+  shadowCasters: number; transparent: number; sceneTris: number;
+  programs: number; geometries: number; textures: number;
+  lightsActive: number; lightsShadow: number;
+}
+
+export function drawReportData(): DrawReportData | null {
+  if (!scene) return null;
+  let meshes = 0, sprites = 0, points = 0, shadowCasters = 0, transparent = 0, sceneTris = 0;
+  let lightsActive = 0, lightsShadow = 0;
+  const walk = (o: THREE.Object3D): void => {
+    if (!o.visible) return;   // respect room-culling / hidden subtrees (matches the report)
+    const lit = o as unknown as { isLight?: boolean; intensity?: number; castShadow?: boolean };
+    if (lit.isLight && (lit.intensity ?? 0) > 0.001) {
+      lightsActive++;
+      if (lit.castShadow) lightsShadow++;
+    }
+    const a = o as unknown as { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean };
+    const isSprite = a.isSprite === true;
+    const isPoints = a.isPoints === true;
+    const m = o as THREE.Mesh;
+    if ((m.isMesh && m.geometry) || isSprite || (isPoints && m.geometry)) {
+      if (isSprite) sprites++; else if (isPoints) points++; else meshes++;
+      if (m.castShadow) shadowCasters++;
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      if (isSprite || mats.some((mm) => mm && isTransparent(mm))) transparent++;
+      if ((m.isMesh || isPoints) && m.geometry) sceneTris += triCount(m.geometry);
+    }
+    for (const c of o.children) walk(c);
+  };
+  walk(scene);
+  const info = renderer?.info;
+  return {
+    draws: info ? info.render.calls : 0,
+    rtris: info ? info.render.triangles : 0,
+    drawables: meshes + sprites + points, meshes, sprites, points,
+    shadowCasters, transparent, sceneTris,
+    programs: info?.programs?.length ?? 0,
+    geometries: info ? info.memory.geometries : 0,
+    textures: info ? info.memory.textures : 0,
+    lightsActive, lightsShadow,
+  };
+}
+
 type Cat = 'enemy' | 'destructible' | 'viewmodel' | 'fixture' | 'shell' | 'prop' | 'decor'
   // Drawables the old walk missed or mislabeled:
   //   sprite   — THREE.Sprite (motes, wisps, coin/blood/puff halos, projectile
