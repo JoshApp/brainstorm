@@ -54,6 +54,8 @@ export interface Damageable {
   takeDamage(event: DamageEvent): number;
   /** Chip this target's poise; breaking it staggers (interrupts) the
    *  target. Optional — enemies implement it, clutter (vases) doesn't,
-   *  so the combat cone calls it conditionally on heavy hits. */
-  applyStaggerDamage?(amount: number): void;
+   *  so the combat cone calls it conditionally on heavy hits. Returns true if
+   *  THIS hit broke the poise (triggered the stagger) — drives the player-side
+   *  "STAGGERED" feedback in attack.ts. */
+  applyStaggerDamage?(amount: number): boolean;
 }

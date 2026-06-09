@@ -186,7 +186,7 @@ export interface Enemy extends Damageable {
   /** Chip the poise pool; breaking it staggers the enemy (cancels its
    *  action, opens a free-hit window). Called by the combat cone on a
    *  heavy melee hit. */
-  applyStaggerDamage(amount: number): void;
+  applyStaggerDamage(amount: number): boolean;
   update(
     dt: number,
     playerPos: THREE.Vector3,
@@ -857,13 +857,14 @@ export function createEnemy(
   // Chip the poise pool; break it → STAGGER. Called from the combat
   // cone on a heavy melee hit, with the attacker's already-resolved
   // stagger power (weapon weight × Might × charge — see attack.ts).
-  function applyStaggerDamage(amount: number): void {
-    if (!aliveLocal || burrowState !== 'surfaced' || amount <= 0) return;
-    if (state === 'staggered') return;            // already reeling
-    if (phases && phaseInvulnTimer > 0) return;   // boss phase-entry invuln
+  function applyStaggerDamage(amount: number): boolean {
+    if (!aliveLocal || burrowState !== 'surfaced' || amount <= 0) return false;
+    if (state === 'staggered') return false;       // already reeling
+    if (phases && phaseInvulnTimer > 0) return false;   // boss phase-entry invuln
     poiseLeft -= amount;
     poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
-    if (poiseLeft <= 0) triggerStagger();
+    if (poiseLeft <= 0) { triggerStagger(); return true; }
+    return false;
   }
 
   function triggerStagger(): void {
@@ -872,6 +873,9 @@ export function createEnemy(
     clearAoeTelegraph();
     clearLashTendril();
     setEyeFlare(0);
+    // Visual punctuation of the break: a white hit-flash on the body (the
+    // player-side cue — popup/sound/crunch — fires from attack.ts).
+    coreReactor.hit();
     state = 'staggered';
     staggerTimer = CONFIG.POISE.STAGGER_DURATION;
     phaseTimer = 0;
@@ -1546,13 +1550,14 @@ export function createEnemy(
         break;
       }
       case 'staggered': {
-        // Poise broken — reel in place, can't act. A backward recoil
-        // lean (eased toward neutral as it recovers) reads the flinch;
-        // no movement, no attack. The free-hit window the player earned.
+        // Poise broken — reel in place, can't act. A deep backward recoil
+        // (eased toward neutral as it recovers) + DIMMED eyes read clearly as
+        // "stunned, lights out" — the free-hit window the player earned. The
+        // openWhenStaggered weak points are exposed for this whole window.
         staggerTimer -= dt;
         const f = Math.max(0, Math.min(1, staggerTimer / CONFIG.POISE.STAGGER_DURATION));
-        applyTilt(-0.4 * f);
-        setEyeFlare(0);
+        applyTilt(-0.75 * f);
+        applyIdleEyes();              // eyes go dim — visibly stunned, not glaring
         built.group.position.y = 0;
         if (staggerTimer <= 0) {
           applyTilt(0);

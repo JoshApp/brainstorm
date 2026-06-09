@@ -454,7 +454,8 @@ export const CONFIG = {
   // Break it → the enemy's action is cancelled and it reels (a free-hit
   // window). See the poise system in src/mobs/enemy.ts.
   POISE: {
-    STAGGER_DURATION: 0.6,  // s the enemy reels after a poise break
+    STAGGER_DURATION: 0.9,  // s the enemy reels after a poise break — long enough
+                            //   to read the stunned slump + land a riposte/execute
     REGEN_DELAY: 1.2,       // s of no stagger pressure before the pool refills
     REGEN_RATE: 4,          // poise points / s once regen kicks in
     CHARGE_BONUS: 1.0,      // a FULL charged swing adds this ×stagger (×2 total)

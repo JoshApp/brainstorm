@@ -896,7 +896,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
   stoneguard: {
     id: 'stoneguard',
     name: 'stoneguard',
-    hp: 6,                       // tankiest non-boss
+    hp: 14,                      // tankiest non-boss — bumped so it SURVIVES long
+                                 //   enough for sustained heavy hits to break its
+                                 //   guard (poise) before it dies; staggering it is
+                                 //   the intended way in (then the core opens).
+    poise: 6,                    // explicit (< hp): ~2 hammer hits crack it open
+                                 //   while standing (a light weapon won't — that's
+                                 //   the heavy-weapon identity).
     moveSpeed: 1.0,              // glacial — player retreat (2.5) outruns easily
     attackDamage: 3,             // biggest single-hit damage in the roster
     attackRange: 1.9,            // long reach (maul + heavy frame)

@@ -8,7 +8,7 @@ import { freezeFor } from './hit-pause';
 import { kickShake } from './screen-shake';
 import { playImpact, playWhoosh, playBuffApply, playSurfaceHit } from '../audio/sfx';
 import { applyViewmodelKickback } from '../player/viewmodel-pullback';
-import { spawnDamageNumber } from '../ui/damage-numbers';
+import { spawnDamageNumber, spawnStatusText } from '../ui/damage-numbers';
 import { emit, on } from '../broadcast/event-bus';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { getPlayerOnHits } from '../player/equipment';
@@ -601,6 +601,7 @@ export function createCombatSystem(
     let bestApplied = 0;
     let anyHeavy = false;
     let anyExecute = false;
+    let anyStagger = false;
     // targets are sorted NEAREST-first, so index 0 is the primary (full) hit and
     // each subsequent cleaved target takes the geometric falloff cut.
     for (let ti = 0; ti < targets.length; ti++) {
@@ -653,8 +654,14 @@ export function createCombatSystem(
         // Might SIGNATURE — chip the target's poise; break it and the
         // enemy staggers (its action cancelled, a free-hit window). A
         // full charge hits poise hardest. staggerPower already folds in
-        // weapon weight × Might (resolveWeaponStats).
-        target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS) * counterStaggerMul * perfectStaggerMul);
+        // weapon weight × Might (resolveWeaponStats). Returns true on the hit
+        // that BREAKS the guard → fire the loud "STAGGERED" cue.
+        const broke = target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS) * counterStaggerMul * perfectStaggerMul) ?? false;
+        if (broke) {
+          anyStagger = true;
+          spawnStatusText(camera, hitPoint, 'STAGGERED', 'rgba(255, 226, 150, 0.99)');
+          playSurfaceHit('stone', target.position);   // sharp guard-cracks-open crack
+        }
         // (Lifesteal is now a CHANCE-ON-KILL proc — see the enemy:killed
         // listener in createCombatSystem — not a per-hit drain, which was
         // far too strong in the playtest.)
@@ -715,6 +722,13 @@ export function createCombatSystem(
         kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 2.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 1.3);
         hapticVibrate(CONFIG.HAPTIC_HIT_MS * 2);
         playImpact(impactAt);
+      }
+      // STAGGER BREAK punctuation — a snappy hitch + buzz so breaking a guard
+      // is FELT, distinct from a normal hit (the popup + crack carry the rest).
+      else if (anyStagger) {
+        freezeFor(Math.min(CONFIG.FREEZE_MAX_MS, CONFIG.FREEZE_BASE_MS * 2));
+        kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 1.5, CONFIG.SCREEN_SHAKE_HIT_DURATION);
+        hapticVibrate(CONFIG.HAPTIC_HIT_MS * 2);
       }
     } else {
       // Light targets only (vases / crates / etc.) — token crunch, no on-hit
