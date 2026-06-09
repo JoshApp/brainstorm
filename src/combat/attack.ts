@@ -24,7 +24,7 @@ import { consumeChargedAmount, consumeChargedPerfect, getChargeProgress, setChar
 import { spendStaminaSoft, gainStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { flashStaminaBar } from '../ui/stamina-bar';
-import { showHitCones, type SwingShape } from './combat-debug';
+import { showHitCones, markSwingHits, type SwingShape } from './combat-debug';
 import { resolveWorldZones, testSegmentZones, type WorldZone, type ZoneHit } from './hurtbox';
 import type { AttackDirection } from '../player/viewmodel';
 
@@ -583,8 +583,10 @@ export function createCombatSystem(
     // slightly longer capsule so smashing pots stays forgiving. Capped at 2.
     const destrShape = swingShape(currentSwingDirection, reach * 1.15, baseHalfAngle, CONFIG.SWORD_HITBOX_RADIUS + 0.15, moveRise);
     const destrMax = Math.min(maxTargets, 2);
-    // Combat debug: draw the live capsules + hurtbox zones (no-op unless on).
+    // Combat debug: draw the live capsules + hurtbox zones (no-op unless on),
+    // and flash the exact zone(s) this swing connected with.
     showHitCones(camera, forwardDir, enemyShape, destrShape);
+    if (enemyHits.length > 0) markSwingHits(enemyHits.map((h) => h.zoneHit.zone));
     // Unified target list: enemies (carrying the zone they presented) take
     // priority; destructibles fall through with no zone.
     const targets: Array<{ target: Damageable; zone?: ZoneHit }> = enemyHits.length > 0

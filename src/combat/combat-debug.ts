@@ -5,20 +5,24 @@ import { worldCapsule, worldSphere, type Hurtbox as EnemyHurtbox, type HurtZone 
 
 // Combat hit debug overlay (Settings → Debug → HIT CONES).
 //
-// Draws the ACTUAL melee hit geometry each swing AND every enemy's hurtbox
-// ZONES, as real 3D solids that sit in the world (depth-tested), so you can see
-// exactly what a swing covers and which zone a target presents:
-//   - red capsules  = the enemy swing hitbox, one capsule per swept sample,
-//                     posed along your TRUE look direction (pitch included).
+// Draws the ACTUAL melee hit geometry + every enemy's hurtbox ZONES as real
+// depth-tested 3D solids, so you can study exactly what a swing covers and where
+// it landed:
+//   - red capsules  = the enemy swing hitbox, one per swept sample, posed along
+//                     your TRUE look direction (pitch + per-move `rise`). After a
+//                     swing it lingers bright, then HOLDS as a faint ghost of the
+//                     last attack until the next one — a shadow you can read.
 //   - cyan capsules = the wider/longer destructible (vase) hitbox.
 //   - hurtbox zones = each enemy's body capsule / head sphere / weak point /
-//                     armor, coloured by role and GHOSTED when disabled. These
-//                     are the literal volumes from src/combat/hurtbox.ts that the
-//                     resolver tests against — see docs/COMBAT-HIT-SYSTEM.md.
-// The swing capsules snapshot at the strike and linger ~0.6s fading out (a
-// 100ms strike would be invisible otherwise). Read-only; gated on the setting.
+//                     armor, coloured by role, ghosted when disabled. The zone a
+//                     swing actually STRUCK flashes white-hot and pulses for a
+//                     beat, so you see which part you hit and where it intersects.
+// Read-only; gated on the setting.
 
-const LINGER_S = 0.6;
+const LINGER_S = 0.7;          // bright fade after a swing
+const GHOST_OPACITY = 0.05;    // faint hold of the last swing until the next
+const SWING_PEAK = 0.24;       // bright peak opacity of the swing capsules
+const HIT_FLASH_S = 0.9;       // how long a struck zone stays highlighted
 const MAX_SAMPLES = 8;         // matches swingEnds[] in attack.ts
 
 // Zone colour by role.
@@ -28,6 +32,7 @@ const ZONE_COLOR: Record<HurtZone['role'], number> = {
   weak: 0xff3050,   // red-hot — a vulnerable zone
   armor: 0x8da0b4,  // steel — soaks until broken
 };
+const HIT_COLOR = new THREE.Color(0xffffff);   // struck zone flashes white-hot
 
 /** The shaped swing capsule, produced by attack.ts and consumed here. */
 export interface SwingShape {
@@ -54,15 +59,19 @@ let scene: THREE.Object3D | null = null;
 let enemyPool: CapsulePool | null = null;
 let destrPool: CapsulePool | null = null;
 let linger = 0;
+let hasSwung = false;          // a swing has been posed at least once (else nothing to ghost)
 
 // Per-zone meshes, keyed by the live HurtZone object. Geometry is built once
 // (zone dims are static) and reused; world transform + colour update per frame.
 const zoneMeshes = new Map<HurtZone, THREE.Mesh>();
 const seenZones = new Set<HurtZone>();
+// Struck-zone flash timers, keyed by the zone hit this swing.
+const hitFlash = new Map<HurtZone, number>();
+const _baseColor = new THREE.Color();
 
 function makeCapsulePool(color: number): CapsulePool {
   const mat = new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity: 0.18, side: THREE.DoubleSide,
+    color, transparent: true, opacity: SWING_PEAK, side: THREE.DoubleSide,
     depthWrite: false, depthTest: true, fog: false,
   });
   const meshes: THREE.Mesh[] = [];
@@ -102,7 +111,7 @@ function rotY(v: THREE.Vector3, a: number, out: THREE.Vector3): void {
   out.set(v.x * c + v.z * s, v.y, -v.x * s + v.z * c);
 }
 
-/** Pose a pool's capsules as the swept hit volume — mirrors swingHitTest(). */
+/** Pose a pool's capsules as the swept hit volume — mirrors swingHitEnemies(). */
 function poseCapsules(pool: CapsulePool, ox: number, oy: number, oz: number, aim: THREE.Vector3, shape: SwingShape): void {
   const length = shape.reach;
   if (!pool.geom || Math.abs(pool.radius - shape.radius) > 1e-3 || Math.abs(pool.length - length) > 1e-3) {
@@ -137,10 +146,13 @@ export function showHitCones(camera: THREE.Camera, aimDir: THREE.Vector3, enemy:
   poseCapsules(enemyPool, ox, oy, oz, _aim, enemy);
   poseCapsules(destrPool, ox, oy, oz, _aim, destr);
   linger = LINGER_S;
+  hasSwung = true;
 }
 
-function setPoolVisible(pool: CapsulePool, on: boolean): void {
-  for (const m of pool.meshes) if (m.visible !== on) m.visible = on;
+/** Flag the zone(s) a swing connected with so the overlay flashes them. */
+export function markSwingHits(zones: readonly HurtZone[]): void {
+  if (!getSettings().debugHitCones) return;
+  for (const z of zones) hitFlash.set(z, HIT_FLASH_S);
 }
 
 /** Build the mesh for a zone (geometry sized to its LOCAL dims, once). */
@@ -178,26 +190,48 @@ function poseZone(zone: HurtZone, hb: EnemyHurtbox, m: THREE.Mesh): void {
     m.quaternion.identity();
   }
   const mat = m.material as THREE.MeshBasicMaterial;
-  // Ghost disabled zones (armor that's still up, a weak point not yet open).
-  mat.opacity = zone.enabled ? 0.22 : 0.05;
+  const flash = hitFlash.get(zone) ?? 0;
+  if (flash > 0) {
+    // Struck this swing — flash white-hot and pulse outward so you see WHICH
+    // part connected. Lerp role colour → white by how fresh the hit is.
+    const k = flash / HIT_FLASH_S;
+    _baseColor.setHex(ZONE_COLOR[zone.role]);
+    mat.color.copy(_baseColor).lerp(HIT_COLOR, k);
+    mat.opacity = 0.30 + 0.45 * k;
+    m.scale.setScalar(1 + 0.18 * k);
+  } else {
+    mat.color.setHex(ZONE_COLOR[zone.role]);
+    // Ghost disabled zones (armor still up, a weak point not yet open).
+    mat.opacity = zone.enabled ? 0.22 : 0.05;
+    m.scale.setScalar(1);
+  }
   m.visible = true;
 }
 
-/** Per-frame: fade the swing capsules + draw the live enemy hurtbox zones. */
+/** Per-frame: hold the swing-capsule trace + draw the live hurtbox zones. */
 export function tickCombatDebug(dt: number, enemies: readonly DebugTarget[]): void {
   if (!enemyPool || !destrPool) return;
   const on = getSettings().debugHitCones;
 
-  // Swing capsules (lingering, fading).
-  if (!on || linger <= 0) {
-    setPoolVisible(enemyPool, false);
-    setPoolVisible(destrPool, false);
+  // Swing capsules: bright fade right after a swing, then HOLD as a faint ghost
+  // of the last attack until the next one — a readable shadow.
+  if (!on || !hasSwung) {
+    for (const m of enemyPool.meshes) if (m.visible) m.visible = false;
+    for (const m of destrPool.meshes) if (m.visible) m.visible = false;
     linger = 0;
   } else {
-    linger = Math.max(0, linger - dt);
-    const k = linger / LINGER_S;
-    enemyPool.mat.opacity = 0.22 * k;
-    destrPool.mat.opacity = 0.14 * k;
+    if (linger > 0) linger = Math.max(0, linger - dt);
+    const k = linger / LINGER_S;             // 1 → 0 over the bright fade
+    enemyPool.mat.opacity = GHOST_OPACITY + (SWING_PEAK - GHOST_OPACITY) * k;
+    destrPool.mat.opacity = GHOST_OPACITY * 1.2 + (SWING_PEAK * 0.7 - GHOST_OPACITY * 1.2) * k;
+  }
+
+  // Decay the struck-zone flashes (independent of which zones draw this frame).
+  if (hitFlash.size > 0) {
+    for (const [zone, t] of hitFlash) {
+      const nt = t - dt;
+      if (nt <= 0) hitFlash.delete(zone); else hitFlash.set(zone, nt);
+    }
   }
 
   // Hurtbox zones — drawn while the setting is on so you can line a swing up
