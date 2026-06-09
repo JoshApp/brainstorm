@@ -41,6 +41,7 @@ import { aggregateSpeed } from '../combat/modifiers';
 import { playEnemyDeath, playEnemyWindup, playEnemyVocal, playEnemyHurt, playEnemyStrike, playEnemyFootstep, type EnemyDeathSize, type VocalArchetype } from '../audio/sfx';
 import { spawnProjectile } from '../combat/projectile-pool';
 import { spawnXpWisps } from '../effects/xp-wisps';
+import { createBlobShadow } from '../effects/blob-shadow';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
 import type { Damageable } from '../combat/damageable';
@@ -276,6 +277,16 @@ export function createEnemy(
   const hurtbox: Hurtbox = creature.hurtbox;            // auto per-bone + authored zones
   const essenceRigYDefault = aimHeightResolved;
   container.add(creature.group);
+
+  // Creatures don't cast real (cube-map) shadows — they use a blob instead.
+  // A moving caster re-renders into the lamp's 6-face shadow cube every frame
+  // (~5-6 draws + fill per creature, ~half the frame in a fight); its cast
+  // falls away from the lamp and barely reads anyway. Static world keeps its
+  // real lamp shadows; the creature gets a cheap floor blob for grounding.
+  creature.group.traverse((o) => { (o as THREE.Mesh).castShadow = false; });
+  const blob = createBlobShadow(creature.bounds.radius * sc * 1.1);
+  blob.visible = !spec.burrowed;   // hidden while buried; revealed on emerge
+  container.add(blob);
   // Base model scale, captured for the lash deform (which elongates the
   // body toward the player on a 'lash' telegraph, then eases back here).
   const groupBaseScale = built.group.scale.clone();
@@ -1398,6 +1409,7 @@ export function createEnemy(
       if (t >= 1) {
         burrowState = 'surfaced';
         built.group.position.y = 0;
+        blob.visible = true;   // grounded now — reveal the contact shadow
       }
       return;
     }
