@@ -236,7 +236,7 @@ export interface EnemySpec {
    * Phase is randomized per-instance so a pair of the same mob drift
    * out of sync. Cost = a couple of sin() per mob per frame.
    */
-  presence?: 'spectral' | 'lurch' | 'twitch' | 'coiled' | 'chant';
+  presence?: 'spectral' | 'lurch' | 'twitch' | 'coiled' | 'chant' | 'gelatinous';
 
   // --- Phasing (ghost-style movement) ---
   /**
@@ -884,13 +884,35 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.18,
     recoverTime: 0.45,
     damageType: 'physical',
-    model: oozeModel(0x355230, 0x88dd33, 1.0),
-    baseEyeEmissive: 0,         // no eyes — emissive lives in the core orb instead
+    // First BLOB creature: a translucent jelly mound with a glowing inner core
+    // (no limbs, no head). The signature squash-jiggle comes from the new
+    // 'gelatinous' presence; the core brightens on windup (its tell).
+    creature: {
+      id: 'ooze',
+      archetype: 'blob',
+      proportions: { height: 0.5, girth: 0.36 },
+      materials: {
+        body: { color: 0x355230, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
+          dissolvable: true, rim: { color: 0x88dd33, power: 2, intensity: 0.5, darkReactive: 0.5 } },
+        core: { color: 0x88dd33, emissive: 0x88dd33, emissiveIntensity: 1.8 },
+      },
+      eyes: { material: 'core', emissive: 1.8 },   // the core IS the windup tell
+      flash: { material: 'body' },
+      skin: [
+        // Squished jelly mound + irregular lobes (jitter) for a blobby surface.
+        { kind: 'sphere', joint: 'core', radius: 0.36, scale: [1.1, 0.78, 1.1], jitter: 0.05, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.18, pos: [0.17, -0.04, 0.1], jitter: 0.04, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.15, pos: [-0.16, 0.02, -0.12], jitter: 0.04, mat: 'body' },
+        // Glowing nucleus, visible through the translucent body.
+        { kind: 'sphere', joint: 'core', radius: 0.13, pos: [0, -0.02, 0], mat: 'core' },
+      ],
+    },
+    baseEyeEmissive: 1.8,       // drives the core's idle-dim → windup-bright flare
     collisionRadius: 0.32,
-    tiltPartName: 'rig',
+    tiltPartName: 'core',
     flashMaterialName: 'body',
     eyeMaterialName: 'core',    // re-use the core orb for the windup flare
-    presence: 'twitch',         // wobbly micro-scurry; reads "alive jelly"
+    presence: 'gelatinous',     // squash-and-stretch jiggle; reads "alive jelly"
     sightRange: 5,
     sightConeHalfAngle: 1.4,    // ~80° — basically omnidirectional sensing
     hearingRange: 3.0,

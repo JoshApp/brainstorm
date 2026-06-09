@@ -489,6 +489,7 @@ export function createEnemy(
   // Lash deform — eased 0..1 body elongation toward the player during a
   // 'lash' telegraph (the slime rears + reaches, then snaps on strike).
   let lashStretch = 0;
+  let gelTime = 0;   // clock for the gelatinous (ooze) squash jiggle
 
   let state: EnemyState = options?.dormant ? 'dormant' : 'idle';
   let phaseTimer = 0;
@@ -1952,12 +1953,22 @@ export function createEnemy(
     }
     lashStretch += (target - lashStretch) * Math.min(1, ease);
     if (target === 0 && lashStretch < 0.002) lashStretch = 0;
+    // GELATINOUS jiggle (blobs/oozes) — a continuous squash-and-stretch about
+    // the resting volume so the jelly reads alive even standing still. Lives
+    // here because tickLashDeform OWNS built.group.scale (a presence overlay
+    // would be clobbered by this writer). Volume-ish: squash Y, bulge X/Z.
+    let gx = 1, gy = 1, gz = 1;
+    if (spec.presence === 'gelatinous') {
+      gelTime += dt;
+      const w = Math.sin(gelTime * 3.2) * 0.1;
+      gy = 1 - w; gx = 1 + w * 0.5; gz = 1 + w * 0.5;
+    }
     // Elongate along local Z (forward/back, the player axis since the
     // container faces the player); squash X/Y a touch.
     built.group.scale.set(
-      groupBaseScale.x * (1 - 0.12 * lashStretch),
-      groupBaseScale.y * (1 - 0.16 * lashStretch),
-      groupBaseScale.z * (1 + 0.55 * lashStretch),
+      groupBaseScale.x * gx * (1 - 0.12 * lashStretch),
+      groupBaseScale.y * gy * (1 - 0.16 * lashStretch),
+      groupBaseScale.z * gz * (1 + 0.55 * lashStretch),
     );
   }
 
