@@ -493,11 +493,60 @@ export const ENEMIES: Record<string, EnemySpec> = {
     windupTime: 0.90,    // long ghoul tell — heavy enemy, big wind-up animation
     strikeTime: 0.18,
     recoverTime: 0.60,
-    model: humanoidGhoulModel(0x14100c, 0xff5530, 2.0),
+    // Creature-system ghoul: a gaunt, hunched undead — thin limbs, gnarled
+    // (jittered) flesh, clawed hands, sunken glowing eyes. Reuses the biped
+    // skeleton + smash clip; measured dimensions + auto hitzones.
+    creature: {
+      id: 'ghoul',
+      archetype: 'biped',
+      proportions: { height: 1.5, girth: 0.13, armLength: 0.74, legLength: 0.6, headSize: 0.16, hunch: 0.18 },
+      materials: {
+        // Dark rotted flesh with a faint hot rim that reveals the silhouette in
+        // the dark (darkReactive) — the grimdark "drawn out of black" look.
+        flesh: { color: 0x14100c, roughness: 1, flatShading: 'auto',
+          rim: { color: 0xff5530, power: 3, intensity: 0.35, darkReactive: 0.6 } },
+        claw: { color: 0x2a2620, roughness: 0.85, flatShading: 'auto' },
+        eyes: { color: 0xff5530, emissive: 0xff5530, emissiveIntensity: 2.0 },
+      },
+      eyes: { material: 'eyes', emissive: 2.0 },
+      flash: { material: 'flesh' },
+      skin: [
+        // Gaunt tapered torso + small pelvis, gnarled (jitter).
+        { kind: 'capsule', joint: 'spine', radius: 0.16, height: 0.42, jitter: 0.02, mat: 'flesh' },
+        { kind: 'box', joint: 'pelvis', size: [0.3, 0.26, 0.22], jitter: 0.02, mat: 'flesh' },
+        // Hunched, slightly elongated head; sunken glowing eyes.
+        { kind: 'sphere', joint: 'head', radius: 0.15, scale: [0.9, 1.05, 1.12], jitter: 0.02, mat: 'flesh' },
+        { kind: 'sphere', joint: 'head', radius: 0.038, pos: [-0.07, 0.0, -0.14], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.038, pos: [0.07, 0.0, -0.14], mat: 'eyes' },
+        // Thin bony shoulders.
+        { kind: 'sphere', joint: 'shoulderL', radius: 0.08, mat: 'flesh' },
+        { kind: 'sphere', joint: 'shoulderR', radius: 0.08, mat: 'flesh' },
+        // Long thin arms.
+        { kind: 'bone', from: 'shoulderL', to: 'elbowL', radius: 0.05, mat: 'flesh' },
+        { kind: 'bone', from: 'elbowL', to: 'handL', radius: 0.042, mat: 'flesh' },
+        { kind: 'bone', from: 'shoulderR', to: 'elbowR', radius: 0.05, mat: 'flesh' },
+        { kind: 'bone', from: 'elbowR', to: 'handR', radius: 0.042, mat: 'flesh' },
+        // Clawed hands — three splayed talons per hand (cones point +Y at rest;
+        // rot ≈ π swings them to hang down/forward off the hand).
+        { kind: 'cone', joint: 'handL', radius: 0.022, height: 0.14, pos: [-0.04, -0.05, 0], rot: [2.7, 0, 0], mat: 'claw' },
+        { kind: 'cone', joint: 'handL', radius: 0.022, height: 0.15, pos: [0, -0.06, 0], rot: [2.9, 0, 0], mat: 'claw' },
+        { kind: 'cone', joint: 'handL', radius: 0.022, height: 0.14, pos: [0.04, -0.05, 0], rot: [2.7, 0, 0], mat: 'claw' },
+        { kind: 'cone', joint: 'handR', radius: 0.022, height: 0.14, pos: [-0.04, -0.05, 0], rot: [2.7, 0, 0], mat: 'claw' },
+        { kind: 'cone', joint: 'handR', radius: 0.022, height: 0.15, pos: [0, -0.06, 0], rot: [2.9, 0, 0], mat: 'claw' },
+        { kind: 'cone', joint: 'handR', radius: 0.022, height: 0.14, pos: [0.04, -0.05, 0], rot: [2.7, 0, 0], mat: 'claw' },
+        // Thin legs + gnarled feet.
+        { kind: 'bone', from: 'hipL', to: 'kneeL', radius: 0.06, mat: 'flesh' },
+        { kind: 'bone', from: 'kneeL', to: 'footL', radius: 0.05, mat: 'flesh' },
+        { kind: 'bone', from: 'hipR', to: 'kneeR', radius: 0.06, mat: 'flesh' },
+        { kind: 'bone', from: 'kneeR', to: 'footR', radius: 0.05, mat: 'flesh' },
+        { kind: 'box', joint: 'footL', size: [0.12, 0.08, 0.24], pos: [0, 0.04, -0.05], jitter: 0.02, mat: 'flesh' },
+        { kind: 'box', joint: 'footR', size: [0.12, 0.08, 0.24], pos: [0, 0.04, -0.05], jitter: 0.02, mat: 'flesh' },
+      ],
+    },
     baseEyeEmissive: 2.0,
     collisionRadius: 0.45,
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'spine',
+    flashMaterialName: 'flesh',
     eyeMaterialName: 'eyes',
     presence: 'lurch',     // shambling lateral roll + shamble-step dip
     // Ghoul has decent eyes, moderate hearing. Wide cone — has to face you
