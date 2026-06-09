@@ -586,7 +586,7 @@ export function createCombatSystem(
     // Combat debug: draw the live capsules + hurtbox zones (no-op unless on),
     // and flash the exact zone(s) this swing connected with.
     showHitCones(camera, forwardDir, enemyShape, destrShape);
-    if (enemyHits.length > 0) markSwingHits(enemyHits.map((h) => h.zoneHit.zone));
+    if (enemyHits.length > 0) markSwingHits(enemyHits.map((h) => ({ hurtbox: h.enemy.hurtbox, zone: h.zoneHit.zone })));
     // Unified target list: enemies (carrying the zone they presented) take
     // priority; destructibles fall through with no zone.
     const targets: Array<{ target: Damageable; zone?: ZoneHit }> = enemyHits.length > 0

@@ -53,6 +53,11 @@ interface CapsulePool {
   geom: THREE.CapsuleGeometry | null;
   radius: number;
   length: number;
+  // Last-posed swept geometry (world space) — captured so the frozen hit-echo
+  // can snapshot the swing exactly as it landed.
+  origin: THREE.Vector3;
+  ends: THREE.Vector3[];
+  activeSamples: number;
 }
 
 let scene: THREE.Object3D | null = null;
@@ -82,7 +87,12 @@ function makeCapsulePool(color: number): CapsulePool {
     m.visible = false;
     meshes.push(m);
   }
-  return { meshes, mat, geom: null, radius: -1, length: -1 };
+  return {
+    meshes, mat, geom: null, radius: -1, length: -1,
+    origin: new THREE.Vector3(),
+    ends: Array.from({ length: MAX_SAMPLES }, () => new THREE.Vector3()),
+    activeSamples: 0,
+  };
 }
 
 export function initCombatDebug(sc: THREE.Object3D): void {
@@ -104,6 +114,9 @@ const _up = new THREE.Vector3(0, 1, 0);
 const _quat = new THREE.Quaternion();
 const _za = new THREE.Vector3();
 const _zb = new THREE.Vector3();
+const _zc = new THREE.Vector3();
+const _contact = new THREE.Vector3();
+const _tmp = new THREE.Vector3();
 
 /** Rotate a vector around world-up by `a` radians (keeps pitch). */
 function rotY(v: THREE.Vector3, a: number, out: THREE.Vector3): void {
@@ -124,11 +137,14 @@ function poseCapsules(pool: CapsulePool, ox: number, oy: number, oz: number, aim
   const samples = Math.max(1, Math.min(MAX_SAMPLES, CONFIG.SWORD_HITBOX_SWEEP_SAMPLES));
   const start = shape.sweepBias - shape.sweepArc / 2;
   const stepA = samples > 1 ? shape.sweepArc / (samples - 1) : 0;
+  pool.origin.set(ox, oy, oz);
+  pool.activeSamples = samples;
   for (let s = 0; s < MAX_SAMPLES; s++) {
     const m = pool.meshes[s];
     if (s >= samples) { m.visible = false; continue; }
     rotY(aim, samples > 1 ? start + stepA * s : shape.sweepBias, _rot);
     _end.set(ox + _rot.x * shape.reach, oy + _rot.y * shape.reach + shape.rise, oz + _rot.z * shape.reach);
+    pool.ends[s].copy(_end);
     _mid.set((ox + _end.x) / 2, (oy + _end.y) / 2, (oz + _end.z) / 2);
     _dir.set(_end.x - ox, _end.y - oy, _end.z - oz).normalize();
     _quat.setFromUnitVectors(_up, _dir);
@@ -149,10 +165,88 @@ export function showHitCones(camera: THREE.Camera, aimDir: THREE.Vector3, enemy:
   hasSwung = true;
 }
 
-/** Flag the zone(s) a swing connected with so the overlay flashes them. */
-export function markSwingHits(zones: readonly HurtZone[]): void {
-  if (!getSettings().debugHitCones) return;
-  for (const z of zones) hitFlash.set(z, HIT_FLASH_S);
+/** A registered hit: the live enemy hurtbox + the zone the swing caught. */
+export interface SwingHit { hurtbox: EnemyHurtbox; zone: HurtZone }
+
+// Frozen "last hit" echo — a world-space snapshot taken the instant a hit
+// registers: the swing volume, the struck zone, and the contact point. It
+// PERSISTS until the next hit and survives the enemy dying or walking off, so
+// you can study where and how the blow landed.
+const echoParts: THREE.Mesh[] = [];
+
+function clearEcho(): void {
+  for (const m of echoParts) {
+    scene?.remove(m);
+    m.geometry.dispose();
+    (m.material as THREE.Material).dispose();
+  }
+  echoParts.length = 0;
+}
+
+function echoMesh(geom: THREE.BufferGeometry, color: number, opacity: number, order: number): THREE.Mesh {
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, depthTest: true, fog: false });
+  const m = new THREE.Mesh(geom, mat);
+  m.frustumCulled = false;
+  m.renderOrder = order;
+  scene?.add(m);
+  echoParts.push(m);
+  return m;
+}
+
+function echoCapsule(a: THREE.Vector3, b: THREE.Vector3, radius: number, color: number, opacity: number, order: number): void {
+  const m = echoMesh(new THREE.CapsuleGeometry(radius, a.distanceTo(b), 6, 12), color, opacity, order);
+  _mid.addVectors(a, b).multiplyScalar(0.5);
+  _dir.subVectors(b, a).normalize();
+  m.position.copy(_mid);
+  m.quaternion.setFromUnitVectors(_up, _dir);
+}
+
+function echoSphere(c: THREE.Vector3, radius: number, color: number, opacity: number, order: number): void {
+  echoMesh(new THREE.SphereGeometry(radius, 16, 12), color, opacity, order).position.copy(c);
+}
+
+/** Closest point on segment a→b to point p, into `out`. */
+function closestPointOnSeg(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, out: THREE.Vector3): void {
+  out.subVectors(b, a);
+  const len2 = out.lengthSq() || 1e-6;
+  let t = (p.x - a.x) * out.x + (p.y - a.y) * out.y + (p.z - a.z) * out.z;
+  t = Math.max(0, Math.min(1, t / len2));
+  out.copy(a).addScaledVector(_tmp.subVectors(b, a), t);
+}
+
+/** Flag the zone(s) a swing connected with: flash the LIVE enemy, and freeze a
+ *  persistent world-space ECHO of this hit (swing + zone + contact). */
+export function markSwingHits(hits: readonly SwingHit[]): void {
+  if (!getSettings().debugHitCones || hits.length === 0 || !enemyPool) return;
+  for (const h of hits) hitFlash.set(h.zone, HIT_FLASH_S);
+
+  // Snapshot THIS hit as the new frozen echo (replaces the previous one).
+  clearEcho();
+  const pool = enemyPool;
+  // Swing volume at the moment it landed — dim red, drawn behind the zones.
+  for (let s = 0; s < pool.activeSamples; s++) {
+    echoCapsule(pool.origin, pool.ends[s], pool.radius, 0xff5060, 0.10, 8999);
+  }
+  // Each struck zone, snapshotted to world (baked — independent of the enemy),
+  // plus a magenta marker at where the blade was closest: the contact point.
+  for (const h of hits) {
+    if (h.zone.shape.kind === 'capsule') {
+      const r = worldCapsule(h.zone, h.hurtbox.root, _za, _zb);
+      echoCapsule(_za, _zb, r, ZONE_COLOR[h.zone.role], 0.34, 9002);
+      _zc.addVectors(_za, _zb).multiplyScalar(0.5);
+    } else {
+      const r = worldSphere(h.zone, h.hurtbox.root, _zc);
+      echoSphere(_zc, r, ZONE_COLOR[h.zone.role], 0.34, 9002);
+    }
+    let bestD = Infinity;
+    _contact.copy(_zc);
+    for (let s = 0; s < pool.activeSamples; s++) {
+      closestPointOnSeg(_zc, pool.origin, pool.ends[s], _tmp);
+      const d = _tmp.distanceToSquared(_zc);
+      if (d < bestD) { bestD = d; _contact.copy(_tmp); }
+    }
+    echoSphere(_contact, 0.08, 0xff40ff, 0.95, 9003);
+  }
 }
 
 /** Build the mesh for a zone (geometry sized to its LOCAL dims, once). */
@@ -215,7 +309,12 @@ export function tickCombatDebug(dt: number, enemies: readonly DebugTarget[]): vo
 
   // Swing capsules: bright fade right after a swing, then HOLD as a faint ghost
   // of the last attack until the next one — a readable shadow.
-  if (!on || !hasSwung) {
+  if (!on) {
+    for (const m of enemyPool.meshes) if (m.visible) m.visible = false;
+    for (const m of destrPool.meshes) if (m.visible) m.visible = false;
+    if (echoParts.length > 0) clearEcho();
+    linger = 0;
+  } else if (!hasSwung) {
     for (const m of enemyPool.meshes) if (m.visible) m.visible = false;
     for (const m of destrPool.meshes) if (m.visible) m.visible = false;
     linger = 0;
