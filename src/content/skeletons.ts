@@ -34,10 +34,17 @@ function defaultsFor(a: Archetype, height: number): Proportions {
         height, girth: height * 0.18, headSize: height * 0.11,
         armLength: height * 0.4, legLength: 0, neckLength: 0, hunch: 0,
       };
+    case 'arachnid':
+      return {
+        // height = body height off ground; girth = body radius; legLength = leg
+        // reach (legs splay well past the body).
+        height, girth: height * 1.1, headSize: height * 0.5,
+        armLength: 0, legLength: height * 2.2, neckLength: 0, hunch: 0,
+      };
   }
 }
 
-const DEFAULT_HEIGHT: Record<Archetype, number> = { biped: 1.6, quadruped: 0.7, blob: 0.7, ghost: 1.7 };
+const DEFAULT_HEIGHT: Record<Archetype, number> = { biped: 1.6, quadruped: 0.7, blob: 0.7, ghost: 1.7, arachnid: 0.22 };
 
 /** Fill proportions from height-derived defaults, then apply overrides. */
 export function resolveProportions(a: Archetype, partial?: Partial<Proportions>): Proportions {
@@ -159,9 +166,41 @@ function ghostSkeleton(p: Proportions): SkeletonDef {
   };
 }
 
+// ── Arachnid (low body + abdomen, eight radiating bent legs) ─────────────────
+// root(floor) → body(cephalothorax) → abdomen(rear bulb) + head(eye cluster);
+// body → hip{L,R}{0..3} → knee → foot for eight legs. Legs splay outward, knees
+// raised above the body (spider stance), feet on the ground. Leg joints are
+// named hipL0.. / kneeL0.. / footL0.. so the spider skin's bones reference them.
+function arachnidSkeleton(p: Proportions): SkeletonDef {
+  const bodyY = p.legLength * 0.45;            // body rides above ground on bent legs
+  const bodyHalf = p.girth * 0.55;             // leg attach half-width
+  const reach = p.legLength;
+  const j: JointDef[] = [
+    { name: 'root', abs: [0, 0, 0] },
+    { name: 'body', parent: 'root', abs: [0, bodyY, -p.girth * 0.3] },
+    { name: 'abdomen', parent: 'body', abs: [0, bodyY + p.girth * 0.12, p.girth * 0.8] },
+    { name: 'head', parent: 'body', abs: [0, bodyY + p.girth * 0.05, -p.girth * 0.85] },
+  ];
+  // Four legs per side, spread front→back, splayed so the set fans out.
+  const zRow = [-0.6, -0.2, 0.2, 0.6];
+  for (const s of [-1, 1]) {
+    const sl = s < 0 ? 'L' : 'R';
+    for (let i = 0; i < 4; i++) {
+      const z = zRow[i] * p.girth;
+      const splay = (i - 1.5) * reach * 0.18;        // front legs forward, back back
+      const hip = `hip${sl}${i}`, knee = `knee${sl}${i}`, foot = `foot${sl}${i}`;
+      j.push({ name: hip, parent: 'body', abs: [s * bodyHalf, bodyY, z] });
+      j.push({ name: knee, parent: hip, abs: [s * (bodyHalf + reach * 0.55), bodyY + reach * 0.42, z + splay] });
+      j.push({ name: foot, parent: knee, abs: [s * (bodyHalf + reach * 1.1), 0, z + splay * 2.2] });
+    }
+  }
+  return { joints: j, root: 'root', spine: ['body', 'abdomen'], head: 'head', limbs: [] };
+}
+
 export const SKELETONS: Record<Archetype, SkeletonFn> = {
   biped: bipedSkeleton,
   quadruped: quadrupedSkeleton,
   blob: blobSkeleton,
   ghost: ghostSkeleton,
+  arachnid: arachnidSkeleton,
 };

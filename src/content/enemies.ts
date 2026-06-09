@@ -3,7 +3,20 @@ import type { DamageType } from '../combat/damage';
 import type { EnemyDeathSize, VocalArchetype } from '../audio/sfx';
 import type { Ability } from './abilities';
 import type { HurtZoneSpec } from '../combat/hurtbox';
-import type { CreatureSpec } from './creature-types';
+import type { CreatureSpec, SkinPart } from './creature-types';
+
+/** The 16 leg bones (hip→knee→foot, eight legs) for an arachnid creature,
+ *  referencing the joint names the arachnid skeleton generates. Tapered. */
+function spiderLegSkin(mat: string): SkinPart[] {
+  const out: SkinPart[] = [];
+  for (const sl of ['L', 'R']) {
+    for (let i = 0; i < 4; i++) {
+      out.push({ kind: 'bone', from: `hip${sl}${i}`, to: `knee${sl}${i}`, radius: 0.03, mat });
+      out.push({ kind: 'bone', from: `knee${sl}${i}`, to: `foot${sl}${i}`, radius: 0.022, mat });
+    }
+  }
+  return out;
+}
 import type { Clip } from '../anim/types';
 import { creature } from './creature';
 import {
@@ -1345,13 +1358,41 @@ export const ENEMIES: Record<string, EnemySpec> = {
         steps: [{ trigger: { at: 0 }, action: { kind: 'melee', reach: 1.3, damage: 1, element: 'physical' } }],
       },
     ],
-    model: spiderModel(0x1a1016, 0xff3a55, 2.4),   // near-black chitin, red eyes
+    // First ARACHNID creature: a low cephalothorax + bulbous abdomen on eight
+    // radiating bent legs, with a cluster of red eyes. Legs are static-bent
+    // (menacing stance); the 'twitch' presence gives the restless scuttle.
+    creature: {
+      id: 'spider',
+      archetype: 'arachnid',
+      proportions: { height: 0.22, girth: 0.26, legLength: 0.5 },
+      materials: {
+        chitin: { color: 0x1a1016, roughness: 0.45, metalness: 0.15, flatShading: 'auto',
+          rim: { color: 0xff3a55, power: 3, intensity: 0.4, darkReactive: 0.5 } },
+        eyes: { color: 0xff3a55, emissive: 0xff3a55, emissiveIntensity: 2.4 },
+      },
+      eyes: { material: 'eyes', emissive: 2.4 },
+      flash: { material: 'chitin' },
+      skin: [
+        // Cephalothorax (flattened) + bulbous abdomen.
+        { kind: 'sphere', joint: 'body', radius: 0.2, scale: [1.0, 0.7, 1.1], jitter: 0.02, mat: 'chitin' },
+        { kind: 'sphere', joint: 'abdomen', radius: 0.26, scale: [1.0, 0.85, 1.15], jitter: 0.03, mat: 'chitin' },
+        // Eye cluster — several small red eyes on the front of the head.
+        { kind: 'sphere', joint: 'head', radius: 0.035, pos: [-0.06, 0.03, -0.08], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.035, pos: [0.06, 0.03, -0.08], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.025, pos: [-0.1, -0.01, -0.06], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.025, pos: [0.1, -0.01, -0.06], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.022, pos: [-0.03, 0.06, -0.07], mat: 'eyes' },
+        { kind: 'sphere', joint: 'head', radius: 0.022, pos: [0.03, 0.06, -0.07], mat: 'eyes' },
+        // Eight bent legs.
+        ...spiderLegSkin('chitin'),
+      ],
+    },
     baseEyeEmissive: 2.4,
     collisionRadius: 0.30,
     physicalArmor: 0,
     magicArmor: 0,
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'body',
+    flashMaterialName: 'chitin',
     eyeMaterialName: 'eyes',
     presence: 'twitch',        // restless scuttle
     sightRange: 8,
