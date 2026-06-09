@@ -9,7 +9,7 @@ import type { HurtZoneSpec, Hurtbox } from '../combat/hurtbox';
 // authoring: symbolic joint anchors (not raw coordinates), constrained choices,
 // sensible defaults, build-time validation.
 
-export type Archetype = 'biped' | 'quadruped' | 'blob' | 'ghost' | 'arachnid';
+export type Archetype = 'biped' | 'quadruped' | 'blob' | 'ghost' | 'arachnid' | 'flier';
 
 /** Named feel-knobs that scale an archetype's rest skeleton. All optional —
  *  set `height` and the rest reproportion from it; override specifics as needed. */

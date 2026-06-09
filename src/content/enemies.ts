@@ -20,11 +20,7 @@ function spiderLegSkin(mat: string): SkinPart[] {
 }
 import type { Clip } from '../anim/types';
 import { creature } from './creature';
-import {
-  humanoidGhoulModel, quadrupedRatModel, acolyteModel, skirmisherModel,
-  wraithModel, stoneguardModel, oozeModel, kingOozeModel, spiderModel,
-  pitMothModel, lasherModel,
-} from './enemy-models';
+import { oozeModel, kingOozeModel } from './enemy-models';
 import { mimicModel } from './mimic';
 import { marrowSovereignModel } from './skeleton-boss';
 import { MARROW_CLIPS, MARROW_JOINTS } from '../anim/clips-marrow';
@@ -2302,11 +2298,48 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.10,
     recoverTime: 0.40,
     damageType: 'physical',
-    model: pitMothModel(),
+    // Flying insectoid on the new 'flier' archetype: a tiny body hovering at
+    // head height with four wing planes hung on wing joints (so a flap can drive
+    // them later) and two oversized luminescent eyes — the moth's whole read.
+    // No head zone; the generous girth gives a single catchable body sphere so a
+    // cleave still connects on a fast swarmer.
+    creature: {
+      id: 'pit-moth',
+      archetype: 'flier',
+      proportions: { height: 1.55, girth: 0.14, armLength: 0.22 },
+      materials: {
+        // Matte near-black body with a faint sickly emissive so the silhouette
+        // doesn't vanish into the dungeon black.
+        body: { color: 0x100a08, roughness: 1.0, emissive: 0x100a05, emissiveIntensity: 0.5, flatShading: 'auto', dissolvable: true },
+        // Dusty tan membrane, partially transparent — lit from behind it reads.
+        wing: { color: 0x3a2818, roughness: 0.95, flatShading: 'auto', transparent: true, opacity: 0.78 },
+        // Oversized pinprick eyes.
+        eyes: { color: 0x000000, emissive: 0xffd060, emissiveIntensity: 2.6, roughness: 1.0 },
+      },
+      eyes: { material: 'eyes', emissive: 2.6 },
+      flash: { material: 'body' },
+      skin: [
+        // Thorax + abdomen — a horizontal capsule and a sphere, clear waist.
+        { kind: 'capsule', joint: 'core', pos: [0, 0, 0.04], rot: [Math.PI / 2, 0, 0], radius: 0.05, height: 0.10, jitter: 0.005, mat: 'body' },
+        { kind: 'sphere', joint: 'core', pos: [0, 0.01, -0.07], radius: 0.06, segments: [10, 8], jitter: 0.005, mat: 'body' },
+        // Eyes — angled forward on the head, big for the body.
+        { kind: 'sphere', joint: 'core', pos: [-0.035, 0.025, -0.10], radius: 0.025, segments: [8, 8], mat: 'eyes' },
+        { kind: 'sphere', joint: 'core', pos: [ 0.035, 0.025, -0.10], radius: 0.025, segments: [8, 8], mat: 'eyes' },
+        // Wings — four paper-thin extruded teardrops on the wing joints, so a
+        // future flap clip rotates them about the attach point.
+        { kind: 'extrude', joint: 'wingL',  pos: [ 0.028, -0.022, 0],     rot: [0, 0,  0.40], shape: [[0, 0], [0.18, 0.04], [0.22, 0.14], [0.12, 0.16], [0.04, 0.10]], depth: 0.003, mat: 'wing' },
+        { kind: 'extrude', joint: 'wingR',  pos: [-0.028, -0.022, 0],     rot: [0, Math.PI, -0.40], shape: [[0, 0], [0.18, 0.04], [0.22, 0.14], [0.12, 0.16], [0.04, 0.10]], depth: 0.003, mat: 'wing' },
+        { kind: 'extrude', joint: 'wingL2', pos: [ 0.0248, 0.01, -0.044], rot: [0, 0.20,  0.55], shape: [[0, 0], [0.14, 0.03], [0.17, 0.10], [0.09, 0.13], [0.03, 0.08]], depth: 0.003, mat: 'wing' },
+        { kind: 'extrude', joint: 'wingR2', pos: [-0.0248, 0.01, -0.044], rot: [0, Math.PI - 0.20, -0.55], shape: [[0, 0], [0.14, 0.03], [0.17, 0.10], [0.09, 0.13], [0.03, 0.08]], depth: 0.003, mat: 'wing' },
+        // Antennae — thin forward-curving cylinders.
+        { kind: 'cylinder', joint: 'core', pos: [-0.022, 0.05, -0.14], rot: [0.5, 0,  0.15], radius: 0.004, height: 0.10, segments: 5, mat: 'body' },
+        { kind: 'cylinder', joint: 'core', pos: [ 0.022, 0.05, -0.14], rot: [0.5, 0, -0.15], radius: 0.004, height: 0.10, segments: 5, mat: 'body' },
+      ],
+    },
     baseEyeEmissive: 2.6,
     collisionRadius: 0.10,          // very small footprint
     noPlayerCollision: true,        // swarm shouldn't body-block
-    tiltPartName: 'rig',
+    tiltPartName: 'core',
     flashMaterialName: 'body',
     eyeMaterialName: 'eyes',
     // 'spectral' gives the float + bob — exactly what we want for

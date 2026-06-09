@@ -41,10 +41,18 @@ function defaultsFor(a: Archetype, height: number): Proportions {
         height, girth: height * 1.1, headSize: height * 0.5,
         armLength: 0, legLength: height * 2.2, neckLength: 0, hunch: 0,
       };
+    case 'flier':
+      return {
+        // height = HOVER height (the body floats here). girth doubles as the
+        // hit-target radius — kept generous relative to the tiny visible body so
+        // a fast swarmer is still catchable by a cleave. armLength = wingspan.
+        height, girth: height * 0.09, headSize: height * 0.03,
+        armLength: height * 0.14, legLength: 0, neckLength: 0, hunch: 0,
+      };
   }
 }
 
-const DEFAULT_HEIGHT: Record<Archetype, number> = { biped: 1.6, quadruped: 0.7, blob: 0.7, ghost: 1.7, arachnid: 0.22 };
+const DEFAULT_HEIGHT: Record<Archetype, number> = { biped: 1.6, quadruped: 0.7, blob: 0.7, ghost: 1.7, arachnid: 0.22, flier: 1.55 };
 
 /** Fill proportions from height-derived defaults, then apply overrides. */
 export function resolveProportions(a: Archetype, partial?: Partial<Proportions>): Proportions {
@@ -200,10 +208,34 @@ function arachnidSkeleton(p: Proportions): SkeletonDef {
   return { joints: j, root: 'root', spine: ['body', 'abdomen'], head: 'head', limbs: [] };
 }
 
+// ── Flier (hovering insectoid; thorax + head + wing joints, no legs) ─────────
+// root(floor) → core(thorax, hovering at `height`) → head(front) + four wing
+// joints (fore/hind L/R). Wings are NOT limbs — they get no auto-hitzone (you
+// can't kill a moth by clipping a paper wingtip) but exist as named joints so a
+// flap clip can rotate them later. The hover/bob comes from the 'spectral'
+// presence overlay. The single body sphere (radius = girth) is the whole
+// hittable target; head is null — a 1-HP swarmer is one mass, not a headshot.
+function flierSkeleton(p: Proportions): SkeletonDef {
+  const coreY = p.height;
+  const span = p.armLength;                  // wing attach half-width
+  const j: JointDef[] = [
+    { name: 'root', abs: [0, 0, 0] },
+    { name: 'core', parent: 'root', abs: [0, coreY, 0] },
+    // Fore + hind wing pairs. Authored at the attach point so a flap clip can
+    // rotate wing{L,R}{,2} about it; the skin parents to these.
+    { name: 'wingL', parent: 'core', abs: [-span * 0.4, coreY + p.girth * 0.3, 0.0] },
+    { name: 'wingR', parent: 'core', abs: [span * 0.4, coreY + p.girth * 0.3, 0.0] },
+    { name: 'wingL2', parent: 'core', abs: [-span * 0.34, coreY, p.girth * 0.6] },
+    { name: 'wingR2', parent: 'core', abs: [span * 0.34, coreY, p.girth * 0.6] },
+  ];
+  return { joints: j, root: 'root', spine: ['core'], head: null, limbs: [] };
+}
+
 export const SKELETONS: Record<Archetype, SkeletonFn> = {
   biped: bipedSkeleton,
   quadruped: quadrupedSkeleton,
   blob: blobSkeleton,
   ghost: ghostSkeleton,
   arachnid: arachnidSkeleton,
+  flier: flierSkeleton,
 };
