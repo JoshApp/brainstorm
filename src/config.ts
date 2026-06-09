@@ -314,9 +314,9 @@ export const CONFIG = {
   // heals more). See docs/COMBAT-HIT-SYSTEM.md.
   EXECUTE: {
     HP_FRAC: 0.35,    // executable at/below this fraction of max HP
-    DAMAGE_MUL: 4,    // finisher damage multiplier
-    HEAL: 2,          // HP restored on a finisher (matches lifesteal-on-kill)
-    STAMINA: 30,      // stamina restored on a finisher (aggression → sustain)
+    DAMAGE_MUL: 2,    // finisher damage multiplier — DOUBLE, not a delete button
+    HEAL: 0,          // no heal — sustain stays scarce/grimdark (tune up if wanted)
+    STAMINA: 30,      // refund stamina on the finishing heavy hit — fuels aggression
   },
   INTERACT_CONE_HALF_ANGLE: 0.9, // radians (~52°) — must look roughly at an
                                  //   interactable before its prompt + USE button
@@ -454,8 +454,11 @@ export const CONFIG = {
   // Break it → the enemy's action is cancelled and it reels (a free-hit
   // window). See the poise system in src/mobs/enemy.ts.
   POISE: {
-    STAGGER_DURATION: 0.9,  // s the enemy reels after a poise break — long enough
-                            //   to read the stunned slump + land a riposte/execute
+    STAGGER_DURATION: 1.4,  // s the enemy reels after a poise break — a real
+                            //   "it's down for a beat" window: read the dizzy
+                            //   tumble + stars, land your riposte/execute, THEN it
+                            //   shakes it off (poise already reset full) and the
+                            //   fight continues. Not instant.
     REGEN_DELAY: 1.2,       // s of no stagger pressure before the pool refills
     REGEN_RATE: 4,          // poise points / s once regen kicks in
     CHARGE_BONUS: 1.0,      // a FULL charged swing adds this ×stagger (×2 total)

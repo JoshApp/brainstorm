@@ -43,6 +43,7 @@ import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
 import type { Damageable } from '../combat/damageable';
 import { deriveHurtbox, applyZoneSpecs, setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
+import { createStunStars, type StunStars } from './stun-stars';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
 
 // Audio buckets are content data (see content/enemies.ts). These thin
@@ -280,6 +281,9 @@ export function createEnemy(
   function setStaggerVuln(on: boolean): void {
     for (const z of hurtbox.zones) if (z.openWhenStaggered) z.enabled = on;
   }
+  // "Seeing stars" stun ring — lazily built the first time this mob is staggered
+  // (most never are), parented to the container above the head.
+  let stunStars: StunStars | null = null;
 
   // Tag this container as an inspection subject — main.ts's inspect
   // block hides level siblings (walls/floor/torches/decor) but keeps
@@ -824,6 +828,9 @@ export function createEnemy(
       // Clear raycast targets so a swing mid-dissolve doesn't generate a
       // zero-damage "hit" on the disintegrating corpse.
       built.hitTargets.length = 0;
+      // Tidy the stun ring + any leftover dizzy tumble if it died staggered.
+      stunStars?.dispose(); stunStars = null;
+      built.group.rotation.y = 0; built.group.rotation.z = 0;
       emit({ type: 'enemy:killed', enemyId: spec.id });
       // Split-on-death — fire the builder's spawn callback so any
       // children appear in the same frame's enemy list. Pass a CLONE
@@ -1550,17 +1557,24 @@ export function createEnemy(
         break;
       }
       case 'staggered': {
-        // Poise broken — reel in place, can't act. A deep backward recoil
-        // (eased toward neutral as it recovers) + DIMMED eyes read clearly as
-        // "stunned, lights out" — the free-hit window the player earned. The
-        // openWhenStaggered weak points are exposed for this whole window.
+        // Poise broken — reel in place, can't act. A DIZZY TUMBLE: recoil back,
+        // then wobble + spin around the model's own axis like a cartoon
+        // character seeing stars (eased out as it recovers), eyes dimmed, the
+        // stun-star ring orbiting overhead. The openWhenStaggered weak points
+        // are exposed this whole window. The free-hit the player earned.
         staggerTimer -= dt;
         const f = Math.max(0, Math.min(1, staggerTimer / CONFIG.POISE.STAGGER_DURATION));
-        applyTilt(-0.75 * f);
+        const elapsed = CONFIG.POISE.STAGGER_DURATION - staggerTimer;
+        applyTilt(-0.6 * f);
+        built.group.rotation.y = Math.sin(elapsed * 15) * 0.45 * f;   // dizzy spin wobble
+        built.group.rotation.z = Math.sin(elapsed * 11) * 0.20 * f;   // drunken lean
         applyIdleEyes();              // eyes go dim — visibly stunned, not glaring
         built.group.position.y = 0;
+        if (!stunStars) stunStars = createStunStars(container, aimHeightResolved * 1.6 + 0.5);
         if (staggerTimer <= 0) {
           applyTilt(0);
+          built.group.rotation.y = 0;
+          built.group.rotation.z = 0;
           setStaggerVuln(false);   // close the exposed weak point
           state = 'chasing';
           phaseTimer = 0;
@@ -1841,6 +1855,9 @@ export function createEnemy(
     bodyAnim.tickPresence(dt);
     tickLashDeform(dt);
     tickClipAnimator(dt);
+    // Stun-star ring — orbits while staggered, fades out after (so it lingers a
+    // beat as the mob shakes it off). No-op until the first stagger builds it.
+    stunStars?.tick(dt, state === 'staggered');
   }
 
   /** Drive the keyframe animator from AI state. setBase responds to
