@@ -48,6 +48,20 @@ export function createBodyAnimator(
   const fRB = frontR ? frontR.rotation.x : 0;
   const hLB = hindL ? hindL.rotation.x : 0;
   const hRB = hindR ? hindR.rotation.x : 0;
+  // Flier wings (pit-moth). A moth beats its wings CONTINUOUSLY — even
+  // hovering — so the flap is time-based (not stride-gated like the gait). Roll
+  // the wing joints about local Z (the body's fore-aft axis), mirrored L/R so
+  // both tips rise together; hind pair a touch shallower. Base rots are ~0 (the
+  // skin carries the spread), captured so we offset rather than overwrite.
+  const wingL = built.slots.get('wingL');
+  const wingR = built.slots.get('wingR');
+  const wingL2 = built.slots.get('wingL2');
+  const wingR2 = built.slots.get('wingR2');
+  const hasWings = !!(wingL || wingR || wingL2 || wingR2);
+  const wLz = wingL ? wingL.rotation.z : 0;
+  const wRz = wingR ? wingR.rotation.z : 0;
+  const wL2z = wingL2 ? wingL2.rotation.z : 0;
+  const wR2z = wingR2 ? wingR2.rotation.z : 0;
 
   // Presence — continuous overlay applied each frame on top of the per-state
   // animation. Per-instance phase so two of the same mob drift out of sync.
@@ -70,6 +84,7 @@ export function createBodyAnimator(
   let stridePhase = Math.random() * Math.PI * 2;   // desync mobs
   let gaitAmp = 0;
   let presenceTime = 0;
+  let flapTime = Math.random() * Math.PI * 2;      // desync a swarm's wingbeats
 
   function applyKnockback(dirX: number, dirZ: number, speed: number) {
     const len = Math.hypot(dirX, dirZ);
@@ -104,6 +119,17 @@ export function createBodyAnimator(
   }
 
   function tickLocomotion(dt: number) {
+    // Wingbeat — continuous fast flutter, biased upward so the wings spend more
+    // time raised than dropped (reads as a beat, not a metronome). ~3.8 Hz.
+    if (hasWings) {
+      flapTime += dt;
+      const flap = Math.sin(flapTime * 24) * 0.45 + 0.12;
+      if (wingL) wingL.rotation.z = wLz - flap;
+      if (wingR) wingR.rotation.z = wRz + flap;
+      const fh = flap * 0.8;
+      if (wingL2) wingL2.rotation.z = wL2z - fh;
+      if (wingR2) wingR2.rotation.z = wR2z + fh;
+    }
     const quad = !!(frontL || frontR || hindL || hindR);
     if (hipL || hipR || quad) {
       const movedX = container.position.x - prevX;
