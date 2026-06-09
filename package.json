@@ -18,6 +18,7 @@
     "snap": "tsx scripts/snap.ts",
     "bench": "tsx scripts/bench.ts",
     "perf": "tsx scripts/perf.ts",
+    "perf:ab": "tsx scripts/perf-ab.ts",
     "harness-smoke": "tsx scripts/harness-smoke.ts",
     "harness-continue": "tsx scripts/harness-continue.ts",
     "play": "tsx scripts/play.ts",

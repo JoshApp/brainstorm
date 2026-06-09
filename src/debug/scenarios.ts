@@ -172,6 +172,68 @@ function gridTorches(count: number, halfExtent: number): TorchSpec[] {
   return out;
 }
 
+// ── Parameterized perf scenarios (the A/B isolation scenes) ──────────
+// Unlike the static perf-* scenarios below (which throw "everything at
+// once" at the runner), these isolate ONE cost and take a count via URL
+// param, so `npm run perf:ab perf-creatures phone n=8 n=16` reads off the
+// per-unit cost from the delta. Resolved by name in getScenarioFromUrl
+// BEFORE the static SCENARIOS map, with the live URLSearchParams in hand.
+
+/** perf-creatures: N creatures of one kind in an empty, TORCHLESS room (only
+ *  the player lamp lights it) — isolates creature draw/tri cost + the lamp's
+ *  shadow pass over them, with zero torch/projectile noise. `?n=`, `?kind=`. */
+function buildCreaturesScenario(params: URLSearchParams): Scenario {
+  const n = Math.max(1, Math.min(64, Number(params.get('n') ?? '16') || 16));
+  const kindParam = params.get('kind') ?? 'ghoul';
+  const kind = ENEMIES[kindParam] ? kindParam : 'ghoul';
+  const half = 11;
+  return {
+    level: {
+      id: 'perf-creatures', depth: 5, displayName: 'PERF creatures', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: half + 3, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: (half + 3) * 2, d: (half + 3) * 2 }, height: 4.5 }],
+      corridors: [], props: [], torches: [],
+      spawns: gridSpawns('r', n, half, [kind]),
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: half + 3, lookAt: { x: 0, z: 0, y: 1.0 } },
+  };
+}
+
+/** perf-items: a tight overlapping PILE of N ground pickups, no enemies, no
+ *  torches — isolates the per-item draw cost + the additive disc/ring overdraw
+ *  where they stack. `?n=` (pile size), `?item=` (which item). */
+function buildItemsScenario(params: URLSearchParams): Scenario {
+  const n = Math.max(1, Math.min(64, Number(params.get('n') ?? '12') || 12));
+  const itemParam = params.get('item') ?? 'rusted-sword';
+  const itemId = ITEMS[itemParam] ? itemParam : (Object.keys(ITEMS)[0] ?? 'rusted-sword');
+  // Sunflower (golden-angle) spiral, deliberately tight so the discs OVERLAP —
+  // overdraw is the cost we're hunting, and it only shows when they stack.
+  const pickups: Array<{ itemId: string; x: number; z: number }> = [];
+  for (let i = 0; i < n; i++) {
+    const a = i * 2.39996323;
+    const r = 0.16 * Math.sqrt(i);
+    pickups.push({ itemId, x: Math.cos(a) * r, z: Math.sin(a) * r });
+  }
+  return {
+    level: {
+      id: 'perf-items', depth: 5, displayName: 'PERF items', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 2.5, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 10, d: 10 }, height: 3.5 }],
+      corridors: [], props: [], torches: [], spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 2.5, lookAt: { x: 0, z: 0, y: 0.1 } },
+    spawnPickups: pickups,
+  };
+}
+
+/** Perf scenarios that need the live URL params (a count, a kind) to build.
+ *  getScenarioFromUrl resolves these before the static SCENARIOS map. */
+const PERF_FACTORIES: Record<string, (params: URLSearchParams) => Scenario> = {
+  'perf-creatures': buildCreaturesScenario,
+  'perf-items': buildItemsScenario,
+};
+
 export const SCENARIOS: Record<string, Scenario> = {
   // ── PERF STRESS SCENARIOS ──────────────────────────────────────────
   // perf-horde: a packed mob fight — many animated enemies + projectiles
@@ -1488,7 +1550,9 @@ export function getScenarioFromUrl(): Scenario | null {
   const params = new URLSearchParams(window.location.search);
   const name = params.get('scenario');
   if (!name) return null;
-  const base = SCENARIOS[name];
+  // Parameterized perf scenarios build from the live URL params (count/kind);
+  // everything else is a static entry in SCENARIOS.
+  const base = PERF_FACTORIES[name] ? PERF_FACTORIES[name](params) : SCENARIOS[name];
   if (!base) {
     // eslint-disable-next-line no-console
     console.warn(`Unknown scenario: ${name}. Available:`, Object.keys(SCENARIOS));
