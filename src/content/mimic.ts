@@ -26,6 +26,31 @@
 //     outward so the silhouette reads "chest standing on spider legs."
 
 import type { ModelSpec, Vec3 } from '../ecs/model-types';
+import type { CreatureSpec, SkinPart } from './creature-types';
+import { skeletonFromSlots } from './skeletons';
+
+/** The Mimic as a CREATURE — same chest-on-legs model (hinged lid, fang rings,
+ *  glowing throat) routed through the creature pipeline. The skeleton is the
+ *  model's own slots (skeletonFromSlots round-trips them, rig yaw + hinge
+ *  preserved), the skin IS the parts. spine/head/limbs left empty so we author
+ *  the one body capsule the legacy mimic used (deriveHurtbox: aimHeight 0.6 →
+ *  capsule y 0.21–0.87, radius 0.32; no head). The chest ambush is unchanged —
+ *  the chest interactable still spawns this enemy id on a mimic open. */
+export function mimicCreatureSpec(): CreatureSpec {
+  const model = mimicModel();
+  return {
+    id: 'mimic',
+    archetype: 'biped',                 // unused — the custom skeleton overrides it
+    skeleton: skeletonFromSlots(model.slots ?? {}, { root: 'rig', spine: [], head: null, limbs: [] }),
+    skin: model.parts as SkinPart[],
+    materials: model.materials,
+    // No creature.flash binding: the mimic flashes the PART named 'body' (the
+    // chest floor), driven by EnemySpec.flashMaterialName — not a material.
+    zones: [
+      { id: 'body', role: 'body', shape: { kind: 'capsule', a: [0, 0.21, 0], b: [0, 0.87, 0], radius: 0.32 } },
+    ],
+  };
+}
 
 export function mimicModel(): ModelSpec {
   return {

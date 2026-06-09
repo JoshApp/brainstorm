@@ -4,90 +4,176 @@
 
 export const GENERATED_PATCHLOG = [
   {
-    "version": "Build 1",
-    "date": "2026-06-06",
+    "version": "Build 4",
+    "date": "2026-06-09",
     "entries": [
       {
-        "tag": "tune",
-        "text": "Hearts hold two souls apiece now — one hit cracks a heart in half, and your last heart shudders like a held breath.",
+        "tag": "content",
+        "text": "The Boiling King wears its eaten crowns on new bones. Hit the body, pop the core — same as ever, only bigger underneath.",
         "area": [
-          "ui"
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "Pit moths beat new wings on real bones. Look up, then cleave — that part hasn't changed.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The burrower hauls itself up from the floor on the new bones. Same ambush, fewer magic numbers under it.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The sump-wisp drifts and the lasher gapes from its stalk. Both now know exactly how tall they are.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "A starving hound lopes in low on four legs, and a capped spore-turret swells and glows in the dark.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The acolyte stoops hooded over a glowing staff now, the orb pulsing as it gathers its hex.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The split-spawn and the blue acid-spitter slosh translucent now, each lit from within by its own poison core.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The skirmisher, skeleton, and defiler are reforged from the bone out — a wiry blade, a rattling skull, a stooped violet hexer.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The spider crouches on eight bent legs now, a knot of red eyes burning over its fangs.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The ooze churns translucent now, a green nucleus pulsing and quivering inside its jelly.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The rat runs low on four legs now, snout to the stone and a long tail dragging behind it.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The Hollow Choir drifts now — a hooded wisp with no feet to touch the stone, its edges burning green out of the dark.",
+        "area": [
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The ghoul is reborn gaunt and clawed, its eyes two coals in a hung, crooked head.",
+        "area": [
+          "content"
         ]
       },
       {
         "tag": "fix",
-        "text": "The wrist twists; the weapon stops rotating when the grip becomes perpendicular; the existing animations stop looking sideways.",
+        "text": "The stoneguard heaves its fists overhead and drives them down in front of it now, instead of wrenching them behind its back.",
         "area": [
-          "combat",
-          "weapons"
+          "content",
+          "combat"
         ]
       },
       {
         "tag": "fix",
-        "text": "The grip stops being a hot dog inside a hand-tube. The blade extends OUT of the closed fist now, the way a hand actually holds a sword.",
+        "text": "The stoneguard's eyes burn clear again, its hands are empty, and it keeps its feet on the ground instead of drifting off it.",
         "area": [
-          "combat",
-          "weapons"
+          "content"
         ]
       },
       {
         "tag": "tune",
-        "text": "Wrist bends more deliberately; the humerus reattaches; the rig debug view stops drowning in labels.",
+        "text": "The stoneguard heaves its maul overhead and brings it down now — a real swing, not a lean.",
         "area": [
-          "combat",
-          "weapons",
-          "tooling"
+          "content",
+          "combat"
         ]
       },
       {
-        "tag": "fix",
-        "text": "Opening a chest or grabbing loot no longer ghost-swings your weapon — the dungeon stopped hearing a tap as two inputs.",
+        "tag": "content",
+        "text": "The stoneguard wears its stone like plate now, a heavy maul dragging at its side.",
         "area": [
-          "controls"
+          "content"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The stoneguard is raised again from its bones out, standing at its true measured height; the old patchwork frame is gone.",
+        "area": [
+          "content"
         ]
       },
       {
         "tag": "tune",
-        "text": "The summoning sigils smoulder a beat longer now — you see what is coming before it lands on you.",
+        "text": "Crack a guard and the brute drops for a long dizzy beat, stars wheeling plain overhead now; take your time, then it shakes them off.",
         "area": [
-          "combat",
-          "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The hand earns a real arm and learns to say what it's for. Anchors with intent, contact targets, the iteration metric in millimetres.",
-        "area": [
-          "combat",
-          "weapons",
-          "tooling"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The bench grows sliders. The iteration loop stops being \"edit code, snap, look\" and starts being \"drag, look, copy.\"",
-        "area": [
-          "tooling"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The bench grows two new eyes: bright call-outs and per-joint distance numbers. Less squinting at the bones.",
-        "area": [
-          "tooling"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Taps know what you mean now — loot before stairs, a mob means a swing, and reaching for a chest never flails.",
-        "area": [
-          "controls",
           "combat"
         ]
       },
       {
         "tag": "tune",
-        "text": "Each finger learns three joints. The fist closes like one, the wrist bends like one. The dungeon notices.",
+        "text": "Crack a guard and the brute reels drunk, stars wheeling overhead, down a real beat now; finish it for double, though the kill won't mend you.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "A blow to the skull still bites deeper, but the killing flourish is earned now, not handed to every hit.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Break a guard now and you will know it; the brute reels back, its eyes gone dark, its heart bared for the blow.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Beat a foe to the brink or break its guard, then end it; the finishing blow lands like a verdict and you take strength from the kill.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "A sweep bites the nearest foe to the bone and only grazes the rest; a crowd is a threat again, not a free harvest.",
         "area": [
           "combat",
           "weapons"
@@ -95,53 +181,7 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "tune",
-        "text": "The wrist bends. The sword tilts forward like an actual person is holding it.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Reach for a chest or grab loot and your blade stays still now — no more phantom swing when you meant to open, not strike.",
-        "area": [
-          "combat",
-          "controls"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The bones close on what they hold. The grip lives inside the fist now; the dungeon is less amused.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The bench learns to compose. You can finally see what's holding what before it ships.",
-        "area": [
-          "tooling"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The hand finally remembers which side it's on. The bones close on the steel they carry.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The Proving Grounds buttons answer your taps again — Descend and Back were hiding behind the screen.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The bones tighten on what they carry. A dagger closes the fist; a haft opens it.",
+        "text": "Overheads crash down where they look like they land now; the hammer crushes what cowers at your feet without making you stare at them.",
         "area": [
           "combat",
           "weapons"
@@ -149,94 +189,201 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "add",
-        "text": "A hooded merchant waits in the dark now, and your gold finally buys something — reach them before the dungeon reaches you.",
-        "area": [
-          "content",
-          "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The thumb stops floating off the hand. Joints, after all, should connect.",
-        "area": [
-          "weapons"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Your hand wears its bones now. Five fingers curl around what they hold, and the dungeon recognises one of its own.",
+        "text": "Shatter a stoneguard's poise and a molten core gapes at its chest; bury the next blow there and it pays for the lapse.",
         "area": [
           "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "Geometry learns to carve and fuse. Skulls can have eye sockets, chests can have keyholes, the dungeon's masonry stops being legos glued together.",
-        "area": [
-          "tooling"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The builder learns to round corners. Every chest, bracer, bench has the option to stop looking like Minecraft.",
-        "area": [
-          "tooling"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The asset bench grows new debug eyes — front/side/top/iso at once, named-part colours, slot labels. Claude can finally see what Claude made.",
-        "area": [
-          "tooling"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Tab away and the dungeon holds its breath — the sound pauses instead of murmuring to an empty room, and picks up where it left off when you return.",
-        "area": [
-          "audio"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The hand stops looking like a robot. One fist, one thumb, one chunky bracer. The dungeon expected this all along.",
-        "area": [
-          "ui",
-          "weapons"
+          "content"
         ]
       },
       {
         "tag": "add",
-        "text": "Hands appear in your view, holding the things you took. Empty hands make fists. The dungeon will accept this.",
+        "text": "Crack a skull and it costs them dearly now; your steel reads the whole body in three dimensions, not a dot in the dark.",
         "area": [
-          "combat",
-          "weapons",
-          "ui"
+          "combat"
         ]
       },
       {
-        "tag": "fix",
-        "text": "Proving Grounds finally tells you where to tap. The Descend button was always there; now it admits it.",
+        "tag": "tune",
+        "text": "Your steel strikes where you actually swing now, in three dimensions — thrust to skewer one, sweep to cleave a line, aim low to gut what's at your feet.",
         "area": [
-          "ui",
-          "controls"
+          "combat"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "version": "Build 3",
+    "date": "2026-06-08",
+    "entries": [
       {
-        "tag": "fix",
-        "text": "Trailer parser now handles the blank-separated session URL convention.",
+        "tag": "tech",
+        "text": "The lamp's shadows trade a hair of softness for a far lighter touch on the GPU — fewer stutters when the dark gets crowded.",
         "area": [
-          "tooling",
-          "build"
+          "atmosphere"
         ]
       },
       {
         "tag": "tech",
-        "text": "Commit messages now drive the patch log via structured Patch-* trailers.",
+        "text": "The lamp quits tracing a shadow for every candle and trinket and only minds the walls and the things that hunt you — it stops choking on its own light.",
         "area": [
-          "tooling",
-          "build"
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "Dropped loot leans on its own glow now instead of lighting a torch for itself — a floor full of treasure stops taxing the dungeon.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "A floor strewn with loot stops dragging the frame — every dropped trinket is lighter to draw now.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The candle-choked halls bundle their clutter into far fewer draws now, so the dungeon keeps its cool the longer you linger.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The dead travel lighter now — same bones, bundled tighter, so a crowd of them stops dragging the frame into the mud.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The dungeon stops drawing what a wall already hides — the things lurking in sealed rooms no longer cost you a frame.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The cross of stone hanging in the corpse-room was never a monument — it was a bug. It's gone, and the chest it was hiding finally shows up.",
+        "area": [
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "An odd life total shows a clean half-heart now, not a half-empty one — stop looking for a heal that was never missing.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Pots are forgiving to hit but no longer fall like dominoes — one swing, a pot or two, not the whole corridor.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The webs are real thread now — they catch the torchlight and throw their own tangled shadow, and the black smear behind them is gone.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The cracks in the floor show their masonry now, not a smear. Something was here before you, and it was built of stone.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The gates keep their warmth but lose the wet shine. Stone should look like stone.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Pots break if you so much as look at them sternly, the gates wear a colder stone and a wet sheen as you approach, and the columns grain runs the right way at last.",
+        "area": [
+          "combat",
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The gates wear dressed stone now, and the columns a quiet grain. The dungeon was built by hands that knew the difference.",
+        "area": [
+          "atmosphere",
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The flagstones sit a little deeper now. Mind the uneven footing.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The stone holds still now — brick, flagstone, and a vaulted coffered ceiling, carved once and lit forever instead of crawling underfoot.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The floor remembers it was laid by hand — uneven flagstones, and here and there a stone gone missing.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Floor runs warm, the ceiling runs cold, and the arched halls finally remember they're made of stone.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Torchlight snags on the grain of the stone now. The walls were always this rough; the dark just kept it to itself.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Shadow settles into the corners and under your feet now. The dungeon stops pretending it was ever flat.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Portcullises finally fall when the candles take. The corridor adjacency check was missing.",
+        "area": [
+          "level"
         ]
       }
     ]

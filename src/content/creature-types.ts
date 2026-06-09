@@ -32,6 +32,13 @@ export interface CreatureSpec {
   id: string;
   archetype: Archetype;
   proportions?: Partial<Proportions>;
+  /** Escape hatch: a bespoke joint skeleton that REPLACES the archetype's
+   *  standard one. For a hand-tuned boss whose rig + keyframe clips predate the
+   *  archetypes (the Marrow Sovereign) — keep its exact joints, skin, and clips,
+   *  but route it through the creature pipeline (measured bounds, setJointVisible
+   *  part-breaks, one hit path). Its `spine`/`head`/`limbs` drive the auto
+   *  hurtbox; leave them empty to author every zone explicitly via `zones`. */
+  skeleton?: SkeletonDef;
   skin: SkinPart[];
   /** Weak/armor/openWhenStaggered zones layered over the AUTO per-bone zones. */
   zones?: HurtZoneSpec[];
@@ -48,6 +55,9 @@ export interface JointDef {
   name: string;
   parent?: string;       // joint name; omitted = child of the model root
   abs: Vec3;             // REST position in root frame (metres); compiled to parent-local
+  rot?: Vec3;            // optional local Euler (radians) — for a bespoke rig whose
+                         // joints carry orientation (e.g. a yaw correction). Most
+                         // archetype joints omit it (rest orientation = identity).
 }
 
 export interface SkeletonDef {

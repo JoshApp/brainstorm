@@ -14,7 +14,7 @@ import { SKELETONS, resolveProportions } from './skeletons';
 /** Build a creature: skeleton → geometry → measured bounds → auto hitzones. */
 export function buildCreature(spec: CreatureSpec): Creature {
   const p = resolveProportions(spec.archetype, spec.proportions);
-  const skel = SKELETONS[spec.archetype](p);
+  const skel = spec.skeleton ?? SKELETONS[spec.archetype](p);
 
   // ── Compile skeleton → slots (parent-local), skin → parts ──
   const absByName = new Map<string, Vec3>();
@@ -22,7 +22,7 @@ export function buildCreature(spec: CreatureSpec): Creature {
   const slots: Record<string, SlotSpec> = {};
   for (const j of skel.joints) {
     const pa = j.parent ? absByName.get(j.parent) ?? [0, 0, 0] : [0, 0, 0];
-    slots[j.name] = { pos: [j.abs[0] - pa[0], j.abs[1] - pa[1], j.abs[2] - pa[2]], parent: j.parent };
+    slots[j.name] = { pos: [j.abs[0] - pa[0], j.abs[1] - pa[1], j.abs[2] - pa[2]], parent: j.parent, rot: j.rot };
   }
   const parts: PartSpec[] = spec.skin.map((sp) => {
     if (sp.kind === 'bone') return sp;            // bones reference joints via from/to

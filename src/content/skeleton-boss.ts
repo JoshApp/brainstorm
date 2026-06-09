@@ -30,6 +30,36 @@
 // makes him tower at ~5m.
 
 import type { ModelSpec, PartSpec } from '../ecs/model-types';
+import type { CreatureSpec, SkinPart } from './creature-types';
+import { skeletonFromSlots } from './skeletons';
+
+/** The Marrow Sovereign as a CREATURE — same bespoke rig, skin, and keyframe
+ *  clips, routed through the creature pipeline. The skeleton comes verbatim from
+ *  the model's own slots (skeletonFromSlots round-trips them, so geometry is
+ *  byte-identical); the skin IS the model's parts. spine/head/limbs are left
+ *  empty so the auto hurtbox stays out of the way and we author the single fat
+ *  body capsule the boss has always used (legacy deriveHurtbox: world a=0.56 →
+ *  b=2.32, radius 1.2 at scale 1.7 — authored here in the creature's local frame,
+ *  ÷1.7, because the group scale + the creature path re-apply it). No head zone,
+ *  matching the old marrow (its skull was never a separate hitbox). */
+export function marrowCreatureSpec(): CreatureSpec {
+  const model = marrowSovereignModel();
+  return {
+    id: 'marrow-sovereign',
+    archetype: 'biped',                 // unused — the custom skeleton overrides it
+    // proportions are otherwise unused for a custom skeleton (geometry is the
+    // model's, bounds are measured); height is just a hint for the debug
+    // preview camera so it frames the towering rig.
+    proportions: { height: 2.9 },
+    skeleton: skeletonFromSlots(model.slots ?? {}, { root: 'rig', spine: [], head: null, limbs: [] }),
+    skin: model.parts as SkinPart[],
+    materials: model.materials,
+    flash: { material: 'core' },
+    zones: [
+      { id: 'body', role: 'body', shape: { kind: 'capsule', a: [0, 0.329, 0], b: [0, 1.365, 0], radius: 0.706 } },
+    ],
+  };
+}
 
 export function marrowSovereignModel(): ModelSpec {
   return {

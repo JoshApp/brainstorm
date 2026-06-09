@@ -20,8 +20,8 @@ function spiderLegSkin(mat: string): SkinPart[] {
 }
 import type { Clip } from '../anim/types';
 import { creature } from './creature';
-import { mimicModel } from './mimic';
-import { marrowSovereignModel } from './skeleton-boss';
+import { mimicCreatureSpec } from './mimic';
+import { marrowCreatureSpec } from './skeleton-boss';
 import { MARROW_CLIPS, MARROW_JOINTS } from '../anim/clips-marrow';
 
 // Ranged config — if present on a spec, the enemy fires a projectile from
@@ -1907,7 +1907,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.40,
     recoverTime: 0.80,
     damageType: 'physical',
-    model: marrowSovereignModel(),
+    // Same bespoke rig + clips, on the creature pipeline (see marrowCreatureSpec).
+    // The model/look/hurtbox are unchanged; what's new is one hit path + measured
+    // bounds + setJointVisible-ready part-breaks shared with the rest of the roster.
+    creature: marrowCreatureSpec(),
     baseEyeEmissive: 2.0,
     // Body footprint at scale 1.7 — wider than a trash mob; the player
     // can't slip THROUGH his legs but can walk past them at arm's length.
@@ -2221,7 +2224,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.18,
     recoverTime: 0.55,
     damageType: 'physical',
-    model: mimicModel(),
+    // Same chest-on-legs model, on the creature pipeline (see mimicCreatureSpec).
+    // The disguise/ambush is unchanged — the chest interactable spawns this id.
+    creature: mimicCreatureSpec(),
     baseEyeEmissive: 2.4,
     collisionRadius: 0.32,
     tiltPartName: 'rig',

@@ -1,4 +1,5 @@
 import type { Archetype, Proportions, SkeletonDef, SkeletonFn, JointDef } from './creature-types';
+import type { SlotSpec, Vec3 } from '../ecs/model-types';
 
 // Archetype skeletons — the joint hierarchies everything derives from. Each is a
 // pure function of resolved Proportions, returning rest joint positions (root
@@ -229,6 +230,34 @@ function flierSkeleton(p: Proportions): SkeletonDef {
     { name: 'wingR2', parent: 'core', abs: [span * 0.34, coreY, p.girth * 0.6] },
   ];
   return { joints: j, root: 'root', spine: ['core'], head: null, limbs: [] };
+}
+
+/** Build a SkeletonDef from a ModelSpec's parent-local `slots` — the escape
+ *  hatch for a bespoke rig (e.g. the Marrow Sovereign) that wants the creature
+ *  pipeline without being reproportioned into an archetype. Walks each slot's
+ *  parent chain to recover root-frame abs positions (buildCreature compiles them
+ *  straight back to the same parent-local slots, so geometry is byte-identical).
+ *  `meta` names the spine/head/limb chains for the auto hurtbox — leave them
+ *  empty to author every zone explicitly. */
+export function skeletonFromSlots(
+  slots: Record<string, SlotSpec>,
+  meta: { root: string; spine: string[]; head: string | null; limbs?: string[][] },
+): SkeletonDef {
+  const absByName = new Map<string, Vec3>();
+  const resolve = (name: string): Vec3 => {
+    const cached = absByName.get(name);
+    if (cached) return cached;
+    const s = slots[name];
+    const local = s?.pos ?? [0, 0, 0];
+    const pa = s?.parent ? resolve(s.parent) : [0, 0, 0];
+    const abs: Vec3 = [local[0] + pa[0], local[1] + pa[1], local[2] + pa[2]];
+    absByName.set(name, abs);
+    return abs;
+  };
+  const joints: JointDef[] = Object.keys(slots).map((name) => ({
+    name, parent: slots[name].parent, abs: resolve(name), rot: slots[name].rot,
+  }));
+  return { joints, root: meta.root, spine: meta.spine, head: meta.head, limbs: meta.limbs ?? [] };
 }
 
 export const SKELETONS: Record<Archetype, SkeletonFn> = {
