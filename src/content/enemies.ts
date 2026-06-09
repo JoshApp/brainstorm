@@ -980,17 +980,34 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.14,
     recoverTime: 0.40,
     damageType: 'physical',
-    model: oozeModel(0x355230, 0x88dd33, 0.55),
-    baseEyeEmissive: 0,
+    // Small split-child ooze — the same blob, knee-high.
+    creature: {
+      id: 'ooze-small',
+      archetype: 'blob',
+      proportions: { height: 0.3, girth: 0.2 },
+      materials: {
+        body: { color: 0x355230, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
+          dissolvable: true, rim: { color: 0x88dd33, power: 2, intensity: 0.5, darkReactive: 0.5 } },
+        core: { color: 0x88dd33, emissive: 0x88dd33, emissiveIntensity: 1.8 },
+      },
+      eyes: { material: 'core', emissive: 1.8 },
+      flash: { material: 'body' },
+      skin: [
+        { kind: 'sphere', joint: 'core', radius: 0.2, scale: [1.1, 0.78, 1.1], jitter: 0.04, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.1, pos: [0.1, -0.02, 0.06], jitter: 0.03, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.08, pos: [0, -0.01, 0], mat: 'core' },
+      ],
+    },
+    baseEyeEmissive: 1.8,
     collisionRadius: 0.20,
     // Same player-walk-through affordance as rats — the split kids
     // are knee-high and should feel like swarm cleanup, not body-
     // blockers.
     noPlayerCollision: true,
-    tiltPartName: 'rig',
+    tiltPartName: 'core',
     flashMaterialName: 'body',
     eyeMaterialName: 'core',
-    presence: 'twitch',
+    presence: 'gelatinous',
     sightRange: 4,
     sightConeHalfAngle: 1.4,
     hearingRange: 2.0,
@@ -1029,18 +1046,34 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.15,
     recoverTime: 0.55,           // short recovery → it shoots OFTEN
     damageType: 'magic',         // acid bypasses physical armour
-    // Blue body + bright cyan core — reads as a different chemistry
-    // than the green ground ooze.
-    model: oozeModel(0x1a3a78, 0x66ccff, 1.05),
-    baseEyeEmissive: 2.6,        // brighter than the green ooze's 0 — the spitter's
-                                 // core is the windup tell, so it needs to pulse hard
+    // Blue blob, bright cyan core — a different chemistry than the green ooze.
+    // The core pulses hard as the spit windup tell.
+    creature: {
+      id: 'acid-spitter',
+      archetype: 'blob',
+      proportions: { height: 0.52, girth: 0.36 },
+      materials: {
+        body: { color: 0x1a3a78, roughness: 0.4, flatShading: 'auto', transparent: true, opacity: 0.7,
+          dissolvable: true, rim: { color: 0x66ccff, power: 2, intensity: 0.55, darkReactive: 0.5 } },
+        core: { color: 0x66ccff, emissive: 0x66ccff, emissiveIntensity: 2.6 },
+      },
+      eyes: { material: 'core', emissive: 2.6 },
+      flash: { material: 'body' },
+      skin: [
+        { kind: 'sphere', joint: 'core', radius: 0.36, scale: [1.1, 0.8, 1.1], jitter: 0.05, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.18, pos: [0.16, -0.04, 0.1], jitter: 0.04, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.15, pos: [-0.15, 0.02, -0.12], jitter: 0.04, mat: 'body' },
+        { kind: 'sphere', joint: 'core', radius: 0.14, pos: [0, 0.02, 0], mat: 'core' },
+      ],
+    },
+    baseEyeEmissive: 2.6,        // the core is the windup tell — pulses hard
     collisionRadius: 0.34,
     physicalArmor: 0,
     magicArmor: 0,
-    tiltPartName: 'rig',
+    tiltPartName: 'core',
     flashMaterialName: 'body',
     eyeMaterialName: 'core',     // re-use the core orb for the windup flare
-    presence: 'twitch',          // same wobble as the green ooze — it's the same species
+    presence: 'gelatinous',      // jelly squash — same species as the green ooze
     sightRange: 9,               // sees well — caster-class perception
     sightConeHalfAngle: 1.3,
     hearingRange: 2.5,
