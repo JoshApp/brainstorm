@@ -216,6 +216,64 @@ export function queryHurtbox(hb: Hurtbox, segA: THREE.Vector3, segB: THREE.Vecto
   return { zone: best, damageMul: best.damageMul, crit: best.crit };
 }
 
+// ── Swept-resolution path (the resolver's hot loop) ──────────────────────────
+// queryHurtbox resolves a zone's world transform on every call — fine for a
+// single segment, wasteful when a swing tests N swept samples against the same
+// enemy. resolveWorldZones() snapshots an enemy's ENABLED zones to world ONCE
+// per strike-frame; testSegmentZones() then tests each weapon sample against
+// that snapshot with zero matrix work.
+
+export interface WorldZone {
+  zone: HurtZone;
+  isCapsule: boolean;
+  a: THREE.Vector3;   // capsule end A, or sphere centre
+  b: THREE.Vector3;   // capsule end B (unused for sphere)
+  radius: number;
+}
+
+/** Snapshot a hurtbox's ENABLED zones into world space. Reuses the `out` array's
+ *  entries (pooled Vector3s) so it allocates nothing after warmup. Returns the
+ *  number of live zones written. */
+export function resolveWorldZones(hb: Hurtbox, out: WorldZone[]): number {
+  let n = 0;
+  for (const z of hb.zones) {
+    if (!z.enabled) continue;
+    let w = out[n];
+    if (!w) { w = out[n] = { zone: z, isCapsule: true, a: new THREE.Vector3(), b: new THREE.Vector3(), radius: 0 }; }
+    w.zone = z;
+    if (z.shape.kind === 'capsule') {
+      w.isCapsule = true;
+      w.radius = worldCapsule(z, hb.root, w.a, w.b);
+    } else {
+      w.isCapsule = false;
+      w.radius = worldSphere(z, hb.root, w.a);
+    }
+    n++;
+  }
+  return n;
+}
+
+/** Test one weapon capsule (segA→segB, radius wr) against a resolved world-zone
+ *  snapshot. Returns the highest-priority overlapping zone, or null. */
+export function testSegmentZones(world: WorldZone[], count: number, segA: THREE.Vector3, segB: THREE.Vector3, wr: number): ZoneHit | null {
+  let best: WorldZone | null = null;
+  let bestD = Infinity;
+  for (let i = 0; i < count; i++) {
+    const w = world[i];
+    const sum = w.radius + wr;
+    const d2 = w.isCapsule
+      ? segSegDistSq(segA, segB, w.a, w.b)
+      : pointSegDistSq(w.a.x, w.a.y, w.a.z, segA.x, segA.y, segA.z, segB.x, segB.y, segB.z);
+    if (d2 > sum * sum) continue;
+    if (!best || w.zone.priority > best.zone.priority || (w.zone.priority === best.zone.priority && d2 < bestD)) {
+      best = w;
+      bestD = d2;
+    }
+  }
+  if (!best) return null;
+  return { zone: best.zone, damageMul: best.zone.damageMul, crit: best.zone.crit };
+}
+
 /** Flip a zone on/off by id. Returns true if a zone matched. */
 export function setZoneEnabled(hb: Hurtbox, id: string, on: boolean): boolean {
   let found = false;

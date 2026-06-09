@@ -25,6 +25,7 @@ import { spendStaminaSoft, gainStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import { showHitCones, type SwingShape } from './combat-debug';
+import { resolveWorldZones, testSegmentZones, type WorldZone, type ZoneHit } from './hurtbox';
 import type { AttackDirection } from '../player/viewmodel';
 
 /** Bill a melee swing's stamina — called once per ACTUAL swing from the
@@ -211,6 +212,62 @@ function swingHitTest<T extends Damageable>(
   }
   hits.sort((a, b) => a.d2 - b.d2);
   return hits.slice(0, maxTargets).map((h) => h.t);
+}
+
+// ── Enemy swing resolver — swept weapon capsule vs. locational hurtbox ZONES ──
+// The enemy path of the hit system (docs/COMBAT-HIT-SYSTEM.md). Same swept-arc
+// geometry as swingHitTest, but each weapon sample is tested against the enemy's
+// resolved hurtbox zones (body capsule + head sphere + weak/armor), so a hit
+// reports WHICH zone it caught — driving the damage/crit multiplier. Destructibles
+// stay on swingHitTest above (they have no zones).
+const _worldZones: WorldZone[] = [];
+
+export interface EnemyZoneHit { enemy: Enemy; zoneHit: ZoneHit; d2: number }
+
+function swingHitEnemies(
+  enemies: readonly Enemy[],
+  origin: THREE.Vector3,
+  aimDir: THREE.Vector3,
+  shape: SwingShape,
+  maxTargets: number,
+  hasLOS?: (cx: number, cz: number, tx: number, tz: number) => boolean,
+): EnemyZoneHit[] {
+  const samples = Math.max(1, Math.min(swingEnds.length, CONFIG.SWORD_HITBOX_SWEEP_SAMPLES));
+  const start = shape.sweepBias - shape.sweepArc / 2;
+  const stepA = samples > 1 ? shape.sweepArc / (samples - 1) : 0;
+  for (let s = 0; s < samples; s++) {
+    rotateAroundY(aimDir, samples > 1 ? start + stepA * s : shape.sweepBias, _swingAim);
+    swingEnds[s].set(
+      origin.x + _swingAim.x * shape.reach,
+      origin.y + _swingAim.y * shape.reach,
+      origin.z + _swingAim.z * shape.reach,
+    );
+  }
+  const wr = shape.radius;
+  const hits: EnemyZoneHit[] = [];
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    const count = resolveWorldZones(e.hurtbox, _worldZones);
+    if (count === 0) continue;
+    // Best zone across all swept samples — highest priority wins (head over body).
+    let best: ZoneHit | null = null;
+    for (let s = 0; s < samples; s++) {
+      const zh = testSegmentZones(_worldZones, count, origin, swingEnds[s], wr);
+      if (zh && (!best || zh.zone.priority > best.zone.priority)) best = zh;
+    }
+    if (!best) continue;
+    const dx = e.position.x - origin.x;
+    const dy = (e.position.y + e.aimHeight) - origin.y;
+    const dz = e.position.z - origin.z;
+    const distOrigin2 = dx * dx + dy * dy + dz * dz;
+    // Point-blank (overlapping body) bypasses LOS — nothing can be between you.
+    const pbR = POINT_BLANK_RADIUS + e.collisionRadius;
+    const pointBlank = (dx * dx + dz * dz) < pbR * pbR;
+    if (!pointBlank && hasLOS && !hasLOS(origin.x, origin.z, e.position.x, e.position.z)) continue;
+    hits.push({ enemy: e, zoneHit: best, d2: distOrigin2 });
+  }
+  hits.sort((a, b) => a.d2 - b.d2);
+  return hits.slice(0, maxTargets);
 }
 
 export function createCombatSystem(
@@ -504,8 +561,11 @@ export function createCombatSystem(
     // the capsule RADIUS, not in flattening the vertical — so ground vs upright
     // genuinely differ, but a fat hitbox keeps it phone-friendly.
     const baseHalfAngle = Math.acos(Math.max(-1, Math.min(1, cosConeHalf)));
-    const radius = CONFIG.SWORD_HITBOX_RADIUS * (1 + c * 0.2);
-    const enemyShape = swingShape(currentSwingDirection, reach, baseHalfAngle, radius);
+    // Enemy weapon capsule: a thin blade (precise core) + the global forgiveness
+    // inflation, charge-scaled. Swept along the arc and tested against each
+    // enemy's hurtbox ZONES (body / head / weak / armor) — see hurtbox.ts.
+    const enemyRadius = (CONFIG.MELEE_HITBOX_RADIUS + CONFIG.MELEE_HITBOX_INFLATION) * (1 + c * 0.2);
+    const enemyShape = swingShape(currentSwingDirection, reach, baseHalfAngle, enemyRadius);
 
     // LOS: a swing can't poke through a wall to hit a hidden enemy (or vase).
     const walkable = getWalkable();
@@ -514,16 +574,18 @@ export function createCombatSystem(
       : undefined;
     // Enemies take priority; props only fall through when no enemy was in the
     // volume (a vase shouldn't soak a swing meant for the mob behind it).
-    const enemyHits = swingHitTest(getEnemies(), camera.position, forwardDir, enemyShape, maxTargets, losCheck);
-    // Destructibles get a fatter, slightly longer capsule — smashing pots stays
-    // forgiving. Capped at 2 so one swing can't nuke a whole row.
-    const destrShape = swingShape(currentSwingDirection, reach * 1.15, baseHalfAngle, radius + 0.15);
+    const enemyHits = swingHitEnemies(getEnemies(), camera.position, forwardDir, enemyShape, maxTargets, losCheck);
+    // Destructibles keep the simple point/capsule test (no zones) — a fatter,
+    // slightly longer capsule so smashing pots stays forgiving. Capped at 2.
+    const destrShape = swingShape(currentSwingDirection, reach * 1.15, baseHalfAngle, CONFIG.SWORD_HITBOX_RADIUS + 0.15);
     const destrMax = Math.min(maxTargets, 2);
-    // Combat debug: draw the live capsules + hurtboxes (no-op unless setting on).
+    // Combat debug: draw the live capsules + hurtbox zones (no-op unless on).
     showHitCones(camera, forwardDir, enemyShape, destrShape);
-    const targets = enemyHits.length > 0
-      ? enemyHits
-      : swingHitTest(getDestructibles(), camera.position, forwardDir, destrShape, destrMax, losCheck);
+    // Unified target list: enemies (carrying the zone they presented) take
+    // priority; destructibles fall through with no zone.
+    const targets: Array<{ target: Damageable; zone?: ZoneHit }> = enemyHits.length > 0
+      ? enemyHits.map((h) => ({ target: h.enemy, zone: h.zoneHit }))
+      : swingHitTest(getDestructibles(), camera.position, forwardDir, destrShape, destrMax, losCheck).map((t) => ({ target: t }));
     if (targets.length === 0) {
       // No enemy / vase in cone — check if we whiffed INTO A WALL. The
       // dungeon acknowledges it: a short metallic tink, a brief haptic,
@@ -587,9 +649,12 @@ export function createCombatSystem(
     let anyCrit = false;
     let bestApplied = 0;
     let anyHeavy = false;
-    for (const target of targets) {
-      const crit = gameRngChance(critChance);
-      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul;
+    for (const { target, zone } of targets) {
+      // Locational zone: head/weak points multiply damage; head forces a crit.
+      // Armor zones (damageMul 0) soak the blow to nothing.
+      const zoneMul = zone?.damageMul ?? 1;
+      const crit = (zone?.crit ?? false) || gameRngChance(critChance);
+      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul * zoneMul;
       const applied = target.takeDamage({
         source: 'player',
         target: target.entityId,
@@ -644,7 +709,7 @@ export function createCombatSystem(
     // Impact sound plays at the CLOSEST target's position — gives the
     // hit a directional sense (pans + room reverb tail) instead of a
     // flat dry thud at the listener.
-    const impactAt = targets[0].position;
+    const impactAt = targets[0].target.position;
     if (anyHeavy) {
       // Weight the crunch by the BEST hit's damage — a big blow freezes
       // longer + shakes harder than a chip hit, on top of the crit bonus.
@@ -679,7 +744,7 @@ export function createCombatSystem(
       freezeFor(Math.min(40, CONFIG.HIT_PAUSE_MS * 0.4));
       kickShake(CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 0.4, CONFIG.SCREEN_SHAKE_HIT_DURATION * 0.5);
       hapticVibrate(CONFIG.HAPTIC_HIT_MS / 2);
-      const material = targets.find((t) => t.hitMaterial)?.hitMaterial;
+      const material = targets.find((t) => t.target.hitMaterial)?.target.hitMaterial;
       if (material) playSurfaceHit(material, impactAt);
       else          playImpact(impactAt);
     }
@@ -733,9 +798,15 @@ export function createCombatSystem(
         : undefined;
       return !!pickTarget(getEnemies(), camera, forwardDir, forwardLenXZ, RANGED_REACH, RANGED_CONE_COS, losCheck);
     }
-    // Melee — base reach/cone (no combo-step or charge mul).
-    const cosConeHalf = Math.cos(stats.coneHalfAngle);
-    return pickTargets(getEnemies(), camera, forwardDir, forwardLenXZ, stats.reach, cosConeHalf, 1).length > 0;
+    // Melee — base reach/cone (no combo-step or charge mul), resolved through
+    // the SAME swept-capsule-vs-zone test a real swing uses, so attack-vs-interact
+    // priority matches what a swing would actually connect with.
+    const walkable = getWalkable();
+    const losCheck = walkable
+      ? (cx: number, cz: number, tx: number, tz: number) => walkable.hasLineOfSight(cx, cz, tx, tz)
+      : undefined;
+    const shape = swingShape(null, stats.reach, stats.coneHalfAngle, CONFIG.MELEE_HITBOX_RADIUS + CONFIG.MELEE_HITBOX_INFLATION);
+    return swingHitEnemies(getEnemies(), camera.position, forwardDir, shape, 1, losCheck).length > 0;
   }
 
   return { tick, hasEnemyInRange };

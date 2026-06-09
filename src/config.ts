@@ -287,6 +287,15 @@ export const CONFIG = {
   // matters. SWEEP_SAMPLES sub-steps the sweep so nothing tunnels.
   SWORD_HITBOX_RADIUS: 0.45,
   SWORD_HITBOX_SWEEP_SAMPLES: 5,
+  // ── Melee weapon hitbox (enemy path — see docs/COMBAT-HIT-SYSTEM.md) ──
+  // The swing is a capsule swept along your TRUE look dir, tested against each
+  // enemy's hurtbox ZONES (body capsule + head sphere + weak/armor). Precise-
+  // but-tunable: the blade itself is thin (RADIUS), forgiveness is a SEPARATE
+  // global knob (INFLATION) added on top — dial INFLATION up for generous mobile
+  // thumbs, down toward 0 for honest hits. The enemy now carries real body
+  // volume, so total reach to a body = RADIUS + INFLATION + bodyRadius.
+  MELEE_HITBOX_RADIUS: 0.12,      // blade thickness — the precise core
+  MELEE_HITBOX_INFLATION: 0.30,   // forgiveness added on top (tune on phone)
   INTERACT_CONE_HALF_ANGLE: 0.9, // radians (~52°) — must look roughly at an
                                  //   interactable before its prompt + USE button
                                  //   appear. Otherwise the player would be told
