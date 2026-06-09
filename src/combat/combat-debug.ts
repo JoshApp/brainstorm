@@ -154,13 +154,27 @@ function poseCapsules(pool: CapsulePool, ox: number, oy: number, oz: number, aim
   }
 }
 
-/** Snapshot the swing capsules at strike + relight the linger. No-op unless on. */
+/** Are two swing shapes identical? When so the overlay draws ONE capsule. */
+function shapesEqual(a: SwingShape, b: SwingShape): boolean {
+  return Math.abs(a.reach - b.reach) < 1e-4 && Math.abs(a.radius - b.radius) < 1e-4 &&
+    Math.abs(a.sweepArc - b.sweepArc) < 1e-4 && Math.abs(a.sweepBias - b.sweepBias) < 1e-4 &&
+    Math.abs(a.rise - b.rise) < 1e-4;
+}
+
+/** Snapshot the swing capsules at strike + relight the linger. No-op unless on.
+ *  When the enemy + destructible shapes are identical (the unified case) only the
+ *  enemy capsule is drawn, so there aren't two stacked on top of each other. */
 export function showHitCones(camera: THREE.Camera, aimDir: THREE.Vector3, enemy: SwingShape, destr: SwingShape): void {
   if (!enemyPool || !destrPool || !getSettings().debugHitCones) return;
   _aim.copy(aimDir);
   const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
   poseCapsules(enemyPool, ox, oy, oz, _aim, enemy);
-  poseCapsules(destrPool, ox, oy, oz, _aim, destr);
+  if (shapesEqual(enemy, destr)) {
+    for (const m of destrPool.meshes) m.visible = false;
+    destrPool.activeSamples = 0;
+  } else {
+    poseCapsules(destrPool, ox, oy, oz, _aim, destr);
+  }
   linger = LINGER_S;
   hasSwung = true;
 }

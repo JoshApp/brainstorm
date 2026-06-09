@@ -522,11 +522,11 @@ export function createCombatSystem(
     // Enemies take priority; props only fall through when no enemy was in the
     // volume (a vase shouldn't soak a swing meant for the mob behind it).
     const enemyHits = swingHitTargets(getEnemies(), camera.position, forwardDir, enemyShape, maxTargets, losCheck);
-    // Destructibles run the SAME resolver — they just present a single forgiving
-    // body zone. A fatter, slightly longer capsule keeps smashing pots generous;
-    // capped at 2. Only tested when no enemy was hit (a vase shouldn't soak a
-    // swing meant for the mob behind it).
-    const destrShape = swingShape(currentSwingDirection, reach * 1.15, baseHalfAngle, CONFIG.SWORD_HITBOX_RADIUS + 0.15, moveRise);
+    // Destructibles run the SAME resolver AND the same swing capsule as enemies
+    // — props now carry a real body sphere, so the old extra reach/radius
+    // forgiveness is redundant. Capped at 2; only tested when no enemy was hit
+    // (a vase shouldn't soak a swing meant for the mob behind it).
+    const destrShape = enemyShape;
     const destrMax = Math.min(maxTargets, 2);
     const hitList: ZoneTargetHit[] = enemyHits.length > 0
       ? enemyHits
