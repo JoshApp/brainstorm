@@ -776,13 +776,38 @@ export const ENEMIES: Record<string, EnemySpec> = {
     strikeTime: 0.15,
     recoverTime: 0.80,
     damageType: 'magic',
-    model: acolyteModel(0x1a1a22, 0x66ffaa, 2.5, 0x66ffaa),
+    // Robed caster — a hooded humanoid in a dark robe, green eyes, gripping a
+    // staff topped with a glowing orb. The orb material is named 'orb' so the
+    // 'chant' presence pulses it as it channels.
+    creature: {
+      id: 'acolyte',
+      archetype: 'biped',
+      proportions: { height: 1.55, girth: 0.16, armLength: 0.7, legLength: 0.6, headSize: 0.16 },
+      materials: {
+        robe: { color: 0x1a1a22, roughness: 1, flatShading: 'auto', rim: { color: 0x66ffaa, power: 3, intensity: 0.4, darkReactive: 0.5 } },
+        flesh: { color: 0x12120f, roughness: 0.9, flatShading: 'auto' },
+        staff: { color: 0x2a2018, roughness: 0.9, flatShading: 'auto' },
+        orb: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 2.2 },
+        eyes: { color: 0x66ffaa, emissive: 0x66ffaa, emissiveIntensity: 2.5 },
+      },
+      eyes: { material: 'eyes', emissive: 2.5 },
+      flash: { material: 'robe' },
+      skin: [
+        ...humanoidBipedSkin({ body: 'robe', eye: 'eyes', limb: 'flesh', limbRadius: 0.045, headRadius: 0.16 }),
+        // Robe skirt + hood.
+        { kind: 'cone', joint: 'spine', radius: 0.32, height: 1.28, pos: [0, -0.64, 0], rot: [Math.PI, 0, 0], jitter: 0.02, mat: 'robe' },
+        { kind: 'cone', joint: 'head', radius: 0.24, height: 0.42, pos: [0, 0.13, 0.03], mat: 'robe' },
+        // Staff in the right fist — shaft + a glowing orb at the top.
+        { kind: 'cylinder', joint: 'handR', radius: 0.025, height: 1.2, pos: [0.07, -0.18, -0.05], mat: 'staff' },
+        { kind: 'sphere', joint: 'handR', radius: 0.09, pos: [0.07, 0.44, -0.05], mat: 'orb' },
+      ],
+    },
     baseEyeEmissive: 2.5,
     collisionRadius: 0.32,
     physicalArmor: 0,
     magicArmor: 1,
-    tiltPartName: 'rig',
-    flashMaterialName: 'body',
+    tiltPartName: 'spine',
+    flashMaterialName: 'robe',
     eyeMaterialName: 'eyes',
     presence: 'chant',       // slow side rock + orb emissive pulse
     // Best line-of-sight perception of any mob — they're casters, scanning
