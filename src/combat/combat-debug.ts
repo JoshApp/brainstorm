@@ -1,31 +1,33 @@
 import * as THREE from 'three';
 import { getSettings } from '../settings/settings';
 import { CONFIG } from '../config';
+import { worldCapsule, worldSphere, type Hurtbox as EnemyHurtbox, type HurtZone } from './hurtbox';
 
 // Combat hit debug overlay (Settings → Debug → HIT CONES).
 //
-// Draws the ACTUAL melee hit geometry each swing AND every enemy's hurtbox, as
-// real 3D solids that sit in the world (depth-tested — a wall in front occludes
-// them), so you can see exactly what a swing covers and whether a target
-// overlapped it:
-//   - red capsules  = the enemy swing hitbox. The hit test sweeps a capsule
-//                     (radius = SWORD_HITBOX_RADIUS) across the swing's arc; we
-//                     draw one capsule per swept sample, posed along your TRUE
-//                     look direction (pitch included). The fan of capsules IS
-//                     the swept volume.
+// Draws the ACTUAL melee hit geometry each swing AND every enemy's hurtbox
+// ZONES, as real 3D solids that sit in the world (depth-tested), so you can see
+// exactly what a swing covers and which zone a target presents:
+//   - red capsules  = the enemy swing hitbox, one capsule per swept sample,
+//                     posed along your TRUE look direction (pitch included).
 //   - cyan capsules = the wider/longer destructible (vase) hitbox.
-//   - yellow spheres = each enemy's hurtbox (centre = position + aimHeight,
-//                     radius = hitRadius). A hit lands when the sphere's centre
-//                     comes within (hitRadius + capsule radius) of a capsule
-//                     segment — i.e. when a sphere touches a capsule here.
+//   - hurtbox zones = each enemy's body capsule / head sphere / weak point /
+//                     armor, coloured by role and GHOSTED when disabled. These
+//                     are the literal volumes from src/combat/hurtbox.ts that the
+//                     resolver tests against — see docs/COMBAT-HIT-SYSTEM.md.
 // The swing capsules snapshot at the strike and linger ~0.6s fading out (a
 // 100ms strike would be invisible otherwise). Read-only; gated on the setting.
 
 const LINGER_S = 0.6;
-const HURTBOX_POOL = 48;
 const MAX_SAMPLES = 8;         // matches swingEnds[] in attack.ts
-const HURTBOX_MIN_R = 0.12;    // most enemies have hitRadius 0 (a point); show a
-                               // small marker so the aim point is still visible.
+
+// Zone colour by role.
+const ZONE_COLOR: Record<HurtZone['role'], number> = {
+  body: 0x40ff80,   // green — the baseline volume
+  head: 0xffe040,   // yellow — locational bonus
+  weak: 0xff3050,   // red-hot — a vulnerable zone
+  armor: 0x8da0b4,  // steel — soaks until broken
+};
 
 /** The shaped swing capsule, produced by attack.ts and consumed here. */
 export interface SwingShape {
@@ -35,25 +37,27 @@ export interface SwingShape {
   sweepBias: number;   // lateral centre offset (radians)
 }
 
-interface Hurtbox { position: THREE.Vector3; aimHeight: number; hitRadius?: number; alive: boolean }
+/** What the overlay needs from each live enemy. */
+interface DebugTarget { alive: boolean; hurtbox: EnemyHurtbox }
 
-/** A pooled set of capsule meshes for one swing colour. The capsule geometry is
- *  rebuilt only when the swing's radius/reach changes (cheap — strikes only). */
+/** A pooled set of capsule meshes for one swing colour. */
 interface CapsulePool {
   meshes: THREE.Mesh[];
   mat: THREE.MeshBasicMaterial;
   geom: THREE.CapsuleGeometry | null;
-  radius: number;   // dims the current geom was built for
+  radius: number;
   length: number;
 }
 
 let scene: THREE.Object3D | null = null;
 let enemyPool: CapsulePool | null = null;
 let destrPool: CapsulePool | null = null;
-let hurtboxes: THREE.Mesh[] = [];
-let hurtMat: THREE.MeshBasicMaterial | null = null;
-let hurtGeom: THREE.SphereGeometry | null = null;
 let linger = 0;
+
+// Per-zone meshes, keyed by the live HurtZone object. Geometry is built once
+// (zone dims are static) and reused; world transform + colour update per frame.
+const zoneMeshes = new Map<HurtZone, THREE.Mesh>();
+const seenZones = new Set<HurtZone>();
 
 function makeCapsulePool(color: number): CapsulePool {
   const mat = new THREE.MeshBasicMaterial({
@@ -78,20 +82,6 @@ export function initCombatDebug(sc: THREE.Object3D): void {
   destrPool = makeCapsulePool(0x40d0ff);   // destructible hitbox — cyan
   for (const m of destrPool.meshes) scene.add(m);
   for (const m of enemyPool.meshes) scene.add(m);
-  // Enemy hurtbox spheres — a small pool, shown only for alive enemies.
-  hurtMat = new THREE.MeshBasicMaterial({
-    color: 0xffe040, transparent: true, opacity: 0.22, depthWrite: false,
-    depthTest: true, fog: false,
-  });
-  hurtGeom = new THREE.SphereGeometry(1, 16, 12);
-  for (let i = 0; i < HURTBOX_POOL; i++) {
-    const m = new THREE.Mesh(hurtGeom, hurtMat);
-    m.frustumCulled = false;
-    m.renderOrder = 9001;
-    m.visible = false;
-    hurtboxes.push(m);
-    scene.add(m);
-  }
 }
 
 // Scratch.
@@ -102,6 +92,8 @@ const _mid = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const _quat = new THREE.Quaternion();
+const _za = new THREE.Vector3();
+const _zb = new THREE.Vector3();
 
 /** Rotate a vector around world-up by `a` radians (keeps pitch). */
 function rotY(v: THREE.Vector3, a: number, out: THREE.Vector3): void {
@@ -109,13 +101,9 @@ function rotY(v: THREE.Vector3, a: number, out: THREE.Vector3): void {
   out.set(v.x * c + v.z * s, v.y, -v.x * s + v.z * c);
 }
 
-/** Pose a pool's capsules as the swept hit volume: one capsule per swept sample,
- *  each from origin → origin + (aim rotated across the arc) × reach, with the
- *  swing's true radius. This mirrors swingHitTest() in attack.ts exactly. */
+/** Pose a pool's capsules as the swept hit volume — mirrors swingHitTest(). */
 function poseCapsules(pool: CapsulePool, ox: number, oy: number, oz: number, aim: THREE.Vector3, shape: SwingShape): void {
-  // Rebuild geometry only when dims drift (CapsuleGeometry bakes radius/length;
-  // scaling would squash the round caps, so we recreate instead of scale).
-  const length = shape.reach;            // distance between the two cap centres
+  const length = shape.reach;
   if (!pool.geom || Math.abs(pool.radius - shape.radius) > 1e-3 || Math.abs(pool.length - length) > 1e-3) {
     pool.geom?.dispose();
     pool.geom = new THREE.CapsuleGeometry(shape.radius, length, 6, 12);
@@ -123,7 +111,6 @@ function poseCapsules(pool: CapsulePool, ox: number, oy: number, oz: number, aim
     pool.length = length;
     for (const m of pool.meshes) m.geometry = pool.geom;
   }
-
   const samples = Math.max(1, Math.min(MAX_SAMPLES, CONFIG.SWORD_HITBOX_SWEEP_SAMPLES));
   const start = shape.sweepBias - shape.sweepArc / 2;
   const stepA = samples > 1 ? shape.sweepArc / (samples - 1) : 0;
@@ -132,8 +119,6 @@ function poseCapsules(pool: CapsulePool, ox: number, oy: number, oz: number, aim
     if (s >= samples) { m.visible = false; continue; }
     rotY(aim, samples > 1 ? start + stepA * s : shape.sweepBias, _rot);
     _end.set(ox + _rot.x * shape.reach, oy + _rot.y * shape.reach, oz + _rot.z * shape.reach);
-    // Capsule default axis is +Y, centred at its midpoint — place at the segment
-    // midpoint, rotate +Y onto the segment direction.
     _mid.set((ox + _end.x) / 2, (oy + _end.y) / 2, (oz + _end.z) / 2);
     _dir.set(_end.x - ox, _end.y - oy, _end.z - oz).normalize();
     _quat.setFromUnitVectors(_up, _dir);
@@ -157,8 +142,48 @@ function setPoolVisible(pool: CapsulePool, on: boolean): void {
   for (const m of pool.meshes) if (m.visible !== on) m.visible = on;
 }
 
-/** Per-frame: fade the swing capsules + draw the live enemy hurtbox spheres. */
-export function tickCombatDebug(dt: number, enemies: readonly Hurtbox[]): void {
+/** Build the mesh for a zone (geometry sized to its LOCAL dims, once). */
+function makeZoneMesh(zone: HurtZone): THREE.Mesh {
+  let geom: THREE.BufferGeometry;
+  if (zone.shape.kind === 'capsule') {
+    const len = zone.shape.a.distanceTo(zone.shape.b);
+    geom = new THREE.CapsuleGeometry(zone.shape.radius, len, 6, 12);
+  } else {
+    geom = new THREE.SphereGeometry(zone.shape.radius, 16, 12);
+  }
+  const mat = new THREE.MeshBasicMaterial({
+    color: ZONE_COLOR[zone.role], transparent: true, opacity: 0.2,
+    depthWrite: false, depthTest: true, fog: false,
+  });
+  const m = new THREE.Mesh(geom, mat);
+  m.frustumCulled = false;
+  m.renderOrder = 9001;
+  scene?.add(m);
+  return m;
+}
+
+/** Place + colour a zone mesh in world space this frame. */
+function poseZone(zone: HurtZone, hb: EnemyHurtbox, m: THREE.Mesh): void {
+  if (zone.shape.kind === 'capsule') {
+    worldCapsule(zone, hb.root, _za, _zb);
+    _mid.addVectors(_za, _zb).multiplyScalar(0.5);
+    _dir.subVectors(_zb, _za).normalize();
+    _quat.setFromUnitVectors(_up, _dir);
+    m.position.copy(_mid);
+    m.quaternion.copy(_quat);
+  } else {
+    worldSphere(zone, hb.root, _za);
+    m.position.copy(_za);
+    m.quaternion.identity();
+  }
+  const mat = m.material as THREE.MeshBasicMaterial;
+  // Ghost disabled zones (armor that's still up, a weak point not yet open).
+  mat.opacity = zone.enabled ? 0.22 : 0.05;
+  m.visible = true;
+}
+
+/** Per-frame: fade the swing capsules + draw the live enemy hurtbox zones. */
+export function tickCombatDebug(dt: number, enemies: readonly DebugTarget[]): void {
   if (!enemyPool || !destrPool) return;
   const on = getSettings().debugHitCones;
 
@@ -174,19 +199,27 @@ export function tickCombatDebug(dt: number, enemies: readonly Hurtbox[]): void {
     destrPool.mat.opacity = 0.14 * k;
   }
 
-  // Enemy hurtbox spheres — always shown (while the setting is on) so you can
-  // line a swing up against them, not just see them on the frame you hit.
-  let i = 0;
+  // Hurtbox zones — drawn while the setting is on so you can line a swing up
+  // against the real volumes, not just on the frame you connect.
+  seenZones.clear();
   if (on) {
     for (const e of enemies) {
-      if (i >= HURTBOX_POOL) break;
-      if (!e.alive) continue;
-      const r = Math.max(e.hitRadius ?? 0, HURTBOX_MIN_R);
-      const m = hurtboxes[i++];
-      m.position.set(e.position.x, e.position.y + e.aimHeight, e.position.z);
-      m.scale.setScalar(r);
-      m.visible = true;
+      if (!e.alive || !e.hurtbox) continue;
+      for (const zone of e.hurtbox.zones) {
+        let m = zoneMeshes.get(zone);
+        if (!m) { m = makeZoneMesh(zone); zoneMeshes.set(zone, m); }
+        poseZone(zone, e.hurtbox, m);
+        seenZones.add(zone);
+      }
     }
   }
-  for (; i < HURTBOX_POOL; i++) if (hurtboxes[i].visible) hurtboxes[i].visible = false;
+  // Prune meshes whose zone wasn't drawn this frame (enemy died / culled /
+  // setting off) — dispose so a cleared room doesn't leak debug geometry.
+  for (const [zone, m] of zoneMeshes) {
+    if (seenZones.has(zone)) continue;
+    scene?.remove(m);
+    m.geometry.dispose();
+    (m.material as THREE.Material).dispose();
+    zoneMeshes.delete(zone);
+  }
 }

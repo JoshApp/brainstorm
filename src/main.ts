@@ -192,6 +192,9 @@ renderer.toneMappingExposure = 0.9;
 
 // --- Scene ---
 const scene = new THREE.Scene();
+// DEV-only scene handle for headless inspection (screenshot harnesses,
+// hurtbox/zone counts). Stripped from prod by the import.meta.env.DEV gate.
+if (import.meta.env.DEV) (globalThis as Record<string, unknown>).__scene = scene;
 scene.background = new THREE.Color(CONFIG.FOG_COLOR);
 scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 

@@ -42,6 +42,7 @@ import { spawnXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
 import type { Damageable } from '../combat/damageable';
+import { deriveHurtbox, setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
 
 // Audio buckets are content data (see content/enemies.ts). These thin
@@ -166,6 +167,13 @@ export interface Enemy extends Damageable {
   hitRadius: number;
   /** Height the swing cone aims at + where the damage number floats from. */
   aimHeight: number;
+  /** Locational hurtbox zones (body / head / weak / armor). The combat debug
+   *  overlay draws these; the swing resolver tests against the ENABLED ones.
+   *  See src/combat/hurtbox.ts + docs/COMBAT-HIT-SYSTEM.md. */
+  hurtbox: Hurtbox;
+  /** Activate/deactivate a hurtbox zone by id at runtime (open a weak point,
+   *  break an armor plate). Returns true if a zone matched. */
+  setZoneEnabled(id: string, on: boolean): boolean;
   /** Mobs take the full crunch + fire the player's on-hit passives. */
   hitFeedback: 'heavy';
   /** If true, the player walks through this mob (movement-only).
@@ -253,6 +261,16 @@ export function createEnemy(
   // Base model scale, captured for the lash deform (which elongates the
   // body toward the player on a 'lash' telegraph, then eases back here).
   const groupBaseScale = built.group.scale.clone();
+
+  // Resolved aim height — body centre. Shared by the hurtbox, the returned
+  // Damageable field, and the lash tendril origin so they agree.
+  const aimHeightResolved = spec.aimHeight ?? 0.6 * (spec.scale ?? 1);
+  // Hurtbox ZONES — the target side of the hit system (docs/COMBAT-HIT-SYSTEM.md).
+  // A body capsule + (when the model has a head part) a head sphere, derived now
+  // that built.parts/slots exist. The combat debug overlay draws these live; the
+  // unified swing resolver (next increment) tests against them. Specials/bosses
+  // can mutate zones at runtime via setZoneEnabled (e.g. open a weak point).
+  const hurtbox = deriveHurtbox(spec, built, aimHeightResolved);
 
   // Tag this container as an inspection subject — main.ts's inspect
   // block hides level siblings (walls/floor/torches/decor) but keeps
@@ -1950,7 +1968,9 @@ export function createEnemy(
     position: container.position,
     // Where the swing aims + the damage number floats. 0.6×scale assumes a
     // body centred there; a low-rigged giant (the king) overrides it.
-    aimHeight: spec.aimHeight ?? 0.6 * (spec.scale ?? 1),
+    aimHeight: aimHeightResolved,
+    hurtbox,
+    setZoneEnabled: (id: string, on: boolean) => setZoneEnabled(hurtbox, id, on),
     hitFeedback: 'heavy',
     hitTargets: built.hitTargets,
     collisionRadius: spec.collisionRadius,
