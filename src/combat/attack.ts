@@ -336,6 +336,9 @@ export function createCombatSystem(
         // ranged weapon's base on-hit (the wand's chill) + on-hit
         // affixes + set bonuses all land — same rules as melee.
         onHits,
+        // Crit roll travels with the bolt so ranged crits + HEADSHOTS land.
+        critChance: weapon.critChance,
+        critMultiplier: weapon.critMultiplier,
       });
     } else {
       // Compute the centre aim direction (from muzzle to tmpAim) and
@@ -368,6 +371,8 @@ export function createCombatSystem(
           source: 'player',
           friendly: true,
           onHits,
+          critChance: weapon.critChance,
+          critMultiplier: weapon.critMultiplier,
         });
       }
     }
@@ -487,15 +492,17 @@ export function createCombatSystem(
     // sword's slashes cleave 2 at standard reach, thrust finisher
     // extends and narrows; hammer smash cleaves 3 with wider arc.
     //
-    // Hold-to-charge: a fully charged swing extends reach by 30%,
-    // widens the cone by 40%, and adds up to one extra multi-target
-    // slot for a more sweeping cleave. Damage scaling happens further
-    // down at the per-target damage calculation.
+    // Hold-to-charge: a fully charged swing extends reach by 20%, widens the
+    // cone by 25%, and adds one extra multi-target slot only to swings that
+    // ALREADY cleave (maxTargets >= 2) — a charged single-target poke stays
+    // single-target, so charge sweeps the sweepers without turning every poke
+    // into an AoE. Damage scaling happens at the per-target calc below.
     const step = weapon.getActiveStep();
     const c = currentSwingCharge;
-    const reach = stats.reach * (step?.reachMul ?? 1) * (1 + c * 0.30);
-    const cosConeHalf = Math.cos(stats.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.40));
-    const maxTargets = (step?.maxTargets ?? 1) + (c >= 0.7 ? 1 : 0);
+    const reach = stats.reach * (step?.reachMul ?? 1) * (1 + c * 0.20);
+    const cosConeHalf = Math.cos(stats.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.25));
+    const baseTargets = step?.maxTargets ?? 1;
+    const maxTargets = baseTargets + (c >= 0.7 && baseTargets >= 2 ? 1 : 0);
 
     // The hit is a 3D capsule along the TRUE look dir (forwardDir is the camera's
     // 3D world direction — pitch included), swept across the swing's arc and
@@ -774,6 +781,8 @@ export function createCombatSystem(
           damage: stats.damage * (eff.damageMul ?? 1.5) * chargeBonus,
           source: 'player',
           friendly: true,
+          critChance: stats.critChance,
+          critMultiplier: stats.critMultiplier,
         });
       }
     }

@@ -4,11 +4,17 @@ import { damagePlayer } from '../player/health';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { applyDamageVia, type DamageType } from './damage';
 import type { Damageable } from './damageable';
+import { queryHurtbox, type Hurtbox } from './hurtbox';
+import { spawnDamageNumber } from '../ui/damage-numbers';
 import type { EntityId } from '../ecs/types';
 import { applyBuff } from '../ecs/buffs';
 import { get as getEntity } from '../ecs/world';
 import { gameRngChance } from '../engine/rng';
 import { CONFIG } from '../config';
+
+// Scratch vector for the projectile impact point (zone resolution). Module-level
+// so the hot tick loop allocates nothing.
+const _hitPt = new THREE.Vector3();
 
 /** On-hit status carried by a friendly projectile (player's weapon /
  *  affix / set on-hits). Rolled per enemy hit. */
@@ -146,6 +152,11 @@ interface Slot {
   /** On-hit statuses to roll when this (friendly) projectile strikes an
    *  enemy. Null for enemy projectiles / shots with no on-hit. */
   onHits: ReadonlyArray<ProjectileOnHit> | null;
+  /** Crit roll for friendly shots — carried from the firing weapon so a bolt
+   *  can crit (and a HEADSHOT adds the head zone's critBonus on top). 0 / 1
+   *  for enemy shots (they never crit the player here). */
+  critChance: number;
+  critMultiplier: number;
   /** Stable id for the light pool registration. */
   lightId: string;
 }
@@ -160,6 +171,9 @@ export interface EnemyHittable {
   position: THREE.Vector3;
   alive: boolean;
   aimHeight: number;
+  /** Hurt zones (body/head/weak/armor) so a bolt resolves WHERE it hit and
+   *  applies the same locational damage as a melee swing. */
+  hurtbox: Hurtbox;
 }
 export function setProjectileEnemyProvider(fn: () => readonly EnemyHittable[]): void {
   enemyProvider = fn;
@@ -214,6 +228,8 @@ export function initProjectilePool(sc: THREE.Scene): void {
       source: null,
       friendly: false,
       onHits: null,
+      critChance: 0,
+      critMultiplier: 1,
       remaining: 0,
       lightId: `projectile-${i}`,
     });
@@ -231,6 +247,9 @@ export interface SpawnArgs {
   friendly?: boolean;
   /** On-hit statuses to roll on the struck enemy (friendly shots). */
   onHits?: ReadonlyArray<ProjectileOnHit>;
+  /** Crit roll from the firing weapon (friendly shots). Default 0 / 1. */
+  critChance?: number;
+  critMultiplier?: number;
 }
 
 /** Rent a slot + fire. No-op if the pool is full (rare; 16 is generous). */
@@ -245,6 +264,8 @@ export function spawnProjectile(args: SpawnArgs): void {
   slot.source = args.source;
   slot.friendly = args.friendly ?? false;
   slot.onHits = args.onHits ?? null;
+  slot.critChance = args.critChance ?? 0;
+  slot.critMultiplier = args.critMultiplier ?? 1;
   slot.remaining = type.lifetime;
   slot.position.copy(args.origin);
   // Velocity = unit (target - origin) × speed.
@@ -297,6 +318,7 @@ export function tickProjectiles(
   dt: number,
   playerPos: THREE.Vector3,
   walkable: WalkableRegion,
+  camera: THREE.Camera,
 ): void {
   for (const slot of pool) {
     if (!slot.inUse || !slot.type) continue;
@@ -328,7 +350,20 @@ export function tickProjectiles(
         const ez = slot.position.z - e.position.z;
         const ey = slot.position.y - (e.position.y + e.aimHeight);
         if (ex * ex + ez * ez < HIT_RADIUS_SQ && Math.abs(ey) < 1.4) {
-          applyDamageVia({ source: slot.source, target: e.entityId, base: slot.damage, type: slot.type.damageType });
+          // Resolve WHICH hurt-zone the bolt struck (head / weak / armor /
+          // body) and apply the same locational rules as a melee swing:
+          // damage ×zoneMul, head/weak can crit (head adds its critBonus to
+          // the roll, a weak point forces it). Before this, projectiles
+          // ignored zones entirely — ranged headshots did flat body damage.
+          _hitPt.copy(slot.position);
+          const zh = queryHurtbox(e.hurtbox, _hitPt, _hitPt, slot.type.radius);
+          const zoneMul = zh?.damageMul ?? 1;
+          const crit = (zh?.crit ?? false) || gameRngChance(slot.critChance + (zh?.critBonus ?? 0));
+          const base = slot.damage * zoneMul * (crit ? slot.critMultiplier : 1);
+          const applied = applyDamageVia({ source: slot.source, target: e.entityId, base, type: slot.type.damageType });
+          // Floating number so ranged hits READ — head/weak land as crits
+          // (bigger, gold), making the headshot a visible, rewarding feature.
+          if (applied > 0) spawnDamageNumber(camera, _hitPt, applied, crit);
           // Roll the bolt's on-hit statuses against the struck enemy —
           // same rules as a melee landed hit (wand chill, on-hit affixes,
           // set on-hits). Applied before retire() (which clears onHits).

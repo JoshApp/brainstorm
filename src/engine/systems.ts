@@ -341,7 +341,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // Projectiles — integrate, hit-test player + walls, retire. Outside the
     // enemy loop so a shot survives the shooter's death.
     { name: 'projectiles', phase: 'unpaused', tick(ctx) {
-      tickProjectiles(ctx.scaledDt, camera.position, getLevel().walkable);
+      tickProjectiles(ctx.scaledDt, camera.position, getLevel().walkable, camera);
     } },
 
     // Persistent ground hazard fields (the `field` ability action — e.g. the

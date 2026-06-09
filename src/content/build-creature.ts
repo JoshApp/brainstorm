@@ -100,7 +100,7 @@ function followZone(
 ): HurtZone {
   return {
     id, shape, role,
-    damageMul: opts?.damageMul ?? (role === 'head' ? 1.5 : 1),
+    damageMul: opts?.damageMul ?? (role === 'head' ? 1.6 : 1),
     enabled: true,
     priority: ROLE_PRIORITY[role],
     crit: false,
@@ -139,10 +139,13 @@ function autoHurtbox(
     }, built.slots.get(followName) ?? null));
   }
 
-  // Head sphere at the head joint.
+  // Head sphere at the head joint. A touch bigger than before (min 0.16,
+  // girth·0.9) so the headshot zone is reliably hittable by both the swept
+  // melee capsule AND a bolt — a head you can't realistically hit isn't a
+  // feature. Priority 10 beats body (0), so grazing it counts as a headshot.
   if (skel.head) {
     zones.push(followZone('head', 'head', {
-      kind: 'sphere', center: new THREE.Vector3(0, 0, 0), radius: Math.max(0.14, girth * 0.85),
+      kind: 'sphere', center: new THREE.Vector3(0, 0, 0), radius: Math.max(0.16, girth * 0.9),
     }, built.slots.get(skel.head) ?? null));
   }
 

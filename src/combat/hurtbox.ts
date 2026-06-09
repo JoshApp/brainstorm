@@ -110,7 +110,7 @@ export interface HurtZoneSpec {
   openWhenStaggered?: boolean;
 }
 
-const ROLE_DEFAULT_MUL: Record<ZoneRole, number> = { body: 1, head: 1.5, weak: 2, armor: 0.25 };
+const ROLE_DEFAULT_MUL: Record<ZoneRole, number> = { body: 1, head: 1.6, weak: 2, armor: 0.25 };
 const ROLE_DEFAULT_PRIORITY: Record<ZoneRole, number> = { body: 0, head: 10, weak: 20, armor: 5 };
 const ROLE_DEFAULT_CRITBONUS: Record<ZoneRole, number> = { body: 0, head: 0.25, weak: 0, armor: 0 };
 
