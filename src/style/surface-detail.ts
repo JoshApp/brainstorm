@@ -116,11 +116,18 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       float bedge = min(min(binb.x, 1.0 - binb.x) * bsz.x, min(binb.y, 1.0 - binb.y) * bsz.y);
       float aaw = fwidth(bedge) + 0.012;
       if (dmg > 0.965) {
-        // MISSING BRICK — a dark cavity inset from the mortar line; the
-        // height drop lets the relief shade its rim like a real socket.
+        // MISSING BRICK — a SOCKET, not a stamp: the cavity is darkest
+        // at its top (occluded from the torchlight that comes from
+        // above), opens slightly toward the floor, and its LOWER lip
+        // catches a sliver of light the way a real hole's sill does.
+        // Height drops near zero so the relief carves a hard rim.
         float cav = smoothstep(0.03, 0.03 + aaw, bedge);
-        s.rgb *= mix(1.0, 0.30, cav);
-        s.a = mix(s.a, 0.2, cav);
+        float innerY = binb.y;   // 0 = brick bottom, 1 = top
+        float cavShade = mix(0.42, 0.14, smoothstep(0.15, 0.85, innerY));
+        s.rgb *= mix(1.0, cavShade, cav);
+        float lip = (1.0 - smoothstep(0.02, 0.12, innerY)) * cav;
+        s.rgb *= 1.0 + lip * 0.45;
+        s.a = mix(s.a, 0.05, cav);
       } else if (dmg > 0.875) {
         // UNEVEN COURSEWORK — the whole brick sits a touch proud or
         // sunken with an off tone, like centuries of settling.
@@ -128,6 +135,17 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         float body = smoothstep(0.015, 0.015 + aaw, bedge);
         s.rgb *= mix(1.0, 1.0 + 0.10 * dir, body);
         s.a += 0.07 * dir * body;
+      } else if (dmg > 0.795) {
+        // CRACKED BRICK — a dark jag wandering down the face. The old
+        // baked cracks repeated with the 4-brick tile and washed out
+        // under the new variation; these hash on the WORLD brick id.
+        float cx = mix(0.25, 0.75, fract(dmg * 37.7));
+        float wob = sin(binb.y * 9.0 + dmg * 50.0) * 0.06;
+        float dcrack = abs(binb.x - cx + wob) * bsz.x;
+        float crack = (1.0 - smoothstep(0.011, 0.011 + aaw, dcrack))
+                    * smoothstep(0.015, 0.05, bedge);
+        s.rgb *= mix(1.0, 0.40, crack);
+        s.a -= crack * 0.4;
       }
     }
     ` : ''}
