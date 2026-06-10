@@ -489,8 +489,11 @@ const TREASURE_RELIQUARY: Vault = {
     '#*....*#',
     '########',
   ],
-  minDepth: 2,
-  weight: 1,
+  // Deeper + rarer than the other treasure vaults: keys are rare-band
+  // drops, and a reliquary you meet before any key has had a CHANCE to
+  // drop reads as a taunt rather than a routing decision.
+  minDepth: 3,
+  weight: 0.5,
   props: [
     { kind: 'reliquary', x: 0, z: -0.5 },
   ],
@@ -597,25 +600,22 @@ const ENCOUNTER_PRISON: Vault = {
 const ENCOUNTER_ARENA: Vault = {
   id: 'encounter-arena',
   tags: ['encounter'],
-  // Layout: an entry alcove at the top, an interior wall row with a
-  // wide 'D' arena gate (3 cells — the parser rolls it down to 2-3m
-  // and drops a portcullis), and the arena proper below holding two
-  // pairs of ghouls and an iron chest centrepiece. Multi-room vault
-  // parsing splits the alcove and arena into separate sub-rooms; the
-  // 'D' door's cross-axis trigger fires the slam when the player
-  // walks through it — not on vault entry. The arena sub-room's
-  // clear count re-opens the door so the player can continue south.
+  // SINGLE ROOM + perimeterFitting 'arena-trap': portcullises auto-
+  // install at every composer-cut entrance and slam when the player
+  // commits through ANY of them (default 'cross' trigger). The old
+  // layout used an entry alcove + internal 'D' gate row, which split
+  // the vault's walkable area in the tilemap flood-fill — the phantom
+  // sub-rooms it generated were the 'silly little extra rooms in the
+  // middle of nowhere' (same bug class the challenge arena was cured
+  // of, same cure).
   //
   // The chest is declared as a PROP (not a 'c' tile) so we can ask
   // for the iron tier — the arena reward should LOOK like more than
   // a roadside supply box.
-  // Map is 14 cols × 12 rows → vault-local x ∈ [-7, +7], z ∈ [-6, +6].
+  // Map is 14 cols × 9 rows → vault-local x ∈ [-7, +7], z ∈ [-4.5, +4.5].
   map: [
     '##############',
     '#....*....*..#',
-    '#............#',
-    '#............#',
-    '#####DDD######',
     '#............#',
     '#............#',
     '#............#',
@@ -627,16 +627,17 @@ const ENCOUNTER_ARENA: Vault = {
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_BLOOD,
+  perimeterFitting: 'arena-trap',
   // Chest sits at world x=0 — exactly between cells (6,7) and
   // (7,7) on a 14-wide grid. Stays in the absolute-coord array
   // since neither cell is a clean fit; this is the legit
   // sub-cell escape case.
   props: [
-    { kind: 'chest', x: 0, z: 1.5, tier: 'iron', facing: { kind: 'wall-away' } },
+    { kind: 'chest', x: 0, z: 0.5, tier: 'iron', facing: { kind: 'wall-away' } },
   ],
-  // No static guardians — this is now a TRAP arena: crossing the 'D' gate
-  // slams it and the wave controller summons escalating waves (see
-  // arena-waves.ts). The gate only rises once the last wave is dead.
+  // No static guardians — a TRAP arena: committing through any entrance
+  // slams every gate and the wave controller summons escalating waves
+  // (arena-waves.ts). The gates only rise once the last wave is dead.
 };
 
 // CHALLENGE arena — the VOLUNTARY twin of the trap. Same shape (entry alcove,
@@ -821,11 +822,15 @@ const BOSS_CATHEDRAL: Vault = {
 const ENCOUNTER_NEST: Vault = {
   id: 'encounter-nest',
   tags: ['combat'],
+  // SINGLE ROOM + perimeterFitting 'cobweb': EVERY composer-cut
+  // entrance gets sealed by a destructible web — the den is closed
+  // until you cut your way in, from whichever side you found it.
+  // The old internal '%' curtain row split the vault into phantom
+  // sub-rooms in the flood-fill (the extra-room bug) and only sealed
+  // ONE of the entrances anyway.
   map: [
     '##############',
     '#.....*......#',
-    '#............#',
-    '######%%######',   // cobweb gate (2-wide) — cut it to enter the nest
     '#............#',
     '#............#',
     '#............#',
@@ -837,6 +842,7 @@ const ENCOUNTER_NEST: Vault = {
   minDepth: 4,
   weight: 1,
   torchTint: TORCH_GREEN,
+  perimeterFitting: 'cobweb',
   // FORMAT C demo — corner cobwebs and set-piece spawns authored by
   // cell, not by world coord. Reads in the same space as the ASCII
   // above (count columns / rows in the map to verify each entry).
@@ -845,21 +851,21 @@ const ENCOUNTER_NEST: Vault = {
   // in the corner) and rotation, so they get the full PropSpec
   // entry without x/z — those come from the cell key.
   cellProps: {
-    // Corner cobwebs at row 4 (just below the gate) and row 8 (back).
-    // Hubs face inward via rotY.
-    '1,4':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.25 }],
-    '12,4': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.75 }],
-    '1,9':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.25 }],
-    '12,9': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.75 }],
+    // Corner cobwebs (map is 14×9 now; cell (col,row) → world
+    // (col−6.5, row−4)). Hubs face inward via rotY.
+    '1,1':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.25 }],
+    '12,1': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY:  Math.PI * 0.75 }],
+    '1,7':  [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.25 }],
+    '12,7': [{ kind: 'model', model: COBWEB_CORNER, y: 2.2, rotY: -Math.PI * 0.75 }],
     // Set-piece spawns — four spiders in a quad around the centre,
     // one skeleton midway. The cell key reads the same as the ASCII.
-    '3,4':  [{ kind: 'spawn', enemyId: 'spider' }],
-    '10,4': [{ kind: 'spawn', enemyId: 'spider' }],
-    '3,7':  [{ kind: 'spawn', enemyId: 'spider' }],
-    '10,7': [{ kind: 'spawn', enemyId: 'spider' }],
-    '6,6':  [{ kind: 'spawn', enemyId: 'skeleton' }],
+    '3,2':  [{ kind: 'spawn', enemyId: 'spider' }],
+    '10,2': [{ kind: 'spawn', enemyId: 'spider' }],
+    '3,6':  [{ kind: 'spawn', enemyId: 'spider' }],
+    '10,6': [{ kind: 'spawn', enemyId: 'spider' }],
+    '6,4':  [{ kind: 'spawn', enemyId: 'skeleton' }],
     // Reward chest at the back of the swarm.
-    '6,8':  [{ kind: 'chest', facing: { kind: 'wall-away' } }],
+    '6,6':  [{ kind: 'chest', facing: { kind: 'wall-away' } }],
   },
 };
 

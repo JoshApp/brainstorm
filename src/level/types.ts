@@ -124,7 +124,7 @@ export type RoomSpec = {
    * single explicit door; they don't need this. Set ONLY on rooms that
    * want every external opening to share one barrier behaviour.
    */
-  perimeterFitting?: 'arena-portcullis';
+  perimeterFitting?: 'arena-portcullis' | 'arena-trap' | 'cobweb';
 };
 
 export type PropSpec =

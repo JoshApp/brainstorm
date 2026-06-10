@@ -96,10 +96,17 @@ export function spawnReliquary(
   }
 
   // Gold light — PRICED family signal.
+  // Gold light with a candle-class flicker — the cage holds a lit
+  // shrine, not a lamp on a circuit.
+  const flickSeed = gameRng() * Math.PI * 2;
   registerLight({
     id: `${id}-glow`, category: 'pickup',
     position: new THREE.Vector3(pos.x, pos.y + 0.9, pos.z),
     color: tint.light, intensity: 2.6, distance: 6.5, decay: 1.8,
+    getIntensity: () => {
+      const t = performance.now() / 1000;
+      return 2.6 * (1 + 0.10 * (0.6 * Math.sin(t * 5.3 + flickSeed) + 0.4 * Math.sin(t * 8.1 + flickSeed * 2)));
+    },
   });
 
   registerItemPreview(id, prize, { hideStatsUntilInspect: true });

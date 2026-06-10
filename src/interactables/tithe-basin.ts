@@ -187,10 +187,14 @@ export function spawnTitheBasin(
   scene.add(group);
 
   // Pale light — UNKNOWN-family signal (uncommon light = something is here).
+  // Pale light with a slow BREATH (not a flame flicker — the basin is
+  // patient): ±8% over ~4s, so the room feels faintly alive.
+  const breathSeed = gameRng() * Math.PI * 2;
   registerLight({
     id: `${id}-glow`, category: 'pickup',
     position: new THREE.Vector3(pos.x, pos.y + 1.3, pos.z),
     color: tint.light, intensity: 1.6, distance: 5.5, decay: 1.8,
+    getIntensity: () => 1.6 * (1 + 0.08 * Math.sin(performance.now() / 1000 * 1.6 + breathSeed)),
   });
 
   function resolveTithe(kind: TitheKind, price: import('../content/transactions').TransactionPrice): void {

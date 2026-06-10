@@ -44,7 +44,7 @@ import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
-import { seedBuildRng, hashStringToSeed } from '../engine/rng';
+import { seedBuildRng, buildRng, hashStringToSeed } from '../engine/rng';
 import { spawnThresholdDraft, registerArchwayGlow } from '../scene/threshold-draft';
 
 // A boss's "signature colour" for the sealed-descent ward — its eye glow if it
@@ -612,8 +612,34 @@ export function buildLevel(
       if (m.isMesh && m.name !== 'flame') m.userData.mergeStatic = true;
     });
   };
+  // A pillar dropped right in front of a composer-cut entrance reads as
+  // a bug (traversable, but it crowds the doorway). Authors place pillars
+  // in vault-local coords with no knowledge of WHERE the composer will cut
+  // openings, so the guard has to live here, at build time.
+  const pillarBlocksOpening = (px: number, pz: number): boolean => {
+    const rid = findRoomContaining(px, pz, spec.rooms);
+    const room = spec.rooms.find((r) => r.id === rid);
+    if (!room) return false;
+    const rect = room.rect;
+    const hw = rect.w / 2, hd = rect.d / 2;
+    const walls = [
+      { perpAxis: 'x' as const, perpCoord: rect.x - hw, wallStart: rect.z - hd, wallEnd: rect.z + hd },
+      { perpAxis: 'x' as const, perpCoord: rect.x + hw, wallStart: rect.z - hd, wallEnd: rect.z + hd },
+      { perpAxis: 'z' as const, perpCoord: rect.z - hd, wallStart: rect.x - hw, wallEnd: rect.x + hw },
+      { perpAxis: 'z' as const, perpCoord: rect.z + hd, wallStart: rect.x - hw, wallEnd: rect.x + hw },
+    ];
+    for (const w of walls) {
+      for (const op of findOpenings(w, allRects, room)) {
+        const cx = w.perpAxis === 'x' ? w.perpCoord : (op.start + op.end) / 2;
+        const cz = w.perpAxis === 'x' ? (op.start + op.end) / 2 : w.perpCoord;
+        if (Math.hypot(px - cx, pz - cz) < 1.7) return true;
+      }
+    }
+    return false;
+  };
   for (const prop of spec.props) {
     if (prop.kind === 'pillar') {
+      if (pillarBlocksOpening(prop.x, prop.z)) continue;   // crowds a doorway — drop it
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
       const H = spec.rooms[0]?.height ?? 3.2;
       const { group: pillarGroup, obstacle } = buildAltarPillar(prop.x, prop.z, size, H, materials);
@@ -742,12 +768,24 @@ export function buildLevel(
           prop.y + (lp.pos?.[1] ?? 0),
           prop.z + (lp.pos?.[2] ?? 0),
         );
+        // Soft flame-flicker by default — cressets/braziers are FIRE and
+        // read dead when their light is a constant (the visual flame
+        // sprites always flickered; the LIGHT didn't). Specs opt out
+        // with flicker: 0 (moonlight, arcane).
+        const amp = lp.flicker ?? 0.10;
+        const baseIntensity = lp.intensity;
+        const p1 = buildRng() * Math.PI * 2;
+        const p2 = buildRng() * Math.PI * 2;
         registerLight({
           id: `model-light-${lightSerial++}`,
           category: 'environment',
           position: lightPos,
           color: lightColorOverride ?? lp.color,
-          intensity: lp.intensity,
+          intensity: baseIntensity,
+          getIntensity: amp > 0 ? () => {
+            const t = performance.now() / 1000;
+            return baseIntensity * (1 + amp * (0.6 * Math.sin(t * 5.1 + p1) + 0.4 * Math.sin(t * 8.7 + p2)));
+          } : undefined,
           distance: lp.distance,
           decay: lp.decay,
         });
@@ -1383,6 +1421,30 @@ export function buildLevel(
             // seals all of these in unison.
             unlock: { kind: 'arena', roomIds: [room.id], trigger: 'offering' as const },
           });
+        } else if (room.perimeterFitting === 'arena-trap') {
+          // TRAP variant: same portcullises, default 'cross' trigger —
+          // committing through ANY entrance trips the gauntlet and every
+          // gate slams. Single-room layout: no internal 'D' row, so the
+          // tilemap flood-fill never splits the vault into the phantom
+          // sub-rooms that used to surface as tiny rooms in the void.
+          pendingFittings.push({
+            id: `auto-trapgate-${room.id}-${pendingFittings.length}`,
+            kind: 'gate-arena',
+            x: cx, z: cz, rotY, widthM,
+            ax: seg.ax, az: seg.az, bx: seg.bx, bz: seg.bz,
+            unlock: { kind: 'arena', roomIds: [room.id] },
+          });
+        } else if (room.perimeterFitting === 'cobweb') {
+          // NEST variant: every entrance sealed by a destructible web —
+          // the den is closed until you cut your way in, from whichever
+          // side you found it. Replaces the single authored '%' curtain
+          // (which split the vault into sub-rooms the same way 'D' did).
+          pendingFittings.push({
+            id: `auto-cobweb-${room.id}-${pendingFittings.length}`,
+            kind: 'cobweb',
+            x: cx, z: cz, rotY, widthM,
+            ax: seg.ax, az: seg.az, bx: seg.bx, bz: seg.bz,
+          });
         }
       }
     }
@@ -1450,6 +1512,11 @@ export function buildLevel(
   // walls every external opening of the room (see seal-external-openings
   // loop below).
   for (const roomId of offeringRooms) registerArenaForRoom(roomId);
+  // Perimeter trap arenas: the auto-installed gates carry the arena unlock,
+  // but wave registration keys off rooms — register each trap room.
+  for (const room of spec.rooms) {
+    if (room.perimeterFitting === 'arena-trap') registerArenaForRoom(room.id);
+  }
 
   // ARENA EXTERNAL-OPENING SEAL — while the arena's encounter is ACTIVE,
   // every external opening on the room(s) of the arena is walled off so the
@@ -1510,6 +1577,11 @@ export function buildLevel(
   // Door-based arena complexes — sealed room + alcove (gate-perimeter match).
   for (const arenaGate of pendingFittings) {
     if (arenaGate.unlock?.kind !== 'arena') continue;
+    // Perimeter-fitted rooms already have a gate at EVERY opening — the
+    // invisible-wall layer would double-seal and leave residual walls on
+    // complete (same reason the offering loop below skips them).
+    const sealRoom = spec.rooms.find((r) => r.id === arenaGate.unlock!.roomIds[0]);
+    if (sealRoom?.perimeterFitting) continue;
     const arenaRoomIds = new Set(arenaGate.unlock.roomIds);
     const gateSeg = openingEndpoints(arenaGate);
     for (const room of spec.rooms) {

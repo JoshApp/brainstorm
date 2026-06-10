@@ -65,7 +65,7 @@ export interface Vault {
    * composer cuts, so the seal is visible (and consistent) regardless of
    * how the floor connects to it.
    */
-  perimeterFitting?: 'arena-portcullis';
+  perimeterFitting?: 'arena-portcullis' | 'arena-trap' | 'cobweb';
   /**
    * Optional encounter archetype. When set, the room's X spawn slots are
    * filled from ONE coherent depth-scaled pack (swarm / bruisers / caster-

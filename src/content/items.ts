@@ -1404,9 +1404,11 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: HEALING_POTION,
     consumableHeal: 4,
     carryLimit: 3,
-    // The backbone of the heal economy — weight it heavily in the mundane
-    // band so the central roller keeps potions flowing as the common drop.
-    drop: { weight: 5 },
+    // The backbone of the heal economy — but weight 5 flooded every floor
+    // (and every chest) with cheap heals, which dissolves the tension the
+    // whole transaction economy runs on. 2.5 keeps potions PRESENT and
+    // makes finding one feel like a small mercy instead of litter.
+    drop: { weight: 2.5 },
   },
   'berserk-potion': {
     id: 'berserk-potion',

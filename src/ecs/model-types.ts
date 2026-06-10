@@ -316,6 +316,10 @@ export interface LightSpec {
   intensity: number;
   distance: number;
   decay: number;
+  /** Flicker amplitude as a fraction of intensity (0 = steady). Model
+   *  lights default to a soft 0.10 flame-flicker in the builder; set 0
+   *  explicitly for steady sources (moonlight, arcane glows). */
+  flicker?: number;
   pos?: Vec3;
   castShadow?: boolean;
   shadowMapSize?: number;

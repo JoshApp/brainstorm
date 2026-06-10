@@ -70,7 +70,7 @@ export interface TileMapOptions {
   wallVariant?: 'stone' | 'braced';
   /** Perimeter-fitting policy — see RoomSpec.perimeterFitting. Passed through
    *  to the main RoomSpec so the builder can iterate rooms with a policy. */
-  perimeterFitting?: 'arena-portcullis';
+  perimeterFitting?: 'arena-portcullis' | 'arena-trap' | 'cobweb';
   /** Color tint for the room's torches (applied to all torches in the map). */
   torchTint?: number;
   /**
