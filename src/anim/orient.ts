@@ -162,6 +162,47 @@ export function rotateLocally(
   return [e.x, e.y, e.z];
 }
 
+/**
+ * Re-aim an existing orientation by a MINIMAL-ARC local correction.
+ *
+ * You measured some world-fixed reference direction in the object's
+ * local frame (say: "the forearm exits my wrist at local
+ * (−0.24, −0.92, 0.31)") and you know where you WANT that reference
+ * to sit (say: "5° ulnar, 15° extension = (−0.08, −0.96, 0.26)").
+ * This returns the Euler whose frame is rotated by exactly the arc
+ * between the two — the smallest rotation that retargets the
+ * reference, preserving the roll AROUND it (no twist surprise).
+ *
+ *   const FIXED_WRIST = retargetLocalDirection(
+ *     CURRENT_WRIST_ROT,
+ *     MEASURED_FOREARM_EXIT,   // where the reference IS (local)
+ *     DESIRED_FOREARM_EXIT,    // where it SHOULD be (local)
+ *   );
+ *
+ * This is the static form of a "wrist solver": instead of stacking
+ * guessed Euler corrections until the kink looks smaller, measure the
+ * kink once, state the anatomical target, and let the arc close the
+ * difference.
+ */
+export function retargetLocalDirection(
+  baseRot: Vec3Tuple,
+  currentLocalDir: Vec3Tuple,
+  desiredLocalDir: Vec3Tuple,
+): [number, number, number] {
+  const qBase = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(baseRot[0], baseRot[1], baseRot[2], 'XYZ'),
+  );
+  const cur = new THREE.Vector3(...currentLocalDir).normalize();
+  const des = new THREE.Vector3(...desiredLocalDir).normalize();
+  // The frame must rotate so the world-fixed reference's LOCAL coords
+  // move cur → des; local coords transform by the INVERSE of the
+  // frame's rotation, so the frame composes the arc des → cur.
+  const qArc = new THREE.Quaternion().setFromUnitVectors(des, cur);
+  qBase.multiply(qArc);
+  const e = new THREE.Euler().setFromQuaternion(qBase, 'XYZ');
+  return [e.x, e.y, e.z];
+}
+
 export function orient(opts: {
   yAxisTo: Vec3Tuple,
   upTo?: Vec3Tuple,

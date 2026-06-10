@@ -3,7 +3,7 @@ import { buildModel } from '../ecs/build-model';
 import {
   ARM_LEFT, ARM_LEFT_HUMERUS_LENGTH, ARM_LEFT_FOREARM_LENGTH,
 } from '../content/arm';
-import { HAND_RIGHT } from '../content/hand';
+import { HAND_LEFT_LANTERN } from '../content/hand-poses';
 import { ArmIK } from '../anim/arm-ik';
 import { registerViewmodel } from '../style/render-target';
 import { mergeRigidViewmodel } from './viewmodel-merge';
@@ -87,14 +87,12 @@ export function attachLampArm(camera: THREE.Camera): void {
   // slot is at a STATIC elbow-local offset; can't use it for this.)
   wristAnchor = new THREE.Group();
   armGroup.add(wristAnchor);
-  // Uses HAND_RIGHT (not the mirrored HAND_LEFT) — the right-hand
-  // wrist pose was tuned for a saber, and it happens to land the palm
-  // close to ring-grip orientation when the LEFT arm reaches across.
-  // The geometric mirror flips the wrist twist the wrong way and the
-  // hand reads as "bent outward to the left." A proper LEFT-hand
-  // lantern grip needs a NEW wrist pose, not just a mirror of the
-  // saber pose — TBD pass.
-  const hand = buildModel(HAND_RIGHT);
+  // The LEFT hand in its RING-CARRY pose (hand-poses.ts): mirrored
+  // geometry + a grip authored FOR the lantern — fingers hooked down
+  // through the O-ring, thumb at rest, wrist near neutral. Replaces
+  // the old stopgap of mounting the RIGHT hand's saber grip here
+  // (a raw mirror of the saber pose read as "bent outward").
+  const hand = buildModel(HAND_LEFT_LANTERN);
   wristAnchor.add(hand.group);
   // The lantern hand is rigid (it just grips the ring); collapse its ~39 bone
   // meshes into one. Slots (palm_anchor, read below for the offset) survive.

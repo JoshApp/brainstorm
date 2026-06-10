@@ -213,11 +213,20 @@ export const ARM_LEFT: ModelSpec = {
     // fingers grip the lantern's O-ring directly.
   ],
   slots: {
-    // Mirror of the right shoulder's −X. The wrist target (the
-    // lantern's hinge / O-ring) is at camera-local roughly (−0.36,
-    // −0.11, −0.52); shoulder at (−0.10, −0.55, −0.05) sits about
-    // 0.49m away, comfortable within the 0.74m max reach.
-    shoulder: { pos: [-0.10, -0.55, -0.05], debug: 'axes' },
+    // Mirror of the right shoulder's −X, pulled FORWARD + DOWN +
+    // OUTBOARD to follow the lamp. LAMP_RAISED moved to (−0.36,
+    // −0.26, −0.78) after this shoulder was first placed, and the
+    // ring-carry palm offset puts the IK wrist target ~9cm ABOVE the
+    // ring — from the old shoulder (−0.10, −0.55, −0.05) that target
+    // was 0.84m away, PAST the 0.74m max reach, so the arm locked
+    // straight and the hand parked short of the ring. Placement
+    // constraints, in order:
+    //   - target within ~85% of reach (elbow keeps a bend);
+    //   - shoulder + elbow stay OUTSIDE the camera frustum (low +
+    //     outboard) so the humerus doesn't cross the frame as a
+    //     giant near-camera slab — the bones should ENTER from the
+    //     bottom-left edge, reading as "my arm", not block the view.
+    shoulder: { pos: [-0.20, -0.58, -0.30], debug: 'axes' },
     upper_arm_anchor: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH / 2, 0], debug: 'axes' },
     elbow: { parent: 'shoulder', pos: [0, HUMERUS_LENGTH, 0], debug: 'axes' },
     lower_arm_anchor: { parent: 'elbow', pos: [0, FOREARM_LENGTH / 2, 0], debug: 'axes' },

@@ -1,5 +1,5 @@
 import type { ModelSpec } from '../ecs/model-types';
-import { localFromWorld, rotateLocally } from '../anim/orient';
+import { localFromWorld, rotateLocally, retargetLocalDirection } from '../anim/orient';
 import { mirrorModelSpec } from '../ecs/mirror-model';
 
 // Wrist rotation: a stack of NAMED INTENTS, applied IN ORDER. The
@@ -55,7 +55,41 @@ const AFTER_GREEN_ROT = rotateLocally(AFTER_BLUE_ROT,  'y', WRIST_TILT_GREEN_CW_
 // Additional pass: 15° CW from POV around the CURRENT visible blue
 // axis (= the wrist's local +Z AFTER the blue + green passes).
 const WRIST_ADJUST_BLUE_CW_15 = -(15 * Math.PI) / 180;
-const NEW_WRIST_ROT = rotateLocally(AFTER_GREEN_ROT, 'z', WRIST_ADJUST_BLUE_CW_15);
+const SABER_WRIST_STACKED = rotateLocally(AFTER_GREEN_ROT, 'z', WRIST_ADJUST_BLUE_CW_15);
+
+// ── WRIST DEVIATION FIX — solved, not stacked ────────────────────────
+//
+// The stack above, composed with the in-game SWORD_IDLE_ROT, left the
+// hand ULNAR-DEVIATED ~15° relative to the forearm at idle: the hand
+// tips toward the pinky/outboard side of the arm — the long-standing
+// "wrist bends outward to the right" read. Measured (not eyeballed):
+// express the wrist→elbow direction in the COMPOSED hand frame at the
+// idle pose; the lateral component was 14.7° toward −X (forearm exits
+// on the thumb side ⇔ hand deviated to the pinky side), flexion
+// component +18.4° (hand cocked back — fine, a saber carry wants some
+// extension).
+//
+//   measured at: SWORD_IDLE_ROT [-0.2,-0.15,0.4], SWORD_IDLE_POS
+//   [0.35,-0.40,-0.55], right shoulder [0.05,-0.55,-0.10], elbow pole
+//   [1,-0.5,0.2] — re-measure if any of those move meaningfully.
+//
+// The fix is ONE minimal arc: retarget the forearm-exit direction
+// from where it is to an anatomical resting target (5° ulnar — a real
+// relaxed wrist keeps a touch of deviation — 15° extension). Roll
+// around the forearm is preserved; palm_anchor below counter-rotates
+// (localFromWorld) so the BLADE's across-body lean doesn't move —
+// only the hand straightens around it.
+const FOREARM_EXIT_MEASURED: [number, number, number] = [-0.242, -0.920, 0.307];
+const FOREARM_EXIT_DESIRED: [number, number, number] = [
+  -Math.tan((5 * Math.PI) / 180),   // 5° ulnar
+  -1,
+  Math.tan((15 * Math.PI) / 180),   // 15° extension
+];
+const NEW_WRIST_ROT = retargetLocalDirection(
+  SABER_WRIST_STACKED,
+  FOREARM_EXIT_MEASURED,
+  FOREARM_EXIT_DESIRED,
+);
 
 // PALM_ANCHOR's preserved world rotation (in hand-root frame). Same
 // rotateLocally pattern: a named base + named intent passes.

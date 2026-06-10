@@ -11,6 +11,7 @@ import type { ModelSpec } from '../ecs/model-types';
 import { listAuthorables, type AuthorableKind } from '../debug/authorables';
 import { EFFECT_DEMOS } from './effects';
 import { HAND_RIGHT, HAND_LEFT } from '../content/hand';
+import { HAND_LEFT_LANTERN } from '../content/hand-poses';
 import { LURKER } from '../content/clutter';
 import { SKELETON_KEY } from '../content/skeleton-key';
 
@@ -74,6 +75,7 @@ const CSG_DEMO: ModelSpec = {
 const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'hand-right':  { label: 'Right hand viewmodel', spec: HAND_RIGHT },
   'hand-left':   { label: 'Left hand viewmodel (mirrored)', spec: HAND_LEFT },
+  'hand-left-lantern': { label: 'Left hand, ring-carry pose', spec: HAND_LEFT_LANTERN },
   'lurker':      { label: 'Lurker — hunched silhouette with dim eyes', spec: LURKER },
   'bevel-demo':  { label: 'Bevel radius demo (0 → 0.099m)', spec: BEVEL_DEMO },
   'csg-demo':    { label: 'CSG: original / add / subtract / intersect', spec: CSG_DEMO },
