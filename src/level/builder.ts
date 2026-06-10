@@ -168,9 +168,41 @@ function buildRoomShell(
   // springs from the wall-top (H) and rises to H+rise. Verticality without a
   // draw-call increase (still one ceiling mesh per room).
   const ceilStyle = room.ceilingStyle ?? 'flat';
+  // ── CEILING BREACH (box-buster #3) ────────────────────────────────
+  // Occasionally the level above broke through: a ragged hole in the
+  // ceiling, a black cavity behind it, a snapped timber dangling, and
+  // the rubble that fell sitting on the floor below. Render-only —
+  // the rubble is ankle-high, walkable. Deterministic per floor seed.
+  // Big flat-ceiling stone rooms only; never rooms with floor holes
+  // (stairwells own those).
+  const wantBreach =
+    ceilStyle === 'flat' &&
+    room.wallVariant !== 'braced' &&
+    floorHoles.length === 0 &&
+    !room.logicalOnly &&
+    W >= 4.5 && D >= 4.5 && H >= 2.9 &&
+    buildRng() < 0.10;
+  let breachHole: Array<[number, number]> | null = null;
+  let breachCx = 0, breachCz = 0;
+  if (wantBreach) {
+    // Ragged octagon, centre offset from the room centre, kept inside
+    // the soffit border.
+    breachCx = (buildRng() - 0.5) * (W - 3.2) * 0.5;
+    breachCz = (buildRng() - 0.5) * (D - 3.2) * 0.5;
+    const base = 0.65 + buildRng() * 0.4;
+    breachHole = [];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const rr = base * (0.7 + buildRng() * 0.6);
+      breachHole.push([breachCx + Math.cos(a) * rr, breachCz + Math.sin(a) * rr]);
+    }
+  }
   let ceiling: THREE.Mesh;
   if (ceilStyle === 'flat') {
-    ceiling = new THREE.Mesh(new THREE.PlaneGeometry(W, D), materials.ceiling);
+    ceiling = new THREE.Mesh(
+      breachHole ? makeFloorWithHoles(W, D, [breachHole]) : new THREE.PlaneGeometry(W, D),
+      materials.ceiling,
+    );
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(rect.x, H, rect.z);
   } else {
@@ -186,6 +218,44 @@ function buildRoomShell(
   ceiling.userData.dbgKind = 'ceiling';
   ceiling.userData.dbgSource = `ceiling · ${room.id} (${ceilStyle}) @(${rect.x.toFixed(1)},${rect.z.toFixed(1)}) y${H.toFixed(1)}`;
   scene.add(ceiling);
+  if (breachHole) {
+    const bx = rect.x + breachCx;
+    const bz = rect.z + breachCz;
+    // Black cavity above the hole — you see darkness, not sky.
+    const cavity = new THREE.Mesh(
+      new THREE.BoxGeometry(3.0, 0.8, 3.0),
+      new THREE.MeshStandardMaterial({ color: 0x020203, roughness: 1.0 }),
+    );
+    cavity.position.set(bx, H + 0.4, bz);
+    scene.add(cavity);
+    // A snapped timber dangling through the hole + one wedged across it.
+    const beamA = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.6, 0.1), materials.timber);
+    beamA.position.set(bx + 0.25, H - 0.55, bz - 0.1);
+    beamA.rotation.set(0.18, 0.4, 0.5);
+    beamA.castShadow = true;
+    const beamB = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 0.12), materials.timber);
+    beamB.position.set(bx - 0.15, H - 0.06, bz + 0.3);
+    beamB.rotation.set(0, buildRng() * Math.PI, 0.07);
+    beamB.castShadow = true;
+    scene.add(beamA, beamB);
+    // The fall: a rubble heap on the floor beneath, ankle-high, walkable.
+    const rubbleMat = new THREE.MeshStandardMaterial({ color: 0x231f19, roughness: 1.0, flatShading: true });
+    const heap = new THREE.Group();
+    const n = 5 + Math.floor(buildRng() * 3);
+    for (let i = 0; i < n; i++) {
+      const sz = 0.12 + buildRng() * 0.22;
+      const chunk = new THREE.Mesh(new THREE.BoxGeometry(sz, sz * 0.55, sz * 0.8), rubbleMat);
+      const a = buildRng() * Math.PI * 2;
+      const rr = buildRng() * 0.8;
+      chunk.position.set(bx + Math.cos(a) * rr, sz * 0.22, bz + Math.sin(a) * rr);
+      chunk.rotation.y = buildRng() * Math.PI;
+      chunk.castShadow = true;
+      chunk.receiveShadow = true;
+      heap.add(chunk);
+    }
+    scene.add(heap);
+  }
+
 
   // Walls with openings where another rect butts up. Each of the four wall
   // edges is broken into segments that skip the overlap with adjacent rects
