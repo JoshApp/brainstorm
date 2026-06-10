@@ -612,6 +612,23 @@ export function buildLevel(
       if (m.isMesh && m.name !== 'flame') m.userData.mergeStatic = true;
     });
   };
+  // GOD RAYS OWN THEIR POOL — light-placement awareness. The altar
+  // groups deliberately stage a candle just outside a ray's shaft;
+  // both carried PointLights, so the player saw a pale shaft-light
+  // and a warm candle-light a hand's width apart (the 'two lights,
+  // no awareness' read). The ray is the room's signal: any lesser
+  // fixture within its floor pool keeps its FLAME (set dressing) but
+  // yields its light registration to the ray.
+  const godRayLightPos: Array<{ x: number; z: number }> = [];
+  for (const prop of spec.props) {
+    if (prop.kind === 'model' && prop.model.id.startsWith('god-ray')) {
+      godRayLightPos.push({ x: prop.x, z: prop.z });
+    }
+  }
+  const lightOwnedByGodRay = (x: number, z: number, modelId: string): boolean => {
+    if (modelId.startsWith('god-ray')) return false;
+    return godRayLightPos.some((g) => Math.hypot(g.x - x, g.z - z) < 1.0);
+  };
   // A pillar dropped right in front of a composer-cut entrance reads as
   // a bug (traversable, but it crowds the doorway). Authors place pillars
   // in vault-local coords with no knowledge of WHERE the composer will cut
@@ -761,7 +778,7 @@ export function buildLevel(
       // a real slot. Light's local position is added to the prop's
       // world position; rotations are not currently applied to the
       // offset (most model lights sit on the prop's axis).
-      if (prop.model.light) {
+      if (prop.model.light && !lightOwnedByGodRay(prop.x, prop.z, prop.model.id)) {
         const lp = prop.model.light;
         const lightPos = new THREE.Vector3(
           prop.x + (lp.pos?.[0] ?? 0),
@@ -1118,8 +1135,11 @@ export function buildLevel(
       const ends = len >= 3.2 ? [-1, 1] : [buildRng() < 0.5 ? -1 : 1];
       for (const e of ends) {
         const along = (horizontal ? c.rect.x : c.rect.z) + e * (len / 2 - 0.55);
-        const sx = horizontal ? along : c.rect.x - c.rect.w / 2;
-        const sz = horizontal ? c.rect.z - c.rect.d / 2 : along;
+        // 0.18m clearance off the wall plane — same convention as the
+        // '*' tile emitter (tilemap.ts WALL_OFFSET): the sconce arm's
+        // back sinks into the wall, the bowl + flame sit clear of it.
+        const sx = horizontal ? along : c.rect.x - c.rect.w / 2 + 0.18;
+        const sz = horizontal ? c.rect.z - c.rect.d / 2 + 0.18 : along;
         const wall = horizontal ? 'N' as const : 'W' as const;
         if (spec.torches.some((t) => Math.hypot(t.x - sx, t.z - sz) < 1.8)) continue;
         sconces.push({

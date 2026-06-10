@@ -206,6 +206,24 @@ export function setLightBudgetTrim(on: boolean): void {
 export function getLightBudgetTrim(): boolean { return budgetTrimmed; }
 
 export function registerLight(src: LightSource): void {
+  if (import.meta.env.DEV) {
+    // Placement-collision guard: two sources nearly co-located is
+    // almost always two PLACEMENT SYSTEMS unaware of each other (an
+    // authored torch + an auto sconce, a fixture's model-light + a
+    // hand light). Name both so the colliding systems are obvious.
+    for (const other of sources.values()) {
+      if (other.category !== src.category) continue;
+      const dx = other.position.x - src.position.x;
+      const dy = other.position.y - src.position.y;
+      const dz = other.position.z - src.position.z;
+      if (dx * dx + dy * dy + dz * dz < 0.6 * 0.6) {
+        console.warn(
+          `[light-pool] sources nearly co-located (<0.6m): '${src.id}' and '${other.id}' ` +
+          `at (${src.position.x.toFixed(2)}, ${src.position.z.toFixed(2)}) — two placement systems colliding?`,
+        );
+      }
+    }
+  }
   sources.set(src.id, src);
 }
 
