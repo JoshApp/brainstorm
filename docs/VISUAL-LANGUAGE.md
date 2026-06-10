@@ -67,10 +67,12 @@ Nothing decorative may out-bright a signal. Corollaries:
   No prop may imitate them. Candles flicker; eyes don't (eyes *track*).
 - Eye color is taxonomy (red scurrier, yellow hound, green caster…) —
   keep assignments consistent so players learn the legend.
-- Weapon metals live in the painted band. A trash-tier blade bouncing
-  torchlight like chrome out-shines real signals (open issue: the
-  rusted sword blade currently reads near-glowing under warm torches —
-  fix its roughness/metalness, not the torch).
+- Weapon metals live in the painted band, and **shine = worth**:
+  mundane metal eats light (high roughness, mid metalness; a thin
+  honed-edge strip may gleam), rare/relic metal and treasure gold may
+  catch it. Gleam is information about value — don't spend it on
+  trash. (The rusted sword was the canonical violation; fixed
+  2026-06-10, see sword.ts.)
 
 ## Color legend
 
@@ -132,3 +134,9 @@ with `--ortho` + judgment against the rules above.
   the darkness was supposed to keep) and stayed toggled off in
   practice. The PS1 crunch (dither, quantize, scanlines, banded
   lighting) remains the period look.
+- **2026-06-10 — amber tint HALVED** (1.05/1.00/0.92 →
+  1.025/1.00/0.96), tested in the `?scenario=tint-lab` colour-legend
+  bench. Finding: the multiplicative tint barely affects the dark
+  mood range — the suspected legend-crush mostly comes from warm
+  torch/lamp light colours, which are per-room design choices, not a
+  post bug. Revisit room hue commitment before blaming the post chain.
