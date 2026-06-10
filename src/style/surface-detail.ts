@@ -136,27 +136,20 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         s.rgb *= mix(1.0, 1.0 + 0.10 * dir, body);
         s.a += 0.07 * dir * body;
       } else if (dmg > 0.795) {
-        // CRACKED BRICK — a PIECEWISE-LINEAR jag, not a sine (a smooth
-        // wobble read as calligraphy, not damage). The path is straight
-        // runs between random breakpoints — sharp elbows where the
-        // direction snaps — starting at the brick's top edge and dying
-        // out partway down, the way cracks propagate from a stress
-        // point and stop.
+        // CRACKED BRICK — the bake's ORIGINAL treatment, made world-
+        // space: a straight hairline split (at most a slight lean),
+        // full height of the brick, shaded EXACTLY like a mortar seam
+        // — same tone drop, same recess height — so it reads as the
+        // brick having PARTED along a line, not as a mark drawn on
+        // its face. (Two jag attempts taught us: any wobble reads as
+        // calligraphy; the straight seam-coloured split is the crack.)
         float cx = mix(0.30, 0.70, fract(dmg * 37.7));
-        float segI = floor(binb.y * 4.0);
-        float f0 = fract((segI + dmg * 91.7) * 0.1031); f0 *= f0 + 33.33;
-        float f1 = fract((segI + 1.0 + dmg * 91.7) * 0.1031); f1 *= f1 + 33.33;
-        float o0 = (fract(f0 * f0) - 0.5) * 0.24;
-        float o1 = (fract(f1 * f1) - 0.5) * 0.24;
-        float wob = mix(o0, o1, fract(binb.y * 4.0));
-        float dcrack = abs(binb.x - cx + wob) * bsz.x;
-        // Crack length: from the top edge down 55–100% of the brick.
-        float reach = 1.0 - (0.55 + fract(dmg * 53.1) * 0.45);
-        float alive = smoothstep(reach, reach + 0.10, binb.y);
-        float crack = (1.0 - smoothstep(0.009, 0.009 + aaw, dcrack))
-                    * smoothstep(0.015, 0.05, bedge) * alive;
-        s.rgb *= mix(1.0, 0.42, crack);
-        s.a -= crack * 0.4;
+        float lean = (fract(dmg * 53.1) - 0.5) * 0.10;
+        float xline = cx + (binb.y - 0.5) * lean;
+        float dcrack = abs(binb.x - xline) * bsz.x;
+        float crack = 1.0 - smoothstep(0.012, 0.012 + aaw, dcrack);
+        s.rgb = mix(s.rgb, s.rgb * 0.55, crack);
+        s.a = mix(s.a, 0.4, crack * 0.85);
       }
     }
     ` : ''}
