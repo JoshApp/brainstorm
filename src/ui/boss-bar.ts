@@ -151,6 +151,13 @@ let fadeTimer = -1;          // >= 0 while counting down the post-death linger
 let faded = false;           // terminal: linger finished, bar stays hidden
 let lastName = '';
 let lastBars: { hp: number; max: number }[] = [];
+// Beat between CROSSING the fog gate and the boss REVEAL. You commit (the gate
+// seals), walk a few steps into the arena over only the boss's floor-shadow —
+// then the encounter engages all at once: the boss drops, the bar slams in, the
+// music + room mood hit. The staged "bamm" entrance. (Fog levels only; a
+// fog-less aggro reveals immediately — there's no walk-in to earn.)
+const ENGAGE_DELAY = 1.2;
+let engageCountdown = -1;     // >= 0 while counting down after the cross
 
 const DEATH_LINGER = 1.6;    // seconds the empty bar(s) hold before fading
 
@@ -167,8 +174,11 @@ export function tickBossBar(dt: number): void {
       const fogWallReady = levelHasFogWall() && isBossEngaged();
       const legacyAggro = !levelHasFogWall()
         && members.some((b) => b.aiState !== 'idle' && b.aiState !== 'returning');
-      if (fogWallReady || legacyAggro) {
-        engageBossEncounter();
+      // Fog cross gets the staged walk-in beat; a fog-less aggro reveals at once.
+      if (fogWallReady && engageCountdown < 0) engageCountdown = ENGAGE_DELAY;
+      const delayElapsed = engageCountdown >= 0 && (engageCountdown -= dt) <= 0;
+      if ((fogWallReady && delayElapsed) || legacyAggro) {
+        engageBossEncounter();   // drop + bar + music + mood all hit here — the "bamm"
         // Intro card fires ONCE (the king). The split princes inherit the
         // engaged container, so they never re-trigger it.
         const lead = members[0];
@@ -212,6 +222,7 @@ export function tickBossBar(dt: number): void {
 export function resetBossBar(): void {
   fadeTimer = -1;
   faded = false;
+  engageCountdown = -1;
   lastName = '';
   lastBars = [];
   hideBossIntro();
