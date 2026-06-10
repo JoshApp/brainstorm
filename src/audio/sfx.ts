@@ -91,14 +91,20 @@ function makeReverbImpulse(c: AudioContext, durationSec: number, decay: number):
  *
  *  wetSend defaults to 0.35 — present but not drowning. UI sounds skip
  *  this path entirely and stay bone dry. */
-function createPositionalChain(pos: Vec3Sound, wetSend: number = 0.35): AudioNode {
+/** Distance falloff overrides for a positional chain. Default is the punchy
+ *  close-range curve (impacts); `VOCAL_FALLOFF` is a gentler curve so a mob's
+ *  groan/footstep CARRIES across a dark room — you hear it before you see it. */
+type Falloff = { refDistance: number; rolloff: number; maxDistance: number };
+const VOCAL_FALLOFF: Falloff = { refDistance: 2.6, rolloff: 0.85, maxDistance: 32 };
+
+function createPositionalChain(pos: Vec3Sound, wetSend: number = 0.35, falloff?: Falloff): AudioNode {
   const c = ctx!;
   const panner = c.createPanner();
   panner.panningModel = 'equalpower';   // cheap, mobile-safe; HRTF is CPU
   panner.distanceModel = 'inverse';
-  panner.refDistance = 1.5;             // metres — full volume within
-  panner.maxDistance = 28;              // beyond this, no more attenuation
-  panner.rolloffFactor = 1.4;
+  panner.refDistance = falloff?.refDistance ?? 1.5;   // metres — full volume within
+  panner.maxDistance = falloff?.maxDistance ?? 28;    // beyond this, no more attenuation
+  panner.rolloffFactor = falloff?.rolloff ?? 1.4;
   panner.coneInnerAngle = 360;
   // Modern AudioParam API where available; fall back to setPosition()
   // on older Safari. Same for the listener pose tick below.
@@ -541,7 +547,7 @@ export function playEnemyVocal(archetype: VocalArchetype, pos: Vec3Sound, agitat
   if (lastVocalAt >= 0 && now - lastVocalAt < 0.45) return;
   lastVocalAt = now;
 
-  const out = createPositionalChain(pos, archetype === 'groan' ? 0.5 : 0.35);
+  const out = createPositionalChain(pos, archetype === 'groan' ? 0.5 : 0.35, VOCAL_FALLOFF);
   const r = () => Math.random();
   const ag = agitated ? 1 : 0;
 
@@ -566,41 +572,72 @@ export function playEnemyVocal(archetype: VocalArchetype, pos: Vec3Sound, agitat
       break;
     }
     case 'rattle': {
-      // Dry bone clatter — slower, woodier clicks than the skitter.
-      const n = 3 + Math.floor(r() * 3);
-      let t = now;
+      // Dry BONE — a hard low CLACK (bone knocking bone), then a loose clatter
+      // of woodier clicks. Drier + sharper than the spider's skitter.
+      const clack = c.createBufferSource();
+      clack.buffer = shortNoise(c, 0.045);
+      const cbp = c.createBiquadFilter();
+      cbp.type = 'bandpass'; cbp.frequency.value = 620 + r() * 180; cbp.Q.value = 6;
+      const cg = c.createGain();
+      cg.gain.setValueAtTime(0.0001, now);
+      cg.gain.exponentialRampToValueAtTime(0.2 + 0.05 * ag, now + 0.003);
+      cg.gain.exponentialRampToValueAtTime(0.0006, now + 0.07);
+      clack.connect(cbp).connect(cg).connect(out);
+      clack.start(now); clack.stop(now + 0.08);
+
+      const n = 4 + Math.floor(r() * (agitated ? 4 : 3));
+      let t = now + 0.05;
       for (let i = 0; i < n; i++) {
         const src = c.createBufferSource();
-        src.buffer = shortNoise(c, 0.03);
+        src.buffer = shortNoise(c, 0.02);
         const bp = c.createBiquadFilter();
-        bp.type = 'bandpass'; bp.frequency.value = 1100 + r() * 900; bp.Q.value = 3;
+        bp.type = 'bandpass'; bp.frequency.value = 900 + r() * 900; bp.Q.value = 5;
         const g = c.createGain();
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.14, t + 0.004);
-        g.gain.exponentialRampToValueAtTime(0.0006, t + 0.06);
+        g.gain.exponentialRampToValueAtTime(0.11, t + 0.003);
+        g.gain.exponentialRampToValueAtTime(0.0006, t + 0.04);
         src.connect(bp).connect(g).connect(out);
-        src.start(t); src.stop(t + 0.07);
-        t += 0.07 + r() * 0.06;
+        src.start(t); src.stop(t + 0.05);
+        t += 0.045 + r() * 0.05;
       }
       break;
     }
     case 'groan': {
-      // Low detuned moan with a slow pitch waver — the dread voice. Could be
-      // the dead, could be the structure. (The one Josh liked, now sourced.)
-      const base = (58 + r() * 40) * (agitated ? 1.18 : 1);
+      // Wet, suffering MOAN — a low detuned voice through two vowel formants
+      // ("uuurgh", the upper one closing as the mouth shuts) with a breath of
+      // rasp over it. The dead, not the structure — a zombie/ghoul lament.
+      const base = (52 + r() * 28) * (agitated ? 1.2 : 1);
       const osc = c.createOscillator();
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(base, now);
-      osc.frequency.linearRampToValueAtTime(base * 1.13, now + 0.8);
-      osc.frequency.linearRampToValueAtTime(base * 0.96, now + 1.7);
-      const bp = c.createBiquadFilter();
-      bp.type = 'bandpass'; bp.frequency.value = 230 + r() * 130; bp.Q.value = 4.5;
+      osc.frequency.linearRampToValueAtTime(base * 1.12, now + 0.7);
+      osc.frequency.linearRampToValueAtTime(base * 0.94, now + 1.6);
+      // Two summed bandpass formants = a vowel; sweep the upper down (mouth closes).
+      const f1 = c.createBiquadFilter();
+      f1.type = 'bandpass'; f1.frequency.value = 380 + r() * 80; f1.Q.value = 6;
+      const f2 = c.createBiquadFilter();
+      f2.type = 'bandpass'; f2.Q.value = 7;
+      f2.frequency.setValueAtTime(950 + r() * 150, now);
+      f2.frequency.linearRampToValueAtTime(600, now + 1.6);
       const g = c.createGain();
       g.gain.setValueAtTime(0.0001, now);
-      g.gain.linearRampToValueAtTime(0.17, now + 0.5);
+      g.gain.linearRampToValueAtTime(0.18, now + 0.5);
       g.gain.exponentialRampToValueAtTime(0.0005, now + 2.1);
-      osc.connect(bp).connect(g).connect(out);
+      osc.connect(f1).connect(g);
+      osc.connect(f2).connect(g);
+      g.connect(out);
+      // Wet rasp — a faint breath of bandpassed noise under the voice.
+      const rasp = c.createBufferSource();
+      rasp.buffer = shortNoise(c, 1.3);
+      const rbp = c.createBiquadFilter();
+      rbp.type = 'bandpass'; rbp.frequency.value = 480 + r() * 120; rbp.Q.value = 1.2;
+      const rg = c.createGain();
+      rg.gain.setValueAtTime(0.0001, now);
+      rg.gain.linearRampToValueAtTime(0.05, now + 0.4);
+      rg.gain.exponentialRampToValueAtTime(0.0004, now + 1.5);
+      rasp.connect(rbp).connect(rg).connect(out);
       osc.start(now); osc.stop(now + 2.3);
+      rasp.start(now); rasp.stop(now + 1.6);
       break;
     }
     case 'squeak': {
@@ -806,7 +843,7 @@ export function playEnemyFootstep(archetype: VocalArchetype, pos: Vec3Sound) {
   const now = c.currentTime;
   if (lastFootstepAt >= 0 && now - lastFootstepAt < 0.07) return;
   lastFootstepAt = now;
-  const out = createPositionalChain(pos, 0.2);
+  const out = createPositionalChain(pos, 0.2, VOCAL_FALLOFF);   // carries — hear them approach
   const r = () => Math.random();
 
   // Each archetype is one short filtered-noise tick. [filterType, freq, Q, peak, dur].

@@ -124,6 +124,10 @@ const ALERTED_DURATION = CONFIG.ENEMY_AI.ALERTED_DURATION;
 // Grace beat a fog-gate boss grants the player on waking — it closes the
 // distance but holds fire this long so you can orient out of the walk-in.
 const ENGAGE_GRACE = 2.4;
+// Within this distance an IDLE/unaware mob vocalises much more often (a
+// "stir") so a lurking thing reliably announces itself as you near it —
+// hear-before-see — while staying sparse across the rest of the dark.
+const VOCAL_STIR_RANGE = 7;
 
 // How long the enemy will search at the last-known position before giving
 // up. Doesn't override per-spec loseSightTime; this is the search PHASE
@@ -1405,7 +1409,7 @@ export function createEnemy(
 
   // Emit a positional vocalisation in "living its life" states (not
   // mid-attack). Agitated when hunting; calm + sparse at post.
-  function tickVocalisation(dt: number) {
+  function tickVocalisation(dt: number, distToPlayer: number) {
     if (!vocalArch) return;
     vocalTimer -= dt;
     if (vocalTimer > 0) return;
@@ -1413,7 +1417,12 @@ export function createEnemy(
     const canVocalize = state === 'idle' || state === 'returning' || agitated;
     if (canVocalize) {
       playEnemyVocal(vocalArch, container.position, agitated);
-      vocalTimer = agitated ? 2.5 + gameRng() * 3 : 7 + gameRng() * 10;
+      // Cadence: hunting = frequent; idle FAR = sparse (silence-first dread);
+      // idle NEAR the player = a "stir" so a lurking mob reliably announces
+      // itself as you approach (hear-before-see), without chattering room-wide.
+      if (agitated) vocalTimer = 2.5 + gameRng() * 3;
+      else if (distToPlayer < VOCAL_STIR_RANGE) vocalTimer = 3 + gameRng() * 3;
+      else vocalTimer = 6 + gameRng() * 8;
     } else {
       vocalTimer = 1.5;   // mid-attack — retry shortly
     }
@@ -1503,7 +1512,7 @@ export function createEnemy(
     }
 
     // Vocalisation — hear it before you see it. (see tickVocalisation)
-    tickVocalisation(dt);
+    tickVocalisation(dt, distToXZ(playerPos));
 
     // ── Inside-aura tick (king-slime body, etc.) ─────────────────────
     // Cheap distance check + state machine for the "you're standing
