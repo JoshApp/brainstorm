@@ -872,6 +872,20 @@ export function playWallHit(pos?: Vec3Sound) {
   playSurfaceHit('stone', pos);
 }
 
+/** A surface DESTROYED (not just struck) — the fuller break/shatter. Routed by
+ *  material like playSurfaceHit; falls back to the single-hit voice for
+ *  materials without a dedicated shatter. Used when a vase/crate is smashed. */
+export function playSurfaceShatter(material: HitMaterial, pos?: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const out: AudioNode = pos ? createPositionalChain(pos, 0.35) : masterGain;
+  switch (material) {
+    case 'ceramic': return voiceCeramicShatter(c, out, now);
+    default:        return playSurfaceHit(material, pos);
+  }
+}
+
 // ── STONE ─ walls, pillars, altars. Low CLANK with grit. ─────────────
 //   BODY  sine 360 → 90 Hz, lowpassed @ 420 Hz       (dull stone weight)
 //   CLANK sawtooth 520 → 240 Hz, bandpassed @ 700 Hz (steel's bite)
@@ -938,6 +952,50 @@ function voiceCeramic(c: AudioContext, out: AudioNode, now: number): void {
     g.gain.exponentialRampToValueAtTime(0.0004, t + 0.11);
     o.connect(g).connect(out);
     o.start(t); o.stop(t + 0.12);
+  }
+}
+
+// ── CERAMIC SHATTER ─ a vase SMASHED, not tapped. Fuller + LOWER than the
+//   single-hit tink (which read too shrill): a low body crack, a mid crunch of
+//   the break, then a clatter of mid-pitched shards scattering on the floor.
+//   BODY   sine 190 → 70 Hz, lowpassed         (the dull crack / weight)
+//   CRUNCH 120ms noise bandpassed @ 1.1 kHz    (the break itself, not shrill)
+//   SHARDS ~6 short tones 800–1800 Hz, staggered (pottery scattering)
+function voiceCeramicShatter(c: AudioContext, out: AudioNode, now: number): void {
+  const bodyLp = c.createBiquadFilter();
+  bodyLp.type = 'lowpass'; bodyLp.frequency.value = 520; bodyLp.Q.value = 0.7;
+  bodyLp.connect(out);
+  const body = c.createOscillator();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(190, now);
+  body.frequency.exponentialRampToValueAtTime(70, now + 0.12);
+  const bodyG = c.createGain();
+  bodyG.gain.setValueAtTime(0.0001, now);
+  bodyG.gain.exponentialRampToValueAtTime(0.5, now + 0.004);
+  bodyG.gain.exponentialRampToValueAtTime(0.0006, now + 0.14);
+  body.connect(bodyG).connect(bodyLp);
+  body.start(now); body.stop(now + 0.15);
+
+  // The break — a mid noise crunch (not the 3 kHz highpass chip of a tap).
+  attachNoiseBurst(c, out, now, 0.12, 'bandpass', 1100, 1.2, 0.3);
+
+  // Shards scattering — several mid-pitched tones over ~0.2s. Lower + more
+  // numerous than the single-hit's two tinks, so it reads as pottery breaking.
+  const shards: Array<[number, number]> = [
+    [1500, 0.015], [1100, 0.045], [1800, 0.07], [950, 0.11], [1350, 0.15], [800, 0.20],
+  ];
+  for (const [f, dt] of shards) {
+    const t = now + dt;
+    const o = c.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(f, t);
+    o.frequency.exponentialRampToValueAtTime(f * 0.6, t + 0.08);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.07, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0004, t + 0.09);
+    o.connect(g).connect(out);
+    o.start(t); o.stop(t + 0.10);
   }
 }
 

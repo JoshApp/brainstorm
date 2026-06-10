@@ -5,7 +5,7 @@ import { COBWEB_BARRIER } from '../content/cobweb';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { createPickup } from '../interactables/pickup';
 import { ITEMS } from '../content/items';
-import { playEnemyDeath } from '../audio/sfx';
+import { playEnemyDeath, playSurfaceShatter } from '../audio/sfx';
 import { spawnShatterBurst } from '../effects/shatter-burst';
 import {
   spawn as spawnEntity,
@@ -137,7 +137,9 @@ export function spawnVase(
       // obstacle out of the walkable region — without this, the
       // player can't walk through the smashed cell.
       onDestroyed?.();
-      playEnemyDeath('small', group.position);
+      // Shatter sound matched to the prop's material (ceramic vase → a proper
+      // pottery break), NOT the mob-death squeak it used to borrow.
+      playSurfaceShatter(dest.hitMaterial ?? 'ceramic', group.position);
       // Roll loot. Pre-broken vases drop a small amount of dust
       // rather than coins — visually they were already smashed,
       // so the "reward" should match.
