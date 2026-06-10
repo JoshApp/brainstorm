@@ -22,7 +22,7 @@
 // allocates a small per-frame record, so the profiler's own GC/alloc readout
 // carries a little constant overhead while the tools are on — expected.
 
-import { addFrameListener, removeFrameListener, gpuActive, type FrameSample } from './frame-timing';
+import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, setGpuPassTiming, type FrameSample } from './frame-timing';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
 const RING_CAP_MS = 60_000;           // keep the last 60s; also the explicit-record cap
@@ -45,6 +45,10 @@ interface RecFrame {
   tex: number;
   prog: number;
   sys: number[];        // per-system ms, aligned to sysNames
+  /** Per-render-pass GPU ms aligned to gpuPhaseNames (prepass/scene/bloom/
+   *  blit). Present only while per-pass GPU timing is armed — which the ring
+   *  does itself on timer-query devices, where the spans are free. */
+  gph?: number[];
 }
 
 export interface Recording {
@@ -60,6 +64,7 @@ export interface Recording {
     label?: string;
   };
   systemNames: string[];
+  gpuPhaseNames?: string[];
   frames: RecFrame[];
 }
 
@@ -72,10 +77,44 @@ let recording = false;
 let recordStartAbs = 0;
 let pendingLabel: string | undefined;
 
+const gphIndex = new Map<string, number>();
+const gphNames: string[] = [];
+
+const gphIndex = new Map<string, number>();
+const gphNames: string[] = [];
+
 function systemIdx(name: string): number {
   let i = sysIndex.get(name);
   if (i === undefined) { i = sysNames.length; sysNames.push(name); sysIndex.set(name, i); }
   return i;
+}
+function gpuPhaseIdx(name: string): number {
+  let i = gphIndex.get(name);
+  if (i === undefined) { i = gphNames.length; gphNames.push(name); gphIndex.set(name, i); }
+  return i;
+}
+function snapshotGph(phases: Map<string, number>): number[] {
+  const arr = new Array<number>(gphNames.length).fill(0);
+  for (const [name, ms] of phases) {
+    const i = gpuPhaseIdx(name);
+    if (i >= arr.length) arr.length = i + 1;
+    arr[i] = r2(ms);
+  }
+  return arr;
+}
+function gpuPhaseIdx(name: string): number {
+  let i = gphIndex.get(name);
+  if (i === undefined) { i = gphNames.length; gphNames.push(name); gphIndex.set(name, i); }
+  return i;
+}
+function snapshotGph(phases: Map<string, number>): number[] {
+  const arr = new Array<number>(gphNames.length).fill(0);
+  for (const [name, ms] of phases) {
+    const i = gpuPhaseIdx(name);
+    if (i >= arr.length) arr.length = i + 1;
+    arr[i] = r2(ms);
+  }
+  return arr;
 }
 function r2(n: number): number { return Math.round(n * 100) / 100; }
 
@@ -104,6 +143,7 @@ function onRingFrame(s: FrameSample): void {
     tex: s.textures,
     prog: s.programs,
     sys: snapshotSys(s.systems),
+    gph: s.gpuPhases ? snapshotGph(s.gpuPhases) : undefined,
   });
   const cutoff = now - RING_CAP_MS;
   while (ring.length && ring[0].t < cutoff) ring.shift();
@@ -119,7 +159,15 @@ export function setRollingEnabled(on: boolean): void {
     ring = [];
     sysIndex.clear();
     sysNames.length = 0;
+    gphIndex.clear();
+    gphNames.length = 0;
     addFrameListener(onRingFrame);
+    // On timer-query devices per-pass GPU spans are passive and free — arm
+    // them whenever the ring rolls, so every recording (incl. the dashcam)
+    // carries the per-pass breakdown without anyone touching PASS. Devices
+    // without the extension are left alone: the readPixels fallback stalls
+    // sampled frames and would pollute the very recording it feeds.
+    if (gpuSupported()) setGpuPassTiming(true);
   } else {
     removeFrameListener(onRingFrame);
     ring = [];
@@ -169,7 +217,12 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
   const frames: RecFrame[] = slice.map((f) => {
     const sys = f.sys.slice();
     while (sys.length < sysNames.length) sys.push(0);   // pad late-appearing systems
-    return { ...f, t: r2(f.t - base), sys };
+    let gph = f.gph;
+    if (gph) {
+      gph = gph.slice();
+      while (gph.length < gphNames.length) gph.push(0);
+    }
+    return { ...f, t: r2(f.t - base), sys, gph };
   });
   return {
     meta: {
@@ -184,6 +237,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       label,
     },
     systemNames: sysNames.slice(),
+    gpuPhaseNames: gphNames.length ? gphNames.slice() : undefined,
     frames,
   };
 }
