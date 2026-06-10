@@ -72,18 +72,38 @@ function bipedSkeleton(p: Proportions): SkeletonDef {
   const headY = neckY + p.headSize;               // head centre (crown ≈ headY + headSize)
   const shX = p.girth * 1.05;                     // shoulder half-width
   const hipX = p.girth * 0.55;
+  // ── GESTURE: `hunch` bends the SPINE, not just the head. ──────────
+  // The old formula only offset neck/head, so a hunched ghoul still
+  // stood as a vertical totem with a head pasted forward. Now the
+  // whole chain curves — a vulture slump:
+  //   pelvis  — anchored (the legs don't move);
+  //   chest   — shifts forward and DROPS (a slump costs height);
+  //   shoulders — roll further forward than the chest (they lead the
+  //              droop) and sag slightly;
+  //   neck    — rides as a raised HUMP slightly behind the chest line;
+  //   head    — juts furthest forward and hangs below the hump.
+  // All offsets scale with `hunch` (metres of head-forward lean), so
+  // hunch: 0 reproduces the old upright column exactly.
+  const chestZ = -p.hunch * 0.35;
+  const chestYv = chestY - p.hunch * 0.20;
+  const shoulderZ = chestZ - p.hunch * 0.25;
+  const shoulderY = chestYv + p.height * 0.04 - p.hunch * 0.10;
+  const neckZ = chestZ + p.hunch * 0.25;          // the hump sits BEHIND the chest line
+  const neckYv = neckY - p.hunch * 0.25;
+  const headZ = -p.hunch * 1.1;
+  const headYv = headY - p.hunch * 0.45;
   const j: JointDef[] = [
     { name: 'root', abs: [0, 0, 0] },
     { name: 'pelvis', parent: 'root', abs: [0, hipY, 0] },
-    { name: 'spine', parent: 'pelvis', abs: [0, chestY, 0] },
-    { name: 'neck', parent: 'spine', abs: [0, neckY, p.hunch * 0.3] },
-    { name: 'head', parent: 'neck', abs: [0, headY, -p.hunch] },
-    { name: 'shoulderL', parent: 'spine', abs: [-shX, chestY + p.height * 0.04, 0] },
-    { name: 'shoulderR', parent: 'spine', abs: [shX, chestY + p.height * 0.04, 0] },
-    { name: 'elbowL', parent: 'shoulderL', abs: [-shX, chestY + p.height * 0.04 - p.armLength * 0.5, 0] },
-    { name: 'elbowR', parent: 'shoulderR', abs: [shX, chestY + p.height * 0.04 - p.armLength * 0.5, 0] },
-    { name: 'handL', parent: 'elbowL', abs: [-shX, chestY + p.height * 0.04 - p.armLength, 0] },
-    { name: 'handR', parent: 'elbowR', abs: [shX, chestY + p.height * 0.04 - p.armLength, 0] },
+    { name: 'spine', parent: 'pelvis', abs: [0, chestYv, chestZ] },
+    { name: 'neck', parent: 'spine', abs: [0, neckYv, neckZ] },
+    { name: 'head', parent: 'neck', abs: [0, headYv, headZ] },
+    { name: 'shoulderL', parent: 'spine', abs: [-shX, shoulderY, shoulderZ] },
+    { name: 'shoulderR', parent: 'spine', abs: [shX, shoulderY, shoulderZ] },
+    { name: 'elbowL', parent: 'shoulderL', abs: [-shX, shoulderY - p.armLength * 0.5, shoulderZ * 0.6] },
+    { name: 'elbowR', parent: 'shoulderR', abs: [shX, shoulderY - p.armLength * 0.5, shoulderZ * 0.6] },
+    { name: 'handL', parent: 'elbowL', abs: [-shX, shoulderY - p.armLength, shoulderZ * 0.3] },
+    { name: 'handR', parent: 'elbowR', abs: [shX, shoulderY - p.armLength, shoulderZ * 0.3] },
     { name: 'hipL', parent: 'pelvis', abs: [-hipX, hipY, 0] },
     { name: 'hipR', parent: 'pelvis', abs: [hipX, hipY, 0] },
     { name: 'kneeL', parent: 'hipL', abs: [-hipX, hipY - p.legLength * 0.5, 0] },
