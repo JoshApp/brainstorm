@@ -44,6 +44,18 @@ import { decorateFloor } from './decorate';
 import { seedBuildRng, hashStringToSeed } from '../engine/rng';
 import { spawnThresholdDraft, registerArchwayGlow } from '../scene/threshold-draft';
 
+// A boss's "signature colour" for the sealed-descent ward — its eye glow if it
+// has one, else any material's rim colour, else a default arcane green. Used to
+// tint the boss-gate so the seal reads as the boss's own power.
+function bossWardColor(b: EnemySpec): number {
+  const mats = b.creature?.materials ?? {};
+  const eye = b.eyeMaterialName ? mats[b.eyeMaterialName] : undefined;
+  if (eye?.emissive != null) return eye.emissive;
+  if (eye?.color != null) return eye.color;
+  for (const m of Object.values(mats)) if (m.rim?.color != null) return m.rim.color;
+  return 0x88cc33;
+}
+
 // Local Mulberry32 seeded RNG — kept here to avoid importing procgen.ts
 // (would create a cyclic dependency between builder and procgen).
 function rngFromSeed(seed: number) {
@@ -1531,8 +1543,16 @@ export function buildLevel(
   }
 
   // --- Stairs --------------------------------------------------------
+  // A boss floor's descent is SEALED until the boss falls. Auto-gate it with
+  // the boss's signature colour (eye/emissive, else a rim, else a default) so
+  // the ward reads as the boss's own power holding the way shut.
+  const bossSpawn = spec.spawns.find((s) => ENEMIES[s.enemyId]?.isBoss);
+  const bossWard = bossSpawn ? bossWardColor(ENEMIES[bossSpawn.enemyId]) : null;
   for (const st of spec.stairs ?? []) {
-    spawnStairs(root, st, materials, (target) => onDescend?.(target));
+    const gated = bossWard != null && !st.unlock
+      ? { ...st, unlock: { kind: 'boss-defeated' as const, color: bossWard } }
+      : st;
+    spawnStairs(root, gated, materials, (target) => onDescend?.(target));
   }
 
   // Per-frame check (tucked into a separate driver below) wires room-clear

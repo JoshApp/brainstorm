@@ -500,9 +500,16 @@ export type StairsSpec = {
    * 'has-equipment': stairs show a SEALED prompt and reject use until
    * the player has something equipped in the named slot. Used by the
    * starter chamber to enforce "pick a weapon before descending."
+   *
+   * 'boss-defeated': the descent is SEALED until the floor's boss
+   * encounter completes. While sealed it gives off no warm invite — a
+   * taut ward in `color` (the boss's signature hue) caps the mouth; the
+   * kill shatters it and the welcoming light blooms. Auto-applied to a
+   * boss floor's descent by the builder.
    */
   unlock?:
-    | { kind: 'has-equipment'; slot: 'weapon' | 'offhand' };
+    | { kind: 'has-equipment'; slot: 'weapon' | 'offhand' }
+    | { kind: 'boss-defeated'; color?: number };
 };
 
 export type LevelSpec = {

@@ -9,6 +9,7 @@ import { registerLight } from '../scene/light-pool';
 import { getTexture } from '../style/procedural-textures';
 import { getEquipped } from '../player/equipment';
 import { pooledBox, pooledPlane, pooledRing } from '../scene/geometry-pool';
+import { isBossEncounterComplete, onBossEncounterComplete } from '../mobs/boss-encounter';
 
 // Stairs = a visible descent CARVED into the floor (the top of the
 // stairwell sits below floor level, framed by a low parapet lip), plus
@@ -456,6 +457,34 @@ export function spawnStairs(
   // Store base shaft scale so we can scale up/down dynamically.
   const shaftOuterBaseW = 0.95;
   const shaftCoreBaseW  = 0.30;
+
+  // ── BOSS-GATE WARD ──────────────────────────────────────────────────
+  // A boss-floor descent is SEALED until the boss falls: no warm invite,
+  // just a taut additive membrane in the boss's own colour capping the
+  // mouth. The kill shatters it (rises + fades) and the warm beam resumes.
+  // Built only when the spec asks for a boss gate.
+  const isBossGate = spec.unlock?.kind === 'boss-defeated';
+  const sealColor = (spec.unlock?.kind === 'boss-defeated' && spec.unlock.color != null)
+    ? spec.unlock.color : 0x88cc33;
+  let sealActive = isBossGate && !isBossEncounterComplete();
+  let breaking = false;
+  let shatter = 0;
+  let ward: THREE.Mesh | null = null;
+  let wardMat: THREE.MeshBasicMaterial | null = null;
+  if (isBossGate) {
+    wardMat = new THREE.MeshBasicMaterial({
+      color: sealColor, transparent: true, opacity: 0.3,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    // A thin slab capping the stairwell mouth (descends in +z, width STEP_WIDTH).
+    ward = new THREE.Mesh(pooledBox(STEP_WIDTH, 0.02, totalDepth), wardMat);
+    ward.position.set(0, 0.09, totalDepth / 2);
+    ward.visible = sealActive;
+    group.add(ward);
+    // Break the seal the instant the boss encounter completes.
+    if (sealActive) onBossEncounterComplete(() => { sealActive = false; breaking = true; });
+  }
+
   shaftOuter.onBeforeRender = () => {
     // Smoothly track the highlight state. dtApprox is the time
     // between renders; we approximate via a fixed exponential
@@ -467,6 +496,29 @@ export function spawnStairs(
     // passive state has a faint heartbeat.
     const wave = (Date.now() / 1000) * (Math.PI * 2 / 2.4) + breathSeed;
     const b = 0.88 + 0.12 * Math.sin(wave);
+
+    // Boss gate. While sealed, the warm beam/halo is killed — only the ward
+    // glows, with a faint cold floor-mark in the boss colour so the sealed
+    // descent still reads from across the room. The kill shatters the ward
+    // (rises + fades) and we fall through to the normal warm light below.
+    if (isBossGate && ward && wardMat) {
+      if (sealActive) {
+        wardMat.opacity = 0.24 + 0.10 * Math.sin(wave);
+        shaftOuterMat.opacity = 0; shaftCoreMat.opacity = 0; moteMat.opacity = 0;
+        outlineMat.opacity = 0; outlineOuterMat.opacity = 0;
+        shaftOuter.scale.set(0, 1, 1); shaftCoreMesh.scale.set(0, 1, 1);
+        floorRingMat.color.set(sealColor);
+        floorRingMat.opacity = 0.16 + 0.07 * Math.sin(wave);
+        return;
+      }
+      if (breaking) {
+        shatter += (1 - shatter) * 0.06;
+        ward.scale.set(1 + shatter * 0.5, 1, 1 + shatter * 0.5);
+        ward.position.y = 0.09 + shatter * 0.35;
+        wardMat.opacity = Math.max(0, (1 - shatter) * 0.42);
+        if (shatter > 0.97) { ward.visible = false; breaking = false; }
+      }
+    }
 
     // Material colours.
     shaftOuterMat.color.copy(PASSIVE_SHAFT_OUTER).lerp(ACTIVE_SHAFT_OUTER, t);
@@ -498,6 +550,7 @@ export function spawnStairs(
   const isUnlocked = (): boolean => {
     if (!unlock) return true;
     if (unlock.kind === 'has-equipment') return getEquipped(unlock.slot) !== null;
+    if (unlock.kind === 'boss-defeated') return isBossEncounterComplete();
     return true;
   };
 
