@@ -59,18 +59,31 @@ export function buildCreature(spec: CreatureSpec): Creature {
   built.group.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(built.group);
   const center = box.getCenter(new THREE.Vector3());
+
+  // ── Seat on the floor (baked into the geometry) ──
+  // How far the lowest geometry dips BELOW the rig floor (y=0). The boiling-
+  // king's squashed body bottomed out under the floor; without this it sinks.
+  // We BAKE the lift into the model (shift every top-level child up) rather
+  // than offset the group at runtime — the enemy tick zeroes group.y every
+  // frame and leaps drive container.y, so a runtime offset gets wiped. Baked,
+  // the grounded y=0 is simply correct everywhere. Clamped at 0 so an
+  // intentional FLOATER (a ghost whose wisp hovers above the floor) is never
+  // dragged DOWN to touch it; measures 0 for feet-at-floor bipeds, so they're
+  // untouched. Scale (spec.scale) multiplies it later via the group scale.
+  const groundOffset = Math.max(0, -box.min.y);
+  if (groundOffset > 0) {
+    for (const child of built.group.children) child.position.y += groundOffset;
+    center.y += groundOffset;            // measured centre moves up with the model
+    built.group.updateWorldMatrix(true, true);
+  }
+
   const bounds = {
     height: box.max.y - Math.min(0, box.min.y),
-    top: box.max.y,
+    top: box.max.y + groundOffset,
     radius: Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2,
     center,
     aimHeight: center.y,                 // measured body centre — replaces 0.6×scale guess
-    // How far the lowest geometry dips BELOW the rig floor (y=0). The enemy
-    // placer lifts the group by this so the model rests ON the floor instead
-    // of sinking into it (the boiling-king's squashed body bottomed out below
-    // 0). Clamped at 0 so an intentional FLOATER — a ghost whose wisp hovers
-    // above the floor — is never dragged DOWN to touch it.
-    groundOffset: Math.max(0, -box.min.y),
+    groundOffset,                        // already baked above; kept for reference/debug
   };
 
   // ── Auto hurtbox from the skeleton, then layer authored zones ──

@@ -279,11 +279,9 @@ export function createEnemy(
   const aimHeightResolved = spec.aimHeight ?? creature.bounds.aimHeight * sc;   // MEASURED body centre × scale
   const hurtbox: Hurtbox = creature.hurtbox;            // auto per-bone + authored zones
   const essenceRigYDefault = aimHeightResolved;
-  // Seat the model on the floor: lift by however far its lowest geometry dips
-  // below y=0 (×scale). 0 for feet-at-floor bipeds and for floaters whose wisp
-  // already hovers above 0; non-zero for a body like the boiling-king's that
-  // bottomed out under the floor. Fixes the boss sinking in after the port.
-  creature.group.position.y = creature.bounds.groundOffset * sc;
+  // The floor seat is BAKED into the geometry by buildCreature (it shifts the
+  // model up by its below-floor dip), so the runtime y stays a clean 0 — no
+  // offset to fight the per-frame y reset or the leap arcs that drive y.
   container.add(creature.group);
 
   // Creatures don't cast real (cube-map) shadows — they use a blob instead.
