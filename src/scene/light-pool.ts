@@ -57,6 +57,10 @@ export interface LightSource {
   intensity: number;
   /** Light falloff range. */
   distance: number;
+  /** Slot priority. 'low' = ambience that should YIELD under budget
+   *  pressure (room fill wash) — real sources (torches, signal glows)
+   *  win the nearest slots first. */
+  priority?: 'low';
   decay: number;
   /** Optional: dynamic intensity (e.g. torch flicker). */
   getIntensity?: () => number;
@@ -82,7 +86,7 @@ const boundLastFrameByCategory: Record<LightCategory, Set<string>> = {
 let scene: THREE.Scene | null = null;
 
 // Reusable scratch list per category to avoid per-frame allocation.
-const scratchByCategory: Record<LightCategory, Array<{ src: LightSource; sortKey: number }>> = {
+const scratchByCategory: Record<LightCategory, Array<{ src: LightSource; sortKey: number; losBlocked?: boolean }>> = {
   lamp: [],
   environment: [],
   pickup: [],
@@ -229,6 +233,7 @@ export function unregisterLight(id: string): void {
 
 /** Clear all NON-persistent sources. Called at the start of buildLevel. */
 export function clearLightPool(): void {
+  visById.clear();
   for (const [id, src] of sources) {
     if (!src.persistent) sources.delete(id);
   }
@@ -261,8 +266,26 @@ export type LOSChecker = (ax: number, az: number, bx: number, bz: number) => boo
 
 /** Per-frame: bind the N nearest sources within each category to that
  *  category's slots. losCheck (optional) culls through-wall sources. */
+// ── Soft visibility (the anti-pop layer) ──────────────────────────
+// Per-source eased visibility factor. Binary LOS culling made lights
+// POP: a torch around a door jamb flipped eligible/ineligible per
+// frame, and next-room lights appeared the exact frame the ray
+// cleared the jamb. Instead: LOS-blocked sources stay candidates at
+// ~30% intensity (light leaks through openings — the dim glow through
+// a doorway is the ANTICIPATION beat), de-prioritised in the slot
+// sort so they yield under budget pressure, and every bind change
+// EASES (~120ms in, ~200ms out of blockage) instead of stepping.
+const visById = new Map<string, number>();
+const LOS_DIM = 0.3;          // blocked sources glow at this fraction
+const LOS_SORT_PENALTY = 90;  // dist²-space penalty: blocked ≈ 9.5m farther
+const LOW_PRIORITY_PENALTY = 40;   // ambience fill yields to real sources
+let lastTickMs = 0;
+
 export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void {
   if (slotsByCategory.environment.length === 0) return;
+  const nowMs = performance.now();
+  const dt = lastTickMs > 0 ? Math.min(0.1, (nowMs - lastTickMs) / 1000) : 1 / 60;
+  lastTickMs = nowMs;
 
   const cx = camera.position.x;
   const cy = camera.position.y;
@@ -305,15 +328,16 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       tmpSphere.radius = src.distance;
       if (!tmpFrustum.intersectsSphere(tmpSphere)) continue;
     }
-    // LOS cull: if a wall separates this source from the camera, skip
-    // it. Lamp category bypasses LOS (it IS the camera; its own world
-    // pos sits at camera + offset, sometimes just inside a wall).
+    // LOS: a wall between source and camera DIMS the light instead of
+    // killing it (see the soft-visibility note above). Lamp bypasses
+    // LOS (it IS the camera; its world pos can sit just inside a wall).
+    let losBlocked = false;
     if (losCheck && src.category !== 'lamp') {
-      if (!losCheck(cx, cz, src.position.x, src.position.z)) continue;
+      losBlocked = !losCheck(cx, cz, src.position.x, src.position.z);
     }
-    let sortKey = dist2;
+    let sortKey = dist2 + (losBlocked ? LOS_SORT_PENALTY : 0) + (src.priority === 'low' ? LOW_PRIORITY_PENALTY : 0);
     if (boundLastFrameByCategory[src.category].has(src.id)) sortKey -= HYSTERESIS_SQ;
-    scratchByCategory[src.category].push({ src, sortKey });
+    scratchByCategory[src.category].push({ src, sortKey, losBlocked });
   }
 
   // Sort + bind each category's slots independently.
@@ -328,9 +352,16 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
     for (let i = 0; i < slots.length; i++) {
       const slot = slots[i];
       if (i < n) {
-        const { src } = scratch[i];
+        const { src, losBlocked } = scratch[i];
         slot.position.copy(src.position);
-        slot.intensity = src.getIntensity ? src.getIntensity() : src.intensity;
+        // Eased visibility: fresh binds fade IN from 0; LOS blockage
+        // fades to its dim level instead of stepping. Flicker
+        // (getIntensity) rides on top untouched.
+        const target = losBlocked ? LOS_DIM : 1;
+        const prev = visById.get(src.id) ?? 0;
+        const vis = prev + (target - prev) * (1 - Math.exp(-dt * (target > prev ? 9 : 5)));
+        visById.set(src.id, vis);
+        slot.intensity = (src.getIntensity ? src.getIntensity() : src.intensity) * vis;
         slot.distance = src.distance;
         slot.decay = src.decay;
         if (src.getColor) {
@@ -344,6 +375,13 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
         slot.intensity = 0;
         slot.position.set(0, PARK_Y, 0);
       }
+    }
+    // Sources that lost their slot restart from black on re-entry.
+    for (const [id, _] of visById) {
+      if (!sources.has(id)) visById.delete(id);
+    }
+    for (const sc of scratch) {
+      if (!bound.has(sc.src.id)) visById.delete(sc.src.id);
     }
   }
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { buildModel } from '../ecs/build-model';
 import { WALL_TORCH } from '../content/torch';
+import { applyMoodTint } from '../level/mood-tint';
 import { registerLight, unregisterLight } from './light-pool';
 import type { ModelSpec } from '../ecs/model-types';
 
@@ -78,16 +79,18 @@ export function createTorchlight(
   const lightSpec = fixtureModel.light;
   const effectiveColor = colorTint ?? lightSpec.color;
 
-  if (flameMaterial && colorTint !== undefined) {
-    flameMaterial.emissive.setHex(colorTint);
-  }
+  // Tint through the canonical fixture-retint (mood-tint.ts): it
+  // recolours the flame-family materials AND every additive sprite in
+  // the stack (swapping the warm-baked fire-wisp gradient for the
+  // neutral one). The old partial retint here only touched the
+  // 'flame' material + one wisp — sprite-stack fixtures (wall
+  // cressets, 25% of wall rolls) kept their default ORANGE flames, so
+  // pale/violet rooms showed tinted torches beside neutral cressets.
+  if (colorTint !== undefined) applyMoodTint(built, colorTint);
 
   const baseIntensity = lightSpec.intensity * intensityMul;
 
   const wispSprite = built.parts.get('wisp') as THREE.Sprite | undefined;
-  if (wispSprite && colorTint !== undefined) {
-    (wispSprite.material as THREE.SpriteMaterial).color.setHex(colorTint);
-  }
   const wispBaseColor = wispSprite ? (wispSprite.material as THREE.SpriteMaterial).color.clone() : undefined;
   const wispBaseScale = wispSprite ? wispSprite.scale.clone() : undefined;
   // Collect the flame's draw-only children — every Sprite (wisp + flame-tongue

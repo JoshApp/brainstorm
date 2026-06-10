@@ -1095,52 +1095,38 @@ export function buildLevel(
   // the kind to the right ModelSpec and hand it to createTorchlight,
   // which is now model-agnostic.
   const torches: Torch[] = [];
-  // ── THRESHOLD SCONCES (light doctrine: wayfinding) ────────────────
-  // Auto-place one small sconce beside every composer-cut opening, so
-  // exits read from across a dark room and corridors get lit mouths.
-  // Authors never know where the composer will cut, which is why hand-
-  // placed torches kept feeling arbitrary near doorways — wayfinding
-  // light is the BUILDER's job. Sconces are ordinary torch entries:
-  // they inherit static-merge batching, mood binding and flame flicker.
+  // ── CORRIDOR-MOUTH SCONCES (light doctrine: wayfinding) ──────────
+  // One quiet sconce per corridor end, mounted on the corridor's SIDE
+  // wall just inside the mouth — exits glow from within the passage,
+  // rooms keep their authored mood untouched. v1 mounted sconces on
+  // the ROOM side of every opening and taught three lessons at once:
+  // small rooms with close doorways BUNCHED lights (4+ in a closet),
+  // corner placements stuck fixtures halfway into walls, and ~20 extra
+  // lights oversubscribed the light pool so slots churned visibly
+  // (pop-in, and the safe-room brazier lost its slot entirely).
+  // Corridor-side placement kills all three: few corridors per floor,
+  // no corners, no room-side light creep.
   {
-    const claimed = new Set<string>();   // opening centres already sconced (both rooms see the same opening)
     const sconces: typeof spec.torches = [];
-    for (const room of spec.rooms) {
-      if (room.logicalOnly) continue;
-      const tier = room.lightTier ?? 'lit';
-      const rect = room.rect;
-      const hw = rect.w / 2, hd = rect.d / 2;
-      const wallsOf = [
-        { perpAxis: 'x' as const, perpCoord: rect.x - hw, wallStart: rect.z - hd, wallEnd: rect.z + hd, letter: 'W' as const },
-        { perpAxis: 'x' as const, perpCoord: rect.x + hw, wallStart: rect.z - hd, wallEnd: rect.z + hd, letter: 'E' as const },
-        { perpAxis: 'z' as const, perpCoord: rect.z - hd, wallStart: rect.x - hw, wallEnd: rect.x + hw, letter: 'N' as const },
-        { perpAxis: 'z' as const, perpCoord: rect.z + hd, wallStart: rect.x - hw, wallEnd: rect.x + hw, letter: 'S' as const },
-      ];
-      for (const w of wallsOf) {
-        for (const op of findOpenings(w, allRects, room)) {
-          const mid = (op.start + op.end) / 2;
-          const key = w.perpAxis === 'x'
-            ? `${w.perpCoord.toFixed(1)},${mid.toFixed(1)}`
-            : `${mid.toFixed(1)},${w.perpCoord.toFixed(1)}`;
-          if (claimed.has(key)) continue;
-          claimed.add(key);
-          // Mount beside the opening on whichever side has wall to spare.
-          const after = op.end + 0.5 <= w.wallEnd - 0.2;
-          const along = after ? op.end + 0.5 : op.start - 0.5;
-          if (along < w.wallStart + 0.2 || along > w.wallEnd - 0.2) continue;
-          const sx = w.perpAxis === 'x' ? w.perpCoord : along;
-          const sz = w.perpAxis === 'x' ? along : w.perpCoord;
-          // Skip if an authored torch already lights this stretch.
-          if (spec.torches.some((t) => Math.hypot(t.x - sx, t.z - sz) < 2.0)) continue;
-          sconces.push({
-            x: sx, z: sz, height: 1.9, wall: w.letter,
-            colorTint: averageTorchTintInRect(spec.torches, rect) ?? undefined,
-            // Quieter than a room torch — wayfinding, not mood. Darker
-            // tiers get dimmer sconces (a lit exit in a dark room still
-            // reads BECAUSE the room is dark).
-            intensityMul: tier === 'dark' ? 0.4 : tier === 'dim' ? 0.5 : 0.6,
-          });
-        }
+    for (const c of spec.corridors) {
+      if (c.logicalOnly) continue;
+      const horizontal = c.rect.w >= c.rect.d;
+      const len = horizontal ? c.rect.w : c.rect.d;
+      const breadth = horizontal ? c.rect.d : c.rect.w;
+      if (len < 2.2 || breadth < 1.2) continue;
+      // Both mouths on a long corridor; one (build-rng end) on a short one.
+      const ends = len >= 3.2 ? [-1, 1] : [buildRng() < 0.5 ? -1 : 1];
+      for (const e of ends) {
+        const along = (horizontal ? c.rect.x : c.rect.z) + e * (len / 2 - 0.55);
+        const sx = horizontal ? along : c.rect.x - c.rect.w / 2;
+        const sz = horizontal ? c.rect.z - c.rect.d / 2 : along;
+        const wall = horizontal ? 'N' as const : 'W' as const;
+        if (spec.torches.some((t) => Math.hypot(t.x - sx, t.z - sz) < 1.8)) continue;
+        sconces.push({
+          x: sx, z: sz, height: 1.85, wall,
+          // Wayfinding, not mood: quiet, warm-neutral.
+          intensityMul: 0.5,
+        });
       }
     }
     spec.torches.push(...sconces);
@@ -1231,6 +1217,9 @@ export function buildLevel(
         intensity: 7 * tierMul,
         distance: 6.5,
         decay: 1.6,
+        // Ambience wash yields its slot to torches/signal glows when
+        // the 6-slot environment budget is contended.
+        priority: 'low',
       });
     }
   }
