@@ -11,10 +11,24 @@ import type { ModelSpec } from '../ecs/model-types';
 export const SWORD_RUSTED: ModelSpec = {
   id: 'sword-rusted',
   materials: {
+    // SHINE = WORTH (docs/VISUAL-LANGUAGE.md): a mundane blade EATS
+    // light. The original material (roughness 0.4 / metalness 0.85 —
+    // the first model ever authored for the game) bounced torchlight
+    // like a polished mirror and out-shone actual signals. The flat
+    // is now pitted rust-grey that swallows the room; only the EDGE
+    // material below keeps a live gleam — the one part a survivor
+    // would keep honed.
     blade: {
-      color: 0x9a978f,
-      roughness: 0.4,
-      metalness: 0.85,
+      color: 0x5e564c,
+      roughness: 0.85,
+      metalness: 0.45,
+      fog: false,
+      flatShading: 'auto',
+    },
+    edge: {
+      color: 0x8a857c,
+      roughness: 0.45,
+      metalness: 0.8,
       fog: false,
       flatShading: 'auto',
     },
@@ -41,8 +55,11 @@ export const SWORD_RUSTED: ModelSpec = {
     },
   },
   parts: [
-    // Long flat blade
+    // Long flat blade — dull rusted flat with thin honed-edge strips
+    // on both cutting sides (the only part that catches light).
     { name: 'blade',  kind: 'box',      pos: [0,  0.35, 0], size: [0.04, 0.6, 0.01], mat: 'blade' },
+    { name: 'edge_l', kind: 'box',      pos: [-0.020, 0.35, 0], size: [0.004, 0.58, 0.008], mat: 'edge' },
+    { name: 'edge_r', kind: 'box',      pos: [ 0.020, 0.35, 0], size: [0.004, 0.58, 0.008], mat: 'edge' },
     // Short horizontal cross-guard
     { name: 'guard',  kind: 'box',      pos: [0,  0.04, 0], size: [0.18, 0.025, 0.04], mat: 'guard' },
     // Cylindrical grip

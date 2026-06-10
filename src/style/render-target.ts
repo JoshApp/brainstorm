@@ -203,7 +203,7 @@ const HORROR_BLIT_FRAG = `
     col *= scanline;
 
     // AMBER TINT — push the whole image warm, but no longer darken G/B
-    vec3 tint = vec3(1.05, 1.00, 0.92);
+    vec3 tint = vec3(1.025, 1.00, 0.96);
     col *= tint;
 
     // VIGNETTE — slight darkening at edges (complements the existing DOM

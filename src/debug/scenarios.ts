@@ -538,6 +538,36 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 0, yaw: Math.PI },
   },
 
+  // COLOR-LEGEND LAB — one wide room with the three most separable mood
+  // tints on different walls (blood W / gold E / violet N) and a PAINTED-
+  // mode skirmisher centre as a live colour-meter. Purpose: A/B the post
+  // chain (amber tint, dark-adapt, quantize) against the room colour
+  // legend — if the moods stop being distinguishable in THIS frame, the
+  // post chain is crushing the legend (docs/VISUAL-LANGUAGE.md).
+  'tint-lab': {
+    freeze: true,
+    level: {
+      id: 'tint-lab', depth: 3, displayName: 'TINT LAB', fogColor: 0x000000,
+      startPos: { x: 0, z: 0.5, yaw: Math.PI },
+      rooms: [
+        { id: 'lab', rect: { x: 0, z: -4, w: 12, d: 10 }, height: 3.4 },
+      ],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -5.5, z: -2.5, height: 2.0, wall: 'W', colorTint: 0xff5040, intensityMul: 1.2 },
+        { x: -5.5, z: -5.5, height: 2.0, wall: 'W', colorTint: 0xff5040, intensityMul: 1.2 },
+        { x:  5.5, z: -2.5, height: 2.0, wall: 'E', colorTint: 0xffd060, intensityMul: 1.2 },
+        { x:  5.5, z: -5.5, height: 2.0, wall: 'E', colorTint: 0xffd060, intensityMul: 1.2 },
+        { x: -1.5, z: -8.5, height: 2.0, wall: 'N', colorTint: 0xa080ff, intensityMul: 1.3 },
+        { x:  1.5, z: -8.5, height: 2.0, wall: 'N', colorTint: 0xa080ff, intensityMul: 1.3 },
+      ],
+      spawns: [{ enemyId: 'skirmisher', x: 0, z: -4.5, roomId: 'lab' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -8, y: 1.2 } },
+  },
+
   // Close-up of the scimitar relic on the altar. Demonstrates lathe (pommel)
   // + extrude (curved blade) geometry. lookAt the altar from west side.
   // (Altar is removed now — relic lives in chest — but kept as snapshot of
