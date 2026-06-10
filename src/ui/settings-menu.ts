@@ -394,15 +394,6 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().bandedLighting,
       set: (v) => updateSettings({ bandedLighting: v }),
     }),
-    makeToggle({
-      label: 'INK OUTLINES',
-      description:
-        'Draw dark contour lines on silhouettes so the geometry reads as a ' +
-        'deliberate drawing (ink + cel). A graphic, etched look. Off keeps ' +
-        'the soft, unlined image.',
-      get: () => getSettings().outlines,
-      set: (v) => updateSettings({ outlines: v }),
-    }),
     makeSlider({
       label: 'SURFACE AO',
       min: 0, max: 2, step: 0.05,

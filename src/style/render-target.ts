@@ -93,10 +93,6 @@ const HORROR_BLIT_FRAG = `
   uniform vec2 uResolution;
   uniform float uDarkAdapt;  // eye dark-adaptation, 0 = none .. 1 = full dark
   uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
-  uniform float uOutlineStrength; // ink-outline darkness (0 = off)
-  uniform float uOutlineThresh;   // metres of depth-gap to start an edge
-  uniform float uOutlineWidth;    // sample step, in low-res texels
-  uniform vec2  uOutlineTexel;    // 1.0 / low-res target size (texel step)
   varying vec2 vUv;
 
   // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
@@ -193,31 +189,6 @@ const HORROR_BLIT_FRAG = `
     col += uDarkAdapt * vec3(0.034, 0.036, 0.040) * darkness;
     col *= 1.0 + uDarkAdapt * 0.55 * darkness;
 
-    // INK OUTLINE — depth-discontinuity silhouettes drawn as dark contour
-    // lines, so the untextured primitive geometry reads as a deliberate
-    // DRAWING (cel-banding + outline = the etched-toon look). Sample linear
-    // eye-Z at the 4 cross neighbours; where a neighbour falls away much
-    // FARTHER than the centre, the centre sits on the near lip of a
-    // silhouette → ink it. Placed AFTER dark-adapt (so its shadow-lift
-    // can't erase the line) but BEFORE dither/quantize (so the line takes
-    // the same PSX crunch as everything else). Off when uOutlineStrength==0.
-    if (uOutlineStrength > 0.0) {
-      vec2 o = uOutlineTexel * uOutlineWidth;
-      float eC = linDepth(uv);
-      float eL = linDepth(uv + vec2(-o.x, 0.0));
-      float eR = linDepth(uv + vec2( o.x, 0.0));
-      float eU = linDepth(uv + vec2(0.0,  o.y));
-      float eD = linDepth(uv + vec2(0.0, -o.y));
-      // Largest "neighbour is farther than me" gap = silhouette front lip.
-      float gap = max(max(eL, eR), max(eU, eD)) - eC;
-      // Threshold grows with distance (perspective stretches per-texel
-      // depth gradients) so a grazing floor doesn't read as one big edge.
-      float thresh = uOutlineThresh * (1.0 + eC * 0.35);
-      float edge = smoothstep(thresh, thresh * 2.2, gap);
-      // Don't ink the far void itself — only edges on near geometry.
-      edge *= 1.0 - smoothstep(uDepthEndM, uFar, eC);
-      col *= 1.0 - edge * uOutlineStrength;
-    }
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;
@@ -341,12 +312,6 @@ const INSCATTER_START_M = 2.5;    // metres where the haze begins
 const INSCATTER_END_M = 11.0;     // metres where it's fully thick
 let inscatterEnabled = true;
 
-// Ink outline (depth-discontinuity silhouettes) — makes the untextured
-// primitive geometry read as a deliberate drawing. Tunable here.
-const OUTLINE_STRENGTH = 0.85;  // 0 = off, 1 = pure-black line
-const OUTLINE_THRESH = 0.12;    // metres of depth-gap before an edge starts
-const OUTLINE_WIDTH = 1.3;      // sample step in low-res texels (line thickness)
-let outlineEnabled = true;
 
 /** Toggle fog inscatter (A/B the glowing-air). */
 export function setInscatterEnabled(on: boolean): void {
@@ -358,12 +323,6 @@ export function setInscatterEnabled(on: boolean): void {
 export function setDepthCrushEnabled(on: boolean): void {
   depthCrushEnabled = on;
   if (blitMaterial) blitMaterial.uniforms.uDepthAmount.value = on ? DEPTH_AMOUNT : 0;
-}
-
-/** Toggle the ink outline (A/B the depth-silhouette contour lines). */
-export function setOutlineEnabled(on: boolean): void {
-  outlineEnabled = on;
-  if (blitMaterial) blitMaterial.uniforms.uOutlineStrength.value = on ? OUTLINE_STRENGTH : 0;
 }
 
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
@@ -378,7 +337,6 @@ export function setBloomEnabled(on: boolean): void {
 export function getBloomEnabled(): boolean { return bloomEnabled; }
 export function getInscatterEnabled(): boolean { return inscatterEnabled; }
 export function getDepthCrushEnabled(): boolean { return depthCrushEnabled; }
-export function getOutlineEnabled(): boolean { return outlineEnabled; }
 
 function bloomDims(): [number, number] {
   const w = Math.max(1, Math.floor((rendererRef!.domElement.width * ps1Scale) * BLOOM_SCALE));
@@ -439,10 +397,6 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
       uDarkAdapt: { value: 0 },
       uInspect: { value: 0 },
-      uOutlineStrength: { value: outlineEnabled ? OUTLINE_STRENGTH : 0 },
-      uOutlineThresh: { value: OUTLINE_THRESH },
-      uOutlineWidth: { value: OUTLINE_WIDTH },
-      uOutlineTexel: { value: new THREE.Vector2(1 / w, 1 / h) },
     },
     vertexShader: HORROR_BLIT_VERT,
     fragmentShader: HORROR_BLIT_FRAG,
@@ -471,7 +425,6 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
     lowResTarget.setSize(nw, nh);
     resizeBloom();
     blitMaterial.uniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
-    blitMaterial.uniforms.uOutlineTexel.value.set(1 / nw, 1 / nh);
   });
 }
 
@@ -486,7 +439,6 @@ export function setPS1Scale(scale: number): void {
   const nh = Math.max(1, Math.floor(rendererRef.domElement.height * ps1Scale));
   lowResTarget.setSize(nw, nh);
   resizeBloom();
-  if (blitMaterial) blitMaterial.uniforms.uOutlineTexel.value.set(1 / nw, 1 / nh);
 }
 
 export function getPS1Scale(): number { return ps1Scale; }

@@ -110,10 +110,6 @@ export interface Settings {
    *  into hard bands for a graphic PSX-chiaroscuro look. Subtle in the dark
    *  dungeon; a stylistic taste toggle. */
   bandedLighting: boolean;
-  /** Ink outline — depth-silhouette contour lines drawn in the blit, so the
-   *  untextured primitive geometry reads as a deliberate drawing (cel +
-   *  outline). Stylistic taste toggle. */
-  outlines: boolean;
   /** Surface AO strength — scales the baked corner/base darkening on walls +
    *  floors live (0 = off/flat, 1 = as baked, up to 2 = amplified). */
   aoStrength: number;
@@ -186,7 +182,6 @@ const DEFAULTS: Settings = {
   // low; toggle off in Settings if a turn ever reveals a room too late.
   portalCulling: true,
   bandedLighting: true,
-  outlines: false,
   aoStrength: 1.6,
   surfaceDetail: true,
   hudStyle: 'minimal',

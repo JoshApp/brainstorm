@@ -24,7 +24,7 @@ import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthr
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setOutlineEnabled, setBloomEnabled } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled } from './style/render-target';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
@@ -217,8 +217,6 @@ scene.add(ambient);
 installBandedLighting(getSettings().bandedLighting);
 const materials = buildMaterials(renderer);
 initRenderPipeline(renderer);
-// Apply the persisted ink-outline preference (the pipeline defaults it on).
-setOutlineEnabled(getSettings().outlines);
 setSurfaceAOStrength(getSettings().aoStrength);
 setSurfaceDetailEnabled(getSettings().surfaceDetail);
 
@@ -1048,7 +1046,6 @@ onSettingsChanged((s) => {
   applyProfilerEnabled();
   setShadowMode(s.shadows);
   applyVideoSettings(s);   // render scale + adaptive resolution + bloom
-  setOutlineEnabled(s.outlines);
   setSurfaceAOStrength(s.aoStrength);
   setSurfaceDetailEnabled(s.surfaceDetail);
   // Banded lighting toggle: swap the global lighting chunk, then force every

@@ -380,6 +380,10 @@ less empty, the right move is usually to give the room a reason to
 exist (encounter, hint, interactable) rather than light up an empty
 corner.
 
+The full visual grammar — reveal modes, brightness budget, color
+legend, geometry rules, the three-lights acceptance test — lives in
+**docs/VISUAL-LANGUAGE.md**. Check model/material work against it.
+
 ## Tone Bible (for any text written by the system or LLM later)
 
 - Terse. Archaic. Cruel. Indifferent.

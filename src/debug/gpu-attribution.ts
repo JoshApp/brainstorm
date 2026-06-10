@@ -3,8 +3,8 @@ import { addFrameListener, removeFrameListener, gpuActive, type FrameSample } fr
 import { shareOrDownload, flash } from './share-file';
 import { getCurrentDepth } from '../level/loader';
 import {
-  setBloomEnabled, setInscatterEnabled, setDepthCrushEnabled, setOutlineEnabled,
-  getBloomEnabled, getInscatterEnabled, getDepthCrushEnabled, getOutlineEnabled,
+  setBloomEnabled, setInscatterEnabled, setDepthCrushEnabled,
+  getBloomEnabled, getInscatterEnabled, getDepthCrushEnabled,
 } from '../style/render-target';
 import { setShadowMode, getShadowMode } from '../scene/light-pool';
 import { setMotesHidden } from '../effects/drifting-motes';
@@ -85,7 +85,6 @@ export async function runGpuAttribution(): Promise<void> {
   const prevBloom = getBloomEnabled();
   const prevInscatter = getInscatterEnabled();
   const prevDepth = getDepthCrushEnabled();
-  const prevOutline = getOutlineEnabled();
   // Order: cheap → expensive doesn't matter (each is isolated), but keep the
   // headline suspects first.
   const probes: Probe[] = [
@@ -100,9 +99,9 @@ export async function runGpuAttribution(): Promise<void> {
     { name: 'motes', off: () => setMotesHidden(true), restore: () => setMotesHidden(false) },
     {
       name: 'blit post-fx',
-      note: 'fog inscatter + depth crush + outline',
-      off: () => { setInscatterEnabled(false); setDepthCrushEnabled(false); setOutlineEnabled(false); },
-      restore: () => { setInscatterEnabled(prevInscatter); setDepthCrushEnabled(prevDepth); setOutlineEnabled(prevOutline); },
+      note: 'fog inscatter + depth crush',
+      off: () => { setInscatterEnabled(false); setDepthCrushEnabled(false); },
+      restore: () => { setInscatterEnabled(prevInscatter); setDepthCrushEnabled(prevDepth); },
     },
   ];
 
@@ -151,7 +150,7 @@ export async function runGpuAttribution(): Promise<void> {
   // Be paranoid: make sure everything is restored to its REAL prior state even
   // if a stage threw.
   setBloomEnabled(prevBloom); setShadowMode(prevShadow); setMotesHidden(false);
-  setInscatterEnabled(prevInscatter); setDepthCrushEnabled(prevDepth); setOutlineEnabled(prevOutline);
+  setInscatterEnabled(prevInscatter); setDepthCrushEnabled(prevDepth);
 
   const baseline = measured.get('baseline') ?? null;
   const recheck = measured.get('baseline·recheck') ?? null;
