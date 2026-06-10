@@ -166,8 +166,19 @@ function refresh(): void {
   // "wait" = frame interval minus CPU = GPU + vsync/compositor. When it's the
   // big number and GPU timing is n/a, you're GPU/fill-bound (arm the GPU probe).
   const wait = Math.max(0, last.dt - last.cpuMs);
+  // Per-pass GPU spans (F8 / PASS) — where the GPU milliseconds actually go.
+  let gpuLine = '';
+  if (last.gpuPhases) {
+    const parts: string[] = [];
+    for (const name of ['prepass', 'scene', 'bloom', 'blit']) {
+      const ms = last.gpuPhases.get(name);
+      if (ms !== undefined) parts.push(`${name.slice(0, 3)} ${ms.toFixed(1)}`);
+    }
+    if (parts.length) gpuLine = `gpu· ${parts.join(' · ')}\n`;
+  }
   statsEl.textContent =
     `${last.draws} draws · ${(last.tris / 1000).toFixed(0)}k tris · wait ${wait.toFixed(1)}ms\n` +
+    gpuLine +
     `prog ${last.programs} · geo ${last.geometries} · tex ${last.textures} · pool ${last.geometryPool}\n` +
     `lights ${last.lightsActive}/${last.lightsRegistered}\n` +
     `heap ${heapMB}MB${last.gc ? ' · GC' : ''}`;

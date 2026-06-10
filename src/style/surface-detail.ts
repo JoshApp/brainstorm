@@ -31,6 +31,7 @@ const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 export function setSurfaceDetailEnabled(on: boolean): void {
   uDetailStrength.value = on ? 1 : 0;
 }
+export function getSurfaceDetailEnabled(): boolean { return uDetailStrength.value > 0; }
 
 // Config kept out of material.userData on purpose: Material.clone() JSON-copies
 // userData and would choke on the Texture ref. A WeakMap lets the arched-ceiling

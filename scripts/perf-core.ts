@@ -97,6 +97,9 @@ export interface Harness {
   /** Navigate to a config, wait for the build, then read ANY DEV probe once
    *  (e.g. window.__drawData()). For one-shot structural dissection. */
   read<T>(cfg: SampleConfig, probe: string): Promise<T>;
+  /** Navigate to a config, then hand the raw Playwright page to the caller —
+   *  for tools that need CDP access (heap sampling, tracing). */
+  withPage<T>(cfg: SampleConfig, fn: (page: Page) => Promise<T>): Promise<T>;
 }
 
 function buildUrl(port: number, cfg: SampleConfig): string {
@@ -210,7 +213,12 @@ export async function withHarness(
       };
     };
 
-    await fn({ sample, read });
+    const withPage = async <T>(cfg: SampleConfig, pfn: (p: Page) => Promise<T>): Promise<T> => {
+      await goto(cfg);
+      return pfn(page);
+    };
+
+    await fn({ sample, read, withPage });
   } finally {
     if (browser) await browser.close().catch(() => { /* best effort */ });
     if (vite.pid) { try { process.kill(-vite.pid, 'SIGKILL'); } catch { /* group gone */ } }

@@ -27,11 +27,16 @@ export class GpuTimer {
   private gl: WebGL2RenderingContext | null = null;
   private ext: TimerExt | null = null;
   private active: WebGLQuery | null = null;
-  private inFlight: WebGLQuery[] = [];
+  private activeLabel = 'frame';
+  private inFlight: { q: WebGLQuery; label: string }[] = [];
   private free: WebGLQuery[] = [];
 
   /** Most recent completed GPU time in ms, or null if unavailable yet. */
   lastMs: number | null = null;
+  /** Most recent completed time per labeled span (per-pass mode). Spans are
+   *  sequential within a frame (TIME_ELAPSED queries cannot nest), so the sum
+   *  of all labels ≈ the whole frame's GPU time. */
+  readonly lastByLabel = new Map<string, number>();
   /** Whether timer queries are usable in this context at all. */
   supported = false;
 
@@ -47,20 +52,22 @@ export class GpuTimer {
     this.supported = true;
   }
 
-  /** Open a measurement spanning the GL commands issued until end(). */
-  begin(): void {
+  /** Open a measurement spanning the GL commands issued until end().
+   *  An optional label routes the result to lastByLabel ('frame' → lastMs). */
+  begin(label = 'frame'): void {
     if (!this.gl || !this.ext || this.active) return;
     const q = this.free.pop() ?? this.gl.createQuery();
     if (!q) return;
     this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT, q);
     this.active = q;
+    this.activeLabel = label;
   }
 
   /** Close the open measurement and queue it for later harvest. */
   end(): void {
     if (!this.gl || !this.ext || !this.active) return;
     this.gl.endQuery(this.ext.TIME_ELAPSED_EXT);
-    this.inFlight.push(this.active);
+    this.inFlight.push({ q: this.active, label: this.activeLabel });
     this.active = null;
   }
 
@@ -70,12 +77,12 @@ export class GpuTimer {
     // A disjoint event means the GPU timer was unreliable across these
     // queries (thermal throttle, context switch) — discard them all.
     if (this.gl.getParameter(this.ext.GPU_DISJOINT_EXT)) {
-      for (const q of this.inFlight) this.free.push(q);
+      for (const e of this.inFlight) this.free.push(e.q);
       this.inFlight.length = 0;
       return;
     }
     while (this.inFlight.length) {
-      const q = this.inFlight[0];
+      const { q, label } = this.inFlight[0];
       const available = this.gl.getQueryParameter(q, this.gl.QUERY_RESULT_AVAILABLE) as boolean;
       if (!available) break;
       const ns = this.gl.getQueryParameter(q, this.gl.QUERY_RESULT) as number;
@@ -84,7 +91,10 @@ export class GpuTimer {
       // divided) when the result is actually invalid even though
       // QUERY_RESULT_AVAILABLE reported true. A real GPU frame is never near a
       // second, so reject anything implausible rather than report nonsense.
-      if (Number.isFinite(ms) && ms >= 0 && ms < 1000) this.lastMs = ms;
+      if (Number.isFinite(ms) && ms >= 0 && ms < 1000) {
+        if (label === 'frame') this.lastMs = ms;
+        else this.lastByLabel.set(label, ms);
+      }
       this.inFlight.shift();
       this.free.push(q);
     }

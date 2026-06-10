@@ -79,3 +79,7 @@ export function tickAdaptiveResolution(nowMs: number): void {
 
 /** Current scene-render scale (for a perf readout). */
 export function getAdaptiveScale(): number { return scale; }
+
+/** Whether the scaler is currently enabled — so a measurement sweep can
+ *  suspend it (it would fight a resolution probe) and restore exactly. */
+export function isAdaptiveResolutionEnabled(): boolean { return enabled; }

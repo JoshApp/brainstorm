@@ -166,6 +166,35 @@ function applyShadowMode(): void {
   // pickup / projectile lights never cast — they're transient sparkle.
 }
 
+// ── Light-budget trim (A/B probe) ────────────────────────────────────
+// Every PointLight in the scene — bound or parked at intensity 0 — is
+// compiled into EVERY lit material's shader and evaluated per fragment.
+// The slot counts above ARE that per-fragment price. This probe removes
+// the headroom slots from the scene (19 → 10 lights) so the GPU
+// attribution sweep can measure what the generous budget actually costs.
+// Causes one shader recompile each way — fine inside a sweep's settle
+// window, never something to flip mid-gameplay.
+const TRIM_KEEP: Record<LightCategory, number> = {
+  lamp: 1,
+  environment: 5,
+  pickup: 2,
+  projectile: 2,
+};
+let budgetTrimmed = false;
+
+export function setLightBudgetTrim(on: boolean): void {
+  if (on === budgetTrimmed || !scene) return;
+  budgetTrimmed = on;
+  for (const cat of Object.keys(slotsByCategory) as LightCategory[]) {
+    const slots = slotsByCategory[cat];
+    for (let i = TRIM_KEEP[cat]; i < slots.length; i++) {
+      if (on) scene.remove(slots[i]);
+      else scene.add(slots[i]);
+    }
+  }
+}
+export function getLightBudgetTrim(): boolean { return budgetTrimmed; }
+
 export function registerLight(src: LightSource): void {
   sources.set(src.id, src);
 }

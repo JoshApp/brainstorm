@@ -29,3 +29,21 @@ export function renderGpuProbeOn(): boolean { return gpuProbe; }
 export function renderProbeActive(): boolean { return phaseSink !== null; }
 
 export function reportRenderPhase(name: string, ms: number): void { phaseSink?.(name, ms); }
+
+// ── Per-pass GPU spans ────────────────────────────────────────────────
+// frame-timing installs these when per-pass GPU timing is on; render-target
+// brackets each render pass (prepass / scene / bloom / blit) with them. The
+// implementation (timer-query spans vs readPixels sync probe) lives entirely
+// on the frame-timing side — this stays a dependency-free seam.
+
+export interface GpuPassHooks {
+  begin(label: string): void;
+  end(): void;
+}
+
+let gpuPassHooks: GpuPassHooks | null = null;
+
+export function installGpuPassHooks(h: GpuPassHooks | null): void { gpuPassHooks = h; }
+export function gpuPassActive(): boolean { return gpuPassHooks !== null; }
+export function gpuPassBegin(label: string): void { gpuPassHooks?.begin(label); }
+export function gpuPassEnd(): void { gpuPassHooks?.end(); }

@@ -78,11 +78,11 @@ import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSn
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
-import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn } from './debug/frame-timing';
+import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn } from './debug/frame-timing';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds } from './debug/perf-recorder';
 import { launchSpector } from './debug/spector-launch';
 import { initDrawReport, captureDrawReport, drawReportData } from './debug/draw-report';
-import { initGpuAttribution, runGpuAttribution } from './debug/gpu-attribution';
+import { initGpuAttribution, runGpuAttribution, getLastAttributionReport, isAttributionRunning } from './debug/gpu-attribution';
 import { setProfilerToolbarVisible } from './debug/profiler-toolbar';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
@@ -1105,7 +1105,7 @@ function ensureProfilingInited(): void {
   profilingInited = true;
   initFrameTiming(renderer);
   initDrawReport(scene, renderer, () => currentLevel);
-  initGpuAttribution(scene);
+  initGpuAttribution(scene, renderer);
   createProfilerHud();
 }
 function applyProfilerEnabled(): void {
@@ -1117,6 +1117,7 @@ function applyProfilerEnabled(): void {
     setProfilerVisible(false);
     setMarks(false);
     setGpuProbe(false);
+    setGpuPassTiming(false);
   }
 }
 applyProfilerEnabled();
@@ -1135,6 +1136,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.code === 'F5') { e.preventDefault(); setGpuProbe(!gpuProbeOn()); }
   else if (e.code === 'F6') { e.preventDefault(); void captureDrawReport(); }
   else if (e.code === 'F7') { e.preventDefault(); void runGpuAttribution(); }
+  else if (e.code === 'F8') { e.preventDefault(); setGpuPassTiming(!gpuPassTimingOn()); }
 }, true);
 const profWin = window as unknown as {
   __profiler: () => void;
@@ -1144,6 +1146,8 @@ const profWin = window as unknown as {
   __draws: () => void;
   __drawData: () => ReturnType<typeof drawReportData>;
   __gpuAttr: () => void;
+  __gpuAttrReport: () => { running: boolean; report: string | null };
+  __gpuPass: () => void;
   __spector: () => void;
 };
 profWin.__profiler = () => { ensureProfilingInited(); toggleProfiler(); };
@@ -1158,6 +1162,8 @@ profWin.__gpuProbe = () => { ensureProfilingInited(); setGpuProbe(!gpuProbeOn())
 profWin.__draws = () => { ensureProfilingInited(); void captureDrawReport(); };
 profWin.__drawData = () => { ensureProfilingInited(); return drawReportData(); };
 profWin.__gpuAttr = () => { ensureProfilingInited(); void runGpuAttribution(); };
+profWin.__gpuAttrReport = () => ({ running: isAttributionRunning(), report: getLastAttributionReport() });
+profWin.__gpuPass = () => { ensureProfilingInited(); setGpuPassTiming(!gpuPassTimingOn()); };
 profWin.__spector = () => void launchSpector();   // desktop only — heavy UI
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +

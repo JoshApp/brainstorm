@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { renderProbeActive, reportRenderPhase } from '../debug/render-probe';
+import { renderProbeActive, reportRenderPhase, gpuPassActive, gpuPassBegin, gpuPassEnd } from '../debug/render-probe';
 
 // PS1-era render pipeline, PSX-horror flavor.
 //
@@ -338,6 +338,13 @@ export function getBloomEnabled(): boolean { return bloomEnabled; }
 export function getInscatterEnabled(): boolean { return inscatterEnabled; }
 export function getDepthCrushEnabled(): boolean { return depthCrushEnabled; }
 
+// Viewmodel depth pre-pass toggle — A/B probe only. Off = the held items lose
+// correct world occlusion at the seams, which is fine for the seconds a GPU
+// attribution sweep needs to price the pass.
+let viewmodelPrepassEnabled = true;
+export function setViewmodelPrepassEnabled(on: boolean): void { viewmodelPrepassEnabled = on; }
+export function getViewmodelPrepassEnabled(): boolean { return viewmodelPrepassEnabled; }
+
 function bloomDims(): [number, number] {
   const w = Math.max(1, Math.floor((rendererRef!.domElement.width * ps1Scale) * BLOOM_SCALE));
   const h = Math.max(1, Math.floor((rendererRef!.domElement.height * ps1Scale) * BLOOM_SCALE));
@@ -481,6 +488,9 @@ export function renderWithStyle(
   // allocation) are skipped entirely for players. `pt` is the phase cursor.
   const prof = renderProbeActive();
   let pt = prof ? performance.now() : 0;
+  // Per-pass GPU spans (timer queries / sync probe) — same boundaries as the
+  // CPU sub-phases above, but measuring actual GPU execution. Free when off.
+  const gprof = gpuPassActive();
 
   if (lowResTarget && blitScene && blitCamera) {
     // Scene → low-res target, then the PSX blit (dither/quantize/CA/scanlines/
@@ -505,7 +515,8 @@ export function renderWithStyle(
     // restoreMeshColor sets the materials back to test:true / write:false
     // for the upcoming scene render.
     const prevAutoClearDepth = renderer.autoClearDepth;
-    if (viewmodelRoots.length) {
+    if (viewmodelRoots.length && viewmodelPrepassEnabled) {
+      if (gprof) gpuPassBegin('prepass');
       const prevAutoClear = renderer.autoClear;
       renderer.autoClear = false;
       for (const vm of viewmodelRoots) {
@@ -518,16 +529,20 @@ export function renderWithStyle(
       // Keep the depth values we just wrote; the scene render below
       // would otherwise auto-clear them and erase the pre-pass work.
       renderer.autoClearDepth = false;
+      if (gprof) gpuPassEnd();
     }
     if (prof) { const n = performance.now(); reportRenderPhase('render·prepass', n - pt); pt = n; }   // viewmodel depth pre-pass
 
+    if (gprof) gpuPassBegin('scene');
     renderer.render(scene, camera);
+    if (gprof) gpuPassEnd();
     renderer.autoClearDepth = prevAutoClearDepth;
     if (prof) { const n = performance.now(); reportRenderPhase('render·scene', n - pt); pt = n; }      // main scene draw — incl. auto shadow-map passes (the bulk of the draws)
 
     // BLOOM passes — extract bright pixels, then ping-pong separable blur.
     // Builds the glow texture the blit composites. Skipped when disabled.
     if (bloomEnabled && bloomA && bloomB && bloomMesh && bloomExtractMat && bloomBlurMat && blitMaterial) {
+      if (gprof) gpuPassBegin('bloom');
       const [bw, bh] = bloomDims();
       // 1) bright-extract: lowResTarget → bloomA
       bloomMesh.material = bloomExtractMat;
@@ -552,11 +567,14 @@ export function renderWithStyle(
       }
       // `src` now holds the final blurred bloom; point the blit at it.
       blitMaterial.uniforms.uBloom.value = src.texture;
+      if (gprof) gpuPassEnd();
     }
     if (prof) { const n = performance.now(); reportRenderPhase('render·bloom', n - pt); pt = n; }      // bright-extract + separable blur
 
+    if (gprof) gpuPassBegin('blit');
     renderer.setRenderTarget(null);
     renderer.render(blitScene, blitCamera);
+    if (gprof) gpuPassEnd();
     if (prof) { const n = performance.now(); reportRenderPhase('render·blit', n - pt); pt = n; }        // fullscreen PSX post pass to the canvas
   } else {
     // Before initRenderPipeline runs (shouldn't happen in practice).
