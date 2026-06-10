@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-10",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Cross into the King's hall and there's a breath of nothing — just a shadow on the floor — before it drops out of the dark on top of it.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "The Boiling King climbs the rest of the way out of the floor — for real this time.",
         "area": [
@@ -377,13 +385,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Crack a guard and the brute reels drunk, stars wheeling overhead, down a real beat now; finish it for double, though the kill won't mend you.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A blow to the skull still bites deeper, but the killing flourish is earned now, not handed to every hit.",
         "area": [
           "combat"
         ]
