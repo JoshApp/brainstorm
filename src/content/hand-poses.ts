@@ -47,11 +47,13 @@ export function withHandPose(base: ModelSpec, id: string, pose: HandPose): Model
 // the forearm continues straight up toward the elbow, no kink.
 //
 // Frame: camera-local (the lamp arm hangs under the camera).
-//   fingers (+Y)      → DOWN, leaning FORWARD — draped over the ring
-//   back of hand (+Z) → FORWARD, tilted UP — knuckles face the scene
+//   fingers (+Y)      → FORWARD-DOWN at ~50° — the hand REACHES over
+//                       the ring (a straight 90° drape read as a limp
+//                       puppet hand; the carry should look deliberate)
+//   back of hand (+Z) → UP, tilted FORWARD — knuckles face up-scene
 const RING_WRIST_ROT = orient({
-  yAxisTo: tilt(DIR.DOWN, DIR.FORWARD, 0.3),
-  upTo: tilt(DIR.FORWARD, DIR.UP, 0.5),
+  yAxisTo: tilt(DIR.FORWARD, DIR.DOWN, 0.85),
+  upTo: tilt(DIR.UP, DIR.FORWARD, 0.4),
 });
 
 // Hook curl — deeper at the PIP than the saber grip (the ring's tube
