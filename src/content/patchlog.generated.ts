@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The dark talks now — a dry skull-rattle or a wet groan carries from across the room, and whatever's lurking stirs as you close on it. You hear them before you see them.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Smash a vase and it cracks and clatters like broken pottery now, instead of yelping like something you killed.",
         "area": [
           "atmosphere"
@@ -380,13 +387,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "content",
         "text": "The Hollow Choir drifts now — a hooded wisp with no feet to touch the stone, its edges burning green out of the dark.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The ghoul is reborn gaunt and clawed, its eyes two coals in a hung, crooked head.",
         "area": [
           "content"
         ]
