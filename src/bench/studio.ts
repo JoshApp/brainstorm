@@ -54,14 +54,18 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
 
   // Studio rig: flat white ambient + hemisphere (lifts metals) + key/rim
   // directional pair. Same intensities as inspect-mode's rig.
-  scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-  const hemi = new THREE.HemisphereLight(0xeeeeff, 0x806040, 2.5);
+  // --light=<hex> tints the rig to simulate a coloured room (validating the
+  // "Painted" material mode — e.g. --light=ff1818 for a blood-lit chamber).
+  const lightParam = new URLSearchParams(location.search).get('light');
+  const tint = lightParam ? new THREE.Color(parseInt(lightParam, 16)) : null;
+  scene.add(new THREE.AmbientLight(tint ?? 0xffffff, 1.5));
+  const hemi = new THREE.HemisphereLight(tint ?? 0xeeeeff, 0x806040, 2.5);
   hemi.position.set(0, 5, 0);
   scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xffffff, 3.0);
+  const key = new THREE.DirectionalLight(tint ?? 0xffffff, 3.0);
   key.position.set(2, 4, 3);
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0xffd0a0, 1.5);
+  const rim = new THREE.DirectionalLight(tint ?? 0xffd0a0, 1.5);
   rim.position.set(-2, 2, -3);
   scene.add(rim);
 

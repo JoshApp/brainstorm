@@ -290,12 +290,14 @@ function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Ma
 function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDef): void {
   const hasRim = !!def.rim;
   const hasDissolve = !!def.dissolvable;
-  if (!hasRim && !hasDissolve) return;
+  const hasChroma = def.chroma != null && def.chroma !== 1;
+  if (!hasRim && !hasDissolve && !hasChroma) return;
 
   const uRimColor   = { value: new THREE.Color(def.rim?.color ?? 0xffffff) };
   const uRimPower   = { value: def.rim?.power ?? 2.5 };
   const uRimIntens  = { value: def.rim?.intensity ?? 1.0 };
   const uRimDark    = { value: def.rim?.darkReactive ?? 0 };
+  const uChroma     = { value: def.chroma ?? 1 };
   const uDissolve   = { value: 0 };
 
   // Expose for external mutation. Death sequence reads userData.uDissolve.
@@ -303,7 +305,7 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
 
   // Stable cache key so two wraiths (different instances, same def shape)
   // hit the same compiled program. Different shapes get different keys.
-  const cacheKey = `enemy-ext|${hasRim ? '1' : '0'}|${hasDissolve ? '1' : '0'}`;
+  const cacheKey = `enemy-ext|${hasRim ? '1' : '0'}|${hasDissolve ? '1' : '0'}|${hasChroma ? '1' : '0'}`;
   mat.customProgramCacheKey = () => cacheKey;
 
   mat.onBeforeCompile = (shader) => {
@@ -312,6 +314,9 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       shader.uniforms.uRimPower  = uRimPower;
       shader.uniforms.uRimIntens = uRimIntens;
       shader.uniforms.uRimDark   = uRimDark;
+    }
+    if (hasChroma) {
+      shader.uniforms.uChroma    = uChroma;
     }
     if (hasDissolve) {
       shader.uniforms.uDissolve  = uDissolve;
@@ -340,9 +345,23 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
     if (hasRim) {
       frag += 'uniform vec3 uRimColor;\nuniform float uRimPower;\nuniform float uRimIntens;\nuniform float uRimDark;\n';
     }
+    if (hasChroma) {
+      frag += 'uniform float uChroma;\n';
+    }
     shader.fragmentShader = frag + shader.fragmentShader;
 
     const injection = `
+      ${hasChroma ? `
+      // PAINTED mode — push the fully-lit colour away from its own luma to
+      // over-saturate whatever coloured light the room cast onto this pale
+      // matte surface (a faint red room → vividly red bone). Runs first so the
+      // rim (if any) adds on top of the saturated base. max() guards the
+      // extrapolation from going negative.
+      {
+        float pl = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+        gl_FragColor.rgb = max(mix(vec3(pl), gl_FragColor.rgb, uChroma), 0.0);
+      }
+      ` : ''}
       ${hasDissolve ? `
       if (uDissolve > 0.0) {
         // Hash noise on local XZ (stable in world); biased by local Y

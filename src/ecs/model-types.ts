@@ -29,6 +29,17 @@ export interface MaterialDef {
   /** If false, the material ignores scene fog (use for first-person held items). */
   fog?: boolean;
   /**
+   * "Painted" mode — a post-lighting SATURATION multiplier (>1 over-saturates).
+   * A pale, matte, emissive-0 material already reflects back whatever coloured
+   * light hits it (bone goes red in a blood-lit room); this AMPLIFIES that hue
+   * so the room's mood drenches the form (Mörk Borg / Darkest Dungeon punch)
+   * instead of reading faint. 1 / undefined = off (physically correct). ~1.5–1.8
+   * = vivid. Pairs with a near-neutral pale `color` + high `roughness` +
+   * `emissive: 0` — the material makes NO light of its own; the ROOM lights it.
+   * The white hand-lamp then washes the tint, so "lamp = truth, dark = dread".
+   */
+  chroma?: number;
+  /**
    * Opt this material into a baked, mipmapped surface detail by NAME (see
    * style/surface-textures.ts) — e.g. 'dressed' (ashlar framing for archways /
    * doorframes), 'grain' (faint column grain). World-projected, so no UVs
