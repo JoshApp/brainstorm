@@ -568,6 +568,29 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -8, y: 1.2 } },
   },
 
+  // BOSS-WARD LAB — a sealed boss descent up close, for iterating on
+  // the ward rig (chains + padlock + membrane, stairs.ts). The boss is
+  // ALIVE (encounter never completes here), so the seal stays up.
+  'boss-ward': {
+    freeze: true,
+    level: {
+      id: 'boss-ward', depth: 3, displayName: 'WARD LAB', fogColor: 0x000000,
+      startPos: { x: 0, z: 2.5, yaw: Math.PI },
+      rooms: [
+        { id: 'r', rect: { x: 0, z: 0, w: 8, d: 8 }, height: 3.4 },
+      ],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.5, z: -1, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.2 },
+        { x:  3.5, z: -1, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.2 },
+      ],
+      spawns: [], doors: [],
+      stairs: [{ x: 0, z: -2.5, targetLevel: 'none', unlock: { kind: 'boss-defeated', color: 0x66e08a } }],
+    },
+    playerPos: { x: 0, z: 0.6, lookAt: { x: 0, z: -2.5, y: 0.35 } },
+  },
+
   // DEAL LAB — every transaction verb in one room, for iterating on
   // the grammar (content/transactions.ts): tithe basin (UNKNOWN·pale),
   // merchant (PRICED·gold), fountains. Blood altar + challenge altar
@@ -585,6 +608,7 @@ export const SCENARIOS: Record<string, Scenario> = {
         { kind: 'tithe-basin', x: -4, z: -4 },
         { kind: 'merchant', x: 4, z: -4, rotY: 0.4 },
         { kind: 'fountain', x: 0, z: -5.5, variant: 'tainted' },
+        { kind: 'reliquary', x: 0, z: -2.5 },
       ],
       torches: [
         { x: -6.5, z: -4, height: 2.0, wall: 'W', colorTint: 0xa8c0d8, intensityMul: 1.1 },
@@ -592,7 +616,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       ],
       spawns: [], doors: [], stairs: [],
     },
-    playerPos: { x: -1.5, z: -1, lookAt: { x: -4, z: -4, y: 0.8 } },
+    playerPos: { x: 0, z: 1.2, lookAt: { x: 0, z: -2.5, y: 0.9 } },
   },
 
   // Close-up of the scimitar relic on the altar. Demonstrates lathe (pommel)

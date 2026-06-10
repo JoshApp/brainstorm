@@ -40,6 +40,7 @@ import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { spawnMerchant } from '../interactables/merchant';
 import { spawnTitheBasin } from '../interactables/tithe-basin';
+import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
@@ -870,6 +871,11 @@ export function buildLevel(
       // Cylindrical collision — approximate the pedestal/bowl footprint.
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 0.85,
+      });
+    } else if (prop.kind === 'reliquary') {
+      spawnReliquary(root, new THREE.Vector3(prop.x, 0, prop.z), spec.depth ?? 1, materials);
+      obstacles.push({
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 1.3,
       });
     } else if (prop.kind === 'tithe-basin') {
       spawnTitheBasin(root, new THREE.Vector3(prop.x, 0, prop.z), spec.depth ?? 1, materials);

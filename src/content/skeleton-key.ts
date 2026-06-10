@@ -68,6 +68,8 @@ export const SKELETON_KEY: ModelSpec = {
     // A SMALL STYLIZED skull — not anatomical. The icon read: a rounded
     // cranium, two BIG round eye sockets that glow, a triangle nose, and a
     // simple grin. Bold simple shapes at key scale beat fussy realism.
+    // FACE → −Z (scene-forward, CLAUDE.md): it was authored +Z and every
+    // canonical front view showed the BACK of the skull — a gold ball.
     //
     // Just ONE CSG: the cranium with its two big eye sockets subtracted
     // (two nested subtracts — well within the safe depth). The nose +
@@ -81,25 +83,30 @@ export const SKELETON_KEY: ModelSpec = {
         // Rounded cranium — a touch wider than tall, flattened front-to-back.
         a: { kind: 'sphere', radius: 0.040, scale: [1.08, 1.02, 0.92], segments: [24, 18], mat: 'goldPale' },
         // Big left eye socket.
-        b: { kind: 'sphere', pos: [-0.019, 0.004, 0.030], radius: 0.0165, segments: [18, 14], mat: 'goldPale' },
+        b: { kind: 'sphere', pos: [-0.019, 0.004, -0.030], radius: 0.0165, segments: [18, 14], mat: 'goldPale' },
       },
       // Big right eye socket.
-      b: { kind: 'sphere', pos: [0.019, 0.004, 0.030], radius: 0.0165, segments: [18, 14], mat: 'goldPale' },
+      b: { kind: 'sphere', pos: [0.019, 0.004, -0.030], radius: 0.0165, segments: [18, 14], mat: 'goldPale' },
     },
     // Embers — fat glowing eyes filling the big sockets.
-    { name: 'ember_l', kind: 'sphere', pos: [-0.019, 0.104, 0.034], radius: 0.0115, segments: [14, 12], mat: 'ember' },
-    { name: 'ember_r', kind: 'sphere', pos: [ 0.019, 0.104, 0.034], radius: 0.0115, segments: [14, 12], mat: 'ember' },
+    { name: 'ember_l', kind: 'sphere', pos: [-0.019, 0.104, -0.034], radius: 0.0115, segments: [14, 12], mat: 'ember' },
+    { name: 'ember_r', kind: 'sphere', pos: [ 0.019, 0.104, -0.034], radius: 0.0115, segments: [14, 12], mat: 'ember' },
     // Nose — a tiny dark inverted triangle between + below the eyes.
-    { name: 'nose', kind: 'cone', pos: [0, 0.089, 0.036], rot: [Math.PI, 0, 0], radius: 0.006, height: 0.012, segments: 3, mat: 'socket' },
+    { name: 'nose', kind: 'cone', pos: [0, 0.089, -0.036], rot: [Math.PI, 0, 0], radius: 0.006, height: 0.012, segments: 3, mat: 'socket' },
     // Jaw — a smaller rounded block under the cranium (the chin mass).
-    { name: 'jaw', kind: 'box', pos: [0, 0.068, 0.008], size: [0.044, 0.024, 0.040], bevel: 0.010, mat: 'goldPale' },
+    { name: 'jaw', kind: 'box', pos: [0, 0.068, -0.008], size: [0.044, 0.024, 0.040], bevel: 0.010, mat: 'goldPale' },
     // Mouth — a dark recess slot across the jaw front; the grin's shadow.
-    { name: 'mouth', kind: 'box', pos: [0, 0.072, 0.030], size: [0.030, 0.011, 0.008], mat: 'socket' },
+    { name: 'mouth', kind: 'box', pos: [0, 0.072, -0.030], size: [0.030, 0.011, 0.008], mat: 'socket' },
     // Grin teeth — three little bright-gold blocks sitting in the dark mouth,
     // the gaps between them reading as the iconic skull grin.
-    { name: 'tooth_l', kind: 'box', pos: [-0.010, 0.072, 0.033], size: [0.006, 0.012, 0.006], mat: 'gold' },
-    { name: 'tooth_c', kind: 'box', pos: [ 0.000, 0.072, 0.033], size: [0.006, 0.012, 0.006], mat: 'gold' },
-    { name: 'tooth_r', kind: 'box', pos: [ 0.010, 0.072, 0.033], size: [0.006, 0.012, 0.006], mat: 'gold' },
+    { name: 'tooth_l', kind: 'box', pos: [-0.010, 0.072, -0.033], size: [0.006, 0.012, 0.006], mat: 'gold' },
+    { name: 'tooth_c', kind: 'box', pos: [ 0.000, 0.072, -0.033], size: [0.006, 0.012, 0.006], mat: 'gold' },
+    { name: 'tooth_r', kind: 'box', pos: [ 0.010, 0.072, -0.033], size: [0.006, 0.012, 0.006], mat: 'gold' },
+
+    // --- NECK ------------------------------------------------------------
+    // Short column joining the skull mass to the collar — without it the
+    // bow FLOATED 18mm above the rest of the key (island linter finding).
+    { name: 'neck', kind: 'cylinder', pos: [0, 0.045, 0], radius: 0.012, radiusTop: 0.015, height: 0.046, segments: 12, mat: 'goldDark' },
 
     // --- COLLAR ----------------------------------------------------------
     // Ring between the skull and the shaft — a shadow line + a place for
@@ -126,6 +133,6 @@ export const SKELETON_KEY: ModelSpec = {
     bit_tip: { pos: [0.038, -0.197, 0] },
     // eye_glow — the lit focal point, for attaching a light or glow effect
     // if the key is ever placed as a world interactable.
-    eye_glow: { pos: [0, 0.104, 0.034] },
+    eye_glow: { pos: [0, 0.104, -0.034] },
   },
 };

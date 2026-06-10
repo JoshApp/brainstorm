@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { StairsSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
 import { generateEntityId } from '../ecs/world';
+import { chainRun } from '../content/chain-links';
 import { buildRng } from '../engine/rng';
 import { registerInteractable, getInRangeInteractable } from './system';
 import { INTERACT_PRIORITY } from './types';
@@ -484,30 +485,58 @@ export function spawnStairs(
     slab.position.set(0, 0.09, totalDepth / 2);
     wardGroup.add(slab);
     wardFadeMats.push(wardSlabMat);
-    // 2) Crossed iron chains over the mouth — dark, physical, lit by the room.
+    // 2) Crossed iron chains over the mouth — REAL links (chain-links.ts)
+    // sagging under their own implied weight, bolted to the stone at the
+    // corners with anchor plates. The old version was two straight boxes,
+    // which read as girders, not chains.
     const ironMat = new THREE.MeshStandardMaterial({
       color: 0x14130f, roughness: 0.6, metalness: 0.7, flatShading: true,
       transparent: true, opacity: 1,
     });
     wardFadeMats.push(ironMat);
-    const diag = Math.hypot(STEP_WIDTH, totalDepth);
-    const ang = Math.atan2(totalDepth, STEP_WIDTH);
-    for (const s of [-1, 1]) {
-      const chain = new THREE.Mesh(pooledBox(diag * 0.98, 0.07, 0.07), ironMat);
-      chain.position.set(0, 0.14, totalDepth / 2);
-      chain.rotation.y = s * ang;
-      wardGroup.add(chain);
+    const hw = STEP_WIDTH / 2;
+    const corners: Array<[THREE.Vector3, THREE.Vector3]> = [
+      [new THREE.Vector3(-hw, 0.16, 0.05), new THREE.Vector3(hw, 0.16, totalDepth - 0.05)],
+      [new THREE.Vector3(hw, 0.16, 0.05), new THREE.Vector3(-hw, 0.16, totalDepth - 0.05)],
+    ];
+    for (const [a, b] of corners) {
+      wardGroup.add(chainRun(a, b, ironMat, { sag: 0.10 }));
+      // Anchor plates where the chain meets the stone lip.
+      for (const end of [a, b]) {
+        const plate = new THREE.Mesh(pooledBox(0.14, 0.05, 0.14), ironMat);
+        plate.position.set(end.x, end.y - 0.02, end.z);
+        wardGroup.add(plate);
+      }
     }
-    // 3) Padlock at the crossing — body + U-shackle, a faint seal-coloured keyhole.
-    const lockBody = new THREE.Mesh(pooledBox(0.17, 0.21, 0.08), ironMat);
-    lockBody.position.set(0, 0.2, totalDepth / 2);
-    wardGroup.add(lockBody);
-    const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.024, 6, 12, Math.PI), ironMat);
-    shackle.position.set(0, 0.31, totalDepth / 2);
-    wardGroup.add(shackle);
-    const keyhole = new THREE.Mesh(pooledBox(0.03, 0.06, 0.02), wardSlabMat);
-    keyhole.position.set(0, 0.19, totalDepth / 2 - 0.045);
-    wardGroup.add(keyhole);
+    // 3) Padlock HANGING below the crossing — slightly tilted, the way a
+    // heavy lock actually sits on slack chain. Body + U-shackle + a
+    // seal-coloured keyhole that glows on the face.
+    const lock = new THREE.Group();
+    const lockBody = new THREE.Mesh(pooledBox(0.16, 0.20, 0.07), ironMat);
+    lock.add(lockBody);
+    const shoulder = new THREE.Mesh(pooledBox(0.12, 0.04, 0.06), ironMat);
+    shoulder.position.y = 0.12;
+    lock.add(shoulder);
+    const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.062, 0.020, 6, 12, Math.PI), ironMat);
+    shackle.position.y = 0.14;
+    lock.add(shackle);
+    // Keyhole: a small glowing disc + slot, sunk into the face.
+    const holeDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.012, 10), wardSlabMat);
+    holeDisc.rotation.x = Math.PI / 2;
+    holeDisc.position.set(0, -0.015, -0.038);
+    lock.add(holeDisc);
+    const holeSlot = new THREE.Mesh(pooledBox(0.012, 0.045, 0.012), wardSlabMat);
+    holeSlot.position.set(0, -0.045, -0.038);
+    lock.add(holeSlot);
+    // The ward is HORIZONTAL (it caps the stair mouth), so the lock
+    // LIES on the chain crossing FACE-UP — hanging plumb would show
+    // the player only its thin top edge. Scaled up: this is the focal
+    // symbol of 'sealed', it must read from the room's approach.
+    lock.scale.setScalar(1.5);
+    lock.position.set(0, 0.10, totalDepth / 2);
+    lock.rotation.x = -Math.PI / 2 + 0.12;   // face up, slight tilt off the plane
+    lock.rotation.z = 0.18;                   // askew on the chains, not squared
+    wardGroup.add(lock);
 
     wardGroup.visible = sealActive;
     group.add(wardGroup);

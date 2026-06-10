@@ -175,6 +175,7 @@ export function tryAutoEquip(item: ItemSpec, affixes: AffixInstance[] = []): boo
       return false;
     }
     case 'consumable':
+    case 'key':
       return false;
   }
 }
@@ -199,6 +200,7 @@ export function slotKindFor(kind: ItemKind): EquipSlot[] {
     case 'offhand':    return ['offhand'];
     case 'ring':       return ['ring1', 'ring2'];
     case 'consumable': return [];
+    case 'key':        return [];
   }
 }
 

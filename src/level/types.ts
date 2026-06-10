@@ -254,6 +254,9 @@ export type PropSpec =
   // 'tithe-basin' = the UNKNOWN-family altar: place blood/gold/your
   // weapon in the hollow, the dungeon decides what you were worth.
   | { kind: 'tithe-basin'; x: number; z: number }
+  // 'reliquary' = locked show-and-tell (PRICED family): the prize
+  // floats visible in an iron cage; a skeleton key opens it.
+  | { kind: 'reliquary'; x: number; z: number }
   // 'tome-pillar' = a stone pedestal with an open ledger on top, pages
   // lit from within. Interacting opens the CHARACTER screen — the moment
   // to review your delver's shape before stepping deeper.

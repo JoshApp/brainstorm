@@ -3,6 +3,7 @@ import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 import type { AttributeKind } from '../state/character';
 import { SWORD_RUSTED } from './sword';
+import { SKELETON_KEY } from './skeleton-key';
 import { WEAPON_SCIMITAR, HEARTBURN, BONE_NEEDLE, IRON_MAUL, SPEAR, CROSSBOW, WAND } from './weapons';
 import { REAPERS_TOLL, PENITENTS_CHAIN, CORD_OF_KNIVES, BENT_SICKLE, PILGRIMS_PIKE } from './new-weapons';
 import {
@@ -29,7 +30,11 @@ import { PASSIVES } from './passives';
 // (rings/armor).
 
 export type ItemKind = 'weapon' | 'armor' | 'ring' | 'consumable'
-                     | 'helmet' | 'amulet' | 'gloves' | 'boots' | 'offhand';
+                     | 'helmet' | 'amulet' | 'gloves' | 'boots' | 'offhand'
+                     // 'key' — carried, not worn or drunk: spent by locked
+                     // things (reliquaries). Counted in inventory like a
+                     // consumable but never appears on the consumable bar.
+                     | 'key';
 
 /**
  * Rarity tiers — atmospheric grimdark naming over the standard ARPG palette.
@@ -1336,6 +1341,21 @@ export const ITEMS: Record<string, ItemSpec> = {
     ],
   },
   // ── CONSUMABLES ────────────────────────────────────────────────────
+  // ── KEYS ──────────────────────────────────────────────────────────
+  // Spent by locked things. Scarce on purpose: a key in the bag is a
+  // ROUTING decision waiting to happen (spend it on this reliquary,
+  // or hold it for a better one deeper down?).
+  'skeleton-key': {
+    id: 'skeleton-key',
+    kind: 'key',
+    rarity: 'rare',
+    name: 'A skeleton key',
+    flavor: 'The eyes know which doors you tried.',
+    dropModel: SKELETON_KEY,
+    carryLimit: 3,
+    drop: { weight: 1, minDepth: 2 },
+  },
+
   // ── PHIALS — the unlabeled draughts ──────────────────────────────
   // Isaac's pills in DELVE's voice: each color maps to ONE permanent
   // run mutation (state/phial-identities.ts), rolled per run, unknown

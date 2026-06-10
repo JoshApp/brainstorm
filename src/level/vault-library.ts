@@ -475,6 +475,28 @@ const ENCOUNTER_TITHE: Vault = {
   torchTint: TORCH_PALE,
 };
 
+const TREASURE_RELIQUARY: Vault = {
+  id: 'treasure-reliquary',
+  tags: ['treasure'],
+  // The locked cage under gold light — PRICED family. The prize is
+  // visible from the doorway; whether you have (or will spend) a
+  // skeleton key is the whole encounter.
+  map: [
+    '########',
+    '#......#',
+    '#......#',
+    '#......#',
+    '#*....*#',
+    '########',
+  ],
+  minDepth: 2,
+  weight: 1,
+  props: [
+    { kind: 'reliquary', x: 0, z: -0.5 },
+  ],
+  torchTint: TORCH_GOLD,
+};
+
 const ENCOUNTER_CORPSES: Vault = {
   id: 'encounter-corpses',
   tags: ['encounter'],
@@ -1134,7 +1156,8 @@ export const VAULTS: Vault[] = [
   ENCOUNTER_NEST,
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN,
-  ENCOUNTER_TITHE, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
+  ENCOUNTER_TITHE,
+  TREASURE_RELIQUARY, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
   ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
   ENCOUNTER_ARENA, CHALLENGE_ARENA, ENCOUNTER_OSSUARY,
   BOSS_ANTECHAMBER, BOSS_CATHEDRAL, BOSS_HALL,
