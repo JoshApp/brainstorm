@@ -19,6 +19,11 @@ export interface SurfaceTexConfig {
   proj: 'wall' | 'horiz';              // wall = vertical plane, horiz = floor/ceiling
   tint: readonly [number, number, number];
   relief: number;                      // normal-perturbation strength
+  /** WORLD-SPACE brick damage (rough masonry walls only): sparse
+   *  missing bricks + uneven coursework, hashed on the WORLD brick id
+   *  so it never repeats with the baked tile's 4-brick period. Keep
+   *  OFF for dressed stone (clean frames) and non-brick surfaces. */
+  brickDamage?: boolean;
 }
 
 const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
@@ -54,7 +59,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
   // wall vs floor/ceiling programs distinct while still sharing within a proj.
   const prevKey = material.customProgramCacheKey;
   material.customProgramCacheKey = function () {
-    return (prevKey ? prevKey.call(this) + '|' : '') + 'sd-' + cfg.proj;
+    return (prevKey ? prevKey.call(this) + '|' : '') + 'sd-' + cfg.proj + (cfg.brickDamage ? '-dmg' : '');
   };
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = function (shader, renderer) {
@@ -91,6 +96,40 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     ${projGLSL}
     vec2 uvT = sUv / uSurfTile;
     vec4 s = texture2D(uSurfTex, uvT);
+    ${cfg.brickDamage ? `
+    // WORLD-SPACE BRICK DAMAGE — the baked tile repeats every 4 bricks,
+    // so authoring a missing brick THERE would echo it in a visible
+    // grid. Hashing the world brick id instead makes each damaged brick
+    // unique. Grid constants mirror surface-textures.ts brick()
+    // exactly (tile = whole bricks, so world and baked grids align).
+    {
+      vec2 bsz = vec2(1.15, 0.6);
+      vec2 bg = sUv / bsz;
+      float brow = floor(bg.y);
+      bg.x += 0.5 * mod(brow, 2.0);
+      vec2 bid = vec2(floor(bg.x), brow);
+      vec3 hp = fract(vec3(bid, bid.x + bid.y) * 0.3183099 + 0.1);
+      hp *= 17.0;
+      float dmg = fract(hp.x * hp.y * hp.z * (hp.x + hp.y + hp.z));
+      vec2 binb = fract(bg);
+      float bedge = min(min(binb.x, 1.0 - binb.x) * bsz.x, min(binb.y, 1.0 - binb.y) * bsz.y);
+      float aaw = fwidth(bedge) + 0.012;
+      if (dmg > 0.965) {
+        // MISSING BRICK — a dark cavity inset from the mortar line; the
+        // height drop lets the relief shade its rim like a real socket.
+        float cav = smoothstep(0.03, 0.03 + aaw, bedge);
+        s.rgb *= mix(1.0, 0.30, cav);
+        s.a = mix(s.a, 0.2, cav);
+      } else if (dmg > 0.875) {
+        // UNEVEN COURSEWORK — the whole brick sits a touch proud or
+        // sunken with an off tone, like centuries of settling.
+        float dir = step(0.92, dmg) * 2.0 - 1.0;
+        float body = smoothstep(0.015, 0.015 + aaw, bedge);
+        s.rgb *= mix(1.0, 1.0 + 0.10 * dir, body);
+        s.a += 0.07 * dir * body;
+      }
+    }
+    ` : ''}
     // RELIEF — perturb the normal from the mip-filtered height (s.a). Because the
     // sample is band-limited to the pixel footprint, this derivative is stable
     // (no buzz) and naturally flattens at distance as the mips average out.
@@ -101,6 +140,25 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     float fDet = dot(sx, R1) * faceDirection;
     float sc = uSurfRelief * uDetailStrength;
     normal = normalize(abs(fDet) * normal - sc * sign(fDet) * (dFdx(s.a) * R1 + dFdy(s.a) * R2));
+    // LARGE-SCALE WEAR MOTTLE — two octaves of world-space value noise
+    // (~3m + ~1m) modulating the shade ±6%. The baked patterns tile
+    // every ~5m and the eye finds the repeat on long floors; the
+    // mottle is non-repeating and reads as damp, wear, centuries.
+    {
+      vec2 mp = sUv * 0.33;
+      vec2 mi = floor(mp), mf = fract(mp);
+      mf = mf * mf * (3.0 - 2.0 * mf);
+      vec3 h0 = fract(vec3(mi, mi.x + mi.y) * 0.3183099 + 0.1); h0 *= 17.0;
+      vec3 h1 = fract(vec3(mi + vec2(1.0, 0.0), mi.x + mi.y + 1.0) * 0.3183099 + 0.1); h1 *= 17.0;
+      vec3 h2 = fract(vec3(mi + vec2(0.0, 1.0), mi.x + mi.y + 1.0) * 0.3183099 + 0.1); h2 *= 17.0;
+      vec3 h3 = fract(vec3(mi + vec2(1.0, 1.0), mi.x + mi.y + 2.0) * 0.3183099 + 0.1); h3 *= 17.0;
+      float n00 = fract(h0.x * h0.y * h0.z * (h0.x + h0.y + h0.z));
+      float n10 = fract(h1.x * h1.y * h1.z * (h1.x + h1.y + h1.z));
+      float n01 = fract(h2.x * h2.y * h2.z * (h2.x + h2.y + h2.z));
+      float n11 = fract(h3.x * h3.y * h3.z * (h3.x + h3.y + h3.z));
+      float mot = mix(mix(n00, n10, mf.x), mix(n01, n11, mf.x), mf.y);
+      s.rgb *= 0.94 + 0.12 * mot;
+    }
     // ALBEDO — grayscale shade * per-surface tint (warm floor / cold ceiling).
     vec3 det = s.rgb * uSurfTint;
     diffuseColor.rgb *= mix(vec3(1.0), det, uDetailStrength);

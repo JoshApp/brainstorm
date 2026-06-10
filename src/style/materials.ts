@@ -120,11 +120,12 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
   // the 0.4x render scale (no crawl/flicker).
   const wallTex = bakeSurfaceTexture(renderer, 'wall');
   installSurfaceDetail(wallBase, {
+    brickDamage: true,
     tex: wallTex,
     tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.25,
   });
   installSurfaceDetail(chasmWall, {
-    tex: wallTex,
+    tex: wallTex, brickDamage: true,
     tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.25,
   });
   installSurfaceDetail(floorBase, {
