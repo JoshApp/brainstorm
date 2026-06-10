@@ -7,7 +7,8 @@ import { healPlayer, getPlayerMaxHp, getPlayerHp } from '../player/health';
 import { playHealSlurp, playBuffApply } from '../audio/sfx';
 import { showNote } from '../ui/note-card';
 import { TAINTED_MUTATIONS } from '../content/tainted-mutations';
-import { addMutation, getMutationIds } from '../state/run-mutations';
+import { getMutationIds } from '../state/run-mutations';
+import { applyMutationWithFeedback } from '../player/apply-mutation';
 import { emit } from '../broadcast/event-bus';
 
 // Fountain — a basin of suspect liquid. Three variants today:
@@ -203,28 +204,8 @@ function applyTaintedDrink(): string {
   const fresh = TAINTED_MUTATIONS.filter((m) => !already.has(m.id));
   const pool = fresh.length > 0 ? fresh : TAINTED_MUTATIONS;
   const mutation = pool[Math.floor(gameRng() * pool.length)];
-  addMutation(mutation.id);
-
-  // Reconcile current HP against the new max. Positive max-hp deltas
-  // top the player up by exactly the gain (so a +4 KINDNESS feels
-  // like a reward, not a missed window). Negative deltas leave current
-  // HP ALONE — a brand that cuts your cap should cut your cap, not
-  // also damage you. If you happen to be over-cap after, healing won't
-  // raise you (healPlayer's clamp), but the dungeon hasn't taken HP
-  // you already had — just the room to gain more.
-  let maxHpDelta = 0;
-  for (const m of mutation.modifiers) {
-    if (m.kind === 'max-hp') maxHpDelta += m.amount;
-  }
-  if (maxHpDelta > 0) {
-    const player = get('player');
-    if (player?.hp) {
-      const newMax = getPlayerMaxHp();
-      player.hp.current = Math.min(newMax, player.hp.current + maxHpDelta);
-    }
-  }
-
-  playBuffApply();
-  showNote(`${mutation.flavor}\n\n— ${mutation.name} —`);
+  // Shared Faustian-apply (HP reconcile + sfx + the brand's note) —
+  // same door the phials use (player/apply-mutation.ts).
+  applyMutationWithFeedback(mutation.id);
   return mutation.id;
 }

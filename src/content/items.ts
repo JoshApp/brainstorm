@@ -19,6 +19,7 @@ import {
   MENDICANT_LOCKET, HEART_OF_DROWNED,
   RING_OF_IRON, RING_OF_EMBER, RING_OF_QUICKENING,
   STEADY_TONIC,
+  MURKY_PHIAL, BLACK_PHIAL, PALE_PHIAL,
 } from './loot-models';
 import { PASSIVES } from './passives';
 
@@ -271,6 +272,10 @@ export interface ItemSpec {
   consumableHeal?: number;
   /** For consumables: apply this buff to the player on use. */
   consumableBuff?: { buffId: string; duration: number };
+  /** For consumables: drinking applies the PERMANENT run mutation this
+   *  phial color maps to (state/phial-identities.ts — identity is
+   *  per-run, unknown until first taste, consistent after). */
+  consumableMutation?: boolean;
   /** For consumables: the most the player may CARRY at once. Pickups beyond
    *  this are refused (left on the ground); the hotbar shows the stack full.
    *  Omit for no cap. Souls-style scarcity — a finite heal economy per run. */
@@ -1331,6 +1336,45 @@ export const ITEMS: Record<string, ItemSpec> = {
     ],
   },
   // ── CONSUMABLES ────────────────────────────────────────────────────
+  // ── PHIALS — the unlabeled draughts ──────────────────────────────
+  // Isaac's pills in DELVE's voice: each color maps to ONE permanent
+  // run mutation (state/phial-identities.ts), rolled per run, unknown
+  // until the first taste — after that, every phial of that color is
+  // a KNOWN, deliberate trade you can stack on purpose. UNKNOWN
+  // transaction family: you commit, then the dungeon answers.
+  'murky-phial': {
+    id: 'murky-phial',
+    kind: 'consumable',
+    rarity: 'uncommon',
+    name: 'A murky phial',
+    flavor: 'Something has settled at the bottom.',
+    dropModel: MURKY_PHIAL,
+    consumableMutation: true,
+    carryLimit: 2,
+    drop: { weight: 2, minDepth: 2 },
+  },
+  'black-phial': {
+    id: 'black-phial',
+    kind: 'consumable',
+    rarity: 'uncommon',
+    name: 'A black phial',
+    flavor: 'It drinks the light.',
+    dropModel: BLACK_PHIAL,
+    consumableMutation: true,
+    carryLimit: 2,
+    drop: { weight: 2, minDepth: 3 },
+  },
+  'pale-phial': {
+    id: 'pale-phial',
+    kind: 'consumable',
+    rarity: 'uncommon',
+    name: 'A pale phial',
+    flavor: 'Cold, and faintly sweet.',
+    dropModel: PALE_PHIAL,
+    consumableMutation: true,
+    carryLimit: 2,
+    drop: { weight: 2, minDepth: 4 },
+  },
   'healing-potion': {
     id: 'healing-potion',
     kind: 'consumable',

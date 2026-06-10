@@ -14,6 +14,7 @@ import { emit } from '../broadcast/event-bus';
 import { levelForXp, xpInLevel, xpForNextLevel } from './leveling';
 import { serializeCharacter, type CharacterSave } from './character';
 import { clearMutations, serializeMutations, hydrateMutations } from './run-mutations';
+import { clearPhialIdentities, serializePhialIdentities, hydratePhialIdentities } from './phial-identities';
 
 const STORAGE_KEY = 'delve:save';
 const SAVE_VERSION = 2;
@@ -57,6 +58,9 @@ export interface SaveData {
    *  Permanent for the run, cleared on death. Optional for older saves
    *  (treated as empty). */
   mutations?: string[];
+  /** Per-run phial color → mutation identities (state/phial-identities.ts).
+   *  Persisted so a reload keeps what the player has LEARNED. */
+  phials?: Record<string, string>;
 }
 
 // ── In-memory run state (mid-floor mutable counters) ─────────────────
@@ -93,6 +97,7 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
   // Fresh run = no inherited mutations. Any prior run's tainted brands
   // die with their delver.
   clearMutations();
+  clearPhialIdentities();
 }
 
 /** Hydrate memory state from a saved run. Used on CONTINUE. Fills in
@@ -104,6 +109,7 @@ export function adoptSave(save: SaveData) {
     gold: save.gold ?? 0,
   };
   hydrateMutations(save.mutations);
+  hydratePhialIdentities(save.phials);
 }
 
 export function grantXp(amount: number): void {
@@ -218,6 +224,7 @@ export function commitFloorEntry(args: {
   inMemory.equipment = { ...args.equipment };
   inMemory.character = serializeCharacter();   // persist the build at this floor entry
   inMemory.mutations = serializeMutations();   // persist active tainted brands
+  inMemory.phials = serializePhialIdentities();  // persist phial knowledge
   persist();
 }
 

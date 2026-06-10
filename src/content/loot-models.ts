@@ -496,6 +496,31 @@ export const RING_OF_IRON     = ringModel('ring-iron',     0x808488, 0.8);
 export const RING_OF_EMBER    = ringModel('ring-ember',    0xff5020, 2.4);
 export const RING_OF_QUICKENING = ringModel('ring-quickening', 0xfff099, 2.6);
 
+/** Phials — the unlabeled draughts (state/phial-identities.ts maps each
+ *  color to ONE permanent mutation per run, unknown until first taste).
+ *  Same flask silhouette as the potions so they read as drinkable; the
+ *  liquid tells you nothing, which is the point. */
+function phialModel(id: string, liquidEmissive: number, intensity: number): ModelSpec {
+  return {
+    id,
+    materials: {
+      glass: { color: 0x0c0c10, roughness: 0.22, metalness: 0.0, flatShading: 'auto',
+               emissive: liquidEmissive, emissiveIntensity: intensity },
+      cork:  { color: 0x2a2218, roughness: 0.95, flatShading: 'auto' },
+    },
+    parts: [
+      // Rounder, squatter than the potion flask — a thing for keeping,
+      // not a thing for gulping mid-fight.
+      { kind: 'sphere', pos: [0, 0.045, 0], radius: 0.042, scale: [1, 1.1, 1], mat: 'glass' },
+      { kind: 'cylinder', pos: [0, 0.10, 0], radius: 0.014, height: 0.035, segments: 8, mat: 'glass' },
+      { kind: 'cylinder', pos: [0, 0.125, 0], radius: 0.017, height: 0.018, segments: 8, mat: 'cork' },
+    ],
+  };
+}
+export const MURKY_PHIAL = phialModel('murky-phial', 0x4a6840, 0.30);  // silted green-grey
+export const BLACK_PHIAL = phialModel('black-phial', 0x1a1026, 0.22);  // drinks the light
+export const PALE_PHIAL  = phialModel('pale-phial',  0x9aa8b8, 0.35);  // thin, bone-pale
+
 /** Steady Tonic — variant of HEALING_POTION, blue glow instead of red. */
 export const STEADY_TONIC: ModelSpec = {
   id: 'steady-tonic',

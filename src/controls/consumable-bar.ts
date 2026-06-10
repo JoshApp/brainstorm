@@ -3,6 +3,9 @@ import { recordConsumableUse } from '../state/character';
 import { healPlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { applyBuff } from '../ecs/buffs';
+import { phialMutationId } from '../state/phial-identities';
+import { applyMutationWithFeedback } from '../player/apply-mutation';
+import { emit } from '../broadcast/event-bus';
 import { get } from '../ecs/world';
 import { playHealSlurp, playBuffApply, playDenied } from '../audio/sfx';
 import { showInWorldMessage } from '../ui/pickup-notification';
@@ -243,6 +246,21 @@ function useConsumable(item: ItemSpec) {
     healPlayer(item.consumableHeal);
     playHealSlurp();
     hapticVibrate(12);
+    drainPulse(item.id);
+    removeItem(item.id);
+    recordConsumableUse();
+    return;
+  }
+
+  // Phials — permanent run mutation behind a per-run color identity
+  // (state/phial-identities.ts). UNKNOWN transaction family: you
+  // commit, then the dungeon answers.
+  if (item.consumableMutation) {
+    emit({ type: 'transaction:accepted', family: 'unknown', id: `phial:${item.id}`, price: {} });
+    const mutationId = phialMutationId(item.id);
+    applyMutationWithFeedback(mutationId);
+    emit({ type: 'transaction:resolved', family: 'unknown', id: `phial:${item.id}`, outcome: { mutationId } });
+    hapticVibrate(16);
     drainPulse(item.id);
     removeItem(item.id);
     recordConsumableUse();
