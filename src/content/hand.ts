@@ -80,7 +80,12 @@ const SABER_WRIST_STACKED = rotateLocally(AFTER_GREEN_ROT, 'z', WRIST_ADJUST_BLU
 // (localFromWorld) so the BLADE's across-body lean doesn't move —
 // only the hand straightens around it.
 const FOREARM_EXIT_MEASURED: [number, number, number] = [-0.242, -0.920, 0.307];
-const FOREARM_EXIT_DESIRED: [number, number, number] = [
+/** Where the forearm SHOULD exit the wrist, hand-frame: 5° ulnar +
+ *  15° extension — a relaxed saber wrist. Exported for the RUNTIME
+ *  wrist solver (anim/wrist-solver.ts), which retargets against the
+ *  LIVE IK elbow each frame; the static retarget below remains the
+ *  rest pose + bench baseline. */
+export const FOREARM_EXIT_DESIRED: [number, number, number] = [
   -Math.tan((5 * Math.PI) / 180),   // 5° ulnar
   -1,
   Math.tan((15 * Math.PI) / 180),   // 15° extension

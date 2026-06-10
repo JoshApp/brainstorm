@@ -90,6 +90,17 @@ export const RING_CARRY_POSE: HandPose = {
   },
 };
 
+/** Where the forearm should exit the ring-carry wrist (WRIST frame,
+ *  same convention as hand.ts's FOREARM_EXIT_DESIRED): no lateral
+ *  deviation, ~15° extension — a hanging carry keeps the wrist
+ *  straighter than a saber grip. Consumed by the runtime wrist
+ *  solver in lamp-arm.ts. */
+export const RING_FOREARM_EXIT_DESIRED: [number, number, number] = [
+  0,
+  -1,
+  Math.tan((15 * Math.PI) / 180),
+];
+
 /** The left hand actually posed for the lantern. lamp-arm.ts mounts
  *  this instead of reusing the right hand's saber grip. */
 export const HAND_LEFT_LANTERN: ModelSpec = withHandPose(

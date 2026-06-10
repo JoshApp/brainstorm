@@ -68,27 +68,39 @@ export function adjustFingersForGrip(
 /** Build hand + weapon, align the weapon's grip_anchor to the hand's
  *  palm_anchor, curl the fingers to grip. Returns the composed group
  *  plus the BuiltModels so the caller can poke at named parts/slots
- *  (e.g., the in-game viewmodel applies its render trick on top). */
+ *  (e.g., the in-game viewmodel applies its render trick on top).
+ *
+ *  SIBLING COMPOSITION: the weapon is parented to the composition
+ *  ROOT, not into the hand's palm slot — parked at the exact net
+ *  transform it would have inherited through wrist→palm_anchor, so
+ *  the static result is byte-identical to the old nesting. The point:
+ *  the swing sim owns the WEAPON's motion, and the runtime wrist
+ *  solver (anim/wrist-solver.ts) owns the HAND's orientation. With
+ *  the weapon nested under the palm, re-aiming the hand dragged the
+ *  blade along; as siblings, the hand can chase the forearm freely
+ *  while the viewmodel re-pins its palm to the weapon's grip. */
 export function composeHeldWeapon(
   weaponSpec: ModelSpec | null,
   handSpec: ModelSpec = HAND_RIGHT,
 ): HeldWeaponCompose {
   const hand = buildModel(handSpec);
+  const group = new THREE.Group();
+  group.add(hand.group);
   let weapon: BuiltModel | null = null;
   if (weaponSpec) {
     weapon = buildModel(weaponSpec);
-    // The weapon's grip_anchor (in weapon-local space) should land at
-    // the hand's palm_anchor in world space. We achieve this by
-    // positioning the weapon group at -grip_anchor.pos within the
-    // palm slot — palm_anchor itself is at (0,0,0) in the slot's
-    // own frame, so the weapon's grip_anchor offsets cancel out.
+    // Net transform of palm_anchor in the composition-root frame
+    // (group is parentless here, so matrixWorld == root-frame), then
+    // back the weapon off by its grip_anchor offset so the grip lands
+    // exactly ON the palm — same math the nested version produced.
     const gripPos = weaponSpec.slots?.grip_anchor?.pos ?? [0, 0, 0];
-    weapon.group.position.set(-gripPos[0], -gripPos[1], -gripPos[2]);
-    const palm = hand.slots.get('palm_anchor') ?? hand.group;
-    palm.add(weapon.group);
+    const palm = hand.slots.get('palm_anchor');
+    group.updateMatrixWorld(true);
+    const m = (palm ?? hand.group).matrixWorld.clone();
+    m.multiply(new THREE.Matrix4().makeTranslation(-gripPos[0], -gripPos[1], -gripPos[2]));
+    m.decompose(weapon.group.position, weapon.group.quaternion, weapon.group.scale);
+    group.add(weapon.group);
     adjustFingersForGrip(hand.slots, inferGripRadius(weaponSpec));
   }
-  const group = new THREE.Group();
-  group.add(hand.group);
   return { group, hand, weapon };
 }

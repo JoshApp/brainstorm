@@ -3,7 +3,9 @@ import { buildModel } from '../ecs/build-model';
 import {
   ARM_LEFT, ARM_LEFT_HUMERUS_LENGTH, ARM_LEFT_FOREARM_LENGTH,
 } from '../content/arm';
-import { HAND_LEFT_LANTERN } from '../content/hand-poses';
+import { HAND_LEFT_LANTERN, RING_FOREARM_EXIT_DESIRED } from '../content/hand-poses';
+import { WristAim } from '../anim/wrist-solver';
+import { DEV } from '../debug/dev';
 import { ArmIK } from '../anim/arm-ik';
 import { registerViewmodel } from '../style/render-target';
 import { mergeRigidViewmodel } from './viewmodel-merge';
@@ -39,6 +41,17 @@ const _palmOffsetInArm = new THREE.Vector3();
 
 const _wristWorld    = new THREE.Vector3();
 const _wristArmLocal = new THREE.Vector3();
+// Runtime wrist solver — re-aims the hand each frame so the forearm
+// exits the ring-carry wrist anatomically, wherever the IK elbow
+// actually is (lamp pendulum swing, stow ease, walk bob). Replaces a
+// baked orientation that could only be right for one elbow position.
+const wristAim = new WristAim({ desiredExitLocal: RING_FOREARM_EXIT_DESIRED, dampHalfLife: 0.06 });
+const _identityQuat = new THREE.Quaternion();
+const _palmOffsetLive = new THREE.Vector3();
+const _prevElbow = new THREE.Vector3();
+const _prevWrist = new THREE.Vector3();
+let havePrev = false;
+let reachChecked = false;
 const _midpoint      = new THREE.Vector3();
 const _direction     = new THREE.Vector3();
 const _yAxis         = new THREE.Vector3(0, 1, 0);
@@ -100,6 +113,10 @@ export function attachLampArm(camera: THREE.Camera): void {
   // (a raw mirror of the saber pose read as "bent outward").
   const hand = buildModel(HAND_LEFT_LANTERN);
   wristAnchor.add(hand.group);
+  // Map the pose's anatomy target (wrist frame) into the frame the
+  // solver rotates (the wristAnchor = hand root's parent-of-record).
+  const lanternWrist = hand.slots.get('wrist');
+  if (lanternWrist) wristAim.setDesiredFromWristFrame(RING_FOREARM_EXIT_DESIRED, lanternWrist.quaternion);
   // The lantern hand is rigid (it just grips the ring); collapse its ~39 bone
   // meshes into one. Slots (palm_anchor, read below for the offset) survive.
   mergeRigidViewmodel(hand.group, null);
@@ -166,8 +183,35 @@ export function tickLampArm(dt: number): void {
   // shifted position; the hand's palm_anchor (still offset by the
   // same vector) then lands EXACTLY at the ring.
   armGroup.worldToLocal(_wristArmLocal.copy(_wristWorld));
-  _wristArmLocal.sub(_palmOffsetInArm);
+  // Re-aim the hand at the live forearm (previous frame's IK joints —
+  // the solve below needs the target, which needs the hand's
+  // orientation; one frame of damped lag is invisible). The palm
+  // offset rotates with the hand, so the IK target keeps landing the
+  // PALM on the ring whatever the wrist orientation is.
+  if (havePrev && wristAnchor) {
+    wristAnchor.quaternion.copy(wristAim.solve(_identityQuat, _prevElbow, _prevWrist, dt));
+  }
+  _palmOffsetLive.copy(_palmOffsetInArm);
+  if (wristAnchor) _palmOffsetLive.applyQuaternion(wristAnchor.quaternion);
+  _wristArmLocal.sub(_palmOffsetLive);
   const r = armIK.solve(_wristArmLocal, dt);
+  _prevElbow.copy(r.elbowPos);
+  _prevWrist.copy(r.wristPos);
+  havePrev = true;
+  if (DEV && !reachChecked) {
+    reachChecked = true;
+    // Coupled-constants drift alarm: if the lamp or the shoulder move
+    // apart again, say so the first frame instead of weeks later.
+    const reach = ARM_LEFT_HUMERUS_LENGTH + ARM_LEFT_FOREARM_LENGTH;
+    const need = _wristArmLocal.distanceTo(shoulderSlot!.position);
+    if (need > reach * 0.92) {
+      console.warn(
+        `[lamp-arm] IK target at ${(100 * need / reach).toFixed(0)}% of max reach ` +
+        `(${need.toFixed(3)}m of ${reach.toFixed(3)}m) — the arm is nearly locked straight. ` +
+        `LAMP_RAISED and the ARM_LEFT shoulder have probably drifted apart (arm.ts).`,
+      );
+    }
+  }
   poseBone(humerusMesh, r.shoulderPos, r.elbowPos);
   poseBone(radiusMesh,  r.elbowPos, r.wristPos, -0.013);
   poseBone(ulnaMesh,    r.elbowPos, r.wristPos,  0.013);

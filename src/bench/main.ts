@@ -125,6 +125,11 @@ if (!subjectId) {
     // spec built fresh.
     const composition = handMode ? composeHeldWeapon(subject.spec) : null;
     const built = composition ? composition.hand : buildModel(subject.spec);
+    // What goes on screen: the composition ROOT when composed (hand +
+    // weapon are SIBLINGS under it since the wrist-solver rework — the
+    // weapon no longer lives inside the palm subtree), else the
+    // subject's own group.
+    const displayGroup = composition ? composition.group : built.group;
 
     const mobAnim = subject.enemy ? makeMobAnimator(built, subject.enemy) : null;
     // Weapon animator runs in BOTH modes. The bench renders the hand
@@ -133,19 +138,19 @@ if (!subjectId) {
     // Iterate on the ARM in-game via snap.ts; here we focus on the
     // hand/weapon composition.
     const weaponAnim = subject.kind === 'weapon' && subject.item
-      ? makeWeaponAnimator(built.group, subject.item, null) : null;
+      ? makeWeaponAnimator(displayGroup, subject.item, null) : null;
 
     let draw: () => void;
     if (animN > 0 && weaponAnim) {
       // Held first-person swing — the weapon is posed in camera space, so it
       // mounts at the studio origin un-recentered and renders from the eye.
-      mounted.root().add(built.group);
+      mounted.root().add(displayGroup);
       draw = () => mounted!.renderHeldGrid(animN, FP_FOV, weaponAnim.poseAt);
     } else {
       // Static / turntable / ortho / mob telegraph — wrap so recentering
       // doesn't fight a telegraph's vertical bob (on built.group.position.y).
       const holder = new THREE.Group();
-      holder.add(built.group);
+      holder.add(displayGroup);
       mounted.show(holder);
 
       // Debug overlays — paint AFTER show() so the bounding box uses the
@@ -157,17 +162,16 @@ if (!subjectId) {
       // The studio's framing radius — pulled from the bounding sphere
       // it computed inside show(). Approximated from the AABB extents
       // so the debug helpers scale with the subject.
-      const bbox = new THREE.Box3().setFromObject(built.group);
+      const bbox = new THREE.Box3().setFromObject(displayGroup);
       const subjectRadius = bbox.getBoundingSphere(new THREE.Sphere()).radius;
       if (gnomonMode || debugMode) addGnomon(studioRoot, subjectRadius);
       if (debugMode) {
         addSlotOverlay(studioRoot, built, subjectRadius, highlight);
-        addBoundingBox(studioRoot, built.group);
+        addBoundingBox(studioRoot, displayGroup);
         colorByPart(built, highlight);   // mutates materials in place (bench is throwaway)
-        // When composed, the WEAPON's parts/slots are nested under
-        // the hand's palm_anchor. Colour-by-part already coloured
-        // every mesh in the hand subtree; do the same for the
-        // weapon so highlight names like "blade" / "grip" work too.
+        // When composed, the WEAPON is a sibling of the hand under
+        // the composition root — colour and overlay it separately so
+        // highlight names like "blade" / "grip" still work.
         if (composition?.weapon) {
           colorByPart(composition.weapon, highlight);
           addSlotOverlay(studioRoot, composition.weapon, subjectRadius, highlight);

@@ -11,6 +11,8 @@ import { createSwingState } from '../combat/swing-state';
 import { getCurrentWeapon } from './current-weapon';
 import { composeHeldWeapon } from './held-weapon-compose';
 import { mergeRigidViewmodel } from './viewmodel-merge';
+import { WristAim } from '../anim/wrist-solver';
+import { FOREARM_EXIT_DESIRED } from '../content/hand';
 import { buildModel } from '../ecs/build-model';
 import { ARM_RIGHT, ARM_RIGHT_HUMERUS_LENGTH, ARM_RIGHT_FOREARM_LENGTH } from '../content/arm';
 import { ArmIK } from '../anim/arm-ik';
@@ -251,6 +253,19 @@ export function createWeaponViewmodel(
   // subscription below can re-apply DEV overlays (axis triads, etc.)
   // without waiting for the next equip().
   let currentComposed: HeldWeaponCompose | null = null;
+
+  // ── RUNTIME WRIST SOLVER ─────────────────────────────────────────
+  // Re-aims the HAND each frame so the forearm exits the wrist at the
+  // anatomical target (anim/wrist-solver.ts), with the palm re-pinned
+  // to the weapon's grip. The weapon itself never moves — it's a
+  // sibling of the hand (held-weapon-compose.ts), owned by the swing
+  // sim. Caches below are measured once per mount.
+  const wristAim = new WristAim({ desiredExitLocal: FOREARM_EXIT_DESIRED });
+  const _palmRestInGroup = new THREE.Vector3();  // palm rest point in composition-root frame (= weapon grip)
+  const _palmInHandRoot = new THREE.Vector3();   // palm point in hand-root frame
+  const _parentQuat = new THREE.Quaternion();
+  const _aimScratch = new THREE.Vector3();
+  let wristAimReady = false;
   // Settings subscription: when the HAND AXES toggle flips, attach or
   // detach the axis triads on the live rig immediately. DEV-gated at
   // setHandAxesOverlay itself, so prod builds strip the call body.
@@ -367,7 +382,7 @@ export function createWeaponViewmodel(
     // twice a frame (depth pre-pass + main), so this is a big always-on win.
     // Slots survive (arm IK reads the wrist; weapon stays on palm_anchor); the
     // weapon subtree is excluded.
-    mergeRigidViewmodel(composed.hand.group, composed.weapon?.group ?? null);
+    mergeRigidViewmodel(composed.hand.group, null);   // weapon is a SIBLING now, not nested
     // Hand renders one step under the weapon so the weapon visually
     // wraps in front of the closed fist where they overlap (blade
     // emerges from the top of the fist, not behind it). Hand opts
@@ -384,12 +399,32 @@ export function createWeaponViewmodel(
       bladeTipSlot = null;
     }
 
-    group.add(composed.hand.group);
+    group.add(composed.group);
     // Capture the hand's wrist slot for the arm IK to target each
     // frame. The arm spec is mounted separately under the camera; the
     // IK reads this slot's world position to know where to point the
     // arm chain.
     handWristSlot = composed.hand.slots.get('wrist') ?? null;
+    // Cache the palm's rest geometry for the wrist solver. Rest = the
+    // authored compose pose, before any runtime re-aim: the weapon's
+    // grip sits exactly at the palm's rest point, so re-pinning the
+    // palm there keeps the fist closed on the hilt no matter how the
+    // hand re-aims.
+    wristAim.reset();
+    wristAimReady = false;
+    const palmSlot = composed.hand.slots.get('palm_anchor');
+    const wristSlot = composed.hand.slots.get('wrist');
+    if (palmSlot && wristSlot && composed.weapon) {
+      composed.group.updateMatrixWorld(true);
+      palmSlot.getWorldPosition(_palmRestInGroup);
+      composed.group.worldToLocal(_palmRestInGroup);
+      palmSlot.getWorldPosition(_palmInHandRoot);
+      composed.hand.group.worldToLocal(_palmInHandRoot);
+      // The anatomy target is authored in the WRIST frame; the solver
+      // rotates the hand ROOT — map it through the wrist slot's pose.
+      wristAim.setDesiredFromWristFrame(FOREARM_EXIT_DESIRED, wristSlot.quaternion);
+      wristAimReady = true;
+    }
     // Track the live composed so the settings-change handler can flip
     // the axes overlay on the current rig without waiting for the next
     // weapon equip.
@@ -504,6 +539,19 @@ export function createWeaponViewmodel(
       handWristSlot.getWorldPosition(_wristWorld);
       armGroup.worldToLocal(_wristArmLocal.copy(_wristWorld));
       const r = armIK.solve(_wristArmLocal, dt);
+      // Re-aim the hand at the live forearm (camera-local frame: the
+      // arm group sits at camera identity, and the hand's parent
+      // chain is group → composed.group(identity) → hand root, so the
+      // parent orientation is just `group`'s). Then re-pin the palm
+      // to the weapon grip so the fist stays closed on the hilt.
+      if (wristAimReady && currentComposed) {
+        const handRoot = currentComposed.hand.group;
+        _parentQuat.copy(group.quaternion);
+        handRoot.quaternion.copy(wristAim.solve(_parentQuat, r.elbowPos, r.wristPos, dt));
+        handRoot.position
+          .copy(_palmRestInGroup)
+          .sub(_aimScratch.copy(_palmInHandRoot).applyQuaternion(handRoot.quaternion));
+      }
       poseBone(armHumerusMesh, r.shoulderPos, r.elbowPos);
       poseBone(armRadiusMesh,  r.elbowPos, r.wristPos, -0.013);
       poseBone(armUlnaMesh,    r.elbowPos, r.wristPos,  0.013);
