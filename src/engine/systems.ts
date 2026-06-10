@@ -22,6 +22,7 @@ import { isInspectActive, INSPECT_AMBIENT, tickInspectFraming } from '../debug/i
 import { setTorchProximity, setAudioListenerPose } from '../audio/sfx';
 import { tickAlerts } from '../mobs/alerts';
 import { tickPack } from '../mobs/pack';
+import { tickCreatureInstancing } from '../mobs/creature-instancing';
 import { recomputePlayerStats } from '../state/player-stats';
 import { syncHudStores } from '../state/hud-stores';
 import { tickDarkAdaptation, darkAdaptBrightness, darkAdaptAmbient, sampleLitSignal } from '../scene/dark-adaptation';
@@ -443,6 +444,13 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // unless enabled). Runs AFTER camera movement, BEFORE light-pool + render
     // so the frustum it tests is this frame's.
     { name: 'room-culling', phase: 'always', tick() { getRoomCuller()?.tick(camera); } },
+
+    // Instanced-creature writeback — copy each live enemy's joint-segment
+    // world matrices into the shared InstancedMesh slots (zero-scale when the
+    // enemy is room-culled or otherwise hidden). AFTER room-culling so the
+    // visibility it bakes is this frame's; BEFORE render. Phase 'always' so
+    // frozen debug scenarios still pose instanced mobs (cf. the lamp system).
+    { name: 'creature-instancing', phase: 'always', tick() { tickCreatureInstancing(); } },
 
     // Bind the N nearest registered lights to the pool's PointLight slots.
     // Runs every frame so lighting updates with camera movement even when

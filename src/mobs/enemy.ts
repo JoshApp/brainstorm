@@ -29,6 +29,10 @@ import {
 } from '../ecs/world';
 import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
+import {
+  acquireCreatureInstancing, releaseCreatureInstancing,
+} from './creature-instancing';
+import { isPooledGeometry } from '../scene/geometry-pool';
 import { createBodyAnimator } from './enemy-animation';
 import { Animator } from '../anim/animator';
 import { type BuiltModel } from '../ecs/build-model';
@@ -71,6 +75,9 @@ export function disposeEnemy(e: Enemy): void {
   unregisterDamageSink(e.entityId);
   destroyEntity(e.entityId);
   leavePack(e.entityId);
+  // Free any shared-InstancedMesh slots (no corpse — the level subtree is
+  // being torn down wholesale). Idempotent; killed mobs already released.
+  releaseCreatureInstancing(e.entityId);
 }
 
 // Enemy = a mob driven by its EnemySpec.
@@ -297,6 +304,16 @@ export function createEnemy(
   const blob = createBlobShadow(creature.bounds.radius * sc * 1.1);
   blob.visible = !spec.burrowed;   // hidden while buried; revealed on emerge
   container.add(blob);
+  // World entity id — generated here (rather than at the ECS spawn below)
+  // so the instancing registry can key on it. Same id, same lifecycle.
+  const entityId = generateEntityId(`enemy-${spec.id}`);
+  // Instanced rendering — same-type mobs share one InstancedMesh per joint
+  // segment (src/mobs/creature-instancing.ts). The model is fully composed
+  // at this point (merged, scaled, shadow-flagged); acquire hides the
+  // per-enemy segment meshes and assigns instance slots. null = legacy
+  // per-enemy rendering (bosses, or the CONFIG.CREATURE_INSTANCING switch
+  // off) — every path below works identically either way.
+  const instancing = acquireCreatureInstancing(scene, entityId, spec, built, container);
   // Base model scale, captured for the lash deform (which elongates the
   // body toward the player on a 'lash' telegraph, then eases back here).
   const groupBaseScale = built.group.scale.clone();
@@ -392,13 +409,13 @@ export function createEnemy(
   // enemy-presentation.ts). Thin local aliases keep the AI state machine's
   // setEyeFlare/applyIdleEyes call sites below unchanged.
   const eyePresenter = createEyePresenter(built, spec);
-  const coreReactor = createCoreReactor(built, spec);
+  const coreReactor = createCoreReactor(built, spec, instancing);
   const setEyeFlare = eyePresenter.setFlare;
   const applyIdleEyes = eyePresenter.applyIdle;
 
   // World entity (HP + buffs). For multi-phase bosses, HP starts at
   // phase[0].hp; phase transitions refill to the next phase's HP.
-  const entityId = generateEntityId(`enemy-${spec.id}`);
+  // (entityId was generated above, before the instancing acquire.)
   let phaseIndex = 0;
   const phases = spec.phases ?? null;
   const initialHp = phases ? phases[0].hp : spec.hp;
@@ -902,6 +919,11 @@ export function createEnemy(
       // Clear raycast targets so a swing mid-dissolve doesn't generate a
       // zero-damage "hit" on the disintegrating corpse.
       built.hitTargets.length = 0;
+      // Exit the instancing batch: free the shared slots and re-show the
+      // per-enemy meshes (they carry the per-enemy dissolvable materials),
+      // so the dissolve ramp below runs exactly as it always has. No-op on
+      // the legacy path.
+      releaseCreatureInstancing(entityId, { corpse: true });
       // Tidy the stun ring + any leftover dizzy tumble if it died staggered.
       stunStars?.dispose(); stunStars = null;
       built.group.rotation.y = 0; built.group.rotation.z = 0;
@@ -1394,10 +1416,14 @@ export function createEnemy(
       deathTimer = -1;
       // Dispose the geometries we built for this mob. Materials are
       // safe to leak (the program cache key dedup means subsequent
-      // spawns hit the cached compile).
+      // spawns hit the cached compile). POOLED geometries (the shared
+      // primitive pool + the instancing segment cache) are shared across
+      // every mob of the type — never dispose those.
       built.group.traverse((o) => {
         const mesh = o as THREE.Mesh;
-        if (mesh.isMesh && mesh.geometry) mesh.geometry.dispose();
+        if (mesh.isMesh && mesh.geometry && !isPooledGeometry(mesh.geometry)) {
+          mesh.geometry.dispose();
+        }
       });
     }
   }

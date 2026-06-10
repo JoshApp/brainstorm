@@ -263,6 +263,15 @@ export function mergeRigidSegments(built: BuiltModel, opts?: { ignoreNames?: boo
   });
 }
 
+/** Mint a material from a MaterialDef — same path buildModel uses for its
+ *  per-model materials. Exported for the creature-instancing batches, which
+ *  need ONE shared material per segment batch built from the same def (rim/
+ *  chroma extensions included) rather than borrowing any single enemy's
+ *  per-instance material. */
+export function createMaterialFromDef(def: MaterialDef, defaultFlatShading = false): THREE.Material {
+  return createMaterial(def, defaultFlatShading);
+}
+
 function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Material {
   const flatShading =
     def.flatShading === 'auto' ? defaultFlatShading : (def.flatShading ?? false);

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
 import type { EnemySpec } from '../content/enemies';
+import type { CreatureInstancingHandle } from './creature-instancing';
 import { CONFIG } from '../config';
 
 // Enemy visual presentation, extracted from enemy.ts. Two small controllers
@@ -115,7 +116,14 @@ export interface CoreReactor {
   tick(dt: number): void;
 }
 
-export function createCoreReactor(built: BuiltModel, spec: EnemySpec): CoreReactor {
+/** `instancing`: present when this enemy renders through the shared
+ *  InstancedMesh batches. The per-enemy material lerp below only reaches the
+ *  meshes still rendered individually (eyes, named cores, the eventual
+ *  corpse) — the instanced body flashes via per-slot instanceColor instead,
+ *  driven in lockstep with the same t. */
+export function createCoreReactor(
+  built: BuiltModel, spec: EnemySpec, instancing?: CreatureInstancingHandle | null,
+): CoreReactor {
   const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
   const flashColor = new THREE.Color(CONFIG.ENEMY_HIT_FLASH_COLOR);
   // Base emissive intensity so the damage pulse can boost it (for materials
@@ -188,6 +196,9 @@ export function createCoreReactor(built: BuiltModel, spec: EnemySpec): CoreReact
         b.mat.color.copy(b.color).lerp(flashColor, t);
         if (b.emissive > 0) b.mat.emissiveIntensity = b.emissive * (1 + 1.5 * t);
       }
+      // Instanced body — drive the per-slot instanceColor with the same t
+      // (lands on the same final color as the material lerp above).
+      instancing?.setFlash(t);
       // Snap everything back to base the frame the flash ends — no per-frame
       // writes once idle.
       if (flashTimer <= 0) {
@@ -195,6 +206,7 @@ export function createCoreReactor(built: BuiltModel, spec: EnemySpec): CoreReact
           b.mat.color.copy(b.color);
           if (b.emissive > 0) b.mat.emissiveIntensity = b.emissive;
         }
+        instancing?.setFlash(0);
       }
     }
   }

@@ -198,6 +198,9 @@ function looseCat(m: THREE.Object3D): Cat {
   if (k === 'wall' || k === 'floor' || k === 'ceiling' || k === 'fixtures') return 'shell';
   if (k === 'prop') return 'prop';
   if (k === 'fx') return 'fx';
+  // Creature-instancing batches hang off the level root (not any one enemy's
+  // group), so the owner map can't tag them — they self-identify instead.
+  if (k === 'enemy') return 'enemy';
   return 'decor';
 }
 

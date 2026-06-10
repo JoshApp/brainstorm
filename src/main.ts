@@ -41,6 +41,7 @@ import { startMusic, setMusicVolume, pauseMusic, resumeMusic } from './audio/mus
 import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { createRoomCuller, type RoomCuller } from './level/room-culling';
+import { setCreatureInstancingDisabled } from './mobs/creature-instancing';
 import { batchStaticFixtures } from './level/static-merge';
 import { initCombatDebug, tickCombatDebug } from './combat/combat-debug';
 import { LEVELS } from './level/specs';
@@ -1222,6 +1223,12 @@ window.setTimeout(hideBootLoading, 7000);
 
 if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('god') === '1') {
   setGodMode(true);
+}
+// Debug: `?instancing=0` disables instanced creature rendering for an A/B
+// against the legacy per-enemy-mesh path (perf scripts pass it through).
+// DEV-only; the production bundle always uses CONFIG.CREATURE_INSTANCING.
+if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('instancing') === '0') {
+  setCreatureInstancingDisabled(true);
 }
 // Debug: `?fakesave=1` seeds a save so the title shows CONTINUE for snaps.
 if (new URLSearchParams(window.location.search).get('fakesave') === '1') {

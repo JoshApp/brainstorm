@@ -1,0 +1,395 @@
+import * as THREE from 'three';
+import { CONFIG } from '../config';
+import { createMaterialFromDef, type BuiltModel } from '../ecs/build-model';
+import type { EnemySpec } from '../content/enemies';
+import type { EntityId } from '../ecs/types';
+
+// Instanced creature rendering — same-type enemies share one
+// THREE.InstancedMesh per merged joint-segment × material.
+//
+// Why: phone profiling showed draw SUBMISSION dominating the frame, and the
+// scene's drawables dominated by enemy meshes (one per merged joint×material,
+// per mob). Same-spec mobs are built from IDENTICAL specs, so their segment
+// geometry can be shared and the per-mob cost collapses to one instance slot
+// per segment.
+//
+// How it fits the existing pipeline (nothing about animation changes):
+//   - buildCreature builds the per-enemy joint hierarchy exactly as before.
+//     Animation (clips, telegraph poses, gait) keeps driving the JOINTS.
+//   - acquireCreatureInstancing() then walks the built model: every unnamed,
+//     non-sprite segment mesh is HIDDEN (visible = false — it stays in the
+//     tree, so raycasts/bounds/death all still work) and assigned a slot in
+//     the shared InstancedMesh for its (specId, segmentKey) batch.
+//   - tickCreatureInstancing() runs once per frame (after room culling,
+//     before render): it copies each live segment's source-node worldMatrix
+//     into its slot, or a ZERO-SCALE matrix when any ancestor is hidden
+//     (room-culled container, ceiling-drop boss, part-broken joint).
+//   - HIT FLASH rides instanceColor: the batch material keeps its real base
+//     color; instanceColor is a per-slot MULTIPLIER (white = neutral). The
+//     flash writes 1 + (K-1)·t where K = flashColor/baseColor, which lands on
+//     exactly the same final color the legacy mat.color lerp produced.
+//   - DEATH exits the batch: releaseCreatureInstancing(id, {corpse:true})
+//     frees the slots and re-shows the per-enemy meshes (which carry the
+//     per-enemy dissolvable materials), so the dissolve ramp runs unchanged.
+//
+// Sharing & ownership:
+//   - The first build of a spec donates each segment's geometry to a
+//     module-level cache (tagged userData.pooled so no teardown/death path
+//     disposes it); later builds of the same spec swap their fresh merged
+//     geometry for the cached one. NOTE the deliberate tradeoff: per-instance
+//     `jitter` variance is collapsed — every live ghoul wears the first
+//     ghoul's gnarl. Distinctness now comes from pose/facing/light, which is
+//     what actually reads in the dark; geometry identity is the price of
+//     instancing at all.
+//   - One material per batch, minted fresh from the spec's MaterialDef
+//     (rim/chroma shader extensions included). Per-enemy materials stay on
+//     the hidden source meshes for the corpse dissolve.
+//
+// Exclusions (these render exactly as before):
+//   - Bosses (spec.isBoss) — phases, part-breaks, bespoke per-enemy drama.
+//   - AUTHORED-named parts (orbs, cores) — presentation mutates them per mob.
+//   - Sprites (eye halos, core glows) — billboards, per-mob flicker/flare.
+//   - Segments using spec.eyeMaterialName — eye flare animates that
+//     material's EMISSIVE per enemy, which instanceColor (diffuse) can't carry.
+//   - Decal segments (their materials aren't in the model's material map).
+
+// ── Runtime toggle (DEV ?instancing=0 — wired in main.ts) ────────────────────
+
+let runtimeDisabled = false;
+
+/** Disable instancing for this session (new spawns take the legacy path).
+ *  DEV A/B switch; existing batches are left alone. */
+export function setCreatureInstancingDisabled(off: boolean): void {
+  runtimeDisabled = off;
+}
+
+function instancingEnabled(): boolean {
+  return CONFIG.CREATURE_INSTANCING.ENABLED && !runtimeDisabled;
+}
+
+// ── Registry ──────────────────────────────────────────────────────────────────
+
+/** Shared per-(specId, segmentKey) render resources. Lives for the app —
+ *  geometry is tagged pooled so death/teardown disposal skips it. */
+interface SegmentCacheEntry {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+  /** Per-channel instanceColor multiplier at FULL hit-flash (t=1):
+   *  flashColor / baseColor, so base × K = the legacy lerp target. */
+  flashK: THREE.Color;
+  castShadow: boolean;
+  receiveShadow: boolean;
+}
+
+interface Batch {
+  key: string;
+  entry: SegmentCacheEntry;
+  mesh: THREE.InstancedMesh;
+  capacity: number;
+  /** High-water slot count — slots in [0, used) are allocated or in `free`. */
+  used: number;
+  free: number[];
+  matrixDirty: boolean;
+  colorDirty: boolean;
+}
+
+interface InstancedSegment {
+  batch: Batch;
+  slot: number;
+  /** The hidden per-enemy mesh whose worldMatrix drives the slot. */
+  source: THREE.Mesh;
+}
+
+interface EnemyEntry {
+  container: THREE.Object3D;
+  segments: InstancedSegment[];
+}
+
+/** Geometry/material cache — survives level teardown (like geometry-pool). */
+const segmentCache = new Map<string, SegmentCacheEntry>();
+/** Live batches — InstancedMeshes are re-adopted into the current level's
+ *  root on first acquire after a teardown detached them. */
+const batches = new Map<string, Batch>();
+/** Live instanced enemies, keyed by entity id (release is id-addressed so
+ *  level teardown can free slots without holding the handle). */
+const live = new Map<EntityId, EnemyEntry>();
+
+/** What an instanced enemy holds: the hit-flash hook. (Slot writeback is
+ *  central — tickCreatureInstancing — and release is id-addressed.) */
+export interface CreatureInstancingHandle {
+  /** Drive the whole-body hit flash for this enemy's slots. t in [0,1];
+   *  0 restores neutral. Mirrors the legacy mat.color lerp exactly. */
+  setFlash(t: number): void;
+}
+
+// ── Acquire / release ─────────────────────────────────────────────────────────
+
+const FLASH_COLOR = new THREE.Color(CONFIG.ENEMY_HIT_FLASH_COLOR);
+
+function flashKFor(baseColor: number | string | undefined): THREE.Color {
+  const base = new THREE.Color(baseColor ?? 0xffffff);
+  const k = new THREE.Color(
+    FLASH_COLOR.r / Math.max(base.r, 0.04),
+    FLASH_COLOR.g / Math.max(base.g, 0.04),
+    FLASH_COLOR.b / Math.max(base.b, 0.04),
+  );
+  // Flash only ever BRIGHTENS (the legacy lerp target is near-white), and a
+  // near-black base would explode the ratio — clamp to a sane band.
+  k.r = Math.min(16, Math.max(1, k.r));
+  k.g = Math.min(16, Math.max(1, k.g));
+  k.b = Math.min(16, Math.max(1, k.b));
+  return k;
+}
+
+/** Stable path of node names from the model root down to (and including) the
+ *  mesh — same spec builds the same tree, so this matches across spawns. */
+function pathKey(o: THREE.Object3D, root: THREE.Object3D): string {
+  const parts: string[] = [];
+  let n: THREE.Object3D | null = o;
+  while (n && n !== root) {
+    parts.push(n.name || '~');
+    n = n.parent;
+  }
+  return parts.reverse().join('/');
+}
+
+function makeInstancedMesh(
+  key: string, entry: SegmentCacheEntry, capacity: number, prev?: THREE.InstancedMesh,
+): THREE.InstancedMesh {
+  const mesh = new THREE.InstancedMesh(entry.geometry, entry.material, capacity);
+  // A fresh InstancedMesh's matrices are ZEROS = zero scale = invisible,
+  // exactly what unallocated slots should be. count stays at capacity; free
+  // slots cost only degenerate (rasterizer-discarded) triangles.
+  mesh.count = capacity;
+  // Instances span the level — per-instance "culling" is the zero-scale
+  // writeback driven by room culling; whole-mesh frustum culling would need a
+  // bounds recompute every frame for no win.
+  mesh.frustumCulled = false;
+  mesh.castShadow = entry.castShadow;
+  mesh.receiveShadow = entry.receiveShadow;
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  // instanceColor present from frame one so the shader compiles WITH the
+  // USE_INSTANCING_COLOR define (no mid-fight recompile on first flash).
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(
+    new Float32Array(capacity * 3).fill(1), 3,
+  );
+  mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+  // Draw-report attribution: classify these as enemy draws even though they
+  // hang off the level root rather than any one enemy's group. The room
+  // culler ignores them (dbgKind !== 'prop', dbgSource carries no rect id).
+  mesh.userData.dbgKind = 'enemy';
+  mesh.userData.dbgSource = `creature-instancing ${key}`;
+  if (prev) {
+    (mesh.instanceMatrix.array as Float32Array).set(prev.instanceMatrix.array as Float32Array);
+    if (prev.instanceColor) {
+      (mesh.instanceColor.array as Float32Array).set(prev.instanceColor.array as Float32Array);
+    }
+  }
+  return mesh;
+}
+
+function growBatch(b: Batch): void {
+  const next = makeInstancedMesh(b.key, b.entry, b.capacity * 2, b.mesh);
+  const parent = b.mesh.parent;
+  if (parent) {
+    parent.add(next);
+    parent.remove(b.mesh);
+  }
+  b.mesh.dispose();   // frees the old instance attributes; geometry/material are shared
+  b.mesh = next;
+  b.capacity *= 2;
+}
+
+function allocSlot(b: Batch): number {
+  const reused = b.free.pop();
+  if (reused !== undefined) return reused;
+  if (b.used >= b.capacity) growBatch(b);
+  return b.used++;
+}
+
+/**
+ * Register a freshly-built enemy with the instancing system. Call AFTER the
+ * model is fully composed (merged, scaled, shadow-flagged, parented into its
+ * container). Returns null — meaning "render the legacy way" — for bosses,
+ * when the switch is off, or if no segment qualified.
+ */
+export function acquireCreatureInstancing(
+  scene: THREE.Object3D,
+  entityId: EntityId,
+  spec: EnemySpec,
+  built: BuiltModel,
+  container: THREE.Object3D,
+): CreatureInstancingHandle | null {
+  if (!instancingEnabled() || spec.isBoss) return null;
+
+  // Reverse map material instance → material id (for def lookup + the eye
+  // exclusion). Decal materials aren't in the map and are skipped below.
+  const matIds = new Map<THREE.Material, string>();
+  for (const [id, m] of built.materials) matIds.set(m, id);
+
+  const segments: InstancedSegment[] = [];
+  // Occurrence counter — two identical unnamed parts under the same joint
+  // (paired ribs, twin lobes) get distinct, deterministic keys.
+  const seen = new Map<string, number>();
+
+  built.group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as unknown as { isSprite?: boolean }).isSprite === true) return;
+    // Authored-named parts are per-enemy presentation surfaces (cores, orbs,
+    // part-break targets) — leave them individual. Diagnostic labels
+    // (userData.autoName) and merge products (no name) are fair game.
+    if (m.name && m.userData.autoName !== true) return;
+    const mat = m.material as THREE.Material;
+    const matId = matIds.get(mat);
+    if (!matId) return;                          // decal/foreign material
+    if (matId === spec.eyeMaterialName) return;  // eye flare = per-enemy emissive
+    const def = spec.creature.materials[matId];
+    if (!def) return;
+
+    const localKey = `${pathKey(m, built.group)}|${matId}`;
+    const n = seen.get(localKey) ?? 0;
+    seen.set(localKey, n + 1);
+    const key = `${spec.id}|${localKey}#${n}`;
+
+    let entry = segmentCache.get(key);
+    if (!entry) {
+      // First build of this spec donates the segment geometry. Tag it pooled
+      // so the death-dissolve disposal and level teardown both skip it.
+      m.geometry.userData.pooled = true;
+      entry = {
+        geometry: m.geometry,
+        material: createMaterialFromDef(def),
+        flashK: flashKFor(def.color),
+        castShadow: m.castShadow,
+        receiveShadow: m.receiveShadow,
+      };
+      segmentCache.set(key, entry);
+    } else if (m.geometry !== entry.geometry) {
+      // Later build — adopt the shared geometry so the (hidden) source mesh,
+      // and therefore the eventual corpse, matches the instanced body
+      // exactly. The fresh merged geometry was never uploaded; drop it.
+      if (m.geometry.userData.pooled !== true) m.geometry.dispose();
+      m.geometry = entry.geometry;
+    }
+
+    let batch = batches.get(key);
+    if (!batch) {
+      batch = {
+        key, entry,
+        mesh: makeInstancedMesh(key, entry, CONFIG.CREATURE_INSTANCING.INITIAL_CAPACITY),
+        capacity: CONFIG.CREATURE_INSTANCING.INITIAL_CAPACITY,
+        used: 0, free: [],
+        matrixDirty: false, colorDirty: false,
+      };
+      batches.set(key, batch);
+    }
+    // (Re-)adopt into the current level root — teardown removed the old one.
+    if (batch.mesh.parent !== scene) scene.add(batch.mesh);
+
+    const slot = allocSlot(batch);
+    m.visible = false;   // stays in the tree (raycast/bounds/corpse), never rendered
+    segments.push({ batch, slot, source: m });
+  });
+
+  if (segments.length === 0) return null;
+  const enemyEntry: EnemyEntry = { container, segments };
+  live.set(entityId, enemyEntry);
+  return {
+    setFlash(t: number) {
+      if (!live.has(entityId)) return;   // released mid-flash (death)
+      for (const seg of segments) {
+        const k = seg.batch.entry.flashK;
+        seg.batch.mesh.instanceColor!.setXYZ(
+          seg.slot,
+          1 + (k.r - 1) * t,
+          1 + (k.g - 1) * t,
+          1 + (k.b - 1) * t,
+        );
+        seg.batch.colorDirty = true;
+      }
+    },
+  };
+}
+
+/**
+ * Free an enemy's instance slots. `corpse: true` (the death path) re-shows
+ * the per-enemy source meshes so the dissolve ramp plays on them; teardown
+ * omits it (the whole subtree is leaving the scene anyway). Idempotent.
+ */
+export function releaseCreatureInstancing(
+  entityId: EntityId, opts?: { corpse?: boolean },
+): void {
+  const entry = live.get(entityId);
+  if (!entry) return;
+  live.delete(entityId);
+  for (const seg of entry.segments) {
+    seg.batch.mesh.setMatrixAt(seg.slot, ZERO_SCALE);
+    seg.batch.mesh.instanceColor!.setXYZ(seg.slot, 1, 1, 1);   // died mid-flash → neutral
+    seg.batch.matrixDirty = true;
+    seg.batch.colorDirty = true;
+    seg.batch.free.push(seg.slot);
+    // All slots back → reset the high-water mark so a fresh level reuses
+    // slot 0 upward instead of fragmenting across the free list forever.
+    if (seg.batch.free.length === seg.batch.used) {
+      seg.batch.used = 0;
+      seg.batch.free.length = 0;
+    }
+    if (opts?.corpse) seg.source.visible = true;
+  }
+}
+
+// ── Per-frame writeback ───────────────────────────────────────────────────────
+
+const ZERO_SCALE = new THREE.Matrix4().makeScale(0, 0, 0);
+
+/** True when every ancestor from the source mesh up to (and including) the
+ *  enemy container is visible. The source's OWN flag is excluded — this
+ *  module owns it (always false while instanced). Covers room culling
+ *  (container), ceiling-drop hides (built.group), part-breaks (joints). */
+function ancestorsVisible(source: THREE.Object3D, container: THREE.Object3D): boolean {
+  let n: THREE.Object3D | null = source.parent;
+  while (n) {
+    if (!n.visible) return false;
+    if (n === container) return true;
+    n = n.parent;
+  }
+  return true;   // detached mid-transition — err toward rendering
+}
+
+/**
+ * Copy every live instanced enemy's segment world matrices into its batch
+ * slots. Run once per frame AFTER enemy updates + room culling, BEFORE
+ * render. Zero allocations; updateMatrixWorld is the same work the renderer
+ * would do for these subtrees at render time (it then sees them clean).
+ */
+export function tickCreatureInstancing(): void {
+  for (const entry of live.values()) {
+    entry.container.updateMatrixWorld();
+    for (const seg of entry.segments) {
+      seg.batch.mesh.setMatrixAt(
+        seg.slot,
+        ancestorsVisible(seg.source, entry.container) ? seg.source.matrixWorld : ZERO_SCALE,
+      );
+      seg.batch.matrixDirty = true;
+    }
+  }
+  // One needsUpdate per buffer per frame, even when the only writes came
+  // from release() after the last enemy died.
+  for (const b of batches.values()) {
+    if (b.matrixDirty) {
+      b.mesh.instanceMatrix.needsUpdate = true;
+      b.matrixDirty = false;
+    }
+    if (b.colorDirty) {
+      b.mesh.instanceColor!.needsUpdate = true;
+      b.colorDirty = false;
+    }
+  }
+}
+
+/** Diagnostics: batch + slot counts (perf probes / DEV readouts). */
+export function creatureInstancingStats(): { batches: number; liveEnemies: number; slots: number } {
+  let slots = 0;
+  for (const b of batches.values()) slots += b.capacity;
+  return { batches: batches.size, liveEnemies: live.size, slots };
+}
