@@ -64,8 +64,14 @@ export function attachLampArm(camera: THREE.Camera): void {
       humerusLength: ARM_LEFT_HUMERUS_LENGTH,
       forearmLength: ARM_LEFT_FOREARM_LENGTH,
       // Mirrored: the right arm biases +X for outboard; the left arm
-      // biases −X for the same "elbow flares outboard" read.
-      elbowPole: [-1, -0.5, 0.2],
+      // biases −X for the same "elbow flares outboard" read. The Z
+      // component biases AWAY from the camera (−Z): with the forward
+      // ring-carry grip the wrist target sits closer to the camera,
+      // and a camera-ward (+Z) pole swung the forearm across the
+      // near-frustum — a giant lamp-lit slab over the whole bottom of
+      // the frame. Elbow behind-below-outboard = arm enters from the
+      // lower-left edge like a real arm.
+      elbowPole: [-1, -0.6, -0.3],
       jointDampHalfLife: 0.05,
     });
   }

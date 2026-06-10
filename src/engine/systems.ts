@@ -291,11 +291,15 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'camera-stumble', phase: 'unpaused', tick(ctx) { tickCameraStumble(ctx.realDt); } },
 
     // Handheld lamp flicker + bob. realDt — flicker shouldn't slow during
-    // slow-mo (a frozen lamp looks broken).
-    { name: 'lamp', phase: 'unpaused', tick(ctx) { tickLamp(ctx.realDt); } },
+    // slow-mo (a frozen lamp looks broken). Phase 'always': in FROZEN
+    // debug scenarios an unpaused-only lamp/arm never posed, so every
+    // frozen-scenario screenshot showed the arm meshes parked UNPOSED
+    // at the camera — a giant lamp-lit slab across the frame. The lamp
+    // is presentation, not simulation; pose it in every rendered frame.
+    { name: 'lamp', phase: 'always', tick(ctx) { tickLamp(ctx.realDt); } },
     // Left arm IK — must run AFTER 'lamp' so the hinge it targets has
     // its latest position from this frame's pendulum + stowed-ease.
-    { name: 'lamp-arm', phase: 'unpaused', tick(ctx) { tickLampArm(ctx.realDt); } },
+    { name: 'lamp-arm', phase: 'always', tick(ctx) { tickLampArm(ctx.realDt); } },
 
     { name: 'offhand', phase: 'unpaused', tick() { tickOffhandViewmodel(); } },
 
