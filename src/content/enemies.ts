@@ -630,14 +630,20 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // Small wedge skull + a long pointed snout forward (−Z). Skull kept
         // small so the snout — not a round face — defines the head.
         { kind: 'sphere', joint: 'head', radius: 0.068, jitter: 0.01, mat: 'fur' },
-        { kind: 'cone', joint: 'head', radius: 0.05, height: 0.16, pos: [0, -0.012, -0.12], rot: [1.5708, 0, 0], mat: 'fur' },
+        // rot −π/2 about X points the cone APEX forward (−Z): apex lands at
+        // z≈−0.20, right at the nose-tip sphere. (+π/2 points the apex INTO
+        // the skull and shows the wide base disc as the face — wrong way.)
+        { kind: 'cone', joint: 'head', radius: 0.05, height: 0.16, pos: [0, -0.012, -0.12], rot: [-1.5708, 0, 0], mat: 'fur' },
         { kind: 'sphere', joint: 'head', radius: 0.018, pos: [0, -0.018, -0.2], mat: 'skin' },   // wet nose tip
-        // Big rounded ears — flattened discs set high, angled outward. Bald
-        // inner membrane in skin over a furred outer cup.
-        { kind: 'sphere', joint: 'head', radius: 0.052, scale: [1, 1, 0.38], pos: [-0.07, 0.072, 0.012], rot: [0, -0.5, 0], mat: 'fur' },
-        { kind: 'sphere', joint: 'head', radius: 0.052, scale: [1, 1, 0.38], pos: [0.07, 0.072, 0.012], rot: [0, 0.5, 0], mat: 'fur' },
-        { kind: 'sphere', joint: 'head', radius: 0.032, scale: [1, 1, 0.3], pos: [-0.068, 0.07, -0.004], rot: [0, -0.5, 0], mat: 'skin' },
-        { kind: 'sphere', joint: 'head', radius: 0.032, scale: [1, 1, 0.3], pos: [0.068, 0.07, -0.004], rot: [0, 0.5, 0], mat: 'skin' },
+        // Ears — flattened discs set LOW and LATERAL, swept back, asymmetric
+        // (left bigger + more ragged-angled). High front-facing discs read as
+        // Mickey-Mouse circles head-on — cute, which the pillars forbid. Low
+        // back-swept cups read as a wary sewer rat. Bald inner membrane in
+        // skin over a furred outer cup.
+        { kind: 'sphere', joint: 'head', radius: 0.046, scale: [1, 1, 0.34], pos: [-0.06, 0.05, 0.024], rot: [-0.55, -0.75, 0.12], mat: 'fur' },
+        { kind: 'sphere', joint: 'head', radius: 0.04, scale: [1, 1, 0.34], pos: [0.062, 0.046, 0.028], rot: [-0.4, 0.7, -0.1], mat: 'fur' },
+        { kind: 'sphere', joint: 'head', radius: 0.028, scale: [1, 1, 0.3], pos: [-0.058, 0.05, 0.012], rot: [-0.55, -0.75, 0.12], mat: 'skin' },
+        { kind: 'sphere', joint: 'head', radius: 0.024, scale: [1, 1, 0.3], pos: [0.06, 0.046, 0.016], rot: [-0.4, 0.7, -0.1], mat: 'skin' },
         // Beady red eyes on the snout sides.
         { kind: 'sphere', joint: 'head', radius: 0.021, pos: [-0.05, 0.012, -0.082], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.021, pos: [0.05, 0.012, -0.082], mat: 'eyes' },
@@ -652,9 +658,13 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'box', joint: 'footHL', size: [0.036, 0.02, 0.064], pos: [0, 0.01, -0.014], mat: 'skin' },
         { kind: 'box', joint: 'footHR', size: [0.036, 0.02, 0.064], pos: [0, 0.01, -0.014], mat: 'skin' },
         // Long bald tail trailing back (+Z), tapering in two segments with an
-        // upward flick at the tip — the unmistakable rat tail.
-        { kind: 'cylinder', joint: 'hips', radius: 0.03, radiusTop: 0.02, height: 0.32, pos: [0, 0.0, 0.28], rot: [-1.45, 0, 0], mat: 'skin' },
-        { kind: 'cone', joint: 'hips', radius: 0.019, height: 0.26, pos: [0, 0.07, 0.5], rot: [-2.0, 0, 0], mat: 'skin' },
+        // upward flick at the tip — the unmistakable rat tail. The cylinder's
+        // +Y end points at the BODY after the X-rotation, so radiusTop is the
+        // fat root (0.03) and `radius` the thin far end (0.02) — fat-at-rump,
+        // thin-at-tip. Tip cone's base sits ON the cylinder's far end
+        // (≈ z 0.44) and its apex flicks up-back.
+        { kind: 'cylinder', joint: 'hips', radius: 0.02, radiusTop: 0.03, height: 0.32, pos: [0, 0.0, 0.28], rot: [-1.45, 0, 0], mat: 'skin' },
+        { kind: 'cone', joint: 'hips', radius: 0.019, height: 0.26, pos: [0, 0.03, 0.56], rot: [1.2, 0, 0], mat: 'skin' },
       ],
     },
     baseEyeEmissive: 2.0,
@@ -2441,11 +2451,19 @@ export const ENEMIES: Record<string, EnemySpec> = {
       flash: { material: 'hide' },
       skin: [
         { kind: 'capsule', joint: 'spine', radius: 0.16, height: 0.44, rot: [1.5708, 0, 0], jitter: 0.02, mat: 'hide' },
+        // Neck — bones bridging shoulders → skull (the head FLOATED in space
+        // without these; every part must chain back to the spine).
+        { kind: 'bone', from: 'chest', to: 'neck', radius: 0.095, radiusTop: 0.08, mat: 'hide' },
+        { kind: 'bone', from: 'neck', to: 'head', radius: 0.08, radiusTop: 0.07, mat: 'hide' },
         // Elongated skull + long snout, back-swept ears, glowing eyes.
         { kind: 'sphere', joint: 'head', radius: 0.13, scale: [0.9, 1, 1.15], jitter: 0.02, mat: 'hide' },
-        { kind: 'cone', joint: 'head', radius: 0.07, height: 0.22, pos: [0, -0.03, -0.13], rot: [1.5708, 0, 0], mat: 'hide' },
-        { kind: 'cone', joint: 'head', radius: 0.04, height: 0.11, pos: [-0.08, 0.1, 0.05], rot: [-0.5, 0, 0], mat: 'hide' },
-        { kind: 'cone', joint: 'head', radius: 0.04, height: 0.11, pos: [0.08, 0.1, 0.05], rot: [-0.5, 0, 0], mat: 'hide' },
+        // Snout cone: −π/2 about X = apex forward (−Z), the muzzle tapers to
+        // the nose. (+π/2 showed the wide base as the face — wrong way.)
+        { kind: 'cone', joint: 'head', radius: 0.07, height: 0.22, pos: [0, -0.03, -0.13], rot: [-1.5708, 0, 0], mat: 'hide' },
+        // Ear cones: +X rotation sweeps the apex up-BACK (−0.5 pointed them
+        // up-forward, which read as horns). Slight outward yaw, asymmetric.
+        { kind: 'cone', joint: 'head', radius: 0.04, height: 0.11, pos: [-0.08, 0.1, 0.05], rot: [0.6, -0.25, 0.08], mat: 'hide' },
+        { kind: 'cone', joint: 'head', radius: 0.04, height: 0.11, pos: [0.08, 0.1, 0.05], rot: [0.5, 0.25, -0.06], mat: 'hide' },
         { kind: 'sphere', joint: 'head', radius: 0.028, pos: [-0.08, 0.03, -0.08], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.028, pos: [0.08, 0.03, -0.08], mat: 'eyes' },
         // Four lean legs (the trot gait swings them).
@@ -2453,8 +2471,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'bone', from: 'frontR', to: 'footFR', radius: 0.035, mat: 'hide' },
         { kind: 'bone', from: 'hindL', to: 'footHL', radius: 0.04, mat: 'hide' },
         { kind: 'bone', from: 'hindR', to: 'footHR', radius: 0.04, mat: 'hide' },
-        // Whip tail, angled up/back.
-        { kind: 'cone', joint: 'hips', radius: 0.04, height: 0.42, pos: [0, 0.06, 0.3], rot: [-1.3, 0, 0], mat: 'hide' },
+        // Whip tail, angled up/back. +1.3 about X points the apex (tip)
+        // up-BACK with the fat base at the rump; −1.3 pointed the tip INTO
+        // the body and left the base hanging in space.
+        { kind: 'cone', joint: 'hips', radius: 0.04, height: 0.42, pos: [0, 0.05, 0.18], rot: [1.3, 0, 0], mat: 'hide' },
       ],
     },
     baseEyeEmissive: 2.0,
