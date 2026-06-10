@@ -8,6 +8,21 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-10",
     "entries": [
       {
+        "tag": "add",
+        "text": "The way down stays sealed behind the boss's own ward — no warm light, just a cold glare in its colour. Put the thing down and the seal shatters; the descent opens.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "A loading veil holds the gate while a fresh build slips in behind it — no more stale menu flashing and reloading out from under you.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Your bones drink the room now — step into red light and your own hands run red. The plain beasts go back to being shapes in the dark; only the unnatural still glows.",
         "area": [
@@ -370,22 +385,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "weapons"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Overheads crash down where they look like they land now; the hammer crushes what cowers at your feet without making you stare at them.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Shatter a stoneguard's poise and a molten core gapes at its chest; bury the next blow there and it pays for the lapse.",
-        "area": [
-          "combat",
-          "content"
         ]
       }
     ]
