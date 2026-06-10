@@ -4,9 +4,121 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 5",
+    "date": "2026-06-10",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "Your bones drink the room now — step into red light and your own hands run red. The plain beasts go back to being shapes in the dark; only the unnatural still glows.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 4",
     "date": "2026-06-09",
     "entries": [
+      {
+        "tag": "tune",
+        "text": "The skeleton stands tall now, a head over the ghouls, and winds back a real overhand throw when it hurls a bone at you.",
+        "area": [
+          "content",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Dash into something — or have it land on you — and you peel apart now instead of grinding stuck inside each other.",
+        "area": [
+          "controls",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The Boiling King climbs out of the floor it was wallowing in. It was always that big — you just couldn't see the bottom half.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The acolyte sheds its legs and drifts now, hood low over a cold green stare; the wraith looms taller, a screaming hollow where its face should be.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dark notices you sooner now, and stops snagging on the rubble when it comes for you.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The horde takes turns now — three lunge while the rest circle and snarl. Being surrounded finally feels like being hunted, not mobbed by a blob.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Headshots and weak points hit a little softer now — a steady reward for aim, not a jackpot.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Aim for the skull. Crossbow bolts and arrows finally know what a head is, and the numbers come up gold when you find one.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Stagger is earned now, not handed out — the hammer stopped trivializing poise, and a finisher only lands on something already reeling.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The things in the dark surround you now instead of melting into one shoving blob. A pack reads as a pack.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "The rats lost the baby fat and the skeletons remembered they're bones — lean tails, showing ribs, cold-glowing sockets.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Two new dials in the graphics menu — drop the render scale or kill the glow and a struggling phone breathes again.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Long halls lined with gateways render far lighter — the archways stopped each demanding their own fistful of draws.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
       {
         "tag": "fix",
         "text": "The title screen no longer flashes the entire bestiary in a heap. They wait their turn.",
@@ -274,118 +386,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Crack a skull and it costs them dearly now; your steel reads the whole body in three dimensions, not a dot in the dark.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Your steel strikes where you actually swing now, in three dimensions — thrust to skewer one, sweep to cleave a line, aim low to gut what's at your feet.",
-        "area": [
-          "combat"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 3",
-    "date": "2026-06-08",
-    "entries": [
-      {
-        "tag": "tech",
-        "text": "The lamp's shadows trade a hair of softness for a far lighter touch on the GPU — fewer stutters when the dark gets crowded.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The lamp quits tracing a shadow for every candle and trinket and only minds the walls and the things that hunt you — it stops choking on its own light.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "Dropped loot leans on its own glow now instead of lighting a torch for itself — a floor full of treasure stops taxing the dungeon.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "A floor strewn with loot stops dragging the frame — every dropped trinket is lighter to draw now.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The candle-choked halls bundle their clutter into far fewer draws now, so the dungeon keeps its cool the longer you linger.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dead travel lighter now — same bones, bundled tighter, so a crowd of them stops dragging the frame into the mud.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dungeon stops drawing what a wall already hides — the things lurking in sealed rooms no longer cost you a frame.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The cross of stone hanging in the corpse-room was never a monument — it was a bug. It's gone, and the chest it was hiding finally shows up.",
-        "area": [
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "An odd life total shows a clean half-heart now, not a half-empty one — stop looking for a heal that was never missing.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Pots are forgiving to hit but no longer fall like dominoes — one swing, a pot or two, not the whole corridor.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The webs are real thread now — they catch the torchlight and throw their own tangled shadow, and the black smear behind them is gone.",
-        "area": [
-          "atmosphere",
-          "content"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The cracks in the floor show their masonry now, not a smear. Something was here before you, and it was built of stone.",
-        "area": [
-          "level",
-          "atmosphere"
         ]
       }
     ]
