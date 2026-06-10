@@ -71,7 +71,7 @@ import { buildFightLevel, buildEventLevel } from './level/proving-grounds';
 import { isAnyScreenOpen, msSinceLastScreenClose } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { initTriggerListener } from './ecs/triggers';
-import { setupPwaAutoUpdate, maybeApplyUpdateSilently, setBeforeReloadHook } from './pwa-update';
+import { setupPwaAutoUpdate, maybeApplyUpdateSilently, awaitBootUpdate, setBeforeReloadHook } from './pwa-update';
 import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSnapshot } from './state/dev-snapshot';
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
@@ -1432,5 +1432,22 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     },
     });
   }
-  openTitle();
+
+  // Drop the boot loading veil (index.html) — fade, then remove.
+  function hideBootLoading() {
+    const el = document.getElementById('boot-loading');
+    if (!el) return;
+    el.classList.add('boot-hide');
+    window.setTimeout(() => el.remove(), 500);
+  }
+
+  // FIRST boot: hold the loading veil until we've checked for a fresh build.
+  // If one's downloading, awaitBootUpdate applies it (a reload happens behind
+  // the veil) and resolves true — we keep the veil up through the reload. If
+  // there's nothing new, drop the veil and reveal the title. (Title re-opens
+  // from sub-screen BACK call openTitle() directly — they're already past boot,
+  // so they're not gated.)
+  awaitBootUpdate()
+    .then((updating) => { if (!updating) { hideBootLoading(); openTitle(); } })
+    .catch(() => { hideBootLoading(); openTitle(); });
 }

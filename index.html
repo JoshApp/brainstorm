@@ -83,11 +83,42 @@
       body.scene-dimmed #scene { opacity: 0.18; transition: opacity 0.6s ease; }
       /* Restore scene opacity smoothly when no dimming screen is open. */
       #scene { transition: opacity 0.6s ease; }
+
+      /* Boot loading veil — painted by the HTML itself so it covers the very
+         first frame, before any module JS runs. main.ts holds it up while the
+         scene builds AND while a pending PWA update applies (a reload behind
+         the veil), then fades it out to reveal the title. So the player never
+         sees the stale menu flash then reload — they wait here, then land on
+         the fresh build. */
+      #boot-loading {
+        position: fixed; inset: 0; z-index: 2000;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 16px; background: #000;
+        font-family: system-ui, -apple-system, sans-serif;
+        transition: opacity 0.45s ease;
+      }
+      #boot-loading.boot-hide { opacity: 0; pointer-events: none; }
+      #boot-loading .boot-mark {
+        color: rgba(224, 214, 196, 0.82);
+        font-size: 30px; font-weight: 600;
+        letter-spacing: 0.55em; text-indent: 0.55em;
+      }
+      #boot-loading .boot-sub {
+        color: rgba(255, 150, 80, 0.55);
+        font-size: 11px; letter-spacing: 0.42em; text-indent: 0.42em;
+        text-transform: uppercase;
+        animation: boot-pulse 1.5s ease-in-out infinite;
+      }
+      @keyframes boot-pulse { 0%, 100% { opacity: 0.22; } 50% { opacity: 0.85; } }
     </style>
   </head>
   <body>
     <canvas id="scene"></canvas>
     <div id="rotate-warning">rotate your phone — descend in landscape</div>
+    <div id="boot-loading">
+      <div class="boot-mark">DELVE</div>
+      <div class="boot-sub">descending</div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -42,6 +42,7 @@ const POLL_INTERVAL_MS = 15_000;
 
 let status: UpdateStatus = 'none';
 let updateSW: ((reloadPage?: boolean) => Promise<void>) | null = null;
+let registration: ServiceWorkerRegistration | null = null;
 const listeners: Array<(s: UpdateStatus) => void> = [];
 
 export function setupPwaAutoUpdate(): void {
@@ -58,12 +59,13 @@ export function setupPwaAutoUpdate(): void {
   // "never." The polling below is what makes "deploy → live quickly"
   // actually work (interval = POLL_INTERVAL_MS).
   updateSW = registerSW({
-    onRegisteredSW(_swUrl, registration) {
-      if (!registration) return;
+    onRegisteredSW(_swUrl, reg) {
+      if (!reg) return;
+      registration = reg;   // captured so awaitBootUpdate can inspect it
       // Initial check immediately, then every POLL_INTERVAL_MS.
-      registration.update().catch(() => { /* offline / no-op */ });
+      reg.update().catch(() => { /* offline / no-op */ });
       window.setInterval(() => {
-        registration.update().catch(() => { /* offline / no-op */ });
+        reg.update().catch(() => { /* offline / no-op */ });
       }, POLL_INTERVAL_MS);
     },
     onNeedRefresh() {
@@ -87,6 +89,69 @@ export function setupPwaAutoUpdate(): void {
  *  to activate; applyUpdate() will take it. */
 export function getUpdateStatus(): UpdateStatus {
   return status;
+}
+
+/** Poll the captured registration until it exists (registerSW resolves it
+ *  asynchronously), or give up after `timeoutMs`. */
+function waitForRegistration(timeoutMs: number): Promise<ServiceWorkerRegistration | null> {
+  if (registration) return Promise.resolve(registration);
+  return new Promise((resolve) => {
+    let waited = 0;
+    const iv = window.setInterval(() => {
+      if (registration) { window.clearInterval(iv); resolve(registration); }
+      else if ((waited += 100) >= timeoutMs) { window.clearInterval(iv); resolve(null); }
+    }, 100);
+  });
+}
+
+/**
+ * BOOT GATE — call once at startup, BEFORE revealing the title, while a loading
+ * veil is up. Resolves:
+ *   - true  → a fresh build is downloading/ready; we applied it (a reload is
+ *             imminent). The caller should KEEP the veil up — the page is about
+ *             to navigate to the new build.
+ *   - false → nothing to update (or offline / first-ever load / auto-update off
+ *             / timed out). The caller drops the veil and shows the title.
+ *
+ * This is what turns "stale menu flashes, then reloads a beat later" into
+ * "wait on the loading screen, land on the fresh build." It resolves FAST in
+ * the common up-to-date case (one conditional GET of sw.js, nothing installing)
+ * so boot isn't taxed when there's no update.
+ */
+export async function awaitBootUpdate(maxWaitMs = 6000): Promise<boolean> {
+  if (!('serviceWorker' in navigator) || isHarnessPaused() || !getSettings().autoUpdate) return false;
+  // No controller = first-ever load (or a hard reload): nothing is cached to
+  // update FROM, and the first SW install is not an "update" — don't wait on it.
+  if (!navigator.serviceWorker.controller) return false;
+  // Already know one's waiting — take it now.
+  if (status === 'pending') { void applyUpdate(); return true; }
+
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    let timer = 0;
+    const done = (updating: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      unsub();
+      resolve(updating);
+    };
+    // A new SW finished installing → apply it (reload). Keep the veil up.
+    const unsub = onUpdateStatusChange((s) => { if (s === 'pending') { void applyUpdate(); done(true); } });
+    // Hard cap so a hung/flaky network never strands us on the loading screen.
+    timer = window.setTimeout(() => done(false), maxWaitMs);
+    // Fast path: once the registration's check settles with nothing installing
+    // or waiting, there's no update — proceed immediately (no full-timeout wait).
+    void (async () => {
+      const reg = await waitForRegistration(3000);
+      if (!reg || settled) return;
+      try { await reg.update(); } catch { /* offline */ }
+      if (settled) return;
+      if (!reg.installing && !reg.waiting) done(false);
+      // else: a worker is installing → the onUpdateStatusChange handler above
+      // resolves us true once it reaches the waiting state (onNeedRefresh).
+    })();
+  });
 }
 
 /** Apply a pending update: SKIP_WAITING → controllerchange → reload.
