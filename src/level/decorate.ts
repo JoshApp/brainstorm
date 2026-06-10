@@ -22,6 +22,7 @@ const NO_DECORATE_CHARS = new Set('SoO/^FCGRKWPAc'.split(''));
 const SIGIL_CHANCE = 0.04;
 const CRACK_CHANCE = 0.03;
 const RUBBLE_CHANCE = 0.02;
+const NICHE_CHANCE = 0.012;
 
 interface InstancePlacement {
   /** Local position offset of this sub-mesh relative to the decoration's
@@ -51,6 +52,28 @@ const RUBBLE_PARTS: InstancePlacement[] = [
   { pos: [0,     0.04,  0],     size: [0.18, 0.08, 0.16] },
   { pos: [0.12,  0.025, 0.08],  size: [0.10, 0.05, 0.10], rotY: 0.4 },
   { pos: [-0.08, 0.02,  -0.05], size: [0.08, 0.04, 0.07], rotY: -0.7 },
+];
+
+// NICHE (box-buster #2): a faked wall recess — dressed jambs + lintel
+// around a near-black void plate, a pale relic on the sill, a dim
+// votive ember. Flush-mounted on the wall; the dark plate DOES the
+// recess (the oldest depth lie in the book). Four material groups
+// sharing one anchor list — four InstancedMesh sets per floor total.
+const NICHE_FRAME_PARTS: InstancePlacement[] = [
+  { pos: [-0.33, 0, 0.035], size: [0.08, 0.92, 0.07] },
+  { pos: [0.33, 0, 0.035], size: [0.08, 0.92, 0.07] },
+  { pos: [0, 0.50, 0.035], size: [0.74, 0.08, 0.07] },
+  { pos: [0, -0.495, 0.05], size: [0.74, 0.07, 0.10] },
+];
+const NICHE_INNER_PARTS: InstancePlacement[] = [
+  { pos: [0, 0, 0.012], size: [0.58, 0.92, 0.025] },
+];
+const NICHE_RELIC_PARTS: InstancePlacement[] = [
+  { pos: [0, -0.37, 0.07], size: [0.15, 0.12, 0.12] },
+  { pos: [0.06, -0.43, 0.08], size: [0.20, 0.05, 0.06], rotY: 0.4 },
+];
+const NICHE_EMBER_PARTS: InstancePlacement[] = [
+  { pos: [0, -0.29, 0.055], size: [0.05, 0.05, 0.03] },
 ];
 
 const tmpMatrix = new THREE.Matrix4();
@@ -98,6 +121,7 @@ export function decorateFloor(
   const sigilAnchors: Anchor[] = [];
   const crackAnchors: Anchor[] = [];
   const rubbleAnchors: Anchor[] = [];
+  const nicheAnchors: Anchor[] = [];
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -124,6 +148,17 @@ export function decorateFloor(
             x: wx + n.offX,
             y: 0.9 + rand() * 1.0,
             z: wz + n.offZ,
+            rotY: n.rotY,
+          });
+        }
+        // Wall niches — rarer than sigils; a corpse-hole with a relic.
+        // The niche spans 0.74m of a 1m cell, centred, so it stays
+        // clear of the openings the segment grid already excludes.
+        else if (rand() < NICHE_CHANCE) {
+          nicheAnchors.push({
+            x: wx + n.offX * 0.96,
+            y: 1.05,
+            z: wz + n.offZ * 0.96,
             rotY: n.rotY,
           });
         }
@@ -176,9 +211,27 @@ export function decorateFloor(
   // got placed (informational — not used by the runtime currently).
   void spec;
 
+  const nicheStoneMat = new THREE.MeshStandardMaterial({
+    color: 0x35302a, roughness: 0.8, metalness: 0.05, flatShading: true,
+  });
+  const nicheVoidMat = new THREE.MeshStandardMaterial({
+    color: 0x040405, roughness: 1.0,
+  });
+  const nicheBoneMat = new THREE.MeshStandardMaterial({
+    color: 0x9a8d74, roughness: 0.95, flatShading: true,
+  });
+  const nicheEmberMat = new THREE.MeshStandardMaterial({
+    color: 0x000000, emissive: brighten(tint, 0.3), emissiveIntensity: 0.9,
+    roughness: 1.0, fog: false,
+  });
+
   buildInstancedKind(root, SIGIL_PARTS, sigilAnchors, sigilMat);
   buildInstancedKind(root, CRACK_PARTS, crackAnchors, crackMat);
   buildInstancedKind(root, RUBBLE_PARTS, rubbleAnchors, rubbleMat);
+  buildInstancedKind(root, NICHE_FRAME_PARTS, nicheAnchors, nicheStoneMat);
+  buildInstancedKind(root, NICHE_INNER_PARTS, nicheAnchors, nicheVoidMat);
+  buildInstancedKind(root, NICHE_RELIC_PARTS, nicheAnchors, nicheBoneMat);
+  buildInstancedKind(root, NICHE_EMBER_PARTS, nicheAnchors, nicheEmberMat);
 }
 
 function buildInstancedKind(

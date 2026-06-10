@@ -211,6 +211,41 @@ function buildRoomShell(
   // wall draw calls). Per-room (not per-floor) so each room's wall set still
   // frustum-culls as a unit. Collision is recorded per segment as before.
   const wallGeos: THREE.BufferGeometry[] = [];
+  // TRIM (box-buster #1): a skirting course where wall meets floor and
+  // a cornice where wall meets ceiling, per wall segment, in DRESSED
+  // stone. Three thin boxes per segment kill the extruded-rectangle
+  // read for one merged draw per room — the oldest PS1 trick there is.
+  // Trim breaks at openings automatically (segments already do), so
+  // it meets the dressed doorframes like coursework should.
+  const trimGeos: THREE.BufferGeometry[] = [];
+  const trimSegment = (
+    we: { side: 'N' | 'S' | 'E' | 'W' },
+    perpCoord: number,
+    segStart: number,
+    segEnd: number,
+  ) => {
+    const segLen = segEnd - segStart;
+    if (segLen < 0.6) return;   // slivers between close openings: skip
+    const segMid = (segStart + segEnd) / 2;
+    const inward = we.side === 'N' || we.side === 'W' ? 1 : -1;
+    const alongX = we.side === 'N' || we.side === 'S';
+    for (const t of [
+      { y: 0.075, h: 0.15, depth: 0.07 },        // skirting
+      { y: H - 0.06, h: 0.12, depth: 0.055 },    // cornice
+    ]) {
+      const geo = new THREE.BoxGeometry(
+        alongX ? segLen : t.depth,
+        t.h,
+        alongX ? t.depth : segLen,
+      );
+      geo.translate(
+        alongX ? segMid : perpCoord + inward * (t.depth / 2 - 0.012),
+        t.y,
+        alongX ? perpCoord + inward * (t.depth / 2 - 0.012) : segMid,
+      );
+      trimGeos.push(geo);
+    }
+  };
   for (const we of wallEdges) {
     const openings = findOpenings(we, allRects, room);
     const segments = subtractRanges(we.wallStart, we.wallEnd, openings);
@@ -218,6 +253,7 @@ function buildRoomShell(
       const segLen = seg.end - seg.start;
       if (segLen < 0.01) continue;
       wallGeos.push(bakeWallSegmentGeometry(we, seg.start, seg.end, H));
+      if (room.wallVariant !== 'braced') trimSegment(we, we.perpCoord, seg.start, seg.end);
       // Record the segment as collision data. The XZ endpoints describe a
       // line in the floor plane along which the player cannot pass.
       if (we.perpAxis === 'z') {
@@ -239,6 +275,36 @@ function buildRoomShell(
       walls.userData.dbgKind = 'wall';
       walls.userData.dbgSource = `walls · ${room.id}`;
       scene.add(walls);
+    }
+  }
+  // SOFFIT (box-buster #1b): a stepped ceiling border — a frame of
+  // dropped ceiling 0.45m wide around the room's perimeter, so the
+  // ceiling stops reading as one infinite lid. Big flat rooms only.
+  if ((room.ceilingStyle ?? 'flat') === 'flat' && room.wallVariant !== 'braced' && W >= 4 && D >= 4) {
+    const SW = 0.45, ST = 0.16;
+    const frames: Array<[number, number, number, number]> = [
+      [rect.x, rect.z - halfD + SW / 2, W, SW],
+      [rect.x, rect.z + halfD - SW / 2, W, SW],
+      [rect.x - halfW + SW / 2, rect.z, SW, D - 2 * SW],
+      [rect.x + halfW - SW / 2, rect.z, SW, D - 2 * SW],
+    ];
+    for (const [fx, fz, fw, fd] of frames) {
+      const geo = new THREE.BoxGeometry(fw, ST, fd);
+      geo.translate(fx, H - ST / 2, fz);
+      trimGeos.push(geo);
+    }
+  }
+  if (trimGeos.length > 0) {
+    const mergedTrim = mergeGeometries(trimGeos, false);
+    for (const g of trimGeos) g.dispose();
+    if (mergedTrim) {
+      const trim = new THREE.Mesh(mergedTrim, materials.dressed);
+      trim.receiveShadow = true;
+      trim.castShadow = false;
+      trim.name = 'trim-merged';
+      trim.userData.dbgKind = 'wall';
+      trim.userData.dbgSource = `trim · ${room.id}`;
+      scene.add(trim);
     }
   }
   // NOTE: floor wall-contact AO is baked in a POST-pass (bakeFloorWallContacts),
