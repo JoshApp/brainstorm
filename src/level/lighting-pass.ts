@@ -98,8 +98,20 @@ export function lightingPass(
   _rng: () => number,
 ): TorchSpec[] {
   if (palette.light.density === 'off') return [];
+  // Exclusion zone: the cell itself, anything the caller marked, AND
+  // any cell within 1 of an authored '*' light — the pass used to
+  // know only about cellProps torches, so it would happily drop an
+  // act-tinted torch ONE CELL from an authored vault-tinted one:
+  // two wall fixtures a metre apart in clashing hues (the classic
+  // sighting: a pale room's cresset beside a warm act torch).
+  const starCells: Array<[number, number]> = [];
+  vault.map.forEach((row, r) => {
+    for (let c = 0; c < row.length; c++) if (row[c] === '*') starCells.push([c, r]);
+  });
+  const nearStar = (col: number, row: number) =>
+    starCells.some(([sc, sr]) => Math.abs(sc - col) <= 1 && Math.abs(sr - row) <= 1);
   const candidates = findCandidates(vault.map)
-    .filter((c) => !existingTorchCells.has(`${c.col},${c.row}`));
+    .filter((c) => !existingTorchCells.has(`${c.col},${c.row}`) && !nearStar(c.col, c.row));
   const target = targetTorchCount(palette.light.density, candidates.length);
   if (target === 0 || candidates.length === 0) return [];
 
@@ -116,7 +128,11 @@ export function lightingPass(
   // Vault-local coords: cell (col, row) → (col + 0.5 - W/2, row + 0.5 - D/2).
   const W = vault.map[0]?.length ?? 0;
   const D = vault.map.length;
-  const tint = palette.light.tintOverride ?? palette.tone.lightTint;
+  // Per-vault tint override WINS over the act palette — the same rule
+  // parseTileMap's '*' path follows. Without this, a pale-committed
+  // vault got act-warm procedural torches beside its pale authored
+  // ones, breaking the one-hue-per-room law.
+  const tint = vault.torchTint ?? palette.light.tintOverride ?? palette.tone.lightTint;
 
   // Match the wall-offset convention parseTileMap's '*' case uses so
   // procedural torches sit at the same depth into the room as author

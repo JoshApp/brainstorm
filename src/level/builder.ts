@@ -1142,9 +1142,27 @@ export function buildLevel(
         const sz = horizontal ? c.rect.z - c.rect.d / 2 + 0.18 : along;
         const wall = horizontal ? 'N' as const : 'W' as const;
         if (spec.torches.some((t) => Math.hypot(t.x - sx, t.z - sz) < 1.8)) continue;
+        // Inherit the mood of the room this mouth leads to — a pale
+        // chamber should glow pale into its corridor, not clash a
+        // warm sconce against its tinted torches two metres away.
+        const mouthX = horizontal ? c.rect.x + e * (len / 2) : sx;
+        const mouthZ = horizontal ? sz : c.rect.z + e * (len / 2);
+        let mouthTint: number | undefined;
+        let bestD = Infinity;
+        for (const room of spec.rooms) {
+          if (room.logicalOnly) continue;
+          const dx = Math.max(Math.abs(mouthX - room.rect.x) - room.rect.w / 2, 0);
+          const dz = Math.max(Math.abs(mouthZ - room.rect.z) - room.rect.d / 2, 0);
+          const d = dx + dz;
+          if (d < bestD) {
+            bestD = d;
+            mouthTint = averageTorchTintInRect(spec.torches, room.rect) ?? undefined;
+          }
+        }
         sconces.push({
           x: sx, z: sz, height: 1.85, wall,
-          // Wayfinding, not mood: quiet, warm-neutral.
+          colorTint: mouthTint,
+          // Wayfinding, not mood: quiet.
           intensityMul: 0.5,
         });
       }
