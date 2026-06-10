@@ -126,9 +126,16 @@ export function buildModel(spec: ModelSpec): BuiltModel {
       // linter (readout.ts findFloatingIslands) reports THIS, so a
       // floating island reads as "cone·fur@0,-0.012,-0.12", not
       // "mesh#10". Cheap (string at build), zero runtime use.
+      // `userData.autoName` marks the name as DIAGNOSTIC, not authored —
+      // consumers that treat "named" as "referenced by code/animation"
+      // (mergeRigidSegments, creature instancing) check this flag so the
+      // label doesn't make the part look load-bearing. Without it, the
+      // lego-figure merge silently became a no-op the day these labels
+      // were added (every part suddenly "had a name").
       const mat = 'mat' in part ? (part as { mat?: string }).mat : undefined;
       const at = part.pos ? `@${part.pos.map((n) => Math.round(n * 1000) / 1000).join(',')}` : '';
       obj.name = `${part.kind}${mat ? '·' + mat : ''}${at}`;
+      obj.userData.autoName = true;
     }
     group.add(obj);
     if (part.kind !== 'sprite' && part.kind !== 'bone') hitTargets.push(obj);
@@ -214,7 +221,11 @@ export function mergeRigidSegments(built: BuiltModel, opts?: { ignoreNames?: boo
     for (const child of node.children) {
       const m = child as THREE.Mesh;
       const isSprite = (m as unknown as { isSprite?: boolean }).isSprite === true;
-      if (!m.isMesh || isSprite || (!ignoreNames && m.name) || !m.geometry) continue;
+      // "Named" means AUTHORED-named (animation/presentation looks it up).
+      // Diagnostic labels (userData.autoName) don't protect a part from the
+      // merge — they're debug strings, not references.
+      const authoredName = !!m.name && m.userData.autoName !== true;
+      if (!m.isMesh || isSprite || (!ignoreNames && authoredName) || !m.geometry) continue;
       const mat = m.material as THREE.Material;
       const arr = byMat.get(mat);
       if (arr) arr.push(m); else byMat.set(mat, [m]);
