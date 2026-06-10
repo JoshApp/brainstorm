@@ -387,6 +387,46 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
 
 
+  // perf-vfx: the EFFECTS/OVERDRAW stress — everything additive, close to
+  // the camera where it covers real screen area. A tight room ringed with
+  // hot torches (flame-sprite stacks + bloom feeders at arm's length) and a
+  // line of acolytes whose spit salvos fly INTO the camera (projectile
+  // cores + trails + impact procs + status motes on the player). Crowd is
+  // deliberately small so the sprite/bloom/projectile axis dominates, not
+  // draw-call submission. Pair with ?god=1 and stand still in the salvo.
+  'perf-vfx': {
+    level: {
+      id: 'perf-vfx', depth: 5, displayName: 'PERF vfx', fogColor: 0x0a0a0e,
+      startPos: { x: 0, z: 5, yaw: Math.PI },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 14, d: 16 }, height: 3.6 }],
+      corridors: [],
+      props: [],
+      torches: [
+        // Ring around the player's end — flame stacks fill the view edges.
+        { x: -6.5, z: 6.5, height: 1.9, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.6 },
+        { x:  6.5, z: 6.5, height: 1.9, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.6 },
+        { x: -6.5, z: 3.0, height: 1.9, wall: 'W', colorTint: 0xff7733, intensityMul: 1.6 },
+        { x:  6.5, z: 3.0, height: 1.9, wall: 'E', colorTint: 0xff7733, intensityMul: 1.6 },
+        { x: -6.5, z: -0.5, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 1.4 },
+        { x:  6.5, z: -0.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 1.4 },
+        // Far wall pair behind the acolytes — bloom sources in frame centre.
+        { x: -3.0, z: -7.5, height: 2.2, wall: 'N', colorTint: 0xff5533, intensityMul: 1.8 },
+        { x:  3.0, z: -7.5, height: 2.2, wall: 'N', colorTint: 0xff5533, intensityMul: 1.8 },
+      ],
+      spawns: [
+        // A firing line of ranged casters — constant spit toward the player.
+        { enemyId: 'acolyte', x: -4.5, z: -5.5, roomId: 'r' },
+        { enemyId: 'acolyte', x: -2.7, z: -6.0, roomId: 'r' },
+        { enemyId: 'acolyte', x: -0.9, z: -6.3, roomId: 'r' },
+        { enemyId: 'acolyte', x:  0.9, z: -6.3, roomId: 'r' },
+        { enemyId: 'acolyte', x:  2.7, z: -6.0, roomId: 'r' },
+        { enemyId: 'acolyte', x:  4.5, z: -5.5, roomId: 'r' },
+      ],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 5, lookAt: { x: 0, z: -6, y: 1.2 } },
+  },
+
   // Default spawn view, frozen so the snap captures the deterministic frame.
   spawn: { freeze: true },
 
