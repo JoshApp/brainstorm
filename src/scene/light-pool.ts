@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { ShadowMode } from '../settings/settings';
+import { CONFIG } from '../config';
 
 // Light slot pool — partitioned by category so each kind of light
 // plays by its own rules.
@@ -10,16 +11,15 @@ import type { ShadowMode } from '../settings/settings';
 //                 over everything; never pops.
 //   environment — torches, candles, fountains, floor glows, stairs
 //                 beacons, fill lights. The "room is lit by" stuff.
-//                 8 slots — comfortable budget for a dense procgen
-//                 floor's nearby lights.
 //   pickup      — loot highlights. Their own slots so a wave of drops
 //                 can't crowd torches out, and torches can't crowd
-//                 pickups out. 4 slots covers worst-case wraith drop
-//                 + chest open + one straggler.
+//                 pickups out.
 //   projectile  — active projectiles in flight (acolyte spit, future
 //                 spells/darts). Own slots so a salvo can't crowd
-//                 torches out. 4 slots is plenty: the projectile pool
-//                 itself only spawns 16 and they're spread in space.
+//                 torches out; the pool spawns few and they're spread.
+//
+// Slot counts per category live in CONFIG.LIGHT_SLOTS — they are a
+// per-fragment GPU price (see the note there), not just a cap.
 //
 // Per category we sort registered sources by distance to camera and
 // bind the nearest N to that category's slots. Sources beyond their
@@ -31,15 +31,11 @@ import type { ShadowMode } from '../settings/settings';
 
 export type LightCategory = 'lamp' | 'environment' | 'pickup' | 'projectile';
 
-// Budgets per category. LOS-culling means only IN-ROOM sources can
-// reach a slot, so it's fine to give environment a generous budget —
-// the pool naturally caps to "lights you can see."
-const CATEGORY_SLOTS: Record<LightCategory, number> = {
-  lamp: 1,
-  environment: 10,
-  pickup: 4,
-  projectile: 4,
-};
+// Budgets per category — CONFIG.LIGHT_SLOTS. Every slot is a per-fragment
+// shader cost on every lit material whether bound or parked, so the budget
+// is deliberately tight; the pool binds the nearest N visible sources per
+// category and the rest degrade to their emissive sprites.
+const CATEGORY_SLOTS: Record<LightCategory, number> = CONFIG.LIGHT_SLOTS;
 
 // Park position for unused slots — far below the floor.
 const PARK_Y = -1000;
@@ -170,16 +166,26 @@ function applyShadowMode(): void {
 // Every PointLight in the scene — bound or parked at intensity 0 — is
 // compiled into EVERY lit material's shader and evaluated per fragment.
 // The slot counts above ARE that per-fragment price. This probe removes
-// the headroom slots from the scene (19 → 10 lights) so the GPU
-// attribution sweep can measure what the generous budget actually costs.
-// Causes one shader recompile each way — fine inside a sweep's settle
-// window, never something to flip mid-gameplay.
+// the remaining headroom slots from the scene so the GPU attribution
+// sweep can measure what the current budget still costs over a bare
+// minimum. Causes one shader recompile each way — fine inside a sweep's
+// settle window, never something to flip mid-gameplay.
 const TRIM_KEEP: Record<LightCategory, number> = {
   lamp: 1,
-  environment: 5,
-  pickup: 2,
-  projectile: 2,
+  environment: 3,
+  pickup: 1,
+  projectile: 1,
 };
+
+/** Slot totals (full budget vs probe-trimmed) — for the sweep's label. */
+export function getLightSlotTotals(): { full: number; trimmed: number } {
+  let full = 0, trimmed = 0;
+  for (const cat of Object.keys(CATEGORY_SLOTS) as LightCategory[]) {
+    full += CATEGORY_SLOTS[cat];
+    trimmed += Math.min(TRIM_KEEP[cat], CATEGORY_SLOTS[cat]);
+  }
+  return { full, trimmed };
+}
 let budgetTrimmed = false;
 
 export function setLightBudgetTrim(on: boolean): void {

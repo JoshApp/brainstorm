@@ -4,6 +4,7 @@ import { ENEMIES } from './enemies';
 import { buildModel } from '../ecs/build-model';
 import { buildCreature } from './build-creature';
 import { getItemThumbnail } from '../ui/item-thumbnail';
+import { getTexture } from '../style/procedural-textures';
 
 // Pre-warm caches and JIT paths so the first kill/drop/pickup doesn't hitch.
 //
@@ -52,6 +53,21 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
   floor.receiveShadow = true;
   scratch.add(floor);
 
+  // An additive sprite matching the effect pools' material configuration
+  // (status-vfx motes, drifting motes — map + additive + no fog), so the
+  // SpriteMaterial program compiles NOW. Without it the first status proc
+  // mid-fight compiled it — the alloc profiler caught getProgram running
+  // during gameplay.
+  const warmSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: getTexture('fire-wisp'),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
+  }));
+  warmSprite.position.set(0, 0.5, 0);
+  scratch.add(warmSprite);
+
   const models: THREE.Object3D[] = [];
   for (const item of Object.values(ITEMS)) {
     const built = buildModel(item.dropModel);
@@ -87,9 +103,10 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
   mainRenderer.shadowMap.enabled = prevShadow;
   mainRenderer.setRenderTarget(prevTarget);
   warmTarget.dispose();
-  scratch.remove(shadowLight, floor);
+  scratch.remove(shadowLight, floor, warmSprite);
   floor.geometry.dispose();
   (floor.material as THREE.Material).dispose();
+  warmSprite.material.dispose();   // texture stays cached in procedural-textures
 
   // Dispose — the geometries/materials live in WebGL forever via the program
   // cache; we just don't need the JS Object3Ds anymore.

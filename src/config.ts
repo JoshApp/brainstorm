@@ -252,6 +252,28 @@ export const CONFIG = {
   PIXEL_RATIO_CAP_MOBILE: 1.5,
   FOV: 70,                     // vertical FOV. In phone landscape ≈ 100° horizontal — wide enough for first-person crawler
 
+  // Light-pool slot budget per category (scene/light-pool.ts). EVERY slot —
+  // bound or parked at intensity 0 — is compiled into every lit material's
+  // shader and evaluated per fragment, so the TOTAL here is a direct
+  // per-pixel GPU price. The ATTR sweep measured the old 19-slot budget's
+  // headroom at ~24% of frame GPU on an integrated-GPU test box; 12 buys
+  // most of that back. Sources beyond the budget degrade gracefully: the
+  // pool binds the nearest N per category (LOS-culled, hysteresis-stable)
+  // and an unbound torch keeps its emissive flame sprite — it just stops
+  // casting light.
+  LIGHT_SLOTS: {
+    lamp: 1,          // the player's lantern — always wins
+    environment: 6,   // torches/candles/glows — the nearest visible in-room set
+    // Signature-interactable glows ONLY (reliquary, tithe basin, challenge
+    // offering, shrouded relic — the "light = signal" objects). Dropped
+    // items and chests stopped using lights long ago; their glow is an
+    // emissive disc.
+    pickup: 2,
+    // Projectiles carry an emissive core + trail (and bloom); the light
+    // spill on walls wasn't worth a per-fragment slot on every material.
+    projectile: 0,
+  },
+
   // === WALLS — surface variation ===
   WALL_SUBDIVISIONS_X: 16,     // segments along width — more = finer noise
   WALL_SUBDIVISIONS_Y: 12,

@@ -8,7 +8,7 @@ import {
   setViewmodelPrepassEnabled, getViewmodelPrepassEnabled,
   setPS1Scale, getPS1Scale,
 } from '../style/render-target';
-import { setShadowMode, getShadowMode, setLightBudgetTrim } from '../scene/light-pool';
+import { setShadowMode, getShadowMode, setLightBudgetTrim, getLightSlotTotals } from '../scene/light-pool';
 import { setMotesHidden } from '../effects/drifting-motes';
 import { setSurfaceDetailEnabled, getSurfaceDetailEnabled } from '../style/surface-detail';
 import { setAdaptiveResolution, isAdaptiveResolutionEnabled } from '../scene/adaptive-resolution';
@@ -144,7 +144,7 @@ export async function runGpuAttribution(): Promise<void> {
 
   const probes: Probe[] = [
     {
-      name: 'light budget 19→10',
+      name: `light budget ${getLightSlotTotals().full}→${getLightSlotTotals().trimmed}`,
       note: 'parked pool slots still cost per-fragment on every lit material',
       settle: SETTLE_RECOMPILE,
       off: () => setLightBudgetTrim(true),

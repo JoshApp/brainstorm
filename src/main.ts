@@ -11,6 +11,7 @@ import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
+import { initStatusVfxPool } from './effects/status-vfx';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
@@ -635,6 +636,11 @@ document.addEventListener('visibilitychange', () => {
 // instant. Done after the renderer + level exist; before scenarios so an
 // inventory-open scenario doesn't pay the cost on first frame.
 warmupContent(renderer);
+
+// Pre-build the status-VFX mote pool (64 pooled sprites) at boot — its lazy
+// build on the first burn/poison proc was a measured mid-combat GC spike.
+// The sprite shader program itself is compiled by warmupContent above.
+initStatusVfxPool(scene);
 
 // Pre-allocate the pickup light pool. Lights live in the scene forever
 // (idle = intensity 0, parked off-stage); pickups borrow and return them.

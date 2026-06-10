@@ -42,6 +42,14 @@ const motes: Mote[] = [];
 const EMIT_INTERVAL = 0.12;
 let emitAccum = 0;
 
+/** Build the pool at boot instead of on the first mid-combat emit. The lazy
+ *  path allocated 64 sprites + materials during a fight (a measured GC spike)
+ *  and compiled the sprite shader program on the next render — a hitch frame.
+ *  Call once after the scene exists; ensurePool stays as the safety net. */
+export function initStatusVfxPool(scene: THREE.Object3D): void {
+  ensurePool(scene);
+}
+
 function ensurePool(scene: THREE.Object3D) {
   if (motes.length > 0) return;
   for (let i = 0; i < MAX_MOTES; i++) {
