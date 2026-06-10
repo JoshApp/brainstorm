@@ -8,6 +8,13 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-10",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The Boiling King climbs the rest of the way out of the floor — for real this time.",
+        "area": [
+          "content"
+        ]
+      },
+      {
         "tag": "add",
         "text": "Cross the gate and the room drowns in the boss's colour as the music drops — the King falls out of the ceiling. Put it down and the world exhales.",
         "area": [
@@ -377,13 +384,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "A blow to the skull still bites deeper, but the killing flourish is earned now, not handed to every hit.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Break a guard now and you will know it; the brute reels back, its eyes gone dark, its heart bared for the blow.",
         "area": [
           "combat"
         ]
