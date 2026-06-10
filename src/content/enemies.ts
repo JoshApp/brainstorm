@@ -509,10 +509,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'biped',
       proportions: { height: 1.5, girth: 0.13, armLength: 0.74, legLength: 0.6, headSize: 0.16, hunch: 0.18 },
       materials: {
-        // Dark rotted flesh with a faint hot rim that reveals the silhouette in
-        // the dark (darkReactive) — the grimdark "drawn out of black" look.
-        flesh: { color: 0x14100c, roughness: 1, flatShading: 'auto',
-          rim: { color: 0xff5530, power: 3, intensity: 0.35, darkReactive: 0.6 } },
+        // ABSORBED mode — dark rotted flesh, NO rim. A mundane beast hides in
+        // the black; only its hot eyes give it away until your lamp finds it.
+        // (Self-glow is reserved for arcane things now.)
+        flesh: { color: 0x14100c, roughness: 1, flatShading: 'auto' },
         claw: { color: 0x2a2620, roughness: 0.85, flatShading: 'auto' },
         eyes: { color: 0xff5530, emissive: 0xff5530, emissiveIntensity: 2.0 },
       },
@@ -729,7 +729,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'biped',
       proportions: { height: 1.6, girth: 0.14, armLength: 0.72, legLength: 0.66, headSize: 0.16 },
       materials: {
-        flesh: { color: 0x18130d, roughness: 0.9, flatShading: 'auto', rim: { color: 0xffb060, power: 3, intensity: 0.3, darkReactive: 0.5 } },
+        flesh: { color: 0x18130d, roughness: 0.9, flatShading: 'auto' },   // Absorbed — no rim (mundane beast)
         cloth: { color: 0x2a201a, roughness: 1, flatShading: 'auto' },
         blade: { color: 0x3a3e44, roughness: 0.4, metalness: 0.5, flatShading: 'auto' },
         eyes: { color: 0xffb060, emissive: 0xffb060, emissiveIntensity: 2.0 },
@@ -1464,9 +1464,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
       // ghoul.
       proportions: { height: 1.72, girth: 0.1, armLength: 0.72, legLength: 0.72, headSize: 0.13, hunch: 0 },
       materials: {
-        // Pale bone, lifted brighter than before so it catches the lamp out
-        // of the dark; cold blue rim so the brittle edges glow in shadow.
-        bone: { color: 0x938974, roughness: 0.75, flatShading: 'auto', rim: { color: 0xb8d4f0, power: 3, intensity: 0.45, darkReactive: 0.55 } },
+        // PAINTED mode — pale, matte, NO self-light (no rim, emissive 0). The
+        // bone makes no light of its own; the ROOM's coloured torchlight paints
+        // it, amplified (chroma) so a blood-lit hall drenches it red. The white
+        // hand-lamp washes the tint back to bone. Eyes stay the only self-glow.
+        bone: { color: 0xc2b69c, roughness: 0.92, flatShading: 'auto', chroma: 1.8 },
         socket: { color: 0x080a0c, roughness: 1, flatShading: 'auto' },
         eyes: { color: 0x9fd8ff, emissive: 0x9fd8ff, emissiveIntensity: 2.4 },
       },
@@ -1609,8 +1611,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'arachnid',
       proportions: { height: 0.22, girth: 0.26, legLength: 0.5 },
       materials: {
-        chitin: { color: 0x1a1016, roughness: 0.45, metalness: 0.15, flatShading: 'auto',
-          rim: { color: 0xff3a55, power: 3, intensity: 0.4, darkReactive: 0.5 } },
+        // Absorbed — dark chitin, no rim; the eyes are the read in the dark.
+        chitin: { color: 0x1a1016, roughness: 0.45, metalness: 0.15, flatShading: 'auto' },
         eyes: { color: 0xff3a55, emissive: 0xff3a55, emissiveIntensity: 2.4 },
       },
       eyes: { material: 'eyes', emissive: 2.4 },
@@ -2426,7 +2428,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       archetype: 'quadruped',
       proportions: { height: 0.52, girth: 0.18, legLength: 0.36, headSize: 0.15, neckLength: 0.12 },
       materials: {
-        hide: { color: 0x18120c, roughness: 1, flatShading: 'auto', rim: { color: 0xc8d030, power: 3, intensity: 0.3, darkReactive: 0.4 } },
+        hide: { color: 0x18120c, roughness: 1, flatShading: 'auto' },   // Absorbed — no rim (mundane beast)
         eyes: { color: 0xc8d030, emissive: 0xc8d030, emissiveIntensity: 2.0 },
       },
       eyes: { material: 'eyes', emissive: 2.0 },

@@ -190,19 +190,25 @@ const DIP_CURL = -0.50;   // ≈ 29°
 export const HAND_RIGHT: ModelSpec = {
   id: 'hand-right-bone',
   materials: {
+    // PAINTED mode — the player's bone hands make no light of their own; the
+    // ROOM's coloured torchlight paints them (amplified), so a blood-lit hall
+    // floods your own hands red and the white hand-lamp washes them back to
+    // bone up close. A constant, diegetic "what kind of place is this" readout.
     bone: {
       color: 0xc8b89a,
-      roughness: 0.85,
+      roughness: 0.9,
       metalness: 0.05,
       fog: false,
       flatShading: 'auto',
+      chroma: 1.8,
     },
     boneDark: {
       color: 0x6e5d44,
-      roughness: 0.90,
+      roughness: 0.9,
       metalness: 0.05,
       fog: false,
       flatShading: 'auto',
+      chroma: 1.8,
     },
   },
   parts: [
