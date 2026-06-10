@@ -9,9 +9,62 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Smash a vase and it cracks and clatters like broken pottery now, instead of yelping like something you killed.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Cross into the King's hall and there's a breath of nothing — just a shadow on the floor — before it drops out of the dark on top of it.",
         "area": [
           "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Your starter sword stops pretending to be a lightsaber. The edge still means it.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The lantern arm straightens with conviction. The screenshots stop lying about it.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The off hand commits to carrying the lantern instead of merely being draped on it.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The ghouls remember they are dead now. Posture goes the way of the flesh.",
+        "area": [
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Your left hand finally holds the lantern instead of haunting its general vicinity. The right wrist unbends. The dungeon pretends not to notice the improvement.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The rats grew their noses back on the correct end. The hounds found their necks. Nobody mentions the years before.",
+        "area": [
+          "content",
           "atmosphere"
         ]
       },
@@ -336,57 +389,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The ghoul is reborn gaunt and clawed, its eyes two coals in a hung, crooked head.",
         "area": [
           "content"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stoneguard heaves its fists overhead and drives them down in front of it now, instead of wrenching them behind its back.",
-        "area": [
-          "content",
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stoneguard's eyes burn clear again, its hands are empty, and it keeps its feet on the ground instead of drifting off it.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The stoneguard heaves its maul overhead and brings it down now — a real swing, not a lean.",
-        "area": [
-          "content",
-          "combat"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The stoneguard wears its stone like plate now, a heavy maul dragging at its side.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The stoneguard is raised again from its bones out, standing at its true measured height; the old patchwork frame is gone.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Crack a guard and the brute drops for a long dizzy beat, stars wheeling plain overhead now; take your time, then it shakes them off.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Crack a guard and the brute reels drunk, stars wheeling overhead, down a real beat now; finish it for double, though the kill won't mend you.",
-        "area": [
-          "combat"
         ]
       }
     ]
