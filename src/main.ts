@@ -84,6 +84,7 @@ import { startRecording, stopRecording, toggleRecording, setRollingEnabled, save
 import { launchSpector } from './debug/spector-launch';
 import { initDrawReport, captureDrawReport, drawReportData } from './debug/draw-report';
 import { initGpuAttribution, runGpuAttribution, getLastAttributionReport, isAttributionRunning } from './debug/gpu-attribution';
+import { setLambertPreview, isLambertPreview } from './debug/lambert-preview';
 import { setProfilerToolbarVisible } from './debug/profiler-toolbar';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
 import { getInRangeInteractable, getAllInteractables, resolveUsable } from './interactables/system';
@@ -1155,6 +1156,7 @@ const profWin = window as unknown as {
   __gpuAttrReport: () => { running: boolean; report: string | null };
   __gpuPass: () => void;
   __gpuPassDiag: () => Record<string, unknown>;
+  __lambert: (on?: boolean) => boolean;
   __spector: () => void;
 };
 profWin.__profiler = () => { ensureProfilingInited(); toggleProfiler(); };
@@ -1172,6 +1174,9 @@ profWin.__gpuAttr = () => { ensureProfilingInited(); void runGpuAttribution(); }
 profWin.__gpuAttrReport = () => ({ running: isAttributionRunning(), report: getLastAttributionReport() });
 profWin.__gpuPass = () => { ensureProfilingInited(); setGpuPassTiming(!gpuPassTimingOn()); };
 profWin.__gpuPassDiag = () => gpuPassDiag();
+// Lambert-class shading preview — A/B the PBR tax visually. __lambert() toggles,
+// __lambert(true/false) sets. Profiler-suite tool, not a player setting.
+profWin.__lambert = (on?: boolean) => { setLambertPreview(scene, on ?? !isLambertPreview()); return isLambertPreview(); };
 profWin.__spector = () => void launchSpector();   // desktop only — heavy UI
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
