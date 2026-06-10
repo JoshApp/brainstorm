@@ -459,28 +459,58 @@ export function spawnStairs(
   const shaftCoreBaseW  = 0.30;
 
   // ── BOSS-GATE WARD ──────────────────────────────────────────────────
-  // A boss-floor descent is SEALED until the boss falls: no warm invite,
-  // just a taut additive membrane in the boss's own colour capping the
-  // mouth. The kill shatters it (rises + fades) and the warm beam resumes.
-  // Built only when the spec asks for a boss gate.
+  // A boss-floor descent is SEALED until the boss falls. No warm invite:
+  // a taut additive membrane in the boss's own colour caps the mouth, and
+  // HEAVY IRON CHAINS cross it with a padlock at the join — the glow says
+  // "warded", the chains say "barred". The kill shatters the whole rig (it
+  // rises + fades) and the warm beam resumes. Built only on a boss gate.
   const isBossGate = spec.unlock?.kind === 'boss-defeated';
   const sealColor = (spec.unlock?.kind === 'boss-defeated' && spec.unlock.color != null)
     ? spec.unlock.color : 0x88cc33;
   let sealActive = isBossGate && !isBossEncounterComplete();
   let breaking = false;
   let shatter = 0;
-  let ward: THREE.Mesh | null = null;
-  let wardMat: THREE.MeshBasicMaterial | null = null;
+  let wardGroup: THREE.Group | null = null;
+  let wardSlabMat: THREE.MeshBasicMaterial | null = null;
+  const wardFadeMats: THREE.Material[] = [];   // everything that fades out on the shatter
   if (isBossGate) {
-    wardMat = new THREE.MeshBasicMaterial({
-      color: sealColor, transparent: true, opacity: 0.3,
+    wardGroup = new THREE.Group();
+    // 1) The glowing membrane — additive, pulses while sealed.
+    wardSlabMat = new THREE.MeshBasicMaterial({
+      color: sealColor, transparent: true, opacity: 0.32,
       blending: THREE.AdditiveBlending, depthWrite: false,
     });
-    // A thin slab capping the stairwell mouth (descends in +z, width STEP_WIDTH).
-    ward = new THREE.Mesh(pooledBox(STEP_WIDTH, 0.02, totalDepth), wardMat);
-    ward.position.set(0, 0.09, totalDepth / 2);
-    ward.visible = sealActive;
-    group.add(ward);
+    const slab = new THREE.Mesh(pooledBox(STEP_WIDTH, 0.02, totalDepth), wardSlabMat);
+    slab.position.set(0, 0.09, totalDepth / 2);
+    wardGroup.add(slab);
+    wardFadeMats.push(wardSlabMat);
+    // 2) Crossed iron chains over the mouth — dark, physical, lit by the room.
+    const ironMat = new THREE.MeshStandardMaterial({
+      color: 0x14130f, roughness: 0.6, metalness: 0.7, flatShading: true,
+      transparent: true, opacity: 1,
+    });
+    wardFadeMats.push(ironMat);
+    const diag = Math.hypot(STEP_WIDTH, totalDepth);
+    const ang = Math.atan2(totalDepth, STEP_WIDTH);
+    for (const s of [-1, 1]) {
+      const chain = new THREE.Mesh(pooledBox(diag * 0.98, 0.07, 0.07), ironMat);
+      chain.position.set(0, 0.14, totalDepth / 2);
+      chain.rotation.y = s * ang;
+      wardGroup.add(chain);
+    }
+    // 3) Padlock at the crossing — body + U-shackle, a faint seal-coloured keyhole.
+    const lockBody = new THREE.Mesh(pooledBox(0.17, 0.21, 0.08), ironMat);
+    lockBody.position.set(0, 0.2, totalDepth / 2);
+    wardGroup.add(lockBody);
+    const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.024, 6, 12, Math.PI), ironMat);
+    shackle.position.set(0, 0.31, totalDepth / 2);
+    wardGroup.add(shackle);
+    const keyhole = new THREE.Mesh(pooledBox(0.03, 0.06, 0.02), wardSlabMat);
+    keyhole.position.set(0, 0.19, totalDepth / 2 - 0.045);
+    wardGroup.add(keyhole);
+
+    wardGroup.visible = sealActive;
+    group.add(wardGroup);
     // Break the seal the instant the boss encounter completes.
     if (sealActive) onBossEncounterComplete(() => { sealActive = false; breaking = true; });
   }
@@ -501,9 +531,9 @@ export function spawnStairs(
     // glows, with a faint cold floor-mark in the boss colour so the sealed
     // descent still reads from across the room. The kill shatters the ward
     // (rises + fades) and we fall through to the normal warm light below.
-    if (isBossGate && ward && wardMat) {
+    if (isBossGate && wardGroup) {
       if (sealActive) {
-        wardMat.opacity = 0.24 + 0.10 * Math.sin(wave);
+        if (wardSlabMat) wardSlabMat.opacity = 0.26 + 0.10 * Math.sin(wave);
         shaftOuterMat.opacity = 0; shaftCoreMat.opacity = 0; moteMat.opacity = 0;
         outlineMat.opacity = 0; outlineOuterMat.opacity = 0;
         shaftOuter.scale.set(0, 1, 1); shaftCoreMesh.scale.set(0, 1, 1);
@@ -512,11 +542,15 @@ export function spawnStairs(
         return;
       }
       if (breaking) {
-        shatter += (1 - shatter) * 0.06;
-        ward.scale.set(1 + shatter * 0.5, 1, 1 + shatter * 0.5);
-        ward.position.y = 0.09 + shatter * 0.35;
-        wardMat.opacity = Math.max(0, (1 - shatter) * 0.42);
-        if (shatter > 0.97) { ward.visible = false; breaking = false; }
+        // The whole rig (membrane + chains + lock) rips loose, rises and fades.
+        shatter += (1 - shatter) * 0.05;
+        wardGroup.position.y = shatter * 0.5;
+        wardGroup.scale.set(1 + shatter * 0.3, 1 + shatter * 0.6, 1 + shatter * 0.3);
+        for (const m of wardFadeMats) {
+          const base = m === wardSlabMat ? 0.36 : 1;
+          (m as THREE.Material & { opacity: number }).opacity = Math.max(0, base * (1 - shatter));
+        }
+        if (shatter > 0.97) { wardGroup.visible = false; breaking = false; }
       }
     }
 
