@@ -80,27 +80,10 @@ let pendingLabel: string | undefined;
 const gphIndex = new Map<string, number>();
 const gphNames: string[] = [];
 
-const gphIndex = new Map<string, number>();
-const gphNames: string[] = [];
-
 function systemIdx(name: string): number {
   let i = sysIndex.get(name);
   if (i === undefined) { i = sysNames.length; sysNames.push(name); sysIndex.set(name, i); }
   return i;
-}
-function gpuPhaseIdx(name: string): number {
-  let i = gphIndex.get(name);
-  if (i === undefined) { i = gphNames.length; gphNames.push(name); gphIndex.set(name, i); }
-  return i;
-}
-function snapshotGph(phases: Map<string, number>): number[] {
-  const arr = new Array<number>(gphNames.length).fill(0);
-  for (const [name, ms] of phases) {
-    const i = gpuPhaseIdx(name);
-    if (i >= arr.length) arr.length = i + 1;
-    arr[i] = r2(ms);
-  }
-  return arr;
 }
 function gpuPhaseIdx(name: string): number {
   let i = gphIndex.get(name);
