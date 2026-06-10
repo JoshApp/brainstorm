@@ -78,6 +78,10 @@ export interface MaterialDef {
 
 // --- Parts (discriminated union) ---------------------------------------
 
+/** Named directions for PartCommon.aim — model-local frame, Y-up,
+ *  −Z forward (the direction the creature/model faces). */
+export type AimDir = 'forward' | 'back' | 'up' | 'down' | 'left' | 'right';
+
 interface PartCommon {
   /** Optional name — required if animations need to look this part up later. */
   name?: string;
@@ -93,6 +97,23 @@ interface PartCommon {
   pos?: Vec3;
   /** Local rotation (Euler XYZ radians). Default [0,0,0]. */
   rot?: Vec3;
+  /**
+   * INTENT-BASED aim — point the part's meaningful axis (local +Y:
+   * cone apex, cylinder length, capsule length) at a named direction
+   * instead of guessing Euler signs. `aim: 'forward'` on a muzzle
+   * cone makes "apex toward the face" unwritable-wrong — the exact
+   * axis-confusion failure that had every quadruped muzzle in the
+   * bestiary pointing backward (docs/VISUAL-LANGUAGE.md, 2026-06).
+   *
+   * Mutually exclusive with `rot` (build throws if both are set —
+   * silently composing them would re-introduce the guesswork).
+   * `aimTilt` leans the aimed axis toward a second direction by
+   * `aimTiltAmount` (same feel-knob scale as orient.ts's tilt():
+   * 0.05 subtle / 0.20 slight / 0.40 moderate / 0.80 strong).
+   */
+  aim?: AimDir;
+  aimTilt?: AimDir;
+  aimTiltAmount?: number;
   /** Local scale. Default [1,1,1]. */
   scale?: Vec3;
   /** Cast shadows? Default true for solid meshes, false for sprites. */

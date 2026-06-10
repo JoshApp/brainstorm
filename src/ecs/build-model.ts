@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
-import type { MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
+import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
+import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
 import {
@@ -120,6 +121,14 @@ export function buildModel(spec: ModelSpec): BuiltModel {
     if (part.name) {
       obj.name = part.name;
       parts.set(part.name, obj);
+    } else {
+      // Diagnostic label for unnamed parts — the bench's structural
+      // linter (readout.ts findFloatingIslands) reports THIS, so a
+      // floating island reads as "cone·fur@0,-0.012,-0.12", not
+      // "mesh#10". Cheap (string at build), zero runtime use.
+      const mat = 'mat' in part ? (part as { mat?: string }).mat : undefined;
+      const at = part.pos ? `@${part.pos.map((n) => Math.round(n * 1000) / 1000).join(',')}` : '';
+      obj.name = `${part.kind}${mat ? '·' + mat : ''}${at}`;
     }
     group.add(obj);
     if (part.kind !== 'sprite' && part.kind !== 'bone') hitTargets.push(obj);
@@ -672,6 +681,11 @@ function buildCsg(
   return result;
 }
 
+const AIM_VECTORS: Record<AimDir, Vec3Tuple> = {
+  forward: DIR.FORWARD, back: DIR.BACKWARD, up: DIR.UP,
+  down: DIR.DOWN, left: DIR.LEFT, right: DIR.RIGHT,
+};
+
 function applyTransform(obj: THREE.Object3D, part: PartSpec) {
   // Bones compute their own pos/rot from slot positions — never
   // overwrite with the spec's pos/rot (they're ignored fields on bones).
@@ -680,7 +694,25 @@ function applyTransform(obj: THREE.Object3D, part: PartSpec) {
     return;
   }
   if (part.pos) obj.position.fromArray(part.pos as Vec3);
-  if (part.rot) obj.rotation.fromArray(part.rot as Vec3);
+  if (part.aim) {
+    // Intent-based aim: point the part's +Y (cone apex, cylinder
+    // length) at the named direction — orient() solves the Euler so
+    // the sign confusion that pointed every muzzle backward can't be
+    // authored. See PartCommon.aim in model-types.ts.
+    if (part.rot) {
+      throw new Error(
+        `Part '${part.name ?? part.kind}' sets BOTH aim and rot — use one. ` +
+        `aim is the intent form of rot; composing them silently would defeat it.`,
+      );
+    }
+    const principal = AIM_VECTORS[part.aim];
+    const dir = part.aimTilt
+      ? tilt(principal, AIM_VECTORS[part.aimTilt], part.aimTiltAmount ?? 0.2)
+      : principal;
+    obj.rotation.fromArray(orient({ yAxisTo: dir }));
+  } else if (part.rot) {
+    obj.rotation.fromArray(part.rot as Vec3);
+  }
   if (part.scale) obj.scale.fromArray(part.scale as Vec3);
 }
 

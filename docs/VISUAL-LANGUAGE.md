@@ -113,18 +113,22 @@ Encounter hook), don't add MORE lit altars; close the loop first.
   right (see the 2026-06 quadruped repair — every muzzle in the
   bestiary pointed backward).
 
-## Acceptance: the three-lights test (planned bench mode)
+## Acceptance: the three-lights test (`npm run bench <subject> --lights`)
 
-A model ships when it reads in all three:
+A model ships when it reads in all three panels of the contact sheet:
 
-1. **black** — silhouette + emissive/rim only (does the shape read?
+1. **BLACK** — silhouette + emissive/rim only (does the shape read?
    does only the *right* stuff glow?)
-2. **lamp-only** — neutral light (true colors, gesture, connections)
-3. **room-tint** — one saturated mood color (does painted carry the
+2. **LAMP** — near-neutral light (true colors, gesture, connections)
+3. **TINT** — one saturated mood color, blood (does painted carry the
    hue? does absorbed stay swallowed?)
 
-Until the bench grows a `--three-lights` contact sheet, approximate
-with `--ortho` + judgment against the rules above.
+The bench readout also runs a structural linter on every render:
+`floatingIslands` lists any solid geometry not connected to the main
+body (the floating-head class of bug). An island = fix it before
+shipping. `aim: 'forward'` on parts (model-types.ts) makes the
+backwards-cone class unwritable — prefer it over raw `rot` for any
+part whose axis has a meaning.
 
 ## Decisions log
 

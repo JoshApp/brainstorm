@@ -98,6 +98,7 @@ if (!subjectId) {
     const gridN = Number(params.get('grid') ?? 0);
     const animN = Number(params.get('anim') ?? 0);
     const orthoMode = params.get('ortho') === '1';
+    const lightsMode = params.get('lights') === '1';
     const gnomonMode = params.get('gnomon') === '1';
     const debugMode = params.get('debug') === '1';
     // --hand: for a weapon subject, build the same hand+weapon
@@ -180,6 +181,7 @@ if (!subjectId) {
 
       draw = () => {
         if (animN > 0 && mobAnim) mounted!.renderPoseGrid(animN, az, el, mobAnim.poseAt);
+        else if (lightsMode) mounted!.renderThreeLights();
         else if (orthoMode) mounted!.renderOrthoQuad();
         else if (gridN > 0) mounted!.renderTurntable(gridN, el);
         else mounted!.renderView(az, el);

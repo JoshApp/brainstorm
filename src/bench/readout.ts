@@ -26,6 +26,13 @@ export interface Readout {
    *  notable geometric relationship (e.g. distance from a finger DIP
    *  tip to the palm anchor) so the author can VERIFY the wrap
    *  numerically instead of squinting at a screenshot. */
+  /** STRUCTURAL LINTER — groups of solid meshes whose bounding boxes
+   *  (padded 4mm) touch nothing else in the model. A floating island
+   *  is almost always an authoring bug: a head with no neck bones, a
+   *  tail cone whose rotation carried it off the rump. Glow sprites
+   *  and additive/transparent quads are exempt (they hover by
+   *  design). Absent when the model is fully connected. */
+  floatingIslands?: Array<{ meshes: string[]; triangles: number }>;
   composition?: {
     /** Distance from named-A slot world-pos to named-B slot world-pos. */
     distances: Array<{ a: string; b: string; d: number }>;
@@ -41,6 +48,52 @@ export interface Readout {
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/** Connected-component sweep over a model's SOLID meshes. Returns the
+ *  islands beyond the largest component (the body). */
+export function findFloatingIslands(
+  root: THREE.Object3D,
+): Array<{ meshes: string[]; triangles: number }> {
+  interface Entry { box: THREE.Box3; label: string; tris: number }
+  const entries: Entry[] = [];
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    // Additive / transparent quads are glow, not structure.
+    const m0 = mats[0] as THREE.Material & { blending?: number };
+    if (m0 && (m0.transparent || m0.blending === THREE.AdditiveBlending)) return;
+    const geo = mesh.geometry as THREE.BufferGeometry;
+    const pos = geo?.getAttribute?.('position');
+    if (!pos) return;
+    const box = new THREE.Box3().setFromObject(mesh);
+    box.expandByScalar(0.004);
+    const label = mesh.name || (m0 as THREE.Material)?.name || `mesh#${entries.length}`;
+    entries.push({ box, label, tris: geo.index ? geo.index.count / 3 : pos.count / 3 });
+  });
+  if (entries.length < 2) return [];
+  // Union-find over pairwise AABB overlap.
+  const parent = entries.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      if (entries[i].box.intersectsBox(entries[j].box)) parent[find(i)] = find(j);
+    }
+  }
+  const groups = new Map<number, Entry[]>();
+  for (let i = 0; i < entries.length; i++) {
+    const root_ = find(i);
+    if (!groups.has(root_)) groups.set(root_, []);
+    groups.get(root_)!.push(entries[i]);
+  }
+  if (groups.size <= 1) return [];
+  const sorted = [...groups.values()].sort((a, b) => b.length - a.length);
+  return sorted.slice(1).map((g) => ({
+    meshes: g.map((e) => e.label),
+    triangles: Math.round(g.reduce((t, e) => t + e.tris, 0)),
+  }));
+}
 
 export function computeReadout(
   subject: BenchSubject,
@@ -124,6 +177,8 @@ export function computeReadout(
     composition = { distances, gripAlignmentError: r3(gripAlignmentError), fingerContactErrors };
   }
 
+  const islands = findFloatingIslands(built.group);
+
   return {
     id: subject.id,
     kind: subject.kind,
@@ -138,6 +193,7 @@ export function computeReadout(
     vertices,
     materials: [...built.materials.keys()],
     slots,
+    floatingIslands: islands.length > 0 ? islands : undefined,
     composition,
   };
 }

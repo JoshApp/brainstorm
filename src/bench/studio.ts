@@ -25,6 +25,8 @@ export interface Studio {
    *  view — published LLM-CAD research finds single-screenshot
    *  feedback degrades iteration; multi-view doesn't. */
   renderOrthoQuad(): void;
+  /** The three-lights acceptance test: BLACK / LAMP / TINT panels. */
+  renderThreeLights(): void;
   /** Contact sheet from a fixed camera, calling poseAt(i, n) before each tile
    *  to mutate the subject — for animation arcs (windup→strike→recover). */
   renderPoseGrid(n: number, azDeg: number, elDeg: number, poseAt: (i: number, n: number) => void): void;
@@ -58,16 +60,52 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
   // "Painted" material mode — e.g. --light=ff1818 for a blood-lit chamber).
   const lightParam = new URLSearchParams(location.search).get('light');
   const tint = lightParam ? new THREE.Color(parseInt(lightParam, 16)) : null;
-  scene.add(new THREE.AmbientLight(tint ?? 0xffffff, 1.5));
+  const studioRig = new THREE.Group();
+  studioRig.add(new THREE.AmbientLight(tint ?? 0xffffff, 1.5));
   const hemi = new THREE.HemisphereLight(tint ?? 0xeeeeff, 0x806040, 2.5);
   hemi.position.set(0, 5, 0);
-  scene.add(hemi);
+  studioRig.add(hemi);
   const key = new THREE.DirectionalLight(tint ?? 0xffffff, 3.0);
   key.position.set(2, 4, 3);
-  scene.add(key);
+  studioRig.add(key);
   const rim = new THREE.DirectionalLight(tint ?? 0xffd0a0, 1.5);
   rim.position.set(-2, 2, -3);
-  scene.add(rim);
+  studioRig.add(rim);
+  scene.add(studioRig);
+
+  // ── THE THREE-LIGHTS TEST RIGS (docs/VISUAL-LANGUAGE.md) ──────────
+  // A model ships when it reads under all three: BLACK (emissive/rim
+  // only — does the silhouette read, does only the RIGHT stuff glow?),
+  // LAMP (the player's near-neutral hand-lamp — true colors, gesture,
+  // connections), TINT (one saturated room mood — does painted carry
+  // the hue, does absorbed stay swallowed?). Swapped per-tile by
+  // renderThreeLights below.
+  const blackRig = new THREE.Group();
+  blackRig.add(new THREE.AmbientLight(0xffffff, 0.02));   // not literally zero — silhouette vs backdrop
+  blackRig.visible = false;
+  scene.add(blackRig);
+
+  const lampRig = new THREE.Group();
+  const lampPoint = new THREE.PointLight(0xfff4e0, 30, 0, 2);  // near-neutral, slight warmth like the hand-lamp
+  lampPoint.position.set(0.5, 0.8, 1.2);
+  lampRig.add(lampPoint);
+  lampRig.add(new THREE.AmbientLight(0xffffff, 0.06));
+  lampRig.visible = false;
+  scene.add(lampRig);
+
+  const tintRig = new THREE.Group();
+  const BLOOD = 0xff5040;                                  // TORCH_BLOOD, the strongest mood
+  tintRig.add(new THREE.AmbientLight(BLOOD, 0.5));
+  const tintKey = new THREE.DirectionalLight(BLOOD, 2.5);
+  tintKey.position.set(2, 3, 2);
+  tintRig.add(tintKey);
+  tintRig.visible = false;
+  scene.add(tintRig);
+
+  const RIGS: Record<string, THREE.Group> = { studio: studioRig, black: blackRig, lamp: lampRig, tint: tintRig };
+  function setLightRig(mode: keyof typeof RIGS): void {
+    for (const [name, rig] of Object.entries(RIGS)) rig.visible = name === mode;
+  }
 
   const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
 
@@ -143,16 +181,20 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
     grid(n, (i, aspect) => placeCamera((i / n) * 360, elDeg, aspect));
   }
 
-  // Four canonical views for spatial debugging: front (looking down -Z),
-  // side (looking down -X), top (looking down -Y), iso (the established
-  // 35°/18° hero angle). The published research (Picard et al., 3DCodeBench)
-  // is explicit that single-view critique hurts LLM iteration; this is the
-  // mitigation. Top uses 89° to avoid Three's gimbal-lock at 90.
+  // Four canonical views for spatial debugging. Models face −Z by
+  // convention (CLAUDE.md), so FRONT puts the camera at −Z looking
+  // back at the FACE — az 0 (camera at +Z) showed every mob's REAR
+  // labeled "FRONT", which mis-led a whole critique pass before it
+  // was caught (the rat's inverted tail read as its nose). ISO sits
+  // front-right for the same reason. The published research (Picard
+  // et al., 3DCodeBench) is explicit that single-view critique hurts
+  // LLM iteration; the quad is the mitigation. Top uses 89° to avoid
+  // Three's gimbal-lock at 90.
   const ORTHO_VIEWS: ReadonlyArray<{ az: number; el: number; label: string }> = [
-    { az: 0,  el: 0,  label: 'FRONT' },
-    { az: 90, el: 0,  label: 'SIDE' },
-    { az: 0,  el: 89, label: 'TOP' },
-    { az: 35, el: 18, label: 'ISO' },
+    { az: 180, el: 0,  label: 'FRONT' },
+    { az: 90,  el: 0,  label: 'SIDE' },
+    { az: 0,   el: 89, label: 'TOP' },
+    { az: 145, el: 18, label: 'ISO' },
   ];
 
   function renderOrthoQuad(): void {
@@ -161,6 +203,20 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
       placeCamera(v.az, v.el, aspect);
     });
     paintViewLabels(ORTHO_VIEWS.map((v) => v.label));
+  }
+
+  // Three side-by-side SIDE views, one per test rig. The side profile
+  // is the gesture-readable angle; three lighting conditions beat
+  // three angles of one condition for ACCEPTANCE (the ortho quad
+  // already covers geometry from four angles).
+  function renderThreeLights(): void {
+    const modes: Array<keyof typeof RIGS> = ['black', 'lamp', 'tint'];
+    grid(3, (i, aspect) => {
+      setLightRig(modes[i]);
+      placeCamera(90, 8, aspect);
+    });
+    setLightRig('studio');
+    paintViewLabels(['BLACK · emissive only', 'LAMP · neutral', 'TINT · blood room']);
   }
 
   function renderPoseGrid(n: number, azDeg: number, elDeg: number, poseAt: (i: number, n: number) => void): void {
@@ -184,7 +240,7 @@ export function mountStudio(canvas: HTMLCanvasElement): Studio {
 
   resize(canvas.clientWidth || 1200, canvas.clientHeight || 900);
   return {
-    show, renderView, renderTurntable, renderOrthoQuad, renderPoseGrid, renderHeldGrid,
+    show, renderView, renderTurntable, renderOrthoQuad, renderThreeLights, renderPoseGrid, renderHeldGrid,
     root: () => subject, frame: (r) => { radius = r; pivot.set(0, 0, 0); }, resize,
   };
 }

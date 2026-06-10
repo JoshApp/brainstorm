@@ -630,10 +630,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // Small wedge skull + a long pointed snout forward (−Z). Skull kept
         // small so the snout — not a round face — defines the head.
         { kind: 'sphere', joint: 'head', radius: 0.068, jitter: 0.01, mat: 'fur' },
-        // rot −π/2 about X points the cone APEX forward (−Z): apex lands at
-        // z≈−0.20, right at the nose-tip sphere. (+π/2 points the apex INTO
-        // the skull and shows the wide base disc as the face — wrong way.)
-        { kind: 'cone', joint: 'head', radius: 0.05, height: 0.16, pos: [0, -0.012, -0.12], rot: [-1.5708, 0, 0], mat: 'fur' },
+        // aim:'forward' = cone apex toward the nose (the intent form of
+        // rot −π/2 — this cone shipped pointing INTO the skull once;
+        // with aim, that mistake is unwritable).
+        { kind: 'cone', joint: 'head', radius: 0.05, height: 0.16, pos: [0, -0.012, -0.12], aim: 'forward', mat: 'fur' },
         { kind: 'sphere', joint: 'head', radius: 0.018, pos: [0, -0.018, -0.2], mat: 'skin' },   // wet nose tip
         // Ears — flattened discs set LOW and LATERAL, swept back, asymmetric
         // (left bigger + more ragged-angled). High front-facing discs read as
@@ -648,7 +648,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'sphere', joint: 'head', radius: 0.021, pos: [-0.05, 0.012, -0.082], mat: 'eyes' },
         { kind: 'sphere', joint: 'head', radius: 0.021, pos: [0.05, 0.012, -0.082], mat: 'eyes' },
         // Four thin legs (bones span hip→foot; the trot gait swings them) +
-        // tiny bald paws.
+        // tiny bald paws. Shoulder caps bridge the FRONT leg bones into
+        // the chest mass — the bench's floating-island linter caught
+        // both front legs hanging 3.6cm outboard of the shoulder
+        // sphere (the haunches already cover the hind pair).
+        { kind: 'sphere', joint: 'frontL', radius: 0.04, pos: [0.032, 0.01, 0], jitter: 0.012, mat: 'fur' },
+        { kind: 'sphere', joint: 'frontR', radius: 0.04, pos: [-0.032, 0.01, 0], jitter: 0.012, mat: 'fur' },
         { kind: 'bone', from: 'frontL', to: 'footFL', radius: 0.022, mat: 'fur' },
         { kind: 'bone', from: 'frontR', to: 'footFR', radius: 0.022, mat: 'fur' },
         { kind: 'bone', from: 'hindL', to: 'footHL', radius: 0.024, mat: 'fur' },
@@ -663,8 +668,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // fat root (0.03) and `radius` the thin far end (0.02) — fat-at-rump,
         // thin-at-tip. Tip cone's base sits ON the cylinder's far end
         // (≈ z 0.44) and its apex flicks up-back.
-        { kind: 'cylinder', joint: 'hips', radius: 0.02, radiusTop: 0.03, height: 0.32, pos: [0, 0.0, 0.28], rot: [-1.45, 0, 0], mat: 'skin' },
-        { kind: 'cone', joint: 'hips', radius: 0.019, height: 0.26, pos: [0, 0.03, 0.56], rot: [1.2, 0, 0], mat: 'skin' },
+        // Root buried 4cm into the haunch — the island linter showed the
+        // old z=0.28 root only GRAZED the jittered rump (jitter can pull
+        // vertices 15mm in, opening a visible seam).
+        { kind: 'cylinder', joint: 'hips', radius: 0.02, radiusTop: 0.03, height: 0.32, pos: [0, 0.0, 0.24], rot: [-1.45, 0, 0], mat: 'skin' },
+        { kind: 'cone', joint: 'hips', radius: 0.019, height: 0.26, pos: [0, 0.03, 0.52], rot: [1.2, 0, 0], mat: 'skin' },
       ],
     },
     baseEyeEmissive: 2.0,
@@ -2457,9 +2465,9 @@ export const ENEMIES: Record<string, EnemySpec> = {
         { kind: 'bone', from: 'neck', to: 'head', radius: 0.08, radiusTop: 0.07, mat: 'hide' },
         // Elongated skull + long snout, back-swept ears, glowing eyes.
         { kind: 'sphere', joint: 'head', radius: 0.13, scale: [0.9, 1, 1.15], jitter: 0.02, mat: 'hide' },
-        // Snout cone: −π/2 about X = apex forward (−Z), the muzzle tapers to
-        // the nose. (+π/2 showed the wide base as the face — wrong way.)
-        { kind: 'cone', joint: 'head', radius: 0.07, height: 0.22, pos: [0, -0.03, -0.13], rot: [-1.5708, 0, 0], mat: 'hide' },
+        // aim:'forward' = muzzle apex toward the nose (intent form; this
+        // cone also shipped backward once).
+        { kind: 'cone', joint: 'head', radius: 0.07, height: 0.22, pos: [0, -0.03, -0.13], aim: 'forward', mat: 'hide' },
         // Ear cones: +X rotation sweeps the apex up-BACK (−0.5 pointed them
         // up-forward, which read as horns). Slight outward yaw, asymmetric.
         { kind: 'cone', joint: 'head', radius: 0.04, height: 0.11, pos: [-0.08, 0.1, 0.05], rot: [0.6, -0.25, 0.08], mat: 'hide' },

@@ -58,6 +58,7 @@ async function main() {
   const az = process.argv.find((a) => a.startsWith('--az='))?.split('=')[1];
   const el = process.argv.find((a) => a.startsWith('--el='))?.split('=')[1];
   const orthoMode = process.argv.includes('--ortho');
+  const lightsMode = process.argv.includes('--lights');
   const gnomonMode = process.argv.includes('--gnomon');
   const debugMode = process.argv.includes('--debug');
   const handMode = process.argv.includes('--hand');
@@ -102,6 +103,7 @@ async function main() {
     if (az) q.set('az', az);
     if (el) q.set('el', el);
     if (orthoMode) q.set('ortho', '1');
+    if (lightsMode) q.set('lights', '1');
     if (gnomonMode) q.set('gnomon', '1');
     if (debugMode) q.set('debug', '1');
     if (handMode) q.set('hand', '1');
@@ -122,6 +124,7 @@ async function main() {
       // each other when you run them back-to-back.
       const suffix =
         animN > 0 ? '-anim'
+        : lightsMode ? '-lights'
         : handMode && orthoMode && debugMode ? '-hand-ortho-debug'
         : handMode && orthoMode ? '-hand-ortho'
         : handMode && debugMode ? '-hand-debug'
