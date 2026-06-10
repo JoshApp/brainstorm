@@ -16,6 +16,8 @@ import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
 import { tickJustDodge, getJustDodgeTimeScale } from './combat/just-dodge';
+import { tickBossSlowmo, getBossSlowmoTimeScale } from './combat/boss-slowmo';
+import { setupBossCinematics } from './mobs/boss-cinematics';
 import { initWeaponDrop, dropHeldItem } from './player/weapon-drop';
 import { bossEncounterDebug } from './mobs/boss-encounter';
 import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthrough';
@@ -730,6 +732,9 @@ validateContent();
 // floor entry is captured.
 initRunStateListeners();
 initCharacterTracking();
+// Cinematic boss beats (music + room-mood flood on engage, slow-mo + shake +
+// colour-drain on death) — subscribed once to the boss lifecycle events.
+setupBossCinematics();
 
 // PWA: poll for SW updates + auto-reload when a new SW takes over.
 // Means a `git push` lands on Josh's installed home-screen app within a
@@ -814,7 +819,8 @@ function tick() {
 
   tickDeath(realDt);
   tickJustDodge(realDt);   // real-time so the slow-mo dip isn't slowed by itself
-  const scaledDt = realDt * getTimeScale() * getJustDodgeTimeScale();
+  tickBossSlowmo(realDt);  // ditto — the boss-death dip advances in real time
+  const scaledDt = realDt * getTimeScale() * getJustDodgeTimeScale() * getBossSlowmoTimeScale();
   // Snapshot pause state AFTER the harness so a just-ended budget gates this
   // frame's unpaused systems.
   const paused = isWorldPaused();

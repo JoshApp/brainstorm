@@ -58,6 +58,11 @@ export interface EnemySpec {
    *  style: the fight begins on commitment, not on line-of-sight. Requires
    *  a fog wall in the level (else it would never wake). */
   dormantUntilEngaged?: boolean;
+  /** Cinematic ENTRANCE played when a dormant boss wakes (crosses the fog gate).
+   *  'ceiling-drop': the boss waits hidden above the arena, then plummets to the
+   *  floor with an impact quake during the engage grace. Requires
+   *  dormantUntilEngaged. Omit for a boss that's simply already standing there. */
+  entrance?: 'ceiling-drop';
   /** Name shown on the boss bar (grimdark, e.g. "The Hollow Choir"). */
   bossName?: string;
   /** Visual model scale multiplier — bosses loom larger than trash. The
@@ -1690,6 +1695,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     bossName: 'The Boiling King',
     // Sleeps behind the fog gate; the fight begins when you cross it.
     dormantUntilEngaged: true,
+    entrance: 'ceiling-drop',        // waits above the arena, slams down when you cross the gate
     scale: 7.0,                      // WAY bigger than the player (~2× player height, 3.5m wide)
     hp: 30,                          // bigger body, more HP — fight pacing stays similar
     moveSpeed: 1.2,                  // a touch less glacial; the chase HOP does the real closing

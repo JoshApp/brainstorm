@@ -13,6 +13,7 @@ import { wallFixtureModel } from './lit-fixture-pool';
 import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
 import { kickShake } from '../combat/screen-shake';
 import { registerBossMember, advanceBossPhase } from '../mobs/boss-encounter';
+import { setBossPresentation } from '../mobs/boss-cinematics';
 import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { scaleEnemySpec } from '../content/modifiers';
 import { buildModel } from '../ecs/build-model';
@@ -1548,6 +1549,12 @@ export function buildLevel(
   // the ward reads as the boss's own power holding the way shut.
   const bossSpawn = spec.spawns.find((s) => ENEMIES[s.enemyId]?.isBoss);
   const bossWard = bossSpawn ? bossWardColor(ENEMIES[bossSpawn.enemyId]) : null;
+  // Hand the cinematics layer this floor's boss presentation (room to flood
+  // with the boss colour on engage; cleared on a non-boss floor so it can't
+  // bleed across floors).
+  setBossPresentation(bossSpawn
+    ? { roomId: findRoomContaining(bossSpawn.x, bossSpawn.z, spec.rooms), color: bossWard ?? 0x88cc33 }
+    : null);
   for (const st of spec.stairs ?? []) {
     const gated = bossWard != null && !st.unlock
       ? { ...st, unlock: { kind: 'boss-defeated' as const, color: bossWard } }

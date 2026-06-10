@@ -522,6 +522,15 @@ export function createEnemy(
   let poiseLeft = poiseMax;
   let poiseRegenCd = 0;     // grace countdown before the pool refills
   let staggerTimer = 0;     // > 0 while in the 'staggered' state
+  // ── Cinematic entrance (ceiling-drop) ──────────────────────────────
+  // A dormant boss with entrance:'ceiling-drop' waits HIDDEN above the arena
+  // (only its floor blob-shadow shows the landing spot), then plummets to the
+  // floor on wake with an impact quake — timed inside the engage grace.
+  const isCeilingDrop = spec.entrance === 'ceiling-drop';
+  const DROP_HEIGHT = 4.5;        // metres above the floor it waits / falls from
+  const ENTRANCE_DUR = 0.55;      // seconds the drop takes
+  let entranceTimer = -1;         // -1 = inactive; counts up while dropping
+  let entranceImpactDone = false;
   // ── Strike-phase timeline state ────────────────────────────────────
   // Per-step latches for the ability currently striking: stepStarted[i]
   // flips once step i's trigger fires; stepDone[i] once its action fully
@@ -1541,12 +1550,18 @@ export function createEnemy(
       for (const ab of abilities) {
         cooldowns.set(ab.id, Math.max(cooldowns.get(ab.id) ?? 0, ENGAGE_GRACE));
       }
+      // Ceiling-drop entrance: reveal + start the plummet (the impact quake
+      // fires when it lands, below). Plays inside the grace window.
+      if (isCeilingDrop) { built.group.visible = true; entranceTimer = 0; }
     }
     wasDormant = dormant;
     dormantLocal = dormant;
     if (dormant) {
       aggroed = false;
       if (state !== 'idle') { state = 'idle'; phaseTimer = 0; }
+      // Ceiling-drop bosses hide above the arena until the cross — the blob
+      // shadow on the floor is the only tell of where they'll land.
+      if (isCeilingDrop) built.group.visible = false;
     }
 
     // ── Perception ─────────────────────────────────────────────────────
@@ -1951,6 +1966,23 @@ export function createEnemy(
     // forgets to reset y lets the presence dip ACCUMULATE (~+0.4 m/s upward —
     // the "floating away" bug). One reset here makes the overlays drift-proof.
     built.group.position.y = 0;
+    // Ceiling-drop entrance — override the base y while parked above / falling.
+    // Parked at DROP_HEIGHT while dormant (hidden); on wake it accelerates down
+    // (ease-in = gravity) and slams the floor with a quake. The presence bob
+    // below then stacks normally once it's landed (entranceTimer past the dur).
+    if (isCeilingDrop) {
+      if (dormant) {
+        built.group.position.y = DROP_HEIGHT;
+      } else if (entranceTimer >= 0 && entranceTimer < ENTRANCE_DUR) {
+        entranceTimer += dt;
+        const t = Math.min(1, entranceTimer / ENTRANCE_DUR);
+        built.group.position.y = DROP_HEIGHT * (1 - t * t);   // ease-in fall
+        if (t >= 1 && !entranceImpactDone) {
+          entranceImpactDone = true;
+          kickShake(0.6, 0.5);   // the slam
+        }
+      }
+    }
     bodyAnim.tickHeadCrane(dt, distance, aggroed && state !== 'returning');
     bodyAnim.tickKnockback(dt, walkable);
     bodyAnim.tickLocomotion(dt);

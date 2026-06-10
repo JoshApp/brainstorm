@@ -15,6 +15,7 @@ export type GameEvent =
   | { type: 'item:picked-up'; itemId: string; displayName?: string }
   | { type: 'note:read'; noteBody: string }
   | { type: 'room:cleared'; roomId: string }
+  | { type: 'boss:engaged' }
   | { type: 'boss:defeated' }
   | { type: 'boss:phase'; phase: number }
   | { type: 'level:loaded'; levelId: string }

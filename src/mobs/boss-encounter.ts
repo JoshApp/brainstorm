@@ -64,6 +64,7 @@ export function engageBossEncounter(): void {
   engaged = true;
   encounter = registerEncounter(BOSS_ENCOUNTER_ID, {});
   activateEncounter(BOSS_ENCOUNTER_ID);
+  emit({ type: 'boss:engaged' });   // cinematic beats (music, room mood) hook this
 }
 
 export function isBossEncounterEngaged(): boolean {
