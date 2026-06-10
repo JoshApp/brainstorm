@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-10",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The sealed descent wears chains and a padlock over its glow now. The boss's death tears the whole thing loose.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "add",
         "text": "The way down stays sealed behind the boss's own ward — no warm light, just a cold glare in its colour. Put the thing down and the seal shatters; the descent opens.",
         "area": [
@@ -377,14 +385,6 @@ export const GENERATED_PATCHLOG = [
         "text": "Beat a foe to the brink or break its guard, then end it; the finishing blow lands like a verdict and you take strength from the kill.",
         "area": [
           "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A sweep bites the nearest foe to the bone and only grazes the rest; a crowd is a threat again, not a free harvest.",
-        "area": [
-          "combat",
-          "weapons"
         ]
       }
     ]
