@@ -66,6 +66,12 @@ export interface Vault {
    * how the floor connects to it.
    */
   perimeterFitting?: 'arena-portcullis' | 'arena-trap' | 'cobweb';
+  /** Darkness tier — LIGHT DOCTRINE (every light has a reason). 'lit'
+   *  keeps the full ambient fill; 'dim' halves it; 'dark' removes it
+   *  (the room is torches + threshold sconces + your lamp). Default
+   *  'lit'. Rhythm comes from VARIANCE: tag combat rooms dim and the
+   *  grim set-pieces dark. */
+  lightTier?: 'lit' | 'dim' | 'dark';
   /**
    * Optional encounter archetype. When set, the room's X spawn slots are
    * filled from ONE coherent depth-scaled pack (swarm / bruisers / caster-

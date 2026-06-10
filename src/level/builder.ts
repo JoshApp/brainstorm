@@ -1095,6 +1095,56 @@ export function buildLevel(
   // the kind to the right ModelSpec and hand it to createTorchlight,
   // which is now model-agnostic.
   const torches: Torch[] = [];
+  // ── THRESHOLD SCONCES (light doctrine: wayfinding) ────────────────
+  // Auto-place one small sconce beside every composer-cut opening, so
+  // exits read from across a dark room and corridors get lit mouths.
+  // Authors never know where the composer will cut, which is why hand-
+  // placed torches kept feeling arbitrary near doorways — wayfinding
+  // light is the BUILDER's job. Sconces are ordinary torch entries:
+  // they inherit static-merge batching, mood binding and flame flicker.
+  {
+    const claimed = new Set<string>();   // opening centres already sconced (both rooms see the same opening)
+    const sconces: typeof spec.torches = [];
+    for (const room of spec.rooms) {
+      if (room.logicalOnly) continue;
+      const tier = room.lightTier ?? 'lit';
+      const rect = room.rect;
+      const hw = rect.w / 2, hd = rect.d / 2;
+      const wallsOf = [
+        { perpAxis: 'x' as const, perpCoord: rect.x - hw, wallStart: rect.z - hd, wallEnd: rect.z + hd, letter: 'W' as const },
+        { perpAxis: 'x' as const, perpCoord: rect.x + hw, wallStart: rect.z - hd, wallEnd: rect.z + hd, letter: 'E' as const },
+        { perpAxis: 'z' as const, perpCoord: rect.z - hd, wallStart: rect.x - hw, wallEnd: rect.x + hw, letter: 'N' as const },
+        { perpAxis: 'z' as const, perpCoord: rect.z + hd, wallStart: rect.x - hw, wallEnd: rect.x + hw, letter: 'S' as const },
+      ];
+      for (const w of wallsOf) {
+        for (const op of findOpenings(w, allRects, room)) {
+          const mid = (op.start + op.end) / 2;
+          const key = w.perpAxis === 'x'
+            ? `${w.perpCoord.toFixed(1)},${mid.toFixed(1)}`
+            : `${mid.toFixed(1)},${w.perpCoord.toFixed(1)}`;
+          if (claimed.has(key)) continue;
+          claimed.add(key);
+          // Mount beside the opening on whichever side has wall to spare.
+          const after = op.end + 0.5 <= w.wallEnd - 0.2;
+          const along = after ? op.end + 0.5 : op.start - 0.5;
+          if (along < w.wallStart + 0.2 || along > w.wallEnd - 0.2) continue;
+          const sx = w.perpAxis === 'x' ? w.perpCoord : along;
+          const sz = w.perpAxis === 'x' ? along : w.perpCoord;
+          // Skip if an authored torch already lights this stretch.
+          if (spec.torches.some((t) => Math.hypot(t.x - sx, t.z - sz) < 2.0)) continue;
+          sconces.push({
+            x: sx, z: sz, height: 1.9, wall: w.letter,
+            colorTint: averageTorchTintInRect(spec.torches, rect) ?? undefined,
+            // Quieter than a room torch — wayfinding, not mood. Darker
+            // tiers get dimmer sconces (a lit exit in a dark room still
+            // reads BECAUSE the room is dark).
+            intensityMul: tier === 'dark' ? 0.4 : tier === 'dim' ? 0.5 : 0.6,
+          });
+        }
+      }
+    }
+    spec.torches.push(...sconces);
+  }
   for (const t of spec.torches) {
     const torch = createTorchlight(
       root,
@@ -1146,11 +1196,20 @@ export function buildLevel(
   const defaultFillColor = spec.fogColor !== undefined
     ? mixColors(spec.fogColor, 0x553322, 0.5)
     : 0x2a1a10;
+  const corridorSet = new Set(spec.corridors);
   for (const r of allRects) {
     // Sub-rooms (logical-only) already live inside their parent's
     // rect — adding fill lights for them double-illuminates the
     // same volume.
     if (r.logicalOnly) continue;
+    // LIGHT DOCTRINE — darkness tiers. The sourceless ambient wash is
+    // what makes light feel undesigned; tiers give floors a brightness
+    // RHYTHM instead of one even level. Corridors are always 'dim':
+    // their threshold sconces light the mouths, the middle belongs to
+    // the lamp.
+    const tier = corridorSet.has(r) ? 'dim' : (r.lightTier ?? 'lit');
+    if (tier === 'dark') continue;
+    const tierMul = tier === 'dim' ? 0.55 : 1.0;
     const area = r.rect.w * r.rect.d;
     const count = Math.min(4, Math.max(1, Math.floor(area / 45)));
     // Average tint of torches inside this room's rect — what the
@@ -1169,7 +1228,7 @@ export function buildLevel(
         category: 'environment',
         position: new THREE.Vector3(fx, 1.4, fz),
         color: fillColor,
-        intensity: 7,
+        intensity: 7 * tierMul,
         distance: 6.5,
         decay: 1.6,
       });

@@ -124,6 +124,17 @@ export function setGpuPassTiming(on: boolean): void {
 }
 export function gpuPassTimingOn(): boolean { return passTiming; }
 
+/** Introspection for debugging the pass-timing chain (remote console). */
+export function gpuPassDiag(): Record<string, unknown> {
+  return {
+    passTiming,
+    timerSupported: !!gpu?.supported,
+    listeners: listeners.size,
+    labels: gpu ? [...gpu.lastByLabel.entries()].map(([k, v]) => `${k}:${v.toFixed(2)}`) : [],
+    probePhases: [...passProbePhases.entries()].map(([k, v]) => `${k}:${v.toFixed(2)}`),
+  };
+}
+
 export function initFrameTiming(r: THREE.WebGLRenderer): void {
   if (renderer) return;
   renderer = r;

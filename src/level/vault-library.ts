@@ -145,6 +145,7 @@ const FOYER_ALCOVE: Vault = {
 const COMBAT_OPEN: Vault = {
   id: 'combat-open',
   tags: ['combat'],
+  lightTier: 'dim',
   // Torches scarcer + asymmetric — one corner each row, opposite
   // sides. Lit hotspots near two edges; the middle stays darker
   // so dark-adapt has somewhere to engage.
@@ -208,6 +209,7 @@ const COMBAT_CHOKE: Vault = {
     '#...*....#',
     '##########',
   ],
+  lightTier: 'dim',
   minDepth: 2,
   cellProps: {
     // The acolyte that anchored this room.
@@ -326,6 +328,7 @@ const COMBAT_DOORS: Vault = {
     '#....*.....#',
     '############',
   ],
+  lightTier: 'dim',
   minDepth: 4,
 };
 
@@ -467,6 +470,7 @@ const ENCOUNTER_TITHE: Vault = {
     '#*....*#',
     '########',
   ],
+  lightTier: 'dim',
   minDepth: 2,
   weight: 1,
   props: [
@@ -518,6 +522,7 @@ const ENCOUNTER_CORPSES: Vault = {
     '#.....*....#',
     '############',
   ],
+  lightTier: 'dark',
   minDepth: 2,
   torchTint: TORCH_GREEN,
   cellProps: {
@@ -543,6 +548,7 @@ const ENCOUNTER_RITUAL: Vault = {
     '#...^......#',
     '############',
   ],
+  lightTier: 'dim',
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_GREEN,
@@ -571,6 +577,7 @@ const ENCOUNTER_PRISON: Vault = {
     '#....*.....#',
     '############',
   ],
+  lightTier: 'dim',
   minDepth: 2,   // wraith is a real threat — keep off depth 1
   weight: 1,
   torchTint: TORCH_BLOOD,
@@ -624,6 +631,7 @@ const ENCOUNTER_ARENA: Vault = {
     '#....*....*..#',
     '##############',
   ],
+  lightTier: 'dim',
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_BLOOD,
@@ -668,6 +676,7 @@ const CHALLENGE_ARENA: Vault = {
     '#....*....*..#',
     '##############',
   ],
+  lightTier: 'dim',
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_BLOOD,
@@ -702,6 +711,7 @@ const ENCOUNTER_BLOOD_ALTAR: Vault = {
     '#....*.....#',
     '############',
   ],
+  lightTier: 'dim',
   minDepth: 2,
   weight: 1,
   torchTint: TORCH_BLOOD,
@@ -765,6 +775,7 @@ const BOSS_ANTECHAMBER: Vault = {
     '#........../#',
     '#############',
   ],
+  lightTier: 'dim',
   minDepth: 3,
   torchTint: TORCH_BLOOD,
 };
@@ -839,6 +850,7 @@ const ENCOUNTER_NEST: Vault = {
     '#.....*......#',
     '##############',
   ],
+  lightTier: 'dark',
   minDepth: 4,
   weight: 1,
   torchTint: TORCH_GREEN,
@@ -955,6 +967,7 @@ const COMBAT_CROSS: Vault = {
     '####.**.####',
     '############',
   ],
+  lightTier: 'dim',
   minDepth: 2,
   weight: 2,
   // PROTOTYPE: coherent pack instead of 3 independent X rolls. A swarm —
@@ -977,6 +990,7 @@ const MINESHAFT_GALLERY: Vault = {
     '#*..........*#',
     '##############',
   ],
+  lightTier: 'dim',
   minDepth: 1,
   weight: 2,
   torchTint: TORCH_PALE,
@@ -1010,6 +1024,7 @@ const ENCOUNTER_OSSUARY: Vault = {
     '#....*.....#',
     '############',
   ],
+  lightTier: 'dark',
   minDepth: 2,
   weight: 1,
   torchTint: TORCH_GREEN,
@@ -1040,6 +1055,7 @@ const COMBAT_PITS: Vault = {
     '#..*....*..#',
     '############',
   ],
+  lightTier: 'dim',
   minDepth: 3,
   weight: 1,
 };
@@ -1140,6 +1156,7 @@ const CHASM_BRIDGE: Vault = {
     '#...*......X...#',
     '################',
   ],
+  lightTier: 'dim',
   minDepth: 3,
   weight: 1,
   torchTint: TORCH_PALE,

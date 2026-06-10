@@ -125,6 +125,10 @@ export type RoomSpec = {
    * want every external opening to share one barrier behaviour.
    */
   perimeterFitting?: 'arena-portcullis' | 'arena-trap' | 'cobweb';
+  /** Darkness tier (light doctrine): scales the room's ambient fill —
+   *  'lit' ×1 (default), 'dim' ×0.55, 'dark' ×0. Corridors are always
+   *  'dim' (threshold sconces carry their ends). */
+  lightTier?: 'lit' | 'dim' | 'dark';
 };
 
 export type PropSpec =

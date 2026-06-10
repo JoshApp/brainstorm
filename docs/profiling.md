@@ -25,7 +25,10 @@ When enabled, an **on-screen toolbar** appears (top-left): `HUD` · `● REC` ·
 | **Session recorder** | "Where did frames drop over the last minute?" | toolbar `● REC` · `F3` · `?record=1` → review page |
 | **DevTools marks** | Native flame chart, incl. remote-over-USB from a phone | `F4` · `?marks=1` |
 | **GPU probe** | Real GPU ms on devices without the timer-query extension | toolbar `GPU` · `F5` |
+| **Per-pass GPU** | "WHICH render pass is eating the GPU ms?" (prepass/scene/bloom/blit) | toolbar `PASS` · `F8` · `window.__gpuPass()` |
+| **GPU attribution** | "WHICH feature is eating the GPU ms?" — ranked A/B sweep, shareable | toolbar `ATTR` · `F7` · `window.__gpuAttr()` |
 | **Draw report** | "What's eating the draw calls?" + instancing wins, shareable | toolbar `DRAWS` · `F6` |
+| **Alloc profiler** | "WHO is allocating?" — ranked allocation sites w/ caller chains | `npm run alloc-profile` (PC, headless) |
 | **spector.js** | Every GL command of a frame (deep; its result view exports) | toolbar `SPCT` · `window.__spector()` |
 
 ### Reading GPU time
@@ -44,6 +47,38 @@ Three signals, in order of preference:
 3. **`wait` = dt − cpu (always shown).** Frame interval minus CPU work ≈ GPU +
    vsync/compositor. When `wait` is the big number and GPU is `n/a`, you're
    GPU/fill-bound — arm the GPU probe to quantify it.
+
+### Per-pass GPU timing (`PASS` / `F8`)
+
+Splits the GPU number by render pass — prepass / scene / bloom / blit — shown
+as a `gpu·` line in the profiler HUD. Uses labeled timer-query spans where the
+extension exists; falls back to a readPixels-sync probe on every 8th frame
+elsewhere (stalls those frames — measurement mode). This is how you tell
+"the 3D scene pass is the wall" from "the full-res blit is the wall."
+
+### GPU attribution sweep (`ATTR` / `F7`)
+
+The A/B auto-profiler: toggles ONE feature off at a time, measures the GPU
+delta, restores, and shares a ranked report. Covers the post pipeline (bloom,
+inscatter/crush, sprites, motes), shadows, detail textures, the viewmodel
+prepass — and the STRUCTURAL axes draw counts can't see: the light-pool
+budget (every pooled PointLight is compiled into every lit material and
+evaluated per fragment, parked or not), the PBR shading tax
+(scene.overrideMaterial → Lambert/Basic, upper bounds), and resolution
+(scene-target scale, canvas DPR — splits scene-pass fill from blit fill).
+Hold still ~15-20s. It arms the GPU probe itself if no timing source is
+active and suspends adaptive resolution for the duration. Read the report
+programmatically with `window.__gpuAttrReport()`.
+
+### Allocation-site profiling (`npm run alloc-profile [scenario]`)
+
+The perf CLI's alloc-churn line says HOW MUCH; this says WHO. Drives Chrome's
+sampling heap profiler over CDP while a scenario runs unfrozen (godmode on, so
+a death doesn't freeze the churn mid-window), then prints ranked allocation
+sites with caller chains, mapped to src/ files. Headless is representative
+here — allocation behaviour is V8-level, unlike FPS. Watch for THREE's
+`getProgram`/`cloneUniforms` showing up mid-run: that's a shader compiling
+DURING gameplay (a hitch), i.e. a material that escaped warmup.
 
 ### Reading the `render` breakdown
 

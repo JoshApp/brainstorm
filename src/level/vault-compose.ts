@@ -245,6 +245,7 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
     ceilingRise: ceil.rise,
     wallVariant: vault.wallVariant,
     perimeterFitting: vault.perimeterFitting,
+    lightTier: vault.lightTier,
     spawnYaw: Math.PI,
   });
 
@@ -538,6 +539,7 @@ export function composeFloor(
       ceilingRise: ceil.rise,
       wallVariant: pv.vault.wallVariant,
       perimeterFitting: pv.vault.perimeterFitting,
+      lightTier: pv.vault.lightTier,
       spawnYaw: pv.vault.tags.includes('start') ? Math.PI : undefined,
       depth,
     });

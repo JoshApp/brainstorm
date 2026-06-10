@@ -71,6 +71,8 @@ export interface TileMapOptions {
   /** Perimeter-fitting policy — see RoomSpec.perimeterFitting. Passed through
    *  to the main RoomSpec so the builder can iterate rooms with a policy. */
   perimeterFitting?: 'arena-portcullis' | 'arena-trap' | 'cobweb';
+  /** Darkness tier passthrough — see Vault.lightTier. */
+  lightTier?: 'lit' | 'dim' | 'dark';
   /** Color tint for the room's torches (applied to all torches in the map). */
   torchTint?: number;
   /**
@@ -256,6 +258,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     ceilingRise: opts.ceilingRise,
     wallVariant: opts.wallVariant,
     perimeterFitting: opts.perimeterFitting,
+    lightTier: opts.lightTier,
   };
 
   // ── Flood fill walkable cells into sub-rooms ──────────────────────

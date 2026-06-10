@@ -78,7 +78,7 @@ import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSn
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
-import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn } from './debug/frame-timing';
+import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn, gpuPassDiag } from './debug/frame-timing';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds } from './debug/perf-recorder';
 import { launchSpector } from './debug/spector-launch';
 import { initDrawReport, captureDrawReport, drawReportData } from './debug/draw-report';
@@ -1148,6 +1148,7 @@ const profWin = window as unknown as {
   __gpuAttr: () => void;
   __gpuAttrReport: () => { running: boolean; report: string | null };
   __gpuPass: () => void;
+  __gpuPassDiag: () => Record<string, unknown>;
   __spector: () => void;
 };
 profWin.__profiler = () => { ensureProfilingInited(); toggleProfiler(); };
@@ -1164,6 +1165,7 @@ profWin.__drawData = () => { ensureProfilingInited(); return drawReportData(); }
 profWin.__gpuAttr = () => { ensureProfilingInited(); void runGpuAttribution(); };
 profWin.__gpuAttrReport = () => ({ running: isAttributionRunning(), report: getLastAttributionReport() });
 profWin.__gpuPass = () => { ensureProfilingInited(); setGpuPassTiming(!gpuPassTimingOn()); };
+profWin.__gpuPassDiag = () => gpuPassDiag();
 profWin.__spector = () => void launchSpector();   // desktop only — heavy UI
 
 // Debug: `?fakemeta=1` seeds meta progress so title shows records +
