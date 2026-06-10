@@ -98,6 +98,10 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
   const prevTarget = mainRenderer.getRenderTarget();
   const prevShadow = mainRenderer.shadowMap.enabled;
   mainRenderer.shadowMap.enabled = true;
+  // The main loop may run the shadow map on a needsUpdate cadence
+  // (autoUpdate off) — force this warmup render to include the shadow pass
+  // regardless, or the depth-variant programs don't compile here.
+  mainRenderer.shadowMap.needsUpdate = true;
   mainRenderer.setRenderTarget(warmTarget);
   mainRenderer.render(scratch, cam);
   mainRenderer.shadowMap.enabled = prevShadow;

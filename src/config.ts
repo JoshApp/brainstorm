@@ -261,6 +261,13 @@ export const CONFIG = {
   // pool binds the nearest N per category (LOS-culled, hysteresis-stable)
   // and an unbound torch keeps its emissive flame sprite — it just stops
   // casting light.
+  // Re-render the lamp's shadow cube-map every Nth frame (1 = every frame).
+  // The cube map is 6 extra render passes (~100 draws measured on-phone) and
+  // draw SUBMISSION is the phone's CPU wall — at 2 the cost halves and a
+  // soft 256px shadow lagging one frame behind a smooth lamp swing doesn't
+  // read. Crank back to 1 if a fast pan ever shows shadow judder.
+  SHADOW_UPDATE_EVERY_N_FRAMES: 2,
+
   LIGHT_SLOTS: {
     lamp: 1,          // the player's lantern — always wins
     environment: 6,   // torches/candles/glows — the nearest visible in-room set

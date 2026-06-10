@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CONFIG } from '../config';
 import { renderProbeActive, reportRenderPhase, gpuPassActive, gpuPassBegin, gpuPassEnd } from '../debug/render-probe';
 
 // PS1-era render pipeline, PSX-horror flavor.
@@ -26,6 +27,12 @@ let ps1Scale = PS1_SCALE_DEFAULT;
 
 let lowResTarget: THREE.WebGLRenderTarget | null = null;
 let blitScene: THREE.Scene | null = null;
+// Shared scene for the single-call viewmodel depth pre-pass + its per-frame
+// scratch lists (module-level so the hot path allocates nothing).
+let prepassScene: THREE.Scene | null = null;
+const prepassRoots: THREE.Object3D[] = [];
+const prepassParents: THREE.Object3D[] = [];
+let shadowFrameCounter = 0;
 let blitCamera: THREE.OrthographicCamera | null = null;
 let blitMaterial: THREE.ShaderMaterial | null = null;
 let rendererRef: THREE.WebGLRenderer | null = null;
@@ -385,6 +392,7 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
 
   blitScene = new THREE.Scene();
   blitCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  prepassScene = new THREE.Scene();
 
   blitMaterial = new THREE.ShaderMaterial({
     uniforms: {
@@ -519,12 +527,28 @@ export function renderWithStyle(
       if (gprof) gpuPassBegin('prepass');
       const prevAutoClear = renderer.autoClear;
       renderer.autoClear = false;
+      // ONE render call for all held items, not one per root. Each
+      // renderer.render() pays fixed CPU overhead (light-state build, render
+      // lists, program state) — 3 calls cost ~2.4ms of phone CPU for ~0.1ms
+      // of GPU. attach() moves a root into the shared prepass scene
+      // preserving its world transform; the originals are attach()ed back
+      // right after, and the per-frame viewmodel animation rewrites the
+      // local transforms next frame anyway, so no drift can accumulate.
       for (const vm of viewmodelRoots) {
-        if (!vm.visible) continue;
+        if (!vm.visible || !vm.parent) continue;
+        prepassParents.push(vm.parent);
+        prepassRoots.push(vm);
+        prepassScene!.attach(vm);
         vm.traverse(setMeshDepthOnly);
-        renderer.render(vm, camera);
+      }
+      if (prepassRoots.length) renderer.render(prepassScene!, camera);
+      for (let i = 0; i < prepassRoots.length; i++) {
+        const vm = prepassRoots[i];
+        prepassParents[i].attach(vm);
         vm.traverse(restoreMeshColor);
       }
+      prepassRoots.length = 0;
+      prepassParents.length = 0;
       renderer.autoClear = prevAutoClear;
       // Keep the depth values we just wrote; the scene render below
       // would otherwise auto-clear them and erase the pre-pass work.
@@ -532,6 +556,18 @@ export function renderWithStyle(
       if (gprof) gpuPassEnd();
     }
     if (prof) { const n = performance.now(); reportRenderPhase('render·prepass', n - pt); pt = n; }   // viewmodel depth pre-pass
+
+    // Shadow cube-map throttle — the lamp's 6-face shadow pass re-renders
+    // every Nth frame instead of every frame (CONFIG.SHADOW_UPDATE_EVERY_N_FRAMES).
+    // Draw submission is the measured phone CPU wall; this halves the
+    // shadow share of it at N=2.
+    const shadowEvery = CONFIG.SHADOW_UPDATE_EVERY_N_FRAMES;
+    if (shadowEvery > 1) {
+      renderer.shadowMap.autoUpdate = false;
+      renderer.shadowMap.needsUpdate = (shadowFrameCounter++ % shadowEvery) === 0;
+    } else {
+      renderer.shadowMap.autoUpdate = true;
+    }
 
     if (gprof) gpuPassBegin('scene');
     renderer.render(scene, camera);

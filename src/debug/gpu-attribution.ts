@@ -116,7 +116,7 @@ export async function runGpuAttribution(): Promise<void> {
   const adaptiveWasOn = isAdaptiveResolutionEnabled();
   if (adaptiveWasOn) setAdaptiveResolution(false);
 
-  flash('GPU attribution: hold still ~15s…');
+  flash('GPU attribution: hold still ~30s…');
 
   const root = scene;
   const rend = renderer;
@@ -197,16 +197,37 @@ export async function runGpuAttribution(): Promise<void> {
     },
   ];
 
-  // Stage list: baseline, each probe-off, then baseline again (drift check).
-  interface Stage { name: string; settle: number; apply: () => void; cleanup?: () => void; }
+  // Stage list: INTERLEAVED baselines — baseline, probe, baseline, probe, …
+  // Each probe is costed against the MEAN OF ITS NEIGHBOURING baselines, not
+  // one global baseline. This is what makes the sweep survive a phone
+  // thermally throttling mid-run: drift moves the local baselines along with
+  // the probe stages, so the deltas stay honest. (A real phone run drifted
+  // +4.6ms over one sweep and poisoned every late stage — never again.)
+  interface Stage { key: string; settle: number; apply: () => void; cleanup?: () => void; }
   const skipped: { name: string; reason: string }[] = [];
-  const stages: Stage[] = [{ name: 'baseline', settle: SETTLE_FRAMES, apply: () => {} }];
+  const stages: Stage[] = [];
+  const baselineKeys: string[] = [];
+  // Probe name → the baseline keys measured immediately before/after it.
+  const localBaselines = new Map<string, [string, string]>();
+  let bi = 0;
+  const pushBaseline = (settle: number): string => {
+    const key = `baseline#${bi++}`;
+    baselineKeys.push(key);
+    stages.push({ key, settle, apply: () => {} });
+    return key;
+  };
+  let prevBaselineKey = pushBaseline(SETTLE_FRAMES);
   for (const p of probes) {
     const reason = p.skip?.();
     if (reason) { skipped.push({ name: p.name, reason }); continue; }
-    stages.push({ name: p.name, settle: p.settle ?? SETTLE_FRAMES, apply: () => p.off(), cleanup: () => p.restore() });
+    const settle = p.settle ?? SETTLE_FRAMES;
+    stages.push({ key: p.name, settle, apply: () => p.off(), cleanup: () => p.restore() });
+    // Restoring a recompile-heavy probe recompiles again — give the
+    // following baseline the same long settle.
+    const afterKey = pushBaseline(settle);
+    localBaselines.set(p.name, [prevBaselineKey, afterKey]);
+    prevBaselineKey = afterKey;
   }
-  stages.push({ name: 'baseline·recheck', settle: SETTLE_FRAMES, apply: () => {} });
 
   const measured = new Map<string, StageStats>();
 
@@ -232,7 +253,7 @@ export async function runGpuAttribution(): Promise<void> {
       if (s.gpuMs != null && s.gpuMs > 0) { gAcc += s.gpuMs; gN++; }
       cAcc += s.cpuMs; dAcc += s.draws; dtAcc += s.dt; n++;
       if (frame >= SAMPLE_FRAMES) {
-        measured.set(stages[si].name, {
+        measured.set(stages[si].key, {
           gpu: gN > 0 ? gAcc / gN : null,
           cpu: n > 0 ? cAcc / n : 0,
           draws: n > 0 ? dAcc / n : 0,
@@ -260,36 +281,61 @@ export async function runGpuAttribution(): Promise<void> {
   if (adaptiveWasOn) setAdaptiveResolution(true);
   if (armedProbe && !probeWasOn) setGpuProbe(false);
 
-  const baseline = measured.get('baseline');
-  const recheck = measured.get('baseline·recheck');
+  const baseline = measured.get(baselineKeys[0]);
+  const lastBaseline = measured.get(baselineKeys[baselineKeys.length - 1]);
   const fmt = (v: number | null | undefined): string => (v == null ? '  n/a' : v.toFixed(2).padStart(5));
   const pct = (v: number | null): string =>
     (v == null || !baseline?.gpu ? '' : ` (${Math.round((v / baseline.gpu) * 100)}%)`);
+
+  // Each probe is costed against the MEAN of the baselines measured right
+  // before and right after it — drift-immune (see the stage-list note).
+  const localMean = (p: Probe, pick: (s: StageStats) => number | null): number | null => {
+    const keys = localBaselines.get(p.name);
+    if (!keys) return null;
+    const vals = keys
+      .map((k) => measured.get(k))
+      .filter((s): s is StageStats => !!s)
+      .map(pick)
+      .filter((v): v is number => v != null);
+    if (!vals.length) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  };
 
   // Rank by measured GPU cost, descending — the read order IS the priority order.
   const ranked = probes
     .filter((p) => measured.has(p.name))
     .map((p) => {
       const m = measured.get(p.name)!;
+      const bGpu = localMean(p, (s) => s.gpu);
+      const bCpu = localMean(p, (s) => s.cpu);
+      const bDraws = localMean(p, (s) => s.draws);
       return {
         p,
-        gpuCost: baseline?.gpu != null && m.gpu != null ? baseline.gpu - m.gpu : null,
-        cpuCost: baseline ? baseline.cpu - m.cpu : null,
-        drawsDelta: baseline ? m.draws - baseline.draws : 0,
+        gpuCost: bGpu != null && m.gpu != null ? bGpu - m.gpu : null,
+        cpuCost: bCpu != null ? bCpu - m.cpu : null,
+        drawsDelta: bDraws != null ? m.draws - bDraws : 0,
       };
     })
     .sort((a, b) => (b.gpuCost ?? -Infinity) - (a.gpuCost ?? -Infinity));
+
+  // Worst-case drift across ALL interleaved baselines — the honesty meter.
+  const baselineGpus = baselineKeys
+    .map((k) => measured.get(k)?.gpu)
+    .filter((v): v is number => v != null);
+  const driftSpan = baselineGpus.length >= 2 ? Math.max(...baselineGpus) - Math.min(...baselineGpus) : null;
 
   const L: string[] = [];
   L.push('DELVE GPU ATTRIBUTION');
   L.push(`depth ${getCurrentDepth()} · ${new Date().toISOString()}`);
   L.push(`timing: ${gpuSupported() ? 'timer-query' : 'readPixels probe'} · scale ${prevScale.toFixed(2)} · dpr ${prevDpr.toFixed(2)} · shadows ${prevShadow}`);
   L.push('A/B sweep — each feature toggled off, GPU-timer delta = its cost.');
-  L.push('Hold still during the sweep; the recheck below shows any baseline drift.');
+  L.push('Baselines are re-measured between every stage and each feature is costed');
+  L.push('against its NEIGHBOURING baselines, so thermal drift cannot poison the deltas.');
+  L.push('Hold still for the sweep.');
   L.push('');
   L.push(`baseline: ${fmt(baseline?.gpu)} gpu · ${fmt(baseline?.cpu)} cpu · ${fmt(baseline?.dt)} dt · ${Math.round(baseline?.draws ?? 0)} draws`);
   L.push('');
-  L.push('feature costs, ranked (baseline − feature-off):');
+  L.push('feature costs, ranked (local baseline − feature-off):');
   for (const r of ranked) {
     const d = Math.round(r.drawsDelta);
     L.push(
@@ -299,7 +345,11 @@ export async function runGpuAttribution(): Promise<void> {
   }
   for (const s of skipped) L.push(`  ${s.name.padEnd(20)}:  skipped — ${s.reason}`);
   L.push('');
-  L.push(`baseline recheck  : ${fmt(recheck?.gpu)} gpu  (drift ${baseline?.gpu != null && recheck?.gpu != null ? (recheck.gpu - baseline.gpu).toFixed(2) : 'n/a'} — keep small)`);
+  L.push(
+    `baseline drift    : first ${fmt(baseline?.gpu)} → last ${fmt(lastBaseline?.gpu)} gpu · ` +
+    `span ${driftSpan != null ? driftSpan.toFixed(2) : 'n/a'} across ${baselineGpus.length} interleaved baselines ` +
+    `(local costing absorbs this — big span = device throttling, not bad data)`,
+  );
   L.push('');
   L.push('notes: negative/zero = within timer noise (feature is ~free or GPU-parallel');
   L.push('with something else). pbr→lambert / lit→unlit are upper bounds (override');
