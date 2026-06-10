@@ -9,6 +9,7 @@ import { damagePlayer } from '../player/health';
 import { spawnBloodBurst } from '../effects/blood-burst';
 import { playEquipClick } from '../audio/sfx';
 import { RARITY_COLORS } from '../content/items';
+import { emit } from '../broadcast/event-bus';
 import { registerItemPreview, setItemPreviewAnchor, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
@@ -113,6 +114,7 @@ export function spawnBloodAltar(
   const id = generateEntityId('blood-altar');
   let phase = 0;
   let taken = false;
+  let offerSeen = false;
 
   // Item-preview label. Blood altars charge 4 HP up front; the player
   // needs to KNOW what they're paying for before tapping TAKE. The
@@ -144,6 +146,10 @@ export function spawnBloodAltar(
     onUse() {
       if (taken) return;
       taken = true;
+      // Unified transaction stream (content/transactions.ts): a blood
+      // altar is the BARGAIN family — visible cursed goods, painful
+      // immediate price.
+      emit({ type: 'transaction:accepted', family: 'bargain', id, price: { hp: BLOOD_PRICE_HP } });
       // Order matters: trigger the blood burst at the altar's centre
       // FIRST so the visual is anchored to the offering, not to the
       // dying player camera if this kill drops you. Then apply
@@ -163,6 +169,7 @@ export function spawnBloodAltar(
         removeItem(cursedItem.id);
       }
       playEquipClick();
+      emit({ type: 'transaction:resolved', family: 'bargain', id, outcome: { itemIds: [cursedItem.id], hpDelta: -BLOOD_PRICE_HP } });
       // Mark for the system tick to run onDestroy next frame —
       // tears down the offering mesh + fires the owner cleanup.
       interactable.destroyed = true;
@@ -179,6 +186,10 @@ export function spawnBloodAltar(
       const dx = playerPos.x - pos.x;
       const dz = playerPos.z - pos.z;
       const inRange = (dx * dx + dz * dz) < PREVIEW_RANGE * PREVIEW_RANGE;
+      if (inRange && !offerSeen) {
+        offerSeen = true;
+        emit({ type: 'transaction:offered', family: 'bargain', id });
+      }
       setItemPreviewAnchor(id, pos.x, previewY, pos.z, inRange);
       // Stats only when this altar is the one the player is actually
       // highlighting — i.e. in interact range AND looking at it. The

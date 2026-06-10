@@ -3,6 +3,7 @@ import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import type { StyleMaterials } from '../style/materials';
 import { activateEncounter, onEncounterActivated, onEncounterComplete } from '../encounters/registry';
+import { emit } from '../broadcast/event-bus';
 import { arenaEncounterId } from '../level/arena-waves';
 import { createPickup } from './pickup';
 import { rollLoot } from '../content/loot';
@@ -174,6 +175,9 @@ export function spawnChallengeOffering(
       // and the waves begin. Now you have to earn it. The reactor on the same
       // event lights the candles (see below) so the ignition lines up with the
       // gate slam.
+      // Unified transaction stream: the TRIAL family — the price is
+      // the fight itself (content/transactions.ts).
+      emit({ type: 'transaction:accepted', family: 'trial', id: encId, price: { danger: true } });
       activateEncounter(encId);
       showInWorldMessage('The candles take. The waves are called.');
       playRitualBell({ x: pos.x, y: pos.y + 0.6, z: pos.z });
@@ -248,6 +252,10 @@ export function spawnChallengeOffering(
     const drops: Array<ItemSpec | null> = [];
     drops.push(rollLoot({ depth, bias: 4 }, gameRng) ?? ITEMS['healing-potion'] ?? null);
     drops.push(rollLoot({ depth, bias: 3 }, gameRng));
+    emit({
+      type: 'transaction:resolved', family: 'trial', id: encId,
+      outcome: { itemIds: drops.filter((d): d is ItemSpec => !!d).map((d) => d.id) },
+    });
     let i = 0;
     for (const item of drops) {
       if (!item) continue;

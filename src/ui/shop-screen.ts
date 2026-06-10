@@ -4,6 +4,7 @@
 // the life of the stall (the ShopWare.sold flag the interactable holds).
 
 import { createSheet, menuButton } from './menu-shell';
+import { emit } from '../broadcast/event-bus';
 import { getGold, spendGold, grantGold } from '../state/run-state';
 import { addItem } from '../player/inventory';
 import { wareItem, type ShopWare } from '../content/shop';
@@ -92,6 +93,10 @@ function makeRow(ware: ShopWare, refreshGold: () => void): HTMLElement {
     spendGold(ware.price);
     // addItem can refuse a consumable that's at its carry cap — refund if so.
     if (!addItem(ware.itemId)) { grantGold(ware.price); deny(); return; }
+    // Unified transaction stream: a purchase is the PRICED family —
+    // goods visible, cost stated, no strings (content/transactions.ts).
+    emit({ type: 'transaction:accepted', family: 'priced', id: `shop:${ware.itemId}`, price: { gold: ware.price } });
+    emit({ type: 'transaction:resolved', family: 'priced', id: `shop:${ware.itemId}`, outcome: { itemIds: [ware.itemId] } });
     ware.sold = true;
     setSold();
     refreshGold();

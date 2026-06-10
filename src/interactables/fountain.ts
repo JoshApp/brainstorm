@@ -8,6 +8,7 @@ import { playHealSlurp, playBuffApply } from '../audio/sfx';
 import { showNote } from '../ui/note-card';
 import { TAINTED_MUTATIONS } from '../content/tainted-mutations';
 import { addMutation, getMutationIds } from '../state/run-mutations';
+import { emit } from '../broadcast/event-bus';
 
 // Fountain — a basin of suspect liquid. Three variants today:
 //
@@ -158,13 +159,17 @@ export function spawnFountain(
       if (used) return;
       used = true;
       interactable.promptLabel = '';
+      // Unified transaction stream: a drink commits BEFORE the answer —
+      // the UNKNOWN family (content/transactions.ts).
+      emit({ type: 'transaction:accepted', family: 'unknown', id: interactable.id, price: {} });
 
       // Drain the liquid visually — hide the emissive disc, dim the glow.
       liquid.visible = false;
       fountainState.intensity = 0.2;
 
       if (variant === 'tainted') {
-        applyTaintedDrink();
+        const mutationId = applyTaintedDrink();
+        emit({ type: 'transaction:resolved', family: 'unknown', id: interactable.id, outcome: { mutationId } });
         return;
       }
       // Both 'gamble' and 'rest' now do the same thing — a full heal.
@@ -173,6 +178,7 @@ export function spawnFountain(
       const before = getPlayerHp();
       healPlayer(getPlayerMaxHp());
       const healed = getPlayerMaxHp() - before;
+      emit({ type: 'transaction:resolved', family: 'unknown', id: interactable.id, outcome: { hpDelta: healed } });
       playHealSlurp();
       showNote(
         healed > 0
@@ -192,7 +198,7 @@ export function spawnFountain(
 // max-hp delta, and surface the moment as a note. Prefers mutations the
 // player hasn't already taken so a single fountain run doesn't roll the
 // same brand twice; falls through if every mutation is already on them.
-function applyTaintedDrink(): void {
+function applyTaintedDrink(): string {
   const already = new Set(getMutationIds());
   const fresh = TAINTED_MUTATIONS.filter((m) => !already.has(m.id));
   const pool = fresh.length > 0 ? fresh : TAINTED_MUTATIONS;
@@ -220,4 +226,5 @@ function applyTaintedDrink(): void {
 
   playBuffApply();
   showNote(`${mutation.flavor}\n\n— ${mutation.name} —`);
+  return mutation.id;
 }

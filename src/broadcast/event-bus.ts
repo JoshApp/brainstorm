@@ -24,7 +24,16 @@ export type GameEvent =
   | { type: 'xp:absorbed' }
   | { type: 'gold:absorbed' }
   | { type: 'level:up'; level: number }
-  | { type: 'starter:chosen'; weaponId: string };
+  | { type: 'starter:chosen'; weaponId: string }
+  // ── Transactions (content/transactions.ts owns the grammar) ──
+  // One stream for every deal the dungeon makes: blood altars, trials,
+  // fountains, merchant buys, tithes. Subscribers: broadcast snark,
+  // epitaphs, the future attention meter.
+  | { type: 'transaction:offered';  family: import('../content/transactions').TransactionFamily; id: string }
+  | { type: 'transaction:accepted'; family: import('../content/transactions').TransactionFamily; id: string;
+      price: import('../content/transactions').TransactionPrice }
+  | { type: 'transaction:resolved'; family: import('../content/transactions').TransactionFamily; id: string;
+      outcome: import('../content/transactions').TransactionOutcome };
 
 type Handler = (event: GameEvent) => void;
 
