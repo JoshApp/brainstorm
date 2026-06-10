@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-10",
     "entries": [
       {
+        "tag": "add",
+        "text": "Cross the gate and the room drowns in the boss's colour as the music drops — the King falls out of the ceiling. Put it down and the world exhales.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "The sealed descent wears chains and a padlock over its glow now. The boss's death tears the whole thing loose.",
         "area": [
@@ -376,13 +384,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Break a guard now and you will know it; the brute reels back, its eyes gone dark, its heart bared for the blow.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Beat a foe to the brink or break its guard, then end it; the finishing blow lands like a verdict and you take strength from the kill.",
         "area": [
           "combat"
         ]
