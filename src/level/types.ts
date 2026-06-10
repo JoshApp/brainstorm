@@ -251,6 +251,9 @@ export type PropSpec =
   // 'merchant' = the wandering hooded trader. Walk up to open the buy-panel
   // and spend run gold on wares rolled from the loot pool for the depth.
   | { kind: 'merchant'; x: number; z: number; rotY?: number }
+  // 'tithe-basin' = the UNKNOWN-family altar: place blood/gold/your
+  // weapon in the hollow, the dungeon decides what you were worth.
+  | { kind: 'tithe-basin'; x: number; z: number }
   // 'tome-pillar' = a stone pedestal with an open ledger on top, pages
   // lit from within. Interacting opens the CHARACTER screen — the moment
   // to review your delver's shape before stepping deeper.

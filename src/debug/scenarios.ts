@@ -568,6 +568,33 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -8, y: 1.2 } },
   },
 
+  // DEAL LAB — every transaction verb in one room, for iterating on
+  // the grammar (content/transactions.ts): tithe basin (UNKNOWN·pale),
+  // merchant (PRICED·gold), fountains. Blood altar + challenge altar
+  // spawn via their vaults; this lab covers the standalone verbs.
+  'deal-lab': {
+    freeze: true,
+    level: {
+      id: 'deal-lab', depth: 4, displayName: 'DEAL LAB', fogColor: 0x000000,
+      startPos: { x: 0, z: 0.5, yaw: Math.PI },
+      rooms: [
+        { id: 'lab', rect: { x: 0, z: -2, w: 14, d: 10 }, height: 3.4 },
+      ],
+      corridors: [],
+      props: [
+        { kind: 'tithe-basin', x: -4, z: -4 },
+        { kind: 'merchant', x: 4, z: -4, rotY: 0.4 },
+        { kind: 'fountain', x: 0, z: -5.5, variant: 'tainted' },
+      ],
+      torches: [
+        { x: -6.5, z: -4, height: 2.0, wall: 'W', colorTint: 0xa8c0d8, intensityMul: 1.1 },
+        { x:  6.5, z: -4, height: 2.0, wall: 'E', colorTint: 0xffd060, intensityMul: 1.1 },
+      ],
+      spawns: [], doors: [], stairs: [],
+    },
+    playerPos: { x: -1.5, z: -1, lookAt: { x: -4, z: -4, y: 0.8 } },
+  },
+
   // Close-up of the scimitar relic on the altar. Demonstrates lathe (pommel)
   // + extrude (curved blade) geometry. lookAt the altar from west side.
   // (Altar is removed now — relic lives in chest — but kept as snapshot of

@@ -6,6 +6,7 @@ import { activateEncounter, onEncounterActivated, onEncounterComplete } from '..
 import { emit } from '../broadcast/event-bus';
 import { arenaEncounterId } from '../level/arena-waves';
 import { createPickup } from './pickup';
+import { buildModel } from '../ecs/build-model';
 import { rollLoot } from '../content/loot';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { gameRng } from '../engine/rng';
@@ -160,6 +161,28 @@ export function spawnChallengeOffering(
   }
   applyRitualState('dark');
 
+  // ── SHOW-AND-TELL: pre-roll the hoard at SPAWN and float the prize
+  // above the altar — a TRIAL is a LEGIBLE deal (you see what you
+  // fight for; the price is the fight). Same rolls the completion
+  // reactor used to make; now they're made up front and granted
+  // verbatim when the trial is won.
+  const drops: ItemSpec[] = [];
+  {
+    const a = rollLoot({ depth, bias: 4 }, gameRng) ?? ITEMS['healing-potion'];
+    if (a) drops.push(a);
+    const b = rollLoot({ depth, bias: 3 }, gameRng);
+    if (b) drops.push(b);
+  }
+  const prize = drops[0] ?? null;
+  let prizeGroup: THREE.Group | null = null;
+  if (prize?.dropModel) {
+    const built = buildModel(prize.dropModel);
+    prizeGroup = built.group;
+    prizeGroup.position.set(pos.x, pos.y + 1.45, pos.z);
+    scene.add(prizeGroup);
+  }
+  let prizePhase = 0;
+
   const interactable: import('./types').Interactable = {
     id,
     position: pos.clone(),
@@ -184,6 +207,11 @@ export function spawnChallengeOffering(
       kickShake(0.10, 0.22);
     },
     tick(dt: number) {
+      if (prizeGroup) {
+        prizePhase += dt;
+        prizeGroup.rotation.y = prizePhase * 0.6;
+        prizeGroup.position.y = pos.y + 1.45 + Math.sin(prizePhase * 1.4 * Math.PI * 2) * 0.03;
+      }
       phase += dt;
       // Sigil + circle breathe — slow + dim while inert, faster + brighter
       // mid-trial, hot + steady once won.
@@ -249,12 +277,22 @@ export function spawnChallengeOffering(
     playImpact(interactable.position);
     kickShake(0.08, 0.2);
     showInWorldMessage('The dark was fed. The altar holds.');
-    const drops: Array<ItemSpec | null> = [];
-    drops.push(rollLoot({ depth, bias: 4 }, gameRng) ?? ITEMS['healing-potion'] ?? null);
-    drops.push(rollLoot({ depth, bias: 3 }, gameRng));
+    // The hoard was pre-rolled + DISPLAYED at spawn — the floating
+    // prize comes down off its pedestal and lands as pickups.
+    if (prizeGroup) {
+      scene.remove(prizeGroup);
+      prizeGroup.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) m.dispose();
+        mesh.geometry.dispose();
+      });
+      prizeGroup = null;
+    }
     emit({
       type: 'transaction:resolved', family: 'trial', id: encId,
-      outcome: { itemIds: drops.filter((d): d is ItemSpec => !!d).map((d) => d.id) },
+      outcome: { itemIds: drops.map((d) => d.id) },
     });
     let i = 0;
     for (const item of drops) {

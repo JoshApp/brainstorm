@@ -452,6 +452,29 @@ const ENCOUNTER_FOUNTAIN: Vault = {
   torchTint: TORCH_PALE,
 };
 
+const ENCOUNTER_TITHE: Vault = {
+  id: 'encounter-tithe',
+  tags: ['encounter'],
+  // The tithe basin alone in a narrow chamber — UNKNOWN family
+  // (transactions.ts): pale light over a dry hollow, nothing else.
+  // The emptiness is deliberate: a room that holds only a question.
+  map: [
+    '########',
+    '#......#',
+    '#......#',
+    '#......#',
+    '#......#',
+    '#*....*#',
+    '########',
+  ],
+  minDepth: 2,
+  weight: 1,
+  props: [
+    { kind: 'tithe-basin', x: 0, z: -0.5 },
+  ],
+  torchTint: TORCH_PALE,
+};
+
 const ENCOUNTER_CORPSES: Vault = {
   id: 'encounter-corpses',
   tags: ['encounter'],
@@ -1110,7 +1133,8 @@ export const VAULTS: Vault[] = [
   COMBAT_CROSS, MINESHAFT_GALLERY, COMBAT_PITS, CHASM_BRIDGE,
   ENCOUNTER_NEST,
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
-  ENCOUNTER_FOUNTAIN, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
+  ENCOUNTER_FOUNTAIN,
+  ENCOUNTER_TITHE, ENCOUNTER_CORPSES, ENCOUNTER_RITUAL,
   ENCOUNTER_PRISON, ENCOUNTER_TRAPPED, ENCOUNTER_BLOOD_ALTAR,
   ENCOUNTER_ARENA, CHALLENGE_ARENA, ENCOUNTER_OSSUARY,
   BOSS_ANTECHAMBER, BOSS_CATHEDRAL, BOSS_HALL,
