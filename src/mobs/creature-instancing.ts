@@ -227,6 +227,14 @@ export function acquireCreatureInstancing(
   const matIds = new Map<THREE.Material, string>();
   for (const [id, m] of built.materials) matIds.set(m, id);
 
+  // Glowing-core mobs (a 'coreGlow' sprite + an emissive flash material —
+  // the boiling-prince nucleus) animate that material's EMISSIVE per enemy
+  // (idle heartbeat + white-hot hit flare, see enemy-presentation.ts).
+  // instanceColor only carries diffuse, so those segments stay individual.
+  const flashMat = built.materials.get(spec.flashMaterialName) as THREE.MeshStandardMaterial | undefined;
+  const hasGlowingCore =
+    !!built.parts.get('coreGlow') && !!flashMat && (flashMat.emissiveIntensity ?? 0) > 0;
+
   const segments: InstancedSegment[] = [];
   // Occurrence counter — two identical unnamed parts under the same joint
   // (paired ribs, twin lobes) get distinct, deterministic keys.
@@ -243,6 +251,7 @@ export function acquireCreatureInstancing(
     const matId = matIds.get(mat);
     if (!matId) return;                          // decal/foreign material
     if (matId === spec.eyeMaterialName) return;  // eye flare = per-enemy emissive
+    if (hasGlowingCore && matId === spec.flashMaterialName) return;  // core heartbeat
     const def = spec.creature.materials[matId];
     if (!def) return;
 
