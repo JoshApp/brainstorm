@@ -1183,6 +1183,21 @@ if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
 // driving enemies, and screenshotting without dying. DEV-only: the whole
 // block is dropped from the production bundle (and setGodMode would refuse
 // anyway), so it can't be used on the live site.
+// Drop the boot loading veil (index.html) — fade out, then remove. Module-scope
+// so EVERY boot path can clear it (title, scenario, the debug ?show* hooks),
+// not just the title. The title path holds it across a PWA-update reload (see
+// the gated call below); a safety timer guarantees it never strands if some
+// path forgets to clear it.
+function hideBootLoading() {
+  const el = document.getElementById('boot-loading');
+  if (!el || el.classList.contains('boot-hide')) return;
+  el.classList.add('boot-hide');
+  window.setTimeout(() => el.remove(), 500);
+}
+// Safety net — just past awaitBootUpdate's own 6s cap, so a legit update gate
+// resolves first; this only fires if a boot path never cleared the veil.
+window.setTimeout(hideBootLoading, 7000);
+
 if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('god') === '1') {
   setGodMode(true);
 }
@@ -1245,6 +1260,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // room reads. Set after applyScenario below so nothing resets them.
   if (scenario.inspect) suppressNextDescentTitle();
   startRun(floorId);
+  hideBootLoading();   // scenarios bypass the title — clear the veil right away
   // Scenarios may want to mutate enemies / give items / open panels.
   // Runs AFTER startRun so currentLevel is populated.
   applyScenario(scenario, { level: currentLevel, weapon, camera });
@@ -1431,14 +1447,6 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       startRun(s.floorId, s.depth);
     },
     });
-  }
-
-  // Drop the boot loading veil (index.html) — fade, then remove.
-  function hideBootLoading() {
-    const el = document.getElementById('boot-loading');
-    if (!el) return;
-    el.classList.add('boot-hide');
-    window.setTimeout(() => el.remove(), 500);
   }
 
   // FIRST boot: hold the loading veil until we've checked for a fresh build.
