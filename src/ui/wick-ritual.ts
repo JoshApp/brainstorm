@@ -17,7 +17,7 @@ import { getSettings, updateSettings } from '../settings/settings';
 // Per-rune base luminance, chosen against the LUX bands: rune one sits
 // in the lit band (always readable), rune two at the dim floor (the
 // "barely there" target), rune three below the dark band (must drown).
-const RUNE_BASE = [0.085, 0.038, 0.014];
+const RUNE_BASE = [0.13, 0.045, 0.012];
 const RUNES = ['ᚠ', 'ᚷ', 'ᛉ'];
 
 let root: HTMLDivElement | null = null;
@@ -32,8 +32,11 @@ function previewLuma(base: number, wick: number): number {
 }
 
 function lumaToHex(l: number): string {
-  // display-referred gray (approximate sRGB encode)
-  const v = Math.round(Math.pow(l, 1 / 2.2) * 255);
+  // The band lumas are ALREADY display-referred (they come from the
+  // LUX bands, which measure the rendered frame) — encoding them
+  // through sRGB again floored the third rune at rgb(34): visible on
+  // any screen, so it could never drown. Straight to 8-bit.
+  const v = Math.round(Math.max(0, Math.min(1, l)) * 255);
   return `rgb(${v},${v},${v})`;
 }
 
