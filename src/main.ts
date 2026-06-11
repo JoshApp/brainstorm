@@ -26,6 +26,7 @@ import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled } from './style/render-target';
+import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
@@ -226,6 +227,9 @@ setSurfaceDetailEnabled(getSettings().surfaceDetail);
 // --- Camera ---
 const camera = createFirstPersonCamera();
 scene.add(camera); // required for the sword (camera child) to render
+// LUX perceived-light meter (debug/lux.ts) — measures the RENDERED
+// frame. Wired early so the render system's flushLux has its refs.
+initLux(camera, () => currentLevel?.spec ?? null);
 // Blade trail mesh attaches to the world scene root (NOT the camera) so it
 // reads in world space and depth-tests correctly against geometry. Persistent
 // across levels — one buffer, dynamic updates.
@@ -687,6 +691,30 @@ if (import.meta.env.DEV) {
 // scenario can isolate the rest of the frame from its inverted-hull overdraw.
 if (import.meta.env.DEV) {
   if (new URLSearchParams(window.location.search).get('nooutline') === '1') setOutlinesDisabled(true);
+}
+// LUX button — `?lux=1` on ANY build (it's a safe read-only diagnostic:
+// measures pixels, changes nothing), always present in DEV. One tap →
+// overlay card with the numbers + room context; a phone screenshot of
+// that card is a complete bug report for light tuning.
+if (import.meta.env.DEV || new URLSearchParams(window.location.search).get('lux') === '1') {
+  const btn = document.createElement('button');
+  btn.textContent = 'LUX';
+  Object.assign(btn.style, {
+    position: 'fixed', top: '40%', right: '8px', zIndex: '9998',
+    background: 'rgba(10,12,18,0.8)', color: '#9fb2cc',
+    font: '10px ui-monospace, monospace', padding: '7px 9px',
+    border: '1px solid #2a3242', borderRadius: '5px', opacity: '0.6',
+  } as Partial<CSSStyleDeclaration>);
+  btn.onclick = () => { requestLux().then(showLuxCard); };
+  document.body.appendChild(btn);
+}
+// Headless lux API (DEV; scripts/lux-scan.ts drives it via playwright).
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__lux = {
+    measure: () => requestLux().then((r) => { showLuxCard(r); return r; }),
+    tour: () => luxTour(),
+    bands: LUX_BANDS,
+  };
 }
 // DEV-only boss observation hook (window.__boss). Stripped from prod by the
 // literal-false guard. Drive + inspect multi-phase boss fights from the

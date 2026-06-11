@@ -18,6 +18,7 @@ import { tickViewmodelPullback } from '../player/viewmodel-pullback';
 import { isDying } from '../player/death';
 import { isFogWalkthroughActive, tickFogWalkthrough } from '../player/fog-walkthrough';
 import { renderWithStyle, setDarkAdapt } from '../style/render-target';
+import { flushLux, luxPending } from '../debug/lux';
 import { isInspectActive, INSPECT_AMBIENT, tickInspectFraming } from '../debug/inspect-mode';
 import { setTorchProximity, setAudioListenerPose } from '../audio/sfx';
 import { tickAlerts } from '../mobs/alerts';
@@ -469,7 +470,13 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // waiting for its subject mesh to spawn.
     { name: 'inspect-frame', phase: 'always', tick() { tickInspectFraming(); } },
 
-    { name: 'render', phase: 'always', tick() { renderWithStyle(renderer, scene, camera); } },
+    { name: 'render', phase: 'always', tick() {
+      renderWithStyle(renderer, scene, camera);
+      // LUX readback must happen while this frame's buffer is still
+      // valid (preserveDrawingBuffer is off in prod) — cheap no-op
+      // unless a measurement was requested.
+      if (luxPending()) flushLux(renderer);
+    } },
 
     { name: 'shake-restore', phase: 'always', tick() { camera.position.sub(shakeOffset); } },
   ];
