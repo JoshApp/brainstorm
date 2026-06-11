@@ -410,6 +410,30 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().surfaceDetail,
       set: (v) => updateSettings({ surfaceDetail: v }),
     }),
+    makeSlider({
+      label: 'BRIGHTNESS',
+      description: 'Master output brightness. 1.00 is the authored exposure.',
+      min: 0.6, max: 1.6, step: 0.05,
+      get: () => getSettings().brightness,
+      set: (v) => updateSettings({ brightness: v }),
+      format: (v) => v.toFixed(2) + '×',
+    }),
+    makeSlider({
+      label: 'TORCH STRENGTH',
+      description: 'Live multiplier on every environment light (torches, sconces, chandeliers). Tuning dial — 1.00 is authored.',
+      min: 0.4, max: 2.0, step: 0.05,
+      get: () => getSettings().torchStrengthMul,
+      set: (v) => updateSettings({ torchStrengthMul: v }),
+      format: (v) => v.toFixed(2) + '×',
+    }),
+    makeSlider({
+      label: 'TORCH RANGE',
+      description: 'Live multiplier on environment light reach. 1.00 is authored.',
+      min: 0.5, max: 2.0, step: 0.05,
+      get: () => getSettings().torchRangeMul,
+      set: (v) => updateSettings({ torchRangeMul: v }),
+      format: (v) => v.toFixed(2) + '×',
+    }),
   ],
 
   system: () => [

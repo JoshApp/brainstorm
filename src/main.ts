@@ -25,7 +25,7 @@ import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthr
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness } from './style/render-target';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
 import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
@@ -96,7 +96,7 @@ import { resolveTap } from './controls/tap-resolve';
 import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
-import { initLightPool, setShadowMode } from './scene/light-pool';
+import { initLightPool, setShadowMode, setEnvLightMuls } from './scene/light-pool';
 import { packTokenCount } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
 import { initProjectilePool } from './combat/projectile-pool';
@@ -224,6 +224,8 @@ const materials = buildMaterials(renderer);
 initRenderPipeline(renderer);
 setSurfaceAOStrength(getSettings().aoStrength);
 setSurfaceDetailEnabled(getSettings().surfaceDetail);
+setMasterBrightness(getSettings().brightness);
+setEnvLightMuls(getSettings().torchStrengthMul, getSettings().torchRangeMul);
 
 // --- Camera ---
 const camera = createFirstPersonCamera();
@@ -1162,6 +1164,8 @@ onSettingsChanged((s) => {
   applyVideoSettings(s);   // render scale + adaptive resolution + bloom
   setSurfaceAOStrength(s.aoStrength);
   setSurfaceDetailEnabled(s.surfaceDetail);
+  setMasterBrightness(s.brightness);
+  setEnvLightMuls(s.torchStrengthMul, s.torchRangeMul);
   // Banded lighting toggle: swap the global lighting chunk, then force every
   // visible material to RECOMPILE so it re-reads the new chunk. Just setting
   // needsUpdate isn't enough — Three.js's program cache keys off material

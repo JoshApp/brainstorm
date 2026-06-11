@@ -98,7 +98,8 @@ const HORROR_BLIT_FRAG = `
   uniform float uInscatterStartM;    // metres where the glowing haze begins
   uniform float uInscatterEndM;      // metres where the haze is fully thick
   uniform vec2 uResolution;
-  uniform float uDarkAdapt;  // eye dark-adaptation, 0 = none .. 1 = full dark
+  uniform float uDarkAdapt;
+  uniform float uBrightness;  // eye dark-adaptation, 0 = none .. 1 = full dark
   uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
   varying vec2 vUv;
 
@@ -196,6 +197,10 @@ const HORROR_BLIT_FRAG = `
     col += uDarkAdapt * vec3(0.034, 0.036, 0.040) * darkness;
     col *= 1.0 + uDarkAdapt * 0.55 * darkness;
 
+
+    // MASTER BRIGHTNESS — settings dial; applied before dither/quantize
+    // so the whole PSX chain sees the adjusted exposure.
+    col *= uBrightness;
 
     // DITHER — add Bayer pattern below quantization to break smooth bands
     vec2 pixCoord = gl_FragCoord.xy;
@@ -411,6 +416,7 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       uInscatterEndM: { value: INSCATTER_END_M },
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
       uDarkAdapt: { value: 0 },
+      uBrightness: { value: 1 },
       uInspect: { value: 0 },
     },
     vertexShader: HORROR_BLIT_VERT,
@@ -460,6 +466,10 @@ export function getPS1Scale(): number { return ps1Scale; }
 
 /** Set the eye dark-adaptation amount (0..1) applied by the blit shader's
  *  shadow-lift. No-op until the pipeline is initialised. */
+export function setMasterBrightness(v: number): void {
+  if (blitMaterial) blitMaterial.uniforms.uBrightness.value = v;
+}
+
 export function setDarkAdapt(amount: number): void {
   if (blitMaterial) blitMaterial.uniforms.uDarkAdapt.value = amount;
 }

@@ -116,6 +116,12 @@ export interface Settings {
   /** Procedural surface detail — world-space normal perturbation + grime on the
    *  big stone surfaces, so torchlight catches fake roughness. No texture maps. */
   surfaceDetail: boolean;
+  /** Master output brightness — a post-chain multiplier (1 = neutral). */
+  brightness: number;
+  /** Live tuning multipliers for ALL environment lights (torches,
+   *  sconces, chandeliers). Debug/feel dials — 1 = the authored values. */
+  torchStrengthMul: number;
+  torchRangeMul: number;
   /** HUD style preset — controls which HUD elements render and how
    *  loud the diegetic feedback (vignette, heartbeat, breath) is. Use
    *  with the registry in src/ui/hud-style.ts. Default 'minimal'. */
@@ -184,6 +190,9 @@ const DEFAULTS: Settings = {
   bandedLighting: true,
   aoStrength: 1.6,
   surfaceDetail: true,
+  brightness: 1.0,
+  torchStrengthMul: 1.0,
+  torchRangeMul: 1.0,
   hudStyle: 'minimal',
   migratedPortalCulling: true,   // fresh installs are already on (no migration needed)
 };

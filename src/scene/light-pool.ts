@@ -294,6 +294,16 @@ export type LOSChecker = (ax: number, az: number, bx: number, bz: number) => boo
 // sort so they yield under budget pressure, and every bind change
 // EASES (~120ms in, ~200ms out of blockage) instead of stepping.
 const visById = new Map<string, number>();
+
+// Live tuning multipliers (settings sliders) for environment lights —
+// applied at slot-write time so they touch every torch/sconce/
+// chandelier instantly, no rebuild.
+let envStrengthMul = 1;
+let envRangeMul = 1;
+export function setEnvLightMuls(strength: number, range: number): void {
+  envStrengthMul = strength;
+  envRangeMul = range;
+}
 const LOS_DIM = 0.3;          // blocked sources glow at this fraction
 const LOS_SORT_PENALTY = 90;  // dist²-space penalty: blocked ≈ 9.5m farther
 const LOW_PRIORITY_PENALTY = 40;   // ambience fill yields to real sources
@@ -379,8 +389,10 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
         const prev = visById.get(src.id) ?? 0;
         const vis = prev + (target - prev) * (1 - Math.exp(-dt * (target > prev ? 9 : 5)));
         visById.set(src.id, vis);
-        slot.intensity = (src.getIntensity ? src.getIntensity() : src.intensity) * vis;
-        slot.distance = src.distance;
+        const isEnv = src.category === 'environment';
+        slot.intensity = (src.getIntensity ? src.getIntensity() : src.intensity) * vis
+          * (isEnv ? envStrengthMul : 1);
+        slot.distance = src.distance * (isEnv ? envRangeMul : 1);
         slot.decay = src.decay;
         if (src.getColor) {
           src.getColor(tmpColor);
