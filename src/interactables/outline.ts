@@ -35,6 +35,52 @@ import { getAllInteractables } from './system';
 //             rooms. Doors are interactables, so doorways get this for free.
 
 const OUTLINE_SCALE_DEFAULT = 1.07;
+
+// Screen-constant outline material: the shell is pushed along its
+// (smoothed) normals IN THE VERTEX SHADER, scaled by view depth so the
+// rim holds a near-constant ~1.5px on screen. A constant WORLD
+// thickness can't be an outline: on a blade's thin side (8-10mm) any
+// world rim wide enough to read becomes a block as wide as the blade;
+// on a chest it's a hairline. Pixel-space is the only honest unit for
+// a line.
+const RIM_PX = 1.6;             // target rim width, device pixels (pre-PS1-downscale)
+function makeOutlineMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(COLOR_ARMED) },
+      uOpacity: { value: 0 },
+      uPxScale: { value: 0.002 },   // world-units-per-pixel at z=1; set per frame
+    },
+    vertexShader: `
+      uniform float uPxScale;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        // World push per pixel grows linearly with view depth — the
+        // projected rim width stays constant on screen.
+        float push = uPxScale * -mv.z;
+        vec3 displaced = position + normal * push;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      void main() { gl_FragColor = vec4(uColor, uOpacity); }
+    `,
+    side: THREE.BackSide,
+    transparent: true,
+    fog: false,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+}
+
+/** Per-frame px→world scale at unit depth: worldPerPx(z) = z * 2·tan(fov/2)/H. */
+export function updateOutlinePxScale(camera: THREE.PerspectiveCamera, viewportH: number): void {
+  const worldPerPxAtUnitZ = (2 * Math.tan((camera.fov * Math.PI) / 360)) / viewportH;
+  pxScaleShared.value = worldPerPxAtUnitZ * RIM_PX;
+}
+const pxScaleShared = { value: 0.002 };
 const COLOR_ARMED  = 0xffd6a0;
 const COLOR_SEALED = 0x808088;
 
@@ -46,7 +92,7 @@ const SEALED_BASE_OPACITY = 0.45;
 interface OutlineRef {
   clone: THREE.Mesh;
   /** Per-target material so opacity + color can differ by tier/distance. */
-  mat: THREE.MeshBasicMaterial;
+  mat: THREE.ShaderMaterial;
 }
 
 // One entry per interactable currently showing an outline.
@@ -114,46 +160,19 @@ function buildOutlinesFor(target: Interactable): OutlineRef[] {
     if (merged !== geos[0]) geos[0].dispose();
     for (let i = 1; i < geos.length; i++) if (geos[i] !== merged) geos[i].dispose();
 
-    // NORMAL-PUSH SHELL — not a scale. Uniform scaling around the bbox
-    // centre broke long thin weapons: a 1.3m scythe's tips shifted
-    // ~4.5cm out (the visible disconnect) while its thin haft gained
-    // ~1.5mm of rim, and when the centre fell BETWEEN the haft and
-    // blade masses the scale pushed the two apart entirely (the
-    // reaper's full split). Instead: weld the soup so coincident
-    // vertices share normals, smooth them, and bake every vertex a
-    // constant distance outward along its normal — pivot-independent,
-    // a uniform rim at the tip and the haft alike, parts inseparable.
+    // Weld so coincident vertices share one smoothed normal (the push
+    // direction); the push itself happens in the VERTEX SHADER, scaled
+    // by view depth for a screen-constant rim (see makeOutlineMaterial).
+    // Pivot-independent: tips stay attached, parts can't separate.
     let shell = mergeVertices(merged, 1e-3);
     if (shell !== merged) merged.dispose();
     shell.computeVertexNormals();
-    // Honour authored outlineScale intent: map the old scale delta to
-    // an equivalent thickness (1.07 → 4.5mm). Calibrated to the SIDE
-    // rim, not the tip error: weapon blades are ~8-10mm thick, so a
-    // 13mm shell out-fattened the blade itself and read as a casing.
-    const thickness = 0.0045 * ((scaleFactor - 1) / 0.07);
-    {
-      const posA = shell.getAttribute('position') as THREE.BufferAttribute;
-      const norA = shell.getAttribute('normal') as THREE.BufferAttribute;
-      for (let i = 0; i < posA.count; i++) {
-        posA.setXYZ(
-          i,
-          posA.getX(i) + norA.getX(i) * thickness,
-          posA.getY(i) + norA.getY(i) * thickness,
-          posA.getZ(i) + norA.getZ(i) * thickness,
-        );
-      }
-      posA.needsUpdate = true;
-    }
 
-    const mat = new THREE.MeshBasicMaterial({
-      color: COLOR_ARMED,
-      side: THREE.BackSide,
-      transparent: true,
-      opacity: 0,
-      fog: false,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
+    const mat = makeOutlineMaterial();
+    // Authored outlineScale maps to a rim-width multiplier.
+    mat.uniforms.uPxScale = { value: 0 };   // replaced by the shared ref below
+    (mat.uniforms as Record<string, { value: unknown }>).uPxScale = pxScaleShared;
+    void scaleFactor;
     const clone = new THREE.Mesh(shell, mat);
     clone.renderOrder = 999;
     clone.userData.outline = true;
@@ -228,8 +247,8 @@ export function updateOutline(
     // parent and baked in that frame, so it rides the parent's animation. Only
     // the tier-driven opacity/color change per frame.
     for (const r of refs) {
-      r.mat.opacity = opacity;
-      r.mat.color.copy(tmpColor);
+      r.mat.uniforms.uOpacity.value = opacity;
+      (r.mat.uniforms.uColor.value as THREE.Color).copy(tmpColor);
     }
   }
 }

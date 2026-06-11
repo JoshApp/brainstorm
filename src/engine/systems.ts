@@ -56,7 +56,7 @@ import { tickRoomMood } from '../level/room-mood';
 import { tickShatterBurst } from '../effects/shatter-burst';
 import { tickBloodBurst } from '../effects/blood-burst';
 import { tickStatusVfx } from '../effects/status-vfx';
-import { updateOutline } from '../interactables/outline';
+import { updateOutline, updateOutlinePxScale } from '../interactables/outline';
 import { updateInteractLabel } from '../ui/interact-label';
 import { tickItemPreviews } from '../ui/item-preview';
 import { tickBossBar } from '../ui/boss-bar';
@@ -407,6 +407,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       tickItemPreviews(camera, canvas);
       // Outline pulse on the in-range interactable. realDt so it animates at
       // real-time even during hit-pause.
+      updateOutlinePxScale(camera as THREE.PerspectiveCamera, renderer.domElement.height);
       updateOutline(inRange, ctx.realDt, camera.position);
     } },
 
