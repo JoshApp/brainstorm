@@ -298,6 +298,8 @@ initTriggerListener('player');
 // The active-level handle lives in `currentLevel` here so the main-loop
 // tick code below can read it. Updated by the onLoaded callback below.
 let currentLevel: LiveLevel & { checkRoomClear?: () => void } = null as unknown as LiveLevel;
+// Previous floor id — decides the wake ceremony tier (see onLoaded).
+let lastLevelId: string | null = null;
 
 // Portal/room culling (opt-in). The culler is rebuilt whenever the active
 // level changes and torn down when the setting is off. A 'room-culling' system
@@ -339,8 +341,15 @@ initLevelLoader({
     batchStaticFixtures(currentLevel);
     setCameraYaw(level.playerSpawn.yaw);
     setCameraPitch(0);   // forget the stairs — wake looking level
-    // Wake seated at the threshold bonfire; stand over ~1.6s.
-    beginArrival();
+    // Wake seated at the threshold bonfire. FULL ceremony (heavy blink,
+    // blur-to-focus) where the fiction says you slept: the run's first
+    // floor, the tutorial, and the floor after a safe-room rest.
+    // Regular descents get the quick wake.
+    const slept =
+      lastLevelId === null || lastLevelId === 'tutorial' || lastLevelId.startsWith('safe-') ||
+      level.spec.id === 'tutorial' || level.spec.id.startsWith('safe-');
+    beginArrival({ full: slept });
+    lastLevelId = level.spec.id;
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-') || level.spec.id === 'tutorial');
     resetBossBar();   // new floor — clear any prior boss bar state
 

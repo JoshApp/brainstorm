@@ -9,24 +9,39 @@ import { CONFIG } from '../config';
 // seat into eye height. One clock drives lids and rise together.
 
 const SIT_HEIGHT = 0.92;
-const DURATION = 2.1;
 
-// Eyelid openness keyframes over normalized time — part, sag (the
-// heavy blink of someone who slept badly), then fully open.
-const LID_KEYS: Array<[number, number]> = [
+// Two ceremonies (anti-staleness): the FULL wake — sit, heavy blink,
+// blur-to-focus — plays where the fiction says you slept (run start,
+// the tutorial, leaving a safe room's rest). Regular floor-to-floor
+// descents get the QUICK wake: a brisk lid-part with mild focus, the
+// stitch without the pageantry.
+const DUR_FULL = 2.1;
+const DUR_QUICK = 0.9;
+
+const LID_KEYS_FULL: Array<[number, number]> = [
   [0.00, 0],
   [0.16, 0],
   [0.42, 0.62],
   [0.56, 0.40],
   [1.00, 1],
 ];
+const LID_KEYS_QUICK: Array<[number, number]> = [
+  [0.00, 0],
+  [0.10, 0],
+  [1.00, 1],
+];
 
 let t = -1;   // -1 = idle
 let offset = 0;
+let duration = DUR_FULL;
+let lidKeys = LID_KEYS_FULL;
+let maxBlur = 7;
 let lidTop: HTMLDivElement | null = null;
 let lidBot: HTMLDivElement | null = null;
+let blurEl: HTMLDivElement | null = null;
 
 function lidOpenness(k: number): number {
+  const LID_KEYS = lidKeys;
   for (let i = 1; i < LID_KEYS.length; i++) {
     const [k1, v1] = LID_KEYS[i];
     const [k0, v0] = LID_KEYS[i - 1];
@@ -64,6 +79,24 @@ function ensureLids(): void {
   };
   lidTop = make(true);
   lidBot = make(false);
+  // Focus layer — backdrop blur over the canvas between the lids; the
+  // world sharpens as the eyes finish opening.
+  blurEl = document.createElement('div');
+  Object.assign(blurEl.style, {
+    position: 'fixed', inset: '0', zIndex: '9995',
+    pointerEvents: 'none', display: 'none',
+  } as Partial<CSSStyleDeclaration>);
+  document.body.appendChild(blurEl);
+}
+
+function setFocus(open: number): void {
+  if (!blurEl) return;
+  // Blur eases out as the eyes open; gone by 85% open.
+  const b = maxBlur * Math.max(0, 1 - open / 0.85);
+  if (b < 0.3) { blurEl.style.display = 'none'; return; }
+  blurEl.style.display = 'block';
+  (blurEl.style as unknown as Record<string, string>).backdropFilter = `blur(${b.toFixed(1)}px)`;
+  (blurEl.style as unknown as Record<string, string>).webkitBackdropFilter = `blur(${b.toFixed(1)}px)`;
 }
 
 function setLids(open: number): void {
@@ -77,11 +110,16 @@ function setLids(open: number): void {
   lidBot.style.display = show;
 }
 
-export function beginArrival(): void {
+export function beginArrival(opts?: { full?: boolean }): void {
+  const full = opts?.full ?? false;
+  duration = full ? DUR_FULL : DUR_QUICK;
+  lidKeys = full ? LID_KEYS_FULL : LID_KEYS_QUICK;
+  maxBlur = full ? 7 : 3.5;
   t = 0;
   offset = SIT_HEIGHT - CONFIG.PLAYER_HEIGHT;
   ensureLids();
   setLids(0);
+  setFocus(0);
 }
 
 /** Advance the wake clock. The camera system applies the height offset —
@@ -90,13 +128,15 @@ export function beginArrival(): void {
 export function tickArrival(_camera: THREE.Camera, dt: number): void {
   if (t < 0) return;
   t += dt;
-  const k = Math.min(1, t / DURATION);
+  const k = Math.min(1, t / duration);
   // The stand starts once the eyes have first parted, easing in late.
   const standK = Math.max(0, (k - 0.30) / 0.70);
   const e = standK * standK * (3 - 2 * standK);
   offset = (SIT_HEIGHT - CONFIG.PLAYER_HEIGHT) * (1 - e);
-  setLids(lidOpenness(k));
-  if (k >= 1) { t = -1; offset = 0; setLids(1); }
+  const open = lidOpenness(k);
+  setLids(open);
+  setFocus(open);
+  if (k >= 1) { t = -1; offset = 0; setLids(1); setFocus(1); }
 }
 
 /** Negative while rising from the bonfire seat; 0 once standing. */
