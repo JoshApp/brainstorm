@@ -304,6 +304,10 @@ export function setEnvLightMuls(strength: number, range: number): void {
   envStrengthMul = strength;
   envRangeMul = range;
 }
+// The wick's share: ambient FILLS (priority 'low') scale with the
+// player's calibrated visibility floor; torches/signals don't.
+let wickFillMul = 1;
+export function setWickFillMul(v: number): void { wickFillMul = v; }
 const LOS_DIM = 0.3;          // blocked sources glow at this fraction
 const LOS_SORT_PENALTY = 90;  // dist²-space penalty: blocked ≈ 9.5m farther
 const LOW_PRIORITY_PENALTY = 40;   // ambience fill yields to real sources
@@ -391,7 +395,8 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
         visById.set(src.id, vis);
         const isEnv = src.category === 'environment';
         slot.intensity = (src.getIntensity ? src.getIntensity() : src.intensity) * vis
-          * (isEnv ? envStrengthMul : 1);
+          * (isEnv ? envStrengthMul : 1)
+          * (src.priority === 'low' ? wickFillMul : 1);
         slot.distance = src.distance * (isEnv ? envRangeMul : 1);
         slot.decay = src.decay;
         if (src.getColor) {

@@ -99,7 +99,8 @@ const HORROR_BLIT_FRAG = `
   uniform float uInscatterEndM;      // metres where the haze is fully thick
   uniform vec2 uResolution;
   uniform float uDarkAdapt;
-  uniform float uBrightness;  // eye dark-adaptation, 0 = none .. 1 = full dark
+  uniform float uBrightness;
+  uniform float uWick;  // eye dark-adaptation, 0 = none .. 1 = full dark
   uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
   varying vec2 vUv;
 
@@ -197,6 +198,17 @@ const HORROR_BLIT_FRAG = `
     col += uDarkAdapt * vec3(0.034, 0.036, 0.040) * darkness;
     col *= 1.0 + uDarkAdapt * 0.55 * darkness;
 
+
+    // WICK — the player's calibrated floor of visibility (wick ritual).
+    // Darkness-weighted: bright pixels are untouched, so torch pools and
+    // signal lights keep their authored levels while the dark floor
+    // rises (or sinks). Band re-targeting, not a gamma wash.
+    {
+      float wick = uWick - 1.0;
+      float wickDark = 1.0 - max(max(col.r, col.g), col.b);
+      col += max(wick, 0.0) * vec3(0.030, 0.032, 0.036) * wickDark;
+      col *= 1.0 + wick * 0.45 * wickDark;
+    }
 
     // MASTER BRIGHTNESS — settings dial; applied before dither/quantize
     // so the whole PSX chain sees the adjusted exposure.
@@ -417,6 +429,7 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
       uDarkAdapt: { value: 0 },
       uBrightness: { value: 1 },
+      uWick: { value: 1 },
       uInspect: { value: 0 },
     },
     vertexShader: HORROR_BLIT_VERT,
@@ -466,6 +479,10 @@ export function getPS1Scale(): number { return ps1Scale; }
 
 /** Set the eye dark-adaptation amount (0..1) applied by the blit shader's
  *  shadow-lift. No-op until the pipeline is initialised. */
+export function setWickLift(v: number): void {
+  if (blitMaterial) blitMaterial.uniforms.uWick.value = v;
+}
+
 export function setMasterBrightness(v: number): void {
   if (blitMaterial) blitMaterial.uniforms.uBrightness.value = v;
 }

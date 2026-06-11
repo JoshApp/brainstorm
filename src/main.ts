@@ -25,7 +25,7 @@ import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthr
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift } from './style/render-target';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
 import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
@@ -38,6 +38,7 @@ import {
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
+import { beginArrival, tickArrival } from './player/arrival';
 import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh, suspendAudio, resumeAudio } from './audio/sfx';
 import { startMusic, setMusicVolume, pauseMusic, resumeMusic } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
@@ -96,7 +97,7 @@ import { resolveTap } from './controls/tap-resolve';
 import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
-import { initLightPool, setShadowMode, setEnvLightMuls } from './scene/light-pool';
+import { initLightPool, setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-pool';
 import { packTokenCount } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
 import { initProjectilePool } from './combat/projectile-pool';
@@ -226,6 +227,8 @@ setSurfaceAOStrength(getSettings().aoStrength);
 setSurfaceDetailEnabled(getSettings().surfaceDetail);
 setMasterBrightness(getSettings().brightness);
 setEnvLightMuls(getSettings().torchStrengthMul, getSettings().torchRangeMul);
+setWickLift(getSettings().wick);
+setWickFillMul(Math.pow(getSettings().wick, 1.5));
 
 // --- Camera ---
 const camera = createFirstPersonCamera();
@@ -335,6 +338,8 @@ initLevelLoader({
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
     setCameraYaw(level.playerSpawn.yaw);
+    // Wake seated at the threshold bonfire; stand over ~1.6s.
+    beginArrival();
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-'));
     resetBossBar();   // new floor — clear any prior boss bar state
 
@@ -931,6 +936,7 @@ function tick() {
   // ends this frame re-pauses the world for the same frame's update gate.
   harnessTickFn?.(realDt, !isWorldPaused());
 
+  tickArrival(camera, realDt);
   tickDeath(realDt);
   tickJustDodge(realDt);   // real-time so the slow-mo dip isn't slowed by itself
   tickBossSlowmo(realDt);  // ditto — the boss-death dip advances in real time
@@ -1166,6 +1172,8 @@ onSettingsChanged((s) => {
   setSurfaceDetailEnabled(s.surfaceDetail);
   setMasterBrightness(s.brightness);
   setEnvLightMuls(s.torchStrengthMul, s.torchRangeMul);
+  setWickLift(s.wick);
+  setWickFillMul(Math.pow(s.wick, 1.5));
   // Banded lighting toggle: swap the global lighting chunk, then force every
   // visible material to RECOMPILE so it re-reads the new chunk. Just setting
   // needsUpdate isn't enough — Three.js's program cache keys off material

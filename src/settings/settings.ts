@@ -118,6 +118,13 @@ export interface Settings {
   surfaceDetail: boolean;
   /** Master output brightness — a post-chain multiplier (1 = neutral). */
   brightness: number;
+  /** The wick — the player's calibrated floor of visibility, set by the
+   *  wick ritual (tend a bonfire). Unlike `brightness` (a flat gamma
+   *  dial), the wick RE-TARGETS the dark: it raises the darkness-
+   *  weighted floor and the ambient fills together while torch pools
+   *  and signal lights stay at authored levels, so the chiaroscuro
+   *  hierarchy survives sunlight. 1 = authored darkness. */
+  wick: number;
   /** Live tuning multipliers for ALL environment lights (torches,
    *  sconces, chandeliers). Debug/feel dials — 1 = the authored values. */
   torchStrengthMul: number;
@@ -191,6 +198,7 @@ const DEFAULTS: Settings = {
   aoStrength: 1.6,
   surfaceDetail: true,
   brightness: 1.0,
+  wick: 1.0,
   torchStrengthMul: 1.0,
   torchRangeMul: 1.0,
   hudStyle: 'minimal',

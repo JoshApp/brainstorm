@@ -42,6 +42,9 @@ import { spawnFountain } from '../interactables/fountain';
 import { spawnMerchant } from '../interactables/merchant';
 import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
+import { BONFIRE } from '../content/bonfire';
+import { openWickRitual } from '../ui/wick-ritual';
+import { generateEntityId } from '../ecs/world';
 import { setSurfaceSeep, setSurfaceWetness } from '../style/surface-detail';
 import { resetSplatMap } from '../scene/splat-map';
 import { spawnReliquary } from '../interactables/reliquary';
@@ -81,7 +84,7 @@ function rngFromSeed(seed: number) {
 // declaration below. Could be per-level seeded but cross-level
 // uniqueness is enough for our use.
 let lightSerial = 0;
-import { clearInteractables } from '../interactables/system';
+import { clearInteractables, registerInteractable } from '../interactables/system';
 import { emit } from '../broadcast/event-bus';
 
 // Consumes a LevelSpec and produces the live scene + collision data. This is
@@ -556,6 +559,24 @@ export function buildLevel(
 
   // --- Geometry: rooms + corridors ---
   const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
+  // ── THE THRESHOLD BONFIRE ──────────────────────────────────────────
+  // Every floor begins at a fire: the player wakes seated beside it
+  // (player/arrival.ts) and can TEND it (the wick ritual) any time.
+  // Floors that author their own bonfire (safe rooms, tutorial) are
+  // left alone. Placed off the spawn's shoulder so it never blocks
+  // the lane, and skipped if it would sit in a doorway.
+  {
+    const hasBonfire = spec.props.some(
+      (pr) => pr.kind === 'model' && (pr as { model?: { id?: string } }).model?.id === 'bonfire');
+    if (!hasBonfire && spec.startPos) {
+      const yaw = spec.startPos.yaw ?? 0;
+      // forward is (-sin yaw, -cos yaw); the fire sits front-left.
+      const a = yaw + 0.85;
+      const bx = spec.startPos.x - Math.sin(a) * 1.5;
+      const bz = spec.startPos.z - Math.cos(a) * 1.5;
+      spec.props.push({ kind: 'model', model: BONFIRE, x: bx, y: 0, z: bz, rotY: yaw + 2.2 });
+    }
+  }
   // Splat map: world bounds of this floor (+2m margin) → fresh slate.
   {
     let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
@@ -930,6 +951,23 @@ export function buildLevel(
       // a real slot. Light's local position is added to the prop's
       // world position; rotations are not currently applied to the
       // offset (most model lights sit on the prop's axis).
+      // Bonfires are TENDable — the wick ritual (ui/wick-ritual.ts)
+      // opens from any fire. Players kept trying to touch them; now
+      // the fire answers.
+      if (prop.model.id === 'bonfire') {
+        const firePos = new THREE.Vector3(prop.x, 0, prop.z);
+        registerInteractable({
+          id: generateEntityId('bonfire-tend'),
+          position: firePos,
+          radius: 1.8,
+          labelOffsetY: 1.25,
+          promptLabel: 'TEND',
+          built: { group: new THREE.Group(), parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
+          keepBuiltOnDestroy: true,
+          onUse() { openWickRitual(); },
+          destroyed: false,
+        });
+      }
       if (prop.model.light && !lightOwnedByGodRay(prop.x, prop.z, prop.model.id)) {
         const lp = prop.model.light;
         const lightPos = new THREE.Vector3(
