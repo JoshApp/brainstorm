@@ -396,6 +396,25 @@ export function tickCreatureInstancing(): void {
   }
 }
 
+/** HARD CLEAR on level teardown — the floor-swap safety net. Releases
+ *  every live entry (whatever spawn path created it: room spawns, wave
+ *  spawns, mimics, ceiling drops), zeroes the slots and flushes the
+ *  buffers IMMEDIATELY so no stale matrix from the old floor can
+ *  render on the new one. Without this, any entry whose owner missed
+ *  its dispose path kept its last matrices — and since consecutive
+ *  floors both sit near the world origin, the previous floor's mobs
+ *  appeared half-sunk in the new floor's spawn room. */
+export function clearCreatureInstancing(): void {
+  for (const id of [...live.keys()]) releaseCreatureInstancing(id);
+  for (const b of batches.values()) {
+    for (let i = 0; i < b.mesh.count; i++) b.mesh.setMatrixAt(i, ZERO_SCALE);
+    b.used = 0;
+    b.free.length = 0;
+    b.mesh.instanceMatrix.needsUpdate = true;
+    b.matrixDirty = false;
+  }
+}
+
 /** Diagnostics: batch + slot counts (perf probes / DEV readouts). */
 export function creatureInstancingStats(): { batches: number; liveEnemies: number; slots: number } {
   let slots = 0;

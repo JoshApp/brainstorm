@@ -11,6 +11,7 @@ import { installPropHeightAO } from '../style/surface-ao';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
 import { createEnemy, disposeEnemy, type Enemy } from '../mobs/enemy';
+import { clearCreatureInstancing } from '../mobs/creature-instancing';
 import { kickShake } from '../combat/screen-shake';
 import { registerBossMember, advanceBossPhase } from '../mobs/boss-encounter';
 import { setBossPresentation } from '../mobs/boss-cinematics';
@@ -541,6 +542,7 @@ export function buildLevel(
   // Per-level lights start fresh. Persistent sources (the camera-
   // attached lantern) survive — see light-pool.clearLightPool.
   clearLightPool();
+  clearCreatureInstancing();
   // Drop the previous floor's encounters before this one registers its own
   // (the registry is module-global).
   clearEncounters();
