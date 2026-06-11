@@ -41,6 +41,7 @@ import { spawnFountain } from '../interactables/fountain';
 import { spawnMerchant } from '../interactables/merchant';
 import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
+import { setSurfaceSeep } from '../style/surface-detail';
 import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -1390,6 +1391,25 @@ export function buildLevel(
       });
     }
     engravedRooms.add(room.id);
+  }
+  // ── SEEP — the floor's mood decides if its walls bleed ────────────
+  // Strong-mood floors run liquid light through their groove network
+  // (surface-detail.ts seep pass): blood floors bleed, green floors
+  // ooze, violet floors weep. Warm/pale/gold floors stay dry — the
+  // seep is a SIGNAL of a committed mood, not wallpaper.
+  {
+    const counts = new Map<number, number>();
+    for (const t of spec.torches) {
+      if (t.colorTint !== undefined) counts.set(t.colorTint, (counts.get(t.colorTint) ?? 0) + 1);
+    }
+    let dom = 0, domN = 0;
+    for (const [c, n] of counts) if (n > domN) { dom = c; domN = n; }
+    const SEEP_STRENGTH: Record<number, number> = {
+      0xff5040: 0.50,   // blood
+      0x70d090: 0.40,   // sickly green
+      0xa080ff: 0.35,   // violet
+    };
+    setSurfaceSeep(dom, SEEP_STRENGTH[dom] ?? 0);
   }
   // ── CHANDELIERS — light from above for tall rooms ────────────────
   // One hung central source paints a wider pool than any wall torch

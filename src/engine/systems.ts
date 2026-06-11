@@ -19,6 +19,7 @@ import { isDying } from '../player/death';
 import { isFogWalkthroughActive, tickFogWalkthrough } from '../player/fog-walkthrough';
 import { renderWithStyle, setDarkAdapt } from '../style/render-target';
 import { flushLux, luxPending } from '../debug/lux';
+import { tickSurfaceSeep } from '../style/surface-detail';
 import { isInspectActive, INSPECT_AMBIENT, tickInspectFraming } from '../debug/inspect-mode';
 import { setTorchProximity, setAudioListenerPose } from '../audio/sfx';
 import { tickAlerts } from '../mobs/alerts';
@@ -471,6 +472,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'inspect-frame', phase: 'always', tick() { tickInspectFraming(); } },
 
     { name: 'render', phase: 'always', tick() {
+      tickSurfaceSeep(performance.now() / 1000);
       renderWithStyle(renderer, scene, camera);
       // LUX readback must happen while this frame's buffer is still
       // valid (preserveDrawingBuffer is off in prod) — cheap no-op

@@ -28,6 +28,29 @@ export interface SurfaceTexConfig {
 
 const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 
+// ── SEEP — liquid light in the grooves ───────────────────────────────
+// The groove-glow made deliberate-then-LIQUID: a slow descending flow
+// of emissive beads inside the mortar network, GATED by the direct
+// light the fragment receives — torches spill it, darkness dries it.
+// Tint + strength set per floor by the builder (dominant room mood:
+// blood floors bleed, green floors ooze ichor). Walls only.
+const uSeepTint = { value: new THREE.Vector3(0.8, 0.1, 0.08) };
+const uSeepStrength = { value: 0 };      // 0 = off; builder enables per floor
+const uSeepTime = { value: 0 };
+
+export function setSurfaceSeep(colorHex: number, strength: number): void {
+  uSeepTint.value.set(
+    ((colorHex >> 16) & 255) / 255,
+    ((colorHex >> 8) & 255) / 255,
+    (colorHex & 255) / 255,
+  );
+  uSeepStrength.value = strength;
+}
+
+export function tickSurfaceSeep(timeSec: number): void {
+  uSeepTime.value = timeSec;
+}
+
 export function setSurfaceDetailEnabled(on: boolean): void {
   uDetailStrength.value = on ? 1 : 0;
 }
@@ -66,6 +89,9 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
   material.onBeforeCompile = function (shader, renderer) {
     if (prev) prev.call(this, shader, renderer);
     shader.uniforms.uDetailStrength = uDetailStrength;
+    shader.uniforms.uSeepTint = uSeepTint;
+    shader.uniforms.uSeepStrength = uSeepStrength;
+    shader.uniforms.uSeepTime = uSeepTime;
     shader.uniforms.uSurfTex = { value: cfg.tex };
     shader.uniforms.uSurfTile = { value: new THREE.Vector2(cfg.tile[0], cfg.tile[1]) };
     shader.uniforms.uSurfTint = { value: new THREE.Vector3(cfg.tint[0], cfg.tint[1], cfg.tint[2]) };
@@ -89,14 +115,17 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         : 'vec2 sUv = vWorldPos.xz;';
 
     shader.fragmentShader =
-      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\n' +
+      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nuniform vec3 uSeepTint;\nuniform float uSeepStrength;\nuniform float uSeepTime;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\nfloat seepNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); vec3 h0=fract(vec3(i,i.x+i.y)*0.3183099+0.1); h0*=17.0; vec3 h1=fract(vec3(i+vec2(1.0,0.0),i.x+i.y+1.0)*0.3183099+0.1); h1*=17.0; vec3 h2=fract(vec3(i+vec2(0.0,1.0),i.x+i.y+1.0)*0.3183099+0.1); h2*=17.0; vec3 h3=fract(vec3(i+vec2(1.0,1.0),i.x+i.y+2.0)*0.3183099+0.1); h3*=17.0; float n00=fract(h0.x*h0.y*h0.z*(h0.x+h0.y+h0.z)); float n10=fract(h1.x*h1.y*h1.z*(h1.x+h1.y+h1.z)); float n01=fract(h2.x*h2.y*h2.z*(h2.x+h2.y+h2.z)); float n11=fract(h3.x*h3.y*h3.z*(h3.x+h3.y+h3.z)); return mix(mix(n00,n10,f.x),mix(n01,n11,f.x),f.y); }\n' +
       shader.fragmentShader.replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
+  float gSeepH = 1.0;
+  vec2 gSeepUv = vec2(0.0);
   if (uDetailStrength > 0.0) {
     ${projGLSL}
     vec2 uvT = sUv / uSurfTile;
     vec4 s = texture2D(uSurfTex, uvT);
+    gSeepUv = sUv;
     ${cfg.brickDamage ? `
     // WORLD-SPACE BRICK DAMAGE — the baked tile repeats every 4 bricks,
     // so authoring a missing brick THERE would echo it in a visible
@@ -157,6 +186,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       }
     }
     ` : ''}
+    gSeepH = s.a;
     // RELIEF — perturb the normal from the mip-filtered height (s.a). Because the
     // sample is band-limited to the pixel footprint, this derivative is stable
     // (no buzz) and naturally flattens at distance as the mips average out.
@@ -191,6 +221,27 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     diffuseColor.rgb *= mix(vec3(1.0), det, uDetailStrength);
   }`,
       );
+    if (cfg.proj === 'wall') {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <opaque_fragment>',
+        `// SEEP — liquid light draining through the groove network.
+  if (uSeepStrength > 0.0 && uDetailStrength > 0.0) {
+    float seam = 1.0 - smoothstep(0.42, 0.72, gSeepH);
+    if (seam > 0.002) {
+      // Two octaves of value noise scrolling DOWN the wall — beads of
+      // flow descending the seam lattice at two speeds.
+      float f1 = seepNoise(vec2(gSeepUv.x * 3.1, gSeepUv.y * 2.3 - uSeepTime * 0.22));
+      float f2 = seepNoise(vec2(gSeepUv.x * 7.7, gSeepUv.y * 5.3 - uSeepTime * 0.55));
+      float flow = smoothstep(0.52, 0.95, f1 * 0.58 + f2 * 0.42);
+      // THE GATE: the liquid glows where light actually lands — the
+      // torches spill it; in the dark it dries to nothing.
+      float lit = clamp(dot(reflectedLight.directDiffuse, vec3(0.6)) * 2.4, 0.0, 1.0);
+      outgoingLight += uSeepTint * (seam * flow * lit * uSeepStrength);
+    }
+  }
+  #include <opaque_fragment>`,
+      );
+    }
   };
   material.needsUpdate = true;
 }
