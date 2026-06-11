@@ -254,11 +254,11 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     ${cfg.splat ? `
     {
       vec2 spUv = (vWorldPos.xz - uSplatB.xy) / uSplatB.zw;
-      vec4 sp = texture2D(uSplatT, spUv) * uSplatO;
-      float wet = clamp(sp.a, 0.0, 1.0);
+      vec4 spl = texture2D(uSplatT, spUv) * uSplatO;
+      float wet = clamp(spl.a, 0.0, 1.0);
       if (wet > 0.003) {
         float seamF = 1.0 - smoothstep(0.35, 0.70, s.a);
-        s.rgb = mix(s.rgb, sp.rgb * 0.55, wet * (0.50 + 0.38 * seamF));
+        s.rgb = mix(s.rgb, spl.rgb * 0.55, wet * (0.50 + 0.38 * seamF));
       }
     }
     ` : ''}

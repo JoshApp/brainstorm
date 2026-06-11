@@ -53,6 +53,24 @@ export function makeFloorWithHoles(
     shape.holes.push(path);
   }
   const geo = new THREE.ShapeGeometry(shape);
+  // Per-vertex color: the floor material renders with vertexColors:true,
+  // and a geometry WITHOUT a color attribute leaves the attribute slot
+  // UNBOUND — undefined contents, driver-dependent garbage tint that
+  // silently multiplies into the albedo (sage-green floors on ANGLE,
+  // black on others) and eats every albedo effect: room tints, splat
+  // stains, surface detail. Bake the same gentle random tint the
+  // no-holes floor path gets (AO comes separately from contact bakes).
+  {
+    const count = geo.getAttribute('position').count;
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const base = 0.85 + buildRng() * 0.15;
+      colors[i * 3 + 0] = base;
+      colors[i * 3 + 1] = base;
+      colors[i * 3 + 2] = base;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  }
   return geo;
 }
 

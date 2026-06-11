@@ -27,7 +27,7 @@ import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled } from './style/render-target';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
-import { initSplatMap } from './scene/splat-map';
+import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
@@ -703,6 +703,34 @@ if (import.meta.env.DEV) {
     const next = currentLevel?.spec.stairs?.[0]?.targetLevel;
     if (next) loadLevel(next);
     return next ?? null;
+  };
+  (window as unknown as Record<string, unknown>).__scene = scene;   // DEV: raw scene access for live debugging
+  (window as unknown as Record<string, unknown>).__renderer = renderer;   // DEV: program-cache forensics
+  (window as unknown as Record<string, unknown>).__splatState = () => ({
+    on: uSplatOn.value,
+    bounds: uSplatBounds.value.toArray(),
+    texSet: uSplatTex.value !== null,
+  });
+  // __teleport(x, z, yaw?): move the player camera. Headless repro aid.
+  (window as unknown as Record<string, unknown>).__teleport = (x: number, z: number, yaw = 0) => {
+    camera.position.set(x, CONFIG.PLAYER_HEIGHT, z);
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = yaw;
+    camera.rotation.x = 0;
+  };
+  // __smite(r): lethal damage to every enemy within r metres of the
+  // camera, through the REAL damage pipeline — death/dissolve/corpse
+  // paths run exactly as in combat. Headless corpse-bug repro.
+  (window as unknown as Record<string, unknown>).__smite = (r = 6) => {
+    const killed: string[] = [];   // kind@x,z of each kill
+    for (const e of currentLevel?.enemies ?? []) {
+      if (!e.alive) continue;
+      const d = Math.hypot(e.position.x - camera.position.x, e.position.z - camera.position.z);
+      if (d > r) continue;
+      e.takeDamage({ source: null, target: e.entityId, base: 99999, type: 'physical' });
+      killed.push(`${e.kind}@${e.position.x.toFixed(1)},${e.position.z.toFixed(1)}`);
+    }
+    return killed;
   };
   (window as unknown as Record<string, unknown>).__sceneScan = (x: number, z: number, r = 1.5) => {
     const found: Array<{ name: string; type: string; center: number[]; radius: number; visible: boolean; chain: string }> = [];
