@@ -728,10 +728,15 @@ if (import.meta.env.DEV) {
     stampSplat(camera.position.x, camera.position.z, r, 0x8a1812, a);
     return [camera.position.x.toFixed(1), camera.position.z.toFixed(1)];
   };
+  (window as unknown as Record<string, unknown>).__splatBg = (on: boolean) => {
+    (scene as unknown as { background: unknown }).background = on ? uSplatTex.value : null;
+    return on;
+  };
   (window as unknown as Record<string, unknown>).__splatState = () => ({
     on: uSplatOn.value,
     bounds: uSplatBounds.value.toArray(),
     texSet: uSplatTex.value !== null,
+    texUuid: (uSplatTex.value as { uuid?: string } | null)?.uuid ?? null,
   });
   // __teleport(x, z, yaw?): move the player camera. Headless repro aid.
   (window as unknown as Record<string, unknown>).__teleport = (x: number, z: number, yaw = 0) => {

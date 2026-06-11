@@ -257,8 +257,13 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       vec4 spl = texture2D(uSplatT, spUv) * uSplatO;
       float wet = clamp(spl.a, 0.0, 1.0);
       if (wet > 0.003) {
+        // CHROMATIC stain, amplified: the floor's base colour is
+        // near-black, so any brightness-only change is crushed below
+        // the 32-level quantize — only HUE survives. The red channel
+        // runs >1 to survive the dark multiply; seams hold it deepest.
         float seamF = 1.0 - smoothstep(0.35, 0.70, s.a);
-        s.rgb = mix(s.rgb, spl.rgb * 0.55, wet * (0.50 + 0.38 * seamF));
+        vec3 stain = vec3(1.7, 0.10, 0.07) * (0.62 + 0.30 * seamF);
+        s.rgb = mix(s.rgb, stain, wet * 0.85);
       }
     }
     ` : ''}
