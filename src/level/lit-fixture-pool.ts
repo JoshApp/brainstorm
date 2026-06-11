@@ -1,7 +1,7 @@
 import type { ModelSpec } from '../ecs/model-types';
 import type { WallFixtureKind } from './types';
 import { WALL_TORCH } from '../content/torch';
-import { WALL_CRESSET } from '../content/light-props';
+import { WALL_CRESSET, WALL_STUB } from '../content/light-props';
 
 // Lit-fixture pool — variant picker for wall-mounted light sources.
 //
@@ -53,6 +53,7 @@ export function pickWallFixture(rand: () => number): WallFixtureKind {
  *  the kind is undefined (legacy emission paths). */
 export function wallFixtureModel(kind: WallFixtureKind | undefined): ModelSpec {
   if (!kind) return WALL_TORCH;
+  if (kind === 'wall-stub') return WALL_STUB;
   const entry = WALL_FIXTURES.find((e) => e.kind === kind);
   return entry ? entry.model : WALL_TORCH;
 }

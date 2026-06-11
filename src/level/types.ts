@@ -365,7 +365,7 @@ export type CellKey = `${number},${number}`;
  *  the wall-fixture pool (torch or wall cresset). All variants share
  *  the torch-class light spec so the light pool treats them
  *  identically. */
-export type WallFixtureKind = 'torch' | 'wall-cresset';
+export type WallFixtureKind = 'torch' | 'wall-cresset' | 'wall-stub';
 
 export type TorchSpec = {
   x: number;

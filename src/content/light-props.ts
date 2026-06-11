@@ -14,6 +14,39 @@ import { CONFIG } from '../config';
 // in through a crack in the masonry from somewhere outside the dungeon. The
 // emissive box itself is highly visible against the dark stone; the
 // PointLight casts cool pale-blue into the room.
+// WALL STUB — a guttering candle melted onto a tiny sill, pressed
+// almost flush to the wall. Its JOB is not to light the room: mounted
+// this close to the plane, its light strikes the wall at grazing
+// incidence along its whole length, so the brick faces stay dark and
+// the GROOVES ignite — the engraved-wall effect Josh found and asked
+// to make deliberate ("swap some of the big bright light for this").
+// Habitation class: someone stuck a candle here, once.
+export const WALL_STUB: ModelSpec = {
+  id: 'wall-stub',
+  moodTintable: true,
+  materials: {
+    wax: { color: 0xb0a184, roughness: 0.95, flatShading: 'auto' },
+    sill: { color: 0x2a2620, roughness: 0.9, flatShading: 'auto' },
+    flame: { color: 0x000000, emissive: 0xffaa55, emissiveIntensity: 2.4, roughness: 1.0, fog: false },
+  },
+  parts: [
+    { name: 'sill', kind: 'box', pos: [0, -0.05, -0.05], size: [0.16, 0.025, 0.11], mat: 'sill' },
+    { name: 'wax', kind: 'cylinder', pos: [0, 0.0, -0.06], radius: 0.026, radiusTop: 0.020, height: 0.075, segments: 8, mat: 'wax' },
+    // wax drips down the sill edge
+    { kind: 'box', pos: [0.04, -0.075, -0.02], size: [0.018, 0.05, 0.018], mat: 'wax' },
+    { name: 'flame', kind: 'sphere', pos: [0, 0.055, -0.06], radius: 0.020, segments: [8, 6], mat: 'flame' },
+  ],
+  // Half-strength pool, full-length rake: the light sits ~7cm off the
+  // wall plane (the builder mounts stubs tighter than torches), so the
+  // wall gets grazing incidence everywhere — structure before surface.
+  light: {
+    color: 0xffaa55,
+    intensity: 24,
+    distance: 8,
+    decay: 2.0,
+  },
+};
+
 export const MOONLIGHT_CRACK: ModelSpec = {
   id: 'moonlight-crack',
   materials: {

@@ -1350,6 +1350,47 @@ export function buildLevel(
       spec.torches = spec.torches.filter((t) => !drop.has(t));
     }
   }
+  // ── ENGRAVED ROOMS — swap pools for rake (Josh's groove-glow) ─────
+  // A share of dim/dark rooms trade the sprinkler's wall torches for
+  // WALL STUBS: guttering candles mounted ~10cm off the wall plane,
+  // whose light strikes the wall at grazing incidence along its whole
+  // length. The brick faces stay dark; the mortar grooves and brick
+  // edges ignite — the room reads as stone drawn in thin lines of
+  // fire instead of a bright pool. Authored '*' torches are never
+  // touched; rooms that are all-authored only convert if they had no
+  // light at all (rake is a gift to a black room, a theft from a lit
+  // one).
+  const engravedRooms = new Set<string>();
+  for (const room of spec.rooms) {
+    if (room.logicalOnly) continue;
+    const tier = room.lightTier ?? 'lit';
+    if (tier === 'lit') continue;
+    const rect = room.rect;
+    if (rect.w * rect.d < 16) continue;
+    const inRoom = (t: { x: number; z: number }) =>
+      Math.abs(t.x - rect.x) <= rect.w / 2 + 0.45 && Math.abs(t.z - rect.z) <= rect.d / 2 + 0.45;
+    const mine = spec.torches.filter(inRoom);
+    const procCount = mine.filter((t) => t.procedural).length;
+    if (procCount === 0 && mine.length > 0) continue;
+    if (buildRng() >= 0.35) continue;
+    spec.torches = spec.torches.filter((t) => !(t.procedural && inRoom(t)));
+    const tint = averageTorchTintInRect(spec.torches, rect) ?? undefined;
+    const horizontal = rect.w >= rect.d;
+    const RAKE_OFF = 0.10;   // tighter than the torch's 0.18 — grazing is the point
+    for (const [frac, side] of [[0.33, -1], [0.67, 1]] as Array<[number, number]>) {
+      const sx = horizontal ? rect.x + (frac - 0.5) * rect.w : rect.x + side * (rect.w / 2 - RAKE_OFF);
+      const sz = horizontal ? rect.z + side * (rect.d / 2 - RAKE_OFF) : rect.z + (frac - 0.5) * rect.d;
+      if (pillarBlocksOpening(sx, sz)) continue;
+      spec.torches.push({
+        x: sx, z: sz, height: 1.5,
+        wall: horizontal ? (side < 0 ? 'N' : 'S') : (side < 0 ? 'W' : 'E'),
+        colorTint: tint,
+        intensityMul: 1,
+        fixtureKind: 'wall-stub',
+      });
+    }
+    engravedRooms.add(room.id);
+  }
   // ── CHANDELIERS — light from above for tall rooms ────────────────
   // One hung central source paints a wider pool than any wall torch
   // and costs ONE env slot; in trade the room sheds its sprinkler
@@ -1362,6 +1403,7 @@ export function buildLevel(
     if ((room.ceilingStyle ?? 'flat') !== 'flat') continue;
     if (room.wallVariant === 'braced') continue;
     if ((room.lightTier ?? 'lit') === 'dark') continue;
+    if (engravedRooms.has(room.id)) continue;   // engraved rooms keep their rake
     if (H < 3.2 || rect.w * rect.d < 26) continue;
     if (godRayLightPos.some((g) =>
       Math.abs(g.x - rect.x) <= rect.w / 2 && Math.abs(g.z - rect.z) <= rect.d / 2)) continue;

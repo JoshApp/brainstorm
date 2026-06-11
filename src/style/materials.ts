@@ -122,11 +122,11 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
   installSurfaceDetail(wallBase, {
     brickDamage: true,
     tex: wallTex,
-    tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.25,
+    tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
   });
   installSurfaceDetail(chasmWall, {
     tex: wallTex, brickDamage: true,
-    tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.25,
+    tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
   });
   installSurfaceDetail(floorBase, {
     tex: bakeSurfaceTexture(renderer, 'floor'),
