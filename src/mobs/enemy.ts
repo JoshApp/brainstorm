@@ -7,6 +7,7 @@ import { kickShake } from '../combat/screen-shake';
 import { spawnHazardField } from '../combat/hazard-field';
 import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
+import { stampSplat } from '../scene/splat-map';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
@@ -928,6 +929,8 @@ export function createEnemy(
       stunStars?.dispose(); stunStars = null;
       built.group.rotation.y = 0; built.group.rotation.z = 0;
       emit({ type: 'enemy:killed', enemyId: spec.id });
+      // Death soaks the floor — one big stamp under the corpse.
+      stampSplat(container.position.x, container.position.z, 0.7 + Math.random() * 0.4, 0x5e1210, 0.9);
       // Split-on-death — fire the builder's spawn callback so any
       // children appear in the same frame's enemy list. Pass a CLONE
       // of the death position because the builder may need it after

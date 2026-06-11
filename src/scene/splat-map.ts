@@ -65,11 +65,16 @@ export function initSplatMap(): void {
       void main(){
         float d = length(vUv - uCenter) / uRadius;
         if (d > 1.0) discard;
-        // Splatter: dense core, ragged spattered edge.
-        float core = 1.0 - smoothstep(0.0, 0.55, d);
-        float spatter = step(0.55, h(vUv * 90.0)) * (1.0 - smoothstep(0.4, 1.0, d));
-        float a = clamp(core + spatter * 0.85, 0.0, 1.0) * uAlpha;
-        if (a < 0.01) discard;
+        // SOLID core; spatter as droplet BLOBS (coarse cells smoothly
+        // thresholded), not per-texel hash — per-texel hash reads as
+        // red-white noise on the floor, not as liquid.
+        float core = 1.0 - smoothstep(0.45, 0.72, d);
+        vec2 cell = (vUv - uCenter) / uRadius * 5.5;
+        float blob = h(floor(cell));
+        float inBlob = smoothstep(0.55, 0.85, blob) * (1.0 - smoothstep(0.0, 0.45, length(fract(cell) - 0.5)));
+        float spatter = inBlob * (1.0 - smoothstep(0.45, 1.0, d));
+        float a = clamp(max(core, spatter), 0.0, 1.0) * uAlpha;
+        if (a < 0.015) discard;
         gl_FragColor = vec4(uColor, a);
       }
     `,

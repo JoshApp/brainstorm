@@ -68,10 +68,27 @@ export function getPlayerHp(): number {
   return get(PLAYER_ENTITY_ID)?.hp?.current ?? 0;
 }
 
+let lastKnownMax: number | null = null;
+
 export function getPlayerMaxHp(): number {
   // Always reflects the current equipment — a freshly-equipped Ring of
   // Vigor bumps the visible max immediately.
-  return computeStats().maxHp;
+  const max = computeStats().maxHp;
+  // RECONCILE on max changes (equip swaps, mutations, altar prices —
+  // every source funnels through computeStats, and the HUD reads this
+  // every frame, so this is the one chokepoint that sees all deltas):
+  //   max GAINED → heal by the gained amount (vigor arrives as vigor)
+  //   max PAID   → current clamps down to the new ceiling
+  const player = get(PLAYER_ENTITY_ID);
+  if (player?.hp && lastKnownMax !== null && max !== lastKnownMax && !dead) {
+    if (max > lastKnownMax) {
+      player.hp.current = Math.min(max, player.hp.current + (max - lastKnownMax));
+    } else {
+      player.hp.current = Math.min(player.hp.current, Math.max(1, max));
+    }
+  }
+  lastKnownMax = max;
+  return max;
 }
 
 /** Restore HP, clamped to the current max. Returns actual amount healed. */

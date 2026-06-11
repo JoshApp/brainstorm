@@ -36,6 +36,13 @@ export interface StartScreenOptions {
 
 let root: HTMLDivElement | null = null;
 
+/** Desktop: capture the mouse for first-person look the moment the
+ *  player enters the game — the pointerdown is a user gesture, so the
+ *  lock is permitted. No-op on touch. */
+function lockPointer(): void {
+  try { (document.querySelector('canvas') as HTMLCanvasElement | null)?.requestPointerLock?.(); } catch { /* touch / denied */ }
+}
+
 export function showStartScreen(opts: StartScreenOptions) {
   if (root) return;
 
@@ -184,6 +191,7 @@ export function showStartScreen(opts: StartScreenOptions) {
     cont.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       hide();
+      lockPointer();
       opts.onContinue();
     });
     buttons.appendChild(cont);
@@ -191,7 +199,8 @@ export function showStartScreen(opts: StartScreenOptions) {
     const fresh = makePill('NEW RUN', 'abandons your descent', false);
     fresh.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      confirmAbandon(opts.saveDepth, () => { hide(); opts.onDescend(); });
+      confirmAbandon(opts.saveDepth, () => { hide();
+      lockPointer(); opts.onDescend(); });
     });
     buttons.appendChild(fresh);
   } else {
@@ -200,6 +209,7 @@ export function showStartScreen(opts: StartScreenOptions) {
     descend.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       hide();
+      lockPointer();
       opts.onDescend();
     });
     buttons.appendChild(descend);

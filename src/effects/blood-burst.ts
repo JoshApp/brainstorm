@@ -71,9 +71,9 @@ export function spawnBloodBurst(scene: THREE.Object3D, x: number, y: number, z: 
   stampSplat(
     x + (Math.random() - 0.5) * 0.3,
     z + (Math.random() - 0.5) * 0.3,
-    0.32 + Math.random() * 0.28,
+    0.45 + Math.random() * 0.35,
     0x6e1410,
-    0.45,
+    0.7,
   );
 
   // Heavy droplets — physical-ish chunks that arc and land.

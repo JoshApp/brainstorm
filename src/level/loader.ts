@@ -8,6 +8,7 @@ import { clearHazardFields } from '../combat/hazard-field';
 import { resetBossEncounter } from '../mobs/boss-encounter';
 import { resetBossEngagement } from '../ui/boss-engagement';
 import { resetPlayerInvuln } from '../player/health';
+import { isArrivalActive } from '../player/arrival';
 import { resetJustDodge } from '../combat/just-dodge';
 import { resetExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { clearBreath } from '../effects/breath';
@@ -220,14 +221,20 @@ export function tickPendingLoad() {
     // the safe room, gets the camera oriented, then the card rises
     // over it. Tap-to-dismiss. The fade-in delay below matches the
     // descent-fade's 320ms fade-out + a beat for the world to settle.
-    window.setTimeout(() => {
-      showSafeRoomTransition({
-        actName: act.name,
-        depth: currentDepth,
-        kills: stats.kills,
-        xp:    stats.xp,
-      });
-    }, 600);
+    // Wait for the eyelid wake to FINISH before raising the card —
+    // the two fought for the screen (Josh: 'it both fights a little').
+    const showWhenAwake = () => {
+      if (isArrivalActive()) { window.setTimeout(showWhenAwake, 150); return; }
+      window.setTimeout(() => {
+        showSafeRoomTransition({
+          actName: act.name,
+          depth: currentDepth,
+          kills: stats.kills,
+          xp:    stats.xp,
+        });
+      }, 250);
+    };
+    window.setTimeout(showWhenAwake, 400);
   } else {
     const act = actForDepth(currentDepth);
     showDescentTitle(`Depth ${currentDepth}`, act.name);

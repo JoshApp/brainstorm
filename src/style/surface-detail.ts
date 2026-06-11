@@ -150,6 +150,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
   ${!cfg.grooveFill ? 'float gSeepH = 1.0;\nvec2 gSeepUv = vec2(0.0);' : ''}
+  ${cfg.splat ? 'float gSplatWet = 0.0;' : ''}
   if (uDetailStrength > 0.0) {
     ${projGLSL}
     vec2 uvT = sUv / uSurfTile;
@@ -255,16 +256,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     {
       vec2 spUv = (vWorldPos.xz - uSplatB.xy) / uSplatB.zw;
       vec4 spl = texture2D(uSplatT, spUv) * uSplatO;
-      float wet = clamp(spl.a, 0.0, 1.0);
-      if (wet > 0.003) {
-        // CHROMATIC stain, amplified: the floor's base colour is
-        // near-black, so any brightness-only change is crushed below
-        // the 32-level quantize — only HUE survives. The red channel
-        // runs >1 to survive the dark multiply; seams hold it deepest.
-        float seamF = 1.0 - smoothstep(0.35, 0.70, s.a);
-        vec3 stain = vec3(1.7, 0.10, 0.07) * (0.62 + 0.30 * seamF);
-        s.rgb = mix(s.rgb, stain, wet * 0.85);
-      }
+      gSplatWet = clamp(spl.a, 0.0, 1.0) * (0.80 + 0.35 * (1.0 - smoothstep(0.35, 0.70, s.a)));
     }
     ` : ''}
     // ALBEDO — grayscale shade * per-surface tint (warm floor / cold ceiling).
@@ -272,6 +264,24 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     diffuseColor.rgb *= mix(vec3(1.0), det, uDetailStrength);
   }`,
       );
+    if (cfg.splat) {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <opaque_fragment>',
+        `// BLOOD — recolour the LIT RESULT, not the albedo. The floor's
+  // base colour is near-black: albedo-stage stains come out as a few
+  // least-significant bits and the PSX 32-level quantize eats them
+  // ('slightly red white noise'). Operating on outgoingLight keeps
+  // the stain at display magnitude: blood is a darker, saturated
+  // remap of whatever light already lands there — reads in lamplight,
+  // dries into darkness, survives the quantize.
+  if (gSplatWet > 0.004) {
+    float bloodLum = dot(outgoingLight, vec3(0.45, 0.35, 0.2));
+    vec3 blooded = vec3(bloodLum) * vec3(1.55, 0.16, 0.12);
+    outgoingLight = mix(outgoingLight, blooded, min(gSplatWet, 1.0) * 0.9);
+  }
+  #include <opaque_fragment>`,
+      );
+    }
     if (cfg.grooveFill) {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <roughnessmap_fragment>',
