@@ -55,8 +55,8 @@ export const CONFIG = {
   // arm's reach, presence to ~6m, DARKNESS BETWEEN POOLS. Navigability
   // floor comes from the dim ambient fill + the player's lamp + the
   // dark-adapt post lift, not from torches doing the fill's job.
-  TORCH_INTENSITY: 42,
-  TORCH_DISTANCE: 7,
+  TORCH_INTENSITY: 48,         // +15% (Josh, first dial after the pools remake)
+  TORCH_DISTANCE: 9,           // +30% — wider pools, still pools (decay holds the shape)
   TORCH_DECAY: 2.0,
   TORCH_FLICKER_AMOUNT: 0.4,   // how much intensity varies (0-1)
   TORCH_FLICKER_SPEED: 0.08,   // how fast it changes (lower = slower)
