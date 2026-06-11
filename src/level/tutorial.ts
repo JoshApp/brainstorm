@@ -55,7 +55,7 @@ export const TUTORIAL: LevelSpec = {
     // Authored here so the builder's auto-threshold-bonfire stands
     // down; same fire, deliberate placement. TEND opens the wick
     // ritual (registered by the builder for every bonfire model).
-    { kind: 'model', model: BONFIRE, x: -0.55, y: 0, z: 4.8, rotY: 2.2 },
+    { kind: 'model', model: BONFIRE, x: 0, y: 0, z: 4.7, rotY: 2.2 },
 
     // ── FIRST CORPSE — a few steps in. Sets the voice.
     {

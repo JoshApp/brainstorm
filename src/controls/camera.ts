@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { getArrivalHeightOffset } from '../player/arrival';
 import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
 import { getPlayerMoveScale } from '../player/inside-aura';
@@ -182,8 +183,8 @@ export function updateCamera(
     }
   }
 
-  // Eye height locked
-  camera.position.y = CONFIG.PLAYER_HEIGHT;
+  // Eye height locked (plus the floor-arrival rise from the bonfire seat)
+  camera.position.y = CONFIG.PLAYER_HEIGHT + getArrivalHeightOffset();
 
   // Exhaustion chest-heave — a subtle breath-driven bob + pitch when winded, so
   // "out of breath" is FELT in the view, not read off a bar. 0 when rested; the
