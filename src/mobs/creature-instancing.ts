@@ -157,9 +157,15 @@ function makeInstancedMesh(
   key: string, entry: SegmentCacheEntry, capacity: number, prev?: THREE.InstancedMesh,
 ): THREE.InstancedMesh {
   const mesh = new THREE.InstancedMesh(entry.geometry, entry.material, capacity);
-  // A fresh InstancedMesh's matrices are ZEROS = zero scale = invisible,
-  // exactly what unallocated slots should be. count stays at capacity; free
-  // slots cost only degenerate (rasterizer-discarded) triangles.
+  // A fresh InstancedMesh's buffer is ALL-ZERO 16-float matrices — and
+  // that is NOT a zero-scale transform (a real one has m33=1). It maps
+  // vertices to homogeneous w=0: UNDEFINED clipping behaviour. Some
+  // drivers discard (so the bug hides in headless runs); others
+  // rasterize garbage AT THE WORLD ORIGIN — the spawn-room pile of
+  // bone-coloured body parts Josh kept meeting. Every slot gets a
+  // proper PARKED matrix (scale 0, y −1000) before first render, and
+  // the growth path parks its new tail the same way.
+  for (let i = 0; i < capacity; i++) mesh.setMatrixAt(i, PARKED);
   mesh.count = capacity;
   // Instances span the level — per-instance "culling" is the zero-scale
   // writeback driven by room culling; whole-mesh frustum culling would need a
@@ -332,7 +338,7 @@ export function releaseCreatureInstancing(
   if (!entry) return;
   live.delete(entityId);
   for (const seg of entry.segments) {
-    seg.batch.mesh.setMatrixAt(seg.slot, ZERO_SCALE);
+    seg.batch.mesh.setMatrixAt(seg.slot, PARKED);
     seg.batch.mesh.instanceColor!.setXYZ(seg.slot, 1, 1, 1);   // died mid-flash → neutral
     seg.batch.matrixDirty = true;
     seg.batch.colorDirty = true;
@@ -350,6 +356,9 @@ export function releaseCreatureInstancing(
 // ── Per-frame writeback ───────────────────────────────────────────────────────
 
 const ZERO_SCALE = new THREE.Matrix4().makeScale(0, 0, 0);
+// Parked = zero scale AND far underground — belt and suspenders against
+// any driver that renders degenerate-scale instances strangely.
+const PARKED = new THREE.Matrix4().makeScale(0, 0, 0).setPosition(0, -1000, 0);
 
 /** True when every ancestor from the source mesh up to (and including) the
  *  enemy container is visible. The source's OWN flag is excluded — this
@@ -377,7 +386,7 @@ export function tickCreatureInstancing(): void {
     for (const seg of entry.segments) {
       seg.batch.mesh.setMatrixAt(
         seg.slot,
-        ancestorsVisible(seg.source, entry.container) ? seg.source.matrixWorld : ZERO_SCALE,
+        ancestorsVisible(seg.source, entry.container) ? seg.source.matrixWorld : PARKED,
       );
       seg.batch.matrixDirty = true;
     }
@@ -407,7 +416,7 @@ export function tickCreatureInstancing(): void {
 export function clearCreatureInstancing(): void {
   for (const id of [...live.keys()]) releaseCreatureInstancing(id);
   for (const b of batches.values()) {
-    for (let i = 0; i < b.mesh.count; i++) b.mesh.setMatrixAt(i, ZERO_SCALE);
+    for (let i = 0; i < b.mesh.count; i++) b.mesh.setMatrixAt(i, PARKED);
     b.used = 0;
     b.free.length = 0;
     b.mesh.instanceMatrix.needsUpdate = true;
