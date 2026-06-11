@@ -26,6 +26,9 @@ export type TapAction =
   | { kind: 'none' };
 
 export interface TapInputs {
+  /** True for touch taps (finger ON the object = intent); false for
+   *  desktop clicks (crosshair is always centre-screen). */
+  deliberate?: boolean;
   /** What the raycast/proximity aim landed on (findTapTarget), or null. */
   aimed: TapTarget | null;
   /** Is the aimed interactable within its own radius (reachable by this tap)? */
@@ -46,12 +49,15 @@ export function resolveTap(t: TapInputs): TapAction {
   if (t.aimed?.kind === 'enemy') return { kind: 'attack' };
   if (t.canAttack && t.mobInRange) return { kind: 'attack' };
 
-  // 2) No mob to fight. A deliberate tap on an interactable is interact-intent
-  //    and NEVER falls through to a swing: use it if reachable, else nothing.
+  // 2) No mob to fight. An aimed interactable is interact-intent when
+  //    reachable. When it ISN'T reachable: a deliberate TOUCH tap on it
+  //    does nothing (you pointed at a chest you can't reach — swinging
+  //    would feel wrong), but a DESKTOP click falls through to attack —
+  //    the mouse crosshair is always centre-screen, so a distant stair
+  //    under it must not eat the swing.
   if (t.aimed?.kind === 'interactable') {
-    return t.aimedReachable
-      ? { kind: 'interact', interactable: t.aimed.interactable }
-      : { kind: 'none' };
+    if (t.aimedReachable) return { kind: 'interact', interactable: t.aimed.interactable };
+    if (t.deliberate !== false) return { kind: 'none' };   // default = touch semantics
   }
 
   // 3) Ambient tap with no specific aim. The joystick half does nothing.

@@ -220,7 +220,10 @@ export const desktopScheme: InputScheme = {
         // a combat zone (no joystick). No separate attack fallback here —
         // the arbiter owns that, so a just-dismissed-screen tap can be
         // fully suppressed (no stray swing).
-        options.onTap?.(e.clientX, e.clientY, true);
+        // Desktop clicks are NOT deliberate aims at objects — the
+        // crosshair is always centre-screen, so a distant interactable
+        // under it must not swallow an attack click.
+        options.onTap?.(e.clientX, e.clientY, true, false);
         cancelCharge();
         return;
       }

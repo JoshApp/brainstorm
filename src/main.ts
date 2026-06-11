@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
-import { createFirstPersonCamera, setCameraYaw } from './controls/camera';
+import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './controls/camera';
 import { createWeaponViewmodel } from './player/viewmodel';
 import { attachLamp, setLampStowed } from './player/handheld-lamp';
 import { attachLampArm } from './player/lamp-arm';
@@ -338,6 +338,7 @@ initLevelLoader({
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
     setCameraYaw(level.playerSpawn.yaw);
+    setCameraPitch(0);   // forget the stairs — wake looking level
     // Wake seated at the threshold bonfire; stand over ~1.6s.
     beginArrival();
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-') || level.spec.id === 'tutorial');
@@ -523,7 +524,7 @@ const input = createTouchInput(canvas, {
   // (the input schemes no longer add their own attack fallback). canAttack
   // is false for the touch joystick half: a direct tap on an object is
   // still honoured, but the attack/interact fallback is suppressed there.
-  onTap(clientX, clientY, canAttack) {
+  onTap(clientX, clientY, canAttack, deliberate = true) {
     // ── Gates: contexts where a tap is NOT a world action at all ──
     // Dying / fog-walk / a screen open → ignore. And swallow the straggler
     // tap from a JUST-dismissed screen: the click that closed a corpse
@@ -553,6 +554,7 @@ const input = createTouchInput(canvas, {
     const action = resolveTap({
       aimed,
       aimedReachable,
+      deliberate,
       mobInRange: combat.hasEnemyInRange(),
       bestInRange: getInRangeInteractable(),
       canAttack,

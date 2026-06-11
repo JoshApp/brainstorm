@@ -47,7 +47,7 @@ export interface InputOptions {
    *  half (a direct tap on an object is still honoured, but the
    *  attack/interact FALLBACK is suppressed). The scheme does NOT add
    *  its own attack fallback — all of that logic lives behind this. */
-  onTap?: (clientX: number, clientY: number, canAttack: boolean) => void;
+  onTap?: (clientX: number, clientY: number, canAttack: boolean, deliberate?: boolean) => void;
   /** Fire when the player asks to interact (E key, gamepad A, etc.)
    *  without a screen coordinate. Schemes call this when "use the
    *  currently in-range interactable" is the intent. */
