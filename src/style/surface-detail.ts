@@ -251,33 +251,36 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     vec2 sUvR = (abs(vWorldNormal.x) >= abs(vWorldNormal.z)) ? vWorldPos.zy : vWorldPos.xy;
     gSeepUv = sUvR;
     gSeepH = texture2D(uSurfTex, sUvR / uSurfTile).a;
-    // Wet mortar is far GLOSSIER than dry stone: every torch (and the
-    // lamp) strikes real view-dependent glints along the seam network.
-    if (uWetness > 0.0) {
-      float wetR = (1.0 - smoothstep(0.40, 0.70, gSeepH)) * uWetness;
-      roughnessFactor = mix(roughnessFactor, 0.18, wetR);
-    }
+    // (No roughness modulation: specular glints at 0.4x render scale
+    // alias into glitter — the PS1 pipeline punishes that frequency.
+    // The wet read comes from the matte GROOVE FILL at composite time.)
   }`,
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <opaque_fragment>',
-        `// SEEP — liquid light draining through the groove network.
-  if (uSeepStrength > 0.0 && uDetailStrength > 0.0) {
+        `// GROOVE FILL + SEEP — light pours into the crevices.
+  if (uDetailStrength > 0.0) {
     float seam = 1.0 - smoothstep(0.42, 0.72, gSeepH);
     if (seam > 0.002) {
-      // Two octaves of value noise scrolling DOWN the wall — beads of
-      // flow descending the seam lattice at two speeds.
-      float f1 = seepNoise(vec2(gSeepUv.x * 3.1, gSeepUv.y * 2.3 - uSeepTime * 0.22));
-      float f2 = seepNoise(vec2(gSeepUv.x * 7.7, gSeepUv.y * 5.3 - uSeepTime * 0.55));
-      float flow = smoothstep(0.52, 0.95, f1 * 0.58 + f2 * 0.42);
-      // THE GATE: the liquid glows where light actually LANDS. Gate on
-      // INCIDENT light, not reflected — reflected diffuse includes the
-      // wall's near-black albedo (~0.01 linear), which crushed the
-      // gate to zero even under a torch. Divide the albedo back out.
-      float inc = dot(reflectedLight.directDiffuse, vec3(0.333))
-                / max(dot(diffuseColor.rgb, vec3(0.333)), 0.02);
-      float lit = clamp(inc * 1.6, 0.0, 1.0);
-      outgoingLight += uSeepTint * (seam * flow * lit * uSeepStrength);
+      // INCIDENT light, with the near-black albedo divided back out —
+      // this is the light actually ARRIVING at the fragment, in the
+      // light's own colour (lamp pale, blood torch red).
+      vec3 inc = reflectedLight.directDiffuse / max(diffuseColor.rgb, vec3(0.02));
+      // FILL — the matte, stable read: grooves accumulate the light
+      // around them, view-independent, no sparkle for the PS1 chain
+      // to chew on. Wet floors fill deeper; dry floors still gather a
+      // little (your lamp pours into every seam you pass).
+      vec3 fill = clamp(inc, 0.0, 1.3) * (seam * mix(0.10, 0.30, uWetness));
+      outgoingLight += fill;
+      // CREEP — the slow descending flow, kept as a quiet animation
+      // on committed-mood floors only.
+      if (uSeepStrength > 0.0) {
+        float f1 = seepNoise(vec2(gSeepUv.x * 3.1, gSeepUv.y * 2.3 - uSeepTime * 0.22));
+        float f2 = seepNoise(vec2(gSeepUv.x * 7.7, gSeepUv.y * 5.3 - uSeepTime * 0.55));
+        float flow = smoothstep(0.52, 0.95, f1 * 0.58 + f2 * 0.42);
+        float lit = clamp(dot(inc, vec3(0.333)) * 1.6, 0.0, 1.0);
+        outgoingLight += uSeepTint * (seam * flow * lit * uSeepStrength);
+      }
     }
   }
   #include <opaque_fragment>`,
