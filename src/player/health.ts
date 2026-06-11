@@ -1,3 +1,4 @@
+import { isArrivalActive } from './arrival';
 import { CONFIG } from '../config';
 import { freezeFor } from '../combat/hit-pause';
 import { kickShake } from '../combat/screen-shake';
@@ -110,6 +111,7 @@ export function onPlayerDeath(cb: () => void) {
  */
 export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical', quiet = false) {
   if (dead || godMode) return;
+  if (isArrivalActive()) return;   // mid-wake at the bonfire — untouchable
   if (performance.now() < invulnUntil) {
     // Hit negated by i-frames. If it was a perfectly-timed dodge (recent dash,
     // tight window) this fires the just-dodge reward; otherwise it's a no-op.

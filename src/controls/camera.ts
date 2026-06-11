@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import { getArrivalHeightOffset } from '../player/arrival';
+import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
 import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
 import { getPlayerMoveScale } from '../player/inside-aura';
@@ -99,7 +99,7 @@ export function updateCamera(
   }
 
   // --- Move ---
-  if (input.moveX !== 0 || input.moveY !== 0) {
+  if ((input.moveX !== 0 || input.moveY !== 0) && !isArrivalActive()) {
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, yaw, 0));
     const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, yaw, 0));
 

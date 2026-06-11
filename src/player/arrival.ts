@@ -143,3 +143,9 @@ export function tickArrival(_camera: THREE.Camera, dt: number): void {
 export function getArrivalHeightOffset(): number {
   return offset;
 }
+
+/** True while waking — movement is held and the player can't be hurt
+ *  (mobs don't get to swing at someone mid-blink). Look stays free. */
+export function isArrivalActive(): boolean {
+  return t >= 0;
+}
