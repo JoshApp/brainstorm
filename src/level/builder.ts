@@ -1326,6 +1326,39 @@ export function buildLevel(
     }
     spec.torches.push(...sconces);
   }
+  // ── ORPHANED-TORCH CULL — no fixtures floating in carved openings ──
+  // Vault authors and the procedural sprinkler mount torches against
+  // VAULT-LOCAL walls; the composer then cuts openings into those same
+  // walls. A torch whose stretch of wall became a doorway is left
+  // hanging in the air mid-opening. Cull: for every torch, find the
+  // wall it's mounted on (its room's edge matching the declared wall
+  // letter) and drop it if its along-coordinate falls inside any
+  // opening span (+0.35m margin for the fixture's width).
+  {
+    const orphans = new Set<typeof spec.torches[number]>();
+    for (const t of spec.torches) {
+      const owner = allRects.find((r) =>
+        !r.logicalOnly &&
+        Math.abs(t.x - r.rect.x) <= r.rect.w / 2 + 0.45 &&
+        Math.abs(t.z - r.rect.z) <= r.rect.d / 2 + 0.45);
+      if (!owner) continue;
+      const rect = owner.rect;
+      const hw = rect.w / 2, hd = rect.d / 2;
+      const w =
+        t.wall === 'N' ? { perpAxis: 'z' as const, perpCoord: rect.z - hd, wallStart: rect.x - hw, wallEnd: rect.x + hw } :
+        t.wall === 'S' ? { perpAxis: 'z' as const, perpCoord: rect.z + hd, wallStart: rect.x - hw, wallEnd: rect.x + hw } :
+        t.wall === 'W' ? { perpAxis: 'x' as const, perpCoord: rect.x - hw, wallStart: rect.z - hd, wallEnd: rect.z + hd } :
+                         { perpAxis: 'x' as const, perpCoord: rect.x + hw, wallStart: rect.z - hd, wallEnd: rect.z + hd };
+      // Only treat it as wall-mounted if it actually hugs that wall.
+      const perpDist = Math.abs((w.perpAxis === 'z' ? t.z : t.x) - w.perpCoord);
+      if (perpDist > 0.6) continue;
+      const along = w.perpAxis === 'z' ? t.x : t.z;
+      for (const op of findOpenings(w, allRects, owner)) {
+        if (along > op.start - 0.35 && along < op.end + 0.35) { orphans.add(t); break; }
+      }
+    }
+    if (orphans.size > 0) spec.torches = spec.torches.filter((t) => !orphans.has(t));
+  }
   // ── PER-ROOM LIGHT BUDGET — the reconciler ────────────────────────
   // Torches arrive from four independent systems (authored '*' tiles,
   // power-authored vault.torches, the procedural sprinkler, corridor
