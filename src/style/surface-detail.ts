@@ -24,6 +24,12 @@ export interface SurfaceTexConfig {
    *  so it never repeats with the baked tile's 4-brick period. Keep
    *  OFF for dressed stone (clean frames) and non-brick surfaces. */
   brickDamage?: boolean;
+  /** Groove fill + seep (the liquid-light layer). ONLY for surfaces
+   *  whose height channel carries a real seam network (the brick
+   *  walls). Near-flat heights (grain pillars ≈ 0.5 everywhere) read
+   *  as all-seam to the mask and the WHOLE surface fills — the
+   *  round-pillar bug. */
+  grooveFill?: boolean;
 }
 
 const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
@@ -97,7 +103,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
   // wall vs floor/ceiling programs distinct while still sharing within a proj.
   const prevKey = material.customProgramCacheKey;
   material.customProgramCacheKey = function () {
-    return (prevKey ? prevKey.call(this) + '|' : '') + 'sd-' + cfg.proj + (cfg.brickDamage ? '-dmg' : '');
+    return (prevKey ? prevKey.call(this) + '|' : '') + 'sd-' + cfg.proj + (cfg.brickDamage ? '-dmg' : '') + (cfg.grooveFill ? '-gf' : '');
   };
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = function (shader, renderer) {
@@ -134,7 +140,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       shader.fragmentShader.replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
-  ${cfg.proj !== 'wall' ? 'float gSeepH = 1.0;\nvec2 gSeepUv = vec2(0.0);' : ''}
+  ${!cfg.grooveFill ? 'float gSeepH = 1.0;\nvec2 gSeepUv = vec2(0.0);' : ''}
   if (uDetailStrength > 0.0) {
     ${projGLSL}
     vec2 uvT = sUv / uSurfTile;
@@ -229,7 +235,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       s.rgb *= 0.94 + 0.12 * mot;
     }
     // WET SEAMS — liquid sits darker in the grooves...
-    ${cfg.proj === 'wall' ? `
+    ${cfg.grooveFill ? `
     float wetSeam = (1.0 - smoothstep(0.40, 0.70, s.a)) * uWetness;
     s.rgb *= 1.0 - 0.45 * wetSeam;
     ` : ''}
@@ -238,7 +244,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     diffuseColor.rgb *= mix(vec3(1.0), det, uDetailStrength);
   }`,
       );
-    if (cfg.proj === 'wall') {
+    if (cfg.grooveFill) {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <roughnessmap_fragment>',
         `#include <roughnessmap_fragment>
@@ -270,7 +276,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       // around them, view-independent, no sparkle for the PS1 chain
       // to chew on. Wet floors fill deeper; dry floors still gather a
       // little (your lamp pours into every seam you pass).
-      vec3 fill = clamp(inc, 0.0, 1.3) * (seam * mix(0.10, 0.30, uWetness));
+      vec3 fill = clamp(inc * 1.35, 0.0, 1.8) * (seam * mix(0.13, 0.38, uWetness));
       outgoingLight += fill;
       // CREEP — the slow descending flow, kept as a quiet animation
       // on committed-mood floors only.
