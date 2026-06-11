@@ -696,7 +696,16 @@ if (import.meta.env.DEV) {
 // measures pixels, changes nothing), always present in DEV. One tap →
 // overlay card with the numbers + room context; a phone screenshot of
 // that card is a complete bug report for light tuning.
-if (import.meta.env.DEV || new URLSearchParams(window.location.search).get('lux') === '1') {
+// STICKY: ?lux=1 persists to localStorage (and ?lux=0 clears it) so
+// the button survives the PWA's start_url launch, which carries no
+// query params. The service worker's cache cycle still applies — a
+// fresh deploy needs one open/close before the new bundle serves.
+{
+  const luxParam = new URLSearchParams(window.location.search).get('lux');
+  if (luxParam === '1') localStorage.setItem('delve-lux', '1');
+  if (luxParam === '0') localStorage.removeItem('delve-lux');
+}
+if (import.meta.env.DEV || localStorage.getItem('delve-lux') === '1') {
   const btn = document.createElement('button');
   btn.textContent = 'LUX';
   Object.assign(btn.style, {
