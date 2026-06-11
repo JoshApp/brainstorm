@@ -4,13 +4,178 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 6",
+    "date": "2026-06-11",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "Torchlight learns to pool instead of flood, the great halls hang chandeliers, and some corridors keep their dark. The lamp in your hand finally has a job again.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 5",
     "date": "2026-06-10",
     "entries": [
       {
         "tag": "tune",
+        "text": "The cracks keep their jagged tempers.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The cracked bricks part along clean lines again, the way stone actually gives up.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Some ceilings have already given up, and the cracks stop practicing their penmanship.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "Thirty mobs now cost the renderer about as much as four used to. The dungeon notices no difference; your frame rate does.",
+        "area": [
+          "combat",
+          "tech"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The missing bricks gain depth and the cracks come back, each one different now. The wall has opinions about its age.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The horde quietly sheds a third of its draw calls. It does not feel lighter; you might.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The walls grow skirting, cornices and the occasional hollow where someone left a skull. The boxes stop admitting they are boxes.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The torches in a room finally agree on what colour the room is.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The god rays no longer share custody of their light pools, and the corridor lanterns climb out of the walls they were buried in.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The lantern's shadow learns to blink. Your thumbs get the frames it was hoarding.",
+        "area": [
+          "atmosphere",
+          "tech"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Light stops popping in and out of existence and learns to seep through doorways instead. The candles agree on a colour. Mostly.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "The dungeon stops paying nine lights to stand around unlit. Frames arrive on time more often.",
+        "area": [
+          "atmosphere",
+          "tech"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The masonry settles. Bricks go missing, courses sit crooked, the floors wear where feet have been. The dungeon has been here longer than you.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The dungeon stops growing tiny pointless rooms, pillars step out of doorways, and the torchlight finally trembles like it means it. Health potions become a mercy, not a given.",
+        "area": [
+          "level",
+          "content",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Skeleton keys turn up in the deep, and locked cages with visible treasure start appearing. The boss seals upgraded from girders to actual chains. Bring bolt cutters. There are no bolt cutters.",
+        "area": [
+          "content",
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "A dry basin waits in a pale room. It accepts blood, coin, or the sword out of your hand. It does not accept questions.",
+        "area": [
+          "content",
+          "level"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Three unlabeled phials enter the loot pool. The first sip is a question. The second is a confession.",
+        "area": [
+          "content",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The dark talks now — a dry skull-rattle or a wet groan carries from across the room, and whatever's lurking stirs as you close on it. You hear them before you see them.",
         "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The rats' front legs now attach to the rat. An inspector walks the bestiary so this stays true.",
+        "area": [
+          "content",
+          "tech"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Both wrists now answer to the arm they are attached to, at all times. Anatomical realism arrives unannounced, like most things down here.",
+        "area": [
+          "combat",
           "atmosphere"
         ]
       },
@@ -239,156 +404,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Torches down a hall stop bleeding through the dark they're meant to be lost in.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Only what has the mass to throw a shadow throws one now — pillars and rubble, not every bone and pebble. The dark renders lighter.",
-        "area": [
-          "atmosphere",
-          "level",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The things in the dark are anchored to the floor by their own shadow now, and the dungeon renders them far cheaper for it.",
-        "area": [
-          "atmosphere",
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The glow around what you can grab got cheaper and cleaner — one hull, not a halo per splinter. A floor full of loot stops dragging.",
-        "area": [
-          "ui",
-          "atmosphere",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Loot stops throwing shadows it never needed. A floor strewn with the dead's gear no longer drags the frame.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Monsters rehearse their shaders in the dark before you arrive. No more world-stutter the first time you meet each horror.",
-        "area": [
-          "combat",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Pit moths beat their wings now, hover or charge. The swarm is harder to ignore.",
-        "area": [
-          "atmosphere",
-          "content"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The Marrow Sovereign and the mimic move onto the same bones as everything else. They do not look a day different.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The Boiling King wears its eaten crowns on new bones. Hit the body, pop the core — same as ever, only bigger underneath.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "Pit moths beat new wings on real bones. Look up, then cleave — that part hasn't changed.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The burrower hauls itself up from the floor on the new bones. Same ambush, fewer magic numbers under it.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The sump-wisp drifts and the lasher gapes from its stalk. Both now know exactly how tall they are.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "A starving hound lopes in low on four legs, and a capped spore-turret swells and glows in the dark.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The acolyte stoops hooded over a glowing staff now, the orb pulsing as it gathers its hex.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The split-spawn and the blue acid-spitter slosh translucent now, each lit from within by its own poison core.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The skirmisher, skeleton, and defiler are reforged from the bone out — a wiry blade, a rattling skull, a stooped violet hexer.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The spider crouches on eight bent legs now, a knot of red eyes burning over its fangs.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The ooze churns translucent now, a green nucleus pulsing and quivering inside its jelly.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The rat runs low on four legs now, snout to the stone and a long tail dragging behind it.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The Hollow Choir drifts now — a hooded wisp with no feet to touch the stone, its edges burning green out of the dark.",
-        "area": [
-          "content"
         ]
       }
     ]
