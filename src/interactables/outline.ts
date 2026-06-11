@@ -127,8 +127,10 @@ function buildOutlinesFor(target: Interactable): OutlineRef[] {
     if (shell !== merged) merged.dispose();
     shell.computeVertexNormals();
     // Honour authored outlineScale intent: map the old scale delta to
-    // an equivalent thickness (1.07 → ~13mm).
-    const thickness = 0.013 * ((scaleFactor - 1) / 0.07);
+    // an equivalent thickness (1.07 → 4.5mm). Calibrated to the SIDE
+    // rim, not the tip error: weapon blades are ~8-10mm thick, so a
+    // 13mm shell out-fattened the blade itself and read as a casing.
+    const thickness = 0.0045 * ((scaleFactor - 1) / 0.07);
     {
       const posA = shell.getAttribute('position') as THREE.BufferAttribute;
       const norA = shell.getAttribute('normal') as THREE.BufferAttribute;
