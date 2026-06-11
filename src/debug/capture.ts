@@ -240,6 +240,41 @@ export async function captureDebugSnapshot(ctx: DebugContext) {
   // Three extra diagnostic layers sharing one base frame.
   const overlays = await captureAllOverlays(ctx, cone);
 
+  // SCENE CENSUS — every mesh whose world-space bounds sit within 6m of
+  // the player, with its parent chain. Bounds-based (world-baked merged
+  // meshes sit at transform origin with geometry elsewhere). This is
+  // what names a mystery object in a screenshot: an unnamed mesh's
+  // PARENT CHAIN identifies the system that spawned it.
+  const census: Array<{ name: string; type: string; center: number[]; r: number; chain: string }> = [];
+  {
+    const cx = cam.position.x, cz = cam.position.z;
+    const tmpV = new THREE.Vector3();
+    ctx.scene.updateMatrixWorld(true);
+    ctx.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !m.geometry || !m.visible) return;
+      if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+      const bs = m.geometry.boundingSphere!;
+      const c = tmpV.copy(bs.center).applyMatrix4(m.matrixWorld);
+      const scale = m.getWorldScale(new THREE.Vector3()).length() / Math.sqrt(3);
+      const wr = bs.radius * scale;
+      if (wr > 8) return;   // room-scale merges aren't "objects"
+      if (Math.hypot(c.x - cx, c.z - cz) - Math.min(wr, 3) > 6) return;
+      const chain: string[] = [];
+      let n: THREE.Object3D | null = m;
+      while (n && chain.length < 6) { chain.push(n.name || n.type); n = n.parent; }
+      if (chain.includes('PerspectiveCamera')) return;   // viewmodel
+      census.push({
+        name: m.name || '(unnamed)', type: m.type,
+        center: [+c.x.toFixed(2), +c.y.toFixed(2), +c.z.toFixed(2)],
+        r: +wr.toFixed(2),
+        chain: chain.join(' < '),
+      });
+    });
+    census.sort((a, b) =>
+      Math.hypot(a.center[0] - cx, a.center[2] - cz) - Math.hypot(b.center[0] - cx, b.center[2] - cz));
+  }
+
   return {
     when: new Date().toISOString(),
     id: makeId(observation.depth),
@@ -251,6 +286,7 @@ export async function captureDebugSnapshot(ctx: DebugContext) {
     manifest,
     perf,
     observation,
+    census: census.slice(0, 80),
     consoleLogs: getRecentLogs(),
     screenshot,
     overlays,
