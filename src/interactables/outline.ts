@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Interactable } from './types';
 import { getAllInteractables } from './system';
 
@@ -114,12 +114,34 @@ function buildOutlinesFor(target: Interactable): OutlineRef[] {
     if (merged !== geos[0]) geos[0].dispose();
     for (let i = 1; i < geos.length; i++) if (geos[i] !== merged) geos[i].dispose();
 
-    // Re-centre the geometry on its bounding box so a uniform scale inflates the
-    // silhouette outward from the middle (the inverted-hull look) rather than
-    // drifting off the parent origin.
-    merged.computeBoundingBox();
-    merged.boundingBox!.getCenter(tmpCenter);
-    merged.translate(-tmpCenter.x, -tmpCenter.y, -tmpCenter.z);
+    // NORMAL-PUSH SHELL — not a scale. Uniform scaling around the bbox
+    // centre broke long thin weapons: a 1.3m scythe's tips shifted
+    // ~4.5cm out (the visible disconnect) while its thin haft gained
+    // ~1.5mm of rim, and when the centre fell BETWEEN the haft and
+    // blade masses the scale pushed the two apart entirely (the
+    // reaper's full split). Instead: weld the soup so coincident
+    // vertices share normals, smooth them, and bake every vertex a
+    // constant distance outward along its normal — pivot-independent,
+    // a uniform rim at the tip and the haft alike, parts inseparable.
+    let shell = mergeVertices(merged, 1e-3);
+    if (shell !== merged) merged.dispose();
+    shell.computeVertexNormals();
+    // Honour authored outlineScale intent: map the old scale delta to
+    // an equivalent thickness (1.07 → ~13mm).
+    const thickness = 0.013 * ((scaleFactor - 1) / 0.07);
+    {
+      const posA = shell.getAttribute('position') as THREE.BufferAttribute;
+      const norA = shell.getAttribute('normal') as THREE.BufferAttribute;
+      for (let i = 0; i < posA.count; i++) {
+        posA.setXYZ(
+          i,
+          posA.getX(i) + norA.getX(i) * thickness,
+          posA.getY(i) + norA.getY(i) * thickness,
+          posA.getZ(i) + norA.getZ(i) * thickness,
+        );
+      }
+      posA.needsUpdate = true;
+    }
 
     const mat = new THREE.MeshBasicMaterial({
       color: COLOR_ARMED,
@@ -130,9 +152,7 @@ function buildOutlinesFor(target: Interactable): OutlineRef[] {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const clone = new THREE.Mesh(merged, mat);
-    clone.position.copy(tmpCenter);
-    clone.scale.setScalar(scaleFactor);
+    const clone = new THREE.Mesh(shell, mat);
     clone.renderOrder = 999;
     clone.userData.outline = true;
     clone.frustumCulled = false;   // its source may be tiny; avoid pop at the edge
