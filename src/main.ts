@@ -27,6 +27,7 @@ import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled } from './style/render-target';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
+import { initSplatMap } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
@@ -230,6 +231,7 @@ scene.add(camera); // required for the sword (camera child) to render
 // LUX perceived-light meter (debug/lux.ts) — measures the RENDERED
 // frame. Wired early so the render system's flushLux has its refs.
 initLux(camera, () => currentLevel?.spec ?? null);
+initSplatMap();   // the floor's gore memory (scene/splat-map.ts)
 // Blade trail mesh attaches to the world scene root (NOT the camera) so it
 // reads in world space and depth-tests correctly against geometry. Persistent
 // across levels — one buffer, dynamic updates.

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { stampSplat } from '../scene/splat-map';
 import { getTexture } from '../style/procedural-textures';
 
 // Blood burst — short-lived spray of red additive sprites + a few
@@ -65,6 +66,15 @@ function ensureMats() {
  *  the floor (call site can override Y for higher offerings). */
 export function spawnBloodBurst(scene: THREE.Object3D, x: number, y: number, z: number) {
   ensureMats();
+  // The floor remembers: every burst stamps the splat map. Hits leave
+  // spatter; repeated combat in one spot pools (alpha accumulates).
+  stampSplat(
+    x + (Math.random() - 0.5) * 0.3,
+    z + (Math.random() - 0.5) * 0.3,
+    0.32 + Math.random() * 0.28,
+    0x6e1410,
+    0.45,
+  );
 
   // Heavy droplets — physical-ish chunks that arc and land.
   const dropCount = 14 + Math.floor(Math.random() * 6);

@@ -42,6 +42,7 @@ import { spawnMerchant } from '../interactables/merchant';
 import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
 import { setSurfaceSeep, setSurfaceWetness } from '../style/surface-detail';
+import { resetSplatMap } from '../scene/splat-map';
 import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -553,6 +554,17 @@ export function buildLevel(
 
   // --- Geometry: rooms + corridors ---
   const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
+  // Splat map: world bounds of this floor (+2m margin) → fresh slate.
+  {
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+    for (const r of allRects) {
+      minX = Math.min(minX, r.rect.x - r.rect.w / 2);
+      maxX = Math.max(maxX, r.rect.x + r.rect.w / 2);
+      minZ = Math.min(minZ, r.rect.z - r.rect.d / 2);
+      maxZ = Math.max(maxZ, r.rect.z + r.rect.d / 2);
+    }
+    if (isFinite(minX)) resetSplatMap(minX - 2, minZ - 2, maxX - minX + 4, maxZ - minZ + 4);
+  }
   const wallSegments: WallSegment[] = [];
   // Hoisted: stair-footprint AABBs push into this BEFORE the prop pass
   // populates the rest. WalkableRegion is constructed below with the

@@ -129,6 +129,7 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
     tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
   });
   installSurfaceDetail(floorBase, {
+    splat: true,
     tex: bakeSurfaceTexture(renderer, 'floor'),
     tile: SURFACE_TILE.floor, proj: 'horiz', tint: [1.08, 0.9, 0.64], relief: 0.32,
   });

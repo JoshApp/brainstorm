@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 
 // Surface detail for the big stone surfaces — now driven by BAKED, MIPMAPPED
 // tiling textures (see surface-textures.ts) rather than a per-pixel procedural
@@ -24,6 +25,11 @@ export interface SurfaceTexConfig {
    *  so it never repeats with the baked tile's 4-brick period. Keep
    *  OFF for dressed stone (clean frames) and non-brick surfaces. */
   brickDamage?: boolean;
+  /** Sample the gameplay SPLAT MAP (scene/splat-map.ts): blood and
+   *  spills stain, darken and wet this surface where events stamped.
+   *  Floors only — ceilings share the 'horiz' projection but should
+   *  not catch blood. */
+  splat?: boolean;
   /** Groove fill + seep (the liquid-light layer). ONLY for surfaces
    *  whose height channel carries a real seam network (the brick
    *  walls). Near-flat heights (grain pillars ≈ 0.5 everywhere) read
@@ -103,7 +109,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
   // wall vs floor/ceiling programs distinct while still sharing within a proj.
   const prevKey = material.customProgramCacheKey;
   material.customProgramCacheKey = function () {
-    return (prevKey ? prevKey.call(this) + '|' : '') + 'sd-' + cfg.proj + (cfg.brickDamage ? '-dmg' : '') + (cfg.grooveFill ? '-gf' : '');
+    return (prevKey ? prevKey.call(this) + '|' : '') + 'sd-' + cfg.proj + (cfg.brickDamage ? '-dmg' : '') + (cfg.grooveFill ? '-gf' : '') + (cfg.splat ? '-sp' : '');
   };
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = function (shader, renderer) {
@@ -113,6 +119,9 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     shader.uniforms.uSeepStrength = uSeepStrength;
     shader.uniforms.uSeepTime = uSeepTime;
     shader.uniforms.uWetness = uWetness;
+    shader.uniforms.uSplatT = uSplatTex as unknown as THREE.IUniform;
+    shader.uniforms.uSplatB = uSplatBounds;
+    shader.uniforms.uSplatO = uSplatOn;
     shader.uniforms.uSurfTex = { value: cfg.tex };
     shader.uniforms.uSurfTile = { value: new THREE.Vector2(cfg.tile[0], cfg.tile[1]) };
     shader.uniforms.uSurfTint = { value: new THREE.Vector3(cfg.tint[0], cfg.tint[1], cfg.tint[2]) };
@@ -136,7 +145,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         : 'vec2 sUv = vWorldPos.xz;';
 
     shader.fragmentShader =
-      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nuniform vec3 uSeepTint;\nuniform float uSeepStrength;\nuniform float uSeepTime;\nuniform float uWetness;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\nfloat seepNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); vec3 h0=fract(vec3(i,i.x+i.y)*0.3183099+0.1); h0*=17.0; vec3 h1=fract(vec3(i+vec2(1.0,0.0),i.x+i.y+1.0)*0.3183099+0.1); h1*=17.0; vec3 h2=fract(vec3(i+vec2(0.0,1.0),i.x+i.y+1.0)*0.3183099+0.1); h2*=17.0; vec3 h3=fract(vec3(i+vec2(1.0,1.0),i.x+i.y+2.0)*0.3183099+0.1); h3*=17.0; float n00=fract(h0.x*h0.y*h0.z*(h0.x+h0.y+h0.z)); float n10=fract(h1.x*h1.y*h1.z*(h1.x+h1.y+h1.z)); float n01=fract(h2.x*h2.y*h2.z*(h2.x+h2.y+h2.z)); float n11=fract(h3.x*h3.y*h3.z*(h3.x+h3.y+h3.z)); return mix(mix(n00,n10,f.x),mix(n01,n11,f.x),f.y); }\n' +
+      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nuniform vec3 uSeepTint;\nuniform float uSeepStrength;\nuniform float uSeepTime;\nuniform float uWetness;\nuniform sampler2D uSplatT;\nuniform vec4 uSplatB;\nuniform float uSplatO;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\nfloat seepNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); vec3 h0=fract(vec3(i,i.x+i.y)*0.3183099+0.1); h0*=17.0; vec3 h1=fract(vec3(i+vec2(1.0,0.0),i.x+i.y+1.0)*0.3183099+0.1); h1*=17.0; vec3 h2=fract(vec3(i+vec2(0.0,1.0),i.x+i.y+1.0)*0.3183099+0.1); h2*=17.0; vec3 h3=fract(vec3(i+vec2(1.0,1.0),i.x+i.y+2.0)*0.3183099+0.1); h3*=17.0; float n00=fract(h0.x*h0.y*h0.z*(h0.x+h0.y+h0.z)); float n10=fract(h1.x*h1.y*h1.z*(h1.x+h1.y+h1.z)); float n01=fract(h2.x*h2.y*h2.z*(h2.x+h2.y+h2.z)); float n11=fract(h3.x*h3.y*h3.z*(h3.x+h3.y+h3.z)); return mix(mix(n00,n10,f.x),mix(n01,n11,f.x),f.y); }\n' +
       shader.fragmentShader.replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
@@ -238,6 +247,20 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     ${cfg.grooveFill ? `
     float wetSeam = (1.0 - smoothstep(0.40, 0.70, s.a)) * uWetness;
     s.rgb *= 1.0 - 0.45 * wetSeam;
+    ` : ''}
+    // SPLAT STAIN — blood (and whatever else was spilt) darkens and
+    // tints the stone where gameplay stamped it; the flagstone SEAMS
+    // hold the deepest stain, the way liquid actually settles.
+    ${cfg.splat ? `
+    {
+      vec2 spUv = (vWorldPos.xz - uSplatB.xy) / uSplatB.zw;
+      vec4 sp = texture2D(uSplatT, spUv) * uSplatO;
+      float wet = clamp(sp.a, 0.0, 1.0);
+      if (wet > 0.003) {
+        float seamF = 1.0 - smoothstep(0.35, 0.70, s.a);
+        s.rgb = mix(s.rgb, sp.rgb * 0.55, wet * (0.50 + 0.38 * seamF));
+      }
+    }
     ` : ''}
     // ALBEDO — grayscale shade * per-surface tint (warm floor / cold ceiling).
     vec3 det = s.rgb * uSurfTint;

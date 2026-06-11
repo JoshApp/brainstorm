@@ -43,7 +43,7 @@ const OUTLINE_SCALE_DEFAULT = 1.07;
 // world rim wide enough to read becomes a block as wide as the blade;
 // on a chest it's a hairline. Pixel-space is the only honest unit for
 // a line.
-const RIM_PX = 3.2;             // target rim width, device pixels (doubled from 1.6 on phone feel)
+const RIM_PX = 4.5;             // target rim width, device pixels (phone-tuned)
 function makeOutlineMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
