@@ -694,6 +694,45 @@ if (import.meta.env.DEV) {
 if (import.meta.env.DEV) {
   if (new URLSearchParams(window.location.search).get('nooutline') === '1') setOutlinesDisabled(true);
 }
+// DEV: headless floor-transition repro hook — __descend() walks the run
+// one floor down through the SAME loadLevel path the stairs use, and
+// __sceneScan(x,z,r) names every mesh near a world point (parent chain
+// included) so a mystery object in a screenshot can be interrogated.
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__descend = () => {
+    const next = currentLevel?.spec.stairs?.[0]?.targetLevel;
+    if (next) loadLevel(next);
+    return next ?? null;
+  };
+  (window as unknown as Record<string, unknown>).__sceneScan = (x: number, z: number, r = 1.5) => {
+    const found: Array<{ name: string; type: string; center: number[]; radius: number; visible: boolean; chain: string }> = [];
+    scene.updateMatrixWorld(true);
+    scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !m.geometry) return;
+      // Bounding sphere in WORLD space — world-baked merged meshes sit
+      // at transform origin with their geometry elsewhere; the bounds
+      // are where the pixels actually are.
+      if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+      const bs = m.geometry.boundingSphere!;
+      const c = bs.center.clone().applyMatrix4(m.matrixWorld);
+      const scale = m.getWorldScale(new THREE.Vector3()).length() / Math.sqrt(3);
+      const wr = bs.radius * scale;
+      if (Math.hypot(c.x - x, c.z - z) - Math.min(wr, 3) > r) return;
+      if (wr > 8) return;   // room-scale merges: not a "body"
+      const chain: string[] = [];
+      let n: THREE.Object3D | null = m;
+      while (n && chain.length < 6) { chain.push(n.name || n.type); n = n.parent; }
+      found.push({
+        name: m.name || '(unnamed)', type: m.type,
+        center: [+c.x.toFixed(2), +c.y.toFixed(2), +c.z.toFixed(2)],
+        radius: +wr.toFixed(2), visible: m.visible,
+        chain: chain.join(' < '),
+      });
+    });
+    return found;
+  };
+}
 // LUX button — `?lux=1` on ANY build (it's a safe read-only diagnostic:
 // measures pixels, changes nothing), always present in DEV. One tap →
 // overlay card with the numbers + room context; a phone screenshot of
