@@ -233,9 +233,13 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       float f1 = seepNoise(vec2(gSeepUv.x * 3.1, gSeepUv.y * 2.3 - uSeepTime * 0.22));
       float f2 = seepNoise(vec2(gSeepUv.x * 7.7, gSeepUv.y * 5.3 - uSeepTime * 0.55));
       float flow = smoothstep(0.52, 0.95, f1 * 0.58 + f2 * 0.42);
-      // THE GATE: the liquid glows where light actually lands — the
-      // torches spill it; in the dark it dries to nothing.
-      float lit = clamp(dot(reflectedLight.directDiffuse, vec3(0.6)) * 2.4, 0.0, 1.0);
+      // THE GATE: the liquid glows where light actually LANDS. Gate on
+      // INCIDENT light, not reflected — reflected diffuse includes the
+      // wall's near-black albedo (~0.01 linear), which crushed the
+      // gate to zero even under a torch. Divide the albedo back out.
+      float inc = dot(reflectedLight.directDiffuse, vec3(0.333))
+                / max(dot(diffuseColor.rgb, vec3(0.333)), 0.02);
+      float lit = clamp(inc * 1.6, 0.0, 1.0);
       outgoingLight += uSeepTint * (seam * flow * lit * uSeepStrength);
     }
   }
