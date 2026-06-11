@@ -41,7 +41,7 @@ import { spawnFountain } from '../interactables/fountain';
 import { spawnMerchant } from '../interactables/merchant';
 import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
-import { setSurfaceSeep } from '../style/surface-detail';
+import { setSurfaceSeep, setSurfaceWetness } from '../style/surface-detail';
 import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -1409,7 +1409,11 @@ export function buildLevel(
       0x70d090: 0.40,   // sickly green
       0xa080ff: 0.35,   // violet
     };
-    setSurfaceSeep(dom, SEEP_STRENGTH[dom] ?? 0);
+    setSurfaceSeep(dom, (SEEP_STRENGTH[dom] ?? 0) * 0.5);   // seep is the garnish now
+    // WETNESS is the star: glossy seams that catch real specular from
+    // every light — view-dependent, alive, coloured by the lights
+    // themselves. Mood floors run wet; warm floors stay dry.
+    setSurfaceWetness(SEEP_STRENGTH[dom] !== undefined ? 0.85 : 0);
   }
   // ── CHANDELIERS — light from above for tall rooms ────────────────
   // One hung central source paints a wider pool than any wall torch

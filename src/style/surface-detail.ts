@@ -51,6 +51,20 @@ export function tickSurfaceSeep(timeSec: number): void {
   uSeepTime.value = timeSec;
 }
 
+// ── WETNESS — the crevices pick up light for real ────────────────────
+// The liquid read that matters is SPECULAR, not emissive: wet seams
+// are darker and far glossier than dry stone, so every torch (and the
+// player's lamp) strikes real view-dependent glints that run along
+// the mortar network and slide as you move. The light does the work;
+// the colour comes from the lights themselves. Per-floor strength
+// (mood floors run wet); the future splat map (kills, altar overflow)
+// will feed the same uniform per-fragment.
+const uWetness = { value: 0 };
+
+export function setSurfaceWetness(strength: number): void {
+  uWetness.value = strength;
+}
+
 export function setSurfaceDetailEnabled(on: boolean): void {
   uDetailStrength.value = on ? 1 : 0;
 }
@@ -92,6 +106,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     shader.uniforms.uSeepTint = uSeepTint;
     shader.uniforms.uSeepStrength = uSeepStrength;
     shader.uniforms.uSeepTime = uSeepTime;
+    shader.uniforms.uWetness = uWetness;
     shader.uniforms.uSurfTex = { value: cfg.tex };
     shader.uniforms.uSurfTile = { value: new THREE.Vector2(cfg.tile[0], cfg.tile[1]) };
     shader.uniforms.uSurfTint = { value: new THREE.Vector3(cfg.tint[0], cfg.tint[1], cfg.tint[2]) };
@@ -115,17 +130,15 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         : 'vec2 sUv = vWorldPos.xz;';
 
     shader.fragmentShader =
-      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nuniform vec3 uSeepTint;\nuniform float uSeepStrength;\nuniform float uSeepTime;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\nfloat seepNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); vec3 h0=fract(vec3(i,i.x+i.y)*0.3183099+0.1); h0*=17.0; vec3 h1=fract(vec3(i+vec2(1.0,0.0),i.x+i.y+1.0)*0.3183099+0.1); h1*=17.0; vec3 h2=fract(vec3(i+vec2(0.0,1.0),i.x+i.y+1.0)*0.3183099+0.1); h2*=17.0; vec3 h3=fract(vec3(i+vec2(1.0,1.0),i.x+i.y+2.0)*0.3183099+0.1); h3*=17.0; float n00=fract(h0.x*h0.y*h0.z*(h0.x+h0.y+h0.z)); float n10=fract(h1.x*h1.y*h1.z*(h1.x+h1.y+h1.z)); float n01=fract(h2.x*h2.y*h2.z*(h2.x+h2.y+h2.z)); float n11=fract(h3.x*h3.y*h3.z*(h3.x+h3.y+h3.z)); return mix(mix(n00,n10,f.x),mix(n01,n11,f.x),f.y); }\n' +
+      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nuniform vec3 uSeepTint;\nuniform float uSeepStrength;\nuniform float uSeepTime;\nuniform float uWetness;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\nfloat seepNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); vec3 h0=fract(vec3(i,i.x+i.y)*0.3183099+0.1); h0*=17.0; vec3 h1=fract(vec3(i+vec2(1.0,0.0),i.x+i.y+1.0)*0.3183099+0.1); h1*=17.0; vec3 h2=fract(vec3(i+vec2(0.0,1.0),i.x+i.y+1.0)*0.3183099+0.1); h2*=17.0; vec3 h3=fract(vec3(i+vec2(1.0,1.0),i.x+i.y+2.0)*0.3183099+0.1); h3*=17.0; float n00=fract(h0.x*h0.y*h0.z*(h0.x+h0.y+h0.z)); float n10=fract(h1.x*h1.y*h1.z*(h1.x+h1.y+h1.z)); float n01=fract(h2.x*h2.y*h2.z*(h2.x+h2.y+h2.z)); float n11=fract(h3.x*h3.y*h3.z*(h3.x+h3.y+h3.z)); return mix(mix(n00,n10,f.x),mix(n01,n11,f.x),f.y); }\n' +
       shader.fragmentShader.replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
-  float gSeepH = 1.0;
-  vec2 gSeepUv = vec2(0.0);
+  ${cfg.proj !== 'wall' ? 'float gSeepH = 1.0;\nvec2 gSeepUv = vec2(0.0);' : ''}
   if (uDetailStrength > 0.0) {
     ${projGLSL}
     vec2 uvT = sUv / uSurfTile;
     vec4 s = texture2D(uSurfTex, uvT);
-    gSeepUv = sUv;
     ${cfg.brickDamage ? `
     // WORLD-SPACE BRICK DAMAGE — the baked tile repeats every 4 bricks,
     // so authoring a missing brick THERE would echo it in a visible
@@ -186,7 +199,6 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       }
     }
     ` : ''}
-    gSeepH = s.a;
     // RELIEF — perturb the normal from the mip-filtered height (s.a). Because the
     // sample is band-limited to the pixel footprint, this derivative is stable
     // (no buzz) and naturally flattens at distance as the mips average out.
@@ -216,12 +228,37 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       float mot = mix(mix(n00, n10, mf.x), mix(n01, n11, mf.x), mf.y);
       s.rgb *= 0.94 + 0.12 * mot;
     }
+    // WET SEAMS — liquid sits darker in the grooves...
+    ${cfg.proj === 'wall' ? `
+    float wetSeam = (1.0 - smoothstep(0.40, 0.70, s.a)) * uWetness;
+    s.rgb *= 1.0 - 0.45 * wetSeam;
+    ` : ''}
     // ALBEDO — grayscale shade * per-surface tint (warm floor / cold ceiling).
     vec3 det = s.rgb * uSurfTint;
     diffuseColor.rgb *= mix(vec3(1.0), det, uDetailStrength);
   }`,
       );
     if (cfg.proj === 'wall') {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+  // gSeep* are declared HERE because this chunk runs FIRST in the
+  // fragment pipeline (before normal_fragment_maps) — the seep and
+  // wet-albedo blocks below reuse them.
+  float gSeepH = 1.0;
+  vec2 gSeepUv = vec2(0.0);
+  if (uDetailStrength > 0.0) {
+    vec2 sUvR = (abs(vWorldNormal.x) >= abs(vWorldNormal.z)) ? vWorldPos.zy : vWorldPos.xy;
+    gSeepUv = sUvR;
+    gSeepH = texture2D(uSurfTex, sUvR / uSurfTile).a;
+    // Wet mortar is far GLOSSIER than dry stone: every torch (and the
+    // lamp) strikes real view-dependent glints along the seam network.
+    if (uWetness > 0.0) {
+      float wetR = (1.0 - smoothstep(0.40, 0.70, gSeepH)) * uWetness;
+      roughnessFactor = mix(roughnessFactor, 0.18, wetR);
+    }
+  }`,
+      );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <opaque_fragment>',
         `// SEEP — liquid light draining through the groove network.
