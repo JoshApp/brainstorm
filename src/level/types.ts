@@ -382,6 +382,10 @@ export type TorchSpec = {
    *  every emission path that hasn't rolled the pool yet (legacy
    *  vault parsers, tests). */
   fixtureKind?: WallFixtureKind;
+  /** True for torches added by the procedural lighting sprinkler
+   *  (lighting-pass.ts). The per-room light budget drops these first
+   *  when a room is over-lit; authored torches are never dropped. */
+  procedural?: boolean;
 };
 
 export type EnemySpawnSpec = {

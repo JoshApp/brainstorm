@@ -47,9 +47,17 @@ export const CONFIG = {
   // Note: Three.js r155+ uses physical light units (candela). A torch needs
   // intensities in the 50-200 range, not single digits, to actually light a room.
   TORCH_COLOR: 0xffaa55,       // warm orange flame
-  TORCH_INTENSITY: 115,        // bumped 95 → 115 for procgen-room visibility
-  TORCH_DISTANCE: 11,          // bumped 10 → 11 to reach corners of larger rooms
-  TORCH_DECAY: 1.4,            // gentler-than-physical falloff — more "torch in dungeon"
+  // POOLS, NOT FLOODS. The old values (115 / 11m / decay 1.4 — both
+  // bumped historically "to reach room corners") made every torch a
+  // room floodlight: any room with 2+ torches was wall-to-wall lit and
+  // no placement logic could create darkness. Physical-ish decay 2.0
+  // with a short window gives each torch a ~3m pool — bright within
+  // arm's reach, presence to ~6m, DARKNESS BETWEEN POOLS. Navigability
+  // floor comes from the dim ambient fill + the player's lamp + the
+  // dark-adapt post lift, not from torches doing the fill's job.
+  TORCH_INTENSITY: 42,
+  TORCH_DISTANCE: 7,
+  TORCH_DECAY: 2.0,
   TORCH_FLICKER_AMOUNT: 0.4,   // how much intensity varies (0-1)
   TORCH_FLICKER_SPEED: 0.08,   // how fast it changes (lower = slower)
   TORCH_HEIGHT: 2.2,           // mounted on wall

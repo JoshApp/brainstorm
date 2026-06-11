@@ -40,6 +40,7 @@ import { spawnSpikeTrap } from '../interactables/spike-trap';
 import { spawnFountain } from '../interactables/fountain';
 import { spawnMerchant } from '../interactables/merchant';
 import { spawnTitheBasin } from '../interactables/tithe-basin';
+import { spawnChandelier } from './chandelier';
 import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
@@ -1266,11 +1267,16 @@ export function buildLevel(
       const horizontal = c.rect.w >= c.rect.d;
       const len = horizontal ? c.rect.w : c.rect.d;
       const breadth = horizontal ? c.rect.d : c.rect.w;
-      if (len < 2.2 || breadth < 1.2) continue;
-      // Both mouths on a long corridor; one (build-rng end) on a short one.
-      const ends = len >= 3.2 ? [-1, 1] : [buildRng() < 0.5 ? -1 : 1];
+      if (breadth < 1.0) continue;
+      // SPARSE, PATTERNLESS beacons — explicitly NOT one per mouth
+      // (a guaranteed sconce at every corridor end reads as wallpaper
+      // rule, and some corridors SHOULD be black). Each mouth rolls
+      // independently: most corridors get one beacon, some get two,
+      // roughly a quarter stay dark — variance is the pattern-breaker.
+      const candidates = len >= 2.6 ? [-1, 1] : [0];
+      const ends = candidates.filter(() => buildRng() < 0.55);
       for (const e of ends) {
-        const along = (horizontal ? c.rect.x : c.rect.z) + e * (len / 2 - 0.55);
+        const along = (horizontal ? c.rect.x : c.rect.z) + e * Math.max(0, len / 2 - 0.55);
         // 0.18m clearance off the wall plane — same convention as the
         // '*' tile emitter (tilemap.ts WALL_OFFSET): the sconce arm's
         // back sinks into the wall, the bowl + flame sit clear of it.
@@ -1304,6 +1310,77 @@ export function buildLevel(
       }
     }
     spec.torches.push(...sconces);
+  }
+  // ── PER-ROOM LIGHT BUDGET — the reconciler ────────────────────────
+  // Torches arrive from four independent systems (authored '*' tiles,
+  // power-authored vault.torches, the procedural sprinkler, corridor
+  // sconces) and none of them can see the TOTAL. This pass is the one
+  // place with full awareness: per room, cap the fixture count by
+  // area + darkness tier (a 5×5 'dim' room does not need four
+  // torches), dropping the sprinkler's torches first and authored
+  // ones never. Cool/pale tints also get a perceptual discount —
+  // blue-white light reads markedly brighter than warm at equal
+  // intensity (the washed-out 'white room' screenshots).
+  {
+    const drop = new Set<typeof spec.torches[number]>();
+    for (const room of spec.rooms) {
+      if (room.logicalOnly) continue;
+      const rect = room.rect;
+      const inRoom = spec.torches.filter((t) =>
+        Math.abs(t.x - rect.x) <= rect.w / 2 + 0.45 &&
+        Math.abs(t.z - rect.z) <= rect.d / 2 + 0.45);
+      if (inRoom.length === 0) continue;
+      const tier = room.lightTier ?? 'lit';
+      const per = tier === 'lit' ? 15 : tier === 'dim' ? 21 : 34;
+      const cap = Math.max(1, Math.min(4, Math.round((rect.w * rect.d) / per)));
+      let excess = inRoom.length - cap;
+      for (const t of inRoom) {
+        if (excess <= 0) break;
+        if (t.procedural) { drop.add(t); excess--; }
+      }
+      for (const t of inRoom) {
+        if (drop.has(t)) continue;
+        const c = t.colorTint;
+        if (c !== undefined && (c & 0xff) > ((c >> 16) & 0xff)) {
+          t.intensityMul = (t.intensityMul ?? 1) * 0.82;
+        }
+      }
+    }
+    if (drop.size > 0) {
+      spec.torches = spec.torches.filter((t) => !drop.has(t));
+    }
+  }
+  // ── CHANDELIERS — light from above for tall rooms ────────────────
+  // One hung central source paints a wider pool than any wall torch
+  // and costs ONE env slot; in trade the room sheds its sprinkler
+  // torches. Ceiling-height aware (chandelier.ts). Skips god-ray
+  // rooms (the ray owns the room's signal) and dark-tier rooms.
+  for (const room of spec.rooms) {
+    if (room.logicalOnly) continue;
+    const rect = room.rect;
+    const H = room.height ?? 3.2;
+    if ((room.ceilingStyle ?? 'flat') !== 'flat') continue;
+    if (room.wallVariant === 'braced') continue;
+    if ((room.lightTier ?? 'lit') === 'dark') continue;
+    if (H < 3.2 || rect.w * rect.d < 26) continue;
+    if (godRayLightPos.some((g) =>
+      Math.abs(g.x - rect.x) <= rect.w / 2 && Math.abs(g.z - rect.z) <= rect.d / 2)) continue;
+    if (buildRng() >= 0.38) continue;
+    const cx = rect.x + (buildRng() - 0.5) * 1.2;
+    const cz = rect.z + (buildRng() - 0.5) * 1.2;
+    const tint = averageTorchTintInRect(spec.torches, rect) ?? undefined;
+    spawnChandelier(root, cx, cz, H, tint, lightSerial++);
+    // The trade: the chandelier covers the room's middle — shed up to
+    // two of the sprinkler's wall torches.
+    let shed = 2;
+    spec.torches = spec.torches.filter((t) => {
+      if (shed <= 0 || !t.procedural) return true;
+      const inside =
+        Math.abs(t.x - rect.x) <= rect.w / 2 + 0.45 &&
+        Math.abs(t.z - rect.z) <= rect.d / 2 + 0.45;
+      if (inside) { shed--; return false; }
+      return true;
+    });
   }
   for (const t of spec.torches) {
     const torch = createTorchlight(
@@ -1388,9 +1465,12 @@ export function buildLevel(
         category: 'environment',
         position: new THREE.Vector3(fx, 1.4, fz),
         color: fillColor,
-        intensity: 7 * tierMul,
-        distance: 6.5,
-        decay: 1.6,
+        // The fill is the NAVIGABILITY FLOOR, not a light you notice:
+        // broad window, gentle decay, low level. Torches paint pools
+        // on top of it (config TORCH_* — pools, not floods).
+        intensity: 4.5 * tierMul,
+        distance: 8.0,
+        decay: 1.3,
         // Ambience wash yields its slot to torches/signal glows when
         // the 6-slot environment budget is contended.
         priority: 'low',

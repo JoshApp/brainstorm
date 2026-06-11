@@ -149,6 +149,10 @@ export function lightingPass(
       wall: p.wall,
       colorTint: tint,
       intensityMul: palette.tone.lightIntensity,
+      // Marks this torch as the SPRINKLER's — the per-room light
+      // budget (builder reconciler) drops procedural torches first
+      // when a room is over-lit, never authored '*' ones.
+      procedural: true,
     };
   });
 }
