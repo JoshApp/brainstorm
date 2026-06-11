@@ -570,10 +570,12 @@ export function buildLevel(
       (pr) => pr.kind === 'model' && (pr as { model?: { id?: string } }).model?.id === 'bonfire');
     if (!hasBonfire && spec.startPos) {
       const yaw = spec.startPos.yaw ?? 0;
-      // forward is (-sin yaw, -cos yaw); the fire sits front-left.
-      const a = yaw + 0.85;
-      const bx = spec.startPos.x - Math.sin(a) * 1.5;
-      const bz = spec.startPos.z - Math.cos(a) * 1.5;
+      // forward is (-sin yaw, -cos yaw); the fire sits IN FRONT, a
+      // shade off-axis — you wake looking at it, and the lane past
+      // its right side stays open.
+      const a = yaw + 0.32;
+      const bx = spec.startPos.x - Math.sin(a) * 1.7;
+      const bz = spec.startPos.z - Math.cos(a) * 1.7;
       spec.props.push({ kind: 'model', model: BONFIRE, x: bx, y: 0, z: bz, rotY: yaw + 2.2 });
     }
   }

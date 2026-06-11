@@ -110,12 +110,18 @@ export function openWickRitual(onClose?: () => void): void {
 
   root.append(title, runeRow, copy, slider, confirm);
   document.body.appendChild(root);
+  // Desktop: the game holds pointer lock for mouselook — release it so
+  // the cursor can reach the slider (same contract as the menus).
+  document.exitPointerLock?.();
 }
 
 export function closeWickRitual(onClose?: () => void): void {
   if (!root) return;
   root.remove();
   root = null;
+  // Desktop: hand focus straight back to the game. The confirm click
+  // is a user gesture, so the relock is permitted.
+  document.querySelector('canvas')?.requestPointerLock?.();
   onClose?.();
 }
 

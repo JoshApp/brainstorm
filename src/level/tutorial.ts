@@ -32,13 +32,15 @@ export const TUTORIAL: LevelSpec = {
   fogColor: 0x14100a,
 
   // Wake at the south end, facing north (-Z) down the long chamber.
-  startPos: { x: 0, z: 5.5, yaw: 0 },
+  startPos: { x: 0, z: 6.5, yaw: 0 },
 
   rooms: [
     {
       id: 'antechamber',
-      // 4m wide × 14m long — beats stay SPACED, not stacked.
-      rect: { x: 0, z: 0, w: 4, d: 14 },
+      // 4m wide × 16m long — beats stay spaced, and the stairwell's
+      // recessed well (2.56m behind its entrance) fits INSIDE the
+      // south wall instead of poking through it.
+      rect: { x: 0, z: 0, w: 4, d: 16 },
       height: 2.8,
       // The room itself stays dark: the bonfire, the candles at the
       // stairs, and the player's lamp do the talking. The ritual's
@@ -53,7 +55,7 @@ export const TUTORIAL: LevelSpec = {
     // Authored here so the builder's auto-threshold-bonfire stands
     // down; same fire, deliberate placement. TEND opens the wick
     // ritual (registered by the builder for every bonfire model).
-    { kind: 'model', model: BONFIRE, x: -1.1, y: 0, z: 4.9, rotY: 2.2 },
+    { kind: 'model', model: BONFIRE, x: -0.55, y: 0, z: 4.8, rotY: 2.2 },
 
     // ── FIRST CORPSE — a few steps in. Sets the voice.
     {
@@ -89,24 +91,24 @@ export const TUTORIAL: LevelSpec = {
     },
 
     // Floor glow at the far end — pulls the eye toward the descent.
-    { kind: 'model', model: TUTORIAL_FLOOR_GLOW, x: 0, y: 0, z: -6.0 },
+    { kind: 'model', model: TUTORIAL_FLOOR_GLOW, x: 0, y: 0, z: -4.4 },
 
     // Floor candles flanking the stairs — the egress idiom.
-    { kind: 'model', model: FLOOR_CANDLE, x: -0.9, y: 0, z: -5.5 },
-    { kind: 'model', model: FLOOR_CANDLE, x:  0.9, y: 0, z: -5.5 },
+    { kind: 'model', model: FLOOR_CANDLE, x: -0.9, y: 0, z: -4.6 },
+    { kind: 'model', model: FLOOR_CANDLE, x:  0.9, y: 0, z: -4.6 },
 
     // ── MARGINALIA — the previous delver's notes. Each action-hint
     // dismisses the moment the player performs it.
     {
       kind: 'hint',
-      x: 0, z: 5.0,   // at the waking spot, beside the fire
+      x: 0, z: 6.0,   // at the waking spot, facing the fire
       text: 'tend the fire. teach your eyes what the dark allows.',
       triggerRadius: 3.0,
       lingerMs: 7000,
     },
     {
       kind: 'hint',
-      x: 0, z: 2.8,   // after standing, the first walk
+      x: 0, z: 3.6,   // after standing, the first walk
       text: 'step. it is the only verb you have.',
       triggerRadius: 2.6,
     },
@@ -133,7 +135,7 @@ export const TUTORIAL: LevelSpec = {
     },
     {
       kind: 'hint',
-      x: 0, z: -4.6,  // at the stairs
+      x: 0, z: -3.8,  // at the stairs
       text: 'down. always down.',
       triggerRadius: 2.6,
       lingerMs: 6000,
@@ -155,7 +157,7 @@ export const TUTORIAL: LevelSpec = {
     // your dark floor next to a lit wall taught nothing).
     { x:  1.95, z: 0.0, height: 1.9, wall: 'E', colorTint: 0xddc090, intensityMul: 0.55 },
     // Stairs torch — cool blue, the descent palette.
-    { x: -1.95, z: -5.5, height: 1.8, wall: 'W', colorTint: 0x88aaff, intensityMul: 0.8 },
+    { x: -1.95, z: -4.6, height: 1.8, wall: 'W', colorTint: 0x88aaff, intensityMul: 0.8 },
   ],
 
   // One fragile rat — the first strike. Won't chase far.
@@ -168,7 +170,7 @@ export const TUTORIAL: LevelSpec = {
   stairs: [
     {
       id: 'stairs-tutorial-down',
-      x: 0, z: -5.8,
+      x: 0, z: -5.0,
       rotY: Math.PI,
       targetLevel: 'depth-1',
     },

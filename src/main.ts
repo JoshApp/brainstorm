@@ -340,7 +340,7 @@ initLevelLoader({
     setCameraYaw(level.playerSpawn.yaw);
     // Wake seated at the threshold bonfire; stand over ~1.6s.
     beginArrival();
-    setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-'));
+    setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-') || level.spec.id === 'tutorial');
     resetBossBar();   // new floor — clear any prior boss bar state
 
     // Dev-mode hot-reload restore: if a snapshot exists for THIS floor,

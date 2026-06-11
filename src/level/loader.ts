@@ -122,7 +122,11 @@ export function tickPendingLoad() {
   const isSafeRoom = id.startsWith('safe-');
   let spec = levels[id];
   if (!spec && generate) {
-    const targetDepth = isSafeRoom ? currentDepth : currentDepth + 1;
+    // The tutorial is the threshold, not a floor — like safe rooms it
+    // neither increments depth nor counts as one (the player's first
+    // real DEPTH 1 is the floor below it).
+    const noDepth = isSafeRoom || pendingLoadId === 'tutorial';
+    const targetDepth = noDepth ? currentDepth : currentDepth + 1;
     const generated = generate(id, targetDepth);
     if (generated) {
       spec = generated;
@@ -169,7 +173,7 @@ export function tickPendingLoad() {
   // Safe rooms don't advance depth — they're the breath between acts,
   // not a dungeon floor. The depth counter / title both read the
   // unchanged currentDepth, which matches the boss the player just beat.
-  if (!isSafeRoom) currentDepth += 1;
+  if (!isSafeRoom && id !== 'tutorial') currentDepth += 1;
   // Reset the boss encounter + fog-wall flags BEFORE building — the build
   // registers the boss + its fog gate's completion listener, so resetting
   // afterward (the old resetBossBar timing) would wipe them.
