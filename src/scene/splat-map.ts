@@ -63,13 +63,17 @@ export function initSplatMap(): void {
       uniform float uAlpha; uniform float uSeed;
       float h(vec2 p){ p = fract(p * 0.3183099 + uSeed); p *= 17.0; return fract(p.x * p.y * (p.x + p.y)); }
       void main(){
-        float d = length(vUv - uCenter) / uRadius;
+        // The quad is positioned + scaled to the splat's bounds (see
+        // flushSplats), so vUv spans exactly the stamp's disc — the
+        // shader touches ~hundreds of texels, not the whole 1024^2
+        // target. uCenter/uRadius stay in MAP space for the seed hash.
+        float d = length(vUv - vec2(0.5)) * 2.0;
         if (d > 1.0) discard;
         // SOLID core; spatter as droplet BLOBS (coarse cells smoothly
         // thresholded), not per-texel hash — per-texel hash reads as
         // red-white noise on the floor, not as liquid.
         float core = 1.0 - smoothstep(0.45, 0.72, d);
-        vec2 cell = (vUv - uCenter) / uRadius * 5.5;
+        vec2 cell = (vUv - vec2(0.5)) * 2.0 * 5.5;
         float blob = h(floor(cell));
         float inBlob = smoothstep(0.55, 0.85, blob) * (1.0 - smoothstep(0.0, 0.45, length(fract(cell) - 0.5)));
         float spatter = inBlob * (1.0 - smoothstep(0.45, 1.0, d));
@@ -89,7 +93,7 @@ export function initSplatMap(): void {
     blendDstAlpha: THREE.OneFactor,
   });
   stampMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), stampMat);
-  stampMesh.position.set(0.5, 0.5, 0);   // unit quad over the whole RT; the shader masks
+  stampMesh.frustumCulled = false;   // positioned per stamp in flushSplats
   stampScene.add(stampMesh);
 }
 
@@ -125,6 +129,10 @@ export function flushSplats(renderer: THREE.WebGLRenderer): void {
   }
   renderer.autoClear = false;
   for (const s of queue.splice(0)) {
+    // Quad sized to the splat: fragment work proportional to the
+    // stain, not the map (a 0.5m splat ≈ a few hundred texels).
+    stampMesh.position.set(s.x, s.z, 0);
+    stampMesh.scale.set(s.r * 2, s.r * 2, 1);
     (stampMat.uniforms.uCenter.value as THREE.Vector2).set(s.x, s.z);
     stampMat.uniforms.uRadius.value = s.r;
     (stampMat.uniforms.uColor.value as THREE.Color).copy(s.color);
