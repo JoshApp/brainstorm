@@ -27,7 +27,7 @@ import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift } from './style/render-target';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
-import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, setSplatWallProbe } from './scene/splat-map';
+import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
@@ -756,6 +756,12 @@ if (import.meta.env.DEV) {
   (window as unknown as Record<string, unknown>).__splatBg = (on: boolean) => {
     (scene as unknown as { background: unknown }).background = on ? uSplatTex.value : null;
     return on;
+  };
+  // __gore(e): full impact splash 1.2m ahead, thrown along the view.
+  (window as unknown as Record<string, unknown>).__gore = (e = 1.0) => {
+    const fx = -Math.sin(camera.rotation.y), fz = -Math.cos(camera.rotation.y);
+    emitGoreSplash(camera.position.x + fx * 1.2, camera.position.z + fz * 1.2, 1.0, fx, fz, e, 0x8a1812);
+    return 'splashed';
   };
   (window as unknown as Record<string, unknown>).__splatState = () => ({
     on: uSplatOn.value,

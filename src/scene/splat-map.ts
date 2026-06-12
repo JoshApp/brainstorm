@@ -272,7 +272,16 @@ export function emitGoreSplash(
   // Wall: the splash carries ~1m per unit energy; whatever it reaches
   // gets painted, weaker with distance. Normal swings included.
   const reach = 0.6 + e * 0.9;
-  let hit = wallProbe?.(x, z, dx, dz) ?? null;
+  // Blood sprays in a CONE, so the wall probe does too: straight down
+  // the throw, then ±40° off it. A single ray missed every wall the
+  // splash direction ran parallel to — which after the blade-travel
+  // change was MOST walls (slashes throw sideways).
+  let hit: WallHit | null = null;
+  for (const off of [0, 0.7, -0.7]) {
+    const c = Math.cos(off), sn = Math.sin(off);
+    hit = wallProbe?.(x, z, dx * c - dz * sn, dz * c + dx * sn) ?? null;
+    if (hit) break;
+  }
   if (!hit && opts?.wallFallbackCardinals) {
     for (const [cx, cz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       hit = wallProbe?.(x, z, cx, cz) ?? null;
