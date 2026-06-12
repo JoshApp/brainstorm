@@ -33,6 +33,14 @@ export interface ArchwayOptions {
    *  above the lintel fills from lintel-top to ceiling so the
    *  void behind the wall doesn't peek through. Default 3.2m. */
   ceilingHeight?: number;
+  /** Interior height of the passage BEHIND the gate (the corridor's
+   *  ceiling). When lower than the default lintel line, the whole
+   *  frame compresses so the lintel overlaps the corridor ceiling —
+   *  otherwise a slit of void shows between the corridor's ceiling
+   *  plane and the lintel when looking in from the room (rolled
+   *  mine-tunnel corridors are 2.3-2.6m, the default lintel is 2.55).
+   *  Default: uncapped. */
+  openHeight?: number;
 }
 
 const COL_HALF_THICK = 0.16;       // half of the column box X size
@@ -68,13 +76,21 @@ export function archway(opts: ArchwayOptions): ModelSpec {
   const ceiling = opts.ceilingHeight ?? 3.2;
   const colOffset = archwayColumnOffset(width);
   const lintelWidth = width + LINTEL_OVERHANG * 2;
-  const tympanumHeight = Math.max(0.10, ceiling - ARCHWAY_TOP_Y);
-  const tympanumCentreY = ARCHWAY_TOP_Y + tympanumHeight / 2;
+  // Compress the frame when the passage behind is lower than the
+  // default lintel line: lintel bottom sinks to 0.10m below the
+  // corridor ceiling so the lintel body overlaps it — no void slit.
+  const lintelBottom = opts.openHeight !== undefined
+    ? Math.min(LINTEL_BOTTOM, opts.openHeight - 0.10)
+    : LINTEL_BOTTOM;
+  const colHeight = Math.max(1.6, lintelBottom + 0.03 - CAPITAL_HEIGHT);
+  const topY = lintelBottom + LINTEL_HEIGHT;
+  const tympanumHeight = Math.max(0.10, ceiling - topY);
+  const tympanumCentreY = topY + tympanumHeight / 2;
 
-  // Tag the id with the opening width (rounded) so buildModel's
+  // Tag the id with the opening width + heights (rounded) so buildModel's
   // future cache layer can re-use same-sized archways. Currently
   // buildModel doesn't cache by id, but it's cheap to be ready.
-  const id = `archway-w${width.toFixed(2)}-c${ceiling.toFixed(1)}`;
+  const id = `archway-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-o${lintelBottom.toFixed(2)}`;
 
   return {
     id,
@@ -97,18 +113,18 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       // plinths, capitals, lintel, keystone — a warm rim around the opening.
       // Only the tympanum wall-fill stays plain stone.
       // Left + right column shafts.
-      { kind: 'box', pos: [-colOffset, COL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2, COL_HEIGHT, COL_DEPTH], mat: 'glow' },
-      { kind: 'box', pos: [ colOffset, COL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2, COL_HEIGHT, COL_DEPTH], mat: 'glow' },
+      { kind: 'box', pos: [-colOffset, colHeight / 2, 0], size: [COL_HALF_THICK * 2, colHeight, COL_DEPTH], mat: 'glow' },
+      { kind: 'box', pos: [ colOffset, colHeight / 2, 0], size: [COL_HALF_THICK * 2, colHeight, COL_DEPTH], mat: 'glow' },
       // Base plinths (slightly wider feet).
       { kind: 'box', pos: [-colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'glow' },
       { kind: 'box', pos: [ colOffset, BASE_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + BASE_OVERHANG * 2, BASE_HEIGHT, COL_DEPTH + 0.12], mat: 'glow' },
       // Capitals at the top of each column.
-      { kind: 'box', pos: [-colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'glow' },
-      { kind: 'box', pos: [ colOffset, COL_HEIGHT + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'glow' },
+      { kind: 'box', pos: [-colOffset, colHeight + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'glow' },
+      { kind: 'box', pos: [ colOffset, colHeight + CAPITAL_HEIGHT / 2, 0], size: [COL_HALF_THICK * 2 + CAPITAL_OVERHANG * 2, CAPITAL_HEIGHT, COL_DEPTH + 0.10], mat: 'glow' },
       // Lintel across the top, spanning both columns + a bit. Glows on approach.
-      { kind: 'box', pos: [0, LINTEL_BOTTOM + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'glow' },
+      { kind: 'box', pos: [0, lintelBottom + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'glow' },
       // Keystone — small slightly-protruding block centred on the lintel. Glows.
-      { kind: 'box', pos: [0, LINTEL_BOTTOM + KEYSTONE_H / 2, 0], size: [KEYSTONE_W, KEYSTONE_H, KEYSTONE_D], mat: 'glow' },
+      { kind: 'box', pos: [0, lintelBottom + KEYSTONE_H / 2, 0], size: [KEYSTONE_W, KEYSTONE_H, KEYSTONE_D], mat: 'glow' },
       // Tympanum — wall block from lintel top to ceiling. Without
       // this the player sees through the wall above the lintel
       // into the void behind. Same depth as the lintel so it

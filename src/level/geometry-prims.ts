@@ -388,6 +388,66 @@ export function makeBracedFramesGeometry(rect: { x: number; z: number; w: number
   return merged ? { geo: merged, posts } : null;
 }
 
+/** Stepped stair-run floor for a SLOPED corridor — one merged geometry of
+ *  tread boxes whose tops follow the elevation field's linear grade. The
+ *  visual is stairs; the WALK is the smooth line (groundYAt), the classic
+ *  stairs-you-see / ramp-you-walk dungeon trick, so the camera glides.
+ *  Tread tops sit on the grade line at their centres (±riser/2 from the
+ *  walked line at tread edges — invisible at 0.18m risers). Consecutive
+ *  treads overlap vertically so the run is watertight; riser faces are
+ *  the box sides. Carries the floor material's required vertex-colour
+ *  attribute (same gentle tint jitter as makeFloorWithHoles). */
+export function makeSteppedRampGeometry(
+  rect: { x: number; z: number; w: number; d: number },
+  groundY: (x: number, z: number) => number,
+  riserM: number,
+): THREE.BufferGeometry | null {
+  const alongX = rect.w >= rect.d;
+  const runLen = alongX ? rect.w : rect.d;
+  const breadth = alongX ? rect.d : rect.w;
+  const lo = (alongX ? rect.x : rect.z) - runLen / 2;
+  const e0 = alongX ? groundY(lo + 0.02, rect.z) : groundY(rect.x, lo + 0.02);
+  const e1 = alongX ? groundY(lo + runLen - 0.02, rect.z) : groundY(rect.x, lo + runLen - 0.02);
+  const delta = e1 - e0;
+  const nSteps = Math.max(2, Math.round(Math.abs(delta) / riserM));
+  const treadLen = runLen / nSteps;
+  // Deep enough that each tread's box overlaps the next one down.
+  const treadThick = Math.abs(delta) / nSteps + 0.14;
+  const geos: THREE.BufferGeometry[] = [];
+  const m4 = new THREE.Matrix4();
+  for (let i = 0; i < nSteps; i++) {
+    const centerAlong = lo + (i + 0.5) * treadLen;
+    const top = alongX ? groundY(centerAlong, rect.z) : groundY(rect.x, centerAlong);
+    const g = new THREE.BoxGeometry(
+      alongX ? treadLen + 0.01 : breadth,
+      treadThick,
+      alongX ? breadth : treadLen + 0.01,
+    );
+    m4.makeTranslation(
+      alongX ? centerAlong : rect.x,
+      top - treadThick / 2,
+      alongX ? rect.z : centerAlong,
+    );
+    g.applyMatrix4(m4);
+    geos.push(g);
+  }
+  if (!geos.length) return null;
+  const merged = mergeGeometries(geos, false);
+  if (!merged) return null;
+  {
+    const count = merged.getAttribute('position').count;
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const base = 0.85 + buildRng() * 0.15;
+      colors[i * 3 + 0] = base;
+      colors[i * 3 + 1] = base;
+      colors[i * 3 + 2] = base;
+    }
+    merged.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  }
+  return merged;
+}
+
 /** Per-vertex darkness fade for shaft/drop geometry: full-bright at
  *  `brightY`, easing to pure black `fadeM` metres away (in world Y).
  *  The chasm material renders with vertexColors:true, so black vertex

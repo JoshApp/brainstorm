@@ -101,10 +101,11 @@ export function buildElevationField(rooms: RoomSpec[], corridors: RoomSpec[]): E
       if (a <= rp.a0) return rp.e0;
       if (a >= rp.a1) return rp.e1;
       const t = (a - rp.a0) / (rp.a1 - rp.a0);
-      // Smoothstep so the grade eases in/out — kinder on the camera
-      // than a hard kink at each apron.
-      const s = t * t * (3 - 2 * t);
-      return rp.e0 + (rp.e1 - rp.e0) * s;
+      // LINEAR grade. Smoothstep was tried first and read as a sagging
+      // curve from inside the corridor (and made the mid-slope 1.5× the
+      // average grade — the "way too steep" verdict from the phone). A
+      // straight line between the aprons is what a cut stair run is.
+      return rp.e0 + (rp.e1 - rp.e0) * t;
     }
     for (const p of plateaus) {
       if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ) return p.e;

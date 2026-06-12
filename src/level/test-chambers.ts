@@ -1,4 +1,5 @@
 import type { LevelSpec } from './types';
+import { emitArchwaysForCorridors } from './clutter';
 import { FLOOR_CANDLE } from '../content/candle';
 import { GREAT_BRAZIER, IRON_BRAZIER } from '../content/light-props';
 
@@ -313,37 +314,43 @@ function buildDummy(): LevelSpec {
 // chest + vase + loot drops on the low plateau. If something floats or
 // sinks, this room is where it shows.
 export function buildElevationLab(): LevelSpec {
-  return {
+  const spec: LevelSpec = {
     id: 'test-elevation',
     depth: 0,
     displayName: 'elevation lab',
     fogColor: 0x14100a,
-    startPos: { x: 0, z: 6.5, yaw: 0 },   // high room, facing the descent
+    startPos: { x: 0, z: 7, yaw: 0 },   // high room, facing the descent
     rooms: [
-      { id: 'elev-high', rect: { x: 0, z: 4.5, w: 7, d: 7 }, height: TEST_HEIGHT, elevation: 0 },
-      { id: 'elev-low', rect: { x: 0, z: -6, w: 8, d: 8 }, height: TEST_HEIGHT, elevation: -1.4 },
+      { id: 'elev-high', rect: { x: 0, z: 5, w: 7, d: 7 }, height: TEST_HEIGHT, elevation: 0 },
+      { id: 'elev-low', rect: { x: 0, z: -7, w: 8, d: 8 }, height: TEST_HEIGHT, elevation: -1.4 },
     ],
     corridors: [
-      { id: 'elev-ramp', rect: { x: 0, z: -0.5, w: 2, d: 3 }, height: 2.8 },
+      // 1.4m drop over a 4.5m run ≈ 17° average grade — the stair-run
+      // sweet spot (the first 3m version hit ~36° and read as a slide).
+      { id: 'elev-ramp', rect: { x: 0, z: -0.75, w: 2, d: 4.5 }, height: 2.8 },
     ],
     props: [
-      { kind: 'chest', x: -2.2, z: -7.5, rotY: 0, facing: { kind: 'wall-away' } },
-      { kind: 'vase-cluster', x: 2.4, z: -6.5 },
+      { kind: 'chest', x: -2.2, z: -8.5, rotY: 0, facing: { kind: 'wall-away' } },
+      { kind: 'vase-cluster', x: 2.4, z: -7.5 },
       { kind: 'vase', x: 2.6, z: 5.5 },
     ],
     torches: [
-      { x: -3.55, z: 3.5, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
-      { x: 3.55, z: 3.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
-      { x: -4.05, z: -5.0, height: 2.0, wall: 'W', colorTint: 0xc8a060, intensityMul: 0.9 },
-      { x: 4.05, z: -7.0, height: 2.0, wall: 'E', colorTint: 0xc8a060, intensityMul: 0.9 },
+      { x: -3.55, z: 4.0, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+      { x: 3.55, z: 4.0, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      { x: -4.05, z: -6.0, height: 2.0, wall: 'W', colorTint: 0xc8a060, intensityMul: 0.9 },
+      { x: 4.05, z: -8.0, height: 2.0, wall: 'E', colorTint: 0xc8a060, intensityMul: 0.9 },
     ],
     spawns: [
-      { enemyId: 'ghoul', x: 0, z: -7.5 },
+      { enemyId: 'ghoul', x: 0, z: -8.5 },
     ],
     doors: [],
     extraWalls: [],
     stairs: [],
   };
+  // Same corridor-mouth gates procgen emits — the ramp is tested WITH its
+  // frames (lintel capped to the corridor height, jambs on the thresholds).
+  emitArchwaysForCorridors(spec);
+  return spec;
 }
 
 export interface TestChamber {

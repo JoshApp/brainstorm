@@ -773,7 +773,10 @@ function shuffled<T>(arr: T[], rand: () => number): T[] {
  *  through them. The archway also includes a tympanum block
  *  above the lintel filling the wall to the ceiling, otherwise
  *  the player can see through the gap. */
-function emitArchwaysForCorridors(spec: LevelSpec): void {
+/** Exported for hand-authored levels (test chambers) that want the same
+ *  corridor-mouth gates procgen floors get — the elevation lab uses it so
+ *  ramps are tested WITH their frames, matching live floors. */
+export function emitArchwaysForCorridors(spec: LevelSpec): void {
   const allRectsFlat = [
     ...spec.rooms.map((r) => r.rect),
     ...spec.corridors.map((r) => r.rect),
@@ -857,7 +860,9 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
         if (width < 2.0 || stairMouth) {
           spec.props.push({
             kind: 'model',
-            model: doorframe({ width, ceilingHeight: ceiling }),
+            // openHeight caps the lintel to the corridor's interior height
+            // so no void slit shows above a low tunnel's ceiling.
+            model: doorframe({ width, ceilingHeight: ceiling, openHeight: corridor.height }),
             x: ax, y: 0, z: az,
             rotY,
             proximityGlow: true,
@@ -871,7 +876,7 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
           const colOffset = archwayColumnOffset(width);
           spec.props.push({
             kind: 'model',
-            model: archway({ width, ceilingHeight: ceiling }),
+            model: archway({ width, ceilingHeight: ceiling, openHeight: corridor.height }),
             x: ax, y: 0, z: az,
             rotY,
             proximityGlow: true,   // lintel/keystone glow as the player nears

@@ -139,6 +139,7 @@ import {
   makeBracedFramesGeometry,
   makeChasmDropGeometry,
   makeCeilingShaftGeometry,
+  makeSteppedRampGeometry,
 } from './geometry-prims';
 import { getPropAABB } from './prop-aabb';
 
@@ -207,26 +208,20 @@ function buildRoomShell(
         [grateRect.cx - grateRect.s / 2, -(grateRect.cz + grateRect.s / 2)],
       ] as Array<[number, number]>]
     : floorHoles;
-  const floorGeo: THREE.BufferGeometry = allFloorHoles.length > 0
-    ? makeFloorWithHoles(W, D, allFloorHoles)
-    : makeJitteredPlane(W, D, { flat: true });
-  if (sloped) {
-    // Ramp: displace each vertex to the elevation field's ground height.
-    // The plane is subdivided (makeJitteredPlane) and rotated -π/2 about X,
-    // so local (x, y) lands at world (rect.x + x, ·, rect.z - y) and local
-    // +Z becomes world +Y — displace along local Z, relative to the mesh's
-    // own y (= elev) so the world result is exactly groundYAt.
-    const pos = floorGeo.getAttribute('position');
-    for (let i = 0; i < pos.count; i++) {
-      const wx = rect.x + pos.getX(i);
-      const wz = rect.z - pos.getY(i);
-      pos.setZ(i, groundYAt(wx, wz) - elev);
-    }
-    floorGeo.computeVertexNormals();
-  }
+  // Sloped corridors get a stepped stair-run instead of a tilted plane —
+  // the visual is cut stone treads following the linear grade; the eye
+  // and collision glide the smooth line underneath (groundYAt).
+  const floorGeo: THREE.BufferGeometry = sloped
+    ? (makeSteppedRampGeometry(rect, groundYAt, CONFIG.STAIR_RISER_M)
+        ?? makeJitteredPlane(W, D, { flat: true }))
+    : allFloorHoles.length > 0
+      ? makeFloorWithHoles(W, D, allFloorHoles)
+      : makeJitteredPlane(W, D, { flat: true });
   const floor = new THREE.Mesh(floorGeo, materials.floor);
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.set(rect.x, elev, rect.z);
+  if (!sloped) {
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(rect.x, elev, rect.z);
+  }
   floor.receiveShadow = true;
   floor.name = 'floor';
   // Rect (+ whether it carries per-vertex colour) so the prop-contact AO pass

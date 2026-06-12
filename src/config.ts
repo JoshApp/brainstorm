@@ -321,6 +321,11 @@ export const CONFIG = {
   // the brightness. Keep it well below the lamp baseline: a promise of the
   // depth, not a light source.
   GRATE_GLOW_COLOR: 0x3f1d08,
+  // Sloped corridors render as cut stone STAIRS (the grimdark idiom — a
+  // smooth ramp read as a parking garage on the phone). Target riser
+  // height per tread; the eye and collision still glide the smooth
+  // linear grade underneath, so the camera never judders step to step.
+  STAIR_RISER_M: 0.18,
 
   // === RANGED COMMITMENT ===
   // Accuracy demands stillness — the fix for "ranged is too spammable". A shot

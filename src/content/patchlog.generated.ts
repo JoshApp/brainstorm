@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Doorway pillars return to their doorways and learn to mean it. The mine timbers were never decorative either.",
+        "area": [
+          "level",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The mob behind the door now knows the door is closed. It also knows when it opens. Plan accordingly.",
         "area": [
           "combat",
@@ -398,14 +406,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "The torches in a room finally agree on what colour the room is.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The god rays no longer share custody of their light pools, and the corridor lanterns climb out of the walls they were buried in.",
         "area": [
           "atmosphere",
           "level"

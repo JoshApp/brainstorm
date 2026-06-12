@@ -34,6 +34,11 @@ export interface DoorframeOptions {
   /** Ceiling height of the surrounding room — the fill block rises from
    *  the lintel top to here so no void peeks above. Default 3.2m. */
   ceilingHeight?: number;
+  /** Interior height of the passage behind the frame. When lower than
+   *  the default lintel line the frame compresses so the lintel
+   *  overlaps the passage ceiling — no void slit above a low tunnel's
+   *  ceiling (same fix as ArchwayOptions.openHeight). */
+  openHeight?: number;
 }
 
 const JAMB_HALF_THICK = 0.09;     // half the jamb's size along the wall (X)
@@ -90,10 +95,14 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
   const lintelWidth = inside
     ? width + LINTEL_OVERHANG * 2
     : width + JAMB_HALF_THICK * 4 + LINTEL_OVERHANG * 2;
-  const fillHeight = Math.max(0.1, ceiling - LINTEL_TOP);
-  const fillCentreY = LINTEL_TOP + fillHeight / 2;
+  const lintelBottom = opts.openHeight !== undefined
+    ? Math.min(LINTEL_BOTTOM, opts.openHeight - 0.10)
+    : LINTEL_BOTTOM;
+  const lintelTop = lintelBottom + LINTEL_HEIGHT;
+  const fillHeight = Math.max(0.1, ceiling - lintelTop);
+  const fillCentreY = lintelTop + fillHeight / 2;
 
-  const id = `doorframe-w${width.toFixed(2)}-c${ceiling.toFixed(1)}`;
+  const id = `doorframe-w${width.toFixed(2)}-c${ceiling.toFixed(1)}-o${lintelBottom.toFixed(2)}`;
 
   return {
     id,
@@ -107,10 +116,10 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
     parts: [
       // Side jambs — slim posts framing the opening, with depth so the thin
       // divider reads as a doorway you pass THROUGH, not a hole in paper.
-      { kind: 'box', pos: [-jambOffset, LINTEL_BOTTOM / 2, 0], size: [JAMB_HALF_THICK * 2, LINTEL_BOTTOM, JAMB_DEPTH], mat: 'glow' },
-      { kind: 'box', pos: [ jambOffset, LINTEL_BOTTOM / 2, 0], size: [JAMB_HALF_THICK * 2, LINTEL_BOTTOM, JAMB_DEPTH], mat: 'glow' },
+      { kind: 'box', pos: [-jambOffset, lintelBottom / 2, 0], size: [JAMB_HALF_THICK * 2, lintelBottom, JAMB_DEPTH], mat: 'glow' },
+      { kind: 'box', pos: [ jambOffset, lintelBottom / 2, 0], size: [JAMB_HALF_THICK * 2, lintelBottom, JAMB_DEPTH], mat: 'glow' },
       // Lintel across the top.
-      { kind: 'box', pos: [0, LINTEL_BOTTOM + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'glow' },
+      { kind: 'box', pos: [0, lintelBottom + LINTEL_HEIGHT / 2, 0], size: [lintelWidth, LINTEL_HEIGHT, LINTEL_DEPTH], mat: 'glow' },
       // Fill above the lintel — closes the full-height void over the doorway.
       { kind: 'box', pos: [0, fillCentreY, 0], size: [lintelWidth, fillHeight, FILL_DEPTH], mat: 'stone' },
     ],
