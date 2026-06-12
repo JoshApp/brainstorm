@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundYAt } from '../level/elevation';
 import type { OpeningSpec, DoorSpec } from '../level/types';
 import type { WalkableRegion } from '../level/walkable';
 import type { StyleMaterials } from '../style/materials';
@@ -78,7 +79,7 @@ export function spawnFitting(
  *  The lintel fill is what closes the gap above a short curtain. */
 function buildFrame(scene: THREE.Object3D, opening: OpeningSpec, ceilingHeight: number): void {
   const built = buildModel(doorframe({ width: opening.widthM, ceilingHeight }));
-  built.group.position.set(opening.x, 0, opening.z);
+  built.group.position.set(opening.x, groundYAt(opening.x, opening.z), opening.z);
   built.group.rotation.y = opening.rotY;
   scene.add(built.group);
 }

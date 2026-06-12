@@ -33,6 +33,15 @@ export interface ElevationField {
  *  doesn't start in the doorway itself. */
 const APRON_FRAC = 0.18;
 
+/** The stair-run a corridor of this length actually carries (length
+ *  minus both flat aprons). The composer divides a rolled drop by this
+ *  to enforce ELEVATION_MAX_GRADE — exported so the grade cap and the
+ *  field's ramp math can never disagree about where the slope lives. */
+export function corridorRampRun(longLen: number): number {
+  const apron = Math.min(longLen * APRON_FRAC, 1.0);
+  return Math.max(0.4, longLen - 2 * apron);
+}
+
 interface CorridorRamp {
   minX: number; maxX: number; minZ: number; maxZ: number;
   /** Axis the corridor runs along. */

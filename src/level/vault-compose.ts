@@ -12,6 +12,8 @@ import { parseTileMap } from './tilemap';
 import { populateTemplate, type FeatureCell } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { applyGeometryWarp, applySurfaceClutter } from './clutter';
+import { CONFIG } from '../config';
+import { corridorRampRun } from './elevation';
 import { resolveAllFacings } from './facing';
 import { rollManifest, reconcileManifest } from './floor-manifest';
 import { getPropAABB, type PropAABB } from './prop-aabb';
@@ -493,6 +495,27 @@ export function composeFloor(
     }
   }
 
+  // ── 3b. DESCENT BIAS — assign each vault an elevation ───────────
+  // Floors trend DOWNWARD, never up: every corridor rolls a drop from
+  // CONFIG.ELEVATION_DROP_WEIGHTS (flat stays the majority), clamped to
+  // what its stair-run carries at ELEVATION_MAX_GRADE. Corridors are
+  // recorded in connection order (spine, then branch), so fromIdx is
+  // always assigned before toIdx — one forward pass settles the floor.
+  // Monotonic descent means the boss/exit vault is ALWAYS the lowest
+  // point: the player walks down into the end of every floor, and depth
+  // reads as progress without a tutorial line. Fittings (doors, webs,
+  // fog gates) install on the corridors' FLAT mouth aprons, so gated
+  // thresholds stay level ground by construction.
+  const elevations: number[] = placed.map(() => 0);
+  for (const c of corridors) {
+    const roll = weightedPick(
+      CONFIG.ELEVATION_DROP_WEIGHTS.map((d) => ({ ...d })), rand,
+    ).drop;
+    const run = corridorRampRun(Math.max(c.rect.w, c.rect.d));
+    const drop = Math.min(roll, run * CONFIG.ELEVATION_MAX_GRADE);
+    elevations[c.toIdx] = elevations[c.fromIdx] - drop;
+  }
+
   // ── 4. Parse each vault and translate to world coords ──────────
   const rooms: RoomSpec[] = [];
   const corridorRooms: RoomSpec[] = [];
@@ -544,6 +567,9 @@ export function composeFloor(
       spawnYaw: pv.vault.tags.includes('start') ? Math.PI : undefined,
       depth,
     });
+    // Whole-vault elevation: the main room AND its logical sub-rooms sit
+    // on one plateau (rooms are internally flat — see RoomSpec.elevation).
+    for (const r of sub.rooms) r.elevation = elevations[i];
     rooms.push(...sub.rooms);
     corridorRooms.push(...sub.corridors);
     props.push(...sub.props);

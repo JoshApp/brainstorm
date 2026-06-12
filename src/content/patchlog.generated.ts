@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The dead now take doorways down the middle instead of shouldering the masonry. The masonry held grudges.",
+        "area": [
+          "combat",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The way down is stairs now, as the architect intended. Low tunnels stop leaking void over their lintels.",
         "area": [
           "level",
@@ -401,14 +409,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The walls grow skirting, cornices and the occasional hollow where someone left a skull. The boxes stop admitting they are boxes.",
-        "area": [
-          "atmosphere",
-          "level"
         ]
       }
     ]

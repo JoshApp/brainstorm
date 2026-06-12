@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundYAt } from '../level/elevation';
 import { buildModel } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { bossMistModel } from '../content/boss-mist';
@@ -47,7 +48,7 @@ export function spawnBossMist(
 ): { teardown?: () => void } {
   const { x, z, rotY, widthM: width, height } = opening;
   const built = buildModel(bossMistModel(color, width / 2, height));
-  built.group.position.set(x, 0, z);
+  built.group.position.set(x, groundYAt(x, z), z);
   built.group.rotation.y = rotY;
   scene.add(built.group);
 

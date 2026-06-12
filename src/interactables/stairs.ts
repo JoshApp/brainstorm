@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundYAt } from '../level/elevation';
 import type { StairsSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
 import { generateEntityId } from '../ecs/world';
@@ -54,7 +55,7 @@ export function spawnStairs(
   const isSafeVariant = spec.targetLevel.startsWith('safe-');
 
   const group = new THREE.Group();
-  group.position.set(spec.x, 0, spec.z);
+  group.position.set(spec.x, groundYAt(spec.x, spec.z), spec.z);
   group.rotation.y = spec.rotY ?? 0;
   parent.add(group);
 

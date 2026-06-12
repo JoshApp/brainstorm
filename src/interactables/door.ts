@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundYAt } from '../level/elevation';
 import type { DoorSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
 import type { WalkableRegion, WallSegment } from '../level/walkable';
@@ -85,13 +86,16 @@ export function spawnDoor(
   // on Y. `raisedY` is how far up a portcullis travels when open.
   const group = new THREE.Group();
   const raisedY = Math.max(0.1, height - GATE_RAISED_PEEK);
+  // Doors sit on the ground under their line — fittings install on flat
+  // mouth aprons, so one sample is the whole truth.
+  const baseY = groundYAt(cx, cz);
 
   if (isGate) {
-    group.position.set(cx, 0, cz);
+    group.position.set(cx, baseY, cz);
     group.rotation.y = doorYaw;
     buildPortcullis(group, length, height);
   } else {
-    group.position.set(hingeX, 0, hingeZ);
+    group.position.set(hingeX, baseY, hingeZ);
     group.rotation.y = initialYaw;
     buildHingedPanel(group, length, height, materials);
   }
@@ -107,7 +111,7 @@ export function spawnDoor(
   if (lintelHeight > 0.02) {
     const lintelGeo = new THREE.BoxGeometry(length, lintelHeight, DOOR_THICKNESS);
     const lintel = new THREE.Mesh(lintelGeo, materials.dressed);
-    lintel.position.set(cx, height + lintelHeight / 2, cz);
+    lintel.position.set(cx, baseY + height + lintelHeight / 2, cz);
     lintel.rotation.y = doorYaw;
     lintel.receiveShadow = true;
     lintel.castShadow = true;
@@ -133,7 +137,7 @@ export function spawnDoor(
   });
   const thresholdGeo = new THREE.BoxGeometry(lengthThresh * 0.92, 0.04, 0.18);
   const threshold = new THREE.Mesh(thresholdGeo, thresholdMat);
-  threshold.position.set(cx, 0.025, cz);
+  threshold.position.set(cx, baseY + 0.025, cz);
   threshold.rotation.y = -doorYaw;
   parent.add(threshold);
 
@@ -173,7 +177,7 @@ export function spawnDoor(
     else group.rotation.y = initialYaw;          // panel shut
   };
   const setOpenPose = () => {
-    if (isGate) group.position.y = raisedY;       // grate up in the lintel
+    if (isGate) group.position.y = baseY + raisedY;       // grate up in the lintel
     else group.rotation.y = initialYaw + targetAngle;
   };
 
@@ -240,7 +244,7 @@ export function spawnDoor(
         const dur = isGate ? GATE_DROP_DURATION : CLOSE_DURATION;
         const t = Math.min(1, closeTimer / dur);
         const ease = t * t;            // accelerate into the impact
-        if (isGate) group.position.y = raisedY * (1 - ease);
+        if (isGate) group.position.y = baseY + raisedY * (1 - ease);
         else pivotRotate(group, initialYaw, targetAngle, 1 - ease);
         if (closeTimer >= dur) {
           state = 'sealed';
@@ -278,7 +282,7 @@ export function spawnDoor(
         const dur = isGate ? GATE_RISE_DURATION : OPEN_DURATION;
         const t = Math.min(1, openTimer / dur);
         const ease = 1 - (1 - t) * (1 - t);   // slow to a stop at the top
-        if (isGate) group.position.y = raisedY * ease;
+        if (isGate) group.position.y = baseY + raisedY * ease;
         else pivotRotate(group, initialYaw, targetAngle, ease);
         if (openTimer >= dur) {
           state = 'open';

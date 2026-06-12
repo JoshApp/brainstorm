@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundYAt } from '../level/elevation';
 
 // Ground telegraph for a telegraphed AoE attack (see the 'aoe' ability
 // effect). A flat ring marker on the floor at the target spot that
@@ -24,7 +25,7 @@ export function spawnAoeTelegraph(
   radius: number,
 ): AoeTelegraph {
   const group = new THREE.Group();
-  group.position.set(x, 0.03, z);   // just above the floor to avoid z-fight
+  group.position.set(x, groundYAt(x, z) + 0.03, z);   // just above the floor to avoid z-fight
   group.rotation.x = -Math.PI / 2;
 
   // Outer rim — constant outline marking the danger radius.

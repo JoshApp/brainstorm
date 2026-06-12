@@ -1077,7 +1077,7 @@ export function buildLevel(
       altarGroup.position.y += gy;
       root.add(altarGroup);
       markMergeStatic(altarGroup);   // static stone — fold into the per-room merge
-      obstacles.push({ kind: 'aabb', ...obstacle, height: 0.9 });   // waist-high — shots fly over
+      obstacles.push({ kind: 'aabb', ...obstacle, height: gy + 0.9 });   // waist-high — shots fly over
     } else if (prop.kind === 'challenge-offering') {
       const rid = findRoomContaining(prop.x, prop.z, spec.rooms);
       spawnChallengeOffering(root, new THREE.Vector3(prop.x, gy, prop.z), rid ?? '', spec.depth ?? 1, materials);
@@ -1087,7 +1087,7 @@ export function buildLevel(
         kind: 'aabb',
         minX: prop.x - 0.36, maxX: prop.x + 0.36,
         minZ: prop.z - 0.28, maxZ: prop.z + 0.28,
-        height: 0.7,
+        height: gy + 0.7,
       });
     } else if (prop.kind === 'model') {
       const built = buildModel(prop.model);
@@ -1158,7 +1158,7 @@ export function buildLevel(
           const cx = prop.x + wox;
           const cz = prop.z + woz;
           if (shape.kind === 'circle') {
-            obstacles.push({ kind: 'circle', x: cx, z: cz, r: shape.r, height: shape.height });
+            obstacles.push({ kind: 'circle', x: cx, z: cz, r: shape.r, height: shape.height === undefined ? undefined : gy + shape.height });
           } else {
             // Swap halfW/halfD if rotation is perpendicular (±π/2).
             const swap = Math.abs(ca) < 0.5;
@@ -1168,7 +1168,7 @@ export function buildLevel(
               kind: 'aabb',
               minX: cx - hw, maxX: cx + hw,
               minZ: cz - hd, maxZ: cz + hd,
-              height: shape.height,
+              height: shape.height === undefined ? undefined : gy + shape.height,
             });
           }
         }
@@ -1243,7 +1243,7 @@ export function buildLevel(
           kind: 'aabb',
           minX: prop.x - 0.28, maxX: prop.x + 0.28,
           minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
-          height: 0.7,   // chest-high — shots fly over
+          height: gy + 0.7,   // chest-high — shots fly over
         };
         obstacles.push(chestObs);
       }
@@ -1271,7 +1271,7 @@ export function buildLevel(
         kind: 'aabb',
         minX: prop.x - 0.28, maxX: prop.x + 0.28,
         minZ: prop.z - 0.23, maxZ: prop.z + 0.23,
-        height: 0.7,
+        height: gy + 0.7,
       });
     } else if (prop.kind === 'corpse') {
       spawnCorpse(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, prop.note ?? '');
@@ -1294,7 +1294,7 @@ export function buildLevel(
       // splice callback to spawnVase so the obstacle goes away
       // when the vase shatters — otherwise the cell stays
       // blocked even after the vase mesh is gone.
-      const vaseObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.18, height: 0.6 };
+      const vaseObs: Obstacle = { kind: 'circle', x: prop.x, z: prop.z, r: 0.18, height: gy + 0.6 };
       obstacles.push(vaseObs);
       const vase = spawnVase(root, prop.x, prop.z, () => {
         const idx = obstacles.indexOf(vaseObs);
@@ -1325,7 +1325,7 @@ export function buildLevel(
       });
       for (const v of cluster) {
         destructibles.push(v);
-        const obs: Obstacle = { kind: 'circle', x: v.position.x, z: v.position.z, r: 0.18, height: 0.6 };
+        const obs: Obstacle = { kind: 'circle', x: v.position.x, z: v.position.z, r: 0.18, height: gy + 0.6 };
         clusterObs.push(obs);
         obstacles.push(obs);
       }
@@ -1342,30 +1342,30 @@ export function buildLevel(
       spawnFountain(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, prop.variant ?? 'gamble');
       // Cylindrical collision — approximate the pedestal/bowl footprint.
       obstacles.push({
-        kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 0.85,
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: gy + 0.85,
       });
     } else if (prop.kind === 'reliquary') {
       spawnReliquary(root, new THREE.Vector3(prop.x, gy, prop.z), spec.depth ?? 1, materials);
       obstacles.push({
-        kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 1.3,
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: gy + 1.3,
       });
     } else if (prop.kind === 'tithe-basin') {
       spawnTitheBasin(root, new THREE.Vector3(prop.x, gy, prop.z), spec.depth ?? 1, materials);
       obstacles.push({
-        kind: 'circle', x: prop.x, z: prop.z, r: 0.5, height: 0.85,
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.5, height: gy + 0.85,
       });
     } else if (prop.kind === 'merchant') {
       spawnMerchant(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, spec.depth ?? 1);
       // Slim footprint — step around the hooded figure on the path.
       obstacles.push({
-        kind: 'circle', x: prop.x, z: prop.z, r: 0.35, height: 1.6,
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.35, height: gy + 1.6,
       });
     } else if (prop.kind === 'tome-pillar') {
       spawnTomePillar(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0);
       // Narrow pedestal footprint — tighter than the fountain so the
       // player can step around it on the central path without snagging.
       obstacles.push({
-        kind: 'circle', x: prop.x, z: prop.z, r: 0.32, height: 1.1,
+        kind: 'circle', x: prop.x, z: prop.z, r: 0.32, height: gy + 1.1,
       });
     } else if (prop.kind === 'blood-altar') {
       const item = ITEMS[prop.itemId];
@@ -1377,7 +1377,7 @@ export function buildLevel(
           kind: 'aabb',
           minX: prop.x - 0.44, maxX: prop.x + 0.44,
           minZ: prop.z - 0.36, maxZ: prop.z + 0.36,
-          height: 0.9,
+          height: gy + 0.9,
         });
         spawnBloodAltar(
           root,
@@ -1406,7 +1406,7 @@ export function buildLevel(
           kind: 'aabb',
           minX: prop.x - 0.40, maxX: prop.x + 0.40,
           minZ: prop.z - 0.32, maxZ: prop.z + 0.32,
-          height: 1.0,
+          height: gy + 1.0,
         };
         obstacles.push(altarObs);
         // onDestroy: no obstacle removal — stone block stays and

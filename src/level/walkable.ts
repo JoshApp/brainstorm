@@ -24,12 +24,14 @@ export interface WallSegment {
   bx: number; bz: number;
 }
 
-// `height` (metres above the floor) is OPTIONAL and used ONLY by the
-// projectile pass (containsProjectile). Absent = full-height blocker (walls,
-// pillars, structural columns) — blocks movement AND every projectile.
-// A low prop (altar, chest, fountain) sets its height so a shot flying ABOVE
-// it sails over instead of dying on its 2D footprint. Movement (contains)
-// ignores height entirely — you still can't walk through a waist-high altar.
+// `height` is the obstacle's ABSOLUTE top (world Y), OPTIONAL, used ONLY by
+// the projectile pass (containsProjectile). Absent = full-height blocker
+// (walls, pillars, structural columns) — blocks movement AND every
+// projectile. A low prop (altar, chest, fountain) sets its top so a shot
+// flying ABOVE it sails over instead of dying on its 2D footprint. Creators
+// add the ground height under the prop (groundYAt) so the comparison stays
+// correct in elevated rooms. Movement (contains) ignores height entirely —
+// you still can't walk through a waist-high altar.
 export type Obstacle =
   | { kind: 'circle'; x: number; z: number; r: number; height?: number }
   | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; height?: number };

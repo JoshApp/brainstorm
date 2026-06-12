@@ -326,6 +326,20 @@ export const CONFIG = {
   // height per tread; the eye and collision still glide the smooth
   // linear grade underneath, so the camera never judders step to step.
   STAIR_RISER_M: 0.18,
+  // DESCENT BIAS — procgen floors trend DOWNWARD, never up (the delve
+  // is the thesis; lower = deeper = closer to the exit, and the player
+  // learns it without being told). Each room-to-room connection rolls
+  // one of these drops; flat stays the majority so descent remains an
+  // event. Rolled drops are clamped to what the connecting corridor's
+  // stair-run can carry at ELEVATION_MAX_GRADE.
+  ELEVATION_DROP_WEIGHTS: [
+    { drop: 0.0, weight: 50 },
+    { drop: 0.6, weight: 35 },
+    { drop: 1.2, weight: 15 },
+  ],
+  // Max drop per metre of stair-run (0.40 ≈ 22° — the elevation-lab
+  // grade Josh signed off from the phone).
+  ELEVATION_MAX_GRADE: 0.40,
 
   // === RANGED COMMITMENT ===
   // Accuracy demands stillness — the fix for "ranged is too spammable". A shot
