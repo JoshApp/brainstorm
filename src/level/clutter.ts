@@ -9,7 +9,7 @@ import {
 import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
 import { COBWEB_CORNER } from '../content/cobweb';
 import { archway, archwayColumnOffset } from '../content/archway';
-import { doorframe } from '../content/doorframe';
+import { doorframe, doorframeCollision } from '../content/doorframe';
 import {
   wallOpenings, inOpening, allStairFootprints, findContainingRect,
   type Opening, type StairFootprint,
@@ -862,6 +862,10 @@ function emitArchwaysForCorridors(spec: LevelSpec): void {
             rotY,
             proximityGlow: true,
             _dbg: 'doorframe',
+            // Jamb blockers when the opening can spare them (>= 1.6m —
+            // see doorframeCollision); stair-room mouths stay collision-
+            // free unconditionally, same soft-lock guarantee as before.
+            collision: stairMouth ? undefined : doorframeCollision(width),
           });
         } else {
           const colOffset = archwayColumnOffset(width);

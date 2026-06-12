@@ -19,8 +19,13 @@ import type { ModelSpec } from '../ecs/model-types';
 //   - +Z = INTO the passage (through the gate)
 // The placer sets rotY so +X aligns with the wall the opening sits in.
 //
-// No collision is emitted: the divider wall already blocks; the opening must
-// stay passable, and a 1m doorway can't spare room for column blockers.
+// Collision is WIDTH-GATED (doorframeCollision below): wide openings get
+// jamb blockers that match the visible stone; narrow ones stay collision-
+// free because a 1m doorway can't spare the room — jamb blockers there
+// would leave a knife-edge centre band (the soft-lock trap the archway
+// threshold comment in clutter.ts documents). Emission sites attach
+// `collision: doorframeCollision(width)` so geometry and blockers come
+// from the same constants and can't drift.
 
 export interface DoorframeOptions {
   /** Width of the opening this frames, in metres. Jambs sit just inside
@@ -43,6 +48,29 @@ const LINTEL_OVERHANG = 0.08;     // lintel extends past the jambs each side
 const FILL_DEPTH      = 1.10;
 
 const LINTEL_TOP = LINTEL_BOTTOM + LINTEL_HEIGHT;
+
+// Jamb collision is worth having only when the opening can spare it.
+// The passable centre band with jamb blockers is
+//   width − 2·(2·JAMB_HALF_THICK) − 2·playerRadius = width − 0.96,
+// so at 1.6m the band is 0.64m — just past the player's 0.6m diameter,
+// and comfortably wide for every mob the nav grid routes through tight
+// cells. Below the threshold the jambs stay ghost-thin to walk through
+// (rare, and the divider wall still blocks everything but the gap).
+const COLLISION_MIN_WIDTH = 1.6;
+
+/** Walk-blockers matching the doorframe's jambs, or undefined when the
+ *  opening is too narrow to spare the room (see COLLISION_MIN_WIDTH).
+ *  Attach as the `collision` of the same prop that renders the model. */
+export function doorframeCollision(
+  width: number,
+): import('../level/types').PropCollision[] | undefined {
+  if (width < COLLISION_MIN_WIDTH) return undefined;
+  const jambOffset = Math.max(JAMB_HALF_THICK + 0.01, width / 2 - JAMB_HALF_THICK);
+  return [
+    { kind: 'aabb', halfW: JAMB_HALF_THICK, halfD: JAMB_DEPTH / 2, ox: -jambOffset, oz: 0 },
+    { kind: 'aabb', halfW: JAMB_HALF_THICK, halfD: JAMB_DEPTH / 2, ox: jambOffset, oz: 0 },
+  ];
+}
 
 export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
   const width = opts.width ?? 1.0;

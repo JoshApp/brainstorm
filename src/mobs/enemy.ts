@@ -722,7 +722,11 @@ export function createEnemy(
         }
         pathTime += dt;
         if (pathTime >= PATH_REFRESH || path.length === 0) {
-          path = nav.findPath(container.position.x, container.position.z, targetX, targetZ);
+          // Radius-aware: a wide body (collisionRadius past the grid's
+          // full-clearance tier) treats narrow-doorway cells as walls
+          // instead of wedging into a gap it can't physically fit.
+          path = nav.findPath(container.position.x, container.position.z, targetX, targetZ,
+            { radius: spec.collisionRadius });
           pathTime = 0;
         }
         // Walk the waypoint queue, popping any we've already reached.

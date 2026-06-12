@@ -35,6 +35,14 @@ export type Obstacle =
   | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; height?: number };
 
 export class WalkableRegion {
+  /** Bumped on every wall/obstacle mutation. NavGrid compares this against
+   *  the version it was built from and lazily rebuilds when they diverge —
+   *  so runtime blockers (door seals, cobweb curtains, boss mist) and their
+   *  removals are FELT by pathfinding, not just by physical collision.
+   *  Before this, mobs pathed straight through closed doors and webs and
+   *  wedged against the seal. */
+  version = 0;
+
   constructor(
     private readonly rects: WalkableRect[],
     private readonly obstacles: Obstacle[] = [],
@@ -48,12 +56,13 @@ export class WalkableRegion {
    */
   addWall(seg: WallSegment) {
     this.walls.push(seg);
+    this.version++;
   }
 
   /** Remove a previously-added wall segment by reference. */
   removeWall(seg: WallSegment) {
     const idx = this.walls.indexOf(seg);
-    if (idx >= 0) this.walls.splice(idx, 1);
+    if (idx >= 0) { this.walls.splice(idx, 1); this.version++; }
   }
 
   /** Push an obstacle in at runtime (e.g. boss-mist sealing the
@@ -61,12 +70,13 @@ export class WalkableRegion {
    *  walls — caller holds the reference. */
   addObstacle(o: Obstacle) {
     this.obstacles.push(o);
+    this.version++;
   }
 
   /** Remove a previously-added obstacle by reference. */
   removeObstacle(o: Obstacle) {
     const idx = this.obstacles.indexOf(o);
-    if (idx >= 0) this.obstacles.splice(idx, 1);
+    if (idx >= 0) { this.obstacles.splice(idx, 1); this.version++; }
   }
 
   /** Projectile-only barriers — segments that stop PROJECTILES but never

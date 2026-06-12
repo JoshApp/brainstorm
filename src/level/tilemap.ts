@@ -49,7 +49,7 @@
 import type {
   LevelSpec, PropSpec, EnemySpawnSpec, TorchSpec, RoomSpec, DoorSpec, StairsSpec, TileMap,
 } from './types';
-import { doorframe } from '../content/doorframe';
+import { doorframe, doorframeCollision } from '../content/doorframe';
 import { orientationEW } from './opening';
 import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 import { pickWallFixture } from './lit-fixture-pool';
@@ -471,6 +471,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
       model: doorframe({ width: widthCells, ceilingHeight: opts.roomHeight ?? 3.2 }),
       x: cxF, y: 0, z: czF, rotY: run.ew ? 0 : Math.PI / 2,
       proximityGlow: true, _dbg: 'doorframe',
+      collision: doorframeCollision(widthCells),
     });
   }
 
@@ -492,6 +493,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     props.push({
       kind: 'model', model: doorframe({ width: widthM, ceilingHeight: opts.roomHeight ?? 3.2 }),
       x: cxW, y: 0, z: czW, rotY, proximityGlow: true, _dbg: 'doorframe',
+      collision: doorframeCollision(widthM),
     });
   }
 
