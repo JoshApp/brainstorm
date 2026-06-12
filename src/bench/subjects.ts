@@ -8,6 +8,7 @@ import { ENEMIES, type EnemySpec } from '../content/enemies';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { compileCreatureModelSpec } from '../content/build-creature';
 import type { ModelSpec } from '../ecs/model-types';
+import { ORIGIN_ARCH } from '../content/origin-arch';
 import { listAuthorables, type AuthorableKind } from '../debug/authorables';
 import { EFFECT_DEMOS } from './effects';
 import { HAND_RIGHT, HAND_LEFT } from '../content/hand';
@@ -80,6 +81,7 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'bevel-demo':  { label: 'Bevel radius demo (0 → 0.099m)', spec: BEVEL_DEMO },
   'csg-demo':    { label: 'CSG: original / add / subtract / intersect', spec: CSG_DEMO },
   'skeleton-key': { label: 'Skeleton key — skull bow with glowing eye sockets', spec: SKELETON_KEY },
+  'origin-arch': { label: 'Origin arch — sealed round arch behind the spawn bonfire', spec: ORIGIN_ARCH },
 };
 
 export interface BenchSubject {

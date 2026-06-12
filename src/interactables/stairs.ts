@@ -41,6 +41,8 @@ const PARAPET_HEIGHT = 0.10;      // lip above the floor that frames the hole
 export const STAIRWELL_TOTAL_DEPTH = STEP_COUNT * STEP_DEPTH;
 export const STAIRWELL_HALF_WIDTH = STEP_WIDTH / 2;
 
+const FIRE_AWAKE = new THREE.Color(0xff7a22);
+
 export function spawnStairs(
   parent: THREE.Object3D,
   spec: StairsSpec,
@@ -157,61 +159,104 @@ export function spawnStairs(
     group.add(wall);
   }
 
-  // ── PIT FLOOR (very dark, below deepest step) ─────────────────────
-  // A horizontal dark plane some distance BELOW the last tread, so
-  // looking down the stairwell you see darkness receding — depth read.
-  const pitFloor = new THREE.Mesh(
-    pooledPlane(STEP_WIDTH, STEP_DEPTH * 2),
-    new THREE.MeshBasicMaterial({ color: 0x020203, fog: false }),
+  // ── THE LANDING + THE FIRE BELOW ──────────────────────────────────
+  // The bottom of the well is not a grey mask any more — it's the NEXT
+  // FLOOR'S THRESHOLD, seen from above: a stone landing, a round-top
+  // archway into the dark, and the threshold bonfire behind it. The
+  // fire smoulders as embers from afar and WAKES as the player comes
+  // into interact range (see the highlight tween in onBeforeRender) —
+  // the fire you descend toward is the fire you wake beside. The spawn
+  // room of the next floor closes the loop with a sealed origin arch
+  // behind its bonfire (content/origin-arch.ts).
+  const landY = -totalDrop - 0.02;
+  const landDepth = 1.7;
+  const landing = new THREE.Mesh(
+    pooledBox(STEP_WIDTH, 0.06, landDepth),
+    materials.floor,
   );
-  pitFloor.rotation.x = -Math.PI / 2;
-  pitFloor.position.set(0, -totalDrop - 0.40, totalDepth + STEP_DEPTH);
-  group.add(pitFloor);
+  landing.position.set(0, landY - 0.03, totalDepth + landDepth / 2);
+  landing.receiveShadow = true;
+  group.add(landing);
+  // Landing side walls — continue the throat so the alcove never leaks
+  // world geometry at its flanks.
+  for (const side of [-1, 1]) {
+    const aw = new THREE.Mesh(
+      pooledBox(0.10, totalDrop + 1.2, landDepth),
+      materials.wall,
+    );
+    aw.position.set(side * (STEP_WIDTH / 2 + 0.05), -totalDrop / 2 - 0.3, totalDepth + landDepth / 2);
+    aw.receiveShadow = true;
+    group.add(aw);
+  }
 
-  // ── BACK WALL (darkness beyond the last step) ─────────────────────
-  // Slight angle so it reads as "this corridor continues out of sight."
-  const backMat = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
-  const back = new THREE.Mesh(
-    pooledPlane(STEP_WIDTH, totalDrop + 1.4),
-    backMat,
-  );
-  back.position.set(0, -totalDrop / 2 - 0.2, totalDepth + STEP_DEPTH * 1.9);
-  group.add(back);
+  // Round-top archway across the landing's far end. PS1 arch: two
+  // jambs, a crown of three angled wedge boxes, dressed-stone face
+  // panels filling the wall around it. Beyond the opening: black.
+  const ARCH_W = STEP_WIDTH * 0.62;        // clear opening width
+  const ARCH_SPRING = 1.30;                // jamb top / where the arc springs
+  const ARCH_RISE = 0.45;                  // crown rise above the spring
+  const archZ = totalDepth + landDepth - 0.35;
+  const archFaceH = totalDrop + 1.4;       // face wall fills up the throat
+  const jambW = 0.16;
+  for (const side of [-1, 1]) {
+    const jamb = new THREE.Mesh(pooledBox(jambW, ARCH_SPRING, 0.26), materials.dressed);
+    jamb.position.set(side * (ARCH_W / 2 + jambW / 2), landY + ARCH_SPRING / 2, archZ);
+    group.add(jamb);
+    // Face panels left/right of the opening, floor to throat top.
+    const panelW = (STEP_WIDTH - ARCH_W) / 2 - jambW;
+    if (panelW > 0.02) {
+      const panel = new THREE.Mesh(pooledBox(panelW, archFaceH, 0.18), materials.wall);
+      panel.position.set(side * (ARCH_W / 2 + jambW + panelW / 2), landY + archFaceH / 2, archZ);
+      group.add(panel);
+    }
+    // Crown wedges — angled boxes stepping toward the centre.
+    const wedge = new THREE.Mesh(pooledBox(ARCH_W * 0.34, 0.16, 0.24), materials.dressed);
+    wedge.position.set(side * ARCH_W * 0.26, landY + ARCH_SPRING + ARCH_RISE * 0.55, archZ);
+    wedge.rotation.z = -side * 0.55;
+    group.add(wedge);
+  }
+  const keyWedge = new THREE.Mesh(pooledBox(ARCH_W * 0.30, 0.18, 0.26), materials.dressed);
+  keyWedge.position.set(0, landY + ARCH_SPRING + ARCH_RISE, archZ);
+  group.add(keyWedge);
+  // Face fill ABOVE the arch crown up to the throat top.
+  const overH = archFaceH - (ARCH_SPRING + ARCH_RISE + 0.18);
+  const over = new THREE.Mesh(pooledBox(ARCH_W + jambW * 2, overH, 0.18), materials.wall);
+  over.position.set(0, landY + ARCH_SPRING + ARCH_RISE + 0.18 + overH / 2, archZ);
+  group.add(over);
 
-  // ── PORTAL SEAM AT THE BOTTOM ─────────────────────────────────────
-  // Glowing cyan band where the deepest step meets the pit floor. Reads
-  // as "something is down there." Plane facing the camera (player's view
-  // angle from above), additive over the dark plane.
-  const seamMat = new THREE.MeshBasicMaterial({
-    map: getTexture('fire-wisp'),
-    color: 0x4a78b0,
-    transparent: true,
-    opacity: 0.85,
-    blending: THREE.AdditiveBlending,
-    fog: false,
-    depthWrite: false,
-    side: THREE.DoubleSide,
+  // Darkness through the opening — pure black chamber walls beyond the
+  // arch, so the fire floats in void until it wakes.
+  const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
+  const voidBack = new THREE.Mesh(pooledPlane(STEP_WIDTH, totalDrop + 1.6), voidMat);
+  voidBack.position.set(0, -totalDrop / 2 - 0.2, archZ + 1.6);
+  group.add(voidBack);
+  const voidFloor = new THREE.Mesh(pooledPlane(STEP_WIDTH, 1.8), voidMat);
+  voidFloor.rotation.x = -Math.PI / 2;
+  voidFloor.position.set(0, landY - 0.01, archZ + 0.9);
+  group.add(voidFloor);
+
+  // THE FIRE — a low twig pile + two flame sprites just beyond the arch.
+  // Ember-dim at rest; the highlight tween (interact range) wakes it.
+  const fireZ = archZ + 0.85;
+  const twigMat = new THREE.MeshStandardMaterial({ color: 0x16100a, roughness: 1.0, flatShading: true });
+  for (let i = 0; i < 3; i++) {
+    const twig = new THREE.Mesh(pooledBox(0.46, 0.045, 0.05), twigMat);
+    twig.position.set(0, landY + 0.05 + i * 0.012, fireZ);
+    twig.rotation.y = i * 1.1 + 0.4;
+    group.add(twig);
+  }
+  const fireMatA = new THREE.MeshBasicMaterial({
+    map: getTexture('fire-wisp'), color: 0x6e1c06, transparent: true, opacity: 0.30,
+    blending: THREE.AdditiveBlending, fog: false, depthWrite: false, side: THREE.DoubleSide,
   });
-  const seam = new THREE.Mesh(pooledPlane(STEP_WIDTH * 0.9, 0.55), seamMat);
-  seam.position.set(0, -totalDrop - 0.15, totalDepth + STEP_DEPTH * 0.8);
-  seam.rotation.x = -Math.PI / 4;   // tilt toward the camera
-  group.add(seam);
-
-  // Wider haze around the seam for atmosphere.
-  const seamHazeMat = new THREE.MeshBasicMaterial({
-    map: getTexture('fire-wisp'),
-    color: 0x2a4a7c,
-    transparent: true,
-    opacity: 0.55,
-    blending: THREE.AdditiveBlending,
-    fog: false,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const seamHaze = new THREE.Mesh(pooledPlane(STEP_WIDTH * 1.4, 1.2), seamHazeMat);
-  seamHaze.position.set(0, -totalDrop, totalDepth + STEP_DEPTH * 0.4);
-  seamHaze.rotation.x = -Math.PI / 4;
-  group.add(seamHaze);
+  const fireMatB = fireMatA.clone();
+  fireMatB.color.set(0x3c1004); fireMatB.opacity = 0.22;
+  const fireA = new THREE.Mesh(pooledPlane(0.5, 0.7), fireMatA);
+  fireA.position.set(0, landY + 0.42, fireZ);
+  group.add(fireA);
+  const fireB = new THREE.Mesh(pooledPlane(0.8, 1.0), fireMatB);
+  fireB.position.set(0, landY + 0.55, fireZ + 0.05);
+  group.add(fireB);
 
   // ── DEEP GLOW LIGHT ──────────────────────────────────────────────
   // Cool pool-of-light at the bottom of the stairwell — bright enough
@@ -599,6 +644,16 @@ export function spawnStairs(
     floorRingMat.opacity    = lerp(PASSIVE.ringOp,         ACTIVE.ringOp,         t) * b;
     outlineMat.opacity      = lerp(PASSIVE.outlineInner,   ACTIVE.outlineInner,   t);
     outlineOuterMat.opacity = lerp(PASSIVE.outlineOuter,   ACTIVE.outlineOuter,   t) * b;
+
+    // The fire below wakes as the player nears the descent — embers at
+    // rest, living flame in interact range. Continuity: that is the
+    // NEXT floor's threshold bonfire, already burning for you.
+    const fw = 0.85 + 0.15 * Math.sin(wave * 2.3);
+    fireMatA.color.set(0x6e1c06).lerp(FIRE_AWAKE, t);
+    fireMatA.opacity = (0.30 + 0.62 * t) * fw;
+    fireMatB.opacity = (0.22 + 0.36 * t) * fw;
+    fireA.scale.setScalar(1 + 0.45 * t * fw);
+    fireB.scale.setScalar(1 + 0.30 * t);
 
     // Shaft widens visibly when called — the highlight feels
     // physical, like the beam opens up.

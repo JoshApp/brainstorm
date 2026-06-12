@@ -9,6 +9,23 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Pottery keeps its dignity in death. The slain spend theirs slowly, by the pint.",
+        "area": [
+          "combat",
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Floors lean downward now. Follow the stairs; the bottom of each floor knows what waits there.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The dead now take doorways down the middle instead of shouldering the masonry. The masonry held grudges.",
         "area": [
           "combat",
@@ -394,21 +411,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "tech"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The missing bricks gain depth and the cracks come back, each one different now. The wall has opinions about its age.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The horde quietly sheds a third of its draw calls. It does not feel lighter; you might.",
-        "area": [
-          "combat",
-          "atmosphere"
         ]
       }
     ]

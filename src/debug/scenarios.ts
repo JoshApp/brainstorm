@@ -623,6 +623,26 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 1.6, lookAt: { x: 0, z: -6, y: -1.0 } },
   },
 
+  // STAIRWELL LAB — an unsealed descent up close, camera at the parapet
+  // looking down the well: steps, landing, the round arch, the fire
+  // beyond it (ember at rest — walk into range unfrozen to see it wake).
+  'stairwell-lab': {
+    freeze: true,
+    level: {
+      id: 'stairwell-lab', depth: 1, startPos: { x: 0, z: -2.5, yaw: Math.PI },
+      rooms: [{ id: 'sw', rect: { x: 0, z: 0, w: 8, d: 10 }, height: 3.2 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -3.95, z: -1.5, height: 2.0, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.9 },
+        { x: 3.95, z: -1.5, height: 2.0, wall: 'E', colorTint: 0xffaa55, intensityMul: 0.9 },
+      ],
+      spawns: [], doors: [],
+      stairs: [{ x: 0, z: 0.6, rotY: 0, targetLevel: 'depth-2' }],
+    },
+    playerPos: { x: 0, z: -1.2, lookAt: { x: 0, z: 2.6, y: -1.7 } },
+  },
+
   // BOSS-WARD LAB — a sealed boss descent up close, for iterating on
   // the ward rig (chains + padlock + membrane, stairs.ts). The boss is
   // ALIVE (encounter never completes here), so the seal stays up.
