@@ -8,6 +8,22 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-12",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The doors behind you exist on every floor now, not only in the rehearsal room. Turn around and check.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Blood stays on the wall that earned it. The far walls are no longer haunted.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Turn around at any fire. The doors you came through are behind you, closed. They were always going to be.",
         "area": [
@@ -392,21 +408,6 @@ export const GENERATED_PATCHLOG = [
         "text": "Torchlight reaches a little further still.",
         "area": [
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The torches reach a little further into the dark. The dark remains unconvinced.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Torchlight learns to pool instead of flood, the great halls hang chandeliers, and some corridors keep their dark. The lamp in your hand finally has a job again.",
-        "area": [
-          "atmosphere",
-          "level"
         ]
       }
     ]
