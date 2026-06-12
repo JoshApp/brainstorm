@@ -54,6 +54,9 @@ export interface Settings {
    *  exactly what a swing covers. Separate fans for the enemy cone and the wider
    *  destructible cone. Off by default. */
   debugHitCones: boolean;
+  /** Gore debug — visualize every splash decision: the throw arrow,
+   *  the wall-probe cone, the wall frame found, floor stamp rings. */
+  debugGoreSplats: boolean;
   /** Profiler tools — the per-system CPU/GPU profiler HUD, the session
    *  recorder, and spector.js draw-call capture, plus their on-screen
    *  toolbar (so it's usable on a phone without function keys). A safe
@@ -176,6 +179,7 @@ const DEFAULTS: Settings = {
   debugBossReadout: false,
   debugHandAxes: false,
   debugHitCones: false,
+  debugGoreSplats: false,
   profilerTools: false,
   controlScheme: 'default',
   // Flick by default — the most directional/immediate dodge; switch to

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { markGoreThrow, markGoreProbe, markGoreWall, markGoreStamp } from '../debug/gore-debug';
 
 // ── SPLAT MAP — the floor remembers its violence ─────────────────────
 //
@@ -254,8 +255,10 @@ export function emitGoreSplash(
   if (e < 0.05) return;
   const len = Math.hypot(dirX, dirZ) || 1;
   const dx = dirX / len, dz = dirZ / len;
+  if (import.meta.env.DEV) markGoreThrow(x, z, y, dx, dz, e);
   // Floor: puddle + streak + droplets, all energy-scaled.
   const r = 0.22 + 0.38 * e;
+  if (import.meta.env.DEV) { markGoreStamp(x, z, r * 0.75); markGoreStamp(x + dx * r, z + dz * r, r); }
   stampSplat(x, z, r * 0.75, colorHex, 0.35 + 0.4 * e);
   stampSplat(x + dx * r, z + dz * r, r, colorHex, (0.3 + 0.4 * e), { x: dx, z: dz });
   const sats = Math.round(e * 2.2);
@@ -279,7 +282,9 @@ export function emitGoreSplash(
   let hit: WallHit | null = null;
   for (const off of [0, 0.7, -0.7]) {
     const c = Math.cos(off), sn = Math.sin(off);
-    hit = wallProbe?.(x, z, dx * c - dz * sn, dz * c + dx * sn) ?? null;
+    const pdx = dx * c - dz * sn, pdz = dz * c + dx * sn;
+    hit = wallProbe?.(x, z, pdx, pdz) ?? null;
+    if (import.meta.env.DEV) markGoreProbe(x, z, y, pdx, pdz, 1.35, !!hit);
     if (hit) break;
   }
   if (!hit && opts?.wallFallbackCardinals) {
@@ -292,6 +297,7 @@ export function emitGoreSplash(
     const dWall = Math.abs(hit.axis === 'x' ? hit.plane - x : hit.plane - z);
     if (dWall <= reach) {
       const k = 1 - (dWall / reach) * 0.6;
+      if (import.meta.env.DEV) markGoreWall(hit, y, (0.3 + 0.55 * e) * k);
       stampWallArcAt(hit, y, colorHex, (0.35 + 0.5 * e) * k, (0.3 + 0.55 * e) * k);
     }
   }

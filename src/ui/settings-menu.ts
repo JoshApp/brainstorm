@@ -499,6 +499,15 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().debugHitCones,
       set: (v) => updateSettings({ debugHitCones: v }),
     }),
+    makeToggle({
+      label: 'GORE SPLATS',
+      description:
+        'Visualize every blood splash decision for ~3s: orange throw arrow, ' +
+        'yellow wall-probe cone, magenta frame on the wall it found, green ' +
+        'rings where floor stamps landed.',
+      get: () => getSettings().debugGoreSplats,
+      set: (v) => updateSettings({ debugGoreSplats: v }),
+    }),
   ],
 
   run: () => buildRunTab(),

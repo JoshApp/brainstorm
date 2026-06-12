@@ -47,6 +47,7 @@ import { createRoomCuller, type RoomCuller } from './level/room-culling';
 import { setCreatureInstancingDisabled } from './mobs/creature-instancing';
 import { batchStaticFixtures } from './level/static-merge';
 import { initCombatDebug, tickCombatDebug } from './combat/combat-debug';
+import { initGoreDebug, setGoreDebugEnabled, tickGoreDebug } from './debug/gore-debug';
 import { LEVELS } from './level/specs';
 import type { LevelSpec } from './level/types';
 import type { ModelSpec } from './ecs/model-types';
@@ -242,6 +243,8 @@ initSplatMap();   // the floor's gore memory (scene/splat-map.ts)
 // across levels — one buffer, dynamic updates.
 initBladeTrail(scene);
 initCombatDebug(scene);
+initGoreDebug(scene);
+setGoreDebugEnabled(getSettings().debugGoreSplats);
 initFogWalkthrough(camera); // soulslike fog-gate forced walk drives this camera
 // Register camera with the death sequence so the death tick can
 // pitch + drop it during the collapse animation.
@@ -340,6 +343,10 @@ initLevelLoader({
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
     setCameraYaw(level.playerSpawn.yaw);
+    // Gore-debug markers parent into the LEVEL group — runtime adds to
+    // the scene root don't rasterize in this pipeline (blood-burst
+    // droplets, which render fine, live under the level group too).
+    initGoreDebug((level as { root?: THREE.Object3D }).root ?? scene);
     // Wall probe for blood arcs: march from the hit point along the
     // throw until the walkable grid goes solid — that's the wall.
     setSplatWallProbe((x, z, dx, dz) => {
@@ -757,6 +764,7 @@ if (import.meta.env.DEV) {
     (scene as unknown as { background: unknown }).background = on ? uSplatTex.value : null;
     return on;
   };
+  (window as unknown as Record<string, unknown>).__goreDebug = (on = true) => { setGoreDebugEnabled(on); return on; };
   // __gore(e): full impact splash 1.2m ahead, thrown along the view.
   (window as unknown as Record<string, unknown>).__gore = (e = 1.0) => {
     const fx = -Math.sin(camera.rotation.y), fz = -Math.cos(camera.rotation.y);
@@ -1032,6 +1040,7 @@ function tick() {
   // Adaptive resolution — self-gates (no-op unless enabled on a real phone).
   tickAdaptiveResolution(performance.now());
   tickCombatDebug(realDt, currentLevel?.enemies ?? []);
+  tickGoreDebug();
   // Programmatic perf probe (window.__perf for the headless perf runner).
   // DEV-only — the literal-false guard dead-code-eliminates it from prod
   // (and tickPerfProbe is itself a no-op in prod, belt-and-suspenders).
@@ -1213,6 +1222,7 @@ onSettingsChanged((s) => {
   setDebugButton(urlForced || s.debugMode);
   setPerfOverlayVisible(s.perfMeter);
   setDarkAdaptReadoutVisible(s.debugEyeAdapt);
+  setGoreDebugEnabled(s.debugGoreSplats);
   setBossEncounterReadoutVisible(s.debugBossReadout);
   // Profiler tools — mount/unmount the on-screen toolbar (and tear the suite
   // down) live when the toggle flips. Defined below; hoisted.
