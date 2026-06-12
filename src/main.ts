@@ -1478,10 +1478,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // No wake ceremony in scenarios — the eyelid blink covered every
   // headless snap (and the geometry the scenario exists to show).
   suppressArrivalCeremony();
-  // Inspection previews: skip the title card (it covers the geometry) BEFORE
-  // the load fires it, and flood bright flat light + push fog out so the whole
-  // room reads. Set after applyScenario below so nothing resets them.
-  if (scenario.inspect) suppressNextDescentTitle();
+  suppressNextDescentTitle();   // a debug jump isn't a descent — no title card
   startRun(floorId);
   hideBootLoading();   // scenarios bypass the title — clear the veil right away
   // Scenarios may want to mutate enemies / give items / open panels.

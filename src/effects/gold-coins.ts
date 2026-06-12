@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundYAt } from '../level/elevation';
 import { getTexture } from '../style/procedural-textures';
 import { grantGold } from '../state/run-state';
 import { emit } from '../broadcast/event-bus';
@@ -32,7 +33,8 @@ const coins: Coin[] = [];
 const tmp = new THREE.Vector3();
 
 const GRAVITY = -9.5;
-const FLOOR_Y = 0.12;             // group center sits this high — disc radius ≈ 0.085 below
+const FLOOR_REST = 0.12;          // group center sits this high ABOVE THE GROUND — disc radius ≈ 0.085 below
+const floorYAt = (x: number, z: number) => groundYAt(x, z) + FLOOR_REST;
 /** Collision radius for the arc-flight wall check. Small enough that a
  *  coin can come to rest tight against a wall, big enough that it doesn't
  *  end up halfway through one. Same approach as item pickups (pickup.ts). */
@@ -213,8 +215,9 @@ export function tickGoldCoins(dt: number, playerPos: THREE.Vector3, walkable?: W
       // Tumble during the arc.
       c.group.rotation.y += dt * 8;
       c.group.rotation.z += dt * 5;
-      if (c.group.position.y <= FLOOR_Y) {
-        c.group.position.y = FLOOR_Y;
+      const fy = floorYAt(c.group.position.x, c.group.position.z);
+      if (c.group.position.y <= fy) {
+        c.group.position.y = fy;
         c.vel.set(0, 0, 0);
         c.settled = true;
         // Settle upright. The disc is already pre-rotated to vertical
@@ -227,7 +230,7 @@ export function tickGoldCoins(dt: number, playerPos: THREE.Vector3, walkable?: W
       // Settled — spin around the GROUP's Y axis (the world vertical),
       // so the disc inside cycles face → edge → face. Plus a tiny bob.
       c.group.rotation.y += dt * 2.6;
-      c.group.position.y = FLOOR_Y + Math.sin(c.age * 2.5 + c.phase) * 0.020;
+      c.group.position.y = floorYAt(c.group.position.x, c.group.position.z) + Math.sin(c.age * 2.5 + c.phase) * 0.020;
       if (c.age > SETTLED_TIMEOUT) c.homing = true;
     }
 

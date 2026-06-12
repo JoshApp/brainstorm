@@ -78,6 +78,17 @@ export type RoomSpec = {
   rect: WalkableRect;
   height: number;
   /**
+   * Floor elevation in metres (default 0). Rooms are internally FLAT at
+   * their elevation — combat, props, splats all live on one plane per
+   * room (doors seal on combat, so a fight never spans two elevations).
+   * A CORRIDOR between two rooms at different elevations becomes a ramp:
+   * the elevation field (src/level/elevation.ts) lerps ground height
+   * along its long axis, the camera/mobs/effects sample groundYAt(x,z),
+   * and the builder lays a sloped floor. Collision stays 2D — height is
+   * presentation + the ground-sample, never a movement gate.
+   */
+  elevation?: number;
+  /**
    * Ceiling shape. Default 'flat' (a plane at `height`). 'barrel' (curved
    * vault) and 'pitched' (A-frame) spring from the wall-top at `height` and
    * arch UP to height + ceilingRise at the crown, with the short-wall

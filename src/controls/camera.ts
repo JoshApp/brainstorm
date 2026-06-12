@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
+import { groundYAt } from '../level/elevation';
 import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
 import { getPlayerMoveScale } from '../player/inside-aura';
@@ -183,8 +184,13 @@ export function updateCamera(
     }
   }
 
-  // Eye height locked (plus the floor-arrival rise from the bonfire seat)
-  camera.position.y = CONFIG.PLAYER_HEIGHT + getArrivalHeightOffset();
+  // Eye height locked above the GROUND at our feet (plus the floor-arrival
+  // rise from the bonfire seat). groundYAt is 0 on flat floors; on floors
+  // with elevation it follows room plateaus + corridor ramps, so walking a
+  // sloped corridor raises/lowers the eye continuously.
+  camera.position.y = CONFIG.PLAYER_HEIGHT
+    + groundYAt(camera.position.x, camera.position.z)
+    + getArrivalHeightOffset();
 
   // Exhaustion chest-heave — a subtle breath-driven bob + pitch when winded, so
   // "out of breath" is FELT in the view, not read off a bar. 0 when rested; the

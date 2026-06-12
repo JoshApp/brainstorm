@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundYAt } from '../level/elevation';
 import { buildModel, mergeRigidSegments } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
@@ -175,9 +176,14 @@ export function createPickup(
   let mode: 'flying' | 'settled' = launch ? 'flying' : 'settled';
   let itemX = 0;
   let itemZ = 0;
+  // Rest height is RELATIVE TO THE GROUND under the item (REST_Y above
+  // it), expressed in pickupGroup-local Y. On flat floors this reduces
+  // to the old absolute REST_Y.
+  const restLocalY = () =>
+    Math.max(0, groundYAt(pos.x + itemX, pos.z + itemZ) + REST_Y - pos.y);
   let itemY = mode === 'flying'
     ? (launch!.startHeight ?? LAUNCH_HEIGHT_DEFAULT)
-    : Math.max(0, REST_Y - pos.y);
+    : restLocalY();
   let vx = launch ? launch.velocity.x : 0;
   let vy = launch ? launch.velocity.y : 0;
   let vz = launch ? launch.velocity.z : 0;
@@ -288,7 +294,7 @@ export function createPickup(
         // Faster spin in the air sells the toss.
         built.group.rotation.y += ROTATE_SPEED * FLIGHT_SPIN_MUL * dt;
         built.group.rotation.x += ROTATE_SPEED * FLIGHT_SPIN_MUL * 0.6 * dt;
-        if (itemY <= REST_Y - pos.y && vy < 0) {
+        if (itemY <= restLocalY() && vy < 0) {
           // LAND. Snap to rest height, re-parent the group so the
           // disc / interactable hitbox / future bob centers on the
           // landed spot instead of the spawn spot.
@@ -297,7 +303,7 @@ export function createPickup(
           pickupGroup.position.set(landedWorldX, pos.y, landedWorldZ);
           interactable.position.set(landedWorldX, pos.y, landedWorldZ);
           itemX = 0; itemZ = 0;
-          itemY = Math.max(0, REST_Y - pos.y);
+          itemY = restLocalY();
           built.group.position.set(itemX, itemY, itemZ);
           // Reset spin tilt so it bobs upright.
           built.group.rotation.x = 0;
@@ -314,7 +320,7 @@ export function createPickup(
         }
       } else {
         t += dt;
-        itemY = Math.max(0, REST_Y - pos.y) + Math.sin(t * BOB_FREQUENCY) * BOB_AMPLITUDE;
+        itemY = restLocalY() + Math.sin(t * BOB_FREQUENCY) * BOB_AMPLITUDE;
         built.group.position.y = itemY;
         built.group.rotation.y += ROTATE_SPEED * dt;
         if (landPuff > 0) {

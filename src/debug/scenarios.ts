@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { LevelSpec, EnemySpawnSpec, TorchSpec } from '../level/types';
+import { buildElevationLab } from '../level/test-chambers';
 import type { LiveLevel } from '../level/builder';
 import type { WeaponViewmodel, SwingPhase } from '../player/viewmodel';
 import { triggerDeath } from '../player/death';
@@ -606,6 +607,20 @@ export const SCENARIOS: Record<string, Scenario> = {
       doors: [], stairs: [],
     },
     playerPos: { x: 0, z: 0.5, lookAt: { x: 0, z: -8, y: 1.2 } },
+  },
+
+  // ELEVATION LAB — the verticality probe (two flat rooms 1.4m apart, a
+  // sloped corridor between). Frozen view from the high room looking down
+  // the ramp into the low room: floor grade, wall coverage, torch heights,
+  // and the ghoul standing on the LOW plateau should all read level-true.
+  // Unfrozen (pilot / phone via the test-chamber picker) the ghoul chases
+  // up the ramp.
+  'elevation-lab': {
+    freeze: true,
+    level: buildElevationLab(),
+    // At the ramp's mouth looking down into the low room — the grade,
+    // the low plateau, and the ghoul all inside fog range.
+    playerPos: { x: 0, z: 1.6, lookAt: { x: 0, z: -6, y: -1.0 } },
   },
 
   // BOSS-WARD LAB — a sealed boss descent up close, for iterating on

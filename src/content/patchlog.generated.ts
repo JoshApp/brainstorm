@@ -9,6 +9,31 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The mob behind the door now knows the door is closed. It also knows when it opens. Plan accordingly.",
+        "area": [
+          "combat",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The spill lands where the kill happened, sized to what died, and the right wall — only the right wall — wears it.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Grates in the floor show you where you are going. Stand at the edge long enough and the dark breathes back.",
+        "area": [
+          "atmosphere",
+          "level",
+          "audio"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The wall behind your slash gets what it was owed.",
         "area": [
           "combat",
@@ -384,30 +409,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The lantern's shadow learns to blink. Your thumbs get the frames it was hoarding.",
-        "area": [
-          "atmosphere",
-          "tech"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Light stops popping in and out of existence and learns to seep through doorways instead. The candles agree on a colour. Mostly.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "The dungeon stops paying nine lights to stand around unlit. Frames arrive on time more often.",
-        "area": [
-          "atmosphere",
-          "tech"
         ]
       }
     ]

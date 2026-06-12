@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { LevelSpec, RoomSpec, TorchSpec, PropSpec, OpeningSpec } from './types';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
+import { buildElevationField, setElevationField, groundYAt } from './elevation';
 import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
 import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } from './destructibles';
@@ -153,6 +154,23 @@ function buildRoomShell(
   const W = rect.w;
   const D = rect.d;
 
+  // ── ELEVATION ──────────────────────────────────────────────────────
+  // Rooms sit flat at their elevation; a corridor whose two ends meet
+  // rooms at different elevations becomes a RAMP (the elevation field
+  // already lerps groundY along it — here we make the geometry agree).
+  // Sample the field at both ends of the long axis to detect the slope.
+  const elev = room.elevation ?? 0;
+  const alongX = W >= D;
+  const eEnd0 = alongX
+    ? groundYAt(rect.x - W / 2 + 0.05, rect.z)
+    : groundYAt(rect.x, rect.z - D / 2 + 0.05);
+  const eEnd1 = alongX
+    ? groundYAt(rect.x + W / 2 - 0.05, rect.z)
+    : groundYAt(rect.x, rect.z + D / 2 - 0.05);
+  const sloped = Math.abs(eEnd1 - eEnd0) > 1e-3;
+  const elevLo = Math.min(eEnd0, eEnd1, elev);
+  const elevHi = Math.max(eEnd0, eEnd1, elev);
+
   // ── FLOOR GRATE (box-buster #5) ────────────────────────────────────
   // An iron grate flush with the floor over a recess that falls toward a
   // faint ember glow far below: the next depth, previewed. Walkable — the
@@ -162,6 +180,7 @@ function buildRoomShell(
   // chasm voids own those). Hugs a wall like a drain should.
   const wantGrate =
     !room.logicalOnly &&
+    !sloped &&
     floorHoles.length === 0 &&
     W >= 4.0 && D >= 4.0 &&
     buildRng() < CONFIG.GRATE_CHANCE;
@@ -190,14 +209,29 @@ function buildRoomShell(
   const floorGeo: THREE.BufferGeometry = allFloorHoles.length > 0
     ? makeFloorWithHoles(W, D, allFloorHoles)
     : makeJitteredPlane(W, D, { flat: true });
+  if (sloped) {
+    // Ramp: displace each vertex to the elevation field's ground height.
+    // The plane is subdivided (makeJitteredPlane) and rotated -π/2 about X,
+    // so local (x, y) lands at world (rect.x + x, ·, rect.z - y) and local
+    // +Z becomes world +Y — displace along local Z, relative to the mesh's
+    // own y (= elev) so the world result is exactly groundYAt.
+    const pos = floorGeo.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      const wx = rect.x + pos.getX(i);
+      const wz = rect.z - pos.getY(i);
+      pos.setZ(i, groundYAt(wx, wz) - elev);
+    }
+    floorGeo.computeVertexNormals();
+  }
   const floor = new THREE.Mesh(floorGeo, materials.floor);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(rect.x, 0, rect.z);
+  floor.position.set(rect.x, elev, rect.z);
   floor.receiveShadow = true;
   floor.name = 'floor';
   // Rect (+ whether it carries per-vertex colour) so the prop-contact AO pass
   // can find floors and darken them under props after props are placed.
-  if (allFloorHoles.length === 0) floor.userData.aoRect = { x: rect.x, z: rect.z, w: W, d: D };
+  // Sloped ramps skip it (the bake assumes a flat plane).
+  if (allFloorHoles.length === 0 && !sloped) floor.userData.aoRect = { x: rect.x, z: rect.z, w: W, d: D };
   floor.userData.dbgKind = 'floor';
   floor.userData.dbgSource = `floor · ${room.id} @(${rect.x.toFixed(1)},${rect.z.toFixed(1)})`;
   scene.add(floor);
@@ -211,6 +245,7 @@ function buildRoomShell(
     );
     if (recessGeo) {
       const recess = new THREE.Mesh(recessGeo, materials.chasmWall);
+      recess.position.y = elev;
       recess.receiveShadow = true;
       recess.name = 'grate-recess';
       recess.userData.dbgKind = 'floor';
@@ -225,7 +260,7 @@ function buildRoomShell(
       new THREE.MeshBasicMaterial({ color: CONFIG.GRATE_GLOW_COLOR }),
     );
     glow.rotation.x = -Math.PI / 2;
-    glow.position.set(gx, -CONFIG.GRATE_DEPTH_M + 0.5, gz);
+    glow.position.set(gx, elev - CONFIG.GRATE_DEPTH_M + 0.5, gz);
     glow.name = 'grate-glow';
     glow.userData.dbgKind = 'floor';
     glow.userData.dbgSource = `grate-glow · ${room.id}`;
@@ -255,6 +290,7 @@ function buildRoomShell(
       mergeGeometries(barGeos, false),
       new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.55, metalness: 0.55 }),
     );
+    bars.position.y = elev;
     bars.receiveShadow = true;
     bars.name = 'grate-bars';
     bars.userData.dbgKind = 'floor';
@@ -332,19 +368,35 @@ function buildRoomShell(
         [cx - sw / 2, cz + sd / 2],
       ]);
     }
-    ceiling = new THREE.Mesh(
-      ceilHoles.length > 0 ? makeFloorWithHoles(W, D, ceilHoles) : new THREE.PlaneGeometry(W, D),
-      materials.ceiling,
-    );
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set(rect.x, H, rect.z);
+    const ceilGeo: THREE.BufferGeometry = ceilHoles.length > 0
+      ? makeFloorWithHoles(W, D, ceilHoles)
+      : sloped ? makeJitteredPlane(W, D, { flat: true }) : new THREE.PlaneGeometry(W, D);
+    if (sloped) {
+      // Ramped corridor: the ceiling tracks the floor's grade so headroom
+      // stays constant down the slope. rotX +π/2 maps local (x, y, z) to
+      // world (x, -z, +y): displace local Z by the NEGATIVE target height.
+      const pos = ceilGeo.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) {
+        const wx = rect.x + pos.getX(i);
+        const wz = rect.z + pos.getY(i);
+        pos.setZ(i, -(groundYAt(wx, wz) + H));
+      }
+      ceilGeo.computeVertexNormals();
+      ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
+      ceiling.rotation.x = Math.PI / 2;
+      ceiling.position.set(rect.x, 0, rect.z);
+    } else {
+      ceiling = new THREE.Mesh(ceilGeo, materials.ceiling);
+      ceiling.rotation.x = Math.PI / 2;
+      ceiling.position.set(rect.x, elev + H, rect.z);
+    }
   } else {
     const rise = room.ceilingRise ?? (ceilStyle === 'barrel' ? 1.3 : 1.0);
     ceiling = new THREE.Mesh(
       makeArchedCeilingGeometry(W, D, H, rise, ceilStyle),
       archCeilingMaterial(materials.ceiling),
     );
-    ceiling.position.set(rect.x, 0, rect.z);   // geometry already in world-Y
+    ceiling.position.set(rect.x, elev, rect.z);   // geometry already in world-Y (above the room's floor)
   }
   ceiling.receiveShadow = true;
   ceiling.name = 'ceiling';
@@ -359,15 +411,15 @@ function buildRoomShell(
       new THREE.BoxGeometry(3.0, 0.8, 3.0),
       new THREE.MeshStandardMaterial({ color: 0x020203, roughness: 1.0 }),
     );
-    cavity.position.set(bx, H + 0.4, bz);
+    cavity.position.set(bx, elev + H + 0.4, bz);
     scene.add(cavity);
     // A snapped timber dangling through the hole + one wedged across it.
     const beamA = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.6, 0.1), materials.timber);
-    beamA.position.set(bx + 0.25, H - 0.55, bz - 0.1);
+    beamA.position.set(bx + 0.25, elev + H - 0.55, bz - 0.1);
     beamA.rotation.set(0.18, 0.4, 0.5);
     beamA.castShadow = true;
     const beamB = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 0.12), materials.timber);
-    beamB.position.set(bx - 0.15, H - 0.06, bz + 0.3);
+    beamB.position.set(bx - 0.15, elev + H - 0.06, bz + 0.3);
     beamB.rotation.set(0, buildRng() * Math.PI, 0.07);
     beamB.castShadow = true;
     scene.add(beamA, beamB);
@@ -386,13 +438,14 @@ function buildRoomShell(
       chunk.receiveShadow = true;
       heap.add(chunk);
     }
+    heap.position.y = elev;
     scene.add(heap);
   }
   if (shaftRect) {
     const wx = rect.x + shaftRect.cx;
     const wz = rect.z + shaftRect.cz;
     const shaft = new THREE.Mesh(
-      makeCeilingShaftGeometry(wx, wz, shaftRect.w, shaftRect.d, H, CONFIG.SHAFT_RISE_M, CONFIG.SHAFT_FADE_M),
+      makeCeilingShaftGeometry(wx, wz, shaftRect.w, shaftRect.d, elev + H, CONFIG.SHAFT_RISE_M, CONFIG.SHAFT_FADE_M),
       materials.chasmWall,
     );
     shaft.receiveShadow = true;
@@ -409,7 +462,7 @@ function buildRoomShell(
       new THREE.MeshBasicMaterial({ color: 0x05070c }),
     );
     cap.rotation.x = Math.PI / 2;   // face down the well
-    cap.position.set(wx, H + CONFIG.SHAFT_RISE_M, wz);
+    cap.position.set(wx, elev + H + CONFIG.SHAFT_RISE_M, wz);
     cap.name = 'ceiling-shaft-cap';
     cap.userData.dbgKind = 'ceiling';
     cap.userData.dbgSource = `ceiling-shaft-cap · ${room.id}`;
@@ -460,8 +513,8 @@ function buildRoomShell(
     const inward = we.side === 'N' || we.side === 'W' ? 1 : -1;
     const alongX = we.side === 'N' || we.side === 'S';
     for (const t of [
-      { y: 0.075, h: 0.15, depth: 0.07 },        // skirting
-      { y: H - 0.06, h: 0.12, depth: 0.055 },    // cornice
+      { y: elev + 0.075, h: 0.15, depth: 0.07 },        // skirting
+      { y: elev + H - 0.06, h: 0.12, depth: 0.055 },    // cornice
     ]) {
       const geo = new THREE.BoxGeometry(
         alongX ? segLen : t.depth,
@@ -482,8 +535,8 @@ function buildRoomShell(
     for (const seg of segments) {
       const segLen = seg.end - seg.start;
       if (segLen < 0.01) continue;
-      wallGeos.push(bakeWallSegmentGeometry(we, seg.start, seg.end, H));
-      if (room.wallVariant !== 'braced') trimSegment(we, we.perpCoord, seg.start, seg.end);
+      wallGeos.push(bakeWallSegmentGeometry(we, seg.start, seg.end, H + (elevHi - elevLo), elevLo));
+      if (room.wallVariant !== 'braced' && !sloped) trimSegment(we, we.perpCoord, seg.start, seg.end);
       // Record the segment as collision data. The XZ endpoints describe a
       // line in the floor plane along which the player cannot pass.
       if (we.perpAxis === 'z') {
@@ -520,7 +573,7 @@ function buildRoomShell(
     ];
     for (const [fx, fz, fw, fd] of frames) {
       const geo = new THREE.BoxGeometry(fw, ST, fd);
-      geo.translate(fx, H - ST / 2, fz);
+      geo.translate(fx, elev + H - ST / 2, fz);
       trimGeos.push(geo);
     }
   }
@@ -566,6 +619,7 @@ function bakeWallSegmentGeometry(
   segStart: number,
   segEnd: number,
   height: number,
+  baseY: number = 0,
 ): THREE.BufferGeometry {
   const segLen = segEnd - segStart;
   const segMid = (segStart + segEnd) / 2;
@@ -576,7 +630,7 @@ function bakeWallSegmentGeometry(
   else if (we.side === 'W') { yaw = Math.PI / 2; px = we.perpCoord; pz = segMid; }
   else { yaw = -Math.PI / 2; px = we.perpCoord; pz = segMid; }
   const m4 = new THREE.Matrix4().makeRotationY(yaw);
-  m4.setPosition(px, height / 2, pz);
+  m4.setPosition(px, baseY + height / 2, pz);
   geo.applyMatrix4(m4);
   return geo;
 }
@@ -694,6 +748,12 @@ export function buildLevel(
   // loot placement are reproducible for a given seed. Procgen stamps
   // spec.seed; hand-authored floors fall back to a stable hash of their id.
   seedBuildRng(spec.seed ?? hashStringToSeed(spec.id));
+
+  // Ground-elevation field FIRST — every placement below (shells, props,
+  // torches, mobs) samples groundYAt, so the field must be current before
+  // anything is positioned. Flat floors build a constant-0 field and every
+  // sample short-circuits.
+  setElevationField(buildElevationField(spec.rooms, spec.corridors));
 
   // Per-level lights start fresh. Persistent sources (the camera-
   // attached lantern) survive — see light-pool.clearLightPool.
@@ -981,6 +1041,10 @@ export function buildLevel(
     return false;
   };
   for (const prop of spec.props) {
+    // Ground height under this prop — 0 on flat floors. Every spawner
+    // below receives its base Y from here so props ride their room's
+    // elevation (and a prop in a sloped corridor sits on the ramp).
+    const gy = groundYAt(prop.x, prop.z);
     if (prop.kind === 'pillar') {
       if (pillarBlocksOpening(prop.x, prop.z)) continue;   // crowds a doorway — drop it
       const size = prop.size ?? PILLAR_DEFAULT_SIZE;
@@ -990,7 +1054,9 @@ export function buildLevel(
       // for the merge. (Merge, not InstancedMesh: pillars vary in height +
       // size, which one instanced geometry can't express without stretching
       // the cap/bead proportions.) The pooled source geometries are left
-      // intact; the clones get disposed after the merge.
+      // intact; the clones get disposed after the merge. Ground lift goes
+      // on the group BEFORE the bake so it rides into the merged mesh.
+      pillarGroup.position.y += gy;
       pillarGroup.updateMatrixWorld(true);
       pillarGroup.traverse((o) => {
         const mesh = o as THREE.Mesh;
@@ -1001,12 +1067,13 @@ export function buildLevel(
       obstacles.push({ kind: 'aabb', ...obstacle });
     } else if (prop.kind === 'altar') {
       const { group: altarGroup, obstacle } = buildAltarBlock(prop.x, prop.z, materials);
+      altarGroup.position.y += gy;
       root.add(altarGroup);
       markMergeStatic(altarGroup);   // static stone — fold into the per-room merge
       obstacles.push({ kind: 'aabb', ...obstacle, height: 0.9 });   // waist-high — shots fly over
     } else if (prop.kind === 'challenge-offering') {
       const rid = findRoomContaining(prop.x, prop.z, spec.rooms);
-      spawnChallengeOffering(root, new THREE.Vector3(prop.x, 0, prop.z), rid ?? '', spec.depth ?? 1, materials);
+      spawnChallengeOffering(root, new THREE.Vector3(prop.x, gy, prop.z), rid ?? '', spec.depth ?? 1, materials);
       if (rid) offeringRooms.add(rid);
       // Coffer footprint blocks movement; waist-high so shots clear it.
       obstacles.push({
@@ -1021,7 +1088,7 @@ export function buildLevel(
       // own shadow (world-Y driven, survives the static merge). Scaled by the
       // same SURFACE AO slider as the rest of the grounding.
       for (const m of built.materials.values()) installPropHeightAO(m);
-      built.group.position.set(prop.x, prop.y, prop.z);
+      built.group.position.set(prop.x, prop.y + gy, prop.z);
       if (prop.rotX) built.group.rotation.x = prop.rotX;
       if (prop.rotY) built.group.rotation.y = prop.rotY;
       if (prop.rotZ) built.group.rotation.z = prop.rotZ;
@@ -1108,7 +1175,7 @@ export function buildLevel(
       // opens from any fire. Players kept trying to touch them; now
       // the fire answers.
       if (prop.model.id === 'bonfire') {
-        const firePos = new THREE.Vector3(prop.x, 0, prop.z);
+        const firePos = new THREE.Vector3(prop.x, gy, prop.z);
         registerInteractable({
           id: generateEntityId('bonfire-tend'),
           position: firePos,
@@ -1184,7 +1251,7 @@ export function buildLevel(
         : undefined;
       spawnChest(
         root,
-        new THREE.Vector3(prop.x, 0, prop.z),
+        new THREE.Vector3(prop.x, gy, prop.z),
         prop.rotY ?? 0,
         prop.loot,
         prop.tier,
@@ -1192,7 +1259,7 @@ export function buildLevel(
         onMimic,
       );
     } else if (prop.kind === 'stash-chest') {
-      spawnStashChest(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0);
+      spawnStashChest(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0);
       obstacles.push({
         kind: 'aabb',
         minX: prop.x - 0.28, maxX: prop.x + 0.28,
@@ -1200,7 +1267,7 @@ export function buildLevel(
         height: 0.7,
       });
     } else if (prop.kind === 'corpse') {
-      spawnCorpse(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.note ?? '');
+      spawnCorpse(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, prop.note ?? '');
       // No collision — player can step over the body. Walking right up
       // to READ it shouldn't be blocked.
     } else if (prop.kind === 'boss-mist') {
@@ -1258,36 +1325,36 @@ export function buildLevel(
     } else if (prop.kind === 'spike-trap') {
       spawnSpikeTrap(
         root,
-        new THREE.Vector3(prop.x, 0, prop.z),
+        new THREE.Vector3(prop.x, gy, prop.z),
         prop.damage ?? 2,
         prop.telegraphTime ?? 0.45,
       );
       // No collision — the plate is flat with the floor. The DAMAGE is
       // the trap. Walking through is the point.
     } else if (prop.kind === 'fountain') {
-      spawnFountain(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, prop.variant ?? 'gamble');
+      spawnFountain(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, prop.variant ?? 'gamble');
       // Cylindrical collision — approximate the pedestal/bowl footprint.
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 0.85,
       });
     } else if (prop.kind === 'reliquary') {
-      spawnReliquary(root, new THREE.Vector3(prop.x, 0, prop.z), spec.depth ?? 1, materials);
+      spawnReliquary(root, new THREE.Vector3(prop.x, gy, prop.z), spec.depth ?? 1, materials);
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.45, height: 1.3,
       });
     } else if (prop.kind === 'tithe-basin') {
-      spawnTitheBasin(root, new THREE.Vector3(prop.x, 0, prop.z), spec.depth ?? 1, materials);
+      spawnTitheBasin(root, new THREE.Vector3(prop.x, gy, prop.z), spec.depth ?? 1, materials);
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.5, height: 0.85,
       });
     } else if (prop.kind === 'merchant') {
-      spawnMerchant(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0, spec.depth ?? 1);
+      spawnMerchant(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, spec.depth ?? 1);
       // Slim footprint — step around the hooded figure on the path.
       obstacles.push({
         kind: 'circle', x: prop.x, z: prop.z, r: 0.35, height: 1.6,
       });
     } else if (prop.kind === 'tome-pillar') {
-      spawnTomePillar(root, new THREE.Vector3(prop.x, 0, prop.z), prop.rotY ?? 0);
+      spawnTomePillar(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0);
       // Narrow pedestal footprint — tighter than the fountain so the
       // player can step around it on the central path without snagging.
       obstacles.push({
@@ -1307,7 +1374,7 @@ export function buildLevel(
         });
         spawnBloodAltar(
           root,
-          new THREE.Vector3(prop.x, 0, prop.z),
+          new THREE.Vector3(prop.x, gy, prop.z),
           prop.rotY ?? 0,
           item,
           materials,
@@ -1340,7 +1407,7 @@ export function buildLevel(
         // iteration wants the empty altars to become walkable.
         spawnStarterAltar(
           root,
-          new THREE.Vector3(prop.x, 0, prop.z),
+          new THREE.Vector3(prop.x, gy, prop.z),
           prop.rotY ?? 0,
           weapon,
           materials,
@@ -1390,9 +1457,13 @@ export function buildLevel(
   // drop — the carvings read as untextured.) materials.wall is double-sided, so
   // the inner faces render without a clone.
   if (spec.voids && spec.voids.length > 0) {
-    const dropGeo = makeChasmDropGeometry(spec.voids, CONFIG.CHASM_DROP_M, CONFIG.CHASM_FADE_M);
-    if (dropGeo) {
+    // One mesh PER VOID so each rim can sit at its own room's elevation
+    // (the geometry bakes the rim at world y=0; the mesh lifts it).
+    for (const v of spec.voids) {
+      const dropGeo = makeChasmDropGeometry([v], CONFIG.CHASM_DROP_M, CONFIG.CHASM_FADE_M);
+      if (!dropGeo) continue;
       const chasm = new THREE.Mesh(dropGeo, materials.chasmWall);
+      chasm.position.y = groundYAt(v.x, v.z);
       chasm.receiveShadow = true;
       chasm.name = 'chasm-drop';
       chasm.userData.dbgKind = 'wall';
@@ -1695,7 +1766,9 @@ export function buildLevel(
   for (const t of spec.torches) {
     const torch = createTorchlight(
       root,
-      new THREE.Vector3(t.x, t.height, t.z),
+      // TorchSpec.height is metres above the FLOOR — lift by the ground
+      // under the fixture so wall torches ride their room's elevation.
+      new THREE.Vector3(t.x, groundYAt(t.x, t.z) + t.height, t.z),
       torchYawForWall(t.wall),
       t.colorTint,
       t.intensityMul,
@@ -1773,7 +1846,7 @@ export function buildLevel(
       registerLight({
         id: `fill-${lightSerial++}`,
         category: 'environment',
-        position: new THREE.Vector3(fx, 1.4, fz),
+        position: new THREE.Vector3(fx, groundYAt(fx, fz) + 1.4, fz),
         color: fillColor,
         // The fill is the NAVIGABILITY FLOOR, not a light you notice:
         // broad window, gentle decay, low level. Torches paint pools
@@ -1866,7 +1939,7 @@ export function buildLevel(
     const resolved = walkable.resolveSpawn(pos.x, pos.z, enemySpec.collisionRadius);
     const e = createEnemy(
       root,
-      new THREE.Vector3(resolved.x, 0, resolved.z),
+      new THREE.Vector3(resolved.x, groundYAt(resolved.x, resolved.z), resolved.z),
       enemySpec,
       onEnemyDeath,
     );
@@ -1936,7 +2009,7 @@ export function buildLevel(
     const resolved = walkable.resolveSpawn(s.x, s.z, enemySpec.collisionRadius);
     const enemy = createEnemy(
       root,
-      new THREE.Vector3(resolved.x, 0, resolved.z),
+      new THREE.Vector3(resolved.x, groundYAt(resolved.x, resolved.z), resolved.z),
       enemySpec,
       onEnemyDeath,
       { dormant: s.dormant },

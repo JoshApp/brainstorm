@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundYAt } from './elevation';
 import { buildModel } from '../ecs/build-model';
 import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from '../content/vase';
 import { COBWEB_BARRIER } from '../content/cobweb';
@@ -83,7 +84,7 @@ export function spawnVase(
   const variant = pickVariant();
   const built = buildModel(variant.model);
   const group = built.group;
-  group.position.set(x, 0, z);
+  group.position.set(x, groundYAt(x, z), z);
   group.rotation.y = buildRng() * Math.PI * 2;
   // Scale jitter — 90-115% so vases in a cluster don't all read
   // the same height.
@@ -145,7 +146,7 @@ export function spawnVase(
       // so the "reward" should match.
       const goldChance  = isBroken ? VASE_GOLD_CHANCE * 0.25 : VASE_GOLD_CHANCE;
       const potionChance = isBroken ? 0 : VASE_POTION_CHANCE;
-      const dropY = 0.25;
+      const dropY = group.position.y + 0.25;
       tmpDropPos.set(group.position.x, dropY, group.position.z);
       if (gameRngChance(goldChance)) {
         const amt = gameRngInt(VASE_GOLD_MIN, VASE_GOLD_MAX);
@@ -198,7 +199,7 @@ export function spawnCobweb(
   const entityId = generateEntityId('prop');
   const built = buildModel(COBWEB_BARRIER);
   const group = built.group;
-  group.position.set(x, 0, z);
+  group.position.set(x, groundYAt(x, z), z);
   group.rotation.y = rotY;
   // Widen the curtain along its local X (the passage-crossing axis) before
   // rotY orients it. Scaled, not rebuilt, so the gossamer layering is kept.

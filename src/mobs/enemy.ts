@@ -22,6 +22,7 @@ import { levelHasFogWall } from '../ui/boss-engagement';
 import { applyTelegraphPose, type TelegraphNodes, type TelegraphStyle } from './pose-clips';
 import type { WalkableRegion } from '../level/walkable';
 import type { NavGrid, Waypoint } from '../level/nav-grid';
+import { groundYAt } from '../level/elevation';
 import {
   spawn as spawnEntity,
   destroy as destroyEntity,
@@ -796,6 +797,9 @@ export function createEnemy(
     }
     container.position.x = resolved.x;
     container.position.z = resolved.z;
+    // Stand on the ground under our feet — 0 on flat floors; follows
+    // room plateaus + corridor ramps on floors with elevation.
+    container.position.y = groundYAt(resolved.x, resolved.z);
   }
 
   // Death sequence — once hp hits zero we DON'T immediately remove the
@@ -1251,14 +1255,14 @@ export function createEnemy(
           const u = (t - riseFrac) / (1 - riseFrac);     // 0→1 over the descent
           vy = 1 - u * u * (3 - 2 * u);                  // 1→0, slow-fast-slow (soft landing)
         }
-        container.position.y = action.arcHeight * vy;
+        container.position.y = groundYAt(container.position.x, container.position.z) + action.arcHeight * vy;
         faceXZ(dest.x, dest.z);
 
         if (t >= 1) {
-          container.position.y = 0;
+          container.position.y = groundYAt(container.position.x, container.position.z);
           // Write the landing anchor so a follow-up step (a puddle) can
           // build on the impact point, and emit the 'land' event.
-          landing.set(container.position.x, 0, container.position.z);
+          landing.set(container.position.x, container.position.y, container.position.z);
           if (action.shake) kickShake(action.shake, action.shakeDuration ?? 0.4);
           const dx = playerPos.x - container.position.x;
           const dz = playerPos.z - container.position.z;
@@ -1996,7 +2000,7 @@ export function createEnemy(
           // Safety: snap any in-air leap Y back to ground if the touchdown
           // didn't catch the final frame (dt overshoot), so the enemy
           // can't end up floating at the arc peak.
-          container.position.y = 0;
+          container.position.y = groundYAt(container.position.x, container.position.z);
         }
         break;
       }

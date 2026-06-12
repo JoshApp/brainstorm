@@ -63,6 +63,7 @@ const VIEWPORTS: Record<string, { width: number; height: number; deviceScaleFact
 // the death sequence is several seconds before the end screen).
 const LONG_WAIT_SCENARIOS = new Set([
   'death', 'title', 'title-continue', 'title-veteran', 'end', 'codex', 'stash',
+  'elevation-lab',   // descent title card covers the frame for ~1.6s
 ]);
 
 // Contact-sheet column count by frame count. Hand-picked for the
