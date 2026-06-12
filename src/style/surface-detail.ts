@@ -260,9 +260,11 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       gSplatSeam = 1.0 - smoothstep(0.35, 0.70, s.a);
       gSplatWet = clamp(spl.a, 0.0, 1.0) * (0.80 + 0.35 * gSplatSeam);
       // Pools touch the world in 3D: the map is XZ, so fade by height —
-      // floors (y≈0) read fully, wall bases and prop feet take the
-      // stain up to ~half a metre, nothing floats blood mid-air.
-      gSplatWet *= clamp(1.0 - vWorldPos.y / 0.55, 0.0, 1.0);
+      // floors (y≈0) read fully; wall bases and prop feet take the
+      // stain. The reach is DYNAMIC: heavier pools push higher up the
+      // stone (a death at the wall climbs ~1.2m; a speckle barely
+      // licks the skirting).
+      gSplatWet *= clamp(1.0 - vWorldPos.y / (0.28 + min(spl.a, 1.0) * 0.95), 0.0, 1.0);
       gSplatColor = spl.rgb;
       ${cfg.proj === 'wall' ? `
       // IMPACT ARCS — the wall map (deaths + crits thrown against this
@@ -274,7 +276,12 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         float pc = mix((vWorldPos.z - uSplatB.y) / uSplatB.w, (vWorldPos.x - uSplatB.x) / uSplatB.z, xf);
         vec2 wuv = vec2(along * 0.5 + (1.0 - xf) * 0.5, clamp(vWorldPos.y / 3.5, 0.0, 1.0));
         vec4 wspl = texture2D(uSplatWallT, wuv) * uSplatO;
-        float match = 1.0 - smoothstep(0.012, 0.030, abs(wspl.b - pc));
+        // Plane match in METRES, not normalized units — 0.03 normalized
+        // was ~1.8m of slop on a big floor: stains ghosted onto
+        // parallel walls rooms away. Tolerance is now a fixed 0.5m.
+        float axisExtent = mix(uSplatB.z, uSplatB.w, 1.0 - xf);
+        float planeErrM = abs(wspl.b - pc) * axisExtent;
+        float match = 1.0 - smoothstep(0.30, 0.50, planeErrM);
         float ww = clamp(wspl.a, 0.0, 1.0) * match;
         if (ww > gSplatWet) {
           gSplatWet = ww;

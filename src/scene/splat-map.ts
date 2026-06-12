@@ -138,6 +138,10 @@ export function initSplatMap(): void {
         float thin = streakK > 0.5 ? (1.0 - along * 0.45) : 1.0;
         float spatter = inBlob * (1.0 - smoothstep(0.55, 1.15, d)) * thin;
         float a = clamp(max(body, spatter), 0.0, 1.0) * uAlpha;
+        // Quad-edge guard: the lobes can push past the quad bounds and
+        // CLIP into dead-straight edges (the flat line at the impact
+        // side of death pools). Fade everything out before the border.
+        a *= smoothstep(1.0, 0.82, max(abs(pl.x), abs(pl.y)));
         // WALL ARC (uStreak=2): a messy splotch with DRIPS — gravity is
         // what makes wall blood read as wall blood. The body sits in
         // the upper half; thin runs of varying length descend from it.
@@ -249,18 +253,22 @@ export function emitGoreSplash(
   x: number, z: number, y: number,
   dirX: number, dirZ: number,
   energy: number, colorHex: number,
-  opts?: { wallFallbackCardinals?: boolean },
+  opts?: { wallFallbackCardinals?: boolean; sizeMul?: number },
 ): void {
   const e = Math.max(0, Math.min(1.6, energy));
   if (e < 0.05) return;
   const len = Math.hypot(dirX, dirZ) || 1;
   const dx = dirX / len, dz = dirZ / len;
   if (import.meta.env.DEV) markGoreThrow(x, z, y, dx, dz, e);
-  // Floor: puddle + streak + droplets, all energy-scaled.
-  const r = 0.22 + 0.38 * e;
-  if (import.meta.env.DEV) { markGoreStamp(x, z, r * 0.75); markGoreStamp(x + dx * r, z + dz * r, r); }
-  stampSplat(x, z, r * 0.75, colorHex, 0.35 + 0.4 * e);
-  stampSplat(x + dx * r, z + dz * r, r, colorHex, (0.3 + 0.4 * e), { x: dx, z: dz });
+  // Floor: puddle + streak + droplets, all energy-scaled and biased
+  // INTO the throw — the spill belongs on the kill side, not at the
+  // killer's feet.
+  const r = (0.22 + 0.38 * e) * (opts?.sizeMul ?? 1);
+  const px2 = x + dx * r * 0.4, pz2 = z + dz * r * 0.4;
+  const sx2 = x + dx * r * 1.25, sz2 = z + dz * r * 1.25;
+  if (import.meta.env.DEV) { markGoreStamp(px2, pz2, r * 0.75); markGoreStamp(sx2, sz2, r); }
+  stampSplat(px2, pz2, r * 0.75, colorHex, 0.35 + 0.4 * e);
+  stampSplat(sx2, sz2, r, colorHex, (0.3 + 0.4 * e), { x: dx, z: dz });
   const sats = Math.round(e * 2.2);
   for (let i = 0; i < sats; i++) {
     const t = 1.1 + Math.random() * 1.3;

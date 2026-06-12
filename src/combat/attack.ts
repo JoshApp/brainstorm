@@ -676,6 +676,7 @@ export function createCombatSystem(
             nfz * forwardK + rz * lateral,
             energy,
             (target as { bloodColor?: number }).bloodColor ?? 0x6e1410,
+            { sizeMul: Math.min(1.8, 0.75 + ((target as { collisionRadius?: number }).collisionRadius ?? 0.3) * 0.9) },
           );
         }
       }

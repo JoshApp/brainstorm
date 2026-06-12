@@ -950,7 +950,7 @@ export function createEnemy(
           container.position.x - lastPlayerXZ.x,
           container.position.z - lastPlayerXZ.z,
           1.4 * gore, bloodC,
-          { wallFallbackCardinals: true },
+          { wallFallbackCardinals: true, sizeMul: Math.min(1.8, 0.75 + spec.collisionRadius * 0.9) },
         );
       }
       // Split-on-death — fire the builder's spawn callback so any

@@ -357,7 +357,13 @@ initLevelLoader({
       for (let t = 0.15; t <= 1.35; t += 0.15) {
         const nx = x + dx * t, nz = z + dz * t;
         if (!w.contains(nx, nz, 0.05)) {
-          const xCross = !w.contains(nx, pz, 0.05);
+          // Which axis did we cross into? Test each axis-step alone;
+          // ambiguous corners tie-break by the march's dominant axis
+          // (the old x-only test misclassified corners → stains on
+          // the PERPENDICULAR wall).
+          const xBlocked = !w.contains(nx, pz, 0.05);
+          const zBlocked = !w.contains(px, nz, 0.05);
+          const xCross = xBlocked === zBlocked ? Math.abs(dx) >= Math.abs(dz) : xBlocked;
           return xCross
             ? { axis: 'x' as const, plane: (px + nx) / 2, along: (pz + nz) / 2 }
             : { axis: 'z' as const, plane: (pz + nz) / 2, along: (px + nx) / 2 };
