@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
+import { uSplatTex, uSplatWallTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 
 // Surface detail for the big stone surfaces — now driven by BAKED, MIPMAPPED
 // tiling textures (see surface-textures.ts) rather than a per-pixel procedural
@@ -120,6 +120,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     shader.uniforms.uSeepTime = uSeepTime;
     shader.uniforms.uWetness = uWetness;
     shader.uniforms.uSplatT = uSplatTex as unknown as THREE.IUniform;
+    shader.uniforms.uSplatWallT = uSplatWallTex as unknown as THREE.IUniform;
     shader.uniforms.uSplatB = uSplatBounds;
     shader.uniforms.uSplatO = uSplatOn;
     shader.uniforms.uSurfTex = { value: cfg.tex };
@@ -145,12 +146,12 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         : 'vec2 sUv = vWorldPos.xz;';
 
     shader.fragmentShader =
-      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nuniform vec3 uSeepTint;\nuniform float uSeepStrength;\nuniform float uSeepTime;\nuniform float uWetness;\nuniform sampler2D uSplatT;\nuniform vec4 uSplatB;\nuniform float uSplatO;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\nfloat seepNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); vec3 h0=fract(vec3(i,i.x+i.y)*0.3183099+0.1); h0*=17.0; vec3 h1=fract(vec3(i+vec2(1.0,0.0),i.x+i.y+1.0)*0.3183099+0.1); h1*=17.0; vec3 h2=fract(vec3(i+vec2(0.0,1.0),i.x+i.y+1.0)*0.3183099+0.1); h2*=17.0; vec3 h3=fract(vec3(i+vec2(1.0,1.0),i.x+i.y+2.0)*0.3183099+0.1); h3*=17.0; float n00=fract(h0.x*h0.y*h0.z*(h0.x+h0.y+h0.z)); float n10=fract(h1.x*h1.y*h1.z*(h1.x+h1.y+h1.z)); float n01=fract(h2.x*h2.y*h2.z*(h2.x+h2.y+h2.z)); float n11=fract(h3.x*h3.y*h3.z*(h3.x+h3.y+h3.z)); return mix(mix(n00,n10,f.x),mix(n01,n11,f.x),f.y); }\n' +
+      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nuniform vec3 uSeepTint;\nuniform float uSeepStrength;\nuniform float uSeepTime;\nuniform float uWetness;\nuniform sampler2D uSplatT;\nuniform sampler2D uSplatWallT;\nuniform vec4 uSplatB;\nuniform float uSplatO;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\nfloat seepNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); vec3 h0=fract(vec3(i,i.x+i.y)*0.3183099+0.1); h0*=17.0; vec3 h1=fract(vec3(i+vec2(1.0,0.0),i.x+i.y+1.0)*0.3183099+0.1); h1*=17.0; vec3 h2=fract(vec3(i+vec2(0.0,1.0),i.x+i.y+1.0)*0.3183099+0.1); h2*=17.0; vec3 h3=fract(vec3(i+vec2(1.0,1.0),i.x+i.y+2.0)*0.3183099+0.1); h3*=17.0; float n00=fract(h0.x*h0.y*h0.z*(h0.x+h0.y+h0.z)); float n10=fract(h1.x*h1.y*h1.z*(h1.x+h1.y+h1.z)); float n01=fract(h2.x*h2.y*h2.z*(h2.x+h2.y+h2.z)); float n11=fract(h3.x*h3.y*h3.z*(h3.x+h3.y+h3.z)); return mix(mix(n00,n10,f.x),mix(n01,n11,f.x),f.y); }\n' +
       shader.fragmentShader.replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
   ${!cfg.grooveFill ? 'float gSeepH = 1.0;\nvec2 gSeepUv = vec2(0.0);' : ''}
-  ${cfg.splat ? 'float gSplatWet = 0.0;\n  vec3 gSplatColor = vec3(0.0);' : ''}
+  ${cfg.splat ? 'float gSplatWet = 0.0;\n  float gSplatSeam = 0.0;\n  vec3 gSplatColor = vec3(0.0);' : ''}
   if (uDetailStrength > 0.0) {
     ${projGLSL}
     vec2 uvT = sUv / uSurfTile;
@@ -256,8 +257,31 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     {
       vec2 spUv = (vWorldPos.xz - uSplatB.xy) / uSplatB.zw;
       vec4 spl = texture2D(uSplatT, spUv) * uSplatO;
-      gSplatWet = clamp(spl.a, 0.0, 1.0) * (0.80 + 0.35 * (1.0 - smoothstep(0.35, 0.70, s.a)));
+      gSplatSeam = 1.0 - smoothstep(0.35, 0.70, s.a);
+      gSplatWet = clamp(spl.a, 0.0, 1.0) * (0.80 + 0.35 * gSplatSeam);
+      // Pools touch the world in 3D: the map is XZ, so fade by height —
+      // floors (y≈0) read fully, wall bases and prop feet take the
+      // stain up to ~half a metre, nothing floats blood mid-air.
+      gSplatWet *= clamp(1.0 - vWorldPos.y / 0.55, 0.0, 1.0);
       gSplatColor = spl.rgb;
+      ${cfg.proj === 'wall' ? `
+      // IMPACT ARCS — the wall map (deaths + crits thrown against this
+      // wall). Plane-coordinate check in B kills ghosting between
+      // parallel walls sharing an axis. Strongest signal wins.
+      {
+        float xf = step(abs(vWorldNormal.z), abs(vWorldNormal.x));
+        float along = mix((vWorldPos.x - uSplatB.x) / uSplatB.z, (vWorldPos.z - uSplatB.y) / uSplatB.w, xf);
+        float pc = mix((vWorldPos.z - uSplatB.y) / uSplatB.w, (vWorldPos.x - uSplatB.x) / uSplatB.z, xf);
+        vec2 wuv = vec2(along * 0.5 + (1.0 - xf) * 0.5, clamp(vWorldPos.y / 3.5, 0.0, 1.0));
+        vec4 wspl = texture2D(uSplatWallT, wuv) * uSplatO;
+        float match = 1.0 - smoothstep(0.012, 0.030, abs(wspl.b - pc));
+        float ww = clamp(wspl.a, 0.0, 1.0) * match;
+        if (ww > gSplatWet) {
+          gSplatWet = ww;
+          gSplatColor = vec3(wspl.r, wspl.g, min(wspl.r, wspl.g) * 0.5);
+        }
+      }
+      ` : ''}
     }
     ` : ''}
     // ALBEDO — grayscale shade * per-surface tint (warm floor / cold ceiling).
@@ -279,13 +303,27 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     float lum = dot(outgoingLight, vec3(0.45, 0.35, 0.2));
     // The stored stamp colour carries species (red blood, green ichor,
     // pale dust) AND age: drying desaturates toward brown-black, so
-    // SATURATION is freshness — no extra channel needed.
+    // SATURATION is freshness — no extra channel needed. Fresh blood
+    // FLOWS and GLISTENS below; dried blood and bone dust lie matte —
+    // the shine is earned, never ambient.
     float maxc = max(gSplatColor.r, max(gSplatColor.g, gSplatColor.b));
     float minc = min(gSplatColor.r, min(gSplatColor.g, gSplatColor.b));
     float fresh = smoothstep(0.08, 0.40, maxc - minc);
     vec3 hue = gSplatColor / max(maxc, 0.10);
-    vec3 stain = lum * hue * mix(0.55, 1.45, fresh);
+    // FLOW — while fresh, a slow creep animates the stain inside the
+    // flagstone seams (the seep system's trick): blood still moving.
+    float flow = 0.0;
+    if (fresh > 0.05 && gSplatSeam > 0.05) {
+      flow = seepNoise(vWorldPos.xz * 2.6 - vec2(0.0, uSeepTime * 0.10));
+      flow = smoothstep(0.45, 0.9, flow) * gSplatSeam * fresh;
+    }
+    vec3 stain = lum * hue * (mix(0.55, 1.45, fresh) + flow * 0.55);
     outgoingLight = mix(outgoingLight, stain, min(gSplatWet, 1.0) * 0.9);
+    // GLISTEN — a grazing-angle sheen on FRESH blood only, applied at
+    // composite so the quantize can't eat it. Low-frequency by
+    // construction (geometric normal dominates), modest by doctrine.
+    float graze = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 3.0);
+    outgoingLight += hue * (lum + 0.06) * graze * fresh * min(gSplatWet, 1.0) * 0.85;
   }
   #include <opaque_fragment>`,
       );

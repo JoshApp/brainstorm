@@ -17,8 +17,19 @@ import * as THREE from 'three';
 // surface-detail.ts wires into the floor material once.
 
 const SIZE = 1024;
+// Wall arc map: 1024×512, split halves by wall facing (left = X-facing
+// walls keyed by worldZ, right = Z-facing keyed by worldX), v = worldY
+// over a 3.5m height window. Channels: RG = stain colour (B is
+// reconstructed at read), B = the wall's PLANE COORDINATE (kills
+// ghosting between parallel walls sharing an axis), A = wetness.
+// Wall arcs don't dry (the drying lerp would corrupt the B channel) —
+// they're rare, deliberate marks: deaths and crits only.
+const WALL_W = 1024;
+const WALL_H = 512;
+const WALL_HEIGHT_M = 3.5;
 
 let rt: THREE.WebGLRenderTarget | null = null;
+let wallRt: THREE.WebGLRenderTarget | null = null;
 let stampScene: THREE.Scene | null = null;
 let stampCam: THREE.OrthographicCamera | null = null;
 let stampMesh: THREE.Mesh | null = null;
@@ -29,11 +40,26 @@ let needsClear = true;
 export const uSplatTex = { value: null as THREE.Texture | null };
 export const uSplatBounds = { value: new THREE.Vector4(0, 0, 1, 1) };  // minX, minZ, sizeX, sizeZ
 export const uSplatOn = { value: 0 };
+export const uSplatWallTex = { value: null as THREE.Texture | null };
+
+/** Wall probe — registered by main per floor. Given a point + throw
+ *  direction, returns the first axis-aligned wall within reach. */
+export type WallHit = { axis: 'x' | 'z'; plane: number; along: number };
+let wallProbe: ((x: number, z: number, dx: number, dz: number) => WallHit | null) | null = null;
+export function setSplatWallProbe(fn: typeof wallProbe): void {
+  wallProbe = fn;
+}
 
 interface Stamp {
   x: number; z: number; r: number; color: THREE.Color; a: number; seed: number;
   /** Direction (map-space, normalized) for streak splats; null = radial pool. */
   dir: { x: number; z: number } | null;
+  /** 'floor' renders into the XZ map; 'wall' into the wall-arc map
+   *  (x/z are then map UV, r pre-scaled, rot in radians). */
+  surface: 'floor' | 'wall';
+  rot?: number;
+  scaleX?: number;
+  scaleY?: number;
 }
 const queue: Stamp[] = [];
 
@@ -57,6 +83,13 @@ export function initSplatMap(): void {
     depthBuffer: false,
   });
   uSplatTex.value = rt.texture;
+  wallRt = new THREE.WebGLRenderTarget(WALL_W, WALL_H, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    depthBuffer: false,
+  });
+  uSplatWallTex.value = wallRt.texture;
 
   stampScene = new THREE.Scene();
   stampCam = new THREE.OrthographicCamera(0, 1, 1, 0, -1, 1);
@@ -149,6 +182,7 @@ export function resetSplatMap(minX: number, minZ: number, sizeX: number, sizeZ: 
   uSplatOn.value = 1;
   queue.length = 0;
   needsClear = true;
+  wallProbe = null;   // stale probes reference the dead floor's walkable
 }
 
 /** Queue a splat. x/z world; radius metres; alpha = wetness added. */
@@ -166,7 +200,41 @@ export function stampSplat(
     const len = Math.hypot(dir.x, dir.z);
     if (len > 0.001) d = { x: dir.x / len, z: dir.z / len };
   }
-  queue.push({ x: u, z: v, r: radius / Math.max(b.z, b.w), color: new THREE.Color(colorHex), a: alpha, seed: Math.random(), dir: d });
+  queue.push({ x: u, z: v, r: radius / Math.max(b.z, b.w), color: new THREE.Color(colorHex), a: alpha, seed: Math.random(), dir: d, surface: 'floor' });
+}
+
+/** Throw an arc onto the nearest wall along the throw direction
+ *  (deaths + crits). Uses the per-floor wall probe; silently does
+ *  nothing in open space. */
+export function stampWallArc(
+  x: number, z: number, y: number, dirX: number, dirZ: number,
+  colorHex: number, alpha = 0.8, size = 0.55,
+): void {
+  if (!rt || !wallProbe) return;
+  const len = Math.hypot(dirX, dirZ) || 1;
+  const hit = wallProbe(x, z, dirX / len, dirZ / len);
+  if (!hit) return;
+  const b = uSplatBounds.value;
+  // Mirror of the wall-shader mapping (surface-detail.ts): X-facing
+  // walls key by Z in the left half; Z-facing by X in the right.
+  const along = hit.axis === 'x' ? (hit.along - b.y) / b.w : (hit.along - b.x) / b.z;
+  const pc = hit.axis === 'x' ? (hit.plane - b.x) / b.z : (hit.plane - b.y) / b.w;
+  if (along < 0 || along > 1) return;
+  const u = hit.axis === 'x' ? along * 0.5 : 0.5 + along * 0.5;
+  const v = Math.max(0, Math.min(1, y / WALL_HEIGHT_M));
+  const c = new THREE.Color(colorHex);
+  queue.push({
+    x: u, z: v,
+    r: size,
+    color: new THREE.Color(c.r, c.g, pc),   // B carries the plane coordinate
+    a: alpha,
+    seed: Math.random(),
+    dir: null,
+    surface: 'wall',
+    rot: (Math.random() - 0.5) * 0.5,
+    scaleX: (size * 2.2) / (hit.axis === 'x' ? b.w : b.z) * 0.5,
+    scaleY: (size * 0.9) / WALL_HEIGHT_M,
+  });
 }
 
 /** Directional spray: a stretched streak stamp plus satellite droplets
@@ -204,14 +272,24 @@ export function flushSplats(renderer: THREE.WebGLRenderer): void {
   if (needsClear) {
     renderer.setClearColor(0x000000, 0);
     renderer.clear(true, false, false);
+    if (wallRt) {
+      renderer.setRenderTarget(wallRt);
+      renderer.clear(true, false, false);
+      renderer.setRenderTarget(rt);
+    }
     needsClear = false;
   }
   renderer.autoClear = false;
   for (const s of queue.splice(0)) {
     // Quad sized (and for streaks: rotated + stretched) to the splat —
     // fragment work proportional to the stain, not the map.
+    renderer.setRenderTarget(s.surface === 'wall' && wallRt ? wallRt : rt);
     stampMesh.position.set(s.x, s.z, 0);
-    if (s.dir) {
+    if (s.surface === 'wall') {
+      stampMesh.rotation.z = s.rot ?? 0;
+      stampMesh.scale.set(s.scaleX ?? 0.05, s.scaleY ?? 0.05, 1);
+      stampMat.uniforms.uStreak.value = 0;
+    } else if (s.dir) {
       stampMesh.rotation.z = Math.atan2(s.dir.z, s.dir.x);
       stampMesh.scale.set(s.r * 2 * 1.9, s.r * 2 * 0.6, 1);
       stampMat.uniforms.uStreak.value = 1;

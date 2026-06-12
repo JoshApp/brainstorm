@@ -6,6 +6,7 @@ import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, V
 import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
+import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
 } from '../scene/geometry-pool';
@@ -320,7 +321,14 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
   const hasRim = !!def.rim;
   const hasDissolve = !!def.dissolvable;
   const hasChroma = def.chroma != null && def.chroma !== 1;
-  if (!hasRim && !hasDissolve && !hasChroma) return;
+  // GORE CREEP — every opaque lit prop/creature surface samples the
+  // floor's splat map by world XZ with a height fade: crates standing
+  // in pools get bloodied at the base, mobs wading through gore pick
+  // it up on their feet. Per-fragment world position means instanced
+  // batches work unmodified. Skipped for transparent/additive
+  // materials (blood on a flame would be wrong).
+  const hasGore = mat.transparent !== true && mat.blending === THREE.NormalBlending;
+  if (!hasRim && !hasDissolve && !hasChroma && !hasGore) return;
 
   const uRimColor   = { value: new THREE.Color(def.rim?.color ?? 0xffffff) };
   const uRimPower   = { value: def.rim?.power ?? 2.5 };
@@ -334,7 +342,7 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
 
   // Stable cache key so two wraiths (different instances, same def shape)
   // hit the same compiled program. Different shapes get different keys.
-  const cacheKey = `enemy-ext|${hasRim ? '1' : '0'}|${hasDissolve ? '1' : '0'}|${hasChroma ? '1' : '0'}`;
+  const cacheKey = `enemy-ext|${hasRim ? '1' : '0'}|${hasDissolve ? '1' : '0'}|${hasChroma ? '1' : '0'}|${hasGore ? '1' : '0'}`;
   mat.customProgramCacheKey = () => cacheKey;
 
   mat.onBeforeCompile = (shader) => {
@@ -350,6 +358,11 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
     if (hasDissolve) {
       shader.uniforms.uDissolve  = uDissolve;
     }
+    if (hasGore) {
+      shader.uniforms.uSplatT = uSplatTex as unknown as THREE.IUniform;
+      shader.uniforms.uSplatB = uSplatBounds as unknown as THREE.IUniform;
+      shader.uniforms.uSplatO = uSplatOn as unknown as THREE.IUniform;
+    }
 
     // Vertex: capture local position so the dissolve noise is stable in
     // world (doesn't shift as the camera moves). `transformed` is the
@@ -359,6 +372,21 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       shader.vertexShader = `varying vec3 vLocalPos;\n${shader.vertexShader}`.replace(
         '#include <begin_vertex>',
         '#include <begin_vertex>\nvLocalPos = transformed;',
+      );
+    }
+    if (hasGore) {
+      // Instancing-aware world position (the batched creatures are
+      // InstancedMeshes — modelMatrix alone would park them at origin).
+      shader.vertexShader = `varying vec3 vGoreWorld;\n${shader.vertexShader}`.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+{
+  vec4 gw = vec4(transformed, 1.0);
+  #ifdef USE_INSTANCING
+    gw = instanceMatrix * gw;
+  #endif
+  vGoreWorld = (modelMatrix * gw).xyz;
+}`,
       );
     }
 
@@ -377,9 +405,31 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
     if (hasChroma) {
       frag += 'uniform float uChroma;\n';
     }
+    if (hasGore) {
+      frag += 'varying vec3 vGoreWorld;\nuniform sampler2D uSplatT;\nuniform vec4 uSplatB;\nuniform float uSplatO;\n';
+    }
     shader.fragmentShader = frag + shader.fragmentShader;
 
     const injection = `
+      ${hasGore ? `
+      // Gore creep — same composite-stage recolour as the floors
+      // (albedo math dies under the PSX quantize on dark surfaces).
+      {
+        vec2 gUv = (vGoreWorld.xz - uSplatB.xy) / uSplatB.zw;
+        if (gUv.x > 0.0 && gUv.x < 1.0 && gUv.y > 0.0 && gUv.y < 1.0) {
+          vec4 gs = texture2D(uSplatT, gUv) * uSplatO;
+          float gw = clamp(gs.a, 0.0, 1.0) * clamp(1.0 - vGoreWorld.y / 0.55, 0.0, 1.0);
+          if (gw > 0.004) {
+            float glum = dot(gl_FragColor.rgb, vec3(0.45, 0.35, 0.2));
+            float gmaxc = max(gs.r, max(gs.g, gs.b));
+            float gminc = min(gs.r, min(gs.g, gs.b));
+            float gfresh = smoothstep(0.08, 0.40, gmaxc - gminc);
+            vec3 ghue = gs.rgb / max(gmaxc, 0.10);
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, glum * ghue * mix(0.55, 1.45, gfresh), gw * 0.8);
+          }
+        }
+      }
+      ` : ''}
       ${hasChroma ? `
       // PAINTED mode — push the fully-lit colour away from its own luma to
       // over-saturate whatever coloured light the room cast onto this pale

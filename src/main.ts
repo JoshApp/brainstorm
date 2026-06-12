@@ -27,7 +27,7 @@ import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift } from './style/render-target';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
-import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray } from './scene/splat-map';
+import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, setSplatWallProbe } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
@@ -340,6 +340,24 @@ initLevelLoader({
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
     setCameraYaw(level.playerSpawn.yaw);
+    // Wall probe for blood arcs: march from the hit point along the
+    // throw until the walkable grid goes solid — that's the wall.
+    setSplatWallProbe((x, z, dx, dz) => {
+      const w = (level as { walkable?: { contains(x: number, z: number, r: number): boolean } }).walkable;
+      if (!w) return null;
+      let px = x, pz = z;
+      for (let t = 0.15; t <= 1.35; t += 0.15) {
+        const nx = x + dx * t, nz = z + dz * t;
+        if (!w.contains(nx, nz, 0.05)) {
+          const xCross = !w.contains(nx, pz, 0.05);
+          return xCross
+            ? { axis: 'x' as const, plane: (px + nx) / 2, along: (pz + nz) / 2 }
+            : { axis: 'z' as const, plane: (pz + nz) / 2, along: (px + nx) / 2 };
+        }
+        px = nx; pz = nz;
+      }
+      return null;
+    });
     setCameraPitch(0);   // forget the stairs — wake looking level
     // Wake seated at the threshold bonfire. FULL ceremony (heavy blink,
     // blur-to-focus) where the fiction says you slept: the run's first

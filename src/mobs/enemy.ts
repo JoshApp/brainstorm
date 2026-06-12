@@ -7,7 +7,7 @@ import { kickShake } from '../combat/screen-shake';
 import { spawnHazardField } from '../combat/hazard-field';
 import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
-import { stampSplat, stampSpray } from '../scene/splat-map';
+import { stampSplat, stampSpray, stampWallArc } from '../scene/splat-map';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
@@ -942,11 +942,18 @@ export function createEnemy(
       if (gore > 0.01) {
         const bloodC = spec.bloodColor ?? 0x5e1210;
         stampSplat(container.position.x, container.position.z, (0.7 + Math.random() * 0.4) * gore, bloodC, 0.9 * gore);
+        const ddx = container.position.x - lastPlayerXZ.x;
+        const ddz = container.position.z - lastPlayerXZ.z;
         stampSpray(
           container.position.x, container.position.z,
           0.5 * gore, bloodC, 0.7 * gore,
-          container.position.x - lastPlayerXZ.x,
-          container.position.z - lastPlayerXZ.z,
+          ddx, ddz,
+        );
+        // The killing blow arcs the wall behind, if one is close.
+        stampWallArc(
+          container.position.x, container.position.z,
+          0.7 + Math.random() * 0.4,
+          ddx, ddz, bloodC, 0.85 * gore, 0.55 * gore,
         );
       }
       // Split-on-death — fire the builder's spawn callback so any

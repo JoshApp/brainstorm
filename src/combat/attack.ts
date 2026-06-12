@@ -5,7 +5,7 @@ import type { Enemy } from '../mobs/enemy';
 import type { Destructible } from '../level/destructibles';
 import type { Damageable } from './damageable';
 import { freezeFor } from './hit-pause';
-import { stampSpray } from '../scene/splat-map';
+import { stampSpray, stampWallArc } from '../scene/splat-map';
 import { kickShake } from './screen-shake';
 import { playImpact, playWhoosh, playBuffApply, playSurfaceHit } from '../audio/sfx';
 import { applyViewmodelKickback } from '../player/viewmodel-pullback';
@@ -646,15 +646,26 @@ export function createCombatSystem(
       if (applied > 0) {
         const gore = (target as { bloodAmount?: number }).bloodAmount ?? 1;
         if (gore > 0.01) {
+          const bloodC = (target as { bloodColor?: number }).bloodColor ?? 0x6e1410;
+          const hdx = target.position.x - camera.position.x;
+          const hdz = target.position.z - camera.position.z;
           stampSpray(
             target.position.x,
             target.position.z,
             (0.28 + Math.random() * 0.2 + Math.min(0.3, applied * 0.04)) * gore,
-            (target as { bloodColor?: number }).bloodColor ?? 0x6e1410,
+            bloodC,
             0.55 * gore,
-            target.position.x - camera.position.x,
-            target.position.z - camera.position.z,
+            hdx, hdz,
           );
+          // Crits and executes throw an arc across the wall behind —
+          // rare, deliberate marks (the light doctrine, but for gore).
+          if (crit || isExecute) {
+            stampWallArc(
+              target.position.x, target.position.z,
+              0.6 + target.aimHeight * 0.5 + Math.random() * 0.3,
+              hdx, hdz, bloodC, 0.8 * gore, 0.5 * gore,
+            );
+          }
         }
       }
 
