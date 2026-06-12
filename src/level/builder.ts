@@ -803,34 +803,36 @@ export function buildLevel(
       const bx = spec.startPos.x + fx * 1.8;
       const bz = spec.startPos.z + fz * 1.8;
       spec.props.push({ kind: 'model', model: BONFIRE, x: bx, y: 0, z: bz, rotY: yaw + 2.2 });
-      // ORIGIN ARCH — the sealed round arch on the wall beyond the fire:
-      // the other side of the archway you saw at the bottom of the LAST
-      // floor's stairwell, fire burning beyond it. Continuity closes:
-      // descend toward the fire, wake beside it, the way back dark and
-      // shut behind you. Cast forward from the fire to the containing
-      // room's wall; skip when a doorway sits there (another rect just
-      // beyond the wall line) — a sealed arch beside an open passage
-      // would lie.
+      // ORIGIN ARCH — the closed pair of doors on the wall BEHIND the
+      // spawn: you arrived THROUGH them (they stood ajar at the bottom
+      // of the last floor's stairwell, fire shimmering through the
+      // crack) and they shut at your back. You wake facing the fire,
+      // the way you came closed behind you. Cast BACKWARD from the
+      // spawn to the containing room's wall; skip when a doorway sits
+      // there (another rect just beyond the wall line) — closed doors
+      // beside an open passage would lie.
+      const sx = spec.startPos.x, sz = spec.startPos.z;
       const startRoom = spec.rooms.find((r) => {
         const hw = r.rect.w / 2, hd = r.rect.d / 2;
         return !r.logicalOnly
-          && bx >= r.rect.x - hw && bx <= r.rect.x + hw
-          && bz >= r.rect.z - hd && bz <= r.rect.z + hd;
+          && sx >= r.rect.x - hw && sx <= r.rect.x + hw
+          && sz >= r.rect.z - hd && sz <= r.rect.z + hd;
       });
       if (startRoom) {
         const hw = startRoom.rect.w / 2, hd = startRoom.rect.d / 2;
-        // Distance from the fire to the wall along (fx, fz).
-        const tx = fx > 1e-6 ? (startRoom.rect.x + hw - bx) / fx
-          : fx < -1e-6 ? (startRoom.rect.x - hw - bx) / fx : Infinity;
-        const tz = fz > 1e-6 ? (startRoom.rect.z + hd - bz) / fz
-          : fz < -1e-6 ? (startRoom.rect.z - hd - bz) / fz : Infinity;
+        // Backward = opposite the facing/fire direction.
+        const ux = -fx, uz = -fz;
+        const tx = ux > 1e-6 ? (startRoom.rect.x + hw - sx) / ux
+          : ux < -1e-6 ? (startRoom.rect.x - hw - sx) / ux : Infinity;
+        const tz = uz > 1e-6 ? (startRoom.rect.z + hd - sz) / uz
+          : uz < -1e-6 ? (startRoom.rect.z - hd - sz) / uz : Infinity;
         const tWall = Math.min(tx, tz);
         if (isFinite(tWall) && tWall > 0.8 && tWall < 12) {
-          const ax = bx + fx * tWall;
-          const az = bz + fz * tWall;
+          const ax = sx + ux * tWall;
+          const az = sz + uz * tWall;
           // A rect just beyond the wall here = an opening/passage — skip.
-          const px = bx + fx * (tWall + 0.6);
-          const pz = bz + fz * (tWall + 0.6);
+          const px = sx + ux * (tWall + 0.6);
+          const pz = sz + uz * (tWall + 0.6);
           const passage = [...spec.rooms, ...spec.corridors].some((r) => {
             const w2 = r.rect.w / 2, d2 = r.rect.d / 2;
             return px >= r.rect.x - w2 && px <= r.rect.x + w2
@@ -840,9 +842,10 @@ export function buildLevel(
             spec.props.push({
               kind: 'model', model: ORIGIN_ARCH,
               x: ax, y: 0, z: az,
-              // +Z must face back toward the fire: the arch's facing is
-              // opposite the cast direction.
-              rotY: yaw,
+              // +Z faces INTO the room (toward the spawn): under rotY,
+              // model +Z maps to (sin, cos) — the forward direction is
+              // (−sin yaw, −cos yaw), so rotY = yaw + π faces it.
+              rotY: yaw + Math.PI,
               _dbg: 'origin-arch',
             });
           }

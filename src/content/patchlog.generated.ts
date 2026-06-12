@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The doors you came through are closed now. Nobody remembers closing them.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The doors at the bottom of the stairs were left open exactly as wide as someone fleeing would leave them. The fire beyond does not mind the draught.",
         "area": [
           "atmosphere",
@@ -402,13 +410,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "The cracks keep their jagged tempers.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The cracked bricks part along clean lines again, the way stone actually gives up.",
         "area": [
           "atmosphere"
         ]
