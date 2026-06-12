@@ -396,42 +396,46 @@ legend, geometry rules, the three-lights acceptance test — lives in
 
 ## Tone Layering — the dungeon speaks
 
-**DECIDED 2026-06-12 (supersedes the DCC tribute frame):** there is no
-audience, no showrunner, no sponsor, no fourth wall. The meta-voice of
-the game is **the dungeon itself** — ancient, attentive, hungry. It
-does not perform for a crowd; it watches the delver the way a stomach
-watches food. Voice model: the Darkest Dungeon narrator, NOT Carl's
-announcer — wit without warmth, gallows-dry, epigrammatic.
+**DECIDED 2026-06-12 (supersedes the DCC tribute frame, nuanced same
+day):** there is no audience, no showrunner, no sponsors, no fourth
+wall, no pop culture. The meta-voice is **something that lives in the
+deep** — nameless, ancient, never shown, never explained (a lich? the
+dungeon's own mind? a prisoner older than the stairs? deliberately
+unresolved). It has watched ten thousand delvers die and it finds you
+*funny*. It mocks. It teases. It keeps score. But it is OF the place
+— it speaks from below you, not from a studio above.
 
-**Two layers still exist** (the architecture was always sound):
+**Two layers, two temperatures:**
 
 - **In-world text** — item flavor, room descriptions, corpse notes,
   ambient writing. Cruel, terse, indifferent. The Tone Bible applies
-  unchanged. This is the dungeon's *body*.
-- **The dungeon's attention** (`src/broadcast/` — the event bus, pops,
+  unchanged, NO humor here. This is the place itself: the place does
+  not joke.
+- **The voice in the deep** (`src/broadcast/` — event bus, pops,
   achievement queue, epitaphs; the architecture keeps its name) — the
-  meta-layer that observes the player across events. This is the
-  dungeon's *mind*. It speaks RARELY (a voice line is a signal, the
-  same scarcity law as the light doctrine), never explains, never
-  jokes outward, has appetites (it favors blood and boldness, is bored
-  by caution), and remembers (epitaphs, the codex, counts of the dead).
-  Second person sparingly — most lines are it observing, half to
-  itself.
+  thing that watches. HERE the game is allowed to be funny: cruel
+  teasing, gallows comedy, the dry delight of something that profits
+  from your death either way. Achievements may be SILLY-DARK — punchy,
+  mocking names are encouraged — but framed as ITS mockery, never as a
+  system unlock ("Achievement Unlocked" is banned; the thing just
+  *says* it). It speaks at meaningful moments (deaths, firsts, streaks,
+  foolishness), never explains mechanics, and remembers everything
+  (epitaphs, counts of the dead, your past runs).
 
 Example of the split on a single event (player dies on Depth 1 in
 their underwear):
 
 - **In-world death message:** "She was forgotten on Depth 1."
-- **The dungeon's attention:** "It noted how little you carried when
-  you fell."
+- **The voice in the deep:** "Dead on the first stair, and not even
+  dressed for it. I will keep this one."
 
-Both layers are grimdark now; they differ in ALTITUDE (the body feels,
-the mind observes), not in register. Levity survives as cold
-amusement, never as performance.
+The contrast survives — but it's the contrast between a cruel PLACE
+and a cruel WIT that lives inside it, not between a dungeon and a
+game show.
 
 **Phase 5 is unchanged mechanically:** the LLM plugs into the same
-seams (`src/broadcast/`, aggressive caching) — it just writes the
-dungeon's voice instead of an announcer's. The "attention meter"
+seams (`src/broadcast/`, aggressive caching) — it writes the voice in
+the deep instead of an announcer. The "attention meter"
 concept survives BETTER in this frame: the dungeon's attention is
 literal — loud, greedy, bloody play gets noticed, and being noticed
 has consequences.
