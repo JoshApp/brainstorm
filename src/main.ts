@@ -39,6 +39,7 @@ import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
 import { beginArrival, tickArrival, suppressArrivalCeremony } from './player/arrival';
+import { initChasmPresence, tickChasmPresence } from './effects/chasm-presence';
 import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh, suspendAudio, resumeAudio } from './audio/sfx';
 import { startMusic, setMusicVolume, pauseMusic, resumeMusic } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
@@ -376,6 +377,7 @@ initLevelLoader({
     // Scenarios skip the wake — frozen/posed worlds never tick the
     // lids open (black screen), and a debug jump isn't an arrival.
     if (!import.meta.env.DEV || !getScenarioFromUrl()) beginArrival({ full: slept });
+    initChasmPresence(level.spec.voids);
     lastLevelId = level.spec.id;
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-') || level.spec.id === 'tutorial');
     resetBossBar();   // new floor — clear any prior boss bar state
@@ -1003,6 +1005,10 @@ function tick() {
   // Snapshot pause state AFTER the harness so a just-ended budget gates this
   // frame's unpaused systems.
   const paused = isWorldPaused();
+
+  // The deep breathes only while the world runs — a pause menu full of
+  // chasm whispers would give the trick away.
+  if (!paused) tickChasmPresence(camera, realDt);
 
   // While paused, drain look input so it doesn't snap when we unfreeze.
   // (The input-camera system is gated off by the pause, so it won't.)

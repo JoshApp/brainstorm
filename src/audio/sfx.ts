@@ -872,6 +872,60 @@ export function playEnemyFootstep(archetype: VocalArchetype, pos: Vec3Sound) {
  *  that falls in pitch (a flat "no"), so it reads as "blocked" without the
  *  bright UI-bleep register. */
 // Surface materials the player's weapon can strike. Each maps to a
+/** The chasm exhales — a long, low breath of air from the deep, played
+ *  positionally at the void's rim. Filtered noise swelling and dying over
+ *  ~3s with a sub-sine sigh underneath; quiet by design (the dark below
+ *  whispers, it does not announce). Triggered sparsely by the chasm
+ *  presence ticker when the player lingers near a void. */
+export function playChasmBreath(pos: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain || !reverbInput) return;
+
+  const duration = 3.0;
+  const t0 = c.currentTime;
+  // Carries across a room like a vocal — you hear the deep before you
+  // see the edge.
+  const out = createPositionalChain(pos, 0.5, { refDistance: 2.2, rolloff: 0.9, maxDistance: 24 });
+
+  // Breath body — brown-ish noise (integrated white) so the energy sits
+  // low without needing a steep filter stack.
+  const bufferSize = Math.floor(c.sampleRate * duration);
+  const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+  const data = buffer.getChannelData(0);
+  let brown = 0;
+  for (let i = 0; i < bufferSize; i++) {
+    brown = (brown + (Math.random() * 2 - 1) * 0.02) * 0.985;
+    data[i] = brown * 18;
+  }
+  const src = c.createBufferSource();
+  src.buffer = buffer;
+  const filter = c.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(240, t0);
+  filter.frequency.linearRampToValueAtTime(120, t0 + duration);
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(0.16, t0 + 1.1);    // slow swell
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+  src.connect(filter).connect(gain).connect(out);
+  src.start(t0);
+  src.stop(t0 + duration);
+
+  // Sub sigh — a sine drifting down under the noise. Mostly felt on
+  // good speakers, harmless on phone drivers.
+  const sub = c.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(44, t0);
+  sub.frequency.linearRampToValueAtTime(31, t0 + duration);
+  const subGain = c.createGain();
+  subGain.gain.setValueAtTime(0.0001, t0);
+  subGain.gain.exponentialRampToValueAtTime(0.07, t0 + 1.3);
+  subGain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+  sub.connect(subGain).connect(out);
+  sub.start(t0);
+  sub.stop(t0 + duration);
+}
+
 // dedicated synth voicing in playSurfaceHit. Use 'stone' for walls /
 // pillars; 'ceramic' for vases + pottery; 'wood' for chests + crates;
 // 'metal' for grates + iron banding. Add a new value here, then teach

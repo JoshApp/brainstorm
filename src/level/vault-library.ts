@@ -1172,10 +1172,39 @@ const CHASM_BRIDGE: Vault = {
   ],
 };
 
+// Chasm rim — the void owns the room's HEART; the floor is a ring running
+// around it. Where the bridge is a tense crossing, the rim is a circuit:
+// combat orbits the abyss, and whichever way you back off, the edge is
+// near. Every strip of the ring is 2m (player + corridor entry safe; all
+// four edge midpoints walkable for the composer), so the room accepts
+// openings on any side.
+const CHASM_RIM: Vault = {
+  id: 'chasm-rim',
+  tags: ['combat'],
+  map: [
+    '##############',
+    '#.*........*.#',
+    '#...X........#',
+    '#............#',
+    '#............#',
+    '#............#',
+    '#........X...#',
+    '#.*........*.#',
+    '##############',
+  ],
+  lightTier: 'dim',
+  minDepth: 2,
+  weight: 1,
+  torchTint: TORCH_PALE,
+  voids: [
+    { x: 0, z: 0, w: 8, d: 3 },
+  ],
+};
+
 export const VAULTS: Vault[] = [
   FOYER_SMALL, FOYER_PILLAR, FOYER_ALCOVE,
   COMBAT_OPEN, COMBAT_PILLARS, COMBAT_CHOKE, COMBAT_HALL, COMBAT_ARENA, COMBAT_DOORS,
-  COMBAT_CROSS, MINESHAFT_GALLERY, COMBAT_PITS, CHASM_BRIDGE,
+  COMBAT_CROSS, MINESHAFT_GALLERY, COMBAT_PITS, CHASM_BRIDGE, CHASM_RIM,
   ENCOUNTER_NEST,
   TREASURE_ALTAR, TREASURE_CACHE, TREASURE_VAULT,
   ENCOUNTER_FOUNTAIN,

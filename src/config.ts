@@ -310,6 +310,17 @@ export const CONFIG = {
   // rooms only; mutually exclusive with the ceiling-breach roll, which
   // is checked first at 0.10).
   SHAFT_CHANCE: 0.10,
+  // Floor grate — iron bars flush with the floor over a recess that falls
+  // toward a faint ember glow: the next depth, previewed. Walkable (the
+  // playfield is 2D; the bars are the visual truth). Floor event — rolls
+  // independently of the ceiling events, skips stairwell rooms.
+  GRATE_CHANCE: 0.12,
+  GRATE_DEPTH_M: 2.6,          // recess depth below the bars
+  GRATE_FADE_M: 1.8,           // metres below the bars where the recess walls go black
+  // The ember seen through the bars. Unlit basic material — this colour IS
+  // the brightness. Keep it well below the lamp baseline: a promise of the
+  // depth, not a light source.
+  GRATE_GLOW_COLOR: 0x3f1d08,
 
   // === RANGED COMMITMENT ===
   // Accuracy demands stillness — the fix for "ranged is too spammable". A shot

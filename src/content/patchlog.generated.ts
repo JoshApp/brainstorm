@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-12",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The wall behind your slash gets what it was owed.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "add",
         "text": "The pits no longer have a visible bottom. Look down all you like; the dark does not look back.",
         "area": [
@@ -400,14 +408,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "tech"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The masonry settles. Bricks go missing, courses sit crooked, the floors wear where feet have been. The dungeon has been here longer than you.",
-        "area": [
-          "atmosphere",
-          "level"
         ]
       }
     ]

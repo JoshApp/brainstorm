@@ -153,12 +153,42 @@ function buildRoomShell(
   const W = rect.w;
   const D = rect.d;
 
+  // ── FLOOR GRATE (box-buster #5) ────────────────────────────────────
+  // An iron grate flush with the floor over a recess that falls toward a
+  // faint ember glow far below: the next depth, previewed. Walkable — the
+  // playfield is 2D, the bars are the visual truth, so no obstacle is
+  // registered. Floor event: independent of the ceiling breach/shaft
+  // rolls, but skips rooms that already have floor holes (stairwells and
+  // chasm voids own those). Hugs a wall like a drain should.
+  const wantGrate =
+    !room.logicalOnly &&
+    floorHoles.length === 0 &&
+    W >= 4.0 && D >= 4.0 &&
+    buildRng() < CONFIG.GRATE_CHANCE;
+  let grateRect: { cx: number; cz: number; s: number } | null = null;
+  if (wantGrate) {
+    const s = 1.1 + buildRng() * 0.4;
+    const off = 0.9 + s / 2;   // wall-hugging distance, clear of the trim
+    const side = Math.floor(buildRng() * 4);
+    const slide = (span: number) => (buildRng() - 0.5) * Math.max(0, span - s - 2.4);
+    const cx = side === 0 ? -W / 2 + off : side === 1 ? W / 2 - off : slide(W);
+    const cz = side === 2 ? -D / 2 + off : side === 3 ? D / 2 - off : slide(D);
+    grateRect = { cx, cz, s };
+  }
   // Floor — with rectangular holes for stairwells in this room. Holes
   // path takes precedence over the jittered plane; without holes the
   // legacy subdivided + Z-jittered plane is used (visually richer
   // surface variation).
-  const floorGeo: THREE.BufferGeometry = floorHoles.length > 0
-    ? makeFloorWithHoles(W, D, floorHoles)
+  const allFloorHoles = grateRect
+    ? [...floorHoles, [
+        [grateRect.cx - grateRect.s / 2, -(grateRect.cz - grateRect.s / 2)],
+        [grateRect.cx + grateRect.s / 2, -(grateRect.cz - grateRect.s / 2)],
+        [grateRect.cx + grateRect.s / 2, -(grateRect.cz + grateRect.s / 2)],
+        [grateRect.cx - grateRect.s / 2, -(grateRect.cz + grateRect.s / 2)],
+      ] as Array<[number, number]>]
+    : floorHoles;
+  const floorGeo: THREE.BufferGeometry = allFloorHoles.length > 0
+    ? makeFloorWithHoles(W, D, allFloorHoles)
     : makeJitteredPlane(W, D, { flat: true });
   const floor = new THREE.Mesh(floorGeo, materials.floor);
   floor.rotation.x = -Math.PI / 2;
@@ -167,10 +197,70 @@ function buildRoomShell(
   floor.name = 'floor';
   // Rect (+ whether it carries per-vertex colour) so the prop-contact AO pass
   // can find floors and darken them under props after props are placed.
-  if (floorHoles.length === 0) floor.userData.aoRect = { x: rect.x, z: rect.z, w: W, d: D };
+  if (allFloorHoles.length === 0) floor.userData.aoRect = { x: rect.x, z: rect.z, w: W, d: D };
   floor.userData.dbgKind = 'floor';
   floor.userData.dbgSource = `floor · ${room.id} @(${rect.x.toFixed(1)},${rect.z.toFixed(1)})`;
   scene.add(floor);
+  if (grateRect) {
+    const gx = rect.x + grateRect.cx;
+    const gz = rect.z + grateRect.cz;
+    const s = grateRect.s;
+    // Recess — same fade-to-black treatment as a chasm, just shallower.
+    const recessGeo = makeChasmDropGeometry(
+      [{ x: gx, z: gz, w: s, d: s }], CONFIG.GRATE_DEPTH_M, CONFIG.GRATE_FADE_M,
+    );
+    if (recessGeo) {
+      const recess = new THREE.Mesh(recessGeo, materials.chasmWall);
+      recess.receiveShadow = true;
+      recess.name = 'grate-recess';
+      recess.userData.dbgKind = 'floor';
+      recess.userData.dbgSource = `grate-recess · ${room.id}`;
+      scene.add(recess);
+    }
+    // The ember below — unlit plane floating just above the black bottom.
+    // Its colour IS its brightness (basic material): a dim promise of the
+    // inhabited depth, never competing with the lamp.
+    const glow = new THREE.Mesh(
+      new THREE.PlaneGeometry(s * 0.8, s * 0.8),
+      new THREE.MeshBasicMaterial({ color: CONFIG.GRATE_GLOW_COLOR }),
+    );
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.set(gx, -CONFIG.GRATE_DEPTH_M + 0.5, gz);
+    glow.name = 'grate-glow';
+    glow.userData.dbgKind = 'floor';
+    glow.userData.dbgSource = `grate-glow · ${room.id}`;
+    scene.add(glow);
+    // Bars — a perimeter frame + parallel rods, merged to ONE mesh. Dark
+    // iron so the silhouette against the glow does the reading.
+    const barGeos: THREE.BufferGeometry[] = [];
+    const m4 = new THREE.Matrix4();
+    const railH = 0.045, railW = 0.075;
+    const frame = (len: number, px: number, pz: number, alongX: boolean) => {
+      const g = new THREE.BoxGeometry(alongX ? len : railW, railH, alongX ? railW : len);
+      m4.makeTranslation(px, railH / 2, pz); g.applyMatrix4(m4);
+      barGeos.push(g);
+    };
+    frame(s + railW, gx, gz - s / 2, true);
+    frame(s + railW, gx, gz + s / 2, true);
+    frame(s + railW, gx - s / 2, gz, false);
+    frame(s + railW, gx + s / 2, gz, false);
+    const nBars = Math.max(5, Math.floor(s / 0.16));
+    for (let i = 1; i < nBars; i++) {
+      const bx = gx - s / 2 + (i / nBars) * s;
+      const g = new THREE.BoxGeometry(0.035, 0.035, s);
+      m4.makeTranslation(bx, 0.03, gz); g.applyMatrix4(m4);
+      barGeos.push(g);
+    }
+    const bars = new THREE.Mesh(
+      mergeGeometries(barGeos, false),
+      new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.55, metalness: 0.55 }),
+    );
+    bars.receiveShadow = true;
+    bars.name = 'grate-bars';
+    bars.userData.dbgKind = 'floor';
+    bars.userData.dbgSource = `grate-bars · ${room.id} @(${gx.toFixed(1)},${gz.toFixed(1)})`;
+    scene.add(bars);
+  }
 
   // Ceiling — flat plane by default; barrel/pitched build a custom arch that
   // springs from the wall-top (H) and rises to H+rise. Verticality without a
