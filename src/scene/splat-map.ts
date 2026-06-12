@@ -31,6 +31,7 @@ const WALL_HEIGHT_M = 3.5;
 
 let rt: THREE.WebGLRenderTarget | null = null;
 let wallRt: THREE.WebGLRenderTarget | null = null;
+let wallIdRt: THREE.WebGLRenderTarget | null = null;
 let stampScene: THREE.Scene | null = null;
 let stampSpace: THREE.Group | null = null;   // world-meters → map-UV
 let stampCam: THREE.OrthographicCamera | null = null;
@@ -43,6 +44,14 @@ export const uSplatTex = { value: null as THREE.Texture | null };
 export const uSplatBounds = { value: new THREE.Vector4(0, 0, 1, 1) };  // minX, minZ, sizeX, sizeZ
 export const uSplatOn = { value: 0 };
 export const uSplatWallTex = { value: null as THREE.Texture | null };
+// Plane-ID buffer: which wall each arc belongs to. SEPARATE from the
+// colour map because coordinates cannot survive alpha blending — a
+// soft-edged stamp stores a MIX of its plane coord and the background,
+// which both killed legitimate near-kill arcs (diluted coord fails the
+// match) and ghosted faded stains onto walls rooms away (whose coord
+// happened to equal the diluted value). IDs write with REPLACE
+// semantics (NoBlending + discard below threshold) and sample NEAREST.
+export const uSplatWallIdTex = { value: null as THREE.Texture | null };
 
 /** Wall probe — registered by main per floor. Given a point + throw
  *  direction, returns the first axis-aligned wall within reach. */
@@ -62,6 +71,9 @@ interface Stamp {
   rot?: number;
   scaleX?: number;
   scaleY?: number;
+  /** Wall stamps: the wall's plane coordinate (normalized), written
+   *  into the ID buffer on a second, no-blend pass. */
+  pc?: number;
 }
 const queue: Stamp[] = [];
 
@@ -74,6 +86,7 @@ const DRY_INTERVAL_S = 2.5;
 const DRY_FULL_S = 75;
 let lastDryAt = 0;
 let dryMesh: THREE.Mesh | null = null;
+let stampIdMat: THREE.ShaderMaterial | null = null;
 let dryMat: THREE.ShaderMaterial | null = null;
 
 export function initSplatMap(): void {
@@ -92,6 +105,13 @@ export function initSplatMap(): void {
     depthBuffer: false,
   });
   uSplatWallTex.value = wallRt.texture;
+  wallIdRt = new THREE.WebGLRenderTarget(WALL_W, WALL_H, {
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    format: THREE.RGBAFormat,
+    depthBuffer: false,
+  });
+  uSplatWallIdTex.value = wallIdRt.texture;
 
   stampScene = new THREE.Scene();
   stampCam = new THREE.OrthographicCamera(0, 1, 1, 0, -1, 1);
@@ -112,6 +132,7 @@ export function initSplatMap(): void {
       varying vec2 vUv;
       uniform vec2 uCenter; uniform float uRadius; uniform vec3 uColor;
       uniform float uAlpha; uniform float uSeed; uniform float uStreak;
+      uniform float uIdPass; uniform float uPc;
       float h(vec2 p){ p = fract(p * 0.3183099 + uSeed); p *= 17.0; return fract(p.x * p.y * (p.x + p.y)); }
       void main(){
         // POPPED-BALLOON mask, not a scaled circle: the boundary
@@ -167,7 +188,16 @@ export function initSplatMap(): void {
           a = clamp(max(max(wbody, wsat), drip * 0.9), 0.0, 1.0) * uAlpha;
         }
         if (a < 0.015) discard;
-        gl_FragColor = vec4(uColor, a);
+        if (uIdPass > 0.5) {
+          // Plane-ID pass: hard-edged, REPLACES — no blending, so the
+          // coordinate survives intact. Soft fringes keep the old id
+          // (slight shrink of the matchable area; far better than
+          // coordinate dilution).
+          if (a < 0.30) discard;
+          gl_FragColor = vec4(uPc, 0.0, 0.0, 1.0);
+        } else {
+          gl_FragColor = vec4(uColor, a);
+        }
       }
     `,
     transparent: true,
@@ -208,6 +238,15 @@ export function initSplatMap(): void {
     blendSrcAlpha: THREE.ZeroFactor,
     blendDstAlpha: THREE.OneFactor,
   });
+  stampIdMat = stampMat.clone();
+  stampIdMat.uniforms = THREE.UniformsUtils.clone(stampMat.uniforms);
+  stampIdMat.uniforms.uIdPass = { value: 1 };
+  stampIdMat.uniforms.uPc = { value: 0 };
+  stampIdMat.blending = THREE.NoBlending;
+  // base material needs the uniforms too (compiled once, branch at runtime)
+  stampMat.uniforms.uIdPass = { value: 0 };
+  stampMat.uniforms.uPc = { value: 0 };
+
   dryMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), dryMat);
   dryMesh.position.set(0.5, 0.5, 0);
   dryMesh.visible = false;
@@ -341,11 +380,11 @@ function stampWallArcAt(hit: WallHit, y: number, colorHex: number, alpha: number
   if (along < 0 || along > 1) return;
   const u = hit.axis === 'x' ? along * 0.5 : 0.5 + along * 0.5;
   const v = Math.max(0, Math.min(1, (y + size * 0.35) / WALL_HEIGHT_M));
-  const c = new THREE.Color(colorHex);
   queue.push({
     x: u, z: v,
     r: size,
-    color: new THREE.Color(c.r, c.g, pc),   // B carries the plane coordinate
+    color: new THREE.Color(colorHex),   // full species colour (pc lives in the ID buffer)
+    pc,
     a: alpha,
     seed: Math.random(),
     dir: null,
@@ -432,8 +471,14 @@ export function flushSplats(renderer: THREE.WebGLRenderer): void {
     if (wallRt) {
       renderer.setRenderTarget(wallRt);
       renderer.clear(true, false, false);
-      renderer.setRenderTarget(rt);
     }
+    if (wallIdRt) {
+      renderer.setRenderTarget(wallIdRt);
+      renderer.setClearColor(0xffffff, 1);   // id 1.0 = "no wall" (real ids are 0..0.9)
+      renderer.clear(true, false, false);
+      renderer.setClearColor(0x000000, 0);
+    }
+    renderer.setRenderTarget(rt);
     needsClear = false;
   }
   renderer.autoClear = false;
@@ -469,6 +514,20 @@ export function flushSplats(renderer: THREE.WebGLRenderer): void {
     stampMat.uniforms.uAlpha.value = s.a;
     stampMat.uniforms.uSeed.value = s.seed;
     renderer.render(stampScene, stampCam);
+    // Wall stamps: second pass into the plane-ID buffer (replace, no
+    // blend) with the identical mask, so the coordinate stays exact.
+    if (s.surface === 'wall' && wallIdRt && stampIdMat) {
+      stampIdMat.uniforms.uPc.value = (s.pc ?? 0) * 0.9;
+      stampIdMat.uniforms.uStreak.value = 2;
+      stampIdMat.uniforms.uAlpha.value = s.a;
+      stampIdMat.uniforms.uSeed.value = s.seed;
+      (stampIdMat.uniforms.uCenter.value as THREE.Vector2).set(s.x, s.z);
+      stampIdMat.uniforms.uRadius.value = s.r;
+      stampMesh.material = stampIdMat;
+      renderer.setRenderTarget(wallIdRt);
+      renderer.render(stampScene, stampCam);
+      stampMesh.material = stampMat;
+    }
   }
   // Drying tick — piggybacks on any flush; also runs when only the
   // clock demands it (see the early-return above, which lets us in

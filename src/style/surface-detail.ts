@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { uSplatTex, uSplatWallTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
+import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 
 // Surface detail for the big stone surfaces — now driven by BAKED, MIPMAPPED
 // tiling textures (see surface-textures.ts) rather than a per-pixel procedural
@@ -121,6 +121,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
     shader.uniforms.uWetness = uWetness;
     shader.uniforms.uSplatT = uSplatTex as unknown as THREE.IUniform;
     shader.uniforms.uSplatWallT = uSplatWallTex as unknown as THREE.IUniform;
+    shader.uniforms.uSplatWallIdT = uSplatWallIdTex as unknown as THREE.IUniform;
     shader.uniforms.uSplatB = uSplatBounds;
     shader.uniforms.uSplatO = uSplatOn;
     shader.uniforms.uSurfTex = { value: cfg.tex };
@@ -146,7 +147,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         : 'vec2 sUv = vWorldPos.xz;';
 
     shader.fragmentShader =
-      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nuniform vec3 uSeepTint;\nuniform float uSeepStrength;\nuniform float uSeepTime;\nuniform float uWetness;\nuniform sampler2D uSplatT;\nuniform sampler2D uSplatWallT;\nuniform vec4 uSplatB;\nuniform float uSplatO;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\nfloat seepNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); vec3 h0=fract(vec3(i,i.x+i.y)*0.3183099+0.1); h0*=17.0; vec3 h1=fract(vec3(i+vec2(1.0,0.0),i.x+i.y+1.0)*0.3183099+0.1); h1*=17.0; vec3 h2=fract(vec3(i+vec2(0.0,1.0),i.x+i.y+1.0)*0.3183099+0.1); h2*=17.0; vec3 h3=fract(vec3(i+vec2(1.0,1.0),i.x+i.y+2.0)*0.3183099+0.1); h3*=17.0; float n00=fract(h0.x*h0.y*h0.z*(h0.x+h0.y+h0.z)); float n10=fract(h1.x*h1.y*h1.z*(h1.x+h1.y+h1.z)); float n01=fract(h2.x*h2.y*h2.z*(h2.x+h2.y+h2.z)); float n11=fract(h3.x*h3.y*h3.z*(h3.x+h3.y+h3.z)); return mix(mix(n00,n10,f.x),mix(n01,n11,f.x),f.y); }\n' +
+      'uniform float uDetailStrength;\nuniform sampler2D uSurfTex;\nuniform vec2 uSurfTile;\nuniform vec3 uSurfTint;\nuniform float uSurfRelief;\nuniform vec3 uSeepTint;\nuniform float uSeepStrength;\nuniform float uSeepTime;\nuniform float uWetness;\nuniform sampler2D uSplatT;\nuniform sampler2D uSplatWallT;\nuniform sampler2D uSplatWallIdT;\nuniform vec4 uSplatB;\nuniform float uSplatO;\nvarying vec3 vWorldPos;\nvarying vec3 vWorldNormal;\nfloat seepNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); vec3 h0=fract(vec3(i,i.x+i.y)*0.3183099+0.1); h0*=17.0; vec3 h1=fract(vec3(i+vec2(1.0,0.0),i.x+i.y+1.0)*0.3183099+0.1); h1*=17.0; vec3 h2=fract(vec3(i+vec2(0.0,1.0),i.x+i.y+1.0)*0.3183099+0.1); h2*=17.0; vec3 h3=fract(vec3(i+vec2(1.0,1.0),i.x+i.y+2.0)*0.3183099+0.1); h3*=17.0; float n00=fract(h0.x*h0.y*h0.z*(h0.x+h0.y+h0.z)); float n10=fract(h1.x*h1.y*h1.z*(h1.x+h1.y+h1.z)); float n01=fract(h2.x*h2.y*h2.z*(h2.x+h2.y+h2.z)); float n11=fract(h3.x*h3.y*h3.z*(h3.x+h3.y+h3.z)); return mix(mix(n00,n10,f.x),mix(n01,n11,f.x),f.y); }\n' +
       shader.fragmentShader.replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
@@ -276,16 +277,18 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         float pc = mix((vWorldPos.z - uSplatB.y) / uSplatB.w, (vWorldPos.x - uSplatB.x) / uSplatB.z, xf);
         vec2 wuv = vec2(along * 0.5 + (1.0 - xf) * 0.5, clamp(vWorldPos.y / 3.5, 0.0, 1.0));
         vec4 wspl = texture2D(uSplatWallT, wuv) * uSplatO;
-        // Plane match in METRES, not normalized units — 0.03 normalized
-        // was ~1.8m of slop on a big floor: stains ghosted onto
-        // parallel walls rooms away. Tolerance is now a fixed 0.5m.
+        // The plane coordinate lives in a SEPARATE no-blend ID buffer
+        // (alpha blending dilutes coordinates: near arcs failed the
+        // match, far walls ghosted). Stored scaled by 0.9; the clear
+        // value 1.0 can never match a real wall. Metric tolerance.
+        float storedPc = texture2D(uSplatWallIdT, wuv).r / 0.9;
         float axisExtent = mix(uSplatB.z, uSplatB.w, 1.0 - xf);
-        float planeErrM = abs(wspl.b - pc) * axisExtent;
+        float planeErrM = abs(storedPc - pc) * axisExtent;
         float match = 1.0 - smoothstep(0.30, 0.50, planeErrM);
         float ww = clamp(wspl.a, 0.0, 1.0) * match;
         if (ww > gSplatWet) {
           gSplatWet = ww;
-          gSplatColor = vec3(wspl.r, wspl.g, min(wspl.r, wspl.g) * 0.5);
+          gSplatColor = wspl.rgb;
         }
       }
       ` : ''}
