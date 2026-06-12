@@ -8,8 +8,8 @@ import {
 } from '../content/clutter';
 import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
 import { COBWEB_CORNER } from '../content/cobweb';
-import { archway, archwayColumnOffset } from '../content/archway';
-import { doorframe, doorframeCollision } from '../content/doorframe';
+import { archway, archwayColumnOffset, archwayPassableHalfBand } from '../content/archway';
+import { doorframe, doorframeCollision, doorframePassableHalfBand } from '../content/doorframe';
 import {
   wallOpenings, inOpening, allStairFootprints, findContainingRect,
   type Opening, type StairFootprint,
@@ -872,6 +872,10 @@ export function emitArchwaysForCorridors(spec: LevelSpec): void {
             // free unconditionally, same soft-lock guarantee as before.
             collision: stairMouth ? undefined : doorframeCollision(width),
           });
+          (spec.navGates ??= []).push({
+            x: ax, z: az, rotY,
+            halfBand: stairMouth ? width / 2 : doorframePassableHalfBand(width),
+          });
         } else {
           const colOffset = archwayColumnOffset(width);
           spec.props.push({
@@ -890,6 +894,10 @@ export function emitArchwaysForCorridors(spec: LevelSpec): void {
               { kind: 'circle', r: 0.18, ox: -colOffset, oz: 0 },
               { kind: 'circle', r: 0.18, ox:  colOffset, oz: 0 },
             ],
+          });
+          (spec.navGates ??= []).push({
+            x: ax, z: az, rotY,
+            halfBand: archwayPassableHalfBand(width),
           });
         }
       }

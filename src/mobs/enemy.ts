@@ -705,9 +705,17 @@ export function createEnemy(
       // even though they don't block perception. Without this the mob
       // sees clear LOS through a pillar, beelines, and clampMove pins
       // it against the pillar's edge.
+      // A clean line to the target isn't enough near a framed opening:
+      // the beeline aims at the TARGET, not the gap centre, so it can
+      // graze an archway column and pin the mob there. Demote to pathing
+      // whenever the straight route passes a gate too close to its
+      // blockers — the path's funnel pass aims the centre instead.
       const directLOS = walkable.hasLineOfSight(
         container.position.x, container.position.z, targetX, targetZ,
         { includeObstacles: true },
+      ) && !nav.directRouteGrazesGate(
+        container.position.x, container.position.z, targetX, targetZ,
+        spec.collisionRadius,
       );
       if (!directLOS) {
         // Invalidate the cached path if the target drifted significantly

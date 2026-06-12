@@ -77,6 +77,15 @@ export function doorframeCollision(
   ];
 }
 
+/** Half of the passable band through a doorframe, accounting for the
+ *  collision policy: wide frames block at their jambs; narrow frames
+ *  are collision-free with jambs OUTSIDE the gap, so the whole opening
+ *  is the band. The NavGate half-width pathfinding funnels through. */
+export function doorframePassableHalfBand(width: number): number {
+  if (width < COLLISION_MIN_WIDTH) return width / 2;
+  return Math.max(0.2, width / 2 - JAMB_HALF_THICK * 2);
+}
+
 export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
   const width = opts.width ?? 1.0;
   const ceiling = opts.ceilingHeight ?? 3.2;

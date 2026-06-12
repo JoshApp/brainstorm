@@ -124,5 +124,61 @@ test('open route preferred over a choke when both exist', () => {
   assert.ok(path.length > 0, 'a path should exist with two doorways');
 });
 
+// ── Gate funnel: archway columns at a 2m mouth ───────────────────────
+// Two rooms, 2m doorway, archway column blockers (r 0.18 at ±0.84) —
+// the framed-mouth geometry that wedged mobs. With the gate registered,
+// a path must exist at every grid phase, route THROUGH the gate centre,
+// and refuse a body wider than the band.
+function archedDoorwayWorld(xWall: number, gapCenter: number) {
+  const colOffset = 0.84;             // archwayColumnOffset(2.0)
+  const halfBand = colOffset - 0.18;  // archwayPassableHalfBand(2.0) = 0.66
+  const rects = [
+    { x: xWall - 3, z: 0, w: 6, d: 6 },
+    { x: xWall + 3, z: 0, w: 6, d: 6 },
+  ];
+  const walls: WallSegment[] = [
+    { ax: xWall, az: -3, bx: xWall, bz: gapCenter - 1 },
+    { ax: xWall, az: gapCenter + 1, bx: xWall, bz: 3 },
+    { ax: xWall - 6, az: -3, bx: xWall + 6, bz: -3 },
+    { ax: xWall - 6, az: 3, bx: xWall + 6, bz: 3 },
+    { ax: xWall - 6, az: -3, bx: xWall - 6, bz: 3 },
+    { ax: xWall + 6, az: -3, bx: xWall + 6, bz: 3 },
+  ];
+  const obstacles = [
+    { kind: 'circle' as const, x: xWall, z: gapCenter - colOffset, r: 0.18 },
+    { kind: 'circle' as const, x: xWall, z: gapCenter + colOffset, r: 0.18 },
+  ];
+  const region = new WalkableRegion(rects, obstacles, walls);
+  const gate = { x: xWall, z: gapCenter, rotY: Math.PI / 2, halfBand };
+  const grid = new NavGrid(region, { minX: xWall - 6, maxX: xWall + 6, minZ: -3, maxZ: 3 }, false, [gate]);
+  return { grid, gate };
+}
+
+for (let i = 0; i < 6; i++) {
+  const xWall = 10 + i * 0.17;
+  test(`archway gate pathable + funnelled (phase ${i})`, () => {
+    const { grid, gate } = archedDoorwayWorld(xWall, 0.3 + i * 0.09);
+    const path = grid.findPath(xWall - 2.5, gate.z, xWall + 2.5, gate.z, { radius: 0.42 });
+    assert.ok(path.length > 0, 'no path through the framed mouth');
+    const throughCentre = path.some((wp) => Math.hypot(wp.x - gate.x, wp.z - gate.z) < 0.1);
+    assert.ok(throughCentre, 'path does not pass through the gate centre');
+  });
+}
+
+test('a body wider than the gate band is refused', () => {
+  const { grid, gate } = archedDoorwayWorld(10, 0);
+  const path = grid.findPath(7.5, gate.z, 12.5, gate.z, { radius: 0.7 });
+  assert.equal(path.length, 0, '0.7-radius body should not fit a 0.66 half-band gate');
+});
+
+test('beeline grazing a gate column is flagged', () => {
+  const { grid, gate } = archedDoorwayWorld(10, 0);
+  // Straight line passing 0.55 off the gate centre — inside the band but
+  // within a 0.35 radius of the column blocker at 0.66+0.18.
+  assert.ok(grid.directRouteGrazesGate(8, 0.55, 12, 0.55, 0.35), 'grazing beeline should be flagged');
+  // Dead-centre crossing is fine for a small body.
+  assert.ok(!grid.directRouteGrazesGate(8, 0, 12, 0, 0.3), 'centre beeline should pass');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -1915,7 +1915,9 @@ export function buildLevel(
     minZ: Math.min(...navRects.map((r) => r.z - r.d / 2)),
     maxZ: Math.max(...navRects.map((r) => r.z + r.d / 2)),
   };
-  const nav = new NavGrid(walkable, navBbox, false);
+  // Gate funnel points: framed openings registered by their emitters.
+  // Phasing mobs ignore obstacles entirely, so their grid skips gates.
+  const nav = new NavGrid(walkable, navBbox, false, spec.navGates ?? []);
   const navPhasing = new NavGrid(walkable, navBbox, true);
 
   // --- Enemies + room-membership tracking ----------------------------

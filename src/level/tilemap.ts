@@ -47,9 +47,9 @@
 //   space  treated as wall (so authors can omit perimeter quoting)
 
 import type {
-  LevelSpec, PropSpec, EnemySpawnSpec, TorchSpec, RoomSpec, DoorSpec, StairsSpec, TileMap,
+  LevelSpec, PropSpec, EnemySpawnSpec, TorchSpec, RoomSpec, DoorSpec, StairsSpec, TileMap, NavGate,
 } from './types';
-import { doorframe, doorframeCollision } from '../content/doorframe';
+import { doorframe, doorframeCollision, doorframePassableHalfBand } from '../content/doorframe';
 import { orientationEW } from './opening';
 import { STAIRWELL_TOTAL_DEPTH, STAIRWELL_HALF_WIDTH } from '../interactables/stairs';
 import { pickWallFixture } from './lit-fixture-pool';
@@ -425,6 +425,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
 
   // ── Per-cell features ───────────────────────────────────────────
   const props: PropSpec[] = [];
+  const navGates: NavGate[] = [];
   const spawns: EnemySpawnSpec[] = [];
   const torches: TorchSpec[] = [];
   const doors: DoorSpec[] = [];
@@ -473,6 +474,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
       proximityGlow: true, _dbg: 'doorframe',
       collision: doorframeCollision(widthCells),
     });
+    navGates.push({ x: cxF, z: czF, rotY: run.ew ? 0 : Math.PI / 2, halfBand: doorframePassableHalfBand(widthCells) });
   }
 
   // ── Emit coalesced cobweb curtains (one per run) + stone frames ────
@@ -495,6 +497,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
       x: cxW, y: 0, z: czW, rotY, proximityGlow: true, _dbg: 'doorframe',
       collision: doorframeCollision(widthM),
     });
+    navGates.push({ x: cxW, z: czW, rotY, halfBand: doorframePassableHalfBand(widthM) });
   }
 
   for (let r = 0; r < rows; r++) {
@@ -789,6 +792,7 @@ export function parseTileMap(map: TileMap, opts: TileMapOptions): LevelSpec {
     doors,
     stairs,
     extraWalls,
+    navGates,
   };
 }
 

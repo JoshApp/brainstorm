@@ -503,6 +503,7 @@ export function composeFloor(
   const stairs: StairsSpec[] = [];
   const extraWalls: NonNullable<LevelSpec['extraWalls']> = [];
   const voids: NonNullable<LevelSpec['voids']> = [];
+  const navGates: NonNullable<LevelSpec['navGates']> = [];
   let startPos: LevelSpec['startPos'] = { x: 0, z: 0, yaw: 0 };
   // Provenance: which vault TEMPLATE generated each room. The room ids
   // (`vault-0`, `branch-2`) are positional; this maps them back to the
@@ -549,6 +550,7 @@ export function composeFloor(
     torches.push(...sub.torches);
     spawns.push(...sub.spawns);
     if (sub.doors) doors.push(...sub.doors);
+    if (sub.navGates) navGates.push(...sub.navGates);
     if (sub.stairs && sub.stairs.length) {
       // Exit-vault stairs: re-place at the back of the room facing the entrance
       // (geometry-aware), so the player meets the mouth head-on. Other stairs
@@ -764,6 +766,7 @@ export function composeFloor(
     stairs,
     extraWalls,
     voids,
+    navGates,
     roomVaults,
   };
 

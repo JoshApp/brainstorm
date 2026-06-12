@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The way down is stairs now, as the architect intended. Low tunnels stop leaking void over their lintels.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "Doorway pillars return to their doorways and learn to mean it. The mine timbers were never decorative either.",
         "area": [
           "level",
@@ -398,14 +406,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "The walls grow skirting, cornices and the occasional hollow where someone left a skull. The boxes stop admitting they are boxes.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The torches in a room finally agree on what colour the room is.",
         "area": [
           "atmosphere",
           "level"

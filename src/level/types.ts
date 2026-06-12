@@ -537,6 +537,25 @@ export type StairsSpec = {
     | { kind: 'boss-defeated'; color?: number };
 };
 
+/**
+ * A nav gate — the passable band of a framed opening (archway columns /
+ * doorframe jambs), registered by whoever emits the frame. Pathfinding
+ * treats the CENTRE as a guaranteed waypoint (funnel point): paths are
+ * snapped through it instead of grazing the columns, and a mob whose
+ * radius exceeds halfBand is honestly refused. A 0.5m sampling grid
+ * cannot represent a 1.3m gap between columns reliably; the gate is the
+ * ground truth the grid lacks.
+ */
+export type NavGate = {
+  x: number;
+  z: number;
+  /** Wall-line orientation (same convention as OpeningSpec.rotY): the
+   *  gate's band runs along its local +X. */
+  rotY: number;
+  /** Half of the passable width between the frame's blockers. */
+  halfBand: number;
+};
+
 export type LevelSpec = {
   id: string;
   /**
@@ -608,6 +627,9 @@ export type LevelSpec = {
    * two voids). World coords. See builder.ts + ensureStairsReachable.
    */
   voids?: WalkableRect[];
+  /** Framed-opening funnel points for pathfinding — pushed by every
+   *  frame emitter alongside its prop. See NavGate. */
+  navGates?: NavGate[];
   /**
    * Procgen decoration data — populated tilemap grid + seeded RNG state +
    * tint. Builder calls decorateFloor with this if present, producing

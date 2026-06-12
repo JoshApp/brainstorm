@@ -71,6 +71,13 @@ export function archwayColumnOffset(width: number): number {
   return Math.max(COL_HALF_THICK + 0.02, width / 2 - COL_HALF_THICK);
 }
 
+/** Half of the passable band between the archway's column BLOCKERS
+ *  (collision r 0.18 at the column centres) — the NavGate half-width
+ *  pathfinding funnels through. */
+export function archwayPassableHalfBand(width: number): number {
+  return Math.max(0.2, archwayColumnOffset(width) - 0.18);
+}
+
 export function archway(opts: ArchwayOptions): ModelSpec {
   const width = opts.width;
   const ceiling = opts.ceilingHeight ?? 3.2;
