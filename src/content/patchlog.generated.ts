@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-12",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The doors at the bottom of the stairs were left open exactly as wide as someone fleeing would leave them. The fire beyond does not mind the draught.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
         "tag": "add",
         "text": "Look down any stairwell: the next fire is already burning for you. Behind every fire, the way you came — sealed. Keep going.",
         "area": [
@@ -403,14 +411,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The cracked bricks part along clean lines again, the way stone actually gives up.",
         "area": [
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Some ceilings have already given up, and the cracks stop practicing their penmanship.",
-        "area": [
-          "atmosphere",
-          "level"
         ]
       }
     ]
