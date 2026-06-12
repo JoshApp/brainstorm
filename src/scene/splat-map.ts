@@ -125,15 +125,16 @@ export function initSplatMap(): void {
         float s1 = h(vec2(floor(sect) + 1.0, 7.0));
         float lobe = mix(s0, s1, smoothstep(0.0, 1.0, fract(sect)));
         float along = pl.x * 0.5 + 0.5;            // streaks: 0 impact → 1 far
-        float wobble = mix(0.34, 0.55 + 0.35 * along, uStreak);
-        vec2 pc = uStreak > 0.5 ? pl + vec2(0.45, 0.0) : pl;
-        float d = length(pc) * (uStreak > 0.5 ? 0.78 : 1.0);
+        float streakK = clamp(uStreak, 0.0, 1.0) * step(uStreak, 1.5);  // 1 only for floor streaks
+        float wobble = mix(0.34, 0.55 + 0.35 * along, streakK);
+        vec2 pc = streakK > 0.5 ? pl + vec2(0.45, 0.0) : pl;
+        float d = length(pc) * (streakK > 0.5 ? 0.78 : 1.0);
         float edge = (1.0 - wobble * 0.5) + (lobe - 0.5) * wobble;
         float body = 1.0 - smoothstep(edge * 0.58, edge, d);
         vec2 cell = pl * 5.5;
         float blob = h(floor(cell));
         float inBlob = smoothstep(0.55, 0.85, blob) * (1.0 - smoothstep(0.0, 0.45, length(fract(cell) - 0.5)));
-        float thin = uStreak > 0.5 ? (1.0 - along * 0.45) : 1.0;
+        float thin = streakK > 0.5 ? (1.0 - along * 0.45) : 1.0;
         float spatter = inBlob * (1.0 - smoothstep(0.55, 1.15, d)) * thin;
         float a = clamp(max(body, spatter), 0.0, 1.0) * uAlpha;
         // WALL ARC (uStreak=2): a messy splotch with DRIPS — gravity is
@@ -235,6 +236,58 @@ export function stampSplat(
   queue.push({ x: x - b.x, z: z - b.y, r: radius, color: new THREE.Color(colorHex), a: alpha, seed: Math.random(), dir: d, surface: 'floor' });
 }
 
+/** THE GORE EMITTER — pseudo-physics splash from a weapon impact.
+ *  The blow lands at (x, z, y) travelling (dirX, dirZ); blood bursts
+ *  from that point OUTWARD, biased along the swing: a puddle at the
+ *  body, a fingered streak down-throw, droplets beyond — and if the
+ *  splash reaches a wall within its energy's range, the wall takes a
+ *  dripping splotch scaled by the energy left when it got there.
+ *  Every landed hit calls this; energy scales everything (a chip hit
+ *  speckles, a heavy drenches, a kill detonates). */
+export function emitGoreSplash(
+  x: number, z: number, y: number,
+  dirX: number, dirZ: number,
+  energy: number, colorHex: number,
+  opts?: { wallFallbackCardinals?: boolean },
+): void {
+  const e = Math.max(0, Math.min(1.6, energy));
+  if (e < 0.05) return;
+  const len = Math.hypot(dirX, dirZ) || 1;
+  const dx = dirX / len, dz = dirZ / len;
+  // Floor: puddle + streak + droplets, all energy-scaled.
+  const r = 0.22 + 0.38 * e;
+  stampSplat(x, z, r * 0.75, colorHex, 0.35 + 0.4 * e);
+  stampSplat(x + dx * r, z + dz * r, r, colorHex, (0.3 + 0.4 * e), { x: dx, z: dz });
+  const sats = Math.round(e * 2.2);
+  for (let i = 0; i < sats; i++) {
+    const t = 1.1 + Math.random() * 1.3;
+    const side = (Math.random() - 0.5) * 0.7;
+    stampSplat(
+      x + (dx * t - dz * side) * r * 1.7,
+      z + (dz * t + dx * side) * r * 1.7,
+      r * (0.18 + Math.random() * 0.2),
+      colorHex, 0.3 + 0.4 * e,
+    );
+  }
+  // Wall: the splash carries ~1m per unit energy; whatever it reaches
+  // gets painted, weaker with distance. Normal swings included.
+  const reach = 0.6 + e * 0.9;
+  let hit = wallProbe?.(x, z, dx, dz) ?? null;
+  if (!hit && opts?.wallFallbackCardinals) {
+    for (const [cx, cz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      hit = wallProbe?.(x, z, cx, cz) ?? null;
+      if (hit) break;
+    }
+  }
+  if (hit) {
+    const dWall = Math.abs(hit.axis === 'x' ? hit.plane - x : hit.plane - z);
+    if (dWall <= reach) {
+      const k = 1 - (dWall / reach) * 0.6;
+      stampWallArcAt(hit, y, colorHex, (0.35 + 0.5 * e) * k, (0.3 + 0.55 * e) * k);
+    }
+  }
+}
+
 /** Throw an arc onto the nearest wall along the throw direction
  *  (deaths + crits). Uses the per-floor wall probe; silently does
  *  nothing in open space. */
@@ -245,8 +298,6 @@ export function stampWallArc(
   if (!rt || !wallProbe) return;
   const len = Math.hypot(dirX, dirZ) || 1;
   let hit = wallProbe(x, z, dirX / len, dirZ / len);
-  // The throw often misses the wall a mob is hugging — fall back to
-  // the cardinals so a kill AGAINST a wall always marks it.
   if (!hit) {
     for (const [cx, cz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       hit = wallProbe(x, z, cx, cz);
@@ -254,6 +305,11 @@ export function stampWallArc(
     }
   }
   if (!hit) return;
+  stampWallArcAt(hit, y, colorHex, alpha, size);
+}
+
+function stampWallArcAt(hit: WallHit, y: number, colorHex: number, alpha: number, size: number): void {
+  if (!rt) return;
   const b = uSplatBounds.value;
   // Mirror of the wall-shader mapping (surface-detail.ts): X-facing
   // walls key by Z in the left half; Z-facing by X in the right.

@@ -5,7 +5,7 @@ import type { Enemy } from '../mobs/enemy';
 import type { Destructible } from '../level/destructibles';
 import type { Damageable } from './damageable';
 import { freezeFor } from './hit-pause';
-import { stampSpray, stampWallArc } from '../scene/splat-map';
+import { emitGoreSplash } from '../scene/splat-map';
 import { kickShake } from './screen-shake';
 import { playImpact, playWhoosh, playBuffApply, playSurfaceHit } from '../audio/sfx';
 import { applyViewmodelKickback } from '../player/viewmodel-pullback';
@@ -646,26 +646,21 @@ export function createCombatSystem(
       if (applied > 0) {
         const gore = (target as { bloodAmount?: number }).bloodAmount ?? 1;
         if (gore > 0.01) {
-          const bloodC = (target as { bloodColor?: number }).bloodColor ?? 0x6e1410;
-          const hdx = target.position.x - camera.position.x;
-          const hdz = target.position.z - camera.position.z;
-          stampSpray(
-            target.position.x,
-            target.position.z,
-            (0.28 + Math.random() * 0.2 + Math.min(0.3, applied * 0.04)) * gore,
-            bloodC,
-            0.55 * gore,
-            hdx, hdz,
+          // IMPACT-SCALED splash from the weapon's strike: damage sets
+          // the energy, the swing sets the direction, and whatever the
+          // splash reaches — floor, wall, prop base — gets painted.
+          // Chip hits speckle; heavies drench; crits and executes
+          // detonate. (energy ~0.35 at 1 dmg → 1.0 around 8 dmg.)
+          const energy = Math.min(1.5, (0.3 + applied * 0.09)
+            * (crit ? 1.35 : 1) * (isExecute ? 1.5 : 1)) * gore;
+          emitGoreSplash(
+            target.position.x, target.position.z,
+            0.5 + target.aimHeight * 0.5 + Math.random() * 0.25,
+            target.position.x - camera.position.x,
+            target.position.z - camera.position.z,
+            energy,
+            (target as { bloodColor?: number }).bloodColor ?? 0x6e1410,
           );
-          // Crits and executes throw an arc across the wall behind —
-          // rare, deliberate marks (the light doctrine, but for gore).
-          if (crit || isExecute) {
-            stampWallArc(
-              target.position.x, target.position.z,
-              0.6 + target.aimHeight * 0.5 + Math.random() * 0.3,
-              hdx, hdz, bloodC, 0.9 * gore, 0.85 * gore,
-            );
-          }
         }
       }
 
