@@ -359,9 +359,12 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       shader.uniforms.uDissolve  = uDissolve;
     }
     if (hasGore) {
-      shader.uniforms.uSplatT = uSplatTex as unknown as THREE.IUniform;
-      shader.uniforms.uSplatB = uSplatBounds as unknown as THREE.IUniform;
-      shader.uniforms.uSplatO = uSplatOn as unknown as THREE.IUniform;
+      // Distinct names from surface-detail's uSplat* — a material can
+      // carry BOTH injections (dressed archways), and duplicate GLSL
+      // uniform declarations are a compile error (invisible meshes).
+      shader.uniforms.uGoreT = uSplatTex as unknown as THREE.IUniform;
+      shader.uniforms.uGoreB = uSplatBounds as unknown as THREE.IUniform;
+      shader.uniforms.uGoreO = uSplatOn as unknown as THREE.IUniform;
     }
 
     // Vertex: capture local position so the dissolve noise is stable in
@@ -406,7 +409,7 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       frag += 'uniform float uChroma;\n';
     }
     if (hasGore) {
-      frag += 'varying vec3 vGoreWorld;\nuniform sampler2D uSplatT;\nuniform vec4 uSplatB;\nuniform float uSplatO;\n';
+      frag += 'varying vec3 vGoreWorld;\nuniform sampler2D uGoreT;\nuniform vec4 uGoreB;\nuniform float uGoreO;\n';
     }
     shader.fragmentShader = frag + shader.fragmentShader;
 
@@ -415,9 +418,9 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       // Gore creep — same composite-stage recolour as the floors
       // (albedo math dies under the PSX quantize on dark surfaces).
       {
-        vec2 gUv = (vGoreWorld.xz - uSplatB.xy) / uSplatB.zw;
+        vec2 gUv = (vGoreWorld.xz - uGoreB.xy) / uGoreB.zw;
         if (gUv.x > 0.0 && gUv.x < 1.0 && gUv.y > 0.0 && gUv.y < 1.0) {
-          vec4 gs = texture2D(uSplatT, gUv) * uSplatO;
+          vec4 gs = texture2D(uGoreT, gUv) * uGoreO;
           float gw = clamp(gs.a, 0.0, 1.0) * clamp(1.0 - vGoreWorld.y / 0.55, 0.0, 1.0);
           if (gw > 0.004) {
             float glum = dot(gl_FragColor.rgb, vec3(0.45, 0.35, 0.2));

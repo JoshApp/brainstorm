@@ -366,7 +366,9 @@ initLevelLoader({
     const slept =
       lastLevelId === null || lastLevelId === 'tutorial' || lastLevelId.startsWith('safe-') ||
       level.spec.id === 'tutorial' || level.spec.id.startsWith('safe-');
-    beginArrival({ full: slept });
+    // Scenarios skip the wake — frozen/posed worlds never tick the
+    // lids open (black screen), and a debug jump isn't an arrival.
+    if (!import.meta.env.DEV || !getScenarioFromUrl()) beginArrival({ full: slept });
     lastLevelId = level.spec.id;
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-') || level.spec.id === 'tutorial');
     resetBossBar();   // new floor — clear any prior boss bar state
