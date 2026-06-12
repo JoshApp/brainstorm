@@ -150,7 +150,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
   ${!cfg.grooveFill ? 'float gSeepH = 1.0;\nvec2 gSeepUv = vec2(0.0);' : ''}
-  ${cfg.splat ? 'float gSplatWet = 0.0;' : ''}
+  ${cfg.splat ? 'float gSplatWet = 0.0;\n  vec3 gSplatColor = vec3(0.0);' : ''}
   if (uDetailStrength > 0.0) {
     ${projGLSL}
     vec2 uvT = sUv / uSurfTile;
@@ -257,6 +257,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       vec2 spUv = (vWorldPos.xz - uSplatB.xy) / uSplatB.zw;
       vec4 spl = texture2D(uSplatT, spUv) * uSplatO;
       gSplatWet = clamp(spl.a, 0.0, 1.0) * (0.80 + 0.35 * (1.0 - smoothstep(0.35, 0.70, s.a)));
+      gSplatColor = spl.rgb;
     }
     ` : ''}
     // ALBEDO — grayscale shade * per-surface tint (warm floor / cold ceiling).
@@ -275,9 +276,16 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
   // remap of whatever light already lands there — reads in lamplight,
   // dries into darkness, survives the quantize.
   if (gSplatWet > 0.004) {
-    float bloodLum = dot(outgoingLight, vec3(0.45, 0.35, 0.2));
-    vec3 blooded = vec3(bloodLum) * vec3(1.55, 0.16, 0.12);
-    outgoingLight = mix(outgoingLight, blooded, min(gSplatWet, 1.0) * 0.9);
+    float lum = dot(outgoingLight, vec3(0.45, 0.35, 0.2));
+    // The stored stamp colour carries species (red blood, green ichor,
+    // pale dust) AND age: drying desaturates toward brown-black, so
+    // SATURATION is freshness — no extra channel needed.
+    float maxc = max(gSplatColor.r, max(gSplatColor.g, gSplatColor.b));
+    float minc = min(gSplatColor.r, min(gSplatColor.g, gSplatColor.b));
+    float fresh = smoothstep(0.08, 0.40, maxc - minc);
+    vec3 hue = gSplatColor / max(maxc, 0.10);
+    vec3 stain = lum * hue * mix(0.55, 1.45, fresh);
+    outgoingLight = mix(outgoingLight, stain, min(gSplatWet, 1.0) * 0.9);
   }
   #include <opaque_fragment>`,
       );

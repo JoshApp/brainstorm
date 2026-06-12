@@ -27,7 +27,7 @@ import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift } from './style/render-target';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
-import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat } from './scene/splat-map';
+import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
@@ -724,8 +724,13 @@ if (import.meta.env.DEV) {
   };
   (window as unknown as Record<string, unknown>).__scene = scene;   // DEV: raw scene access for live debugging
   (window as unknown as Record<string, unknown>).__renderer = renderer;   // DEV: program-cache forensics
-  (window as unknown as Record<string, unknown>).__stamp = (r = 1.2, a = 1.0) => {
-    stampSplat(camera.position.x, camera.position.z, r, 0x8a1812, a);
+  (window as unknown as Record<string, unknown>).__stamp = (r = 1.2, a = 1.0, spray = false) => {
+    if (spray) {
+      const fx = -Math.sin(camera.rotation.y), fz = -Math.cos(camera.rotation.y);
+      stampSpray(camera.position.x + fx * 1.5, camera.position.z + fz * 1.5, r, 0x8a1812, a, fx, fz);
+    } else {
+      stampSplat(camera.position.x, camera.position.z, r, 0x8a1812, a);
+    }
     return [camera.position.x.toFixed(1), camera.position.z.toFixed(1)];
   };
   (window as unknown as Record<string, unknown>).__splatBg = (on: boolean) => {

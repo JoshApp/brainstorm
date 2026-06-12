@@ -30,8 +30,23 @@ export const uSplatTex = { value: null as THREE.Texture | null };
 export const uSplatBounds = { value: new THREE.Vector4(0, 0, 1, 1) };  // minX, minZ, sizeX, sizeZ
 export const uSplatOn = { value: 0 };
 
-interface Stamp { x: number; z: number; r: number; color: THREE.Color; a: number; seed: number }
+interface Stamp {
+  x: number; z: number; r: number; color: THREE.Color; a: number; seed: number;
+  /** Direction (map-space, normalized) for streak splats; null = radial pool. */
+  dir: { x: number; z: number } | null;
+}
 const queue: Stamp[] = [];
+
+// Drying: every DRY_INTERVAL a low-alpha quad lerps the map's COLOR
+// toward dried brown-black (alpha/wetness untouched). Freshness needs
+// no extra channel — drying IS desaturating, and the floor shader
+// reads saturation as freshness (fresh saturated blood glistens and
+// flows; dried brown lies matte; skeleton dust never glistens).
+const DRY_INTERVAL_S = 2.5;
+const DRY_FULL_S = 75;
+let lastDryAt = 0;
+let dryMesh: THREE.Mesh | null = null;
+let dryMat: THREE.ShaderMaterial | null = null;
 
 export function initSplatMap(): void {
   if (rt) return;
@@ -52,6 +67,7 @@ export function initSplatMap(): void {
       uColor: { value: new THREE.Color(0x7a1612) },
       uAlpha: { value: 0.8 },
       uSeed: { value: 0 },
+      uStreak: { value: 0 },
     },
     vertexShader: `
       varying vec2 vUv;
@@ -60,7 +76,7 @@ export function initSplatMap(): void {
     fragmentShader: `
       varying vec2 vUv;
       uniform vec2 uCenter; uniform float uRadius; uniform vec3 uColor;
-      uniform float uAlpha; uniform float uSeed;
+      uniform float uAlpha; uniform float uSeed; uniform float uStreak;
       float h(vec2 p){ p = fract(p * 0.3183099 + uSeed); p *= 17.0; return fract(p.x * p.y * (p.x + p.y)); }
       void main(){
         // The quad is positioned + scaled to the splat's bounds (see
@@ -72,11 +88,18 @@ export function initSplatMap(): void {
         // SOLID core; spatter as droplet BLOBS (coarse cells smoothly
         // thresholded), not per-texel hash — per-texel hash reads as
         // red-white noise on the floor, not as liquid.
-        float core = 1.0 - smoothstep(0.45, 0.72, d);
+        // Streaks (uStreak=1): the quad is pre-stretched along the
+        // throw; the core sits at the IMPACT end (-x) and the spatter
+        // thins toward the far end — blood travels away from the blow.
+        vec2 pl = (vUv - vec2(0.5)) * 2.0;
+        float along = pl.x * 0.5 + 0.5;   // 0 = impact end, 1 = far end
+        float coreD = uStreak > 0.5 ? length(pl + vec2(0.45, 0.0)) * 1.25 : d;
+        float core = 1.0 - smoothstep(0.45, 0.72, coreD);
         vec2 cell = (vUv - vec2(0.5)) * 2.0 * 5.5;
         float blob = h(floor(cell));
         float inBlob = smoothstep(0.55, 0.85, blob) * (1.0 - smoothstep(0.0, 0.45, length(fract(cell) - 0.5)));
-        float spatter = inBlob * (1.0 - smoothstep(0.45, 1.0, d));
+        float thin = uStreak > 0.5 ? (1.0 - along * 0.55) : 1.0;
+        float spatter = inBlob * (1.0 - smoothstep(0.45, 1.0, d)) * thin;
         float a = clamp(max(core, spatter), 0.0, 1.0) * uAlpha;
         if (a < 0.015) discard;
         gl_FragColor = vec4(uColor, a);
@@ -95,6 +118,29 @@ export function initSplatMap(): void {
   stampMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), stampMat);
   stampMesh.frustumCulled = false;   // positioned per stamp in flushSplats
   stampScene.add(stampMesh);
+
+  // Drying quad: lerps the map's COLOR toward dried brown-black,
+  // leaving alpha (wetness footprint) untouched.
+  dryMat = new THREE.ShaderMaterial({
+    uniforms: { uK: { value: 0.03 } },
+    vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `
+      uniform float uK;
+      void main(){ gl_FragColor = vec4(vec3(0.085, 0.035, 0.025), uK); }
+    `,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.SrcAlphaFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
+    blendSrcAlpha: THREE.ZeroFactor,
+    blendDstAlpha: THREE.OneFactor,
+  });
+  dryMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), dryMat);
+  dryMesh.position.set(0.5, 0.5, 0);
+  dryMesh.visible = false;
+  stampScene.add(dryMesh);
 }
 
 /** New floor: set the world→map mapping and wipe the slate. */
@@ -106,19 +152,52 @@ export function resetSplatMap(minX: number, minZ: number, sizeX: number, sizeZ: 
 }
 
 /** Queue a splat. x/z world; radius metres; alpha = wetness added. */
-export function stampSplat(x: number, z: number, radius: number, colorHex: number, alpha = 0.8): void {
+export function stampSplat(
+  x: number, z: number, radius: number, colorHex: number, alpha = 0.8,
+  dir?: { x: number; z: number } | null,
+): void {
   if (!rt) return;
   const b = uSplatBounds.value;
   const u = (x - b.x) / b.z;
   const v = (z - b.y) / b.w;
   if (u < 0 || u > 1 || v < 0 || v > 1) return;
-  queue.push({ x: u, z: v, r: radius / Math.max(b.z, b.w), color: new THREE.Color(colorHex), a: alpha, seed: Math.random() });
+  let d: { x: number; z: number } | null = null;
+  if (dir) {
+    const len = Math.hypot(dir.x, dir.z);
+    if (len > 0.001) d = { x: dir.x / len, z: dir.z / len };
+  }
+  queue.push({ x: u, z: v, r: radius / Math.max(b.z, b.w), color: new THREE.Color(colorHex), a: alpha, seed: Math.random(), dir: d });
+}
+
+/** Directional spray: a stretched streak stamp plus satellite droplets
+ *  thrown further along the direction. The shape every hit should
+ *  make — blood travels AWAY from the blow. */
+export function stampSpray(
+  x: number, z: number, radius: number, colorHex: number, alpha: number,
+  dirX: number, dirZ: number,
+): void {
+  const len = Math.hypot(dirX, dirZ) || 1;
+  const dx = dirX / len, dz = dirZ / len;
+  stampSplat(x + dx * radius * 0.4, z + dz * radius * 0.4, radius, colorHex, alpha, { x: dx, z: dz });
+  const sats = 1 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < sats; i++) {
+    const t = 0.8 + Math.random() * 1.1;
+    const side = (Math.random() - 0.5) * 0.5;
+    stampSplat(
+      x + (dx * t - dz * side) * radius * 1.6,
+      z + (dz * t + dx * side) * radius * 1.6,
+      radius * (0.22 + Math.random() * 0.22),
+      colorHex,
+      alpha * 0.8,
+    );
+  }
 }
 
 /** Drain queued stamps into the map. Called from the render tick. */
 export function flushSplats(renderer: THREE.WebGLRenderer): void {
   if (!rt || !stampScene || !stampCam || !stampMat || !stampMesh) return;
-  if (!needsClear && queue.length === 0) return;
+  const dryDue = performance.now() / 1000 - lastDryAt >= DRY_INTERVAL_S;
+  if (!needsClear && queue.length === 0 && !dryDue) return;
   const prevTarget = renderer.getRenderTarget();
   const prevAutoClear = renderer.autoClear;
   renderer.setRenderTarget(rt);
@@ -129,16 +208,40 @@ export function flushSplats(renderer: THREE.WebGLRenderer): void {
   }
   renderer.autoClear = false;
   for (const s of queue.splice(0)) {
-    // Quad sized to the splat: fragment work proportional to the
-    // stain, not the map (a 0.5m splat ≈ a few hundred texels).
+    // Quad sized (and for streaks: rotated + stretched) to the splat —
+    // fragment work proportional to the stain, not the map.
     stampMesh.position.set(s.x, s.z, 0);
-    stampMesh.scale.set(s.r * 2, s.r * 2, 1);
+    if (s.dir) {
+      stampMesh.rotation.z = Math.atan2(s.dir.z, s.dir.x);
+      stampMesh.scale.set(s.r * 2 * 1.9, s.r * 2 * 0.6, 1);
+      stampMat.uniforms.uStreak.value = 1;
+    } else {
+      stampMesh.rotation.z = 0;
+      stampMesh.scale.set(s.r * 2, s.r * 2, 1);
+      stampMat.uniforms.uStreak.value = 0;
+    }
     (stampMat.uniforms.uCenter.value as THREE.Vector2).set(s.x, s.z);
     stampMat.uniforms.uRadius.value = s.r;
     (stampMat.uniforms.uColor.value as THREE.Color).copy(s.color);
     stampMat.uniforms.uAlpha.value = s.a;
     stampMat.uniforms.uSeed.value = s.seed;
     renderer.render(stampScene, stampCam);
+  }
+  // Drying tick — piggybacks on any flush; also runs when only the
+  // clock demands it (see the early-return above, which lets us in
+  // when due).
+  const nowS = performance.now() / 1000;
+  if (nowS - lastDryAt >= DRY_INTERVAL_S) {
+    lastDryAt = nowS;
+    if (dryMesh && dryMat) {
+      stampMesh.visible = false;
+      dryMesh.visible = true;
+      dryMat.uniforms.uK.value = DRY_INTERVAL_S / DRY_FULL_S;
+      renderer.setRenderTarget(rt);
+      renderer.render(stampScene, stampCam);
+      dryMesh.visible = false;
+      stampMesh.visible = true;
+    }
   }
   renderer.autoClear = prevAutoClear;
   renderer.setRenderTarget(prevTarget);

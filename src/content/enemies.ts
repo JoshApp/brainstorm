@@ -50,6 +50,13 @@ export interface EnemySpec {
   /** Display name (for future tooltip / kill log / epitaph use). */
   name: string;
 
+  /** What this creature spills when cut. Defaults to mortal red.
+   *  Oozes run ichor-green; skeletons shed pale dust (see bloodAmount). */
+  bloodColor?: number;
+  /** Gore multiplier on stamp size + opacity (default 1). Skeletons
+   *  barely stain (0.3) — bone does not bleed; it powders. */
+  bloodAmount?: number;
+
   /** Boss flag — drives the Dark Souls-style boss bar + "this is a boss"
    *  treatment (the bar finds the live boss enemy by this). */
   isBoss?: boolean;
@@ -918,6 +925,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // Drops the first fabled-rarity weapon plus other rare loot.
   wraith: {
     id: 'wraith',
+    bloodAmount: 0.0,
     name: 'wraith',
     // BOSS — only ever spawned via the 'B' boss slot (never in roll tables),
     // so the boss treatment lives right on the spec. Bigger, far tankier than
@@ -1039,6 +1047,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // careless kill, you spend three more swings on cleanup.
   ooze: {
     id: 'ooze',
+    bloodColor: 0x3a5c14,
     name: 'ooze',
     hp: 2,
     moveSpeed: 1.4,
@@ -1099,6 +1108,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // that you face them anyway.
   'ooze-small': {
     id: 'ooze-small',
+    bloodColor: 0x3a5c14,
     name: 'ooze',
     hp: 1,                       // one-shot kill, like a rat
     moveSpeed: 1.6,              // slightly faster — they're "cleanup speed"
@@ -1165,6 +1175,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // cleared → back-line refilled" trap that punishes correct kill order.
   'acid-spitter': {
     id: 'acid-spitter',
+    bloodColor: 0x4a6e1a,
     name: 'acid spitter',
     hp: 5,                       // tanky — closing on it is a real commitment
     moveSpeed: 0.8,              // glacial — it holds ground, doesn't chase
@@ -1235,6 +1246,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // armor 2 means trash-tier weapons take a few hits to chew through.
   stoneguard: {
     id: 'stoneguard',
+    bloodColor: 0x6e6a62,
+    bloodAmount: 0.35,
     name: 'stoneguard',
     hp: 16,                      // tankiest non-boss — bumped so it SURVIVES long
                                  //   enough for sustained heavy hits to break its
@@ -1438,6 +1451,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // ability it uses by range).
   skeleton: {
     id: 'skeleton',
+    bloodColor: 0x8a8274,
+    bloodAmount: 0.3,
     name: 'skeleton',
     hp: 3,
     moveSpeed: 1.5,            // advances steadily (no kite, no preferredRange)
@@ -1594,6 +1609,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // don't get surrounded. The nest mob; lives in web rooms.
   spider: {
     id: 'spider',
+    bloodColor: 0x4e5a16,
     name: 'spider',
     hp: 2,
     moveSpeed: 2.2,            // fast scuttle
@@ -2045,6 +2061,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // ability lists, rig offset/pitch overrides, hide-parts visual.
   'marrow-sovereign': {
     id: 'marrow-sovereign',
+    bloodColor: 0x8a8274,
+    bloodAmount: 0.3,
     name: 'marrow sovereign',
     isBoss: true,
     bossName: 'The Marrow Sovereign',
@@ -2247,6 +2265,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // Verdant Rot themed but appears act 2+.
   'plague-spore': {
     id: 'plague-spore',
+    bloodColor: 0x6a6e2a,
     name: 'plague spore',
     hp: 3,
     moveSpeed: 0,                  // truly stationary
@@ -2317,6 +2336,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
   // Reads as "ambient malevolence" rather than "person."
   'sump-wisp': {
     id: 'sump-wisp',
+    bloodColor: 0x2a4e5e,
+    bloodAmount: 0.5,
     name: 'sump wisp',
     hp: 2,                          // one-shot for most weapons — closing matters
     moveSpeed: 1.8,                 // fast — it kites

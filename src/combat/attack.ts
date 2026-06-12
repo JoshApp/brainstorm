@@ -5,7 +5,7 @@ import type { Enemy } from '../mobs/enemy';
 import type { Destructible } from '../level/destructibles';
 import type { Damageable } from './damageable';
 import { freezeFor } from './hit-pause';
-import { stampSplat } from '../scene/splat-map';
+import { stampSpray } from '../scene/splat-map';
 import { kickShake } from './screen-shake';
 import { playImpact, playWhoosh, playBuffApply, playSurfaceHit } from '../audio/sfx';
 import { applyViewmodelKickback } from '../player/viewmodel-pullback';
@@ -640,16 +640,22 @@ export function createCombatSystem(
       // Damage number floats from this target's aim point.
       hitPoint.set(target.position.x, target.position.y + target.aimHeight, target.position.z);
       if (applied > 0) spawnDamageNumber(camera, hitPoint, applied, crit, graze, isExecute);
-      // The floor remembers: every landed hit stamps the splat map
-      // under the target. Repeated blows in one spot pool.
+      // The floor remembers: every landed hit throws a DIRECTIONAL
+      // spray away from the blow (streak + satellite droplets), in the
+      // target's own blood. Repeated blows in one spot pool.
       if (applied > 0) {
-        stampSplat(
-          target.position.x + (Math.random() - 0.5) * 0.4,
-          target.position.z + (Math.random() - 0.5) * 0.4,
-          0.30 + Math.random() * 0.25 + Math.min(0.3, applied * 0.04),
-          0x6e1410,
-          0.55,
-        );
+        const gore = (target as { bloodAmount?: number }).bloodAmount ?? 1;
+        if (gore > 0.01) {
+          stampSpray(
+            target.position.x,
+            target.position.z,
+            (0.28 + Math.random() * 0.2 + Math.min(0.3, applied * 0.04)) * gore,
+            (target as { bloodColor?: number }).bloodColor ?? 0x6e1410,
+            0.55 * gore,
+            target.position.x - camera.position.x,
+            target.position.z - camera.position.z,
+          );
+        }
       }
 
       // Finisher reward — earned, kill-based sustain (heal + stamina). The loop

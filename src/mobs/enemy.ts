@@ -7,7 +7,7 @@ import { kickShake } from '../combat/screen-shake';
 import { spawnHazardField } from '../combat/hazard-field';
 import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
-import { stampSplat } from '../scene/splat-map';
+import { stampSplat, stampSpray } from '../scene/splat-map';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
@@ -196,6 +196,10 @@ export interface Enemy extends Damageable {
   setZoneEnabled(id: string, on: boolean): boolean;
   /** Mobs take the full crunch + fire the player's on-hit passives. */
   hitFeedback: 'heavy';
+  /** Species gore — colour + multiplier from the spec (combat stamps
+   *  the splat map in the target's own blood). */
+  bloodColor: number;
+  bloodAmount: number;
   /** Finisher window — true only when STAGGERED (poise broken). A heavy hit
    *  here executes. */
   executable: boolean;
@@ -266,6 +270,8 @@ export function createEnemy(
   // Container: world position + yaw to face player.
   const container = new THREE.Group();
   container.position.copy(position);
+  // Last seen player position — the death spray throws away from it.
+  const lastPlayerXZ = new THREE.Vector3();
 
   // Skeleton-first creature: dimensions + hurtbox are MEASURED/derived by
   // buildCreature (docs/CREATURE-SYSTEM.md). The rest of this module consumes
@@ -929,8 +935,20 @@ export function createEnemy(
       stunStars?.dispose(); stunStars = null;
       built.group.rotation.y = 0; built.group.rotation.z = 0;
       emit({ type: 'enemy:killed', enemyId: spec.id });
-      // Death soaks the floor — one big stamp under the corpse.
-      stampSplat(container.position.x, container.position.z, 0.7 + Math.random() * 0.4, 0x5e1210, 0.9);
+      // Death soaks the floor: a big pool under the corpse plus a
+      // directional spray thrown by the killing blow (away from the
+      // player), in the species' own blood.
+      const gore = spec.bloodAmount ?? 1;
+      if (gore > 0.01) {
+        const bloodC = spec.bloodColor ?? 0x5e1210;
+        stampSplat(container.position.x, container.position.z, (0.7 + Math.random() * 0.4) * gore, bloodC, 0.9 * gore);
+        stampSpray(
+          container.position.x, container.position.z,
+          0.5 * gore, bloodC, 0.7 * gore,
+          container.position.x - lastPlayerXZ.x,
+          container.position.z - lastPlayerXZ.z,
+        );
+      }
       // Split-on-death — fire the builder's spawn callback so any
       // children appear in the same frame's enemy list. Pass a CLONE
       // of the death position because the builder may need it after
@@ -1461,6 +1479,7 @@ export function createEnemy(
   // animator (enemy-animation.ts), driven from update() below.
 
   function update(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion, nav?: NavGrid) {
+    lastPlayerXZ.copy(playerPos);
     if (!aliveLocal) {
       // Dying branch — run the death animation; everything else (AI,
       // perception, movement) is gated off.
@@ -2185,6 +2204,8 @@ export function createEnemy(
     hurtbox,
     setZoneEnabled: (id: string, on: boolean) => setZoneEnabled(hurtbox, id, on),
     hitFeedback: 'heavy',
+    bloodColor: spec.bloodColor ?? 0x6e1410,
+    bloodAmount: spec.bloodAmount ?? 1,
     hitTargets: built.hitTargets,
     collisionRadius: spec.collisionRadius,
     hitRadius: spec.hitRadius ?? 0,
