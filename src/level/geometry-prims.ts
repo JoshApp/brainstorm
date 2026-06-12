@@ -379,20 +379,46 @@ export function makeBracedFramesGeometry(rect: { x: number; z: number; w: number
   return geos.length ? mergeGeometries(geos, false) : null;
 }
 
+/** Per-vertex darkness fade for shaft/drop geometry: full-bright at
+ *  `brightY`, easing to pure black `fadeM` metres away (in world Y).
+ *  The chasm material renders with vertexColors:true, so black vertex
+ *  colour = zero albedo = the void. Walls need enough height segments
+ *  for the quadratic ease to actually curve (linear interpolation
+ *  between just two vertex rows would read as a flat gradient). */
+function applyDepthFade(geo: THREE.BufferGeometry, brightY: number, fadeM: number): void {
+  const pos = geo.getAttribute('position');
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const t = Math.min(1, Math.abs(pos.getY(i) - brightY) / fadeM);
+    const c = (1 - t) * (1 - t);   // ease-in — dives toward black early
+    colors[i * 3 + 0] = c;
+    colors[i * 3 + 1] = c;
+    colors[i * 3 + 2] = c;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+}
+
 // Chasm drop geometry — for each void, four inward pit walls descending from
 // the floor (y=0) to y=-drop plus a dark bottom, all merged into ONE mesh.
-// Rendered with the double-sided dark ceiling material (no vertex-colour
-// dependency, never culls from above) so it reads as an abyss.
-export function makeChasmDropGeometry(voids: { x: number; z: number; w: number; d: number }[], drop: number): THREE.BufferGeometry | null {
+// Walls carry a depth fade to pure black (vertex colours; the chasm material
+// renders vertexColors:true) so the pit reads as an abyss, not a lit box —
+// brick detail survives near the rim where the lamp catches it, then nothing.
+export function makeChasmDropGeometry(
+  voids: { x: number; z: number; w: number; d: number }[],
+  drop: number,
+  /** Metres below the rim where the walls reach pure black. */
+  fadeM: number,
+): THREE.BufferGeometry | null {
   const geos: THREE.BufferGeometry[] = [];
   const m4 = new THREE.Matrix4();
+  const ySegs = Math.max(4, Math.ceil(drop / 0.75));
   for (const v of voids) {
     const { x, z, w, d } = v;
     const bottom = new THREE.PlaneGeometry(w, d);   // faces up
     m4.makeRotationX(-Math.PI / 2); m4.setPosition(x, -drop, z); bottom.applyMatrix4(m4);
     geos.push(bottom);
     const wall = (len: number, yaw: number, px: number, pz: number) => {
-      const g = new THREE.PlaneGeometry(len, drop);
+      const g = new THREE.PlaneGeometry(len, drop, 1, ySegs);
       m4.makeRotationY(yaw); m4.setPosition(px, -drop / 2, pz); g.applyMatrix4(m4);
       geos.push(g);
     };
@@ -401,5 +427,36 @@ export function makeChasmDropGeometry(voids: { x: number; z: number; w: number; 
     wall(d, Math.PI / 2, x - w / 2, z);  // west edge
     wall(d, -Math.PI / 2, x + w / 2, z); // east edge
   }
-  return geos.length ? mergeGeometries(geos, false) : null;
+  if (!geos.length) return null;
+  const merged = mergeGeometries(geos, false);
+  applyDepthFade(merged, 0, fadeM);      // rim (y=0) bright → black below
+  return merged;
+}
+
+/** Ceiling shaft — a clean rectangular well rising above a room's ceiling,
+ *  walls fading up into black. Where the ceiling BREACH says "collapse",
+ *  the shaft says "deliberate architecture: the level above exists".
+ *  World coords; pair with a hole cut in the ceiling at the same rect.
+ *  The near-black cap closing the top is the caller's job (so a stray
+ *  ray can't see out of the world). */
+export function makeCeilingShaftGeometry(
+  cx: number, cz: number, w: number, d: number,
+  lipY: number, rise: number, fadeM: number,
+): THREE.BufferGeometry {
+  const geos: THREE.BufferGeometry[] = [];
+  const m4 = new THREE.Matrix4();
+  const ySegs = Math.max(4, Math.ceil(rise / 0.75));
+  const midY = lipY + rise / 2;
+  const wall = (len: number, yaw: number, px: number, pz: number) => {
+    const g = new THREE.PlaneGeometry(len, rise, 1, ySegs);
+    m4.makeRotationY(yaw); m4.setPosition(px, midY, pz); g.applyMatrix4(m4);
+    geos.push(g);
+  };
+  wall(w, 0, cx, cz - d / 2);             // north edge
+  wall(w, Math.PI, cx, cz + d / 2);       // south edge
+  wall(d, Math.PI / 2, cx - w / 2, cz);   // west edge
+  wall(d, -Math.PI / 2, cx + w / 2, cz);  // east edge
+  const merged = mergeGeometries(geos, false);
+  applyDepthFade(merged, lipY, fadeM);    // lip bright → black above
+  return merged;
 }

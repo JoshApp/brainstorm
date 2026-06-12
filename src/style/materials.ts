@@ -97,16 +97,21 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
     emissiveIntensity: emissiveBoost,
   });
 
-  // Chasm/crack drop walls — the vertical sides of floor voids. Wall BRICK
-  // (their walls are vertical, so they texture correctly) but NO vertex colours
-  // (the drop geometry carries none — vertexColors:true would render it black)
-  // and double-sided so the inner faces show. Shares the wall texture (below).
+  // Chasm/crack drop walls + ceiling-shaft walls. Wall BRICK (the faces are
+  // vertical, so they texture correctly), double-sided so the inner faces
+  // show. vertexColors:true is load-bearing: the shaft/drop geometry bakes a
+  // depth fade into its vertex colours (bright at the rim/lip → pure black a
+  // few metres in — see applyDepthFade in geometry-prims.ts), which is what
+  // makes a pit read as an abyss instead of a lit box. Emissive must stay
+  // ZERO — vertex colour only multiplies albedo, so any emissive would leave
+  // a residual glow at full depth and the void would never reach black.
   const chasmWall = new THREE.MeshStandardMaterial({
     color: CONFIG.WALL_COLOR,
     roughness: 0.95,
     metalness: 0.0,
-    emissive: wallEmissive,
-    emissiveIntensity: emissiveBoost,
+    vertexColors: true,
+    emissive: 0x000000,
+    emissiveIntensity: 0,
     side: THREE.DoubleSide,
   });
 

@@ -137,6 +137,7 @@ import {
   makeArchedCeilingGeometry,
   makeBracedFramesGeometry,
   makeChasmDropGeometry,
+  makeCeilingShaftGeometry,
 } from './geometry-prims';
 import { getPropAABB } from './prop-aabb';
 
@@ -204,10 +205,45 @@ function buildRoomShell(
       breachHole.push([breachCx + Math.cos(a) * rr, breachCz + Math.sin(a) * rr]);
     }
   }
+  // ── CEILING SHAFT (box-buster #4) ──────────────────────────────────
+  // Where the breach says "collapse", the shaft says intent: a clean
+  // rectangular well rising into darkness above the ceiling — deliberate
+  // architecture, proof the level above exists. Walls fade to pure black
+  // (vertex colours on the chasm material) so the lamp catches the lip
+  // and the rest is void. Same eligibility as the breach, mutually
+  // exclusive with it (a room gets one vertical event at most).
+  const wantShaft =
+    !wantBreach &&
+    ceilStyle === 'flat' &&
+    room.wallVariant !== 'braced' &&
+    floorHoles.length === 0 &&
+    !room.logicalOnly &&
+    W >= 4.5 && D >= 4.5 && H >= 2.9 &&
+    buildRng() < CONFIG.SHAFT_CHANCE;
+  let shaftRect: { cx: number; cz: number; w: number; d: number } | null = null;
+  if (wantShaft) {
+    const sw = 1.4 + buildRng() * 0.8;
+    const sd = 1.4 + buildRng() * 0.8;
+    // Centre offset kept inside the soffit border, like the breach.
+    const cx = (buildRng() - 0.5) * Math.max(0, W - sw - 2.4);
+    const cz = (buildRng() - 0.5) * Math.max(0, D - sd - 2.4);
+    shaftRect = { cx, cz, w: sw, d: sd };
+  }
   let ceiling: THREE.Mesh;
   if (ceilStyle === 'flat') {
+    const ceilHoles: Array<Array<[number, number]>> = [];
+    if (breachHole) ceilHoles.push(breachHole);
+    if (shaftRect) {
+      const { cx, cz, w: sw, d: sd } = shaftRect;
+      ceilHoles.push([
+        [cx - sw / 2, cz - sd / 2],
+        [cx + sw / 2, cz - sd / 2],
+        [cx + sw / 2, cz + sd / 2],
+        [cx - sw / 2, cz + sd / 2],
+      ]);
+    }
     ceiling = new THREE.Mesh(
-      breachHole ? makeFloorWithHoles(W, D, [breachHole]) : new THREE.PlaneGeometry(W, D),
+      ceilHoles.length > 0 ? makeFloorWithHoles(W, D, ceilHoles) : new THREE.PlaneGeometry(W, D),
       materials.ceiling,
     );
     ceiling.rotation.x = Math.PI / 2;
@@ -261,6 +297,33 @@ function buildRoomShell(
       heap.add(chunk);
     }
     scene.add(heap);
+  }
+  if (shaftRect) {
+    const wx = rect.x + shaftRect.cx;
+    const wz = rect.z + shaftRect.cz;
+    const shaft = new THREE.Mesh(
+      makeCeilingShaftGeometry(wx, wz, shaftRect.w, shaftRect.d, H, CONFIG.SHAFT_RISE_M, CONFIG.SHAFT_FADE_M),
+      materials.chasmWall,
+    );
+    shaft.receiveShadow = true;
+    shaft.name = 'ceiling-shaft';
+    shaft.userData.dbgKind = 'ceiling';
+    shaft.userData.dbgSource = `ceiling-shaft · ${room.id} @(${wx.toFixed(1)},${wz.toFixed(1)})`;
+    scene.add(shaft);
+    // Cap the well so a stray ray can't see out of the world. Not pure
+    // black: the faintest cold square far above — distant, unreachable
+    // light. Basic material (ignores lights) so it never brightens when
+    // the lamp sweeps past, staying well below the lamp baseline.
+    const cap = new THREE.Mesh(
+      new THREE.PlaneGeometry(shaftRect.w, shaftRect.d),
+      new THREE.MeshBasicMaterial({ color: 0x05070c }),
+    );
+    cap.rotation.x = Math.PI / 2;   // face down the well
+    cap.position.set(wx, H + CONFIG.SHAFT_RISE_M, wz);
+    cap.name = 'ceiling-shaft-cap';
+    cap.userData.dbgKind = 'ceiling';
+    cap.userData.dbgSource = `ceiling-shaft-cap · ${room.id}`;
+    scene.add(cap);
   }
 
 
@@ -1237,7 +1300,7 @@ export function buildLevel(
   // drop — the carvings read as untextured.) materials.wall is double-sided, so
   // the inner faces render without a clone.
   if (spec.voids && spec.voids.length > 0) {
-    const dropGeo = makeChasmDropGeometry(spec.voids, 6);
+    const dropGeo = makeChasmDropGeometry(spec.voids, CONFIG.CHASM_DROP_M, CONFIG.CHASM_FADE_M);
     if (dropGeo) {
       const chasm = new THREE.Mesh(dropGeo, materials.chasmWall);
       chasm.receiveShadow = true;

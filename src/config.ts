@@ -298,6 +298,19 @@ export const CONFIG = {
                                // for gentle undulation; deliberate surface texture
                                // is the richness pass (docs/surface-richness.md).
 
+  // === VERTICALITY — fake depth on a flat playfield ===
+  // Chasm voids (vault `voids`) and ceiling shafts sell vertical space
+  // without any player-Y simulation. The fade distances are where the
+  // geometry dives to pure black — shorter = the abyss starts sooner.
+  CHASM_DROP_M: 9,             // depth of a chasm void's drop walls
+  CHASM_FADE_M: 3.0,           // metres below the rim where the drop reaches pure black
+  SHAFT_RISE_M: 6,             // ceiling shaft height above the room ceiling
+  SHAFT_FADE_M: 2.6,           // metres above the lip where the shaft reaches pure black
+  // Per-room roll for a procedural ceiling shaft (big flat-ceiling stone
+  // rooms only; mutually exclusive with the ceiling-breach roll, which
+  // is checked first at 0.10).
+  SHAFT_CHANCE: 0.10,
+
   // === RANGED COMMITMENT ===
   // Accuracy demands stillness — the fix for "ranged is too spammable". A shot
   // fired while MOVING blooms off-aim; planted = dead-on. So kiting-while-firing
