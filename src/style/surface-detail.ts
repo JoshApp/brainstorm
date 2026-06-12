@@ -275,7 +275,7 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
         float xf = step(abs(vWorldNormal.z), abs(vWorldNormal.x));
         float along = mix((vWorldPos.x - uSplatB.x) / uSplatB.z, (vWorldPos.z - uSplatB.y) / uSplatB.w, xf);
         float pc = mix((vWorldPos.z - uSplatB.y) / uSplatB.w, (vWorldPos.x - uSplatB.x) / uSplatB.z, xf);
-        vec2 wuv = vec2(along * 0.5 + (1.0 - xf) * 0.5, clamp(vWorldPos.y / 3.5, 0.0, 1.0));
+        vec2 wuv = vec2(along * 0.5 + (1.0 - xf) * 0.5, clamp((vWorldPos.y + 10.0) / 16.0, 0.0, 1.0));
         vec4 wspl = texture2D(uSplatWallT, wuv) * uSplatO;
         // The plane coordinate lives in a SEPARATE no-blend ID buffer
         // (alpha blending dilutes coordinates: near arcs failed the

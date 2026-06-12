@@ -671,7 +671,7 @@ export function createCombatSystem(
           else { lateral = (Math.random() < 0.5 ? -1 : 1) * 0.55; forwardK = 0.7; }
           emitGoreSplash(
             target.position.x, target.position.z,
-            0.5 + target.aimHeight * 0.5 + Math.random() * 0.25,
+            target.position.y + 0.5 + target.aimHeight * 0.5 + Math.random() * 0.25,
             nfx * forwardK + rx * lateral,
             nfz * forwardK + rz * lateral,
             energy,

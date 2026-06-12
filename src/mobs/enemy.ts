@@ -963,7 +963,7 @@ export function createEnemy(
         // spreading stain while the body dissolves.
         emitGoreSplash(
           container.position.x, container.position.z,
-          0.7 + Math.random() * 0.4,
+          container.position.y + 0.7 + Math.random() * 0.4,
           container.position.x - lastPlayerXZ.x,
           container.position.z - lastPlayerXZ.z,
           0.8 * gore, bloodC,

@@ -27,7 +27,14 @@ const SIZE = 1024;
 // they're rare, deliberate marks: deaths and crits only.
 const WALL_W = 1024;
 const WALL_H = 512;
-const WALL_HEIGHT_M = 3.5;
+// Height window in WORLD y. Rooms sit at different elevations (the
+// stepped-descent verticality), so the v axis must be world-anchored
+// on BOTH the stamp and the read — mob-relative stamping put deep-room
+// arcs into rows their own lowered walls never sample, while spawn-
+// elevation walls DID sample them (the 'blood on spawn walls from
+// miles away' ghosts). -10..+6 covers descent-biased floors.
+const WALL_Y_MIN = -10;
+const WALL_Y_SPAN = 16;
 
 let rt: THREE.WebGLRenderTarget | null = null;
 let wallRt: THREE.WebGLRenderTarget | null = null;
@@ -379,7 +386,7 @@ function stampWallArcAt(hit: WallHit, y: number, colorHex: number, alpha: number
   const pc = hit.axis === 'x' ? (hit.plane - b.x) / b.z : (hit.plane - b.y) / b.w;
   if (along < 0 || along > 1) return;
   const u = hit.axis === 'x' ? along * 0.5 : 0.5 + along * 0.5;
-  const v = Math.max(0, Math.min(1, (y + size * 0.35) / WALL_HEIGHT_M));
+  const v = Math.max(0, Math.min(1, (y + size * 0.35 - WALL_Y_MIN) / WALL_Y_SPAN));
   queue.push({
     x: u, z: v,
     r: size,
@@ -391,7 +398,7 @@ function stampWallArcAt(hit: WallHit, y: number, colorHex: number, alpha: number
     surface: 'wall',
     rot: (Math.random() - 0.5) * 0.22,
     scaleX: (size * 2.0) / (hit.axis === 'x' ? b.w : b.z) * 0.5,
-    scaleY: (size * 2.2) / WALL_HEIGHT_M,
+    scaleY: (size * 2.2) / WALL_Y_SPAN,
   });
 }
 
