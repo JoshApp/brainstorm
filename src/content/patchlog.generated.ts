@@ -9,6 +9,61 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "add",
+        "text": "The pits no longer have a visible bottom. Look down all you like; the dark does not look back.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Cut from the left and the wall on the right wears it.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The hammer decides how much the room remembers — every blow splashes from its point of impact to whatever stands in the way.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Blood on the walls runs downward now, the way it must.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Blood pops like a balloon now — heavy where it landed, fingers where it flew, and the wall behind a kill keeps the evidence.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The archways return from the shadow realm.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Blood climbs the walls when something dies against them, crates stand stained in the pools, and the fresh spill glistens until it dries.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
         "text": "Blood flies the way it was struck, every creature spills its own colour, and old violence dries brown by the time you walk back through.",
         "area": [
           "combat",
@@ -353,63 +408,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The dungeon stops growing tiny pointless rooms, pillars step out of doorways, and the torchlight finally trembles like it means it. Health potions become a mercy, not a given.",
-        "area": [
-          "level",
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Skeleton keys turn up in the deep, and locked cages with visible treasure start appearing. The boss seals upgraded from girders to actual chains. Bring bolt cutters. There are no bolt cutters.",
-        "area": [
-          "content",
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "A dry basin waits in a pale room. It accepts blood, coin, or the sword out of your hand. It does not accept questions.",
-        "area": [
-          "content",
-          "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Three unlabeled phials enter the loot pool. The first sip is a question. The second is a confession.",
-        "area": [
-          "content",
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dark talks now — a dry skull-rattle or a wet groan carries from across the room, and whatever's lurking stirs as you close on it. You hear them before you see them.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The rats' front legs now attach to the rat. An inspector walks the bestiary so this stays true.",
-        "area": [
-          "content",
-          "tech"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Both wrists now answer to the arm they are attached to, at all times. Anatomical realism arrives unannounced, like most things down here.",
-        "area": [
-          "combat",
-          "atmosphere"
         ]
       }
     ]
