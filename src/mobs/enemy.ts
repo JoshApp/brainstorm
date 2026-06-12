@@ -953,7 +953,7 @@ export function createEnemy(
         stampWallArc(
           container.position.x, container.position.z,
           0.7 + Math.random() * 0.4,
-          ddx, ddz, bloodC, 0.85 * gore, 0.55 * gore,
+          ddx, ddz, bloodC, 0.95 * gore, 0.95 * gore,
         );
       }
       // Split-on-death — fire the builder's spawn callback so any

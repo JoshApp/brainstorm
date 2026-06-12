@@ -663,7 +663,7 @@ export function createCombatSystem(
             stampWallArc(
               target.position.x, target.position.z,
               0.6 + target.aimHeight * 0.5 + Math.random() * 0.3,
-              hdx, hdz, bloodC, 0.8 * gore, 0.5 * gore,
+              hdx, hdz, bloodC, 0.9 * gore, 0.85 * gore,
             );
           }
         }

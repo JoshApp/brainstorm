@@ -31,6 +31,7 @@ const WALL_HEIGHT_M = 3.5;
 let rt: THREE.WebGLRenderTarget | null = null;
 let wallRt: THREE.WebGLRenderTarget | null = null;
 let stampScene: THREE.Scene | null = null;
+let stampSpace: THREE.Group | null = null;   // world-meters → map-UV
 let stampCam: THREE.OrthographicCamera | null = null;
 let stampMesh: THREE.Mesh | null = null;
 let stampMat: THREE.ShaderMaterial | null = null;
@@ -112,28 +113,29 @@ export function initSplatMap(): void {
       uniform float uAlpha; uniform float uSeed; uniform float uStreak;
       float h(vec2 p){ p = fract(p * 0.3183099 + uSeed); p *= 17.0; return fract(p.x * p.y * (p.x + p.y)); }
       void main(){
-        // The quad is positioned + scaled to the splat's bounds (see
-        // flushSplats), so vUv spans exactly the stamp's disc — the
-        // shader touches ~hundreds of texels, not the whole 1024^2
-        // target. uCenter/uRadius stay in MAP space for the seed hash.
-        float d = length(vUv - vec2(0.5)) * 2.0;
-        if (d > 1.0) discard;
-        // SOLID core; spatter as droplet BLOBS (coarse cells smoothly
-        // thresholded), not per-texel hash — per-texel hash reads as
-        // red-white noise on the floor, not as liquid.
-        // Streaks (uStreak=1): the quad is pre-stretched along the
-        // throw; the core sits at the IMPACT end (-x) and the spatter
-        // thins toward the far end — blood travels away from the blow.
+        // POPPED-BALLOON mask, not a scaled circle: the boundary
+        // radius wobbles per angular sector (smoothed hash → organic
+        // lobes), streaks grow FINGERS toward the throw while the
+        // body stays heavy at the impact end. Droplet blobs spray
+        // past the boundary.
         vec2 pl = (vUv - vec2(0.5)) * 2.0;
-        float along = pl.x * 0.5 + 0.5;   // 0 = impact end, 1 = far end
-        float coreD = uStreak > 0.5 ? length(pl + vec2(0.45, 0.0)) * 1.25 : d;
-        float core = 1.0 - smoothstep(0.45, 0.72, coreD);
-        vec2 cell = (vUv - vec2(0.5)) * 2.0 * 5.5;
+        float ang = atan(pl.y, pl.x);
+        float sect = (ang + 3.14159) * 1.2732;     // ~8 lobes around
+        float s0 = h(vec2(floor(sect), 7.0));
+        float s1 = h(vec2(floor(sect) + 1.0, 7.0));
+        float lobe = mix(s0, s1, smoothstep(0.0, 1.0, fract(sect)));
+        float along = pl.x * 0.5 + 0.5;            // streaks: 0 impact → 1 far
+        float wobble = mix(0.34, 0.55 + 0.35 * along, uStreak);
+        vec2 pc = uStreak > 0.5 ? pl + vec2(0.45, 0.0) : pl;
+        float d = length(pc) * (uStreak > 0.5 ? 0.78 : 1.0);
+        float edge = (1.0 - wobble * 0.5) + (lobe - 0.5) * wobble;
+        float body = 1.0 - smoothstep(edge * 0.58, edge, d);
+        vec2 cell = pl * 5.5;
         float blob = h(floor(cell));
         float inBlob = smoothstep(0.55, 0.85, blob) * (1.0 - smoothstep(0.0, 0.45, length(fract(cell) - 0.5)));
-        float thin = uStreak > 0.5 ? (1.0 - along * 0.55) : 1.0;
-        float spatter = inBlob * (1.0 - smoothstep(0.45, 1.0, d)) * thin;
-        float a = clamp(max(core, spatter), 0.0, 1.0) * uAlpha;
+        float thin = uStreak > 0.5 ? (1.0 - along * 0.45) : 1.0;
+        float spatter = inBlob * (1.0 - smoothstep(0.55, 1.15, d)) * thin;
+        float a = clamp(max(body, spatter), 0.0, 1.0) * uAlpha;
         if (a < 0.015) discard;
         gl_FragColor = vec4(uColor, a);
       }
@@ -150,7 +152,13 @@ export function initSplatMap(): void {
   });
   stampMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), stampMat);
   stampMesh.frustumCulled = false;   // positioned per stamp in flushSplats
-  stampScene.add(stampMesh);
+  // Stamps live in WORLD METRES inside this group; the group's scale
+  // maps metres → map UV. Rotating a streak inside it stays true to
+  // world space — rotating at the UV level squashed every angled
+  // streak along the floor's shorter axis ('direction feels buggy').
+  stampSpace = new THREE.Group();
+  stampSpace.add(stampMesh);
+  stampScene.add(stampSpace);
 
   // Drying quad: lerps the map's COLOR toward dried brown-black,
   // leaving alpha (wetness footprint) untouched.
@@ -200,7 +208,7 @@ export function stampSplat(
     const len = Math.hypot(dir.x, dir.z);
     if (len > 0.001) d = { x: dir.x / len, z: dir.z / len };
   }
-  queue.push({ x: u, z: v, r: radius / Math.max(b.z, b.w), color: new THREE.Color(colorHex), a: alpha, seed: Math.random(), dir: d, surface: 'floor' });
+  queue.push({ x: x - b.x, z: z - b.y, r: radius, color: new THREE.Color(colorHex), a: alpha, seed: Math.random(), dir: d, surface: 'floor' });
 }
 
 /** Throw an arc onto the nearest wall along the throw direction
@@ -212,7 +220,15 @@ export function stampWallArc(
 ): void {
   if (!rt || !wallProbe) return;
   const len = Math.hypot(dirX, dirZ) || 1;
-  const hit = wallProbe(x, z, dirX / len, dirZ / len);
+  let hit = wallProbe(x, z, dirX / len, dirZ / len);
+  // The throw often misses the wall a mob is hugging — fall back to
+  // the cardinals so a kill AGAINST a wall always marks it.
+  if (!hit) {
+    for (const [cx, cz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      hit = wallProbe(x, z, cx, cz);
+      if (hit) break;
+    }
+  }
   if (!hit) return;
   const b = uSplatBounds.value;
   // Mirror of the wall-shader mapping (surface-detail.ts): X-facing
@@ -246,15 +262,18 @@ export function stampSpray(
 ): void {
   const len = Math.hypot(dirX, dirZ) || 1;
   const dx = dirX / len, dz = dirZ / len;
-  stampSplat(x + dx * radius * 0.4, z + dz * radius * 0.4, radius, colorHex, alpha, { x: dx, z: dz });
+  // Puddle AT the mob; the streak's heavy end sits on it and the
+  // fingers reach outward along the throw.
+  stampSplat(x, z, radius * 0.7, colorHex, alpha);
+  stampSplat(x + dx * radius * 0.9, z + dz * radius * 0.9, radius, colorHex, alpha * 0.9, { x: dx, z: dz });
   const sats = 1 + Math.floor(Math.random() * 2);
   for (let i = 0; i < sats; i++) {
-    const t = 0.8 + Math.random() * 1.1;
-    const side = (Math.random() - 0.5) * 0.5;
+    const t = 1.1 + Math.random() * 1.2;
+    const side = (Math.random() - 0.5) * 0.6;
     stampSplat(
       x + (dx * t - dz * side) * radius * 1.6,
       z + (dz * t + dx * side) * radius * 1.6,
-      radius * (0.22 + Math.random() * 0.22),
+      radius * (0.2 + Math.random() * 0.22),
       colorHex,
       alpha * 0.8,
     );
@@ -284,19 +303,27 @@ export function flushSplats(renderer: THREE.WebGLRenderer): void {
     // Quad sized (and for streaks: rotated + stretched) to the splat —
     // fragment work proportional to the stain, not the map.
     renderer.setRenderTarget(s.surface === 'wall' && wallRt ? wallRt : rt);
-    stampMesh.position.set(s.x, s.z, 0);
+    const bb = uSplatBounds.value;
     if (s.surface === 'wall') {
+      // Wall stamps address the arc map directly in UV.
+      stampSpace!.scale.set(1, 1, 1);
+      stampMesh.position.set(s.x, s.z, 0);
       stampMesh.rotation.z = s.rot ?? 0;
       stampMesh.scale.set(s.scaleX ?? 0.05, s.scaleY ?? 0.05, 1);
       stampMat.uniforms.uStreak.value = 0;
-    } else if (s.dir) {
-      stampMesh.rotation.z = Math.atan2(s.dir.z, s.dir.x);
-      stampMesh.scale.set(s.r * 2 * 1.9, s.r * 2 * 0.6, 1);
-      stampMat.uniforms.uStreak.value = 1;
     } else {
-      stampMesh.rotation.z = 0;
-      stampMesh.scale.set(s.r * 2, s.r * 2, 1);
-      stampMat.uniforms.uStreak.value = 0;
+      // Floor stamps: world metres inside the aniso group.
+      stampSpace!.scale.set(1 / bb.z, 1 / bb.w, 1);
+      stampMesh.position.set(s.x, s.z, 0);
+      if (s.dir) {
+        stampMesh.rotation.z = Math.atan2(s.dir.z, s.dir.x);
+        stampMesh.scale.set(s.r * 2 * 2.1, s.r * 2 * 0.75, 1);
+        stampMat.uniforms.uStreak.value = 1;
+      } else {
+        stampMesh.rotation.z = 0;
+        stampMesh.scale.set(s.r * 2, s.r * 2, 1);
+        stampMat.uniforms.uStreak.value = 0;
+      }
     }
     (stampMat.uniforms.uCenter.value as THREE.Vector2).set(s.x, s.z);
     stampMat.uniforms.uRadius.value = s.r;

@@ -317,7 +317,9 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
       flow = seepNoise(vWorldPos.xz * 2.6 - vec2(0.0, uSeepTime * 0.10));
       flow = smoothstep(0.45, 0.9, flow) * gSplatSeam * fresh;
     }
-    vec3 stain = lum * hue * (mix(0.55, 1.45, fresh) + flow * 0.55);
+    // The tiny self-term lets FRESH stains read on barely-lit walls
+    // (arcs at chest height live above the light pools); it dries away.
+    vec3 stain = lum * hue * (mix(0.55, 1.45, fresh) + flow * 0.55) + hue * 0.018 * fresh;
     outgoingLight = mix(outgoingLight, stain, min(gSplatWet, 1.0) * 0.9);
     // GLISTEN — a grazing-angle sheen on FRESH blood only, applied at
     // composite so the quantize can't eat it. Low-frequency by
