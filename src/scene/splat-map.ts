@@ -136,6 +136,30 @@ export function initSplatMap(): void {
         float thin = uStreak > 0.5 ? (1.0 - along * 0.45) : 1.0;
         float spatter = inBlob * (1.0 - smoothstep(0.55, 1.15, d)) * thin;
         float a = clamp(max(body, spatter), 0.0, 1.0) * uAlpha;
+        // WALL ARC (uStreak=2): a messy splotch with DRIPS — gravity is
+        // what makes wall blood read as wall blood. The body sits in
+        // the upper half; thin runs of varying length descend from it.
+        if (uStreak > 1.5) {
+          vec2 pw = pl - vec2(0.0, 0.45);          // body centre upper-half
+          float dw = length(pw * vec2(1.0, 1.9));
+          float wbody = 1.0 - smoothstep(edge * 0.5, edge * 0.95, dw);
+          // splotch satellites around the body
+          vec2 wc = pl * vec2(4.5, 3.0) + vec2(0.0, -1.2);
+          float wb = h(floor(wc));
+          float wsat = smoothstep(0.6, 0.9, wb) * (1.0 - smoothstep(0.0, 0.42, length(fract(wc) - 0.5)))
+                     * (1.0 - smoothstep(0.5, 1.0, length(pw)));
+          // drips: columns below the body, random presence + length
+          float col = floor((pl.x + 1.0) * 4.0);
+          float dh = h(vec2(col, 3.0));
+          float colX = fract((pl.x + 1.0) * 4.0) - 0.5;
+          float inCol = 1.0 - smoothstep(0.10, 0.16, abs(colX));
+          float top = 0.30;
+          float bot = top - (0.5 + dh * 1.3);
+          float inRun = step(pl.y, top) * step(bot, pl.y) * step(0.35, dh);
+          float taper = smoothstep(bot, mix(bot, top, 0.35), pl.y);
+          float drip = inCol * inRun * taper;
+          a = clamp(max(max(wbody, wsat), drip * 0.9), 0.0, 1.0) * uAlpha;
+        }
         if (a < 0.015) discard;
         gl_FragColor = vec4(uColor, a);
       }
@@ -237,7 +261,7 @@ export function stampWallArc(
   const pc = hit.axis === 'x' ? (hit.plane - b.x) / b.z : (hit.plane - b.y) / b.w;
   if (along < 0 || along > 1) return;
   const u = hit.axis === 'x' ? along * 0.5 : 0.5 + along * 0.5;
-  const v = Math.max(0, Math.min(1, y / WALL_HEIGHT_M));
+  const v = Math.max(0, Math.min(1, (y + size * 0.35) / WALL_HEIGHT_M));
   const c = new THREE.Color(colorHex);
   queue.push({
     x: u, z: v,
@@ -247,9 +271,9 @@ export function stampWallArc(
     seed: Math.random(),
     dir: null,
     surface: 'wall',
-    rot: (Math.random() - 0.5) * 0.5,
-    scaleX: (size * 2.2) / (hit.axis === 'x' ? b.w : b.z) * 0.5,
-    scaleY: (size * 0.9) / WALL_HEIGHT_M,
+    rot: (Math.random() - 0.5) * 0.22,
+    scaleX: (size * 2.0) / (hit.axis === 'x' ? b.w : b.z) * 0.5,
+    scaleY: (size * 2.2) / WALL_HEIGHT_M,
   });
 }
 
@@ -310,7 +334,7 @@ export function flushSplats(renderer: THREE.WebGLRenderer): void {
       stampMesh.position.set(s.x, s.z, 0);
       stampMesh.rotation.z = s.rot ?? 0;
       stampMesh.scale.set(s.scaleX ?? 0.05, s.scaleY ?? 0.05, 1);
-      stampMat.uniforms.uStreak.value = 0;
+      stampMat.uniforms.uStreak.value = 2;   // wall mode: splotch + drips
     } else {
       // Floor stamps: world metres inside the aniso group.
       stampSpace!.scale.set(1 / bb.z, 1 / bb.w, 1);
