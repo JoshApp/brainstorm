@@ -38,7 +38,7 @@ import {
 import { createSettingsMenu, configureSettingsMenu } from './ui/settings-menu';
 import { createInventoryPanel } from './ui/inventory-panel';
 import { getSettings, onSettingsChanged } from './settings/settings';
-import { beginArrival, tickArrival } from './player/arrival';
+import { beginArrival, tickArrival, suppressArrivalCeremony } from './player/arrival';
 import { setMasterVolume, setReverbEnabled, startAmbience, playWhoosh, suspendAudio, resumeAudio } from './audio/sfx';
 import { startMusic, setMusicVolume, pauseMusic, resumeMusic } from './audio/music';
 import { emit, on as onEvent } from './broadcast/event-bus';
@@ -1447,6 +1447,9 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // very geometry the scenario exists to show. Real gameplay descents
   // still trigger it normally.
   if (floorId.startsWith('safe-')) suppressNextSafeRoomTransition();
+  // No wake ceremony in scenarios — the eyelid blink covered every
+  // headless snap (and the geometry the scenario exists to show).
+  suppressArrivalCeremony();
   // Inspection previews: skip the title card (it covers the geometry) BEFORE
   // the load fires it, and flood bright flat light + push fog out so the whole
   // room reads. Set after applyScenario below so nothing resets them.

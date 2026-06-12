@@ -110,7 +110,22 @@ function setLids(open: number): void {
   lidBot.style.display = show;
 }
 
+let suppressed = false;
+
+/** DEV (scenario boot path): skip the wake ceremony entirely, now and for
+ *  every later floor load this session. Scenario previews + snap captures
+ *  exist to show the world; a 2.1s eyelid ceremony over the frame turned
+ *  every headless snap into a black rectangle. */
+export function suppressArrivalCeremony(): void {
+  suppressed = true;
+  t = -1;
+  offset = 0;
+  setLids(1);
+  setFocus(1);
+}
+
 export function beginArrival(opts?: { full?: boolean }): void {
+  if (suppressed) { t = -1; offset = 0; setLids(1); setFocus(1); return; }
   const full = opts?.full ?? false;
   duration = full ? DUR_FULL : DUR_QUICK;
   lidKeys = full ? LID_KEYS_FULL : LID_KEYS_QUICK;
