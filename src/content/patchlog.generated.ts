@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Turn around at any fire. The doors you came through are behind you, closed. They were always going to be.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The doors you came through are closed now. Nobody remembers closing them.",
         "area": [
           "atmosphere",
@@ -399,19 +407,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "level"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 5",
-    "date": "2026-06-10",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "The cracks keep their jagged tempers.",
-        "area": [
-          "atmosphere"
         ]
       }
     ]

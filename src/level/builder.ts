@@ -803,6 +803,12 @@ export function buildLevel(
       const bx = spec.startPos.x + fx * 1.8;
       const bz = spec.startPos.z + fz * 1.8;
       spec.props.push({ kind: 'model', model: BONFIRE, x: bx, y: 0, z: bz, rotY: yaw + 2.2 });
+    }
+    // ORIGIN ARCH — independent of WHO placed the bonfire (foyer vaults
+    // author their own, which used to silently skip the doors too).
+    if (spec.startPos) {
+      const yaw = spec.startPos.yaw ?? 0;
+      const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
       // ORIGIN ARCH — the closed pair of doors on the wall BEHIND the
       // spawn: you arrived THROUGH them (they stood ajar at the bottom
       // of the last floor's stairwell, fire shimmering through the
