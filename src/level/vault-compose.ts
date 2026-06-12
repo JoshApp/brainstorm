@@ -862,6 +862,15 @@ function nudgePropsOutOfPassages(spec: LevelSpec): void {
   if (passages.length === 0) return;
   for (const prop of spec.props) {
     if (!('x' in prop) || !('z' in prop)) continue;
+    // GATE FRAMES ARE EXEMPT. Doorframes/archways BELONG on the passage
+    // line — their collision is authored to flank the walk band (jambs/
+    // columns at the gap edges, centre guaranteed passable). Nudging one
+    // judges overlap by getPropAABB's FIRST collision shape (one jamb),
+    // slides the whole frame until that jamb clears the corridor, and
+    // swings the OTHER column into the middle of the gap — the "pillar
+    // standing in the doorway" bug. They are placed exactly where they
+    // must stand; leave them there.
+    if (prop.kind === 'model' && (prop._dbg === 'doorframe' || prop._dbg === 'archway')) continue;
     // Best-effort loop: re-evaluate AABB each iteration since nudges
     // accumulate. Hard cap iterations so a prop pinned between two
     // passages can't loop forever.

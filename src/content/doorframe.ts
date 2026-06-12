@@ -75,9 +75,21 @@ export function doorframeCollision(
 export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
   const width = opts.width ?? 1.0;
   const ceiling = opts.ceilingHeight ?? 3.2;
-  // Jamb centre: outer face flush with the opening edge.
-  const jambOffset = Math.max(JAMB_HALF_THICK + 0.01, width / 2 - JAMB_HALF_THICK);
-  const lintelWidth = width + LINTEL_OVERHANG * 2;
+  // Jamb placement follows the collision policy so the VISUAL is honest:
+  //   wide (>= COLLISION_MIN_WIDTH) — jambs inside the opening, outer face
+  //     flush with the gap edge, and doorframeCollision blocks exactly them.
+  //   narrow — jambs sit OUTSIDE the gap as pilasters flanking it (inner
+  //     face flush with the edge). Nothing intrudes into the walk band, so
+  //     "no collision" is what the eye already believes. (They used to sit
+  //     inside at every width, which read as solid stone you could ghost
+  //     through on every 1m door.)
+  const inside = width >= COLLISION_MIN_WIDTH;
+  const jambOffset = inside
+    ? Math.max(JAMB_HALF_THICK + 0.01, width / 2 - JAMB_HALF_THICK)
+    : width / 2 + JAMB_HALF_THICK;
+  const lintelWidth = inside
+    ? width + LINTEL_OVERHANG * 2
+    : width + JAMB_HALF_THICK * 4 + LINTEL_OVERHANG * 2;
   const fillHeight = Math.max(0.1, ceiling - LINTEL_TOP);
   const fillCentreY = LINTEL_TOP + fillHeight / 2;
 

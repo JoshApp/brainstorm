@@ -349,7 +349,10 @@ export function makeArchedCeilingGeometry(
 // spanning the room's SHORTER axis at intervals along the longer one, all
 // merged into ONE geometry (one draw call). The iconic "dug tunnel" read.
 // World-space coords — the mesh sits at origin.
-export function makeBracedFramesGeometry(rect: { x: number; z: number; w: number; d: number }, H: number): THREE.BufferGeometry | null {
+// Also returns each post's world footprint so the builder can register
+// matching collision — a full-height timber you can see deserves to block
+// (they read as doorframe jambs and players walk at them expecting mass).
+export function makeBracedFramesGeometry(rect: { x: number; z: number; w: number; d: number }, H: number): { geo: THREE.BufferGeometry; posts: Array<{ x: number; z: number; half: number }> } | null {
   const longAxisX = rect.w >= rect.d;
   const longLen = longAxisX ? rect.w : rect.d;
   const shortLen = longAxisX ? rect.d : rect.w;
@@ -358,6 +361,7 @@ export function makeBracedFramesGeometry(rect: { x: number; z: number; w: number
   const lintelY = H - 0.22;
   const frameCount = Math.max(1, Math.round(longLen / 2.6) - 1);
   const geos: THREE.BufferGeometry[] = [];
+  const posts: Array<{ x: number; z: number; half: number }> = [];
   const m4 = new THREE.Matrix4();
   const pushBox = (w: number, h: number, d: number, px: number, py: number, pz: number) => {
     const g = new THREE.BoxGeometry(w, h, d);
@@ -369,14 +373,19 @@ export function makeBracedFramesGeometry(rect: { x: number; z: number; w: number
     const cx = rect.x + (longAxisX ? along : 0);
     const cz = rect.z + (longAxisX ? 0 : along);
     for (const s of [-spanHalf, spanHalf]) {                 // two posts
-      pushBox(POST, H, POST, cx + (longAxisX ? 0 : s), H / 2, cz + (longAxisX ? s : 0));
+      const px = cx + (longAxisX ? 0 : s);
+      const pz = cz + (longAxisX ? s : 0);
+      pushBox(POST, H, POST, px, H / 2, pz);
+      posts.push({ x: px, z: pz, half: POST / 2 });
     }
     pushBox(                                                  // lintel across the top
       longAxisX ? POST : spanHalf * 2 + POST, POST, longAxisX ? spanHalf * 2 + POST : POST,
       cx, lintelY, cz,
     );
   }
-  return geos.length ? mergeGeometries(geos, false) : null;
+  if (!geos.length) return null;
+  const merged = mergeGeometries(geos, false);
+  return merged ? { geo: merged, posts } : null;
 }
 
 /** Per-vertex darkness fade for shaft/drop geometry: full-bright at

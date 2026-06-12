@@ -149,6 +149,7 @@ function buildRoomShell(
   materials: StyleMaterials,
   wallSegmentsOut: WallSegment[],
   floorHoles: Array<Array<[number, number]>> = [],
+  obstaclesOut: Obstacle[] = [],
 ) {
   const { rect, height: H } = room;
   const W = rect.w;
@@ -599,13 +600,24 @@ function buildRoomShell(
   if (room.wallVariant === 'braced') {
     const frames = makeBracedFramesGeometry(rect, H);
     if (frames) {
-      const braces = new THREE.Mesh(frames, materials.timber);
+      const braces = new THREE.Mesh(frames.geo, materials.timber);
+      braces.position.y = elev;
       braces.castShadow = true;
       braces.receiveShadow = true;
       braces.name = 'braces';
       braces.userData.dbgKind = 'wall';
       braces.userData.dbgSource = `braces · ${room.id}`;
       scene.add(braces);
+      // Posts block like they look — they read as doorframe jambs, and a
+      // jamb you ghost through is the exact bug this fixes. Tiny AABBs
+      // hugging the walls; the nav grid's tight tier keeps mobs flowing.
+      for (const post of frames.posts) {
+        obstaclesOut.push({
+          kind: 'aabb',
+          minX: post.x - post.half, maxX: post.x + post.half,
+          minZ: post.z - post.half, maxZ: post.z + post.half,
+        });
+      }
     }
   }
 }
@@ -952,7 +964,7 @@ export function buildLevel(
     // trigger purposes. Their parent vault's main RoomSpec already
     // covers floor/ceiling/walls.
     if (!r.logicalOnly) {
-      buildRoomShell(root, r, allRects, materials, wallSegments, holes);
+      buildRoomShell(root, r, allRects, materials, wallSegments, holes, obstacles);
     }
   }
 
