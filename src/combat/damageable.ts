@@ -49,6 +49,13 @@ export interface Damageable {
    *  surface contact). Light targets without a value also fall back to
    *  playImpact so a stray destructible doesn't go silent. */
   hitMaterial?: HitMaterial;
+  /** How much this target BLEEDS (gore splash scale). 1 = full flesh;
+   *  0 = bloodless — REQUIRED 0 for ceramic/wood destructibles, which
+   *  otherwise inherit the fleshy default and spray blood when smashed.
+   *  Mirrors EnemySpec.bloodAmount for mobs. */
+  bloodAmount?: number;
+  /** Species blood tint for splats/splashes (see EnemySpec.bloodColor). */
+  bloodColor?: number;
   /** Route a damage event through the pipeline, apply it to HP, return the
    *  amount actually applied (for the floating number). */
   takeDamage(event: DamageEvent): number;

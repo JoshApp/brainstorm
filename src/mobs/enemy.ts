@@ -7,7 +7,7 @@ import { kickShake } from '../combat/screen-shake';
 import { spawnHazardField } from '../combat/hazard-field';
 import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
-import { stampSplat, emitGoreSplash } from '../scene/splat-map';
+import { emitGoreSplash, stampBleedOut } from '../scene/splat-map';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
@@ -957,17 +957,19 @@ export function createEnemy(
       const gore = spec.bloodAmount ?? 1;
       if (gore > 0.01) {
         const bloodC = spec.bloodColor ?? 0x5e1210;
-        stampSplat(container.position.x, container.position.z, (0.7 + Math.random() * 0.4) * gore, bloodC, 0.9 * gore);
-        // The kill detonates: full-energy splash away from the player,
-        // cardinal fallback so dying AGAINST a wall always marks it.
+        // The killing blow throws a MODEST splash (it used to detonate at
+        // 1.4× — the whole pool arrived in one frame). The pool itself now
+        // BLEEDS OUT under the corpse: stampBleedOut pulses ~1.6s of
+        // spreading stain while the body dissolves.
         emitGoreSplash(
           container.position.x, container.position.z,
           0.7 + Math.random() * 0.4,
           container.position.x - lastPlayerXZ.x,
           container.position.z - lastPlayerXZ.z,
-          1.4 * gore, bloodC,
+          0.8 * gore, bloodC,
           { wallFallbackCardinals: true, sizeMul: Math.min(1.8, 0.75 + spec.collisionRadius * 0.9) },
         );
+        stampBleedOut(container.position.x, container.position.z, bloodC, gore);
       }
       // Split-on-death — fire the builder's spawn callback so any
       // children appear in the same frame's enemy list. Pass a CLONE

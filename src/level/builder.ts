@@ -161,7 +161,13 @@ function buildRoomShell(
   // rooms at different elevations becomes a RAMP (the elevation field
   // already lerps groundY along it — here we make the geometry agree).
   // Sample the field at both ends of the long axis to detect the slope.
-  const elev = room.elevation ?? 0;
+  // Authored elevation when present (rooms); otherwise ask the FIELD at
+  // the rect's centre. Corridors never carry an elevation of their own —
+  // a FLAT corridor between two lowered rooms inherits their level here.
+  // (It used to default to 0 and build its floor half a metre in the air,
+  // walkable but floating over void — the walk samples the field, the
+  // shell didn't.)
+  const elev = room.elevation ?? groundYAt(rect.x, rect.z);
   const alongX = W >= D;
   const eEnd0 = alongX
     ? groundYAt(rect.x - W / 2 + 0.05, rect.z)

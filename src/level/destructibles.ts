@@ -118,6 +118,7 @@ export function spawnVase(
     hurtbox: propHurtbox(group, 0.28, 0.34),
     hitFeedback: 'light',
     hitMaterial: 'ceramic',
+    bloodAmount: 0,   // fired clay does not bleed
     alive: true,
     takeDamage(event: DamageEvent) {
       if (!dest.alive) return 0;
@@ -220,6 +221,7 @@ export function spawnCobweb(
     // the group's X-only stretch doesn't distort it). Same hit path as enemies.
     hurtbox: propHurtbox(group, 1.0, Math.max(0.9, widthM / 2 + 0.1)),
     hitFeedback: 'light',
+    bloodAmount: 0,   // silk does not bleed
     alive: true,
     takeDamage(event: DamageEvent) {
       if (!dest.alive) return 0;

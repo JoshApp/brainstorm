@@ -384,7 +384,42 @@ export function stampSpray(
 }
 
 /** Drain queued stamps into the map. Called from the render tick. */
+// ── Bleed-out scheduler ───────────────────────────────────────────────
+// A death doesn't detonate a finished pool — the corpse BLEEDS OUT: a
+// few pool stamps spread over ~1.6s, each wider than the last, so the
+// stain visibly grows under the body while it dissolves. Pulses are
+// processed in flushSplats (already called every frame).
+interface BleedPulse { at: number; x: number; z: number; r: number; color: number; a: number }
+const pendingBleeds: BleedPulse[] = [];
+
+export function stampBleedOut(x: number, z: number, color: number, gore: number): void {
+  const now = performance.now() / 1000;
+  const pulses = 5;
+  for (let i = 0; i < pulses; i++) {
+    pendingBleeds.push({
+      at: now + 0.15 + i * 0.34,
+      x: x + (Math.random() - 0.5) * 0.14,
+      z: z + (Math.random() - 0.5) * 0.14,
+      r: (0.28 + i * 0.13 + Math.random() * 0.06) * gore,
+      color,
+      a: (i === 0 ? 0.5 : 0.34) * Math.min(1, gore),
+    });
+  }
+}
+
 export function flushSplats(renderer: THREE.WebGLRenderer): void {
+  // Release due bleed-out pulses into the stamp queue first, so the
+  // early-return below sees them.
+  if (pendingBleeds.length > 0) {
+    const now = performance.now() / 1000;
+    for (let i = pendingBleeds.length - 1; i >= 0; i--) {
+      const p = pendingBleeds[i];
+      if (now >= p.at) {
+        stampSplat(p.x, p.z, p.r, p.color, p.a);
+        pendingBleeds.splice(i, 1);
+      }
+    }
+  }
   if (!rt || !stampScene || !stampCam || !stampMat || !stampMesh) return;
   const dryDue = performance.now() / 1000 - lastDryAt >= DRY_INTERVAL_S;
   if (!needsClear && queue.length === 0 && !dryDue) return;
