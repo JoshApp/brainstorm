@@ -4,9 +4,242 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 7",
+    "date": "2026-06-12",
+    "entries": [
+      {
+        "tag": "add",
+        "text": "Blood flies the way it was struck, every creature spills its own colour, and old violence dries brown by the time you walk back through.",
+        "area": [
+          "combat",
+          "atmosphere",
+          "content"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 6",
     "date": "2026-06-11",
     "entries": [
+      {
+        "tag": "fix",
+        "text": "Mobs bleed where they stand and die. Vigor arrives as vigor, prices cut to the bone, and the mouse knows its place.",
+        "area": [
+          "combat",
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Spilt blood finally stains the stone. The floors were drinking it in secret.",
+        "area": [
+          "atmosphere",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Nothing may touch you between sitting and standing. The dungeon waits its turn.",
+        "area": [
+          "controls",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Waking now swims into focus — and the dungeon saves the heavy eyelids for the mornings you earned.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "You wake the way the living do — eyes first, then legs. And your sword arm answers even when stairs are watching.",
+        "area": [
+          "controls",
+          "ui",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "You truly wake at the fire now — seated, facing it, rising.",
+        "area": [
+          "level",
+          "controls"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "You wake facing the fire now, the stairs respect the wall, and the first chamber stops pretending to be a depth.",
+        "area": [
+          "level",
+          "ui",
+          "controls"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The third rune learns to drown properly.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Every floor now begins seated at a fire, and the fire finally answers: tend it, turn the wick, teach your eyes what the dark allows.",
+        "area": [
+          "ui",
+          "atmosphere",
+          "level",
+          "controls"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The dungeon grows dials — brightness, torchlight strength and reach, all yours to turn. The dark keeps its opinion.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The bone pile by the bonfire was never a shrine. It was arithmetic. The dead rest properly now.",
+        "area": [
+          "combat",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Floors with stairwells stop hallucinating their own colour. Blood now lands where blood was spilled.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The last levitating torch gives up and accepts a bracket.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Torches stop levitating in doorways. Mounting brackets exist for a reason.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The dead stop following you downstairs.",
+        "area": [
+          "combat",
+          "level"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Blood stays where it landed now. The floors of busy rooms keep the receipts.",
+        "area": [
+          "atmosphere",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The pickup outline speaks up.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The pickup outline is finally a line — the same thin line from every angle, on every shape.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The pickup glow slims back down to an outline instead of shrink-wrap.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The pickup glow hugs the blade it belongs to, all the way to the tip.",
+        "area": [
+          "ui",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The light pools deeper into the seams and the pillars stop pretending to be sponges.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The crevices stop glittering and start drinking. Your lamp pours into every seam you pass.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The seams in the worst floors stop glowing and start glistening. It is not an improvement in the way you mean.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The bleeding walls actually bleed now. They were holding it in.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "On the worst floors, the mortar has started to run. It moves toward the floor, the way everything here eventually does.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Some rooms stop lighting their walls and start engraving them — thin lines of fire where the mortar runs. A candle stub did this. Allegedly.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Torchlight reaches a little further still.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The torches reach a little further into the dark. The dark remains unconvinced.",
+        "area": [
+          "atmosphere"
+        ]
+      },
       {
         "tag": "tune",
         "text": "Torchlight learns to pool instead of flood, the great halls hang chandeliers, and some corridors keep their dark. The lamp in your hand finally has a job again.",
@@ -177,233 +410,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Smash a vase and it cracks and clatters like broken pottery now, instead of yelping like something you killed.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Cross into the King's hall and there's a breath of nothing — just a shadow on the floor — before it drops out of the dark on top of it.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Your starter sword stops pretending to be a lightsaber. The edge still means it.",
-        "area": [
-          "atmosphere",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The lantern arm straightens with conviction. The screenshots stop lying about it.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The off hand commits to carrying the lantern instead of merely being draped on it.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The ghouls remember they are dead now. Posture goes the way of the flesh.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Your left hand finally holds the lantern instead of haunting its general vicinity. The right wrist unbends. The dungeon pretends not to notice the improvement.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The rats grew their noses back on the correct end. The hounds found their necks. Nobody mentions the years before.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The Boiling King climbs the rest of the way out of the floor — for real this time.",
-        "area": [
-          "content"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Cross the gate and the room drowns in the boss's colour as the music drops — the King falls out of the ceiling. Put it down and the world exhales.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The sealed descent wears chains and a padlock over its glow now. The boss's death tears the whole thing loose.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The way down stays sealed behind the boss's own ward — no warm light, just a cold glare in its colour. Put the thing down and the seal shatters; the descent opens.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "A loading veil holds the gate while a fresh build slips in behind it — no more stale menu flashing and reloading out from under you.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Your bones drink the room now — step into red light and your own hands run red. The plain beasts go back to being shapes in the dark; only the unnatural still glows.",
-        "area": [
-          "atmosphere",
-          "content"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 4",
-    "date": "2026-06-09",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "The skeleton stands tall now, a head over the ghouls, and winds back a real overhand throw when it hurls a bone at you.",
-        "area": [
-          "content",
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Dash into something — or have it land on you — and you peel apart now instead of grinding stuck inside each other.",
-        "area": [
-          "controls",
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The Boiling King climbs out of the floor it was wallowing in. It was always that big — you just couldn't see the bottom half.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The acolyte sheds its legs and drifts now, hood low over a cold green stare; the wraith looms taller, a screaming hollow where its face should be.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dark notices you sooner now, and stops snagging on the rubble when it comes for you.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The horde takes turns now — three lunge while the rest circle and snarl. Being surrounded finally feels like being hunted, not mobbed by a blob.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Headshots and weak points hit a little softer now — a steady reward for aim, not a jackpot.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Aim for the skull. Crossbow bolts and arrows finally know what a head is, and the numbers come up gold when you find one.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Stagger is earned now, not handed out — the hammer stopped trivializing poise, and a finisher only lands on something already reeling.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The things in the dark surround you now instead of melting into one shoving blob. A pack reads as a pack.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "The rats lost the baby fat and the skeletons remembered they're bones — lean tails, showing ribs, cold-glowing sockets.",
-        "area": [
-          "content",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Two new dials in the graphics menu — drop the render scale or kill the glow and a struggling phone breathes again.",
-        "area": [
-          "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Long halls lined with gateways render far lighter — the archways stopped each demanding their own fistful of draws.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The title screen no longer flashes the entire bestiary in a heap. They wait their turn.",
-        "area": [
-          "atmosphere",
-          "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The mimic stops guarding the spot where it used to be furniture. You can walk there now.",
-        "area": [
-          "level",
-          "combat"
         ]
       }
     ]
