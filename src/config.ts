@@ -148,7 +148,15 @@ export const CONFIG = {
     // A small cooldown after a dodge so it can't be mashed — longer when the
     // dodge was a gassed stumble, so over-extending on empty leaves you committed.
     DASH_COOLDOWN_S: 0.22,
-    DASH_COOLDOWN_GASSED_S: 0.42,
+    DASH_COOLDOWN_GASSED_S: 0.9,        // first empty-bar stumble: one desperate hop
+    // Chaining stumbles while still gassed escalates hard — the panic
+    // button is a button, not a movement tech. A second stumble within
+    // the chain window locks the legs for the long cooldown and leaves
+    // you WINDED (slowed) — strictly worse than walking.
+    STUMBLE_CHAIN_WINDOW_S: 3.0,
+    STUMBLE_CHAIN_COOLDOWN_S: 2.2,
+    STUMBLE_WINDED_S: 0.9,
+    STUMBLE_WINDED_MOVE_MUL: 0.55,
     // Aggression reward (Nightreign-style): a MELEE swing that CONNECTS with an
     // enemy refunds this much stamina, once per swing (ranged is excluded;
     // whiffs and vase-smashes don't pay). Light swings are free, so this is pure

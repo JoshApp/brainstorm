@@ -26,6 +26,8 @@ import { playWhoosh } from '../audio/sfx';
 // A short cooldown after a dodge so it can't be mashed — refreshed on each dash,
 // longer when the dodge was a gassed stumble.
 let cooldownUntil = 0;
+let lastStumbleAt = -Infinity;
+let windedUntil = 0;
 
 /** Fire a dash in WORLD direction (dirX, dirZ) — normalised internally. Always
  *  fires (returns true) given a direction; an empty bar yields a weaker stumble.
@@ -48,15 +50,25 @@ export function tryDash(dirX: number, dirZ: number): boolean {
   noteDashStarted();
   // Post-dodge cooldown — longer when this was a gassed stumble (over-extending
   // on empty leaves you committed).
-  cooldownUntil = performance.now()
-    + (full ? CONFIG.STAMINA.DASH_COOLDOWN_S : CONFIG.STAMINA.DASH_COOLDOWN_GASSED_S) * 1000;
+  const now = performance.now();
+  let cooldownS = full ? CONFIG.STAMINA.DASH_COOLDOWN_S : CONFIG.STAMINA.DASH_COOLDOWN_GASSED_S;
   if (!full) {
     // Desperate stumble on an empty bar — a camera lurch + stall regen + flash,
     // so it reads as "you're out, that was your last gasp", not a free escape.
+    // CHAINING gassed stumbles escalates: the second within the window
+    // locks the legs for the long cooldown and leaves you WINDED
+    // (slowed below walking) — empty-tank dash-spam is never mobility.
+    const chained = now - lastStumbleAt < CONFIG.STAMINA.STUMBLE_CHAIN_WINDOW_S * 1000;
+    if (chained) {
+      cooldownS = CONFIG.STAMINA.STUMBLE_CHAIN_COOLDOWN_S;
+      windedUntil = now + CONFIG.STAMINA.STUMBLE_WINDED_S * 1000;
+    }
+    lastStumbleAt = now;
     stumble();
     stallRegen();
     flashStaminaBar();
   }
+  cooldownUntil = now + cooldownS * 1000;
   playWhoosh();
   // Light haptic tick so the dodge has a physical "snap" on a phone (softer for
   // a stumble).
@@ -64,7 +76,15 @@ export function tryDash(dirX: number, dirZ: number): boolean {
   return true;
 }
 
+/** Movement multiplier while WINDED from chained empty-bar stumbles
+ *  (1 = normal). Camera movement composes this onto MOVE_SPEED. */
+export function getWindedMoveMul(): number {
+  return performance.now() < windedUntil ? CONFIG.STAMINA.STUMBLE_WINDED_MOVE_MUL : 1;
+}
+
 /** Reset the dodge cooldown — floor load. */
 export function resetDashCooldown(): void {
   cooldownUntil = 0;
+  lastStumbleAt = -Infinity;
+  windedUntil = 0;
 }

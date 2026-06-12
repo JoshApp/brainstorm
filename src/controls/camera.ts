@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getArrivalHeightOffset, isArrivalActive } from '../player/arrival';
+import { getWindedMoveMul } from '../combat/dash';
 import { groundYAt } from '../level/elevation';
 import type { InputState } from './input';
 import { consumeKnockback } from '../player/knockback';
@@ -112,7 +113,7 @@ export function updateCamera(
       // Aura-driven slow (e.g. inside the boiling king's body) × attack
       // commitment (mid-swing you root/slow, weight-scaled; idle = 1.0). Both
       // multiplicative so they compose uniformly on MOVE_SPEED.
-      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * dt);
+      move.normalize().multiplyScalar(CONFIG.MOVE_SPEED * getPlayerMoveScale() * getMoveMul() * getWindedMoveMul() * dt);
       const newX = camera.position.x + move.x;
       const newZ = camera.position.z + move.z;
       // First pass: static collision (walls, pillars, altar, chest).
