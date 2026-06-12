@@ -84,7 +84,7 @@ If you're reading this to figure out where to start, read this section first —
 - Chests, stash chest, doors, fountains, spike traps, stairs, corpses, pickups, notes
 - Tap-target raycast lets you tap directly on an object instead of walking up to it (`src/controls/tap-target.ts`)
 
-### Broadcast layer (DCC tribute)
+### Broadcast layer (the dungeon's attention)
 - Event bus + achievement queue + pop UI all wired (`src/broadcast/`, `src/ui/broadcast-pop.ts`)
 - LLM not plugged in yet — that's Phase 5. The seams are there.
 
@@ -394,24 +394,52 @@ legend, geometry rules, the three-lights acceptance test — lives in
 - Items don't celebrate. The dungeon doesn't care. The system observes without judgment.
 - No exclamation points outside player input. No emoji. No modern slang.
 
-## Tone Layering — the DCC tribute hook
+## Tone Layering — the dungeon speaks
 
-This project is inspired by *Dungeon Crawler Carl*. The DCC tone (snarky AI announcer, sponsor pops, sarcastic achievements, fourth-wall mockery) is the **tribute layer**. It does NOT live in the dungeon.
+**DECIDED 2026-06-12 (supersedes the DCC tribute frame):** there is no
+audience, no showrunner, no sponsor, no fourth wall. The meta-voice of
+the game is **the dungeon itself** — ancient, attentive, hungry. It
+does not perform for a crowd; it watches the delver the way a stomach
+watches food. Voice model: the Darkest Dungeon narrator, NOT Carl's
+announcer — wit without warmth, gallows-dry, epigrammatic.
 
-**The dungeon is grimdark.** All in-world text — item flavor, mob behavior, room descriptions, ambient writing — stays cruel, terse, and indifferent. Everything in the "Tone Bible" section above still applies, unchanged, to in-world content.
+**Two layers still exist** (the architecture was always sound):
 
-**The narrator is not.** The game runs on top of a cosmic **broadcast frame**: a meta-layer of system pops, achievements, item-discovery blurbs, run-summary epitaphs, and (eventually) an announcer voice. THIS layer is allowed to be snarky, pop-cultural, fourth-wall-aware. The contrast IS the joke.
+- **In-world text** — item flavor, room descriptions, corpse notes,
+  ambient writing. Cruel, terse, indifferent. The Tone Bible applies
+  unchanged. This is the dungeon's *body*.
+- **The dungeon's attention** (`src/broadcast/` — the event bus, pops,
+  achievement queue, epitaphs; the architecture keeps its name) — the
+  meta-layer that observes the player across events. This is the
+  dungeon's *mind*. It speaks RARELY (a voice line is a signal, the
+  same scarcity law as the light doctrine), never explains, never
+  jokes outward, has appetites (it favors blood and boldness, is bored
+  by caution), and remembers (epitaphs, the codex, counts of the dead).
+  Second person sparingly — most lines are it observing, half to
+  itself.
 
-Example of the split on a single event (player dies on Floor 1 in their underwear):
+Example of the split on a single event (player dies on Depth 1 in
+their underwear):
 
-- **In-world death message** (grimdark, fits the Tone Bible):
-  > "She was forgotten on Depth 1."
-- **Broadcast pop on the same death** (DCC tribute layer):
-  > "Achievement Unlocked: Dignity Optional — Die in your underwear on Floor 1."
+- **In-world death message:** "She was forgotten on Depth 1."
+- **The dungeon's attention:** "It noted how little you carried when
+  you fell."
 
-**The broadcast layer's architecture is already built** (`src/broadcast/`, `src/ui/broadcast-pop.ts`). Phase 5 plugs the LLM into it to generate snark on demand, with aggressive caching.
+Both layers are grimdark now; they differ in ALTITUDE (the body feels,
+the mind observes), not in register. Levity survives as cold
+amusement, never as performance.
 
-**Do not bleed snark into in-world text.** Keep the layers architecturally separate. Item names are grim. Achievement names are funny. They can describe the same event.
+**Phase 5 is unchanged mechanically:** the LLM plugs into the same
+seams (`src/broadcast/`, aggressive caching) — it just writes the
+dungeon's voice instead of an announcer's. The "attention meter"
+concept survives BETTER in this frame: the dungeon's attention is
+literal — loud, greedy, bloody play gets noticed, and being noticed
+has consequences.
+
+**Patchlog voice** (commit `Patch-summary` trailers): stays wry and
+terse but drops all crowd/sponsor/show framing — it reads as the
+dungeon's ledger of its own changes. Present tense, no emoji, no
+exclamations, no modern slang.
 
 ## Operating Mode
 
