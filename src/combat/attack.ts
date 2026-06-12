@@ -653,11 +653,27 @@ export function createCombatSystem(
           // detonate. (energy ~0.35 at 1 dmg → 1.0 around 8 dmg.)
           const energy = Math.min(1.5, (0.3 + applied * 0.09)
             * (crit ? 1.35 : 1) * (isExecute ? 1.5 : 1)) * gore;
+          // Splash direction = the BLADE'S TRAVEL, not just player→
+          // enemy: a slash from the left flings blood rightward, a
+          // thrust drives it straight through, a neutral sweep fans
+          // wide. Forward (radial) and lateral (tangential) mix by
+          // swing type. Right vector = forward rotated -90° about Y.
+          const fx = target.position.x - camera.position.x;
+          const fz = target.position.z - camera.position.z;
+          const fl = Math.hypot(fx, fz) || 1;
+          const nfx = fx / fl, nfz = fz / fl;
+          const rx = -nfz, rz = nfx;
+          let lateral = 0;
+          let forwardK = 1.0;
+          if (currentSwingDirection === 'strafe-right') { lateral = 0.95; forwardK = 0.45; }
+          else if (currentSwingDirection === 'strafe-left') { lateral = -0.95; forwardK = 0.45; }
+          else if (currentSwingDirection === 'forward') { lateral = 0; forwardK = 1.0; }
+          else { lateral = (Math.random() < 0.5 ? -1 : 1) * 0.55; forwardK = 0.7; }
           emitGoreSplash(
             target.position.x, target.position.z,
             0.5 + target.aimHeight * 0.5 + Math.random() * 0.25,
-            target.position.x - camera.position.x,
-            target.position.z - camera.position.z,
+            nfx * forwardK + rx * lateral,
+            nfz * forwardK + rz * lateral,
             energy,
             (target as { bloodColor?: number }).bloodColor ?? 0x6e1410,
           );
