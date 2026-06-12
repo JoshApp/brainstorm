@@ -629,7 +629,9 @@ export const SCENARIOS: Record<string, Scenario> = {
   'stairwell-lab': {
     freeze: true,
     level: {
-      id: 'stairwell-lab', depth: 1, startPos: { x: 0, z: -2.5, yaw: Math.PI },
+      // Spawn OFF-AXIS so the auto-placed threshold bonfire lands out of
+      // the camera's sightline down the well.
+      id: 'stairwell-lab', depth: 1, startPos: { x: 3.2, z: -3.5, yaw: Math.PI },
       rooms: [{ id: 'sw', rect: { x: 0, z: 0, w: 8, d: 10 }, height: 3.2 }],
       corridors: [],
       props: [],
@@ -640,7 +642,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       spawns: [], doors: [],
       stairs: [{ x: 0, z: 0.6, rotY: 0, targetLevel: 'depth-2' }],
     },
-    playerPos: { x: 0, z: -1.2, lookAt: { x: 0, z: 2.6, y: -1.7 } },
+    playerPos: { x: 0, z: -0.2, lookAt: { x: 0, z: 2.4, y: -2.1 } },
   },
 
   // BOSS-WARD LAB — a sealed boss descent up close, for iterating on

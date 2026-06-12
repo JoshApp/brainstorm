@@ -11,6 +11,8 @@ import { registerLight } from '../scene/light-pool';
 import { getTexture } from '../style/procedural-textures';
 import { getEquipped } from '../player/equipment';
 import { pooledBox, pooledPlane, pooledRing } from '../scene/geometry-pool';
+import { buildModel } from '../ecs/build-model';
+import { BONFIRE } from '../content/bonfire';
 import { isBossEncounterComplete, onBossEncounterComplete } from '../mobs/boss-encounter';
 
 // Stairs = a visible descent CARVED into the floor (the top of the
@@ -235,27 +237,57 @@ export function spawnStairs(
   voidFloor.position.set(0, landY - 0.01, archZ + 0.9);
   group.add(voidFloor);
 
-  // THE FIRE — a low twig pile + two flame sprites just beyond the arch.
-  // Ember-dim at rest; the highlight tween (interact range) wakes it.
-  const fireZ = archZ + 0.85;
-  const twigMat = new THREE.MeshStandardMaterial({ color: 0x16100a, roughness: 1.0, flatShading: true });
-  for (let i = 0; i < 3; i++) {
-    const twig = new THREE.Mesh(pooledBox(0.46, 0.045, 0.05), twigMat);
-    twig.position.set(0, landY + 0.05 + i * 0.012, fireZ);
-    twig.rotation.y = i * 1.1 + 0.4;
-    group.add(twig);
+  // THE DOORS — two timber leaves hung in the arch, AJAR: pushed inward
+  // at unequal angles, never closed again behind whoever last passed.
+  // Their square tops hide behind the arch crown, so the silhouette the
+  // player reads from above is the round-top medieval gate. The bonfire
+  // beyond shows only as a SHIMMER through the gap until the player
+  // comes into interact range (the gap-glow planes below ride the
+  // highlight tween).
+  const fireZ = archZ + 0.95;
+  const leafH = ARCH_SPRING + ARCH_RISE * 0.55;
+  const leafW = ARCH_W / 2 + 0.04;
+  const ironMat = new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.55, metalness: 0.55, flatShading: true });
+  for (const side of [-1, 1]) {
+    const hinge = new THREE.Group();
+    hinge.position.set(side * (ARCH_W / 2), landY, archZ + 0.12);
+    // Ajar, asymmetric — the left leaf barely parted, the right shoved
+    // wide. Positive rotation swings the leaf INTO the fire chamber.
+    hinge.rotation.y = side * (side < 0 ? 0.38 : 0.78);
+    const leaf = new THREE.Mesh(pooledBox(leafW, leafH, 0.07), materials.timber);
+    leaf.position.set(-side * leafW / 2, leafH / 2, 0);
+    hinge.add(leaf);
+    // Two iron bands across each leaf.
+    for (const by of [leafH * 0.28, leafH * 0.72]) {
+      const band = new THREE.Mesh(pooledBox(leafW * 0.94, 0.07, 0.085), ironMat);
+      band.position.set(-side * leafW / 2, by, 0);
+      hinge.add(band);
+    }
+    group.add(hinge);
   }
+
+  // THE FIRE BEYOND — the real threshold bonfire (sword and all), the
+  // same model the player wakes beside upstairs. Its sprite stack
+  // self-animates (build-model flicker), so it burns with no wiring.
+  const bonfireBuilt = buildModel(BONFIRE);
+  bonfireBuilt.group.position.set(0, landY, fireZ);
+  bonfireBuilt.group.scale.setScalar(0.9);
+  bonfireBuilt.group.rotation.y = 0.7;
+  group.add(bonfireBuilt.group);
+
+  // Gap shimmer — additive planes in the door slit. Faint at rest (the
+  // shimmer through the crack); blooming as the player nears.
   const fireMatA = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'), color: 0x6e1c06, transparent: true, opacity: 0.30,
     blending: THREE.AdditiveBlending, fog: false, depthWrite: false, side: THREE.DoubleSide,
   });
   const fireMatB = fireMatA.clone();
   fireMatB.color.set(0x3c1004); fireMatB.opacity = 0.22;
-  const fireA = new THREE.Mesh(pooledPlane(0.5, 0.7), fireMatA);
-  fireA.position.set(0, landY + 0.42, fireZ);
+  const fireA = new THREE.Mesh(pooledPlane(0.42, 1.3), fireMatA);
+  fireA.position.set(0.05, landY + 0.75, archZ + 0.22);
   group.add(fireA);
-  const fireB = new THREE.Mesh(pooledPlane(0.8, 1.0), fireMatB);
-  fireB.position.set(0, landY + 0.55, fireZ + 0.05);
+  const fireB = new THREE.Mesh(pooledPlane(0.9, 1.7), fireMatB);
+  fireB.position.set(0, landY + 0.9, archZ + 0.30);
   group.add(fireB);
 
   // ── DEEP GLOW LIGHT ──────────────────────────────────────────────

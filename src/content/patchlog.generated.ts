@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-12",
     "entries": [
       {
+        "tag": "add",
+        "text": "Look down any stairwell: the next fire is already burning for you. Behind every fire, the way you came — sealed. Keep going.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "Pottery keeps its dignity in death. The slain spend theirs slowly, by the pint.",
         "area": [
@@ -403,14 +411,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "level"
-        ]
-      },
-      {
-        "tag": "tech",
-        "text": "Thirty mobs now cost the renderer about as much as four used to. The dungeon notices no difference; your frame rate does.",
-        "area": [
-          "combat",
-          "tech"
         ]
       }
     ]
