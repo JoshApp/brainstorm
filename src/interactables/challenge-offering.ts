@@ -117,7 +117,9 @@ export function spawnChallengeOffering(
   let lightIntensity = 1.2;
   registerLight({
     id: lightId, category: 'pickup',
-    position: new THREE.Vector3(pos.x, 0.6, pos.z),
+    // pos is ground-aware (builder passes groundYAt); +0.6 above it, not
+    // world 0.6 — else the ember floats over a sunken arena's floor.
+    position: new THREE.Vector3(pos.x, pos.y + 0.6, pos.z),
     color: SEAM_DARK,
     intensity: 1.2, distance: 3.4, decay: 1.6,
     getIntensity: () => lightIntensity,

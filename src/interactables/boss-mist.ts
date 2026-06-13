@@ -140,7 +140,7 @@ export function spawnBossMist(
   const id = generateEntityId('boss-mist');
   const interactable: Interactable = {
     id,
-    position: new THREE.Vector3(x, 0, z),
+    position: new THREE.Vector3(x, groundYAt(x, z), z),
     radius: 2.8,
     promptLabel: 'enter the mist',
     // Explicit interact (tap the gate / press E) is the ONLY way through —

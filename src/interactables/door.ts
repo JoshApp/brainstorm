@@ -197,7 +197,7 @@ export function spawnDoor(
 
   const interactable = {
     id: generateEntityId(`door-${spec.id}`),
-    position: new THREE.Vector3(cx, 0, cz),
+    position: new THREE.Vector3(cx, baseY, cz),
     radius: 1.4,
     // Labels at hand-height — the door pivot is at the FOOT.
     labelOffsetY: 1.4,

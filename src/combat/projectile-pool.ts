@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { WalkableRegion } from '../level/walkable';
+import { groundYAt } from '../level/elevation';
 import { damagePlayer } from '../player/health';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { applyDamageVia, type DamageType } from './damage';
@@ -390,7 +391,10 @@ export function tickProjectiles(
           const dx = slot.position.x - d.position.x;
           const dz = slot.position.z - d.position.z;
           const rr = (d.hitRadius ?? 0.4) + slot.type.radius;
-          if (dx * dx + dz * dz < rr * rr && slot.position.y <= d.aimHeight * 2 + 0.25) {
+          // Height gate is the bolt's rise ABOVE THE PROP'S BASE (d.position.y
+          // ground-follows), not world Y — else on a sunken floor the bolt's
+          // negative world Y always passed and over-smashed low props.
+          if (dx * dx + dz * dz < rr * rr && slot.position.y - d.position.y <= d.aimHeight * 2 + 0.25) {
             d.takeDamage({ source: slot.source, target: d.entityId, base: slot.damage, type: slot.type.damageType });
             retire(slot);
             hit = true;
@@ -405,9 +409,15 @@ export function tickProjectiles(
       // body axis (vertical segment at the player's xz, from capsule bottom to
       // top) to the projectile, then a true 3D distance. A shot sailing over
       // the head or skimming the floor now MISSES; chest/torso shots connect.
+      // The capsule constants are heights ABOVE THE PLAYER'S FEET, not
+      // world Y — offset by the ground under the player so a shot connects
+      // on a sunken floor. Without this the window stayed pinned to world
+      // [0.45, 1.75] while the player stood at e.g. -2m, and every enemy
+      // bolt missed (ranged foes went harmless wherever the floor dropped).
+      const feetY = groundYAt(playerPos.x, playerPos.z);
       const cy = Math.max(
-        CONFIG.PLAYER_HIT_CAPSULE_BOTTOM_Y,
-        Math.min(CONFIG.PLAYER_HIT_CAPSULE_TOP_Y, slot.position.y),
+        feetY + CONFIG.PLAYER_HIT_CAPSULE_BOTTOM_Y,
+        Math.min(feetY + CONFIG.PLAYER_HIT_CAPSULE_TOP_Y, slot.position.y),
       );
       const dx = slot.position.x - playerPos.x;
       const dy = slot.position.y - cy;

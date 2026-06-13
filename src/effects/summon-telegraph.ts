@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundYAt } from '../level/elevation';
 
 // Summon telegraph — the "something is being called up HERE" tell that
 // precedes a wave mob in an arena. Two layers:
@@ -86,7 +87,9 @@ export function spawnSummonTelegraph(
   radius = 0.7,
 ): SummonTelegraph {
   const group = new THREE.Group();
-  group.position.set(x, 0, z);
+  // Sit the sigil on the floor under the spawn point — arena rooms can be
+  // elevated, and Y=0 floated the ring above a sunken arena's floor.
+  group.position.set(x, groundYAt(x, z), z);
   scene.add(group);
 
   // Floor sigil.

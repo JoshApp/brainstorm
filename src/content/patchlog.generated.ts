@@ -4,6 +4,20 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 8",
+    "date": "2026-06-13",
+    "entries": [
+      {
+        "tag": "fix",
+        "text": "The stairs down deep meet the floor they promised. Loot rings stopped haunting the air above the coins.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 7",
     "date": "2026-06-12",
     "entries": [
@@ -400,13 +414,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "The seams in the worst floors stop glowing and start glistening. It is not an improvement in the way you mean.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The bleeding walls actually bleed now. They were holding it in.",
         "area": [
           "atmosphere"
         ]

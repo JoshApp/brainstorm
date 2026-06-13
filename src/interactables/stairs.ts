@@ -297,7 +297,10 @@ export function spawnStairs(
   const glowWorld = new THREE.Vector3()
     .copy(glowLocal)
     .applyEuler(new THREE.Euler(0, spec.rotY ?? 0, 0))
-    .add(new THREE.Vector3(spec.x, 0, spec.z));
+    // Anchor at the stair's GROUND (the well sits on the room floor) —
+    // the exit/stairs vault is the floor's lowest point under descent
+    // bias, so a Y=0 anchor floated this pool well above the actual well.
+    .add(new THREE.Vector3(spec.x, groundYAt(spec.x, spec.z), spec.z));
   registerLight({
     id: `stairs-${spec.id ?? spec.targetLevel}-glow`,
     category: 'environment',
@@ -707,8 +710,9 @@ export function spawnStairs(
 
   const interactable: import('./types').Interactable = {
     id: generateEntityId(`stairs-${spec.id ?? spec.targetLevel}`),
-    // World-space center of the top tread.
-    position: new THREE.Vector3(spec.x, 0, spec.z).add(
+    // World-space center of the top tread — on the stair's ground so the
+    // floating TAKE/DESCEND label rides at the right height on a sunken floor.
+    position: new THREE.Vector3(spec.x, groundYAt(spec.x, spec.z), spec.z).add(
       new THREE.Vector3(0, 0, STEP_DEPTH / 2).applyEuler(new THREE.Euler(0, spec.rotY ?? 0, 0)),
     ),
     radius: 1.6,
