@@ -313,18 +313,23 @@ const COMBAT_DOORS: Vault = {
   tags: ['combat'],
   // Sealed room-clear gauntlet — a swarm that floods you once the doors lock.
   encounter: { archetype: 'swarm', intensity: 'medium' },
-  // Room-clear gating — sealed doors open when the room's enemies
-  // die. Player walks in, the doors lock behind, fight, escape.
+  // Trap-arena gating — doors START OPEN, SLAM shut the moment you cross
+  // in, then reopen when the room's enemies die. This is the 'D' tile
+  // (gate-arena): walk in, the doors lock BEHIND you, fight, escape.
+  // (Was 'O' = gate-cleared, which seals from the START — leaving all four
+  // doors locked on arrival around a room full of enemies you could never
+  // reach to clear: a permanent soft-lock on the spine. The comment always
+  // described the trap; the tile was wrong.)
   map: [
     '############',
     '#....*.....#',
-    'O..........O',
+    'D..........D',
     '#..X....X..#',
     '#..........#',
     '#....X.....#',
     '#..........#',
     '#..X....X..#',
-    'O..........O',
+    'D..........D',
     '#....*.....#',
     '############',
   ],

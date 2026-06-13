@@ -8,6 +8,7 @@ import { actForDepth } from './acts';
 import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
 import { vaultsForTag, VAULTS } from './vault-library';
+import { ITEMS } from '../content/items';
 import { parseTileMap } from './tilemap';
 import { populateTemplate, type FeatureCell } from './procgen';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
@@ -774,6 +775,48 @@ export function composeFloor(
       for (const v of pv.vault.voids) {
         voids.push({ x: v.x + pv.offsetX, z: v.z + pv.offsetZ, w: v.w, d: v.d });
       }
+    }
+  }
+
+  // ── KEY GUARANTEE ──────────────────────────────────────────────────
+  // A reliquary with no findable key is dead content — the vault's own
+  // comment calls an unmatched reliquary "a taunt." Keys are rare-band
+  // drops (~1-in-24 of an already-rare roll), so a floor can show the
+  // locked cage and never a key. If this floor placed a reliquary,
+  // GUARANTEE a skeleton key reaches the player: first try seeding an
+  // existing un-looted chest that isn't right next to the cage (zero
+  // placement risk); else drop a dedicated iron chest in the start room,
+  // far from the reliquary, so the key is a found object on the way in.
+  const KEY_ID = 'skeleton-key';
+  const reliquary = props.find((p) => p.kind === 'reliquary') as { x: number; z: number } | undefined;
+  const keyPlaced = props.some(
+    (p) => p.kind === 'chest' && (p as { loot?: { id?: string } }).loot?.id === KEY_ID,
+  );
+  if (reliquary && !keyPlaced && ITEMS[KEY_ID]) {
+    const far = (p: { x: number; z: number }) =>
+      Math.hypot(p.x - reliquary.x, p.z - reliquary.z) > 6;
+    const seedable = props.find(
+      (p) => p.kind === 'chest'
+        && !(p as { loot?: unknown }).loot
+        && !(p as { mimic?: boolean }).mimic
+        && far(p as { x: number; z: number }),
+    ) as { loot?: typeof ITEMS[string] } | undefined;
+    if (seedable) {
+      seedable.loot = ITEMS[KEY_ID];
+    } else {
+      // Fallback: an iron chest near the start room's west wall (always
+      // present, open ground; the clearance pass nudges it off any
+      // corridor it lands in).
+      const start = placed[0];
+      const sd = vaultDims(start.vault);
+      props.push({
+        kind: 'chest',
+        x: start.offsetX - (sd.w / 2 - 1.4),
+        z: start.offsetZ,
+        tier: 'iron',
+        loot: ITEMS[KEY_ID],
+        facing: { kind: 'wall-away' },
+      });
     }
   }
 

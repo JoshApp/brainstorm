@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The broken walls reach the floor they fell toward. Coins quit hovering over the abyss like they had somewhere to be.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The archers in the deep remembered how to aim downhill. Several ghost-lights and labels came back down to the floor with them.",
         "area": [
           "combat",
@@ -409,13 +417,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "The light pools deeper into the seams and the pillars stop pretending to be sponges.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The crevices stop glittering and start drinking. Your lamp pours into every seam you pass.",
         "area": [
           "atmosphere"
         ]
