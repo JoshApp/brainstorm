@@ -506,12 +506,24 @@ export function composeFloor(
   // reads as progress without a tutorial line. Fittings (doors, webs,
   // fog gates) install on the corridors' FLAT mouth aprons, so gated
   // thresholds stay level ground by construction.
+  // The ramp axis is the CONNECTION axis (which way the two rooms are
+  // separated), not the corridor rect's longer side — a stubby wide
+  // corridor's long side is perpendicular to travel. Derived once here
+  // and reused when stamping the corridor RoomSpec below.
+  const connAlongX = (c: CorridorPlacement): boolean => {
+    const dx = Math.abs(placed[c.toIdx].offsetX - placed[c.fromIdx].offsetX);
+    const dz = Math.abs(placed[c.toIdx].offsetZ - placed[c.fromIdx].offsetZ);
+    return dx >= dz;
+  };
   const elevations: number[] = placed.map(() => 0);
   for (const c of corridors) {
     const roll = weightedPick(
       CONFIG.ELEVATION_DROP_WEIGHTS.map((d) => ({ ...d })), rand,
     ).drop;
-    const run = corridorRampRun(Math.max(c.rect.w, c.rect.d));
+    // Run is the corridor's extent ALONG TRAVEL (the connection axis), so
+    // the grade clamp matches the slope the field will actually build.
+    const travelLen = connAlongX(c) ? c.rect.w : c.rect.d;
+    const run = corridorRampRun(travelLen);
     const drop = Math.min(roll, run * CONFIG.ELEVATION_MAX_GRADE);
     elevations[c.toIdx] = elevations[c.fromIdx] - drop;
   }
@@ -766,12 +778,29 @@ export function composeFloor(
   }
 
   // ── 5. Stamp the corridor rects into the LevelSpec ─────────────
+  // Each corridor carries its EXPLICIT ramp endpoints: the composer knows
+  // which rooms it bridges (fromIdx/toIdx) and their elevations, so it
+  // resolves the low-coord and high-coord ends here rather than leaving
+  // the elevation field to guess by spatial probing (the depth-7+ "ramp
+  // ends in mid-air" bug — the probe landed on the wrong room).
   for (let i = 0; i < corridors.length; i++) {
     const c = corridors[i];
+    // Ramp axis = the connection axis, not the rect's longer side.
+    const alongX = connAlongX(c);
+    const fromCoord = alongX ? placed[c.fromIdx].offsetX : placed[c.fromIdx].offsetZ;
+    const toCoord = alongX ? placed[c.toIdx].offsetX : placed[c.toIdx].offsetZ;
+    // Whichever connected room sits at the smaller connection-axis
+    // coordinate is at the corridor's LOW end.
+    const fromIsLo = fromCoord <= toCoord;
+    const rampLoElev = fromIsLo ? elevations[c.fromIdx] : elevations[c.toIdx];
+    const rampHiElev = fromIsLo ? elevations[c.toIdx] : elevations[c.fromIdx];
     corridorRooms.push({
       id: `corridor-${i}`,
       rect: c.rect,
       height: c.height,
+      rampAlongX: alongX,
+      rampLoElev,
+      rampHiElev,
     });
   }
 

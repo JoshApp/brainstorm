@@ -89,6 +89,27 @@ export type RoomSpec = {
    */
   elevation?: number;
   /**
+   * CORRIDOR-ONLY explicit ramp endpoints, in world elevation. When the
+   * composer knows which rooms a corridor connects (it always does — it
+   * placed them), it stamps the elevation at the corridor's LOW-coord end
+   * (`rampLoElev`) and HIGH-coord end (`rampHiElev`) along its long axis.
+   * The elevation field uses these verbatim instead of guessing endpoints
+   * by spatial probing — guessing lands on the nearest room by 2D
+   * distance, which picks the WRONG room in dense/deep layouts and leaves
+   * the corridor's far seam floating half a metre off the room floor.
+   */
+  rampLoElev?: number;
+  rampHiElev?: number;
+  /**
+   * CORRIDOR-ONLY: which axis the ramp runs along, from the actual
+   * connection (the two rooms' centre separation), NOT the rect's longer
+   * side. A stubby wide corridor (length < width) has its long rect axis
+   * PERPENDICULAR to travel; guessing the axis from `rect.w >= rect.d`
+   * then ramps the wrong way and the seams float. The composer knows the
+   * connection direction, so it stamps the truth.
+   */
+  rampAlongX?: boolean;
+  /**
    * Ceiling shape. Default 'flat' (a plane at `height`). 'barrel' (curved
    * vault) and 'pitched' (A-frame) spring from the wall-top at `height` and
    * arch UP to height + ceilingRise at the crown, with the short-wall

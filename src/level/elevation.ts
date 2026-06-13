@@ -84,18 +84,26 @@ export function buildElevationField(rooms: RoomSpec[], corridors: RoomSpec[]): E
 
   const ramps: CorridorRamp[] = corridors.map((c) => {
     const r = rectOf(c);
-    const alongX = c.rect.w >= c.rect.d;
+    // Composer-stamped connection axis wins; fall back to the rect's
+    // longer side for hand-authored corridors that don't stamp it.
+    const alongX = c.rampAlongX ?? (c.rect.w >= c.rect.d);
     const lo = alongX ? r.minX : r.minZ;
     const hi = alongX ? r.maxX : r.maxZ;
     const apron = Math.min((hi - lo) * APRON_FRAC, 1.0);
-    // Sample just OUTSIDE each end to find the rooms it connects.
-    const probe = 0.6;
+    // PREFER the composer's explicit endpoints (rampLoElev/rampHiElev) —
+    // it knows which rooms this corridor bridges. Fall back to spatial
+    // probing only for hand-authored corridors that don't stamp them
+    // (probing picks the nearest room by 2D distance and mis-fires in
+    // dense layouts, which is the depth-7+ mid-air-ramp bug). A flat
+    // explicit `elevation` still wins over both (level corridors).
     const e0 = c.elevation !== undefined ? c.elevation
-      : alongX ? roomElevationNear(lo - probe, c.rect.z)
-               : roomElevationNear(c.rect.x, lo - probe);
+      : c.rampLoElev !== undefined ? c.rampLoElev
+      : alongX ? roomElevationNear(lo - 0.6, c.rect.z)
+               : roomElevationNear(c.rect.x, lo - 0.6);
     const e1 = c.elevation !== undefined ? c.elevation
-      : alongX ? roomElevationNear(hi + probe, c.rect.z)
-               : roomElevationNear(c.rect.x, hi + probe);
+      : c.rampHiElev !== undefined ? c.rampHiElev
+      : alongX ? roomElevationNear(hi + 0.6, c.rect.z)
+               : roomElevationNear(c.rect.x, hi + 0.6);
     return { ...r, alongX, a0: lo + apron, a1: hi - apron, e0, e1 };
   });
 

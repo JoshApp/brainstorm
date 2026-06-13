@@ -169,7 +169,12 @@ function buildRoomShell(
   // walkable but floating over void — the walk samples the field, the
   // shell didn't.)
   const elev = room.elevation ?? groundYAt(rect.x, rect.z);
-  const alongX = W >= D;
+  // Slope detection samples along the RAMP axis. For corridors that's the
+  // composer-stamped connection axis (rampAlongX) — NOT the rect's longer
+  // side, which on a stubby wide corridor is perpendicular to travel and
+  // would read the slope as flat, building a level floor mid-ramp that
+  // matches neither room. Rooms (no rampAlongX) use the rect's long side.
+  const alongX = room.rampAlongX ?? (W >= D);
   const eEnd0 = alongX
     ? groundYAt(rect.x - W / 2 + 0.05, rect.z)
     : groundYAt(rect.x, rect.z - D / 2 + 0.05);
@@ -219,7 +224,7 @@ function buildRoomShell(
   // the visual is cut stone treads following the linear grade; the eye
   // and collision glide the smooth line underneath (groundYAt).
   const floorGeo: THREE.BufferGeometry = sloped
-    ? (makeSteppedRampGeometry(rect, groundYAt, CONFIG.STAIR_RISER_M)
+    ? (makeSteppedRampGeometry(rect, groundYAt, CONFIG.STAIR_RISER_M, alongX)
         ?? makeJitteredPlane(W, D, { flat: true }))
     : allFloorHoles.length > 0
       ? makeFloorWithHoles(W, D, allFloorHoles)

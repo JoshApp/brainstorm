@@ -117,9 +117,16 @@ export function createPickup(
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
+  // The disc/ring sit just above the GROUND under the item, in
+  // pickupGroup-local Y (the group rides at pos.y). On a flat floor this
+  // is 0.01 - pos.y as before; on an elevated/sloped floor it tracks the
+  // real floor so the ring doesn't float at world-zero while the item
+  // rests two metres down. Recomputed on land for thrown drops.
+  const floorLocalY = (gx: number, gz: number, lift: number) =>
+    groundYAt(gx, gz) + lift - pos.y;
   const disc = new THREE.Mesh(pooledPlane(DISC_SIZE, DISC_SIZE), discMat);
   disc.rotation.x = -Math.PI / 2;
-  disc.position.y = 0.01 - pos.y;  // sit ~1cm above the floor (compensate for parent y)
+  disc.position.y = floorLocalY(pos.x, pos.z, 0.01);
   // Hide the disc during fountain — it'd be a glowing landmark at the
   // spawn point with no item on top of it (weird).
   disc.visible = !launch;
@@ -141,7 +148,7 @@ export function createPickup(
   });
   const ring = new THREE.Mesh(ringGeom, ringMat);
   ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.015 - pos.y;
+  ring.position.y = floorLocalY(pos.x, pos.z, 0.015);
   ring.visible = false;  // toggled on by tick when in range
   pickupGroup.add(ring);
 
@@ -302,6 +309,10 @@ export function createPickup(
           const landedWorldZ = pos.z + itemZ;
           pickupGroup.position.set(landedWorldX, pos.y, landedWorldZ);
           interactable.position.set(landedWorldX, pos.y, landedWorldZ);
+          // The throw may have drifted to a different ground cell — re-seat
+          // the disc + ring on the floor under where it actually landed.
+          disc.position.y = floorLocalY(landedWorldX, landedWorldZ, 0.01);
+          ring.position.y = floorLocalY(landedWorldX, landedWorldZ, 0.015);
           itemX = 0; itemZ = 0;
           itemY = restLocalY();
           built.group.position.set(itemX, itemY, itemZ);

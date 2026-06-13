@@ -9,6 +9,29 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Your legs keep one last desperate lunge in them — exactly one. Ask twice and they answer with a stagger.",
+        "area": [
+          "combat",
+          "controls"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The doors behind you are actual doors now — oak, iron, and a proper arch. The dungeon apologises for the masonry impression.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The wall that watched the kill keeps the blood — the spawn walls stop confessing to murders from other rooms.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The doors behind you exist on every floor now, not only in the rehearsal room. Turn around and check.",
         "area": [
           "atmosphere",
@@ -384,28 +407,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "The bleeding walls actually bleed now. They were holding it in.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "On the worst floors, the mortar has started to run. It moves toward the floor, the way everything here eventually does.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Some rooms stop lighting their walls and start engraving them — thin lines of fire where the mortar runs. A candle stub did this. Allegedly.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Torchlight reaches a little further still.",
         "area": [
           "atmosphere"
         ]

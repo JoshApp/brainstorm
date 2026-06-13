@@ -401,8 +401,13 @@ export function makeSteppedRampGeometry(
   rect: { x: number; z: number; w: number; d: number },
   groundY: (x: number, z: number) => number,
   riserM: number,
+  // The travel axis the stairs descend along. Caller passes the
+  // connection axis (NOT the rect's longer side — a stubby wide corridor
+  // ramps across its SHORT dimension); defaults to the longer side for
+  // any caller that doesn't know better.
+  alongXArg?: boolean,
 ): THREE.BufferGeometry | null {
-  const alongX = rect.w >= rect.d;
+  const alongX = alongXArg ?? (rect.w >= rect.d);
   const runLen = alongX ? rect.w : rect.d;
   const breadth = alongX ? rect.d : rect.w;
   const lo = (alongX ? rect.x : rect.z) - runLen / 2;
