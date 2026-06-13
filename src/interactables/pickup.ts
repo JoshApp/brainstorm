@@ -305,8 +305,17 @@ export function createPickup(
           // LAND. Snap to rest height, re-parent the group so the
           // disc / interactable hitbox / future bob centers on the
           // landed spot instead of the spawn spot.
-          const landedWorldX = pos.x + itemX;
-          const landedWorldZ = pos.z + itemZ;
+          let landedWorldX = pos.x + itemX;
+          let landedWorldZ = pos.z + itemZ;
+          // Never rest over a carved pit: voids aren't in the elevation
+          // field, so a drop there would float at rim height over the
+          // black drop (and be unreachable). Nudge to the nearest walkable
+          // ground (resolveSpawn excludes void/wall obstacles).
+          const w = getActiveLevel()?.walkable;
+          if (w) {
+            const safe = w.resolveSpawn(landedWorldX, landedWorldZ, 0.2);
+            landedWorldX = safe.x; landedWorldZ = safe.z;
+          }
           pickupGroup.position.set(landedWorldX, pos.y, landedWorldZ);
           interactable.position.set(landedWorldX, pos.y, landedWorldZ);
           // The throw may have drifted to a different ground cell — re-seat

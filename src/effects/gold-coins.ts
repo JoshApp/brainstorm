@@ -217,7 +217,14 @@ export function tickGoldCoins(dt: number, playerPos: THREE.Vector3, walkable?: W
       c.group.rotation.z += dt * 5;
       const fy = floorYAt(c.group.position.x, c.group.position.z);
       if (c.group.position.y <= fy) {
-        c.group.position.y = fy;
+        // Don't rest over a carved pit (voids float at rim height in the
+        // elevation field). Nudge onto the nearest walkable ground first.
+        if (walkable && !walkable.contains(c.group.position.x, c.group.position.z, 0.1)) {
+          const safe = walkable.resolveSpawn(c.group.position.x, c.group.position.z, 0.1);
+          c.group.position.x = safe.x;
+          c.group.position.z = safe.z;
+        }
+        c.group.position.y = floorYAt(c.group.position.x, c.group.position.z);
         c.vel.set(0, 0, 0);
         c.settled = true;
         // Settle upright. The disc is already pre-rotated to vertical

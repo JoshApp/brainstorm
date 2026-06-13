@@ -9,6 +9,15 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The archers in the deep remembered how to aim downhill. Several ghost-lights and labels came back down to the floor with them.",
+        "area": [
+          "combat",
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The stairs down deep meet the floor they promised. Loot rings stopped haunting the air above the coins.",
         "area": [
           "level",
@@ -407,13 +416,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "The crevices stop glittering and start drinking. Your lamp pours into every seam you pass.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The seams in the worst floors stop glowing and start glistening. It is not an improvement in the way you mean.",
         "area": [
           "atmosphere"
         ]

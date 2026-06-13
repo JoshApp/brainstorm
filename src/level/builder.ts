@@ -1565,8 +1565,16 @@ export function buildLevel(
       const geo = makeJitteredPlane(len, H, { wavy: true });
       // X-running wall faces ±Z (yaw 0); Z-running faces ±X (yaw π/2).
       const yaw = Math.abs(dz) < Math.abs(dx) ? 0 : Math.PI / 2;
+      const midX = (w.ax + w.bx) / 2;
+      const midZ = (w.az + w.bz) / 2;
+      // Sit the segment on the ROOM FLOOR under it (these interior walls /
+      // niche divisions live inside one flat room). Without the ground
+      // offset the wall built at world baseY and floated, its foot hanging
+      // metres above a sunken room's floor — the "niche doesn't reach the
+      // bottom" / cave-in-in-mid-air bug.
+      const gy = groundYAt(midX, midZ);
       m4.makeRotationY(yaw);
-      m4.setPosition((w.ax + w.bx) / 2, baseY + H / 2, (w.az + w.bz) / 2);
+      m4.setPosition(midX, gy + baseY + H / 2, midZ);
       geo.applyMatrix4(m4);
       extraGeos.push(geo);
       // Elevated segments are lintels (doorway caps) — visual only. The gap
