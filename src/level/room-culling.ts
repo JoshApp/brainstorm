@@ -32,7 +32,6 @@ interface RectNode {
 // Doorway-reveal margin (metres): a neighbour room renders when its connecting
 // doorway is within this distance of the view frustum. Generous = less pop-in.
 const MARGIN = 1.5;
-const DOOR_Y = 1.2;   // sample height for the doorway-in-frustum test
 const EPS = 0.05;
 
 export interface RoomCuller {
@@ -159,6 +158,15 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
   const frustum = new THREE.Frustum();
   const projView = new THREE.Matrix4();
   const sphere = new THREE.Sphere(new THREE.Vector3(), MARGIN);
+  // Pitch-flatten scratch: the doorway cull frustum is built from a YAW-ONLY
+  // view (camera forward projected onto the floor plane), so camera PITCH never
+  // gates which doorways read as "in view." A doorway is a full-height opening
+  // — looking down at a corner must not cull the corridor/rooms ahead. The real
+  // projection (FOV/aspect) is kept; it's just re-centred on the horizon.
+  const fwd = new THREE.Vector3();
+  const flatTarget = new THREE.Vector3();
+  const flatWorld = new THREE.Matrix4();
+  const UP = new THREE.Vector3(0, 1, 0);
 
   function showAll() {
     for (const node of nodes.values()) {
@@ -175,9 +183,19 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
     if (!enabled) return;
 
     camera.updateMatrixWorld();
+    // YAW-ONLY cull frustum: camera forward flattened to the floor plane, so
+    // PITCH never gates doorway visibility (angling down at a corner must not
+    // cull the corridor/rooms ahead — a doorway is a full-height opening). Real
+    // projection (FOV/aspect) is kept, just re-centred on the horizon.
+    fwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    fwd.y = 0;
+    if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1); else fwd.normalize();
+    flatTarget.copy(camera.position).add(fwd);
+    flatWorld.lookAt(camera.position, flatTarget, UP);   // rotation looking flat-forward
+    flatWorld.setPosition(camera.position);              // → camera world matrix (pitch zeroed)
     projView.multiplyMatrices(
       (camera as THREE.PerspectiveCamera).projectionMatrix,
-      camera.matrixWorldInverse,
+      flatWorld.invert(),                                // → view matrix
     );
     frustum.setFromProjectionMatrix(projView);
 
@@ -207,9 +225,12 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         const node = nodes.get(queue.pop()!)!;
         for (const nb of node.neighbors) {
           if (visible.has(nb.id)) continue;
-          // In the view cone (frustum, with reveal margin) AND not occluded by
-          // a wall (line-of-sight from the camera to the doorway).
-          sphere.center.set(nb.ox, DOOR_Y, nb.oz);
+          // In the view cone (yaw frustum, with reveal margin) AND not occluded
+          // by a wall (line-of-sight). Sample the doorway at the CAMERA'S eye
+          // height, not a fixed world-1.2 — so a sunken/raised room (the stair-
+          // corridor Y-levels) is tested at the height you're actually at, not a
+          // plane that may sit above/below its real opening.
+          sphere.center.set(nb.ox, camera.position.y, nb.oz);
           if (frustum.intersectsSphere(sphere) && los(cx, cz, nb.ox, nb.oz)) {
             visible.add(nb.id);
             queue.push(nb.id);
