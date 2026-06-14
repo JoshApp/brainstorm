@@ -1086,6 +1086,10 @@ function makeActionRow(opts: ActionRowOpts): HTMLDivElement {
   return row;
 }
 
+// The single live update-status subscription (see makeUpdateRow). Replaced,
+// not accumulated, on every SYSTEM-tab rebuild so it can't leak.
+let updateRowUnsub: (() => void) | null = null;
+
 /** Update status row: shows "UP TO DATE" (disabled) or "INSTALL UPDATE"
  *  (tappable, applies the pending SW). Live-updates when the status
  *  changes — subscribes to pwa-update via onUpdateStatusChange. */
@@ -1141,7 +1145,13 @@ function makeUpdateRow(): HTMLDivElement {
     }
   }
   render();
-  onUpdateStatusChange(render);
+  // Subscribe to update-status changes, but REPLACE any prior subscription
+  // first. makeUpdateRow runs on every SYSTEM-tab build (standalone ESC panel
+  // AND the inventory ⚙ tab), and the old button is discarded each rebuild —
+  // without this, every visit leaked a render closure bound to a detached
+  // button into pwa-update's listener array forever. Cap at one live listener.
+  updateRowUnsub?.();
+  updateRowUnsub = onUpdateStatusChange(render);
 
   button.addEventListener('click', () => {
     if (getUpdateStatus() !== 'pending') return;
