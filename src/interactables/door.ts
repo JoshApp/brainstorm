@@ -173,7 +173,12 @@ export function spawnDoor(
   // ── Animation helpers ───────────────────────────────────────────────
   // Set the visible pose for a given progress. Hinged: rotate; gate: slide.
   const setSealedPose = () => {
-    if (isGate) group.position.y = 0;            // grate down, teeth at floor
+    // Sealed = grate down, teeth resting on the floor — which is at baseY, NOT
+    // world-zero. The slam/rise animations and setOpenPose all reference baseY;
+    // this was the one place left assuming a y=0 floor, so on the elevated /
+    // sunken rooms the gate snapped off the floor the instant it sealed
+    // (invisible grate, collision wall still up — the "invisible wall" bug).
+    if (isGate) group.position.y = baseY;        // grate down, teeth at floor
     else group.rotation.y = initialYaw;          // panel shut
   };
   const setOpenPose = () => {
