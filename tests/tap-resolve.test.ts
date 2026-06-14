@@ -66,5 +66,28 @@ test('but a direct tap is honoured on the joystick half too', () => {
   );
 });
 
+// Desktop mouse: interactEligible=false → left-click is attack-only. The
+// `E` key owns interaction, so a click never interacts; combat still wins.
+test('desktop click on a reachable interactable swings (E owns interact)', () => {
+  assert.deepEqual(
+    resolveTap(inputs({ aimed: chestAim, aimedReachable: true, deliberate: false, interactEligible: false })),
+    { kind: 'attack' },
+  );
+});
+
+test('desktop click reaching an in-range interactable still swings, never interacts', () => {
+  assert.deepEqual(
+    resolveTap(inputs({ bestInRange: pickup, deliberate: false, interactEligible: false })),
+    { kind: 'attack' },
+  );
+});
+
+test('desktop click on a mob still attacks (combat unaffected by interactEligible)', () => {
+  assert.deepEqual(
+    resolveTap(inputs({ aimed: enemyAim, deliberate: false, interactEligible: false })),
+    { kind: 'attack' },
+  );
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

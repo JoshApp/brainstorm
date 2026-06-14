@@ -2,17 +2,25 @@ import * as THREE from 'three';
 import type { Interactable } from '../interactables/types';
 import { iconKindFromLabel, iconSvg } from './interact-icons';
 import { worldToScreen } from './hud';
+import { isDesktopLike } from '../controls/platform';
+import { getBinding, labelForCode, onBindingsChanged } from '../controls/keybindings';
 
 // Floating interact label — projects an icon + label OVER the world
 // position of the currently in-range interactable. Reads diegetically:
 // you look at the chest, the OPEN icon appears just above the chest.
 //
-// The label is ALSO a tap target: tapping it uses the in-range
+// On TOUCH the label is ALSO a tap target: tapping it uses the in-range
 // interactable (handler registered via setInteractLabelTapHandler). So
 // the player has two reliable, deliberate ways to interact — tap the
 // object's model, or tap this prompt — without the old whole-screen
 // "any in-range tap grabs it" breadth. pointerEvents is toggled with
 // visibility so a hidden/stale label never eats a tap.
+//
+// On DESKTOP there is no cursor (pointer-lock owns the mouse for
+// looking), so the prompt can't be tapped — instead it wears a keycap
+// badge showing the bound interact key ("E" by default). The prompt
+// reads "<E> OPEN": you press the key, you don't click the world. Native
+// FPS split — left-click swings, E uses. The keycap follows rebinds.
 //
 // Implementation: one DOM element pinned to a screen coord computed
 // each frame from the target's world position via camera.project.
@@ -25,6 +33,7 @@ const VERTICAL_OFFSET_WORLD = 0.6;  // raise the label this many meters
 let labelEl: HTMLDivElement | null = null;
 let iconEl: HTMLDivElement | null = null;
 let textEl: HTMLDivElement | null = null;
+let keycapEl: HTMLDivElement | null = null;  // desktop-only "E" badge
 let currentLabel: string | null = null;
 let shown = false;  // mirrors opacity 1/0 so we can toggle pointerEvents
 let tapHandler: (() => void) | null = null;
@@ -98,12 +107,51 @@ export function ensureInteractLabel(): void {
   });
   labelEl.appendChild(iconEl);
 
+  // Action row: [keycap] VERB. On touch the keycap is absent and the row
+  // is just the verb; on desktop the keycap leads so the prompt reads
+  // "<E> OPEN".
+  const actionRow = document.createElement('div');
+  Object.assign(actionRow.style, {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  } as Partial<CSSStyleDeclaration>);
+
+  if (isDesktopLike()) {
+    keycapEl = document.createElement('div');
+    Object.assign(keycapEl.style, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: '16px',
+      height: '16px',
+      padding: '0 4px',
+      border: '1px solid rgba(255, 200, 130, 0.6)',
+      borderRadius: '3px',
+      background: 'rgba(255, 200, 130, 0.12)',
+      // Subtle inset shadow reads as a physical key cap.
+      boxShadow: 'inset 0 -1px 0 rgba(0,0,0,0.4)',
+      fontSize: '10px',
+      fontWeight: '700',
+      letterSpacing: '0.04em',
+      lineHeight: '1',
+    } as Partial<CSSStyleDeclaration>);
+    const refreshKeycap = () => {
+      if (keycapEl) keycapEl.textContent = labelForCode(getBinding('interact'));
+    };
+    refreshKeycap();
+    onBindingsChanged(refreshKeycap);  // follow a rebind of 'interact'
+    actionRow.appendChild(keycapEl);
+  }
+
   textEl = document.createElement('div');
   Object.assign(textEl.style, {
     fontSize: '10px',
     lineHeight: '1',
   });
-  labelEl.appendChild(textEl);
+  actionRow.appendChild(textEl);
+
+  labelEl.appendChild(actionRow);
 
   document.body.appendChild(labelEl);
 }
@@ -138,7 +186,8 @@ export function updateInteractLabel(
     textEl.style.display = 'block';
     // SEALED gets a muted gray scheme to match the outline + corner
     // button visual language.
-    if (target.promptLabel.toUpperCase() === 'SEALED') {
+    const sealed = target.promptLabel.toUpperCase() === 'SEALED';
+    if (sealed) {
       labelEl.style.color = 'rgba(180, 160, 140, 0.7)';
       labelEl.style.borderColor = 'rgba(140, 130, 120, 0.35)';
       labelEl.style.background = 'rgba(20, 18, 16, 0.45)';
@@ -146,6 +195,13 @@ export function updateInteractLabel(
       labelEl.style.color = 'rgba(255, 220, 180, 0.95)';
       labelEl.style.borderColor = 'rgba(255, 200, 130, 0.4)';
       labelEl.style.background = 'rgba(20, 12, 8, 0.5)';
+    }
+    // The keycap promises a key DOES something — hide it on SEALED (the
+    // bound key won't open a locked door), show + tint it otherwise.
+    if (keycapEl) {
+      keycapEl.style.display = sealed ? 'none' : 'inline-flex';
+      keycapEl.style.borderColor = 'rgba(255, 200, 130, 0.6)';
+      keycapEl.style.background = 'rgba(255, 200, 130, 0.12)';
     }
   }
 

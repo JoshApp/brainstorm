@@ -229,7 +229,9 @@ export const touchScheme: InputScheme = {
         if (isTap && !dashed) {
           // Single arbiter handles interact/attack/nothing. canAttack =
           // right (combat) half only — the left half is the joystick.
-          options.onTap?.(t.clientX, t.clientY, tracker.side === 'right', true);
+          // interactEligible=true: a finger is the only way to use an object
+          // on touch, so a tap may interact (unlike a desktop left-click).
+          options.onTap?.(t.clientX, t.clientY, tracker.side === 'right', true, true);
         } else if (tracker.side === 'right' && tracker.chargeCommitted) {
           // Committed-charge release. Drag may have happened post-
           // commit (the player was aiming) — that's fine, the charge

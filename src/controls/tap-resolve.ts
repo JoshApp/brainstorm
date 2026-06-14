@@ -40,6 +40,11 @@ export interface TapInputs {
   /** Does this tap's zone allow ambient combat? Right/combat half = true;
    *  left/joystick half = false (a move-zone tap never attacks ambiently). */
   canAttack: boolean;
+  /** May this tap result in an INTERACT? True for touch (no keyboard, so a
+   *  tap is the only way to use a chest). False for a desktop mouse click —
+   *  on PC, left-click is attack-only and the `E` key owns interaction, the
+   *  native FPS split. Defaults to true (touch semantics) when omitted. */
+  interactEligible?: boolean;
 }
 
 export function resolveTap(t: TapInputs): TapAction {
@@ -49,6 +54,12 @@ export function resolveTap(t: TapInputs): TapAction {
   if (t.aimed?.kind === 'enemy') return { kind: 'attack' };
   if (t.canAttack && t.mobInRange) return { kind: 'attack' };
 
+  // Desktop mouse (interactEligible === false): left-click is attack-only —
+  // the `E` key owns interaction, so the interact branches below never fire
+  // and a click on a chest just swings past it. Touch (default) keeps the
+  // full interact ladder, since a finger is the only way to use an object.
+  const canInteract = t.interactEligible !== false;
+
   // 2) No mob to fight. An aimed interactable is interact-intent when
   //    reachable. When it ISN'T reachable: a deliberate TOUCH tap on it
   //    does nothing (you pointed at a chest you can't reach — swinging
@@ -56,7 +67,7 @@ export function resolveTap(t: TapInputs): TapAction {
   //    the mouse crosshair is always centre-screen, so a distant stair
   //    under it must not eat the swing.
   if (t.aimed?.kind === 'interactable') {
-    if (t.aimedReachable) return { kind: 'interact', interactable: t.aimed.interactable };
+    if (canInteract && t.aimedReachable) return { kind: 'interact', interactable: t.aimed.interactable };
     if (t.deliberate !== false) return { kind: 'none' };   // default = touch semantics
   }
 
@@ -64,7 +75,7 @@ export function resolveTap(t: TapInputs): TapAction {
   if (!t.canAttack) return { kind: 'none' };
 
   // 4) Reach for the best in-range interactable (pickup > descend > other).
-  if (t.bestInRange) return { kind: 'interact', interactable: t.bestInRange };
+  if (canInteract && t.bestInRange) return { kind: 'interact', interactable: t.bestInRange };
 
   // 5) Nothing aimed, nothing in range → swing at the air.
   return { kind: 'attack' };

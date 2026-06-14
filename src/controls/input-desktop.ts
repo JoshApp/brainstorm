@@ -222,8 +222,9 @@ export const desktopScheme: InputScheme = {
         // fully suppressed (no stray swing).
         // Desktop clicks are NOT deliberate aims at objects — the
         // crosshair is always centre-screen, so a distant interactable
-        // under it must not swallow an attack click.
-        options.onTap?.(e.clientX, e.clientY, true, false);
+        // under it must not swallow an attack click. interactEligible=false:
+        // left-click is attack-only on PC; the `E` key owns interaction.
+        options.onTap?.(e.clientX, e.clientY, true, false, false);
         cancelCharge();
         return;
       }

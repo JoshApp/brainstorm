@@ -568,7 +568,7 @@ const input = createTouchInput(canvas, {
   // (the input schemes no longer add their own attack fallback). canAttack
   // is false for the touch joystick half: a direct tap on an object is
   // still honoured, but the attack/interact fallback is suppressed there.
-  onTap(clientX, clientY, canAttack, deliberate = true) {
+  onTap(clientX, clientY, canAttack, deliberate = true, interactEligible = true) {
     // ── Gates: contexts where a tap is NOT a world action at all ──
     // Dying / fog-walk / a screen open → ignore. And swallow the straggler
     // tap from a JUST-dismissed screen: the click that closed a corpse
@@ -602,6 +602,7 @@ const input = createTouchInput(canvas, {
       mobInRange: combat.hasEnemyInRange(),
       bestInRange: getInRangeInteractable(),
       canAttack,
+      interactEligible,
     });
     if (action.kind === 'attack') triggerAttack();
     else if (action.kind === 'interact') resolveUsable(action.interactable, camera.position).onUse();
