@@ -17,6 +17,28 @@ export const GENERATED_PATCHLOG = [
       },
       {
         "tag": "tune",
+        "text": "Spacebar no longer swings on desktop — your click is the blade, the bar is just a bar.",
+        "area": [
+          "controls"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "The slain fall before they fade now, and a clean strike to the skull takes the head with it. The dark gets its bodies the proper way.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Parry a foe to death and the next blade-beat is yours again — a killing riposte no longer jams your swing.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Every blade now reaches exactly as far as it looks. The dungeon measured each one against its own edge.",
         "area": [
           "combat",
@@ -368,28 +390,6 @@ export const GENERATED_PATCHLOG = [
           "atmosphere",
           "combat",
           "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Time your roll to the blade and the world lurches slow while you stay quick — and a parry now rocks them without always dropping them.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "No more parrying a blow after it already bit. Once the strike lands, the moment to catch it is gone.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "A failing-monitor film waits in the graphics menu now — grain, scanlines, a sick flicker. The picture rots on purpose, if you ask it to.",
-        "area": [
-          "atmosphere",
-          "ui"
         ]
       }
     ]
