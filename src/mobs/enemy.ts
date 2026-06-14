@@ -8,6 +8,7 @@ import { spawnHazardField } from '../combat/hazard-field';
 import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
 import { emitGoreSplash, stampBleedOut } from '../scene/splat-map';
+import { spawnShatterBurst } from '../effects/shatter-burst';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
@@ -299,7 +300,7 @@ export function createEnemy(
   // DEATH STYLE — how the corpse leaves: 'collapse' topples to the floor then
   // dissolves (physical default); 'fade' dissolves in place immediately (ghosts
   // / spectral). Authored per enemy; spectral presence defaults to fade.
-  const deathStyle: 'collapse' | 'fade' =
+  const deathStyle: 'collapse' | 'fade' | 'crumble' =
     spec.deathStyle ?? (spec.presence === 'spectral' ? 'fade' : 'collapse');
   const _severPos = new THREE.Vector3();   // scratch for dismember gore
   // Creature → BuiltModel shape (joints ARE the slots) so the rest of the
@@ -878,6 +879,9 @@ export function createEnemy(
   // (the dissolve is held back until the body has fallen).
   const COLLAPSE_TOPPLE = 0.28;
   const COLLAPSE_DURATION = COLLAPSE_TOPPLE + DEATH_DURATION;
+  // Crumble: a short, fast vanish — the body slumps + dissolves quickly while a
+  // shatter-burst of bone/debris carries the "clattered apart" read.
+  const CRUMBLE_DURATION = 0.42;
   let deathTimer = -1;   // -1 = not dying; >=0 = ticking
   // Pre-collect every dissolve uniform we need to drive. Walking
   // `built.materials` per-frame would work too, but caching the refs
@@ -1085,6 +1089,16 @@ export function createEnemy(
             { sizeMul: Math.min(1.6, 0.7 + spec.collisionRadius * 0.8) },
           );
         }
+      }
+      // CRUMBLE — clatter apart into falling debris (skeletons / constructs).
+      // Two bone-tinted bursts up the body so it reads as the whole frame
+      // coming undone, not a single pop at the feet. The body itself dissolves
+      // fast underneath (see tickDying).
+      if (deathStyle === 'crumble') {
+        const debrisTint = spec.bloodColor ?? 0x8a8274;
+        const cy = container.position.y;
+        spawnShatterBurst(scene as THREE.Object3D, container.position.x, cy + 0.25, container.position.z, false, debrisTint);
+        spawnShatterBurst(scene as THREE.Object3D, container.position.x, cy + aimHeightResolved, container.position.z, false, debrisTint);
       }
       essenceRigY = essenceRigYDefault;
       essenceTotal = spec.xp ?? 1;
@@ -1632,7 +1646,9 @@ export function createEnemy(
 
   function tickDying(dt: number) {
     deathTimer += dt;
-    const dur = deathStyle === 'collapse' ? COLLAPSE_DURATION : DEATH_DURATION;
+    const dur = deathStyle === 'collapse' ? COLLAPSE_DURATION
+      : deathStyle === 'crumble' ? CRUMBLE_DURATION
+      : DEATH_DURATION;
     const t = Math.min(1, deathTimer / dur);
 
     // Dissolve PROGRESS — 'collapse' holds the body solid through the topple,

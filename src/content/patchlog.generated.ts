@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Skeletons don't fall — they come apart. Strike one down and it clatters into a heap of bone that scatters across the stone.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The slain sink into the stone now — the floor drinks them down as they dissolve, instead of blinking out where they fell.",
         "area": [
           "combat",
@@ -382,13 +390,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Slip a blow now and the world truly crawls while you stay quick. The dead turn with weight, and a pack weaves around you instead of circling like clockwork.",
-        "area": [
-          "combat"
         ]
       }
     ]

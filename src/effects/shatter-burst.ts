@@ -79,10 +79,13 @@ export function spawnShatterBurst(
   scene: THREE.Object3D,
   x: number, y: number, z: number,
   broken: boolean = false,
+  /** Shard tint (hex). Default: dull brown (vase/crate debris). Pass a bone /
+   *  body colour for a crumbling skeleton or construct. */
+  tint?: number,
 ): void {
   const shardCount = broken ? 3 + Math.floor(Math.random() * 2) : 6 + Math.floor(Math.random() * 3);
-  const tint = 0x3a2418 + Math.floor(Math.random() * 0x040404);
-  const material = getShardMaterial(tint);
+  const shardTint = (tint ?? 0x3a2418) + Math.floor(Math.random() * 0x040404);
+  const material = getShardMaterial(shardTint);
 
   for (let i = 0; i < shardCount; i++) {
     const sx = 0.04 + Math.random() * 0.04;

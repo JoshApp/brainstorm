@@ -58,9 +58,10 @@ export interface EnemySpec {
    *  barely stain (0.3) — bone does not bleed; it powders. */
   bloodAmount?: number;
   /** How the corpse leaves. 'collapse' (default for physical) topples to the
-   *  floor then dissolves; 'fade' (default for spectral presence) dissolves in
-   *  place at once, like a ghost. */
-  deathStyle?: 'collapse' | 'fade';
+   *  floor then melts into it; 'fade' (default for spectral presence) dissolves
+   *  in place at once, like a ghost; 'crumble' clatters apart into falling bone
+   *  / debris (skeletons, constructs). */
+  deathStyle?: 'collapse' | 'fade' | 'crumble';
   /** Joints that can be DISMEMBERED on a killing blow to the matching hurtbox
    *  zone (e.g. ['head'] → a head-zone kill beheads). The zone id must equal
    *  the joint name. Omit → no dismemberment. */
@@ -1474,6 +1475,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     bloodColor: 0x8a8274,
     bloodAmount: 0.3,
     severable: ['head'],   // strike the skull off
+    deathStyle: 'crumble', // clatters apart into bone debris, not a flesh topple
     name: 'skeleton',
     hp: 3,
     moveSpeed: 1.5,            // advances steadily (no kite, no preferredRange)
