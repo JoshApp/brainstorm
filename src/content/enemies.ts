@@ -775,9 +775,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
         // Cloth wraps — a chest sash + a loincloth over the pelvis.
         { kind: 'box', joint: 'spine', size: [0.42, 0.16, 0.4], pos: [0, -0.1, 0], rot: [0, 0, 0.4], mat: 'cloth' },
         { kind: 'box', joint: 'pelvis', size: [0.38, 0.3, 0.3], pos: [0, -0.06, 0], mat: 'cloth' },
-        // Crude blade gripped in the right fist (held low/ready).
-        { kind: 'box', joint: 'handR', size: [0.05, 0.6, 0.015], pos: [0.04, -0.28, -0.04], bevel: 0.01, mat: 'blade' },
-        { kind: 'box', joint: 'handR', size: [0.14, 0.04, 0.05], pos: [0.04, 0.0, -0.04], mat: 'blade' },
+        // Crude blade gripped in the right fist, held FORWARD-ready (not hanging
+        // straight down the arm). rot.x tilts the blade off the forearm line so
+        // it reads as a WEAPON in the hand, not an extension of the limb; the
+        // grip sits at the fist, blade angled out front + slightly down.
+        { kind: 'box', joint: 'handR', size: [0.05, 0.6, 0.015], pos: [0.04, -0.04, -0.28], rot: [1.25, 0, 0], bevel: 0.01, mat: 'blade' },
+        { kind: 'box', joint: 'handR', size: [0.14, 0.04, 0.05], pos: [0.04, 0.0, -0.04], rot: [1.25, 0, 0], mat: 'blade' },
       ],
     },
     baseEyeEmissive: 2.0,
