@@ -76,10 +76,10 @@ test('cannot dodge/parry mid-strike, but a new swing (combo) is allowed', () => 
   assert.equal(canStartAction('parry'), false);
   assert.equal(canStartAction('attack'), true);
 });
-test('can dodge/parry during attack RECOVERY (cancel window)', () => {
+test('dodge cancels attack RECOVERY, but parry needs a FREE stance', () => {
   reset(); s.swinging = true; s.phase = 'recover';
-  assert.equal(canStartAction('dodge'), true);
-  assert.equal(canStartAction('parry'), true);
+  assert.equal(canStartAction('dodge'), true);    // the escape can cancel recovery
+  assert.equal(canStartAction('parry'), false);   // no parrying out of your own swing
 });
 test('everything is free from idle', () => {
   reset();

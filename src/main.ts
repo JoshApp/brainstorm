@@ -645,13 +645,15 @@ const input = createTouchInput(canvas, {
     });
     if (action.kind === 'deflect') {
       // The tap is parry's entry point: resolveTap only routes here while a
-      // deflectable strike is flashing (deflectOpportunityActive). So PARRY if
-      // the FSM allows it (not mid-strike) and it isn't on its anti-mash
-      // cooldown — committing the parry beat for COMMIT_S. Otherwise fall back
-      // to a swing so the tap is never wasted. Outside the window resolveTap
-      // returns 'attack', so the player is never locked out of attacking.
+      // deflectable strike is flashing (deflectOpportunityActive). PARRY only
+      // from a FREE stance (canStartAction gates out your own windup/strike/
+      // recovery) and off its anti-mash cooldown (triggerParry). If you can't
+      // parry right now, the tap is ABSORBED — NO fall-through to a swing. That
+      // is deliberate: it stops a heavy weapon's long recovery (or a rapid
+      // mash) from being spam-tapped into free parries during a telegraph.
+      // Commit to your recovery, or wait out the lockout. Outside an
+      // opportunity resolveTap returns 'attack', so normal attacking is intact.
       if (canStartAction('parry') && triggerParry()) enterParry(CONFIG.DEFLECT.COMMIT_S);
-      else triggerAttack();
     }
     else if (action.kind === 'attack') triggerAttack();
     else if (action.kind === 'interact') resolveUsable(action.interactable, camera.position).onUse();

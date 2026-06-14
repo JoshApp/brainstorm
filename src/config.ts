@@ -202,8 +202,9 @@ export const CONFIG = {
   // makes both defenses the combat identity (forgiving defense, ruthless
   // offense). The player clock simply omits this scale (see main.ts playerDt).
   BULLET_TIME: {
-    WORLD_SCALE: 0.28,         // enemy/projectile speed at the dip's deepest
-    DURATION_S: 0.70,          // real-time length, easing back to full
+    WORLD_SCALE: 0.12,         // enemy/projectile speed at the dip's deepest — DEEP, so the
+                               //   perfect-dodge slow-mo really lands (was 0.28, barely felt)
+    DURATION_S: 0.85,          // real-time length, easing back to full
   },
   // DEFLECT — the tap answer to a white flash. NOT bullet-time (that's the
   // dodge's reward); deflect is the AGGRESSIVE counter: the enemy flinches

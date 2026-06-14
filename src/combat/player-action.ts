@@ -71,10 +71,14 @@ export function canStartAction(kind: 'attack' | 'dodge' | 'parry'): boolean {
     // A new swing during another swing is the COMBO chain — the swing sim
     // buffers/gates that itself.
     case 'attack': return true;
-    // Can't roll or parry out of a swing's committed frames (preserves the old
-    // dash-lock); a recovery is cancelable into either.
+    // Dodge is the escape lifeline: it can cancel a swing's RECOVERY (just not
+    // its committed windup/strike), so you're never locked out of bailing.
     case 'dodge':  return !midStrike;
-    case 'parry':  return !midStrike;
+    // Parry needs a FREE stance — you cannot parry out of ANY part of your own
+    // swing, recovery included. Committing to a swing (especially a heavy one)
+    // means you can't also hold up a guard; wait the recovery out. This is what
+    // stops a long recovery from being spam-tapped into free parries.
+    case 'parry':  return !swinging;
   }
 }
 
