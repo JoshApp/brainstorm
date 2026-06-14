@@ -9,6 +9,21 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Close a menu on desktop and you drop straight back into mouse-look — no more hunting for the cursor or clicking the world (and swinging) just to grab the camera again.",
+        "area": [
+          "controls",
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The dead face you and turn to track you as you circle — the backwards-shuffle is gone for good. A committed swing still can't chase your sidestep.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "Mashing attack early no longer banks a phantom second swing — the next strike only queues once the current one is following through.",
         "area": [
           "combat",
@@ -392,22 +407,6 @@ export const GENERATED_PATCHLOG = [
           "atmosphere",
           "level",
           "audio"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The wall behind your slash gets what it was owed.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The pits no longer have a visible bottom. Look down all you like; the dark does not look back.",
-        "area": [
-          "atmosphere",
-          "level"
         ]
       }
     ]
