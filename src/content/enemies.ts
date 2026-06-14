@@ -1630,7 +1630,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // Venom — bites have a chance to poison. Poison stacks, so a swarm
     // still ramps attrition when it surrounds you, but the per-bite chance
     // is moderate so a single spider isn't a guaranteed stacking machine.
-    onHit: { buffId: 'poison', chance: 0.4, duration: 4 },
+    // Nerf vs the ~8-HP player: a 4s poison was ~5 ticks/proc (most of the
+    // bar) and stacked fast. Halved duration + lower chance so it wears, not
+    // melts — the player's own DoT weapons (shared buff) are untouched.
+    onHit: { buffId: 'poison', chance: 0.25, duration: 2.5 },
     abilities: [
       // POUNCE — coil then leap across the gap with a bite on contact.
       {
@@ -2327,8 +2330,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
       steps: [{ trigger: { at: 0 }, action: { kind: 'aoe', origin: 'self', radius: 2.2, damage: 2, element: 'arcane' } }],
     }],
     // Poison-on-hit because spores. Player who eats the cloud bleeds
-    // damage for a few seconds after stepping out.
-    onHit: { buffId: 'poison', chance: 0.8, duration: 4 },
+    // damage for a few seconds after stepping out. Chance was 0.8 (poisoned on
+    // nearly every hit → a guaranteed stacking shred); halved, with a shorter
+    // duration, so it's a real attrition threat without melting the player.
+    onHit: { buffId: 'poison', chance: 0.4, duration: 3 },
     xp: 4,
     gold: [0, 4],
     drops: {
@@ -2523,8 +2528,11 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hearingRange: 4.5,
     loseSightTime: 5,
     // Bleed-on-hit — the bites tear and they STAY torn. A pack of
-    // hounds quickly stacks bleed; the kill isn't the worst part.
-    onHit: { buffId: 'bleed', chance: 0.4, duration: 4 },
+    // hounds quickly stacks bleed; the kill isn't the worst part. Nerfed
+    // (chance + duration) vs the ~8-HP player: a 4s bleed was ~5 ticks/proc
+    // and a pack stacked it to lethal almost instantly. Still ramps under a
+    // swarm, just no longer a near-one-shot from a single floor-3 hound.
+    onHit: { buffId: 'bleed', chance: 0.25, duration: 2.5 },
     xp: 5,
     gold: [0, 6],
     drops: {
