@@ -611,6 +611,10 @@ export function createEnemy(
   // pure melee mob, the cast range for a shooter.
   const commitDistance = abilities.reduce((m, a) => Math.max(m, a.maxRange), 0);
   let currentAbility: Ability | null = null;
+  // Set the instant a melee step CONNECTS (deals damage). Once a strike has
+  // landed, it's spent — the threat flash drops and a late tap can no longer
+  // "parry" a blow you already ate. Reset when a new ability commits (winding).
+  let meleeHitLanded = false;
   const cooldowns = new Map<string, number>();
   // Stagger each ability's FIRST use by a small random delay so a pack
   // spawned together (the king's split princes) doesn't cast in unison.
@@ -1209,6 +1213,7 @@ export function createEnemy(
           }
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
+          meleeHitLanded = true;  // the blow connected — strike is spent, no late parry
           return true;            // hit — done
         }
         return false;             // keep trying within the strike window
@@ -1790,7 +1795,7 @@ export function createEnemy(
     // on the first striking frame — BEFORE the switch runs the strike step
     // that deals damage — so the catch is crisp + immediate, never a windup
     // freebie. Reachability matches wantFlash's `mReach + 1.2` band below.
-    if (currentAbility && state === 'striking'
+    if (currentAbility && state === 'striking' && !meleeHitLanded
         && isParryActive() && isDeflectable(currentAbility)) {
       const pReach = firstMeleeReach(currentAbility);
       if (pReach !== null && distance <= pReach + 1.2) resolveParry(playerPos);
@@ -1996,6 +2001,7 @@ export function createEnemy(
         const ability = selectAbility(distance);
         if (ability && actionFsm.canAct() && requestToken(entityId)) {
           currentAbility = ability;
+          meleeHitLanded = false;   // fresh strike — parryable until it connects
           state = 'winding';
           phaseTimer = 0;
           rollWindupTime();
@@ -2137,7 +2143,7 @@ export function createEnemy(
     {
       const mReach = currentAbility ? firstMeleeReach(currentAbility) : null;
       const lead = CONFIG.DEFLECT.FLASH_LEAD_S;
-      const wantFlash = !!currentAbility && mReach !== null
+      const wantFlash = !!currentAbility && mReach !== null && !meleeHitLanded
         && distance <= mReach + 1.2
         && (state === 'striking'
             || (state === 'winding' && phaseTimer >= currentWindupTime - lead));
