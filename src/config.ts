@@ -178,14 +178,14 @@ export const CONFIG = {
   // the future stagger→execute loop), and a stamina kickback so a clean dodge
   // fuels the counter — aggression-as-defense, the combat identity in one beat.
   JUST_DODGE: {
-    PERFECT_WINDOW_S: 0.30,    // roll-to-strike-connect gap that counts as a perfect read — set
-                               //   to the white-flash lead (FLASH_LEAD_S) so the model is simply
-                               //   "roll while the flash is up." Was 0.18: so tight a flash-reaction
-                               //   roll always landed outside it, so the reward never fired at all.
-    NEAR_MISS_GRACE: 1.8,      // m past a strike's reach that a JUST-cleared roll still reads as a
-                               //   dodge. A clean dodge escapes by RANGE (the lunge carries you out
-                               //   of reach), so the in-reach i-frame path alone almost never fired;
-                               //   this lets a well-timed roll that slips the blade trigger the reward.
+    PERFECT_WINDOW_S: 0.20,    // roll-to-strike-connect gap that counts as a perfect read. SHORTER
+                               //   than DASH_IFRAME_S (0.30): a roll well before the hit still
+                               //   SURVIVES on i-frames but earns NO bonus — perfect demands a late,
+                               //   committed roll right as the blow lands, not any survivable dodge.
+    NEAR_MISS_GRACE: 0.4,      // m past a strike's reach that still counts — just an edge margin for
+                               //   the lunge nudging you off the line. You must roll INSIDE the swing
+                               //   at the right beat; dodging from well outside the range earns
+                               //   nothing (was 1.8, which rewarded rolls that were never in danger).
     PROJECTILE_GRACE: 0.8,     // m past a bolt's hit radius that a precise roll still reads as a
                                //   dodge — the "whizzed past me" near-miss. Tighter than melee: a
                                //   bolt has to come CLOSE, not just be in the room.
