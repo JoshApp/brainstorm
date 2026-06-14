@@ -178,10 +178,11 @@ export const CONFIG = {
   // the future stagger→execute loop), and a stamina kickback so a clean dodge
   // fuels the counter — aggression-as-defense, the combat identity in one beat.
   JUST_DODGE: {
-    PERFECT_WINDOW_S: 0.20,    // roll-to-strike-connect gap that counts as a perfect read. SHORTER
-                               //   than DASH_IFRAME_S (0.30): a roll well before the hit still
-                               //   SURVIVES on i-frames but earns NO bonus — perfect demands a late,
-                               //   committed roll right as the blow lands, not any survivable dodge.
+    PERFECT_WINDOW_S: 0.30,    // roll-to-strike-connect gap that counts as a perfect read. Set EQUAL
+                               //   to DASH_IFRAME_S (0.30): any roll that survives the blow on its
+                               //   i-frames also earns the bonus — generous, rewards reading the tell
+                               //   without punishing a roll that fired a hair early. (Was tightened to
+                               //   0.20 for a stricter read; reverted to the forgiving 0.30 on feel.)
     NEAR_MISS_GRACE: 0.4,      // m past a strike's reach that still counts — just an edge margin for
                                //   the lunge nudging you off the line. You must roll INSIDE the swing
                                //   at the right beat; dodging from well outside the range earns
