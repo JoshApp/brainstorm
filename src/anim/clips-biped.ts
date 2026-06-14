@@ -36,16 +36,19 @@ const ARM_REST = limbPitch(0);
 const ARM_RAISED = limbPitch(2.4);  // overhead, swung FORWARD (not behind)
 const ARM_SLAM = limbPitch(0.6);    // driven down + forward through the strike
 
-// Overhead smash — the heavy two-beat: both arms wind up overhead-forward, then
-// drive down on the strike, recover to rest. Stretched to the ability's full
-// windup+strike+recover at play time, so t≈0.5 is the windup peak, t≈0.62 the
-// strike.
+// Overhead smash — anticipation → snap → follow-through. Stretched to the
+// ability's full windup+strike+recover at play time. The KEY to the punch is
+// the COCK-AND-HOLD: the arms reach overhead EARLY (t≈0.36, well inside the
+// wind-up) and HOLD there (t≈0.55) — that held pose IS the telegraph — then
+// SLAM down fast (0.55→0.62, the strike beat) and settle. Without the hold the
+// arms just drift up the whole wind-up and the hit never reads as a snap.
 const BIPED_SMASH: Clip = {
   id: 'biped-smash', duration: 1, loop: false,
   keyframes: [
     { t: 0.0,  pose: { shoulderR: { rot: ARM_REST }, shoulderL: { rot: ARM_REST } } },
-    { t: 0.50, pose: { shoulderR: { rot: ARM_RAISED }, shoulderL: { rot: ARM_RAISED } } },
-    { t: 0.62, pose: { shoulderR: { rot: ARM_SLAM }, shoulderL: { rot: ARM_SLAM } } },
+    { t: 0.36, pose: { shoulderR: { rot: ARM_RAISED }, shoulderL: { rot: ARM_RAISED } } },   // cock back
+    { t: 0.55, pose: { shoulderR: { rot: ARM_RAISED }, shoulderL: { rot: ARM_RAISED } } },   // HOLD (the tell)
+    { t: 0.62, pose: { shoulderR: { rot: ARM_SLAM }, shoulderL: { rot: ARM_SLAM } } },        // SNAP down
     { t: 1.0,  pose: { shoulderR: { rot: ARM_REST }, shoulderL: { rot: ARM_REST } } },
   ],
 };

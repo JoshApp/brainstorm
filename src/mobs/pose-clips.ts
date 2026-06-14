@@ -59,11 +59,20 @@ export const TELEGRAPH_POSES: Record<TelegraphStyle, TelegraphPose> = {
   },
 };
 
-/** Linear value for a node at the given phase + progress. */
+/** Value for a node at the given phase + progress — SNAPPY BY DEFAULT, so any
+ *  attack authored as {windup, strike} poses reads as anticipation → snap →
+ *  follow-through without the author tuning a single curve:
+ *   • windup : easeOutCubic — the limb cocks to its wound pose FAST then HOLDS
+ *              there for the rest of the wind-up. The hold IS the telegraph.
+ *   • strike : the wound pose JUMPS to the strike pose (1-frame snap — the hit),
+ *              held for the strike beat.
+ *   • recover: eases back to neutral.
+ *  A "slow heavy" needs no special curve — give it a long `strike` duration in
+ *  the ability and the same snap reads as a big committed swing. */
 export function poseValue(p: Phased, phase: 'windup' | 'strike' | 'recover', t: number): number {
-  if (phase === 'windup') return p.windup * t;
+  if (phase === 'windup') return p.windup * ease('easeOutCubic', t);
   if (phase === 'strike') return p.strike;
-  return p.strike * (1 - t);   // recover: ease back to neutral
+  return p.strike * ease('easeOutQuad', 1 - t);
 }
 
 // ── Shared telegraph applicator ──────────────────────────────────────
@@ -76,6 +85,7 @@ export function poseValue(p: Phased, phase: 'windup' | 'strike' | 'recover', t: 
 import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
 import type { EnemySpec } from '../content/enemies';
+import { ease } from '../anim/easing';
 
 export interface TelegraphNodes {
   /** Body part pitched on windup/strike (rotation.x). spec.tiltPartName. */
