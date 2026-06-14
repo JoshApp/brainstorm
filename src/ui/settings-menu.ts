@@ -14,6 +14,7 @@ import { setMusicVolume } from '../audio/music';
 import { openScreen, closeScreen } from './screen-manager';
 import { getUpdateStatus, applyUpdate, onUpdateStatusChange } from '../pwa-update';
 import { isDesktopLike } from '../controls/platform';
+import { openWickRitual } from './wick-ritual';
 import {
   BINDABLE_ACTIONS, getBinding, setBinding, resetBindings, labelForCode,
   type BindableAction,
@@ -417,6 +418,15 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().brightness,
       set: (v) => updateSettings({ brightness: v }),
       format: (v) => v.toFixed(2) + '×',
+    }),
+    makeActionRow({
+      label: 'CALIBRATE DARKNESS',
+      description:
+        'Tend the lamp: turn the wick until the second rune barely surfaces and ' +
+        'the third stays drowned — sets how deep the dark reads. Worth redoing ' +
+        'when you move from a dark room to bright sun.',
+      buttonLabel: 'TEND',
+      onClick: () => openWickRitual(),
     }),
     makeSlider({
       label: 'TORCH STRENGTH',
@@ -976,6 +986,56 @@ function makeSelect<T extends string>(opts: SelectOpts<T>): HTMLDivElement {
   select.addEventListener('change', () => opts.set(select.value as T));
 
   top.append(label, select);
+  row.appendChild(top);
+
+  if (opts.description) {
+    const desc = document.createElement('div');
+    desc.textContent = opts.description;
+    Object.assign(desc.style, {
+      fontSize: '11px', color: 'rgba(160, 130, 100, 0.7)', fontStyle: 'italic',
+    } as Partial<CSSStyleDeclaration>);
+    row.appendChild(desc);
+  }
+  return row;
+}
+
+interface ActionRowOpts {
+  label: string;
+  description?: string;
+  buttonLabel: string;
+  onClick: () => void;
+}
+
+/** A label + description with a single action button on the right —
+ *  for settings that DO something (open a ritual, run a one-shot) rather
+ *  than hold a value. */
+function makeActionRow(opts: ActionRowOpts): HTMLDivElement {
+  const row = document.createElement('div');
+  Object.assign(row.style, { display: 'flex', flexDirection: 'column', gap: '6px' } as Partial<CSSStyleDeclaration>);
+
+  const top = document.createElement('div');
+  Object.assign(top.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' } as Partial<CSSStyleDeclaration>);
+
+  const label = document.createElement('span');
+  label.textContent = opts.label;
+  Object.assign(label.style, {
+    fontSize: '11px', fontWeight: '500', letterSpacing: '0.18em',
+    color: 'rgba(220, 180, 140, 0.9)',
+  } as Partial<CSSStyleDeclaration>);
+
+  const button = document.createElement('button');
+  button.textContent = opts.buttonLabel;
+  Object.assign(button.style, {
+    minHeight: '36px', padding: '6px 16px',
+    background: 'rgba(40, 28, 20, 0.7)', border: '1px solid rgba(180, 130, 90, 0.5)',
+    borderRadius: '3px', color: 'rgba(255, 220, 180, 0.95)',
+    fontFamily: 'inherit', fontSize: '11px', fontWeight: '600',
+    letterSpacing: '0.18em', cursor: 'pointer',
+    touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent',
+  } as Partial<CSSStyleDeclaration>);
+  button.addEventListener('click', (e) => { e.stopPropagation(); opts.onClick(); });
+
+  top.append(label, button);
   row.appendChild(top);
 
   if (opts.description) {

@@ -3,20 +3,19 @@ import { createSheet, type Sheet } from './menu-shell';
 import {
   getCharacter,
   onCharacterChanged,
-  spendAttributePoint,
   type AttributeKind,
   type ProficiencyKind,
 } from '../state/character';
 import { getRunState } from '../state/run-state';
-import { getActiveLevel } from '../level/loader';
+import { ATTR_DEFS } from './attribute-defs';
 
 // CHARACTER screen — the "who is this delver becoming" page.
 //
-// Opens from desktop 'C' key + a button in the settings menu.
-// Visible mid-run for status check; the SPEND action on attributes
-// only enables at a safe room (between acts). The spend gate keeps
-// build choices tied to the Souls-bonfire pacing beat — you fought
-// the act, you sit by the fire, you commit.
+// Opens from the tome pillar (STUDY), desktop 'C' key, + the settings
+// menu. This is REVIEW ONLY: the book reflects your build, it never
+// changes it. Raising attributes happens at a bonfire (REST → the
+// level-up menu, ui/levelup-menu.ts) — the fire grows you, the book
+// remembers you. Unspent points show here as a nudge toward the fire.
 
 const SCREEN_ID = 'character';
 
@@ -25,7 +24,6 @@ interface AttributeRow {
   label: string;
   effect: string;
   valueEl: HTMLDivElement;
-  spendBtn: HTMLButtonElement;
 }
 
 interface ProficiencyRow {
@@ -34,13 +32,6 @@ interface ProficiencyRow {
   fillEl: HTMLDivElement;
   valueEl: HTMLDivElement;
 }
-
-const ATTR_DEFS: Array<{ kind: AttributeKind; label: string; effect: string }> = [
-  { kind: 'might',   label: 'MIGHT',   effect: 'heavy weapons · stagger · +1% all damage' },
-  { kind: 'finesse', label: 'FINESSE', effect: 'light & ranged · +2% crit chance' },
-  { kind: 'lore',    label: 'LORE',    effect: 'arcane · stronger afflictions · +1% all damage' },
-  { kind: 'grit',    label: 'GRIT',    effect: 'armour scaling · +3 max HP' },
-];
 
 const PROF_GROUPS: Array<{ heading: string; rows: Array<{ kind: ProficiencyKind; label: string }> }> = [
   {
@@ -86,16 +77,6 @@ let profRows: ProficiencyRow[] = [];
 // value so a 100-hit sword run doesn't make a 5-greed run look empty
 // by comparison.
 const PROF_BAR_MAX = 50;
-
-/** True if the player is currently at a safe room (or the starter
- *  chamber, which is also a "between things" rest moment). Spend
- *  buttons enable only here. */
-function atRestPoint(): boolean {
-  const level = getActiveLevel();
-  if (!level) return false;
-  const id = level.spec.id;
-  return id.startsWith('safe-') || id === 'starter';
-}
 
 /** Build the character body (summary + attributes | proficiencies) into
  *  a div, wire the reactive refresh, and return it + a dispose hook.
@@ -219,7 +200,7 @@ function buildAttributeRow(def: typeof ATTR_DEFS[number], parent: HTMLElement): 
   const row = document.createElement('div');
   Object.assign(row.style, {
     display: 'grid',
-    gridTemplateColumns: 'auto 1fr auto auto',
+    gridTemplateColumns: 'auto 1fr auto',
     alignItems: 'baseline',
     gap: '12px',
     padding: '10px 0',
@@ -259,33 +240,8 @@ function buildAttributeRow(def: typeof ATTR_DEFS[number], parent: HTMLElement): 
   } as Partial<CSSStyleDeclaration>);
   row.appendChild(value);
 
-  const spendBtn = document.createElement('button');
-  spendBtn.textContent = '+';
-  spendBtn.setAttribute('aria-label', `raise ${def.label}`);
-  Object.assign(spendBtn.style, {
-    width: '44px',
-    height: '44px',
-    background: 'rgba(40, 24, 14, 0.85)',
-    border: '1px solid rgba(180, 130, 90, 0.45)',
-    color: 'rgba(255, 220, 130, 0.95)',
-    fontSize: '18px',
-    fontWeight: '700',
-    borderRadius: '3px',
-    cursor: 'pointer',
-    padding: '0',
-    touchAction: 'manipulation',
-    WebkitTapHighlightColor: 'transparent',
-  } as Partial<CSSStyleDeclaration>);
-  spendBtn.addEventListener('click', () => {
-    if (spendAttributePoint(def.kind)) {
-      // notify() in character.ts will trigger rebuild via the
-      // listener — no manual refresh needed here.
-    }
-  });
-  row.appendChild(spendBtn);
-
   parent.appendChild(row);
-  return { kind: def.kind, label: def.label, effect: def.effect, valueEl: value, spendBtn };
+  return { kind: def.kind, label: def.label, effect: def.effect, valueEl: value };
 }
 
 function buildProficiencyRow(def: { kind: ProficiencyKind; label: string }, parent: HTMLElement): ProficiencyRow {
@@ -344,7 +300,6 @@ function rebuild(): void {
   if (!summaryEl || !unspentLabel) return;
   const c = getCharacter();
   const run = getRunState();
-  const restPoint = atRestPoint();
 
   // Summary line.
   const depth = run?.depth ?? 0;
@@ -353,20 +308,13 @@ function rebuild(): void {
   const itemsFound = run?.itemsFound.length ?? 0;
   summaryEl.textContent = `floor ${depth} · ${kills} slain · ${gold}g · ${itemsFound} found`;
 
-  // Unspent points label + spend-button enable.
-  if (c.unspentPoints > 0) {
-    unspentLabel.textContent = restPoint
-      ? `${c.unspentPoints} unspent`
-      : `${c.unspentPoints} unspent (find a safe room)`;
-  } else {
-    unspentLabel.textContent = '';
-  }
-  const canSpend = restPoint && c.unspentPoints > 0;
+  // Unspent points read as a nudge toward the fire — the book reviews,
+  // it never spends. Raising happens at a bonfire (REST).
+  unspentLabel.textContent = c.unspentPoints > 0
+    ? `${c.unspentPoints} unspent — rest at a fire to rise`
+    : '';
   for (const row of attrRows) {
     row.valueEl.textContent = String(c.attributes[row.kind]);
-    row.spendBtn.disabled = !canSpend;
-    row.spendBtn.style.opacity = canSpend ? '1' : '0.30';
-    row.spendBtn.style.cursor = canSpend ? 'pointer' : 'not-allowed';
   }
 
   // Proficiencies.

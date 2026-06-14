@@ -9,7 +9,8 @@ import { openCharacterScreen } from '../ui/character-screen';
 //
 // Lives in the safe room as the "review your delver" beat — between
 // killing whatever you killed and committing to whatever comes next, you
-// stop, you read, you spend.
+// stop and you read. The book REFLECTS your build; it never changes it.
+// Raising attributes happens at the bonfire (REST → the level-up menu).
 //
 // Visual family: same dark stone as the fountain pedestal (so the room's
 // fixtures read as the same hand carved them), an open book on a leather

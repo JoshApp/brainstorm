@@ -1555,13 +1555,14 @@ export const SCENARIOS: Record<string, Scenario> = {
   },
 
   // Safe room — overview from the spawn end looking down the chamber
-  // toward the hearth + descent. For verifying the V3 layout (smaller +
-  // warmer + central brazier).
+  // toward the bonfire + descent. For verifying the V5 layout (the
+  // bonfire is the centrepiece you REST at; tome/fountain on the front
+  // flanks).
   'safe-room': {
     freeze: true,
     hideSword: true,
     level: generateSafeRoom(3),  // safe room after Act I (boss depth 3)
-    playerPos: { x: 0, z: 4.0, lookAt: { x: 0, z: -2.0, y: 0.8 } },
+    playerPos: { x: 0, z: 4.0, lookAt: { x: 0, z: 0.3, y: 0.8 } },
   },
 
   // TEMP: cobweb-gate verification (the captured d4 seed → encounter-nest

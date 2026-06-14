@@ -5,19 +5,20 @@ import { ITEMS } from '../content/items';
 // Safe room — the calm chamber between dungeon floors. No enemies, no
 // traps, every interactable visible from the spawn end.
 //
-// V4 layout (the "everything visible between spawn and stairs" pass):
+// V5 layout (the "bonfire is the centrepiece" pass):
 //   - 9 × 11m chamber, ceiling 2.8m (kept from V3 — cozy proportions
 //     that earned their keep).
-//   - TOME PILLAR on the central axis, ~1.2m in front of spawn —
-//     the first thing the player walks into, the moment to review
-//     their build before stepping deeper.
-//   - STASH and GREEN FOUNTAIN flanking the path closer in to the
-//     central walk-line than V3, so the player passes between them
-//     on the way to the hearth rather than having to detour to the
-//     side walls.
-//   - Central IRON BRAZIER with two stone benches — visual anchor
-//     and "rest here" tell.
-//   - 6 wall torches, ALL warm amber. Stair frame candles.
+//   - THE BONFIRE on the central axis, dead on the walk-line between
+//     spawn and the descent — you can't leave without passing it.
+//     This is the room's heart: REST at it to level (the level-up
+//     menu). Scaled up + ringed by two stone benches as the hearth
+//     circle. Replaces V4's decorative iron brazier.
+//   - TOME PILLAR pulled off-axis to the front-left flank — a quiet
+//     REVIEW station you pass on the way in, no longer the centre.
+//   - GREEN FOUNTAIN mirrors it front-right (heal to full). STASH +
+//     MERCHANT sit at the back corners.
+//   - 6 wall torches, ALL warm amber. Candles frame the approach + the
+//     descent.
 //
 // Future fixtures (placeholders to wire later):
 //   - Smith pedestal (upgrade a weapon)
@@ -68,60 +69,59 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
     corridors: [],
 
     props: [
-      // ── TOME PILLAR (centre, 1.2m in front of spawn) ────────────────
-      // First thing the player walks into. The "review your delver"
-      // beat — opens the character sheet on interact. Slightly off
-      // the dead-axis so the path past it splits naturally; a step
-      // either side clears it.
-      { kind: 'tome-pillar', x: 0, z: 2.8 },
+      // ── THE BONFIRE — the heart of the room (centre, on the path) ───
+      // V5 recentres the whole chamber on the fire. It sits dead on the
+      // walk-line between spawn and the descent, so you cannot leave
+      // without passing it: this is where you REST (the level-up menu,
+      // ui/levelup-menu.ts) and turn earned levels into strength. Scaled
+      // up from the per-floor fire so it reads as the grand hearth of the
+      // refuge. The REST interactable is wired by builder.ts off the
+      // 'bonfire' model id — same path as every dungeon-floor fire, so
+      // authoring it here is all it takes. Slight rotY so the sword
+      // landmark catches the eye at an angle rather than edge-on.
+      { kind: 'model', model: BONFIRE, x: 0, y: 0, z: 0.3, rotY: 0.5, scale: 1.3 },
+      // Stone benches drawn in around the fire — the hearth circle. They
+      // sell "sit here" literally now: the fire is the rest. No collision
+      // (the player walks around them).
+      { kind: 'model', model: STONE_BENCH, x: -1.7, y: 0, z: 0.3, rotY: Math.PI / 2 },
+      { kind: 'model', model: STONE_BENCH, x:  1.7, y: 0, z: 0.3, rotY: -Math.PI / 2 },
 
-      // ── STASH (left flank, between tome and hearth) ─────────────────
-      // Pulled in from V3's x=-3.7 to x=-2.4 so it sits closer to the
-      // central walking path — visible from spawn over the tome.
-      {
-        kind: 'stash-chest',
-        x: -2.4, z: 1.2,
-        rotY: Math.PI / 2,   // face east, toward the central path
-      },
+      // ── TOME PILLAR (front-left flank) — REVIEW your delver ──────────
+      // Moved off the central axis (it used to be the centrepiece): the
+      // fire owns the room now, the book is a quiet station you pass on
+      // the way in. STUDY reflects your build; it never spends.
+      { kind: 'tome-pillar', x: -2.7, z: 2.6, rotY: Math.PI / 2 },
 
-      // ── GREEN FOUNTAIN (right flank, mirror of stash) ───────────────
+      // ── GREEN FOUNTAIN (front-right flank, mirror of the tome) ──────
       // Sickly green basin — looks suspect, drinks clean. Always heals
-      // to full. (The 'gamble' variant; was a 50/50 heal/curse before,
-      // is unconditionally a heal now.)
+      // to full. (The 'gamble' variant.)
       {
         kind: 'fountain',
-        x: 2.4, z: 1.2,
+        x: 2.7, z: 2.6,
         rotY: -Math.PI / 2,
         variant: 'gamble',
       },
 
-      // The merchant — a hooded trader tucked at the back, the harbor's
-      // gold sink. Faces the fire so you find them as you arrive. (The
-      // wandering-on-dungeon-floors spawn comes later; this is the
-      // reliable between-acts stall.)
-      { kind: 'merchant', x: 3.0, z: -2.6, rotY: Math.PI },
+      // ── STASH (back-left) — meta-progression store ──────────────────
+      { kind: 'stash-chest', x: -2.9, z: -2.4, rotY: Math.PI / 2 },
 
-      // ── HEARTH (centre) — iron brazier + flanking stone benches ─────
-      // Carries warm light + the room's focal point. Benches sell
-      // "you can rest here" without an interaction slot.
-      { kind: 'model', model: IRON_BRAZIER, x: 0, y: 0, z: -0.2 },
-      { kind: 'model', model: STONE_BENCH,  x: -1.6, y: 0, z: -0.2, rotY: Math.PI / 2 },
-      { kind: 'model', model: STONE_BENCH,  x:  1.6, y: 0, z: -0.2, rotY: -Math.PI / 2 },
+      // The merchant — a hooded trader tucked at the back-right, the
+      // harbor's gold sink. Faces the fire so you find them as you arrive.
+      { kind: 'merchant', x: 3.0, z: -2.8, rotY: Math.PI },
 
       // ── Candles ─────────────────────────────────────────────────────
-      // Flanking the stash and the fountain so each is lit from its
-      // side of the path — sells "things, here, in the dark."
-      { kind: 'model', model: FLOOR_CANDLE, x: -2.4, y: 0, z: 2.6 },
-      { kind: 'model', model: FLOOR_CANDLE, x:  2.4, y: 0, z: 2.6 },
-      // Candles immediately south of the stair mouth — frame the descent.
-      { kind: 'model', model: FLOOR_CANDLE, x: -1.4, y: 0, z: -1.2 },
-      { kind: 'model', model: FLOOR_CANDLE, x:  1.4, y: 0, z: -1.2 },
+      // Flank the approach between the front fixtures and the central
+      // path, then frame the descent behind the fire.
+      { kind: 'model', model: FLOOR_CANDLE, x: -1.6, y: 0, z: 2.8 },
+      { kind: 'model', model: FLOOR_CANDLE, x:  1.6, y: 0, z: 2.8 },
+      { kind: 'model', model: FLOOR_CANDLE, x: -1.3, y: 0, z: -1.4 },
+      { kind: 'model', model: FLOOR_CANDLE, x:  1.3, y: 0, z: -1.4 },
 
-      // Warm floor glow near the spawn end (greets the player as they
-      // arrive) and a second smaller glow under the hearth so the floor
-      // around the brazier reads as warmed stone.
+      // Warm floor glow at the spawn end (greets the player) and a
+      // stronger one under the bonfire so the centre reads as the hot
+      // heart of the room.
       { kind: 'model', model: SAFE_FLOOR_GLOW_SPAWN,  x: 0, y: 0, z: 3.6 },
-      { kind: 'model', model: SAFE_FLOOR_GLOW_HEARTH, x: 0, y: 0, z: -0.2 },
+      { kind: 'model', model: SAFE_FLOOR_GLOW_HEARTH, x: 0, y: 0, z: 0.3 },
     ],
 
     torches: [
@@ -158,7 +158,7 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
 
 // Lazy imports — keep this module's top-level surface small.
 import { FLOOR_CANDLE } from '../content/candle';
-import { IRON_BRAZIER } from '../content/light-props';
+import { BONFIRE } from '../content/bonfire';
 import { floorGlow } from '../content/light-props';
 const SAFE_FLOOR_GLOW_SPAWN  = floorGlow(0xffb070);
 const SAFE_FLOOR_GLOW_HEARTH = floorGlow(0xff9050);

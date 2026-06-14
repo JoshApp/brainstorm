@@ -45,7 +45,7 @@ import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
 import { BONFIRE } from '../content/bonfire';
 import { ORIGIN_ARCH } from '../content/origin-arch';
-import { openWickRitual } from '../ui/wick-ritual';
+import { openLevelUpMenu } from '../ui/levelup-menu';
 import { generateEntityId } from '../ecs/world';
 import { setSurfaceSeep, setSurfaceWetness } from '../style/surface-detail';
 import { resetSplatMap } from '../scene/splat-map';
@@ -793,7 +793,7 @@ export function buildLevel(
   const allRects: RoomSpec[] = [...spec.rooms, ...spec.corridors];
   // ── THE THRESHOLD BONFIRE ──────────────────────────────────────────
   // Every floor begins at a fire: the player wakes seated beside it
-  // (player/arrival.ts) and can TEND it (the wick ritual) any time.
+  // (player/arrival.ts) and can REST at it (the level-up menu) any time.
   // Floors that author their own bonfire (safe rooms, tutorial) are
   // left alone. Placed off the spawn's shoulder so it never blocks
   // the lane, and skipped if it would sit in a doorway.
@@ -1245,20 +1245,22 @@ export function buildLevel(
       // a real slot. Light's local position is added to the prop's
       // world position; rotations are not currently applied to the
       // offset (most model lights sit on the prop's axis).
-      // Bonfires are TENDable — the wick ritual (ui/wick-ritual.ts)
-      // opens from any fire. Players kept trying to touch them; now
-      // the fire answers.
+      // Bonfires are where you REST — sitting at any fire opens the
+      // level-up menu (ui/levelup-menu.ts), the payoff where the levels
+      // you earned in the dark become strength. Spending is ungated from
+      // "safe rooms only": every bonfire is a real Souls rest. (Brightness
+      // calibration — the old wick ritual — now lives in Settings.)
       if (prop.model.id === 'bonfire') {
         const firePos = new THREE.Vector3(prop.x, gy, prop.z);
         registerInteractable({
-          id: generateEntityId('bonfire-tend'),
+          id: generateEntityId('bonfire-rest'),
           position: firePos,
           radius: 1.8,
           labelOffsetY: 1.25,
-          promptLabel: 'TEND',
+          promptLabel: 'REST',
           built: { group: new THREE.Group(), parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
           keepBuiltOnDestroy: true,
-          onUse() { openWickRitual(); },
+          onUse() { openLevelUpMenu(); },
           destroyed: false,
         });
       }
