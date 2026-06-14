@@ -47,31 +47,6 @@ export const WALL_STUB: ModelSpec = {
   },
 };
 
-export const MOONLIGHT_CRACK: ModelSpec = {
-  id: 'moonlight-crack',
-  materials: {
-    moonlight: {
-      color: 0x000000,
-      emissive: 0xbcd6ff,        // cold pale blue-white
-      emissiveIntensity: 4.5,
-      roughness: 1.0,
-    },
-  },
-  parts: [
-    // Thin vertical slit — 4cm wide, 1.4m tall, paper-thin so it pokes
-    // through the wall plane without z-fighting. Cast no shadow (the bright
-    // emissive would create a dark shadow on the wall behind itself).
-    { kind: 'box', pos: [0, 0, 0], size: [0.04, 1.4, 0.02], mat: 'moonlight', castShadow: false },
-  ],
-  light: {
-    color: 0xbcd6ff,
-    intensity: 14,
-    distance: 5.0,
-    decay: 1.5,
-    pos: [0, 0, 0.35],            // shifted slightly into the room
-    castShadow: false,
-  },
-};
 
 // Wall cresset — a wall-mounted iron sconce holding a small flame
 // basket. Drop-in alternative to WALL_TORCH for the lit-fixture

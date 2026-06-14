@@ -310,9 +310,10 @@ export type PropSpec =
       x: number;
       z: number;
       rotY?: number;
-      /** Item id (from src/content/items.ts) — the cursed offering.
-       *  Vault authors hand-pick; procgen may roll from a pool later. */
-      itemId: string;
+      /** Item id (from src/content/items.ts) — the cursed offering. Vault
+       *  authors may hand-pick; OMIT it to have the builder roll a cursed item
+       *  by depth (rollCursedItem), so a ritual-altar drop scales with the run. */
+      itemId?: string;
     }
   // 'hint' = an invisible tutorial trigger. When the player walks
   // within `triggerRadius`, italic in-world text fades in at the

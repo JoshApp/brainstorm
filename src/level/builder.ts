@@ -26,6 +26,7 @@ import { spawnStarterAltar } from '../interactables/starter-altar';
 import { spawnBloodAltar } from '../interactables/blood-altar';
 import { spawnChallengeOffering } from '../interactables/challenge-offering';
 import { ITEMS } from '../content/items';
+import { rollCursedItem } from '../content/loot';
 import { spawnTutorialHint } from '../effects/tutorial-hints';
 import {
   spawnStairs,
@@ -1437,7 +1438,10 @@ export function buildLevel(
         kind: 'circle', x: prop.x, z: prop.z, r: 0.32, height: gy + 1.1,
       });
     } else if (prop.kind === 'blood-altar') {
-      const item = ITEMS[prop.itemId];
+      // Hand-picked offering, or roll a cursed item by depth (the same gamble
+      // pool as shrouded relics) so a vault that just declares a blood-altar
+      // gets a depth-scaled reward instead of a fixed one.
+      const item = prop.itemId ? ITEMS[prop.itemId] : rollCursedItem(spec.depth ?? 1, buildRng);
       if (item) {
         // Same AABB pattern as the starter altar — slightly wider
         // footprint matches the larger basin geometry. Stone block

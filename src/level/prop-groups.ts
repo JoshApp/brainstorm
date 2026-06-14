@@ -78,13 +78,15 @@ export const PROP_GROUPS: Record<string, PropGroupSpec> = {
     ],
   },
 
-  // Four candles in a square around an altar with a skull. Centre-
-  // piece for ritual rooms — visually loaded but cheap (4 candles +
-  // 1 altar + 1 skull + 1 glow).
+  // Four candles around a BLOOD ALTAR with a skull. The centre is a real
+  // interactable now — all the heavy lighting (the red focal glow, the skull,
+  // the violet god ray that lands here in COMBAT_HALL) finally ANCHORS
+  // something: a cursed offering you bleed for, rolled by depth. The decorative
+  // altar slab is gone; the blood-altar renders its own basin. Light = signal.
   'ritual-circle': {
     id: 'ritual-circle',
     children: [
-      { prop: { kind: 'altar', x: 0, z: 0 } },
+      { prop: { kind: 'blood-altar', x: 0, z: 0 } },   // itemId omitted → rolls a cursed item by depth
       { prop: { kind: 'model', model: ALTAR_SKULL, x: 0, y: 0.82, z: 0, rotY: -0.4 } },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x: -1.1, y: 0, z: -1.1 }, minClearance: 0.5 },
       { prop: { kind: 'model', model: FLOOR_CANDLE, x:  1.1, y: 0, z: -1.1 }, minClearance: 0.5 },
