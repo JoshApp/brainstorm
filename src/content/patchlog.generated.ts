@@ -8,6 +8,21 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "content",
+        "text": "Parries now carry the weapon's character — a maul's catch staggers like a wall, and a stained blade opens a bleed when you turn a strike. Each weapon answers a parry its own way.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "A parry isn't just a block now — it's a strike. Catch a blow and you cut back, and your next quick swing comes empowered. Read the tell, take the opening.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Damage numbers hit like stamps now — bigger blows brand bigger, crits flare gold, the killing red is loud. The dungeon makes sure you see the tally.",
         "area": [
@@ -388,22 +403,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Floors lean downward now. Follow the stairs; the bottom of each floor knows what waits there.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The dead now take doorways down the middle instead of shouldering the masonry. The masonry held grudges.",
-        "area": [
-          "combat",
           "level"
         ]
       }
