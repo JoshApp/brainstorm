@@ -10,7 +10,7 @@ import { spawnBloodBurst } from '../effects/blood-burst';
 import { playEquipClick } from '../audio/sfx';
 import { RARITY_COLORS } from '../content/items';
 import { emit } from '../broadcast/event-bus';
-import { registerItemPreview, setItemPreviewAnchor, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
+import { registerItemPreview, setItemPreviewAnchorAbove, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
 
@@ -127,7 +127,6 @@ export function spawnBloodAltar(
   // to actually approach the altar.
   const PREVIEW_RANGE = 4.0;
   registerItemPreview(id, cursedItem, { hideStatsUntilInspect: true });
-  const previewY = pos.y + 2.0;
 
   const interactable: import('./types').Interactable = {
     id,
@@ -190,7 +189,7 @@ export function spawnBloodAltar(
         offerSeen = true;
         emit({ type: 'transaction:offered', family: 'bargain', id });
       }
-      setItemPreviewAnchor(id, pos.x, previewY, pos.z, inRange);
+      setItemPreviewAnchorAbove(id, offerGroup, inRange);   // label derives from the offer's own top
       // Stats only when this altar is the one the player is actually
       // highlighting — i.e. in interact range AND looking at it. The
       // existing in-range check from the interactables system already

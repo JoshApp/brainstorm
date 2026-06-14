@@ -184,7 +184,7 @@ export function spawnChallengeOffering(
   if (prize?.dropModel) {
     const built = buildModel(prize.dropModel);
     prizeGroup = built.group;
-    prizeGroup.position.set(pos.x, pos.y + 1.45, pos.z);
+    prizeGroup.position.set(pos.x, pos.y + 1.0, pos.z);
     scene.add(prizeGroup);
   }
   let prizePhase = 0;
@@ -216,7 +216,7 @@ export function spawnChallengeOffering(
       if (prizeGroup) {
         prizePhase += dt;
         prizeGroup.rotation.y = prizePhase * 0.6;
-        prizeGroup.position.y = pos.y + 1.45 + Math.sin(prizePhase * 1.4 * Math.PI * 2) * 0.03;
+        prizeGroup.position.y = pos.y + 1.0 + Math.sin(prizePhase * 1.4 * Math.PI * 2) * 0.03;
       }
       phase += dt;
       // Sigil + circle breathe — slow + dim while inert, faster + brighter

@@ -46,6 +46,12 @@ export interface ItemPreviewOptions {
 }
 
 const entries = new Map<string, PreviewEntry>();
+// id → measured local TOP offset above the floating object's origin. Cached:
+// the object bobs/rotates but its height doesn't change. So the label anchor is
+// DERIVED from geometry (like an enemy's measured top), not a per-altar magic
+// number — a tall greatsword and a tiny ring both sit the label right over them.
+const topOffsets = new Map<string, number>();
+const _box = new THREE.Box3();
 
 /** Register a preview for a given item at the given altar id. The id
  *  is owner-supplied (e.g. the interactable id) so update and
@@ -168,12 +174,32 @@ export function setItemPreviewAnchor(id: string, x: number, y: number, z: number
   e.visible = visible;
 }
 
+/** Anchor the label JUST ABOVE a floating object, derived from the object's
+ *  own measured geometry instead of a hand-tuned height. The object carries
+ *  "where above it is": we measure its top once (it bobs/rotates but keeps its
+ *  height) and pin the label a small `gap` over it, tracking its live Y. This
+ *  is the smart replacement for callers passing a magic `pos.y + N`. */
+export function setItemPreviewAnchorAbove(
+  id: string, obj: THREE.Object3D, visible: boolean, gap = 0.16,
+): void {
+  let topOff = topOffsets.get(id);
+  if (topOff === undefined) {
+    obj.updateWorldMatrix(true, true);
+    _box.setFromObject(obj);
+    // Top extent above the object's own origin (constant under Y-spin + bob).
+    topOff = isFinite(_box.max.y) ? _box.max.y - obj.position.y : 0.3;
+    topOffsets.set(id, topOff);
+  }
+  setItemPreviewAnchor(id, obj.position.x, obj.position.y + topOff + gap, obj.position.z, visible);
+}
+
 /** Tear down a preview — call from the altar's onDestroy. */
 export function unregisterItemPreview(id: string): void {
   const e = entries.get(id);
   if (!e) return;
   e.el.remove();
   entries.delete(id);
+  topOffsets.delete(id);
 }
 
 /** Per-frame projection of every visible preview onto screen space.
@@ -201,7 +227,12 @@ export function tickItemPreviews(camera: THREE.Camera, canvas: HTMLCanvasElement
       continue;
     }
     e.el.style.left = `${p.x}px`;
-    e.el.style.top = `${p.y}px`;
+    // VERTICAL clamp only (no horizontal — that one snapped toward centre). The
+    // label sits ABOVE its anchor (translate -100%), so its top edge sits at
+    // p.y − height; keep that edge on-screen so a high/close item can't drive
+    // the box off the top. Slides freely otherwise.
+    const minTop = e.el.offsetHeight + 8;
+    e.el.style.top = `${Math.max(p.y, minTop)}px`;
     if (e.el.style.opacity !== '1') e.el.style.opacity = '1';
   }
 }

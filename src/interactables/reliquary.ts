@@ -10,7 +10,7 @@ import { createPickup } from './pickup';
 import { gameRng } from '../engine/rng';
 import { showInWorldMessage } from '../ui/pickup-notification';
 import { playEquipClick, playRitualBell } from '../audio/sfx';
-import { registerItemPreview, setItemPreviewAnchor, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
+import { registerItemPreview, setItemPreviewAnchorAbove, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
 import { emit } from '../broadcast/event-bus';
 import { TRANSACTION_TINTS } from '../content/transactions';
 import type { StyleMaterials } from '../style/materials';
@@ -166,7 +166,9 @@ export function spawnReliquary(
         offerSeen = true;
         emit({ type: 'transaction:offered', family: 'priced', id });
       }
-      setItemPreviewAnchor(id, pos.x, pos.y + 1.75, pos.z, inRange);
+      // Label derives from the floating prize's own top (was a fixed +1.75,
+      // ~0.9m above the prize — it drove the textbox offscreen on approach).
+      if (prizeGroup) setItemPreviewAnchorAbove(id, prizeGroup, inRange);
       setItemPreviewInspected(id, getInRangeInteractable() === interactable);
     },
     destroyed: false,
