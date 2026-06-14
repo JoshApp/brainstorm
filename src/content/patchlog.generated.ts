@@ -9,6 +9,29 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "add",
+        "text": "Step into an arena and the gate comes down like a verdict — the floor jolts, dust coughs up off the stone. It grinds back up almost politely when you've earned it.",
+        "area": [
+          "atmosphere",
+          "combat",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Time your roll to the blade and the world lurches slow while you stay quick — and a parry now rocks them without always dropping them.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "No more parrying a blow after it already bit. Once the strike lands, the moment to catch it is gone.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "add",
         "text": "A failing-monitor film waits in the graphics menu now — grain, scanlines, a sick flicker. The picture rots on purpose, if you ask it to.",
         "area": [
           "atmosphere",
@@ -397,32 +420,6 @@ export const GENERATED_PATCHLOG = [
         "tag": "fix",
         "text": "You truly wake at the fire now — seated, facing it, rising.",
         "area": [
-          "level",
-          "controls"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "You wake facing the fire now, the stairs respect the wall, and the first chamber stops pretending to be a depth.",
-        "area": [
-          "level",
-          "ui",
-          "controls"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The third rune learns to drown properly.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Every floor now begins seated at a fire, and the fire finally answers: tend it, turn the wick, teach your eyes what the dark allows.",
-        "area": [
-          "ui",
-          "atmosphere",
           "level",
           "controls"
         ]
