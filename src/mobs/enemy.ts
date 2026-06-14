@@ -40,6 +40,7 @@ import {
 import { isPooledGeometry } from '../scene/geometry-pool';
 import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
+import { tryJustDodge } from '../combat/just-dodge';
 import { Animator } from '../anim/animator';
 import { type BuiltModel } from '../ecs/build-model';
 import { buildCreature } from '../content/build-creature';
@@ -1211,10 +1212,23 @@ export function createEnemy(
             resolveParry(playerPos);
             return true;          // strike consumed — NO damage
           }
+          // PERFECT DODGE — a precisely-timed roll (started within the perfect
+          // window of this strike) earns the bonus, mirroring the parry. The
+          // roll's own i-frames negate the damage; this pays the reward. A
+          // merely early/sloppy dodge falls through to damagePlayer, where the
+          // i-frames still negate it (survives, no bonus).
+          if (tryJustDodge()) return true;   // read the strike + rolled it
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
           meleeHitLanded = true;  // the blow connected — strike is spent, no late parry
           return true;            // hit — done
+        }
+        // NEAR-MISS perfect dodge — the blade released right at your edge but
+        // the roll carried you just clear IN TIME. A clean dodge escapes by
+        // RANGE, so without this band a perfectly-timed roll would slip the
+        // reward entirely (the in-reach path never runs). Reward the read.
+        if (distance <= action.reach + CONFIG.JUST_DODGE.NEAR_MISS_GRACE && tryJustDodge()) {
+          return true;            // the roll answered the strike
         }
         return false;             // keep trying within the strike window
       }

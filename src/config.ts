@@ -178,7 +178,14 @@ export const CONFIG = {
   // the future stagger→execute loop), and a stamina kickback so a clean dodge
   // fuels the counter — aggression-as-defense, the combat identity in one beat.
   JUST_DODGE: {
-    PERFECT_WINDOW_S: 0.18,    // negation within this of the dash = perfect (< DASH_IFRAME_S)
+    PERFECT_WINDOW_S: 0.30,    // roll-to-strike-connect gap that counts as a perfect read — set
+                               //   to the white-flash lead (FLASH_LEAD_S) so the model is simply
+                               //   "roll while the flash is up." Was 0.18: so tight a flash-reaction
+                               //   roll always landed outside it, so the reward never fired at all.
+    NEAR_MISS_GRACE: 1.8,      // m past a strike's reach that a JUST-cleared roll still reads as a
+                               //   dodge. A clean dodge escapes by RANGE (the lunge carries you out
+                               //   of reach), so the in-reach i-frame path alone almost never fired;
+                               //   this lets a well-timed roll that slips the blade trigger the reward.
     COUNTER_WINDOW_S: 1.10,    // how long the counter opening stays live
     COUNTER_DAMAGE_MUL: 1.6,   // your next landed hit hits this much harder
     COUNTER_STAGGER_MUL: 2.0,  // and cracks poise this much harder
@@ -212,7 +219,10 @@ export const CONFIG = {
     COMMIT_S: 0.28,            // the player-action FSM holds 'parrying' this long — a committed
                                //   beat that locks out attack/dodge (parry is a real action, not free)
     LOCKOUT_S: 0.40,           // cooldown after a parry attempt — anti-mash (can't hold a guard)
-    POISE_DAMAGE: 4,           // poise chunked per deflect (basic mobs ~4-6 → break in 1-2)
+    POISE_DAMAGE: 2,           // poise CHIPPED per deflect — a single parry FLINCHES (shows the
+                               //   body-snap recoil), it does NOT break on its own. Basic mobs
+                               //   (poise 4) take ~2 parries; the EMPOWERED counter-swing
+                               //   (EMPOWER_STAGGER_MUL) is the fast way to the break + execute.
     FLINCH_LOCK_S: 0.45,       // the flinched enemy can't start a new attack this long
     FLINCH_KNOCKBACK: 3.2,     // backward shove on the flinch (off-balance recoil)
     FLINCH_PITCH: 0.62,        // peak backward body LEAN (rad) on the flinch — the visible recoil snap

@@ -1,20 +1,22 @@
 // Just-dodge — the skill-ceiling layer on top of the baseline dodge (dash.ts).
+// The MIRROR of the parry: where a parry is a precisely-timed TAP that catches
+// a strike, a just-dodge is a precisely-timed ROLL that slips one. Both are
+// resolved enemy-side at the instant a strike connects (enemy.ts) and gated on
+// the same kind of read — NOT on "my i-frames happened to eat a hit" (that
+// rewarded standing in the wrong place with invuln up — backwards + cheesy).
 //
-// A dodge whose i-frames negate an incoming hit in the FIRST sliver of the
-// window was a last-second, REACTIVE dodge: the threat was imminent and you
-// read it. Reward that. A sloppy-but-functional EARLY dodge (the hit negated
-// later in the i-frame window, or an entry-grace invuln with no recent dash)
-// still saves you from damage — it just doesn't pay the bonus. So everyone can
-// dodge to survive; only good timing earns the payoff. The window is tuned
-// forgiving for touch latency (see CONFIG.JUST_DODGE).
+// The read: you START the roll within the PERFECT_WINDOW before the strike
+// lands (reacting to the white/red flash). A baseline dodge that's merely
+// EARLY (or whose i-frames clip a hit by luck) still saves you from damage — it
+// just doesn't pay the bonus. Window tuned forgiving for touch latency.
 //
 // The payoff is the combat identity in one beat — forgiving defense, ruthless
 // offense:
-//   - a brief slow-mo "clarity" dip (folded into the loop's time-scale),
+//   - asymmetric BULLET TIME (shared with the parry's dodge reward): the world
+//     crawls, you keep full speed (reactive-defense's enterBulletTime),
 //   - a COUNTER window: your next landed hit punishes harder AND cracks poise
-//     harder (feeds the future stagger→execute loop),
-//   - a stamina kickback, so a clean dodge fuels the counter (aggression-as-
-//     defense, the Bloodborne/Nightreign reward routed through the dodge).
+//     harder (feeds the stagger→execute loop),
+//   - a stamina kickback, so a clean dodge fuels the counter.
 //
 // Module-level mutable state with a getter/setter API, the project's standard
 // pattern. NOT persisted: reset on floor load (loader.ts).
@@ -27,26 +29,27 @@ import { enterBulletTime } from './reactive-defense';
 let dashStartedAt = -Infinity;   // performance.now() ms when the last dash fired
 let counterUntil = 0;            // performance.now() ms — counter window end
 
-/** dash.ts calls this the instant a dash fires, so a later i-frame-negated hit
- *  can be classified by how soon after the dash it arrived. */
+/** dash.ts calls this the instant a dash fires, so the enemy can classify a
+ *  strike landing soon after as a precisely-timed (perfect) dodge. */
 export function noteDashStarted(): void {
   dashStartedAt = performance.now();
 }
 
-/** Pure: was a hit negated `sinceDashMs` after the dash a PERFECT (reactive)
- *  dodge? True only inside the perfect window — a small delay means the threat
- *  was imminent when you dodged (you reacted); a larger one means you dodged
- *  early (safe, but not a read). A negative / huge value (no recent dash) is
+/** Pure: is a strike landing `sinceDashMs` after the roll a PERFECT (reactive)
+ *  dodge? True only inside the perfect window — you committed the roll just
+ *  before the blow, reading the telegraph. A larger value means you rolled
+ *  early (safe, but not a read); a negative / huge value (no recent dash) is
  *  never perfect. */
 export function isPerfectDodge(sinceDashMs: number): boolean {
   return sinceDashMs >= 0 && sinceDashMs <= CONFIG.JUST_DODGE.PERFECT_WINDOW_S * 1000;
 }
 
-/** health.ts calls this when an incoming hit was negated by the player's
- *  invulnerability. If the timing makes it a perfect dodge, fire the reward.
- *  Returns whether it counted. Consumes the dash marker so a multi-hit flurry
- *  in one i-frame window only triggers the reward once. */
-export function notePlayerHitNegated(): boolean {
+/** enemy.ts calls this when a strike would connect with (or just-misses) a
+ *  rolling player. If the roll START was a precise read of THIS strike, pay the
+ *  just-dodge reward and report it. Consumes the dash marker so one roll
+ *  rewards once, even against a flurry. The roll's own i-frames handle the
+ *  actual damage negation — this is purely the skill payoff. */
+export function tryJustDodge(): boolean {
   if (!isPerfectDodge(performance.now() - dashStartedAt)) return false;
   dashStartedAt = -Infinity;
   enterBulletTime();   // shared reward — world crawls, you keep moving

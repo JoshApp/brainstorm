@@ -9,7 +9,6 @@ import { emit } from '../broadcast/event-bus';
 import { get } from '../ecs/world';
 import { computeStats } from './equipment-stats';
 import { computeDamage, registerDamageSink, type DamageType, type DamageEvent } from '../combat/damage';
-import { notePlayerHitNegated } from '../combat/just-dodge';
 import type { EntityId } from '../ecs/types';
 import { recordHpRecovered, recordDamageTaken, recordShieldedHit } from '../state/character';
 import { getEquipped } from './equipment';
@@ -130,9 +129,10 @@ export function damagePlayer(amount: number, source: EntityId | null = null, typ
   if (dead || godMode) return;
   if (isArrivalActive()) return;   // mid-wake at the bonfire — untouchable
   if (performance.now() < invulnUntil) {
-    // Hit negated by i-frames. If it was a perfectly-timed dodge (recent dash,
-    // tight window) this fires the just-dodge reward; otherwise it's a no-op.
-    notePlayerHitNegated();
+    // Hit negated by i-frames (dodge / entry-grace). Pure survival — NO reward
+    // here. The just-dodge bonus is earned by precise ROLL TIMING against a
+    // strike and is fired enemy-side (enemy.ts → tryJustDodge), mirroring the
+    // parry; it must NOT trigger just because invuln happened to eat a blow.
     return;
   }
   const player = get(PLAYER_ENTITY_ID);
