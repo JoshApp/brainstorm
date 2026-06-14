@@ -1153,17 +1153,21 @@ export function createEnemy(
     //     instantly and erased the punish window.)
     //   • Everything else (chasing/alerted/searching): track FAST so a prowler
     //     keeps watching you and never ends up facing backwards.
-    let rate: number;
     if (state === 'winding') {
+      // AIM ramp — fast onto you at the start (so a swing never launches facing
+      // the wrong way), easing to 0 by commit (a late juke slips it).
       const prog = currentWindupTime > 0 ? Math.min(1, phaseTimer / currentWindupTime) : 1;
-      rate = CONFIG.ENEMY_AI.WINDUP_AIM_RATE * (1 - prog);
-    } else if (state === 'striking' || state === 'recovering') {
-      rate = 0;
-    } else {
-      rate = CONFIG.ENEMY_AI.TURN_RATE;
+      const maxStep = CONFIG.ENEMY_AI.WINDUP_AIM_RATE * (1 - prog) * dt;
+      container.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
+      return;
     }
-    const maxStep = rate * dt;
-    container.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
+    if (state === 'striking' || state === 'recovering') return;   // LOCKED — committed
+    // Chasing / alerted / searching — SNAP to face you, absolute (no
+    // accumulating step). The capped smooth-turn drifted against the per-frame
+    // presence twitch and left mobs moonwalking in backwards; an absolute set
+    // each frame can't drift. Entering a wind-up from this correct facing also
+    // makes the aim-ramp above robust (it starts already on you).
+    container.rotation.y = desired;
   }
 
   /** Is the player looking roughly AT this enemy? A parry only catches a strike
