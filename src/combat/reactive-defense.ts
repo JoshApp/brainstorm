@@ -23,6 +23,8 @@ import { CONFIG } from '../config';
 import { setPlayerInvulnerable } from '../player/health';
 import { freezeFor } from './hit-pause';
 import { playParry } from '../audio/sfx';
+import { DEV } from '../debug/dev';
+import { flashReaction } from '../debug/reaction-debug';
 
 const now = () => performance.now() / 1000;
 
@@ -76,6 +78,7 @@ export function notePlayerDeflected(): void {
   freezeFor(CONFIG.DEFLECT.CLASH_FREEZE_MS);
   playParry();
   try { navigator.vibrate?.(CONFIG.DEFLECT.HAPTIC_MS); } catch { /* unsupported */ }
+  if (DEV) flashReaction('PARRY', '#dfe8ff', 500);
 }
 
 /** attack.ts: is the next swing empowered by a recent deflect? */

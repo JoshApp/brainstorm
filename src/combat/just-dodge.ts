@@ -25,6 +25,8 @@ import { CONFIG } from '../config';
 import { gainStamina } from './stamina';
 import { playBuffApply } from '../audio/sfx';
 import { enterBulletTime } from './reactive-defense';
+import { DEV } from '../debug/dev';
+import { flashReaction } from '../debug/reaction-debug';
 
 let dashStartedAt = -Infinity;   // performance.now() ms when the last dash fired
 let counterUntil = 0;            // performance.now() ms — counter window end
@@ -57,6 +59,9 @@ export function tryJustDodge(): boolean {
   gainStamina(CONFIG.JUST_DODGE.STAMINA_REFUND);
   playBuffApply();
   try { navigator.vibrate?.(CONFIG.JUST_DODGE.HAPTIC_MS); } catch { /* unsupported */ }
+  // DEV: hold the label for the bullet-time duration so the slow-mo window is
+  // visible end-to-end — when it fades, the dip is over.
+  if (DEV) flashReaction('JUST DODGE', '#7fe0ff', CONFIG.BULLET_TIME.DURATION_S * 1000);
   return true;
 }
 
