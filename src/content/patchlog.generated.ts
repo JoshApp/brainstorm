@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "A staggered foe no longer pops on the first tap — flurry it open with light blows, then bring a charged heavy down to finish.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The perfect-dodge window opens back up — roll through a blow and the world rewards the read, no frame-perfect timing demanded.",
         "area": [
           "combat"
@@ -387,20 +394,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "atmosphere"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 7",
-    "date": "2026-06-12",
-    "entries": [
-      {
-        "tag": "fix",
-        "text": "Your legs keep one last desperate lunge in them — exactly one. Ask twice and they answer with a stagger.",
-        "area": [
-          "combat",
-          "controls"
         ]
       }
     ]
