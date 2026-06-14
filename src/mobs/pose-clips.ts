@@ -28,11 +28,14 @@ export interface TelegraphPose {
 }
 
 export const TELEGRAPH_POSES: Record<TelegraphStyle, TelegraphPose> = {
-  // Baseline melee — wind back high, slam down through the target.
+  // Baseline melee — raise the arm then chop down-FORWARD through the target.
+  // POSITIVE armSwing = forward/up (rig convention); the old strike −1.05
+  // swung the arm BEHIND the back (it was never tested on a real shoulder —
+  // only armless pose-mobs used 'swing'). Now: wind up high, chop down in front.
   swing: {
-    rigTilt:  { windup:  0.50, strike: -0.25 },
+    rigTilt:  { windup:  0.35, strike:  0.25 },   // rear slightly, lean into the chop
     bob:      { windup:  0.10, strike:  0.0  },
-    armSwing: { windup:  0.70, strike: -1.05 },   // arms raise, then overhand
+    armSwing: { windup:  1.60, strike:  0.30 },   // raise overhead-ish → chop down-forward
   },
   // Heavy overhead SMASH (bipeds — ghoul, stoneguard, …). Arms wind WAY up
   // overhead and HOLD (the big tell), then slam down through the target. The
@@ -48,14 +51,14 @@ export const TELEGRAPH_POSES: Record<TelegraphStyle, TelegraphPose> = {
   cast: {
     rigTilt:  { windup:  0.18, strike:  0.0  },
     bob:      { windup:  0.06, strike:  0.0  },
-    armSwing: { windup:  0.45, strike: -0.35 },
+    armSwing: { windup: -0.15, strike:  0.45 },   // draw back, then push the bolt FORWARD (was −0.35 = behind)
   },
   // Charger — COIL back hard (negative), then a deep forward lunge.
   // The big rig pitch + arm thrust sells the "springs across the gap."
   charge: {
     rigTilt:  { windup: -0.45, strike: -0.55 },
     bob:      { windup:  0.04, strike:  0.0  },
-    armSwing: { windup:  0.90, strike: -1.30 },   // wind arms back, hurl forward
+    armSwing: { windup: -0.45, strike:  1.10 },   // COIL arms back, then HURL forward (was +0.9/−1.3 = backwards)
   },
   // Slime tentacle lash — the body LEANS slowly over toward the player
   // (positive = forward) through the windup, then pitches hard into the
