@@ -9,10 +9,25 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The slain sink into the stone now — the floor drinks them down as they dissolve, instead of blinking out where they fell.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The altars speak plainer now — a blood bargain glows violet and says OFFER, the offering hangs still and slow, and the prompt stops shoving the thing it's pointing at.",
         "area": [
           "ui",
           "interactables"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The menus are carved from the same dark stone now — title, satchel, and settings all wear the dungeon's chisel marks.",
+        "area": [
+          "ui"
         ]
       },
       {
@@ -374,21 +389,6 @@ export const GENERATED_PATCHLOG = [
         "text": "Slip a blow now and the world truly crawls while you stay quick. The dead turn with weight, and a pack weaves around you instead of circling like clockwork.",
         "area": [
           "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A clean dodge drops the world to a crawl now, you alone still quick. And a parry demands a free hand — mash it mid-swing and it answers with nothing.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Cross into an arena and the torches gutter, then flare up to watch you bleed — and sink back to embers, a little brighter than before, once it's over.",
-        "area": [
-          "atmosphere",
-          "level"
         ]
       }
     ]

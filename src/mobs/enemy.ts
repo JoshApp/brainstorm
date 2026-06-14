@@ -1653,7 +1653,13 @@ export function createEnemy(
       const tp = Math.min(1, deathTimer / COLLAPSE_TOPPLE);
       const e = 1 - (1 - tp) * (1 - tp);
       built.group.rotation.x = e * 1.45;
-      built.group.position.y = -0.05 * e;
+      // MELT INTO THE FLOOR — once it's down, sink the corpse through the floor
+      // as it dissolves so the dungeon takes the body FROM THE GROUND instead
+      // of it popping away. The opaque floor occludes the submerged part; the
+      // dissolve eats the rest. (The shader dissolve runs along the model's
+      // LOCAL axis, which is sideways on a toppled body — the sink is what
+      // makes it read as ground-claimed.)
+      built.group.position.y = -0.05 * e - 0.6 * dissolveT * dissolveT;
     } else {
       // FADE — spectral rises (sells the float), others sag a touch.
       built.group.position.y = spec.presence === 'spectral' ? 0.55 * t : -0.08 * t;
