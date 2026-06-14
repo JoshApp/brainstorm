@@ -156,9 +156,11 @@ export const BENT_SICKLE: ModelSpec = {
     { kind: 'sphere', pos: [0, -0.21, 0], radius: 0.020, segments: [10, 8], mat: 'grip' },
   ],
   // Short crescent on a short grip — a sickle is a close, hooking weapon.
+  // Grip sits on the lower binding wrap (≈ −0.16), held near the butt so the
+  // hooked head stands clear above the fist, not clutched up at the neck.
   slots: {
     blade_tip: { pos: [-0.08, 0.22, 0] },
-    grip_anchor: { pos: [0, -0.10, 0] },
+    grip_anchor: { pos: [0, -0.16, 0] },
   },
 };
 

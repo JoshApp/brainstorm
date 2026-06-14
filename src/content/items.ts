@@ -594,7 +594,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     weapon: {
       // Scythe class — wide cone catches a clutch of small things at once.
       // Low damage; the sweep IS the value. The swarm-clearer starter.
-      class: 'scythe', reachMul: 1.15, coneHalfAngle: 0.95, damage: 1, critChance: 0.08, critMultiplier: 2.2,
+      class: 'scythe', reachMul: 1.10, coneHalfAngle: 0.95, damage: 1, critChance: 0.08, critMultiplier: 2.2,
     },
     affixPool: ['keening', 'gallows', 'serration', 'spine'],
     maxAffixes: 1,

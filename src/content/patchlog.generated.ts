@@ -8,14 +8,6 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
-        "tag": "add",
-        "text": "The slain fall before they fade now, and a clean strike to the skull takes the head with it. The dark gets its bodies the proper way.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
         "tag": "tune",
         "text": "Every blade now reaches exactly as far as it looks. The dungeon measured each one against its own edge.",
         "area": [
@@ -390,6 +382,13 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Catch a blade now and it never bites through — and the clash rings like steel, not a blacksmith's hammer.",
+        "area": [
+          "combat"
         ]
       }
     ]
