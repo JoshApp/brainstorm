@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "add",
+        "text": "Cross into an arena and the torches gutter, then flare up to watch you bleed — and sink back to embers, a little brighter than before, once it's over.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "add",
         "text": "Step into an arena and the gate comes down like a verdict — the floor jolts, dust coughs up off the stone. It grinds back up almost politely when you've earned it.",
         "area": [
           "atmosphere",
@@ -414,14 +422,6 @@ export const GENERATED_PATCHLOG = [
           "controls",
           "ui",
           "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "You truly wake at the fire now — seated, facing it, rising.",
-        "area": [
-          "level",
-          "controls"
         ]
       }
     ]
