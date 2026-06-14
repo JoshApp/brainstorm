@@ -1105,15 +1105,21 @@ export function createEnemy(
     return Math.hypot(dx, dz);
   }
 
-  function faceTarget(target: THREE.Vector3) {
-    // Three.js Object3D.lookAt() (for non-cameras) makes the object's +Z
-    // axis face the target. Our models follow the OPPOSITE convention —
-    // head/eyes/snout at -Z, tail/back at +Z (matching camera convention)
-    // — so we add π to the yaw after lookAt so the model's -Z (head)
-    // faces the target instead of its +Z (back).
-    tmpFlat.set(target.x, container.position.y, target.z);
-    container.lookAt(tmpFlat);
-    container.rotation.y += Math.PI;
+  function faceTarget(target: THREE.Vector3, dt: number) {
+    // Turn the body toward the target at a CAPPED rate (CONFIG.ENEMY_AI.
+    // TURN_RATE) rather than snapping — facing has weight, and a committed
+    // attacker can't perfectly track a strafing player. Our models face -Z
+    // (head/eyes at -Z, matching camera convention), so the desired yaw is the
+    // bearing to the target + π (lookAt points +Z; we want -Z).
+    const dx = target.x - container.position.x;
+    const dz = target.z - container.position.z;
+    if (dx * dx + dz * dz < 1e-8) return;
+    const desired = Math.atan2(dx, dz) + Math.PI;
+    // Shortest signed angle from current → desired, wrapped to [-π, π].
+    let diff = desired - container.rotation.y;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    const maxStep = CONFIG.ENEMY_AI.TURN_RATE * dt;
+    container.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
   }
 
   function applyTilt(angle: number) {
@@ -1798,7 +1804,7 @@ export function createEnemy(
     // Face target is conditional — idle/returning faces the scan target,
     // not the player; a staggered enemy is reeling and doesn't track you.
     if (state !== 'idle' && state !== 'returning' && state !== 'staggered') {
-      faceTarget(playerPos);
+      faceTarget(playerPos, dt);
     }
 
     // ── PARRY (immediate, on the STRIKE) ─────────────────────────────
@@ -1924,7 +1930,7 @@ export function createEnemy(
         // moment reads — the model snaps from scan-pose to confront-pose.
         phaseTimer += dt;
         const t = Math.min(1, phaseTimer / ALERTED_DURATION);
-        faceTarget(playerPos);
+        faceTarget(playerPos, dt);
         setEyeFlare(t);
         applyTilt(-0.15 * t);   // slight rear-back (negative tilt)
         built.group.position.y = 0;
@@ -1944,7 +1950,7 @@ export function createEnemy(
         const dzs = lastSeenPos.z - container.position.z;
         const distToLast = Math.hypot(dxs, dzs);
         // Face the search direction.
-        faceTarget(lastSeenPos);
+        faceTarget(lastSeenPos, dt);
         if (distToLast > 0.4) {
           // Wary search — slower than chase (0.7x). Pathfinds around
           // obstacles, same as chasing.

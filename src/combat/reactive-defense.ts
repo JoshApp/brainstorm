@@ -105,9 +105,16 @@ export function enterBulletTime(): void { dipElapsed = 0; }
 export function getWorldTimeScale(): number {
   const dur = CONFIG.BULLET_TIME.DURATION_S;
   if (dipElapsed >= dur) return 1;
-  const t = dipElapsed / dur;                       // 0 → 1 across the dip
   const s = CONFIG.BULLET_TIME.WORLD_SCALE;
-  return s + (1 - s) * t;
+  const t = dipElapsed / dur;                       // 0 → 1 across the dip
+  const hold = CONFIG.BULLET_TIME.HOLD_FRAC;
+  // HOLD the world deep at WORLD_SCALE for the first `hold` of the window so the
+  // slow-mo actually READS, THEN ease back to full over the remainder. (A plain
+  // linear ramp spent the deep part in one frame — the dip was there but
+  // invisible.) Quadratic release so the snap-back accelerates.
+  if (t <= hold) return s;
+  const r = (t - hold) / (1 - hold);                // 0 → 1 across the release
+  return s + (1 - s) * (r * r);
 }
 
 /** True while the world is dilated — UI/feel hooks can read it (e.g. a vignette). */

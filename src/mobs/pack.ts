@@ -27,8 +27,21 @@ interface Member {
   attacking: () => boolean;    // mid-attack (winding/striking/recovering)?
   tx: number; tz: number;      // computed ring target (slot + separation + prowl) for this frame
   sepX: number; sepZ: number;  // separation push
-  orbitDir: number;            // ±1 stable prowl direction (some go clockwise, some not)
+  orbitDir: number;            // ±1 current prowl direction (split per-mob, and it REVERSES)
+  orbitFlipIn: number;         // s until this mob reverses its orbit — so a pack weaves, not circles
   tokenCd: number;             // s before this mob may grab a token again
+}
+
+// FNV-1a hash → a well-mixed bit from the whole id, so consecutive ids
+// (enemy-rat-0, enemy-rat-1, …) split ~50/50 on parity. The old `id.length &
+// 1` gave every same-length id the SAME bit, so a rat pack all circled one way.
+function idBit(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h & 1;
+}
+function nextFlipDelay(): number {
+  return P.ORBIT_FLIP_MIN + Math.random() * (P.ORBIT_FLIP_MAX - P.ORBIT_FLIP_MIN);
 }
 
 const members = new Map<string, Member>();
@@ -47,9 +60,11 @@ export function joinPack(
   members.set(id, {
     id, pos, reach, active, attacking,
     tx: pos.x, tz: pos.z, sepX: 0, sepZ: 0,
-    // Deterministic prowl direction from the id so a swarm doesn't all spin the
-    // same way, without Math.random (snaps stay stable).
-    orbitDir: (id.length & 1) ? 1 : -1,
+    // Split the starting prowl direction per-mob (well-mixed id bit), then let
+    // it reverse on a varied timer (tickPack) so a pack weaves instead of
+    // orbiting one way forever.
+    orbitDir: idBit(id) ? 1 : -1,
+    orbitFlipIn: nextFlipDelay(),
     tokenCd: 0,
   });
 }
@@ -68,6 +83,10 @@ export function tickPack(dt: number, player: THREE.Vector3): void {
   for (const m of members.values()) {
     m.sepX = 0; m.sepZ = 0;
     if (m.tokenCd > 0) m.tokenCd = Math.max(0, m.tokenCd - dt);
+    // Reverse the prowl direction on a varied timer → the pack weaves around
+    // you instead of circling predictably one way.
+    m.orbitFlipIn -= dt;
+    if (m.orbitFlipIn <= 0) { m.orbitDir = -m.orbitDir; m.orbitFlipIn = nextFlipDelay(); }
     // Auto-release a token the instant its holder stops attacking (or goes
     // inactive) — and start its re-acquire cooldown so a waiter gets the turn.
     if (tokens.has(m.id) && !m.attacking()) {

@@ -204,7 +204,10 @@ export const CONFIG = {
   BULLET_TIME: {
     WORLD_SCALE: 0.12,         // enemy/projectile speed at the dip's deepest — DEEP, so the
                                //   perfect-dodge slow-mo really lands (was 0.28, barely felt)
-    DURATION_S: 0.85,          // real-time length, easing back to full
+    HOLD_FRAC: 0.55,           // fraction of DURATION the world HOLDS at WORLD_SCALE before
+                               //   easing back. The old linear ramp spent the deep slow in a
+                               //   single instant; holding it is what makes the dip read.
+    DURATION_S: 0.85,          // real-time length: hold deep for HOLD_FRAC, then ease to full
   },
   // DEFLECT — the tap answer to a white flash. NOT bullet-time (that's the
   // dodge's reward); deflect is the AGGRESSIVE counter: the enemy flinches
@@ -499,6 +502,10 @@ export const CONFIG = {
   // Rationale for each lives at its use site in src/mobs/enemy.ts.
   ENEMY_AI: {
     ALERTED_DURATION: 0.45,           // s — hesitation after first spotting the player
+    TURN_RATE: 7.0,                   // rad/s — body turn speed toward the player. Capped (was an
+                                      //   instant snap, which read robotic + let a mob track you
+                                      //   perfectly mid-windup); now turning has weight, so circling
+                                      //   / flanking a committed attacker actually buys angle.
     SEARCH_DURATION: 3.0,             // s — search at last-known position before giving up
     IDLE_SCAN_INTERVAL_MIN: 3.0,      // s — base gap between idle gaze changes
     IDLE_SCAN_INTERVAL_JITTER: 2.5,   // s — + up to this (desyncs a swarm)
@@ -522,6 +529,8 @@ export const CONFIG = {
       ATTACK_TOKENS: 3,               // max mobs allowed to COMMIT to an attack at once (the rest prowl)
       TOKEN_REACQUIRE_CD: 0.7,        // s — a mob that just attacked waits this long before it can grab a token again (so others get a turn)
       ORBIT_LEAD: 0.45,               // rad — a WAITING chaser aims this far AHEAD along the ring (a fixed lead → it prowls/circles the player). 0 = hold still
+      ORBIT_FLIP_MIN: 1.8,            // s — a prowling mob holds an orbit direction at least this long
+      ORBIT_FLIP_MAX: 4.5,            // s — …and at most this, then REVERSES. So a pack doesn't circle one way forever — it weaves, less predictable.
     },
   },
 
