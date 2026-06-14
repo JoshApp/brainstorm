@@ -17,6 +17,7 @@ import {
 import {
   pushDeflectOpportunity, popDeflectOpportunity, isParryActive, notePlayerDeflected,
 } from '../combat/reactive-defense';
+import { spawnParrySpark } from '../effects/parry-spark';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
@@ -1112,6 +1113,19 @@ export function createEnemy(
   function resolveParry(toward: THREE.Vector3): void {
     notePlayerDeflected();   // player side: i-frame + clash freeze + parry ting + EMPOWER next swing + riposte beat
     kickShake(0.22, 0.16);   // clash punch
+    // Steel-on-steel spark AT the clash: a touch in FRONT of the mob toward the
+    // player (so it reads in the open, not buried in the body), at weapon height.
+    {
+      const dx = toward.x - container.position.x;
+      const dz = toward.z - container.position.z;
+      const len = Math.hypot(dx, dz) || 1;
+      spawnParrySpark(
+        scene,
+        container.position.x + (dx / len) * 0.55,
+        container.position.y + aimHeightResolved,
+        container.position.z + (dz / len) * 0.55,
+      );
+    }
     // Chunk poise. If it BREAKS → full stagger (execute window, via
     // triggerStagger inside). Else a soft FLINCH: cancel the attack, recoil
     // off-balance, brief no-act. Stacking deflects break it on their own; the

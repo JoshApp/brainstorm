@@ -61,6 +61,7 @@ import { tickRoomMood } from '../level/room-mood';
 import { tickShatterBurst } from '../effects/shatter-burst';
 import { tickBloodBurst } from '../effects/blood-burst';
 import { tickDustPuff } from '../effects/dust-puff';
+import { tickParrySpark } from '../effects/parry-spark';
 import { tickArenaLightArc } from '../feedback/arena-light-arc';
 import { tickStatusVfx } from '../effects/status-vfx';
 import { updateOutline, updateOutlinePxScale } from '../interactables/outline';
@@ -407,6 +408,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'shatter', phase: 'always', tick(ctx) { tickShatterBurst(ctx.scaledDt); } },
     { name: 'blood', phase: 'always', tick(ctx) { tickBloodBurst(ctx.scaledDt); } },
     { name: 'dust', phase: 'always', tick(ctx) { tickDustPuff(ctx.scaledDt); } },
+    { name: 'parry-spark', phase: 'always', tick(ctx) { tickParrySpark(ctx.scaledDt); } },
 
     // Interact tick + world-anchored UI run OUTSIDE the freeze gate so
     // in-range detection persists through hit-pauses. dt=0 when frozen so
