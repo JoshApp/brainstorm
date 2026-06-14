@@ -111,8 +111,8 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
       // Stone benches drawn in around the dais — the hearth circle. They
       // sell "sit here" literally now: the fire is the rest. No collision
       // (the player walks around them).
-      { kind: 'model', model: STONE_BENCH, x: -1.95, y: 0, z: 0.3, rotY: Math.PI / 2 },
-      { kind: 'model', model: STONE_BENCH, x:  1.95, y: 0, z: 0.3, rotY: -Math.PI / 2 },
+      { kind: 'model', model: STONE_BENCH, x: -2.6, y: 0, z: 0.3, rotY: Math.PI / 2 },
+      { kind: 'model', model: STONE_BENCH, x:  2.6, y: 0, z: 0.3, rotY: -Math.PI / 2 },
 
       // ── TOME PILLAR (front-left flank) — REVIEW your delver ──────────
       // Moved off the central axis (it used to be the centrepiece): the
