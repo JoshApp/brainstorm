@@ -8,6 +8,28 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The dead now aim their swing as it winds up, then commit to it — step off the line and it bites empty air, and it can't whip back around to catch you mid-recovery.",
+        "area": [
+          "combat",
+          "mobs"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Roll a bolt at the last breath and time buckles the same as slipping a blade — the shot hangs past you as the world crawls.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "A clean dodge gives back a little, not the whole roll. Heavies cost more to throw now; a ranged shot, less.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
         "tag": "add",
         "text": "Bleed, poison, and burn tally their toll in colour now. The dungeon counts every drip and ember, even the one that finishes you.",
         "area": [
@@ -386,29 +408,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The hammer decides how much the room remembers — every blow splashes from its point of impact to whatever stands in the way.",
         "area": [
           "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Blood on the walls runs downward now, the way it must.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Blood pops like a balloon now — heavy where it landed, fingers where it flew, and the wall behind a kill keeps the evidence.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The archways return from the shadow realm.",
-        "area": [
-          "level",
           "atmosphere"
         ]
       }
