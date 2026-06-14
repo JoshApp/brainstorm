@@ -648,16 +648,17 @@ const input = createTouchInput(canvas, {
       deflectAvailable: deflectOpportunityActive(),
     });
     if (action.kind === 'deflect') {
-      // The tap is parry's entry point: resolveTap only routes here while a
-      // deflectable strike is flashing (deflectOpportunityActive). PARRY only
-      // from a FREE stance (canStartAction gates out your own windup/strike/
-      // recovery) and off its anti-mash cooldown (triggerParry). If you can't
-      // parry right now, the tap is ABSORBED — NO fall-through to a swing. That
-      // is deliberate: it stops a heavy weapon's long recovery (or a rapid
-      // mash) from being spam-tapped into free parries during a telegraph.
-      // Commit to your recovery, or wait out the lockout. Outside an
-      // opportunity resolveTap returns 'attack', so normal attacking is intact.
+      // The tap is parry's entry point: resolveTap routes here while a
+      // deflectable strike is flashing. PARRY from a FREE stance (canStartAction
+      // gates out your own windup/strike/recovery) and off the anti-mash
+      // lockout (triggerParry); OTHERWISE fall back to a normal SWING — "a
+      // failed parry is just a normal attack." The fallback is load-bearing: it
+      // guarantees a tap is never wasted and that a stuck/leaked deflect
+      // opportunity (e.g. a mob killed mid-flash) can NEVER deadlock light
+      // attacks. Parry-spam stays gated (no parry mid-swing + the lockout), so
+      // the fallback only ever yields ordinary attacks, never free parries.
       if (canStartAction('parry') && triggerParry()) enterParry(CONFIG.DEFLECT.COMMIT_S);
+      else triggerAttack();
     }
     else if (action.kind === 'attack') triggerAttack();
     else if (action.kind === 'interact') resolveUsable(action.interactable, camera.position).onUse();

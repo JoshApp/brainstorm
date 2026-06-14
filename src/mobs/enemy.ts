@@ -518,6 +518,11 @@ export function createEnemy(
   // fight); false snaps straight to the settled pose (clean phase snaps).
   function enterNextPhase(animate: boolean): void {
     if (!phases || phaseIndex + 1 >= phases.length) return;
+    // Pop any OPEN deflect opportunity the dying-into-next-phase ability held —
+    // a phase transition fires from takeDamage and RETURNS before the death-path
+    // pop, and the phase-fall then early-returns from update() for a beat, so
+    // reconcileThreat wouldn't run to clear it. Same leak the death path guards.
+    reconcileThreat(false, false);
     const next = phases[phaseIndex + 1];
     phaseIndex++;
     currentMaxHp = next.hp;
