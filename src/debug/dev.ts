@@ -17,4 +17,12 @@
 // you specifically want a whole module tree-shaken out (the bundler is most
 // aggressive when it sees the literal). Use this re-exported `DEV` for plain
 // readable runtime checks; esbuild inlines it to the same literal.
-export const DEV: boolean = import.meta.env.DEV;
+// The `typeof` guard keeps this safe under a non-Vite runtime (the tsx test
+// runner, where `import.meta.env` is undefined and a bare `.DEV` would throw at
+// module load). It does NOT weaken the prod strip: Vite replaces
+// `import.meta.env` with a real object and `import.meta.env.DEV` with the
+// literal `false`, so esbuild constant-folds the whole ternary to `false` and
+// every `if (DEV)` still dead-code-eliminates. (Call sites that want the most
+// aggressive tree-shake keep using the bare `import.meta.env.DEV` literal.)
+export const DEV: boolean =
+  typeof import.meta.env !== 'undefined' ? import.meta.env.DEV : false;

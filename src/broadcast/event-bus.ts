@@ -21,6 +21,15 @@ export type GameEvent =
   | { type: 'level:loaded'; levelId: string }
   | { type: 'encounter:activated'; id: string }
   | { type: 'encounter:complete'; id: string }
+  // ── Gate lifecycle (a sealed/raised arena threshold) ──
+  // Emitted by interactables/door.ts at the physical moments; the feedback
+  // orchestrator (feedback/encounter-feedback.ts) turns each into its
+  // sound + shake + dust stinger, and the future voice-in-the-deep can
+  // notice a threshold being sealed on the same stream. Carry the world
+  // position so subscribers can place positional audio + effects.
+  | { type: 'gate:slam'; x: number; y: number; z: number }     // grate hit the floor
+  | { type: 'gate:raise'; x: number; y: number; z: number }    // winch began lifting it
+  | { type: 'gate:settle'; x: number; y: number; z: number }   // grate reached the top
   | { type: 'xp:absorbed' }
   | { type: 'gold:absorbed' }
   | { type: 'level:up'; level: number }

@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import type { SubjectAnimator } from './animate';
 import { spawnShatterBurst, tickShatterBurst, clearShatterBurst } from '../effects/shatter-burst';
 import { spawnBloodBurst, tickBloodBurst, clearBloodBurst } from '../effects/blood-burst';
+import { spawnDustPuff, tickDustPuff, clearDustPuff } from '../effects/dust-puff';
 import { spawnXpWisps, tickXpWisps, clearXpWisps } from '../effects/xp-wisps';
 import { spawnGoldCoins, tickGoldCoins, clearGoldCoins } from '../effects/gold-coins';
 import { spawnAoeTelegraph } from '../effects/aoe-telegraph';
@@ -61,6 +62,13 @@ export const EFFECT_DEMOS: EffectDemo[] = [
     },
   },
   {
+    id: 'fx-dust-puff', label: 'dust puff', radius: 1.4, el: 14,
+    start(root) {
+      spawnDustPuff(root, 0, 0.1, 0, { count: 12, spread: 1.1, size: 0.5, rise: 1.1, life: 0.8 });
+      return { ...ticked(8, 0.9, tickDustPuff), label: 'dust · gate slam' };
+    },
+  },
+  {
     id: 'fx-xp-wisps', label: 'xp wisps', radius: 1.6, el: 10,
     start(root) {
       spawnXpWisps(root, new THREE.Vector3(0, 0.5, 0), 12);
@@ -105,6 +113,7 @@ export function effectDemo(id: string): EffectDemo | undefined {
 export function clearAllEffects(): void {
   clearShatterBurst();
   clearBloodBurst();
+  clearDustPuff();
   clearXpWisps();
   clearGoldCoins();
 }

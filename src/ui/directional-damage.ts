@@ -1,5 +1,5 @@
 import type { EntityId } from '../ecs/types';
-import { getActiveLevel } from '../level/loader';
+import { getActiveLevel } from '../level/active-level';
 import { getCameraYaw, getCameraGroundPos } from '../controls/camera';
 
 // Directional damage indicator — a red bloom that flares at the SCREEN EDGE

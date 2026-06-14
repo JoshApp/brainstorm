@@ -5,7 +5,7 @@ import type { StyleMaterials } from '../style/materials';
 import type { WalkableRegion, WallSegment } from '../level/walkable';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
-import { on as onEvent } from '../broadcast/event-bus';
+import { on as onEvent, emit } from '../broadcast/event-bus';
 import { playChestOpen, playImpact } from '../audio/sfx';
 import { hasEncounter, isEncounterComplete, activateEncounter, onEncounterActivated, onEncounterComplete, roomClearEncounterId } from '../encounters/registry';
 import { arenaEncounterId } from '../level/arena-waves';
@@ -190,7 +190,10 @@ export function spawnDoor(
     state = 'closing';
     closeTimer = 0;
     walkable.addWall(wallSeg);
-    playImpact(interactable.position);
+    // A gate's heavy stinger lands when it HITS THE FLOOR (see the closing
+    // branch below), not here at the release. A hinged panel slams effectively
+    // instantly, so it keeps its clap at the start.
+    if (!isGate) playImpact(interactable.position);
     thresholdMat.color.setHex(0xb04030);
     thresholdMat.opacity = 0.75;
   }
@@ -252,6 +255,12 @@ export function spawnDoor(
           setSealedPose();
           thresholdMat.color.setHex(0x405060);
           thresholdMat.opacity = 0.35;
+          // The grate is on the stone — fire the slam stinger NOW (the
+          // feedback orchestrator owns sound + shake + dust off this event).
+          if (isGate) {
+            const p = interactable.position;
+            emit({ type: 'gate:slam', x: p.x, y: p.y, z: p.z });
+          }
         }
       }
 
@@ -265,7 +274,12 @@ export function spawnDoor(
           openTimer = 0;
           interactable.promptLabel = '';
           walkable.removeWall(wallSeg);   // passable as it rises
-          playChestOpen();                // winch creak
+          // The winch begins — the gentle inverse of the slam (grind + soft
+          // haptic, no shake). Feedback orchestrator handles it off this event.
+          {
+            const p = interactable.position;
+            emit({ type: 'gate:raise', x: p.x, y: p.y, z: p.z });
+          }
           thresholdMat.color.setHex(0x8c5a30);
           thresholdMat.opacity = 0.6;
         } else {
@@ -287,6 +301,12 @@ export function spawnDoor(
         if (openTimer >= dur) {
           state = 'open';
           setOpenPose();
+          // The grate reached the lintel — a soft settle (small shake + dust
+          // wisp at the top, no sound). Threshold cleared, agency returned.
+          if (isGate) {
+            const p = interactable.position;
+            emit({ type: 'gate:settle', x: p.x, y: p.y, z: p.z });
+          }
         }
       }
     },

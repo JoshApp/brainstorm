@@ -17,7 +17,6 @@
 //   - When the harness is active, NEVER auto-apply — the CLI driver
 //     must call applyUpdate() between episodes.
 
-import { registerSW } from 'virtual:pwa-register';
 import { isHarnessPaused } from './harness/pause';
 import { getSettings } from './settings/settings';
 
@@ -47,11 +46,20 @@ const listeners: Array<(s: UpdateStatus) => void> = [];
 
 export function setupPwaAutoUpdate(): void {
   if (!('serviceWorker' in navigator)) return;
+  // Lazy-load the Vite PWA virtual module. A STATIC `import ... from
+  // 'virtual:pwa-register'` poisons EVERY test whose import graph reaches this
+  // file — tsx can't resolve the `virtual:` scheme at module-init, so a combat
+  // module that transitively touches it crashes its own unit test. Importing
+  // it dynamically (resolved only here, in the browser, at boot — never in
+  // tests) keeps this module loadable everywhere; Vite still resolves the
+  // virtual id for the dynamic import in the real build.
+  void import('virtual:pwa-register').then(({ registerSW }) => doRegisterSW(registerSW));
+}
 
-  // registerSW from virtual:pwa-register: registers the SW and returns
-  // a function that triggers SKIP_WAITING + auto-reload on call. We
-  // only call updateSW(true) when WE decide a moment is safe (see
-  // applyUpdate / maybeApplyUpdateSilently).
+function doRegisterSW(registerSW: typeof import('virtual:pwa-register').registerSW): void {
+  // registerSW: registers the SW and returns a function that triggers
+  // SKIP_WAITING + auto-reload on call. We only call updateSW(true) when WE
+  // decide a moment is safe (see applyUpdate / maybeApplyUpdateSilently).
   //
   // CRITICAL: registerSW does NOT poll for new SWs on its own. Without
   // an explicit periodic update() call, the browser only checks for

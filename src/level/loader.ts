@@ -26,6 +26,8 @@ import { clearAlerts } from '../mobs/alerts';
 import { clearDriftingMotes } from '../effects/drifting-motes';
 import { clearShatterBurst } from '../effects/shatter-burst';
 import { clearBloodBurst } from '../effects/blood-burst';
+import { clearDustPuff } from '../effects/dust-puff';
+import { getActiveLevel, setActiveLevel } from './active-level';
 import { clearAllOutlines } from '../interactables/outline';
 import { resetDarkAdaptation } from '../scene/dark-adaptation';
 import { clearThresholdDrafts } from '../scene/threshold-draft';
@@ -52,7 +54,6 @@ let camera: THREE.PerspectiveCamera | null = null;
 let levels: Record<string, LevelSpec> = {};
 let onLoaded: ((level: LiveLevel) => void) | null = null;
 
-let activeLevel: LiveLevel | null = null;
 let pendingLoadId: string | null = null;
 let currentDepth = 1;
 
@@ -83,11 +84,6 @@ export function initLevelLoader(cfg: LoaderConfig) {
   levels = cfg.levels;
   onLoaded = cfg.onLoaded;
   generate = cfg.generate;
-}
-
-/** Get the currently-active level. Null before the first load. */
-export function getActiveLevel(): LiveLevel | null {
-  return activeLevel;
 }
 
 export function getCurrentDepth(): number {
@@ -148,7 +144,8 @@ export function tickPendingLoad() {
   // Tear down current level if any. Player + UI + inventory persist.
   // Also retire any in-flight projectiles + soul wisps so they don't
   // survive into the new floor's scene graph.
-  if (activeLevel) {
+  const prevLevel = getActiveLevel();
+  if (prevLevel) {
     clearProjectiles();
     clearHazardFields();
     clearXpWisps();
@@ -159,11 +156,12 @@ export function tickPendingLoad() {
     clearDriftingMotes();
     clearShatterBurst();
     clearBloodBurst();
+    clearDustPuff();
     clearAllOutlines();
     resetDarkAdaptation();
     clearThresholdDrafts();
-    activeLevel.teardown();
-    activeLevel = null;
+    prevLevel.teardown();
+    setActiveLevel(null);
   }
 
   // Advance currentDepth BEFORE buildLevel so the level:loaded event
@@ -193,7 +191,7 @@ export function tickPendingLoad() {
   cancelFogWalkthrough();   // never carry a half-played gate walk into a new level
   // Build the new level into the same scene.
   const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));
-  activeLevel = level;
+  setActiveLevel(level);
 
   // Reposition player to new spawn — and resolve against the walkable
   // region. Authored spawns are normally fine, but if a designer (or

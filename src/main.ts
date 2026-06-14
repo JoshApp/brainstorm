@@ -31,6 +31,7 @@ import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setMasterBrightness, setWickLift } from './style/render-target';
+import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
 import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
@@ -231,6 +232,10 @@ scene.add(ambient);
 installBandedLighting(getSettings().bandedLighting);
 const materials = buildMaterials(renderer);
 initRenderPipeline(renderer);
+// Encounter feedback orchestrator — subscribes to gate/encounter lifecycle
+// events and fires their sound + shake + dust stingers (dust attaches to the
+// persistent scene root, cleared per level alongside the other effect pools).
+initEncounterFeedback(scene);
 setSurfaceAOStrength(getSettings().aoStrength);
 setSurfaceDetailEnabled(getSettings().surfaceDetail);
 setMasterBrightness(getSettings().brightness);

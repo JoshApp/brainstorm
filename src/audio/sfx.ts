@@ -324,6 +324,118 @@ export function playImpact(pos?: Vec3Sound) {
   crack.stop(now + crackDur);
 }
 
+/** Gate SLAM — an iron portcullis driving into stone. The heavy cousin of
+ *  playImpact: a deep boom + sub thud for the weight, an iron clang for the
+ *  bars, and a noise burst for the grit/dust. Routed through the carrying
+ *  falloff so it's heard across the whole arena (a threshold being sealed). */
+export function playGateSlam(pos?: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const out: AudioNode = pos ? createPositionalChain(pos, 0.55, VOCAL_FALLOFF) : masterGain;
+
+  // Body boom — low sine punching down, the gate's mass landing.
+  const body = c.createOscillator();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(190, now);
+  body.frequency.exponentialRampToValueAtTime(52, now + 0.16);
+  const bodyGain = c.createGain();
+  bodyGain.gain.setValueAtTime(0.0001, now);
+  bodyGain.gain.exponentialRampToValueAtTime(1.0, now + 0.004);
+  bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+  body.connect(bodyGain).connect(out);
+  body.start(now);
+  body.stop(now + 0.36);
+
+  // Sub thud — the felt-in-the-floor low end (separate so it lingers).
+  const sub = c.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(70, now);
+  sub.frequency.exponentialRampToValueAtTime(34, now + 0.30);
+  const subGain = c.createGain();
+  subGain.gain.setValueAtTime(0.0001, now);
+  subGain.gain.exponentialRampToValueAtTime(0.7, now + 0.01);
+  subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+  sub.connect(subGain).connect(out);
+  sub.start(now);
+  sub.stop(now + 0.52);
+
+  // Iron clang — a bandpassed saw, the bars ringing as they bottom out.
+  const clang = c.createOscillator();
+  clang.type = 'sawtooth';
+  clang.frequency.setValueAtTime(330, now);
+  clang.frequency.exponentialRampToValueAtTime(150, now + 0.18);
+  const clangBp = c.createBiquadFilter();
+  clangBp.type = 'bandpass';
+  clangBp.frequency.value = 700;
+  clangBp.Q.value = 1.4;
+  const clangGain = c.createGain();
+  clangGain.gain.setValueAtTime(0.0001, now);
+  clangGain.gain.exponentialRampToValueAtTime(0.5, now + 0.006);
+  clangGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+  clang.connect(clangBp).connect(clangGain).connect(out);
+  clang.start(now);
+  clang.stop(now + 0.30);
+
+  // Grit — a short noise burst, the dust + stone debris kicked up.
+  const gritDur = 0.14;
+  const gritBuf = c.createBuffer(1, Math.floor(c.sampleRate * gritDur), c.sampleRate);
+  const gritData = gritBuf.getChannelData(0);
+  for (let i = 0; i < gritData.length; i++) gritData[i] = (Math.random() * 2 - 1) * (1 - i / gritData.length);
+  const grit = c.createBufferSource();
+  grit.buffer = gritBuf;
+  const gritBp = c.createBiquadFilter();
+  gritBp.type = 'bandpass';
+  gritBp.frequency.value = 1100;
+  const gritGain = c.createGain();
+  gritGain.gain.value = 0.35;
+  grit.connect(gritBp).connect(gritGain).connect(out);
+  grit.start(now);
+  grit.stop(now + gritDur);
+}
+
+/** Gate RAISE — the winch dragging the grate back up. The slam's gentle
+ *  inverse: no transient, a low ratcheting grind with a slow tremolo and a
+ *  faint upward drift (the mechanism completing, relief returning). Quieter +
+ *  longer than the slam — release, not impact. */
+export function playGateRaise(pos?: Vec3Sound) {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const dur = 0.95;
+  const out: AudioNode = pos ? createPositionalChain(pos, 0.4, VOCAL_FALLOFF) : masterGain;
+
+  // Grind — a low saw drifting slightly UP (the winch turning), lowpassed so
+  // it's a churn not a buzz.
+  const grind = c.createOscillator();
+  grind.type = 'sawtooth';
+  grind.frequency.setValueAtTime(82, now);
+  grind.frequency.linearRampToValueAtTime(104, now + dur);
+  const grindLp = c.createBiquadFilter();
+  grindLp.type = 'lowpass';
+  grindLp.frequency.value = 520;
+  const grindGain = c.createGain();
+  grindGain.gain.setValueAtTime(0.0001, now);
+  grindGain.gain.linearRampToValueAtTime(0.34, now + 0.12);
+  grindGain.gain.setValueAtTime(0.34, now + dur - 0.2);
+  grindGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+  // Ratchet tremolo — an LFO chops the grind gain so it reads as chain links
+  // clicking over a cog rather than a sustained tone.
+  const lfo = c.createOscillator();
+  lfo.type = 'square';
+  lfo.frequency.value = 13;
+  const lfoDepth = c.createGain();
+  lfoDepth.gain.value = 0.16;
+  lfo.connect(lfoDepth).connect(grindGain.gain);
+
+  grind.connect(grindLp).connect(grindGain).connect(out);
+  grind.start(now);
+  grind.stop(now + dur);
+  lfo.start(now);
+  lfo.stop(now + dur);
+}
+
 /** Player getting hurt — a short pained grunt: low oscillator with vibrato + brief noise. */
 export function playPlayerHurt() {
   const c = ensureCtx();

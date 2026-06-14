@@ -13,7 +13,7 @@ import { RARITY_COLORS, type ItemSpec, type Rarity } from '../content/items';
 import { playLootLand, playPickupChime, playDenied } from '../audio/sfx';
 import { flashPickupGlow } from '../ui/vignette';
 import { emit } from '../broadcast/event-bus';
-import { getActiveLevel } from '../level/loader';
+import { getActiveLevel } from '../level/active-level';
 import { pooledPlane, pooledRing } from '../scene/geometry-pool';
 
 // Rarity → audio "preciousness" index. Mundane is dull, fabled is bright.
