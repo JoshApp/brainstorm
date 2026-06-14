@@ -139,9 +139,14 @@ export function rollLoot(ctx: LootContext, rand: () => number): ItemSpec | null 
  * at this depth (deterministic given `rand`).
  */
 export function rollCursedItem(depth: number, rand: () => number): ItemSpec | null {
-  const item = pickFromBand(lootIndex().cursed, depth, rand);
-  if (item) return item;
-  // No cursed item gated in yet this shallow — relax the depth gate so an
-  // early shrouded relic still resolves to *something* cursed.
-  return pickFromBand(lootIndex().cursed.map((e) => ({ ...e, minDepth: 1 })), depth, rand);
+  // The cursed pool is the DEDICATED gamble (blood altars, shrouded relics) —
+  // variety is the point, and most cursed rings gate to depth 3-4, so a shallow
+  // altar would otherwise only ever offer ring-of-frenzy / ring-of-marrow ("it
+  // always gives the same ring"). Soften the gate by a LOOKAHEAD so several
+  // cursed items are in play early — you can pull a deeper curse sooner, the
+  // risk/reward fantasy (you paid blood for it). Weight still applies, so the
+  // deepest stay rarer.
+  const CURSED_LOOKAHEAD = 2;
+  const band = lootIndex().cursed.map((e) => ({ ...e, minDepth: Math.max(1, e.minDepth - CURSED_LOOKAHEAD) }));
+  return pickFromBand(band, depth, rand);
 }

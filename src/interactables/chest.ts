@@ -6,9 +6,15 @@ import type { ItemSpec } from '../content/items';
 import { registerInteractable, unregisterInteractable } from './system';
 import { createPickup } from './pickup';
 import { playChestOpen } from '../audio/sfx';
+import { spawnGoldCoins } from '../effects/gold-coins';
 import { recordChestOpened } from '../state/character';
 
 export type ChestTier = 'supply' | 'iron' | 'boss';
+
+// Gold a chest spews when it rolled no item (the "coin cache" fallback) — a
+// satisfying bundle, scaled by tier. The gold-coins effect bundles these into
+// a few chunky coins, so the count reads as "a small fortune," not litter.
+const COIN_CACHE_GOLD: Record<ChestTier, number> = { supply: 14, iron: 26, boss: 48 };
 
 const TIER_MODEL = {
   supply: CHEST,
@@ -128,6 +134,13 @@ export function spawnChest(
             const worldPos = new THREE.Vector3();
             lootSpawnSlot.getWorldPosition(worldPos);
             createPickup(scene, worldPos, loot);
+          } else if (lootSpawnSlot) {
+            // No item rolled — don't gape empty. It's a COIN CACHE: spew a
+            // bundle of coins (the gold-coins effect arcs them out + they home
+            // to you). Scaled by tier so a boss chest pays more.
+            const worldPos = new THREE.Vector3();
+            lootSpawnSlot.getWorldPosition(worldPos);
+            spawnGoldCoins(scene, worldPos, COIN_CACHE_GOLD[tier]);
           }
         }
       }

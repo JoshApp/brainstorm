@@ -1468,6 +1468,69 @@ export function playPickupChime(rarityIndex: number = 0) {
   }
 }
 
+/** Coin absorbed — a short, dry metallic CLINK. `cascade` (0+) steps the pitch
+ *  up a semitone per coin so a stream of coins reads as a pleasant rising
+ *  cascade, not a flat machine-gun. Brighter than the loot toll (gold is a
+ *  small bright reward) but quick + quiet so a big haul doesn't overwhelm. */
+export function playCoin(cascade: number = 0): void {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const semis = Math.min(cascade, 12);                 // cap the climb at an octave
+  const bend = Math.pow(2, semis / 12);
+  // Two close inharmonic partials = struck metal, not a tone. Fast decay.
+  for (const [freq, amp, dur] of [[2300, 0.085, 0.10], [3480, 0.05, 0.07]] as const) {
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq * bend, now);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(amp, now + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0006, now + dur);
+    osc.connect(g).connect(masterGain);
+    osc.start(now); osc.stop(now + dur + 0.02);
+  }
+}
+
+/** Level up — a restrained RESONANT SWELL (meta-progression feedback, the one
+ *  reward UX that's allowed a little warmth — but on-brand: no bright fanfare).
+ *  A low sub blooms under a rising bare-fifth bell pair, lowpassed so it reads
+ *  as struck resonance "you've grown," not a synth jingle. */
+export function playLevelUp(): void {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 2200; lp.Q.value = 0.7;
+  lp.connect(masterGain);
+  // Rising bell — root, then up a fifth a beat later (a hollow, ascending
+  // "open" interval; not a major triad). Each blooms + rings.
+  const root = 262;   // C4-ish, low/warm
+  const steps: Array<[number, number]> = [[root, 0.0], [root * 1.5, 0.12]];
+  for (const [freq, delay] of steps) {
+    const t = now + delay;
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0006, t + 0.7);
+    osc.connect(g).connect(lp);
+    osc.start(t); osc.stop(t + 0.75);
+  }
+  // Sub swell underneath for body — the "weight" of the level.
+  const sub = c.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.value = root * 0.5;
+  const sg = c.createGain();
+  sg.gain.setValueAtTime(0.0001, now);
+  sg.gain.exponentialRampToValueAtTime(0.18, now + 0.16);
+  sg.gain.exponentialRampToValueAtTime(0.0006, now + 0.85);
+  sub.connect(sg).connect(lp);
+  sub.start(now); sub.stop(now + 0.9);
+}
+
 /** Chest opening — creaky wood hinge: pitch-rising filtered noise. */
 export function playChestOpen() {
   const c = ensureCtx();

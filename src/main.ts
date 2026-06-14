@@ -29,6 +29,7 @@ import { bossEncounterDebug } from './mobs/boss-encounter';
 import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthrough';
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
+import { initRewardAudio } from './audio/reward-audio';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setMasterBrightness, setWickLift } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
@@ -597,6 +598,8 @@ initAchievements();
 // Append-only event log — Phase-4 (async multiplayer) foundation. Records
 // bus events now; Phase 4 swaps the sink for a SpacetimeDB writer.
 initEventLog();
+// Reward audio — coin cascade + level-up swell off the bus (gold:absorbed / level:up).
+initRewardAudio();
 
 // --- Input ---
 // Attack is now triggered by tapping anywhere on the right half of the
