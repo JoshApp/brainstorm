@@ -42,7 +42,12 @@ const DEFAULTS: Record<BindableAction, string> = {
   moveBack:    'KeyS',
   moveLeft:    'KeyA',
   moveRight:   'KeyD',
-  attack:      'Space',
+  // Attack is MOUSE-ONLY on PC (left-click, hold to charge) — the keyboard
+  // binding defaults to unbound. '' = no key; actionForCode never matches a
+  // real keydown against it. A player can still bind a key in settings if they
+  // want one. (Space used to default here; it doubled the left-click and was
+  // the deflect-leak deadlock's tell — Space kept attacking when clicks jammed.)
+  attack:      '',
   interact:    'KeyE',
   inventory:   'KeyI',
   quickUse:    'KeyQ',
@@ -60,6 +65,10 @@ function load(): Record<BindableAction, string> {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw) as Partial<Record<BindableAction, string>>;
+    // Migration: attack no longer defaults to Space (mouse-only on PC). Drop a
+    // saved Space-attack so it falls back to the new unbound default; a player
+    // who deliberately rebound attack to some other key keeps it.
+    if (parsed.attack === 'Space') delete parsed.attack;
     // Merge over defaults so a save from an older build (missing a
     // newer action) still resolves every verb.
     return { ...DEFAULTS, ...parsed };
@@ -149,6 +158,7 @@ const CODE_LABELS: Record<string, string> = {
 };
 
 export function labelForCode(code: string): string {
+  if (!code) return '—';                                  // unbound slot
   if (CODE_LABELS[code]) return CODE_LABELS[code];
   if (code.startsWith('Key')) return code.slice(3);       // KeyW → W
   if (code.startsWith('Digit')) return code.slice(5);     // Digit1 → 1

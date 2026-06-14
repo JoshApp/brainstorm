@@ -1,5 +1,7 @@
 // Desktop input scheme: WASD to move, mouse to look (pointer lock),
-// Space to attack, E to interact, ESC to release pointer lock.
+// left-click to attack (hold to charge), E to interact, ESC to release
+// pointer lock. Attack defaults to mouse-only — the keyboard attack slot is
+// unbound by default (a player can still bind one in settings).
 //
 // All action keys (and WASD) are REBINDABLE — see controls/keybindings.ts.
 // Every keydown resolves through actionForCode(e.code); movement polls
