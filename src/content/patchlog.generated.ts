@@ -8,6 +8,15 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Every blade now reaches exactly as far as it looks. The dungeon measured each one against its own edge.",
+        "area": [
+          "combat",
+          "weapons",
+          "content"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "The reaper's blade is a proper crescent now, the chain hangs and lashes the right way, and the dagger's two cuts finally differ. Old iron, re-forged.",
         "area": [
@@ -380,13 +389,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Parry lands the instant the blade does — the thing reels back off your steel, no waiting on the wind-up. Crisp, or you eat it.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Parry a strike and the thing reels — its whole body snaps back off your steel. The deal it offered, declined.",
         "area": [
           "combat"
         ]
