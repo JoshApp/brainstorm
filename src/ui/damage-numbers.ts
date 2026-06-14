@@ -159,7 +159,7 @@ export function spawnStatusText(
     glow: HALO,
     scaleStart: 1.15,
     pop: 'ease-out',
-    vy: 0.9,
+    vy: 0.5,
     lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.5,
     jitter: 6,
     weight: '700',
@@ -190,7 +190,7 @@ export function spawnDamageNumber(
       glow: `${HALO}, 0 0 16px rgba(150, 0, 0, 0.55)`,
       scaleStart: 1.5,
       pop: 'ease-out',
-      vy: 1.0,
+      vy: 0.6,
       lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.6,
       jitter: 10,
       weight: '700',
@@ -207,7 +207,7 @@ export function spawnDamageNumber(
       glow: `${HALO}, 0 0 12px rgba(210, 150, 40, 0.5)`,
       scaleStart: 1.3,
       pop: 'ease-out',
-      vy: 1.1,
+      vy: 0.7,
       lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.45,
       jitter: 12,
       weight: '700',
@@ -217,14 +217,14 @@ export function spawnDamageNumber(
   }
   if (graze) {
     floatLabel(_scratch, String(amount), {
-      size: sizeFor(amount, 19, 27, 16),
+      size: sizeFor(amount, 22, 30, 16),
       fill: 'rgba(186, 192, 196, 0.82)',
       strokeColor: 'rgba(4, 6, 8, 0.85)',
       strokePx: 1.4,
       glow: HALO,
       scaleStart: 0.92,
       pop: 'ease-out',
-      vy: 1.1,
+      vy: 0.7,
       lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.1,
       jitter: 18,
       weight: '600',
@@ -234,14 +234,14 @@ export function spawnDamageNumber(
   }
   // Regular chip hit — bone, damage-scaled, calm.
   floatLabel(_scratch, String(amount), {
-    size: sizeFor(amount, 24, 40, 16),
+    size: sizeFor(amount, 28, 46, 16),
     fill: 'rgba(235, 224, 200, 0.97)',
     strokeColor: 'rgba(6, 4, 2, 0.9)',
     strokePx: 1.8,
     glow: HALO,
     scaleStart: 0.9,
     pop: 'cubic-bezier(0.2, 1.2, 0.35, 1)',
-    vy: 1.1,
+    vy: 0.6,
     lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.25,
     jitter: 14,
     weight: '700',
@@ -262,14 +262,14 @@ export function initDotDamageNumbers(camera: THREE.Camera): void {
     if (!cam) return;
     _dotPos.set(e.x, e.y + HEAD_LIFT, e.z);
     floatLabel(_dotPos, String(e.amount), {
-      size: sizeFor(e.amount, 20, 30, 14),
+      size: sizeFor(e.amount, 22, 32, 14),
       fill: dotTint(e.color, 0.95),
       strokeColor: 'rgba(6, 4, 2, 0.88)',
       strokePx: 1.5,
       glow: HALO,
       scaleStart: 0.92,
       pop: 'ease-out',
-      vy: 1.0,
+      vy: 0.7,
       lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.1,
       jitter: 16,
       weight: '600',

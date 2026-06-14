@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The marks linger in the air a beat longer, and the ordinary blows read a little bolder. The dungeon's bookkeeping, easier on the eye.",
+        "area": [
+          "combat",
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Bleed and venom no longer gut you in seconds — the rot wears you down now instead of dropping you from a single bite.",
         "area": [
           "combat",
@@ -393,14 +401,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The doors behind you exist on every floor now, not only in the rehearsal room. Turn around and check.",
-        "area": [
-          "atmosphere",
-          "level"
         ]
       }
     ]
