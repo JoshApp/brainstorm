@@ -514,10 +514,13 @@ export const CONFIG = {
                                       //   enough to track a circling player with no visible lag (so
                                       //   a prowler doesn't end up facing backwards), but not an
                                       //   instant snap — big reorients still carry a little weight.
-    WINDUP_TURN_RATE: 2.5,            // rad/s — turn speed once COMMITTED to a swing (winding/
-                                      //   striking). Slow: a launched strike can't re-aim, so a
-                                      //   strafing player can sidestep it — the read that makes
-                                      //   positioning matter.
+    WINDUP_AIM_RATE: 9.0,             // rad/s — turn speed at the START of a wind-up (it snaps the
+                                      //   aim onto you so a swing never launches facing the wrong
+                                      //   way), RAMPED to 0 by the moment of commit (so a late juke
+                                      //   slips it). Strike + recovery are then fully LOCKED (rate 0
+                                      //   in faceTarget) — circle out of the arc to whiff it and
+                                      //   punish the locked recovery. This is the commit/positioning
+                                      //   read; tune the start rate down for heavier, slower aimers.
     SEARCH_DURATION: 3.0,             // s — search at last-known position before giving up
     IDLE_SCAN_INTERVAL_MIN: 3.0,      // s — base gap between idle gaze changes
     IDLE_SCAN_INTERVAL_JITTER: 2.5,   // s — + up to this (desyncs a swarm)

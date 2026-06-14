@@ -189,6 +189,9 @@ export interface Enemy extends Damageable {
   maxHp: number;
   /** Current AI state machine phase. */
   aiState: EnemyState;
+  /** Current body yaw (container.rotation.y) — read-only, for debug facing
+   *  readouts (e.g. __mobPack's faceErr). */
+  readonly yaw: number;
   collisionRadius: number;
   /** Combat hit radius — swings reach the body's surface this far from
    *  `position`. Default 0 (point). See Damageable.hitRadius. */
@@ -1138,11 +1141,27 @@ export function createEnemy(
     // Shortest signed angle from current → desired, wrapped to [-π, π].
     let diff = desired - container.rotation.y;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    // Track FAST while chasing (no visible lag → a prowler keeps watching you,
-    // never ends up facing backwards), but SLOW once committed to a swing so a
-    // launched strike can't re-aim onto a strafing player.
-    const committed = state === 'winding' || state === 'striking';
-    const rate = committed ? CONFIG.ENEMY_AI.WINDUP_TURN_RATE : CONFIG.ENEMY_AI.TURN_RATE;
+    // Turn rate by phase — this is the whole "commit" feel:
+    //   • WINDING: AIM. Turn onto the player fast at the start, then RAMP the
+    //     rate toward zero as the swing commits — so the attack snaps onto you
+    //     early (no more "winds up facing the wrong way"), but a LATE juke slips
+    //     the aim. The ramp is what lets you bait-and-circle a telegraph.
+    //   • STRIKING / RECOVERING: LOCKED (rate 0). The swing goes where it
+    //     committed; circle out of the arc to make it whiff, and the locked
+    //     recovery is your window to punish from the side/back. (Previously
+    //     recovery used the FAST chase rate, which snapped the mob back onto you
+    //     instantly and erased the punish window.)
+    //   • Everything else (chasing/alerted/searching): track FAST so a prowler
+    //     keeps watching you and never ends up facing backwards.
+    let rate: number;
+    if (state === 'winding') {
+      const prog = currentWindupTime > 0 ? Math.min(1, phaseTimer / currentWindupTime) : 1;
+      rate = CONFIG.ENEMY_AI.WINDUP_AIM_RATE * (1 - prog);
+    } else if (state === 'striking' || state === 'recovering') {
+      rate = 0;
+    } else {
+      rate = CONFIG.ENEMY_AI.TURN_RATE;
+    }
     const maxStep = rate * dt;
     container.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
   }
@@ -2435,6 +2454,10 @@ export function createEnemy(
     },
     get aiState() {
       return state;
+    },
+    /** DEBUG: current body yaw (container.rotation.y) for facing readouts. */
+    get yaw() {
+      return container.rotation.y;
     },
     // Finisher window: ONLY a poise-broken (STAGGERED) enemy is executable.
     // The old low-HP "chip execute" path is gone — execution is now purely the

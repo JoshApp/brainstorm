@@ -952,10 +952,18 @@ if (import.meta.env.DEV) {
     const px = camera.position.x, pz = camera.position.z;
     const mobs = lvl.enemies.filter((e) => e.alive).map((e) => {
       const dx = e.position.x - px, dz = e.position.z - pz;
+      const dist = Math.hypot(dx, dz) || 1;
+      // Facing error: angle between the model's forward (-Z → (-sinθ,-cosθ))
+      // and the unit vector TOWARD the player. 0° = looking at you, 180° = back
+      // turned. This is the "half face away" measurement.
+      const yaw = (e as unknown as { yaw: number }).yaw;
+      const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+      const tox = -dx / dist, toz = -dz / dist;
+      const faceErr = Math.round(Math.acos(Math.max(-1, Math.min(1, fx * tox + fz * toz))) * 180 / Math.PI);
       return {
         kind: e.kind, state: e.aiState,
-        dist: Math.round(Math.hypot(dx, dz) * 100) / 100,
-        ang: Math.round(Math.atan2(dx, dz) * 100) / 100,   // bearing, radians
+        dist: Math.round(dist * 100) / 100,
+        faceErr,   // degrees off from looking at the player
       };
     });
     return { tokens: packTokenCount(), mobs };
