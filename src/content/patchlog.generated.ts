@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Damage numbers hit like stamps now — bigger blows brand bigger, crits flare gold, the killing red is loud. The dungeon makes sure you see the tally.",
+        "area": [
+          "combat",
+          "ui"
+        ]
+      },
+      {
         "tag": "add",
         "text": "Catch a blow on the parry and steel cracks on steel — a spark bursts where the strike dies.",
         "area": [
@@ -397,14 +405,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The way down is stairs now, as the architect intended. Low tunnels stop leaking void over their lintels.",
-        "area": [
-          "level",
-          "atmosphere"
         ]
       }
     ]
