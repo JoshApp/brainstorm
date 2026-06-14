@@ -27,10 +27,25 @@ let xpLevelEl: HTMLDivElement | null = null;
 let xpFractionEl: HTMLDivElement | null = null;
 
 let levelToast: HTMLDivElement | null = null;
+let goldTickEl: HTMLDivElement | null = null;   // floating "+N" that accumulates across a coin stream
+let levelBloomEl: HTMLDivElement | null = null; // warm radial flash on level-up
 
 let xpPulseTimer = 0;
 let goldPulseTimer = 0;
 let levelPulseTimer = 0;
+
+// Gold "+N" tick state. Coins absorb one-by-one (the cascade), so we ACCUMULATE
+// the gain into a single floating number that holds while the stream lands,
+// then floats up + fades once it stops — reads with the rising coin sound
+// instead of flashing per coin.
+let prevGold = 0;
+let goldSeeded = false;   // first goldStore bind seeds prevGold without a spurious tick (load / continue-run)
+let goldTickAmount = 0;
+let goldTickLeft = 0;
+const GOLD_TICK_HOLD = 0.55;   // s — keeps showing/growing while coins land
+const GOLD_TICK_FADE = 0.45;   // s — rise + fade tail after the last coin
+let levelBloomLeft = 0;
+const LEVEL_BLOOM_DUR = 0.7;   // matches the level-up swell
 
 export function createXpGoldHud(): void {
   if (xpContainer) return;
@@ -58,6 +73,35 @@ export function createXpGoldHud(): void {
   } as Partial<CSSStyleDeclaration>);
   goldEl = goldContainer;   // single line — alias
   document.body.appendChild(goldContainer);
+
+  // Floating "+N" gold tick — sits just under the gold counter, rises + fades.
+  goldTickEl = document.createElement('div');
+  Object.assign(goldTickEl.style, {
+    position: 'fixed',
+    right: 'calc(16px + env(safe-area-inset-right, 0px))',
+    top: 'calc(94px + env(safe-area-inset-top, 0px))',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: '13px',
+    fontWeight: '700',
+    letterSpacing: '0.08em',
+    color: 'rgba(255, 224, 150, 0.95)',
+    textShadow: '0 0 7px rgba(255,180,70,0.7), 0 1px 2px rgba(0,0,0,0.9)',
+    pointerEvents: 'none',
+    zIndex: '10',
+    opacity: '0',
+    userSelect: 'none', WebkitUserSelect: 'none',
+  } as Partial<CSSStyleDeclaration>);
+  document.body.appendChild(goldTickEl);
+
+  // Level-up warm bloom — a gentle gold radial flash that punctuates the swell
+  // (the centred toast carries the words; this gives it a pulse of light).
+  levelBloomEl = document.createElement('div');
+  Object.assign(levelBloomEl.style, {
+    position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '19',
+    opacity: '0', willChange: 'opacity',
+    background: 'radial-gradient(ellipse at center, rgba(255,210,120,0.28) 0%, rgba(220,150,60,0.10) 40%, transparent 68%)',
+  } as Partial<CSSStyleDeclaration>);
+  document.body.appendChild(levelBloomEl);
 
   // ── XP BAR (very bottom edge, full width, slim) ────────────────
   // Spans the entire bottom edge of the screen as a thin bar — the
@@ -180,6 +224,17 @@ export function createXpGoldHud(): void {
   bind(goldStore, (gold) => {
     if (!goldEl) return;
     goldEl.innerHTML = `${SVG_COIN}${gold}`;
+    // Accumulate the gain into the floating "+N" (held + grown while a coin
+    // stream lands; floats off once it stops). First bind seeds prevGold so a
+    // continue-run's existing gold doesn't fling a spurious "+N" on load.
+    const delta = gold - prevGold;
+    prevGold = gold;
+    if (!goldSeeded) { goldSeeded = true; return; }
+    if (delta > 0 && goldTickEl) {
+      goldTickAmount += delta;
+      goldTickLeft = GOLD_TICK_HOLD + GOLD_TICK_FADE;
+      goldTickEl.textContent = `+${goldTickAmount}`;
+    }
   });
 
   on((e) => {
@@ -187,6 +242,7 @@ export function createXpGoldHud(): void {
     else if (e.type === 'gold:absorbed') goldPulseTimer = 0.22;
     else if (e.type === 'level:up') {
       levelPulseTimer = 0.8;
+      levelBloomLeft = LEVEL_BLOOM_DUR;
       showLevelToast(e.level);
     }
   });
@@ -241,5 +297,31 @@ export function updateXpGoldHud(dt: number): void {
   } else {
     xpLevelEl.style.transform = 'scale(1)';
     xpLevelEl.style.color = 'rgba(220, 240, 255, 0.98)';
+  }
+
+  // Floating "+N" gold tick: holds at rest while coins land (GOLD_TICK_LEFT
+  // keeps resetting above the fade window), then rises + fades over the tail.
+  if (goldTickEl) {
+    if (goldTickLeft > 0) {
+      goldTickLeft -= dt;
+      const fade = Math.max(0, Math.min(1, goldTickLeft / GOLD_TICK_FADE));   // 1 → 0 over the tail
+      goldTickEl.style.opacity = String(fade);
+      goldTickEl.style.transform = `translateY(${-(1 - fade) * 14}px)`;
+      if (goldTickLeft <= 0) goldTickAmount = 0;
+    } else if (goldTickEl.style.opacity !== '0') {
+      goldTickEl.style.opacity = '0';
+      goldTickAmount = 0;
+    }
+  }
+
+  // Level-up bloom — gold radial flash easing out over the swell.
+  if (levelBloomEl) {
+    if (levelBloomLeft > 0) {
+      levelBloomLeft -= dt;
+      const t = Math.max(0, levelBloomLeft / LEVEL_BLOOM_DUR);
+      levelBloomEl.style.opacity = String(t * t);   // quick bloom, soft tail
+    } else if (levelBloomEl.style.opacity !== '0') {
+      levelBloomEl.style.opacity = '0';
+    }
   }
 }
