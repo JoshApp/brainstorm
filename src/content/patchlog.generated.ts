@@ -8,6 +8,22 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "add",
+        "text": "Catch a blow on the parry and steel cracks on steel — a spark bursts where the strike dies.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dead wind up, hang for a beat, then SNAP — strikes hit like a strike now, not a slow reach. Big swings still take their time.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "Cutting a foe down mid-telegraph no longer jams your left hand — light attacks keep landing on click instead of silently turning into parries at nothing.",
         "area": [
@@ -389,22 +405,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Doorway pillars return to their doorways and learn to mean it. The mine timbers were never decorative either.",
-        "area": [
-          "level",
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The mob behind the door now knows the door is closed. It also knows when it opens. Plan accordingly.",
-        "area": [
-          "combat",
-          "level"
         ]
       }
     ]
