@@ -57,6 +57,14 @@ export interface EnemySpec {
   /** Gore multiplier on stamp size + opacity (default 1). Skeletons
    *  barely stain (0.3) — bone does not bleed; it powders. */
   bloodAmount?: number;
+  /** How the corpse leaves. 'collapse' (default for physical) topples to the
+   *  floor then dissolves; 'fade' (default for spectral presence) dissolves in
+   *  place at once, like a ghost. */
+  deathStyle?: 'collapse' | 'fade';
+  /** Joints that can be DISMEMBERED on a killing blow to the matching hurtbox
+   *  zone (e.g. ['head'] → a head-zone kill beheads). The zone id must equal
+   *  the joint name. Omit → no dismemberment. */
+  severable?: string[];
 
   /** Boss flag — drives the Dark Souls-style boss bar + "this is a boss"
    *  treatment (the bar finds the live boss enemy by this). */
@@ -505,6 +513,8 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hp: 3,
     moveSpeed: 1.4,
     attackDamage: 1,
+    severable: ['head'],   // a head-zone kill beheads it
+
     // attackRange = the distance at which the enemy COMMITS to a swing.
     // strikeRange = the distance at which the swing actually LANDS.
     // strikeRange < attackRange means: if the player backs away during the
@@ -1463,6 +1473,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'skeleton',
     bloodColor: 0x8a8274,
     bloodAmount: 0.3,
+    severable: ['head'],   // strike the skull off
     name: 'skeleton',
     hp: 3,
     moveSpeed: 1.5,            // advances steadily (no kite, no preferredRange)

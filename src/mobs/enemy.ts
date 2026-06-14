@@ -295,7 +295,13 @@ export function createEnemy(
   // `built` (group/parts/slots/materials/hitTargets) the same way regardless of
   // archetype, so presentation + animation are archetype-agnostic.
   const creature = buildCreature(spec.creature);        // builds + merges + measures internally
-  const creatureRef: Creature = creature;               // for setJointVisible (part-breaks)
+  const creatureRef: Creature = creature;               // for setJointVisible (part-breaks + dismember)
+  // DEATH STYLE — how the corpse leaves: 'collapse' topples to the floor then
+  // dissolves (physical default); 'fade' dissolves in place immediately (ghosts
+  // / spectral). Authored per enemy; spectral presence defaults to fade.
+  const deathStyle: 'collapse' | 'fade' =
+    spec.deathStyle ?? (spec.presence === 'spectral' ? 'fade' : 'collapse');
+  const _severPos = new THREE.Vector3();   // scratch for dismember gore
   // Creature → BuiltModel shape (joints ARE the slots) so the rest of the
   // module (presentation/animation) consumes it unchanged.
   const built: BuiltModel = {
@@ -868,6 +874,10 @@ export function createEnemy(
   // additive soul wisps drift up + the body lifts. Only when the timer
   // expires does the container leave the scene.
   const DEATH_DURATION = 0.55;
+  // Collapse style: topple to the floor over COLLAPSE_TOPPLE, THEN dissolve
+  // (the dissolve is held back until the body has fallen).
+  const COLLAPSE_TOPPLE = 0.28;
+  const COLLAPSE_DURATION = COLLAPSE_TOPPLE + DEATH_DURATION;
   let deathTimer = -1;   // -1 = not dying; >=0 = ticking
   // Pre-collect every dissolve uniform we need to drive. Walking
   // `built.materials` per-frame would work too, but caching the refs
@@ -1058,6 +1068,24 @@ export function createEnemy(
       // the dissolve — see tickDying. Gold coins drop now as physical
       // floor pickups with bundled value.
       deathTimer = 0;
+      // DISMEMBER on the killing blow — if the struck zone maps to a severable
+      // joint (head zone → 'head' joint), lop that limb's subtree and burst gore
+      // from the stump. The corpse then topples / dissolves without it.
+      const killZoneId = event.hitZoneId;
+      if (killZoneId && spec.severable?.includes(killZoneId)) {
+        creatureRef.setJointVisible(killZoneId, false);
+        const jointObj = built.slots.get(killZoneId);
+        if (jointObj) {
+          jointObj.getWorldPosition(_severPos);
+          const bc = spec.bloodColor ?? 0x5e1210;
+          emitGoreSplash(
+            _severPos.x, _severPos.z, _severPos.y,
+            _severPos.x - lastPlayerXZ.x, _severPos.z - lastPlayerXZ.z,
+            1.3 * (spec.bloodAmount ?? 1), bc,
+            { sizeMul: Math.min(1.6, 0.7 + spec.collisionRadius * 0.8) },
+          );
+        }
+      }
       essenceRigY = essenceRigYDefault;
       essenceTotal = spec.xp ?? 1;
       essenceSpawned = 0;
@@ -1604,20 +1632,32 @@ export function createEnemy(
 
   function tickDying(dt: number) {
     deathTimer += dt;
-    const t = Math.min(1, deathTimer / DEATH_DURATION);
+    const dur = deathStyle === 'collapse' ? COLLAPSE_DURATION : DEATH_DURATION;
+    const t = Math.min(1, deathTimer / dur);
 
+    // Dissolve PROGRESS — 'collapse' holds the body solid through the topple,
+    // then dissolves it on the ground; 'fade' dissolves from the first frame.
+    const dissolveT = deathStyle === 'collapse'
+      ? Math.max(0, Math.min(1, (deathTimer - COLLAPSE_TOPPLE) / DEATH_DURATION))
+      : t;
     // Drive the dissolve uniform on every dissolvable material on the
     // mob. The shader injection (build-model.ts attachShaderExtensions)
     // converts uDissolve into a top-down ragged discard with an
     // emissive edge band.
-    for (const u of dissolveUniforms) u.value = t;
+    for (const u of dissolveUniforms) u.value = dissolveT;
 
-    // Body lifts as the soul leaves — spectral enemies rise more (sells
-    // the float), physical creatures sag a touch.
-    const lift = spec.presence === 'spectral'
-      ?  0.55 * t
-      : -0.08 * t;
-    built.group.position.y = lift;
+    if (deathStyle === 'collapse') {
+      // TOPPLE — pitch BACKWARD onto the floor. The enemy faced the player, so
+      // in its local frame backward (+rotX) is away from the blow. Fast
+      // ease-out; a slight sink as it lands.
+      const tp = Math.min(1, deathTimer / COLLAPSE_TOPPLE);
+      const e = 1 - (1 - tp) * (1 - tp);
+      built.group.rotation.x = e * 1.45;
+      built.group.position.y = -0.05 * e;
+    } else {
+      // FADE — spectral rises (sells the float), others sag a touch.
+      built.group.position.y = spec.presence === 'spectral' ? 0.55 * t : -0.08 * t;
+    }
 
     // Eye flare — spike then crash. The mob "sees clearly" the instant
     // it dies, then the lights go out before the body is gone.
@@ -1634,8 +1674,8 @@ export function createEnemy(
     // player. Origin tracks the dissolve "front" (rises with t) so
     // motes appear from the still-visible portion of the body.
     if (essenceTotal > 0) {
-      const target = Math.floor(t * essenceTotal);
-      const dissolveFrontY = container.position.y + essenceRigY * (0.4 + (1 - t) * 0.8);
+      const target = Math.floor(dissolveT * essenceTotal);
+      const dissolveFrontY = container.position.y + essenceRigY * (0.4 + (1 - dissolveT) * 0.8);
       while (essenceSpawned < target && essenceSpawned < essenceTotal) {
         const ox = container.position.x;
         const oz = container.position.z;

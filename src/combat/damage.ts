@@ -116,6 +116,9 @@ export interface DamageEvent {
   /** Element tint (hex) for a DoT tick's floating number — the buff's colour
    *  (bleed red, poison green, burn orange). Only read when `dot` is set. */
   tint?: number;
+  /** Id of the hurtbox ZONE this hit struck ('head' | 'body' | …). Carried so
+   *  a KILLING blow can dismember the matching joint (head zone → behead). */
+  hitZoneId?: string;
 }
 
 export interface DamageResult {

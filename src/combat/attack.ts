@@ -688,6 +688,7 @@ export function createCombatSystem(
         target: target.entityId,
         base: baseDamage,
         type: 'physical',
+        hitZoneId: zone?.zone?.id,   // for dismember-on-kill (head zone → behead)
       });
 
       // Damage number floats from this target's aim point.

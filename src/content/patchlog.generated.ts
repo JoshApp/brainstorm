@@ -8,12 +8,34 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "add",
+        "text": "The slain fall before they fade now, and a clean strike to the skull takes the head with it. The dark gets its bodies the proper way.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Every blade now reaches exactly as far as it looks. The dungeon measured each one against its own edge.",
         "area": [
           "combat",
           "weapons",
           "content"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Land a parry that finishes a foe and your blade answers the next tap again — no more frozen swing after the kill.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Item labels now hug the thing they describe instead of drifting up off the top of the screen, and rewards float a touch lower over their altars.",
+        "area": [
+          "ui"
         ]
       },
       {
@@ -368,29 +390,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Catch a blade now and it never bites through — and the clash rings like steel, not a blacksmith's hammer.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The hearth-fire rises on carved stone now, throned at the heart of the refuge. Warm your hands. Spend your dead.",
-        "area": [
-          "level",
-          "atmosphere",
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Parry lands the instant the blade does — the thing reels back off your steel, no waiting on the wind-up. Crisp, or you eat it.",
-        "area": [
-          "combat"
         ]
       }
     ]
