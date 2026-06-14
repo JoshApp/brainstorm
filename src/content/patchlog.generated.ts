@@ -8,6 +8,21 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "add",
+        "text": "A failing-monitor film waits in the graphics menu now — grain, scanlines, a sick flicker. The picture rots on purpose, if you ask it to.",
+        "area": [
+          "atmosphere",
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Catch a blade now and it never bites through — and the clash rings like steel, not a blacksmith's hammer.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "The hearth-fire rises on carved stone now, throned at the heart of the refuge. Warm your hands. Spend your dead.",
         "area": [
@@ -17,25 +32,15 @@ export const GENERATED_PATCHLOG = [
         ]
       },
       {
-        "tag": "add",
-        "text": "Sit at any fire. The dungeon weighs what you've become and lets you spend it. Mind the warmth.",
+        "tag": "tune",
+        "text": "Parry lands the instant the blade does — the thing reels back off your steel, no waiting on the wind-up. Crisp, or you eat it.",
         "area": [
-          "ui",
-          "level",
           "combat"
         ]
       },
       {
-        "tag": "fix",
-        "text": "The Boiling King's swallowed core sits where its body actually is now. Aim true.",
-        "area": [
-          "content",
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Parrying no longer stops time permanently. Only for the recommended three-quarters of a second.",
+        "tag": "tune",
+        "text": "Parry a strike and the thing reels — its whole body snaps back off your steel. The deal it offered, declined.",
         "area": [
           "combat"
         ]
@@ -420,46 +425,6 @@ export const GENERATED_PATCHLOG = [
           "atmosphere",
           "level",
           "controls"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "The dungeon grows dials — brightness, torchlight strength and reach, all yours to turn. The dark keeps its opinion.",
-        "area": [
-          "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The bone pile by the bonfire was never a shrine. It was arithmetic. The dead rest properly now.",
-        "area": [
-          "combat",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Floors with stairwells stop hallucinating their own colour. Blood now lands where blood was spilled.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The last levitating torch gives up and accepts a bracket.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Torches stop levitating in doorways. Mounting brackets exist for a reason.",
-        "area": [
-          "level",
-          "atmosphere"
         ]
       }
     ]
