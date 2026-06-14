@@ -144,11 +144,11 @@ export function openInventoryPanel() { open('gear'); }
 /** Open straight to the CHARACTER tab (desktop C / settings button). */
 export function openCharacterTab() { open('character'); }
 
-/** Toggle — desktop I hotkey. Releases pointer lock so the mouse can
- *  drive the panel. */
+/** Toggle — desktop I hotkey. Pointer-lock release on open + re-grab on close
+ *  are owned by the screen manager now (this panel registers as a screen via
+ *  menu-shell), so no manual lock handling here. */
 export function toggleInventoryPanel() {
   toggle();
-  if (isOpen() && document.exitPointerLock) document.exitPointerLock();
 }
 
 export function isInventoryPanelOpen(): boolean { return isOpen(); }

@@ -68,6 +68,24 @@ const stateListeners = new Set<() => void>();
 
 let backdrop: HTMLDivElement | null = null;
 
+// Desktop pointer-lock coherence (paired with the exitPointerLock in
+// applyState): `cursorWasFree` tracks whether a cursor-needing screen was up
+// last apply, so we can detect the transition BACK to gameplay (last menu
+// closed) and re-acquire game focus. `reacquireFocus` is registered by the
+// desktop input scheme (it owns the canvas + the lock); calling it inside the
+// close gesture (closeScreen → applyState) satisfies the browser's
+// user-gesture requirement for requestPointerLock. No-op on mobile (the
+// handler gates on isDesktopLike). This is the whole "in a menu → cursor; back
+// in gameplay → mouse-look" rule, owned in ONE place.
+let cursorWasFree = false;
+let reacquireFocus: (() => void) | null = null;
+
+/** Register how the app re-acquires game focus when the last cursor-needing
+ *  screen closes (desktop: request pointer lock on the canvas). */
+export function setReacquireFocusHandler(fn: () => void): void {
+  reacquireFocus = fn;
+}
+
 function ensureBackdrop(): HTMLDivElement {
   if (backdrop) return backdrop;
   backdrop = document.createElement('div');
@@ -196,6 +214,13 @@ function applyState() {
   if (needsCursor && document.pointerLockElement) {
     document.exitPointerLock?.();
   }
+  // The mirror of the release above: when the LAST cursor-needing screen
+  // closes, hand focus back to gameplay (re-lock the pointer on desktop). Fires
+  // exactly once, on the free→not-free transition, inside the close gesture so
+  // the browser permits the lock request — no more "click the world to re-grab
+  // the mouse (and accidentally swing)" after closing a menu.
+  if (cursorWasFree && !needsCursor) reacquireFocus?.();
+  cursorWasFree = needsCursor;
 
   let anyBackdrop = false;
   let hidesHud = false;

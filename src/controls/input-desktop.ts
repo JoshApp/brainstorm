@@ -30,7 +30,8 @@ import { actionForCode, getBinding } from './keybindings';
 import { useFirstConsumable, useConsumableSlot } from './consumable-bar';
 import { toggleInventoryPanel } from '../ui/inventory-panel';
 import { openCharacterScreen, isCharacterScreenOpen, closeCharacterScreen } from '../ui/character-screen';
-import { dismissTopScreen, isAnyScreenOpen } from '../ui/screen-manager';
+import { dismissTopScreen, isAnyScreenOpen, setReacquireFocusHandler } from '../ui/screen-manager';
+import { isDesktopLike } from './platform';
 import { openSettings } from '../ui/settings-menu';
 import type { InputScheme, SchemeContext, InputTick } from './input-types';
 import { LEFT_ZONE_FRACTION } from './input-touch';
@@ -71,6 +72,17 @@ export const desktopScheme: InputScheme = {
       const nowLocked = document.pointerLockElement === canvas;
       if (nowLocked && !pointerLocked) swallowNextMove = true;
       pointerLocked = nowLocked;
+    });
+
+    // Coherent menu ↔ mouse-look: when the screen manager reports the LAST
+    // cursor-needing menu has closed (back to gameplay), re-grab the pointer so
+    // play resumes in mouse-look — no more closing a panel and being left with
+    // a free cursor until you click the world (which would also swing). The
+    // close itself (✕ click / I,C,Esc) is the user gesture the browser needs to
+    // grant the lock. Desktop only; skip a touch-synthesized ghost.
+    setReacquireFocusHandler(() => {
+      if (!isDesktopLike() || touchWasRecent()) return;
+      canvas.requestPointerLock?.();
     });
 
     // ── Keyboard ────────────────────────────────────────────────────
