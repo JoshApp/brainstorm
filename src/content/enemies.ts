@@ -23,7 +23,7 @@ import { creature } from './creature';
 import { mimicCreatureSpec } from './mimic';
 import { marrowCreatureSpec } from './skeleton-boss';
 import { MARROW_CLIPS, MARROW_JOINTS } from '../anim/clips-marrow';
-import { GHOUL_BUNDLE } from '../anim/clips-mobs';
+import { GHOUL_BUNDLE, SKELETON_BUNDLE, SKIRMISHER_BUNDLE, DEFILER_BUNDLE, STONEGUARD_BUNDLE } from '../anim/clips-mobs';
 
 // Ranged config — if present on a spec, the enemy fires a projectile from
 // `muzzleOffset` (local to the container) during the strike phase instead
@@ -758,6 +758,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
       },
     ],
     // Lean armed scout — a wiry humanoid with wrapped cloth + a crude blade.
+    animation: SKIRMISHER_BUNDLE,   // slash = THRUST (stab), charge = LUNGE
     creature: {
       id: 'skirmisher',
       archetype: 'biped',
@@ -1275,6 +1276,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // stone skin hung on joints, dimensions + per-bone hitzones MEASURED at
     // build. The molten-core weak point (opens on stagger) lives as a creature
     // zone, following the spine.
+    animation: STONEGUARD_BUNDLE,   // strike = POUND (two-hand ground slam)
     creature: {
       id: 'stoneguard',
       archetype: 'biped',
@@ -1407,6 +1409,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // the full rig (arm-swing, gait, head-crane) for free.
     // Tall, gaunt, stooped violet hex-caster — long reaching arms, a draped
     // robe, sickly violet rim. Pulls the hex down from above.
+    animation: DEFILER_BUNDLE,   // slash = SWEEP (wide claw), hex = CAST
     creature: {
       id: 'defiler',
       archetype: 'biped',
@@ -1500,6 +1503,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     // joints. The gaps between the bones ARE the silhouette — nothing solid.
     // It inherits the full biped rig (arms gesture the throw + slash, it
     // strides in, the skull cranes at you).
+    animation: SKELETON_BUNDLE,   // slash = CHOP (overhead), bone-throw = CAST
     creature: {
       id: 'skeleton',
       archetype: 'biped',
