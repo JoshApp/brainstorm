@@ -9,6 +9,21 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Cutting a foe down mid-telegraph no longer jams your left hand — light attacks keep landing on click instead of silently turning into parries at nothing.",
+        "area": [
+          "combat",
+          "controls"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "A perfect dodge now asks you to stand in the swing and slip it at the last breath — bail early or from range and you just live, no reward.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "Close a menu on desktop and you drop straight back into mouse-look — no more hunting for the cursor or clicking the world (and swinging) just to grab the camera again.",
         "area": [
           "controls",
@@ -390,23 +405,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The spill lands where the kill happened, sized to what died, and the right wall — only the right wall — wears it.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Grates in the floor show you where you are going. Stand at the edge long enough and the dark breathes back.",
-        "area": [
-          "atmosphere",
-          "level",
-          "audio"
         ]
       }
     ]
