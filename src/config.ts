@@ -238,6 +238,9 @@ export const CONFIG = {
     EMPOWER_DAMAGE_MUL: 1.8,
     EMPOWER_STAGGER_MUL: 2.5,
     HAPTIC_MS: 28,             // the "ting" pulse on a clean deflect
+    FACING_DOT: 0.4,           // a parry only catches a strike from roughly IN FRONT of you —
+                               //   dot(camera-forward, dir-to-attacker) must clear this (~±66°).
+                               //   You can't parry a blow you aren't looking at; turn to face it.
     FLASH_COLOR: 0xdfe8ff,     // white-cool: DEFLECTABLE (tap)
     UNBLOCK_COLOR: 0xff2a14,   // hot red: UNBLOCKABLE (must dodge)
   },
@@ -502,10 +505,14 @@ export const CONFIG = {
   // Rationale for each lives at its use site in src/mobs/enemy.ts.
   ENEMY_AI: {
     ALERTED_DURATION: 0.45,           // s — hesitation after first spotting the player
-    TURN_RATE: 7.0,                   // rad/s — body turn speed toward the player. Capped (was an
-                                      //   instant snap, which read robotic + let a mob track you
-                                      //   perfectly mid-windup); now turning has weight, so circling
-                                      //   / flanking a committed attacker actually buys angle.
+    TURN_RATE: 11.0,                  // rad/s — body turn toward the player while CHASING. Fast
+                                      //   enough to track a circling player with no visible lag (so
+                                      //   a prowler doesn't end up facing backwards), but not an
+                                      //   instant snap — big reorients still carry a little weight.
+    WINDUP_TURN_RATE: 2.5,            // rad/s — turn speed once COMMITTED to a swing (winding/
+                                      //   striking). Slow: a launched strike can't re-aim, so a
+                                      //   strafing player can sidestep it — the read that makes
+                                      //   positioning matter.
     SEARCH_DURATION: 3.0,             // s — search at last-known position before giving up
     IDLE_SCAN_INTERVAL_MIN: 3.0,      // s — base gap between idle gaze changes
     IDLE_SCAN_INTERVAL_JITTER: 2.5,   // s — + up to this (desyncs a swarm)

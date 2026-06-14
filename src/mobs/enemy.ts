@@ -56,6 +56,7 @@ import { spawnXpWisps } from '../effects/xp-wisps';
 import { createBlobShadow } from '../effects/blob-shadow';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
+import { getCameraYaw } from '../controls/camera';
 import { joinPack, leavePack, packMoveTarget, packScratch, requestToken } from './pack';
 import type { Damageable } from '../combat/damageable';
 import { setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
@@ -1123,8 +1124,28 @@ export function createEnemy(
     // Shortest signed angle from current → desired, wrapped to [-π, π].
     let diff = desired - container.rotation.y;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    const maxStep = CONFIG.ENEMY_AI.TURN_RATE * dt;
+    // Track FAST while chasing (no visible lag → a prowler keeps watching you,
+    // never ends up facing backwards), but SLOW once committed to a swing so a
+    // launched strike can't re-aim onto a strafing player.
+    const committed = state === 'winding' || state === 'striking';
+    const rate = committed ? CONFIG.ENEMY_AI.WINDUP_TURN_RATE : CONFIG.ENEMY_AI.TURN_RATE;
+    const maxStep = rate * dt;
     container.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
+  }
+
+  /** Is the player looking roughly AT this enemy? A parry only catches a strike
+   *  from in front of you (CONFIG.DEFLECT.FACING_DOT cone) — you can't deflect a
+   *  blow you aren't facing. Uses the camera yaw (player forward) vs the
+   *  direction to this mob. */
+  function playerFacingThis(playerPos: THREE.Vector3): boolean {
+    const yaw = getCameraYaw();
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);   // camera forward XZ (looks down -Z)
+    let ex = container.position.x - playerPos.x;
+    let ez = container.position.z - playerPos.z;
+    const len = Math.hypot(ex, ez);
+    if (len < 1e-4) return true;
+    ex /= len; ez /= len;
+    return fx * ex + fz * ez >= CONFIG.DEFLECT.FACING_DOT;
   }
 
   function applyTilt(angle: number) {
@@ -1219,7 +1240,8 @@ export function createEnemy(
           // strike is deflected, NOT dealt — so no hit ever slips through while
           // a parry is open (a longer-reach step, a late damage frame, a tap
           // that lands a frame after onset all funnel through here).
-          if (currentAbility && isDeflectable(currentAbility) && isParryActive()) {
+          if (currentAbility && isDeflectable(currentAbility) && isParryActive()
+              && playerFacingThis(playerPos)) {
             resolveParry(playerPos);
             return true;          // strike consumed — NO damage
           }
@@ -1821,7 +1843,7 @@ export function createEnemy(
     // that deals damage — so the catch is crisp + immediate, never a windup
     // freebie. Reachability matches wantFlash's `mReach + 1.2` band below.
     if (currentAbility && state === 'striking' && !meleeHitLanded
-        && isParryActive() && isDeflectable(currentAbility)) {
+        && isParryActive() && isDeflectable(currentAbility) && playerFacingThis(playerPos)) {
       const pReach = firstMeleeReach(currentAbility);
       if (pReach !== null && distance <= pReach + 1.2) resolveParry(playerPos);
     }
