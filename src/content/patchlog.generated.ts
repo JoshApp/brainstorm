@@ -4,9 +4,31 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 9",
+    "date": "2026-06-14",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "On desktop your sword swings on click and E does the grasping; the prompt now tells you which key. The dungeon assumes you brought a keyboard.",
+        "area": [
+          "controls",
+          "ui"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 8",
     "date": "2026-06-13",
     "entries": [
+      {
+        "tag": "fix",
+        "text": "The doors that trap you now actually let you in first. And the cage in the gold light finally has a key somewhere with your name on it.",
+        "area": [
+          "level",
+          "content"
+        ]
+      },
       {
         "tag": "fix",
         "text": "The broken walls reach the floor they fell toward. Coins quit hovering over the abyss like they had somewhere to be.",
@@ -404,21 +426,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The pickup glow slims back down to an outline instead of shrink-wrap.",
         "area": [
           "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The pickup glow hugs the blade it belongs to, all the way to the tip.",
-        "area": [
-          "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The light pools deeper into the seams and the pillars stop pretending to be sponges.",
-        "area": [
-          "atmosphere"
         ]
       }
     ]
