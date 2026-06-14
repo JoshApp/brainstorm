@@ -9,10 +9,25 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "An arm, a leg, the skull — a clean killing cut takes whatever it lands on now, and the rest of the body goes down without it.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Skeletons don't fall — they come apart. Strike one down and it clatters into a heap of bone that scatters across the stone.",
         "area": [
           "combat",
           "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The title wears the dungeon's chisel marks now — DELVE carved into the same dark slab, the way down marked above it.",
+        "area": [
+          "ui"
         ]
       },
       {
@@ -375,21 +390,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Face a blow to parry it — no catching what's at your back. The dead keep their eyes on you as they circle, but a swing, once thrown, can't chase your sidestep.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Ranged hits show their damage now — the dungeon no longer loses count past thirteen paces.",
-        "area": [
-          "combat",
-          "ui"
         ]
       }
     ]

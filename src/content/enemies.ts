@@ -514,7 +514,10 @@ export const ENEMIES: Record<string, EnemySpec> = {
     hp: 3,
     moveSpeed: 1.4,
     attackDamage: 1,
-    severable: ['head'],   // a head-zone kill beheads it
+    // A killing blow to a limb zone lops it: head, arms (shoulderL/R), legs
+    // (hipL/R). Torso hits usually win the body zone, so limb severs land on
+    // clear hits to an outstretched limb — an occasional, earned gore moment.
+    severable: ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'],
 
     // attackRange = the distance at which the enemy COMMITS to a swing.
     // strikeRange = the distance at which the swing actually LANDS.
@@ -1474,7 +1477,7 @@ export const ENEMIES: Record<string, EnemySpec> = {
     id: 'skeleton',
     bloodColor: 0x8a8274,
     bloodAmount: 0.3,
-    severable: ['head'],   // strike the skull off
+    severable: ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'],   // strike off the skull or a limb
     deathStyle: 'crumble', // clatters apart into bone debris, not a flesh topple
     name: 'skeleton',
     hp: 3,

@@ -1073,12 +1073,16 @@ export function createEnemy(
       // floor pickups with bundled value.
       deathTimer = 0;
       // DISMEMBER on the killing blow — if the struck zone maps to a severable
-      // joint (head zone → 'head' joint), lop that limb's subtree and burst gore
-      // from the stump. The corpse then topples / dissolves without it.
+      // joint, lop that limb's subtree and burst gore from the stump. Limb
+      // hurtzones are named 'limb-<joint>' (build-creature: arms=shoulderL/R,
+      // legs=hipL/R); the head zone is just 'head'. Map zone → joint to sever.
       const killZoneId = event.hitZoneId;
-      if (killZoneId && spec.severable?.includes(killZoneId)) {
-        creatureRef.setJointVisible(killZoneId, false);
-        const jointObj = built.slots.get(killZoneId);
+      const severJoint = killZoneId
+        ? (killZoneId.startsWith('limb-') ? killZoneId.slice(5) : killZoneId)
+        : undefined;
+      if (severJoint && spec.severable?.includes(severJoint)) {
+        creatureRef.setJointVisible(severJoint, false);
+        const jointObj = built.slots.get(severJoint);
         if (jointObj) {
           jointObj.getWorldPosition(_severPos);
           const bc = spec.bloodColor ?? 0x5e1210;
