@@ -22,6 +22,7 @@ import type { Interactable } from '../interactables/types';
 
 export type TapAction =
   | { kind: 'attack' }
+  | { kind: 'deflect' }
   | { kind: 'interact'; interactable: Interactable }
   | { kind: 'none' };
 
@@ -45,9 +46,20 @@ export interface TapInputs {
    *  on PC, left-click is attack-only and the `E` key owns interaction, the
    *  native FPS split. Defaults to true (touch semantics) when omitted. */
   interactEligible?: boolean;
+  /** Is a deflect opportunity open right now (an enemy flashing a deflectable
+   *  strike)? When true, a combat-zone tap PARRIES instead of swinging — the
+   *  Sekiro context switch, telegraphed by the flash. */
+  deflectAvailable: boolean;
 }
 
 export function resolveTap(t: TapInputs): TapAction {
+  // 0) DEFLECT wins over everything in the combat zone: when an enemy is
+  //    flashing a deflectable strike, the tap you'd use to swing becomes the
+  //    parry (same input, meaning set by the telegraph). The joystick half
+  //    still never acts. If the parry is on cooldown the caller falls back to
+  //    a swing, so this never eats a tap.
+  if (t.canAttack && t.deflectAvailable) return { kind: 'deflect' };
+
   // 1) Combat first. Tapping a mob is always an attack (any zone). A mob in
   //    range likewise means attack — preference over interacting — but only in
   //    the combat zone (an ambient tap on the joystick half isn't a swing).

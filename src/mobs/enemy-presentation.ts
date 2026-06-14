@@ -27,6 +27,10 @@ export interface EyePresenter {
   applySearch(): void;
   /** Fade the halo sprites' opacity (death dissolve). */
   setHaloOpacity(o: number): void;
+  /** Reactive-defense telegraph: paint the eyes/halos a flat THREAT colour
+   *  (white = deflectable, red = unblockable) while a reachable strike is
+   *  committing — overrides the normal flare. Pass null to release. */
+  setThreatFlash(color: THREE.Color | null): void;
 }
 
 export function createEyePresenter(built: BuiltModel, spec: EnemySpec): EyePresenter {
@@ -50,8 +54,30 @@ export function createEyePresenter(built: BuiltModel, spec: EnemySpec): EyePrese
   const haloWindupColor = new THREE.Color(0xffffff);  // sprite goes white-hot
   const tmpEyeColor = new THREE.Color();
   const tmpHaloColor = new THREE.Color();
+  // Reactive-defense threat flash — when set, overrides the flare with a flat,
+  // bright, pulsing colour (white = deflect this, red = dodge this).
+  let threatColor: THREE.Color | null = null;
+  function setThreatFlash(c: THREE.Color | null) { threatColor = c; }
+  function paintThreat() {
+    // Pulse so it READS as "act now," not a static tint. ~6Hz throb.
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 1000 * 38);
+    if (eyeMat) {
+      eyeMat.emissiveIntensity = baseEyeEmissive * (1 + 9 * pulse);
+      eyeMat.emissive.copy(threatColor!);
+    }
+    const haloScale = 1.7 + 0.3 * pulse;
+    if (eyeHaloL && haloMatL) {
+      eyeHaloL.scale.set(haloBaseScaleL.x * haloScale, haloBaseScaleL.y * haloScale, 1);
+      haloMatL.color.copy(threatColor!).multiplyScalar(1.8 + pulse);
+    }
+    if (eyeHaloR && haloMatR) {
+      eyeHaloR.scale.set(haloBaseScaleR.x * haloScale, haloBaseScaleR.y * haloScale, 1);
+      haloMatR.color.copy(threatColor!).multiplyScalar(1.8 + pulse);
+    }
+  }
 
   function setFlare(t: number) {
+    if (threatColor) { paintThreat(); return; }   // threat flash owns the eyes
     // Mesh eye material (for the rat — its eye spheres render fine).
     if (eyeMat) {
       eyeMat.emissiveIntensity = baseEyeEmissive * (1 + 7 * t);
@@ -106,7 +132,7 @@ export function createEyePresenter(built: BuiltModel, spec: EnemySpec): EyePrese
     if (haloMatR) haloMatR.opacity = o;
   }
 
-  return { setFlare, applyIdle, applySearch, setHaloOpacity };
+  return { setFlare, applyIdle, applySearch, setHaloOpacity, setThreatFlash };
 }
 
 export interface CoreReactor {

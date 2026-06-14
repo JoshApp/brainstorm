@@ -16,7 +16,9 @@ import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
-import { tickJustDodge, getJustDodgeTimeScale } from './combat/just-dodge';
+import {
+  tickBulletTime, getWorldTimeScale, triggerParry, deflectOpportunityActive,
+} from './combat/reactive-defense';
 import { tickBossSlowmo, getBossSlowmoTimeScale } from './combat/boss-slowmo';
 import { setupBossCinematics } from './mobs/boss-cinematics';
 import { initWeaponDrop, dropHeldItem } from './player/weapon-drop';
@@ -603,8 +605,14 @@ const input = createTouchInput(canvas, {
       bestInRange: getInRangeInteractable(),
       canAttack,
       interactEligible,
+      deflectAvailable: deflectOpportunityActive(),
     });
-    if (action.kind === 'attack') triggerAttack();
+    if (action.kind === 'deflect') {
+      // Open the parry window; if it didn't (lockout) fall back to a swing so
+      // the tap is never wasted.
+      if (!triggerParry()) triggerAttack();
+    }
+    else if (action.kind === 'attack') triggerAttack();
     else if (action.kind === 'interact') resolveUsable(action.interactable, camera.position).onUse();
     // 'none' → deliberately do nothing (e.g. tapped a chest you're too far from).
   },
@@ -1006,9 +1014,16 @@ function tick() {
 
   tickArrival(camera, realDt);
   tickDeath(realDt);
-  tickJustDodge(realDt);   // real-time so the slow-mo dip isn't slowed by itself
+  tickBulletTime(realDt);  // real-time so the reactive-defense dip isn't slowed by itself
   tickBossSlowmo(realDt);  // ditto — the boss-death dip advances in real time
-  const scaledDt = realDt * getTimeScale() * getJustDodgeTimeScale() * getBossSlowmoTimeScale();
+  // TWO clocks. base = hit-pause × boss-death slow-mo (these freeze EVERYONE,
+  // player included). worldScale = the reactive-defense bullet-time, which
+  // slows ONLY the world (enemies + projectiles) — so on a clean deflect/dodge
+  // they crawl while the player keeps acting at full speed (the asymmetric
+  // payoff). scaledDt drives the world; playerDt drives camera/move/attack.
+  const baseScale = getTimeScale() * getBossSlowmoTimeScale();
+  const scaledDt = realDt * baseScale * getWorldTimeScale();
+  const playerDt = realDt * baseScale;
   // Snapshot pause state AFTER the harness so a just-ended budget gates this
   // frame's unpaused systems.
   const paused = isWorldPaused();
@@ -1027,6 +1042,7 @@ function tick() {
   const ctx: TickContext = {
     realDt,
     scaledDt,
+    playerDt,
     paused,
     mode: getGameMode(),
     playing: isPlaying(),

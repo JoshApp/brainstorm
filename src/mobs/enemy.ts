@@ -11,9 +11,13 @@ import { emitGoreSplash, stampBleedOut } from '../scene/splat-map';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
-  resolveAbilities, firstMeleeReach, wantsCreep, ELEMENTS,
+  resolveAbilities, firstMeleeReach, wantsCreep, ELEMENTS, isDeflectable,
   type Ability, type AbilityAction, type Anchor, type Trigger, type Element,
 } from '../content/abilities';
+import {
+  pushDeflectOpportunity, popDeflectOpportunity, isParryActive, enterBulletTime,
+} from '../combat/reactive-defense';
+import { playBuffApply } from '../audio/sfx';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
@@ -420,6 +424,28 @@ export function createEnemy(
   const coreReactor = createCoreReactor(built, spec, instancing);
   const setEyeFlare = eyePresenter.setFlare;
   const applyIdleEyes = eyePresenter.applyIdle;
+
+  // ── Reactive-defense threat flash ───────────────────────────────────
+  // As a reachable melee strike commits, the eyes flash: WHITE = deflectable
+  // (tap to parry → stagger), RED = unblockable (must dodge). A deflectable
+  // flash also registers a parry OPPORTUNITY so the tap arbiter routes a tap
+  // to deflect instead of swing. reconcileThreat is idempotent and called
+  // once per frame from the AI tick — it pushes/pops the global opportunity
+  // count only on edges, so a mid-windup death/stagger can't leak the count.
+  const THREAT_DEFLECT_COLOR = new THREE.Color(CONFIG.DEFLECT.FLASH_COLOR);
+  const THREAT_UNBLOCK_COLOR = new THREE.Color(CONFIG.DEFLECT.UNBLOCK_COLOR);
+  let threatOn = false;
+  let threatDeflectable = false;
+  function reconcileThreat(on: boolean, deflectable: boolean): void {
+    if (on === threatOn && deflectable === threatDeflectable) return;
+    const wasPushing = threatOn && threatDeflectable;
+    const willPush = on && deflectable;
+    if (wasPushing && !willPush) popDeflectOpportunity();
+    if (!wasPushing && willPush) pushDeflectOpportunity();
+    threatOn = on;
+    threatDeflectable = deflectable;
+    eyePresenter.setThreatFlash(on ? (deflectable ? THREAT_DEFLECT_COLOR : THREAT_UNBLOCK_COLOR) : null);
+  }
 
   // World entity (HP + buffs). For multi-phase bosses, HP starts at
   // phase[0].hp; phase transitions refill to the next phase's HP.
@@ -1135,6 +1161,18 @@ export function createEnemy(
     switch (action.kind) {
       case 'melee': {
         if (distance <= action.reach) {
+          // DEFLECT: if this attack is deflectable and the player has an
+          // active parry window (a well-timed tap off the white flash), the
+          // strike is negated and the attacker is STAGGERED — opening the
+          // execute. Bullet-time + the "ting" fire as the reward. Swarm-
+          // generous: every deflectable strike landing in the window catches.
+          if (currentAbility && isDeflectable(currentAbility) && isParryActive()) {
+            enterBulletTime();
+            try { navigator.vibrate?.(CONFIG.DEFLECT.HAPTIC_MS); } catch { /* unsupported */ }
+            playBuffApply();
+            triggerStagger();       // poise break → free hit + execute window
+            return true;            // strike consumed, NO damage to player
+          }
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
           return true;            // hit — done
@@ -2032,6 +2070,22 @@ export function createEnemy(
         }
         break;
       }
+    }
+
+    // ── Reactive-defense threat flash ────────────────────────────────
+    // Flash during the lead-up to a reachable MELEE strike: the last
+    // FLASH_LEAD_S of windup through the whole strike window. Deflectable
+    // abilities flash white (and open a parry opportunity); unblockable
+    // melee flashes red (dodge only). Everything else (ranged/aoe/leap)
+    // never flashes — those are avoided, not parried.
+    {
+      const mReach = currentAbility ? firstMeleeReach(currentAbility) : null;
+      const lead = CONFIG.DEFLECT.FLASH_LEAD_S;
+      const wantFlash = !!currentAbility && mReach !== null
+        && distance <= mReach + 1.2
+        && (state === 'striking'
+            || (state === 'winding' && phaseTimer >= currentWindupTime - lead));
+      reconcileThreat(wantFlash, wantFlash && isDeflectable(currentAbility!));
     }
 
     // ── Post-AI animation/audio overlays ─────────────────────────────

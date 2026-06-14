@@ -22,9 +22,9 @@
 import { CONFIG } from '../config';
 import { gainStamina } from './stamina';
 import { playBuffApply } from '../audio/sfx';
+import { enterBulletTime } from './reactive-defense';
 
 let dashStartedAt = -Infinity;   // performance.now() ms when the last dash fired
-let slowmoElapsed = Infinity;    // real-seconds since the slow-mo dip began
 let counterUntil = 0;            // performance.now() ms — counter window end
 
 /** dash.ts calls this the instant a dash fires, so a later i-frame-negated hit
@@ -49,22 +49,12 @@ export function isPerfectDodge(sinceDashMs: number): boolean {
 export function notePlayerHitNegated(): boolean {
   if (!isPerfectDodge(performance.now() - dashStartedAt)) return false;
   dashStartedAt = -Infinity;
-  slowmoElapsed = 0;
+  enterBulletTime();   // shared reward — world crawls, you keep moving
   counterUntil = performance.now() + CONFIG.JUST_DODGE.COUNTER_WINDOW_S * 1000;
   gainStamina(CONFIG.JUST_DODGE.STAMINA_REFUND);
   playBuffApply();
   try { navigator.vibrate?.(CONFIG.JUST_DODGE.HAPTIC_MS); } catch { /* unsupported */ }
   return true;
-}
-
-/** Time-scale contribution for the brief slow-mo (1 when idle). Snaps down to
- *  SLOWMO_SCALE on a perfect dodge, then eases back to full. Folded into the
- *  loop's scaledDt alongside the death time-scale. */
-export function getJustDodgeTimeScale(): number {
-  const dur = CONFIG.JUST_DODGE.SLOWMO_DURATION_S;
-  if (slowmoElapsed >= dur) return 1;
-  const t = slowmoElapsed / dur;   // 0 → 1 across the dip
-  return CONFIG.JUST_DODGE.SLOWMO_SCALE + (1 - CONFIG.JUST_DODGE.SLOWMO_SCALE) * t;
 }
 
 /** True while the post-dodge counter opening is live. attack.ts reads it to
@@ -79,15 +69,9 @@ export function consumeJustDodgeCounter(): void {
   counterUntil = 0;
 }
 
-/** Advance the slow-mo dip in REAL time, so it isn't slowed by its own dilation.
- *  Call from main.ts BEFORE computing scaledDt. */
-export function tickJustDodge(realDt: number): void {
-  if (slowmoElapsed < CONFIG.JUST_DODGE.SLOWMO_DURATION_S) slowmoElapsed += realDt;
-}
-
-/** Reset on floor load / death. */
+/** Reset on floor load / death. (The slow-mo dip now lives in
+ *  reactive-defense's bullet-time, reset alongside this.) */
 export function resetJustDodge(): void {
   dashStartedAt = -Infinity;
-  slowmoElapsed = Infinity;
   counterUntil = 0;
 }

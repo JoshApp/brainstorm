@@ -131,9 +131,9 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
         input.moveY = 0;
         tickFogWalkthrough(ctx.realDt);
       } else if (!isDying()) {
-        input.tickInput(ctx.scaledDt);   // hybrid-look continuous rotation, if enabled
+        input.tickInput(ctx.playerDt);   // PLAYER clock — full speed in bullet-time
         const level = getLevel();
-        updateCamera(camera, input, ctx.scaledDt, level.walkable, level.enemies);
+        updateCamera(camera, input, ctx.playerDt, level.walkable, level.enemies);
       } else {
         input.lookDx = 0;
         input.lookDy = 0;
@@ -237,7 +237,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     { name: 'combat', phase: 'unpaused', tick(ctx) {
       const attackPressed = isDying() ? false : consumeAttackPressed();
-      combat.tick(attackPressed, input.moveX, input.moveY, ctx.scaledDt);
+      combat.tick(attackPressed, input.moveX, input.moveY, ctx.playerDt);
     } },
 
     // Walk bob — sword + lamp + offhand viewmodels all read the same shared
@@ -265,7 +265,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       tickViewmodelPullback(ctx.realDt, camera, getLevel()?.walkable ?? null);
     } },
 
-    { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.scaledDt); } },
+    { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.playerDt); } },
 
     // Blade trail — sampled from the wielded weapon's blade_tip in WORLD
     // space (scene-local), brightness driven by the viewmodel's charged-

@@ -10,6 +10,7 @@ import { resetBossEngagement } from '../ui/boss-engagement';
 import { resetPlayerInvuln } from '../player/health';
 import { isArrivalActive } from '../player/arrival';
 import { resetJustDodge } from '../combat/just-dodge';
+import { resetReactiveDefense } from '../combat/reactive-defense';
 import { resetExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { clearBreath } from '../effects/breath';
 import { resetCameraStumble } from '../combat/camera-stumble';
@@ -181,7 +182,8 @@ export function tickPendingLoad() {
   resetBossEncounter();
   resetBossEngagement();
   resetPlayerInvuln();
-  resetJustDodge();         // clear any in-flight counter window / slow-mo
+  resetJustDodge();         // clear any in-flight counter window
+  resetReactiveDefense();   // clear deflect opportunity count + bullet-time dip
   resetExhaustionFeedback(); // clear breath phase / heave on a fresh floor
   clearBreath();            // hide any in-flight breath puffs
   resetCameraStumble();     // clear any in-flight stumble lurch

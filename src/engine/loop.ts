@@ -21,9 +21,15 @@ export interface TickContext {
   /** Real elapsed seconds this frame, capped. Use for motion that must NOT
    *  slow during the death slow-mo (viewmodel flicker, HUD, ambient drift). */
   realDt: number;
-  /** realDt * death/hit-pause time-scale. Use for in-world simulation that
-   *  should ease to a freeze with the death sequence. */
+  /** realDt * death/hit-pause time-scale, AND the reactive-defense bullet-time
+   *  slow. The WORLD clock — enemies, projectiles, world props ease to a
+   *  freeze with the death sequence and crawl during bullet-time. */
   scaledDt: number;
+  /** realDt * death/hit-pause time-scale, WITHOUT the bullet-time slow. The
+   *  PLAYER clock — camera, movement, attacks. During a clean deflect/dodge
+   *  the player keeps acting at full speed while scaledDt slows the world
+   *  (the asymmetric bullet-time payoff). Equals scaledDt outside bullet-time. */
+  playerDt: number;
   /** isWorldPaused() — hit-pause OR open screen OR debug freeze. */
   paused: boolean;
   /** Player lifecycle phase. */

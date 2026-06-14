@@ -179,13 +179,37 @@ export const CONFIG = {
   // fuels the counter — aggression-as-defense, the combat identity in one beat.
   JUST_DODGE: {
     PERFECT_WINDOW_S: 0.18,    // negation within this of the dash = perfect (< DASH_IFRAME_S)
-    SLOWMO_SCALE: 0.40,        // world speed at the dip's deepest
-    SLOWMO_DURATION_S: 0.45,   // real-time length of the dip, easing back to full
     COUNTER_WINDOW_S: 1.10,    // how long the counter opening stays live
     COUNTER_DAMAGE_MUL: 1.6,   // your next landed hit hits this much harder
     COUNTER_STAGGER_MUL: 2.0,  // and cracks poise this much harder
     STAMINA_REFUND: 22,        // a clean dodge refuels you to press the counter
     HAPTIC_MS: 26,             // firmer phone pulse than the dodge's own tick
+  },
+
+  // === REACTIVE DEFENSE — the shared "read" layer (deflect + just-dodge) ===
+  // One telegraph (enemy flashes as a reachable strike commits), two answers
+  // (tap = deflect a WHITE flash, dodge = roll a RED one), one reward:
+  // ASYMMETRIC BULLET TIME. A clean deflect or just-dodge slows the WORLD
+  // (enemies + projectiles) to BULLET_TIME.WORLD_SCALE for DURATION_S while
+  // the player keeps moving at full speed — the flow-vs-frozen payoff that
+  // makes both defenses the combat identity (forgiving defense, ruthless
+  // offense). The player clock simply omits this scale (see main.ts playerDt).
+  BULLET_TIME: {
+    WORLD_SCALE: 0.28,         // enemy/projectile speed at the dip's deepest
+    DURATION_S: 0.70,          // real-time length, easing back to full
+  },
+  // DEFLECT — the tap answer to a white flash.
+  DEFLECT: {
+    FLASH_LEAD_S: 0.30,        // how long before the strike the white flash + window open
+    // Must comfortably exceed FLASH_LEAD_S so even an instant tap-on-flash
+    // stays active THROUGH the strike (and a ~250ms human reaction lands
+    // dead-centre). Forgiving for a first feel; tune down on the phone.
+    PARRY_WINDOW_S: 0.42,      // a tap opens this active window; a strike landing in it deflects
+    LOCKOUT_S: 0.40,           // cooldown after a parry attempt — anti-mash (can't hold a guard)
+    STAGGER_MUL: 1.0,          // poise damage dealt to the deflected enemy (1 = full break)
+    HAPTIC_MS: 28,             // the "ting" pulse on a clean deflect
+    FLASH_COLOR: 0xdfe8ff,     // white-cool: DEFLECTABLE (tap)
+    UNBLOCK_COLOR: 0xff2a14,   // hot red: UNBLOCKABLE (must dodge)
   },
 
   // === CHARGE — heavy attack as a stamina RESERVATION (Model B) + perfect release ===

@@ -189,6 +189,18 @@ export interface Ability {
    *  gets clipped by a melee. Charges/leaps don't. Default: true when the
    *  first step is a melee. */
   creep?: boolean;
+  /** Can the player DEFLECT this with a timed tap (white flash), or only
+   *  DODGE it (red flash)? Default (isDeflectable): true for a melee-opening
+   *  ability, false otherwise — bolts, slams, leaps are dodge-only. Tag a
+   *  heavy melee `deflectable: false` to make it a red "get out of the way"
+   *  attack. */
+  deflectable?: boolean;
+}
+
+/** Whether the player can deflect (vs only dodge) this ability. Melee strikes
+ *  are deflectable by default; ranged/aoe/leap are dodge-only. */
+export function isDeflectable(ability: Ability): boolean {
+  return ability.deflectable ?? (ability.steps[0]?.action.kind === 'melee');
 }
 
 // ── Helpers ───────────────────────────────────────────────────────

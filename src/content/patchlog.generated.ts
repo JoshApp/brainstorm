@@ -4,20 +4,6 @@
 
 export const GENERATED_PATCHLOG = [
   {
-    "version": "Build 9",
-    "date": "2026-06-14",
-    "entries": [
-      {
-        "tag": "tune",
-        "text": "On desktop your sword swings on click and E does the grasping; the prompt now tells you which key. The dungeon assumes you brought a keyboard.",
-        "area": [
-          "controls",
-          "ui"
-        ]
-      }
-    ]
-  },
-  {
     "version": "Build 8",
     "date": "2026-06-13",
     "entries": [
@@ -426,6 +412,14 @@ export const GENERATED_PATCHLOG = [
         "text": "The pickup glow slims back down to an outline instead of shrink-wrap.",
         "area": [
           "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The pickup glow hugs the blade it belongs to, all the way to the tip.",
+        "area": [
+          "ui",
+          "atmosphere"
         ]
       }
     ]
