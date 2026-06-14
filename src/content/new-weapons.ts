@@ -12,39 +12,43 @@ import type { ModelSpec } from '../ecs/model-types';
 export const REAPERS_TOLL: ModelSpec = {
   id: 'reapers-toll',
   materials: {
-    haft: { color: 0x2a1c10, roughness: 0.95, metalness: 0.05, flatShading: 'auto' },
-    binding: { color: 0x0c0805, roughness: 1.0 },
+    // fog:false on EVERY material — a held weapon sits right at the camera and
+    // would otherwise fade into the close fog (it read as a tiny, dim sickle).
+    haft: { color: 0x2a1c10, roughness: 0.95, metalness: 0.05, fog: false, flatShading: 'auto' },
+    binding: { color: 0x0c0805, roughness: 1.0, fog: false },
     blade: {
       color: 0x141014,
       emissive: 0x441010,
       emissiveIntensity: 0.35,
       roughness: 0.35,
       metalness: 0.85,
+      fog: false,
       flatShading: 'auto',
     },
   },
   parts: [
-    // Haft — long dark cylinder, slightly tapered at the top.
-    { kind: 'cylinder', pos: [0, -0.10, 0], radius: 0.024, radiusTop: 0.020, height: 0.78, segments: 10, mat: 'haft' },
+    // Haft — long dark cylinder (taller snath), slightly tapered at the top.
+    { kind: 'cylinder', pos: [0, -0.04, 0], radius: 0.026, radiusTop: 0.021, height: 0.94, segments: 10, mat: 'haft' },
     // Leather wraps near the grip + at the head.
-    { kind: 'cylinder', pos: [0, -0.32, 0], radius: 0.028, height: 0.10, segments: 8, mat: 'binding' },
-    { kind: 'cylinder', pos: [0,  0.26, 0], radius: 0.026, height: 0.05, segments: 8, mat: 'binding' },
-    // Blade — curved crescent extruded from a 2D shape. Mirrored to −X so the
-    // hook curves INWARD (toward the wielder / screen-centre when held), the way
-    // a reaping blade should, instead of jutting outward.
+    { kind: 'cylinder', pos: [0, -0.34, 0], radius: 0.030, height: 0.11, segments: 8, mat: 'binding' },
+    { kind: 'cylinder', pos: [0,  0.36, 0], radius: 0.028, height: 0.06, segments: 8, mat: 'binding' },
+    // Blade — a BIG curved crescent (the old one read as a sickle). Mirrored to
+    // −X so the hook curves INWARD (toward screen-centre when held), the way a
+    // reaping blade should. Shape scaled ~1.55× + a touch thicker so it catches
+    // light and reads as a proper scythe head.
     { kind: 'extrude',
-      pos: [-0.14, 0.32, 0],
-      rot: [0, 0, 0.25],
+      pos: [-0.16, 0.40, 0],
+      rot: [0, 0, 0.22],
       shape: [
         [ 0.00,  0.00],
-        [-0.42, -0.04],
-        [-0.48, -0.12],
-        [-0.46, -0.18],
-        [-0.30, -0.10],
-        [-0.12, -0.05],
-        [-0.02, -0.02],
+        [-0.66, -0.06],
+        [-0.75, -0.19],
+        [-0.72, -0.29],
+        [-0.47, -0.16],
+        [-0.19, -0.08],
+        [-0.03, -0.03],
       ],
-      depth: 0.010,
+      depth: 0.014,
       mat: 'blade' },
   ],
 };
@@ -56,9 +60,10 @@ export const REAPERS_TOLL: ModelSpec = {
 export const PENITENTS_CHAIN: ModelSpec = {
   id: 'penitents-chain',
   materials: {
-    grip: { color: 0x1a1208, roughness: 0.9, metalness: 0.1, flatShading: 'auto' },
-    binding: { color: 0x0c0805, roughness: 1.0 },
-    cord:   { color: 0x2c1a10, roughness: 0.85, metalness: 0.2 },
+    // fog:false everywhere — held weapon at the camera, mustn't fade into fog.
+    grip: { color: 0x1a1208, roughness: 0.9, metalness: 0.1, fog: false, flatShading: 'auto' },
+    binding: { color: 0x0c0805, roughness: 1.0, fog: false },
+    cord:   { color: 0x2c1a10, roughness: 0.85, metalness: 0.2, fog: false },
   },
   parts: [
     // Handle — short cylinder, leather-wrapped at the grip end.
@@ -66,15 +71,17 @@ export const PENITENTS_CHAIN: ModelSpec = {
     { kind: 'cylinder', pos: [0, -0.16, 0], radius: 0.032, height: 0.06, segments: 10, mat: 'binding' },
     // Metal collar where the cord starts.
     { kind: 'cylinder', pos: [0, -0.02, 0], radius: 0.030, height: 0.02, segments: 10, mat: 'cord' },
-    // Cord segments — falling chain of beads, each a touch smaller. Named
-    // chain0..chain5 (base→tip) so the viewmodel can RIPPLE them: a whip crack
-    // sends a trailing wave down the chain instead of moving a rigid string.
-    { kind: 'sphere', name: 'chain0', pos: [0.02, 0.02, 0], radius: 0.024, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', name: 'chain1', pos: [0.06, 0.06, 0], radius: 0.022, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', name: 'chain2', pos: [0.12, 0.10, 0], radius: 0.019, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', name: 'chain3', pos: [0.20, 0.13, 0], radius: 0.016, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', name: 'chain4', pos: [0.28, 0.15, 0], radius: 0.013, segments: [8, 6], mat: 'cord' },
-    { kind: 'sphere', name: 'chain5', pos: [0.36, 0.16, 0], radius: 0.010, segments: [8, 6], mat: 'cord' },
+    // Cord segments — chain0..chain5 (base→tip). At rest the lash DANGLES DOWN
+    // (−Y) and a little forward (−Z) off the handle — visible hanging in front
+    // of you, instead of the old up-and-right jut (the "wrong direction"). The
+    // ripple solver (whip-chain.ts) coils it down-back on windup and LASHES it
+    // forward + up on the crack.
+    { kind: 'sphere', name: 'chain0', pos: [0, -0.05, -0.02], radius: 0.024, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain1', pos: [0, -0.14, -0.05], radius: 0.022, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain2', pos: [0, -0.25, -0.09], radius: 0.019, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain3', pos: [0, -0.37, -0.13], radius: 0.016, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain4', pos: [0, -0.50, -0.17], radius: 0.013, segments: [8, 6], mat: 'cord' },
+    { kind: 'sphere', name: 'chain5', pos: [0, -0.64, -0.20], radius: 0.010, segments: [8, 6], mat: 'cord' },
   ],
 };
 

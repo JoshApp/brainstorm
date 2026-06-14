@@ -8,6 +8,29 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The reaper's blade is a proper crescent now, the chain hangs and lashes the right way, and the dagger's two cuts finally differ. Old iron, re-forged.",
+        "area": [
+          "weapons",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Gold now counts up in a little amber tally as it streams in, and a level lands with a warm pulse of light to meet the swell.",
+        "area": [
+          "ui"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Rooms stop blinking out when you tilt your head down in a doorway — the dark keeps its shape no matter the angle.",
+        "area": [
+          "level",
+          "tech"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "The dagger reaches again — it was clipping air; now its quick flurry actually lands.",
         "area": [
@@ -365,30 +388,6 @@ export const GENERATED_PATCHLOG = [
         "tag": "tune",
         "text": "Parry a strike and the thing reels — its whole body snaps back off your steel. The deal it offered, declined.",
         "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Catch the blow on your blade and the dungeon flinches. Your next swing remembers the insult.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Sit at any fire. The dungeon weighs what you've become and lets you spend it. Mind the warmth.",
-        "area": [
-          "ui",
-          "level",
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The Boiling King's swallowed core sits where its body actually is now. Aim true.",
-        "area": [
-          "content",
           "combat"
         ]
       }

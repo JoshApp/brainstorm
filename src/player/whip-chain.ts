@@ -25,9 +25,10 @@ let beads: Bead[] = [];
 let idleClock = 0;
 
 const BEAD_NAMES = ['chain0', 'chain1', 'chain2', 'chain3', 'chain4', 'chain5'];
-const TIP_LAG = 0.35;    // how far (in phase-progress) the tip trails the base
-const SNAP_FWD = 0.22;   // metres the tip throws forward (−Z) at a full crack
-const SNAP_DOWN = 0.10;  // metres it drops as it snaps
+const TIP_LAG = 0.5;     // how far (in phase-progress) the tip trails the base —
+                         // higher = a longer travelling wave, less stiff
+const SNAP_FWD = 0.40;   // metres the tip throws forward (−Z) at a full crack
+const SNAP_LIFT = 0.34;  // metres the dangling tip LIFTS toward level as it lashes
 
 /** Collect the named chain beads from a freshly-built model. Returns whether a
  *  chain was found (so the viewmodel only ticks it for whip-like weapons). */
@@ -72,11 +73,13 @@ export function tickWhipChain(phase: SwingPhase, progress: number, dt: number): 
     // further down the chain — that's what makes the wave travel.
     const p = Math.max(0, Math.min(1, progress - b.s * TIP_LAG));
     const d = drive(phase, p);
-    const amp = b.s * b.s;             // tip whips most, base barely moves
+    // amp grows toward the tip (tip whips most) but s^1.5 (not s²) lets the
+    // MID-cord move too, so the whole lash ripples instead of a stiff tip-flick.
+    const amp = Math.pow(b.s, 1.5);
     const sway = phase === 'idle' ? Math.sin(idleClock * 2.2 + b.s * 3) * 0.012 * b.s : 0;
     b.mesh.position.set(
       b.rest.x + sway,
-      b.rest.y - d * amp * SNAP_DOWN,
+      b.rest.y + d * amp * SNAP_LIFT,  // +Y on a crack: the dangling tip lifts toward level
       b.rest.z - d * amp * SNAP_FWD,   // −Z = forward: the crack throws the tip out
     );
   }
