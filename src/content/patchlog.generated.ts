@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Blades bite a little closer now, and a wide swing stays in front of you instead of windmilling past your shoulders.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "A staggered foe no longer pops on the first tap — flurry it open with light blows, then bring a charged heavy down to finish.",
         "area": [
           "combat"
@@ -386,14 +394,6 @@ export const GENERATED_PATCHLOG = [
           "combat",
           "atmosphere",
           "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The stairs down deep meet the floor they promised. Loot rings stopped haunting the air above the coins.",
-        "area": [
-          "level",
-          "atmosphere"
         ]
       }
     ]
