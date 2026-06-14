@@ -102,6 +102,8 @@ const HORROR_BLIT_FRAG = `
   uniform float uBrightness;
   uniform float uWick;  // eye dark-adaptation, 0 = none .. 1 = full dark
   uniform float uInspect;    // 1 = bypass PSX post-process (inspection snaps)
+  uniform float uTime;       // seconds — drives the CRT film animation
+  uniform float uCrtFilm;    // 1 = the opt-in CRT dirty-signal layer is on
   varying vec2 vUv;
 
   // Bayer 4x4 ordered dither matrix (values 0..15, normalized to 0..1)
@@ -259,6 +261,42 @@ const HORROR_BLIT_FRAG = `
       col += texture2D(uBloom, uv).rgb * fogW * uInscatterStrength;
     }
 
+    // ── CRT DIRTY-SIGNAL FILM (opt-in, uCrtFilm) ───────────────────────────
+    // A decaying-transmission layer ON TOP of the baked PSX crunch — the
+    // grimdark register of CRT: rot, not cozy nostalgia. Deliberately OMITS
+    // geometric curvature (it turns stomachs in a moving first-person view)
+    // and adds NO centre chromatic aberration (colour carries MEANING in this
+    // game, so we never fringe it). Grain is luminance-only — the same delta
+    // to R, G and B — so it never shifts hue, and it lives mostly in the
+    // shadows where a failing signal actually shows. uCrtFilm gates the whole
+    // block, so OFF is byte-identical to the image above.
+    if (uCrtFilm > 0.5) {
+      float lum = max(max(col.r, col.g), col.b);
+      float dark = 1.0 - lum;
+
+      // Phosphor scanlines — deeper than the baked ~4%, but eased off the lit
+      // subject (darkness-weighted) so torch pools and signal lights survive.
+      float line = 0.5 + 0.5 * cos(gl_FragCoord.y * 3.14159265);
+      col *= 1.0 - 0.10 * line * (0.5 + 0.5 * dark);
+
+      // Vertical-hold ROLL — a slow bright band drifting up the screen, the
+      // classic failing-sync artifact. Squared so it's mostly dark with a
+      // soft moving crest rather than a constant brighten.
+      float roll = sin((vUv.y + uTime * 0.10) * 6.2831853);
+      col *= 1.0 + 0.03 * roll * roll;
+
+      // Signal GRAIN — animated luminance hash, weighted into the darks.
+      float n = fract(sin(dot(gl_FragCoord.xy + uTime * 53.0, vec2(12.9898, 78.233))) * 43758.5453);
+      col += (n - 0.5) * 0.05 * (0.35 + 0.65 * dark);
+
+      // FLICKER — faint global brightness instability (tube + weak signal).
+      col *= 0.985 + 0.015 * sin(uTime * 12.0);
+
+      // Corner falloff — extra vignette reads as curved tube GLASS without
+      // bending the geometry (curvature being the nausea trigger we refuse).
+      col *= 1.0 - dot(fromCenter, fromCenter) * 0.25;
+    }
+
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -336,6 +374,12 @@ const INSCATTER_START_M = 2.5;    // metres where the haze begins
 const INSCATTER_END_M = 11.0;     // metres where it's fully thick
 let inscatterEnabled = true;
 
+// CRT dirty-signal film — opt-in decaying-transmission layer (see the shader
+// block). Off by default so the live look is unchanged until the player flips
+// the CRT FILM toggle in Settings → Graphics. The amounts are tuned inside the
+// shader; only the on/off (and the per-frame clock) live in JS.
+let crtFilmEnabled = false;
+
 
 /** Toggle fog inscatter (A/B the glowing-air). */
 export function setInscatterEnabled(on: boolean): void {
@@ -348,6 +392,15 @@ export function setDepthCrushEnabled(on: boolean): void {
   depthCrushEnabled = on;
   if (blitMaterial) blitMaterial.uniforms.uDepthAmount.value = on ? DEPTH_AMOUNT : 0;
 }
+
+/** Toggle the CRT dirty-signal film (animated grain + rolling scanlines +
+ *  flicker + tube-corner falloff). A/B the decaying-transmission look. The
+ *  effect amounts are baked in the shader; this just gates the block. */
+export function setCrtFilmEnabled(on: boolean): void {
+  crtFilmEnabled = on;
+  if (blitMaterial) blitMaterial.uniforms.uCrtFilm.value = on ? 1 : 0;
+}
+export function getCrtFilmEnabled(): boolean { return crtFilmEnabled; }
 
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
 export function setBloomEnabled(on: boolean): void {
@@ -431,6 +484,8 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       uBrightness: { value: 1 },
       uWick: { value: 1 },
       uInspect: { value: 0 },
+      uTime: { value: 0 },
+      uCrtFilm: { value: crtFilmEnabled ? 1 : 0 },
     },
     vertexShader: HORROR_BLIT_VERT,
     fragmentShader: HORROR_BLIT_FRAG,
@@ -515,6 +570,13 @@ export function renderWithStyle(
     const pc = camera as THREE.PerspectiveCamera;
     blitMaterial.uniforms.uNear.value = pc.near;
     blitMaterial.uniforms.uFar.value = pc.far;
+  }
+
+  // Advance the CRT film clock ONLY while it's on — its grain/roll/flicker
+  // animate off uTime. One performance.now() per frame when enabled, zero cost
+  // (no uniform churn) when the film is off.
+  if (blitMaterial && crtFilmEnabled) {
+    blitMaterial.uniforms.uTime.value = performance.now() / 1000;
   }
 
   // Profiler sub-phase timing — split the render system's cost into

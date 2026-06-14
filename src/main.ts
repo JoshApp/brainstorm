@@ -30,7 +30,7 @@ import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthr
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setMasterBrightness, setWickLift } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setMasterBrightness, setWickLift } from './style/render-target';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
 import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
@@ -759,8 +759,8 @@ initLightPool(scene);
 // handled by the onSettingsChanged subscription further down.
 setShadowMode(getSettings().shadows);
 // Video settings — render scale (the adaptive ceiling + fixed value when
-// adaptive is off), adaptive resolution (phones only), and bloom. One helper so
-// boot + the onSettingsChanged subscription apply them identically.
+// adaptive is off), adaptive resolution (phones only), bloom, and the CRT film.
+// One helper so boot + the onSettingsChanged subscription apply them identically.
 function applyVideoSettings(s = getSettings()): void {
   setAdaptiveCeiling(s.renderScale);
   const adaptiveOn = s.adaptiveResolution && !isDesktopLike();
@@ -769,6 +769,7 @@ function applyVideoSettings(s = getSettings()): void {
   // fixed scale explicitly whenever adaptive is off (desktop, or toggled off).
   if (!adaptiveOn) setPS1Scale(s.renderScale);
   setBloomEnabled(s.bloom);
+  setCrtFilmEnabled(s.crtFilm);
 }
 applyVideoSettings();
 // DEV-only: ?ps1=0.3 forces the scene-render scale for snap/compare. Stripped
@@ -776,6 +777,13 @@ applyVideoSettings();
 if (import.meta.env.DEV) {
   const ps1 = Number(new URLSearchParams(window.location.search).get('ps1'));
   if (ps1 > 0) setPS1Scale(ps1);
+}
+// DEV-only: ?crt=1 forces the CRT dirty-signal film on for snap/compare,
+// without touching the saved setting. Stripped from prod by the literal guard.
+if (import.meta.env.DEV) {
+  const crt = new URLSearchParams(window.location.search).get('crt');
+  if (crt === '1') setCrtFilmEnabled(true);
+  else if (crt === '0') setCrtFilmEnabled(false);
 }
 // DEV-only: ?shadows=off|hero|single|all forces a mode for snap/compare
 // without touching the saved setting. Stripped from prod by the literal guard.
@@ -1293,7 +1301,7 @@ onSettingsChanged((s) => {
   // down) live when the toggle flips. Defined below; hoisted.
   applyProfilerEnabled();
   setShadowMode(s.shadows);
-  applyVideoSettings(s);   // render scale + adaptive resolution + bloom
+  applyVideoSettings(s);   // render scale + adaptive resolution + bloom + CRT film
   setSurfaceAOStrength(s.aoStrength);
   setSurfaceDetailEnabled(s.surfaceDetail);
   setMasterBrightness(s.brightness);

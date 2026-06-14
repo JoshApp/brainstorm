@@ -113,6 +113,12 @@ export interface Settings {
    *  into hard bands for a graphic PSX-chiaroscuro look. Subtle in the dark
    *  dungeon; a stylistic taste toggle. */
   bandedLighting: boolean;
+  /** CRT "dirty-signal" film — an opt-in decaying-transmission layer over the
+   *  final image: animated grain, rolling scanlines, a faint flicker and
+   *  tube-corner falloff. Old-monitor ROT (not cozy retro), and deliberately
+   *  no screen curvature (nausea in first-person). Off by default — a taste
+   *  toggle to A/B against the clean PSX look. */
+  crtFilm: boolean;
   /** Surface AO strength — scales the baked corner/base darkening on walls +
    *  floors live (0 = off/flat, 1 = as baked, up to 2 = amplified). */
   aoStrength: number;
@@ -203,6 +209,7 @@ const DEFAULTS: Settings = {
   // low; toggle off in Settings if a turn ever reveals a room too late.
   portalCulling: true,
   bandedLighting: true,
+  crtFilm: false,
   aoStrength: 1.6,
   surfaceDetail: true,
   brightness: 1.0,

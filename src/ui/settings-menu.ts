@@ -395,6 +395,16 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       get: () => getSettings().bandedLighting,
       set: (v) => updateSettings({ bandedLighting: v }),
     }),
+    makeToggle({
+      label: 'CRT FILM',
+      description:
+        'A decaying-signal layer over the image — drifting grain, rolling ' +
+        'scanlines, a faint flicker and tube-corner falloff. Old-monitor rot, ' +
+        'not cozy retro. No screen-bending (it turns stomachs in first-person). ' +
+        'A taste toggle; off is the clean PSX look.',
+      get: () => getSettings().crtFilm,
+      set: (v) => updateSettings({ crtFilm: v }),
+    }),
     makeSlider({
       label: 'SURFACE AO',
       min: 0, max: 2, step: 0.05,
