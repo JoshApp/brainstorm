@@ -1063,6 +1063,37 @@ export function createEnemy(
     // the moment. A dedicated heavier "stagger" SFX is future polish.)
   }
 
+  // Resolve a parry against the CURRENT deflectable strike — fired the INSTANT
+  // the player's window catches a committed attack (see the pre-switch block in
+  // update). It cancels the strike, counters the mob, and pays the player out.
+  // Crucially this runs during the WINDUP, not at the strike's landing — so a
+  // tap off the white flash flinches the enemy immediately, crisp, rather than
+  // waiting out the rest of the wind-up. Caller guarantees the ability is
+  // deflectable + reachable + isParryActive().
+  function resolveParry(toward: THREE.Vector3): void {
+    notePlayerDeflected();   // player side: i-frame + clash freeze + parry ting + EMPOWER next swing + riposte beat
+    kickShake(0.22, 0.16);   // clash punch
+    // Chunk poise. If it BREAKS → full stagger (execute window, via
+    // triggerStagger inside). Else a soft FLINCH: cancel the attack, recoil
+    // off-balance, brief no-act. Stacking deflects break it on their own; the
+    // empowered follow-up swing breaks it much faster.
+    const broke = applyStaggerDamage(CONFIG.DEFLECT.POISE_DAMAGE);
+    if (!broke) {
+      currentAbility = null;
+      clearAoeTelegraph();
+      clearLashTendril();
+      coreReactor.hit();     // white body flash — the parried recoil
+      const dx = container.position.x - toward.x;
+      const dz = container.position.z - toward.z;
+      const len = Math.hypot(dx, dz) || 1;
+      bodyAnim.applyKnockback(dx / len, dz / len, CONFIG.DEFLECT.FLINCH_KNOCKBACK);
+      bodyAnim.flinch(CONFIG.DEFLECT.FLINCH_PITCH);   // body snaps back — the visible recoil
+      actionFsm.enterFlinchLock(CONFIG.DEFLECT.FLINCH_LOCK_S);
+      state = 'chasing';
+      phaseTimer = 0;
+    }
+  }
+
   function distToXZ(target: THREE.Vector3): number {
     const dx = container.position.x - target.x;
     const dz = container.position.z - target.z;
@@ -1165,34 +1196,10 @@ export function createEnemy(
     switch (action.kind) {
       case 'melee': {
         if (distance <= action.reach) {
-          // DEFLECT: deflectable strike + active parry window (a well-timed
-          // tap off the white flash) → the strike is negated and the enemy is
-          // COUNTERED. Swarm-generous: every deflectable strike in the window
-          // catches. The reward is aggressive, not bullet-time:
-          if (currentAbility && isDeflectable(currentAbility) && isParryActive()) {
-            notePlayerDeflected();   // player side: i-frame + clash freeze + parry ting + EMPOWER next swing + riposte beat
-            kickShake(0.22, 0.16);   // clash punch
-            // Chunk poise. If it BREAKS → full stagger (execute window, via
-            // triggerStagger inside). Else a soft FLINCH: cancel the attack,
-            // recoil off-balance, brief no-act. Stacking deflects break it on
-            // their own; the empowered follow-up swing breaks it much faster.
-            const broke = applyStaggerDamage(CONFIG.DEFLECT.POISE_DAMAGE);
-            if (!broke) {
-              currentAbility = null;
-              clearAoeTelegraph();
-              clearLashTendril();
-              coreReactor.hit();     // white body flash — the parried recoil
-              const dx = container.position.x - playerPos.x;
-              const dz = container.position.z - playerPos.z;
-              const len = Math.hypot(dx, dz) || 1;
-              bodyAnim.applyKnockback(dx / len, dz / len, CONFIG.DEFLECT.FLINCH_KNOCKBACK);
-              bodyAnim.flinch(CONFIG.DEFLECT.FLINCH_PITCH);   // body snaps back — the visible recoil
-              actionFsm.enterFlinchLock(CONFIG.DEFLECT.FLINCH_LOCK_S);
-              state = 'chasing';
-              phaseTimer = 0;
-            }
-            return true;             // strike consumed, NO damage to player
-          }
+          // A live parry would already have cancelled this strike pre-switch
+          // (see the immediate-parry block in update — it nulls currentAbility
+          // before the strike step ever runs), so reaching here means it
+          // CONNECTS.
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
           return true;            // hit — done
@@ -1766,6 +1773,20 @@ export function createEnemy(
     // not the player; a staggered enemy is reeling and doesn't track you.
     if (state !== 'idle' && state !== 'returning' && state !== 'staggered') {
       faceTarget(playerPos);
+    }
+
+    // ── PARRY (immediate, on the STRIKE) ─────────────────────────────
+    // You parry the blade as it comes OUT, not the wind-up. The window opens
+    // on the white flash (which leads the strike by FLASH_LEAD_S — your
+    // reaction time), and stays open across the strike (PARRY_WINDOW_S), but
+    // the deflect only RESOLVES once the mob is actually STRIKING. It resolves
+    // on the first striking frame — BEFORE the switch runs the strike step
+    // that deals damage — so the catch is crisp + immediate, never a windup
+    // freebie. Reachability matches wantFlash's `mReach + 1.2` band below.
+    if (currentAbility && state === 'striking'
+        && isParryActive() && isDeflectable(currentAbility)) {
+      const pReach = firstMeleeReach(currentAbility);
+      if (pReach !== null && distance <= pReach + 1.2) resolveParry(playerPos);
     }
 
     switch (state) {
