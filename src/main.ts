@@ -360,6 +360,14 @@ initLevelLoader({
     // Batch each room's static fixture geometry (torch sconces/candles, opt-in
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
+    // PRE-WARM the floor's shaders NOW, behind the level-transition fade, while
+    // every room is still visible (the portal culler hasn't run yet, so compile
+    // sees the whole floor). Without this, the FIRST time you turn to reveal a
+    // portal-culled room, Three.js compiles that room's shell/decor programs on
+    // the spot — a one-frame hitch that never repeats (resident after). boot
+    // warmupContent only covers enemy/item models; this covers the procgen
+    // floor. Non-fatal if it throws (older driver) — it's pure pre-pay.
+    try { renderer.compile(scene, camera); } catch { /* pre-warm is best-effort */ }
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to
     // the scene root don't rasterize in this pipeline (blood-burst
