@@ -56,7 +56,7 @@ export function tryJustDodge(): boolean {
   dashStartedAt = -Infinity;
   enterBulletTime();   // shared reward — world crawls, you keep moving
   counterUntil = performance.now() + CONFIG.JUST_DODGE.COUNTER_WINDOW_S * 1000;
-  gainStamina(CONFIG.JUST_DODGE.STAMINA_REFUND);
+  gainStamina(CONFIG.STAMINA.DASH_COST * CONFIG.JUST_DODGE.REFUND_FRAC);  // partial dodge kickback
   playBuffApply();
   try { navigator.vibrate?.(CONFIG.JUST_DODGE.HAPTIC_MS); } catch { /* unsupported */ }
   // DEV: hold the label for the bullet-time duration so the slow-mo window is

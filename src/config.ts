@@ -123,18 +123,18 @@ export const CONFIG = {
     // to re-arm a per-swing light drain; 0 keeps light fully off the resource.)
     // Costs are tuned against a **3-SEGMENT** mental model: the bar
     // reads as three pips' worth of action budget (real gaps between
-    // them in the HUD). A dodge OR a ranged shot eats one full
-    // segment; a heavy eats half. So a full bar buys "3 dodges, OR 6
-    // heavies, OR a heavy + 2 dodges, OR …" — legible at a glance
+    // them in the HUD). A dodge OR a CHARGED heavy eats one full
+    // segment; a ranged shot eats half. So a full bar buys "3 dodges,
+    // OR 3 heavies, OR 6 ranged shots, OR …" — legible at a glance
     // without per-action arithmetic.
     //
     // EXPRESSED AS FRACTIONS OF MAX so 3 × DASH_COST = MAX exactly
-    // and 6 × CHARGED_COST = MAX exactly. Earlier integer rounding
+    // and 6 × RANGED_COST = MAX exactly. Earlier integer rounding
     // (DASH 33, MAX 100) left a 1-stamina sliver after 3 dodges that
     // soft-committed into an unintended 4th stumble-dodge.
     LIGHT_COST: 0,            // free — light tap swings don't touch stamina
-    CHARGED_COST: STAMINA_MAX / 6,    // ½ segment — a heavy melee
-    RANGED_COST: STAMINA_MAX / 3,     // 1 segment — one crossbow / wand shot
+    CHARGED_COST: STAMINA_MAX / 3,    // 1 segment — a heavy melee is a real commitment
+    RANGED_COST: STAMINA_MAX / 6,     // ½ segment — one crossbow / wand shot
     // Dash / dodge — a discrete lunge with brief i-frames (the Souls roll).
     DASH_COST: STAMINA_MAX / 3,       // 1 segment
     DASH_SPEED: 15,           // impulse speed (m/s) fed to player knockback
@@ -189,7 +189,9 @@ export const CONFIG = {
     COUNTER_WINDOW_S: 1.10,    // how long the counter opening stays live
     COUNTER_DAMAGE_MUL: 1.6,   // your next landed hit hits this much harder
     COUNTER_STAGGER_MUL: 2.0,  // and cracks poise this much harder
-    STAMINA_REFUND: 22,        // a clean dodge refuels you to press the counter
+    REFUND_FRAC: 0.30,         // a perfect dodge refunds this FRACTION of the dodge's own cost
+                               //   (DASH_COST) — a partial kickback toward the counter, not a
+                               //   near-free dodge (was a flat 22 ≈ 66% of a dodge).
     HAPTIC_MS: 26,             // firmer phone pulse than the dodge's own tick
   },
 
