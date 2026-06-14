@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The sickle is held by its handle now, not throttled at the throat. Small dignity for a small blade.",
+        "area": [
+          "weapons",
+          "content"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Every blade now reaches exactly as far as it looks. The dungeon measured each one against its own edge.",
         "area": [
@@ -382,13 +390,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Catch a blade now and it never bites through — and the clash rings like steel, not a blacksmith's hammer.",
-        "area": [
-          "combat"
         ]
       }
     ]
