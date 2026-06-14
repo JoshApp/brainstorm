@@ -1196,10 +1196,17 @@ export function createEnemy(
     switch (action.kind) {
       case 'melee': {
         if (distance <= action.reach) {
-          // A live parry would already have cancelled this strike pre-switch
-          // (see the immediate-parry block in update — it nulls currentAbility
-          // before the strike step ever runs), so reaching here means it
-          // CONNECTS.
+          // Parry SAFETY NET — the airtight guarantee. The pre-switch block in
+          // update catches the crisp strike-onset case using an approximate
+          // reach band; THIS check runs at the exact instant a specific step
+          // would connect, with its exact reach. If the window is live now, the
+          // strike is deflected, NOT dealt — so no hit ever slips through while
+          // a parry is open (a longer-reach step, a late damage frame, a tap
+          // that lands a frame after onset all funnel through here).
+          if (currentAbility && isDeflectable(currentAbility) && isParryActive()) {
+            resolveParry(playerPos);
+            return true;          // strike consumed — NO damage
+          }
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
           return true;            // hit — done

@@ -1462,29 +1462,42 @@ export function playParry() {
   const t0 = c.currentTime;
   const master = masterGain;
 
-  // Ringing partials — inharmonic pair reads as struck metal, not a tone.
-  for (const [freq, vol, dur] of [[2100, 0.16, 0.18], [3170, 0.10, 0.14], [4700, 0.06, 0.10]] as const) {
+  // A deflect is steel SHEARING off steel — a bright, fast SHING, not an anvil
+  // ring. The old version's long partials + downward pitch glide read as a
+  // smithing strike; this is short, bright, and the spark sweeps UP.
+
+  // SCRAPE — the body of the parry: a sharp burst of high noise swept upward
+  // through a resonant bandpass (blades sliding apart). This carries the "shk".
+  const n = 0.07;
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate * n), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) {
+    const env = Math.pow(1 - i / d.length, 1.8);            // fast decay
+    d[i] = (Math.random() * 2 - 1) * env;
+  }
+  const src = c.createBufferSource(); src.buffer = buf;
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass'; bp.Q.value = 3.0;
+  bp.frequency.setValueAtTime(4200, t0);
+  bp.frequency.exponentialRampToValueAtTime(8200, t0 + n);  // spark sweeps UP
+  const ng = c.createGain(); ng.gain.value = 0.6;
+  src.connect(bp).connect(ng).connect(master);
+  src.start(t0); src.stop(t0 + n + 0.01);
+
+  // SPARK partials — two very short, bright, high inharmonic "tings" with NO
+  // downward glide (the glide was the anvil tell). They decay fast so the
+  // whole hit reads crisp, ~0.09s total, not a sustained bell.
+  for (const [freq, vol, dur] of [[5400, 0.10, 0.07], [7300, 0.06, 0.05]] as const) {
     const osc = c.createOscillator();
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(freq, t0);
-    osc.frequency.exponentialRampToValueAtTime(freq * 0.92, t0 + dur);
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.004);   // near-instant attack
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.002);   // instant attack
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     osc.connect(g).connect(master);
     osc.start(t0); osc.stop(t0 + dur + 0.02);
   }
-  // Front transient — a tick of bandpassed noise for the contact bite.
-  const n = 0.03;
-  const buf = c.createBuffer(1, Math.floor(c.sampleRate * n), c.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-  const src = c.createBufferSource(); src.buffer = buf;
-  const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3600; bp.Q.value = 0.8;
-  const ng = c.createGain(); ng.gain.value = 0.5;
-  src.connect(bp).connect(ng).connect(master);
-  src.start(t0); src.stop(t0 + n);
 }
 
 // ── UI ────────────────────────────────────────────────────────────────
