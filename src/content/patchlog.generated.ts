@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Damage marks hang in the air where the blow landed now — turn away and they keep their place, not yours.",
+        "area": [
+          "combat",
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The tally is carved now, not stamped — pale serif over the dark, colour kept for the blows that earn it. Bigger hits, bigger marks.",
         "area": [
           "combat",
@@ -391,14 +399,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Turn around at any fire. The doors you came through are behind you, closed. They were always going to be.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The doors you came through are closed now. Nobody remembers closing them.",
         "area": [
           "atmosphere",
           "level"

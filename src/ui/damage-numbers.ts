@@ -3,30 +3,27 @@ import { CONFIG } from '../config';
 import { worldToScreen } from './hud';
 import { on } from '../broadcast/event-bus';
 
-// ── Floating combat numbers — the grimdark / Souls register ──────────────
+// ── Floating combat numbers — WORLD-ANCHORED, grimdark / Souls register ──
 //
-// DOM overlay above the canvas. Restraint is the aesthetic: an old-style
-// SERIF in bone-white, a thin hard edge + soft dark drop for legibility on
-// the torchlit dark, and a CALM motion — a small settle, a slow drift up, a
-// long fade. No bounce, no confetti. Colour is RATIONED: white is the
-// default; only the exceptional hit earns a tint (gold crit, blood execute,
-// a desaturated element hue for DoT). Reads as "carved into the world",
-// matching the in-world voice.
+// Each number is pinned to a WORLD point and reprojected every frame
+// (updateDamageNumbers, driven from the 'hud' system), so it stays over the
+// spot it was struck as you turn — it does NOT slide with the camera. It rises
+// in WORLD space (metres/sec) and fades over its life; behind the camera it
+// just hides.
 //
-// Legibility still comes first (the reason for the restyle): SIZE SCALES WITH
-// DAMAGE with a floor so chips stay readable and big hits feel big; numbers
-// spawn at HEAD height so they rise off the silhouette into the dark above the
-// enemy, clear of the body + reticle; and per-number JITTER fans rapid hits
-// out instead of letting them stack into a blur.
+// Restraint is the look: an old-style SERIF in bone-white, a thin hard edge +
+// soft dark drop for legibility on the torchlit dark, calm scale settle (no
+// punch). Colour is RATIONED — white default, muted gold crit, deep blood
+// execute, desaturated element tint for DoT, cool ash graze.
 //
-// Two layers: an OUTER that drifts up + fades over the lifetime, an INNER that
-// does the (gentle) scale settle — so the motion reads without coupling.
+// Legibility: SIZE SCALES WITH DAMAGE off a readable floor; numbers spawn at
+// HEAD height so they rise off the silhouette; per-number JITTER fans rapid
+// hits apart.
 
 const FONT = "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif";
 const POP_MS = 180;        // gentle settle, not a punch
-const HEAD_LIFT = 0.45;    // world metres lifted above the passed point (off the torso)
-
-// Shared soft dark drop — the Souls legibility trick (a halo, not a glow).
+const HEAD_LIFT = 0.45;    // world metres above the passed point (off the torso)
+const MAX_ACTIVE = 64;     // hard cap — drop the oldest past this
 const HALO = '0 1px 2px rgba(0,0,0,0.92), 0 0 6px rgba(0,0,0,0.6)';
 
 interface LabelStyle {
@@ -34,61 +31,62 @@ interface LabelStyle {
   fill: string;
   strokeColor: string;
   strokePx: number;
-  glow: string;          // text-shadow (HALO, optionally + a faint tint)
+  glow: string;          // text-shadow
   scaleStart: number;    // settle start scale
   pop: string;           // easing for the settle
-  rise: number;          // px the label drifts up over its life
+  vy: number;            // WORLD rise speed, metres/sec
   lifetime: number;      // seconds
-  jitter: number;        // ± px horizontal scatter
+  jitter: number;        // ± px horizontal scatter (screen space)
   weight: string;
   letterSpacing: string;
 }
 
-const _lift = new THREE.Vector3();
-
-/** Lift the world point to head height and project it. Returns null if the
- *  point is behind the camera. */
-function projectHead(camera: THREE.Camera, worldPos: THREE.Vector3): { x: number; y: number } | null {
-  _lift.copy(worldPos);
-  _lift.y += HEAD_LIFT;
-  const p = worldToScreen(_lift, camera);
-  if (p.behind) return null;
-  return { x: p.x, y: p.y };
+interface ActiveNum {
+  el: HTMLDivElement;    // outer (positioned each frame)
+  wpos: THREE.Vector3;   // world anchor — rises over time
+  vy: number;
+  age: number;
+  lifetime: number;
+  jitterX: number;       // fixed screen-px offset (keeps the fan)
 }
 
-/** Damage → font size, floored at `base`, saturating at `max` around `ref`
- *  damage. Chips stay readable; big hits feel big. */
+let _camera: THREE.Camera | null = null;
+const _scratch = new THREE.Vector3();
+const active: ActiveNum[] = [];
+
+/** Damage → font size, floored at `base`, saturating at `max` around `ref`. */
 function sizeFor(amount: number, base: number, max: number, ref: number): number {
   return base + (max - base) * Math.min(1, Math.max(0, amount) / ref);
 }
 
 /** A DoT element colour, DESATURATED toward bone-ash so it reads as a muted
- *  hue (poison sickly-green, bleed dried-red) rather than a bright pip. */
+ *  hue rather than a bright pip. */
 function dotTint(hex: number, alpha: number): string {
   let r = (hex >> 16) & 0xff, g = (hex >> 8) & 0xff, b = hex & 0xff;
-  const BR = 206, BG = 196, BB = 174, mix = 0.5;   // toward bone-ash
+  const BR = 206, BG = 196, BB = 174, mix = 0.5;
   r = Math.round(r + (BR - r) * mix);
   g = Math.round(g + (BG - g) * mix);
   b = Math.round(b + (BB - b) * mix);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Mount a floating label at a screen point; run its settle + rise + fade. */
-function floatLabel(sx: number, sy: number, text: string, st: LabelStyle): void {
+/** Mount a label anchored to `worldPos` (already lifted to head height). It is
+ *  reprojected + risen + faded each frame by updateDamageNumbers. */
+function floatLabel(worldPos: THREE.Vector3, text: string, st: LabelStyle): void {
+  const wpos = worldPos.clone();
   const jitterX = (Math.random() * 2 - 1) * st.jitter;
   const rot = (Math.random() * 2 - 1) * 3;
 
   const outer = document.createElement('div');
   Object.assign(outer.style, {
     position: 'fixed',
-    left: `${sx + jitterX}px`,
-    top: `${sy}px`,
+    left: '-9999px',
+    top: '-9999px',
     transform: 'translate(-50%, -50%)',
     pointerEvents: 'none',
     zIndex: '15',
     opacity: '1',
-    willChange: 'transform, opacity',
-    transition: `transform ${st.lifetime}s ease-out, opacity ${st.lifetime}s ease-in`,
+    willChange: 'left, top, opacity',
   } as Partial<CSSStyleDeclaration>);
 
   const inner = document.createElement('div');
@@ -112,26 +110,48 @@ function floatLabel(sx: number, sy: number, text: string, st: LabelStyle): void 
   outer.appendChild(inner);
   document.body.appendChild(outer);
 
-  requestAnimationFrame(() => {
-    outer.style.transform = `translate(-50%, calc(-50% - ${st.rise}px))`;
-    outer.style.opacity = '0';
-    inner.style.transform = `scale(1) rotate(${rot}deg)`;
-  });
+  // Place this frame (avoid a flash from the off-screen seed) + run the settle.
+  if (_camera) {
+    const p = worldToScreen(wpos, _camera);
+    if (!p.behind) { outer.style.left = `${p.x + jitterX}px`; outer.style.top = `${p.y}px`; }
+    else outer.style.opacity = '0';
+  }
+  requestAnimationFrame(() => { inner.style.transform = `scale(1) rotate(${rot}deg)`; });
 
-  setTimeout(() => outer.remove(), st.lifetime * 1000 + 120);
+  active.push({ el: outer, wpos, vy: st.vy, age: 0, lifetime: st.lifetime, jitterX });
+  if (active.length > MAX_ACTIVE) { active.shift()!.el.remove(); }
 }
 
-/** A short-lived WORD — combat status punctuation like "STAGGERED". Spaced
- *  serif caps in bone so it reads as an event, not a number. */
+/** Per-frame: reproject every live number against the camera, rise it in world
+ *  space, fade it, and retire it at end of life. Driven from the 'hud' system
+ *  with realDt (so numbers keep moving at wall-clock during hit-pause/slow-mo). */
+export function updateDamageNumbers(camera: THREE.Camera, dt: number): void {
+  _camera = camera;
+  for (let i = active.length - 1; i >= 0; i--) {
+    const a = active[i];
+    a.age += dt;
+    if (a.age >= a.lifetime) { a.el.remove(); active.splice(i, 1); continue; }
+    a.wpos.y += a.vy * dt;
+    _scratch.copy(a.wpos);
+    const p = worldToScreen(_scratch, camera);
+    if (p.behind) { a.el.style.opacity = '0'; continue; }
+    a.el.style.left = `${p.x + a.jitterX}px`;
+    a.el.style.top = `${p.y}px`;
+    const t = a.age / a.lifetime;
+    a.el.style.opacity = String(Math.max(0, 1 - t * t));   // linger, then fall off
+  }
+}
+
+/** A short-lived WORD — combat status punctuation like "STAGGERED". */
 export function spawnStatusText(
   camera: THREE.Camera,
   worldPos: THREE.Vector3,
   text: string,
   color: string = 'rgba(238, 226, 198, 0.98)',
 ) {
-  const p = projectHead(camera, worldPos);
-  if (!p) return;
-  floatLabel(p.x, p.y, text, {
+  _camera = camera;
+  _scratch.copy(worldPos); _scratch.y += HEAD_LIFT;
+  floatLabel(_scratch, text, {
     size: 18,
     fill: color,
     strokeColor: 'rgba(8, 5, 2, 0.9)',
@@ -139,7 +159,7 @@ export function spawnStatusText(
     glow: HALO,
     scaleStart: 1.15,
     pop: 'ease-out',
-    rise: CONFIG.DAMAGE_NUMBER_RISE * 1.2,
+    vy: 0.9,
     lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.5,
     jitter: 6,
     weight: '700',
@@ -152,26 +172,25 @@ export function spawnDamageNumber(
   worldPos: THREE.Vector3,
   amount: number,
   crit: boolean = false,
-  /** A GRAZE — a cleaved secondary target that took reduced (falloff) damage.
-   *  Ash-dim + smaller so it reads as "this one only got clipped". */
+  /** A GRAZE — a cleaved secondary target that took reduced (falloff) damage. */
   graze: boolean = false,
   /** An EXECUTE — a finisher on a staggered foe: biggest, deep blood-red. */
   execute: boolean = false,
 ) {
   graze = graze && !crit && !execute;
-  const p = projectHead(camera, worldPos);
-  if (!p) return;
+  _camera = camera;
+  _scratch.copy(worldPos); _scratch.y += HEAD_LIFT;
 
   if (execute) {
-    floatLabel(p.x, p.y, String(amount), {
+    floatLabel(_scratch, String(amount), {
       size: sizeFor(amount, 44, 60, 14),
-      fill: 'rgba(214, 52, 38, 0.99)',           // deep blood
+      fill: 'rgba(214, 52, 38, 0.99)',
       strokeColor: 'rgba(14, 0, 0, 0.95)',
       strokePx: 2.6,
       glow: `${HALO}, 0 0 16px rgba(150, 0, 0, 0.55)`,
       scaleStart: 1.5,
       pop: 'ease-out',
-      rise: 56,
+      vy: 1.0,
       lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.6,
       jitter: 10,
       weight: '700',
@@ -180,15 +199,15 @@ export function spawnDamageNumber(
     return;
   }
   if (crit) {
-    floatLabel(p.x, p.y, `${amount}`, {
+    floatLabel(_scratch, `${amount}`, {
       size: sizeFor(amount, 32, 50, 16),
-      fill: 'rgba(232, 200, 124, 0.99)',         // muted gold
+      fill: 'rgba(232, 200, 124, 0.99)',
       strokeColor: 'rgba(36, 18, 0, 0.92)',
       strokePx: 2.2,
       glow: `${HALO}, 0 0 12px rgba(210, 150, 40, 0.5)`,
       scaleStart: 1.3,
       pop: 'ease-out',
-      rise: 50,
+      vy: 1.1,
       lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.45,
       jitter: 12,
       weight: '700',
@@ -197,15 +216,15 @@ export function spawnDamageNumber(
     return;
   }
   if (graze) {
-    floatLabel(p.x, p.y, String(amount), {
+    floatLabel(_scratch, String(amount), {
       size: sizeFor(amount, 19, 27, 16),
-      fill: 'rgba(186, 192, 196, 0.82)',         // cool ash
+      fill: 'rgba(186, 192, 196, 0.82)',
       strokeColor: 'rgba(4, 6, 8, 0.85)',
       strokePx: 1.4,
       glow: HALO,
       scaleStart: 0.92,
       pop: 'ease-out',
-      rise: 34,
+      vy: 1.1,
       lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.1,
       jitter: 18,
       weight: '600',
@@ -214,15 +233,15 @@ export function spawnDamageNumber(
     return;
   }
   // Regular chip hit — bone, damage-scaled, calm.
-  floatLabel(p.x, p.y, String(amount), {
+  floatLabel(_scratch, String(amount), {
     size: sizeFor(amount, 24, 40, 16),
-    fill: 'rgba(235, 224, 200, 0.97)',           // bone / ash white
+    fill: 'rgba(235, 224, 200, 0.97)',
     strokeColor: 'rgba(6, 4, 2, 0.9)',
     strokePx: 1.8,
     glow: HALO,
     scaleStart: 0.9,
     pop: 'cubic-bezier(0.2, 1.2, 0.35, 1)',
-    rise: 40,
+    vy: 1.1,
     lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.25,
     jitter: 14,
     weight: '700',
@@ -231,22 +250,18 @@ export function spawnDamageNumber(
 }
 
 // ── DoT (damage-over-time) tick numbers ──────────────────────────────────
-// Bleed/poison/burn ticks have no attack/projectile caller to float a number,
-// so the enemy emits `enemy:dot` and this subscriber draws it — a desaturated
-// element tint, a touch smaller than a hit so ticks read as attrition. Wire
-// once at boot via initDotDamageNumbers(camera).
 let _dotCamera: THREE.Camera | null = null;
 const _dotPos = new THREE.Vector3();
 
 export function initDotDamageNumbers(camera: THREE.Camera): void {
   _dotCamera = camera;
+  _camera = camera;
   on((e) => {
     if (e.type !== 'enemy:dot') return;
-    if (!_dotCamera) return;
-    _dotPos.set(e.x, e.y, e.z);
-    const p = projectHead(_dotCamera, _dotPos);
-    if (!p) return;
-    floatLabel(p.x, p.y, String(e.amount), {
+    const cam = _dotCamera ?? _camera;
+    if (!cam) return;
+    _dotPos.set(e.x, e.y + HEAD_LIFT, e.z);
+    floatLabel(_dotPos, String(e.amount), {
       size: sizeFor(e.amount, 20, 30, 14),
       fill: dotTint(e.color, 0.95),
       strokeColor: 'rgba(6, 4, 2, 0.88)',
@@ -254,7 +269,7 @@ export function initDotDamageNumbers(camera: THREE.Camera): void {
       glow: HALO,
       scaleStart: 0.92,
       pop: 'ease-out',
-      rise: 34,
+      vy: 1.0,
       lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.1,
       jitter: 16,
       weight: '600',

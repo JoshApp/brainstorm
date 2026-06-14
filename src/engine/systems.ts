@@ -71,6 +71,7 @@ import { tickBossBar } from '../ui/boss-bar';
 import { updateBuffBar } from '../ui/buff-bar';
 import { updateXpGoldHud } from '../ui/xp-gold-hud';
 import { tickXpSigil } from '../ui/xp-sigil';
+import { updateDamageNumbers } from '../ui/damage-numbers';
 import { tickLowHpPulse } from '../ui/vignette';
 import { getPlayerHp, getPlayerMaxHp } from '../player/health';
 import { tickShake } from '../combat/screen-shake';
@@ -449,6 +450,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       updateBuffBar();
       updateXpGoldHud(ctx.realDt);
       tickXpSigil(ctx.realDt);
+      // World-anchored damage numbers — reproject + rise + fade each frame so
+      // they stick to the struck point as the camera turns. realDt so they keep
+      // moving at wall-clock during hit-pause / slow-mo.
+      updateDamageNumbers(camera, ctx.realDt);
     } },
 
     // Low-HP breathing vignette — peripheral red at <30% HP. realDt so it
