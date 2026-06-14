@@ -209,6 +209,8 @@ export const CONFIG = {
     // stays active THROUGH the strike (and a ~250ms human reaction lands
     // dead-centre). Forgiving for a first feel; tune down on the phone.
     PARRY_WINDOW_S: 0.42,      // a tap opens this active window; a strike landing in it deflects
+    COMMIT_S: 0.28,            // the player-action FSM holds 'parrying' this long — a committed
+                               //   beat that locks out attack/dodge (parry is a real action, not free)
     LOCKOUT_S: 0.40,           // cooldown after a parry attempt — anti-mash (can't hold a guard)
     POISE_DAMAGE: 4,           // poise chunked per deflect (basic mobs ~4-6 → break in 1-2)
     FLINCH_LOCK_S: 0.45,       // the flinched enemy can't start a new attack this long

@@ -1,10 +1,11 @@
-// Player-action FSM (src/combat/player-action.ts) — pins the derived-state
-// priority and the lockout policy so the Phase-2 migration (making this the
-// authority) has a fixed contract to preserve.
+// Player-action FSM (src/combat/player-action.ts) — pins the state priority,
+// the dt-ticked owned beats (dodge/parry), and the cancel table, so the
+// authority's contract is locked.
 
 import assert from 'node:assert/strict';
 import {
   bindPlayerActionSources, getPlayerAction, canStartAction,
+  enterDodge, enterParry, tickPlayerAction, resetPlayerAction,
   type PlayerActionSources,
 } from '../src/combat/player-action';
 import type { SwingPhase } from '../src/player/viewmodel';
@@ -18,44 +19,69 @@ function test(name: string, fn: () => void) {
   }
 }
 
-// Mutable fake sources so each test poses a state.
-const s = { swinging: false, phase: 'idle' as SwingPhase, dodging: false, parry: false, dashLocked: false };
-const fake: PlayerActionSources = {
-  isSwinging: () => s.swinging,
-  swingPhase: () => s.phase,
-  isDodging: () => s.dodging,
-  parryActive: () => s.parry,
-  dashLocked: () => s.dashLocked,
-};
+const s = { swinging: false, phase: 'idle' as SwingPhase };
+const fake: PlayerActionSources = { isSwinging: () => s.swinging, swingPhase: () => s.phase };
 bindPlayerActionSources(fake);
-function reset() { s.swinging = false; s.phase = 'idle'; s.dodging = false; s.parry = false; s.dashLocked = false; }
+function reset() { s.swinging = false; s.phase = 'idle'; resetPlayerAction(); }
 
-// ── Derived-state priority ───────────────────────────────────────────
+// ── Derived + owned state priority ───────────────────────────────────
 test('idle when nothing active', () => { reset(); assert.equal(getPlayerAction(), 'idle'); });
-test('attacking when swinging', () => { reset(); s.swinging = true; s.phase = 'strike'; assert.equal(getPlayerAction(), 'attacking'); });
-test('dodging outranks attacking', () => {
-  reset(); s.swinging = true; s.dodging = true;
+test('attacking when the swing sim is swinging', () => {
+  reset(); s.swinging = true; s.phase = 'strike';
+  assert.equal(getPlayerAction(), 'attacking');
+});
+test('a committed dodge outranks an in-flight swing', () => {
+  reset(); s.swinging = true; enterDodge(0.3);
   assert.equal(getPlayerAction(), 'dodging');
 });
-test('parrying outranks all', () => {
-  reset(); s.swinging = true; s.dodging = true; s.parry = true;
+test('a committed parry outranks all', () => {
+  reset(); s.swinging = true; enterDodge(0.3); enterParry(0.28);
   assert.equal(getPlayerAction(), 'parrying');
 });
 
-// ── Lockout policy ───────────────────────────────────────────────────
-test('cannot attack mid-roll', () => { reset(); s.dodging = true; assert.equal(canStartAction('attack'), false); });
-test('can attack when idle', () => { reset(); assert.equal(canStartAction('attack'), true); });
-test('cannot dodge while strike-locked', () => { reset(); s.dashLocked = true; assert.equal(canStartAction('dodge'), false); });
-test('can dodge mid-recover (not strike-locked)', () => {
-  reset(); s.swinging = true; s.phase = 'recover'; s.dashLocked = false;
-  assert.equal(canStartAction('dodge'), true);
+// ── dt-ticked expiry (NOT wall-clock) ────────────────────────────────
+test('parry beat expires after its duration of dt', () => {
+  reset(); enterParry(0.3);
+  assert.equal(getPlayerAction(), 'parrying');
+  tickPlayerAction(0.2); assert.equal(getPlayerAction(), 'parrying');   // still committed
+  tickPlayerAction(0.2); assert.equal(getPlayerAction(), 'idle');       // 0.4 > 0.3 → done
 });
-test('cannot parry mid-strike', () => {
-  reset(); s.swinging = true; s.phase = 'strike';
+test('dodge beat expires on the dt clock', () => {
+  reset(); enterDodge(0.25);
+  tickPlayerAction(0.1); assert.equal(getPlayerAction(), 'dodging');
+  tickPlayerAction(0.2); assert.equal(getPlayerAction(), 'idle');
+});
+
+// ── Cancel table ─────────────────────────────────────────────────────
+test('nothing starts during a committed parry', () => {
+  reset(); enterParry(0.3);
+  assert.equal(canStartAction('attack'), false);
+  assert.equal(canStartAction('dodge'), false);
   assert.equal(canStartAction('parry'), false);
 });
-test('cannot parry mid-roll', () => { reset(); s.dodging = true; assert.equal(canStartAction('parry'), false); });
-test('can parry from idle', () => { reset(); assert.equal(canStartAction('parry'), true); });
+test('nothing starts during a committed dodge', () => {
+  reset(); enterDodge(0.3);
+  assert.equal(canStartAction('attack'), false);
+  assert.equal(canStartAction('dodge'), false);
+  assert.equal(canStartAction('parry'), false);
+});
+test('cannot dodge/parry mid-strike, but a new swing (combo) is allowed', () => {
+  reset(); s.swinging = true; s.phase = 'strike';
+  assert.equal(canStartAction('dodge'), false);
+  assert.equal(canStartAction('parry'), false);
+  assert.equal(canStartAction('attack'), true);
+});
+test('can dodge/parry during attack RECOVERY (cancel window)', () => {
+  reset(); s.swinging = true; s.phase = 'recover';
+  assert.equal(canStartAction('dodge'), true);
+  assert.equal(canStartAction('parry'), true);
+});
+test('everything is free from idle', () => {
+  reset();
+  assert.equal(canStartAction('attack'), true);
+  assert.equal(canStartAction('dodge'), true);
+  assert.equal(canStartAction('parry'), true);
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

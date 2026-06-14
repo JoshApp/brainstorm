@@ -25,6 +25,7 @@ import { consumeChargedAmount, consumeChargedPerfect, getChargeProgress, setChar
 import { spendStaminaSoft, gainStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { isDeflectEmpowerActive, consumeDeflectEmpower } from './reactive-defense';
+import { canStartAction } from './player-action';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import { showHitCones, markSwingHits, type SwingShape } from './combat-debug';
 import { resolveWorldZones, testSegmentZones, type WorldZone, type ZoneHit } from './hurtbox';
@@ -409,6 +410,10 @@ export function createCombatSystem(
       if (!getEquipped('weapon')) {
         return;
       }
+      // FSM gate: no new swing while committed to a parry or a dodge (the
+      // action FSM owns this lockout; combo chaining within a swing is still
+      // the swing sim's own concern).
+      if (!canStartAction('attack')) return;
       // STAMINA gates the two drawback-free actions the playtest flagged.
       // Read the resolved weapon once at press time to branch ranged/melee.
       const pressWeapon = getCurrentWeapon();

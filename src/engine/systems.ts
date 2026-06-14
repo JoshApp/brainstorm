@@ -39,7 +39,9 @@ import { consumeAttackPressed } from '../controls/attack-input';
 import { consumeDash } from '../controls/dash-input';
 import { tryDash } from '../combat/dash';
 import { consumeRiposte } from '../combat/reactive-defense';
-import { updateSwingAgency, isDashLocked } from '../combat/swing-agency';
+import { updateSwingAgency } from '../combat/swing-agency';
+import { canStartAction, enterDodge } from '../combat/player-action';
+import { CONFIG } from '../config';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { tickLightPool } from '../scene/light-pool';
 import { tickProjectiles } from '../combat/projectile-pool';
@@ -150,10 +152,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // input-camera so it reads this frame's facing.
     { name: 'dash', phase: 'unpaused', tick() {
       if (isDying() || isFogWalkthroughActive()) return;
-      // Committed mid-strike: can't dash-cancel the active frames. Check the
-      // lock BEFORE consuming, so the input stays pending and fires the instant
-      // the strike ends (a natural roll-cancel buffer into recovery).
-      if (isDashLocked()) return;
+      // The action FSM arbitrates: no roll out of a swing's committed frames
+      // or during a parry beat. Checked BEFORE consuming, so the input stays
+      // pending and fires the instant the lock clears (roll-cancel buffer).
+      if (!canStartAction('dodge')) return;
       const d = consumeDash();
       if (!d) return;
       camera.getWorldDirection(forwardScratch);
@@ -168,7 +170,9 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
         wx = rX * d.dx + fX * (-d.dy);              // strafe + forward(−dy)
         wz = rZ * d.dx + fZ * (-d.dy);
       }
-      tryDash(wx, wz);
+      // On a real dodge, commit the FSM 'dodging' beat (≈ the i-frame window)
+      // so it locks out attack/parry for the roll's duration.
+      if (tryDash(wx, wz)) enterDodge(CONFIG.STAMINA.DASH_IFRAME_S);
     } },
 
     { name: 'torchlight', phase: 'unpaused', tick(ctx) {

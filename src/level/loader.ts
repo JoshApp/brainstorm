@@ -11,6 +11,7 @@ import { resetPlayerInvuln } from '../player/health';
 import { isArrivalActive } from '../player/arrival';
 import { resetJustDodge } from '../combat/just-dodge';
 import { resetReactiveDefense } from '../combat/reactive-defense';
+import { resetPlayerAction } from '../combat/player-action';
 import { resetExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { clearBreath } from '../effects/breath';
 import { resetCameraStumble } from '../combat/camera-stumble';
@@ -184,6 +185,7 @@ export function tickPendingLoad() {
   resetPlayerInvuln();
   resetJustDodge();         // clear any in-flight counter window
   resetReactiveDefense();   // clear deflect opportunity count + bullet-time dip
+  resetPlayerAction();      // clear any committed dodge/parry beat
   resetExhaustionFeedback(); // clear breath phase / heave on a fresh floor
   clearBreath();            // hide any in-flight breath puffs
   resetCameraStumble();     // clear any in-flight stumble lurch

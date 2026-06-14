@@ -17,11 +17,11 @@ import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
 import {
-  tickBulletTime, getWorldTimeScale, triggerParry, deflectOpportunityActive, isParryActive,
+  tickBulletTime, getWorldTimeScale, triggerParry, deflectOpportunityActive,
 } from './combat/reactive-defense';
-import { isDodging } from './combat/dash';
-import { isDashLocked } from './combat/swing-agency';
-import { bindPlayerActionSources } from './combat/player-action';
+import {
+  bindPlayerActionSources, canStartAction, enterParry, tickPlayerAction,
+} from './combat/player-action';
 import { tickBossSlowmo, getBossSlowmoTimeScale } from './combat/boss-slowmo';
 import { setupBossCinematics } from './mobs/boss-cinematics';
 import { initWeaponDrop, dropHeldItem } from './player/weapon-drop';
@@ -539,15 +539,13 @@ const combat = createCombatSystem(
   () => currentLevel?.walkable,
 );
 
-// Player-action FSM — the single derived view + lockout gate. Bound to the
-// live state sources here; consumers (input gates, HUD, parry-as-state in
-// Phase 2) read getPlayerAction()/canStartAction(). Phase 1 is read-only.
+// Player-action FSM — the single AUTHORITY for combat action arbitration.
+// It owns dodge/parry as committed dt-ticked states and observes the swing
+// sim for attacking; the three begin-points (swing start, dash, parry) route
+// through canStartAction. Bound to the swing sim here.
 bindPlayerActionSources({
   isSwinging: () => weapon.isSwinging,
   swingPhase: () => weapon.getPhase(),
-  isDodging,
-  parryActive: isParryActive,
-  dashLocked: isDashLocked,
 });
 
 // --- Player death wiring ---
@@ -622,9 +620,12 @@ const input = createTouchInput(canvas, {
       deflectAvailable: deflectOpportunityActive(),
     });
     if (action.kind === 'deflect') {
-      // Open the parry window; if it didn't (lockout) fall back to a swing so
-      // the tap is never wasted.
-      if (!triggerParry()) triggerAttack();
+      // The FSM arbitrates: parry only if the current action allows it (not
+      // mid-strike) AND it isn't on its anti-mash cooldown. On success commit
+      // the parry beat (locks attack/dodge for COMMIT_S). Otherwise fall back
+      // to a swing so the tap is never wasted.
+      if (canStartAction('parry') && triggerParry()) enterParry(CONFIG.DEFLECT.COMMIT_S);
+      else triggerAttack();
     }
     else if (action.kind === 'attack') triggerAttack();
     else if (action.kind === 'interact') resolveUsable(action.interactable, camera.position).onUse();
@@ -1038,6 +1039,10 @@ function tick() {
   const baseScale = getTimeScale() * getBossSlowmoTimeScale();
   const scaledDt = realDt * baseScale * getWorldTimeScale();
   const playerDt = realDt * baseScale;
+  // Advance the player-action FSM on the PLAYER clock, BEFORE input is
+  // processed below, so a committed dodge/parry that expires this frame frees
+  // the next action immediately.
+  if (!isWorldPaused()) tickPlayerAction(playerDt);
   // Snapshot pause state AFTER the harness so a just-ended budget gates this
   // frame's unpaused systems.
   const paused = isWorldPaused();

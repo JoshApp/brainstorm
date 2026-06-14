@@ -1,82 +1,97 @@
-// Player action state — the single source of truth for "what is the player
-// DOING right now," and the one gate for "may a new action START."
+// Player action FSM — the single AUTHORITY for the player's combat action and
+// the transitions between them. Every action-start request (swing, dodge,
+// parry) routes through request(); a cancel table decides whether the action
+// in progress permits it. One owner, one place the rules live — replacing the
+// lockout logic that used to be scattered across the swing sim, the dash
+// module, and swing-agency.
 //
-// WHY THIS EXISTS. Combat grew three defensive/offensive actions tracked in
-// three different places, with the lockout rules scattered as cross-module
-// queries:
-//   · ATTACKING — a real FSM already (viewmodel swing sim: windup/strike/
-//     recover, isSwinging/getPhase).
-//   · DODGING   — an impulse + i-frame window (dash.ts isDodging()), plus the
-//     mid-strike lock (swing-agency isDashLocked()).
-//   · PARRYING  — a timing window (reactive-defense isParryActive()).
-// Nothing owned "the player's current action," so every new interaction
-// (parry is the latest) re-derives lockouts by hand — which is how conflicts
-// and freezes creep in.
+// DT-TICKED, not wall-clock. The owned states (dodging, parrying) carry a
+// phase timer advanced by tickPlayerAction(dt) on the PLAYER clock, so they
+// dilate correctly with hit-pause / bullet-time / the death dip — the bug a
+// performance.now() window would have. (The enemy ability timeline + the
+// swing sim are dt-ticked for the same reason; the player side now matches.)
 //
-// MIGRATION (incremental, so pillar-1 combat never breaks mid-step):
-//   Phase 1 (THIS FILE, now): a single DERIVED view (getPlayerAction) + ONE
-//     policy table (canStartAction) consolidating the lockout rules. Pure
-//     reads over the existing sources — no behaviour change, nothing to
-//     drift, safe to land while the deflect feel is still being tuned.
-//   Phase 2 (next, with feel-validation): make this the AUTHORITY — the
-//     attack/dodge/parry triggers consult canStartAction instead of their
-//     own ad-hoc checks, and PARRY becomes a first-class state with a real
-//     per-weapon animation + duration (a peer of the swing), not a window.
+// ANIMATION IS DELEGATED. The FSM owns WHICH action you're in and WHAT may
+// interrupt it; the drivers own how it looks:
+//   · attacking — the viewmodel swing sim (already a good dt-phase machine;
+//     the FSM OBSERVES its phase for cancel windows rather than re-owning it).
+//   · dodging   — the dash impulse + i-frames.
+//   · parrying  — a viewmodel parry pose (per-weapon, the iteration step).
 //
 // Module-level mutable state with a getter/setter API — the project's
-// standard pattern.
+// standard pattern. Reset on floor load (loader.ts).
 
 import type { SwingPhase } from '../player/viewmodel';
 
 export type PlayerAction = 'idle' | 'attacking' | 'dodging' | 'parrying';
 
-/** The live state sources, bound once at boot (main wires the viewmodel +
- *  combat modules). Kept as thunks so this module imports no heavy deps and
- *  stays a pure policy layer. */
+/** Live state the FSM OBSERVES for the one action it doesn't own (attacking)
+ *  + the agency lock. Bound once at boot. Thunks, so this stays a pure policy
+ *  layer with no heavy imports. */
 export interface PlayerActionSources {
+  /** The swing sim — the attacking state's driver. */
   isSwinging: () => boolean;
   swingPhase: () => SwingPhase;
-  isDodging: () => boolean;
-  parryActive: () => boolean;
-  /** Mid-strike commitment that forbids a dash (swing-agency). */
-  dashLocked: () => boolean;
 }
 
 let sources: PlayerActionSources | null = null;
 export function bindPlayerActionSources(s: PlayerActionSources): void { sources = s; }
 
-/** What the player is doing THIS frame. Priority resolves overlap windows:
- *  parry (briefest, most intentional) > dodge > attack > idle. A derived
- *  read — the owning systems still drive their own timers in Phase 1. */
+// ── Owned, dt-ticked states ──────────────────────────────────────────
+// dodging + parrying are committed beats the FSM owns outright: a remaining
+// timer (seconds) counted down on the player clock. attacking is observed
+// from the swing sim (it owns its own phases).
+let dodgeLeft = 0;
+let parryLeft = 0;
+
+/** Advance the owned states on the PLAYER clock. Called once per frame from
+ *  the loop BEFORE input is processed, so a freshly-expired state frees the
+ *  next action this same frame. */
+export function tickPlayerAction(dt: number): void {
+  if (dodgeLeft > 0) dodgeLeft = Math.max(0, dodgeLeft - dt);
+  if (parryLeft > 0) parryLeft = Math.max(0, parryLeft - dt);
+}
+
+/** Current action. Priority: the owned committed beats (parry > dodge) win
+ *  over the observed swing, so a parry/dodge started this frame reads
+ *  immediately even if a swing is also winding down. */
 export function getPlayerAction(): PlayerAction {
-  if (!sources) return 'idle';
-  if (sources.parryActive()) return 'parrying';
-  if (sources.isDodging()) return 'dodging';
-  if (sources.isSwinging()) return 'attacking';
+  if (parryLeft > 0) return 'parrying';
+  if (dodgeLeft > 0) return 'dodging';
+  if (sources?.isSwinging()) return 'attacking';
   return 'idle';
 }
 
-/** The lockout policy in ONE place — what may begin given the current action.
- *  These encode the intended clean rules; Phase 2 routes the real triggers
- *  through here so the call sites stop each inventing their own gate.
- *
- *  Current rules:
- *   · attack — not while mid-roll (a dodge commits; you finish the roll
- *     before swinging). Chaining swings stays the viewmodel sim's job.
- *   · dodge  — not while the strike-commitment lock is up (can't cancel the
- *     active frames of a swing into a roll), matching swing-agency today.
- *   · parry  — not while mid-roll or mid-strike (you can't catch a blow with
- *     the blade already committed elsewhere); the anti-mash cooldown stays
- *     reactive-defense's own concern. */
+// ── The cancel table — the one place the rules live ──────────────────
+// What may START given the action in progress. Encodes the existing rule
+// (no dodge mid-strike) PLUS the committed-beat lockouts (nothing interrupts
+// a parry; a dodge is committed until it ends). Phase-aware for attacking so
+// a recovery can be cancelled but active frames can't.
 export function canStartAction(kind: 'attack' | 'dodge' | 'parry'): boolean {
-  if (!sources) return true;
-  const phase = sources.swingPhase();
-  const midStrike = sources.isSwinging() && (phase === 'windup' || phase === 'strike');
+  if (parryLeft > 0) return false;   // parry is fully committed — its whole point
+  if (dodgeLeft > 0) return false;   // the roll commits until it ends (cancel-into is a later tuning)
+  const swinging = sources?.isSwinging() ?? false;
+  const phase = sources?.swingPhase() ?? 'idle';
+  const midStrike = swinging && (phase === 'windup' || phase === 'strike');
   switch (kind) {
-    case 'attack': return !sources.isDodging();
-    case 'dodge':  return !sources.dashLocked();
-    case 'parry':  return !sources.isDodging() && !midStrike;
+    // A new swing during another swing is the COMBO chain — the swing sim
+    // buffers/gates that itself, so don't second-guess it here.
+    case 'attack': return true;
+    // Can't roll out of a swing's committed frames (preserves the old
+    // dash-lock); a recovery is cancelable.
+    case 'dodge':  return !midStrike;
+    // Can't catch a blow with the blade already committed to a strike; a
+    // recovery is fine (reactive parries off a late swing).
+    case 'parry':  return !midStrike;
   }
 }
 
-export function resetPlayerAction(): void { /* derived — nothing to clear yet */ }
+// ── Transitions — called at the three real begin-points ──────────────
+/** Begin a committed dodge of `durationS` (the roll/i-frame window). */
+export function enterDodge(durationS: number): void { dodgeLeft = durationS; parryLeft = 0; }
+/** Begin a committed parry beat of `durationS` (locks out attack/dodge). */
+export function enterParry(durationS: number): void { parryLeft = durationS; dodgeLeft = 0; }
+
+export function isParrying(): boolean { return parryLeft > 0; }
+
+export function resetPlayerAction(): void { dodgeLeft = 0; parryLeft = 0; }
