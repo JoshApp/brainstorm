@@ -29,14 +29,22 @@ export const COLORS = {
 
 // ── World → screen projection ────────────────────────────────────────────
 const _ndc = new THREE.Vector3();
+const _view = new THREE.Vector3();
 
 export interface ScreenPoint {
   x: number;
   y: number;
-  /** Projected NDC depth. >1 means behind the camera; <-1 means past the far
-   *  plane. */
+  /** Projected NDC depth: [-1, 1] is between the near and far clip planes;
+   *  <-1 is in front of the near plane; >1 is past the far plane OR behind the
+   *  camera. NOTE: a SHORT far plane (the dungeon's is ~13m) makes >1 fire for
+   *  perfectly visible-but-distant points, so do NOT use this to decide
+   *  on-screen-ness — use `behind` (which is true ONLY when actually behind the
+   *  camera). x/y are valid for any point in FRONT of the camera, including
+   *  ones past the far plane. */
   z: number;
-  /** Convenience: true when the point is behind the camera (z > 1). */
+  /** True ONLY when the point is behind the camera (its x/y are meaningless
+   *  then). False for everything in front, even past the far clip plane — so a
+   *  long-range hit still gets usable screen coords. */
   behind: boolean;
 }
 
@@ -49,6 +57,14 @@ export function worldToScreen(
   rect?: DOMRect,
 ): ScreenPoint {
   _ndc.copy(worldPos).project(camera);
+  // "Behind the camera" is a VIEW-SPACE question, not an NDC one: in eye space
+  // the camera looks down -z, so z >= 0 is at/behind the camera. Deriving it
+  // from NDC z (>1) is wrong here because our far plane is only ~13m — distant
+  // but perfectly in-front points (common for ranged-weapon hits) also push
+  // NDC z past 1 and would be falsely flagged behind, suppressing their HUD
+  // labels / damage numbers. The perspective divide keeps x/y correct for any
+  // in-front point, even past the far plane, so those still place correctly.
+  _view.copy(worldPos).applyMatrix4(camera.matrixWorldInverse);
   const w = rect ? rect.width : window.innerWidth;
   const h = rect ? rect.height : window.innerHeight;
   const ox = rect ? rect.left : 0;
@@ -57,7 +73,7 @@ export function worldToScreen(
     x: (_ndc.x * 0.5 + 0.5) * w + ox,
     y: (-_ndc.y * 0.5 + 0.5) * h + oy,
     z: _ndc.z,
-    behind: _ndc.z > 1,
+    behind: _view.z >= 0,
   };
 }
 

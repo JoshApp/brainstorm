@@ -8,6 +8,28 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Ranged hits show their damage now — the dungeon no longer loses count past thirteen paces.",
+        "area": [
+          "combat",
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Slip a blow now and the world truly crawls while you stay quick. The dead turn with weight, and a pack weaves around you instead of circling like clockwork.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "A clean dodge drops the world to a crawl now, you alone still quick. And a parry demands a free hand — mash it mid-swing and it answers with nothing.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
         "tag": "add",
         "text": "Cross into an arena and the torches gutter, then flare up to watch you bleed — and sink back to embers, a little brighter than before, once it's over.",
         "area": [
@@ -397,31 +419,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Nothing may touch you between sitting and standing. The dungeon waits its turn.",
-        "area": [
-          "controls",
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Waking now swims into focus — and the dungeon saves the heavy eyelids for the mornings you earned.",
-        "area": [
-          "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "You wake the way the living do — eyes first, then legs. And your sword arm answers even when stairs are watching.",
-        "area": [
-          "controls",
-          "ui",
-          "level"
         ]
       }
     ]

@@ -19,7 +19,7 @@ export function spawnStatusText(
   color: string = 'rgba(255, 236, 170, 0.98)',
 ) {
   const p = worldToScreen(worldPos, camera);
-  if (p.z < -1 || p.behind) return;
+  if (p.behind) return;   // only skip if actually behind the camera (NOT past far)
   const el = document.createElement('div');
   el.textContent = text;
   const lifetime = CONFIG.DAMAGE_NUMBER_LIFETIME * 1.3;
@@ -66,7 +66,8 @@ export function spawnDamageNumber(
 ) {
   graze = graze && !crit && !execute;
   const p = worldToScreen(worldPos, camera);
-  if (p.z < -1 || p.behind) return; // outside the camera frustum
+  if (p.behind) return; // only skip when actually behind the camera — a hit
+  // past the short (~13m) far plane is still on screen and must read.
   const x = p.x;
   const y = p.y;
 
