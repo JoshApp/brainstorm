@@ -525,11 +525,12 @@ export function createWeaponViewmodel(
     const pose = computeWeaponPose(step.pose, phase, swing.getPhaseProgress());
     const pull = getViewmodelPullback();
     // Narrow the lateral swing arc: pull the SIDEWAYS components (x / rotY /
-    // rotZ) toward the rest pose by SWING_LATERAL_KEEP so wide sweeps don't wrap
-    // almost behind the player. Forward depth (z) + pitch (rotX) are left intact
-    // — thrusts/reach unaffected. Per-pose data is as-authored (+ its pin test);
-    // this is the global feel knob.
-    const k = CONFIG.SWING_LATERAL_KEEP;
+    // rotZ) toward the rest pose by the weapon's swingArc so wide sweeps don't
+    // wrap almost behind the player. Forward depth (z) + pitch (rotX) are left
+    // intact — thrusts/reach unaffected. swingArc resolves per-CLASS with a
+    // per-weapon override (weapon-classes.ts); the authored pose data + its pin
+    // test are untouched.
+    const k = getCurrentWeapon().swingArc ?? 1;
     const sx  = STANDARD_IDLE.x   + (pose.x   - STANDARD_IDLE.x)   * k;
     const srY = STANDARD_IDLE.rotY + (pose.rotY - STANDARD_IDLE.rotY) * k;
     const srZ = STANDARD_IDLE.rotZ + (pose.rotZ - STANDARD_IDLE.rotZ) * k;

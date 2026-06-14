@@ -111,6 +111,9 @@ export interface ResolvedWeaponStats {
    *  — pressing past the last step starts over at 0. */
   combo: ResolvedComboStep[];
   comboWindowMs: number;
+  /** Resolved lateral swing-arc width (weapon override → class default → 1).
+   *  The viewmodel scales a swing pose's sideways deviation by this. */
+  swingArc: number;
   /** On-hit status infliction, passed through from the weapon spec. */
   onHit?: { buffId: string; chance: number; duration: number };
   /** Ranged projectile (crossbow/wand/throwing-knives) — strike fires
@@ -219,6 +222,13 @@ interface ClassDefaults {
    *  harder). Set explicitly only to decouple a class's commitment from its
    *  animation weight. */
   commitment?: number;
+  /** Lateral SWING-ARC width: the fraction of a swing pose's SIDEWAYS deviation
+   *  (x / rotY / rotZ) the viewmodel keeps when applying it. 1 = the full
+   *  authored arc; <1 narrows it so a wide haymaker (hammer / scythe) doesn't
+   *  wrap almost behind the player. Forward depth + pitch are untouched, so
+   *  reach/thrusts are unaffected. Omitted → 1. Per-CLASS default; a single
+   *  weapon overrides via WeaponStats.swingArc. */
+  swingArc?: number;
 }
 
 export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
@@ -308,6 +318,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     ],
     comboWindowMs: 380,
     timingMul: 1.25,   // baseline blade — a touch more committal than before
+    swingArc: 0.85,    // mild trim — slashes read forward; tames the wide sweep variant
     // Move-driven variants — pick by joystick direction at press time.
     // Each one is a one-off (resets combo to step 0 after firing).
     directionalMoves: {
@@ -375,6 +386,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     timingMul: 1.6,   // HEAVY — wind up, commit, recover; the slow brute (tail
                       // trimmed from 1.7; the commitment ARC now carries the
                       // weight, so the animation needn't run as long)
+    swingArc: 0.6,    // wide haymaker (rotZ ±1.45) was wrapping behind — pull it forward
     // Hammer directional moves — the overhead smash and the directional
     // swings carry the body's momentum into the strike.
     directionalMoves: {
@@ -487,6 +499,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     comboWindowMs: 460,
     timingMul: 1.45,  // HEAVY — big sweeping reaps, slow to wind + recover (tail
                       // trimmed from 1.5; the commitment ARC carries the weight)
+    swingArc: 0.65,   // big reaps (rotZ ±1.10) swept behind — narrow to a forward arc
     directionalMoves: {
       // Forward: a downward chop with the curved tip. Single target,
       // big damage commit.
@@ -752,6 +765,8 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     commitment,
     combo,
     comboWindowMs: baseT.comboWindowMs * (1 + profComboPct),
+    // Swing arc: per-weapon override, else the class default, else full (1).
+    swingArc: spec.swingArc ?? baseT.swingArc ?? 1,
     onHit: spec.onHit,
     ranged: spec.ranged,
     chargedEffect: spec.chargedEffect,

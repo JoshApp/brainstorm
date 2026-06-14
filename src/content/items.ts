@@ -197,6 +197,15 @@ export interface WeaponStats {
    */
   staggerPower?: number;
   /**
+   * Lateral SWING-ARC width override — fraction of a swing pose's SIDEWAYS
+   * deviation (x / rotY / rotZ) the viewmodel keeps. 1 = the full authored arc;
+   * <1 narrows it so a wide swing doesn't wrap almost behind the player
+   * (forward depth + pitch untouched, so reach/thrusts are unaffected). Omitted
+   * → the per-CLASS default (swingArc in weapon-classes.ts). Set on a weapon
+   * whose swing should be tighter or wider than its class.
+   */
+  swingArc?: number;
+  /**
    * Override what this weapon's class proficiency improves (per-point
    * amounts). Omitted → the per-class default
    * (PROFICIENCY_PROFILE_BY_CLASS in weapon-classes.ts). A merge:
