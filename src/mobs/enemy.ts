@@ -2039,7 +2039,13 @@ export function createEnemy(
           }
           const done = runAction(steps[i].action, currentAbility, steps[i].id, playerPos, distance, dt, walkable, nav);
           if (done) stepDone[i] = true;
+          // A deflected melee strike calls triggerStagger() inside runAction,
+          // which NULLS currentAbility and flips to 'staggered' mid-loop. Bail
+          // immediately — the rest of this case dereferences currentAbility
+          // (.pose / .strike) and would crash (the parry-freeze bug).
+          if (!currentAbility) break;
         }
+        if (!currentAbility) break;
         applyTelegraph(currentAbility.pose, 'strike', 1);
         if (lashTendril) lashTendril.snap();            // tentacle snaps out + flares on the strike
         if (phaseTimer >= currentAbility.strike) {
