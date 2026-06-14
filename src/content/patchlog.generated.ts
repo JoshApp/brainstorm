@@ -8,11 +8,28 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The dagger reaches again — it was clipping air; now its quick flurry actually lands.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
         "tag": "add",
         "text": "Daggers stop politely tapping — one strike is three, fast and greedy. Every cut rolls its own luck, so the poison and the lucky kill come quicker.",
         "area": [
           "combat",
           "weapons"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Coins chime up the scale as they stream in, a level lands with a low swell, and an empty chest coughs up gold instead of dust. The cursed altar stops repeating itself.",
+        "area": [
+          "ui",
+          "content",
+          "level"
         ]
       },
       {
@@ -372,20 +389,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The Boiling King's swallowed core sits where its body actually is now. Aim true.",
         "area": [
           "content",
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Parrying no longer stops time permanently. Only for the recommended three-quarters of a second.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Read the flash. White means catch it and the world holds its breath while you answer; the dead learn this the hard way. Red means move.",
-        "area": [
           "combat"
         ]
       }
