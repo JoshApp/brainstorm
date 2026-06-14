@@ -23,7 +23,7 @@ import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
 import { isBossEncounterEngaged } from './boss-encounter';
 import { levelHasFogWall } from '../ui/boss-engagement';
-import { applyTelegraphPose, type TelegraphNodes, type TelegraphStyle } from './pose-clips';
+import { applyTelegraphPose, restTelegraphPose, type TelegraphNodes, type TelegraphStyle } from './pose-clips';
 import type { WalkableRegion } from '../level/walkable';
 import type { NavGrid, Waypoint } from '../level/nav-grid';
 import { groundYAt } from '../level/elevation';
@@ -62,7 +62,6 @@ import { joinPack, leavePack, packMoveTarget, packScratch, requestToken } from '
 import type { Damageable } from '../combat/damageable';
 import { setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { createStunStars, type StunStars } from './stun-stars';
-import { ARCHETYPE_CLIPS } from '../anim/clips-biped';
 import { gameRng, gameRngInt, gameRngChance } from '../engine/rng';
 
 // Audio buckets are content data (see content/enemies.ts). These thin
@@ -417,10 +416,12 @@ export function createEnemy(
   // spec.animation bundle (marrow boss) OR, for a creature, its ARCHETYPE clip
   // library (docs/CREATURE-SYSTEM.md) — so every biped gets attack animation for
   // free. Runs AFTER bodyAnim so its writes win on the joints it owns.
-  const animBundle = spec.animation ?? (spec.creature ? ARCHETYPE_CLIPS[spec.creature.archetype] : undefined);
-  // When a creature drives attacks via clips, the legacy telegraph POSE is gated
-  // off (below) so the clip is the sole driver of the swing.
-  const usesClipAttacks = !!spec.creature && !!animBundle;
+  // PER-MOB clips only: a mob drives attacks via a clip when it authors its OWN
+  // bundle (spec.animation — see clips-mobs.ts). No shared archetype fallback
+  // anymore (the one BIPED_SMASH that made every biped move alike is retired);
+  // a mob without its own clip telegraphs via the phase-keyed POSE system below.
+  const animBundle = spec.animation;
+  const usesClipAttacks = !!animBundle;
   const clipAnimator = animBundle
     ? new Animator(built.slots, animBundle.joints)
     : null;
@@ -2282,6 +2283,12 @@ export function createEnemy(
     bodyAnim.tickFlinch(dt);   // parry recoil — owns rotation.x while active, so last
     tickLashDeform(dt);
     tickClipAnimator(dt);
+    // Pose-system mobs rest their telegraph arms when NOT mid-attack (clip-mobs
+    // self-rest via their base clip). Without this a biped's shoulders freeze
+    // mid-swing on a stagger/interrupt. Attack phases set the pose themselves.
+    if (!usesClipAttacks && state !== 'winding' && state !== 'striking' && state !== 'recovering') {
+      restTelegraphPose(telegraphNodes);
+    }
     // Stun-star ring — orbits while staggered, fades out after (so it lingers a
     // beat as the mob shakes it off). No-op until the first stagger builds it.
     stunStars?.tick(dt, state === 'staggered');

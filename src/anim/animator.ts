@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Clip, Pose, JointPose } from './types';
 import type { Vec3 } from '../ecs/model-types';
+import { ease } from './easing';
 
 // Per-mob keyframe animator with TWO LAYERS:
 //
@@ -164,7 +165,10 @@ function sample(clip: Clip, u: number): Pose {
   const span = b.t - a.t;
   let local = span > 0 ? (u - a.t) / span : 0;
   if (local < 0) local = 0; else if (local > 1) local = 1;
-  if (clip.smooth !== false) local = local * local * (3 - 2 * local);
+  // Per-keyframe ease (on the destination kf) wins — it's how a clip authors a
+  // SNAP into the strike. Else fall back to the clip's smoothstep/linear.
+  if (b.ease) local = ease(b.ease, local);
+  else if (clip.smooth !== false) local = local * local * (3 - 2 * local);
   return lerpPose(a.pose, b.pose, local);
 }
 

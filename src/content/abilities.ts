@@ -184,7 +184,7 @@ export interface Ability {
    *  should span multiple steps). */
   telegraphs?: Telegraph[];
   /** Body pose flavour for the intent telegraph. */
-  pose?: 'swing' | 'cast' | 'charge' | 'lash';
+  pose?: 'swing' | 'smash' | 'cast' | 'charge' | 'lash';
   /** Creep toward the player during windup so a stationary player still
    *  gets clipped by a melee. Charges/leaps don't. Default: true when the
    *  first step is a melee. */
@@ -236,7 +236,9 @@ export function defaultAbility(spec: EnemySpec): Ability {
   return {
     id: 'strike', minRange: 0, maxRange: spec.attackRange,
     windup: spec.windupTime, strike: spec.strikeTime, recover: spec.recoverTime,
-    pose: 'swing', creep: true,
+    // Bipeds get the heavy overhead SMASH (their old hand-keyed clip); other
+    // body plans use the lighter lateral swing. Both are phase-keyed poses now.
+    pose: spec.creature?.archetype === 'biped' ? 'smash' : 'swing', creep: true,
     steps: [{ trigger: { at: 0 }, action: {
       kind: 'melee', reach: spec.strikeRange, damage: spec.attackDamage,
       element: elementForDamageType(spec.damageType),

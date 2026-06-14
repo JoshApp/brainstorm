@@ -23,6 +23,7 @@ import { creature } from './creature';
 import { mimicCreatureSpec } from './mimic';
 import { marrowCreatureSpec } from './skeleton-boss';
 import { MARROW_CLIPS, MARROW_JOINTS } from '../anim/clips-marrow';
+import { GHOUL_BUNDLE } from '../anim/clips-mobs';
 
 // Ranged config — if present on a spec, the enemy fires a projectile from
 // `muzzleOffset` (local to the container) during the strike phase instead
@@ -513,9 +514,12 @@ export const ENEMIES: Record<string, EnemySpec> = {
     windupTime: 0.90,    // long ghoul tell — heavy enemy, big wind-up animation
     strikeTime: 0.18,
     recoverTime: 0.60,
+    // Its OWN attack: a two-claw overhead rake (clips-mobs.ts GHOUL_BUNDLE),
+    // not the retired shared biped smash — the ghoul moves like a ghoul.
+    animation: GHOUL_BUNDLE,
     // Creature-system ghoul: a gaunt, hunched undead — thin limbs, gnarled
-    // (jittered) flesh, clawed hands, sunken glowing eyes. Reuses the biped
-    // skeleton + smash clip; measured dimensions + auto hitzones.
+    // (jittered) flesh, clawed hands, sunken glowing eyes. Measured dimensions
+    // + auto hitzones.
     creature: {
       id: 'ghoul',
       archetype: 'biped',

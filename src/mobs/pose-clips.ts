@@ -18,7 +18,7 @@
 // Positive rigTilt / armSwing pitches FORWARD (toward the player);
 // negative leans/coils back. bob is metres of vertical rise.
 
-export type TelegraphStyle = 'swing' | 'cast' | 'charge' | 'lash';
+export type TelegraphStyle = 'swing' | 'smash' | 'cast' | 'charge' | 'lash';
 
 interface Phased { windup: number; strike: number; }
 export interface TelegraphPose {
@@ -33,6 +33,15 @@ export const TELEGRAPH_POSES: Record<TelegraphStyle, TelegraphPose> = {
     rigTilt:  { windup:  0.50, strike: -0.25 },
     bob:      { windup:  0.10, strike:  0.0  },
     armSwing: { windup:  0.70, strike: -1.05 },   // arms raise, then overhand
+  },
+  // Heavy overhead SMASH (bipeds — ghoul, stoneguard, …). Arms wind WAY up
+  // overhead and HOLD (the big tell), then slam down through the target. The
+  // poseValue ease supplies the cock-and-hold + snap; this replaces the old
+  // hand-keyed BIPED_SMASH clip so every mob now telegraphs via one pose path.
+  smash: {
+    rigTilt:  { windup:  0.20, strike:  0.45 },   // rear slightly, then drive forward into the slam
+    bob:      { windup:  0.10, strike:  0.0  },    // rise on the wind-up, drop on the slam
+    armSwing: { windup:  2.20, strike:  0.50 },    // arms overhead → driven down-forward (≈ old ARM_RAISED→SLAM)
   },
   // Caster — a smaller, steadier lean; arms spread out then push the
   // bolt/hex forward. No big body slam (it's not a physical blow).
@@ -129,4 +138,14 @@ export function applyTelegraphPose(
   const arm = poseValue(pose.armSwing, phase, t);
   if (n.shoulderL) n.shoulderL.rotation.x = n.shoulderBaseLX + arm;
   if (n.shoulderR) n.shoulderR.rotation.x = n.shoulderBaseRX + arm;
+}
+
+/** Neutralize the telegraph rig — call every frame a pose-system mob is NOT
+ *  mid-attack (chasing / idle / staggered / …). applyTelegraphPose only runs
+ *  during the attack phases, so without this a biped's SHOULDERS would freeze
+ *  mid-swing if the attack is cut short (stagger, interrupt). Tilt/bob are
+ *  already reset by the per-state code; this is the missing arm reset. */
+export function restTelegraphPose(n: TelegraphNodes): void {
+  if (n.shoulderL) n.shoulderL.rotation.x = n.shoulderBaseLX;
+  if (n.shoulderR) n.shoulderR.rotation.x = n.shoulderBaseRX;
 }

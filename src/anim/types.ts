@@ -16,6 +16,7 @@
 // `pose: {}` means "rest" — not "slam everything to identity."
 
 import type { Vec3 } from '../ecs/model-types';
+import type { EaseName } from './easing';
 
 export interface JointPose {
   /** Euler XYZ delta from the joint's rest rotation. */
@@ -30,6 +31,11 @@ export interface Keyframe {
   /** Normalized time within the clip (0..1). */
   t: number;
   pose: Pose;
+  /** Easing across the segment ENDING at this keyframe — the per-segment curve
+   *  that makes an attack SNAP: 'easeInQuad'/'easeInCubic' on the strike keyframe
+   *  accelerates the limb into the hit; 'easeOutBack' overshoots then settles.
+   *  Omitted → the clip's `smooth` setting (smoothstep or linear). */
+  ease?: EaseName;
 }
 
 export interface Clip {
