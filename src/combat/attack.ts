@@ -611,7 +611,12 @@ export function createCombatSystem(
     // A recent DEFLECT empowers this swing too (the aggressive payoff: deflect
     // → big follow-up). Stacks multiplicatively with the dodge counter on the
     // rare frame both are live.
-    const empowerActive = isDeflectEmpowerActive();
+    // SOFT LIGHT-LOCKOUT: only a LIGHT swing (c === 0, no charge) cashes the
+    // deflect empower — a charged heavy gets nothing AND doesn't consume it (the
+    // consume below keys off this flag), so the opening persists for a light
+    // riposte. This is what gives LIGHT/reactive play its own payoff: parry →
+    // empowered light flurry, distinct from the heavy poise-smash game.
+    const empowerActive = isDeflectEmpowerActive() && c === 0;
     const counterDmgMul = (counterActive ? CONFIG.JUST_DODGE.COUNTER_DAMAGE_MUL : 1)
       * (empowerActive ? CONFIG.DEFLECT.EMPOWER_DAMAGE_MUL : 1);
     const counterStaggerMul = (counterActive ? CONFIG.JUST_DODGE.COUNTER_STAGGER_MUL : 1)

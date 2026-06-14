@@ -18,6 +18,7 @@ import {
   pushDeflectOpportunity, popDeflectOpportunity, isParryActive, notePlayerDeflected,
 } from '../combat/reactive-defense';
 import { spawnParrySpark } from '../effects/parry-spark';
+import { getCurrentWeapon } from '../player/current-weapon';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
@@ -1127,6 +1128,14 @@ export function createEnemy(
         container.position.z + (dz / len) * 0.55,
       );
     }
+    // Riposte — the parry lands a FULL LIGHT HIT'S worth of damage (the current
+    // weapon's base, so it scales with the build instead of a hardcoded chip):
+    // a clean parry IS a quick strike, timing it the advantage. Routed through
+    // takeDamage so armour/resists apply and a kill runs the normal death path
+    // (which also pops the deflect opportunity). If it finishes the mob, stop
+    // here — the poise/flinch below would act on a corpse.
+    takeDamage({ source: 'player', target: entityId, base: getCurrentWeapon().damage, type: 'physical' });
+    if (!aliveLocal) return;
     // Chunk poise. If it BREAKS → full stagger (execute window, via
     // triggerStagger inside). Else a soft FLINCH: cancel the attack, recoil
     // off-balance, brief no-act. Stacking deflects break it on their own; the
