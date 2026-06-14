@@ -17,10 +17,16 @@ import type { WalkableRegion } from '../level/walkable';
 export interface BodyAnimator {
   /** Set a decaying recoil impulse (charge contact, future stagger). */
   applyKnockback(dirX: number, dirZ: number, speed: number): void;
+  /** Snap a parry-recoil pose: the body pitches back hard then eases out over
+   *  ~FLINCH_DUR. `mag` is the peak backward lean in radians. A brief shudder
+   *  rides the decay so the parry reads as a violent jolt, not a slow bow. */
+  flinch(mag: number): void;
   /** Tip the head toward the player when `aware`. */
   tickHeadCrane(dt: number, distance: number, aware: boolean): void;
   /** Integrate + decay the recoil impulse, clamped against walls. */
   tickKnockback(dt: number, walkable: WalkableRegion): void;
+  /** Play the parry-recoil pitch overlay while it's active (owns rotation.x). */
+  tickFlinch(dt: number): void;
   /** Swing legs from actual movement (gait) + a footfall bob. */
   tickLocomotion(dt: number): void;
   /** Continuous "alive" idle overlay (per spec.presence). */
@@ -86,11 +92,36 @@ export function createBodyAnimator(
   let presenceTime = 0;
   let flapTime = Math.random() * Math.PI * 2;      // desync a swarm's wingbeats
 
+  // Parry-recoil pitch overlay. flinchT counts DOWN from FLINCH_DUR; while > 0
+  // tickFlinch owns built.group.rotation.x (a transient — a parried mob isn't
+  // mid phase-fall, the only other writer of that axis).
+  const FLINCH_DUR = 0.34;
+  let flinchT = 0;
+  let flinchMag = 0;
+
   function applyKnockback(dirX: number, dirZ: number, speed: number) {
     const len = Math.hypot(dirX, dirZ);
     if (len < 1e-5) return;
     knockVX = (dirX / len) * speed;
     knockVZ = (dirZ / len) * speed;
+  }
+
+  function flinch(mag: number) {
+    flinchT = FLINCH_DUR;
+    flinchMag = mag;
+  }
+
+  function tickFlinch(_dt: number) {
+    if (flinchT <= 0) return;
+    flinchT = Math.max(0, flinchT - _dt);
+    const k = flinchT / FLINCH_DUR;            // 1 at impact → 0 settled
+    // Ease-out so it snaps to the peak lean and decays back; a fast shudder
+    // rides the front of the decay for the "jolt" read.
+    const ease = k * k;
+    const shudder = Math.sin(k * Math.PI * 7) * 0.10 * k;
+    // +rotation.x tips the body's top toward +Z (away from its −Z facing) —
+    // a backward recoil off the player it's squared up to.
+    built.group.rotation.x = flinchMag * (ease + shudder);
   }
 
   function tickHeadCrane(dt: number, distance: number, aware: boolean) {
@@ -209,5 +240,5 @@ export function createBodyAnimator(
     }
   }
 
-  return { applyKnockback, tickHeadCrane, tickKnockback, tickLocomotion, tickPresence };
+  return { applyKnockback, flinch, tickHeadCrane, tickKnockback, tickFlinch, tickLocomotion, tickPresence };
 }

@@ -1182,6 +1182,7 @@ export function createEnemy(
               const dz = container.position.z - playerPos.z;
               const len = Math.hypot(dx, dz) || 1;
               bodyAnim.applyKnockback(dx / len, dz / len, CONFIG.DEFLECT.FLINCH_KNOCKBACK);
+              bodyAnim.flinch(CONFIG.DEFLECT.FLINCH_PITCH);   // body snaps back — the visible recoil
               flinchLockTimer = CONFIG.DEFLECT.FLINCH_LOCK_S;
               state = 'chasing';
               phaseTimer = 0;
@@ -2140,6 +2141,7 @@ export function createEnemy(
     bodyAnim.tickKnockback(dt, walkable);
     bodyAnim.tickLocomotion(dt);
     bodyAnim.tickPresence(dt);
+    bodyAnim.tickFlinch(dt);   // parry recoil — owns rotation.x while active, so last
     tickLashDeform(dt);
     tickClipAnimator(dt);
     // Stun-star ring — orbits while staggered, fades out after (so it lingers a

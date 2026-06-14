@@ -1,6 +1,11 @@
 // Player-action FSM (src/combat/player-action.ts) — pins the state priority,
 // the dt-ticked owned beats (dodge/parry), and the cancel table, so the
 // authority's contract is locked.
+//
+// Parry is its own committed action. Its entry point (the tap) is SHARED with
+// attack — main.ts only routes a tap to parry while a deflect opportunity is
+// open, so outside the window a tap always swings (never locked out). But once
+// a parry commits, it's a real beat the FSM owns and gates here.
 
 import assert from 'node:assert/strict';
 import {

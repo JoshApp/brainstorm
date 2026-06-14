@@ -542,7 +542,9 @@ const combat = createCombatSystem(
 // Player-action FSM — the single AUTHORITY for combat action arbitration.
 // It owns dodge/parry as committed dt-ticked states and observes the swing
 // sim for attacking; the three begin-points (swing start, dash, parry) route
-// through canStartAction. Bound to the swing sim here.
+// through canStartAction. Parry shares the attack tap (resolveTap routes a tap
+// to parry only while a deflect opportunity is open), so a tap outside the
+// window always swings — never locked out. Bound to the swing sim here.
 bindPlayerActionSources({
   isSwinging: () => weapon.isSwinging,
   swingPhase: () => weapon.getPhase(),
@@ -620,10 +622,12 @@ const input = createTouchInput(canvas, {
       deflectAvailable: deflectOpportunityActive(),
     });
     if (action.kind === 'deflect') {
-      // The FSM arbitrates: parry only if the current action allows it (not
-      // mid-strike) AND it isn't on its anti-mash cooldown. On success commit
-      // the parry beat (locks attack/dodge for COMMIT_S). Otherwise fall back
-      // to a swing so the tap is never wasted.
+      // The tap is parry's entry point: resolveTap only routes here while a
+      // deflectable strike is flashing (deflectOpportunityActive). So PARRY if
+      // the FSM allows it (not mid-strike) and it isn't on its anti-mash
+      // cooldown — committing the parry beat for COMMIT_S. Otherwise fall back
+      // to a swing so the tap is never wasted. Outside the window resolveTap
+      // returns 'attack', so the player is never locked out of attacking.
       if (canStartAction('parry') && triggerParry()) enterParry(CONFIG.DEFLECT.COMMIT_S);
       else triggerAttack();
     }

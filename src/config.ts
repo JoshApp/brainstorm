@@ -215,6 +215,7 @@ export const CONFIG = {
     POISE_DAMAGE: 4,           // poise chunked per deflect (basic mobs ~4-6 → break in 1-2)
     FLINCH_LOCK_S: 0.45,       // the flinched enemy can't start a new attack this long
     FLINCH_KNOCKBACK: 3.2,     // backward shove on the flinch (off-balance recoil)
+    FLINCH_PITCH: 0.62,        // peak backward body LEAN (rad) on the flinch — the visible recoil snap
     IFRAME_S: 0.16,            // brief safety at the parry instant (a 2nd attacker can't punish it)
     CLASH_FREEZE_MS: 45,       // hit-pause on the clash — the crunch of steel-on-steel
     // EMPOWER — your next swing after a deflect: bigger damage + a much
