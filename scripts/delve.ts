@@ -5,6 +5,8 @@
  *
  *   npm run delve                          this index
  *   npm run delve list [vaults|mobs|items] what can I point the tools at?
+ *   npm run delve weapons                  weapon stat table (derived reach · class · arc)
+ *   npm run delve bench <subject> [...]    MODEL author/inspect loop (--hand --ortho --debug)
  *   npm run delve check <seed> <depth>     fast STATIC floor analysis (no browser)
  *   npm run delve reach <seed> <depth>     FAITHFUL reachability (live walkable, browser)
  *   npm run delve snap  <target> [...]     headless screenshot (vault-<id>, mob-<id>, scenario)
@@ -30,7 +32,13 @@ function index() {
   console.log(`
 DELVE — creator suite (author · preview · debug · play)
 
+  MODELS & CONTENT
   delve list [vaults|mobs|items]    what can I point the tools at?
+  delve weapons                     weapon stat table — derived reach · class · arc
+  delve bench <subject> [flags]     author/inspect a MODEL (viewmodel-<id>, mob-<id>, model-<id>)
+                                      --hand drop into the hand · --ortho 4-view · --debug slots+bbox
+
+  WORLD & PLAY
   delve check <seed> <depth>        fast STATIC floor analysis (overlap / archway / reachability)
   delve reach <seed> <depth>        FAITHFUL reachability — live walkable, real collision (browser)
   delve snap  <target> [vp] [--frames=N]   screenshot: vault-<id>, mob-<id>, item, any scenario
@@ -119,11 +127,39 @@ function check(seed: number, depth: number) {
   }
 }
 
+/** Weapon stat table — class · reach · reachMul · damage · arc. Reach is the
+ *  value DERIVED from each weapon's model at content-load (see the derive pass
+ *  in content/items.ts); this is the read for balancing it without a browser. */
+function weapons() {
+  const rows = Object.entries(ITEMS)
+    .filter(([, it]) => it.weapon)
+    .map(([id, it]) => {
+      const w = it.weapon!;
+      return {
+        id, cls: w.class, ranged: !!w.ranged,
+        reach: w.reach ?? 0, mul: w.reachMul ?? 1, dmg: w.damage,
+        arc: Math.round((w.coneHalfAngle * 180) / Math.PI),
+      };
+    })
+    .sort((a, b) => a.reach - b.reach);
+  console.log(`\nWEAPONS (${rows.length})  —  reach is DERIVED from the model (content/items.ts)`);
+  console.log('reach   class            mul   dmg  arc°  id');
+  for (const r of rows) {
+    const tag = r.ranged ? '  (ranged: explicit reach)' : '';
+    console.log(
+      `${r.reach.toFixed(2).padStart(6)}  ${r.cls.padEnd(15)}  ${r.mul.toFixed(2)}  ${String(r.dmg).padStart(3)}  ${String(r.arc).padStart(4)}  ${r.id}${tag}`,
+    );
+  }
+  console.log('\ninspect a weapon in-hand:  delve bench viewmodel-<id> --hand --ortho --debug');
+}
+
 switch (cmd) {
   case undefined: case 'help': case '--help': index(); break;
   case 'list': list(rest[0]); break;
   case 'check': check(Number(rest[0]), Number(rest[1] ?? 1)); break;
   case 'reach': delegate('reach', ['--seed', rest[0], '--depth', rest[1] ?? '1']); break;
+  case 'weapons': weapons(); break;
+  case 'bench': delegate('bench'); break;
   case 'snap': delegate('snap'); break;
   case 'pilot': delegate('pilot'); break;
   case 'play': delegate('play'); break;

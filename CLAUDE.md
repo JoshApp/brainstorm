@@ -237,27 +237,24 @@ coordinates don't.
 
 ### The bench is your iteration loop
 
-`scripts/bench.ts` + `bench.html` give you the fast author → render
-→ look loop with no game underneath. Flags that matter when
-debugging a model:
+The fast author → render → look loop, no game underneath:
 
-- **`--ortho`** — 2×2 contact sheet: FRONT / SIDE / TOP / ISO.
-  *Default for any geometry iteration.* The research is explicit
-  that single-view critique degrades LLM iteration; multi-view
-  reverses it.
-- **`--debug`** — color-by-part + slot markers + bounding box. The
-  "what did I actually build" debug eye. Pair with `--ortho` for
-  the recommended `--ortho --debug` combo.
-- **`--gnomon`** — RGB axis overlay at origin (subset of `--debug`,
-  use alone when you want production materials + just the axes).
-- **`--grid=N`** — N-angle turntable (for hero shots once you've
-  committed to a design).
-- **`--anim=N`** — N-frame animation arc (for weapons / mob
-  telegraphs, NOT model debugging).
+```
+delve bench viewmodel-<id> --hand --ortho --debug
+```
 
-Static-model debug subjects live in `src/bench/subjects.ts` under
-the `model-` prefix (e.g. `model-hand-right`). Add a new entry
-whenever you're authoring a spec the authorable registry doesn't own.
+`--ortho` = 2×2 FRONT/SIDE/TOP/ISO contact sheet (multi-view is the
+single biggest LLM-iteration win — never iterate single-view);
+`--debug` = part colours + slot markers + bbox. That combo is the
+default for any geometry/grip work. **The full tooling map — every
+flag, which tool for which job (bench vs snap vs `?viewer=1`),
+`delve weapons`, and the author→iterate→inspect loop — lives in
+`docs/AUTHORING.md` → "Tooling".** Read it once; don't hand-write a
+preview scenario or a one-off script when a `delve` command exists.
+
+Static-model debug subjects (specs the authorable registry doesn't
+own) go in `src/bench/subjects.ts` under the `model-` prefix
+(e.g. `model-hand-right`).
 
 ### Known failure modes (read this before you author)
 

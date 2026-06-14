@@ -19,6 +19,56 @@ layer is the only place snark lives. No exclamation points, no emoji.
 
 ---
 
+## Tooling: author → iterate → inspect
+
+**One front door: `npm run delve`.** It indexes the whole creator suite —
+models *and* world. Run it with no args to see everything; the rest of this
+section is just "which sub-command for which job." If you're reaching for a
+bespoke script or hand-writing a debug scenario, stop — the answer is almost
+always already a `delve` command.
+
+**The loop for a model** (weapon viewmodel, mob, item, prop):
+
+1. **Author** — edit the `ModelSpec` (inline on the item/enemy spec). Coordinate
+   convention, named anchors, and `orient()` for rotations are doctrine — they
+   live in `CLAUDE.md` → "Model authoring". Read that before placing a part.
+2. **Iterate** — `delve bench viewmodel-<id> --hand --ortho --debug`. No game
+   underneath: isolated scene, 4-view contact sheet (FRONT/SIDE/TOP/ISO), part
+   colours, slot markers, bounding box, and a JSON readout. **This is the loop
+   for geometry/grip/anchors.** For live sliders use the browser:
+   `npm run dev` → `bench.html?subject=viewmodel-<id>&edit=1` (has a "Copy spec").
+3. **Inspect in context** — `delve snap viewmodel-<id>` renders it in the *real*
+   engine (dungeon fog, torchlight, PSX post) — the question "does it read in
+   the dark?", which the bench's clean studio light can't answer. Or browse the
+   whole registry live with `?viewer=1` in the browser (orbit + swing scrubber).
+4. **Validate** — `delve test` (boot-time validator + invariants).
+
+**Which tool for which job:**
+
+| I want to… | Command |
+|---|---|
+| iterate on model **geometry / grip / anchors** | `delve bench viewmodel-<id> --hand --ortho --debug` |
+| see a model in **real dungeon lighting** / a live swing | `delve snap viewmodel-<id>` |
+| **browse every** mob/weapon/item live, orbit, scrub a swing | `?viewer=1` in the browser |
+| tune **weapon numbers** (derived reach · class · arc · dmg) | `delve weapons` |
+| list what the tools can point at | `delve list [vaults\|mobs\|items]` |
+| **fast** floor soft-lock check (no browser) | `delve check <seed> <depth>` |
+| **faithful** walkability (real collision) | `delve reach <seed> <depth>` |
+| screenshot any scenario / vault | `delve snap <target>` |
+| drive + inspect the live world | `delve pilot --vault <id> --do "…"` |
+| autonomous playtest episode | `delve play` |
+
+**Naming is convention, not a lookup.** Every subject in `ITEMS`/`ENEMIES` gets
+a preview for free, named `viewmodel-<id>` (held weapon), `mob-<id>`, or
+`item-<id>` (drop model) — derived in `src/debug/authorables.ts`, auto-filled in
+`scenarios.ts`. Add a weapon to `items.ts` and `delve bench viewmodel-<your-id>`
+works immediately. **Don't hand-write a preview scenario** — the only scenarios
+worth authoring by hand are ones that *aren't* plain previews (a posed combat
+review, a clip test). Use the full registry id (`viewmodel-bent-sickle`), not a
+nickname.
+
+---
+
 ## The registries at a glance
 
 | Content | File | Registry | Keyed by |

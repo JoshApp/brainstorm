@@ -816,80 +816,13 @@ export const SCENARIOS: Record<string, Scenario> = {
     ],
   },
 
-  // Viewmodel snaps — empty room, player at spawn, weapon equipped.
-  'viewmodel-rusted': {
-    freeze: true,
-    enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } },
-      { index: 1, pos: { x:  10, z: -10 } },
-      { index: 2, pos: { x: -10, z:  10 } },
-    ],
-  },
-  'viewmodel-maul': {
-    freeze: true,
-    equipWeaponId: 'iron-maul',
-    enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } },
-      { index: 1, pos: { x:  10, z: -10 } },
-      { index: 2, pos: { x: -10, z:  10 } },
-    ],
-  },
-  'viewmodel-scimitar': {
-    freeze: true,
-    equipWeaponId: 'scimitar',
-    enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } },
-      { index: 1, pos: { x:  10, z: -10 } },
-      { index: 2, pos: { x: -10, z:  10 } },
-    ],
-  },
-  // New weapon viewmodels — scythe / whip / throwing knives.
-  'viewmodel-scythe': {
-    freeze: true,
-    equipWeaponId: 'reapers-toll',
-    enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } },
-      { index: 1, pos: { x:  10, z: -10 } },
-      { index: 2, pos: { x: -10, z:  10 } },
-    ],
-  },
-  'viewmodel-whip': {
-    freeze: true,
-    equipWeaponId: 'penitents-chain',
-    enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } },
-      { index: 1, pos: { x:  10, z: -10 } },
-      { index: 2, pos: { x: -10, z:  10 } },
-    ],
-  },
-  'viewmodel-knives': {
-    freeze: true,
-    equipWeaponId: 'cord-of-knives',
-    enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } },
-      { index: 1, pos: { x:  10, z: -10 } },
-      { index: 2, pos: { x: -10, z:  10 } },
-    ],
-  },
-  // Mundane base starters — sickle (sweep) / pike (reach).
-  'viewmodel-sickle': {
-    freeze: true,
-    equipWeaponId: 'bent-sickle',
-    enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } },
-      { index: 1, pos: { x:  10, z: -10 } },
-      { index: 2, pos: { x: -10, z:  10 } },
-    ],
-  },
-  'viewmodel-pike': {
-    freeze: true,
-    equipWeaponId: 'pilgrims-pike',
-    enemyOverrides: [
-      { index: 0, pos: { x: -10, z: -10 } },
-      { index: 1, pos: { x:  10, z: -10 } },
-      { index: 2, pos: { x: -10, z:  10 } },
-    ],
-  },
+  // NOTE: the frozen single-weapon previews (viewmodel-rusted-sword,
+  // -iron-maul, -bent-sickle, … one per weapon) are AUTO-GENERATED from the
+  // item registry — see buildWeaponPreviewScenario below. Don't hand-write them.
+  // The entries that remain here are the ones that AREN'T plain previews:
+  // un-frozen combat-review poses (spear/crossbow/wand fire at a posed mob) and
+  // the nose-to-wall clip test.
+
   // Spear viewmodel — equip the reach weapon to review the thrust →
   // thrust → lunge combo against a posed enemy.
   'viewmodel-spear': {
@@ -1737,9 +1670,21 @@ function buildMobPreviewScenario(id: string): Scenario {
 
 /** Equip a weapon and freeze — the first-person viewmodel fills the lower frame.
  *  Pair with `?phase=windup|strike|recover` to scrub the swing. No inspect: the
- *  held viewmodel is camera-anchored, so the studio reframe would fight it. */
+ *  held viewmodel is camera-anchored, so the studio reframe would fight it. The
+ *  arena's default mobs get shoved to the corners so they don't clutter the
+ *  shot (this is what the old per-weapon literals hand-wrote, now free for
+ *  every weapon). For geometry/grip iteration prefer `delve bench viewmodel-<id>
+ *  --hand --ortho --debug` — no game, multi-view, slot markers. */
 function buildWeaponPreviewScenario(id: string): Scenario {
-  return { freeze: true, equipWeaponId: id };
+  return {
+    freeze: true,
+    equipWeaponId: id,
+    enemyOverrides: [
+      { index: 0, pos: { x: -10, z: -10 } },
+      { index: 1, pos: { x: 10, z: -10 } },
+      { index: 2, pos: { x: -10, z: 10 } },
+    ],
+  };
 }
 
 /** Float the item's drop-model, studio-lit and slowly rotating (see the

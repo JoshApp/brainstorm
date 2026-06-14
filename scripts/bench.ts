@@ -12,17 +12,17 @@
  *   npm run bench mob-ghoul --az=60 --el=25  explicit camera angle
  *
  *   ── Debug-iteration flags (compose freely) ─────────────────────────
- *   npm run bench viewmodel-rusted --ortho   FRONT/SIDE/TOP/ISO 2×2 contact sheet
- *   npm run bench viewmodel-rusted --gnomon  overlay an RGB axis at origin
- *   npm run bench viewmodel-rusted --debug   color-by-part + slot markers + bbox
- *   npm run bench viewmodel-rusted --ortho --debug    both at once (recommended)
+ *   npm run bench viewmodel-rusted-sword --ortho   FRONT/SIDE/TOP/ISO 2×2 contact sheet
+ *   npm run bench viewmodel-rusted-sword --gnomon  overlay an RGB axis at origin
+ *   npm run bench viewmodel-rusted-sword --debug   color-by-part + slot markers + bbox
+ *   npm run bench viewmodel-rusted-sword --ortho --debug    both at once (recommended)
  *
  *   ── Composition (weapon subjects only) ─────────────────────────────
- *   npm run bench viewmodel-rusted --hand    drop the weapon into the hand
+ *   npm run bench viewmodel-rusted-sword --hand    drop the weapon into the hand
  *                                            (same composition as the game
  *                                            viewmodel — grip aligned to palm,
  *                                            finger curl adapted to grip radius)
- *   npm run bench viewmodel-rusted --hand --ortho --debug    the full iteration view
+ *   npm run bench viewmodel-rusted-sword --hand --ortho --debug    the full iteration view
  *
  *   ── Targeted call-outs ─────────────────────────────────────────────
  *   npm run bench model-hand-right --debug --highlight=finger_thumb,finger_index
