@@ -9,6 +9,21 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The perfect-dodge window opens back up — roll through a blow and the world rewards the read, no frame-perfect timing demanded.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The dead stop sharing one swing — the skeleton chops, the skirmisher lunges and stabs, the stoneguard heaves a slab of itself overhead and brings it down. Each reads as itself.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The marks linger in the air a beat longer, and the ordinary blows read a little bolder. The dungeon's bookkeeping, easier on the eye.",
         "area": [
           "combat",
@@ -386,21 +401,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "controls"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The doors behind you are actual doors now — oak, iron, and a proper arch. The dungeon apologises for the masonry impression.",
-        "area": [
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The wall that watched the kill keeps the blood — the spawn walls stop confessing to murders from other rooms.",
-        "area": [
-          "combat",
-          "atmosphere"
         ]
       }
     ]
