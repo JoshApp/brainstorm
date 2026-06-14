@@ -470,6 +470,12 @@ export const CONFIG = {
     DAMAGE_MUL: 2,    // finisher damage multiplier — DOUBLE, not a delete button
     HEAL: 0,          // no heal — sustain stays scarce/grimdark (tune up if wanted)
     STAMINA: 30,      // refund stamina on the finishing heavy hit — fuels aggression
+    // Only a CHARGED heavy executes a staggered foe — a swing held to at least
+    // this charge. Light swings deal normal damage in the open window (they no
+    // longer trigger the finisher), so you LIGHT-COMBO the stagger to rack
+    // damage, then HEAVY-FINISH to execute. A clean tap is charge 0, so it's
+    // cleanly excluded; this low bar means a brief, deliberate hold qualifies.
+    MIN_CHARGE: 0.15,
   },
   INTERACT_CONE_HALF_ANGLE: 0.9, // radians (~52°) — must look roughly at an
                                  //   interactable before its prompt + USE button

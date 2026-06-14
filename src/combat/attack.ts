@@ -632,10 +632,14 @@ export function createCombatSystem(
     // each subsequent cleaved target takes the geometric falloff cut.
     for (let ti = 0; ti < targets.length; ti++) {
       const { target, zone } = targets[ti];
-      // FINISHER: a heavy hit on a staggered/low-HP foe executes — damage ×MUL
+      // FINISHER: a CHARGED HEAVY on a STAGGERED foe executes — damage ×MUL
       // (lethal in nearly all cases) + the sustain reward below. Captured BEFORE
-      // the hit (the target's pre-hit state is what's executable).
-      const isExecute = target.hitFeedback === 'heavy' && !!target.executable;
+      // the hit (the target's pre-hit state is what's executable). The charge
+      // gate (c >= EXECUTE.MIN_CHARGE) is the design: light swings DON'T execute,
+      // so you light-combo the open stagger window for damage, then heavy-finish.
+      // (hitFeedback === 'heavy' = a mob, not a vase — vases never "execute".)
+      const isExecute = target.hitFeedback === 'heavy' && !!target.executable
+        && c >= CONFIG.EXECUTE.MIN_CHARGE;
       // Locational zone: head/weak points multiply damage; head forces a crit.
       // Armor zones (damageMul 0) soak the blow to nothing.
       const zoneMul = zone?.damageMul ?? 1;
