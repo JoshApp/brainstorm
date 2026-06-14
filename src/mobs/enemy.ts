@@ -80,6 +80,7 @@ function vocalArchetypeFor(spec: EnemySpec): VocalArchetype | null {
  *  that frees them, so without this their entity + baseline stats leak into
  *  the world map across descents. Idempotent (killed mobs already freed). */
 export function disposeEnemy(e: Enemy): void {
+  e.clearThreat();   // pop any held deflect opportunity (no leak on teardown)
   clearEntityCombatStats(e.entityId);
   unregisterDamageSink(e.entityId);
   destroyEntity(e.entityId);
@@ -192,6 +193,9 @@ export interface Enemy extends Damageable {
   /** Current body yaw (container.rotation.y) — read-only, for debug facing
    *  readouts (e.g. __mobPack's faceErr). */
   readonly yaw: number;
+  /** Force any open deflect-flash threat OFF (pops a held deflect opportunity)
+   *  — used by removal paths so the global opportunity count can't leak. */
+  clearThreat(): void;
   collisionRadius: number;
   /** Combat hit radius — swings reach the body's surface this far from
    *  `position`. Default 0 (point). See Damageable.hitRadius. */
@@ -956,6 +960,13 @@ export function createEnemy(
       // dying-branch in update(). Final scene.remove happens when
       // deathTimer crosses DEATH_DURATION.
       aliveLocal = false;
+      // Pop any OPEN deflect opportunity this mob was holding — a mob killed
+      // mid-flash (white deflectable strike up) would otherwise leak the global
+      // count, because the dead branch of update() returns before reconcileThreat
+      // ever runs again. A leaked count leaves deflectOpportunityActive() stuck
+      // true, so a LEFT-CLICK keeps routing to a (no-op) deflect and never
+      // swings — while Space, which bypasses the tap arbiter, still attacks.
+      reconcileThreat(false, false);
       clearEntityCombatStats(entityId);
       unregisterDamageSink(entityId);
       destroyEntity(entityId);
@@ -2455,6 +2466,13 @@ export function createEnemy(
     /** DEBUG: current body yaw (container.rotation.y) for facing readouts. */
     get yaw() {
       return container.rotation.y;
+    },
+    /** Force any open deflect-flash threat OFF (pops a held deflect
+     *  opportunity). Called on removal paths so the global opportunity count
+     *  can't leak when a flashing mob is torn down without a normal threat
+     *  reconcile. */
+    clearThreat() {
+      reconcileThreat(false, false);
     },
     // Finisher window: ONLY a poise-broken (STAGGERED) enemy is executable.
     // The old low-HP "chip execute" path is gone — execution is now purely the
