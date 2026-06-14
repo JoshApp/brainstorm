@@ -154,6 +154,27 @@ export interface CombatVerb {
   chance?: number;
 }
 
+/** A multi-hit FLURRY — one attack lands `count` fast strikes, each dealing
+ *  `damageMul` of the weapon's resolved damage, `interval` seconds apart. Every
+ *  sub-hit rolls crit + on-hit procs INDEPENDENTLY, which is the dagger
+ *  identity: more rolls = more value from on-crit / on-hit / %-effects, traded
+ *  against weak per-hit damage + poise. */
+export interface FlurrySpec {
+  count: number;       // number of sub-hits
+  interval: number;    // seconds between sub-hits
+  damageMul: number;   // each sub-hit's fraction of weapon damage
+}
+
+/** Per-weapon OVERRIDE for one combo step's damage shaping — patched over the
+ *  weapon CLASS (archetype) combo by index. Lets a specific weapon retune the
+ *  per-hit damage % / poise / flurry without redefining the whole move. Omit a
+ *  field to inherit the archetype's value; omit an index to leave that step. */
+export interface ComboStepTuning {
+  damageMul?: number;
+  staggerMul?: number;
+  hits?: FlurrySpec;
+}
+
 export interface WeaponStats {
   /** Max melee reach in meters (camera-to-enemy distance). */
   reach: number;
@@ -171,6 +192,11 @@ export interface WeaponStats {
    * and seeds the per-step timings + combo window. Default 'sword'.
    */
   class?: WeaponClass;
+  /** Per-weapon override of the class combo's per-step damage shaping
+   *  (damage % / poise % / flurry), patched over the archetype by index. The
+   *  archetype (WEAPON_CLASS_DEFAULTS) sets the baseline; this lets one weapon
+   *  differ — e.g. a heavier dagger that hits 0.6 per stab instead of 0.45. */
+  comboTuning?: ComboStepTuning[];
   /**
    * Multiplier applied to all combo-step timings after the class
    * defaults resolve. 1.0 = baseline, 1.2 = 20% faster (smaller

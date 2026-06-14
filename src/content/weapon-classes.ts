@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { WeaponStats, WeaponClass, WeaponScaling, ProficiencyProfile } from './items';
+import type { WeaponStats, WeaponClass, WeaponScaling, ProficiencyProfile, FlurrySpec } from './items';
 import { getCharacter, type AttributeKind } from '../state/character';
 
 // Weapon classes — pick the animation archetype and seed the default
@@ -77,6 +77,18 @@ export interface ComboStep {
    *  Default 0 (a level swing — the current behaviour). The KEY knob that makes
    *  a move's hit volume match its animation in 3D. See docs/COMBAT-HIT-SYSTEM.md. */
   rise?: number;
+  /** Damage as a fraction of the weapon's resolved damage for THIS step (the
+   *  "% of weapon damage" model). Default 1.0 = one clean hit. A finisher
+   *  exceeds 1 (1.3 = 130%); a quick jab dips below. Authored per ARCHETYPE
+   *  here; a weapon overrides per step via spec.comboTuning. Ignored when
+   *  `hits` (a flurry) is set — the flurry's own damageMul is used. */
+  damageMul?: number;
+  /** Poise/stagger multiplier for this step. Default 1.0 — light openers chip
+   *  (<1), heavy finishers crack (>1). */
+  staggerMul?: number;
+  /** Multi-hit FLURRY: this step lands several fast hits, each rolling crit +
+   *  on-hit procs independently (the dagger identity). */
+  hits?: FlurrySpec;
 }
 
 export interface ResolvedComboStep {
@@ -88,6 +100,9 @@ export interface ResolvedComboStep {
   coneHalfAngleMul: number;
   maxTargets: number;
   rise: number;
+  damageMul: number;
+  staggerMul: number;
+  hits?: FlurrySpec;
 }
 
 export interface ResolvedWeaponStats {
@@ -314,7 +329,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
         recover: CONFIG.SWORD_SWING_RECOVER,
         reachMul: 1.0, coneHalfAngleMul: 1.1, maxTargets: 1 },
       { pose: 'sword-thrust', windup: 0.14, strike: 0.12, recover: 0.34,
-        reachMul: 1.25, coneHalfAngleMul: 0.6, maxTargets: 1 },
+        reachMul: 1.25, coneHalfAngleMul: 0.6, maxTargets: 1, damageMul: 1.3 },
     ],
     comboWindowMs: 380,
     timingMul: 1.25,   // baseline blade — a touch more committal than before
@@ -380,7 +395,7 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       { pose: 'hammer-swing-left',  windup: 0.20, strike: 0.12, recover: 0.36,
         reachMul: 1.0, coneHalfAngleMul: 1.2, maxTargets: 2 },
       { pose: 'hammer-smash',       windup: 0.28, strike: 0.14, recover: 0.44,
-        reachMul: 1.15, coneHalfAngleMul: 1.4, maxTargets: 3, rise: -0.45 },
+        reachMul: 1.15, coneHalfAngleMul: 1.4, maxTargets: 3, rise: -0.45, damageMul: 1.5 },
     ],
     comboWindowMs: 520,
     timingMul: 1.6,   // HEAVY — wind up, commit, recover; the slow brute (tail
@@ -739,8 +754,17 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     coneHalfAngleMul: step.coneHalfAngleMul ?? 1,
     maxTargets: step.maxTargets ?? 1,
     rise: step.rise ?? 0,
+    damageMul: step.damageMul ?? 1,
+    staggerMul: step.staggerMul ?? 1,
+    hits: step.hits,
   });
-  const combo: ResolvedComboStep[] = baseT.combo.map(resolveStep);
+  // Per-weapon override: patch the archetype's light combo per step index with
+  // spec.comboTuning (damage % / poise % / flurry) before resolving. The class
+  // default is the baseline; a weapon can retune any step's numbers.
+  const comboSrc: ComboStep[] = spec.comboTuning
+    ? baseT.combo.map((s, i) => (spec.comboTuning![i] ? { ...s, ...spec.comboTuning![i] } : s))
+    : baseT.combo;
+  const combo: ResolvedComboStep[] = comboSrc.map(resolveStep);
   const directionalMoves = baseT.directionalMoves ? {
     forward:     baseT.directionalMoves.forward     && resolveStep(baseT.directionalMoves.forward),
     strafeLeft:  baseT.directionalMoves.strafeLeft  && resolveStep(baseT.directionalMoves.strafeLeft),

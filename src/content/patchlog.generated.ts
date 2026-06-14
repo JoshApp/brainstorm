@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Combo finishers bite harder than the openers now — the blade's thrust and the hammer's fall land the heavy blow they always looked like.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Heavy swings are reined into a forward arc now — a maul or scythe no longer windmills past your shoulders. Each weapon class keeps its own swing width.",
         "area": [
           "combat",
@@ -379,20 +387,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "controls",
           "ui"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 8",
-    "date": "2026-06-13",
-    "entries": [
-      {
-        "tag": "fix",
-        "text": "The doors that trap you now actually let you in first. And the cage in the gold light finally has a key somewhere with your name on it.",
-        "area": [
-          "level",
-          "content"
         ]
       }
     ]

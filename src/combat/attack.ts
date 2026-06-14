@@ -507,6 +507,11 @@ export function createCombatSystem(
     // into an AoE. Damage scaling happens at the per-target calc below.
     const step = weapon.getActiveStep();
     const c = currentSwingCharge;
+    // Per-combo-step damage / poise shaping (% of weapon damage). Authored per
+    // archetype (weapon-classes.ts) + overridable per weapon (comboTuning). A
+    // finisher hits >100%, a quick jab <100%. Default 1.0 = one clean hit.
+    const stepDamageMul = step?.damageMul ?? 1;
+    const stepStaggerMul = step?.staggerMul ?? 1;
     const reach = stats.reach * (step?.reachMul ?? 1) * (1 + c * 0.20);
     const cosConeHalf = Math.cos(stats.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.25));
     const baseTargets = step?.maxTargets ?? 1;
@@ -651,7 +656,7 @@ export function createCombatSystem(
       // zone's additive critBonus (the head — crits more often, not always).
       const crit = (zone?.crit ?? false) || gameRngChance(critChance + (zone?.critBonus ?? 0));
       const execMul = isExecute ? CONFIG.EXECUTE.DAMAGE_MUL : 1;
-      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul * zoneMul * cleaveMul * execMul;
+      const baseDamage = (crit ? stats.damage * critMult : stats.damage) * finisherMult * chargeDamageMul * counterDmgMul * zoneMul * cleaveMul * execMul * stepDamageMul;
       const applied = target.takeDamage({
         source: 'player',
         target: target.entityId,
@@ -732,7 +737,7 @@ export function createCombatSystem(
         // full charge hits poise hardest. staggerPower already folds in
         // weapon weight × Might (resolveWeaponStats). Returns true on the hit
         // that BREAKS the guard → fire the loud "STAGGERED" cue.
-        const broke = target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS) * counterStaggerMul * perfectStaggerMul) ?? false;
+        const broke = target.applyStaggerDamage?.(stats.staggerPower * (1 + c * CONFIG.POISE.CHARGE_BONUS) * counterStaggerMul * perfectStaggerMul * stepStaggerMul) ?? false;
         if (broke) {
           anyStagger = true;
           spawnStatusText(camera, hitPoint, 'STAGGERED', 'rgba(255, 226, 150, 0.99)');
