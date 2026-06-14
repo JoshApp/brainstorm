@@ -18,44 +18,69 @@ export interface LashTendril {
   dispose(): void;
 }
 
+const SEGMENTS = 7;
+
+// Shared GPU resources — built ONCE, never disposed. The per-segment sphere
+// radii are fixed (taper depends only on the segment index, not on reach), so
+// every lash reuses the same 7 segment geometries + 1 tip geometry. The
+// materials are cloned per lash (colour/emissive vary per caster, but those are
+// uniforms — the clone shares the template's program), and the never-disposed
+// templates pin those programs. No per-windup geometry/PBR-program churn (the
+// leak that climbed over a fight; a fresh MeshStandardMaterial each lash forced
+// a fresh PBR program compile).
+let _segGeo: THREE.SphereGeometry[] | null = null;
+let _tipGeo: THREE.SphereGeometry | null = null;
+let _matTpl: THREE.MeshStandardMaterial | null = null;
+let _tipMatTpl: THREE.MeshBasicMaterial | null = null;
+function shared() {
+  if (!_segGeo) {
+    _segGeo = [];
+    for (let i = 0; i < SEGMENTS; i++) {
+      const f = i / (SEGMENTS - 1);
+      const r = 0.55 * (1 - f) + 0.1;        // taper thick → thin (index-only → shareable)
+      _segGeo.push(new THREE.SphereGeometry(r, 9, 7));
+    }
+  }
+  if (!_tipGeo) _tipGeo = new THREE.SphereGeometry(0.34, 12, 10);
+  if (!_matTpl) _matTpl = new THREE.MeshStandardMaterial({
+    color: 0x081004, emissive: 0xffffff, emissiveIntensity: 2.0,
+    roughness: 0.5, transparent: true, opacity: 0.96, depthWrite: false,
+  });
+  if (!_tipMatTpl) _tipMatTpl = new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  });
+  return { segGeo: _segGeo, tipGeo: _tipGeo, matTpl: _matTpl, tipMatTpl: _tipMatTpl };
+}
+
 export function spawnLashTendril(
   parent: THREE.Object3D,
   originY: number,
   reach: number,
   color: number,
 ): LashTendril {
+  const { segGeo, tipGeo, matTpl, tipMatTpl } = shared();
   const group = new THREE.Group();
   group.position.set(0, originY, 0);   // caster-local; -Z is forward (faces player)
   parent.add(group);
 
   // Tapered tube of slime — stacked tapering spheres from a thick base to a
-  // thin tip, so it reads organic rather than a clean cone. Shares one
-  // emissive material so the whole limb flares together.
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x081004,
-    emissive: color,
-    emissiveIntensity: 2.0,
-    roughness: 0.5,
-    transparent: true,
-    opacity: 0.96,
-    depthWrite: false,
-  });
-  const SEGMENTS = 7;
+  // thin tip, so it reads organic rather than a clean cone. One cloned emissive
+  // material shared across the limb so it flares together (colour set per caster).
+  const mat = matTpl.clone();
+  mat.emissive.setHex(color);
   for (let i = 0; i < SEGMENTS; i++) {
     const f = i / (SEGMENTS - 1);            // 0 base → 1 tip
-    const r = 0.55 * (1 - f) + 0.1;          // taper thick → thin
-    const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 9, 7), mat);
+    const seg = new THREE.Mesh(segGeo[i], mat);
     seg.position.z = -reach * f;             // march along forward (-Z)
     // Slight organic sag/wave so it isn't a ruler-straight stick.
     seg.position.y = -0.18 * Math.sin(f * Math.PI);
     group.add(seg);
   }
   // Glowing tip blob — the "head" of the tentacle.
-  const tipMat = new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity: 0.9,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-  });
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10), tipMat);
+  const tipMat = tipMatTpl.clone();
+  tipMat.color.setHex(color);
+  const tip = new THREE.Mesh(tipGeo, tipMat);
   tip.position.set(0, -0.18 * Math.sin(Math.PI), -reach);
   group.add(tip);
 
@@ -75,12 +100,11 @@ export function spawnLashTendril(
     },
     dispose() {
       parent.remove(group);
-      group.traverse((o) => {
-        if (o instanceof THREE.Mesh) {
-          o.geometry.dispose();
-          (o.material as THREE.Material).dispose();
-        }
-      });
+      // Dispose only the two CLONED materials — the segment/tip geometries and
+      // the material templates are shared and stay resident (pinning the
+      // programs so the next lash won't recompile).
+      mat.dispose();
+      tipMat.dispose();
     },
   };
 }

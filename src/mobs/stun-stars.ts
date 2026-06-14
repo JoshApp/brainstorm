@@ -48,21 +48,32 @@ export interface StunStars {
 const STAR_COUNT = 3;
 const ORBIT_RADIUS = 0.26;
 
+// Template SpriteMaterial — built ONCE (with the shared star texture), cloned
+// per stagger. Every star in a ring fades together (same opacity), so ONE clone
+// covers all STAR_COUNT sprites; the clone shares the template's program and the
+// never-disposed template pins it. Was STAR_COUNT fresh SpriteMaterials per
+// stagger — a program/material churn on the most frequent combat beat.
+let starMatTpl: THREE.SpriteMaterial | null = null;
+function getStarMatTemplate(): THREE.SpriteMaterial {
+  if (!starMatTpl) starMatTpl = new THREE.SpriteMaterial({
+    // depthTest OFF + high renderOrder → an OVERLAY cue that always reads
+    // above the head, never buried inside the (often tall) body mesh.
+    map: getStarTexture(), color: 0xeaf2ff, transparent: true, opacity: 0,
+    depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false,
+  });
+  return starMatTpl;
+}
+
 /** Build a stun-star ring parented to `parent` (the enemy container) at local
  *  height `y`. Hidden until tick(dt, true) fades it in. */
 export function createStunStars(parent: THREE.Object3D, y: number): StunStars {
   const group = new THREE.Group();
   group.position.set(0, y, 0);
   group.visible = false;
-  const tex = getStarTexture();
+  // One material clone for the whole ring (all stars share opacity).
+  const mat = getStarMatTemplate().clone();
   const sprites: THREE.Sprite[] = [];
   for (let i = 0; i < STAR_COUNT; i++) {
-    const mat = new THREE.SpriteMaterial({
-      // depthTest OFF + high renderOrder → an OVERLAY cue that always reads
-      // above the head, never buried inside the (often tall) body mesh.
-      map: tex, color: 0xeaf2ff, transparent: true, opacity: 0,
-      depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false,
-    });
     const sp = new THREE.Sprite(mat);
     sp.renderOrder = 9500;
     const a = (i / STAR_COUNT) * Math.PI * 2;
@@ -86,17 +97,16 @@ export function createStunStars(parent: THREE.Object3D, y: number): StunStars {
     group.visible = true;
     spin += dt * 3.2;                       // the orbit
     group.rotation.y = spin;
+    mat.opacity = opacity * 0.9;            // shared across the ring → set once
     for (let i = 0; i < sprites.length; i++) {
-      const sp = sprites[i];
       // gentle vertical bob, desynced per star
-      sp.position.y = Math.sin(spin * 2 + i * 2.1) * 0.05;
-      (sp.material as THREE.SpriteMaterial).opacity = opacity * 0.9;
+      sprites[i].position.y = Math.sin(spin * 2 + i * 2.1) * 0.05;
     }
   }
 
   function dispose(): void {
     parent.remove(group);
-    for (const sp of sprites) (sp.material as THREE.SpriteMaterial).dispose();
+    mat.dispose();   // the single ring material clone (geometry is Sprite-internal/shared)
   }
 
   return { tick, dispose };
