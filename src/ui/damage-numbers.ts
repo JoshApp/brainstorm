@@ -3,65 +3,81 @@ import { CONFIG } from '../config';
 import { worldToScreen } from './hud';
 import { on } from '../broadcast/event-bus';
 
-// ── Floating combat numbers — the "STAMPED IMPACT" style ─────────────────
+// ── Floating combat numbers — the grimdark / Souls register ──────────────
 //
-// DOM overlay above the canvas. Each number is a short-lived label that pops
-// in (a fast scale punch), drifts up, and fades. Built for legibility on the
-// dark, busy dungeon:
-//   - HARD OUTLINE (-webkit-text-stroke + paint-order:stroke fill) instead of
-//     a soft glow — the #1 readability win; numbers read as branded into the
-//     scene on any backdrop.
-//   - SIZE SCALES WITH DAMAGE (with a solid floor) so a chip and a haymaker
-//     feel different, and nothing is ever tiny.
-//   - JITTER + ROTATION per number so rapid / stacked hits fan out instead of
-//     overlapping into an unreadable blur.
-//   - Two layers: an OUTER that handles the slow rise + fade, an INNER that
-//     handles the fast scale pop — so the punch reads without slowing the drift.
+// DOM overlay above the canvas. Restraint is the aesthetic: an old-style
+// SERIF in bone-white, a thin hard edge + soft dark drop for legibility on
+// the torchlit dark, and a CALM motion — a small settle, a slow drift up, a
+// long fade. No bounce, no confetti. Colour is RATIONED: white is the
+// default; only the exceptional hit earns a tint (gold crit, blood execute,
+// a desaturated element hue for DoT). Reads as "carved into the world",
+// matching the in-world voice.
 //
-// Palette (grimdark): bone for chip hits, gold for crits, blood for executes,
-// cool grey for grazes, element tint for DoT ticks.
+// Legibility still comes first (the reason for the restyle): SIZE SCALES WITH
+// DAMAGE with a floor so chips stay readable and big hits feel big; numbers
+// spawn at HEAD height so they rise off the silhouette into the dark above the
+// enemy, clear of the body + reticle; and per-number JITTER fans rapid hits
+// out instead of letting them stack into a blur.
+//
+// Two layers: an OUTER that drifts up + fades over the lifetime, an INNER that
+// does the (gentle) scale settle — so the motion reads without coupling.
 
-const FONT = "'Helvetica Neue', system-ui, -apple-system, Arial, sans-serif";
-const CONDENSE = 0.9;   // horizontal squeeze → a stamped, heavy numeral
-const POP_MS = 150;     // fast scale punch, independent of the rise/fade
+const FONT = "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif";
+const POP_MS = 180;        // gentle settle, not a punch
+const HEAD_LIFT = 0.45;    // world metres lifted above the passed point (off the torso)
+
+// Shared soft dark drop — the Souls legibility trick (a halo, not a glow).
+const HALO = '0 1px 2px rgba(0,0,0,0.92), 0 0 6px rgba(0,0,0,0.6)';
 
 interface LabelStyle {
   size: number;          // px
   fill: string;
   strokeColor: string;
   strokePx: number;
-  glow: string;          // text-shadow
-  scaleStart: number;    // pop-in start scale (>1 = burst-shrink, <1 = punch-up)
-  pop: string;           // easing for the scale pop
+  glow: string;          // text-shadow (HALO, optionally + a faint tint)
+  scaleStart: number;    // settle start scale
+  pop: string;           // easing for the settle
   rise: number;          // px the label drifts up over its life
   lifetime: number;      // seconds
   jitter: number;        // ± px horizontal scatter
-  condense: number;      // x-squeeze (1 = none; numbers use < 1)
+  weight: string;
   letterSpacing: string;
 }
 
+const _lift = new THREE.Vector3();
+
+/** Lift the world point to head height and project it. Returns null if the
+ *  point is behind the camera. */
+function projectHead(camera: THREE.Camera, worldPos: THREE.Vector3): { x: number; y: number } | null {
+  _lift.copy(worldPos);
+  _lift.y += HEAD_LIFT;
+  const p = worldToScreen(_lift, camera);
+  if (p.behind) return null;
+  return { x: p.x, y: p.y };
+}
+
 /** Damage → font size, floored at `base`, saturating at `max` around `ref`
- *  damage. Keeps chip hits readable while letting big hits feel big. */
+ *  damage. Chips stay readable; big hits feel big. */
 function sizeFor(amount: number, base: number, max: number, ref: number): number {
   return base + (max - base) * Math.min(1, Math.max(0, amount) / ref);
 }
 
-/** Lighten a packed hex toward white (a raw bleed-red / poison-green is too
- *  dark to read as text on the dark dungeon). */
-function tintToRgba(hex: number, whiteMix: number, alpha: number): string {
+/** A DoT element colour, DESATURATED toward bone-ash so it reads as a muted
+ *  hue (poison sickly-green, bleed dried-red) rather than a bright pip. */
+function dotTint(hex: number, alpha: number): string {
   let r = (hex >> 16) & 0xff, g = (hex >> 8) & 0xff, b = hex & 0xff;
-  r = Math.round(r + (255 - r) * whiteMix);
-  g = Math.round(g + (255 - g) * whiteMix);
-  b = Math.round(b + (255 - b) * whiteMix);
+  const BR = 206, BG = 196, BB = 174, mix = 0.5;   // toward bone-ash
+  r = Math.round(r + (BR - r) * mix);
+  g = Math.round(g + (BG - g) * mix);
+  b = Math.round(b + (BB - b) * mix);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Mount a floating label at a screen point and run its pop + rise + fade. */
+/** Mount a floating label at a screen point; run its settle + rise + fade. */
 function floatLabel(sx: number, sy: number, text: string, st: LabelStyle): void {
   const jitterX = (Math.random() * 2 - 1) * st.jitter;
-  const rot = (Math.random() * 2 - 1) * 4;
+  const rot = (Math.random() * 2 - 1) * 3;
 
-  // OUTER — slow rise + fade over the full lifetime.
   const outer = document.createElement('div');
   Object.assign(outer.style, {
     position: 'fixed',
@@ -72,26 +88,24 @@ function floatLabel(sx: number, sy: number, text: string, st: LabelStyle): void 
     zIndex: '15',
     opacity: '1',
     willChange: 'transform, opacity',
-    transition: `transform ${st.lifetime}s ease-out, opacity ${st.lifetime}s ease-out`,
+    transition: `transform ${st.lifetime}s ease-out, opacity ${st.lifetime}s ease-in`,
   } as Partial<CSSStyleDeclaration>);
 
-  // INNER — fast scale punch, the actual glyph.
   const inner = document.createElement('div');
   inner.textContent = text;
   Object.assign(inner.style, {
     fontFamily: FONT,
-    fontWeight: '900',
+    fontWeight: st.weight,
     fontSize: `${st.size}px`,
     lineHeight: '1',
     letterSpacing: st.letterSpacing,
     color: st.fill,
     textShadow: st.glow,
     transformOrigin: 'center',
-    transform: `scale(${st.scaleStart * st.condense}, ${st.scaleStart}) rotate(${rot}deg)`,
+    transform: `scale(${st.scaleStart}) rotate(${rot}deg)`,
     transition: `transform ${POP_MS}ms ${st.pop}`,
     willChange: 'transform',
   } as Partial<CSSStyleDeclaration>);
-  // Hard outline that doesn't erode the fill (stroke painted behind).
   inner.style.setProperty('-webkit-text-stroke', `${st.strokePx}px ${st.strokeColor}`);
   inner.style.setProperty('paint-order', 'stroke fill');
 
@@ -101,36 +115,35 @@ function floatLabel(sx: number, sy: number, text: string, st: LabelStyle): void 
   requestAnimationFrame(() => {
     outer.style.transform = `translate(-50%, calc(-50% - ${st.rise}px))`;
     outer.style.opacity = '0';
-    inner.style.transform = `scale(${st.condense}, 1) rotate(${rot}deg)`;
+    inner.style.transform = `scale(1) rotate(${rot}deg)`;
   });
 
   setTimeout(() => outer.remove(), st.lifetime * 1000 + 120);
 }
 
-/** A short-lived WORD that floats off a world point — combat status
- *  punctuation like "STAGGERED". Spaced caps, bone + hard outline so it reads
- *  as an event, not a number. */
+/** A short-lived WORD — combat status punctuation like "STAGGERED". Spaced
+ *  serif caps in bone so it reads as an event, not a number. */
 export function spawnStatusText(
   camera: THREE.Camera,
   worldPos: THREE.Vector3,
   text: string,
-  color: string = 'rgba(255, 236, 170, 0.98)',
+  color: string = 'rgba(238, 226, 198, 0.98)',
 ) {
-  const p = worldToScreen(worldPos, camera);
-  if (p.behind) return;
+  const p = projectHead(camera, worldPos);
+  if (!p) return;
   floatLabel(p.x, p.y, text, {
-    size: 19,
+    size: 18,
     fill: color,
-    strokeColor: 'rgba(8, 5, 2, 0.95)',
-    strokePx: 2.6,
-    glow: '0 0 12px rgba(255, 180, 40, 0.45), 0 0 3px rgba(0,0,0,0.95)',
-    scaleStart: 1.25,
-    pop: 'cubic-bezier(0.2, 1.5, 0.3, 1)',
-    rise: CONFIG.DAMAGE_NUMBER_RISE * 1.3,
-    lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.3,
+    strokeColor: 'rgba(8, 5, 2, 0.9)',
+    strokePx: 1.6,
+    glow: HALO,
+    scaleStart: 1.15,
+    pop: 'ease-out',
+    rise: CONFIG.DAMAGE_NUMBER_RISE * 1.2,
+    lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.5,
     jitter: 6,
-    condense: 1,                 // words read better un-squeezed
-    letterSpacing: '0.16em',
+    weight: '700',
+    letterSpacing: '0.18em',
   });
 }
 
@@ -140,90 +153,88 @@ export function spawnDamageNumber(
   amount: number,
   crit: boolean = false,
   /** A GRAZE — a cleaved secondary target that took reduced (falloff) damage.
-   *  Cool + smaller so it reads as "this one only got clipped". Crit/execute
-   *  win over graze. */
+   *  Ash-dim + smaller so it reads as "this one only got clipped". */
   graze: boolean = false,
-  /** An EXECUTE — a finisher on a staggered foe. The loudest number: huge,
-   *  blood-red, biggest punch. Wins over crit/graze. */
+  /** An EXECUTE — a finisher on a staggered foe: biggest, deep blood-red. */
   execute: boolean = false,
 ) {
   graze = graze && !crit && !execute;
-  const p = worldToScreen(worldPos, camera);
-  if (p.behind) return;
+  const p = projectHead(camera, worldPos);
+  if (!p) return;
 
   if (execute) {
     floatLabel(p.x, p.y, String(amount), {
-      size: sizeFor(amount, 48, 66, 14),
-      fill: 'rgba(255, 74, 54, 0.99)',
-      strokeColor: 'rgba(16, 0, 0, 0.96)',
-      strokePx: 3.5,
-      glow: '0 0 18px rgba(225, 25, 25, 0.95), 0 0 34px rgba(150, 0, 0, 0.7), 0 0 3px rgba(0,0,0,0.95)',
-      scaleStart: 2.0,
+      size: sizeFor(amount, 44, 60, 14),
+      fill: 'rgba(214, 52, 38, 0.99)',           // deep blood
+      strokeColor: 'rgba(14, 0, 0, 0.95)',
+      strokePx: 2.6,
+      glow: `${HALO}, 0 0 16px rgba(150, 0, 0, 0.55)`,
+      scaleStart: 1.5,
       pop: 'ease-out',
-      rise: 74,
-      lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.5,
+      rise: 56,
+      lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.6,
       jitter: 10,
-      condense: CONDENSE,
-      letterSpacing: '-0.03em',
+      weight: '700',
+      letterSpacing: '0',
     });
     return;
   }
   if (crit) {
-    floatLabel(p.x, p.y, `${amount}!`, {
-      size: sizeFor(amount, 34, 56, 16),
-      fill: 'rgba(255, 226, 120, 0.99)',
-      strokeColor: 'rgba(48, 22, 0, 0.95)',
-      strokePx: 3,
-      glow: '0 0 14px rgba(255, 185, 55, 0.75), 0 0 3px rgba(0,0,0,0.95)',
-      scaleStart: 1.7,
+    floatLabel(p.x, p.y, `${amount}`, {
+      size: sizeFor(amount, 32, 50, 16),
+      fill: 'rgba(232, 200, 124, 0.99)',         // muted gold
+      strokeColor: 'rgba(36, 18, 0, 0.92)',
+      strokePx: 2.2,
+      glow: `${HALO}, 0 0 12px rgba(210, 150, 40, 0.5)`,
+      scaleStart: 1.3,
       pop: 'ease-out',
-      rise: 64,
-      lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.4,
-      jitter: 13,
-      condense: CONDENSE,
-      letterSpacing: '-0.03em',
+      rise: 50,
+      lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.45,
+      jitter: 12,
+      weight: '700',
+      letterSpacing: '0',
     });
     return;
   }
   if (graze) {
     floatLabel(p.x, p.y, String(amount), {
-      size: sizeFor(amount, 19, 28, 16),
-      fill: 'rgba(198, 210, 220, 0.9)',
-      strokeColor: 'rgba(4, 6, 8, 0.9)',
-      strokePx: 2,
-      glow: '0 0 5px rgba(0,0,0,0.85)',
-      scaleStart: 0.78,
-      pop: 'cubic-bezier(0.18, 1.6, 0.3, 1)',
-      rise: 40,
-      lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME,
+      size: sizeFor(amount, 19, 27, 16),
+      fill: 'rgba(186, 192, 196, 0.82)',         // cool ash
+      strokeColor: 'rgba(4, 6, 8, 0.85)',
+      strokePx: 1.4,
+      glow: HALO,
+      scaleStart: 0.92,
+      pop: 'ease-out',
+      rise: 34,
+      lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.1,
       jitter: 18,
-      condense: CONDENSE,
-      letterSpacing: '-0.02em',
+      weight: '600',
+      letterSpacing: '0',
     });
     return;
   }
-  // Regular chip hit — bone, damage-scaled, punchy.
+  // Regular chip hit — bone, damage-scaled, calm.
   floatLabel(p.x, p.y, String(amount), {
-    size: sizeFor(amount, 23, 42, 16),
-    fill: 'rgba(247, 230, 198, 0.98)',
-    strokeColor: 'rgba(6, 4, 2, 0.95)',
-    strokePx: 2.6,
-    glow: '0 0 9px rgba(255, 150, 60, 0.30), 0 0 2px rgba(0,0,0,0.9)',
-    scaleStart: 0.75,
-    pop: 'cubic-bezier(0.18, 1.7, 0.3, 1)',
-    rise: 48,
-    lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME,
+    size: sizeFor(amount, 24, 40, 16),
+    fill: 'rgba(235, 224, 200, 0.97)',           // bone / ash white
+    strokeColor: 'rgba(6, 4, 2, 0.9)',
+    strokePx: 1.8,
+    glow: HALO,
+    scaleStart: 0.9,
+    pop: 'cubic-bezier(0.2, 1.2, 0.35, 1)',
+    rise: 40,
+    lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.25,
     jitter: 14,
-    condense: CONDENSE,
-    letterSpacing: '-0.03em',
+    weight: '700',
+    letterSpacing: '0',
   });
 }
 
 // ── DoT (damage-over-time) tick numbers ──────────────────────────────────
 // Bleed/poison/burn ticks have no attack/projectile caller to float a number,
-// so the enemy emits `enemy:dot` and this subscriber draws it — tinted to the
-// element, a touch smaller than a hit so ticks read as attrition. Wire once at
-// boot via initDotDamageNumbers(camera).
+// so the enemy emits `enemy:dot` and this subscriber draws it — a desaturated
+// element tint, a touch smaller than a hit so ticks read as attrition. Wire
+// once at boot via initDotDamageNumbers(camera).
 let _dotCamera: THREE.Camera | null = null;
 const _dotPos = new THREE.Vector3();
 
@@ -233,21 +244,21 @@ export function initDotDamageNumbers(camera: THREE.Camera): void {
     if (e.type !== 'enemy:dot') return;
     if (!_dotCamera) return;
     _dotPos.set(e.x, e.y, e.z);
-    const p = worldToScreen(_dotPos, _dotCamera);
-    if (p.behind) return;
+    const p = projectHead(_dotCamera, _dotPos);
+    if (!p) return;
     floatLabel(p.x, p.y, String(e.amount), {
-      size: sizeFor(e.amount, 20, 32, 14),
-      fill: tintToRgba(e.color, 0.5, 0.97),
-      strokeColor: 'rgba(6, 4, 2, 0.92)',
-      strokePx: 2.2,
-      glow: `0 0 8px ${tintToRgba(e.color, 0.1, 0.8)}, 0 0 2px rgba(0,0,0,0.9)`,
-      scaleStart: 0.78,
-      pop: 'cubic-bezier(0.18, 1.6, 0.3, 1)',
-      rise: 42,
-      lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME,
+      size: sizeFor(e.amount, 20, 30, 14),
+      fill: dotTint(e.color, 0.95),
+      strokeColor: 'rgba(6, 4, 2, 0.88)',
+      strokePx: 1.5,
+      glow: HALO,
+      scaleStart: 0.92,
+      pop: 'ease-out',
+      rise: 34,
+      lifetime: CONFIG.DAMAGE_NUMBER_LIFETIME * 1.1,
       jitter: 16,
-      condense: CONDENSE,
-      letterSpacing: '-0.02em',
+      weight: '600',
+      letterSpacing: '0',
     });
   });
 }

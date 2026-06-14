@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The tally is carved now, not stamped — pale serif over the dark, colour kept for the blows that earn it. Bigger hits, bigger marks.",
+        "area": [
+          "combat",
+          "ui"
+        ]
+      },
+      {
         "tag": "content",
         "text": "Parries now carry the weapon's character — a maul's catch staggers like a wall, and a stained blade opens a bleed when you turn a strike. Each weapon answers a parry its own way.",
         "area": [
@@ -20,6 +28,21 @@ export const GENERATED_PATCHLOG = [
         "text": "A parry isn't just a block now — it's a strike. Catch a blow and you cut back, and your next quick swing comes empowered. Read the tell, take the opening.",
         "area": [
           "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The sworded dead stop swinging at the air behind them — they raise the blade and bring it down on you, the way it was always meant to land.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The ghoul stops borrowing everyone's swing — it winds its claws overhead, hangs, then rakes down through you. Each thing down here will move like itself.",
+        "area": [
+          "combat",
+          "atmosphere"
         ]
       },
       {
@@ -377,31 +400,6 @@ export const GENERATED_PATCHLOG = [
         "tag": "tune",
         "text": "The doors you came through are closed now. Nobody remembers closing them.",
         "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The doors at the bottom of the stairs were left open exactly as wide as someone fleeing would leave them. The fire beyond does not mind the draught.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Look down any stairwell: the next fire is already burning for you. Behind every fire, the way you came — sealed. Keep going.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Pottery keeps its dignity in death. The slain spend theirs slowly, by the pint.",
-        "area": [
-          "combat",
           "atmosphere",
           "level"
         ]
