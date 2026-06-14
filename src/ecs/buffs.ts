@@ -75,6 +75,11 @@ function tickEntityBuffs(entity: Entity, dt: number) {
             target: entity.id,
             base,
             type: eff.damageType ?? 'physical',
+            // Tag the tick so the target spawns a floating number for it
+            // (direct hits get theirs from the attack/projectile caller),
+            // tinted to this affliction's element colour.
+            dot: true,
+            tint: spec.color,
           });
         } else {
           applyEffect(eff, { defaultTarget: entity.id });

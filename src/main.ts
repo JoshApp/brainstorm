@@ -125,6 +125,7 @@ import { createXpSigil } from './ui/xp-sigil';
 import { createBossBar, resetBossBar } from './ui/boss-bar';
 import { createBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
+import { initDotDamageNumbers } from './ui/damage-numbers';
 import { maybeShowCalibrateHint } from './ui/calibrate-hint';
 import { createDepthCounter, setDepth as setDepthCounter } from './ui/depth-counter';
 import { createXpGoldHud } from './ui/xp-gold-hud';
@@ -1018,6 +1019,7 @@ createBossBar();
 createBuffBar();
 createChargeRing();
 createPickupNotification();
+initDotDamageNumbers(camera);   // floats coloured bleed/poison/burn tick numbers
 createDepthCounter(getCurrentDepth());
 createXpGoldHud();
 

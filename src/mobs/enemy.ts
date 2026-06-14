@@ -892,6 +892,20 @@ export function createEnemy(
     // hit flash, poise/stagger, and aggro all still fire above. Inert in prod
     // (the flag's setter ANDs with DEV).
     if (arenaEnemiesInvincible() && entity.hp.current <= 0) entity.hp.current = 1;
+    // DoT ticks (bleed/poison/burn) have no attack/projectile caller to float
+    // a damage number, so emit one from here — at the body centre, tinted to
+    // the affliction's element. Works on the killing tick too (container
+    // position is still valid through the death animation).
+    if (event.dot && result.applied > 0) {
+      emit({
+        type: 'enemy:dot',
+        x: container.position.x,
+        y: container.position.y + aimHeightResolved,
+        z: container.position.z,
+        amount: result.applied,
+        color: event.tint ?? 0xffffff,
+      });
+    }
     // Phase part-break thresholds — fire at-most-once per threshold.
     if (phases) {
       const phase = phases[phaseIndex];

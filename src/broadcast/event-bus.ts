@@ -10,6 +10,11 @@ export type GameEvent =
   | { type: 'attack:swing' }
   | { type: 'attack:hit'; damage: number; crit?: boolean; cls?: import('../content/items').WeaponClass }
   | { type: 'enemy:killed'; enemyId: string }
+  // A damage-over-time tick landed on an enemy (bleed/poison/burn). Carries
+  // the body-centre world position, amount applied, and element tint so the UI
+  // can float a coloured "tick" number — DoT has no attack caller to do it.
+  // (ui/damage-numbers.ts subscribes.)
+  | { type: 'enemy:dot'; x: number; y: number; z: number; amount: number; color: number }
   | { type: 'player:damaged'; hpLeft: number; amount: number; attacker?: import('../ecs/types').EntityId }
   | { type: 'player:killed' }
   | { type: 'item:picked-up'; itemId: string; displayName?: string }

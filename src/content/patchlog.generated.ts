@@ -8,6 +8,22 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "add",
+        "text": "Bleed, poison, and burn tally their toll in colour now. The dungeon counts every drip and ember, even the one that finishes you.",
+        "area": [
+          "combat",
+          "ui"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Slip a blow now and the world goes cold and underwater-quiet, the dust hanging mid-air, while you alone stay quick. The deep holds its breath to watch.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Best the altar's trial and it doesn't just stop — the stone flares white-hot and the bell tolls before the glow banks to embers. The dark, briefly, is impressed.",
         "area": [
@@ -394,23 +410,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Blood climbs the walls when something dies against them, crates stand stained in the pools, and the fresh spill glistens until it dries.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Blood flies the way it was struck, every creature spills its own colour, and old violence dries brown by the time you walk back through.",
-        "area": [
-          "combat",
-          "atmosphere",
-          "content"
         ]
       }
     ]

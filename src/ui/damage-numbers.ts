@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { worldToScreen } from './hud';
+import { on } from '../broadcast/event-bus';
 
 // Floating damage numbers. DOM overlay above the canvas. Each number is a
 // short-lived absolutely-positioned div that rises a few pixels and fades out
@@ -38,6 +39,68 @@ export function spawnStatusText(
     textShadow: '0 0 6px rgba(0,0,0,0.95), 0 0 16px rgba(255,180,40,0.5)',
     pointerEvents: 'none',
     zIndex: '16',
+    transition: `transform ${lifetime}s ease-out, opacity ${lifetime}s ease-out`,
+    willChange: 'transform, opacity',
+    opacity: '1',
+  });
+  document.body.appendChild(el);
+  requestAnimationFrame(() => {
+    el.style.transform = `translate(-50%, calc(-50% - ${rise}px)) scale(1.0)`;
+    el.style.opacity = '0';
+  });
+  setTimeout(() => el.remove(), lifetime * 1000 + 100);
+}
+
+// ── DoT (damage-over-time) tick numbers ──────────────────────────────────
+// Bleed/poison/burn ticks have no attack/projectile caller to float a number,
+// so the enemy emits `enemy:dot` and this subscriber draws it — tinted to the
+// element, a touch smaller + dimmer than a hit so the ticks read as attrition,
+// not as fresh blows. Wire once at boot via initDotDamageNumbers(camera).
+let _dotCamera: THREE.Camera | null = null;
+const _dotPos = new THREE.Vector3();
+
+/** Lighten a packed hex toward white for legibility on the dark dungeon
+ *  (a raw bleed-red or poison-green is too dark to read as text). */
+function tintToRgba(hex: number, whiteMix: number, alpha: number): string {
+  let r = (hex >> 16) & 0xff, g = (hex >> 8) & 0xff, b = hex & 0xff;
+  r = Math.round(r + (255 - r) * whiteMix);
+  g = Math.round(g + (255 - g) * whiteMix);
+  b = Math.round(b + (255 - b) * whiteMix);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+export function initDotDamageNumbers(camera: THREE.Camera): void {
+  _dotCamera = camera;
+  on((e) => {
+    if (e.type !== 'enemy:dot') return;
+    spawnDotDamageNumber(e.x, e.y, e.z, e.amount, e.color);
+  });
+}
+
+function spawnDotDamageNumber(x: number, y: number, z: number, amount: number, color: number): void {
+  if (!_dotCamera) return;
+  _dotPos.set(x, y, z);
+  const p = worldToScreen(_dotPos, _dotCamera);
+  if (p.behind) return;
+
+  const el = document.createElement('div');
+  el.textContent = String(amount);
+  const lifetime = CONFIG.DAMAGE_NUMBER_LIFETIME;
+  const rise = CONFIG.DAMAGE_NUMBER_RISE * 0.7;   // drift less than a hit
+  Object.assign(el.style, {
+    position: 'fixed',
+    left: `${p.x}px`,
+    top: `${p.y}px`,
+    transform: 'translate(-50%, -50%) scale(0.9)',
+    color: tintToRgba(color, 0.45, 0.92),
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: '14px',
+    fontWeight: '700',
+    letterSpacing: '0.04em',
+    // Element-tinted glow on a hard dark core so it reads on any backdrop.
+    textShadow: `0 0 7px ${tintToRgba(color, 0.1, 0.85)}, 0 0 2px rgba(0,0,0,0.95)`,
+    pointerEvents: 'none',
+    zIndex: '15',
     transition: `transform ${lifetime}s ease-out, opacity ${lifetime}s ease-out`,
     willChange: 'transform, opacity',
     opacity: '1',

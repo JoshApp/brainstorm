@@ -108,6 +108,14 @@ export interface DamageEvent {
   base: number;
   /** Damage type — determines which armor reduces it. */
   type: DamageType;
+  /** True when this is a damage-over-time TICK (bleed/poison/burn) rather
+   *  than a direct hit. Direct hits get their floating number from the
+   *  attack / projectile caller; DoT ticks have no such caller, so the
+   *  enemy's takeDamage emits an `enemy:dot` event for them instead. */
+  dot?: boolean;
+  /** Element tint (hex) for a DoT tick's floating number — the buff's colour
+   *  (bleed red, poison green, burn orange). Only read when `dot` is set. */
+  tint?: number;
 }
 
 export interface DamageResult {
