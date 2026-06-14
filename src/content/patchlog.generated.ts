@@ -8,6 +8,21 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Best the altar's trial and it doesn't just stop — the stone flares white-hot and the bell tolls before the glow banks to embers. The dark, briefly, is impressed.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Face a blow to parry it — no catching what's at your back. The dead keep their eyes on you as they circle, but a swing, once thrown, can't chase your sidestep.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "Ranged hits show their damage now — the dungeon no longer loses count past thirteen paces.",
         "area": [
@@ -396,29 +411,6 @@ export const GENERATED_PATCHLOG = [
           "combat",
           "atmosphere",
           "content"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "Build 6",
-    "date": "2026-06-11",
-    "entries": [
-      {
-        "tag": "fix",
-        "text": "Mobs bleed where they stand and die. Vigor arrives as vigor, prices cut to the bone, and the mouse knows its place.",
-        "area": [
-          "combat",
-          "ui",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Spilt blood finally stains the stone. The floors were drinking it in secret.",
-        "area": [
-          "atmosphere",
-          "combat"
         ]
       }
     ]
