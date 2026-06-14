@@ -457,12 +457,16 @@ export const CONFIG = {
                                   //   the 3rd 25% — a crowd is chipped, not deleted, so
                                   //   being outnumbered stays dangerous — the grimdark point)
   CLEAVE_DAMAGE_MIN: 0.25,        // floor — a cleaved target never drops below this ×
-  // Global MELEE reach multiplier — every melee weapon's authored `reach` is
-  // scaled by this in resolveWeaponStats (ranged weapons are exempt). Melee
-  // reach felt too long across the board; 0.8 = a 20% cut in one knob, so the
-  // per-weapon values stay relative to each other. Dial lower for a tighter,
-  // get-in-close game.
-  MELEE_REACH_MUL: 0.8,
+  // Melee reach is DERIVED from the weapon's model, not authored free — so the
+  // hit can't drift from the visible blade. reach = BASE + extent × PER_EXTENT,
+  // where `extent` is the 3D distance from the model's grip anchor to its reach
+  // point (blade_tip / head_top / strike_point), in metres. BASE is the shared
+  // arm/stance offset (eye→grip); PER_EXTENT converts a metre of blade into a
+  // metre of reach. A weapon nudges with WeaponStats.reachMul; whip + ranged
+  // keep an explicit `reach` (their reach intentionally exceeds the held model).
+  // See the derive pass at the bottom of content/items.ts.
+  MELEE_REACH_BASE: 0.9,
+  MELEE_REACH_PER_EXTENT: 1.1,
   // (Swing-arc width is now per weapon CLASS + per-weapon override —
   // `swingArc` in weapon-classes.ts / WeaponStats — not a global knob.)
   // EXECUTION / FINISHERS — the payoff that makes the poise game visible and

@@ -51,6 +51,12 @@ export const REAPERS_TOLL: ModelSpec = {
       depth: 0.014,
       mat: 'blade' },
   ],
+  // Reach derives from grip→blade_tip: long haft + the big reaping blade at the
+  // top, held low on the haft — a scythe reaches far.
+  slots: {
+    blade_tip: { pos: [-0.20, 0.58, 0] },
+    grip_anchor: { pos: [0, -0.30, 0] },
+  },
 };
 
 // ── Whip — short handle + a chain of small dark spheres tapering
@@ -149,6 +155,11 @@ export const BENT_SICKLE: ModelSpec = {
     // Pommel bead.
     { kind: 'sphere', pos: [0, -0.21, 0], radius: 0.020, segments: [10, 8], mat: 'grip' },
   ],
+  // Short crescent on a short grip — a sickle is a close, hooking weapon.
+  slots: {
+    blade_tip: { pos: [-0.08, 0.22, 0] },
+    grip_anchor: { pos: [0, -0.10, 0] },
+  },
 };
 
 // ── Pilgrim's pike — a crude boar-pike: long ashen haft running forward
@@ -176,5 +187,7 @@ export const PILGRIMS_PIKE: ModelSpec = {
   ],
   slots: {
     muzzle: { pos: [0, 0, -0.72] },
+    strike_point: { pos: [0, 0, -0.72] },
+    grip_anchor: { pos: [0, 0, 0.16] },   // rear-hand hold → long thrust reach
   },
 };

@@ -786,8 +786,10 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   } : undefined;
 
   return {
-    // Global melee reach cut (ranged weapons keep their projectile range).
-    reach: spec.reach * (1 + profReachPct) * (spec.ranged ? 1 : CONFIG.MELEE_REACH_MUL),
+    // reach is filled per-weapon (derived from the model, or explicit for
+    // whip/ranged) by the derive pass in items.ts before any resolve; the ?? is
+    // a defensive floor for a weapon authored without a reach or anchors.
+    reach: (spec.reach ?? 1.5) * (1 + profReachPct),
     coneHalfAngle: spec.coneHalfAngle,
     damage: spec.damage * profDmgMul,
     critChance: (spec.critChance ?? 0.05) + finesseCrit + profCrit,

@@ -1,4 +1,5 @@
 import type { ModelSpec } from '../ecs/model-types';
+import { CONFIG } from '../config';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 import type { AttributeKind } from '../state/character';
@@ -176,8 +177,16 @@ export interface ComboStepTuning {
 }
 
 export interface WeaponStats {
-  /** Max melee reach in meters (camera-to-enemy distance). */
-  reach: number;
+  /** Max reach in metres (camera-to-enemy distance). For MELEE, OMIT this —
+   *  it's DERIVED from the weapon model's blade extent by the pass at the bottom
+   *  of this file (so the hit tracks the visible blade). Set it explicitly only
+   *  where reach intentionally exceeds the held model: the WHIP (cracks far past
+   *  its cord) and RANGED weapons (projectile range). */
+  reach?: number;
+  /** Per-weapon nudge on the DERIVED melee reach (default 1). For a blade that
+   *  should bite a hair further/closer than its model implies — a tweak on a
+   *  synced base, not a free number. Ignored when `reach` is set explicitly. */
+  reachMul?: number;
   /** Forward arc half-angle in radians that registers as a hit. */
   coneHalfAngle: number;
   /** Damage per successful strike (before equipment bonuses). */
@@ -403,7 +412,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     flavor: 'Pitted and ill-balanced. It will do.',
     dropModel: SWORD_RUSTED,
     viewmodel: SWORD_RUSTED,
-    weapon: { class: 'sword', reach: 2.1, coneHalfAngle: 0.80, damage: 1, critChance: 0.05, critMultiplier: 2.0 },
+    weapon: { class: 'sword', coneHalfAngle: 0.80, damage: 1, critChance: 0.05, critMultiplier: 2.0 },
     affixPool: ['keening', 'gallows', 'spine', 'searing', 'hoarfrost'],
     maxAffixes: 1,
   },
@@ -419,7 +428,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     // attacks). Turns the scimitar into a control weapon: chill a charger
     // mid-rush, or buy spacing against a swarm.
     weapon: {
-      class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0,
+      class: 'sword', coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0,
       onHit: { buffId: 'chill', chance: 0.4, duration: 2.5 },
       // The curved, stained edge CARVES on a parry — catch a blow and the
       // riposte opens a bleed. (Authoring example for the onRiposte verb.)
@@ -456,7 +465,7 @@ export const ITEMS: Record<string, ItemSpec> = {
       // ~1.48 (≈ its pre-cut feel) — a dagger is already short, the cut left it
       // too short to connect. Effectively exempt from the cut, which it didn't
       // need (it never had "too much range").
-      class: 'dagger', reach: 1.85, coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5,
+      class: 'dagger', coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5,
       onHit: { buffId: 'bleed', chance: 0.5, duration: 3 },
     },
     affixPool: ['keening', 'gallows', 'spine', 'serration', 'venom'],
@@ -482,7 +491,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     // but it softens whatever it hits for everything that follows
     // (your next swings, a bleed, an ally-less combo).
     weapon: {
-      class: 'hammer', reach: 2.0, coneHalfAngle: 0.85, damage: 3, critChance: 0, critMultiplier: 1,
+      class: 'hammer', reachMul: 1.18, coneHalfAngle: 0.85, damage: 3, critChance: 0, critMultiplier: 1,
       onHit: { buffId: 'sunder', chance: 0.5, duration: 4 },
       // A maul's parry is a GUARD-BREAK: it chunks far more poise than a light
       // blade (default 2), so a heavy-weapon player staggers on the read.
@@ -504,7 +513,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     // alight (burn: bursty fire DoT). The fabled fire blade lives up to
     // its name.
     weapon: {
-      class: 'sword', reach: 2.3, coneHalfAngle: 0.9, damage: 3, critChance: 0.22, critMultiplier: 2.5, attackSpeed: 1.15,
+      class: 'sword', coneHalfAngle: 0.9, damage: 3, critChance: 0.22, critMultiplier: 2.5, attackSpeed: 1.15,
       onHit: { buffId: 'burn', chance: 0.6, duration: 2.5 },
     },
     affixPool: ['vile', 'patience', 'gallows', 'keening', 'spine', 'searing', 'venom'],
@@ -533,7 +542,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     dropModel: HEARTBURN,        // reuse the fabled sword model for V1 — distinct mesh comes later
     viewmodel: HEARTBURN,
     weapon: {
-      class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 3, critChance: 0.18, critMultiplier: 2.4, attackSpeed: 1.10,
+      class: 'sword', coneHalfAngle: 0.85, damage: 3, critChance: 0.18, critMultiplier: 2.4, attackSpeed: 1.10,
       // Charged release fires the wave-slash projectile. Requires at
       // least 60% charge — players quickly learn the moment to release.
       // The projectile carries 1.5× the weapon's base damage; the
@@ -565,7 +574,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     // the reach weapon's pressure tool: poke, retreat, let the stacks
     // work while you keep spacing.
     weapon: {
-      class: 'spear', reach: 2.5, coneHalfAngle: 0.42, damage: 2, critChance: 0.12, critMultiplier: 2.2,
+      class: 'spear', reachMul: 1.20, coneHalfAngle: 0.42, damage: 2, critChance: 0.12, critMultiplier: 2.2,
       onHit: { buffId: 'bleed', chance: 0.4, duration: 3 },
     },
     affixPool: ['keening', 'gallows', 'patience', 'spine', 'serration', 'venom'],
@@ -585,7 +594,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     weapon: {
       // Scythe class — wide cone catches a clutch of small things at once.
       // Low damage; the sweep IS the value. The swarm-clearer starter.
-      class: 'scythe', reach: 2.0, coneHalfAngle: 0.95, damage: 1, critChance: 0.08, critMultiplier: 2.2,
+      class: 'scythe', reachMul: 1.15, coneHalfAngle: 0.95, damage: 1, critChance: 0.08, critMultiplier: 2.2,
     },
     affixPool: ['keening', 'gallows', 'serration', 'spine'],
     maxAffixes: 1,
@@ -601,7 +610,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     weapon: {
       // Spear class — long reach, narrow cone. Poke and retreat; the
       // spacing starter. Mundane: no bleed, just distance.
-      class: 'spear', reach: 2.4, coneHalfAngle: 0.42, damage: 1, critChance: 0.06, critMultiplier: 2.2,
+      class: 'spear', reachMul: 1.18, coneHalfAngle: 0.42, damage: 1, critChance: 0.06, critMultiplier: 2.2,
     },
     affixPool: ['keening', 'gallows', 'patience', 'spine'],
     maxAffixes: 1,
@@ -668,7 +677,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     weapon: {
       // Scythe: very wide cone, multi-target, moderate damage. Wades
       // into swarms. The reap-vs-spin alternation is the rhythm.
-      class: 'scythe', reach: 2.6, coneHalfAngle: 1.05, damage: 2, critChance: 0.10, critMultiplier: 2.2,
+      class: 'scythe', reachMul: 1.10, coneHalfAngle: 1.05, damage: 2, critChance: 0.10, critMultiplier: 2.2,
     },
     affixPool: ['vile', 'gallows', 'keening', 'patience'],
     maxAffixes: 1,
@@ -893,7 +902,7 @@ export const ITEMS: Record<string, ItemSpec> = {
     // Big multiplier on a plain blade — but it eats four points of your
     // flesh. Hits like a fabled, lives like a coward.
     weapon: {
-      class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.3,
+      class: 'sword', coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.3,
     },
     modifiers: [
       { kind: 'damage-multiplier', amount: 1.35 },
@@ -1505,4 +1514,30 @@ export const ITEMS: Record<string, ItemSpec> = {
     carryLimit: 3,
   },
 };
+
+// ── DERIVE MELEE REACH FROM THE WEAPON MODEL ─────────────────────────────────
+// The hit can't drift from the visible blade if reach is computed FROM it. For
+// every melee weapon that didn't author an explicit `reach`, reach is derived
+// from the model's blade extent — the 3D distance from its grip anchor to its
+// reach point (blade_tip / head_top / strike_point / muzzle). Authoring a weapon
+// = authoring the model; reach follows. A per-weapon `reachMul` nudges it.
+// Skipped (keep explicit `reach`): RANGED (projectile range) and the WHIP (it
+// cracks far past its held cord — visual ≠ reach by design).
+function meleeReachExtent(model: ModelSpec | undefined): number | null {
+  const s = model?.slots as Record<string, { pos: [number, number, number] }> | undefined;
+  if (!s) return null;
+  const tip = s.blade_tip?.pos ?? s.head_top?.pos ?? s.strike_point?.pos ?? s.muzzle?.pos;
+  if (!tip) return null;
+  const grip = s.grip_anchor?.pos ?? [0, 0, 0];
+  return Math.hypot(tip[0] - grip[0], tip[1] - grip[1], tip[2] - grip[2]);
+}
+
+for (const item of Object.values(ITEMS)) {
+  const w = item.weapon;
+  if (!w || w.ranged || w.reach !== undefined) continue;   // ranged + whip keep explicit reach
+  const extent = meleeReachExtent(item.viewmodel ?? item.dropModel);
+  w.reach = extent != null
+    ? (CONFIG.MELEE_REACH_BASE + extent * CONFIG.MELEE_REACH_PER_EXTENT) * (w.reachMul ?? 1)
+    : 1.5;   // no model anchors → a sane default (author a blade_tip to fix)
+}
 

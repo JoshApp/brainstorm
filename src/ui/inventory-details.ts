@@ -306,7 +306,9 @@ function buildWeaponStats(item: ItemSpec): HTMLDivElement[] {
     const baseStagger = w.staggerPower ?? STAGGER_POWER_BY_CLASS[cls];
     out.push(statRow('Stagger', baseStagger, r.staggerPower - baseStagger, trimNum));
   }
-  out.push(statRow(ranged ? 'Range' : 'Reach', w.reach, r.reach - w.reach, (n) => `${trimNum(n)}m`));
+  // Melee reach is derived from the weapon model at load, so w.reach is set; fall back to resolved.
+  const baseReach = w.reach ?? r.reach;
+  out.push(statRow(ranged ? 'Range' : 'Reach', baseReach, r.reach - baseReach, (n) => `${trimNum(n)}m`));
 
   // Which attribute powers this weapon (playtest: scaling wasn't explained).
   const scaleRow = detailLine(`Scales ${weaponScalingSummary(w)}`, /*dim*/ true);

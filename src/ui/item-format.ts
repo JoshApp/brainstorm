@@ -17,9 +17,10 @@ export function formatWeapon(w: WeaponStats): string {
   if (w.ranged) {
     // Ranged weapons hit-test the bolt, not a cone — reach/arc are the
     // auto-aim window, not a melee swing, so present them as range.
-    return `Base Damage ${w.damage}  ·  Ranged  ·  Range ${w.reach.toFixed(0)}m`;
+    return `Base Damage ${w.damage}  ·  Ranged  ·  Range ${(w.reach ?? 0).toFixed(0)}m`;
   }
-  return `Base Damage ${w.damage}  ·  Reach ${w.reach.toFixed(1)}m  ·  Arc ${(w.coneHalfAngle * 180 / Math.PI).toFixed(0)}°`;
+  // Melee reach is derived from the weapon model at load, so it's always set here.
+  return `Base Damage ${w.damage}  ·  Reach ${(w.reach ?? 0).toFixed(1)}m  ·  Arc ${(w.coneHalfAngle * 180 / Math.PI).toFixed(0)}°`;
 }
 
 /** "On hit: Bleed (50%)" — the weapon/affix/set status applicator line. */

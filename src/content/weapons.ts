@@ -332,6 +332,8 @@ export const SPEAR: ModelSpec = {
     // tip extends). A correctly-authored spear thrust has this slot's
     // world +Y aligned with the camera's −Z at the impact keyframe.
     strike_point: { pos: [0, 0, -0.62], rot: [-Math.PI / 2, 0, 0] },
+    // Hold point near the haft's rear — reach derives from grip→strike_point.
+    grip_anchor: { pos: [0, 0, 0.14] },
   },
 };
 
