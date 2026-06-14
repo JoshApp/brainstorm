@@ -77,12 +77,25 @@ test('mid-swing press buffers and chains the next combo step', () => {
   s.requestSwing();                       // fires step 0, count=1
   assert.equal(s.getComboStep(), 0);
   for (let i = 1; i < len; i++) {
-    s.requestSwing();                     // buffer next step (mid-swing)
-    walkToIdleOrChain(s);                 // recover-end chains straight into it
+    s.advance(BIG);                       // windup→strike
+    s.advance(BIG);                       // strike→recover (buffer window open)
+    s.requestSwing();                     // buffer next step (in recover)
+    s.advance(BIG);                       // recover-end chains straight into it
     assert.equal(s.getComboStep(), i, `chained to combo step ${i}`);
     assert.equal(s.getPhase(), 'windup', 'chain re-enters windup, not idle');
     assert.equal(count, i + 1, 'each chained step is its own swing event');
   }
+});
+
+test('an early press during windup does NOT buffer (no double-swing)', () => {
+  let count = 0;
+  const s = createSwingState({ onSwingStart: () => count++ });
+  s.requestSwing();                       // step 0 → windup, count=1
+  assert.equal(s.getPhase(), 'windup');
+  s.requestSwing();                       // EARLY double-tap during windup → dropped
+  walkToIdleOrChain(s);                   // no buffer → falls to idle, not a chain
+  assert.equal(s.getPhase(), 'idle', 'a windup press must not bank a chain');
+  assert.equal(count, 1, 'the early double-tap did not produce a second swing');
 });
 
 test('the finisher does NOT accept a buffered press', () => {
@@ -90,7 +103,7 @@ test('the finisher does NOT accept a buffered press', () => {
   const s = createSwingState({ onSwingStart: () => count++ });
   const len = W().combo.length;
   s.requestSwing();                       // step 0
-  for (let i = 1; i < len; i++) { s.requestSwing(); walkToIdleOrChain(s); }
+  for (let i = 1; i < len; i++) { s.advance(BIG); s.advance(BIG); s.requestSwing(); s.advance(BIG); }
   // Now firing the finisher (last index).
   assert.equal(s.getComboStep(), len - 1);
   const eventsBefore = count;
@@ -141,9 +154,11 @@ test('a buffered combo will not chain into an empty bar', () => {
   let count = 0;
   const s = createSwingState({ canSwing: () => allowed, onSwingStart: () => count++ });
   s.requestSwing();              // step 0 (count=1)
-  s.requestSwing();              // buffer the next step
+  s.advance(BIG);                // windup→strike
+  s.advance(BIG);                // strike→recover (buffer window open)
+  s.requestSwing();              // buffer the next step (in recover)
   allowed = false;              // ...but we run dry before recover ends
-  walkToIdleOrChain(s);
+  s.advance(BIG);                // recover-end → chain gated by the empty bar
   assert.equal(s.isSwinging(), false, 'gassed → chain dropped, back to idle');
   assert.equal(count, 1, 'no extra swing billed when the chain is gated');
 });

@@ -94,6 +94,13 @@ export interface SwingState {
   setDebugPhase(phase: SwingPhase, phaseTimer: number): void;
 }
 
+// The combo BUFFER only opens toward the END of the current swing. A press
+// during windup (or the early active frames) is too soon to bank the next
+// attack — without this gate a fast double-tap during windup queues a second
+// swing the player never meant. The buffer opens once the strike is this far
+// through, and stays open across the whole recover (the natural chain window).
+const BUFFER_OPEN_STRIKE_FRAC = 0.5;
+
 export function createSwingState(options: SwingStateOptions = {}): SwingState {
   const canSwing = options.canSwing ?? (() => true);
   let phase: SwingPhase = 'idle';
@@ -175,6 +182,18 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       : step.recoverTime;
   }
 
+  /** Is the swing late enough to accept a buffered combo chain? Recover is
+   *  always open; the strike opens only past BUFFER_OPEN_STRIKE_FRAC; windup is
+   *  never open — that's the "double-tap too early banks a second swing" bug. */
+  function inBufferWindow(): boolean {
+    if (phase === 'recover') return true;
+    if (phase === 'strike') {
+      const { step } = currentStep();
+      return step.strikeTime <= 0 || phaseTimer >= step.strikeTime * BUFFER_OPEN_STRIKE_FRAC;
+    }
+    return false;
+  }
+
   function requestSwing(opts?: { skipWindup?: boolean; direction?: AttackDirection }): boolean {
     // Can't START a swing on an empty bar (combat gates this too, with the HUD
     // flash; this is the sim staying self-consistent).
@@ -186,7 +205,8 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
       const w = getCurrentWeapon();
       const canBuffer = track === 'light' && !opts?.skipWindup
         && activeDirectionalStep === null && activeEnderStep === null
-        && comboStep < w.combo.length - 1;
+        && comboStep < w.combo.length - 1
+        && inBufferWindow();   // only late-strike + recover — never windup
       if (canBuffer) queuedPress = true;
       return false;
     }
