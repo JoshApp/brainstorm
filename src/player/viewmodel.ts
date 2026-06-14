@@ -148,6 +148,10 @@ export interface WeaponViewmodel {
    *  the blade-trail effect to source ribbon positions. */
   getBladeTipWorldPos(out: THREE.Vector3): THREE.Vector3 | null;
   update(dt: number): void;
+  /** Fire the deflect "catch" beat — the weapon snaps UP into a guard
+   *  and settles back over ~0.2s. A transient layered over whatever pose
+   *  is active (idle or mid-swing), so it never fights the swing sim. */
+  parryRaise(): void;
   /** Swap the wielded weapon model. Passing null leaves the player
    *  empty-handed (used at run start before the player picks at the
    *  starter altar, and any future unequip-weapon flow). */
@@ -525,9 +529,25 @@ export function createWeaponViewmodel(
     setHeld(pose.x, pose.y, pose.z, pose.rotX, pose.rotY, pose.rotZ);
   }
 
+  // Deflect "catch" transient — snaps to 1 on parryRaise(), eases to 0.
+  // Layered over the reposed pose each frame so it reads on idle OR swing.
+  let parryRaiseAmt = 0;
+  function parryRaise() { parryRaiseAmt = 1; }
+
   function update(dt: number) {
     swing.advance(dt);
     repose(dt);
+    // Layer the deflect catch: weapon lifts + tilts up into a guard, then
+    // settles. Added AFTER repose (which fully sets the pose) and BEFORE the
+    // arm IK below, so the hand follows the raised blade.
+    if (parryRaiseAmt > 0.001) {
+      const k = parryRaiseAmt * parryRaiseAmt * (3 - 2 * parryRaiseAmt);   // smooth
+      group.position.y += 0.15 * k;
+      group.position.z += 0.06 * k;     // toward camera (camera-local +Z)
+      group.rotation.x -= 0.55 * k;     // blade tips up — the catch
+      group.rotation.z += 0.28 * k;     // canted across, a guard angle
+      parryRaiseAmt = Math.max(0, parryRaiseAmt - dt * 5);   // ~0.2s settle
+    }
     // ── ARM IK ──────────────────────────────────────────────────────
     // Solve in arm-local (= camera-local) space, then DIRECTLY
     // position the bone meshes from the IK's shoulderPos/elbowPos/
@@ -690,6 +710,7 @@ export function createWeaponViewmodel(
       return out;
     },
     update,
+    parryRaise,
     equip,
     setDebugPhase,
   };

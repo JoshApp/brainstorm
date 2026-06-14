@@ -20,6 +20,9 @@
 // pattern. NOT persisted: reset on floor load (loader.ts).
 
 import { CONFIG } from '../config';
+import { setPlayerInvulnerable } from '../player/health';
+import { freezeFor } from './hit-pause';
+import { playParry } from '../audio/sfx';
 
 const now = () => performance.now() / 1000;
 
@@ -56,6 +59,37 @@ export function triggerParry(): boolean {
  *  all deflect off one well-timed tap. */
 export function isParryActive(): boolean { return now() < parryActiveUntil; }
 
+// ── Deflect landed → the counter ──────────────────────────────────────
+// Player-side reward of a clean deflect (the enemy-side flinch + poise chip
+// live in enemy.ts). No bullet-time — deflect is the AGGRESSIVE answer:
+//   · a brief i-frame so a 2nd attacker can't punish the parry instant,
+//   · a clash freeze + parry "ting",
+//   · an EMPOWER window so the next swing is the big hit,
+//   · a one-shot riposte flag the viewmodel consumes to "raise the weapon".
+let empowerUntil = -Infinity;
+let ripostePending = false;
+
+export function notePlayerDeflected(): void {
+  empowerUntil = now() + CONFIG.DEFLECT.EMPOWER_WINDOW_S;
+  ripostePending = true;
+  setPlayerInvulnerable(CONFIG.DEFLECT.IFRAME_S);
+  freezeFor(CONFIG.DEFLECT.CLASH_FREEZE_MS);
+  playParry();
+  try { navigator.vibrate?.(CONFIG.DEFLECT.HAPTIC_MS); } catch { /* unsupported */ }
+}
+
+/** attack.ts: is the next swing empowered by a recent deflect? */
+export function isDeflectEmpowerActive(): boolean { return now() < empowerUntil; }
+/** attack.ts: spend the empower on a connecting hit (one discrete payoff). */
+export function consumeDeflectEmpower(): void { empowerUntil = -Infinity; }
+
+/** systems.ts: true once after a deflect → fire the viewmodel "raise" beat. */
+export function consumeRiposte(): boolean {
+  if (!ripostePending) return false;
+  ripostePending = false;
+  return true;
+}
+
 // ── 3. Bullet time (the shared reward) ────────────────────────────────
 let dipElapsed = Infinity;   // real-seconds since the dip began (∞ = idle)
 
@@ -90,4 +124,6 @@ export function resetReactiveDefense(): void {
   parryActiveUntil = -Infinity;
   lockoutUntil = -Infinity;
   dipElapsed = Infinity;
+  empowerUntil = -Infinity;
+  ripostePending = false;
 }

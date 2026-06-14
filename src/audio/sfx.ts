@@ -1453,6 +1453,40 @@ export function playBuffApply() {
   }
 }
 
+/** Parry/deflect — a bright metallic CLANG: two close, slightly detuned
+ *  high partials with a fast metallic decay + a noise tick at the front for
+ *  the steel-on-steel bite. Short and sharp so it punctuates the clash. */
+export function playParry() {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const t0 = c.currentTime;
+  const master = masterGain;
+
+  // Ringing partials — inharmonic pair reads as struck metal, not a tone.
+  for (const [freq, vol, dur] of [[2100, 0.16, 0.18], [3170, 0.10, 0.14], [4700, 0.06, 0.10]] as const) {
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t0);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.92, t0 + dur);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.004);   // near-instant attack
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g).connect(master);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  }
+  // Front transient — a tick of bandpassed noise for the contact bite.
+  const n = 0.03;
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate * n), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const src = c.createBufferSource(); src.buffer = buf;
+  const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3600; bp.Q.value = 0.8;
+  const ng = c.createGain(); ng.gain.value = 0.5;
+  src.connect(bp).connect(ng).connect(master);
+  src.start(t0); src.stop(t0 + n);
+}
+
 // ── UI ────────────────────────────────────────────────────────────────
 
 /** Menu opening — soft paper rustle / fabric flip. */

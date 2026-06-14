@@ -8,6 +8,13 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Parrying no longer stops time permanently. Only for the recommended three-quarters of a second.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
         "tag": "add",
         "text": "Read the flash. White means catch it and the world holds its breath while you answer; the dead learn this the hard way. Red means move.",
         "area": [
@@ -417,13 +424,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "The pickup outline speaks up.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The pickup outline is finally a line — the same thin line from every angle, on every shape.",
         "area": [
           "ui"
         ]

@@ -15,9 +15,8 @@ import {
   type Ability, type AbilityAction, type Anchor, type Trigger, type Element,
 } from '../content/abilities';
 import {
-  pushDeflectOpportunity, popDeflectOpportunity, isParryActive, enterBulletTime,
+  pushDeflectOpportunity, popDeflectOpportunity, isParryActive, notePlayerDeflected,
 } from '../combat/reactive-defense';
-import { playBuffApply } from '../audio/sfx';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
@@ -575,6 +574,7 @@ export function createEnemy(
   let poiseLeft = poiseMax;
   let poiseRegenCd = 0;     // grace countdown before the pool refills
   let staggerTimer = 0;     // > 0 while in the 'staggered' state
+  let flinchLockTimer = 0;  // > 0 = parried (deflect-flinched), can't start a new attack
   // ── Cinematic entrance (ceiling-drop) ──────────────────────────────
   // A dormant boss with entrance:'ceiling-drop' waits HIDDEN above the arena
   // (only its floor blob-shadow shows the landing spot), then plummets to the
@@ -1161,17 +1161,32 @@ export function createEnemy(
     switch (action.kind) {
       case 'melee': {
         if (distance <= action.reach) {
-          // DEFLECT: if this attack is deflectable and the player has an
-          // active parry window (a well-timed tap off the white flash), the
-          // strike is negated and the attacker is STAGGERED — opening the
-          // execute. Bullet-time + the "ting" fire as the reward. Swarm-
-          // generous: every deflectable strike landing in the window catches.
+          // DEFLECT: deflectable strike + active parry window (a well-timed
+          // tap off the white flash) → the strike is negated and the enemy is
+          // COUNTERED. Swarm-generous: every deflectable strike in the window
+          // catches. The reward is aggressive, not bullet-time:
           if (currentAbility && isDeflectable(currentAbility) && isParryActive()) {
-            enterBulletTime();
-            try { navigator.vibrate?.(CONFIG.DEFLECT.HAPTIC_MS); } catch { /* unsupported */ }
-            playBuffApply();
-            triggerStagger();       // poise break → free hit + execute window
-            return true;            // strike consumed, NO damage to player
+            notePlayerDeflected();   // player side: i-frame + clash freeze + parry ting + EMPOWER next swing + riposte beat
+            kickShake(0.22, 0.16);   // clash punch
+            // Chunk poise. If it BREAKS → full stagger (execute window, via
+            // triggerStagger inside). Else a soft FLINCH: cancel the attack,
+            // recoil off-balance, brief no-act. Stacking deflects break it on
+            // their own; the empowered follow-up swing breaks it much faster.
+            const broke = applyStaggerDamage(CONFIG.DEFLECT.POISE_DAMAGE);
+            if (!broke) {
+              currentAbility = null;
+              clearAoeTelegraph();
+              clearLashTendril();
+              coreReactor.hit();     // white body flash — the parried recoil
+              const dx = container.position.x - playerPos.x;
+              const dz = container.position.z - playerPos.z;
+              const len = Math.hypot(dx, dz) || 1;
+              bodyAnim.applyKnockback(dx / len, dz / len, CONFIG.DEFLECT.FLINCH_KNOCKBACK);
+              flinchLockTimer = CONFIG.DEFLECT.FLINCH_LOCK_S;
+              state = 'chasing';
+              phaseTimer = 0;
+            }
+            return true;             // strike consumed, NO damage to player
           }
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
@@ -1734,6 +1749,7 @@ export function createEnemy(
     // pool refills (a grace delay, then a steady rate) so you must
     // SUSTAIN hits to break it. A staggered enemy doesn't regen (its
     // pool is already reset for the next break).
+    if (flinchLockTimer > 0) flinchLockTimer = Math.max(0, flinchLockTimer - dt);
     if (state !== 'staggered') {
       if (poiseRegenCd > 0) poiseRegenCd = Math.max(0, poiseRegenCd - dt);
       else if (poiseLeft < poiseMax) {
@@ -1944,7 +1960,7 @@ export function createEnemy(
         // waiting its turn (the pack takes turns lunging instead of all swinging
         // at once). Bosses + lone mobs are unaffected (a token is always free).
         const ability = selectAbility(distance);
-        if (ability && requestToken(entityId)) {
+        if (ability && flinchLockTimer <= 0 && requestToken(entityId)) {
           currentAbility = ability;
           state = 'winding';
           phaseTimer = 0;

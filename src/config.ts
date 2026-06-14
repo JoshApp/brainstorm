@@ -198,7 +198,11 @@ export const CONFIG = {
     WORLD_SCALE: 0.28,         // enemy/projectile speed at the dip's deepest
     DURATION_S: 0.70,          // real-time length, easing back to full
   },
-  // DEFLECT — the tap answer to a white flash.
+  // DEFLECT — the tap answer to a white flash. NOT bullet-time (that's the
+  // dodge's reward); deflect is the AGGRESSIVE counter: the enemy flinches
+  // back, its poise is chunked, and your NEXT swing is empowered. Stack
+  // deflects → poise breaks → full stagger → execute. Pure parrying can
+  // break poise on its own (slowly); the empowered hits break it much faster.
   DEFLECT: {
     FLASH_LEAD_S: 0.30,        // how long before the strike the white flash + window open
     // Must comfortably exceed FLASH_LEAD_S so even an instant tap-on-flash
@@ -206,7 +210,16 @@ export const CONFIG = {
     // dead-centre). Forgiving for a first feel; tune down on the phone.
     PARRY_WINDOW_S: 0.42,      // a tap opens this active window; a strike landing in it deflects
     LOCKOUT_S: 0.40,           // cooldown after a parry attempt — anti-mash (can't hold a guard)
-    STAGGER_MUL: 1.0,          // poise damage dealt to the deflected enemy (1 = full break)
+    POISE_DAMAGE: 4,           // poise chunked per deflect (basic mobs ~4-6 → break in 1-2)
+    FLINCH_LOCK_S: 0.45,       // the flinched enemy can't start a new attack this long
+    FLINCH_KNOCKBACK: 3.2,     // backward shove on the flinch (off-balance recoil)
+    IFRAME_S: 0.16,            // brief safety at the parry instant (a 2nd attacker can't punish it)
+    CLASH_FREEZE_MS: 45,       // hit-pause on the clash — the crunch of steel-on-steel
+    // EMPOWER — your next swing after a deflect: bigger damage + a much
+    // harder poise crack (so deflect → empowered hit → break reads fast).
+    EMPOWER_WINDOW_S: 1.4,     // generous — you earned the opening
+    EMPOWER_DAMAGE_MUL: 1.8,
+    EMPOWER_STAGGER_MUL: 2.5,
     HAPTIC_MS: 28,             // the "ting" pulse on a clean deflect
     FLASH_COLOR: 0xdfe8ff,     // white-cool: DEFLECTABLE (tap)
     UNBLOCK_COLOR: 0xff2a14,   // hot red: UNBLOCKABLE (must dodge)

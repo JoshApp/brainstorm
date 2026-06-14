@@ -24,6 +24,7 @@ import { healPlayer } from '../player/health';
 import { consumeChargedAmount, consumeChargedPerfect, getChargeProgress, setChargeDirection } from '../controls/charge-input';
 import { spendStaminaSoft, gainStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
+import { isDeflectEmpowerActive, consumeDeflectEmpower } from './reactive-defense';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import { showHitCones, markSwingHits, type SwingShape } from './combat-debug';
 import { resolveWorldZones, testSegmentZones, type WorldZone, type ZoneHit } from './hurtbox';
@@ -602,8 +603,14 @@ export function createCombatSystem(
     // this swing punishes harder AND cracks poise harder. Read once; consumed
     // below only if a real enemy is hit (a whiff shouldn't waste the opening).
     const counterActive = isJustDodgeCounterActive();
-    const counterDmgMul = counterActive ? CONFIG.JUST_DODGE.COUNTER_DAMAGE_MUL : 1;
-    const counterStaggerMul = counterActive ? CONFIG.JUST_DODGE.COUNTER_STAGGER_MUL : 1;
+    // A recent DEFLECT empowers this swing too (the aggressive payoff: deflect
+    // → big follow-up). Stacks multiplicatively with the dodge counter on the
+    // rare frame both are live.
+    const empowerActive = isDeflectEmpowerActive();
+    const counterDmgMul = (counterActive ? CONFIG.JUST_DODGE.COUNTER_DAMAGE_MUL : 1)
+      * (empowerActive ? CONFIG.DEFLECT.EMPOWER_DAMAGE_MUL : 1);
+    const counterStaggerMul = (counterActive ? CONFIG.JUST_DODGE.COUNTER_STAGGER_MUL : 1)
+      * (empowerActive ? CONFIG.DEFLECT.EMPOWER_STAGGER_MUL : 1);
 
     let anyCrit = false;
     let bestApplied = 0;
@@ -730,6 +737,9 @@ export function createCombatSystem(
     // Spend the just-dodge counter on a connecting hit — one discrete punish,
     // not a free DPS window (a whiff during the window keeps it open).
     if (anyHeavy && counterActive) consumeJustDodgeCounter();
+    // Same for the deflect empower — any connecting hit (not just heavies)
+    // spends it, so the deflect→strike payoff lands on whatever you throw.
+    if (bestApplied > 0 && empowerActive) consumeDeflectEmpower();
 
     // --- THE CRUNCH ---
     // One hit-pause + shake per swing regardless of target count —

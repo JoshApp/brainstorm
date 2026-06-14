@@ -38,6 +38,7 @@ import { tickInteractables, getInRangeInteractable } from '../interactables/syst
 import { consumeAttackPressed } from '../controls/attack-input';
 import { consumeDash } from '../controls/dash-input';
 import { tryDash } from '../combat/dash';
+import { consumeRiposte } from '../combat/reactive-defense';
 import { updateSwingAgency, isDashLocked } from '../combat/swing-agency';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { tickLightPool } from '../scene/light-pool';
@@ -265,7 +266,11 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       tickViewmodelPullback(ctx.realDt, camera, getLevel()?.walkable ?? null);
     } },
 
-    { name: 'weapon', phase: 'unpaused', tick(ctx) { weapon.update(ctx.playerDt); } },
+    { name: 'weapon', phase: 'unpaused', tick(ctx) {
+      // A clean deflect this frame → the weapon snaps up into the catch beat.
+      if (consumeRiposte()) weapon.parryRaise();
+      weapon.update(ctx.playerDt);
+    } },
 
     // Blade trail — sampled from the wielded weapon's blade_tip in WORLD
     // space (scene-local), brightness driven by the viewmodel's charged-
