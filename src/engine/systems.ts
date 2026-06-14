@@ -55,6 +55,7 @@ import { tickXpWisps } from '../effects/xp-wisps';
 import { tickGoldCoins } from '../effects/gold-coins';
 import { tickTutorialHints } from '../effects/tutorial-hints';
 import { tickDriftingMotes } from '../effects/drifting-motes';
+import { tickSlowmoPresentation } from '../effects/slowmo-presentation';
 import { tickBladeTrail, setBladeTrailIntensity } from '../effects/blade-trail';
 import { tickRoomMood } from '../level/room-mood';
 import { tickShatterBurst } from '../effects/shatter-burst';
@@ -388,8 +389,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // ── always-on (run through pause/death so the screen stays live) ──
 
     // Drifting motes — ambient dust keeps falling through hit-pauses, death,
-    // and menus. Real dt.
-    { name: 'motes', phase: 'always', tick(ctx) { tickDriftingMotes(ctx.realDt, camera); } },
+    // and menus (fxDt = real-time there). But during a perfect-dodge dip fxDt
+    // carries the bullet-time slow, so the dust HANGS in the air with the
+    // world — the "frozen air" cue.
+    { name: 'motes', phase: 'always', tick(ctx) { tickDriftingMotes(ctx.fxDt, camera); } },
 
     // Per-room mood — smoothly blend torches + bound lights toward the room's
     // current override colour. realDt so the ease is real-time even through
@@ -452,6 +455,12 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       const maxHp = getPlayerMaxHp();
       tickLowHpPulse(ctx.realDt, maxHp > 0 ? getPlayerHp() / maxHp : 0);
     } },
+
+    // Bullet-time presentation — cold vignette + FOV pop + audio muffle,
+    // tracking the perfect-dodge dip. realDt so the cues themselves run at full
+    // speed (they READ the dip; they don't ride it). BEFORE shake so the FOV
+    // kick + shake compose cleanly.
+    { name: 'slowmo-fx', phase: 'always', tick(ctx) { tickSlowmoPresentation(camera, ctx.realDt); } },
 
     // Screen shake offset is applied to the camera before light-pool + render,
     // then removed after, so it never accumulates. Three ordered systems.

@@ -22,7 +22,7 @@
 import { CONFIG } from '../config';
 import { setPlayerInvulnerable } from '../player/health';
 import { freezeFor } from './hit-pause';
-import { playParry } from '../audio/sfx';
+import { playParry, playSlowmoEnter } from '../audio/sfx';
 import { DEV } from '../debug/dev';
 import { flashReaction } from '../debug/reaction-debug';
 
@@ -97,7 +97,18 @@ export function consumeRiposte(): boolean {
 let dipElapsed = Infinity;   // real-seconds since the dip began (∞ = idle)
 
 /** Fire the reward — called by deflect (enemy-side) and just-dodge alike. */
-export function enterBulletTime(): void { dipElapsed = 0; }
+export function enterBulletTime(): void {
+  dipElapsed = 0;
+  playSlowmoEnter();   // the world holds its breath — sub whoomph + the audio muffles
+}
+
+/** 0 → 1 "how deep is the slow-mo right now" — 1 at the held floor, easing to 0
+ *  as it releases. The presentation layer (vignette / FOV / audio muffle) reads
+ *  this so every cue tracks the actual dip, not a fixed timer. */
+export function getBulletTimeIntensity(): number {
+  const s = CONFIG.BULLET_TIME.WORLD_SCALE;
+  return (1 - getWorldTimeScale()) / (1 - s);
+}
 
 /** WORLD time-scale (enemies + projectiles). 1 when idle; snaps to WORLD_SCALE
  *  on a clean defense, then eases back. main.ts folds this into scaledDt ONLY

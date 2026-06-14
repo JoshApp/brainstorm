@@ -1075,6 +1075,10 @@ function tick() {
   const baseScale = getTimeScale() * getBossSlowmoTimeScale();
   const scaledDt = realDt * baseScale * getWorldTimeScale();
   const playerDt = realDt * baseScale;
+  // Ambient-FX clock — real-time EXCEPT it carries the bullet-time slow, so
+  // dust hangs with the world during a perfect-dodge dip but never stutters on
+  // a hit-pause/death freeze (those aren't in getWorldTimeScale).
+  const fxDt = realDt * getWorldTimeScale();
   // Advance the player-action FSM on the PLAYER clock, BEFORE input is
   // processed below, so a committed dodge/parry that expires this frame frees
   // the next action immediately.
@@ -1098,6 +1102,7 @@ function tick() {
     realDt,
     scaledDt,
     playerDt,
+    fxDt,
     paused,
     mode: getGameMode(),
     playing: isPlaying(),

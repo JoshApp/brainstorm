@@ -30,6 +30,11 @@ export interface TickContext {
    *  the player keeps acting at full speed while scaledDt slows the world
    *  (the asymmetric bullet-time payoff). Equals scaledDt outside bullet-time. */
   playerDt: number;
+  /** realDt * the reactive-defense bullet-time slow ONLY (no hit-pause / death
+   *  scale). The AMBIENT-FX clock: dust/motes drift at full real-time normally
+   *  (no stutter on a hit-pause freeze) but HANG with the world during a
+   *  perfect-dodge dip. Equals realDt outside bullet-time. */
+  fxDt: number;
   /** isWorldPaused() — hit-pause OR open screen OR debug freeze. */
   paused: boolean;
   /** Player lifecycle phase. */

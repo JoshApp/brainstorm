@@ -26,6 +26,7 @@ export type Vec3Sound = { x: number; y: number; z: number };
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
+let slowmoLP: BiquadFilterNode | null = null;  // master low-pass — opens fully except during bullet-time
 let reverbInput: GainNode | null = null;   // sources send into here for reverb
 let reverbOutput: GainNode | null = null;  // last node in reverb chain — disconnect to bypass
 let reverbEnabled = true;
@@ -39,7 +40,15 @@ function ensureCtx(): AudioContext | null {
     ctx = new Ctor();
     masterGain = ctx.createGain();
     masterGain.gain.value = masterVolume;
-    masterGain.connect(ctx.destination);
+    // Master low-pass for the bullet-time muffle: normally wide open (no audible
+    // effect), clamps down toward a dull rumble during a perfect-dodge dip so
+    // the world goes underwater while you stay sharp. Sits on the final bus so
+    // it muffles everything (the "in the zone" read). Driven by setSlowmoAmount.
+    slowmoLP = ctx.createBiquadFilter();
+    slowmoLP.type = 'lowpass';
+    slowmoLP.frequency.value = 22000;   // open
+    slowmoLP.Q.value = 0.0001;
+    masterGain.connect(slowmoLP).connect(ctx.destination);
     // Reverb bus: wet input → convolver → master. A single shared
     // convolver, so per-frame CPU is fixed no matter how many sounds
     // are routing through it.
@@ -1610,6 +1619,58 @@ export function playParry() {
     osc.connect(g).connect(master);
     osc.start(t0); osc.stop(t0 + dur + 0.02);
   }
+}
+
+// ── Bullet-time (perfect-dodge slow-mo) ─────────────────────────────────
+
+/** Drive the master muffle each frame. `amount` 0 (open) → 1 (deepest dip).
+ *  Maps to the low-pass cutoff exponentially so the world goes "underwater"
+ *  as the dip deepens, snapping back open as it releases. */
+export function setSlowmoAmount(amount: number): void {
+  if (!ctx || !slowmoLP) return;
+  const a = Math.max(0, Math.min(1, amount));
+  // 22kHz (open) → ~480Hz (deep, dull rumble). Exponential in `a` so even a
+  // little dip already darkens noticeably.
+  const cutoff = 480 * Math.pow(22000 / 480, 1 - a);
+  slowmoLP.frequency.setTargetAtTime(cutoff, ctx.currentTime, 0.02);
+}
+
+/** Entry "whoomph" — a short sub sine dropping in pitch (the world lurching
+ *  into the dip). The muffle itself is driven separately by setSlowmoAmount. */
+export function playSlowmoEnter(): void {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const t0 = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(150, t0);
+  osc.frequency.exponentialRampToValueAtTime(48, t0 + 0.34);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+  osc.connect(g).connect(masterGain);
+  osc.start(t0); osc.stop(t0 + 0.55);
+}
+
+/** Release "whoosh" — a brief upward filtered-noise swell as real time snaps
+ *  back. Fired by the presentation tick on the dip's falling edge. */
+export function playSlowmoExit(): void {
+  const c = ensureCtx();
+  if (!c || !masterGain) return;
+  const t0 = c.currentTime;
+  const dur = 0.22;
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.sin((i / d.length) * Math.PI);
+  const src = c.createBufferSource(); src.buffer = buf;
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass'; bp.Q.value = 1.2;
+  bp.frequency.setValueAtTime(700, t0);
+  bp.frequency.exponentialRampToValueAtTime(3200, t0 + dur);   // sweeps UP — time rushing back
+  const g = c.createGain(); g.gain.value = 0.22;
+  src.connect(bp).connect(g).connect(masterGain);
+  src.start(t0); src.stop(t0 + dur);
 }
 
 // ── UI ────────────────────────────────────────────────────────────────
