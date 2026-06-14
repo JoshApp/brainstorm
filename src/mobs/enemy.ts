@@ -1129,45 +1129,38 @@ export function createEnemy(
   }
 
   function faceTarget(target: THREE.Vector3, dt: number) {
-    // Turn the body toward the target at a CAPPED rate (CONFIG.ENEMY_AI.
-    // TURN_RATE) rather than snapping — facing has weight, and a committed
-    // attacker can't perfectly track a strafing player. Our models face -Z
-    // (head/eyes at -Z, matching camera convention), so the desired yaw is the
-    // bearing to the target + π (lookAt points +Z; we want -Z).
     const dx = target.x - container.position.x;
     const dz = target.z - container.position.z;
     if (dx * dx + dz * dz < 1e-8) return;
-    const desired = Math.atan2(dx, dz) + Math.PI;
-    // Shortest signed angle from current → desired, wrapped to [-π, π].
-    let diff = desired - container.rotation.y;
-    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    // Turn rate by phase — this is the whole "commit" feel:
-    //   • WINDING: AIM. Turn onto the player fast at the start, then RAMP the
-    //     rate toward zero as the swing commits — so the attack snaps onto you
-    //     early (no more "winds up facing the wrong way"), but a LATE juke slips
-    //     the aim. The ramp is what lets you bait-and-circle a telegraph.
-    //   • STRIKING / RECOVERING: LOCKED (rate 0). The swing goes where it
-    //     committed; circle out of the arc to make it whiff, and the locked
-    //     recovery is your window to punish from the side/back. (Previously
-    //     recovery used the FAST chase rate, which snapped the mob back onto you
-    //     instantly and erased the punish window.)
-    //   • Everything else (chasing/alerted/searching): track FAST so a prowler
-    //     keeps watching you and never ends up facing backwards.
+    // Committed to a swing → LOCK facing entirely (the strike goes where it
+    // aimed; circle out of the arc to whiff it).
+    if (state === 'striking' || state === 'recovering') return;
+
+    // THE moonwalk fix: force a clean PURE-YAW orientation. lookAt (used by
+    // spawn faceWorld + kiter steering) represents a "-Z toward a target in the
+    // -Z hemisphere" as rotation.x = rotation.z = ±π — a FLIP. Writing only
+    // rotation.y (the atan2 facing) left that stale flip in place, inverting the
+    // model so it faced away and walked in backwards. Zeroing x/z each frame
+    // kills the flip; -Z then faces the target by yaw alone (atan2 + π).
+    container.rotation.x = 0;
+    container.rotation.z = 0;
+    const desiredY = Math.atan2(dx, dz) + Math.PI;
+
+    // Turn toward it at a CAPPED rate so facing has weight (your turn-rate ask).
+    //   • WINDING: AIM ramp — fast onto you at the start (a swing never launches
+    //     facing wrong), easing to 0 by commit so a LATE juke slips the aim.
+    //   • CHASING / alerted / searching: the steady TURN_RATE — tracks a
+    //     circling player smoothly, converging to the correct toward-you heading.
+    let rate: number;
     if (state === 'winding') {
-      // AIM ramp — fast onto you at the start (so a swing never launches facing
-      // the wrong way), easing to 0 by commit (a late juke slips it).
       const prog = currentWindupTime > 0 ? Math.min(1, phaseTimer / currentWindupTime) : 1;
-      const maxStep = CONFIG.ENEMY_AI.WINDUP_AIM_RATE * (1 - prog) * dt;
-      container.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
-      return;
+      rate = CONFIG.ENEMY_AI.WINDUP_AIM_RATE * (1 - prog);
+    } else {
+      rate = CONFIG.ENEMY_AI.TURN_RATE;
     }
-    if (state === 'striking' || state === 'recovering') return;   // LOCKED — committed
-    // Chasing / alerted / searching — SNAP to face you, absolute (no
-    // accumulating step). The capped smooth-turn drifted against the per-frame
-    // presence twitch and left mobs moonwalking in backwards; an absolute set
-    // each frame can't drift. Entering a wind-up from this correct facing also
-    // makes the aim-ramp above robust (it starts already on you).
-    container.rotation.y = desired;
+    const diff = Math.atan2(Math.sin(desiredY - container.rotation.y), Math.cos(desiredY - container.rotation.y));
+    const maxStep = rate * dt;
+    container.rotation.y += Math.max(-maxStep, Math.min(maxStep, diff));
   }
 
   /** Is the player looking roughly AT this enemy? A parry only catches a strike
@@ -1239,11 +1232,12 @@ export function createEnemy(
     }
   }
 
-  /** Face a world XZ (head toward it) — see faceTarget for the convention. */
+  /** Face a world XZ (head toward it), PURE YAW — see faceTarget. Sets x/z to 0
+   *  so no stale lookAt ±π flip can invert the model. */
   function faceXZ(x: number, z: number) {
-    tmpFlat.set(x, container.position.y, z);
-    container.lookAt(tmpFlat);
-    container.rotation.y += Math.PI;
+    container.rotation.x = 0;
+    container.rotation.z = 0;
+    container.rotation.y = Math.atan2(x - container.position.x, z - container.position.z) + Math.PI;
   }
 
   /** Damage type for an action's element (the element table is the single
@@ -2061,9 +2055,7 @@ export function createEnemy(
         // sideways.
         tmpDir.set(homePos.x - container.position.x, 0, homePos.z - container.position.z);
         if (tmpDir.lengthSq() > 1e-6) tmpDir.normalize();
-        tmpFlat.set(container.position.x + tmpDir.x, container.position.y, container.position.z + tmpDir.z);
-        container.lookAt(tmpFlat);
-        container.rotation.y += Math.PI;
+        faceXZ(container.position.x + tmpDir.x, container.position.z + tmpDir.z);
         applyIdleEyes();
         applyTilt(0);
         built.group.position.y = 0;
@@ -2110,9 +2102,7 @@ export function createEnemy(
               container.position.z + (dz / len) * 2.0,
               moveSpeed, dt, walkable, nav,
             );
-            tmpFlat.set(playerPos.x, container.position.y, playerPos.z);
-            container.lookAt(tmpFlat);
-            container.rotation.y += Math.PI;
+            faceXZ(playerPos.x, playerPos.z);
           } else if (pref > 0 && distance <= commitDistance) {
             // KITER waiting out its cooldown while comfortably in range —
             // HOLD position (just keep facing the player). Without this it
@@ -2409,9 +2399,12 @@ export function createEnemy(
   }
 
   function faceWorld(x: number, z: number) {
-    tmpFlat.set(x, container.position.y, z);
-    container.lookAt(tmpFlat);
-    container.rotation.y += Math.PI;
+    // PURE YAW (x/z = 0). The old lookAt left rotation.x/z = ±π for -Z-hemisphere
+    // targets; that flip persisted into the per-frame yaw-only facing and
+    // inverted the model (the moonwalk). Keep spawn/override facing clean.
+    container.rotation.x = 0;
+    container.rotation.z = 0;
+    container.rotation.y = Math.atan2(x - container.position.x, z - container.position.z) + Math.PI;
   }
 
   return {
