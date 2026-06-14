@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { WalkableRegion } from '../level/walkable';
 import { groundYAt } from '../level/elevation';
 import { damagePlayer } from '../player/health';
+import { tryJustDodge } from './just-dodge';
 import { registerLight, unregisterLight } from '../scene/light-pool';
 import { applyDamageVia, type DamageType } from './damage';
 import type { Damageable } from './damageable';
@@ -423,11 +424,24 @@ export function tickProjectiles(
       const dy = slot.position.y - cy;
       const dz = slot.position.z - playerPos.z;
       const r = CONFIG.PLAYER_HIT_CAPSULE_RADIUS + slot.type.radius;
-      if (dx * dx + dy * dy + dz * dz < r * r) {
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (distSq < r * r) {
+        // PERFECT DODGE vs a bolt — the ranged answer, mirroring melee. A
+        // precisely-timed roll (within the perfect window of this hit) i-frames
+        // the shot AND pays the just-dodge reward: it passes through you as you
+        // roll. A merely-early roll still negates via i-frames in damagePlayer
+        // (survives, no bonus).
+        if (tryJustDodge()) { retire(slot); continue; }
         damagePlayer(slot.damage, slot.source, slot.type.damageType);
         retire(slot);
         continue;
       }
+      // NEAR-MISS perfect dodge — a bolt that whizzed JUST past during a precise
+      // roll still reads as a dodge (without this, rolling clear of the line
+      // means the reward almost never fires). Reward once (tryJustDodge consumes
+      // the roll); the shot genuinely missed, so let it fly on.
+      const near = r + CONFIG.JUST_DODGE.PROJECTILE_GRACE;
+      if (distSq < near * near) tryJustDodge();
     }
 
     // Wall hit — HEIGHT-AWARE: containsProjectile lets a shot fly OVER a

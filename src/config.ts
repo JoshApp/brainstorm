@@ -186,6 +186,9 @@ export const CONFIG = {
                                //   dodge. A clean dodge escapes by RANGE (the lunge carries you out
                                //   of reach), so the in-reach i-frame path alone almost never fired;
                                //   this lets a well-timed roll that slips the blade trigger the reward.
+    PROJECTILE_GRACE: 0.8,     // m past a bolt's hit radius that a precise roll still reads as a
+                               //   dodge — the "whizzed past me" near-miss. Tighter than melee: a
+                               //   bolt has to come CLOSE, not just be in the room.
     COUNTER_WINDOW_S: 1.10,    // how long the counter opening stays live
     COUNTER_DAMAGE_MUL: 1.6,   // your next landed hit hits this much harder
     COUNTER_STAGGER_MUL: 2.0,  // and cracks poise this much harder
