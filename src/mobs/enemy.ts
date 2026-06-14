@@ -1928,6 +1928,17 @@ export function createEnemy(
       if (pReach !== null && distance <= pReach + 1.2) resolveParry(playerPos);
     }
 
+    // A clean parry's riposte (resolveParry → takeDamage above) can FINISH the
+    // mob right here, mid-update, BEFORE the switch. The death path already
+    // popped this mob's deflect opportunity and ran its drops/cleanup — but
+    // currentAbility is still set (resolveParry returns early on a kill, before
+    // nulling it), so falling through to the strike switch would run strike
+    // logic on a corpse AND re-arm the threat flash at frame-end (2273), leaking
+    // the global deflect count. A leaked count leaves deflectOpportunityActive()
+    // stuck true, so left-click dead-routes to a no-op deflect forever. Bail the
+    // instant the riposte finished it — this is the parry-kill deadlock fix.
+    if (!aliveLocal) return;
+
     switch (state) {
       case 'dormant': {
         // No perception, no movement, no idle scan, no vocalisation.
@@ -2266,7 +2277,10 @@ export function createEnemy(
     {
       const mReach = currentAbility ? firstMeleeReach(currentAbility) : null;
       const lead = CONFIG.DEFLECT.FLASH_LEAD_S;
-      const wantFlash = !!currentAbility && mReach !== null && !meleeHitLanded
+      // aliveLocal guard: a mob killed by its own riposte mid-update (the
+      // runAction safety-net parry path reaches here with currentAbility still
+      // set) must NEVER re-arm the flash — that's the deflect-count leak.
+      const wantFlash = aliveLocal && !!currentAbility && mReach !== null && !meleeHitLanded
         && distance <= mReach + 1.2
         && (state === 'striking'
             || (state === 'winding' && phaseTimer >= currentWindupTime - lead));
