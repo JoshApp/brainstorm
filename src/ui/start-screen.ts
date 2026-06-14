@@ -12,7 +12,7 @@ import { openScreen, closeScreen } from './screen-manager';
 import { createSheet, menuButton } from './menu-shell';
 import { getMeta, getStash } from '../state/meta-state';
 import { getSettings } from '../settings/settings';
-import { THEME, FONT_DISPLAY, carvedRule } from './theme';
+import { THEME, FONT_DISPLAY, carvedRule, applyCarvedFrame } from './theme';
 import { showCodex } from './codex-screen';
 import { showStash } from './stash-screen';
 import { showPatchlog } from './patchlog-screen';
@@ -119,20 +119,57 @@ export function showStartScreen(opts: StartScreenOptions) {
     document.head.appendChild(style);
   }
 
-  // Big title.
+  // ── Masthead — the COVER SLAB of the carved object ───────────────────
+  // Title + descent sigil + subtitle, wrapped in the same carved frame
+  // (corner ticks + hot ember edge) the panels wear, so the title screen
+  // reads as page one of one object rather than a separate screen.
+  const masthead = document.createElement('div');
+  Object.assign(masthead.style, {
+    position: 'relative',
+    zIndex: '1',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '8px',
+    padding: 'clamp(16px, 3vw, 26px) clamp(34px, 9vw, 64px) clamp(14px, 2.4vw, 22px)',
+    marginBottom: '24px',
+  } as Partial<CSSStyleDeclaration>);
+
+  // Descent sigil — a thin engraved double-chevron pointing DOWN: "the way
+  // down." Faint amber, faint torch-glow, so it reads as a maker's mark
+  // chiselled above the name.
+  const sigil = document.createElement('div');
+  sigil.innerHTML = `
+    <svg width="40" height="20" viewBox="0 0 40 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 3 L20 13 L36 3" stroke="${THEME.tick}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9 9 L20 16 L31 9" stroke="${THEME.tick}" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+    </svg>`;
+  Object.assign(sigil.style, {
+    lineHeight: '0',
+    opacity: '0.75',
+    filter: 'drop-shadow(0 0 6px rgba(255, 140, 60, 0.35))',
+  } as Partial<CSSStyleDeclaration>);
+  masthead.appendChild(sigil);
+
+  // Big title — serif, amber, lit from the torch-glow behind it. The
+  // text-shadow stack gives it dimension: a warm top edge, a dark lower lip,
+  // and the soft ember bloom — form revealed by light out of black.
   const title = document.createElement('div');
   title.textContent = 'DELVE';
   Object.assign(title.style, {
-    fontSize: 'clamp(54px, 12vw, 84px)',
+    fontFamily: FONT_DISPLAY,
+    fontSize: 'clamp(54px, 12vw, 86px)',
     letterSpacing: '0.18em',
-    color: 'rgba(230, 170, 90, 1)',
-    textShadow: '0 0 24px rgba(255, 140, 60, 0.45), 0 2px 0 rgba(0,0,0,0.8)',
+    color: 'rgba(232, 174, 96, 1)',
+    textShadow: [
+      '0 1px 0 rgba(255, 226, 180, 0.22)',   // lit top edge
+      '0 2px 1px rgba(0, 0, 0, 0.85)',       // carved lower lip
+      '0 0 30px rgba(255, 140, 60, 0.5)',    // torch bloom
+    ].join(', '),
     fontWeight: '500',
-    position: 'relative',
-    zIndex: '1',
     animation: 'startTitleIn 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) forwards',
   });
-  root.appendChild(title);
+  masthead.appendChild(title);
 
   // Subtitle — atmospheric, lowercase, italic.
   const sub = document.createElement('div');
@@ -142,22 +179,12 @@ export function showStartScreen(opts: StartScreenOptions) {
     fontStyle: 'italic',
     color: 'rgba(180, 140, 100, 0.65)',
     letterSpacing: '0.06em',
-    marginTop: '-4px',
-    marginBottom: '14px',
-    position: 'relative',
-    zIndex: '1',
+    marginTop: '2px',
   });
-  root.appendChild(sub);
+  masthead.appendChild(sub);
 
-  // Carved framing rule — the same chisel-diamond divider the panels use, so
-  // the title reads as the front page of one object, not a separate screen.
-  const mastRule = carvedRule({ glyph: true, margin: '0 0 22px' });
-  Object.assign(mastRule.style, {
-    width: 'min(280px, 70vw)',
-    position: 'relative',
-    zIndex: '1',
-  } as Partial<CSSStyleDeclaration>);
-  root.appendChild(mastRule);
+  applyCarvedFrame(masthead, { tickSize: 16, inset: 0 });
+  root.appendChild(masthead);
 
   // Lifetime records line — only renders if the player has actually
   // attempted a run before. Subtle, italic, small caps. The "you've
