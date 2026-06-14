@@ -27,6 +27,7 @@ import { clearDriftingMotes } from '../effects/drifting-motes';
 import { clearShatterBurst } from '../effects/shatter-burst';
 import { clearBloodBurst } from '../effects/blood-burst';
 import { clearDustPuff } from '../effects/dust-puff';
+import { clearArenaLightArc } from '../feedback/arena-light-arc';
 import { getActiveLevel, setActiveLevel } from './active-level';
 import { clearAllOutlines } from '../interactables/outline';
 import { resetDarkAdaptation } from '../scene/dark-adaptation';
@@ -157,6 +158,7 @@ export function tickPendingLoad() {
     clearShatterBurst();
     clearBloodBurst();
     clearDustPuff();
+    clearArenaLightArc();
     clearAllOutlines();
     resetDarkAdaptation();
     clearThresholdDrafts();

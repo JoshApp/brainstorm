@@ -60,6 +60,7 @@ import { tickRoomMood } from '../level/room-mood';
 import { tickShatterBurst } from '../effects/shatter-burst';
 import { tickBloodBurst } from '../effects/blood-burst';
 import { tickDustPuff } from '../effects/dust-puff';
+import { tickArenaLightArc } from '../feedback/arena-light-arc';
 import { tickStatusVfx } from '../effects/status-vfx';
 import { updateOutline, updateOutlinePxScale } from '../interactables/outline';
 import { updateInteractLabel } from '../ui/interact-label';
@@ -394,6 +395,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // current override colour. realDt so the ease is real-time even through
     // hit-pause. Cheap: idle rooms early-out.
     { name: 'room-mood', phase: 'always', tick(ctx) { tickRoomMood(ctx.realDt); } },
+    // Arena light arc — the room's brightness envelope around an encounter.
+    // realDt (like room-mood): a steady real-time ease, unaffected by the
+    // just-dodge slow-mo dip so the ambience doesn't crawl with it.
+    { name: 'arena-light-arc', phase: 'always', tick(ctx) { tickArenaLightArc(ctx.realDt); } },
     // Shatter / blood bursts — scaled dt so shards slow-mo with the
     // hit-pause / death sequence (reads as crunchier).
     { name: 'shatter', phase: 'always', tick(ctx) { tickShatterBurst(ctx.scaledDt); } },

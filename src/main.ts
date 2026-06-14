@@ -32,6 +32,7 @@ import { initEventLog } from './broadcast/event-log';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setMasterBrightness, setWickLift } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
+import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
 import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
@@ -236,6 +237,9 @@ initRenderPipeline(renderer);
 // events and fires their sound + shake + dust stingers (dust attaches to the
 // persistent scene root, cleared per level alongside the other effect pools).
 initEncounterFeedback(scene);
+// Arena light arc — subscribes to encounter activate/complete and breathes the
+// room's torch brightness (dim → surge → hold → exhale → residual).
+initArenaLightArc();
 setSurfaceAOStrength(getSettings().aoStrength);
 setSurfaceDetailEnabled(getSettings().surfaceDetail);
 setMasterBrightness(getSettings().brightness);

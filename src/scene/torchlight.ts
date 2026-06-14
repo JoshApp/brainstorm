@@ -40,6 +40,12 @@ export interface Torch {
   /** Computed each frame by updateTorchlight; read by the pool via the
    *  source's getIntensity. */
   currentIntensity: number;
+  /** External per-torch brightness multiplier, layered on top of the live
+   *  flicker (the source's getIntensity returns currentIntensity * envBoost).
+   *  1 = untouched. The arena light-arc drives this to dim → surge → hold →
+   *  exhale a room's torches around an encounter; flicker survives underneath
+   *  and the global env multiplier still composes on top in the pool. */
+  envBoost: number;
   /** Source id for unregistering (level teardown). */
   sourceId: string;
   /** The actual LightSource object registered with the light pool — the
@@ -127,6 +133,7 @@ export function createTorchlight(
     baseIntensity,
     baseEmissive: flameMaterial?.emissiveIntensity ?? 0,
     currentIntensity: baseIntensity,
+    envBoost: 1,
     sourceId: torchSourceId,
     source: { color: 0 },   // re-pointed below right after registerLight()
     time: 0,
@@ -146,7 +153,7 @@ export function createTorchlight(
     intensity: baseIntensity,
     distance: CONFIG.TORCH_DISTANCE,
     decay: CONFIG.TORCH_DECAY,
-    getIntensity: () => torch.currentIntensity,
+    getIntensity: () => torch.currentIntensity * torch.envBoost,
   };
   registerLight(source);
   torch.source = source;
