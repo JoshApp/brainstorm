@@ -156,11 +156,30 @@ export function buildModel(spec: ModelSpec): BuiltModel {
     const parentName = part.parent ?? (part.kind === 'bone' ? part.from : undefined);
     if (!parentName) continue;
     const child = builtParts[i];
-    const parentNode = parts.get(parentName) ?? slots.get(parentName);
+    let parentNode = parts.get(parentName) ?? slots.get(parentName);
     if (!parentNode) {
       // eslint-disable-next-line no-console
       console.warn(`Part references unknown parent "${parentName}"`);
       continue;
+    }
+    // Resolve a self-reference to the SLOT of the same name. This is the
+    // common creature pattern where a skin part is NAMED after the joint
+    // it hangs on (e.g. the king-ooze 'core' orb sits on the 'core'
+    // joint — and the orb must keep the name 'core' so the presentation
+    // layer can find it via flashMaterialName). Parts are looked up
+    // before slots, so the part finds ITSELF; the intent is the joint.
+    // Fall back to the slot so the part lands on its joint (correct
+    // position) instead of THREE rejecting add(self) and stranding it at
+    // the model root.
+    if (parentNode === child) {
+      const slot = slots.get(parentName);
+      if (slot && slot !== child) {
+        parentNode = slot;
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`[${spec.id}] part "${parentName}" is parented to itself with no slot of that name — leaving at root`);
+        continue;
+      }
     }
     parentNode.add(child);
   }
