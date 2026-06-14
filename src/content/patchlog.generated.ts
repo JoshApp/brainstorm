@@ -9,6 +9,22 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Heavy swings are reined into a forward arc now — a maul or scythe no longer windmills past your shoulders. Each weapon class keeps its own swing width.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
+        "tag": "content",
+        "text": "That skull-lit altar under the shaft of light finally wants something from you — lay your blood on it and take what's cursed, or leave it lit and walk on.",
+        "area": [
+          "level",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Blades bite a little closer now, and a wide swing stays in front of you instead of windmilling past your shoulders.",
         "area": [
           "combat",
@@ -377,23 +393,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "content"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The broken walls reach the floor they fell toward. Coins quit hovering over the abyss like they had somewhere to be.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The archers in the deep remembered how to aim downhill. Several ghost-lights and labels came back down to the floor with them.",
-        "area": [
-          "combat",
-          "atmosphere",
-          "level"
         ]
       }
     ]
