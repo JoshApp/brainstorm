@@ -12,6 +12,7 @@ import { isArrivalActive } from '../player/arrival';
 import { resetJustDodge } from '../combat/just-dodge';
 import { resetReactiveDefense } from '../combat/reactive-defense';
 import { resetPlayerAction } from '../combat/player-action';
+import { setArenaEnemiesInvincible } from '../debug/arena-mode';
 import { resetExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { clearBreath } from '../effects/breath';
 import { resetCameraStumble } from '../combat/camera-stumble';
@@ -186,6 +187,7 @@ export function tickPendingLoad() {
   resetJustDodge();         // clear any in-flight counter window
   resetReactiveDefense();   // clear deflect opportunity count + bullet-time dip
   resetPlayerAction();      // clear any committed dodge/parry beat
+  setArenaEnemiesInvincible(false);  // training-arena invuln never leaks past its own scenario
   resetExhaustionFeedback(); // clear breath phase / heave on a fresh floor
   clearBreath();            // hide any in-flight breath puffs
   resetCameraStumble();     // clear any in-flight stumble lurch

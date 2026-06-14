@@ -13,7 +13,8 @@ import { VAULTS } from '../level/vault-library';
 import { ENEMIES } from '../content/enemies';
 import { listMobs, listWeapons, listItems } from './authorables';
 import { debugUseAll, debugTickAll } from '../interactables/system';
-import { damagePlayer } from '../player/health';
+import { damagePlayer, setGodMode } from '../player/health';
+import { setArenaEnemiesInvincible } from './arena-mode';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { ITEMS } from '../content/items';
@@ -40,6 +41,11 @@ export interface Scenario {
   level?: LevelSpec;
   /** Freeze world updates after init — for deterministic screenshots. */
   freeze?: boolean;
+  /** DEV: make the player invulnerable at startup (training/combat arenas). */
+  godMode?: boolean;
+  /** DEV: enemies never die (HP floors at 1) — endless sparring partners.
+   *  Hit flash / poise / stagger / aggro all still fire. */
+  enemiesInvincible?: boolean;
   /**
    * Override player camera position + facing.
    * - `yaw` / `pitch` (radians) for explicit angle control, OR
@@ -154,6 +160,19 @@ function gridSpawns(
     const z = (Math.floor(i / cols) / span - 0.5) * 2 * halfExtent;
     if (Math.hypot(x, z) < 2.5) continue;
     out.push({ enemyId: kinds[i % kinds.length], x, z, roomId });
+  }
+  return out;
+}
+
+/** Evenly space a list of enemy kinds around a ring at `radius` from the
+ *  room centre — the combat-arena layout (you stand in the middle, they
+ *  surround you). Repeats the kind list to fill `count` if needed. */
+function ringSpawns(roomId: string, kinds: string[], radius: number): EnemySpawnSpec[] {
+  const out: EnemySpawnSpec[] = [];
+  const n = kinds.length;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    out.push({ enemyId: kinds[i], x: Math.sin(a) * radius, z: Math.cos(a) * radius, roomId });
   }
   return out;
 }
@@ -512,6 +531,42 @@ export const SCENARIOS: Record<string, Scenario> = {
     },
     playerPos: { x: 0, z: 3.5, lookAt: { x: 0, z: -1.5, y: 1.3 } },
     enemyOverrides: [{ index: 0, pos: { x: 0, z: -1.5 }, state: 'chasing' }],
+  },
+
+  // ── COMBAT ARENA — the training dojo ───────────────────────────────
+  // A fighting-game practice room: you stand at centre, a ring of mixed
+  // attackers surrounds you, YOU are invulnerable (godMode) and THEY never
+  // die (enemiesInvincible — HP floors at 1, but they still flash, take
+  // poise/stagger, and keep attacking). Endless sparring to drill parry /
+  // dodge / slow-mo / the AI read. Two melee deflectable kinds to parry
+  // (ghoul, skeleton, skirmisher), a pair of rats to watch the pack weave,
+  // and an acolyte for a ranged threat to dodge. No stairs — you stay.
+  //   ?scenario=arena
+  arena: {
+    godMode: true,
+    enemiesInvincible: true,
+    level: {
+      id: 'dbg-arena', depth: 5, displayName: 'TRAINING ARENA', fogColor: 0x0c0c12,
+      startPos: { x: 0, z: 0, yaw: Math.PI },
+      rooms: [{ id: 'arena', rect: { x: 0, z: 0, w: 18, d: 18 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      // Torches on all four walls, brighter than usual — a dojo you can SEE
+      // your sparring partners in (the periphery normally swallows them).
+      torches: [
+        { x: -8.8, z: -5, height: 2.6, wall: 'W', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x:  8.8, z: -5, height: 2.6, wall: 'E', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x: -8.8, z:  5, height: 2.6, wall: 'W', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x:  8.8, z:  5, height: 2.6, wall: 'E', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x: -5, z: -8.8, height: 2.6, wall: 'N', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x:  5, z: -8.8, height: 2.6, wall: 'N', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x: -5, z:  8.8, height: 2.6, wall: 'S', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x:  5, z:  8.8, height: 2.6, wall: 'S', colorTint: 0xffb066, intensityMul: 1.3 },
+      ],
+      spawns: ringSpawns('arena', ['ghoul', 'skeleton', 'skirmisher', 'rat', 'rat', 'acolyte'], 5.5),
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 0, lookAt: { x: 0, z: -5.5, y: 1.2 } },
   },
 
   // Skeleton up close in a small lit room — for silhouette review.
@@ -1754,6 +1809,10 @@ export function applyScenario(
   scenario: Scenario,
   ctx: { level: LiveLevel; weapon: WeaponViewmodel; camera: THREE.Camera },
 ) {
+  // Combat-arena setup flags (DEV — both setters AND with DEV internally).
+  if (scenario.godMode) setGodMode(true);
+  if (scenario.enemiesInvincible) setArenaEnemiesInvincible(true);
+
   if (scenario.playerPos) {
     const pp = scenario.playerPos;
     ctx.camera.position.x = pp.x;

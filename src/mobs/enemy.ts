@@ -41,6 +41,7 @@ import { isPooledGeometry } from '../scene/geometry-pool';
 import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
 import { tryJustDodge } from '../combat/just-dodge';
+import { arenaEnemiesInvincible } from '../debug/arena-mode';
 import { Animator } from '../anim/animator';
 import { type BuiltModel } from '../ecs/build-model';
 import { buildCreature } from '../content/build-creature';
@@ -886,6 +887,10 @@ export function createEnemy(
     if (!entity || !entity.hp) return 0;
     const result = computeDamage(event);
     entity.hp.current = Math.max(0, entity.hp.current - result.applied);
+    // DEV training arena: floor HP at 1 so the sparring partner never dies —
+    // hit flash, poise/stagger, and aggro all still fire above. Inert in prod
+    // (the flag's setter ANDs with DEV).
+    if (arenaEnemiesInvincible() && entity.hp.current <= 0) entity.hp.current = 1;
     // Phase part-break thresholds — fire at-most-once per threshold.
     if (phases) {
       const phase = phases[phaseIndex];
