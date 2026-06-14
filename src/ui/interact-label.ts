@@ -5,6 +5,18 @@ import { worldToScreen } from './hud';
 import { isDesktopLike } from '../controls/platform';
 import { getBinding, labelForCode, onBindingsChanged } from '../controls/keybindings';
 
+// Prompt colour by KIND — mirrors the transaction grammar so the prompt agrees
+// with the altar's own glow (content/transactions.ts: bargain=violet/cursed,
+// trial=blood-red, unknown=pale moonlight). 'neutral' is the safe amber default;
+// 'sealed' is the muted locked-gray. The player reads the stakes at a glance.
+const PROMPT_TINTS: Record<string, { color: string; border: string; bg: string; keycapBg: string }> = {
+  neutral: { color: 'rgba(255, 220, 180, 0.95)', border: 'rgba(255, 200, 130, 0.40)', bg: 'rgba(20, 12, 8, 0.50)',  keycapBg: 'rgba(255, 200, 130, 0.12)' },
+  bargain: { color: 'rgba(214, 150, 232, 0.97)', border: 'rgba(180, 110, 210, 0.50)', bg: 'rgba(22, 10, 26, 0.55)', keycapBg: 'rgba(190, 120, 220, 0.14)' },
+  trial:   { color: 'rgba(255, 132, 110, 0.98)', border: 'rgba(230, 70, 50, 0.55)',   bg: 'rgba(28, 8, 6, 0.55)',   keycapBg: 'rgba(255, 90, 70, 0.14)' },
+  unknown: { color: 'rgba(184, 208, 228, 0.96)', border: 'rgba(150, 185, 215, 0.45)', bg: 'rgba(12, 16, 22, 0.52)', keycapBg: 'rgba(170, 200, 225, 0.12)' },
+  sealed:  { color: 'rgba(180, 160, 140, 0.70)', border: 'rgba(140, 130, 120, 0.35)', bg: 'rgba(20, 18, 16, 0.45)', keycapBg: 'rgba(160, 150, 140, 0.10)' },
+};
+
 // Floating interact label — projects an icon + label OVER the world
 // position of the currently in-range interactable. Reads diegetically:
 // you look at the chest, the OPEN icon appears just above the chest.
@@ -184,24 +196,22 @@ export function updateInteractLabel(
     // action stays diegetic-but-readable.
     textEl.textContent = target.promptLabel.toUpperCase();
     textEl.style.display = 'block';
-    // SEALED gets a muted gray scheme to match the outline + corner
-    // button visual language.
+    // Colour the prompt by its KIND so the player reads the stakes before
+    // committing — a cursed bargain or a blood trial mustn't look like a plain
+    // TAKE. SEALED stays its own muted gray (derived from the label, not a
+    // kind). See Interactable.promptKind + the transaction grammar.
     const sealed = target.promptLabel.toUpperCase() === 'SEALED';
-    if (sealed) {
-      labelEl.style.color = 'rgba(180, 160, 140, 0.7)';
-      labelEl.style.borderColor = 'rgba(140, 130, 120, 0.35)';
-      labelEl.style.background = 'rgba(20, 18, 16, 0.45)';
-    } else {
-      labelEl.style.color = 'rgba(255, 220, 180, 0.95)';
-      labelEl.style.borderColor = 'rgba(255, 200, 130, 0.4)';
-      labelEl.style.background = 'rgba(20, 12, 8, 0.5)';
-    }
+    const tintKind = sealed ? 'sealed' : (target.promptKind ?? 'neutral');
+    const tint = PROMPT_TINTS[tintKind] ?? PROMPT_TINTS.neutral;
+    labelEl.style.color = tint.color;
+    labelEl.style.borderColor = tint.border;
+    labelEl.style.background = tint.bg;
     // The keycap promises a key DOES something — hide it on SEALED (the
-    // bound key won't open a locked door), show + tint it otherwise.
+    // bound key won't open a locked door), show + tint it to match otherwise.
     if (keycapEl) {
       keycapEl.style.display = sealed ? 'none' : 'inline-flex';
-      keycapEl.style.borderColor = 'rgba(255, 200, 130, 0.6)';
-      keycapEl.style.background = 'rgba(255, 200, 130, 0.12)';
+      keycapEl.style.borderColor = tint.border;
+      keycapEl.style.background = tint.keycapBg;
     }
   }
 

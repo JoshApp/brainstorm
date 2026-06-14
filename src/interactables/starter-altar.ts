@@ -29,7 +29,7 @@ import type { StyleMaterials } from '../style/materials';
 // piece nailed to a plinth.
 const ROTATE_SPEED = 0.5;        // rad/sec around the weapon's Y axis
 const BOB_AMPLITUDE = 0.025;     // metres of vertical bob
-const BOB_FREQUENCY = 1.5;       // Hz
+const BOB_FREQUENCY = 0.8;       // Hz — slow, dreamy hover (was 1.5, read jittery)
 
 /**
  * Spawn a starter altar (stone block + offered weapon).
@@ -120,7 +120,9 @@ export function spawnStarterAltar(
     id,
     position: pos.clone(),
     radius: 1.5,
-    labelOffsetY: 1.1,
+    // Prompt sits LOW (altar top, below the floating weapon) so it clears the
+    // weapon + its description box stacked above.
+    labelOffsetY: 0.55,
     promptLabel: 'TAKE',
     // built.group = weaponGroup so tap-target raycasts resolve when
     // the player taps the floating weapon. The stone block is its

@@ -10,7 +10,7 @@ import { spawnBloodBurst } from '../effects/blood-burst';
 import { playEquipClick } from '../audio/sfx';
 import { RARITY_COLORS } from '../content/items';
 import { emit } from '../broadcast/event-bus';
-import { registerItemPreview, setItemPreviewAnchorAbove, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
+import { registerItemPreview, setItemPreviewAnchor, setItemPreviewInspected, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
 
@@ -36,7 +36,7 @@ const BLOOD_PRICE_HP = 4;
 
 const ROTATE_SPEED = 0.6;
 const BOB_AMPLITUDE = 0.030;
-const BOB_FREQUENCY = 1.4;
+const BOB_FREQUENCY = 0.7;   // slow, dreamy hover (was 1.4 — read as jittery)
 
 export function spawnBloodAltar(
   scene: THREE.Object3D,
@@ -127,13 +127,20 @@ export function spawnBloodAltar(
   // to actually approach the altar.
   const PREVIEW_RANGE = 4.0;
   registerItemPreview(id, cursedItem, { hideStatsUntilInspect: true });
+  // Description box anchors to a STABLE height above the altar — NOT the live
+  // (bobbing) offering position — so it sits still instead of jittering up and
+  // down with the hover (which read as nauseating).
+  const previewY = pos.y + restingY + 0.5;
 
   const interactable: import('./types').Interactable = {
     id,
     position: pos.clone(),
     radius: 1.6,
-    labelOffsetY: 1.2,
-    promptLabel: 'TAKE',
+    // Prompt sits LOW (at the altar top, below the floating offering) so it
+    // doesn't collide with the offering + its description box stacked above.
+    labelOffsetY: 0.55,
+    promptLabel: 'OFFER',     // you give blood for it — not a plain TAKE
+    promptKind: 'bargain',    // violet — a cursed bargain, read the stakes
     built: {
       group: offerGroup,
       parts: new Map(),
@@ -189,7 +196,7 @@ export function spawnBloodAltar(
         offerSeen = true;
         emit({ type: 'transaction:offered', family: 'bargain', id });
       }
-      setItemPreviewAnchorAbove(id, offerGroup, inRange);   // label derives from the offer's own top
+      setItemPreviewAnchor(id, pos.x, previewY, pos.z, inRange);   // STABLE anchor — doesn't bob
       // Stats only when this altar is the one the player is actually
       // highlighting — i.e. in interact range AND looking at it. The
       // existing in-range check from the interactables system already

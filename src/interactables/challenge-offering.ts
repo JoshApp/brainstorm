@@ -195,6 +195,7 @@ export function spawnChallengeOffering(
     radius: 1.6,
     labelOffsetY: 1.0,
     promptLabel: 'begin the ritual',
+    promptKind: 'trial',   // blood-red — a blood trial
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
     onUse() {
       if (accepted) return;

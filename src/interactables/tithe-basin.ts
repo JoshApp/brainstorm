@@ -259,6 +259,7 @@ export function spawnTitheBasin(
     radius: 1.5,
     labelOffsetY: 1.1,
     promptLabel: 'TITHE',
+    promptKind: 'unknown',   // pale — a gamble, the outcome hidden
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
     keepBuiltOnDestroy: true,
     onUse() {

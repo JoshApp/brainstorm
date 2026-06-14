@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The altars speak plainer now — a blood bargain glows violet and says OFFER, the offering hangs still and slow, and the prompt stops shoving the thing it's pointing at.",
+        "area": [
+          "ui",
+          "interactables"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "The sickle is held by its handle now, not throttled at the throat. Small dignity for a small blade.",
         "area": [
@@ -380,15 +388,6 @@ export const GENERATED_PATCHLOG = [
         "text": "Cross into an arena and the torches gutter, then flare up to watch you bleed — and sink back to embers, a little brighter than before, once it's over.",
         "area": [
           "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Step into an arena and the gate comes down like a verdict — the floor jolts, dust coughs up off the stone. It grinds back up almost politely when you've earned it.",
-        "area": [
-          "atmosphere",
-          "combat",
           "level"
         ]
       }

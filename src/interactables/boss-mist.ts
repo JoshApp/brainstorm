@@ -143,6 +143,7 @@ export function spawnBossMist(
     position: new THREE.Vector3(x, groundYAt(x, z), z),
     radius: 2.8,
     promptLabel: 'enter the mist',
+    promptKind: 'trial',   // blood-red — crossing into the boss arena
     // Explicit interact (tap the gate / press E) is the ONLY way through —
     // a real soulslike commitment, not an auto-open you walk into. The
     // curtain now fully fills the doorway so the tap-raycast reliably hits

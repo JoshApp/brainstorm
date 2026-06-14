@@ -16,8 +16,19 @@ export interface Interactable {
   /** Player must be within this distance (XZ-plane) to interact — both the
    *  walk-up prompt and a tap (direct or near-miss) gate on this. */
   radius: number;
-  /** Short verb shown on the prompt: 'OPEN' / 'TAKE' / 'USE' / etc. */
+  /** Short verb shown on the prompt: 'OPEN' / 'TAKE' / 'USE' / etc. Override
+   *  per interactable for flavour ('OFFER', 'DRINK', 'TEND'). */
   promptLabel: string;
+  /**
+   * What KIND of deal this is — colours the prompt so the player reads the
+   * stakes before committing. Defaults to 'neutral' (safe amber). Mirrors the
+   * transaction grammar (content/transactions.ts):
+   *   'neutral'  amber  — a plain take / open (pickups, chests, stairs)
+   *   'bargain'  violet — a cursed bargain (blood altar: a boon for a price)
+   *   'trial'    red    — blood / arena (boss mist, challenge offerings)
+   *   'unknown'  pale   — a mystery gamble, outcome hidden (tainted fountain, tithe)
+   */
+  promptKind?: 'neutral' | 'bargain' | 'trial' | 'unknown';
   /** Called when the player presses USE while in range. */
   onUse: () => void;
   /**
