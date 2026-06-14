@@ -9,6 +9,21 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "Mashing attack early no longer banks a phantom second swing — the next strike only queues once the current one is following through.",
+        "area": [
+          "combat",
+          "controls"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The dead lock their eyes on you and stay there — no more drifting round to shuffle in backwards. A swing still commits to where it was aimed.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The dead now aim their swing as it winds up, then commit to it — step off the line and it bites empty air, and it can't whip back around to catch you mid-recovery.",
         "area": [
           "combat",
@@ -393,22 +408,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "atmosphere",
           "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Cut from the left and the wall on the right wears it.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The hammer decides how much the room remembers — every blow splashes from its point of impact to whatever stands in the way.",
-        "area": [
-          "combat",
-          "atmosphere"
         ]
       }
     ]
