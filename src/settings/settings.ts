@@ -140,6 +140,10 @@ export interface Settings {
    *  culling flipped to default-on, so existing saves that carried the old
    *  explicit `false` get force-enabled exactly once — see load(). */
   migratedPortalCulling?: boolean;
+  /** Internal one-shot flag (not a user toggle): set true once the player
+   *  has been shown the first-run "calibrate the dark" nudge, so it never
+   *  fires twice. See src/ui/calibrate-hint.ts. */
+  calibrateHintSeen?: boolean;
 }
 
 export type ShadowMode = 'off' | 'hero' | 'single' | 'all';

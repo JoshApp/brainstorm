@@ -123,6 +123,7 @@ import { createXpSigil } from './ui/xp-sigil';
 import { createBossBar, resetBossBar } from './ui/boss-bar';
 import { createBuffBar } from './ui/buff-bar';
 import { createPickupNotification } from './ui/pickup-notification';
+import { maybeShowCalibrateHint } from './ui/calibrate-hint';
 import { createDepthCounter, setDepth as setDepthCounter } from './ui/depth-counter';
 import { createXpGoldHud } from './ui/xp-gold-hud';
 import { setGodMode } from './player/health';
@@ -392,6 +393,18 @@ initLevelLoader({
     lastLevelId = level.spec.id;
     setDepthCounter(getCurrentDepth(), level.spec.id.startsWith('safe-') || level.spec.id === 'tutorial');
     resetBossBar();   // new floor — clear any prior boss bar state
+
+    // First-run nudge toward brightness calibration (it moved off the
+    // bonfire into Settings). Fires ONCE — the helper self-gates on
+    // settings.calibrateHintSeen — at the first calm gameplay arrival
+    // (tutorial for new players, depth-N for everyone post-update).
+    // Skip debug scenarios (posed worlds aren't a real arrival).
+    if (
+      (!import.meta.env.DEV || !getScenarioFromUrl()) &&
+      (level.spec.id === 'tutorial' || level.spec.id.startsWith('depth-') || level.spec.id.startsWith('safe-'))
+    ) {
+      maybeShowCalibrateHint();
+    }
 
     // Dev-mode hot-reload restore: if a snapshot exists for THIS floor,
     // overwrite the just-applied spawn pose + reset HP/buffs with the

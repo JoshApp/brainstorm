@@ -8,6 +8,39 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The hearth-fire rises on carved stone now, throned at the heart of the refuge. Warm your hands. Spend your dead.",
+        "area": [
+          "level",
+          "atmosphere",
+          "ui"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Sit at any fire. The dungeon weighs what you've become and lets you spend it. Mind the warmth.",
+        "area": [
+          "ui",
+          "level",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The Boiling King's swallowed core sits where its body actually is now. Aim true.",
+        "area": [
+          "content",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Parrying no longer stops time permanently. Only for the recommended three-quarters of a second.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
         "tag": "add",
         "text": "Catch the blow on your blade and the dungeon flinches. Your next swing remembers the insult.",
         "area": [

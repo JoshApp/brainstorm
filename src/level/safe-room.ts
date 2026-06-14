@@ -43,6 +43,31 @@ const STONE_BENCH: ModelSpec = {
   ],
 };
 
+// Raised hearth dais — a two-step circular stone plinth the centrepiece
+// bonfire stands on, so the fire reads as the BUILT heart of the refuge
+// (a thing someone hewed and tends) rather than a fire on bare floor.
+// Steps taper slightly (wider at the base = grounded plinth read), low
+// segment count for the carved-stone PS1 family, a worn dark rim lip on
+// the top edge. Decorative only — no collision; the player walks up to
+// its edge to REST. Top sits at y≈0.30, where the bonfire is placed.
+const STONE_DAIS: ModelSpec = {
+  id: 'safe-hearth-dais',
+  class: 'decor',
+  materials: {
+    base:  { color: 0x39332b, roughness: 0.96, metalness: 0.0, flatShading: true },
+    riser: { color: 0x4a4238, roughness: 0.9,  metalness: 0.0, flatShading: true },
+    rim:   { color: 0x2a241d, roughness: 1.0,  metalness: 0.0, flatShading: true },
+  },
+  parts: [
+    // Lower step — wide, low, slight taper.
+    { kind: 'cylinder', pos: [0, 0.07, 0], radiusTop: 1.45, radius: 1.55, height: 0.14, segments: 16, mat: 'base' },
+    // Upper step — narrower, where the fire sits.
+    { kind: 'cylinder', pos: [0, 0.22, 0], radiusTop: 1.08, radius: 1.18, height: 0.16, segments: 16, mat: 'riser' },
+    // Worn dark lip ringing the upper edge.
+    { kind: 'torus', pos: [0, 0.30, 0], rot: [Math.PI / 2, 0, 0], radius: 1.08, tube: 0.035, segments: [16, 8], mat: 'rim' },
+  ],
+};
+
 export function generateSafeRoom(prevDepth: number): LevelSpec {
   const nextDepth = prevDepth + 1;
   const id = `safe-${prevDepth}`;
@@ -78,13 +103,16 @@ export function generateSafeRoom(prevDepth: number): LevelSpec {
       // refuge. The REST interactable is wired by builder.ts off the
       // 'bonfire' model id — same path as every dungeon-floor fire, so
       // authoring it here is all it takes. Slight rotY so the sword
-      // landmark catches the eye at an angle rather than edge-on.
-      { kind: 'model', model: BONFIRE, x: 0, y: 0, z: 0.3, rotY: 0.5, scale: 1.3 },
-      // Stone benches drawn in around the fire — the hearth circle. They
+      // landmark catches the eye at an angle rather than edge-on. The
+      // fire stands on a raised stone dais (below) — y=0.30 sits it on
+      // the plinth's top — and is scaled up to read as the grand hearth.
+      { kind: 'model', model: STONE_DAIS, x: 0, y: 0, z: 0.3 },
+      { kind: 'model', model: BONFIRE, x: 0, y: 0.30, z: 0.3, rotY: 0.5, scale: 1.45 },
+      // Stone benches drawn in around the dais — the hearth circle. They
       // sell "sit here" literally now: the fire is the rest. No collision
       // (the player walks around them).
-      { kind: 'model', model: STONE_BENCH, x: -1.7, y: 0, z: 0.3, rotY: Math.PI / 2 },
-      { kind: 'model', model: STONE_BENCH, x:  1.7, y: 0, z: 0.3, rotY: -Math.PI / 2 },
+      { kind: 'model', model: STONE_BENCH, x: -1.95, y: 0, z: 0.3, rotY: Math.PI / 2 },
+      { kind: 'model', model: STONE_BENCH, x:  1.95, y: 0, z: 0.3, rotY: -Math.PI / 2 },
 
       // ── TOME PILLAR (front-left flank) — REVIEW your delver ──────────
       // Moved off the central axis (it used to be the centrepiece): the
