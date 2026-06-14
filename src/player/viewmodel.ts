@@ -4,7 +4,7 @@ import { getBobOffset } from './viewmodel-bob';
 import { getWeaponSway } from './viewmodel-sway';
 import { getViewmodelPullback } from './viewmodel-pullback';
 import { setupWhipChain, clearWhipChain, tickWhipChain } from './whip-chain';
-import { computeWeaponPose, shoulderPivot, type WeaponPose } from './weapon-animations';
+import { computeWeaponPose, shoulderPivot, STANDARD_IDLE, type WeaponPose } from './weapon-animations';
 import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '../controls/charge-input';
 import { registerViewmodel } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
@@ -524,9 +524,18 @@ export function createWeaponViewmodel(
     // feel-critical motion; layering sway on top muddies the snap.
     const pose = computeWeaponPose(step.pose, phase, swing.getPhaseProgress());
     const pull = getViewmodelPullback();
-    group.position.set(pose.x, pose.y, pose.z + pull);
-    group.rotation.set(pose.rotX, pose.rotY, pose.rotZ);
-    setHeld(pose.x, pose.y, pose.z, pose.rotX, pose.rotY, pose.rotZ);
+    // Narrow the lateral swing arc: pull the SIDEWAYS components (x / rotY /
+    // rotZ) toward the rest pose by SWING_LATERAL_KEEP so wide sweeps don't wrap
+    // almost behind the player. Forward depth (z) + pitch (rotX) are left intact
+    // — thrusts/reach unaffected. Per-pose data is as-authored (+ its pin test);
+    // this is the global feel knob.
+    const k = CONFIG.SWING_LATERAL_KEEP;
+    const sx  = STANDARD_IDLE.x   + (pose.x   - STANDARD_IDLE.x)   * k;
+    const srY = STANDARD_IDLE.rotY + (pose.rotY - STANDARD_IDLE.rotY) * k;
+    const srZ = STANDARD_IDLE.rotZ + (pose.rotZ - STANDARD_IDLE.rotZ) * k;
+    group.position.set(sx, pose.y, pose.z + pull);
+    group.rotation.set(pose.rotX, srY, srZ);
+    setHeld(sx, pose.y, pose.z, pose.rotX, srY, srZ);
   }
 
   // Deflect "catch" transient — snaps to 1 on parryRaise(), eases to 0.

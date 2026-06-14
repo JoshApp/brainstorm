@@ -457,6 +457,19 @@ export const CONFIG = {
                                   //   the 3rd 25% — a crowd is chipped, not deleted, so
                                   //   being outnumbered stays dangerous — the grimdark point)
   CLEAVE_DAMAGE_MIN: 0.25,        // floor — a cleaved target never drops below this ×
+  // Global MELEE reach multiplier — every melee weapon's authored `reach` is
+  // scaled by this in resolveWeaponStats (ranged weapons are exempt). Melee
+  // reach felt too long across the board; 0.8 = a 20% cut in one knob, so the
+  // per-weapon values stay relative to each other. Dial lower for a tighter,
+  // get-in-close game.
+  MELEE_REACH_MUL: 0.8,
+  // Swing-arc lateral width — fraction of a swing pose's SIDEWAYS deviation
+  // (x / rotY / rotZ) from the rest pose that's kept when the viewmodel applies
+  // it. <1 narrows the arc so wide sweeps (hammer, scythe, sword-sweep) stop
+  // wrapping almost behind the player; forward depth (z) + pitch (rotX) are
+  // untouched, so thrusts/reach are unaffected. The per-pose data + its pin
+  // test stay as-authored — this is a global feel knob on the applied pose.
+  SWING_LATERAL_KEEP: 0.7,
   // EXECUTION / FINISHERS — the payoff that makes the poise game visible and
   // feeds the Dark-Souls "break poise → riposte" loop. An enemy is EXECUTABLE
   // ONLY while STAGGERED (poise broken). That's the single reason to chase a

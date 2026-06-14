@@ -46,7 +46,7 @@ const scratch: WeaponPose = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 };
 // The shared rest pose for all hip-held weapons (everything but the wand, which
 // idles upright). Data poses (POSE_SPECS) author their keyframes as deltas off
 // this.
-const STANDARD_IDLE: Pose6 = { x: ix, y: iy, z: iz, rotX: rx, rotY: ry, rotZ: rz };
+export const STANDARD_IDLE: Pose6 = { x: ix, y: iy, z: iz, rotX: rx, rotY: ry, rotZ: rz };
 
 // ── DATA-DRIVEN POSES (the authoring surface) ────────────────────
 // Poses authored as two keyframes (WIND/END deltas off STANDARD_IDLE) + the odd

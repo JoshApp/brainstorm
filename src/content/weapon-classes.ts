@@ -741,7 +741,8 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
   } : undefined;
 
   return {
-    reach: spec.reach * (1 + profReachPct),
+    // Global melee reach cut (ranged weapons keep their projectile range).
+    reach: spec.reach * (1 + profReachPct) * (spec.ranged ? 1 : CONFIG.MELEE_REACH_MUL),
     coneHalfAngle: spec.coneHalfAngle,
     damage: spec.damage * profDmgMul,
     critChance: (spec.critChance ?? 0.05) + finesseCrit + profCrit,
