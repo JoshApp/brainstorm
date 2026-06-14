@@ -31,7 +31,7 @@ export type PoseKey =
   | 'sword-ward-back'
   | 'dagger-stab'
   | 'dagger-slash'
-  | 'dagger-slash-right'
+  | 'dagger-slash-left'
   | 'dagger-double-stab'
   | 'hammer-swing-left'
   | 'hammer-swing-right'
@@ -299,9 +299,9 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
       // STRAFE: double-stab — two rapid cuts as the body weaves
       // sideways. Same pose as the combo finisher with strafe-fit
       // timing and a slightly wider catch.
-      strafeLeft:  { pose: 'dagger-slash', windup: 0.08, strike: 0.18, recover: 0.26,
+      strafeLeft:  { pose: 'dagger-slash-left', windup: 0.08, strike: 0.18, recover: 0.26,
                      reachMul: 1.0,  coneHalfAngleMul: 1.5, maxTargets: 1 },
-      strafeRight: { pose: 'dagger-slash-right', windup: 0.08, strike: 0.18, recover: 0.26,
+      strafeRight: { pose: 'dagger-slash', windup: 0.08, strike: 0.18, recover: 0.26,
                      reachMul: 1.0,  coneHalfAngleMul: 1.5, maxTargets: 1 },
       // BACK: a defensive slash on the retreat — short windup, short
       // recover, modest reach. The dagger's answer to a charging mob.

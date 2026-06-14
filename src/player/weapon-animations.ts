@@ -94,10 +94,11 @@ const POSE_SPECS: Partial<Record<PoseKey, PoseSpec>> = {
     wind: { x: -0.42, y: 0.10, z: 0.06, rotX: -0.55, rotY: 0.95, rotZ: -0.40 },
     end:  { x: 0.42, y: 0.00, z: -0.10, rotX: -0.25, rotY: -0.95, rotZ: 0.25 },
   },
-  // Mirror of dagger-slash (right→left sweep) — x, rotY, rotZ negated. So the
-  // strafe-RIGHT dagger move cuts the opposite way from strafe-LEFT instead of
-  // replaying the same arc.
-  'dagger-slash-right': {
+  // Mirror of dagger-slash — sweeps right→left, ENDING ON THE LEFT (x, rotY,
+  // rotZ negated). Named for where it travels, matching the sword convention
+  // (sweep-left ends left). Drives the strafe-LEFT dagger move; 'dagger-slash'
+  // (ends right) drives strafe-RIGHT + the combo.
+  'dagger-slash-left': {
     wind: { x: 0.42, y: 0.10, z: 0.06, rotX: -0.55, rotY: -0.95, rotZ: 0.40 },
     end:  { x: -0.42, y: 0.00, z: -0.10, rotX: -0.25, rotY: 0.95, rotZ: -0.25 },
   },
@@ -181,7 +182,7 @@ const DATA_NATIVE_POSE_KEYS = new Set<PoseKey>([
   'fist-jab',
   'fist-cross',
   'fist-hook',
-  'dagger-slash-right',
+  'dagger-slash-left',
 ]);
 
 /** Pose keys whose data spec is pinned to a legacy hand-coded function
