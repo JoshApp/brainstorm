@@ -452,7 +452,11 @@ export const ITEMS: Record<string, ItemSpec> = {
     // so the needle's rapid combo ramps it fast. Turns its low base
     // damage into sustained pressure: the fast-weapon payoff.
     weapon: {
-      class: 'dagger', reach: 1.5, coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5,
+      // Reach bumped 1.5 → 1.85 so after the global 20% melee cut it lands at
+      // ~1.48 (≈ its pre-cut feel) — a dagger is already short, the cut left it
+      // too short to connect. Effectively exempt from the cut, which it didn't
+      // need (it never had "too much range").
+      class: 'dagger', reach: 1.85, coneHalfAngle: 0.55, damage: 1, critChance: 0.25, critMultiplier: 2.5,
       onHit: { buffId: 'bleed', chance: 0.5, duration: 3 },
     },
     affixPool: ['keening', 'gallows', 'spine', 'serration', 'venom'],
