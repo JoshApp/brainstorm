@@ -230,6 +230,15 @@ export function createCombatSystem(
   let strikeAlreadyHit = false;
   let wasStriking = false;
   let trailTimer = 0;     // > 0 → strike-trail hit window is open
+  // Multi-hit FLURRY (a `hits` combo step, e.g. the dagger): re-open the strike
+  // window a few times so ONE press lands N fast strikes. Each re-entry
+  // re-gathers targets and re-rolls crit + on-hit procs INDEPENDENTLY — the
+  // dagger identity (more rolls = more value from on-crit / on-hit / %-effects).
+  let flurryRemaining = 0;   // sub-hits still owed after the first connect
+  let flurryTimer = 0;       // seconds until the next sub-hit re-opens
+  let flurryInterval = 0;    // gap between sub-hits (from the step's hits spec)
+  let flurryArmed = false;   // this swing's flurry already set up (whiffs don't flurry)
+  let flurrySubHit = false;  // current resolution is a flurry repeat → lighter crunch
   // Charge level 0..1 captured at attackPressed time; read by the
   // strike resolution to scale damage / reach / cone. Reset on each
   // new press (taps reset it to 0, charged swings to their progress).
@@ -465,6 +474,9 @@ export function createCombatSystem(
     if (striking && !wasStriking) {
       strikeAlreadyHit = false;
       trailTimer = 0;
+      flurryArmed = false;
+      flurryRemaining = 0;
+      flurrySubHit = false;
     }
     // Strike phase just ended without a hit → open the trail window.
     if (wasStriking && !striking && !strikeAlreadyHit) {
@@ -475,6 +487,18 @@ export function createCombatSystem(
     // Hit-test runs during strike OR during the trail tail (if we
     // haven't connected yet). Once strikeAlreadyHit is true, both
     // windows close until the next swing.
+    // FLURRY re-entry: while sub-hits are owed and the strike phase is still
+    // live, count down and RE-OPEN the strike window (clear strikeAlreadyHit)
+    // so the resolution below runs again as a fresh, independently-rolled hit.
+    if (flurryRemaining > 0 && striking) {
+      flurryTimer -= dt;
+      if (flurryTimer <= 0) {
+        flurryTimer += flurryInterval;
+        flurryRemaining -= 1;
+        strikeAlreadyHit = false;
+        flurrySubHit = true;
+      }
+    }
     const inHitWindow = (striking || trailTimer > 0) && !strikeAlreadyHit;
     if (trailTimer > 0) trailTimer = Math.max(0, trailTimer - dt);
     if (!inHitWindow) return;
@@ -510,7 +534,9 @@ export function createCombatSystem(
     // Per-combo-step damage / poise shaping (% of weapon damage). Authored per
     // archetype (weapon-classes.ts) + overridable per weapon (comboTuning). A
     // finisher hits >100%, a quick jab <100%. Default 1.0 = one clean hit.
-    const stepDamageMul = step?.damageMul ?? 1;
+    // A flurry step splits its damage across sub-hits — each hit uses the
+    // flurry's own per-hit fraction, ignoring the step's flat damageMul.
+    const stepDamageMul = step?.hits ? step.hits.damageMul : (step?.damageMul ?? 1);
     const stepStaggerMul = step?.staggerMul ?? 1;
     const reach = stats.reach * (step?.reachMul ?? 1) * (1 + c * 0.20);
     const cosConeHalf = Math.cos(stats.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.25));
@@ -795,9 +821,12 @@ export function createCombatSystem(
       const crunchShake = (anyCrit
         ? CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE * 1.8
         : CONFIG.SCREEN_SHAKE_HIT_MAGNITUDE) * s;
-      freezeFor(crunchPause);
-      kickShake(crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
-      hapticVibrate(Math.round((anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS) * s));
+      // Flurry sub-hits get a LIGHT crunch — stacking N full freezes would
+      // stutter. The first hit of the flurry lands the normal crunch; the
+      // repeats are quick taps (tiny freeze, softer shake/haptic).
+      freezeFor(flurrySubHit ? Math.min(crunchPause, 22) : crunchPause);
+      kickShake(flurrySubHit ? crunchShake * 0.5 : crunchShake, CONFIG.SCREEN_SHAKE_HIT_DURATION);
+      hapticVibrate(Math.round((anyCrit ? CONFIG.HAPTIC_HIT_MS * 2 : CONFIG.HAPTIC_HIT_MS) * s * (flurrySubHit ? 0.5 : 1)));
       playImpact(impactAt);
       // FINISHER emphasis — a hard hitch + a second heavier thud so the kill
       // lands with the weight of a DOOM glory-kill / Souls riposte.
@@ -860,6 +889,16 @@ export function createCombatSystem(
           critMultiplier: stats.critMultiplier,
         });
       }
+    }
+
+    // Arm the FLURRY on the first CONNECTING hit of a `hits` step (anyHeavy =
+    // a real mob, not a whiff or a vase). The re-entry block above then drives
+    // the remaining sub-hits on the interval. Armed once per swing.
+    if (!flurryArmed && step?.hits && step.hits.count > 1 && anyHeavy) {
+      flurryArmed = true;
+      flurryRemaining = step.hits.count - 1;
+      flurryInterval = step.hits.interval;
+      flurryTimer = step.hits.interval;
     }
 
     void bestApplied;   // reserved for future "biggest hit wins crunch tier"

@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "add",
+        "text": "Daggers stop politely tapping — one strike is three, fast and greedy. Every cut rolls its own luck, so the poison and the lucky kill come quicker.",
+        "area": [
+          "combat",
+          "weapons"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Combo finishers bite harder than the openers now — the blade's thrust and the hammer's fall land the heavy blow they always looked like.",
         "area": [
@@ -379,14 +387,6 @@ export const GENERATED_PATCHLOG = [
         "text": "Read the flash. White means catch it and the world holds its breath while you answer; the dead learn this the hard way. Red means move.",
         "area": [
           "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "On desktop your sword swings on click and E does the grasping; the prompt now tells you which key. The dungeon assumes you brought a keyboard.",
-        "area": [
-          "controls",
-          "ui"
         ]
       }
     ]

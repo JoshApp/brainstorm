@@ -271,12 +271,19 @@ export const WEAPON_CLASS_DEFAULTS: Record<WeaponClass, ClassDefaults> = {
     // stab → slash → double-stab. Stab one, slash cleaves two,
     // double-stab finisher commits on one target with extra damage.
     combo: [
-      { pose: 'dagger-stab',        windup: 0.08, strike: 0.13, recover: 0.22,
-        reachMul: 0.95, coneHalfAngleMul: 0.7, maxTargets: 1 },
+      // FLURRY opener — one tap lands three fast stabs (3 × 40% = 120%), each
+      // rolling crit + on-hit procs independently: the dagger as the proc / crit
+      // / %-effect weapon. Strike is widened to 0.18s so all three fit. Weak
+      // per-hit poise (staggerMul) — daggers bleed, they don't break guards.
+      { pose: 'dagger-stab',        windup: 0.08, strike: 0.18, recover: 0.22,
+        reachMul: 0.95, coneHalfAngleMul: 0.7, maxTargets: 1, staggerMul: 0.6,
+        hits: { count: 3, interval: 0.05, damageMul: 0.4 } },
       { pose: 'dagger-slash',       windup: 0.10, strike: 0.15, recover: 0.24,
-        reachMul: 1.0,  coneHalfAngleMul: 1.3, maxTargets: 1 },
+        reachMul: 1.0,  coneHalfAngleMul: 1.3, maxTargets: 1, damageMul: 0.9 },
+      // FLURRY finisher — three rapid double-stabs (3 × 50% = 150%).
       { pose: 'dagger-double-stab', windup: 0.08, strike: 0.26, recover: 0.30,
-        reachMul: 1.05, coneHalfAngleMul: 0.7, maxTargets: 1 },
+        reachMul: 1.05, coneHalfAngleMul: 0.7, maxTargets: 1, staggerMul: 0.7,
+        hits: { count: 3, interval: 0.05, damageMul: 0.5 } },
     ],
     comboWindowMs: 380,
     // Dagger directional moves — reuse existing combo poses to keep
