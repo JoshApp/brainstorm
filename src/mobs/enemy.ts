@@ -39,6 +39,7 @@ import {
 } from './creature-instancing';
 import { isPooledGeometry } from '../scene/geometry-pool';
 import { createBodyAnimator } from './enemy-animation';
+import { createEnemyAction } from './enemy-action';
 import { Animator } from '../anim/animator';
 import { type BuiltModel } from '../ecs/build-model';
 import { buildCreature } from '../content/build-creature';
@@ -573,8 +574,11 @@ export function createEnemy(
   const poiseMax = spec.poise ?? (spec.isBoss ? initialHp * 3 : Math.max(4, Math.round(initialHp * 1.4)));
   let poiseLeft = poiseMax;
   let poiseRegenCd = 0;     // grace countdown before the pool refills
-  let staggerTimer = 0;     // > 0 while in the 'staggered' state
-  let flinchLockTimer = 0;  // > 0 = parried (deflect-flinched), can't start a new attack
+  // Action-layer authority — owns the interrupt beats (stagger + parry
+  // flinch-lock) and the cancel table. The mob mirror of the player FSM;
+  // see enemy-action.ts. The big EnemyState machine below still drives
+  // behaviour, but "can I act / can I be staggered" lives in one place.
+  const actionFsm = createEnemyAction();
   // ── Cinematic entrance (ceiling-drop) ──────────────────────────────
   // A dormant boss with entrance:'ceiling-drop' waits HIDDEN above the arena
   // (only its floor blob-shadow shows the landing spot), then plummets to the
@@ -1031,7 +1035,7 @@ export function createEnemy(
   // stagger power (weapon weight × Might × charge — see attack.ts).
   function applyStaggerDamage(amount: number): boolean {
     if (!aliveLocal || burrowState !== 'surfaced' || amount <= 0) return false;
-    if (state === 'staggered') return false;       // already reeling
+    if (!actionFsm.canBeStaggered()) return false;     // already reeling
     if (phases && phaseInvulnTimer > 0) return false;   // boss phase-entry invuln
     poiseLeft -= amount;
     poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
@@ -1049,7 +1053,7 @@ export function createEnemy(
     // player-side cue — popup/sound/crunch — fires from attack.ts).
     coreReactor.hit();
     state = 'staggered';
-    staggerTimer = CONFIG.POISE.STAGGER_DURATION;
+    actionFsm.enterStagger(CONFIG.POISE.STAGGER_DURATION);
     phaseTimer = 0;
     poiseLeft = poiseMax;          // reset — must be broken again
     poiseRegenCd = CONFIG.POISE.REGEN_DELAY;
@@ -1183,7 +1187,7 @@ export function createEnemy(
               const len = Math.hypot(dx, dz) || 1;
               bodyAnim.applyKnockback(dx / len, dz / len, CONFIG.DEFLECT.FLINCH_KNOCKBACK);
               bodyAnim.flinch(CONFIG.DEFLECT.FLINCH_PITCH);   // body snaps back — the visible recoil
-              flinchLockTimer = CONFIG.DEFLECT.FLINCH_LOCK_S;
+              actionFsm.enterFlinchLock(CONFIG.DEFLECT.FLINCH_LOCK_S);
               state = 'chasing';
               phaseTimer = 0;
             }
@@ -1750,7 +1754,7 @@ export function createEnemy(
     // pool refills (a grace delay, then a steady rate) so you must
     // SUSTAIN hits to break it. A staggered enemy doesn't regen (its
     // pool is already reset for the next break).
-    if (flinchLockTimer > 0) flinchLockTimer = Math.max(0, flinchLockTimer - dt);
+    actionFsm.tick(dt);   // advance interrupt beats (stagger + parry flinch-lock)
     if (state !== 'staggered') {
       if (poiseRegenCd > 0) poiseRegenCd = Math.max(0, poiseRegenCd - dt);
       else if (poiseLeft < poiseMax) {
@@ -1784,8 +1788,9 @@ export function createEnemy(
         // character seeing stars (eased out as it recovers), eyes dimmed, the
         // stun-star ring orbiting overhead. The openWhenStaggered weak points
         // are exposed this whole window. The free-hit the player earned.
-        staggerTimer -= dt;
-        const elapsed = CONFIG.POISE.STAGGER_DURATION - staggerTimer;
+        // The beat is advanced once per frame by action.tick (above); read its
+        // elapsed time to drive the dizzy → settle arc.
+        const elapsed = actionFsm.staggerElapsed();
         // Dizzy for the first ~1.5s (spin + drunken lean), then SETTLE into a
         // slumped, head-down stun with a gentle sway for the rest of the long
         // window — reads "down for a beat", not spinning forever.
@@ -1804,7 +1809,7 @@ export function createEnemy(
           const top = isFinite(box.max.y) ? box.max.y - container.position.y : aimHeightResolved * 1.5;
           stunStars = createStunStars(container, top + 0.4);
         }
-        if (staggerTimer <= 0) {
+        if (!actionFsm.isStaggered()) {
           applyTilt(0);
           built.group.rotation.y = 0;
           built.group.rotation.z = 0;
@@ -1961,7 +1966,7 @@ export function createEnemy(
         // waiting its turn (the pack takes turns lunging instead of all swinging
         // at once). Bosses + lone mobs are unaffected (a token is always free).
         const ability = selectAbility(distance);
-        if (ability && flinchLockTimer <= 0 && requestToken(entityId)) {
+        if (ability && actionFsm.canAct() && requestToken(entityId)) {
           currentAbility = ability;
           state = 'winding';
           phaseTimer = 0;
