@@ -130,6 +130,30 @@ export interface ProficiencyProfile {
 }
 
 /** Combat stats — only set on items that are weapons. */
+/**
+ * A COMBAT VERB — an effect an item fires on a combat EVENT (a riposte, a
+ * perfect dodge, an empowered hit). The authoring surface the content layer
+ * writes against to make weapons FEEL distinct on the reactive game: a serrated
+ * blade that BLEEDS on riposte, a duelist's rapier that HASTES you on a perfect
+ * dodge, a cruel edge that POISONS harder on the empowered follow-up.
+ *
+ * Buff-based today (reuses the status system in content/buffs.ts), so a verb is
+ * "apply this buff to self or to the foe". The shape leaves room for richer
+ * effect kinds later (heal, stamina, projectile) without breaking authored data.
+ */
+export interface CombatVerb {
+  /** Status buff to apply when the verb fires (an id from content/buffs.ts). */
+  buffId: string;
+  /** Buff duration in seconds. */
+  duration: number;
+  /** Who it lands on. 'enemy' = the foe in the event, 'self' = the player.
+   *  Omitted → the hook's natural default (riposte/empowered-hit → enemy,
+   *  perfect-dodge → self). */
+  target?: 'self' | 'enemy';
+  /** Roll [0,1] each time the event fires; omitted = always. */
+  chance?: number;
+}
+
 export interface WeaponStats {
   /** Max melee reach in meters (camera-to-enemy distance). */
   reach: number;
@@ -220,6 +244,20 @@ export interface WeaponStats {
    */
   chargedEffect?:
     | { kind: 'projectile'; projectileId: string; minCharge?: number; damageMul?: number };
+  /**
+   * Poise this weapon's PARRY chips on a clean catch. Omitted → the global
+   * default (CONFIG.DEFLECT.POISE_DAMAGE). Authored per weapon so a heavy
+   * guard-breaker parries toward a stagger far faster than a light blade — what
+   * a parry DOES is the weapon's, not a fixed number.
+   */
+  parryPoise?: number;
+  /** Verb fired when a PARRY connects (the riposte) — defaults to the foe. */
+  onRiposte?: CombatVerb;
+  /** Verb fired when a perfectly-timed dodge lands — defaults to the player. */
+  onPerfectDodge?: CombatVerb;
+  /** Verb fired when a hit lands inside the deflect-empower window (the
+   *  empowered light riposte) — defaults to the foe. */
+  onEmpoweredHit?: CombatVerb;
 }
 
 export interface ItemSpec {
@@ -348,6 +386,9 @@ export const ITEMS: Record<string, ItemSpec> = {
     weapon: {
       class: 'sword', reach: 2.2, coneHalfAngle: 0.85, damage: 2, critChance: 0.10, critMultiplier: 2.0,
       onHit: { buffId: 'chill', chance: 0.4, duration: 2.5 },
+      // The curved, stained edge CARVES on a parry — catch a blow and the
+      // riposte opens a bleed. (Authoring example for the onRiposte verb.)
+      onRiposte: { buffId: 'bleed', duration: 4 },
     },
     affixPool: ['keening', 'gallows', 'vile', 'patience', 'rending', 'serration'],
     maxAffixes: 2,
@@ -404,6 +445,10 @@ export const ITEMS: Record<string, ItemSpec> = {
     weapon: {
       class: 'hammer', reach: 2.0, coneHalfAngle: 0.85, damage: 3, critChance: 0, critMultiplier: 1,
       onHit: { buffId: 'sunder', chance: 0.5, duration: 4 },
+      // A maul's parry is a GUARD-BREAK: it chunks far more poise than a light
+      // blade (default 2), so a heavy-weapon player staggers on the read.
+      // (Authoring example for the per-weapon parryPoise.)
+      parryPoise: 4,
     },
     affixPool: ['gallows', 'spine', 'patience', 'rending', 'searing'],
     maxAffixes: 1,

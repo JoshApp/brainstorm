@@ -19,6 +19,7 @@ import {
 } from '../combat/reactive-defense';
 import { spawnParrySpark } from '../effects/parry-spark';
 import { getCurrentWeapon } from '../player/current-weapon';
+import { fireCombatVerb } from '../combat/combat-verbs';
 import { applyBuff } from '../ecs/buffs';
 import { spawnAoeTelegraph, type AoeTelegraph } from '../effects/aoe-telegraph';
 import { spawnLashTendril, type LashTendril } from '../effects/lash-tendril';
@@ -1136,11 +1137,15 @@ export function createEnemy(
     // here — the poise/flinch below would act on a corpse.
     takeDamage({ source: 'player', target: entityId, base: getCurrentWeapon().damage, type: 'physical' });
     if (!aliveLocal) return;
-    // Chunk poise. If it BREAKS → full stagger (execute window, via
-    // triggerStagger inside). Else a soft FLINCH: cancel the attack, recoil
-    // off-balance, brief no-act. Stacking deflects break it on their own; the
-    // empowered follow-up swing breaks it much faster.
-    const broke = applyStaggerDamage(CONFIG.DEFLECT.POISE_DAMAGE);
+    // On-riposte verb (e.g. a serrated blade bleeds the foe it just parried).
+    fireCombatVerb(getCurrentWeapon().onRiposte, entityId, 'enemy');
+    // Chunk poise — by the WEAPON's authored parry poise (a heavy guard-breaker
+    // staggers far faster than a light blade), falling back to the global
+    // default. If it BREAKS → full stagger (execute window, via triggerStagger
+    // inside). Else a soft FLINCH: cancel the attack, recoil off-balance, brief
+    // no-act. Stacking deflects break it on their own; the empowered follow-up
+    // swing breaks it much faster.
+    const broke = applyStaggerDamage(getCurrentWeapon().parryPoise ?? CONFIG.DEFLECT.POISE_DAMAGE);
     if (!broke) {
       currentAbility = null;
       clearAoeTelegraph();
@@ -1316,7 +1321,10 @@ export function createEnemy(
           // roll's own i-frames negate the damage; this pays the reward. A
           // merely early/sloppy dodge falls through to damagePlayer, where the
           // i-frames still negate it (survives, no bonus).
-          if (tryJustDodge()) return true;   // read the strike + rolled it
+          if (tryJustDodge()) {
+            fireCombatVerb(getCurrentWeapon().onPerfectDodge, entityId, 'self');
+            return true;   // read the strike + rolled it
+          }
           damagePlayer(action.damage, entityId, dmgTypeOf(action.element));
           inflictOnHit();
           meleeHitLanded = true;  // the blow connected — strike is spent, no late parry
@@ -1327,6 +1335,7 @@ export function createEnemy(
         // RANGE, so without this band a perfectly-timed roll would slip the
         // reward entirely (the in-reach path never runs). Reward the read.
         if (distance <= action.reach + CONFIG.JUST_DODGE.NEAR_MISS_GRACE && tryJustDodge()) {
+          fireCombatVerb(getCurrentWeapon().onPerfectDodge, entityId, 'self');
           return true;            // the roll answered the strike
         }
         return false;             // keep trying within the strike window

@@ -25,6 +25,7 @@ import { consumeChargedAmount, consumeChargedPerfect, getChargeProgress, setChar
 import { spendStaminaSoft, gainStamina } from './stamina';
 import { isJustDodgeCounterActive, consumeJustDodgeCounter } from './just-dodge';
 import { isDeflectEmpowerActive, consumeDeflectEmpower } from './reactive-defense';
+import { fireCombatVerb } from './combat-verbs';
 import { canStartAction } from './player-action';
 import { flashStaminaBar } from '../ui/stamina-bar';
 import { showHitCones, markSwingHits, type SwingShape } from './combat-debug';
@@ -716,6 +717,10 @@ export function createCombatSystem(
           for (const oh of getPlayerOnHits()) {
             if (gameRngChance(oh.chance)) applyBuff(ent, oh.buffId, oh.duration, 'player');
           }
+          // Empowered-hit verb — fires on a hit during the deflect-empower
+          // window (empowerActive is already light-gated above, so this is the
+          // empowered LIGHT riposte). e.g. a blade that poisons harder off a parry.
+          if (empowerActive) fireCombatVerb(stats.onEmpoweredHit, target.entityId, 'enemy');
         }
         emit({ type: 'attack:hit', damage: applied, crit, cls: stats.class });
         // Might SIGNATURE — chip the target's poise; break it and the

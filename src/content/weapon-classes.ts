@@ -123,6 +123,13 @@ export interface ResolvedWeaponStats {
    *  the weapon's bonus effect (projectile, AoE, lifesteal, ...). */
   chargedEffect?:
     | { kind: 'projectile'; projectileId: string; minCharge?: number; damageMul?: number };
+  /** Per-weapon parry poise chip + reactive verbs (riposte / perfect-dodge /
+   *  empowered-hit), passed through from the weapon spec. The combat layer
+   *  reads these at the matching event hooks. */
+  parryPoise?: number;
+  onRiposte?: import('./items').CombatVerb;
+  onPerfectDodge?: import('./items').CombatVerb;
+  onEmpoweredHit?: import('./items').CombatVerb;
   /** Resolved directional move steps (lunge/sweeps/retreat) — the
    *  same speed multipliers as the combo are applied. Optional;
    *  not every weapon has movement variants. */
@@ -747,6 +754,10 @@ export function resolveWeaponStats(spec: WeaponStats): ResolvedWeaponStats {
     onHit: spec.onHit,
     ranged: spec.ranged,
     chargedEffect: spec.chargedEffect,
+    parryPoise: spec.parryPoise,
+    onRiposte: spec.onRiposte,
+    onPerfectDodge: spec.onPerfectDodge,
+    onEmpoweredHit: spec.onEmpoweredHit,
     directionalMoves,
     chargedMoves,
     heavyCombo: baseT.heavyCombo ? baseT.heavyCombo.map(resolveStep) : undefined,
