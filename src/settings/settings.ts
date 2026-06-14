@@ -35,6 +35,13 @@ export interface Settings {
    *  on the phone in well under 30 seconds. Off by default; toggle on
    *  while iterating. */
   devAutoUpdate: boolean;
+  /** DEVELOPER MODE — the master gate for every dev/debug affordance. OFF by
+   *  default = the clean PROD surface a player sees: no DEBUG settings tab, no
+   *  TEST/PROVING links on the title, no diagnostic overlays. ON reveals the
+   *  DEBUG tab + dev menu links so the toggles below can be reached. Turning it
+   *  OFF also clears the individual debug toggles, so a prod build can never
+   *  leak a left-on overlay. */
+  developerMode: boolean;
   /** Show the debug capture button (the ⊕ CAPTURE chip) during play.
    *  Same as the ?debug=1 URL flag, but persisted + toggleable in-menu. */
   debugMode: boolean;
@@ -183,6 +190,7 @@ const DEFAULTS: Settings = {
   reverb: true,
   autoUpdate: true,
   devAutoUpdate: false,
+  developerMode: false,
   debugMode: false,
   perfMeter: false,
   debugEyeAdapt: false,

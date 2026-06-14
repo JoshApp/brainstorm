@@ -1,6 +1,5 @@
 import { openScreen, closeScreen, type ScreenLayer, type ScreenPolicy } from './screen-manager';
-import { PANEL_BG, PANEL_BORDER, TEXT_PRIMARY, TEXT_DIM } from './inventory-shared';
-import { FONT_UI } from './hud';
+import { THEME, FONT_DISPLAY, FONT_UI, applyCarvedFrame, injectThemeKeyframes } from './theme';
 
 // ── Menu shell — the ONE mobile-first sheet every panel-style menu uses ──
 //
@@ -70,6 +69,7 @@ export interface Sheet {
 export function createSheet(opts: SheetOptions): Sheet {
   const width = opts.width ?? 520;
   let closed = false;
+  injectThemeKeyframes();
 
   const root = document.createElement('div');
   root.id = `${opts.id}-sheet`;
@@ -83,11 +83,14 @@ export function createSheet(opts: SheetOptions): Sheet {
     // Width clamps to the viewport minus edge gaps + horizontal safe-area
     // (landscape notches live on the sides).
     width: `min(${width}px, calc(100vw - ${EDGE * 2}px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)))`,
-    background: PANEL_BG,
-    border: PANEL_BORDER,
-    borderRadius: '6px',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.9)',
-    color: TEXT_PRIMARY,
+    // Carved slab: near-black fill with a faint top-lit gradient so the
+    // surface reads as stone catching torchlight, a hairline chiselled edge,
+    // and barely-rounded corners (the corner ticks do the "carved" work).
+    background: `linear-gradient(180deg, ${THEME.raised} 0%, ${THEME.panel} 14%, ${THEME.panel} 100%)`,
+    border: `1px solid ${THEME.ruleStrong}`,
+    borderRadius: '3px',
+    boxShadow: `${THEME.shadow}, inset 0 0 60px rgba(0,0,0,0.4)`,
+    color: THEME.text,
     fontFamily: FONT_UI,
     overflow: 'hidden',   // root clips; the body scrolls (NB: not "overflow-y")
   } as Partial<CSSStyleDeclaration>);
@@ -108,17 +111,22 @@ export function createSheet(opts: SheetOptions): Sheet {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '8px',
-    padding: '10px 12px',
-    borderBottom: '1px solid rgba(180, 130, 90, 0.3)',
+    padding: '12px 14px 11px',
+    borderBottom: `1px solid ${THEME.rule}`,
   } as Partial<CSSStyleDeclaration>);
 
+  // Title in the display SERIF — the menu "voice" register, small-caps, amber
+  // torchlight. (The dense controls below stay sans.)
   const titleEl = document.createElement('div');
   titleEl.textContent = opts.title ?? '';
   Object.assign(titleEl.style, {
-    fontSize: '13px',
-    fontWeight: '600',
-    letterSpacing: '0.30em',
-    color: 'rgba(255, 200, 140, 0.95)',
+    fontFamily: FONT_DISPLAY,
+    fontSize: '15px',
+    fontWeight: '500',
+    letterSpacing: '0.28em',
+    textTransform: 'uppercase',
+    color: THEME.amber,
+    textShadow: THEME.textShadow,
     flex: '1 1 auto',
     minWidth: '0',
     overflow: 'hidden',
@@ -133,16 +141,19 @@ export function createSheet(opts: SheetOptions): Sheet {
     flex: '0 0 auto',
     width: '44px',
     height: '44px',
-    margin: '-8px -6px -8px 0',   // big hit area without bloating the header height
+    margin: '-8px -8px -8px 0',   // big hit area without bloating the header height
     background: 'transparent',
     border: 'none',
-    color: TEXT_DIM,
+    color: THEME.dim,
     fontSize: '18px',
     lineHeight: '1',
     cursor: 'pointer',
     touchAction: 'manipulation',
     WebkitTapHighlightColor: 'transparent',
+    transition: 'color 0.12s ease',
   } as Partial<CSSStyleDeclaration>);
+  closeBtn.addEventListener('pointerenter', () => { closeBtn.style.color = THEME.ember; });
+  closeBtn.addEventListener('pointerleave', () => { closeBtn.style.color = THEME.dim; });
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); close(); });
 
   header.append(titleEl, closeBtn);
@@ -170,10 +181,14 @@ export function createSheet(opts: SheetOptions): Sheet {
     display: 'none',              // shown at open() if it has actions
     gap: '8px',
     justifyContent: 'center',
-    padding: '10px 14px',
-    borderTop: '1px solid rgba(180, 130, 90, 0.3)',
+    padding: '11px 14px',
+    borderTop: `1px solid ${THEME.rule}`,
   } as Partial<CSSStyleDeclaration>);
   root.appendChild(footer);
+
+  // Carved corner ticks — appended LAST so they paint over the bands. The
+  // signature "chiselled slab" mark that ties every menu together.
+  applyCarvedFrame(root);
 
   function open(): void {
     document.body.appendChild(root);
@@ -201,32 +216,62 @@ export function createSheet(opts: SheetOptions): Sheet {
 
 /** A touch-sized menu button (≥44px tall — the iOS/Android minimum). Use
  *  for every actionable control in a sheet so targets never go sub-44px.
- *  `small` (36px) is for dense inline rows; `primary` is the warm-filled
- *  call-to-action. */
+ *  Three registers in the carved language:
+ *    - default — a flat slab: dark fill, hairline edge, amber-dim text.
+ *    - primary — the ONE hot action: ember-lit fill + glow.
+ *    - danger  — destructive (abandon / quit / delete): blood edge + text.
+ *  `small` (36px) is for dense inline rows. */
 export function menuButton(
   label: string,
   onClick: () => void,
-  opts: { primary?: boolean; small?: boolean } = {},
+  opts: { primary?: boolean; small?: boolean; danger?: boolean } = {},
 ): HTMLButtonElement {
   const b = document.createElement('button');
   b.textContent = label;
+
+  // Resting + hover treatments per register, so press/hover feedback can
+  // restore the right resting look.
+  const rest = opts.primary
+    ? { bg: `linear-gradient(180deg, rgba(150, 86, 36, 0.95), rgba(96, 50, 20, 0.95))`, border: THEME.ember, color: 'rgba(255, 236, 210, 0.98)', glow: THEME.emberGlow }
+    : opts.danger
+    ? { bg: THEME.sunken, border: `rgba(206, 64, 52, 0.55)`, color: 'rgba(232, 150, 140, 0.95)', glow: 'none' }
+    : { bg: THEME.sunken, border: THEME.ruleStrong, color: THEME.text, glow: 'none' };
+
   Object.assign(b.style, {
     minHeight: opts.small ? '36px' : '44px',
-    padding: opts.small ? '6px 14px' : '10px 22px',
-    background: opts.primary ? 'rgba(120, 70, 30, 0.92)' : 'rgba(40, 24, 14, 0.85)',
-    border: '1px solid rgba(180, 130, 90, 0.5)',
-    color: TEXT_PRIMARY,
+    padding: opts.small ? '6px 16px' : '11px 24px',
+    background: rest.bg,
+    border: `1px solid ${rest.border}`,
+    color: rest.color,
     fontFamily: FONT_UI,
     fontSize: '12px',
     fontWeight: '600',
-    letterSpacing: '0.20em',
-    borderRadius: '3px',
+    letterSpacing: '0.22em',
+    textTransform: 'uppercase',
+    borderRadius: '2px',
+    boxShadow: rest.glow === 'none' ? 'none' : rest.glow,
     cursor: 'pointer',
     touchAction: 'manipulation',
     userSelect: 'none',
     WebkitUserSelect: 'none',
     WebkitTapHighlightColor: 'transparent',
+    transition: 'transform 0.08s ease, box-shadow 0.15s ease, border-color 0.15s ease',
   } as Partial<CSSStyleDeclaration>);
+
+  // Hover/press: warm the edge + ember the glow; secondary buttons borrow a
+  // little heat so the whole set feels lit by the same torch.
+  const warm = opts.danger ? 'rgba(230, 90, 76, 0.9)' : THEME.ember;
+  b.addEventListener('pointerenter', () => {
+    b.style.borderColor = warm;
+    b.style.boxShadow = opts.danger ? '0 0 16px rgba(206, 64, 52, 0.28)' : THEME.emberGlow;
+  });
+  b.addEventListener('pointerleave', () => {
+    b.style.borderColor = rest.border;
+    b.style.boxShadow = rest.glow === 'none' ? 'none' : rest.glow;
+    b.style.transform = 'scale(1)';
+  });
+  b.addEventListener('pointerdown', () => { b.style.transform = 'scale(0.97)'; });
+  b.addEventListener('pointerup',   () => { b.style.transform = 'scale(1)'; });
   b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
   return b;
 }

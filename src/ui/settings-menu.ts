@@ -1,5 +1,6 @@
 import { getSettings, updateSettings, CONTROL_SCHEMES, DASH_GESTURES, SHADOW_MODES } from '../settings/settings';
 import type { ShadowMode } from '../settings/settings';
+import { THEME, FONT_DISPLAY, applyCarvedFrame } from './theme';
 import { HUD_STYLES, setHudStyle, type HudStyleId } from './hud-style';
 
 // Settings selector options for the HUD-style preset — derived from
@@ -27,8 +28,10 @@ import {
 // panel — they're app-level shutdowns, kept out of mainline gameplay
 // flow but discoverable when the player explicitly opens settings.
 
-const PANEL_BG = 'rgba(20, 14, 10, 0.92)';
-const BORDER = '1px solid rgba(180, 130, 90, 0.5)';
+// Pulled from the central UI theme so the ESC-opened settings panel reads as
+// the same carved object as the satchel sheets + title screen.
+const PANEL_BG = `linear-gradient(180deg, ${THEME.raised} 0%, ${THEME.panel} 14%, ${THEME.panel} 100%)`;
+const BORDER = `1px solid ${THEME.ruleStrong}`;
 
 let panel: HTMLDivElement | null = null;
 let panelOpen = false;
@@ -71,10 +74,10 @@ export function createSettingsMenu() {
     padding: '16px 18px',
     background: PANEL_BG,
     border: BORDER,
-    borderRadius: '4px',
-    color: 'rgba(230, 200, 170, 0.95)',
+    borderRadius: '3px',
+    color: THEME.text,
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)',
+    boxShadow: `${THEME.shadow}, inset 0 0 60px rgba(0,0,0,0.4)`,
     zIndex: '100',
     display: 'none',
     flexDirection: 'column',
@@ -142,17 +145,20 @@ function buildPanelContents() {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottom: '1px solid rgba(180, 130, 90, 0.3)',
-    paddingBottom: '6px',
+    borderBottom: `1px solid ${THEME.rule}`,
+    paddingBottom: '8px',
     flexShrink: '0',
   } as Partial<CSSStyleDeclaration>);
   const title = document.createElement('div');
   title.textContent = 'SETTINGS';
   Object.assign(title.style, {
-    fontSize: '12px',
-    fontWeight: '600',
+    fontFamily: FONT_DISPLAY,             // serif "voice" — matches the Sheet headers
+    fontSize: '15px',
+    fontWeight: '500',
     letterSpacing: '0.28em',
-    color: 'rgba(255, 200, 140, 0.9)',
+    textTransform: 'uppercase',
+    color: THEME.amber,
+    textShadow: THEME.textShadow,
   } as Partial<CSSStyleDeclaration>);
   const close = document.createElement('button');
   close.textContent = '✕';
@@ -177,6 +183,11 @@ function buildPanelContents() {
   // Standalone panel scrolls its own content area (header + tabs stay
   // fixed above it).
   buildSettingsBody(panel, true);
+
+  // Carved corner ticks + hot top edge — re-applied each rebuild (the
+  // replaceChildren above wipes them) so the ESC settings panel reads as the
+  // same chiselled slab as the satchel/codex sheets.
+  applyCarvedFrame(panel);
 }
 
 /** Build the settings tab bar + active-tab content into `container`.
@@ -196,8 +207,9 @@ export function buildSettingsBody(container: HTMLElement, scrollContent: boolean
     { id: 'audio',    label: 'AUDIO' },
     { id: 'graphics', label: 'GRAPHICS' },
     { id: 'system',   label: 'SYSTEM' },
-    { id: 'debug',    label: 'DEBUG' },
   );
+  // DEBUG tab only exists in Developer Mode — the player build never sees it.
+  if (getSettings().developerMode) tabs.push({ id: 'debug', label: 'DEBUG' });
   // If the previously-active tab disappeared (e.g. RUN gone after
   // quitting), fall back to CONTROLS — the first non-RUN tab.
   if (!tabs.find((t) => t.id === activeTab)) activeTab = 'controls';
@@ -457,6 +469,21 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
   ],
 
   system: () => [
+    makeToggle({
+      label: 'DEVELOPER MODE',
+      description: 'Master switch for all dev tools. On reveals the DEBUG tab and the TEST / PROVING links on the title screen. Off is the clean player build — turning it off also clears every diagnostic overlay so none can linger. (Reopen settings to see the DEBUG tab appear.)',
+      get: () => getSettings().developerMode,
+      set: (v) => {
+        if (v) updateSettings({ developerMode: true });
+        // Off: also force every dev affordance dark so prod can't leak one.
+        else updateSettings({
+          developerMode: false,
+          debugMode: false, perfMeter: false, profilerTools: false,
+          debugEyeAdapt: false, debugBossReadout: false, debugHandAxes: false,
+          debugHitCones: false, debugGoreSplats: false,
+        });
+      },
+    }),
     makeToggle({
       label: 'AUTO UPDATE',
       description: 'Install new builds automatically at safe moments (title screen, level transitions).',

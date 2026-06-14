@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Delve · UI Bench</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%; height: 100%; overflow: hidden;
+        /* The dungeon's baseline: a warm-tinted near-black, so menu chrome is
+           judged against the same dark it sits over in-game. */
+        background: radial-gradient(ellipse at center, #140d07 0%, #050302 75%);
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+    </style>
+    <script>
+      // Seed fake meta + save BEFORE the module loads, so meta-state reads it
+      // at import time and the title / codex / inventory have something to show.
+      // (Mirrors ?fakemeta / ?fakesave in main.ts.)
+      try {
+        localStorage.setItem('delve:meta', JSON.stringify({
+          version: 2,
+          runsAttempted: 7, runsDied: 6, deepestDepth: 4, totalKills: 31,
+          totalPlayMs: 4 * 60 * 1000,
+          enemiesSlain: ['rat', 'skirmisher', 'ghoul'],
+          itemsFound: ['rusted-sword', 'scimitar', 'healing-potion', 'leather-gloves',
+                       'worn-boots', 'ring-of-vigor', 'iron-coif'],
+          notesRead: [
+            'I came for the blade. I should have come for the door.',
+            'They told us it was one floor. They counted wrong.',
+          ],
+          achievementsUnlocked: ['first-blood', 'untouched', 'depth-3-reached'],
+          stash: [
+            { id: 'a1', tier: 'uncommon', source: 'Untouched' },
+            { id: 'a2', tier: 'rare', source: 'The Dungeon Notices' },
+            { id: 'a3', tier: 'fabled', source: 'Magic Bypass' },
+          ],
+        }));
+      } catch (e) { /* ignore */ }
+    </script>
+  </head>
+  <body>
+    <script type="module" src="/src/ui-bench/main.ts"></script>
+  </body>
+</html>

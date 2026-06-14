@@ -11,6 +11,8 @@
 import { openScreen, closeScreen } from './screen-manager';
 import { createSheet, menuButton } from './menu-shell';
 import { getMeta, getStash } from '../state/meta-state';
+import { getSettings } from '../settings/settings';
+import { THEME, FONT_DISPLAY, carvedRule } from './theme';
 import { showCodex } from './codex-screen';
 import { showStash } from './stash-screen';
 import { showPatchlog } from './patchlog-screen';
@@ -141,11 +143,21 @@ export function showStartScreen(opts: StartScreenOptions) {
     color: 'rgba(180, 140, 100, 0.65)',
     letterSpacing: '0.06em',
     marginTop: '-4px',
-    marginBottom: '22px',
+    marginBottom: '14px',
     position: 'relative',
     zIndex: '1',
   });
   root.appendChild(sub);
+
+  // Carved framing rule — the same chisel-diamond divider the panels use, so
+  // the title reads as the front page of one object, not a separate screen.
+  const mastRule = carvedRule({ glyph: true, margin: '0 0 22px' });
+  Object.assign(mastRule.style, {
+    width: 'min(280px, 70vw)',
+    position: 'relative',
+    zIndex: '1',
+  } as Partial<CSSStyleDeclaration>);
+  root.appendChild(mastRule);
 
   // Lifetime records line — only renders if the player has actually
   // attempted a run before. Subtle, italic, small caps. The "you've
@@ -296,8 +308,11 @@ export function showStartScreen(opts: StartScreenOptions) {
 
   // Testing tools last — TEST (hand-authored feature chambers) and PROVING
   // (generate a floor around any weapon / mob / boss / event). Grouped at the
-  // end so the player-facing records read first.
-  if (opts.onTestChambers) {
+  // end so the player-facing records read first. DEVELOPER MODE only — the
+  // player build never sees them (the callbacks are wired in dev, but the gate
+  // keeps the title clean unless dev mode is on).
+  const devMode = getSettings().developerMode;
+  if (devMode && opts.onTestChambers) {
     const link = makeSecondaryLink('TEST', 0);
     link.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -306,7 +321,7 @@ export function showStartScreen(opts: StartScreenOptions) {
     });
     pushLink(link);
   }
-  if (opts.onProvingGrounds) {
+  if (devMode && opts.onProvingGrounds) {
     const link = makeSecondaryLink('PROVING', 0);
     link.addEventListener('pointerdown', (e) => {
       e.preventDefault();

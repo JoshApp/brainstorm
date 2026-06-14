@@ -224,7 +224,13 @@ async function main() {
     const phaseOverride = phaseArg ? `&phase=${encodeURIComponent(phaseArg)}` : '';
     if (phaseArg) console.log(`Weapon phase: ${phaseArg}`);
     let url: string;
-    if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
+    // UI bench: `ui-<specimen>` snaps a menu/HUD-chrome specimen in isolation
+    // (no engine) via ui-bench.html. e.g. `ui-gallery`, `ui-settings`, `ui-codex`.
+    if (scenario.startsWith('ui-')) {
+      const specimen = scenario.slice('ui-'.length);
+      url = `http://127.0.0.1:${port}/brainstorm/ui-bench.html?ui=${encodeURIComponent(specimen)}`;
+    }
+    else if (scenario === 'end') url = `http://127.0.0.1:${port}/brainstorm/?showEnd=1&fakemeta=1`;
     else if (scenario === 'title-continue') url = `http://127.0.0.1:${port}/brainstorm/?fakesave=1`;
     else if (scenario === 'title-veteran') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1`;
     else if (scenario === 'codex') url = `http://127.0.0.1:${port}/brainstorm/?fakemeta=1&showCodex=1`;
@@ -258,7 +264,9 @@ async function main() {
     // Wait for canvas to actually render some frames. Vault-inspector previews
     // (`vault-<id>`) wait long enough for the floor title card to fully fade
     // (~1.6s after load) so the geometry shot isn't covered by "Depth N" text.
-    const longWait = LONG_WAIT_SCENARIOS.has(scenario) || scenario.startsWith('vault-');
+    // UI-bench title specimens run a 1.6s letter-spacing tween + 0.6s fade;
+    // wait them out so the capture isn't caught mid-animation.
+    const longWait = LONG_WAIT_SCENARIOS.has(scenario) || scenario.startsWith('vault-') || scenario.startsWith('ui-');
     const waitMs = longWait ? 2000 : 900;
     await page.waitForTimeout(waitMs);
 

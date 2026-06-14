@@ -21,24 +21,19 @@ export interface InventoryCtx {
 }
 
 // ── Styling tokens ───────────────────────────────────────────────────────
-export const PANEL_BG = 'rgba(20, 14, 10, 0.96)';
-export const PANEL_BORDER = '1px solid rgba(180, 130, 90, 0.5)';
-export const CARD_BG = 'rgba(36, 26, 18, 0.7)';
-export const EMPTY_BORDER = '1px dashed rgba(120, 90, 60, 0.4)';
-export const TEXT_PRIMARY = 'rgba(230, 200, 170, 0.95)';
-export const TEXT_DIM = 'rgba(160, 130, 100, 0.85)';
-export const TEXT_FAINT = 'rgba(100, 80, 60, 0.6)';
-export const ACCENT = 'rgba(255, 160, 80, 0.85)';
+// Re-exported from the central UI theme (src/ui/theme.ts) so the inventory
+// columns, the menu shell, settings, and the title screen all read from ONE
+// palette. Kept under their historical names so existing imports don't churn.
+import { THEME, sectionLabel as themeSectionLabel } from './theme';
+
+export const PANEL_BG = THEME.panel;
+export const PANEL_BORDER = `1px solid ${THEME.ruleStrong}`;
+export const CARD_BG = THEME.raised;
+export const EMPTY_BORDER = `1px dashed ${THEME.faint}`;
+export const TEXT_PRIMARY = THEME.text;
+export const TEXT_DIM = THEME.dim;
+export const TEXT_FAINT = THEME.faint;
+export const ACCENT = THEME.ember;
 
 /** Small uppercase column header ("STATS", "BAG", …). */
-export function sectionLabel(text: string): HTMLDivElement {
-  const el = document.createElement('div');
-  el.textContent = text;
-  Object.assign(el.style, {
-    fontSize: '10px', fontWeight: '500', letterSpacing: '0.25em',
-    color: TEXT_DIM,
-    borderBottom: '1px solid rgba(120, 90, 60, 0.3)',
-    paddingBottom: '4px',
-  } as Partial<CSSStyleDeclaration>);
-  return el;
-}
+export const sectionLabel = themeSectionLabel;
