@@ -130,6 +130,10 @@ export function spawnChallengeOffering(
   let accepted = false;
   let claimed = false;
   let phase = 0;
+  // Finish-flare timer. -1 = idle; set to 0 on the trial's completion to bloom
+  // the altar light + sigils for FLARE_DUR_S, easing into the warm 'won' hold.
+  let flareT = -1;
+  const FLARE_DUR_S = 0.8;
 
   // Apply a ritual STATE: dark / active / won. Sets sigil + circle + candle
   // wax tints and the light colour to match. Smooth visual transitions handled
@@ -233,6 +237,20 @@ export function spawnChallengeOffering(
         if (accepted) c.flame.scale.setScalar(1 + 0.08 * (Math.random() - 0.5));
         c.flameMat.opacity = (accepted ? 0.92 : 0) * flicker;
       }
+      // FINISH FLARE — a transient bloom on top of the 'won' hold the instant
+      // the trial completes: the altar light surges and the sigils flash white-
+      // hot, then ease out. Fires off the same encounter:complete as the room-
+      // torch flare (arena-light-arc), so the altar and the whole room punch
+      // bright together — one triumph, then both settle.
+      if (flareT >= 0) {
+        flareT += dt;
+        const f = Math.max(0, 1 - flareT / FLARE_DUR_S);
+        const env = f * f;   // ease-out bloom
+        lightIntensity += 6.0 * env;
+        sigilMat.opacity = Math.min(1, sigilMat.opacity + 0.6 * env);
+        circleMat.opacity = Math.min(1, circleMat.opacity + 0.45 * env);
+        if (flareT >= FLARE_DUR_S) flareT = -1;
+      }
     },
     destroyed: false,
     onDestroy() {
@@ -276,8 +294,13 @@ export function spawnChallengeOffering(
     // Drop the room mood back to its baked palette — the dungeon's normal
     // warmth returns as the dark releases.
     setRoomMood(roomId, null, 2.0);
+    // The finish beat — a bloom of the altar (flareT) under a resolving bell
+    // that bookends the start toll, a thud, and a kick. The room torches flare
+    // on this same event (arena-light-arc), so the whole arena punches bright.
+    flareT = 0;
+    playRitualBell(interactable.position);
     playImpact(interactable.position);
-    kickShake(0.08, 0.2);
+    kickShake(0.12, 0.28);
     showInWorldMessage('The dark was fed. The altar holds.');
     // The hoard was pre-rolled + DISPLAYED at spawn — the floating
     // prize comes down off its pedestal and lands as pickups.
