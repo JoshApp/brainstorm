@@ -28,6 +28,13 @@ import { playWhoosh } from '../audio/sfx';
 let cooldownUntil = 0;
 let lastStumbleAt = -Infinity;
 let windedUntil = 0;
+// The active dodge window (≈ the i-frame span). Lets the player-action FSM
+// report 'dodging' as a real state with a duration, instead of inferring it
+// from the invuln flag (which entry-grace + parry also set).
+let dodgeActiveUntil = 0;
+
+/** True while a dodge is mid-roll (its i-frame window). The FSM's 'dodging'. */
+export function isDodging(): boolean { return performance.now() < dodgeActiveUntil; }
 
 /** Fire a dash in WORLD direction (dirX, dirZ) — normalised internally. Always
  *  fires (returns true) given a direction; an empty bar yields a weaker stumble.
@@ -46,6 +53,7 @@ export function tryDash(dirX: number, dirZ: number): boolean {
   const iframes = CONFIG.STAMINA.DASH_IFRAME_S * (full ? 1 : CONFIG.STAMINA.DASH_STUMBLE_IFRAME_MUL);
   applyPlayerKnockback(dirX, dirZ, speed);
   setPlayerInvulnerable(iframes);
+  dodgeActiveUntil = performance.now() + iframes * 1000;
   // Mark the dodge so a hit negated in the next sliver counts as a just-dodge.
   noteDashStarted();
   // Post-dodge cooldown — longer when this was a gassed stumble (over-extending
@@ -87,4 +95,5 @@ export function resetDashCooldown(): void {
   cooldownUntil = 0;
   lastStumbleAt = -Infinity;
   windedUntil = 0;
+  dodgeActiveUntil = 0;
 }

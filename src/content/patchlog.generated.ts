@@ -8,6 +8,30 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-14",
     "entries": [
       {
+        "tag": "add",
+        "text": "Catch the blow on your blade and the dungeon flinches. Your next swing remembers the insult.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Sit at any fire. The dungeon weighs what you've become and lets you spend it. Mind the warmth.",
+        "area": [
+          "ui",
+          "level",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The Boiling King's swallowed core sits where its body actually is now. Aim true.",
+        "area": [
+          "content",
+          "combat"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "Parrying no longer stops time permanently. Only for the recommended three-quarters of a second.",
         "area": [
@@ -403,29 +427,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The dead stop following you downstairs.",
-        "area": [
-          "combat",
-          "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Blood stays where it landed now. The floors of busy rooms keep the receipts.",
-        "area": [
-          "atmosphere",
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The pickup outline speaks up.",
-        "area": [
-          "ui"
         ]
       }
     ]

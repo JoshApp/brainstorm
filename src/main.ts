@@ -17,8 +17,11 @@ import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
 import {
-  tickBulletTime, getWorldTimeScale, triggerParry, deflectOpportunityActive,
+  tickBulletTime, getWorldTimeScale, triggerParry, deflectOpportunityActive, isParryActive,
 } from './combat/reactive-defense';
+import { isDodging } from './combat/dash';
+import { isDashLocked } from './combat/swing-agency';
+import { bindPlayerActionSources } from './combat/player-action';
 import { tickBossSlowmo, getBossSlowmoTimeScale } from './combat/boss-slowmo';
 import { setupBossCinematics } from './mobs/boss-cinematics';
 import { initWeaponDrop, dropHeldItem } from './player/weapon-drop';
@@ -535,6 +538,17 @@ const combat = createCombatSystem(
   () => currentLevel.destructibles ?? [],
   () => currentLevel?.walkable,
 );
+
+// Player-action FSM — the single derived view + lockout gate. Bound to the
+// live state sources here; consumers (input gates, HUD, parry-as-state in
+// Phase 2) read getPlayerAction()/canStartAction(). Phase 1 is read-only.
+bindPlayerActionSources({
+  isSwinging: () => weapon.isSwinging,
+  swingPhase: () => weapon.getPhase(),
+  isDodging,
+  parryActive: isParryActive,
+  dashLocked: isDashLocked,
+});
 
 // --- Player death wiring ---
 onPlayerDeath(() => triggerDeath());
