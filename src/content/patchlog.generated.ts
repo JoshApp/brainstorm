@@ -9,10 +9,25 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Bleed and venom no longer gut you in seconds — the rot wears you down now instead of dropping you from a single bite.",
+        "area": [
+          "combat",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Damage marks hang in the air where the blow landed now — turn away and they keep their place, not yours.",
         "area": [
           "combat",
           "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "The skirmisher levels its blade at you instead of letting it dangle off its arm like a spare bone.",
+        "area": [
+          "content"
         ]
       },
       {
@@ -383,22 +398,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "fix",
         "text": "The doors behind you exist on every floor now, not only in the rehearsal room. Turn around and check.",
-        "area": [
-          "atmosphere",
-          "level"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Blood stays on the wall that earned it. The far walls are no longer haunted.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Turn around at any fire. The doors you came through are behind you, closed. They were always going to be.",
         "area": [
           "atmosphere",
           "level"
