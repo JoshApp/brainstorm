@@ -33,6 +33,7 @@ import { clearDustPuff } from '../effects/dust-puff';
 import { clearParrySpark } from '../effects/parry-spark';
 import { clearArenaLightArc } from '../feedback/arena-light-arc';
 import { getActiveLevel, setActiveLevel } from './active-level';
+import { tagPerfEvent } from '../debug/perf-recorder';
 import { clearAllOutlines } from '../interactables/outline';
 import { resetDarkAdaptation } from '../scene/dark-adaptation';
 import { clearThresholdDrafts } from '../scene/threshold-draft';
@@ -200,6 +201,7 @@ export function tickPendingLoad() {
   resetDashCooldown();      // a fresh floor starts dodge-ready
   cancelFogWalkthrough();   // never carry a half-played gate walk into a new level
   // Build the new level into the same scene.
+  tagPerfEvent(`level-load:${id}`);   // perf timeline (no-op unless the dashcam rolls)
   const level = buildLevel(scene, spec, materials, (target) => loadLevel(target));
   setActiveLevel(level);
 

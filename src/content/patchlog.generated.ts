@@ -8,6 +8,13 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-15",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The challenge altar's prize sits over the stone now, not bobbing up by your eyes.",
+        "area": [
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "The dead murmur to you as you pass now; stop and search one and the stone gives up the whole of what it remembers.",
         "area": [
@@ -389,14 +396,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Combo finishers bite harder than the openers now — the blade's thrust and the hammer's fall land the heavy blow they always looked like.",
-        "area": [
-          "combat",
-          "weapons"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Heavy swings are reined into a forward arc now — a maul or scythe no longer windmills past your shoulders. Each weapon class keeps its own swing width.",
         "area": [
           "combat",
           "weapons"

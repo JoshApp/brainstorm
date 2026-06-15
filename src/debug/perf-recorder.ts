@@ -49,6 +49,9 @@ interface RecFrame {
    *  blit). Present only while per-pass GPU timing is armed — which the ring
    *  does itself on timer-query devices, where the spans are free. */
   gph?: number[];
+  /** Discrete events that fired THIS frame (spawn, death, level:N, …) via
+   *  tagPerfEvent — the "why" beside a spike. Omitted when nothing fired. */
+  ev?: string[];
 }
 
 export interface Recording {
@@ -76,6 +79,42 @@ const sysNames: string[] = [];
 let recording = false;
 let recordStartAbs = 0;
 let pendingLabel: string | undefined;
+
+// Discrete events tagged on the CURRENT frame (drained into the ring each frame).
+let pendingEvents: string[] = [];
+
+/** Tag a discrete event on the current frame (e.g. 'spawn:ghoul', 'death',
+ *  'level:3'). No-op unless the dashcam is rolling, so call sites pay nothing in
+ *  normal play. The analyzer correlates these with spikes — the "why". */
+export function tagPerfEvent(name: string): void {
+  if (!rolling || !name) return;
+  if (pendingEvents.length < 16) pendingEvents.push(name);
+}
+
+// Auto-spike "dashcam trigger": while rolling, a frame that blows past the
+// recent baseline auto-saves the window AROUND it (incl. ~1.2s of after-context)
+// — so spikes in motion record themselves without you hitting save. Cooled down
+// + capped so a bad stretch saves once and a session can't spam the disk.
+let autoCapture = true;
+let lastAutoSpikeAt = -Infinity;
+let autoSpikeCount = 0;
+const SPIKE_ABS_MS = 45;        // ignore anything under this (sub-22fps frame)
+const SPIKE_MUL = 2.2;          // ...AND must be this × the recent median
+const SPIKE_COOLDOWN_MS = 5000;
+const SPIKE_POST_MS = 1200;     // delay the save so after-context lands in the window
+const SPIKE_WINDOW_S = 4;
+const MAX_AUTO_CAPTURES = 16;
+
+export function setAutoCapture(on: boolean): void { autoCapture = on; }
+
+/** Median frame dt over the recent ring tail — the baseline a spike must beat.
+ *  Only called when a frame already exceeded SPIKE_ABS_MS, so the sort is rare. */
+function recentMedianDt(): number {
+  const n = Math.min(ring.length, 90);
+  if (n < 20) return TARGET_MS;
+  const recent = ring.slice(ring.length - n).map((f) => f.dt).sort((a, b) => a - b);
+  return recent[Math.floor(n / 2)];
+}
 
 const gphIndex = new Map<string, number>();
 const gphNames: string[] = [];
@@ -113,6 +152,8 @@ function snapshotSys(systems: Map<string, number>): number[] {
 
 function onRingFrame(s: FrameSample): void {
   const now = performance.now();
+  const ev = pendingEvents.length ? pendingEvents.slice() : undefined;
+  pendingEvents.length = 0;
   ring.push({
     t: now,
     dt: r2(s.dt),
@@ -127,11 +168,24 @@ function onRingFrame(s: FrameSample): void {
     prog: s.programs,
     sys: snapshotSys(s.systems),
     gph: s.gpuPhases ? snapshotGph(s.gpuPhases) : undefined,
+    ev,
   });
   const cutoff = now - RING_CAP_MS;
   while (ring.length && ring[0].t < cutoff) ring.shift();
   // Cap an explicit recording at the ring length so it can't outrun the buffer.
   if (recording && now - recordStartAbs >= RING_CAP_MS) void stopRecording();
+
+  // AUTO-SPIKE: a frame well past the recent baseline records its own window.
+  if (autoCapture && !recording && autoSpikeCount < MAX_AUTO_CAPTURES
+      && s.dt > SPIKE_ABS_MS && now - lastAutoSpikeAt > SPIKE_COOLDOWN_MS
+      && s.dt > recentMedianDt() * SPIKE_MUL) {
+    lastAutoSpikeAt = now;
+    autoSpikeCount++;
+    const tag = ev?.length ? ' · ' + ev.join(',') : '';
+    const label = `spike ${Math.round(s.dt)}ms${tag}`;
+    // Delay so the window captures ~1.2s of AFTER-context, not just the lead-up.
+    window.setTimeout(() => { void saveLastSeconds(SPIKE_WINDOW_S, label); }, SPIKE_POST_MS);
+  }
 }
 
 /** Turn the dashcam ring on/off. Driven by the PROFILER TOOLS setting. */
@@ -144,6 +198,9 @@ export function setRollingEnabled(on: boolean): void {
     sysNames.length = 0;
     gphIndex.clear();
     gphNames.length = 0;
+    pendingEvents.length = 0;
+    lastAutoSpikeAt = -Infinity;
+    autoSpikeCount = 0;
     addFrameListener(onRingFrame);
     // On timer-query devices per-pass GPU spans are passive and free — arm
     // them whenever the ring rolls, so every recording (incl. the dashcam)

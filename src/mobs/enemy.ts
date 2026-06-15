@@ -48,6 +48,7 @@ import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
 import { tryJustDodge } from '../combat/just-dodge';
 import { arenaEnemiesInvincible } from '../debug/arena-mode';
+import { tagPerfEvent } from '../debug/perf-recorder';
 import { Animator } from '../anim/animator';
 import { type BuiltModel } from '../ecs/build-model';
 import { buildCreature } from '../content/build-creature';
@@ -287,6 +288,7 @@ export function createEnemy(
    *  + AI + idle animation until the boss-engagement flag flips. */
   options?: { dormant?: boolean },
 ): Enemy {
+  tagPerfEvent(`spawn:${spec.id}`);   // perf timeline (no-op unless the dashcam rolls)
   // Container: world position + yaw to face player.
   const container = new THREE.Group();
   container.position.copy(position);
@@ -1084,6 +1086,7 @@ export function createEnemy(
       // children appear in the same frame's enemy list. Pass a CLONE
       // of the death position because the builder may need it after
       // we've moved on (and clone is cheap).
+      tagPerfEvent('death');   // perf timeline (no-op unless the dashcam rolls)
       if (onDeath) onDeath(spec, container.position.clone(), entityId);
       // Start the death animation. Essence emits CONTINUOUSLY during
       // the dissolve — see tickDying. Gold coins drop now as physical
