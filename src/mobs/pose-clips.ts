@@ -83,7 +83,16 @@ export const TELEGRAPH_POSES: Record<TelegraphStyle, TelegraphPose> = {
  *  the ability and the same snap reads as a big committed swing. */
 export function poseValue(p: Phased, phase: 'windup' | 'strike' | 'recover', t: number): number {
   if (phase === 'windup') return p.windup * ease('easeOutCubic', t);
-  if (phase === 'strike') return p.strike;
+  if (phase === 'strike') {
+    // SWING TRAVEL — the limb drives from the held wound pose (p.windup) to the
+    // struck pose (p.strike) over the first CONTACT_FRAC of the strike, easing
+    // IN (accelerates into the blow), then holds struck for the rest. Replaces
+    // the old 1-frame teleport, so the hit reads as a swing that ARRIVES — and
+    // the damage frame (enemy.ts, same frac) lands when the blade gets there.
+    const frac = CONFIG.MOB_STRIKE_CONTACT_FRAC;
+    const k = frac > 0 ? Math.min(1, t / frac) : 1;
+    return p.windup + (p.strike - p.windup) * ease('easeInCubic', k);
+  }
   return p.strike * ease('easeOutQuad', 1 - t);
 }
 
@@ -98,6 +107,7 @@ import * as THREE from 'three';
 import type { BuiltModel } from '../ecs/build-model';
 import type { EnemySpec } from '../content/enemies';
 import { ease } from '../anim/easing';
+import { CONFIG } from '../config';
 
 export interface TelegraphNodes {
   /** Body part pitched on windup/strike (rotation.x). spec.tiltPartName. */

@@ -2394,6 +2394,13 @@ export function createEnemy(
           if (stepDone[i]) continue;
           if (!stepStarted[i]) {
             if (!triggerMet(steps[i].trigger, phaseTimer)) continue;
+            // MELEE CONTACT timing — a melee blow lands when the swing reaches
+            // the struck pose (CONTACT_FRAC into the strike), not on strike-frame
+            // 0. This is what connects the damage to the visible swing and lets a
+            // dodge read against the swing, not the windup. Other action kinds
+            // (projectile / aoe / dash / leap) fire on their authored `at`.
+            if (steps[i].action.kind === 'melee'
+                && phaseTimer < currentAbility.strike * CONFIG.MOB_STRIKE_CONTACT_FRAC) continue;
             stepStarted[i] = true;
           }
           const done = runAction(steps[i].action, currentAbility, steps[i].id, playerPos, distance, dt, walkable, nav);
@@ -2405,7 +2412,8 @@ export function createEnemy(
           if (!currentAbility) break;
         }
         if (!currentAbility) break;
-        applyTelegraph(currentAbility.pose, 'strike', 1);
+        applyTelegraph(currentAbility.pose, 'strike',
+          currentAbility.strike > 0 ? Math.min(1, phaseTimer / currentAbility.strike) : 1);
         if (lashTendril) lashTendril.snap();            // tentacle snaps out + flares on the strike
         if (phaseTimer >= currentAbility.strike) {
           state = 'recovering';

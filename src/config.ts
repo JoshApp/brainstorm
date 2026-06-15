@@ -177,6 +177,14 @@ export const CONFIG = {
   // where your next landed hit punishes harder AND cracks poise harder (feeding
   // the future stagger→execute loop), and a stamina kickback so a clean dodge
   // fuels the counter — aggression-as-defense, the combat identity in one beat.
+  // Fraction of a melee STRIKE phase at which the swing visually CONTACTS — the
+  // arm travels cocked→struck over [0, frac] (see pose-clips poseValue) and the
+  // blow lands at `frac` (enemy.ts), so damage connects WHEN THE BLADE ARRIVES,
+  // not on strike-frame 0. Fixes the animation/damage disconnect (the strike was
+  // a 1-frame teleport that dealt damage before any visible swing) and lets a
+  // just-dodge read against the swing instead of only the windup.
+  MOB_STRIKE_CONTACT_FRAC: 0.6,
+
   JUST_DODGE: {
     PERFECT_WINDOW_S: 0.30,    // roll-to-strike-connect gap that counts as a perfect read. Set EQUAL
                                //   to DASH_IFRAME_S (0.30): any roll that survives the blow on its
