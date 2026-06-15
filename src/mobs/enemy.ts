@@ -1725,6 +1725,20 @@ export function createEnemy(
     spawnShatterBurst(scene as THREE.Object3D, cx, container.position.y + 0.3, cz, true, debrisTint);
   }
 
+  // Pick a random emit point across the body volume (a cylinder ~the mob's
+  // collision radius, full body height) for an essence mote — so the XP lifts
+  // off the WHOLE corpse + where its limbs scattered, not just its centreline.
+  function setEssenceOrigin(): void {
+    const ang = Math.random() * Math.PI * 2;
+    const rad = spec.collisionRadius * 1.05 * Math.sqrt(Math.random());
+    const h = Math.max(0.6, essenceRigY * 1.25);
+    tmpEssenceOrigin.set(
+      container.position.x + Math.cos(ang) * rad,
+      container.position.y + 0.1 + Math.random() * h,
+      container.position.z + Math.sin(ang) * rad,
+    );
+  }
+
   function tickDying(dt: number) {
     deathTimer += dt;
     const dur = deathStyle === 'collapse' ? COLLAPSE_DURATION
@@ -1790,17 +1804,15 @@ export function createEnemy(
     // Halo opacity fades alongside.
     eyePresenter.setHaloOpacity(Math.max(0, 1 - t));
 
-    // Essence emission — spawn XP motes incrementally during the
-    // dissolve so the body visibly becomes essence flowing into the
-    // player. Origin tracks the dissolve "front" (rises with t) so
-    // motes appear from the still-visible portion of the body.
+    // Essence emission — spawn XP motes incrementally during the dissolve so
+    // the body visibly becomes essence flowing into the player. Each mote lifts
+    // from a RANDOM point across the whole body volume (and where the limbs
+    // scattered), so it reads as the entire corpse coming apart into essence,
+    // not a single column rising from its centre.
     if (essenceTotal > 0) {
       const target = Math.floor(dissolveT * essenceTotal);
-      const dissolveFrontY = container.position.y + essenceRigY * (0.4 + (1 - dissolveT) * 0.8);
       while (essenceSpawned < target && essenceSpawned < essenceTotal) {
-        const ox = container.position.x;
-        const oz = container.position.z;
-        tmpEssenceOrigin.set(ox, dissolveFrontY, oz);
+        setEssenceOrigin();
         spawnXpWisps(scene as THREE.Object3D, tmpEssenceOrigin, 1);
         essenceSpawned++;
       }
@@ -1811,11 +1823,7 @@ export function createEnemy(
       // (e.g. essenceTotal=5 but we only spawned 4 because t hit 1.0
       // exactly on the same frame).
       while (essenceSpawned < essenceTotal) {
-        tmpEssenceOrigin.set(
-          container.position.x,
-          container.position.y + essenceRigY * 0.4,
-          container.position.z,
-        );
+        setEssenceOrigin();
         spawnXpWisps(scene as THREE.Object3D, tmpEssenceOrigin, 1);
         essenceSpawned++;
       }

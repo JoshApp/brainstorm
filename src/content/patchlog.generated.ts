@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The dead glow hot as they come apart now — even the black-skinned ones smolder instead of just blinking out.",
+        "area": [
+          "atmosphere",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The dead smolder to ash now — coal-orange edges guttering as they crumble, where before they just blackened and were gone.",
         "area": [
           "atmosphere",
@@ -390,14 +398,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "ui"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "Parries now carry the weapon's character — a maul's catch staggers like a wall, and a stained blade opens a bleed when you turn a strike. Each weapon answers a parry its own way.",
-        "area": [
-          "combat",
-          "content"
         ]
       }
     ]
