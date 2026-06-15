@@ -17,6 +17,7 @@
     "preview": "vite preview --host",
     "snap": "tsx scripts/snap.ts",
     "bench": "tsx scripts/bench.ts",
+    "balance": "tsx scripts/balance.ts",
     "perf": "tsx scripts/perf.ts",
     "perf:ab": "tsx scripts/perf-ab.ts",
     "alloc-profile": "tsx scripts/alloc-profile.ts",

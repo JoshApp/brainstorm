@@ -110,9 +110,11 @@ export interface HurtZoneSpec {
   openWhenStaggered?: boolean;
 }
 
-const ROLE_DEFAULT_MUL: Record<ZoneRole, number> = { body: 1, head: 1.2, weak: 1.4, armor: 0.25 };
+// Exported so the balance report (scripts/balance.ts) reads the LIVE zone
+// numbers instead of duplicating them.
+export const ROLE_DEFAULT_MUL: Record<ZoneRole, number> = { body: 1, head: 1.2, weak: 1.4, armor: 0.25 };
 const ROLE_DEFAULT_PRIORITY: Record<ZoneRole, number> = { body: 0, head: 10, weak: 20, armor: 5 };
-const ROLE_DEFAULT_CRITBONUS: Record<ZoneRole, number> = { body: 0, head: 0.25, weak: 0, armor: 0 };
+export const ROLE_DEFAULT_CRITBONUS: Record<ZoneRole, number> = { body: 0, head: 0.25, weak: 0, armor: 0 };
 
 /** Merge spec-declared zones into a derived hurtbox: same id replaces, new id
  *  appends. Resolves `follow` part names against the built model. */
