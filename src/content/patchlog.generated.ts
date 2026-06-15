@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Put it through the skull and it tells. Headshots bite far harder now — the body is for those who can't aim.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The scrawls on the walls are real runes now — carved, varied, dim as old blood — and the dead drop what they carried where you can actually reach it.",
         "area": [
           "atmosphere",
@@ -392,13 +399,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "weapons"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A staggered foe no longer pops on the first tap — flurry it open with light blows, then bring a charged heavy down to finish.",
-        "area": [
-          "combat"
         ]
       }
     ]

@@ -110,14 +110,9 @@ export interface HurtZoneSpec {
   openWhenStaggered?: boolean;
 }
 
-// Head hits HARD now (was 1.2 / +0.25) — with dedicated headshot zones, aiming
-// for the skull should clearly out-damage spraying the body. It's a SKILL reward,
-// so only the head zone moves; body/weak/armor + enemy HP are untouched. (weak
-// points still beat heads on average via their FORCED crit, so the hierarchy
-// armor < body < head < weak holds.)
-const ROLE_DEFAULT_MUL: Record<ZoneRole, number> = { body: 1, head: 1.5, weak: 1.4, armor: 0.25 };
+const ROLE_DEFAULT_MUL: Record<ZoneRole, number> = { body: 1, head: 1.2, weak: 1.4, armor: 0.25 };
 const ROLE_DEFAULT_PRIORITY: Record<ZoneRole, number> = { body: 0, head: 10, weak: 20, armor: 5 };
-const ROLE_DEFAULT_CRITBONUS: Record<ZoneRole, number> = { body: 0, head: 0.35, weak: 0, armor: 0 };
+const ROLE_DEFAULT_CRITBONUS: Record<ZoneRole, number> = { body: 0, head: 0.25, weak: 0, armor: 0 };
 
 /** Merge spec-declared zones into a derived hurtbox: same id replaces, new id
  *  appends. Resolves `follow` part names against the built model. */
