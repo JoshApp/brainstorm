@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The scrawls on the walls are real runes now — carved, varied, dim as old blood — and the dead drop what they carried where you can actually reach it.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The fallen sit taller against the stone now, bare bone where their boots rotted off — and their scrawls hold a breath after your eyes leave them.",
         "area": [
           "atmosphere",
@@ -389,13 +397,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "A staggered foe no longer pops on the first tap — flurry it open with light blows, then bring a charged heavy down to finish.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The perfect-dodge window opens back up — roll through a blow and the world rewards the read, no frame-perfect timing demanded.",
         "area": [
           "combat"
         ]
