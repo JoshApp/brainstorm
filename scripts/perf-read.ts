@@ -26,7 +26,7 @@ interface RecFrame {
 }
 interface Recording {
   meta: { startedAt: string; durationMs: number; frameCount: number; targetMs: number;
-    gpuSupported: boolean; ua: string; dpr: number; viewport: [number, number]; label?: string };
+    gpuSupported: boolean; ua: string; dpr: number; viewport: [number, number]; renderScale?: number; label?: string };
   systemNames: string[]; gpuPhaseNames?: string[]; frames: RecFrame[];
 }
 
@@ -72,7 +72,10 @@ const gphNames = rec.gpuPhaseNames ?? [];
 
 console.log(`\n══════════  ${id}  ══════════`);
 console.log(`${rec.meta.label ?? '(no label)'}  ·  ${F.length} frames · ${r1(rec.meta.durationMs / 1000)}s`);
-console.log(`device: dpr ${rec.meta.dpr} · ${rec.meta.viewport[0]}×${rec.meta.viewport[1]} · gpu-timing ${rec.meta.gpuSupported ? 'yes' : 'NO (cpu only)'}`);
+const rs = rec.meta.renderScale ?? 1;
+const fillW = Math.round(rec.meta.viewport[0] * rec.meta.dpr * rs);
+const fillH = Math.round(rec.meta.viewport[1] * rec.meta.dpr * rs);
+console.log(`device: dpr ${rec.meta.dpr} · ${rec.meta.viewport[0]}×${rec.meta.viewport[1]} · render-scale ${rs} → ~${fillW}×${fillH} fill px · gpu-timing ${rec.meta.gpuSupported ? 'yes' : 'NO (cpu only)'}`);
 console.log(rec.meta.ua.replace(/^Mozilla\/5\.0 /, '').slice(0, 80));
 if (!F.length) { console.log('\n(empty recording)'); process.exit(0); }
 

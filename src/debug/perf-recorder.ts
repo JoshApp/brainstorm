@@ -23,6 +23,7 @@
 // carries a little constant overhead while the tools are on — expected.
 
 import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, setGpuPassTiming, type FrameSample } from './frame-timing';
+import { getSettings } from '../settings/settings';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
 const RING_CAP_MS = 60_000;           // keep the last 60s; also the explicit-record cap
@@ -64,6 +65,9 @@ export interface Recording {
     ua: string;
     dpr: number;
     viewport: [number, number];
+    /** Scene render scale (the PS1 low-res target fraction) — with dpr+viewport
+     *  this gives the true GPU fill resolution, the dominant mobile lever. */
+    renderScale?: number;
     label?: string;
   };
   systemNames: string[];
@@ -274,6 +278,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       ua: navigator.userAgent,
       dpr: window.devicePixelRatio,
       viewport: [window.innerWidth, window.innerHeight],
+      renderScale: getSettings().renderScale,
       label,
     },
     systemNames: sysNames.slice(),
