@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The way down from a boss now waits across the room, not at your shoulder by the mist — you earn the stairs.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The challenge altar's prize sits over the stone now, not bobbing up by your eyes.",
         "area": [
           "atmosphere"
@@ -391,14 +398,6 @@ export const GENERATED_PATCHLOG = [
           "ui",
           "content",
           "level"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Combo finishers bite harder than the openers now — the blade's thrust and the hammer's fall land the heavy blow they always looked like.",
-        "area": [
-          "combat",
-          "weapons"
         ]
       }
     ]

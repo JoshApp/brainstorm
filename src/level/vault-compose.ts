@@ -333,6 +333,13 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   // Carve pass — runs first; voids become forbidden cells for the
   // light/decor passes that follow.
   const carveOccupiedPrev = new Set<string>(Object.keys(vault.cellProps ?? {}));
+  // Mirror the composer: reserve rolled spawns + interactable features so the
+  // preview carve matches the in-game carve (no chasm under a previewed altar).
+  for (const cs of cellSpawns) carveOccupiedPrev.add(`${cs.col},${cs.row}`);
+  for (const cf of cellFeatures) {
+    carveOccupiedPrev.add(`${cf.col},${cf.row}`);
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) carveOccupiedPrev.add(`${cf.col + dc},${cf.row + dr}`);
+  }
   const procPreviewVoids = carvePass(vault, resolvedPalette, carveOccupiedPrev, rand);
   const carvedCellsPrev = voidCellsCovered(procPreviewVoids, Wprev, Dprev);
   // Lighting pass — author lights + carved voids excluded.
@@ -750,6 +757,19 @@ export function composeFloor(
     // post-carve walkable region and skip cells the holes occupy.
     const carveOccupied = new Set<string>();
     for (const key of Object.keys(pv.vault.cellProps ?? {})) carveOccupied.add(key);
+    // RESERVE the dynamically-placed high-value cells too, not just authored
+    // cellProps — otherwise the carve happily drops a chasm under a rolled altar
+    // / chest / fountain or an enemy spawn (a mob in a pit). Spawns reserve their
+    // own cell; interactable FEATURES also reserve the 4 neighbours so the
+    // player keeps a walkable approach to them.
+    for (const cs of cellSpawns) carveOccupied.add(`${cs.col},${cs.row}`);
+    for (const cf of cellFeatures) {
+      carveOccupied.add(`${cf.col},${cf.row}`);
+      carveOccupied.add(`${cf.col + 1},${cf.row}`);
+      carveOccupied.add(`${cf.col - 1},${cf.row}`);
+      carveOccupied.add(`${cf.col},${cf.row + 1}`);
+      carveOccupied.add(`${cf.col},${cf.row - 1}`);
+    }
     const procVoids = carvePass(pv.vault, resolvedPalette, carveOccupied, rand);
     const W = pv.vault.map[0]?.length ?? 0;
     const D = pv.vault.map.length;
