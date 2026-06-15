@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getTexture } from '../style/procedural-textures';
 import { grantXp } from '../state/run-state';
 import { emit } from '../broadcast/event-bus';
+import { registerWarmup } from '../content/warmup-registry';
 
 // XP "essence" — pale cool motes that drift from a dissolving mob's
 // body straight into the player. Replaces the earlier bright orb burst
@@ -133,3 +134,12 @@ export function clearXpWisps(): void {
   for (const w of wisps) w.sprite.parent?.remove(w.sprite);
   wisps.length = 0;
 }
+
+// Boot-warmup: essence motes spawn on every kill. Self-register so the sprite
+// program is hot at boot. See content/warmup-registry.ts.
+const WARMUP_ORIGIN = new THREE.Vector3(0, 0.5, 0);
+registerWarmup({
+  label: 'xp-wisps',
+  spawn: (scene) => spawnXpWisps(scene, WARMUP_ORIGIN, 4),
+  clear: clearXpWisps,
+});

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getTexture } from '../style/procedural-textures';
+import { registerWarmup } from '../content/warmup-registry';
 
 // Shatter burst — physics-y debris pop fired when a
 // destructible (vases first; future jars, crates, bones) is
@@ -244,3 +245,12 @@ export function clearShatterBurst(): void {
   }
   puffs.length = 0;
 }
+
+// Boot-warmup: shards are a flatShading + transparent MeshStandardMaterial; the
+// first crumbling skeleton compiled that variant mid-death. Self-register so the
+// program is hot at boot. See content/warmup-registry.ts.
+registerWarmup({
+  label: 'shatter-burst',
+  spawn: (scene) => spawnShatterBurst(scene, 0, 0.5, 0, false, 0xb0a890),
+  clear: clearShatterBurst,
+});

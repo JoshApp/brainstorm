@@ -5,6 +5,7 @@ import { buildModel } from '../ecs/build-model';
 import { buildCreature } from './build-creature';
 import { getItemThumbnail } from '../ui/item-thumbnail';
 import { getTexture } from '../style/procedural-textures';
+import { getWarmupHooks } from './warmup-registry';
 
 // Pre-warm caches and JIT paths so the first kill/drop/pickup doesn't hitch.
 //
@@ -87,6 +88,16 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
     models.push(group);
   }
 
+  // Self-registered effect warmups — gold coins, shatter debris, essence wisps,
+  // and anything else that dropped a registerWarmup() next to its spawn/clear.
+  // Each adds a representative instance to the scratch scene so its material
+  // program compiles in the one render below, instead of hitching on the first
+  // kill/proc mid-fight. The matching clear() runs after the render to empty the
+  // pools again (a warmup instance must never tick in real gameplay).
+  // See content/warmup-registry.ts.
+  const warmupHooks = getWarmupHooks();
+  for (const hook of warmupHooks) hook.spawn(scratch);
+
   // One render — primes shader compile for every material that just got added,
   // INCLUDING the shadow depth pass (shadowMap on + a caster + a receiver).
   // WebGL compiles a program the moment a material is rendered, regardless of
@@ -111,6 +122,11 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
   floor.geometry.dispose();
   (floor.material as THREE.Material).dispose();
   warmSprite.material.dispose();   // texture stays cached in procedural-textures
+
+  // Empty the effect pools the warmup hooks filled — the programs are now
+  // compiled (cached in WebGL + the effects' module-level material caches);
+  // the JS instances are no longer needed and must not tick during gameplay.
+  for (const hook of warmupHooks) hook.clear();
 
   // Dispose — the geometries/materials live in WebGL forever via the program
   // cache; we just don't need the JS Object3Ds anymore.

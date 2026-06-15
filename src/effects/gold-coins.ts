@@ -4,6 +4,11 @@ import { getTexture } from '../style/procedural-textures';
 import { grantGold } from '../state/run-state';
 import { emit } from '../broadcast/event-bus';
 import type { WalkableRegion } from '../level/walkable';
+import { registerWarmup } from '../content/warmup-registry';
+
+// Reused spawn point for the boot warmup (a Vector3 alloc at module scope, not
+// per-call). Half a metre up so it reads like a real drop in the scratch scene.
+const WARMUP_ORIGIN = new THREE.Vector3(0, 0.5, 0);
 
 // Gold coins — chunky floor pickups, survivor-game style. Each mob drops
 // at most THREE coins; the kill's total gold is bundled into them so the
@@ -259,3 +264,13 @@ export function clearGoldCoins(): void {
   }
   coins.length = 0;
 }
+
+// Boot-warmup: the coin disc is a flatShading MeshStandardMaterial with no map
+// — a program variant nothing else in the warmup render covers, so without this
+// the FIRST kill (every kill drops gold) compiled it mid-death. Self-register
+// so it's warmed at boot. See content/warmup-registry.ts.
+registerWarmup({
+  label: 'gold-coins',
+  spawn: (scene) => spawnGoldCoins(scene, WARMUP_ORIGIN, MAX_GOLD_PER_COIN),
+  clear: clearGoldCoins,
+});
