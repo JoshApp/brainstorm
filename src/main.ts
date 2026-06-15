@@ -31,7 +31,7 @@ import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { initRewardAudio } from './audio/reward-audio';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setMasterBrightness, setWickLift } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setMasterBrightness, setWickLift, setOverdrawMode } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
@@ -1326,6 +1326,7 @@ initDarkAdaptReadout();
 initBossEncounterReadout();
 setDarkAdaptReadoutVisible(getSettings().debugEyeAdapt);
 setBossEncounterReadoutVisible(getSettings().debugBossReadout);
+setOverdrawMode(getSettings().debugOverdraw);
 // React to the settings-menu toggle live (no reload needed to show/hide
 // the button). The URL flag forces it on regardless of the setting.
 onSettingsChanged((s) => {
@@ -1333,6 +1334,7 @@ onSettingsChanged((s) => {
   setDebugButton(urlForced || s.debugMode);
   setPerfOverlayVisible(s.perfMeter);
   setDarkAdaptReadoutVisible(s.debugEyeAdapt);
+  setOverdrawMode(s.debugOverdraw);
   setGoreDebugEnabled(s.debugGoreSplats);
   setBossEncounterReadoutVisible(s.debugBossReadout);
   // Profiler tools — mount/unmount the on-screen toolbar (and tear the suite

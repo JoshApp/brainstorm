@@ -27,6 +27,32 @@ let ps1Scale = PS1_SCALE_DEFAULT;
 
 let lowResTarget: THREE.WebGLRenderTarget | null = null;
 let blitScene: THREE.Scene | null = null;
+
+// OVERDRAW HEATMAP — a DEV debug view of fill-rate, the #1 mobile-GPU cost no
+// other tool sees. When on, every mesh draws with one ADDITIVE warm material and
+// NO depth test, so overlapping geometry accumulates: dark = 1 layer, orange =
+// a few, white = heavy overdraw (overlapping walls, transparent fog planes,
+// stacked VFX meshes). It's an isolated early-return path in renderWithStyle —
+// it never touches the normal pipeline. (Caveat: THREE Sprites use a separate
+// draw path overrideMaterial doesn't catch, so additive sprite-VFX fill isn't
+// counted here — mesh overdraw is.)
+let overdrawMode = false;
+let overdrawMat: THREE.MeshBasicMaterial | null = null;
+export function setOverdrawMode(on: boolean): void { overdrawMode = on; }
+function getOverdrawMat(): THREE.MeshBasicMaterial {
+  if (!overdrawMat) {
+    overdrawMat = new THREE.MeshBasicMaterial({
+      // Warm per-layer add: 1×≈dim ember, ~3×≈orange, ~6×≈white — a natural heat ramp.
+      color: 0x33200d,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+      fog: false,
+    });
+  }
+  return overdrawMat;
+}
 // Shared scene for the single-call viewmodel depth pre-pass + its per-frame
 // scratch lists (module-level so the hot path allocates nothing).
 let prepassScene: THREE.Scene | null = null;
@@ -564,6 +590,20 @@ export function renderWithStyle(
   // the perf overlay / probe would only ever see the 1-draw blit quad. A no-op
   // cost when info isn't being read.
   renderer.info.reset();
+
+  // OVERDRAW DEBUG — isolated path: one additive, no-depth material on every
+  // mesh, straight to the screen on black. Brighter = more layers of fill.
+  // Returns before the normal low-res/bloom/blit pipeline runs (zero coupling).
+  if (overdrawMode) {
+    const prevOverride = scene.overrideMaterial;
+    scene.overrideMaterial = getOverdrawMat();
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(0x000000, 1);
+    renderer.clear();
+    renderer.render(scene, camera);
+    scene.overrideMaterial = prevOverride;
+    return;
+  }
 
   // Feed the camera's near/far so the blit can linearise depth for the crush.
   if (blitMaterial && (camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
