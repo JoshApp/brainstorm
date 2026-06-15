@@ -4,55 +4,24 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 10",
+    "date": "2026-06-15",
+    "entries": [
+      {
+        "tag": "add",
+        "text": "The dead scratched warnings into the walls and died with their hands full. Your lamp finds both, if you care to look. They did not.",
+        "area": [
+          "atmosphere",
+          "content",
+          "level"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 9",
     "date": "2026-06-14",
     "entries": [
-      {
-        "tag": "tune",
-        "text": "An arm, a leg, the skull — a clean killing cut takes whatever it lands on now, and the rest of the body goes down without it.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Skeletons don't fall — they come apart. Strike one down and it clatters into a heap of bone that scatters across the stone.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The title wears the dungeon's chisel marks now — DELVE carved into the same dark slab, the way down marked above it.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The slain sink into the stone now — the floor drinks them down as they dissolve, instead of blinking out where they fell.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The altars speak plainer now — a blood bargain glows violet and says OFFER, the offering hangs still and slow, and the prompt stops shoving the thing it's pointing at.",
-        "area": [
-          "ui",
-          "interactables"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The menus are carved from the same dark stone now — title, satchel, and settings all wear the dungeon's chisel marks.",
-        "area": [
-          "ui"
-        ]
-      },
       {
         "tag": "fix",
         "text": "The sickle is held by its handle now, not throttled at the throat. Small dignity for a small blade.",
@@ -387,6 +356,43 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "Best the altar's trial and it doesn't just stop — the stone flares white-hot and the bell tolls before the glow banks to embers. The dark, briefly, is impressed.",
+        "area": [
+          "atmosphere",
+          "level"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Face a blow to parry it — no catching what's at your back. The dead keep their eyes on you as they circle, but a swing, once thrown, can't chase your sidestep.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Ranged hits show their damage now — the dungeon no longer loses count past thirteen paces.",
+        "area": [
+          "combat",
+          "ui"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "Slip a blow now and the world truly crawls while you stay quick. The dead turn with weight, and a pack weaves around you instead of circling like clockwork.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
+        "text": "A clean dodge drops the world to a crawl now, you alone still quick. And a parry demands a free hand — mash it mid-swing and it answers with nothing.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "add",
+        "text": "Cross into an arena and the torches gutter, then flare up to watch you bleed — and sink back to embers, a little brighter than before, once it's over.",
         "area": [
           "atmosphere",
           "level"
