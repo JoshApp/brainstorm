@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { registerLight } from '../scene/light-pool';
+import { applyShadowRole } from '../scene/shadow-role';
 import { chainRun } from '../content/chain-links';
 import { buildRng } from '../engine/rng';
 
@@ -37,7 +38,6 @@ export function spawnChandelier(
   const ring = new THREE.Mesh(new THREE.TorusGeometry(RING_R, 0.034, 8, 20), iron);
   ring.rotation.x = Math.PI / 2;
   ring.position.set(x, ringY, z);
-  ring.castShadow = true;
   group.add(ring);
 
   // Candle stubs + flames around the rim.
@@ -69,6 +69,10 @@ export function spawnChandelier(
     group.add(chainRun(fromPt, toPt, iron, { sag: 0.02, spacing: 0.09 }));
   }
 
+  // Overhead in the hall — out of the shadow system entirely (its candles light
+  // the room; it needn't throw or catch a shadow, and it was a top caster in the
+  // boss hall that drove the framerate down). See scene/shadow-role.ts.
+  applyShadowRole(group, 'none');
   scene.add(group);
 
   // One central hung light — a wide warm pool from above. Flickers

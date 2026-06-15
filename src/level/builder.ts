@@ -35,6 +35,7 @@ import {
 } from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
 import { spawnFitting } from '../interactables/fitting';
+import { applyShadowRole } from '../scene/shadow-role';
 import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-waves';
 import { registerEncounter, activateEncounter, clearEncounters, onEncounterActivated, onEncounterComplete, roomClearEncounterId, type EncounterHandle } from '../encounters/registry';
 import { openingEndpoints } from './opening';
@@ -426,11 +427,13 @@ function buildRoomShell(
     const beamA = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.6, 0.1), materials.timber);
     beamA.position.set(bx + 0.25, elev + H - 0.55, bz - 0.1);
     beamA.rotation.set(0.18, 0.4, 0.5);
-    beamA.castShadow = true;
     const beamB = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 0.12), materials.timber);
     beamB.position.set(bx - 0.15, elev + H - 0.06, bz + 0.3);
     beamB.rotation.set(0, buildRng() * Math.PI, 0.07);
-    beamB.castShadow = true;
+    // Overhead breach timbers — structural shell, receive-only (don't flood the
+    // lamp cube map). See scene/shadow-role.ts.
+    applyShadowRole(beamA, 'receive');
+    applyShadowRole(beamB, 'receive');
     scene.add(beamA, beamB);
     // The fall: a rubble heap on the floor beneath, ankle-high, walkable.
     const rubbleMat = new THREE.MeshStandardMaterial({ color: 0x231f19, roughness: 1.0, flatShading: true });
@@ -443,11 +446,10 @@ function buildRoomShell(
       const rr = buildRng() * 0.8;
       chunk.position.set(bx + Math.cos(a) * rr, sz * 0.22, bz + Math.sin(a) * rr);
       chunk.rotation.y = buildRng() * Math.PI;
-      chunk.castShadow = true;
-      chunk.receiveShadow = true;
       heap.add(chunk);
     }
     heap.position.y = elev;
+    applyShadowRole(heap, 'receive');   // floor rubble — clutter, catches light, casts nothing
     scene.add(heap);
   }
   if (shaftRect) {
@@ -610,8 +612,7 @@ function buildRoomShell(
     if (frames) {
       const braces = new THREE.Mesh(frames.geo, materials.timber);
       braces.position.y = elev;
-      braces.castShadow = true;
-      braces.receiveShadow = true;
+      applyShadowRole(braces, 'receive');   // wall bracing = shell, receive-only
       braces.name = 'braces';
       braces.userData.dbgKind = 'wall';
       braces.userData.dbgSource = `braces · ${room.id}`;
@@ -1592,8 +1593,7 @@ export function buildLevel(
       for (const g of extraGeos) g.dispose();
       if (merged) {
         const mesh = new THREE.Mesh(merged, materials.wall);
-        mesh.receiveShadow = true;
-        mesh.castShadow = true;
+        applyShadowRole(mesh, 'receive');   // walls = shell, receive-only (was casting into the lamp cube map)
         mesh.name = 'extra-walls-merged';
         mesh.userData.dbgKind = 'wall';
         mesh.userData.dbgSource = 'extra-walls (merged)';

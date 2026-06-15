@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
+import { shadowFlags } from '../scene/shadow-role';
 import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
@@ -39,14 +40,6 @@ export interface BuiltModel {
 // makeMesh / buildCsg / decal call. A per-part castShadow/receiveShadow still
 // overrides it (`part.castShadow ?? curShadow.cast`).
 let curShadow: { cast: boolean; receive: boolean } = { cast: true, receive: true };
-function shadowFlags(role?: ShadowRole): { cast: boolean; receive: boolean } {
-  switch (role) {
-    case 'cast':    return { cast: true,  receive: false };
-    case 'receive': return { cast: false, receive: true };
-    case 'none':    return { cast: false, receive: false };
-    default:        return { cast: true,  receive: true };   // 'both' / undefined
-  }
-}
 
 // Render policy per prop class — the single table the `class` knob resolves
 // through. Casting is the expensive half (the lamp re-renders every caster into

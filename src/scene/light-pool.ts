@@ -118,11 +118,11 @@ function configureSlotShadow(light: THREE.PointLight): void {
   light.shadow.camera.near = 0.12;
   // Tight far plane = the light's actual reach. The lamp lights ~5.5m
   // (CONFIG.LAMP_DISTANCE); nothing past that is lit, so nothing past that
-  // can show a shadow. Was 16 — that rendered (and fill-tested) casters out
-  // to 16m for nothing. Tightening to 8m culls those casters from the shadow
-  // pass AND tightens the depth frustum, which is what lets the 256 map stay
-  // crisp. The single biggest lamp-shadow cost cut.
-  light.shadow.camera.far = 8;
+  // can show a shadow. 16 → 8 → 6: the shadow camera frustum-culls casters
+  // beyond `far`, so this IS the distance cull — at 6m only casters in (or just
+  // past) the lit pool render into the cube map; the 6-8m band cast shadows too
+  // dark to see anyway. Tightening also sharpens the 256 map's depth precision.
+  light.shadow.camera.far = 6;
 }
 
 /** One-time setup. Adds N PointLights per category to the scene. */

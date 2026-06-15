@@ -96,8 +96,7 @@ export function spawnStairs(
       PARAPET_HEIGHT / 2,
       totalDepth / 2,
     );
-    lip.receiveShadow = true;
-    lip.castShadow = true;
+    lip.receiveShadow = true;   // parapet = shell, receive-only (was casting)
     group.add(lip);
     outlineTargets.push(lip);
   }
@@ -108,8 +107,7 @@ export function spawnStairs(
     parapetMat,
   );
   farLip.position.set(0, PARAPET_HEIGHT / 2, totalDepth + 0.05);
-  farLip.receiveShadow = true;
-  farLip.castShadow = true;
+  farLip.receiveShadow = true;   // parapet = shell, receive-only (was casting)
   group.add(farLip);
   outlineTargets.push(farLip);
 

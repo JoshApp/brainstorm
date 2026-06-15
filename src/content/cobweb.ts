@@ -43,14 +43,15 @@ export const COBWEB_CORNER: ModelSpec = {
 export const COBWEB_BARRIER: ModelSpec = {
   id: 'cobweb-barrier',
   materials: {},
+  shadow: 'none',   // flat alpha-cut web quads — out of the shadow system
   parts: [
     // Layered curtain — three overlapping web quads at slightly
     // different scales/rolls so it reads as a dense, hand-strung wall
     // of web rather than one flat sheet. Centred ~1.2m up, spanning a
     // ~1.9m doorway. Faces the prop's local +Z; placement rotY aims it
     // across the passage.
-    { kind: 'decal', pos: [0, 1.2, 0],    rot: [0, 0, 0.0],   size: [2.0, 2.5], texture: 'cobweb', color: WEB_GREY, alphaTest: WEB_CUT, castShadow: true },
-    { kind: 'decal', pos: [-0.1, 1.1, 0.02], rot: [0, 0, 1.9], size: [1.7, 2.2], texture: 'cobweb', color: 0x8e949c, alphaTest: WEB_CUT, castShadow: true },
-    { kind: 'decal', pos: [0.12, 1.3, -0.02], rot: [0, 0, 3.6], size: [1.5, 2.0], texture: 'cobweb', color: 0x868c94, alphaTest: WEB_CUT, castShadow: true },
+    { kind: 'decal', pos: [0, 1.2, 0],    rot: [0, 0, 0.0],   size: [2.0, 2.5], texture: 'cobweb', color: WEB_GREY, alphaTest: WEB_CUT },
+    { kind: 'decal', pos: [-0.1, 1.1, 0.02], rot: [0, 0, 1.9], size: [1.7, 2.2], texture: 'cobweb', color: 0x8e949c, alphaTest: WEB_CUT },
+    { kind: 'decal', pos: [0.12, 1.3, -0.02], rot: [0, 0, 3.6], size: [1.5, 2.0], texture: 'cobweb', color: 0x868c94, alphaTest: WEB_CUT },
   ],
 };

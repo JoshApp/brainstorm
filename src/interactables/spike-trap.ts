@@ -92,7 +92,7 @@ export function spawnSpikeTrap(
         spikeMat,
       );
       spike.position.set(start + i * step, SPIKE_HIDDEN_Y, start + j * step);
-      spike.castShadow = true;
+      // Floor clutter — casts nothing into the lamp cube map (9 cones per trap).
       group.add(spike);
       spikes.push(spike);
     }
