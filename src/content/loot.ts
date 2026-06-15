@@ -105,6 +105,15 @@ export interface LootContext {
   depth: number;
   /** Source richness: 0 basic, ~2 mid chest/elite, ~4 boss chest/kill. */
   bias?: number;
+  /**
+   * Rarity FLOOR — the rolled tier is clamped UP to at least this. For a
+   * reward the player PAID for (a trial they fought, a boss they felled): a
+   * generous `bias` still lets the curve land on bone-and-rust ~half the time,
+   * which feels like a betrayal of the deal. A floor guarantees the reward
+   * respects the cost — "floor of solid, chance of great", never trash.
+   * Omit for an organic drop (chest/vase/kill) where mundane is fine texture.
+   */
+  minRarity?: Rarity;
 }
 
 /**
@@ -118,14 +127,25 @@ export function rollLoot(ctx: LootContext, rand: () => number): ItemSpec | null 
   const depth = ctx.depth;
   const idx = lootIndex();
   const rolled = rollRarity(depth, ctx.bias ?? 0, rand);
-  // Step DOWN from the rolled rarity until a band has an eligible item.
-  const start = RARITY_ORDER.indexOf(rolled);
-  for (let i = start; i >= 0; i--) {
+  // A rarity FLOOR clamps the rolled tier up (a paid-for reward never drops to
+  // bone-and-rust). The downward step then bottoms out AT the floor, not at
+  // mundane, so the guarantee actually holds.
+  const floorIdx = ctx.minRarity ? RARITY_ORDER.indexOf(ctx.minRarity) : 0;
+  const start = Math.max(RARITY_ORDER.indexOf(rolled), floorIdx);
+  // Step DOWN from the (floored) rolled rarity to the floor.
+  for (let i = start; i >= floorIdx; i--) {
     const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand);
     if (item) return item;
   }
-  // Last resort: scan upward (covers a depth where only higher tiers exist).
+  // Nothing at/above the floor down to it — scan UPWARD (a depth where only
+  // richer tiers have eligible items).
   for (let i = start + 1; i < RARITY_ORDER.length; i++) {
+    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand);
+    if (item) return item;
+  }
+  // Last resort: a reward must materialise, so relax the floor and scan the
+  // remaining lower tiers rather than return null.
+  for (let i = floorIdx - 1; i >= 0; i--) {
     const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand);
     if (item) return item;
   }

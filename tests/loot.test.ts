@@ -107,6 +107,29 @@ test('rollLoot never returns null across the whole descent', () => {
   }
 });
 
+// ── Rarity FLOOR: a paid-for reward never drops below minRarity ──────────
+test('minRarity clamps every roll up to at least the floor', () => {
+  const rng = mulberry32(123);
+  const floorIdx = RARITY_ORDER.indexOf('rare');
+  // Depth 3 boss-bias with a rare floor — the curve would land mundane ~half
+  // the time without it; the floor must forbid anything below rare.
+  for (let i = 0; i < 30000; i++) {
+    const item = rollLoot({ depth: 3, bias: 4, minRarity: 'rare' }, rng);
+    assert.ok(item, 'a floored roll still always yields an item');
+    const rIdx = RARITY_ORDER.indexOf(item!.rarity ?? 'mundane');
+    assert.ok(rIdx >= floorIdx, `${item!.id} (${item!.rarity}) is below the rare floor`);
+  }
+});
+
+test('minRarity still respects minDepth gating (no early OP items)', () => {
+  const rng = mulberry32(321);
+  for (let i = 0; i < 30000; i++) {
+    const item = rollLoot({ depth: 2, bias: 4, minRarity: 'rare' }, rng);
+    assert.ok(item, 'a roll always yields an item');
+    assert.notEqual(item!.id, 'heartburn', 'depth gate holds under a floor');
+  }
+});
+
 // ── RARITY_ORDER sanity ──────────────────────────────────────────────────
 test('RARITY_ORDER covers every rarity once, ascending', () => {
   assert.equal(RARITY_ORDER.length, 5);

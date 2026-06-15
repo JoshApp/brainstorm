@@ -173,11 +173,16 @@ export function spawnChallengeOffering(
   // fight for; the price is the fight). Same rolls the completion
   // reactor used to make; now they're made up front and granted
   // verbatim when the trial is won.
+  // A trial is PAID for with the fight, so its hoard has a rarity FLOOR — it
+  // can never resolve to a healpot or bone-and-rust the way a generous bias
+  // alone would. The floor rises out of the early floors: uncommon on 1-2,
+  // rare from floor 3 on. Bias still sets the ceiling (a chance at fabled).
   const drops: ItemSpec[] = [];
   {
-    const a = rollLoot({ depth, bias: 4 }, gameRng) ?? ITEMS['healing-potion'];
+    const floor = depth >= 3 ? 'rare' : 'uncommon';
+    const a = rollLoot({ depth, bias: 4, minRarity: floor }, gameRng) ?? ITEMS['healing-potion'];
     if (a) drops.push(a);
-    const b = rollLoot({ depth, bias: 3 }, gameRng);
+    const b = rollLoot({ depth, bias: 3, minRarity: 'uncommon' }, gameRng);
     if (b) drops.push(b);
   }
   const prize = drops[0] ?? null;
