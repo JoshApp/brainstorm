@@ -26,7 +26,6 @@ import { createPickup } from '../interactables/pickup';
 import { spawnShroudedRelic } from '../interactables/shrouded-relic';
 import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
 import { openCharacterScreen } from '../ui/character-screen';
-import { BONFIRE } from '../content/bonfire';
 
 // DEV-only endless-sparring dummies for the gore-arena scenario. Each splits
 // into the OTHER on death, so killing one respawns the next forever — and it
