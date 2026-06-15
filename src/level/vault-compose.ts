@@ -173,13 +173,41 @@ const STAIR_ROTY: Record<Dir, number> = { S: 0, N: Math.PI, E: Math.PI / 2, W: -
  *  d4-0wgr soft-lock). `dir` is the direction the vault was placed from the
  *  previous one, i.e. the way the player heads in; the stair descends that way.
  *  Centred on the perpendicular axis for maximal side clearance. */
-function reorientExitStair(st: StairsSpec, ox: number, oz: number, dims: { w: number; d: number }, dir: Dir): StairsSpec {
+function reorientExitStair(
+  st: StairsSpec, ox: number, oz: number, dims: { w: number; d: number }, dir: Dir,
+  // Vault-local carved voids (sub.voids). The back-edge CENTRE can land on a
+  // carved chasm pock (the carve avoided the AUTHORED '/', not the reoriented
+  // spot), which would soft-lock the stair. So we slide along the back edge to a
+  // clear spot, and only if the whole edge is carved do we fall back to the
+  // authored position (which the carve is guaranteed to have spared).
+  voids: ReadonlyArray<{ x: number; z: number; w: number; d: number }> = [],
+): StairsSpec {
   const INSET = 0.04, D = STAIRWELL_TOTAL_DEPTH, hw = dims.w / 2, hd = dims.d / 2;
   let x = ox, z = oz;
   if (dir === 'S') z = oz + hd - INSET - D;
   else if (dir === 'N') z = oz - hd + INSET + D;
   else if (dir === 'E') x = ox + hw - INSET - D;
   else x = ox - hw + INSET + D;
+
+  // Clearance the stair top needs around it (≈ stairwell half-width + player + margin).
+  const CLEAR = 1.0;
+  const blocked = (px: number, pz: number) => voids.some((v) => {
+    const wx = v.x + ox, wz = v.z + oz;   // void world centre (same frame as ox/oz)
+    return Math.abs(px - wx) < v.w / 2 + CLEAR && Math.abs(pz - wz) < v.d / 2 + CLEAR;
+  });
+  if (blocked(x, z)) {
+    const alongZ = dir === 'E' || dir === 'W';   // stair on an E/W edge → slide along Z
+    const limit = (alongZ ? hd : hw) - 0.8;      // keep off the side walls
+    let found = false;
+    for (let off = 0.8; off <= limit && !found; off += 0.8) {
+      for (const s of [off, -off]) {
+        const nx = alongZ ? x : ox + s;
+        const nz = alongZ ? oz + s : z;
+        if (!blocked(nx, nz)) { x = nx; z = nz; found = true; break; }
+      }
+    }
+    if (!found) return st;   // whole back edge carved → keep the carve-safe authored spot
+  }
   return { ...st, x, z, rotY: STAIR_ROTY[dir] };
 }
 
@@ -590,13 +618,17 @@ export function composeFloor(
     spawns.push(...sub.spawns);
     if (sub.doors) doors.push(...sub.doors);
     if (sub.navGates) navGates.push(...sub.navGates);
+    // Exit AND BOSS vault stairs re-place at the BACK of the room (far side of
+    // the entrance), so the player meets the mouth head-on AND — for boss rooms —
+    // the stair sits OPPOSITE the fog-gate (the authored '/' is at a fixed edge,
+    // so without this it landed beside the gate whenever the vault chained in
+    // from that side). DEFERRED until after the carve pass below, because the
+    // back edge can collide with a carved void and the reorient needs to dodge
+    // it. Hand-authored (non-exit, non-boss) stairs keep their spot immediately.
+    let pendingStairReorient: { ox: number; oz: number; dims: { w: number; d: number }; dir: Dir } | null = null;
     if (sub.stairs && sub.stairs.length) {
-      // Exit-vault stairs: re-place at the back of the room facing the entrance
-      // (geometry-aware), so the player meets the mouth head-on. Other stairs
-      // (boss vaults, hand-authored) keep their authored orientation.
-      if (pv.vault.tags.includes('exit') && pv.placeDir) {
-        const dims = vaultDims(pv.vault);
-        for (const st of sub.stairs) stairs.push(reorientExitStair(st, pv.offsetX, pv.offsetZ, dims, pv.placeDir));
+      if ((pv.vault.tags.includes('exit') || pv.vault.tags.includes('boss')) && pv.placeDir) {
+        pendingStairReorient = { ox: pv.offsetX, oz: pv.offsetZ, dims: vaultDims(pv.vault), dir: pv.placeDir };
       } else {
         stairs.push(...sub.stairs);
       }
@@ -724,6 +756,14 @@ export function composeFloor(
     const carvedCells = voidCellsCovered(procVoids, W, D);
     for (const v of procVoids) {
       voids.push({ x: v.x + pv.offsetX, z: v.z + pv.offsetZ, w: v.w, d: v.d });
+    }
+
+    // Now the carved voids for this vault are known — reorient the exit/boss
+    // stair to the back edge, dodging any void it would land on (falls back to
+    // the authored, carve-spared spot if the whole edge is carved).
+    if (pendingStairReorient && sub.stairs) {
+      const p = pendingStairReorient;
+      for (const st of sub.stairs) stairs.push(reorientExitStair(st, p.ox, p.oz, p.dims, p.dir, procVoids));
     }
 
     // ── Lighting pass — wall torches by intent ────────────────────
