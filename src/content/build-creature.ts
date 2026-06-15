@@ -31,7 +31,16 @@ export function compileCreatureModelSpec(spec: CreatureSpec): ModelSpec {
     const { joint, ...rest } = sp;
     return { ...rest, parent: joint ?? rest.parent } as PartSpec;
   });
-  return { id: spec.id, slots, parts, materials: spec.materials };
+  // EVERY creature dissolves on death — force `dissolvable` on so the dissolve
+  // shader branch is actually compiled into each material. Without this the
+  // death code ramps mat.userData.uDissolve (exposed unconditionally) but the
+  // discard GLSL was never injected (gated on def.dissolvable), so the body just
+  // vanished when removed — no visible dissolve, for ANY creature.
+  const materials: Record<string, typeof spec.materials[string]> = {};
+  for (const [id, def] of Object.entries(spec.materials)) {
+    materials[id] = def.dissolvable ? def : { ...def, dissolvable: true };
+  }
+  return { id: spec.id, slots, parts, materials };
 }
 
 /** Build a creature: skeleton → geometry → measured bounds → auto hitzones. */

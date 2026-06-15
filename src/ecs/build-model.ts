@@ -458,19 +458,24 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       ` : ''}
       ${hasDissolve ? `
       if (uDissolve > 0.0) {
-        // PROGRESSIVE DITHER. The mob's meshes are merged PER JOINT, so each has
-        // a tiny, centred local-Y span — a Y-driven sweep would cross the discard
-        // threshold for the whole body at almost the same instant (it just
-        // "plopped"). Instead drive the discard off a per-fragment hash spread
-        // across 0..1, so fragments wink out PROGRESSIVELY over the entire ramp,
-        // with only a faint top-down lean layered on for direction.
-        float n = fract(sin(dot(vLocalPos.xyz, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-        float thresh = n * 0.82 + (vLocalPos.y * 0.5 + 0.5) * 0.18;
+        // GRIMDARK CRUMBLE. Discard is driven by a hash QUANTIZED into coarse
+        // cells (floor of local pos), so the body breaks into chunky flakes —
+        // not the per-pixel "TV static" a raw per-fragment hash gives — which
+        // suits the blocky PS1 look. Spread across 0..1 so it erodes
+        // progressively over the whole ramp (the per-joint meshes have a tiny
+        // local-Y span, so a Y sweep alone would plop the whole body at once);
+        // a faint top-down lean rides on top for direction.
+        float n = fract(sin(dot(floor(vLocalPos * 13.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        float thresh = n * 0.85 + (vLocalPos.y * 0.5 + 0.5) * 0.15;
         if (thresh < uDissolve) discard;
-        // Edge flare — fragments at the erosion FRONT (about to go) glow spectral
-        // cyan-green: energy leaking out as the body unmakes itself.
-        float edge = 1.0 - smoothstep(0.0, 0.14, thresh - uDissolve);
-        gl_FragColor.rgb += vec3(0.45, 1.0, 0.72) * edge * 3.0 * uDissolve;
+        float front = thresh - uDissolve;   // 0 at the erosion edge, grows inward
+        // CHAR — flakes at the front WITHER toward black just before they crumble
+        // away. Decay, not a clean energy cut: the body blackens as it goes.
+        gl_FragColor.rgb *= mix(0.10, 1.0, smoothstep(0.0, 0.09, front));
+        // A faint, dim, desaturated cold ember at the very edge — a guttering
+        // glow leaking out, not a neon flare.
+        float emb = 1.0 - smoothstep(0.0, 0.05, front);
+        gl_FragColor.rgb += vec3(0.26, 0.40, 0.38) * emb * uDissolve;
       }
       ` : ''}
       ${hasRim ? `

@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The dead come apart in front of you now — a slow spectral fraying, not a blink-and-it's-gone.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Bones crumble to dust now before the floor takes them — you can finally see them go, not just vanish.",
         "area": [
           "atmosphere",
@@ -388,14 +396,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The sworded dead stop swinging at the air behind them — they raise the blade and bring it down on you, the way it was always meant to land.",
         "area": [
           "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The ghoul stops borrowing everyone's swing — it winds its claws overhead, hangs, then rakes down through you. Each thing down here will move like itself.",
-        "area": [
-          "combat",
-          "atmosphere"
         ]
       }
     ]
