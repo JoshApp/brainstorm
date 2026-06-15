@@ -20,6 +20,8 @@ const READ_DIST = 2.4;        // whisper fires inside this XZ distance (+ lamp g
 const RUNE_INTENSITY = 1.5;   // brighter bloom than before (was 1.15) — reads cooler
 const PULSE_AMP = 0.22;       // ± fraction of intensity the arcane breathe swings
 const PULSE_RATE = 1.6;       // rad/s of the breathe
+const LOOK_AWAY_GRACE = 1.4;  // s of NOT looking before the line fades — a glance
+                              //   away doesn't snap it; a deliberate turn does
 
 export function spawnWallRune(
   parent: THREE.Object3D,
@@ -49,6 +51,7 @@ export function spawnWallRune(
 
   let showing = false;        // OUR line is currently up
   let discovered = false;     // the note:read discovery has been logged (once ever)
+  let awayTimer = 0;          // s spent NOT looking while a line is up (grace)
   const token = Symbol('rune');   // owner tag so look-away only dismisses OUR line
 
   registerInteractable({
@@ -71,16 +74,25 @@ export function spawnWallRune(
       const lookingAt = d < READ_DIST && isLampRevealed(pos);
       if (lookingAt && !showing) {
         showing = true;
+        awayTimer = 0;
         whisper(mark.text, token);
         // Count the discovery ONCE (+1 LORE, event log — the Phase 4/5
         // epitaph/trace seam), even though the line can re-show on a re-look.
         if (!discovered) { discovered = true; emit({ type: 'note:read', noteBody: mark.text }); }
-      } else if (!lookingAt && showing) {
-        // Look away (lamp gaze left it) / step out of read range → fade OUR line
-        // FAST instead of letting it sit out its full hold. Re-shows if you look
-        // back. dismissWhisper is owner-gated, so it never kills another rune's line.
-        showing = false;
-        dismissWhisper(token);
+      } else if (showing) {
+        if (lookingAt) {
+          awayTimer = 0;       // still looking — hold the line
+        } else {
+          // Look away — but GRACE it: a glance away (or the gaze cone wobbling at
+          // the edge) shouldn't snap the line. Only after a sustained turn-away
+          // does it fade. Re-shows if you look back. Owner-gated dismiss never
+          // kills another rune's line.
+          awayTimer += dt;
+          if (awayTimer >= LOOK_AWAY_GRACE) {
+            showing = false;
+            dismissWhisper(token);
+          }
+        }
       }
     },
   });

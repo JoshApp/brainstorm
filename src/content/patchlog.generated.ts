@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-15",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The scrawls on the walls breathe now, speak as your lamp finds them and fall silent the moment you look away — and a new one cuts the last one short.",
+        "area": [
+          "atmosphere",
+          "ui"
+        ]
+      },
+      {
         "tag": "content",
         "text": "The bodies on the floor are hooded delvers now — slumped against the stone, bone hands in their laps, where before they were shapeless heaps.",
         "area": [
@@ -390,14 +398,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The marks linger in the air a beat longer, and the ordinary blows read a little bolder. The dungeon's bookkeeping, easier on the eye.",
-        "area": [
-          "combat",
-          "ui"
         ]
       }
     ]

@@ -67,14 +67,16 @@ function boneHand(name: string, [x, y, z]: [number, number, number], yaw: number
   return parts;
 }
 
-/** A skeletal leg lying along the floor — a shin bone + a boot/foot at the end.
- *  `yaw` splays it; `len` is the shin length. */
+/** A skeletal leg lying along the floor — a shin bone + a small bony foot at the
+ *  end (a short angled bone, NOT a boot box). `yaw` splays it; `len` is the shin. */
 function boneLeg(name: string, [x, y, z]: [number, number, number], yaw: number, len: number): PartSpec[] {
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const ex = x + c * len, ez = z + s * len;
   return [
     { kind: 'capsule', name: `${name}_shin`, pos: [x + c * len * 0.5, y, z + s * len * 0.5], rot: [0, yaw, HALF_PI], radius: 0.034, height: len * 0.9, mat: 'bone', jitter: 0.006 },
-    { kind: 'box', name: `${name}_foot`, pos: [ex + c * 0.04, y - 0.005, ez + s * 0.04], size: [0.12, 0.055, 0.07], rot: [0, yaw, 0], mat: 'leather', jitter: 0.005 },
+    // Bony foot — a stubby bone canted up off the floor, so the leg doesn't end
+    // in a stump or a leather box.
+    { kind: 'capsule', name: `${name}_foot`, pos: [ex + c * 0.04, y + 0.01, ez + s * 0.04], rot: [0, yaw, HALF_PI - 0.5], radius: 0.026, height: 0.06, mat: 'bone', jitter: 0.005 },
   ];
 }
 
@@ -105,20 +107,21 @@ function headHood(skeletal: boolean, hx: number, hy: number, hoodTiltZ: number):
 // legs splayed forward along the floor.
 function seated(skeletal: boolean): PartSpec[] {
   return [
-    // Robe body — the silhouette. A bell flaring at the floor up to the shoulders,
-    // tipped slightly BACK (top toward −X, the wall) so it reads as leaning.
-    { kind: 'lathe', name: 'robe', profile: robeProfile(0.34, 0.56), pos: [-0.02, 0.0, 0], rot: [0, 0, 0.12], mat: 'rag', segments: 14, jitter: 0.02 },
+    // Robe body — the silhouette. A taller bell flaring at the floor up to the
+    // shoulders, tipped slightly BACK (top toward −X, the wall) so it reads as a
+    // figure sitting UP against the stone, not a low mound.
+    { kind: 'lathe', name: 'robe', profile: robeProfile(0.33, 0.74), pos: [-0.02, 0.0, 0], rot: [0, 0, 0.12], mat: 'rag', segments: 14, jitter: 0.02 },
     // A shoulder mantle (second tone) over the top so the silhouette breaks.
-    { kind: 'lathe', name: 'mantle', profile: robeProfile(0.22, 0.20), pos: [-0.04, 0.40, 0], rot: [0, 0, 0.12], mat: 'rag2', segments: 12, jitter: 0.02 },
-    ...headHood(skeletal, 0.10, 0.52, -0.35),
+    { kind: 'lathe', name: 'mantle', profile: robeProfile(0.22, 0.22), pos: [-0.05, 0.54, 0], rot: [0, 0, 0.12], mat: 'rag2', segments: 12, jitter: 0.02 },
+    ...headHood(skeletal, 0.10, 0.70, -0.35),
     // Skeletal hands resting in the lap.
-    ...boneHand('handR', [0.22, 0.26, 0.11], 0.2),
-    ...boneHand('handL', [0.20, 0.26, -0.11], -0.2),
+    ...boneHand('handR', [0.22, 0.34, 0.11], 0.2),
+    ...boneHand('handL', [0.20, 0.34, -0.11], -0.2),
     // Bone legs splayed forward along the floor from under the hem.
     ...boneLeg('legR', [0.20, 0.06, 0.10], 0.18, 0.34),
     ...boneLeg('legL', [0.20, 0.06, -0.10], -0.18, 0.34),
     // Belt buckle catch-light at the waist.
-    { kind: 'box', name: 'buckle', pos: [0.18, 0.22, 0], size: [0.05, 0.06, 0.03], mat: 'metal' },
+    { kind: 'box', name: 'buckle', pos: [0.18, 0.30, 0], size: [0.05, 0.06, 0.03], mat: 'metal' },
   ];
 }
 
