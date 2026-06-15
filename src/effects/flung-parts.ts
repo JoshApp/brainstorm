@@ -26,6 +26,10 @@ const GRAVITY     = -9.5;
 const BOUNCE_DAMP = 0.30;
 const GROUND_DRAG = 0.6;
 const FLOOR_Y     = 0.06;
+// Once a piece starts powdering, the dungeon PULLS IT UNDER — it sinks through
+// the floor as it dissolves (mirrors the corpse's melt-into-floor) instead of
+// fading in place. m/s at full dissolve.
+const SINK_RATE   = 1.1;
 
 function disposeNonPooled(obj: THREE.Object3D): void {
   obj.traverse((o) => {
@@ -36,17 +40,16 @@ function disposeNonPooled(obj: THREE.Object3D): void {
   });
 }
 
-/** True once every dissolvable material on the part has fully dissolved (so a
- *  part that's faded with the corpse despawns early instead of flying invisibly). */
-function fullyDissolved(obj: THREE.Object3D): boolean {
-  let any = false;
-  let allGone = true;
+/** Max dissolve progress (0..1) across the part's dissolvable materials, or 0 if
+ *  it has none. Drives both the despawn check and the pulled-into-the-floor sink. */
+function partDissolve(obj: THREE.Object3D): number {
+  let d = 0;
   obj.traverse((o) => {
-    const m = (o as THREE.Mesh).material as THREE.Material | undefined;
-    const u = m?.userData?.uDissolve as { value: number } | undefined;
-    if (u) { any = true; if (u.value < 0.98) allGone = false; }
+    const u = ((o as THREE.Mesh).material as THREE.Material | undefined)
+      ?.userData?.uDissolve as { value: number } | undefined;
+    if (u && u.value > d) d = u.value;
   });
-  return any && allGone;
+  return d;
 }
 
 export interface FlungOpts {
@@ -105,22 +108,32 @@ export function spawnFlungPart(
 export function tickFlungParts(dt: number): void {
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
+    const d = partDissolve(p.obj);
     p.vy += GRAVITY * dt;
     p.obj.position.x += p.vx * dt;
     p.obj.position.y += p.vy * dt;
     p.obj.position.z += p.vz * dt;
-    if (p.obj.position.y < FLOOR_Y && p.vy < 0) {
-      p.obj.position.y = FLOOR_Y;
-      p.vy *= -BOUNCE_DAMP;
-      p.vx *= GROUND_DRAG;
-      p.vz *= GROUND_DRAG;
-      p.rvx *= 0.6; p.rvy *= 0.6; p.rvz *= 0.6;
+    if (d < 0.02) {
+      // SOLID — bounce + settle on the floor.
+      if (p.obj.position.y < FLOOR_Y && p.vy < 0) {
+        p.obj.position.y = FLOOR_Y;
+        p.vy *= -BOUNCE_DAMP;
+        p.vx *= GROUND_DRAG;
+        p.vz *= GROUND_DRAG;
+        p.rvx *= 0.6; p.rvy *= 0.6; p.rvz *= 0.6;
+      }
+    } else {
+      // POWDERING — the floor stops holding it up; the dungeon pulls the husk
+      // under (accelerating with the dissolve) so every piece sinks away, not
+      // just the torso. Spin damps so it settles as it goes down.
+      p.obj.position.y -= d * SINK_RATE * dt;
+      p.rvx *= 0.92; p.rvy *= 0.92; p.rvz *= 0.92;
     }
     p.obj.rotation.x += p.rvx * dt;
     p.obj.rotation.y += p.rvy * dt;
     p.obj.rotation.z += p.rvz * dt;
     p.age += dt;
-    if (p.age >= p.life || fullyDissolved(p.obj)) {
+    if (p.age >= p.life || d >= 0.98) {
       p.obj.parent?.remove(p.obj);
       disposeNonPooled(p.obj);
       parts.splice(i, 1);

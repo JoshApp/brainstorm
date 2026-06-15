@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The dead lie a while before the dark takes them, and skeletons come apart into their own bones now — the strings cut, and they fall.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Cut to the left and the left arm goes with it — the dungeon keeps closer track of which piece went where.",
         "area": [
           "combat"
@@ -385,14 +393,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "add",
         "text": "Catch a blow on the parry and steel cracks on steel — a spark bursts where the strike dies.",
-        "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dead wind up, hang for a beat, then SNAP — strikes hit like a strike now, not a slow reach. Big swings still take their time.",
         "area": [
           "combat",
           "atmosphere"

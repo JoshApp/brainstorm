@@ -135,6 +135,7 @@ function hapticVibrate(ms: number) {
 
 // Reusable scratch vectors.
 const forwardDir = new THREE.Vector3();
+const _camFwd = new THREE.Vector3();   // camera look dir, for aim-side dismember
 const hitPoint = new THREE.Vector3();
 const tmpMuzzle = new THREE.Vector3();
 const tmpAim = new THREE.Vector3();
@@ -559,11 +560,15 @@ export function createCombatSystem(
     // flurry's own per-hit fraction, ignoring the step's flat damageMul.
     const stepDamageMul = step?.hits ? step.hits.damageMul : (step?.damageMul ?? 1);
     const stepStaggerMul = step?.staggerMul ?? 1;
-    // The screen-side this swing cuts toward — fixed for the whole strike, so
-    // resolve it once here (the pose doesn't change per cleaved target). Drives
-    // directional dismember on a killing blow (enemy.ts picks the arm the player
-    // sees on this side).
-    const severSide = swingScreenSide(step?.pose, currentSwingDirection);
+    // Directional-dismember side — resolved per target below. Two parts are
+    // strike-wide: the player's explicit STRAFE intent, and the swing's authored
+    // pose. The pose alone CAN'T be trusted — a held direction swaps combo step 0
+    // for a directional variant, so the opener's left/right isn't fixed — which
+    // is exactly why strafe + aim take priority over it.
+    const strafeSide: 'L' | 'R' | undefined =
+      currentSwingDirection === 'strafe-left' ? 'L'
+      : currentSwingDirection === 'strafe-right' ? 'R' : undefined;
+    const poseSide = swingScreenSide(step?.pose, currentSwingDirection);
     const reach = stats.reach * (step?.reachMul ?? 1) * (1 + c * 0.20);
     const cosConeHalf = Math.cos(stats.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.25));
     const baseTargets = step?.maxTargets ?? 1;
@@ -689,6 +694,19 @@ export function createCombatSystem(
     // each subsequent cleaved target takes the geometric falloff cut.
     for (let ti = 0; ti < targets.length; ti++) {
       const { target, zone } = targets[ti];
+      // AIM side: which side of the player's VIEW this target sits on. Lets a
+      // neutral tap pick the arm by where you're LOOKING — turn slightly so the
+      // skull is on your right and the right arm goes. Priority: explicit strafe
+      // → aim → the (untrustworthy) authored pose. cross of camera-forward × to-
+      // target on the XZ plane: >0 = target to the player's right.
+      camera.getWorldDirection(_camFwd);
+      const tdx = target.position.x - camera.position.x;
+      const tdz = target.position.z - camera.position.z;
+      const tdist = Math.hypot(tdx, tdz) || 1;
+      const aimLat = (_camFwd.x * tdz - _camFwd.z * tdx) / tdist;
+      const aimSide: 'L' | 'R' | undefined =
+        aimLat > 0.12 ? 'R' : aimLat < -0.12 ? 'L' : undefined;
+      const severSide = strafeSide ?? aimSide ?? poseSide;
       // FINISHER: a CHARGED HEAVY on a STAGGERED foe executes — damage ×MUL
       // (lethal in nearly all cases) + the sustain reward below. Captured BEFORE
       // the hit (the target's pre-hit state is what's executable). The charge
