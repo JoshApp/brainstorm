@@ -1495,7 +1495,12 @@ export const ITEMS: Record<string, ItemSpec> = {
     name: 'A vial of dark elixir',
     flavor: 'Tastes of iron and dust.',
     dropModel: HEALING_POTION,
-    consumableHeal: 4,
+    // Heals 2 of PLAYER_HP_MAX 8 — a quarter bar, a TOP-UP not a reset. At 4
+    // (half the bar) two pickups fully healed you, so attrition stopped
+    // mattering and the whole altar/transaction economy lost its teeth. A
+    // smaller sip keeps healing a managed resource (carry 3 = real sustain,
+    // not invulnerability).
+    consumableHeal: 2,
     carryLimit: 3,
     // The backbone of the heal economy — but weight 5 flooded every floor
     // (and every chest) with cheap heals, which dissolves the tension the
