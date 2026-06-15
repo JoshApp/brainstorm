@@ -9,6 +9,21 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Cut to the left and the left arm goes with it — the dungeon keeps closer track of which piece went where.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The first kill no longer stutters — the dungeon warms its teeth before you ever arrive.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The dead take their time now — bodies tip over slower and the corpse (and whatever you cut off it) lingers a breath before the floor drinks it down.",
         "area": [
           "combat",
@@ -381,21 +396,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Cutting a foe down mid-telegraph no longer jams your left hand — light attacks keep landing on click instead of silently turning into parries at nothing.",
-        "area": [
-          "combat",
-          "controls"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A perfect dodge now asks you to stand in the swing and slip it at the last breath — bail early or from range and you just live, no reward.",
-        "area": [
-          "combat"
         ]
       }
     ]

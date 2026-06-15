@@ -49,27 +49,56 @@ function fullyDissolved(obj: THREE.Object3D): boolean {
   return any && allGone;
 }
 
+export interface FlungOpts {
+  /** Hard life cap (s). Despawns earlier via fullyDissolved() once the corpse's
+   *  shared dissolve completes. Generous so the part is never culled mid-dissolve. */
+  life?: number;
+  /** Horizontal launch speed range (m/s). Low = pieces drop near the body. */
+  hor?: [number, number];
+  /** Upward launch speed range (m/s). Low = a collapse (gravity-led), high = a
+   *  severed chunk thrown clear. */
+  up?: [number, number];
+  /** Tumble spin magnitude (rad/s, ± half). */
+  spin?: number;
+}
+
+const FLING_DEFAULTS: Required<FlungOpts> = {
+  life: 2.2,
+  hor: [1.8, 3.1],
+  up: [2.2, 3.2],
+  spin: 15,
+};
+
+// A COLLAPSE preset (skeleton crumble): the bone falls mostly straight down
+// with a little outward scatter + slower tumble — strings cut, not blown apart.
+export const COLLAPSE_PRESET: FlungOpts = {
+  life: 4,
+  hor: [0.3, 1.0],
+  up: [0.4, 1.1],
+  spin: 7,
+};
+
 /** Detach `obj` (a joint subtree of a dying enemy) into `worldParent` keeping
- *  its world transform, and fling it along (dirX, dirZ) + up, tumbling. */
+ *  its world transform, and launch it along (dirX, dirZ). Defaults fling a
+ *  severed chunk in a high arc; pass COLLAPSE_PRESET to drop it in a pile. */
 export function spawnFlungPart(
   worldParent: THREE.Object3D,
   obj: THREE.Object3D,
   dirX: number, dirZ: number,
-  // Hard cap; in practice it despawns earlier via fullyDissolved() once the
-  // corpse's shared dissolve completes (~1.2s with the slower death). Generous
-  // so the part is never culled mid-dissolve.
-  life: number = 2.2,
+  opts: FlungOpts = {},
 ): void {
+  const o = { ...FLING_DEFAULTS, ...opts };
   worldParent.attach(obj);   // reparent, preserving world transform
   const len = Math.hypot(dirX, dirZ) || 1;
   const nx = dirX / len, nz = dirZ / len;
-  const horSpeed = 1.8 + Math.random() * 1.3;
+  const horSpeed = o.hor[0] + Math.random() * (o.hor[1] - o.hor[0]);
+  const upSpeed = o.up[0] + Math.random() * (o.up[1] - o.up[0]);
   parts.push({
     obj,
-    vx: nx * horSpeed, vy: 2.2 + Math.random() * 1.0, vz: nz * horSpeed,
-    rvx: (Math.random() - 0.5) * 15, rvy: (Math.random() - 0.5) * 15, rvz: (Math.random() - 0.5) * 15,
+    vx: nx * horSpeed, vy: upSpeed, vz: nz * horSpeed,
+    rvx: (Math.random() - 0.5) * o.spin, rvy: (Math.random() - 0.5) * o.spin, rvz: (Math.random() - 0.5) * o.spin,
     age: 0,
-    life,
+    life: o.life,
   });
 }
 

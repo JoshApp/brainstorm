@@ -9,7 +9,7 @@ import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
 import { emitGoreSplash, stampBleedOut } from '../scene/splat-map';
 import { spawnShatterBurst } from '../effects/shatter-burst';
-import { spawnFlungPart } from '../effects/flung-parts';
+import { spawnFlungPart, COLLAPSE_PRESET } from '../effects/flung-parts';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
@@ -876,14 +876,29 @@ export function createEnemy(
   // additive soul wisps drift up + the body lifts. Only when the timer
   // expires does the container leave the scene.
   const DEATH_DURATION = 0.85;   // slower dissolve so the corpse + flung parts linger, readable
-  // Collapse style: topple to the floor over COLLAPSE_TOPPLE, THEN dissolve
-  // (the dissolve is held back until the body has fallen).
-  const COLLAPSE_TOPPLE = 0.38;  // a tad slower fall (was 0.28)
-  const COLLAPSE_DURATION = COLLAPSE_TOPPLE + DEATH_DURATION;
-  // Crumble: the body slumps + dissolves while a shatter-burst of bone/debris
-  // carries the "clattered apart" read. Lingers a touch longer now too.
-  const CRUMBLE_DURATION = 0.65;
+  // THE THREE BEATS of a death: REACT (the body answers the blow) → REST (it
+  // lies still — sells the kill, lets the player breathe) → RECLAIM (the
+  // dissolve: essence rises into the player, the husk goes down to the dungeon).
+  //
+  // Collapse (flesh): topple over COLLAPSE_TOPPLE, lie still for COLLAPSE_REST,
+  // THEN melt into the floor over DEATH_DURATION. The rest beat is what makes a
+  // body feel dead instead of instantly consumed; scaled lightly by mob size so
+  // a rat doesn't overstay and a brute earns its moment.
+  const COLLAPSE_TOPPLE = 0.38;
+  const COLLAPSE_REST = 1.3 + Math.min(0.8, Math.max(0, spec.collisionRadius - 0.2)) * 1.5;
+  const COLLAPSE_DURATION = COLLAPSE_TOPPLE + COLLAPSE_REST + DEATH_DURATION;
+  // Crumble (skeleton / construct): the strings go slack. It HANGS — teeters off
+  // vertical, losing tension — then the strings cut and it falls into its actual
+  // bone pieces (real joint subtrees dropped via flung-parts, not fake debris).
+  // The pieces SETTLE + lie on the floor, then powder away as the dissolve ramps.
+  const CRUMBLE_HANG = 0.5;       // teeter upright before the collapse
+  const CRUMBLE_SETTLE = 1.4;     // pieces fall, land, and lie before powdering
+  const CRUMBLE_DURATION = CRUMBLE_HANG + CRUMBLE_SETTLE + DEATH_DURATION;
   let deathTimer = -1;   // -1 = not dying; >=0 = ticking
+  // Crumble bookkeeping: the joint the KILLING blow already flung (skip it when
+  // the rest of the frame collapses), and a once-guard for the collapse trigger.
+  let severedJoint: string | undefined;
+  let crumbleCollapsed = false;
   // Pre-collect every dissolve uniform we need to drive. Walking
   // `built.materials` per-frame would work too, but caching the refs
   // here keeps the per-frame tick branch-free.
@@ -1133,18 +1148,15 @@ export function createEnemy(
           // corpse (the death tick still drives that shared uDissolve). No
           // setJointVisible needed — the subtree is gone from the body.
           spawnFlungPart(scene as THREE.Object3D, jointObj, dirX, dirZ);
+          severedJoint = severJoint;   // crumble skips this one — it's already flung
         }
       }
-      // CRUMBLE — clatter apart into falling debris (skeletons / constructs).
-      // Two bone-tinted bursts up the body so it reads as the whole frame
-      // coming undone, not a single pop at the feet. The body itself dissolves
-      // fast underneath (see tickDying).
-      if (deathStyle === 'crumble') {
-        const debrisTint = spec.bloodColor ?? 0x8a8274;
-        const cy = container.position.y;
-        spawnShatterBurst(scene as THREE.Object3D, container.position.x, cy + 0.25, container.position.z, false, debrisTint);
-        spawnShatterBurst(scene as THREE.Object3D, container.position.x, cy + aimHeightResolved, container.position.z, false, debrisTint);
-      }
+      // CRUMBLE — the killing-blow piece (above) flies off; the REST of the
+      // skeleton collapses LATER, staged in tickDying: it teeters upright for
+      // CRUMBLE_HANG, then the strings cut and the real bone joints drop into a
+      // pile (flung-parts, COLLAPSE_PRESET). Nothing to spawn here at the kill
+      // instant — the immediate debris pop is what made it read as "shatters
+      // while standing rigid"; the collapse is deferred so it FALLS first.
       essenceRigY = essenceRigYDefault;
       essenceTotal = spec.xp ?? 1;
       essenceSpawned = 0;
@@ -1689,6 +1701,29 @@ export function createEnemy(
     );
   }
 
+  // CRUMBLE collapse — once the strings cut (after the HANG teeter), drop the
+  // skeleton's REAL bone joints into a pile. Each is a live joint subtree (the
+  // merged per-joint mesh) detached via flung-parts; they keep the body material
+  // so the shared uDissolve still powders them in sync. Skips the joint the
+  // killing blow already flung. A little dust + chips season the pile.
+  function collapseSkeleton() {
+    const BONES = ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
+    const cx = container.position.x, cz = container.position.z;
+    for (const j of BONES) {
+      if (j === severedJoint) continue;          // already flew off on the kill blow
+      const obj = built.slots.get(j);
+      if (!obj || !obj.parent) continue;
+      obj.getWorldPosition(_severPos);
+      // Scatter outward from the body centre (left arm drifts left, etc.); a
+      // tiny random so a centred piece (the skull) still picks a way to fall.
+      let dx = _severPos.x - cx, dz = _severPos.z - cz;
+      if (Math.hypot(dx, dz) < 0.05) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; }
+      spawnFlungPart(scene as THREE.Object3D, obj, dx, dz, COLLAPSE_PRESET);
+    }
+    const debrisTint = spec.bloodColor ?? 0x8a8274;
+    spawnShatterBurst(scene as THREE.Object3D, cx, container.position.y + 0.3, cz, true, debrisTint);
+  }
+
   function tickDying(dt: number) {
     deathTimer += dt;
     const dur = deathStyle === 'collapse' ? COLLAPSE_DURATION
@@ -1696,31 +1731,46 @@ export function createEnemy(
       : DEATH_DURATION;
     const t = Math.min(1, deathTimer / dur);
 
-    // Dissolve PROGRESS — 'collapse' holds the body solid through the topple,
-    // then dissolves it on the ground; 'fade' dissolves from the first frame.
-    const dissolveT = deathStyle === 'collapse'
-      ? Math.max(0, Math.min(1, (deathTimer - COLLAPSE_TOPPLE) / DEATH_DURATION))
+    // Dissolve PROGRESS (the RECLAIM beat) — held back until the body has
+    // finished reacting + RESTING, so the corpse lies solid for a beat before
+    // the dungeon takes it. 'fade' dissolves from frame one (no body to claim).
+    const dissolveT =
+      deathStyle === 'collapse' ? Math.max(0, Math.min(1, (deathTimer - COLLAPSE_TOPPLE - COLLAPSE_REST) / DEATH_DURATION))
+      : deathStyle === 'crumble' ? Math.max(0, Math.min(1, (deathTimer - CRUMBLE_HANG - CRUMBLE_SETTLE) / DEATH_DURATION))
       : t;
-    // Drive the dissolve uniform on every dissolvable material on the
-    // mob. The shader injection (build-model.ts attachShaderExtensions)
-    // converts uDissolve into a top-down ragged discard with an
-    // emissive edge band.
+    // Drive the dissolve uniform on every dissolvable material on the mob — and,
+    // because collapsed/flung parts SHARE these materials, on every detached
+    // bone too, so the whole skeleton powders in sync. (build-model.ts injects
+    // uDissolve as a top-down ragged discard with an emissive edge band.)
     for (const u of dissolveUniforms) u.value = dissolveT;
 
     if (deathStyle === 'collapse') {
-      // TOPPLE — pitch BACKWARD onto the floor. The enemy faced the player, so
-      // in its local frame backward (+rotX) is away from the blow. Fast
-      // ease-out; a slight sink as it lands.
+      // TOPPLE backward, LIE (rest), then SINK as it melts. The enemy faced the
+      // player, so local backward (+rotX) is away from the blow. dissolveT is 0
+      // through the rest beat, so it lies flat until the dissolve starts.
       const tp = Math.min(1, deathTimer / COLLAPSE_TOPPLE);
       const e = 1 - (1 - tp) * (1 - tp);
       built.group.rotation.x = e * 1.45;
-      // MELT INTO THE FLOOR — once it's down, sink the corpse through the floor
-      // as it dissolves so the dungeon takes the body FROM THE GROUND instead
-      // of it popping away. The opaque floor occludes the submerged part; the
-      // dissolve eats the rest. (The shader dissolve runs along the model's
-      // LOCAL axis, which is sideways on a toppled body — the sink is what
-      // makes it read as ground-claimed.)
+      // MELT INTO THE FLOOR during RECLAIM — sink the corpse so the dungeon
+      // takes the husk from the ground instead of it popping away. The opaque
+      // floor occludes the submerged part; the shader eats the rest.
       built.group.position.y = -0.05 * e - 0.6 * dissolveT * dissolveT;
+    } else if (deathStyle === 'crumble') {
+      if (deathTimer < CRUMBLE_HANG) {
+        // HANG — the strings go slack. Teeter off vertical + a slow sway so it
+        // reads as a puppet losing tension, not a body standing at attention.
+        const hp = deathTimer / CRUMBLE_HANG;
+        built.group.rotation.x = 0.14 * hp * hp;
+        built.group.rotation.z = Math.sin(deathTimer * 7) * 0.05 * hp;
+      } else {
+        if (!crumbleCollapsed) { crumbleCollapsed = true; collapseSkeleton(); }
+        // The remaining frame (ribcage/spine) topples to the floor, then sinks
+        // as it powders. The limbs have already dropped as their own pieces.
+        const tp = Math.min(1, (deathTimer - CRUMBLE_HANG) / 0.4);
+        const e = 1 - (1 - tp) * (1 - tp);
+        built.group.rotation.x = 0.14 + e * (1.35 - 0.14);
+        built.group.position.y = -0.05 * e - 0.6 * dissolveT * dissolveT;
+      }
     } else {
       // FADE — spectral rises (sells the float), others sag a touch.
       built.group.position.y = spec.presence === 'spectral' ? 0.55 * t : -0.08 * t;
