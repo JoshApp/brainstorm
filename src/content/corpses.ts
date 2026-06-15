@@ -9,6 +9,8 @@
 //   - `reaction` — the VOICE IN THE DEEP's snark, OPTIONAL, fired when you loot
 //                  them. The place is indifferent; the thing that watches is not.
 
+import type { CorpseDecay } from './corpse-model';
+
 export type CorpsePose = 'crawled' | 'curled' | 'slumped';
 
 export interface FallenDelver {
@@ -18,6 +20,8 @@ export interface FallenDelver {
   epitaph: string;
   /** Body pose variant — see spawnCorpse. */
   pose: CorpsePose;
+  /** Decay state. Default 'fleshy'; 'skeletal' = long dead (bone, skull, ribs). */
+  decay?: CorpseDecay;
   /**
    * What they died holding. `'roll'` = a depth-appropriate loot roll (most
    * bodies); an item id = that specific thing; omitted = they carried nothing
@@ -66,6 +70,7 @@ export const FALLEN: FallenDelver[] = [
     name: 'Brother Vael',
     epitaph: 'No marks on him. The dark is enough.',
     pose: 'curled',
+    decay: 'skeletal',
     // Carried nothing — stripped long ago, or came down with empty hands.
   },
   {
@@ -85,6 +90,7 @@ export const FALLEN: FallenDelver[] = [
     name: 'a child of the surface',
     epitaph: 'Too far from the sky to be found.',
     pose: 'curled',
+    decay: 'skeletal',
   },
 ];
 

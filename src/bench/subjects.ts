@@ -11,6 +11,7 @@ import type { ModelSpec } from '../ecs/model-types';
 import { ORIGIN_ARCH } from '../content/origin-arch';
 import { listAuthorables, type AuthorableKind } from '../debug/authorables';
 import { EFFECT_DEMOS } from './effects';
+import { makeCorpseModel } from '../content/corpse-model';
 import { HAND_RIGHT, HAND_LEFT } from '../content/hand';
 import { HAND_LEFT_LANTERN } from '../content/hand-poses';
 import { LURKER } from '../content/clutter';
@@ -82,6 +83,10 @@ const STANDALONE_MODELS: Record<string, { label: string; spec: ModelSpec }> = {
   'csg-demo':    { label: 'CSG: original / add / subtract / intersect', spec: CSG_DEMO },
   'skeleton-key': { label: 'Skeleton key — skull bow with glowing eye sockets', spec: SKELETON_KEY },
   'origin-arch': { label: 'Origin arch — sealed round arch behind the spawn bonfire', spec: ORIGIN_ARCH },
+  'corpse-crawled': { label: 'Fallen delver — crawled, with pack', spec: makeCorpseModel('crawled', 'fleshy', true) },
+  'corpse-curled': { label: 'Fallen delver — curled', spec: makeCorpseModel('curled', 'fleshy', false) },
+  'corpse-slumped': { label: 'Fallen delver — slumped, with pack', spec: makeCorpseModel('slumped', 'fleshy', true) },
+  'corpse-skeletal': { label: 'Fallen delver — skeletal (curled)', spec: makeCorpseModel('curled', 'skeletal', false) },
 };
 
 export interface BenchSubject {

@@ -118,6 +118,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
   // per frame inside the system closure.
   const _trailTipScratch = new THREE.Vector3();
   const _trailCamScratch = new THREE.Vector3();
+  const _lampFwd = new THREE.Vector3();
 
   return [
     // Publish this frame's attack COMMITMENT (move/turn agency + dash-lock) from
@@ -360,7 +361,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // every reveal material reads (wall-runes, corpse glints bloom near the
     // lamp). 'always' so it tracks the lamp even while frozen (viewer/pose/snap)
     // and a paused look-around still reveals. One write per frame, all materials.
-    { name: 'lamp-reveal', phase: 'always', tick() { updateLampReveal(camera.position); } },
+    { name: 'lamp-reveal', phase: 'always', tick() { updateLampReveal(camera.position, camera.getWorldDirection(_lampFwd)); } },
 
     // XP wisps / gold coins — home in on the player and absorb on contact.
     // Live outside the enemy loop so they survive past their spawner.

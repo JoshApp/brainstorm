@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
-import { makeRevealMaterial } from '../scene/lamp-reveal';
+import { makeRevealMaterial, isLampRevealed } from '../scene/lamp-reveal';
 import { whisper } from '../ui/whisper';
 import { emit } from '../broadcast/event-bus';
 import type { WallMark } from '../content/wall-marks';
@@ -49,7 +49,10 @@ export function spawnWallRune(
     onUse() {},
     tick(_dt, playerPos) {
       const d = Math.hypot(playerPos.x - pos.x, playerPos.z - pos.z);
-      if (!whispered && d < READ_DIST) {
+      // The message surfaces only when you've actually LOOKED at the rune (lamp
+      // gaze cone fell across it), not merely walked near — reading is the
+      // reward for scanning the wall.
+      if (!whispered && d < READ_DIST && isLampRevealed(pos)) {
         whispered = true;
         whisper(mark.text);
         // Count as a discovery: +1 LORE, dedup, and into the event log (the

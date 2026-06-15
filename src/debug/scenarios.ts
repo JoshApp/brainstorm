@@ -1230,8 +1230,9 @@ export const SCENARIOS: Record<string, Scenario> = {
   // Player stands close so the runes bloom + a corpse glint reads. Walk closer
   // on a phone to watch them brighten; ?scenario=traces.
   traces: {
-    freeze: true,
-    hideSword: true,
+    // Walkable — sweep your lamp along the walls to bloom the runes, walk up to
+    // the bodies to SEARCH. (freeze:true is only for posed snaps.)
+    freeze: false,
     level: {
       id: 'dbg-traces',
       depth: 2,
