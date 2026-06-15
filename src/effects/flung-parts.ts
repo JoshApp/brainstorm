@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { isPooledGeometry } from '../scene/geometry-pool';
+import { spawnDustPuff } from './dust-puff';
+
+const _dustPos = new THREE.Vector3();   // scratch for the crumble dust poof
 
 // Flung body parts — when a limb / head is severed, we DETACH the real subtree
 // from the dying body and fling it instead of spawning a fake chunk. It reuses
@@ -19,6 +22,8 @@ interface FlungPart {
   rvx: number; rvy: number; rvz: number;
   age: number;
   life: number;
+  dust: boolean;     // emit a dust poof as it crumbles (bone, not wet flesh)
+  dusted: boolean;   // once-guard for that poof
 }
 
 const parts: FlungPart[] = [];
@@ -26,10 +31,12 @@ const GRAVITY     = -9.5;
 const BOUNCE_DAMP = 0.30;
 const GROUND_DRAG = 0.6;
 const FLOOR_Y     = 0.06;
-// Once a piece starts powdering, the dungeon PULLS IT UNDER — it sinks through
-// the floor as it dissolves (mirrors the corpse's melt-into-floor) instead of
-// fading in place. m/s at full dissolve.
-const SINK_RATE   = 1.1;
+// Once a piece is well into powdering, the dungeon PULLS IT UNDER — it settles
+// through the floor (mirrors the corpse's melt-into-floor). Gentle, and LAGGING
+// the dissolve (sink ∝ d², so the shader visibly eats the bone first and the
+// sink only finishes it off — otherwise the pull-under outran the dissolve and
+// hid it under the floor).
+const SINK_RATE   = 0.4;
 
 function disposeNonPooled(obj: THREE.Object3D): void {
   obj.traverse((o) => {
@@ -53,8 +60,8 @@ function partDissolve(obj: THREE.Object3D): number {
 }
 
 export interface FlungOpts {
-  /** Hard life cap (s). Despawns earlier via fullyDissolved() once the corpse's
-   *  shared dissolve completes. Generous so the part is never culled mid-dissolve. */
+  /** Hard life cap (s). Despawns earlier once the part fully dissolves. Generous
+   *  so the part is never culled mid-dissolve. */
   life?: number;
   /** Horizontal launch speed range (m/s). Low = pieces drop near the body. */
   hor?: [number, number];
@@ -63,6 +70,8 @@ export interface FlungOpts {
   up?: [number, number];
   /** Tumble spin magnitude (rad/s, ± half). */
   spin?: number;
+  /** Emit a grey dust poof as the piece crumbles — bone/stone, not wet flesh. */
+  dust?: boolean;
 }
 
 const FLING_DEFAULTS: Required<FlungOpts> = {
@@ -70,15 +79,18 @@ const FLING_DEFAULTS: Required<FlungOpts> = {
   hor: [1.8, 3.1],
   up: [2.2, 3.2],
   spin: 15,
+  dust: false,
 };
 
 // A COLLAPSE preset (skeleton crumble): the bone falls mostly straight down
-// with a little outward scatter + slower tumble — strings cut, not blown apart.
+// with a little outward scatter + slower tumble — strings cut, not blown apart —
+// and poofs to dust as it powders so the crumble READS, not just the shader.
 export const COLLAPSE_PRESET: FlungOpts = {
   life: 4,
   hor: [0.3, 1.0],
   up: [0.4, 1.1],
   spin: 7,
+  dust: true,
 };
 
 /** Detach `obj` (a joint subtree of a dying enemy) into `worldParent` keeping
@@ -102,6 +114,8 @@ export function spawnFlungPart(
     rvx: (Math.random() - 0.5) * o.spin, rvy: (Math.random() - 0.5) * o.spin, rvz: (Math.random() - 0.5) * o.spin,
     age: 0,
     life: o.life,
+    dust: o.dust,
+    dusted: false,
   });
 }
 
@@ -124,10 +138,20 @@ export function tickFlungParts(dt: number): void {
       }
     } else {
       // POWDERING — the floor stops holding it up; the dungeon pulls the husk
-      // under (accelerating with the dissolve) so every piece sinks away, not
-      // just the torso. Spin damps so it settles as it goes down.
-      p.obj.position.y -= d * SINK_RATE * dt;
+      // under. Sink ∝ d² so the shader gets to visibly eat the bone before the
+      // pull-under finishes it (a flat sink outran the dissolve and hid it).
+      // Spin damps so it settles as it goes down.
+      p.obj.position.y -= d * d * SINK_RATE * dt;
       p.rvx *= 0.92; p.rvy *= 0.92; p.rvz *= 0.92;
+      // Literal dust as the bone crumbles — the shader dissolve alone is too
+      // subtle on a small piece in the dark; one grey poof makes the powder read.
+      if (p.dust && !p.dusted) {
+        p.dusted = true;
+        p.obj.getWorldPosition(_dustPos);
+        spawnDustPuff(p.obj.parent ?? p.obj, _dustPos.x, _dustPos.y, _dustPos.z, {
+          count: 6, size: 0.16, spread: 0.12, rise: 0.4, life: 0.7,
+        });
+      }
     }
     p.obj.rotation.x += p.rvx * dt;
     p.obj.rotation.y += p.rvy * dt;
