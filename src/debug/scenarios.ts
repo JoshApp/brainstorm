@@ -26,6 +26,23 @@ import { createPickup } from '../interactables/pickup';
 import { spawnShroudedRelic } from '../interactables/shrouded-relic';
 import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
 import { openCharacterScreen } from '../ui/character-screen';
+import { BONFIRE } from '../content/bonfire';
+
+// DEV-only endless-sparring dummies for the gore-arena scenario. Each splits
+// into the OTHER on death, so killing one respawns the next forever — and it
+// alternates FLESH (ghoul: topple → melt into floor) with BONE (skeleton:
+// crumble into debris), both severable, so every death effect is testable in a
+// loop. Registered here (DEV) so they never reach the shipped enemy pool.
+if (import.meta.env.DEV) {
+  ENEMIES['arena-flesh'] = {
+    ...ENEMIES.ghoul, id: 'arena-flesh', name: 'arena flesh', hp: 5,
+    splitsInto: { enemyId: 'arena-bone', count: 1, radius: 0.4 },
+  };
+  ENEMIES['arena-bone'] = {
+    ...ENEMIES.skeleton, id: 'arena-bone', name: 'arena bone', hp: 5,
+    splitsInto: { enemyId: 'arena-flesh', count: 1, radius: 0.4 },
+  };
+}
 
 // Predefined game states loadable via ?scenario=name URL param.
 // Used by the snap CLI (scripts/snap.ts) to produce deterministic screenshots,
@@ -1613,6 +1630,36 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 2, pos: { x: -10, z:  10 } },
       { index: 3, pos: { x:  10, z:  10 } },
     ],
+  },
+
+  // GORE ARENA (DEV) — endless sparring for testing death effects. Player is
+  // invulnerable; one enemy spawns, and killing it spawns the next forever
+  // (via the arena dummies' splitsInto), ALTERNATING flesh ↔ bone so you cycle
+  // topple-melt, crumble, and head/arm/leg dismember on every kill. A bonfire
+  // lights the room (and you can REST to level). Runs LIVE (no freeze).
+  'gore-arena': {
+    godMode: true,
+    level: {
+      id: 'gore-arena',
+      depth: 3,
+      displayName: 'GORE ARENA',
+      fogColor: 0x140b08,
+      startPos: { x: 0, z: 3.5, yaw: 0 },
+      rooms: [{ id: 'arena', rect: { x: 0, z: 0, w: 11, d: 11 }, height: 3.0 }],
+      corridors: [],
+      props: [
+        { kind: 'model', model: BONFIRE, x: 0, y: 0, z: 0, rotY: 0.5, scale: 1.2 },
+      ],
+      torches: [
+        { x: -5.45, z:  0.0, height: 2.2, wall: 'W', colorTint: 0xffa860, intensityMul: 1.0 },
+        { x:  5.45, z:  0.0, height: 2.2, wall: 'E', colorTint: 0xffa860, intensityMul: 1.0 },
+        { x:  0.0,  z: -5.45, height: 2.2, wall: 'N', colorTint: 0xffb070, intensityMul: 0.9 },
+      ],
+      spawns: [{ enemyId: 'arena-flesh', x: 0, z: -3.5, roomId: 'arena' }],
+      doors: [],
+      stairs: [],
+    },
+    playerPos: { x: 0, z: 3.5, lookAt: { x: 0, z: -3.0, y: 1.0 } },
   },
 };
 
