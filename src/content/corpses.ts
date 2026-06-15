@@ -30,6 +30,14 @@ export interface FallenDelver {
   carried?: 'roll' | string;
   /** Optional one-off snark from the voice in the deep when you loot them. */
   reaction?: string;
+  /**
+   * The DEEP read — a longer, in-world account shown on the parchment note when
+   * you deliberately READ the body (vs the short epitaph that whispers as you
+   * pass). This is the Phase-5 LLM seam: ambient epitaphs stay cheap/cached,
+   * but choosing to stop and read is the rare, deliberate moment worth a richer
+   * (even live-generated) account. Omitted → the note shows the epitaph alone.
+   */
+  account?: string;
 }
 
 export const FALLEN: FallenDelver[] = [
@@ -42,6 +50,7 @@ export const FALLEN: FallenDelver[] = [
   {
     name: 'Corwin Ashfoot',
     epitaph: 'He made it no further than this.',
+    account: 'He kept a ledger of every floor he cleared, in a hand that grew worse the deeper it went. The last page is this one. The ink is his.',
     pose: 'crawled',
     carried: 'roll',
     reaction: 'He thought he was the one. They all do.',
@@ -49,12 +58,14 @@ export const FALLEN: FallenDelver[] = [
   {
     name: 'the Penitent',
     epitaph: 'Knelt to something. It did not kneel back.',
+    account: 'Three nights he knelt at the basin and asked to be made clean. On the fourth he stopped asking. The robe was empty when the dark gave it back, and still warm.',
     pose: 'slumped',
     carried: 'roll',
   },
   {
     name: 'Mira of the Hollow Road',
     epitaph: 'She died reaching for the door.',
+    account: 'She carried a key to no door anyone living has found. She died with her hand out — an arm’s length of stone between her and whatever it opened.',
     pose: 'crawled',
     carried: 'roll',
     reaction: 'So close. I do enjoy the close ones.',

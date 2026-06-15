@@ -8,6 +8,15 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-15",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The wall-scrawls keep to the stone now, there are far more of them to find, and re-reading the dead no longer leaves them muttering at you for ten minutes.",
+        "area": [
+          "atmosphere",
+          "ui",
+          "content"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Put it through the skull and it tells. Headshots bite far harder now — the body is for those who can't aim.",
         "area": [
@@ -391,14 +400,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Blades bite a little closer now, and a wide swing stays in front of you instead of windmilling past your shoulders.",
-        "area": [
-          "combat",
-          "weapons"
         ]
       }
     ]

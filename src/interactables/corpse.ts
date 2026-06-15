@@ -3,8 +3,9 @@ import { generateEntityId } from '../ecs/world';
 import { buildModel } from '../ecs/build-model';
 import { registerInteractable } from './system';
 import { emit } from '../broadcast/event-bus';
-import { whisper } from '../ui/whisper';
-import { makeRevealMaterial } from '../scene/lamp-reveal';
+import { whisper, dismissWhisper } from '../ui/whisper';
+import { showNote } from '../ui/note-card';
+import { makeRevealMaterial, isLampRevealed } from '../scene/lamp-reveal';
 import { createPickup } from './pickup';
 import { RARITY_COLORS, type ItemSpec } from '../content/items';
 import type { FallenDelver, CorpsePose } from '../content/corpses';
@@ -17,6 +18,18 @@ import { makeCorpseModel } from '../content/corpse-model';
 // Geometry is a parametric ModelSpec (content/corpse-model.ts) — hooded head,
 // limbs, draped cloak, blood pool, dropped pack, fleshy/skeletal decay — so the
 // bodies read as people, not capsules. Benchable: delve bench model-corpse-*.
+
+const READ_DIST = 2.2;        // ambient epitaph whispers inside this (+ lamp gaze)
+const LOOK_AWAY_GRACE = 1.4;  // s of not-looking before the ambient line fades
+
+/** Compose the DEEP-read note (Tier 2) — name, the epitaph, and the longer
+ *  `account` if one exists (the Phase-5 LLM seam). Parchment uses pre-wrap, so
+ *  newlines lay it out. */
+function deepNote(f: FallenDelver): string {
+  const lines = [f.name, '', `“${f.epitaph}”`];
+  if (f.account) lines.push('', f.account);
+  return lines.join('\n');
+}
 
 // Where the loot glint sits per pose — near the reaching hand / the dropped pack.
 const GLINT_POS: Record<CorpsePose, [number, number, number]> = {
@@ -57,24 +70,49 @@ export function spawnCorpse(
 
   let epitaphSpoken = false;
   let looted = false;
+  let shown = false;          // ambient epitaph line currently up
+  let awayTimer = 0;          // s spent not-looking while it's up (grace)
   // One speaker token for THIS body — its epitaph + reaction sequence behind
   // each other (same source) instead of the reaction preempting the epitaph,
   // while a different body / rune you look at still overrides this one.
   const speaker = Symbol('corpse');
+
+  // Log the discovery ONCE (lore + event log — the Phase 4/5 trace seam),
+  // whether it first surfaced ambiently or on a deliberate read.
+  function logEpitaphOnce() {
+    if (epitaphSpoken) return;
+    epitaphSpoken = true;
+    emit({ type: 'note:read', noteBody: `${fallen.name}: ${fallen.epitaph}` });
+  }
 
   const interactable = {
     id: generateEntityId('corpse'),
     position: pos.clone(),
     radius: 1.4,
     promptLabel: loot ? 'SEARCH' : 'READ',
-    onUse() {
-      // The epitaph — in-world, whispered, no pause. Always plays; only the
-      // FIRST read counts toward lore + the event log (re-reads don't farm it).
-      whisper(fallen.epitaph, speaker);
-      if (!epitaphSpoken) {
-        epitaphSpoken = true;
-        emit({ type: 'note:read', noteBody: `${fallen.name}: ${fallen.epitaph}` });
+    // TIER 1 — AMBIENT: the short epitaph whispers as your lamp finds the body,
+    // no press, no pause (cheap/cached for the LLM layer). Fades fast on a
+    // sustained look-away; re-shows on a re-look. Same model as wall-runes.
+    tick(dt: number, playerPos: THREE.Vector3) {
+      const d = Math.hypot(playerPos.x - pos.x, playerPos.z - pos.z);
+      const lookingAt = d < READ_DIST && isLampRevealed(pos);
+      if (lookingAt && !shown) {
+        shown = true; awayTimer = 0;
+        whisper(fallen.epitaph, speaker);
+        logEpitaphOnce();
+      } else if (shown && !lookingAt) {
+        awayTimer += dt;
+        if (awayTimer >= LOOK_AWAY_GRACE) { shown = false; dismissWhisper(speaker); }
+      } else if (shown) {
+        awayTimer = 0;
       }
+    },
+    onUse() {
+      // TIER 2 — DEEP READ: stop and read the full account on the parchment
+      // (pauses). The deliberate, opt-in moment — the home for the rich
+      // Phase-5 LLM-authored `account`.
+      showNote(deepNote(fallen));
+      logEpitaphOnce();
 
       if (loot && !looted) {
         looted = true;
@@ -96,10 +134,9 @@ export function spawnCorpse(
         }
         interactable.promptLabel = 'READ';   // still here to re-read, nothing to take
         // The thing that watches has a word for the ones who carried gear they
-        // couldn't keep. Queued behind the epitaph (the whisper queue sequences
-        // them). NOTE: this is the dungeon's WIT, a different temperature than
-        // the in-world epitaph — when the Phase 5 voice-in-the-deep gets its own
-        // surface, move reactions onto it.
+        // couldn't keep — whispered as you loot. NOTE: this is the dungeon's WIT,
+        // a different temperature than the in-world epitaph/account; when the
+        // Phase-5 voice-in-the-deep gets its own surface, move reactions onto it.
         if (fallen.reaction) whisper(fallen.reaction, speaker);
       }
     },
