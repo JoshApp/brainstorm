@@ -1086,11 +1086,34 @@ export function createEnemy(
         : undefined;
       if (!(severJoint && spec.severable?.includes(severJoint))) severJoint = undefined;
       if (!severJoint && event.severSide && spec.severable) {
-        // Side-slash: prefer the arm on that side, fall back to the leg.
-        const s = event.severSide;
-        for (const j of [`shoulder${s}`, `hip${s}`]) {
-          if (spec.severable.includes(j)) { severJoint = j; break; }
-        }
+        // Directional: lop the limb the player SEES on the cut side. We can't
+        // use the joint's anatomical name (shoulderL is the mob's OWN left,
+        // which faces the player's RIGHT — mirrored). Instead pick by world
+        // position: project each candidate onto the player's view-right axis
+        // and take the one furthest to the cut side. Correct for any facing.
+        const fx = container.position.x - lastPlayerXZ.x;
+        const fz = container.position.z - lastPlayerXZ.z;
+        const fl = Math.hypot(fx, fz) || 1;
+        // player-right = forward (player→mob) rotated -90° about +Y.
+        const rx = -fz / fl, rz = fx / fl;
+        const wantLeft = event.severSide === 'L';
+        const pickSideLimb = (candidates: string[]): string | undefined => {
+          let best: string | undefined;
+          let bestLat = wantLeft ? Infinity : -Infinity;
+          for (const j of candidates) {
+            if (!spec.severable!.includes(j)) continue;
+            const obj = built.slots.get(j);
+            if (!obj) continue;
+            obj.getWorldPosition(_severPos);
+            const lat = (_severPos.x - container.position.x) * rx
+                      + (_severPos.z - container.position.z) * rz;
+            if (wantLeft ? lat < bestLat : lat > bestLat) { bestLat = lat; best = j; }
+          }
+          return best;
+        };
+        // Prefer an arm on the cut side; fall back to a leg.
+        severJoint = pickSideLimb(['shoulderL', 'shoulderR'])
+                  ?? pickSideLimb(['hipL', 'hipR']);
       }
       if (severJoint) {
         const jointObj = built.slots.get(severJoint);

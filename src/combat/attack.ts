@@ -77,6 +77,27 @@ function pickAttackDirection(moveX: number, moveY: number): AttackDirection {
   return moveY < 0 ? 'forward' : 'back';
 }
 
+/** Which SIDE of the screen the killing blow travelled to — used to lop the
+ *  arm the player saw on that side (see enemy.ts dismember). The swing POSE is
+ *  the source of truth: a `*-slash-left` / `*-sweep-left` pose cuts to the
+ *  player's left, `*-right` to the right, and an un-suffixed slash (e.g.
+ *  `dagger-slash`) is the right-handed default. Strafe direction is the
+ *  fallback for poses with no left/right in the name. Thrusts/stabs return
+ *  undefined — a straight poke has no side, so it beheads-or-nothing. */
+function swingScreenSide(
+  pose: string | undefined,
+  dir: AttackDirection,
+): 'L' | 'R' | undefined {
+  if (pose) {
+    if (pose.includes('left')) return 'L';
+    if (pose.includes('right')) return 'R';
+    if (pose.includes('slash') || pose.includes('sweep') || pose.includes('hook')) return 'R';
+  }
+  if (dir === 'strafe-left') return 'L';
+  if (dir === 'strafe-right') return 'R';
+  return undefined;
+}
+
 // Combat orchestration. During the sword's strike window, scans all live
 // enemies for any within a FORWARD CONE of the camera (range = SWORD_REACH,
 // half-angle = SWORD_CONE_HALF_ANGLE). The cone is wide enough that the
@@ -538,6 +559,11 @@ export function createCombatSystem(
     // flurry's own per-hit fraction, ignoring the step's flat damageMul.
     const stepDamageMul = step?.hits ? step.hits.damageMul : (step?.damageMul ?? 1);
     const stepStaggerMul = step?.staggerMul ?? 1;
+    // The screen-side this swing cuts toward — fixed for the whole strike, so
+    // resolve it once here (the pose doesn't change per cleaved target). Drives
+    // directional dismember on a killing blow (enemy.ts picks the arm the player
+    // sees on this side).
+    const severSide = swingScreenSide(step?.pose, currentSwingDirection);
     const reach = stats.reach * (step?.reachMul ?? 1) * (1 + c * 0.20);
     const cosConeHalf = Math.cos(stats.coneHalfAngle * (step?.coneHalfAngleMul ?? 1) * (1 + c * 0.25));
     const baseTargets = step?.maxTargets ?? 1;
@@ -689,9 +715,10 @@ export function createCombatSystem(
         base: baseDamage,
         type: 'physical',
         hitZoneId: zone?.zone?.id,   // for dismember-on-kill (head zone → behead)
-        // Angle-based dismember: a side-slash kill lops a limb on that side.
-        severSide: currentSwingDirection === 'strafe-left' ? 'L'
-          : currentSwingDirection === 'strafe-right' ? 'R' : undefined,
+        // Directional dismember: a slash kill lops the arm on the side the blade
+        // travelled toward (the player's view side — enemy.ts maps it to the
+        // visible arm by world position, so enemy facing/mirroring is handled).
+        severSide,
       });
 
       // Damage number floats from this target's aim point.
