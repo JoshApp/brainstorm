@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { isPooledGeometry } from '../scene/geometry-pool';
 import { spawnDustPuff } from './dust-puff';
+import { getDeathSink } from '../debug/death-debug';
 
 const _dustPos = new THREE.Vector3();   // scratch for the crumble dust poof
 
@@ -140,8 +141,9 @@ export function tickFlungParts(dt: number): void {
       // POWDERING — the floor stops holding it up; the dungeon pulls the husk
       // under. Sink ∝ d² so the shader gets to visibly eat the bone before the
       // pull-under finishes it (a flat sink outran the dissolve and hid it).
-      // Spin damps so it settles as it goes down.
-      p.obj.position.y -= d * d * SINK_RATE * dt;
+      // Spin damps so it settles as it goes down. (DEV __death.sink(false) holds
+      // pieces on the floor so the dissolve is fully visible.)
+      if (getDeathSink()) p.obj.position.y -= d * d * SINK_RATE * dt;
       p.rvx *= 0.92; p.rvy *= 0.92; p.rvz *= 0.92;
       // Literal dust as the bone crumbles — the shader dissolve alone is too
       // subtle on a small piece in the dark; one grey poof makes the powder read.

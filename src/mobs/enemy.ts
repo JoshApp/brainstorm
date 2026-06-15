@@ -10,6 +10,7 @@ import { emit } from '../broadcast/event-bus';
 import { emitGoreSplash, stampBleedOut } from '../scene/splat-map';
 import { spawnShatterBurst } from '../effects/shatter-burst';
 import { spawnFlungPart, COLLAPSE_PRESET } from '../effects/flung-parts';
+import { getDeathSink } from '../debug/death-debug';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
@@ -1753,8 +1754,10 @@ export function createEnemy(
       built.group.rotation.x = e * 1.45;
       // MELT INTO THE FLOOR during RECLAIM — sink the corpse so the dungeon
       // takes the husk from the ground instead of it popping away. The opaque
-      // floor occludes the submerged part; the shader eats the rest.
-      built.group.position.y = -0.05 * e - 0.6 * dissolveT * dissolveT;
+      // floor occludes the submerged part; the shader eats the rest. (DEV
+      // __death.sink(false) holds it on the floor so the dissolve is visible.)
+      const sink = getDeathSink() ? 0.6 * dissolveT * dissolveT : 0;
+      built.group.position.y = -0.05 * e - sink;
     } else if (deathStyle === 'crumble') {
       if (deathTimer < CRUMBLE_HANG) {
         // HANG — the strings go slack. Teeter off vertical + a slow sway so it
@@ -1769,7 +1772,8 @@ export function createEnemy(
         const tp = Math.min(1, (deathTimer - CRUMBLE_HANG) / 0.4);
         const e = 1 - (1 - tp) * (1 - tp);
         built.group.rotation.x = 0.14 + e * (1.35 - 0.14);
-        built.group.position.y = -0.05 * e - 0.6 * dissolveT * dissolveT;
+        const sink = getDeathSink() ? 0.6 * dissolveT * dissolveT : 0;
+        built.group.position.y = -0.05 * e - sink;
       }
     } else {
       // FADE — spectral rises (sells the float), others sag a touch.

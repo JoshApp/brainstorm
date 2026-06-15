@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Bones crumble to dust now before the floor takes them — you can finally see them go, not just vanish.",
+        "area": [
+          "atmosphere",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "Cut where you look and that arm goes; and the dungeon drags every last bone under the floor now, not just the ribs.",
         "area": [
           "combat",
@@ -388,14 +396,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Damage numbers hit like stamps now — bigger blows brand bigger, crits flare gold, the killing red is loud. The dungeon makes sure you see the tally.",
-        "area": [
-          "combat",
-          "ui"
         ]
       }
     ]
