@@ -875,14 +875,14 @@ export function createEnemy(
   // mesh. We ramp a dissolve uniform 0→1 over DEATH_DURATION while
   // additive soul wisps drift up + the body lifts. Only when the timer
   // expires does the container leave the scene.
-  const DEATH_DURATION = 0.55;
+  const DEATH_DURATION = 0.85;   // slower dissolve so the corpse + flung parts linger, readable
   // Collapse style: topple to the floor over COLLAPSE_TOPPLE, THEN dissolve
   // (the dissolve is held back until the body has fallen).
-  const COLLAPSE_TOPPLE = 0.28;
+  const COLLAPSE_TOPPLE = 0.38;  // a tad slower fall (was 0.28)
   const COLLAPSE_DURATION = COLLAPSE_TOPPLE + DEATH_DURATION;
-  // Crumble: a short, fast vanish — the body slumps + dissolves quickly while a
-  // shatter-burst of bone/debris carries the "clattered apart" read.
-  const CRUMBLE_DURATION = 0.42;
+  // Crumble: the body slumps + dissolves while a shatter-burst of bone/debris
+  // carries the "clattered apart" read. Lingers a touch longer now too.
+  const CRUMBLE_DURATION = 0.65;
   let deathTimer = -1;   // -1 = not dying; >=0 = ticking
   // Pre-collect every dissolve uniform we need to drive. Walking
   // `built.materials` per-frame would work too, but caching the refs

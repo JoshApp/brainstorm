@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The dead take their time now — bodies tip over slower and the corpse (and whatever you cut off it) lingers a breath before the floor drinks it down.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The dead's scrawls answer only the lamp you turn on them now. And the bodies on the floor finally look like the people they were.",
         "area": [
           "atmosphere",
@@ -388,14 +396,6 @@ export const GENERATED_PATCHLOG = [
         "text": "A perfect dodge now asks you to stand in the swing and slip it at the last breath — bail early or from range and you just live, no reward.",
         "area": [
           "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "Close a menu on desktop and you drop straight back into mouse-look — no more hunting for the cursor or clicking the world (and swinging) just to grab the camera again.",
-        "area": [
-          "controls",
-          "ui"
         ]
       }
     ]

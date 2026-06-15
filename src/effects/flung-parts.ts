@@ -55,7 +55,10 @@ export function spawnFlungPart(
   worldParent: THREE.Object3D,
   obj: THREE.Object3D,
   dirX: number, dirZ: number,
-  life: number = 1.4,
+  // Hard cap; in practice it despawns earlier via fullyDissolved() once the
+  // corpse's shared dissolve completes (~1.2s with the slower death). Generous
+  // so the part is never culled mid-dissolve.
+  life: number = 2.2,
 ): void {
   worldParent.attach(obj);   // reparent, preserving world transform
   const len = Math.hypot(dirX, dirZ) || 1;
