@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { stampSplat } from '../scene/splat-map';
 import { getTexture } from '../style/procedural-textures';
+import { groundYAt } from '../level/elevation';
 
 // Blood burst — short-lived spray of red additive sprites + a few
 // chunky droplet meshes. Used by the blood-altar take effect (the
@@ -29,7 +30,7 @@ const drops: Drop[] = [];
 const sprites: Sprite[] = [];
 
 const GRAVITY = -9.0;
-const FLOOR_Y = 0.03;
+const FLOOR_REST = 0.03;   // rest height above the LOCAL ground (elevation-aware)
 
 // Shared materials — kept module-local so all bursts can reuse the
 // same WebGL programs.
@@ -136,8 +137,9 @@ export function tickBloodBurst(dt: number) {
     d.mesh.rotation.x += d.rvx * dt;
     d.mesh.rotation.y += d.rvy * dt;
     d.mesh.rotation.z += d.rvz * dt;
-    if (d.mesh.position.y < FLOOR_Y && d.vy < 0) {
-      d.mesh.position.y = FLOOR_Y;
+    const floorY = groundYAt(d.mesh.position.x, d.mesh.position.z) + FLOOR_REST;
+    if (d.mesh.position.y < floorY && d.vy < 0) {
+      d.mesh.position.y = floorY;
       d.vy *= -0.25;
       d.vx *= 0.6;
       d.vz *= 0.6;

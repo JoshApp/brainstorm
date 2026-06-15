@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "Blows land when the blade actually reaches you now — you can read the swing and roll it, instead of guessing on the wind-up.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The dead don't give up their essence from one spot — it lifts off the whole body, every part of it, and comes to you.",
         "area": [
           "combat",
@@ -391,13 +398,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The skirmisher levels its blade at you instead of letting it dangle off its arm like a spare bone.",
-        "area": [
-          "content"
         ]
       }
     ]

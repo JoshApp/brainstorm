@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getTexture } from '../style/procedural-textures';
 import { registerWarmup } from '../content/warmup-registry';
+import { groundYAt } from '../level/elevation';
 
 // Shatter burst — physics-y debris pop fired when a
 // destructible (vases first; future jars, crates, bones) is
@@ -40,7 +41,9 @@ const puffs: Puff[] = [];
 const SHARD_GRAVITY     = -9.5;
 const SHARD_BOUNCE_DAMP = 0.32;
 const SHARD_GROUND_DRAG = 0.55;
-const FLOOR_Y           = 0.04;       // top of jittered floor
+// Rest height ABOVE the local ground (elevation-aware via groundYAt), so debris
+// on a raised/sunken floor settles on THAT floor, not the base level.
+const FLOOR_REST        = 0.04;
 const FADE_TAIL         = 0.45;       // seconds of opacity tail before despawn
 
 // Material pool keyed by tint hex — we reuse one material per
@@ -185,8 +188,9 @@ export function tickShatterBurst(dt: number): void {
     s.mesh.position.x += s.vx * dt;
     s.mesh.position.y += s.vy * dt;
     s.mesh.position.z += s.vz * dt;
-    if (s.mesh.position.y < FLOOR_Y && s.vy < 0) {
-      s.mesh.position.y = FLOOR_Y;
+    const floorY = groundYAt(s.mesh.position.x, s.mesh.position.z) + FLOOR_REST;
+    if (s.mesh.position.y < floorY && s.vy < 0) {
+      s.mesh.position.y = floorY;
       s.vy *= -SHARD_BOUNCE_DAMP;
       s.vx *= SHARD_GROUND_DRAG;
       s.vz *= SHARD_GROUND_DRAG;

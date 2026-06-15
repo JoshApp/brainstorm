@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { isPooledGeometry } from '../scene/geometry-pool';
 import { spawnDustPuff } from './dust-puff';
 import { getDeathSink } from '../debug/death-debug';
+import { groundYAt } from '../level/elevation';
 
 const _dustPos = new THREE.Vector3();   // scratch for the crumble dust poof
 
@@ -31,7 +32,10 @@ const parts: FlungPart[] = [];
 const GRAVITY     = -9.5;
 const BOUNCE_DAMP = 0.30;
 const GROUND_DRAG = 0.6;
-const FLOOR_Y     = 0.06;
+// Rest height ABOVE the local ground (not an absolute world Y) — the floor is
+// elevation-aware (groundYAt) so a piece flung on a raised/sunken floor settles
+// on THAT floor, not punching through to the base level.
+const FLOOR_REST  = 0.06;
 // Once a piece is well into powdering, the dungeon PULLS IT UNDER — it settles
 // through the floor (mirrors the corpse's melt-into-floor). Gentle, and LAGGING
 // the dissolve (sink ∝ d², so the shader visibly eats the bone first and the
@@ -140,8 +144,9 @@ export function tickFlungParts(dt: number): void {
       // there dissolving in place instead of being pulled under.
       p.vy += GRAVITY * dt;
       p.obj.position.y += p.vy * dt;
-      if (p.obj.position.y < FLOOR_Y && p.vy < 0) {
-        p.obj.position.y = FLOOR_Y;
+      const floorY = groundYAt(p.obj.position.x, p.obj.position.z) + FLOOR_REST;
+      if (p.obj.position.y < floorY && p.vy < 0) {
+        p.obj.position.y = floorY;
         p.vy *= -BOUNCE_DAMP;
         p.vx *= GROUND_DRAG;
         p.vz *= GROUND_DRAG;
