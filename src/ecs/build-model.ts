@@ -469,15 +469,19 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
         float thresh = n * 0.85 + (vLocalPos.y * 0.5 + 0.5) * 0.15;
         if (thresh < uDissolve) discard;
         float front = thresh - uDissolve;   // 0 at the erosion edge, grows inward
-        // CHAR — a band ahead of the edge withers/darkens (decay), but not to
-        // pure black: it must still read against the dark dungeon.
-        gl_FragColor.rgb *= mix(0.35, 1.0, smoothstep(0.0, 0.12, front));
-        // EMBER — a warm smoldering glow right at the crumble edge so the front
-        // READS in the dark: coal-orange, like the body burning to ash. Brightens
-        // as the dissolve deepens. This is the grimdark replacement for the old
-        // neon cyan-green flare.
-        float emb = 1.0 - smoothstep(0.0, 0.06, front);
-        gl_FragColor.rgb += vec3(1.0, 0.42, 0.12) * emb * (0.5 + 0.9 * uDissolve);
+        // HEAT — flakes glow HOT before they crumble. A wide additive band, so
+        // the smoldering front READS regardless of base albedo: on a pale skeleton
+        // the char alone read fine, but on a near-black ghoul darkening did
+        // nothing and chunks just flickered out. Heating them makes a dark mob
+        // show a sweeping ember front too.
+        float heat = 1.0 - smoothstep(0.0, 0.16, front);
+        gl_FragColor.rgb += vec3(1.0, 0.40, 0.10) * (heat * heat) * (0.5 + 0.9 * uDissolve);
+        // CHAR — a thin black scorch right at the crumble edge (the flake burning
+        // through), so the front has a dark lip under the glow.
+        gl_FragColor.rgb *= mix(0.45, 1.0, smoothstep(0.0, 0.045, front));
+        // CORE — the hottest sliver at the very edge.
+        float core = 1.0 - smoothstep(0.0, 0.02, front);
+        gl_FragColor.rgb += vec3(1.0, 0.72, 0.34) * core * uDissolve;
       }
       ` : ''}
       ${hasRim ? `

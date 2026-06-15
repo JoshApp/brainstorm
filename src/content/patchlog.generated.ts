@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The dead smolder to ash now — coal-orange edges guttering as they crumble, where before they just blackened and were gone.",
+        "area": [
+          "atmosphere",
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The dead char and crumble to nothing now — blackening at the edges as the dark eats them, flake by flake.",
         "area": [
           "combat",
@@ -390,13 +398,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A parry isn't just a block now — it's a strike. Catch a blow and you cut back, and your next quick swing comes empowered. Read the tell, take the opening.",
-        "area": [
-          "combat"
         ]
       }
     ]
