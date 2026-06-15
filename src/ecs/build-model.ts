@@ -469,13 +469,15 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
         float thresh = n * 0.85 + (vLocalPos.y * 0.5 + 0.5) * 0.15;
         if (thresh < uDissolve) discard;
         float front = thresh - uDissolve;   // 0 at the erosion edge, grows inward
-        // CHAR — flakes at the front WITHER toward black just before they crumble
-        // away. Decay, not a clean energy cut: the body blackens as it goes.
-        gl_FragColor.rgb *= mix(0.10, 1.0, smoothstep(0.0, 0.09, front));
-        // A faint, dim, desaturated cold ember at the very edge — a guttering
-        // glow leaking out, not a neon flare.
-        float emb = 1.0 - smoothstep(0.0, 0.05, front);
-        gl_FragColor.rgb += vec3(0.26, 0.40, 0.38) * emb * uDissolve;
+        // CHAR — a band ahead of the edge withers/darkens (decay), but not to
+        // pure black: it must still read against the dark dungeon.
+        gl_FragColor.rgb *= mix(0.35, 1.0, smoothstep(0.0, 0.12, front));
+        // EMBER — a warm smoldering glow right at the crumble edge so the front
+        // READS in the dark: coal-orange, like the body burning to ash. Brightens
+        // as the dissolve deepens. This is the grimdark replacement for the old
+        // neon cyan-green flare.
+        float emb = 1.0 - smoothstep(0.0, 0.06, front);
+        gl_FragColor.rgb += vec3(1.0, 0.42, 0.12) * emb * (0.5 + 0.9 * uDissolve);
       }
       ` : ''}
       ${hasRim ? `

@@ -19,6 +19,8 @@ import { spawnGoldCoins, tickGoldCoins, clearGoldCoins } from '../effects/gold-c
 import { spawnAoeTelegraph } from '../effects/aoe-telegraph';
 import { spawnSummonTelegraph } from '../effects/summon-telegraph';
 import { spawnLashTendril } from '../effects/lash-tendril';
+import { buildCreature } from '../content/build-creature';
+import { ENEMIES } from '../content/enemies';
 
 export interface EffectDemo {
   id: string;        // 'fx-shatter-burst'
@@ -47,7 +49,36 @@ function ticked(frames: number, total: number, tick: (dt: number) => void): Subj
 
 const PLAYER = new THREE.Vector3(0, 1.4, 1.2);   // a stand-in "player" for homing effects
 
+/** Dissolve demo — the death RECLAIM shader (build-model.ts) isn't a standalone
+ *  effect; it's the uDissolve discard baked into every creature material. So we
+ *  build a real creature, collect its dissolve uniforms, and sweep uDissolve
+ *  0→1 across the sheet. One image = the whole disintegration, so the char /
+ *  flake size / ember can be authored without killing mobs by hand in-game.
+ *  Two framings because it reads differently near vs far. */
+function dissolveDemo(id: string, label: string, creatureId: keyof typeof ENEMIES, radius: number, el: number): EffectDemo {
+  return {
+    id, label, radius, el,
+    start(root) {
+      const built = buildCreature(ENEMIES[creatureId].creature);
+      root.add(built.group);
+      const us: Array<{ value: number }> = [];
+      for (const m of built.materials.values()) {
+        const u = m.userData.uDissolve as { value: number } | undefined;
+        if (u) us.push(u);
+      }
+      return {
+        frames: 8,
+        label: `${label} · uDissolve 0→1`,
+        poseAt: (i, n) => { const d = i / Math.max(1, n - 1); for (const u of us) u.value = d; },
+      };
+    },
+  };
+}
+
 export const EFFECT_DEMOS: EffectDemo[] = [
+  dissolveDemo('fx-dissolve', 'dissolve · close', 'ghoul', 0.95, 8),
+  dissolveDemo('fx-dissolve-far', 'dissolve · far', 'ghoul', 2.6, 8),
+  dissolveDemo('fx-dissolve-bone', 'dissolve · bone close', 'skeleton', 0.95, 8),
   {
     id: 'fx-shatter-burst', label: 'shatter burst', radius: 1.0, el: 14,
     start(root) {

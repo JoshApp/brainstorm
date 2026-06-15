@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The dead char and crumble to nothing now — blackening at the edges as the dark eats them, flake by flake.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The dead come apart in front of you now — a slow spectral fraying, not a blink-and-it's-gone.",
         "area": [
           "combat",
@@ -387,13 +395,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "A parry isn't just a block now — it's a strike. Catch a blow and you cut back, and your next quick swing comes empowered. Read the tell, take the opening.",
-        "area": [
-          "combat"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The sworded dead stop swinging at the air behind them — they raise the blade and bring it down on you, the way it was always meant to land.",
         "area": [
           "combat"
         ]
