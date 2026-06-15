@@ -689,6 +689,9 @@ export function createCombatSystem(
         base: baseDamage,
         type: 'physical',
         hitZoneId: zone?.zone?.id,   // for dismember-on-kill (head zone → behead)
+        // Angle-based dismember: a side-slash kill lops a limb on that side.
+        severSide: currentSwingDirection === 'strafe-left' ? 'L'
+          : currentSwingDirection === 'strafe-right' ? 'R' : undefined,
       });
 
       // Damage number floats from this target's aim point.

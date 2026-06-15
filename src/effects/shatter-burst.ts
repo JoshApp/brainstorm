@@ -146,6 +146,36 @@ export function spawnShatterBurst(
   }
 }
 
+/** Fling ONE bigger chunk (a severed head / limb) from (x,y,z) in the (dirX,
+ *  dirZ) direction — it arcs up, tumbles, bounces, and fades. Reuses the shard
+ *  pool + tick. `color` matches the creature (flesh / bone); `size` ~ the part. */
+export function spawnGib(
+  scene: THREE.Object3D,
+  x: number, y: number, z: number,
+  dirX: number, dirZ: number,
+  color: number,
+  size: number = 0.12,
+): void {
+  const len = Math.hypot(dirX, dirZ) || 1;
+  const nx = dirX / len, nz = dirZ / len;
+  const geo = new THREE.BoxGeometry(size, size * 0.8, size * 1.1);
+  const material = getShardMaterial(color);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  const horSpeed = 2.0 + Math.random() * 1.2;
+  shards.push({
+    mesh,
+    vx: nx * horSpeed, vy: 2.3 + Math.random() * 0.9, vz: nz * horSpeed,
+    rvx: (Math.random() - 0.5) * 16, rvy: (Math.random() - 0.5) * 16, rvz: (Math.random() - 0.5) * 16,
+    age: 0,
+    life: 1.6 + Math.random() * 0.6,
+    material,
+  });
+}
+
 export function tickShatterBurst(dt: number): void {
   // Tick shards.
   for (let i = shards.length - 1; i >= 0; i--) {

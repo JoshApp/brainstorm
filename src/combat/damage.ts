@@ -119,6 +119,10 @@ export interface DamageEvent {
   /** Id of the hurtbox ZONE this hit struck ('head' | 'body' | …). Carried so
    *  a KILLING blow can dismember the matching joint (head zone → behead). */
   hitZoneId?: string;
+  /** Side the killing SLASH travelled ('L' = strafe-left, 'R' = strafe-right).
+   *  A side-slash kill lops a limb on that side even when the struck zone was
+   *  the torso — angle-based dismemberment. Undefined for thrusts / neutral. */
+  severSide?: 'L' | 'R';
 }
 
 export interface DamageResult {

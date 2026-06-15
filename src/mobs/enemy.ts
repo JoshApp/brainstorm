@@ -8,7 +8,7 @@ import { spawnHazardField } from '../combat/hazard-field';
 import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
 import { emitGoreSplash, stampBleedOut } from '../scene/splat-map';
-import { spawnShatterBurst } from '../effects/shatter-burst';
+import { spawnShatterBurst, spawnGib } from '../effects/shatter-burst';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
@@ -1072,25 +1072,47 @@ export function createEnemy(
       // the dissolve — see tickDying. Gold coins drop now as physical
       // floor pickups with bundled value.
       deathTimer = 0;
-      // DISMEMBER on the killing blow — if the struck zone maps to a severable
-      // joint, lop that limb's subtree and burst gore from the stump. Limb
-      // hurtzones are named 'limb-<joint>' (build-creature: arms=shoulderL/R,
-      // legs=hipL/R); the head zone is just 'head'. Map zone → joint to sever.
+      // DISMEMBER on the killing blow. Two ways to pick the part:
+      //  1) ZONE — the struck hurtzone maps to a joint. Limb zones are named
+      //     'limb-<joint>' (arms=shoulderL/R, legs=hipL/R); head zone = 'head'.
+      //  2) ANGLE — a side-SLASH kill (severSide) lops a limb on that side even
+      //     if the killing zone was the torso, so directional cuts read.
+      // Whatever it resolves to: lop the joint subtree, burst gore + fling the
+      // severed part as a tumbling chunk in the creature's own colour.
       const killZoneId = event.hitZoneId;
-      const severJoint = killZoneId
+      let severJoint = killZoneId
         ? (killZoneId.startsWith('limb-') ? killZoneId.slice(5) : killZoneId)
         : undefined;
-      if (severJoint && spec.severable?.includes(severJoint)) {
+      if (!(severJoint && spec.severable?.includes(severJoint))) severJoint = undefined;
+      if (!severJoint && event.severSide && spec.severable) {
+        // Side-slash: prefer the arm on that side, fall back to the leg.
+        const s = event.severSide;
+        for (const j of [`shoulder${s}`, `hip${s}`]) {
+          if (spec.severable.includes(j)) { severJoint = j; break; }
+        }
+      }
+      if (severJoint) {
         creatureRef.setJointVisible(severJoint, false);
         const jointObj = built.slots.get(severJoint);
         if (jointObj) {
           jointObj.getWorldPosition(_severPos);
+          const dirX = _severPos.x - lastPlayerXZ.x;
+          const dirZ = _severPos.z - lastPlayerXZ.z;
           const bc = spec.bloodColor ?? 0x5e1210;
           emitGoreSplash(
-            _severPos.x, _severPos.z, _severPos.y,
-            _severPos.x - lastPlayerXZ.x, _severPos.z - lastPlayerXZ.z,
+            _severPos.x, _severPos.z, _severPos.y, dirX, dirZ,
             1.3 * (spec.bloodAmount ?? 1), bc,
             { sizeMul: Math.min(1.6, 0.7 + spec.collisionRadius * 0.8) },
+          );
+          // Fling the lopped part — a tumbling chunk tinted to the body
+          // (flesh / bone), bigger for a head than a limb.
+          let chunkColor = bc;
+          const m0 = (built.materials.get('body') ?? built.materials.get('bone')
+            ?? built.materials.values().next().value) as THREE.MeshStandardMaterial | undefined;
+          if (m0?.color) chunkColor = m0.color.getHex();
+          spawnGib(
+            scene as THREE.Object3D, _severPos.x, _severPos.y, _severPos.z,
+            dirX, dirZ, chunkColor, severJoint === 'head' ? 0.14 : 0.11,
           );
         }
       }

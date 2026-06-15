@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-15",
     "entries": [
       {
+        "tag": "tune",
+        "text": "Cut a thing down and the piece you took spins off across the floor — and a slash to the side takes the arm on that side, clean off.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "add",
         "text": "The dead scratched warnings into the walls and died with their hands full. Your lamp finds both, if you care to look. They did not.",
         "area": [
@@ -387,13 +395,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "controls"
-        ]
-      },
-      {
-        "tag": "fix",
-        "text": "The dead lock their eyes on you and stay there — no more drifting round to shuffle in backwards. A swing still commits to where it was aimed.",
-        "area": [
-          "combat"
         ]
       }
     ]
