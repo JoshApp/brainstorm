@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The fallen sit taller against the stone now, bare bone where their boots rotted off — and their scrawls hold a breath after your eyes leave them.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The scrawls on the walls breathe now, speak as your lamp finds them and fall silent the moment you look away — and a new one cuts the last one short.",
         "area": [
           "atmosphere",
@@ -390,14 +398,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The perfect-dodge window opens back up — roll through a blow and the world rewards the read, no frame-perfect timing demanded.",
         "area": [
           "combat"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dead stop sharing one swing — the skeleton chops, the skirmisher lunges and stabs, the stoneguard heaves a slab of itself overhead and brings it down. Each reads as itself.",
-        "area": [
-          "combat",
-          "atmosphere"
         ]
       }
     ]

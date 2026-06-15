@@ -231,44 +231,66 @@ registerTexture('soot-streak', (canvas) => {
   }
 });
 
-// 'rune-scrawl' — rows of angular marks, like a message scratched into the
-// wall by someone in a hurry or in the dark. Bright strokes on transparent so
-// it reads as a glow when drawn with an additive, lamp-reactive material
-// (scene/lamp-reveal.ts). The MEANING is carried by the wall-mark text that
-// surfaces when you're close; the glyph is the "something is written here."
-registerTexture('rune-scrawl', (canvas) => {
-  const ctx = canvas.getContext('2d')!;
-  const w = canvas.width;
-  const h = canvas.height;
+// RUNE ALPHABET — angular glyphs carved into the wall: a vertical stave with
+// branch strokes (the Elder-Futhark visual language) rather than hasty scratch
+// marks. White-on-transparent so the additive, lamp-reactive material
+// (scene/lamp-reveal.ts) blooms them in its grimdark tint; the MEANING is the
+// wall-mark text that whispers up close. We register several VARIANTS so a wall
+// of runes doesn't repeat the same glyph string (wall-rune.ts picks by position).
+
+/** One runic glyph: a vertical stave + 1–3 angular branch strokes off it. */
+function drawRuneGlyph(ctx: CanvasRenderingContext2D, x: number, cy: number, gh: number): void {
+  const top = cy - gh / 2, bot = cy + gh / 2;
+  const reach = gh * 0.46;
+  ctx.globalAlpha = 0.62 + Math.random() * 0.38;
+  // Stave.
+  ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bot); ctx.stroke();
+  // Branches — diagonal strokes attaching along the stave, like a real rune.
+  const branches = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < branches; i++) {
+    const at = top + Math.random() * gh;
+    const side = Math.random() < 0.5 ? 1 : -1;
+    const ud = Math.random() < 0.5 ? 1 : -1;
+    ctx.beginPath();
+    ctx.moveTo(x, at);
+    ctx.lineTo(x + side * reach, at + ud * gh * 0.34);
+    ctx.stroke();
+  }
+  // Occasional crossbar or second diagonal for a denser glyph (þ / ʁ feel).
+  if (Math.random() < 0.35) {
+    const at = top + gh * (0.25 + Math.random() * 0.5);
+    const side = Math.random() < 0.5 ? 1 : -1;
+    ctx.beginPath(); ctx.moveTo(x, at); ctx.lineTo(x + side * reach, at); ctx.stroke();
+  }
+}
+
+/** Rows of runic glyphs across the quad — a carved message. */
+function drawRuneRow(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.lineWidth = 2.4;
   ctx.lineCap = 'round';
-  const rows = 4;
+  ctx.lineJoin = 'round';
+  const rows = 3;
+  const gh = h * 0.17;
   for (let r = 0; r < rows; r++) {
-    const y = h * (0.18 + r * 0.21);
-    let x = w * 0.12;
-    const end = w * 0.88;
+    const cy = h * (0.26 + r * 0.245);
+    let x = w * 0.13;
+    const end = w * 0.87;
     while (x < end) {
-      const gw = 3 + Math.random() * 6;          // glyph width
-      const gh = 6 + Math.random() * 6;           // glyph height
-      ctx.globalAlpha = 0.55 + Math.random() * 0.45;
-      ctx.beginPath();
-      const kind = Math.random();
-      if (kind < 0.4) {                            // vertical tick
-        ctx.moveTo(x, y - gh / 2); ctx.lineTo(x, y + gh / 2);
-      } else if (kind < 0.7) {                     // slash
-        ctx.moveTo(x, y + gh / 2); ctx.lineTo(x + gw, y - gh / 2);
-      } else {                                     // little angular glyph
-        ctx.moveTo(x, y - gh / 2); ctx.lineTo(x + gw, y);
-        ctx.lineTo(x, y + gh / 2);
-      }
-      ctx.stroke();
-      x += gw + 3 + Math.random() * 3;
+      drawRuneGlyph(ctx, x, cy, gh);
+      x += gh * 0.62 + Math.random() * gh * 0.5;   // glyph spacing
     }
   }
   ctx.globalAlpha = 1;
-});
+}
+
+registerTexture('rune-scrawl', (canvas) => drawRuneRow(canvas.getContext('2d')!, canvas.width, canvas.height));
+// Variants — each generates ONCE + caches, so the eight come out different;
+// wall-rune.ts spreads them across the level so no two runes read identical.
+for (let v = 0; v < 8; v++) {
+  registerTexture(`rune-row-${v}`, (canvas) => drawRuneRow(canvas.getContext('2d')!, canvas.width, canvas.height));
+}
 
 // 'rune-sigil' — a circular seal: ring + chords + a central mark. Reads as a
 // deliberate ward/sigil rather than a hasty scrawl. Same bright-on-transparent

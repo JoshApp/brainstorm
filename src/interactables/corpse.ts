@@ -78,11 +78,15 @@ export function spawnCorpse(
 
       if (loot && !looted) {
         looted = true;
-        // Drop what they carried beside the body through the normal pickup path
-        // (same as a chest), and pull the glint — nothing left to find.
+        // Drop what they carried OUT IN FRONT of the body (the corpse faces +X
+        // local; offset along its facing) so the pickup lands clear on the floor
+        // instead of buried inside the robe. Through the normal pickup path
+        // (same as a chest), then pull the glint — nothing left to find.
         const worldPos = new THREE.Vector3();
         built.group.getWorldPosition(worldPos);
-        worldPos.y += 0.1;
+        const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(built.group.quaternion);
+        worldPos.addScaledVector(fwd, 0.55);   // out past the hands/lap
+        worldPos.y += 0.14;
         createPickup(parent, worldPos, loot);
         if (glint) {
           built.group.remove(glint);

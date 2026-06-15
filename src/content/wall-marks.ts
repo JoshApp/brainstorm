@@ -20,13 +20,15 @@ export interface WallMark {
   minDepth?: number;
 }
 
-// Color legend (see VISUAL-LANGUAGE / dread-light): cold pale blue = a ghost's
-// hand, the default; red = a warning written in fear; green = rot, plague, the
-// basin's sickness.
+// Color legend (see VISUAL-LANGUAGE / dread-light), GRIMDARK-toned: these read
+// as scratched-in carvings the lamp catches, NOT neon signage — so the tints are
+// DESATURATED + dim (the additive reveal still blooms them under the lamp). Cold
+// ash-grey = a ghost's hand, the default; dried-blood = a warning written in
+// fear; dim moss/rot = sickness, the basin.
 export const RUNE_TINT = {
-  bone: 0x9fb8d0,
-  warn: 0xc0563a,
-  sick: 0x7fc08a,
+  bone: 0x7a8893,   // cold ashen grey (was a brighter pale blue)
+  warn: 0x8a3b2c,   // dried blood (was a near-neon orange-red)
+  sick: 0x5f7355,   // dim mossy rot (was a bright sick green)
 } as const;
 
 export const WALL_MARKS: WallMark[] = [

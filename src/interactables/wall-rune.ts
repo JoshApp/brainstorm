@@ -17,9 +17,10 @@ import { RUNE_TINT } from '../content/wall-marks';
 const RUNE_W = 0.95;
 const RUNE_H = 0.62;
 const READ_DIST = 2.4;        // whisper fires inside this XZ distance (+ lamp gaze)
-const RUNE_INTENSITY = 1.5;   // brighter bloom than before (was 1.15) — reads cooler
-const PULSE_AMP = 0.22;       // ± fraction of intensity the arcane breathe swings
+const RUNE_INTENSITY = 1.15;  // dialed back from a neon 1.5 — a carved glow, not a sign
+const PULSE_AMP = 0.14;       // ± fraction of intensity the arcane breathe swings (subtler)
 const PULSE_RATE = 1.6;       // rad/s of the breathe
+const RUNE_VARIANTS = 8;      // procedural rune-alphabet variants (procedural-textures.ts)
 const LOOK_AWAY_GRACE = 1.4;  // s of NOT looking before the line fades — a glance
                               //   away doesn't snap it; a deliberate turn does
 
@@ -29,8 +30,12 @@ export function spawnWallRune(
   yaw: number,            // face into the room (same convention as wall torches)
   mark: WallMark,
 ): void {
+  // Randomize the glyph string per rune so a wall of them doesn't repeat: pick
+  // one of the carved rune-alphabet variants by position (deterministic per
+  // spot). A mark can still force a specific glyph (e.g. the 'rune-sigil' ward).
+  const variant = Math.abs(Math.round(pos.x * 13.7 + pos.z * 28.3)) % RUNE_VARIANTS;
   const mat = makeRevealMaterial({
-    texture: mark.glyph ?? 'rune-scrawl',
+    texture: mark.glyph ?? `rune-row-${variant}`,
     color: mark.tint ?? RUNE_TINT.bone,
     size: [RUNE_W, RUNE_H],
     intensity: RUNE_INTENSITY,
