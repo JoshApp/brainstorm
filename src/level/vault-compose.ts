@@ -4,6 +4,7 @@ import { resolvePalette, type PaletteV1 } from './palette';
 import { lightingPass } from './lighting-pass';
 import { decorPass } from './decor-pass';
 import { carvePass, voidCellsCovered } from './carve-pass';
+import { OccupancyGrid, propLayer } from './occupancy-grid';
 import { actForDepth } from './acts';
 import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
@@ -330,41 +331,33 @@ export function buildVaultPreview(vaultId: string, depth = 5, seed = 1): LevelSp
   // event gating).
   const Wprev = vault.map[0]?.length ?? 0;
   const Dprev = vault.map.length;
-  // Carve pass — runs first; voids become forbidden cells for the
-  // light/decor passes that follow.
-  const carveOccupiedPrev = new Set<string>(Object.keys(vault.cellProps ?? {}));
-  // Mirror the composer: reserve rolled spawns + interactable features so the
-  // preview carve matches the in-game carve (no chasm under a previewed altar).
-  for (const cs of cellSpawns) carveOccupiedPrev.add(`${cs.col},${cs.row}`);
-  for (const cf of cellFeatures) {
-    carveOccupiedPrev.add(`${cf.col},${cf.row}`);
-    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) carveOccupiedPrev.add(`${cf.col + dc},${cf.row + dr}`);
-  }
-  const procPreviewVoids = carvePass(vault, resolvedPalette, carveOccupiedPrev, rand);
-  const carvedCellsPrev = voidCellsCovered(procPreviewVoids, Wprev, Dprev);
-  // Lighting pass — author lights + carved voids excluded.
-  const existingTorchCellsPreview = new Set<string>(carvedCellsPrev);
-  for (const t of previewTorches) {
-    const col = Math.round(t.x - 0.5 + Wprev / 2);
-    const row = Math.round(t.z - 0.5 + Dprev / 2);
-    existingTorchCellsPreview.add(`${col},${row}`);
-  }
+  // Same LAYER-AWARE occupancy model as the composer (see occupancy-grid.ts) so
+  // the preview matches what the floor actually builds. previewTorches are in
+  // local coords (preview sits at origin), so no offset back-out here.
+  const occPrev = new OccupancyGrid();
   for (const [key, entries] of Object.entries(vault.cellProps ?? {})) {
-    if (!entries) continue;
-    if (entries.some((e) => e.kind === 'torch')) existingTorchCellsPreview.add(key);
+    for (const e of entries ?? []) {
+      const layer = propLayer(e.kind);
+      if (layer) occPrev.reserveKey(key, layer, 'authored');
+    }
   }
-  const procPreviewTorches = lightingPass(vault, resolvedPalette, existingTorchCellsPreview, rand);
+  for (const cs of cellSpawns) occPrev.reserve(cs.col, cs.row, 'floor', 'spawn');
+  for (const cf of cellFeatures) occPrev.reserveWithApproach(cf.col, cf.row, 'floor', 'feature');
+  for (const t of previewTorches) {
+    occPrev.reserve(Math.round(t.x - 0.5 + Wprev / 2), Math.round(t.z - 0.5 + Dprev / 2), 'wall', 'torch');
+  }
+
+  const procPreviewVoids = carvePass(vault, resolvedPalette, occPrev.blocked('floor', 'wall'), rand);
+  const carvedCellsPrev = voidCellsCovered(procPreviewVoids, Wprev, Dprev);
+  for (const key of carvedCellsPrev) occPrev.reserveKey(key, 'void', 'void');
+
+  const procPreviewTorches = lightingPass(vault, resolvedPalette, occPrev.blocked('wall', 'void'), rand);
   previewTorches.push(...procPreviewTorches);
-  // Decor pass for the preview — same occupancy union as the
-  // composer path.
-  const occupiedCellsPreview = new Set<string>(existingTorchCellsPreview);
-  for (const key of Object.keys(vault.cellProps ?? {})) occupiedCellsPreview.add(key);
   for (const t of procPreviewTorches) {
-    const col = Math.round(t.x - 0.5 + Wprev / 2);
-    const row = Math.round(t.z - 0.5 + Dprev / 2);
-    occupiedCellsPreview.add(`${col},${row}`);
+    occPrev.reserve(Math.round(t.x - 0.5 + Wprev / 2), Math.round(t.z - 0.5 + Dprev / 2), 'wall', 'torch');
   }
-  props.push(...decorPass(vault, resolvedPalette, occupiedCellsPreview, rand));
+
+  props.push(...decorPass(vault, resolvedPalette, occPrev.blocked('floor', 'wall', 'void'), rand));
 
 
   const spec: LevelSpec = {
@@ -753,30 +746,40 @@ export function composeFloor(
     // for encounter/event gating — reused here for the carve/light/
     // decor passes so the cascade is consistent).
 
-    // ── Carve pass — must run FIRST so lighting + decor see the
-    // post-carve walkable region and skip cells the holes occupy.
-    const carveOccupied = new Set<string>();
-    for (const key of Object.keys(pv.vault.cellProps ?? {})) carveOccupied.add(key);
-    // RESERVE the dynamically-placed high-value cells too, not just authored
-    // cellProps — otherwise the carve happily drops a chasm under a rolled altar
-    // / chest / fountain or an enemy spawn (a mob in a pit). Spawns reserve their
-    // own cell; interactable FEATURES also reserve the 4 neighbours so the
-    // player keeps a walkable approach to them.
-    for (const cs of cellSpawns) carveOccupied.add(`${cs.col},${cs.row}`);
-    for (const cf of cellFeatures) {
-      carveOccupied.add(`${cf.col},${cf.row}`);
-      carveOccupied.add(`${cf.col + 1},${cf.row}`);
-      carveOccupied.add(`${cf.col - 1},${cf.row}`);
-      carveOccupied.add(`${cf.col},${cf.row + 1}`);
-      carveOccupied.add(`${cf.col},${cf.row - 1}`);
+    // ── Shared LAYER-AWARE occupancy grid (see occupancy-grid.ts). Only things
+    // in the same physical layer exclude each other: a wall torch coexists with
+    // a floor altar, a glow lives under a chest, but two floor props (or a void
+    // under an altar) conflict. Each authored prop is filed on its kind's layer;
+    // decorative kinds (decal/cobweb) reserve nothing. Then each pass blocks on
+    // the layers it physically shares and reserves its own output.
+    const occ = new OccupancyGrid();
+    for (const [key, entries] of Object.entries(pv.vault.cellProps ?? {})) {
+      for (const e of entries ?? []) {
+        const layer = propLayer(e.kind);
+        if (layer) occ.reserveKey(key, layer, 'authored');
+      }
     }
-    const procVoids = carvePass(pv.vault, resolvedPalette, carveOccupied, rand);
+    for (const cs of cellSpawns) occ.reserve(cs.col, cs.row, 'floor', 'spawn');                 // X enemies + B boss
+    for (const cf of cellFeatures) occ.reserveWithApproach(cf.col, cf.row, 'floor', 'feature'); // $ ? altars/chests/fountains + approach
+    // Map '*' wall torches (sub.torches: world coords with WALL_OFFSET; reverse-
+    // map to cell via ±0.5 rounding so corner-cell *'s dedup) onto the wall layer.
     const W = pv.vault.map[0]?.length ?? 0;
     const D = pv.vault.map.length;
+    for (const t of sub.torches) {
+      const col = Math.round(t.x - pv.offsetX - 0.5 + W / 2);
+      const row = Math.round(t.z - pv.offsetZ - 0.5 + D / 2);
+      occ.reserve(col, row, 'wall', 'torch');
+    }
+
+    // ── Carve pass — runs FIRST so lighting + decor see the post-carve walkable
+    // region. Blocks on floor + wall (don't open a hole under a standing prop or
+    // out from under a torch's footing); reserves each hole on the void layer.
+    const procVoids = carvePass(pv.vault, resolvedPalette, occ.blocked('floor', 'wall'), rand);
     const carvedCells = voidCellsCovered(procVoids, W, D);
     for (const v of procVoids) {
       voids.push({ x: v.x + pv.offsetX, z: v.z + pv.offsetZ, w: v.w, d: v.d });
     }
+    for (const key of carvedCells) occ.reserveKey(key, 'void', 'void');
 
     // Now the carved voids for this vault are known — reorient the exit/boss
     // stair to the back edge, dodging any void it would land on (falls back to
@@ -786,45 +789,18 @@ export function composeFloor(
       for (const st of sub.stairs) stairs.push(reorientExitStair(st, p.ox, p.oz, p.dims, p.dir, procVoids));
     }
 
-    // ── Lighting pass — wall torches by intent ────────────────────
-    // Collect cells the author already lit + cells the carve pass
-    // punched holes in. Reverse-map sub.torches (world coords with
-    // WALL_OFFSET) back to (col, row) via rounding so corner-cell
-    // *'s land in the same dedup set.
-    const existingTorchCells = new Set<string>(carvedCells);
-    for (const t of sub.torches) {
-      // sub.torches are already in world coords with the WALL_OFFSET
-      // applied; back out approximately to cell. Tolerance ±0.5 by
-      // rounding (this picks up corner-cell *'s too).
-      const localX = t.x - pv.offsetX;
-      const localZ = t.z - pv.offsetZ;
-      const col = Math.round(localX - 0.5 + W / 2);
-      const row = Math.round(localZ - 0.5 + D / 2);
-      existingTorchCells.add(`${col},${row}`);
-    }
-    // Cell-bound author torches (kind: 'torch' inside cellProps).
-    for (const [key, entries] of Object.entries(pv.vault.cellProps ?? {})) {
-      if (!entries) continue;
-      if (entries.some((e) => e.kind === 'torch')) existingTorchCells.add(key);
-    }
-    const procTorches = lightingPass(pv.vault, resolvedPalette, existingTorchCells, rand);
+    // ── Lighting pass — wall torches by intent. Blocks on wall (torch dedup) +
+    // void (don't hang a torch over a hole); a torch by/above a floor feature is
+    // intended, so it does NOT block on the floor layer. Reserve placed torches.
+    const procTorches = lightingPass(pv.vault, resolvedPalette, occ.blocked('wall', 'void'), rand);
     for (const t of procTorches) {
       torches.push({ ...t, x: t.x + pv.offsetX, z: t.z + pv.offsetZ });
+      occ.reserve(Math.round(t.x - 0.5 + W / 2), Math.round(t.z - 0.5 + D / 2), 'wall', 'torch');
     }
 
-    // ── Decor pass — pillars / debris / etc by intent ────────────
-    // Builds occupiedCells from the union of: every cellProps key
-    // (anything author-placed in a cell), every author torch cell,
-    // every procedural torch cell. Then runs the decor pass over
-    // wall-edge candidates and rejects collisions.
-    const occupiedCells = new Set<string>(existingTorchCells);
-    for (const key of Object.keys(pv.vault.cellProps ?? {})) occupiedCells.add(key);
-    for (const t of procTorches) {
-      const col = Math.round(t.x - 0.5 + W / 2);
-      const row = Math.round(t.z - 0.5 + D / 2);
-      occupiedCells.add(`${col},${row}`);
-    }
-    const procDecor = decorPass(pv.vault, resolvedPalette, occupiedCells, rand);
+    // ── Decor pass — pillars / debris stand on the floor at wall edges, so they
+    // block on everything physical: floor (props/features), wall (torches), void.
+    const procDecor = decorPass(pv.vault, resolvedPalette, occ.blocked('floor', 'wall', 'void'), rand);
     for (const p of procDecor) {
       props.push(translateProp(p, pv.offsetX, pv.offsetZ));
     }

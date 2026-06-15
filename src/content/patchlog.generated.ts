@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The pits stop opening under the altars and the dead-to-be now — the floor remembers what it already put there before it starts carving holes.",
+        "area": [
+          "level"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The way down from a boss now waits across the room, not at your shoulder by the mist — you earn the stairs.",
         "area": [
           "level"
@@ -389,15 +396,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "weapons"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Coins chime up the scale as they stream in, a level lands with a low swell, and an empty chest coughs up gold instead of dust. The cursed altar stops repeating itself.",
-        "area": [
-          "ui",
-          "content",
-          "level"
         ]
       }
     ]
