@@ -8,7 +8,8 @@ import { spawnHazardField } from '../combat/hazard-field';
 import { isBossEngaged } from '../ui/boss-engagement';
 import { emit } from '../broadcast/event-bus';
 import { emitGoreSplash, stampBleedOut } from '../scene/splat-map';
-import { spawnShatterBurst, spawnGib } from '../effects/shatter-burst';
+import { spawnShatterBurst } from '../effects/shatter-burst';
+import { spawnFlungPart } from '../effects/flung-parts';
 import type { EnemySpec } from '../content/enemies';
 import { ENEMY_AUDIO_SIZE, ENEMY_VOCAL_ARCHETYPE } from '../content/enemies';
 import {
@@ -1092,7 +1093,6 @@ export function createEnemy(
         }
       }
       if (severJoint) {
-        creatureRef.setJointVisible(severJoint, false);
         const jointObj = built.slots.get(severJoint);
         if (jointObj) {
           jointObj.getWorldPosition(_severPos);
@@ -1104,16 +1104,12 @@ export function createEnemy(
             1.3 * (spec.bloodAmount ?? 1), bc,
             { sizeMul: Math.min(1.6, 0.7 + spec.collisionRadius * 0.8) },
           );
-          // Fling the lopped part — a tumbling chunk tinted to the body
-          // (flesh / bone), bigger for a head than a limb.
-          let chunkColor = bc;
-          const m0 = (built.materials.get('body') ?? built.materials.get('bone')
-            ?? built.materials.values().next().value) as THREE.MeshStandardMaterial | undefined;
-          if (m0?.color) chunkColor = m0.color.getHex();
-          spawnGib(
-            scene as THREE.Object3D, _severPos.x, _severPos.y, _severPos.z,
-            dirX, dirZ, chunkColor, severJoint === 'head' ? 0.14 : 0.11,
-          );
+          // Fling the REAL severed part: detach its actual joint subtree into
+          // the world and let it tumble. It reuses the merged/pooled geometry
+          // and keeps the enemy's material, so it DISSOLVES in sync with the
+          // corpse (the death tick still drives that shared uDissolve). No
+          // setJointVisible needed — the subtree is gone from the body.
+          spawnFlungPart(scene as THREE.Object3D, jointObj, dirX, dirZ);
         }
       }
       // CRUMBLE — clatter apart into falling debris (skeletons / constructs).

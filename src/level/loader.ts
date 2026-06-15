@@ -27,6 +27,7 @@ import { clearTutorialHints } from '../effects/tutorial-hints';
 import { clearAlerts } from '../mobs/alerts';
 import { clearDriftingMotes } from '../effects/drifting-motes';
 import { clearShatterBurst } from '../effects/shatter-burst';
+import { clearFlungParts } from '../effects/flung-parts';
 import { clearBloodBurst } from '../effects/blood-burst';
 import { clearDustPuff } from '../effects/dust-puff';
 import { clearParrySpark } from '../effects/parry-spark';
@@ -159,6 +160,7 @@ export function tickPendingLoad() {
     clearAlerts();
     clearDriftingMotes();
     clearShatterBurst();
+    clearFlungParts();
     clearBloodBurst();
     clearDustPuff();
     clearParrySpark();

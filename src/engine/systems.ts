@@ -60,6 +60,7 @@ import { tickSlowmoPresentation } from '../effects/slowmo-presentation';
 import { tickBladeTrail, setBladeTrailIntensity } from '../effects/blade-trail';
 import { tickRoomMood } from '../level/room-mood';
 import { tickShatterBurst } from '../effects/shatter-burst';
+import { tickFlungParts } from '../effects/flung-parts';
 import { tickBloodBurst } from '../effects/blood-burst';
 import { tickDustPuff } from '../effects/dust-puff';
 import { tickParrySpark } from '../effects/parry-spark';
@@ -413,7 +414,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     { name: 'arena-light-arc', phase: 'always', tick(ctx) { tickArenaLightArc(ctx.realDt); } },
     // Shatter / blood bursts — scaled dt so shards slow-mo with the
     // hit-pause / death sequence (reads as crunchier).
-    { name: 'shatter', phase: 'always', tick(ctx) { tickShatterBurst(ctx.scaledDt); } },
+    { name: 'shatter', phase: 'always', tick(ctx) { tickShatterBurst(ctx.scaledDt); tickFlungParts(ctx.scaledDt); } },
     { name: 'blood', phase: 'always', tick(ctx) { tickBloodBurst(ctx.scaledDt); } },
     { name: 'dust', phase: 'always', tick(ctx) { tickDustPuff(ctx.scaledDt); } },
     { name: 'parry-spark', phase: 'always', tick(ctx) { tickParrySpark(ctx.scaledDt); } },
