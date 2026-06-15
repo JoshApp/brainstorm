@@ -150,6 +150,15 @@ export function pressUse() {
 
 /** Reset state — used by tests / scene rebuilds. */
 export function clearInteractables() {
+  // Level teardown: run each LIVE interactable's cleanup before dropping the
+  // list. onDestroy is the owner's teardown hook (unsubscribe, unregister
+  // lights, dispose meshes) — normally fired by tickInteractables when an
+  // interactable marks itself destroyed mid-play. Anything STILL live at
+  // descent (an unopened chest, an unchosen starter altar, a fountain) never
+  // hit that path, so its cleanup leaked every floor — most visibly the
+  // starter altar's `starter:chosen` subscription, retained forever. Iterate a
+  // copy: an onDestroy may unregister another interactable.
+  for (const it of [...interactables]) it.onDestroy?.();
   interactables.length = 0;
   currentInRange = null;
 }
