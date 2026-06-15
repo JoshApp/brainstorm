@@ -57,6 +57,10 @@ export function spawnCorpse(
 
   let epitaphSpoken = false;
   let looted = false;
+  // One speaker token for THIS body — its epitaph + reaction sequence behind
+  // each other (same source) instead of the reaction preempting the epitaph,
+  // while a different body / rune you look at still overrides this one.
+  const speaker = Symbol('corpse');
 
   const interactable = {
     id: generateEntityId('corpse'),
@@ -66,7 +70,7 @@ export function spawnCorpse(
     onUse() {
       // The epitaph — in-world, whispered, no pause. Always plays; only the
       // FIRST read counts toward lore + the event log (re-reads don't farm it).
-      whisper(fallen.epitaph);
+      whisper(fallen.epitaph, speaker);
       if (!epitaphSpoken) {
         epitaphSpoken = true;
         emit({ type: 'note:read', noteBody: `${fallen.name}: ${fallen.epitaph}` });
@@ -92,7 +96,7 @@ export function spawnCorpse(
         // them). NOTE: this is the dungeon's WIT, a different temperature than
         // the in-world epitaph — when the Phase 5 voice-in-the-deep gets its own
         // surface, move reactions onto it.
-        if (fallen.reaction) whisper(fallen.reaction);
+        if (fallen.reaction) whisper(fallen.reaction, speaker);
       }
     },
     built,

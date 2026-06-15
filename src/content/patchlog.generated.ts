@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-15",
     "entries": [
       {
+        "tag": "content",
+        "text": "The bodies on the floor are hooded delvers now — slumped against the stone, bone hands in their laps, where before they were shapeless heaps.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "Sever a thing on the high ground and its pieces stay on the high ground — bone and blood stopped falling through the floor.",
         "area": [
@@ -390,14 +398,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Bleed and venom no longer gut you in seconds — the rot wears you down now instead of dropping you from a single bite.",
-        "area": [
-          "combat",
-          "content"
         ]
       }
     ]

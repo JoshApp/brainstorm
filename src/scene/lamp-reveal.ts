@@ -67,6 +67,8 @@ export function makeRevealMaterial(opts: RevealOpts): THREE.MeshBasicMaterial {
     side: THREE.DoubleSide,
   });
   const uIntensity = { value: opts.intensity ?? 1 };
+  // Expose for runtime modulation (e.g. a wall-rune's arcane pulse).
+  mat.userData.uRevealIntensity = uIntensity;
 
   // Every reveal material runs the same injected GLSL, so they share one
   // compiled program regardless of map/color/intensity (those are uniforms).

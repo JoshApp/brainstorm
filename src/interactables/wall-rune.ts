@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { makeRevealMaterial, isLampRevealed } from '../scene/lamp-reveal';
-import { whisper } from '../ui/whisper';
+import { whisper, dismissWhisper } from '../ui/whisper';
 import { emit } from '../broadcast/event-bus';
 import type { WallMark } from '../content/wall-marks';
 import { RUNE_TINT } from '../content/wall-marks';
@@ -16,8 +16,10 @@ import { RUNE_TINT } from '../content/wall-marks';
 
 const RUNE_W = 0.95;
 const RUNE_H = 0.62;
-const READ_DIST = 2.4;        // whisper fires inside this XZ distance
-const REARM_DIST = 3.4;       // ...and re-arms once you've stepped back past this
+const READ_DIST = 2.4;        // whisper fires inside this XZ distance (+ lamp gaze)
+const RUNE_INTENSITY = 1.5;   // brighter bloom than before (was 1.15) — reads cooler
+const PULSE_AMP = 0.22;       // ± fraction of intensity the arcane breathe swings
+const PULSE_RATE = 1.6;       // rad/s of the breathe
 
 export function spawnWallRune(
   parent: THREE.Object3D,
@@ -29,7 +31,7 @@ export function spawnWallRune(
     texture: mark.glyph ?? 'rune-scrawl',
     color: mark.tint ?? RUNE_TINT.bone,
     size: [RUNE_W, RUNE_H],
-    intensity: 1.15,
+    intensity: RUNE_INTENSITY,
   });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(RUNE_W, RUNE_H), mat);
   mesh.position.copy(pos);
@@ -37,7 +39,17 @@ export function spawnWallRune(
   mesh.renderOrder = 2;       // draw after walls so the additive glow reads
   parent.add(mesh);
 
-  let whispered = false;
+  // The rune BREATHES — a slow, faint arcane pulse on its glow so it reads as
+  // live scrawl, not a static decal. Modulates the reveal-intensity uniform the
+  // material exposed; the pulse is subtle (the lamp gaze still does the heavy
+  // reveal). Phase-offset per rune so a wall of them doesn't throb in unison.
+  const pulseUniform = (mat.userData.uRevealIntensity as { value: number } | undefined);
+  const pulsePhase = (pos.x * 1.7 + pos.z * 2.3) % (Math.PI * 2);
+  let age = 0;
+
+  let showing = false;        // OUR line is currently up
+  let discovered = false;     // the note:read discovery has been logged (once ever)
+  const token = Symbol('rune');   // owner tag so look-away only dismisses OUR line
 
   registerInteractable({
     id: generateEntityId('wall-rune'),
@@ -47,19 +59,28 @@ export function spawnWallRune(
     // button. Empty label keeps it out of the prompt + USE selection.
     promptLabel: '',
     onUse() {},
-    tick(_dt, playerPos) {
+    tick(dt, playerPos) {
+      // Arcane breathe — modulate the glow so the rune feels live.
+      if (pulseUniform) {
+        age += dt;
+        pulseUniform.value = RUNE_INTENSITY * (1 + PULSE_AMP * Math.sin(age * PULSE_RATE + pulsePhase));
+      }
       const d = Math.hypot(playerPos.x - pos.x, playerPos.z - pos.z);
-      // The message surfaces only when you've actually LOOKED at the rune (lamp
-      // gaze cone fell across it), not merely walked near — reading is the
-      // reward for scanning the wall.
-      if (!whispered && d < READ_DIST && isLampRevealed(pos)) {
-        whispered = true;
-        whisper(mark.text);
-        // Count as a discovery: +1 LORE, dedup, and into the event log (the
-        // Phase 4/5 epitaph/trace seam) — same path corpse notes use.
-        emit({ type: 'note:read', noteBody: mark.text });
-      } else if (whispered && d > REARM_DIST) {
-        whispered = false;     // walked away — let it speak again next time
+      // "Looking at it" = close enough AND the lamp gaze cone is on it. Reading
+      // is the reward for scanning the wall, not just walking near.
+      const lookingAt = d < READ_DIST && isLampRevealed(pos);
+      if (lookingAt && !showing) {
+        showing = true;
+        whisper(mark.text, token);
+        // Count the discovery ONCE (+1 LORE, event log — the Phase 4/5
+        // epitaph/trace seam), even though the line can re-show on a re-look.
+        if (!discovered) { discovered = true; emit({ type: 'note:read', noteBody: mark.text }); }
+      } else if (!lookingAt && showing) {
+        // Look away (lamp gaze left it) / step out of read range → fade OUR line
+        // FAST instead of letting it sit out its full hold. Re-shows if you look
+        // back. dismissWhisper is owner-gated, so it never kills another rune's line.
+        showing = false;
+        dismissWhisper(token);
       }
     },
   });
