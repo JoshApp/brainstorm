@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {
   signed, formatWeapon, formatModifier, formatBuffEffect, abbrev,
+  formatCombatVerb, formatChargedEffect,
 } from '../src/ui/item-format';
 import { hexCss } from '../src/style/color-utils';
 
@@ -41,6 +42,20 @@ test('abbrev strips leading article and clamps long names', () => {
   assert.equal(abbrev({ name: 'The Rusted Sword' } as never), 'Rusted Sword');
   const long = abbrev({ name: 'An Impossibly Long Relic Name Of Doom' } as never);
   assert.ok(long.length <= 22 && long.endsWith('…'));
+});
+
+test('formatCombatVerb labels the trigger, shows chance + self target', () => {
+  // Unknown buff ids fall back to the id verbatim, so the test is independent
+  // of the buff registry's display names.
+  assert.equal(formatCombatVerb('On riposte', { buffId: 'zzz-unknown', duration: 4 }), 'On riposte: zzz-unknown');
+  assert.equal(
+    formatCombatVerb('On perfect dodge', { buffId: 'zzz-unknown', duration: 3, target: 'self', chance: 0.5 }),
+    'On perfect dodge: zzz-unknown (50%) on self',
+  );
+});
+
+test('formatChargedEffect describes the projectile signature', () => {
+  assert.match(formatChargedEffect({ kind: 'projectile', projectileId: 'force-wave' }), /Charged release/);
 });
 
 test('hexCss converts a packed hex to rgb()', () => {

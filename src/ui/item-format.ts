@@ -1,4 +1,4 @@
-import type { ItemSpec, WeaponStats } from '../content/items';
+import type { ItemSpec, WeaponStats, CombatVerb } from '../content/items';
 import type { StatModifier } from '../combat/modifiers';
 import type { PassiveSpec } from '../ecs/types';
 import { BUFFS } from '../content/buffs';
@@ -28,6 +28,25 @@ export function formatOnHit(oh: { buffId: string; chance: number; duration: numb
   const spec = BUFFS[oh.buffId];
   const name = spec?.displayName ?? oh.buffId;
   return `On hit: ${name} (${Math.round(oh.chance * 100)}%)`;
+}
+
+/** A reactive COMBAT VERB line — "On riposte: Bleed", "On perfect dodge:
+ *  Haste (self)". `label` is the trigger ("On riposte" / "On perfect dodge"
+ *  / "On empowered hit"); the verb names its buff, optional chance + target. */
+export function formatCombatVerb(label: string, v: CombatVerb): string {
+  const spec = BUFFS[v.buffId];
+  const name = spec?.displayName ?? v.buffId;
+  const chance = v.chance != null && v.chance < 1 ? ` (${Math.round(v.chance * 100)}%)` : '';
+  const tgt = v.target === 'self' ? ' on self' : '';
+  return `${label}: ${name}${chance}${tgt}`;
+}
+
+/** "Charged release: …" — the signature charged-attack effect, so a weapon
+ *  that does something special on a full charge actually says so. */
+export function formatChargedEffect(c: NonNullable<WeaponStats['chargedEffect']>): string {
+  switch (c.kind) {
+    case 'projectile': return 'Charged release: looses a bolt of force';
+  }
 }
 
 export function formatModifier(m: StatModifier): string {

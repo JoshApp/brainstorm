@@ -9,7 +9,7 @@ import { applyBuff } from '../ecs/buffs';
 import { get } from '../ecs/world';
 import { getItemThumbnail } from './item-thumbnail';
 import { playEquipClick, playHealSlurp, playBuffApply } from '../audio/sfx';
-import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus } from './item-format';
+import { formatModifier, formatPassive, formatBuffEffect, formatOnHit, formatSetBonus, formatCombatVerb, formatChargedEffect } from './item-format';
 import { resolveWeaponStats, STAGGER_POWER_BY_CLASS, weaponScalingSummary } from '../content/weapon-classes';
 import { getCharacter, proficiencyTier } from '../state/character';
 import { hexCss } from '../style/color-utils';
@@ -234,9 +234,31 @@ function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] = []): H
     // bigger because you're good with its class." Plus the class tier bar.
     lines.push(...buildWeaponStats(item));
     if (item.weapon.onHit) lines.push(detailLine(formatOnHit(item.weapon.onHit)));
+    // Reactive verbs + charged signature — so a duellist's blade that hastes
+    // on a perfect dodge, or a hammer that fires force on a charged release,
+    // actually SAYS what it does instead of hiding it in the data.
+    if (item.weapon.onRiposte) lines.push(detailLine(formatCombatVerb('On riposte', item.weapon.onRiposte)));
+    if (item.weapon.onPerfectDodge) lines.push(detailLine(formatCombatVerb('On perfect dodge', item.weapon.onPerfectDodge)));
+    if (item.weapon.onEmpoweredHit) lines.push(detailLine(formatCombatVerb('On empowered hit', item.weapon.onEmpoweredHit)));
+    if (item.weapon.chargedEffect) lines.push(detailLine(formatChargedEffect(item.weapon.chargedEffect)));
   }
+  // Item-level on-hit — armour/amulets/rings that proc a status on every
+  // melee swing (e.g. the Acid Tongue amulet's poison). This is SEPARATE
+  // from weapon.onHit; without it, accessory procs went undescribed.
+  if (item.onHit) lines.push(detailLine(formatOnHit(item.onHit)));
   if (item.modifiers && item.modifiers.length) {
     for (const m of item.modifiers) lines.push(detailLine(formatModifier(m)));
+  }
+  // Conditional modifiers — the berserker / last-stand fantasy ("Below 30%
+  // HP: +1 Damage"). Prefix each block with its HP condition so the trade is
+  // legible.
+  if (item.conditionalModifiers && item.conditionalModifiers.length) {
+    for (const block of item.conditionalModifiers) {
+      const c = block.condition;
+      const pct = Math.round(c.value * 100);
+      const cond = c.kind === 'below-hp-pct' ? `Below ${pct}% HP` : `Above ${pct}% HP`;
+      for (const m of block.modifiers) lines.push(detailLine(`${cond}: ${formatModifier(m)}`));
+    }
   }
   // Rolled affixes (equipped items only) — show each rolled bonus so a
   // "searing" / "venom-etched" weapon's behavioral on-hit is visible, not
@@ -257,6 +279,12 @@ function describeItem(item: ItemSpec, affixes: readonly AffixInstance[] = []): H
       ? formatBuffEffect(spec.id, item.consumableBuff.duration)
       : item.consumableBuff.buffId;
     lines.push(detailLine(`On use: ${buffDesc}`));
+  }
+  // Unlabelled phials — a permanent run mutation, unknown until the first
+  // taste. We DON'T spoil which; we just tell the player it's a commitment,
+  // not a heal (the UNKNOWN transaction family).
+  if (item.consumableMutation) {
+    lines.push(detailLine('On use: an unknown, permanent change', /*dim*/ true));
   }
   // Set membership — show the set name, current equipped count, and each
   // tier's bonus, dimming tiers not yet met. Lets the player SEE why
