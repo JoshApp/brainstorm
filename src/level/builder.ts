@@ -774,21 +774,41 @@ function scatterWallRunes(root: THREE.Object3D, spec: LevelSpec): void {
   const depth = spec.depth ?? 0;
   if (depth < 1) return;
   if (/tutorial|safe|harbor|foyer/i.test(spec.id)) return;
+  const allRects = [...spec.rooms, ...spec.corridors];
+  const MIN_SEG = 1.5;   // a rune quad is ~0.95 wide; need a solid run wider than that
+  const NUDGE = 0.06;
   for (const room of spec.rooms) {
     if (room.logicalOnly) continue;
     const r = room.rect;
     if (Math.min(r.w, r.d) < 3.4) continue;            // corridors / tiny pockets
     if (buildRng() > Math.min(0.5, 0.2 + depth * 0.05)) continue;
-    const side = (['N', 'S', 'E', 'W'] as const)[Math.floor(buildRng() * 4) % 4];
-    const along = buildRng() < 0.5 ? 0.27 : 0.73;       // off-centre: dodge mid-wall doorways
     const halfW = r.w / 2, halfD = r.d / 2;
-    const NUDGE = 0.06;
-    let x = r.x, z = r.z, yaw = 0;
-    if (side === 'N') { x = r.x - halfW + r.w * along; z = r.z - halfD + NUDGE; yaw = 0; }
-    else if (side === 'S') { x = r.x - halfW + r.w * along; z = r.z + halfD - NUDGE; yaw = Math.PI; }
-    else if (side === 'W') { z = r.z - halfD + r.d * along; x = r.x - halfW + NUDGE; yaw = Math.PI / 2; }
-    else { z = r.z - halfD + r.d * along; x = r.x + halfW - NUDGE; yaw = -Math.PI / 2; }
-    spawnWallRune(root, new THREE.Vector3(x, groundYAt(x, z) + 1.45, z), yaw, pickWallMark(depth, buildRng));
+    // Place ONLY on a SOLID wall segment — subtract the doorways/corridor
+    // openings from the wall (same logic the wall mesh + torches use) so the
+    // rune never overhangs a gap or corner and floats in the air. Try sides in
+    // random order; take the first with a wide-enough solid run.
+    const sides = (['N', 'S', 'E', 'W'] as const).slice();
+    for (let i = sides.length - 1; i > 0; i--) {        // Fisher-Yates (deterministic)
+      const j = Math.floor(buildRng() * (i + 1)); [sides[i], sides[j]] = [sides[j], sides[i]];
+    }
+    for (const side of sides) {
+      const we = side === 'N' ? { perpAxis: 'z' as const, perpCoord: r.z - halfD, wallStart: r.x - halfW, wallEnd: r.x + halfW }
+        : side === 'S' ? { perpAxis: 'z' as const, perpCoord: r.z + halfD, wallStart: r.x - halfW, wallEnd: r.x + halfW }
+        : side === 'W' ? { perpAxis: 'x' as const, perpCoord: r.x - halfW, wallStart: r.z - halfD, wallEnd: r.z + halfD }
+        : { perpAxis: 'x' as const, perpCoord: r.x + halfW, wallStart: r.z - halfD, wallEnd: r.z + halfD };
+      const openings = findOpenings(we, allRects, room);
+      const segs = subtractRanges(we.wallStart, we.wallEnd, openings).filter((s) => s.end - s.start >= MIN_SEG);
+      if (!segs.length) continue;
+      const seg = segs[Math.floor(buildRng() * segs.length)];
+      // Centre-ish of the segment, clamped so the full quad stays on solid wall.
+      const lo = seg.start + 0.55, hi = seg.end - 0.55;
+      const along = lo + buildRng() * Math.max(0, hi - lo);
+      let x: number, z: number, yaw: number;
+      if (we.perpAxis === 'z') { x = along; z = we.perpCoord + (side === 'N' ? NUDGE : -NUDGE); yaw = side === 'N' ? 0 : Math.PI; }
+      else { z = along; x = we.perpCoord + (side === 'W' ? NUDGE : -NUDGE); yaw = side === 'W' ? Math.PI / 2 : -Math.PI / 2; }
+      spawnWallRune(root, new THREE.Vector3(x, groundYAt(x, z) + 1.45, z), yaw, pickWallMark(depth, buildRng));
+      break;
+    }
   }
 }
 

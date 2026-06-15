@@ -1249,7 +1249,7 @@ export const SCENARIOS: Record<string, Scenario> = {
         { kind: 'corpse', x: 1.6, z: -2.2, rotY: -0.7 },
         { kind: 'wall-rune', x: -1.2, z: -3.94, rotY: 0, text: 'turn back', tint: 0x8a3b2c },
         { kind: 'wall-rune', x: 1.4, z: -3.94, rotY: 0, text: 'we were so many' },
-        { kind: 'wall-rune', x: -3.94, z: -0.5, rotY: Math.PI / 2, glyph: 'rune-sigil', text: 'do not kneel at the basin', tint: 0x5f7355 },
+        { kind: 'wall-rune', x: -3.94, z: -0.5, rotY: Math.PI / 2, text: 'do not kneel at the basin', tint: 0x5f7355 },
       ],
       torches: [
         { x: -3.4, z: 3.0, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.5 },

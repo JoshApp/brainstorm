@@ -21,9 +21,12 @@ const GAP_MS = 320;         // beat between a source's sequenced lines
 
 interface Pending { text: string; token: unknown; }
 
+const MAX_QUEUE = 2;        // belt-and-suspenders cap so nothing ever backs up
+
 let container: HTMLDivElement | null = null;
 let activeLine: HTMLDivElement | null = null;
 let activeToken: unknown = null;       // who owns the line currently showing
+let activeText = '';                   // text of the line currently showing (dedup)
 let holdTimer = 0;
 // Same-SOURCE continuations queued behind the active line (e.g. a corpse's
 // epitaph → reaction). A DIFFERENT source preempts instead of queueing, and
@@ -75,6 +78,7 @@ function showLine(text: string, token: unknown): void {
   root.appendChild(line);
   activeLine = line;
   activeToken = token;
+  activeText = text;
   requestAnimationFrame(() => { line.style.opacity = '1'; });
 
   holdTimer = window.setTimeout(() => {
@@ -82,6 +86,7 @@ function showLine(text: string, token: unknown): void {
     fadeOutAndRemove(line, FADE_MS);
     activeLine = null;
     activeToken = null;
+    activeText = '';
     const next = queue.shift();
     if (next) window.setTimeout(() => showLine(next.text, next.token), GAP_MS);
   }, FADE_MS + HOLD_MS);
@@ -95,8 +100,16 @@ function showLine(text: string, token: unknown): void {
 export function whisper(text: string, token?: unknown): void {
   if (!text) return;
   const tok = token ?? null;
-  // Same source as the line currently showing → sequence behind it.
-  if (activeLine && activeToken === tok) { queue.push({ text, token: tok }); return; }
+  // DEDUP — never stack a line that's already showing or already queued. This is
+  // the READ-spam guard: hammering a corpse's READ used to enqueue the same
+  // epitaph/reaction dozens of times and play them for minutes.
+  if (activeLine && activeText === text) return;
+  if (queue.some((q) => q.text === text)) return;
+  // Same source as the line currently showing → sequence behind it (capped).
+  if (activeLine && activeToken === tok) {
+    if (queue.length < MAX_QUEUE) queue.push({ text, token: tok });
+    return;
+  }
   // Different source → preempt: drop any pending continuations + fast-fade the old.
   window.clearTimeout(holdTimer);
   queue = [];
@@ -116,4 +129,5 @@ export function dismissWhisper(token?: unknown): void {
   fadeOutAndRemove(activeLine, QUICK_FADE_MS);
   activeLine = null;
   activeToken = null;
+  activeText = '';
 }

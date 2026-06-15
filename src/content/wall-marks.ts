@@ -39,18 +39,28 @@ export const WALL_MARKS: WallMark[] = [
   { text: 'the light is the only honest thing' },
   { text: 'count the dead, not the doors' },
   { text: 'we were so many' },
-  { text: 'do not kneel at the basin', glyph: 'rune-sigil', tint: RUNE_TINT.sick },
+  { text: 'do not kneel at the basin', tint: RUNE_TINT.sick },
   { text: 'it wakes when the light moves', tint: RUNE_TINT.warn },
-  { text: 'pray to nothing. nothing answers.', glyph: 'rune-sigil' },
+  { text: 'pray to nothing. nothing answers.' },
   { text: 'the door lies', tint: RUNE_TINT.warn },
+  { text: 'the walls keep the score' },
+  { text: 'eat nothing it offers you', tint: RUNE_TINT.sick },
+  { text: 'name yourself, before it does' },
+  { text: 'i hear my own voice down here' },
+  { text: 'she marks the safe road' },              // a lie — there is none
+  { text: 'the dark is patient and i am not' },
 
   // — Deeper: the dark has taken more of them. —
   { text: 'i should have stopped at three', minDepth: 3 },
-  { text: 'they took my name first', minDepth: 3, glyph: 'rune-sigil' },
+  { text: 'they took my name first', minDepth: 3 },
   { text: 'something follows the light', minDepth: 3, tint: RUNE_TINT.warn },
   { text: 'deeper is not the way out', minDepth: 4 },
   { text: 'do not read the next one', minDepth: 4, tint: RUNE_TINT.warn },
-  { text: 'it is patient. it is below.', minDepth: 5, glyph: 'rune-sigil', tint: RUNE_TINT.warn },
+  { text: 'the floor took him in one breath', minDepth: 4 },
+  { text: 'count your teeth', minDepth: 4, tint: RUNE_TINT.warn },
+  { text: 'down is the only prayer it answers', minDepth: 5 },
+  { text: 'it is patient. it is below.', minDepth: 5, tint: RUNE_TINT.warn },
+  { text: 'i was brave once. it is here now, with me.', minDepth: 5 },
 ];
 
 /** Pick a wall-mark allowed at this depth. Deterministic given `rand`. */
