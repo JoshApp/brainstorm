@@ -231,6 +231,83 @@ registerTexture('soot-streak', (canvas) => {
   }
 });
 
+// 'rune-scrawl' — rows of angular marks, like a message scratched into the
+// wall by someone in a hurry or in the dark. Bright strokes on transparent so
+// it reads as a glow when drawn with an additive, lamp-reactive material
+// (scene/lamp-reveal.ts). The MEANING is carried by the wall-mark text that
+// surfaces when you're close; the glyph is the "something is written here."
+registerTexture('rune-scrawl', (canvas) => {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  const rows = 4;
+  for (let r = 0; r < rows; r++) {
+    const y = h * (0.18 + r * 0.21);
+    let x = w * 0.12;
+    const end = w * 0.88;
+    while (x < end) {
+      const gw = 3 + Math.random() * 6;          // glyph width
+      const gh = 6 + Math.random() * 6;           // glyph height
+      ctx.globalAlpha = 0.55 + Math.random() * 0.45;
+      ctx.beginPath();
+      const kind = Math.random();
+      if (kind < 0.4) {                            // vertical tick
+        ctx.moveTo(x, y - gh / 2); ctx.lineTo(x, y + gh / 2);
+      } else if (kind < 0.7) {                     // slash
+        ctx.moveTo(x, y + gh / 2); ctx.lineTo(x + gw, y - gh / 2);
+      } else {                                     // little angular glyph
+        ctx.moveTo(x, y - gh / 2); ctx.lineTo(x + gw, y);
+        ctx.lineTo(x, y + gh / 2);
+      }
+      ctx.stroke();
+      x += gw + 3 + Math.random() * 3;
+    }
+  }
+  ctx.globalAlpha = 1;
+});
+
+// 'rune-sigil' — a circular seal: ring + chords + a central mark. Reads as a
+// deliberate ward/sigil rather than a hasty scrawl. Same bright-on-transparent
+// rule for the additive reveal material.
+registerTexture('rune-sigil', (canvas) => {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2;
+  const cy = h / 2;
+  const R = w * 0.36;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  // Outer ring.
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.stroke();
+  // Chords across the ring — an angular star.
+  const pts = 5;
+  for (let i = 0; i < pts; i++) {
+    const a0 = (i / pts) * Math.PI * 2 - Math.PI / 2;
+    const a1 = ((i + 2) / pts) * Math.PI * 2 - Math.PI / 2;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a0) * R, cy + Math.sin(a0) * R);
+    ctx.lineTo(cx + Math.cos(a1) * R, cy + Math.sin(a1) * R);
+    ctx.stroke();
+  }
+  // Central mark — a vertical with a crossbar.
+  ctx.globalAlpha = 0.95;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - R * 0.5); ctx.lineTo(cx, cy + R * 0.5);
+  ctx.moveTo(cx - R * 0.28, cy); ctx.lineTo(cx + R * 0.28, cy);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+});
+
 function makeMissingTexture(): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = 8;

@@ -15,6 +15,7 @@ import { tickOffhandViewmodel } from '../player/handheld-offhand';
 import { setBobTarget, updateBob } from '../player/viewmodel-bob';
 import { updateViewSway } from '../player/viewmodel-sway';
 import { tickViewmodelPullback } from '../player/viewmodel-pullback';
+import { updateLampReveal } from '../scene/lamp-reveal';
 import { isDying } from '../player/death';
 import { isFogWalkthroughActive, tickFogWalkthrough } from '../player/fog-walkthrough';
 import { renderWithStyle, setDarkAdapt } from '../style/render-target';
@@ -353,6 +354,12 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // Decay active combat alerts so old broadcasts stop pulling mobs in long
     // after the player has left.
     { name: 'alerts', phase: 'unpaused', tick(ctx) { tickAlerts(ctx.scaledDt); } },
+
+    // Lamp-reveal — feed the player/lamp world position into the shared uniform
+    // every reveal material reads (wall-runes, corpse glints bloom near the
+    // lamp). 'always' so it tracks the lamp even while frozen (viewer/pose/snap)
+    // and a paused look-around still reveals. One write per frame, all materials.
+    { name: 'lamp-reveal', phase: 'always', tick() { updateLampReveal(camera.position); } },
 
     // XP wisps / gold coins — home in on the player and absorb on contact.
     // Live outside the enemy loop so they survive past their spawner.

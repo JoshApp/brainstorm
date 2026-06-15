@@ -244,10 +244,16 @@ export type PropSpec =
   // across runs).
   | { kind: 'stash-chest'; x: number; z: number; rotY?: number; facing?: PropFacing }
   // ── Non-combat encounters ────────────────────────────────────────
-  // 'corpse' = a slumped body with a note. Walk up, read it. Pure
-  // atmosphere + (later) LLM-pluggable lore. The note text is short
-  // and in the in-world grimdark tone.
+  // 'corpse' = a fallen delver (content/corpses.ts). Walk up: epitaph
+  // whispers, and if they died holding something a glint marks it and SEARCH
+  // takes it. `note` overrides the picked epitaph (a vault speaking a death).
   | { kind: 'corpse'; x: number; z: number; rotY?: number; facing?: PropFacing; note?: string }
+  // 'wall-rune' = a glyph scratched into the wall, invisible until the lamp
+  // finds it; its message whispers as you pass. `rotY` faces it into the room
+  // (N=0, S=π, W=π/2, E=−π/2). `text` overrides the picked wall-mark; omit for
+  // a depth-appropriate roll. `height` = metres up the wall (default 1.5).
+  | { kind: 'wall-rune'; x: number; z: number; rotY?: number; height?: number;
+      text?: string; glyph?: import('../content/wall-marks').RuneGlyph; tint?: number }
   // 'vase' = small destructible ceramic prop. Takes a hit from
   // the player's swing, shatters into a few stone-shard pieces,
   // and may drop a small reward (gold or potion). Tiny obstacle

@@ -18,6 +18,7 @@ import { setArenaEnemiesInvincible } from './arena-mode';
 import { get as getEntity } from '../ecs/world';
 import { applyBuff } from '../ecs/buffs';
 import { ITEMS } from '../content/items';
+import { BONFIRE } from '../content/bonfire';
 import { buildModel } from '../ecs/build-model';
 import { setSlot, tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
@@ -1207,6 +1208,40 @@ export const SCENARIOS: Record<string, Scenario> = {
       { index: 1, pos: { x:  10, z: -10 } },
       { index: 2, pos: { x: -10, z:  10 } },
     ],
+  },
+
+  // Traces of the lost — fallen-delver bodies + lamp-revealed wall-runes.
+  // Player stands close so the runes bloom + a corpse glint reads. Walk closer
+  // on a phone to watch them brighten; ?scenario=traces.
+  traces: {
+    freeze: true,
+    hideSword: true,
+    level: {
+      id: 'dbg-traces',
+      depth: 2,
+      displayName: 'Traces',
+      fogColor: 0x0a0a0c,
+      startPos: { x: 0, z: -0.6, yaw: 0 },
+      rooms: [{ id: 'r', rect: { x: 0, z: 0, w: 8, d: 8 }, height: 3.2 }],
+      corridors: [],
+      props: [
+        // Own bonfire in a back corner so the auto-threshold fire doesn't land
+        // dead-centre in the demo shot.
+        { kind: 'model', model: BONFIRE, x: 3.2, y: 0, z: 3.2, rotY: 0 },
+        { kind: 'corpse', x: -1.4, z: -1.6, rotY: 0.7 },
+        { kind: 'corpse', x: 1.6, z: -2.2, rotY: -0.7 },
+        { kind: 'wall-rune', x: -1.2, z: -3.94, rotY: 0, text: 'turn back', tint: 0xc0563a },
+        { kind: 'wall-rune', x: 1.4, z: -3.94, rotY: 0, text: 'we were so many' },
+        { kind: 'wall-rune', x: -3.94, z: -0.5, rotY: Math.PI / 2, glyph: 'rune-sigil', text: 'do not kneel at the basin', tint: 0x7fc08a },
+      ],
+      torches: [
+        { x: -3.4, z: 3.0, height: 2.2, wall: 'W', colorTint: 0xffaa55, intensityMul: 0.5 },
+      ],
+      spawns: [],
+      doors: [],
+      stairs: [],
+    },
+    playerPos: { x: 0, z: -0.6, lookAt: { x: 0, z: -3.94, y: 1.4 } },
   },
 
   // Look at the cursed fountain in the antechamber.

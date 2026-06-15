@@ -34,6 +34,11 @@ import {
   STAIRWELL_HALF_WIDTH,
 } from '../interactables/stairs';
 import { spawnCorpse } from '../interactables/corpse';
+import { spawnWallRune } from '../interactables/wall-rune';
+import { pickFallen } from '../content/corpses';
+import { pickWallMark } from '../content/wall-marks';
+import { rollLoot } from '../content/loot';
+import type { ItemSpec } from '../content/items';
 import { spawnFitting } from '../interactables/fitting';
 import { applyShadowRole } from '../scene/shadow-role';
 import { createArenaController, arenaEncounterId, type WaveSpec } from './arena-waves';
@@ -759,6 +764,34 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
 import { findOpenings, subtractRanges, torchYawForWall } from './wall-openings';
 import { mixColors, moodTintForPosition, applyMoodTint, averageTorchTintInRect } from './mood-tint';
 
+// Scatter a few lamp-revealed wall-runes across a floor's rooms so the dungeon
+// remembers its dead from the very first descent. Off the build stream so a
+// seed is reproducible; off-centre on a wall to dodge the doorway most rooms
+// keep mid-wall; skipped on tutorial/safe/foyer rooms (those have their own
+// authored mood). Spawned directly (not via spec.props) so revisiting a
+// hand-authored spec doesn't accrete duplicates.
+function scatterWallRunes(root: THREE.Object3D, spec: LevelSpec): void {
+  const depth = spec.depth ?? 0;
+  if (depth < 1) return;
+  if (/tutorial|safe|harbor|foyer/i.test(spec.id)) return;
+  for (const room of spec.rooms) {
+    if (room.logicalOnly) continue;
+    const r = room.rect;
+    if (Math.min(r.w, r.d) < 3.4) continue;            // corridors / tiny pockets
+    if (buildRng() > Math.min(0.5, 0.2 + depth * 0.05)) continue;
+    const side = (['N', 'S', 'E', 'W'] as const)[Math.floor(buildRng() * 4) % 4];
+    const along = buildRng() < 0.5 ? 0.27 : 0.73;       // off-centre: dodge mid-wall doorways
+    const halfW = r.w / 2, halfD = r.d / 2;
+    const NUDGE = 0.06;
+    let x = r.x, z = r.z, yaw = 0;
+    if (side === 'N') { x = r.x - halfW + r.w * along; z = r.z - halfD + NUDGE; yaw = 0; }
+    else if (side === 'S') { x = r.x - halfW + r.w * along; z = r.z + halfD - NUDGE; yaw = Math.PI; }
+    else if (side === 'W') { z = r.z - halfD + r.d * along; x = r.x - halfW + NUDGE; yaw = Math.PI / 2; }
+    else { z = r.z - halfD + r.d * along; x = r.x + halfW - NUDGE; yaw = -Math.PI / 2; }
+    spawnWallRune(root, new THREE.Vector3(x, groundYAt(x, z) + 1.45, z), yaw, pickWallMark(depth, buildRng));
+  }
+}
+
 export function buildLevel(
   scene: THREE.Scene,
   spec: LevelSpec,
@@ -1345,9 +1378,23 @@ export function buildLevel(
         height: gy + 0.7,
       });
     } else if (prop.kind === 'corpse') {
-      spawnCorpse(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, prop.note ?? '');
-      // No collision — player can step over the body. Walking right up
-      // to READ it shouldn't be blocked.
+      // A fallen delver — pick who they were + resolve what they died holding,
+      // deterministically off the build stream. An authored `note` overrides
+      // the epitaph (lets a vault speak a specific death).
+      const base = pickFallen(buildRng);
+      const fallen = prop.note ? { ...base, epitaph: prop.note } : base;
+      let loot: ItemSpec | null = null;
+      if (fallen.carried === 'roll') loot = rollLoot({ depth: spec.depth ?? 1 }, buildRng);
+      else if (typeof fallen.carried === 'string') loot = ITEMS[fallen.carried] ?? null;
+      spawnCorpse(root, new THREE.Vector3(prop.x, gy, prop.z), prop.rotY ?? 0, fallen, loot);
+      // No collision — player steps over the body; walking up to SEARCH/READ
+      // it shouldn't be blocked.
+    } else if (prop.kind === 'wall-rune') {
+      // A glyph scratched into the wall — invisible until the lamp finds it.
+      const mark = prop.text
+        ? { text: prop.text, glyph: prop.glyph, tint: prop.tint }
+        : pickWallMark(spec.depth ?? 1, buildRng);
+      spawnWallRune(root, new THREE.Vector3(prop.x, gy + (prop.height ?? 1.5), prop.z), prop.rotY ?? 0, mark);
     } else if (prop.kind === 'boss-mist') {
       // Soulslike fog wall. Spawn is DEFERRED until after the
       // walkable region is constructed (spawnBossMist takes a
@@ -1607,6 +1654,9 @@ export function buildLevel(
   // across room↔corridor junctions (no seam), then prop contact shadows.
   bakeFloorWallContacts(root, wallSegments);
   bakePropContactShadows(root, spec.props);
+
+  // Scatter the dungeon's remembered dead — wall-runes the lamp will reveal.
+  scatterWallRunes(root, spec);
 
   // --- Torches / wall cressets ---
   // Each TorchSpec carries a fixtureKind set at emission time by
