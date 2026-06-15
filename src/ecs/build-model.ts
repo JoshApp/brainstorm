@@ -458,17 +458,19 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       ` : ''}
       ${hasDissolve ? `
       if (uDissolve > 0.0) {
-        // Hash noise on local XZ (stable in world); biased by local Y
-        // so the dissolve travels top-down — the body crumbles from
-        // the head down to the feet.
-        float n = fract(sin(dot(vLocalPos.xz * 11.0, vec2(12.9898, 78.233))) * 43758.5453);
-        float t = (vLocalPos.y * 0.55 + 0.5) - uDissolve * 1.45 + n * 0.18;
-        if (t < 0.0) discard;
-        // Edge band — fragments close to the discard threshold get a
-        // bright additive flare in spectral cyan-green. Reads as energy
-        // leaking out as the body unmakes itself.
-        float edge = 1.0 - smoothstep(0.0, 0.13, t);
-        gl_FragColor.rgb += vec3(0.45, 1.0, 0.72) * edge * 3.5 * uDissolve;
+        // PROGRESSIVE DITHER. The mob's meshes are merged PER JOINT, so each has
+        // a tiny, centred local-Y span — a Y-driven sweep would cross the discard
+        // threshold for the whole body at almost the same instant (it just
+        // "plopped"). Instead drive the discard off a per-fragment hash spread
+        // across 0..1, so fragments wink out PROGRESSIVELY over the entire ramp,
+        // with only a faint top-down lean layered on for direction.
+        float n = fract(sin(dot(vLocalPos.xyz, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        float thresh = n * 0.82 + (vLocalPos.y * 0.5 + 0.5) * 0.18;
+        if (thresh < uDissolve) discard;
+        // Edge flare — fragments at the erosion FRONT (about to go) glow spectral
+        // cyan-green: energy leaking out as the body unmakes itself.
+        float edge = 1.0 - smoothstep(0.0, 0.14, thresh - uDissolve);
+        gl_FragColor.rgb += vec3(0.45, 1.0, 0.72) * edge * 3.0 * uDissolve;
       }
       ` : ''}
       ${hasRim ? `

@@ -124,12 +124,22 @@ export function tickFlungParts(dt: number): void {
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
     const d = partDissolve(p.obj);
-    p.vy += GRAVITY * dt;
+    // Drift horizontally always.
     p.obj.position.x += p.vx * dt;
-    p.obj.position.y += p.vy * dt;
     p.obj.position.z += p.vz * dt;
-    if (d < 0.02) {
-      // SOLID — bounce + settle on the floor.
+    const sinking = d >= 0.02 && getDeathSink();
+    if (sinking) {
+      // POWDERING + sink ON — the dungeon draws the husk under, gently and
+      // CONTROLLED (no gravity here, so it can't plummet through the floor). ∝ d²
+      // so the shader visibly eats the bone before the pull-under finishes it.
+      p.obj.position.y -= d * d * SINK_RATE * dt;
+      p.rvx *= 0.92; p.rvy *= 0.92; p.rvz *= 0.92;
+    } else {
+      // BALLISTIC — falls under gravity and rests on the floor. Covers both the
+      // solid arc AND the dissolving-with-sink-OFF case (DEV), where it just lies
+      // there dissolving in place instead of being pulled under.
+      p.vy += GRAVITY * dt;
+      p.obj.position.y += p.vy * dt;
       if (p.obj.position.y < FLOOR_Y && p.vy < 0) {
         p.obj.position.y = FLOOR_Y;
         p.vy *= -BOUNCE_DAMP;
@@ -137,23 +147,16 @@ export function tickFlungParts(dt: number): void {
         p.vz *= GROUND_DRAG;
         p.rvx *= 0.6; p.rvy *= 0.6; p.rvz *= 0.6;
       }
-    } else {
-      // POWDERING — the floor stops holding it up; the dungeon pulls the husk
-      // under. Sink ∝ d² so the shader gets to visibly eat the bone before the
-      // pull-under finishes it (a flat sink outran the dissolve and hid it).
-      // Spin damps so it settles as it goes down. (DEV __death.sink(false) holds
-      // pieces on the floor so the dissolve is fully visible.)
-      if (getDeathSink()) p.obj.position.y -= d * d * SINK_RATE * dt;
-      p.rvx *= 0.92; p.rvy *= 0.92; p.rvz *= 0.92;
-      // Literal dust as the bone crumbles — the shader dissolve alone is too
-      // subtle on a small piece in the dark; one grey poof makes the powder read.
-      if (p.dust && !p.dusted) {
-        p.dusted = true;
-        p.obj.getWorldPosition(_dustPos);
-        spawnDustPuff(p.obj.parent ?? p.obj, _dustPos.x, _dustPos.y, _dustPos.z, {
-          count: 6, size: 0.16, spread: 0.12, rise: 0.4, life: 0.7,
-        });
-      }
+    }
+    // Literal dust as the bone crumbles — fires once when it starts powdering,
+    // regardless of the sink toggle. The shader dissolve alone is too subtle on
+    // a small piece in the dark; one grey poof makes the powder read.
+    if (p.dust && !p.dusted && d >= 0.02) {
+      p.dusted = true;
+      p.obj.getWorldPosition(_dustPos);
+      spawnDustPuff(p.obj.parent ?? p.obj, _dustPos.x, _dustPos.y, _dustPos.z, {
+        count: 6, size: 0.16, spread: 0.12, rise: 0.4, life: 0.7,
+      });
     }
     p.obj.rotation.x += p.rvx * dt;
     p.obj.rotation.y += p.rvy * dt;
