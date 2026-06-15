@@ -1,142 +1,174 @@
-import type { ModelSpec, PartSpec } from '../ecs/model-types';
+import type { ModelSpec, PartSpec, Vec2 } from '../ecs/model-types';
 import type { CorpsePose } from './corpses';
 
-// A fallen delver, as a ModelSpec — built parametrically so each body can read
-// differently (pose, decay, whether they still carry a pack). Lies along local
-// +X with the head toward +X, on the floor (y up), so the caller's group.rotation.y
-// still aims it. Capsule long axis is local +Y, so a body part lying along X is
-// rot:[0,0,π/2] (see the viewmodel-rotation convention).
+// A FALLEN DELVER — a hooded, robed corpse authored as a posed ModelSpec. The
+// SILHOUETTE is the draped robe (a lathe-revolved bell that flares at the hem)
+// + a peaked hood; skeletal hands and shins/feet poke out for the grim detail.
+// It's a still frame, so the slump is baked into the geometry — no animation.
 //
-// Iterate it in the bench:  delve bench model-corpse-crawled --ortho --debug
+// Canonical frame: built facing +X, on the floor (y up, floor at y≈0). The
+// caller's group.rotation.y aims it; placement backs the SEATED pose to a wall.
+// Capsule/bone long axis is local +Y, so a bone lying along X is rot:[0,0,π/2]
+// (the viewmodel-rotation convention).
 //
-// Failure-modes guarded (per CLAUDE.md): material variety so it doesn't collapse
-// to one grey blob (rag / flesh / leather / a metal buckle catch-light / bone);
-// jitter on the organic parts so the primitives don't read too clean.
+// Iterate in the bench:  delve bench model-corpse-slumped --ortho --debug
+//
+// Failure-modes guarded (per CLAUDE.md): material variety (rag / rag2 / bone /
+// leather / a metal buckle catch-light) so the body doesn't collapse to one
+// grey mass; jitter on organic parts so primitives don't read too clean.
 
 export type CorpseDecay = 'fleshy' | 'skeletal';
 
 const MATERIALS = {
-  flesh: { color: 0x4a3a2c, roughness: 0.92, metalness: 0.0, flatShading: true as const },
-  bone: { color: 0xb7ab92, roughness: 0.72, metalness: 0.0, flatShading: true as const, chroma: 1.4 },
-  rag: { color: 0x1b1611, roughness: 1.0, metalness: 0.0, flatShading: true as const },
-  rag2: { color: 0x2a2018, roughness: 1.0, metalness: 0.0, flatShading: true as const },
-  leather: { color: 0x33271b, roughness: 0.85, metalness: 0.0, flatShading: true as const },
-  metal: { color: 0x6b6356, roughness: 0.45, metalness: 0.65, flatShading: true as const },
-  socket: { color: 0x070605, roughness: 1.0, metalness: 0.0 },
+  flesh:   { color: 0x4a3a2c, roughness: 0.92, metalness: 0.0, flatShading: true as const },
+  bone:    { color: 0xc3b79a, roughness: 0.6,  metalness: 0.0, flatShading: true as const, chroma: 1.3 },
+  // The robe — two close tones so folds read. Cold near-black brown.
+  rag:     { color: 0x1a1712, roughness: 1.0,  metalness: 0.0, flatShading: true as const },
+  rag2:    { color: 0x272018, roughness: 1.0,  metalness: 0.0, flatShading: true as const },
+  leather: { color: 0x2f261b, roughness: 0.85, metalness: 0.0, flatShading: true as const },
+  metal:   { color: 0x6b6356, roughness: 0.42, metalness: 0.7,  flatShading: true as const },
+  socket:  { color: 0x060504, roughness: 1.0,  metalness: 0.0 },
 };
 
 const HALF_PI = Math.PI / 2;
 
-/** One limb as upper + lower segment + an end cap (hand/boot). `bend` splays the
- *  lower segment off the upper to read as an elbow/knee. */
-function limb(
-  name: string,
-  anchor: [number, number, number],
-  dir: number,        // yaw of the limb in the XZ plane (rad), 0 = along +X
-  bend: number,       // extra yaw on the lower segment
-  rUp: number, rLo: number,
-  fleshMat: string,
-  endMat: string,
-  endR: number,
-): PartSpec[] {
-  const [ax, ay, az] = anchor;
-  const L = 0.26;     // segment length
-  const c0 = Math.cos(dir), s0 = Math.sin(dir);
-  const elbowX = ax + c0 * L * 0.5, elbowZ = az + s0 * L * 0.5;
-  const c1 = Math.cos(dir + bend), s1 = Math.sin(dir + bend);
-  const endX = elbowX + c1 * L, endZ = elbowZ + s1 * L;
+// A robe profile (lathe [r,y] points): flares at the hem, narrows to the
+// shoulders, closes at the neck. `hem` scales the floor spread, `top` the
+// shoulder height.
+function robeProfile(hem: number, top: number): Vec2[] {
   return [
-    { kind: 'capsule', name: `${name}_up`, pos: [ax, ay, az], rot: [0, dir, HALF_PI], radius: rUp, height: L, mat: fleshMat, jitter: 0.012 },
-    { kind: 'capsule', name: `${name}_lo`, pos: [elbowX, ay - 0.01, elbowZ], rot: [0, dir + bend, HALF_PI], radius: rLo, height: L, mat: fleshMat, jitter: 0.012 },
-    { kind: 'sphere', name: `${name}_end`, pos: [endX, ay - 0.02, endZ], radius: endR, mat: endMat, jitter: 0.01 },
+    [0.00, 0.0],
+    [hem * 0.86, 0.015],
+    [hem, 0.05],            // hem flare
+    [hem * 0.92, 0.14],
+    [hem * 0.74, top * 0.5],
+    [hem * 0.55, top * 0.82],
+    [hem * 0.42, top],       // shoulders
+    [hem * 0.26, top + 0.05],
+    [0.0, top + 0.06],       // close at the neck
   ];
 }
 
-// Per-pose limb arrangement. Arms reach/tuck/splay; legs trail/curl/splay.
-function limbsFor(pose: CorpsePose, fleshMat: string): PartSpec[] {
-  if (pose === 'curled') {
-    return [
-      ...limb('armR', [0.30, 0.15, 0.15], 1.5, 0.7, 0.055, 0.05, fleshMat, fleshMat, 0.05),
-      ...limb('armL', [0.28, 0.14, -0.13], -1.5, -0.7, 0.055, 0.05, fleshMat, fleshMat, 0.05),
-      ...limb('legR', [-0.20, 0.14, 0.12], 2.4, 1.1, 0.085, 0.07, fleshMat, 'leather', 0.07),
-      ...limb('legL', [-0.22, 0.14, -0.12], 3.7, -1.1, 0.085, 0.07, fleshMat, 'leather', 0.07),
-    ];
+/** A skeletal hand — a flat palm + three curled finger bones. `yaw` aims the
+ *  fingers in the XZ plane. Small; reads as bone resting, not a live grip. */
+function boneHand(name: string, [x, y, z]: [number, number, number], yaw: number): PartSpec[] {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const parts: PartSpec[] = [
+    { kind: 'sphere', name: `${name}_palm`, pos: [x, y, z], scale: [1, 0.45, 0.85], radius: 0.05, mat: 'bone', jitter: 0.006 },
+  ];
+  for (let i = 0; i < 3; i++) {
+    const off = (i - 1) * 0.028;
+    parts.push({
+      kind: 'capsule', name: `${name}_f${i}`,
+      pos: [x + c * 0.05, y - 0.012, z + s * 0.05 + off],
+      rot: [0, yaw, HALF_PI], radius: 0.011, height: 0.055, mat: 'bone',
+    });
   }
-  if (pose === 'slumped') {
-    return [
-      ...limb('armR', [0.18, 0.12, 0.22], 0.5, 0.3, 0.055, 0.05, fleshMat, fleshMat, 0.05),
-      ...limb('armL', [0.05, 0.12, -0.24], -0.5, -0.3, 0.055, 0.05, fleshMat, fleshMat, 0.05),
-      ...limb('legR', [-0.40, 0.13, 0.16], Math.PI - 0.5, 0.2, 0.085, 0.07, fleshMat, 'leather', 0.07),
-      ...limb('legL', [-0.40, 0.13, -0.16], Math.PI + 0.5, -0.2, 0.085, 0.07, fleshMat, 'leather', 0.07),
-    ];
-  }
-  // crawled (default) — one arm flung forward, legs trailing.
+  return parts;
+}
+
+/** A skeletal leg lying along the floor — a shin bone + a boot/foot at the end.
+ *  `yaw` splays it; `len` is the shin length. */
+function boneLeg(name: string, [x, y, z]: [number, number, number], yaw: number, len: number): PartSpec[] {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const ex = x + c * len, ez = z + s * len;
   return [
-    ...limb('armR', [0.46, 0.12, 0.16], 0.35, 0.5, 0.058, 0.05, fleshMat, fleshMat, 0.055),
-    ...limb('armL', [0.16, 0.11, -0.20], -0.4, -0.3, 0.058, 0.05, fleshMat, fleshMat, 0.055),
-    ...limb('legR', [-0.42, 0.13, 0.11], Math.PI - 0.12, 0.1, 0.085, 0.07, fleshMat, 'leather', 0.07),
-    ...limb('legL', [-0.42, 0.13, -0.11], Math.PI + 0.12, -0.1, 0.085, 0.07, fleshMat, 'leather', 0.07),
+    { kind: 'capsule', name: `${name}_shin`, pos: [x + c * len * 0.5, y, z + s * len * 0.5], rot: [0, yaw, HALF_PI], radius: 0.034, height: len * 0.9, mat: 'bone', jitter: 0.006 },
+    { kind: 'box', name: `${name}_foot`, pos: [ex + c * 0.04, y - 0.005, ez + s * 0.04], size: [0.12, 0.055, 0.07], rot: [0, yaw, 0], mat: 'leather', jitter: 0.005 },
+  ];
+}
+
+// Head + hood for a given centre + hood tilt. Skeletal = exposed skull + sockets
+// under a fallen-back hood; fleshy = a cowl drawn fully over a hidden face.
+function headHood(skeletal: boolean, hx: number, hy: number, hoodTiltZ: number): PartSpec[] {
+  if (skeletal) {
+    return [
+      { kind: 'sphere', name: 'skull', pos: [hx + 0.02, hy, 0], radius: 0.10, scale: [1, 1.05, 0.92], mat: 'bone', jitter: 0.008 },
+      { kind: 'sphere', name: 'socket_r', pos: [hx + 0.08, hy, 0.045], radius: 0.03, mat: 'socket' },
+      { kind: 'sphere', name: 'socket_l', pos: [hx + 0.08, hy, -0.045], radius: 0.028, mat: 'socket' },
+      { kind: 'sphere', name: 'jaw', pos: [hx + 0.06, hy - 0.075, 0], radius: 0.05, scale: [1, 0.6, 0.85], mat: 'bone', jitter: 0.006 },
+      // Hood fallen back off the skull.
+      { kind: 'cone', name: 'hood', pos: [hx - 0.10, hy + 0.04, 0], radius: 0.15, height: 0.24, rot: [0, 0, hoodTiltZ - 0.3], mat: 'rag', jitter: 0.02 },
+    ];
+  }
+  return [
+    // Bowed head, fully shrouded.
+    { kind: 'sphere', name: 'head', pos: [hx, hy, 0], radius: 0.115, mat: 'flesh', jitter: 0.01 },
+    // Peaked cowl drawn forward over the face — the iconic hooded read.
+    { kind: 'cone', name: 'hood', pos: [hx - 0.04, hy + 0.05, 0], radius: 0.16, height: 0.30, rot: [0, 0, hoodTiltZ], mat: 'rag', jitter: 0.02 },
+    { kind: 'sphere', name: 'cowl', pos: [hx - 0.06, hy, 0], scale: [0.85, 1.05, 1.1], radius: 0.15, mat: 'rag2', jitter: 0.02 },
+  ];
+}
+
+// SEATED — the hero pose. Slumped against a wall: robe pooled, shoulders
+// settled, head bowed forward under the hood, skeletal hands in the lap, bone
+// legs splayed forward along the floor.
+function seated(skeletal: boolean): PartSpec[] {
+  return [
+    // Robe body — the silhouette. A bell flaring at the floor up to the shoulders,
+    // tipped slightly BACK (top toward −X, the wall) so it reads as leaning.
+    { kind: 'lathe', name: 'robe', profile: robeProfile(0.34, 0.56), pos: [-0.02, 0.0, 0], rot: [0, 0, 0.12], mat: 'rag', segments: 14, jitter: 0.02 },
+    // A shoulder mantle (second tone) over the top so the silhouette breaks.
+    { kind: 'lathe', name: 'mantle', profile: robeProfile(0.22, 0.20), pos: [-0.04, 0.40, 0], rot: [0, 0, 0.12], mat: 'rag2', segments: 12, jitter: 0.02 },
+    ...headHood(skeletal, 0.10, 0.52, -0.35),
+    // Skeletal hands resting in the lap.
+    ...boneHand('handR', [0.22, 0.26, 0.11], 0.2),
+    ...boneHand('handL', [0.20, 0.26, -0.11], -0.2),
+    // Bone legs splayed forward along the floor from under the hem.
+    ...boneLeg('legR', [0.20, 0.06, 0.10], 0.18, 0.34),
+    ...boneLeg('legL', [0.20, 0.06, -0.10], -0.18, 0.34),
+    // Belt buckle catch-light at the waist.
+    { kind: 'box', name: 'buckle', pos: [0.18, 0.22, 0], size: [0.05, 0.06, 0.03], mat: 'metal' },
+  ];
+}
+
+// FALLEN — collapsed on the floor (crawled = pitched forward reaching; curled =
+// drawn in on its side). The robe lathe is laid on its side (a draped mound)
+// with a skeletal arm + legs emerging.
+function fallen(skeletal: boolean, curled: boolean): PartSpec[] {
+  const armReach = curled ? 0.2 : 0.55;   // curled tucks the arm; crawled flings it
+  return [
+    // Robe laid along the floor (the bell on its side, opening toward −X).
+    { kind: 'lathe', name: 'robe', profile: robeProfile(0.30, 0.62), pos: [-0.06, 0.18, 0], rot: [0, 0, HALF_PI + (curled ? 0.25 : 0)], mat: 'rag', segments: 14, jitter: 0.02 },
+    { kind: 'lathe', name: 'mantle', profile: robeProfile(0.20, 0.24), pos: [0.12, 0.18, 0], rot: [0, 0, HALF_PI], mat: 'rag2', segments: 12, jitter: 0.02 },
+    ...headHood(skeletal, 0.40, 0.17, -0.9),
+    // One skeletal arm out of the sleeve (reaching for crawled, tucked for curled).
+    ...boneHand('handR', [0.30 + armReach * 0.5, 0.08, curled ? 0.18 : 0.14], curled ? 1.2 : 0.1),
+    { kind: 'capsule', name: 'armR', pos: [0.30 + armReach * 0.25, 0.09, curled ? 0.16 : 0.13], rot: [0, curled ? 1.0 : 0.1, HALF_PI], radius: 0.03, height: armReach * 0.6, mat: 'bone', jitter: 0.006 },
+    // Bone legs trailing back along the floor.
+    ...boneLeg('legR', [-0.30, 0.07, 0.10], Math.PI - (curled ? 0.7 : 0.1), 0.30),
+    ...boneLeg('legL', [-0.30, 0.07, -0.10], Math.PI + (curled ? 0.7 : 0.1), 0.30),
+    { kind: 'box', name: 'buckle', pos: [0.06, 0.14, 0.14], size: [0.05, 0.05, 0.025], mat: 'metal' },
   ];
 }
 
 export function makeCorpseModel(
-  pose: CorpsePose = 'crawled',
+  pose: CorpsePose = 'slumped',
   decay: CorpseDecay = 'fleshy',
   hasLoot = false,
 ): ModelSpec {
   const skeletal = decay === 'skeletal';
-  const fleshMat = skeletal ? 'bone' : 'flesh';
+
+  const body = pose === 'slumped'
+    ? seated(skeletal)
+    : fallen(skeletal, pose === 'curled');
 
   const parts: PartSpec[] = [
-    // Blood/grime pool soaked into the floor under the body (a stain, not a
-    // glow — flat on the floor, dark red).
-    { kind: 'decal', name: 'pool', texture: 'blood-splatter', size: [1.25, 0.9],
-      pos: [-0.08, 0.012, 0], rot: [-HALF_PI, 0, 0], color: skeletal ? 0x1a120c : 0x320b08, opacity: 0.85 },
-
-    // Torso — chest + pelvis, lying along X.
-    { kind: 'capsule', name: 'chest', pos: [0.10, 0.17, 0], rot: [0, 0, HALF_PI], radius: 0.17, height: 0.30, mat: fleshMat, jitter: 0.018 },
-    { kind: 'capsule', name: 'pelvis', pos: [-0.18, 0.15, 0], rot: [0, 0, HALF_PI], radius: 0.15, height: 0.22, mat: fleshMat, jitter: 0.018 },
-
-    ...limbsFor(pose, fleshMat),
-
-    // A pooled cloak over the back + a second fold (two tones so the silhouette
-    // doesn't collapse to one shade).
-    { kind: 'sphere', name: 'cloak', pos: [-0.04, 0.25, 0], scale: [0.98, 0.34, 0.82], radius: 0.34, mat: 'rag', jitter: 0.02 },
-    { kind: 'sphere', name: 'cloak_fold', pos: [-0.30, 0.22, 0.06], scale: [0.9, 0.3, 0.78], radius: 0.22, mat: 'rag2', jitter: 0.02 },
-
-    // Belt buckle — a small metal catch-light at the waist.
-    { kind: 'box', name: 'buckle', pos: [-0.03, 0.17, 0.16], size: [0.05, 0.06, 0.025], mat: 'metal' },
+    // Grime/blood soaked into the floor under the body (a flat stain, not a glow).
+    { kind: 'decal', name: 'pool', texture: 'blood-splatter', size: [1.3, 1.0],
+      pos: [0.0, 0.012, 0], rot: [-HALF_PI, 0, 0], color: skeletal ? 0x18110b : 0x2c0a07, opacity: 0.8 },
+    ...body,
   ];
 
-  // Head + hood, by decay state.
-  if (skeletal) {
-    parts.push(
-      { kind: 'sphere', name: 'skull', pos: [0.49, 0.15, 0.02], radius: 0.12, mat: 'bone', jitter: 0.01 },
-      { kind: 'sphere', name: 'socket_r', pos: [0.585, 0.15, 0.05], radius: 0.035, mat: 'socket' },
-      { kind: 'sphere', name: 'socket_l', pos: [0.585, 0.16, -0.05], radius: 0.032, mat: 'socket' },
-      // The hood fallen back off the skull.
-      { kind: 'sphere', name: 'hood', pos: [0.26, 0.20, 0], scale: [0.8, 0.9, 1.0], radius: 0.17, mat: 'rag', jitter: 0.02 },
-      // A few exposed ribs.
-      { kind: 'torus', name: 'rib1', pos: [0.18, 0.20, 0], rot: [0, 0, HALF_PI], radius: 0.12, tube: 0.012, mat: 'bone' },
-      { kind: 'torus', name: 'rib2', pos: [0.05, 0.19, 0], rot: [0, 0, HALF_PI], radius: 0.13, tube: 0.012, mat: 'bone' },
-      { kind: 'torus', name: 'rib3', pos: [-0.07, 0.18, 0], rot: [0, 0, HALF_PI], radius: 0.12, tube: 0.012, mat: 'bone' },
-    );
-  } else {
-    parts.push(
-      { kind: 'sphere', name: 'head', pos: [0.47, 0.15, 0.03], radius: 0.13, mat: 'flesh', jitter: 0.012 },
-      // Cowl drawn over the top/back of the skull — the face is hidden.
-      { kind: 'sphere', name: 'hood', pos: [0.40, 0.20, 0], scale: [1.0, 1.0, 1.06], radius: 0.18, mat: 'rag', jitter: 0.02 },
-    );
-  }
-
-  // What they died carrying — a leather pack by the reaching hand, with a metal
-  // catch on it. A second, physical loot cue alongside the lamp-reactive glint.
+  // What they died carrying — a leather satchel with a metal catch, set where a
+  // hand can reach it. A second, physical loot cue beside the lamp-reactive glint.
   if (hasLoot) {
-    const px = pose === 'crawled' ? 0.62 : pose === 'curled' ? 0.34 : 0.10;
-    const pz = pose === 'slumped' ? 0.30 : 0.34;
+    const px = pose === 'slumped' ? 0.30 : 0.50;
+    const pz = pose === 'slumped' ? 0.0 : 0.26;
+    const py = pose === 'slumped' ? 0.10 : 0.07;
     parts.push(
-      { kind: 'box', name: 'satchel', pos: [px, 0.08, pz], size: [0.18, 0.14, 0.13], mat: 'leather', jitter: 0.01 },
-      { kind: 'box', name: 'satchel_buckle', pos: [px, 0.085, pz + 0.07], size: [0.04, 0.03, 0.012], mat: 'metal' },
+      { kind: 'box', name: 'satchel', pos: [px, py, pz], size: [0.18, 0.14, 0.13], mat: 'leather', jitter: 0.01 },
+      { kind: 'box', name: 'satchel_buckle', pos: [px, py + 0.005, pz + 0.07], size: [0.04, 0.03, 0.012], mat: 'metal' },
     );
   }
 

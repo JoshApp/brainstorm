@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-15",
     "entries": [
       {
+        "tag": "fix",
+        "text": "Sever a thing on the high ground and its pieces stay on the high ground — bone and blood stopped falling through the floor.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "Blows land when the blade actually reaches you now — you can read the swing and roll it, instead of guessing on the wind-up.",
         "area": [
@@ -390,14 +398,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Damage marks hang in the air where the blow landed now — turn away and they keep their place, not yours.",
-        "area": [
-          "combat",
-          "ui"
         ]
       }
     ]
