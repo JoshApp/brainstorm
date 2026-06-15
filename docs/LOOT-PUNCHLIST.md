@@ -46,27 +46,30 @@ trash → diluted payoff; too much stuff → no clarity). The fixes:
   Half-bar heals (of `PLAYER_HP_MAX 8`) made attrition meaningless; a
   quarter-bar top-up keeps healing a managed resource (carry 3 = sustain,
   not invulnerability).
+- **Bronze / silver / gold chest tiers** — a small, glance-legible Isaac-
+  style ladder (renamed from supply/iron/boss), each with a distinct
+  PROMISE via a new `category` filter on `rollLoot`: **bronze** = wood,
+  consumables (isolates the potion flood — heals come from marked bronze
+  chests, not every chest); **silver** = iron, gear; **gold** = ornate,
+  gear with a depth-scaled rarity floor (the prize, never a let-down).
+  Distinct models already existed, so the silhouette telegraphs the tier
+  across the room. `category` relaxes rather than returning null. Tests
+  added.
 
 ## Next (prioritized)
 
-1. **Content-differentiated chest tiers** — the real "loot feels good"
-   win. Add a `category` filter to `rollLoot` (alongside `minRarity`),
-   then map chest tiers in `level/decor-defaults.ts` to *content kinds*:
-   cache (gold/scraps) / supply (consumables only) / strongbox (gear) /
-   warded (locked, gated high-value) / hoard (boss). Each **telegraphs
-   its tier by silhouette + light** — anticipation across the room.
-   Isolates the consumable flood into rarer supply chests; makes opening
-   a strongbox exciting.
-2. **Keys: real channel + HUD** (Josh's call: missable, *not* guaranteed).
+1. **Keys: real channel + HUD** (Josh's call: missable, *not* guaranteed).
    Pull `skeleton-key` out of the gear-diluted `rare` band (it drops
    ~0% today) onto a dedicated scarce channel (warded-chest guardian /
    elites / flat low chance). Add a **HUD key count** + locked chests
    that *read* as locked; a left-behind warded chest gets a voice
-   murmur — informed regret, not invisible RNG.
-3. **Density + trash→sink** — cut overall chest count (esp. caches) so
+   murmur — informed regret, not invisible RNG. The **warded chest** is
+   the natural 4th tier — it slots into the bronze/silver/gold ladder once
+   keys exist (gold-locked), reusing the `category` + `minRarity` seams.
+2. **Density + trash→sink** — cut overall chest count (esp. bronze) so
    each lands; make junk reliably convert to gold and gold feed the
    merchant/altars, so trash volume (fine in itself) stops being clutter.
-4. **Estus heal economy** (bigger, systemic) — shift healing toward a
+3. **Estus heal economy** (bigger, systemic) — shift healing toward a
    fixed-charge flask refilled at the per-floor bonfire instead of
    scattered potions. The `consumableMax` field + a comment already gesture
    at this. Deepens the push-vs-bank-at-the-fire tension from

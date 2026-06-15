@@ -83,9 +83,9 @@ export interface ProvingEvent {
 // Declaratively-placeable events. (Shrouded relics need a runtime spawn, so
 // they're a fast-follow, not in this list yet.)
 export const PROVING_EVENTS: ProvingEvent[] = [
-  { id: 'chest-iron', label: 'Chest (iron)', prop: { kind: 'chest', x: 0, z: -2.5, tier: 'iron' } },
-  { id: 'chest-boss', label: 'Chest (boss)', prop: { kind: 'chest', x: 0, z: -2.5, tier: 'boss' } },
-  { id: 'chest-mimic', label: 'Mimic chest', prop: { kind: 'chest', x: 0, z: -2.5, tier: 'iron', mimic: true } },
+  { id: 'chest-silver', label: 'Chest (silver)', prop: { kind: 'chest', x: 0, z: -2.5, tier: 'silver' } },
+  { id: 'chest-gold', label: 'Chest (gold)', prop: { kind: 'chest', x: 0, z: -2.5, tier: 'gold' } },
+  { id: 'chest-mimic', label: 'Mimic chest', prop: { kind: 'chest', x: 0, z: -2.5, tier: 'silver', mimic: true } },
   { id: 'fountain-gamble', label: 'Fountain (gamble)', prop: { kind: 'fountain', x: 0, z: -2.5, variant: 'gamble' } },
   { id: 'fountain-rest', label: 'Fountain (rest)', prop: { kind: 'fountain', x: 0, z: -2.5, variant: 'rest' } },
   { id: 'fountain-tainted', label: 'Fountain (tainted)', prop: { kind: 'fountain', x: 0, z: -2.5, variant: 'tainted' } },

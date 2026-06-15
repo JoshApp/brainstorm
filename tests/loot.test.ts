@@ -130,6 +130,28 @@ test('minRarity still respects minDepth gating (no early OP items)', () => {
   }
 });
 
+// ── Category filter: a chest tier pulls only its content kind ────────────
+test('category filter yields only items of the allowed kinds', () => {
+  const rng = mulberry32(555);
+  const gear = new Set(['weapon', 'armor', 'helmet', 'amulet', 'gloves', 'boots', 'offhand', 'ring']);
+  for (let i = 0; i < 20000; i++) {
+    const cons = rollLoot({ depth: 6, bias: 2, category: ['consumable'] }, rng);
+    assert.equal(cons!.kind, 'consumable', `bronze pulled a non-consumable: ${cons!.id}`);
+    const g = rollLoot({ depth: 6, bias: 2, category: [...gear] as never }, rng);
+    assert.ok(gear.has(g!.kind), `silver pulled a non-gear kind: ${g!.kind}`);
+  }
+});
+
+test('category relaxes rather than returning null when nothing matches', () => {
+  const rng = mulberry32(777);
+  // skeleton-key is the only 'key' and gates to minDepth 2 — at depth 1 the
+  // category has nothing eligible, so the roll must relax, not return null.
+  for (let i = 0; i < 5000; i++) {
+    const item = rollLoot({ depth: 1, category: ['key'] }, rng);
+    assert.ok(item && ITEMS[item.id], 'an empty category must relax to a real item, never null');
+  }
+});
+
 // ── RARITY_ORDER sanity ──────────────────────────────────────────────────
 test('RARITY_ORDER covers every rarity once, ascending', () => {
   assert.equal(RARITY_ORDER.length, 5);

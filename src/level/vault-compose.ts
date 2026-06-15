@@ -873,7 +873,7 @@ export function composeFloor(
         kind: 'chest',
         x: start.offsetX - (sd.w / 2 - 1.4),
         z: start.offsetZ,
-        tier: 'iron',
+        tier: 'silver',
         loot: ITEMS[KEY_ID],
         facing: { kind: 'wall-away' },
       });

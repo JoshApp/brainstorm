@@ -9,17 +9,19 @@ import { playChestOpen } from '../audio/sfx';
 import { spawnGoldCoins } from '../effects/gold-coins';
 import { recordChestOpened } from '../state/character';
 
-export type ChestTier = 'supply' | 'iron' | 'boss';
+export type ChestTier = 'bronze' | 'silver' | 'gold';
 
 // Gold a chest spews when it rolled no item (the "coin cache" fallback) — a
 // satisfying bundle, scaled by tier. The gold-coins effect bundles these into
 // a few chunky coins, so the count reads as "a small fortune," not litter.
-const COIN_CACHE_GOLD: Record<ChestTier, number> = { supply: 14, iron: 26, boss: 48 };
+const COIN_CACHE_GOLD: Record<ChestTier, number> = { bronze: 14, silver: 26, gold: 48 };
 
-const TIER_MODEL = {
-  supply: CHEST,
-  iron: CHEST_IRON,
-  boss: CHEST_BOSS,
+// Bronze = plain wood, silver = iron-bound, gold = ornate amber — the
+// silhouette IS the tier's promise, read across the room.
+const TIER_MODEL: Record<ChestTier, typeof CHEST> = {
+  bronze: CHEST,
+  silver: CHEST_IRON,
+  gold: CHEST_BOSS,
 };
 
 // Chest interactable. Two states: closed (default) and open.
@@ -55,7 +57,7 @@ export function spawnChest(
   pos: THREE.Vector3,
   rotY: number,
   loot: ItemSpec | undefined,
-  tier: ChestTier = 'supply',
+  tier: ChestTier = 'bronze',
   isMimic: boolean = false,
   onMimic?: (worldPos: THREE.Vector3) => void,
 ) {

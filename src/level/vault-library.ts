@@ -36,7 +36,7 @@ const RAY_VIOLET = godRay({ tint: 0xa080ff });
 //     '3,2': [{ kind: 'pillar' }, { kind: 'torch', wall: 'N' }],
 //     '5,3': [{ kind: 'spawn', enemyId: 'boiling-king' }],
 //     '6,4': [{ kind: 'chest' }],                  // depth-rolled tier
-//     '7,5': [{ kind: 'chest', tier: 'iron' }],    // forced tier
+//     '7,5': [{ kind: 'chest', tier: 'silver' }],    // forced tier
 //     '8,1': [{ kind: 'pillar', offset: [0.2, 0] }],  // sub-cell nudge
 //   },
 //
@@ -646,7 +646,7 @@ const ENCOUNTER_ARENA: Vault = {
   // since neither cell is a clean fit; this is the legit
   // sub-cell escape case.
   props: [
-    { kind: 'chest', x: 0, z: 0.5, tier: 'iron', facing: { kind: 'wall-away' } },
+    { kind: 'chest', x: 0, z: 0.5, tier: 'silver', facing: { kind: 'wall-away' } },
   ],
   // No static guardians — a TRAP arena: committing through any entrance
   // slams every gate and the wave controller summons escalating waves

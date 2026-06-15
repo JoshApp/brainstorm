@@ -81,9 +81,9 @@ function buildArena(): LevelSpec {
     const wallZ = -1;
     return {
       props: [
-        // Iron chest at the deep end of the arena — the reward for
+        // Silver chest at the deep end of the arena — the reward for
         // committing to the slam.
-        { kind: 'chest', x: 0, z: -4.5, facing: { kind: 'wall-away' }, tier: 'iron' },
+        { kind: 'chest', x: 0, z: -4.5, facing: { kind: 'wall-away' }, tier: 'silver' },
         {
           kind: 'hint',
           x: 0, z: 3.0,             // SOUTH side, where the player approaches

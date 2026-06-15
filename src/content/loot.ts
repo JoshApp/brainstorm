@@ -20,7 +20,7 @@
 // Add a new item → tag its rarity + drop.minDepth and it flows into the
 // right floors automatically. No pool editing.
 
-import { ITEMS, RARITY_ORDER, type ItemSpec, type Rarity } from './items';
+import { ITEMS, RARITY_ORDER, type ItemSpec, type Rarity, type ItemKind } from './items';
 
 // ── Rarity curve ────────────────────────────────────────────────────────
 // Weight per rarity as a function of a "quality" scalar q (higher = richer
@@ -57,8 +57,10 @@ export function rollRarity(depth: number, bias: number, rand: () => number): Rar
 
 // ── Eligibility index ───────────────────────────────────────────────────
 // Built once from ITEMS, grouped by rarity. Each entry carries its minDepth
-// gate + weight so the item roll is a cheap filtered weighted pick.
-interface LootEntry { id: string; minDepth: number; weight: number }
+// gate + weight + kind so the item roll is a cheap filtered weighted pick
+// (kind powers the per-source category filter — a supply chest pulls only
+// consumables, a strongbox only gear).
+interface LootEntry { id: string; minDepth: number; weight: number; kind: ItemKind }
 type LootIndex = Record<Rarity, LootEntry[]>;
 
 let indexCache: LootIndex | null = null;
@@ -73,6 +75,7 @@ function buildIndex(): LootIndex {
       id,
       minDepth: item.drop?.minDepth ?? 1,
       weight: item.drop?.weight ?? 1,
+      kind: item.kind,
     });
   }
   return idx;
@@ -87,13 +90,19 @@ export function resetLootIndex(): void {
   indexCache = null;
 }
 
-function pickFromBand(band: LootEntry[], depth: number, rand: () => number): ItemSpec | null {
+function pickFromBand(
+  band: LootEntry[],
+  depth: number,
+  rand: () => number,
+  allow: Set<ItemKind> | null = null,
+): ItemSpec | null {
+  const ok = (e: LootEntry) => e.minDepth <= depth && (!allow || allow.has(e.kind));
   let total = 0;
-  for (const e of band) if (e.minDepth <= depth) total += e.weight;
+  for (const e of band) if (ok(e)) total += e.weight;
   if (total <= 0) return null;
   let roll = rand() * total;
   for (const e of band) {
-    if (e.minDepth > depth) continue;
+    if (!ok(e)) continue;
     roll -= e.weight;
     if (roll < 0) return ITEMS[e.id];
   }
@@ -114,40 +123,63 @@ export interface LootContext {
    * Omit for an organic drop (chest/vase/kill) where mundane is fine texture.
    */
   minRarity?: Rarity;
+  /**
+   * Content filter — restrict the roll to these item KINDS. This is what
+   * gives a chest tier its IDENTITY: a supply chest pulls only `consumable`,
+   * a strongbox only gear. If the filter excludes everything eligible, it's
+   * RELAXED rather than yielding nothing (a chest must still cough up
+   * something). Omit for an unrestricted roll.
+   */
+  category?: ItemKind[];
+}
+
+/** Scan the rarity bands for an eligible item: down from `start` to the
+ *  floor, then up past it, then below it as a last resort. `allow` filters
+ *  by kind. Returns null only if nothing matches anywhere. */
+function scanBands(
+  idx: LootIndex, depth: number, rand: () => number,
+  start: number, floorIdx: number, allow: Set<ItemKind> | null,
+): ItemSpec | null {
+  for (let i = start; i >= floorIdx; i--) {
+    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow);
+    if (item) return item;
+  }
+  for (let i = start + 1; i < RARITY_ORDER.length; i++) {
+    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow);
+    if (item) return item;
+  }
+  for (let i = floorIdx - 1; i >= 0; i--) {
+    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand, allow);
+    if (item) return item;
+  }
+  return null;
 }
 
 /**
  * Roll one item from the central distribution. Picks a rarity (depth +
- * bias), then an eligible item of that rarity by weight; steps down a
- * tier if the rolled rarity has nothing available at this depth. Returns
- * null only if NOTHING is eligible at all (shouldn't happen — mundane
- * always has entries). Deterministic given `rand`.
+ * bias), clamps it up to any `minRarity` floor, then an eligible item of
+ * that rarity by weight (filtered by `category`); steps to adjacent tiers
+ * if the rolled one has nothing available. Returns null only if NOTHING is
+ * eligible at all (shouldn't happen — mundane always has entries).
+ * Deterministic given `rand`.
  */
 export function rollLoot(ctx: LootContext, rand: () => number): ItemSpec | null {
   const depth = ctx.depth;
   const idx = lootIndex();
   const rolled = rollRarity(depth, ctx.bias ?? 0, rand);
   // A rarity FLOOR clamps the rolled tier up (a paid-for reward never drops to
-  // bone-and-rust). The downward step then bottoms out AT the floor, not at
-  // mundane, so the guarantee actually holds.
+  // bone-and-rust). The scan then bottoms out AT the floor, not at mundane.
   const floorIdx = ctx.minRarity ? RARITY_ORDER.indexOf(ctx.minRarity) : 0;
   const start = Math.max(RARITY_ORDER.indexOf(rolled), floorIdx);
-  // Step DOWN from the (floored) rolled rarity to the floor.
-  for (let i = start; i >= floorIdx; i--) {
-    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand);
-    if (item) return item;
-  }
-  // Nothing at/above the floor down to it — scan UPWARD (a depth where only
-  // richer tiers have eligible items).
-  for (let i = start + 1; i < RARITY_ORDER.length; i++) {
-    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand);
-    if (item) return item;
-  }
-  // Last resort: a reward must materialise, so relax the floor and scan the
-  // remaining lower tiers rather than return null.
-  for (let i = floorIdx - 1; i >= 0; i--) {
-    const item = pickFromBand(idx[RARITY_ORDER[i]], depth, rand);
-    if (item) return item;
+  const allow = ctx.category && ctx.category.length ? new Set(ctx.category) : null;
+
+  const found = scanBands(idx, depth, rand, start, floorIdx, allow);
+  if (found) return found;
+  // The category may have excluded everything eligible at this depth — relax
+  // it rather than return null (a chest must still yield SOMETHING).
+  if (allow) {
+    const any = scanBands(idx, depth, rand, start, floorIdx, null);
+    if (any) return any;
   }
   return null;
 }
