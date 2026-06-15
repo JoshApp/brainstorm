@@ -9,18 +9,10 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
-        "text": "The head you strike off is the real one now — it spins away across the floor and dissolves where it lands, the same death the body dies.",
+        "text": "The dead's scrawls answer only the lamp you turn on them now. And the bodies on the floor finally look like the people they were.",
         "area": [
-          "combat",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Cut a thing down and the piece you took spins off across the floor — and a slash to the side takes the arm on that side, clean off.",
-        "area": [
-          "combat",
-          "atmosphere"
+          "atmosphere",
+          "content"
         ]
       },
       {
@@ -395,6 +387,14 @@ export const GENERATED_PATCHLOG = [
         "text": "The dead face you and turn to track you as you circle — the backwards-shuffle is gone for good. A committed swing still can't chase your sidestep.",
         "area": [
           "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Mashing attack early no longer banks a phantom second swing — the next strike only queues once the current one is following through.",
+        "area": [
+          "combat",
+          "controls"
         ]
       }
     ]
