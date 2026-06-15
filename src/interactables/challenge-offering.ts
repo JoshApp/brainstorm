@@ -34,6 +34,7 @@ const SEAM_WON    = 0xffc060;  // after ritual: warm amber, the trial held
 const CANDLE_DARK   = 0x3a2820;  // before: an old waxen stub, cold
 const CANDLE_ACTIVE = 0xff4818;  // during: ritual flame red-orange
 const CANDLE_WON    = 0xffc070;  // after: a normal warm candle
+const PRIZE_FLOAT_Y = 0.72;      // reward hover height — just above the slab (sigil ≈0.49), not head-high
 
 export function spawnChallengeOffering(
   scene: THREE.Object3D,
@@ -184,7 +185,10 @@ export function spawnChallengeOffering(
   if (prize?.dropModel) {
     const built = buildModel(prize.dropModel);
     prizeGroup = built.group;
-    prizeGroup.position.set(pos.x, pos.y + 1.0, pos.z);
+    // Float just above the (low) slab — sigil sits at ~0.49, so PRIZE_FLOAT_Y
+    // keeps the reward hovering over the stone, not up at head height. (Was 1.0,
+    // which floated it in the air well above this short altar.)
+    prizeGroup.position.set(pos.x, pos.y + PRIZE_FLOAT_Y, pos.z);
     scene.add(prizeGroup);
   }
   let prizePhase = 0;
@@ -217,7 +221,7 @@ export function spawnChallengeOffering(
       if (prizeGroup) {
         prizePhase += dt;
         prizeGroup.rotation.y = prizePhase * 0.6;
-        prizeGroup.position.y = pos.y + 1.0 + Math.sin(prizePhase * 1.4 * Math.PI * 2) * 0.03;
+        prizeGroup.position.y = pos.y + PRIZE_FLOAT_Y + Math.sin(prizePhase * 1.4 * Math.PI * 2) * 0.03;
       }
       phase += dt;
       // Sigil + circle breathe — slow + dim while inert, faster + brighter

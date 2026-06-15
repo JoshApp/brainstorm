@@ -8,6 +8,14 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-15",
     "entries": [
       {
+        "tag": "tune",
+        "text": "The dead murmur to you as you pass now; stop and search one and the stone gives up the whole of what it remembers.",
+        "area": [
+          "atmosphere",
+          "content"
+        ]
+      },
+      {
         "tag": "fix",
         "text": "The wall-scrawls keep to the stone now, there are far more of them to find, and re-reading the dead no longer leaves them muttering at you for ten minutes.",
         "area": [
@@ -392,14 +400,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "combat",
           "weapons"
-        ]
-      },
-      {
-        "tag": "content",
-        "text": "That skull-lit altar under the shaft of light finally wants something from you — lay your blood on it and take what's cursed, or leave it lit and walk on.",
-        "area": [
-          "level",
-          "content"
         ]
       }
     ]
