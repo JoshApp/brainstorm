@@ -337,12 +337,26 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // once, before the per-enemy update reads its ring target + asks to attack
       // (src/mobs/pack.ts).
       tickPack(ctx.scaledDt, camera.position);
-      for (const enemy of level.enemies) {
-        // Dying enemies still tick (death animation drives the dissolve).
-        if (!enemy.alive && !enemy.dying) continue;
-        const dx = enemy.group.position.x - playerX;
-        const dz = enemy.group.position.z - playerZ;
-        if (dx * dx + dz * dz > sleepDist2) continue;
+      // Backward walk so we can SPLICE expired corpses in place. Splicing (not
+      // reassigning) is required: builder's split-spawn closures push to this
+      // exact array, so a new array would orphan future spawns.
+      const arr = level.enemies;
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const enemy = arr[i];
+        // EXPIRED — dead AND the death animation has finished (tickDying removed
+        // the container + disposed its geometry). Drop it from the array so dead
+        // mobs don't accumulate forever (the gore-arena's endless splits leaked
+        // hundreds of inert Enemy closures otherwise — they were skipped here but
+        // never removed). With the array entry gone and the ECS entity already
+        // destroyed on death, the whole closure is finally GC-able.
+        if (!enemy.alive && !enemy.dying) { arr.splice(i, 1); continue; }
+        // A DYING mob always ticks (its death anim must finish + clean itself up,
+        // even if it died out past the sleep range); a LIVING mob sleeps when far.
+        if (enemy.alive) {
+          const dx = enemy.group.position.x - playerX;
+          const dz = enemy.group.position.z - playerZ;
+          if (dx * dx + dz * dz > sleepDist2) continue;
+        }
         // Phasing mobs (ghosts) use the obstacle-free nav grid.
         const nav = enemy.phasing ? level.navPhasing : level.nav;
         enemy.update(ctx.scaledDt, camera.position, level.walkable, nav);

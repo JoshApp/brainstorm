@@ -9,6 +9,14 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The dead don't give up their essence from one spot — it lifts off the whole body, every part of it, and comes to you.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The dead glow hot as they come apart now — even the black-skinned ones smolder instead of just blinking out.",
         "area": [
           "atmosphere",
@@ -390,14 +398,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The skirmisher levels its blade at you instead of letting it dangle off its arm like a spare bone.",
         "area": [
           "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The tally is carved now, not stamped — pale serif over the dark, colour kept for the blows that earn it. Bigger hits, bigger marks.",
-        "area": [
-          "combat",
-          "ui"
         ]
       }
     ]
