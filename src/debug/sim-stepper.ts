@@ -372,6 +372,35 @@ export function installSimStepper(deps: SimStepperDeps): void {
       };
     },
 
+    /** Run the FIGHTING pilot vs the spawned enemies and report the OUTCOME:
+     *  did the player win (clear the room) or die, how long it took, and how
+     *  much HP it cost. The player-side counterpart to threatProbe — the unit a
+     *  win-rate / player-TTK sweep aggregates across seeds + enemy types. */
+    duel(n = 1800) {
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      const maxHp = observe().player.hp.max;
+      let clearF: number | null = null;
+      let deathF: number | null = null;
+      let endHp = maxHp;
+      driveSteps((f) => {
+        const obs = observe();
+        endHp = obs.player.hp.current;
+        const live = obs.visible.enemies.filter((e) => e.hp.current > 0).length;
+        if (clearF === null && live === 0) clearF = f;
+        if (deathF === null && endHp <= 0) deathF = f;
+        return decideIntent(obs);
+      }, n);
+      const won = clearF !== null && (deathF === null || clearF <= deathF);
+      const sec = (fr: number | null) => (fr == null ? null : Math.round((fr / 60) * 10) / 10);
+      return {
+        won,
+        died: deathF !== null && !won,
+        clearSec: won ? sec(clearF) : null,
+        hpLost: Math.round((maxHp - Math.max(0, endHp)) * 10) / 10,
+        maxHp,
+      };
+    },
+
     // ── Trace + divergence (dig into runs, verify tapes) ──────────────────
     /** DIAGNOSTIC: drive a sustained forward+attack and record the swing state
      *  machine each frame — phase / striking / swinging / inCone — plus the
@@ -406,6 +435,50 @@ export function installSimStepper(deps: SimStepperDeps): void {
         ehpStart: rows[0]?.ehp ?? null,
         ehpEnd: rows.at(-1)?.ehp ?? null,
         sample: rows.filter((r) => r.f % 6 === 0),
+      };
+    },
+    /** DIAGNOSTIC: run the REAL pilot and report every STRIKE — its bearing,
+     *  distance, inCone, and whether the enemy actually lost HP. Answers "why do
+     *  the bot's swings whiff?" with the ground truth (a strike in cone + reach
+     *  that draws no blood points somewhere other than positioning). */
+    combatTrace(n = 1200) {
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      const rows: Array<{ f: number; striking: boolean; dist: number | null; bearing: number | null; inCone: boolean; ehp: number | null }> = [];
+      driveSteps((f) => {
+        const obs = observe();
+        const live = obs.visible.enemies.filter((e) => e.hp.current > 0);
+        let near = live[0];
+        for (const e of live) if (!near || e.distance < near.distance) near = e;
+        const sw = getSwing();
+        rows.push({
+          f, striking: sw.striking,
+          dist: near ? Math.round(near.distance * 100) / 100 : null,
+          bearing: near ? Math.round(near.bearing * 100) / 100 : null,
+          inCone: near?.inCone ?? false,
+          ehp: near?.hp.current ?? null,
+        });
+        return decideIntent(obs); // the REAL pilot, not forced
+      }, n);
+      // Collapse strike windows; for each, did the enemy's hp drop?
+      const strikes: Array<{ f: number; dist: number | null; bearing: number | null; inCone: boolean; landed: boolean }> = [];
+      let i = 0;
+      while (i < rows.length) {
+        if (!rows[i].striking) { i++; continue; }
+        const start = i;
+        const hpBefore = rows[i].ehp;
+        while (i < rows.length && rows[i].striking) i++;
+        const hpAfter = rows[Math.min(i, rows.length - 1)].ehp;
+        strikes.push({
+          f: rows[start].f, dist: rows[start].dist, bearing: rows[start].bearing, inCone: rows[start].inCone,
+          landed: hpBefore != null && hpAfter != null && hpAfter < hpBefore,
+        });
+      }
+      return {
+        strikes: strikes.length,
+        landed: strikes.filter((s) => s.landed).length,
+        enemyHpStart: rows[0]?.ehp ?? null,
+        enemyHpEnd: rows.at(-1)?.ehp ?? null,
+        sample: strikes.slice(0, 14),
       };
     },
     /** Replay a tape, returning the digest at EVERY frame — the full

@@ -43,15 +43,17 @@ export function decideIntent(obs: Observation): Intent {
   const turn = aligned ? 0 : Math.max(-0.18, Math.min(0.18, b * 0.4)); // rad this frame
   const lookDx = turn / sens;
 
-  // REACTIVE DODGE — roll only at the actual just-dodge window: an enemy whose
-  // strike is landing NOW and is in reach. Dodging on the distant WINDUP
-  // telegraph (or from across the room) made the bot dodge perpetually with 3
-  // foes and never commit to a swing. Tight trigger = it mostly fights and only
-  // rolls the blows that would land. Exercises the just-dodge system honestly.
-  const threat = enemies.find((e) => e.state === 'striking' && e.distance < 1.8);
-  if (threat) {
-    const strafe = threat.bearing >= 0 ? -1 : 1; // threat on the right → roll left
-    return { move: [0, 0], look: [lookDx, 0], attack: false, dodge: [strafe, 0.4] };
+  // DODGE only as a LAST RESORT (low HP). Dodging on every incoming strike made
+  // the bot dodge-dance perpetually and almost never swing (2 strikes in 25s) —
+  // and the math says trade instead: enemies deal ~0.5–1.5 realized DPS while
+  // the player out-DPSes them in a few hits, so AGGRESSION wins the 1v1. We bank
+  // hits while healthy and only roll the killing blow when nearly dead.
+  if (obs.player.hp.current <= 2) {
+    const threat = enemies.find((e) => e.state === 'striking' && e.distance < 1.8);
+    if (threat) {
+      const strafe = threat.bearing >= 0 ? -1 : 1; // threat on the right → roll left
+      return { move: [0, 0], look: [lookDx, 0], attack: false, dodge: [strafe, 0.4] };
+    }
   }
 
   // CHASE — close aggressively and stay in the enemy's face. Enemies kite
@@ -65,8 +67,9 @@ export function decideIntent(obs: Observation): Intent {
   const move: [number, number] =
     facingEnough && nearest.distance > STRIKE_RANGE ? [0, -1] : [0, 0];
 
-  // Swing whenever the target is in reach and the cone will land.
-  const attack = nearest.distance < 1.9 && Math.abs(b) < 0.5;
+  // Swing whenever the target is in reach and in the cone — aggressively. (Cone
+  // half-angle is 0.7 rad; 0.45 keeps the strike comfortably inside it.)
+  const attack = nearest.distance < 1.9 && Math.abs(b) < 0.45;
 
   return { move, look: [lookDx, 0], attack, dodge: null };
 }

@@ -30,7 +30,8 @@
     "pilot": "tsx scripts/pilot.ts",
     "reach": "tsx scripts/reach.ts",
     "delve": "tsx scripts/delve.ts",
-    "threat": "tsx scripts/threat-sweep.ts"
+    "threat": "tsx scripts/threat-sweep.ts",
+    "duel": "tsx scripts/duel-sweep.ts"
   },
   "dependencies": {
     "spacetimedb": "2.5.x",
