@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { LevelSpec, RoomSpec, TorchSpec, PropSpec, OpeningSpec } from './types';
+import { spawnNetworkBloodstains } from './network-bloodstains';
 import { WalkableRegion, type WallSegment, type Obstacle } from './walkable';
 import { NavGrid } from './nav-grid';
 import { buildElevationField, setElevationField, groundYAt } from './elevation';
@@ -2548,6 +2549,12 @@ export function buildLevel(
       }
     });
   }
+
+  // Async bloodstains — real deaths recorded at this depth, placed as
+  // loot-free fallen-delver corpses at valid spots in this floor. Runs last,
+  // after all deterministic (buildRng) passes, with its own isolated RNG so
+  // network data can never desync the build. Best-effort: no-op when offline.
+  spawnNetworkBloodstains(root, walkable, spec);
 
   emit({ type: 'level:loaded', levelId: spec.id });
 

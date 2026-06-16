@@ -132,3 +132,30 @@ export function reportDeath(facts: DeathFacts): void {
     console.warn('[net] reportDeath failed:', err);
   }
 }
+
+/** A death recorded at a given depth — read from the live cache to place as
+ *  a bloodstain when a floor at that depth builds. Includes the player's own
+ *  past deaths (you see where you fell, Souls-style). */
+export interface DeathRecord {
+  name: string;
+  depth: number;
+  x: number;
+  z: number;
+  killedBy: string;
+}
+
+/** All deaths recorded at `depth`, from the subscribed cache. Empty if
+ *  offline / not yet synced. Best-effort; never throws. */
+export function deathsAtDepth(depth: number): DeathRecord[] {
+  if (!conn) return [];
+  try {
+    const out: DeathRecord[] = [];
+    for (const row of conn.db.death.iter()) {
+      if (row.depth !== depth) continue;
+      out.push({ name: row.name, depth: row.depth, x: row.x, z: row.z, killedBy: row.killedBy });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
