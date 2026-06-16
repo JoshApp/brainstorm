@@ -14,6 +14,7 @@
 // so a no-stamina escape is a punishing last resort, not free.
 
 import { CONFIG } from '../config';
+import { gameNow } from '../engine/game-clock';
 import { spendStaminaSoft, stallRegen } from './stamina';
 import { suppressChargeUntilRelease } from '../controls/charge-input';
 import { noteDashStarted } from './just-dodge';
@@ -34,7 +35,7 @@ let windedUntil = 0;
 let dodgeActiveUntil = 0;
 
 /** True while a dodge is mid-roll (its i-frame window). The FSM's 'dodging'. */
-export function isDodging(): boolean { return performance.now() < dodgeActiveUntil; }
+export function isDodging(): boolean { return gameNow() < dodgeActiveUntil; }
 
 /** Fire a dash in WORLD direction (dirX, dirZ) — normalised internally. Always
  *  fires (returns true) given a direction; an empty bar yields a weaker stumble.
@@ -42,7 +43,7 @@ export function isDodging(): boolean { return performance.now() < dodgeActiveUnt
 export function tryDash(dirX: number, dirZ: number): boolean {
   const len = Math.hypot(dirX, dirZ);
   if (len === 0) return false;   // no resolvable direction
-  if (performance.now() < cooldownUntil) return false;   // still in the post-dodge cooldown
+  if (gameNow() < cooldownUntil) return false;   // still in the post-dodge cooldown
   // Dodge-cancel: drop any held heavy and REFUND its reservation FIRST, so that
   // stamina is back in the pool to fund this escape (panic-cancel a big charge
   // straight into a clean dodge). Suppresses re-charge until the finger lifts.
@@ -53,12 +54,12 @@ export function tryDash(dirX: number, dirZ: number): boolean {
   const iframes = CONFIG.STAMINA.DASH_IFRAME_S * (full ? 1 : CONFIG.STAMINA.DASH_STUMBLE_IFRAME_MUL);
   applyPlayerKnockback(dirX, dirZ, speed);
   setPlayerInvulnerable(iframes);
-  dodgeActiveUntil = performance.now() + iframes * 1000;
+  dodgeActiveUntil = gameNow() + iframes * 1000;
   // Mark the dodge so a hit negated in the next sliver counts as a just-dodge.
   noteDashStarted();
   // Post-dodge cooldown — longer when this was a gassed stumble (over-extending
   // on empty leaves you committed).
-  const now = performance.now();
+  const now = gameNow();
   let cooldownS = full ? CONFIG.STAMINA.DASH_COOLDOWN_S : CONFIG.STAMINA.DASH_COOLDOWN_GASSED_S;
   if (!full) {
     // Desperate stumble on an empty bar — a camera lurch + stall regen + flash,
@@ -87,7 +88,7 @@ export function tryDash(dirX: number, dirZ: number): boolean {
 /** Movement multiplier while WINDED from chained empty-bar stumbles
  *  (1 = normal). Camera movement composes this onto MOVE_SPEED. */
 export function getWindedMoveMul(): number {
-  return performance.now() < windedUntil ? CONFIG.STAMINA.STUMBLE_WINDED_MOVE_MUL : 1;
+  return gameNow() < windedUntil ? CONFIG.STAMINA.STUMBLE_WINDED_MOVE_MUL : 1;
 }
 
 /** Reset the dodge cooldown — floor load. */

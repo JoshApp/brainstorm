@@ -20,13 +20,14 @@
 // pattern. NOT persisted: reset on floor load (loader.ts).
 
 import { CONFIG } from '../config';
+import { gameNow } from '../engine/game-clock';
 import { setPlayerInvulnerable } from '../player/health';
 import { freezeFor } from './hit-pause';
 import { playParry, playSlowmoEnter } from '../audio/sfx';
 import { DEV } from '../debug/dev';
 import { flashReaction } from '../debug/reaction-debug';
 
-const now = () => performance.now() / 1000;
+const now = () => gameNow() / 1000;
 
 // ── 1. Opportunity registry ──────────────────────────────────────────
 // A count, not a set: enemies push when their white flash opens and pop when

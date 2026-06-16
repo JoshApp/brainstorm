@@ -1,4 +1,5 @@
 import { isArrivalActive } from './arrival';
+import { gameNow } from '../engine/game-clock';
 import { recordPlayerDamage } from './damage-recap';
 import { CONFIG } from '../config';
 import { freezeFor } from '../combat/hit-pause';
@@ -38,10 +39,10 @@ export function isGodMode(): boolean { return godMode; }
 // enter) can't bomb you before you've stepped through and can act.
 let invulnUntil = 0;
 export function setPlayerInvulnerable(seconds: number): void {
-  invulnUntil = performance.now() + seconds * 1000;
+  invulnUntil = gameNow() + seconds * 1000;
 }
 export function isPlayerInvulnerable(): boolean {
-  return performance.now() < invulnUntil;
+  return gameNow() < invulnUntil;
 }
 export function resetPlayerInvuln(): void {
   invulnUntil = 0;
@@ -129,7 +130,7 @@ export function onPlayerDeath(cb: () => void) {
 export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical', quiet = false, cause?: string) {
   if (dead || godMode) return;
   if (isArrivalActive()) return;   // mid-wake at the bonfire — untouchable
-  if (performance.now() < invulnUntil) {
+  if (gameNow() < invulnUntil) {
     // Hit negated by i-frames (dodge / entry-grace). Pure survival — NO reward
     // here. The just-dodge bonus is earned by precise ROLL TIMING against a
     // strike and is fired enemy-side (enemy.ts → tryJustDodge), mirroring the

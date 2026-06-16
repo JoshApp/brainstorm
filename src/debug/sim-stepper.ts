@@ -24,6 +24,7 @@ import { runSystems } from '../engine/loop';
 import { setWorldFrozen, isWorldFrozen } from './freeze';
 import { getGameMode, isPlaying } from '../state/game-mode';
 import { seedRng } from '../engine/rng';
+import { setDeterministicClock, advanceGameClock } from '../engine/game-clock';
 import { getPlayerHp } from '../player/health';
 import type * as THREE from 'three';
 import type { LiveLevel } from '../level/builder';
@@ -117,11 +118,17 @@ function driveSteps(
   recorder?: TapeRecorder,
   onStep?: (frame: number) => void,
 ): void {
+  // Drives are deterministic-clock contexts: gameNow() must be the accumulated
+  // sim clock (not wall-clock) or the time-based timers (hit-pause, dodge
+  // windows) would make replays diverge. The world is frozen here, so flipping
+  // the global clock is safe.
+  setDeterministicClock(true);
   const ctx = fixedCtx();
   for (let k = 0; k < n; k++) {
     const intent = source(frame);
     setIntent(intent);
     recorder?.record(intent);
+    advanceGameClock(FIXED_DT); // advance the game clock per fixed step
     runSystems(simSystems, ctx);
     onStep?.(frame);
     frame++;
@@ -217,6 +224,10 @@ export function installSimStepper(deps: SimStepperDeps): void {
     /** Resume normal real-time play. */
     thaw() {
       setWorldFrozen(false);
+      // Restore the clock to whatever live play uses (deterministic only when
+      // the page is ?fixedstep=1) so resumed live play isn't left on a stuck
+      // accumulated clock.
+      setDeterministicClock(new URLSearchParams(location.search).get('fixedstep') === '1');
       return 'thawed';
     },
     frozen: () => isWorldFrozen(),

@@ -22,19 +22,20 @@
 // pattern. NOT persisted: reset on floor load (loader.ts).
 
 import { CONFIG } from '../config';
+import { gameNow } from '../engine/game-clock';
 import { gainStamina } from './stamina';
 import { playBuffApply } from '../audio/sfx';
 import { enterBulletTime } from './reactive-defense';
 import { DEV } from '../debug/dev';
 import { flashReaction } from '../debug/reaction-debug';
 
-let dashStartedAt = -Infinity;   // performance.now() ms when the last dash fired
-let counterUntil = 0;            // performance.now() ms — counter window end
+let dashStartedAt = -Infinity;   // gameNow() ms when the last dash fired
+let counterUntil = 0;            // gameNow() ms — counter window end
 
 /** dash.ts calls this the instant a dash fires, so the enemy can classify a
  *  strike landing soon after as a precisely-timed (perfect) dodge. */
 export function noteDashStarted(): void {
-  dashStartedAt = performance.now();
+  dashStartedAt = gameNow();
 }
 
 /** Pure: is a strike landing `sinceDashMs` after the roll a PERFECT (reactive)
@@ -52,10 +53,10 @@ export function isPerfectDodge(sinceDashMs: number): boolean {
  *  rewards once, even against a flurry. The roll's own i-frames handle the
  *  actual damage negation — this is purely the skill payoff. */
 export function tryJustDodge(): boolean {
-  if (!isPerfectDodge(performance.now() - dashStartedAt)) return false;
+  if (!isPerfectDodge(gameNow() - dashStartedAt)) return false;
   dashStartedAt = -Infinity;
   enterBulletTime();   // shared reward — world crawls, you keep moving
-  counterUntil = performance.now() + CONFIG.JUST_DODGE.COUNTER_WINDOW_S * 1000;
+  counterUntil = gameNow() + CONFIG.JUST_DODGE.COUNTER_WINDOW_S * 1000;
   gainStamina(CONFIG.STAMINA.DASH_COST * CONFIG.JUST_DODGE.REFUND_FRAC);  // partial dodge kickback
   playBuffApply();
   try { navigator.vibrate?.(CONFIG.JUST_DODGE.HAPTIC_MS); } catch { /* unsupported */ }
@@ -68,7 +69,7 @@ export function tryJustDodge(): boolean {
 /** True while the post-dodge counter opening is live. attack.ts reads it to
  *  buff the player's next landed melee hit. */
 export function isJustDodgeCounterActive(): boolean {
-  return performance.now() < counterUntil;
+  return gameNow() < counterUntil;
 }
 
 /** Close the counter window — attack.ts calls this once a counter hit lands, so

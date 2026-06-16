@@ -80,6 +80,7 @@ import { buildSystems } from './engine/systems';
 import { initDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-adapt-readout';
 import { initBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
 import { seedRng } from './engine/rng';
+import { setDeterministicClock, advanceGameClock, resetGameClock } from './engine/game-clock';
 import { setWorldFrozen } from './debug/freeze';
 import { recordRunStart, resetRunDiscoveries, getMeta, getPlayerName, setPlayerName } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
@@ -1119,11 +1120,19 @@ const SIM_SYSTEMS = SYSTEMS.filter((s) => s.kind === 'sim');
 const PRESENT_SYSTEMS = SYSTEMS.filter((s) => s.kind !== 'sim');
 const USE_FIXED_STEP =
   new URLSearchParams(location.search).get('fixedstep') === '1';
+// In fixed-step, run the game clock deterministically (gameNow() = accumulated
+// sim time). In default play it stays on performance.now() — feel unchanged.
+setDeterministicClock(USE_FIXED_STEP);
 let simAccumulator = 0;
 
 /** Advance the SIM by one fixed step: the time-scale drivers + player FSM +
  *  sim systems, all on the fixed clock (so the world is deterministic). */
 function advanceSimStep(dt: number): void {
+  // Advance the deterministic game clock by the real-time quantum — so the
+  // time-based gameplay timers (skill windows, hit-pause/bullet-time durations)
+  // that read gameNow() are reproducible. Advances during hit-pause so the
+  // freeze ends. (Default play uses performance.now(), so this is a no-op then.)
+  advanceGameClock(dt);
   // Time-scale drivers on the FIXED clock (deterministic hit-pause / bullet-
   // time / death slow-mo), then the same two-clock split the variable path uses.
   tickDeath(dt);
@@ -1306,6 +1315,7 @@ function startRun(floorId: string, startDepth: number = 1) {
   // boot path, including scenarios (which carry no run state).
   const seed = resolveRunSeed();
   seedRng(seed);
+  resetGameClock(); // each run starts at gameNow()=0 so its timers replay
   if (import.meta.env.DEV) console.info(`[run] seed = ${seed}`);
   loadInitialLevel(floorId, startDepth);
   // Resolve the spawn so an authored or procgen position that

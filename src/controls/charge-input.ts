@@ -13,6 +13,7 @@
 // crossbow / focus / future greataxe will follow.
 
 import { isWorldPausedByScreen } from '../ui/screen-manager';
+import { gameNow } from '../engine/game-clock';
 import { CONFIG } from '../config';
 import { reserveStamina, commitReserved, refundReserved } from '../combat/stamina';
 import { getCurrentWeapon } from '../player/current-weapon';
@@ -35,7 +36,7 @@ let chargedPerfect = false;          // was the queued release inside the perfec
 // dry. Tracked here across frames; ranged keeps the old time-ramp (no drain).
 let poured = 0;                      // stamina spent into the current melee charge
 let lastHeldMs = 0;                  // previous frame's heldMs, for the per-frame delta
-let perfectUntil = 0;                // performance.now() ms — end of the perfect-release window
+let perfectUntil = 0;                // gameNow() ms — end of the perfect-release window
 let wasFull = false;                 // latched once liveProgress hits 1 (opens the window once)
 let suppressed = false;              // dodge-canceled: don't rebuild until the touch releases
 // Live joystick direction WHILE charging — published by combat each tick so the
@@ -129,7 +130,7 @@ export function setChargeFromHeldMs(heldMs: number): void {
     if (liveProgress >= 1 && !wasFull) {
       // Just topped out — open the perfect-release window.
       wasFull = true;
-      perfectUntil = performance.now() + CONFIG.CHARGE.PERFECT_RELEASE_MS;
+      perfectUntil = gameNow() + CONFIG.CHARGE.PERFECT_RELEASE_MS;
     }
   }
 }
@@ -137,7 +138,7 @@ export function setChargeFromHeldMs(heldMs: number): void {
 /** True while the perfect-release window is open (charge full, within the timing
  *  window). The charge-ring + weapon gleam flash on this. */
 export function isChargePerfectWindow(): boolean {
-  return wasFull && liveProgress >= 1 && performance.now() <= perfectUntil;
+  return wasFull && liveProgress >= 1 && gameNow() <= perfectUntil;
 }
 
 /** Dodge-cancel: drop an in-flight charge and REFUND its reservation (free), and
