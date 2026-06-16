@@ -586,6 +586,30 @@ export const SCENARIOS: Record<string, Scenario> = {
     playerPos: { x: 0, z: 0, lookAt: { x: 0, z: -5.5, y: 1.2 } },
   },
 
+  // Killable sparring pit — like the arena, but enemies DIE and HIT BACK (no
+  // enemiesInvincible, no godMode), so the headless bot can fight a round to a
+  // real win/loss. A tight ring of three close melee foes the dumb pilot can
+  // reach without exploration. Driven by scripts/sweep.ts across many seeds to
+  // sample combat outcomes (clear time, deaths, damage taken). DEV-only.
+  spar: {
+    level: {
+      id: 'dbg-spar', depth: 3, displayName: 'SPARRING PIT', fogColor: 0x0c0c12,
+      startPos: { x: 0, z: 0, yaw: Math.PI },
+      rooms: [{ id: 'spar', rect: { x: 0, z: 0, w: 14, d: 14 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -6.8, z: 0, height: 2.6, wall: 'W', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x:  6.8, z: 0, height: 2.6, wall: 'E', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x: 0, z: -6.8, height: 2.6, wall: 'N', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x: 0, z:  6.8, height: 2.6, wall: 'S', colorTint: 0xffb066, intensityMul: 1.3 },
+      ],
+      spawns: ringSpawns('spar', ['rat', 'skeleton', 'rat'], 3.5),
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 0, lookAt: { x: 0, z: -3.5, y: 1.2 } },
+  },
+
   // Skeleton up close in a small lit room — for silhouette review.
   skeleton: {
     freeze: true,

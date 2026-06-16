@@ -130,3 +130,29 @@ Next, roughly in order:
 5. **Headless-Node runner** — run tapes/bots with no browser. The clean substrate
    for (4) and for balance sweeps; gated on decoupling a few sim systems
    (`world-ui`, `player-stats`) from their DOM tendrils.
+
+## Known gaps
+
+- **Headless player melee deals no damage** (the blocker for combat balance
+  sweeps). Enemy → player damage works under the stepper (it uses logical
+  positions); player → enemy does NOT — across a full `spar` round the bot
+  swings ~11 times at point-blank and no enemy loses HP, yet the enemies kill
+  the bot. The swing's strike-window hit scan (`createCombatSystem` in
+  `attack.ts`) keys off `weapon.isStriking`, a viewmodel swing-phase flag
+  advanced by the `weapon` system. Hurtbox matrices are NOT the cause —
+  `hurtbox.ts` calls `node.updateWorldMatrix` itself. Next: instrument whether
+  `weapon.isStriking` actually opens under the fixed clock, vs the cone simply
+  not catching the target. Until fixed, headless runs measure movement/AI/
+  enemy-damage faithfully but not player damage output.
+- **Bot has no exploration** — the reactive pilot only engages visible enemies;
+  it can't navigate a real procgen floor to find them. Real descending runs need
+  a smarter pilot (the legacy `bot.ts` has stairs-seeking to draw from).
+
+## Scenarios for the harness
+
+- `?scenario=arena` — 6 ringed enemies, `enemiesInvincible` (endless sparring).
+  Good for movement/observe/feed; nothing dies.
+- `?scenario=spar` — 3 close melee enemies, killable + hitting back. Intended for
+  combat/balance runs once headless player melee lands. DEV-only.
+
+Pair either with `&seed=N&simfreeze=1` for a deterministic, stepper-owned run.
