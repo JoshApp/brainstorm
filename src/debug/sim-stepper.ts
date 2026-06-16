@@ -39,6 +39,16 @@ import { TapeRecorder, tapeFrame, serializeTape, deserializeTape } from '../harn
 // outcomes match. The whole point of fixed-step.
 const FIXED_DT = 1 / 60;
 
+/** One row of the bot's feed — what it saw + chose at frame `f`. */
+interface BotFrame {
+  f: number;
+  mobs: number;
+  hp: number;
+  /** Nearest live enemy distance (m), or null if none visible. */
+  near: number | null;
+  atk: boolean;
+}
+
 export interface SimStepperDeps {
   /** The full ordered system list. The stepper filters to kind:'sim' itself. */
   systems: readonly GameSystem[];
@@ -277,15 +287,42 @@ export function installSimStepper(deps: SimStepperDeps): void {
     /** Structured read of the world right now (the bot's eyes). */
     observe: () => observe(),
     /** Run the built-in reactive pilot autonomously for `n` fixed steps,
-     *  recording a tape. Each step: observe → decideIntent → drive → record.
-     *  This is the headless autonomous loop — a bot playing the game with no
-     *  renderer, deterministically, emitting a run you can replay. */
+     *  recording a tape AND a per-frame transcript (the bot's "feed": what it
+     *  saw + what it chose each frame). Each step: observe → decideIntent →
+     *  drive → record. The headless autonomous loop — a bot playing with no
+     *  renderer, deterministically, emitting a replayable run + an inspectable
+     *  trace of why it did what it did. */
     runBot(n = 300) {
       if (!isWorldFrozen()) setWorldFrozen(true);
       const rec = new TapeRecorder(getSeed() >>> 0, 'bot');
-      driveSteps(() => decideIntent(observe()), n, rec);
+      const transcript: BotFrame[] = [];
+      driveSteps((f) => {
+        const obs = observe();              // state at the START of frame f
+        const intent = decideIntent(obs);
+        const live = obs.visible.enemies.filter((e) => e.hp.current > 0);
+        let near = Infinity;
+        for (const e of live) if (e.distance < near) near = e.distance;
+        transcript.push({
+          f,
+          mobs: live.length,
+          hp: obs.player.hp.current,
+          near: near === Infinity ? null : Math.round(near * 100) / 100,
+          atk: intent.attack,
+        });
+        return intent;
+      }, n, rec);
       const tape = rec.finish();
-      return { tape: serializeTape(tape), frames: tape.frames.length, digest: digest() };
+      // Inline SUMMARY so the console isn't flooded; full transcript also returned.
+      const hps = transcript.map((t) => t.hp);
+      const summary = {
+        attacks: transcript.filter((t) => t.atk).length,
+        minHp: hps.length ? Math.min(...hps) : null,
+        startMobs: transcript[0]?.mobs ?? null,
+        endMobs: transcript.at(-1)?.mobs ?? null,
+        nearestStart: transcript[0]?.near ?? null,
+        nearestEnd: transcript.at(-1)?.near ?? null,
+      };
+      return { tape: serializeTape(tape), frames: tape.frames.length, digest: digest(), summary, transcript };
     },
 
     // ── Trace + divergence (dig into runs, verify tapes) ──────────────────
