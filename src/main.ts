@@ -78,8 +78,9 @@ import { buildSystems } from './engine/systems';
 import { initDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-adapt-readout';
 import { initBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
 import { seedRng } from './engine/rng';
-import { recordRunStart, resetRunDiscoveries, getMeta } from './state/meta-state';
+import { recordRunStart, resetRunDiscoveries, getMeta, getPlayerName, setPlayerName } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
+import { showNameEntry } from './ui/name-entry-screen';
 import { addItemSilently } from './player/inventory';
 import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
@@ -1643,30 +1644,44 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     hasSave: !!save,
     saveDepth: save?.depth,
     onDescend() {
-      clearSave();
-      // First-ever run gets the tutorial chamber; everyone else lands
-      // straight in procgen depth-1. "Ever attempted a run" is tracked
-      // in meta-state and survives across saves/deaths.
-      //
-      // Dev: ?tutorial=1 forces the tutorial path regardless of
-      // meta-state, so you can iterate on the tutorial chamber
-      // without clearing localStorage each time. URL example:
-      //     https://...brainstorm/?tutorial=1
-      const forceTutorial = new URLSearchParams(window.location.search).get('tutorial') === '1';
-      const isFirstRun = getMeta().runsAttempted === 0;
-      const wantTutorial = forceTutorial || isFirstRun;
-      // Every fresh run now starts in the starter chamber — three
-      // altars, one weapon each. The chamber's stair-target depends
-      // on whether this is also the player's first-ever run (then
-      // tutorial after picking; otherwise straight to depth-1).
-      const nextAfterStarter = wantTutorial ? 'tutorial' : 'depth-1';
-      LEVELS['starter'] = buildStarterChamber(nextAfterStarter);
-      startNewRun('starter');
-      recordRunStart();
-      resetRunDiscoveries();
-      resetCharacter();
-      applyState(null);
-      startRun('starter', 0);
+      const beginDescent = () => {
+        clearSave();
+        // First-ever run gets the tutorial chamber; everyone else lands
+        // straight in procgen depth-1. "Ever attempted a run" is tracked
+        // in meta-state and survives across saves/deaths.
+        //
+        // Dev: ?tutorial=1 forces the tutorial path regardless of
+        // meta-state, so you can iterate on the tutorial chamber
+        // without clearing localStorage each time. URL example:
+        //     https://...brainstorm/?tutorial=1
+        const forceTutorial = new URLSearchParams(window.location.search).get('tutorial') === '1';
+        const isFirstRun = getMeta().runsAttempted === 0;
+        const wantTutorial = forceTutorial || isFirstRun;
+        // Every fresh run now starts in the starter chamber — three
+        // altars, one weapon each. The chamber's stair-target depends
+        // on whether this is also the player's first-ever run (then
+        // tutorial after picking; otherwise straight to depth-1).
+        const nextAfterStarter = wantTutorial ? 'tutorial' : 'depth-1';
+        LEVELS['starter'] = buildStarterChamber(nextAfterStarter);
+        startNewRun('starter');
+        recordRunStart();
+        resetRunDiscoveries();
+        resetCharacter();
+        applyState(null);
+        startRun('starter', 0);
+      };
+      // Before the first descent ever, the dark asks for a name. Once set
+      // it's never asked again — returning delvers drop straight in. The
+      // name persists in meta-state and (Phase 4+) attaches to leaderboard
+      // + trace submissions. See docs/ALPHA-AND-BACKEND.md.
+      if (!getPlayerName()) {
+        showNameEntry((name) => {
+          setPlayerName(name);
+          beginDescent();
+        });
+        return;
+      }
+      beginDescent();
     },
     onTutorial() {
       // Explicit replay path — always routes through the starter

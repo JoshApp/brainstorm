@@ -124,6 +124,45 @@ export function getMeta(): Readonly<MetaState> {
   return load();
 }
 
+// ── Player identity ─────────────────────────────────────────────────
+// The name the player chose + a stable id to attribute their runs. Both
+// live in localStorage for now. Phase 4 hands identity over to
+// SpacetimeDB's anonymous `Identity` (the connection token IS the
+// account), but the name-entry UX and the display name survive that
+// handover unchanged. See docs/ALPHA-AND-BACKEND.md.
+
+/** The delver's chosen name, or undefined if they haven't named yet. */
+export function getPlayerName(): string | undefined {
+  return load().playerName;
+}
+
+/** Persist the delver's chosen name. Trimmed; empty clears it. */
+export function setPlayerName(name: string): void {
+  const m = load();
+  m.playerName = name.trim() || undefined;
+  persist();
+}
+
+/** Stable local player id, generated + persisted on first read. The
+ *  interim stand-in for a real account key until SpacetimeDB's anon
+ *  Identity takes over. */
+export function getPlayerId(): string {
+  const m = load();
+  if (!m.playerId) {
+    m.playerId = newPlayerId();
+    persist();
+  }
+  return m.playerId;
+}
+
+function newPlayerId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
 // ── Recorders ───────────────────────────────────────────────────────
 // All take the value to record + return true iff this was the FIRST
 // time. End-screen uses the return to highlight "discoveries this run."
