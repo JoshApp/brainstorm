@@ -13,3 +13,9 @@ debug-captures/
 
 # Performance recordings (written by the dev-server /__perf endpoint)
 perf-recordings/
+
+# Generated art exploration (runs/manifest) — not shipped to the game
+public/art/
+
+# Art suite feedback submissions (notes/drawings) — read by Claude, not shipped
+art-feedback/

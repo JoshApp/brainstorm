@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { debugCapturePlugin } from './scripts/debug-capture-plugin';
 import { perfRecordPlugin } from './scripts/perf-record-plugin';
+import { artFeedbackPlugin } from './scripts/art-feedback-plugin';
 
 // Served from GitHub Pages at https://joshapp.github.io/brainstorm/
 // so all built asset URLs need this sub-path prefix.
@@ -15,6 +16,8 @@ export default defineConfig({
     // Dev-only: receives perf recordings from the phone → perf-recordings/<id>.json,
     // and serves them back to /brainstorm/perf-review.html.
     perfRecordPlugin(),
+    // Dev-only: receives art-suite feedback (stars · notes · drawings) → art-feedback/<id>/.
+    artFeedbackPlugin(),
     VitePWA({
       // 'prompt' registration: new SWs install into the WAITING state and
       // do NOT auto-activate. src/pwa-update.ts decides when it's safe

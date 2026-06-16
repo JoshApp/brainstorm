@@ -37,6 +37,7 @@ DELVE — creator suite (author · preview · debug · play)
   delve weapons                     weapon stat table — derived reach · class · arc
   delve bench <subject> [flags]     author/inspect a MODEL (viewmodel-<id>, mob-<id>, model-<id>)
                                       --hand drop into the hand · --ortho 4-view · --debug slots+bbox
+  delve art [<id>|--all]            generate 2D illustrations (tarot cards) → public/art/cards/
 
   WORLD & PLAY
   delve check <seed> <depth>        fast STATIC floor analysis (overlap / archway / reachability)
@@ -160,6 +161,7 @@ switch (cmd) {
   case 'reach': delegate('reach', ['--seed', rest[0], '--depth', rest[1] ?? '1']); break;
   case 'weapons': weapons(); break;
   case 'bench': delegate('bench'); break;
+  case 'art': delegate('art'); break;
   case 'snap': delegate('snap'); break;
   case 'pilot': delegate('pilot'); break;
   case 'play': delegate('play'); break;

@@ -1,0 +1,21 @@
+<!doctype html>
+<!--
+  DELVE — 2D art viewer (DEV ONLY).
+  A gallery for reviewing AI-generated illustrations against the game's real
+  "carved from the deep" frame. Served by `npm run dev` at /art.html; NOT part
+  of the production build (vite only builds index.html), so it never ships to
+  the live game. Generate art with `npm run delve art`, then refresh this page.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DELVE — art viewer</title>
+    <style>
+      html, body { margin: 0; background: #08050300; }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/src/art/viewer.ts"></script>
+  </body>
+</html>
