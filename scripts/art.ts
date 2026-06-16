@@ -16,8 +16,10 @@
  * NOTE: run via `npx tsx scripts/art.ts …` (or `delve art …`). Plain `npm run
  * delve art --flag` has npm swallow the --flags; positionals pass fine.
  */
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { CARD_ART } from '../src/art/cards';
+import { SIGIL_SUBJECT } from '../src/art/domains';
 import {
   STYLES, DEFAULT_STYLE, type StyleId,
   FRAMES, FRAME_NEGATIVE, ILLUSTRATION_SIZE, FRAME_SIZE,
@@ -114,6 +116,35 @@ async function main() {
   }
 
   const backend = falBackend();
+
+  // ── sigil <domain|all> ──────────────────────────────────────────────────────
+  // AI-generated ink sigils (the experiment) → public/art/sigils/<domain>.png.
+  // Not in the run manifest — a fixed set, one per domain.
+  if (cmd === 'sigil') {
+    const dir = resolve(process.cwd(), 'public/art/sigils');
+    mkdirSync(dir, { recursive: true });
+    const keys = (arg1 && arg1 !== 'all') ? [arg1] : Object.keys(SIGIL_SUBJECT);
+    console.log(`\ndelve art — sigils [${keys.join(', ')}] via ${backend.name}\n`);
+    let ok = 0;
+    for (const d of keys) {
+      const s = SIGIL_SUBJECT[d as keyof typeof SIGIL_SUBJECT];
+      if (!s) { console.error(`  no domain '${d}'`); continue; }
+      const prompt = `a single bold occult emblem of ${s.mark}, stark woodcut linocut ink, heavy black carved ink with one bold ${s.accent} spot colour, the emblem LARGE and filling most of the frame edge to edge with only a thin cream parchment margin, simple graphic high-contrast ink stamp`;
+      const negative = 'text, letters, words, numbers, writing, lettering, photographic, 3d render, realistic, multiple emblems, scene, landscape, gradient, soft shading, small emblem, tiny, lots of empty background, border, frame, ornate edge';
+      process.stdout.write(`  ${d.padEnd(8)} generating… `);
+      const t = Date.now();
+      try {
+        const r = await backend.generate({ prompt, negative, width: 640, height: 640, seed: 8000, model: flags.model });
+        writeFileSync(resolve(dir, `${d}.png`), r.bytes);
+        console.log(`ok (${((Date.now() - t) / 1000).toFixed(1)}s) → public/art/sigils/${d}.png`);
+        ok++;
+      } catch (e) {
+        console.log('FAILED'); console.error(`    ${(e as Error).message}`);
+      }
+    }
+    console.log(`\n${ok}/${keys.length} sigils.`);
+    return;
+  }
 
   // ── frame <key|all> ─────────────────────────────────────────────────────────
   if (cmd === 'frame') {

@@ -1,23 +1,30 @@
 /**
  * Tarot card art specs — the content-layer DATA the art pipeline consumes.
- * One entry per card; `art` is the per-card subject fragment that follows the
- * shared STYLE. See docs/TAROT-CONCEPT.md for the design (the dungeon's deck,
- * the Reversal, light-as-exposure, domain=colour).
+ * See docs/TAROT-CONCEPT.md for the design (the dungeon's deck, the Reversal,
+ * domain = colour = meaning).
  *
- * `accent` is the card's single spot colour — its DOMAIN made visible. The ink
- * treatment stays constant across the deck; the accent is what varies, so the
- * deck reads as one hand while a glance tells you a card's allegiance.
- * `seed` is fixed so a regeneration is reproducible — reroll the seed, not the
- * model, and fork promising runs with `delve art card <id> --from rX --tweak`.
+ * Domains span DARK → LIGHT so the deck isn't monotonous: the dark is what the
+ * PLACE does to you; the light is what the DELVER carries down against it. The
+ * contrast is the point — a radiant card blazing in a deck of crimson and bone
+ * is the lighting-doctrine signal that rare light MEANS something.
+ *
+ * `accent` is the card's single spot colour — its domain made visible. The ink
+ * treatment stays constant; the accent varies. `seed` is fixed for reproducible
+ * regen — reroll the seed, fork promising runs with `--from rX --tweak`.
  */
 
-export type Domain = 'blood' | 'bone' | 'greed' | 'rot' | 'mercy' | 'arcane';
+export type Domain =
+  // dark — the dungeon's nature
+  | 'blood' | 'bone' | 'rot' | 'greed'
+  // light / hope — the delver's defiance
+  | 'dawn' | 'grace' | 'valor'
+  // numinous — the sublime between
+  | 'wonder';
 
 export interface CardArtSpec {
   id: string;
   name: string;
   arcana: 'minor' | 'major';
-  /** Which face of fate this card belongs to (weights the deck via the Mark). */
   domain: Domain;
   /** The single spot colour for this card's domain (woven into the prompt). */
   accent: string;
@@ -27,14 +34,13 @@ export interface CardArtSpec {
 }
 
 export const CARD_ART: CardArtSpec[] = [
-  // ── Greed — tarnished gold ──────────────────────────────────────────────
+  // ── DARK ──────────────────────────────────────────────────────────────────
   {
     id: 'the-glutton', name: 'The Glutton', arcana: 'minor', domain: 'greed',
     accent: 'tarnished gold',
-    art: 'a bloated robed figure gorging in the dark over a heaped table of viscera and bones, swollen hands, greed made flesh, a single guttering candle',
-    seed: 1001,
+    art: 'a monstrous bloated glutton hunched over a heaped table, cramming fistfuls of viscera and gold into a gaping distended maw, jaw stretched wide, swollen and vast and ravenous, gluttony made flesh, a single guttering candle',
+    seed: 1004,
   },
-  // ── Blood / Wrath — crimson ─────────────────────────────────────────────
   {
     id: 'the-hound', name: 'The Hound', arcana: 'minor', domain: 'blood',
     accent: 'dried-blood crimson',
@@ -47,32 +53,74 @@ export const CARD_ART: CardArtSpec[] = [
     art: 'a kneeling armoured delver drinking from cupped hands brimming with blood, crimson running down the wrists, ecstatic and ruined, faint glow from below',
     seed: 1003,
   },
-  // ── Bone / Death — cold bone-white (near-colourless: absence is the accent)
   {
     id: 'the-hollow-saint', name: 'The Hollow Saint', arcana: 'major', domain: 'bone',
     accent: 'cold bone white',
-    art: 'a towering skeletal saint enthroned, a halo of guttered candles, hollow ribcage open like a reliquary, hands raised in a blessing that is also a verdict, ossuary behind',
-    seed: 2001,
+    art: 'a towering skeletal saint seated upon a great carved stone throne, dominating the frame, a halo of guttered candles behind the skull, hollow ribcage open like a reliquary, bone hands resting on the armrests, regal and dead and patient',
+    seed: 2003,
   },
-  // ── Mercy / Light — pale moonlight (the lure: beautiful, ominous) ────────
-  {
-    id: 'the-lantern', name: 'The Lantern', arcana: 'major', domain: 'mercy',
-    accent: 'pale moonlight blue',
-    art: 'a veiled figure offering a single radiant lantern out of total darkness, the light too kind for this place, moths and pale hands reaching from the black toward it',
-    seed: 3001,
-  },
-  // ── Arcane / Wonder — the reserved violet ────────────────────────────────
-  {
-    id: 'the-wanderer', name: 'The Wanderer', arcana: 'major', domain: 'arcane',
-    accent: 'arcane violet',
-    art: 'a cloaked pilgrim at the lip of an endless stair, a single violet star burning above, vast and indifferent, the figure small against the dark immensity',
-    seed: 4001,
-  },
-  // ── Rot / Decay — sickly green ───────────────────────────────────────────
   {
     id: 'the-worm', name: 'The Worm', arcana: 'minor', domain: 'rot',
     accent: 'sickly green',
-    art: 'a fat pale grave-worm coiled through a cracked skull, feasting, patient and blind, threads of decay, simple iconographic composition',
-    seed: 5001,
+    art: 'a huge pale grave-worm erupting from the eye socket of a cracked skull and coiling thickly around it, glistening segmented body dominating the composition, the parasite feasting, patient and blind',
+    seed: 5002,
+  },
+  {
+    id: 'the-maw', name: 'The Maw', arcana: 'minor', domain: 'greed',
+    accent: 'tarnished gold',
+    art: 'a vast toothed maw gaping open in the black stone floor, gold coins and bones spilling down into it, the hunger that swallows everything',
+    seed: 6001,
+  },
+
+  // ── LIGHT / HOPE ────────────────────────────────────────────────────────────
+  {
+    id: 'the-dawn', name: 'The Dawn', arcana: 'major', domain: 'dawn',
+    accent: 'radiant pale gold-white',
+    art: 'a lone delver far below at the bottom of an immense pit, one shaft of warm dawn-light breaking down from impossibly high above, the distant way up, hope sharp as grief',
+    seed: 7101,
+  },
+  {
+    id: 'the-hearth', name: 'The Hearth', arcana: 'minor', domain: 'grace',
+    accent: 'soft warm amber',
+    art: 'a hooded delver sitting hunched beside a small bonfire in a hollow of ruined black stone, hands held out to the warmth, a notched sword planted in the ground, broken walls around, refuge and rest carved from the dark',
+    seed: 7202,
+  },
+  {
+    id: 'the-star', name: 'The Star', arcana: 'major', domain: 'dawn',
+    accent: 'radiant white-gold',
+    art: 'a single pure radiant star burning over black still water, a kneeling figure cupping its light in both hands, quiet impossible hope',
+    seed: 7301,
+  },
+  {
+    id: 'the-oath', name: 'The Oath', arcana: 'major', domain: 'valor',
+    accent: 'cold steel silver',
+    art: 'a battered delver kneeling, raising a broken sword to their brow in a vow, jaw set, resolve hardening against the dark, defiance',
+    seed: 7401,
+  },
+  {
+    id: 'the-companion', name: 'The Companion', arcana: 'minor', domain: 'grace',
+    accent: 'soft warm amber',
+    art: 'two delvers in the dark, one standing and hauling a fallen comrade up by the arm, both figures fully visible, fellowship and rescue, the rarest mercy in the descent',
+    seed: 7502,
+  },
+  {
+    id: 'the-healer', name: 'The Healer', arcana: 'minor', domain: 'grace',
+    accent: 'pale warm gold',
+    art: 'a hooded figure laying glowing hands over a wounded delver, light pooling from the touch, pain leaving like smoke, tender and grave',
+    seed: 7601,
+  },
+
+  // ── NUMINOUS ────────────────────────────────────────────────────────────────
+  {
+    id: 'the-lantern', name: 'The Lantern', arcana: 'major', domain: 'grace',
+    accent: 'soft warm amber',
+    art: 'a veiled figure offering a single radiant lantern out of total darkness, the light almost too kind for this place, pale hands reaching from the black toward it',
+    seed: 3001,
+  },
+  {
+    id: 'the-wanderer', name: 'The Wanderer', arcana: 'major', domain: 'wonder',
+    accent: 'arcane violet',
+    art: 'a cloaked pilgrim at the lip of an endless stair, a single violet star burning above, vast and indifferent, the figure small against the dark immensity',
+    seed: 4001,
   },
 ];

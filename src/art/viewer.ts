@@ -10,6 +10,7 @@
  * round. Loaded only by /art.html on the dev server; never in the game build.
  */
 import { CARD_ART } from './cards';
+import { DOMAIN_VISUAL } from './domains';
 import { type ArtManifest, type ArtRun, runsFor } from './runs';
 import { THEME, FONT_UI, displayHeading, injectThemeKeyframes } from '../ui/theme';
 
@@ -22,7 +23,13 @@ const selections = new Set<string>();        // ★ "more of this"
 const rejects = new Set<string>();            // ✕ "not this"
 const drawings = new Map<string, string>();   // runId -> annotated PNG dataURL
 let MAT = 0.04;                               // inlay margin (live slider in the spread)
-const matAdjusters: Array<() => void> = [];   // reposition each spread card's art on slider change
+let OUTER_CROP = true;                         // crop the frame's outer paper margin → organic edge (toggle)
+let SIGILS = false;                            // show the per-domain category glyph (toggle) — postponed, off by default
+let INK_SIGILS = true;                          // AI inked wax-seal sigil vs crisp SVG glyph (toggle)
+let TEXT_H = 6;                                // title height above the window's lower edge (px, slider)
+const matAdjusters: Array<() => void> = [];   // re-punch + reposition art on MAT / crop change (heavy)
+const textAdjusters: Array<() => void> = [];  // reposition the title only on TEXT_H change (cheap)
+const sigilEls: HTMLElement[] = [];           // the domain glyphs, toggled by SIGILS
 
 // ── shell ─────────────────────────────────────────────────────────────────
 const root = document.body;
@@ -159,14 +166,14 @@ function frameWindow(src: string, onReady: (c: HTMLCanvasElement, repunch: (mat:
     // the organic ink edge of the linocut, not a white rectangle. Baked into a
     // `base` once; the window punch is applied per-MAT on top.
     const outerThr = 140;
-    const base = new Uint8ClampedArray(src8);
+    const oMask = new Uint8Array(w * h);  // 1 = outer paper margin (cropped when OUTER_CROP is on)
     const oseen = new Uint8Array(w * h);
     const ostack = [0, w - 1, (h - 1) * w, w * h - 1, w >> 1, (h - 1) * w + (w >> 1), (h >> 1) * w, (h >> 1) * w + w - 1];
     while (ostack.length) {
       const p = ostack.pop()!;
       if (oseen[p]) continue; oseen[p] = 1;
       if (lum(p) < outerThr) continue;     // hit the ink ornament — stop
-      base[p * 4 + 3] = 0;                 // bright paper → transparent
+      oMask[p] = 1;                        // bright paper
       const x = p % w, y = (p - x) / w;
       if (x > 0) ostack.push(p - 1);
       if (x < w - 1) ostack.push(p + 1);
@@ -174,10 +181,11 @@ function frameWindow(src: string, onReady: (c: HTMLCanvasElement, repunch: (mat:
       if (y < h - 1) ostack.push(p + w);
     }
     // MAT shrinks the window inward (more frame overlap) by intersecting the
-    // mask with a centred inset rect — cheap, so the slider stays live.
+    // mask with a centred inset rect; OUTER_CROP toggles the outer paper crop.
     const repunch = (mat: number): Window01 => {
-      const out = new ImageData(new Uint8ClampedArray(base), w, h);
+      const out = new ImageData(new Uint8ClampedArray(src8), w, h);
       const op = out.data;
+      if (OUTER_CROP) for (let p = 0; p < w * h; p++) if (oMask[p]) op[p * 4 + 3] = 0;
       const ix = Math.round(mat * w), iy = Math.round(mat * h);
       let minX = w, maxX = 0, minY = h, maxY = 0;
       for (let y = iy; y < h - iy; y++) {
@@ -225,13 +233,48 @@ function spreadCard(run: ArtRun, frame: ArtRun | null): HTMLElement {
   scrim.appendChild(titleEl);
   card.appendChild(scrim);
 
+  // domain sigil (category glyph) — a holo foil stamp on the bottom frame
+  // ornament (positioned in placeText, which knows the window bounds)
+  const dv = spec ? DOMAIN_VISUAL[spec.domain] : undefined;
+  let sigEl: HTMLElement | undefined;
+  if (dv && spec) {
+    sigEl = document.createElement('div');
+    Object.assign(sigEl.style, {
+      position: 'absolute', zIndex: '3', left: '50%', transform: 'translateX(-50%)',
+      display: SIGILS ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center',
+      borderRadius: '50%', pointerEvents: 'none', overflow: 'hidden',
+    } as Partial<CSSStyleDeclaration>);
+    if (INK_SIGILS) {  // AI inked wax-seal — a round cream stamp carrying the mark
+      Object.assign(sigEl.style, { width: '40px', height: '40px', boxShadow: '0 0 6px rgba(0,0,0,0.9)', border: '1px solid rgba(0,0,0,0.45)' } as Partial<CSSStyleDeclaration>);
+      const im = document.createElement('img');
+      im.src = `${BASE}art/sigils/${spec.domain}.png`; im.crossOrigin = 'anonymous';
+      Object.assign(im.style, { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } as Partial<CSSStyleDeclaration>);
+      im.onerror = () => {  // no AI sigil yet → fall back to the SVG glyph
+        Object.assign(sigEl!.style, { width: '24px', height: '24px', color: dv.color, border: 'none', background: 'radial-gradient(circle at 35% 28%, rgba(255,255,255,0.24), rgba(10,7,4,0.5) 72%)', boxShadow: '0 0 6px rgba(0,0,0,0.85)' });
+        sigEl!.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">${dv.svg}</svg>`;
+      };
+      sigEl.appendChild(im);
+    } else {  // crisp SVG glyph on a holo disc
+      Object.assign(sigEl.style, { width: '24px', height: '24px', color: dv.color, background: 'radial-gradient(circle at 35% 28%, rgba(255,255,255,0.24), rgba(10,7,4,0.5) 72%)', boxShadow: '0 0 6px rgba(0,0,0,0.85), inset 0 0 4px rgba(255,255,255,0.2)' } as Partial<CSSStyleDeclaration>);
+      sigEl.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">${dv.svg}</svg>`;
+    }
+    card.appendChild(sigEl);
+    sigilEls.push(sigEl);
+  }
+
   if (frame) {
     frameWindow(imgURL(frame.file), (cv, repunch) => {
       Object.assign(cv.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', zIndex: '1', pointerEvents: 'none', filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.7))' } as Partial<CSSStyleDeclaration>);
       card.appendChild(cv);
       const OVERSCAN = 0.08;  // art overscans the clip so its own paper margin is cropped on every side
-      const apply = () => {  // re-punch on slider change; clip = window box, art overscans inside it
+      let lastWin: Window01 = { x0: 0, y0: 0, x1: 1, y1: 1 };
+      const placeText = () => {  // cheap — title + sigil position (TEXT_H slider)
+        Object.assign(scrim.style, { left: `${lastWin.x0 * W}px`, right: `${(1 - lastWin.x1) * W}px`, bottom: `${(1 - lastWin.y1) * H + TEXT_H}px` } as Partial<CSSStyleDeclaration>);
+        if (sigEl) sigEl.style.bottom = `${Math.max(0, (1 - lastWin.y1) * H * 0.5 - 20)}px`;  // centred on the bottom border
+      };
+      const repaint = () => {  // heavy — re-punch + size clip/art (MAT / crop change)
         const win = repunch(MAT);
+        lastWin = win;
         const wW = (win.x1 - win.x0) * W, wH = (win.y1 - win.y0) * H;
         Object.assign(clip.style, {  // clip confines the art to the window box
           inset: 'auto',
@@ -242,10 +285,11 @@ function spreadCard(run: ArtRun, frame: ArtRun | null): HTMLElement {
           inset: 'auto',
           left: `${-ox}px`, top: `${-oy}px`, width: `${wW + 2 * ox}px`, height: `${wH + 2 * oy}px`,
         } as Partial<CSSStyleDeclaration>);
-        Object.assign(scrim.style, { left: `${win.x0 * W}px`, right: `${(1 - win.x1) * W}px`, bottom: `${(1 - win.y1) * H + 6}px` } as Partial<CSSStyleDeclaration>);
+        placeText();
       };
-      apply();
-      matAdjusters.push(apply);
+      repaint();
+      matAdjusters.push(repaint);
+      textAdjusters.push(placeText);
     });
   }
   return card;
@@ -358,6 +402,8 @@ let manifest: ArtManifest;
 function render() {
   document.querySelectorAll('[data-art-body]').forEach((n) => n.remove());
   matAdjusters.length = 0;  // drop stale closures from the previous render
+  textAdjusters.length = 0;
+  sigilEls.length = 0;
   const body = document.createElement('div');
   body.setAttribute('data-art-body', '');
   body.style.paddingTop = '24px';
@@ -381,8 +427,43 @@ function render() {
   slider.style.width = '260px';
   slider.oninput = () => { MAT = parseFloat(slider.value); matLab.textContent = `mat ${(MAT * 100).toFixed(1)}%`; matAdjusters.forEach((f) => f()); };
   matRow.appendChild(slider); matRow.appendChild(matLab);
+
+  // outer-crop toggle — organic ink edge on/off
+  const cropWrap = document.createElement('label');
+  Object.assign(cropWrap.style, { display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginLeft: '16px' } as Partial<CSSStyleDeclaration>);
+  const cropChk = document.createElement('input'); cropChk.type = 'checkbox'; cropChk.checked = OUTER_CROP;
+  cropChk.onchange = () => { OUTER_CROP = cropChk.checked; matAdjusters.forEach((f) => f()); };
+  cropWrap.appendChild(cropChk); cropWrap.appendChild(caption('crop border', THEME.dim, 11));
+  matRow.appendChild(cropWrap);
+
+  // sigils toggle — domain glyphs on/off
+  const sigWrap = document.createElement('label');
+  Object.assign(sigWrap.style, { display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginLeft: '14px' } as Partial<CSSStyleDeclaration>);
+  const sigChk = document.createElement('input'); sigChk.type = 'checkbox'; sigChk.checked = SIGILS;
+  sigChk.onchange = () => { SIGILS = sigChk.checked; sigilEls.forEach((e) => { e.style.display = SIGILS ? 'flex' : 'none'; }); };
+  sigWrap.appendChild(sigChk); sigWrap.appendChild(caption('sigils', THEME.dim, 11));
+  matRow.appendChild(sigWrap);
+
+  // ink vs SVG sigil
+  const inkWrap = document.createElement('label');
+  Object.assign(inkWrap.style, { display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', marginLeft: '14px' } as Partial<CSSStyleDeclaration>);
+  const inkChk = document.createElement('input'); inkChk.type = 'checkbox'; inkChk.checked = INK_SIGILS;
+  inkChk.onchange = () => { INK_SIGILS = inkChk.checked; render(); };
+  inkWrap.appendChild(inkChk); inkWrap.appendChild(caption('ink seal', THEME.dim, 11));
+  matRow.appendChild(inkWrap);
+
+  // title-height slider
+  const tSlider = document.createElement('input');
+  tSlider.type = 'range'; tSlider.min = '-20'; tSlider.max = '70'; tSlider.step = '1'; tSlider.value = String(TEXT_H);
+  tSlider.style.width = '150px'; tSlider.style.marginLeft = '16px';
+  const tLab = caption(`text ${TEXT_H}px`, THEME.amber, 11); tLab.style.minWidth = '64px';
+  tSlider.oninput = () => { TEXT_H = parseFloat(tSlider.value); tLab.textContent = `text ${TEXT_H}px`; textAdjusters.forEach((f) => f()); };
+  matRow.appendChild(tSlider); matRow.appendChild(tLab);
   body.appendChild(matRow);
-  const spread = row(); spread.style.justifyContent = 'center';
+  // the deck — wrap into rows (no horizontal scroll) so the whole spread is
+  // visible at once and screenshot-friendly however many cards there are.
+  const spread = row();
+  Object.assign(spread.style, { flexWrap: 'wrap', overflowX: 'visible', justifyContent: 'center', rowGap: '22px' } as Partial<CSSStyleDeclaration>);
   for (const c of CARD_ART) {
     const pr = manifest.promoted[c.id];
     const run = pr ? manifest.runs.find((r) => r.id === pr) : undefined;
