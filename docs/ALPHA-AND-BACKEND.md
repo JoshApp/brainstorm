@@ -152,20 +152,30 @@ testable increments).
    (`src/ui/name-entry-screen.ts`), name + a lazily-minted interim
    `playerId` (local UUID) stored in `meta-state`. The UUID is the
    stand-in until SpacetimeDB's anon Identity takes over.
-2. **SpacetimeDB module + connection** — minimal Rust module, TS client
-   binding, connect-on-boot. Prove the round-trip.
+2. **SpacetimeDB module + connection** — **[DONE 2026-06-16]** the win:
+   2.5 supports `--lang typescript` server modules, so **no Rust** — the
+   module is TS (`server/spacetimedb/src/index.ts`). `death` table +
+   `reportDeath` reducer, published to Maincloud as `delve`; generated TS
+   client bindings (`src/net/module_bindings/`); connect-on-boot with a
+   persisted anon Identity (`src/net/delve-net.ts`). Round-trip verified
+   via CLI. SDK adds ~28 KB gzip to the bundle (measured, fine).
 3. **Leaderboard (trust-but-verify)** — submit on death, render the
    board. Per-build seasons.
 4. **Async traces (Phase 4)** — flush event-log → reducer; bloodstains
-   query "deaths near depth N." **Keep souls-style *template* messages**
-   (no free text): tone-correct *and* it sidesteps content moderation.
+   query "deaths near depth N." The `death` rows already exist (step 7) —
+   this is rendering them as in-world bloodstain marks. **Keep souls-style
+   *template* messages** (no free text): tone-correct *and* sidesteps
+   content moderation.
 5. **LLM proxy (Phase 5)** — separate Worker (Cloudflare Worker + AI
    Gateway, or a Supabase Edge Function). Cache on content hash (item id,
    death-context hash). **Hard spend cap + per-user rate limit from day
    one** — an open LLM endpoint is a billing catastrophe.
 6. **Account linking** — SpacetimeAuth / OIDC, offered for cross-device.
-7. **First realtime moment** — "the dungeon notices a death elsewhere"
-   (see below). Flip a live subscription on the death rows from step 4.
+7. **First realtime moment** — **[DONE 2026-06-16]** "the dungeon notices
+   a death elsewhere." Live subscription on the `death` table → the voice
+   in the deep remarks when another delver falls (`src/net/death-feed.ts`).
+   Reporting wired into `triggerDeath`. Live + deployed; phone-verify
+   pending.
 
 ---
 
