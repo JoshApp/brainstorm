@@ -6,6 +6,7 @@ import { showEndScreen } from '../ui/end-screen';
 import { getRunState, elapsedString, clearSave } from '../state/run-state';
 import { recordRunDeath, getRunDiscoveries } from '../state/meta-state';
 import { reportDeath } from '../net/delve-net';
+import { killingBlowLabel, getDamageRecap } from './damage-recap';
 import { setGameMode } from '../state/game-mode';
 import { tickWeaponDrops } from './weapon-drop';
 
@@ -132,6 +133,7 @@ export function triggerDeath() {
     x: camera?.position.x ?? 0,
     z: camera?.position.z ?? 0,
     runSeed: run?.startedAt ?? 0,
+    killedBy: killingBlowLabel(),
   });
   // Lifetime stat bump: total play time + death count. Kept SEPARATE from
   // run-state.clearSave() so meta survives.
@@ -154,6 +156,7 @@ export function triggerDeath() {
           notes: discoveries.notes.length,
           newDepthRecord: discoveries.newDepthRecord,
         },
+        damageRecap: getDamageRecap(),
       },
       () => window.location.reload(),
     );

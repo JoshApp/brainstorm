@@ -150,7 +150,7 @@ export function spawnSpikeTrap(
           // Damage applies once per cycle, the first frame after spikes
           // reach full extension AND the player is on the plate.
           if (!hasDamagedThisCycle && t >= 1 && onPlate) {
-            damagePlayer(damage, null, 'physical');
+            damagePlayer(damage, null, 'physical', false, 'a spike trap');
             hasDamagedThisCycle = true;
           }
           if (stateTimer >= FIRING_DURATION) {

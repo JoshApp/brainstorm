@@ -162,7 +162,7 @@ export function spawnBloodAltar(
       // damage (which may flip dying=true), then add the item.
       const burstY = pos.y + baseH + topH + 0.30;
       spawnBloodBurst(scene, pos.x, burstY, pos.z);
-      damagePlayer(BLOOD_PRICE_HP, null, 'physical');
+      damagePlayer(BLOOD_PRICE_HP, null, 'physical', false, 'their own bargain');
       // Add to inventory (with affix roll like a normal pickup) and
       // auto-equip if the slot is free. If full, item stays in the
       // bag — player can manually equip later.

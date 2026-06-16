@@ -5,6 +5,7 @@
 // stays the headline; stats are quiet metadata.
 
 import { openScreen, closeScreen } from './screen-manager';
+import type { DamageTally } from '../player/damage-recap';
 
 const SCREEN_ID = 'end';
 
@@ -22,6 +23,9 @@ export interface EndScreenStats {
     notes: number;
     newDepthRecord: boolean;
   };
+  /** Per-source damage breakdown for this life (biggest first). Renders the
+   *  "WHAT TOOK YOU" block — the clerk's note on how it ended. */
+  damageRecap?: readonly DamageTally[];
 }
 
 let root: HTMLDivElement | null = null;
@@ -91,6 +95,45 @@ export function showEndScreen(stats: EndScreenStats, onRiseAgain: () => void) {
   addStatRow(grid, 'FOUND',  String(stats.itemsFound));
   addStatRow(grid, 'TIME',   stats.elapsed);
   root.appendChild(grid);
+
+  // What took you — the damage recap, biggest source first. A name and a
+  // number, no ceremony; the killing blow is the last thing you felt.
+  const recap = (stats.damageRecap ?? []).filter((t) => t.total > 0).slice(0, 4);
+  if (recap.length) {
+    const toll = document.createElement('div');
+    Object.assign(toll.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '3px',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontSize: '12px',
+      letterSpacing: '0.12em',
+      color: 'rgba(170, 130, 105, 0.7)',
+      minWidth: '230px',
+      maxWidth: '320px',
+    } as Partial<CSSStyleDeclaration>);
+    const head = document.createElement('div');
+    head.textContent = 'WHAT TOOK YOU';
+    Object.assign(head.style, {
+      fontSize: '10px',
+      letterSpacing: '0.28em',
+      color: 'rgba(190, 95, 75, 0.7)',
+      marginBottom: '2px',
+    } as Partial<CSSStyleDeclaration>);
+    toll.appendChild(head);
+    for (const t of recap) {
+      const row = document.createElement('div');
+      Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', gap: '18px' } as Partial<CSSStyleDeclaration>);
+      const name = document.createElement('span');
+      name.textContent = t.dot ? `${t.label} (over time)` : t.label;
+      const amt = document.createElement('span');
+      amt.textContent = String(Math.round(t.total));
+      Object.assign(amt.style, { color: 'rgba(206, 120, 100, 0.85)' } as Partial<CSSStyleDeclaration>);
+      row.append(name, amt);
+      toll.appendChild(row);
+    }
+    root.appendChild(toll);
+  }
 
   // Discoveries — only shows if this run saw first-time stuff.
   // The hook for "death gave me SOMETHING" — fills the codex.

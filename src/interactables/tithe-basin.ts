@@ -233,7 +233,7 @@ export function spawnTitheBasin(
 
     row(`BLOOD · ${BLOOD_TITHE_HP} HP`, 'The dungeon respects blood.', getPlayerHp() > BLOOD_TITHE_HP, () => {
       spawnBloodBurst(scene, pos.x, pos.y + 0.9, pos.z);
-      damagePlayer(BLOOD_TITHE_HP, null, 'physical');
+      damagePlayer(BLOOD_TITHE_HP, null, 'physical', false, 'the hungry basin');
       resolveTithe('blood', { hp: BLOOD_TITHE_HP });
     });
     row(`GOLD · ${goldPrice}`, 'The basin has no use for coin. Probably.', getGold() >= goldPrice, () => {

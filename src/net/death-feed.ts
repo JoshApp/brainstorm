@@ -24,9 +24,19 @@ function pickTag(): string {
   return VOICE_TAGS[Math.floor(Math.random() * VOICE_TAGS.length)];
 }
 
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /** Wire the feed: every death-by-another becomes a line from the deep. */
 export function initDeathFeed(): void {
   onDeathElsewhere((d) => {
-    broadcastPop(`${d.name} fell on depth ${d.depth}`, pickTag());
+    const killer = d.killedBy?.trim();
+    // Name the cause when we have it ("A ghoul took Vesper, depth 11"),
+    // else the plain fall. Old deaths (pre-attribution) carry no cause.
+    const title = killer
+      ? `${cap(killer)} took ${d.name}, depth ${d.depth}`
+      : `${d.name} fell on depth ${d.depth}`;
+    broadcastPop(title, pickTag());
   });
 }

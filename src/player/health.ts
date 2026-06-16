@@ -1,4 +1,5 @@
 import { isArrivalActive } from './arrival';
+import { recordPlayerDamage } from './damage-recap';
 import { CONFIG } from '../config';
 import { freezeFor } from '../combat/hit-pause';
 import { kickShake } from '../combat/screen-shake';
@@ -125,7 +126,7 @@ export function onPlayerDeath(cb: () => void) {
  * reduction, the vignette flash, and death are NOT skipped (a DoT must
  * still be able to kill, with feedback).
  */
-export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical', quiet = false) {
+export function damagePlayer(amount: number, source: EntityId | null = null, type: DamageType = 'physical', quiet = false, cause?: string) {
   if (dead || godMode) return;
   if (isArrivalActive()) return;   // mid-wake at the bonfire — untouchable
   if (performance.now() < invulnUntil) {
@@ -144,6 +145,10 @@ export function damagePlayer(amount: number, source: EntityId | null = null, typ
   // a shield is equipped (passive shields = every hit while equipped
   // counts; narrows to actual blocks once active blocking lands).
   if (result.applied > 0) {
+    // Attribute the blow — feeds the per-life damage recap (the killer for
+    // the feed + bloodstain epitaph, and the end-screen "what took you"
+    // breakdown). `quiet` marks DoT ticks (bleed/poison/burn).
+    recordPlayerDamage(source, result.applied, quiet, cause);
     recordDamageTaken(result.applied);
     if (getEquipped('offhand')?.id === 'wooden-shield') recordShieldedHit();
   }

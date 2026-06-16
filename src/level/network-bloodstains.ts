@@ -39,6 +39,10 @@ const EPITAPHS = [
   'The stairs went on. They did not.',
 ];
 
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // Cheap deterministic string hash (FNV-1a) — same death always lands the
 // same way on the same floor.
 function hashStr(s: string): number {
@@ -86,9 +90,13 @@ export function spawnNetworkBloodstains(
     const fx = ((h & 0xffff) / 0xffff - 0.5) * 0.7;
     const fz = (((h >>> 16) & 0xffff) / 0xffff - 0.5) * 0.7;
     const p = walkable.resolveSpawn(room.x + fx * room.w, room.z + fz * room.d, 0.3);
+    // Name the killer when the death carried one ("A ghoul ended them
+    // here."); older deaths fall back to a generic in-world line.
+    const killer = d.killedBy?.trim();
+    const epitaph = killer ? `${cap(killer)} ended them here.` : EPITAPHS[h % EPITAPHS.length];
     const fallen: FallenDelver = {
       name: d.name,
-      epitaph: EPITAPHS[h % EPITAPHS.length],
+      epitaph,
       pose: POSES[h % POSES.length],
       decay: 'fleshy',
       // no `carried` → loot-free, READ-only (a trace, not a treasure)
