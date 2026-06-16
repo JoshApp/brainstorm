@@ -78,6 +78,7 @@ import { buildSystems } from './engine/systems';
 import { initDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-adapt-readout';
 import { initBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
 import { seedRng } from './engine/rng';
+import { setWorldFrozen } from './debug/freeze';
 import { recordRunStart, resetRunDiscoveries, getMeta, getPlayerName, setPlayerName } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
 import { showNameEntry } from './ui/name-entry-screen';
@@ -1180,10 +1181,35 @@ function tick() {
 // requested level.
 
 
+// The single resolved run seed. Resolution order, uniform across EVERY boot
+// path (descend, scenario, vault): explicit ?seed=N → the run's startedAt →
+// wall clock (fresh-run entropy). Whatever wins is recorded so even a
+// wall-clock run can be replayed by reading back the seed it actually used.
+// This is the one knob that makes "same seed → same run" hold — it must be
+// applied BEFORE any spawn, because spawn-time AI draws (e.g. pack orbit
+// schedules) consume gameRng immediately.
+let lastRunSeed = 0;
+function resolveRunSeed(): number {
+  const sp = new URLSearchParams(window.location.search).get('seed');
+  const fromUrl =
+    sp != null && sp !== '' && Number.isFinite(Number(sp)) ? Number(sp) >>> 0 : undefined;
+  lastRunSeed = (fromUrl ?? getRunState()?.startedAt ?? Date.now()) >>> 0;
+  return lastRunSeed;
+}
+/** The seed the current run was started with. DEV/harness reads this to record
+ *  or reproduce a run. */
+export function getRunSeed(): number {
+  return lastRunSeed;
+}
+
 function startRun(floorId: string, startDepth: number = 1) {
-  // Seed the gameplay RNG stream from the run seed (startedAt) so a seeded
-  // run's crit/loot rolls are reproducible — the Phase-4 replay foundation.
-  seedRng(getRunState()?.startedAt ?? Date.now());
+  // Seed the gameplay RNG stream BEFORE any spawn so a seeded run's rolls AND
+  // its spawn-time AI draws (pack orbit schedules, etc.) are reproducible —
+  // the Phase-4 replay foundation. resolveRunSeed honours ?seed=N on every
+  // boot path, including scenarios (which carry no run state).
+  const seed = resolveRunSeed();
+  seedRng(seed);
+  if (import.meta.env.DEV) console.info(`[run] seed = ${seed}`);
   loadInitialLevel(floorId, startDepth);
   // Resolve the spawn so an authored or procgen position that
   // happens to overlap an obstacle (most commonly the stair
@@ -1197,6 +1223,14 @@ function startRun(floorId: string, startDepth: number = 1) {
   camera.rotation.order = 'YXZ';
   camera.rotation.y = currentLevel.playerSpawn.yaw;
   camera.rotation.x = 0;
+  // ?simfreeze=1 (DEV): hand the clock to window.__sim from t=0 — freeze the
+  // world the instant it spawns, BEFORE the live variable-dt loop advances it.
+  // Without this, the nondeterministic number of real frames between boot and
+  // a manual freeze() moves the world by a variable amount, so even a seeded
+  // run diverges. The fixed-step stepper then drives from the true spawn state.
+  if (import.meta.env.DEV && new URLSearchParams(location.search).get('simfreeze') === '1') {
+    setWorldFrozen(true);
+  }
   tick();
 }
 
