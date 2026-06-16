@@ -147,9 +147,11 @@ board, spot-check suspicious entries by replay. Don't block launch on it.
 Each step ships something Josh can feel on the phone (pillar: small
 testable increments).
 
-1. **Identity + name entry** — pure client change, no backend. Stable
-   Identity (SpacetimeDB anon *or* an interim local UUID), "choose your
-   sign" screen, name stored in `meta-state`. Unblocks everything.
+1. **Identity + name entry** — **[DONE 2026-06-16]** pure client change,
+   no backend. "NAME YOURSELF" screen before the first descent
+   (`src/ui/name-entry-screen.ts`), name + a lazily-minted interim
+   `playerId` (local UUID) stored in `meta-state`. The UUID is the
+   stand-in until SpacetimeDB's anon Identity takes over.
 2. **SpacetimeDB module + connection** — minimal Rust module, TS client
    binding, connect-on-boot. Prove the round-trip.
 3. **Leaderboard (trust-but-verify)** — submit on death, render the
@@ -162,7 +164,60 @@ testable increments).
    death-context hash). **Hard spend cap + per-user rate limit from day
    one** — an open LLM endpoint is a billing catastrophe.
 6. **Account linking** — SpacetimeAuth / OIDC, offered for cross-device.
-7. **First realtime moment** — flip on a live subscription (see Open).
+7. **First realtime moment** — "the dungeon notices a death elsewhere"
+   (see below). Flip a live subscription on the death rows from step 4.
+
+---
+
+## First realtime moment [DECIDED]
+
+> **The first live feature is a "the dungeon notices a death elsewhere"
+> feed — NOT phantoms.**
+
+When a delver dies anywhere, the watching voice (`src/broadcast/`) may
+remark on it in near-realtime: *"Someone just died on the eleventh
+stair. You're doing better. For now."* Chosen because:
+
+- **Cheapest possible subscription.** Deaths are append-only rows; the
+  client subscribes to "recent deaths" and they're pushed. No position
+  streaming, interpolation, or realtime physics — the hard parts of
+  phantoms.
+- **Feeds a seam we already built.** The voice in the deep is
+  architected to react to events; a death three players away becomes a
+  line it speaks. This is "the attention meter is literal" on day one.
+- **The same rows are the async bloodstains (step 4).** Building the feed
+  is the async trace layer with a subscription on top — one table, two
+  features. Phantoms come *after* the subscription loop is proven.
+
+---
+
+## Hosting & deploy [DECIDED]
+
+> **Static client stays on GitHub Pages for the alpha. Backend lives
+> elsewhere. No migration needed.**
+
+A static PWA + remote backend is the correct architecture, not a
+compromise:
+
+- **GitHub Pages** — the static client (unchanged, `base: '/brainstorm/'`).
+- **SpacetimeDB Maincloud** — WSS endpoint; the client opens a secure
+  websocket. Token-authed, not origin-gated — no CORS dance.
+- **LLM proxy** — separate HTTPS Worker the client calls.
+
+The client just holds backend URLs (baked in at build time). Hard rule:
+page is HTTPS, so all backend calls are HTTPS/WSS (no mixed content).
+
+**When we'd move (only two triggers):** (1) we need custom HTTP headers —
+GH Pages can't set them; bites if we ever need COOP/COEP (cross-origin
+isolation for `SharedArrayBuffer` / threaded WASM) or a real CSP for
+public hardening; (2) GH Pages fair-use bandwidth (~100GB/mo) at scale.
+
+**Target when we move: Cloudflare Pages** — because co-locating the
+static site with the LLM Worker makes them **same-origin** (proxy
+becomes `/api/*`, CORS gone, edge auth + rate-limit in front, `_headers`
+for COOP/COEP/CSP). SpacetimeDB stays a separate WSS endpoint regardless.
+Migration is ~1hr (same `dist/`), the real cost being a rework of the
+`npm run live`/`ship` scripts (currently GH Actions → GH Pages).
 
 ---
 
@@ -184,10 +239,6 @@ testable increments).
 
 ## Open questions [OPEN]
 
-- **First realtime feature?** What's the first live moment a player
-  *feels* — phantoms drifting past, a live global death feed, the
-  attention meter glowing as the world plays? That feature pulls the
-  subscription layer in. Until it's named, we stay async.
 - **Maincloud vs self-host** for the alpha — default Maincloud; revisit
   only if energy costs or data-residency push us.
 - **Determinism branch** — land seed-at-start + snapshot/restore to
