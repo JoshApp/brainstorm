@@ -28,9 +28,13 @@ const SHARED_NEGATIVE = [
   'photorealistic, photograph, hyperrealistic, realistic skin, 3d render, octane, cgi',
   'text, letters, words, title, numerals, watermark, signature',
   'border, frame, ornate edge, card back',
-  'bright, neon, saturated, cheerful, cute, chibi, anime, cartoon, comic',
+  'neon, cute, chibi, anime, cartoon, comic',
   'modern, sci-fi, clean, glossy, multiple panels, collage, grid',
 ].join(', ');
+
+// Opt-in restraint: the desaturation bans most styles want — but NOT the
+// colour-forward ones (stained glass needs jewel saturation to read as light).
+const RESTRAINT_NEG = 'bright, saturated, cheerful, colourful, garish, vibrant';
 
 export const STYLES = {
   // Painterly-graphic — bold brush, strong silhouettes, decorative. The
@@ -46,7 +50,7 @@ export const STYLES = {
       'dramatic chiaroscuro, single subject filling the frame, edges falling into deep black',
       'cruel, ancient, indifferent mood',
     ].join(', '),
-    negative: SHARED_NEGATIVE,
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}`,
   },
 
   // Ink / woodcut — high-contrast black linework, crosshatch, spot crimson.
@@ -57,11 +61,231 @@ export const STYLES = {
       'a stylized grimdark dark-fantasy tarot illustration',
       'bold woodcut and ink engraving, heavy black linework and crosshatching',
       'high-contrast graphic shapes, flat and decorative, medieval print and Mörk Borg aesthetic',
-      'limited palette: bone white, ink black, a single dried-blood crimson spot colour',
+      // The TREATMENT is fixed (this is what makes the deck read as one object);
+      // the SPOT COLOUR is left to the card's `accent` (domain = colour = meaning),
+      // so the deck varies in hue without fracturing its hand.
+      'palette of bone white and ink black with a single spot colour',
       'stark, harsh, hand-printed texture, single subject filling the frame, edges into black',
       'cruel, ancient, indifferent mood',
     ].join(', '),
-    negative: SHARED_NEGATIVE + ', soft shading, smooth gradients, painterly',
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, soft shading, smooth gradients, painterly`,
+  },
+
+  // Scratchboard — white scratched out of solid black. The purest match to
+  // DELVE's grammar: form REVEALED out of darkness. Accent glows.
+  scratch: {
+    label: 'scratchboard (white out of black)',
+    prompt: [
+      'a stylized grimdark dark-fantasy tarot illustration',
+      'scratchboard / scraperboard art, fine white lines scratched out of solid black',
+      'the image emerging from total darkness, high-contrast engraved white hatching on black',
+      'a single spot colour glowing faintly out of the dark',
+      'dramatic, single subject filling the frame, cruel ancient mood',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, black lines on white background, woodcut, painterly, soft, photographic`,
+  },
+
+  // Dark stained glass — jewel light through black leadwork. Makes colour read
+  // as LIGHT; the one style that WANTS saturation (no restraint negative).
+  glass: {
+    label: 'dark stained glass',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration as a gothic stained-glass window',
+      'bold black leadwork cames, fragments of deep jewel-coloured glass glowing out of black',
+      'the colour reads as light shining through glass, sombre cathedral window',
+      'single subject filling the frame, sacred and cruel and ancient',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, photographic, painterly, pastel, washed out, daylight`,
+  },
+
+  // Copperplate etching — fine antique engraving, the grimoire/Doré register.
+  // A delicate, occult cousin of the woodcut.
+  etching: {
+    label: 'etching (Doré / grimoire)',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration as a fine antique copperplate engraving and etching',
+      'dense delicate cross-hatched linework, the look of a Gustave Doré plate or an alchemical grimoire',
+      'aged ink on bone parchment, a single restrained spot colour',
+      'dramatic chiaroscuro, single subject filling the frame, edges into black, cruel ancient mood',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, thick blocky woodcut, painterly, soft, smooth gradients`,
+  },
+
+  // Charcoal & chalk on black — raw smudged chiaroscuro, hand-drawn and tactile.
+  charcoal: {
+    label: 'charcoal & chalk on black',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration in raw charcoal and white chalk on black ground',
+      'smudged expressive marks, soft chiaroscuro, the figure emerging from darkness',
+      'a single muted spot colour in soft pastel, tactile hand-drawn',
+      'single subject filling the frame, cruel ancient mood',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, clean vector lines, woodcut, photographic, glossy`,
+  },
+
+  // ── Wide exploration batch — sampling the possibility space ──────────────
+
+  // Byzantine icon — gilded sacred flatness. A "holy light" register (gold,
+  // not glass). Colour-forward: no restraint negative.
+  icon: {
+    label: 'Byzantine icon (gold ground)',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration as a Byzantine Orthodox icon',
+      'flat sacred figure on a cracked gold-leaf ground, austere stylised features, halo',
+      'egg tempera, aged and tarnished gilding, solemn and ancient',
+      'single subject filling the frame, sacred and cruel',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, photographic, realistic perspective, modern, painterly impressionism`,
+  },
+
+  // Mezzotint — velvety tonal engraving worked from black to light. Ghostly
+  // forms emerging from deep dark; the smooth cousin of scratchboard.
+  mezzotint: {
+    label: 'mezzotint (black to light)',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration as a mezzotint engraving',
+      'velvety continuous tone worked from solid black up to light, deep rich blacks',
+      'a ghostly form emerging from darkness, fine grain, no hard outlines',
+      'a single restrained spot colour, single subject filling the frame, cruel ancient mood',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, hard outlines, flat woodcut, line art, painterly brushstrokes`,
+  },
+
+  // Beksiński — dystopian surreal decay, oppressive dread. Desaturated rust/bone.
+  beksinski: {
+    label: 'Beksiński dread',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration in the style of Zdzisław Beksiński',
+      'dystopian surrealism, monumental decayed forms, bone and rust and ash',
+      'oppressive dreamlike horror, atmospheric haze, desaturated earthy palette',
+      'single subject filling the frame, vast indifferent dread',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, line art, woodcut, cheerful, clean`,
+  },
+
+  // Tintype — ghostly wet-plate memento mori photograph. Ties to the game's
+  // traces-of-the-dead. Monochrome silver/sepia.
+  tintype: {
+    label: 'tintype (memento mori)',
+    prompt: [
+      'a grimdark dark-fantasy tarot subject as an antique wet-plate collodion tintype photograph',
+      'ghostly silver monochrome, Victorian memento mori, scratched and damaged emulsion',
+      'shallow eerie focus, vignetted into black, a faint single spot colour tone',
+      'single subject filling the frame, funereal and uncanny',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, modern photo, digital, sharp clean, colour photograph, illustration, line art`,
+  },
+
+  // Illuminated manuscript — cursed medieval codex, gold initials, charred vellum.
+  illumination: {
+    label: 'illuminated manuscript',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration as a medieval illuminated manuscript painting',
+      'flat gothic figures, gold-leaf details, egg tempera, grotesque marginalia',
+      'on smoke-darkened charred vellum, aged and water-stained',
+      'single subject filling the frame, sacred dread and decay',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, photographic, realistic shading, modern, pristine clean white vellum, bright`,
+  },
+
+  // Expressionist linocut — brutal Kollwitz/Munch blockprint. Rawer than Mörk Borg.
+  linocut: {
+    label: 'expressionist linocut',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration as a German Expressionist linocut blockprint',
+      'brutal gouged shapes, raw carved marks, in the spirit of Käthe Kollwitz and Munch',
+      'stark black and bone white with a single spot colour, anguished and heavy',
+      'single subject filling the frame, cruel and grief-stricken',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, fine delicate detail, painterly, smooth, photographic`,
+  },
+
+  // Cyanotype — spectral Prussian-blue photogram. Cold, strange, monochrome.
+  cyanotype: {
+    label: 'cyanotype (spectral blue)',
+    prompt: [
+      'a grimdark dark-fantasy tarot subject as a cyanotype photogram',
+      'spectral Prussian-blue and white monochrome, ghostly exposed silhouette',
+      'antique blueprint texture, faded and chemical-stained, cold and eerie',
+      'single subject filling the frame, funereal and otherworldly',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, warm tones, multicolour, red, green, yellow, modern, line art, woodcut`,
+  },
+
+  // Dark oil — Goya black-paintings tenebrism. Loose dread, distinct from the
+  // Darkest Dungeon graphic look.
+  oil: {
+    label: 'dark oil (Goya)',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration as a tenebrist dark oil painting',
+      'in the spirit of Goya black paintings, loose smeared impasto, overwhelming darkness',
+      'a figure half-swallowed by black, sombre desaturated earth palette, candle-lit',
+      'single subject filling the frame, mad and cruel and ancient',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, line art, woodcut, flat graphic, clean, photographic`,
+  },
+
+  // ── Research batch — named macabre illustrators (FLUX knows these hands) ──
+
+  // Harry Clarke — intricate Art-Nouveau pen-ink + stained-glass sensibility.
+  // Sinewy figures against solid black; jewel spot colour. Bridges ink+glass.
+  clarke: {
+    label: 'Harry Clarke (ink + glass)',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration in the style of Harry Clarke',
+      'intricate Art-Nouveau pen-and-ink, sinewy elongated figures and spectral detail against solid voids of black',
+      'decadent French-Symbolist macabre, jewel-like spot colour as if stained glass',
+      'ornate and hypnotic, single subject filling the frame, cruel ancient mood',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, photographic, painterly, thick woodcut, sparse, simple, 3d render`,
+  },
+
+  // Stephen Gammell — Scary Stories nightmare: bleeding splattered ink wash.
+  gammell: {
+    label: 'Stephen Gammell (ink-wash horror)',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration in the style of Stephen Gammell Scary Stories',
+      'nightmarish splattered ink wash, bleeding dripping blots and tendrils, ragged decayed forms emerging from grime',
+      'monochrome ink with a single bleeding spot colour, deeply unsettling',
+      'single subject filling the frame, grotesque and grim',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, clean lines, flat graphic, woodcut, smooth, photographic`,
+  },
+
+  // Aubrey Beardsley — stark decadent B/W art-nouveau ink, flat black masses.
+  beardsley: {
+    label: 'Aubrey Beardsley (decadent B/W)',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration in the style of Aubrey Beardsley',
+      'stark black and white Art-Nouveau pen and ink, bold flat masses of solid black against white',
+      'sinuous decadent line, Japanese-woodblock influence, grotesque and elegant',
+      'a single restrained spot colour, single subject filling the frame, decadent and cruel',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, painterly, soft shading, gradients, photographic, 3d render`,
+  },
+
+  // Alfred Kubin — spidery nervous ink + wash, proto-surreal dread.
+  kubin: {
+    label: 'Alfred Kubin (spidery dread)',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration in the style of Alfred Kubin',
+      'spidery nervous pen-and-ink and grey wash, nightmarish proto-surreal dread',
+      'crumbling spectral forms, gloomy fine hatching, monochrome with a faint spot colour',
+      'oppressive and uncanny, single subject filling the frame',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, clean flat graphic, woodcut, bright, photographic`,
+  },
+
+  // Santiago Caruso — dark-symbolist scraperboard + decalcomania (refined scratch).
+  caruso: {
+    label: 'Santiago Caruso (scraperboard)',
+    prompt: [
+      'a grimdark dark-fantasy tarot illustration in the style of Santiago Caruso',
+      'scraperboard and ink with mottled decalcomania texture, dark symbolist dreamlike horror',
+      'fine white lines scratched out of solid black, organic mottled grain, a single spot colour glowing',
+      'single subject filling the frame, occult and cruel',
+    ].join(', '),
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, flat woodcut, clean vector lines, photographic, painterly`,
   },
 } as const satisfies Record<string, StyleDef>;
 
@@ -93,6 +317,18 @@ export const FRAMES = {
   etched: {
     label: 'etched woodcut (Mörk Borg)',
     prompt: `a stark woodcut tarot card border frame, heavy black ink linework and crosshatching, flat graphic medieval engraving, a single dried-blood crimson accent, Mörk Borg aesthetic, ${FRAME_BASE}`,
+  },
+  linocut: {
+    label: 'expressionist linocut',
+    prompt: `a bold German Expressionist linocut tarot card border frame, gouged black shapes and raw carved marks, brutal hand-printed ornament, a single dried-blood crimson accent, ${FRAME_BASE}`,
+  },
+  icon: {
+    label: 'Byzantine icon (gold)',
+    prompt: `a Byzantine icon tarot card border frame, embossed gold-leaf arch and tarnished gilding, sacred geometric ornament and halo motifs, ancient and weathered, ${FRAME_BASE}`,
+  },
+  clarke: {
+    label: 'Harry Clarke (ink + jewel)',
+    prompt: `an ornate Harry Clarke Art-Nouveau tarot card border frame, intricate sinuous pen-and-ink ornament with jewel-toned stained-glass accents, gold and deep teal and crimson glints, decadent and hypnotic, ${FRAME_BASE}`,
   },
 } as const satisfies Record<string, { label: string; prompt: string }>;
 

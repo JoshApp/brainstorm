@@ -73,8 +73,9 @@ async function runOne(
   }
 }
 
-function composeCardPrompt(base: string, art: string, tweak?: string): string {
-  return `${base}. ${art}${tweak ? `, ${tweak}` : ''}`;
+function composeCardPrompt(base: string, art: string, accent?: string, tweak?: string): string {
+  const accentClause = accent ? `, the single spot colour a ${accent}` : '';
+  return `${base}${accentClause}. ${art}${tweak ? `, ${tweak}` : ''}`;
 }
 
 async function main() {
@@ -149,7 +150,7 @@ async function main() {
     // forking from a parent: extend the parent's exact prompt; else compose fresh.
     const prompt = parent
       ? `${parent.prompt}${tweak ? `, ${tweak}` : ''}`
-      : composeCardPrompt(style.prompt, spec.art, tweak);
+      : composeCardPrompt(style.prompt, spec.art, spec.accent, tweak);
 
     console.log(`\ndelve art — ${spec.id} x${N} · style=${styleId}${parent ? ` (fork ⟜${parent.id})` : ''} via ${backend.name}\n`);
     let ok = 0;

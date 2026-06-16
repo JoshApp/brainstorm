@@ -12,7 +12,7 @@ const exe = CANDS.find((p) => existsSync(p));
 const url = process.argv[2] ?? 'http://localhost:5175/brainstorm/art.html';
 const out = process.argv[3] ?? '/tmp/art-viewer.png';
 const b = await chromium.launch({ executablePath: exe });
-const ctx = await b.newContext({ viewport: { width: 1180, height: 1400 }, serviceWorkers: 'block' });
+const ctx = await b.newContext({ viewport: { width: 1300, height: 1450 }, serviceWorkers: 'block' });
 const p = await ctx.newPage();
 p.on('pageerror', (e) => console.log('EXC:', e.message));
 p.on('console', (m) => { if (m.type() === 'error') console.log('ERR:', m.text()); });
