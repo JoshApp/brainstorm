@@ -26,6 +26,9 @@ import { getGameMode, isPlaying } from '../state/game-mode';
 import { seedRng } from '../engine/rng';
 import { getPlayerHp } from '../player/health';
 import type { Enemy } from '../mobs/enemy';
+import type { Intent } from '../harness/intent';
+import { NEUTRAL_INTENT, installBus, setIntent } from '../harness/intent';
+import { TapeRecorder, tapeFrame, serializeTape, deserializeTape } from '../harness/tape';
 
 // Canonical sim rate. The feel was tuned at 60 Hz; fixing the step here means a
 // headless run and a real-time run integrate over identical quanta, so their
@@ -37,11 +40,17 @@ export interface SimStepperDeps {
   systems: readonly GameSystem[];
   /** The live level handle, read fresh (it's reassigned on every floor load). */
   getLevel: () => { enemies: Enemy[] } | null | undefined;
+  /** The seed the current run started with — stamped into recorded tapes so a
+   *  tape carries everything needed to reproduce it. */
+  getSeed: () => number;
 }
 
 let simSystems: readonly GameSystem[] = [];
 let getLevel: SimStepperDeps['getLevel'] = () => null;
+let getSeed: SimStepperDeps['getSeed'] = () => 0;
 let stepsRun = 0;
+// Fixed-step frame counter — the index a tape's intents are keyed by.
+let frame = 0;
 
 // One canonical clock. No hit-pause, no bullet-time, no death slow-mo — those
 // are wall-clock FEEL layers and mean nothing when we advance by hand. Every dt
@@ -59,14 +68,39 @@ function fixedCtx(): TickContext {
   };
 }
 
-/** Advance the SIM systems by `n` fixed steps. Render is left alone — the rAF
- *  loop keeps drawing the (frozen) world, so the result is visible. */
-function step(n = 1): number {
+/** Fill a partial intent (what a console driver hands back) up to a full one. */
+function normalizeIntent(p: Partial<Intent> | null | undefined): Intent {
+  return {
+    move: p?.move ?? [0, 0],
+    look: p?.look ?? [0, 0],
+    attack: p?.attack ?? false,
+    dodge: p?.dodge ?? null,
+  };
+}
+
+// The core drive loop: each fixed step pulls this frame's intent from `source`,
+// writes it to the bus (drive-by-wire), optionally records it, then advances
+// the sim systems. Intent BEFORE systems so input-camera/dash/combat read it
+// this frame. This is the one place the clock and the input bus meet.
+function driveSteps(
+  source: (frame: number) => Intent,
+  n: number,
+  recorder?: TapeRecorder,
+): void {
   const ctx = fixedCtx();
-  for (let i = 0; i < n; i++) {
+  for (let k = 0; k < n; k++) {
+    const intent = source(frame);
+    setIntent(intent);
+    recorder?.record(intent);
     runSystems(simSystems, ctx);
+    frame++;
     stepsRun++;
   }
+}
+
+/** Advance `n` fixed steps with NEUTRAL input (world simulates, player idle). */
+function step(n = 1): number {
+  driveSteps(() => NEUTRAL_INTENT, n);
   return stepsRun;
 }
 
@@ -94,6 +128,10 @@ function digest(): string {
 export function installSimStepper(deps: SimStepperDeps): void {
   simSystems = deps.systems.filter((s) => s.kind === 'sim');
   getLevel = deps.getLevel;
+  getSeed = deps.getSeed;
+  // Route control through the drive-by-wire bus so driven/replayed intents
+  // reach the sim through the same seam a thumb would.
+  installBus();
 
   const api = {
     /** Names of the sim systems this stepper will run, in order. */
@@ -153,6 +191,37 @@ export function installSimStepper(deps: SimStepperDeps): void {
         stepsPerSec,
         realtimeMultiple: Math.round(stepsPerSec / 60),
       };
+    },
+
+    // ── Drive-by-wire + tape ──────────────────────────────────────────────
+    /** Drive `n` fixed steps from a per-frame intent source — a
+     *  `(frame) => Partial<Intent>` (missing fields default to neutral). Use to
+     *  hand-fly the player; returns the digest. */
+    drive(source: (frame: number) => Partial<Intent> | null, n = 60) {
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      driveSteps((f) => normalizeIntent(source(f)), n);
+      return digest();
+    },
+    /** Record a driven run into a Tape: same source, but every frame's intent
+     *  is captured. Returns the serialized tape + final digest. The tape is the
+     *  whole run — seed + intents — and replays byte-identically from a fresh
+     *  load at the same seed. */
+    record(source: (frame: number) => Partial<Intent> | null, n = 150) {
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      const rec = new TapeRecorder(getSeed() >>> 0);
+      driveSteps((f) => normalizeIntent(source(f)), n, rec);
+      const tape = rec.finish();
+      return { tape: serializeTape(tape), frames: tape.frames.length, digest: digest() };
+    },
+    /** Replay a serialized tape: feed its recorded intents frame-by-frame.
+     *  `extra` keeps simulating past the tape's end with neutral input. Run
+     *  this from a FRESH load at the tape's seed (?seed=N&simfreeze=1) to
+     *  reproduce the recorded run exactly. */
+    replay(tapeJson: string, extra = 0) {
+      const tape = deserializeTape(tapeJson);
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      driveSteps((f) => tapeFrame(tape, f) ?? NEUTRAL_INTENT, tape.frames.length + extra);
+      return { seed: tape.seed, frames: tape.frames.length, digest: digest() };
     },
   };
 
