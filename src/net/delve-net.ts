@@ -159,3 +159,47 @@ export function deathsAtDepth(depth: number): DeathRecord[] {
     return [];
   }
 }
+
+/** One delver on the deepest-descent board. */
+export interface LeaderEntry {
+  name: string;
+  /** Deepest depth they reached (= their deepest death). */
+  depth: number;
+  /** How many times they've fallen. */
+  deaths: number;
+  /** This is the local player. */
+  own: boolean;
+}
+
+/** The deepest-descent leaderboard, DERIVED from the death table: one entry
+ *  per player (their deepest death, freshest name), deepest first. No
+ *  dedicated table needed — every death already records the depth reached.
+ *  Best-effort: empty when offline / not yet synced. */
+export function getLeaderboard(limit = 25): LeaderEntry[] {
+  if (!conn) return [];
+  try {
+    interface Agg { name: string; depth: number; deaths: number; at: bigint; }
+    const byPlayer = new Map<string, Agg>();
+    for (const row of conn.db.death.iter()) {
+      const key = row.player.toHexString();
+      const at = row.at.microsSinceUnixEpoch;
+      const a = byPlayer.get(key);
+      if (a) {
+        a.deaths += 1;
+        if (row.depth > a.depth) a.depth = row.depth;
+        if (at > a.at) { a.at = at; a.name = row.name; }  // keep the freshest name
+      } else {
+        byPlayer.set(key, { name: row.name, depth: row.depth, deaths: 1, at });
+      }
+    }
+    const entries: LeaderEntry[] = [];
+    for (const [key, a] of byPlayer) {
+      entries.push({ name: a.name, depth: a.depth, deaths: a.deaths, own: key === myIdentityHex });
+    }
+    // Deepest first; ties broken by fewer deaths (got there cleaner).
+    entries.sort((x, y) => y.depth - x.depth || x.deaths - y.deaths);
+    return entries.slice(0, limit);
+  } catch {
+    return [];
+  }
+}

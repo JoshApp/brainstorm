@@ -16,6 +16,7 @@ import { THEME, FONT_DISPLAY, carvedRule, applyCarvedFrame } from './theme';
 import { showCodex } from './codex-screen';
 import { showStash } from './stash-screen';
 import { showPatchlog } from './patchlog-screen';
+import { showLeaderboard } from './leaderboard-screen';
 
 const SCREEN_ID = 'start';
 
@@ -318,6 +319,16 @@ export function showStartScreen(opts: StartScreenOptions) {
     link.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       showCodex();
+    });
+    pushLink(link);
+  }
+  // STANDINGS — the deepest-descent leaderboard (async multiplayer). Always
+  // available; reads the shared death table, so it fills in as others fall.
+  {
+    const link = makeSecondaryLink('STANDINGS', 0);
+    link.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      showLeaderboard();
     });
     pushLink(link);
   }
