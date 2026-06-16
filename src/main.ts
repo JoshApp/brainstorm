@@ -12,6 +12,8 @@ import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
 import { initStatusVfxPool } from './effects/status-vfx';
+import { initNetwork } from './net/delve-net';
+import { initDeathFeed } from './net/death-feed';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
@@ -769,6 +771,13 @@ warmupContent(renderer);
 // build on the first burn/poison proc was a measured mid-combat GC spike.
 // The sprite shader program itself is compiled by warmupContent above.
 initStatusVfxPool(scene);
+
+// Link to the living dungeon: connect to the shared death table and wire the
+// "death elsewhere" feed (the voice in the deep remarks when another delver
+// falls). Best-effort — offline/unconfigured, both no-op. See
+// docs/ALPHA-AND-BACKEND.md.
+initNetwork();
+initDeathFeed();
 
 // Pre-allocate the pickup light pool. Lights live in the scene forever
 // (idle = intensity 0, parked off-stage); pickups borrow and return them.

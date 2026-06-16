@@ -5,6 +5,7 @@ import { showDeathOverlay } from '../ui/death-overlay';
 import { showEndScreen } from '../ui/end-screen';
 import { getRunState, elapsedString, clearSave } from '../state/run-state';
 import { recordRunDeath, getRunDiscoveries } from '../state/meta-state';
+import { reportDeath } from '../net/delve-net';
 import { setGameMode } from '../state/game-mode';
 import { tickWeaponDrops } from './weapon-drop';
 
@@ -122,6 +123,16 @@ export function triggerDeath() {
   const time = elapsedString();
   const elapsedMs = run ? Date.now() - run.startedAt : 0;
   const discoveries = getRunDiscoveries();
+  // Tell the living dungeon a delver fell here. Best-effort + fire-and-
+  // forget — offline or unconnected, it no-ops. The row fans out to other
+  // players as the "death elsewhere" feed (and persists as the async
+  // bloodstain). Reported before clearSave so the run facts are intact.
+  reportDeath({
+    depth,
+    x: camera?.position.x ?? 0,
+    z: camera?.position.z ?? 0,
+    runSeed: run?.startedAt ?? 0,
+  });
   // Lifetime stat bump: total play time + death count. Kept SEPARATE from
   // run-state.clearSave() so meta survives.
   recordRunDeath(elapsedMs);
