@@ -161,11 +161,15 @@ testable increments).
    via CLI. SDK adds ~28 KB gzip to the bundle (measured, fine).
 3. **Leaderboard (trust-but-verify)** — submit on death, render the
    board. Per-build seasons.
-4. **Async traces (Phase 4)** — flush event-log → reducer; bloodstains
-   query "deaths near depth N." The `death` rows already exist (step 7) —
-   this is rendering them as in-world bloodstain marks. **Keep souls-style
-   *template* messages** (no free text): tone-correct *and* sidesteps
-   content moderation.
+4. **Async traces (Phase 4)** — **[DONE 2026-06-16]** bloodstains shipped:
+   `deathsAtDepth()` reads the death cache; `src/level/network-bloodstains.ts`
+   places up to 3 distinct delvers per floor as loot-free fallen-delver
+   corpses (reusing the corpse system the seam was built for). Floors are
+   procgen per seed, so stored (x,z) is ignored — bodies snap to walkable
+   cells in the current floor. Runs after the deterministic build so it
+   can't desync buildRng. Epitaphs are in-world template text (no free
+   text → no moderation surface). *Next trace types: messages, the live
+   bloodstain-at-exact-spot for same-seed runs.*
 5. **LLM proxy (Phase 5)** — separate Worker (Cloudflare Worker + AI
    Gateway, or a Supabase Edge Function). Cache on content hash (item id,
    death-context hash). **Hard spend cap + per-user rate limit from day
