@@ -604,7 +604,13 @@ export const SCENARIOS: Record<string, Scenario> = {
         { x: 0, z: -6.8, height: 2.6, wall: 'N', colorTint: 0xffb066, intensityMul: 1.3 },
         { x: 0, z:  6.8, height: 2.6, wall: 'S', colorTint: 0xffb066, intensityMul: 1.3 },
       ],
-      spawns: ringSpawns('spar', ['rat', 'skeleton', 'rat'], 3.5),
+      // In a FRONT arc (player faces −Z) at close range, so the reactive pilot
+      // only needs small turns to face them — not a 180° spin to a behind-spawn.
+      spawns: [
+        { enemyId: 'rat', x: -1.6, z: -3.0, roomId: 'spar' },
+        { enemyId: 'skeleton', x: 0, z: -3.4, roomId: 'spar' },
+        { enemyId: 'rat', x: 1.6, z: -3.0, roomId: 'spar' },
+      ],
       doors: [], stairs: [],
     },
     playerPos: { x: 0, z: 0, lookAt: { x: 0, z: -3.5, y: 1.2 } },

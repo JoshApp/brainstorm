@@ -69,6 +69,11 @@ export interface Observation {
   player: {
     pos: { x: number; z: number; y: number };
     facingYaw: number;
+    /** Radians of yaw per unit of look input (= the look sensitivity). A driver
+     *  turns `dTheta` radians by issuing lookDx = dTheta / lookRadiansPerUnit;
+     *  without it a bot can't know how hard to turn (raw lookDx is a pixel-ish
+     *  delta whose scale depends on the player's sensitivity setting). */
+    lookRadiansPerUnit: number;
     hp: { current: number; max: number };
     buffs: string[];
     equipped: Record<string, string | null>;

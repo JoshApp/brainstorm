@@ -1092,6 +1092,11 @@ if (import.meta.env.DEV) {
       getLevel: () => currentLevel,
       getCamera: () => camera,
       getSeed: getRunSeed,
+      getSwing: () => ({
+        phase: weapon.getPhase(),
+        striking: weapon.isStriking,
+        swinging: weapon.isSwinging,
+      }),
     }),
   );
 }

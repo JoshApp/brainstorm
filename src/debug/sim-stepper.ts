@@ -59,12 +59,23 @@ export interface SimStepperDeps {
   /** The seed the current run started with — stamped into recorded tapes so a
    *  tape carries everything needed to reproduce it. */
   getSeed: () => number;
+  /** Probe of the player's swing state machine — for diagnosing whether a
+   *  swing's strike window opens under the headless clock. */
+  getSwing: () => SwingProbe;
+}
+
+/** Snapshot of the swing state machine, read each frame by the diagnostic. */
+export interface SwingProbe {
+  phase: string;
+  striking: boolean;
+  swinging: boolean;
 }
 
 let simSystems: readonly GameSystem[] = [];
 let getLevel: SimStepperDeps['getLevel'] = () => null;
 let getCamera: SimStepperDeps['getCamera'] = () => null as unknown as THREE.PerspectiveCamera;
 let getSeed: SimStepperDeps['getSeed'] = () => 0;
+let getSwing: SimStepperDeps['getSwing'] = () => ({ phase: 'idle', striking: false, swinging: false });
 let stepsRun = 0;
 // Fixed-step frame counter — the index a tape's intents are keyed by.
 let frame = 0;
@@ -188,6 +199,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
   getLevel = deps.getLevel;
   getCamera = deps.getCamera;
   getSeed = deps.getSeed;
+  getSwing = deps.getSwing;
   // Route control through the drive-by-wire bus so driven/replayed intents
   // reach the sim through the same seam a thumb would.
   installBus();
@@ -326,6 +338,41 @@ export function installSimStepper(deps: SimStepperDeps): void {
     },
 
     // ── Trace + divergence (dig into runs, verify tapes) ──────────────────
+    /** DIAGNOSTIC: drive a sustained forward+attack and record the swing state
+     *  machine each frame — phase / striking / swinging / inCone — plus the
+     *  nearest enemy's hp. Answers "does the strike window open headless, and
+     *  does the cone catch the target?" without guessing. */
+    swingTrace(n = 90) {
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      const rows: Array<SwingProbe & { f: number; near: number | null; bearing: number | null; yaw: number; inCone: boolean; ehp: number | null }> = [];
+      driveSteps((f) => {
+        const obs = observe();
+        const live = obs.visible.enemies.filter((e) => e.hp.current > 0);
+        let nearest = live[0];
+        for (const e of live) if (!nearest || e.distance < nearest.distance) nearest = e;
+        rows.push({
+          f,
+          ...getSwing(),
+          near: nearest ? Math.round(nearest.distance * 100) / 100 : null,
+          bearing: nearest ? Math.round(nearest.bearing * 100) / 100 : null,
+          yaw: Math.round(obs.player.facingYaw * 100) / 100,
+          inCone: nearest?.inCone ?? false,
+          ehp: nearest?.hp.current ?? null,
+        });
+        // Face the nearest enemy (pilot logic) and force a swing every frame.
+        return { ...decideIntent(obs), attack: true };
+      }, n);
+      // The key question: does striking EVER coincide with a target in the cone?
+      return {
+        everStruck: rows.some((r) => r.striking),
+        everSwinging: rows.some((r) => r.swinging),
+        strikeWithTargetInCone: rows.some((r) => r.striking && r.inCone),
+        phasesSeen: [...new Set(rows.map((r) => r.phase))],
+        ehpStart: rows[0]?.ehp ?? null,
+        ehpEnd: rows.at(-1)?.ehp ?? null,
+        sample: rows.filter((r) => r.f % 6 === 0),
+      };
+    },
     /** Replay a tape, returning the digest at EVERY frame — the full
      *  trajectory. One-shot from spawn (fresh ?simfreeze load). */
     trace(tapeJson: string): string[] {

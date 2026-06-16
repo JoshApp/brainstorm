@@ -13,6 +13,7 @@ import { getEquipment } from '../player/equipment';
 import { sampleLightAt, getRegisteredSourceCount } from '../scene/light-pool';
 import { CONFIG } from '../config';
 import { pausedReason } from '../world-paused';
+import { getSettings } from '../settings/settings';
 import { getTurn, getTickClock } from './state';
 import { getAllInteractables } from '../interactables/system';
 import type {
@@ -149,6 +150,7 @@ export function buildObservation(
     player: {
       pos: { x: round(px), y: round(py), z: round(pz) },
       facingYaw: round(yaw, 3),
+      lookRadiansPerUnit: getSettings().lookSensitivity,
       hp: { current: hpCurrent, max: hpMax },
       buffs,
       equipped,

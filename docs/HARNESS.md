@@ -131,19 +131,25 @@ Next, roughly in order:
    for (4) and for balance sweeps; gated on decoupling a few sim systems
    (`world-ui`, `player-stats`) from their DOM tendrils.
 
+## Headless combat — RESOLVED
+
+Headless player melee deals damage and registers kills (the bot clears foes
+in pure sim; runs stay deterministic). The earlier "no damage" symptom was NOT
+a combat bug — `__sim.swingTrace()` showed the swing phase opens fine headless
+(`everStruck:true`). The real cause was that the **bot couldn't turn to face**:
+raw `lookDx` is a pixel-ish delta (`updateCamera` does `yaw -= lookDx * sens`),
+so the pilot's `lookDx ≈ 0.5` turned only ~0.002 rad/frame — it could never
+rotate onto a target, so its swings always pointed off-axis. Fix: the
+observation now exposes `player.lookRadiansPerUnit` (the sensitivity), and the
+pilot turns in real **angular** units (`lookDx = desiredRadians / sens`).
+`__sim.swingTrace(n)` remains as the combat-headless diagnostic.
+
 ## Known gaps
 
-- **Headless player melee deals no damage** (the blocker for combat balance
-  sweeps). Enemy → player damage works under the stepper (it uses logical
-  positions); player → enemy does NOT — across a full `spar` round the bot
-  swings ~11 times at point-blank and no enemy loses HP, yet the enemies kill
-  the bot. The swing's strike-window hit scan (`createCombatSystem` in
-  `attack.ts`) keys off `weapon.isStriking`, a viewmodel swing-phase flag
-  advanced by the `weapon` system. Hurtbox matrices are NOT the cause —
-  `hurtbox.ts` calls `node.updateWorldMatrix` itself. Next: instrument whether
-  `weapon.isStriking` actually opens under the fixed clock, vs the cone simply
-  not catching the target. Until fixed, headless runs measure movement/AI/
-  enemy-damage faithfully but not player damage output.
+- **Dumb pilot doesn't clear a swarm** — it commits to one target and kills it,
+  but flip-flops/can't align on 3 close moving foes (it cleared 1 of 3 in
+  `spar`). Swarm handling (focus-fire, spacing, kiting) is real bot AI, separate
+  from the engine. A smarter `decideIntent` is a drop-in.
 - **Bot has no exploration** — the reactive pilot only engages visible enemies;
   it can't navigate a real procgen floor to find them. Real descending runs need
   a smarter pilot (the legacy `bot.ts` has stairs-seeking to draw from).

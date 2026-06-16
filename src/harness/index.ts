@@ -160,6 +160,7 @@ function buildPlaceholderObservation(): Observation {
     player: {
       pos: { x: 0, y: 0, z: 0 },
       facingYaw: 0,
+      lookRadiansPerUnit: 0,
       hp: { current: 0, max: 0 },
       buffs: [],
       equipped: {},
