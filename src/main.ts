@@ -1101,6 +1101,65 @@ if (import.meta.env.DEV) {
   );
 }
 
+// ── Fixed-step sim loop (opt-in) ─────────────────────────────────────────────
+// The LIVE loop is variable-dt: the sim advances by whatever the last frame
+// took, so play is fps-dependent and NOT reproducible. ?fixedstep=1 switches to
+// a fixed-timestep loop — the SIM advances in fixed 1/60s quanta (count driven
+// by accumulated wall-clock), and PRESENT (render/HUD/VFX) runs once per frame.
+// That makes a run fps-INDEPENDENT and replayable from (seed, per-step intents)
+// — the prerequisite for leaderboard run-validation, and it makes the headless
+// balance sweeps faithful to real play.
+//
+// DEFAULT OFF: with the flag absent, tick() runs the original interleaved pass
+// unchanged (byte-identical feel). The flag-on path reorders into sim-pass then
+// present-pass (the inherent shape of fixed-step) — feel-test before defaulting.
+const FIXED_DT = 1 / 60;
+const MAX_SUBSTEPS = 6; // realDt is capped at 0.1s, so ≤6 fixed steps/frame
+const SIM_SYSTEMS = SYSTEMS.filter((s) => s.kind === 'sim');
+const PRESENT_SYSTEMS = SYSTEMS.filter((s) => s.kind !== 'sim');
+const USE_FIXED_STEP =
+  new URLSearchParams(location.search).get('fixedstep') === '1';
+let simAccumulator = 0;
+
+/** Advance the SIM by one fixed step: the time-scale drivers + player FSM +
+ *  sim systems, all on the fixed clock (so the world is deterministic). */
+function advanceSimStep(dt: number): void {
+  // Time-scale drivers on the FIXED clock (deterministic hit-pause / bullet-
+  // time / death slow-mo), then the same two-clock split the variable path uses.
+  tickDeath(dt);
+  tickBulletTime(dt);
+  tickBossSlowmo(dt);
+  const baseScale = getTimeScale() * getBossSlowmoTimeScale();
+  const scaledDt = dt * baseScale * getWorldTimeScale();
+  const playerDt = dt * baseScale;
+  const fxDt = dt * getWorldTimeScale();
+  if (!isWorldPaused()) tickPlayerAction(playerDt);
+  const paused = isWorldPaused();
+  if (paused) { input.lookDx = 0; input.lookDy = 0; }
+  runSystems(SIM_SYSTEMS, {
+    realDt: dt, scaledDt, playerDt, fxDt, paused,
+    mode: getGameMode(), playing: isPlaying(),
+  });
+}
+
+/** Run the PRESENT (render/HUD/VFX/camera) systems once per frame, with the
+ *  real frame dt + the live time-scales — so visuals stay smooth and VFX
+ *  slow-mo (which rides scaledDt) reads exactly as it does today. */
+function presentPass(realDt: number): void {
+  tickArrival(camera, realDt);
+  if (!isWorldPaused()) tickChasmPresence(camera, realDt);
+  const baseScale = getTimeScale() * getBossSlowmoTimeScale();
+  runSystems(PRESENT_SYSTEMS, {
+    realDt,
+    scaledDt: realDt * baseScale * getWorldTimeScale(),
+    playerDt: realDt * baseScale,
+    fxDt: realDt * getWorldTimeScale(),
+    paused: isWorldPaused(),
+    mode: getGameMode(),
+    playing: isPlaying(),
+  });
+}
+
 function tick() {
   // Apply any pending level swap BEFORE any per-frame reads on the level.
   // Stairs interactables call loadLevel() during the previous frame's
@@ -1116,58 +1175,77 @@ function tick() {
   // ends this frame re-pauses the world for the same frame's update gate.
   harnessTickFn?.(realDt, !isWorldPaused());
 
-  tickArrival(camera, realDt);
-  tickDeath(realDt);
-  tickBulletTime(realDt);  // real-time so the reactive-defense dip isn't slowed by itself
-  tickBossSlowmo(realDt);  // ditto — the boss-death dip advances in real time
-  // TWO clocks. base = hit-pause × boss-death slow-mo (these freeze EVERYONE,
-  // player included). worldScale = the reactive-defense bullet-time, which
-  // slows ONLY the world (enemies + projectiles) — so on a clean deflect/dodge
-  // they crawl while the player keeps acting at full speed (the asymmetric
-  // payoff). scaledDt drives the world; playerDt drives camera/move/attack.
-  const baseScale = getTimeScale() * getBossSlowmoTimeScale();
-  const scaledDt = realDt * baseScale * getWorldTimeScale();
-  const playerDt = realDt * baseScale;
-  // Ambient-FX clock — real-time EXCEPT it carries the bullet-time slow, so
-  // dust hangs with the world during a perfect-dodge dip but never stutters on
-  // a hit-pause/death freeze (those aren't in getWorldTimeScale).
-  const fxDt = realDt * getWorldTimeScale();
-  // Advance the player-action FSM on the PLAYER clock, BEFORE input is
-  // processed below, so a committed dodge/parry that expires this frame frees
-  // the next action immediately.
-  if (!isWorldPaused()) tickPlayerAction(playerDt);
-  // Snapshot pause state AFTER the harness so a just-ended budget gates this
-  // frame's unpaused systems.
-  const paused = isWorldPaused();
+  if (USE_FIXED_STEP) {
+    // FIXED-STEP path (?fixedstep=1): advance the SIM in fixed 1/60s quanta
+    // (count = accumulated wall-clock), then PRESENT once. fps-independent +
+    // replayable; reorders into sim-pass-then-present-pass (feel-test before
+    // making default).
+    simAccumulator += realDt;
+    let steps = 0;
+    while (simAccumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
+      advanceSimStep(FIXED_DT);
+      simAccumulator -= FIXED_DT;
+      steps++;
+    }
+    if (simAccumulator > FIXED_DT) simAccumulator = FIXED_DT; // drop the backlog
+    frameBegin();
+    presentPass(realDt);
+    frameEnd();
+  } else {
+    // VARIABLE-dt path (default) — the original interleaved pass, unchanged.
+    tickArrival(camera, realDt);
+    tickDeath(realDt);
+    tickBulletTime(realDt);  // real-time so the reactive-defense dip isn't slowed by itself
+    tickBossSlowmo(realDt);  // ditto — the boss-death dip advances in real time
+    // TWO clocks. base = hit-pause × boss-death slow-mo (these freeze EVERYONE,
+    // player included). worldScale = the reactive-defense bullet-time, which
+    // slows ONLY the world (enemies + projectiles) — so on a clean deflect/dodge
+    // they crawl while the player keeps acting at full speed (the asymmetric
+    // payoff). scaledDt drives the world; playerDt drives camera/move/attack.
+    const baseScale = getTimeScale() * getBossSlowmoTimeScale();
+    const scaledDt = realDt * baseScale * getWorldTimeScale();
+    const playerDt = realDt * baseScale;
+    // Ambient-FX clock — real-time EXCEPT it carries the bullet-time slow, so
+    // dust hangs with the world during a perfect-dodge dip but never stutters on
+    // a hit-pause/death freeze (those aren't in getWorldTimeScale).
+    const fxDt = realDt * getWorldTimeScale();
+    // Advance the player-action FSM on the PLAYER clock, BEFORE input is
+    // processed below, so a committed dodge/parry that expires this frame frees
+    // the next action immediately.
+    if (!isWorldPaused()) tickPlayerAction(playerDt);
+    // Snapshot pause state AFTER the harness so a just-ended budget gates this
+    // frame's unpaused systems.
+    const paused = isWorldPaused();
 
-  // The deep breathes only while the world runs — a pause menu full of
-  // chasm whispers would give the trick away.
-  if (!paused) tickChasmPresence(camera, realDt);
+    // The deep breathes only while the world runs — a pause menu full of
+    // chasm whispers would give the trick away.
+    if (!paused) tickChasmPresence(camera, realDt);
 
-  // While paused, drain look input so it doesn't snap when we unfreeze.
-  // (The input-camera system is gated off by the pause, so it won't.)
-  if (paused) {
-    input.lookDx = 0;
-    input.lookDy = 0;
+    // While paused, drain look input so it doesn't snap when we unfreeze.
+    // (The input-camera system is gated off by the pause, so it won't.)
+    if (paused) {
+      input.lookDx = 0;
+      input.lookDy = 0;
+    }
+
+    const ctx: TickContext = {
+      realDt,
+      scaledDt,
+      playerDt,
+      fxDt,
+      paused,
+      mode: getGameMode(),
+      playing: isPlaying(),
+    };
+    // Profiling brackets the system pass: begin opens the GPU timer + marks the
+    // CPU start, end closes them and fans the frame sample out to the HUD +
+    // recorder. Both early-return immediately unless something is listening (HUD
+    // visible, recording, or marks on), so this is free for players who never
+    // enable the PROFILER TOOLS setting — just two no-op calls per frame.
+    frameBegin();
+    runSystems(SYSTEMS, ctx);
+    frameEnd();
   }
-
-  const ctx: TickContext = {
-    realDt,
-    scaledDt,
-    playerDt,
-    fxDt,
-    paused,
-    mode: getGameMode(),
-    playing: isPlaying(),
-  };
-  // Profiling brackets the system pass: begin opens the GPU timer + marks the
-  // CPU start, end closes them and fans the frame sample out to the HUD +
-  // recorder. Both early-return immediately unless something is listening (HUD
-  // visible, recording, or marks on), so this is free for players who never
-  // enable the PROFILER TOOLS setting — just two no-op calls per frame.
-  frameBegin();
-  runSystems(SYSTEMS, ctx);
-  frameEnd();
 
   // Charge-ring HUD — early-outs on no-progress so it's free when no
   // hold is in flight. Always ticked; the visual itself opts in.
