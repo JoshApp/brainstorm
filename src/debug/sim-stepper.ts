@@ -93,6 +93,7 @@ function driveSteps(
   source: (frame: number) => Intent,
   n: number,
   recorder?: TapeRecorder,
+  onStep?: (frame: number) => void,
 ): void {
   const ctx = fixedCtx();
   for (let k = 0; k < n; k++) {
@@ -100,9 +101,40 @@ function driveSteps(
     setIntent(intent);
     recorder?.record(intent);
     runSystems(simSystems, ctx);
+    onStep?.(frame);
     frame++;
     stepsRun++;
   }
+}
+
+/** Replay a tape capturing the digest at EVERY frame — the run's full
+ *  trajectory. One-shot from spawn (call right after a fresh ?simfreeze load).
+ *  trajectory[i] = world digest after frame i. */
+function traceReplay(tape: ReturnType<typeof deserializeTape>): string[] {
+  const trajectory: string[] = [];
+  driveSteps(
+    (f) => tapeFrame(tape, f) ?? NEUTRAL_INTENT,
+    tape.frames.length,
+    undefined,
+    () => trajectory.push(digest()),
+  );
+  return trajectory;
+}
+
+/** First frame at which two trajectories disagree (or null if identical up to
+ *  the shorter one's length). The divergence finder: where did two runs split? */
+function firstDivergence(
+  a: string[],
+  b: string[],
+): { frame: number; a: string; b: string } | null {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    if (a[i] !== b[i]) return { frame: i, a: a[i], b: b[i] };
+  }
+  if (a.length !== b.length) {
+    return { frame: n, a: a[n] ?? '<end>', b: b[n] ?? '<end>' };
+  }
+  return null;
 }
 
 /** Advance `n` fixed steps with NEUTRAL input (world simulates, player idle). */
@@ -254,6 +286,27 @@ export function installSimStepper(deps: SimStepperDeps): void {
       driveSteps(() => decideIntent(observe()), n, rec);
       const tape = rec.finish();
       return { tape: serializeTape(tape), frames: tape.frames.length, digest: digest() };
+    },
+
+    // ── Trace + divergence (dig into runs, verify tapes) ──────────────────
+    /** Replay a tape, returning the digest at EVERY frame — the full
+     *  trajectory. One-shot from spawn (fresh ?simfreeze load). */
+    trace(tapeJson: string): string[] {
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      return traceReplay(deserializeTape(tapeJson));
+    },
+    /** First frame two trajectories disagree — where did the runs split?
+     *  Pure: pass two arrays from trace(). null = identical. */
+    diff: (a: string[], b: string[]) => firstDivergence(a, b),
+    /** Leaderboard-style verify: replay a submitted tape and check its final
+     *  state matches a claimed digest. The trust-but-verify primitive — the
+     *  same call a server makes on a submitted run. */
+    verify(tapeJson: string, claimedFinalDigest: string) {
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      const tape = deserializeTape(tapeJson);
+      driveSteps((f) => tapeFrame(tape, f) ?? NEUTRAL_INTENT, tape.frames.length);
+      const actual = digest();
+      return { ok: actual === claimedFinalDigest, actual, claimed: claimedFinalDigest };
     },
   };
 
