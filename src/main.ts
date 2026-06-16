@@ -1078,7 +1078,12 @@ const SYSTEMS: GameSystem[] = buildSystems({
 // it dead-code-eliminates from the live build (window.__sim can't exist there).
 if (import.meta.env.DEV) {
   void import('./debug/sim-stepper').then((m) =>
-    m.installSimStepper({ systems: SYSTEMS, getLevel: () => currentLevel, getSeed: getRunSeed }),
+    m.installSimStepper({
+      systems: SYSTEMS,
+      getLevel: () => currentLevel,
+      getCamera: () => camera,
+      getSeed: getRunSeed,
+    }),
   );
 }
 

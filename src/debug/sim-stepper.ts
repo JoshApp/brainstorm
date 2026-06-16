@@ -25,7 +25,11 @@ import { setWorldFrozen, isWorldFrozen } from './freeze';
 import { getGameMode, isPlaying } from '../state/game-mode';
 import { seedRng } from '../engine/rng';
 import { getPlayerHp } from '../player/health';
-import type { Enemy } from '../mobs/enemy';
+import type * as THREE from 'three';
+import type { LiveLevel } from '../level/builder';
+import type { Observation } from '../harness/types';
+import { buildObservation } from '../harness/observation';
+import { decideIntent } from '../harness/pilot';
 import type { Intent } from '../harness/intent';
 import { NEUTRAL_INTENT, installBus, setIntent } from '../harness/intent';
 import { TapeRecorder, tapeFrame, serializeTape, deserializeTape } from '../harness/tape';
@@ -39,7 +43,9 @@ export interface SimStepperDeps {
   /** The full ordered system list. The stepper filters to kind:'sim' itself. */
   systems: readonly GameSystem[];
   /** The live level handle, read fresh (it's reassigned on every floor load). */
-  getLevel: () => { enemies: Enemy[] } | null | undefined;
+  getLevel: () => LiveLevel | null | undefined;
+  /** The player camera — doubles as the player transform; observations read it. */
+  getCamera: () => THREE.PerspectiveCamera;
   /** The seed the current run started with — stamped into recorded tapes so a
    *  tape carries everything needed to reproduce it. */
   getSeed: () => number;
@@ -47,6 +53,7 @@ export interface SimStepperDeps {
 
 let simSystems: readonly GameSystem[] = [];
 let getLevel: SimStepperDeps['getLevel'] = () => null;
+let getCamera: SimStepperDeps['getCamera'] = () => null as unknown as THREE.PerspectiveCamera;
 let getSeed: SimStepperDeps['getSeed'] = () => 0;
 let stepsRun = 0;
 // Fixed-step frame counter — the index a tape's intents are keyed by.
@@ -124,10 +131,20 @@ function digest(): string {
   return parts.join('|');
 }
 
+// Structured read of the current world — the bot's and the operator's eyes.
+// Reuses the harness observation builder; works on the frozen world because it
+// only READS sim/scene state (entities, raycasts, light slots).
+function observe(): Observation {
+  const level = getLevel();
+  if (!level) throw new Error('[sim] no level to observe');
+  return buildObservation(getCamera(), level as LiveLevel);
+}
+
 /** Install window.__sim (DEV only). Returns nothing; the console is the UI. */
 export function installSimStepper(deps: SimStepperDeps): void {
   simSystems = deps.systems.filter((s) => s.kind === 'sim');
   getLevel = deps.getLevel;
+  getCamera = deps.getCamera;
   getSeed = deps.getSeed;
   // Route control through the drive-by-wire bus so driven/replayed intents
   // reach the sim through the same seam a thumb would.
@@ -222,6 +239,21 @@ export function installSimStepper(deps: SimStepperDeps): void {
       if (!isWorldFrozen()) setWorldFrozen(true);
       driveSteps((f) => tapeFrame(tape, f) ?? NEUTRAL_INTENT, tape.frames.length + extra);
       return { seed: tape.seed, frames: tape.frames.length, digest: digest() };
+    },
+
+    // ── Observe + autonomous bot ──────────────────────────────────────────
+    /** Structured read of the world right now (the bot's eyes). */
+    observe: () => observe(),
+    /** Run the built-in reactive pilot autonomously for `n` fixed steps,
+     *  recording a tape. Each step: observe → decideIntent → drive → record.
+     *  This is the headless autonomous loop — a bot playing the game with no
+     *  renderer, deterministically, emitting a run you can replay. */
+    runBot(n = 300) {
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      const rec = new TapeRecorder(getSeed() >>> 0, 'bot');
+      driveSteps(() => decideIntent(observe()), n, rec);
+      const tape = rec.finish();
+      return { tape: serializeTape(tape), frames: tape.frames.length, digest: digest() };
     },
   };
 
