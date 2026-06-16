@@ -70,3 +70,26 @@ export function decideIntent(obs: Observation): Intent {
 
   return { move, look: [lookDx, 0], attack, dodge: null };
 }
+
+// A passive PUNCHING BAG: walk up to the nearest enemy and stand in its face —
+// never attack, never dodge. Used by the threat probe to measure RAW enemy
+// offense (how fast an enemy kills an undefended player) in isolation from the
+// bot's own fighting. Holds at engage range so the enemy commits and swings.
+export function probeIntent(obs: Observation): Intent {
+  const live = obs.visible.enemies.filter((e) => e.inSight && e.hp.current > 0);
+  if (live.length === 0) return NEUTRAL_INTENT;
+
+  let nearest = live[0];
+  for (const e of live) if (e.distance < nearest.distance) nearest = e;
+
+  const sens = obs.player.lookRadiansPerUnit || 0.0035;
+  const b = nearest.bearing;
+  const lookDx = Math.abs(b) < 0.08 ? 0 : Math.max(-0.18, Math.min(0.18, b * 0.4)) / sens;
+
+  // Close to engage range so the enemy reaches us, then hold and take the hits.
+  const ENGAGE = 1.2;
+  const move: [number, number] =
+    Math.abs(b) < 0.8 && nearest.distance > ENGAGE ? [0, -1] : [0, 0];
+
+  return { move, look: [lookDx, 0], attack: false, dodge: null };
+}

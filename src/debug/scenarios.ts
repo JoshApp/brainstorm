@@ -266,9 +266,36 @@ function buildItemsScenario(params: URLSearchParams): Scenario {
 
 /** Perf scenarios that need the live URL params (a count, a kind) to build.
  *  getScenarioFromUrl resolves these before the static SCENARIOS map. */
+// ?scenario=threat&enemy=<id> — a single killable foe dead ahead, no god/no
+// invincibility. The harness threat probe (window.__sim.threatProbe) drives a
+// passive punching-bag player here to measure RAW enemy offense (time-to-kill,
+// DPS) per enemy type, swept across seeds. DEV-only.
+function buildThreatScenario(params: URLSearchParams): Scenario {
+  const enemy = params.get('enemy') ?? 'skeleton';
+  return {
+    level: {
+      id: 'dbg-threat', depth: 3, displayName: 'THREAT PROBE', fogColor: 0x0c0c12,
+      startPos: { x: 0, z: 0, yaw: Math.PI },
+      rooms: [{ id: 'threat', rect: { x: 0, z: 0, w: 14, d: 14 }, height: 4.5 }],
+      corridors: [],
+      props: [],
+      torches: [
+        { x: -6.8, z: 0, height: 2.6, wall: 'W', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x:  6.8, z: 0, height: 2.6, wall: 'E', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x: 0, z: -6.8, height: 2.6, wall: 'N', colorTint: 0xffb066, intensityMul: 1.3 },
+        { x: 0, z:  6.8, height: 2.6, wall: 'S', colorTint: 0xffb066, intensityMul: 1.3 },
+      ],
+      spawns: [{ enemyId: enemy, x: 0, z: -3.2, roomId: 'threat' }],
+      doors: [], stairs: [],
+    },
+    playerPos: { x: 0, z: 0, lookAt: { x: 0, z: -3.5, y: 1.2 } },
+  };
+}
+
 const PERF_FACTORIES: Record<string, (params: URLSearchParams) => Scenario> = {
   'perf-creatures': buildCreaturesScenario,
   'perf-items': buildItemsScenario,
+  'threat': buildThreatScenario,
 };
 
 export const SCENARIOS: Record<string, Scenario> = {

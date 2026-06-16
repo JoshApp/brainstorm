@@ -29,7 +29,7 @@ import type * as THREE from 'three';
 import type { LiveLevel } from '../level/builder';
 import type { Observation } from '../harness/types';
 import { buildObservation } from '../harness/observation';
-import { decideIntent } from '../harness/pilot';
+import { decideIntent, probeIntent } from '../harness/pilot';
 import type { Intent } from '../harness/intent';
 import { NEUTRAL_INTENT, installBus, setIntent } from '../harness/intent';
 import { TapeRecorder, tapeFrame, serializeTape, deserializeTape } from '../harness/tape';
@@ -335,6 +335,41 @@ export function installSimStepper(deps: SimStepperDeps): void {
         nearestEnd: transcript.at(-1)?.near ?? null,
       };
       return { tape: serializeTape(tape), frames: tape.frames.length, digest: digest(), summary, transcript };
+    },
+
+    // ── Enemy threat probe (combat balance) ───────────────────────────────
+    /** Stand a PASSIVE punching-bag player in front of the spawned enemies and
+     *  measure RAW enemy offense: how fast they kill an undefended player.
+     *  Returns time-to-kill + effective DPS. The bot never attacks/dodges, so
+     *  this isolates ENEMY threat from player skill — the unit a balance sweep
+     *  aggregates across seeds + enemy types. */
+    threatProbe(n = 2400) {
+      if (!isWorldFrozen()) setWorldFrozen(true);
+      const obs0 = observe();
+      const maxHp = obs0.player.hp.max;
+      let deathFrame: number | null = null;
+      let endHp = maxHp;
+      driveSteps((f) => {
+        const obs = observe();
+        endHp = obs.player.hp.current;
+        if (deathFrame === null && endHp <= 0) deathFrame = f;
+        return probeIntent(obs);
+      }, n);
+      const sec = (frames: number) => Math.round((frames / 60) * 100) / 100;
+      const died = deathFrame !== null;
+      // DPS: if killed, maxHp over time-to-kill; else damage taken over the window.
+      const dps = died
+        ? Math.round((maxHp / (deathFrame! / 60)) * 100) / 100
+        : Math.round(((maxHp - endHp) / (n / 60)) * 100) / 100;
+      return {
+        died,
+        ttkSec: died ? sec(deathFrame!) : null,
+        ttkFrames: deathFrame,
+        dps,
+        maxHp,
+        endHp,
+        windowSec: sec(n),
+      };
     },
 
     // ── Trace + divergence (dig into runs, verify tapes) ──────────────────

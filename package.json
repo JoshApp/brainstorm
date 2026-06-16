@@ -29,7 +29,8 @@
     "play": "tsx scripts/play.ts",
     "pilot": "tsx scripts/pilot.ts",
     "reach": "tsx scripts/reach.ts",
-    "delve": "tsx scripts/delve.ts"
+    "delve": "tsx scripts/delve.ts",
+    "threat": "tsx scripts/threat-sweep.ts"
   },
   "dependencies": {
     "spacetimedb": "2.5.x",
