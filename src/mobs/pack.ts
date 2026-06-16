@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { gameRng } from '../engine/rng';
 
 // Pack coordinator — makes a crowd of chasing mobs behave as a SURROUNDING,
 // TAKING-TURNS pack instead of a pile that all swing at once. Computed once per
@@ -41,7 +42,7 @@ function idBit(id: string): number {
   return h & 1;
 }
 function nextFlipDelay(): number {
-  return P.ORBIT_FLIP_MIN + Math.random() * (P.ORBIT_FLIP_MAX - P.ORBIT_FLIP_MIN);
+  return P.ORBIT_FLIP_MIN + gameRng() * (P.ORBIT_FLIP_MAX - P.ORBIT_FLIP_MIN);
 }
 
 const members = new Map<string, Member>();

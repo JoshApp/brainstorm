@@ -60,7 +60,7 @@ import { spawnReliquary } from '../interactables/reliquary';
 import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
-import { seedBuildRng, buildRng, hashStringToSeed } from '../engine/rng';
+import { seedBuildRng, buildRng, gameRng, hashStringToSeed } from '../engine/rng';
 import { spawnThresholdDraft, registerArchwayGlow } from '../scene/threshold-draft';
 
 // A boss's "signature colour" for the sealed-descent ward — its eye glow if it
@@ -2137,7 +2137,7 @@ export function buildLevel(
     // A BOSS splitting is a phase transition (king → its spawns = phase 2).
     if (deadSpec.isBoss) advanceBossPhase();
     for (let i = 0; i < split.count; i++) {
-      const angle = (i / split.count) * Math.PI * 2 + Math.random() * 0.3;
+      const angle = (i / split.count) * Math.PI * 2 + gameRng() * 0.3;
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
       const childPos = new THREE.Vector3(
