@@ -604,12 +604,11 @@ export const SCENARIOS: Record<string, Scenario> = {
         { x: 0, z: -6.8, height: 2.6, wall: 'N', colorTint: 0xffb066, intensityMul: 1.3 },
         { x: 0, z:  6.8, height: 2.6, wall: 'S', colorTint: 0xffb066, intensityMul: 1.3 },
       ],
-      // In a FRONT arc (player faces −Z) at close range, so the reactive pilot
-      // only needs small turns to face them — not a 180° spin to a behind-spawn.
+      // A single foe dead ahead (player faces −Z): a clean 1v1 DUEL — the unit a
+      // balance sweep varies by seed (clear time / damage taken). The reactive
+      // pilot fights one moving target fine; a 3-way melee needs smarter AI.
       spawns: [
-        { enemyId: 'rat', x: -1.6, z: -3.0, roomId: 'spar' },
-        { enemyId: 'skeleton', x: 0, z: -3.4, roomId: 'spar' },
-        { enemyId: 'rat', x: 1.6, z: -3.0, roomId: 'spar' },
+        { enemyId: 'skeleton', x: 0, z: -3.2, roomId: 'spar' },
       ],
       doors: [], stairs: [],
     },

@@ -33,32 +33,40 @@ export function decideIntent(obs: Observation): Intent {
   // bearing: 0 = dead ahead, + = to the right (radians).
   const b = nearest.bearing;
 
-  // Turn-and-burn: turn to FACE the target, then walk straight in. Strafing to
-  // close a lateral offset (the old approach) let the bot orbit at fixed range
-  // without ever aligning — so the swing cone never landed. Here facing is the
-  // job of `look`, approach is the job of forward `move`; the two don't fight.
-  //
-  // CRITICAL scale fix: raw lookDx is a pixel-ish delta — updateCamera does
-  // `yaw -= lookDx * lookSensitivity`. A naive lookDx of ~0.5 turns the camera
-  // ~0.002 rad/frame, so the bot could never rotate to face anything. Instead
-  // we choose a desired yaw turn IN RADIANS (proportional + capped + deadzone)
-  // and convert to look units via the sensitivity the observation reports.
+  // FACE the target, turning in real ANGULAR units. raw lookDx is a pixel-ish
+  // delta — updateCamera does `yaw -= lookDx * lookSensitivity` — so a naive
+  // lookDx of ~0.5 turns ~0.002 rad/frame and the bot can never rotate onto a
+  // target. We pick a desired yaw turn (radians, proportional + capped +
+  // deadzone) and convert via the sensitivity the observation reports.
   const sens = obs.player.lookRadiansPerUnit || 0.0035;
   const aligned = Math.abs(b) < 0.08;
   const turn = aligned ? 0 : Math.max(-0.18, Math.min(0.18, b * 0.4)); // rad this frame
   const lookDx = turn / sens;
 
-  // Advance only once roughly facing the target, and only until STRIKE_RANGE —
-  // then HOLD. Bulldozing to distance 0 overlaps the enemy, where bearing goes
-  // erratic and the swing cone (an arc in front) no longer catches it. Holding
-  // at reach keeps the target cleanly in the cone so swings land. −moveY = fwd.
-  const STRIKE_RANGE = 1.5;
+  // REACTIVE DODGE — roll only at the actual just-dodge window: an enemy whose
+  // strike is landing NOW and is in reach. Dodging on the distant WINDUP
+  // telegraph (or from across the room) made the bot dodge perpetually with 3
+  // foes and never commit to a swing. Tight trigger = it mostly fights and only
+  // rolls the blows that would land. Exercises the just-dodge system honestly.
+  const threat = enemies.find((e) => e.state === 'striking' && e.distance < 1.8);
+  if (threat) {
+    const strafe = threat.bearing >= 0 ? -1 : 1; // threat on the right → roll left
+    return { move: [0, 0], look: [lookDx, 0], attack: false, dodge: [strafe, 0.4] };
+  }
+
+  // CHASE — close aggressively and stay in the enemy's face. Enemies kite
+  // (back away), so a cautious "hold at 1.5m" lets them stay just out of reach
+  // and the bot never lands a blow; pressing right in is what actually kills.
+  // Keep a hair of standoff (STRIKE_RANGE) so we don't fully overlap (which
+  // drops the target out of the forward cone). Survival comes from the
+  // just-dodge above, not from backing off.
+  const STRIKE_RANGE = 1.1;
   const facingEnough = Math.abs(b) < 0.8;
   const move: [number, number] =
     facingEnough && nearest.distance > STRIKE_RANGE ? [0, -1] : [0, 0];
 
-  // Swing when within reach and the cone will land.
-  const attack = nearest.distance < 1.9 && Math.abs(b) < 0.45;
+  // Swing whenever the target is in reach and the cone will land.
+  const attack = nearest.distance < 1.9 && Math.abs(b) < 0.5;
 
   return { move, look: [lookDx, 0], attack, dodge: null };
 }
