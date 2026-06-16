@@ -126,12 +126,12 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // input-camera and dash read it. Progress shapes the arc (ease in on windup,
     // ease out on recover). One frame of latency vs the sim's advance (later in
     // the frame) is imperceptible for feel.
-    { name: 'swing-agency', phase: 'unpaused', tick() {
+    { name: 'swing-agency', kind: 'sim', phase: 'unpaused', tick() {
       updateSwingAgency(weapon.getPhase(), getCurrentWeapon().commitment, weapon.getPhaseProgress());
     } },
     // Look/move input + camera. While dying, control input is dropped so
     // nothing downstream (camera, bob) reads stale joystick values.
-    { name: 'input-camera', phase: 'unpaused', tick(ctx) {
+    { name: 'input-camera', kind: 'sim', phase: 'unpaused', tick(ctx) {
       if (isFogWalkthroughActive()) {
         // Soulslike fog-gate entry has the camera — drop player input and let
         // the forced walk drive position. realDt so the step is steady and
@@ -158,7 +158,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // forward-sign like the joystick) → world via the camera's facing; (0,0)
     // backsteps. Runs in 'unpaused' so it stops with the world, and after
     // input-camera so it reads this frame's facing.
-    { name: 'dash', phase: 'unpaused', tick() {
+    { name: 'dash', kind: 'sim', phase: 'unpaused', tick() {
       if (isDying() || isFogWalkthroughActive()) return;
       // The action FSM arbitrates: no roll out of a swing's committed frames
       // or during a parry beat. Checked BEFORE consuming, so the input stays
@@ -248,7 +248,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       updateDarkAdaptReadout(lit, adapt, darkAdaptBrightness());
     } },
 
-    { name: 'combat', phase: 'unpaused', tick(ctx) {
+    { name: 'combat', kind: 'sim', phase: 'unpaused', tick(ctx) {
       const attackPressed = isDying() ? false : consumeAttackPressed();
       combat.tick(attackPressed, input.moveX, input.moveY, ctx.playerDt);
     } },
@@ -278,7 +278,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       tickViewmodelPullback(ctx.realDt, camera, getLevel()?.walkable ?? null);
     } },
 
-    { name: 'weapon', phase: 'unpaused', tick(ctx) {
+    { name: 'weapon', kind: 'sim', phase: 'unpaused', tick(ctx) {
       // A clean deflect this frame → the weapon snaps up into the catch beat.
       if (consumeRiposte()) weapon.parryRaise();
       weapon.update(ctx.playerDt);
@@ -298,7 +298,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     // Stamina regen. 'unpaused' so it pauses with the world (menus,
     // hit-pause); scaledDt so a charged hit's freeze doesn't refill you.
-    { name: 'stamina', phase: 'unpaused', tick(ctx) { tickStamina(ctx.scaledDt); } },
+    { name: 'stamina', kind: 'sim', phase: 'unpaused', tick(ctx) { tickStamina(ctx.scaledDt); } },
 
     // Gassed = felt: a heartbeat haptic while exhausted. realDt so the cadence
     // is steady through slow-mo / hit-pause; 'unpaused' so it stops in menus.
@@ -328,7 +328,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // influence gameplay outside perception range. Threshold 25m, past the
     // deepest sight (wraith 12m). Damage path is unaffected (takeDamage
     // doesn't go through update()).
-    { name: 'enemies', phase: 'unpaused', tick(ctx) {
+    { name: 'enemies', kind: 'sim', phase: 'unpaused', tick(ctx) {
       const level = getLevel();
       const playerX = camera.position.x;
       const playerZ = camera.position.z;
@@ -369,7 +369,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     // Decay active combat alerts so old broadcasts stop pulling mobs in long
     // after the player has left.
-    { name: 'alerts', phase: 'unpaused', tick(ctx) { tickAlerts(ctx.scaledDt); } },
+    { name: 'alerts', kind: 'sim', phase: 'unpaused', tick(ctx) { tickAlerts(ctx.scaledDt); } },
 
     // Lamp-reveal — feed the player/lamp world position into the shared uniform
     // every reveal material reads (wall-runes, corpse glints bloom near the
@@ -386,23 +386,23 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     // Projectiles — integrate, hit-test player + walls, retire. Outside the
     // enemy loop so a shot survives the shooter's death.
-    { name: 'projectiles', phase: 'unpaused', tick(ctx) {
+    { name: 'projectiles', kind: 'sim', phase: 'unpaused', tick(ctx) {
       tickProjectiles(ctx.scaledDt, camera.position, getLevel().walkable, camera);
     } },
 
     // Persistent ground hazard fields (the `field` ability action — e.g. the
     // king's acid puddle). They outlive the cast that spawned them, so they
     // tick here rather than in any enemy's update.
-    { name: 'hazard-fields', phase: 'unpaused', tick(ctx) { tickHazardFields(ctx.scaledDt, camera.position); } },
+    { name: 'hazard-fields', kind: 'sim', phase: 'unpaused', tick(ctx) { tickHazardFields(ctx.scaledDt, camera.position); } },
 
     // Room-clear detection — fires room:cleared so doors flip SEALED→OPEN.
-    { name: 'room-clear', phase: 'unpaused', tick() { getLevel().checkRoomClear?.(); } },
+    { name: 'room-clear', kind: 'sim', phase: 'unpaused', tick() { getLevel().checkRoomClear?.(); } },
     // Encounter layer — ticks every ACTIVE encounter (arena gauntlets today;
     // boss/ritual later). Telegraph + wave advance happen inside the encounter.
-    { name: 'encounters', phase: 'unpaused', tick(ctx) { tickEncounters(ctx.scaledDt, camera.position); } },
+    { name: 'encounters', kind: 'sim', phase: 'unpaused', tick(ctx) { tickEncounters(ctx.scaledDt, camera.position); } },
 
     // Active buffs on all entities (heal-over-time, DoTs, etc.).
-    { name: 'buffs', phase: 'unpaused', tick(ctx) { tickAllBuffs(ctx.scaledDt); } },
+    { name: 'buffs', kind: 'sim', phase: 'unpaused', tick(ctx) { tickAllBuffs(ctx.scaledDt); } },
 
     // Status VFX — colored motes off anything carrying a buff with `vfx`
     // (burn embers, poison/bleed drips). Runs after buffs so it reflects
@@ -438,7 +438,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // in-range detection persists through hit-pauses. dt=0 when frozen so
     // animations (chest lid, pickup bob) don't advance — only the "what's in
     // range" pass refreshes.
-    { name: 'world-ui', phase: 'always', tick(ctx) {
+    { name: 'world-ui', kind: 'sim', phase: 'always', tick(ctx) {
       camera.getWorldDirection(forwardScratch);
       const interactDt = ctx.paused ? 0 : ctx.scaledDt;
       tickInteractables(interactDt, camera.position, forwardScratch);
@@ -462,7 +462,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // while a menu is open still update the snapshot (and its subscribers,
     // e.g. the inventory stat column) live. Subscribers fire only on real
     // change. Ordered before 'hud' so HUD readouts read this frame's values.
-    { name: 'player-stats', phase: 'always', tick() {
+    { name: 'player-stats', kind: 'sim', phase: 'always', tick() {
       recomputePlayerStats();
       syncHudStores();
     } },

@@ -1071,6 +1071,16 @@ const SYSTEMS: GameSystem[] = buildSystems({
   getRoomCuller: () => roomCuller,
 });
 
+// DEV-only fixed-step sim stepper (window.__sim). Runs ONLY the kind:'sim'
+// systems by hand at a fixed timestep — the headless / deterministic-replay
+// substrate, distinct from the real-time ?harness path. Behind the DEV gate so
+// it dead-code-eliminates from the live build (window.__sim can't exist there).
+if (import.meta.env.DEV) {
+  void import('./debug/sim-stepper').then((m) =>
+    m.installSimStepper({ systems: SYSTEMS, getLevel: () => currentLevel }),
+  );
+}
+
 function tick() {
   // Apply any pending level swap BEFORE any per-frame reads on the level.
   // Stairs interactables call loadLevel() during the previous frame's

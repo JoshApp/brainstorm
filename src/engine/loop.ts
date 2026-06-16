@@ -45,9 +45,23 @@ export interface TickContext {
 
 export type SystemPhase = 'unpaused' | 'always';
 
+// Orthogonal to `phase`. `phase` answers "does it run while the world is
+// paused?"; `kind` answers "does it mutate SIM state (positions, HP, AI,
+// cooldowns, combat/loot outcomes) or only PRESENT it (render, camera, HUD,
+// VFX, audio, lighting, culling)?". The headless fixed-step stepper
+// (debug/sim-stepper.ts) runs ONLY kind:'sim' systems, so a run can advance
+// with no renderer driving it. Absent = 'present' — the safe default, so an
+// untagged system never silently advances a headless sim. The two axes cross:
+// most sim systems are phase:'unpaused' (enemies, combat) but a couple are
+// phase:'always' (player-stats recompute, interactable use).
+export type SystemKind = 'sim' | 'present';
+
 export interface GameSystem {
   name: string;
   phase: SystemPhase;
+  /** SIM (mutates game state) vs PRESENT (draws/sounds it). Absent = present.
+   *  Drives headless sim-only stepping; see SystemKind. */
+  kind?: SystemKind;
   /** If set, the system only ticks when the current mode is in this list. */
   modes?: GameMode[];
   tick(ctx: TickContext): void;
