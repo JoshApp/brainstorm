@@ -8,6 +8,7 @@
 // manager — same pause rules as inventory/settings.
 
 import { openScreen, closeScreen } from './screen-manager';
+import { isTextEntryMode } from '../controls/input-mode';
 
 const NOTE_SCREEN_ID = 'note';
 
@@ -100,6 +101,7 @@ export function showNote(text: string) {
   // note is being acknowledged.
   const onKey = (e: KeyboardEvent) => {
     if (!activeCard) return;
+    if (isTextEntryMode()) return;   // a focused text field owns the keyboard
     if (e.code === 'Space' || e.key === 'e' || e.key === 'E'
         || e.key === 'Escape' || e.key === 'Enter') {
       e.preventDefault();

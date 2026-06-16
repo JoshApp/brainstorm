@@ -9,6 +9,7 @@
 // still fire during or after; this card is the dungeon speaking.
 
 import { openScreen, closeScreen } from './screen-manager';
+import { isTextEntryMode } from '../controls/input-mode';
 
 const SCREEN_ID = 'safe-room-transition';
 const AUTO_DISMISS_MS = 6000;
@@ -170,6 +171,7 @@ export function showSafeRoomTransition(stats: SafeRoomTransitionStats): void {
   // pointer-locked canvas handler.
   const onPointer = (e: Event) => { e.preventDefault(); if (pastGrace()) dismiss(); };
   const onKey = (e: KeyboardEvent) => {
+    if (isTextEntryMode()) return;   // a focused text field owns the keyboard
     if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter' || e.key.toLowerCase() === 'e') {
       e.preventDefault();
       if (pastGrace()) dismiss();

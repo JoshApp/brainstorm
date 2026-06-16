@@ -21,7 +21,7 @@ import { dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
 import { touchWasRecent } from './touch-activity';
 import { triggerDash } from './dash-input';
-import { isEditableTarget } from './editable-focus';
+import { isTextEntryMode } from './input-mode';
 import {
   setChargeFromHeldMs,
   setChargePosition,
@@ -92,7 +92,7 @@ export const desktopScheme: InputScheme = {
     window.addEventListener('keydown', (e) => {
       // Typing into a text field (e.g. the name-entry screen) owns the
       // keyboard — don't let game verbs steal 'E', WASD, digits, etc.
-      if (isEditableTarget()) return;
+      if (isTextEntryMode()) return;
       if (!e.repeat) codesDown.add(e.code);
 
       // DASH (debug desktop) — Shift dodges in the current move direction, or
@@ -180,7 +180,7 @@ export const desktopScheme: InputScheme = {
       }
     });
     window.addEventListener('keyup', (e) => {
-      if (isEditableTarget()) return;
+      if (isTextEntryMode()) return;
       codesDown.delete(e.code);
       // Attack-key release: loose the charge (charged if it cooked, a
       // plain swing if it never reached the ramp).
