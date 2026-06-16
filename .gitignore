@@ -19,3 +19,7 @@ public/art/
 
 # Art suite feedback submissions (notes/drawings) — read by Claude, not shipped
 art-feedback/
+
+# SpacetimeDB local dev scratch (auto-named local DB)
+server/spacetime.local.json
+server/spacetimedb/dist/

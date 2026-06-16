@@ -32,6 +32,7 @@
     "delve": "tsx scripts/delve.ts"
   },
   "dependencies": {
+    "spacetimedb": "2.5.x",
     "three": "^0.160.0",
     "three-bvh-csg": "^0.0.16",
     "three-mesh-bvh": "^0.7.5"
