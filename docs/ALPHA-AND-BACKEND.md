@@ -159,8 +159,13 @@ testable increments).
    client bindings (`src/net/module_bindings/`); connect-on-boot with a
    persisted anon Identity (`src/net/delve-net.ts`). Round-trip verified
    via CLI. SDK adds ~28 KB gzip to the bundle (measured, fine).
-3. **Leaderboard (trust-but-verify)** — submit on death, render the
-   board. Per-build seasons.
+3. **Leaderboard (trust-but-verify)** — **[DONE 2026-06-16]** deepest-
+   descent board DERIVED from the death table (every death records the
+   depth reached → `getLeaderboard()` aggregates MAX(depth) per player),
+   so no dedicated table/redeploy. `src/ui/leaderboard-screen.ts`, opened
+   from the title's STANDINGS link; own row highlighted. *Next: per-build
+   seasons (filter by buildVersion), end-screen rank line, and the
+   replay-verification that upgrades "trust" to "verify".*
 4. **Async traces (Phase 4)** — **[DONE 2026-06-16]** bloodstains shipped:
    `deathsAtDepth()` reads the death cache; `src/level/network-bloodstains.ts`
    places up to 3 distinct delvers per floor as loot-free fallen-delver
