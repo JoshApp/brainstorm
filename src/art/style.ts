@@ -196,9 +196,10 @@ export const STYLES = {
       'bold flat areas of solid black against cream-white, visible gouged carving marks, rough hand-printed ink, hard graphic edges',
       'in the spirit of Käthe Kollwitz and Edvard Munch, anguished and grim',
       'strict limited palette — black, cream white and one or two bold spot colours, NO grey, NO shading, NO gradients, flat 2D print not rendered',
+      'the image is FULL BLEED, the artwork fills the entire frame edge to edge with no white paper border and no margin',
       'single subject centred with a little headroom, cruel and grief-stricken',
     ].join(', '),
-    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, smooth shading, rendered, photorealistic, 3d render, grey, midtones, soft gradient, muddy, cute, fine delicate detail, painterly, grain, halftone`,
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, smooth shading, rendered, photorealistic, 3d render, grey, midtones, soft gradient, muddy, cute, fine delicate detail, painterly, grain, halftone, white border, paper margin, matte border, vignette, framed`,
   },
 
   // Cyanotype — spectral Prussian-blue photogram. Cold, strange, monochrome.

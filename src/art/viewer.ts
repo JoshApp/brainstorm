@@ -21,6 +21,8 @@ const imgURL = (file: string) => `${BASE}art/${file}`;
 const selections = new Set<string>();        // ★ "more of this"
 const rejects = new Set<string>();            // ✕ "not this"
 const drawings = new Map<string, string>();   // runId -> annotated PNG dataURL
+let MAT = 0.04;                               // inlay margin (live slider in the spread)
+const matAdjusters: Array<() => void> = [];   // reposition each spread card's art on slider change
 
 // ── shell ─────────────────────────────────────────────────────────────────
 const root = document.body;
@@ -106,11 +108,14 @@ function row(): HTMLElement {
   return r;
 }
 
-// ── frame cutout: flood-fill the flat-black centre to transparent ───────────
-// Preserves every intricate inner cusp (the fill stops at the lit ornate edge),
-// so the frame can OVERLAY the art instead of sitting behind a hard rectangle.
+// ── frame window: punch a CLEAN centred window through the frame, opaque
+// everywhere else. The window is found by walking out from the centre along the
+// cross (so it CAN'T leak into the corners like a flood-fill), then taking the
+// SYMMETRIC inset → the window is always centred (fixes the right-bias). Because
+// the frame stays opaque outside the window, it OVERLAPS the art's own edges
+// (its paper margin / hard print border) and only the window shows the art.
 interface Window01 { x0: number; y0: number; x1: number; y1: number }
-function frameOverlay(src: string, onReady: (c: HTMLCanvasElement, win: Window01) => void, threshold = 48) {
+function frameWindow(src: string, onReady: (c: HTMLCanvasElement, repunch: (mat: number) => Window01) => void, threshold = 70, guardFrac = 0.05) {
   const img = new Image();
   img.crossOrigin = 'anonymous';
   img.onload = () => {
@@ -118,66 +123,129 @@ function frameOverlay(src: string, onReady: (c: HTMLCanvasElement, win: Window01
     const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d')!;
     ctx.drawImage(img, 0, 0);
-    const data = ctx.getImageData(0, 0, w, h);
-    const px = data.data;
+    const orig = ctx.getImageData(0, 0, w, h);
+    const src8 = orig.data;
+    const lum = (p: number) => { const i = p * 4; return 0.299 * src8[i] + 0.587 * src8[i + 1] + 0.114 * src8[i + 2]; };
+    // Find the window's extent along the centre cross — walk out from the centre
+    // until the border (bright) on each side. This is the inner edge of the frame.
+    const cx = w >> 1, cy = h >> 1;
+    let L = cx; while (L > 0 && lum(cy * w + L - 1) < threshold) L--;
+    let R = cx; while (R < w - 1 && lum(cy * w + R + 1) < threshold) R++;
+    let T = cy; while (T > 0 && lum((T - 1) * w + cx) < threshold) T--;
+    let B = cy; while (B < h - 1 && lum((B + 1) * w + cx) < threshold) B++;
+    // Flood-fill the interior dark region from the centre, BOUNDED to that window
+    // rect — so it can't spill into the border on ANY side however thick/dark it
+    // is. Bright ornament (> threshold) inside the rect stays opaque and overlaps
+    // the art; the edge guard is a backstop.
+    const guard = Math.round(Math.min(w, h) * guardFrac);
+    const mask = new Uint8Array(w * h);   // 1 = window (interior dark, fillable)
     const seen = new Uint8Array(w * h);
-    const lum = (i: number) => 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-    let minX = w, maxX = 0, minY = h, maxY = 0;  // bounds of the cut window
-    const stack = [(Math.floor(h / 2) * w + Math.floor(w / 2))];
+    const stack = [cy * w + cx];
     while (stack.length) {
       const p = stack.pop()!;
       if (seen[p]) continue; seen[p] = 1;
-      const i = p * 4;
-      if (lum(i) >= threshold) continue;  // hit the ornate edge — stop
-      px[i + 3] = 0;                        // dark cavity → transparent
       const x = p % w, y = (p - x) / w;
-      if (x < minX) minX = x; if (x > maxX) maxX = x;
-      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (x < L || x > R || y < T || y > B) continue;                            // bound to the window rect
+      if (x < guard || y < guard || x >= w - guard || y >= h - guard) continue;  // edge guard backstop
+      if (lum(p) >= threshold) continue;   // ornament / border — stop, stays opaque (overlaps art)
+      mask[p] = 1;
       if (x > 0) stack.push(p - 1);
       if (x < w - 1) stack.push(p + 1);
       if (y > 0) stack.push(p - w);
       if (y < h - 1) stack.push(p + w);
     }
-    ctx.putImageData(data, 0, 0);
-    const win: Window01 = maxX > minX
-      ? { x0: minX / w, y0: minY / h, x1: (maxX + 1) / w, y1: (maxY + 1) / h }
-      : { x0: 0, y0: 0, x1: 1, y1: 1 };
-    onReady(cv, win);
+    // Crop the frame's OUTER paper margin: flood-fill BRIGHT inward from the
+    // edges, stopping at the dark ink — so the card's outer silhouette becomes
+    // the organic ink edge of the linocut, not a white rectangle. Baked into a
+    // `base` once; the window punch is applied per-MAT on top.
+    const outerThr = 140;
+    const base = new Uint8ClampedArray(src8);
+    const oseen = new Uint8Array(w * h);
+    const ostack = [0, w - 1, (h - 1) * w, w * h - 1, w >> 1, (h - 1) * w + (w >> 1), (h >> 1) * w, (h >> 1) * w + w - 1];
+    while (ostack.length) {
+      const p = ostack.pop()!;
+      if (oseen[p]) continue; oseen[p] = 1;
+      if (lum(p) < outerThr) continue;     // hit the ink ornament — stop
+      base[p * 4 + 3] = 0;                 // bright paper → transparent
+      const x = p % w, y = (p - x) / w;
+      if (x > 0) ostack.push(p - 1);
+      if (x < w - 1) ostack.push(p + 1);
+      if (y > 0) ostack.push(p - w);
+      if (y < h - 1) ostack.push(p + w);
+    }
+    // MAT shrinks the window inward (more frame overlap) by intersecting the
+    // mask with a centred inset rect — cheap, so the slider stays live.
+    const repunch = (mat: number): Window01 => {
+      const out = new ImageData(new Uint8ClampedArray(base), w, h);
+      const op = out.data;
+      const ix = Math.round(mat * w), iy = Math.round(mat * h);
+      let minX = w, maxX = 0, minY = h, maxY = 0;
+      for (let y = iy; y < h - iy; y++) {
+        for (let x = ix; x < w - ix; x++) {
+          const p = y * w + x;
+          if (mask[p]) {
+            op[p * 4 + 3] = 0;
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
+        }
+      }
+      ctx.putImageData(out, 0, 0);
+      return maxX > minX ? { x0: minX / w, y0: minY / h, x1: (maxX + 1) / w, y1: (maxY + 1) / h } : { x0: 0, y0: 0, x1: 1, y1: 1 };
+    };
+    onReady(cv, repunch);
   };
   img.src = src;
 }
 
-// ── the composited card: art INLAID into the frame's window, frame overlapping.
-// The window bounds come from the cutout above; we inflate the art a touch so
-// the frame's ornate inner edge overlaps it (no seam).
+// ── the composited card: art FULL-BLEED behind, the frame OVERLAPS on top with
+// a clean centred window punched through it. Only the window shows art; the
+// frame covers the art's own paper edge. MAT (slider) = how far the frame
+// overlaps inward (smaller window ⇄ more border).
 const TAROT_ASPECT = 1312 / 768;
 function spreadCard(run: ArtRun, frame: ArtRun | null): HTMLElement {
   const W = 236, H = Math.round(W * (frame ? frame.height / frame.width : TAROT_ASPECT));
   const card = document.createElement('div');
-  Object.assign(card.style, { position: 'relative', width: `${W}px`, height: `${H}px`, boxShadow: THEME.shadow, overflow: 'hidden', background: '#000' } as Partial<CSSStyleDeclaration>);
+  Object.assign(card.style, { position: 'relative', width: `${W}px`, height: `${H}px`, overflow: 'visible', background: 'transparent' } as Partial<CSSStyleDeclaration>);
 
+  // art clipper — confines the art to the window box so it can't poke past the
+  // (now organic) frame edge; the art inside overscans to hide its own margin.
+  const clip = document.createElement('div');
+  Object.assign(clip.style, { position: 'absolute', inset: '0', overflow: 'hidden', zIndex: '0' } as Partial<CSSStyleDeclaration>);
   const art = pic(imgURL(run.file), W, H, `${run.subject} not promoted`);
-  Object.assign(art.style, { position: 'absolute', inset: '0', zIndex: '0' } as Partial<CSSStyleDeclaration>);
-  card.appendChild(art);
+  Object.assign(art.style, { position: 'absolute', inset: '0', objectPosition: 'center' } as Partial<CSSStyleDeclaration>);
+  clip.appendChild(art);
+  card.appendChild(clip);
 
   const spec = CARD_ART.find((c) => c.id === run.subject);
   const scrim = document.createElement('div');
-  Object.assign(scrim.style, { position: 'absolute', left: '14%', right: '14%', bottom: '6%', zIndex: '2', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '20px', background: `linear-gradient(transparent, ${THEME.void} 80%)`, pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
-  scrim.appendChild(displayHeading(spec?.name ?? run.subject, { size: 13, glow: true }));
+  Object.assign(scrim.style, { position: 'absolute', left: '16%', right: '16%', bottom: '7%', zIndex: '2', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '20px', background: `linear-gradient(transparent, ${THEME.void} 80%)`, pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
+  const titleEl = displayHeading(spec?.name ?? run.subject, { size: 13, glow: true });
+  titleEl.style.textAlign = 'center';  // centre wrapped multi-line titles
+  scrim.appendChild(titleEl);
   card.appendChild(scrim);
 
   if (frame) {
-    frameOverlay(imgURL(frame.file), (cv, win) => {
-      const mX = 0.06 * W, mY = 0.06 * H;  // margin: art shrinks INSIDE the window, centred (black mat shows)
-      Object.assign(art.style, {
-        inset: 'auto',
-        left: `${win.x0 * W + mX}px`, top: `${win.y0 * H + mY}px`,
-        width: `${(win.x1 - win.x0) * W - 2 * mX}px`, height: `${(win.y1 - win.y0) * H - 2 * mY}px`,
-      } as Partial<CSSStyleDeclaration>);
-      Object.assign(cv.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', zIndex: '1', pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
+    frameWindow(imgURL(frame.file), (cv, repunch) => {
+      Object.assign(cv.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', zIndex: '1', pointerEvents: 'none', filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.7))' } as Partial<CSSStyleDeclaration>);
       card.appendChild(cv);
-      // anchor the title inside the window's lower edge
-      Object.assign(scrim.style, { left: `${win.x0 * W}px`, right: `${(1 - win.x1) * W}px`, bottom: `${(1 - win.y1) * H + 4}px` } as Partial<CSSStyleDeclaration>);
+      const OVERSCAN = 0.08;  // art overscans the clip so its own paper margin is cropped on every side
+      const apply = () => {  // re-punch on slider change; clip = window box, art overscans inside it
+        const win = repunch(MAT);
+        const wW = (win.x1 - win.x0) * W, wH = (win.y1 - win.y0) * H;
+        Object.assign(clip.style, {  // clip confines the art to the window box
+          inset: 'auto',
+          left: `${win.x0 * W}px`, top: `${win.y0 * H}px`, width: `${wW}px`, height: `${wH}px`,
+        } as Partial<CSSStyleDeclaration>);
+        const ox = OVERSCAN * wW, oy = OVERSCAN * wH;
+        Object.assign(art.style, {  // art overscans inside the clip — margin cropped, ornament overlaps on top
+          inset: 'auto',
+          left: `${-ox}px`, top: `${-oy}px`, width: `${wW + 2 * ox}px`, height: `${wH + 2 * oy}px`,
+        } as Partial<CSSStyleDeclaration>);
+        Object.assign(scrim.style, { left: `${win.x0 * W}px`, right: `${(1 - win.x1) * W}px`, bottom: `${(1 - win.y1) * H + 6}px` } as Partial<CSSStyleDeclaration>);
+      };
+      apply();
+      matAdjusters.push(apply);
     });
   }
   return card;
@@ -289,6 +357,7 @@ function submitBar() {
 let manifest: ArtManifest;
 function render() {
   document.querySelectorAll('[data-art-body]').forEach((n) => n.remove());
+  matAdjusters.length = 0;  // drop stale closures from the previous render
   const body = document.createElement('div');
   body.setAttribute('data-art-body', '');
   body.style.paddingTop = '24px';
@@ -302,6 +371,17 @@ function render() {
   // composited spread (promoted art + active frame, cutout overlay)
   const frame = manifest.activeFrame ? manifest.runs.find((r) => r.id === manifest.activeFrame) ?? null : null;
   body.appendChild(sectionHead('The Spread'));
+  // live margin slider — drag to set the inlay mat without round-tripping
+  const matRow = document.createElement('div');
+  Object.assign(matRow.style, { display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' } as Partial<CSSStyleDeclaration>);
+  const matLab = caption(`mat ${(MAT * 100).toFixed(1)}%`, THEME.amber, 11);
+  matLab.style.minWidth = '70px';
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = '0'; slider.max = '0.12'; slider.step = '0.0025'; slider.value = String(MAT);
+  slider.style.width = '260px';
+  slider.oninput = () => { MAT = parseFloat(slider.value); matLab.textContent = `mat ${(MAT * 100).toFixed(1)}%`; matAdjusters.forEach((f) => f()); };
+  matRow.appendChild(slider); matRow.appendChild(matLab);
+  body.appendChild(matRow);
   const spread = row(); spread.style.justifyContent = 'center';
   for (const c of CARD_ART) {
     const pr = manifest.promoted[c.id];
