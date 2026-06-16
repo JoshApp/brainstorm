@@ -81,6 +81,7 @@ import { initDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-a
 import { initBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
 import { seedRng } from './engine/rng';
 import { setDeterministicClock, advanceGameClock, resetGameClock } from './engine/game-clock';
+import { startRecording as startRunRecording, finishRun } from './harness/run-recorder';
 import { setWorldFrozen } from './debug/freeze';
 import { recordRunStart, resetRunDiscoveries, getMeta, getPlayerName, setPlayerName } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
@@ -597,6 +598,10 @@ const _dropFwd = new THREE.Vector3();
 const _dropRight = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
 setOnDeathStart(() => {
+  // Finish + hold the run's tape (seed + inputs) the instant the player dies,
+  // so the leaderboard submission can pick it up alongside the claimed score
+  // for server-side replay-verification. No-op when not recording.
+  finishRun();
   if (!heldWeaponDropModel) return;
   camera.getWorldDirection(_dropFwd);
   _dropFwd.y = 0;
@@ -1316,6 +1321,10 @@ function startRun(floorId: string, startDepth: number = 1) {
   const seed = resolveRunSeed();
   seedRng(seed);
   resetGameClock(); // each run starts at gameNow()=0 so its timers replay
+  // Record the run for replay/validation — but ONLY in the deterministic
+  // (fixed-step) loop, since a variable-dt tape can't be reproduced. Captured
+  // allocation-free; finished + held on death for the leaderboard to submit.
+  if (USE_FIXED_STEP) startRunRecording(seed);
   if (import.meta.env.DEV) console.info(`[run] seed = ${seed}`);
   loadInitialLevel(floorId, startDepth);
   // Resolve the spawn so an authored or procgen position that

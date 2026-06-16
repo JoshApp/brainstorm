@@ -88,6 +88,30 @@ export function recordedSteps(): number {
   return active ? active.length : 0;
 }
 
+// The most recently COMPLETED run's tape — held after death so the backend can
+// pick it up and submit it (seed + inputs) for server-side verification.
+let lastRunTape: Tape | null = null;
+
+/** Stop recording and hold the finished tape for submission. Returns it too. */
+export function finishRun(): Tape | null {
+  const tape = stopRecording();
+  if (tape) lastRunTape = tape;
+  return tape;
+}
+
+/** The held finished-run tape (without clearing it). The leaderboard submission
+ *  path reads this on death alongside the claimed score. */
+export function peekLastRunTape(): Tape | null {
+  return lastRunTape;
+}
+
+/** Take and clear the held tape (after it's been submitted). */
+export function takeLastRunTape(): Tape | null {
+  const t = lastRunTape;
+  lastRunTape = null;
+  return t;
+}
+
 /** Capture this fixed step's resolved intent. Called from the input-camera
  *  system AFTER input.tickInput() (so move/look are populated) and BEFORE
  *  updateCamera() consumes the look delta. A no-op branch when not recording. */

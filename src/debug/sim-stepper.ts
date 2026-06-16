@@ -34,7 +34,7 @@ import { decideIntent, probeIntent } from '../harness/pilot';
 import type { Intent } from '../harness/intent';
 import { NEUTRAL_INTENT, installBus, setIntent } from '../harness/intent';
 import { TapeRecorder, tapeFrame, serializeTape, deserializeTape } from '../harness/tape';
-import { startRecording, stopRecording, recordedSteps } from '../harness/run-recorder';
+import { startRecording, stopRecording, recordedSteps, peekLastRunTape } from '../harness/run-recorder';
 
 // Canonical sim rate. The feel was tuned at 60 Hz; fixing the step here means a
 // headless run and a real-time run integrate over identical quanta, so their
@@ -320,6 +320,12 @@ export function installSimStepper(deps: SimStepperDeps): void {
       return { tape: tape ? serializeTape(tape) : null, frames: tape?.frames.length ?? 0 };
     },
     recSteps: () => recordedSteps(),
+    /** The last COMPLETED run's tape (held after death), serialized — what the
+     *  leaderboard would submit for server replay-verification. */
+    lastRunTape() {
+      const t = peekLastRunTape();
+      return t ? serializeTape(t) : null;
+    },
 
     // ── Observe + autonomous bot ──────────────────────────────────────────
     /** Structured read of the world right now (the bot's eyes). */
