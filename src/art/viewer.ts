@@ -109,7 +109,8 @@ function row(): HTMLElement {
 // ── frame cutout: flood-fill the flat-black centre to transparent ───────────
 // Preserves every intricate inner cusp (the fill stops at the lit ornate edge),
 // so the frame can OVERLAY the art instead of sitting behind a hard rectangle.
-function frameOverlay(src: string, onReady: (c: HTMLCanvasElement) => void, threshold = 48) {
+interface Window01 { x0: number; y0: number; x1: number; y1: number }
+function frameOverlay(src: string, onReady: (c: HTMLCanvasElement, win: Window01) => void, threshold = 48) {
   const img = new Image();
   img.crossOrigin = 'anonymous';
   img.onload = () => {
@@ -121,6 +122,7 @@ function frameOverlay(src: string, onReady: (c: HTMLCanvasElement) => void, thre
     const px = data.data;
     const seen = new Uint8Array(w * h);
     const lum = (i: number) => 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+    let minX = w, maxX = 0, minY = h, maxY = 0;  // bounds of the cut window
     const stack = [(Math.floor(h / 2) * w + Math.floor(w / 2))];
     while (stack.length) {
       const p = stack.pop()!;
@@ -129,20 +131,28 @@ function frameOverlay(src: string, onReady: (c: HTMLCanvasElement) => void, thre
       if (lum(i) >= threshold) continue;  // hit the ornate edge — stop
       px[i + 3] = 0;                        // dark cavity → transparent
       const x = p % w, y = (p - x) / w;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
       if (x > 0) stack.push(p - 1);
       if (x < w - 1) stack.push(p + 1);
       if (y > 0) stack.push(p - w);
       if (y < h - 1) stack.push(p + w);
     }
     ctx.putImageData(data, 0, 0);
-    onReady(cv);
+    const win: Window01 = maxX > minX
+      ? { x0: minX / w, y0: minY / h, x1: (maxX + 1) / w, y1: (maxY + 1) / h }
+      : { x0: 0, y0: 0, x1: 1, y1: 1 };
+    onReady(cv, win);
   };
   img.src = src;
 }
 
-// ── the composited card: art behind, frame overlay (cutout) on top ──────────
+// ── the composited card: art INLAID into the frame's window, frame overlapping.
+// The window bounds come from the cutout above; we inflate the art a touch so
+// the frame's ornate inner edge overlaps it (no seam).
+const TAROT_ASPECT = 1312 / 768;
 function spreadCard(run: ArtRun, frame: ArtRun | null): HTMLElement {
-  const W = 230, H = Math.round(W * (frame ? frame.height / frame.width : 1.46));
+  const W = 236, H = Math.round(W * (frame ? frame.height / frame.width : TAROT_ASPECT));
   const card = document.createElement('div');
   Object.assign(card.style, { position: 'relative', width: `${W}px`, height: `${H}px`, boxShadow: THEME.shadow, overflow: 'hidden', background: '#000' } as Partial<CSSStyleDeclaration>);
 
@@ -150,19 +160,26 @@ function spreadCard(run: ArtRun, frame: ArtRun | null): HTMLElement {
   Object.assign(art.style, { position: 'absolute', inset: '0', zIndex: '0' } as Partial<CSSStyleDeclaration>);
   card.appendChild(art);
 
-  if (frame) {
-    frameOverlay(imgURL(frame.file), (cv) => {
-      Object.assign(cv.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', zIndex: '1', pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
-      card.appendChild(cv);
-    });
-  }
-
   const spec = CARD_ART.find((c) => c.id === run.subject);
   const scrim = document.createElement('div');
-  Object.assign(scrim.style, { position: 'absolute', left: '14%', right: '14%', bottom: '7%', zIndex: '2', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '20px', background: `linear-gradient(transparent, ${THEME.void} 80%)`, pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
-  const title = displayHeading(spec?.name ?? run.subject, { size: 13, glow: true });
-  scrim.appendChild(title);
+  Object.assign(scrim.style, { position: 'absolute', left: '14%', right: '14%', bottom: '6%', zIndex: '2', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '20px', background: `linear-gradient(transparent, ${THEME.void} 80%)`, pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
+  scrim.appendChild(displayHeading(spec?.name ?? run.subject, { size: 13, glow: true }));
   card.appendChild(scrim);
+
+  if (frame) {
+    frameOverlay(imgURL(frame.file), (cv, win) => {
+      const mX = 0.06 * W, mY = 0.06 * H;  // margin: art shrinks INSIDE the window, centred (black mat shows)
+      Object.assign(art.style, {
+        inset: 'auto',
+        left: `${win.x0 * W + mX}px`, top: `${win.y0 * H + mY}px`,
+        width: `${(win.x1 - win.x0) * W - 2 * mX}px`, height: `${(win.y1 - win.y0) * H - 2 * mY}px`,
+      } as Partial<CSSStyleDeclaration>);
+      Object.assign(cv.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', zIndex: '1', pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
+      card.appendChild(cv);
+      // anchor the title inside the window's lower edge
+      Object.assign(scrim.style, { left: `${win.x0 * W}px`, right: `${(1 - win.x1) * W}px`, bottom: `${(1 - win.y1) * H + 4}px` } as Partial<CSSStyleDeclaration>);
+    });
+  }
   return card;
 }
 

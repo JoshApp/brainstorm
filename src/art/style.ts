@@ -192,12 +192,13 @@ export const STYLES = {
   linocut: {
     label: 'expressionist linocut',
     prompt: [
-      'a grimdark dark-fantasy tarot illustration as a German Expressionist linocut blockprint',
-      'brutal gouged shapes, raw carved marks, in the spirit of Käthe Kollwitz and Munch',
-      'stark black and bone white with a single spot colour, anguished and heavy',
-      'single subject filling the frame, cruel and grief-stricken',
+      'a grimdark dark-fantasy tarot illustration as a crude hand-carved Expressionist reduction linocut',
+      'bold flat areas of solid black against cream-white, visible gouged carving marks, rough hand-printed ink, hard graphic edges',
+      'in the spirit of Käthe Kollwitz and Edvard Munch, anguished and grim',
+      'strict limited palette — black, cream white and one or two bold spot colours, NO grey, NO shading, NO gradients, flat 2D print not rendered',
+      'single subject centred with a little headroom, cruel and grief-stricken',
     ].join(', '),
-    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, fine delicate detail, painterly, smooth, photographic`,
+    negative: `${SHARED_NEGATIVE}, ${RESTRAINT_NEG}, smooth shading, rendered, photorealistic, 3d render, grey, midtones, soft gradient, muddy, cute, fine delicate detail, painterly, grain, halftone`,
   },
 
   // Cyanotype — spectral Prussian-blue photogram. Cold, strange, monochrome.
@@ -298,7 +299,7 @@ export const DEFAULT_STYLE: StyleId = 'ink';
  * the deck composites against). Every frame is opaque, symmetrical, with an
  * empty dark centre window the artwork insets into. FRAME_NEGATIVE is shared.
  */
-const FRAME_BASE = 'perfectly symmetrical, centred, a large empty flat solid-black rectangular window in the centre for inset artwork, on a pure black background';
+const FRAME_BASE = 'perfectly symmetrical, centred, only a THIN narrow border at the very edge, a very large empty flat solid-black rectangular window filling most of the card for inset artwork, on a pure black background';
 export const FRAME_NEGATIVE = 'text, letters, numerals, watermark, signature, illustration or scene inside the window, asymmetrical, photograph, person, creature';
 
 export const FRAMES = {
@@ -320,7 +321,7 @@ export const FRAMES = {
   },
   linocut: {
     label: 'expressionist linocut',
-    prompt: `a bold German Expressionist linocut tarot card border frame, gouged black shapes and raw carved marks, brutal hand-printed ornament, a single dried-blood crimson accent, ${FRAME_BASE}`,
+    prompt: `a tarot card border frame in bold German Expressionist linocut, a SLIM delicate gouged-line border hugging the very edge of the card, a single dried-blood crimson accent, ${FRAME_BASE}`,
   },
   icon: {
     label: 'Byzantine icon (gold)',
@@ -334,7 +335,12 @@ export const FRAMES = {
 
 export type FrameId = keyof typeof FRAMES;
 
-/** Illustration size — portrait ~3:4, multiples of 64. */
-export const ILLUSTRATION_SIZE = { width: 896, height: 1152 } as const;
-/** Frame size — portrait card proportions (~2:3 tarot). */
-export const FRAME_SIZE = { width: 832, height: 1216 } as const;
+// Standard tarot card is 70 × 120 mm — a 7:12 (~0.583) portrait, taller than a
+// playing card. Frame uses true tarot proportions; the illustration is a hair
+// squarer so it cover-fits the inner window with a little bleed for the frame
+// to overlap. Both FLUX-friendly (multiples of 32/64).
+/** Illustration size — taller than wide (~tarot window ratio) so the inlay
+ *  crop lands clean and vertical subjects keep their headroom. */
+export const ILLUSTRATION_SIZE = { width: 704, height: 1216 } as const;
+/** Frame size — standard tarot 70×120mm ≈ 7:12. */
+export const FRAME_SIZE = { width: 768, height: 1312 } as const;

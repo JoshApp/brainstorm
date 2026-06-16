@@ -32,7 +32,7 @@ function cell(run: ArtRun): HTMLElement {
   Object.assign(lab.style, { fontFamily: FONT_DISPLAY, fontSize: '14px', letterSpacing: '0.12em', color: THEME.amber, textAlign: 'center' } as Partial<CSSStyleDeclaration>);
   c.appendChild(lab);
   const sub = document.createElement('div');
-  sub.textContent = SPREAD ? `${run.style} · ${run.id}` : run.id + (run.parentId ? ` ⟜${run.parentId}` : '');
+  sub.textContent = SPREAD ? `${run.style} · ${run.id}` : `${run.id}${run.note ? ` · ${run.note}` : ''}`;
   Object.assign(sub.style, { fontFamily: FONT_UI, fontSize: '9px', color: THEME.faint, textAlign: 'center' } as Partial<CSSStyleDeclaration>);
   c.appendChild(sub);
   return c;
@@ -43,9 +43,11 @@ async function main() {
   try { manifest = await (await fetch(`${BASE}art/runs/index.json`, { cache: 'no-store' })).json(); }
   catch { root.textContent = 'no manifest'; return; }
 
-  const runs = SPREAD
+  const styleFilter = new URLSearchParams(location.search).get('style');
+  let runs = SPREAD
     ? CARD_ART.map((c) => manifest.runs.find((r) => r.id === manifest.promoted[c.id])).filter((r): r is ArtRun => !!r)
     : subject === 'all' ? manifest.runs : manifest.runs.filter((r) => r.subject === subject);
+  if (styleFilter) runs = runs.filter((r) => r.style === styleFilter);
   const title = document.createElement('div');
   title.textContent = `${subject} — ${runs.length} runs`;
   Object.assign(title.style, { fontFamily: FONT_DISPLAY, fontSize: '20px', letterSpacing: '0.2em', color: THEME.amber, textTransform: 'uppercase', marginBottom: '16px' } as Partial<CSSStyleDeclaration>);
