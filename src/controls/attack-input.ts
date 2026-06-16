@@ -22,3 +22,9 @@ export function consumeAttackPressed(): boolean {
   pressed = false;
   return true;
 }
+
+/** Read the pending press WITHOUT consuming it — for the run recorder, which
+ *  must capture the intent the systems are about to consume this step. */
+export function peekAttackPressed(): boolean {
+  return pressed;
+}

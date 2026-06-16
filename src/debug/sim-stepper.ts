@@ -33,6 +33,7 @@ import { decideIntent, probeIntent } from '../harness/pilot';
 import type { Intent } from '../harness/intent';
 import { NEUTRAL_INTENT, installBus, setIntent } from '../harness/intent';
 import { TapeRecorder, tapeFrame, serializeTape, deserializeTape } from '../harness/tape';
+import { startRecording, stopRecording, recordedSteps } from '../harness/run-recorder';
 
 // Canonical sim rate. The feel was tuned at 60 Hz; fixing the step here means a
 // headless run and a real-time run integrate over identical quanta, so their
@@ -294,6 +295,20 @@ export function installSimStepper(deps: SimStepperDeps): void {
       driveSteps((f) => tapeFrame(tape, f) ?? NEUTRAL_INTENT, tape.frames.length + extra);
       return { seed: tape.seed, frames: tape.frames.length, digest: digest() };
     },
+
+    // ── Live run recorder (validation prereq) ─────────────────────────────
+    /** Start the live run recorder (captures the per-step intent the SIM
+     *  resolves, via the input-camera hook — allocation-free). */
+    recStart(seed = getSeed()) {
+      startRecording(seed >>> 0);
+      return `recording from seed ${seed >>> 0}`;
+    },
+    /** Stop recording; returns the captured tape (serialized) + step count. */
+    recStop() {
+      const tape = stopRecording();
+      return { tape: tape ? serializeTape(tape) : null, frames: tape?.frames.length ?? 0 };
+    },
+    recSteps: () => recordedSteps(),
 
     // ── Observe + autonomous bot ──────────────────────────────────────────
     /** Structured read of the world right now (the bot's eyes). */

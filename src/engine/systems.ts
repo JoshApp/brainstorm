@@ -38,6 +38,7 @@ import { tickAllBuffs } from '../ecs/buffs';
 import { tickInteractables, getInRangeInteractable } from '../interactables/system';
 import { consumeAttackPressed } from '../controls/attack-input';
 import { consumeDash } from '../controls/dash-input';
+import { captureStep } from '../harness/run-recorder';
 import { tryDash } from '../combat/dash';
 import { consumeRiposte } from '../combat/reactive-defense';
 import { updateSwingAgency } from '../combat/swing-agency';
@@ -143,6 +144,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
         tickFogWalkthrough(ctx.realDt);
       } else if (!isDying()) {
         input.tickInput(ctx.playerDt);   // PLAYER clock — full speed in bullet-time
+        // Run recorder: capture this step's resolved intent (move/look + peeked
+        // attack/dodge) BEFORE updateCamera consumes the look delta. No-op
+        // branch when not recording — zero cost on the default path.
+        captureStep(input);
         const level = getLevel();
         updateCamera(camera, input, ctx.playerDt, level.walkable, level.enemies);
       } else {

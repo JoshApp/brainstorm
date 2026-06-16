@@ -25,6 +25,11 @@ export function consumeDash(): { dx: number; dy: number } | null {
   return { dx: dirX, dy: dirY };
 }
 
+/** Read the pending dash WITHOUT consuming it — for the run recorder. */
+export function peekDash(): { dx: number; dy: number } | null {
+  return pending ? { dx: dirX, dy: dirY } : null;
+}
+
 /** Drop any pending dash (level load / control loss). */
 export function resetDashInput(): void {
   pending = false;
