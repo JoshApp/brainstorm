@@ -52,6 +52,16 @@ export interface MetaState {
   achievementsUnlocked: string[];
   /** Unopened loot boxes waiting on the title screen. */
   stash: StashEntry[];
+  /** The delver's chosen name — entered once before the first descent,
+   *  shown on the title, and (Phase 4+) attached to leaderboard + trace
+   *  submissions. */
+  playerName?: string;
+  /** Stable local player id. INTERIM identity: a client-generated UUID
+   *  persisted here so runs can be attributed before any backend exists.
+   *  Phase 4 supersedes this with SpacetimeDB's anonymous `Identity` (the
+   *  connection token IS the account); until then this is the key we'd
+   *  send with a score / trace. See docs/ALPHA-AND-BACKEND.md. */
+  playerId?: string;
 }
 
 function emptyMeta(): MetaState {
