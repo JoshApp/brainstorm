@@ -46,6 +46,10 @@ export function mountDebugButton(ctx: DebugContext): void {
 
   btn.addEventListener('click', async (e) => {
     e.stopPropagation();
+    // Drop focus immediately — otherwise the button stays keyboard-focused
+    // and every later SPACEBAR press re-activates it (the browser fires a
+    // focused <button> on Space), spamming capture downloads.
+    btn.blur();
     if (busy) return;
     busy = true;
     const orig = btn.textContent;

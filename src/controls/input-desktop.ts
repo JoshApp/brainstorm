@@ -21,6 +21,7 @@ import { dismissHint } from './hint-overlay';
 import { triggerAttack } from './attack-input';
 import { touchWasRecent } from './touch-activity';
 import { triggerDash } from './dash-input';
+import { isEditableTarget } from './editable-focus';
 import {
   setChargeFromHeldMs,
   setChargePosition,
@@ -89,6 +90,9 @@ export const desktopScheme: InputScheme = {
 
     // ── Keyboard ────────────────────────────────────────────────────
     window.addEventListener('keydown', (e) => {
+      // Typing into a text field (e.g. the name-entry screen) owns the
+      // keyboard — don't let game verbs steal 'E', WASD, digits, etc.
+      if (isEditableTarget()) return;
       if (!e.repeat) codesDown.add(e.code);
 
       // DASH (debug desktop) — Shift dodges in the current move direction, or
@@ -176,6 +180,7 @@ export const desktopScheme: InputScheme = {
       }
     });
     window.addEventListener('keyup', (e) => {
+      if (isEditableTarget()) return;
       codesDown.delete(e.code);
       // Attack-key release: loose the charge (charged if it cooked, a
       // plain swing if it never reached the ramp).
@@ -193,7 +198,13 @@ export const desktopScheme: InputScheme = {
     let mouseDownY = 0;
     let mouseMovement = 0;
 
+    // Only the LEFT button is the blade. Right/middle do nothing in-game
+    // (and we swallow the right-click context menu over the canvas so it
+    // doesn't pop mid-fight).
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
     canvas.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
       // Ignore the ghost mouse events a touch device synthesizes after a tap —
       // the touch scheme already handled the tap; acting again here double-
       // fires (a tapped-open chest also requesting pointer-lock → later taps
@@ -212,6 +223,7 @@ export const desktopScheme: InputScheme = {
     });
 
     canvas.addEventListener('mouseup', (e) => {
+      if (e.button !== 0) return;
       if (touchWasRecent()) return;   // touch-synthesized ghost — the touch scheme owns this tap
       const elapsed = performance.now() - mouseDownAt;
       const wasChargeHold = mouseChargeDown && mouseChargeEligible;
