@@ -114,11 +114,10 @@ import { resolveTap } from './controls/tap-resolve';
 import { triggerAttack } from './controls/attack-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
-import { initLightPool, setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-pool';
+import { setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-pool';
 import { packTokenCount } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
-import { initProjectilePool } from './combat/projectile-pool';
-import { registerProjectiles } from './content/projectiles';
+import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
 import { initBladeTrail } from './effects/blade-trail';
@@ -798,7 +797,13 @@ void completePendingLink();
 // every scene PointLight runs through. See src/scene/light-pool.ts.
 // Must be initialized BEFORE any spawn that registers sources (torches,
 // fountains, lamp, fill, etc.).
-initLightPool(scene);
+//
+// Routed through the sim-world boot authority (engine/sim-bootstrap.ts): it
+// builds the light pool AND the projectile pool + type registry in dependency
+// order. The headless replay runner calls the SAME authority, so a sim-damage
+// subsystem can never again exist in the browser but be silently absent in a
+// server-side replay. Add new sim subsystems there, not as a loose call here.
+bootstrapSimWorld(scene);
 // Apply the persisted dynamic-shadow quality (the light pool defaults to
 // 'off' internally; this lifts it to the user's setting). Live changes are
 // handled by the onSettingsChanged subscription further down.
@@ -1003,12 +1008,9 @@ if (import.meta.env.DEV) {
   };
 }
 initPickupLightPool(scene);
-// Projectile pool — pre-allocates the meshes + trail sprites that ranged
-// enemies (and future spells/traps) rent at fire-time. Registers its own
-// 'projectile' category lights into the light pool above. Projectile
-// types are registered into a registry; register the built-in set now.
-initProjectilePool(scene);
-registerProjectiles();
+// (The projectile pool + type registry are built by bootstrapSimWorld above,
+// alongside the light pool they depend on — so the headless replay runner gets
+// them from the same authority.)
 // Content cross-reference check — fail loudly + early if any spec points
 // at a buff/item/projectile/affix/set/enemy id that doesn't exist. Runs
 // after registerProjectiles() so projectile ids are known. See

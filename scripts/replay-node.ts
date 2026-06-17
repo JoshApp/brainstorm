@@ -29,9 +29,7 @@ import { spawn as spawnEntity, clear as clearWorld } from '../src/ecs/world';
 import { initTriggerListener } from '../src/ecs/triggers';
 import { getPlayerHp } from '../src/player/health';
 import { resetSimState } from '../src/engine/sim-state';
-import { initLightPool } from '../src/scene/light-pool';
-import { initProjectilePool } from '../src/combat/projectile-pool';
-import { registerProjectiles } from '../src/content/projectiles';
+import { bootstrapSimWorld } from '../src/engine/sim-bootstrap';
 import { installBus, setIntent, NEUTRAL_INTENT, type Intent } from '../src/harness/intent';
 import { deserializeTape, tapeFrame, type Tape } from '../src/harness/tape';
 
@@ -96,15 +94,12 @@ function runOnce(seed: number, steps: number, tape?: Tape, threatEnemy?: string)
   const canvas = document.createElement('canvas') as HTMLCanvasElement;
   const materials = buildMaterials(stubRenderer);
 
-  // Pools the browser boots in main.ts. The projectile pool + type registry are
-  // REQUIRED for enemy projectiles (e.g. the stoneguard's pound shockwave) to
-  // exist at all — spawnProjectile no-ops on an unregistered type, so without
-  // this a ranged/shockwave hit silently never lands in the headless replay
-  // while it does in the browser. initLightPool first: the projectile pool
-  // registers its category lights into it.
-  initLightPool(scene);
-  initProjectilePool(scene);
-  registerProjectiles();
+  // The SAME sim-world boot authority main.ts calls (engine/sim-bootstrap.ts):
+  // builds the projectile pool + type registry (and the light pool they need).
+  // Without it, enemy projectiles — e.g. the stoneguard's pound shockwave —
+  // silently no-op headless while landing in the browser. Calling the authority
+  // (not re-listing the inits) is what stops this replica from drifting again.
+  bootstrapSimWorld(scene);
 
   // The player entity (HP lives here) — spawned BEFORE buildLevel so enemies can
   // query player state during init, exactly as main.ts does.
