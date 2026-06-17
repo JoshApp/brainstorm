@@ -32,6 +32,13 @@ export const Identity = __t.object("Identity", {
 });
 export type Identity = __Infer<typeof Identity>;
 
+export const LinkCode = __t.object("LinkCode", {
+  code: __t.string(),
+  playerId: __t.u64(),
+  expiresAtMicros: __t.u64(),
+});
+export type LinkCode = __Infer<typeof LinkCode>;
+
 export const Player = __t.object("Player", {
   id: __t.u64(),
   displayName: __t.string(),

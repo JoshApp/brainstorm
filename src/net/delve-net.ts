@@ -177,6 +177,48 @@ export function reportDeath(facts: DeathFacts): void {
   }
 }
 
+// ── Account linking ─────────────────────────────────────────────────
+// The client owns code generation (the link_code table is private, so a code
+// is never read back from the server — it lives only here). The fewest-clicks
+// in-place upgrade issues a code as the anon player, reconnects as the OAuth
+// identity, and redeems — all invisibly. The same wrappers serve a manual
+// cross-device flow. See docs/ALPHA-AND-BACKEND.md.
+
+/** A fresh, hard-to-guess link code. The client owns code generation. */
+export function freshLinkCode(): string {
+  const bytes = new Uint8Array(8);
+  try {
+    crypto.getRandomValues(bytes);
+  } catch {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no look-alikes
+  let s = '';
+  for (const b of bytes) s += ALPHABET[b % ALPHABET.length];
+  return s;
+}
+
+/** Bind a link code to THIS player (the progress holder). No-op if offline. */
+export function issueLinkCode(code: string): void {
+  if (!conn) return;
+  try {
+    conn.reducers.issueLinkCode({ code });
+  } catch (err) {
+    console.warn('[net] issueLinkCode failed:', err);
+  }
+}
+
+/** Redeem a code as the CURRENT identity — merges this identity's player into
+ *  the code's player. No-op if offline. */
+export function redeemLinkCode(code: string): void {
+  if (!conn) return;
+  try {
+    conn.reducers.redeemLinkCode({ code });
+  } catch (err) {
+    console.warn('[net] redeemLinkCode failed:', err);
+  }
+}
+
 /** A death recorded at a given depth — read from the live cache to place as
  *  a bloodstain when a floor at that depth builds. Includes the player's own
  *  past deaths (you see where you fell, Souls-style). */
