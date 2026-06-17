@@ -31,7 +31,8 @@
     "reach": "tsx scripts/reach.ts",
     "delve": "tsx scripts/delve.ts",
     "threat": "tsx scripts/threat-sweep.ts",
-    "duel": "tsx scripts/duel-sweep.ts"
+    "duel": "tsx scripts/duel-sweep.ts",
+    "replay-node": "node scripts/build-replay-node.mjs"
   },
   "dependencies": {
     "spacetimedb": "2.5.x",
