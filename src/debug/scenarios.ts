@@ -23,6 +23,7 @@ import { buildModel } from '../ecs/build-model';
 import { setSlot, tryAutoEquip } from '../player/equipment';
 import { addItem, removeItem } from '../player/inventory';
 import { createPickup } from '../interactables/pickup';
+import { spawnCardDrop } from '../interactables/card-drop';
 import { spawnShroudedRelic } from '../interactables/shrouded-relic';
 import { openInventoryPanel, selectBagItem } from '../ui/inventory-panel';
 import { openCharacterScreen } from '../ui/character-screen';
@@ -140,6 +141,8 @@ export interface Scenario {
   openCharacterScreen?: boolean;
   /** Spawn pickups on the floor near the camera (for rarity-glow snaps). */
   spawnPickups?: Array<{ itemId: string; x: number; z: number }>;
+  /** Spawn fate-card drops on the floor near the camera (major-from-corpse). */
+  spawnCards?: Array<{ cardId: string; x: number; z: number }>;
   /** Spawn shrouded relics (the cursed mystery gamble) near the camera. */
   spawnShrouded?: Array<{ x: number; z: number; depth?: number }>;
   /**
@@ -982,6 +985,11 @@ export const SCENARIOS: Record<string, Scenario> = {
       { itemId: 'ring-of-bloodthirst',  x:  0.0, z: -1.5 }, // rare (blue)
       { itemId: 'ring-of-frenzy',       x:  1.1, z: -1.5 }, // cursed (violet)
       { itemId: 'bone-amulet',          x:  2.2, z: -1.5 }, // rare (blue)
+    ],
+    spawnCards: [
+      { cardId: 'the-hollow-saint', x: -1.7, z: -2.1 }, // major fate drops (bone)
+      { cardId: 'red-thirst',       x:  0.0, z: -2.2 }, // blood
+      { cardId: 'the-wanderer',     x:  1.7, z: -2.1 }, // wonder (violet)
     ],
   },
 
@@ -1989,6 +1997,13 @@ export function applyScenario(
       const item = ITEMS[p.itemId];
       if (!item) continue;
       createPickup(scene, new THREE.Vector3(p.x, 0, p.z), item);
+    }
+  }
+
+  if (scenario.spawnCards) {
+    const scene = ctx.camera.parent as THREE.Scene;
+    for (const c of scenario.spawnCards) {
+      spawnCardDrop(scene, new THREE.Vector3(c.x, 0, c.z), c.cardId);
     }
   }
 
