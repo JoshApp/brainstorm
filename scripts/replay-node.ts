@@ -25,6 +25,9 @@ import { createTouchInput } from '../src/controls/input';
 import { seedRng } from '../src/engine/rng';
 import { setDeterministicClock, advanceGameClock } from '../src/engine/game-clock';
 import { CONFIG } from '../src/config';
+import { spawn as spawnEntity, clear as clearWorld } from '../src/ecs/world';
+import { initTriggerListener } from '../src/ecs/triggers';
+import { getPlayerHp } from '../src/player/health';
 import { installBus, setIntent, NEUTRAL_INTENT, type Intent } from '../src/harness/intent';
 import { deserializeTape, tapeFrame, type Tape } from '../src/harness/tape';
 
@@ -44,10 +47,9 @@ const stubRenderer = new Proxy(
 
 function digest(level: LiveLevel, camera: THREE.PerspectiveCamera): string {
   const q = (v: number) => Math.round(v * 1e4) / 1e4;
-  // Player HP is omitted: it needs the player ENTITY spawned (the browser's boot
-  // does that) — the final boot-alignment piece. Camera + enemy AI parity is the
-  // conclusive cross-environment determinism proof.
-  const parts = [`cam:${q(camera.position.x)},${q(camera.position.z)}`];
+  // Full-run digest: player HP (the player entity is now spawned) + camera +
+  // enemies — matches the browser's __sim.snap shape (hp | cam | enemies).
+  const parts = [`hp:${q(getPlayerHp())}`, `cam:${q(camera.position.x)},${q(camera.position.z)}`];
   // Sort by POSITION (not entityId) so the digest is stable across runs — the
   // entity-id counter is a per-process global that doesn't reset between two
   // in-process runs; a real verifier is one run per process anyway.
@@ -79,6 +81,7 @@ function threatSpec(enemy: string): ReturnType<typeof generateFloor> {
 }
 
 function runOnce(seed: number, steps: number, tape?: Tape, threatEnemy?: string): string {
+  clearWorld(); // fresh ECS state per run (the browser gets this from a fresh page)
   seedRng(seed);
   setDeterministicClock(true);
   installBus(); // route the tape's intents through the same input seam the game uses
@@ -88,6 +91,16 @@ function runOnce(seed: number, steps: number, tape?: Tape, threatEnemy?: string)
   const ambient = new THREE.AmbientLight();
   const canvas = document.createElement('canvas') as HTMLCanvasElement;
   const materials = buildMaterials(stubRenderer);
+
+  // The player entity (HP lives here) — spawned BEFORE buildLevel so enemies can
+  // query player state during init, exactly as main.ts does.
+  spawnEntity({
+    id: 'player', kind: 'player',
+    hp: { base: CONFIG.PLAYER_HP_MAX, current: CONFIG.PLAYER_HP_MAX },
+    buffs: [], passives: [],
+  });
+  initTriggerListener('player');
+
   const spec = threatEnemy ? threatSpec(threatEnemy) : generateFloor(1, seed);
   const level = buildLevel(scene, spec, materials);
 
@@ -109,6 +122,10 @@ function runOnce(seed: number, steps: number, tape?: Tape, threatEnemy?: string)
   });
   const sim = systems.filter((s) => s.kind === 'sim');
 
+  // Mirror the STEPPER (sim-stepper driveSteps), which is what the browser's
+  // __sim uses — a flat FIXED_DT ctx, no time-scale drivers. (The live loop's
+  // advanceSimStep DOES tick those, but the verifier compares against __sim, so
+  // we match the stepper.)
   const ctx: TickContext = {
     realDt: FIXED_DT, scaledDt: FIXED_DT, playerDt: FIXED_DT, fxDt: FIXED_DT,
     paused: false, mode: 'playing', playing: true,
