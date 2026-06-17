@@ -16,6 +16,7 @@ import { DOMAIN_VISUAL } from '../art/domains';
 
 const SCREEN_ID = 'card-reading';
 const CARD_W = 168, CARD_H = 252, SPREAD = 188;
+const BASE = import.meta.env.BASE_URL;  // shipped card art lives at <base>cards/<id>.webp
 
 export function openCardReading(opts: { onDone?: () => void } = {}): void {
   if (isScreenOpen(SCREEN_ID)) return;
@@ -96,56 +97,61 @@ export function openCardReading(opts: { onDone?: () => void } = {}): void {
   s.open();
 }
 
-/** The face — the data-driven card front (domain sigil + serif name + fate). */
+/** The face — the real linocut art (baked webp) with a title strip + a carved
+ *  edge; falls back to a data-driven face if the asset is missing. */
 function faceFront(card: CardSpec): HTMLElement {
   const dv = card.domains[0] ? DOMAIN_VISUAL[card.domains[0]] : undefined;
   const accent = dv?.color ?? THEME.amber;
   const el = document.createElement('div');
   Object.assign(el.style, {
-    position: 'absolute', inset: '0', backfaceVisibility: 'hidden', borderRadius: '5px',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
-    padding: '20px 14px 16px', background: `linear-gradient(180deg, ${THEME.raised} 0%, ${THEME.panel} 60%)`,
-    border: `1px solid ${THEME.ruleStrong}`, boxShadow: THEME.shadow, color: THEME.text, fontFamily: FONT_UI,
+    position: 'absolute', inset: '0', backfaceVisibility: 'hidden', borderRadius: '5px', overflow: 'hidden',
+    background: `linear-gradient(180deg, ${THEME.raised} 0%, ${THEME.panel} 60%)`,
+    border: `1px solid ${accent}99`, boxShadow: THEME.shadow, color: THEME.text, fontFamily: FONT_UI,
   } as Partial<CSSStyleDeclaration>);
-  applyCarvedFrame(el, { tickSize: 12, inset: 6 });
 
-  const sig = document.createElement('div');
-  Object.assign(sig.style, { color: accent, lineHeight: '0', filter: `drop-shadow(0 0 6px ${accent}66)` } as Partial<CSSStyleDeclaration>);
-  if (dv) sig.innerHTML = `<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor">${dv.svg}</svg>`;
-  el.appendChild(sig);
+  const img = document.createElement('img');
+  img.src = `${BASE}cards/${card.id}.webp`; img.alt = card.name;
+  Object.assign(img.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'cover', display: 'block' } as Partial<CSSStyleDeclaration>);
+  img.onerror = () => {  // asset missing → degrade to the domain sigil
+    img.remove();
+    if (dv) {
+      const s = document.createElement('div');
+      Object.assign(s.style, { position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: accent } as Partial<CSSStyleDeclaration>);
+      s.innerHTML = `<svg viewBox="0 0 24 24" width="40" height="40" fill="currentColor">${dv.svg}</svg>`;
+      el.insertBefore(s, el.firstChild);
+    }
+  };
+  el.appendChild(img);
 
-  const mid = document.createElement('div'); mid.style.textAlign = 'center';
-  const name = displayHeading(card.name, { size: 15, glow: true }); name.style.textAlign = 'center';
-  mid.appendChild(name);
+  // title strip — name + arcana over a scrim along the bottom
+  const scrim = document.createElement('div');
+  Object.assign(scrim.style, { position: 'absolute', left: '0', right: '0', bottom: '0', padding: '24px 8px 9px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', background: `linear-gradient(transparent, ${THEME.void} 70%)` } as Partial<CSSStyleDeclaration>);
+  const name = displayHeading(card.name, { size: 13, glow: true }); name.style.textAlign = 'center';
+  scrim.appendChild(name);
   const arc = document.createElement('div');
   arc.textContent = card.arcana === 'major' ? 'Major Arcana' : 'Minor';
-  Object.assign(arc.style, { fontFamily: FONT_UI, fontSize: '8px', letterSpacing: '0.28em', textTransform: 'uppercase', color: card.arcana === 'major' ? THEME.amber : THEME.dim, marginTop: '6px' } as Partial<CSSStyleDeclaration>);
-  mid.appendChild(arc);
-  el.appendChild(mid);
+  Object.assign(arc.style, { fontFamily: FONT_UI, fontSize: '7px', letterSpacing: '0.28em', textTransform: 'uppercase', color: card.arcana === 'major' ? THEME.amber : THEME.dim } as Partial<CSSStyleDeclaration>);
+  scrim.appendChild(arc);
+  el.appendChild(scrim);
 
-  const fate = document.createElement('div');
-  fate.textContent = card.fate;
-  Object.assign(fate.style, { fontFamily: FONT_UI, fontSize: '11px', fontStyle: 'italic', lineHeight: '1.35', color: THEME.dim, textAlign: 'center' } as Partial<CSSStyleDeclaration>);
-  el.appendChild(fate);
+  applyCarvedFrame(el, { tickSize: 12, inset: 6 });
   return el;
 }
 
-/** The shared card-back — what the deck shows before a flip. */
+/** The shared card-back — the baked back art on every reverse. */
 function faceBack(): HTMLElement {
   const el = document.createElement('div');
   Object.assign(el.style, {
     position: 'absolute', inset: '0', width: `${CARD_W}px`, height: `${CARD_H}px`,
-    backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', borderRadius: '5px',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', borderRadius: '5px', overflow: 'hidden',
     background: 'radial-gradient(60% 50% at 50% 45%, rgba(60, 34, 16, 0.6), rgba(16, 10, 7, 0.98))',
     border: `1px solid ${THEME.ruleStrong}`, boxShadow: THEME.shadow,
   } as Partial<CSSStyleDeclaration>);
+  const img = document.createElement('img');
+  img.src = `${BASE}cards/back.webp`; img.alt = 'card back';
+  Object.assign(img.style, { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } as Partial<CSSStyleDeclaration>);
+  el.appendChild(img);
   applyCarvedFrame(el, { tickSize: 12, inset: 6 });
-  // a single watching mark — the thing in the deep, on every back
-  const mark = document.createElement('div');
-  Object.assign(mark.style, { color: THEME.amber, opacity: '0.5', lineHeight: '0', filter: 'drop-shadow(0 0 8px rgba(255,180,90,0.35))' } as Partial<CSSStyleDeclaration>);
-  mark.innerHTML = `<svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 12 C 6 6, 18 6, 22 12 C 18 18, 6 18, 2 12 Z"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/></svg>`;
-  el.appendChild(mark);
   return el;
 }
 

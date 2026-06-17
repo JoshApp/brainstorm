@@ -146,6 +146,32 @@ async function main() {
     return;
   }
 
+  // ── back [--n K] ──────────────────────────────────────────────────────────
+  // The shared card-back → public/art/back.png (or back-<i>.png for candidates).
+  if (cmd === 'back') {
+    const dir = resolve(process.cwd(), 'public/art');
+    mkdirSync(dir, { recursive: true });
+    const prompt = 'an ornate symmetrical linocut tarot CARD BACK, full bleed edge to edge, a single watching eye at the very centre framed by intricate gothic woodcut ornament, heavy black carved ink on cream parchment with one dried-blood crimson accent, Mörk Borg aesthetic, no central window, no text';
+    const negative = 'text, letters, numbers, a scene, a person, a creature, photographic, 3d render, soft shading, smooth gradient, white paper border, empty centre window';
+    const count = Math.max(1, Number(flags.n ?? 1));
+    const baseSeed = Number(flags.seed ?? 9000);
+    console.log(`\ndelve art — card back x${count} via ${backend.name}\n`);
+    let ok = 0;
+    for (let i = 0; i < count; i++) {
+      const out = resolve(dir, count > 1 ? `back-${i + 1}.png` : 'back.png');
+      process.stdout.write(`  back ${i + 1} generating… `);
+      const t = Date.now();
+      try {
+        const r = await backend.generate({ prompt, negative, width: FRAME_SIZE.width, height: FRAME_SIZE.height, seed: baseSeed + i, model: flags.model });
+        writeFileSync(out, r.bytes);
+        console.log(`ok (${((Date.now() - t) / 1000).toFixed(1)}s) → ${out}`);
+        ok++;
+      } catch (e) { console.log('FAILED'); console.error(`    ${(e as Error).message}`); }
+    }
+    console.log(`\n${ok}/${count} back(s).`);
+    return;
+  }
+
   // ── frame <key|all> ─────────────────────────────────────────────────────────
   if (cmd === 'frame') {
     const keys = (arg1 === 'all' || !arg1) ? Object.keys(FRAMES) : [arg1];
