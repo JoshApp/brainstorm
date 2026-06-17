@@ -246,6 +246,10 @@ export function installSimStepper(deps: SimStepperDeps): void {
     },
     /** Current deterministic state digest. */
     snap: () => digest(),
+    /** DEBUG: raw full-precision enemy positions (parity diagnostics). */
+    rawEnemies: () => (getLevel()?.enemies ?? []).filter((e) => e.alive).map((e) => ({
+      kind: e.kind, x: e.position.x, z: e.position.z, hp: e.hp,
+    })),
     /** Determinism self-test: from the CURRENT digest, seed S and run N steps
      *  twice (reseeding between), and report whether the two traces match.
      *  Note: only sim state is restored by reseed; positions already advanced

@@ -29,6 +29,9 @@ import { spawn as spawnEntity, clear as clearWorld } from '../src/ecs/world';
 import { initTriggerListener } from '../src/ecs/triggers';
 import { getPlayerHp } from '../src/player/health';
 import { resetSimState } from '../src/engine/sim-state';
+import { initLightPool } from '../src/scene/light-pool';
+import { initProjectilePool } from '../src/combat/projectile-pool';
+import { registerProjectiles } from '../src/content/projectiles';
 import { installBus, setIntent, NEUTRAL_INTENT, type Intent } from '../src/harness/intent';
 import { deserializeTape, tapeFrame, type Tape } from '../src/harness/tape';
 
@@ -93,6 +96,16 @@ function runOnce(seed: number, steps: number, tape?: Tape, threatEnemy?: string)
   const canvas = document.createElement('canvas') as HTMLCanvasElement;
   const materials = buildMaterials(stubRenderer);
 
+  // Pools the browser boots in main.ts. The projectile pool + type registry are
+  // REQUIRED for enemy projectiles (e.g. the stoneguard's pound shockwave) to
+  // exist at all — spawnProjectile no-ops on an unregistered type, so without
+  // this a ranged/shockwave hit silently never lands in the headless replay
+  // while it does in the browser. initLightPool first: the projectile pool
+  // registers its category lights into it.
+  initLightPool(scene);
+  initProjectilePool(scene);
+  registerProjectiles();
+
   // The player entity (HP lives here) — spawned BEFORE buildLevel so enemies can
   // query player state during init, exactly as main.ts does.
   spawnEntity({
@@ -138,11 +151,16 @@ function runOnce(seed: number, steps: number, tape?: Tape, threatEnemy?: string)
     realDt: FIXED_DT, scaledDt: FIXED_DT, playerDt: FIXED_DT, fxDt: FIXED_DT,
     paused: false, mode: 'playing', playing: true,
   };
+  // HPTRACE=1 prints the frame of every player-HP change — the per-frame
+  // damage cadence, for diffing against the browser's __sim.step trajectory.
+  let prevHp = getPlayerHp();
   for (let i = 0; i < steps; i++) {
     const intent: Intent = tape ? (tapeFrame(tape, i) ?? NEUTRAL_INTENT) : NEUTRAL_INTENT;
     setIntent(intent); // drive-by-wire: feed this step's intent before the systems read it
     advanceGameClock(FIXED_DT);
     runSystems(sim, ctx);
+    const hp = getPlayerHp();
+    if (hp !== prevHp) { if (process.env.HPTRACE) console.log(`  drop@${i}: ${prevHp}->${hp}`); prevHp = hp; }
   }
   return digest(level, camera);
 }
