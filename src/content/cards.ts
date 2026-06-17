@@ -140,6 +140,29 @@ export function getCard(id: string): CardSpec | undefined {
 }
 
 /**
+ * Deal `n` DISTINCT cards (a fate hand) — the "fate deals the hand" half of
+ * dealt-N-pick-1. Filters by arcana (minors for the bonfire drip), optionally
+ * excludes ids, shuffles, takes n. Pure: pass `rng` for determinism (the run
+ * seed); defaults to Math.random. (Minors may repeat what you already hold —
+ * they stack — so we don't exclude the held Spread by default.)
+ */
+export function dealCards(
+  n: number,
+  opts: { arcana?: Arcana; exclude?: readonly string[]; rng?: () => number } = {},
+): string[] {
+  const { arcana, exclude = [], rng = Math.random } = opts;
+  const ex = new Set(exclude);
+  const pool = Object.values(CARDS)
+    .filter((c) => (!arcana || c.arcana === arcana) && !ex.has(c.id))
+    .map((c) => c.id);
+  for (let i = pool.length - 1; i > 0; i--) {  // Fisher–Yates
+    const j = Math.floor(rng() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.max(0, n));
+}
+
+/**
  * Resolve the PASSIVE stat modifiers contributed by a set of held cards —
  * the card "source" that aggregateModifiers() folds into the one pipeline.
  * Unknown ids are skipped. (Conditional + triggered effects resolve elsewhere

@@ -19,6 +19,7 @@ import { showStartScreen } from '../ui/start-screen';
 import { createSettingsMenu, openSettings, configureSettingsMenu } from '../ui/settings-menu';
 import { createInventoryPanel, openInventoryPanel } from '../ui/inventory-panel';
 import { showCodex } from '../ui/codex-screen';
+import { openCardReading } from '../ui/card-reading';
 import { getSettings, updateSettings } from '../settings/settings';
 
 interface Specimen {
@@ -206,6 +207,7 @@ const SPECIMENS: Specimen[] = [
     mount: () => { createInventoryPanel(); openInventoryPanel(); },
   },
   { name: 'codex', label: 'CODEX', mount: () => showCodex() },
+  { name: 'reading', label: 'READING', mount: () => openCardReading() },
 ];
 
 // ── Boot ──────────────────────────────────────────────────────────────────

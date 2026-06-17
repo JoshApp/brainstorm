@@ -8,6 +8,7 @@ import {
 } from '../state/character';
 import { getLevel, getXpInLevel, getXpForNextLevel } from '../state/run-state';
 import { ATTR_DEFS } from './attribute-defs';
+import { openCardReading } from './card-reading';
 
 // ── THE BONFIRE — sit, and the fire takes your measure ───────────────
 //
@@ -72,6 +73,12 @@ export function openLevelUpMenu(): void {
   s.body.appendChild(buildPointsBanner());
   s.body.appendChild(buildCardGrid());
 
+  // DRAW FATE — the dealt-3-pick-1 reading (one draw per rest for now; the
+  // accrue-on-descent economy is a later increment). See ui/card-reading.ts.
+  const drawBtn = menuButton('DRAW FATE', () => {
+    openCardReading({ onDone: () => { drawBtn.disabled = true; drawBtn.style.opacity = '0.45'; drawBtn.style.cursor = 'default'; } });
+  });
+  s.footer.appendChild(drawBtn);
   s.footer.appendChild(menuButton('RISE', () => s.close(), { primary: true }));
 
   unsub = onCharacterChanged(refresh);

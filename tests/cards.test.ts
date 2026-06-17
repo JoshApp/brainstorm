@@ -9,7 +9,7 @@
 // type-only import, so nothing heavy is pulled) and art/cards (plain specs).
 
 import assert from 'node:assert/strict';
-import { CARDS, cardModifiers, type CardSpec } from '../src/content/cards';
+import { CARDS, cardModifiers, dealCards, type CardSpec } from '../src/content/cards';
 import { CARD_ART } from '../src/art/cards';
 
 let passed = 0;
@@ -89,6 +89,25 @@ test('a card duplicated in hand stacks (resolver does not dedupe)', () => {
   const mods = cardModifiers(['the-companion', 'the-companion']);
   const hp = mods.filter((m) => m.kind === 'max-hp').reduce((a, m) => a + m.amount, 0);
   assert.equal(hp, 20, 'two Companions stack to +20 (the Spread, not the resolver, enforces the cap)');
+});
+
+// ── dealCards (the fate hand) ─────────────────────────────────────────────────
+test('dealCards deals distinct cards of the requested arcana', () => {
+  const hand = dealCards(3, { arcana: 'minor' });
+  assert.equal(hand.length, 3, 'dealt three');
+  assert.equal(new Set(hand).size, 3, 'all distinct within a deal');
+  for (const id of hand) assert.equal(CARDS[id].arcana, 'minor', `${id} should be a minor`);
+});
+
+test('dealCards never exceeds the pool size', () => {
+  const minors = Object.values(CARDS).filter((c) => c.arcana === 'minor').length;
+  const hand = dealCards(999, { arcana: 'minor' });
+  assert.equal(hand.length, minors, 'capped at the number of minors that exist');
+});
+
+test('dealCards is deterministic given an rng', () => {
+  const rng = () => 0.42;  // constant rng → stable order
+  assert.deepEqual(dealCards(3, { arcana: 'minor', rng }), dealCards(3, { arcana: 'minor', rng }));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
