@@ -23,6 +23,7 @@
 
 import { CONFIG } from '../config';
 import { gameNow } from '../engine/game-clock';
+import { registerSimReset } from '../engine/sim-state';
 import { gainStamina } from './stamina';
 import { playBuffApply } from '../audio/sfx';
 import { enterBulletTime } from './reactive-defense';
@@ -84,3 +85,5 @@ export function resetJustDodge(): void {
   dashStartedAt = -Infinity;
   counterUntil = 0;
 }
+// sim-state: the in-flight counter window must clear at run start (see sim-state.ts).
+registerSimReset(resetJustDodge);

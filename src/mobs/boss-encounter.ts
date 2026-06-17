@@ -1,4 +1,5 @@
 import { emit } from '../broadcast/event-bus';
+import { registerSimReset } from '../engine/sim-state';
 import { registerEncounter, activateEncounter, type EncounterHandle } from '../encounters/registry';
 import type { Enemy } from './enemy';
 
@@ -138,3 +139,5 @@ export function resetBossEncounter(): void {
   completeListeners.clear();
   encounter = null;   // the registry itself is wiped by the build's clearEncounters
 }
+// sim-state: boss encounter lifecycle must clear at run start (see sim-state.ts).
+registerSimReset(resetBossEncounter);

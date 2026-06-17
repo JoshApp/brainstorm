@@ -21,6 +21,7 @@
 
 import { CONFIG } from '../config';
 import { gameNow } from '../engine/game-clock';
+import { registerSimReset } from '../engine/sim-state';
 import { setPlayerInvulnerable } from '../player/health';
 import { freezeFor } from './hit-pause';
 import { playParry, playSlowmoEnter } from '../audio/sfx';
@@ -149,3 +150,5 @@ export function resetReactiveDefense(): void {
   empowerUntil = -Infinity;
   ripostePending = false;
 }
+// sim-state: deflect windows + opportunity count must clear at run start (see sim-state.ts).
+registerSimReset(resetReactiveDefense);

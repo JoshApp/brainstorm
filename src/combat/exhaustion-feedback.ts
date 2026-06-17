@@ -11,6 +11,7 @@
 // chest-heave the camera reads. Module-level mutable state; NOT persisted.
 
 import { CONFIG } from '../config';
+import { registerSimReset } from '../engine/sim-state';
 import { staminaFraction, isStaminaExhausted } from './stamina';
 import { playBreath } from '../audio/sfx';
 import { emitBreath } from '../effects/breath';
@@ -54,3 +55,5 @@ export function resetExhaustionFeedback(): void {
   phase = 0;
   currentExertion = 0;
 }
+// sim-state: exertion phase must clear at run start (see sim-state.ts).
+registerSimReset(resetExhaustionFeedback);

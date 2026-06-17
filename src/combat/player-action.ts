@@ -25,6 +25,7 @@
 // Module-level mutable state with a getter/setter API. Reset on floor load.
 
 import type { SwingPhase } from '../player/viewmodel';
+import { registerSimReset } from '../engine/sim-state';
 
 export type PlayerAction = 'idle' | 'attacking' | 'dodging' | 'parrying';
 
@@ -89,3 +90,5 @@ export function enterDodge(durationS: number): void { dodgeLeft = durationS; }
 export function enterParry(durationS: number): void { parryLeft = durationS; }
 
 export function resetPlayerAction(): void { dodgeLeft = 0; parryLeft = 0; }
+// sim-state: committed dodge/parry beats must clear at run start (see sim-state.ts).
+registerSimReset(resetPlayerAction);

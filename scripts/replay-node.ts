@@ -28,6 +28,7 @@ import { CONFIG } from '../src/config';
 import { spawn as spawnEntity, clear as clearWorld } from '../src/ecs/world';
 import { initTriggerListener } from '../src/ecs/triggers';
 import { getPlayerHp } from '../src/player/health';
+import { resetSimState } from '../src/engine/sim-state';
 import { installBus, setIntent, NEUTRAL_INTENT, type Intent } from '../src/harness/intent';
 import { deserializeTape, tapeFrame, type Tape } from '../src/harness/tape';
 
@@ -100,6 +101,13 @@ function runOnce(seed: number, steps: number, tape?: Tape, threatEnemy?: string)
     buffs: [], passives: [],
   });
   initTriggerListener('player');
+
+  // The SAME sim-state authority loadLevel runs before buildLevel — clears every
+  // sim-affecting module-global (i-frames, dodge/parry beats, cooldowns, boss
+  // flags) so a Node replay starts from the identical sim state the browser does.
+  // This is the third inversion (own the state lifecycle); without it the player
+  // carried whatever module-global state the last in-process run left behind.
+  resetSimState();
 
   const spec = threatEnemy ? threatSpec(threatEnemy) : generateFloor(1, seed);
   const level = buildLevel(scene, spec, materials);

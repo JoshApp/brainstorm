@@ -1,5 +1,6 @@
 import { isArrivalActive } from './arrival';
 import { gameNow } from '../engine/game-clock';
+import { registerSimReset } from '../engine/sim-state';
 import { recordPlayerDamage } from './damage-recap';
 import { CONFIG } from '../config';
 import { freezeFor } from '../combat/hit-pause';
@@ -47,6 +48,8 @@ export function isPlayerInvulnerable(): boolean {
 export function resetPlayerInvuln(): void {
   invulnUntil = 0;
 }
+// sim-state: the i-frame window must be cleared at run start (see sim-state.ts).
+registerSimReset(resetPlayerInvuln);
 
 // Route damage-over-time ticks (poison/burn/bleed inflicted by enemies)
 // through the player's health with the QUIET flag, so they reduce HP +

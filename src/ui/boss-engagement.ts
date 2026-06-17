@@ -13,6 +13,8 @@
 //     level load. Boss bar engages on this flag (or the legacy
 //     fallback above).
 
+import { registerSimReset } from '../engine/sim-state';
+
 let hasFogWall = false;
 let engaged = false;
 
@@ -46,3 +48,5 @@ export function resetBossEngagement(): void {
   hasFogWall = false;
   engaged = false;
 }
+// sim-state: boss engagement flags must clear at run start (see sim-state.ts).
+registerSimReset(resetBossEngagement);

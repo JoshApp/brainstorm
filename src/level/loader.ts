@@ -5,20 +5,19 @@ import type { StyleMaterials } from '../style/materials';
 import { CONFIG } from '../config';
 import { clearProjectiles } from '../combat/projectile-pool';
 import { clearHazardFields } from '../combat/hazard-field';
-import { resetBossEncounter } from '../mobs/boss-encounter';
-import { resetBossEngagement } from '../ui/boss-engagement';
-import { resetPlayerInvuln } from '../player/health';
+// The single sim-state authority — clears every sim-affecting module-global
+// (i-frames, dodge/parry beats, cooldowns, boss flags) at run start. The
+// individual resets now self-register via registerSimReset beside their state
+// (engine/sim-state.ts); the headless replay runner calls this same authority.
+import { resetSimState } from '../engine/sim-state';
 import { isArrivalActive } from '../player/arrival';
-import { resetJustDodge } from '../combat/just-dodge';
-import { resetReactiveDefense } from '../combat/reactive-defense';
-import { resetPlayerAction } from '../combat/player-action';
-import { setArenaEnemiesInvincible } from '../debug/arena-mode';
+// Presentation-only resets (camera FOV/vignette, breath puffs, sway, stumble,
+// forced fog-gate walk) — read only in the present pass, NOT part of the sim
+// digest, so they stay here rather than in the sim-state registry.
 import { resetSlowmoPresentation } from '../effects/slowmo-presentation';
-import { resetExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { clearBreath } from '../effects/breath';
 import { resetCameraStumble } from '../combat/camera-stumble';
 import { resetViewSway } from '../player/viewmodel-sway';
-import { resetDashCooldown } from '../combat/dash';
 import { cancelFogWalkthrough } from '../player/fog-walkthrough';
 import { clearXpWisps } from '../effects/xp-wisps';
 import { clearGoldCoins } from '../effects/gold-coins';
@@ -187,18 +186,19 @@ export function tickPendingLoad() {
   // Reset the boss encounter + fog-wall flags BEFORE building — the build
   // registers the boss + its fog gate's completion listener, so resetting
   // afterward (the old resetBossBar timing) would wipe them.
-  resetBossEncounter();
-  resetBossEngagement();
-  resetPlayerInvuln();
-  resetJustDodge();         // clear any in-flight counter window
-  resetReactiveDefense();   // clear deflect opportunity count + bullet-time dip
+  // Sim state — the single authority (engine/sim-state.ts). Every sim-affecting
+  // module-global (i-frames, dodge/parry beats, dash cooldown, boss-encounter +
+  // engagement flags, arena invuln, exhaustion) clears here. Runs BEFORE
+  // buildLevel so the build can re-register the boss + its fog-gate listener
+  // into freshly-cleared state. Add new sim state via registerSimReset beside
+  // the state, NOT a new line here — that's what keeps every boot path (incl.
+  // the headless replay runner) in lockstep.
+  resetSimState();
+  // Presentation state — read only in the present pass, so it lives here, not in
+  // the sim-state registry (a headless replay never runs the present pass).
   resetSlowmoPresentation(camera ?? undefined);  // clear cold vignette + restore FOV
-  resetPlayerAction();      // clear any committed dodge/parry beat
-  setArenaEnemiesInvincible(false);  // training-arena invuln never leaks past its own scenario
-  resetExhaustionFeedback(); // clear breath phase / heave on a fresh floor
   clearBreath();            // hide any in-flight breath puffs
   resetCameraStumble();     // clear any in-flight stumble lurch
-  resetDashCooldown();      // a fresh floor starts dodge-ready
   cancelFogWalkthrough();   // never carry a half-played gate walk into a new level
   // Build the new level into the same scene.
   tagPerfEvent(`level-load:${id}`);   // perf timeline (no-op unless the dashcam rolls)

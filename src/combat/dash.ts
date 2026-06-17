@@ -15,6 +15,7 @@
 
 import { CONFIG } from '../config';
 import { gameNow } from '../engine/game-clock';
+import { registerSimReset } from '../engine/sim-state';
 import { spendStaminaSoft, stallRegen } from './stamina';
 import { suppressChargeUntilRelease } from '../controls/charge-input';
 import { noteDashStarted } from './just-dodge';
@@ -98,3 +99,5 @@ export function resetDashCooldown(): void {
   windedUntil = 0;
   dodgeActiveUntil = 0;
 }
+// sim-state: a fresh run starts dodge-ready (see sim-state.ts).
+registerSimReset(resetDashCooldown);
