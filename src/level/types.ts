@@ -34,10 +34,11 @@ export type ObstacleCircle = {
  *  carry an optional offset relative to the prop's local origin;
  *  the offset is rotated by the prop's rotY at build time.
  *
- *  `height` (m above floor) is OPTIONAL: omitted = full-height blocker
- *  (columns, buttresses — block movement AND every projectile). Set it on
- *  a LOW structural prop (a kerb, a fallen beam) so shots fly over it
- *  (height-aware projectile pass — see WalkableRegion.containsProjectile).
+ *  `height` (m above floor) is OPTIONAL on the AUTHORING side: omit it for a
+ *  full-height blocker (columns, buttresses — block movement AND every
+ *  projectile), or set it on a LOW prop (a kerb, a fallen beam) so shots fly
+ *  over it. The build folds it into the runtime obstacle's `yTop` (floor + this,
+ *  or Infinity when omitted; see WalkableRegion.Obstacle / containsProjectile).
  *  Movement always collides regardless of height. */
 export type PropCollision =
   | { kind: 'circle'; r: number; ox?: number; oz?: number; height?: number }

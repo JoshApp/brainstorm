@@ -24,17 +24,25 @@ export interface WallSegment {
   bx: number; bz: number;
 }
 
-// `height` is the obstacle's ABSOLUTE top (world Y), OPTIONAL, used ONLY by
-// the projectile pass (containsProjectile). Absent = full-height blocker
-// (walls, pillars, structural columns) — blocks movement AND every
-// projectile. A low prop (altar, chest, fountain) sets its top so a shot
-// flying ABOVE it sails over instead of dying on its 2D footprint. Creators
-// add the ground height under the prop (groundYAt) so the comparison stays
-// correct in elevated rooms. Movement (contains) ignores height entirely —
-// you still can't walk through a waist-high altar.
+// An obstacle is a real 3D volume: a footprint (circle = cylinder, aabb = box)
+// extruded from the floor up to `yTop` — the world-Y top of the SOLID part.
+//
+// `yTop` is REQUIRED. A finite value is the prop's actual top: the projectile
+// pass lets a shot flying ABOVE it sail over (a headshot clears a waist-high
+// altar). `Infinity` means a full-height, floor-to-ceiling blocker (walls,
+// structural columns) — written DELIBERATELY, never by omission. Making the
+// field required is the point: a prop can't silently become a wall by a
+// forgotten height. Producers fold the ground height under the prop (groundYAt)
+// into a finite `yTop` so the comparison stays correct in elevated rooms.
+//
+// Only the projectile pass (containsProjectile) reads `yTop`. Movement
+// (contains), the nav grid, and LOS are 2D — agents are floor-bound, so they
+// test the footprint alone (you still can't walk through a waist-high altar).
+// The footprint must MATCH the geometry that draws it (a round column = a
+// circle, not a square that eats shots grazing past it).
 export type Obstacle =
-  | { kind: 'circle'; x: number; z: number; r: number; height?: number }
-  | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; height?: number };
+  | { kind: 'circle'; x: number; z: number; r: number; yTop: number }
+  | { kind: 'aabb'; minX: number; maxX: number; minZ: number; maxZ: number; yTop: number };
 
 export class WalkableRegion {
   /** Bumped on every wall/obstacle mutation. NavGrid compares this against
@@ -171,7 +179,7 @@ export class WalkableRegion {
       if (distSqPointToSegment(x, z, w.ax, w.az, w.bx, w.bz) < r2) return false;
     }
     for (const o of this.obstacles) {
-      if (o.height !== undefined && y > o.height) continue;   // shot clears this low prop
+      if (y > o.yTop) continue;   // shot flies above this prop's solid top (Infinity = full-height, never clears)
       if (o.kind === 'circle') {
         const dx = x - o.x;
         const dz = z - o.z;

@@ -54,7 +54,7 @@ export function buildAltarPillar(
   size: number,
   height: number,
   materials: StyleMaterials,
-): { group: THREE.Group; obstacle: { minX: number; maxX: number; minZ: number; maxZ: number } } {
+): { group: THREE.Group; obstacle: { kind: 'circle'; x: number; z: number; r: number; yTop: number } } {
   const group = new THREE.Group();
   group.position.set(x, 0, z);
 
@@ -140,13 +140,15 @@ export function buildAltarPillar(
   capital.castShadow = true; capital.receiveShadow = true;
   group.add(capital);
 
-  const half = size / 2;
   return {
     group,
-    obstacle: {
-      minX: x - half, maxX: x + half,
-      minZ: z - half, maxZ: z + half,
-    },
+    // Collision matches the VISIBLE shaft — a circle, not a circumscribed square
+    // that ate shots grazing past the column. A column is solid floor-to-ceiling,
+    // so yTop is Infinity: a shot aimed THROUGH it still blocks, but one passing
+    // beside the shaft (a headshot over an enemy whose feet hide behind it) sails
+    // by. The plinth/capital flare ~0.04m wider but are ankle/ceiling height —
+    // combat never interacts with that lip.
+    obstacle: { kind: 'circle', x, z, r: shaftRadius, yTop: Infinity },
   };
 }
 
