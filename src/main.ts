@@ -12,7 +12,7 @@ import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
 import { initStatusVfxPool } from './effects/status-vfx';
-import { initNetwork } from './net/delve-net';
+import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { isWorldPaused } from './world-paused';
@@ -1837,6 +1837,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
       if (!getPlayerName()) {
         showNameEntry((name) => {
           setPlayerName(name);
+          pushDisplayName(name);   // sync onto the canonical player row
           beginDescent();
         });
         return;

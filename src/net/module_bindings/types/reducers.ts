@@ -7,6 +7,8 @@ import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
 import ReportDeathReducer from "../report_death_reducer";
+import SetDisplayNameReducer from "../set_display_name_reducer";
 
 export type ReportDeathParams = __Infer<typeof ReportDeathReducer>;
+export type SetDisplayNameParams = __Infer<typeof SetDisplayNameReducer>;
 

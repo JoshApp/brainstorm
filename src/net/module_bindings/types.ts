@@ -12,7 +12,7 @@ import {
 
 export const Death = __t.object("Death", {
   id: __t.u64(),
-  player: __t.identity(),
+  playerId: __t.u64(),
   name: __t.string(),
   depth: __t.u32(),
   killedBy: __t.string(),
@@ -23,4 +23,19 @@ export const Death = __t.object("Death", {
   at: __t.timestamp(),
 });
 export type Death = __Infer<typeof Death>;
+
+export const Identity = __t.object("Identity", {
+  id: __t.identity(),
+  playerId: __t.u64(),
+  provider: __t.string(),
+  linkedAt: __t.timestamp(),
+});
+export type Identity = __Infer<typeof Identity>;
+
+export const Player = __t.object("Player", {
+  id: __t.u64(),
+  displayName: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type Player = __Infer<typeof Player>;
 

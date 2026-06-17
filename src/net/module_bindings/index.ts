@@ -35,11 +35,14 @@ import {
 
 // Import all reducer arg schemas
 import ReportDeathReducer from "./report_death_reducer";
+import SetDisplayNameReducer from "./set_display_name_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
 import DeathRow from "./death_table";
+import IdentityRow from "./identity_table";
+import PlayerRow from "./player_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -57,16 +60,45 @@ const tablesSchema = __schema({
       { accessor: 'id', name: 'death_id_idx_btree', algorithm: 'btree', columns: [
         'id',
       ] },
+      { accessor: 'playerId', name: 'death_player_id_idx_btree', algorithm: 'btree', columns: [
+        'playerId',
+      ] },
     ],
     constraints: [
       { name: 'death_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, DeathRow),
+  identity: __table({
+    name: 'identity',
+    indexes: [
+      { accessor: 'id', name: 'identity_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'playerId', name: 'identity_player_id_idx_btree', algorithm: 'btree', columns: [
+        'playerId',
+      ] },
+    ],
+    constraints: [
+      { name: 'identity_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, IdentityRow),
+  player: __table({
+    name: 'player',
+    indexes: [
+      { accessor: 'id', name: 'player_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'player_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, PlayerRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("report_death", ReportDeathReducer),
+  __reducerSchema("set_display_name", SetDisplayNameReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

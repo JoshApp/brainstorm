@@ -2,66 +2,94 @@ import { schema, table, t } from 'spacetimedb/server';
 
 // DELVE backend — the living dungeon's shared memory.
 //
-// First feature: "the dungeon notices a death elsewhere." Every delver's
-// death is reported here as a row; subscribed clients receive it live (the
-// voice in the deep remarks on it), and the same rows are the substrate
-// for async bloodstains (Phase 4) and, later, the leaderboard. One table,
-// several features. See docs/ALPHA-AND-BACKEND.md.
+// Identity model (the part we don't compromise on): game data references a
+// stable internal PLAYER, never the auth identity directly. Many auth
+// identities — an anonymous device token today, a linked Google/Apple
+// account tomorrow — map MANY-to-one onto one player. Sign in from any of
+// them and you are the same player. See docs/ALPHA-AND-BACKEND.md.
 
+// ── The canonical player: a stable id every game row references. ──
+const player = table(
+  { name: 'player', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    displayName: t.string(),
+    createdAt: t.timestamp(),
+  }
+);
+
+// ── Auth identities → player (MANY-to-one). One row per device-anon token
+//    or linked OIDC account; all of a player's identities share its id.
+//    The PK `id` is the connection's Identity (ctx.sender). ──
+const identity = table(
+  { name: 'identity', public: true },
+  {
+    id: t.identity().primaryKey(),
+    playerId: t.u64().index('btree'),
+    provider: t.string(),            // 'anon' | 'google' | 'apple' | ...
+    linkedAt: t.timestamp(),
+  }
+);
+
+// ── Deaths key on PLAYER, not identity. name denormalised for cheap reads
+//    (the feed, the bloodstain, the board). ──
 const death = table(
   { name: 'death', public: true },
   {
-    // autoInc id — NOT monotonic (gaps are normal), so never order by it.
-    // The feed orders by `at`.
+    // autoInc id — NOT monotonic; never order by it. The feed orders by `at`.
     id: t.u64().primaryKey().autoInc(),
-    // The dier's identity — AUTHORITATIVE (set from ctx.sender server-side,
-    // never self-reported). This is the real account key; the client's
-    // interim localStorage playerId is a separate, weaker thing.
-    player: t.identity(),
-    // Display name, denormalised onto the row so the feed needs no join.
-    // Self-reported + cosmetic — trust-but-verify, like depth.
+    playerId: t.u64().index('btree'),
     name: t.string(),
-    // How deep they got. Indexed: the feed greets by depth, and async
-    // bloodstains query "deaths near depth N".
     depth: t.u32().index('btree'),
-    // What ended them — enemy id / cause, for "slain by ___" flavour.
     killedBy: t.string(),
-    // Where they fell, in floor coords — the future bloodstain position.
     x: t.f32(),
     z: t.f32(),
-    // The run this death belongs to (the run seed = SaveData.startedAt).
-    // Links a death to a replay-verifiable run for the leaderboard later.
     runSeed: t.u64(),
-    // Build/season tag. Balance changes invalidate old scores and reframe
-    // the feed, so every row is stamped and queries filter on it.
     buildVersion: t.string().index('btree'),
-    // Server-stamped death time (deterministic ctx.timestamp). The feed's
-    // ordering key, since autoInc id is not sequential.
     at: t.timestamp(),
   }
 );
 
-const spacetimedb = schema({ death });
+const spacetimedb = schema({ player, identity, death });
 export default spacetimedb;
+
+// Resolve the caller to a player_id, auto-provisioning a fresh anonymous
+// player the first time an identity is ever seen. So every connection — and
+// every reducer call — always maps to a player, invisibly. (ctx typed `any`:
+// internal helper shared by the lifecycle hook and the reducers below.)
+function ensurePlayer(ctx: any): bigint {
+  const link = ctx.db.identity.id.find(ctx.sender);
+  if (link) return link.playerId;
+  const p = ctx.db.player.insert({ id: 0n, displayName: 'a nameless delver', createdAt: ctx.timestamp });
+  ctx.db.identity.insert({ id: ctx.sender, playerId: p.id, provider: 'anon', linkedAt: ctx.timestamp });
+  return p.id;
+}
 
 export const init = spacetimedb.init((_ctx) => {
   // Called once when the module is first published.
 });
 
-export const onConnect = spacetimedb.clientConnected((_ctx) => {
-  // A delver's client connected. Presence / phantoms will hook here later.
+export const onConnect = spacetimedb.clientConnected((ctx) => {
+  // First contact provisions the player; returning identities just resolve.
+  ensurePlayer(ctx);
 });
 
-export const onDisconnect = spacetimedb.clientDisconnected((_ctx) => {
-  // A delver's client disconnected.
-});
+export const onDisconnect = spacetimedb.clientDisconnected((_ctx) => {});
 
-// Report a death. The client calls this when the player dies; the row fans
-// out to every subscribed client (the live "death elsewhere" feed) and
-// persists as the async bloodstain. Identity + time are authoritative
-// (server-set); name / depth / position are self-reported
-// (trust-but-verify, per the charter). Cosmetic strings are clamped so a
-// bad client can't bloat the table.
+// Set / update this player's display name (the name-entry screen, and a
+// resync on connect). Updates the canonical player row.
+export const setDisplayName = spacetimedb.reducer(
+  { name: t.string() },
+  (ctx, { name }) => {
+    const pid = ensurePlayer(ctx);
+    const p = ctx.db.player.id.find(pid);
+    if (p) ctx.db.player.id.update({ ...p, displayName: name.slice(0, 24) });
+  }
+);
+
+// Report a death — keyed on the resolved player. Identity + time are
+// server-authoritative; name / depth / position are self-reported
+// (trust-but-verify). Cosmetic strings clamped.
 export const reportDeath = spacetimedb.reducer(
   {
     name: t.string(),
@@ -73,9 +101,10 @@ export const reportDeath = spacetimedb.reducer(
     buildVersion: t.string(),
   },
   (ctx, { name, depth, killedBy, x, z, runSeed, buildVersion }) => {
+    const pid = ensurePlayer(ctx);
     ctx.db.death.insert({
-      id: 0n, // autoInc assigns the real id
-      player: ctx.sender,
+      id: 0n,
+      playerId: pid,
       name: name.slice(0, 24),
       depth,
       killedBy: killedBy.slice(0, 48),
