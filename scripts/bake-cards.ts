@@ -101,14 +101,26 @@ const composite = async (artB64: string): Promise<string> =>
     return out.toDataURL('image/webp', QUALITY);
   }, { frameB64, artB64, OUT_W, QUALITY });
 
+// plain downscale (no frame) — the raw illustration, for the unframed compare
+const plain = async (b64: string): Promise<string> =>
+  page.evaluate(async ({ b64, OUT_W, QUALITY }) => {
+    const i = new Image(); i.src = `data:image/png;base64,${b64}`; await i.decode();
+    const w = OUT_W, h = Math.round((i.naturalHeight / i.naturalWidth) * OUT_W);
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const c = cv.getContext('2d')!; c.imageSmoothingQuality = 'high'; c.drawImage(i, 0, 0, w, h);
+    return cv.toDataURL('image/webp', QUALITY);
+  }, { b64, OUT_W, QUALITY });
+
 let ok = 0;
 for (const [id, runId] of Object.entries(manifest.promoted)) {
   const src = resolve(ART, 'runs', `${runId}.png`);
   if (!existsSync(src)) { console.log(`  skip ${id}`); continue; }
-  const dataUrl = await composite(readFileSync(src).toString('base64'));
-  const bytes = Buffer.from(dataUrl.split(',')[1], 'base64');
-  writeFileSync(resolve(OUT, `${id}.webp`), bytes);
-  console.log(`  ${id.padEnd(16)} → cards/${id}.webp (${(bytes.length / 1024).toFixed(0)}kb)`);
+  const b64 = readFileSync(src).toString('base64');
+  const framed = Buffer.from((await composite(b64)).split(',')[1], 'base64');
+  writeFileSync(resolve(OUT, `${id}.webp`), framed);
+  const raw = Buffer.from((await plain(b64)).split(',')[1], 'base64');
+  writeFileSync(resolve(OUT, `${id}-art.webp`), raw);  // unframed illustration
+  console.log(`  ${id.padEnd(16)} → ${id}.webp (${(framed.length / 1024).toFixed(0)}kb) + ${id}-art.webp (${(raw.length / 1024).toFixed(0)}kb)`);
   ok++;
 }
 
