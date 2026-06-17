@@ -180,7 +180,10 @@ function onRingFrame(s: FrameSample): void {
   if (recording && now - recordStartAbs >= RING_CAP_MS) void stopRecording();
 
   // AUTO-SPIKE: a frame well past the recent baseline records its own window.
-  if (autoCapture && !recording && autoSpikeCount < MAX_AUTO_CAPTURES
+  // Dev hosts only — the dashcam is a dev-server workflow (silent POST + review).
+  // On a public build there's no server, so an auto-save would become a passive
+  // FILE DOWNLOAD on every frame hitch; gate it out. (Manual saves still work.)
+  if (autoCapture && isLocalDevHost() && !recording && autoSpikeCount < MAX_AUTO_CAPTURES
       && s.dt > SPIKE_ABS_MS && now - lastAutoSpikeAt > SPIKE_COOLDOWN_MS
       && s.dt > recentMedianDt() * SPIKE_MUL) {
     lastAutoSpikeAt = now;
