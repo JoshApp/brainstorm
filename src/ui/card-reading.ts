@@ -1,15 +1,13 @@
 // THE READING — fate deals you three, you keep one.
 //
-// The dealt-3-pick-1 draw (the Self scope of the card mechanic — see
-// docs/THE-CARDS.md). Opens at the bonfire: three minor cards are dealt
-// face-up, you tap one to claim it into your Spread (grantCard → it feeds the
-// stat pipeline immediately, like any other modifier source).
-//
-// Faces are data-driven for now (name · sigil · domain colour · fate line) —
-// the AI art on the card face + the 3D quad/flip presentation are the next
-// layer; this proves the LOOP, shippable today.
+// The dealt-3-pick-1 draw (the Self scope — see docs/THE-CARDS.md), presented as
+// real 3D cards: they fly out of the deck face-DOWN, flip face-up in sequence,
+// lift to your hover, and the one you pick rises and is claimed (grantCard →
+// straight into the stat pipeline). Built with CSS 3D (preserve-3d) so the faces
+// stay crisp DOM (sigil + serif name + fate) and we get genuine flip/deal — no
+// second WebGL context. (The in-world floor-drop card is a separate mesh later.)
 
-import { createSheet, type Sheet } from './menu-shell';
+import { createSheet } from './menu-shell';
 import { isScreenOpen } from './screen-manager';
 import { THEME, FONT_UI, displayHeading, applyCarvedFrame } from './theme';
 import { CARDS, dealCards, type CardSpec } from '../content/cards';
@@ -17,12 +15,10 @@ import { grantCard, getHeldCards } from '../state/run-state';
 import { DOMAIN_VISUAL } from '../art/domains';
 
 const SCREEN_ID = 'card-reading';
+const CARD_W = 168, CARD_H = 252, SPREAD = 188;
 
-/** Open the bonfire reading. `onDone` fires after a pick (or if nothing to
- *  deal), so the caller can e.g. spend the draw / disable its button. */
 export function openCardReading(opts: { onDone?: () => void } = {}): void {
   if (isScreenOpen(SCREEN_ID)) return;
-
   const dealt = dealCards(3, { arcana: 'minor' }).map((id) => CARDS[id]).filter(Boolean) as CardSpec[];
   if (dealt.length === 0) { opts.onDone?.(); return; }
 
@@ -33,74 +29,124 @@ export function openCardReading(opts: { onDone?: () => void } = {}): void {
     onClose() { opts.onDone?.(); },
   });
   s.root.style.background =
-    'radial-gradient(120% 90% at 50% 120%, rgba(120, 56, 18, 0.5) 0%, rgba(30, 16, 9, 0.97) 52%, rgba(14, 9, 6, 0.98) 100%)';
+    'radial-gradient(120% 95% at 50% 122%, rgba(120, 56, 18, 0.5) 0%, rgba(28, 15, 9, 0.97) 54%, rgba(13, 8, 5, 0.98) 100%)';
 
   const intro = displayHeading('The fire deals your fate', { size: 17, glow: true });
-  intro.style.textAlign = 'center';
-  intro.style.margin = '6px 0 4px';
+  intro.style.textAlign = 'center'; intro.style.margin = '6px 0 4px';
   s.body.appendChild(intro);
   const sub = document.createElement('div');
   sub.textContent = 'Three are turned. Keep one.';
-  Object.assign(sub.style, { fontFamily: FONT_UI, fontSize: '11px', letterSpacing: '0.2em', textTransform: 'uppercase', color: THEME.faint, textAlign: 'center', marginBottom: '18px' } as Partial<CSSStyleDeclaration>);
+  Object.assign(sub.style, { fontFamily: FONT_UI, fontSize: '11px', letterSpacing: '0.2em', textTransform: 'uppercase', color: THEME.faint, textAlign: 'center', marginBottom: '8px' } as Partial<CSSStyleDeclaration>);
   s.body.appendChild(sub);
 
-  const row = document.createElement('div');
-  Object.assign(row.style, { display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap', paddingBottom: '8px' } as Partial<CSSStyleDeclaration>);
-  for (const card of dealt) {
-    row.appendChild(cardFace(card, () => {
-      if (picked) return;
-      picked = true;
-      grantCard(card.id);
-      s.close();
-    }));
+  // 3D stage — perspective so flips read as depth, not a 2D squash.
+  const stage = document.createElement('div');
+  Object.assign(stage.style, {
+    position: 'relative', height: `${CARD_H + 110}px`, width: '100%',
+    perspective: '1500px', perspectiveOrigin: '50% 42%',
+  } as Partial<CSSStyleDeclaration>);
+  s.body.appendChild(stage);
+
+  // A little deck stack at centre the cards appear to come from.
+  for (let d = 0; d < 4; d++) {
+    const slab = faceBack();
+    Object.assign(slab.style, {
+      position: 'absolute', left: `calc(50% - ${CARD_W / 2}px)`, top: `${52 - d * 1.5}px`,
+      transform: `translateX(${d * 1.2}px) rotateZ(${(d - 1.5) * 0.8}deg)`, zIndex: '0', opacity: '0.85',
+    } as Partial<CSSStyleDeclaration>);
+    stage.appendChild(slab);
   }
-  s.body.appendChild(row);
+
+  const finish = (id: string) => { if (picked) return; picked = true; grantCard(id); setTimeout(() => s.close(), 620); };
+
+  dealt.forEach((card, i) => {
+    const base = `translateX(${(i - (dealt.length - 1) / 2) * SPREAD}px) translateY(70px)`;
+    const card3d = document.createElement('div');
+    Object.assign(card3d.style, {
+      position: 'absolute', left: `calc(50% - ${CARD_W / 2}px)`, top: '52px',
+      width: `${CARD_W}px`, height: `${CARD_H}px`, transformStyle: 'preserve-3d',
+      transform: 'translateX(0) translateY(0) rotateY(180deg)',  // start: stacked, face-down
+      transition: 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s', cursor: 'pointer', zIndex: String(2 + i),
+    } as Partial<CSSStyleDeclaration>);
+    const front = faceFront(card); const back = faceBack();
+    card3d.append(back, front);
+    stage.appendChild(card3d);
+
+    // deal out (still face-down), then flip face-up — staggered down the row.
+    setTimeout(() => { card3d.style.transform = `${base} rotateY(180deg)`; }, 80 + i * 110);
+    setTimeout(() => { card3d.style.transform = `${base} rotateY(0deg)`; }, 520 + i * 170);
+
+    card3d.addEventListener('pointerenter', () => { if (!picked) card3d.style.transform = `${base} translateY(54px) rotateY(0deg) scale(1.05)`; });
+    card3d.addEventListener('pointerleave', () => { if (!picked) card3d.style.transform = `${base} rotateY(0deg)`; });
+    card3d.addEventListener('click', () => {
+      if (picked) return;
+      // chosen card rises and turns to face you; the others fall away.
+      card3d.style.transition = 'transform 0.5s cubic-bezier(0.2,0.9,0.2,1), opacity 0.4s';
+      card3d.style.transform = `translateX(0) translateY(20px) rotateY(0deg) scale(1.18)`;
+      card3d.style.zIndex = '10';
+      for (const sib of Array.from(stage.children)) {
+        if (sib !== card3d && sib instanceof HTMLElement && sib.style.transformStyle === 'preserve-3d') {
+          sib.style.opacity = '0'; sib.style.transform += ' translateY(60px)';
+        }
+      }
+      finish(card.id);
+    });
+  });
+
   s.open();
 }
 
-/** A single dealt card face — the whole card is the tap target. */
-function cardFace(card: CardSpec, onPick: () => void): HTMLElement {
+/** The face — the data-driven card front (domain sigil + serif name + fate). */
+function faceFront(card: CardSpec): HTMLElement {
   const dv = card.domains[0] ? DOMAIN_VISUAL[card.domains[0]] : undefined;
   const accent = dv?.color ?? THEME.amber;
-
-  const btn = document.createElement('button');
-  Object.assign(btn.style, {
-    position: 'relative', width: '168px', minHeight: '252px', cursor: 'pointer',
+  const el = document.createElement('div');
+  Object.assign(el.style, {
+    position: 'absolute', inset: '0', backfaceVisibility: 'hidden', borderRadius: '5px',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
     padding: '20px 14px 16px', background: `linear-gradient(180deg, ${THEME.raised} 0%, ${THEME.panel} 60%)`,
-    border: `1px solid ${THEME.ruleStrong}`, borderRadius: '4px', color: THEME.text,
-    fontFamily: FONT_UI, boxShadow: THEME.shadow, transition: 'transform 0.12s, box-shadow 0.12s, border-color 0.12s',
+    border: `1px solid ${THEME.ruleStrong}`, boxShadow: THEME.shadow, color: THEME.text, fontFamily: FONT_UI,
   } as Partial<CSSStyleDeclaration>);
-  applyCarvedFrame(btn, { tickSize: 12, inset: 6 });
+  applyCarvedFrame(el, { tickSize: 12, inset: 6 });
 
-  // sigil (domain mark, tinted)
   const sig = document.createElement('div');
-  Object.assign(sig.style, { color: accent, lineHeight: '0', filter: `drop-shadow(0 0 6px ${accent}55)` } as Partial<CSSStyleDeclaration>);
+  Object.assign(sig.style, { color: accent, lineHeight: '0', filter: `drop-shadow(0 0 6px ${accent}66)` } as Partial<CSSStyleDeclaration>);
   if (dv) sig.innerHTML = `<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor">${dv.svg}</svg>`;
-  btn.appendChild(sig);
+  el.appendChild(sig);
 
-  // name + arcana
-  const mid = document.createElement('div');
-  mid.style.textAlign = 'center';
-  const name = displayHeading(card.name, { size: 15, glow: true });
-  name.style.textAlign = 'center';
+  const mid = document.createElement('div'); mid.style.textAlign = 'center';
+  const name = displayHeading(card.name, { size: 15, glow: true }); name.style.textAlign = 'center';
   mid.appendChild(name);
   const arc = document.createElement('div');
   arc.textContent = card.arcana === 'major' ? 'Major Arcana' : 'Minor';
   Object.assign(arc.style, { fontFamily: FONT_UI, fontSize: '8px', letterSpacing: '0.28em', textTransform: 'uppercase', color: card.arcana === 'major' ? THEME.amber : THEME.dim, marginTop: '6px' } as Partial<CSSStyleDeclaration>);
   mid.appendChild(arc);
-  btn.appendChild(mid);
+  el.appendChild(mid);
 
-  // fate line
   const fate = document.createElement('div');
   fate.textContent = card.fate;
   Object.assign(fate.style, { fontFamily: FONT_UI, fontSize: '11px', fontStyle: 'italic', lineHeight: '1.35', color: THEME.dim, textAlign: 'center' } as Partial<CSSStyleDeclaration>);
-  btn.appendChild(fate);
+  el.appendChild(fate);
+  return el;
+}
 
-  btn.onpointerenter = () => { btn.style.transform = 'translateY(-6px)'; btn.style.borderColor = accent; btn.style.boxShadow = `${THEME.shadow}, 0 0 22px ${accent}44`; };
-  btn.onpointerleave = () => { btn.style.transform = 'none'; btn.style.borderColor = THEME.ruleStrong; btn.style.boxShadow = THEME.shadow; };
-  btn.onclick = onPick;
-  return btn;
+/** The shared card-back — what the deck shows before a flip. */
+function faceBack(): HTMLElement {
+  const el = document.createElement('div');
+  Object.assign(el.style, {
+    position: 'absolute', inset: '0', width: `${CARD_W}px`, height: `${CARD_H}px`,
+    backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', borderRadius: '5px',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'radial-gradient(60% 50% at 50% 45%, rgba(60, 34, 16, 0.6), rgba(16, 10, 7, 0.98))',
+    border: `1px solid ${THEME.ruleStrong}`, boxShadow: THEME.shadow,
+  } as Partial<CSSStyleDeclaration>);
+  applyCarvedFrame(el, { tickSize: 12, inset: 6 });
+  // a single watching mark — the thing in the deep, on every back
+  const mark = document.createElement('div');
+  Object.assign(mark.style, { color: THEME.amber, opacity: '0.5', lineHeight: '0', filter: 'drop-shadow(0 0 8px rgba(255,180,90,0.35))' } as Partial<CSSStyleDeclaration>);
+  mark.innerHTML = `<svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 12 C 6 6, 18 6, 22 12 C 18 18, 6 18, 2 12 Z"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/></svg>`;
+  el.appendChild(mark);
+  return el;
 }
 
 /** Whether the run currently holds any fate cards (for HUD/menus later). */
