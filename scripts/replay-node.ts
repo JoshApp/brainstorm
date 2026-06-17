@@ -25,6 +25,8 @@ import { createTouchInput } from '../src/controls/input';
 import { seedRng } from '../src/engine/rng';
 import { setDeterministicClock, advanceGameClock } from '../src/engine/game-clock';
 import { CONFIG } from '../src/config';
+import { installBus, setIntent, NEUTRAL_INTENT, type Intent } from '../src/harness/intent';
+import { deserializeTape, tapeFrame, type Tape } from '../src/harness/tape';
 
 const FIXED_DT = 1 / 60;
 
@@ -53,9 +55,10 @@ function digest(level: LiveLevel, camera: THREE.PerspectiveCamera): string {
   return parts.join('|');
 }
 
-function runOnce(seed: number, steps: number): string {
+function runOnce(seed: number, steps: number, tape?: Tape): string {
   seedRng(seed);
   setDeterministicClock(true);
+  installBus(); // route the tape's intents through the same input seam the game uses
 
   const scene = new THREE.Scene();
   const camera = createFirstPersonCamera();
@@ -84,18 +87,48 @@ function runOnce(seed: number, steps: number): string {
     paused: false, mode: 'playing', playing: true,
   };
   for (let i = 0; i < steps; i++) {
+    const intent: Intent = tape ? (tapeFrame(tape, i) ?? NEUTRAL_INTENT) : NEUTRAL_INTENT;
+    setIntent(intent); // drive-by-wire: feed this step's intent before the systems read it
     advanceGameClock(FIXED_DT);
     runSystems(sim, ctx);
   }
   return digest(level, camera);
 }
 
+// Build a synthetic "walk forward" tape so the run is non-trivial (the player
+// moves, enemies react) — proves tape-feeding + determinism without needing a
+// browser-recorded tape. Real tapes come from window.__sim / live recording.
+function syntheticTape(seed: number, n: number): Tape {
+  const frames: Intent[] = Array.from({ length: n }, () => ({
+    move: [0, -1], look: [0, 0], attack: false, dodge: null,
+  }));
+  return { seed, frames, label: 'synthetic-walk' };
+}
+
+// Args: [seed] [steps] [tapeFile]. With a tapeFile, replays that real tape
+// (seed + frames from the file); otherwise replays a synthetic walk-forward tape.
 const seed = Number(process.argv[2] ?? 12345);
 const steps = Number(process.argv[3] ?? 300);
-console.log(`Headless-Node sim — seed ${seed}, ${steps} steps\n`);
-const a = runOnce(seed, steps);
-const b = runOnce(seed, steps);
-console.log('run A:', a);
-console.log('run B:', b);
-console.log(`\nNODE DETERMINISTIC: ${a === b ? 'YES — same seed → same digest' : 'NO — diverged'}`);
-process.exit(a === b ? 0 : 1);
+const tapeFile = process.argv[4];
+
+let tape: Tape;
+if (tapeFile) {
+  const { readFileSync } = await import('node:fs');
+  tape = deserializeTape(readFileSync(tapeFile, 'utf8'));
+  console.log(`Headless-Node REPLAY — tape ${tapeFile} (seed ${tape.seed}, ${tape.frames.length} frames)\n`);
+  const a = runOnce(tape.seed, tape.frames.length, tape);
+  const b = runOnce(tape.seed, tape.frames.length, tape);
+  console.log('replay A:', a);
+  console.log('replay B:', b);
+  console.log(`\nTAPE REPLAYS DETERMINISTICALLY IN NODE: ${a === b ? 'YES' : 'NO — diverged'}`);
+  process.exit(a === b ? 0 : 1);
+} else {
+  tape = syntheticTape(seed, steps);
+  console.log(`Headless-Node sim — seed ${seed}, ${steps} steps (synthetic walk-forward tape)\n`);
+  const a = runOnce(seed, steps, tape);
+  const b = runOnce(seed, steps, tape);
+  console.log('run A:', a);
+  console.log('run B:', b);
+  console.log(`\nNODE DETERMINISTIC (tape-driven): ${a === b ? 'YES — same seed+tape → same digest' : 'NO — diverged'}`);
+  process.exit(a === b ? 0 : 1);
+}
