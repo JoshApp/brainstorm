@@ -14,6 +14,7 @@ import { warmupContent } from './content/warmup';
 import { initStatusVfxPool } from './effects/status-vfx';
 import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
+import { completePendingLink } from './net/account-link';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
@@ -784,6 +785,9 @@ initStatusVfxPool(scene);
 // docs/ALPHA-AND-BACKEND.md.
 initNetwork();
 initDeathFeed();
+// Finish an account link interrupted by the OAuth redirect (no-op otherwise —
+// doesn't even load Clerk unless a link is mid-flight).
+void completePendingLink();
 
 // Pre-allocate the pickup light pool. Lights live in the scene forever
 // (idle = intensity 0, parked off-stage); pickups borrow and return them.

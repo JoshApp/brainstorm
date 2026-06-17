@@ -70,7 +70,68 @@ function resolveMyPlayer(): void {
   }
 }
 
-/** Connect once, on boot. Idempotent; safe to call before login exists. */
+// Build a connection with the given token. `persistAnon` saves the returned
+// token as our anon identity (only for the anon connection — an OIDC token
+// expires and is re-fetched from the provider each session). `onReady` fires
+// once the subscription applies (player id resolved) OR on connect error.
+function buildConnection(token: string | undefined, persistAnon: boolean, onReady?: () => void): void {
+  let readyFired = false;
+  const ready = () => { if (!readyFired) { readyFired = true; onReady?.(); } };
+  conn = DbConnection.builder()
+    .withUri(MAINCLOUD_URI)
+    .withDatabaseName(DB_NAME)
+    .withToken(token)
+    .onConnect((c, identity, tok) => {
+      myIdentityHex = identity.toHexString();
+      if (persistAnon) {
+        try { localStorage.setItem(TOKEN_KEY, tok); } catch { /* storage off */ }
+      }
+      // Sync our local display name onto the canonical player row.
+      const name = getPlayerName();
+      if (name) {
+        try { c.reducers.setDisplayName({ name }); } catch { /* best-effort */ }
+      }
+      // Subscribe to deaths (feed + board + bloodstains) and the
+      // identity→player map (to resolve our own player id). onApplied flips
+      // `applied` so the death backlog doesn't fire the voice.
+      c.subscriptionBuilder()
+        .onApplied(() => {
+          applied = true;
+          resolveMyPlayer();
+          ready();
+        })
+        .subscribe(['SELECT * FROM death', 'SELECT * FROM identity']);
+    })
+    .onConnectError((_ctx, err) => {
+      // Offline / blocked / bad token — stay silent, game runs on.
+      console.warn('[net] connect error:', err.message);
+      ready();
+    })
+    .onDisconnect(() => {
+      applied = false;
+    })
+    .build();
+
+  // Keep our player id current as identity rows arrive (ours may land after
+  // the initial apply, e.g. first-ever connection).
+  conn.db.identity.onInsert((_ctx, row) => {
+    if (myIdentityHex && row.id.toHexString() === myIdentityHex) myPlayerId = row.playerId;
+  });
+
+  // Every death row insert. Skip the connect backlog and our OWN deaths
+  // (matched by player, so all our linked identities count as us); what's
+  // left is "someone else just died, live".
+  conn.db.death.onInsert((_ctx, row) => {
+    if (!applied) return;
+    if (myPlayerId !== null && row.playerId === myPlayerId) return;
+    const d: DeathElsewhere = { name: row.name, depth: row.depth, killedBy: row.killedBy };
+    for (const cb of listeners) {
+      try { cb(d); } catch { /* a listener throwing must not break the others */ }
+    }
+  });
+}
+
+/** Connect once, on boot, as the persisted anonymous identity. Idempotent. */
 export function initNetwork(): void {
   if (conn) return;
   let saved: string | undefined;
@@ -80,66 +141,30 @@ export function initNetwork(): void {
     saved = undefined;
   }
   try {
-    conn = DbConnection.builder()
-      .withUri(MAINCLOUD_URI)
-      .withDatabaseName(DB_NAME)
-      .withToken(saved)
-      .onConnect((c, identity, token) => {
-        myIdentityHex = identity.toHexString();
-        try {
-          localStorage.setItem(TOKEN_KEY, token);
-        } catch {
-          // storage disabled — we just won't persist the identity
-        }
-        // Sync our local display name onto the canonical player row.
-        const name = getPlayerName();
-        if (name) {
-          try { c.reducers.setDisplayName({ name }); } catch { /* best-effort */ }
-        }
-        // Subscribe to deaths (feed + board + bloodstains) and the
-        // identity→player map (to resolve our own player id). onApplied
-        // flips `applied` so the death backlog doesn't fire the voice.
-        c.subscriptionBuilder()
-          .onApplied(() => {
-            applied = true;
-            resolveMyPlayer();
-          })
-          .subscribe(['SELECT * FROM death', 'SELECT * FROM identity']);
-      })
-      .onConnectError((_ctx, err) => {
-        // Offline / blocked / not yet published — stay silent, game runs on.
-        console.warn('[net] connect error:', err.message);
-      })
-      .onDisconnect(() => {
-        applied = false;
-      })
-      .build();
-
-    // Keep our player id current as identity rows arrive (ours may land after
-    // the initial apply, e.g. first-ever connection).
-    conn.db.identity.onInsert((_ctx, row) => {
-      if (myIdentityHex && row.id.toHexString() === myIdentityHex) myPlayerId = row.playerId;
-    });
-
-    // Every death row insert. Skip the connect backlog and our OWN deaths
-    // (matched by player, so all our linked identities count as us); what's
-    // left is "someone else just died, live".
-    conn.db.death.onInsert((_ctx, row) => {
-      if (!applied) return;
-      if (myPlayerId !== null && row.playerId === myPlayerId) return;
-      const d: DeathElsewhere = { name: row.name, depth: row.depth, killedBy: row.killedBy };
-      for (const cb of listeners) {
-        try {
-          cb(d);
-        } catch {
-          // a listener throwing must not break the others
-        }
-      }
-    });
+    buildConnection(saved, true);
   } catch (err) {
     console.warn('[net] init failed:', err);
     conn = null;
   }
+}
+
+/** Reconnect under a new auth token (e.g. an OIDC JWT from Clerk), becoming
+ *  that identity. Resolves once the new connection has synced. Used by the
+ *  account-link flow to redeem as the freshly-signed-in identity. */
+export function reconnectWithToken(token: string): Promise<void> {
+  return new Promise((resolve) => {
+    try { conn?.disconnect(); } catch { /* already gone */ }
+    conn = null;
+    myPlayerId = null;
+    myIdentityHex = null;
+    applied = false;
+    try {
+      buildConnection(token, false, resolve);
+    } catch (err) {
+      console.warn('[net] reconnect failed:', err);
+      resolve();
+    }
+  });
 }
 
 /** Subscribe to deaths-by-others. Multiple listeners allowed. */

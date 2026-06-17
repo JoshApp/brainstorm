@@ -35,6 +35,7 @@
     "replay-node": "node scripts/build-replay-node.mjs"
   },
   "dependencies": {
+    "@clerk/clerk-js": "^6.17.0",
     "spacetimedb": "2.5.x",
     "three": "^0.160.0",
     "three-bvh-csg": "^0.0.16",

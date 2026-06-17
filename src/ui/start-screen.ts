@@ -17,6 +17,7 @@ import { showCodex } from './codex-screen';
 import { showStash } from './stash-screen';
 import { showPatchlog } from './patchlog-screen';
 import { showLeaderboard } from './leaderboard-screen';
+import { startAccountUpgrade } from '../net/account-link';
 
 const SCREEN_ID = 'start';
 
@@ -329,6 +330,17 @@ export function showStartScreen(opts: StartScreenOptions) {
     link.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       showLeaderboard();
+    });
+    pushLink(link);
+  }
+  // SAVE PROGRESS — link an account (Google / Discord / Twitch) so this
+  // delver survives a lost device. The 2-tap upgrade; merges onto the
+  // current player. See docs/ALPHA-AND-BACKEND.md.
+  {
+    const link = makeSecondaryLink('SAVE PROGRESS', 0);
+    link.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      void startAccountUpgrade();
     });
     pushLink(link);
   }
