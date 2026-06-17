@@ -5,6 +5,8 @@ import { getEquipment, aggregateAffixModifiers, aggregateSetModifiers } from '..
 import { BUFFS } from '../content/buffs';
 import { getCharacter } from '../state/character';
 import { aggregateMutationModifiers } from '../state/run-mutations';
+import { getHeldCards } from '../state/run-state';
+import { cardModifiers } from '../content/cards';
 
 // Central stat-modifier abstraction.
 //
@@ -83,6 +85,10 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
     // the run, gone on death. Composes through this pipeline identically
     // to anything else.
     out.push(...aggregateMutationModifiers());
+    // Fate cards held this run (the Spread) — the tarot build. A card is
+    // just another source of StatModifiers, exactly like an affix or a
+    // mutation. See content/cards.ts + docs/THE-CARDS.md.
+    out.push(...cardModifiers(getHeldCards()));
   }
 
   // 2. Active buffs ticking on this entity.

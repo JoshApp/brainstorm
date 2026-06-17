@@ -61,6 +61,9 @@ export interface SaveData {
   /** Per-run phial color → mutation identities (state/phial-identities.ts).
    *  Persisted so a reload keeps what the player has LEARNED. */
   phials?: Record<string, string>;
+  /** Fate cards held this run (ids into content/cards.ts) — the Spread.
+   *  Optional for older saves (treated as empty). */
+  cards?: string[];
 }
 
 // ── In-memory run state (mid-floor mutable counters) ─────────────────
@@ -93,6 +96,7 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
     actEntryKills: 0,
     actEntryXp: 0,
     actEntryGold: 0,
+    cards: [],
   };
   // Fresh run = no inherited mutations. Any prior run's tainted brands
   // die with their delver.
@@ -136,6 +140,18 @@ export function getXp(): number {
 
 export function getGold(): number {
   return inMemory?.gold ?? 0;
+}
+
+/** Fate cards held this run — the Spread (ids into content/cards.ts). */
+export function getHeldCards(): string[] {
+  return inMemory?.cards ?? [];
+}
+
+/** Add a fate card to the Spread (idempotent by id). */
+export function grantCard(id: string): void {
+  if (!inMemory) return;
+  (inMemory.cards ??= []);
+  if (!inMemory.cards.includes(id)) inMemory.cards.push(id);
 }
 
 /** Attempt to spend gold. Returns true and deducts when affordable; false
