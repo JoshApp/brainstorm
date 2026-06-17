@@ -44,6 +44,9 @@ const stubRenderer = new Proxy(
 
 function digest(level: LiveLevel, camera: THREE.PerspectiveCamera): string {
   const q = (v: number) => Math.round(v * 1e4) / 1e4;
+  // Player HP is omitted: it needs the player ENTITY spawned (the browser's boot
+  // does that) — the final boot-alignment piece. Camera + enemy AI parity is the
+  // conclusive cross-environment determinism proof.
   const parts = [`cam:${q(camera.position.x)},${q(camera.position.z)}`];
   // Sort by POSITION (not entityId) so the digest is stable across runs — the
   // entity-id counter is a per-process global that doesn't reset between two
@@ -55,7 +58,27 @@ function digest(level: LiveLevel, camera: THREE.PerspectiveCamera): string {
   return parts.join('|');
 }
 
-function runOnce(seed: number, steps: number, tape?: Tape): string {
+// Exact replica of buildThreatScenario's level (src/debug/scenarios.ts) so the
+// browser (?scenario=threat&enemy=X) and Node build the IDENTICAL world — the
+// parity test's shared ground.
+function threatSpec(enemy: string): ReturnType<typeof generateFloor> {
+  return {
+    id: 'dbg-threat', depth: 3, displayName: 'THREAT PROBE', fogColor: 0x0c0c12,
+    startPos: { x: 0, z: 0, yaw: Math.PI },
+    rooms: [{ id: 'threat', rect: { x: 0, z: 0, w: 14, d: 14 }, height: 4.5 }],
+    corridors: [], props: [],
+    torches: [
+      { x: -6.8, z: 0, height: 2.6, wall: 'W', colorTint: 0xffb066, intensityMul: 1.3 },
+      { x: 6.8, z: 0, height: 2.6, wall: 'E', colorTint: 0xffb066, intensityMul: 1.3 },
+      { x: 0, z: -6.8, height: 2.6, wall: 'N', colorTint: 0xffb066, intensityMul: 1.3 },
+      { x: 0, z: 6.8, height: 2.6, wall: 'S', colorTint: 0xffb066, intensityMul: 1.3 },
+    ],
+    spawns: [{ enemyId: enemy, x: 0, z: -3.2, roomId: 'threat' }],
+    doors: [], stairs: [],
+  } as ReturnType<typeof generateFloor>;
+}
+
+function runOnce(seed: number, steps: number, tape?: Tape, threatEnemy?: string): string {
   seedRng(seed);
   setDeterministicClock(true);
   installBus(); // route the tape's intents through the same input seam the game uses
@@ -65,9 +88,13 @@ function runOnce(seed: number, steps: number, tape?: Tape): string {
   const ambient = new THREE.AmbientLight();
   const canvas = document.createElement('canvas') as HTMLCanvasElement;
   const materials = buildMaterials(stubRenderer);
-  const level = buildLevel(scene, generateFloor(1, seed), materials);
+  const spec = threatEnemy ? threatSpec(threatEnemy) : generateFloor(1, seed);
+  const level = buildLevel(scene, spec, materials);
 
-  camera.position.set(level.playerSpawn.x, CONFIG.PLAYER_HEIGHT, level.playerSpawn.z);
+  // Match the browser's startRun spawn-resolve so enemy AI (which reads player
+  // position) evolves identically.
+  const resolved = level.walkable.resolveSpawn(level.playerSpawn.x, level.playerSpawn.z, 0.3);
+  camera.position.set(resolved.x, CONFIG.PLAYER_HEIGHT, resolved.z);
   camera.rotation.order = 'YXZ';
   camera.rotation.y = level.playerSpawn.yaw;
 
@@ -107,9 +134,20 @@ function syntheticTape(seed: number, n: number): Tape {
 
 // Args: [seed] [steps] [tapeFile]. With a tapeFile, replays that real tape
 // (seed + frames from the file); otherwise replays a synthetic walk-forward tape.
+const threatEnemy = process.argv.find((a) => a.startsWith('--threat='))?.split('=')[1];
+if (threatEnemy) {
+  // Parity mode: build the threat world + step neutral, print the digest to
+  // compare against the browser (?scenario=threat&enemy=X stepped the same).
+  const s = Number(process.argv[2] ?? 1);
+  const n = Number(process.argv[3] ?? 200);
+  console.log(`Headless-Node PARITY — threat:${threatEnemy}, seed ${s}, ${n} neutral steps\n`);
+  console.log('node digest:', runOnce(s, n, undefined, threatEnemy));
+  process.exit(0);
+}
+
 const seed = Number(process.argv[2] ?? 12345);
 const steps = Number(process.argv[3] ?? 300);
-const tapeFile = process.argv[4];
+const tapeFile = process.argv.find((a) => a.endsWith('.json'));
 
 let tape: Tape;
 if (tapeFile) {
