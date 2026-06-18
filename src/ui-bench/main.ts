@@ -207,14 +207,23 @@ function mountGrimoire(host: HTMLElement): void {
     boxShadow: '0 22px 70px rgba(0,0,0,0.85), inset 0 0 80px rgba(110,80,44,0.26), inset 0 0 0 7px rgba(28,20,12,0.07)',
   } as Partial<CSSStyleDeclaration>);
 
-  // paper grain — a faint printed-fibre noise, multiplied into the cream
-  const grain = document.createElement('div');
-  Object.assign(grain.style, {
-    position: 'absolute', inset: '0', pointerEvents: 'none', opacity: '0.07', mixBlendMode: 'multiply',
-    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
-    backgroundSize: '160px',
-  } as Partial<CSSStyleDeclaration>);
-  page.appendChild(grain);
+  // ── damaged-parchment material — multi-scale, low-frequency-weighted (NOT
+  // uniform grain). Mottling + stains + aged edges carry the texture; fine grain
+  // is only a whisper. (Diablo II / Darkest Dungeon / Pentiment all worked the
+  // edges + tonal blotches, never a flat noise overlay.)
+  const layer = (s: Partial<CSSStyleDeclaration>) => {
+    const d = document.createElement('div');
+    Object.assign(d.style, { position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply' } as Partial<CSSStyleDeclaration>, s);
+    page.appendChild(d);
+  };
+  // big soft tonal blotches — the dominant "aged" variation (low baseFrequency)
+  layer({ opacity: '0.5', backgroundSize: '380px', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='380' height='380'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='3' seed='7'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E")` });
+  // stains / foxing — a few warm-brown pools, off-centre and uneven
+  layer({ opacity: '0.7', backgroundImage: `radial-gradient(42% 55% at 16% 24%, rgba(120,84,38,0.22), transparent 70%), radial-gradient(48% 42% at 84% 80%, rgba(92,58,26,0.20), transparent 72%), radial-gradient(30% 30% at 72% 14%, rgba(116,42,20,0.10), transparent 70%), radial-gradient(26% 36% at 40% 92%, rgba(80,52,22,0.16), transparent 74%)` });
+  // worn/darkened edges — handling ages the border; centre stays clean + readable
+  layer({ backgroundImage: `radial-gradient(125% 135% at 50% 46%, transparent 50%, rgba(74,48,20,0.28) 86%, rgba(44,27,11,0.55) 100%)` });
+  // a whisper of fibre grain on top — texture, not the main event
+  layer({ opacity: '0.04', backgroundSize: '150px', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` });
 
   // watching-eye watermark — the book's presence
   const eye = document.createElement('div');
