@@ -63,7 +63,30 @@ const linkCode = table(
   }
 );
 
-const spacetimedb = schema({ player, identity, death, linkCode });
+// ── Run tapes awaiting verification. A run IS its seed + the input stream;
+//    the verifier (a separate headless replay worker, NOT a reducer) re-runs
+//    seed+tape under the matching build and confirms depth/kills before the
+//    score counts. Captured offline, uploaded on reconnect. ──
+const pendingRun = table(
+  { name: 'pending_run', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    playerId: t.u64().index('btree'),
+    seed: t.u64(),
+    buildVersion: t.string().index('btree'),
+    // The CLAIMED result the replay must reproduce.
+    depth: t.u32(),
+    kills: t.u32(),
+    name: t.string(),
+    // gzip+base64 of the input tape (seed + per-step intents). Small.
+    tape: t.string(),
+    // 'pending' | 'verified' | 'rejected' — the verifier sets the verdict.
+    status: t.string().index('btree'),
+    at: t.timestamp(),
+  }
+);
+
+const spacetimedb = schema({ player, identity, death, linkCode, pendingRun });
 export default spacetimedb;
 
 // Resolve the caller to a player_id, auto-provisioning a fresh anonymous
@@ -125,6 +148,36 @@ export const reportDeath = spacetimedb.reducer(
       z,
       runSeed,
       buildVersion: buildVersion.slice(0, 32),
+      at: ctx.timestamp,
+    });
+  }
+);
+
+// Submit a recorded run (seed + input tape) for verification. Stored
+// 'pending'; the offline verifier replays it and sets the verdict. The
+// claimed depth/kills are what the replay must reproduce.
+export const submitRun = spacetimedb.reducer(
+  {
+    seed: t.u64(),
+    buildVersion: t.string(),
+    depth: t.u32(),
+    kills: t.u32(),
+    name: t.string(),
+    tape: t.string(),
+  },
+  (ctx, { seed, buildVersion, depth, kills, name, tape }) => {
+    if (tape.length > 600_000) throw new SenderError('tape too large');
+    const pid = ensurePlayer(ctx);
+    ctx.db.pendingRun.insert({
+      id: 0n,
+      playerId: pid,
+      seed,
+      buildVersion: buildVersion.slice(0, 32),
+      depth,
+      kills,
+      name: name.slice(0, 24),
+      tape,
+      status: 'pending',
       at: ctx.timestamp,
     });
   }

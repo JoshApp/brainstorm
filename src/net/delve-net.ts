@@ -52,6 +52,9 @@ let myPlayerId: bigint | null = null;
 // so connecting doesn't replay every historical death as if it just happened.
 let applied = false;
 const listeners = new Set<Listener>();
+// Fired on every successful connect/reconnect — run-sync drains its upload
+// queue here.
+const connectedListeners = new Set<() => void>();
 
 /** The build/season tag stamped on every reported death (and, later, the
  *  query key for per-build leaderboards). */
@@ -99,6 +102,9 @@ function buildConnection(token: string | undefined, persistAnon: boolean, onRead
           applied = true;
           resolveMyPlayer();
           ready();
+          for (const cb of connectedListeners) {
+            try { cb(); } catch { /* one listener must not break the others */ }
+          }
         })
         .subscribe(['SELECT * FROM death', 'SELECT * FROM identity']);
     })
@@ -170,6 +176,38 @@ export function reconnectWithToken(token: string): Promise<void> {
 /** Subscribe to deaths-by-others. Multiple listeners allowed. */
 export function onDeathElsewhere(cb: Listener): void {
   listeners.add(cb);
+}
+
+/** Run a callback on every successful connect/reconnect (drains queues). */
+export function addConnectedListener(cb: () => void): void {
+  connectedListeners.add(cb);
+}
+
+/** Submit a recorded run (seed + compressed input tape + claimed result) for
+ *  verification. Returns false if not connected (caller keeps it queued). */
+export function submitRun(rec: {
+  seed: number;
+  buildVersion: string;
+  depth: number;
+  kills: number;
+  name: string;
+  tape: string;
+}): boolean {
+  if (!conn) return false;
+  try {
+    conn.reducers.submitRun({
+      seed: BigInt(Math.max(0, Math.floor(rec.seed))),
+      buildVersion: rec.buildVersion,
+      depth: rec.depth,
+      kills: rec.kills,
+      name: rec.name,
+      tape: rec.tape,
+    });
+    return true;
+  } catch (err) {
+    console.warn('[net] submitRun failed:', err);
+    return false;
+  }
 }
 
 /** Push the player's chosen name to the canonical player row. Call when the

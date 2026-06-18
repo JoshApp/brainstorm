@@ -15,6 +15,7 @@ import { initStatusVfxPool } from './effects/status-vfx';
 import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
 import { completePendingLink } from './net/account-link';
+import { initRunSync } from './net/run-sync';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { isWorldPaused } from './world-paused';
 import { onPlayerDeath } from './player/health';
@@ -784,6 +785,8 @@ initStatusVfxPool(scene);
 // docs/ALPHA-AND-BACKEND.md.
 initNetwork();
 initDeathFeed();
+// Drain any queued run tapes (recorded offline) on every connect.
+initRunSync();
 // Finish an account link interrupted by the OAuth redirect (no-op otherwise —
 // doesn't even load Clerk unless a link is mid-flight).
 void completePendingLink();

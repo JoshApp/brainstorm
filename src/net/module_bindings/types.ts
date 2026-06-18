@@ -39,6 +39,20 @@ export const LinkCode = __t.object("LinkCode", {
 });
 export type LinkCode = __Infer<typeof LinkCode>;
 
+export const PendingRun = __t.object("PendingRun", {
+  id: __t.u64(),
+  playerId: __t.u64(),
+  seed: __t.u64(),
+  buildVersion: __t.string(),
+  depth: __t.u32(),
+  kills: __t.u32(),
+  name: __t.string(),
+  tape: __t.string(),
+  status: __t.string(),
+  at: __t.timestamp(),
+});
+export type PendingRun = __Infer<typeof PendingRun>;
+
 export const Player = __t.object("Player", {
   id: __t.u64(),
   displayName: __t.string(),

@@ -38,12 +38,14 @@ import IssueLinkCodeReducer from "./issue_link_code_reducer";
 import RedeemLinkCodeReducer from "./redeem_link_code_reducer";
 import ReportDeathReducer from "./report_death_reducer";
 import SetDisplayNameReducer from "./set_display_name_reducer";
+import SubmitRunReducer from "./submit_run_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
 import DeathRow from "./death_table";
 import IdentityRow from "./identity_table";
+import PendingRunRow from "./pending_run_table";
 import PlayerRow from "./player_table";
 
 /** Type-only namespace exports for generated type groups. */
@@ -84,6 +86,26 @@ const tablesSchema = __schema({
       { name: 'identity_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, IdentityRow),
+  pendingRun: __table({
+    name: 'pending_run',
+    indexes: [
+      { accessor: 'buildVersion', name: 'pending_run_build_version_idx_btree', algorithm: 'btree', columns: [
+        'buildVersion',
+      ] },
+      { accessor: 'id', name: 'pending_run_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'playerId', name: 'pending_run_player_id_idx_btree', algorithm: 'btree', columns: [
+        'playerId',
+      ] },
+      { accessor: 'status', name: 'pending_run_status_idx_btree', algorithm: 'btree', columns: [
+        'status',
+      ] },
+    ],
+    constraints: [
+      { name: 'pending_run_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, PendingRunRow),
   player: __table({
     name: 'player',
     indexes: [
@@ -103,6 +125,7 @@ const reducersSchema = __reducers(
   __reducerSchema("redeem_link_code", RedeemLinkCodeReducer),
   __reducerSchema("report_death", ReportDeathReducer),
   __reducerSchema("set_display_name", SetDisplayNameReducer),
+  __reducerSchema("submit_run", SubmitRunReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
