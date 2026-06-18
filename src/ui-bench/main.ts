@@ -235,7 +235,8 @@ function mountGrimoire(host: HTMLElement): void {
   page.appendChild(eye);
 
   const pad = document.createElement('div');
-  Object.assign(pad.style, { position: 'absolute', inset: '0', display: 'flex', flexDirection: 'column', padding: 'clamp(14px,3vw,26px)' } as Partial<CSSStyleDeclaration>);
+  // padding clears the woodcut frame so content sits inside the ornament
+  Object.assign(pad.style, { position: 'absolute', inset: '0', display: 'flex', flexDirection: 'column', padding: 'clamp(26px,4.4vw,46px) clamp(30px,5vw,52px)' } as Partial<CSSStyleDeclaration>);
   page.appendChild(pad);
 
   // ── thin passive header — depth + gold, no actions up here ──
@@ -289,6 +290,18 @@ function mountGrimoire(host: HTMLElement): void {
     b.textContent = label;
     return b;
   }
+
+  // ── woodcut frame — generated ornament (src/art/textures.ts 'border'), drawn as
+  // a 9-slice border-image and MULTIPLIED so the cream drops out and only the ink
+  // prints onto the page. Corners stay crisp; it scales to any size. Above content
+  // but pointer-events:none, and the centre is transparent (border-only).
+  const frame = document.createElement('div');
+  Object.assign(frame.style, {
+    position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply', borderStyle: 'solid', borderRadius: '3px',
+    borderWidth: 'clamp(17px,3vw,32px)', borderColor: 'transparent',
+    borderImageSource: `url('${base}textures/grimoire-border.png')`, borderImageSlice: '165', borderImageRepeat: 'round',
+  } as Partial<CSSStyleDeclaration>);
+  page.appendChild(frame);
 
   // centre the page in the viewport (the real menu is centred; the bench host
   // isn't by default) so the desktop reads as a page held to the dark.

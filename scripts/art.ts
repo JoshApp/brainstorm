@@ -207,8 +207,9 @@ async function main() {
       const tweak = flags.tweak;
       const prompt = `${def.prompt}${tweak ? `, ${tweak}` : ''}`;
       const seed0 = baseSeed ?? def.seed;
+      const sz = def.size ?? TEXTURE_SIZE;
       for (let i = 0; i < N; i++) {
-        const r = await runOne(backend, m, 'texture', key, key, prompt, def.negative, seed0 + i, TEXTURE_SIZE.width, TEXTURE_SIZE.height, flags.from ?? null, tweak);
+        const r = await runOne(backend, m, 'texture', key, key, prompt, def.negative, seed0 + i, sz.width, sz.height, flags.from ?? null, tweak);
         if (r) ok++;
       }
     }
