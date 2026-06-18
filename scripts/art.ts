@@ -26,6 +26,7 @@ import {
 } from '../src/art/style';
 import type { ArtRun, RunKind, ArtManifest } from '../src/art/runs';
 import { runsFor } from '../src/art/runs';
+import { TEXTURES, TEXTURE_SIZE } from '../src/art/textures';
 import { falBackend, type ArtBackend } from './art-backend';
 import * as M from './art-runs';
 
@@ -89,8 +90,10 @@ async function main() {
     console.log(`CARDS (${CARD_ART.length}):  ${CARD_ART.map((c) => c.id).join('  ')}`);
     console.log(`STYLES:  ${Object.entries(STYLES).map(([k, v]) => `${k}${k === DEFAULT_STYLE ? '*' : ''}`).join('  ')}   (${Object.values(STYLES).map((s) => s.label).join(' · ')})`);
     console.log(`FRAMES:  ${Object.keys(FRAMES).join('  ')}   ·  'all'`);
+    console.log(`TEXTURES:  ${Object.keys(TEXTURES).join('  ')}   ·  'all'`);
     console.log(`\n  delve art card <id> [--n K] [--style s] [--from rX] [--tweak "…"]`);
     console.log(`  delve art frame <key|all> [--n K]`);
+    console.log(`  delve art texture <id|all> [--n K] [--from rX] [--tweak "…"]`);
     console.log(`  delve art promote rX   ·   delve art ls [subject]`);
     return;
   }
@@ -189,6 +192,27 @@ async function main() {
       }
     }
     console.log(`\n${ok} frame run(s).`);
+    return;
+  }
+
+  // ── texture <id|all> — the surfaces lane (forkable runs, atelier-visible) ──
+  if (cmd === 'texture') {
+    const keys = (arg1 === 'all' || !arg1) ? Object.keys(TEXTURES) : [arg1];
+    const baseSeed = flags.seed ? Number(flags.seed) : undefined;
+    console.log(`\ndelve art — textures [${keys.join(', ')}] x${N} via ${backend.name}\n`);
+    let ok = 0;
+    for (const key of keys) {
+      const def = TEXTURES[key];
+      if (!def) { console.error(`  no texture '${key}'. known: ${Object.keys(TEXTURES).join(', ')}`); continue; }
+      const tweak = flags.tweak;
+      const prompt = `${def.prompt}${tweak ? `, ${tweak}` : ''}`;
+      const seed0 = baseSeed ?? def.seed;
+      for (let i = 0; i < N; i++) {
+        const r = await runOne(backend, m, 'texture', key, key, prompt, def.negative, seed0 + i, TEXTURE_SIZE.width, TEXTURE_SIZE.height, flags.from ?? null, tweak);
+        if (r) ok++;
+      }
+    }
+    console.log(`\n${ok} texture run(s).  promote one:  delve art promote <id>`);
     return;
   }
 
