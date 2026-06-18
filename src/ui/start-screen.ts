@@ -12,7 +12,7 @@ import { openScreen, closeScreen } from './screen-manager';
 import { createSheet, menuButton } from './menu-shell';
 import { getMeta, getStash } from '../state/meta-state';
 import { getSettings } from '../settings/settings';
-import { THEME, FONT_DISPLAY, carvedRule, applyCarvedFrame } from './theme';
+import { THEME, FONT_DISPLAY, FONT_TITLE, carvedRule, applyCarvedFrame } from './theme';
 import { showCodex } from './codex-screen';
 import { showStash } from './stash-screen';
 import { showPatchlog } from './patchlog-screen';
@@ -159,7 +159,7 @@ export function showStartScreen(opts: StartScreenOptions) {
   const title = document.createElement('div');
   title.textContent = 'DELVE';
   Object.assign(title.style, {
-    fontFamily: FONT_DISPLAY,
+    fontFamily: FONT_TITLE, // Cinzel — monumental engraved caps for the masthead
     fontSize: 'clamp(54px, 12vw, 86px)',
     letterSpacing: '0.18em',
     color: 'rgba(232, 174, 96, 1)',
