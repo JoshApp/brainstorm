@@ -181,28 +181,45 @@ function mountSheetDemo(): void {
 // in the bottom thumb corners. The watching eye is the book's presence. (Display
 // font loaded from Google here for the demo; self-host for the PWA.)
 function mountGrimoire(host: HTMLElement): void {
-  if (!document.getElementById('grimoire-fonts')) {
-    const l = document.createElement('link'); l.id = 'grimoire-fonts'; l.rel = 'stylesheet';
-    l.href = 'https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&family=Cardo:ital@0;1&display=swap';
-    document.head.appendChild(l);
+  if (!document.getElementById('grimoire-css')) {
+    const base = import.meta.env.BASE_URL; // self-hosted → renders offline / in the PWA
+    const st = document.createElement('style'); st.id = 'grimoire-css';
+    st.textContent =
+      `@font-face{font-family:'Grenze Gotisch';font-weight:600;font-display:swap;src:url('${base}fonts/grenze-gotisch-600.woff2') format('woff2')}` +
+      `@font-face{font-family:'Grenze Gotisch';font-weight:700;font-display:swap;src:url('${base}fonts/grenze-gotisch-700.woff2') format('woff2')}` +
+      '.grim-rite{transition:background .12s,padding-left .12s}.grim-rite:hover{background:rgba(26,20,13,0.07);padding-left:13px}';
+    document.head.appendChild(st);
   }
   const PAPER = '#E7DEC8', INK = '#1a140d', BLOOD = '#a4231c', GOLD = '#9a7b3a', FADE = '#8a7b5e';
-  const BLACK = '"UnifrakturCook", "Iowan Old Style", serif';
-  const SERIF = '"Cardo", "Iowan Old Style", Georgia, serif';
+  // single-quoted family names — these get interpolated into double-quoted HTML
+  // style="" attributes, so double quotes here would close the attribute early.
+  const BLACK = "'Grenze Gotisch', 'Iowan Old Style', serif"; // grimdark blackletter, legible
+  const SERIF = "'Iowan Old Style', 'Palatino Linotype', Georgia, serif";
   const SANS = 'system-ui, -apple-system, sans-serif';
 
+  // Sized by viewport HEIGHT (landscape) + aspect-ratio, so it grows on desktop
+  // instead of staying a phone-width panel; capped so it never gets absurd.
   const page = document.createElement('div');
   Object.assign(page.style, {
-    position: 'relative', width: 'min(94vw, 760px)', aspectRatio: '16 / 8.4', color: INK, fontFamily: SERIF,
+    position: 'relative', height: 'clamp(280px, 88vh, 600px)', aspectRatio: '16 / 8.4', maxWidth: '96vw', color: INK, fontFamily: SERIF,
     background: `radial-gradient(130% 130% at 50% -10%, #f1e9d3, ${PAPER} 55%, #d6ccb0 100%)`,
     borderRadius: '3px', overflow: 'hidden', border: `1px solid #0d0a06`,
-    boxShadow: '0 20px 64px rgba(0,0,0,0.82), inset 0 0 70px rgba(110,80,44,0.22), inset 0 0 0 6px rgba(28,20,12,0.06)',
+    boxShadow: '0 22px 70px rgba(0,0,0,0.85), inset 0 0 80px rgba(110,80,44,0.26), inset 0 0 0 7px rgba(28,20,12,0.07)',
   } as Partial<CSSStyleDeclaration>);
+
+  // paper grain — a faint printed-fibre noise, multiplied into the cream
+  const grain = document.createElement('div');
+  Object.assign(grain.style, {
+    position: 'absolute', inset: '0', pointerEvents: 'none', opacity: '0.07', mixBlendMode: 'multiply',
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+    backgroundSize: '160px',
+  } as Partial<CSSStyleDeclaration>);
+  page.appendChild(grain);
 
   // watching-eye watermark — the book's presence
   const eye = document.createElement('div');
-  Object.assign(eye.style, { position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: '0.05', pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
-  eye.innerHTML = `<svg viewBox="0 0 24 24" width="58%" fill="none" stroke="${INK}" stroke-width="0.6"><path d="M2 12 C 6 6, 18 6, 22 12 C 18 18, 6 18, 2 12 Z"/><circle cx="12" cy="12" r="3.4" fill="${INK}" stroke="none"/></svg>`;
+  Object.assign(eye.style, { position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: '0.075', pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
+  eye.innerHTML = `<svg viewBox="0 0 24 24" width="54%" fill="none" stroke="${INK}" stroke-width="0.55"><path d="M2 12 C 6 6, 18 6, 22 12 C 18 18, 6 18, 2 12 Z"/><circle cx="12" cy="12" r="3.4" fill="${INK}" stroke="none"/></svg>`;
   page.appendChild(eye);
 
   const pad = document.createElement('div');
@@ -219,8 +236,8 @@ function mountGrimoire(host: HTMLElement): void {
   const title = document.createElement('div');
   Object.assign(title.style, { display: 'flex', alignItems: 'flex-end', gap: '6px', margin: '6px 0 2px', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
   title.innerHTML =
-    `<span style="font-family:${BLACK};font-size:clamp(40px,9vw,68px);line-height:0.8;color:${BLOOD};text-shadow:0 1px 0 rgba(0,0,0,0.15)">T</span>` +
-    `<span style="font-family:${BLACK};font-size:clamp(24px,5vw,40px);line-height:1;color:${INK}">he Fire</span>`;
+    `<span style="font-family:${BLACK};font-weight:700;font-size:clamp(42px,9vw,70px);line-height:0.78;color:${BLOOD};text-shadow:0 1px 0 rgba(0,0,0,0.15)">T</span>` +
+    `<span style="font-family:${BLACK};font-weight:700;font-size:clamp(24px,5vw,40px);line-height:1;color:${INK}">he Fire</span>`;
   pad.appendChild(title);
   const rule = document.createElement('div');
   Object.assign(rule.style, { height: '2px', background: `linear-gradient(90deg, ${BLOOD}, transparent 70%)`, opacity: '0.7', margin: '0 0 8px', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
@@ -236,9 +253,10 @@ function mountGrimoire(host: HTMLElement): void {
   ];
   for (const [name, sub] of rites) {
     const r = document.createElement('button');
-    Object.assign(r.style, { display: 'flex', alignItems: 'center', gap: '12px', width: '100%', minHeight: '44px', padding: '6px 8px', background: 'transparent', border: 'none', borderBottom: `1px solid rgba(26,20,13,0.14)`, color: INK, cursor: 'pointer', textAlign: 'left' } as Partial<CSSStyleDeclaration>);
+    r.className = 'grim-rite';
+    Object.assign(r.style, { display: 'flex', alignItems: 'center', gap: '13px', width: '100%', minHeight: '46px', padding: '7px 9px', background: 'transparent', border: 'none', borderBottom: `1px solid rgba(26,20,13,0.16)`, color: INK, cursor: 'pointer', textAlign: 'left' } as Partial<CSSStyleDeclaration>);
     r.innerHTML =
-      `<span style="font-family:${BLACK};font-size:18px;color:${BLOOD};width:18px;text-align:center">✠</span>` +
+      `<span style="font-family:${BLACK};font-size:21px;color:${BLOOD};width:20px;text-align:center;text-shadow:0 1px 0 rgba(0,0,0,0.12)">✠</span>` +
       `<span style="flex:1"><span style="font-family:${SERIF};font-size:clamp(15px,2.4vw,19px)">${name}</span>` +
       `<span style="display:block;font-family:${SANS};font-size:10px;letter-spacing:0.04em;color:${FADE}">${sub}</span></span>` +
       `<span style="color:${FADE};font-size:16px">›</span>`;
@@ -260,6 +278,9 @@ function mountGrimoire(host: HTMLElement): void {
     return b;
   }
 
+  // centre the page in the viewport (the real menu is centred; the bench host
+  // isn't by default) so the desktop reads as a page held to the dark.
+  Object.assign(host.style, { display: 'flex', alignItems: 'center', justifyContent: 'center' } as Partial<CSSStyleDeclaration>);
   host.appendChild(page);
 }
 
