@@ -4,15 +4,17 @@
  * real run exposed (only 1 of ~3 descents recorded). Build + run:
  *   node scripts/build-test-harness.mjs
  *
- * FINDINGS (2026-06-18):
- *  - RECORDING IS SOUND: 4/4 bus-driven interacts captured. The recorder,
- *    tape format (9th float), and setIntent→triggerInteract path all work.
- *    So the live under-capture is in the LIVE TAP path, not here.
- *  - The descent half is INCONCLUSIVE here: getInRangeInteractable() returns
- *    NONE because this bare harness sets camera.position but doesn't drive
- *    the player ENTITY transform the interactables in-range scan reads. A
- *    faithful repro needs the full player-movement plumbing (or a real
- *    browser). Left as a starting point for that work, not a passing test.
+ * FINDINGS (2026-06-18) — PASSES: record + descend both work:
+ *  - RECORDING IS SOUND: 4/4 bus-driven interacts captured (recorder, tape
+ *    9th float, setIntent→triggerInteract path all correct).
+ *  - DESCENT IS SOUND: with the player standing INSIDE the stair's radius and
+ *    facing it (yaw set THROUGH the camera module — updateCamera rebuilds
+ *    rotation from module yaw/pitch each frame, so camera.rotation is
+ *    clobbered), the interact SIM system uses the in-range stair and descends
+ *    (depth 1 → 2). So the whole replay interact→descend path is proven.
+ * Conclusion: the ONLY remaining gap is the LIVE tap→triggerInteract
+ * under-capture on a real run — not the recorder, tape, or replay. Pin that
+ * with live (browser/phone) instrumentation.
  */
 import '../src/headless/dom-stub';
 import * as THREE from 'three';
@@ -22,7 +24,7 @@ import { setActiveLevel } from '../src/level/active-level';
 import { buildMaterials } from '../src/style/materials';
 import { buildSystems } from '../src/engine/systems';
 import { runSystems, type TickContext } from '../src/engine/loop';
-import { createFirstPersonCamera } from '../src/controls/camera';
+import { createFirstPersonCamera, setCameraYaw } from '../src/controls/camera';
 import { createWeaponViewmodel } from '../src/player/viewmodel';
 import { createCombatSystem } from '../src/combat/attack';
 import { createTouchInput } from '../src/controls/input';
@@ -35,7 +37,7 @@ import { resetSimState } from '../src/engine/sim-state';
 import { bootstrapSimWorld } from '../src/engine/sim-bootstrap';
 import { installBus, setIntent, NEUTRAL_INTENT, type Intent } from '../src/harness/intent';
 import { startRecording, finishRun } from '../src/harness/run-recorder';
-import { getInRangeInteractable } from '../src/interactables/system';
+import { getInRangeInteractable, getAllInteractables } from '../src/interactables/system';
 
 const FIXED_DT = 1 / 60;
 const stubRenderer = new Proxy(
@@ -67,11 +69,6 @@ let depth = 1;
 const level: LiveLevel = buildLevel(scene, spec, materials, () => { depth += 1; });
 setActiveLevel(level);
 
-// Spawn the player ON the stair so it's in range immediately.
-const sx = stair?.x ?? level.playerSpawn.x;
-const sz = stair?.z ?? level.playerSpawn.z;
-const r = level.walkable.resolveSpawn(sx, sz, 0.3);
-camera.position.set(r.x, CONFIG.PLAYER_HEIGHT, r.z);
 camera.rotation.order = 'YXZ';
 
 const weapon = createWeaponViewmodel(camera, { onSwingStart: () => {}, canSwing: () => true });
@@ -79,6 +76,20 @@ const input = createTouchInput(canvas, { onTap: () => {} });
 const combat = createCombatSystem(camera, weapon, () => level.enemies);
 const systems = buildSystems({ camera, scene, renderer: stubRenderer, ambient, canvas, input, combat, weapon, shakeOffset: new THREE.Vector3(), forwardScratch: new THREE.Vector3(), getLevel: () => level, getRoomCuller: () => null });
 const sim = systems.filter((s) => s.kind === 'sim');
+
+// Find the registered DESCEND stair and stand just inside its radius, facing it.
+const stairIt = getAllInteractables().find((it) => (it as { id?: string }).id?.includes('stairs'));
+console.log(`stair interactable: ${stairIt ? `@${stairIt.position.x.toFixed(1)},${stairIt.position.z.toFixed(1)} radius=${(stairIt as { radius?: number }).radius} label="${(stairIt as { promptLabel?: string }).promptLabel}"` : 'NOT REGISTERED'}`);
+if (stairIt) {
+  const rad = (stairIt as { radius?: number }).radius ?? 1.5;
+  const off = Math.min(rad * 0.5, 0.7);
+  camera.position.set(stairIt.position.x, CONFIG.PLAYER_HEIGHT, stairIt.position.z - off);
+  // updateCamera() rebuilds rotation from the camera module's yaw/pitch each
+  // frame, so set yaw THROUGH the module (not camera.rotation) or it's clobbered.
+  setCameraYaw(Math.PI); // face +Z toward the stair
+  camera.updateMatrixWorld(true);
+  console.log(`player@ ${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)} (d=${off.toFixed(2)} from stair, facing +Z)`);
+}
 const ctx: TickContext = { realDt: FIXED_DT, scaledDt: FIXED_DT, playerDt: FIXED_DT, fxDt: FIXED_DT, paused: false, mode: 'playing', playing: true };
 
 // 10 neutral steps (let in-range detection settle), then 3 interact pulses.

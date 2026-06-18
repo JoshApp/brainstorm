@@ -56,10 +56,16 @@ storage, the verifier, and the multi-floor mechanism all work.
   stairs → `0 kills, depth 0`. **This is the blocker, and it's narrowed to
   the live input layer.**
 
+  **Update 2026-06-18:** the replay descent path is now **proven sound** —
+  `test-interact-capture.ts` drives a bus interact at an in-range stair and
+  the interact sim system descends (depth 1 → 2). So record→replay→descend
+  all work; the gap is *purely* live taps not reaching `triggerInteract`.
+
 - **[GAP] Multi-floor parity unconfirmed on a real run.** Parity was proven
-  single-floor; the headless multi-floor *mechanism* works (selftest), but a
-  real multi-floor run reproducing byte-for-byte is blocked behind the
-  interact gap (can't even descend in replay yet).
+  single-floor; the headless multi-floor *mechanism* works (selftest), and
+  the interact→descend replay path is now proven (above). A real multi-floor
+  run reproducing byte-for-byte is still blocked only behind the live
+  interact-capture gap (fix that → a real descending run should replay).
 
 ## Risks
 
