@@ -452,19 +452,25 @@ function mountBook(host: HTMLElement): void {
   // the satchel column
   const sat = document.createElement('div');
   Object.assign(sat.style, { flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 'clamp(2px,0.8vh,7px)', minWidth: '0' } as Partial<CSSStyleDeclaration>);
-  const rows: Array<[string, string, string]> = [
-    ['✦', 'Oil', 'feeds the flame · ×3'],
-    ['†', 'Notched Cinquedea', 'a blade that remembers heat'],
-    ['◆', 'Tallow Cloak', 'the cold keeps its distance'],
-    ['☉', 'The Glutton', 'a fate held · +10% lifesteal'],
+  // The heal item is a PHIAL OF CAUGHT LIGHT — liquid light, glowing in the satchel
+  // (a glowing orb glyph, not a flat icon); drinking it floods you with light (the
+  // Estus drink-glow — your Flame surges). Still a heal mechanically.
+  const rows: Array<{ name: string; sub: string; glyph?: string; light?: boolean }> = [
+    { name: 'Phial of Caught Light', sub: 'drink the dark back · ×3', light: true },
+    { name: 'Notched Cinquedea', sub: 'a blade that remembers heat', glyph: '†' },
+    { name: 'Tallow Cloak', sub: 'the cold keeps its distance', glyph: '◆' },
+    { name: 'The Glutton', sub: 'a fate held · +10% lifesteal', glyph: '☉' },
   ];
-  for (const [g, name, sub] of rows) {
+  for (const it of rows) {
     const r = document.createElement('div'); r.className = 'book-row';
     Object.assign(r.style, { display: 'flex', alignItems: 'center', gap: '12px', minHeight: '44px', padding: '4px 8px', borderBottom: `1px solid rgba(26,20,13,0.1)` } as Partial<CSSStyleDeclaration>);
+    const glyph = it.light
+      ? `<span style="flex:0 0 auto;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 38% 32%, #fff6d6, #ffb83e 52%, #c0680f);box-shadow:0 0 12px 2px rgba(255,184,72,0.8)"></span>`
+      : `<span style="font-family:${BLACK};font-size:18px;color:${BLOOD};width:20px;text-align:center">${it.glyph}</span>`;
     r.innerHTML =
-      `<span style="font-family:${BLACK};font-size:18px;color:${name === 'Oil' ? '#c8881f' : BLOOD};width:20px;text-align:center">${g}</span>` +
-      `<span style="flex:1;min-width:0"><span style="font-family:${SERIF};font-size:clamp(14px,2.4vw,18px);color:${INK}">${name}</span>` +
-      `<span style="display:block;font-family:${SANS};font-size:10px;letter-spacing:0.03em;color:${FADE};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub}</span></span>`;
+      glyph +
+      `<span style="flex:1;min-width:0"><span style="font-family:${SERIF};font-size:clamp(14px,2.4vw,18px);color:${INK}">${it.name}</span>` +
+      `<span style="display:block;font-family:${SANS};font-size:10px;letter-spacing:0.03em;color:${FADE};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.sub}</span></span>`;
     sat.appendChild(r);
   }
   body.appendChild(sat);
