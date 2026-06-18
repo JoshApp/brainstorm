@@ -58,16 +58,15 @@ export function showStartScreen(opts: StartScreenOptions) {
     background: 'radial-gradient(ellipse at center, rgba(28, 18, 10, 1) 0%, rgba(6, 4, 2, 1) 70%)',
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
+    // LEFT-anchored menu (mobile-first; the dark + fire live on the right, where
+    // the live vignette scene will go later). The flex spacers still centre the
+    // column vertically; alignItems hugs it to the left margin.
+    alignItems: 'flex-start',
     gap: '14px',
-    // Scroll when the content can't fit a short landscape phone (was a
-    // fixed centered column that overflowed off-screen unreachably). The
-    // flex spacers below center the content when it DOES fit. Horizontal
-    // safe-area so nothing sits under a landscape notch.
     overflowY: 'auto',
     overflowX: 'hidden',
     WebkitOverflowScrolling: 'touch',
-    paddingLeft: 'env(safe-area-inset-left, 0px)',
+    paddingLeft: 'calc(env(safe-area-inset-left, 0px) + clamp(26px, 6vw, 78px))',
     paddingRight: 'env(safe-area-inset-right, 0px)',
     // z-index managed by the screen manager via policy.layer = 'title'.
     fontFamily: '"Iowan Old Style", "Palatino", "Times New Roman", serif',
@@ -93,12 +92,15 @@ export function showStartScreen(opts: StartScreenOptions) {
   const flicker = document.createElement('div');
   Object.assign(flicker.style, {
     position: 'fixed',
-    top: '50%',
-    left: '50%',
-    width: 'min(600px, 90vw)',
-    height: 'min(600px, 90vh)',
+    // The fire sits to the RIGHT and low — where the live bonfire vignette will
+    // burn later. The menu reads against the dark on the left; the warmth pools
+    // away from the text. A stronger, warmer bloom than a centred glow.
+    top: '62%',
+    left: '72%',
+    width: 'min(680px, 80vw)',
+    height: 'min(680px, 95vh)',
     transform: 'translate(-50%, -50%)',
-    background: 'radial-gradient(circle, rgba(255, 140, 60, 0.10) 0%, transparent 60%)',
+    background: 'radial-gradient(circle, rgba(255, 150, 60, 0.20) 0%, rgba(200, 90, 30, 0.08) 38%, transparent 64%)',
     pointerEvents: 'none',
     animation: 'startFlicker 4.2s ease-in-out infinite',
   });
@@ -131,10 +133,10 @@ export function showStartScreen(opts: StartScreenOptions) {
     zIndex: '1',
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: '8px',
-    padding: 'clamp(16px, 3vw, 26px) clamp(34px, 9vw, 64px) clamp(14px, 2.4vw, 22px)',
-    marginBottom: '24px',
+    padding: 'clamp(14px, 2.6vw, 22px) clamp(20px, 4vw, 34px)',
+    marginBottom: '22px',
   } as Partial<CSSStyleDeclaration>);
 
   // Descent sigil — a thin engraved double-chevron pointing DOWN: "the way
@@ -217,7 +219,7 @@ export function showStartScreen(opts: StartScreenOptions) {
   Object.assign(buttons.style, {
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: '10px',
     position: 'relative',
     zIndex: '1',
@@ -264,17 +266,22 @@ export function showStartScreen(opts: StartScreenOptions) {
   // they read as secondary without crowding DESCEND.
   const links = document.createElement('div');
   Object.assign(links.style, {
+    // The secondary cluster lives as a BOTTOM-LEFT footer (out of the centred
+    // column) so it can never push DESCEND off a short landscape phone. Spans to
+    // the right edge so it wraps into few rows.
+    position: 'fixed',
+    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)',
+    left: 'calc(env(safe-area-inset-left, 0px) + clamp(26px, 6vw, 78px))',
+    right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
     display: 'flex',
-    flexWrap: 'wrap',            // wrap to a 2nd row instead of overflowing a narrow screen
-    justifyContent: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    gap: '0 4px',                // tight — faint dot separators carry the spacing
-    marginTop: '24px',
+    gap: '2px 4px',              // tight — faint dot separators carry the spacing
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: '10px',
     letterSpacing: '0.22em',
-    position: 'relative',
-    zIndex: '1',
+    zIndex: '2',
   } as Partial<CSSStyleDeclaration>);
 
   // Append a link with a faint "·" separator before it (except the first)
@@ -385,7 +392,8 @@ export function showStartScreen(opts: StartScreenOptions) {
 
   // Bottom spacer — balances spacerTop so content centres when it fits.
   const spacerBottom = document.createElement('div');
-  spacerBottom.style.flex = '1 0 calc(20px + env(safe-area-inset-bottom, 0px))';
+  // Tall enough to clear the fixed bottom-left links footer so the centred column never overlaps it.
+  spacerBottom.style.flex = '1 0 calc(58px + env(safe-area-inset-bottom, 0px))';
   root.appendChild(spacerBottom);
 
   document.body.appendChild(root);
