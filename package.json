@@ -32,7 +32,9 @@
     "delve": "tsx scripts/delve.ts",
     "threat": "tsx scripts/threat-sweep.ts",
     "duel": "tsx scripts/duel-sweep.ts",
-    "replay-node": "node scripts/build-replay-node.mjs"
+    "replay-node": "node scripts/build-replay-node.mjs",
+    "replay-run": "node scripts/build-replay-run.mjs",
+    "verify-runs": "tsx scripts/verify-runs.ts"
   },
   "dependencies": {
     "@clerk/clerk-js": "^6.17.0",
