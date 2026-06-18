@@ -82,7 +82,7 @@ export function spawnCardDrop(scene: THREE.Object3D, pos: THREE.Vector3, cardId:
   let t = 0, taken = false;
 
   registerInteractable({
-    id, position: group.position, radius: 1.05, promptLabel: 'TAKE', promptKind: 'bargain', navWork: true,
+    id, position: group.position, radius: 1.05, promptLabel: 'TAKE', promptKind: 'bargain',
     onUse() {
       if (taken) return;
       taken = true;

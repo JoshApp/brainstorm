@@ -95,8 +95,9 @@ const LURE_COLOR = 0xff8c3a;        // warm ember, matches the archway crown
 const LURE_MAX_OPACITY = 0.7;       // additive peak (tune on device)
 const LURE_KINDLE_RATE = 4;         // ease speed — kindle in / snuff out smoothly
 const SIGIL_SIZE = 0.5;             // metres — the carved mark on the keystone
-const SIGIL_RISE = 2.1;             // metres ABOVE THE FLOOR — high in the opening,
-                                    //   below the ~2.6m lintel; clamped under the ceiling.
+const SIGIL_RISE = 2.6;             // metres ABOVE THE FLOOR — on the keystone (the
+                                    //   arch's top stone; lintel ≈ 2.55-2.85); clamped
+                                    //   under the ceiling for low/compressed arches.
 
 export interface Lure {
   mesh: THREE.Mesh;

@@ -238,9 +238,6 @@ export function createPickup(
     // a deliberate tap (equipping is a choice + the bag is finite). The carry-cap
     // gate (canUse) means a full bag leaves the potion on the floor for later.
     autoPickup: item.kind === 'consumable',
-    // Uncollected loot on the floor → keeps its room "not done" for the
-    // explored-map nav cue (the path to it stays warm until grabbed).
-    navWork: true,
     onUse() {
       // Carry cap (consumables): if full, leave the pickup on the ground and
       // tell the player — no chime, no destroy, so they can grab it later.

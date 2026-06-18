@@ -90,7 +90,6 @@ export function spawnCorpse(
     position: pos.clone(),
     radius: 1.4,
     promptLabel: loot ? 'SEARCH' : 'READ',
-    navWork: !!loot,   // a lootable corpse = work for the nav cue (a note-only corpse isn't)
     // TIER 1 — AMBIENT: the short epitaph whispers as your lamp finds the body,
     // no press, no pause (cheap/cached for the LLM layer). Fades fast on a
     // sustained look-away; re-shows on a re-look. Same model as wall-runes.
@@ -117,7 +116,6 @@ export function spawnCorpse(
 
       if (loot && !looted) {
         looted = true;
-        interactable.navWork = false;   // searched — the dropped pickup carries the work now
         // Drop what they carried OUT IN FRONT of the body (the corpse faces +X
         // local; offset along its facing) so the pickup lands clear on the floor
         // instead of buried inside the robe. Through the normal pickup path

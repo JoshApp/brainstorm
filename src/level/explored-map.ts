@@ -13,7 +13,6 @@ import * as THREE from 'three';
 import type { LiveLevel } from './builder';
 import { buildRoomGraph, type RoomGraph, type GraphEdge } from './room-graph';
 import { getArchwayLures, type Lure } from '../scene/threshold-draft';
-import { getAllInteractables } from '../interactables/system';
 import { DEV } from '../debug/dev';
 
 const MATCH_TOL = 0.3;   // m — archway glow (x,z) → doorway-edge midpoint
@@ -29,12 +28,22 @@ const visited = new Set<string>();
 // when secret rooms land they stay undiscovered until found, so a corridor
 // leading only to one reads COLD and never betrays it.
 const discovered = new Set<string>();
+// `objective` rooms are NEVER done — the way to them stays lit no matter what.
+// Today that's the room with the down-stairs: the descent is always worth
+// finding, so its path never goes cold. Computed once per floor on rebuild.
+const objective = new Set<string>();
 
 function rebuild(level: LiveLevel): void {
   graph = buildRoomGraph(level.spec);
   visited.clear();
   discovered.clear();
+  objective.clear();
   for (const id of graph.nodes.keys()) discovered.add(id);
+  // The down-stairs room is always an objective — its path never goes cold.
+  for (const s of level.spec.stairs ?? []) {
+    const n = graph.rectAt(s.x, s.z);
+    if (n) objective.add(n.id);
+  }
   // Match each archway lure to its doorway edge by nearest midpoint. A lure that
   // matches no edge (a perimeter opening to nowhere, a logical seam) gets no link
   // → never kindled → stays dark (the safe default).
@@ -57,11 +66,11 @@ function rebuild(level: LiveLevel): void {
     (globalThis as Record<string, unknown>).__exploredMap = () => ({
       nodes: [...graph!.nodes.keys()],
       corridors: [...graph!.nodes.values()].filter((n) => n.isCorridor).map((n) => n.id),
-      allEdges: graph!.edges.map((e) => `${e.a}|${e.b}`),
-      edges: graph!.edges.length,
-      lures: getArchwayLures().length,
+      objective: [...objective],
+      visited: [...visited],
       matched: links.length,
-      links: links.map((l) => ({ a: l.a, b: l.b, cold: l.lure.cold, near: l.lure.near, lit: +l.lure.lit.toFixed(2), op: +l.lure.mat.opacity.toFixed(2) })),
+      lures: getArchwayLures().length,
+      links: links.map((l) => ({ a: l.a, b: l.b, cold: l.lure.cold, near: l.lure.near })),
     });
   }
 }
@@ -69,16 +78,17 @@ function rebuild(level: LiveLevel): void {
 /** Snapshot the nav state the cold decision reads. */
 export interface ExploredState {
   curId: string | undefined;
-  visited: ReadonlySet<string>;     // rooms the player has entered
-  hasWork: ReadonlySet<string>;     // rooms with live enemies / uncollected loot
+  visited: ReadonlySet<string>;     // rooms the player has ENTERED (exploration is the only gate)
+  objective: ReadonlySet<string>;   // rooms that are never done (the down-stairs) — path stays lit
   discovered: ReadonlySet<string>;  // nodes visible to the graph (secret-room gate)
 }
 
 /** Pure cold decision for one archway edge (a,b): COLD iff the far side (the
  *  component NOT holding the player, when this doorway is cut) is entirely done.
- *  A corridor node is always done (pass-through); a room is done iff entered +
- *  cleared; undiscovered nodes are invisible. Player on both sides (a cycle) or
- *  neither (outside) → WARM. Exported pure for tests. */
+ *  A corridor node is always done (pass-through); a ROOM is done once ENTERED
+ *  (purely exploratory — loot/enemies/interactables don't gate it), EXCEPT an
+ *  objective room (the down-stairs) which is never done. Undiscovered nodes are
+ *  invisible. Player on both sides (a cycle) or neither (outside) → WARM. */
 export function archwayCold(graph: RoomGraph, a: string, b: string, s: ExploredState): boolean {
   // BFS from `start` over DISCOVERED nodes, never crossing the cut doorway (a,b).
   const reach = (start: string): Set<string> => {
@@ -101,7 +111,8 @@ export function archwayCold(graph: RoomGraph, a: string, b: string, s: ExploredS
     const node = graph.nodes.get(id);
     if (!node) return true;
     if (node.isCorridor) return true;             // corridors hold nothing — pass-through
-    return s.visited.has(id) && !s.hasWork.has(id);
+    if (s.objective.has(id)) return false;        // the down-stairs — never done
+    return s.visited.has(id);                     // entered = explored (purely exploratory)
   };
   const allDone = (set: Set<string>): boolean => {
     for (const id of set) if (!done(id)) return false;
@@ -124,25 +135,15 @@ export function tickExploredMap(camera: THREE.Camera, level: LiveLevel | null | 
   const cur = graph.rectAt(camera.position.x, camera.position.z);
   if (cur) { visited.add(cur.id); discovered.add(cur.id); }
   const curId = cur?.id;
+  // NEAR is gated to ROOMS, not corridors: a glyph shows on the wall of the room
+  // you're standing in (the entrance you're looking at), never at a corridor's
+  // ends. So walking through a corridor doesn't light both its archways.
+  const inRoom = !!cur && !cur.isCorridor;
 
-  // Which rooms still hold live enemies or uncollected loot (computed once/tick).
-  const hasWork = new Set<string>();
-  for (const e of level.enemies) {
-    if (!e.alive) continue;
-    const n = graph.rectAt(e.position.x, e.position.z);
-    if (n) hasWork.add(n.id);
-  }
-  for (const it of getAllInteractables()) {
-    if (it.destroyed || !it.navWork) continue;
-    const n = graph.rectAt(it.position.x, it.position.z);
-    if (n) hasWork.add(n.id);
-  }
-  const state: ExploredState = { curId, visited, hasWork, discovered };
+  const state: ExploredState = { curId, visited, objective, discovered };
   for (const link of links) {
     link.lure.cold = archwayCold(graph, link.a, link.b, state);
-    // NEAR = adjacent to the current room — the entrance you're looking at, not
-    // the far exit down the corridor. The lure shows only on near + warm exits.
-    link.lure.near = curId !== undefined && (link.a === curId || link.b === curId);
+    link.lure.near = inRoom && (link.a === curId || link.b === curId);
   }
 }
 
@@ -153,4 +154,5 @@ export function resetExploredMap(): void {
   links = [];
   visited.clear();
   discovered.clear();
+  objective.clear();
 }

@@ -35,7 +35,7 @@ function linearFloor() {
 // Default: every node id used across these tests is discovered (the no-secrets
 // case). Tests that exercise the secret gate pass their own `discovered`.
 const st = (p: Partial<ExploredState> & { curId: string | undefined }): ExploredState => ({
-  visited: new Set(), hasWork: new Set(),
+  visited: new Set(), objective: new Set(),
   discovered: new Set(['A', 'B', 'C', 'cor1', 'cor2', 'H', 'X', 'Y', 'cA', 'cB']),
   ...p,
 });
@@ -53,20 +53,21 @@ test('graph wires rooms↔corridors with doorway midpoints', () => {
   assert.ok(Math.abs(e.mz - 2) < 0.5 && Math.abs(e.mx) < 0.01, `doorway midpoint ${e.mx},${e.mz}`);
 });
 
-test('WARM toward an unexplored room; COLD once it is visited + clear', () => {
+test('WARM toward an unexplored room; COLD once it is ENTERED (purely exploratory)', () => {
   const g = linearFloor();
   // Player in A. B and C unvisited → the A↔cor1 archway must be WARM (stuff that way).
   assert.equal(archwayCold(g, 'A', 'cor1', st({ curId: 'A', visited: new Set(['A']) })), false);
-  // Now everything beyond is visited + clear → COLD.
+  // Entering B and C is enough — no need to loot/clear them → COLD.
   assert.equal(archwayCold(g, 'A', 'cor1', st({ curId: 'A', visited: new Set(['A', 'B', 'C']) })), true);
 });
 
-test('WARM while the far room still has live work (enemy/loot)', () => {
+test('an OBJECTIVE room (the down-stairs) keeps its path WARM even when entered', () => {
   const g = linearFloor();
-  // All visited, but C still holds work → A's exit stays WARM (cold must not lie).
-  const s = st({ curId: 'A', visited: new Set(['A', 'B', 'C']), hasWork: new Set(['C']) });
+  // All entered, but C holds the down-stairs (an objective) → A's exit stays WARM
+  // (the way down is always worth taking).
+  const s = st({ curId: 'A', visited: new Set(['A', 'B', 'C']), objective: new Set(['C']) });
   assert.equal(archwayCold(g, 'A', 'cor1', s), false);
-  // Clear C → COLD.
+  // Without the objective, entering everything → COLD.
   assert.equal(archwayCold(g, 'A', 'cor1', st({ curId: 'A', visited: new Set(['A', 'B', 'C']) })), true);
 });
 
@@ -97,14 +98,14 @@ test('hub with dead-end branches — each exit reflects ITS branch independently
   // Confirm the topology: X and Y are dead-ends (one edge each).
   assert.deepEqual(g.neighbors('X'), ['cA']);
   assert.deepEqual(g.neighbors('Y'), ['cB']);
-  // Player in H. Branch X cleared (visited, no work); branch Y never entered.
+  // Player in H. Branch X entered; branch Y never entered.
   const s = st({ curId: 'H', visited: new Set(['H', 'X']) });
-  assert.equal(archwayCold(g, 'H', 'cA', s), true, 'exit toward the cleared dead-end X → cold');
+  assert.equal(archwayCold(g, 'H', 'cA', s), true, 'exit toward the entered dead-end X → cold');
   assert.equal(archwayCold(g, 'H', 'cB', s), false, 'exit toward the unexplored dead-end Y → warm');
-  // Leftover work in a cleared-but-not-empty dead-end keeps its exit warm.
-  const s2 = st({ curId: 'H', visited: new Set(['H', 'X', 'Y']), hasWork: new Set(['Y']) });
-  assert.equal(archwayCold(g, 'H', 'cB', s2), false, 'dead-end with loot still warm');
-  assert.equal(archwayCold(g, 'H', 'cA', s2), true, 'the empty cleared dead-end stays cold');
+  // A dead-end that's an objective (down-stairs) keeps its exit warm even entered.
+  const s2 = st({ curId: 'H', visited: new Set(['H', 'X', 'Y']), objective: new Set(['Y']) });
+  assert.equal(archwayCold(g, 'H', 'cB', s2), false, 'exit toward the down-stairs stays warm');
+  assert.equal(archwayCold(g, 'H', 'cA', s2), true, 'the plain entered dead-end stays cold');
 });
 
 test('an archway on a CYCLE stays warm (not a dead-end branch)', () => {
@@ -118,7 +119,7 @@ test('an archway on a CYCLE stays warm (not a dead-end branch)', () => {
     ],
   });
   const all = new Set(['A', 'B', 'C', 'D', 'ab', 'bc', 'cd', 'da']);
-  const s: ExploredState = { curId: 'A', visited: new Set(['A', 'B', 'C', 'D']), hasWork: new Set(), discovered: all };
+  const s: ExploredState = { curId: 'A', visited: new Set(['A', 'B', 'C', 'D']), objective: new Set(), discovered: all };
   // Even with everything visited, a cycle archway is warm (player reaches both sides).
   assert.equal(archwayCold(g, 'A', 'ab', s), false);
 });
@@ -131,7 +132,7 @@ test('undiscovered (secret) nodes are invisible — a corridor to only a secret 
   });
   // S NOT discovered (the secret gate). Player in B, A+B done.
   const discovered = new Set(['A', 'B', 'cor1', 'cor2']);   // S excluded
-  const s: ExploredState = { curId: 'B', visited: new Set(['A', 'B']), hasWork: new Set(), discovered };
+  const s: ExploredState = { curId: 'B', visited: new Set(['A', 'B']), objective: new Set(), discovered };
   // The cor2 archway leads only toward the undiscovered S → far side is empty of
   // discovered work → COLD (never betrays the secret).
   assert.equal(archwayCold(g, 'B', 'cor2', s), true);
