@@ -85,6 +85,26 @@ Kill them:
 - Resource readouts (gold, depth, HP) are passive glances → top edge, small.
 - Actions → bottom thumb rails. Content → the big middle, full-bleed.
 
+## Dialog vs standalone screen (the pattern that frees the space)
+
+Three UI types — use the right one, don't default to a dialog:
+- **Dialog** — centred box, dismissible, a ✕. For quick confirmations ONLY. This is
+  what `createSheet` builds (centred, 12px edge gap, ~92vh cap, header band + ✕).
+  Great for a settings panel; wrong for a primary moment — that frame *is* the
+  dead space at the edges + the close-out band.
+- **Standalone screen** — FULL-BLEED, owns the whole viewport, navigated into and
+  out of. For primary destinations. Build it as a `position:fixed; inset:0` root
+  registered straight with the screen-manager (`openScreen`/`closeScreen`), NOT via
+  `createSheet`. Title hugs the top edge, the hero fills the middle, the primary
+  action hugs the bottom (thumb zone). For a forced choice, **the exit is the
+  action** (no ✕; system-back is the escape hatch).
+- **Bottom sheet** — slides up, partial height. For contextual quick actions.
+
+Navigate, don't "close windows": push a screen / go back (one at a time), never
+stack floating windows. Reference implementation: **`src/ui/card-reading.ts`**
+(the fate draw) — full-bleed, edge-anchored, no ✕, cards sized by a dual
+height/width clamp so they fill but always fit three across.
+
 ## The Grimoire — visual identity (tokens)
 
 The menus are pages of the dungeon's cursed book, the same printed-woodcut world
