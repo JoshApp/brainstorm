@@ -52,6 +52,16 @@ let myPlayerId: bigint | null = null;
 // so connecting doesn't replay every historical death as if it just happened.
 let applied = false;
 const listeners = new Set<Listener>();
+
+/** True only when the socket is live AND its subscription has applied — the
+ *  real "safe to call a reducer" signal. `conn` is assigned before the socket
+ *  connects and STAYS non-null after a drop, so gating a reducer on `conn`
+ *  alone can fire it into the void: the SDK may swallow the call, submitRun
+ *  then returns true, and flushPendingRuns deletes a run that never reached the
+ *  server. `applied` is set on onApplied and cleared on onDisconnect. */
+function isLive(): boolean {
+  return conn !== null && applied;
+}
 // Fired on every successful connect/reconnect — run-sync drains its upload
 // queue here.
 const connectedListeners = new Set<() => void>();
@@ -183,6 +193,13 @@ export function addConnectedListener(cb: () => void): void {
   connectedListeners.add(cb);
 }
 
+/** Is the connection live + synced (safe to dispatch a reducer)? Lets the
+ *  upload queue tell "offline → keep + retry" apart from "online but this run
+ *  won't send → drop it so it can't wedge the queue". */
+export function isNetLive(): boolean {
+  return isLive();
+}
+
 /** Submit a recorded run (seed + compressed input tape + claimed result) for
  *  verification. Returns false if not connected (caller keeps it queued). */
 export function submitRun(rec: {
@@ -193,9 +210,9 @@ export function submitRun(rec: {
   name: string;
   tape: string;
 }): boolean {
-  if (!conn) return false;
+  if (!isLive()) return false;
   try {
-    conn.reducers.submitRun({
+    conn!.reducers.submitRun({
       seed: BigInt(Math.max(0, Math.floor(rec.seed))),
       buildVersion: rec.buildVersion,
       depth: rec.depth,
@@ -213,9 +230,9 @@ export function submitRun(rec: {
 /** Push the player's chosen name to the canonical player row. Call when the
  *  name is set (name-entry) and on connect. No-op if unconnected. */
 export function pushDisplayName(name: string): void {
-  if (!conn) return;
+  if (!isLive()) return;
   try {
-    conn.reducers.setDisplayName({ name });
+    conn!.reducers.setDisplayName({ name });
   } catch (err) {
     console.warn('[net] setDisplayName failed:', err);
   }
@@ -224,9 +241,9 @@ export function pushDisplayName(name: string): void {
 /** Report this player's death to the living dungeon. No-op if unconnected.
  *  The server resolves our player from ctx.sender — we just send the facts. */
 export function reportDeath(facts: DeathFacts): void {
-  if (!conn) return;
+  if (!isLive()) return;
   try {
-    conn.reducers.reportDeath({
+    conn!.reducers.reportDeath({
       name: getPlayerName() ?? 'a nameless delver',
       depth: facts.depth,
       killedBy: facts.killedBy ?? '',
@@ -263,22 +280,26 @@ export function freshLinkCode(): string {
 
 /** Bind a link code to THIS player (the progress holder). No-op if offline. */
 export function issueLinkCode(code: string): void {
-  if (!conn) return;
+  if (!isLive()) return;
   try {
-    conn.reducers.issueLinkCode({ code });
+    conn!.reducers.issueLinkCode({ code });
   } catch (err) {
     console.warn('[net] issueLinkCode failed:', err);
   }
 }
 
 /** Redeem a code as the CURRENT identity — merges this identity's player into
- *  the code's player. No-op if offline. */
-export function redeemLinkCode(code: string): void {
-  if (!conn) return;
+ *  the code's player. Returns true only if the reducer was actually dispatched
+ *  on a live connection, so the caller knows whether it may drop the pending
+ *  code (a false return = retry later; the code is the only copy). */
+export function redeemLinkCode(code: string): boolean {
+  if (!isLive()) return false;
   try {
-    conn.reducers.redeemLinkCode({ code });
+    conn!.reducers.redeemLinkCode({ code });
+    return true;
   } catch (err) {
     console.warn('[net] redeemLinkCode failed:', err);
+    return false;
   }
 }
 

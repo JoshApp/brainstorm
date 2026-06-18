@@ -45,13 +45,20 @@ function clearPending(): void {
 export async function completePendingLink(): Promise<void> {
   const code = getPending();
   if (!code) return; // common path — boot pays nothing
-  const c = await loadClerk();
-  if (!c.session) return; // signed out / abandoned — leave the code for a retry
-  const token = await c.session.getToken();
-  if (!token) return;
-  await reconnectWithToken(token); // become the Clerk identity
-  redeemLinkCode(code); // merge it into our player
-  clearPending();
+  try {
+    const c = await loadClerk();
+    if (!c.session) return; // signed out / abandoned — leave the code for a retry
+    const token = await c.session.getToken();
+    if (!token) return;
+    await reconnectWithToken(token); // become the Clerk identity
+    // Clear the pending code ONLY if the redeem actually dispatched on a live
+    // connection. If the reconnect errored (offline / bad token), redeem returns
+    // false and we KEEP the code — it's the only copy (link_code is private), so
+    // a premature clear would strand the link with no retry.
+    if (redeemLinkCode(code)) clearPending();
+  } catch (err) {
+    console.warn('[net] completePendingLink failed:', err); // keep the code for a retry
+  }
 }
 
 /** Start the 2-tap upgrade: issue a code as the current player, then open

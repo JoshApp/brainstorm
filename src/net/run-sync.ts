@@ -13,7 +13,7 @@ import { serializeTape } from '../harness/tape';
 import { getPlayerName } from '../state/meta-state';
 import { latestPatchVersion } from '../content/patchlog';
 import { enqueueRun, listPendingRuns, deletePendingRun } from './run-store';
-import { submitRun, addConnectedListener } from './delve-net';
+import { submitRun, addConnectedListener, isNetLive } from './delve-net';
 
 function buildTag(): string {
   return latestPatchVersion()?.version ?? 'unknown';
@@ -64,14 +64,16 @@ export async function captureRunTape(claim: { depth: number; kills: number }): P
 }
 
 let flushing = false;
-/** Drain the queue to the backend. Safe to call repeatedly; stops at the first
- *  failure (offline) and leaves the rest queued for the next connect. */
+/** Drain the queue to the backend. Safe to call repeatedly. Offline → stop and
+ *  retry on the next connect. Online but a specific run won't dispatch (corrupt
+ *  payload) → drop THAT run so it can't wedge every later run behind it. */
 export async function flushPendingRuns(): Promise<void> {
   if (flushing) return;
   flushing = true;
   try {
     const runs = await listPendingRuns();
     for (const r of runs) {
+      if (!isNetLive()) break; // offline — keep the queue, retry on next connect
       const sent = submitRun({
         seed: r.seed,
         buildVersion: r.buildVersion,
@@ -80,8 +82,16 @@ export async function flushPendingRuns(): Promise<void> {
         name: r.name,
         tape: r.tape,
       });
-      if (sent && r.id !== undefined) await deletePendingRun(r.id);
-      else break; // not connected — retry on the next connect
+      if (sent) {
+        if (r.id !== undefined) await deletePendingRun(r.id); // server has it
+      } else if (!isNetLive()) {
+        break; // dropped offline mid-drain — DON'T delete; retry next connect
+      } else if (r.id !== undefined) {
+        // Still online but this run wouldn't dispatch (corrupt seed/payload).
+        // Drop it so it can't block every later run behind it forever.
+        console.warn(`[run-sync] dropping unsendable run ${r.id}`);
+        await deletePendingRun(r.id);
+      }
     }
   } catch (err) {
     console.warn('[run-sync] flush failed:', err);
