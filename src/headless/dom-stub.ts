@@ -44,6 +44,9 @@ if (typeof (globalThis as { document?: unknown }).document === 'undefined') {
         if (k === 'getContext') return () => ctx2d;
         if (k === 'getBoundingClientRect') return () => ({ x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600 });
         if (k === 'width' || k === 'height' || k === 'clientWidth' || k === 'clientHeight') return 800;
+        // Layout reads (offsetHeight, scrollTop, …) — numbers so UI math headless
+        // doesn't crash on the Proxy. 0 is fine; nothing is actually laid out.
+        if (typeof k === 'string' && /^(offset|scroll)(Width|Height|Top|Left)$/.test(k)) return 0;
         return typeof k === 'string' && /^(append|remove|set|add|insert|replace|focus|blur|click|dispatch|prepend|after|before)/.test(k)
           ? noop : fakeEl;
       },

@@ -11,10 +11,13 @@
  *
  * Requires: `spacetime` on PATH, logged in as the database owner.
  *
- * LIMITATION: headless floor-transitions aren't built yet, so the replay
- * reaches one floor. depth>1 claims are therefore left 'pending' (NEVER
- * falsely rejected) until the determinism track lands multi-floor replay;
- * depth-1 runs are fully verifiable now.
+ * The replay is MULTI-FLOOR (mirrors the loader's floor swaps headlessly), so
+ * deep runs verify. Verdict policy is deliberately safe for the alpha: VERIFY
+ * only an exact match (depth + kills + ended-in-death); REJECT a tape that
+ * doesn't reproduce the death (survived the whole tape); leave anything else
+ * 'pending' (a depth/kills mismatch is more likely residual determinism drift
+ * than cheating right now — flag, don't punish). Tighten to reject mismatches
+ * once determinism is battle-tested.
  */
 import { execFileSync } from 'node:child_process';
 import { gunzipSync } from 'node:zlib';
@@ -78,21 +81,22 @@ function pass(tmp: string): void {
   console.log(`[verify] ${pending.length} pending run(s)`);
   for (const r of pending) {
     try {
-      if (r.depth > 1) {
-        console.log(`  run ${r.id}: depth ${r.depth} — multi-floor replay not headless yet, left pending`);
-        continue;
-      }
       const b64 = fetchTape(r.id);
       if (!b64) { console.log(`  run ${r.id}: no tape → rejected`); setVerdict(r.id, 'rejected'); continue; }
       const tapeFile = join(tmp, `tape-${r.id}.json`);
       writeFileSync(tapeFile, decodeTape(b64));
       const res = replay(tapeFile);
-      // A captured run ended in death; the replay must reproduce that, with the
-      // same kills, on at least the claimed depth.
-      const ok = res.alive === false && res.kills === r.kills && res.depth >= r.depth;
-      setVerdict(r.id, ok ? 'verified' : 'rejected');
+      let verdict: 'verified' | 'rejected' | 'pending';
+      if (res.depth === r.depth && res.kills === r.kills && res.alive === false) {
+        verdict = 'verified';                 // exact match, ended in death
+      } else if (res.alive === true) {
+        verdict = 'rejected';                 // tape never kills the player — not a real death run
+      } else {
+        verdict = 'pending';                  // depth/kills mismatch — flag, don't punish (yet)
+      }
+      if (verdict !== 'pending') setVerdict(r.id, verdict);
       console.log(
-        `  run ${r.id}: claim d${r.depth}/k${r.kills} → replay d${res.depth}/k${res.kills}/alive=${res.alive} → ${ok ? 'VERIFIED' : 'REJECTED'}`,
+        `  run ${r.id}: claim d${r.depth}/k${r.kills} → replay d${res.depth}/k${res.kills}/alive=${res.alive} → ${verdict.toUpperCase()}`,
       );
     } catch (err) {
       console.warn(`  run ${r.id}: error —`, (err as Error).message ?? err);
