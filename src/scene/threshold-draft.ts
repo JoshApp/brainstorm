@@ -58,6 +58,7 @@ interface Draft {
 const drafts: Draft[] = [];
 let hazeTex: THREE.Texture | null = null;
 let moteTex: THREE.Texture | null = null;
+let sigilTex: THREE.Texture | null = null;
 
 // Archway frame glow — the lintel/keystone 'glow' material on each corridor
 // archway, brightened by player proximity so the gate's crown lights up to
@@ -76,25 +77,29 @@ export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, 
   frameGlows.push({ mat, x, z });
 }
 
-// EXIT LURE — the diegetic navigation cue. A single FAKE light (no real light
-// source: an additive sprite + bloom, same trick as dropped loot) that kindles
-// at an archway while it's the NEAR entrance — adjacent to the player's current
-// room — to ground that still holds unseen/undone stuff, and is SNUFFED once
-// that branch is exhausted. So the lit doorways are the ways still worth taking;
-// spent ones go dark. Asymmetric on purpose (dead-centre / mirrored embers read
-// as fake) and shown only on the near end, never the far exit down a corridor.
+// EXIT LURE — the diegetic navigation cue, rendered as a carved INSCRIPTION on
+// the keystone (a single warding sigil dead-top of the arch). No real light
+// source (an additive emissive quad + bloom, same trick as dropped loot). The
+// place LIGHTS the sigil while this is the NEAR entrance — adjacent to the
+// player's current room — to ground that still holds unseen/undone stuff, and
+// SNUFFS it once that branch is exhausted. So the lit doorways are the ways
+// still worth taking; spent ones go dark. A keystone mark is single + centred
+// (no symmetry to fake), static (reads at a glance, unlike a drifting wisp), and
+// of-the-place (the dungeon's own notation, kin to the wall-runes). Shown only
+// on the near end, never the far exit down a corridor.
 //
 // `cold` (branch beyond is done) + `near` (adjacent to current room) are set
 // EXTERNALLY by the explored-map nav system; this file only renders the lure.
 const LURE_COLOR = 0xff8c3a;        // warm ember, matches the archway crown
-const LURE_MAX_OPACITY = 0.5;       // additive peak (tune on device)
+const LURE_MAX_OPACITY = 0.7;       // additive peak (tune on device)
 const LURE_KINDLE_RATE = 4;         // ease speed — kindle in / snuff out smoothly
+const SIGIL_SIZE = 0.5;             // metres — the carved mark on the keystone
+const SIGIL_HEIGHT = HAZE_HEIGHT * 0.9;   // ride at the keystone, near the arch crown
 
 export interface Lure {
-  sprite: THREE.Sprite;
-  mat: THREE.SpriteMaterial;
+  mesh: THREE.Mesh;
+  mat: THREE.MeshBasicMaterial;
   x: number; z: number;             // archway centre — the match key for explored-map
-  bx: number; by: number; bz: number;  // base world pos (asymmetric: one side, near the crown)
   cold: boolean;                    // set by nav: branch beyond is exhausted
   near: boolean;                    // set by nav: adjacent to the player's current room
   lit: number;                      // eased opacity multiplier (kindles/snuffs)
@@ -141,6 +146,30 @@ function hazeTexture(): THREE.Texture {
   }
   hazeTex = new THREE.CanvasTexture(c);
   return hazeTex;
+}
+
+// A carved warding sigil — a stem, a crossbar, and a downward chevron pointing
+// INTO the doorway. Angular + grimdark, drawn once on a canvas (like the dust /
+// haze textures). Placeholder for richer authored glyphs later (per-direction /
+// per-act). White strokes on transparent so the additive material tints it warm.
+function sigilTexture(): THREE.Texture {
+  if (sigilTex) return sigilTex;
+  const s = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = s;
+  const g = c.getContext('2d')!;
+  g.strokeStyle = 'rgba(255,255,255,1)';
+  g.lineWidth = 5;
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  const cx = s / 2;
+  g.beginPath();
+  g.moveTo(cx, s * 0.16); g.lineTo(cx, s * 0.72);                       // stem
+  g.moveTo(s * 0.30, s * 0.26); g.lineTo(s * 0.70, s * 0.26);           // crossbar
+  g.moveTo(s * 0.28, s * 0.60); g.lineTo(cx, s * 0.84); g.lineTo(s * 0.72, s * 0.60);  // chevron ↓
+  g.stroke();
+  sigilTex = new THREE.CanvasTexture(c);
+  return sigilTex;
 }
 
 function moteTexture(): THREE.Texture {
@@ -225,25 +254,22 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
 
   drafts.push({ cx: x, cz: z, axis, width: w, hazeLayers, motes, t: rand() * 10 });
 
-  // Exit lure — one asymmetric fake-light wisp near the crown, off to ONE side
-  // of the opening (a dead-centre or mirrored ember reads as fake). The side is
-  // a deterministic position hash so it's stable per archway but varies between
-  // them. Starts dark; the nav system kindles it when this is a near entrance to
-  // undone ground (see getArchwayLures / explored-map).
-  const lmat = new THREE.SpriteMaterial({
-    map: moteTexture(), color: LURE_COLOR, transparent: true, opacity: 0,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
+  // Exit lure — a carved sigil on the KEYSTONE (centred, top of the arch),
+  // flat on the lintel face so it reads as cut into the stone (not a floating
+  // mark). Two-sided + near-gated, so only the side facing the player's current
+  // room lights. Starts dark; the nav system kindles it when this is a near
+  // entrance to undone ground (see getArchwayLures / explored-map).
+  const lmat = new THREE.MeshBasicMaterial({
+    map: sigilTexture(), color: LURE_COLOR, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: true, side: THREE.DoubleSide,
   });
-  const lsprite = new THREE.Sprite(lmat);
-  lsprite.scale.set(0.42, 0.42, 1);
-  scene.add(lsprite);
-  const side = (Math.floor(Math.abs(x * 7.3 + z * 3.1)) % 2) ? 1 : -1;
-  const lat = side * w * 0.30;   // lateral offset across the opening, to one side
-  const by = HAZE_HEIGHT * 0.72; // ride high, near the crown
-  const bx = axis === 'z' ? x + lat : x;
-  const bz = axis === 'z' ? z : z + lat;
-  lsprite.position.set(bx, by, bz);
-  lures.push({ sprite: lsprite, mat: lmat, x, z, bx, by, bz, cold: false, near: false, lit: 0, t: rand() * 10 });
+  const lmesh = new THREE.Mesh(new THREE.PlaneGeometry(SIGIL_SIZE, SIGIL_SIZE), lmat);
+  // Face the passage: a plane defaults to facing +Z (correct for a z-axis
+  // passage); a wall along z (x-axis passage) needs a quarter-turn.
+  if (axis === 'x') lmesh.rotation.y = Math.PI / 2;
+  lmesh.position.set(x, SIGIL_HEIGHT, z);
+  scene.add(lmesh);
+  lures.push({ mesh: lmesh, mat: lmat, x, z, cold: false, near: false, lit: 0, t: rand() * 10 });
 }
 
 function placeMote(cx: number, cz: number, axis: Axis, m: Mote): void {
@@ -264,22 +290,19 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
     f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
   }
 
-  // Exit lures — kindle the wisp only where it's a NEAR entrance (adjacent to
-  // the current room) to undone ground; snuff it where the branch is explored.
-  // Bloom by proximity (visible in the room, not the whole floor); ease so it
-  // kindles in / vanishes smoothly; gentle organic bob (never static).
+  // Exit lures — light the keystone sigil only where it's a NEAR entrance
+  // (adjacent to the current room) to undone ground; snuff it where the branch
+  // is explored. Blooms by proximity (visible in the room, not the whole floor);
+  // eases so it kindles in / dies smoothly, with a faint torch-like flicker. The
+  // mark itself is fixed (carved) — no drift.
   for (const lure of lures) {
     lure.t += dt;
     const dist = Math.hypot(lure.x - playerPos.x, lure.z - playerPos.z);
-    const want = (lure.near && !lure.cold) ? smoothstep(7.0, 2.0, dist) : 0;
+    const want = (lure.near && !lure.cold) ? smoothstep(8.0, 2.0, dist) : 0;
     lure.lit += (want - lure.lit) * Math.min(1, dt * LURE_KINDLE_RATE);
-    const flicker = 0.82 + 0.18 * Math.sin(lure.t * 2.3);
+    const flicker = 0.85 + 0.15 * Math.sin(lure.t * 2.3);
     lure.mat.opacity = LURE_MAX_OPACITY * lure.lit * flicker;
-    lure.sprite.position.set(
-      lure.bx + Math.sin(lure.t * 0.9) * 0.04,
-      lure.by + Math.sin(lure.t * 1.3) * 0.05,
-      lure.bz + Math.cos(lure.t * 0.7) * 0.04,
-    );
+    lure.mesh.visible = lure.mat.opacity > 0.01;
   }
   for (const d of drafts) {
     d.t += dt;
@@ -331,7 +354,8 @@ export function clearThresholdDrafts(): void {
     }
   }
   for (const lure of lures) {
-    lure.sprite.parent?.remove(lure.sprite);
+    lure.mesh.parent?.remove(lure.mesh);
+    lure.mesh.geometry.dispose();
     lure.mat.dispose();
   }
   drafts.length = 0;
