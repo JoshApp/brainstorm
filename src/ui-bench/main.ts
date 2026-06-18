@@ -175,8 +175,97 @@ function mountSheetDemo(): void {
   sheet.open();
 }
 
+// ── GRIMOIRE prototype — the fresh menu-chrome direction (docs/UI-CHARTER.md) ──
+// The menu as a page of the dungeon's book: black ink on aged cream paper, a
+// thin passive header, a drop-cap chapter title, rite rows, and WAX-SEAL actions
+// in the bottom thumb corners. The watching eye is the book's presence. (Display
+// font loaded from Google here for the demo; self-host for the PWA.)
+function mountGrimoire(host: HTMLElement): void {
+  if (!document.getElementById('grimoire-fonts')) {
+    const l = document.createElement('link'); l.id = 'grimoire-fonts'; l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&family=Cardo:ital@0;1&display=swap';
+    document.head.appendChild(l);
+  }
+  const PAPER = '#E7DEC8', INK = '#1a140d', BLOOD = '#a4231c', GOLD = '#9a7b3a', FADE = '#8a7b5e';
+  const BLACK = '"UnifrakturCook", "Iowan Old Style", serif';
+  const SERIF = '"Cardo", "Iowan Old Style", Georgia, serif';
+  const SANS = 'system-ui, -apple-system, sans-serif';
+
+  const page = document.createElement('div');
+  Object.assign(page.style, {
+    position: 'relative', width: 'min(94vw, 760px)', aspectRatio: '16 / 8.4', color: INK, fontFamily: SERIF,
+    background: `radial-gradient(130% 130% at 50% -10%, #f1e9d3, ${PAPER} 55%, #d6ccb0 100%)`,
+    borderRadius: '3px', overflow: 'hidden', border: `1px solid #0d0a06`,
+    boxShadow: '0 20px 64px rgba(0,0,0,0.82), inset 0 0 70px rgba(110,80,44,0.22), inset 0 0 0 6px rgba(28,20,12,0.06)',
+  } as Partial<CSSStyleDeclaration>);
+
+  // watching-eye watermark — the book's presence
+  const eye = document.createElement('div');
+  Object.assign(eye.style, { position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: '0.05', pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
+  eye.innerHTML = `<svg viewBox="0 0 24 24" width="58%" fill="none" stroke="${INK}" stroke-width="0.6"><path d="M2 12 C 6 6, 18 6, 22 12 C 18 18, 6 18, 2 12 Z"/><circle cx="12" cy="12" r="3.4" fill="${INK}" stroke="none"/></svg>`;
+  page.appendChild(eye);
+
+  const pad = document.createElement('div');
+  Object.assign(pad.style, { position: 'absolute', inset: '0', display: 'flex', flexDirection: 'column', padding: 'clamp(14px,3vw,26px)' } as Partial<CSSStyleDeclaration>);
+  page.appendChild(pad);
+
+  // ── thin passive header — depth + gold, no actions up here ──
+  const top = document.createElement('div');
+  Object.assign(top.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontFamily: SANS, fontSize: '10px', letterSpacing: '0.22em', textTransform: 'uppercase', color: FADE, flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
+  top.innerHTML = `<span>Depth IV · the Ossuary</span><span style="color:${GOLD}">✦ 128 gold</span>`;
+  pad.appendChild(top);
+
+  // ── chapter title with a blood drop-cap ──
+  const title = document.createElement('div');
+  Object.assign(title.style, { display: 'flex', alignItems: 'flex-end', gap: '6px', margin: '6px 0 2px', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
+  title.innerHTML =
+    `<span style="font-family:${BLACK};font-size:clamp(40px,9vw,68px);line-height:0.8;color:${BLOOD};text-shadow:0 1px 0 rgba(0,0,0,0.15)">T</span>` +
+    `<span style="font-family:${BLACK};font-size:clamp(24px,5vw,40px);line-height:1;color:${INK}">he Fire</span>`;
+  pad.appendChild(title);
+  const rule = document.createElement('div');
+  Object.assign(rule.style, { height: '2px', background: `linear-gradient(90deg, ${BLOOD}, transparent 70%)`, opacity: '0.7', margin: '0 0 8px', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
+  pad.appendChild(rule);
+
+  // ── the rites — a single list, tappable rows (progressive disclosure) ──
+  const list = document.createElement('div');
+  Object.assign(list.style, { flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 'clamp(2px,1vh,8px)', overflow: 'hidden' } as Partial<CSSStyleDeclaration>);
+  const rites: Array<[string, string]> = [
+    ['Spend your fate', 'two cards wait to be claimed'],
+    ['Tend your wounds', 'rest, and the fire mends a little'],
+    ['Read the book', 'what the dungeon has written of you'],
+  ];
+  for (const [name, sub] of rites) {
+    const r = document.createElement('button');
+    Object.assign(r.style, { display: 'flex', alignItems: 'center', gap: '12px', width: '100%', minHeight: '44px', padding: '6px 8px', background: 'transparent', border: 'none', borderBottom: `1px solid rgba(26,20,13,0.14)`, color: INK, cursor: 'pointer', textAlign: 'left' } as Partial<CSSStyleDeclaration>);
+    r.innerHTML =
+      `<span style="font-family:${BLACK};font-size:18px;color:${BLOOD};width:18px;text-align:center">✠</span>` +
+      `<span style="flex:1"><span style="font-family:${SERIF};font-size:clamp(15px,2.4vw,19px)">${name}</span>` +
+      `<span style="display:block;font-family:${SANS};font-size:10px;letter-spacing:0.04em;color:${FADE}">${sub}</span></span>` +
+      `<span style="color:${FADE};font-size:16px">›</span>`;
+    list.appendChild(r);
+  }
+  pad.appendChild(list);
+
+  // ── thumb rail — seals in the bottom corners ──
+  const rail = document.createElement('div');
+  Object.assign(rail.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: '0 0 auto', paddingTop: '8px' } as Partial<CSSStyleDeclaration>);
+  rail.appendChild(seal('Close', false));
+  rail.appendChild(seal('Rise', true));
+  pad.appendChild(rail);
+
+  function seal(label: string, primary: boolean): HTMLElement {
+    const b = document.createElement('button');
+    Object.assign(b.style, { position: 'relative', minWidth: '92px', minHeight: '44px', padding: '8px 22px', cursor: 'pointer', fontFamily: SANS, fontSize: '11px', fontWeight: '700', letterSpacing: '0.2em', textTransform: 'uppercase', borderRadius: '40px', color: primary ? '#f3e6cf' : INK, background: primary ? `radial-gradient(circle at 50% 35%, #b8281f, ${BLOOD})` : 'transparent', border: primary ? `1px solid #5e120d` : `1.5px solid ${INK}`, boxShadow: primary ? '0 3px 10px rgba(120,20,16,0.5), inset 0 1px 2px rgba(255,255,255,0.25)' : 'none' } as Partial<CSSStyleDeclaration>);
+    b.textContent = label;
+    return b;
+  }
+
+  host.appendChild(page);
+}
+
 const SPECIMENS: Specimen[] = [
   { name: 'gallery', label: 'GALLERY', mount: mountGallery },
+  { name: 'grimoire', label: 'GRIMOIRE', mount: mountGrimoire },
   { name: 'sheet', label: 'SHEET', mount: () => mountSheetDemo() },
   {
     name: 'title', label: 'TITLE',
