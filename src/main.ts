@@ -1132,8 +1132,14 @@ const FIXED_DT = 1 / 60;
 const MAX_SUBSTEPS = 6; // realDt is capped at 0.1s, so ≤6 fixed steps/frame
 const SIM_SYSTEMS = SYSTEMS.filter((s) => s.kind === 'sim');
 const PRESENT_SYSTEMS = SYSTEMS.filter((s) => s.kind !== 'sim');
+// Fixed-step is now the DEFAULT: a 60Hz deterministic sim, decoupled from the
+// draw rate (which the FRAME RATE cap matches to it). This makes gameplay
+// frame-rate-independent + fair across devices, and — critically — records a
+// replay tape for EVERY run (the leaderboard verifier needs it). The FPS cap
+// keeps it smooth without interpolation. Escape hatch for an A/B or a feel
+// regression: ?varstep=1 forces the legacy variable-dt loop.
 const USE_FIXED_STEP =
-  new URLSearchParams(location.search).get('fixedstep') === '1';
+  new URLSearchParams(location.search).get('varstep') !== '1';
 // In fixed-step, run the game clock deterministically (gameNow() = accumulated
 // sim time). In default play it stays on performance.now() — feel unchanged.
 setDeterministicClock(USE_FIXED_STEP);
