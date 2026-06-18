@@ -386,27 +386,52 @@ function mountBook(host: HTMLElement): void {
     st.textContent =
       '@keyframes book-reveal{from{opacity:0;filter:brightness(0.18)}55%{opacity:1}to{filter:brightness(1)}}' +
       '.book-tab{cursor:pointer;transition:color .14s,border-color .14s}' +
-      '.book-row{cursor:pointer;transition:background .12s,padding-left .12s}.book-row:hover{background:rgba(26,20,13,0.06);padding-left:13px}';
+      '.book-row{cursor:pointer;transition:background .12s,padding-left .12s}.book-row:hover{padding-left:13px}';
     document.head.appendChild(st);
   }
-  const INK = '#1a140d', BLOOD = '#a4231c', GOLD = '#9a7b3a', FADE = '#7c6c4e', PAPER = '#E7DEC8';
+  // Three READABILITY×ATMOSPHERE looks (?look=): the question is luminance + contrast,
+  // not light-vs-dark. bright = the too-clean current; candlelit = dim aged warm vellum,
+  // dark ink (A); charred = near-black ground, PALE warm ink (B, the Souls way).
+  const LOOKS: Record<string, { bg: string; ink: string; fade: string; texOp: string; texBlend: string; dim: string; pool: string; poolOp: string; edge: string; frameBlend: string; frameFilter: string; rule: string; eyeOp: string }> = {
+    bright: {
+      bg: 'radial-gradient(120% 120% at 50% 42%, #f1e9d3, #E7DEC8 50%, #ccc1a3 100%)',
+      ink: '#1a140d', fade: '#7c6c4e', texOp: '1', texBlend: 'normal', dim: '0',
+      pool: 'rgba(255,208,138,0.30)', poolOp: '0.5',
+      edge: 'radial-gradient(130% 130% at 50% 44%, transparent 46%, rgba(58,38,16,0.30) 82%, rgba(26,15,6,0.66) 100%)',
+      frameBlend: 'multiply', frameFilter: 'none', rule: 'rgba(26,20,13,0.16)', eyeOp: '0.05',
+    },
+    candlelit: {
+      bg: 'radial-gradient(120% 120% at 50% 44%, #cdb084, #a4885a 46%, #4a3b25 100%)',
+      ink: '#241809', fade: '#5f4e30', texOp: '0.7', texBlend: 'multiply', dim: '0.34',
+      pool: 'rgba(255,198,112,0.5)', poolOp: '0.62',
+      edge: 'radial-gradient(124% 124% at 50% 44%, transparent 34%, rgba(34,22,8,0.58) 76%, rgba(10,6,2,0.96) 100%)',
+      frameBlend: 'multiply', frameFilter: 'none', rule: 'rgba(30,20,8,0.3)', eyeOp: '0.06',
+    },
+    charred: {
+      bg: 'radial-gradient(120% 120% at 50% 44%, #221a12, #15100a 50%, #060403 100%)',
+      ink: '#ecd9aa', fade: '#9a8762', texOp: '0.3', texBlend: 'overlay', dim: '0',
+      pool: 'rgba(255,178,86,0.2)', poolOp: '0.5',
+      edge: 'radial-gradient(130% 130% at 50% 44%, transparent 40%, rgba(0,0,0,0.55) 84%, rgba(0,0,0,0.95) 100%)',
+      frameBlend: 'screen', frameFilter: 'invert(0.92) sepia(0.7) saturate(1.5) brightness(1.05)', rule: 'rgba(210,180,120,0.2)', eyeOp: '0.08',
+    },
+  };
+  const L = LOOKS[new URLSearchParams(location.search).get('look') ?? 'candlelit'] ?? LOOKS.candlelit;
+  const { ink: INK, fade: FADE } = L;
+  const BLOOD = '#c2362b';
   const BLACK = "'Grenze Gotisch', 'Iowan Old Style', serif";
   const TITLEF = "'Cinzel', 'Iowan Old Style', serif";
   const SERIF = FONT_DISPLAY; const SANS = FONT_UI;
 
   const page = document.createElement('div');
-  Object.assign(page.style, { position: 'absolute', inset: '0', overflow: 'hidden', color: INK, fontFamily: SERIF, background: `radial-gradient(120% 120% at 50% 42%, #f1e9d3, ${PAPER} 50%, #ccc1a3 100%)`, animation: 'book-reveal 0.6s ease-out' } as Partial<CSSStyleDeclaration>);
+  Object.assign(page.style, { position: 'absolute', inset: '0', overflow: 'hidden', color: INK, fontFamily: SERIF, background: L.bg, animation: 'book-reveal 0.6s ease-out' } as Partial<CSSStyleDeclaration>);
   const layer = (s: Partial<CSSStyleDeclaration>) => { const d = document.createElement('div'); Object.assign(d.style, { position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply' } as Partial<CSSStyleDeclaration>, s); page.appendChild(d); };
-  layer({ mixBlendMode: 'normal', backgroundImage: `url('${TEXTURE_URL.parchment}')`, backgroundSize: 'cover', backgroundPosition: 'center' });
-  layer({ opacity: '0.14', background: PAPER });
-  layer({ opacity: '0.4', backgroundSize: '90px 90px', backgroundImage: `radial-gradient(rgba(86,54,24,0.5) 0.6px, transparent 1.2px)`, backgroundPosition: '0 0' });
-  // lamplight pool — the page is warmer/brighter where your lamp falls
-  layer({ mixBlendMode: 'screen', opacity: '0.55', background: `radial-gradient(58% 54% at 50% 46%, rgba(255,208,138,0.32), transparent 72%)` });
-  // lamplight falls off to dark worn edges
-  layer({ backgroundImage: `radial-gradient(130% 130% at 50% 44%, transparent 44%, rgba(58,38,16,0.34) 82%, rgba(26,15,6,0.72) 100%)` });
-  // the watching eye, faint
+  layer({ mixBlendMode: L.texBlend, opacity: L.texOp, backgroundImage: `url('${TEXTURE_URL.parchment}')`, backgroundSize: 'cover', backgroundPosition: 'center' });
+  if (L.dim !== '0') layer({ opacity: L.dim, background: 'rgb(40,27,11)' }); // pull the vellum down to candlelight
+  layer({ opacity: '0.32', backgroundSize: '90px 90px', backgroundImage: `radial-gradient(rgba(86,54,24,0.5) 0.6px, transparent 1.2px)`, backgroundPosition: '0 0' });
+  layer({ mixBlendMode: 'screen', opacity: L.poolOp, background: `radial-gradient(58% 54% at 50% 46%, ${L.pool}, transparent 72%)` }); // lamplight pool
+  layer({ backgroundImage: L.edge }); // lamplight falls off to dark worn edges
   const eye = document.createElement('div');
-  Object.assign(eye.style, { position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: '0.05', pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
+  Object.assign(eye.style, { position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: L.eyeOp, pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
   eye.innerHTML = `<svg viewBox="0 0 24 24" width="46%" fill="none" stroke="${INK}" stroke-width="0.5"><path d="M2 12 C 6 6, 18 6, 22 12 C 18 18, 6 18, 2 12 Z"/><circle cx="12" cy="12" r="3.2" fill="${INK}" stroke="none"/></svg>`;
   page.appendChild(eye);
 
@@ -414,7 +439,6 @@ function mountBook(host: HTMLElement): void {
   Object.assign(pad.style, { position: 'absolute', inset: '0', display: 'flex', flexDirection: 'column', padding: 'clamp(20px,3.6vw,38px) clamp(26px,5vw,54px)', gap: 'clamp(7px,1.5vh,15px)' } as Partial<CSSStyleDeclaration>);
   page.appendChild(pad);
 
-  // ── top: back · title · depth ──
   const top = document.createElement('div');
   Object.assign(top.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
   top.innerHTML =
@@ -423,23 +447,20 @@ function mountBook(host: HTMLElement): void {
     `<div style="font-family:${SANS};font-size:10px;letter-spacing:0.2em;color:${FADE}">DEPTH IV</div>`;
   pad.appendChild(top);
 
-  // ── tabs: GEAR · CHARACTER · CODEX ──
   const tabs = document.createElement('div');
-  Object.assign(tabs.style, { display: 'flex', gap: 'clamp(14px,4vw,40px)', justifyContent: 'center', borderBottom: `1px solid rgba(26,20,13,0.18)`, paddingBottom: '8px', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
+  Object.assign(tabs.style, { display: 'flex', gap: 'clamp(14px,4vw,40px)', justifyContent: 'center', borderBottom: `1px solid ${L.rule}`, paddingBottom: '8px', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
   ['Gear', 'Character', 'Codex'].forEach((t, i) => {
     const on = i === 1;
     const el = document.createElement('div'); el.className = 'book-tab'; el.textContent = t;
-    Object.assign(el.style, { fontFamily: BLACK, fontWeight: '700', fontSize: 'clamp(15px,3vw,22px)', color: on ? INK : 'rgba(26,20,13,0.4)', minHeight: '44px', display: 'flex', alignItems: 'center', borderBottom: on ? `2px solid ${BLOOD}` : '2px solid transparent', marginBottom: '-9px' } as Partial<CSSStyleDeclaration>);
+    Object.assign(el.style, { fontFamily: BLACK, fontWeight: '700', fontSize: 'clamp(15px,3vw,22px)', color: on ? INK : FADE, opacity: on ? '1' : '0.7', minHeight: '44px', display: 'flex', alignItems: 'center', borderBottom: on ? `2px solid ${BLOOD}` : '2px solid transparent', marginBottom: '-9px' } as Partial<CSSStyleDeclaration>);
     tabs.appendChild(el);
   });
   pad.appendChild(tabs);
 
-  // ── body: the FLAME (life = light) + the satchel ──
   const body = document.createElement('div');
   Object.assign(body.style, { flex: '1 1 auto', display: 'flex', alignItems: 'center', gap: 'clamp(16px,4vw,48px)', minHeight: '0' } as Partial<CSSStyleDeclaration>);
   pad.appendChild(body);
 
-  // the flame hero
   const flame = document.createElement('div');
   Object.assign(flame.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
   flame.innerHTML =
@@ -449,12 +470,8 @@ function mountBook(host: HTMLElement): void {
     `<div style="font-family:${SERIF};font-style:italic;font-size:12px;color:${FADE}">the dark waits at the edges</div>`;
   body.appendChild(flame);
 
-  // the satchel column
   const sat = document.createElement('div');
   Object.assign(sat.style, { flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 'clamp(2px,0.8vh,7px)', minWidth: '0' } as Partial<CSSStyleDeclaration>);
-  // The heal item is a PHIAL OF CAUGHT LIGHT — liquid light, glowing in the satchel
-  // (a glowing orb glyph, not a flat icon); drinking it floods you with light (the
-  // Estus drink-glow — your Flame surges). Still a heal mechanically.
   const rows: Array<{ name: string; sub: string; glyph?: string; light?: boolean }> = [
     { name: 'Phial of Caught Light', sub: 'drink the dark back · ×3', light: true },
     { name: 'Notched Cinquedea', sub: 'a blade that remembers heat', glyph: '†' },
@@ -463,7 +480,7 @@ function mountBook(host: HTMLElement): void {
   ];
   for (const it of rows) {
     const r = document.createElement('div'); r.className = 'book-row';
-    Object.assign(r.style, { display: 'flex', alignItems: 'center', gap: '12px', minHeight: '44px', padding: '4px 8px', borderBottom: `1px solid rgba(26,20,13,0.1)` } as Partial<CSSStyleDeclaration>);
+    Object.assign(r.style, { display: 'flex', alignItems: 'center', gap: '12px', minHeight: '44px', padding: '4px 8px', borderBottom: `1px solid ${L.rule}` } as Partial<CSSStyleDeclaration>);
     const glyph = it.light
       ? `<span style="flex:0 0 auto;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 38% 32%, #fff6d6, #ffb83e 52%, #c0680f);box-shadow:0 0 12px 2px rgba(255,184,72,0.8)"></span>`
       : `<span style="font-family:${BLACK};font-size:18px;color:${BLOOD};width:20px;text-align:center">${it.glyph}</span>`;
@@ -475,12 +492,11 @@ function mountBook(host: HTMLElement): void {
   }
   body.appendChild(sat);
 
-  // ── woodcut frame (above content, multiplied — ink prints, cream drops out) ──
   const frame = document.createElement('div');
-  Object.assign(frame.style, { position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply', borderStyle: 'solid', borderWidth: 'clamp(16px,2.8vw,30px)', borderColor: 'transparent', borderImageSource: `url('${TEXTURE_URL['grimoire-border']}')`, borderImageSlice: '165', borderImageRepeat: 'round' } as Partial<CSSStyleDeclaration>);
+  Object.assign(frame.style, { position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: L.frameBlend, filter: L.frameFilter, borderStyle: 'solid', borderWidth: 'clamp(16px,2.8vw,30px)', borderColor: 'transparent', borderImageSource: `url('${TEXTURE_URL['grimoire-border']}')`, borderImageSlice: '165', borderImageRepeat: 'round' } as Partial<CSSStyleDeclaration>);
   page.appendChild(frame);
 
-  Object.assign(host.style, { background: '#080705', display: 'block' } as Partial<CSSStyleDeclaration>);
+  Object.assign(host.style, { background: '#070504', display: 'block' } as Partial<CSSStyleDeclaration>);
   host.appendChild(page);
 }
 
