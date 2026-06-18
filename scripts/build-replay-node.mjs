@@ -16,6 +16,21 @@ const stubVirtuals = {
   },
 };
 
+// Vite asset imports (`import url from './x.woff2?url'`, ?raw, ?worker) resolve
+// to a string URL under Vite; esbuild can't load them. The headless sim never
+// renders fonts/assets, so stub every `?url`/`?raw` import to its bare path
+// string. Keeps the Node bundle building as the app grows Vite-isms (e.g. the
+// Grimoire UI's self-hosted fonts) without dragging real asset bytes in.
+const stubAssetUrls = {
+  name: 'stub-asset-urls',
+  setup(b) {
+    b.onResolve({ filter: /\?(url|raw|worker)$/ }, (a) => ({ path: a.path, namespace: 'asset-url' }));
+    b.onLoad({ filter: /.*/, namespace: 'asset-url' }, (a) => ({
+      contents: `export default ${JSON.stringify(a.path.replace(/\?(url|raw|worker)$/, ''))};`,
+    }));
+  },
+};
+
 await build({
   entryPoints: ['scripts/replay-node.ts'],
   bundle: true,
@@ -31,7 +46,7 @@ await build({
     // headless Node bundle doesn't deref an undefined import.meta.env.
     'import.meta.env.BASE_URL': '"/brainstorm/"',
   },
-  plugins: [stubVirtuals],
+  plugins: [stubVirtuals, stubAssetUrls],
   outfile: '/tmp/replay-node.mjs',
   logLevel: 'error',
 });

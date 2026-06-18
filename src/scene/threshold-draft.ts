@@ -69,40 +69,43 @@ let moteTex: THREE.Texture | null = null;
 // glow now sits at a much more restrained register.
 const GLOW_MAX_EMISSIVE = 0.16;
 
-// EXPLORED-EXIT MARKING — a diegetic navigation cue. An archway's crown carries
-// a faint COLD afterglow once the branch BEYOND it (away from you) is fully
-// explored + cleared — "nothing more this way." Exits that still lead to unseen
-// or undone ground keep their natural warm proximity glow. So the warm arches
-// are the ways still worth taking; the cold ones are spent. No HUD, no map — it
-// rides the light-as-signal grammar (warm = alive/open, cold = dead/spent).
-//
-// The `cold` flag is set EXTERNALLY by the explored-map nav system
-// (src/level/explored-map.ts), which owns the floor graph + reachability; this
-// file only RENDERS the warm/cold state. Per-floor: reset with the drafts on
-// teardown.
-const VISITED_COLD_COLOR = 0x3d5e86;   // cool steel-blue — a spent threshold
-const VISITED_BASE_EMISSIVE = 0.06;    // faint CONSTANT cold glow (reads across the room)
-const VISITED_PROX_EMISSIVE = 0.08;    // a touch brighter up close
-
-export interface FrameGlow {
-  mat: THREE.MeshStandardMaterial;
-  x: number; z: number;
-  cold: boolean;       // set by the nav system: true = branch beyond is exhausted
-  warm: THREE.Color;   // the authored warm emissive, restored each frame while warm
-}
+interface FrameGlow { mat: THREE.MeshStandardMaterial; x: number; z: number; }
 const frameGlows: FrameGlow[] = [];
 
-/** Register an archway's crown 'glow' material for proximity + explored marking.
- *  Returns the handle so the nav system can drive its `cold` flag. */
-export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, z: number): FrameGlow {
-  const g: FrameGlow = { mat, x, z, cold: false, warm: mat.emissive.clone() };
-  frameGlows.push(g);
-  return g;
+export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, z: number): void {
+  frameGlows.push({ mat, x, z });
 }
 
-/** The live archway glow handles (the nav system matches these to floor edges). */
-export function getArchwayGlows(): readonly FrameGlow[] {
-  return frameGlows;
+// EXIT LURE — the diegetic navigation cue. A single FAKE light (no real light
+// source: an additive sprite + bloom, same trick as dropped loot) that kindles
+// at an archway while it's the NEAR entrance — adjacent to the player's current
+// room — to ground that still holds unseen/undone stuff, and is SNUFFED once
+// that branch is exhausted. So the lit doorways are the ways still worth taking;
+// spent ones go dark. Asymmetric on purpose (dead-centre / mirrored embers read
+// as fake) and shown only on the near end, never the far exit down a corridor.
+//
+// `cold` (branch beyond is done) + `near` (adjacent to current room) are set
+// EXTERNALLY by the explored-map nav system; this file only renders the lure.
+const LURE_COLOR = 0xff8c3a;        // warm ember, matches the archway crown
+const LURE_MAX_OPACITY = 0.5;       // additive peak (tune on device)
+const LURE_KINDLE_RATE = 4;         // ease speed — kindle in / snuff out smoothly
+
+export interface Lure {
+  sprite: THREE.Sprite;
+  mat: THREE.SpriteMaterial;
+  x: number; z: number;             // archway centre — the match key for explored-map
+  bx: number; by: number; bz: number;  // base world pos (asymmetric: one side, near the crown)
+  cold: boolean;                    // set by nav: branch beyond is exhausted
+  near: boolean;                    // set by nav: adjacent to the player's current room
+  lit: number;                      // eased opacity multiplier (kindles/snuffs)
+  t: number;
+}
+const lures: Lure[] = [];
+
+/** The live exit-lure handles (the nav system matches these to floor edges and
+ *  drives their `cold` + `near` flags). */
+export function getArchwayLures(): readonly Lure[] {
+  return lures;
 }
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -221,6 +224,26 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
   }
 
   drafts.push({ cx: x, cz: z, axis, width: w, hazeLayers, motes, t: rand() * 10 });
+
+  // Exit lure — one asymmetric fake-light wisp near the crown, off to ONE side
+  // of the opening (a dead-centre or mirrored ember reads as fake). The side is
+  // a deterministic position hash so it's stable per archway but varies between
+  // them. Starts dark; the nav system kindles it when this is a near entrance to
+  // undone ground (see getArchwayLures / explored-map).
+  const lmat = new THREE.SpriteMaterial({
+    map: moteTexture(), color: LURE_COLOR, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
+  });
+  const lsprite = new THREE.Sprite(lmat);
+  lsprite.scale.set(0.42, 0.42, 1);
+  scene.add(lsprite);
+  const side = (Math.floor(Math.abs(x * 7.3 + z * 3.1)) % 2) ? 1 : -1;
+  const lat = side * w * 0.30;   // lateral offset across the opening, to one side
+  const by = HAZE_HEIGHT * 0.72; // ride high, near the crown
+  const bx = axis === 'z' ? x + lat : x;
+  const bz = axis === 'z' ? z : z + lat;
+  lsprite.position.set(bx, by, bz);
+  lures.push({ sprite: lsprite, mat: lmat, x, z, bx, by, bz, cold: false, near: false, lit: 0, t: rand() * 10 });
 }
 
 function placeMote(cx: number, cz: number, axis: Axis, m: Mote): void {
@@ -235,18 +258,28 @@ function placeMote(cx: number, cz: number, axis: Axis, m: Mote): void {
 /** Per-frame. Haze blooms with player proximity; dust drifts (only near);
  *  archway frames glow brighter as you approach. */
 export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void {
+  // Archway crown — its natural warm proximity glow (decoration, not the cue).
   for (const f of frameGlows) {
     const dist = Math.hypot(f.x - playerPos.x, f.z - playerPos.z);
-    if (f.cold) {
-      // Spent threshold — a cold afterglow, faint+constant so it reads across
-      // the room as "nothing more this way", a touch brighter as you near it.
-      f.mat.emissive.setHex(VISITED_COLD_COLOR);
-      f.mat.emissiveIntensity = VISITED_BASE_EMISSIVE + VISITED_PROX_EMISSIVE * smoothstep(2.5, 1.0, dist);
-    } else {
-      // Still worth taking — the natural warm archway, brightening as you approach.
-      f.mat.emissive.copy(f.warm);
-      f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
-    }
+    f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
+  }
+
+  // Exit lures — kindle the wisp only where it's a NEAR entrance (adjacent to
+  // the current room) to undone ground; snuff it where the branch is explored.
+  // Bloom by proximity (visible in the room, not the whole floor); ease so it
+  // kindles in / vanishes smoothly; gentle organic bob (never static).
+  for (const lure of lures) {
+    lure.t += dt;
+    const dist = Math.hypot(lure.x - playerPos.x, lure.z - playerPos.z);
+    const want = (lure.near && !lure.cold) ? smoothstep(7.0, 2.0, dist) : 0;
+    lure.lit += (want - lure.lit) * Math.min(1, dt * LURE_KINDLE_RATE);
+    const flicker = 0.82 + 0.18 * Math.sin(lure.t * 2.3);
+    lure.mat.opacity = LURE_MAX_OPACITY * lure.lit * flicker;
+    lure.sprite.position.set(
+      lure.bx + Math.sin(lure.t * 0.9) * 0.04,
+      lure.by + Math.sin(lure.t * 1.3) * 0.05,
+      lure.bz + Math.cos(lure.t * 0.7) * 0.04,
+    );
   }
   for (const d of drafts) {
     d.t += dt;
@@ -297,6 +330,11 @@ export function clearThresholdDrafts(): void {
       m.mat.dispose();
     }
   }
+  for (const lure of lures) {
+    lure.sprite.parent?.remove(lure.sprite);
+    lure.mat.dispose();
+  }
   drafts.length = 0;
   frameGlows.length = 0;
+  lures.length = 0;
 }

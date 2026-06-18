@@ -12,13 +12,13 @@
 import * as THREE from 'three';
 import type { LiveLevel } from './builder';
 import { buildRoomGraph, type RoomGraph, type GraphEdge } from './room-graph';
-import { getArchwayGlows, type FrameGlow } from '../scene/threshold-draft';
+import { getArchwayLures, type Lure } from '../scene/threshold-draft';
 import { getAllInteractables } from '../interactables/system';
 import { DEV } from '../debug/dev';
 
 const MATCH_TOL = 0.3;   // m — archway glow (x,z) → doorway-edge midpoint
 
-interface ArchwayLink { glow: FrameGlow; a: string; b: string; }
+interface ArchwayLink { lure: Lure; a: string; b: string; }
 
 let graph: RoomGraph | null = null;
 let activeLevel: LiveLevel | null = null;
@@ -35,18 +35,18 @@ function rebuild(level: LiveLevel): void {
   visited.clear();
   discovered.clear();
   for (const id of graph.nodes.keys()) discovered.add(id);
-  // Match each registered archway glow to its doorway edge by nearest midpoint.
-  // A glow that matches no edge (a perimeter opening to nowhere, a logical seam)
-  // gets no link → its `cold` is never set → it stays WARM (the safe default).
+  // Match each archway lure to its doorway edge by nearest midpoint. A lure that
+  // matches no edge (a perimeter opening to nowhere, a logical seam) gets no link
+  // → never kindled → stays dark (the safe default).
   links = [];
-  for (const glow of getArchwayGlows()) {
+  for (const lure of getArchwayLures()) {
     let best: GraphEdge | null = null;
     let bestD = Infinity;
     for (const e of graph.edges) {
-      const d = Math.hypot(e.mx - glow.x, e.mz - glow.z);
+      const d = Math.hypot(e.mx - lure.x, e.mz - lure.z);
       if (d < bestD) { bestD = d; best = e; }
     }
-    if (best && bestD < MATCH_TOL) links.push({ glow, a: best.a, b: best.b });
+    if (best && bestD < MATCH_TOL) links.push({ lure, a: best.a, b: best.b });
   }
   activeLevel = level;
 
@@ -57,9 +57,9 @@ function rebuild(level: LiveLevel): void {
     (globalThis as Record<string, unknown>).__exploredMap = () => ({
       nodes: [...graph!.nodes.keys()],
       edges: graph!.edges.length,
-      glows: getArchwayGlows().length,
+      lures: getArchwayLures().length,
       matched: links.length,
-      links: links.map((l) => ({ a: l.a, b: l.b, cold: l.glow.cold })),
+      links: links.map((l) => ({ a: l.a, b: l.b, cold: l.lure.cold, near: l.lure.near, lit: +l.lure.lit.toFixed(2), op: +l.lure.mat.opacity.toFixed(2) })),
     });
   }
 }
@@ -136,7 +136,12 @@ export function tickExploredMap(camera: THREE.Camera, level: LiveLevel | null | 
     if (n) hasWork.add(n.id);
   }
   const state: ExploredState = { curId, visited, hasWork, discovered };
-  for (const link of links) link.glow.cold = archwayCold(graph, link.a, link.b, state);
+  for (const link of links) {
+    link.lure.cold = archwayCold(graph, link.a, link.b, state);
+    // NEAR = adjacent to the current room — the entrance you're looking at, not
+    // the far exit down the corridor. The lure shows only on near + warm exits.
+    link.lure.near = curId !== undefined && (link.a === curId || link.b === curId);
+  }
 }
 
 /** Drop per-floor state (the next new level rebuilds anyway; explicit for teardown). */
