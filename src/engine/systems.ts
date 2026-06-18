@@ -36,7 +36,9 @@ import { updateBossEncounterReadout } from '../debug/boss-encounter-readout';
 import { tickThresholdDrafts } from '../scene/threshold-draft';
 import { isAnyScreenOpen } from '../ui/screen-manager';
 import { tickAllBuffs } from '../ecs/buffs';
-import { tickInteractables, getInRangeInteractable } from '../interactables/system';
+import { tickInteractables, getInRangeInteractable, resolveUsable } from '../interactables/system';
+import { consumeInteractPressed } from '../controls/interact-input';
+import { isBusInstalled } from '../harness/intent';
 import { consumeAttackPressed } from '../controls/attack-input';
 import { consumeDash } from '../controls/dash-input';
 import { captureStep } from '../harness/run-recorder';
@@ -461,6 +463,22 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // real-time even during hit-pause.
       updateOutlinePxScale(camera as THREE.PerspectiveCamera, renderer.domElement.height);
       updateOutline(inRange, ctx.realDt, camera.position);
+    } },
+
+    // Interact (REPLAY / bot only) — LIVE play performs the interaction
+    // directly in the input handler (the E key, the prompt tap, a tap on the
+    // object). Under the intent bus (a replay or the bot), those handlers
+    // aren't firing, so the recorded interact intent is consumed HERE to use
+    // the in-range interactable — descend a stair, open a chest, take loot.
+    // Without it a replayed run never leaves floor 1. The consume runs in live
+    // too (to clear the flag), but the isBusInstalled gate makes it a no-op
+    // there, so there's no double-interaction.
+    { name: 'interact', kind: 'sim', phase: 'unpaused', tick() {
+      if (!consumeInteractPressed()) return;
+      if (!isBusInstalled()) return;
+      if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
+      const inRange = getInRangeInteractable();
+      if (inRange) resolveUsable(inRange, camera.position).onUse();
     } },
 
     // Player stats snapshot — recompute the single reactive PlayerSnapshot

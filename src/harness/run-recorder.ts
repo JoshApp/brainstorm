@@ -16,8 +16,9 @@ import type { Intent } from './intent';
 import type { Tape } from './tape';
 import { peekAttackPressed } from '../controls/attack-input';
 import { peekDash } from '../controls/dash-input';
+import { peekInteractPressed } from '../controls/interact-input';
 
-const FLOATS_PER_STEP = 8; // moveX, moveY, lookDx, lookDy, attack, dodgeX, dodgeY, dodgeFlag
+const FLOATS_PER_STEP = 9; // moveX, moveY, lookDx, lookDy, attack, dodgeX, dodgeY, dodgeFlag, interact
 
 class RunRecorder {
   private buf: Float32Array;
@@ -31,6 +32,7 @@ class RunRecorder {
   record(
     moveX: number, moveY: number, lookDx: number, lookDy: number,
     attack: boolean, dodgeX: number, dodgeY: number, hasDodge: boolean,
+    interact: boolean,
   ): void {
     if ((this.steps + 1) * FLOATS_PER_STEP > this.buf.length) {
       const next = new Float32Array(this.buf.length * 2);
@@ -41,7 +43,8 @@ class RunRecorder {
     const b = this.buf;
     b[i++] = moveX; b[i++] = moveY; b[i++] = lookDx; b[i++] = lookDy;
     b[i++] = attack ? 1 : 0;
-    b[i++] = dodgeX; b[i++] = dodgeY; b[i] = hasDodge ? 1 : 0;
+    b[i++] = dodgeX; b[i++] = dodgeY; b[i++] = hasDodge ? 1 : 0;
+    b[i] = interact ? 1 : 0;
     this.steps++;
   }
 
@@ -61,6 +64,7 @@ class RunRecorder {
         look: [b[i + 2], b[i + 3]],
         attack: b[i + 4] === 1,
         dodge: b[i + 7] === 1 ? [b[i + 5], b[i + 6]] : null,
+        interact: b[i + 8] === 1,
       };
     }
     return { seed: this.seed, frames, label: 'live' };
@@ -124,5 +128,6 @@ export function captureStep(input: {
     input.moveX, input.moveY, input.lookDx, input.lookDy,
     peekAttackPressed(),
     dodge ? dodge.dx : 0, dodge ? dodge.dy : 0, dodge !== null,
+    peekInteractPressed(),
   );
 }

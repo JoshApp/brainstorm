@@ -113,6 +113,7 @@ import { getInRangeInteractable, getAllInteractables, resolveUsable } from './in
 import { findTapTarget } from './controls/tap-target';
 import { resolveTap } from './controls/tap-resolve';
 import { triggerAttack } from './controls/attack-input';
+import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
 import { setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-pool';
@@ -680,7 +681,7 @@ const input = createTouchInput(canvas, {
       else triggerAttack();
     }
     else if (action.kind === 'attack') triggerAttack();
-    else if (action.kind === 'interact') resolveUsable(action.interactable, camera.position).onUse();
+    else if (action.kind === 'interact') { triggerInteract(); resolveUsable(action.interactable, camera.position).onUse(); }
     // 'none' → deliberately do nothing (e.g. tapped a chest you're too far from).
   },
   onInteract() {
@@ -689,7 +690,7 @@ const input = createTouchInput(canvas, {
     // path: not during dying or open screens.
     if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
     const inRange = getInRangeInteractable();
-    if (inRange) resolveUsable(inRange, camera.position).onUse();
+    if (inRange) { triggerInteract(); resolveUsable(inRange, camera.position).onUse(); }
   },
 });
 // Floating world-anchored interact label only — the corner USE button

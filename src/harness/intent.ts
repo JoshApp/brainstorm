@@ -20,6 +20,7 @@ import type { InputState } from '../controls/input';
 import { setInputOverride } from '../controls/input';
 import { triggerAttack } from '../controls/attack-input';
 import { triggerDash } from '../controls/dash-input';
+import { triggerInteract } from '../controls/interact-input';
 
 export interface Intent {
   /** Camera-relative move: [strafe (=moveX), forward-sign (=moveY, −=forward)]. */
@@ -31,6 +32,10 @@ export interface Intent {
   /** Edge-triggered dodge in camera-relative dir, or null for none.
    *  [0,0] is a valid dodge (neutral backstep). */
   dodge: [number, number] | null;
+  /** Edge-triggered: use the in-range interactable this frame (descend a
+   *  stair, open a chest, take loot). Optional so pre-interact tapes still
+   *  parse (treated as false). */
+  interact?: boolean;
 }
 
 export const NEUTRAL_INTENT: Intent = {
@@ -38,6 +43,7 @@ export const NEUTRAL_INTENT: Intent = {
   look: [0, 0],
   attack: false,
   dodge: null,
+  interact: false,
 };
 
 /** Deep-copy an intent — tapes own their frames; don't alias the live bus. */
@@ -47,6 +53,7 @@ export function cloneIntent(i: Intent): Intent {
     look: [i.look[0], i.look[1]],
     attack: i.attack,
     dodge: i.dodge ? [i.dodge[0], i.dodge[1]] : null,
+    interact: !!i.interact,
   };
 }
 
@@ -80,6 +87,14 @@ export function setIntent(i: Intent): void {
   current = i;
   if (i.attack) triggerAttack();
   if (i.dodge) triggerDash(i.dodge[0], i.dodge[1]);
+  if (i.interact) triggerInteract();
+}
+
+/** Whether the intent bus is driving input (bot / replay). The interact system
+ *  only performs the interaction itself in this mode — live play does it in the
+ *  input handlers. */
+export function isBusInstalled(): boolean {
+  return installed;
 }
 
 export function getIntent(): Intent {
