@@ -755,8 +755,10 @@ function placeThresholdDrafts(root: THREE.Object3D, spec: LevelSpec, allRects: R
         }
         if (doored) continue;
         // The passage runs along the wall's perpendicular axis; the opening
-        // span (op) is the doorway width.
-        spawnThresholdDraft(root, x, z, we.perpAxis, op.end - op.start);
+        // span (op) is the doorway width. Pass the floor Y under the opening +
+        // the room's ceiling so the threshold marks ride this opening's actual
+        // floor (rooms vary in elevation) instead of a fixed world height.
+        spawnThresholdDraft(root, x, z, we.perpAxis, op.end - op.start, groundYAt(x, z), room.height);
       }
     }
   }

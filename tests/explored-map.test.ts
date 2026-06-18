@@ -32,8 +32,11 @@ function linearFloor() {
   });
 }
 
+// Default: every node id used across these tests is discovered (the no-secrets
+// case). Tests that exercise the secret gate pass their own `discovered`.
 const st = (p: Partial<ExploredState> & { curId: string | undefined }): ExploredState => ({
-  visited: new Set(), hasWork: new Set(), discovered: new Set(['A', 'B', 'C', 'cor1', 'cor2']),
+  visited: new Set(), hasWork: new Set(),
+  discovered: new Set(['A', 'B', 'C', 'cor1', 'cor2', 'H', 'X', 'Y', 'cA', 'cB']),
   ...p,
 });
 
@@ -82,6 +85,26 @@ test('corridors are pass-through — cold flows through them to the real room', 
   // state via the edge-cut, so it is COLD even though A isn't next to it.
   const s = st({ curId: 'A', visited: new Set(['A', 'B', 'C']) });
   assert.equal(archwayCold(g, 'cor2', 'C', s), true);
+});
+
+test('hub with dead-end branches — each exit reflects ITS branch independently', () => {
+  // A hub H with two dead-end branches: H —cA— X (north), H —cB— Y (east).
+  // Mirrors procgen-3 (a hub vault + leaf branch rooms).
+  const g = buildRoomGraph({
+    rooms: [room('H', 0, 0), room('X', 0, 6), room('Y', 6, 0)],
+    corridors: [corr('cA', 0, 3, 2, 2), corr('cB', 3, 0, 2, 2)],
+  });
+  // Confirm the topology: X and Y are dead-ends (one edge each).
+  assert.deepEqual(g.neighbors('X'), ['cA']);
+  assert.deepEqual(g.neighbors('Y'), ['cB']);
+  // Player in H. Branch X cleared (visited, no work); branch Y never entered.
+  const s = st({ curId: 'H', visited: new Set(['H', 'X']) });
+  assert.equal(archwayCold(g, 'H', 'cA', s), true, 'exit toward the cleared dead-end X → cold');
+  assert.equal(archwayCold(g, 'H', 'cB', s), false, 'exit toward the unexplored dead-end Y → warm');
+  // Leftover work in a cleared-but-not-empty dead-end keeps its exit warm.
+  const s2 = st({ curId: 'H', visited: new Set(['H', 'X', 'Y']), hasWork: new Set(['Y']) });
+  assert.equal(archwayCold(g, 'H', 'cB', s2), false, 'dead-end with loot still warm');
+  assert.equal(archwayCold(g, 'H', 'cA', s2), true, 'the empty cleared dead-end stays cold');
 });
 
 test('an archway on a CYCLE stays warm (not a dead-end branch)', () => {

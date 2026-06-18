@@ -50,6 +50,7 @@ interface Draft {
   cx: number; cz: number;
   axis: Axis;
   width: number;
+  floorY: number;   // world-Y of the floor under this opening (rooms vary in elevation)
   hazeLayers: HazeLayer[];
   motes: Mote[];
   t: number;
@@ -94,7 +95,8 @@ const LURE_COLOR = 0xff8c3a;        // warm ember, matches the archway crown
 const LURE_MAX_OPACITY = 0.7;       // additive peak (tune on device)
 const LURE_KINDLE_RATE = 4;         // ease speed — kindle in / snuff out smoothly
 const SIGIL_SIZE = 0.5;             // metres — the carved mark on the keystone
-const SIGIL_HEIGHT = HAZE_HEIGHT * 0.9;   // ride at the keystone, near the arch crown
+const SIGIL_RISE = 2.1;             // metres ABOVE THE FLOOR — high in the opening,
+                                    //   below the ~2.6m lintel; clamped under the ceiling.
 
 export interface Lure {
   mesh: THREE.Mesh;
@@ -194,7 +196,7 @@ function rand(): number { return Math.random(); }
 /** Place a draft at an open archway. `axis` is the passage direction (the
  *  motes drift along it; the haze faces across it); `width` is the opening
  *  width. Added under `scene` (the level root). */
-export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number, axis: Axis, width: number): void {
+export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number, axis: Axis, width: number, floorY = 0, ceilingH = 3.2): void {
   const w = Math.min(2.2, Math.max(0.8, width)) * HAZE_WIDTH_INSET;
 
   // Layered haze planes at staggered depths within the archway frame.
@@ -249,10 +251,10 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
       baseOpacity: 0.35 + rand() * 0.4,
     };
     motes.push(m);
-    placeMote(x, z, axis, m);
+    placeMote(x, z, floorY, axis, m);
   }
 
-  drafts.push({ cx: x, cz: z, axis, width: w, hazeLayers, motes, t: rand() * 10 });
+  drafts.push({ cx: x, cz: z, axis, width: w, floorY, hazeLayers, motes, t: rand() * 10 });
 
   // Exit lure — a carved sigil on the KEYSTONE (centred, top of the arch),
   // flat on the lintel face so it reads as cut into the stone (not a floating
@@ -267,17 +269,21 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
   // Face the passage: a plane defaults to facing +Z (correct for a z-axis
   // passage); a wall along z (x-axis passage) needs a quarter-turn.
   if (axis === 'x') lmesh.rotation.y = Math.PI / 2;
-  lmesh.position.set(x, SIGIL_HEIGHT, z);
+  // Floor-relative: ride at the keystone above THIS opening's floor, clamped so
+  // it never punches through a low ceiling. (A fixed world-Y floated in sunken
+  // rooms / clipped the ceiling in raised ones — rooms vary in elevation.)
+  lmesh.position.set(x, floorY + Math.min(SIGIL_RISE, ceilingH - 0.4), z);
   scene.add(lmesh);
   lures.push({ mesh: lmesh, mat: lmat, x, z, cold: false, near: false, lit: 0, t: rand() * 10 });
 }
 
-function placeMote(cx: number, cz: number, axis: Axis, m: Mote): void {
-  // ox = along the passage axis; oz = lateral (across the opening).
+function placeMote(cx: number, cz: number, floorY: number, axis: Axis, m: Mote): void {
+  // ox = along the passage axis; oz = lateral (across the opening). oy is height
+  // ABOVE THE FLOOR under the opening (so motes don't float in elevated rooms).
   if (axis === 'z') {
-    m.sprite.position.set(cx + m.oz, m.oy, cz + m.ox);
+    m.sprite.position.set(cx + m.oz, floorY + m.oy, cz + m.ox);
   } else {
-    m.sprite.position.set(cx + m.ox, m.oy, cz + m.oz);
+    m.sprite.position.set(cx + m.ox, floorY + m.oy, cz + m.oz);
   }
 }
 
@@ -332,7 +338,7 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
         m.oy = 0.3 + rand() * 1.6;
         m.oz = (rand() - 0.5) * 0.8;
       }
-      placeMote(d.cx, d.cz, d.axis, m);
+      placeMote(d.cx, d.cz, d.floorY, d.axis, m);
       // Fade in at the ends of the column so they don't pop.
       const endFade = 1 - smoothstep(0.9, 1.3, Math.abs(m.ox));
       m.mat.opacity = m.baseOpacity * dustVis * endFade;

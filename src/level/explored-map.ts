@@ -56,6 +56,8 @@ function rebuild(level: LiveLevel): void {
   if (DEV) {
     (globalThis as Record<string, unknown>).__exploredMap = () => ({
       nodes: [...graph!.nodes.keys()],
+      corridors: [...graph!.nodes.values()].filter((n) => n.isCorridor).map((n) => n.id),
+      allEdges: graph!.edges.map((e) => `${e.a}|${e.b}`),
       edges: graph!.edges.length,
       lures: getArchwayLures().length,
       matched: links.length,
