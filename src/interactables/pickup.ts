@@ -234,6 +234,10 @@ export function createPickup(
     canUse() {
       return !(item.kind === 'consumable' && isAtCarryLimit(item.id));
     },
+    // Consumables are decision-free — grab them on walk-over, no tap. Gear stays
+    // a deliberate tap (equipping is a choice + the bag is finite). The carry-cap
+    // gate (canUse) means a full bag leaves the potion on the floor for later.
+    autoPickup: item.kind === 'consumable',
     onUse() {
       // Carry cap (consumables): if full, leave the pickup on the ground and
       // tell the player — no chime, no destroy, so they can grab it later.

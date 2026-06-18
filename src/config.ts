@@ -503,6 +503,11 @@ export const CONFIG = {
                                  //   "TAKE" about loot directly behind them.
                                //   Generous so the player doesn't have to look
                                //   precisely at the target (especially low rats).
+  AUTO_PICKUP_RADIUS: 0.7,       // m (XZ). Decision-free items (consumables) are
+                                 //   grabbed when you walk this close — no tap, no
+                                 //   facing. Tighter than the 1.0 tap radius so it
+                                 //   reads as "step onto it", not "vacuum from afar".
+                                 //   Gear is NOT auto-grabbed (equipping is a choice).
   // Tap-to-use tuning (the diegetic "tap the object" interaction). One place
   // to tune how forgiving touch interaction feels.
   INTERACT_TAP_PROXIMITY_PX: 60, // screen-space near-miss radius (px). A tap this

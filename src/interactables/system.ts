@@ -38,6 +38,21 @@ export function getAllInteractables(): readonly Interactable[] {
  * @param playerForward unit XZ direction the camera is looking (Y ignored).
  */
 export function tickInteractables(dt: number, playerPos: THREE.Vector3, playerForward: THREE.Vector3) {
+  // Auto-pickup pass FIRST (so a grabbed item is destroyed before the cleanup
+  // loop below removes it — same-frame, no lingering mesh). Walk-over collection
+  // for decision-free items (consumables flag autoPickup). No tap, no facing:
+  // within AUTO_PICKUP_RADIUS + canUse() (a full bag leaves it on the floor, and
+  // a flying item has no promptLabel yet so it isn't grabbed mid-arc). onUse
+  // gives the normal pickup chime, so a collected potion still reads as an event.
+  const autoR2 = CONFIG.AUTO_PICKUP_RADIUS * CONFIG.AUTO_PICKUP_RADIUS;
+  for (const it of interactables) {
+    if (!it.autoPickup || !it.promptLabel || it.destroyed) continue;
+    if (it.canUse && !it.canUse()) continue;
+    const dx = it.position.x - playerPos.x;
+    const dz = it.position.z - playerPos.z;
+    if (dx * dx + dz * dz <= autoR2) it.onUse();
+  }
+
   // Tick + collect surviving
   let i = 0;
   while (i < interactables.length) {

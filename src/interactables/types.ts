@@ -40,6 +40,14 @@ export interface Interactable {
    */
   canUse?: () => boolean;
   /**
+   * Optional: grab this on WALK-OVER — no tap, no facing. For decision-free
+   * items only (consumables); gear stays a deliberate tap. The system
+   * auto-fires onUse() when the player is within CONFIG.AUTO_PICKUP_RADIUS and
+   * canUse() passes (a full bag leaves it on the floor — its tap onUse still
+   * explains why). Omitted = tap-only.
+   */
+  autoPickup?: boolean;
+  /**
    * Optional: called every frame. Receives dt + the current player XZ
    * position so proximity-driven interactables (traps, pressure plates,
    * auras) can react without importing the camera.
