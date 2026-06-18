@@ -49,7 +49,11 @@ for (const d of DEVICES) {
     const fixed = Array.from(document.body.children).filter((e) => getComputedStyle(e).position === 'fixed') as HTMLElement[];
     const bar = fixed.slice().sort((a, b) => (+getComputedStyle(b).zIndex || 0) - (+getComputedStyle(a).zIndex || 0))[0];
     if (bar) bar.style.display = 'none';
-    for (const f of fixed) if (f !== bar) f.style.inset = '0';
+    // Only the bench content HOST (it sits below the toolbar at top:46px) needs the
+    // full viewport so a specimen mounted into it measures full-screen. createSheet
+    // overlays are already full-screen + self-centred — forcing inset:0 on them
+    // would break their centring (and report bogus overflow), so leave them.
+    for (const f of fixed) { if (f !== bar && (f.style.inset || '').startsWith('46')) f.style.inset = '0'; }
     void document.body.offsetHeight;
     // worst element spilling past the viewport edges (the real "doesn't fit")
     let worst = '', amt = 0, edge = '';
