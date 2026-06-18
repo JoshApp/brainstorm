@@ -108,6 +108,14 @@ export interface Settings {
    *  CEILING adaptive resolution scales down FROM on mobile, and the fixed scale
    *  when adaptive is off / on desktop. Default 0.4 (the authored look). */
   renderScale: number;
+  /** Render frame-rate cap (fps). The SIM always runs at a fixed 60Hz; this
+   *  only limits how often the world is DRAWN. 60 = match the sim (smooth on
+   *  every display, including 120Hz — we never show a half-finished sim step);
+   *  30 = battery saver (the game still runs at full real-time speed, it's just
+   *  drawn half as often); 0 = uncapped. The biggest battery/heat knob on
+   *  mobile (DELVE is GPU-bound), and what lets fixed-step look smooth without
+   *  render interpolation. */
+  frameCap: FrameCap;
   /** Bloom — the bright-pass + blur that bleeds glow off emissive cores (torch
    *  flames, hot rims). A few fullscreen passes of GPU fill; off is a real win
    *  on weak devices, at the cost of the soft glow. */
@@ -162,6 +170,17 @@ export interface Settings {
 
 export type ShadowMode = 'off' | 'hero' | 'single' | 'all';
 
+/** fps cap as a string id ('0' = uncapped) — string so it slots into the
+ *  shared makeSelect control; parsed to a number in the loop. */
+export type FrameCap = '60' | '30' | '0';
+
+/** Source of truth for the FRAME RATE selector. */
+export const FRAME_CAPS: { id: FrameCap; label: string }[] = [
+  { id: '60', label: '60 fps' },
+  { id: '30', label: '30 fps — battery saver' },
+  { id: '0', label: 'Uncapped' },
+];
+
 /** Source of truth for the SHADOWS selector in the graphics settings. */
 export const SHADOW_MODES: { id: ShadowMode; label: string }[] = [
   { id: 'off',    label: 'Off' },
@@ -211,6 +230,8 @@ const DEFAULTS: Settings = {
   shadows: 'hero',
   adaptiveResolution: true,
   renderScale: 0.4,    // = PS1_SCALE_DEFAULT (the authored look / adaptive ceiling)
+  frameCap: '60',      // match the 60Hz sim: smooth everywhere + good battery
+
   bloom: true,
   // ON by default: occlusion-culls rooms (and now enemies) hidden behind walls —
   // the big win on enemy-heavy floors, where the frustum cone otherwise draws a

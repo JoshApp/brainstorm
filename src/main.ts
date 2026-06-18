@@ -1138,6 +1138,8 @@ const USE_FIXED_STEP =
 // sim time). In default play it stays on performance.now() — feel unchanged.
 setDeterministicClock(USE_FIXED_STEP);
 let simAccumulator = 0;
+// Wall-clock of the last drawn frame, for the FRAME RATE cap (settings.frameCap).
+let lastDrawMs = 0;
 
 /** Advance the SIM by one fixed step: the time-scale drivers + player FSM +
  *  sim systems, all on the fixed clock (so the world is deterministic). */
@@ -1184,6 +1186,18 @@ function presentPass(realDt: number): void {
 }
 
 function tick() {
+  // FRAME RATE cap: skip DRAWING this frame if we're ahead of the chosen fps.
+  // The sim isn't lost — clock.getDelta() accumulates the skipped time, so the
+  // next drawn frame advances the sim by the full elapsed time (more fixed
+  // substeps). So capping only throttles rendering: saves GPU battery/heat, and
+  // matching the draw rate to the 60Hz sim keeps motion smooth on any display.
+  // (4ms tolerance so a 60-cap on a 60Hz screen doesn't jitter down to 30.)
+  const frameCap = Number(getSettings().frameCap);
+  if (frameCap > 0) {
+    const now = performance.now();
+    if (now - lastDrawMs < 1000 / frameCap - 4) { requestAnimationFrame(tick); return; }
+    lastDrawMs = now;
+  }
   // Apply any pending level swap BEFORE any per-frame reads on the level.
   // Stairs interactables call loadLevel() during the previous frame's
   // interactables tick; the swap lands here at the top of the next frame.

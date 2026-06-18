@@ -1,4 +1,4 @@
-import { getSettings, updateSettings, CONTROL_SCHEMES, DASH_GESTURES, SHADOW_MODES } from '../settings/settings';
+import { getSettings, updateSettings, CONTROL_SCHEMES, DASH_GESTURES, SHADOW_MODES, FRAME_CAPS, type FrameCap } from '../settings/settings';
 import type { ShadowMode } from '../settings/settings';
 import { THEME, FONT_DISPLAY, applyCarvedFrame } from './theme';
 import { HUD_STYLES, setHudStyle, type HudStyleId } from './hud-style';
@@ -347,6 +347,17 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       options: HUD_STYLE_OPTIONS,
       get: () => getSettings().hudStyle,
       set: (v) => { updateSettings({ hudStyle: v }); setHudStyle(v); },
+    }),
+    makeSelect<FrameCap>({
+      label: 'FRAME RATE',
+      description:
+        'Caps how often the world is DRAWN — the sim always runs at full speed ' +
+        '(60Hz). 60 = smooth on any screen. 30 = battery saver: saves the most ' +
+        'power and heat, and the game still plays at full speed (just drawn half ' +
+        'as often). Uncapped = draw as fast as the display allows.',
+      options: FRAME_CAPS,
+      get: () => getSettings().frameCap,
+      set: (v) => updateSettings({ frameCap: v }),
     }),
     makeSelect<ShadowMode>({
       label: 'SHADOWS',
