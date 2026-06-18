@@ -1,5 +1,8 @@
 # Menu System (mobile-first)
 
+> **See `docs/UI-SYSTEM.md`** (the master UI spec). The Sheet shell below is now
+> the **dialog** type — one of five screen types; primary screens go full-bleed.
+
 How every panel-style menu is built. **New menus MUST use the Sheet
 shell** (`src/ui/menu-shell.ts`) — don't hand-roll a panel.
 

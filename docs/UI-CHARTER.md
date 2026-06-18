@@ -1,5 +1,8 @@
 # DELVE UI Charter — one mobile-native HUD, the Grimoire identity
 
+> **Folded into `docs/UI-SYSTEM.md`** (the master UI spec) — read that first. This
+> charter's rules live on there; kept for the detailed mobile-native law below.
+
 > Status: DESIGN CHARTER (2026-06-18). Supersedes nothing yet — this is the
 > target the menu chrome is being reshaped toward. Current tokens live in
 > `src/ui/theme.ts` ("carved from the deep"); this charter evolves them toward
