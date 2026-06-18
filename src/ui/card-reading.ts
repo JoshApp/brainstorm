@@ -1,26 +1,37 @@
-// THE READING — fate deals you three, you keep one.
+// THE READING — fate deals you three; you keep one.
 //
-// The dealt-3-pick-1 draw (the Self scope — docs/THE-CARDS.md). A draw pile up
-// top; three cards below flip up from face-down (the watching-eye back) to the
-// fully-framed linocut card. Tap one to claim it (grantCard → the stat pipeline).
+// The dealt-3-pick-1 draw (docs/THE-CARDS.md). Cards flip up from face-down (the
+// watching-eye back). Each shows its name + what it DOES (formatModifier — the same
+// vocabulary as item tooltips), so you compare all three before committing. Tap a
+// card to SELECT: it lifts, the others recede, and its FATE (the one-line identity,
+// broadcast voice) + a Claim seal rise into the thumb zone. Claim commits.
 //
-// Responsive: the cards size to the VIEWPORT (clamp + aspect-ratio), so they're
-// big on a desktop window and shrink to fit a phone in landscape — capped so
-// they never get absurd. Body never scrolls; hover lift is contained. A FRAME
-// toggle flips between the framed card and the raw illustration to compare.
+// Mobile-first (docs/UI-CHARTER.md): full-bleed dark ritual ground so the linocut
+// cards read out of black; sized to the landscape viewport; thumb-zone confirm.
 
 import { createSheet } from './menu-shell';
 import { isScreenOpen } from './screen-manager';
-import { displayHeading } from './theme';
+import { FONT_UI } from './theme';
 import { FONT_BLACK, FONT_SERIF } from './fonts';
+import { formatModifier } from './item-format';
 import { CARDS, dealCards, type CardSpec } from '../content/cards';
 import { grantCard, getHeldCards } from '../state/run-state';
 
 const SCREEN_ID = 'card-reading';
 const BASE = import.meta.env.BASE_URL;
-// viewport-relative card height — big on PC, fits a landscape phone, capped.
-const CARD_H = 'clamp(150px, 44vh, 360px)';
+const CARD_H = 'clamp(124px, 38vh, 280px)';
 const CARD_ASPECT = '768 / 1312';
+const AMBER = 'rgba(232, 188, 120, 0.98)';
+
+/** What the card DOES, terse — the same numbers an item tooltip shows. */
+function effectLines(card: CardSpec): string[] {
+  const e = card.effect;
+  const out: string[] = [];
+  for (const m of e.modifiers ?? []) out.push(formatModifier(m));
+  for (const c of e.conditional ?? []) for (const m of c.modifiers) out.push(`${formatModifier(m)} · when low`);
+  if (e.triggers?.length) out.push('a power that wakes in battle');
+  return out;
+}
 
 export function openCardReading(opts: { onDone?: (picked: boolean) => void } = {}): void {
   if (isScreenOpen(SCREEN_ID)) return;
@@ -28,80 +39,93 @@ export function openCardReading(opts: { onDone?: (picked: boolean) => void } = {
   if (dealt.length === 0) { opts.onDone?.(false); return; }
 
   let picked = false;
+  let selected = -1;
+  const cols: HTMLElement[] = [];
   const fronts: Array<{ img: HTMLImageElement; id: string }> = [];
 
   const s = createSheet({
-    id: SCREEN_ID, width: 860, layer: 'modal',
+    id: SCREEN_ID, width: 980, layer: 'modal',
     policy: { hidesHud: true, dimsScene: true },
     onClose() { opts.onDone?.(picked); },
   });
   s.root.style.background =
     'radial-gradient(120% 95% at 50% 120%, rgba(120, 56, 18, 0.5) 0%, rgba(26, 14, 8, 0.97) 56%, rgba(12, 8, 5, 0.98) 100%)';
   s.body.style.overflow = 'hidden';
-  Object.assign(s.body.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', paddingTop: '4px' } as Partial<CSSStyleDeclaration>);
+  Object.assign(s.body.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'clamp(3px,1vh,10px)', paddingTop: '2px' } as Partial<CSSStyleDeclaration>);
 
   const title = document.createElement('div');
   title.textContent = 'Choose Your Fate';
-  Object.assign(title.style, { fontFamily: FONT_BLACK, fontWeight: '700', fontSize: 'clamp(22px, 5vw, 38px)', lineHeight: '1', letterSpacing: '0.02em', color: 'rgba(232, 188, 120, 0.98)', textShadow: '0 0 24px rgba(180, 90, 30, 0.5)', textAlign: 'center' } as Partial<CSSStyleDeclaration>);
+  Object.assign(title.style, { fontFamily: FONT_BLACK, fontWeight: '700', fontSize: 'clamp(18px,4vw,32px)', lineHeight: '1', letterSpacing: '0.02em', color: AMBER, textShadow: '0 0 22px rgba(180,90,30,0.5)', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
   s.body.appendChild(title);
-  const sub = document.createElement('div');
-  sub.textContent = 'The fire deals three. You keep one.';
-  Object.assign(sub.style, { fontFamily: FONT_SERIF, fontStyle: 'italic', fontSize: '13px', color: 'rgba(190, 150, 110, 0.72)', textAlign: 'center', margin: '2px 0 1px' } as Partial<CSSStyleDeclaration>);
-  s.body.appendChild(sub);
-  s.body.appendChild(deckPile());
 
   const row = document.createElement('div');
-  Object.assign(row.style, { display: 'flex', gap: 'clamp(10px, 3vw, 30px)', justifyContent: 'center', alignItems: 'flex-start', padding: 'clamp(10px,2vh,20px) 4px 4px', flexWrap: 'nowrap' } as Partial<CSSStyleDeclaration>);
+  Object.assign(row.style, { display: 'flex', gap: 'clamp(10px,3vw,36px)', justifyContent: 'center', alignItems: 'center', flex: '1 1 auto', width: '100%' } as Partial<CSSStyleDeclaration>);
   s.body.appendChild(row);
 
   dealt.forEach((card, i) => {
-    const slot = document.createElement('div');
-    Object.assign(slot.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '7px', cursor: 'pointer', perspective: '900px', transition: 'transform 0.16s', willChange: 'transform' } as Partial<CSSStyleDeclaration>);
+    const col = document.createElement('div');
+    Object.assign(col.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', cursor: 'pointer', opacity: '0', transition: 'transform 0.18s, opacity 0.22s', perspective: '900px', willChange: 'transform' } as Partial<CSSStyleDeclaration>);
+    cols.push(col);
 
     const flip = document.createElement('div');
     Object.assign(flip.style, { position: 'relative', height: CARD_H, aspectRatio: CARD_ASPECT, transformStyle: 'preserve-3d', transform: 'rotateY(180deg)', transition: 'transform 0.55s cubic-bezier(0.2,0.8,0.2,1)' } as Partial<CSSStyleDeclaration>);
     const front = faceImg();
     fronts.push({ img: front, id: card.id });
     flip.append(faceBack(), front);
-    slot.appendChild(flip);
+    col.appendChild(flip);
 
-    const cap = displayHeading(card.name, { size: 12, glow: true });
-    cap.style.textAlign = 'center'; cap.style.opacity = '0'; cap.style.transition = 'opacity 0.3s';
-    slot.appendChild(cap);
+    const name = document.createElement('div');
+    name.textContent = card.name;
+    Object.assign(name.style, { fontFamily: FONT_SERIF, fontWeight: '600', fontSize: 'clamp(13px,2.4vw,18px)', color: '#e8d8b8', textAlign: 'center', lineHeight: '1.1' } as Partial<CSSStyleDeclaration>);
+    col.appendChild(name);
 
-    row.appendChild(slot);
-    setTimeout(() => { flip.style.transform = 'rotateY(0deg)'; cap.style.opacity = '1'; }, 360 + i * 180);
+    const fx = document.createElement('div');
+    fx.textContent = effectLines(card).join('  ·  ');
+    Object.assign(fx.style, { fontFamily: FONT_UI, fontSize: 'clamp(9px,1.7vw,12px)', letterSpacing: '0.02em', color: 'rgba(208,178,128,0.85)', textAlign: 'center', lineHeight: '1.3', maxWidth: '15em' } as Partial<CSSStyleDeclaration>);
+    col.appendChild(fx);
 
-    slot.addEventListener('pointerenter', () => { if (!picked) slot.style.transform = 'translateY(-14px)'; });
-    slot.addEventListener('pointerleave', () => { if (!picked) slot.style.transform = 'none'; });
-    slot.addEventListener('click', () => {
-      if (picked) return;
-      picked = true; grantCard(card.id);
-      slot.style.transform = 'translateY(-20px) scale(1.06)';
-      for (const sib of Array.from(row.children)) if (sib !== slot && sib instanceof HTMLElement) { sib.style.opacity = '0'; sib.style.transform = 'translateY(30px)'; sib.style.transition = 'opacity 0.4s, transform 0.4s'; }
-      setTimeout(() => s.close(), 560);
-    });
+    row.appendChild(col);
+    setTimeout(() => { flip.style.transform = 'rotateY(0deg)'; col.style.opacity = '1'; }, 320 + i * 170);
+    col.addEventListener('click', () => { if (!picked) select(i); });
   });
 
-  // the framed linocut card faces (compare-toggle retired — the framed card won)
-  for (const { img, id } of fronts) img.src = `${BASE}cards/${id}.webp`;
+  // thumb-zone strip — the selected card's FATE + the Claim seal
+  const bottom = document.createElement('div');
+  Object.assign(bottom.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flex: '0 0 auto', minHeight: '44px', paddingBottom: '2px' } as Partial<CSSStyleDeclaration>);
+  const fateLine = document.createElement('div');
+  Object.assign(fateLine.style, { fontFamily: FONT_SERIF, fontStyle: 'italic', fontSize: 'clamp(12px,2.3vw,17px)', color: 'rgba(222,182,132,0.92)', textAlign: 'center', minHeight: '1.2em', lineHeight: '1.2', opacity: '0', transition: 'opacity 0.25s' } as Partial<CSSStyleDeclaration>);
+  const claim = document.createElement('button');
+  claim.textContent = 'Claim this Fate';
+  Object.assign(claim.style, { fontFamily: FONT_UI, fontSize: '12px', fontWeight: '700', letterSpacing: '0.18em', textTransform: 'uppercase', color: '#f3e6cf', background: 'radial-gradient(circle at 50% 35%, #b8281f, #a4231c)', border: '1px solid #5e120d', borderRadius: '40px', padding: '9px 26px', minHeight: '42px', cursor: 'pointer', boxShadow: '0 3px 12px rgba(120,20,16,0.5), inset 0 1px 2px rgba(255,255,255,0.22)', opacity: '0.3', pointerEvents: 'none', transition: 'opacity 0.2s' } as Partial<CSSStyleDeclaration>);
+  claim.onclick = () => { if (selected >= 0 && !picked) claimCard(selected); };
+  bottom.append(fateLine, claim);
+  s.body.appendChild(bottom);
 
+  function select(i: number): void {
+    selected = i;
+    cols.forEach((c, j) => {
+      const on = j === i;
+      c.style.transform = on ? 'translateY(-10px) scale(1.04)' : 'scale(0.92)';
+      c.style.opacity = on ? '1' : '0.46';
+    });
+    fateLine.textContent = dealt[i].fate;
+    fateLine.style.opacity = '1';
+    claim.style.opacity = '1'; claim.style.pointerEvents = 'auto';
+  }
+
+  function claimCard(i: number): void {
+    picked = true; grantCard(dealt[i].id);
+    cols.forEach((c, j) => { if (j !== i) { c.style.opacity = '0'; c.style.transform = 'translateY(26px)'; } });
+    cols[i].style.transform = 'translateY(-18px) scale(1.1)';
+    claim.style.pointerEvents = 'none';
+    setTimeout(() => s.close(), 560);
+  }
+
+  for (const { img, id } of fronts) img.src = `${BASE}cards/${id}.webp`;
   s.open();
 }
 
-function deckPile(): HTMLElement {
-  const wrap = document.createElement('div');
-  Object.assign(wrap.style, { position: 'relative', height: 'clamp(44px, 12vh, 92px)', aspectRatio: CARD_ASPECT } as Partial<CSSStyleDeclaration>);
-  for (let d = 0; d < 4; d++) {
-    const slab = document.createElement('img');
-    slab.src = `${BASE}cards/back.webp`;
-    Object.assign(slab.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'contain', transform: `translate(${d * 2.2}px, ${(3 - d) * 1.2}px) rotate(${(d - 1.5) * 1.1}deg)`, opacity: '0.92', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.7))' } as Partial<CSSStyleDeclaration>);
-    wrap.appendChild(slab);
-  }
-  return wrap;
-}
-
-/** A face <img> filling the flip plane (src set by applyMode). */
+/** A face <img> filling the flip plane (src set after deal). */
 function faceImg(): HTMLImageElement {
   const el = document.createElement('img');
   Object.assign(el.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'contain', backfaceVisibility: 'hidden', display: 'block', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.7))' } as Partial<CSSStyleDeclaration>);
