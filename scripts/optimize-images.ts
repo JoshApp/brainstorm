@@ -18,7 +18,7 @@ const CHROME = [
   process.env.HOME + '/.cache/ms-playwright/chromium-1194/chrome-linux/chrome',
 ].find((p) => existsSync(p));
 
-const dir = resolve(process.cwd(), process.argv[2] ?? 'public/textures');
+const dir = resolve(process.cwd(), process.argv[2] ?? 'src/assets/textures');
 const Q = Number(process.argv[3] ?? 0.82);
 const MAXW = Number(process.argv[4] ?? 1280);
 

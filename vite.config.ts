@@ -36,6 +36,11 @@ export default defineConfig({
         // the first install. They're tiny (webp ~12–90KB, woff2 ~12–31KB), so the
         // precache stays small.
         globPatterns: ['**/*.{js,css,html,woff2,webp,svg,png,ico}'],
+        // NEVER precache the gitignored art-exploration runs (public/art/runs/*.png
+        // — ~1MB each, hundreds of them on a dev box). They're not in the repo so
+        // CI never sees them, but a local build would otherwise balloon the
+        // precache to hundreds of MB. Shipped card art lives in public/cards/.
+        globIgnores: ['**/art/**'],
       },
       manifest: {
         name: 'Delve',

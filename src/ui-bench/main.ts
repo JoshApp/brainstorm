@@ -21,6 +21,10 @@ import { createInventoryPanel, openInventoryPanel } from '../ui/inventory-panel'
 import { showCodex } from '../ui/codex-screen';
 import { openCardReading } from '../ui/card-reading';
 import { getSettings, updateSettings } from '../settings/settings';
+import { TEXTURE_URL } from '../art/texture-urls';
+// fingerprinted font urls (see texture-urls.ts rationale — never serves stale)
+import grenze600 from '../assets/fonts/grenze-gotisch-600.woff2?url';
+import grenze700 from '../assets/fonts/grenze-gotisch-700.woff2?url';
 
 interface Specimen {
   name: string;
@@ -182,11 +186,10 @@ function mountSheetDemo(): void {
 // font loaded from Google here for the demo; self-host for the PWA.)
 function mountGrimoire(host: HTMLElement): void {
   if (!document.getElementById('grimoire-css')) {
-    const base = import.meta.env.BASE_URL; // self-hosted → renders offline / in the PWA
     const st = document.createElement('style'); st.id = 'grimoire-css';
     st.textContent =
-      `@font-face{font-family:'Grenze Gotisch';font-weight:600;font-display:swap;src:url('${base}fonts/grenze-gotisch-600.woff2') format('woff2')}` +
-      `@font-face{font-family:'Grenze Gotisch';font-weight:700;font-display:swap;src:url('${base}fonts/grenze-gotisch-700.woff2') format('woff2')}` +
+      `@font-face{font-family:'Grenze Gotisch';font-weight:600;font-display:swap;src:url('${grenze600}') format('woff2')}` +
+      `@font-face{font-family:'Grenze Gotisch';font-weight:700;font-display:swap;src:url('${grenze700}') format('woff2')}` +
       '.grim-rite{transition:background .12s,padding-left .12s}.grim-rite:hover{background:rgba(26,20,13,0.07);padding-left:13px}';
     document.head.appendChild(st);
   }
@@ -211,16 +214,15 @@ function mountGrimoire(host: HTMLElement): void {
   // surfaces lane, src/art/textures.ts), overscanned to crop the scan's pale
   // sheet-margin, with a warm tint + aged-edge vignette layered for depth. AI
   // owns the organic surface; CSS owns the edges/tone (docs/UI-CHARTER.md).
-  const base = import.meta.env.BASE_URL;
   const layer = (s: Partial<CSSStyleDeclaration>) => {
     const d = document.createElement('div');
     Object.assign(d.style, { position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply' } as Partial<CSSStyleDeclaration>, s);
     page.appendChild(d);
   };
-  // the generated parchment surface (webp; full-bleed → cover). Swap variants with
-  // ?parch=mapstain (splotchy treasure-map) vs the default gentle vellum.
+  // the generated parchment surface (fingerprinted webp; full-bleed → cover). Swap
+  // variants with ?parch=mapstain (splotchy treasure-map) vs the default gentle vellum.
   const parch = new URLSearchParams(location.search).get('parch') || 'parchment';
-  layer({ mixBlendMode: 'normal', backgroundImage: `url('${base}textures/${parch}.webp')`, backgroundSize: 'cover', backgroundPosition: 'center' });
+  layer({ mixBlendMode: 'normal', backgroundImage: `url('${TEXTURE_URL[parch] ?? TEXTURE_URL.parchment}')`, backgroundSize: 'cover', backgroundPosition: 'center' });
   // gentle warm unify — the surface is already warm, so just a whisper
   layer({ opacity: '0.16', background: PAPER });
   // foxing — light aged specks (kept gentle; the texture carries the rest)
@@ -299,7 +301,7 @@ function mountGrimoire(host: HTMLElement): void {
   Object.assign(frame.style, {
     position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply', borderStyle: 'solid', borderRadius: '3px',
     borderWidth: 'clamp(17px,3vw,32px)', borderColor: 'transparent',
-    borderImageSource: `url('${base}textures/grimoire-border.webp')`, borderImageSlice: '165', borderImageRepeat: 'round',
+    borderImageSource: `url('${TEXTURE_URL['grimoire-border']}')`, borderImageSlice: '165', borderImageRepeat: 'round',
   } as Partial<CSSStyleDeclaration>);
   page.appendChild(frame);
 
