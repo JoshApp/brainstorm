@@ -376,9 +376,112 @@ function mountType(host: HTMLElement): void {
   host.appendChild(page);
 }
 
+// ── THE BOOK — the Page ground prototype (docs/UI-SYSTEM.md). A full-bleed leaf
+// of the dungeon's book, lit by your lamp (light-reveal entrance + a warm centre
+// pool), with the light=life reskin made concrete: "Your Flame" is vitality, "Oil"
+// is the heal item. Mobile-first: edge-anchored, tabbed hub, ≥44px targets.
+function mountBook(host: HTMLElement): void {
+  if (!document.getElementById('book-css')) {
+    const st = document.createElement('style'); st.id = 'book-css';
+    st.textContent =
+      '@keyframes book-reveal{from{opacity:0;filter:brightness(0.18)}55%{opacity:1}to{filter:brightness(1)}}' +
+      '.book-tab{cursor:pointer;transition:color .14s,border-color .14s}' +
+      '.book-row{cursor:pointer;transition:background .12s,padding-left .12s}.book-row:hover{background:rgba(26,20,13,0.06);padding-left:13px}';
+    document.head.appendChild(st);
+  }
+  const INK = '#1a140d', BLOOD = '#a4231c', GOLD = '#9a7b3a', FADE = '#7c6c4e', PAPER = '#E7DEC8';
+  const BLACK = "'Grenze Gotisch', 'Iowan Old Style', serif";
+  const TITLEF = "'Cinzel', 'Iowan Old Style', serif";
+  const SERIF = FONT_DISPLAY; const SANS = FONT_UI;
+
+  const page = document.createElement('div');
+  Object.assign(page.style, { position: 'absolute', inset: '0', overflow: 'hidden', color: INK, fontFamily: SERIF, background: `radial-gradient(120% 120% at 50% 42%, #f1e9d3, ${PAPER} 50%, #ccc1a3 100%)`, animation: 'book-reveal 0.6s ease-out' } as Partial<CSSStyleDeclaration>);
+  const layer = (s: Partial<CSSStyleDeclaration>) => { const d = document.createElement('div'); Object.assign(d.style, { position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply' } as Partial<CSSStyleDeclaration>, s); page.appendChild(d); };
+  layer({ mixBlendMode: 'normal', backgroundImage: `url('${TEXTURE_URL.parchment}')`, backgroundSize: 'cover', backgroundPosition: 'center' });
+  layer({ opacity: '0.14', background: PAPER });
+  layer({ opacity: '0.4', backgroundSize: '90px 90px', backgroundImage: `radial-gradient(rgba(86,54,24,0.5) 0.6px, transparent 1.2px)`, backgroundPosition: '0 0' });
+  // lamplight pool — the page is warmer/brighter where your lamp falls
+  layer({ mixBlendMode: 'screen', opacity: '0.55', background: `radial-gradient(58% 54% at 50% 46%, rgba(255,208,138,0.32), transparent 72%)` });
+  // lamplight falls off to dark worn edges
+  layer({ backgroundImage: `radial-gradient(130% 130% at 50% 44%, transparent 44%, rgba(58,38,16,0.34) 82%, rgba(26,15,6,0.72) 100%)` });
+  // the watching eye, faint
+  const eye = document.createElement('div');
+  Object.assign(eye.style, { position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: '0.05', pointerEvents: 'none' } as Partial<CSSStyleDeclaration>);
+  eye.innerHTML = `<svg viewBox="0 0 24 24" width="46%" fill="none" stroke="${INK}" stroke-width="0.5"><path d="M2 12 C 6 6, 18 6, 22 12 C 18 18, 6 18, 2 12 Z"/><circle cx="12" cy="12" r="3.2" fill="${INK}" stroke="none"/></svg>`;
+  page.appendChild(eye);
+
+  const pad = document.createElement('div');
+  Object.assign(pad.style, { position: 'absolute', inset: '0', display: 'flex', flexDirection: 'column', padding: 'clamp(20px,3.6vw,38px) clamp(26px,5vw,54px)', gap: 'clamp(7px,1.5vh,15px)' } as Partial<CSSStyleDeclaration>);
+  page.appendChild(pad);
+
+  // ── top: back · title · depth ──
+  const top = document.createElement('div');
+  Object.assign(top.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
+  top.innerHTML =
+    `<button class="book-tab" style="font-family:${SANS};font-size:20px;color:${FADE};background:none;border:none;min-width:44px;min-height:44px;cursor:pointer" aria-label="close the book">↩</button>` +
+    `<div style="font-family:${TITLEF};font-weight:600;font-size:clamp(16px,3vw,24px);letter-spacing:0.1em;color:${INK}">THE DELVER</div>` +
+    `<div style="font-family:${SANS};font-size:10px;letter-spacing:0.2em;color:${FADE}">DEPTH IV</div>`;
+  pad.appendChild(top);
+
+  // ── tabs: GEAR · CHARACTER · CODEX ──
+  const tabs = document.createElement('div');
+  Object.assign(tabs.style, { display: 'flex', gap: 'clamp(14px,4vw,40px)', justifyContent: 'center', borderBottom: `1px solid rgba(26,20,13,0.18)`, paddingBottom: '8px', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
+  ['Gear', 'Character', 'Codex'].forEach((t, i) => {
+    const on = i === 1;
+    const el = document.createElement('div'); el.className = 'book-tab'; el.textContent = t;
+    Object.assign(el.style, { fontFamily: BLACK, fontWeight: '700', fontSize: 'clamp(15px,3vw,22px)', color: on ? INK : 'rgba(26,20,13,0.4)', minHeight: '44px', display: 'flex', alignItems: 'center', borderBottom: on ? `2px solid ${BLOOD}` : '2px solid transparent', marginBottom: '-9px' } as Partial<CSSStyleDeclaration>);
+    tabs.appendChild(el);
+  });
+  pad.appendChild(tabs);
+
+  // ── body: the FLAME (life = light) + the satchel ──
+  const body = document.createElement('div');
+  Object.assign(body.style, { flex: '1 1 auto', display: 'flex', alignItems: 'center', gap: 'clamp(16px,4vw,48px)', minHeight: '0' } as Partial<CSSStyleDeclaration>);
+  pad.appendChild(body);
+
+  // the flame hero
+  const flame = document.createElement('div');
+  Object.assign(flame.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
+  flame.innerHTML =
+    `<svg viewBox="0 0 40 54" width="clamp(54px,11vw,86px)" style="filter:drop-shadow(0 0 16px rgba(255,150,40,0.6))"><defs><radialGradient id="bkfl" cx="50%" cy="68%" r="62%"><stop offset="0%" stop-color="#ffe6a4"/><stop offset="44%" stop-color="#ffab3c"/><stop offset="100%" stop-color="#bf3318"/></radialGradient></defs><path d="M20 1 C 28 16, 37 22, 30 39 C 27 48, 13 48, 10 39 C 4 27, 14 19, 20 1 Z" fill="url(#bkfl)"/></svg>` +
+    `<div style="font-family:${TITLEF};font-weight:600;font-size:clamp(20px,4.4vw,34px);color:${INK};line-height:1">84<span style="color:${FADE};font-size:0.6em"> / 120</span></div>` +
+    `<div style="font-family:${BLACK};font-weight:700;font-size:11px;letter-spacing:0.18em;color:${BLOOD};text-transform:uppercase">Your Flame</div>` +
+    `<div style="font-family:${SERIF};font-style:italic;font-size:12px;color:${FADE}">the dark waits at the edges</div>`;
+  body.appendChild(flame);
+
+  // the satchel column
+  const sat = document.createElement('div');
+  Object.assign(sat.style, { flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 'clamp(2px,0.8vh,7px)', minWidth: '0' } as Partial<CSSStyleDeclaration>);
+  const rows: Array<[string, string, string]> = [
+    ['✦', 'Oil', 'feeds the flame · ×3'],
+    ['†', 'Notched Cinquedea', 'a blade that remembers heat'],
+    ['◆', 'Tallow Cloak', 'the cold keeps its distance'],
+    ['☉', 'The Glutton', 'a fate held · +10% lifesteal'],
+  ];
+  for (const [g, name, sub] of rows) {
+    const r = document.createElement('div'); r.className = 'book-row';
+    Object.assign(r.style, { display: 'flex', alignItems: 'center', gap: '12px', minHeight: '44px', padding: '4px 8px', borderBottom: `1px solid rgba(26,20,13,0.1)` } as Partial<CSSStyleDeclaration>);
+    r.innerHTML =
+      `<span style="font-family:${BLACK};font-size:18px;color:${name === 'Oil' ? '#c8881f' : BLOOD};width:20px;text-align:center">${g}</span>` +
+      `<span style="flex:1;min-width:0"><span style="font-family:${SERIF};font-size:clamp(14px,2.4vw,18px);color:${INK}">${name}</span>` +
+      `<span style="display:block;font-family:${SANS};font-size:10px;letter-spacing:0.03em;color:${FADE};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub}</span></span>`;
+    sat.appendChild(r);
+  }
+  body.appendChild(sat);
+
+  // ── woodcut frame (above content, multiplied — ink prints, cream drops out) ──
+  const frame = document.createElement('div');
+  Object.assign(frame.style, { position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply', borderStyle: 'solid', borderWidth: 'clamp(16px,2.8vw,30px)', borderColor: 'transparent', borderImageSource: `url('${TEXTURE_URL['grimoire-border']}')`, borderImageSlice: '165', borderImageRepeat: 'round' } as Partial<CSSStyleDeclaration>);
+  page.appendChild(frame);
+
+  Object.assign(host.style, { background: '#080705', display: 'block' } as Partial<CSSStyleDeclaration>);
+  host.appendChild(page);
+}
+
 const SPECIMENS: Specimen[] = [
   { name: 'gallery', label: 'GALLERY', mount: mountGallery },
   { name: 'type', label: 'TYPE', mount: mountType },
+  { name: 'book', label: 'BOOK', mount: mountBook },
   { name: 'grimoire', label: 'GRIMOIRE', mount: mountGrimoire },
   { name: 'sheet', label: 'SHEET', mount: () => mountSheetDemo() },
   {
