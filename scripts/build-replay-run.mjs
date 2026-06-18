@@ -15,6 +15,19 @@ const stubVirtuals = {
   },
 };
 
+// Asset imports (fonts/images/css, incl. Vite's `?url` suffix) — the headless
+// replay never renders, so resolve them to an empty string. esbuild has no
+// loader for .woff2 etc.; without this the UI graph (fonts.ts) fails the build.
+const stubAssets = {
+  name: 'stub-assets',
+  setup(b) {
+    b.onResolve({ filter: /\.(woff2?|ttf|otf|eot|png|jpe?g|gif|svg|webp|css)(\?\S*)?$/ }, (a) => ({
+      path: a.path, namespace: 'asset',
+    }));
+    b.onLoad({ filter: /.*/, namespace: 'asset' }, () => ({ contents: 'export default "";' }));
+  },
+};
+
 export const OUT = '/tmp/replay-run.mjs';
 
 export async function buildReplayer() {
@@ -30,7 +43,7 @@ export async function buildReplayer() {
       'import.meta.env.SSR': 'false',
       'import.meta.env.BASE_URL': '"/"',
     },
-    plugins: [stubVirtuals],
+    plugins: [stubVirtuals, stubAssets],
     outfile: OUT,
     logLevel: 'error',
   });

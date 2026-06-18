@@ -86,15 +86,13 @@ function pass(tmp: string): void {
       const tapeFile = join(tmp, `tape-${r.id}.json`);
       writeFileSync(tapeFile, decodeTape(b64));
       const res = replay(tapeFile);
-      let verdict: 'verified' | 'rejected' | 'pending';
-      if (res.depth === r.depth && res.kills === r.kills && res.alive === false) {
-        verdict = 'verified';                 // exact match, ended in death
-      } else if (res.alive === true) {
-        verdict = 'rejected';                 // tape never kills the player — not a real death run
-      } else {
-        verdict = 'pending';                  // depth/kills mismatch — flag, don't punish (yet)
-      }
-      if (verdict !== 'pending') setVerdict(r.id, verdict);
+      // Safe policy: VERIFY only an exact reproduction (depth + kills + died).
+      // Anything else is left 'pending' — a replay that can't reproduce a run is
+      // a VERIFIER limitation (e.g. an input the tape doesn't yet record), not
+      // proof of cheating. Never auto-reject until the replay is proven faithful.
+      const verdict: 'verified' | 'pending' =
+        res.depth === r.depth && res.kills === r.kills && res.alive === false ? 'verified' : 'pending';
+      if (verdict === 'verified') setVerdict(r.id, 'verified');
       console.log(
         `  run ${r.id}: claim d${r.depth}/k${r.kills} → replay d${res.depth}/k${res.kills}/alive=${res.alive} → ${verdict.toUpperCase()}`,
       );
