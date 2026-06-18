@@ -53,7 +53,7 @@ import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
 import { BONFIRE } from '../content/bonfire';
 import { ORIGIN_ARCH } from '../content/origin-arch';
-import { openLevelUpMenu } from '../ui/levelup-menu';
+import { openCardReading } from '../ui/card-reading';
 import { generateEntityId } from '../ecs/world';
 import { setSurfaceSeep, setSurfaceWetness } from '../style/surface-detail';
 import { resetSplatMap } from '../scene/splat-map';
@@ -1302,11 +1302,10 @@ export function buildLevel(
       // a real slot. Light's local position is added to the prop's
       // world position; rotations are not currently applied to the
       // offset (most model lights sit on the prop's axis).
-      // Bonfires are where you REST — sitting at any fire opens the
-      // level-up menu (ui/levelup-menu.ts), the payoff where the levels
-      // you earned in the dark become strength. Spending is ungated from
-      // "safe rooms only": every bonfire is a real Souls rest. (Brightness
-      // calibration — the old wick ritual — now lives in Settings.)
+      // Bonfires are where you REST — sitting at any fire deals you your fate:
+      // the dealt-3-pick-1 card draw (ui/card-reading.ts) is the payoff now, not
+      // stat distribution. The tarot IS the build. (Brightness calibration — the
+      // old wick ritual — lives in Settings.)
       if (prop.model.id === 'bonfire') {
         const firePos = new THREE.Vector3(prop.x, gy, prop.z);
         registerInteractable({
@@ -1317,7 +1316,7 @@ export function buildLevel(
           promptLabel: 'REST',
           built: { group: new THREE.Group(), parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
           keepBuiltOnDestroy: true,
-          onUse() { openLevelUpMenu(); },
+          onUse() { openCardReading(); },
           destroyed: false,
         });
       }

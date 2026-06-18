@@ -11,7 +11,8 @@
 
 import { createSheet } from './menu-shell';
 import { isScreenOpen } from './screen-manager';
-import { THEME, FONT_UI, displayHeading } from './theme';
+import { displayHeading } from './theme';
+import { FONT_BLACK, FONT_SERIF } from './fonts';
 import { CARDS, dealCards, type CardSpec } from '../content/cards';
 import { grantCard, getHeldCards } from '../state/run-state';
 
@@ -20,8 +21,6 @@ const BASE = import.meta.env.BASE_URL;
 // viewport-relative card height — big on PC, fits a landscape phone, capped.
 const CARD_H = 'clamp(150px, 44vh, 360px)';
 const CARD_ASPECT = '768 / 1312';
-
-let FRAMED = true;  // framed card vs raw illustration (compare toggle)
 
 export function openCardReading(opts: { onDone?: () => void } = {}): void {
   if (isScreenOpen(SCREEN_ID)) return;
@@ -41,9 +40,14 @@ export function openCardReading(opts: { onDone?: () => void } = {}): void {
   s.body.style.overflow = 'hidden';
   Object.assign(s.body.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', paddingTop: '4px' } as Partial<CSSStyleDeclaration>);
 
-  const intro = displayHeading('The fire deals your fate', { size: 15, glow: true });
-  intro.style.textAlign = 'center';
-  s.body.appendChild(intro);
+  const title = document.createElement('div');
+  title.textContent = 'Choose Your Fate';
+  Object.assign(title.style, { fontFamily: FONT_BLACK, fontWeight: '700', fontSize: 'clamp(22px, 5vw, 38px)', lineHeight: '1', letterSpacing: '0.02em', color: 'rgba(232, 188, 120, 0.98)', textShadow: '0 0 24px rgba(180, 90, 30, 0.5)', textAlign: 'center' } as Partial<CSSStyleDeclaration>);
+  s.body.appendChild(title);
+  const sub = document.createElement('div');
+  sub.textContent = 'The fire deals three. You keep one.';
+  Object.assign(sub.style, { fontFamily: FONT_SERIF, fontStyle: 'italic', fontSize: '13px', color: 'rgba(190, 150, 110, 0.72)', textAlign: 'center', margin: '2px 0 1px' } as Partial<CSSStyleDeclaration>);
+  s.body.appendChild(sub);
   s.body.appendChild(deckPile());
 
   const row = document.createElement('div');
@@ -79,21 +83,8 @@ export function openCardReading(opts: { onDone?: () => void } = {}): void {
     });
   });
 
-  // FRAME compare toggle
-  const applyMode = () => {
-    for (const { img, id } of fronts) {
-      img.src = `${BASE}cards/${id}${FRAMED ? '' : '-art'}.webp`;
-      img.style.border = FRAMED ? 'none' : `1px solid ${THEME.rule}`;     // raw illustration gets a card edge
-      img.style.borderRadius = FRAMED ? '0' : '4px';
-    }
-  };
-  applyMode();
-  const toggle = document.createElement('button');
-  const label = () => `frame: ${FRAMED ? 'on' : 'off'}`;
-  toggle.textContent = label();
-  Object.assign(toggle.style, { marginTop: '2px', fontFamily: FONT_UI, fontSize: '10px', letterSpacing: '0.18em', textTransform: 'uppercase', color: THEME.dim, background: 'transparent', border: `1px solid ${THEME.rule}`, borderRadius: '3px', padding: '4px 12px', cursor: 'pointer' } as Partial<CSSStyleDeclaration>);
-  toggle.onclick = () => { FRAMED = !FRAMED; toggle.textContent = label(); applyMode(); };
-  s.footer.appendChild(toggle);
+  // the framed linocut card faces (compare-toggle retired — the framed card won)
+  for (const { img, id } of fronts) img.src = `${BASE}cards/${id}.webp`;
 
   s.open();
 }
