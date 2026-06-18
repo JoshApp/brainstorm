@@ -53,7 +53,8 @@ import { spawnTitheBasin } from '../interactables/tithe-basin';
 import { spawnChandelier } from './chandelier';
 import { BONFIRE } from '../content/bonfire';
 import { ORIGIN_ARCH } from '../content/origin-arch';
-import { openCardReading } from '../ui/card-reading';
+import { registerFateFire } from './fate-fire';
+import { clearFateGate } from '../state/fate-gate';
 import { generateEntityId } from '../ecs/world';
 import { setSurfaceSeep, setSurfaceWetness } from '../style/surface-detail';
 import { resetSplatMap } from '../scene/splat-map';
@@ -838,6 +839,8 @@ export function buildLevel(
   // Drop the previous floor's encounters before this one registers its own
   // (the registry is module-global).
   clearEncounters();
+  // Reset the descent fate-gate; a big (harbor) fire on this floor re-arms it.
+  clearFateGate();
 
   // Everything goes into this root group rather than directly into the
   // scene — teardown is a single scene.remove(root). Geometry/material
@@ -1306,18 +1309,16 @@ export function buildLevel(
       // the dealt-3-pick-1 card draw (ui/card-reading.ts) is the payoff now, not
       // stat distribution. The tarot IS the build. (Brightness calibration — the
       // old wick ritual — lives in Settings.)
+      // Per-fire spent dimmer — the fate-fire sets this to fade THIS bonfire's
+      // pooled light to embers once it's been drawn (1 = lit, <1 = spent).
+      let bonfireDim = 1;
       if (prop.model.id === 'bonfire') {
-        const firePos = new THREE.Vector3(prop.x, gy, prop.z);
-        registerInteractable({
-          id: generateEntityId('bonfire-rest'),
-          position: firePos,
-          radius: 1.8,
-          labelOffsetY: 1.25,
-          promptLabel: 'REST',
-          built: { group: new THREE.Group(), parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
-          keepBuiltOnDestroy: true,
-          onUse() { openCardReading(); },
-          destroyed: false,
+        registerFateFire({
+          group: built.group,
+          position: new THREE.Vector3(prop.x, gy, prop.z),
+          // the harbor's big fire gates descent; small vault fires don't
+          isBig: /safe|harbor|foyer/i.test(spec.id ?? '') || (prop.scale ?? 1) >= 1.3,
+          dimLight: (f) => { bonfireDim = f; },
         });
       }
       if (prop.model.light && !lightOwnedByGodRay(prop.x, prop.z, prop.model.id)) {
@@ -1343,8 +1344,8 @@ export function buildLevel(
           intensity: baseIntensity,
           getIntensity: amp > 0 ? () => {
             const t = performance.now() / 1000;
-            return baseIntensity * (1 + amp * (0.6 * Math.sin(t * 5.1 + p1) + 0.4 * Math.sin(t * 8.7 + p2)));
-          } : undefined,
+            return baseIntensity * bonfireDim * (1 + amp * (0.6 * Math.sin(t * 5.1 + p1) + 0.4 * Math.sin(t * 8.7 + p2)));
+          } : () => baseIntensity * bonfireDim,
           distance: lp.distance,
           decay: lp.decay,
         });

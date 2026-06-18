@@ -14,6 +14,7 @@ import { pooledBox, pooledPlane, pooledRing } from '../scene/geometry-pool';
 import { buildModel } from '../ecs/build-model';
 import { BONFIRE } from '../content/bonfire';
 import { isBossEncounterComplete, onBossEncounterComplete } from '../mobs/boss-encounter';
+import { isFateGateClear } from '../state/fate-gate';
 
 // Stairs = a visible descent CARVED into the floor (the top of the
 // stairwell sits below floor level, framed by a low parapet lip), plus
@@ -700,6 +701,8 @@ export function spawnStairs(
   // each tick to flip the prompt between SEALED and DESCEND.
   const unlock = spec.unlock;
   const isUnlocked = (): boolean => {
+    // The harbor's big fire seals the stairs until it deals your fate.
+    if (!isFateGateClear()) return false;
     if (!unlock) return true;
     if (unlock.kind === 'has-equipment') return getEquipped(unlock.slot) !== null;
     if (unlock.kind === 'boss-defeated') return isBossEncounterComplete();
@@ -728,17 +731,15 @@ export function spawnStairs(
       interactable.promptLabel = '';
       onDescend(spec.targetLevel);
     },
-    // Re-evaluate the unlock each tick so the prompt flips the
-    // instant the predicate becomes satisfied (e.g. the player
-    // equips a weapon in the starter chamber).
-    tick: unlock
-      ? () => {
-          // Don't unflag once the descent has started (promptLabel
-          // === '' is the "loading" state).
-          if (interactable.promptLabel === '') return;
-          interactable.promptLabel = isUnlocked() ? 'DESCEND' : 'SEALED';
-        }
-      : undefined,
+    // Re-evaluate the unlock each tick so the prompt flips the instant the
+    // predicate becomes satisfied — equipping a weapon, beating the boss, or
+    // drawing the harbor's fate. Always runs now (the fate gate can seal any
+    // stair, not just those with a spec.unlock).
+    tick: () => {
+      // Don't unflag once the descent has started (promptLabel === '' is loading).
+      if (interactable.promptLabel === '') return;
+      interactable.promptLabel = isUnlocked() ? 'DESCEND' : 'SEALED';
+    },
     destroyed: false,
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
   };

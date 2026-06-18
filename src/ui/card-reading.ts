@@ -22,10 +22,10 @@ const BASE = import.meta.env.BASE_URL;
 const CARD_H = 'clamp(150px, 44vh, 360px)';
 const CARD_ASPECT = '768 / 1312';
 
-export function openCardReading(opts: { onDone?: () => void } = {}): void {
+export function openCardReading(opts: { onDone?: (picked: boolean) => void } = {}): void {
   if (isScreenOpen(SCREEN_ID)) return;
   const dealt = dealCards(3, { arcana: 'minor' }).map((id) => CARDS[id]).filter(Boolean) as CardSpec[];
-  if (dealt.length === 0) { opts.onDone?.(); return; }
+  if (dealt.length === 0) { opts.onDone?.(false); return; }
 
   let picked = false;
   const fronts: Array<{ img: HTMLImageElement; id: string }> = [];
@@ -33,7 +33,7 @@ export function openCardReading(opts: { onDone?: () => void } = {}): void {
   const s = createSheet({
     id: SCREEN_ID, width: 860, layer: 'modal',
     policy: { hidesHud: true, dimsScene: true },
-    onClose() { opts.onDone?.(); },
+    onClose() { opts.onDone?.(picked); },
   });
   s.root.style.background =
     'radial-gradient(120% 95% at 50% 120%, rgba(120, 56, 18, 0.5) 0%, rgba(26, 14, 8, 0.97) 56%, rgba(12, 8, 5, 0.98) 100%)';
