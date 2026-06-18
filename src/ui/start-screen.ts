@@ -55,7 +55,10 @@ export function showStartScreen(opts: StartScreenOptions) {
   Object.assign(root.style, {
     position: 'fixed',
     inset: '0',
-    background: 'radial-gradient(ellipse at center, rgba(28, 18, 10, 1) 0%, rgba(6, 4, 2, 1) 70%)',
+    // LEFT scrim only — the live bonfire vignette renders behind (main.ts mounts
+    // it), so the right stays transparent to show the fire; the left is darkened
+    // for menu legibility. Fades to clear by ~78% across.
+    background: 'linear-gradient(90deg, rgba(8,5,3,0.94) 0%, rgba(8,5,3,0.72) 34%, rgba(8,5,3,0.28) 60%, rgba(8,5,3,0) 80%)',
     display: 'flex',
     flexDirection: 'column',
     // LEFT-anchored menu (mobile-first; the dark + fire live on the right, where
@@ -83,28 +86,8 @@ export function showStartScreen(opts: StartScreenOptions) {
   spacerTop.style.flex = '1 0 calc(20px + env(safe-area-inset-top, 0px))';
   root.appendChild(spacerTop);
 
-  // Animated subtle vignette behind everything — a flicker of warm light
-  // pulsing slowly, like a distant torch you're walking toward.
-  // `fixed` (not absolute): a 600px glow centered in a short landscape phone
-  // would otherwise spill past the top/bottom of this overflow-y:auto root and
-  // make the whole title SCROLL even when the content fits. Fixed positions it
-  // against the viewport so it's excluded from the scroll region entirely.
-  const flicker = document.createElement('div');
-  Object.assign(flicker.style, {
-    position: 'fixed',
-    // The fire sits to the RIGHT and low — where the live bonfire vignette will
-    // burn later. The menu reads against the dark on the left; the warmth pools
-    // away from the text. A stronger, warmer bloom than a centred glow.
-    top: '62%',
-    left: '72%',
-    width: 'min(680px, 80vw)',
-    height: 'min(680px, 95vh)',
-    transform: 'translate(-50%, -50%)',
-    background: 'radial-gradient(circle, rgba(255, 150, 60, 0.20) 0%, rgba(200, 90, 30, 0.08) 38%, transparent 64%)',
-    pointerEvents: 'none',
-    animation: 'startFlicker 4.2s ease-in-out infinite',
-  });
-  root.appendChild(flicker);
+  // (The warm glow is now the REAL bonfire vignette rendering behind this overlay
+  // — main.ts mounts it at the title. No DOM flicker needed.)
 
   // Inject keyframes once.
   if (!document.getElementById('start-screen-keyframes')) {
@@ -406,7 +389,7 @@ export function showStartScreen(opts: StartScreenOptions) {
     policy: {
       pausesWorld: true,
       hidesHud: true,
-      dimsScene: true,
+      dimsScene: false,   // show the live bonfire vignette behind the menu
       needsBackdrop: false,
       layer: 'title',
     },

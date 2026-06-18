@@ -35,7 +35,7 @@ import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { initRewardAudio } from './audio/reward-audio';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setMasterBrightness, setWickLift, setOverdrawMode } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
@@ -62,6 +62,7 @@ import { batchStaticFixtures } from './level/static-merge';
 import { initCombatDebug, tickCombatDebug } from './combat/combat-debug';
 import { initGoreDebug, setGoreDebugEnabled, tickGoreDebug } from './debug/gore-debug';
 import { LEVELS } from './level/specs';
+import { TITLE_VIGNETTE } from './level/title-vignette';
 import type { LevelSpec } from './level/types';
 import type { ModelSpec } from './ecs/model-types';
 import { buildStarterChamber } from './level/starter-chamber';
@@ -1369,6 +1370,10 @@ function startRun(floorId: string, startDepth: number = 1) {
   camera.rotation.order = 'YXZ';
   camera.rotation.y = currentLevel.playerSpawn.yaw;
   camera.rotation.x = 0;
+  // FP viewmodels (weapon / lamp / hand) are hidden for the title vignette — it's
+  // a posed scene behind the menu, not the player standing in it. Any real floor
+  // shows them again.
+  for (const r of getViewmodelRoots()) r.visible = floorId !== 'title-vignette';
   // ?simfreeze=1 (DEV): hand the clock to window.__sim from t=0 — freeze the
   // world the instant it spawns, BEFORE the live variable-dt loop advances it.
   // Without this, the nondeterministic number of real frames between boot and
@@ -1982,7 +1987,18 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // there's nothing new, drop the veil and reveal the title. (Title re-opens
   // from sub-screen BACK call openTitle() directly — they're already past boot,
   // so they're not gated.)
+  // Mount the live title vignette (a bonfire in the dark) behind the menu, so the
+  // render loop runs and the fire is alive. The title's pausesWorld freezes the
+  // world; the flame's own clock keeps flickering. DESCEND/CONTINUE rebuild over
+  // it. Only mount when we're actually showing the title (not reloading for an
+  // update); the BACK-to-title path reuses whatever scene is already up.
+  function mountTitleScene() {
+    LEVELS['title-vignette'] = TITLE_VIGNETTE;
+    suppressArrivalCeremony();
+    suppressNextDescentTitle();
+    startRun('title-vignette');
+  }
   awaitBootUpdate()
-    .then((updating) => { if (!updating) { hideBootLoading(); openTitle(); } })
-    .catch(() => { hideBootLoading(); openTitle(); });
+    .then((updating) => { if (!updating) { mountTitleScene(); hideBootLoading(); openTitle(); } })
+    .catch(() => { mountTitleScene(); hideBootLoading(); openTitle(); });
 }
