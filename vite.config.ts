@@ -28,6 +28,14 @@ export default defineConfig({
       workbox: {
         // skipWaiting / clientsClaim deliberately OFF — the prompt-style
         // update flow is exactly what they would defeat.
+        //
+        // Precache the UI ASSET types too, not just code. The default glob is
+        // `**/*.{js,css,html}`, which leaves fonts, the woodcut textures, and the
+        // baked cards to re-fetch on every weak connection. Listing them here puts
+        // them in the install-time precache → available offline and instant after
+        // the first install. They're tiny (webp ~12–90KB, woff2 ~12–31KB), so the
+        // precache stays small.
+        globPatterns: ['**/*.{js,css,html,woff2,webp,svg,png,ico}'],
       },
       manifest: {
         name: 'Delve',

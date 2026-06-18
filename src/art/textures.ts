@@ -46,6 +46,12 @@ export const TEXTURES: Record<string, TextureSpec> = {
       'a seamless tileable material texture swatch of aged vellum parchment, weathered cream animal-skin surface, evenly mottled tone with faint pale-brown foxing speckles and subtle soft stains, fine grain, flat even overhead studio lighting, shot perfectly flat top-down, the material fills the entire frame uniformly corner to corner like a fabric swatch, one continuous surface',
     negative: `${TEX_NEGATIVE}, page, sheet, document, scroll, burnt edges, torn edges, curled corners, rolled`, seed: 4220,
   },
+  mapstain: {
+    id: 'mapstain', label: 'tea-stained map parchment',
+    prompt:
+      'a seamless material texture swatch of old tea-stained treasure-map parchment, heavily blotchy with large irregular brown and sepia water stains and tea-staining splotches over mottled aged paper, the stained material fills the entire frame uniformly corner to corner like a fabric swatch, flat even overhead lighting, warm sepia tan and brown tones, one continuous surface',
+    negative: `${TEX_NEGATIVE}, page, sheet, document, scroll, burnt edges, torn edges, curled corners, rolled`, seed: 4600,
+  },
   stone: {
     id: 'stone', label: 'worn dungeon stone',
     prompt:

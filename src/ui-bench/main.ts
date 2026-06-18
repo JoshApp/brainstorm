@@ -217,16 +217,16 @@ function mountGrimoire(host: HTMLElement): void {
     Object.assign(d.style, { position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply' } as Partial<CSSStyleDeclaration>, s);
     page.appendChild(d);
   };
-  // the generated parchment surface (full-bleed now, so cover — no margin to crop)
-  layer({ mixBlendMode: 'normal', backgroundImage: `url('${base}textures/parchment.png')`, backgroundSize: 'cover', backgroundPosition: 'center' });
+  // the generated parchment surface (webp; full-bleed → cover). Swap variants with
+  // ?parch=mapstain (splotchy treasure-map) vs the default gentle vellum.
+  const parch = new URLSearchParams(location.search).get('parch') || 'parchment';
+  layer({ mixBlendMode: 'normal', backgroundImage: `url('${base}textures/${parch}.webp')`, backgroundSize: 'cover', backgroundPosition: 'center' });
   // gentle warm unify — the surface is already warm, so just a whisper
   layer({ opacity: '0.16', background: PAPER });
-  // age stains — soft irregular brown blooms (water + handling), off-centre
-  layer({ opacity: '0.7', backgroundImage: `radial-gradient(34% 46% at 11% 82%, rgba(96,60,28,0.20), transparent 70%), radial-gradient(30% 38% at 89% 16%, rgba(86,52,24,0.18), transparent 72%), radial-gradient(24% 28% at 64% 90%, rgba(112,46,22,0.13), transparent 70%), radial-gradient(20% 30% at 40% 8%, rgba(80,50,22,0.14), transparent 74%)` });
-  // foxing — dense aged specks (the "damaged" character), darker + tighter
-  layer({ opacity: '0.7', backgroundSize: '70px 70px', backgroundImage: `radial-gradient(rgba(78,48,22,0.6) 0.7px, transparent 1.3px), radial-gradient(rgba(58,34,16,0.5) 0.5px, transparent 1px)`, backgroundPosition: '0 0, 35px 48px' });
-  // worn/darkened edges — depth on top of the surface's own aging; centre stays clean
-  layer({ backgroundImage: `radial-gradient(125% 135% at 50% 46%, transparent 50%, rgba(74,48,20,0.30) 84%, rgba(40,25,10,0.55) 100%)` });
+  // foxing — light aged specks (kept gentle; the texture carries the rest)
+  layer({ opacity: '0.4', backgroundSize: '90px 90px', backgroundImage: `radial-gradient(rgba(86,54,24,0.5) 0.6px, transparent 1.2px), radial-gradient(rgba(70,42,18,0.4) 0.5px, transparent 1px)`, backgroundPosition: '0 0, 45px 60px' });
+  // worn/darkened edges — gentle depth; centre stays clean and readable
+  layer({ backgroundImage: `radial-gradient(125% 135% at 50% 46%, transparent 54%, rgba(74,48,20,0.22) 86%, rgba(44,27,11,0.46) 100%)` });
 
   // watching-eye watermark — the book's presence
   const eye = document.createElement('div');
@@ -299,7 +299,7 @@ function mountGrimoire(host: HTMLElement): void {
   Object.assign(frame.style, {
     position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply', borderStyle: 'solid', borderRadius: '3px',
     borderWidth: 'clamp(17px,3vw,32px)', borderColor: 'transparent',
-    borderImageSource: `url('${base}textures/grimoire-border.png')`, borderImageSlice: '165', borderImageRepeat: 'round',
+    borderImageSource: `url('${base}textures/grimoire-border.webp')`, borderImageSlice: '165', borderImageRepeat: 'round',
   } as Partial<CSSStyleDeclaration>);
   page.appendChild(frame);
 

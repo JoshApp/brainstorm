@@ -39,6 +39,7 @@ DELVE — creator suite (author · preview · debug · play)
                                       --hand drop into the hand · --ortho 4-view · --debug slots+bbox
   delve art [<id>|--all]            generate 2D illustrations (tarot cards) → public/art/cards/
   delve ui <specimen>               menu fit across phones + desktop, with an overflow report
+  delve optimize [dir]              PNG → webp for shipped assets (default public/textures)
 
   WORLD & PLAY
   delve check <seed> <depth>        fast STATIC floor analysis (overlap / archway / reachability)
@@ -164,6 +165,7 @@ switch (cmd) {
   case 'bench': delegate('bench'); break;
   case 'art': delegate('art'); break;
   case 'ui': delegate('ui-eval'); break;
+  case 'optimize': delegate('optimize-images'); break;
   case 'snap': delegate('snap'); break;
   case 'pilot': delegate('pilot'); break;
   case 'play': delegate('play'); break;
