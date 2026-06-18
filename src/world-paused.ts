@@ -23,6 +23,16 @@ export function isWorldPaused(): boolean {
   return isFrozen() || isWorldFrozen() || isWorldPausedByScreen() || isHarnessPaused();
 }
 
+/** True when the world is paused for a reason that must FREEZE the deterministic
+ *  game clock — a menu, the harness, or a debug freeze. Deliberately EXCLUDES
+ *  hit-pause: hit-pause reads gameNow() to know when to release, so its clock
+ *  must keep advancing or the freeze would never end. Used by the fixed-step
+ *  loop so a paused stretch neither burns in-flight skill windows nor leaks
+ *  wall-clock time into a recorded run's tape (see game-clock.ts's contract). */
+export function shouldFreezeGameClock(): boolean {
+  return isWorldFrozen() || isWorldPausedByScreen() || isHarnessPaused();
+}
+
 /** Which source is currently pausing the world? Used by the harness to
  *  report `pausedReason` in observations. Returns null when running. */
 export function pausedReason(): 'hit' | 'debug' | 'screen' | 'harness' | null {

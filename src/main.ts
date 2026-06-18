@@ -17,7 +17,7 @@ import { initDeathFeed } from './net/death-feed';
 import { completePendingLink } from './net/account-link';
 import { initRunSync } from './net/run-sync';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
-import { isWorldPaused } from './world-paused';
+import { isWorldPaused, shouldFreezeGameClock } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
 import {
@@ -1155,8 +1155,10 @@ function advanceSimStep(dt: number): void {
   // Advance the deterministic game clock by the real-time quantum — so the
   // time-based gameplay timers (skill windows, hit-pause/bullet-time durations)
   // that read gameNow() are reproducible. Advances during hit-pause so the
-  // freeze ends. (Default play uses performance.now(), so this is a no-op then.)
-  advanceGameClock(dt);
+  // freeze ends, but FREEZES during a menu / harness / debug pause: otherwise a
+  // pause burns in-flight skill windows and leaks real wall-clock time into the
+  // recorded tape, breaking replay determinism for any run that opened a menu.
+  if (!shouldFreezeGameClock()) advanceGameClock(dt);
   // Time-scale drivers on the FIXED clock (deterministic hit-pause / bullet-
   // time / death slow-mo), then the same two-clock split the variable path uses.
   tickDeath(dt);
