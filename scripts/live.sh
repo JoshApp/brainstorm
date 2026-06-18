@@ -49,7 +49,7 @@ fi
 # Bail on uncommitted work — promoting a branch you haven't committed
 # would silently leave changes behind on the session branch.
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "[live] working tree has uncommitted changes — commit them first."
+  echo "[live] ✗ ABORTED — uncommitted changes; NOTHING WAS DEPLOYED. Commit them first:"
   git status --short
   exit 1
 fi
@@ -83,7 +83,7 @@ if [ -n "$origin_main" ]; then
     echo "[live] main is ${ahead_count} commit(s) ahead — rebasing ${orig_branch} onto origin/main."
     if ! git rebase "$origin_main"; then
       echo ""
-      echo "[live] rebase hit conflicts — your work touches lines already on main."
+      echo "[live] ✗ ABORTED — rebase conflicts; NOTHING WAS DEPLOYED. Your work touches lines already on main."
       echo "       Resolve in the working tree, then:"
       echo "         git rebase --continue && npm run live"
       echo "       Or back out:"
@@ -95,7 +95,7 @@ if [ -n "$origin_main" ]; then
     short_sha="${session_sha:0:8}"
     echo "[live] rebased ${orig_branch} to ${short_sha} — syncing to origin."
     if ! git push --force-with-lease origin "$orig_branch"; then
-      echo "[live] couldn't sync ${orig_branch} — origin/${orig_branch} moved during live."
+      echo "[live] ✗ ABORTED — couldn't sync ${orig_branch}; NOTHING WAS DEPLOYED. origin/${orig_branch} moved during live."
       echo "       Investigate ('git fetch && git log origin/${orig_branch}'), then retry."
       exit 1
     fi
@@ -109,7 +109,7 @@ echo "[live] fast-forwarding origin/main → ${orig_branch}@${short_sha}"
 push_rc=0
 git push origin "${session_sha}:refs/heads/main" "$@" || push_rc=$?
 if [ "$push_rc" -ne 0 ]; then
-  echo "[live] push to main failed — main moved again during live (non-fast-forward)."
+  echo "[live] ✗ ABORTED — push to main failed; NOTHING WAS DEPLOYED (main moved again, non-fast-forward)."
   echo "       Run 'npm run live' once more to rebase onto the new main and retry."
   exit "$push_rc"
 fi
@@ -135,4 +135,12 @@ watch_rc=$?
 # path above may have already force-pushed it).
 git push origin "$orig_branch" 2>/dev/null || true
 
+# Definitive, greppable verdict on the FINAL line — so a deploy's outcome is never
+# inferred from a (maskable) exit code. `npm run live | tail` swallows the real
+# exit, but this line does not lie: grep for "✓ DEPLOYED" to confirm.
+if [ "$watch_rc" -eq 0 ]; then
+  echo "[live] ✓ DEPLOYED ${short_sha} → main (build green or queued)"
+else
+  echo "[live] ✗ DEPLOY FAILED (watch rc=${watch_rc}) — main updated but the build did not go green"
+fi
 exit "$watch_rc"
