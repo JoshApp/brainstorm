@@ -68,11 +68,29 @@ let moteTex: THREE.Texture | null = null;
 // (0xff8c3a → 0xc05a18 in content/archway.ts), the peak proximity
 // glow now sits at a much more restrained register.
 const GLOW_MAX_EMISSIVE = 0.16;
-interface FrameGlow { mat: THREE.MeshStandardMaterial; x: number; z: number; }
+
+// VISITED-EXIT MARKING — a diegetic navigation cue. Once the player walks
+// THROUGH an archway, its crown stops warming to greet you and instead carries
+// a faint COLD afterglow — "this way is spent, you've been here." Unexplored
+// archways keep their natural warm proximity glow. So as you move through a
+// floor, the warm arches are the ways you haven't taken; the cold ones you have.
+// No HUD, no map — it rides the light-as-signal grammar (warm = alive/open,
+// cold = dead/spent). Per-floor: reset with the drafts on level teardown.
+const VISITED_COLD_COLOR = 0x3d5e86;   // cool steel-blue — a spent threshold
+const VISITED_BASE_EMISSIVE = 0.06;    // faint CONSTANT cold glow (reads across the room)
+const VISITED_PROX_EMISSIVE = 0.08;    // a touch brighter up close
+const CROSS_DIST = 0.65;               // within this of the archway centre = you walked through it
+
+interface FrameGlow {
+  mat: THREE.MeshStandardMaterial;
+  x: number; z: number;
+  visited: boolean;
+  warm: THREE.Color;   // the authored warm emissive, restored each frame while unvisited
+}
 const frameGlows: FrameGlow[] = [];
 
 export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, z: number): void {
-  frameGlows.push({ mat, x, z });
+  frameGlows.push({ mat, x, z, visited: false, warm: mat.emissive.clone() });
 }
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -207,8 +225,19 @@ function placeMote(cx: number, cz: number, axis: Axis, m: Mote): void {
 export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void {
   for (const f of frameGlows) {
     const dist = Math.hypot(f.x - playerPos.x, f.z - playerPos.z);
-    // Only kicks in up close — fades in from ~2.5m, full by ~1m.
-    f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
+    // Crossing the threshold marks the exit as taken (one-way; a floor's exits
+    // don't un-explore). You're within CROSS_DIST of the centre = in the doorway.
+    if (!f.visited && dist < CROSS_DIST) f.visited = true;
+    if (f.visited) {
+      // Spent threshold — a cold afterglow, faint+constant so it reads across
+      // the room as "been here", a touch brighter as you pass it again.
+      f.mat.emissive.setHex(VISITED_COLD_COLOR);
+      f.mat.emissiveIntensity = VISITED_BASE_EMISSIVE + VISITED_PROX_EMISSIVE * smoothstep(2.5, 1.0, dist);
+    } else {
+      // Unexplored — the natural warm archway, brightening as you approach.
+      f.mat.emissive.copy(f.warm);
+      f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
+    }
   }
   for (const d of drafts) {
     d.t += dt;
