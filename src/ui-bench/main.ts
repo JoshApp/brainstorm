@@ -25,6 +25,14 @@ import { TEXTURE_URL } from '../art/texture-urls';
 // fingerprinted font urls (see texture-urls.ts rationale — never serves stale)
 import grenze600 from '../assets/fonts/grenze-gotisch-600.woff2?url';
 import grenze700 from '../assets/fonts/grenze-gotisch-700.woff2?url';
+// candidate game faces (for the TYPE specimen — Souls-class serifs + display)
+import ebg400 from '../assets/fonts/eb-garamond-400.woff2?url';
+import ebg500 from '../assets/fonts/eb-garamond-500.woff2?url';
+import ebg400i from '../assets/fonts/eb-garamond-400i.woff2?url';
+import spectral400 from '../assets/fonts/spectral-400.woff2?url';
+import spectral500 from '../assets/fonts/spectral-500.woff2?url';
+import cinzel600 from '../assets/fonts/cinzel-600.woff2?url';
+import cormorant500 from '../assets/fonts/cormorant-500.woff2?url';
 
 interface Specimen {
   name: string;
@@ -311,8 +319,66 @@ function mountGrimoire(host: HTMLElement): void {
   host.appendChild(page);
 }
 
+// ── TYPE — compare candidate game faces in DELVE's own voice (on dark, where
+// most in-world text lives). Souls uses Garamond; we audition that + alternatives.
+function mountType(host: HTMLElement): void {
+  if (!document.getElementById('type-css')) {
+    const ff = (fam: string, url: string, w = '400', style = 'normal') =>
+      `@font-face{font-family:'${fam}';font-weight:${w};font-style:${style};font-display:swap;src:url('${url}') format('woff2')}`;
+    const st = document.createElement('style'); st.id = 'type-css';
+    st.textContent = [
+      ff('EB Garamond', ebg400, '400'), ff('EB Garamond', ebg500, '500'), ff('EB Garamond', ebg400i, '400', 'italic'),
+      ff('Spectral', spectral400, '400'), ff('Spectral', spectral500, '500'),
+      ff('Cinzel', cinzel600, '600'), ff('Cormorant Garamond', cormorant500, '500'),
+      ff('Grenze Gotisch', grenze700, '700'),
+    ].join('');
+    document.head.appendChild(st);
+  }
+  const INK = '#cdbfa2', DIM = '#8a7c63', BLOOD = '#c2362b', GOLD = '#b9923f';
+  const SANS = 'system-ui, sans-serif';
+
+  const page = document.createElement('div');
+  Object.assign(page.style, { width: 'min(96vw, 1000px)', maxHeight: '92vh', overflowY: 'auto', background: '#0c0b09', color: INK, padding: 'clamp(16px,3vw,30px)', borderRadius: '4px', boxShadow: '0 20px 60px rgba(0,0,0,0.85)' } as Partial<CSSStyleDeclaration>);
+  const label = (t: string): HTMLElement => { const d = document.createElement('div'); d.textContent = t; Object.assign(d.style, { fontFamily: SANS, fontSize: '10px', letterSpacing: '0.18em', textTransform: 'uppercase', color: DIM, margin: '0 0 5px' } as Partial<CSSStyleDeclaration>); return d; };
+
+  // display titles — the title-screen / monumental register
+  const disp = document.createElement('div');
+  Object.assign(disp.style, { display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-end', borderBottom: `1px solid #2a2419`, paddingBottom: '14px', marginBottom: '16px' } as Partial<CSSStyleDeclaration>);
+  for (const [lab, fam, word, sz, ls] of [
+    ['Cinzel — monumental caps', "'Cinzel'", 'DELVE', '40px', '0.12em'],
+    ['Cormorant — dramatic serif', "'Cormorant Garamond'", 'Delve', '52px', '0'],
+    ['Grenze Gotisch — blackletter', "'Grenze Gotisch'", 'Delve', '48px', '0'],
+  ] as const) {
+    const b = document.createElement('div'); b.appendChild(label(lab));
+    const t = document.createElement('div'); t.textContent = word;
+    Object.assign(t.style, { fontFamily: fam, fontWeight: '600', fontSize: sz, letterSpacing: ls, lineHeight: '1', color: '#d8cba8' } as Partial<CSSStyleDeclaration>);
+    b.appendChild(t); disp.appendChild(b);
+  }
+  page.appendChild(disp);
+
+  // body comparison — same DELVE text in each candidate serif
+  const cols = document.createElement('div');
+  Object.assign(cols.style, { display: 'flex', gap: '22px', flexWrap: 'wrap' } as Partial<CSSStyleDeclaration>);
+  for (const [name, fam] of [['EB Garamond', "'EB Garamond'"], ['Spectral', "'Spectral'"], ['Cormorant Garamond', "'Cormorant Garamond'"]] as const) {
+    const col = document.createElement('div');
+    Object.assign(col.style, { flex: '1 1 270px', minWidth: '256px' } as Partial<CSSStyleDeclaration>);
+    col.appendChild(label(name));
+    col.innerHTML += `
+      <div style="font-family:${fam};font-weight:500;font-size:21px;color:#d8cba8;margin:2px 0 1px">Notched Cinquedea</div>
+      <div style="font-family:${fam};font-style:italic;font-size:15px;color:${GOLD};margin:0 0 10px">A blade that remembers heat.</div>
+      <div style="font-family:${fam};font-weight:400;font-size:15px;line-height:1.5;color:${INK}">She was forgotten on Depth 47. The dark did not. What walks there now wears her face, and answers to a name she would not have chosen.</div>
+      <div style="font-family:${SANS};font-size:11px;letter-spacing:0.14em;color:${DIM};margin-top:12px">HP 84 / 120 &nbsp; <span style="color:${GOLD}">✦ 128</span> &nbsp; <span style="color:${BLOOD}">DEPTH IV</span></div>`;
+    cols.appendChild(col);
+  }
+  page.appendChild(cols);
+
+  Object.assign(host.style, { display: 'flex', alignItems: 'center', justifyContent: 'center' } as Partial<CSSStyleDeclaration>);
+  host.appendChild(page);
+}
+
 const SPECIMENS: Specimen[] = [
   { name: 'gallery', label: 'GALLERY', mount: mountGallery },
+  { name: 'type', label: 'TYPE', mount: mountType },
   { name: 'grimoire', label: 'GRIMOIRE', mount: mountGrimoire },
   { name: 'sheet', label: 'SHEET', mount: () => mountSheetDemo() },
   {
