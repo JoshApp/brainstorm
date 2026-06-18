@@ -217,12 +217,14 @@ function mountGrimoire(host: HTMLElement): void {
     Object.assign(d.style, { position: 'absolute', inset: '0', pointerEvents: 'none', mixBlendMode: 'multiply' } as Partial<CSSStyleDeclaration>, s);
     page.appendChild(d);
   };
-  // the generated parchment surface (base material, normal blend over the cream)
-  layer({ mixBlendMode: 'normal', backgroundImage: `url('${base}textures/parchment.png')`, backgroundSize: '132%', backgroundPosition: 'center' });
-  // warm tone unify — pull the scan toward the Grimoire cream
-  layer({ opacity: '0.32', background: PAPER });
+  // the generated parchment surface (full-bleed now, so cover — no margin to crop)
+  layer({ mixBlendMode: 'normal', backgroundImage: `url('${base}textures/parchment.png')`, backgroundSize: 'cover', backgroundPosition: 'center' });
+  // gentle warm unify — the surface is already warm, so just a whisper
+  layer({ opacity: '0.18', background: PAPER });
+  // foxing — sparse aged specks for "damaged" character, layered (controllable)
+  layer({ opacity: '0.5', backgroundSize: '90px 90px', backgroundImage: `radial-gradient(rgba(86,54,24,0.5) 0.6px, transparent 1.2px), radial-gradient(rgba(70,42,18,0.4) 0.5px, transparent 1px)`, backgroundPosition: '0 0, 45px 60px' });
   // worn/darkened edges — depth on top of the surface's own aging; centre stays clean
-  layer({ backgroundImage: `radial-gradient(125% 135% at 50% 46%, transparent 52%, rgba(74,48,20,0.26) 86%, rgba(44,27,11,0.52) 100%)` });
+  layer({ backgroundImage: `radial-gradient(125% 135% at 50% 46%, transparent 54%, rgba(74,48,20,0.24) 86%, rgba(44,27,11,0.48) 100%)` });
 
   // watching-eye watermark — the book's presence
   const eye = document.createElement('div');

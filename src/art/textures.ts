@@ -27,15 +27,19 @@ export interface TextureSpec {
 
 // What a surface must NOT be: anything with its own content, framing, or baked
 // lighting that would fight the menu drawn on top of it.
+// Surfaces must FILL the frame (the texture is the whole image, edge to edge) and
+// carry no content/framing/baked lighting that would fight the menu on top. The
+// "sheet of paper on a background" failure mode is why the parchment v1 had a pale
+// margin we had to crop — so we forbid it here and ask for a macro fill instead.
 const TEX_NEGATIVE =
-  'text, letters, words, writing, calligraphy, illustration, drawing, picture, border, frame, ornament, people, objects, dramatic lighting, deep shadows, spotlight, vignette, dark edges, saturated colors, 3d render, glossy, reflection, watermark';
+  'text, letters, words, writing, calligraphy, illustration, drawing, picture, border, frame, ornament, people, objects, sheet of paper, single page, paper on a table, page corner, white background, drop shadow, dramatic lighting, deep shadows, spotlight, vignette, dark edges, saturated colors, 3d render, glossy, reflection, watermark';
 
 export const TEXTURES: Record<string, TextureSpec> = {
   parchment: {
     id: 'parchment', label: 'damaged parchment',
     prompt:
-      'a blank sheet of ancient damaged parchment vellum, weathered medieval manuscript paper, evenly lit flatbed scan, uneven mottled aged tone, faint scattered stains and pale brown foxing spots, fine fibrous grain, flat overhead lighting, muted warm bone and tan tones, empty worn surface, seamless material',
-    negative: TEX_NEGATIVE, seed: 4200,
+      'a seamless tileable material texture swatch of aged vellum parchment, weathered cream animal-skin surface, evenly mottled tone with faint pale-brown foxing speckles and subtle soft stains, fine grain, flat even overhead studio lighting, shot perfectly flat top-down, the material fills the entire frame uniformly corner to corner like a fabric swatch, one continuous surface',
+    negative: `${TEX_NEGATIVE}, page, sheet, document, scroll, burnt edges, torn edges, curled corners, rolled`, seed: 4220,
   },
   stone: {
     id: 'stone', label: 'worn dungeon stone',
