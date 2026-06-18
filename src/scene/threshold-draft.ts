@@ -78,26 +78,24 @@ export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, 
   frameGlows.push({ mat, x, z });
 }
 
-// EXIT LURE — the diegetic navigation cue, rendered as a carved INSCRIPTION on
-// the keystone (a single warding sigil dead-top of the arch). No real light
-// source (an additive emissive quad + bloom, same trick as dropped loot). The
-// place LIGHTS the sigil while this is the NEAR entrance — adjacent to the
-// player's current room — to ground that still holds unseen/undone stuff, and
-// SNUFFS it once that branch is exhausted. So the lit doorways are the ways
-// still worth taking; spent ones go dark. A keystone mark is single + centred
-// (no symmetry to fake), static (reads at a glance, unlike a drifting wisp), and
-// of-the-place (the dungeon's own notation, kin to the wall-runes). Shown only
-// on the near end, never the far exit down a corridor.
+// EXIT LURE — the diegetic navigation cue, a warding sigil burned into the FLOOR
+// at the threshold (flat on the ground, the chevron pointing into the passage —
+// so it reads as "this way"). No real light source (an additive emissive quad +
+// bloom, the dropped-loot trick). The place LIGHTS the mark while this is the
+// NEAR entrance — adjacent to the player's current room — to ground that still
+// holds unexplored stuff, and SNUFFS it once that branch is explored. So the lit
+// thresholds are the ways still worth taking; spent ones go dark. A floor mark
+// is unambiguous to place (no arch-depth/keystone fuss), visible from either room
+// as you approach, and of-the-place (kin to the floor-strewn loot glows). Shown
+// only on the near end, never the far exit down a corridor.
 //
 // `cold` (branch beyond is done) + `near` (adjacent to current room) are set
 // EXTERNALLY by the explored-map nav system; this file only renders the lure.
 const LURE_COLOR = 0xff8c3a;        // warm ember, matches the archway crown
 const LURE_MAX_OPACITY = 0.7;       // additive peak (tune on device)
 const LURE_KINDLE_RATE = 4;         // ease speed — kindle in / snuff out smoothly
-const SIGIL_SIZE = 0.5;             // metres — the carved mark on the keystone
-const SIGIL_RISE = 2.6;             // metres ABOVE THE FLOOR — on the keystone (the
-                                    //   arch's top stone; lintel ≈ 2.55-2.85); clamped
-                                    //   under the ceiling for low/compressed arches.
+const SIGIL_SIZE = 0.7;             // metres — the mark on the floor (bigger than a wall glyph)
+const SIGIL_LIFT = 0.03;            // metres above the floor (polygon-offset avoids z-fight)
 
 export interface Lure {
   mesh: THREE.Mesh;
@@ -257,25 +255,22 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
 
   drafts.push({ cx: x, cz: z, axis, width: w, floorY, hazeLayers, motes, t: rand() * 10 });
 
-  // Exit lure — a carved sigil on the KEYSTONE (centred, top of the arch),
-  // flat on the lintel face so it reads as cut into the stone (not a floating
-  // mark). Two-sided + near-gated, so only the side facing the player's current
-  // room lights. Starts dark; the nav system kindles it when this is a near
+  // Exit lure — a sigil flat on the FLOOR at the threshold, the chevron aligned
+  // with the passage so it points the way through. polygonOffset so it doesn't
+  // z-fight the floor. Starts dark; the nav system kindles it when this is a near
   // entrance to undone ground (see getArchwayLures / explored-map).
   const lmat = new THREE.MeshBasicMaterial({
     map: sigilTexture(), color: LURE_COLOR, transparent: true, opacity: 0,
     blending: THREE.AdditiveBlending, depthWrite: false, fog: true, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
   });
   const lmesh = new THREE.Mesh(new THREE.PlaneGeometry(SIGIL_SIZE, SIGIL_SIZE), lmat);
-  // Face the passage: a plane defaults to facing +Z (correct for a z-axis
-  // passage); a wall along z (x-axis passage) needs a quarter-turn.
-  if (axis === 'x') lmesh.rotation.y = Math.PI / 2;
-  // Floor-relative: ride at the keystone above THIS opening's floor, clamped so
-  // it never punches through a low ceiling. (A fixed world-Y floated in sunken
-  // rooms / clipped the ceiling in raised ones — rooms vary in elevation.)
-  lmesh.position.set(x, floorY + Math.min(SIGIL_RISE, ceilingH - 0.4), z);
+  lmesh.rotation.x = -Math.PI / 2;                      // lie flat on the floor
+  if (axis === 'x') lmesh.rotation.z = Math.PI / 2;     // align the mark with the passage
+  lmesh.position.set(x, floorY + SIGIL_LIFT, z);
   scene.add(lmesh);
   lures.push({ mesh: lmesh, mat: lmat, x, z, cold: false, near: false, lit: 0, t: rand() * 10 });
+  void ceilingH;   // (no longer needed now the mark is on the floor)
 }
 
 function placeMote(cx: number, cz: number, floorY: number, axis: Axis, m: Mote): void {
