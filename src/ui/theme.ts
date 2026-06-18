@@ -19,7 +19,14 @@
 //      destructive. Arcane violet is RESERVED so it never competes with the
 //      XP signal. Everything else is degrees of dim parchment on near-black.
 
-export const FONT_DISPLAY = '"Iowan Old Style", "Palatino", "Times New Roman", serif';
+// The reading voice is EB Garamond (the Souls/Garamond register), self-hosted via
+// fonts.ts; FONT_TITLE is Cinzel for monumental moments (title screen, carved
+// headings). Importing fonts.ts registers the @font-face; faces fall back to a
+// system serif if that's skipped. See src/ui/fonts.ts for the 3-role rationale.
+import { FONT_SERIF, FONT_TITLE as FONT_TITLE_, injectGameFonts } from './fonts';
+injectGameFonts();
+export const FONT_DISPLAY = FONT_SERIF;
+export const FONT_TITLE = FONT_TITLE_;
 export const FONT_UI = 'system-ui, -apple-system, sans-serif';
 
 export const THEME = {

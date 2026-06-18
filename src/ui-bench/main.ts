@@ -205,7 +205,7 @@ function mountGrimoire(host: HTMLElement): void {
   // single-quoted family names — these get interpolated into double-quoted HTML
   // style="" attributes, so double quotes here would close the attribute early.
   const BLACK = "'Grenze Gotisch', 'Iowan Old Style', serif"; // grimdark blackletter, legible
-  const SERIF = "'Iowan Old Style', 'Palatino Linotype', Georgia, serif";
+  const SERIF = FONT_DISPLAY; // the reading voice — now EB Garamond (theme.ts/fonts.ts)
   const SANS = 'system-ui, -apple-system, sans-serif';
 
   // Sized by viewport HEIGHT (landscape) + aspect-ratio, so it grows on desktop
