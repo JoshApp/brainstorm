@@ -36,6 +36,7 @@ import { tagPerfEvent } from '../debug/perf-recorder';
 import { clearAllOutlines } from '../interactables/outline';
 import { resetDarkAdaptation } from '../scene/dark-adaptation';
 import { clearThresholdDrafts } from '../scene/threshold-draft';
+import { resetExploredMap } from './explored-map';
 import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
 import { showSafeRoomTransition } from '../ui/safe-room-transition';
 import { actForDepth } from './acts';
@@ -168,6 +169,7 @@ export function tickPendingLoad() {
     clearAllOutlines();
     resetDarkAdaptation();
     clearThresholdDrafts();
+    resetExploredMap();   // drop the old floor's nav graph + visited set
     prevLevel.teardown();
     setActiveLevel(null);
   }

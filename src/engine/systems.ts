@@ -27,6 +27,7 @@ import { setTorchProximity, setAudioListenerPose } from '../audio/sfx';
 import { tickAlerts } from '../mobs/alerts';
 import { tickPack } from '../mobs/pack';
 import { tickCreatureInstancing } from '../mobs/creature-instancing';
+import { tickExploredMap } from '../level/explored-map';
 import { recomputePlayerStats } from '../state/player-stats';
 import { syncHudStores } from '../state/hud-stores';
 import { tickDarkAdaptation, darkAdaptBrightness, darkAdaptAmbient, sampleLitSignal } from '../scene/dark-adaptation';
@@ -508,6 +509,12 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // unless enabled). Runs AFTER camera movement, BEFORE light-pool + render
     // so the frustum it tests is this frame's.
     { name: 'room-culling', phase: 'always', tick() { getRoomCuller()?.tick(camera); } },
+
+    // Explored-map nav cue — set each archway warm/cold by whether the branch
+    // beyond it is fully explored + cleared. AFTER enemies + interactables (so
+    // this frame's done-state is current). Presentation-only (untagged →
+    // excluded from the sim digest). See src/level/explored-map.ts.
+    { name: 'explored-map', phase: 'always', tick() { tickExploredMap(camera, getLevel()); } },
 
     // Instanced-creature writeback — copy each live enemy's joint-segment
     // world matrices into the shared InstancedMesh slots (zero-scale when the

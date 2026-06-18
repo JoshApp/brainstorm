@@ -48,6 +48,15 @@ export interface Interactable {
    */
   autoPickup?: boolean;
   /**
+   * Optional: this is uncollected LOOT/WORK for navigation purposes — its
+   * presence keeps a room "not done", so the explored-map nav cue
+   * (src/level/explored-map.ts) keeps the path to it WARM. Set true on
+   * loot-bearing spawners (ground pickups, unopened chests, lootable corpses,
+   * card/relic drops); leave undefined on persistent fixtures (fountain,
+   * merchant, stairs, doors, altars) — those don't count as "stuff to do".
+   */
+  navWork?: boolean;
+  /**
    * Optional: called every frame. Receives dt + the current player XZ
    * position so proximity-driven interactables (traps, pressure plates,
    * auras) can react without importing the camera.

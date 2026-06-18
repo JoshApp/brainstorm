@@ -26,6 +26,10 @@ await build({
     'import.meta.env.PROD': 'true',
     'import.meta.env.MODE': '"production"',
     'import.meta.env.SSR': 'false',
+    // Vite serves the app under /brainstorm/; some modules read BASE_URL at load
+    // (card-drop, card-reading, art viewer) to build asset URLs. Define it so the
+    // headless Node bundle doesn't deref an undefined import.meta.env.
+    'import.meta.env.BASE_URL': '"/brainstorm/"',
   },
   plugins: [stubVirtuals],
   outfile: '/tmp/replay-node.mjs',

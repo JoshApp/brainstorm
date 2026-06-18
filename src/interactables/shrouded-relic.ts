@@ -101,6 +101,7 @@ export function spawnShroudedRelic(
     radius: 1.4,
     labelOffsetY: 0.9,
     promptLabel: 'TAKE',
+    navWork: true,   // unclaimed relic = work for the nav cue
     outlineScale: 1.3,
     built: { group, parts: new Map(), slots: new Map(), materials: new Map(), hitTargets: [] },
     onUse() {

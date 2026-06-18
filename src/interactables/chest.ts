@@ -86,11 +86,13 @@ export function spawnChest(
     position: pos.clone(),
     radius: 1.4,
     promptLabel: 'OPEN',
+    navWork: true,   // unopened chest = work for the explored-map nav cue
     onUse() {
       if (state !== 'closed') return;
       state = 'opening';
       openTimer = 0;
       interactable.promptLabel = '';
+      interactable.navWork = false;   // opened — the loot pickup it spawns carries the work now
       playChestOpen();
       recordChestOpened();
       // On reveal, settle the lid back to its base Y before swinging

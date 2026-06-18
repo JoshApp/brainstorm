@@ -69,28 +69,40 @@ let moteTex: THREE.Texture | null = null;
 // glow now sits at a much more restrained register.
 const GLOW_MAX_EMISSIVE = 0.16;
 
-// VISITED-EXIT MARKING — a diegetic navigation cue. Once the player walks
-// THROUGH an archway, its crown stops warming to greet you and instead carries
-// a faint COLD afterglow — "this way is spent, you've been here." Unexplored
-// archways keep their natural warm proximity glow. So as you move through a
-// floor, the warm arches are the ways you haven't taken; the cold ones you have.
-// No HUD, no map — it rides the light-as-signal grammar (warm = alive/open,
-// cold = dead/spent). Per-floor: reset with the drafts on level teardown.
+// EXPLORED-EXIT MARKING — a diegetic navigation cue. An archway's crown carries
+// a faint COLD afterglow once the branch BEYOND it (away from you) is fully
+// explored + cleared — "nothing more this way." Exits that still lead to unseen
+// or undone ground keep their natural warm proximity glow. So the warm arches
+// are the ways still worth taking; the cold ones are spent. No HUD, no map — it
+// rides the light-as-signal grammar (warm = alive/open, cold = dead/spent).
+//
+// The `cold` flag is set EXTERNALLY by the explored-map nav system
+// (src/level/explored-map.ts), which owns the floor graph + reachability; this
+// file only RENDERS the warm/cold state. Per-floor: reset with the drafts on
+// teardown.
 const VISITED_COLD_COLOR = 0x3d5e86;   // cool steel-blue — a spent threshold
 const VISITED_BASE_EMISSIVE = 0.06;    // faint CONSTANT cold glow (reads across the room)
 const VISITED_PROX_EMISSIVE = 0.08;    // a touch brighter up close
-const CROSS_DIST = 0.65;               // within this of the archway centre = you walked through it
 
-interface FrameGlow {
+export interface FrameGlow {
   mat: THREE.MeshStandardMaterial;
   x: number; z: number;
-  visited: boolean;
-  warm: THREE.Color;   // the authored warm emissive, restored each frame while unvisited
+  cold: boolean;       // set by the nav system: true = branch beyond is exhausted
+  warm: THREE.Color;   // the authored warm emissive, restored each frame while warm
 }
 const frameGlows: FrameGlow[] = [];
 
-export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, z: number): void {
-  frameGlows.push({ mat, x, z, visited: false, warm: mat.emissive.clone() });
+/** Register an archway's crown 'glow' material for proximity + explored marking.
+ *  Returns the handle so the nav system can drive its `cold` flag. */
+export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, z: number): FrameGlow {
+  const g: FrameGlow = { mat, x, z, cold: false, warm: mat.emissive.clone() };
+  frameGlows.push(g);
+  return g;
+}
+
+/** The live archway glow handles (the nav system matches these to floor edges). */
+export function getArchwayGlows(): readonly FrameGlow[] {
+  return frameGlows;
 }
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -225,16 +237,13 @@ function placeMote(cx: number, cz: number, axis: Axis, m: Mote): void {
 export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void {
   for (const f of frameGlows) {
     const dist = Math.hypot(f.x - playerPos.x, f.z - playerPos.z);
-    // Crossing the threshold marks the exit as taken (one-way; a floor's exits
-    // don't un-explore). You're within CROSS_DIST of the centre = in the doorway.
-    if (!f.visited && dist < CROSS_DIST) f.visited = true;
-    if (f.visited) {
+    if (f.cold) {
       // Spent threshold — a cold afterglow, faint+constant so it reads across
-      // the room as "been here", a touch brighter as you pass it again.
+      // the room as "nothing more this way", a touch brighter as you near it.
       f.mat.emissive.setHex(VISITED_COLD_COLOR);
       f.mat.emissiveIntensity = VISITED_BASE_EMISSIVE + VISITED_PROX_EMISSIVE * smoothstep(2.5, 1.0, dist);
     } else {
-      // Unexplored — the natural warm archway, brightening as you approach.
+      // Still worth taking — the natural warm archway, brightening as you approach.
       f.mat.emissive.copy(f.warm);
       f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
     }
