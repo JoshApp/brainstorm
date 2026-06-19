@@ -229,7 +229,7 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
     if (cp) {
       const d = Math.hypot(cp.x - camera.position.x, cp.z - camera.position.z);
       if (process.env.DELVE_REPLAY_DEBUG && d > DIVERGE_EPS) {
-        console.error(`[cp] f${i} run(${cp.x.toFixed(2)},${cp.z.toFixed(2)}) replay(${camera.position.x.toFixed(2)},${camera.position.z.toFixed(2)}) d=${d.toFixed(2)} depth=${currentDepth}`);
+        console.error(`[cp] f${i} d=${d.toFixed(2)} depth=${currentDepth} run(${cp.x.toFixed(1)},${cp.z.toFixed(1)}) replay(${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)}) kills=${getRunState()?.kills ?? 0}`);
       }
       // Persistent-divergence finder: ignore single-checkpoint blips (a descent
       // teleport lands one frame apart and re-converges); flag the first of TWO
