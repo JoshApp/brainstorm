@@ -19,6 +19,11 @@ const GAZE_CORE = 0xfff4ec;  // near-white, faint cool cast — the bright pupil
 const GAZE_GLOW = 0xffcf8a;  // pale gold halo
 
 const LID_PART = 0.085;      // how far each lid retracts when fully open
+// The eye sits high on the keystone (~2.7m) and the player looks UP at it from
+// ~1.6m, so a horizontal gaze buries it behind the lower lid. Pitch the whole
+// eye down toward the floor so it faces the player below; the gaze-tracking then
+// adjusts from this rest. ~32° reads face-on from a few metres back.
+const REST_PITCH = 0.55;     // rad — downward tilt of the resting gaze
 const KINDLE_RATE = 4;       // open / close ease speed
 const MAX_GAZE = 0.5;        // rad — how far the eyeball turns to follow the player
 const GAZE_RATE = 5;         // eyeball-turn ease speed
@@ -59,14 +64,16 @@ export interface ArchwayEye {
 export function buildArchwayEye(scene: THREE.Object3D, pos: THREE.Vector3, quat: THREE.Quaternion): ArchwayEye {
   const group = new THREE.Group();
   // Placed at the frame model's eye slot (world transform). The eye is authored
-  // facing +Z; the slot's orientation aims it out of the keystone.
+  // facing +Z; the slot's orientation aims it out of the keystone, then we pitch
+  // it down (local +X) so it looks toward the player standing below.
   group.position.copy(pos);
-  group.quaternion.copy(quat);
+  group.quaternion.copy(quat).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), REST_PITCH));
   group.scale.setScalar(EYE_SCALE);
 
-  // The eye never moves — cache its world placement once for the gaze math.
+  // The eye never moves — cache its world placement once for the gaze math
+  // (invQuat is the FULL tilted orientation, so tracking adjusts from the rest).
   const eyeWorld = pos.clone();
-  const invQuat = quat.clone().invert();
+  const invQuat = group.quaternion.clone().invert();
   // Stagger blinks so a row of eyes doesn't wink in unison.
   const blinkOffset = ((pos.x * 1.73 + pos.z * 0.91) % BLINK_PERIOD + BLINK_PERIOD) % BLINK_PERIOD;
 
