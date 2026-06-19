@@ -15,7 +15,7 @@ export function createPickupNotification() {
   if (label) return;
 
   label = document.createElement('div');
-  label.id = 'pickup-notification';
+  label.id = 'pickup-notification'; label.classList.add('game-hud');
   Object.assign(label.style, {
     position: 'fixed',
     left: '50%',

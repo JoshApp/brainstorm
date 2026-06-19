@@ -62,7 +62,7 @@ export function createBossBar() {
   if (root) return;
 
   root = document.createElement('div');
-  root.id = 'boss-bar';
+  root.id = 'boss-bar'; root.classList.add('game-hud');
   Object.assign(root.style, {
     position: 'fixed',
     left: '50%',

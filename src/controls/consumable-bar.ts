@@ -65,7 +65,7 @@ export function createConsumableBar() {
   if (container) return;
 
   container = document.createElement('div');
-  container.id = 'consumable-bar';
+  container.id = 'consumable-bar'; container.classList.add('game-hud');
   Object.assign(container.style, {
     position: 'fixed',
     left: 'calc(24px + env(safe-area-inset-left, 0px))',

@@ -46,7 +46,7 @@ let lastTex = 0;
 export function createPerfOverlay(): void {
   if (root) return;
   root = document.createElement('div');
-  root.id = 'perf-overlay';
+  root.id = 'perf-overlay'; root.classList.add('game-hud');
   // Sits below the inventory button (at top:16+safearea, height ~40)
   // — pushed down so they don't overlap. Compact card with a colour-
   // coded FPS as the headline read, secondary stats in a quieter

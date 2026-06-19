@@ -58,7 +58,7 @@ const HEART_PATH =
 export function createHealthHearts(): void {
   if (root) return;
   root = document.createElement('div');
-  root.id = 'health-hearts';
+  root.id = 'health-hearts'; root.classList.add('game-hud');
   Object.assign(root.style, {
     position: 'fixed',
     left: '50%',

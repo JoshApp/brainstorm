@@ -41,7 +41,7 @@ export function createInventoryPanel() {
   if (openButton) return;
 
   openButton = document.createElement('button');
-  openButton.id = 'inventory-button';
+  openButton.id = 'inventory-button'; openButton.classList.add('game-hud');
   openButton.setAttribute('aria-label', 'inventory');
   // Leather satchel — same visual register as the Minimal-style hearts:
   // filled dark-leather body, hairline gold edge, gold buckle as the

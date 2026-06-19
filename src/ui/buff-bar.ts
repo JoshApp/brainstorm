@@ -27,7 +27,7 @@ const pills = new Map<string, BuffPill>();
 export function createBuffBar() {
   if (container) return;
   container = document.createElement('div');
-  container.id = 'buff-bar';
+  container.id = 'buff-bar'; container.classList.add('game-hud');
   Object.assign(container.style, {
     position: 'fixed',
     left: '50%',

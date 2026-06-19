@@ -31,7 +31,7 @@ let levelPulseTimer = 0;
 export function createXpSigil(): void {
   if (root) return;
   root = document.createElement('div');
-  root.id = 'xp-sigil';
+  root.id = 'xp-sigil'; root.classList.add('game-hud');
   Object.assign(root.style, {
     position: 'fixed',
     right: `calc(16px + env(safe-area-inset-right, 0px))`,

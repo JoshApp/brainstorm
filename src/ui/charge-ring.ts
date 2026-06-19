@@ -32,7 +32,7 @@ export function createChargeRing(): void {
   if (root) return;
 
   root = document.createElement('div');
-  root.id = 'charge-ring';
+  root.id = 'charge-ring'; root.classList.add('game-hud');
   Object.assign(root.style, {
     position: 'fixed',
     // Centred on (0,0) — input-touch's tick repositions per frame

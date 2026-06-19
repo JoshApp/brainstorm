@@ -12,7 +12,7 @@ export function createDepthCounter(depth: number) {
   setDepthState(depth);
 
   label = document.createElement('div');
-  label.id = 'depth-counter';
+  label.id = 'depth-counter'; label.classList.add('game-hud');
   Object.assign(label.style, {
     position: 'fixed',
     left: 'calc(16px + env(safe-area-inset-left, 0px))',

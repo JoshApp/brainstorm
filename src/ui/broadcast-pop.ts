@@ -21,7 +21,7 @@ let container: HTMLDivElement | null = null;
 function ensureContainer() {
   if (container) return container;
   container = document.createElement('div');
-  container.id = 'broadcast-stack';
+  container.id = 'broadcast-stack'; container.classList.add('game-hud');
   Object.assign(container.style, {
     position: 'fixed',
     top: 'calc(16px + env(safe-area-inset-top, 0px))',

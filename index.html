@@ -51,37 +51,13 @@
 
       /* When a screen with policy.hidesHud is open (title, menus, death…), hide
          every gameplay HUD element. The screen manager (screen-manager.ts) toggles
-         `body.hud-hidden` — so the menu manager DOES own HUD visibility.
+         `body.hud-hidden`, so the menu manager OWNS HUD visibility — ONE mechanism.
 
-         THE SYSTEM: give any new HUD element class="game-hud" and it's hidden
-         automatically — no edit here, no leak. The id list below is legacy widgets
-         not yet class-tagged; it stays as a safety net but new HUD should use the
-         class. (This is why the level gauge / hearts / stamina were leaking: they
-         predate the class and weren't all listed.) */
-      body.hud-hidden .game-hud,
-      body.hud-hidden #hint-overlay,
-      body.hud-hidden #inventory-button,
-      body.hud-hidden #depth-counter,
-      body.hud-hidden #hp-bar,
-      body.hud-hidden #health-hearts,
-      body.hud-hidden #stamina-line,
-      body.hud-hidden #stamina-bar,
-      body.hud-hidden #buff-bar,
-      body.hud-hidden #consumable-bar,
-      body.hud-hidden #charge-ring,
-      body.hud-hidden #interact-button,
-      body.hud-hidden #interact-label,
-      body.hud-hidden #directional-damage,
-      body.hud-hidden #pickup-notification,
-      body.hud-hidden #broadcast-stack,
-      body.hud-hidden #perf-overlay,
-      body.hud-hidden #boss-bar,
-      body.hud-hidden #boss-intro-card,
-      body.hud-hidden #xp-bar-hud,
-      body.hud-hidden #xp-sigil,
-      body.hud-hidden #vignette-lowhp,
-      body.hud-hidden #vignette-persistent,
-      body.hud-hidden #gold-hud {
+         THE SYSTEM: every HUD element carries class="game-hud" (added where it's
+         created). A new HUD widget just adds the class and is hidden automatically —
+         no id list to maintain, no leak. (The old per-id list was incomplete, which
+         is why the level gauge / hearts / stamina leaked onto the menu.) */
+      body.hud-hidden .game-hud {
         display: none !important;
       }
 

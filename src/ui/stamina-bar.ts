@@ -77,7 +77,7 @@ function makeSegment(): Segment {
 export function createStaminaBar() {
   if (container) return;
   container = document.createElement('div');
-  container.id = 'stamina-bar';
+  container.id = 'stamina-bar'; container.classList.add('game-hud');
   Object.assign(container.style, {
     position: 'fixed',
     left: '50%',

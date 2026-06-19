@@ -9,7 +9,7 @@ export function showFirstTimeHint() {
   if (hint || dismissed) return;
 
   hint = document.createElement('div');
-  hint.id = 'hint-overlay';
+  hint.id = 'hint-overlay'; hint.classList.add('game-hud');
   Object.assign(hint.style, {
     position: 'fixed',
     inset: '0',

@@ -23,7 +23,7 @@ const PIP_GAP = 5;
 export function createHpBar() {
   if (container) return;
   container = document.createElement('div');
-  container.id = 'hp-bar';
+  container.id = 'hp-bar'; container.classList.add('game-hud');
   Object.assign(container.style, {
     position: 'fixed',
     left: '50%',

@@ -52,7 +52,7 @@ export function createXpGoldHud(): void {
 
   // ── GOLD (top-right corner, just below the depth counter) ──────
   goldContainer = document.createElement('div');
-  goldContainer.id = 'gold-hud';
+  goldContainer.id = 'gold-hud'; goldContainer.classList.add('game-hud');
   Object.assign(goldContainer.style, {
     position: 'fixed',
     right: 'calc(16px + env(safe-area-inset-right, 0px))',
@@ -110,7 +110,7 @@ export function createXpGoldHud(): void {
   // stays unobtrusive while still being readable. HP pips sit
   // comfortably above it.
   xpContainer = document.createElement('div');
-  xpContainer.id = 'xp-bar-hud';
+  xpContainer.id = 'xp-bar-hud'; xpContainer.classList.add('game-hud');
   Object.assign(xpContainer.style, {
     position: 'fixed',
     left: '0',

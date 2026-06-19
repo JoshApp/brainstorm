@@ -21,7 +21,7 @@ const FADE_OUT_MS = 600;
 function ensureCard(): HTMLDivElement {
   if (card) return card;
   card = document.createElement('div');
-  card.id = 'boss-intro-card';
+  card.id = 'boss-intro-card'; card.classList.add('game-hud');
   Object.assign(card.style, {
     position: 'fixed',
     inset: '0',

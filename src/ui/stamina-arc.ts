@@ -75,7 +75,7 @@ function makeSegment(): Segment {
 export function createStaminaArc(): void {
   if (root) return;
   root = document.createElement('div');
-  root.id = 'stamina-line';
+  root.id = 'stamina-line'; root.classList.add('game-hud');
   Object.assign(root.style, {
     position: 'fixed',
     left: '50%',

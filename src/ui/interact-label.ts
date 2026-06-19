@@ -62,7 +62,7 @@ export function setInteractLabelTapHandler(fn: () => void): void {
 export function ensureInteractLabel(): void {
   if (labelEl) return;
   labelEl = document.createElement('div');
-  labelEl.id = 'interact-label';
+  labelEl.id = 'interact-label'; labelEl.classList.add('game-hud');
   Object.assign(labelEl.style, {
     position: 'fixed',
     top: '0',

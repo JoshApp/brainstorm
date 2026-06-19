@@ -26,7 +26,7 @@ function ensureElements() {
   if (flashEl && persistentEl) return;
 
   persistentEl = document.createElement('div');
-  persistentEl.id = 'vignette-persistent';
+  persistentEl.id = 'vignette-persistent'; persistentEl.classList.add('game-hud');
   Object.assign(persistentEl.style, baseStyle());
   persistentEl.style.background =
     'radial-gradient(ellipse at center, transparent 30%, rgba(140, 10, 10, 0.35) 75%, rgba(60, 0, 0, 0.85) 100%)';
@@ -119,7 +119,7 @@ function ensureLowHp() {
   if (lowHpEl) return;
   ensureElements();
   lowHpEl = document.createElement('div');
-  lowHpEl.id = 'vignette-lowhp';
+  lowHpEl.id = 'vignette-lowhp'; lowHpEl.classList.add('game-hud');
   Object.assign(lowHpEl.style, baseStyle());
   lowHpEl.style.background =
     'radial-gradient(ellipse at center, transparent 35%, rgba(180, 30, 30, 0.45) 80%, rgba(80, 0, 0, 0.7) 100%)';

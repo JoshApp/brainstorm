@@ -14,7 +14,7 @@ let el: HTMLDivElement | null = null;
 function ensure() {
   if (el) return;
   el = document.createElement('div');
-  el.id = 'directional-damage';
+  el.id = 'directional-damage'; el.classList.add('game-hud');
   Object.assign(el.style, {
     position: 'fixed',
     inset: '0',

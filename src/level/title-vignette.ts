@@ -15,7 +15,9 @@ export const TITLE_VIGNETTE: LevelSpec = {
   startPos: { x: 0, z: 0, yaw: 0 }, // looking down −Z; the fire is ahead-right
   rooms: [{ id: 'tv', rect: { x: 0.6, z: -2, w: 9, d: 9 }, height: 4 }],
   corridors: [],
-  props: [{ kind: 'model', model: BONFIRE, x: 1.3, y: 0, z: -2.8, rotY: 0.4 }],
+  // closer (zoomed in) + nudged left of the old x:1.3 so the fire reads nearer
+  // centre while the menu still holds the left.
+  props: [{ kind: 'model', model: BONFIRE, x: 0.8, y: 0, z: -2.1, rotY: 0.4 }],
   torches: [],
   spawns: [],
   doors: [],
