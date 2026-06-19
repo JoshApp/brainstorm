@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { buildArchwayEye, type ArchwayEye } from './archway-eye';
 
 // Threshold draft — the diegetic "a way through here" cue at an open archway,
 // replacing the old floor ember (which read as a placed object). Two parts:
@@ -59,7 +60,6 @@ interface Draft {
 const drafts: Draft[] = [];
 let hazeTex: THREE.Texture | null = null;
 let moteTex: THREE.Texture | null = null;
-let sigilTex: THREE.Texture | null = null;
 
 // Archway frame glow — the lintel/keystone 'glow' material on each corridor
 // archway, brightened by player proximity so the gate's crown lights up to
@@ -78,32 +78,25 @@ export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, 
   frameGlows.push({ mat, x, z });
 }
 
-// EXIT LURE — the diegetic navigation cue, a warding sigil burned into the FLOOR
-// at the threshold (flat on the ground, the chevron pointing into the passage —
-// so it reads as "this way"). No real light source (an additive emissive quad +
-// bloom, the dropped-loot trick). The place LIGHTS the mark while this is the
-// NEAR entrance — adjacent to the player's current room — to ground that still
-// holds unexplored stuff, and SNUFFS it once that branch is explored. So the lit
-// thresholds are the ways still worth taking; spent ones go dark. A floor mark
-// is unambiguous to place (no arch-depth/keystone fuss), visible from either room
-// as you approach, and of-the-place (kin to the floor-strewn loot glows). Shown
-// only on the near end, never the far exit down a corridor.
+// EXIT LURE — the diegetic navigation cue, the dungeon's own EYE set in the arch
+// keystone (see scene/archway-eye.ts). It OPENS (lids part, iris kindles) on the
+// near entrance to ground that still holds unexplored stuff, and CLOSES (lidded,
+// dark) once that branch is explored. The living dungeon watches the ways still
+// worth taking and loses interest in the rest — the architecture expresses its
+// attention. Shown only on the near end, never the far exit down a corridor.
 //
 // `cold` (branch beyond is done) + `near` (adjacent to current room) are set
 // EXTERNALLY by the explored-map nav system; this file only renders the lure.
-const LURE_COLOR = 0xff8c3a;        // warm ember, matches the archway crown
-const LURE_MAX_OPACITY = 0.7;       // additive peak (tune on device)
-const LURE_KINDLE_RATE = 4;         // ease speed — kindle in / snuff out smoothly
-const SIGIL_SIZE = 0.7;             // metres — the mark on the floor (bigger than a wall glyph)
-const SIGIL_LIFT = 0.03;            // metres above the floor (polygon-offset avoids z-fight)
+const LURE_KINDLE_RATE = 4;         // ease speed — open / close smoothly
+const EYE_HEIGHT = 2.5;             // metres ABOVE THE FLOOR — set in the keystone (the
+                                    //   arch's top stone, lintel ≈ 2.55-2.85), floor-relative.
 
 export interface Lure {
-  mesh: THREE.Mesh;
-  mat: THREE.MeshBasicMaterial;
+  eye: ArchwayEye;
   x: number; z: number;             // archway centre — the match key for explored-map
   cold: boolean;                    // set by nav: branch beyond is exhausted
   near: boolean;                    // set by nav: adjacent to the player's current room
-  lit: number;                      // eased opacity multiplier (kindles/snuffs)
+  lit: number;                      // eased open amount (the eye opens/closes)
   t: number;
 }
 const lures: Lure[] = [];
@@ -147,30 +140,6 @@ function hazeTexture(): THREE.Texture {
   }
   hazeTex = new THREE.CanvasTexture(c);
   return hazeTex;
-}
-
-// A carved warding sigil — a stem, a crossbar, and a downward chevron pointing
-// INTO the doorway. Angular + grimdark, drawn once on a canvas (like the dust /
-// haze textures). Placeholder for richer authored glyphs later (per-direction /
-// per-act). White strokes on transparent so the additive material tints it warm.
-function sigilTexture(): THREE.Texture {
-  if (sigilTex) return sigilTex;
-  const s = 64;
-  const c = document.createElement('canvas');
-  c.width = c.height = s;
-  const g = c.getContext('2d')!;
-  g.strokeStyle = 'rgba(255,255,255,1)';
-  g.lineWidth = 5;
-  g.lineCap = 'round';
-  g.lineJoin = 'round';
-  const cx = s / 2;
-  g.beginPath();
-  g.moveTo(cx, s * 0.16); g.lineTo(cx, s * 0.72);                       // stem
-  g.moveTo(s * 0.30, s * 0.26); g.lineTo(s * 0.70, s * 0.26);           // crossbar
-  g.moveTo(s * 0.28, s * 0.60); g.lineTo(cx, s * 0.84); g.lineTo(s * 0.72, s * 0.60);  // chevron ↓
-  g.stroke();
-  sigilTex = new THREE.CanvasTexture(c);
-  return sigilTex;
 }
 
 function moteTexture(): THREE.Texture {
@@ -255,22 +224,11 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
 
   drafts.push({ cx: x, cz: z, axis, width: w, floorY, hazeLayers, motes, t: rand() * 10 });
 
-  // Exit lure — a sigil flat on the FLOOR at the threshold, the chevron aligned
-  // with the passage so it points the way through. polygonOffset so it doesn't
-  // z-fight the floor. Starts dark; the nav system kindles it when this is a near
-  // entrance to undone ground (see getArchwayLures / explored-map).
-  const lmat = new THREE.MeshBasicMaterial({
-    map: sigilTexture(), color: LURE_COLOR, transparent: true, opacity: 0,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: true, side: THREE.DoubleSide,
-    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-  });
-  const lmesh = new THREE.Mesh(new THREE.PlaneGeometry(SIGIL_SIZE, SIGIL_SIZE), lmat);
-  lmesh.rotation.x = -Math.PI / 2;                      // lie flat on the floor
-  if (axis === 'x') lmesh.rotation.z = Math.PI / 2;     // align the mark with the passage
-  lmesh.position.set(x, floorY + SIGIL_LIFT, z);
-  scene.add(lmesh);
-  lures.push({ mesh: lmesh, mat: lmat, x, z, cold: false, near: false, lit: 0, t: rand() * 10 });
-  void ceilingH;   // (no longer needed now the mark is on the floor)
+  // Exit lure — the dungeon's eye, set in the keystone (floor-relative). Starts
+  // closed + dark; the nav system opens it when this is a near entrance to
+  // unexplored ground (see getArchwayLures / explored-map).
+  const eye = buildArchwayEye(scene, x, floorY + Math.min(EYE_HEIGHT, ceilingH - 0.45), z, axis);
+  lures.push({ eye, x, z, cold: false, near: false, lit: 0, t: rand() * 10 });
 }
 
 function placeMote(cx: number, cz: number, floorY: number, axis: Axis, m: Mote): void {
@@ -292,19 +250,17 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
     f.mat.emissiveIntensity = GLOW_MAX_EMISSIVE * smoothstep(2.5, 1.0, dist);
   }
 
-  // Exit lures — light the keystone sigil only where it's a NEAR entrance
-  // (adjacent to the current room) to undone ground; snuff it where the branch
-  // is explored. Blooms by proximity (visible in the room, not the whole floor);
-  // eases so it kindles in / dies smoothly, with a faint torch-like flicker. The
-  // mark itself is fixed (carved) — no drift.
+  // Exit eyes — OPEN only where it's a NEAR entrance (adjacent to the current
+  // room) to unexplored ground; CLOSE where the branch is explored. Blooms by
+  // proximity (the gaze kindles as you near it, not across the whole floor);
+  // eases so it opens/closes smoothly, with a faint living flicker once open.
   for (const lure of lures) {
     lure.t += dt;
     const dist = Math.hypot(lure.x - playerPos.x, lure.z - playerPos.z);
     const want = (lure.near && !lure.cold) ? smoothstep(8.0, 2.0, dist) : 0;
     lure.lit += (want - lure.lit) * Math.min(1, dt * LURE_KINDLE_RATE);
-    const flicker = 0.85 + 0.15 * Math.sin(lure.t * 2.3);
-    lure.mat.opacity = LURE_MAX_OPACITY * lure.lit * flicker;
-    lure.mesh.visible = lure.mat.opacity > 0.01;
+    const flicker = 0.88 + 0.12 * Math.sin(lure.t * 2.3);
+    lure.eye.setOpen(lure.lit * flicker);
   }
   for (const d of drafts) {
     d.t += dt;
@@ -355,11 +311,7 @@ export function clearThresholdDrafts(): void {
       m.mat.dispose();
     }
   }
-  for (const lure of lures) {
-    lure.mesh.parent?.remove(lure.mesh);
-    lure.mesh.geometry.dispose();
-    lure.mat.dispose();
-  }
+  for (const lure of lures) lure.eye.dispose();
   drafts.length = 0;
   frameGlows.length = 0;
   lures.length = 0;
