@@ -39,7 +39,12 @@ if (typeof (globalThis as { document?: unknown }).document === 'undefined') {
     {},
     {
       get: (_t, k) => {
-        if (k === 'style') return new Proxy({}, { get: () => '', set: () => true });
+        if (k === 'style') return new Proxy({}, {
+          // CSSStyleDeclaration METHODS must be callable (setProperty etc.);
+          // plain property reads return '' like a real empty inline style.
+          get: (_t, p) => (p === 'setProperty' || p === 'removeProperty' || p === 'getPropertyValue') ? (() => '') : '',
+          set: () => true,
+        });
         if (k === 'classList') return { add: noop, remove: noop, toggle: noop, contains: () => false };
         if (k === 'getContext') return () => ctx2d;
         if (k === 'getBoundingClientRect') return () => ({ x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600 });

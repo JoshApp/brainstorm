@@ -51,6 +51,12 @@ import { getSettings, updateSettings } from '../src/settings/settings';
 import { deserializeTape, tapeFrame, type Tape } from '../src/harness/tape';
 import { getAllInteractables, getInRangeInteractable } from '../src/interactables/system';
 import { getCurrentWeapon, setCurrentWeapon, FIST_STATS } from '../src/player/current-weapon';
+import { canStartAction, tickPlayerAction, bindPlayerActionSources } from '../src/combat/player-action';
+import { getStamina } from '../src/combat/stamina';
+import { peekDash } from '../src/controls/dash-input';
+import { tickDeath, getTimeScale } from '../src/player/death';
+import { tickBossSlowmo, getBossSlowmoTimeScale } from '../src/combat/boss-slowmo';
+import { tickBulletTime, getWorldTimeScale } from '../src/combat/reactive-defense';
 import { onEquipmentChanged } from '../src/player/equipment';
 import type { LevelSpec } from '../src/level/types';
 
@@ -154,6 +160,9 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
   applyLoad('starter');
 
   const weapon = createWeaponViewmodel(camera, { onSwingStart: () => {}, canSwing: () => true });
+  // Mirror main.ts:589 — feed the action FSM the live swing state, else
+  // canStartAction can't tell idle from mid-swing.
+  bindPlayerActionSources({ isSwinging: () => weapon.isSwinging, swingPhase: () => weapon.getPhase() });
   const input = createTouchInput(canvas, { onTap: () => {} });
   const combat = createCombatSystem(camera, weapon, () => currentLevel.enemies);
   const systems = buildSystems({
@@ -162,10 +171,6 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
     getLevel: () => currentLevel, getRoomCuller: () => null,
   });
   const sim = systems.filter((s) => s.kind === 'sim');
-  const ctx: TickContext = {
-    realDt: FIXED_DT, scaledDt: FIXED_DT, playerDt: FIXED_DT, fxDt: FIXED_DT,
-    paused: false, mode: 'playing', playing: true,
-  };
 
   if (process.env.DELVE_REPLAY_DEBUG) {
     console.error('[dbg] starter interactables:');
@@ -184,6 +189,7 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
   for (const c of tape.checkpoints ?? []) checkpoints.set(c.f, c);
   let firstDiverge = -1;
   let divergeMsg = '';
+  let prevDiverged = -1;
 
   const steps = selftestEvery > 0 ? selftestEvery * 8 : tape.frames.length;
   let last = steps;
@@ -195,16 +201,47 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
       pendingLoadId = `depth-${currentDepth + 1}`;
     }
     const intent: Intent = selftestEvery > 0 ? NEUTRAL_INTENT : (tapeFrame(tape, i) ?? NEUTRAL_INTENT);
+    // Mirror main.ts advanceSimStep() exactly — the replay loop had drifted
+    // from it (missing tickPlayerAction → dodge/parry commit timers never
+    // counted down → canStartAction('dodge') stuck false → recorded dodges
+    // silently dropped; missing the time-scale drivers → bullet-time/slow-mo
+    // dt scaling never reproduced). No menus in a replay, so no pause gating.
     setIntent(intent);
     advanceGameClock(FIXED_DT);
-    runSystems(sim, ctx);
+    tickDeath(FIXED_DT);
+    tickBulletTime(FIXED_DT);
+    tickBossSlowmo(FIXED_DT);
+    const baseScale = getTimeScale() * getBossSlowmoTimeScale();
+    const playerDt = FIXED_DT * baseScale;
+    tickPlayerAction(playerDt);
+    runSystems(sim, {
+      realDt: FIXED_DT,
+      scaledDt: playerDt * getWorldTimeScale(),
+      playerDt,
+      fxDt: FIXED_DT * getWorldTimeScale(),
+      paused: false, mode: 'playing', playing: true,
+    });
     for (const s of stairPositions) { const d = Math.hypot(s.x - camera.position.x, s.z - camera.position.z); if (d < minStairDist) minStairDist = d; }
+    if (process.env.DELVE_REPLAY_DEBUG && i >= 176 && i <= 182) {
+      console.error(`[f${i}] intentDodge=${JSON.stringify(intent.dodge)} pendingDash=${JSON.stringify(peekDash())} canDodge=${canStartAction('dodge')} stamina=${getStamina().toFixed(1)}`);
+    }
     const cp = checkpoints.get(i);
-    if (cp && firstDiverge < 0) {
+    if (cp) {
       const d = Math.hypot(cp.x - camera.position.x, cp.z - camera.position.z);
+      if (process.env.DELVE_REPLAY_DEBUG && d > DIVERGE_EPS) {
+        console.error(`[cp] f${i} run(${cp.x.toFixed(2)},${cp.z.toFixed(2)}) replay(${camera.position.x.toFixed(2)},${camera.position.z.toFixed(2)}) d=${d.toFixed(2)} depth=${currentDepth}`);
+      }
+      // Persistent-divergence finder: ignore single-checkpoint blips (a descent
+      // teleport lands one frame apart and re-converges); flag the first of TWO
+      // consecutive diverged checkpoints.
       if (d > DIVERGE_EPS) {
-        firstDiverge = i;
-        divergeMsg = `frame ${i}: run was at (${cp.x.toFixed(1)},${cp.z.toFixed(1)}) but replay is at (${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)}) — ${d.toFixed(2)}m apart`;
+        if (prevDiverged >= 0 && firstDiverge < 0) {
+          firstDiverge = prevDiverged;
+          divergeMsg = `frame ${prevDiverged} (persists): run (${cp.x.toFixed(1)},${cp.z.toFixed(1)}) vs replay (${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)})`;
+        }
+        prevDiverged = i;
+      } else {
+        prevDiverged = -1;
       }
     }
     if (process.env.DELVE_REPLAY_DEBUG && intent.interact) {
