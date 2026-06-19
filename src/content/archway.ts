@@ -138,5 +138,14 @@ export function archway(opts: ArchwayOptions): ModelSpec {
       // visually continues the gate's mass.
       { kind: 'box', pos: [0, tympanumCentreY, 0], size: [lintelWidth, tympanumHeight, LINTEL_DEPTH], mat: 'stone' },
     ],
+    // Mount points for the dungeon's EYE, set on the KEYSTONE FRONT FACE (one
+    // per side, since a passage is approached from both rooms). The nav system
+    // reads these so the eye sits ON the carved stone instead of a guessed
+    // offset — and any generated archway carries them. Each faces outward (the
+    // eye built facing +Z; eye_back is turned to face the other way).
+    slots: {
+      eye_front: { pos: [0, lintelBottom + KEYSTONE_H / 2, KEYSTONE_D / 2 + 0.01] },
+      eye_back: { pos: [0, lintelBottom + KEYSTONE_H / 2, -(KEYSTONE_D / 2 + 0.01)], rot: [0, Math.PI, 0] },
+    },
   };
 }

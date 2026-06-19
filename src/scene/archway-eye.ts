@@ -37,12 +37,12 @@ export interface ArchwayEye {
   dispose(): void;
 }
 
-export function buildArchwayEye(scene: THREE.Object3D, x: number, y: number, z: number, axis: 'x' | 'z'): ArchwayEye {
+export function buildArchwayEye(scene: THREE.Object3D, pos: THREE.Vector3, quat: THREE.Quaternion): ArchwayEye {
   const group = new THREE.Group();
-  group.position.set(x, y, z);
-  // Face the passage: a part authored facing +Z is right for a z-axis passage;
-  // a wall along z (x-axis passage) needs a quarter-turn.
-  if (axis === 'x') group.rotation.y = Math.PI / 2;
+  // Placed at the archway model's eye slot (world transform). The eye is
+  // authored facing +Z; the slot's orientation aims it out of the keystone.
+  group.position.copy(pos);
+  group.quaternion.copy(quat);
 
   const stone = new THREE.MeshStandardMaterial({ color: 0x17140f, roughness: 1, metalness: 0, flatShading: true, fog: true });
   const lidStone = new THREE.MeshStandardMaterial({ color: 0x1d1913, roughness: 1, metalness: 0, flatShading: true, fog: true });

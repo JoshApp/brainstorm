@@ -63,7 +63,8 @@ import { spawnTomePillar } from '../interactables/tome-pillar';
 import { registerLight, clearLightPool } from '../scene/light-pool';
 import { decorateFloor } from './decorate';
 import { seedBuildRng, buildRng, gameRng, hashStringToSeed } from '../engine/rng';
-import { spawnThresholdDraft, registerArchwayGlow } from '../scene/threshold-draft';
+import { spawnThresholdDraft, registerArchwayGlow, registerArchwayLure } from '../scene/threshold-draft';
+import { buildArchwayEye } from '../scene/archway-eye';
 
 // A boss's "signature colour" for the sealed-descent ward — its eye glow if it
 // has one, else any material's rim colour, else a default arcane green. Used to
@@ -1236,6 +1237,18 @@ export function buildLevel(
       if (prop.proximityGlow) {
         const gm = built.materials.get('glow');
         if (gm) registerArchwayGlow(gm as THREE.MeshStandardMaterial, prop.x, prop.z);
+        // The dungeon's EYE — mount one at each keystone slot the archway model
+        // declares (eye_front / eye_back), at the slot's WORLD transform, so it
+        // sits ON the carved stone, no guessed offset. Independent scene objects
+        // (immune to the static merge); the nav system drives them by (x,z).
+        built.group.updateMatrixWorld(true);
+        for (const slotName of ['eye_front', 'eye_back']) {
+          const slot = built.slots.get(slotName);
+          if (!slot) continue;
+          const ep = slot.getWorldPosition(new THREE.Vector3());
+          const eq = slot.getWorldQuaternion(new THREE.Quaternion());
+          registerArchwayLure(buildArchwayEye(root, ep, eq), prop.x, prop.z);
+        }
       }
       // Debug provenance — stamp the generating system + a coarse model
       // hint onto the group so the debug capture's look-at/cone resolver

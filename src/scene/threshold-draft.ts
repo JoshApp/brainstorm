@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildArchwayEye, type ArchwayEye } from './archway-eye';
+import { type ArchwayEye } from './archway-eye';
 
 // Threshold draft — the diegetic "a way through here" cue at an open archway,
 // replacing the old floor ember (which read as a placed object). Two parts:
@@ -88,8 +88,6 @@ export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, 
 // `cold` (branch beyond is done) + `near` (adjacent to current room) are set
 // EXTERNALLY by the explored-map nav system; this file only renders the lure.
 const LURE_KINDLE_RATE = 4;         // ease speed — open / close smoothly
-const EYE_HEIGHT = 2.5;             // metres ABOVE THE FLOOR — set in the keystone (the
-                                    //   arch's top stone, lintel ≈ 2.55-2.85), floor-relative.
 
 export interface Lure {
   eye: ArchwayEye;
@@ -100,6 +98,14 @@ export interface Lure {
   t: number;
 }
 const lures: Lure[] = [];
+
+/** Register an archway eye (built by the builder at the archway model's keystone
+ *  slot) as an exit lure. `x,z` is the archway's world centre — the key the nav
+ *  system matches against floor-graph edges. Two eyes (front + back faces) share
+ *  one archway position; both open together. */
+export function registerArchwayLure(eye: ArchwayEye, x: number, z: number): void {
+  lures.push({ eye, x, z, cold: false, near: false, lit: 0, t: rand() * 10 });
+}
 
 /** The live exit-lure handles (the nav system matches these to floor edges and
  *  drives their `cold` + `near` flags). */
@@ -224,11 +230,7 @@ export function spawnThresholdDraft(scene: THREE.Object3D, x: number, z: number,
 
   drafts.push({ cx: x, cz: z, axis, width: w, floorY, hazeLayers, motes, t: rand() * 10 });
 
-  // Exit lure — the dungeon's eye, set in the keystone (floor-relative). Starts
-  // closed + dark; the nav system opens it when this is a near entrance to
-  // unexplored ground (see getArchwayLures / explored-map).
-  const eye = buildArchwayEye(scene, x, floorY + Math.min(EYE_HEIGHT, ceilingH - 0.45), z, axis);
-  lures.push({ eye, x, z, cold: false, near: false, lit: 0, t: rand() * 10 });
+  void ceilingH;   // (the eye is built separately, at the archway model's slot)
 }
 
 function placeMote(cx: number, cz: number, floorY: number, axis: Axis, m: Mote): void {
