@@ -117,9 +117,9 @@ export function showStartScreen(opts: StartScreenOptions) {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-start',
-    gap: '8px',
-    padding: 'clamp(14px, 2.6vw, 22px) clamp(20px, 4vw, 34px)',
-    marginBottom: '22px',
+    gap: 'clamp(2px, 1vh, 8px)',
+    padding: 'clamp(8px, 2vh, 20px) clamp(20px, 4vw, 34px)',
+    marginBottom: 'clamp(8px, 2.5vh, 22px)',
   } as Partial<CSSStyleDeclaration>);
 
   // Descent sigil — a thin engraved double-chevron pointing DOWN: "the way
@@ -145,8 +145,10 @@ export function showStartScreen(opts: StartScreenOptions) {
   title.textContent = 'DELVE';
   Object.assign(title.style, {
     fontFamily: FONT_TITLE, // Cinzel — monumental engraved caps for the masthead
-    fontSize: 'clamp(54px, 12vw, 86px)',
-    letterSpacing: '0.18em',
+    // Height-AWARE: a short landscape (browser bar showing) capped the title by
+    // 15vh so it can't shove DESCEND off the bottom; wide screens use 12vw.
+    fontSize: 'clamp(32px, min(12vw, 15vh), 80px)',
+    letterSpacing: '0.16em',
     color: 'rgba(232, 174, 96, 1)',
     textShadow: [
       '0 1px 0 rgba(255, 226, 180, 0.22)',   // lit top edge

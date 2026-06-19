@@ -23,3 +23,6 @@ art-feedback/
 # SpacetimeDB local dev scratch (auto-named local DB)
 server/spacetime.local.json
 server/spacetimedb/dist/
+
+# throwaway dev scripts (underscore-prefixed) — never block a deploy
+scripts/_*.ts

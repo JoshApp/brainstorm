@@ -27,6 +27,8 @@ const url = `http://localhost:${PORT}/brainstorm/ui-bench.html?ui=${specimen}`;
 
 // landscape phones (real play orientation) + desktop (secondary market)
 const DEVICES = [
+  { name: 'Phone+bar', w: 740, h: 320 },   // real landscape with the browser URL bar showing (shortest)
+  { name: 'Short', w: 667, h: 300 },
   { name: 'iPhone SE', w: 667, h: 375 },
   { name: 'iPhone 14', w: 844, h: 390 },
   { name: 'Pro Max', w: 932, h: 430 },
