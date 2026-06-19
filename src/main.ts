@@ -2002,6 +2002,10 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     suppressArrivalCeremony();
     suppressNextDescentTitle();
     startRun('title-vignette');
+    // Look DOWN a touch — the fire sits low on the floor close ahead, so a level
+    // gaze clips it at the bottom; this lifts it into frame. (The title pauses the
+    // world, so input never overwrites this pitch.)
+    camera.rotation.x = -0.22;
   }
   awaitBootUpdate()
     .then((updating) => { if (!updating) { mountTitleScene(); hideBootLoading(); openTitle(); } })
