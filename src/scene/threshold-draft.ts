@@ -87,24 +87,21 @@ export function registerArchwayGlow(mat: THREE.MeshStandardMaterial, x: number, 
 //
 // `cold` (branch beyond is done) + `near` (adjacent to current room) are set
 // EXTERNALLY by the explored-map nav system; this file only renders the lure.
-const LURE_KINDLE_RATE = 4;         // ease speed — open / close smoothly
 
 export interface Lure {
   eye: ArchwayEye;
   x: number; z: number;             // archway centre — the match key for explored-map
   cold: boolean;                    // set by nav: branch beyond is exhausted
   near: boolean;                    // set by nav: adjacent to the player's current room
-  lit: number;                      // eased open amount (the eye opens/closes)
-  t: number;
 }
 const lures: Lure[] = [];
 
-/** Register an archway eye (built by the builder at the archway model's keystone
+/** Register an archway eye (built by the builder at the frame model's keystone
  *  slot) as an exit lure. `x,z` is the archway's world centre — the key the nav
- *  system matches against floor-graph edges. Two eyes (front + back faces) share
- *  one archway position; both open together. */
+ *  system matches against floor-graph edges. The eye owns its own open easing,
+ *  flicker, blink, and gaze (see archway-eye.ts); the lure just carries cold/near. */
 export function registerArchwayLure(eye: ArchwayEye, x: number, z: number): void {
-  lures.push({ eye, x, z, cold: false, near: false, lit: 0, t: rand() * 10 });
+  lures.push({ eye, x, z, cold: false, near: false });
 }
 
 /** The live exit-lure handles (the nav system matches these to floor edges and
@@ -253,16 +250,13 @@ export function tickThresholdDrafts(dt: number, playerPos: THREE.Vector3): void 
   }
 
   // Exit eyes — OPEN only where it's a NEAR entrance (adjacent to the current
-  // room) to unexplored ground; CLOSE where the branch is explored. Blooms by
-  // proximity (the gaze kindles as you near it, not across the whole floor);
-  // eases so it opens/closes smoothly, with a faint living flicker once open.
+  // room) to unexplored ground; CLOSE where the branch is explored. The open
+  // TARGET blooms by proximity (the gaze kindles as you near it, not across the
+  // whole floor); the eye owns the easing + flicker + blink + player-tracking.
   for (const lure of lures) {
-    lure.t += dt;
     const dist = Math.hypot(lure.x - playerPos.x, lure.z - playerPos.z);
     const want = (lure.near && !lure.cold) ? smoothstep(8.0, 2.0, dist) : 0;
-    lure.lit += (want - lure.lit) * Math.min(1, dt * LURE_KINDLE_RATE);
-    const flicker = 0.88 + 0.12 * Math.sin(lure.t * 2.3);
-    lure.eye.setOpen(lure.lit * flicker);
+    lure.eye.update(dt, want, playerPos);
   }
   for (const d of drafts) {
     d.t += dt;
