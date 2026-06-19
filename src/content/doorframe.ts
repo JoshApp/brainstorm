@@ -132,5 +132,12 @@ export function doorframe(opts: DoorframeOptions = {}): ModelSpec {
       // Fill above the lintel — closes the full-height void over the doorway.
       { kind: 'box', pos: [0, fillCentreY, 0], size: [lintelWidth, fillHeight, FILL_DEPTH], mat: 'stone' },
     ],
+    // Eye mount points on the LINTEL front/back faces — same contract as the
+    // archway (a doorframe is the narrow-mouth / stair-mouth variant, so it
+    // needs the nav eye too). Without these, only wide-mouth archways got eyes.
+    slots: {
+      eye_front: { pos: [0, lintelBottom + LINTEL_HEIGHT / 2, LINTEL_DEPTH / 2 + 0.01] },
+      eye_back: { pos: [0, lintelBottom + LINTEL_HEIGHT / 2, -(LINTEL_DEPTH / 2 + 0.01)], rot: [0, Math.PI, 0] },
+    },
   };
 }
