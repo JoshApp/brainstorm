@@ -7,7 +7,7 @@ import { spawnDoor } from './door';
 import { spawnBossMist } from './boss-mist';
 import { spawnCobweb, type Destructible } from '../level/destructibles';
 import { buildModel } from '../ecs/build-model';
-import { doorframe } from '../content/doorframe';
+import { chooseFrameModel, installFrameFittings } from '../level/frame';
 import { openingEndpoints } from '../level/opening';
 
 // One place that installs ANY fitting into a wall opening. Every opening —
@@ -78,10 +78,16 @@ export function spawnFitting(
 /** Stone doorframe (jambs + lintel fill to the ceiling) centred on the opening.
  *  The lintel fill is what closes the gap above a short curtain. */
 function buildFrame(scene: THREE.Object3D, opening: OpeningSpec, ceilingHeight: number): void {
-  const built = buildModel(doorframe({ width: opening.widthM, ceilingHeight }));
+  // Fog-gate / archway openings own their seal and want no columns in the gap,
+  // so force the slim doorframe. Routed through the SHARED chooser + fittings
+  // installer (level/frame.ts) so these dress identically to corridor + tilemap
+  // frames — the nav eye + crown glow now ride the fitting path too.
+  const { model } = chooseFrameModel({ width: opening.widthM, ceilingHeight, openHeight: opening.height, slimOnly: true });
+  const built = buildModel(model);
   built.group.position.set(opening.x, groundYAt(opening.x, opening.z), opening.z);
   built.group.rotation.y = opening.rotY;
   scene.add(built.group);
+  installFrameFittings(built, scene, opening.x, opening.z);
 }
 
 /** Endpoints of the opening's gap as a wall-segment shape. */

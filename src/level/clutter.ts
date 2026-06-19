@@ -8,8 +8,9 @@ import {
 } from '../content/clutter';
 import { IRON_BRAZIER, CRESSET_PIKE } from '../content/light-props';
 import { COBWEB_CORNER } from '../content/cobweb';
-import { archway, archwayColumnOffset, archwayPassableHalfBand } from '../content/archway';
-import { doorframe, doorframeCollision, doorframePassableHalfBand } from '../content/doorframe';
+import { archwayColumnOffset, archwayPassableHalfBand } from '../content/archway';
+import { doorframeCollision, doorframePassableHalfBand } from '../content/doorframe';
+import { chooseFrameModel } from './frame';
 import {
   wallOpenings, inOpening, allStairFootprints, findContainingRect,
   type Opening, type StairFootprint,
@@ -857,14 +858,16 @@ export function emitArchwaysForCorridors(spec: LevelSpec): void {
         // toward the knife-edge that soft-locked the chasm mouth, so those
         // openings get the collision-free doorframe instead. (Was 1.6m, which
         // left only a ~0.24m band — passable in theory, a trap in practice.)
-        if (width < 2.0 || stairMouth) {
+        // The shared archway-vs-doorframe decision (level/frame.ts) — openHeight
+        // caps the lintel to a low tunnel's interior so no void slit shows above
+        // it; stair-room mouths force the slim doorframe (a column would
+        // soft-lock the stair). Collision + nav gates stay here — they're what
+        // lives IN the frame, and differ by kind.
+        const { kind, model } = chooseFrameModel({ width, ceilingHeight: ceiling, openHeight: corridor.height, slimOnly: stairMouth });
+        if (kind === 'doorframe') {
           spec.props.push({
-            kind: 'model',
-            // openHeight caps the lintel to the corridor's interior height
-            // so no void slit shows above a low tunnel's ceiling.
-            model: doorframe({ width, ceilingHeight: ceiling, openHeight: corridor.height }),
-            x: ax, y: 0, z: az,
-            rotY,
+            kind: 'model', model,
+            x: ax, y: 0, z: az, rotY,
             proximityGlow: true,
             _dbg: 'doorframe',
             // Jamb blockers when the opening can spare them (>= 1.6m —
@@ -879,10 +882,8 @@ export function emitArchwaysForCorridors(spec: LevelSpec): void {
         } else {
           const colOffset = archwayColumnOffset(width);
           spec.props.push({
-            kind: 'model',
-            model: archway({ width, ceilingHeight: ceiling, openHeight: corridor.height }),
-            x: ax, y: 0, z: az,
-            rotY,
+            kind: 'model', model,
+            x: ax, y: 0, z: az, rotY,
             proximityGlow: true,   // lintel/keystone glow as the player nears
             _dbg: 'archway',
             // Column blockers sit at the column centre offsets so
