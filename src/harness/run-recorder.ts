@@ -17,6 +17,8 @@ import type { Tape } from './tape';
 import { peekAttackPressed } from '../controls/attack-input';
 import { peekDash } from '../controls/dash-input';
 import { peekInteractPressed } from '../controls/interact-input';
+import { DEV } from '../debug/dev';
+import { traceRecorded } from '../debug/interact-trace';
 
 const FLOATS_PER_STEP = 9; // moveX, moveY, lookDx, lookDy, attack, dodgeX, dodgeY, dodgeFlag, interact
 
@@ -124,10 +126,12 @@ export function captureStep(input: {
 }): void {
   if (!active) return;
   const dodge = peekDash();
+  const interacted = peekInteractPressed();
   active.record(
     input.moveX, input.moveY, input.lookDx, input.lookDy,
     peekAttackPressed(),
     dodge ? dodge.dx : 0, dodge ? dodge.dy : 0, dodge !== null,
-    peekInteractPressed(),
+    interacted,
   );
+  if (DEV && interacted) traceRecorded();
 }

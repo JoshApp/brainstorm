@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { DEV } from '../debug/dev';
+import { traceDescent } from '../debug/interact-trace';
 import { buildLevel, type LiveLevel } from './builder';
 import type { LevelSpec } from './types';
 import type { StyleMaterials } from '../style/materials';
@@ -184,7 +186,10 @@ export function tickPendingLoad() {
   // Safe rooms don't advance depth — they're the breath between acts,
   // not a dungeon floor. The depth counter / title both read the
   // unchanged currentDepth, which matches the boss the player just beat.
-  if (!isSafeRoom && id !== 'tutorial') currentDepth += 1;
+  if (!isSafeRoom && id !== 'tutorial') {
+    currentDepth += 1;
+    if (DEV) traceDescent(currentDepth);
+  }
   // Reset the boss encounter + fog-wall flags BEFORE building — the build
   // registers the boss + its fog gate's completion listener, so resetting
   // afterward (the old resetBossBar timing) would wipe them.

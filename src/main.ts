@@ -682,7 +682,7 @@ const input = createTouchInput(canvas, {
       else triggerAttack();
     }
     else if (action.kind === 'attack') triggerAttack();
-    else if (action.kind === 'interact') { triggerInteract(); resolveUsable(action.interactable, camera.position).onUse(); }
+    else if (action.kind === 'interact') { triggerInteract('tap'); resolveUsable(action.interactable, camera.position).onUse(); }
     // 'none' → deliberately do nothing (e.g. tapped a chest you're too far from).
   },
   onInteract() {
@@ -691,7 +691,7 @@ const input = createTouchInput(canvas, {
     // path: not during dying or open screens.
     if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
     const inRange = getInRangeInteractable();
-    if (inRange) { triggerInteract(); resolveUsable(inRange, camera.position).onUse(); }
+    if (inRange) { triggerInteract('ekey'); resolveUsable(inRange, camera.position).onUse(); }
   },
 });
 // Floating world-anchored interact label only — the corner USE button
@@ -703,7 +703,10 @@ ensureInteractLabel();
 setInteractLabelTapHandler(() => {
   if (isDying() || isFogWalkthroughActive() || isAnyScreenOpen()) return;
   const inRange = getInRangeInteractable();
-  if (inRange) resolveUsable(inRange, camera.position).onUse();
+  // This path (tapping the floating DESCEND prompt — the most natural mobile
+  // interaction) was the interact UNDER-capture: it descended without firing
+  // triggerInteract, so the descent never landed in the replay tape.
+  if (inRange) { triggerInteract('label'); resolveUsable(inRange, camera.position).onUse(); }
 });
 createConsumableBar();
 // Backdrop and HUD-hide are now owned by the screen manager — created

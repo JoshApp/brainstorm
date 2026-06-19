@@ -10,13 +10,20 @@
 //     (unchanged — zero regression risk); the flag is recording-only there.
 
 import { isWorldPausedByScreen } from '../ui/screen-manager';
+import { DEV } from '../debug/dev';
+import { traceTrigger } from '../debug/interact-trace';
 
 let pressed = false;
 
-/** Called by any input source when the player asks to interact. */
-export function triggerInteract(): void {
-  if (isWorldPausedByScreen()) return;
+/** Called by any input source when the player asks to interact. `source` is a
+ *  DEV-only label ('tap' | 'ekey' | 'label') for the interact-capture trace. */
+export function triggerInteract(source?: string): void {
+  if (isWorldPausedByScreen()) {
+    if (DEV) traceTrigger(source, false); // a screen swallowed the press
+    return;
+  }
   pressed = true;
+  if (DEV) traceTrigger(source, true);
 }
 
 /** Consume the pending press — true at most once per press. */

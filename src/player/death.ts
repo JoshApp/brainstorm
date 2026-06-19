@@ -7,6 +7,8 @@ import { getRunState, elapsedString, clearSave } from '../state/run-state';
 import { recordRunDeath, getRunDiscoveries } from '../state/meta-state';
 import { reportDeath } from '../net/delve-net';
 import { captureRunTape } from '../net/run-sync';
+import { DEV } from '../debug/dev';
+import { dumpInteractTrace } from '../debug/interact-trace';
 import { killingBlowLabel, getDamageRecap } from './damage-recap';
 import { setGameMode } from '../state/game-mode';
 import { tickWeaponDrops } from './weapon-drop';
@@ -140,6 +142,7 @@ export function triggerDeath() {
   // leaderboard verification — stored offline, uploaded on reconnect. The
   // tape was finalised by finishRun() at the top of the death sequence.
   void captureRunTape({ depth, kills });
+  if (DEV) dumpInteractTrace(); // run summary: descents vs triggerInteract vs recorded
   // Lifetime stat bump: total play time + death count. Kept SEPARATE from
   // run-state.clearSave() so meta survives.
   recordRunDeath(elapsedMs);
