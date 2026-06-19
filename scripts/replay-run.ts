@@ -32,7 +32,7 @@ import { setActiveLevel } from '../src/level/active-level';
 import { buildMaterials } from '../src/style/materials';
 import { buildSystems } from '../src/engine/systems';
 import { runSystems, type TickContext } from '../src/engine/loop';
-import { createFirstPersonCamera } from '../src/controls/camera';
+import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from '../src/controls/camera';
 import { createWeaponViewmodel } from '../src/player/viewmodel';
 import { createCombatSystem } from '../src/combat/attack';
 import { createTouchInput } from '../src/controls/input';
@@ -47,6 +47,7 @@ import { bootstrapSimWorld } from '../src/engine/sim-bootstrap';
 import { startNewRun, getRunState } from '../src/state/run-state';
 import { initRunStateListeners } from '../src/state/run-state-listeners';
 import { installBus, setIntent, NEUTRAL_INTENT, type Intent } from '../src/harness/intent';
+import { getSettings, updateSettings } from '../src/settings/settings';
 import { deserializeTape, tapeFrame, type Tape } from '../src/harness/tape';
 import type { LevelSpec } from '../src/level/types';
 
@@ -71,6 +72,13 @@ export interface RunResult {
 
 function replay(tape: Tape, selftestEvery = 0): RunResult {
   clearWorld();
+  if (process.env.DELVE_LOOK_SENS) {
+    // EXPERIMENT: the tape stores raw look deltas; updateCamera scales them by
+    // lookSensitivity. Override it to test whether a sensitivity mismatch is
+    // why a real run's trajectory diverges in replay.
+    updateSettings({ lookSensitivity: Number(process.env.DELVE_LOOK_SENS) });
+  }
+  if (process.env.DELVE_REPLAY_DEBUG) console.error(`[dbg] lookSensitivity=${getSettings().lookSensitivity}`);
   seedRng(tape.seed);
   setDeterministicClock(true);
   installBus();
@@ -117,8 +125,13 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
     const r = currentLevel.walkable.resolveSpawn(currentLevel.playerSpawn.x, currentLevel.playerSpawn.z, 0.3);
     camera.position.set(r.x, CONFIG.PLAYER_HEIGHT, r.z);
     camera.rotation.order = 'YXZ';
-    camera.rotation.y = currentLevel.playerSpawn.yaw;
-    camera.rotation.x = 0;
+    // Set facing through the camera MODULE (mirrors main.ts:380/409 on level
+    // load), not camera.rotation directly: updateCamera() rebuilds the rotation
+    // from the module's yaw/pitch every frame, so a raw camera.rotation write is
+    // clobbered → the replayed player faces yaw 0 instead of the spawn yaw and
+    // every camera-relative move goes the wrong way (no kills, no descent).
+    setCameraYaw(currentLevel.playerSpawn.yaw);
+    setCameraPitch(0);
   }
 
   // First floor: starter at depth 0 (the increment in applyLoad takes -1 → 0).
@@ -151,6 +164,9 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
     setIntent(intent);
     advanceGameClock(FIXED_DT);
     runSystems(sim, ctx);
+    if (process.env.DELVE_REPLAY_DEBUG && i % 300 === 0) {
+      console.error(`[dbg] step ${i} depth ${currentDepth} pos ${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)} yaw ${camera.rotation.y.toFixed(2)} move ${JSON.stringify(intent.move)} look ${JSON.stringify(intent.look)} kills ${getRunState()?.kills ?? 0}`);
+    }
     if (isPlayerDead() || getPlayerHp() <= 0) { last = i + 1; break; }
   }
   return { depth: currentDepth, kills: getRunState()?.kills ?? 0, alive: getPlayerHp() > 0, steps: last };
