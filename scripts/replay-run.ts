@@ -49,6 +49,9 @@ import { initRunStateListeners } from '../src/state/run-state-listeners';
 import { installBus, setIntent, NEUTRAL_INTENT, type Intent } from '../src/harness/intent';
 import { getSettings, updateSettings } from '../src/settings/settings';
 import { deserializeTape, tapeFrame, type Tape } from '../src/harness/tape';
+import { getAllInteractables, getInRangeInteractable } from '../src/interactables/system';
+import { getCurrentWeapon, setCurrentWeapon, FIST_STATS } from '../src/player/current-weapon';
+import { onEquipmentChanged } from '../src/player/equipment';
 import type { LevelSpec } from '../src/level/types';
 
 const FIXED_DT = 1 / 60;
@@ -82,6 +85,18 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
   seedRng(tape.seed);
   setDeterministicClock(true);
   installBus();
+  // SIM-relevant half of main.ts's onEquipmentChanged handler: keep
+  // current-weapon in sync with the equipment slot. WITHOUT this, taking a
+  // weapon at a starter altar (setSlot) never updates current-weapon, so the
+  // player stays effectively unarmed (no kills) AND the starter's
+  // has-equipment stair gate never opens → the run is stuck at depth 0.
+  // (The viewmodel/offhand half of the real handler is presentation-only.)
+  let equippedWeaponId: string | null = null;
+  onEquipmentChanged((eq) => {
+    setCurrentWeapon(eq.weapon?.weapon ?? FIST_STATS);
+    equippedWeaponId = (eq.weapon as { id?: string } | undefined)?.id ?? null;
+    if (process.env.DELVE_REPLAY_DEBUG) console.error(`[dbg] EQUIP CHANGED → weapon=${equippedWeaponId ?? 'none'} @ replayStep=${(globalThis as { __replayStep?: number }).__replayStep ?? 'setup'}\n${(new Error().stack ?? '').split('\n').slice(2, 9).join('\n')}`);
+  });
   initRunStateListeners(); // enemy:killed → run-state kills
   startNewRun('starter', { seed: tape.seed, depth: 0 });
 
@@ -152,9 +167,20 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
     paused: false, mode: 'playing', playing: true,
   };
 
+  if (process.env.DELVE_REPLAY_DEBUG) {
+    console.error('[dbg] starter interactables:');
+    for (const it of getAllInteractables()) {
+      console.error(`  - ${(it as { id?: string }).id} @ ${it.position.x.toFixed(1)},${it.position.z.toFixed(1)} label="${(it as { promptLabel?: string }).promptLabel}"`);
+    }
+    console.error(`[dbg] starting weapon: ${(getCurrentWeapon() as { id?: string; name?: string })?.id ?? (getCurrentWeapon() as { name?: string })?.name ?? 'NONE'}`);
+  }
+  const stairPositions = getAllInteractables().filter((it) => (it as { id?: string }).id?.includes('stairs')).map((it) => ({ x: it.position.x, z: it.position.z }));
+  let minStairDist = Infinity;
+
   const steps = selftestEvery > 0 ? selftestEvery * 8 : tape.frames.length;
   let last = steps;
   for (let i = 0; i < steps; i++) {
+    (globalThis as { __replayStep?: number }).__replayStep = i;
     if (pendingLoadId) { const id = pendingLoadId; pendingLoadId = null; applyLoad(id); }
     // Self-test: force a descent to exercise the swap without a real tape.
     if (selftestEvery > 0 && i > 0 && i % selftestEvery === 0 && !pendingLoadId) {
@@ -164,10 +190,19 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
     setIntent(intent);
     advanceGameClock(FIXED_DT);
     runSystems(sim, ctx);
+    for (const s of stairPositions) { const d = Math.hypot(s.x - camera.position.x, s.z - camera.position.z); if (d < minStairDist) minStairDist = d; }
+    if (process.env.DELVE_REPLAY_DEBUG && intent.interact) {
+      const ir = getInRangeInteractable();
+      console.error(`[dbg] INTERACT @ step ${i} pos ${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)} inRange=${ir ? `${(ir as { id?: string }).id} "${(ir as { promptLabel?: string }).promptLabel}"` : 'NONE'}`);
+    }
     if (process.env.DELVE_REPLAY_DEBUG && i % 300 === 0) {
       console.error(`[dbg] step ${i} depth ${currentDepth} pos ${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)} yaw ${camera.rotation.y.toFixed(2)} move ${JSON.stringify(intent.move)} look ${JSON.stringify(intent.look)} kills ${getRunState()?.kills ?? 0}`);
     }
     if (isPlayerDead() || getPlayerHp() <= 0) { last = i + 1; break; }
+  }
+  if (process.env.DELVE_REPLAY_DEBUG) {
+    console.error(`[dbg] closest the player EVER got to a stair: ${minStairDist.toFixed(2)}m`);
+    console.error(`[dbg] final weapon: ${(getCurrentWeapon() as { id?: string; name?: string })?.id ?? (getCurrentWeapon() as { name?: string })?.name ?? 'NONE'}`);
   }
   return { depth: currentDepth, kills: getRunState()?.kills ?? 0, alive: getPlayerHp() > 0, steps: last };
 }
