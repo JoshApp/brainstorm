@@ -13,7 +13,7 @@
 // and before the camera consumes the look delta.
 
 import type { Intent } from './intent';
-import type { Tape } from './tape';
+import type { Tape, Checkpoint } from './tape';
 import { peekAttackPressed } from '../controls/attack-input';
 import { peekDash } from '../controls/dash-input';
 import { peekInteractPressed } from '../controls/interact-input';
@@ -21,10 +21,12 @@ import { DEV } from '../debug/dev';
 import { traceRecorded } from '../debug/interact-trace';
 
 const FLOATS_PER_STEP = 9; // moveX, moveY, lookDx, lookDy, attack, dodgeX, dodgeY, dodgeFlag, interact
+const CHECKPOINT_INTERVAL = 20; // sample player (x,z) every 20 steps (~3/sec) for replay-divergence debugging
 
 class RunRecorder {
   private buf: Float32Array;
   private steps = 0;
+  private checkpoints: Checkpoint[] = [];
   constructor(readonly seed: number, capacitySteps = 8192) {
     this.buf = new Float32Array(capacitySteps * FLOATS_PER_STEP);
   }
@@ -34,7 +36,7 @@ class RunRecorder {
   record(
     moveX: number, moveY: number, lookDx: number, lookDy: number,
     attack: boolean, dodgeX: number, dodgeY: number, hasDodge: boolean,
-    interact: boolean,
+    interact: boolean, playerX: number, playerZ: number,
   ): void {
     if ((this.steps + 1) * FLOATS_PER_STEP > this.buf.length) {
       const next = new Float32Array(this.buf.length * 2);
@@ -47,6 +49,9 @@ class RunRecorder {
     b[i++] = attack ? 1 : 0;
     b[i++] = dodgeX; b[i++] = dodgeY; b[i++] = hasDodge ? 1 : 0;
     b[i] = interact ? 1 : 0;
+    // Ground-truth position sample (rare → a tiny object every 20 steps, off the
+    // float hot path) so a replay can find where it first drifts from the run.
+    if (this.steps % CHECKPOINT_INTERVAL === 0) this.checkpoints.push({ f: this.steps, x: playerX, z: playerZ });
     this.steps++;
   }
 
@@ -69,7 +74,7 @@ class RunRecorder {
         interact: b[i + 8] === 1,
       };
     }
-    return { seed: this.seed, frames, label: 'live' };
+    return { seed: this.seed, frames, label: 'live', checkpoints: this.checkpoints.slice() };
   }
 }
 
@@ -123,7 +128,7 @@ export function takeLastRunTape(): Tape | null {
  *  updateCamera() consumes the look delta. A no-op branch when not recording. */
 export function captureStep(input: {
   moveX: number; moveY: number; lookDx: number; lookDy: number;
-}): void {
+}, playerX = 0, playerZ = 0): void {
   if (!active) return;
   const dodge = peekDash();
   const interacted = peekInteractPressed();
@@ -131,7 +136,7 @@ export function captureStep(input: {
     input.moveX, input.moveY, input.lookDx, input.lookDy,
     peekAttackPressed(),
     dodge ? dodge.dx : 0, dodge ? dodge.dy : 0, dodge !== null,
-    interacted,
+    interacted, playerX, playerZ,
   );
   if (DEV && interacted) traceRecorded();
 }

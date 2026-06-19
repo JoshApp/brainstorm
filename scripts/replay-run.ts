@@ -177,6 +177,14 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
   const stairPositions = getAllInteractables().filter((it) => (it as { id?: string }).id?.includes('stairs')).map((it) => ({ x: it.position.x, z: it.position.z }));
   let minStairDist = Infinity;
 
+  // Replay-divergence finder: compare our position to the run's recorded
+  // ground-truth checkpoints; report the FIRST frame we drift > DIVERGE_EPS.
+  const DIVERGE_EPS = 0.5;
+  const checkpoints = new Map<number, { x: number; z: number }>();
+  for (const c of tape.checkpoints ?? []) checkpoints.set(c.f, c);
+  let firstDiverge = -1;
+  let divergeMsg = '';
+
   const steps = selftestEvery > 0 ? selftestEvery * 8 : tape.frames.length;
   let last = steps;
   for (let i = 0; i < steps; i++) {
@@ -191,6 +199,14 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
     advanceGameClock(FIXED_DT);
     runSystems(sim, ctx);
     for (const s of stairPositions) { const d = Math.hypot(s.x - camera.position.x, s.z - camera.position.z); if (d < minStairDist) minStairDist = d; }
+    const cp = checkpoints.get(i);
+    if (cp && firstDiverge < 0) {
+      const d = Math.hypot(cp.x - camera.position.x, cp.z - camera.position.z);
+      if (d > DIVERGE_EPS) {
+        firstDiverge = i;
+        divergeMsg = `frame ${i}: run was at (${cp.x.toFixed(1)},${cp.z.toFixed(1)}) but replay is at (${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)}) — ${d.toFixed(2)}m apart`;
+      }
+    }
     if (process.env.DELVE_REPLAY_DEBUG && intent.interact) {
       const ir = getInRangeInteractable();
       console.error(`[dbg] INTERACT @ step ${i} pos ${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)} inRange=${ir ? `${(ir as { id?: string }).id} "${(ir as { promptLabel?: string }).promptLabel}"` : 'NONE'}`);
@@ -199,6 +215,13 @@ function replay(tape: Tape, selftestEvery = 0): RunResult {
       console.error(`[dbg] step ${i} depth ${currentDepth} pos ${camera.position.x.toFixed(1)},${camera.position.z.toFixed(1)} yaw ${camera.rotation.y.toFixed(2)} move ${JSON.stringify(intent.move)} look ${JSON.stringify(intent.look)} kills ${getRunState()?.kills ?? 0}`);
     }
     if (isPlayerDead() || getPlayerHp() <= 0) { last = i + 1; break; }
+  }
+  if (checkpoints.size > 0) {
+    console.error(firstDiverge >= 0
+      ? `[checkpoint] FIRST DIVERGENCE — ${divergeMsg}  (of ${checkpoints.size} checkpoints)`
+      : `[checkpoint] no divergence > ${DIVERGE_EPS}m across ${checkpoints.size} checkpoints — replay tracks the run`);
+  } else {
+    console.error('[checkpoint] tape has NO checkpoints (recorded before the checkpoint tool — replay a fresh run)');
   }
   if (process.env.DELVE_REPLAY_DEBUG) {
     console.error(`[dbg] closest the player EVER got to a stair: ${minStairDist.toFixed(2)}m`);

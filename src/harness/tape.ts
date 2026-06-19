@@ -14,6 +14,11 @@
 import type { Intent } from './intent';
 import { cloneIntent } from './intent';
 
+/** A periodic ground-truth sample of the player's position during the recorded
+ *  run, for DEBUGGING replay determinism: a replay diffs its own position
+ *  against these to find the FIRST frame it diverges. `f` = fixed-step index. */
+export interface Checkpoint { f: number; x: number; z: number; }
+
 export interface Tape {
   /** The run seed — seeds gameRng before the first step. */
   seed: number;
@@ -21,6 +26,9 @@ export interface Tape {
   frames: Intent[];
   /** Optional human label / provenance. */
   label?: string;
+  /** Optional player-position checkpoints (every N steps) — replay-divergence
+   *  reference. Absent on pre-checkpoint tapes. */
+  checkpoints?: Checkpoint[];
 }
 
 /** Accumulates intents during a recorded run. */

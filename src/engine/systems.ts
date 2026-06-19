@@ -150,7 +150,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
         // Run recorder: capture this step's resolved intent (move/look + peeked
         // attack/dodge) BEFORE updateCamera consumes the look delta. No-op
         // branch when not recording — zero cost on the default path.
-        captureStep(input);
+        captureStep(input, camera.position.x, camera.position.z);
         const level = getLevel();
         updateCamera(camera, input, ctx.playerDt, level.walkable, level.enemies);
       } else {
