@@ -17,7 +17,12 @@ import { cloneIntent } from './intent';
 /** A periodic ground-truth sample of the player's position during the recorded
  *  run, for DEBUGGING replay determinism: a replay diffs its own position
  *  against these to find the FIRST frame it diverges. `f` = fixed-step index. */
-export interface Checkpoint { f: number; x: number; z: number; }
+export interface Checkpoint {
+  f: number; x: number; z: number;
+  /** Alive enemy count + their centroid at this frame — to tell whether a
+   *  combat divergence starts with the ENEMIES (AI drift) or the player. */
+  ne?: number; ex?: number; ez?: number;
+}
 
 export interface Tape {
   /** The run seed — seeds gameRng before the first step. */

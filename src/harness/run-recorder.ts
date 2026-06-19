@@ -37,6 +37,7 @@ class RunRecorder {
     moveX: number, moveY: number, lookDx: number, lookDy: number,
     attack: boolean, dodgeX: number, dodgeY: number, hasDodge: boolean,
     interact: boolean, playerX: number, playerZ: number,
+    ne: number, ex: number, ez: number,
   ): void {
     if ((this.steps + 1) * FLOATS_PER_STEP > this.buf.length) {
       const next = new Float32Array(this.buf.length * 2);
@@ -51,7 +52,7 @@ class RunRecorder {
     b[i] = interact ? 1 : 0;
     // Ground-truth position sample (rare → a tiny object every 20 steps, off the
     // float hot path) so a replay can find where it first drifts from the run.
-    if (this.steps % CHECKPOINT_INTERVAL === 0) this.checkpoints.push({ f: this.steps, x: playerX, z: playerZ });
+    if (this.steps % CHECKPOINT_INTERVAL === 0) this.checkpoints.push({ f: this.steps, x: playerX, z: playerZ, ne, ex, ez });
     this.steps++;
   }
 
@@ -128,7 +129,7 @@ export function takeLastRunTape(): Tape | null {
  *  updateCamera() consumes the look delta. A no-op branch when not recording. */
 export function captureStep(input: {
   moveX: number; moveY: number; lookDx: number; lookDy: number;
-}, playerX = 0, playerZ = 0): void {
+}, playerX = 0, playerZ = 0, ne = 0, ex = 0, ez = 0): void {
   if (!active) return;
   const dodge = peekDash();
   const interacted = peekInteractPressed();
@@ -136,7 +137,7 @@ export function captureStep(input: {
     input.moveX, input.moveY, input.lookDx, input.lookDy,
     peekAttackPressed(),
     dodge ? dodge.dx : 0, dodge ? dodge.dy : 0, dodge !== null,
-    interacted, playerX, playerZ,
+    interacted, playerX, playerZ, ne, ex, ez,
   );
   if (DEV && interacted) traceRecorded();
 }
