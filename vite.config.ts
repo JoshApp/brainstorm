@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
 import { VitePWA } from 'vite-plugin-pwa';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 // Short commit SHA, stamped into the bundle as __BUILD_SHA__ so every crash /
 // telemetry report is tied to the exact deploy it happened on (regression
@@ -9,6 +10,22 @@ import { VitePWA } from 'vite-plugin-pwa';
 function buildSha(): string {
   try { return execSync('git rev-parse --short HEAD').toString().trim(); } catch { return 'dev'; }
 }
+
+// Source-map upload to Sentry — ONLY when all three env vars are present (set as
+// CI secrets/vars in the deploy workflow). Absent → no plugin, builds untouched.
+// It uploads the hidden .map files tagged with the release (build SHA) so prod
+// stacks symbolicate, then DELETES them from dist so they're never served
+// publicly. A no-op locally and for anyone without the Sentry secrets.
+const SENTRY_UPLOAD = process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT;
+const sentryPlugins = SENTRY_UPLOAD
+  ? [sentryVitePlugin({
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      release: { name: buildSha() },
+      sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
+    })]
+  : [];
 import { debugCapturePlugin } from './scripts/debug-capture-plugin';
 import { perfRecordPlugin } from './scripts/perf-record-plugin';
 import { artFeedbackPlugin } from './scripts/art-feedback-plugin';
@@ -24,6 +41,7 @@ export default defineConfig({
     __BUILD_SHA__: JSON.stringify(buildSha()),
   },
   plugins: [
+    ...sentryPlugins,
     // Dev-only: receives in-game debug captures → debug-captures/<id>/.
     debugCapturePlugin(),
     // Dev-only: receives perf recordings from the phone → perf-recordings/<id>.json,

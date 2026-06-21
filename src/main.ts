@@ -1399,9 +1399,9 @@ function tick() {
     fatalHandled = true;
     const e = err instanceof Error ? err : new Error(String(err));
     if (import.meta.env.DEV) console.error('[fatal] game loop threw:', e);
-    captureError(e, true);
     let repro: unknown = null;
     try { repro = peekActiveTape(); } catch { /* recorder unavailable */ }
+    captureError(e, true, repro); // routes to Sentry (with the tape attached) or the beacon
     showCrashOverlay(buildReport(e, { repro }), e.message);
   }
 }

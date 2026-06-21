@@ -36,6 +36,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        # Sentry source-map upload activates only when all three are set as repo
+        # secrets/vars (Settings → Secrets and variables → Actions). Until then
+        # the vite plugin is inert and the build is unchanged.
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

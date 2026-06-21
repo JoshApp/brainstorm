@@ -18,6 +18,8 @@
 // honoured, no cookies, UA only (standard for crash triage). Error sends are
 // throttled so a per-frame exception can't flood.
 
+import { initSentry, isSentryActive, sentryBreadcrumb, sentryCaptureError, sentryCaptureReport } from './sentry';
+
 declare const __BUILD_SHA__: string;
 
 const TELEMETRY_ENDPOINT = ''; // e.g. 'https://collect.example.workers.dev'
@@ -46,8 +48,14 @@ export function initTelemetry(): void {
   sending = !!TELEMETRY_ENDPOINT
     && navigator.doNotTrack !== '1'
     && (navigator as { msDoNotTrack?: string }).msDoNotTrack !== '1';
-  window.addEventListener('error', (e) => captureError((e.error as Error) ?? new Error(e.message), false));
-  window.addEventListener('unhandledrejection', (e) => captureError(toError(e.reason), false));
+  // Sentry is the backbone when its DSN is set; it installs its own global error
+  // handlers, so we DON'T add ours (no double-capture). Without Sentry we keep
+  // our own listeners feeding the beacon + clipboard-report fallback.
+  const sentryOn = initSentry(() => safeContext());
+  if (!sentryOn) {
+    window.addEventListener('error', (e) => captureError((e.error as Error) ?? new Error(e.message), false));
+    window.addEventListener('unhandledrejection', (e) => captureError(toError(e.reason), false));
+  }
 }
 
 /** Drop a recent-events crumb (level loads, screen opens, funnel events). Always
@@ -55,6 +63,7 @@ export function initTelemetry(): void {
 export function breadcrumb(cat: string, msg: string): void {
   breadcrumbs.push({ t: Date.now(), cat, msg });
   if (breadcrumbs.length > MAX_BREADCRUMBS) breadcrumbs.shift();
+  sentryBreadcrumb(cat, msg); // no-op when Sentry is off
 }
 
 /** Record a funnel event (boot, run_start, death…). Also leaves a breadcrumb. */
@@ -65,9 +74,13 @@ export function track(event: string, props: Record<string, unknown> = {}): void 
 
 /** Capture an error — breadcrumb always, network send when enabled+under quota.
  *  `fatal` only tags the event; the crash OVERLAY is shown by the caller. */
-export function captureError(err: unknown, fatal: boolean): void {
+export function captureError(err: unknown, fatal: boolean, repro: unknown = null): void {
   const e = toError(err);
   breadcrumb('error', e.message);
+  if (isSentryActive()) {
+    sentryCaptureError(e, safeContext(), repro, fatal);
+    return; // Sentry is the backbone — don't also beacon the same error
+  }
   if (sending && errorsSent < MAX_ERRORS) {
     errorsSent++;
     send({ event: fatal ? 'fatal' : 'error', props: { message: e.message, stack: e.stack?.slice(0, 1500), ...safeContext() } });
@@ -96,6 +109,10 @@ export function buildReport(error: Error | null, extra: Record<string, unknown> 
 export async function sendReport(report: Record<string, unknown>): Promise<'sent' | 'copied' | 'failed'> {
   const json = JSON.stringify(report);
   let sent = false;
+  if (isSentryActive()) {
+    sentryCaptureReport(report);
+    sent = true;
+  }
   if (sending) {
     try { await fetch(TELEMETRY_ENDPOINT, { method: 'POST', headers: { 'content-type': 'application/json' }, body: json }); sent = true; } catch { /* fall through to clipboard */ }
   }
