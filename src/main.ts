@@ -80,6 +80,9 @@ import { initRunStateListeners } from './state/run-state-listeners';
 import { isPlaying, getGameMode } from './state/game-mode';
 import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { buildSystems } from './engine/systems';
+import {
+  setRenderInterpEnabled, interpStepBegin, interpStepEnd, interpApply, interpRestore,
+} from './engine/render-interp';
 import { initDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-adapt-readout';
 import { initBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
 import { seedRng } from './engine/rng';
@@ -1145,10 +1148,34 @@ const PRESENT_SYSTEMS = SYSTEMS.filter((s) => s.kind !== 'sim');
 // regression: ?varstep=1 forces the legacy variable-dt loop.
 const USE_FIXED_STEP =
   new URLSearchParams(location.search).get('varstep') !== '1';
+// Render interpolation (fixed-step only): DRAW a pose interpolated between the
+// two most-recent sim snapshots by the leftover-accumulator fraction, so the
+// 60Hz sim doesn't beat against the display clock into visible judder at a
+// locked 60fps (see engine/render-interp.ts). Presentation-only — the sim + the
+// replay tape are untouched. Escape hatch for an A/B or a feel regression:
+// ?nointerp=1 draws the raw latest sim pose (the legacy fixed-step behaviour).
+// Three loops are now A/B-able on the phone: default (fixed+interp),
+// ?nointerp=1 (fixed, no interp), ?varstep=1 (legacy variable-dt).
+const USE_INTERP =
+  USE_FIXED_STEP && new URLSearchParams(location.search).get('nointerp') !== '1';
+setRenderInterpEnabled(USE_INTERP);
 // In fixed-step, run the game clock deterministically (gameNow() = accumulated
 // sim time). In default play it stays on performance.now() — feel unchanged.
 setDeterministicClock(USE_FIXED_STEP);
 let simAccumulator = 0;
+// Reused scratch for the interpolation target list (camera + live enemies),
+// refilled in place each step so the loop never allocates.
+const interpTargets: THREE.Object3D[] = [];
+function fillInterpTargets(): void {
+  interpTargets.length = 0;
+  interpTargets.push(camera);
+  const enemies = currentLevel?.enemies;
+  if (enemies) {
+    for (const e of enemies) {
+      if (e.alive || e.dying) interpTargets.push(e.group);
+    }
+  }
+}
 // Wall-clock of the last drawn frame, for the FRAME RATE cap (settings.frameCap).
 let lastDrawMs = 0;
 
@@ -1233,14 +1260,22 @@ function tick() {
     simAccumulator += realDt;
     let steps = 0;
     while (simAccumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
+      if (USE_INTERP) { fillInterpTargets(); interpStepBegin(interpTargets); }
       advanceSimStep(FIXED_DT);
+      if (USE_INTERP) { fillInterpTargets(); interpStepEnd(interpTargets); }
       simAccumulator -= FIXED_DT;
       steps++;
     }
     if (simAccumulator > FIXED_DT) simAccumulator = FIXED_DT; // drop the backlog
+    // Interpolate the drawn pose between the last two sim snapshots by the
+    // leftover fraction; on a 0-step frame this still advances the view toward
+    // `curr` instead of freezing (the judder fix). Restored after present so the
+    // next sim step integrates from authoritative state, not the draw pose.
+    if (USE_INTERP) { fillInterpTargets(); interpApply(simAccumulator / FIXED_DT, interpTargets); }
     frameBegin();
     presentPass(realDt);
     frameEnd();
+    if (USE_INTERP) interpRestore(interpTargets);
   } else {
     // VARIABLE-dt path (default) — the original interleaved pass, unchanged.
     tickArrival(camera, realDt);
