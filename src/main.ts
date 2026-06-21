@@ -123,6 +123,7 @@ import { setOutlinesDisabled } from './interactables/outline';
 import { setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-pool';
 import { packTokenCount } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
+import { pacerObserve, pacerShouldDraw } from './scene/frame-pacer';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
@@ -1176,8 +1177,6 @@ function fillInterpTargets(): void {
     }
   }
 }
-// Wall-clock of the last drawn frame, for the FRAME RATE cap (settings.frameCap).
-let lastDrawMs = 0;
 
 /** Advance the SIM by one fixed step: the time-scale drivers + player FSM +
  *  sim systems, all on the fixed clock (so the world is deterministic). */
@@ -1227,17 +1226,16 @@ function presentPass(realDt: number): void {
 
 function tick() {
   // FRAME RATE cap: skip DRAWING this frame if we're ahead of the chosen fps.
-  // The sim isn't lost — clock.getDelta() accumulates the skipped time, so the
-  // next drawn frame advances the sim by the full elapsed time (more fixed
-  // substeps). So capping only throttles rendering: saves GPU battery/heat, and
-  // matching the draw rate to the 60Hz sim keeps motion smooth on any display.
-  // (4ms tolerance so a 60-cap on a 60Hz screen doesn't jitter down to 30.)
+  // Paced by VSYNC DIVISION (scene/frame-pacer.ts) — pacerObserve measures the
+  // native refresh from the raw rAF cadence (so it must run on EVERY callback,
+  // including skipped ones), pacerShouldDraw draws every round(native/cap)-th
+  // frame. Even pacing by construction + an honest cap on non-60-divisor panels
+  // (a 60 cap is 45 on a 90Hz screen, not a stuttering fake-60). The sim isn't
+  // lost on a skip — clock.getDelta() accumulates the skipped time, so the next
+  // drawn frame advances the sim by the full elapsed time (more fixed substeps).
+  pacerObserve(performance.now());
   const frameCap = Number(getSettings().frameCap);
-  if (frameCap > 0) {
-    const now = performance.now();
-    if (now - lastDrawMs < 1000 / frameCap - 4) { requestAnimationFrame(tick); return; }
-    lastDrawMs = now;
-  }
+  if (!pacerShouldDraw(frameCap)) { requestAnimationFrame(tick); return; }
   // Apply any pending level swap BEFORE any per-frame reads on the level.
   // Stairs interactables call loadLevel() during the previous frame's
   // interactables tick; the swap lands here at the top of the next frame.

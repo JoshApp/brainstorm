@@ -14,6 +14,8 @@
 import type * as THREE from 'three';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
+import { getNativeHz, pacerEffectiveFps } from '../scene/frame-pacer';
+import { getSettings } from '../settings/settings';
 
 // Chrome-only heap readout (absent on Firefox/Safari). Prod-safe: just a
 // number for the overlay, no behavioural effect.
@@ -161,8 +163,13 @@ export function tickPerfOverlay(nowMs: number): void {
     `${fps}<span style="font-size:11px;font-weight:500;letter-spacing:.15em;opacity:.65;margin-left:4px;">FPS</span>`;
 
   const heap = heapMB();
+  // Panel native refresh + what the FRAME RATE cap actually resolves to on it
+  // (e.g. a 60 cap is 45 on a 90Hz panel). 'native' when uncapped.
+  const cap = Number(getSettings().frameCap);
+  const capLabel = cap > 0 ? `${pacerEffectiveFps(cap)}` : 'native';
   secondaryEl.textContent =
     `${lastMs.toFixed(1)} ms · p95 ${p95.toFixed(1)} ms\n` +
+    `panel ${getNativeHz()}Hz · cap ${capLabel}\n` +
     `${lastCalls} draws · ${lastTris.toLocaleString()} tris\n` +
     `lights ${getActiveSourceCount()}/${getRegisteredSourceCount()} · geo ${lastGeo} · tex ${lastTex}\n` +
     `pool ${getGeometryPoolSize()}${heap !== null ? ` · heap ${heap}MB` : ''}`;
