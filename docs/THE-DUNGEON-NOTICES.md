@@ -1,13 +1,14 @@
 # The Dungeon Notices — Compass, Attention & the Tarot Spread
 
-> **STATUS: ACTIVE ITERATION — first conceived 2026-06-15.** This is a
-> day-one brainstorm, NOT canon. Nothing here is built. It is a
-> *candidate redesign of progression* that, if adopted, would
-> **supersede large parts of `HARBOR-AND-PROGRESSION.md`** (the
-> attribute-point-spend model). We are still iterating on every piece —
-> domains, names, card mechanics, meta-progression are all open. Tags:
+> **STATUS: SPINE COMMITTED 2026-06-21 (conceived 2026-06-15).** The
+> top brainstorm sections remain exploratory (compass axes/names, deep
+> synergy model — still [OPEN]), but the **progression spine and the v3
+> floor-content system are now DECIDED** — see **"Session 2026-06-21"**
+> and **"v3 floor-content system"** at the bottom; build against those.
+> This **supersedes the attribute-point-spend model** in
+> `HARBOR-AND-PROGRESSION.md`. Tags: **[DECIDED]** = committed,
 > **[LEANING]** = current preference, **[OPEN]** = unresolved fork,
-> **[LOVED]** = Josh flagged it as a keeper this session.
+> **[LOVED]** = Josh flagged it as a keeper.
 
 Companion to `docs/HARBOR-AND-PROGRESSION.md` and `docs/DESIGN.md`.
 
@@ -404,3 +405,141 @@ corpses + async, deep Balatro synergy, compass-curated loot.
 - **Absorbs:** the "attention meter" (transaction grammar) → the Gaze;
   "felt progression" (harbor) → the deal moment; lootable corpses
   (traces) → cards on dead crawlers.
+
+---
+
+## Session 2026-06-21 — the spine is committed [DECIDED]
+
+This session moved the big forks from [LEANING]/[OPEN] to **decided**.
+The vision above stands; this section is the load-bearing summary to
+build against.
+
+### 1. Tarot IS the build. Stat distribution is cut. [DECIDED]
+
+One progression spine, not two. Today the game runs BOTH a tarot Spread
+AND attribute-point allocation (might/finesse/lore/grit earned per
+level, spent at the fire — `src/state/character.ts`). That dilutes both.
+Stat-point allocation is the least interesting progression we can offer
+(number-go-up, no identity, no synergy) and tarot does everything it
+does plus identity + synergy + theme. So:
+
+- **All in-run build decisions = tarot.** Cards change *how you fight*,
+  not just +N to a stat.
+- **XP/levels demote to a curve, not a menu.** Keep an automatic
+  survivability creep with depth (HP/stamina) so deep floors stay fair —
+  but **no point-spend screen**. The attribute-spend system + its UI
+  (`src/ui/attribute-defs.ts`, the bonfire spend menu) come OUT.
+- **XP → meta-progression.** Earned XP unlocks new cards into the pool /
+  new starting hands / codex (the "meta carries forward" pillar). Never
+  raw stat power that trivializes combat.
+
+### 2. Two card temperatures, two rhythms [DECIDED]
+
+Mirrors the in-world vs voice-in-the-deep tone split — a good sign it's
+the right grain.
+
+- **Minors — frequent, optional, FOUND, never gated.** Small,
+  synergistic texture. From found fire-events + corpses. Skipping one is
+  a real choice (speed/purity vs greed). Upright, low-stakes. Accumulate
+  freely in the Spread.
+- **Majors — rare, GATED, ceremonial.** The act-break fork at the
+  harbor fire after a boss. Deal-3-pick-1, forced (stairs sealed —
+  `src/state/fate-gate.ts` already arms on the big fire and clears on
+  draw; `src/interactables/stairs.ts:705` already seals). These DEFINE
+  your archetype/domain. Capped Spread (~5) so each is weighty. **This
+  is where stakes live** — majors are allowed to bite (Faustian
+  boon+cost, and/or an optional reversed/greedier variant). The
+  card-reading screen currently deals `arcana:'minor'` only
+  (`src/ui/card-reading.ts:43`) — the harbor/boss fire must request
+  `'major'`.
+
+### 3. What makes advantage/disadvantage interesting [DECIDED]
+
+Priority order for design effort:
+
+1. **Synergy + opportunity cost (80%).** The good decision is "which of
+   these three plays with what I hold / how I fight," not "which number
+   is biggest." Cards reference domains + each other. Invest here.
+2. **Directional commitment.** Majors push toward an identity, closing
+   other doors. Commitment = stakes.
+3. **Tradeoff / reversal (seasoning, NOT the meal).** Boon-with-teeth on
+   the rare majors only.
+
+Both traps are fatal: *all-tradeoff* makes nothing feel like growth;
+*all-upgrade* makes nothing a decision. So **minors are net-positive
+(interesting via synergy); majors are directional + carry real cost.**
+
+### 4. Starting hand [DECIDED]
+
+Run start (the starter altar) deals weapon + **one starting MINOR**
+(deal-3-pick-1). Teaches "this is a tarot game" from second one and
+gives a gentle directional nudge without a weighty major before you've
+played. Majors stay sacred to bosses.
+
+### 5. Fires are FOUND events, not floor furniture [DECIDED]
+
+- **Minor fires are events** the floor-content budget rolls (see §6),
+  depth-weighted, NOT one-per-floor-entrance. A fire you find is an
+  event; a fire at every entrance is furniture (and violates the
+  lighting-as-signal doctrine).
+- **The harbor/post-boss fire is the exception — always present.** It's
+  the act-break ceremony and the only fire that gates the stairs.
+
+---
+
+## v3 floor-content system [DECIDED — supersedes the per-vault spawn model]
+
+The bug that forced this: floors can spawn ZERO combat (empty first ~3
+floors). Root cause — combat is an *accident* of vault selection, never
+budgeted. At depth 1 only 2–3 combat vaults are eligible, each with 2–3
+`X` slots, each slot 40% deleted by the act-1 density gate
+(`acts.ts:58` light=0.6 × `procgen.ts:303-310`). 2–3 coin flips can all
+miss → empty floor. Nothing says "a floor must have combat."
+
+**The disease:** combat lives *inside* "combat"-tagged rooms (12 combat
+vaults hold 44 of 48 enemy slots; the other 23 rooms author zero). A
+room being shaped like a treasure room must not mean nothing can ambush
+you there.
+
+**Confirmed by inventory:** 35 vaults total — the pool is HEALTHY. We do
+**not** need more vaults; we need to stop using tags as gates. Spawning
+into open cells of any room is feasible today: `OccupancyGrid`
+(`src/level/occupancy-grid.ts`) already reserves walls/void/props/
+approach-zones; we add an "enumerate the free floor cells in this room"
+helper (~100 lines) and validate picks against `WalkableRegion`. Vaults
+are already ~80% "shape + anchors" (ASCII shape + `cellProps` anchors +
+auto-installed `perimeterFitting`).
+
+**The model:**
+
+1. **Floor content budget (the new brain).** A depth curve decides per
+   floor: *combat budget* (enemy count + intensity, with a GUARANTEED
+   floor so empty is impossible), *feature budget* (chests/fountains/
+   altars), *event rolls* (minor fire, etc.).
+2. **Decouple spawns from tags.** Drop the `vaultsForTag` hard filter at
+   selection (`vault-compose.ts` / `vault-library.ts:1225`). Place
+   enemies into open cells of ANY room via the grid. Authored `X` tiles
+   demote from "the only way enemies exist" to *preferred-spawn hints*.
+3. **Tags → hints, not gates.** They keep their interior jobs (ceiling
+   style, start-yaw, boss `B` expansion, encounter archetype) but stop
+   deciding whether a room can hold combat. (Tag read-sites:
+   `vault-compose.ts:1296` pickMiddleTag, :405 tagSeq, :153 ceiling,
+   :238 encounter default, :265/:588 boss allow, :608 start yaw, :630
+   stair reorient, :500 leaf pool.)
+4. **Explicit safe-zones.** Today "safe" is accidental. v3 reserves
+   no-spawn cells around the entry, the bonfire, and feature approaches
+   so the budget never drops a mob in your lap (the grid's approach
+   reservation gives us most of this).
+5. **Events ride the same budget.** The minor-fire event is just a
+   feature type the budget can roll. One system.
+
+**Build order (current plan):**
+
+1. `enumerateOpenCells(occ, roomRect, layer)` on the occupancy grid.
+2. Per-floor content budget (depth-scaled combat/feature/event).
+3. Spawn-injection pass: distribute combat budget into open cells across
+   all rooms, honoring safe-zones; `X` tiles become hints.
+4. Remove tag gating from selection; keep tags as metadata.
+5. Minor-fire event as a budget feature type.
+6. THEN the tarot layer (starting minor, major-at-boss + stakes) and
+   pull out stat distribution.
