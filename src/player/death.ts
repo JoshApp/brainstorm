@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { track } from '../telemetry/telemetry';
 import { setPersistentVignette } from '../ui/vignette';
 import { showDeathOverlay } from '../ui/death-overlay';
 import { showEndScreen } from '../ui/end-screen';
@@ -138,6 +139,9 @@ export function triggerDeath() {
     runSeed: run?.startedAt ?? 0,
     killedBy: killingBlowLabel(),
   });
+  // Funnel telemetry — where runs end + what kills (the bounce signal). No-op
+  // until a telemetry endpoint is configured; no PII (just depth + cause).
+  track('death', { depth, kills, killedBy: killingBlowLabel() });
   // Queue the recorded run tape (deterministic fixed-step runs only) for
   // leaderboard verification — stored offline, uploaded on reconnect. The
   // tape was finalised by finishRun() at the top of the death sequence.

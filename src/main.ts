@@ -16,6 +16,7 @@ import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
 import { completePendingLink } from './net/account-link';
 import { initRunSync } from './net/run-sync';
+import { initTelemetry, track } from './telemetry/telemetry';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { isWorldPaused, shouldFreezeGameClock } from './world-paused';
 import { onPlayerDeath } from './player/health';
@@ -809,6 +810,11 @@ initNetwork();
 initDeathFeed();
 // Drain any queued run tapes (recorded offline) on every connect.
 initRunSync();
+// Launch telemetry — error capture + funnel events. No-op until an endpoint is
+// configured (src/telemetry/telemetry.ts); honours Do-Not-Track. See the boot /
+// run_start / death tracks below.
+initTelemetry();
+track('boot');
 // Finish an account link interrupted by the OAuth redirect (no-op otherwise —
 // doesn't even load Clerk unless a link is mid-flight).
 void completePendingLink();
@@ -1404,6 +1410,7 @@ function startRun(floorId: string, startDepth: number = 1) {
   // allocation-free; finished + held on death for the leaderboard to submit.
   if (USE_FIXED_STEP) startRunRecording(seed);
   if (import.meta.env.DEV) console.info(`[run] seed = ${seed}`);
+  track('run_start', { depth: startDepth });
   loadInitialLevel(floorId, startDepth);
   // Resolve the spawn so an authored or procgen position that
   // happens to overlap an obstacle (most commonly the stair

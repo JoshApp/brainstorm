@@ -18,6 +18,7 @@ import { showStash } from './stash-screen';
 import { showPatchlog } from './patchlog-screen';
 import { showLeaderboard } from './leaderboard-screen';
 import { startAccountUpgrade } from '../net/account-link';
+import { hasCommunityLink, openCommunityLink, COMMUNITY_LABEL } from '../links';
 
 const SCREEN_ID = 'start';
 
@@ -344,6 +345,16 @@ export function showStartScreen(opts: StartScreenOptions) {
     link.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       showPatchlog();
+    });
+    pushLink(link);
+  }
+  // COMMUNITY — built in public: the Discord where suggestions become commits.
+  // Hidden until COMMUNITY_URL is set (src/links.ts), so no dead link ever ships.
+  if (hasCommunityLink()) {
+    const link = makeSecondaryLink(COMMUNITY_LABEL, 0);
+    link.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      openCommunityLink();
     });
     pushLink(link);
   }

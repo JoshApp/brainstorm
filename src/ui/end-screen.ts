@@ -6,6 +6,7 @@
 
 import { openScreen, closeScreen } from './screen-manager';
 import type { DamageTally } from '../player/damage-recap';
+import { hasCommunityLink, openCommunityLink } from '../links';
 
 const SCREEN_ID = 'end';
 
@@ -199,6 +200,34 @@ export function showEndScreen(stats: EndScreenStats, onRiseAgain: () => void) {
   });
   btn.addEventListener('pointerleave', () => { btn.style.transform = 'scale(1)'; });
   root.appendChild(btn);
+
+  // Built-in-public nudge — a faint link under the action. Death is the highest-
+  // intent moment to turn a fallen delver into the Discord. Hidden until
+  // COMMUNITY_URL is set (src/links.ts), so the live build never shows a dead link.
+  if (hasCommunityLink()) {
+    const community = document.createElement('button');
+    Object.assign(community.style, {
+      marginTop: '4px',
+      padding: '8px 12px',
+      background: 'transparent',
+      border: 'none',
+      color: 'rgba(180, 150, 120, 0.5)',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontSize: '11px',
+      letterSpacing: '0.16em',
+      cursor: 'pointer',
+      userSelect: 'none',
+      WebkitUserSelect: 'none',
+      WebkitTapHighlightColor: 'transparent',
+      touchAction: 'manipulation',
+    } as Partial<CSSStyleDeclaration>);
+    community.textContent = 'built in public · join the deep';
+    community.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      openCommunityLink();
+    });
+    root.appendChild(community);
+  }
 
   document.body.appendChild(root);
   openScreen({
