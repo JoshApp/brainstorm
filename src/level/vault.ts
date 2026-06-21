@@ -142,4 +142,30 @@ export interface Vault {
    * from BossSpec.mistColor (per-boss identity), not from here.
    */
   bossMist?: { x: number; z: number; rotY?: number };
+
+  /**
+   * INTENT ANCHORS — named "a thing reads well HERE" markers, the seam for the
+   * content DIRECTOR (see vault-compose.ts). An anchor is NOT baked content: it
+   * declares a good SPOT for a director-placed thing, with INTENT (`kind`), at a
+   * grid cell. The director decides per-floor whether/how much to place (by its
+   * content budget) and drops it at a matching anchor so it looks designed —
+   * falling back to an open cell when no anchor fits. This is what lets us say
+   * "fires don't appear unless the director wants one" while still landing them
+   * on an authored dais. Distinct from `cellProps` (baked, always-present
+   * set-pieces) — anchors are offers, cellProps are commitments.
+   *
+   *   kind 'fire'  — a bonfire reads well here (a dais, a nook off the path).
+   *   (more kinds — 'loot', 'event', 'shrine' — fold in as later steps.)
+   */
+  anchors?: VaultAnchor[];
+}
+
+export type VaultAnchorKind = 'fire';
+
+export interface VaultAnchor {
+  /** What the director may place here. */
+  kind: VaultAnchorKind;
+  /** Cell in the vault's ASCII grid (same coords as cellProps keys). */
+  col: number;
+  row: number;
 }

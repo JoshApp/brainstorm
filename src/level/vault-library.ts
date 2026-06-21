@@ -1,5 +1,4 @@
 import type { Vault } from './vault';
-import { BONFIRE } from '../content/bonfire';
 import { godRay } from '../content/god-ray';
 import { COBWEB_CORNER } from '../content/cobweb';
 import { GREAT_BRAZIER } from '../content/light-props';
@@ -79,10 +78,9 @@ const FOYER_SMALL: Vault = {
     '#.....*..#',
     '##########',
   ],
-  props: [
-    { kind: 'model', model: BONFIRE, x: 0.8, y: 0, z: 0 },
-  ],
-  // Bonfire is the warm anchor — no extra glow needed.
+  // No baked fire — the content director owns fires now (a fire is a FOUND
+  // event placed deeper in the floor, never furniture at the entrance). The
+  // run-start chamber keeps its wake-fire; procgen start rooms stay cold.
   torchTint: TORCH_WARM,
 };
 
@@ -99,11 +97,7 @@ const FOYER_PILLAR: Vault = {
     '#..........#',
     '############',
   ],
-  props: [
-    // Centred between the back pillars — bonfire as the room's
-    // visual anchor; spawn is two cells to its west.
-    { kind: 'model', model: BONFIRE, x: 1.5, y: 0, z: 0.5 },
-  ],
+  // No baked fire (director owns fires — see FOYER_SMALL).
   torchTint: TORCH_WARM,
   cellProps: {
     '2,2': [{ kind: 'pillar' }],
@@ -127,12 +121,7 @@ const FOYER_ALCOVE: Vault = {
     '#.......*..#',
     '############',
   ],
-  props: [
-    // Tucked between the two corpses, north of the spawn — the
-    // player appears facing south and sees the bonfire glow off
-    // to their right rear.
-    { kind: 'model', model: BONFIRE, x: 1.5, y: 0, z: -0.5 },
-  ],
+  // No baked fire (director owns fires — see FOYER_SMALL).
   torchTint: TORCH_AMBER,
   cellProps: {
     '3,3': [{ kind: 'corpse' }],
@@ -166,6 +155,9 @@ const COMBAT_OPEN: Vault = {
     '10,2': [{ kind: 'vase' }],
     '10,6': [{ kind: 'vase' }],
   },
+  // A fire reads well in the quiet back-left corner — the director places one
+  // here when this floor rolls a fire (else it stays a plain combat room).
+  anchors: [{ kind: 'fire', col: 2, row: 6 }],
 };
 
 const COMBAT_PILLARS: Vault = {
@@ -193,6 +185,8 @@ const COMBAT_PILLARS: Vault = {
     '2,6': [{ kind: 'pillar' }],
     '11,6': [{ kind: 'pillar' }],
   },
+  // Fire spot between the back pillars — a natural rest nook once cleared.
+  anchors: [{ kind: 'fire', col: 6, row: 6 }],
 };
 
 const COMBAT_CHOKE: Vault = {

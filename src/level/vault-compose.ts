@@ -601,6 +601,11 @@ export function composeFloor(
   // density gate skipped — preferred so injected mobs land where intended).
   interface SpawnCandidate { x: number; z: number; roomId: string; isHint: boolean }
   const spawnCandidates: SpawnCandidate[] = [];
+  // Director intent-anchors harvested from the placed vaults — good SPOTS the
+  // director may fill. Step 1: fire anchors (a bonfire reads well here). The
+  // director places a rolled fire at one of these so it lands on an authored
+  // spot, falling back to a generic open cell when a floor offers none.
+  const fireAnchors: Array<{ x: number; z: number; roomId: string }> = [];
 
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
@@ -849,6 +854,24 @@ export function composeFloor(
     const isStart = pv.vault.tags.includes('start');
     const isBossArena = opts.isBossFloor === true && pv.vault.tags.includes('boss');
     if (!isStart && !isBossArena) {
+      // Director ANCHORS first: a vault offers fire spots; verify each is still
+      // open floor (decor/carve may have claimed it), reserve it so no enemy
+      // spawns ON the fire, and record its world position as a candidate fire
+      // location. Reserving BEFORE enumerateOpenCells keeps anchor cells out of
+      // the enemy pool.
+      for (const a of pv.vault.anchors ?? []) {
+        if (a.kind !== 'fire') continue;
+        const ch = populated[a.row]?.[a.col];
+        const onFloor = (ch === '.' || ch === ',')
+          && !occ.has(a.col, a.row, 'floor') && !occ.has(a.col, a.row, 'void');
+        if (!onFloor) continue;
+        occ.reserve(a.col, a.row, 'floor', 'feature');
+        fireAnchors.push({
+          x: a.col + 0.5 - W / 2 + pv.offsetX,
+          z: a.row + 0.5 - D / 2 + pv.offsetZ,
+          roomId: pv.roomId,
+        });
+      }
       // Hint cells: original 'X' positions (incl. a non-boss 'B' treated as X).
       const hintCells = new Set<string>();
       for (let r = 0; r < pv.vault.map.length; r++) {
@@ -884,22 +907,30 @@ export function composeFloor(
   // harvested open cells of ANY room. Deterministic: all rolls draw from `rand`.
   {
     const budget = floorContentBudget(depth, rand);
-    // MINOR FIRE = a FOUND event, not furniture at the entrance. The start foyer
-    // vault authors a fire on its dais; on a procgen floor we always clear it —
-    // the entrance fire belongs to the run-start starter chamber, not every
-    // descent. Then, if this floor rolled a minor fire, we place ONE DEEPER, in
-    // a non-start room (spawnCandidates already exclude the start + boss rooms),
-    // so a fire is something you discover on the way down. Roll miss → no fire
+    // MINOR FIRE = a director-owned FOUND event. INVARIANT: a fire never appears
+    // from vault authoring — strip every baked bonfire first, so "fires don't
+    // appear in vaults unless we want them" holds no matter what a vault bakes.
+    // Then, if this floor rolled a fire, the director places ONE: at a vault FIRE
+    // ANCHOR (an authored good spot, so it reads designed) when a non-start room
+    // offers one, else into a generic open cell deeper in. Roll miss → no fire
     // (you descend cold). The composer owns fires (spec flag at return) so the
     // builder won't re-add a threshold fire. MINOR_FIRE_CHANCE is the dial.
     for (let k = props.length - 1; k >= 0; k--) {
       const p = props[k] as { kind?: string; model?: { id?: string } };
       if (p.kind === 'model' && p.model?.id === 'bonfire') props.splice(k, 1);
     }
-    if (budget.events.minorFire && spawnCandidates.length > 0) {
-      const idx = Math.floor(rand() * spawnCandidates.length);
-      const [cell] = spawnCandidates.splice(idx, 1);   // claim it so no enemy stands on the fire
-      props.push({ kind: 'model', model: BONFIRE, x: cell.x, y: 0, z: cell.z, rotY: rand() * Math.PI * 2 });
+    if (budget.events.minorFire) {
+      let fx: number | null = null, fz: number | null = null;
+      if (fireAnchors.length > 0) {
+        const a = fireAnchors[Math.floor(rand() * fireAnchors.length)];
+        fx = a.x; fz = a.z;   // anchor cell already reserved — no enemy on it
+      } else if (spawnCandidates.length > 0) {
+        const [cell] = spawnCandidates.splice(Math.floor(rand() * spawnCandidates.length), 1);
+        fx = cell.x; fz = cell.z;
+      }
+      if (fx !== null && fz !== null) {
+        props.push({ kind: 'model', model: BONFIRE, x: fx, y: 0, z: fz, rotY: rand() * Math.PI * 2 });
+      }
     }
     const liveCount = spawns.filter((s) => !s.dormant).length;   // boss is dormant
     const shortfall = budget.combat.count - liveCount;
