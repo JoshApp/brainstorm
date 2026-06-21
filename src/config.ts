@@ -710,6 +710,23 @@ export const CONFIG = {
   VIGNETTE_FLASH_OPACITY: 0.85,
   VIGNETTE_FLASH_FADE_MS: 280,
 
+  // === FLOOR CONTENT BUDGET (procgen v3) ===
+  // Combat is a per-FLOOR budget applied to open space, NOT an accident of
+  // which vaults were picked. This is the single legible knob per depth — and
+  // COMBAT_MIN is the hard guarantee that a floor is never empty (the v3 bug
+  // fix). Counts are floor TOTALS, distributed across all rooms' open cells.
+  CONTENT_BUDGET: {
+    COMBAT_BASE: 3,             // enemies on the shallowest floor
+    COMBAT_PER_DEPTH: 1.0,      // + this many per depth deeper
+    COMBAT_JITTER: 1,           // ± whole-enemy wobble so floors vary
+    COMBAT_MIN: 3,              // HARD floor — never emptier than this
+    COMBAT_MAX: 16,             // cap so deep floors don't become soup
+    // Intensity bands by depth ('heavy' upgrades a pack slot to an elite).
+    INTENSITY_MEDIUM_DEPTH: 4,  // < this → 'light'
+    INTENSITY_HEAVY_DEPTH: 8,   // >= this → chance of 'heavy', else 'medium'
+    HEAVY_CHANCE: 0.35,         // odds a deep floor rolls 'heavy'
+  },
+
   // === DEATH SEQUENCE ===
   DEATH_SLOWMO_SCALE: 0.25,         // dt multiplier while dying
   // Sequence holds longer now (3.2 → 4.8s) so the bigger epitaph fade
