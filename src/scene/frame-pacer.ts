@@ -1,80 +1,91 @@
 // Frame pacing for the FRAME RATE cap.
 //
-// The old cap gated draws on a wall-clock timer:
-//     if (now - lastDraw < 1000/cap - 4) skip;
-// Two problems with that:
-//   1. It can't honour 60 on a 90Hz panel. vsync is 11.1ms; after a draw the
-//      next vsync (+11.1ms) is under the 12.67ms threshold so it's skipped, and
-//      it draws every SECOND vsync = 45fps. A "60" cap silently became 45.
-//   2. The threshold floats against performance.now() deltas that aren't vsync-
-//      aligned, so the draw cadence can wobble (16.7ms then 25ms) — micro-jitter
-//      even when the average fps is right.
+// The original cap gated draws on a timer with a FIXED 4ms slack
+// (now - lastDraw < 1000/cap - 4). On a 90Hz panel that lands a "60" cap on
+// 45fps, and the fixed slack isn't right across refresh rates. This replaces it
+// with a refresh-aware pacer.
 //
-// This paces by VSYNC DIVISION instead. We measure the panel's native refresh
-// from the RAW rAF cadence (every callback, including skipped ones), then draw
-// every Nth callback where N = round(native / cap). Pacing is then even BY
-// CONSTRUCTION — locked to vsync, no timer drift — and the cap is honest: on a
-// 90Hz panel a 60 request resolves to the nearest achievable rate, it doesn't
-// pretend to be 60. Uncapped (cap<=0) always draws → native refresh.
+// NATIVE REFRESH ESTIMATE. We watch the raw rAF cadence (every callback) and
+// take a LOW PERCENTILE of recent intervals — the fastest cadence the panel
+// delivers, which IS the true vsync period. The median would be dragged upward
+// by every dropped frame, so it reads low and wobbles whenever the scene gets
+// heavy; the floor is stable under load. Snapped to a common panel rate and made
+// sticky so the readout doesn't flicker ±1Hz at a boundary (or on a variable-
+// refresh panel breathing around a rate).
+//
+// CAP DECISION. Draw at the first vsync within half a frame of the target
+// interval. That rounds the cap to the nearest achievable vsync multiple (even
+// pacing on ANY panel — no wall-clock drift) and degrades gracefully: under load
+// the elapsed time always clears the threshold, so we never throttle a frame
+// rate that's already at or below the cap. Uncapped (cap<=0) always draws.
 
-let lastRawMs = 0;
-const intervals: number[] = [];   // recent raw rAF deltas (ms)
-let nativeHz = 60;                 // estimate, refined as samples arrive
-let frameCounter = 0;
+let lastRawMs = 0;        // previous rAF callback time (for interval sampling)
+let lastDrawMs = 0;       // previous DRAWN frame time (for the cap decision)
+const intervals: number[] = [];
+const WINDOW = 240;       // ~2–4s of samples — long enough to be stable
+let nativeHz = 60;        // estimate; refined as samples arrive
 
-// Common panel rates we snap the noisy estimate to, so the divisor doesn't
-// wobble frame-to-frame on a slightly-jittery measurement.
-const COMMON_HZ = [60, 75, 90, 120, 144, 165, 240];
-const SNAP_TOLERANCE = 6;         // Hz: within this of a common rate → snap to it
+// Common panel rates we snap a noisy estimate to.
+const COMMON_HZ = [60, 75, 90, 100, 120, 144, 165, 240];
+const SNAP_TOL = 6;       // Hz: within this of a common rate → snap to it
+const STICK_TOL = 5;      // Hz: don't republish nativeHz unless it moves > this
 
-/** Call at the TOP of every rAF tick — BEFORE the draw/skip decision — with
- *  performance.now(). Must run on skipped frames too, or the counter + refresh
- *  estimate go wrong. */
+/** Call at the TOP of every rAF tick — BEFORE the draw/skip decision, on
+ *  skipped frames too — with performance.now(). Samples the raw cadence. */
 export function pacerObserve(nowMs: number): void {
   if (lastRawMs > 0) {
     const d = nowMs - lastRawMs;
-    // Ignore absurd gaps (tab backgrounded, GC hitch) so they don't poison the
-    // median. 2ms floor guards against duplicate-timestamp callbacks.
+    // Drop absurd gaps (tab backgrounded, GC hitch) so they don't skew the
+    // window; 2ms floor guards duplicate-timestamp callbacks.
     if (d > 2 && d < 100) {
       intervals.push(d);
-      if (intervals.length > 90) intervals.shift();
+      if (intervals.length > WINDOW) intervals.shift();
     }
   }
   lastRawMs = nowMs;
-  frameCounter++;
   if (intervals.length >= 20) estimateNativeHz();
 }
 
 function estimateNativeHz(): void {
-  // Median raw interval → native Hz. Median (not mean) shrugs off the occasional
-  // long frame; the raw cadence is the unthrottled vsync interval, so this reads
-  // the true panel rate regardless of what cap we're currently applying.
   const sorted = intervals.slice().sort((a, b) => a - b);
-  const median = sorted[sorted.length >> 1];
-  const hz = 1000 / median;
-  let best = Math.round(hz);
-  let bestErr = SNAP_TOLERANCE + 1;
+  // 10th-percentile interval ≈ the true vsync period (the fastest cadence the
+  // panel delivers), immune to dropped frames inflating it.
+  const lo = sorted[Math.floor(sorted.length * 0.10)];
+  const hz = 1000 / lo;
+  let snapped = Math.round(hz);
+  let bestErr = SNAP_TOL + 1;
   for (const c of COMMON_HZ) {
     const e = Math.abs(c - hz);
-    if (e < bestErr) { bestErr = e; best = c; }
+    if (e < bestErr) { bestErr = e; snapped = c; }
   }
-  nativeHz = best;
+  // Sticky: only republish on a meaningful move, so the readout (and the cap
+  // divisor derived from it) stays pinned instead of jittering each second.
+  if (Math.abs(snapped - nativeHz) > STICK_TOL) nativeHz = snapped;
 }
 
 /** The detected native refresh (Hz). 60 until enough samples land. */
 export function getNativeHz(): number { return nativeHz; }
 
-/** Should THIS rAF callback draw, for the given cap (fps)? cap<=0 = uncapped
- *  (always). Otherwise draw every round(native/cap)-th frame, divisor ≥ 1. */
-export function pacerShouldDraw(cap: number): boolean {
-  if (cap <= 0) return true;
-  const div = Math.max(1, Math.round(nativeHz / cap));
-  return frameCounter % div === 0;
+/** Should THIS rAF callback draw, for the given cap (fps)? cap<=0 = uncapped. */
+export function pacerShouldDraw(cap: number, nowMs: number): boolean {
+  if (cap <= 0) { lastDrawMs = nowMs; return true; }
+  const targetInterval = 1000 / cap;
+  const vsync = 1000 / nativeHz;
+  // First vsync within half a frame of the target → even, vsync-aligned pacing;
+  // under load `elapsed` always clears this, so a struggling framerate isn't
+  // throttled further.
+  if (nowMs - lastDrawMs >= targetInterval - vsync * 0.5) {
+    lastDrawMs = nowMs;
+    return true;
+  }
+  return false;
 }
 
-/** The fps a cap actually resolves to on this panel (for a readout / honesty).
- *  e.g. cap 60 on a 90Hz panel → 45; on 120Hz → 60; uncapped → native. */
+/** The fps a cap actually resolves to on this panel — the cap rounded to the
+ *  nearest achievable vsync multiple. e.g. 60 on 90Hz → 45, on 120Hz → 60,
+ *  on 144Hz → 72; uncapped → native. */
 export function pacerEffectiveFps(cap: number): number {
   if (cap <= 0) return nativeHz;
-  return Math.round(nativeHz / Math.max(1, Math.round(nativeHz / cap)));
+  const div = Math.max(1, Math.round(nativeHz / cap));
+  return Math.round(nativeHz / div);
 }

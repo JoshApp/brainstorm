@@ -1233,9 +1233,10 @@ function tick() {
   // (a 60 cap is 45 on a 90Hz screen, not a stuttering fake-60). The sim isn't
   // lost on a skip — clock.getDelta() accumulates the skipped time, so the next
   // drawn frame advances the sim by the full elapsed time (more fixed substeps).
-  pacerObserve(performance.now());
+  const nowRaw = performance.now();
+  pacerObserve(nowRaw);
   const frameCap = Number(getSettings().frameCap);
-  if (!pacerShouldDraw(frameCap)) { requestAnimationFrame(tick); return; }
+  if (!pacerShouldDraw(frameCap, nowRaw)) { requestAnimationFrame(tick); return; }
   // Apply any pending level swap BEFORE any per-frame reads on the level.
   // Stairs interactables call loadLevel() during the previous frame's
   // interactables tick; the swap lands here at the top of the next frame.
