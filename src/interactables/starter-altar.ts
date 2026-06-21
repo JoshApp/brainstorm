@@ -5,7 +5,6 @@ import { registerInteractable } from './system';
 import { setSlot } from '../player/equipment';
 import { emit, on as onEvent } from '../broadcast/event-bus';
 import { playEquipClick } from '../audio/sfx';
-import { openCardReading } from '../ui/card-reading';
 import { registerItemPreview, setItemPreviewAnchor, unregisterItemPreview } from '../ui/item-preview';
 import type { ItemSpec } from '../content/items';
 import type { StyleMaterials } from '../style/materials';
@@ -149,11 +148,8 @@ export function spawnStarterAltar(
       playEquipClick();
       // Notify siblings so they tear down their offers too.
       emit({ type: 'starter:chosen', weaponId: weaponItem.id });
-      // Your opening hand: weapon, then a starting MINOR card. Teaches "this is a
-      // tarot game" from the first choice and gives a gentle directional nudge —
-      // majors stay sacred to the boss fires. One draw per run (this altar's
-      // onUse is one-shot; the siblings tear down without firing).
-      openCardReading({ arcana: 'minor' });
+      // (No card draw here — the starter room has its own fire, and resting at a
+      // fire is what deals your opening hand. The altar only gives the weapon.)
     },
     tick(dt: number) {
       if (taken) return;

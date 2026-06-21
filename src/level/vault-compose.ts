@@ -13,6 +13,7 @@ import { ITEMS } from '../content/items';
 import { parseTileMap } from './tilemap';
 import { populateTemplate, rollFloorEnemies, type FeatureCell } from './procgen';
 import { floorContentBudget } from './content-budget';
+import { BONFIRE } from '../content/bonfire';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { applyGeometryWarp, applySurfaceClutter } from './clutter';
 import { CONFIG } from '../config';
@@ -883,18 +884,22 @@ export function composeFloor(
   // harvested open cells of ANY room. Deterministic: all rolls draw from `rand`.
   {
     const budget = floorContentBudget(depth, rand);
-    // MINOR FIRE = a per-floor ROLL, not floor furniture. The start foyer vault
-    // authors the wake-beside-fire bonfire; the roll decides whether it survives.
-    // Roll hit → keep it (you wake at a fire, can rest/draw). Roll miss → strip
-    // it so the floor is fireless (you wake cold and descend — fires become
-    // something you're given, not guaranteed). The composer owns fires (spec
-    // flag at return), so the builder won't re-add a threshold fire on a miss.
-    // 1.0 = today's always-a-fire; lower = rarer. Harbor/safe fires unaffected.
-    if (!budget.events.minorFire) {
-      for (let k = props.length - 1; k >= 0; k--) {
-        const p = props[k] as { kind?: string; model?: { id?: string } };
-        if (p.kind === 'model' && p.model?.id === 'bonfire') props.splice(k, 1);
-      }
+    // MINOR FIRE = a FOUND event, not furniture at the entrance. The start foyer
+    // vault authors a fire on its dais; on a procgen floor we always clear it —
+    // the entrance fire belongs to the run-start starter chamber, not every
+    // descent. Then, if this floor rolled a minor fire, we place ONE DEEPER, in
+    // a non-start room (spawnCandidates already exclude the start + boss rooms),
+    // so a fire is something you discover on the way down. Roll miss → no fire
+    // (you descend cold). The composer owns fires (spec flag at return) so the
+    // builder won't re-add a threshold fire. MINOR_FIRE_CHANCE is the dial.
+    for (let k = props.length - 1; k >= 0; k--) {
+      const p = props[k] as { kind?: string; model?: { id?: string } };
+      if (p.kind === 'model' && p.model?.id === 'bonfire') props.splice(k, 1);
+    }
+    if (budget.events.minorFire && spawnCandidates.length > 0) {
+      const idx = Math.floor(rand() * spawnCandidates.length);
+      const [cell] = spawnCandidates.splice(idx, 1);   // claim it so no enemy stands on the fire
+      props.push({ kind: 'model', model: BONFIRE, x: cell.x, y: 0, z: cell.z, rotY: rand() * Math.PI * 2 });
     }
     const liveCount = spawns.filter((s) => !s.dormant).length;   // boss is dormant
     const shortfall = budget.combat.count - liveCount;
