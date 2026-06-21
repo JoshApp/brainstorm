@@ -13,14 +13,22 @@
 // sticky so the readout doesn't flicker ±1Hz at a boundary (or on a variable-
 // refresh panel breathing around a rate).
 //
-// CAP DECISION. Draw at the first vsync within half a frame of the target
-// interval. That rounds the cap to the nearest achievable vsync multiple (even
-// pacing on ANY panel — no wall-clock drift) and degrades gracefully: under load
-// the elapsed time always clears the threshold, so we never throttle a frame
-// rate that's already at or below the cap. Uncapped (cap<=0) always draws.
+// CAP DECISION. PRIMARY is a deterministic vsync DIVISION: draw every
+// round(native/cap)-th raw callback. Counting callbacks is immune to timestamp
+// jitter, so a capped rate with headroom holds EXACTLY (a 60 cap on a 120Hz
+// panel draws every 2nd vsync = a clean 60, never a jittered 55). A pure timer
+// here drifts: storing the noisy measured draw time re-seeds the schedule with
+// error, and a frame whose timestamp lands a few ms late tips the next "draw"
+// vsync just under threshold — it skips, opening a 3-vsync gap that reads as a
+// momentary 40fps and drags the average below the cap.
+// FALLBACK is a timer: if a full cap-interval has elapsed we're load-bound (raw
+// callbacks already slower than the cap), so draw immediately — capping must
+// never HALVE a framerate that's already below the cap, which a bare divisor
+// would. Uncapped (cap<=0) always draws.
 
 let lastRawMs = 0;        // previous rAF callback time (for interval sampling)
-let lastDrawMs = 0;       // previous DRAWN frame time (for the cap decision)
+let lastDrawMs = 0;       // previous DRAWN frame time (for the load fallback)
+let framesSinceDraw = 0;  // raw vsync callbacks since the last draw
 const intervals: number[] = [];
 const WINDOW = 240;       // ~2–4s of samples — long enough to be stable
 let nativeHz = 60;        // estimate; refined as samples arrive
@@ -66,15 +74,20 @@ function estimateNativeHz(): void {
 /** The detected native refresh (Hz). 60 until enough samples land. */
 export function getNativeHz(): number { return nativeHz; }
 
-/** Should THIS rAF callback draw, for the given cap (fps)? cap<=0 = uncapped. */
+/** Should THIS rAF callback draw, for the given cap (fps)? cap<=0 = uncapped.
+ *  Must be called once per rAF callback (it counts vsyncs). */
 export function pacerShouldDraw(cap: number, nowMs: number): boolean {
-  if (cap <= 0) { lastDrawMs = nowMs; return true; }
+  framesSinceDraw++;
+  if (cap <= 0) { framesSinceDraw = 0; lastDrawMs = nowMs; return true; }
+  const div = Math.max(1, Math.round(nativeHz / cap));
   const targetInterval = 1000 / cap;
   const vsync = 1000 / nativeHz;
-  // First vsync within half a frame of the target → even, vsync-aligned pacing;
-  // under load `elapsed` always clears this, so a struggling framerate isn't
-  // throttled further.
-  if (nowMs - lastDrawMs >= targetInterval - vsync * 0.5) {
+  // Primary: every div-th callback (jitter-immune even pacing). Fallback: a full
+  // cap-interval elapsed → we're load-bound, draw now (graceful, never halves a
+  // already-slow rate). The half-vsync slack rounds the fallback to the nearest
+  // vsync so it can't fire a hair early with headroom.
+  if (framesSinceDraw >= div || nowMs - lastDrawMs >= targetInterval - vsync * 0.5) {
+    framesSinceDraw = 0;
     lastDrawMs = nowMs;
     return true;
   }
