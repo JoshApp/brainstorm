@@ -100,6 +100,13 @@ export function recordedSteps(): number {
   return active ? active.length : 0;
 }
 
+/** Snapshot the IN-PROGRESS run as a replayable tape (seed + inputs so far), or
+ *  null if not recording. The deterministic-repro payload for a crash report:
+ *  attach it and the exact session replays in the stepper up to the crash. */
+export function peekActiveTape(): Tape | null {
+  return active ? active.toTape() : null;
+}
+
 // The most recently COMPLETED run's tape — held after death so the backend can
 // pick it up and submit it (seed + inputs) for server-side verification.
 let lastRunTape: Tape | null = null;

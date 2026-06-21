@@ -1,5 +1,14 @@
 import { defineConfig } from 'vite';
+import { execSync } from 'node:child_process';
 import { VitePWA } from 'vite-plugin-pwa';
+
+// Short commit SHA, stamped into the bundle as __BUILD_SHA__ so every crash /
+// telemetry report is tied to the exact deploy it happened on (regression
+// tracking + "did my fix land"). Falls back to 'dev' where git isn't available
+// (some cloud build envs); CI builds from a checkout so it resolves there.
+function buildSha(): string {
+  try { return execSync('git rev-parse --short HEAD').toString().trim(); } catch { return 'dev'; }
+}
 import { debugCapturePlugin } from './scripts/debug-capture-plugin';
 import { perfRecordPlugin } from './scripts/perf-record-plugin';
 import { artFeedbackPlugin } from './scripts/art-feedback-plugin';
@@ -10,6 +19,10 @@ const BASE = '/brainstorm/';
 
 export default defineConfig({
   base: BASE,
+  // Replaced as a literal at build + dev-serve, so the identifier always exists.
+  define: {
+    __BUILD_SHA__: JSON.stringify(buildSha()),
+  },
   plugins: [
     // Dev-only: receives in-game debug captures → debug-captures/<id>/.
     debugCapturePlugin(),
@@ -64,6 +77,10 @@ export default defineConfig({
     port: 5173,
   },
   build: {
+    // 'hidden' = emit .map files (so a captured minified stack can be
+    // symbolicated, or uploaded to an error backbone later) WITHOUT advertising
+    // them via sourceMappingURL — they're tooling, not in-browser exposure.
+    sourcemap: 'hidden',
     rollupOptions: {
       // Ship the perf-review viewer alongside the game so a recording made on
       // the live build (which downloads a JSON, no dev server to POST to) can

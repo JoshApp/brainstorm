@@ -16,7 +16,8 @@ import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
 import { completePendingLink } from './net/account-link';
 import { initRunSync } from './net/run-sync';
-import { initTelemetry, track } from './telemetry/telemetry';
+import { initTelemetry, track, setCrashContext, captureError, buildReport } from './telemetry/telemetry';
+import { showCrashOverlay } from './ui/crash-overlay';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
 import { isWorldPaused, shouldFreezeGameClock } from './world-paused';
 import { onPlayerDeath } from './player/health';
@@ -88,7 +89,7 @@ import { initDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-a
 import { initBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
 import { seedRng } from './engine/rng';
 import { setDeterministicClock, advanceGameClock, resetGameClock } from './engine/game-clock';
-import { startRecording as startRunRecording, finishRun } from './harness/run-recorder';
+import { startRecording as startRunRecording, finishRun, peekActiveTape, recordedSteps } from './harness/run-recorder';
 import { setWorldFrozen } from './debug/freeze';
 import { recordRunStart, resetRunDiscoveries, getMeta, getPlayerName, setPlayerName } from './state/meta-state';
 import { showStartScreen } from './ui/start-screen';
@@ -815,6 +816,24 @@ initRunSync();
 // run_start / death tracks below.
 initTelemetry();
 track('boot');
+// Crash context — sampled lazily when a report is built, so a crash carries the
+// run seed + depth + how far in + the device GPU. With the seed + the repro tape
+// (attached on a fatal), the exact session replays in the stepper. Read the GPU
+// string once here; the rest are live getters.
+const crashGpu = (() => {
+  try {
+    const gl = renderer.getContext();
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    return dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : 'n/a';
+  } catch { return 'n/a'; }
+})();
+setCrashContext(() => ({
+  seed: getRunSeed(),
+  depth: getCurrentDepth(),
+  steps: recordedSteps(),
+  gpu: crashGpu,
+  viewport: `${window.innerWidth}x${window.innerHeight}`,
+}));
 // Finish an account link interrupted by the OAuth redirect (no-op otherwise —
 // doesn't even load Clerk unless a link is mid-flight).
 void completePendingLink();
@@ -1243,7 +1262,7 @@ function presentPass(realDt: number): void {
   });
 }
 
-function tick() {
+function tickInner() {
   // FRAME RATE cap: skip DRAWING this frame if we're ahead of the chosen fps.
   // A drift-free time accumulator (scene/frame-pacer.ts) — never above the cap,
   // jitter-immune (no creep down to 55), even on any panel, graceful under load.
@@ -1365,6 +1384,26 @@ function tick() {
   if (import.meta.env.DEV) tickPerfProbe(performance.now());
 
   requestAnimationFrame(tick);
+}
+
+// Fatal-error guard around the loop. If a frame throws, the loop would otherwise
+// die silently into a frozen screen. Catch it: capture (with the repro tape +
+// context), show the in-character crash overlay, and stop rescheduling — one
+// fault, handled, with a report path, instead of a black void.
+let fatalHandled = false;
+function tick() {
+  try {
+    tickInner();
+  } catch (err) {
+    if (fatalHandled) return;
+    fatalHandled = true;
+    const e = err instanceof Error ? err : new Error(String(err));
+    if (import.meta.env.DEV) console.error('[fatal] game loop threw:', e);
+    captureError(e, true);
+    let repro: unknown = null;
+    try { repro = peekActiveTape(); } catch { /* recorder unavailable */ }
+    showCrashOverlay(buildReport(e, { repro }), e.message);
+  }
 }
 
 // ── Run start ──────────────────────────────────────────────────────────
