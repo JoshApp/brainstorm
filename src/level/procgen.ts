@@ -20,7 +20,7 @@ import type { LevelSpec, EnemySpawnSpec, TileMap, PropSpec } from './types';
 import { composeFloor } from './vault-compose';
 import { VAULTS } from './vault-library';
 import { ENEMIES } from '../content/enemies';
-import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type Role } from '../content/encounters';
+import { ROLE, ARCHETYPE_SLOTS, type EncounterSpec, type EncounterIntensity, type Role } from '../content/encounters';
 import { actForDepth, isBossDepth, nextLevelAfter } from './acts';
 import { bossById } from '../content/bosses';
 import { seedBuildRng } from '../engine/rng';
@@ -205,6 +205,17 @@ function rollPack(spec: EncounterSpec, depth: number, slotCount: number, rand: (
     if (elites.length) out[Math.floor(rand() * out.length)] = elites[Math.floor(rand() * elites.length)];
   }
   return out;
+}
+
+/** Roll a coherent pack of `count` enemy ids for the v3 floor CONTENT BUDGET —
+ *  a floor-level "mixed" squad scaled to the floor's intensity. Reuses rollPack
+ *  so budget-injected enemies read as coherent as an authored vault encounter,
+ *  not a grab-bag. Used by the composer's spawn-injection pass. */
+export function rollFloorEnemies(
+  depth: number, count: number, intensity: EncounterIntensity, rand: () => number,
+): string[] {
+  if (count <= 0) return [];
+  return rollPack({ archetype: 'mixed', intensity }, depth, count, rand);
 }
 
 /**

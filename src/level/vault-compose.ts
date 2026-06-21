@@ -4,14 +4,15 @@ import { resolvePalette, type PaletteV1 } from './palette';
 import { lightingPass } from './lighting-pass';
 import { decorPass } from './decor-pass';
 import { carvePass, voidCellsCovered } from './carve-pass';
-import { OccupancyGrid, propLayer } from './occupancy-grid';
+import { OccupancyGrid, propLayer, enumerateOpenCells } from './occupancy-grid';
 import { actForDepth } from './acts';
 import type { Vault, VaultTag } from './vault';
 import type { EncounterSpec } from '../content/encounters';
 import { vaultsForTag, VAULTS } from './vault-library';
 import { ITEMS } from '../content/items';
 import { parseTileMap } from './tilemap';
-import { populateTemplate, type FeatureCell } from './procgen';
+import { populateTemplate, rollFloorEnemies, type FeatureCell } from './procgen';
+import { floorContentBudget } from './content-budget';
 import { PROP_GROUPS, type GroupChild } from './prop-groups';
 import { applyGeometryWarp, applySurfaceClutter } from './clutter';
 import { CONFIG } from '../config';
@@ -575,6 +576,16 @@ export function composeFloor(
   // debug capture tool can report "you're standing in the X vault."
   const roomVaults: Record<string, string> = {};
 
+  // ── v3 floor-content budget: open spawn-candidate cells across ALL rooms ──
+  // Combat is decoupled from vault tags — instead of "only combat vaults hold
+  // enemies", every room contributes its open floor cells, and a per-floor
+  // budget (below the loop) seeds enemies into them so the floor is never empty
+  // and combat can appear in any room shape. Each candidate carries its world
+  // position, owning room, and whether it's a HINT (an author's X slot that the
+  // density gate skipped — preferred so injected mobs land where intended).
+  interface SpawnCandidate { x: number; z: number; roomId: string; isHint: boolean }
+  const spawnCandidates: SpawnCandidate[] = [];
+
   for (let i = 0; i < placed.length; i++) {
     const pv = placed[i];
     roomVaults[pv.roomId] = pv.vault.id;
@@ -810,6 +821,70 @@ export function composeFloor(
     if (pv.vault.voids) {
       for (const v of pv.vault.voids) {
         voids.push({ x: v.x + pv.offsetX, z: v.z + pv.offsetZ, w: v.w, d: v.d });
+      }
+    }
+
+    // ── v3: harvest this vault's OPEN spawn cells for the floor budget ──────
+    // `occ` is now fully built (authored props, X/B spawns, $/? features+approach,
+    // carved voids, torches all reserved), so enumerateOpenCells yields the cells
+    // an enemy can actually stand on. The start room and the boss arena stay
+    // combat-free; everything else feeds the budget. A cell that ORIGINALLY held
+    // an X but got density-gated to '.' is a HINT (author meant a fight there).
+    const isStart = pv.vault.tags.includes('start');
+    const isBossArena = opts.isBossFloor === true && pv.vault.tags.includes('boss');
+    if (!isStart && !isBossArena) {
+      // Hint cells: original 'X' positions (incl. a non-boss 'B' treated as X).
+      const hintCells = new Set<string>();
+      for (let r = 0; r < pv.vault.map.length; r++) {
+        const line = pv.vault.map[r];
+        for (let c = 0; c < line.length; c++) {
+          if (line[c] === 'X' || (line[c] === 'B' && !allowBoss)) hintCells.add(`${c},${r}`);
+        }
+      }
+      // Floor = plain interior floor only ('.'/','), so we never seed an enemy on
+      // the player-spawn 'S', the stairs '/', or in a doorway. Post-populate the
+      // X/B/$/? slots are already '.', so '.' covers the rolled-out ones too.
+      const isFloor = (c: number, r: number): boolean => {
+        const ch = populated[r]?.[c];
+        return ch === '.' || ch === ',';
+      };
+      const region = { col0: 0, row0: 0, cols: W, rows: D };
+      for (const cell of enumerateOpenCells(region, isFloor, occ)) {
+        spawnCandidates.push({
+          x: cell.col + 0.5 - W / 2 + pv.offsetX,
+          z: cell.row + 0.5 - D / 2 + pv.offsetZ,
+          roomId: pv.roomId,
+          isHint: hintCells.has(`${cell.col},${cell.row}`),
+        });
+      }
+    }
+  }
+
+  // ── v3 SPAWN INJECTION: meet the floor's combat budget ─────────────────────
+  // The budget (depth-driven, hard minimum) is the AUTHORITY for how much combat
+  // a floor holds. Authored vault encounters (the X packs already pushed above)
+  // count toward it; if they fall short — the empty-early-floors bug, where few
+  // combat vaults are eligible — we top up by seeding budget enemies into the
+  // harvested open cells of ANY room. Deterministic: all rolls draw from `rand`.
+  {
+    const budget = floorContentBudget(depth, rand);
+    const liveCount = spawns.filter((s) => !s.dormant).length;   // boss is dormant
+    const shortfall = budget.combat.count - liveCount;
+    if (shortfall > 0 && spawnCandidates.length > 0) {
+      // Deterministic shuffle (Fisher–Yates on `rand`), then stable-sort hints to
+      // the front so author-intended spots fill first; the shuffle spreads the
+      // rest across rooms roughly in proportion to each room's open space.
+      const pool = spawnCandidates.slice();
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      pool.sort((a, b) => Number(b.isHint) - Number(a.isHint));
+      const place = Math.min(shortfall, pool.length);
+      const ids = rollFloorEnemies(depth, place, budget.combat.intensity, rand);
+      for (let i = 0; i < place; i++) {
+        const c = pool[i];
+        spawns.push({ enemyId: ids[i], x: c.x, z: c.z, roomId: c.roomId });
       }
     }
   }
