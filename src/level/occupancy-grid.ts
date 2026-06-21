@@ -83,3 +83,53 @@ export class OccupancyGrid {
     return this.why.get(`${layer}:${col},${row}`);
   }
 }
+
+/** A rectangular block of cells in a vault's local ASCII grid. */
+export interface CellRegion {
+  col0: number;
+  row0: number;
+  cols: number;
+  rows: number;
+}
+
+export interface CellCoord {
+  col: number;
+  row: number;
+}
+
+/**
+ * Enumerate the OPEN, spawnable floor cells of a region — the v3 floor-content
+ * system's foundation. "Open" means BOTH:
+ *   - it's actual walkable floor (`isFloor` — the tilemap knows walls/void; the
+ *     occupancy grid does NOT, it only tracks reservations), AND
+ *   - nothing physically blocks standing there: not a prop/feature/spawn/chasm
+ *     (`blockLayers`, default floor+void), and not in the caller's `exclude` set
+ *     (safe-zones: entry, the bonfire, feature approaches).
+ *
+ * Pure + deterministic (stable col-major-by-row scan order) so a seeded budget
+ * pass can pick the same cells on replay. The caller shuffles/picks with its own
+ * seeded RNG. This is the single seam that lets combat spawn into ANY room shape
+ * instead of only pre-authored `X` tiles in "combat"-tagged vaults.
+ */
+export function enumerateOpenCells(
+  region: CellRegion,
+  isFloor: (col: number, row: number) => boolean,
+  occ: OccupancyGrid,
+  opts: { blockLayers?: OccLayer[]; exclude?: ReadonlySet<string> } = {},
+): CellCoord[] {
+  const blockLayers = opts.blockLayers ?? (['floor', 'void'] as OccLayer[]);
+  const exclude = opts.exclude;
+  const out: CellCoord[] = [];
+  for (let row = region.row0; row < region.row0 + region.rows; row++) {
+    for (let col = region.col0; col < region.col0 + region.cols; col++) {
+      if (!isFloor(col, row)) continue;
+      if (exclude?.has(`${col},${row}`)) continue;
+      let blocked = false;
+      for (const layer of blockLayers) {
+        if (occ.has(col, row, layer)) { blocked = true; break; }
+      }
+      if (!blocked) out.push({ col, row });
+    }
+  }
+  return out;
+}
