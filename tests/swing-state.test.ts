@@ -140,6 +140,29 @@ test('combo window: a press inside it continues the chain', () => {
   assert.equal(s.getComboStep(), 1, 'chain continued, not reset');
 });
 
+test('breakCombo: drops a banked chain back to the opener (menu/chest resume)', () => {
+  const s = createSwingState();
+  s.requestSwing();
+  walkToIdleOrChain(s);                    // idle, comboStep=1, window open
+  assert.equal(s.getComboStep(), 1);
+  // A menu/chest paused the world: the sim clock froze, so the window never
+  // lapsed. breakCombo() stands in for "combat flow broke" → fresh opener.
+  s.breakCombo();
+  assert.equal(s.getComboStep(), 0, 'banked chain reset to the opener');
+  assert.equal(s.requestSwing(), true);
+  assert.equal(s.getComboStep(), 0, 'next press is a clean step-0 swing');
+});
+
+test('breakCombo: no-op mid-swing (never yanks the active step)', () => {
+  const s = createSwingState();
+  s.requestSwing();
+  walkToIdleOrChain(s);                    // idle, comboStep=1, window open
+  s.requestSwing();                        // start the step-1 swing
+  assert.equal(s.getComboStep(), 1);
+  s.breakCombo();                          // mid-swing → ignored
+  assert.equal(s.getComboStep(), 1, 'an in-flight swing is left alone');
+});
+
 test('canSwing gate blocks starting a swing on empty', () => {
   let allowed = false;
   const s = createSwingState({ canSwing: () => allowed });

@@ -156,6 +156,10 @@ export interface WeaponViewmodel {
    *  empty-handed (used at run start before the player picks at the
    *  starter altar, and any future unequip-weapon flow). */
   equip(weaponSpec: ModelSpec | null): void;
+  /** Drop a banked combo back to a fresh opener (no-op mid-swing). Called when
+   *  a menu / chest / note pause breaks combat flow, so the next attack starts
+   *  a clean chain instead of resuming a stale finisher. */
+  breakCombo(): void;
   /** Debug-only: jump to a specific phase + phase timer. */
   setDebugPhase(phase: SwingPhase, phaseTimer: number): void;
 }
@@ -722,6 +726,7 @@ export function createWeaponViewmodel(
     update,
     parryRaise,
     equip,
+    breakCombo: swing.breakCombo,
     setDebugPhase,
   };
 }

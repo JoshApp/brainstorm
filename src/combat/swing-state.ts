@@ -85,6 +85,13 @@ export interface SwingState {
   isFinisherStrike(): boolean;
   /** Wipe in-flight swing/combo state (weapon swap). */
   reset(): void;
+  /** Drop a banked combo back to a fresh opener — WITHOUT disturbing an
+   *  in-flight swing. Called when combat flow is broken by something the sim
+   *  clock can't see: a menu / chest / note pauses the world, the swing sim
+   *  freezes with it, so the combo window never lapses and the next press would
+   *  otherwise resume a stale mid-chain step (e.g. the dagger's finisher flurry
+   *  firing as your "first" attack). No-op while actually swinging. */
+  breakCombo(): void;
   /** Abort the current windup/strike — jump straight to recover so the swing
    *  visibly ends short. Used when the blade clanks into a wall: the wall
    *  bounced you off, the strike is done, the recover plays from here. No-op
@@ -365,6 +372,20 @@ export function createSwingState(options: SwingStateOptions = {}): SwingState {
     reset() {
       phase = 'idle';
       phaseTimer = 0;
+      comboStep = 0;
+      comboWindowExpiresAt = 0;
+      queuedPress = false;
+      track = 'light';
+      activeDirectionalStep = null;
+      activeEnderStep = null;
+      openerDirKey = null;
+    },
+    breakCombo() {
+      // Only meaningful between swings — never yank the step out from under a
+      // swing that's mid-flight (you can't open a menu mid-swing anyway, but
+      // stay defensive). Clears the banked chain + its window so the next press
+      // starts clean at the opener.
+      if (phase !== 'idle') return;
       comboStep = 0;
       comboWindowExpiresAt = 0;
       queuedPress = false;

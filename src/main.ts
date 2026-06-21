@@ -97,7 +97,7 @@ import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
 import { showProvingGroundsScreen } from './ui/proving-grounds-screen';
 import { buildFightLevel, buildEventLevel } from './level/proving-grounds';
-import { isAnyScreenOpen, msSinceLastScreenClose } from './ui/screen-manager';
+import { isAnyScreenOpen, msSinceLastScreenClose, onScreenStateChanged, isWorldPausedByScreen } from './ui/screen-manager';
 import { spawn as spawnEntity } from './ecs/world';
 import { initTriggerListener } from './ecs/triggers';
 import { setupPwaAutoUpdate, maybeApplyUpdateSilently, awaitBootUpdate, setBeforeReloadHook } from './pwa-update';
@@ -711,6 +711,19 @@ setInteractLabelTapHandler(() => {
   // interaction) was the interact UNDER-capture: it descended without firing
   // triggerInteract, so the descent never landed in the replay tape.
   if (inRange) { triggerInteract('label'); resolveUsable(inRange, camera.position).onUse(); }
+});
+// Combo-break on menu resume. A screen that pauses the world (chest loot panel,
+// inventory, a note) FREEZES the swing sim's clock along with everything else —
+// so the combo window never lapses while you're rummaging, and the next press
+// would resume a stale mid-chain step (the dagger's finisher flurry firing as a
+// phantom "first" attack). When the last world-pausing screen closes, drop the
+// banked combo so combat starts fresh. Edge-triggered so non-pausing overlays
+// (HUD bits) don't churn it.
+let _wasPausedByScreen = isWorldPausedByScreen();
+onScreenStateChanged(() => {
+  const pausedNow = isWorldPausedByScreen();
+  if (_wasPausedByScreen && !pausedNow) weapon.breakCombo();
+  _wasPausedByScreen = pausedNow;
 });
 createConsumableBar();
 // Backdrop and HUD-hide are now owned by the screen manager — created
