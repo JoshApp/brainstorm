@@ -9,6 +9,7 @@
 
 import assert from 'node:assert/strict';
 import { generateFloor } from '../src/level/procgen';
+import { CONFIG } from '../src/config';
 import type { LevelSpec } from '../src/level/types';
 
 let passed = 0;
@@ -76,6 +77,21 @@ const SEEDS = Array.from({ length: 25 }, (_, i) => 4242 + i * 1009);
 
 test('generation never throws', () => {
   for (let d = 1; d <= 13; d++) for (const s of SEEDS) generateFloor(d, s);
+});
+
+// The empty-early-floors bug: a floor could roll zero combat when few combat
+// vaults were eligible at shallow depth. v3's content budget makes that
+// impossible — every floor carries at least COMBAT_MIN live (non-dormant)
+// enemies, seeded into open cells of any room. This is the regression lock.
+test('every floor meets the combat budget minimum (never empty)', () => {
+  const MIN = CONFIG.CONTENT_BUDGET.COMBAT_MIN;
+  for (let d = 1; d <= 13; d++) for (const s of SEEDS) {
+    const spec = generateFloor(d, s);
+    const live = (spec.spawns ?? []).filter(
+      (sp) => !(sp as { dormant?: boolean }).dormant,
+    ).length;
+    assert.ok(live >= MIN, `depth ${d} seed ${s}: only ${live} live enemies (< MIN ${MIN})`);
+  }
 });
 
 // The bug this missed before: archways (placed by the decoration pipeline at
