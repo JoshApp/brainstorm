@@ -123,7 +123,7 @@ import { setOutlinesDisabled } from './interactables/outline';
 import { setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-pool';
 import { packTokenCount } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
-import { pacerObserve, pacerShouldDraw } from './scene/frame-pacer';
+import { pacerShouldDraw } from './scene/frame-pacer';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
@@ -1239,17 +1239,12 @@ function presentPass(realDt: number): void {
 
 function tick() {
   // FRAME RATE cap: skip DRAWING this frame if we're ahead of the chosen fps.
-  // Paced by VSYNC DIVISION (scene/frame-pacer.ts) — pacerObserve measures the
-  // native refresh from the raw rAF cadence (so it must run on EVERY callback,
-  // including skipped ones), pacerShouldDraw draws every round(native/cap)-th
-  // frame. Even pacing by construction + an honest cap on non-60-divisor panels
-  // (a 60 cap is 45 on a 90Hz screen, not a stuttering fake-60). The sim isn't
-  // lost on a skip — clock.getDelta() accumulates the skipped time, so the next
-  // drawn frame advances the sim by the full elapsed time (more fixed substeps).
-  const nowRaw = performance.now();
-  pacerObserve(nowRaw);
+  // A drift-free time accumulator (scene/frame-pacer.ts) — never above the cap,
+  // jitter-immune (no creep down to 55), even on any panel, graceful under load.
+  // The sim isn't lost on a skip — clock.getDelta() accumulates the skipped time,
+  // so the next drawn frame advances the sim by the full elapsed time.
   const frameCap = Number(getSettings().frameCap);
-  if (!pacerShouldDraw(frameCap, nowRaw)) { requestAnimationFrame(tick); return; }
+  if (!pacerShouldDraw(frameCap, performance.now())) { requestAnimationFrame(tick); return; }
   // Apply any pending level swap BEFORE any per-frame reads on the level.
   // Stairs interactables call loadLevel() during the previous frame's
   // interactables tick; the swap lands here at the top of the next frame.
