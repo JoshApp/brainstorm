@@ -126,6 +126,8 @@ import { setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-po
 import { packTokenCount } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
 import { pacerShouldDraw } from './scene/frame-pacer';
+import { beginBoot, bootSucceeded } from './boot-guard';
+import { installContextRecovery, isContextLost } from './scene/context-recovery';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
@@ -192,6 +194,11 @@ try {
   // ignore — orientation API not supported here
 }
 
+// Boot-loop safe mode — if the last two boots crashed before the first frame
+// rendered (corrupt save, bad cached build, device init failure), show a
+// recovery screen instead of re-crashing forever. Halts the rest of boot.
+if (!beginBoot()) throw new Error('delve: safe mode (boot guard)');
+
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
 // --- Renderer ---
@@ -250,6 +257,10 @@ scene.add(ambient);
 installBandedLighting(getSettings().bandedLighting);
 const materials = buildMaterials(renderer);
 initRenderPipeline(renderer);
+// WebGL context-loss recovery — preventDefault + rebuild the custom render
+// targets on restore, so a GPU context drop (mobile memory pressure / a
+// backgrounded tab) is a brief veil, not a black screen or a false crash.
+installContextRecovery({ canvas, onRestore: () => initRenderPipeline(renderer) });
 // Encounter feedback orchestrator — subscribes to gate/encounter lifecycle
 // events and fires their sound + shake + dust stingers (dust attaches to the
 // persistent scene root, cleared per level alongside the other effect pools).
@@ -1383,15 +1394,22 @@ function tickInner() {
   // (and tickPerfProbe is itself a no-op in prod, belt-and-suspenders).
   if (import.meta.env.DEV) tickPerfProbe(performance.now());
 
+  // First fully-rendered frame proves boot is good — clear the boot-loop flag.
+  if (!bootConfirmed) { bootConfirmed = true; bootSucceeded(); }
+
   requestAnimationFrame(tick);
 }
 
+let bootConfirmed = false;
 // Fatal-error guard around the loop. If a frame throws, the loop would otherwise
 // die silently into a frozen screen. Catch it: capture (with the repro tape +
 // context), show the in-character crash overlay, and stop rescheduling — one
 // fault, handled, with a report path, instead of a black void.
 let fatalHandled = false;
 function tick() {
+  // While the GPU context is lost, idle the loop (no sim, no render — rendering
+  // would throw) until 'webglcontextrestored' clears the flag.
+  if (isContextLost()) { requestAnimationFrame(tick); return; }
   try {
     tickInner();
   } catch (err) {
