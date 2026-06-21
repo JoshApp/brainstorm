@@ -863,7 +863,11 @@ export function buildLevel(
   {
     const hasBonfire = spec.props.some(
       (pr) => pr.kind === 'model' && (pr as { model?: { id?: string } }).model?.id === 'bonfire');
-    if (!hasBonfire && spec.startPos) {
+    // v3: procgen floors manage their own fires (the content budget rolls a
+    // FOUND minor fire deeper in, or none) — so the builder only auto-places the
+    // wake-beside-fire threshold bonfire on hand-authored floors that don't opt
+    // out. This is what makes fires "found, not guaranteed per descent."
+    if (!hasBonfire && spec.startPos && !spec.composerManagedFires) {
       const yaw = spec.startPos.yaw ?? 0;
       // forward is (-sin yaw, -cos yaw); the fire sits DEAD AHEAD —
       // you wake looking straight into it and walk around.

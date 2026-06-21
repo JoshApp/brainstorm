@@ -883,6 +883,19 @@ export function composeFloor(
   // harvested open cells of ANY room. Deterministic: all rolls draw from `rand`.
   {
     const budget = floorContentBudget(depth, rand);
+    // MINOR FIRE = a per-floor ROLL, not floor furniture. The start foyer vault
+    // authors the wake-beside-fire bonfire; the roll decides whether it survives.
+    // Roll hit → keep it (you wake at a fire, can rest/draw). Roll miss → strip
+    // it so the floor is fireless (you wake cold and descend — fires become
+    // something you're given, not guaranteed). The composer owns fires (spec
+    // flag at return), so the builder won't re-add a threshold fire on a miss.
+    // 1.0 = today's always-a-fire; lower = rarer. Harbor/safe fires unaffected.
+    if (!budget.events.minorFire) {
+      for (let k = props.length - 1; k >= 0; k--) {
+        const p = props[k] as { kind?: string; model?: { id?: string } };
+        if (p.kind === 'model' && p.model?.id === 'bonfire') props.splice(k, 1);
+      }
+    }
     const liveCount = spawns.filter((s) => !s.dormant).length;   // boss is dormant
     const shortfall = budget.combat.count - liveCount;
     if (shortfall > 0 && spawnCandidates.length > 0) {
@@ -980,6 +993,9 @@ export function composeFloor(
     depth,
     displayName: opts.displayName,
     fogColor: opts.fogColor,
+    // v3: the composer decided this floor's fire (found event or none) above —
+    // the builder must not also auto-place a threshold fire at the entrance.
+    composerManagedFires: true,
     startPos,
     rooms,
     corridors: corridorRooms,

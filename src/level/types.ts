@@ -594,6 +594,14 @@ export type LevelSpec = {
    * seed from the id. Makes a seeded run's floors reproducible.
    */
   seed?: number;
+  /**
+   * v3: the procgen composer OWNS fire placement on this floor — it already
+   * decided (via the content budget) whether a minor bonfire appears and placed
+   * it if so. The builder must NOT auto-add its threshold fire when this is set
+   * (that would make fires guaranteed again). Absent on hand-authored floors
+   * (tutorial / scenarios), which keep the builder's wake-beside-fire default.
+   */
+  composerManagedFires?: boolean;
   /** Player spawn — position + initial yaw (radians). */
   startPos: { x: number; z: number; yaw: number };
   /**

@@ -725,6 +725,11 @@ export const CONFIG = {
     INTENSITY_MEDIUM_DEPTH: 4,  // < this → 'light'
     INTENSITY_HEAVY_DEPTH: 8,   // >= this → chance of 'heavy', else 'medium'
     HEAVY_CHANCE: 0.35,         // odds a deep floor rolls 'heavy'
+    // Minor bonfire = a FOUND event, not floor furniture. This is the per-floor
+    // chance one appears (deeper in, a rest/card-draw fire). 1.0 = a fire every
+    // floor (the old always-on threshold fire); 0 = fires only at safe rooms.
+    // The harbor/post-boss fire is unaffected (always present). Tune on feel.
+    MINOR_FIRE_CHANCE: 0.5,
   },
 
   // === DEATH SEQUENCE ===

@@ -28,6 +28,13 @@ export interface FloorContentBudget {
     /** Pack intensity for the floor ('heavy' upgrades a slot to an elite). */
     intensity: EncounterIntensity;
   };
+  events: {
+    /** Whether this floor rolled a minor bonfire — a FOUND rest/card-draw fire
+     *  placed deeper in the floor, NOT a guaranteed one at the entrance. The
+     *  harbor/post-boss fire is separate (always present, authored by the safe
+     *  room). When false the player wakes + descends with no fire that floor. */
+    minorFire: boolean;
+  };
 }
 
 /** Resolve the combat enemy count for a floor: depth-scaled with a ± jitter,
@@ -53,6 +60,14 @@ export function combatIntensity(depth: number, rand: () => number): EncounterInt
   return roll < b.HEAVY_CHANCE ? 'heavy' : 'medium';
 }
 
+/** Roll this floor's events. Currently just the minor bonfire: a FOUND fire is
+ *  the design (not one-per-entrance), so it's a depth-weighted chance, not a
+ *  guarantee. Always consumes exactly one rand() for stream stability. */
+export function floorEvents(depth: number, rand: () => number): FloorContentBudget['events'] {
+  void depth;   // reserved for depth-weighting the chance later
+  return { minorFire: rand() < CONFIG.CONTENT_BUDGET.MINOR_FIRE_CHANCE };
+}
+
 /** The full per-floor budget. `rand` should be a seeded stream derived from the
  *  floor seed so the budget reproduces on replay. */
 export function floorContentBudget(depth: number, rand: () => number): FloorContentBudget {
@@ -61,5 +76,6 @@ export function floorContentBudget(depth: number, rand: () => number): FloorCont
       count: combatCount(depth, rand),
       intensity: combatIntensity(depth, rand),
     },
+    events: floorEvents(depth, rand),
   };
 }

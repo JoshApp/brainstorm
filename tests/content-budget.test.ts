@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config';
-import { combatCount, combatIntensity, floorContentBudget } from '../src/level/content-budget';
+import { combatCount, combatIntensity, floorContentBudget, floorEvents } from '../src/level/content-budget';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -88,6 +88,18 @@ test('floorContentBudget shape', () => {
   const budget = floorContentBudget(5, lcg(1));
   assert.equal(typeof budget.combat.count, 'number');
   assert.ok(['light', 'medium', 'heavy'].includes(budget.combat.intensity));
+  assert.equal(typeof budget.events.minorFire, 'boolean');
+});
+
+test('minor fire is a chance, not a guarantee (both outcomes occur)', () => {
+  const seen = new Set<boolean>();
+  for (let seed = 0; seed < 200; seed++) seen.add(floorEvents(4, lcg(seed)).minorFire);
+  assert.ok(seen.has(true), 'fires do appear');
+  assert.ok(seen.has(false), 'fires are NOT every floor (the whole point)');
+});
+
+test('minor fire roll is deterministic', () => {
+  assert.equal(floorEvents(3, lcg(777)).minorFire, floorEvents(3, lcg(777)).minorFire);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
