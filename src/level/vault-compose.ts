@@ -402,10 +402,15 @@ export function composeFloor(
   },
 ): LevelSpec {
   // ── 1. Tag sequence for the main spine ─────────────────────────
+  // Only the ENDS are structural (start / boss|exit). Middle slots are
+  // placeholders: v3 treats their tag as a HINT, not a gate — they draw from one
+  // weighted union pool (built below) so any room SHAPE can fill a middle and
+  // variety isn't throttled by a single tag's depth-eligible pool.
   const middleCount = clamp(1 + Math.floor((depth - 1) / 2), 1, 4);
   const tagSeq: VaultTag[] = ['start'];
-  for (let i = 0; i < middleCount; i++) tagSeq.push(pickMiddleTag(depth, rand));
+  for (let i = 0; i < middleCount; i++) tagSeq.push('combat');   // placeholder; see midPool
   tagSeq.push(opts.isBossFloor ? 'boss' : 'exit');
+  const midPool = middleVaultPool(depth);
 
   // ── 2. Place spine vaults along a WINDING 2D path ──────────────
   const placed: PlacedVault[] = [];
@@ -417,20 +422,30 @@ export function composeFloor(
 
   for (let i = 0; i < tagSeq.length; i++) {
     const tag = tagSeq[i];
-    const candidates = vaultsForTag(tag, depth);
-    const pool = candidates.length > 0
-      ? candidates
-      : tag === 'exit'
-        ? VAULTS.filter((v) => v.tags.includes('exit'))
-        : VAULTS.filter((v) => v.tags.includes('combat'));
-    // Boss-vault preference: if this slot is the boss tag AND the
-    // current boss has a preferredVaultId set AND that vault is in
-    // the eligible pool, USE it directly. Otherwise fall through to
-    // weighted-pick — the preference never blocks generation.
-    const preferred = tag === 'boss' && opts.preferredBossVaultId
-      ? pool.find((v) => v.id === opts.preferredBossVaultId)
-      : undefined;
-    const vault = preferred ?? weightedPick(pool, rand);
+    const isStructural = i === 0 || i === tagSeq.length - 1;   // start / boss|exit
+    let vault: Vault;
+    if (isStructural) {
+      // Ends keep their hard tag — a start vault must hold 'S', a boss/exit must
+      // hold the stairs. Fall back across the tag if a depth somehow has none.
+      const candidates = vaultsForTag(tag, depth);
+      const pool = candidates.length > 0
+        ? candidates
+        : tag === 'exit'
+          ? VAULTS.filter((v) => v.tags.includes('exit'))
+          : VAULTS.filter((v) => v.tags.includes('combat'));
+      // Boss-vault preference: if this slot is the boss tag AND the current boss
+      // has a preferredVaultId set AND it's in the eligible pool, USE it.
+      // Otherwise fall through to weighted-pick — preference never blocks gen.
+      const preferred = tag === 'boss' && opts.preferredBossVaultId
+        ? pool.find((v) => v.id === opts.preferredBossVaultId)
+        : undefined;
+      vault = preferred ?? weightedPick(pool, rand);
+    } else {
+      // MIDDLE: tags demoted to a weighting hint — draw from the union pool.
+      vault = midPool.length > 0
+        ? weightedPick(midPool, rand).vault
+        : weightedPick(VAULTS.filter((v) => v.tags.includes('combat')), rand);
+    }
     const dims = vaultDims(vault);
 
     if (i === 0) {
@@ -1368,19 +1383,33 @@ function vaultDims(v: Vault): { w: number; d: number } {
   return { w: Math.max(0, cols - 2), d: Math.max(0, rows - 2) };
 }
 
-function pickMiddleTag(depth: number, rand: () => number): VaultTag {
-  const weights: Array<[VaultTag, number]> = [
+/** The v3 MIDDLE-slot pool: tags are a weighting HINT, not a gate. Every
+ *  depth-eligible middle vault SHAPE (combat / treasure / encounter) competes in
+ *  ONE pool, so a slot can draw the full variety instead of a thin single-tag
+ *  set. Each tag keeps its old flavor SHARE (combat 5 : treasure 2 : encounter 2,
+ *  halved at depth 1) split across its vaults by their individual weights — so
+ *  the combat/treasure/encounter BALANCE of a floor is preserved while the
+ *  specific rooms vary far more. A vault carrying multiple middle tags sums its
+ *  shares. (Combat also gets injected into these rooms by the content budget;
+ *  the tag now only flavors a room's props/shape, never whether it can fight.) */
+function middleVaultPool(depth: number): Array<{ vault: Vault; weight: number }> {
+  const tagShare: Array<[VaultTag, number]> = [
     ['combat', 5],
     ['treasure', depth >= 2 ? 2 : 1],
     ['encounter', depth >= 2 ? 2 : 1],
   ];
-  const total = weights.reduce((s, [, w]) => s + w, 0);
-  let r = rand() * total;
-  for (const [tag, w] of weights) {
-    r -= w;
-    if (r <= 0) return tag;
+  const byId = new Map<string, { vault: Vault; weight: number }>();
+  for (const [tag, share] of tagShare) {
+    const pool = vaultsForTag(tag, depth);
+    const totalW = pool.reduce((s, v) => s + (v.weight ?? 1), 0) || 1;
+    for (const v of pool) {
+      const contribution = share * (v.weight ?? 1) / totalW;
+      const existing = byId.get(v.id);
+      if (existing) existing.weight += contribution;   // multi-tag vault sums shares
+      else byId.set(v.id, { vault: v, weight: contribution });
+    }
   }
-  return 'combat';
+  return [...byId.values()];
 }
 
 function weightedPick<T extends { weight?: number }>(pool: T[], rand: () => number): T {
