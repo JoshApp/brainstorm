@@ -38,9 +38,12 @@ function effectLines(card: CardSpec): string[] {
   return out;
 }
 
-export function openCardReading(opts: { onDone?: (picked: boolean) => void } = {}): void {
+export function openCardReading(
+  opts: { arcana?: 'minor' | 'major'; onDone?: (picked: boolean) => void } = {},
+): void {
   if (isScreenOpen(SCREEN_ID)) return;
-  const dealt = dealCards(3, { arcana: 'minor' }).map((id) => CARDS[id]).filter(Boolean) as CardSpec[];
+  const arcana = opts.arcana ?? 'minor';
+  const dealt = dealCards(3, { arcana }).map((id) => CARDS[id]).filter(Boolean) as CardSpec[];
   if (dealt.length === 0) { opts.onDone?.(false); return; }
 
   let picked = false;
@@ -61,7 +64,9 @@ export function openCardReading(opts: { onDone?: (picked: boolean) => void } = {
 
   // ── title — hugs the top edge, thin ──
   const title = document.createElement('div');
-  title.textContent = 'Choose Your Fate';
+  // Majors are the rare, weighty draw (the boss/harbor fire) — they get the
+  // grave "Choose Your Fate". Minors are the frequent found-fire draw — lighter.
+  title.textContent = arcana === 'major' ? 'Choose Your Fate' : 'The Cards Turn';
   Object.assign(title.style, { fontFamily: FONT_BLACK, fontWeight: '700', fontSize: 'clamp(19px,4vw,34px)', lineHeight: '1', letterSpacing: '0.03em', color: AMBER, textShadow: '0 0 24px rgba(180,90,30,0.55)', flex: '0 0 auto' } as Partial<CSSStyleDeclaration>);
   root.appendChild(title);
 

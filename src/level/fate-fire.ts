@@ -41,7 +41,10 @@ export function registerFateFire(o: FateFireOpts): void {
     keepBuiltOnDestroy: true,
     onUse() {
       if (drawn) return; // a spent fire has nothing left to deal
+      // The harbor's big fire (post-boss, gates the stairs) deals a MAJOR arcana
+      // — the rare, weighty act-break fork. Small found fires deal MINORS.
       openCardReading({
+        arcana: o.isBig ? 'major' : 'minor',
         onDone: (picked) => {
           if (!picked || drawn) return;
           drawn = true;

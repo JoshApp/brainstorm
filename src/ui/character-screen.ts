@@ -308,11 +308,10 @@ function rebuild(): void {
   const itemsFound = run?.itemsFound.length ?? 0;
   summaryEl.textContent = `floor ${depth} · ${kills} slain · ${gold}g · ${itemsFound} found`;
 
-  // Unspent points read as a nudge toward the fire — the book reviews,
-  // it never spends. Raising happens at a bonfire (REST).
-  unspentLabel.textContent = c.unspentPoints > 0
-    ? `${c.unspentPoints} unspent — rest at a fire to rise`
-    : '';
+  // Stat distribution is cut — fires deal CARDS, not attribute points (the
+  // tarot Spread is the build). No "unspent points" nudge; the old text told
+  // the player to rest-to-spend, which no longer does anything.
+  unspentLabel.textContent = '';
   for (const row of attrRows) {
     row.valueEl.textContent = String(c.attributes[row.kind]);
   }

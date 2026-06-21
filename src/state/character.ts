@@ -316,10 +316,11 @@ export function initCharacterTracking(): void {
         break;
       }
       case 'level:up': {
-        // Every level reached grants one UNSPENT attribute point.
-        // Player commits the build at a safe room.
-        state.unspentPoints += 1;
-        notify();
+        // Stat distribution is CUT — the tarot Spread is the build now (see
+        // docs/THE-DUNGEON-NOTICES.md). Levelling no longer grants attribute
+        // points to spend; the attribute fields remain only as inert hidden math
+        // (all 0 unless lore ticks from note-reads). A future pass routes XP into
+        // an auto survivability curve + meta-unlocks. No grant, no notify.
         break;
       }
     }
