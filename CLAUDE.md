@@ -558,30 +558,51 @@ origin — silently in the no-conflict case. Conflict aborts loud so
 you decide what to integrate; we still don't paper over work that
 touches the same lines.
 
-### Session lifecycle (start every session this way)
+### THIS IS A MULTI-AGENT REPO — work in your own worktree (default)
 
-The deploy branch is `main`. Other agents land work on it through their
-own session branches; auto-rebase in `live` papers over the no-conflict
-cases, but pulling main at session start is still cheaper than hitting
-a conflict at deploy time when you've forgotten what you changed.
+Several Claude sessions work this repo **at the same time**, sharing one
+checkout. Two agents free-handing the same working directory collide:
+push races, one agent's uncommitted edits breaking another's typecheck,
+deploys blocked by a tree that's dirty with someone else's WIP. The fix
+is isolation — **each session gets its own git worktree off the latest
+`main`.**
 
-**At the start of every session, before any code changes:**
+**At the very start of every session, BEFORE making any file changes,
+unless the user explicitly says to work in the main checkout:**
 
-```
-git fetch origin main
-git rebase origin/main
-```
+1. Get current with main and create your own isolated worktree off it.
+   `main` is the repo's default branch, so `EnterWorktree` bases off it:
 
-That replays this session branch's commits on top of the latest main.
-If there are no local commits yet, you fast-forward to whatever main
-currently has — you're starting from the canonical state. If there ARE
-local commits (continuing a session, or someone pushed to your branch),
-the rebase replays them; resolve any conflicts now, when you're fresh,
-not at deploy time.
+   ```
+   git fetch origin main      # so the worktree is off the LATEST main
+   ```
+   then call the **`EnterWorktree`** tool with a short task name
+   (e.g. `EnterWorktree({ name: "combo-tuning" })`). It creates
+   `.claude/worktrees/<name>` on a fresh branch off `origin/main` and
+   switches your session into it.
+
+2. A fresh worktree has **no `node_modules`** — symlink the main one so
+   `tsc` / `vite` / `tsx` resolve, or every build fails:
+
+   ```
+   ln -s ../../../node_modules node_modules
+   ```
+
+3. Work there, commit only your own files, and `npm run live` from the
+   worktree to deploy (its tree is clean, so the pre-push typecheck only
+   sees YOUR changes — another agent's broken WIP can't block you).
+
+The Bash tool resets cwd each call, so use absolute paths or `cd <worktree>
+&& …` in commands. On session end you're prompted to keep or remove the
+worktree (`ExitWorktree`).
+
+**Opt-out:** if the user says to work directly (a quick read-only task, a
+one-line fix, or "don't use a worktree"), skip this and just
+`git fetch origin main && git rebase origin/main` on the shared branch as
+below. Pure conversational / read-only sessions don't need a worktree.
 
 If `origin/main` doesn't exist yet (very-first-deploy bootstrap),
-`npm run live` creates it from your session HEAD — no rebase needed
-on the first ever session.
+`npm run live` creates it from your session HEAD.
 
 ### Iteration loop (the normal case)
 
