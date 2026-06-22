@@ -14,8 +14,9 @@ import { openScreen, closeScreen, isScreenOpen } from './screen-manager';
 import { FONT_UI } from './theme';
 import { FONT_BLACK, FONT_SERIF } from './fonts';
 import { formatModifier } from './item-format';
-import { CARDS, dealCards, type CardSpec } from '../content/cards';
+import { CARDS, dealCards, type CardSpec, type CardCondition, type CardSynergy, type CardTrigger } from '../content/cards';
 import { grantCard, getHeldCards } from '../state/run-state';
+import { BUFFS } from '../content/buffs';
 
 const SCREEN_ID = 'card-reading';
 const BASE = import.meta.env.BASE_URL;
@@ -28,13 +29,42 @@ const AMBER = 'rgba(232, 188, 120, 0.98)';
 // safe-area-aware edge padding (landscape notches live on the sides)
 const PAD_X = 'max(18px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))';
 
-/** What the card DOES, terse — the same numbers an item tooltip shows. */
+/** Readable phrase for a conditional's predicate (BRINK). */
+function conditionPhrase(c: CardCondition): string {
+  const pct = Math.round(c.value * 100);
+  return c.kind === 'below-hp-pct' ? `while below ${pct}% life` : `while above ${pct}% life`;
+}
+
+/** Readable phrase for a synergy's "per X" count basis (RESONANCE). */
+function synergyPer(s: CardSynergy): string {
+  return s.per === 'card' ? 'per fate held'
+    : s.per === 'major' ? 'per major held'
+    : s.per === 'minor' ? 'per minor held'
+    : `per ${s.domain} card`;
+}
+
+/** Readable phrase for a proc (PROC). Names the buff via its registry label. */
+function triggerPhrase(t: CardTrigger): string {
+  const label = BUFFS[t.buffId]?.displayName ?? t.buffId;
+  const when = t.on === 'kill' ? 'on a kill' : t.on === 'crit' ? 'on a crit' : 'on hit';
+  const odds = t.chance < 1 ? ` (${Math.round(t.chance * 100)}%)` : '';
+  return `${when}: ${label.toLowerCase()}${odds}`;
+}
+
+/** What the card DOES, terse — covers all four verb-types so you can compare
+ *  before committing: passive (PACT), conditional (BRINK), synergy (RESONANCE),
+ *  trigger (PROC). */
 function effectLines(card: CardSpec): string[] {
   const e = card.effect;
   const out: string[] = [];
   for (const m of e.modifiers ?? []) out.push(formatModifier(m));
-  for (const c of e.conditional ?? []) for (const m of c.modifiers) out.push(`${formatModifier(m)} · when low`);
-  if (e.triggers?.length) out.push('a power that wakes in battle');
+  for (const c of e.conditional ?? []) {
+    for (const m of c.modifiers) out.push(`${formatModifier(m)} · ${conditionPhrase(c.condition)}`);
+  }
+  for (const s of e.synergy ?? []) {
+    for (const m of s.modifiers) out.push(`${formatModifier(m)} · ${synergyPer(s)}`);
+  }
+  for (const t of e.triggers ?? []) out.push(triggerPhrase(t));
   return out;
 }
 

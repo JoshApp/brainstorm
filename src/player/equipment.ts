@@ -2,6 +2,8 @@ import type { ItemSpec, ItemKind } from '../content/items';
 import type { AffixInstance } from '../content/affixes';
 import type { StatModifier } from '../combat/modifiers';
 import { collectActiveSetBonuses } from '../content/sets';
+import { cardOnHitVictim } from '../content/cards';
+import { getHeldCards } from '../state/run-state';
 
 // Equipment slots. Four slots total: weapon, armor, ring1, ring2. Each
 // slot holds at most one ItemSpec (or null).
@@ -145,6 +147,10 @@ export function getPlayerOnHits(): PlayerOnHit[] {
   }
   const setIds = (Object.keys(slots) as EquipSlot[]).map((s) => slots[s]?.setId);
   for (const b of collectActiveSetBonuses(setIds)) if (b.onHit) out.push(b.onHit);
+  // Fate-card ON-HIT hexes (the tarot PROC, e.g. The Pyre's bleed) are just
+  // another on-hit source — folded in here so combat's single on-hit loop
+  // applies them to the struck enemy exactly like a serrated weapon affix.
+  for (const oh of cardOnHitVictim(getHeldCards())) out.push(oh);
   return out;
 }
 

@@ -123,4 +123,29 @@ export const CARD_ART: CardArtSpec[] = [
     art: 'a cloaked pilgrim at the lip of an endless stair, a single violet star burning above, vast and indifferent, the figure small against the dark immensity',
     seed: 4001,
   },
+  // ── verb-majors (the build-out: PROC / BRINK / RESONANCE) ──────────────────
+  {
+    id: 'the-feast', name: 'The Feast', arcana: 'major', domain: 'blood',
+    accent: 'crimson',
+    art: 'a gore-drenched delver standing exultant over a heap of the slain, arms flung wide, fresh blood steaming, each corpse feeding the next, ravenous joy in the carnage',
+    seed: 1103,
+  },
+  {
+    id: 'the-pyre', name: 'The Pyre', arcana: 'major', domain: 'rot',
+    accent: 'sickly green',
+    art: 'a blade trailing weeping green corruption, every wound it has opened festering and smoking, a figure wreathed in rot-fume, the air itself spoiling around the edge',
+    seed: 5102,
+  },
+  {
+    id: 'the-martyr', name: 'The Martyr', arcana: 'major', domain: 'valor',
+    accent: 'pale gold',
+    art: 'a kneeling warrior run through by many blades, head raised in defiance, a terrible radiance bursting from the wounds, most dangerous at the moment of death',
+    seed: 7402,
+  },
+  {
+    id: 'the-tally', name: 'The Tally', arcana: 'major', domain: 'greed',
+    accent: 'tarnished gold',
+    art: 'a hunched figure fanning a great hoard of tarot cards like a miser counting coin, each card a sharpened edge, the pile vast and glinting, avarice as power',
+    seed: 1204,
+  },
 ];

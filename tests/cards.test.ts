@@ -9,8 +9,12 @@
 // type-only import, so nothing heavy is pulled) and art/cards (plain specs).
 
 import assert from 'node:assert/strict';
-import { CARDS, cardModifiers, dealCards, type CardSpec } from '../src/content/cards';
+import {
+  CARDS, cardModifiers, cardSynergyModifiers, cardConditionalBundles,
+  cardTriggerPassives, cardOnHitVictim, dealCards, type CardSpec,
+} from '../src/content/cards';
 import { CARD_ART } from '../src/art/cards';
+import { BUFFS } from '../src/content/buffs';
 
 let passed = 0;
 let failed = 0;
@@ -65,11 +69,73 @@ test('every effect uses only the real StatModifier vocabulary', () => {
   for (const c of cards) {
     checkMods(c, c.effect.modifiers);
     for (const cm of c.effect.conditional ?? []) checkMods(c, cm.modifiers);
+    for (const s of c.effect.synergy ?? []) {
+      checkMods(c, s.modifiers);
+      assert.ok(['domain', 'major', 'minor', 'card'].includes(s.per), `${c.id}: bad synergy per '${s.per}'`);
+      if (s.per === 'domain') assert.ok(s.domain, `${c.id}: domain synergy missing domain`);
+    }
     for (const t of c.effect.triggers ?? []) {
       assert.ok(['hit', 'kill', 'crit'].includes(t.on), `${c.id}: bad trigger event '${t.on}'`);
       assert.ok(t.chance >= 0 && t.chance <= 1, `${c.id}: trigger chance out of range`);
+      // Every proc references a REAL buff — else the proc fires into the void.
+      assert.ok(BUFFS[t.buffId], `${c.id}: trigger references unknown buff '${t.buffId}'`);
     }
   }
+});
+
+// ── RESONANCE (synergy) ───────────────────────────────────────────────────────
+test('synergy scales by count of held kin (per card)', () => {
+  // The Tally: +1 weapon-damage per fate held (counting itself), cap 12.
+  const sum = (held: string[]) =>
+    cardSynergyModifiers(held).filter((m) => m.kind === 'weapon-damage').reduce((a, m) => a + m.amount, 0);
+  assert.equal(sum(['the-tally']), 1, 'alone, counts itself → +1');
+  assert.equal(sum(['the-tally', 'the-companion', 'the-maw']), 3, 'three fates held → +3');
+});
+
+test('domain synergy counts only that domain', () => {
+  // The Star: +0.04 crit-chance per DAWN card held (cap 6). The Dawn is dawn.
+  const crit = (held: string[]) =>
+    cardSynergyModifiers(held).filter((m) => m.kind === 'crit-chance').reduce((a, m) => a + m.amount, 0);
+  assert.ok(Math.abs(crit(['the-star']) - 0.04) < 1e-9, 'star alone (dawn) → 0.04');
+  assert.ok(Math.abs(crit(['the-star', 'the-dawn']) - 0.08) < 1e-9, 'star + dawn → 0.08');
+  assert.ok(Math.abs(crit(['the-star', 'the-maw']) - 0.04) < 1e-9, 'a greed card does not count for dawn');
+});
+
+test('synergy respects the max cap', () => {
+  // The Tally caps at +12 even holding the entire (distinct) deck. Held cards
+  // are distinct in real play (grantCard dedupes), so the hand is every card id.
+  const held = Object.keys(CARDS);   // includes the-tally exactly once
+  assert.ok(held.length > 12, 'deck is bigger than the cap, so the cap is exercised');
+  const dmg = cardSynergyModifiers(held).filter((m) => m.kind === 'weapon-damage').reduce((a, m) => a + m.amount, 0);
+  assert.equal(dmg, 12, 'capped at exactly 12');
+});
+
+// ── BRINK (conditional) ───────────────────────────────────────────────────────
+test('conditional bundles surface held cards’ HP-gated mods', () => {
+  const bundles = cardConditionalBundles(['the-martyr']);
+  assert.equal(bundles.length, 1, 'martyr has one conditional bundle');
+  assert.equal(bundles[0].condition.kind, 'below-hp-pct');
+  assert.ok(bundles[0].modifiers.some((m) => m.kind === 'damage-multiplier'));
+  assert.deepEqual(cardConditionalBundles(['the-hound']), [], 'a plain card has none');
+});
+
+// ── PROC (triggers) ───────────────────────────────────────────────────────────
+test('on-kill/on-crit procs become self passives; on-hit does NOT', () => {
+  const feast = cardTriggerPassives(['the-feast']);   // on kill → berserk, self
+  assert.equal(feast.length, 1);
+  assert.equal(feast[0].trigger.on, 'killed', 'kill maps to engine event "killed"');
+  assert.equal(feast[0].trigger.effects[0].buffId, 'berserk');
+  assert.equal(feast[0].trigger.effects[0].target, 'self');
+  // The Pyre is on-hit (victim) — it must NOT come through the passive path.
+  assert.deepEqual(cardTriggerPassives(['the-pyre']), [], 'on-hit hex is not a self passive');
+});
+
+test('on-hit hexes surface through the victim on-hit channel', () => {
+  const pyre = cardOnHitVictim(['the-pyre']);
+  assert.equal(pyre.length, 1);
+  assert.equal(pyre[0].buffId, 'bleed');
+  assert.ok(pyre[0].chance > 0 && pyre[0].chance <= 1);
+  assert.deepEqual(cardOnHitVictim(['the-feast']), [], 'on-kill fury is not an on-hit hex');
 });
 
 // ── resolver ──────────────────────────────────────────────────────────────────

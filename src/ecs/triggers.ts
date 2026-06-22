@@ -50,6 +50,11 @@ export function initTriggerListener(playerEntityId: string) {
     switch (event.type) {
       case 'attack:hit':
         fireTriggers(player, 'hit');
+        // A crit fires 'crit' IN ADDITION to 'hit' — so a card/relic can proc on
+        // the big strikes specifically (the dagger build's payoff). These are
+        // self-targeted (fury) procs; on-hit HEXES that land on the struck enemy
+        // go through the victim-aware on-hit channel (getPlayerOnHits), not here.
+        if (event.crit) fireTriggers(player, 'crit');
         break;
       case 'enemy:killed':
         fireTriggers(player, 'killed');

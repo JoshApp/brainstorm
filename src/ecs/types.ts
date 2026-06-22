@@ -58,6 +58,7 @@ export interface Entity {
 /** When the trigger should consider firing its effects. */
 export type TriggerEvent =
   | 'hit'          // entity landed a hit on a target (source = self, target = victim)
+  | 'crit'         // entity landed a CRITICAL hit (fires in addition to 'hit')
   | 'killed'       // entity killed a target (source = self)
   | 'damaged'      // entity took damage (source = self)
   | 'died'         // entity's HP reached 0

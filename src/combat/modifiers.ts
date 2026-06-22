@@ -6,7 +6,7 @@ import { BUFFS } from '../content/buffs';
 import { getCharacter } from '../state/character';
 import { aggregateMutationModifiers } from '../state/run-mutations';
 import { getHeldCards } from '../state/run-state';
-import { cardModifiers } from '../content/cards';
+import { cardModifiers, cardSynergyModifiers, cardConditionalBundles, cardTriggerPassives } from '../content/cards';
 
 // Central stat-modifier abstraction.
 //
@@ -88,7 +88,15 @@ export function aggregateModifiers(entityId: EntityId): StatModifier[] {
     // Fate cards held this run (the Spread) — the tarot build. A card is
     // just another source of StatModifiers, exactly like an affix or a
     // mutation. See content/cards.ts + docs/THE-CARDS.md.
-    out.push(...cardModifiers(getHeldCards()));
+    //   - passive: always-on modifiers (PACT).
+    //   - synergy (RESONANCE): bonuses scaled by the kin in your Spread.
+    //   - conditional (BRINK): gated by the SAME HP evaluator items use.
+    const held = getHeldCards();
+    out.push(...cardModifiers(held));
+    out.push(...cardSynergyModifiers(held));
+    for (const c of cardConditionalBundles(held)) {
+      if (evaluateModifierCondition(c.condition, entityId)) out.push(...c.modifiers);
+    }
   }
 
   // 2. Active buffs ticking on this entity.
@@ -235,6 +243,10 @@ export function aggregatePassives(entityId: EntityId): PassiveSpec[] {
     for (const slot of Object.values(getEquipment())) {
       if (slot?.passives) out.push(...slot.passives);
     }
+    // Fate-card PROCS (on kill/crit) — synthesized as passives so they fire
+    // through the ONE trigger path (ecs/triggers.ts) alongside equipment, never
+    // a fork. On-hit hexes ride getPlayerOnHits instead (victim-aware).
+    out.push(...cardTriggerPassives(getHeldCards()));
   }
 
   return out;
