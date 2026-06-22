@@ -64,7 +64,15 @@ export interface SaveData {
   /** Fate cards held this run (ids into content/cards.ts) — the Spread.
    *  Optional for older saves (treated as empty). */
   cards?: string[];
+  /** The HUNGER meter (0..HUNGER_MAX) — built by fighting, spent on rites. */
+  hunger?: number;
+  /** The equipped RITE (id into content/rites.ts) — the active-ability slot. */
+  riteId?: string;
 }
+
+/** The Hunger meter's ceiling. Built by fighting, spent on rites (the active
+ *  lane). Exported so the rite button can show the fill fraction. */
+export const HUNGER_MAX = 100;
 
 // ── In-memory run state (mid-floor mutable counters) ─────────────────
 // These accumulate during play. snapshot() reads them; commit() writes
@@ -97,6 +105,11 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
     actEntryXp: 0,
     actEntryGold: 0,
     cards: [],
+    hunger: 0,
+    // v1: start with Hemorrhage equipped so the rite loop is immediately
+    // playable. TODO: rites become FOUND in the deep (pried from altars/
+    // corpses/bosses) once the rite-drop system lands.
+    riteId: 'hemorrhage',
   };
   // Fresh run = no inherited mutations. Any prior run's tainted brands
   // die with their delver.
@@ -111,6 +124,8 @@ export function adoptSave(save: SaveData) {
     ...save,
     xp: save.xp ?? 0,
     gold: save.gold ?? 0,
+    hunger: save.hunger ?? 0,
+    riteId: save.riteId ?? 'hemorrhage',   // v1 default; becomes a found drop later
   };
   hydrateMutations(save.mutations);
   hydratePhialIdentities(save.phials);
@@ -152,6 +167,36 @@ export function grantCard(id: string): void {
   if (!inMemory) return;
   (inMemory.cards ??= []);
   if (!inMemory.cards.includes(id)) inMemory.cards.push(id);
+}
+
+// ── Hunger (the rite resource) + the equipped Rite ──────────────────────────
+/** Current Hunger (0..HUNGER_MAX). */
+export function getHunger(): number {
+  return inMemory?.hunger ?? 0;
+}
+
+/** Feed the meter (kills/hits). Clamped to HUNGER_MAX. */
+export function grantHunger(amount: number): void {
+  if (!inMemory || amount <= 0) return;
+  inMemory.hunger = Math.min(HUNGER_MAX, (inMemory.hunger ?? 0) + amount);
+}
+
+/** Spend Hunger if affordable. Returns true + deducts when it lands. */
+export function spendHunger(amount: number): boolean {
+  if (!inMemory || (inMemory.hunger ?? 0) < amount) return false;
+  inMemory.hunger = (inMemory.hunger ?? 0) - amount;
+  return true;
+}
+
+/** The equipped rite id (into content/rites.ts), or null when none. */
+export function getEquippedRite(): string | null {
+  return inMemory?.riteId ?? null;
+}
+
+/** Equip a rite into the single rite slot (the loadout — swap freely). */
+export function equipRite(id: string | null): void {
+  if (!inMemory) return;
+  inMemory.riteId = id ?? undefined;
 }
 
 /** Attempt to spend gold. Returns true and deducts when affordable; false

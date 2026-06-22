@@ -19,6 +19,7 @@ import { initRunSync } from './net/run-sync';
 import { initTelemetry, track, setCrashContext, captureError, buildReport } from './telemetry/telemetry';
 import { showCrashOverlay } from './ui/crash-overlay';
 import { createCombatSystem, spendSwingStamina } from './combat/attack';
+import { initRites, tryActivateRite } from './combat/rites';
 import { isWorldPaused, shouldFreezeGameClock } from './world-paused';
 import { onPlayerDeath } from './player/health';
 import { triggerDeath, getTimeScale, tickDeath, isDying, initDeath, setOnDeathStart } from './player/death';
@@ -135,6 +136,7 @@ import { initBladeTrail } from './effects/blade-trail';
 import { actForDepth } from './level/acts';
 import { ensureInteractLabel, setInteractLabelTapHandler } from './ui/interact-label';
 import { createConsumableBar } from './controls/consumable-bar';
+import { createRiteButton, tickRiteButton } from './controls/rite-button';
 import { createHpBar } from './ui/hp-bar';
 import { createStaminaBar } from './ui/stamina-bar';
 import { createHealthHearts } from './ui/health-hearts';
@@ -597,6 +599,15 @@ const combat = createCombatSystem(
   () => currentLevel?.walkable,
 );
 
+// Rite system (the active lane) — banks Hunger from combat, erupts the equipped
+// rite around the player. Center = the camera (player) position; enemies live.
+initRites({
+  getCenter: () => camera.position,
+  getEnemies: () => currentLevel?.enemies ?? [],
+});
+// DEV: fire the rite from the console while the mobile button is being built.
+if (import.meta.env.DEV) (window as unknown as { __rite?: () => boolean }).__rite = tryActivateRite;
+
 // Player-action FSM — the single AUTHORITY for combat action arbitration.
 // It owns dodge/parry as committed dt-ticked states and observes the swing
 // sim for attacking; the three begin-points (swing start, dash, parry) route
@@ -739,6 +750,7 @@ onScreenStateChanged(() => {
   _wasPausedByScreen = pausedNow;
 });
 createConsumableBar();
+createRiteButton();
 // Backdrop and HUD-hide are now owned by the screen manager — created
 // lazily when the first screen that needs them opens.
 createSettingsMenu();
@@ -1378,6 +1390,7 @@ function tickInner() {
   // Charge-ring HUD — early-outs on no-progress so it's free when no
   // hold is in flight. Always ticked; the visual itself opts in.
   tickChargeRing();
+  tickRiteButton();
 
   // Perf overlay (toggle in Settings → PERF METER). Internally early-
   // outs when hidden so it's free when off. reportRendererInfo reads

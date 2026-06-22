@@ -286,6 +286,14 @@ export function cardSynergyModifiers(heldCardIds: readonly string[]): StatModifi
   return out;
 }
 
+/** How many held cards belong to a domain — the count both card synergy and
+ *  RITE morph read (the active lane's Resonance). Pure. */
+export function heldDomainCount(heldCardIds: readonly string[], domain: Domain): number {
+  let n = 0;
+  for (const id of heldCardIds) if (CARDS[id]?.domains.includes(domain)) n++;
+  return n;
+}
+
 /** TRANSFORM: the rule-overrides from held cards. Folded into activeTransforms()
  *  (combat/transforms.ts) alongside any item transforms — pure, like the others. */
 export function cardTransforms(heldCardIds: readonly string[]): Transform[] {
