@@ -243,7 +243,7 @@ function useConsumable(item: ItemSpec) {
       denyHealFeedback();
       return;
     }
-    healPlayer(item.consumableHeal);
+    healPlayer(item.consumableHeal, 'passive');   // item heal — a TRANSFORM may suppress it
     playHealSlurp();
     hapticVibrate(12);
     drainPulse(item.id);

@@ -18,6 +18,7 @@
 import type { StatModifier } from '../combat/modifiers';
 import type { Domain } from '../art/cards';
 import type { PassiveSpec, TriggerEvent, EffectSpec } from '../ecs/types';
+import type { Transform } from '../combat/transforms';
 
 export type Arcana = 'minor' | 'major';
 
@@ -63,6 +64,9 @@ export interface CardEffect {
   triggers?: CardTrigger[];
   /** Scales-with-your-Spread bonuses — RESONANCE. */
   synergy?: CardSynergy[];
+  /** Rule-overrides — TRANSFORM (the grotesque verb). Carrier-agnostic; see
+   *  combat/transforms.ts. "You can't heal the normal way," "you bleed at rest." */
+  transform?: Transform[];
 }
 
 export interface CardSpec {
@@ -118,11 +122,19 @@ export const CARDS: Record<string, CardSpec> = {
 
   // ── MAJORS — each a VERB, a pact you live by. ───────────────────────────────
 
-  // PACT — drink life, bleed for it. The template.
+  // TRANSFORM — you heal ONLY by striking, and bleed when you rest. The rule
+  // that makes survival relentless aggression (no more sliders).
   'red-thirst': {
     id: 'red-thirst', name: 'Red Thirst', arcana: 'major', domains: ['blood'],
-    fate: 'You drink deep, and the dark drinks back.',
-    effect: { modifiers: [{ kind: 'lifesteal-pct', amount: 0.25 }, { kind: 'incoming-damage-mult', amount: 1.12 }] },
+    fate: 'You heal only by striking, and bleed when you rest.',
+    effect: {
+      transform: [
+        { rule: 'suppress-passive-heal' },            // fires/fountains/potions do nothing
+        { rule: 'hp-drain', per: 'out-of-combat', amount: 2 },   // HP/sec while out of combat
+      ],
+      // ...but every blow you land drinks a little (the only way you mend now).
+      triggers: [{ on: 'hit', chance: 1, effect: { type: 'heal', amount: 2, target: 'self' } }],
+    },
   },
   // PACT — unkillable but ponderous. Endure as the dead endure.
   'the-hollow-saint': {
@@ -270,6 +282,17 @@ export function cardSynergyModifiers(heldCardIds: readonly string[]): StatModifi
       const n = Math.min(count, syn.max ?? 99);
       for (let i = 0; i < n; i++) out.push(...syn.modifiers);
     }
+  }
+  return out;
+}
+
+/** TRANSFORM: the rule-overrides from held cards. Folded into activeTransforms()
+ *  (combat/transforms.ts) alongside any item transforms — pure, like the others. */
+export function cardTransforms(heldCardIds: readonly string[]): Transform[] {
+  const out: Transform[] = [];
+  for (const id of heldCardIds) {
+    const card = CARDS[id];
+    if (card?.effect.transform) out.push(...card.effect.transform);
   }
   return out;
 }

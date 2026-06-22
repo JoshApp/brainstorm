@@ -51,6 +51,9 @@ import { getCurrentWeapon } from '../player/current-weapon';
 import { tickLightPool } from '../scene/light-pool';
 import { tickProjectiles } from '../combat/projectile-pool';
 import { tickStamina } from '../combat/stamina';
+import { hpDrainAmount } from '../combat/transforms';
+import { isInCombat } from '../combat/combat-state';
+import { bleedPlayer } from '../player/health';
 import { tickExhaustionHaptic } from '../combat/exhaustion-haptic';
 import { tickExhaustionFeedback } from '../combat/exhaustion-feedback';
 import { tickBreath } from '../effects/breath';
@@ -311,6 +314,14 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // Stamina regen. 'unpaused' so it pauses with the world (menus,
     // hit-pause); scaledDt so a charged hit's freeze doesn't refill you.
     { name: 'stamina', kind: 'sim', phase: 'unpaused', tick(ctx) { tickStamina(ctx.scaledDt); } },
+
+    // TRANSFORM out-of-combat bleed (Red Thirst): while a held fate drains HP
+    // and you're NOT fighting, you bleed (floored at 1 — pressure, not death).
+    // 'unpaused' + scaledDt so it stops in menus / hit-pause like everything else.
+    { name: 'transform-drain', kind: 'sim', phase: 'unpaused', tick(ctx) {
+      const perSec = hpDrainAmount('out-of-combat');
+      if (perSec > 0 && !isInCombat()) bleedPlayer(perSec * ctx.scaledDt);
+    } },
 
     // Gassed = felt: a heartbeat haptic while exhausted. realDt so the cadence
     // is steady through slow-mo / hit-pause; 'unpaused' so it stops in menus.

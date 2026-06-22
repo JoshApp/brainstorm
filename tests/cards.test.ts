@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import {
   CARDS, cardModifiers, cardSynergyModifiers, cardConditionalBundles,
-  cardTriggerPassives, cardOnHitVictim, dealCards, type CardSpec,
+  cardTriggerPassives, cardOnHitVictim, cardTransforms, dealCards, type CardSpec,
 } from '../src/content/cards';
 import { CARD_ART } from '../src/art/cards';
 import { BUFFS } from '../src/content/buffs';
@@ -73,6 +73,9 @@ test('every effect uses only the real StatModifier vocabulary', () => {
       checkMods(c, s.modifiers);
       assert.ok(['domain', 'major', 'minor', 'card'].includes(s.per), `${c.id}: bad synergy per '${s.per}'`);
       if (s.per === 'domain') assert.ok(s.domain, `${c.id}: domain synergy missing domain`);
+    }
+    for (const tr of c.effect.transform ?? []) {
+      assert.ok(['suppress-passive-heal', 'hp-drain'].includes(tr.rule), `${c.id}: bad transform rule '${tr.rule}'`);
     }
     for (const t of c.effect.triggers ?? []) {
       assert.ok(['hit', 'kill', 'crit'].includes(t.on), `${c.id}: bad trigger event '${t.on}'`);
@@ -140,6 +143,23 @@ test('on-hit hexes surface through the victim on-hit channel', () => {
   assert.equal(pyre[0].buffId, 'bleed');
   assert.ok(pyre[0].chance > 0 && pyre[0].chance <= 1);
   assert.deepEqual(cardOnHitVictim(['the-feast']), [], 'on-kill fury is not an on-hit hex');
+});
+
+// ── TRANSFORM (rule-overrides) ────────────────────────────────────────────────
+test('transform: Red Thirst rewrites the heal rule', () => {
+  const t = cardTransforms(['red-thirst']);
+  assert.ok(t.some((x) => x.rule === 'suppress-passive-heal'), 'suppresses passive heal');
+  const drain = t.find((x) => x.rule === 'hp-drain');
+  assert.ok(drain && drain.rule === 'hp-drain' && drain.per === 'out-of-combat' && drain.amount > 0, 'bleeds out of combat');
+  assert.deepEqual(cardTransforms(['the-hound']), [], 'a plain card has no transforms');
+});
+
+test('Red Thirst heals only by striking — a rule + a heal proc, not a stat', () => {
+  const card = CARDS['red-thirst'];
+  assert.ok(!card.effect.modifiers, 'no passive lifesteal stat anymore — it is a rule now');
+  const hit = card.effect.triggers?.find((t) => t.on === 'hit');
+  assert.equal(hit?.effect.type, 'heal', 'striking mends you (the heal proc)');
+  assert.equal(hit?.effect.target, 'self');
 });
 
 // ── PARITY: cards and items are ONE substrate ─────────────────────────────────

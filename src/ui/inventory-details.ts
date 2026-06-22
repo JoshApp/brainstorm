@@ -163,7 +163,7 @@ function buildDetailsAction(sel: NonNullable<Selection>, ctx: InventoryCtx): HTM
         const item = sel.item;
         if (item.consumableHeal != null) {
           if (getPlayerHp() < getPlayerMaxHp()) {
-            healPlayer(item.consumableHeal);
+            healPlayer(item.consumableHeal, 'passive');   // item heal — a TRANSFORM may suppress it
             playHealSlurp();
             removeItem(item.id);
           }

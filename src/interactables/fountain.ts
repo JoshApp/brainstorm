@@ -182,7 +182,7 @@ export function spawnFountain(
       // The variants still look different (green vs amber), but neither
       // gambles. The dungeon is indifferent, sometimes kind.
       const before = getPlayerHp();
-      healPlayer(getPlayerMaxHp());
+      healPlayer(getPlayerMaxHp(), 'passive');   // environmental heal — a TRANSFORM may suppress it
       const healed = getPlayerMaxHp() - before;
       emit({ type: 'transaction:resolved', family: 'unknown', id: interactable.id, outcome: { hpDelta: healed } });
       playHealSlurp();

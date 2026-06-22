@@ -12,6 +12,7 @@ import { emit } from '../broadcast/event-bus';
 import { get } from '../ecs/world';
 import { computeStats } from './equipment-stats';
 import { computeDamage, registerDamageSink, type DamageType, type DamageEvent } from '../combat/damage';
+import { passiveHealSuppressed } from '../combat/transforms';
 import type { EntityId } from '../ecs/types';
 import { recordHpRecovered, recordDamageTaken, recordShieldedHit } from '../state/character';
 import { getEquipped } from './equipment';
@@ -95,9 +96,14 @@ export function getPlayerMaxHp(): number {
   return max;
 }
 
-/** Restore HP, clamped to the current max. Returns actual amount healed. */
-export function healPlayer(amount: number): number {
+/** Restore HP, clamped to the current max. Returns actual amount healed.
+ *  `kind` marks the SOURCE: 'passive' = fires / fountains / potions (the
+ *  environmental heals a TRANSFORM like Red Thirst suppresses); 'combat' =
+ *  lifesteal / execute / on-hit (always allowed — "you heal only by striking").
+ *  Defaults to 'combat' so an untagged heal is never accidentally suppressed. */
+export function healPlayer(amount: number, kind: 'combat' | 'passive' = 'combat'): number {
   if (dead || amount <= 0) return 0;
+  if (kind === 'passive' && passiveHealSuppressed()) return 0;
   const player = get(PLAYER_ENTITY_ID);
   if (!player || !player.hp) return 0;
   const max = computeStats().maxHp;
@@ -106,6 +112,19 @@ export function healPlayer(amount: number): number {
   const recovered = player.hp.current - before;
   if (recovered > 0) recordHpRecovered(recovered);
   return recovered;
+}
+
+/** Drain HP directly — a TRANSFORM bleed (Red Thirst's out-of-combat bleed).
+ *  Bypasses armor (it's your own blood, not an attack) and is FLOORED at 1 HP:
+ *  idle bleeding pressures you to keep fighting but never kills outright. Returns
+ *  the amount drained. */
+export function bleedPlayer(amount: number): number {
+  if (dead || amount <= 0) return 0;
+  const player = get(PLAYER_ENTITY_ID);
+  if (!player || !player.hp) return 0;
+  const before = player.hp.current;
+  player.hp.current = Math.max(1, player.hp.current - amount);
+  return before - player.hp.current;
 }
 
 export function isPlayerDead(): boolean {
