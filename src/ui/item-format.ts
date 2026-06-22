@@ -75,6 +75,7 @@ function signedPct(amount: number): string {
 export function formatPassive(p: PassiveSpec): string {
   const triggerLabel = ({
     hit: 'On hit',
+    crit: 'On crit',
     killed: 'On kill',
     damaged: 'When damaged',
     died: 'On death',
