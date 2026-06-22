@@ -77,8 +77,12 @@ test('every effect uses only the real StatModifier vocabulary', () => {
     for (const t of c.effect.triggers ?? []) {
       assert.ok(['hit', 'kill', 'crit'].includes(t.on), `${c.id}: bad trigger event '${t.on}'`);
       assert.ok(t.chance >= 0 && t.chance <= 1, `${c.id}: trigger chance out of range`);
-      // Every proc references a REAL buff — else the proc fires into the void.
-      assert.ok(BUFFS[t.buffId], `${c.id}: trigger references unknown buff '${t.buffId}'`);
+      // The proc effect is the engine EffectSpec (same vocabulary items speak).
+      assert.ok(['apply-buff', 'heal', 'damage'].includes(t.effect.type), `${c.id}: bad effect type '${t.effect.type}'`);
+      // An apply-buff proc must name a REAL buff — else it fires into the void.
+      if (t.effect.type === 'apply-buff') {
+        assert.ok(BUFFS[t.effect.buffId ?? ''], `${c.id}: trigger references unknown buff '${t.effect.buffId}'`);
+      }
     }
   }
 });
@@ -136,6 +140,30 @@ test('on-hit hexes surface through the victim on-hit channel', () => {
   assert.equal(pyre[0].buffId, 'bleed');
   assert.ok(pyre[0].chance > 0 && pyre[0].chance <= 1);
   assert.deepEqual(cardOnHitVictim(['the-feast']), [], 'on-kill fury is not an on-hit hex');
+});
+
+// ── PARITY: cards and items are ONE substrate ─────────────────────────────────
+// The whole architecture rests on "a card is just another source, like an item —
+// never a parallel engine." This locks the proc verb: a card produces the EXACT
+// PassiveSpec shape an item carries, so both feed fireTriggers identically.
+test('parity: a card proc emits the same PassiveSpec shape an item carries', () => {
+  const [p] = cardTriggerPassives(['the-feast']);   // on kill → berserk (self)
+  assert.ok(p?.id && p.trigger, 'a PassiveSpec is produced (like ItemSpec.passives)');
+  assert.equal(p.trigger.on, 'killed', 'card "kill" maps to the engine event vocab');
+  assert.ok(Array.isArray(p.trigger.effects) && p.trigger.effects.length === 1, 'effects[] like an item passive');
+  const e = p.trigger.effects[0];
+  assert.equal(e.type, 'apply-buff');   // the EXACT EffectSpec an item would carry
+  assert.equal(e.buffId, 'berserk');
+  assert.equal(e.target, 'self');
+});
+
+test('parity: card conditional bundles match the item conditionalModifiers shape', () => {
+  // Items carry conditionalModifiers: { condition: {kind,value}, modifiers: [] }.
+  // Card bundles must be the identical shape so the SAME evaluator gates both.
+  const [b] = cardConditionalBundles(['the-martyr']);
+  assert.ok(['below-hp-pct', 'above-hp-pct'].includes(b.condition.kind), 'same condition vocab as items');
+  assert.equal(typeof b.condition.value, 'number');
+  assert.ok(Array.isArray(b.modifiers) && b.modifiers.length > 0, 'same modifiers[] shape');
 });
 
 // ── resolver ──────────────────────────────────────────────────────────────────

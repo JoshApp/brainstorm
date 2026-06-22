@@ -43,12 +43,16 @@ function synergyPer(s: CardSynergy): string {
     : `per ${s.domain} card`;
 }
 
-/** Readable phrase for a proc (PROC). Names the buff via its registry label. */
+/** Readable phrase for a proc (PROC). Reads the unified EffectSpec — names the
+ *  buff via its registry label, or describes a heal/damage effect. */
 function triggerPhrase(t: CardTrigger): string {
-  const label = BUFFS[t.buffId]?.displayName ?? t.buffId;
+  const e = t.effect;
+  const what = e.type === 'apply-buff' ? (BUFFS[e.buffId ?? '']?.displayName ?? e.buffId ?? 'a hex').toLowerCase()
+    : e.type === 'heal' ? 'you mend'
+    : 'they wound';
   const when = t.on === 'kill' ? 'on a kill' : t.on === 'crit' ? 'on a crit' : 'on hit';
   const odds = t.chance < 1 ? ` (${Math.round(t.chance * 100)}%)` : '';
-  return `${when}: ${label.toLowerCase()}${odds}`;
+  return `${when}: ${what}${odds}`;
 }
 
 /** What the card DOES, terse — covers all four verb-types so you can compare

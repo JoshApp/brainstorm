@@ -17,7 +17,7 @@
 
 import type { StatModifier } from '../combat/modifiers';
 import type { Domain } from '../art/cards';
-import type { PassiveSpec, TriggerEvent, EffectTarget } from '../ecs/types';
+import type { PassiveSpec, TriggerEvent, EffectSpec } from '../ecs/types';
 
 export type Arcana = 'minor' | 'major';
 
@@ -28,16 +28,16 @@ export interface CardCondition {
   value: number;
 }
 
-/** A triggered effect (a PROC): an event applies a buff. `target` decides who
- *  the buff lands on — 'self' for a personal fury (on kill/crit), 'victim' for
- *  a hex you put on whatever you struck (on hit: bleed/burn). Shared shape with
- *  item passives; routed to the matching engine channel by event/target. */
+/** A triggered effect (a PROC): an event fires an effect. The effect is the
+ *  ENGINE's `EffectSpec` — the EXACT vocabulary item passives speak (apply-buff /
+ *  heal / damage, with a `target`) — so the proc verb is ONE shape across cards
+ *  and items, never a parallel engine. The card-friendly `on` ('kill' → engine
+ *  'killed') and the routing (self/kill/crit → trigger path; on-hit+victim → the
+ *  victim-aware on-hit channel) are resolved downstream. */
 export interface CardTrigger {
   on: 'hit' | 'kill' | 'crit';
-  buffId: string;
-  chance: number;      // 0..1
-  duration: number;    // seconds
-  target?: 'self' | 'victim';   // default 'self' (on-hit always hits the victim)
+  chance: number;        // 0..1
+  effect: EffectSpec;    // apply-buff / heal / damage (+ target). Same as items.
 }
 
 /** A SYNERGY (Resonance): a bonus that SCALES with how many related cards you
@@ -134,13 +134,13 @@ export const CARDS: Record<string, CardSpec> = {
   'the-feast': {
     id: 'the-feast', name: 'The Feast', arcana: 'major', domains: ['blood'],
     fate: 'Each death feeds the next.',
-    effect: { triggers: [{ on: 'kill', buffId: 'berserk', chance: 1, duration: 3, target: 'self' }] },
+    effect: { triggers: [{ on: 'kill', chance: 1, effect: { type: 'apply-buff', buffId: 'berserk', duration: 3, target: 'self' } }] },
   },
   // PROC — your blows fester. On hit, a chance to inflict bleed on the struck.
   'the-pyre': {
     id: 'the-pyre', name: 'The Pyre', arcana: 'major', domains: ['rot'],
     fate: 'Your blows fester and weep.',
-    effect: { triggers: [{ on: 'hit', buffId: 'bleed', chance: 0.35, duration: 4, target: 'victim' }] },
+    effect: { triggers: [{ on: 'hit', chance: 0.35, effect: { type: 'apply-buff', buffId: 'bleed', duration: 4, target: 'victim' } }] },
   },
   // BRINK — cornered, you become ruin. Huge damage below a third HP, but you
   // take more too: the dungeon's cruel bargain with the desperate.
@@ -298,26 +298,33 @@ export function cardTriggerPassives(heldCardIds: readonly string[]): PassiveSpec
     const card = CARDS[id];
     if (!card?.effect.triggers) continue;
     card.effect.triggers.forEach((t, i) => {
-      if (t.on === 'hit') return;   // on-hit hexes routed via cardOnHitVictim
-      const on: TriggerEvent = t.on === 'kill' ? 'killed' : 'crit';
-      const target: EffectTarget = t.target ?? 'self';
+      // ON-HIT + victim (a hex on whatever you struck) routes through the
+      // victim-aware on-hit channel instead — it knows the struck enemy. Self-
+      // targeted on-hit (e.g. heal-on-hit) and all kill/crit procs ride here.
+      if (isVictimOnHit(t)) return;
+      const on: TriggerEvent = t.on === 'kill' ? 'killed' : t.on === 'crit' ? 'crit' : 'hit';
       out.push({
         id: `card:${card.id}:${i}`,
-        trigger: {
-          on,
-          chance: t.chance,
-          effects: [{ type: 'apply-buff', buffId: t.buffId, duration: t.duration, target }],
-        },
+        trigger: { on, chance: t.chance, effects: [t.effect] },
       });
     });
   }
   return out;
 }
 
+/** Is this an on-hit hex meant for the struck enemy? On-hit defaults to the
+ *  victim (a hit applies TO what you hit); only an explicit target:'self' opts
+ *  out (e.g. heal-on-hit, which goes through the trigger path instead). */
+function isVictimOnHit(t: CardTrigger): boolean {
+  return t.on === 'hit' && (t.effect.target ?? 'victim') === 'victim';
+}
+
 /** PROC (victim): the ON-HIT hexes a held card inflicts on whatever you strike —
  *  same shape the weapon/affix on-hit system uses, so combat applies them to the
  *  struck enemy in the SAME loop (attack.ts), with the victim in hand. A card
- *  that "festers" your blows is just another on-hit source, like a serrated edge. */
+ *  that "festers" your blows is just another on-hit source, like a serrated edge.
+ *  (The victim on-hit channel is buff-only today, so non-buff victim effects are
+ *  skipped here — widen getPlayerOnHits to EffectSpec if a card ever needs one.) */
 export function cardOnHitVictim(
   heldCardIds: readonly string[],
 ): { buffId: string; chance: number; duration: number }[] {
@@ -325,7 +332,9 @@ export function cardOnHitVictim(
   for (const id of heldCardIds) {
     const card = CARDS[id];
     for (const t of card?.effect.triggers ?? []) {
-      if (t.on === 'hit') out.push({ buffId: t.buffId, chance: t.chance, duration: t.duration });
+      if (isVictimOnHit(t) && t.effect.type === 'apply-buff' && t.effect.buffId) {
+        out.push({ buffId: t.effect.buffId, chance: t.chance, duration: t.effect.duration ?? 0 });
+      }
     }
   }
   return out;
