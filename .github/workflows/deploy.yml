@@ -43,10 +43,23 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          # Clerk publishable key for prod (account-link). Public by design;
+          # set repo var CLERK_PUBLISHABLE_KEY to the pk_live key to go
+          # production. Absent → the code falls back to the dev pk_test key.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+      # Build-in-public devlog: post new Patch-summary entries to Discord.
+      # No-op unless DISCORD_PATCHLOG_WEBHOOK secret is set (the webhook URL is a
+      # secret). Never fails the deploy — the site is already uploaded above.
+      - run: npm run post-discord
+        continue-on-error: true
+        env:
+          DISCORD_PATCHLOG_WEBHOOK: ${{ secrets.DISCORD_PATCHLOG_WEBHOOK }}
+          PATCH_BEFORE: ${{ github.event.before }}
+          PATCH_AFTER: ${{ github.sha }}
 
   deploy:
     needs: build

@@ -10,9 +10,15 @@
 
 import { freshLinkCode, issueLinkCode, redeemLinkCode, reconnectWithToken } from './delve-net';
 
-// Clerk DEV publishable key — safe to ship (publishable keys are public by
-// design). Swap for the pk_live key when the Clerk instance goes production.
-const CLERK_PUBLISHABLE_KEY = 'pk_test_cGxlYXNhbnQtc3BvbmdlLTE4LmNsZXJrLmFjY291bnRzLmRldiQ';
+// Clerk publishable key — public by design (safe in the client). Production uses
+// the pk_live key via VITE_CLERK_PUBLISHABLE_KEY (set repo var
+// CLERK_PUBLISHABLE_KEY in the deploy workflow); absent → the dev pk_test key, so
+// local + un-configured builds still work. The flow below (issue code → Clerk
+// sign-in → reconnect → redeem) is provider-agnostic; which socials appear
+// (Google / Discord / Twitch) is Clerk-dashboard config, not code.
+const CLERK_PUBLISHABLE_KEY =
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+  'pk_test_cGxlYXNhbnQtc3BvbmdlLTE4LmNsZXJrLmFjY291bnRzLmRldiQ';
 const PENDING_KEY = 'delve:pending-link';
 
 // Clerk instance, typed loosely — this is the one integration seam, and

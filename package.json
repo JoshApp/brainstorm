@@ -12,6 +12,8 @@
     "live": "bash scripts/live.sh",
     "watch-deploy": "bash scripts/watch-deploy.sh",
     "gen-patchlog": "tsx scripts/gen-patchlog.ts",
+    "post-discord": "tsx scripts/post-discord-patchlog.ts",
+    "bridge": "tsx bridge/discord-bridge.ts",
     "prebuild": "tsx scripts/gen-patchlog.ts",
     "build": "tsc && vite build",
     "preview": "vite preview --host",
