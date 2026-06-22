@@ -14,12 +14,12 @@
  */
 
 export type Domain =
-  // dark — the dungeon's nature
-  | 'blood' | 'bone' | 'rot' | 'greed'
-  // light / hope — the delver's defiance
+  // CORRUPTIONS — what the dungeon makes of your flesh (embrace → grotesque)
+  | 'blood' | 'bone' | 'rot' | 'ash'
+  // VIRTUES — what you hold onto (the delver's defiance; stay human)
   | 'dawn' | 'grace' | 'valor'
-  // numinous — the sublime between
-  | 'wonder';
+  // VICES — what tempts you deeper (avarice + transgression)
+  | 'greed' | 'forbidden';
 
 export interface CardArtSpec {
   id: string;
@@ -118,7 +118,7 @@ export const CARD_ART: CardArtSpec[] = [
     seed: 3001,
   },
   {
-    id: 'the-wanderer', name: 'The Wanderer', arcana: 'major', domain: 'wonder',
+    id: 'the-wanderer', name: 'The Wanderer', arcana: 'major', domain: 'forbidden',
     accent: 'arcane violet',
     art: 'a cloaked pilgrim at the lip of an endless stair, a single violet star burning above, vast and indifferent, the figure small against the dark immensity',
     seed: 4001,

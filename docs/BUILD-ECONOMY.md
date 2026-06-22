@@ -165,26 +165,60 @@ first mobile).
 
 ---
 
-## 6. The domains — the eight build identities
+## 6. The domains — nine identities on three poles (4-3-2)
 
-Each domain is a coherent archetype (the Hades-boon model). The
-dark/light/numinous split *is* the magical/mundane axis: dark is what the
-PLACE corrupts you into; light is what the DELVER carries against it;
-wonder is the sublime weird.
+**The spine: corruption ↔ humanity.** Choosing domains isn't picking a
+stat theme — it's *how much of yourself will you trade to get deeper?*
+That's the goes-grotesque fantasy as a decision, every run. Three poles —
+**body, soul, will:**
 
-| Domain | Class | Archetype | Feel |
+- **CORRUPTIONS (your body)** — embrace → you grow powerful *and*
+  grotesque, you stop being a person.
+- **VIRTUES (your soul)** — hold → harder, less raw power, but you stay
+  *yourself*, defiant.
+- **VICES (your will)** — the temptations that drag you toward corruption.
+
+Each domain OWNS a distinct **combat verb** — that's what keeps them from
+overlapping and makes every card crunchy (it twists a thing you actively
+press), not a passive stat-theme.
+
+| Pole | Domain | Combat verb it owns | Feel |
 | --- | --- | --- | --- |
-| **Blood** | dark | aggression — lifesteal, fury-on-kill, risk | vampire / berserker |
-| **Bone** | dark | endurance — poise, undeath, attrition | the unkillable |
-| **Rot** | dark | decay — DoT, anti-heal, festering | plague-bringer |
-| **Greed** | dark | scaling — hoarding, crit, economy | the collector (Balatro engine) |
-| **Dawn** | light | precision — crit, the killing blow | duelist |
-| **Grace** | light | protection — wards, healing, survival | the holy / shielded |
-| **Valor** | light | defiance — finishers, brink power, last stands | the desperate hero |
-| **Wonder** | numinous | the weird — mobility, rule-bending, gambles | wildcard |
+| Corruption | **Blood** | lifesteal-on-violence + **bleed** | vampire / berserker |
+| Corruption | **Bone** | **poise / stagger** + guard | the unflinching dead |
+| Corruption | **Rot** | **damage-over-time** + anti-heal | plague-bringer |
+| Corruption | **Ash** | **fire / burn / crowd-AoE** | living cinder |
+| Virtue | **Dawn** | **crit / execute** | the killing light |
+| Virtue | **Grace** | **deflect / parry** + the only true heal | the shielded |
+| Virtue | **Valor** | **charge / finisher / brink** | the desperate hero |
+| Vice | **Greed** | the **economy** (gold/cards/Hunger) + gambling | the collector |
+| Vice | **Forbidden** | **just-dodge / mobility** + rule-breaking | the trespasser |
 
-Each major should make its domain *feel* like its archetype. **Bridge
-cards** (two domains) are where the spice lives (The Martyr = Valor+Blood).
+Notes that resolve the old lopsidedness:
+- **Crit lives only in Dawn.** Defense splits cleanly — Grace = mitigation/
+  parry, Bone = poise/stagger (different things). Healing has three
+  distinct *stances* — Blood (by violence), Grace (mitigation), Rot
+  (denial).
+- **"Scaling" is a MECHANIC (Resonance), free to every domain** — so
+  Greed isn't "the scaling domain," it's the *avarice/gambling/bargain*
+  domain that leans hardest on it + the transaction-grammar.
+- **The MARK earns the count.** Nine domains would dilute Resonance
+  (synergy needs concentration) — except the Mark biases future draws
+  toward the domain you've leaned into (see `THE-DUNGEON-NOTICES`). The
+  Mark isn't flavor; it's the mechanism that *lets* us run this many
+  domains. Commit to it.
+
+**Bridge cards** (two domains) are the spice — The Martyr = Valor+Blood,
+Arterial = Blood+Dawn.
+
+### Every major is a RULE, not a slider
+
+The bar, learned the hard way: a **slider** ("+25% lifesteal") is a dial
+you barely feel — that's *minor*-tier. A **major** must be a **rule you
+can state in a sentence that changes how you play** ("you heal only by
+striking, and bleed out of combat"). Rules are also harder to make
+*broken* than a flat ×1.6 — they carry their own conditions and
+counterplay. Minors = sliders (texture); majors = rules (crunch).
 
 ---
 

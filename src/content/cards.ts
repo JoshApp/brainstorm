@@ -201,7 +201,7 @@ export const CARDS: Record<string, CardSpec> = {
   },
   // PACT — fast and forbidden. Mobility + edge, no real cost; the wanderer's gift.
   'the-wanderer': {
-    id: 'the-wanderer', name: 'The Wanderer', arcana: 'major', domains: ['wonder'],
+    id: 'the-wanderer', name: 'The Wanderer', arcana: 'major', domains: ['forbidden'],
     fate: 'You walk the forbidden stair.',
     effect: { modifiers: [{ kind: 'move-speed-mult', amount: 1.12 }, { kind: 'action-speed-mult', amount: 1.06 }, { kind: 'crit-chance', amount: 0.05 }] },
   },
