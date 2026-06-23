@@ -381,7 +381,25 @@ function ancestorsVisible(source: THREE.Object3D, container: THREE.Object3D): bo
  * render. Zero allocations; updateMatrixWorld is the same work the renderer
  * would do for these subtrees at render time (it then sees them clean).
  */
+/** Teardown for the unified warmup pass: dispose every EMPTY batch's mesh (frees
+ *  the parked-instance buffers — the ~1M-vert cost a resident warm batch leaves)
+ *  and drop it from the live `batches` map, KEEPING its segmentCache entry
+ *  (geometry + material) alive. WebGL keeps the compiled program while the
+ *  segmentCache material references it, so the first REAL spawn rebuilds a cheap
+ *  InstancedMesh wrapper (makeInstancedMesh) reusing that material — program
+ *  already hot, fresh small-capacity buffers, zero resident verts. Empty-guarded
+ *  so it never touches a batch with a live mob (there are none at first load). */
+export function disposeEmptyWarmBatches(): void {
+  for (const [key, b] of batches) {
+    if (b.free.length < b.used) continue;   // has a live mob — leave it
+    if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
+    b.mesh.dispose();                        // frees instanceMatrix/Color; geo+material shared, survive
+    batches.delete(key);
+  }
+}
+
 let warmIdCounter = -1;
+export function nextWarmEntityId(): EntityId { return (warmIdCounter--) as unknown as EntityId; }
 /** Pre-compile the INSTANCED creature shader variant for every enemy type.
  *
  *  In-game mobs render through THIS module's InstancedMeshes, but boot

@@ -10,7 +10,8 @@ import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handhel
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
-import { warmupContent, precompileRosterInScene } from './content/warmup';
+import { warmupContent } from './content/warmup';
+import { runWarmupPass } from './content/warmup-pass';
 import { initStatusVfxPool } from './effects/status-vfx';
 import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
@@ -409,12 +410,12 @@ initLevelLoader({
     // so it rides behind the fade without blocking.
     if (!rosterPrecompiled) {
       rosterPrecompiled = true;
-      // NOTE: instanced-variant warm was reverted — it left batches resident
-      // (parked instances burning ~1M verts) and was bug-prone. The unified
-      // WarmupPass will redo instanced warming with proper teardown. This
-      // non-instanced precompile (bosses + items + instancing-off fallback)
-      // stays — it compiles detached objects and disposes them, no residue.
-      void precompileRosterInScene(renderer, scene, camera);
+      // THE unified warmup pass — one live-context render that compiles every
+      // program (enemies instanced + bosses, items, effects, gore) with the
+      // exact live cache keys, then tears down keeping the programs (materials
+      // retained) but no resident verts. Replaces the old scratch/roster/
+      // instanced/gore warm patchwork. Best-effort.
+      try { runWarmupPass(renderer, scene, camera); } catch { /* best-effort */ }
     }
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to
