@@ -62,7 +62,7 @@ import { startMusic, setMusicVolume, pauseMusic, resumeMusic } from './audio/mus
 import { emit, on as onEvent } from './broadcast/event-bus';
 import { buildLevel, type LiveLevel } from './level/builder';
 import { createRoomCuller, type RoomCuller } from './level/room-culling';
-import { setCreatureInstancingDisabled } from './mobs/creature-instancing';
+import { setCreatureInstancingDisabled, warmInstancedPrograms } from './mobs/creature-instancing';
 import { batchStaticFixtures } from './level/static-merge';
 import { initCombatDebug, tickCombatDebug } from './combat/combat-debug';
 import { initGoreDebug, setGoreDebugEnabled, tickGoreDebug } from './debug/gore-debug';
@@ -409,6 +409,10 @@ initLevelLoader({
     // so it rides behind the fade without blocking.
     if (!rosterPrecompiled) {
       rosterPrecompiled = true;
+      // INSTANCED variant first — it's how non-boss mobs actually render (the
+      // first rat/slime froze ~140ms compiling it). Then the non-instanced
+      // precompile covers bosses + the instancing-off fallback.
+      try { warmInstancedPrograms(renderer, scene, camera); } catch { /* best-effort */ }
       void precompileRosterInScene(renderer, scene, camera);
     }
     setCameraYaw(level.playerSpawn.yaw);

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { createMaterialFromDef, type BuiltModel } from '../ecs/build-model';
-import type { EnemySpec } from '../content/enemies';
+import { ENEMIES, type EnemySpec } from '../content/enemies';
+import { buildCreature } from '../content/build-creature';
 import type { EntityId } from '../ecs/types';
 
 // Instanced creature rendering — same-type enemies share one
@@ -380,6 +381,55 @@ function ancestorsVisible(source: THREE.Object3D, container: THREE.Object3D): bo
  * render. Zero allocations; updateMatrixWorld is the same work the renderer
  * would do for these subtrees at render time (it then sees them clean).
  */
+let warmIdCounter = -1;
+/** Pre-compile the INSTANCED creature shader variant for every enemy type.
+ *
+ *  In-game mobs render through THIS module's InstancedMeshes, but boot
+ *  warmupContent + the level-load renderer.compile only ever saw the
+ *  NON-instanced creature — a different shader program (instancing attributes +
+ *  instanceColor). So the first spawn of each type compiled the instanced
+ *  program inside render(): a one-time freeze per type (perf recording showed
+ *  prog+1 with ~140ms in render·scene on the first rat/slime).
+ *
+ *  Fix, reusing the real path so the EXACT variant compiles: build + acquire one
+ *  of each type (creates the batch InstancedMeshes in the scene), renderer.compile
+ *  against the live lights, then release the slots and DETACH the now-empty batch
+ *  meshes. The batches + their materials stay pooled (WebGL keeps the compiled
+ *  program while a material references it), so nothing draws parked — and the
+ *  first REAL spawn re-adopts the batch through acquire's existing
+ *  `if (mesh.parent !== scene) scene.add` path, program already hot. Best-effort,
+ *  self-contained; call once after the first level + light pool exist. */
+export function warmInstancedPrograms(
+  renderer: THREE.WebGLRenderer, scene: THREE.Object3D, camera: THREE.Camera,
+): void {
+  if (!instancingEnabled()) return;
+  const ids: EntityId[] = [];
+  for (const spec of Object.values(ENEMIES)) {
+    if (spec.isBoss) continue;   // bosses render non-instanced (warmed elsewhere)
+    try {
+      const creature = buildCreature(spec.creature);
+      const container = new THREE.Group();
+      container.add(creature.group);
+      const built: BuiltModel = {
+        group: creature.group, parts: creature.parts, slots: creature.joints,
+        materials: creature.materials, hitTargets: creature.hitTargets,
+      };
+      const id = (warmIdCounter--) as unknown as EntityId;
+      if (acquireCreatureInstancing(scene, id, spec, built, container)) ids.push(id);
+    } catch { /* a bad spec must not sink the whole warm */ }
+  }
+  if (ids.length === 0) return;
+  // Compile the instanced programs now that the warm batches sit in the scene.
+  try { renderer.compile(scene as THREE.Scene, camera); } catch { /* best-effort */ }
+  // Free the warm slots, then detach every now-EMPTY batch (every slot returned)
+  // so it draws nothing — real spawns re-adopt it via acquire. Guard on empty so
+  // we never detach a batch that already holds a live mob (none at first load).
+  for (const id of ids) { try { releaseCreatureInstancing(id); } catch { /* ignore */ } }
+  for (const b of batches.values()) {
+    if (b.free.length >= b.used && b.mesh.parent) b.mesh.parent.remove(b.mesh);
+  }
+}
+
 export function tickCreatureInstancing(): void {
   for (const entry of live.values()) {
     entry.container.updateMatrixWorld();
