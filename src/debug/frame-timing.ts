@@ -62,7 +62,17 @@ let marks = false;
 // over the (often-unavailable, and on some drivers garbage) timer-query path.
 let probedGpu: number | null = null;
 let gpuProbeCount = 0;
-const GPU_PROBE_EVERY = 8;
+// How often the readPixels GPU probe actually stalls the pipeline. On devices
+// WITHOUT the timer-query extension (most Android Chrome) a GPU read can only be
+// had by forcing a full pipeline drain (gl.readPixels), which costs several real
+// ms of hitch every time it fires — the "the perf HUD itself tanks the frame
+// rate" complaint. The value is sticky between samples, so a SPARSE cadence
+// still keeps a live-enough GPU readout (GPU cost doesn't swing frame-to-frame)
+// while cutting the amortised stall cost ~4×. The per-pass fallback (F8) reads
+// this too, where it's 5 stalls per sampled frame — so sparse matters double
+// there. (On a device WITH the timer-query ext this is unused: that path is
+// passive and free.)
+const GPU_PROBE_EVERY = 30;
 const GPU_PROBE_PIXEL = new Uint8Array(4);
 
 type FrameListener = (s: FrameSample) => void;
