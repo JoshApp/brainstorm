@@ -383,6 +383,18 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       set: (v) => updateSettings({ renderScale: v }),
       format: (v) => Math.round(v * 100) + '%',
     }),
+    makeSlider({
+      label: 'PIXEL DENSITY',
+      description:
+        'Resolution multiplier (DPR cap) for the 3D view — the single biggest ' +
+        'GPU lever: it scales every pass, including the full-res post that RENDER ' +
+        'SCALE can’t touch. Lower = faster + softer; menus/HUD stay crisp. ' +
+        'Find the highest value that holds a steady 60. (Mobile; desktop renders full.)',
+      min: 0.75, max: 2.0, step: 0.05,
+      get: () => getSettings().pixelRatioCap,
+      set: (v) => updateSettings({ pixelRatioCap: v }),
+      format: (v) => v.toFixed(2) + '×',
+    }),
     makeToggle({
       label: 'SHARP UPSCALE',
       description:

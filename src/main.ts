@@ -215,10 +215,11 @@ const renderer = new THREE.WebGLRenderer({
   powerPreference: 'high-performance',
   preserveDrawingBuffer: HARNESS_ENABLED || DEBUG_ENABLED,
 });
-// DPR cap is lower on mobile (fragment-bound) than desktop debug. See
-// CONFIG.PIXEL_RATIO_CAP_MOBILE — the biggest single lever against overdraw.
-const dprCap = isDesktopLike() ? CONFIG.PIXEL_RATIO_CAP : CONFIG.PIXEL_RATIO_CAP_MOBILE;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, dprCap));
+// DPR cap — the biggest single lever against fragment/fill cost. Desktop debug
+// stays crisp at CONFIG.PIXEL_RATIO_CAP; mobile honours the live PIXEL DENSITY
+// setting (see effectiveDprCap + the GRAPHICS slider). Re-applied live by
+// applyVideoSettings when the slider moves.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, effectiveDprCap()));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 // PCF (not PCFSoft): the point-light cube shadow is the heaviest fragment shader
@@ -904,6 +905,33 @@ function applyVideoSettings(s = getSettings()): void {
   setBloomEnabled(s.bloom);
   setCrtFilmEnabled(s.crtFilm);
   setSharpBilinear(s.sharpUpscale);
+  scheduleDprApply();   // honour the PIXEL DENSITY slider (debounced + no-op if unchanged)
+}
+
+// Effective DPR cap: desktop debug stays crisp at the CONFIG cap; mobile (the
+// fill-bound target) honours the live PIXEL DENSITY setting.
+function effectiveDprCap(): number {
+  return isDesktopLike() ? CONFIG.PIXEL_RATIO_CAP : getSettings().pixelRatioCap;
+}
+// Apply the DPR cap to the renderer + resync the buffers. Re-creating the
+// drawing buffer + render targets is exactly what a window resize does, so we
+// reuse that path: set the ratio + size (so domElement.width is fresh BEFORE
+// any resize listener reads it — order-independent), then dispatch 'resize' to
+// resync the low-res target + bloom + post uniforms (render-target.ts) and the
+// camera aspect (main.ts resize handler).
+function applyDprNow(): void {
+  const target = Math.min(window.devicePixelRatio, effectiveDprCap());
+  if (Math.abs(renderer.getPixelRatio() - target) < 0.001) return;   // unchanged → skip
+  renderer.setPixelRatio(target);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  window.dispatchEvent(new Event('resize'));
+}
+// Debounce: the slider streams 'input' while dragging — coalesce so we rebuild
+// buffers once when the drag settles, not dozens of times per second.
+let dprApplyTimer: number | undefined;
+function scheduleDprApply(): void {
+  if (dprApplyTimer !== undefined) clearTimeout(dprApplyTimer);
+  dprApplyTimer = window.setTimeout(() => { dprApplyTimer = undefined; applyDprNow(); }, 120);
 }
 applyVideoSettings();
 // DEV-only: ?ps1=0.3 forces the scene-render scale for snap/compare. Stripped

@@ -115,6 +115,13 @@ export interface Settings {
    *  On by default — the motion win clearly beats the negligible look change;
    *  toggle off for the raw chunky nearest crawl. */
   sharpUpscale: boolean;
+  /** Pixel-density cap (DPR) for the 3D view — the single biggest GPU-fill
+   *  lever, because it scales EVERY pass including the full-res PSX blit that
+   *  render-scale can't touch. Effective ratio = min(device DPR, this). Lower =
+   *  fewer fragments = faster + softer; the DOM UI stays crisp regardless.
+   *  Applies on mobile (the fill-bound target); desktop debug uses
+   *  CONFIG.PIXEL_RATIO_CAP. Default = CONFIG.PIXEL_RATIO_CAP_MOBILE. */
+  pixelRatioCap: number;
   /** Render frame-rate cap (fps). The SIM always runs at a fixed 60Hz; this
    *  only limits how often the world is DRAWN. 60 = match the sim (smooth on
    *  every display, including 120Hz — we never show a half-finished sim step);
@@ -242,6 +249,7 @@ const DEFAULTS: Settings = {
   adaptiveResolution: true,
   renderScale: 0.4,    // = PS1_SCALE_DEFAULT (the authored look / adaptive ceiling)
   sharpUpscale: true,  // on = smooth lateral motion; toggle off for the nearest crawl
+  pixelRatioCap: CONFIG.PIXEL_RATIO_CAP_MOBILE,  // mobile DPR cap; live slider in GRAPHICS
   frameCap: '60',      // match the 60Hz sim: smooth everywhere + good battery
 
   bloom: true,
