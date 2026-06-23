@@ -354,11 +354,16 @@ export const CONFIG = {
   // and an unbound torch keeps its emissive flame sprite — it just stops
   // casting light.
   // Re-render the lamp's shadow cube-map every Nth frame (1 = every frame).
-  // The cube map is 6 extra render passes (~100 draws measured on-phone) and
-  // draw SUBMISSION is the phone's CPU wall — at 2 the cost halves and a
-  // soft 256px shadow lagging one frame behind a smooth lamp swing doesn't
-  // read. Crank back to 1 if a fast pan ever shows shadow judder.
-  SHADOW_UPDATE_EVERY_N_FRAMES: 2,
+  // WAS 2 to halve the cost — but Three renders all 6 cube faces in one shot on
+  // an update, so N=2 LUMPS that onto every other frame: a 2-frame draw/GPU
+  // spike (~60 draws on, ~0 off) that reads as relentless judder. Variance
+  // wrecks frame consistency worse than the average cost it saved. At N=1 the
+  // cost is CONSTANT (no spike) — and it's cheap: the 6 faces are CPU
+  // draw-submission of only the few in-range casters (shell is receive-only;
+  // shadow far already tight at the ~5.5m lit pool), which hides under the
+  // GPU-fill wall on a phone. If a later profile goes CPU-bound here, amortize
+  // faces across frames rather than re-lumping them.
+  SHADOW_UPDATE_EVERY_N_FRAMES: 1,
 
   LIGHT_SLOTS: {
     lamp: 1,          // the player's lantern — always wins
