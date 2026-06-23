@@ -6,6 +6,7 @@ import { buildCreature } from './build-creature';
 import { getItemThumbnail } from '../ui/item-thumbnail';
 import { getTexture } from '../style/procedural-textures';
 import { getWarmupHooks } from './warmup-registry';
+import { resetSplatMap, stampSplat, flushSplats } from '../scene/splat-map';
 
 // Pre-warm caches and JIT paths so the first kill/drop/pickup doesn't hitch.
 //
@@ -127,6 +128,19 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
   // compiled (cached in WebGL + the effects' module-level material caches);
   // the JS instances are no longer needed and must not tick during gameplay.
   for (const hook of warmupHooks) hook.clear();
+
+  // Splat-map gore shaders — the stamp/dry ShaderMaterials (scene/splat-map.ts)
+  // are CREATED at initSplatMap but only COMPILE on the first blood stamp, so
+  // the first hit/kill compiled them inside render() — a death-frame `prog`
+  // tick + hitch in the perf recordings. Warm them now: temp bounds so the
+  // stamp lands, queue one floor stamp, flush (renders → compiles stamp + dry
+  // passes), then reset (the real level load resets bounds again). Best-effort.
+  try {
+    resetSplatMap(0, 0, 64, 64);
+    stampSplat(32, 32, 1.0, 0x5a0204, 0.8, { x: 1, z: 0 });
+    flushSplats(mainRenderer);
+    resetSplatMap(0, 0, 1, 1);
+  } catch { /* pre-warm is best-effort */ }
 
   // Dispose — the geometries/materials live in WebGL forever via the program
   // cache; we just don't need the JS Object3Ds anymore.
