@@ -112,7 +112,8 @@ export interface Settings {
    *  pixels, a ~1px anti-aliased boundary) instead of raw nearest-neighbour.
    *  Smooths the sub-pixel "jitter" of lateral camera motion (strafing) that
    *  the low-res PS1 buffer otherwise crawls with, WITHOUT softening the look.
-   *  Off by default = the authored chunky nearest crawl. */
+   *  On by default — the motion win clearly beats the negligible look change;
+   *  toggle off for the raw chunky nearest crawl. */
   sharpUpscale: boolean;
   /** Render frame-rate cap (fps). The SIM always runs at a fixed 60Hz; this
    *  only limits how often the world is DRAWN. 60 = match the sim (smooth on
@@ -168,6 +169,10 @@ export interface Settings {
    *  culling flipped to default-on, so existing saves that carried the old
    *  explicit `false` get force-enabled exactly once — see load(). */
   migratedPortalCulling?: boolean;
+  /** Internal one-time-migration marker (not a user toggle). Set once SHARP
+   *  UPSCALE flipped to default-on, so a tester who toggled it off during the
+   *  A/B window gets force-enabled exactly once — see load(). */
+  migratedSharpUpscale?: boolean;
   /** Internal one-shot flag (not a user toggle): set true once the player
    *  has been shown the first-run "calibrate the dark" nudge, so it never
    *  fires twice. See src/ui/calibrate-hint.ts. */
@@ -236,7 +241,7 @@ const DEFAULTS: Settings = {
   shadows: 'hero',
   adaptiveResolution: true,
   renderScale: 0.4,    // = PS1_SCALE_DEFAULT (the authored look / adaptive ceiling)
-  sharpUpscale: false, // off = authored nearest crawl; on = smooth lateral motion
+  sharpUpscale: true,  // on = smooth lateral motion; toggle off for the nearest crawl
   frameCap: '60',      // match the 60Hz sim: smooth everywhere + good battery
 
   bloom: true,
@@ -256,6 +261,7 @@ const DEFAULTS: Settings = {
   torchRangeMul: 1.0,
   hudStyle: 'minimal',
   migratedPortalCulling: true,   // fresh installs are already on (no migration needed)
+  migratedSharpUpscale: true,    // fresh installs are already on (no migration needed)
 };
 
 let current: Settings = load();
@@ -276,6 +282,13 @@ function load(): Settings {
     if (parsed.migratedPortalCulling !== true) {
       merged.portalCulling = true;
       merged.migratedPortalCulling = true;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+    }
+    // Same one-time force-on for SHARP UPSCALE — a tester who flipped it off
+    // during the A/B window otherwise shadows the new default forever.
+    if (parsed.migratedSharpUpscale !== true) {
+      merged.sharpUpscale = true;
+      merged.migratedSharpUpscale = true;
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
     }
     return merged;
