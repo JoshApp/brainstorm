@@ -112,7 +112,8 @@ import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRender
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
 import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn, gpuPassDiag } from './debug/frame-timing';
-import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds } from './debug/perf-recorder';
+import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds, setSceneAuditProvider } from './debug/perf-recorder';
+import { auditScene } from './debug/scene-audit';
 import { launchSpector } from './debug/spector-launch';
 import { initDrawReport, captureDrawReport, drawReportData } from './debug/draw-report';
 import { initGpuAttribution, runGpuAttribution, getLastAttributionReport, isAttributionRunning } from './debug/gpu-attribution';
@@ -1794,7 +1795,7 @@ function ensureProfilingInited(): void {
 }
 function applyProfilerEnabled(): void {
   const on = profilingEnabled();
-  if (on) ensureProfilingInited();
+  if (on) { ensureProfilingInited(); setSceneAuditProvider(() => auditScene(scene)); }
   setRollingEnabled(on);          // dashcam ring fills only while enabled
   setProfilerToolbarVisible(on);
   if (!on) {

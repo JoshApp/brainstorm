@@ -25,6 +25,13 @@
 import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, setGpuPassTiming, type FrameSample } from './frame-timing';
 import { getCameraYaw, getCameraPitch } from '../controls/camera';
 import { getRenderPixelRatio } from '../style/render-target';
+import type { SceneAudit } from './scene-audit';
+
+// Scene-audit provider — main.ts registers a closure over the live scene so a
+// saved recording can snapshot WHAT is in the scene graph (leak hunting). Kept
+// as a provider so the recorder needn't import the scene/THREE.
+let sceneAuditProvider: (() => SceneAudit) | null = null;
+export function setSceneAuditProvider(fn: () => SceneAudit): void { sceneAuditProvider = fn; }
 import { getSettings } from '../settings/settings';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
@@ -82,6 +89,10 @@ export interface Recording {
      *  recording self-documents the config it was taken under (no more guessing
      *  which sliders were where). */
     graphics?: Record<string, unknown>;
+    /** Scene-graph drawable tally at save time — names WHAT is in the scene
+     *  (corpses/drops/blood/instanced batches), so a climbing geo/draw count in
+     *  the frames can be attributed to a leaking category. */
+    sceneAudit?: SceneAudit;
     label?: string;
   };
   systemNames: string[];
@@ -322,6 +333,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       viewport: [window.innerWidth, window.innerHeight],
       renderScale: getSettings().renderScale,
       graphics: graphicsSnapshot(),
+      sceneAudit: sceneAuditProvider ? sceneAuditProvider() : undefined,
       label,
     },
     systemNames: sysNames.slice(),
