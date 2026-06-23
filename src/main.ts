@@ -10,7 +10,7 @@ import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handhel
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
-import { warmupContent } from './content/warmup';
+import { warmupContent, precompileRosterInScene } from './content/warmup';
 import { initStatusVfxPool } from './effects/status-vfx';
 import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
@@ -381,6 +381,9 @@ function syncRoomCuller() {
   }
 }
 
+// One-shot guard: the enemy-roster shader pre-compile (in the live light
+// config) only needs to run once — programs stay resident after.
+let rosterPrecompiled = false;
 initLevelLoader({
   scene,
   materials,
@@ -399,6 +402,15 @@ initLevelLoader({
     // warmupContent only covers enemy/item models; this covers the procgen
     // floor. Non-fatal if it throws (older driver) — it's pure pre-pay.
     try { renderer.compile(scene, camera); } catch { /* pre-warm is best-effort */ }
+    // Spawns compile their shaders against the LIVE light count, not boot
+    // warmup's 1-light scratch scene — so the first ooze/ghoul spawn used to
+    // freeze ~190ms compiling mid-fight. Prime the whole roster in the live
+    // scene now (once — programs stay resident for the renderer's life). Async,
+    // so it rides behind the fade without blocking.
+    if (!rosterPrecompiled) {
+      rosterPrecompiled = true;
+      void precompileRosterInScene(renderer, scene, camera);
+    }
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to
     // the scene root don't rasterize in this pipeline (blood-burst

@@ -141,3 +141,40 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
     });
   }
 }
+
+/** Pre-compile the spawnable enemy roster's shaders IN THE LIVE scene's
+ *  lighting — the slot pool's full PointLight count + the live fog/banded
+ *  define. boot warmupContent compiles them against a 1-light scratch scene,
+ *  but Three keys its program cache on light count, so the FIRST live spawn
+ *  re-compiles synchronously inside render() — a measured ~190ms freeze on an
+ *  ooze spawn (perf recording, prog +1 on the spike frame, 165ms in
+ *  render·scene). Compiling against the real scene makes spawns resident +
+ *  hitch-free. Async (KHR_parallel_shader_compile) so it never blocks the load
+ *  frame; the roster is DETACHED (the targetScene arg supplies the lights) so
+ *  nothing flashes on screen. Best-effort — disposes the throwaway builds when
+ *  the compile resolves. Call once, after the first level + light pool exist. */
+export async function precompileRosterInScene(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+): Promise<void> {
+  const roster = new THREE.Group();
+  for (const enemy of Object.values(ENEMIES)) {
+    try {
+      const group = buildCreature(enemy.creature).group;
+      group.traverse((o) => { (o as THREE.Mesh).castShadow = true; });  // prime the cube-depth variant too
+      roster.add(group);
+    } catch { /* a bad spec must not sink the whole pre-warm */ }
+  }
+  // compileAsync(object, camera, targetScene): compile `roster`'s materials
+  // using the lights found in the LIVE `scene`. Parallel + non-blocking.
+  try { await renderer.compileAsync(roster, camera, scene); }
+  catch { /* parallel-compile unsupported / driver quirk — best-effort */ }
+  roster.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) m.dispose();
+    mesh.geometry.dispose();
+  });
+}
