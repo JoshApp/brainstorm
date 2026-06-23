@@ -49,6 +49,7 @@ export function setCameraYaw(y: number) {
 let camGroundX = 0;
 let camGroundZ = 0;
 export function getCameraYaw(): number { return yaw; }
+export function getCameraPitch(): number { return pitch; }
 export function getCameraGroundPos(): { x: number; z: number } { return { x: camGroundX, z: camGroundZ }; }
 
 /** Direct pitch setter — used by dev-snapshot restore so the camera

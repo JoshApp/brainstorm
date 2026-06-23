@@ -23,6 +23,7 @@
 // carries a little constant overhead while the tools are on — expected.
 
 import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, setGpuPassTiming, type FrameSample } from './frame-timing';
+import { getCameraYaw, getCameraPitch } from '../controls/camera';
 import { getSettings } from '../settings/settings';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
@@ -46,6 +47,11 @@ interface RecFrame {
   tex: number;
   prog: number;
   sys: number[];        // per-system ms, aligned to sysNames
+  /** Camera orientation this frame: [yaw, pitch] in radians. Lets a recording
+   *  correlate a GPU/fill spike with WHERE the player was looking — pitch-down
+   *  fills the screen with the near floor (peak per-pixel lighting), which a
+   *  raw frame-time trace can't explain on its own. */
+  cam: [number, number];
   /** Per-render-pass GPU ms aligned to gpuPhaseNames (prepass/scene/bloom/
    *  blit). Present only while per-pass GPU timing is armed — which the ring
    *  does itself on timer-query devices, where the spans are free. */
@@ -171,6 +177,7 @@ function onRingFrame(s: FrameSample): void {
     tex: s.textures,
     prog: s.programs,
     sys: snapshotSys(s.systems),
+    cam: [r2(getCameraYaw()), r2(getCameraPitch())],
     gph: s.gpuPhases ? snapshotGph(s.gpuPhases) : undefined,
     ev,
   });
