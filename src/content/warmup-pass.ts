@@ -90,7 +90,13 @@ export function runWarmupPass(
         group: creature.group, parts: creature.parts, slots: creature.joints,
         materials: creature.materials, hitTargets: creature.hitTargets,
       };
-      creature.group.traverse((o) => { (o as THREE.Mesh).castShadow = true; });
+      // Match the LIVE enemy: creatures use a blob shadow, NOT the lamp's cube
+      // (enemy.ts sets castShadow=false). acquire bakes the FIRST donor's
+      // castShadow into the shared segmentCache, and the warm pass donates first
+      // — so setting true here poisoned every enemy batch into casting cube
+      // shadows: ~6 extra shadow-pass draws per segment, "~half the frame in a
+      // fight" (enemy.ts). Keep it false so batches never cast.
+      creature.group.traverse((o) => { (o as THREE.Mesh).castShadow = false; });
       const id = nextWarmEntityId();
       const handle = acquireCreatureInstancing(scene, id, spec, built, container);
       if (handle) {
