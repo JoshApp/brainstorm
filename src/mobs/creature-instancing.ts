@@ -419,8 +419,24 @@ export function warmInstancedPrograms(
     } catch { /* a bad spec must not sink the whole warm */ }
   }
   if (ids.length === 0) return;
-  // Compile the instanced programs now that the warm batches sit in the scene.
-  try { renderer.compile(scene as THREE.Scene, camera); } catch { /* best-effort */ }
+  // RENDER once offscreen (not renderer.compile) so the INSTANCED program
+  // actually compiles — compile() may not key on isInstancedMesh, so it'd warm
+  // the non-instanced variant again (the bug we're fixing). An actual draw of
+  // the in-scene batches guarantees the instanced + instanceColor program path.
+  // Tiny target = trivial fill; shadow forced on so the cube-depth instanced
+  // variant compiles too. Mirrors warmupContent's offscreen warm render.
+  const warmTarget = new THREE.WebGLRenderTarget(8, 8);
+  const prevTarget = renderer.getRenderTarget();
+  const prevShadowEnabled = renderer.shadowMap.enabled;
+  const prevShadowNeedsUpdate = renderer.shadowMap.needsUpdate;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.needsUpdate = true;
+  renderer.setRenderTarget(warmTarget);
+  try { renderer.render(scene as THREE.Scene, camera); } catch { /* best-effort */ }
+  renderer.setRenderTarget(prevTarget);
+  renderer.shadowMap.enabled = prevShadowEnabled;
+  renderer.shadowMap.needsUpdate = prevShadowNeedsUpdate;
+  warmTarget.dispose();
   // Free the warm slots, then detach every now-EMPTY batch (every slot returned)
   // so it draws nothing — real spawns re-adopt it via acquire. Guard on empty so
   // we never detach a batch that already holds a live mob (none at first load).
