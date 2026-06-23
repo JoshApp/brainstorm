@@ -612,6 +612,12 @@ export function setPS1Scale(scale: number): void {
 
 export function getPS1Scale(): number { return ps1Scale; }
 
+/** The renderer's EFFECTIVE pixel ratio = min(device DPR, the PIXEL DENSITY
+ *  cap). The true fill multiplier — for the perf recorder's meta snapshot, so a
+ *  recording records the resolution it actually ran at (device DPR alone hides
+ *  the cap). 0 before the pipeline is initialised. */
+export function getRenderPixelRatio(): number { return rendererRef ? rendererRef.getPixelRatio() : 0; }
+
 /** Set the eye dark-adaptation amount (0..1) applied by the blit shader's
  *  shadow-lift. No-op until the pipeline is initialised. */
 export function setWickLift(v: number): void {

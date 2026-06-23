@@ -24,6 +24,7 @@
 
 import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, setGpuPassTiming, type FrameSample } from './frame-timing';
 import { getCameraYaw, getCameraPitch } from '../controls/camera';
+import { getRenderPixelRatio } from '../style/render-target';
 import { getSettings } from '../settings/settings';
 
 const TARGET_MS = 1000 / 60;          // 60fps budget
@@ -74,6 +75,13 @@ export interface Recording {
     /** Scene render scale (the PS1 low-res target fraction) — with dpr+viewport
      *  this gives the true GPU fill resolution, the dominant mobile lever. */
     renderScale?: number;
+    /** Effective renderer pixel ratio = min(device DPR, the PIXEL DENSITY cap).
+     *  The TRUE fill multiplier; `dpr` alone (device native) hides the cap. */
+    pixelRatio?: number;
+    /** Snapshot of the perf/visual-relevant settings at record time, so a
+     *  recording self-documents the config it was taken under (no more guessing
+     *  which sliders were where). */
+    graphics?: Record<string, unknown>;
     label?: string;
   };
   systemNames: string[];
@@ -158,6 +166,29 @@ function snapshotSys(systems: Map<string, number>): number[] {
     arr[i] = r2(ms);
   }
   return arr;
+}
+
+/** Perf/visual-relevant settings at record time — so a recording self-documents
+ *  the config it ran under (which sliders/toggles were where). One snapshot per
+ *  export, in meta. */
+function graphicsSnapshot(): Record<string, unknown> {
+  const s = getSettings();
+  return {
+    pixelRatioCap: s.pixelRatioCap,
+    renderScale: s.renderScale,
+    sharpUpscale: s.sharpUpscale,
+    frameCap: s.frameCap,
+    shadows: s.shadows,
+    bloom: s.bloom,
+    adaptiveResolution: s.adaptiveResolution,
+    portalCulling: s.portalCulling,
+    surfaceDetail: s.surfaceDetail,
+    bandedLighting: s.bandedLighting,
+    crtFilm: s.crtFilm,
+    aoStrength: s.aoStrength,
+    brightness: s.brightness,
+    wick: s.wick,
+  };
 }
 
 function onRingFrame(s: FrameSample): void {
@@ -287,8 +318,10 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       gpuSupported: gpuActive(),
       ua: navigator.userAgent,
       dpr: window.devicePixelRatio,
+      pixelRatio: getRenderPixelRatio(),
       viewport: [window.innerWidth, window.innerHeight],
       renderScale: getSettings().renderScale,
+      graphics: graphicsSnapshot(),
       label,
     },
     systemNames: sysNames.slice(),
