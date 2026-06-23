@@ -373,7 +373,13 @@ const BLOOM_THRESHOLD = 0.62;   // linear luma above which a pixel blooms (raise
                                //   bloom less; the hot emissive cores still pop)
 const BLOOM_STRENGTH = 0.82;    // how much bloom adds back (eased from 1.05 — was a
                                //   tad too strong on the phone)
-const BLOOM_BLUR_STEPS = 2;     // H+V blur pairs (more = wider, softer halo)
+const BLOOM_BLUR_STEPS = 1;     // H+V blur pairs. 2→1: bloom was ~11ms (GPU-pass
+                               //   timer), nearly the whole scene render — NOT fill
+                               //   (the bloom targets are tiny) but render-target
+                               //   SWITCH overhead on the tiler (each bind = a tile
+                               //   flush/reload). 2 steps = 5 binds, 1 step = 3 —
+                               //   removes 2 of the dearest ops. Halo is a touch
+                               //   tighter; in the dark dungeon it barely reads.
 let bloomEnabled = true;
 
 let bloomA: THREE.WebGLRenderTarget | null = null;
