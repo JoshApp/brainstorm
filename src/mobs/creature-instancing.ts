@@ -444,7 +444,12 @@ export function warmInstancedPrograms(
   renderer.shadowMap.enabled = prevShadowEnabled;
   renderer.shadowMap.needsUpdate = prevShadowNeedsUpdate;
   warmTarget.dispose();
-  for (const b of batches.values()) b.mesh.frustumCulled = true;
+  // Leave frustumCulled FALSE — that's the batch's normal state (line in
+  // makeInstancedMesh): instances span the level and cull per-instance via the
+  // zero-scale writeback, never whole-mesh. Restoring it to `true` here culled
+  // every batch against the stale origin-bounds from the warm → invisible
+  // enemies (bodies gone, only eyes + death-dissolve source meshes showed).
+  for (const b of batches.values()) b.mesh.frustumCulled = false;
   // Free the warm slots, then detach every now-EMPTY batch (every slot returned)
   // so it draws nothing — real spawns re-adopt it via acquire. Guard on empty so
   // we never detach a batch that already holds a live mob (none at first load).
