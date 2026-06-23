@@ -180,6 +180,14 @@ export async function precompileRosterInScene(
       roster.add(group);
     } catch { /* a bad spec must not sink the whole pre-warm */ }
   }
+  // ITEM DROP MODELS too — boot warmup compiled these against the 1-light
+  // scratch scene, so the FIRST loot drop in a torchlit room recompiled at the
+  // live light count (a no-event `prog` tick + hitch in the recordings). Compile
+  // them here in the real scene so the first pickup-on-the-floor is hitch-free.
+  for (const item of Object.values(ITEMS)) {
+    try { roster.add(buildModel(item.dropModel).group); }
+    catch { /* a bad spec must not sink the whole pre-warm */ }
+  }
   // compileAsync(object, camera, targetScene): compile `roster`'s materials
   // using the lights found in the LIVE `scene`. Parallel + non-blocking.
   try { await renderer.compileAsync(roster, camera, scene); }

@@ -429,6 +429,13 @@ export function warmInstancedPrograms(
   const prevTarget = renderer.getRenderTarget();
   const prevShadowEnabled = renderer.shadowMap.enabled;
   const prevShadowNeedsUpdate = renderer.shadowMap.needsUpdate;
+  // The warm instances sit at the origin with zero matrices → a degenerate
+  // bounding sphere the camera frustum culls out, so the offscreen render would
+  // SKIP them and never compile their program (the bug: scene props compiled,
+  // enemy batches didn't). Force-draw the warm batches by disabling their
+  // frustum cull for the warm render; restored before detach so real spawns
+  // cull normally.
+  for (const b of batches.values()) b.mesh.frustumCulled = false;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.needsUpdate = true;
   renderer.setRenderTarget(warmTarget);
@@ -437,6 +444,7 @@ export function warmInstancedPrograms(
   renderer.shadowMap.enabled = prevShadowEnabled;
   renderer.shadowMap.needsUpdate = prevShadowNeedsUpdate;
   warmTarget.dispose();
+  for (const b of batches.values()) b.mesh.frustumCulled = true;
   // Free the warm slots, then detach every now-EMPTY batch (every slot returned)
   // so it draws nothing — real spawns re-adopt it via acquire. Guard on empty so
   // we never detach a batch that already holds a live mob (none at first load).
