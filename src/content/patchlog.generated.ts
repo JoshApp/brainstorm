@@ -9,6 +9,13 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "tune",
+        "text": "The first of each kind no longer staggers the world as it arrives — the dungeon rehearses every shape before the first one draws breath.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "tune",
         "text": "The first blood no longer catches the dungeon off guard — the gore is rehearsed before the first kill, so the kill lands clean.",
         "area": [
           "combat"
@@ -391,13 +398,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "add",
         "text": "A frame-rate cap joins the settings — 60 to stay smooth, 30 to keep the dungeon from cooking your phone. It runs at full speed either way.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The dungeon writes in a finer hand now — older, serifed, unhurried with your dying.",
         "area": [
           "ui"
         ]
