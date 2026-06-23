@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { groundYAt } from '../level/elevation';
 import type { DoorSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
@@ -481,40 +482,29 @@ function buildPortcullis(group: THREE.Group, length: number, height: number) {
   const span = Math.max(0.2, length - inset * 2);
   const nBars = Math.max(2, Math.round(span / 0.34));
 
+  // ALL the iron — bars, teeth at the foot, cross-rails, edge runners — shares
+  // ironMat and slides as ONE unit (the group animates on Y), so merge it into a
+  // single geometry: 1 draw + 1 shadow caster instead of ~23 per gate (~9 bars +
+  // 9 teeth + 3 rails + 2 runners). A few visible gates were most of the floor's
+  // 103 shadow casters (each portcullis part was its own caster re-drawn into the
+  // lamp's 6-face cube). xz/rotation baked into the geometry; the group still
+  // slides to drop/raise.
+  const parts: THREE.BufferGeometry[] = [];
   for (let i = 0; i < nBars; i++) {
     const x = nBars === 1 ? 0 : -span / 2 + (i * span) / (nBars - 1);
-    // Vertical bar.
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(BAR, height - 0.02, BAR), ironMat);
-    bar.position.set(x, height / 2, 0);
-    bar.castShadow = true;
-    group.add(bar);
-    // Pointed tooth at the foot — the bite of the trap.
-    const tooth = new THREE.Mesh(
-      new THREE.ConeGeometry(BAR * 0.95, 0.22, 6), ironMat,
-    );
-    tooth.position.set(x, -0.05, 0);
-    tooth.rotation.x = Math.PI;             // point down
-    tooth.castShadow = true;
-    group.add(tooth);
+    parts.push(new THREE.BoxGeometry(BAR, height - 0.02, BAR).translate(x, height / 2, 0));
+    // tooth: cone pointed DOWN (rotateX π), at the foot.
+    parts.push(new THREE.ConeGeometry(BAR * 0.95, 0.22, 6).rotateX(Math.PI).translate(x, -0.05, 0));
   }
-
-  // Horizontal cross-rails tie the bars together.
   for (const railY of [height * 0.16, height * 0.5, height * 0.84]) {
-    const rail = new THREE.Mesh(
-      new THREE.BoxGeometry(length - inset, RAIL, RAIL * 0.7), ironMat,
-    );
-    rail.position.set(0, railY, 0);
-    rail.castShadow = true;
-    group.add(rail);
+    parts.push(new THREE.BoxGeometry(length - inset, RAIL, RAIL * 0.7).translate(0, railY, 0));
   }
-
-  // Thicker edge runners — the bars that ride the wall grooves.
   for (const ex of [-span / 2, span / 2]) {
-    const runner = new THREE.Mesh(
-      new THREE.BoxGeometry(BAR * 1.5, height, BAR * 1.5), ironMat,
-    );
-    runner.position.set(ex, height / 2, 0);
-    runner.castShadow = true;
-    group.add(runner);
+    parts.push(new THREE.BoxGeometry(BAR * 1.5, height, BAR * 1.5).translate(ex, height / 2, 0));
   }
+  const merged = mergeGeometries(parts);
+  for (const g of parts) g.dispose();
+  const grid = new THREE.Mesh(merged, ironMat);
+  grid.castShadow = true;
+  group.add(grid);
 }
