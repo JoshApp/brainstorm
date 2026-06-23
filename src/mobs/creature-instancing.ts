@@ -349,6 +349,13 @@ export function releaseCreatureInstancing(
     if (seg.batch.free.length === seg.batch.used) {
       seg.batch.used = 0;
       seg.batch.free.length = 0;
+      // DETACH the now-empty batch from the scene. It was sitting at count=0 but
+      // an InstancedMesh in the scene still issues a draw call every frame — so
+      // dead enemies' batches piled up as wasted draws until the next floor swap
+      // (the inflation the scene-audit caught: 32 used=0/count=0 batches resident
+      // after a fight). acquire re-adopts it via its `if (mesh.parent !== scene)
+      // scene.add` path on the next spawn; it stays in the map so re-adopt is free.
+      if (seg.batch.mesh.parent) seg.batch.mesh.parent.remove(seg.batch.mesh);
     }
     if (opts?.corpse) seg.source.visible = true;
   }
