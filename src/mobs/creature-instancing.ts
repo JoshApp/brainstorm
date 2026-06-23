@@ -493,6 +493,12 @@ export function tickCreatureInstancing(): void {
   // One needsUpdate per buffer per frame, even when the only writes came
   // from release() after the last enemy died.
   for (const b of batches.values()) {
+    // Draw only the ALLOCATED slots (high-water `used`), not the full capacity.
+    // makeInstancedMesh pins count=capacity, so a batch with 2 live mobs was
+    // drawing all 8 slots' worth of (high-poly) creature verts — parked slots
+    // are invisible but STILL processed, inflating the tri count ~capacity/live×.
+    // Slots [used..capacity) are never occupied, so skipping them is free + safe.
+    b.mesh.count = b.used;
     if (b.matrixDirty) {
       b.mesh.instanceMatrix.needsUpdate = true;
       b.matrixDirty = false;
