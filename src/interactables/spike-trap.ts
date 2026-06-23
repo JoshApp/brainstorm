@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { damagePlayer } from '../player/health';
-import { pooledBox, pooledPlane, pooledCone } from '../scene/geometry-pool';
+import { pooledBox, pooledPlane } from '../scene/geometry-pool';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // Spike trap — a pressure plate hazard. Player steps onto the plate; a
 // brief telegraph (plate sinks, an audible click) gives them a moment to
@@ -28,6 +29,30 @@ const FIRING_DURATION = 0.6;           // how long spikes stay up + damage
 const COOLDOWN_DURATION = 1.4;         // before re-arming
 const SPIKE_RAISED_Y = 0.5;            // peak spike height
 const SPIKE_HIDDEN_Y = -0.6;           // start hidden well below the plate
+
+// A trap's 3×3 spikes rise/fall TOGETHER, so they're one merged geometry (xz
+// offsets baked in) animated as a single mesh — 1 draw per trap instead of 9.
+// Identical across traps (grid derives from PLATE_SIZE), so build it once and
+// share. This was the biggest unmerged decor cost in the draw report (36 cones
+// across the floor's traps → ~4 draws).
+let spikeGridGeo: THREE.BufferGeometry | null = null;
+function getSpikeGridGeo(): THREE.BufferGeometry {
+  if (spikeGridGeo) return spikeGridGeo;
+  const grid = 3;
+  const step = PLATE_SIZE * 0.7 / (grid - 1);
+  const start = -PLATE_SIZE * 0.35;
+  const cones: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < grid; i++) {
+    for (let j = 0; j < grid; j++) {
+      const g = new THREE.ConeGeometry(0.06, 0.45, 6);
+      g.translate(start + i * step, 0, start + j * step);   // bake the grid offset
+      cones.push(g);
+    }
+  }
+  spikeGridGeo = mergeGeometries(cones);
+  for (const g of cones) g.dispose();
+  return spikeGridGeo!;
+}
 
 export function spawnSpikeTrap(
   parent: THREE.Object3D,
@@ -81,22 +106,12 @@ export function spawnSpikeTrap(
     emissive: 0x1a0808,
     emissiveIntensity: 0.4,
   });
-  const spikes: THREE.Mesh[] = [];
-  const grid = 3;
-  const step = PLATE_SIZE * 0.7 / (grid - 1);
-  const start = -PLATE_SIZE * 0.35;
-  for (let i = 0; i < grid; i++) {
-    for (let j = 0; j < grid; j++) {
-      const spike = new THREE.Mesh(
-        pooledCone(0.06, 0.45, 6),
-        spikeMat,
-      );
-      spike.position.set(start + i * step, SPIKE_HIDDEN_Y, start + j * step);
-      // Floor clutter — casts nothing into the lamp cube map (9 cones per trap).
-      group.add(spike);
-      spikes.push(spike);
-    }
-  }
+  // The 3×3 spike grid as ONE merged, animated mesh (they rise together): 1 draw
+  // per trap instead of 9. xz offsets are baked into the geometry; only Y moves.
+  const spikes = new THREE.Mesh(getSpikeGridGeo(), spikeMat);
+  spikes.position.y = SPIKE_HIDDEN_Y;
+  spikes.castShadow = false;   // floor clutter — out of the lamp cube map
+  group.add(spikes);
 
   // State machine.
   type State = 'armed' | 'triggered' | 'firing' | 'cooldown';
@@ -146,7 +161,7 @@ export function spawnSpikeTrap(
           // Spikes shoot up in the first ~0.12s, hold, then start retracting.
           const t = Math.min(1, stateTimer / 0.12);
           const targetY = SPIKE_HIDDEN_Y + (SPIKE_RAISED_Y - SPIKE_HIDDEN_Y) * t;
-          for (const s of spikes) s.position.y = targetY;
+          spikes.position.y = targetY;
           // Damage applies once per cycle, the first frame after spikes
           // reach full extension AND the player is on the plate.
           if (!hasDamagedThisCycle && t >= 1 && onPlate) {
@@ -165,7 +180,7 @@ export function spawnSpikeTrap(
           // re-trigger; have to wait for the cycle to finish.
           const tDown = Math.min(1, stateTimer / 0.4);
           const targetY = SPIKE_RAISED_Y + (SPIKE_HIDDEN_Y - SPIKE_RAISED_Y) * tDown;
-          for (const s of spikes) s.position.y = targetY;
+          spikes.position.y = targetY;
           plate.position.y = PLATE_THICKNESS / 2 + 0.005;
           if (stateTimer >= COOLDOWN_DURATION) {
             state = 'armed';
