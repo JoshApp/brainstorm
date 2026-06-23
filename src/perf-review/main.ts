@@ -126,12 +126,38 @@ function buildSummary(): void {
   const dts = rec.frames.map((f) => f.dt).filter((d) => d > 0).sort((a, b) => a - b);
   const over = rec.frames.filter((f) => f.dt > targetMs * 1.5).length;
   const fps = dts.length ? (1000 / (dts.reduce((a, b) => a + b, 0) / dts.length)) : 0;
+  const j = pacing();
+  // Jitter is the metric the avg/percentiles HIDE: a steady 70fps and a 70fps
+  // that alternates 11/16ms every frame read IDENTICALLY in fps/med/p95, but the
+  // second one visibly micro-stutters in motion. `swing` (mean frame-to-frame
+  // |Δinterval|) catches it; a strongly NEGATIVE lag-1 correlation means the
+  // frames ALTERNATE heavy/light — a "beat" (classic every-other-frame work, e.g.
+  // a shadow pass on a throttle). Smooth ≈ swing<2ms; >4ms is felt.
+  const jColor = j.swing <= 2 ? '#8fe0a0' : j.swing <= 4 ? '#ffd27a' : '#ff8a8a';
+  const beat = j.lag1 < -0.1 ? ` <span style="color:#ff8a8a" title="adjacent frames anti-correlated — work is bunched onto every Nth frame (a beat). Check the 'draws' line for an on/off alternation.">⇅ beat</span>` : '';
   summaryEl.innerHTML =
     `${rec.meta.frameCount} frames · ${(rec.meta.durationMs / 1000).toFixed(1)}s · ` +
     `<b>${fps.toFixed(0)} fps avg</b> · ` +
     `med ${quantile(dts, 0.5).toFixed(1)} · p95 ${quantile(dts, 0.95).toFixed(1)} · p99 ${quantile(dts, 0.99).toFixed(1)}ms · ` +
+    `<span style="color:${jColor}" title="mean frame-to-frame change in interval — the felt smoothness. Stable fps with high jitter still micro-stutters.">jitter ${j.swing.toFixed(1)}ms</span>${beat} · ` +
     `<span style="color:${over ? '#ff8a8a' : '#8fe0a0'}">${over} dropped (${((over / rec.frames.length) * 100).toFixed(1)}%)</span> · ` +
     `gpu ${rec.meta.gpuSupported ? 'on' : 'n/a'}`;
+}
+
+/** Pacing stats the percentiles miss. `swing` = mean |dt[i] − dt[i-1]| (felt
+ *  micro-stutter). `lag1` = lag-1 autocorrelation of dt; markedly negative = a
+ *  heavy/light alternation (an every-Nth-frame "beat"). */
+function pacing(): { swing: number; lag1: number } {
+  if (!rec) return { swing: 0, lag1: 0 };
+  const dt = rec.frames.map((f) => f.dt).filter((d) => d > 0);
+  if (dt.length < 3) return { swing: 0, lag1: 0 };
+  let swing = 0;
+  for (let i = 1; i < dt.length; i++) swing += Math.abs(dt[i] - dt[i - 1]);
+  swing /= dt.length - 1;
+  const m = dt.reduce((a, b) => a + b, 0) / dt.length;
+  let num = 0, den = 0;
+  for (let i = 0; i < dt.length; i++) { den += (dt[i] - m) ** 2; if (i) num += (dt[i] - m) * (dt[i - 1] - m); }
+  return { swing, lag1: den ? num / den : 0 };
 }
 
 function buildLegend(): void {
