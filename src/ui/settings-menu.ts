@@ -376,11 +376,22 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
         'The fraction of native resolution the world is drawn at before the PSX ' +
         'blit upscales it — the single biggest GPU knob (fill rate is the #1 ' +
         'mobile cost). Lower = faster + chunkier (reads as more PS1); higher = ' +
-        'sharper. On mobile this is the CEILING adaptive resolution lowers from.',
-      min: 0.3, max: 0.6, step: 0.05,
+        'sharper + smoother in motion, up to native. On mobile this is the ' +
+        'CEILING adaptive resolution lowers from.',
+      min: 0.3, max: 1.0, step: 0.05,
       get: () => getSettings().renderScale,
       set: (v) => updateSettings({ renderScale: v }),
       format: (v) => Math.round(v * 100) + '%',
+    }),
+    makeToggle({
+      label: 'SHARP UPSCALE',
+      description:
+        'Upscale the low-res render with sharp-bilinear instead of raw blocky ' +
+        'pixels — crisp edges with a 1px softened boundary. Smooths the ' +
+        'sub-pixel jitter you feel when strafing, without blurring the look. ' +
+        'Off keeps the authored chunky PS1 crawl.',
+      get: () => getSettings().sharpUpscale,
+      set: (v) => updateSettings({ sharpUpscale: v }),
     }),
     makeToggle({
       label: 'ADAPTIVE RESOLUTION',

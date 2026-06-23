@@ -108,6 +108,12 @@ export interface Settings {
    *  CEILING adaptive resolution scales down FROM on mobile, and the fixed scale
    *  when adaptive is off / on desktop. Default 0.4 (the authored look). */
   renderScale: number;
+  /** Sharp upscale — blit the low-res scene target with sharp-bilinear (crisp
+   *  pixels, a ~1px anti-aliased boundary) instead of raw nearest-neighbour.
+   *  Smooths the sub-pixel "jitter" of lateral camera motion (strafing) that
+   *  the low-res PS1 buffer otherwise crawls with, WITHOUT softening the look.
+   *  Off by default = the authored chunky nearest crawl. */
+  sharpUpscale: boolean;
   /** Render frame-rate cap (fps). The SIM always runs at a fixed 60Hz; this
    *  only limits how often the world is DRAWN. 60 = match the sim (smooth on
    *  every display, including 120Hz — we never show a half-finished sim step);
@@ -230,6 +236,7 @@ const DEFAULTS: Settings = {
   shadows: 'hero',
   adaptiveResolution: true,
   renderScale: 0.4,    // = PS1_SCALE_DEFAULT (the authored look / adaptive ceiling)
+  sharpUpscale: false, // off = authored nearest crawl; on = smooth lateral motion
   frameCap: '60',      // match the 60Hz sim: smooth everywhere + good battery
 
   bloom: true,

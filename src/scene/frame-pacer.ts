@@ -37,6 +37,12 @@ export function pacerShouldDraw(cap: number, now: number): boolean {
   observeForReadout(dt);
 
   if (cap <= 0) return true;
+  // At or above the panel's native refresh, a software cap can only ADD judder:
+  // the accumulator beats against vsync and occasionally skips-then-doubles a
+  // frame even though raw rAF would be perfectly smooth. The display IS the
+  // limiter there, so draw every callback. The accumulator only engages to cap
+  // genuinely BELOW native (e.g. 30fps battery saver, or 60 on a 120Hz panel).
+  if (cap >= nativeHz - 1) return true;
   const interval = 1000 / cap;
   budget += dt;
   if (budget >= interval) {

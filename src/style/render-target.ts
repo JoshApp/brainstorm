@@ -25,6 +25,12 @@ import { renderProbeActive, reportRenderPhase, gpuPassActive, gpuPassBegin, gpuP
 export const PS1_SCALE_DEFAULT = 0.4;
 let ps1Scale = PS1_SCALE_DEFAULT;
 
+// SHARP UPSCALE — when on, the blit upscales the low-res target with
+// sharp-bilinear (crisp pixels, ~1px anti-aliased boundary) instead of
+// nearest. Smooths the sub-pixel "jitter" of lateral motion without blurring
+// the look. Off by default = the authored nearest-neighbour PS1 crawl.
+let sharpBilinear = false;
+
 let lowResTarget: THREE.WebGLRenderTarget | null = null;
 let blitScene: THREE.Scene | null = null;
 
@@ -124,6 +130,8 @@ const HORROR_BLIT_FRAG = `
   uniform float uInscatterStartM;    // metres where the glowing haze begins
   uniform float uInscatterEndM;      // metres where the haze is fully thick
   uniform vec2 uResolution;
+  uniform vec2 uLowResSize;     // low-res scene target size, in texels
+  uniform float uSharpBilinear; // 1 = sharp-bilinear upscale, 0 = nearest texel-snap
   uniform float uDarkAdapt;
   uniform float uBrightness;
   uniform float uWick;  // eye dark-adaptation, 0 = none .. 1 = full dark
@@ -160,6 +168,30 @@ const HORROR_BLIT_FRAG = `
     return (2.0 * uNear * uFar) / (uFar + uNear - ndc * (uFar - uNear));
   }
 
+  // Sample the low-res scene target. The target is LINEAR-filtered, so the
+  // mode is chosen here in the shader:
+  //   SHARP UPSCALE on  — snap to texel centres but keep a ~1-output-pixel
+  //     linear ramp across each texel boundary, so during sub-pixel camera
+  //     motion (strafing) an edge GLIDES over one screen pixel instead of
+  //     jumping a whole upscaled texel at once. Themaister's classic
+  //     sharp-bilinear: pixels stay crisp, only the boundary is anti-aliased.
+  //   SHARP UPSCALE off — sample exactly at the texel centre → identical to
+  //     NearestFilter (the authored chunky PS1 crawl), zero blur.
+  vec3 sampleScene(vec2 uv) {
+    if (uSharpBilinear > 0.5) {
+      vec2 texel = uv * uLowResSize;
+      vec2 texelFloored = floor(texel);
+      vec2 s = fract(texel);
+      vec2 scale = uResolution / uLowResSize;        // output px per low-res texel
+      vec2 regionRange = 0.5 - 0.5 / scale;
+      vec2 centerDist = s - 0.5;
+      vec2 f = (centerDist - clamp(centerDist, -regionRange, regionRange)) * scale + 0.5;
+      return texture2D(tDiffuse, (texelFloored + f) / uLowResSize).rgb;
+    }
+    vec2 snapped = (floor(uv * uLowResSize) + 0.5) / uLowResSize;  // nearest emulation
+    return texture2D(tDiffuse, snapped).rgb;
+  }
+
   void main() {
     vec2 uv = vUv;
 
@@ -177,7 +209,7 @@ const HORROR_BLIT_FRAG = `
       // amber tint + dither implicitly land near the right curve.
       // For the bypass we must apply the linear→sRGB encode by
       // hand or the backdrop looks gamma-crushed.
-      vec3 linear = texture2D(tDiffuse, uv).rgb;
+      vec3 linear = sampleScene(uv);
       vec3 srgb = pow(max(linear, vec3(0.0)), vec3(1.0 / 2.2));
       gl_FragColor = vec4(srgb, 1.0);
       return;
@@ -189,9 +221,9 @@ const HORROR_BLIT_FRAG = `
     // smearing the centre.
     vec2 fromCenter = uv - 0.5;
     vec2 caOffset = fromCenter * 0.004;
-    float r = texture2D(tDiffuse, uv + caOffset).r;
-    float g = texture2D(tDiffuse, uv).g;
-    float b = texture2D(tDiffuse, uv - caOffset).b;
+    float r = sampleScene(uv + caOffset).r;
+    float g = sampleScene(uv).g;
+    float b = sampleScene(uv - caOffset).b;
     vec3 col = vec3(r, g, b);
 
     // BLOOM — add the blurred bright-pass so emissive cores + dark-reactive
@@ -428,6 +460,15 @@ export function setCrtFilmEnabled(on: boolean): void {
 }
 export function getCrtFilmEnabled(): boolean { return crtFilmEnabled; }
 
+/** Toggle the SHARP UPSCALE (sharp-bilinear vs nearest blit). Off = the
+ *  authored chunky PS1 crawl; on = crisp pixels with a 1px anti-aliased
+ *  boundary, so lateral camera motion glides instead of jittering. */
+export function setSharpBilinear(on: boolean): void {
+  sharpBilinear = on;
+  if (blitMaterial) blitMaterial.uniforms.uSharpBilinear.value = on ? 1 : 0;
+}
+export function getSharpBilinear(): boolean { return sharpBilinear; }
+
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
 export function setBloomEnabled(on: boolean): void {
   bloomEnabled = on;
@@ -467,8 +508,14 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
   const h = Math.max(1, Math.floor(renderer.domElement.height * ps1Scale));
 
   lowResTarget = new THREE.WebGLRenderTarget(w, h, {
-    minFilter: THREE.NearestFilter,
-    magFilter: THREE.NearestFilter,
+    // LINEAR so the blit's SHARP UPSCALE can anti-alias the texel boundary
+    // (kills the strafe "jitter" — edges glide instead of popping a whole
+    // upscaled texel at once). When the toggle is OFF the blit snaps UVs to
+    // texel centres, which on a linear texture is byte-identical to
+    // NearestFilter — the authored chunky PS1 look is intact.
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    generateMipmaps: false,
     depthBuffer: true,
     stencilBuffer: false,
   });
@@ -506,6 +553,8 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
       uInscatterStartM: { value: INSCATTER_START_M },
       uInscatterEndM: { value: INSCATTER_END_M },
       uResolution: { value: new THREE.Vector2(renderer.domElement.width, renderer.domElement.height) },
+      uLowResSize: { value: new THREE.Vector2(w, h) },
+      uSharpBilinear: { value: sharpBilinear ? 1 : 0 },
       uDarkAdapt: { value: 0 },
       uBrightness: { value: 1 },
       uWick: { value: 1 },
@@ -540,6 +589,7 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
     lowResTarget.setSize(nw, nh);
     resizeBloom();
     blitMaterial.uniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
+    blitMaterial.uniforms.uLowResSize.value.set(nw, nh);
   });
 }
 
@@ -548,11 +598,15 @@ export function initRenderPipeline(renderer: THREE.WebGLRenderer) {
  *  blit upscales whatever size this target is, so lowering it trades crispness
  *  for fill-rate (and reads as more PS1, on-aesthetic). */
 export function setPS1Scale(scale: number): void {
-  ps1Scale = Math.min(0.6, Math.max(0.2, scale));
+  // Ceiling raised 0.6 → 1.0 so the RENDER SCALE slider can reach near-native
+  // (the smooth/high-res end of the crunchy↔smooth spectrum) on desktop and
+  // strong phones; the adaptive scaler still floors it on weak devices.
+  ps1Scale = Math.min(1.0, Math.max(0.2, scale));
   if (!lowResTarget || !rendererRef) return;
   const nw = Math.max(1, Math.floor(rendererRef.domElement.width * ps1Scale));
   const nh = Math.max(1, Math.floor(rendererRef.domElement.height * ps1Scale));
   lowResTarget.setSize(nw, nh);
+  if (blitMaterial) blitMaterial.uniforms.uLowResSize.value.set(nw, nh);
   resizeBloom();
 }
 

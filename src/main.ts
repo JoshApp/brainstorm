@@ -38,7 +38,7 @@ import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { initRewardAudio } from './audio/reward-audio';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
@@ -893,6 +893,7 @@ function applyVideoSettings(s = getSettings()): void {
   if (!adaptiveOn) setPS1Scale(s.renderScale);
   setBloomEnabled(s.bloom);
   setCrtFilmEnabled(s.crtFilm);
+  setSharpBilinear(s.sharpUpscale);
 }
 applyVideoSettings();
 // DEV-only: ?ps1=0.3 forces the scene-render scale for snap/compare. Stripped
@@ -907,6 +908,13 @@ if (import.meta.env.DEV) {
   const crt = new URLSearchParams(window.location.search).get('crt');
   if (crt === '1') setCrtFilmEnabled(true);
   else if (crt === '0') setCrtFilmEnabled(false);
+}
+// DEV-only: ?sharp=1|0 forces the sharp-bilinear upscale for snap/compare
+// without touching the saved setting. Stripped from prod by the literal guard.
+if (import.meta.env.DEV) {
+  const sharp = new URLSearchParams(window.location.search).get('sharp');
+  if (sharp === '1') setSharpBilinear(true);
+  else if (sharp === '0') setSharpBilinear(false);
 }
 // DEV-only: ?shadows=off|hero|single|all forces a mode for snap/compare
 // without touching the saved setting. Stripped from prod by the literal guard.
