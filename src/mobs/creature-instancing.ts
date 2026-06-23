@@ -381,15 +381,17 @@ function ancestorsVisible(source: THREE.Object3D, container: THREE.Object3D): bo
  * render. Zero allocations; updateMatrixWorld is the same work the renderer
  * would do for these subtrees at render time (it then sees them clean).
  */
-/** Teardown for the unified warmup pass: dispose every EMPTY batch's mesh (frees
- *  the parked-instance buffers — the ~1M-vert cost a resident warm batch leaves)
- *  and drop it from the live `batches` map, KEEPING its segmentCache entry
- *  (geometry + material) alive. WebGL keeps the compiled program while the
- *  segmentCache material references it, so the first REAL spawn rebuilds a cheap
- *  InstancedMesh wrapper (makeInstancedMesh) reusing that material — program
- *  already hot, fresh small-capacity buffers, zero resident verts. Empty-guarded
- *  so it never touches a batch with a live mob (there are none at first load). */
-export function disposeEmptyWarmBatches(): void {
+/** Dispose every EMPTY batch's mesh (frees the parked-instance buffers — the
+ *  resident-vert cost) and drop it from the live `batches` map, KEEPING its
+ *  segmentCache entry (geometry + material) alive. WebGL keeps the compiled
+ *  program while the segmentCache material references it, so a later spawn of
+ *  that type rebuilds a cheap InstancedMesh wrapper (makeInstancedMesh) reusing
+ *  the material — program already hot, fresh small-capacity buffers, zero
+ *  resident verts. Empty-guarded so it never touches a batch with a live mob.
+ *  Used by the warmup-pass teardown AND on level teardown (where the previous
+ *  floor's now-empty batches would otherwise stay resident and accumulate
+ *  parked draws floor-over-floor). */
+export function disposeEmptyBatches(): void {
   for (const [key, b] of batches) {
     if (b.free.length < b.used) continue;   // has a live mob — leave it
     if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
@@ -512,13 +514,14 @@ export function tickCreatureInstancing(): void {
  *  appeared half-sunk in the new floor's spawn room. */
 export function clearCreatureInstancing(): void {
   for (const id of [...live.keys()]) releaseCreatureInstancing(id);
-  for (const b of batches.values()) {
-    for (let i = 0; i < b.mesh.count; i++) b.mesh.setMatrixAt(i, PARKED);
-    b.used = 0;
-    b.free.length = 0;
-    b.mesh.instanceMatrix.needsUpdate = true;
-    b.matrixDirty = false;
-  }
+  // DISPOSE the now-empty batches (all live entries released above), don't just
+  // park them: a parked batch stays resident in the scene drawing count=capacity
+  // instances, so the previous floor's enemy types pile up draw/vert cost
+  // floor-over-floor (and run-over-run — this map is module state, not reset on
+  // a new run). Disposing frees the instance buffers + drops the batch; the
+  // segmentCache keeps each type's geometry+material (program stays hot), so a
+  // type reappearing on the next floor rebuilds a cheap wrapper with no recompile.
+  disposeEmptyBatches();
 }
 
 /** Diagnostics: batch + slot counts (perf probes / DEV readouts). */

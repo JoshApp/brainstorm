@@ -5,7 +5,7 @@ import { buildCreature } from './build-creature';
 import { buildModel, type BuiltModel } from '../ecs/build-model';
 import {
   acquireCreatureInstancing, releaseCreatureInstancing,
-  disposeEmptyWarmBatches, nextWarmEntityId,
+  disposeEmptyBatches, nextWarmEntityId,
 } from '../mobs/creature-instancing';
 import { getWarmupHooks } from './warmup-registry';
 import type { EntityId } from '../ecs/types';
@@ -33,7 +33,7 @@ import type { EntityId } from '../ecs/types';
 //     (never disposes them) so the programs survive; it disposes only the
 //     geometry + meshes (the resident GPU cost). Instanced batches keep their
 //     program via the segmentCache material and shed only the parked-instance
-//     buffers (see disposeEmptyWarmBatches).
+//     buffers (see disposeEmptyBatches).
 //
 // Render the whole live scene once into a tiny offscreen target with shadows
 // forced on; frustumCulled is forced false on every warm subject so nothing is
@@ -153,7 +153,7 @@ export function runWarmupPass(
   disposeGeometry(warmGroup);
   scene.remove(warmGroup);
   for (const id of instancedIds) { try { releaseCreatureInstancing(id); } catch { /* skip */ } }
-  try { disposeEmptyWarmBatches(); } catch { /* skip */ }
+  try { disposeEmptyBatches(); } catch { /* skip */ }
 
   if (import.meta.env.DEV) {
     const progAfter = renderer.info.programs?.length ?? 0;
