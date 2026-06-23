@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildModel } from '../ecs/build-model';
+import { buildModel, mergeRigidSegments } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { CHEST, CHEST_IRON, CHEST_BOSS } from '../content/chest';
 import type { ItemSpec } from '../content/items';
@@ -62,6 +62,15 @@ export function spawnChest(
   onMimic?: (worldPos: THREE.Vector3) => void,
 ) {
   const built = buildModel(TIER_MODEL[tier]);
+  // Collapse the static shell into one mesh per material. The chest is a
+  // many-box prop (body floor + four walls + iron banding + corner posts);
+  // only the LID animates, and it lives under the `hinge` slot node — a
+  // separate node the per-node merge never folds across, and it's alone
+  // per-material there, so it survives as the live 'lid' part the open /
+  // mimic-breath animation drives. `ignoreNames` folds the static 'body'
+  // shell in too (nothing reads it after build). A boss chest drops from
+  // ~18 draw calls to ~6.
+  mergeRigidSegments(built, { ignoreNames: true });
   built.group.position.copy(pos);
   built.group.rotation.y = rotY;
   scene.add(built.group);

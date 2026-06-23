@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { groundYAt } from '../level/elevation';
 import type { StairsSpec } from '../level/types';
 import type { StyleMaterials } from '../style/materials';
@@ -46,6 +47,47 @@ export const STAIRWELL_HALF_WIDTH = STEP_WIDTH / 2;
 
 const FIRE_AWAKE = new THREE.Color(0xff7a22);
 
+/** Bake a set of same-material meshes into ONE merged mesh — their local
+ *  transforms folded into the geometry — and swap it in for the originals.
+ *  The stairwell is dozens of static stone boxes (parapet, eight steps,
+ *  throat walls, landing, arch) plus a stack of inverse-hull outline
+ *  shells; each was its own draw call. Collapsing per material turns ~50
+ *  meshes into a handful. The originals' geometries are pooled + shared
+ *  (level teardown skips pooled, so removing the meshes never disposes
+ *  them); the merged result is per-instance and gets cleaned up normally.
+ *  No-op below 2 meshes — nothing to save. */
+function bakeMerge(
+  parent: THREE.Object3D,
+  meshes: THREE.Mesh[],
+  renderOrder = 0,
+): void {
+  if (meshes.length < 2) return;
+  const mat = meshes[0].material as THREE.Material;
+  const geos: THREE.BufferGeometry[] = [];
+  let cast = false;
+  let receive = false;
+  for (const m of meshes) {
+    m.updateMatrix();
+    // Normalize to non-indexed so the merge can't trip on an attribute
+    // mismatch (matches mergeRigidSegments' battle-tested path).
+    const baked = m.geometry.clone().applyMatrix4(m.matrix);
+    const ni = baked.index ? baked.toNonIndexed() : baked;
+    if (ni !== baked) baked.dispose();
+    geos.push(ni);
+    cast = cast || m.castShadow;
+    receive = receive || m.receiveShadow;
+    parent.remove(m);
+  }
+  const merged = mergeGeometries(geos, false);
+  for (const g of geos) g.dispose();
+  if (!merged) { for (const m of meshes) parent.add(m); return; }
+  const mesh = new THREE.Mesh(merged, mat);
+  mesh.castShadow = cast;
+  mesh.receiveShadow = receive;
+  mesh.renderOrder = renderOrder;
+  parent.add(mesh);
+}
+
 export function spawnStairs(
   parent: THREE.Object3D,
   spec: StairsSpec,
@@ -80,6 +122,13 @@ export function spawnStairs(
   // outline material.
   const outlineTargets: THREE.Mesh[] = [];
 
+  // Static opaque stone, bucketed by material so each bucket collapses to
+  // ONE merged mesh at the end (see bakeMerge). Nothing in these arrays
+  // animates — the doors, bonfire, god-ray, ring and ward stay separate.
+  const wallStatic: THREE.Mesh[] = [];
+  const floorStatic: THREE.Mesh[] = [];
+  const dressedStatic: THREE.Mesh[] = [];
+
   // ── PARAPET LIP ───────────────────────────────────────────────────
   // Short low wall ringing the OPENING above the floor — sells "carved
   // hole in the floor" rather than "stairs plopped on top." Three sides
@@ -100,6 +149,7 @@ export function spawnStairs(
     lip.receiveShadow = true;   // parapet = shell, receive-only (was casting)
     group.add(lip);
     outlineTargets.push(lip);
+    wallStatic.push(lip);
   }
   // Far-end parapet (across the back of the well so the player doesn't
   // see beyond it into world geometry).
@@ -111,6 +161,7 @@ export function spawnStairs(
   farLip.receiveShadow = true;   // parapet = shell, receive-only (was casting)
   group.add(farLip);
   outlineTargets.push(farLip);
+  wallStatic.push(farLip);
 
   // ── STEPS ─────────────────────────────────────────────────────────
   // Treads are RECESSED (top tread top edge at y = -TOP_RECESS). The
@@ -126,6 +177,7 @@ export function spawnStairs(
     tread.position.set(0, yTop - 0.025, zFront + STEP_DEPTH / 2);
     tread.receiveShadow = true;
     group.add(tread);
+    floorStatic.push(tread);
     const riser = new THREE.Mesh(
       pooledBox(STEP_WIDTH, STEP_HEIGHT, 0.04),
       materials.wall,
@@ -133,6 +185,7 @@ export function spawnStairs(
     riser.position.set(0, yTop - STEP_HEIGHT / 2, zFront);
     riser.receiveShadow = true;
     group.add(riser);
+    wallStatic.push(riser);
     // Only outline the first three treads + risers — those are the
     // visible "edge into the void" that the eye reads. Outlining
     // every step would just glow everywhere, washing the cue out.
@@ -158,6 +211,7 @@ export function spawnStairs(
     );
     wall.receiveShadow = true;
     group.add(wall);
+    wallStatic.push(wall);
   }
 
   // ── THE LANDING + THE FIRE BELOW ──────────────────────────────────
@@ -178,6 +232,7 @@ export function spawnStairs(
   landing.position.set(0, landY - 0.03, totalDepth + landDepth / 2);
   landing.receiveShadow = true;
   group.add(landing);
+  floorStatic.push(landing);
   // Landing side walls — continue the throat so the alcove never leaks
   // world geometry at its flanks.
   for (const side of [-1, 1]) {
@@ -188,6 +243,7 @@ export function spawnStairs(
     aw.position.set(side * (STEP_WIDTH / 2 + 0.05), -totalDrop / 2 - 0.3, totalDepth + landDepth / 2);
     aw.receiveShadow = true;
     group.add(aw);
+    wallStatic.push(aw);
   }
 
   // Round-top archway across the landing's far end. PS1 arch: two
@@ -203,27 +259,32 @@ export function spawnStairs(
     const jamb = new THREE.Mesh(pooledBox(jambW, ARCH_SPRING, 0.26), materials.dressed);
     jamb.position.set(side * (ARCH_W / 2 + jambW / 2), landY + ARCH_SPRING / 2, archZ);
     group.add(jamb);
+    dressedStatic.push(jamb);
     // Face panels left/right of the opening, floor to throat top.
     const panelW = (STEP_WIDTH - ARCH_W) / 2 - jambW;
     if (panelW > 0.02) {
       const panel = new THREE.Mesh(pooledBox(panelW, archFaceH, 0.18), materials.wall);
       panel.position.set(side * (ARCH_W / 2 + jambW + panelW / 2), landY + archFaceH / 2, archZ);
       group.add(panel);
+      wallStatic.push(panel);
     }
     // Crown wedges — angled boxes stepping toward the centre.
     const wedge = new THREE.Mesh(pooledBox(ARCH_W * 0.34, 0.16, 0.24), materials.dressed);
     wedge.position.set(side * ARCH_W * 0.26, landY + ARCH_SPRING + ARCH_RISE * 0.55, archZ);
     wedge.rotation.z = -side * 0.55;
     group.add(wedge);
+    dressedStatic.push(wedge);
   }
   const keyWedge = new THREE.Mesh(pooledBox(ARCH_W * 0.30, 0.18, 0.26), materials.dressed);
   keyWedge.position.set(0, landY + ARCH_SPRING + ARCH_RISE, archZ);
   group.add(keyWedge);
+  dressedStatic.push(keyWedge);
   // Face fill ABOVE the arch crown up to the throat top.
   const overH = archFaceH - (ARCH_SPRING + ARCH_RISE + 0.18);
   const over = new THREE.Mesh(pooledBox(ARCH_W + jambW * 2, overH, 0.18), materials.wall);
   over.position.set(0, landY + ARCH_SPRING + ARCH_RISE + 0.18 + overH / 2, archZ);
   group.add(over);
+  wallStatic.push(over);
 
   // Darkness through the opening — pure black chamber walls beyond the
   // arch, so the fire floats in void until it wakes.
@@ -380,6 +441,8 @@ export function spawnStairs(
   /** Add TWO inverse-hull duplicates of a mesh: a wide soft
    *  outer halo + a tight bright inner edge. Both parented to
    *  the original's parent so they follow it. */
+  const outlineOuter: THREE.Mesh[] = [];
+  const outlineInner: THREE.Mesh[] = [];
   const addOutline = (mesh: THREE.Mesh) => {
     const outer = new THREE.Mesh(mesh.geometry, outlineOuterMat);
     outer.position.copy(mesh.position);
@@ -387,14 +450,29 @@ export function spawnStairs(
     outer.scale.copy(mesh.scale).multiplyScalar(1.22);
     outer.renderOrder = -2;
     mesh.parent?.add(outer);
+    outlineOuter.push(outer);
     const inner = new THREE.Mesh(mesh.geometry, outlineMat);
     inner.position.copy(mesh.position);
     inner.rotation.copy(mesh.rotation);
     inner.scale.copy(mesh.scale).multiplyScalar(1.10);
     inner.renderOrder = -1;
     mesh.parent?.add(inner);
+    outlineInner.push(inner);
   };
   for (const m of outlineTargets) addOutline(m);
+
+  // ── COLLAPSE THE STATIC STONE ─────────────────────────────────────
+  // Every box above shares one of three stone materials and never moves.
+  // Bake each bucket into a single mesh — and likewise the two stacks of
+  // inverse-hull outline shells (one per shared outline material). The
+  // outline geometry must be baked AFTER the shells are posed (above), so
+  // this runs here. Drops the stairwell from ~50 draw calls to ~5; the
+  // animated rig (doors, bonfire, god-ray, ring, ward) is untouched.
+  bakeMerge(group, wallStatic);
+  bakeMerge(group, floorStatic);
+  bakeMerge(group, dressedStatic);
+  bakeMerge(group, outlineOuter, -2);
+  bakeMerge(group, outlineInner, -1);
 
   // Two-state god ray.
   //
