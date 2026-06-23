@@ -530,6 +530,21 @@ export function clearCreatureInstancing(): void {
   disposeEmptyBatches();
 }
 
+export interface BatchDiag {
+  key: string; used: number; capacity: number; count: number; free: number; inScene: boolean;
+}
+/** Per-batch state dump for leak hunting: the live `batches` MAP. Compare its
+ *  size against how many enemy InstancedMeshes the scene audit actually finds —
+ *  a gap = orphaned batch meshes (in the scene graph but dropped from the map,
+ *  so the tick can't update them and teardown can't reach them). */
+export function getInstancingDiag(): { mapSize: number; live: number; batches: BatchDiag[] } {
+  const out: BatchDiag[] = [];
+  for (const [key, b] of batches) {
+    out.push({ key, used: b.used, capacity: b.capacity, count: b.mesh.count, free: b.free.length, inScene: !!b.mesh.parent });
+  }
+  return { mapSize: batches.size, live: live.size, batches: out };
+}
+
 /** Diagnostics: batch + slot counts (perf probes / DEV readouts). */
 export function creatureInstancingStats(): { batches: number; liveEnemies: number; slots: number } {
   let slots = 0;
