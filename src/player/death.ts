@@ -7,6 +7,8 @@ import { showEndScreen } from '../ui/end-screen';
 import { getRunState, elapsedString, clearSave } from '../state/run-state';
 import { recordRunDeath, getRunDiscoveries } from '../state/meta-state';
 import { reportDeath } from '../net/delve-net';
+import { recordDeath } from '../ai/player-profile';
+import { speakDeath } from '../broadcast/voice';
 import { captureRunTape } from '../net/run-sync';
 import { DEV } from '../debug/dev';
 import { dumpInteractTrace } from '../debug/interact-trace';
@@ -139,6 +141,16 @@ export function triggerDeath() {
     runSeed: run?.startedAt ?? 0,
     killedBy: killingBlowLabel(),
   });
+  // AI/voice layer (Phase-5 PROTOTYPE) — dev-only until the prod Worker ships,
+  // gated here so it strips from the static deploy. Record the death into the
+  // behavioral profile BEFORE the voice reads it, so the deep's remark reflects
+  // this death too ("still feeding the fire"), then let the voice in the deep
+  // remark (funnels to /api/ai — local shim in dev, a Worker in prod later;
+  // best-effort, fire-and-forget). See src/ai/ and src/broadcast/voice.ts.
+  if (DEV) {
+    recordDeath({ depth, kills, killedBy: killingBlowLabel() });
+    speakDeath({ depth, kills, killedBy: killingBlowLabel() });
+  }
   // Funnel telemetry — where runs end + what kills (the bounce signal). No-op
   // until a telemetry endpoint is configured; no PII (just depth + cause).
   track('death', { depth, kills, killedBy: killingBlowLabel() });

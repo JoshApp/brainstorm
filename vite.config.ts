@@ -93,6 +93,12 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // Runtime AI calls hit /api/ai. In dev, vite proxies that to the local
+    // voice-shim (server/voice-shim); in prod the same path is the Cloudflare
+    // Worker. Run `npm run voice-shim` alongside `npm run dev` (or `npm run dev:all`).
+    proxy: {
+      '/api/ai': 'http://localhost:8787',
+    },
   },
   build: {
     // 'hidden' = emit .map files (so a captured minified stack can be

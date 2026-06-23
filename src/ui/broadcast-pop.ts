@@ -37,7 +37,7 @@ function ensureContainer() {
   return container;
 }
 
-export function broadcastPop(title: string, desc: string) {
+export function broadcastPop(title: string, desc: string, headerText = 'ACHIEVEMENT UNLOCKED') {
   const root = ensureContainer();
   playBroadcastChime();
 
@@ -60,7 +60,7 @@ export function broadcastPop(title: string, desc: string) {
   });
 
   const header = document.createElement('div');
-  header.textContent = 'ACHIEVEMENT UNLOCKED';
+  header.textContent = headerText;
   Object.assign(header.style, {
     fontSize: '10px',
     fontWeight: '700',

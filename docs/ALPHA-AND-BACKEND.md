@@ -240,6 +240,92 @@ Migration is ~1hr (same `dist/`), the real cost being a rework of the
 
 ---
 
+## LLM proxy host & the two planes [DECIDED 2026-06-22]
+
+> **The runtime LLM is a stateless Worker calling the Anthropic API. A
+> separate authoring plane — a resident Claude Code daemon billed against
+> a Max subscription — does build-time content and legend curation.
+> SpacetimeDB owns state; the Worker owns "may this call happen now";
+> neither does the other's job.**
+
+**It cannot be a reducer — settle this.** Reducers are deterministic,
+transactional, sandboxed WASM; the canonical event log replays them
+identically forever. An LLM call is non-deterministic, slow (seconds),
+and external — a reducer blocking on Anthropic would poison the log.
+This is not a SpacetimeDB-vs-X tradeoff; it's a property of what an LLM
+call *is*. The proxy lives outside SpacetimeDB no matter what.
+
+**Runtime plane — player-facing (Phase 5): a Cloudflare Worker + AI
+Gateway.**
+- Stateless w.r.t. game state (SpacetimeDB stays authoritative). The
+  Worker's only authority is *"has this player earned an LLM call right
+  now"* — rate-limit + spend cap — never game rules.
+- Flow: client → Worker → `auth → per-user rate-limit → global spend cap
+  → content-hash cache → Anthropic → (optionally write the result back to
+  a SpacetimeDB table for sharing)`.
+- AI Gateway supplies the spend cap + rate-limit + cache the rollout
+  already demands. When the static client moves to Cloudflare Pages
+  (Hosting section), the Worker becomes same-origin `/api/*` — CORS gone.
+- Model: **Haiku 4.5** for the content lane (item flavor, epitaphs —
+  short, stylistic, cheap); Sonnet for the rare richer call. **Opus is
+  not a runtime model** — it lives on the authoring plane.
+
+**Why the cost worry is smaller than it looks — caching.** The runtime
+LLM is in the *content lane* (shared artifacts), not a per-player
+conversation. Item descriptions key on item id → one generation, then
+every player hits cache forever. Epitaphs key on a coarse death-context
+bucket → high hit rate. Per-token cost is dominated by cold
+first-generation (one-time, cheap), not by traffic. This is the
+structural reason DELVE's AI economics work where a per-player chatbot's
+wouldn't — keeping the LLM in the shared-content lane is what pays off.
+
+**Authoring plane — NOT public (the `aiinfluencer/daemon-core` work): a
+resident Claude Code daemon, billed against a Max subscription.**
+- Our process, run by us, off-peak — not per-player traffic — so
+  Max-pool billing is fine and ToS-clean. A personal subscription must
+  never sit in front of public players; that is what the Worker is for.
+- Runs the build-time authoring layers (the layered-LLM system CLAUDE.md
+  describes) and the legend pipeline (below). Reads the SpacetimeDB event
+  log, writes promoted content back.
+
+## The legend pipeline [LEANING — post-alpha]
+
+> **Validated, exciting runs get curated into canonical content,
+> attributed to the delver who made them. The world is authored by its
+> players, asynchronously.**
+
+The substrate already exists: the `(identity, run_seed, t)` event log
+(content store), `verify-runs` (the legitimacy gate), `broadcast/` (the
+surfacing), and the tarot cards (`THE-CARDS.md`) as a natural artifact
+format for a promoted unique. The only new part is the **promotion
+gate**, run on the authoring plane (daemon), off-peak:
+
+```
+verified run → heuristic shortlist ("interesting?") → AI scores
+"legend-worthy?" → safety + balance pass → canonize, attribute to the
+original delver
+```
+
+Containment: a cheater can forge their own run, but it fails
+`verify-runs` → never promotes. Blast radius stays at the cheater's own
+session. No real-time authority needed — the gate is async and fully
+ours. Moderation discipline (the epitaph-template rule) applies: nothing
+player-influenced reaches *shared* content without the safety pass.
+Promote artifacts (items, cards), not raw free text.
+
+## The determinism line [DECIDED — hold it consciously]
+
+`verify-runs` works *because* the runtime LLM never touches the
+deterministic tape — it narrates (`broadcast/`, item flavor, epitaphs),
+it does not adjudicate. Keep it there. The day "the dungeon notices you"
+wants to *affect mechanics* (spawn an ambush because you're cocky), that
+decision becomes part of the run's outcome and breaks pure replay —
+you'd then have to record + sign the AI decision into the tape, or keep
+it cosmetic. We keep it cosmetic. Crossing this line is a deliberate,
+expensive decision, not an incremental one.
+
+---
+
 ## Pre-release checklist [OPEN — the unglamorous must-dos]
 
 - **Crash / error telemetry** (Sentry-style, DEV-gated) — can't polish
@@ -262,6 +348,7 @@ Migration is ~1hr (same `dist/`), the real cost being a rework of the
   only if energy costs or data-residency push us.
 - **Determinism branch** — land seed-at-start + snapshot/restore to
   unlock airtight replay anti-cheat (currently trust-but-verify).
-- **Where the LLM proxy lives** — Cloudflare (edge cache + AI Gateway
-  spend caps) vs Supabase Edge Function (one fewer vendor). Decide at
-  Phase 5.
+- **Where the LLM proxy lives** — **[DECIDED 2026-06-22]** Cloudflare
+  Worker + AI Gateway (runtime, player-facing) + a Max-billed Claude Code
+  daemon (authoring / legend curation). See "LLM proxy host & the two
+  planes" above.

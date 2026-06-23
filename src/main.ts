@@ -37,6 +37,8 @@ import { initFogWalkthrough, isFogWalkthroughActive } from './player/fog-walkthr
 import { initAchievements } from './broadcast/achievements';
 import { initEventLog } from './broadcast/event-log';
 import { initRewardAudio } from './audio/reward-audio';
+import { initPlayerProfile } from './ai/player-profile';
+import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
 import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
@@ -832,6 +834,14 @@ initStatusVfxPool(scene);
 // docs/ALPHA-AND-BACKEND.md.
 initNetwork();
 initDeathFeed();
+// AI/voice layer (Phase-5 PROTOTYPE) — dev-only until the prod Worker ships.
+// Gated at the call site so the whole layer dead-code-eliminates from the
+// static deploy (the internal AI_ENABLED gate is belt-and-suspenders). Flip
+// this — and AI_ENABLED in ai-client.ts — together when /api/ai is real.
+if (import.meta.env.DEV) {
+  initPlayerProfile(); // the behavioral fingerprint the deep reads
+  initAIRewards(); // the deep remarks on finds
+}
 // Drain any queued run tapes (recorded offline) on every connect.
 initRunSync();
 // Launch telemetry — error capture + funnel events. No-op until an endpoint is
