@@ -333,10 +333,15 @@ export const CONFIG = {
   // === RENDER ===
   PIXEL_RATIO_CAP: 2,          // cap DPR on desktop (debug) — crisp
   // Mobile caps DPR lower: phones are fragment/fillrate-bound, and a 2x
-  // DPR panel renders 4x the pixels of 1x. 1.5 keeps text/edges sharp
-  // while cutting ~44% of the fragment work vs 2x — the single biggest
-  // lever against overdraw in the boss arenas. Chosen by isDesktopLike().
-  PIXEL_RATIO_CAP_MOBILE: 1.5,
+  // DPR panel renders 4x the pixels of 1x. This is the SINGLE biggest lever
+  // against fill cost — and uniquely it scales the full-res PSX blit too (the
+  // heaviest fragment pass), which RENDER SCALE + adaptive-resolution can't
+  // touch (they only shrink the low-res scene target). On-phone profiling
+  // showed the frame GPU-bound (~25ms) with a view-dependent fill sine as near
+  // surfaces fill the screen; 1.5 → 1.25 cuts ~31% of every fragment pass.
+  // The 0.4 low-res scene + sharp-upscale already carry the soft PS1 look, so
+  // the density drop reads as on-aesthetic, not blur. Chosen by isDesktopLike().
+  PIXEL_RATIO_CAP_MOBILE: 1.25,
   FOV: 70,                     // vertical FOV. In phone landscape ≈ 100° horizontal — wide enough for first-person crawler
 
   // Light-pool slot budget per category (scene/light-pool.ts). EVERY slot —
