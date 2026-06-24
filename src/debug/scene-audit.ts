@@ -1,9 +1,8 @@
 import * as THREE from 'three';
-import { getInstancingDiag, type BatchDiag } from '../mobs/creature-instancing';
 
 // Scene audit — a read-only tally of every drawable in the scene graph, grouped
 // by category, for finding LEAKS: when `geo`/draws climb and never recover, this
-// names WHAT is piling up (corpses? drops? blood? instanced batches?) instead of
+// names WHAT is piling up (corpses? drops? blood? enemy bodies?) instead of
 // guessing. Captured into a perf recording's meta at save time, so a post-fight
 // recording shows the accumulated scene. Pure read — never mutates anything.
 
@@ -15,12 +14,6 @@ export interface SceneAudit {
   total: { objects: number; meshes: number; instances: number; uniqueGeometries: number };
   /** Per-category tally, sorted desc by mesh count when serialised. */
   byKind: Record<string, SceneAuditEntry>;
-  /** How many `dbgKind:'enemy'` InstancedMeshes are actually IN the scene graph
-   *  (creature-instancing batches). Compare to instancing.mapSize: a gap =
-   *  orphaned batch meshes left in the scene after being dropped from the map. */
-  enemyBatchMeshesInScene: number;
-  /** The live `batches` map state (key/used/capacity/count/free/inScene). */
-  instancing: { mapSize: number; live: number; batches: BatchDiag[] };
 }
 
 /** Category for a drawable — prefer the explicit debug tags the codebase already
@@ -40,13 +33,12 @@ function categorize(o: THREE.Object3D): string {
 export function auditScene(root: THREE.Object3D): SceneAudit {
   const byKind: Record<string, SceneAuditEntry> = {};
   const geometries = new Set<string>();
-  let objects = 0, meshes = 0, instances = 0, enemyBatchMeshesInScene = 0;
+  let objects = 0, meshes = 0, instances = 0;
 
   root.traverse((o) => {
     objects++;
     const m = o as THREE.Mesh & { isMesh?: boolean; isInstancedMesh?: boolean; isSprite?: boolean; count?: number };
     if (!m.isMesh && !m.isInstancedMesh && !m.isSprite) return;
-    if (m.isInstancedMesh && o.userData?.dbgKind === 'enemy') enemyBatchMeshesInScene++;   // count BEFORE the visible cull
     if (m.visible === false) return;   // hidden meshes aren't drawn — don't count them as load
     const key = categorize(o);
     const e = byKind[key] || (byKind[key] = { meshes: 0, instances: 0 });
@@ -65,7 +57,5 @@ export function auditScene(root: THREE.Object3D): SceneAudit {
   return {
     total: { objects, meshes, instances, uniqueGeometries: geometries.size },
     byKind: sorted,
-    enemyBatchMeshesInScene,
-    instancing: getInstancingDiag(),
   };
 }

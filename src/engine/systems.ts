@@ -26,7 +26,6 @@ import { isInspectActive, INSPECT_AMBIENT, tickInspectFraming } from '../debug/i
 import { setTorchProximity, setAudioListenerPose } from '../audio/sfx';
 import { tickAlerts } from '../mobs/alerts';
 import { tickPack } from '../mobs/pack';
-import { tickCreatureInstancing } from '../mobs/creature-instancing';
 import { tickExploredMap } from '../level/explored-map';
 import { recomputePlayerStats } from '../state/player-stats';
 import { syncHudStores } from '../state/hud-stores';
@@ -548,13 +547,6 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // this frame's done-state is current). Presentation-only (untagged →
     // excluded from the sim digest). See src/level/explored-map.ts.
     { name: 'explored-map', phase: 'always', tick() { tickExploredMap(camera, getLevel()); } },
-
-    // Instanced-creature writeback — copy each live enemy's joint-segment
-    // world matrices into the shared InstancedMesh slots (zero-scale when the
-    // enemy is room-culled or otherwise hidden). AFTER room-culling so the
-    // visibility it bakes is this frame's; BEFORE render. Phase 'always' so
-    // frozen debug scenarios still pose instanced mobs (cf. the lamp system).
-    { name: 'creature-instancing', phase: 'always', tick() { tickCreatureInstancing(); } },
 
     // Bind the N nearest registered lights to the pool's PointLight slots.
     // Runs every frame so lighting updates with camera movement even when

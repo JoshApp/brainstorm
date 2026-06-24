@@ -541,16 +541,6 @@ export const CONFIG = {
   ENEMY_HIT_FLASH_COLOR: 0xffeedd,
   ENEMY_HIT_FLASH_DURATION: 0.08,
 
-  // === INSTANCED CREATURE RENDERING (src/mobs/creature-instancing.ts) ===
-  // Same-type enemies share one THREE.InstancedMesh per merged joint-segment
-  // × material, so a 12-mob same-type brawl pays ~one draw per segment
-  // instead of ~one per segment PER MOB. Master switch: false = exact legacy
-  // path (per-enemy meshes; bosses always use it). DEV A/B: ?instancing=0.
-  CREATURE_INSTANCING: {
-    ENABLED: true,
-    INITIAL_CAPACITY: 8,   // instance slots per batch at creation; grows by doubling
-  },
-
   // === ENEMY AI (cross-instance perception + idle feel) ===
   // The "I see you" hesitation, search-phase length, and idle gaze drift.
   // Rationale for each lives at its use site in src/mobs/enemy.ts.

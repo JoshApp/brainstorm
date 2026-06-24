@@ -2,13 +2,9 @@ import * as THREE from 'three';
 import { ENEMIES } from './enemies';
 import { ITEMS } from './items';
 import { buildCreature } from './build-creature';
-import { buildModel, type BuiltModel } from '../ecs/build-model';
-import {
-  acquireCreatureInstancing, releaseCreatureInstancing,
-  disposeEmptyBatches, nextWarmEntityId,
-} from '../mobs/creature-instancing';
+import { buildModel } from '../ecs/build-model';
+import { buildSkinnedCreature } from '../mobs/creature-skinned';
 import { getWarmupHooks } from './warmup-registry';
-import type { EntityId } from '../ecs/types';
 
 // ── The unified warmup pass ─────────────────────────────────────────────────
 //
@@ -77,37 +73,18 @@ export function runWarmupPass(
   warmGroup.position.copy(camera.position);
   scene.add(warmGroup);
 
-  const instancedIds: EntityId[] = [];
-
-  // ENEMIES — non-bosses through the REAL instanced path (acquire adds the
-  // batch InstancedMesh to the scene); bosses render non-instanced in the group.
+  // ENEMIES — fold each creature into its rigid-skinned SkinnedMesh (the live
+  // render path, docs/CREATURE-RENDER-V2.md) and add it so the render below
+  // compiles the SKINNING shader variant — otherwise the first enemy spawn
+  // in-game recompiles it and hitches. castShadow stays false (blob shadow), as
+  // the builder sets, so the skinned-shadow variant isn't (and needn't be) warmed.
   for (const spec of Object.values(ENEMIES)) {
     try {
       const creature = buildCreature(spec.creature);
-      const container = new THREE.Group();
-      container.add(creature.group);
-      const built: BuiltModel = {
-        group: creature.group, parts: creature.parts, slots: creature.joints,
-        materials: creature.materials, hitTargets: creature.hitTargets,
-      };
-      // Match the LIVE enemy: creatures use a blob shadow, NOT the lamp's cube
-      // (enemy.ts sets castShadow=false). acquire bakes the FIRST donor's
-      // castShadow into the shared segmentCache, and the warm pass donates first
-      // — so setting true here poisoned every enemy batch into casting cube
-      // shadows: ~6 extra shadow-pass draws per segment, "~half the frame in a
-      // fight" (enemy.ts). Keep it false so batches never cast.
-      creature.group.traverse((o) => { (o as THREE.Mesh).castShadow = false; });
-      const id = nextWarmEntityId();
-      const handle = acquireCreatureInstancing(scene, id, spec, built, container);
-      if (handle) {
-        instancedIds.push(id);
-        // segmentCache retains the BATCH material; the batch mesh (frustumCulled
-        // false by default) draws on the render below and compiles its program.
-      } else {
-        noCull(creature.group);
-        warmGroup.add(creature.group);
-        retainMaterials(creature.group);   // boss: keep its program alive
-      }
+      buildSkinnedCreature(creature);
+      noCull(creature.group);
+      warmGroup.add(creature.group);
+      retainMaterials(creature.group);   // keep the skinned program alive
     } catch { /* one bad spec must not sink the pass */ }
   }
 
@@ -158,12 +135,10 @@ export function runWarmupPass(
   for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
   disposeGeometry(warmGroup);
   scene.remove(warmGroup);
-  for (const id of instancedIds) { try { releaseCreatureInstancing(id); } catch { /* skip */ } }
-  try { disposeEmptyBatches(); } catch { /* skip */ }
 
   if (import.meta.env.DEV) {
     const progAfter = renderer.info.programs?.length ?? 0;
     // eslint-disable-next-line no-console
-    console.log(`[warmup-pass] +${progAfter - progBefore} programs (${progBefore}→${progAfter}); retained ${retained.length} materials, ${instancedIds.length} instanced enemy types. prog should now hold flat through combat.`);
+    console.log(`[warmup-pass] +${progAfter - progBefore} programs (${progBefore}→${progAfter}); retained ${retained.length} materials. prog should now hold flat through combat.`);
   }
 }

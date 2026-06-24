@@ -119,6 +119,7 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
   const mesh = new THREE.SkinnedMesh(geometry, materials.length === 1 ? materials[0] : materials);
   mesh.castShadow = false;          // creatures use a blob shadow (as today)
   mesh.frustumCulled = false;       // matrix-driven bounds; never cull the whole mob
+  mesh.userData.dbgKind = 'enemy';  // so the scene-audit tallies enemy bodies
   root.add(mesh);
   mesh.bind(skeleton);              // bindMatrix defaults to the mesh's matrixWorld (= root)
 
@@ -156,37 +157,48 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     pos.needsUpdate = true;
   };
   // Snapshot a vertex list's CURRENT (skinned) world positions into a free chunk
-  // mesh centred on its centroid, in the material that covers most of it (so it
-  // reads in the right colour + dissolves in sync — same material object).
+  // mesh centred on its centroid, preserving ALL of the limb's materials as
+  // groups (so a multi-material limb — e.g. a SKULL with emissive eye-lights —
+  // renders exactly like the body; a single dominant material made the head read
+  // as a wrong/unlit lump).
   //
   // Normals are carried from the REAL bind normals, transformed through the same
   // bone (offset-point method: skin (p+n) and p, subtract). computeVertexNormals
   // would derive them from winding, which mirrored limbs (negative-scale bones)
-  // flip → the chunk lit from the inside, reading as a "wrong / unlit" material.
-  // UV is copied too so a material that samples it matches the body exactly.
+  // flip → the chunk lit from the inside. UV is copied too so a material that
+  // samples it matches the body exactly.
   const nrmAttr = geometry.attributes.normal as THREE.BufferAttribute | undefined;
   const uvAttr = geometry.attributes.uv as THREE.BufferAttribute | undefined;
   const _p = new THREE.Vector3(), _pn = new THREE.Vector3(), _n = new THREE.Vector3();
   const buildChunk = (verts: number[]): THREE.Mesh | null => {
     if (verts.length < 3) return null;
+    // Bucket verts by their material so the chunk keeps the limb's real material
+    // groups (in a stable order), not just the most common one.
+    const byMat = new Map<number, number[]>();
+    for (const v of verts) { const mi = matOf(v); const a = byMat.get(mi); if (a) a.push(v); else byMat.set(mi, [v]); }
     const posA = new Float32Array(verts.length * 3);
     const nrmA = new Float32Array(verts.length * 3);
     const uvA = uvAttr ? new Float32Array(verts.length * 2) : null;
-    const matVotes = new Map<number, number>();
-    let sx = 0, sy = 0, sz = 0;
-    for (let i = 0; i < verts.length; i++) {
-      const v = verts[i];
-      _p.fromBufferAttribute(pos, v); mesh.applyBoneTransform(v, _p); _p.applyMatrix4(mesh.matrixWorld);
-      posA[i * 3] = _p.x; posA[i * 3 + 1] = _p.y; posA[i * 3 + 2] = _p.z;
-      sx += _p.x; sy += _p.y; sz += _p.z;
-      if (nrmAttr) {
-        // world(p+n) - world(p) = the bone-transformed normal (mirror-correct).
-        _pn.fromBufferAttribute(pos, v).add(_n.fromBufferAttribute(nrmAttr, v));
-        mesh.applyBoneTransform(v, _pn); _pn.applyMatrix4(mesh.matrixWorld).sub(_p).normalize();
-        nrmA[i * 3] = _pn.x; nrmA[i * 3 + 1] = _pn.y; nrmA[i * 3 + 2] = _pn.z;
+    const chunkMats: THREE.Material[] = [];
+    const grp: { start: number; count: number; mat: number }[] = [];
+    let w = 0, sx = 0, sy = 0, sz = 0;
+    for (const [mi, vs] of byMat) {
+      const gStart = w;
+      for (const v of vs) {
+        _p.fromBufferAttribute(pos, v); mesh.applyBoneTransform(v, _p); _p.applyMatrix4(mesh.matrixWorld);
+        posA[w * 3] = _p.x; posA[w * 3 + 1] = _p.y; posA[w * 3 + 2] = _p.z;
+        sx += _p.x; sy += _p.y; sz += _p.z;
+        if (nrmAttr) {
+          // world(p+n) - world(p) = the bone-transformed normal (mirror-correct).
+          _pn.fromBufferAttribute(pos, v).add(_n.fromBufferAttribute(nrmAttr, v));
+          mesh.applyBoneTransform(v, _pn); _pn.applyMatrix4(mesh.matrixWorld).sub(_p).normalize();
+          nrmA[w * 3] = _pn.x; nrmA[w * 3 + 1] = _pn.y; nrmA[w * 3 + 2] = _pn.z;
+        }
+        if (uvA && uvAttr) { uvA[w * 2] = uvAttr.getX(v); uvA[w * 2 + 1] = uvAttr.getY(v); }
+        w++;
       }
-      if (uvA && uvAttr) { uvA[i * 2] = uvAttr.getX(v); uvA[i * 2 + 1] = uvAttr.getY(v); }
-      matVotes.set(matOf(v), (matVotes.get(matOf(v)) ?? 0) + 1);
+      grp.push({ start: gStart, count: vs.length, mat: chunkMats.length });
+      chunkMats.push(mats[mi] ?? mats[0]);
     }
     const cx = sx / verts.length, cy = sy / verts.length, cz = sz / verts.length;
     for (let i = 0; i < posA.length; i += 3) { posA[i] -= cx; posA[i + 1] -= cy; posA[i + 2] -= cz; }
@@ -194,9 +206,8 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     cg.setAttribute('position', new THREE.BufferAttribute(posA, 3));
     if (nrmAttr) cg.setAttribute('normal', new THREE.BufferAttribute(nrmA, 3)); else cg.computeVertexNormals();
     if (uvA) cg.setAttribute('uv', new THREE.BufferAttribute(uvA, 2));
-    let bestMat = 0, bestVotes = -1;
-    for (const [m, c] of matVotes) if (c > bestVotes) { bestVotes = c; bestMat = m; }
-    const chunk = new THREE.Mesh(cg, mats[bestMat] ?? mats[0]);
+    if (chunkMats.length > 1) for (const g of grp) cg.addGroup(g.start, g.count, g.mat);
+    const chunk = new THREE.Mesh(cg, chunkMats.length === 1 ? chunkMats[0] : chunkMats);
     chunk.position.set(cx, cy, cz);
     chunk.updateMatrix();             // bake centroid into local matrix so
     chunk.castShadow = false;         // spawnFlungPart's attach() preserves it

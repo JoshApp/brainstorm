@@ -40,19 +40,8 @@ import {
 } from '../ecs/world';
 import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
-import {
-  acquireCreatureInstancing, releaseCreatureInstancing,
-} from './creature-instancing';
 import { buildSkinnedCreature } from './creature-skinned';
 import { isPooledGeometry } from '../scene/geometry-pool';
-
-// Creature Render V2 (rigid-skinned, docs/CREATURE-RENDER-V2.md) — gated swap.
-// When on, an enemy renders as ONE SkinnedMesh (joints = bones, live anim drives
-// the GPU deform) instead of per-joint instanced segments. Flash + dissolve +
-// core-reactor all key off `built.materials` (which the skinned mesh REUSES), so
-// they work unchanged with `instancing = null` (the same seam bosses use).
-const CREATURE_V2 = typeof location !== 'undefined'
-  && new URLSearchParams(location.search).get('creatureV2') === '1';
 import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
 import { tryJustDodge } from '../combat/just-dodge';
@@ -100,9 +89,6 @@ export function disposeEnemy(e: Enemy): void {
   unregisterDamageSink(e.entityId);
   destroyEntity(e.entityId);
   leavePack(e.entityId);
-  // Free any shared-InstancedMesh slots (no corpse — the level subtree is
-  // being torn down wholesale). Idempotent; killed mobs already released.
-  releaseCreatureInstancing(e.entityId);
 }
 
 // Enemy = a mob driven by its EnemySpec.
@@ -349,22 +335,15 @@ export function createEnemy(
   blob.visible = !spec.burrowed;   // hidden while buried; revealed on emerge
   container.add(blob);
   // World entity id — generated here (rather than at the ECS spawn below)
-  // so the instancing registry can key on it. Same id, same lifecycle.
+  // so the entity id keys the same lifecycle. Same id, same lifecycle.
   const entityId = generateEntityId(`enemy-${spec.id}`);
-  // Instanced rendering — same-type mobs share one InstancedMesh per joint
-  // segment (src/mobs/creature-instancing.ts). The model is fully composed
-  // at this point (merged, scaled, shadow-flagged); acquire hides the
-  // per-enemy segment meshes and assigns instance slots. null = legacy
-  // per-enemy rendering (bosses, or the CONFIG.CREATURE_INSTANCING switch
-  // off) — every path below works identically either way.
-  // V2: skip instancing, fold the segments into one SkinnedMesh. Otherwise the
-  // legacy per-joint instancing path (null for bosses / switch-off).
-  const instancing = CREATURE_V2
-    ? null
-    : acquireCreatureInstancing(scene, entityId, spec, built, container);
-  // Skinned handle kept so dismember/part-breaks can collapse limbs out of the
-  // single mesh (joint.visible does nothing to GPU-skinned verts).
-  const skinnedCreature = CREATURE_V2 ? buildSkinnedCreature(creature) : null;
+  // Render path: fold the creature's per-joint segments into ONE rigid-skinned
+  // SkinnedMesh (docs/CREATURE-RENDER-V2.md). The joints ARE the bones; the live
+  // joint animation drives the GPU deform. Flash/dissolve/core-reactor key off
+  // the shared built.materials (which the skinned mesh reuses), so they work
+  // unchanged. The handle is kept for dismember/part-breaks (collapsing a limb
+  // out of the single mesh — joint.visible does nothing to GPU-skinned verts).
+  const skinnedCreature = buildSkinnedCreature(creature);
   // Base model scale, captured for the lash deform (which elongates the
   // body toward the player on a 'lash' telegraph, then eases back here).
   const groupBaseScale = built.group.scale.clone();
@@ -462,7 +441,7 @@ export function createEnemy(
   // enemy-presentation.ts). Thin local aliases keep the AI state machine's
   // setEyeFlare/applyIdleEyes call sites below unchanged.
   const eyePresenter = createEyePresenter(built, spec);
-  const coreReactor = createCoreReactor(built, spec, instancing);
+  const coreReactor = createCoreReactor(built, spec);
   const setEyeFlare = eyePresenter.setFlare;
   const applyIdleEyes = eyePresenter.applyIdle;
 
@@ -534,7 +513,7 @@ export function createEnemy(
     if (creatureRef) {
       for (const n of names) {
         creatureRef.setJointVisible(n, false);
-        skinnedCreature?.severBone(n);   // V2: collapse the limb out of the skinned mesh
+        skinnedCreature.severBone(n);   // collapse the limb out of the skinned mesh
       }
     }
     built.group.traverse((o) => {
@@ -1072,11 +1051,6 @@ export function createEnemy(
       // Clear raycast targets so a swing mid-dissolve doesn't generate a
       // zero-damage "hit" on the disintegrating corpse.
       built.hitTargets.length = 0;
-      // Exit the instancing batch: free the shared slots and re-show the
-      // per-enemy meshes (they carry the per-enemy dissolvable materials),
-      // so the dissolve ramp below runs exactly as it always has. No-op on
-      // the legacy path.
-      releaseCreatureInstancing(entityId, { corpse: true });
       // Tidy the stun ring + any leftover dizzy tumble if it died staggered.
       stunStars?.dispose(); stunStars = null;
       built.group.rotation.y = 0; built.group.rotation.z = 0;
@@ -1165,17 +1139,11 @@ export function createEnemy(
             1.3 * (spec.bloodAmount ?? 1), bc,
             { sizeMul: Math.min(1.6, 0.7 + spec.collisionRadius * 0.8) },
           );
-          // Fling the REAL severed part: detach its actual joint subtree into
-          // the world and let it tumble. It reuses the merged/pooled geometry
-          // and keeps the enemy's material, so it DISSOLVES in sync with the
-          // corpse (the death tick still drives that shared uDissolve). No
-          // setJointVisible needed — the subtree is gone from the body.
-          // V2: snapshot the limb into a free chunk, fling it, and collapse the
-          // limb out of the skinned body. Legacy: detach the real joint subtree.
-          if (skinnedCreature) {
-            const chunk = skinnedCreature.severBoneChunk(severJoint);
-            if (chunk) spawnFlungPart(scene as THREE.Object3D, chunk, dirX, dirZ);
-          } else spawnFlungPart(scene as THREE.Object3D, jointObj, dirX, dirZ);
+          // Snapshot the limb into a free chunk in its dominant material (so it
+          // dissolves in sync with the corpse — shared uDissolve), fling it, and
+          // collapse the limb out of the skinned body.
+          const chunk = skinnedCreature.severBoneChunk(severJoint);
+          if (chunk) spawnFlungPart(scene as THREE.Object3D, chunk, dirX, dirZ);
           severedJoint = severJoint;   // crumble skips this one — it's already flung
         }
       }
@@ -1729,29 +1697,6 @@ export function createEnemy(
     );
   }
 
-  // CRUMBLE collapse — once the strings cut (after the HANG teeter), drop the
-  // skeleton's REAL bone joints into a pile. Each is a live joint subtree (the
-  // merged per-joint mesh) detached via flung-parts; they keep the body material
-  // so the shared uDissolve still powders them in sync. Skips the joint the
-  // killing blow already flung. A little dust + chips season the pile.
-  function collapseSkeleton() {
-    const BONES = ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
-    const cx = container.position.x, cz = container.position.z;
-    for (const j of BONES) {
-      if (j === severedJoint) continue;          // already flew off on the kill blow
-      const obj = built.slots.get(j);
-      if (!obj || !obj.parent) continue;
-      obj.getWorldPosition(_severPos);
-      // Scatter outward from the body centre (left arm drifts left, etc.); a
-      // tiny random so a centred piece (the skull) still picks a way to fall.
-      let dx = _severPos.x - cx, dz = _severPos.z - cz;
-      if (Math.hypot(dx, dz) < 0.05) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; }
-      spawnFlungPart(scene as THREE.Object3D, obj, dx, dz, COLLAPSE_PRESET);
-    }
-    const debrisTint = spec.bloodColor ?? 0x8a8274;
-    spawnShatterBurst(scene as THREE.Object3D, cx, container.position.y + 0.3, cz, true, debrisTint);
-  }
-
   // Pick a random emit point across the body volume (a cylinder ~the mob's
   // collision radius, full body height) for an essence mote — so the XP lifts
   // off the WHOLE corpse + where its limbs scattered, not just its centreline.
@@ -1809,21 +1754,19 @@ export function createEnemy(
       } else {
         if (!crumbleCollapsed) {
           crumbleCollapsed = true;
-          if (skinnedCreature) {
-            // V2: shatter the one skinned body into a few chunks (head/arms/legs/
-            // torso) in a SINGLE vert pass — at the death instant only — and fling
-            // each. They share the body materials, so they dissolve in sync; they
-            // self-remove when powdered. The (now-empty) body group topples below,
-            // harmless. Cheap: one pass + a handful of transient draws per death.
-            const cuts = spec.severable ?? ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
-            const cx = container.position.x, cz = container.position.z;
-            for (const ch of skinnedCreature.crumbleToChunks(cuts)) {
-              let dx = ch.position.x - cx, dz = ch.position.z - cz;
-              if (Math.hypot(dx, dz) < 0.05) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; }
-              spawnFlungPart(scene as THREE.Object3D, ch, dx, dz, COLLAPSE_PRESET);
-            }
-            spawnShatterBurst(scene as THREE.Object3D, cx, container.position.y + 0.3, cz, true, spec.bloodColor ?? 0x8a8274);
-          } else collapseSkeleton();
+          // Shatter the one skinned body into a few chunks (head/arms/legs/torso)
+          // in a SINGLE vert pass — at the death instant only — and fling each.
+          // They share the body materials, so they dissolve in sync; they
+          // self-remove when powdered. The (now-empty) body group topples below,
+          // harmless. Cheap: one pass + a handful of transient draws per death.
+          const cuts = spec.severable ?? ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
+          const cx = container.position.x, cz = container.position.z;
+          for (const ch of skinnedCreature.crumbleToChunks(cuts)) {
+            let dx = ch.position.x - cx, dz = ch.position.z - cz;
+            if (Math.hypot(dx, dz) < 0.05) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; }
+            spawnFlungPart(scene as THREE.Object3D, ch, dx, dz, COLLAPSE_PRESET);
+          }
+          spawnShatterBurst(scene as THREE.Object3D, cx, container.position.y + 0.3, cz, true, spec.bloodColor ?? 0x8a8274);
         }
         // The remaining frame (ribcage/spine) topples to the floor, then sinks
         // as it powders. The limbs have already dropped as their own pieces.
