@@ -18,7 +18,12 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
-let resScale = 0.5;   // PSX-style low-res scene render; 1.0 = native
+// 1.0 = full-res (crisp). The 0.5 low-res pass was upscaled with SMOOTH filtering
+// → soft/blurry, which read as "foggy / not crisp" (the original got away with
+// low-res via a sharp/nearest upscale + hard palette quantize, which the
+// RenderPipeline pass doesn't do). Full-res is crisp and we have the fps. PSX
+// crunch can come back later via a nearest-upscale pass if wanted.
+let resScale = 1.0;
 let bloomEnabled = true;
 // Bloom: subtle + HIGH threshold so ONLY bright sources (flames, glows, runes)
 // bloom — not the whole image. Tune via the consts.
