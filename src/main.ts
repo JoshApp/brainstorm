@@ -255,11 +255,10 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 // (The WebGPU low-res fill win now comes from the RenderPipeline's PassNode
 // setResolutionScale — see style/render-webgpu.ts — so no pixel-ratio stopgap.)
 // WEBGPU SPIKE EXPERIMENT: point-light cube shadows redraw the scene 6× per
-// casting light. The WebGPU path showed 3560 draws / 42k tris (≈12 tris/draw) —
-// a draw-call explosion, not fill. If MORE lights cast shadows under the node
-// renderer than on WebGL, that's the multiplier. Disable shadows under WebGPU to
-// test: if draws collapse to ~hundreds, shadow casting is the culprit.
-renderer.shadowMap.enabled = !WEBGPU;
+// (Shadows were briefly disabled under WebGPU to test a draw-call spike that
+// turned out to be a stale-counter artifact, not shadows. Re-enabled — the lost
+// shadow contrast was a big part of the "washed/flat" look.)
+renderer.shadowMap.enabled = true;
 // PCF (not PCFSoft): the point-light cube shadow is the heaviest fragment shader
 // we run, and PCFSoft adds a wide multi-tap softening loop on top. On mobile that
 // complex variant is the most likely to hit a slow driver path under load (the

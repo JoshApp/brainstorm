@@ -23,10 +23,11 @@ let bloomEnabled = true;
 // Bloom: subtle + HIGH threshold so ONLY bright sources (flames, glows, runes)
 // bloom — not the whole image. Tune via the consts.
 const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
-// EXPOSURE — the original applied master exposure then NO tonemapping (a hard
-// clip + quantize gave the punchy PSX look). ACES was washing everything out, so
-// we go NoToneMapping + this exposure to tame the brighter r184 lighting.
-const EXPOSURE = 0.85;
+// EXPOSURE — r184 dropped useLegacyLights, so ambient/emissive/point intensities
+// read MUCH brighter than the legacy-tuned values → the whole dungeon lit pale.
+// Crush exposure hard to restore the dark-with-pools-of-torchlight look. (Quick
+// global knob; the deeper fix is re-tuning ambient/emissive for r184 units.)
+const EXPOSURE = 0.4;
 const QUANT_LEVELS = 32;   // PSX colour steps per channel (matches the GLSL blit)
 // DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
