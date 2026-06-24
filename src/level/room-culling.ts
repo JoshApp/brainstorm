@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { LiveLevel } from './builder';
 import { on as onEvent } from '../broadcast/event-bus';
 import { getAllInteractables } from '../interactables/system';
+import { CONFIG } from '../config';
 
 // Portal/room visibility culling. Three.js frustum-culls (the view cone) but
 // never OCCLUSION-culls — a wall doesn't stop the frustum, so a room hidden
@@ -33,6 +34,16 @@ interface RectNode {
 // doorway is within this distance of the view frustum. Generous = less pop-in.
 const MARGIN = 1.5;
 const EPS = 0.05;
+
+// Distance cap on the flood-fill: a doorway beyond FOG_FAR leads ONLY to
+// geometry that's already 100% fog-black (fog reaches full opacity at
+// FOG_FAR), so the room behind it can't be seen and shouldn't be drawn. The
+// frustum (CAMERA_FAR) used to be the only distance gate; on a long straight
+// sightline through aligned doorways nothing broke LOS, so every room out to
+// the far plane was submitted — including the fogged-invisible ones. Gating
+// the doorway cross on FOG_FAR cuts those rooms at the source, independent of
+// the frustum, and keeps the two clips in lockstep with the fog wall.
+const CULL_DIST2 = CONFIG.FOG_FAR * CONFIG.FOG_FAR;
 
 export interface RoomCuller {
   /** Recompute visibility for this frame. */
@@ -225,6 +236,12 @@ export function createRoomCuller(level: LiveLevel): RoomCuller {
         const node = nodes.get(queue.pop()!)!;
         for (const nb of node.neighbors) {
           if (visible.has(nb.id)) continue;
+          // Past the fog wall? The doorway (hence everything through it) is
+          // fully fog-black — don't cross it. Cheap reject before the frustum
+          // and LOS tests. Measured from the camera in the floor plane, like
+          // the rest of the cull.
+          const ddx = nb.ox - cx, ddz = nb.oz - cz;
+          if (ddx * ddx + ddz * ddz > CULL_DIST2) continue;
           // In the view cone (yaw frustum, with reveal margin) AND not occluded
           // by a wall (line-of-sight). Sample the doorway at the CAMERA'S eye
           // height, not a fixed world-1.2 — so a sunken/raised room (the stair-

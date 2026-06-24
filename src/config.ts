@@ -39,9 +39,13 @@ export const CONFIG = {
   // occlusion culling, so a sightline through several rooms toward a distant
   // room draws every one of them). Clipping at the fog distance frustum-culls
   // the fogged-invisible geometry: ~halves draw calls on long room sightlines
-  // for ~zero visual change. The +4 buffer keeps the fog gradient on the
-  // immediate next room clean (no hard clip edge inside the visible range).
-  CAMERA_FAR: 13,
+  // for ~zero visual change. +1 buffer past FOG_FAR is all the fog gradient
+  // needs — fog is already fully opaque AT FOG_FAR, so the 9-10m band is pure
+  // black; the cushion only avoids a hard clip edge sitting exactly on the fog
+  // wall. (Was 13 / +4; portal cull now distance-caps room geometry at FOG_FAR
+  // too — see room-culling.ts — so the far plane only has to cover the current
+  // room's own straddling geometry, not whole rooms down a sightline.)
+  CAMERA_FAR: 10,
 
   // === TORCHLIGHT ===
   // Note: Three.js r155+ uses physical light units (candela). A torch needs
