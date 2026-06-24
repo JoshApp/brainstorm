@@ -21,18 +21,21 @@ let scenePass: ReturnType<typeof pass> | null = null;
 let resScale = 0.5;   // PSX-style low-res scene render; 1.0 = native
 let bloomEnabled = true;
 // Bloom: subtle + HIGH threshold so ONLY bright sources (flames, glows, runes)
-// bloom — not the whole image. The first pass was way too heavy (it blurred
-// everything); these are conservative. Tune via the consts.
-const BLOOM_STRENGTH = 0.15, BLOOM_RADIUS = 0.35, BLOOM_THRESHOLD = 0.9;
+// bloom — not the whole image. Tune via the consts.
+const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
+// EXPOSURE — the original applied master exposure then NO tonemapping (a hard
+// clip + quantize gave the punchy PSX look). ACES was washing everything out, so
+// we go NoToneMapping + this exposure to tame the brighter r184 lighting.
+const EXPOSURE = 0.85;
 const QUANT_LEVELS = 32;   // PSX colour steps per channel (matches the GLSL blit)
 // DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
 // depth). Metres from camera. Tune on the dev server.
-const CRUSH_START_M = 5, CRUSH_END_M = 28, CRUSH_FLOOR = 0.12;
+const CRUSH_START_M = 5, CRUSH_END_M = 28, CRUSH_FLOOR = 0.04;   // deeper distant black
 // FOG INSCATTER — the air glows the lights' colour, thicker with distance. The
 // original reused the BLOOM texture (the blurred bright pass) as the haze colour
 // × a depth weight, so it's coloured by whatever lights are near. We do the same.
-const INSCATTER_STRENGTH = 0.5, INSCATTER_START_M = 6, INSCATTER_END_M = 30;
+const INSCATTER_STRENGTH = 0.06, INSCATTER_START_M = 8, INSCATTER_END_M = 30;   // subtle, was a fog-out
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -81,9 +84,10 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
     lit = lit.add((bloomPass as any).mul(fogW));
   }
 
-  // Tone-map + sRGB to DISPLAY space ourselves (so the PSX crunch below lands on
-  // the final colour — quantizing in linear would get smeared by the tonemap).
-  const display = (lit as any).renderOutput(THREE.ACESFilmicToneMapping, THREE.SRGBColorSpace);
+  // Exposure, then sRGB with NO tonemapping (the original look — a hard clip +
+  // quantize, NOT a filmic ACES roll which washed blacks/highlights flat).
+  lit = lit.mul(float(EXPOSURE));
+  const display = (lit as any).renderOutput(THREE.NoToneMapping, THREE.SRGBColorSpace);
 
   // ── PSX colour grade (ported from render-target.ts HORROR_BLIT_FRAG) ──
   // TSL ops as loosely-typed aliases — the node DSL's strict overloads fight
@@ -93,8 +97,8 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   const _uv = screenUV as any;
 
   let col: any = (display as any).rgb;
-  // AMBER TINT — push the whole image warm (matches vec3(1.025,1.0,0.96)).
-  col = col.mul(_vec3(1.025, 1.0, 0.96));
+  // (No global amber tint — the torches already carry the warmth; adding tint on
+  // top read as a bronze wash. Re-add subtly here if needed after tuning.)
   // VIGNETTE — mild edge darkening from screen-centre distance.
   const d = _uv.sub(0.5);
   const vig = _float(1.0).sub(_dot(d, d).mul(0.55));

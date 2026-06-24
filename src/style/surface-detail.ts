@@ -1,18 +1,28 @@
 import * as THREE from 'three';
 import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
-import { triplanarTexture, texture as tslTexture, vec3, positionWorld, normalWorld, float, bumpMap, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, mx_noise_float } from 'three/tsl';
+import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, bumpMap, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, mx_noise_float } from 'three/tsl';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // WebGPU surface shading: triplanar-sample the baked texture in world space and
 // modulate the base albedo by its shade channel × tint, via a colorNode (a
 // supported migration slot on standard materials under WebGPURenderer).
 function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: SurfaceTexConfig): void {
-  const texNode = (tslTexture as any)(cfg.tex);
-  // World tiling frequency = 1 / metres-per-repeat (uniform; the GLSL used an
-  // anisotropic vec2 tile but a single scale is close enough for the first cut).
-  const scale = float(1 / cfg.tile[0]);
-  const sampled: any = (triplanarTexture as any)(texNode, null, null, scale, positionWorld, normalWorld);
+  // WORLD-PROJECTED UVs (matches the GLSL, not generic triplanar — which rotated
+  // the bricks 90° on differently-facing walls). For a WALL the vertical texture
+  // axis is ALWAYS world-Y, and the horizontal axis is whichever world axis the
+  // wall faces along (Z for an ±X-facing wall, X for a ±Z-facing wall). For HORIZ
+  // (floor/ceiling) it's the world XZ plane. Anisotropic tile is respected.
+  const pos: any = positionWorld;
+  const nrm: any = normalWorld;
+  let uv: any;
+  if (cfg.proj === 'wall') {
+    const uAxis = (nrm.x.abs().greaterThan(nrm.z.abs()) as any).select(pos.z, pos.x);
+    uv = (vec2 as any)(uAxis.div(cfg.tile[0]), pos.y.div(cfg.tile[1]));
+  } else {
+    uv = (vec2 as any)(pos.x.div(cfg.tile[0]), pos.z.div(cfg.tile[1]));
+  }
+  const sampled: any = (tslTexture as any)(cfg.tex, uv);
   const base = (vec3 as any)(mat.color.r, mat.color.g, mat.color.b);
   const tint = (vec3 as any)(cfg.tint[0], cfg.tint[1], cfg.tint[2]);
   let albedo: any = base.mul(sampled.rgb).mul(tint);
