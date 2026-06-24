@@ -39,7 +39,8 @@
     "duel": "tsx scripts/duel-sweep.ts",
     "replay-node": "node scripts/build-replay-node.mjs",
     "replay-run": "node scripts/build-replay-run.mjs",
-    "verify-runs": "tsx scripts/verify-runs.ts"
+    "verify-runs": "tsx scripts/verify-runs.ts",
+    "perf-analyze": "node scripts/perf-analyze.mjs"
   },
   "dependencies": {
     "@clerk/clerk-js": "^6.17.0",
