@@ -20,19 +20,23 @@ const BANDS = 4.0;
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
   finish(builder: any): void {
     const context = builder.context;
-    const outgoing: any = context.outgoingLight;
-    // Albedo-independent light magnitude (divide the stone's own colour back out
-    // so banding keys off the LIGHT, not how dark the brick is).
+    const rl: any = context.reflectedLight;
+    // Band ONLY the direct diffuse — leave indirect (ambient) + specular smooth,
+    // exactly like the GLSL. (Banding the composed outgoing crushed the dim
+    // ambient wall-light to black; ambient is the floor that keeps surfaces lit.)
     const alb: any = (diffuseColor as any).rgb.max((vec3 as any)(0.004, 0.004, 0.004));
-    const light: any = outgoing.div(alb);
+    const dd: any = rl.directDiffuse;
+    const light: any = dd.div(alb);                       // albedo-independent light term
     const mag: any = light.r.max(light.g).max(light.b);
-    // Band in Reinhard-tonemapped space so the steps span the perceived range.
-    const tone: any = mag.div(mag.add(1.0));
+    const tone: any = mag.div(mag.add(1.0));              // Reinhard → perceived range
     const bandedTone: any = tone.mul(BANDS).add(0.5).floor().div(BANDS).min(0.88);
     const bandedMag: any = bandedTone.div(bandedTone.oneMinus().max(0.001));
-    // Rescale outgoing to the banded magnitude; leave genuinely-black untouched.
-    const banded: any = outgoing.mul(bandedMag.div(mag.max(0.0015)));
-    outgoing.assign((mag.greaterThan(0.0015) as any).select(banded, outgoing));
+    const bandedDD: any = dd.mul(bandedMag.div(mag.max(0.0015)));
+    const newDD: any = (mag.greaterThan(0.0015) as any).select(bandedDD, dd);
+    // Recompose outgoing with the banded direct diffuse + the untouched rest.
+    context.outgoingLight.assign(
+      newDD.add(rl.indirectDiffuse).add(rl.directSpecular).add(rl.indirectSpecular),
+    );
     super.finish(builder);
   }
 }
