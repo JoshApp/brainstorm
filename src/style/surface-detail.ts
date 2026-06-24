@@ -17,16 +17,24 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const tint = (vec3 as any)(cfg.tint[0], cfg.tint[1], cfg.tint[2]);
   let albedo: any = base.mul(sampled.rgb).mul(tint);
 
+  // Seam mask — strong in the low (recessed) grooves, used by both seep + wetness.
+  const seam: any = float(1).sub((tslSmoothstep as any)(0.45, 0.85, sampled.a));
+
   // SEEP — the "liquid in the cracks" glow, walls only (grooveFill). Pools in the
-  // low (recessed) seams, flows slowly with time, blended toward the floor's seep
-  // tint by per-floor strength. Approximation of the GLSL groove-flow layer.
+  // seams, flows slowly with time, blended toward the floor's seep tint by
+  // per-floor strength. Approximation of the GLSL groove-flow layer.
   if (cfg.grooveFill) {
-    const seam = float(1).sub((tslSmoothstep as any)(0.45, 0.85, sampled.a));   // 1 in seams
     const flowPos = (vec3 as any)((positionWorld as any).x.mul(2.6), (positionWorld as any).z.mul(2.6).sub(seepTimeNode.mul(0.26)), 0);
     const flow = (mx_noise_float as any)(flowPos).mul(0.5).add(0.5);              // → ~[0,1]
     const seepAmt = (tslClamp as any)(seam.mul(seepStrengthNode).mul(flow), 0, 1);
     albedo = (tslMix as any)(albedo, seepTintNode, seepAmt);
   }
+
+  // WETNESS — wet seams are DARKER + far GLOSSIER (lower roughness); the torches
+  // then strike real specular glints along the mortar. Per-floor strength.
+  const wetMask = (tslClamp as any)(seam.mul(wetnessNode), 0, 1);
+  albedo = albedo.mul((tslMix as any)(float(1.0), float(0.6), wetMask));          // wet = darker
+  (mat as any).roughnessNode = (tslMix as any)(float(mat.roughness), float(0.25), wetMask);
 
   // colorNode replaces only the albedo input — the standard PBR lighting,
   // roughness, emissive, etc. still apply on top.
@@ -117,9 +125,11 @@ export function tickSurfaceSeep(timeSec: number): void {
 // (mood floors run wet); the future splat map (kills, altar overflow)
 // will feed the same uniform per-fragment.
 const uWetness = { value: 0 };
+const wetnessNode = (tslUniform as any)(0);   // WebGPU mirror (TSL roughnessNode reads it)
 
 export function setSurfaceWetness(strength: number): void {
   uWetness.value = strength;
+  wetnessNode.value = strength;
 }
 
 export function setSurfaceDetailEnabled(on: boolean): void {
