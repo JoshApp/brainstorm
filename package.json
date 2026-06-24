@@ -40,7 +40,8 @@
     "replay-node": "node scripts/build-replay-node.mjs",
     "replay-run": "node scripts/build-replay-run.mjs",
     "verify-runs": "tsx scripts/verify-runs.ts",
-    "perf-analyze": "node scripts/perf-analyze.mjs"
+    "perf-analyze": "node scripts/perf-analyze.mjs",
+    "verify-skinned": "tsx scripts/verify-skinned.ts"
   },
   "dependencies": {
     "@clerk/clerk-js": "^6.17.0",
