@@ -65,10 +65,16 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   scenePass = pass(scene, camera);
   scenePass.setResolutionScale(resScale);
 
-  // Scene + native bloom, additive, in LINEAR space. Bloom is optional (BLOOM
+  // EXPOSE FIRST. r184's brighter lighting must be brought into range BEFORE
+  // bloom, or bloom (threshold 1.0) catches half the scene and veils everything
+  // in a desaturated white haze. Exposing first means only the genuinely-bright
+  // sources (flames) clear the threshold → tight, subtle bloom.
+  const exposed: any = (scenePass as any).mul(float(EXPOSURE));
+
+  // Exposed scene + native bloom, additive, LINEAR. Bloom optional (BLOOM
   // setting); the bloomPass also feeds the fog inscatter below.
-  const bloomPass = bloomEnabled ? bloom(scenePass, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD) : null;
-  let lit: any = bloomPass ? (scenePass as any).add(bloomPass) : scenePass;
+  const bloomPass = bloomEnabled ? bloom(exposed, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD) : null;
+  let lit: any = bloomPass ? exposed.add(bloomPass) : exposed;
 
   // DEPTH CRUSH — multiply colour toward CRUSH_FLOOR with camera distance, in
   // linear space (a darkening multiply). getViewZNode() is camera-space Z
@@ -85,9 +91,9 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
     lit = lit.add((bloomPass as any).mul(fogW));
   }
 
-  // Exposure, then sRGB with NO tonemapping (the original look — a hard clip +
-  // quantize, NOT a filmic ACES roll which washed blacks/highlights flat).
-  lit = lit.mul(float(EXPOSURE));
+  // sRGB with NO tonemapping (the original look — a hard clip + quantize, NOT a
+  // filmic ACES roll which washed blacks/highlights flat). Exposure already
+  // applied above (before bloom).
   const display = (lit as any).renderOutput(THREE.NoToneMapping, THREE.SRGBColorSpace);
 
   // ── PSX colour grade (ported from render-target.ts HORROR_BLIT_FRAG) ──
