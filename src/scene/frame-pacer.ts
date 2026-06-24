@@ -1,33 +1,58 @@
 // Frame pacing for the FRAME RATE cap.
 //
-// A DRIFT-FREE TIME ACCUMULATOR — the classic correct frame limiter, and
-// deliberately simple. Each rAF callback we add the real elapsed time to a
-// budget and draw one frame whenever a full cap-interval has banked, then
-// SUBTRACT the interval (never reset to "now") so timing jitter can't
-// accumulate. With NO refresh-rate estimation, every desirable property falls
-// out on its own:
-//   - Never above the cap: a draw needs a full 1000/cap ms of real time first.
-//   - Jitter-immune (no dips): a late callback leaves a small carry that pulls
-//     the next draw earlier, so the average rate holds exactly — it can't drift
-//     down to 55 the way a re-seeding timer did.
-//   - Even, vsync-quantised pacing on any panel: a 60 cap on a 120Hz screen
-//     draws every 2nd vsync; on 240Hz every 4th; etc.
-//   - Graceful under load: when callbacks are already slower than the cap the
-//     budget refills every frame, so we draw every frame instead of halving an
-//     already-struggling rate.
-// Uncapped (cap<=0) draws every callback = native refresh.
+// VSYNC-COUNT PACING. When capping below the panel's native refresh, we draw on
+// every Nth rAF callback, where N = round(nativeHz / cap). Because rAF callbacks
+// ARE the vsync grid, counting them gives genuinely even spacing — drawn frames
+// land exactly N refreshes apart regardless of how much individual callbacks
+// jitter in wall-clock time.
 //
-// (An earlier version estimated native Hz, snapped it, and divided — when that
-//  estimate wobbled the divisor flipped 1↔2 and the draw rate swung 120↔60.
-//  The accumulator needs none of that.)
+// This replaces an earlier wall-clock TIME-BUDGET accumulator. The accumulator
+// was drift-free for the AVERAGE rate, but it paced by a time budget that, at a
+// clean ratio (e.g. 60 cap on a 120Hz phone), sat right at the 2-vsync
+// threshold — so natural rAF jitter tipped it between drawing on the 2nd vsync
+// (16.7ms) and the 3rd (25ms) every few frames, FOREVER, even standing still.
+// That metastable beat was visible micro-stutter on high-refresh phones. A
+// vsync COUNT can't be tipped by timing jitter, so the beat is gone.
+//
+// The only thing a count can't survive is a wobbling refresh ESTIMATE flipping
+// N (the failure mode that originally pushed the code to the accumulator). We
+// fix that directly with HYSTERESIS: a new N must hold for STEP_STABLE
+// consecutive callbacks before it's adopted, so a 119↔121Hz estimate flicker
+// can't flip the divisor.
+//
+// Properties that fall out:
+//   - Even, jitter-immune spacing: every Nth vsync, full stop.
+//   - Never above the cap: a non-integer ratio rounds to the nearest whole N, so
+//     "60 on 244Hz" becomes a steady every-4th-vsync (61fps) instead of a 4/5
+//     beat. (pacerEffectiveFps reports the true drawn rate.)
+//   - At/above native: the display IS the limiter, so draw every callback.
+//   - Graceful under load: if the device can't even hit the cap, nativeHz drops
+//     to ≈ the real callback rate, cap ≥ nativeHz-1 trips, and we draw every
+//     callback instead of throttling an already-struggling rate.
+//
+// Escape hatch: ?legacypacer=1 restores the old wall-clock accumulator so the
+// two can be A/B'd live on the phone.
 
 let lastNow = 0;
-let budget = 0;
 
-// Native-refresh estimate — for the perf READOUT only; it does not drive the
-// cap. Median raw callback interval ≈ the vsync period when we're keeping up.
+// ── Native-refresh estimate (drives the divisor + the readout) ──────────────
+// Median raw callback interval ≈ the vsync period when we're keeping up.
 const intervals: number[] = [];
 let nativeHz = 60;
+
+// ── Vsync-count pacer state ─────────────────────────────────────────────────
+let stepN = 1;            // active divisor: draw every stepN-th callback
+let sinceDraw = 0;        // callbacks since the last drawn frame
+let capActive = false;    // were we capping (below native) on the previous call?
+// Hysteresis so a wobbling nativeHz estimate can't flip the divisor frame-to-frame.
+let pendingStep = 0;
+let pendingCount = 0;
+const STEP_STABLE = 8;    // a new divisor must hold this many callbacks before adoption
+
+// ── Legacy wall-clock accumulator (A/B via ?legacypacer=1) ──────────────────
+const LEGACY = typeof location !== 'undefined'
+  && new URLSearchParams(location.search).get('legacypacer') === '1';
+let budget = 0;
 
 /** Should THIS rAF callback draw, for the given cap (fps)? cap<=0 = uncapped.
  *  Call once per rAF callback, before the draw/skip branch. */
@@ -36,13 +61,46 @@ export function pacerShouldDraw(cap: number, now: number): boolean {
   lastNow = now;
   observeForReadout(dt);
 
-  if (cap <= 0) return true;
-  // At or above the panel's native refresh, a software cap can only ADD judder:
-  // the accumulator beats against vsync and occasionally skips-then-doubles a
-  // frame even though raw rAF would be perfectly smooth. The display IS the
-  // limiter there, so draw every callback. The accumulator only engages to cap
-  // genuinely BELOW native (e.g. 30fps battery saver, or 60 on a 120Hz panel).
-  if (cap >= nativeHz - 1) return true;
+  // Uncapped, or at/above the panel's native refresh: the display is the
+  // limiter, so draw every callback. (A software cap can only ADD judder here.)
+  if (cap <= 0 || cap >= nativeHz - 1) {
+    capActive = false;
+    sinceDraw = 0;
+    return true;
+  }
+
+  if (LEGACY) return legacyAccumulator(cap, dt);
+
+  // Capping below native: draw every stepN-th callback (vsync-count pacing).
+  const desired = Math.max(1, Math.round(nativeHz / cap));
+  if (!capActive) {
+    // Just engaged the cap — snap to the divisor immediately (no warm-up beat).
+    capActive = true;
+    stepN = desired;
+    pendingStep = 0;
+    pendingCount = 0;
+    sinceDraw = 0;
+    return true;
+  }
+  // Hysteresis: only adopt a new divisor once it has held for a while.
+  if (desired === stepN) {
+    pendingStep = 0;
+    pendingCount = 0;
+  } else if (desired === pendingStep) {
+    if (++pendingCount >= STEP_STABLE) { stepN = desired; pendingStep = 0; pendingCount = 0; }
+  } else {
+    pendingStep = desired;
+    pendingCount = 1;
+  }
+
+  if (++sinceDraw >= stepN) { sinceDraw = 0; return true; }
+  return false;
+}
+
+/** The old wall-clock time-budget limiter — kept behind ?legacypacer=1 so the
+ *  two pacers can be compared live. Drift-free for the average rate, but
+ *  metastable at clean ratios (see header). */
+function legacyAccumulator(cap: number, dt: number): boolean {
   const interval = 1000 / cap;
   budget += dt;
   if (budget >= interval) {
@@ -67,8 +125,11 @@ function observeForReadout(dt: number): void {
 /** The detected native refresh (Hz) — for display. 60 until samples land. */
 export function getNativeHz(): number { return nativeHz; }
 
-/** The fps a cap resolves to on this panel: the cap, clamped to native (the
- *  accumulator hits the target rate on average). Uncapped → native. */
+/** The fps a cap resolves to on this panel. Uncapped / at-native → native.
+ *  Below native → the QUANTIZED rate (nativeHz / divisor), which is what the
+ *  vsync-count pacer actually draws (e.g. 60-on-244 → 61). */
 export function pacerEffectiveFps(cap: number): number {
-  return cap <= 0 ? nativeHz : Math.min(cap, nativeHz);
+  if (cap <= 0 || cap >= nativeHz - 1) return nativeHz;
+  if (LEGACY) return Math.min(cap, nativeHz);
+  return Math.round(nativeHz / Math.max(1, Math.round(nativeHz / cap)));
 }
