@@ -157,8 +157,8 @@ const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 // columns are spared. Wetness gloss is now per-floor ONLY (no default wet look).
 const SEAM_DARK = 0.66;    // seam-shoulder albedo floor (the crevice shadow)
 const PALE_BONE: readonly [number, number, number] = [0.88, 0.86, 0.82];  // near-neutral pale the channel lifts toward (picks up light hue cleanly)
-const CORE_GLOW = 0.5;     // how far the DEEPEST seam lifts toward PALE_BONE (matte hue pickup)
-const SEAM_CHROMA = 1.3;   // VIVID: over-saturate the seam's LIT colour toward the light's hue (chroma 1 + this at the deepest seam)
+const CORE_GLOW = 0.38;    // how far the DEEPEST seam lifts toward PALE_BONE (matte hue pickup)
+const SEAM_CHROMA = 0.8;   // VIVID: over-saturate the seam's LIT colour toward the light's hue (chroma 1 + this at the deepest seam)
 const SEAM_ROUGH = 0.22;   // roughness in WET seams only (per-floor wetness) — no dry gloss
 
 // ── SEEP — liquid light in the grooves ───────────────────────────────
