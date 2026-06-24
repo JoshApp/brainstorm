@@ -92,6 +92,11 @@ for (let i = 1; i < F.length; i++) {
 for (const c of changes) console.log('  ' + c);
 const netUp = (F.at(-1)?.prog ?? 0) - (F[0]?.prog ?? 0);
 console.log(`  totals: +${ups} / -${downs}  (net ${netUp >= 0 ? '+' : ''}${netUp})`);
+// Compile types — from the 'C:<shaderType>' tags the instrument folds into ev.
+const ctypes = {};
+for (const f of F) for (const e of (f.ev || [])) if (typeof e === 'string' && e.startsWith('C:')) ctypes[e.slice(2)] = (ctypes[e.slice(2)] || 0) + 1;
+const ce = Object.entries(ctypes).sort((a, b) => b[1] - a[1]);
+if (ce.length) console.log(`  COMPILED THIS RECORDING: ${ce.map(([k, v]) => `${k}×${v}`).join(', ')}  (distanceRGBA=shadow-caster, physical=lit, sprite=fx)`);
 if (downs >= 2 && Math.abs(ups - downs) <= Math.max(2, ups * 0.3))
   console.log(`  ⚠ CHURN: ${downs} deletions ≈ ${ups} compiles → a per-beat effect mints+disposes a material/program. Pin it: shared geometry + a cloned-template material (clones share the program), or retain the material.`);
 else if (netUp > 2)
