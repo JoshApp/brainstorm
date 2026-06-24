@@ -53,7 +53,11 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // then strike real specular glints along the mortar. Per-floor strength.
   const wetMask = (tslClamp as any)(seam.mul(wetnessNode), 0, 1);
   albedo = albedo.mul((tslMix as any)(float(1.0), float(0.6), wetMask));          // wet = darker
-  (mat as any).roughnessNode = (tslMix as any)(float(mat.roughness), float(0.25), wetMask);
+  // CREVICE GLOSS — the mortar grooves are a touch glossier than the brick faces
+  // even when dry, so torchlight throws a specular catch down the seams (the
+  // original's "crevices reflect more"). Wetness deepens it further on top.
+  const grooveGloss = (tslClamp as any)(seam.mul(0.4).add(wetMask), 0, 1);
+  (mat as any).roughnessNode = (tslMix as any)(float(mat.roughness), float(0.3), grooveGloss);
 
   // colorNode replaces only the albedo input — the standard PBR lighting,
   // roughness, emissive, etc. still apply on top.
@@ -71,7 +75,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // the sampled-height gradient more under the node renderer). 8x was still only
   // "slight", so 20x. This drives BOTH the brick bevels AND the crevice/groove
   // light-catch (the groove walls tilt into/out of the torchlight). Tune to taste.
-  const RELIEF_BOOST = 20;
+  const RELIEF_BOOST = 26;
   const h: any = sampled.a;
   const dH: any = (vec2 as any)(h.dFdx(), h.dFdy()).mul(float(cfg.relief * RELIEF_BOOST));
   const sp: any = positionView;
