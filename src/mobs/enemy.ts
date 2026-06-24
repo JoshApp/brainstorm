@@ -1170,11 +1170,12 @@ export function createEnemy(
           // and keeps the enemy's material, so it DISSOLVES in sync with the
           // corpse (the death tick still drives that shared uDissolve). No
           // setJointVisible needed — the subtree is gone from the body.
-          // V2: the joint has no child meshes to fling — collapse the limb out
-          // of the skinned mesh (it vanishes in the gore burst). Legacy: detach
-          // the real joint subtree and let it tumble.
-          if (skinnedCreature) skinnedCreature.severBone(severJoint);
-          else spawnFlungPart(scene as THREE.Object3D, jointObj, dirX, dirZ);
+          // V2: snapshot the limb into a free chunk, fling it, and collapse the
+          // limb out of the skinned body. Legacy: detach the real joint subtree.
+          if (skinnedCreature) {
+            const chunk = skinnedCreature.severBoneChunk(severJoint);
+            if (chunk) spawnFlungPart(scene as THREE.Object3D, chunk, dirX, dirZ);
+          } else spawnFlungPart(scene as THREE.Object3D, jointObj, dirX, dirZ);
           severedJoint = severJoint;   // crumble skips this one — it's already flung
         }
       }
@@ -1806,9 +1807,24 @@ export function createEnemy(
         built.group.rotation.x = 0.14 * hp * hp;
         built.group.rotation.z = Math.sin(deathTimer * 7) * 0.05 * hp;
       } else {
-        // V2: no per-joint meshes to clatter apart — the single skinned mesh
-        // topples + dissolves in place (the dissolve uniform still ramps below).
-        if (!crumbleCollapsed) { crumbleCollapsed = true; if (!skinnedCreature) collapseSkeleton(); }
+        if (!crumbleCollapsed) {
+          crumbleCollapsed = true;
+          if (skinnedCreature) {
+            // V2: shatter the one skinned body into a few chunks (head/arms/legs/
+            // torso) in a SINGLE vert pass — at the death instant only — and fling
+            // each. They share the body materials, so they dissolve in sync; they
+            // self-remove when powdered. The (now-empty) body group topples below,
+            // harmless. Cheap: one pass + a handful of transient draws per death.
+            const cuts = spec.severable ?? ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
+            const cx = container.position.x, cz = container.position.z;
+            for (const ch of skinnedCreature.crumbleToChunks(cuts)) {
+              let dx = ch.position.x - cx, dz = ch.position.z - cz;
+              if (Math.hypot(dx, dz) < 0.05) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; }
+              spawnFlungPart(scene as THREE.Object3D, ch, dx, dz, COLLAPSE_PRESET);
+            }
+            spawnShatterBurst(scene as THREE.Object3D, cx, container.position.y + 0.3, cz, true, spec.bloodColor ?? 0x8a8274);
+          } else collapseSkeleton();
+        }
         // The remaining frame (ribcage/spine) topples to the floor, then sinks
         // as it powders. The limbs have already dropped as their own pieces.
         const tp = Math.min(1, (deathTimer - CRUMBLE_HANG) / 0.4);

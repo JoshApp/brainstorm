@@ -25,11 +25,21 @@ export interface SkinnedCreature {
   skeleton: THREE.Skeleton;
   /** Bones (= the creature joints) the live animation already drives. */
   bones: THREE.Object3D[];
-  /** DISMEMBER: collapse a joint's whole subtree (the limb) out of the skinned
-   *  mesh so it VANISHES — the V2 stand-in for detaching a joint's child meshes
-   *  (which don't exist anymore; they're baked in). Used by sever + part-breaks.
-   *  Returns true if the joint was found. Permanent (no un-collapse). */
+  /** DISMEMBER (no fling): collapse a joint's whole subtree (the limb) out of the
+   *  skinned mesh so it VANISHES. Used by part-breaks (phase reveals). Returns
+   *  true if the joint was found. Permanent (no un-collapse). */
   severBone: (jointName: string) => boolean;
+  /** DISMEMBER (fling): like severBone, but FIRST snapshots the limb's current
+   *  geometry into a free-standing chunk mesh (same material → dissolves in sync)
+   *  positioned at the limb, THEN collapses it in the body. Returns the chunk for
+   *  the caller to fling (spawnFlungPart), or null if the joint wasn't found. */
+  severBoneChunk: (jointName: string) => THREE.Mesh | null;
+  /** CRUMBLE: shatter the whole body into a few chunks (cut at `cutJoints` — the
+   *  severable limbs — plus the leftover torso), collapsing each out of the body.
+   *  ONE pass over the verts → a handful of chunk meshes for the caller to fling.
+   *  Cheap: it only runs at the moment of death, and the chunks self-remove when
+   *  they finish dissolving. */
+  crumbleToChunks: (cutJoints: readonly string[]) => THREE.Mesh[];
 }
 
 /** Normalize a geometry to a consistent attribute set so cross-material merges
@@ -117,25 +127,94 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
   for (const [name, obj] of creature.joints) { const i = boneIndex.get(obj); if (i !== undefined) nameToBone.set(name, i); }
   const pos = geometry.attributes.position as THREE.BufferAttribute;
   const skin = geometry.attributes.skinIndex as THREE.BufferAttribute;
-  const severBone = (jointName: string): boolean => {
-    const jointObj = creature.joints.get(jointName);
-    if (!jointObj) return false;
-    // The limb = this joint + every descendant joint (severing a shoulder takes
-    // the whole arm). Collect their bone indices.
-    const limb = new Set<number>();
-    jointObj.traverse((o: THREE.Object3D) => { const i = boneIndex.get(o); if (i !== undefined) limb.add(i); });
-    // Collapse every vertex riding a limb bone onto one shared point → all its
-    // triangles become zero-area (not rasterized). Collapse-to-first keeps the
-    // point near the limb so there's no transient streak to the origin.
-    let cx = 0, cy = 0, cz = 0, found = false;
-    for (let v = 0; v < skin.count; v++) {
-      if (!limb.has(skin.getX(v))) continue;
-      if (!found) { cx = pos.getX(v); cy = pos.getY(v); cz = pos.getZ(v); found = true; }
-      pos.setXYZ(v, cx, cy, cz);
-    }
-    if (found) pos.needsUpdate = true;
-    return found;
+
+  const groups = geometry.groups.length ? geometry.groups : [{ start: 0, count: skin.count, materialIndex: 0 }];
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  const matOf = (v: number): number => {
+    for (const g of groups) if (v >= g.start && v < g.start + g.count) return g.materialIndex ?? 0;
+    return 0;
   };
 
-  return { mesh, skeleton, bones, severBone };
+  // The limb = a joint + every descendant joint (severing a shoulder takes the
+  // whole arm) → the set of bone indices riding it.
+  const limbBones = (jointName: string): Set<number> | null => {
+    const jointObj = creature.joints.get(jointName);
+    if (!jointObj) return null;
+    const limb = new Set<number>();
+    jointObj.traverse((o: THREE.Object3D) => { const i = boneIndex.get(o); if (i !== undefined) limb.add(i); });
+    return limb;
+  };
+  const vertsForBones = (limb: Set<number>): number[] => {
+    const out: number[] = [];
+    for (let v = 0; v < skin.count; v++) if (limb.has(skin.getX(v))) out.push(v);
+    return out;
+  };
+  // Collapse a vertex list onto one shared point → its triangles become zero-area
+  // (not rasterized). Collapse-to-first keeps the point near the limb (no streak).
+  const collapseVerts = (verts: number[]): void => {
+    if (!verts.length) return;
+    const cx = pos.getX(verts[0]), cy = pos.getY(verts[0]), cz = pos.getZ(verts[0]);
+    for (const v of verts) pos.setXYZ(v, cx, cy, cz);
+    pos.needsUpdate = true;
+  };
+  // Snapshot a vertex list's CURRENT (skinned) world positions into a free chunk
+  // mesh centred on its centroid, in the material that covers most of it (so it
+  // reads in the right colour + dissolves in sync — same material object).
+  const _v = new THREE.Vector3();
+  const buildChunk = (verts: number[]): THREE.Mesh | null => {
+    if (verts.length < 3) return null;
+    const arr = new Float32Array(verts.length * 3);
+    const matVotes = new Map<number, number>();
+    let sx = 0, sy = 0, sz = 0;
+    for (let i = 0; i < verts.length; i++) {
+      const v = verts[i];
+      _v.fromBufferAttribute(pos, v); mesh.applyBoneTransform(v, _v); _v.applyMatrix4(mesh.matrixWorld);
+      arr[i * 3] = _v.x; arr[i * 3 + 1] = _v.y; arr[i * 3 + 2] = _v.z;
+      sx += _v.x; sy += _v.y; sz += _v.z;
+      matVotes.set(matOf(v), (matVotes.get(matOf(v)) ?? 0) + 1);
+    }
+    const cx = sx / verts.length, cy = sy / verts.length, cz = sz / verts.length;
+    for (let i = 0; i < arr.length; i += 3) { arr[i] -= cx; arr[i + 1] -= cy; arr[i + 2] -= cz; }
+    const cg = new THREE.BufferGeometry();
+    cg.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    cg.computeVertexNormals();
+    let bestMat = 0, bestVotes = -1;
+    for (const [m, c] of matVotes) if (c > bestVotes) { bestVotes = c; bestMat = m; }
+    const chunk = new THREE.Mesh(cg, mats[bestMat] ?? mats[0]);
+    chunk.position.set(cx, cy, cz);
+    chunk.updateMatrix();             // bake centroid into local matrix so
+    chunk.castShadow = false;         // spawnFlungPart's attach() preserves it
+    return chunk;
+  };
+
+  const severBone = (jointName: string): boolean => {
+    const limb = limbBones(jointName);
+    if (!limb) return false;
+    collapseVerts(vertsForBones(limb));
+    return true;
+  };
+  const severBoneChunk = (jointName: string): THREE.Mesh | null => {
+    const limb = limbBones(jointName);
+    if (!limb) return null;
+    mesh.updateWorldMatrix(true, false); skeleton.update();
+    const verts = vertsForBones(limb);
+    const chunk = buildChunk(verts);
+    collapseVerts(verts);
+    return chunk;
+  };
+  const crumbleToChunks = (cutJoints: readonly string[]): THREE.Mesh[] => {
+    mesh.updateWorldMatrix(true, false); skeleton.update();
+    // Map each bone → a piece index: a cut limb, or the leftover torso (last).
+    const bonePiece = new Map<number, number>();
+    cutJoints.forEach((j, pi) => { const limb = limbBones(j); if (limb) for (const b of limb) bonePiece.set(b, pi); });
+    const torsoIdx = cutJoints.length;
+    // ONE pass: bucket every vertex into its piece.
+    const buckets: number[][] = Array.from({ length: torsoIdx + 1 }, () => []);
+    for (let v = 0; v < skin.count; v++) buckets[bonePiece.get(skin.getX(v)) ?? torsoIdx].push(v);
+    const chunks: THREE.Mesh[] = [];
+    for (const b of buckets) { const c = buildChunk(b); if (c) chunks.push(c); collapseVerts(b); }
+    return chunks;
+  };
+
+  return { mesh, skeleton, bones, severBone, severBoneChunk, crumbleToChunks };
 }

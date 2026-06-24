@@ -68,6 +68,16 @@ if (process.env.SEVER) {
   for (let i = 0; i < posA.count; i++) after.add(`${posA.getX(i).toFixed(3)},${posA.getY(i).toFixed(3)},${posA.getZ(i).toFixed(3)}`);
   console.log(`\nSEVER ${id}.${joint}: found=${found}  uniquePositions ${before.size} → ${after.size} (collapse → fewer)  severable=${JSON.stringify((spec as { severable?: string[] }).severable)}`);
 }
+// CHUNK/CRUMBLE test: severing yields a free chunk; crumble shatters into pieces.
+if (process.env.CHUNK) {
+  const chunk = sk.severBoneChunk(process.env.CHUNK);
+  console.log(`\nCHUNK ${id}.${process.env.CHUNK}: ${chunk ? `mesh verts=${chunk.geometry.attributes.position.count} at [${chunk.position.toArray().map(n=>n.toFixed(2))}]` : 'null'}`);
+}
+if (process.env.CRUMBLE) {
+  const cuts = (spec as { severable?: string[] }).severable ?? ['head', 'shoulderL', 'shoulderR', 'hipL', 'hipR'];
+  const chunks = sk.crumbleToChunks(cuts);
+  console.log(`\nCRUMBLE ${id}: cuts=${JSON.stringify(cuts)} → ${chunks.length} chunks, verts=[${chunks.map(c=>c.geometry.attributes.position.count).join(',')}]`);
+}
 const ok = origBox.min.distanceTo(skBox.min) < 2e-3 && origBox.max.distanceTo(skBox.max) < 2e-3;
 const fmt = (b: THREE.Box3) => `min[${b.min.toArray().map((n) => n.toFixed(3)).join(',')}] max[${b.max.toArray().map((n) => n.toFixed(3)).join(',')}]`;
 
