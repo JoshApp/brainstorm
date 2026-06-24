@@ -83,6 +83,37 @@ ignored, so each becomes a node-material composition.
 - **Phase 3 — profiling on WebGPU**: timestamp-query GPU timing so the cockpit
   keeps working.
 
+## Suboptimal / buggy / fragile — flagged during the port, REVISIT
+
+Not blindly porting these — noting them so we fix root causes, not reproduce
+them. (Maintained as the rewrite surfaces more.)
+
+- **`renderer.info` manual-reset coupling** (`render-target.ts` + `main.ts:265`).
+  `info.autoReset=false` + a manual `info.reset()` inside `renderWithStyle` is
+  fragile global state — it silently broke under WebGPU (draw counter climbed
+  unbounded). The per-frame stat plumbing should be explicit, not a global flag
+  the render path is trusted to reset.
+- **Too much render-dependent work at MODULE BOOT.** The WebGPU port was
+  whack-a-mole because the surface-texture bake (readback), `warmupContent`
+  (render), `renderer.compile`, and `flushSplats` all assume a *synchronous*,
+  ready renderer at import time. There's no clean async init phase — `main.ts`
+  does ~all of boot at module scope. A real `async boot()` would make this (and
+  any future async backend) sane.
+- **Global `ShaderChunk` monkey-patching** (`banded-lighting.ts` mutates
+  `THREE.ShaderChunk.lights_fragment_end` for ALL materials). Fragile global
+  mutation, hard to reason about; TSL node materials replace it cleanly.
+- **The light pool** — a whole subsystem that exists only to dodge WebGL
+  light-count recompiles (see above). The "three torch emitters must agree on
+  tint" trap is a symptom of its complexity.
+- **Warmup machinery over-built for WebGL quirks** (retain-materials-so-dispose-
+  doesn't-delete-the-program, the instanced-warm hack). `compileAsync` collapses
+  it.
+- **`main.ts` is ~2000 lines** doing boot + renderer + systems + profiler +
+  scenarios at module scope. Worth decomposing once the renderer settles.
+
+(Already fixed this session, same class of latent bug: the frame-pacer metastable
+accumulator, and `preserveDrawingBuffer` always-on in Debug Mode.)
+
 ## Risks / watch-list
 
 - **Lighting/color from the bump** (useLegacyLights removed): the game may render
