@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { registerWarmup } from '../content/warmup-registry';
 import { stampSplat } from '../scene/splat-map';
 import { getTexture } from '../style/procedural-textures';
 import { groundYAt } from '../level/elevation';
@@ -193,3 +194,7 @@ export function clearBloodBurst() {
   for (const s of sprites) s.sprite.parent?.remove(s.sprite);
   sprites.length = 0;
 }
+
+// Warm the gore material so the FIRST hit/death of a fight doesn't compile it
+// in-frame (a first-use shader hitch). noCull renders it regardless of position.
+registerWarmup({ label: 'blood-burst', spawn: (s) => spawnBloodBurst(s, 0, 0.3, -0.6), clear: clearBloodBurst });

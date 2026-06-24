@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { registerWarmup } from '../content/warmup-registry';
 import { getTexture } from '../style/procedural-textures';
 
 // Parry spark — the steel-on-steel CLASH at the point where a parry catches a
@@ -144,3 +145,6 @@ export function clearParrySpark() {
   sparks.length = 0;
   if (flash) { flash.sprite.parent?.remove(flash.sprite); flash = null; }
 }
+
+// Warm the deflect-spark material so the first parry of a fight doesn't compile.
+registerWarmup({ label: 'parry-spark', spawn: (s) => spawnParrySpark(s, 0, 0.3, -0.6), clear: clearParrySpark });

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { registerWarmup } from '../content/warmup-registry';
 
 // Slime tentacle for the king's lash. A tapered limb that FORMS out of the
 // body and reaches toward the player: it's parented to the caster's
@@ -108,3 +109,7 @@ export function spawnLashTendril(
     },
   };
 }
+
+// Warm the lasher tendril's shared template program (pinned once, never disposed).
+let _warmLash: ReturnType<typeof spawnLashTendril> | null = null;
+registerWarmup({ label: 'lash-tendril', spawn: (s) => { _warmLash = spawnLashTendril(s, 0, 1, 0xff4444); }, clear: () => { _warmLash?.dispose(); _warmLash = null; } });

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { registerWarmup } from '../content/warmup-registry';
 import { getTexture } from '../style/procedural-textures';
 
 // Dust puff — a short-lived bloom of soft grey billboards kicked up when
@@ -126,3 +127,6 @@ export function clearDustPuff() {
   for (const p of puffs) p.sprite.parent?.remove(p.sprite);
   puffs.length = 0;
 }
+
+// Warm the dust material — fires on every crumble (COLLAPSE_PRESET dust) + impacts.
+registerWarmup({ label: 'dust-puff', spawn: (s) => spawnDustPuff(s, 0, 0.3, -0.6), clear: clearDustPuff });
