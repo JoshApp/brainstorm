@@ -61,14 +61,18 @@ const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
 // read MUCH brighter than the legacy-tuned values → the whole dungeon lit pale.
 // Crush exposure hard to restore the dark-with-pools-of-torchlight look. (Quick
 // global knob; the deeper fix is re-tuning ambient/emissive for r184 units.)
-// With a TONEMAP shoulder now in front of the output, highlights no longer clip —
-// they roll off — so we can carry a touch more exposure without the pale wash the
-// no-tonemap path got. 0.5 (hard-clip era) → 0.6. Still the global brightness knob.
-const EXPOSURE = TONEMAP === 'none' ? 0.5 : 0.6;
+// With a TONEMAP shoulder in front of the output, highlights roll off instead of
+// clipping. But side-by-side vs the WebGL/main reference the WebGPU scene still
+// read too bright in the near field, so exposure comes back DOWN under the
+// tonemap (0.6 → 0.42). Still the global brightness knob.
+const EXPOSURE = TONEMAP === 'none' ? 0.5 : 0.42;
 // DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
 // depth). Metres from camera. Tune on the dev server.
-const CRUSH_START_M = 5, CRUSH_END_M = 28, CRUSH_FLOOR = 0.04;   // deeper distant black
+// Aligned to the WebGL/main reference (render-target.ts DEPTH_START/END/FLOOR =
+// 6/12/0.16). The WebGPU re-guess (5/28/0.04) faded far too gently — mid-distance
+// walls stayed lit out to 28m, which was most of the "too bright" gap vs WebGL.
+const CRUSH_START_M = 6, CRUSH_END_M = 12, CRUSH_FLOOR = 0.16;
 // FOG INSCATTER — the air glows the lights' colour, thicker with distance. The
 // original reused the BLOOM texture (the blurred bright pass) as the haze colour
 // × a depth weight, so it's coloured by whatever lights are near. We do the same.
