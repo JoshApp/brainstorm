@@ -50,25 +50,26 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     albedo = (tslMix as any)(albedo, seepTintNode, seepAmt);
   }
 
-  // ── VEINY CREVICE GLOW (always-on; see SEAM_* tuning above) ──
-  // Scaled by relief so flat columns/grain (relief ~0.05) are spared while brick
-  // walls + flagstone floors (relief ~0.30) get the full effect.
-  const reliefScale = Math.min(1, cfg.relief / 0.30);
-  const seamFx: any = seam.mul(reliefScale);
-  // (a) seam SHOULDERS = crevice shadow — darken the recessed albedo for contrast.
-  albedo = albedo.mul((tslMix as any)(float(1.0), float(SEAM_DARK), seamFx));
-  // (b) seam CORE glows — lift the DEEPEST channel toward bone-pale so it reads
-  // PALE + MATTE and brightly, diffusely takes on the HUE of whatever light reaches
-  // it (like the skeleton in a coloured room). NO specular → not wet. Mask range
-  // 0.30..0.62 catches ALL seams: floor gaps (a≈0.35), wall mortar (a≈0.40) AND
-  // ceiling panels (a≈0.45) — the old 0.12..0.40 only caught the floor.
-  const core: any = float(1).sub((tslSmoothstep as any)(0.30, 0.62, sampled.a)).mul(reliefScale);
-  albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]), core.mul(CORE_GLOW));
-  // (c) VIVID — over-saturate the seam's LIT colour toward the light's hue via a
-  // per-fragment chroma (the skeleton's PAINTED trick, localized to the seam). So
-  // a green torch paints vividly green veins, not just faintly-green, on every
-  // surface regardless of its base stone tint. Slab faces stay neutral (chroma 1).
-  setMaterialSeamChromaWebGPU(mat, float(1.0).add(core.mul(SEAM_CHROMA)));
+  // ── VEINY CREVICE GLOW — OPT-IN (cfg.seamGlow), thin-crack surfaces only ──
+  // Brick walls + flagstone floors. NOT ceiling panels / ashlar joints / trims,
+  // where "low height" is a broad recess, not a crack — the glow there reads as
+  // out-of-context blotches. Scaled by relief so any flat patch is spared too.
+  if (cfg.seamGlow) {
+    const reliefScale = Math.min(1, cfg.relief / 0.30);
+    const seamFx: any = seam.mul(reliefScale);
+    // (a) seam SHOULDERS = crevice shadow — darken the recessed albedo for contrast.
+    albedo = albedo.mul((tslMix as any)(float(1.0), float(SEAM_DARK), seamFx));
+    // (b) seam CORE glows — lift the deep channel toward bone-pale so it reads PALE
+    // + MATTE and diffusely takes on the HUE of whatever light reaches it. Mask
+    // catches floor gaps (a≈0.35) + wall mortar (a≈0.40); the OPT-IN keeps ceiling
+    // panels (a≈0.45) out entirely (they're not seams).
+    const core: any = float(1).sub((tslSmoothstep as any)(0.28, 0.52, sampled.a)).mul(reliefScale);
+    albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]), core.mul(CORE_GLOW));
+    // (c) VIVID — over-saturate the seam's LIT colour toward the light's hue (the
+    // skeleton's PAINTED trick, localized). Tuned subtle so it reads as a glow, not
+    // a stark colour blast. Slab faces stay neutral (chroma 1).
+    setMaterialSeamChromaWebGPU(mat, float(1.0).add(core.mul(SEAM_CHROMA)));
+  }
 
   // WETNESS (per-floor strength ONLY) — wet floors darken + gloss the seams; the
   // DEFAULT dry look stays fully MATTE (roughness drops only where wetnessNode > 0).
@@ -134,6 +135,13 @@ export interface SurfaceTexConfig {
    *  so it never repeats with the baked tile's 4-brick period. Keep
    *  OFF for dressed stone (clean frames) and non-brick surfaces. */
   brickDamage?: boolean;
+  /** VEINY CREVICE GLOW (WebGPU): the thin mortar/gap seams drink light in
+   *  their shoulders and glow the light's hue in their channel. ONLY for
+   *  surfaces whose seams are genuine THIN cracks — brick walls + flagstone
+   *  floors. MUST stay off for broad-recess surfaces (ceiling coffer panels,
+   *  clean ashlar joints, base trims) where "low height" is a large area, not a
+   *  crack, so the glow reads as out-of-context blotches. Opt-in. */
+  seamGlow?: boolean;
   /** Sample the gameplay SPLAT MAP (scene/splat-map.ts): blood and
    *  spills stain, darken and wet this surface where events stamped.
    *  Floors only — ceilings share the 'horiz' projection but should
@@ -157,8 +165,8 @@ const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 // columns are spared. Wetness gloss is now per-floor ONLY (no default wet look).
 const SEAM_DARK = 0.66;    // seam-shoulder albedo floor (the crevice shadow)
 const PALE_BONE: readonly [number, number, number] = [0.88, 0.86, 0.82];  // near-neutral pale the channel lifts toward (picks up light hue cleanly)
-const CORE_GLOW = 0.38;    // how far the DEEPEST seam lifts toward PALE_BONE (matte hue pickup)
-const SEAM_CHROMA = 0.8;   // VIVID: over-saturate the seam's LIT colour toward the light's hue (chroma 1 + this at the deepest seam)
+const CORE_GLOW = 0.3;     // how far the DEEPEST seam lifts toward PALE_BONE (matte hue pickup)
+const SEAM_CHROMA = 0.45;  // VIVID: over-saturate the seam's LIT colour toward the light's hue (chroma 1 + this at the deepest seam)
 const SEAM_ROUGH = 0.22;   // roughness in WET seams only (per-floor wetness) — no dry gloss
 
 // ── SEEP — liquid light in the grooves ───────────────────────────────

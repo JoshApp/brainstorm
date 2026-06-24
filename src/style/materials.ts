@@ -126,17 +126,17 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
   const wallTex = bakeSurfaceTexture(renderer, 'wall');
   installSurfaceDetail(wallBase, {
     splat: true,
-    brickDamage: true, grooveFill: true,
+    brickDamage: true, grooveFill: true, seamGlow: true,
     tex: wallTex,
     tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
   });
   installSurfaceDetail(chasmWall, {
     splat: true,
-    tex: wallTex, brickDamage: true, grooveFill: true,
+    tex: wallTex, brickDamage: true, grooveFill: true, seamGlow: true,
     tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
   });
   installSurfaceDetail(floorBase, {
-    splat: true,
+    splat: true, seamGlow: true,
     tex: bakeSurfaceTexture(renderer, 'floor'),
     tile: SURFACE_TILE.floor, proj: 'horiz', tint: [1.08, 0.9, 0.64], relief: 0.32,
   });
