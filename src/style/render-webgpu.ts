@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
 import { pass, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, mix,
-  luminance, texture,
+  luminance, texture, uniform,
   acesFilmicToneMapping, agxToneMapping, neutralToneMapping } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -107,31 +107,34 @@ const BAYER_TEX = (() => {
   return t;
 })();
 
-// DARK REVEAL — the "forms emerge from black without a light source" look
-// (chiaroscuro / DELVE's dread-light direction). A darkness-WEIGHTED lift + gain:
-// pull the faint ambient/indirect micro-light OUT of near-black surfaces so their
-// FORM reads, while leaving torchlit areas untouched (weight = how dark the pixel
-// is). Applied BEFORE dither/quantize so the lift gets structured into the etched-
-// from-dark texture. Ported from the WebGL blit's dark-adapt. Tune live with
-// ?reveal=<mult> — 0 = off, 1 = default, 2 = strong.
-const REVEAL_SCALE = (() => {
-  const q = typeof location !== 'undefined' && new URLSearchParams(location.search).get('reveal');
+// EYE DARK-ADAPTATION — the reveal is DRIVEN by dark-adaptation.ts (the same 0..1
+// ramp the WebGL blit uses), NOT always-on. When the eye lingers in a dark,
+// torchless area the value RAMPS UP (~1.5s) and the grade lifts the near-black so
+// FORM emerges; stepping back toward torchlight RAMPS DOWN fast (~0.1s) and
+// re-blinds you. render-target.ts's setDarkAdapt() pushes the value here each
+// frame (so the SAME signal drives WebGL and WebGPU). A live uniform — no pipeline
+// rebuild. The global brightness ramp rides the AmbientLight (systems.ts); this is
+// the darkness-WEIGHTED shader lift on top, which reveals form in the near-black.
+const darkAdaptNode = (uniform as any)(0);
+// ?darkadapt=<0..1> PINS the value (ignores the live ramp) — to inspect the lift
+// in a lit scene without walking into the dark. Undefined → the live ramp drives it.
+const ADAPT_PIN = (() => {
+  const q = typeof location !== 'undefined' && new URLSearchParams(location.search).get('darkadapt');
   const n = q == null || q === false ? NaN : parseFloat(q);
-  return Number.isFinite(n) ? n : 1;
+  return Number.isFinite(n) ? n : null;
 })();
-// GAIN-dominant: the gain MULTIPLIES, so it amplifies faint real shading (form
-// emerges) but does nothing to pure black (0 × anything = 0 → the void stays
-// void). LIFT is a tiny additive floor only — kept small so it doesn't paint the
-// black grey. This is what makes "forms poke out of the dark without a light".
-// GATED DEEP-DARK GAIN. A plain darkness-weighted multiply was invisible: it
-// amplifies proportionally, so a faint 3%-lit surface × 1.5 is still ~4%. To make
-// forms LOOM out of black we need (a) a much higher gain and (b) a gate so it only
-// fires on the faintest surfaces — amplifying midtones/lit areas would wash them.
-// gate = 1 below REVEAL_RANGE brightness, ramping to 0 above it (smoothstep). It's
-// still a MULTIPLY, so hue is preserved (no acid) and pure black stays black (the
-// gate is ~1 there but 0 × gain = 0). Push live with ?reveal=<mult>.
-const REVEAL_GAIN = 1.8 * REVEAL_SCALE;   // multiply boost in the deepest darks (×(1+gain) at black) — eased; nearest upscale made the revealed pixels pop harder
-const REVEAL_RANGE = 0.008;               // linear ceiling the reveal acts below (~10% display) — ONLY near-black
+if (ADAPT_PIN != null) (darkAdaptNode as any).value = ADAPT_PIN;
+/** Drive the WebGPU eye dark-adaptation (0..1). Called from setDarkAdapt(). */
+export function setWebGPUDarkAdapt(v: number): void {
+  if (ADAPT_PIN == null) (darkAdaptNode as any).value = v;
+}
+// The reveal is the GATED DEEP-DARK gain we tuned earlier — surgical: only the
+// truly near-black gets amplified (a high multiply that pulls faint form out of
+// the void), so it CAN'T wash the mid-dark like the broad WebGL darkness-weighted
+// formula did on WebGPU's higher ambient. Now RAMPED by the dark-adapt value
+// instead of always-on: 0 in torchlight (off), 1 in a dark hall (full reveal).
+const REVEAL_GAIN = 1.8;     // ×(1+gain) on the deepest black at full adaptation (the tuned look)
+const REVEAL_RANGE = 0.008;  // display-brightness ceiling the reveal acts below — ONLY near-black
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -246,15 +249,15 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
   col = col.pow(_float(CONTRAST));
 
-  // ── DARK REVEAL — forms loom out of black (see notes at REVEAL_* above) ──
-  // gate = 1 on the faintest surfaces, ramping to 0 by REVEAL_RANGE brightness, so
-  // only the deep darks are amplified; a high MULTIPLY there pulls faint ambient
-  // form up into visibility while preserving hue and leaving lit areas untouched.
-  // Done before the dither/quantize so the revealed form gets the smooth halftone.
-  if (REVEAL_GAIN > 0) {
+  // ── EYE DARK-ADAPTATION — gated deep-dark reveal × the adapt ramp ──
+  // gate = 1 only on the truly near-black (< REVEAL_RANGE), so the multiply pulls
+  // faint form out of the void WITHOUT touching the mid-dark or lit areas. Scaled
+  // by darkAdaptNode: off in torchlight, full in a dark hall. Before dither/quantize
+  // so the revealed form gets the smooth gamma-space stepping.
+  {
     const maxC: any = col.r.max(col.g).max(col.b);
     const gate: any = _float(1.0).sub((smoothstep as any)(_float(0.0), _float(REVEAL_RANGE), maxC));
-    col = col.mul(_float(1.0).add(gate.mul(_float(REVEAL_GAIN))));
+    col = col.mul(_float(1.0).add(gate.mul(_float(REVEAL_GAIN)).mul(darkAdaptNode)));
   }
 
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──

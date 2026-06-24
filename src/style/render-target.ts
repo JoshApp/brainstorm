@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { isWebGPU, isWebGPUReady } from '../scene/renderer-mode';
-import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale } from './render-webgpu';
+import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale, setWebGPUDarkAdapt } from './render-webgpu';
 import { unbandMaterialWebGPU } from './banded-lighting-webgpu';
 
 // WEBGPU SPIKE: rate-limit render failures to one console line.
@@ -728,6 +728,7 @@ export function setMasterBrightness(v: number): void {
 
 export function setDarkAdapt(amount: number): void {
   if (blitMaterial) blitMaterial.uniforms.uDarkAdapt.value = amount;
+  setWebGPUDarkAdapt(amount);   // drive the WebGPU grade's dark-adapt lift too
 }
 
 /** Bypass every PSX post-effect (quantize, dither, scanlines, amber
