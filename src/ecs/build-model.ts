@@ -9,6 +9,7 @@ import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
 import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
+import { setMaterialChromaWebGPU } from '../style/banded-lighting-webgpu';
 import { vec3, normalWorld, positionWorld, cameraPosition } from 'three/tsl';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
@@ -521,6 +522,9 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
  *  approximation (the darkReactive dimming is deferred). World-space fresnel so
  *  it's unambiguous regardless of the node renderer's view-space conventions. */
 function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef): void {
+  // PAINTED chroma — over-saturate toward the room's coloured light (pale bone in
+  // a red room → vivid red). Runs via a per-material banded+chroma lighting model.
+  if (def.chroma != null && def.chroma !== 1) setMaterialChromaWebGPU(mat, def.chroma);
   if (!def.rim) return;
   const power = def.rim.power ?? 2.5;
   const intens = def.rim.intensity ?? 1.0;

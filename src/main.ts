@@ -296,7 +296,7 @@ scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 // brighter (flat wash on the stone). Trimming the fill here — rather than via a
 // low global exposure — lets exposure stay high enough that the EMISSIVE/additive
 // flames stay vivid (a low exposure dimmed them to faint/transparent).
-const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY * (WEBGPU ? 0.5 : 1));
+const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY * (WEBGPU ? 0.3 : 1));
 scene.add(ambient);
 
 // Inspection mode (preview snaps) lives in src/debug/inspect-mode.ts — the

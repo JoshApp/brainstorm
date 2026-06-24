@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix } from 'three/tsl';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
 // GLSL version appended to THREE.ShaderChunk.lights_fragment_end globally; under
@@ -18,6 +18,10 @@ const BANDS = 4.0;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
+  // chroma > 1 = PAINTED: over-saturate the lit colour toward the coloured light
+  // that struck it (a pale skeleton in a red room → vividly red). 1 = off.
+  chroma: number;
+  constructor(chroma = 1) { super(); this.chroma = chroma; }
   finish(builder: any): void {
     const context = builder.context;
     const rl: any = context.reflectedLight;
@@ -34,9 +38,13 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     const bandedDD: any = dd.mul(bandedMag.div(mag.max(0.0015)));
     const newDD: any = (mag.greaterThan(0.0015) as any).select(bandedDD, dd);
     // Recompose outgoing with the banded direct diffuse + the untouched rest.
-    context.outgoingLight.assign(
-      newDD.add(rl.indirectDiffuse).add(rl.directSpecular).add(rl.indirectSpecular),
-    );
+    let out: any = newDD.add(rl.indirectDiffuse).add(rl.directSpecular).add(rl.indirectSpecular);
+    // CHROMA / PAINTED — over-saturate the lit colour toward the light's hue.
+    if (this.chroma !== 1) {
+      const lum: any = (luminance as any)(out);
+      out = (mix as any)((vec3 as any)(lum, lum, lum), out, this.chroma).max((vec3 as any)(0, 0, 0));
+    }
+    context.outgoingLight.assign(out);
     super.finish(builder);
   }
 }
@@ -55,5 +63,18 @@ export function installBandedLightingWebGPU(on: boolean): void {
   proto.setupLightingModel = on
     ? function () { return new BandedPhysicalLightingModel(); }
     : origSetupLightingModel;
+}
+
+/** Per-material PAINTED chroma — band AND over-saturate toward the light's hue
+ *  (pale skeletons/bone take on the torch colour vividly). */
+export function setMaterialChromaWebGPU(mat: any, chroma: number): void {
+  mat.setupLightingModel = () => new BandedPhysicalLightingModel(chroma);
+}
+
+/** Restore the stock (un-banded) lighting model on a material — used for the
+ *  close-up viewmodel, where cel-banding a flickering lamp-lit arm reads as
+ *  flicker. Smooth lighting there is steadier and barely distinguishable. */
+export function unbandMaterialWebGPU(mat: any): void {
+  if (origSetupLightingModel) mat.setupLightingModel = origSetupLightingModel;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

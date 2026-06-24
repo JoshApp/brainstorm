@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { isWebGPU, isWebGPUReady } from '../scene/renderer-mode';
 import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale } from './render-webgpu';
+import { unbandMaterialWebGPU } from './banded-lighting-webgpu';
 
 // WEBGPU SPIKE: rate-limit render failures to one console line.
 let webgpuRenderErrored = false;
@@ -96,10 +97,14 @@ export function registerViewmodel(root: THREE.Object3D): void {
       if (!mesh.isMesh) return;
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of mats) {
-        if (m && !(m as THREE.Material).transparent) {
+        if (!m) continue;
+        if (!(m as THREE.Material).transparent) {
           (m as THREE.Material).depthTest = true;
           (m as THREE.Material).depthWrite = true;
         }
+        // Smooth-light the viewmodel (no cel banding): banding a close-up arm lit
+        // by the flickering lamp read as flicker.
+        unbandMaterialWebGPU(m);
       }
     });
   }
