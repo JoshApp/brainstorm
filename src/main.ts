@@ -51,6 +51,7 @@ import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
+import { installBandedLightingWebGPU } from './style/banded-lighting-webgpu';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
   INSPECT_AMBIENT, INSPECT_REQUESTED,
@@ -306,8 +307,10 @@ scene.add(ambient);
 // --- Static surface materials (PS1) ---
 // Patch the global lighting chunk FIRST so every material compiles with the
 // chosen banded-lighting state. Must precede any material compile; runtime
-// toggle is handled in the onSettingsChanged subscription.
-installBandedLighting(getSettings().bandedLighting);
+// toggle is handled in the onSettingsChanged subscription. WebGPU uses a
+// lighting-model patch (no shared shader chunk under the node renderer).
+if (WEBGPU) installBandedLightingWebGPU(getSettings().bandedLighting);
+else installBandedLighting(getSettings().bandedLighting);
 const materials = buildMaterials(renderer);
 // The custom PSX pipeline builds WebGLRenderTargets + GLSL ShaderMaterials —
 // WebGL-only. Skipped under ?webgpu=1 (renderWithStyle short-circuits to a

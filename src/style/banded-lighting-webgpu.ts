@@ -1,5 +1,5 @@
-import { PhysicalLightingModel } from 'three/webgpu';
-import { vec3, float, diffuseColor } from 'three/tsl';
+import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
+import { vec3, diffuseColor } from 'three/tsl';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
 // GLSL version appended to THREE.ShaderChunk.lights_fragment_end globally; under
@@ -42,9 +42,18 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-/** Override a node material's lighting model with the banded one. (Typed `any` —
- *  the setupLightingModel hook only exists on the WebGPU node-material side.) */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applyBandedLightingWebGPU(mat: any): void {
-  mat.setupLightingModel = () => new BandedPhysicalLightingModel();
+// Patch the standard node material's lighting model GLOBALLY (the GLSL version
+// banded ALL lit materials via a shared shader chunk; this is the node-renderer
+// equivalent). Must run before any material compiles. Props/creatures/surfaces
+// then all band consistently — fixes the "dirt mound isn't band-lit, looks
+// disconnected from the banded ground" mismatch.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let origSetupLightingModel: any = null;
+export function installBandedLightingWebGPU(on: boolean): void {
+  const proto: any = (MeshStandardNodeMaterial as any).prototype;
+  if (origSetupLightingModel === null) origSetupLightingModel = proto.setupLightingModel;
+  proto.setupLightingModel = on
+    ? function () { return new BandedPhysicalLightingModel(); }
+    : origSetupLightingModel;
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */

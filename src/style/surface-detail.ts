@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
-import { applyBandedLightingWebGPU } from './banded-lighting-webgpu';
 import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, mx_noise_float } from 'three/tsl';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -88,10 +87,9 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   const fDet: any = sx.dot(R1).mul(faceDirection);
   const vGrad: any = fDet.sign().mul(dH.x.mul(R1).add(dH.y.mul(R2)));
   (mat as any).normalNode = fDet.abs().mul(N).sub(vGrad).normalize();
-
-  // BANDED LIGHTING — cel-step the direct light on the stone (the original banded
-  // the LIGHT, not the material; this was "all diffused" under WebGPU).
-  applyBandedLightingWebGPU(mat);
+  // (Banded cel lighting is applied GLOBALLY at boot — installBandedLightingWebGPU
+  // patches the node material's lighting model — so props/creatures band too, not
+  // just these surfaces.)
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
