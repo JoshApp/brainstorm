@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
-import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, float, bumpMap, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, mx_noise_float } from 'three/tsl';
+import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, mx_noise_float } from 'three/tsl';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // WebGPU surface shading: triplanar-sample the baked texture in world space and
@@ -58,10 +58,25 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // colorNode replaces only the albedo input — the standard PBR lighting,
   // roughness, emissive, etc. still apply on top.
   (mat as any).colorNode = albedo;
-  // RELIEF — perturb the normal from the height channel (s.a). bumpMap does the
-  // derivative-based perturbation the GLSL did by hand (dFdx/dFdy of s.a), so the
-  // brick/flagstone seams catch torchlight in 3D instead of reading flat.
-  (mat as any).normalNode = (bumpMap as any)(sampled.a, float(cfg.relief));
+
+  // RELIEF — perturb the view normal from the height channel so the bricks +
+  // crevices catch torchlight in 3D. This is perturbNormalArb (Mikkelsen) exactly
+  // as the GLSL did it (dFdx/dFdy of the sampled height in view space). NOTE: the
+  // built-in `bumpMap()` node CAN'T be used here — it re-samples a TEXTURE node at
+  // UV offsets to get the gradient, but our height is an already-sampled `.a`
+  // swizzle, so bumpMap's offset re-sample is a no-op → zero relief → flat walls.
+  // Hand-rolling with the real screen-space derivative of `sampled.a` fixes it.
+  const h: any = sampled.a;
+  const dH: any = (vec2 as any)(h.dFdx(), h.dFdy()).mul(float(cfg.relief));
+  const sp: any = positionView;
+  const sx: any = sp.dFdx().normalize();
+  const sy: any = sp.dFdy().normalize();
+  const N: any = normalView;
+  const R1: any = sy.cross(N);
+  const R2: any = N.cross(sx);
+  const fDet: any = sx.dot(R1).mul(faceDirection);
+  const vGrad: any = fDet.sign().mul(dH.x.mul(R1).add(dH.y.mul(R2)));
+  (mat as any).normalNode = fDet.abs().mul(N).sub(vGrad).normalize();
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
