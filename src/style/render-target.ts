@@ -699,10 +699,15 @@ export function renderWithStyle(
   // pipeline is ported to TSL — see docs/WEBGPU-MIGRATION.md. renderAsync is
   // fire-and-forget per frame; nothing renders until init() has resolved.
   if (isWebGPU()) {
+    // isWebGPUReady() ⇒ init() resolved, so the SYNC render() is valid here
+    // (renderAsync is deprecated in r184). try/catch so an unported material
+    // can't kill the loop — rate-limited to one log line.
     if (isWebGPUReady()) {
-      (renderer as unknown as { renderAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<void> })
-        .renderAsync(scene, camera)
-        .catch((err) => { if (!webgpuRenderErrored) { webgpuRenderErrored = true; console.error('[webgpu] renderAsync failed (first only):', err); } });
+      try {
+        (renderer as unknown as { render: (s: THREE.Scene, c: THREE.Camera) => void }).render(scene, camera);
+      } catch (err) {
+        if (!webgpuRenderErrored) { webgpuRenderErrored = true; console.error('[webgpu] render failed (first only):', err); }
+      }
     }
     return;
   }

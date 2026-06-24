@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { isWebGPU } from '../scene/renderer-mode';
 import type { Interactable } from './types';
 import { getAllInteractables } from './system';
 
@@ -201,6 +202,14 @@ export function updateOutline(
   dt: number,
   playerPos: THREE.Vector3,
 ) {
+  // WEBGPU SPIKE: the outline is a GLSL ShaderMaterial (custom vertex push) the
+  // node renderer can't build — it threw every frame near any interactable, the
+  // main source of the WebGPU-path lag. Disabled until ported to TSL; the glow
+  // is non-essential for the port. See WEBGPU-MIGRATION.md.
+  if (isWebGPU()) {
+    if (outlines.size) clearAllOutlines();
+    return;
+  }
   if (disabled) {
     if (outlines.size) clearAllOutlines();
     return;
