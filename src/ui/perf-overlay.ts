@@ -12,6 +12,7 @@
 // overlay still works for non-Three.js contexts later.
 
 import type * as THREE from 'three';
+import { isWebGPU } from '../scene/renderer-mode';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { getNativeHz, pacerEffectiveFps } from '../scene/frame-pacer';
@@ -167,11 +168,18 @@ export function tickPerfOverlay(nowMs: number): void {
   // (e.g. a 60 cap is 45 on a 90Hz panel). 'native' when uncapped.
   const cap = Number(getSettings().frameCap);
   const capLabel = cap > 0 ? `${pacerEffectiveFps(cap)}` : 'native';
+  // Under WebGPU, renderer.info draw/tri/resource counts are unreliable (the
+  // node RenderPipeline renders async across multiple passes, so the counters
+  // can't be reset cleanly per frame). Show them as n/a rather than a misleading
+  // runaway — real WebGPU stats need timestamp queries (the Phase-3 cockpit port).
+  const drawsLine = isWebGPU()
+    ? `draws n/a · tris n/a  (webgpu — see Phase 3)`
+    : `${lastCalls} draws · ${lastTris.toLocaleString()} tris`;
   secondaryEl.textContent =
     `${lastMs.toFixed(1)} ms · p95 ${p95.toFixed(1)} ms\n` +
     `panel ${getNativeHz()}Hz · cap ${capLabel}\n` +
-    `${lastCalls} draws · ${lastTris.toLocaleString()} tris\n` +
-    `lights ${getActiveSourceCount()}/${getRegisteredSourceCount()} · geo ${lastGeo} · tex ${lastTex}\n` +
+    `${drawsLine}\n` +
+    `lights ${getActiveSourceCount()}/${getRegisteredSourceCount()} · geo ${isWebGPU() ? 'n/a' : lastGeo} · tex ${isWebGPU() ? 'n/a' : lastTex}\n` +
     `pool ${getGeometryPoolSize()}${heap !== null ? ` · heap ${heap}MB` : ''}`;
   // Preserve the newline for the secondary block.
   secondaryEl.style.whiteSpace = 'pre';
