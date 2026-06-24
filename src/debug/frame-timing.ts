@@ -16,6 +16,7 @@ import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { installRenderProbe, setRenderGpuProbe, renderGpuProbeOn, installGpuPassHooks, type GpuPassHooks } from './render-probe';
 import { setProfSpans } from './prof-span';
+import { isWebGPU } from '../scene/renderer-mode';
 
 export interface FrameSample {
   /** ms since the previous frame's end — the true frame interval (≈ 1000/fps). */
@@ -94,7 +95,7 @@ let passProbeT0 = 0;
 const passProbePhases = new Map<string, number>();  // sticky last measurement per pass
 
 function syncGpu(): void {
-  if (!renderer) return;
+  if (!renderer || isWebGPU()) return;   // getContext()/readPixels are WebGL-only
   const gl = renderer.getContext();
   gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, GPU_PROBE_PIXEL);
 }
@@ -139,7 +140,12 @@ export function gpuPassDiag(): Record<string, unknown> {
 export function initFrameTiming(r: THREE.WebGLRenderer): void {
   if (renderer) return;
   renderer = r;
-  gpu = new GpuTimer(r.getContext());
+  // WEBGPU SPIKE: GpuTimer + the readPixels probe use renderer.getContext() and
+  // the WebGL2 timer-query extension — neither exists under WebGPU, and calling
+  // getContext() there crashes profiler boot (?profile=1). Leave gpu null; all
+  // gpu?.* calls are already null-safe, and CPU/per-system timing + renderer.info
+  // counts still work. Real WebGPU GPU timing (timestamp queries) is Phase 3.
+  gpu = isWebGPU() ? null : new GpuTimer(r.getContext());
 }
 
 /** GPU time is recorded by the passive timer-query extension. */
@@ -263,7 +269,7 @@ export function frameEnd(): void {
   // sample (probedGpu is sticky). We then restart the dt clock past the stall
   // so it's excluded from the following frame's dt too — the probe costs real
   // fps but never shows up as a fake "dropped frame" in the recording.
-  if (renderGpuProbeOn() && renderer && (gpuProbeCount++ % GPU_PROBE_EVERY === 0)) {
+  if (renderGpuProbeOn() && renderer && !isWebGPU() && (gpuProbeCount++ % GPU_PROBE_EVERY === 0)) {
     const gl = renderer.getContext();
     renderer.setRenderTarget(null);
     const t0 = performance.now();
