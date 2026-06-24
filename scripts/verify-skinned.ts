@@ -12,9 +12,18 @@ if (!spec) { console.error(`no enemy '${id}'. have: ${Object.keys(ENEMIES).join(
 
 const creature = buildCreature(spec.creature);
 creature.group.updateWorldMatrix(true, true);
-const origBox = new THREE.Box3().setFromObject(creature.group);
+// MESH-ONLY box (the skinned mesh excludes sprites — they stay separate
+// billboards — so the box must too, or sprite-eyed mobs read as false mismatches).
+const origBox = new THREE.Box3();
 let origMeshes = 0;
-creature.group.traverse((o) => { const m = o as THREE.Mesh & { isSprite?: boolean }; if (m.isMesh && m.isSprite !== true) origMeshes++; });
+const wv = new THREE.Vector3();
+creature.group.traverse((o) => {
+  const m = o as THREE.Mesh & { isSprite?: boolean };
+  if (!m.isMesh || m.isSprite === true || !m.geometry) return;
+  origMeshes++;
+  const p = m.geometry.attributes.position;
+  for (let i = 0; i < p.count; i++) { wv.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld); origBox.expandByPoint(wv); }
+});
 
 const sk = buildSkinnedCreature(creature);
 sk.mesh.updateWorldMatrix(true, true);
@@ -33,6 +42,21 @@ for (let i = 0; i < pos.count; i++) {
   skBox.expandByPoint(v);
 }
 
+// DEBUG: how much does skinning move each vertex from its baked position? (In
+// bind pose it should be ZERO.) Find the worst offenders + their bones.
+if (process.env.DEBUG) {
+  const si = sk.mesh.geometry.attributes.skinIndex;
+  let moved = 0; const samples: string[] = [];
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    a.fromBufferAttribute(pos, i);            // baked
+    b.copy(a); sk.mesh.applyBoneTransform(i, b);   // skinned
+    const d = a.distanceTo(b);
+    if (d > 1e-3) { moved++; if (samples.length < 6) samples.push(`bone${si.getX(i)} Δ${d.toFixed(3)} baked[${a.toArray().map(n=>n.toFixed(2))}]→skin[${b.toArray().map(n=>n.toFixed(2))}]`); }
+  }
+  console.log(`  DEBUG: ${moved}/${pos.count} verts move under bind-pose skinning (should be 0)`);
+  samples.forEach((s) => console.log('    ' + s));
+}
 const ok = origBox.min.distanceTo(skBox.min) < 2e-3 && origBox.max.distanceTo(skBox.max) < 2e-3;
 const fmt = (b: THREE.Box3) => `min[${b.min.toArray().map((n) => n.toFixed(3)).join(',')}] max[${b.max.toArray().map((n) => n.toFixed(3)).join(',')}]`;
 
