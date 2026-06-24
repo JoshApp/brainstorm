@@ -32,7 +32,7 @@ import type { Observation } from '../harness/types';
 import { buildObservation } from '../harness/observation';
 import { decideIntent, probeIntent } from '../harness/pilot';
 import type { Intent } from '../harness/intent';
-import { NEUTRAL_INTENT, installBus, setIntent } from '../harness/intent';
+import { NEUTRAL_INTENT, installBus, releaseBus, setIntent } from '../harness/intent';
 import { TapeRecorder, tapeFrame, serializeTape, deserializeTape } from '../harness/tape';
 import { startRecording, stopRecording, recordedSteps, peekLastRunTape } from '../harness/run-recorder';
 
@@ -201,6 +201,20 @@ function observe(): Observation {
   return buildObservation(getCamera(), level as LiveLevel);
 }
 
+/** Enter stepped/driven mode: the stepper takes the sim clock AND the input
+ *  wire. Idempotent — call before any step / drive / replay action.
+ *
+ *  Installing the bus HERE (lazily, on first drive) rather than at
+ *  installSimStepper() time is what keeps a plain dev boot on live
+ *  keyboard/touch: window.__sim exists as a console tool from boot, but it
+ *  only seizes input once you actually drive. (Pre-fix it grabbed the wheel
+ *  unconditionally at boot, so PC play was frozen to neutral input.) thaw()
+ *  releases the bus, handing control back to the keyboard/touch schemes. */
+function enterStepped(): void {
+  if (!isWorldFrozen()) setWorldFrozen(true);
+  installBus();
+}
+
 /** Install window.__sim (DEV only). Returns nothing; the console is the UI. */
 export function installSimStepper(deps: SimStepperDeps): void {
   simSystems = deps.systems.filter((s) => s.kind === 'sim');
@@ -208,9 +222,10 @@ export function installSimStepper(deps: SimStepperDeps): void {
   getCamera = deps.getCamera;
   getSeed = deps.getSeed;
   getSwing = deps.getSwing;
-  // Route control through the drive-by-wire bus so driven/replayed intents
-  // reach the sim through the same seam a thumb would.
-  installBus();
+  // NOTE: the drive-by-wire bus is NOT installed here. Merely wiring up the
+  // console tool must not seize input — the bus is installed lazily by
+  // enterStepped() the moment you actually freeze/step/drive, and released by
+  // thaw(). See enterStepped() for why.
 
   const api = {
     /** Names of the sim systems this stepper will run, in order. */
@@ -218,12 +233,14 @@ export function installSimStepper(deps: SimStepperDeps): void {
     /** Park the rAF loop's world advance (render keeps running) so step() owns
      *  the sim clock. Idempotent. */
     freeze() {
-      setWorldFrozen(true);
+      enterStepped();
       return `frozen — ${simSystems.length} sim systems under manual step`;
     },
     /** Resume normal real-time play. */
     thaw() {
       setWorldFrozen(false);
+      releaseBus();   // hand input back to the keyboard/touch schemes
+
       // Restore the clock to whatever live play uses (deterministic only when
       // the page is ?fixedstep=1) so resumed live play isn't left on a stuck
       // accumulated clock.
@@ -234,7 +251,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
     /** Advance n fixed sim steps (default 1). Auto-freezes first so you never
      *  double-advance against the live loop. */
     step(n = 1) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       step(n);
       return digest();
     },
@@ -255,7 +272,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  Note: only sim state is restored by reseed; positions already advanced
      *  are not rewound, so call this right after entering a scenario. */
     proveDeterministic(seedValue = 12345, steps = 120) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       seedRng(seedValue >>> 0);
       step(steps);
       const a = digest();
@@ -267,7 +284,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
     /** Wall-clock how many fixed sim steps/sec this machine can push with no
      *  render — the "how fast can a headless run go" number. */
     bench(steps = 1000) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       const t0 = performance.now();
       step(steps);
       const ms = performance.now() - t0;
@@ -285,7 +302,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  `(frame) => Partial<Intent>` (missing fields default to neutral). Use to
      *  hand-fly the player; returns the digest. */
     drive(source: (frame: number) => Partial<Intent> | null, n = 60) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       driveSteps((f) => normalizeIntent(source(f)), n);
       return digest();
     },
@@ -294,7 +311,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  whole run — seed + intents — and replays byte-identically from a fresh
      *  load at the same seed. */
     record(source: (frame: number) => Partial<Intent> | null, n = 150) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       const rec = new TapeRecorder(getSeed() >>> 0);
       driveSteps((f) => normalizeIntent(source(f)), n, rec);
       const tape = rec.finish();
@@ -306,7 +323,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  reproduce the recorded run exactly. */
     replay(tapeJson: string, extra = 0) {
       const tape = deserializeTape(tapeJson);
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       driveSteps((f) => tapeFrame(tape, f) ?? NEUTRAL_INTENT, tape.frames.length + extra);
       return { seed: tape.seed, frames: tape.frames.length, digest: digest() };
     },
@@ -341,7 +358,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  renderer, deterministically, emitting a replayable run + an inspectable
      *  trace of why it did what it did. */
     runBot(n = 300) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       const rec = new TapeRecorder(getSeed() >>> 0, 'bot');
       const transcript: BotFrame[] = [];
       driveSteps((f) => {
@@ -380,7 +397,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  this isolates ENEMY threat from player skill — the unit a balance sweep
      *  aggregates across seeds + enemy types. */
     threatProbe(n = 2400) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       const obs0 = observe();
       const maxHp = obs0.player.hp.max;
       let deathFrame: number | null = null;
@@ -413,7 +430,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  much HP it cost. The player-side counterpart to threatProbe — the unit a
      *  win-rate / player-TTK sweep aggregates across seeds + enemy types. */
     duel(n = 1800) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       const maxHp = observe().player.hp.max;
       let clearF: number | null = null;
       let deathF: number | null = null;
@@ -443,7 +460,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  nearest enemy's hp. Answers "does the strike window open headless, and
      *  does the cone catch the target?" without guessing. */
     swingTrace(n = 90) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       const rows: Array<SwingProbe & { f: number; near: number | null; bearing: number | null; yaw: number; inCone: boolean; ehp: number | null }> = [];
       driveSteps((f) => {
         const obs = observe();
@@ -478,7 +495,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  the bot's swings whiff?" with the ground truth (a strike in cone + reach
      *  that draws no blood points somewhere other than positioning). */
     combatTrace(n = 1200) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       const rows: Array<{ f: number; striking: boolean; dist: number | null; bearing: number | null; inCone: boolean; ehp: number | null }> = [];
       driveSteps((f) => {
         const obs = observe();
@@ -520,7 +537,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
     /** Replay a tape, returning the digest at EVERY frame — the full
      *  trajectory. One-shot from spawn (fresh ?simfreeze load). */
     trace(tapeJson: string): string[] {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       return traceReplay(deserializeTape(tapeJson));
     },
     /** First frame two trajectories disagree — where did the runs split?
@@ -530,7 +547,7 @@ export function installSimStepper(deps: SimStepperDeps): void {
      *  state matches a claimed digest. The trust-but-verify primitive — the
      *  same call a server makes on a submitted run. */
     verify(tapeJson: string, claimedFinalDigest: string) {
-      if (!isWorldFrozen()) setWorldFrozen(true);
+      enterStepped();
       const tape = deserializeTape(tapeJson);
       driveSteps((f) => tapeFrame(tape, f) ?? NEUTRAL_INTENT, tape.frames.length);
       const actual = digest();
