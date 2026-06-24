@@ -13,7 +13,8 @@
 
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
-import { pass, vec3, vec4, float, screenUV, dot, smoothstep, mix, luminance,
+import { pass, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, mix,
+  luminance, interleavedGradientNoise,
   acesFilmicToneMapping, agxToneMapping, neutralToneMapping } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -78,6 +79,16 @@ const CRUSH_START_M = 6, CRUSH_END_M = 12, CRUSH_FLOOR = 0.16;
 // × a depth weight, so it's coloured by whatever lights are near. We do the same.
 const INSCATTER_STRENGTH = 0.06, INSCATTER_START_M = 8, INSCATTER_END_M = 30;   // subtle, was a fog-out
 
+// PSX GRADE TAIL — ported from the WebGL blit (render-target.ts) so WebGPU gets
+// the same lo-fi crunch: chromatic aberration, dither, hard colour quantize,
+// scanlines, amber tint. All but CA are pure ALU in the final fullscreen pass;
+// CA adds 2 scene-texture taps. Matches the WebGL literals.
+const CA_AMOUNT = 0.004;            // radial red/blue split (was reading as a bug above this)
+const QUANTIZE_LEVELS = 32.0;       // hard PSX colour steps
+const SCANLINE_DARKEN = 0.96;       // every other row
+const AMBER_TINT: readonly [number, number, number] = [1.025, 1.0, 0.96];
+const VIGNETTE = 0.22;              // matched toward the WebGL blit's 0.20 (was 0.55)
+
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
   resScale = s;
@@ -105,11 +116,24 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   scenePass = pass(scene, camera);
   scenePass.setResolutionScale(resScale);
 
+  // CHROMATIC ABERRATION — radial red/blue split on the scene sample, matching the
+  // WebGL blit: red sampled outward, blue inward, by CA_AMOUNT × distance-from-
+  // centre. 2 extra taps of the (low-res) scene texture; all downstream is ALU.
+  // Done on the raw scene (pre-expose/bloom) exactly as the WebGL path did it.
+  const tex: any = (scenePass as any).getTextureNode();
+  const suv: any = screenUV as any;
+  const caOff: any = suv.sub(0.5).mul(CA_AMOUNT);
+  const sceneCA: any = (vec3 as any)(
+    tex.sample(suv.add(caOff)).r,
+    tex.sample(suv).g,
+    tex.sample(suv.sub(caOff)).b,
+  );
+
   // EXPOSE FIRST. r184's brighter lighting must be brought into range BEFORE
   // bloom, or bloom (threshold 1.0) catches half the scene and veils everything
   // in a desaturated white haze. Exposing first means only the genuinely-bright
   // sources (flames) clear the threshold → tight, subtle bloom.
-  const exposed: any = (scenePass as any).mul(float(EXPOSURE));
+  const exposed: any = sceneCA.mul(float(EXPOSURE));
 
   // Exposed scene + native bloom, additive, LINEAR. Bloom optional (BLOOM
   // setting); the bloomPass also feeds the fog inscatter below.
@@ -141,13 +165,12 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   };
   if (RAW) { build((vec4 as any)((lit as any).rgb, 1.0)); return; }
 
-  // ── Colour grade, in LINEAR (one tonemap+sRGB pass by the pipeline after) ──
-  // NO final-colour QUANTIZE. The original banded the LIGHT contribution (a
-  // stylized cel-light step, banded-lighting.ts), NOT the material colours —
-  // quantizing the whole image here banded materials + light together into the
-  // harsh radial bands. So: smooth materials + smooth light now; the stylized
-  // light-step look is a separate port of banded-lighting (deferred). Just a
-  // gentle saturation + black-crush + vignette here.
+  // ── Colour grade + PSX tail, in display space after the tonemap below ──
+  // The stylized cel light-step is handled per-material (banded-lighting-webgpu.ts
+  // patches the node lighting model), NOT by quantizing the whole image here — a
+  // full-image quantize banded materials + light together into harsh radial bands.
+  // So the final QUANTIZE below is the PSX *colour-depth* crunch (32 levels), which
+  // is a different thing from cel-banding the light and is safe on the graded image.
   const _vec4 = vec4 as any, _float = float as any, _dot = dot as any;
   const _uv = screenUV as any;
 
@@ -164,9 +187,24 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   col = (mix as any)((vec3 as any)(lum, lum, lum), col, SATURATION);
   // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
   col = col.pow(_float(CONTRAST));
-  // VIGNETTE — mild edge darkening.
+
+  // ── PSX GRADE TAIL (ported from the WebGL blit) ──
+  // DITHER — break the quantize banding before stepping. WebGL used a 4x4 Bayer
+  // grid; interleaved-gradient noise fills the same anti-banding role, compiles
+  // cleanly to WGSL, and is a touch finer than the ordered grid. Amplitude ~1/24.
+  const px: any = screenCoordinate as any;
+  col = col.add((interleavedGradientNoise as any)(px).sub(0.5).mul(_float(1.0 / 24.0)));
+  // QUANTIZE — hard PSX colour steps (floor(col*N + 0.5)/N).
+  col = col.mul(_float(QUANTIZE_LEVELS)).add(0.5).floor().div(_float(QUANTIZE_LEVELS));
+  // SCANLINES — every other output row slightly darker.
+  const scan: any = (px.y.mod(_float(2.0)).lessThan(_float(1.0)) as any)
+    .select(_float(1.0), _float(SCANLINE_DARKEN));
+  col = col.mul(scan);
+  // AMBER TINT — push the whole image warm (no G/B darken, just the warm bias).
+  col = col.mul((vec3 as any)(AMBER_TINT[0], AMBER_TINT[1], AMBER_TINT[2]));
+  // VIGNETTE — mild edge darkening (matched toward the WebGL blit).
   const d = _uv.sub(0.5);
-  col = col.mul(_float(1.0).sub(_dot(d, d).mul(0.55)));
+  col = col.mul(_float(1.0).sub(_dot(d, d).mul(VIGNETTE)));
   build(_vec4(col, 1.0));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
