@@ -13,7 +13,7 @@
 
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
-import { pass } from 'three/tsl';
+import { pass, vec2, vec3, vec4, float, screenUV, floor, fract, sin, dot } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 let pipeline: RenderPipeline | null = null;
@@ -23,6 +23,7 @@ let resScale = 0.5;   // PSX-style low-res scene render; 1.0 = native
 // emissive runes) bloom — DELVE's dread atmosphere, not a glow-fest. Replaces
 // the hand-rolled bright-extract + separable-blur ping-pong in render-target.ts.
 const BLOOM_STRENGTH = 0.45, BLOOM_RADIUS = 0.6, BLOOM_THRESHOLD = 0.85;
+const QUANT_LEVELS = 32;   // PSX colour steps per channel (matches the GLSL blit)
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -30,21 +31,47 @@ export function setWebGPUResolutionScale(s: number): void {
   scenePass?.setResolutionScale(s);
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   if (pipeline) return;
   scenePass = pass(scene, camera);
   scenePass.setResolutionScale(resScale);
-  // Output = scene + native bloom (additive). RenderPipeline applies the output
-  // tone-map + sRGB transform after this, so we composite in linear space.
+
+  // Scene + native bloom, additive, in LINEAR space.
   const bloomPass = bloom(scenePass, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
-  const outputNode = (scenePass as unknown as { add: (n: unknown) => unknown }).add(bloomPass);
-  // RenderPipeline(renderer, outputNode). renderer is a WebGPURenderer here
-  // (typed as WebGLRenderer across the codebase during the migration).
-  pipeline = new RenderPipeline(
-    renderer as unknown as ConstructorParameters<typeof RenderPipeline>[0],
-    outputNode as ConstructorParameters<typeof RenderPipeline>[1],
-  );
+  const lit = (scenePass as any).add(bloomPass);
+
+  // Tone-map + sRGB to DISPLAY space ourselves (so the PSX crunch below lands on
+  // the final colour — quantizing in linear would get smeared by the tonemap).
+  const display = (lit as any).renderOutput(THREE.ACESFilmicToneMapping, THREE.SRGBColorSpace);
+
+  // ── PSX colour grade (ported from render-target.ts HORROR_BLIT_FRAG) ──
+  // TSL ops as loosely-typed aliases — the node DSL's strict overloads fight
+  // generic composition, and the values are validated at shader-build time anyway.
+  const _vec2 = vec2 as any, _vec3 = vec3 as any, _vec4 = vec4 as any, _float = float as any;
+  const _floor = floor as any, _fract = fract as any, _sin = sin as any, _dot = dot as any;
+  const _uv = screenUV as any;
+
+  let col: any = (display as any).rgb;
+  // AMBER TINT — push the whole image warm (matches vec3(1.025,1.0,0.96)).
+  col = col.mul(_vec3(1.025, 1.0, 0.96));
+  // VIGNETTE — mild edge darkening from screen-centre distance.
+  const d = _uv.sub(0.5);
+  const vig = _float(1.0).sub(_dot(d, d).mul(0.55));
+  col = col.mul(vig);
+  // DITHER + QUANTIZE — hash dither breaks the bands, then floor to ~32
+  // levels/channel for the hard PSX colour steps.
+  const grid = _uv.mul(_vec2(960, 540));
+  const dither = _fract(_sin(_dot(_floor(grid), _vec2(12.9898, 78.233))).mul(43758.5453));
+  col = _floor(col.mul(QUANT_LEVELS).add(dither)).div(QUANT_LEVELS);
+  const outputNode = _vec4(col, 1.0);
+
+  pipeline = new RenderPipeline(renderer as unknown as ConstructorParameters<typeof RenderPipeline>[0]);
+  // We applied tone-map + sRGB ourselves above — disable the pipeline's default.
+  (pipeline as any).outputColorTransform = false;
+  pipeline.outputNode = outputNode as RenderPipeline['outputNode'];
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** Render one frame through the native WebGPU pipeline. Fire-and-forget per
  *  frame (renderAsync awaits backend init internally). */
