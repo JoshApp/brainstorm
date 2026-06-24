@@ -46,14 +46,21 @@ every joint.
 
 ## Milestones (incremental, behind `?creatureV2=1`)
 
-- **M1** — V2 builder (`mobs/creature-skinned.ts`): merged skinned geo +
-  Skeleton from a `Creature`. Render ONE type as a `SkinnedMesh` in the bench;
-  verify look + measure draws (`npm run perf-analyze` / Chrome). NON-instanced,
-  no dismember yet.
-- **M2** — animation parity (bones driven by the live joint anim) + dissolve +
-  hit-flash + blob shadow.
-- **M3** — dismemberment (severable head/arms) + hit-zone/corpse parity; migrate
-  all creature types; **retire `creature-instancing.ts`**.
+- **M1 ✓ DONE** — V2 builder (`mobs/creature-skinned.ts`). Headless-verified
+  (`npm run verify-skinned`): all 20 buildable creatures bind-correct (skinned
+  bind-pose bbox == original, 0 vert drift), 5–9× fewer draws.
+- **M2 ✓ DONE** — wired into enemy spawn (gated). Flash/dissolve/core-reactor
+  inherited free (they key off shared `built.materials`); animation automatic
+  (joints ARE the bones). Chrome-verified on the arena pack: 6 SkinnedMeshes,
+  **draws 203→150 (−26%)**, tris 71k→56k, **enemy draws 71→21**, no shader
+  errors, correct articulation + live anim.
+- **M3 ~ CODE-COMPLETE, on-device verify pending** — dismember (`severBone`
+  collapses a joint subtree → limb vanishes; head + 2 shoulders + 2 hips;
+  headless-verified) + death parity (crumble's per-joint fling skipped; topple +
+  dissolve-in-place; release no-ops). **NOT done: retire `creature-instancing.ts`
+  / flip default** — gated on confirming death+dismember FEEL on the phone (the
+  remote kill hook `__smite` is stale/no-op, so combat death is untested in
+  Chrome). All M2/M3 edits are no-ops when the flag is off → legacy unchanged.
 - **M4 (optional, later)** — instanced rigid-skinning (bone-matrix texture) for
   true hordes (1 draw/TYPE). Only if counts grow past packs.
 
