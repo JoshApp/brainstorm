@@ -8,6 +8,21 @@ export const GENERATED_PATCHLOG = [
     "date": "2026-06-24",
     "entries": [
       {
+        "tag": "fix",
+        "text": "The frame limiter stops hitching on high-refresh screens — capped play paces clean against the glass now, no more standing-still stutter.",
+        "area": [
+          "tech"
+        ]
+      },
+      {
+        "tag": "tech",
+        "text": "Enemies render as one skinned mesh now — fewer draws, and a lopped skull keeps its glowing eyes as it tumbles.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
         "tag": "tune",
         "text": "The dungeon quits drawing rooms the fog already swallowed. Your sightline down the hall costs less now.",
         "area": [
@@ -392,21 +407,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "content",
           "level"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "Rest at the fire and it deals you three fates. Keep one. The dungeon has lost all interest in your sums.",
-        "area": [
-          "ui",
-          "content"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The name above the dark is cut in stone now.",
-        "area": [
-          "ui"
         ]
       }
     ]
