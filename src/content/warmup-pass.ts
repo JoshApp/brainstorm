@@ -78,6 +78,7 @@ export function runWarmupPass(
   // compiles the SKINNING shader variant — otherwise the first enemy spawn
   // in-game recompiles it and hitches. castShadow stays false (blob shadow), as
   // the builder sets, so the skinned-shadow variant isn't (and needn't be) warmed.
+  const warmBox = new THREE.BoxGeometry(0.02, 0.02, 0.02);   // shared; warms the NON-skinned variant
   for (const spec of Object.values(ENEMIES)) {
     try {
       const creature = buildCreature(spec.creature);
@@ -85,6 +86,16 @@ export function runWarmupPass(
       noCull(creature.group);
       warmGroup.add(creature.group);
       retainMaterials(creature.group);   // keep the skinned program alive
+      // Flung dismember chunks (sever/crumble) are PLAIN, non-skinned meshes that
+      // reuse these same materials. The skinned mesh above only compiles the
+      // SKINNING variant, so without this the first death/sever of each type
+      // recompiles the non-skinned variant mid-combat → a ~270ms freeze. Render a
+      // tiny box per material (castShadow false, like a chunk) to warm it now.
+      for (const m of creature.materials.values()) {
+        const box = new THREE.Mesh(warmBox, m);
+        box.castShadow = false; box.frustumCulled = false;
+        warmGroup.add(box);
+      }
     } catch { /* one bad spec must not sink the pass */ }
   }
 
