@@ -265,6 +265,15 @@ function frameAtX(px: number, W: number): number {
 function clampView(): void {
   if (!rec) return;
   const n = rec.frames.length;
+  if (followLive && isLive()) {
+    // Live: a FIXED-width window anchored to the newest frame. While the buffer
+    // is still filling (n < LIVE_WINDOW) the window extends PAST the data — the
+    // right side stays blank instead of stretching a few frames across the whole
+    // width (which read as "weirdly zoomed in").
+    viewLo = Math.max(0, n - LIVE_WINDOW);
+    viewHi = viewLo + LIVE_WINDOW;
+    return;
+  }
   const span = Math.min(n, Math.max(8, viewHi - viewLo));   // never zoom past 8 frames
   if (viewLo < 0) viewLo = 0;
   viewHi = viewLo + span;
@@ -296,16 +305,25 @@ function laneRects(W: number, H: number): Map<string, Rect> {
   return out;
 }
 
+// Logical (CSS-pixel) canvas size. The backing store is this × devicePixelRatio
+// so lines stay crisp on hi-DPI displays; the context is pre-scaled by DPR, so
+// all drawing below works in CSS pixels (W/H = cssW/cssH, not canvas.width).
+let cssW = 1;
+let cssH = 1;
 function resize(): void {
+  const dpr = window.devicePixelRatio || 1;
   const r = canvas.getBoundingClientRect();
-  canvas.width = Math.max(1, Math.floor(r.width));
-  canvas.height = Math.max(1, Math.floor(r.height));
+  cssW = Math.max(1, Math.floor(r.width));
+  cssH = Math.max(1, Math.floor(r.height));
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
   draw();
 }
 
 function draw(): void {
   if (!rec) return;
-  const W = canvas.width, H = canvas.height;
+  const W = cssW, H = cssH;
   g.clearRect(0, 0, W, H);
   g.fillStyle = '#0a0d13';
   g.fillRect(0, 0, W, H);
@@ -317,22 +335,34 @@ function draw(): void {
 
   // Per-column worst-frame bucketing within the current view — spikes never
   // hide under downsampling because each column keeps its highest-dt frame.
+  // Columns PAST the data (live window wider than the buffer) hold the last real
+  // frame so no lane ever indexes off the end; we clip them away below so the
+  // right stays blank rather than smearing the last frame.
   const span = viewSpan();
   const colFrame: number[] = new Array(W);
+  let maxCol = -1;
+  let lastValid = 0;
   for (let x = 0; x < W; x++) {
     const a = Math.floor(viewLo + (x / W) * span);
+    if (a >= n) { colFrame[x] = lastValid; continue; }
     const b = Math.max(a + 1, Math.floor(viewLo + ((x + 1) / W) * span));
     let wi = a, wv = -1;
     for (let i = a; i < b && i < n; i++) if (frames[i].dt > wv) { wv = frames[i].dt; wi = i; }
-    colFrame[x] = Math.min(n - 1, Math.max(0, wi));
+    colFrame[x] = lastValid = Math.min(n - 1, Math.max(0, wi));
+    maxCol = x;
   }
 
   const rects = laneRects(W, H);
+  // Clip the data lanes to the filled region while the live buffer is still
+  // growing; full recordings fill every column so this is a no-op for them.
+  const clipped = maxCol >= 0 && maxCol < W - 1;
+  if (clipped) { g.save(); g.beginPath(); g.rect(0, 0, maxCol + 1, H); g.clip(); }
   drawCpuLane(rects.get('cpu')!, colFrame);
   drawGpuLane(rects.get('gpu')!, colFrame);
   drawMemLane(rects.get('mem')!, colFrame);
   drawCountLane(rects.get('count')!, colFrame);
   drawEventLane(rects.get('event')!, colFrame);
+  if (clipped) g.restore();
 
   // Lane labels.
   g.font = '10px monospace';
@@ -650,7 +680,7 @@ window.addEventListener('mouseup', (e) => {
     // A click (not a drag): pin the frame under the cursor.
     const r = canvas.getBoundingClientRect();
     if (e.clientY >= r.top && e.clientY <= r.bottom && e.clientX >= r.left && e.clientX <= r.right) {
-      const fi = frameAtX(e.clientX - r.left, canvas.width);
+      const fi = frameAtX(e.clientX - r.left, cssW);
       pinnedFrame = pinnedFrame === fi ? -1 : fi;   // click the pinned frame again to unpin
       if (pinnedFrame >= 0) followLive = false;       // a pin freezes the live view to inspect
       draw();
@@ -671,7 +701,7 @@ canvas.addEventListener('mousemove', (e) => {
     draw();
     return;
   }
-  hoverFrame = frameAtX(e.clientX - r.left, canvas.width);
+  hoverFrame = frameAtX(e.clientX - r.left, cssW);
   draw();
   if (pinnedFrame < 0) showFrame(hoverFrame);
 });
@@ -680,7 +710,7 @@ canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   followLive = false;   // zooming into a region leaves the live tail
   const r = canvas.getBoundingClientRect();
-  const anchor = frameAtX(e.clientX - r.left, canvas.width);   // zoom around the cursor
+  const anchor = frameAtX(e.clientX - r.left, cssW);   // zoom around the cursor
   const span = viewSpan();
   const factor = e.deltaY > 0 ? 1.25 : 0.8;
   const newSpan = Math.min(rec.frames.length, Math.max(8, Math.round(span * factor)));
@@ -718,6 +748,7 @@ window.addEventListener('keydown', (e) => {
 // thread — the browser equivalent of Unity's detached profiler.
 const liveBtn = document.getElementById('livebtn') as HTMLButtonElement;
 const LIVE_CAP = 3600;                 // ~60s at 60fps, then the buffer slides
+const LIVE_WINDOW = 600;               // default visible window while following (~10s)
 type LiveMsg =
   | { t: 'schema'; names: string[]; gphNames: string[]; meta: Record<string, unknown> }
   | { t: 'frame'; f: RecFrame }
@@ -738,6 +769,9 @@ function startLive(): void {
   };
   pinnedFrame = -1;
   followLive = true;
+  viewLo = 0;
+  viewHi = LIVE_WINDOW;          // a sensible default window, not the initial span of 1
+  resize();                      // ensure the canvas is sized — a fresh page never loaded a recording
   liveChan = new BroadcastChannel('delve-perf');
   liveChan.onmessage = (e: MessageEvent<LiveMsg>) => onLiveMsg(e.data);
   liveChan.postMessage({ t: 'hello' } satisfies LiveMsg);   // ask the game for the schema
@@ -766,6 +800,7 @@ function onLiveMsg(m: LiveMsg): void {
     rec.meta = { ...rec.meta, ...m.meta, frameCount: rec.frames.length } as Recording['meta'];
     buildMeta();
     buildLegend();
+    resize();   // the freshly-filled legend may have changed the canvas's flex height
   } else if (m.t === 'frame') {
     rec.frames.push(m.f);
     if (rec.frames.length > LIVE_CAP) rec.frames.shift();
@@ -780,11 +815,8 @@ function liveFlush(): void {
     rec.meta.frameCount = rec.frames.length;
     rec.meta.durationMs = rec.frames.length ? rec.frames[rec.frames.length - 1].t : 0;
     if ((liveRankCounter++ % 30) === 0) computeRanking(600);   // re-rank ~twice a second
-    if (followLive) {
-      const span = Math.min(rec.frames.length, viewSpan());
-      viewHi = rec.frames.length;
-      viewLo = Math.max(0, viewHi - span);
-    }
+    // The view window itself is owned by clampView() (its live branch anchors a
+    // fixed LIVE_WINDOW to the newest frame); draw() calls it.
     buildSummary();
     buildMarkers();
     draw();
@@ -810,6 +842,12 @@ window.addEventListener('drop', (e) => {
   if (!file) return;
   file.text().then((t) => { try { setRecording(JSON.parse(t) as Recording); } catch { alert('not a valid recording JSON'); } });
 });
+
+// Size the canvas immediately — the live path never loads a recording, so it
+// must not depend on setRecording() to call resize() (else it draws into a 1×1
+// logical canvas blown up by DPR). A second rAF pass catches late flex layout.
+resize();
+requestAnimationFrame(resize);
 
 void loadList();
 const startId = new URLSearchParams(location.search).get('id');
