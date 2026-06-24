@@ -1,5 +1,25 @@
 import * as THREE from 'three';
 import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
+import { isWebGPU } from '../scene/renderer-mode';
+import { triplanarTexture, texture as tslTexture, vec3, positionWorld, normalWorld, float } from 'three/tsl';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// WebGPU surface shading: triplanar-sample the baked texture in world space and
+// modulate the base albedo by its shade channel × tint, via a colorNode (a
+// supported migration slot on standard materials under WebGPURenderer).
+function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: SurfaceTexConfig): void {
+  const texNode = (tslTexture as any)(cfg.tex);
+  // World tiling frequency = 1 / metres-per-repeat (uniform; the GLSL used an
+  // anisotropic vec2 tile but a single scale is close enough for the first cut).
+  const scale = float(1 / cfg.tile[0]);
+  const sampled = (triplanarTexture as any)(texNode, null, null, scale, positionWorld, normalWorld);
+  const base = (vec3 as any)(mat.color.r, mat.color.g, mat.color.b);
+  const tint = (vec3 as any)(cfg.tint[0], cfg.tint[1], cfg.tint[2]);
+  // colorNode replaces only the albedo input — the standard PBR lighting,
+  // roughness, emissive, etc. still apply on top.
+  (mat as any).colorNode = base.mul((sampled as any).rgb).mul(tint);
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // Surface detail for the big stone surfaces — now driven by BAKED, MIPMAPPED
 // tiling textures (see surface-textures.ts) rather than a per-pixel procedural
@@ -101,6 +121,15 @@ export function installNamedSurfaceDetail(material: THREE.Material, name: string
 
 export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexConfig): void {
   cfgMap.set(material, cfg);
+  // WEBGPU PORT: onBeforeCompile is ignored by the node renderer. Instead set a
+  // colorNode that triplanar-samples the (CPU-baked) surface texture in WORLD
+  // space (matching the GLSL's world-projected UVs) and modulates the base
+  // albedo by the shade channel × tint. First cut: albedo pattern only — relief
+  // (height→normal), seep, wetness, and splat are deferred. See WEBGPU-MIGRATION.
+  if (isWebGPU()) {
+    installSurfaceDetailWebGPU(material as THREE.MeshStandardMaterial, cfg);
+    return;
+  }
   // The injected onBeforeCompile has identical .toString() across every detail
   // material, and the projection branch is baked into the fragment STRING (not
   // the function source) — so two materials with the same params but different
