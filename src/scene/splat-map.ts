@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { markGoreThrow, markGoreProbe, markGoreWall, markGoreStamp } from '../debug/gore-debug';
+import { isWebGPU } from './renderer-mode';
 
 // ── SPLAT MAP — the floor remembers its violence ─────────────────────
 //
@@ -454,6 +455,10 @@ export function stampBleedOut(x: number, z: number, color: number, gore: number)
 }
 
 export function flushSplats(renderer: THREE.WebGLRenderer): void {
+  // WEBGPU SPIKE: gore stamping renders GLSL ShaderMaterials into WebGL targets
+  // every frame — WebGL-only. Skip under WebGPU until ported (no blood decals
+  // there yet). See WEBGPU-MIGRATION.md.
+  if (isWebGPU()) return;
   // Release due bleed-out pulses into the stamp queue first, so the
   // early-return below sees them.
   if (pendingBleeds.length > 0) {

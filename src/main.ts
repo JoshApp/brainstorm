@@ -432,7 +432,9 @@ initLevelLoader({
     // the spot — a one-frame hitch that never repeats (resident after). boot
     // warmupContent only covers enemy/item models; this covers the procgen
     // floor. Non-fatal if it throws (older driver) — it's pure pre-pay.
-    try { renderer.compile(scene, camera); } catch { /* pre-warm is best-effort */ }
+    // renderer.compile is sync WebGL; under WebGPU the backend may not be ready
+    // and it'd need compileAsync. Skip — the node renderer compiles lazily.
+    if (!WEBGPU) { try { renderer.compile(scene, camera); } catch { /* pre-warm is best-effort */ } }
     // Spawns compile their shaders against the LIVE light count, not boot
     // warmup's 1-light scratch scene — so the first ooze/ghoul spawn used to
     // freeze ~190ms compiling mid-fight. Prime the whole roster in the live
@@ -878,7 +880,11 @@ document.addEventListener('visibilitychange', () => {
 // the item-thumbnail cache so the first inventory rebuild after a pickup is
 // instant. Done after the renderer + level exist; before scenarios so an
 // inventory-open scenario doesn't pay the cost on first frame.
-warmupContent(renderer);
+// Renders to a target at boot to compile shaders — WebGL-only, and it'd run
+// before the async WebGPU backend is ready ("render() before init"). Skip under
+// WebGPU (shader warm is a WebGL-pipeline concern; the node renderer compiles
+// lazily). See WEBGPU-MIGRATION.md.
+if (!WEBGPU) warmupContent(renderer);
 
 // Pre-build the status-VFX mote pool (64 pooled sprites) at boot — its lazy
 // build on the first burn/poison proc was a measured mid-combat GC spike.
