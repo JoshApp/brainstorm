@@ -267,13 +267,12 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 // fullscreen blit quad → screen; see style/render-target.ts). Three.js
 // auto-resets renderer.info at the start of every render() call, so by
 // frame-end info.render would reflect ONLY the blit quad (1 draw, 2 tris).
-// Turn auto-reset off and reset once per frame inside renderWithStyle so the
-// counters ACCUMULATE across both passes — i.e. report the true frame total.
-// WEBGPU SPIKE: under WebGPU renderWithStyle short-circuits and never calls
-// info.reset(), so leaving auto-reset off makes the counters accumulate FOREVER
-// (the bogus "8k draws / 31M tris"). WebGPU does a single render()/frame, so let
-// it auto-reset → accurate per-frame counts.
-renderer.info.autoReset = WEBGPU;
+// Turn auto-reset off and reset once per frame inside the render path so the
+// counters ACCUMULATE across all passes — i.e. report the true frame total.
+// (WebGL: renderWithStyle resets. WebGPU: renderWebGPU resets before the
+// RenderPipeline's multi-pass render — autoReset is unreliable under WebGPU and
+// would otherwise climb without bound.)
+renderer.info.autoReset = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;

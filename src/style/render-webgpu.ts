@@ -97,5 +97,11 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
  *  frame (renderAsync awaits backend init internally). */
 export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   ensurePipeline(renderer, scene, camera);
+  // Reset per frame so renderer.info reflects THIS frame's total (the pipeline's
+  // passes accumulate into it); without this it climbs without bound. The 4Hz
+  // perf overlay reads it after the ~16ms async render has settled, so the count
+  // is the last completed frame's — usable, if higher than WebGL's scene-only
+  // count (it includes the bloom + output passes).
+  renderer.info.reset();
   void (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
 }
