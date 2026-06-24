@@ -136,7 +136,9 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
     tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
   });
   installSurfaceDetail(floorBase, {
-    splat: true, seamGlow: true, seamGlowScale: 0.55,   // floor reads hotter than walls — run it cooler
+    // Floor: SHADOW only (subtle), no coloured glow — the glow on the ground was
+    // too light/yellow and broke the grimdark. Just a quiet darken in the gaps.
+    splat: true, seamShadow: true, seamGlowScale: 0.35,
     tex: bakeSurfaceTexture(renderer, 'floor'),
     tile: SURFACE_TILE.floor, proj: 'horiz', tint: [1.08, 0.9, 0.64], relief: 0.32,
   });

@@ -170,7 +170,7 @@ const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 // columns are spared. Wetness gloss is now per-floor ONLY (no default wet look).
 const SEAM_DARK = 0.66;    // seam-shoulder albedo floor (the crevice shadow)
 const PALE_BONE: readonly [number, number, number] = [0.88, 0.86, 0.82];  // near-neutral pale the channel lifts toward (picks up light hue cleanly)
-const CORE_GLOW = 0.3;     // how far the DEEPEST seam lifts toward PALE_BONE (matte hue pickup)
+const CORE_GLOW = 0.06;    // how far the DEEPEST seam lifts toward PALE_BONE — KEEP TINY: the pale lift brightens the mortar to bright-yellow outlines and breaks the grimdark dark. Crevices should mostly DRINK light (shadow), not glow.
 const SEAM_CHROMA = 0.25;  // VIVID: over-saturate the seam's LIT colour toward the light's hue — subtle, past this it reads as stark yellow rings
 const SEAM_ROUGH = 0.22;   // roughness in WET seams only (per-floor wetness) — no dry gloss
 
