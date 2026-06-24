@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ShadowMode } from '../settings/settings';
 import { CONFIG } from '../config';
+import { isWebGPU } from './renderer-mode';
 
 // Light slot pool — partitioned by category so each kind of light
 // plays by its own rules.
@@ -129,9 +130,17 @@ function configureSlotShadow(light: THREE.PointLight): void {
 export function initLightPool(sc: THREE.Scene): void {
   if (slotsByCategory.environment.length > 0) return;
   scene = sc;
+  // WEBGPU: the 9-slot budget was tuned for MOBILE WebGL, where every parked
+  // slot is a per-fragment cost and a count change is a SYNC recompile. On a
+  // desktop WebGPU backend (async pipeline compile, more headroom) we can afford
+  // a bigger fixed pool — so more torches light at once instead of the nearest-N
+  // dropping the rest. Still a FIXED count after init, so no per-frame recompile.
+  // (The proper fix — uncapped clustered lighting — is the next, bigger task.)
+  const slotScale = isWebGPU() ? 2.5 : 1;
   const categories = Object.keys(CATEGORY_SLOTS) as LightCategory[];
   for (const cat of categories) {
-    for (let i = 0; i < CATEGORY_SLOTS[cat]; i++) {
+    const n = Math.round(CATEGORY_SLOTS[cat] * slotScale);
+    for (let i = 0; i < n; i++) {
       const light = new THREE.PointLight(0xffffff, 0, 5, 1.4);
       light.position.set(0, PARK_Y, 0);
       configureSlotShadow(light);
