@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { WebGPURenderer } from 'three/webgpu';
+import { setWebGPUMode, setWebGPUReady } from './scene/renderer-mode';
 import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './controls/camera';
@@ -208,21 +210,39 @@ if (!beginBoot()) throw new Error('delve: safe mode (boot guard)');
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
 // --- Renderer ---
+// WEBGPU SPIKE (branch `webgpu`): ?webgpu=1 swaps in Three's unified
+// WebGPURenderer (async init; auto-falls back to WebGL2). Default stays the
+// classic WebGLRenderer so the game is always runnable while the pipeline is
+// ported to TSL — see docs/WEBGPU-MIGRATION.md. The WebGPU path is intentionally
+// "raw" for now (custom PSX pipeline + reveal shaders bypassed); renderWithStyle
+// short-circuits to a direct renderAsync until those are ported.
+const WEBGPU = new URLSearchParams(window.location.search).get('webgpu') === '1';
+setWebGPUMode(WEBGPU);
 // preserveDrawingBuffer forces the browser to COPY the drawing buffer every
-// presented frame (it can't do an efficient swap) — a measurable present-latency
-// / back-pressure hit on mobile GPUs that scales with frame count. So it's kept
-// to the HARNESS only, which reads canvas frames at arbitrary times. Debug Mode's
-// CAPTURE button does NOT need it: its screenshot paths (harness/annotate
-// captureScreenshot, debug/debug-screenshots grabFrame) re-render the scene and
-// call toDataURL() in the SAME synchronous task, where the drawing buffer is
-// still valid without preservation. Keeping it off for Debug Mode means
-// profiling/debugging on-device no longer skews the present pipeline.
-const renderer = new THREE.WebGLRenderer({
-  canvas,
-  antialias: false,
-  powerPreference: 'high-performance',
-  preserveDrawingBuffer: HARNESS_ENABLED,
-});
+// presented frame (no efficient swap) — a present-latency/back-pressure hit that
+// scales with frame count. Kept to the HARNESS only (it reads canvas frames at
+// arbitrary times). Debug Mode's CAPTURE doesn't need it: its screenshot paths
+// re-render + toDataURL() in the SAME synchronous task, where the buffer is still
+// valid without preservation.
+let renderer: THREE.WebGLRenderer;
+if (WEBGPU) {
+  const wgpu = new WebGPURenderer({ canvas, antialias: false });
+  // The codebase types the renderer as WebGLRenderer everywhere; WebGPURenderer
+  // shares the common surface we use (render/setSize/setPixelRatio/info/…), so
+  // cast for the transition. WebGL-specific paths (custom RTs, getContext, the
+  // GPU-timer ext) are guarded by isWebGPU() until ported.
+  renderer = wgpu as unknown as THREE.WebGLRenderer;
+  wgpu.init()
+    .then(() => { setWebGPUReady(true); if (import.meta.env.DEV) console.log('[webgpu] renderer initialised (backend:', wgpu.backend?.constructor?.name ?? '?', ')'); })
+    .catch((err) => console.error('[webgpu] init failed — falling back is automatic next reload', err));
+} else {
+  renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: false,
+    powerPreference: 'high-performance',
+    preserveDrawingBuffer: HARNESS_ENABLED,
+  });
+}
 // DPR cap — the biggest single lever against fragment/fill cost. Desktop debug
 // stays crisp at CONFIG.PIXEL_RATIO_CAP; mobile honours the live PIXEL DENSITY
 // setting (see effectiveDprCap + the GRAPHICS slider). Re-applied live by
@@ -269,7 +289,10 @@ scene.add(ambient);
 // toggle is handled in the onSettingsChanged subscription.
 installBandedLighting(getSettings().bandedLighting);
 const materials = buildMaterials(renderer);
-initRenderPipeline(renderer);
+// The custom PSX pipeline builds WebGLRenderTargets + GLSL ShaderMaterials —
+// WebGL-only. Skipped under ?webgpu=1 (renderWithStyle short-circuits to a
+// direct renderAsync there) until it's ported to TSL.
+if (!WEBGPU) initRenderPipeline(renderer);
 // WebGL context-loss recovery — preventDefault + rebuild the custom render
 // targets on restore, so a GPU context drop (mobile memory pressure / a
 // backgrounded tab) is a brief veil, not a black screen or a false crash.
@@ -422,11 +445,15 @@ initLevelLoader({
       // exact live cache keys, then tears down keeping the programs (materials
       // retained) but no resident verts. Replaces the old scratch/roster/
       // instanced/gore warm patchwork. Best-effort.
-      try { runWarmupPass(renderer, scene, camera); } catch { /* best-effort */ }
-      // The warmup pass compiles the viewmodels' MAIN-pass (lit) variant; the
-      // depth pre-pass renders them in a 0-light scene (a different program), so
-      // warm that variant too or the first prepass draw stalls ~6ms in-game.
-      try { warmViewmodelPrepass(renderer, camera); } catch { /* best-effort */ }
+      // Warmup renders into WebGLRenderTargets (WebGL-only) — skip under WebGPU
+      // until the warm path is ported.
+      if (!WEBGPU) {
+        try { runWarmupPass(renderer, scene, camera); } catch { /* best-effort */ }
+        // The warmup pass compiles the viewmodels' MAIN-pass (lit) variant; the
+        // depth pre-pass renders them in a 0-light scene (a different program), so
+        // warm that variant too or the first prepass draw stalls ~6ms in-game.
+        try { warmViewmodelPrepass(renderer, camera); } catch { /* best-effort */ }
+      }
     }
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { isWebGPU, isWebGPUReady } from '../scene/renderer-mode';
 import { renderProbeActive, reportRenderPhase, gpuPassActive, gpuPassBegin, gpuPassEnd } from '../debug/render-probe';
 
 // PS1-era render pipeline, PSX-horror flavor.
@@ -690,6 +691,18 @@ export function renderWithStyle(
   scene: THREE.Scene,
   camera: THREE.Camera,
 ) {
+  // WEBGPU SPIKE: the PSX pipeline below is WebGL/GLSL-only. Under ?webgpu=1,
+  // render the raw scene directly (node-converted standard materials) until the
+  // pipeline is ported to TSL — see docs/WEBGPU-MIGRATION.md. renderAsync is
+  // fire-and-forget per frame; nothing renders until init() has resolved.
+  if (isWebGPU()) {
+    if (isWebGPUReady()) {
+      void (renderer as unknown as { renderAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<void> })
+        .renderAsync(scene, camera);
+    }
+    return;
+  }
+
   // Reset renderer.info ONCE here so the per-frame draw/triangle counters
   // accumulate across both passes below (the scene render + the blit). main.ts
   // sets renderer.info.autoReset = false to hand us that control; without this
