@@ -20,8 +20,11 @@ const BANDS = 4.0;
 class BandedPhysicalLightingModel extends PhysicalLightingModel {
   // chroma > 1 = PAINTED: over-saturate the lit colour toward the coloured light
   // that struck it (a pale skeleton in a red room → vividly red). 1 = off.
+  // chromaNode (optional TSL node) is a PER-FRAGMENT chroma — used to amplify the
+  // hue only where a mask says to (e.g. the mortar seams glowing the light's hue).
   chroma: number;
-  constructor(chroma = 1) { super(); this.chroma = chroma; }
+  chromaNode: any;
+  constructor(chroma = 1, chromaNode: any = null) { super(); this.chroma = chroma; this.chromaNode = chromaNode; }
   finish(builder: any): void {
     const context = builder.context;
     const rl: any = context.reflectedLight;
@@ -40,7 +43,11 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     // Recompose outgoing with the banded direct diffuse + the untouched rest.
     let out: any = newDD.add(rl.indirectDiffuse).add(rl.directSpecular).add(rl.indirectSpecular);
     // CHROMA / PAINTED — over-saturate the lit colour toward the light's hue.
-    if (this.chroma !== 1) {
+    // A per-fragment chromaNode (seam mask) wins over the scalar when present.
+    if (this.chromaNode) {
+      const lum: any = (luminance as any)(out);
+      out = (mix as any)((vec3 as any)(lum, lum, lum), out, this.chromaNode).max((vec3 as any)(0, 0, 0));
+    } else if (this.chroma !== 1) {
       const lum: any = (luminance as any)(out);
       out = (mix as any)((vec3 as any)(lum, lum, lum), out, this.chroma).max((vec3 as any)(0, 0, 0));
     }
@@ -69,6 +76,13 @@ export function installBandedLightingWebGPU(on: boolean): void {
  *  (pale skeletons/bone take on the torch colour vividly). */
 export function setMaterialChromaWebGPU(mat: any, chroma: number): void {
   mat.setupLightingModel = () => new BandedPhysicalLightingModel(chroma);
+}
+
+/** Per-material PER-FRAGMENT chroma — over-saturate toward the light's hue only
+ *  where the node says (e.g. a mortar-seam mask), so crevices glow VIVIDLY with
+ *  the light's colour while the slab faces stay neutral. Still banded. */
+export function setMaterialSeamChromaWebGPU(mat: any, chromaNode: any): void {
+  mat.setupLightingModel = () => new BandedPhysicalLightingModel(1, chromaNode);
 }
 
 /** Restore the stock (un-banded) lighting model on a material — used for the

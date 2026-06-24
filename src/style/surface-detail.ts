@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
+import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
 import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, mx_noise_float } from 'three/tsl';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -58,10 +59,16 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   albedo = albedo.mul((tslMix as any)(float(1.0), float(SEAM_DARK), seamFx));
   // (b) seam CORE glows — lift the DEEPEST channel toward bone-pale so it reads
   // PALE + MATTE and brightly, diffusely takes on the HUE of whatever light reaches
-  // it (like the skeleton in a coloured room). NO specular → not wet. The deep core
-  // is a tighter mask than the shoulders, so light pools in the bottom of the vein.
-  const core: any = float(1).sub((tslSmoothstep as any)(0.12, 0.40, sampled.a)).mul(reliefScale);
+  // it (like the skeleton in a coloured room). NO specular → not wet. Mask range
+  // 0.30..0.62 catches ALL seams: floor gaps (a≈0.35), wall mortar (a≈0.40) AND
+  // ceiling panels (a≈0.45) — the old 0.12..0.40 only caught the floor.
+  const core: any = float(1).sub((tslSmoothstep as any)(0.30, 0.62, sampled.a)).mul(reliefScale);
   albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]), core.mul(CORE_GLOW));
+  // (c) VIVID — over-saturate the seam's LIT colour toward the light's hue via a
+  // per-fragment chroma (the skeleton's PAINTED trick, localized to the seam). So
+  // a green torch paints vividly green veins, not just faintly-green, on every
+  // surface regardless of its base stone tint. Slab faces stay neutral (chroma 1).
+  setMaterialSeamChromaWebGPU(mat, float(1.0).add(core.mul(SEAM_CHROMA)));
 
   // WETNESS (per-floor strength ONLY) — wet floors darken + gloss the seams; the
   // DEFAULT dry look stays fully MATTE (roughness drops only where wetnessNode > 0).
@@ -149,8 +156,9 @@ const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 // SHOULDERS stay darker (crevice shadow → contrast). Scaled by relief so flat
 // columns are spared. Wetness gloss is now per-floor ONLY (no default wet look).
 const SEAM_DARK = 0.66;    // seam-shoulder albedo floor (the crevice shadow)
-const PALE_BONE: readonly [number, number, number] = [0.90, 0.86, 0.78];  // bone the deep channel lifts toward
-const CORE_GLOW = 0.6;     // how far the DEEPEST seam lifts toward PALE_BONE (matte hue pickup)
+const PALE_BONE: readonly [number, number, number] = [0.88, 0.86, 0.82];  // near-neutral pale the channel lifts toward (picks up light hue cleanly)
+const CORE_GLOW = 0.5;     // how far the DEEPEST seam lifts toward PALE_BONE (matte hue pickup)
+const SEAM_CHROMA = 1.3;   // VIVID: over-saturate the seam's LIT colour toward the light's hue (chroma 1 + this at the deepest seam)
 const SEAM_ROUGH = 0.22;   // roughness in WET seams only (per-floor wetness) — no dry gloss
 
 // ── SEEP — liquid light in the grooves ───────────────────────────────
