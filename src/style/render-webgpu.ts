@@ -135,6 +135,10 @@ export function setWebGPUDarkAdapt(v: number): void {
 // instead of always-on: 0 in torchlight (off), 1 in a dark hall (full reveal).
 const REVEAL_GAIN = 1.8;     // ×(1+gain) on the deepest black at full adaptation (the tuned look)
 const REVEAL_RANGE = 0.008;  // display-brightness ceiling the reveal acts below — ONLY near-black
+// Exposure boost at full dark-adaptation (matches dark-adaptation.ts
+// MAX_BRIGHTNESS_BOOST 0.8 → EXPOSURE ×1.8 in full dark). This is the lever that
+// makes lingering in the dark feel less crushing.
+const ADAPT_EXPOSURE_BOOST = 0.8;
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -194,7 +198,14 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // bloom, or bloom (threshold 1.0) catches half the scene and veils everything
   // in a desaturated white haze. Exposing first means only the genuinely-bright
   // sources (flames) clear the threshold → tight, subtle bloom.
-  const exposed: any = sceneCA.mul(float(EXPOSURE));
+  //
+  // EYE DARK-ADAPTATION rides the EXPOSURE — this is the lever that actually makes
+  // standing in the dark feel "less crushing" (the old game's note: ambient alone
+  // barely shows; exposure scales the WHOLE image so the faintly-lit dark walls
+  // lift). Ramps EXPOSURE ×(1 .. 1.8) as the eye adapts (darkAdaptNode 0→1), in
+  // step with the WebGL blit. The gated reveal below adds form to the deepest black.
+  const exposureRamp: any = float(1.0).add((darkAdaptNode as any).mul(ADAPT_EXPOSURE_BOOST));
+  const exposed: any = sceneCA.mul(float(EXPOSURE)).mul(exposureRamp);
 
   // Exposed scene + native bloom, additive, LINEAR. Bloom optional (BLOOM
   // setting); the bloomPass also feeds the fog inscatter below.
