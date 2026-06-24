@@ -4,6 +4,20 @@
 
 export const GENERATED_PATCHLOG = [
   {
+    "version": "Build 18",
+    "date": "2026-06-24",
+    "entries": [
+      {
+        "tag": "tune",
+        "text": "The dungeon quits drawing rooms the fog already swallowed. Your sightline down the hall costs less now.",
+        "area": [
+          "level",
+          "atmosphere"
+        ]
+      }
+    ]
+  },
+  {
     "version": "Build 17",
     "date": "2026-06-23",
     "entries": [
@@ -391,13 +405,6 @@ export const GENERATED_PATCHLOG = [
       {
         "tag": "tune",
         "text": "The name above the dark is cut in stone now.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "A frame-rate cap joins the settings — 60 to stay smooth, 30 to keep the dungeon from cooking your phone. It runs at full speed either way.",
         "area": [
           "ui"
         ]
