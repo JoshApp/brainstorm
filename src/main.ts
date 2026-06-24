@@ -110,7 +110,7 @@ import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSn
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
-import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn, gpuPassDiag } from './debug/frame-timing';
+import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn, gpuPassDiag, markWarmupComplete } from './debug/frame-timing';
 import { setStreamEnabled, streamEnabled, broadcastAttr } from './debug/perf-stream';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds, setSceneAuditProvider } from './debug/perf-recorder';
 import { auditScene } from './debug/scene-audit';
@@ -427,6 +427,9 @@ initLevelLoader({
       // depth pre-pass renders them in a 0-light scene (a different program), so
       // warm that variant too or the first prepass draw stalls ~6ms in-game.
       try { warmViewmodelPrepass(renderer, camera); } catch { /* best-effort */ }
+      // From here, any new shader compile is an UNWARMED material — the guard
+      // warns (DEV) naming it, so gaps are caught immediately, not weeks later.
+      markWarmupComplete();
     }
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to

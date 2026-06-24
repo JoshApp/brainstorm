@@ -489,11 +489,15 @@ registerWarmup({
   label: 'projectiles',
   spawn: (scene) => {
     scene.getWorldPosition(_warmO);
+    // Spread each type along X so their registered lights don't co-locate (the
+    // pool warns on <0.6m neighbours — harmless here, but it spams the console).
+    let i = 0;
     for (const id of TYPES.keys()) {
+      const x = (i++ - 2) * 0.8;
       spawnProjectile({
         typeId: id,
-        origin: _warmO.clone().add(new THREE.Vector3(0, 0, -1)),
-        target: _warmO.clone().add(new THREE.Vector3(0, 0, -3)),
+        origin: _warmO.clone().add(new THREE.Vector3(x, 0, -1)),
+        target: _warmO.clone().add(new THREE.Vector3(x, 0, -3)),
         damage: 0, source: null,
       });
     }

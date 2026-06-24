@@ -1,11 +1,5 @@
 import * as THREE from 'three';
-import { ENEMIES } from './enemies';
-import { ITEMS } from './items';
-import { buildCreature } from './build-creature';
-import { buildModel } from '../ecs/build-model';
-import { buildSkinnedCreature } from '../mobs/creature-skinned';
-import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from './vase';
-import { COBWEB_BARRIER } from './cobweb';
+import './spawn-warmups';   // side-effect: registers enemy/item/destructible warmups
 import { getWarmupHooks } from './warmup-registry';
 
 // ── The unified warmup pass ─────────────────────────────────────────────────
@@ -75,63 +69,15 @@ export function runWarmupPass(
   warmGroup.position.copy(camera.position);
   scene.add(warmGroup);
 
-  // ENEMIES — fold each creature into its rigid-skinned SkinnedMesh (the live
-  // render path, docs/CREATURE-RENDER-V2.md) and add it so the render below
-  // compiles the SKINNING shader variant — otherwise the first enemy spawn
-  // in-game recompiles it and hitches. castShadow stays false (blob shadow), as
-  // the builder sets, so the skinned-shadow variant isn't (and needn't be) warmed.
-  const warmBox = new THREE.BoxGeometry(0.02, 0.02, 0.02);   // shared; warms the NON-skinned variant
-  for (const spec of Object.values(ENEMIES)) {
-    try {
-      const creature = buildCreature(spec.creature);
-      buildSkinnedCreature(creature);
-      noCull(creature.group);
-      warmGroup.add(creature.group);
-      retainMaterials(creature.group);   // keep the skinned program alive
-      // Flung dismember chunks (sever/crumble) are PLAIN, non-skinned meshes that
-      // reuse these same materials. The skinned mesh above only compiles the
-      // SKINNING variant, so without this the first death/sever of each type
-      // recompiles the non-skinned variant mid-combat → a ~270ms freeze. Render a
-      // tiny box per material (castShadow false, like a chunk) to warm it now.
-      for (const m of creature.materials.values()) {
-        const box = new THREE.Mesh(warmBox, m);
-        box.castShadow = false; box.frustumCulled = false;
-        warmGroup.add(box);
-      }
-    } catch { /* one bad spec must not sink the pass */ }
-  }
-
-  // ITEMS — floor drop models.
-  for (const item of Object.values(ITEMS)) {
-    try {
-      const g = buildModel(item.dropModel).group;
-      noCull(g);
-      warmGroup.add(g);
-      retainMaterials(g);
-    } catch { /* skip a bad drop spec */ }
-  }
-
-  // DESTRUCTIBLES — vases sit in the scene at level-build (warmed by the load-
-  // time compile), but VASE_BROKEN spawns ON BREAK mid-combat, so its material
-  // (tinted + gore-receiving = the enemy-ext|0|0|1|1 variant seen compiling
-  // in-fight) is otherwise first-rendered live. Warm every variant in the live
-  // (fogged) scene so the useFog/flatShading variant matches and nothing
-  // recompiles when a pot shatters.
-  for (const spec of [VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN, COBWEB_BARRIER]) {
-    try {
-      const g = buildModel(spec).group;
-      noCull(g);
-      warmGroup.add(g);
-      retainMaterials(g);
-    } catch { /* skip a bad spec */ }
-  }
-
-  // EFFECTS — self-registered pools (shatter/coins/wisps/…) spawn a
-  // representative instance; their materials live module-level in each effect,
-  // so the program is retained without us tracking it.
+  // DRAIN THE WARMUP REGISTRY — one seam for everything. Enemies, items,
+  // destructibles (content/spawn-warmups.ts) and effects (each effect's own
+  // registerWarmup) all add a representative instance here. No hand-maintained
+  // content lists in this pass — it just renders whatever registered. This is
+  // the LIVE pass, so it runs `live` hooks too (the boot scratch skips them).
   const hooks = getWarmupHooks();
-  for (const h of hooks) { try { h.spawn(warmGroup); } catch { /* skip */ } }
+  for (const h of hooks) { try { h.spawn(warmGroup); } catch { /* one bad hook must not sink the pass */ } }
   noCull(warmGroup);
+  retainMaterials(warmGroup);   // pin EVERY program the drained instances compiled
 
   // ONE offscreen render — compiles every visible program (floor, props, items,
   // boss bodies, instanced enemy batches, effects) in the live light + shadow

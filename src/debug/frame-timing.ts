@@ -81,13 +81,24 @@ const listeners = new Set<FrameListener>();
 const _seenProg = new Set<string>();
 const _compiledKeys: string[] = [];   // FULL keys of post-seed compiles (for diffing)
 let _progSeeded = false;
+let _warmupDone = false;
+/** Called once after runWarmupPass finishes. From here, any NEW program compile
+ *  is an UNWARMED material — the self-policing guard warns (DEV) naming its type,
+ *  so a missing warmable is caught the instant it's hit, not weeks later. */
+export function markWarmupComplete(): void { _warmupDone = true; }
 function diffNewPrograms(info: { programs?: ReadonlyArray<{ cacheKey?: string }> | null } | null | undefined): string[] {
   if (!info?.programs) return [];
   if (!_progSeeded) { for (const p of info.programs) _seenProg.add(p.cacheKey ?? ''); _progSeeded = true; return []; }
   const out: string[] = [];
   for (const p of info.programs) {
     const k = p.cacheKey ?? '';
-    if (k && !_seenProg.has(k)) { _seenProg.add(k); out.push(k.split(',')[0] || '?'); if (_compiledKeys.length < 80) _compiledKeys.push(k); }
+    if (k && !_seenProg.has(k)) {
+      _seenProg.add(k); out.push(k.split(',')[0] || '?'); if (_compiledKeys.length < 80) _compiledKeys.push(k);
+      if (_warmupDone && import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn(`[warmup-guard] UNWARMED shader compiled in-play: '${k.split(',')[0]}' (…${k.slice(-40)}). Register a warmable (content/warmup-registry.ts).`);
+      }
+    }
   }
   return out;
 }
