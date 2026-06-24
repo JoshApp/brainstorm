@@ -111,6 +111,12 @@ const scratchByCategory: Record<LightCategory, Array<{ src: LightSource; sortKey
 const SHADOW_MAP_SIZE = 256;
 let shadowMode: ShadowMode = 'off';
 
+// FLAME WOBBLE — horizontal amplitude (metres) of the per-torch positional
+// flicker. Jittering the light ORIGIN (not just intensity) makes the floor pool
+// waver and the cast shadows dance, so a torch reads as a living flame instead of
+// a dead-perfect spotlight circle. Combined peak ≈ 1.8× this. Tune to taste.
+const FLAME_WOBBLE = 0.06;
+
 /** Pre-configure a slot's shadow camera + map. Cheap; the shadow map
  *  itself isn't allocated until castShadow flips true on first render. */
 function configureSlotShadow(light: THREE.PointLight, isLamp = false): void {
@@ -406,7 +412,21 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
       const slot = slots[i];
       if (i < n) {
         const { src, losBlocked } = scratch[i];
-        slot.position.copy(src.position);
+        // POSITIONAL FLICKER — torches/candles dance: jitter the light ORIGIN with
+        // smooth, per-source, non-repeating noise so the floor pool wavers and the
+        // shadows breathe instead of sitting as a dead-perfect spotlight circle.
+        // Environment sources only — the lamp already moves (and its shadow is
+        // stabilized; jittering it would re-introduce the swim).
+        if (src.category === 'environment') {
+          const t = nowMs * 0.001;
+          const ph = src.position.x * 1.7 + src.position.z * 2.3;   // stable per-torch phase
+          const jx = (Math.sin(t * 5.3 + ph) + Math.sin(t * 2.1 + ph * 1.7) * 0.8) * FLAME_WOBBLE;
+          const jy = Math.sin(t * 6.7 + ph * 0.7) * FLAME_WOBBLE * 0.5;
+          const jz = (Math.cos(t * 4.9 + ph * 1.3) + Math.cos(t * 2.7 + ph * 0.5) * 0.8) * FLAME_WOBBLE;
+          slot.position.set(src.position.x + jx, src.position.y + jy, src.position.z + jz);
+        } else {
+          slot.position.copy(src.position);
+        }
         // Eased visibility: fresh binds fade IN from 0; LOS blockage
         // fades to its dim level instead of stepping. Flicker
         // (getIntensity) rides on top untouched.
