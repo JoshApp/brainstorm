@@ -80,6 +80,23 @@ for (let i = 1; i < F.length; i++) {
 }
 console.log(`  total spikes: ${spikes}`);
 
+console.log(hr('PROGRAM CHURN (prog ±1 = a material minted+disposed per beat → recompile hitch)'));
+let ups = 0, downs = 0;
+const changes = [];
+for (let i = 1; i < F.length; i++) {
+  const d = (F[i].prog ?? 0) - (F[i - 1].prog ?? 0);
+  if (d === 0) continue;
+  if (d > 0) ups += d; else downs += -d;
+  if (changes.length < 24) changes.push(`[${i}] prog ${d > 0 ? '+' : ''}${d}→${F[i].prog}  dt=${f1(F[i].dt)} ev=${JSON.stringify(F[i].ev || [])}`);
+}
+for (const c of changes) console.log('  ' + c);
+const netUp = (F.at(-1)?.prog ?? 0) - (F[0]?.prog ?? 0);
+console.log(`  totals: +${ups} / -${downs}  (net ${netUp >= 0 ? '+' : ''}${netUp})`);
+if (downs >= 2 && Math.abs(ups - downs) <= Math.max(2, ups * 0.3))
+  console.log(`  ⚠ CHURN: ${downs} deletions ≈ ${ups} compiles → a per-beat effect mints+disposes a material/program. Pin it: shared geometry + a cloned-template material (clones share the program), or retain the material.`);
+else if (netUp > 2)
+  console.log(`  → mostly one-way (+${netUp}): first-use COMPILES not covered by warmup (warmup gap), not churn.`);
+
 // ── AUTO-DIAGNOSIS ──────────────────────────────────────────────────────────
 console.log(hr('DIAGNOSIS'));
 const flags = [];
