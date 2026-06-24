@@ -136,11 +136,12 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
     tile: SURFACE_TILE.wall, proj: 'wall', tint: [1.0, 1.0, 1.0], relief: 0.30,
   });
   installSurfaceDetail(floorBase, {
-    splat: true, seamGlow: true,
+    splat: true, seamGlow: true, seamGlowScale: 0.55,   // floor reads hotter than walls — run it cooler
     tex: bakeSurfaceTexture(renderer, 'floor'),
     tile: SURFACE_TILE.floor, proj: 'horiz', tint: [1.08, 0.9, 0.64], relief: 0.32,
   });
   installSurfaceDetail(ceilingBase, {
+    seamShadow: true,   // panel/beam SHADOW for depth — no coloured glow (that looked weird up there)
     tex: bakeSurfaceTexture(renderer, 'ceiling'),
     tile: SURFACE_TILE.ceiling, proj: 'horiz', tint: [0.7, 0.8, 1.05], relief: 0.32,
   });
