@@ -49,22 +49,25 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     albedo = (tslMix as any)(albedo, seepTintNode, seepAmt);
   }
 
-  // ── VEINY CREVICE GLINT (always-on; see SEAM_* tuning above) ──
+  // ── VEINY CREVICE GLOW (always-on; see SEAM_* tuning above) ──
   // Scaled by relief so flat columns/grain (relief ~0.05) are spared while brick
   // walls + flagstone floors (relief ~0.30) get the full effect.
   const reliefScale = Math.min(1, cfg.relief / 0.30);
   const seamFx: any = seam.mul(reliefScale);
-  // (a) seam SIDES drink light — darken the recessed albedo for crevice contrast.
+  // (a) seam SHOULDERS = crevice shadow — darken the recessed albedo for contrast.
   albedo = albedo.mul((tslMix as any)(float(1.0), float(SEAM_DARK), seamFx));
+  // (b) seam CORE glows — lift the DEEPEST channel toward bone-pale so it reads
+  // PALE + MATTE and brightly, diffusely takes on the HUE of whatever light reaches
+  // it (like the skeleton in a coloured room). NO specular → not wet. The deep core
+  // is a tighter mask than the shoulders, so light pools in the bottom of the vein.
+  const core: any = float(1).sub((tslSmoothstep as any)(0.12, 0.40, sampled.a)).mul(reliefScale);
+  albedo = (tslMix as any)(albedo, (vec3 as any)(PALE_BONE[0], PALE_BONE[1], PALE_BONE[2]), core.mul(CORE_GLOW));
 
-  // WETNESS rides ON TOP (per-floor strength): wetter seams darker + glossier still.
+  // WETNESS (per-floor strength ONLY) — wet floors darken + gloss the seams; the
+  // DEFAULT dry look stays fully MATTE (roughness drops only where wetnessNode > 0).
   const wetMask = (tslClamp as any)(seam.mul(wetnessNode), 0, 1);
   albedo = albedo.mul((tslMix as any)(float(1.0), float(0.6), wetMask));          // wet = darker
-  // (b) seam CHANNELS glint — drop roughness so torch/candle light throws a tight
-  // specular catch down the mortar. Specular = the light's colour, so a tinted
-  // torch paints coloured veins; the dancing flame makes the streak travel.
-  const grooveGloss = (tslClamp as any)(seamFx.mul(SEAM_GLOSS).add(wetMask), 0, 1);
-  (mat as any).roughnessNode = (tslMix as any)(float(mat.roughness), float(SEAM_ROUGH), grooveGloss);
+  (mat as any).roughnessNode = (tslMix as any)(float(mat.roughness), float(SEAM_ROUGH), wetMask);
 
   // colorNode replaces only the albedo input — the standard PBR lighting,
   // roughness, emissive, etc. still apply on top.
@@ -139,15 +142,16 @@ export interface SurfaceTexConfig {
 
 const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 
-// VEINY CREVICE GLINT tuning (WebGPU surface shader, installSurfaceDetailWebGPU).
-// The mortar seams read as a network of light-carrying veins: their SIDES drink
-// light (darker albedo → contrast vs the slab faces) and their CHANNELS glint
-// (low roughness → a tight SPECULAR catch, which is the light's OWN colour, so
-// tinted torches paint coloured veins; the flame's positional flicker makes the
-// streak travel along the seam = "flow"). Scaled by relief so flat columns spared.
-const SEAM_DARK = 0.55;    // recessed-seam albedo floor (light-absorbing crevice)
-const SEAM_GLOSS = 0.85;   // how far the dry seam glosses toward SEAM_ROUGH (0..1)
-const SEAM_ROUGH = 0.20;   // roughness in the seam channel — low = tight, bright coloured glint
+// VEINY CREVICE GLOW tuning (WebGPU surface shader, installSurfaceDetailWebGPU).
+// NOT a wet specular shine — a PALE MATTE diffuse pickup, like the skeleton: the
+// deep seam channel reads as bone-pale, so it brightly + matte-ly takes on the
+// HUE of whatever light reaches it and glows with it in the dark. The seam
+// SHOULDERS stay darker (crevice shadow → contrast). Scaled by relief so flat
+// columns are spared. Wetness gloss is now per-floor ONLY (no default wet look).
+const SEAM_DARK = 0.66;    // seam-shoulder albedo floor (the crevice shadow)
+const PALE_BONE: readonly [number, number, number] = [0.90, 0.86, 0.78];  // bone the deep channel lifts toward
+const CORE_GLOW = 0.6;     // how far the DEEPEST seam lifts toward PALE_BONE (matte hue pickup)
+const SEAM_ROUGH = 0.22;   // roughness in WET seams only (per-floor wetness) — no dry gloss
 
 // ── SEEP — liquid light in the grooves ───────────────────────────────
 // The groove-glow made deliberate-then-LIQUID: a slow descending flow
