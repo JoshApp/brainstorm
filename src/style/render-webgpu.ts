@@ -19,10 +19,11 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
 let resScale = 0.5;   // PSX-style low-res scene render; 1.0 = native
-// Bloom tuned subtle + high-threshold so only bright sources (flames, glows,
-// emissive runes) bloom — DELVE's dread atmosphere, not a glow-fest. Replaces
-// the hand-rolled bright-extract + separable-blur ping-pong in render-target.ts.
-const BLOOM_STRENGTH = 0.45, BLOOM_RADIUS = 0.6, BLOOM_THRESHOLD = 0.85;
+let bloomEnabled = true;
+// Bloom: subtle + HIGH threshold so ONLY bright sources (flames, glows, runes)
+// bloom — not the whole image. The first pass was way too heavy (it blurred
+// everything); these are conservative. Tune via the consts.
+const BLOOM_STRENGTH = 0.15, BLOOM_RADIUS = 0.35, BLOOM_THRESHOLD = 0.9;
 const QUANT_LEVELS = 32;   // PSX colour steps per channel (matches the GLSL blit)
 // DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
@@ -39,15 +40,31 @@ export function setWebGPUResolutionScale(s: number): void {
   scenePass?.setResolutionScale(s);
 }
 
+/** Toggle bloom (wired to the BLOOM setting). Rebuilds the pipeline next frame. */
+export function setWebGPUBloomEnabled(on: boolean): void {
+  if (on === bloomEnabled) return;
+  bloomEnabled = on;
+  rebuildWebGPUPipeline();
+}
+
+/** Drop the pipeline so the next renderWebGPU rebuilds it. */
+export function rebuildWebGPUPipeline(): void { pipeline = null; scenePass = null; }
+
+// A renderer resize (window or the PIXEL DENSITY / DPR apply, which dispatches
+// 'resize') invalidates the RenderPipeline's pass targets — rebuild so a settings
+// change doesn't freeze the image. Harmless in WebGL mode (pipeline stays null).
+if (typeof window !== 'undefined') window.addEventListener('resize', rebuildWebGPUPipeline);
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   if (pipeline) return;
   scenePass = pass(scene, camera);
   scenePass.setResolutionScale(resScale);
 
-  // Scene + native bloom, additive, in LINEAR space.
-  const bloomPass = bloom(scenePass, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
-  let lit: any = (scenePass as any).add(bloomPass);
+  // Scene + native bloom, additive, in LINEAR space. Bloom is optional (BLOOM
+  // setting); the bloomPass also feeds the fog inscatter below.
+  const bloomPass = bloomEnabled ? bloom(scenePass, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD) : null;
+  let lit: any = bloomPass ? (scenePass as any).add(bloomPass) : scenePass;
 
   // DEPTH CRUSH — multiply colour toward CRUSH_FLOOR with camera distance, in
   // linear space (a darkening multiply). getViewZNode() is camera-space Z
@@ -58,8 +75,11 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
 
   // FOG INSCATTER — add the bloom colour as glowing air, weighted by distance.
   // Added AFTER crush so the haze isn't darkened by it (surfaces fade, air glows).
-  const fogW = (smoothstep as any)(INSCATTER_START_M, INSCATTER_END_M, distM).mul(INSCATTER_STRENGTH);
-  lit = lit.add((bloomPass as any).mul(fogW));
+  // Only when bloom is on (it's the haze colour source).
+  if (bloomPass) {
+    const fogW = (smoothstep as any)(INSCATTER_START_M, INSCATTER_END_M, distM).mul(INSCATTER_STRENGTH);
+    lit = lit.add((bloomPass as any).mul(fogW));
+  }
 
   // Tone-map + sRGB to DISPLAY space ourselves (so the PSX crunch below lands on
   // the final colour — quantizing in linear would get smeared by the tonemap).

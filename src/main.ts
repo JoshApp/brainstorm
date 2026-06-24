@@ -216,7 +216,10 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 // ported to TSL — see docs/WEBGPU-MIGRATION.md. The WebGPU path is intentionally
 // "raw" for now (custom PSX pipeline + reveal shaders bypassed); renderWithStyle
 // short-circuits to a direct renderAsync until those are ported.
-const WEBGPU = new URLSearchParams(window.location.search).get('webgpu') === '1';
+// WebGPU is now the DEFAULT on this branch — iterate the look/feel live, finish
+// the last features (reveal seam, clustered lighting, gore-splat) on the native
+// path. Opt OUT with ?webgpu=0 to A/B against the classic WebGL renderer.
+const WEBGPU = new URLSearchParams(window.location.search).get('webgpu') !== '0';
 setWebGPUMode(WEBGPU);
 // preserveDrawingBuffer forces the browser to COPY the drawing buffer every
 // presented frame (no efficient swap) — a present-latency/back-pressure hit that

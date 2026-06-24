@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { isWebGPU, isWebGPUReady } from '../scene/renderer-mode';
-import { renderWebGPU } from './render-webgpu';
+import { renderWebGPU, setWebGPUBloomEnabled, setWebGPUResolutionScale } from './render-webgpu';
 
 // WEBGPU SPIKE: rate-limit render failures to one console line.
 let webgpuRenderErrored = false;
@@ -523,6 +523,7 @@ export function getSharpBilinear(): boolean { return sharpBilinear; }
 /** Toggle bloom (so the look can be A/B'd / disabled on weak devices). */
 export function setBloomEnabled(on: boolean): void {
   bloomEnabled = on;
+  if (isWebGPU()) { setWebGPUBloomEnabled(on); return; }   // WebGPU bloom lives in the node pipeline
   if (blitMaterial) blitMaterial.uniforms.uBloomStrength.value = on ? BLOOM_STRENGTH : 0;
 }
 
@@ -653,6 +654,7 @@ export function setPS1Scale(scale: number): void {
   // (the smooth/high-res end of the crunchy↔smooth spectrum) on desktop and
   // strong phones; the adaptive scaler still floors it on weak devices.
   ps1Scale = Math.min(1.0, Math.max(0.2, scale));
+  if (isWebGPU()) { setWebGPUResolutionScale(ps1Scale); return; }   // WebGPU: the pass downscale
   if (!lowResTarget || !rendererRef) return;
   const nw = Math.max(1, Math.floor(rendererRef.domElement.width * ps1Scale));
   const nh = Math.max(1, Math.floor(rendererRef.domElement.height * ps1Scale));
