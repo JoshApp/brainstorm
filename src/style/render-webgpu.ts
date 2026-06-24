@@ -13,7 +13,7 @@
 
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
-import { pass, vec3, vec4, float, screenUV, floor, dot, smoothstep, mix, luminance } from 'three/tsl';
+import { pass, vec3, vec4, float, screenUV, dot, smoothstep, mix, luminance } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 let pipeline: RenderPipeline | null = null;
@@ -24,8 +24,8 @@ let resScale = 0.5;   // back to low-res (the original was low-res + crisp; full
 // something upstream (lighting / fog / material response).
 const RAW = typeof location !== 'undefined' && new URLSearchParams(location.search).get('raw') === '1';
 // Grade feel — trial-and-error toward the original's crushed blacks + colour.
-const SATURATION = 1.35;   // >1 = punchier colour
-const CONTRAST = 1.35;     // >1 = crushed blacks / more depth
+const SATURATION = 1.2;    // >1 = punchier colour
+const CONTRAST = 1.18;     // >1 = crushed blacks / more depth
 let bloomEnabled = true;
 // Bloom: subtle + HIGH threshold so ONLY bright sources (flames, glows, runes)
 // bloom — not the whole image. Tune via the consts.
@@ -35,7 +35,6 @@ const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
 // Crush exposure hard to restore the dark-with-pools-of-torchlight look. (Quick
 // global knob; the deeper fix is re-tuning ambient/emissive for r184 units.)
 const EXPOSURE = 0.4;
-const QUANT_LEVELS = 32;   // PSX colour steps per channel (matches the GLSL blit)
 // DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
 // depth). Metres from camera. Tune on the dev server.
@@ -108,13 +107,14 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   };
   if (RAW) { build((vec4 as any)((lit as any).rgb, 1.0)); return; }
 
-  // ── PSX colour grade, in LINEAR ──
-  // Stays linear; the pipeline's DEFAULT output transform applies the renderer's
-  // tonemap (NoToneMapping under WebGPU) + sRGB exactly ONCE after. (Doing our
-  // own renderOutput(sRGB) while the renderer also sRGB-encoded was a double-
-  // encode → the milky wash.) NO dither — the hash dither read as grain over the
-  // whole image; 32 hard levels alone give the PSX steps.
-  const _vec4 = vec4 as any, _float = float as any, _floor = floor as any, _dot = dot as any;
+  // ── Colour grade, in LINEAR (one tonemap+sRGB pass by the pipeline after) ──
+  // NO final-colour QUANTIZE. The original banded the LIGHT contribution (a
+  // stylized cel-light step, banded-lighting.ts), NOT the material colours —
+  // quantizing the whole image here banded materials + light together into the
+  // harsh radial bands. So: smooth materials + smooth light now; the stylized
+  // light-step look is a separate port of banded-lighting (deferred). Just a
+  // gentle saturation + black-crush + vignette here.
+  const _vec4 = vec4 as any, _float = float as any, _dot = dot as any;
   const _uv = screenUV as any;
 
   let col: any = (lit as any).rgb;
@@ -126,8 +126,6 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // VIGNETTE — mild edge darkening.
   const d = _uv.sub(0.5);
   col = col.mul(_float(1.0).sub(_dot(d, d).mul(0.55)));
-  // QUANTIZE — hard PSX colour steps (rounded), no grain.
-  col = _floor(col.mul(QUANT_LEVELS).add(0.5)).div(QUANT_LEVELS);
   build(_vec4(col, 1.0));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
