@@ -54,15 +54,24 @@ every joint.
   (joints ARE the bones). Chrome-verified on the arena pack: 6 SkinnedMeshes,
   **draws 203→150 (−26%)**, tris 71k→56k, **enemy draws 71→21**, no shader
   errors, correct articulation + live anim.
-- **M3 ~ CODE-COMPLETE, on-device verify pending** — dismember (`severBone`
-  collapses a joint subtree → limb vanishes; head + 2 shoulders + 2 hips;
-  headless-verified) + death parity (crumble's per-joint fling skipped; topple +
-  dissolve-in-place; release no-ops). **NOT done: retire `creature-instancing.ts`
-  / flip default** — gated on confirming death+dismember FEEL on the phone (the
-  remote kill hook `__smite` is stale/no-op, so combat death is untested in
-  Chrome). All M2/M3 edits are no-ops when the flag is off → legacy unchanged.
+- **M3 ✓ DONE** — dismember + death parity + **instancing RETIRED**. Sever flings
+  a real chunk (`severBoneChunk`) and crumble shatters into ~6 anatomical pieces
+  (`crumbleToChunks`, one vert pass at the death instant — cheap, transient,
+  self-disposing). Chunks preserve the limb's material GROUPS (a lopped skull
+  keeps its emissive eye-lights) with bone-transformed (mirror-correct) normals.
+  V2 is now the DEFAULT path; `creature-instancing.ts` and its flag/tick/teardown/
+  diag are deleted; the warmup prewarms the skinned variant. Confirmed on-device.
 - **M4 (optional, later)** — instanced rigid-skinning (bone-matrix texture) for
   true hordes (1 draw/TYPE). Only if counts grow past packs.
+
+## Scope: skinning is for ARTICULATED meshes only
+
+Skinning collapses a creature's independently-moving joints into 1-few draws. It
+does NOT apply to items / decals / static props — those have no moving joints; the
+right lever there is MERGE (combine same-material parts → 1 draw, as the spike/
+portcullis merges did) or INSTANCE (same object drawn many times). Three levers:
+merge static-multipart, skin articulated, instance identical-many. The chunk/
+dismember mechanism here is reusable by any future skinned content (NPCs, bosses).
 
 ## Guardrail (built alongside)
 
