@@ -12,6 +12,7 @@ import type { EntityId } from '../ecs/types';
 import { applyBuff } from '../ecs/buffs';
 import { get as getEntity } from '../ecs/world';
 import { gameRngChance } from '../engine/rng';
+import { registerWarmup } from '../content/warmup-registry';
 import { CONFIG } from '../config';
 
 // Scratch vector for the projectile impact point (zone resolution). Module-level
@@ -477,3 +478,25 @@ export function getActiveProjectileCount(): number {
 export function clearProjectiles(): void {
   for (const slot of pool) if (slot.inUse) retire(slot);
 }
+
+// Warm every registered projectile type's material at load: spawn one of each
+// just in front of the warmup camera so the render compiles it. Without this the
+// FIRST shot in combat (a skeleton's bone-throw, an acolyte's spit) compiles the
+// projectile shader in-frame — a ~290ms freeze seen in a combat recording. Safe:
+// spawn() only sets pool slot fields (no providers/ticks), and clear() retires.
+const _warmO = new THREE.Vector3();
+registerWarmup({
+  label: 'projectiles',
+  spawn: (scene) => {
+    scene.getWorldPosition(_warmO);
+    for (const id of TYPES.keys()) {
+      spawnProjectile({
+        typeId: id,
+        origin: _warmO.clone().add(new THREE.Vector3(0, 0, -1)),
+        target: _warmO.clone().add(new THREE.Vector3(0, 0, -3)),
+        damage: 0, source: null,
+      });
+    }
+  },
+  clear: clearProjectiles,
+});
