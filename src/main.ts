@@ -41,7 +41,7 @@ import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots, warmViewmodelPrepass } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
@@ -208,14 +208,20 @@ if (!beginBoot()) throw new Error('delve: safe mode (boot guard)');
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
 // --- Renderer ---
-// preserveDrawingBuffer is needed for the harness to read frames via
-// canvas.toDataURL() asynchronously (after render is gone otherwise).
-// Off by default — there's a measurable perf hit on some mobile GPUs.
+// preserveDrawingBuffer forces the browser to COPY the drawing buffer every
+// presented frame (it can't do an efficient swap) — a measurable present-latency
+// / back-pressure hit on mobile GPUs that scales with frame count. So it's kept
+// to the HARNESS only, which reads canvas frames at arbitrary times. Debug Mode's
+// CAPTURE button does NOT need it: its screenshot paths (harness/annotate
+// captureScreenshot, debug/debug-screenshots grabFrame) re-render the scene and
+// call toDataURL() in the SAME synchronous task, where the drawing buffer is
+// still valid without preservation. Keeping it off for Debug Mode means
+// profiling/debugging on-device no longer skews the present pipeline.
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: false,
   powerPreference: 'high-performance',
-  preserveDrawingBuffer: HARNESS_ENABLED || DEBUG_ENABLED,
+  preserveDrawingBuffer: HARNESS_ENABLED,
 });
 // DPR cap — the biggest single lever against fragment/fill cost. Desktop debug
 // stays crisp at CONFIG.PIXEL_RATIO_CAP; mobile honours the live PIXEL DENSITY
@@ -417,6 +423,10 @@ initLevelLoader({
       // retained) but no resident verts. Replaces the old scratch/roster/
       // instanced/gore warm patchwork. Best-effort.
       try { runWarmupPass(renderer, scene, camera); } catch { /* best-effort */ }
+      // The warmup pass compiles the viewmodels' MAIN-pass (lit) variant; the
+      // depth pre-pass renders them in a 0-light scene (a different program), so
+      // warm that variant too or the first prepass draw stalls ~6ms in-game.
+      try { warmViewmodelPrepass(renderer, camera); } catch { /* best-effort */ }
     }
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to
