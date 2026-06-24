@@ -6,7 +6,7 @@ import { getViewmodelPullback } from './viewmodel-pullback';
 import { setupWhipChain, clearWhipChain, tickWhipChain } from './whip-chain';
 import { computeWeaponPose, shoulderPivot, STANDARD_IDLE, type WeaponPose } from './weapon-animations';
 import { getChargeProgress, isChargePerfectWindow, getChargeDirection } from '../controls/charge-input';
-import { registerViewmodel } from '../style/render-target';
+import { registerViewmodel, applyViewmodelDepthWebGPU } from '../style/render-target';
 import { createSwingState } from '../combat/swing-state';
 import { getCurrentWeapon } from './current-weapon';
 import { composeHeldWeapon } from './held-weapon-compose';
@@ -364,6 +364,7 @@ export function createWeaponViewmodel(
         m.depthWrite = false;
         m.transparent = false;
         m.needsUpdate = true;
+        applyViewmodelDepthWebGPU(m);   // WebGPU: write own depth (no pre-pass) so parts self-occlude
         const em = (m as THREE.MeshStandardMaterial).emissive;
         if (gleamCollect && em && typeof em.getHex === 'function') {
           const mat = m as THREE.MeshStandardMaterial;

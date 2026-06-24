@@ -109,6 +109,26 @@ export function registerViewmodel(root: THREE.Object3D): void {
     });
   }
 }
+/** Set ONE held-viewmodel mesh material's depth state for the CURRENT renderer.
+ *  WebGL has a depth pre-pass, so the caller's scheme (depthTest on, depthWrite
+ *  OFF, sometimes transparent) is correct — this is a no-op there. WebGPU has NO
+ *  pre-pass, so opaque parts must write their OWN depth to self-occlude (the lamp
+ *  behind the hand, the hilt behind the fingers, arm bones against each other).
+ *  Genuinely translucent parts — additive glow sprites, alpha glass — are left
+ *  alone so transparency still sorts. Call from every viewmodel material loop; it
+ *  re-applies on each mount/equip (which is where the pre-pass flags get re-set). */
+export function applyViewmodelDepthWebGPU(m: THREE.Material): void {
+  if (!isWebGPU()) return;
+  const mm = m as THREE.Material & { blending?: number; opacity?: number };
+  // additive glow OR real alpha (opacity < 1) → keep transparent + non-writing.
+  if (mm.blending === THREE.AdditiveBlending) return;
+  if (m.transparent && (mm.opacity ?? 1) < 1) return;
+  m.depthTest = true;
+  m.depthWrite = true;
+  m.transparent = false;
+  m.needsUpdate = true;
+}
+
 /** Drop a viewmodel root (teardown). */
 export function unregisterViewmodel(root: THREE.Object3D): void {
   const i = viewmodelRoots.indexOf(root);

@@ -27,7 +27,7 @@ import * as THREE from 'three';
 
 import { CONFIG } from '../config';
 import { registerLight, unregisterLight } from '../scene/light-pool';
-import { registerViewmodel, unregisterViewmodel } from '../style/render-target';
+import { registerViewmodel, unregisterViewmodel, applyViewmodelDepthWebGPU } from '../style/render-target';
 import { getLanternSwing, getBobOffset } from './viewmodel-bob';
 import { getLampSway, getWeaponSway } from './viewmodel-sway';
 import { getViewmodelPullback, getViewmodelPullbackFrac } from './viewmodel-pullback';
@@ -278,6 +278,7 @@ export function attachLamp(camera: THREE.Camera) {
         // pattern in sword.ts for the long version of why.
         m.transparent = true;
         m.needsUpdate = true;
+        applyViewmodelDepthWebGPU(m);   // WebGPU: opaque lamp parts write own depth (no pre-pass); additive flame left transparent
       }
       mesh.renderOrder = 998;  // just under the sword (999)
     }

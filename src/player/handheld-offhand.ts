@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildModel } from '../ecs/build-model';
 import { getOffhandOffset } from './viewmodel-bob';
 import { getOffhandSway } from './viewmodel-sway';
-import { registerViewmodel, unregisterViewmodel } from '../style/render-target';
+import { registerViewmodel, unregisterViewmodel, applyViewmodelDepthWebGPU } from '../style/render-target';
 import type { ModelSpec } from '../ecs/model-types';
 
 // Generic offhand viewmodel — a model parented to the camera at the
@@ -46,6 +46,7 @@ export function attachOffhandViewmodel(camera: THREE.Camera, spec: ModelSpec) {
                              // viewmodel depth-only pass (render-target.ts)
       m.transparent = true;
       m.needsUpdate = true;
+      applyViewmodelDepthWebGPU(m);   // WebGPU: opaque parts write own depth (no pre-pass)
     }
     mesh.renderOrder = 998;   // just under the sword (999), same as the lamp
   });
