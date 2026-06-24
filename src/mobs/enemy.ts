@@ -43,7 +43,16 @@ import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import {
   acquireCreatureInstancing, releaseCreatureInstancing,
 } from './creature-instancing';
+import { buildSkinnedCreature } from './creature-skinned';
 import { isPooledGeometry } from '../scene/geometry-pool';
+
+// Creature Render V2 (rigid-skinned, docs/CREATURE-RENDER-V2.md) — gated swap.
+// When on, an enemy renders as ONE SkinnedMesh (joints = bones, live anim drives
+// the GPU deform) instead of per-joint instanced segments. Flash + dissolve +
+// core-reactor all key off `built.materials` (which the skinned mesh REUSES), so
+// they work unchanged with `instancing = null` (the same seam bosses use).
+const CREATURE_V2 = typeof location !== 'undefined'
+  && new URLSearchParams(location.search).get('creatureV2') === '1';
 import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
 import { tryJustDodge } from '../combat/just-dodge';
@@ -348,7 +357,12 @@ export function createEnemy(
   // per-enemy segment meshes and assigns instance slots. null = legacy
   // per-enemy rendering (bosses, or the CONFIG.CREATURE_INSTANCING switch
   // off) — every path below works identically either way.
-  const instancing = acquireCreatureInstancing(scene, entityId, spec, built, container);
+  // V2: skip instancing, fold the segments into one SkinnedMesh. Otherwise the
+  // legacy per-joint instancing path (null for bosses / switch-off).
+  const instancing = CREATURE_V2
+    ? null
+    : acquireCreatureInstancing(scene, entityId, spec, built, container);
+  if (CREATURE_V2) buildSkinnedCreature(creature);
   // Base model scale, captured for the lash deform (which elongates the
   // body toward the player on a 'lash' telegraph, then eases back here).
   const groupBaseScale = built.group.scale.clone();
