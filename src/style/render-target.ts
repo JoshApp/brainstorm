@@ -83,6 +83,26 @@ const viewmodelRoots: THREE.Object3D[] = [];
 /** Register a held-viewmodel root for the near-depth pass. Idempotent. */
 export function registerViewmodel(root: THREE.Object3D): void {
   if (!viewmodelRoots.includes(root)) viewmodelRoots.push(root);
+  // WEBGPU — the elegant path: drop the WebGL depth pre-pass + depthTest:false +
+  // renderOrder juggling entirely. Opaque viewmodel parts just use NORMAL depth.
+  // They sort correctly among themselves (the hand writes depth and occludes the
+  // handle it wraps) and still paint over the world because they sit ~0.3m from
+  // the camera while player collision keeps walls farther out. (Transparent parts
+  // — glow sprites — keep their additive depthTest:false; depth-writing them
+  // would break transparency sorting.)
+  if (isWebGPU()) {
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) {
+        if (m && !(m as THREE.Material).transparent) {
+          (m as THREE.Material).depthTest = true;
+          (m as THREE.Material).depthWrite = true;
+        }
+      }
+    });
+  }
 }
 /** Drop a viewmodel root (teardown). */
 export function unregisterViewmodel(root: THREE.Object3D): void {
