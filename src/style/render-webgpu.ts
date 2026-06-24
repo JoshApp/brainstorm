@@ -66,7 +66,7 @@ const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
 // clipping. But side-by-side vs the WebGL/main reference the WebGPU scene still
 // read too bright in the near field, so exposure comes back DOWN under the
 // tonemap (0.6 → 0.42). Still the global brightness knob.
-const EXPOSURE = TONEMAP === 'none' ? 0.5 : 0.42;
+const EXPOSURE = TONEMAP === 'none' ? 0.5 : 0.37;
 // DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
 // depth). Metres from camera. Tune on the dev server.

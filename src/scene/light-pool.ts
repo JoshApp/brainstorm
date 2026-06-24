@@ -113,9 +113,21 @@ let shadowMode: ShadowMode = 'off';
 
 /** Pre-configure a slot's shadow camera + map. Cheap; the shadow map
  *  itself isn't allocated until castShadow flips true on first render. */
-function configureSlotShadow(light: THREE.PointLight): void {
-  light.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+function configureSlotShadow(light: THREE.PointLight, isLamp = false): void {
+  // The LAMP is a special case: it swings, and its own cage bars sit centimetres
+  // from the bulb, so its shadow self-aliases hard (the "shutter/flicker" on the
+  // arm). Give it a bigger map (less crawl) and a strong normalBias (the real fix
+  // for swimming self-shadow on geometry hugging the light). Static torches don't
+  // need either — keep them cheap.
+  const size = isLamp ? 512 : SHADOW_MAP_SIZE;
+  light.shadow.mapSize.set(size, size);
   light.shadow.bias = -0.004;
+  // normalBias offsets the shadow sample along the surface normal — biggest lever
+  // against the swinging-lamp shutter. Works under any shadow-map filter.
+  light.shadow.normalBias = isLamp ? 0.06 : 0.02;
+  // Soft PCF radius — gentle edge (honoured by the WebGPU node shadow filter; a
+  // no-op under WebGL PCFShadowMap, where the res + normalBias carry the stability).
+  light.shadow.radius = isLamp ? 3 : 1;
   light.shadow.camera.near = 0.12;
   // Tight far plane = the light's actual reach. The lamp lights ~5.5m
   // (CONFIG.LAMP_DISTANCE); nothing past that is lit, so nothing past that
@@ -143,7 +155,7 @@ export function initLightPool(sc: THREE.Scene): void {
     for (let i = 0; i < n; i++) {
       const light = new THREE.PointLight(0xffffff, 0, 5, 1.4);
       light.position.set(0, PARK_Y, 0);
-      configureSlotShadow(light);
+      configureSlotShadow(light, cat === 'lamp');
       sc.add(light);
       slotsByCategory[cat].push(light);
     }
