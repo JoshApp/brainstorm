@@ -140,21 +140,18 @@ export function setWebGPUDarkAdapt(v: number): void {
 // NOTE: these are LINEAR-space values and the pipeline applies sRGB AFTER, which
 // hugely amplifies small darks (linear 0.024 → ~0.17 display). So the additive
 // floor-raise must be TINY in linear to read as a subtle display lift.
-// The reveal is a NEAR-only MIDTONE BAND (ChatGPT's Option A+B, which is what we
-// all landed on): lift only the low-mids where dark GEOMETRY lives — ~0 at pure
-// black (the void stays void) and ~0 in the lit/highlights (no overexposure) — and
-// only in the NEAR field (the far stays dark + threatening, nearsightedness kept).
-// So shapes EMERGE from black as the eye adapts, without greying the dark or
-// seeing wider. All LINEAR thresholds (the pipeline applies sRGB after).
-const ADAPT_GAIN = 1.35;      // gentle multiply on the banded near-darks — shapes surface (mids a bit more)
-const ADAPT_MID_LO = 0.004;   // below this the void stays black
-const ADAPT_MID_HI = 0.11;    // above this (lit / highlights) untouched — the band peaks between
-const ADAPT_NEAR_M = 4.0;     // full reveal within this many metres of the eye
-const ADAPT_FAR_M = 10.0;     // faded to 0 by here — beyond stays dark
-// A whisper of additive SHADOW lift on top of the gain — the gain alone barely
-// moves near-black, so this gives the shadows a touch. Gated ABOVE true black (the
-// void stays void), near-only, and tiny in LINEAR (sRGB amplifies it ~7×).
-const ADAPT_SHADOW_LIFT: readonly [number, number, number] = [0.0027, 0.0026, 0.0023];
+// CHIAROSCURO INTENSIFY — the reveal is CONTRAST, not brightness. As the eye
+// adapts, the dark range polarizes around a low pivot: a form's faintly-lit side
+// pulls UP, its unlit side sinks DOWN — so SHAPES separate from the black and read
+// sculptural, while the AVERAGE level doesn't rise (no wash, no grey; the void
+// stays void). Hue-preserving (scale by value), NEAR-only (far stays dark), and
+// adapt-ramped (shapes sharpen out of the black over ~2.5s, not "fade in"). All
+// LINEAR thresholds (the pipeline applies sRGB after).
+const ADAPT_NEAR_M = 4.0;       // full effect within this many metres of the eye
+const ADAPT_FAR_M = 10.0;       // faded to 0 by here — beyond stays dark
+const CONTRAST_AMT = 0.85;      // contrast strength at full adapt (exponent k up to 1 + this)
+const CONTRAST_PIVOT = 0.015;   // LINEAR level to polarize around — above it brightens, below it sinks
+const CONTRAST_RANGE = 0.09;    // only lum below this (linear) gets it — the lit side is untouched
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -274,26 +271,20 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
   col = col.pow(_float(CONTRAST));
 
-  // ── EYE DARK-ADAPTATION — near-only midtone reveal (see ADAPT_* notes above) ──
-  // midBand peaks on the low-mids where dark GEOMETRY lives, ~0 at pure black AND
-  // in the lit highlights — so shapes surface from the black WITHOUT greying the
-  // void or touching the lit side. nearW restricts it to the player's immediate
-  // surroundings; the far stays dark + threatening (nearsighted). Both ride the
-  // adapt ramp, so it's a transition, not a constant — the room emerges over ~2.5s.
+  // ── EYE DARK-ADAPTATION — chiaroscuro intensify (see notes above) ──
+  // Polarize the dark range around CONTRAST_PIVOT as the eye adapts: lit form-faces
+  // pull up, shadowed faces sink, so shapes SEPARATE from the black. darkW keeps it
+  // to the darks (lit side untouched), nearW to the near field (far stays dark).
+  // Hue-preserved by scaling the colour by the value ratio.
   {
     const lum: any = col.r.max(col.g).max(col.b);
-    const mid: any = (_float(ADAPT_MID_LO).add(_float(ADAPT_MID_HI))).mul(0.5);
-    const midBand: any = (smoothstep as any)(_float(ADAPT_MID_LO), mid, lum)
-      .mul(_float(1.0).sub((smoothstep as any)(mid, _float(ADAPT_MID_HI), lum)));
     const nearW: any = _float(1.0).sub((smoothstep as any)(_float(ADAPT_NEAR_M), _float(ADAPT_FAR_M), distM));
-    const a: any = (darkAdaptNode as any).mul(midBand).mul(nearW);
-    col = col.mul(_float(1.0).add(a.mul(_float(ADAPT_GAIN))));   // gentle gain — shapes emerge
-    // SHADOW LIFT — a whisper above true black (shadowW is 0 at pure black, fades
-    // out by the low-mids), near-only, so the near shadows give slightly.
-    const shadowW: any = (smoothstep as any)(_float(0.001), _float(0.015), lum)
-      .mul(_float(1.0).sub((smoothstep as any)(_float(0.03), _float(0.10), lum)));
-    col = col.add((vec3 as any)(ADAPT_SHADOW_LIFT[0], ADAPT_SHADOW_LIFT[1], ADAPT_SHADOW_LIFT[2])
-      .mul(darkAdaptNode).mul(shadowW).mul(nearW));
+    const darkW: any = _float(1.0).sub((smoothstep as any)(_float(0.0), _float(CONTRAST_RANGE), lum));
+    const w: any = (darkAdaptNode as any).mul(nearW).mul(darkW);          // how much contrast, here
+    const k: any = _float(1.0).add(w.mul(_float(CONTRAST_AMT)));          // contrast exponent (>1 in the adapted near-darks)
+    const newLum: any = lum.sub(_float(CONTRAST_PIVOT)).mul(k).add(_float(CONTRAST_PIVOT)).max(_float(0.0));
+    const scale: any = newLum.div(lum.max(_float(1e-4)));                 // value ratio — preserves hue
+    col = col.mul(scale);
   }
 
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──
