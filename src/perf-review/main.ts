@@ -58,6 +58,7 @@ app.innerHTML = `
     <strong style="letter-spacing:.06em;color:#8fb8ff">DELVE · PERF COCKPIT</strong>
     <select id="picker" style="background:#121a26;color:#cdd9e8;border:1px solid #28384c;border-radius:5px;padding:4px 8px;font:inherit"></select>
     <button id="livebtn" style="background:#16202e;color:#9fb4cc;border:1px solid #2a5a3a;border-radius:5px;padding:4px 9px;font:inherit;cursor:pointer">● LIVE</button>
+    <button id="resetbtn" style="background:#16202e;color:#9fb4cc;border:1px solid #28384c;border-radius:5px;padding:4px 9px;font:inherit;cursor:pointer" title="Clear the live buffer (or reset zoom/pin)">⟲ reset</button>
     <span id="summary" style="color:#9fb4cc;font-size:12px"></span>
     <button id="metabtn" style="background:#16202e;color:#9fb4cc;border:1px solid #28384c;border-radius:5px;padding:4px 9px;font:inherit;cursor:pointer">meta ▾</button>
     <span style="margin-left:auto;color:#5e7088;font-size:11px">drop a .json · wheel = zoom · drag = pan · click = pin · ←/→ step · ⇧ = spikes · F = fit</span>
@@ -66,7 +67,7 @@ app.innerHTML = `
   <div id="legend" style="display:flex;flex-wrap:wrap;gap:5px 12px;padding:6px 14px;border-bottom:1px solid #161d28;font-size:11px;color:#9fb4cc"></div>
   <canvas id="tl" style="display:block;width:100%;flex:1;min-height:0;cursor:crosshair"></canvas>
   <div id="markers" style="display:flex;gap:6px;padding:6px 14px;border-top:1px solid #161d28;overflow-x:auto;white-space:nowrap"></div>
-  <div id="frame" style="padding:8px 14px;border-top:1px solid #1c2430;background:#0d121a;min-height:160px;max-height:36vh;overflow:auto;font-size:12px"></div>
+  <div id="frame" style="padding:8px 14px;border-top:1px solid #1c2430;background:#0d121a;height:38vh;overflow-y:auto;font-size:12px"></div>
 `;
 
 const picker = document.getElementById('picker') as HTMLSelectElement;
@@ -781,6 +782,29 @@ function startLive(): void {
   requestAnimationFrame(liveFlush);
 }
 
+/** Clear the rolling live buffer in place and resume following from empty — so
+ *  you can start a fresh capture without reloading the page. When not live, it
+ *  just resets zoom + unpins (equivalent to F then Esc). */
+function resetView(): void {
+  if (!rec) return;
+  pinnedFrame = -1;
+  hoverFrame = -1;
+  if (isLive()) {
+    rec.frames.length = 0;
+    followLive = true;
+    viewLo = 0;
+    viewHi = LIVE_WINDOW;
+    liveChan?.postMessage({ t: 'hello' } satisfies LiveMsg);   // re-fetch schema in case it changed
+    frameEl.innerHTML = '';
+    buildSummary();
+    buildMarkers();
+  } else {
+    viewLo = 0;
+    viewHi = rec.frames.length;
+  }
+  resize();
+}
+
 /** Stop following but KEEP the captured buffer as a normal scrub session. */
 function stopLive(): void {
   if (!liveChan) return;
@@ -827,6 +851,7 @@ function liveFlush(): void {
 
 // ── Wiring ────────────────────────────────────────────────────────────────
 liveBtn.addEventListener('click', () => { if (isLive()) stopLive(); else startLive(); });
+(document.getElementById('resetbtn') as HTMLButtonElement).addEventListener('click', resetView);
 metaBtn.addEventListener('click', () => {
   const open = metaEl.style.display !== 'none';
   metaEl.style.display = open ? 'none' : 'block';
