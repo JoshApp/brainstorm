@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { isWebGPU, isWebGPUReady } from '../scene/renderer-mode';
+import { renderWebGPU } from './render-webgpu';
 
-// WEBGPU SPIKE: rate-limit renderAsync failures to one console line.
+// WEBGPU SPIKE: rate-limit render failures to one console line.
 let webgpuRenderErrored = false;
 import { renderProbeActive, reportRenderPhase, gpuPassActive, gpuPassBegin, gpuPassEnd } from '../debug/render-probe';
 
@@ -704,11 +705,7 @@ export function renderWithStyle(
     // can't kill the loop — rate-limited to one log line.
     if (isWebGPUReady()) {
       try {
-        // Reset info EXPLICITLY each frame — WebGPURenderer doesn't reliably
-        // honor info.autoReset, so without this the draw/tri counters accumulate
-        // forever (the "draws climbing the whole time" symptom).
-        renderer.info.reset();
-        (renderer as unknown as { render: (s: THREE.Scene, c: THREE.Camera) => void }).render(scene, camera);
+        renderWebGPU(renderer, scene, camera);   // native RenderPipeline + low-res pass
       } catch (err) {
         if (!webgpuRenderErrored) { webgpuRenderErrored = true; console.error('[webgpu] render failed (first only):', err); }
       }

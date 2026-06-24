@@ -249,11 +249,8 @@ if (WEBGPU) {
 // applyVideoSettings when the slider moves.
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, effectiveDprCap()));
 renderer.setSize(window.innerWidth, window.innerHeight);
-// WEBGPU SPIKE: the PSX path renders the scene to a 0.4× low-res target; the
-// direct WebGPU render goes full-res to the canvas, so fill cost is ~6×. Until
-// the low-res pipeline is ported (Phase 2), drop the pixel ratio as a crude
-// stand-in so the WebGPU path is testable (blurry, but playable fps).
-if (WEBGPU) renderer.setPixelRatio(Math.min(window.devicePixelRatio, effectiveDprCap()) * 0.5);
+// (The WebGPU low-res fill win now comes from the RenderPipeline's PassNode
+// setResolutionScale — see style/render-webgpu.ts — so no pixel-ratio stopgap.)
 // WEBGPU SPIKE EXPERIMENT: point-light cube shadows redraw the scene 6× per
 // casting light. The WebGPU path showed 3560 draws / 42k tris (≈12 tris/draw) —
 // a draw-call explosion, not fill. If MORE lights cast shadows under the node
