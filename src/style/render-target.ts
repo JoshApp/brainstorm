@@ -704,6 +704,10 @@ export function renderWithStyle(
     // can't kill the loop — rate-limited to one log line.
     if (isWebGPUReady()) {
       try {
+        // Reset info EXPLICITLY each frame — WebGPURenderer doesn't reliably
+        // honor info.autoReset, so without this the draw/tri counters accumulate
+        // forever (the "draws climbing the whole time" symptom).
+        renderer.info.reset();
         (renderer as unknown as { render: (s: THREE.Scene, c: THREE.Camera) => void }).render(scene, camera);
       } catch (err) {
         if (!webgpuRenderErrored) { webgpuRenderErrored = true; console.error('[webgpu] render failed (first only):', err); }
