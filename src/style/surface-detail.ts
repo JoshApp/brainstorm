@@ -49,15 +49,22 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
     albedo = (tslMix as any)(albedo, seepTintNode, seepAmt);
   }
 
-  // WETNESS — wet seams are DARKER + far GLOSSIER (lower roughness); the torches
-  // then strike real specular glints along the mortar. Per-floor strength.
+  // ── VEINY CREVICE GLINT (always-on; see SEAM_* tuning above) ──
+  // Scaled by relief so flat columns/grain (relief ~0.05) are spared while brick
+  // walls + flagstone floors (relief ~0.30) get the full effect.
+  const reliefScale = Math.min(1, cfg.relief / 0.30);
+  const seamFx: any = seam.mul(reliefScale);
+  // (a) seam SIDES drink light — darken the recessed albedo for crevice contrast.
+  albedo = albedo.mul((tslMix as any)(float(1.0), float(SEAM_DARK), seamFx));
+
+  // WETNESS rides ON TOP (per-floor strength): wetter seams darker + glossier still.
   const wetMask = (tslClamp as any)(seam.mul(wetnessNode), 0, 1);
   albedo = albedo.mul((tslMix as any)(float(1.0), float(0.6), wetMask));          // wet = darker
-  // CREVICE GLOSS — the mortar grooves are a touch glossier than the brick faces
-  // even when dry, so torchlight throws a specular catch down the seams (the
-  // original's "crevices reflect more"). Wetness deepens it further on top.
-  const grooveGloss = (tslClamp as any)(seam.mul(0.4).add(wetMask), 0, 1);
-  (mat as any).roughnessNode = (tslMix as any)(float(mat.roughness), float(0.3), grooveGloss);
+  // (b) seam CHANNELS glint — drop roughness so torch/candle light throws a tight
+  // specular catch down the mortar. Specular = the light's colour, so a tinted
+  // torch paints coloured veins; the dancing flame makes the streak travel.
+  const grooveGloss = (tslClamp as any)(seamFx.mul(SEAM_GLOSS).add(wetMask), 0, 1);
+  (mat as any).roughnessNode = (tslMix as any)(float(mat.roughness), float(SEAM_ROUGH), grooveGloss);
 
   // colorNode replaces only the albedo input — the standard PBR lighting,
   // roughness, emissive, etc. still apply on top.
@@ -131,6 +138,16 @@ export interface SurfaceTexConfig {
 }
 
 const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
+
+// VEINY CREVICE GLINT tuning (WebGPU surface shader, installSurfaceDetailWebGPU).
+// The mortar seams read as a network of light-carrying veins: their SIDES drink
+// light (darker albedo → contrast vs the slab faces) and their CHANNELS glint
+// (low roughness → a tight SPECULAR catch, which is the light's OWN colour, so
+// tinted torches paint coloured veins; the flame's positional flicker makes the
+// streak travel along the seam = "flow"). Scaled by relief so flat columns spared.
+const SEAM_DARK = 0.55;    // recessed-seam albedo floor (light-absorbing crevice)
+const SEAM_GLOSS = 0.85;   // how far the dry seam glosses toward SEAM_ROUGH (0..1)
+const SEAM_ROUGH = 0.20;   // roughness in the seam channel — low = tight, bright coloured glint
 
 // ── SEEP — liquid light in the grooves ───────────────────────────────
 // The groove-glow made deliberate-then-LIQUID: a slow descending flow
