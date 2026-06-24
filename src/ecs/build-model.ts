@@ -8,6 +8,8 @@ import { orient, tilt, DIR, type Vec3Tuple } from '../anim/orient';
 import { getTexture } from '../style/procedural-textures';
 import { installNamedSurfaceDetail } from '../style/surface-detail';
 import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
+import { isWebGPU } from '../scene/renderer-mode';
+import { vec3, normalWorld, positionWorld, cameraPosition } from 'three/tsl';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
 } from '../scene/geometry-pool';
@@ -342,6 +344,12 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
   const hasGore = mat.transparent !== true && mat.blending === THREE.NormalBlending;
   if (!hasRim && !hasDissolve && !hasChroma && !hasGore) return;
 
+  // WEBGPU: onBeforeCompile is dead under the node renderer. Port the RIM REVEAL
+  // (the core "forms emerge from black" identity) as a TSL emissive node. The
+  // situational effects — dissolve (death crumble), gore creep, chroma (PAINTED
+  // over-saturation) — still need their own node ports; see WEBGPU-MIGRATION.md.
+  if (isWebGPU()) { installRevealWebGPU(mat, def); return; }
+
   const uRimColor   = { value: new THREE.Color(def.rim?.color ?? 0xffffff) };
   const uRimPower   = { value: def.rim?.power ?? 2.5 };
   const uRimIntens  = { value: def.rim?.intensity ?? 1.0 };
@@ -505,6 +513,26 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
       `${injection}\n#include <dithering_fragment>`,
     );
   };
+}
+
+/** WEBGPU rim reveal — additive fresnel emissive ("forms emerge from black").
+ *  The GLSL seam's rim was darkness-reactive (brighter where scene light isn't);
+ *  an emissive node can't read the final lit luma, so this is the constant-rim
+ *  approximation (the darkReactive dimming is deferred). World-space fresnel so
+ *  it's unambiguous regardless of the node renderer's view-space conventions. */
+function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef): void {
+  if (!def.rim) return;
+  const power = def.rim.power ?? 2.5;
+  const intens = def.rim.intensity ?? 1.0;
+  const c = new THREE.Color(def.rim.color ?? 0xffffff);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const viewDir = (cameraPosition as any).sub(positionWorld).normalize();
+  const fres = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(power);
+  const rim = (vec3 as any)(c.r, c.g, c.b).mul(fres).mul(intens);
+  const e = mat.emissive, ei = mat.emissiveIntensity;
+  const base = (vec3 as any)(e.r * ei, e.g * ei, e.b * ei);
+  (mat as any).emissiveNode = base.add(rim);
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THREE.Object3D {
