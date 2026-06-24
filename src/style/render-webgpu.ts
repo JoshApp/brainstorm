@@ -146,7 +146,7 @@ export function setWebGPUDarkAdapt(v: number): void {
 // only in the NEAR field (the far stays dark + threatening, nearsightedness kept).
 // So shapes EMERGE from black as the eye adapts, without greying the dark or
 // seeing wider. All LINEAR thresholds (the pipeline applies sRGB after).
-const ADAPT_GAIN = 1.1;       // gentle multiply on the banded near-darks — shapes surface (mids a bit more)
+const ADAPT_GAIN = 1.35;      // gentle multiply on the banded near-darks — shapes surface (mids a bit more)
 const ADAPT_MID_LO = 0.004;   // below this the void stays black
 const ADAPT_MID_HI = 0.11;    // above this (lit / highlights) untouched — the band peaks between
 const ADAPT_NEAR_M = 4.0;     // full reveal within this many metres of the eye
@@ -154,7 +154,7 @@ const ADAPT_FAR_M = 10.0;     // faded to 0 by here — beyond stays dark
 // A whisper of additive SHADOW lift on top of the gain — the gain alone barely
 // moves near-black, so this gives the shadows a touch. Gated ABOVE true black (the
 // void stays void), near-only, and tiny in LINEAR (sRGB amplifies it ~7×).
-const ADAPT_SHADOW_LIFT: readonly [number, number, number] = [0.0018, 0.0017, 0.0015];
+const ADAPT_SHADOW_LIFT: readonly [number, number, number] = [0.0027, 0.0026, 0.0023];
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
