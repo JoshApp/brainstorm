@@ -146,11 +146,15 @@ export function setWebGPUDarkAdapt(v: number): void {
 // only in the NEAR field (the far stays dark + threatening, nearsightedness kept).
 // So shapes EMERGE from black as the eye adapts, without greying the dark or
 // seeing wider. All LINEAR thresholds (the pipeline applies sRGB after).
-const ADAPT_GAIN = 0.9;       // gentle multiply on the banded near-darks — shapes surface
+const ADAPT_GAIN = 1.1;       // gentle multiply on the banded near-darks — shapes surface (mids a bit more)
 const ADAPT_MID_LO = 0.004;   // below this the void stays black
 const ADAPT_MID_HI = 0.11;    // above this (lit / highlights) untouched — the band peaks between
 const ADAPT_NEAR_M = 4.0;     // full reveal within this many metres of the eye
 const ADAPT_FAR_M = 10.0;     // faded to 0 by here — beyond stays dark
+// A whisper of additive SHADOW lift on top of the gain — the gain alone barely
+// moves near-black, so this gives the shadows a touch. Gated ABOVE true black (the
+// void stays void), near-only, and tiny in LINEAR (sRGB amplifies it ~7×).
+const ADAPT_SHADOW_LIFT: readonly [number, number, number] = [0.0018, 0.0017, 0.0015];
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -283,7 +287,13 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
       .mul(_float(1.0).sub((smoothstep as any)(mid, _float(ADAPT_MID_HI), lum)));
     const nearW: any = _float(1.0).sub((smoothstep as any)(_float(ADAPT_NEAR_M), _float(ADAPT_FAR_M), distM));
     const a: any = (darkAdaptNode as any).mul(midBand).mul(nearW);
-    col = col.mul(_float(1.0).add(a.mul(_float(ADAPT_GAIN))));   // gentle gain — shapes emerge, no additive grey
+    col = col.mul(_float(1.0).add(a.mul(_float(ADAPT_GAIN))));   // gentle gain — shapes emerge
+    // SHADOW LIFT — a whisper above true black (shadowW is 0 at pure black, fades
+    // out by the low-mids), near-only, so the near shadows give slightly.
+    const shadowW: any = (smoothstep as any)(_float(0.001), _float(0.015), lum)
+      .mul(_float(1.0).sub((smoothstep as any)(_float(0.03), _float(0.10), lum)));
+    col = col.add((vec3 as any)(ADAPT_SHADOW_LIFT[0], ADAPT_SHADOW_LIFT[1], ADAPT_SHADOW_LIFT[2])
+      .mul(darkAdaptNode).mul(shadowW).mul(nearW));
   }
 
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──
