@@ -143,6 +143,7 @@ export function setWebGPUDarkAdapt(v: number): void {
 const ADAPT_LIFT: readonly [number, number, number] = [0.0025, 0.0024, 0.0021];  // additive floor-raise (faint warm-neutral), linear — sRGB makes this a gentle display lift
 const ADAPT_GAIN = 0.1;       // gentle multiply on the darks — pulls their faint form up a touch (space-stable)
 const ADAPT_CUTOFF = 0.30;    // LINEAR brightness above which the eye lift fades to 0 — keep it to the genuinely crushed shadows
+const ADAPT_CRUSH_OPEN = 0.16;  // how much the DEPTH-CRUSH floor lifts at full adapt — the "wall of black" recedes as the eye adjusts (linear)
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -214,7 +215,11 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // linear space (a darkening multiply). getViewZNode() is camera-space Z
   // (negative); negate → metres from camera.
   const distM = (scenePass as any).getViewZNode().negate();
-  const crush = (mix as any)(float(1.0), float(CRUSH_FLOOR), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
+  // The crush floor LIFTS as the eye dark-adapts — dark-adapted vision sees deeper
+  // into the gloom, so the camera-relative "wall of black" RECEDES instead of
+  // following you when the near room lifts. (0.16 dark → up to 0.16+OPEN adapted.)
+  const crushFloor: any = float(CRUSH_FLOOR).add((darkAdaptNode as any).mul(ADAPT_CRUSH_OPEN));
+  const crush = (mix as any)(float(1.0), crushFloor, (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
   lit = lit.mul(crush);
 
   // FOG INSCATTER — add the bloom colour as glowing air, weighted by distance.
