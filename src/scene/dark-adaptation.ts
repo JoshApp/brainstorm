@@ -33,8 +33,8 @@ const LIT_BRIGHT = 0.85;
 // snaps you back almost instantly (~0.1s). Models how real eyes
 // actually work — dark adaptation takes seconds-to-minutes;
 // light reflex is near-instant.
-const ADAPT_UP_RATE = 0.7;           // per-sec approach while dark
-const ADAPT_DOWN_RATE = 14.0;        // per-sec approach while lit
+const ADAPT_UP_RATE = 0.45;          // per-sec approach while dark (~2.5s to adapt — slower, less twitchy)
+const ADAPT_DOWN_RATE = 14.0;        // per-sec approach while lit (near-instant re-blind — the light reflex)
 
 // Brightness multiplier at full adaptation. The blit shader multiplies the
 // image by darkAdaptBrightness() (1.0 = neutral), and the AmbientLight is
@@ -116,13 +116,16 @@ export function sampleLitSignal(
   // behind the player don't light the screen) and fog-attenuated. Cutoff at
   // ~110° total (cos(55°) ≈ 0.574), slightly wider than the frustum. Lamp
   // excluded on purpose — counting it would mean lamp-lit corridors never adapt.
-  const COS_FOV_LIMIT = 0.574;
-  const inViewCone = (sx: number, sz: number): boolean => {
+  // SOFT cone weight (was a hard boolean cutoff). A hard cone meant a torch just
+  // outside view counted 0 and a torch just inside counted full — so a ~5° turn
+  // FLIPPED the signal and the adaptation snapped. Ramp the weight smoothly across
+  // the cone edge instead, so small view changes nudge the signal, not flip it.
+  const coneWeight = (sx: number, sz: number): number => {
     const ldx = sx - cx;
     const ldz = sz - cz;
     const ldist = Math.hypot(ldx, ldz) || 1e-6;
     const dot = (fx * ldx + fz * ldz) / ldist;
-    return dot >= COS_FOV_LIMIT;
+    return smoothstep(0.40, 0.66, dot);   // 0 well behind, ramps to 1 inside the ~110° cone
   };
   let camTorch = 0;
   for (const t of torches) {
@@ -130,9 +133,8 @@ export function sampleLitSignal(
     const dz = t.position.z - cz;
     const d = Math.hypot(dx, dz);
     if (d >= lightRange) continue;
-    if (!inViewCone(t.position.x, t.position.z)) continue;
     if (walkable && !walkable.hasLineOfSight(cx, cz, t.position.x, t.position.z)) continue;
-    camTorch += (1 - d / lightRange) * fogVis(d);
+    camTorch += (1 - d / lightRange) * fogVis(d) * coneWeight(t.position.x, t.position.z);
   }
   let camEnv = 0;
   forEachLight('environment', (src) => {
@@ -142,15 +144,36 @@ export function sampleLitSignal(
     const d = Math.hypot(dx, dz);
     const r = Math.max(2, src.distance);
     if (d >= r) return;
-    if (!inViewCone(src.position.x, src.position.z)) return;
     if (walkable && !walkable.hasLineOfSight(cx, cz, src.position.x, src.position.z)) return;
     const w = Math.min(1.5, src.intensity / CONFIG.TORCH_INTENSITY);
-    camEnv += (1 - d / r) * w * fogVis(d);
+    camEnv += (1 - d / r) * w * fogVis(d) * coneWeight(src.position.x, src.position.z);
   });
+
+  // OMNIDIRECTIONAL PROXIMITY — a light right beside you keeps your eye lit even
+  // when you look AWAY from it. Without this, standing next to a torch but facing
+  // a dark doorway read "dark" and adapted — the inconsistency where being near a
+  // flame still triggered. View-independent; the nearest source dominates.
+  const NEAR_R = 5.0;   // metres: within this, a source counts regardless of facing
+  let nearLit = 0;
+  for (const t of torches) {
+    const d = Math.hypot(t.position.x - cx, t.position.z - cz);
+    if (d >= NEAR_R) continue;
+    if (walkable && !walkable.hasLineOfSight(cx, cz, t.position.x, t.position.z)) continue;
+    nearLit = Math.max(nearLit, 1 - d / NEAR_R);
+  }
+  forEachLight('environment', (src) => {
+    if (src.id.startsWith('torch-')) return;
+    const d = Math.hypot(src.position.x - cx, src.position.z - cz);
+    if (d >= NEAR_R) return;
+    if (walkable && !walkable.hasLineOfSight(cx, cz, src.position.x, src.position.z)) return;
+    const w = Math.min(1.5, src.intensity / CONFIG.TORCH_INTENSITY);
+    nearLit = Math.max(nearLit, (1 - d / NEAR_R) * w);
+  });
+
   // Surface signal fogged by lookDist; camera signal omits the lamp.
   const litSurface = (lookTorch + envLit + lampLit) * fogVis(lookDist);
   const litCamera = camTorch + camEnv;
-  return Math.max(litSurface, litCamera);
+  return Math.max(litSurface, litCamera, nearLit);
 }
 
 /**
