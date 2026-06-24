@@ -446,9 +446,20 @@ initLevelLoader({
     // the spot — a one-frame hitch that never repeats (resident after). boot
     // warmupContent only covers enemy/item models; this covers the procgen
     // floor. Non-fatal if it throws (older driver) — it's pure pre-pay.
-    // renderer.compile is sync WebGL; under WebGPU the backend may not be ready
-    // and it'd need compileAsync. Skip — the node renderer compiles lazily.
-    if (!WEBGPU) { try { renderer.compile(scene, camera); } catch { /* pre-warm is best-effort */ } }
+    // Pre-compile the visible scene's shaders so the first reveal of a room
+    // doesn't hitch. On WebGPU this is LOAD-BEARING for perf, not just hitch
+    // avoidance: every material is a render PIPELINE that must be compiled before
+    // it can draw, and with the warmup disabled the node renderer was compiling
+    // them lazily mid-render (the ~89ms-for-25k-tris symptom). compileAsync warms
+    // every pipeline up front (it awaits backend init internally).
+    if (!WEBGPU) {
+      try { renderer.compile(scene, camera); } catch { /* pre-warm is best-effort */ }
+    } else {
+      void (renderer as unknown as { compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> })
+        .compileAsync(scene, camera)
+        .then(() => { if (import.meta.env.DEV) console.log('[webgpu] scene pipelines pre-compiled'); })
+        .catch((err) => console.error('[webgpu] compileAsync failed', err));
+    }
     // Spawns compile their shaders against the LIVE light count, not boot
     // warmup's 1-light scratch scene — so the first ooze/ghoul spawn used to
     // freeze ~190ms compiling mid-fight. Prime the whole roster in the live
