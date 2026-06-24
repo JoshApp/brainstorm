@@ -66,8 +66,12 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // UV offsets to get the gradient, but our height is an already-sampled `.a`
   // swizzle, so bumpMap's offset re-sample is a no-op → zero relief → flat walls.
   // Hand-rolling with the real screen-space derivative of `sampled.a` fixes it.
+  // RELIEF_BOOST: the GLSL's relief (cfg.relief ~0.30) read flat under TSL — the
+  // perturbation magnitude lands much smaller here. Cranked hard to make the
+  // bricks pop; dial back toward 1 once it reads right.
+  const RELIEF_BOOST = 8;
   const h: any = sampled.a;
-  const dH: any = (vec2 as any)(h.dFdx(), h.dFdy()).mul(float(cfg.relief));
+  const dH: any = (vec2 as any)(h.dFdx(), h.dFdy()).mul(float(cfg.relief * RELIEF_BOOST));
   const sp: any = positionView;
   const sx: any = sp.dFdx().normalize();
   const sy: any = sp.dFdy().normalize();
