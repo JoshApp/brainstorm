@@ -20,7 +20,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
-let resScale = 0.5;   // back to low-res (the original was low-res + crisp; full-res cost fps and wasn't the haze)
+let resScale = 0.4;   // match the WebGL PS1_SCALE_DEFAULT (0.4) — chunkier than 0.5
 // ?raw=1 — ISOLATION: bypass the whole PSX grade (bloom/crush/inscatter/vignette/
 // quantize), output the bare exposed scene. Tells us if the haze is the GRADE or
 // something upstream (lighting / fog / material response).
@@ -159,6 +159,20 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   if (pipeline) return;
   scenePass = pass(scene, camera);
   scenePass.setResolutionScale(resScale);
+
+  // CHUNKY PS1 UPSCALE — the low-res pass target defaults to LinearFilter, so the
+  // upscale to screen is SMOOTH: soft walls, soft edges, washed-out PS1 pixels.
+  // WebGL upscales its low-res target with NEAREST (sharpBilinear off by default)
+  // → hard chunky texels, the pronounced PS1 look. Match it: nearest-filter the
+  // pass output so the upscale snaps to texel centres. (Re-applied every rebuild —
+  // a resize rebuilds the pipeline — so it survives resolution-scale changes.)
+  const rt: any = (scenePass as any).renderTarget;
+  if (rt?.texture) {
+    rt.texture.magFilter = THREE.NearestFilter;
+    rt.texture.minFilter = THREE.NearestFilter;
+    rt.texture.generateMipmaps = false;
+    rt.texture.needsUpdate = true;
+  }
 
   // CHROMATIC ABERRATION — radial red/blue split on the scene sample, matching the
   // WebGL blit: red sampled outward, blue inward, by CA_AMOUNT × distance-from-
