@@ -13,7 +13,8 @@
 
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
-import { pass, vec3, vec4, float, screenUV, dot, smoothstep, mix, luminance } from 'three/tsl';
+import { pass, vec3, vec4, float, screenUV, dot, smoothstep, mix, luminance,
+  acesFilmicToneMapping, agxToneMapping, neutralToneMapping } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 let pipeline: RenderPipeline | null = null;
@@ -23,9 +24,35 @@ let resScale = 0.5;   // back to low-res (the original was low-res + crisp; full
 // quantize), output the bare exposed scene. Tells us if the haze is the GRADE or
 // something upstream (lighting / fog / material response).
 const RAW = typeof location !== 'undefined' && new URLSearchParams(location.search).get('raw') === '1';
+// TONEMAP — the response curve that turns linear HDR light into display values.
+// The WebGL/main path got this for free from renderer.toneMapping = ACESFilmic;
+// the WebGPU path runs NoToneMapping (main.ts) so WITHOUT this node bright torch-
+// lit surfaces HARD-CLIP and stay saturated (the neon-yellow blade / shaft that
+// doesn't match main). A real tonemap adds a filmic SHOULDER: highlights roll off
+// and desaturate toward white instead of clipping to a primary.
+//   aces    — matches the main/WebGL reference (what we're trying to get back to).
+//   neutral — Khronos PBR-Neutral; gentler, preserves hue/saturation better.
+//   agx     — strong filmic desaturation; moodiest, can mute the fire too much.
+//   none    — bypass (the old hard-clip look) for A/B.
+// Override live on the phone with ?tonemap=aces|neutral|agx|none — isolates the
+// variable so you can eyeball the curve alone before touching exposure/bloom.
+type ToneMap = 'aces' | 'neutral' | 'agx' | 'none';
+const TONEMAP: ToneMap = ((): ToneMap => {
+  const q = typeof location !== 'undefined' && new URLSearchParams(location.search).get('tonemap');
+  return (q === 'aces' || q === 'neutral' || q === 'agx' || q === 'none') ? q : 'aces';
+})();
+const TONEMAP_FN: Record<Exclude<ToneMap, 'none'>, (c: any, e: any) => any> = {
+  aces: acesFilmicToneMapping as any,
+  neutral: neutralToneMapping as any,
+  agx: agxToneMapping as any,
+};
+
 // Grade feel — trial-and-error toward the original's crushed blacks + colour.
-const SATURATION = 1.2;    // >1 = punchier colour
-const CONTRAST = 1.18;     // >1 = crushed blacks / more depth
+// NOTE: with a real TONEMAP wired (above) the curve now supplies most of the
+// contrast, so the manual CONTRAST pow is dialled back from the no-tonemap-era
+// 1.18 — too much on top of the shoulder double-crushes the blacks.
+const SATURATION = 1.15;   // >1 = punchier colour (tonemap desaturates highs, so keep some)
+const CONTRAST = TONEMAP === 'none' ? 1.18 : 1.04;  // tonemap carries the curve now
 let bloomEnabled = true;
 // Bloom: subtle + HIGH threshold so ONLY bright sources (flames, glows, runes)
 // bloom — not the whole image. Tune via the consts.
@@ -34,7 +61,10 @@ const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
 // read MUCH brighter than the legacy-tuned values → the whole dungeon lit pale.
 // Crush exposure hard to restore the dark-with-pools-of-torchlight look. (Quick
 // global knob; the deeper fix is re-tuning ambient/emissive for r184 units.)
-const EXPOSURE = 0.5;    // higher so EMISSIVE flames stay vivid; stone kept dark via lower ambient fill
+// With a TONEMAP shoulder now in front of the output, highlights no longer clip —
+// they roll off — so we can carry a touch more exposure without the pale wash the
+// no-tonemap path got. 0.5 (hard-clip era) → 0.6. Still the global brightness knob.
+const EXPOSURE = TONEMAP === 'none' ? 0.5 : 0.6;
 // DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
 // depth). Metres from camera. Tune on the dev server.
@@ -118,6 +148,13 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   const _uv = screenUV as any;
 
   let col: any = (lit as any).rgb;
+  // ── TONEMAP — linear HDR → display, with a filmic shoulder. Applied AFTER
+  // expose+bloom+crush+inscatter (all linear-HDR ops) and BEFORE the display-space
+  // grade below. Exposure is already baked into `lit` (the pre-bloom .mul(EXPOSURE)
+  // expose-before-bloom step), so we pass 1.0 here — don't double-expose. With
+  // renderer.toneMapping = NoToneMapping the pipeline won't re-apply a curve; it
+  // just does the final sRGB OETF after this node.
+  if (TONEMAP !== 'none') col = TONEMAP_FN[TONEMAP](col, _float(1.0));
   // SATURATION — punchier colour (push away from luminance).
   const lum = (luminance as any)(col);
   col = (mix as any)((vec3 as any)(lum, lum, lum), col, SATURATION);
