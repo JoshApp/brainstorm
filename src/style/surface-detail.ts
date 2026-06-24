@@ -15,17 +15,26 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // (floor/ceiling) it's the world XZ plane. Anisotropic tile is respected.
   const pos: any = positionWorld;
   const nrm: any = normalWorld;
-  let uv: any;
+  // Meter-space projected coords (sU,sV); uv divides by the tile to get repeats.
+  let sU: any, sV: any;
   if (cfg.proj === 'wall') {
-    const uAxis = (nrm.x.abs().greaterThan(nrm.z.abs()) as any).select(pos.z, pos.x);
-    uv = (vec2 as any)(uAxis.div(cfg.tile[0]), pos.y.div(cfg.tile[1]));
+    sU = (nrm.x.abs().greaterThan(nrm.z.abs()) as any).select(pos.z, pos.x);
+    sV = pos.y;
   } else {
-    uv = (vec2 as any)(pos.x.div(cfg.tile[0]), pos.z.div(cfg.tile[1]));
+    sU = pos.x; sV = pos.z;
   }
+  const uv: any = (vec2 as any)(sU.div(cfg.tile[0]), sV.div(cfg.tile[1]));
   const sampled: any = (tslTexture as any)(cfg.tex, uv);
   const base = (vec3 as any)(mat.color.r, mat.color.g, mat.color.b);
   const tint = (vec3 as any)(cfg.tint[0], cfg.tint[1], cfg.tint[2]);
   let albedo: any = base.mul(sampled.rgb).mul(tint);
+
+  // WORLD MOTTLE — non-tiling value noise (~3m) modulating shade ±6%. The baked
+  // tile repeats every ~5m and the eye finds the repeat on long walls/floors;
+  // the mottle reads as damp, wear, centuries — the main "not flat" layer the
+  // GLSL path had that the bare baked sample lacks.
+  const mot: any = (mx_noise_float as any)((vec3 as any)(sU.mul(0.33), sV.mul(0.33), 0)).mul(0.5).add(0.5);
+  albedo = albedo.mul(float(0.94).add(mot.mul(0.12)));
 
   // Seam mask — strong in the low (recessed) grooves, used by both seep + wetness.
   const seam: any = float(1).sub((tslSmoothstep as any)(0.45, 0.85, sampled.a));

@@ -195,7 +195,7 @@ function ensureQuad(): { scene: THREE.Scene; cam: THREE.OrthographicCamera; mat:
 // A faithful JS port of the GLSL patterns above (brick/flag/coffer/dressed/
 // grain). Runs once at load into a DataTexture — no GL, no readback. Kept in
 // lockstep with BAKE_FRAG; if you change a pattern there, mirror it here.
-const CPU_TEX = 256;   // half the GLSL bake's 512 — cheaper on CPU, fine with mips
+const CPU_TEX = 512;   // match the GLSL bake's 512 (256 was visibly blurry on walls)
 const fract = (x: number) => x - Math.floor(x);
 const modf = (x: number, y: number) => x - y * Math.floor(x / y);
 const mixf = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -306,6 +306,10 @@ function bakeSurfaceCPU(kind: SurfaceKind): THREE.DataTexture {
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
+  // ANISOTROPY — walls are seen at grazing angles, where isotropic mip filtering
+  // collapses to a blur. The GLSL bake used max anisotropy; match it (clamped to
+  // the hardware max). This is the single biggest "blurry wall" fix.
+  tex.anisotropy = 16;
   tex.needsUpdate = true;
   return tex;
 }
