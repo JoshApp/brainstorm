@@ -13,7 +13,7 @@
 
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
-import { pass, vec2, vec3, vec4, float, screenUV, floor, fract, sin, dot } from 'three/tsl';
+import { pass, vec2, vec3, vec4, float, screenUV, floor, fract, sin, dot, smoothstep, mix } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 let pipeline: RenderPipeline | null = null;
@@ -24,6 +24,10 @@ let resScale = 0.5;   // PSX-style low-res scene render; 1.0 = native
 // the hand-rolled bright-extract + separable-blur ping-pong in render-target.ts.
 const BLOOM_STRENGTH = 0.45, BLOOM_RADIUS = 0.6, BLOOM_THRESHOLD = 0.85;
 const QUANT_LEVELS = 32;   // PSX colour steps per channel (matches the GLSL blit)
+// DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
+// the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
+// depth). Metres from camera. Tune on the dev server.
+const CRUSH_START_M = 5, CRUSH_END_M = 28, CRUSH_FLOOR = 0.12;
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -39,7 +43,14 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
 
   // Scene + native bloom, additive, in LINEAR space.
   const bloomPass = bloom(scenePass, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
-  const lit = (scenePass as any).add(bloomPass);
+  let lit: any = (scenePass as any).add(bloomPass);
+
+  // DEPTH CRUSH — multiply colour toward CRUSH_FLOOR with camera distance, in
+  // linear space (a darkening multiply). getViewZNode() is camera-space Z
+  // (negative); negate → metres from camera.
+  const distM = (scenePass as any).getViewZNode().negate();
+  const crush = (mix as any)(float(1.0), float(CRUSH_FLOOR), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
+  lit = lit.mul(crush);
 
   // Tone-map + sRGB to DISPLAY space ourselves (so the PSX crunch below lands on
   // the final colour — quantizing in linear would get smeared by the tonemap).
