@@ -249,6 +249,11 @@ if (WEBGPU) {
 // applyVideoSettings when the slider moves.
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, effectiveDprCap()));
 renderer.setSize(window.innerWidth, window.innerHeight);
+// WEBGPU SPIKE: the PSX path renders the scene to a 0.4× low-res target; the
+// direct WebGPU render goes full-res to the canvas, so fill cost is ~6×. Until
+// the low-res pipeline is ported (Phase 2), drop the pixel ratio as a crude
+// stand-in so the WebGPU path is testable (blurry, but playable fps).
+if (WEBGPU) renderer.setPixelRatio(Math.min(window.devicePixelRatio, effectiveDprCap()) * 0.5);
 renderer.shadowMap.enabled = true;
 // PCF (not PCFSoft): the point-light cube shadow is the heaviest fragment shader
 // we run, and PCFSoft adds a wide multi-tap softening loop on top. On mobile that
@@ -262,7 +267,11 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 // frame-end info.render would reflect ONLY the blit quad (1 draw, 2 tris).
 // Turn auto-reset off and reset once per frame inside renderWithStyle so the
 // counters ACCUMULATE across both passes — i.e. report the true frame total.
-renderer.info.autoReset = false;
+// WEBGPU SPIKE: under WebGPU renderWithStyle short-circuits and never calls
+// info.reset(), so leaving auto-reset off makes the counters accumulate FOREVER
+// (the bogus "8k draws / 31M tris"). WebGPU does a single render()/frame, so let
+// it auto-reset → accurate per-frame counts.
+renderer.info.autoReset = WEBGPU;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
