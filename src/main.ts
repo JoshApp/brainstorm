@@ -112,6 +112,7 @@ import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRender
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
 import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn, gpuPassDiag } from './debug/frame-timing';
+import { setStreamEnabled, streamEnabled } from './debug/perf-stream';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds, setSceneAuditProvider } from './debug/perf-recorder';
 import { auditScene } from './debug/scene-audit';
 import { launchSpector } from './debug/spector-launch';
@@ -1777,9 +1778,9 @@ if (import.meta.env.DEV) installPerfProbe(renderer);
 // turns it on.
 //
 // Drive it from the on-screen toolbar (phone) or, on desktop, the hotkeys:
-//   F2 HUD · F3 record · F4 DevTools marks · F5 GPU probe · F6 draw report. URL: ?profile/record/marks=1.
-//   Console: window.__profiler / __perfRec.{...} / __marks / __gpuProbe / __draws / __spector (desktop).
-const profilerSessionFlag = ['profiler', 'profile', 'record', 'marks']
+//   F2 HUD · F3 record · F4 DevTools marks · F5 GPU probe · F6 draw report · F9 detached stream. URL: ?profile/record/marks/stream=1.
+//   Console: window.__profiler / __perfRec.{...} / __marks / __gpuProbe / __draws / __perfStream / __spector (desktop).
+const profilerSessionFlag = ['profiler', 'profile', 'record', 'marks', 'stream']
   .some((k) => new URLSearchParams(window.location.search).get(k) === '1');
 function profilingEnabled(): boolean {
   return getSettings().profilerTools || profilerSessionFlag;
@@ -1803,6 +1804,7 @@ function applyProfilerEnabled(): void {
     setMarks(false);
     setGpuProbe(false);
     setGpuPassTiming(false);
+    setStreamEnabled(false);
   }
 }
 applyProfilerEnabled();
@@ -1811,6 +1813,7 @@ if (profilingEnabled()) {
   const q = new URLSearchParams(window.location.search);
   if (q.get('profile') === '1') setProfilerVisible(true);
   if (q.get('marks') === '1') setMarks(true);
+  if (q.get('stream') === '1') setStreamEnabled(true);
   if (q.get('record') === '1') startRecording('auto');
 }
 window.addEventListener('keydown', (e) => {
@@ -1822,11 +1825,13 @@ window.addEventListener('keydown', (e) => {
   else if (e.code === 'F6') { e.preventDefault(); void captureDrawReport(); }
   else if (e.code === 'F7') { e.preventDefault(); void runGpuAttribution(); }
   else if (e.code === 'F8') { e.preventDefault(); setGpuPassTiming(!gpuPassTimingOn()); }
+  else if (e.code === 'F9') { e.preventDefault(); ensureProfilingInited(); setStreamEnabled(!streamEnabled()); }
 }, true);
 const profWin = window as unknown as {
   __profiler: () => void;
   __perfRec: { start: (l?: string) => void; stop: () => void; toggle: () => void; saveLast: (secs?: number) => void };
   __marks: () => void;
+  __perfStream: () => void;
   __gpuProbe: () => void;
   __draws: () => void;
   __drawData: () => ReturnType<typeof drawReportData>;
@@ -1845,6 +1850,7 @@ profWin.__perfRec = {
   saveLast: (secs) => void saveLastSeconds(secs),
 };
 profWin.__marks = () => { ensureProfilingInited(); setMarks(!marksOn()); };
+profWin.__perfStream = () => { ensureProfilingInited(); setStreamEnabled(!streamEnabled()); };
 profWin.__gpuProbe = () => { ensureProfilingInited(); setGpuProbe(!gpuProbeOn()); };
 profWin.__draws = () => { ensureProfilingInited(); void captureDrawReport(); };
 profWin.__drawData = () => { ensureProfilingInited(); return drawReportData(); };

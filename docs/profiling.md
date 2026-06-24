@@ -22,7 +22,9 @@ When enabled, an **on-screen toolbar** appears (top-left): `HUD` · `● REC` ·
 | --- | --- | --- |
 | **PERF METER** | "How fast am I right now?" | Settings → PERF METER |
 | **Profiler HUD** | "Which system is eating the frame?" | toolbar `HUD` · `F2` · `?profile=1` |
-| **Session recorder** | "Where did frames drop over the last minute?" | toolbar `● REC` · `F3` · `?record=1` → review page |
+| **Session recorder** | "Where did frames drop over the last minute?" | toolbar `● REC` · `F3` · `?record=1` → cockpit |
+| **Perf cockpit** | Scrub a recording across synchronized lanes; drill into one frame | `/brainstorm/perf-review.html` |
+| **Detached live stream** | Watch the cockpit LIVE in a second tab, at ~zero cost to the game | `F9` · `?stream=1` · `window.__perfStream()` |
 | **DevTools marks** | Native flame chart, incl. remote-over-USB from a phone | `F4` · `?marks=1` |
 | **GPU probe** | Real GPU ms on devices without the timer-query extension | toolbar `GPU` · `F5` |
 | **Per-pass GPU** | "WHICH render pass is eating the GPU ms?" (prepass/scene/bloom/blit) | toolbar `PASS` · `F8` · `window.__gpuPass()` |
@@ -94,8 +96,9 @@ hotkeys are quicker.
 ### Reviewing a recording made on the live site
 
 The live build has no dev server to POST to, so stopping a recording
-**downloads** the JSON instead. Review it at **`/brainstorm/perf-review.html`**
-(deployed alongside the game) — drag the downloaded `.json` onto the page.
+**downloads** the JSON instead. Review it in the **cockpit** at
+**`/brainstorm/perf-review.html`** (deployed alongside the game) — drag the
+downloaded `.json` onto the page.
 
 ## Hotkeys (desktop)
 
@@ -103,10 +106,11 @@ The live build has no dev server to POST to, so stopping a recording
 - `F3` — start/stop a **session recording**. On stop it ships the recording to the PC (see below).
 - `F4` — toggle Chrome DevTools User Timing marks (per-system `performance.measure`).
 - `F6` — load spector.js and capture the next frame's draw calls.
+- `F9` — toggle the **detached live stream** (feeds the cockpit's ● LIVE in a second tab).
 
 Console equivalents: `window.__profiler()`, `window.__perfRec.toggle()`,
-`window.__marks()`, `window.__spector()`. URL flags: `?profile=1`, `?record=1`,
-`?marks=1`.
+`window.__marks()`, `window.__perfStream()`, `window.__spector()`. URL flags:
+`?profile=1`, `?record=1`, `?marks=1`, `?stream=1`.
 
 ---
 
@@ -124,20 +128,71 @@ server.
 3. Stop the recording (`F3` again / `window.__perfRec.stop()`). It POSTs the
    timeline to the dev server, which writes `perf-recordings/<id>.json` on the PC.
    (No dev server reachable? It falls back to a file **download** instead.)
-4. On the PC: open **`/brainstorm/perf-review.html`**. Pick the recording from
-   the dropdown (or drag a downloaded `.json` onto the page).
+4. On the PC: open **`/brainstorm/perf-review.html`** (the cockpit). Pick the
+   recording from the dropdown (or drag a downloaded `.json` onto the page).
 
-### Reading the review timeline
+### Reading the cockpit
 
-- **Stacked bands** = each frame's per-system CPU cost, heaviest at the bottom.
-  Watch which band swells during a spike — that's your culprit system.
-- **White line** = the real frame interval (`dt`) — the "are we hitting 60fps?" truth.
-- **Magenta line** = GPU time (when supported).
-- **Dashed lines** = the 60fps (16.7ms) and 30fps (33.3ms) budgets.
-- **Red ticks** (top) = dropped frames (`dt` > 1.5× budget).
-- **Spike chips** (bottom) jump the cursor to the worst frames.
-- **Hover** anywhere to read that frame's full breakdown: dt/cpu/gpu, draws,
-  tris, heap, GC, and every system sorted by cost.
+The cockpit stacks **synchronized lanes** on one shared, zoomable time axis —
+the Unity/Unreal-profiler shape. One cursor crosses every lane, so a spike in
+`dt` lines up with the GPU pass, the heap, the draw count, and any event tag at
+the same instant.
+
+- **CPU · ms/frame** — per-system cost stacked (heaviest at the bottom); the
+  **white line** is the real frame interval (`dt`), the **magenta line** is GPU
+  ms, dashed guides mark the 60fps (16.7ms) / 30fps (33.3ms) budgets, and red
+  ticks along the top flag dropped frames. Watch which band swells in a spike.
+- **GPU · passes** — `prepass`/`scene`/`bloom`/`blit` stacked from the per-pass
+  timing (the `gph` data), so you see *which* pass owns the GPU ms, not just the
+  total. Falls back to the GPU line where per-pass timing wasn't armed.
+- **heap · GC** — the JS heap as a filled area with an orange tick on every GC
+  frame. A staircase that climbs and never falls back = a leak; pair it with the
+  next lane.
+- **draws · geo/tex/prog** — draw count plus the geometry/texture/program
+  resource lines (each self-normalized). A *climbing* geo/tex/prog line over a
+  session is a GPU-resource leak the JS heap can't see.
+- **events** — vertical flags where `spawn`/`death`/`level:N`/… were tagged: the
+  "why" sitting directly under a spike.
+
+**Driving it:** **wheel** zooms the time axis around the cursor, **drag** pans,
+**click** pins a frame (click again or `Esc` to unpin), **←/→** step the pinned
+frame (**Shift+←/→** jump spike-to-spike), **F** fits the whole recording. The
+**spike chips** below the lanes jump to the worst frames.
+
+**The pinned-frame panel** at the bottom is the single-frame drill-down: dt /
+cpu / gpu / wait, draws, tris, geo/tex/prog, heap+GC, camera look angle, any
+event — and a **hierarchical flame** of that frame's systems, with children
+nested under parents (`render` → `render·scene`/`bloom`/`blit`). The **meta**
+button (top bar) unfolds the recording's own context: device + the true **fill
+resolution** (viewport × pixelRatio × renderScale — the dominant mobile lever),
+the graphics settings it ran under, and the scene-audit drawable tally.
+
+---
+
+## Detached live profiling (the low-overhead cockpit)
+
+An in-game HUD isn't free — it redraws a canvas + DOM on the game's own main
+thread and GPU, so watching the profiler slightly perturbs what you're
+profiling. Unity's "detached profiler" dodges this by rendering in a separate
+process. The browser equivalent: stream the samples to a **second tab** and let
+*it* do all the drawing. The game tab then pays only for sampling (which the
+recorder already costs) plus **one `postMessage` per frame** — no canvas, no
+layout. (`src/debug/perf-stream.ts` over a `BroadcastChannel`.)
+
+1. In the game: enable the stream — `F9`, `?stream=1`, or `window.__perfStream()`.
+2. In a **second tab/window** open the cockpit (`/brainstorm/perf-review.html`)
+   and click **● LIVE**. It connects, follows the tail in real time, and keeps a
+   rolling ~60s buffer.
+3. Pin / zoom / pan at any time to freeze and inspect — the live tail keeps
+   filling underneath; `Esc` resumes following. Clicking **■ STOP** keeps the
+   captured buffer as an ordinary scrub session.
+
+Caveat: `BroadcastChannel` is same-origin **same-browser** — great for desktop
+(game in one window, cockpit beside it). For the *phone→desktop* case use route
+B below (remote DevTools over USB), which is the true zero-overhead detached
+profiler for mobile. Also note the foreground tab runs full-speed while
+background tabs are rAF-throttled, so put the two windows side by side (both
+visible) rather than stacked.
 
 ---
 
@@ -164,6 +219,55 @@ real execution, with native dropped-frame markers, the 60fps ruler, and — with
 
 (iOS equivalent: Safari → Develop menu → your iPhone → Web Inspector → Timelines,
 from a Mac over USB.)
+
+### What `?marks=1` puts on the Timings track
+
+With marks on, the native flame chart shows a labeled span for **every
+system** (`combat`, `light-pool`, `render`, …) on the same axis as the
+browser's own work — layout, GC pauses, paint, and the GPU track. That's the
+fastest way to see "the frame went here" without any custom tooling: the
+browser's profiler is already Unity-grade once you feed it spans.
+
+The render system is split a level deeper — `render·prepass` / `render·scene` /
+`render·bloom` / `render·blit` nest *under* the `render` bar — so the known wall
+(scene fill) is visible natively, not just in our recorder.
+
+#### Adding depth where you need it — `profSpan`
+
+The per-system spans are flat: they tell you *which* system is fat, not *why*.
+To carve a fat system into nested sub-spans, wrap the work in **`profSpan`**
+(`src/debug/prof-span.ts`):
+
+```ts
+import { profSpan } from '../debug/prof-span';
+
+profSpan('combat·hitscan', () => resolveSwing(ctx));
+profSpan('combat·ai',      () => { for (const e of enemies) e.think(); });
+```
+
+A span opened during a system's tick falls inside that system's `[t0,t1]`
+window, so DevTools nests it automatically — the flame chart gains depth exactly
+where you instrument. It's **free when marks are off** (one boolean check), so
+it's safe to leave in a hot path. Name spans `parent·child` (middle-dot) to match
+the render convention; the cockpit groups the same way. (`profBegin`/`profEnd` is
+the manual form for when a closure doesn't fit.)
+
+### Capturing a trace headlessly via the `chrome-devtools` MCP
+
+For an agent-driven capture on real Windows Chrome (real GPU/ANGLE, not WSL
+swiftshader), the `chrome-devtools` MCP drives the Performance panel directly:
+
+1. `new_page` → the game with marks armed, e.g.
+   `…/brainstorm/?scenario=perf-horde&profiler=1&marks=1`.
+2. `performance_start_trace` (reload, autoStop off) → let it play a few seconds →
+   `performance_stop_trace`.
+3. `performance_analyze_insight` for the headline costs, or read the Timings
+   track spans straight from the trace — they're our system + `render·*` +
+   `profSpan` labels.
+
+Counts in a headless capture (draws, tris, light/resource counts) are
+trustworthy because they're GPU-independent; **frame times** are only real on
+the on-device or real-GPU path, never swiftshader.
 
 ---
 

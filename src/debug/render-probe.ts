@@ -8,6 +8,8 @@
 // nothing's installed every call here is a cheap nullable check, so it's free
 // for players.
 
+import { profSpansOn } from './prof-span';
+
 type PhaseSink = (name: string, ms: number) => void;
 
 let phaseSink: PhaseSink | null = null;
@@ -28,7 +30,17 @@ export function renderGpuProbeOn(): boolean { return gpuProbe; }
  *  performance.now() calls on this so it's free when nobody's listening. */
 export function renderProbeActive(): boolean { return phaseSink !== null; }
 
-export function reportRenderPhase(name: string, ms: number): void { phaseSink?.(name, ms); }
+export function reportRenderPhase(name: string, ms: number): void {
+  phaseSink?.(name, ms);
+  // Mirror the sub-phase as a native User-Timing span so it nests under the
+  // 'render' system bar in a DevTools recording. render-target hands us a
+  // duration, not endpoints, so we anchor the span to end "now" — exact length,
+  // and it still lands inside the render system's [t0,t1] window for nesting.
+  if (profSpansOn()) {
+    const end = performance.now();
+    performance.measure(name, { start: end - ms, end });
+  }
+}
 
 // ── Per-pass GPU spans ────────────────────────────────────────────────
 // frame-timing installs these when per-pass GPU timing is on; render-target

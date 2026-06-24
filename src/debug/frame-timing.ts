@@ -15,6 +15,7 @@ import { setSystemProbe, setMarksEnabled } from '../engine/loop';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { installRenderProbe, setRenderGpuProbe, renderGpuProbeOn, installGpuPassHooks, type GpuPassHooks } from './render-probe';
+import { setProfSpans } from './prof-span';
 
 export interface FrameSample {
   /** ms since the previous frame's end — the true frame interval (≈ 1000/fps). */
@@ -176,8 +177,10 @@ function ensureHooks(): void {
 export function addFrameListener(l: FrameListener): void { listeners.add(l); ensureHooks(); }
 export function removeFrameListener(l: FrameListener): void { listeners.delete(l); ensureHooks(); }
 
-/** Toggle Chrome-DevTools User Timing marks (per-system performance.measure). */
-export function setMarks(on: boolean): void { marks = on; ensureHooks(); }
+/** Toggle Chrome-DevTools User Timing marks (per-system performance.measure).
+ *  Also arms the in-system nested spans (prof-span) and the render sub-phase
+ *  marks, so the native flame chart gets depth, not just a flat system row. */
+export function setMarks(on: boolean): void { marks = on; setProfSpans(on); ensureHooks(); }
 export function marksOn(): boolean { return marks; }
 
 /** Call immediately BEFORE runSystems(). */
