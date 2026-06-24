@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
 import { pass, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, mix,
-  luminance, interleavedGradientNoise,
+  luminance, texture,
   acesFilmicToneMapping, agxToneMapping, neutralToneMapping } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -88,6 +88,24 @@ const QUANTIZE_LEVELS = 32.0;       // hard PSX colour steps
 const SCANLINE_DARKEN = 0.96;       // every other row
 const AMBER_TINT: readonly [number, number, number] = [1.025, 1.0, 0.96];
 const VIGNETTE = 0.22;              // matched toward the WebGL blit's 0.20 (was 0.55)
+
+// ORDERED 4x4 BAYER dither texture — the exact matrix the WebGL blit used (index
+// i = y*4 + x). Sampled NEAREST + REPEAT in screen space, it's a STABLE halftone
+// locked to the screen, so the darks get a structured pattern instead of the
+// random film-grain that interleaved-gradient noise produced. One tiny tex tap.
+const BAYER_TEX = (() => {
+  const M = [0, 12, 3, 15, 8, 4, 11, 7, 2, 14, 1, 13, 10, 6, 9, 5];
+  const data = new Uint8Array(16 * 4);
+  for (let i = 0; i < 16; i++) {
+    const v = Math.round((M[i] / 16) * 255);   // m/16 → 0..0.9375 stored as byte
+    data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255;
+  }
+  const t = new THREE.DataTexture(data, 4, 4);  // RGBAFormat / UnsignedByte (filterable everywhere)
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = t.minFilter = THREE.NearestFilter;
+  t.needsUpdate = true;
+  return t;
+})();
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -189,11 +207,12 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   col = col.pow(_float(CONTRAST));
 
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──
-  // DITHER — break the quantize banding before stepping. WebGL used a 4x4 Bayer
-  // grid; interleaved-gradient noise fills the same anti-banding role, compiles
-  // cleanly to WGSL, and is a touch finer than the ordered grid. Amplitude ~1/24.
+  // DITHER — ordered 4x4 Bayer, sampled NEAREST+REPEAT in screen space (BAYER_TEX
+  // above). Screen-locked structured pattern → a stable halftone in the darks,
+  // NOT random grain. Centred (sample − 0.5) at amplitude ~1/24, matching WebGL.
   const px: any = screenCoordinate as any;
-  col = col.add((interleavedGradientNoise as any)(px).sub(0.5).mul(_float(1.0 / 24.0)));
+  const bayer: any = (texture as any)(BAYER_TEX, px.div(_float(4.0))).r;
+  col = col.add(bayer.sub(0.5).mul(_float(1.0 / 24.0)));
   // QUANTIZE — hard PSX colour steps (floor(col*N + 0.5)/N).
   col = col.mul(_float(QUANTIZE_LEVELS)).add(0.5).floor().div(_float(QUANTIZE_LEVELS));
   // SCANLINES — every other output row slightly darker.
