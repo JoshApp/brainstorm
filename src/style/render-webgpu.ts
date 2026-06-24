@@ -140,10 +140,17 @@ export function setWebGPUDarkAdapt(v: number): void {
 // NOTE: these are LINEAR-space values and the pipeline applies sRGB AFTER, which
 // hugely amplifies small darks (linear 0.024 → ~0.17 display). So the additive
 // floor-raise must be TINY in linear to read as a subtle display lift.
-const ADAPT_LIFT: readonly [number, number, number] = [0.0025, 0.0024, 0.0021];  // additive floor-raise (faint warm-neutral), linear — sRGB makes this a gentle display lift
-const ADAPT_GAIN = 0.1;       // gentle multiply on the darks — pulls their faint form up a touch (space-stable)
-const ADAPT_CUTOFF = 0.30;    // LINEAR brightness above which the eye lift fades to 0 — keep it to the genuinely crushed shadows
-const ADAPT_CRUSH_OPEN = 0.16;  // how much the DEPTH-CRUSH floor lifts at full adapt — the "wall of black" recedes as the eye adjusts (linear)
+// The reveal is a NEAR-only MIDTONE BAND (ChatGPT's Option A+B, which is what we
+// all landed on): lift only the low-mids where dark GEOMETRY lives — ~0 at pure
+// black (the void stays void) and ~0 in the lit/highlights (no overexposure) — and
+// only in the NEAR field (the far stays dark + threatening, nearsightedness kept).
+// So shapes EMERGE from black as the eye adapts, without greying the dark or
+// seeing wider. All LINEAR thresholds (the pipeline applies sRGB after).
+const ADAPT_GAIN = 0.9;       // gentle multiply on the banded near-darks — shapes surface
+const ADAPT_MID_LO = 0.004;   // below this the void stays black
+const ADAPT_MID_HI = 0.11;    // above this (lit / highlights) untouched — the band peaks between
+const ADAPT_NEAR_M = 4.0;     // full reveal within this many metres of the eye
+const ADAPT_FAR_M = 10.0;     // faded to 0 by here — beyond stays dark
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -215,11 +222,11 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // linear space (a darkening multiply). getViewZNode() is camera-space Z
   // (negative); negate → metres from camera.
   const distM = (scenePass as any).getViewZNode().negate();
-  // The crush floor LIFTS as the eye dark-adapts — dark-adapted vision sees deeper
-  // into the gloom, so the camera-relative "wall of black" RECEDES instead of
-  // following you when the near room lifts. (0.16 dark → up to 0.16+OPEN adapted.)
-  const crushFloor: any = float(CRUSH_FLOOR).add((darkAdaptNode as any).mul(ADAPT_CRUSH_OPEN));
-  const crush = (mix as any)(float(1.0), crushFloor, (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
+  // CONSTANT crush — the FAR stays dark + threatening (the nearsighted magic stays
+  // intact). The dark-adapt reveal is NEAR-only + midtone-banded in the grade below
+  // — it must NOT open the distance (that traded the nearsighted feel for "see
+  // wider", which killed the magic).
+  const crush = (mix as any)(float(1.0), float(CRUSH_FLOOR), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
   lit = lit.mul(crush);
 
   // FOG INSCATTER — add the bloom colour as glowing air, weighted by distance.
@@ -263,17 +270,20 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
   col = col.pow(_float(CONTRAST));
 
-  // ── EYE DARK-ADAPTATION — soften the dark (see ADAPT_* notes above) ──
-  // darkW = 1 in shadow/fog, ramping to 0 by ADAPT_CUTOFF brightness, so the LIT
-  // side is left exactly as-is (no overexposure). Within the darks we raise the
-  // floor (additive — the crush/fog loosens) and gently amplify (multiply — form
-  // swims up), all scaled by darkAdaptNode (0 in torchlight, 1 in a dark hall).
+  // ── EYE DARK-ADAPTATION — near-only midtone reveal (see ADAPT_* notes above) ──
+  // midBand peaks on the low-mids where dark GEOMETRY lives, ~0 at pure black AND
+  // in the lit highlights — so shapes surface from the black WITHOUT greying the
+  // void or touching the lit side. nearW restricts it to the player's immediate
+  // surroundings; the far stays dark + threatening (nearsighted). Both ride the
+  // adapt ramp, so it's a transition, not a constant — the room emerges over ~2.5s.
   {
     const lum: any = col.r.max(col.g).max(col.b);
-    const darkW: any = _float(1.0).sub((smoothstep as any)(_float(0.05), _float(ADAPT_CUTOFF), lum));
-    const a: any = (darkAdaptNode as any).mul(darkW);   // adapt, restricted to the darks
-    col = col.add((vec3 as any)(ADAPT_LIFT[0], ADAPT_LIFT[1], ADAPT_LIFT[2]).mul(a));
-    col = col.mul(_float(1.0).add(a.mul(_float(ADAPT_GAIN))));
+    const mid: any = (_float(ADAPT_MID_LO).add(_float(ADAPT_MID_HI))).mul(0.5);
+    const midBand: any = (smoothstep as any)(_float(ADAPT_MID_LO), mid, lum)
+      .mul(_float(1.0).sub((smoothstep as any)(mid, _float(ADAPT_MID_HI), lum)));
+    const nearW: any = _float(1.0).sub((smoothstep as any)(_float(ADAPT_NEAR_M), _float(ADAPT_FAR_M), distM));
+    const a: any = (darkAdaptNode as any).mul(midBand).mul(nearW);
+    col = col.mul(_float(1.0).add(a.mul(_float(ADAPT_GAIN))));   // gentle gain — shapes emerge, no additive grey
   }
 
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──
