@@ -46,6 +46,7 @@ import { consumeRiposte } from '../combat/reactive-defense';
 import { updateSwingAgency } from '../combat/swing-agency';
 import { canStartAction, enterDodge } from '../combat/player-action';
 import { CONFIG } from '../config';
+import { isWebGPU } from '../scene/renderer-mode';
 import { getCurrentWeapon } from '../player/current-weapon';
 import { tickLightPool } from '../scene/light-pool';
 import { tickProjectiles } from '../combat/projectile-pool';
@@ -258,7 +259,13 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // lift lives in the blit shader (additive shadow-raise). Ambient is a
       // secondary fill (applied during the scene render, so it works there).
       setDarkAdapt(adapt);
-      ambient.intensity = isInspectActive() ? INSPECT_AMBIENT : darkAdaptAmbient();
+      // WebGPU: keep the ambient CONSTANT. Its fill colour is a COOL 0x1a1e24, so
+      // ramping it with dark-adaptation flooded the whole image with cool/green and
+      // bloom-blur. The WebGPU dark-adapt softening lives in the grade's shader lift
+      // (render-webgpu.ts) instead — warm, darkness-weighted, leaves the lit side
+      // alone. WebGL keeps the ramp (its blit lift + exposure work together there).
+      ambient.intensity = isInspectActive() ? INSPECT_AMBIENT
+        : (isWebGPU() ? CONFIG.AMBIENT_INTENSITY : darkAdaptAmbient());
       updateDarkAdaptReadout(lit, adapt, darkAdaptBrightness());
     } },
 

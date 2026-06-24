@@ -133,12 +133,16 @@ export function setWebGPUDarkAdapt(v: number): void {
 // the void), so it CAN'T wash the mid-dark like the broad WebGL darkness-weighted
 // formula did on WebGPU's higher ambient. Now RAMPED by the dark-adapt value
 // instead of always-on: 0 in torchlight (off), 1 in a dark hall (full reveal).
-const REVEAL_GAIN = 1.8;     // ×(1+gain) on the deepest black at full adaptation (the tuned look)
-const REVEAL_RANGE = 0.008;  // display-brightness ceiling the reveal acts below — ONLY near-black
-// Exposure boost at full dark-adaptation (matches dark-adaptation.ts
-// MAX_BRIGHTNESS_BOOST 0.8 → EXPOSURE ×1.8 in full dark). This is the lever that
-// makes lingering in the dark feel less crushing.
-const ADAPT_EXPOSURE_BOOST = 0.8;
+// SOFTEN the dark, don't over-expose. As the eye adapts (darkAdaptNode 0→1) we
+// RAISE THE FLOOR of the crushed shadows/fog and gently amplify their form —
+// darkness-WEIGHTED so the LIT side is untouched (no overexposing the bright). The
+// dark loosens, fog stops drowning, form swims up; step to light and it snaps back.
+// NOTE: these are LINEAR-space values and the pipeline applies sRGB AFTER, which
+// hugely amplifies small darks (linear 0.024 → ~0.17 display). So the additive
+// floor-raise must be TINY in linear to read as a subtle display lift.
+const ADAPT_LIFT: readonly [number, number, number] = [0.0025, 0.0024, 0.0021];  // additive floor-raise (faint warm-neutral), linear — sRGB makes this a gentle display lift
+const ADAPT_GAIN = 0.1;       // gentle multiply on the darks — pulls their faint form up a touch (space-stable)
+const ADAPT_CUTOFF = 0.30;    // LINEAR brightness above which the eye lift fades to 0 — keep it to the genuinely crushed shadows
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -199,13 +203,7 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // in a desaturated white haze. Exposing first means only the genuinely-bright
   // sources (flames) clear the threshold → tight, subtle bloom.
   //
-  // EYE DARK-ADAPTATION rides the EXPOSURE — this is the lever that actually makes
-  // standing in the dark feel "less crushing" (the old game's note: ambient alone
-  // barely shows; exposure scales the WHOLE image so the faintly-lit dark walls
-  // lift). Ramps EXPOSURE ×(1 .. 1.8) as the eye adapts (darkAdaptNode 0→1), in
-  // step with the WebGL blit. The gated reveal below adds form to the deepest black.
-  const exposureRamp: any = float(1.0).add((darkAdaptNode as any).mul(ADAPT_EXPOSURE_BOOST));
-  const exposed: any = sceneCA.mul(float(EXPOSURE)).mul(exposureRamp);
+  const exposed: any = sceneCA.mul(float(EXPOSURE));
 
   // Exposed scene + native bloom, additive, LINEAR. Bloom optional (BLOOM
   // setting); the bloomPass also feeds the fog inscatter below.
@@ -260,15 +258,17 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
   col = col.pow(_float(CONTRAST));
 
-  // ── EYE DARK-ADAPTATION — gated deep-dark reveal × the adapt ramp ──
-  // gate = 1 only on the truly near-black (< REVEAL_RANGE), so the multiply pulls
-  // faint form out of the void WITHOUT touching the mid-dark or lit areas. Scaled
-  // by darkAdaptNode: off in torchlight, full in a dark hall. Before dither/quantize
-  // so the revealed form gets the smooth gamma-space stepping.
+  // ── EYE DARK-ADAPTATION — soften the dark (see ADAPT_* notes above) ──
+  // darkW = 1 in shadow/fog, ramping to 0 by ADAPT_CUTOFF brightness, so the LIT
+  // side is left exactly as-is (no overexposure). Within the darks we raise the
+  // floor (additive — the crush/fog loosens) and gently amplify (multiply — form
+  // swims up), all scaled by darkAdaptNode (0 in torchlight, 1 in a dark hall).
   {
-    const maxC: any = col.r.max(col.g).max(col.b);
-    const gate: any = _float(1.0).sub((smoothstep as any)(_float(0.0), _float(REVEAL_RANGE), maxC));
-    col = col.mul(_float(1.0).add(gate.mul(_float(REVEAL_GAIN)).mul(darkAdaptNode)));
+    const lum: any = col.r.max(col.g).max(col.b);
+    const darkW: any = _float(1.0).sub((smoothstep as any)(_float(0.05), _float(ADAPT_CUTOFF), lum));
+    const a: any = (darkAdaptNode as any).mul(darkW);   // adapt, restricted to the darks
+    col = col.add((vec3 as any)(ADAPT_LIFT[0], ADAPT_LIFT[1], ADAPT_LIFT[2]).mul(a));
+    col = col.mul(_float(1.0).add(a.mul(_float(ADAPT_GAIN))));
   }
 
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──
