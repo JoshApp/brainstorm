@@ -123,13 +123,15 @@ const REVEAL_SCALE = (() => {
 // emerges) but does nothing to pure black (0 × anything = 0 → the void stays
 // void). LIFT is a tiny additive floor only — kept small so it doesn't paint the
 // black grey. This is what makes "forms poke out of the dark without a light".
-// GAIN-ONLY by default: the gain MULTIPLIES, so it amplifies faint real shading
-// (form emerges) and PRESERVES hue — it can't wash or tint. The additive LIFT is
-// what painted the darks (acid/washed), so it's OFF by default (0). Push either
-// live with ?reveal=<mult>.
-const REVEAL_GAIN = 0.5 * REVEAL_SCALE;    // darkness-weighted multiply (amplify faint form, hue-preserving)
-const REVEAL_LIFT = 0.0 * REVEAL_SCALE;    // additive floor — OFF (it painted the darks grey/acid)
-const REVEAL_TINT: readonly [number, number, number] = [0.82, 0.88, 1.0];  // only used if LIFT > 0
+// GATED DEEP-DARK GAIN. A plain darkness-weighted multiply was invisible: it
+// amplifies proportionally, so a faint 3%-lit surface × 1.5 is still ~4%. To make
+// forms LOOM out of black we need (a) a much higher gain and (b) a gate so it only
+// fires on the faintest surfaces — amplifying midtones/lit areas would wash them.
+// gate = 1 below REVEAL_RANGE brightness, ramping to 0 above it (smoothstep). It's
+// still a MULTIPLY, so hue is preserved (no acid) and pure black stays black (the
+// gate is ~1 there but 0 × gain = 0). Push live with ?reveal=<mult>.
+const REVEAL_GAIN = 3.0 * REVEAL_SCALE;   // multiply boost in the deepest darks (×(1+gain) at black)
+const REVEAL_RANGE = 0.008;               // linear ceiling the reveal acts below (~10% display) — ONLY near-black
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -230,17 +232,15 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
   col = col.pow(_float(CONTRAST));
 
-  // ── DARK REVEAL — forms emerge from black (see notes at REVEAL_* above) ──
-  // darkness = how far this pixel is from white. Near-black surfaces get a tiny
-  // tinted lift + a darkness-weighted gain that amplifies the faint ambient
-  // already there; torchlit pixels (darkness≈0) are untouched. Done before the
-  // dither/quantize so the lift becomes the structured "etched from dark" texture.
-  if (REVEAL_GAIN > 0 || REVEAL_LIFT > 0) {
+  // ── DARK REVEAL — forms loom out of black (see notes at REVEAL_* above) ──
+  // gate = 1 on the faintest surfaces, ramping to 0 by REVEAL_RANGE brightness, so
+  // only the deep darks are amplified; a high MULTIPLY there pulls faint ambient
+  // form up into visibility while preserving hue and leaving lit areas untouched.
+  // Done before the dither/quantize so the revealed form gets the smooth halftone.
+  if (REVEAL_GAIN > 0) {
     const maxC: any = col.r.max(col.g).max(col.b);
-    const darkness: any = _float(1.0).sub(maxC).max(_float(0.0));
-    col = col.add((vec3 as any)(REVEAL_TINT[0], REVEAL_TINT[1], REVEAL_TINT[2])
-      .mul(darkness).mul(_float(REVEAL_LIFT)));
-    col = col.mul(_float(1.0).add(darkness.mul(_float(REVEAL_GAIN))));
+    const gate: any = _float(1.0).sub((smoothstep as any)(_float(0.0), _float(REVEAL_RANGE), maxC));
+    col = col.mul(_float(1.0).add(gate.mul(_float(REVEAL_GAIN))));
   }
 
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──
