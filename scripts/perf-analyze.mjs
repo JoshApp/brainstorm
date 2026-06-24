@@ -97,6 +97,13 @@ const ctypes = {};
 for (const f of F) for (const e of (f.ev || [])) if (typeof e === 'string' && e.startsWith('C:')) ctypes[e.slice(2)] = (ctypes[e.slice(2)] || 0) + 1;
 const ce = Object.entries(ctypes).sort((a, b) => b[1] - a[1]);
 if (ce.length) console.log(`  COMPILED THIS RECORDING: ${ce.map(([k, v]) => `${k}×${v}`).join(', ')}  (distanceRGBA=shadow-caster, physical=lit, sprite=fx)`);
+// Full cacheKeys of in-session compiles — diff against the warmed set (dump live
+// renderer.info.programs[].cacheKey) to find the flipped define / exact variant.
+const ck = r.meta?.compiledKeys;
+if (ck && ck.length) {
+  console.log(`  FULL KEYS (${ck.length}) — diff vs warmed to find the variant:`);
+  ck.slice(0, 12).forEach((kk, i) => console.log(`    [${i}] ${kk}`));
+}
 if (downs >= 2 && Math.abs(ups - downs) <= Math.max(2, ups * 0.3))
   console.log(`  ⚠ CHURN: ${downs} deletions ≈ ${ups} compiles → a per-beat effect mints+disposes a material/program. Pin it: shared geometry + a cloned-template material (clones share the program), or retain the material.`);
 else if (netUp > 2)

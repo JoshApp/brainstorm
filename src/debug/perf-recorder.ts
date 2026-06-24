@@ -22,7 +22,7 @@
 // allocates a small per-frame record, so the profiler's own GC/alloc readout
 // carries a little constant overhead while the tools are on — expected.
 
-import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, setGpuPassTiming, type FrameSample } from './frame-timing';
+import { addFrameListener, removeFrameListener, gpuActive, gpuSupported, setGpuPassTiming, getCompiledProgramKeys, type FrameSample } from './frame-timing';
 import { getCameraYaw, getCameraPitch } from '../controls/camera';
 import { getRenderPixelRatio } from '../style/render-target';
 import type { SceneAudit } from './scene-audit';
@@ -93,6 +93,9 @@ export interface Recording {
      *  (corpses/drops/blood/instanced batches), so a climbing geo/draw count in
      *  the frames can be attributed to a leaking category. */
     sceneAudit?: SceneAudit;
+    /** FULL cacheKeys of shader programs that compiled during the session — diff
+     *  against the warmed set to identify the exact un-warmed variant. */
+    compiledKeys?: readonly string[];
     label?: string;
   };
   systemNames: string[];
@@ -338,6 +341,7 @@ function buildExport(slice: RecFrame[], label?: string): Recording {
       renderScale: getSettings().renderScale,
       graphics: graphicsSnapshot(),
       sceneAudit: sceneAuditProvider ? sceneAuditProvider() : undefined,
+      compiledKeys: getCompiledProgramKeys().slice(),   // full cacheKeys of in-session compiles
       label,
     },
     systemNames: sysNames.slice(),

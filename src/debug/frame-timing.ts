@@ -79,6 +79,7 @@ const listeners = new Set<FrameListener>();
 // a compile that wasn't pre-warmed → its type lands in the spike's `ev`, so we
 // know WHAT froze instead of guessing.
 const _seenProg = new Set<string>();
+const _compiledKeys: string[] = [];   // FULL keys of post-seed compiles (for diffing)
 let _progSeeded = false;
 function diffNewPrograms(info: { programs?: ReadonlyArray<{ cacheKey?: string }> | null } | null | undefined): string[] {
   if (!info?.programs) return [];
@@ -86,10 +87,14 @@ function diffNewPrograms(info: { programs?: ReadonlyArray<{ cacheKey?: string }>
   const out: string[] = [];
   for (const p of info.programs) {
     const k = p.cacheKey ?? '';
-    if (k && !_seenProg.has(k)) { _seenProg.add(k); out.push(k.split(',')[0] || '?'); }
+    if (k && !_seenProg.has(k)) { _seenProg.add(k); out.push(k.split(',')[0] || '?'); if (_compiledKeys.length < 80) _compiledKeys.push(k); }
   }
   return out;
 }
+/** FULL cacheKeys of every program that compiled after the first profiled frame —
+ *  saved into a recording's meta so we can diff a combat compile against the
+ *  warmed set and see WHICH define flipped (the exact un-warmed variant). */
+export function getCompiledProgramKeys(): readonly string[] { return _compiledKeys; }
 
 // One reused sample object — avoids per-frame allocation (which would itself
 // pollute the GC numbers we're trying to measure).
