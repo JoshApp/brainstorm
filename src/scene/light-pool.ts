@@ -136,7 +136,7 @@ export function initLightPool(sc: THREE.Scene): void {
   // a bigger fixed pool — so more torches light at once instead of the nearest-N
   // dropping the rest. Still a FIXED count after init, so no per-frame recompile.
   // (The proper fix — uncapped clustered lighting — is the next, bigger task.)
-  const slotScale = isWebGPU() ? 2.5 : 1;
+  const slotScale = 1;   // reverted from 2.5x — isolating the fps drop; re-raise once perf is understood
   const categories = Object.keys(CATEGORY_SLOTS) as LightCategory[];
   for (const cat of categories) {
     const n = Math.round(CATEGORY_SLOTS[cat] * slotScale);

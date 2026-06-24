@@ -276,7 +276,11 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 // would otherwise climb without bound.)
 renderer.info.autoReset = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// ACES lifts blacks + rolls highlights — a milky filmic veil ("diffusion
+// screen"). The WebGPU pipeline does its own exposure + hard clip (NoToneMapping)
+// for the punchy PSX look, so kill ACES on the renderer too (the node pipeline's
+// default output transform reads this) — otherwise it washes the whole image.
+renderer.toneMapping = WEBGPU ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
 
 // --- Scene ---

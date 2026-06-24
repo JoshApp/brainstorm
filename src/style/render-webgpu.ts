@@ -13,17 +13,19 @@
 
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
-import { pass, vec2, vec3, vec4, float, screenUV, floor, fract, sin, dot, smoothstep, mix } from 'three/tsl';
+import { pass, vec3, vec4, float, screenUV, floor, dot, smoothstep, mix, luminance } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
-// 1.0 = full-res (crisp). The 0.5 low-res pass was upscaled with SMOOTH filtering
-// → soft/blurry, which read as "foggy / not crisp" (the original got away with
-// low-res via a sharp/nearest upscale + hard palette quantize, which the
-// RenderPipeline pass doesn't do). Full-res is crisp and we have the fps. PSX
-// crunch can come back later via a nearest-upscale pass if wanted.
-let resScale = 1.0;
+let resScale = 0.5;   // back to low-res (the original was low-res + crisp; full-res cost fps and wasn't the haze)
+// ?raw=1 — ISOLATION: bypass the whole PSX grade (bloom/crush/inscatter/vignette/
+// quantize), output the bare exposed scene. Tells us if the haze is the GRADE or
+// something upstream (lighting / fog / material response).
+const RAW = typeof location !== 'undefined' && new URLSearchParams(location.search).get('raw') === '1';
+// Grade feel — trial-and-error toward the original's crushed blacks + colour.
+const SATURATION = 1.35;   // >1 = punchier colour
+const CONTRAST = 1.35;     // >1 = crushed blacks / more depth
 let bloomEnabled = true;
 // Bloom: subtle + HIGH threshold so ONLY bright sources (flames, glows, runes)
 // bloom — not the whole image. Tune via the consts.
@@ -96,36 +98,37 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
     lit = lit.add((bloomPass as any).mul(fogW));
   }
 
-  // sRGB with NO tonemapping (the original look — a hard clip + quantize, NOT a
-  // filmic ACES roll which washed blacks/highlights flat). Exposure already
-  // applied above (before bloom).
-  const display = (lit as any).renderOutput(THREE.NoToneMapping, THREE.SRGBColorSpace);
+  // ISOLATION: ?raw=1 outputs the bare exposed scene (no grade) so we can tell if
+  // the haze is the grade vs upstream (lighting/fog/material).
+  const build = (node: any) => {
+    pipeline = new RenderPipeline(
+      renderer as unknown as ConstructorParameters<typeof RenderPipeline>[0],
+      node as ConstructorParameters<typeof RenderPipeline>[1],
+    );
+  };
+  if (RAW) { build((vec4 as any)((lit as any).rgb, 1.0)); return; }
 
-  // ── PSX colour grade (ported from render-target.ts HORROR_BLIT_FRAG) ──
-  // TSL ops as loosely-typed aliases — the node DSL's strict overloads fight
-  // generic composition, and the values are validated at shader-build time anyway.
-  const _vec2 = vec2 as any, _vec3 = vec3 as any, _vec4 = vec4 as any, _float = float as any;
-  const _floor = floor as any, _fract = fract as any, _sin = sin as any, _dot = dot as any;
+  // ── PSX colour grade, in LINEAR ──
+  // Stays linear; the pipeline's DEFAULT output transform applies the renderer's
+  // tonemap (NoToneMapping under WebGPU) + sRGB exactly ONCE after. (Doing our
+  // own renderOutput(sRGB) while the renderer also sRGB-encoded was a double-
+  // encode → the milky wash.) NO dither — the hash dither read as grain over the
+  // whole image; 32 hard levels alone give the PSX steps.
+  const _vec4 = vec4 as any, _float = float as any, _floor = floor as any, _dot = dot as any;
   const _uv = screenUV as any;
 
-  let col: any = (display as any).rgb;
-  // (No global amber tint — the torches already carry the warmth; adding tint on
-  // top read as a bronze wash. Re-add subtly here if needed after tuning.)
-  // VIGNETTE — mild edge darkening from screen-centre distance.
+  let col: any = (lit as any).rgb;
+  // SATURATION — punchier colour (push away from luminance).
+  const lum = (luminance as any)(col);
+  col = (mix as any)((vec3 as any)(lum, lum, lum), col, SATURATION);
+  // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
+  col = col.pow(_float(CONTRAST));
+  // VIGNETTE — mild edge darkening.
   const d = _uv.sub(0.5);
-  const vig = _float(1.0).sub(_dot(d, d).mul(0.55));
-  col = col.mul(vig);
-  // DITHER + QUANTIZE — hash dither breaks the bands, then floor to ~32
-  // levels/channel for the hard PSX colour steps.
-  const grid = _uv.mul(_vec2(960, 540));
-  const dither = _fract(_sin(_dot(_floor(grid), _vec2(12.9898, 78.233))).mul(43758.5453));
-  col = _floor(col.mul(QUANT_LEVELS).add(dither)).div(QUANT_LEVELS);
-  const outputNode = _vec4(col, 1.0);
-
-  pipeline = new RenderPipeline(renderer as unknown as ConstructorParameters<typeof RenderPipeline>[0]);
-  // We applied tone-map + sRGB ourselves above — disable the pipeline's default.
-  (pipeline as any).outputColorTransform = false;
-  pipeline.outputNode = outputNode as RenderPipeline['outputNode'];
+  col = col.mul(_float(1.0).sub(_dot(d, d).mul(0.55)));
+  // QUANTIZE — hard PSX colour steps (rounded), no grain.
+  col = _floor(col.mul(QUANT_LEVELS).add(0.5)).div(QUANT_LEVELS);
+  build(_vec4(col, 1.0));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
