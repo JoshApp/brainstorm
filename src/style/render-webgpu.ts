@@ -34,7 +34,7 @@ const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
 // read MUCH brighter than the legacy-tuned values → the whole dungeon lit pale.
 // Crush exposure hard to restore the dark-with-pools-of-torchlight look. (Quick
 // global knob; the deeper fix is re-tuning ambient/emissive for r184 units.)
-const EXPOSURE = 0.28;   // darker stone — the image was reading a touch washed/light
+const EXPOSURE = 0.5;    // higher so EMISSIVE flames stay vivid; stone kept dark via lower ambient fill
 // DEPTH CRUSH — fade to near-black with camera distance (DELVE's "darkness is
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
 // depth). Metres from camera. Tune on the dev server.

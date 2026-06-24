@@ -291,7 +291,11 @@ if (import.meta.env.DEV) (globalThis as Record<string, unknown>).__scene = scene
 scene.background = new THREE.Color(CONFIG.FOG_COLOR);
 scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 
-const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY);
+// WEBGPU: halve the ambient fill. r184's units make AMBIENT_INTENSITY read much
+// brighter (flat wash on the stone). Trimming the fill here — rather than via a
+// low global exposure — lets exposure stay high enough that the EMISSIVE/additive
+// flames stay vivid (a low exposure dimmed them to faint/transparent).
+const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY * (WEBGPU ? 0.5 : 1));
 scene.add(ambient);
 
 // Inspection mode (preview snaps) lives in src/debug/inspect-mode.ts — the
