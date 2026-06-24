@@ -28,6 +28,10 @@ const QUANT_LEVELS = 32;   // PSX colour steps per channel (matches the GLSL bli
 // the baseline" rule; the original did this in HORROR_BLIT_FRAG from linearized
 // depth). Metres from camera. Tune on the dev server.
 const CRUSH_START_M = 5, CRUSH_END_M = 28, CRUSH_FLOOR = 0.12;
+// FOG INSCATTER — the air glows the lights' colour, thicker with distance. The
+// original reused the BLOOM texture (the blurred bright pass) as the haze colour
+// × a depth weight, so it's coloured by whatever lights are near. We do the same.
+const INSCATTER_STRENGTH = 0.5, INSCATTER_START_M = 6, INSCATTER_END_M = 30;
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -51,6 +55,11 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   const distM = (scenePass as any).getViewZNode().negate();
   const crush = (mix as any)(float(1.0), float(CRUSH_FLOOR), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
   lit = lit.mul(crush);
+
+  // FOG INSCATTER — add the bloom colour as glowing air, weighted by distance.
+  // Added AFTER crush so the haze isn't darkened by it (surfaces fade, air glows).
+  const fogW = (smoothstep as any)(INSCATTER_START_M, INSCATTER_END_M, distM).mul(INSCATTER_STRENGTH);
+  lit = lit.add((bloomPass as any).mul(fogW));
 
   // Tone-map + sRGB to DISPLAY space ourselves (so the PSX crunch below lands on
   // the final colour — quantizing in linear would get smeared by the tonemap).
