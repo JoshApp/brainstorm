@@ -204,8 +204,12 @@ function graphicsSnapshot(): Record<string, unknown> {
 
 function onRingFrame(s: FrameSample): void {
   const now = performance.now();
-  const ev = pendingEvents.length ? pendingEvents.slice() : undefined;
+  const evList = pendingEvents.length ? pendingEvents.slice() : [];
   pendingEvents.length = 0;
+  // Fold in any shader programs that compiled this frame, tagged by type
+  // ('C:physical', 'C:distanceRGBA'=shadow caster, …) — names what froze a frame.
+  for (const k of s.newProgKinds ?? []) evList.push('C:' + k);
+  const ev = evList.length ? evList : undefined;
   ring.push({
     t: now,
     dt: r2(s.dt),
