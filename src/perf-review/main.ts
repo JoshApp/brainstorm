@@ -49,6 +49,15 @@ interface Recording {
   frames: RecFrame[];
 }
 
+// GPU-attribution sweep result (src/debug/gpu-attribution.ts), streamed in live.
+interface AttrEntry { name: string; gpuCost: number | null; cpuCost: number | null; drawsDelta: number; note?: string }
+interface AttrData {
+  depth: number; ts: string; timing: string;
+  baseline: { gpu: number | null; cpu: number | null; dt: number | null; draws: number };
+  driftSpan: number | null;
+  ranked: AttrEntry[];
+}
+
 const app = document.getElementById('app') as HTMLDivElement;
 const TARGET_DEFAULT = 1000 / 60;
 
@@ -61,9 +70,11 @@ app.innerHTML = `
     <button id="resetbtn" style="background:#16202e;color:#9fb4cc;border:1px solid #28384c;border-radius:5px;padding:4px 9px;font:inherit;cursor:pointer" title="Clear the live buffer (or reset zoom/pin)">⟲ reset</button>
     <span id="summary" style="color:#9fb4cc;font-size:12px"></span>
     <button id="metabtn" style="background:#16202e;color:#9fb4cc;border:1px solid #28384c;border-radius:5px;padding:4px 9px;font:inherit;cursor:pointer">meta ▾</button>
+    <button id="attrbtn" style="display:none;background:#16202e;color:#ffb454;border:1px solid #4a3a1c;border-radius:5px;padding:4px 9px;font:inherit;cursor:pointer" title="GPU attribution — which feature owns the GPU ms (F7 sweep in-game)">gpu attr ▾</button>
     <span style="margin-left:auto;color:#5e7088;font-size:11px">drop a .json · wheel = zoom · drag = pan · click = pin · ←/→ step · ⇧ = spikes · F = fit</span>
   </div>
   <div id="meta" style="display:none;padding:8px 14px;border-bottom:1px solid #161d28;background:#0b0f16;font-size:11px;color:#9fb4cc;line-height:1.6"></div>
+  <div id="attr" style="display:none;padding:8px 14px;border-bottom:1px solid #161d28;background:#0b0f16;font-size:12px;color:#9fb4cc;max-height:34vh;overflow-y:auto"></div>
   <div id="legend" style="display:flex;flex-wrap:wrap;gap:5px 12px;padding:6px 14px;border-bottom:1px solid #161d28;font-size:11px;color:#9fb4cc"></div>
   <canvas id="tl" style="display:block;width:100%;flex:1;min-height:0;cursor:crosshair"></canvas>
   <div id="markers" style="display:flex;gap:6px;padding:6px 14px;border-top:1px solid #161d28;overflow-x:auto;white-space:nowrap"></div>
@@ -74,6 +85,8 @@ const picker = document.getElementById('picker') as HTMLSelectElement;
 const summaryEl = document.getElementById('summary') as HTMLSpanElement;
 const metaBtn = document.getElementById('metabtn') as HTMLButtonElement;
 const metaEl = document.getElementById('meta') as HTMLDivElement;
+const attrBtn = document.getElementById('attrbtn') as HTMLButtonElement;
+const attrEl = document.getElementById('attr') as HTMLDivElement;
 const legendEl = document.getElementById('legend') as HTMLDivElement;
 const canvas = document.getElementById('tl') as HTMLCanvasElement;
 const markersEl = document.getElementById('markers') as HTMLDivElement;
@@ -88,6 +101,7 @@ let leaves = new Set<number>();       // stackable systems = leaves; a parent li
                                       // exist, so the stack sums leaves only.
 let hoverFrame = -1;
 let pinnedFrame = -1;
+let lastAttr: AttrData | null = null;
 // Zoomable view window over frame indices [lo, hi). Reset to full on load.
 let viewLo = 0;
 let viewHi = 1;
@@ -210,6 +224,42 @@ function buildMeta(): void {
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'));
+}
+
+// ── GPU attribution panel ───────────────────────────────────────────────────
+// The F7 sweep's ranked "which feature owns the GPU ms" result, streamed in
+// live, rendered as bars beside the timeline so it sits next to "which frame
+// dropped" instead of in a separate tool.
+function setAttr(d: AttrData): void {
+  lastAttr = d;
+  attrBtn.style.display = '';
+  renderAttr();
+}
+function fmtMs(v: number | null): string { return v == null ? 'n/a' : `${v.toFixed(2)}ms`; }
+function renderAttr(): void {
+  const d = lastAttr;
+  if (!d) { attrEl.innerHTML = '<span style="color:#7a8aa0">run the in-game GPU attribution sweep (F7 / ATTR) — its ranking appears here</span>'; return; }
+  const maxCost = Math.max(0.01, ...d.ranked.map((r) => r.gpuCost ?? 0));
+  const head =
+    `<div style="margin-bottom:6px;color:#9fb4cc">` +
+    `<b style="color:#ffb454">GPU attribution</b> · depth ${d.depth} · ${escapeHtml(d.timing)} · ` +
+    `baseline <span style="color:#cdd9e8">${fmtMs(d.baseline.gpu)} gpu</span> · ${fmtMs(d.baseline.cpu)} cpu · ${d.baseline.draws} draws` +
+    (d.driftSpan != null ? ` · drift ±${d.driftSpan.toFixed(2)}ms` : '') +
+    `</div>`;
+  const rows = d.ranked.map((r) => {
+    const cost = r.gpuCost ?? 0;
+    const w = Math.max(2, Math.round((Math.max(0, cost) / maxCost) * 260));
+    // Warmer = more expensive; near-zero / negative = within timer noise.
+    const col = cost <= 0.05 ? 'rgba(110,130,150,0.5)' : `hsl(${Math.max(0, 40 - (cost / maxCost) * 40)},75%,55%)`;
+    const pctOfBase = d.baseline.gpu ? ` (${((cost / d.baseline.gpu) * 100).toFixed(0)}%)` : '';
+    return `<div style="display:flex;align-items:center;gap:8px;height:17px">` +
+      `<span style="width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(r.note ?? '')}">${escapeHtml(r.name)}</span>` +
+      `<span style="width:78px;text-align:right;color:${cost > 0.05 ? '#ffb070' : '#7a8aa0'}">${fmtMs(r.gpuCost)}${pctOfBase}</span>` +
+      `<span style="width:${w}px;height:9px;background:${col};border-radius:2px"></span>` +
+      `<span style="color:#5e7088">${r.drawsDelta ? `${r.drawsDelta > 0 ? '+' : ''}${r.drawsDelta} draws` : ''}</span></div>`;
+  }).join('');
+  attrEl.innerHTML = head + rows +
+    `<div style="margin-top:6px;color:#5e7088;font-size:11px">negative/≈0 = within timer noise (free or GPU-parallel). pbr→lambert / lit→unlit are upper bounds. captured ${escapeHtml(d.ts.slice(11, 19))}.</div>`;
 }
 
 function buildLegend(): void {
@@ -753,6 +803,7 @@ const LIVE_WINDOW = 600;               // default visible window while following
 type LiveMsg =
   | { t: 'schema'; names: string[]; gphNames: string[]; meta: Record<string, unknown> }
   | { t: 'frame'; f: RecFrame }
+  | { t: 'attr'; data: AttrData }
   | { t: 'hello' };
 
 let liveChan: BroadcastChannel | null = null;
@@ -829,6 +880,8 @@ function onLiveMsg(m: LiveMsg): void {
     rec.frames.push(m.f);
     if (rec.frames.length > LIVE_CAP) rec.frames.shift();
     liveDirty = true;
+  } else if (m.t === 'attr') {
+    setAttr(m.data);
   }
 }
 
@@ -856,6 +909,13 @@ metaBtn.addEventListener('click', () => {
   const open = metaEl.style.display !== 'none';
   metaEl.style.display = open ? 'none' : 'block';
   metaBtn.textContent = open ? 'meta ▾' : 'meta ▴';
+  resize();   // the panel toggles the canvas's flex height
+});
+attrBtn.addEventListener('click', () => {
+  const open = attrEl.style.display !== 'none';
+  attrEl.style.display = open ? 'none' : 'block';
+  attrBtn.textContent = open ? 'gpu attr ▾' : 'gpu attr ▴';
+  if (!open) { renderAttr(); resize(); } else resize();   // panel toggles canvas height
 });
 picker.addEventListener('change', () => { if (picker.value) void loadById(picker.value); });
 window.addEventListener('resize', resize);

@@ -29,6 +29,7 @@ export const PERF_CHANNEL = 'delve-perf';
 type StreamMsg =
   | { t: 'schema'; names: string[]; gphNames: string[]; meta: Record<string, unknown> }
   | { t: 'frame'; f: StreamFrame }
+  | { t: 'attr'; data: unknown }
   | { t: 'hello' };
 
 interface StreamFrame {
@@ -83,6 +84,16 @@ function postSchema(): void {
   chan?.postMessage({ t: 'schema', names: names.slice(), gphNames: gphNames.slice(), meta: metaSnapshot() } satisfies StreamMsg);
 }
 
+// Last GPU-attribution sweep result, so a cockpit that connects AFTER a sweep
+// still gets it (re-sent on the cockpit's 'hello'). main.ts feeds these in via
+// onAttributionReport → broadcastAttr; perf-stream stays free of the heavy
+// gpu-attribution module.
+let lastAttr: unknown = null;
+export function broadcastAttr(data: unknown): void {
+  lastAttr = data;
+  chan?.postMessage({ t: 'attr', data } satisfies StreamMsg);
+}
+
 function onFrame(s: FrameSample): void {
   if (!chan) return;
   const now = performance.now();
@@ -121,7 +132,11 @@ export function setStreamEnabled(on: boolean): void {
     chan = new BroadcastChannel(PERF_CHANNEL);
     // A freshly-opened cockpit announces itself; reply with the schema so it can
     // decode the per-frame sys[] arrays without waiting for a name to change.
-    chan.onmessage = (e: MessageEvent<StreamMsg>) => { if (e.data?.t === 'hello') postSchema(); };
+    chan.onmessage = (e: MessageEvent<StreamMsg>) => {
+      if (e.data?.t !== 'hello') return;
+      postSchema();
+      if (lastAttr) chan?.postMessage({ t: 'attr', data: lastAttr } satisfies StreamMsg);   // catch up a late-joining cockpit
+    };
     names.length = 0; nameIdx.clear();
     gphNames.length = 0; gphIdx.clear();
     t0 = performance.now();

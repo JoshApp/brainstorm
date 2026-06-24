@@ -358,6 +358,23 @@ export async function runGpuAttribution(): Promise<void> {
 
   const text = L.join('\n');
   lastReport = text;
+  // Structured form of the same ranking, for the perf cockpit (it renders bars
+  // instead of dumping the monospace text). Built from the same `ranked` array.
+  lastData = {
+    depth: getCurrentDepth(),
+    ts: new Date().toISOString(),
+    timing: gpuSupported() ? 'timer-query' : 'readPixels probe',
+    baseline: {
+      gpu: baseline?.gpu ?? null, cpu: baseline?.cpu ?? null,
+      dt: baseline?.dt ?? null, draws: Math.round(baseline?.draws ?? 0),
+    },
+    driftSpan,
+    ranked: ranked.map((r) => ({
+      name: r.p.name, gpuCost: r.gpuCost, cpuCost: r.cpuCost,
+      drawsDelta: Math.round(r.drawsDelta), note: r.p.note,
+    })),
+  };
+  reportListener?.(lastData);
   console.log(text);   // also readable from a remote console / driving harness
   const name = `delve-gpu-attr-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
   const shared = await shareOrDownload(name, text);
@@ -365,8 +382,23 @@ export async function runGpuAttribution(): Promise<void> {
   running = false;
 }
 
+/** Structured form of a sweep result — the cockpit renders this as bars. */
+export interface AttrEntry { name: string; gpuCost: number | null; cpuCost: number | null; drawsDelta: number; note?: string }
+export interface AttrData {
+  depth: number; ts: string; timing: string;
+  baseline: { gpu: number | null; cpu: number | null; dt: number | null; draws: number };
+  driftSpan: number | null;
+  ranked: AttrEntry[];
+}
+
 let lastReport: string | null = null;
+let lastData: AttrData | null = null;
+let reportListener: ((d: AttrData) => void) | null = null;
 /** The most recent sweep's report text — for harness/remote-console reads. */
 export function getLastAttributionReport(): string | null { return lastReport; }
+/** The most recent sweep's structured result (null until a sweep has run). */
+export function getLastAttributionData(): AttrData | null { return lastData; }
+/** Notified each time a sweep completes — perf-stream forwards it to the cockpit. */
+export function onAttributionReport(cb: ((d: AttrData) => void) | null): void { reportListener = cb; }
 /** True while a sweep is in progress — poll this from a driving harness. */
 export function isAttributionRunning(): boolean { return running; }

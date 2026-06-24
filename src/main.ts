@@ -112,12 +112,12 @@ import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRender
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
 import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn, gpuPassDiag } from './debug/frame-timing';
-import { setStreamEnabled, streamEnabled } from './debug/perf-stream';
+import { setStreamEnabled, streamEnabled, broadcastAttr } from './debug/perf-stream';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds, setSceneAuditProvider } from './debug/perf-recorder';
 import { auditScene } from './debug/scene-audit';
 import { launchSpector } from './debug/spector-launch';
 import { initDrawReport, captureDrawReport, drawReportData } from './debug/draw-report';
-import { initGpuAttribution, runGpuAttribution, getLastAttributionReport, isAttributionRunning } from './debug/gpu-attribution';
+import { initGpuAttribution, runGpuAttribution, getLastAttributionReport, isAttributionRunning, onAttributionReport } from './debug/gpu-attribution';
 import { setLambertPreview, isLambertPreview } from './debug/lambert-preview';
 import { setProfilerToolbarVisible } from './debug/profiler-toolbar';
 import { createChargeRing, tickChargeRing } from './ui/charge-ring';
@@ -1792,6 +1792,10 @@ function ensureProfilingInited(): void {
   initFrameTiming(renderer);
   initDrawReport(scene, renderer, () => currentLevel);
   initGpuAttribution(scene, renderer);
+  // A completed GPU-attribution sweep is forwarded to the detached cockpit (it
+  // shows the ranking beside the timeline). broadcastAttr is a no-op unless the
+  // stream is on, so this is free otherwise.
+  onAttributionReport((d) => broadcastAttr(d));
   createProfilerHud();
 }
 function applyProfilerEnabled(): void {
