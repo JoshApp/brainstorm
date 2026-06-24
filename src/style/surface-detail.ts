@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
-import { triplanarTexture, texture as tslTexture, vec3, positionWorld, normalWorld, float } from 'three/tsl';
+import { triplanarTexture, texture as tslTexture, vec3, positionWorld, normalWorld, float, bumpMap, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, mx_noise_float } from 'three/tsl';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // WebGPU surface shading: triplanar-sample the baked texture in world space and
@@ -12,12 +12,29 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // World tiling frequency = 1 / metres-per-repeat (uniform; the GLSL used an
   // anisotropic vec2 tile but a single scale is close enough for the first cut).
   const scale = float(1 / cfg.tile[0]);
-  const sampled = (triplanarTexture as any)(texNode, null, null, scale, positionWorld, normalWorld);
+  const sampled: any = (triplanarTexture as any)(texNode, null, null, scale, positionWorld, normalWorld);
   const base = (vec3 as any)(mat.color.r, mat.color.g, mat.color.b);
   const tint = (vec3 as any)(cfg.tint[0], cfg.tint[1], cfg.tint[2]);
+  let albedo: any = base.mul(sampled.rgb).mul(tint);
+
+  // SEEP — the "liquid in the cracks" glow, walls only (grooveFill). Pools in the
+  // low (recessed) seams, flows slowly with time, blended toward the floor's seep
+  // tint by per-floor strength. Approximation of the GLSL groove-flow layer.
+  if (cfg.grooveFill) {
+    const seam = float(1).sub((tslSmoothstep as any)(0.45, 0.85, sampled.a));   // 1 in seams
+    const flowPos = (vec3 as any)((positionWorld as any).x.mul(2.6), (positionWorld as any).z.mul(2.6).sub(seepTimeNode.mul(0.26)), 0);
+    const flow = (mx_noise_float as any)(flowPos).mul(0.5).add(0.5);              // → ~[0,1]
+    const seepAmt = (tslClamp as any)(seam.mul(seepStrengthNode).mul(flow), 0, 1);
+    albedo = (tslMix as any)(albedo, seepTintNode, seepAmt);
+  }
+
   // colorNode replaces only the albedo input — the standard PBR lighting,
   // roughness, emissive, etc. still apply on top.
-  (mat as any).colorNode = base.mul((sampled as any).rgb).mul(tint);
+  (mat as any).colorNode = albedo;
+  // RELIEF — perturb the normal from the height channel (s.a). bumpMap does the
+  // derivative-based perturbation the GLSL did by hand (dFdx/dFdy of s.a), so the
+  // brick/flagstone seams catch torchlight in 3D instead of reading flat.
+  (mat as any).normalNode = (bumpMap as any)(sampled.a, float(cfg.relief));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -69,6 +86,11 @@ const uDetailStrength = { value: 1 };   // 0 = off, 1 = on (live toggle)
 const uSeepTint = { value: new THREE.Vector3(0.8, 0.1, 0.08) };
 const uSeepStrength = { value: 0 };      // 0 = off; builder enables per floor
 const uSeepTime = { value: 0 };
+// WebGPU mirrors of the seep uniforms (the GLSL path uses the {value} objects
+// above; the TSL colorNode reads these uniform nodes). Kept in sync below.
+const seepTintNode = (tslUniform as any)(new THREE.Vector3(0.8, 0.1, 0.08));
+const seepStrengthNode = (tslUniform as any)(0);
+const seepTimeNode = (tslUniform as any)(0);
 
 export function setSurfaceSeep(colorHex: number, strength: number): void {
   uSeepTint.value.set(
@@ -77,10 +99,13 @@ export function setSurfaceSeep(colorHex: number, strength: number): void {
     (colorHex & 255) / 255,
   );
   uSeepStrength.value = strength;
+  seepTintNode.value.copy(uSeepTint.value);
+  seepStrengthNode.value = strength;
 }
 
 export function tickSurfaceSeep(timeSec: number): void {
   uSeepTime.value = timeSec;
+  seepTimeNode.value = timeSec;
 }
 
 // ── WETNESS — the crevices pick up light for real ────────────────────
