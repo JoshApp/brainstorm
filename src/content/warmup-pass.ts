@@ -4,6 +4,8 @@ import { ITEMS } from './items';
 import { buildCreature } from './build-creature';
 import { buildModel } from '../ecs/build-model';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
+import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from './vase';
+import { COBWEB_BARRIER } from './cobweb';
 import { getWarmupHooks } from './warmup-registry';
 
 // ── The unified warmup pass ─────────────────────────────────────────────────
@@ -107,6 +109,21 @@ export function runWarmupPass(
       warmGroup.add(g);
       retainMaterials(g);
     } catch { /* skip a bad drop spec */ }
+  }
+
+  // DESTRUCTIBLES — vases sit in the scene at level-build (warmed by the load-
+  // time compile), but VASE_BROKEN spawns ON BREAK mid-combat, so its material
+  // (tinted + gore-receiving = the enemy-ext|0|0|1|1 variant seen compiling
+  // in-fight) is otherwise first-rendered live. Warm every variant in the live
+  // (fogged) scene so the useFog/flatShading variant matches and nothing
+  // recompiles when a pot shatters.
+  for (const spec of [VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN, COBWEB_BARRIER]) {
+    try {
+      const g = buildModel(spec).group;
+      noCull(g);
+      warmGroup.add(g);
+      retainMaterials(g);
+    } catch { /* skip a bad spec */ }
   }
 
   // EFFECTS — self-registered pools (shatter/coins/wisps/…) spawn a
