@@ -130,7 +130,7 @@ const REVEAL_SCALE = (() => {
 // gate = 1 below REVEAL_RANGE brightness, ramping to 0 above it (smoothstep). It's
 // still a MULTIPLY, so hue is preserved (no acid) and pure black stays black (the
 // gate is ~1 there but 0 × gain = 0). Push live with ?reveal=<mult>.
-const REVEAL_GAIN = 3.0 * REVEAL_SCALE;   // multiply boost in the deepest darks (×(1+gain) at black)
+const REVEAL_GAIN = 1.8 * REVEAL_SCALE;   // multiply boost in the deepest darks (×(1+gain) at black) — eased; nearest upscale made the revealed pixels pop harder
 const REVEAL_RANGE = 0.008;               // linear ceiling the reveal acts below (~10% display) — ONLY near-black
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
