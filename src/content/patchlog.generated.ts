@@ -9,6 +9,21 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "The frame cap holds on every screen now — phones with adaptive refresh stop sailing past the limit you set.",
+        "area": [
+          "tech"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The first time each foe comes apart no longer hitches — the dungeon prepared the cut ahead of time.",
+        "area": [
+          "combat",
+          "atmosphere"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The frame limiter stops hitching on high-refresh screens — capped play paces clean against the glass now, no more standing-still stutter.",
         "area": [
           "tech"
@@ -392,21 +407,6 @@ export const GENERATED_PATCHLOG = [
         "text": "The choosing fills the whole dark now — edge to edge, no frame to hide behind.",
         "area": [
           "ui"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "Your three fates lay bare what they'll make of you now — read all three, then choose one.",
-        "area": [
-          "ui"
-        ]
-      },
-      {
-        "tag": "add",
-        "text": "A fire deals one fate, then gutters to embers. The harbor's great fire seals the stair until you draw.",
-        "area": [
-          "content",
-          "level"
         ]
       }
     ]
