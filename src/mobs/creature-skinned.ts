@@ -25,6 +25,11 @@ export interface SkinnedCreature {
   skeleton: THREE.Skeleton;
   /** Bones (= the creature joints) the live animation already drives. */
   bones: THREE.Object3D[];
+  /** DISMEMBER: collapse a joint's whole subtree (the limb) out of the skinned
+   *  mesh so it VANISHES — the V2 stand-in for detaching a joint's child meshes
+   *  (which don't exist anymore; they're baked in). Used by sever + part-breaks.
+   *  Returns true if the joint was found. Permanent (no un-collapse). */
+  severBone: (jointName: string) => boolean;
 }
 
 /** Normalize a geometry to a consistent attribute set so cross-material merges
@@ -107,5 +112,30 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
   root.add(mesh);
   mesh.bind(skeleton);              // bindMatrix defaults to the mesh's matrixWorld (= root)
 
-  return { mesh, skeleton, bones };
+  // ── Dismember support: collapse a joint subtree's verts → invisible limb ──
+  const nameToBone = new Map<string, number>();
+  for (const [name, obj] of creature.joints) { const i = boneIndex.get(obj); if (i !== undefined) nameToBone.set(name, i); }
+  const pos = geometry.attributes.position as THREE.BufferAttribute;
+  const skin = geometry.attributes.skinIndex as THREE.BufferAttribute;
+  const severBone = (jointName: string): boolean => {
+    const jointObj = creature.joints.get(jointName);
+    if (!jointObj) return false;
+    // The limb = this joint + every descendant joint (severing a shoulder takes
+    // the whole arm). Collect their bone indices.
+    const limb = new Set<number>();
+    jointObj.traverse((o: THREE.Object3D) => { const i = boneIndex.get(o); if (i !== undefined) limb.add(i); });
+    // Collapse every vertex riding a limb bone onto one shared point → all its
+    // triangles become zero-area (not rasterized). Collapse-to-first keeps the
+    // point near the limb so there's no transient streak to the origin.
+    let cx = 0, cy = 0, cz = 0, found = false;
+    for (let v = 0; v < skin.count; v++) {
+      if (!limb.has(skin.getX(v))) continue;
+      if (!found) { cx = pos.getX(v); cy = pos.getY(v); cz = pos.getZ(v); found = true; }
+      pos.setXYZ(v, cx, cy, cz);
+    }
+    if (found) pos.needsUpdate = true;
+    return found;
+  };
+
+  return { mesh, skeleton, bones, severBone };
 }

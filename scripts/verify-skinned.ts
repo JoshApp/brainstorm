@@ -57,6 +57,17 @@ if (process.env.DEBUG) {
   console.log(`  DEBUG: ${moved}/${pos.count} verts move under bind-pose skinning (should be 0)`);
   samples.forEach((s) => console.log('    ' + s));
 }
+// SEVER test: collapse a limb and confirm those verts coincide (limb vanishes).
+if (process.env.SEVER) {
+  const joint = process.env.SEVER;
+  const posA = sk.mesh.geometry.attributes.position as THREE.BufferAttribute;
+  const before = new Set<string>();
+  for (let i = 0; i < posA.count; i++) before.add(`${posA.getX(i).toFixed(3)},${posA.getY(i).toFixed(3)},${posA.getZ(i).toFixed(3)}`);
+  const found = sk.severBone(joint);
+  const after = new Set<string>();
+  for (let i = 0; i < posA.count; i++) after.add(`${posA.getX(i).toFixed(3)},${posA.getY(i).toFixed(3)},${posA.getZ(i).toFixed(3)}`);
+  console.log(`\nSEVER ${id}.${joint}: found=${found}  uniquePositions ${before.size} → ${after.size} (collapse → fewer)  severable=${JSON.stringify((spec as { severable?: string[] }).severable)}`);
+}
 const ok = origBox.min.distanceTo(skBox.min) < 2e-3 && origBox.max.distanceTo(skBox.max) < 2e-3;
 const fmt = (b: THREE.Box3) => `min[${b.min.toArray().map((n) => n.toFixed(3)).join(',')}] max[${b.max.toArray().map((n) => n.toFixed(3)).join(',')}]`;
 

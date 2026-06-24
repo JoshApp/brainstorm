@@ -362,7 +362,9 @@ export function createEnemy(
   const instancing = CREATURE_V2
     ? null
     : acquireCreatureInstancing(scene, entityId, spec, built, container);
-  if (CREATURE_V2) buildSkinnedCreature(creature);
+  // Skinned handle kept so dismember/part-breaks can collapse limbs out of the
+  // single mesh (joint.visible does nothing to GPU-skinned verts).
+  const skinnedCreature = CREATURE_V2 ? buildSkinnedCreature(creature) : null;
   // Base model scale, captured for the lash deform (which elongates the
   // body toward the player on a 'lash' telegraph, then eases back here).
   const groupBaseScale = built.group.scale.clone();
@@ -530,7 +532,10 @@ export function createEnemy(
     // Creature path: names are JOINTs — hide the joint subtree + its zones
     // (the clean part-break). Legacy path: traverse + hide meshes by name.
     if (creatureRef) {
-      for (const n of names) creatureRef.setJointVisible(n, false);
+      for (const n of names) {
+        creatureRef.setJointVisible(n, false);
+        skinnedCreature?.severBone(n);   // V2: collapse the limb out of the skinned mesh
+      }
     }
     built.group.traverse((o) => {
       if (o.name && want.has(o.name)) o.visible = false;
@@ -1165,7 +1170,11 @@ export function createEnemy(
           // and keeps the enemy's material, so it DISSOLVES in sync with the
           // corpse (the death tick still drives that shared uDissolve). No
           // setJointVisible needed — the subtree is gone from the body.
-          spawnFlungPart(scene as THREE.Object3D, jointObj, dirX, dirZ);
+          // V2: the joint has no child meshes to fling — collapse the limb out
+          // of the skinned mesh (it vanishes in the gore burst). Legacy: detach
+          // the real joint subtree and let it tumble.
+          if (skinnedCreature) skinnedCreature.severBone(severJoint);
+          else spawnFlungPart(scene as THREE.Object3D, jointObj, dirX, dirZ);
           severedJoint = severJoint;   // crumble skips this one — it's already flung
         }
       }
@@ -1797,7 +1806,9 @@ export function createEnemy(
         built.group.rotation.x = 0.14 * hp * hp;
         built.group.rotation.z = Math.sin(deathTimer * 7) * 0.05 * hp;
       } else {
-        if (!crumbleCollapsed) { crumbleCollapsed = true; collapseSkeleton(); }
+        // V2: no per-joint meshes to clatter apart — the single skinned mesh
+        // topples + dissolves in place (the dissolve uniform still ramps below).
+        if (!crumbleCollapsed) { crumbleCollapsed = true; if (!skinnedCreature) collapseSkeleton(); }
         // The remaining frame (ribcage/spine) topples to the floor, then sinks
         // as it powders. The limbs have already dropped as their own pieces.
         const tp = Math.min(1, (deathTimer - CRUMBLE_HANG) / 0.4);
