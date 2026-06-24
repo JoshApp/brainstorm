@@ -107,6 +107,30 @@ const BAYER_TEX = (() => {
   return t;
 })();
 
+// DARK REVEAL — the "forms emerge from black without a light source" look
+// (chiaroscuro / DELVE's dread-light direction). A darkness-WEIGHTED lift + gain:
+// pull the faint ambient/indirect micro-light OUT of near-black surfaces so their
+// FORM reads, while leaving torchlit areas untouched (weight = how dark the pixel
+// is). Applied BEFORE dither/quantize so the lift gets structured into the etched-
+// from-dark texture. Ported from the WebGL blit's dark-adapt. Tune live with
+// ?reveal=<mult> — 0 = off, 1 = default, 2 = strong.
+const REVEAL_SCALE = (() => {
+  const q = typeof location !== 'undefined' && new URLSearchParams(location.search).get('reveal');
+  const n = q == null || q === false ? NaN : parseFloat(q);
+  return Number.isFinite(n) ? n : 1;
+})();
+// GAIN-dominant: the gain MULTIPLIES, so it amplifies faint real shading (form
+// emerges) but does nothing to pure black (0 × anything = 0 → the void stays
+// void). LIFT is a tiny additive floor only — kept small so it doesn't paint the
+// black grey. This is what makes "forms poke out of the dark without a light".
+// GAIN-ONLY by default: the gain MULTIPLIES, so it amplifies faint real shading
+// (form emerges) and PRESERVES hue — it can't wash or tint. The additive LIFT is
+// what painted the darks (acid/washed), so it's OFF by default (0). Push either
+// live with ?reveal=<mult>.
+const REVEAL_GAIN = 0.5 * REVEAL_SCALE;    // darkness-weighted multiply (amplify faint form, hue-preserving)
+const REVEAL_LIFT = 0.0 * REVEAL_SCALE;    // additive floor — OFF (it painted the darks grey/acid)
+const REVEAL_TINT: readonly [number, number, number] = [0.82, 0.88, 1.0];  // only used if LIFT > 0
+
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
   resScale = s;
@@ -206,15 +230,35 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
   col = col.pow(_float(CONTRAST));
 
+  // ── DARK REVEAL — forms emerge from black (see notes at REVEAL_* above) ──
+  // darkness = how far this pixel is from white. Near-black surfaces get a tiny
+  // tinted lift + a darkness-weighted gain that amplifies the faint ambient
+  // already there; torchlit pixels (darkness≈0) are untouched. Done before the
+  // dither/quantize so the lift becomes the structured "etched from dark" texture.
+  if (REVEAL_GAIN > 0 || REVEAL_LIFT > 0) {
+    const maxC: any = col.r.max(col.g).max(col.b);
+    const darkness: any = _float(1.0).sub(maxC).max(_float(0.0));
+    col = col.add((vec3 as any)(REVEAL_TINT[0], REVEAL_TINT[1], REVEAL_TINT[2])
+      .mul(darkness).mul(_float(REVEAL_LIFT)));
+    col = col.mul(_float(1.0).add(darkness.mul(_float(REVEAL_GAIN))));
+  }
+
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──
   // DITHER — ordered 4x4 Bayer, sampled NEAREST+REPEAT in screen space (BAYER_TEX
   // above). Screen-locked structured pattern → a stable halftone in the darks,
   // NOT random grain. Centred (sample − 0.5) at amplitude ~1/24, matching WebGL.
+  // DITHER + QUANTIZE done in ~display (GAMMA) space, NOT linear. The pipeline
+  // applies the real sRGB OETF AFTER this node, so quantizing in linear put the
+  // first step at linear 1/32 → ~19% display = harsh "rasterized" dark bands.
+  // Encode to gamma, dither + quantize there (even perceptual steps, fine in the
+  // darks), decode back; the pipeline's sRGB then lands it. This both softens the
+  // dark rasterization AND makes form-emergence a smooth fine halftone.
   const px: any = screenCoordinate as any;
   const bayer: any = (texture as any)(BAYER_TEX, px.div(_float(4.0))).r;
-  col = col.add(bayer.sub(0.5).mul(_float(1.0 / 24.0)));
-  // QUANTIZE — hard PSX colour steps (floor(col*N + 0.5)/N).
-  col = col.mul(_float(QUANTIZE_LEVELS)).add(0.5).floor().div(_float(QUANTIZE_LEVELS));
+  let disp: any = col.max(_float(0.0)).pow(_float(1.0 / 2.2));                 // linear → gamma
+  disp = disp.add(bayer.sub(0.5).mul(_float(1.0 / 24.0)));                     // dither in gamma space
+  disp = disp.mul(_float(QUANTIZE_LEVELS)).add(0.5).floor().div(_float(QUANTIZE_LEVELS));  // quantize
+  col = disp.max(_float(0.0)).pow(_float(2.2));                               // gamma → linear
   // SCANLINES — every other output row slightly darker.
   const scan: any = (px.y.mod(_float(2.0)).lessThan(_float(1.0)) as any)
     .select(_float(1.0), _float(SCANLINE_DARKEN));
