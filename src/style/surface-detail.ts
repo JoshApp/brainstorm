@@ -67,9 +67,11 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // swizzle, so bumpMap's offset re-sample is a no-op → zero relief → flat walls.
   // Hand-rolling with the real screen-space derivative of `sampled.a` fixes it.
   // RELIEF_BOOST: the GLSL's relief (cfg.relief ~0.30) read flat under TSL — the
-  // perturbation magnitude lands much smaller here. Cranked hard to make the
-  // bricks pop; dial back toward 1 once it reads right.
-  const RELIEF_BOOST = 8;
+  // perturbation lands ~an order of magnitude smaller here (mip/anisotropy damps
+  // the sampled-height gradient more under the node renderer). 8x was still only
+  // "slight", so 20x. This drives BOTH the brick bevels AND the crevice/groove
+  // light-catch (the groove walls tilt into/out of the torchlight). Tune to taste.
+  const RELIEF_BOOST = 20;
   const h: any = sampled.a;
   const dH: any = (vec2 as any)(h.dFdx(), h.dFdy()).mul(float(cfg.relief * RELIEF_BOOST));
   const sp: any = positionView;
