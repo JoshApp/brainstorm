@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { isWebGPU, isWebGPUReady } from '../scene/renderer-mode';
+
+// WEBGPU SPIKE: rate-limit renderAsync failures to one console line.
+let webgpuRenderErrored = false;
 import { renderProbeActive, reportRenderPhase, gpuPassActive, gpuPassBegin, gpuPassEnd } from '../debug/render-probe';
 
 // PS1-era render pipeline, PSX-horror flavor.
@@ -697,8 +700,9 @@ export function renderWithStyle(
   // fire-and-forget per frame; nothing renders until init() has resolved.
   if (isWebGPU()) {
     if (isWebGPUReady()) {
-      void (renderer as unknown as { renderAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<void> })
-        .renderAsync(scene, camera);
+      (renderer as unknown as { renderAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<void> })
+        .renderAsync(scene, camera)
+        .catch((err) => { if (!webgpuRenderErrored) { webgpuRenderErrored = true; console.error('[webgpu] renderAsync failed (first only):', err); } });
     }
     return;
   }

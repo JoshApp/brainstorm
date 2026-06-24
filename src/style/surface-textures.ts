@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isWebGPU } from '../scene/renderer-mode';
 
 // Baked, MIPMAPPED tiling stone textures for the big surfaces. The patterns used
 // to be evaluated procedurally per-pixel in the surface material — which aliased
@@ -191,6 +192,16 @@ function ensureQuad(): { scene: THREE.Scene; cam: THREE.OrthographicCamera; mat:
 // ~1ms) so the data lands in a DataTexture, whose mipmaps three generates
 // reliably (RT mipmap regeneration is fiddly by comparison).
 export function bakeSurfaceTexture(renderer: THREE.WebGLRenderer, kind: SurfaceKind): THREE.DataTexture {
+  // WEBGPU SPIKE: the bake is a GLSL ShaderMaterial rendered + read back via
+  // readRenderTargetPixels — WebGL-only, and it runs at module-boot, so it would
+  // throw/hang the whole boot under WebGPU. Return a neutral 1×1 texture (white
+  // albedo multiplier, full height) so surfaces render FLAT and boot proceeds.
+  // Porting the bake to a TSL/compute path is Phase 2 (see WEBGPU-MIGRATION.md).
+  if (isWebGPU()) {
+    const flat = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+    flat.needsUpdate = true;
+    return flat;
+  }
   const tile = SURFACE_TILE[kind];
   const mode = kind === 'wall' ? 0 : kind === 'floor' ? 1 : kind === 'ceiling' ? 2 : kind === 'dressed' ? 3 : 4;
   const { scene, cam, mat } = ensureQuad();
