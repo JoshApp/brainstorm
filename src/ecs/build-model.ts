@@ -10,7 +10,7 @@ import { installNamedSurfaceDetail } from '../style/surface-detail';
 import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
 import { setMaterialChromaWebGPU } from '../style/banded-lighting-webgpu';
-import { vec3, normalWorld, positionWorld, cameraPosition } from 'three/tsl';
+import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep } from 'three/tsl';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
 } from '../scene/geometry-pool';
@@ -525,17 +525,54 @@ function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef):
   // PAINTED chroma — over-saturate toward the room's coloured light (pale bone in
   // a red room → vivid red). Runs via a per-material banded+chroma lighting model.
   if (def.chroma != null && def.chroma !== 1) setMaterialChromaWebGPU(mat, def.chroma);
-  if (!def.rim) return;
-  const power = def.rim.power ?? 2.5;
-  const intens = def.rim.intensity ?? 1.0;
-  const c = new THREE.Color(def.rim.color ?? 0xffffff);
+
+  const hasRim = !!def.rim;
+  const hasDissolve = !!def.dissolvable;
+  if (!hasRim && !hasDissolve) return;
+
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const viewDir = (cameraPosition as any).sub(positionWorld).normalize();
-  const fres = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(power);
-  const rim = (vec3 as any)(c.r, c.g, c.b).mul(fres).mul(intens);
   const e = mat.emissive, ei = mat.emissiveIntensity;
-  const base = (vec3 as any)(e.r * ei, e.g * ei, e.b * ei);
-  (mat as any).emissiveNode = base.add(rim);
+  let emissive: any = (vec3 as any)(e.r * ei, e.g * ei, e.b * ei);
+
+  // RIM — fresnel emissive ("forms emerge from black"). World-space so it's
+  // unambiguous under the node renderer's conventions. (darkReactive deferred.)
+  if (hasRim) {
+    const power = def.rim!.power ?? 2.5;
+    const intens = def.rim!.intensity ?? 1.0;
+    const c = new THREE.Color(def.rim!.color ?? 0xffffff);
+    const viewDir = (cameraPosition as any).sub(positionWorld).normalize();
+    const fres = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(power);
+    emissive = emissive.add((vec3 as any)(c.r, c.g, c.b).mul(fres).mul(intens));
+  }
+
+  // DISSOLVE — death crumble. The body erodes by chunky cells (alpha-cutout) with
+  // a smoldering ember front. Port of the GLSL onBeforeCompile path; the death
+  // sequence ramps userData.uDissolve 0→1 (a TSL uniform exposes .value the same
+  // way the {value} object did). Inert at 0 (gated by `active`).
+  if (hasDissolve) {
+    const uDissolve: any = (tslUniform as any)(0);
+    mat.userData.uDissolve = uDissolve;
+    // Stable bind-space position → chunky cell hash (floor) = blocky flakes, not
+    // per-pixel static; a faint top-down lean rides on top.
+    const lp: any = positionGeometry;
+    const cell = lp.mul(13.0).floor();
+    const n = cell.dot((vec3 as any)(12.9898, 78.233, 37.719)).sin().mul(43758.5453).fract();
+    const thresh = n.mul(0.85).add(lp.y.mul(0.5).add(0.5).mul(0.15));
+    const front = thresh.sub(uDissolve);
+    const active = (uDissolve.greaterThan(0.0) as any).select((tslFloat as any)(1), (tslFloat as any)(0));
+    // Erode: discard cells whose threshold the dissolve has passed (alpha cutout).
+    mat.alphaTest = 0.5;
+    (mat as any).opacityNode = (thresh.greaterThanEqual(uDissolve) as any).select((tslFloat as any)(1), (tslFloat as any)(0));
+    // HEAT — a wide additive ember band at the front so it reads on any albedo.
+    const heat = (tslSmoothstep as any)(0.0, 0.16, front).oneMinus();
+    const heatTerm = (vec3 as any)(1.0, 0.40, 0.10).mul(heat.mul(heat)).mul(uDissolve.mul(0.9).add(0.5)).mul(active);
+    // CORE — the hottest sliver at the very edge.
+    const core = (tslSmoothstep as any)(0.0, 0.02, front).oneMinus();
+    const coreTerm = (vec3 as any)(1.0, 0.72, 0.34).mul(core).mul(uDissolve).mul(active);
+    emissive = emissive.add(heatTerm).add(coreTerm);
+  }
+
+  (mat as any).emissiveNode = emissive;
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
