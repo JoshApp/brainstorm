@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { setWebGPUMode, setWebGPUReady } from './scene/renderer-mode';
 import { initEmbersGPU, tickEmbersGPU } from './effects/embers-gpu';
+import { DelveTiledLighting } from './scene/tiled-lighting';
 import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './controls/camera';
@@ -232,6 +233,14 @@ setWebGPUMode(WEBGPU);
 let renderer: THREE.WebGLRenderer;
 if (WEBGPU) {
   const wgpu = new WebGPURenderer({ canvas, antialias: false });
+  // Tiled (Forward+) lighting prototype (?tiled=1). Bins point lights into screen
+  // tiles via a compute pass so each fragment shades at most ~8 lights regardless
+  // of total count — lets the torch count climb without the per-fragment wall.
+  // A/B behind the flag until proven against the custom pipeline + banded model.
+  if (new URLSearchParams(window.location.search).get('tiled') === '1') {
+    (wgpu as any).lighting = new DelveTiledLighting();
+    if (import.meta.env.DEV) console.log('[webgpu] tiled lighting ON');
+  }
   // The codebase types the renderer as WebGLRenderer everywhere; WebGPURenderer
   // shares the common surface we use (render/setSize/setPixelRatio/info/…), so
   // cast for the transition. WebGL-specific paths (custom RTs, getContext, the
