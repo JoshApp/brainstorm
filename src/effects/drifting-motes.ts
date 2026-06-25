@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getTexture } from '../style/procedural-textures';
 import type { WalkableRect } from '../level/types';
+import { isWebGPU } from '../scene/renderer-mode';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { attribute, uniform as tslUniform, texture as tslTexture, time, hash, float, vec3 } from 'three/tsl';
 
 // Drifting motes — subtle volumetric ambient. A small pool of
 // additive billboarded specks slowly floats through every room,
@@ -59,6 +62,17 @@ let positions: Float32Array | null = null;
 const right = new THREE.Vector3();
 const up = new THREE.Vector3();
 
+// ── WebGPU path (one draw, ZERO per-frame buffer rewrite) ──
+// The CPU path rewrites every quad corner each frame + re-uploads the whole
+// position buffer. The GPU path bakes each mote's home + seed into STATIC vertex
+// attributes once; the vertex node drifts + billboards entirely on the GPU. Per
+// frame the CPU only refreshes the two camera-basis uniforms below.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let gpuMesh: THREE.Mesh | null = null;
+const nCamRight = (tslUniform as any)(new THREE.Vector3(1, 0, 0));
+const nCamUp = (tslUniform as any)(new THREE.Vector3(0, 1, 0));
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export function initDriftingMotes(
   scene: THREE.Object3D,
   walkableRects: WalkableRect[],
@@ -67,6 +81,8 @@ export function initDriftingMotes(
   clearDriftingMotes();
   if (walkableRects.length === 0) return;
   rects = walkableRects;
+
+  if (isWebGPU()) { initMotesWebGPU(scene, tint); return; }
 
   material = new THREE.MeshBasicMaterial({
     map: getTexture('fire-wisp'),
@@ -115,7 +131,97 @@ export function initDriftingMotes(
   }
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Build the GPU mote batch: bake home + seed per mote into static attributes,
+// then a node material that drifts (linear velocity over a looping life) and
+// camera-billboards each quad in the vertex node. Mirrors the CPU drift/fade
+// exactly, so the look is identical — only the work moves to the GPU.
+function initMotesWebGPU(scene: THREE.Object3D, tint: number): void {
+  const N = MOTE_COUNT;
+  const home = new Float32Array(N * 4 * 3);    // per-vertex mote anchor (4 verts share)
+  const corner = new Float32Array(N * 4 * 2);  // which corner: ±0.5
+  const seed = new Float32Array(N * 4);        // per-mote random
+  const uvs = new Float32Array(N * 4 * 2);
+  const position = new Float32Array(N * 4 * 3); // dummy (positionNode overrides)
+  const index = new Uint16Array(N * 6);
+  const CORNERS = [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5];
+
+  for (let i = 0; i < N; i++) {
+    const r = pickRect(rects);
+    const hx = r.x - r.w / 2 + Math.random() * r.w;
+    const hz = r.z - r.d / 2 + Math.random() * r.d;
+    const hy = SPAWN_Y_MIN + Math.random() * (SPAWN_Y_MAX - SPAWN_Y_MIN);
+    const s = Math.random();
+    for (let c = 0; c < 4; c++) {
+      const v = i * 4 + c;
+      home[v * 3] = hx; home[v * 3 + 1] = hy; home[v * 3 + 2] = hz;
+      corner[v * 2] = CORNERS[c * 2]; corner[v * 2 + 1] = CORNERS[c * 2 + 1];
+      seed[v] = s;
+      uvs[v * 2] = c === 1 || c === 2 ? 1 : 0;
+      uvs[v * 2 + 1] = c >= 2 ? 1 : 0;
+    }
+    const v0 = i * 4;
+    index.set([v0, v0 + 1, v0 + 2, v0, v0 + 2, v0 + 3], i * 6);
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(position, 3));
+  geom.setAttribute('home', new THREE.BufferAttribute(home, 3));
+  geom.setAttribute('corner', new THREE.BufferAttribute(corner, 2));
+  geom.setAttribute('seed', new THREE.BufferAttribute(seed, 1));
+  geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geom.setIndex(new THREE.BufferAttribute(index, 1));
+  geom.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
+
+  const aHome: any = (attribute as any)('home', 'vec3');
+  const aCorner: any = (attribute as any)('corner', 'vec2');
+  const aSeed: any = (attribute as any)('seed', 'float');
+
+  // Looping life → linear drift from home (matches the CPU velocity model).
+  const lifespan = (float as any)(LIFE_MIN).add((hash as any)(aSeed).mul(LIFE_MAX - LIFE_MIN));
+  const phase = time.add((hash as any)(aSeed.add(11)).mul(40.0)).div(lifespan).fract();
+  const age = phase.mul(lifespan);
+  const vx = (hash as any)(aSeed.add(1)).sub(0.5).mul(DRIFT_SPEED_LAT);
+  const vy = (hash as any)(aSeed.add(2)).mul(0.5).add(0.5).mul(DRIFT_SPEED_UP);
+  const vz = (hash as any)(aSeed.add(3)).sub(0.5).mul(DRIFT_SPEED_LAT);
+  const center = aHome.add((vec3 as any)(vx, vy, vz).mul(age));
+
+  // Scale fade in/out (same ramp as the CPU path) — birth/death as a vanishing speck.
+  const fIn = phase.div(FADE_FRACTION).clamp(0, 1);
+  const fOut = (float as any)(1).sub(phase).div(FADE_FRACTION).clamp(0, 1);
+  const half = (float as any)(BASE_SIZE).mul(fIn.min(fOut)).mul(0.5);
+
+  const worldPos = center
+    .add(nCamRight.mul(aCorner.x.mul(half)))
+    .add(nCamUp.mul(aCorner.y.mul(half)));
+
+  const mat: any = new (MeshBasicNodeMaterial as any)();
+  mat.positionNode = worldPos;
+  const c = new THREE.Color(tint);
+  mat.colorNode = (tslTexture as any)(getTexture('fire-wisp')).mul((vec3 as any)(c.r, c.g, c.b)).mul(0.55);
+  mat.transparent = true;
+  mat.blending = THREE.AdditiveBlending;
+  mat.depthWrite = false;
+  mat.fog = true;
+  mat.side = THREE.DoubleSide;
+
+  gpuMesh = new THREE.Mesh(geom, mat);
+  gpuMesh.frustumCulled = false;
+  gpuMesh.renderOrder = 2;
+  gpuMesh.userData.dbgKind = 'fx';
+  scene.add(gpuMesh);
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export function tickDriftingMotes(dt: number, camera: THREE.Camera): void {
+  // GPU path: the whole drift + billboard runs in the vertex node. All the CPU
+  // does is hand the GPU this frame's camera right/up. No buffer rewrite.
+  if (gpuMesh) {
+    const e = camera.matrixWorld.elements;
+    nCamRight.value.set(e[0], e[1], e[2]).normalize();
+    nCamUp.value.set(e[4], e[5], e[6]).normalize();
+    return;
+  }
   if (!geometry || !positions) return;
 
   // Screen-aligned billboard basis: the camera's world right + up. Writing
@@ -157,12 +263,19 @@ export function tickDriftingMotes(dt: number, camera: THREE.Camera): void {
  *  measure what the motes cost. No-op if motes aren't initialised. */
 export function setMotesHidden(hidden: boolean): void {
   if (mesh) mesh.visible = !hidden;
+  if (gpuMesh) gpuMesh.visible = !hidden;
 }
 
 export function clearDriftingMotes(): void {
   mesh?.parent?.remove(mesh);
   geometry?.dispose();
   material?.dispose();
+  if (gpuMesh) {
+    gpuMesh.parent?.remove(gpuMesh);
+    gpuMesh.geometry.dispose();
+    (gpuMesh.material as THREE.Material).dispose();
+    gpuMesh = null;
+  }
   motes = [];
   rects = [];
   mesh = null;
