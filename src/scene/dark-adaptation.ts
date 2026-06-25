@@ -26,20 +26,22 @@ import type { WalkableRegion } from '../level/walkable';
 // readback (framebuffer metering stalled the pipeline) — this is analytic.
 const LIT_DARK = 0.18;
 const LIT_BRIGHT = 0.85;
-// Slow UP, fast DOWN — feedback: previous "fast up + slow down"
-// orientation felt twitchy ("it ramps up immediately and then
-// fades"). Inverted now: the dark has to GROW on you (~1.5s to
-// fully adapt) before your eye lifts it, then any bright light
-// snaps you back almost instantly (~0.1s). Models how real eyes
-// actually work — dark adaptation takes seconds-to-minutes;
-// light reflex is near-instant.
-const ADAPT_UP_RATE = 0.45;          // per-sec approach while dark (~2.5s to adapt — slower, less twitchy)
-const ADAPT_DOWN_RATE = 14.0;        // per-sec approach while lit (near-instant re-blind — the light reflex)
+// The eye adaptation (0..1) is CAPPED and climbs LINEARLY. Feedback: with an
+// exponential approach it "filled almost immediately" (that curve front-loads —
+// most of the rise is in the first second) and the high end pushed the visibility
+// multiply too far (1.6–1.8 in a pitch-black corner). Now:
+//   - the target SCALES with darkness up to ADAPT_MAX (a hard cap), so even pure
+//     black never lifts more than this, and partial gloom adapts proportionally;
+//   - UP is a steady LINEAR climb over ~ADAPT_UP_SECONDS (a real, felt ramp, not a
+//     front-loaded snap); DOWN stays a near-instant exponential re-blind.
+const ADAPT_MAX = 0.3;               // hard ceiling on the 0..1 adaptation (was effectively 1.0)
+const ADAPT_UP_SECONDS = 4.0;        // linear seconds to climb the full 0..ADAPT_MAX range
+const ADAPT_DOWN_RATE = 14.0;        // per-sec exponential while lit — near-instant re-blind (light reflex)
 
-// Brightness multiplier at full adaptation. The blit shader multiplies the
-// image by darkAdaptBrightness() (1.0 = neutral), and the AmbientLight is
-// scaled by the same factor as a secondary fill.
-const MAX_BRIGHTNESS_BOOST = 0.8;    // → 1.8× at full dark
+// Brightness multiplier at adaptation. The blit shader multiplies the image by
+// darkAdaptBrightness(); at the ADAPT_MAX cap this tops out at ~1.24 (was ~1.8).
+// The WebGPU shader lift (render-webgpu.ts) reads the same 0..ADAPT_MAX value.
+const MAX_BRIGHTNESS_BOOST = 0.8;    // → 1 + 0.3×0.8 = 1.24 at the cap
 
 let adaptation = 0;   // 0..1
 
@@ -182,10 +184,16 @@ export function sampleLitSignal(
  * Dark → adapt toward 1; lit → toward 0. Use realDt so it runs at real-time.
  */
 export function tickDarkAdaptation(lit: number, dt: number): number {
-  // LIT_BRIGHT → 0, LIT_DARK → 1 (smoothstep handles edge0 > edge1).
-  const target = smoothstep(LIT_BRIGHT, LIT_DARK, lit);
-  const rate = target > adaptation ? ADAPT_UP_RATE : ADAPT_DOWN_RATE;
-  adaptation += (target - adaptation) * (1 - Math.exp(-rate * dt));
+  // LIT_BRIGHT → 0, LIT_DARK → 1 (smoothstep handles edge0 > edge1), then SCALED
+  // by the cap — the most it ever reaches is ADAPT_MAX, partial gloom less.
+  const target = smoothstep(LIT_BRIGHT, LIT_DARK, lit) * ADAPT_MAX;
+  if (target > adaptation) {
+    // UP — steady LINEAR climb (not the exponential front-load that snapped on).
+    adaptation = Math.min(target, adaptation + (ADAPT_MAX / ADAPT_UP_SECONDS) * dt);
+  } else {
+    // DOWN — fast exponential re-blind (the light reflex).
+    adaptation += (target - adaptation) * (1 - Math.exp(-ADAPT_DOWN_RATE * dt));
+  }
   return adaptation;
 }
 

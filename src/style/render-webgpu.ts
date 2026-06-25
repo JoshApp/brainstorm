@@ -109,7 +109,7 @@ const BAYER_TEX = (() => {
 
 // EYE DARK-ADAPTATION — the reveal is DRIVEN by dark-adaptation.ts (the same 0..1
 // ramp the WebGL blit uses), NOT always-on. When the eye lingers in a dark,
-// torchless area the value RAMPS UP (~1.5s) and the grade lifts the near-black so
+// torchless area the value RAMPS UP (~4s) and the grade lifts the near-black so
 // FORM emerges; stepping back toward torchlight RAMPS DOWN fast (~0.1s) and
 // re-blinds you. render-target.ts's setDarkAdapt() pushes the value here each
 // frame (so the SAME signal drives WebGL and WebGPU). A live uniform — no pipeline
@@ -140,18 +140,9 @@ export function setWebGPUDarkAdapt(v: number): void {
 // NOTE: these are LINEAR-space values and the pipeline applies sRGB AFTER, which
 // hugely amplifies small darks (linear 0.024 → ~0.17 display). So the additive
 // floor-raise must be TINY in linear to read as a subtle display lift.
-// CHIAROSCURO INTENSIFY — the reveal is CONTRAST, not brightness. As the eye
-// adapts, the dark range polarizes around a low pivot: a form's faintly-lit side
-// pulls UP, its unlit side sinks DOWN — so SHAPES separate from the black and read
-// sculptural, while the AVERAGE level doesn't rise (no wash, no grey; the void
-// stays void). Hue-preserving (scale by value), NEAR-only (far stays dark), and
-// adapt-ramped (shapes sharpen out of the black over ~2.5s, not "fade in"). All
-// LINEAR thresholds (the pipeline applies sRGB after).
-const ADAPT_NEAR_M = 4.0;       // full effect within this many metres of the eye
-const ADAPT_FAR_M = 10.0;       // faded to 0 by here — beyond stays dark
-const CONTRAST_AMT = 0.85;      // contrast strength at full adapt (exponent k up to 1 + this)
-const CONTRAST_PIVOT = 0.015;   // LINEAR level to polarize around — above it brightens, below it sinks
-const CONTRAST_RANGE = 0.09;    // only lum below this (linear) gets it — the lit side is untouched
+const ADAPT_LIFT: readonly [number, number, number] = [0.0025, 0.0024, 0.0021];  // additive floor-raise (faint warm-neutral), linear — sRGB makes this a gentle display lift
+const ADAPT_GAIN = 0.1;       // gentle multiply on the darks — pulls their faint form up a touch (space-stable)
+const ADAPT_CUTOFF = 0.30;    // LINEAR brightness above which the eye lift fades to 0 — keep it to the genuinely crushed shadows
 
 /** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
 export function setWebGPUResolutionScale(s: number): void {
@@ -223,10 +214,6 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // linear space (a darkening multiply). getViewZNode() is camera-space Z
   // (negative); negate → metres from camera.
   const distM = (scenePass as any).getViewZNode().negate();
-  // CONSTANT crush — the FAR stays dark + threatening (the nearsighted magic stays
-  // intact). The dark-adapt reveal is NEAR-only + midtone-banded in the grade below
-  // — it must NOT open the distance (that traded the nearsighted feel for "see
-  // wider", which killed the magic).
   const crush = (mix as any)(float(1.0), float(CRUSH_FLOOR), (smoothstep as any)(CRUSH_START_M, CRUSH_END_M, distM));
   lit = lit.mul(crush);
 
@@ -271,20 +258,17 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // CONTRAST / BLACK-CRUSH — pow > 1 darkens mids/darks hard, keeps highlights.
   col = col.pow(_float(CONTRAST));
 
-  // ── EYE DARK-ADAPTATION — chiaroscuro intensify (see notes above) ──
-  // Polarize the dark range around CONTRAST_PIVOT as the eye adapts: lit form-faces
-  // pull up, shadowed faces sink, so shapes SEPARATE from the black. darkW keeps it
-  // to the darks (lit side untouched), nearW to the near field (far stays dark).
-  // Hue-preserved by scaling the colour by the value ratio.
+  // ── EYE DARK-ADAPTATION — soften the dark (see ADAPT_* notes above) ──
+  // darkW = 1 in shadow/fog, ramping to 0 by ADAPT_CUTOFF brightness, so the LIT
+  // side is left exactly as-is (no overexposure). Within the darks we raise the
+  // floor (additive — the crush/fog loosens) and gently amplify (multiply — form
+  // swims up), all scaled by darkAdaptNode (0 in torchlight, 1 in a dark hall).
   {
     const lum: any = col.r.max(col.g).max(col.b);
-    const nearW: any = _float(1.0).sub((smoothstep as any)(_float(ADAPT_NEAR_M), _float(ADAPT_FAR_M), distM));
-    const darkW: any = _float(1.0).sub((smoothstep as any)(_float(0.0), _float(CONTRAST_RANGE), lum));
-    const w: any = (darkAdaptNode as any).mul(nearW).mul(darkW);          // how much contrast, here
-    const k: any = _float(1.0).add(w.mul(_float(CONTRAST_AMT)));          // contrast exponent (>1 in the adapted near-darks)
-    const newLum: any = lum.sub(_float(CONTRAST_PIVOT)).mul(k).add(_float(CONTRAST_PIVOT)).max(_float(0.0));
-    const scale: any = newLum.div(lum.max(_float(1e-4)));                 // value ratio — preserves hue
-    col = col.mul(scale);
+    const darkW: any = _float(1.0).sub((smoothstep as any)(_float(0.05), _float(ADAPT_CUTOFF), lum));
+    const a: any = (darkAdaptNode as any).mul(darkW);   // adapt, restricted to the darks
+    col = col.add((vec3 as any)(ADAPT_LIFT[0], ADAPT_LIFT[1], ADAPT_LIFT[2]).mul(a));
+    col = col.mul(_float(1.0).add(a.mul(_float(ADAPT_GAIN))));
   }
 
   // ── PSX GRADE TAIL (ported from the WebGL blit) ──
