@@ -3,6 +3,11 @@ import { WebGPURenderer } from 'three/webgpu';
 import { setWebGPUMode, setWebGPUReady } from './scene/renderer-mode';
 import { initEmbersGPU, tickEmbersGPU } from './effects/embers-gpu';
 import { DelveTiledLighting } from './scene/tiled-lighting';
+import { initLampSpot, tickLampSpot } from './player/lamp-spot';
+import { setLampSpotActive } from './scene/light-pool';
+
+// Lamp spot-shadow split (?lampspot=1): cube shadow (6 passes) → single map (1).
+const LAMP_SPOT = new URLSearchParams(window.location.search).get('lampspot') === '1';
 import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './controls/camera';
@@ -313,6 +318,10 @@ scene.add(ambient);
 // buffers + Points cloud now; the init/update compute runs from the loop. No-op
 // on WebGL.
 initEmbersGPU(renderer, scene);
+
+// Lamp spot-shadow: add the forward SpotLight + tell the pool to dim/de-shadow
+// the omni lamp point. The split makes the lamp's shadow a single-map render.
+if (LAMP_SPOT) { initLampSpot(scene); setLampSpotActive(true); }
 
 // Inspection mode (preview snaps) lives in src/debug/inspect-mode.ts — the
 // studio lighting rig, PSX bypass, backdrop, and subject auto-framing are all
@@ -1467,6 +1476,7 @@ function tickInner() {
   // Advance the GPU compute embers once per drawn frame, BEFORE either render
   // path (fixed-step presentPass or variable runSystems) reads the buffer.
   tickEmbersGPU();
+  if (LAMP_SPOT) tickLampSpot(camera);   // place + aim the lamp's shadow spotlight
 
   if (USE_FIXED_STEP) {
     // FIXED-STEP path (?fixedstep=1): advance the SIM in fixed 1/60s quanta

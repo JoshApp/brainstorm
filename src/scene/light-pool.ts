@@ -187,9 +187,16 @@ export function getShadowMode(): ShadowMode {
   return shadowMode;
 }
 
+// Spot-shadow split (?lampspot=1): the lamp's cube-shadow point light yields its
+// shadow to a single-map forward SpotLight (6 passes → 1) and dims to a fill.
+let lampSpotActive = false;
+const LAMP_OMNI_SHARE = 0.4;   // omni point's share of the lamp light when the spot is on
+export function setLampSpotActive(on: boolean): void { lampSpotActive = on; applyShadowMode(); }
+
 function applyShadowMode(): void {
   // hero = lamp only; single = nearest world light only; all = lamp + nearest few.
-  const lampCasts = shadowMode === 'hero' || shadowMode === 'all';
+  // Under spot-shadow mode the omni lamp NEVER casts (the SpotLight does instead).
+  const lampCasts = (shadowMode === 'hero' || shadowMode === 'all') && !lampSpotActive;
   const envCasters = shadowMode === 'single' ? 1 : shadowMode === 'all' ? 4 : 0;
   for (const light of slotsByCategory.lamp) light.castShadow = lampCasts;
   const env = slotsByCategory.environment;
@@ -441,7 +448,10 @@ export function tickLightPool(camera: THREE.Camera, losCheck?: LOSChecker): void
         const isEnv = src.category === 'environment';
         slot.intensity = (src.getIntensity ? src.getIntensity() : src.intensity) * vis
           * (isEnv ? envStrengthMul : 1)
-          * (src.priority === 'low' ? wickFillMul : 1);
+          * (src.priority === 'low' ? wickFillMul : 1)
+          // Spot-shadow mode: the lamp's omni point drops to a dim fill; the
+          // forward SpotLight (lamp-spot.ts) carries the rest + casts the shadow.
+          * (src.category === 'lamp' && lampSpotActive ? LAMP_OMNI_SHARE : 1);
         slot.distance = src.distance * (isEnv ? envRangeMul : 1);
         slot.decay = src.decay;
         if (src.getColor) {

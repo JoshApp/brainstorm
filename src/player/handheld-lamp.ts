@@ -320,6 +320,13 @@ export function attachLamp(camera: THREE.Camera) {
   });
 }
 
+/** Live lamp intensity (flicker included) — for the spot-shadow split to track. */
+export function getLampIntensity(): number { return lamp?.currentIntensity ?? 0; }
+/** Live lamp world position (the swinging lantern body), or null if unattached. */
+export function getLampWorldPos(out: THREE.Vector3): THREE.Vector3 | null {
+  return lamp ? out.copy(lamp.worldPos) : null;
+}
+
 /** World-space position of the lantern's RING ANCHOR — the slot the
  *  off-hand's palm aligns to (the saber-grip pattern, but for a ring
  *  instead of a hilt). Lives inside the body group, so it swings with
