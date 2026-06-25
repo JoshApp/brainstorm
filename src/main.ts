@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { setWebGPUMode, setWebGPUReady } from './scene/renderer-mode';
+import { initEmbersGPU, tickEmbersGPU } from './effects/embers-gpu';
 import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './controls/camera';
@@ -298,6 +299,11 @@ scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 // flames stay vivid (a low exposure dimmed them to faint/transparent).
 const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY * (WEBGPU ? 0.3 : 1));
 scene.add(ambient);
+
+// GPU compute embers (WebGPU-only) — rise off the torches. Builds the storage
+// buffers + Points cloud now; the init/update compute runs from the loop. No-op
+// on WebGL.
+initEmbersGPU(renderer, scene);
 
 // Inspection mode (preview snaps) lives in src/debug/inspect-mode.ts — the
 // studio lighting rig, PSX bypass, backdrop, and subject auto-framing are all
@@ -1448,6 +1454,10 @@ function tickInner() {
   // Cheap when off. Called BEFORE the pause snapshot below so a budget that
   // ends this frame re-pauses the world for the same frame's update gate.
   harnessTickFn?.(realDt, !isWorldPaused());
+
+  // Advance the GPU compute embers once per drawn frame, BEFORE either render
+  // path (fixed-step presentPass or variable runSystems) reads the buffer.
+  tickEmbersGPU();
 
   if (USE_FIXED_STEP) {
     // FIXED-STEP path (?fixedstep=1): advance the SIM in fixed 1/60s quanta
