@@ -14,9 +14,17 @@
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
 import { pass, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, mix,
-  luminance, texture, uniform,
+  luminance, texture, uniform, mrt, output, normalView,
   acesFilmicToneMapping, agxToneMapping, neutralToneMapping } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { ao } from 'three/addons/tsl/display/GTAONode.js';
+
+// SSAO (?ssao=1) — GTAO contact-darkening from an MRT depth+normal G-buffer.
+// Budget-first for mobile: low sample count + half-res of the already-0.4x pass.
+const SSAO = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('ssao') === '1';
+const AO_SAMPLES = 8;        // GTAO sample count (low → 3 directions, cheap)
+const AO_RES_SCALE = 0.5;    // AO buffer res relative to the (0.4x) scene pass
+const AO_STRENGTH = 1.3;     // occlusion darkening boost (grimdark leans dark)
 
 let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
@@ -171,6 +179,9 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   scenePass = pass(scene, camera);
   scenePass.setResolutionScale(resScale);
 
+  // SSAO: render normals into a second MRT target so GTAO can read depth+normal.
+  if (SSAO) (scenePass as any).setMRT((mrt as any)({ output, normal: normalView }));
+
   // CHUNKY PS1 UPSCALE — the low-res pass target defaults to LinearFilter, so the
   // upscale to screen is SMOOTH: soft walls, soft edges, washed-out PS1 pixels.
   // WebGL upscales its low-res target with NEAREST (sharpBilinear off by default)
@@ -189,14 +200,29 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // WebGL blit: red sampled outward, blue inward, by CA_AMOUNT × distance-from-
   // centre. 2 extra taps of the (low-res) scene texture; all downstream is ALU.
   // Done on the raw scene (pre-expose/bloom) exactly as the WebGL path did it.
-  const tex: any = (scenePass as any).getTextureNode();
+  const tex: any = SSAO ? (scenePass as any).getTextureNode('output') : (scenePass as any).getTextureNode();
   const suv: any = screenUV as any;
   const caOff: any = suv.sub(0.5).mul(CA_AMOUNT);
-  const sceneCA: any = (vec3 as any)(
+  let sceneCA: any = (vec3 as any)(
     tex.sample(suv.add(caOff)).r,
     tex.sample(suv).g,
     tex.sample(suv.sub(caOff)).b,
   );
+
+  // SSAO — multiply contact occlusion into the scene BEFORE expose/bloom, so
+  // crevices + object bases sit in their own dark (grimdark: only darkens). The
+  // GTAO node runs its own half-res pass off the MRT depth+normal.
+  if (SSAO) {
+    const aoPass: any = (ao as any)(
+      (scenePass as any).getTextureNode('depth'),
+      (scenePass as any).getTextureNode('normal'),
+      camera,
+    );
+    aoPass.samples.value = AO_SAMPLES;
+    aoPass.resolutionScale = AO_RES_SCALE;
+    aoPass.scale.value = AO_STRENGTH;
+    sceneCA = sceneCA.mul(aoPass.getTextureNode().r);
+  }
 
   // EXPOSE FIRST. r184's brighter lighting must be brought into range BEFORE
   // bloom, or bloom (threshold 1.0) catches half the scene and veils everything
