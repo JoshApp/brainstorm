@@ -20,14 +20,16 @@ const MAX_TORCHES = 16;
 const RISE_H = 2.6;           // metres an ember climbs over its life
 const DRIFT = 0.30;           // horizontal sway amplitude (grows as it rises)
 const JITTER = 0.16;          // per-ember scatter around the torch
-const LIFE_MIN = 1.8, LIFE_MAX = 3.8;
+const LIFE_MIN = 2.4, LIFE_MAX = 4.8;   // longer life = slower rise + drift
 
 let inited = false;
 let points: THREE.Points | null = null;
 
 const torchArr = (uniformArray as any)(Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3()));
+const torchColArr = (uniformArray as any)(Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3(1, 0.5, 0.16)));
 const torchCount = (uniform as any)(0);
 const _scratch: THREE.Vector3[] = Array.from({ length: MAX_TORCHES }, () => new THREE.Vector3());
+const _tmpCol = new THREE.Color();
 
 export function initEmbersGPU(_renderer: any, scene: THREE.Scene): void {
   if (inited || !isWebGPU()) return;
@@ -41,6 +43,7 @@ export function initEmbersGPU(_renderer: any, scene: THREE.Scene): void {
   // Spawn torch position (read from the per-frame uniform array, indexed by hash).
   const tIdx = (hash as any)(i).mul(torchCount.max(1)).floor().toInt();
   const spawn = (torchArr as any).element(tIdx);
+  const tColor = (torchColArr as any).element(tIdx);   // the spawn torch's light colour
   const jx = (hash as any)(i.add(3)).sub(0.5).mul(JITTER);
   const jz = (hash as any)(i.add(4)).sub(0.5).mul(JITTER);
 
@@ -61,7 +64,7 @@ export function initEmbersGPU(_renderer: any, scene: THREE.Scene): void {
 
   const mat: any = new (PointsNodeMaterial as any)();
   mat.positionNode = finalPos;
-  mat.colorNode = (vec3 as any)(1.0, 0.5, 0.16).mul(glow.mul(2.8));   // HDR ember orange → blooms
+  mat.colorNode = tColor.mul(glow.mul(2.8));   // ember takes its torch's light colour, HDR so it blooms
   mat.sizeNode = (float as any)(3.0).mul(glow.mul(0.6).add(0.4));
   mat.size = 3.0;
   mat.sizeAttenuation = true;
@@ -88,6 +91,9 @@ export function tickEmbersGPU(): void {
   forEachLight('environment', (src: any) => {
     if (n >= MAX_TORCHES || !src.id.startsWith('torch-')) return;
     _scratch[n].copy(src.position);
+    // The torch's (possibly flicker-animated) light colour → this torch's embers.
+    if (src.getColor) src.getColor(_tmpCol); else _tmpCol.setHex(src.color);
+    (torchColArr as any).array[n].set(_tmpCol.r, _tmpCol.g, _tmpCol.b);
     n++;
   });
   for (let k = 0; k < n; k++) (torchArr as any).array[k].copy(_scratch[k]);
