@@ -161,6 +161,10 @@ export function initLightPool(sc: THREE.Scene): void {
     for (let i = 0; i < n; i++) {
       const light = new THREE.PointLight(0xffffff, 0, 5, 1.4);
       light.position.set(0, PARK_Y, 0);
+      // Under tiled lighting the lamp stays on the normal (shadowed) path — it's
+      // the only shadow-caster, and tiled point lights cast none. Tagged here;
+      // DelveTiledLighting routes noTile point lights away from the tiled bin.
+      if (cat === 'lamp') light.userData.noTile = true;
       configureSlotShadow(light, cat === 'lamp');
       sc.add(light);
       slotsByCategory[cat].push(light);
