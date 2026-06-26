@@ -384,15 +384,29 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-/** Render one frame through the native WebGPU pipeline. Fire-and-forget per
- *  frame (renderAsync awaits backend init internally). */
+// FRAMES-IN-FLIGHT = 2. renderAsync is async; submitting fire-and-forget let the
+// CPU run arbitrarily far ahead of the GPU, so present latency wandered frame to
+// frame (steady fps, but judder). The loop gates on the PREVIOUS frame before
+// starting the next — so frame N's CPU still overlaps frame N-1's GPU (that
+// overlap is the whole point of async; awaiting every frame tanked fps 56→40),
+// but the queue can never exceed 2, which evens the present cadence.
+let pendingFrame: Promise<void> | null = null;   // the most recent submit
+let gateFrame: Promise<void> | null = null;       // the one before it — what the loop awaits
+
+/** Render one frame through the native WebGPU pipeline. */
 export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   ensurePipeline(renderer, scene, camera);
   // Reset per frame so renderer.info reflects THIS frame's total (the pipeline's
-  // passes accumulate into it); without this it climbs without bound. The 4Hz
-  // perf overlay reads it after the ~16ms async render has settled, so the count
-  // is the last completed frame's — usable, if higher than WebGL's scene-only
-  // count (it includes the bloom + output passes).
+  // passes accumulate into it); without this it climbs without bound.
   renderer.info.reset();
-  void (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
+  gateFrame = pendingFrame;   // the previous frame becomes the gate
+  pendingFrame = (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
+}
+
+/** Await the frame-before-last (caps in-flight at 2, keeping one overlap). The
+ *  loop calls this before scheduling the next rAF. Resolves immediately if none. */
+export function flushWebGPUFrame(): Promise<void> {
+  const p = gateFrame;
+  gateFrame = null;
+  return (p ?? Promise.resolve()).catch(() => {});
 }
