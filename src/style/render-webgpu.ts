@@ -59,6 +59,14 @@ export function setGradeBypass(on: boolean): void {
   gradeBypass = on;
   rebuildWebGPUPipeline();
 }
+// Scene-only bypass (probe) — outputs the bare scene sample so full−sceneOnly
+// prices the whole post stack vs the scene render.
+let sceneOnly = false;
+export function setSceneOnly(on: boolean): void {
+  if (on === sceneOnly) return;
+  sceneOnly = on;
+  rebuildWebGPUPipeline();
+}
 // TONEMAP — the response curve that turns linear HDR light into display values.
 // The WebGL/main path got this for free from renderer.toneMapping = ACESFilmic;
 // the WebGPU path runs NoToneMapping (main.ts) so WITHOUT this node bright torch-
@@ -305,6 +313,10 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   };
   // ?ssao=show — output the raw occlusion (grayscale) so the AO is unmistakable.
   if (SSAO_SHOW && ssaoAoR) { build((vec4 as any)((vec3 as any)(ssaoAoR), 1.0)); return; }
+  // Scene-only bypass — output the bare scene sample (skips ALL post: expose,
+  // bloom, crush, inscatter, grade). The probe diffs full vs this to price the
+  // post stack vs the scene render (geometry + lighting + material shaders).
+  if (sceneOnly) { build((vec4 as any)(sceneCA, 1.0)); return; }
   if (gradeBypass) { build((vec4 as any)((lit as any).rgb, 1.0)); return; }
 
   // ── Colour grade + PSX tail, in display space after the tonemap below ──

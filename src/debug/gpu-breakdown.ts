@@ -1,6 +1,8 @@
-import { setGradeBypass } from '../style/render-webgpu';
+import { setGradeBypass, setSceneOnly } from '../style/render-webgpu';
 import { setBloomEnabled, getBloomEnabled } from '../style/render-target';
 import { setShadowMode, getShadowMode } from '../scene/light-pool';
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import type * as THREE from 'three';
 
 // PER-STAGE GPU breakdown (WebGPU). Three doesn't expose per-pass timestamps, so
 // we price each stage by DIFFERENCE: toggle it off, measure the whole-frame GPU ms
@@ -27,7 +29,7 @@ async function median(renderer: any, frames = 16, warm = 8): Promise<number> {
 
 /** Run the stage sweep and return a labelled GPU-ms breakdown. ~5s (it warms +
  *  samples each configuration). Restores every toggle to where it started. */
-export async function gpuBreakdown(renderer: any): Promise<Record<string, number>> {
+export async function gpuBreakdown(renderer: any, scene?: THREE.Scene): Promise<Record<string, number>> {
   if (!renderer?.resolveTimestampsAsync) return { error: -1 };
   const round = (x: number): number => Math.round(x * 100) / 100;
 
@@ -40,18 +42,41 @@ export async function gpuBreakdown(renderer: any): Promise<Record<string, number
   setShadowMode('off'); const noShadow = await median(renderer); setShadowMode(prevShadow);
 
   setGradeBypass(true); const noGrade = await median(renderer); setGradeBypass(false);
+  setSceneOnly(true); const sceneOnly = await median(renderer);
+
+  // Split the SCENE RENDER (measured in scene-only mode) by overriding every
+  // mesh's material: unlit basic = pure rasterization; plain standard = geometry
+  // + PBR lighting (no surface-detail/banded/reveal nodes). The deltas isolate
+  // rasterization / lighting / material-shader complexity.
+  let raster = 0, litPlain = 0;
+  if (scene) {
+    const prev = scene.overrideMaterial;
+    scene.overrideMaterial = new (MeshBasicNodeMaterial as any)({ color: 0x808080 });
+    raster = await median(renderer);
+    scene.overrideMaterial = new (MeshStandardNodeMaterial as any)({ color: 0x808080, roughness: 0.9 });
+    litPlain = await median(renderer);
+    scene.overrideMaterial = prev ?? null;
+  }
+  setSceneOnly(false);
   await median(renderer, 2, 8);   // settle back to the full pipeline
 
   const bloom = Math.max(0, full - noBloom);
   const shadow = Math.max(0, full - noShadow);
   const grade = Math.max(0, full - noGrade);
-  const rest = Math.max(0, full - bloom - shadow - grade);   // scene + lighting + base passes
-  return {
+  const post = Math.max(0, full - sceneOnly);
+  const out: Record<string, number> = {
     fullMs: round(full),
+    sceneRenderMs: round(sceneOnly),
+    postTotalMs: round(post),
     bloomMs: round(bloom),
+    gradeTailMs: round(grade),
     shadowMs: round(shadow),
-    gradeMs: round(grade),
-    sceneAndLightingMs: round(rest),
   };
+  if (scene) {
+    out.rasterMs = round(raster);                        // geometry + upscale, no lighting/detail
+    out.lightingMs = round(Math.max(0, litPlain - raster));   // PBR lighting cost
+    out.materialShaderMs = round(Math.max(0, sceneOnly - litPlain)); // surface-detail/banded/reveal nodes
+  }
+  return out;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

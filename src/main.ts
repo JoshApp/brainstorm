@@ -328,7 +328,7 @@ if (LAMP_SPOT) { initLampSpot(scene); setLampSpotActive(true); }
 // Per-stage GPU breakdown probe — window.__gpuBreakdown() prices bloom/shadow/grade
 // by difference against the native timestamp timer. DEV-only.
 if (import.meta.env.DEV) {
-  (window as any).__gpuBreakdown = () => import('./debug/gpu-breakdown').then((m) => m.gpuBreakdown(renderer));
+  (window as any).__gpuBreakdown = () => import('./debug/gpu-breakdown').then((m) => m.gpuBreakdown(renderer, scene));
 }
 
 // Inspection mode (preview snaps) lives in src/debug/inspect-mode.ts — the
