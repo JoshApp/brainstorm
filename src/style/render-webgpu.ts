@@ -28,9 +28,9 @@ const _ssaoParam = typeof window !== 'undefined' ? new URLSearchParams(window.lo
 const SSAO = _ssaoParam != null && _ssaoParam !== '0' && _ssaoParam !== 'off';
 const SSAO_SHOW = _ssaoParam === 'show';
 const _ssaoNum = _ssaoParam ? parseFloat(_ssaoParam) : NaN;
-const AO_SAMPLES = 8;        // GTAO sample count (low → 3 directions, cheap)
-const AO_RES_SCALE = 0.5;    // AO buffer res relative to the (0.4x) scene pass
-const AO_RADIUS = 0.7;       // metres — bigger than GTAO's 0.25 default so AO READS at a glance
+const AO_SAMPLES = 6;        // GTAO sample count (low → 3 directions, cheap)
+const AO_RES_SCALE = 0.4;    // AO buffer res relative to the (0.4x) scene pass
+const AO_RADIUS = 0.45;      // metres — visible but tighter than 0.7 (big radius = cache-incoherent, costly)
 const AO_STRENGTH = (_ssaoNum > 0 && _ssaoNum !== 1) ? _ssaoNum : 1.6;   // darkening boost
 let aoPassRef: any = null;   // live handle for the runtime setter / window.__ssao
 

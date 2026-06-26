@@ -1,4 +1,6 @@
 import type * as THREE from 'three';
+import { isWebGPU } from '../scene/renderer-mode';
+import { positionWorld, vec3, float, smoothstep as tslSmoothstep, mix as tslMix, uniform as tslUniform } from 'three/tsl';
 
 // Live control of the baked surface AO (the wall/floor vertex colours, which
 // carry the corner/base darkening from geometry-prims.ts). The AO is baked
@@ -15,9 +17,12 @@ import type * as THREE from 'three';
 // global ShaderChunk swap rather than onBeforeCompile, so this doesn't collide.
 
 const uAOStrength = { value: 1.0 };
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+const uAOStrengthNode = (tslUniform as any)(1.0);   // WebGPU mirror of uAOStrength
 
 export function setSurfaceAOStrength(v: number): void {
   uAOStrength.value = v;
+  uAOStrengthNode.value = v;
 }
 
 export function installSurfaceAO(material: THREE.Material): void {
@@ -46,6 +51,7 @@ const PROP_AO_OCC = 0.65;    // max occlusion right at the base
  * existing onBeforeCompile so it won't clobber a prop's own shader work.
  */
 export function installPropHeightAO(material: THREE.Material): void {
+  if (isWebGPU()) { installPropHeightAOWebGPU(material as THREE.MeshStandardMaterial); return; }
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = function (shader, renderer) {
     if (prev) prev.call(this, shader, renderer);
@@ -69,3 +75,21 @@ export function installPropHeightAO(material: THREE.Material): void {
   };
   material.needsUpdate = true;
 }
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// WebGPU port of the prop HEIGHT AO — the cheap "fake SSAO" the old game used:
+// darken a prop's lower geometry toward the floor (world-Y driven) so its base
+// sits in a soft contact-shadow. Pure per-fragment ALU, no extra pass — vastly
+// cheaper than the GTAO screen-space pass (which measured ~+6ms). Composes with
+// surface-detail's albedo colorNode if present, else the material's base colour.
+function installPropHeightAOWebGPU(mat: THREE.MeshStandardMaterial): void {
+  const existing: any = (mat as any).colorNode;
+  const c = mat.color;
+  const base: any = existing ?? (vec3 as any)(c.r, c.g, c.b);
+  const occ: any = (float as any)(1)
+    .sub((tslSmoothstep as any)(0.0, PROP_AO_FADE, (positionWorld as any).y))
+    .mul(PROP_AO_OCC).mul(uAOStrengthNode).clamp(0, 1);
+  const tint: any = (vec3 as any)(0.40, 0.45, 0.55);
+  (mat as any).colorNode = base.mul((tslMix as any)((vec3 as any)(1, 1, 1), tint, occ));
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
