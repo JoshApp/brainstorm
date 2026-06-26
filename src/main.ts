@@ -325,6 +325,12 @@ initEmbersGPU(renderer, scene);
 // the omni lamp point. The split makes the lamp's shadow a single-map render.
 if (LAMP_SPOT) { initLampSpot(scene); setLampSpotActive(true); }
 
+// Per-stage GPU breakdown probe — window.__gpuBreakdown() prices bloom/shadow/grade
+// by difference against the native timestamp timer. DEV-only.
+if (import.meta.env.DEV) {
+  (window as any).__gpuBreakdown = () => import('./debug/gpu-breakdown').then((m) => m.gpuBreakdown(renderer));
+}
+
 // Inspection mode (preview snaps) lives in src/debug/inspect-mode.ts — the
 // studio lighting rig, PSX bypass, backdrop, and subject auto-framing are all
 // owned there. main.ts only calls enterInspectMode()/tickInspectFraming() and

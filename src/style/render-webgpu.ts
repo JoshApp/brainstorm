@@ -51,6 +51,14 @@ let resScale = 0.4;   // match the WebGL PS1_SCALE_DEFAULT (0.4) — chunkier th
 // quantize), output the bare exposed scene. Tells us if the haze is the GRADE or
 // something upstream (lighting / fog / material response).
 const RAW = typeof location !== 'undefined' && new URLSearchParams(location.search).get('raw') === '1';
+// Runtime grade bypass (RAW initial) — the per-pass GPU probe flips this to price
+// the whole PSX grade (CA/expose/crush/dither) by difference. Rebuilds on change.
+let gradeBypass = RAW;
+export function setGradeBypass(on: boolean): void {
+  if (on === gradeBypass) return;
+  gradeBypass = on;
+  rebuildWebGPUPipeline();
+}
 // TONEMAP — the response curve that turns linear HDR light into display values.
 // The WebGL/main path got this for free from renderer.toneMapping = ACESFilmic;
 // the WebGPU path runs NoToneMapping (main.ts) so WITHOUT this node bright torch-
@@ -283,7 +291,7 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   };
   // ?ssao=show — output the raw occlusion (grayscale) so the AO is unmistakable.
   if (SSAO_SHOW && ssaoAoR) { build((vec4 as any)((vec3 as any)(ssaoAoR), 1.0)); return; }
-  if (RAW) { build((vec4 as any)((lit as any).rgb, 1.0)); return; }
+  if (gradeBypass) { build((vec4 as any)((lit as any).rgb, 1.0)); return; }
 
   // ── Colour grade + PSX tail, in display space after the tonemap below ──
   // The stylized cel light-step is handled per-material (banded-lighting-webgpu.ts
