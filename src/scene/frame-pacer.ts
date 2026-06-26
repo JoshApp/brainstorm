@@ -129,7 +129,14 @@ function observeForReadout(dt: number): void {
   if (intervals.length >= 30) {
     const s = intervals.slice().sort((a, b) => a - b);
     const med = s[s.length >> 1];
-    nativeHz = Math.round(1000 / med);                                  // median interval → Hz
+    // NATIVE REFRESH = the FLOOR of frame intervals, not the median. The fastest
+    // frames land on a clean vsync (= the panel period); slower ones are
+    // missed-vsync multiples. The median tracks the ACHIEVED rate — so a capped or
+    // GPU-bound game (very common under the async WebGPU path) read its panel as
+    // far slower than it is (a 244Hz monitor showing 20-60). A low percentile (the
+    // >2ms guard already drops coalesced sub-frame ticks) recovers the true panel.
+    const floorMs = s[Math.floor(s.length * 0.10)];
+    nativeHz = Math.round(1000 / floorMs);
     spread = (s[Math.floor(s.length * 0.85)] - s[Math.floor(s.length * 0.15)]) / med; // stability
   }
 }

@@ -384,29 +384,29 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-// FRAMES-IN-FLIGHT = 2. renderAsync is async; submitting fire-and-forget let the
+// FRAMES-IN-FLIGHT cap. renderAsync is async; submitting fire-and-forget let the
 // CPU run arbitrarily far ahead of the GPU, so present latency wandered frame to
-// frame (steady fps, but judder). The loop gates on the PREVIOUS frame before
-// starting the next — so frame N's CPU still overlaps frame N-1's GPU (that
-// overlap is the whole point of async; awaiting every frame tanked fps 56→40),
-// but the queue can never exceed 2, which evens the present cadence.
-let pendingFrame: Promise<void> | null = null;   // the most recent submit
-let gateFrame: Promise<void> | null = null;       // the one before it — what the loop awaits
+// frame (steady fps, but judder). We DON'T touch the rAF cadence to fix this —
+// the pacer's refresh estimate reads rAF intervals, so delaying rAF made it read
+// garbage. Instead: when MAX_IN_FLIGHT frames are already queued, SKIP this
+// submit (show the last frame). rAF keeps firing at the display rate (hertz stays
+// correct); the GPU queue is bounded; and on a display faster than the GPU can
+// feed, this naturally paces to the GPU's rate instead of piling up.
+const MAX_IN_FLIGHT = 2;
+let inFlight = 0;
 
-/** Render one frame through the native WebGPU pipeline. */
+/** Render one frame through the native WebGPU pipeline (skips if the GPU is behind). */
 export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   ensurePipeline(renderer, scene, camera);
+  if (frameSyncOn && inFlight >= MAX_IN_FLIGHT) return;   // GPU behind — drop this submit
   // Reset per frame so renderer.info reflects THIS frame's total (the pipeline's
   // passes accumulate into it); without this it climbs without bound.
   renderer.info.reset();
-  gateFrame = pendingFrame;   // the previous frame becomes the gate
-  pendingFrame = (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
+  inFlight++;
+  void (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync()
+    .then(() => { inFlight--; }, () => { inFlight--; });
 }
 
-/** Await the frame-before-last (caps in-flight at 2, keeping one overlap). The
- *  loop calls this before scheduling the next rAF. Resolves immediately if none. */
-export function flushWebGPUFrame(): Promise<void> {
-  const p = gateFrame;
-  gateFrame = null;
-  return (p ?? Promise.resolve()).catch(() => {});
-}
+// ?noframesync=1 reverts to pure fire-and-forget (no in-flight cap) for an A/B.
+const frameSyncOn = typeof location === 'undefined'
+  || new URLSearchParams(location.search).get('noframesync') !== '1';

@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { setWebGPUMode, setWebGPUReady } from './scene/renderer-mode';
 import { initEmbersGPU, tickEmbersGPU } from './effects/embers-gpu';
-import { flushWebGPUFrame } from './style/render-webgpu';
 import { DelveTiledLighting } from './scene/tiled-lighting';
 import { initLampSpot, tickLampSpot } from './player/lamp-spot';
 import { setLampSpotActive } from './scene/light-pool';
@@ -1460,20 +1459,6 @@ function presentPass(realDt: number): void {
   });
 }
 
-// FRAME PACING (WebGPU): pace the CPU to the GPU. renderAsync is fire-and-forget,
-// so without this the CPU runs ahead and present latency wanders (steady fps,
-// visible judder). Awaiting the in-flight frame before scheduling the next rAF
-// caps frames-in-flight to 1 → even present cadence. ?noframesync=1 to A/B.
-const FRAME_SYNC = WEBGPU && new URLSearchParams(window.location.search).get('noframesync') !== '1';
-function scheduleNextFrame(): void {
-  if (FRAME_SYNC) {
-    const next = (): number => requestAnimationFrame(tick);
-    flushWebGPUFrame().then(next, next);   // both arms schedule; swallows any reject
-  } else {
-    requestAnimationFrame(tick);
-  }
-}
-
 function tickInner() {
   // FRAME RATE cap: skip DRAWING this frame if we're ahead of the chosen fps.
   // A drift-free time accumulator (scene/frame-pacer.ts) — never above the cap,
@@ -1481,7 +1466,7 @@ function tickInner() {
   // The sim isn't lost on a skip — clock.getDelta() accumulates the skipped time,
   // so the next drawn frame advances the sim by the full elapsed time.
   const frameCap = Number(getSettings().frameCap);
-  if (!pacerShouldDraw(frameCap, performance.now())) { scheduleNextFrame(); return; }
+  if (!pacerShouldDraw(frameCap, performance.now())) { requestAnimationFrame(tick); return; }
   // Apply any pending level swap BEFORE any per-frame reads on the level.
   // Stairs interactables call loadLevel() during the previous frame's
   // interactables tick; the swap lands here at the top of the next frame.
@@ -1604,7 +1589,7 @@ function tickInner() {
   // First fully-rendered frame proves boot is good — clear the boot-loop flag.
   if (!bootConfirmed) { bootConfirmed = true; bootSucceeded(); }
 
-  scheduleNextFrame();   // WebGPU: awaits the in-flight frame first (frames-in-flight = 1)
+  requestAnimationFrame(tick);
 }
 
 let bootConfirmed = false;
