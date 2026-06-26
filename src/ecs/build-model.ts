@@ -559,10 +559,15 @@ function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef):
     const n = cell.dot((vec3 as any)(12.9898, 78.233, 37.719)).sin().mul(43758.5453).fract();
     const thresh = n.mul(0.85).add(lp.y.mul(0.5).add(0.5).mul(0.15));
     const front = thresh.sub(uDissolve);
-    const active = (uDissolve.greaterThan(0.0) as any).select((tslFloat as any)(1), (tslFloat as any)(0));
-    // Erode: discard cells whose threshold the dissolve has passed (alpha cutout).
+    const dissolving = uDissolve.greaterThan(0.0);
+    const active = (dissolving as any).select((tslFloat as any)(1), (tslFloat as any)(0));
+    // Erode: discard a cell ONLY while actually dissolving AND its threshold has
+    // been passed. Gating on `dissolving` guarantees full opacity at rest — else a
+    // few low-threshold cells could alpha-test away on a living mob (the ghoul, a
+    // dissolvable body with no rim, went near-invisible).
     mat.alphaTest = 0.5;
-    (mat as any).opacityNode = (thresh.greaterThanEqual(uDissolve) as any).select((tslFloat as any)(1), (tslFloat as any)(0));
+    const eroded = (dissolving as any).and(thresh.lessThan(uDissolve));
+    (mat as any).opacityNode = (eroded as any).select((tslFloat as any)(0), (tslFloat as any)(1));
     // HEAT — a wide additive ember band at the front so it reads on any albedo.
     const heat = (tslSmoothstep as any)(0.0, 0.16, front).oneMinus();
     const heatTerm = (vec3 as any)(1.0, 0.40, 0.10).mul(heat.mul(heat)).mul(uDissolve.mul(0.9).add(0.5)).mul(active);
