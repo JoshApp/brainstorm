@@ -11,6 +11,7 @@
 
 import type * as THREE from 'three';
 import { GpuTimer } from './gpu-timer';
+import { tickWebGPUTimestamps, webgpuGpuMs, webgpuGpuPhases, webgpuTimingSupported } from './gpu-timer-webgpu';
 import { setSystemProbe, setMarksEnabled } from '../engine/loop';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
@@ -148,15 +149,16 @@ export function initFrameTiming(r: THREE.WebGLRenderer): void {
   gpu = isWebGPU() ? null : new GpuTimer(r.getContext());
 }
 
-/** GPU time is recorded by the passive timer-query extension. */
+/** GPU time is recorded by the passive timer-query extension (WebGL) or native
+ *  timestamp queries (WebGPU). */
 export function gpuSupported(): boolean {
-  return !!gpu?.supported;
+  return !!gpu?.supported || webgpuTimingSupported();
 }
 /** GPU numbers are AVAILABLE if the timer query works, the finish() probe is
  *  armed, or per-pass timing is supplying spans — the HUD/recorder use this
  *  to decide "n/a" vs a value. */
 export function gpuActive(): boolean {
-  return !!gpu?.supported || renderGpuProbeOn() || passTiming;
+  return !!gpu?.supported || renderGpuProbeOn() || passTiming || webgpuTimingSupported();
 }
 
 /** Arm/disarm the gl.finish() GPU probe (real GPU ms on devices without the
@@ -231,7 +233,13 @@ export function frameEnd(): void {
   // Prefer the finish() probe (works on devices without the timer-query ext);
   // fall back to the passive timer query. probedGpu sticks between samples so a
   // probe that fires every Nth frame still reads on the frames in between.
-  if (passTiming) {
+  if (isWebGPU()) {
+    // WebGPU: native timestamp queries give the real render + compute GPU ms.
+    // Kick the async resolve (caches), then read the latest values.
+    tickWebGPUTimestamps(renderer);
+    sample.gpuMs = webgpuGpuMs();
+    sample.gpuPhases = webgpuGpuPhases();
+  } else if (passTiming) {
     // Per-pass mode: the frame's GPU time is the sum of its pass spans (the
     // spans cover every GL command renderWithStyle issues).
     const phases = gpu?.supported ? gpu.lastByLabel : passProbePhases;

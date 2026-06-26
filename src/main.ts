@@ -237,7 +237,9 @@ setWebGPUMode(WEBGPU);
 // valid without preservation.
 let renderer: THREE.WebGLRenderer;
 if (WEBGPU) {
-  const wgpu = new WebGPURenderer({ canvas, antialias: false });
+  // trackTimestamp: native GPU timestamp queries for the profiler (frame-timing
+  // reads renderer.resolveTimestampsAsync). No-op if the adapter lacks the feature.
+  const wgpu = new WebGPURenderer({ canvas, antialias: false, trackTimestamp: true });
   // Tiled (Forward+) lighting prototype (?tiled=1). Bins point lights into screen
   // tiles via a compute pass so each fragment shades at most ~8 lights regardless
   // of total count — lets the torch count climb without the per-fragment wall.
