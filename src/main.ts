@@ -5,16 +5,6 @@ import { initEmbersGPU, tickEmbersGPU } from './effects/embers-gpu';
 import { DelveTiledLighting } from './scene/tiled-lighting';
 import { initLampSpot, tickLampSpot } from './player/lamp-spot';
 import { setLampSpotActive } from './scene/light-pool';
-import { bakeStaticLights, tickBakedFlicker } from './scene/baked-lights';
-
-// Baked static lighting (?bakelights=1): bake torch→surface light per-vertex, drop
-// the torches from the live pool. Prototype — see scene/baked-lights.ts.
-const BAKE_LIGHTS = new URLSearchParams(window.location.search).get('bakelights') === '1';
-// The per-fragment lighting cost is the SLOT COUNT, not bound lights (the pool
-// keeps slots resident to avoid recompiles). So baking only pays off if we also
-// drop the environment slots — the shader then evaluates far fewer lights. Must run
-// before bootstrapSimWorld → initLightPool reads CONFIG.LIGHT_SLOTS.
-if (BAKE_LIGHTS) CONFIG.LIGHT_SLOTS.environment = 0;
 
 // Lamp spot-shadow split (?lampspot=1): cube shadow (6 passes) → single map (1).
 const LAMP_SPOT = new URLSearchParams(window.location.search).get('lampspot') === '1';
@@ -490,8 +480,6 @@ initLevelLoader({
     // Batch each room's static fixture geometry (torch sconces/candles, opt-in
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
-    // Bake static torch→surface lighting + drop the torches from the live pool.
-    if (BAKE_LIGHTS) bakeStaticLights(scene, materials);
     // PRE-WARM the floor's shaders NOW, behind the level-transition fade, while
     // every room is still visible (the portal culler hasn't run yet, so compile
     // sees the whole floor). Without this, the FIRST time you turn to reveal a
@@ -1497,7 +1485,6 @@ function tickInner() {
   // path (fixed-step presentPass or variable runSystems) reads the buffer.
   tickEmbersGPU();
   if (LAMP_SPOT) tickLampSpot(camera);   // place + aim the lamp's shadow spotlight
-  if (BAKE_LIGHTS) tickBakedFlicker(performance.now() * 0.001);
 
   if (USE_FIXED_STEP) {
     // FIXED-STEP path (?fixedstep=1): advance the SIM in fixed 1/60s quanta
