@@ -92,6 +92,7 @@ let bloomEnabled = true;
 // Bloom: subtle + HIGH threshold so ONLY bright sources (flames, glows, runes)
 // bloom — not the whole image. Tune via the consts.
 const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
+const BLOOM_RES_SCALE = 0.5;   // bloom mip-chain res vs the full buffer — scene is 0.4x, so bloom at full was over-resolved
 // EXPOSURE — r184 dropped useLegacyLights, so ambient/emissive/point intensities
 // read MUCH brighter than the legacy-tuned values → the whole dungeon lit pale.
 // Crush exposure hard to restore the dark-with-pools-of-torchlight look. (Quick
@@ -264,6 +265,19 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // Exposed scene + native bloom, additive, LINEAR. Bloom optional (BLOOM
   // setting); the bloomPass also feeds the fog inscatter below.
   const bloomPass = bloomEnabled ? bloom(exposed, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD) : null;
+  if (bloomPass) {
+    // PERF: BloomNode sizes its 5-mip chain to the FULL drawing buffer (then /2),
+    // but the scene is rendered at resScale (0.4x) — so bloom was processing MORE
+    // pixels than the scene has. Scale its targets to ~match the scene; the soft
+    // glow hides the lower res (PS1-appropriate). Override the instance setSize so
+    // the pipeline's full-res call gets scaled down. ~the breakdown's 1.8ms slice.
+    const bn: any = bloomPass;
+    if (typeof bn.setSize === 'function') {
+      const orig = bn.setSize.bind(bn);
+      bn.setSize = (w: number, h: number) =>
+        orig(Math.max(1, Math.round(w * BLOOM_RES_SCALE)), Math.max(1, Math.round(h * BLOOM_RES_SCALE)));
+    }
+  }
   let lit: any = bloomPass ? exposed.add(bloomPass) : exposed;
 
   // DEPTH CRUSH — multiply colour toward CRUSH_FLOOR with camera distance, in
