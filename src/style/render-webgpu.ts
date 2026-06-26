@@ -19,12 +19,30 @@ import { pass, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, m
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 
-// SSAO (?ssao=1) — GTAO contact-darkening from an MRT depth+normal G-buffer.
+// SSAO (?ssao=…) — GTAO contact-darkening from an MRT depth+normal G-buffer.
 // Budget-first for mobile: low sample count + half-res of the already-0.4x pass.
-const SSAO = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('ssao') === '1';
+//   ?ssao=1     → on, default visible strength
+//   ?ssao=2.5   → on, explicit strength (dial it from the URL on the phone)
+//   ?ssao=show  → AO-ONLY debug view (raw occlusion, so you can SEE it works)
+const _ssaoParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ssao') : null;
+const SSAO = _ssaoParam != null && _ssaoParam !== '0' && _ssaoParam !== 'off';
+const SSAO_SHOW = _ssaoParam === 'show';
+const _ssaoNum = _ssaoParam ? parseFloat(_ssaoParam) : NaN;
 const AO_SAMPLES = 8;        // GTAO sample count (low → 3 directions, cheap)
 const AO_RES_SCALE = 0.5;    // AO buffer res relative to the (0.4x) scene pass
-const AO_STRENGTH = 1.3;     // occlusion darkening boost (grimdark leans dark)
+const AO_RADIUS = 0.7;       // metres — bigger than GTAO's 0.25 default so AO READS at a glance
+const AO_STRENGTH = (_ssaoNum > 0 && _ssaoNum !== 1) ? _ssaoNum : 1.6;   // darkening boost
+let aoPassRef: any = null;   // live handle for the runtime setter / window.__ssao
+
+/** Live SSAO tuning (DEV). strength = darkening, radius = spread in metres. */
+export function setSSAO(strength?: number, radius?: number): void {
+  if (!aoPassRef) return;
+  if (strength != null) aoPassRef.scale.value = strength;
+  if (radius != null) aoPassRef.radius.value = radius;
+}
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  (window as any).__ssao = (strength?: number, radius?: number) => setSSAO(strength, radius);
+}
 
 let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
@@ -212,6 +230,7 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   // SSAO — multiply contact occlusion into the scene BEFORE expose/bloom, so
   // crevices + object bases sit in their own dark (grimdark: only darkens). The
   // GTAO node runs its own half-res pass off the MRT depth+normal.
+  let ssaoAoR: any = null;
   if (SSAO) {
     const aoPass: any = (ao as any)(
       (scenePass as any).getTextureNode('depth'),
@@ -220,8 +239,11 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
     );
     aoPass.samples.value = AO_SAMPLES;
     aoPass.resolutionScale = AO_RES_SCALE;
+    aoPass.radius.value = AO_RADIUS;
     aoPass.scale.value = AO_STRENGTH;
-    sceneCA = sceneCA.mul(aoPass.getTextureNode().r);
+    aoPassRef = aoPass;
+    ssaoAoR = aoPass.getTextureNode().r;
+    sceneCA = sceneCA.mul(ssaoAoR);
   }
 
   // EXPOSE FIRST. r184's brighter lighting must be brought into range BEFORE
@@ -259,6 +281,8 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
       node as ConstructorParameters<typeof RenderPipeline>[1],
     );
   };
+  // ?ssao=show — output the raw occlusion (grayscale) so the AO is unmistakable.
+  if (SSAO_SHOW && ssaoAoR) { build((vec4 as any)((vec3 as any)(ssaoAoR), 1.0)); return; }
   if (RAW) { build((vec4 as any)((lit as any).rgb, 1.0)); return; }
 
   // ── Colour grade + PSX tail, in display space after the tonemap below ──
