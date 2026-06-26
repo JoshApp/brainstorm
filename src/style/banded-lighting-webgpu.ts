@@ -1,5 +1,15 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, positionViewDirection, roughness, float } from 'three/tsl';
+
+// PERF: DELVE's surfaces are matte stone, but the stock PhysicalLightingModel runs
+// BRDF_GGX_Multiscatter specular per light — the probe priced it at ~60% of the
+// 5ms lighting cost. Replace it (CHEAP_SPEC) with a cheap Blinn-Phong lobe: the
+// roughness drives a BROAD, near-diffuse highlight that recovers the multiscatter's
+// broadband energy + keeps the specular character, at a fraction of the cost.
+const CHEAP_SPEC = true;
+const RECIP_PI = 0.3183098861837907;     // 1/π — BRDF_Lambert
+const RECIP_2PI = 0.1591549430918954;    // 1/2π — Blinn lobe normalization
+const SPEC_GAIN = 1.0;                    // tune: matches the dropped multiscatter brightness
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
 // GLSL version appended to THREE.ShaderChunk.lights_fragment_end globally; under
@@ -25,6 +35,26 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   chroma: number;
   chromaNode: any;
   constructor(chroma = 1, chromaNode: any = null) { super(); this.chroma = chroma; this.chromaNode = chromaNode; }
+  // Specular-free direct lighting: only the cheap Lambert diffuse, skipping the
+  // costly GGX multiscatter specular. Matte stone (the bulk of the screen) shows
+  // no visible difference. The default direct() also handles clearcoat/sheen —
+  // both off for DELVE materials — so diffuse-only is complete here.
+  direct(inputs: any, builder?: any): void {
+    if (!CHEAP_SPEC) { super.direct(inputs, builder); return; }
+    const { lightDirection, lightColor, reflectedLight } = inputs;
+    const dotNL: any = (normalView as any).dot(lightDirection).clamp();
+    const irradiance: any = dotNL.mul(lightColor);
+    // DIFFUSE (Lambert).
+    reflectedLight.directDiffuse.addAssign(irradiance.mul((diffuseColor as any).rgb).mul(RECIP_PI));
+    // CHEAP SPECULAR — Blinn-Phong instead of GGX multiscatter. Roughness → a broad
+    // (low-exponent) lobe on rough stone, so it reads as the multiscatter broadband
+    // it replaces; sharper only on the rare smooth surface. No Fresnel/Smith-G.
+    const halfDir: any = lightDirection.add(positionViewDirection).normalize();
+    const dotNH: any = (normalView as any).dot(halfDir).clamp();
+    const shininess: any = (float as any)(2).div((roughness as any).mul(roughness).max(0.0001)).sub(2).max(1);
+    const D: any = dotNH.pow(shininess).mul(shininess.add(2).mul(RECIP_2PI));   // normalized lobe
+    reflectedLight.directSpecular.addAssign(irradiance.mul(D).mul(SPEC_GAIN * 0.04));
+  }
   finish(builder: any): void {
     const context = builder.context;
     const rl: any = context.reflectedLight;
