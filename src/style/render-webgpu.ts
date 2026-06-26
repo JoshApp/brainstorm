@@ -392,7 +392,13 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
 // submit (show the last frame). rAF keeps firing at the display rate (hertz stays
 // correct); the GPU queue is bounded; and on a display faster than the GPU can
 // feed, this naturally paces to the GPU's rate instead of piling up.
-const MAX_IN_FLIGHT = 2;
+// 1, not 2: when the GPU is the bottleneck, a 2-deep queue submits two frames
+// back-to-back to fill it then drains — a BURSTY present cadence (the 4ms↔40ms
+// "wait" jitter). One in flight submits exactly once per GPU completion → even
+// cadence. The cost is a little GPU idle between completion and the next rAF (the
+// loop is rAF-driven) — slightly lower peak fps, but smooth. NOTE: unlike the
+// await approach, SKIPPING doesn't stall the CPU, so this doesn't tank fps.
+const MAX_IN_FLIGHT = 1;
 let inFlight = 0;
 
 /** Render one frame through the native WebGPU pipeline (skips if the GPU is behind). */
