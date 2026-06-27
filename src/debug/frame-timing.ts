@@ -151,6 +151,12 @@ export function initFrameTiming(r: THREE.WebGLRenderer): void {
 
 /** GPU time is recorded by the passive timer-query extension (WebGL) or native
  *  timestamp queries (WebGPU). */
+/** The most recent frame's GPU ms, renderer-agnostic (WebGPU timestamp queries
+ *  or the WebGL2 timer-query) — whatever frameEnd last computed. Null until a
+ *  timed frame lands. Used by the differential gpu-breakdown so it works on both
+ *  renderers. Requires the frame loop to be running (a profiler flag on). */
+export function currentGpuMs(): number | null { return sample.gpuMs; }
+
 export function gpuSupported(): boolean {
   return !!gpu?.supported || webgpuTimingSupported();
 }
