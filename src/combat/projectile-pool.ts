@@ -3,7 +3,6 @@ import type { WalkableRegion } from '../level/walkable';
 import { groundYAt } from '../level/elevation';
 import { damagePlayer } from '../player/health';
 import { tryJustDodge } from './just-dodge';
-import { registerLight, unregisterLight } from '../scene/light-pool';
 import { applyDamageVia, type DamageType } from './damage';
 import type { Damageable } from './damageable';
 import { queryHurtbox, type Hurtbox } from './hurtbox';
@@ -291,18 +290,10 @@ export function spawnProjectile(args: SpawnArgs): void {
   slot.trail.scale.set(type.radius * 4, type.radius * 4, 1);
   slot.trail.visible = true;
 
-  // Light registration — projectile category. Position is a reference;
-  // mutating each tick is enough for the pool to update.
-  registerLight({
-    id: slot.lightId,
-    category: 'projectile',
-    position: slot.position,
-    color: type.color,
-    intensity: type.lightIntensity,
-    distance: type.lightRange,
-    decay: 1.6,
-  });
-  // Unused — kept available for serial-debug ids if needed later.
+  // Projectiles do NOT register a scene light — the emissive mesh + trail already
+  // read as "glowing", and pooling a light per in-flight projectile churned the light
+  // pool (6 parked 'projectile-*' slots co-located at the park point) for no visual
+  // gain. (The lit-environment glow was noise against the dread-light grammar anyway.)
   void nextSerial;
 }
 
@@ -311,7 +302,6 @@ function retire(slot: Slot): void {
   slot.mesh.visible = false;
   slot.trail.visible = false;
   slot.onHits = null;
-  unregisterLight(slot.lightId);
   slot.position.set(0, -1000, 0);
 }
 

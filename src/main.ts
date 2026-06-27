@@ -542,7 +542,8 @@ initLevelLoader({
         // warm that variant too or the first prepass draw stalls ~6ms in-game.
         try { warmViewmodelPrepass(renderer, camera); } catch { /* best-effort */ }
       }
-    } else if (!rosterPrecompiled && !isTitleVignette) {
+    } else if (!rosterPrecompiled && !isTitleVignette &&
+               new URLSearchParams(location.search).get('nowarm') !== '1') {   // ?nowarm=1 = A/B the warm
       // WebGPU first REAL floor: roster + floor + effects compiled in ONE correct-
       // context pass (runWarmupPassWebGPU adds the subjects to the scene + runs
       // compileAsync(scene)), so cache keys match the live render and the first
