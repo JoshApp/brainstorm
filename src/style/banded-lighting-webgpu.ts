@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float } from 'three/tsl';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
 // GLSL version appended to THREE.ShaderChunk.lights_fragment_end globally; under
@@ -25,6 +25,24 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
   chroma: number;
   chromaNode: any;
   constructor(chroma = 1, chromaNode: any = null) { super(); this.chroma = chroma; this.chromaNode = chromaNode; }
+  // SINGLE-SCATTER direct specular — match WebGL's RE_Direct_Physical EXACTLY.
+  // Three's WGSL PhysicalLightingModel.direct() uses BRDF_GGX_MULTISCATTER, which
+  // is single-scatter GGX PLUS two DFG-LUT *texture lookups* + energy-compensation
+  // math PER LIGHT (×~13 lights × every fragment). Three's GLSL direct path does
+  // NONE of that — it's plain single-scatter BRDF_GGX; multiscatter lives only in
+  // the GLSL indirect/IBL path. So the WGSL was doing strictly MORE work than the
+  // WebGL we're matching. This override drops only the multiscatter compensation
+  // (a subtle energy-conservation correction, invisible on matte stone) — the
+  // diffuse + GGX glint are byte-for-byte the WebGL look, at ~half the lighting
+  // cost. (finish() still bands the direct diffuse exactly as before.)
+  direct({ lightDirection, lightColor, reflectedLight }: any): void {
+    const dotNL: any = (normalView as any).dot(lightDirection).clamp();
+    const irradiance: any = dotNL.mul(lightColor);
+    reflectedLight.directDiffuse.addAssign(irradiance.mul((BRDF_Lambert as any)({ diffuseColor })));
+    reflectedLight.directSpecular.addAssign(
+      irradiance.mul((BRDF_GGX as any)({ lightDirection, f0: specularColor, f90: (float as any)(1), roughness })),
+    );
+  }
   finish(builder: any): void {
     const context = builder.context;
     const rl: any = context.reflectedLight;
