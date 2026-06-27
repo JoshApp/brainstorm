@@ -9,6 +9,28 @@ export const GENERATED_PATCHLOG = [
     "entries": [
       {
         "tag": "fix",
+        "text": "First blood, first dust, first parry of a fight no longer hitch — the dungeon rehearsed them.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "Swapping weapons stops hitching — the dungeon compiles the blade's shadow ahead of time now, on the loading stair where you can't feel it.",
+        "area": [
+          "tech",
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
+        "text": "The first shard a foe hurls no longer hitches — the dungeon loaded the throw before the fight.",
+        "area": [
+          "combat"
+        ]
+      },
+      {
+        "tag": "fix",
         "text": "The frame cap holds on every screen now — phones with adaptive refresh stop sailing past the limit you set.",
         "area": [
           "tech"
@@ -384,29 +406,6 @@ export const GENERATED_PATCHLOG = [
         "area": [
           "level",
           "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A wisp kindles at the exits still worth taking, and gutters out once you've wrung them dry.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "A corridor only goes cold once you've wrung everything from the dark beyond it. The warm ones still keep something from you.",
-        "area": [
-          "level",
-          "atmosphere"
-        ]
-      },
-      {
-        "tag": "tune",
-        "text": "The choosing fills the whole dark now — edge to edge, no frame to hide behind.",
-        "area": [
-          "ui"
         ]
       }
     ]

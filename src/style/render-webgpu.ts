@@ -404,6 +404,14 @@ let inFlight = 0;
 /** Render one frame through the native WebGPU pipeline (skips if the GPU is behind). */
 export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   ensurePipeline(renderer, scene, camera);
+  if (import.meta.env.DEV && typeof window !== 'undefined' && !(window as any).__scenePassInfo) {
+    (window as any).__scenePassInfo = () => {
+      const rt: any = (scenePass as any)?.renderTarget;
+      const buf = (renderer as any).getDrawingBufferSize?.(new THREE.Vector2()) ?? { x: 0, y: 0 };
+      const tex = rt?.texture?.image ?? rt?.textures?.[0]?.image;
+      return { passW: rt?.width ?? tex?.width, passH: rt?.height ?? tex?.height, bufW: buf.x, bufH: buf.y, resScale };
+    };
+  }
   if (frameSyncOn && inFlight >= MAX_IN_FLIGHT) return;   // GPU behind — drop this submit
   // Reset per frame so renderer.info reflects THIS frame's total (the pipeline's
   // passes accumulate into it); without this it climbs without bound.

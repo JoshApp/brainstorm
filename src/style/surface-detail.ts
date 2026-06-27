@@ -2,9 +2,25 @@ import * as THREE from 'three';
 import { uSplatTex, uSplatWallTex, uSplatWallIdTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
 import { setMaterialSeamChromaWebGPU } from './banded-lighting-webgpu';
-import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp, mx_noise_float } from 'three/tsl';
+import { texture as tslTexture, vec2, vec3, positionWorld, normalWorld, positionView, normalView, faceDirection, float, uniform as tslUniform, mix as tslMix, smoothstep as tslSmoothstep, clamp as tslClamp } from 'three/tsl';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// Cheap hash value noise — replaces mx_noise_float for the subtle world-mottle and
+// seep-flow layers. mx_noise_float is 3D gradient noise (8 corner gradients + interp,
+// the heaviest single thing in the surface shader); these layers only need a smooth
+// [0,1] blob, so a 4-corner bilinear value noise looks identical at a fraction of the
+// ALU. Same world frequency, so the look is unchanged.
+function hash21(p: any): any {
+  return (p.x.mul(127.1).add(p.y.mul(311.7))).sin().mul(43758.5453).fract();
+}
+function valueNoise2(p: any): any {
+  const i: any = p.floor();
+  const f: any = p.fract();
+  const u: any = f.mul(f).mul(f.mul(-2.0).add(3.0));            // smoothstep weights
+  const a = hash21(i), b = hash21(i.add((vec2 as any)(1, 0)));
+  const c = hash21(i.add((vec2 as any)(0, 1))), d = hash21(i.add((vec2 as any)(1, 1)));
+  return (tslMix as any)((tslMix as any)(a, b, u.x), (tslMix as any)(c, d, u.x), u.y); // → [0,1]
+}
 // WebGPU surface shading: triplanar-sample the baked texture in world space and
 // modulate the base albedo by its shade channel × tint, via a colorNode (a
 // supported migration slot on standard materials under WebGPURenderer).
@@ -34,7 +50,7 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // tile repeats every ~5m and the eye finds the repeat on long walls/floors;
   // the mottle reads as damp, wear, centuries — the main "not flat" layer the
   // GLSL path had that the bare baked sample lacks.
-  const mot: any = (mx_noise_float as any)((vec3 as any)(sU.mul(0.33), sV.mul(0.33), 0)).mul(0.5).add(0.5);
+  const mot: any = valueNoise2((vec2 as any)(sU.mul(0.33), sV.mul(0.33)));   // already [0,1]
   albedo = albedo.mul(float(0.94).add(mot.mul(0.12)));
 
   // Seam mask — strong in the low (recessed) grooves, used by both seep + wetness.
@@ -44,8 +60,8 @@ function installSurfaceDetailWebGPU(mat: THREE.MeshStandardMaterial, cfg: Surfac
   // seams, flows slowly with time, blended toward the floor's seep tint by
   // per-floor strength. Approximation of the GLSL groove-flow layer.
   if (cfg.grooveFill) {
-    const flowPos = (vec3 as any)((positionWorld as any).x.mul(2.6), (positionWorld as any).z.mul(2.6).sub(seepTimeNode.mul(0.26)), 0);
-    const flow = (mx_noise_float as any)(flowPos).mul(0.5).add(0.5);              // → ~[0,1]
+    const flowPos = (vec2 as any)((positionWorld as any).x.mul(2.6), (positionWorld as any).z.mul(2.6).sub(seepTimeNode.mul(0.26)));
+    const flow = valueNoise2(flowPos);                                           // → [0,1]
     const seepAmt = (tslClamp as any)(seam.mul(seepStrengthNode).mul(flow), 0, 1);
     albedo = (tslMix as any)(albedo, seepTintNode, seepAmt);
   }

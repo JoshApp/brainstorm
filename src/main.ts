@@ -343,6 +343,8 @@ if (import.meta.env.DEV) {
 // lighting-model patch (no shared shader chunk under the node renderer).
 if (WEBGPU) installBandedLightingWebGPU(getSettings().bandedLighting);
 else installBandedLighting(getSettings().bandedLighting);
+// DEV: toggle banded lighting model live to A/B its per-fragment cost.
+if (import.meta.env.DEV && WEBGPU) (window as any).__setBanded = (on: boolean) => installBandedLightingWebGPU(on);
 const materials = buildMaterials(renderer);
 // The custom PSX pipeline builds WebGLRenderTargets + GLSL ShaderMaterials —
 // WebGL-only. Skipped under ?webgpu=1 (renderWithStyle short-circuits to a
