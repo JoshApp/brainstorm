@@ -520,47 +520,45 @@ initLevelLoader({
     // it can draw, and with the warmup disabled the node renderer was compiling
     // them lazily mid-render (the ~89ms-for-25k-tris symptom). compileAsync warms
     // every pipeline up front (it awaits backend init internally).
+    // PRE-WARM → `prewarm`. The loader gates the reveal on this promise
+    // (revealWhenReady). We gate ONLY the heavy combat-roster warm — it spawns
+    // representative effects (blood/coins/wisps/shatter) into the scene to compile
+    // them, and those would FLASH if revealed mid-compile (the "loading bleeding
+    // into the game" artifact). It runs once, on the first REAL floor, behind the
+    // descent black. We do NOT run it on the title vignette (combat effects must
+    // never flash on the title) and we do NOT gate the per-floor compile (it only
+    // causes a minor first-reveal hitch, never a flash, and gating the whole-scene
+    // compile held the descent black for seconds).
+    const isTitleVignette = level.spec.id === 'title-vignette';
+    let prewarm: Promise<void> | undefined;
     if (!WEBGPU) {
+      // WebGL: synchronous compile + (first real floor) the roster + viewmodel-prepass
+      // warm. All instant (offscreen render) — the reveal needn't wait.
       try { renderer.compile(scene, camera); } catch { /* pre-warm is best-effort */ }
-    } else if (rosterPrecompiled) {
-      // Levels 2+: floor-only pipeline warm. The first level's floor is compiled
-      // together with the roster by runWarmupPassWebGPU below (gated, no flash) —
-      // running this standalone floor compileAsync THERE too would be a second,
-      // concurrent compileAsync on the same renderer racing the gated one. So
-      // only fire it once the roster warm has already happened.
-      void (renderer as unknown as { compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> })
-        .compileAsync(scene, camera)
-        .then(() => { if (import.meta.env.DEV) console.log('[webgpu] floor pipelines pre-compiled'); })
-        .catch((err) => console.error('[webgpu] compileAsync failed', err));
-    }
-    // Spawns compile their shaders against the LIVE light count, not boot
-    // warmup's 1-light scratch scene — so the first ooze/ghoul spawn used to
-    // freeze ~190ms compiling mid-fight. Prime the whole roster in the live
-    // scene now (once — programs stay resident for the renderer's life). Async,
-    // so it rides behind the fade without blocking.
-    if (!rosterPrecompiled) {
-      rosterPrecompiled = true;
-      // THE unified warmup pass — one live-context render that compiles every
-      // program (enemies instanced + bosses, items, effects, gore) with the
-      // exact live cache keys, then tears down keeping the programs (materials
-      // retained) but no resident verts. Replaces the old scratch/roster/
-      // instanced/gore warm patchwork. Best-effort.
-      if (!WEBGPU) {
+      if (!rosterPrecompiled && !isTitleVignette) {
+        rosterPrecompiled = true;
         try { runWarmupPass(renderer, scene, camera); } catch { /* best-effort */ }
-        // The warmup pass compiles the viewmodels' MAIN-pass (lit) variant; the
-        // depth pre-pass renders them in a 0-light scene (a different program), so
+        // Viewmodel DEPTH pre-pass renders in a 0-light scene (a different program);
         // warm that variant too or the first prepass draw stalls ~6ms in-game.
         try { warmViewmodelPrepass(renderer, camera); } catch { /* best-effort */ }
-      } else {
-        // WebGPU: compile the roster's render PIPELINES up front via compileAsync,
-        // gated so the loop skips drawing while the warm subjects sit in the scene
-        // (no flash) and the first combat frame waits behind the compile. The node-
-        // renderer analogue of runWarmupPass above — without it the first ooze/
-        // ghoul/vase-shatter compiles its pipeline mid-frame (the lazy-compile
-        // freeze). Async; rides behind the level fade. (No viewmodel depth-prepass
-        // warm: the WebGPU pipeline has no separate depth-only viewmodel pass.)
-        void runWarmupPassWebGPU(renderer, scene, camera);
       }
+    } else if (!rosterPrecompiled && !isTitleVignette) {
+      // WebGPU first REAL floor: roster + floor + effects compiled in ONE correct-
+      // context pass (runWarmupPassWebGPU adds the subjects to the scene + runs
+      // compileAsync(scene)), so cache keys match the live render and the first
+      // ooze/ghoul/vase-shatter reuses the warmed pipeline instead of freezing mid-
+      // fight. The subjects + a frame of effects briefly sit in the scene, so the
+      // reveal MUST stay covered until this resolves — revealWhenReady holds the black.
+      rosterPrecompiled = true;
+      prewarm = runWarmupPassWebGPU(renderer, scene, camera);
+    } else if (WEBGPU) {
+      // WebGPU title vignette + later floors: compile this scene's pipelines in the
+      // BACKGROUND (no flash — nothing is spawned). Not gated: a new room may hitch
+      // one frame on first reveal, which is minor and matches WebGL; gating the full
+      // scene compile held the descent black for seconds.
+      void (renderer as unknown as { compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> })
+        .compileAsync(scene, camera)
+        .catch((err) => { if (import.meta.env.DEV) console.error('[webgpu] floor compileAsync failed', err); });
     }
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to
@@ -644,6 +642,9 @@ initLevelLoader({
     // fires once — subsequent stair-driven swaps are transparent since
     // observation reads via the same getLevel() getter.
     harnessLevelReady?.();
+    // Hand the prewarm promise back so the loader can gate the reveal on it
+    // (revealWhenReady). undefined on WebGL / already-warm floors → instant reveal.
+    return prewarm;
   },
   // Procgen fallback — invoked when the stairs target a level id that's
   // not in the hand-authored LEVELS registry.

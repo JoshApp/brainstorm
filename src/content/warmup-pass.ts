@@ -63,7 +63,7 @@ let done = false;
  *  can compile, then tear down. Shared by the WebGL (render-to-target) and WebGPU
  *  (compileAsync) finishers; per-subject try/catch so one bad spec can't sink it. */
 function buildWarmSubjects(
-  camera: THREE.Camera,
+  camera: THREE.Camera, includeEffects = true,
 ): { warmGroup: THREE.Group; hooks: ReturnType<typeof getWarmupHooks> } {
   // Non-instanced subjects live under this group; placed at the camera so
   // they're trivially in-frustum (belt — we also force frustumCulled off). The
@@ -112,7 +112,13 @@ function buildWarmSubjects(
   // representative instance; their materials live module-level in each effect,
   // so the program is retained without us tracking it.
   const hooks = getWarmupHooks();
-  for (const h of hooks) { try { h.spawn(warmGroup); } catch { /* skip */ } }
+  // Effects self-register a representative spawn, but many push into their OWN
+  // scene-resident pool (the contract allows it) rather than the group we pass — so
+  // on WebGPU, where the warm is detached + the compile is async, they'd be left in
+  // the LIVE scene and FLASH for the whole compile. Skip them on the detached path
+  // (includeEffects=false); they compile on first use instead (one minor hitch, no
+  // flash). The WebGL offscreen-render path keeps them (instant + invisible).
+  if (includeEffects) for (const h of hooks) { try { h.spawn(warmGroup); } catch { /* skip */ } }
   noCull(warmGroup);
   return { warmGroup, hooks };
 }
@@ -173,18 +179,22 @@ export function runWarmupPass(
 }
 
 /** Run the unified warmup (WebGPU path). Same subjects, but the node renderer
- *  compiles a render PIPELINE per material/state via `compileAsync` — no
- *  WebGLRenderTarget.
+ *  compiles a render PIPELINE per material/state via `compileAsync`.
  *
- *  The warm group is kept DETACHED (never added to the live scene) and compiled
- *  against the live scene's lights via compileAsync's `targetScene` argument. Two
- *  payoffs vs. the earlier add-to-scene approach: the subjects can't flash on-
- *  screen, so the render loop keeps drawing the real scene the whole time (NO
- *  black-screen gate); and we never dispose buffers the backend is tracking for
- *  the live render. Because the first arg isn't a `Scene`, the renderer's
- *  `sceneRef` falls back to the live `scene` — so the pipeline cache keys match
- *  the real render and the first ooze/ghoul/vase-shatter reuses the warmed
- *  pipeline instead of compiling mid-frame.
+ *  The warm subjects are added to the LIVE scene and compiled together with the
+ *  real floor in ONE `compileAsync(scene, camera)` — so the cache keys match the
+ *  live render EXACTLY (light count, fog, banded define) AND scene-pool effects
+ *  (blood/coins/wisps/shatter, which the hooks spawn into their own pools) are
+ *  actually in the compile set. The earlier detached-group version compiled only
+ *  the group, so those effects never warmed — they only flashed.
+ *
+ *  This DOES put the subjects + a frame of effects in the scene briefly, so it
+ *  MUST run behind the load cover (the reveal is gated on the returned promise —
+ *  see descent-fade `revealWhenReady` / the boot veil). Teardown removes the
+ *  group from the scene and empties the effect pools but does NOT dispose the warm
+ *  geometry (disposing it black-screened the WebGPU world — the backend is still
+ *  tracking those buffers); the resident cost is a few dozen tiny meshes, and the
+ *  retained materials hold the compiled pipelines.
  *
  *  Idempotent (shares the `done` guard with the WebGL path) and best-effort: a
  *  driver hiccup must not brick the load. */
@@ -193,20 +203,26 @@ export async function runWarmupPassWebGPU(
 ): Promise<void> {
   if (done) return;
   done = true;
+  // DETACHED warm: the roster subjects are NEVER added to the live scene — they're
+  // compiled via compileAsync's targetScene arg, which keys the pipelines against the
+  // live scene's lights/fog WITHOUT rendering the subjects. So nothing can flash on
+  // screen, period (the structural fix for the "loading bleeding into the game"
+  // artifact). Effects are excluded here (includeEffects=false) because they push into
+  // scene-resident pools — they warm on first use instead. The reveal is gated on this
+  // promise so the roster is compiled before the first enemy can spawn (no mid-fight
+  // pipeline freeze).
   let built: { warmGroup: THREE.Group; hooks: ReturnType<typeof getWarmupHooks> } | null = null;
   try {
-    built = buildWarmSubjects(camera);
+    built = buildWarmSubjects(camera, false);   // roster only, detached, no effects
     await (renderer as unknown as {
       compileAsync: (o: THREE.Object3D, c: THREE.Camera, target: THREE.Scene) => Promise<unknown>;
     }).compileAsync(built.warmGroup, camera, scene);
-  } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
-    // The group was never in the live scene — just empty the effect pools. Keep
-    // its geometry resident (retained materials hold the compiled pipelines);
-    // don't dispose buffers the backend just compiled against.
-    if (built) for (const h of built.hooks) { try { h.clear(); } catch { /* skip */ } }
-  }
+  } catch { /* best-effort — a driver hiccup must not brick the load */ }
+  // The group was never in the scene; nothing to remove. Geometry stays resident
+  // (retained materials hold the compiled pipelines — disposing it black-screened the
+  // WebGPU world). No effect pools were touched.
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
-    console.log(`[warmup-pass:webgpu] roster pipelines compiled (enemies/items/effects); retained ${retained.length} materials. combat spawns should not hitch.`);
+    console.log(`[warmup-pass:webgpu] roster pipelines compiled DETACHED (enemies/items, no flash); retained ${retained.length} materials.`);
   }
 }

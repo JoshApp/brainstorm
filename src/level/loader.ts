@@ -39,7 +39,7 @@ import { clearAllOutlines } from '../interactables/outline';
 import { resetDarkAdaptation } from '../scene/dark-adaptation';
 import { clearThresholdDrafts } from '../scene/threshold-draft';
 import { resetExploredMap } from './explored-map';
-import { fadeOut, fadeIn, showDescentTitle } from '../ui/descent-fade';
+import { fadeOut, showDescentTitle, revealWhenReady } from '../ui/descent-fade';
 import { showSafeRoomTransition } from '../ui/safe-room-transition';
 import { actForDepth } from './acts';
 import { getActStats } from '../state/run-state';
@@ -60,7 +60,7 @@ let scene: THREE.Scene | null = null;
 let materials: StyleMaterials | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
 let levels: Record<string, LevelSpec> = {};
-let onLoaded: ((level: LiveLevel) => void) | null = null;
+let onLoaded: ((level: LiveLevel) => void | Promise<void>) | null = null;
 
 let pendingLoadId: string | null = null;
 let currentDepth = 1;
@@ -72,7 +72,7 @@ export interface LoaderConfig {
   levels: Record<string, LevelSpec>;
   /** Called after a successful load — main.ts wires up systems that
    *  depend on the per-level data (combat system, walkable region refs). */
-  onLoaded: (level: LiveLevel) => void;
+  onLoaded: (level: LiveLevel) => void | Promise<void>;
   /**
    * Optional fallback for ids NOT in the static registry. Used by the
    * procgen system: when stairs descend to 'depth-3' and depth-3 isn't a
@@ -229,7 +229,7 @@ export function tickPendingLoad() {
   // Floor-load camera jump shouldn't fling the lamp on respawn.
   resetViewSway();
 
-  onLoaded(level);
+  const prewarm = onLoaded(level);
 
   // Title card: "Depth N" + act name. Safe rooms get the transition
   // card instead — a longer in-world beat with stats from the act
@@ -256,10 +256,10 @@ export function tickPendingLoad() {
       }, 250);
     };
     window.setTimeout(showWhenAwake, 400);
-  } else {
-    const act = actForDepth(currentDepth);
-    showDescentTitle(`Depth ${currentDepth}`, act.name);
   }
+  // (Descent floors raise their "Depth N" title at REVEAL time — see
+  //  revealWhenReady below — so the beat tracks the actual appearance, not a
+  //  possibly-slow prewarm.)
 
   // Pending service-worker update? The world is still hidden (fadeOut
   // ran before we got here) — the perfect moment to take it. The reload
@@ -273,8 +273,15 @@ export function tickPendingLoad() {
     return;
   }
 
-  // Reveal the new level once its first frame has rendered.
-  fadeIn();
+  // Reveal the new level only once it's actually ready to show. On WebGPU the
+  // floor's pipelines (and the combat roster, on the very first load) are still
+  // compiling here; fading in now would land on a half-compiled scene with the
+  // warmup subjects flashing through. Hold the black until `prewarm` resolves —
+  // with a quiet "descending" mark if the wait runs long — then raise the Depth-N
+  // title and fade in. WebGL / already-warm floors resolve instantly.
+  revealWhenReady(prewarm, isSafeRoom ? undefined : () => {
+    showDescentTitle(`Depth ${currentDepth}`, actForDepth(currentDepth).name);
+  });
 }
 
 /**

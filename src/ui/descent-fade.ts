@@ -101,6 +101,83 @@ export function fadeIn(): void {
   }, 40);
 }
 
+// ── Prewarm-gated reveal ────────────────────────────────────────────────────
+// On WebGPU every material is a render PIPELINE that must compile before it can
+// draw, and the compile is ASYNC. If we fadeIn the instant the level mounts, the
+// reveal lands on a half-compiled scene with warmup effects still flashing — the
+// "loading bleeding into the game" artifact. Instead we hold the black until the
+// prewarm promise resolves, and if that wait runs long we show a quiet, stable
+// loading mark so it reads as a deliberate descent rather than a frozen hang.
+
+let loadingMark: HTMLDivElement | null = null;
+let pulseTimer = 0;
+let safetyTimer = 0;
+
+function ensureLoadingMark(): HTMLDivElement {
+  if (loadingMark) return loadingMark;
+  loadingMark = document.createElement('div');
+  loadingMark.id = 'descent-loading';
+  Object.assign(loadingMark.style, {
+    position: 'fixed',
+    left: '0', right: '0', bottom: '12%',
+    textAlign: 'center',
+    pointerEvents: 'none',
+    opacity: '0',
+    zIndex: '52',           // above the black + title
+    color: '#9a8a6a',
+    fontFamily: 'Georgia, "Times New Roman", serif',
+    fontStyle: 'italic',
+    fontSize: 'clamp(12px, 2vw, 16px)',
+    letterSpacing: '0.35em',
+    textTransform: 'lowercase',
+    transition: 'opacity 400ms ease-out',
+  } as Partial<CSSStyleDeclaration>);
+  loadingMark.textContent = 'descending';
+  document.body.appendChild(loadingMark);
+  return loadingMark;
+}
+
+function showLoadingMark(): void {
+  const el = ensureLoadingMark();
+  el.style.opacity = '0.55';
+  // Slow breathe so it reads as alive, not a spinner — matches the dungeon's
+  // unhurried tone. Web Animations API, cancelled when we hide.
+  el.getAnimations().forEach((a) => a.cancel());
+  el.animate(
+    [{ opacity: 0.18 }, { opacity: 0.6 }, { opacity: 0.18 }],
+    { duration: 2200, iterations: Infinity, easing: 'ease-in-out' },
+  );
+}
+
+function hideLoadingMark(): void {
+  if (!loadingMark) return;
+  loadingMark.getAnimations().forEach((a) => a.cancel());
+  loadingMark.style.opacity = '0';
+}
+
+/** Reveal the new level when `ready` resolves — or immediately if it's not a
+ *  promise (WebGL / already-warm floors). While waiting on the WebGPU pipeline
+ *  prewarm the black stays up; a quiet "descending" mark appears only if the wait
+ *  is long enough to notice (so fast floors don't flash it). `onReveal` fires the
+ *  instant before the world appears — used to raise the "Depth N" title so its
+ *  beat tracks the real reveal, not the load start. A safety cap reveals anyway
+ *  if the prewarm stalls, so a driver hiccup can never strand the player on black. */
+export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () => void): void {
+  const finish = (): void => {
+    window.clearTimeout(pulseTimer);
+    window.clearTimeout(safetyTimer);
+    hideLoadingMark();
+    onReveal?.();
+    fadeIn();
+  };
+  if (!ready || typeof (ready as { then?: unknown }).then !== 'function') { finish(); return; }
+  pulseTimer = window.setTimeout(showLoadingMark, 320);   // only show the mark for noticeable waits
+  safetyTimer = window.setTimeout(finish, 15000);          // never strand on black
+  let revealed = false;
+  const once = (): void => { if (revealed) return; revealed = true; finish(); };
+  (ready as Promise<unknown>).then(once, once);
+}
+
 // One-shot suppression — the next showDescentTitle is skipped. Used by the
 // vault-inspector snaps so the "Depth N" card never covers the geometry.
 let suppressNext = false;
