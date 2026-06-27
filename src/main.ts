@@ -3,6 +3,7 @@ import { WebGPURenderer } from 'three/webgpu';
 import { setWebGPUMode, setWebGPUReady } from './scene/renderer-mode';
 import { initEmbersGPU, tickEmbersGPU } from './effects/embers-gpu';
 import { DelveTiledLighting } from './scene/tiled-lighting';
+import { DelveLeanLighting } from './scene/lean-lights';
 import { initLampSpot, tickLampSpot } from './player/lamp-spot';
 import { setLampSpotActive } from './scene/light-pool';
 
@@ -247,6 +248,13 @@ if (WEBGPU) {
   if (new URLSearchParams(window.location.search).get('tiled') === '1') {
     (wgpu as any).lighting = new DelveTiledLighting();
     if (import.meta.env.DEV) console.log('[webgpu] tiled lighting ON');
+  } else if (new URLSearchParams(window.location.search).get('leanlights') === '1') {
+    // Custom rolled-loop lights node (?leanlights=1) — same lights, same look,
+    // but evaluated in ONE loop over a packed texture instead of N unrolled light
+    // nodes (lower register pressure → higher occupancy). The parity experiment;
+    // see scene/lean-lights.ts. A/B against the default node lighting + WebGL.
+    (wgpu as any).lighting = new DelveLeanLighting();
+    if (import.meta.env.DEV) console.log('[webgpu] lean lights ON');
   }
   // The codebase types the renderer as WebGLRenderer everywhere; WebGPURenderer
   // shares the common surface we use (render/setSize/setPixelRatio/info/…), so

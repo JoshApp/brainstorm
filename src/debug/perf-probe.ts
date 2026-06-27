@@ -22,6 +22,7 @@
 import type * as THREE from 'three';
 import { getActiveSourceCount, getRegisteredSourceCount } from '../scene/light-pool';
 import { getGeometryPoolSize } from '../scene/geometry-pool';
+import { webgpuGpuMs } from './gpu-timer-webgpu';
 
 // Chrome-only non-standard heap readout. Absent on Firefox/Safari and on
 // headless swiftshader unless --enable-precise-memory-info is passed.
@@ -79,6 +80,10 @@ export interface PerfSnapshot {
   allocRateMBs: number | null;
   /** GC collections observed in the window (heap-drop count). */
   gcPerSec: number | null;
+  /** GPU ms last frame from native timestamps — only populated while a profiler
+   *  flag (?profiler=1) is on, since that's what ticks resolveTimestampsAsync.
+   *  null if timestamps unsupported or the profiler isn't running. */
+  gpuMs: number | null;
 }
 
 export function installPerfProbe(r: THREE.WebGLRenderer): void {
@@ -152,6 +157,7 @@ export function getPerfSnapshot(): PerfSnapshot {
     heapMB: heap !== null ? round(heap / MB, 1) : null,
     allocRateMBs: heap !== null ? round(allocBytesInWindow / MB, 2) : null,
     gcPerSec: heap !== null ? gcEventsInWindow : null,
+    gpuMs: (() => { const g = webgpuGpuMs(); return g !== null ? round(g, 2) : null; })(),
   };
 }
 
