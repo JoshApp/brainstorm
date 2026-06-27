@@ -248,13 +248,16 @@ if (WEBGPU) {
   if (new URLSearchParams(window.location.search).get('tiled') === '1') {
     (wgpu as any).lighting = new DelveTiledLighting();
     if (import.meta.env.DEV) console.log('[webgpu] tiled lighting ON');
-  } else if (new URLSearchParams(window.location.search).get('leanlights') === '1') {
-    // Custom rolled-loop lights node (?leanlights=1) — same lights, same look,
-    // but evaluated in ONE loop over a packed texture instead of N unrolled light
-    // nodes (lower register pressure → higher occupancy). The parity experiment;
-    // see scene/lean-lights.ts. A/B against the default node lighting + WebGL.
+  } else if (new URLSearchParams(window.location.search).get('unrolled') !== '1') {
+    // DEFAULT: custom rolled-loop lights node (scene/lean-lights.ts). Evaluates the
+    // pooled point lights in ONE loop instead of N unrolled per-light nodes, with two
+    // byte-identical wins: parked pool slots (intensity 0) aren't packed, and a per-
+    // fragment distance cull skips lights past their cutoff (Three's attenuation is
+    // exactly 0 there). Measured: matches WebGL on real floors, beats it where post
+    // dominates, and always beats the stock unrolled path. ?unrolled=1 reverts to
+    // stock node lighting for A/B; ?tiled=1 selects the Forward+ compute path.
     (wgpu as any).lighting = new DelveLeanLighting();
-    if (import.meta.env.DEV) console.log('[webgpu] lean lights ON');
+    if (import.meta.env.DEV) console.log('[webgpu] lean lights (default)');
   }
   // The codebase types the renderer as WebGLRenderer everywhere; WebGPURenderer
   // shares the common surface we use (render/setSize/setPixelRatio/info/…), so
