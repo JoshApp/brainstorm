@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { isPooledGeometry } from '../scene/geometry-pool';
+import { isWebGPU } from '../scene/renderer-mode';
 import { spawnDustPuff } from './dust-puff';
 import { getDeathSink } from '../debug/death-debug';
 import { groundYAt } from '../level/elevation';
@@ -44,6 +45,12 @@ const FLOOR_REST  = 0.06;
 const SINK_RATE   = 0.4;
 
 function disposeNonPooled(obj: THREE.Object3D): void {
+  // WEBGPU: never free geometry synchronously — the fire-and-forget renderAsync means
+  // a frame is usually in flight, and freeing a buffer it still references invalidates
+  // that frame's draws (collapses the species, same as the vase/death-dispose bug). GC
+  // reclaims the part's geometry once it leaves the scene. (Flung parts also REUSE the
+  // corpse's merged/pooled geometry, so disposing here is doubly unsafe.)
+  if (isWebGPU()) return;
   obj.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (mesh.isMesh && mesh.geometry && !isPooledGeometry(mesh.geometry)) {

@@ -42,6 +42,7 @@ import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { buildSkinnedCreature } from './creature-skinned';
 import { isPooledGeometry } from '../scene/geometry-pool';
+import { isWebGPU } from '../scene/renderer-mode';
 import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
 import { tryJustDodge } from '../combat/just-dodge';
@@ -1822,7 +1823,15 @@ export function createEnemy(
       // spawns hit the cached compile). POOLED geometries (the shared
       // primitive pool + the instancing segment cache) are shared across
       // every mob of the type — never dispose those.
-      built.group.traverse((o) => {
+      //
+      // WEBGPU: don't dispose synchronously AT ALL. The render loop is
+      // fire-and-forget renderAsync, so a frame is usually in flight; freeing a
+      // buffer its command encoder still references invalidates that frame's whole
+      // draw — and since every mob of the species renders in the same pass, they ALL
+      // collapse to a few stray verts (the reported death-dissolve "species goes
+      // invisible" bug). Same class + same fix as the vase-dispose hazard: let GC
+      // reclaim the per-mob geometry once the group leaves the scene.
+      if (!isWebGPU()) built.group.traverse((o) => {
         const mesh = o as THREE.Mesh;
         if (mesh.isMesh && mesh.geometry && !isPooledGeometry(mesh.geometry)) {
           mesh.geometry.dispose();
