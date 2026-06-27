@@ -20,7 +20,7 @@ import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
-import { runWarmupPass } from './content/warmup-pass';
+import { runWarmupPass, runWarmupPassWebGPU } from './content/warmup-pass';
 import { initStatusVfxPool } from './effects/status-vfx';
 import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
@@ -511,10 +511,15 @@ initLevelLoader({
     // every pipeline up front (it awaits backend init internally).
     if (!WEBGPU) {
       try { renderer.compile(scene, camera); } catch { /* pre-warm is best-effort */ }
-    } else {
+    } else if (rosterPrecompiled) {
+      // Levels 2+: floor-only pipeline warm. The first level's floor is compiled
+      // together with the roster by runWarmupPassWebGPU below (gated, no flash) —
+      // running this standalone floor compileAsync THERE too would be a second,
+      // concurrent compileAsync on the same renderer racing the gated one. So
+      // only fire it once the roster warm has already happened.
       void (renderer as unknown as { compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> })
         .compileAsync(scene, camera)
-        .then(() => { if (import.meta.env.DEV) console.log('[webgpu] scene pipelines pre-compiled'); })
+        .then(() => { if (import.meta.env.DEV) console.log('[webgpu] floor pipelines pre-compiled'); })
         .catch((err) => console.error('[webgpu] compileAsync failed', err));
     }
     // Spawns compile their shaders against the LIVE light count, not boot
@@ -529,14 +534,21 @@ initLevelLoader({
       // exact live cache keys, then tears down keeping the programs (materials
       // retained) but no resident verts. Replaces the old scratch/roster/
       // instanced/gore warm patchwork. Best-effort.
-      // Warmup renders into WebGLRenderTargets (WebGL-only) — skip under WebGPU
-      // until the warm path is ported.
       if (!WEBGPU) {
         try { runWarmupPass(renderer, scene, camera); } catch { /* best-effort */ }
         // The warmup pass compiles the viewmodels' MAIN-pass (lit) variant; the
         // depth pre-pass renders them in a 0-light scene (a different program), so
         // warm that variant too or the first prepass draw stalls ~6ms in-game.
         try { warmViewmodelPrepass(renderer, camera); } catch { /* best-effort */ }
+      } else {
+        // WebGPU: compile the roster's render PIPELINES up front via compileAsync,
+        // gated so the loop skips drawing while the warm subjects sit in the scene
+        // (no flash) and the first combat frame waits behind the compile. The node-
+        // renderer analogue of runWarmupPass above — without it the first ooze/
+        // ghoul/vase-shatter compiles its pipeline mid-frame (the lazy-compile
+        // freeze). Async; rides behind the level fade. (No viewmodel depth-prepass
+        // warm: the WebGPU pipeline has no separate depth-only viewmodel pass.)
+        void runWarmupPassWebGPU(renderer, scene, camera);
       }
     }
     setCameraYaw(level.playerSpawn.yaw);

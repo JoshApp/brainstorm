@@ -5,6 +5,7 @@ import { buildCreature } from './build-creature';
 import { buildModel } from '../ecs/build-model';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
 import { getWarmupHooks } from './warmup-registry';
+import { setWebGPUWarming } from '../scene/renderer-mode';
 
 // ── The unified warmup pass ─────────────────────────────────────────────────
 //
@@ -57,16 +58,14 @@ function noCull(obj: THREE.Object3D): void {
 
 let done = false;
 
-/** Run the unified warmup. Idempotent (once per session). Best-effort — any
- *  single subject failing must not sink the pass. Call after the first level +
- *  light pool exist (the scene must hold the real lights). */
-export function runWarmupPass(
-  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
-): void {
-  if (done) return;
-  done = true;
-  const progBefore = renderer.info.programs?.length ?? 0;
-
+/** Build every warm subject — enemies (skinned + non-skinned chunk variant),
+ *  item drop models, effect pools — into one group parented at the camera and
+ *  added to the live scene. Returns the group + the effect hooks so the caller
+ *  can compile, then tear down. Shared by the WebGL (render-to-target) and WebGPU
+ *  (compileAsync) finishers; per-subject try/catch so one bad spec can't sink it. */
+function buildWarmSubjects(
+  scene: THREE.Scene, camera: THREE.Camera,
+): { warmGroup: THREE.Group; hooks: ReturnType<typeof getWarmupHooks> } {
   // Non-instanced subjects render under this group; placed at the camera so
   // they're trivially in-frustum (belt — we also force frustumCulled off).
   const warmGroup = new THREE.Group();
@@ -74,8 +73,8 @@ export function runWarmupPass(
   scene.add(warmGroup);
 
   // ENEMIES — fold each creature into its rigid-skinned SkinnedMesh (the live
-  // render path, docs/CREATURE-RENDER-V2.md) and add it so the render below
-  // compiles the SKINNING shader variant — otherwise the first enemy spawn
+  // render path, docs/CREATURE-RENDER-V2.md) and add it so the compile below
+  // covers the SKINNING shader variant — otherwise the first enemy spawn
   // in-game recompiles it and hitches. castShadow stays false (blob shadow), as
   // the builder sets, so the skinned-shadow variant isn't (and needn't be) warmed.
   const warmBox = new THREE.BoxGeometry(0.02, 0.02, 0.02);   // shared; warms the NON-skinned variant
@@ -89,8 +88,8 @@ export function runWarmupPass(
       // Flung dismember chunks (sever/crumble) are PLAIN, non-skinned meshes that
       // reuse these same materials. The skinned mesh above only compiles the
       // SKINNING variant, so without this the first death/sever of each type
-      // recompiles the non-skinned variant mid-combat → a ~270ms freeze. Render a
-      // tiny box per material (castShadow false, like a chunk) to warm it now.
+      // recompiles the non-skinned variant mid-combat → a ~270ms freeze. A
+      // tiny box per material (castShadow false, like a chunk) warms it now.
       for (const m of creature.materials.values()) {
         const box = new THREE.Mesh(warmBox, m);
         box.castShadow = false; box.frustumCulled = false;
@@ -115,6 +114,32 @@ export function runWarmupPass(
   const hooks = getWarmupHooks();
   for (const h of hooks) { try { h.spawn(warmGroup); } catch { /* skip */ } }
   noCull(warmGroup);
+  return { warmGroup, hooks };
+}
+
+/** TEARDOWN — keep programs, shed resident GPU memory. Materials are RETAINED
+ *  (programs/pipelines stay cached). Effects empty their pools; non-instanced
+ *  builds dispose geometry + leave the scene; instanced batches free slots then
+ *  dispose the empty batch meshes (segmentCache keeps geometry+material → the
+ *  compiled program), so nothing draws parked. */
+function teardownWarmSubjects(
+  scene: THREE.Scene, warmGroup: THREE.Group, hooks: ReturnType<typeof getWarmupHooks>,
+): void {
+  for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
+  disposeGeometry(warmGroup);
+  scene.remove(warmGroup);
+}
+
+/** Run the unified warmup (WebGL path). Idempotent (once per session). Best-
+ *  effort. Call after the first level + light pool exist (the scene must hold
+ *  the real lights). */
+export function runWarmupPass(
+  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
+): void {
+  if (done) return;
+  done = true;
+  const progBefore = renderer.info.programs?.length ?? 0;
+  const { warmGroup, hooks } = buildWarmSubjects(scene, camera);
 
   // ONE offscreen render — compiles every visible program (floor, props, items,
   // boss bodies, instanced enemy batches, effects) in the live light + shadow
@@ -137,19 +162,45 @@ export function runWarmupPass(
   // warmupContent, NOT here — its materials are module-level + never disposed
   // (so that warm sticks) and aren't light-keyed (boot context is fine). Doing
   // it here would clobber the live floor's splat bounds.
-
-  // ── TEARDOWN — keep programs, shed resident GPU memory ──────────────────────
-  // Materials are RETAINED (programs stay cached). Effects: empty their pools.
-  // Non-instanced builds: dispose geometry + remove from scene. Instanced: free
-  // slots, then dispose the empty batch meshes + drop them from the live map
-  // (segmentCache keeps geometry+material → program), so nothing draws parked.
-  for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
-  disposeGeometry(warmGroup);
-  scene.remove(warmGroup);
+  teardownWarmSubjects(scene, warmGroup, hooks);
 
   if (import.meta.env.DEV) {
     const progAfter = renderer.info.programs?.length ?? 0;
     // eslint-disable-next-line no-console
     console.log(`[warmup-pass] +${progAfter - progBefore} programs (${progBefore}→${progAfter}); retained ${retained.length} materials. prog should now hold flat through combat.`);
+  }
+}
+
+/** Run the unified warmup (WebGPU path). Same subjects, but the node renderer
+ *  compiles a render PIPELINE per material/state via `compileAsync` — no
+ *  WebGLRenderTarget. Gated by `setWebGPUWarming` so the main loop SKIPS drawing
+ *  while the warm subjects are parented in the live scene (else they'd flash
+ *  on-screen at the camera), which doubles as the first-frame gate: the first
+ *  real frame waits behind the compile instead of racing it (the lazy compile-
+ *  mid-frame stall — the ~89ms-for-25k-tris symptom — this whole pass prevents).
+ *  Idempotent (shares the `done` guard with the WebGL path) and best-effort: a
+ *  driver hiccup must not brick the load, and the gate is ALWAYS cleared. */
+export async function runWarmupPassWebGPU(
+  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
+): Promise<void> {
+  if (done) return;
+  done = true;
+  setWebGPUWarming(true);
+  let built: { warmGroup: THREE.Group; hooks: ReturnType<typeof getWarmupHooks> } | null = null;
+  try {
+    built = buildWarmSubjects(scene, camera);
+    // compileAsync awaits backend init internally and compiles a pipeline for
+    // every material/state combo now resident in the scene (floor + props +
+    // the warm roster), in the live light/shadow context.
+    await (renderer as unknown as {
+      compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown>;
+    }).compileAsync(scene, camera);
+  } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
+    if (built) teardownWarmSubjects(scene, built.warmGroup, built.hooks);
+    setWebGPUWarming(false);
+  }
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.log(`[warmup-pass:webgpu] roster pipelines compiled (enemies/items/effects); retained ${retained.length} materials. combat spawns should not hitch.`);
   }
 }

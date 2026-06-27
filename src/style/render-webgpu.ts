@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import { RenderPipeline } from 'three/webgpu';
+import { isWebGPUWarming } from '../scene/renderer-mode';
 import { pass, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, mix,
   luminance, texture, uniform, mrt, output, normalView,
   acesFilmicToneMapping, agxToneMapping, neutralToneMapping } from 'three/tsl';
@@ -403,6 +404,12 @@ let inFlight = 0;
 
 /** Render one frame through the native WebGPU pipeline (skips if the GPU is behind). */
 export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
+  // WARMUP GATE — while the warmup pass has the spawnable roster parented in the
+  // live scene (compiling pipelines via compileAsync), DON'T draw: those subjects
+  // sit at the camera and would flash on-screen. Skipping here is also the first-
+  // frame gate (the first real frame waits behind the compile). The level fade
+  // covers the few skipped frames. See renderer-mode.ts setWebGPUWarming.
+  if (isWebGPUWarming()) return;
   ensurePipeline(renderer, scene, camera);
   if (import.meta.env.DEV && typeof window !== 'undefined' && !(window as any).__scenePassInfo) {
     (window as any).__scenePassInfo = () => {
