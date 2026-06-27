@@ -1,5 +1,5 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
-import { vec3, diffuseColor, luminance, mix } from 'three/tsl';
+import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert } from 'three/tsl';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
 // GLSL version appended to THREE.ShaderChunk.lights_fragment_end globally; under
@@ -55,6 +55,27 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
     super.finish(builder);
   }
 }
+// LEAN variant — Lambert diffuse ONLY, dropping BRDF_GGX_Multiscatter (the per-light
+// cost wall: full GGX D·G·F + multiscatter energy compensation). DELVE surfaces are
+// matte stone (roughness ~0.9) where the GGX specular is a dim broad lobe that barely
+// reads; for them the diffuse term is the whole look. The diffuse here is IDENTICAL to
+// Physical's (same BRDF_Lambert), and finish() bands the same way — so the cel look is
+// preserved while each light gets cheaper. (A cheap Blinn-Phong highlight can be added
+// back per-material for metal/bone/wet where the glint matters.)
+class LeanBandedLightingModel extends BandedPhysicalLightingModel {
+  constructor(chroma = 1, chromaNode: any = null) { super(chroma, chromaNode); }
+  direct({ lightDirection, lightColor, reflectedLight }: any): void {
+    const dotNL: any = (normalView as any).dot(lightDirection).clamp();
+    const irradiance: any = dotNL.mul(lightColor);
+    reflectedLight.directDiffuse.addAssign(irradiance.mul((BRDF_Lambert as any)({ diffuseColor })));
+  }
+}
+
+// Toggle: when true, the global patch installs the LEAN model instead of the full
+// Physical-derived one. Flipping needs materials to recompile to take effect live.
+let useLean = false;
+export function setLeanLightingWebGPU(on: boolean): void { useLean = on; }
+export function leanLightingOn(): boolean { return useLean; }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 // Patch the standard node material's lighting model GLOBALLY (the GLSL version
@@ -68,7 +89,7 @@ export function installBandedLightingWebGPU(on: boolean): void {
   const proto: any = (MeshStandardNodeMaterial as any).prototype;
   if (origSetupLightingModel === null) origSetupLightingModel = proto.setupLightingModel;
   proto.setupLightingModel = on
-    ? function () { return new BandedPhysicalLightingModel(); }
+    ? function () { return useLean ? new LeanBandedLightingModel() : new BandedPhysicalLightingModel(); }
     : origSetupLightingModel;
 }
 

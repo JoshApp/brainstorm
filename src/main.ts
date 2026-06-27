@@ -58,7 +58,7 @@ import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
 import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
-import { installBandedLightingWebGPU } from './style/banded-lighting-webgpu';
+import { installBandedLightingWebGPU, setLeanLightingWebGPU } from './style/banded-lighting-webgpu';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
   INSPECT_AMBIENT, INSPECT_REQUESTED,
@@ -343,8 +343,22 @@ if (import.meta.env.DEV) {
 // lighting-model patch (no shared shader chunk under the node renderer).
 if (WEBGPU) installBandedLightingWebGPU(getSettings().bandedLighting);
 else installBandedLighting(getSettings().bandedLighting);
+// ?lean=1 — compile the LEAN lighting model from boot (no live-recompile uncertainty)
+// for a clean A/B of the per-light BRDF cost.
+if (WEBGPU && new URLSearchParams(location.search).get('lean') === '1') setLeanLightingWebGPU(true);
 // DEV: toggle banded lighting model live to A/B its per-fragment cost.
-if (import.meta.env.DEV && WEBGPU) (window as any).__setBanded = (on: boolean) => installBandedLightingWebGPU(on);
+if (import.meta.env.DEV && WEBGPU) {
+  (window as any).__setBanded = (on: boolean) => installBandedLightingWebGPU(on);
+  // Lean lighting A/B — flips the model AND forces every node material to recompile
+  // so the change is visible on the LIVE scene (not just freshly-built materials).
+  (window as any).__setLean = (on: boolean) => {
+    setLeanLightingWebGPU(on);
+    scene.traverse((o: any) => {
+      const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      mats.forEach((m: any) => { if (m && m.isNodeMaterial) m.needsUpdate = true; });
+    });
+  };
+}
 const materials = buildMaterials(renderer);
 // The custom PSX pipeline builds WebGLRenderTargets + GLSL ShaderMaterials —
 // WebGL-only. Skipped under ?webgpu=1 (renderWithStyle short-circuits to a
