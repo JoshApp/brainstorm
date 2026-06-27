@@ -5,6 +5,7 @@ import { buildCreature } from './build-creature';
 import { buildModel } from '../ecs/build-model';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
 import { getWarmupHooks } from './warmup-registry';
+import { warmRenderWebGPU } from '../style/render-webgpu';
 
 // ── The unified warmup pass ─────────────────────────────────────────────────
 //
@@ -213,16 +214,26 @@ export async function runWarmupPassWebGPU(
   // pipeline freeze).
   let built: { warmGroup: THREE.Group; hooks: ReturnType<typeof getWarmupHooks> } | null = null;
   try {
-    built = buildWarmSubjects(camera, false);   // roster only, detached, no effects
-    await (renderer as unknown as {
-      compileAsync: (o: THREE.Object3D, c: THREE.Camera, target: THREE.Scene) => Promise<unknown>;
-    }).compileAsync(built.warmGroup, camera, scene);
-  } catch { /* best-effort — a driver hiccup must not brick the load */ }
-  // The group was never in the scene; nothing to remove. Geometry stays resident
-  // (retained materials hold the compiled pipelines — disposing it black-screened the
-  // WebGPU world). No effect pools were touched.
+    // Build EVERY warm subject — roster (enemies incl. bosses + items) AND effects
+    // (blood/coins/wisps/shatter/…). Add them to the live scene, which already holds
+    // the loaded floor, so ONE render captures floor + props + decor + roster +
+    // effects. Then render through the REAL PSX pipeline so the compiled pipelines
+    // match the live render's target format EXACTLY — the thing compileAsync got wrong
+    // (it warms the canvas format; the live render uses the internal HDR scene-pass
+    // target, so its pipelines were thrown away + recompiled on first use = the
+    // residual stutter). Behind the load cover (reveal gated on this), so nothing
+    // flashes; the main loop is held off via warmRenderWebGPU's `warmingUp` gate.
+    built = buildWarmSubjects(camera, true);
+    scene.add(built.warmGroup);
+    await warmRenderWebGPU(renderer, scene, camera, 3);
+  } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
+    if (built) {
+      for (const h of built.hooks) { try { h.clear(); } catch { /* skip */ } }
+      scene.remove(built.warmGroup);   // pipelines retained via materials; don't dispose geometry
+    }
+  }
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
-    console.log(`[warmup-pass:webgpu] roster pipelines compiled DETACHED (enemies/items, no flash); retained ${retained.length} materials.`);
+    console.log(`[warmup-pass:webgpu] floor + roster + effects rendered through PSX (real target format, no first-use recompile); retained ${retained.length} materials.`);
   }
 }

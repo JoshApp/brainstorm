@@ -412,6 +412,10 @@ export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       return { passW: rt?.width ?? tex?.width, passH: rt?.height ?? tex?.height, bufW: buf.x, bufH: buf.y, resScale };
     };
   }
+  // While the warm pass is driving its own renders (warmRenderWebGPU), the main loop
+  // must NOT also submit — two concurrent renderAsync on one pipeline race. The warm
+  // runs behind the load cover, so skipping here just holds the covered frame.
+  if (warmingUp) return;
   if (frameSyncOn && inFlight >= MAX_IN_FLIGHT) return;   // GPU behind — drop this submit
   // Reset per frame so renderer.info reflects THIS frame's total (the pipeline's
   // passes accumulate into it); without this it climbs without bound.
@@ -419,6 +423,32 @@ export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   inFlight++;
   void (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync()
     .then(() => { inFlight--; }, () => { inFlight--; });
+}
+
+// ── Warm render ─────────────────────────────────────────────────────────────
+// Compile pipelines by rendering through the REAL PSX pipeline, so the compiled
+// pipeline state matches the live render EXACTLY (the internal HDR scene-pass target
+// format, the bloom/grade passes — everything). compileAsync warms the wrong target
+// format (the canvas), so its pipelines get thrown away + recompiled on first real
+// draw — that's the residual first-use stutter. This renders whatever is in `scene`
+// (the loaded floor + any warm subjects added by the caller) a few times, awaiting
+// each submit, with the main loop gated off via `warmingUp`. MUST run behind the load
+// cover — it renders the warm subjects to the (covered) canvas.
+let warmingUp = false;
+export function isWarmingUp(): boolean { return warmingUp; }
+export async function warmRenderWebGPU(
+  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, passes = 3,
+): Promise<void> {
+  ensurePipeline(renderer, scene, camera);
+  warmingUp = true;
+  try {
+    for (let i = 0; i < passes; i++) {
+      renderer.info.reset();
+      await (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync();
+    }
+  } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
+    warmingUp = false;
+  }
 }
 
 // ?noframesync=1 reverts to pure fire-and-forget (no in-flight cap) for an A/B.

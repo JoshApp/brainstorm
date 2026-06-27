@@ -171,6 +171,14 @@ export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () =
     fadeIn();
   };
   if (!ready || typeof (ready as { then?: unknown }).then !== 'function') { finish(); return; }
+  // COVER FIRST. The warm pass renders its subjects to the (still-visible) canvas to
+  // compile pipelines at the real format, so the screen MUST be black before it runs.
+  // The descent path already faded out, but the first floor from the title loads via
+  // loadInitialLevel with no fadeOut — so raise the black instantly here. fadeIn drops
+  // it on reveal. (Idempotent: if already black, this is a no-op.)
+  const cover = ensureOverlay();
+  cover.style.transition = 'opacity 0ms';
+  cover.style.opacity = '1';
   pulseTimer = window.setTimeout(showLoadingMark, 320);   // only show the mark for noticeable waits
   safetyTimer = window.setTimeout(finish, 15000);          // never strand on black
   let revealed = false;
