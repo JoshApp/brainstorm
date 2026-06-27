@@ -5,6 +5,7 @@ import { buildCreature } from './build-creature';
 import { buildModel } from '../ecs/build-model';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
 import { getWarmupHooks } from './warmup-registry';
+import { WARM_MODELS } from './warmup-models';
 import { warmRenderWebGPU } from '../style/render-webgpu';
 
 // ── The unified warmup pass ─────────────────────────────────────────────────
@@ -107,6 +108,18 @@ function buildWarmSubjects(
       warmGroup.add(g);
       retainMaterials(g);
     } catch { /* skip a bad drop spec */ }
+  }
+
+  // STATIC PROPS / CLUTTER — chests, vases, debris, fallen pillars. Deeper floors
+  // introduce types the first floor lacks, so warm one of each (the WARM_MODELS list)
+  // — their first appearance then can't compile mid-reveal.
+  for (const spec of WARM_MODELS) {
+    try {
+      const g = buildModel(spec).group;
+      noCull(g);
+      warmGroup.add(g);
+      retainMaterials(g);
+    } catch { /* skip a bad spec */ }
   }
 
   // EFFECTS — self-registered pools (shatter/coins/wisps/…) spawn a
