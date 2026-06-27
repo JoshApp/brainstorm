@@ -5,7 +5,6 @@ import { buildCreature } from './build-creature';
 import { buildModel } from '../ecs/build-model';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
 import { getWarmupHooks } from './warmup-registry';
-import { setWebGPUWarming } from '../scene/renderer-mode';
 
 // ── The unified warmup pass ─────────────────────────────────────────────────
 //
@@ -64,13 +63,14 @@ let done = false;
  *  can compile, then tear down. Shared by the WebGL (render-to-target) and WebGPU
  *  (compileAsync) finishers; per-subject try/catch so one bad spec can't sink it. */
 function buildWarmSubjects(
-  scene: THREE.Scene, camera: THREE.Camera,
+  camera: THREE.Camera,
 ): { warmGroup: THREE.Group; hooks: ReturnType<typeof getWarmupHooks> } {
-  // Non-instanced subjects render under this group; placed at the camera so
-  // they're trivially in-frustum (belt — we also force frustumCulled off).
+  // Non-instanced subjects live under this group; placed at the camera so
+  // they're trivially in-frustum (belt — we also force frustumCulled off). The
+  // CALLER decides whether to add it to the live scene (WebGL render-to-target)
+  // or keep it detached and compile against the scene (WebGPU compileAsync).
   const warmGroup = new THREE.Group();
   warmGroup.position.copy(camera.position);
-  scene.add(warmGroup);
 
   // ENEMIES — fold each creature into its rigid-skinned SkinnedMesh (the live
   // render path, docs/CREATURE-RENDER-V2.md) and add it so the compile below
@@ -117,24 +117,16 @@ function buildWarmSubjects(
   return { warmGroup, hooks };
 }
 
-/** TEARDOWN — keep programs, shed resident GPU memory. Materials are RETAINED
- *  (programs/pipelines stay cached). Effects empty their pools; non-instanced
+/** TEARDOWN (WebGL) — keep programs, shed resident GPU memory. Materials are
+ *  RETAINED (programs stay cached). Effects empty their pools; non-instanced
  *  builds dispose geometry + leave the scene; instanced batches free slots then
  *  dispose the empty batch meshes (segmentCache keeps geometry+material → the
- *  compiled program), so nothing draws parked.
- *
- *  `disposeGeo`: WebGL frees the warm geometry's buffers here. The WebGPU backend
- *  must NOT — compileAsync has already uploaded those geometries to GPU buffers
- *  the backend tracks, and disposing them destroys buffers still referenced by
- *  the live render's command submission ("Buffer used in submit while destroyed"
- *  → black screen). The warm geometry is tiny; we keep it resident (just removed
- *  from the scene so it never draws) rather than risk a shared-buffer destroy. */
+ *  compiled program), so nothing draws parked. */
 function teardownWarmSubjects(
   scene: THREE.Scene, warmGroup: THREE.Group, hooks: ReturnType<typeof getWarmupHooks>,
-  disposeGeo = true,
 ): void {
   for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
-  if (disposeGeo) disposeGeometry(warmGroup);
+  disposeGeometry(warmGroup);
   scene.remove(warmGroup);
 }
 
@@ -147,7 +139,8 @@ export function runWarmupPass(
   if (done) return;
   done = true;
   const progBefore = renderer.info.programs?.length ?? 0;
-  const { warmGroup, hooks } = buildWarmSubjects(scene, camera);
+  const { warmGroup, hooks } = buildWarmSubjects(camera);
+  scene.add(warmGroup);   // WebGL compiles by rendering the LIVE scene into a target
 
   // ONE offscreen render — compiles every visible program (floor, props, items,
   // boss bodies, instanced enemy batches, effects) in the live light + shadow
@@ -181,34 +174,36 @@ export function runWarmupPass(
 
 /** Run the unified warmup (WebGPU path). Same subjects, but the node renderer
  *  compiles a render PIPELINE per material/state via `compileAsync` — no
- *  WebGLRenderTarget. Gated by `setWebGPUWarming` so the main loop SKIPS drawing
- *  while the warm subjects are parented in the live scene (else they'd flash
- *  on-screen at the camera), which doubles as the first-frame gate: the first
- *  real frame waits behind the compile instead of racing it (the lazy compile-
- *  mid-frame stall — the ~89ms-for-25k-tris symptom — this whole pass prevents).
+ *  WebGLRenderTarget.
+ *
+ *  The warm group is kept DETACHED (never added to the live scene) and compiled
+ *  against the live scene's lights via compileAsync's `targetScene` argument. Two
+ *  payoffs vs. the earlier add-to-scene approach: the subjects can't flash on-
+ *  screen, so the render loop keeps drawing the real scene the whole time (NO
+ *  black-screen gate); and we never dispose buffers the backend is tracking for
+ *  the live render. Because the first arg isn't a `Scene`, the renderer's
+ *  `sceneRef` falls back to the live `scene` — so the pipeline cache keys match
+ *  the real render and the first ooze/ghoul/vase-shatter reuses the warmed
+ *  pipeline instead of compiling mid-frame.
+ *
  *  Idempotent (shares the `done` guard with the WebGL path) and best-effort: a
- *  driver hiccup must not brick the load, and the gate is ALWAYS cleared. */
+ *  driver hiccup must not brick the load. */
 export async function runWarmupPassWebGPU(
   renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
 ): Promise<void> {
   if (done) return;
   done = true;
-  setWebGPUWarming(true);
   let built: { warmGroup: THREE.Group; hooks: ReturnType<typeof getWarmupHooks> } | null = null;
   try {
-    built = buildWarmSubjects(scene, camera);
-    // compileAsync awaits backend init internally and compiles a pipeline for
-    // every material/state combo now resident in the scene (floor + props +
-    // the warm roster), in the live light/shadow context.
+    built = buildWarmSubjects(camera);
     await (renderer as unknown as {
-      compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown>;
-    }).compileAsync(scene, camera);
+      compileAsync: (o: THREE.Object3D, c: THREE.Camera, target: THREE.Scene) => Promise<unknown>;
+    }).compileAsync(built.warmGroup, camera, scene);
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
-    // disposeGeo=false: see teardownWarmSubjects — the node backend tracks the
-    // warm geometries' GPU buffers after compileAsync; destroying them here
-    // corrupts the live render's submission (black screen).
-    if (built) teardownWarmSubjects(scene, built.warmGroup, built.hooks, false);
-    setWebGPUWarming(false);
+    // The group was never in the live scene — just empty the effect pools. Keep
+    // its geometry resident (retained materials hold the compiled pipelines);
+    // don't dispose buffers the backend just compiled against.
+    if (built) for (const h of built.hooks) { try { h.clear(); } catch { /* skip */ } }
   }
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
