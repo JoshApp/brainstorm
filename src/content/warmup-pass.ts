@@ -121,12 +121,20 @@ function buildWarmSubjects(
  *  (programs/pipelines stay cached). Effects empty their pools; non-instanced
  *  builds dispose geometry + leave the scene; instanced batches free slots then
  *  dispose the empty batch meshes (segmentCache keeps geometry+material → the
- *  compiled program), so nothing draws parked. */
+ *  compiled program), so nothing draws parked.
+ *
+ *  `disposeGeo`: WebGL frees the warm geometry's buffers here. The WebGPU backend
+ *  must NOT — compileAsync has already uploaded those geometries to GPU buffers
+ *  the backend tracks, and disposing them destroys buffers still referenced by
+ *  the live render's command submission ("Buffer used in submit while destroyed"
+ *  → black screen). The warm geometry is tiny; we keep it resident (just removed
+ *  from the scene so it never draws) rather than risk a shared-buffer destroy. */
 function teardownWarmSubjects(
   scene: THREE.Scene, warmGroup: THREE.Group, hooks: ReturnType<typeof getWarmupHooks>,
+  disposeGeo = true,
 ): void {
   for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
-  disposeGeometry(warmGroup);
+  if (disposeGeo) disposeGeometry(warmGroup);
   scene.remove(warmGroup);
 }
 
@@ -196,7 +204,10 @@ export async function runWarmupPassWebGPU(
       compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown>;
     }).compileAsync(scene, camera);
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
-    if (built) teardownWarmSubjects(scene, built.warmGroup, built.hooks);
+    // disposeGeo=false: see teardownWarmSubjects — the node backend tracks the
+    // warm geometries' GPU buffers after compileAsync; destroying them here
+    // corrupts the live render's submission (black screen).
+    if (built) teardownWarmSubjects(scene, built.warmGroup, built.hooks, false);
     setWebGPUWarming(false);
   }
   if (import.meta.env.DEV) {
