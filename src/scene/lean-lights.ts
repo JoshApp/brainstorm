@@ -1,5 +1,5 @@
 import { Vector3, Vector4, LightsNode, NodeUpdateType, Lighting } from 'three/webgpu';
-import { nodeProxy, int, Loop, If, Break, positionView, Fn, uniform, uniformArray, directPointLight } from 'three/tsl';
+import { nodeProxy, int, float, Loop, If, Break, positionView, Fn, uniform, uniformArray, directPointLight } from 'three/tsl';
 
 // Custom LightsNode — the "lean lights" parity experiment (?leanlights=1).
 //
@@ -74,15 +74,23 @@ class LeanLightsNode extends (LightsNode as any) {
   // mul — matching the default path, so the comparison isolates the loop structure.
   updateBefore(frame: any): void {
     const camera = frame.camera;
-    const n = this.leanLights.length;
-    this._count.value = n;
+    // Pack only LIVE torches — skip parked pool slots (intensity 0) entirely so the
+    // rolled loop iterates the active count, not the full 13-slot pool. The pool keeps
+    // dead slots resident to avoid shader recompiles on torch-count change; here they
+    // cost nothing (not packed, not iterated). The per-fragment distance cull then
+    // handles active-but-out-of-range torches on top of this.
+    let k = 0;
+    const src = this.leanLights, n = src.length;
     for (let i = 0; i < n; i++) {
-      const light = this.leanLights[i];
-      _v.setFromMatrixPosition(light.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
-      this._pos[i].set(_v.x, _v.y, _v.z, light.distance);
+      const light = src[i];
       const I = light.intensity;
-      this._col[i].set(light.color.r * I, light.color.g * I, light.color.b * I, light.decay);
+      if (I <= 0.0001) continue;   // parked slot — don't pack it
+      _v.setFromMatrixPosition(light.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+      this._pos[k].set(_v.x, _v.y, _v.z, light.distance);
+      this._col[k].set(light.color.r * I, light.color.g * I, light.color.b * I, light.decay);
+      k++;
     }
+    this._count.value = k;
   }
 
   setupLights(builder: any, lightNodes: any): void {
@@ -102,14 +110,26 @@ class LeanLightsNode extends (LightsNode as any) {
         (If as any)((int as any)(i).greaterThanEqual(this._count), () => { (Break as any)(); });
         const p = this._posArr.element(i);
         const c = this._colArr.element(i);
-        // Stock directPointLight → identical attenuation/look; only the iteration
-        // structure differs from the default per-light-node path.
-        builder.lightsNode.setupDirectLight(builder, this, (directPointLight as any)({
-          color: c.rgb,
-          lightVector: p.xyz.sub(positionView),
-          cutoffDistance: p.w,
-          decayExponent: c.w,
-        }));
+        const lv = p.xyz.sub(positionView);
+        const cutoff = p.w;
+        // IN-SHADER LIGHT CULLING — skip lights that contribute EXACTLY zero to this
+        // fragment: Three's distance attenuation reaches 0 at/beyond cutoffDistance,
+        // so evaluating a light farther than its range is wasted work with no visual
+        // effect. This skips both the parked pool slots (positioned far away) AND
+        // out-of-range torches, per fragment — so each pixel only pays for the torches
+        // actually reaching it. Byte-identical look; the win is that the 13-slot pool
+        // no longer costs 13 BRDFs everywhere. (cutoff<=0 = infinite range → never cull.)
+        const cull2 = (cutoff.lessThanEqual(0) as any).select((float as any)(1e12), cutoff.mul(cutoff));
+        (If as any)((lv.dot(lv) as any).lessThan(cull2), () => {
+          // Stock directPointLight → identical attenuation/look; only the iteration
+          // structure differs from the default per-light-node path.
+          builder.lightsNode.setupDirectLight(builder, this, (directPointLight as any)({
+            color: c.rgb,
+            lightVector: lv,
+            cutoffDistance: cutoff,
+            decayExponent: c.w,
+          }));
+        });
       });
     }, 'void')();
   }
