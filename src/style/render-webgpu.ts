@@ -420,9 +420,27 @@ export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   // Reset per frame so renderer.info reflects THIS frame's total (the pipeline's
   // passes accumulate into it); without this it climbs without bound.
   renderer.info.reset();
+  // DEV: bracket each PSX render in a WebGPU validation error scope so a render-pass
+  // hazard (e.g. the reported 'output texture writable+sampled in same scope') is
+  // caught AT the render, logged with the frame's draw count, and stored on
+  // window.__gpuErrors — these don't reliably surface in the devtools console, and
+  // this localizes them to the PSX pass + the frame that triggered them.
+  const dev: any = import.meta.env.DEV ? (renderer as any).backend?.device : null;
+  if (dev) dev.pushErrorScope('validation');
   inFlight++;
   void (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync()
-    .then(() => { inFlight--; }, () => { inFlight--; });
+    .then(() => {
+      inFlight--;
+      if (dev) dev.popErrorScope().then((err: any) => {
+        if (err) {
+          const msg = String(err.message || err);
+          const draws = (renderer as any).info?.render?.drawCalls;
+          // eslint-disable-next-line no-console
+          console.error('[psx gpu-error] frame draws=' + draws + ' :: ' + msg.slice(0, 280));
+          const w = window as any; (w.__gpuErrors = w.__gpuErrors || []).push(msg);
+        }
+      }).catch(() => {});
+    }, () => { inFlight--; if (dev) dev.popErrorScope().catch(() => {}); });
 }
 
 // ── Warm render ─────────────────────────────────────────────────────────────

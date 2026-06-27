@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundYAt } from './elevation';
+import { isWebGPU } from '../scene/renderer-mode';
 import { buildModel } from '../ecs/build-model';
 import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from '../content/vase';
 import { COBWEB_BARRIER } from '../content/cobweb';
@@ -164,13 +165,26 @@ export function spawnVase(
           createPickup(scene, tmpDropPos.clone(), potion, { velocity: launchVel });
         }
       }
-      // Remove from scene next frame (after caller sees alive=false).
-      // Disposing geometries: walk the model group.
-      group.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (mesh.isMesh && mesh.geometry) mesh.geometry.dispose();
-      });
+      // Remove from scene; reclaim this vase's geometry.
       scene.remove(group);
+      // Dispose ONLY this vase's own (non-pooled) geometry. Two hazards this guards:
+      //   1. POOLED geometry is SHARED across every vase/prop (buildModel pulls from
+      //      the geometry-pool). Disposing it frees buffers OTHER props still draw
+      //      with — a latent bug on WebGL, and on WebGPU a hard fault.
+      //   2. On WebGPU the render loop is fire-and-forget renderAsync — a frame is
+      //      often in flight. Freeing a buffer that frame's command encoder still
+      //      references = "invalid command buffer" → device loss → black screen
+      //      (same class as the warmup-dispose bug). So on WebGPU we DON'T dispose
+      //      synchronously at all; the per-vase geometry is tiny, GC reclaims it once
+      //      the group is out of the scene. (Pooled geo must never be disposed here.)
+      if (!isWebGPU()) {
+        group.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (mesh.isMesh && mesh.geometry && mesh.geometry.userData.pooled !== true) {
+            mesh.geometry.dispose();
+          }
+        });
+      }
       return applied;
     },
   };
