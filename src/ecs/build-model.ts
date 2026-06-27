@@ -43,6 +43,12 @@ export interface BuiltModel {
 // makeMesh / buildCsg / decal call. A per-part castShadow/receiveShadow still
 // overrides it (`part.castShadow ?? curShadow.cast`).
 let curShadow: { cast: boolean; receive: boolean } = { cast: true, receive: true };
+// Per-material unique id for WebGPU. three.webgpu otherwise shares render BINDINGS
+// (not just the compiled program) across structurally-identical materials, so removing
+// one dissolving/flashing mob leaves its uniform state stuck on the whole species
+// (the death-dissolve / hit-sheen "all mobs break" bug). A unique programCacheKey per
+// material instance isolates the bindings. See installRevealWebGPU.
+let webgpuMatSeq = 0;
 
 // Render policy per prop class — the single table the `class` knob resolves
 // through. Casting is the expensive half (the lamp re-renders every caster into
@@ -349,7 +355,14 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
   // (the core "forms emerge from black" identity) as a TSL emissive node. The
   // situational effects — dissolve (death crumble), gore creep, chroma (PAINTED
   // over-saturation) — still need their own node ports; see WEBGPU-MIGRATION.md.
-  if (isWebGPU()) { installRevealWebGPU(mat, def); return; }
+  if (isWebGPU()) {
+    installRevealWebGPU(mat, def);
+    // Isolate this material's render bindings so per-material uniforms (uDissolve, the
+    // hit/death flash, chroma) can't leak across the species when a mob dies + is removed.
+    const matKey = 'delve-mat-' + (webgpuMatSeq++);
+    (mat as unknown as { customProgramCacheKey: () => string }).customProgramCacheKey = () => matKey;
+    return;
+  }
 
   const uRimColor   = { value: new THREE.Color(def.rim?.color ?? 0xffffff) };
   const uRimPower   = { value: def.rim?.power ?? 2.5 };
