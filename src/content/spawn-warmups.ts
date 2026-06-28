@@ -2,70 +2,94 @@ import * as THREE from 'three';
 import { registerWarmup } from './warmup-registry';
 import { ENEMIES } from './enemies';
 import { ITEMS } from './items';
-import { buildCreature } from './build-creature';
-import { buildSkinnedCreature } from '../mobs/creature-skinned';
-import { buildModel } from '../ecs/build-model';
+import { createMaterialFromDef } from '../ecs/build-model';
 import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from './vase';
 import { COBWEB_BARRIER } from './cobweb';
 
-// ── Content auto-warmups ─────────────────────────────────────────────────────
+// ── Content auto-warmups (CHEAP — materials on dummies, NOT full builds) ──────────
 //
-// Completes the self-registering warmup architecture (warmup-registry.ts) for
-// the BULK content registries — enemies, items, destructibles — so they stop
-// being hand-maintained god-lists inside the warmup pass. Each registers a
-// `live: true` hook: it runs ONLY in runWarmupPass's real (fogged, full-light,
-// shadowed) scene, never the boot scratch — because a material's program is
-// keyed on render state (useFog / light count / shadow casters), so warming in
-// the scratch compiles the WRONG variant and the first live render recompiles.
+// A WebGPU render pipeline's identity is the MATERIAL + the geometry's ATTRIBUTES
+// (skinned vs plain) + the render state — NOT the vertex count. So to warm a creature's
+// pipeline we do NOT build the creature (CSG + skinning is the heavy, ~seconds-per-roster
+// cost that froze boot / lagged play). We create just the MATERIAL with createMaterialFromDef
+// — which applies the full WebGPU node setup (reveal / dissolve / gore / chroma), so it
+// compiles the EXACT pipeline the live spawn uses — and render it on a TINY dummy mesh of
+// the right attribute shape. Same pipeline, ~none of the cost.
 //
-// A representative instance carries the worst-case material set, so rendering it
-// compiles every program the live spawn will need. Geometry is disposed in the
-// pass teardown (it disposes the warm group); materials are retained there so
-// the programs stay pinned. clear() is therefore a no-op for these.
+// The warm pass renders these through the real PSX pipeline (right target format), so the
+// compiled pipeline matches the live render and the first real spawn reuses it (no hitch).
+// Repeat visits hit the browser's persistent pipeline cache (DawnWebGPUCache) → near-free.
 //
 // Imported once (main bootstrap) for its module-level side effect.
 
-const WARM_BOX = new THREE.BoxGeometry(0.02, 0.02, 0.02);   // shared; for non-skinned variants
+// Plain (non-skinned) dummy — the variant flung dismember chunks + props/items use.
+const WARM_BOX = new THREE.BoxGeometry(0.02, 0.02, 0.02);
+WARM_BOX.userData.pooled = true;   // shared — the warm-pass teardown must not dispose it
 
-// ENEMIES — the skinned body (skinning variant) PLUS a tiny box per material
-// (the NON-skinned variant the flung dismember chunks use). Both at the live
-// light/shadow/fog count.
-for (const spec of Object.values(ENEMIES)) {
-  registerWarmup({
-    label: `enemy:${spec.id}`,
-    live: true,
-    spawn: (scene) => {
-      const creature = buildCreature(spec.creature);
-      buildSkinnedCreature(creature);
-      scene.add(creature.group);
-      for (const m of creature.materials.values()) {
-        const box = new THREE.Mesh(WARM_BOX, m);
-        box.castShadow = false; box.frustumCulled = false;
-        scene.add(box);
-      }
-    },
-    clear: () => { /* geometry + materials handled by the pass teardown */ },
-  });
+// Skinned dummy — a quad with skin attributes + bound to a 1-bone skeleton. Compiles the
+// SKINNING shader variant (the creature body), which is independent of bone/vert count.
+const SKIN_GEO = (() => {
+  const g = new THREE.PlaneGeometry(0.02, 0.02);   // position + normal + uv
+  const n = g.attributes.position.count;
+  const skinIndex = new Uint16Array(n * 4);        // all bone 0
+  const skinWeight = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) skinWeight[i * 4] = 1;
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
+  g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
+  g.userData.pooled = true;
+  return g;
+})();
+
+function addSkinnedWarm(scene: THREE.Object3D, mat: THREE.Material): void {
+  const bone = new THREE.Bone();
+  const mesh = new THREE.SkinnedMesh(SKIN_GEO, mat);
+  mesh.add(bone);
+  mesh.bind(new THREE.Skeleton([bone]));
+  mesh.castShadow = false; mesh.frustumCulled = false;
+  scene.add(mesh);
+}
+function addPlainWarm(scene: THREE.Object3D, mat: THREE.Material): void {
+  const box = new THREE.Mesh(WARM_BOX, mat);
+  box.castShadow = false; box.frustumCulled = false;
+  scene.add(box);
 }
 
-// ITEMS — floor drop models.
-for (const item of Object.values(ITEMS)) {
+// ENEMIES — each creature material on BOTH a skinned dummy (the body) AND a plain box (the
+// non-skinned flung-chunk variant). Creature materials are forced dissolvable (matches
+// buildCreature) so the death-dissolve variant warms.
+for (const spec of Object.values(ENEMIES)) {
   registerWarmup({
-    label: `item:${item.id ?? item.name}`,
-    live: true,
-    spawn: (scene) => { scene.add(buildModel(item.dropModel).group); },
+    label: `enemy:${spec.id}`, live: true,
+    spawn: (scene) => {
+      for (const def of Object.values(spec.creature.materials)) {
+        const mat = createMaterialFromDef(def.dissolvable ? def : { ...def, dissolvable: true });
+        addSkinnedWarm(scene, mat);
+        addPlainWarm(scene, mat);
+      }
+    },
     clear: () => {},
   });
 }
 
-// DESTRUCTIBLES — vases sit in the scene at level-build, but VASE_BROKEN spawns
-// on break mid-combat, so its (tinted, gore-receiving) material is otherwise
-// first-rendered live. Warm every variant.
+// ITEMS — floor drop models (plain meshes).
+for (const item of Object.values(ITEMS)) {
+  registerWarmup({
+    label: `item:${item.id ?? item.name}`, live: true,
+    spawn: (scene) => {
+      for (const def of Object.values(item.dropModel.materials)) addPlainWarm(scene, createMaterialFromDef(def));
+    },
+    clear: () => {},
+  });
+}
+
+// DESTRUCTIBLES — vases + cobweb. VASE_BROKEN's gore-receiving material is otherwise
+// first-rendered live (it spawns on break mid-combat), so warm every variant.
 for (const spec of [VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN, COBWEB_BARRIER]) {
   registerWarmup({
-    label: `destructible:${spec.id}`,
-    live: true,
-    spawn: (scene) => { scene.add(buildModel(spec).group); },
+    label: `destructible:${spec.id}`, live: true,
+    spawn: (scene) => {
+      for (const def of Object.values(spec.materials)) addPlainWarm(scene, createMaterialFromDef(def));
+    },
     clear: () => {},
   });
 }

@@ -65,12 +65,12 @@ export function registerWarmup(hook: WarmupHook): void {
   else hooks.push(hook);
 }
 
-/** A hook's tier — the explicit field, else a sane default by label: the heavy,
- *  numerous CONTENT (enemy/item/destructible bodies) STREAMS during play; everything
- *  else (the cheap core effects) is ESSENTIAL and boot-warms. */
+/** A hook's tier. Default ESSENTIAL — content warmups are now CHEAP (materials on
+ *  dummies, not full builds; see spawn-warmups.ts), so warming the whole set at boot
+ *  behind the loading cover is fast, and repeat visits hit the browser's persistent
+ *  pipeline cache. A hook opts into 'deferred' only if it's genuinely heavy/rare. */
 function tierOf(h: WarmupHook): 'essential' | 'deferred' {
-  if (h.tier) return h.tier;
-  return /^(enemy|item|destructible):/.test(h.label) ? 'deferred' : 'essential';
+  return h.tier ?? 'essential';
 }
 
 /** Cheap, immediately-needed hooks — warmed at boot behind the loading cover. */
