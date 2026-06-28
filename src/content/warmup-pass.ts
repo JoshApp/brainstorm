@@ -1,9 +1,5 @@
 import * as THREE from 'three';
-import { ENEMIES } from './enemies';
-import { ITEMS } from './items';
-import { buildCreature } from './build-creature';
-import { buildModel } from '../ecs/build-model';
-import { buildSkinnedCreature } from '../mobs/creature-skinned';
+import './spawn-warmups';   // side-effect: registers enemy/item/destructible warmups
 import { getWarmupHooks } from './warmup-registry';
 import { WARM_MODELS } from './warmup-models';
 import { warmRenderWebGPU } from '../style/render-webgpu';
@@ -65,7 +61,7 @@ let done = false;
  *  can compile, then tear down. Shared by the WebGL (render-to-target) and WebGPU
  *  (compileAsync) finishers; per-subject try/catch so one bad spec can't sink it. */
 function buildWarmSubjects(
-  camera: THREE.Camera, includeEffects = true,
+  camera: THREE.Camera,
 ): { warmGroup: THREE.Group; hooks: ReturnType<typeof getWarmupHooks> } {
   // Non-instanced subjects live under this group; placed at the camera so
   // they're trivially in-frustum (belt — we also force frustumCulled off). The
@@ -74,66 +70,15 @@ function buildWarmSubjects(
   const warmGroup = new THREE.Group();
   warmGroup.position.copy(camera.position);
 
-  // ENEMIES — fold each creature into its rigid-skinned SkinnedMesh (the live
-  // render path, docs/CREATURE-RENDER-V2.md) and add it so the compile below
-  // covers the SKINNING shader variant — otherwise the first enemy spawn
-  // in-game recompiles it and hitches. castShadow stays false (blob shadow), as
-  // the builder sets, so the skinned-shadow variant isn't (and needn't be) warmed.
-  const warmBox = new THREE.BoxGeometry(0.02, 0.02, 0.02);   // shared; warms the NON-skinned variant
-  for (const spec of Object.values(ENEMIES)) {
-    try {
-      const creature = buildCreature(spec.creature);
-      buildSkinnedCreature(creature);
-      noCull(creature.group);
-      warmGroup.add(creature.group);
-      retainMaterials(creature.group);   // keep the skinned program alive
-      // Flung dismember chunks (sever/crumble) are PLAIN, non-skinned meshes that
-      // reuse these same materials. The skinned mesh above only compiles the
-      // SKINNING variant, so without this the first death/sever of each type
-      // recompiles the non-skinned variant mid-combat → a ~270ms freeze. A
-      // tiny box per material (castShadow false, like a chunk) warms it now.
-      for (const m of creature.materials.values()) {
-        const box = new THREE.Mesh(warmBox, m);
-        box.castShadow = false; box.frustumCulled = false;
-        warmGroup.add(box);
-      }
-    } catch { /* one bad spec must not sink the pass */ }
-  }
-
-  // ITEMS — floor drop models.
-  for (const item of Object.values(ITEMS)) {
-    try {
-      const g = buildModel(item.dropModel).group;
-      noCull(g);
-      warmGroup.add(g);
-      retainMaterials(g);
-    } catch { /* skip a bad drop spec */ }
-  }
-
-  // STATIC PROPS / CLUTTER — chests, vases, debris, fallen pillars. Deeper floors
-  // introduce types the first floor lacks, so warm one of each (the WARM_MODELS list)
-  // — their first appearance then can't compile mid-reveal.
-  for (const spec of WARM_MODELS) {
-    try {
-      const g = buildModel(spec).group;
-      noCull(g);
-      warmGroup.add(g);
-      retainMaterials(g);
-    } catch { /* skip a bad spec */ }
-  }
-
-  // EFFECTS — self-registered pools (shatter/coins/wisps/…) spawn a
-  // representative instance; their materials live module-level in each effect,
-  // so the program is retained without us tracking it.
+  // DRAIN THE WARMUP REGISTRY — one seam for everything. Enemies, items,
+  // destructibles (content/spawn-warmups.ts) and effects (each effect's own
+  // registerWarmup) all add a representative instance here. No hand-maintained
+  // content lists in this pass — it just renders whatever registered. This is
+  // the LIVE pass, so it runs `live` hooks too (the boot scratch skips them).
   const hooks = getWarmupHooks();
-  // Effects self-register a representative spawn, but many push into their OWN
-  // scene-resident pool (the contract allows it) rather than the group we pass — so
-  // on WebGPU, where the warm is detached + the compile is async, they'd be left in
-  // the LIVE scene and FLASH for the whole compile. Skip them on the detached path
-  // (includeEffects=false); they compile on first use instead (one minor hitch, no
-  // flash). The WebGL offscreen-render path keeps them (instant + invisible).
-  if (includeEffects) for (const h of hooks) { try { h.spawn(warmGroup); } catch { /* skip */ } }
+  for (const h of hooks) { try { h.spawn(warmGroup); } catch { /* one bad hook must not sink the pass */ } }
   noCull(warmGroup);
+  retainMaterials(warmGroup);   // pin EVERY program the drained instances compiled
   return { warmGroup, hooks };
 }
 
@@ -236,7 +181,7 @@ export async function runWarmupPassWebGPU(
     // target, so its pipelines were thrown away + recompiled on first use = the
     // residual stutter). Behind the load cover (reveal gated on this), so nothing
     // flashes; the main loop is held off via warmRenderWebGPU's `warmingUp` gate.
-    built = buildWarmSubjects(camera, true);
+    built = buildWarmSubjects(camera);
     scene.add(built.warmGroup);
     await warmRenderWebGPU(renderer, scene, camera, 3);
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {

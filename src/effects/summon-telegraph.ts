@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { registerWarmup } from '../content/warmup-registry';
 import { groundYAt } from '../level/elevation';
 
 // Summon telegraph — the "something is being called up HERE" tell that
@@ -173,3 +174,8 @@ export function spawnSummonTelegraph(
   setProgress(0);
   return { setProgress, burst, dispose };
 }
+
+// Warm the caster telegraph (acolyte cast etc.) — a heavy first-use compile
+// (~259ms freeze seen on the first cast of a fight). noCull renders it.
+let _warmTel: ReturnType<typeof spawnSummonTelegraph> | null = null;
+registerWarmup({ label: 'summon-telegraph', spawn: (s) => { _warmTel = spawnSummonTelegraph(s, 0, 0); }, clear: () => { _warmTel?.dispose(); _warmTel = null; } });

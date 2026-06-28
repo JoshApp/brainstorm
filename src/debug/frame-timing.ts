@@ -29,6 +29,9 @@ export interface FrameSample {
   draws: number;
   tris: number;
   programs: number;
+  /** Shader-TYPE heads of programs that compiled THIS frame (e.g. 'physical',
+   *  'distanceRGBA' = point-shadow caster, 'sprite'). Names what froze a frame. */
+  newProgKinds: string[];
   geometries: number;
   textures: number;
   geometryPool: number;
@@ -71,10 +74,45 @@ const GPU_PROBE_PIXEL = new Uint8Array(4);
 type FrameListener = (s: FrameSample) => void;
 const listeners = new Set<FrameListener>();
 
+// Names the shader programs that compile DURING a recording. THREE's program
+// cacheKey starts with the shader TYPE ('physical'=lit standard, 'distanceRGBA'
+// =point-light shadow caster, 'sprite', 'basic'). On the first profiled frame we
+// SEED the set with everything already warm (no tags); after that any new key is
+// a compile that wasn't pre-warmed → its type lands in the spike's `ev`, so we
+// know WHAT froze instead of guessing.
+const _seenProg = new Set<string>();
+const _compiledKeys: string[] = [];   // FULL keys of post-seed compiles (for diffing)
+let _progSeeded = false;
+let _warmupDone = false;
+/** Called once after runWarmupPass finishes. From here, any NEW program compile
+ *  is an UNWARMED material — the self-policing guard warns (DEV) naming its type,
+ *  so a missing warmable is caught the instant it's hit, not weeks later. */
+export function markWarmupComplete(): void { _warmupDone = true; }
+function diffNewPrograms(info: { programs?: ReadonlyArray<{ cacheKey?: string }> | null } | null | undefined): string[] {
+  if (!info?.programs) return [];
+  if (!_progSeeded) { for (const p of info.programs) _seenProg.add(p.cacheKey ?? ''); _progSeeded = true; return []; }
+  const out: string[] = [];
+  for (const p of info.programs) {
+    const k = p.cacheKey ?? '';
+    if (k && !_seenProg.has(k)) {
+      _seenProg.add(k); out.push(k.split(',')[0] || '?'); if (_compiledKeys.length < 80) _compiledKeys.push(k);
+      if (_warmupDone && import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn(`[warmup-guard] UNWARMED shader compiled in-play: '${k.split(',')[0]}' (…${k.slice(-40)}). Register a warmable (content/warmup-registry.ts).`);
+      }
+    }
+  }
+  return out;
+}
+/** FULL cacheKeys of every program that compiled after the first profiled frame —
+ *  saved into a recording's meta so we can diff a combat compile against the
+ *  warmed set and see WHICH define flipped (the exact un-warmed variant). */
+export function getCompiledProgramKeys(): readonly string[] { return _compiledKeys; }
+
 // One reused sample object — avoids per-frame allocation (which would itself
 // pollute the GC numbers we're trying to measure).
 const sample: FrameSample = {
-  dt: 0, cpuMs: 0, gpuMs: null, draws: 0, tris: 0, programs: 0, geometries: 0,
+  dt: 0, cpuMs: 0, gpuMs: null, draws: 0, tris: 0, programs: 0, newProgKinds: [], geometries: 0,
   textures: 0, geometryPool: 0, lightsActive: 0, lightsRegistered: 0,
   heapMB: null, allocMB: 0, gc: false, systems: frameMs, gpuPhases: null,
 };
@@ -261,6 +299,7 @@ export function frameEnd(): void {
   sample.draws = info ? info.render.calls : 0;
   sample.tris = info ? info.render.triangles : 0;
   sample.programs = info?.programs?.length ?? 0;
+  sample.newProgKinds = diffNewPrograms(info);
   sample.geometries = info ? info.memory.geometries : 0;
   sample.textures = info ? info.memory.textures : 0;
   sample.geometryPool = getGeometryPoolSize();

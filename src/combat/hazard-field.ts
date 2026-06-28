@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { registerWarmup } from '../content/warmup-registry';
 import { damagePlayer } from '../player/health';
 import { setPlayerInAura } from '../player/inside-aura';
 import type { DamageType } from './damage';
@@ -160,3 +161,6 @@ function disposeField(f: HazardField): void {
     }
   });
 }
+
+// Warm the hazard puddle material (acid pools etc.) so the first one doesn't compile in-fight.
+registerWarmup({ label: 'hazard-field', spawn: (s) => spawnHazardField(s, { x: 0, z: 0, radius: 0.5, lifetime: 0.1, damageType: 'physical', source: '' }), clear: clearHazardFields });

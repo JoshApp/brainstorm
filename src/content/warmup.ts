@@ -70,34 +70,17 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
   warmSprite.position.set(0, 0.5, 0);
   scratch.add(warmSprite);
 
-  const models: THREE.Object3D[] = [];
-  for (const item of Object.values(ITEMS)) {
-    const built = buildModel(item.dropModel);
-    scratch.add(built.group);
-    models.push(built.group);
-  }
-  for (const enemy of Object.values(ENEMIES)) {
-    // The whole roster is creature-based now. buildCreature runs the same
-    // buildModel + mergeRigidSegments pipeline internally, so one build per
-    // enemy spec primes the merged mesh layout AND its shader set — exactly
-    // what the in-game mob renders. (Legacy `enemy.model` enemies are gone;
-    // the bespoke marrow/mimic geometry is reached through their creature
-    // specs' custom skeletons, so it warms here too.)
-    const group = buildCreature(enemy.creature).group;
-    group.traverse((o) => { (o as THREE.Mesh).castShadow = true; });
-    scratch.add(group);
-    models.push(group);
-  }
-
-  // Self-registered effect warmups — gold coins, shatter debris, essence wisps,
-  // and anything else that dropped a registerWarmup() next to its spawn/clear.
-  // Each adds a representative instance to the scratch scene so its material
-  // program compiles in the one render below, instead of hitching on the first
-  // kill/proc mid-fight. The matching clear() runs after the render to empty the
-  // pools again (a warmup instance must never tick in real gameplay).
-  // See content/warmup-registry.ts.
+  // NOTE: enemies / items / destructibles are NOT warmed here anymore. Their
+  // materials are render-state-keyed (fog / light count / shadow casters), and
+  // this scratch scene has the WRONG state (no fog, 1 light) — warming them here
+  // compiled a variant the live render never uses, then the first live render
+  // recompiled (the freeze we chased). They're now `live` hooks drained by
+  // runWarmupPass in the REAL scene. See content/spawn-warmups.ts.
+  //
+  // Self-registered effect warmups (gold coins, shatter, wisps, gore, …) — the
+  // ones safe in a no-fog scratch. `live` hooks are skipped here.
   const warmupHooks = getWarmupHooks();
-  for (const hook of warmupHooks) hook.spawn(scratch);
+  for (const hook of warmupHooks) if (!hook.live) hook.spawn(scratch);
 
   // One render — primes shader compile for every material that just got added,
   // INCLUDING the shadow depth pass (shadowMap on + a caster + a receiver).
@@ -127,7 +110,7 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
   // Empty the effect pools the warmup hooks filled — the programs are now
   // compiled (cached in WebGL + the effects' module-level material caches);
   // the JS instances are no longer needed and must not tick during gameplay.
-  for (const hook of warmupHooks) hook.clear();
+  for (const hook of warmupHooks) if (!hook.live) hook.clear();
 
   // Splat-map gore shaders — the stamp/dry ShaderMaterials (scene/splat-map.ts)
   // are CREATED at initSplatMap but only COMPILE on the first blood stamp, so
@@ -142,18 +125,6 @@ export function warmupContent(mainRenderer: THREE.WebGLRenderer) {
     resetSplatMap(0, 0, 1, 1);
   } catch { /* pre-warm is best-effort */ }
 
-  // Dispose — the geometries/materials live in WebGL forever via the program
-  // cache; we just don't need the JS Object3Ds anymore.
-  for (const group of models) {
-    group.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (mesh.isMesh) {
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) m.dispose();
-        mesh.geometry.dispose();
-      }
-    });
-  }
 }
 
 /** Pre-compile the spawnable enemy roster's shaders IN THE LIVE scene's

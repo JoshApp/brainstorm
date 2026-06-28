@@ -120,7 +120,7 @@ import { captureDevSnapshot, applyDevSnapshot, clearDevSnapshot, hasPendingDevSn
 import { createPerfOverlay, setPerfOverlayVisible, tickPerfOverlay, reportRendererInfo } from './ui/perf-overlay';
 import { installPerfProbe, tickPerfProbe } from './debug/perf-probe';
 import { createProfilerHud, setProfilerVisible, toggleProfiler } from './debug/profiler-hud';
-import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn, gpuPassDiag } from './debug/frame-timing';
+import { initFrameTiming, frameBegin, frameEnd, setMarks, marksOn, setGpuProbe, gpuProbeOn, setGpuPassTiming, gpuPassTimingOn, gpuPassDiag, markWarmupComplete } from './debug/frame-timing';
 import { setStreamEnabled, streamEnabled, broadcastAttr } from './debug/perf-stream';
 import { startRecording, stopRecording, toggleRecording, setRollingEnabled, saveLastSeconds, setSceneAuditProvider } from './debug/perf-recorder';
 import { auditScene } from './debug/scene-audit';
@@ -545,6 +545,10 @@ initLevelLoader({
       // reveal MUST stay covered until this resolves — revealWhenReady holds the black.
       rosterPrecompiled = true;
       prewarm = runWarmupPassWebGPU(renderer, scene, camera);
+      // From here, any new shader compile is an UNWARMED material — the guard
+      // warns (DEV) naming it, so gaps are caught immediately. Fires once the
+      // first real warm resolves.
+      prewarm.then(() => markWarmupComplete()).catch(() => { /* best-effort */ });
     } else if (WEBGPU) {
       // WebGPU title vignette + later floors: compile this scene's pipelines in the
       // BACKGROUND (no flash — nothing is spawned). Not gated: a new room may hitch

@@ -37,6 +37,11 @@ export interface WarmupHook {
   spawn: (scene: THREE.Object3D) => void;
   /** The effect's normal clear() — empties the pool spawn() pushed to. */
   clear: () => void;
+  /** LIVE-only: skip in the boot scratch (no fog / 1 light), run ONLY in the
+   *  real-scene pass (runWarmupPass). Set for any material whose program is
+   *  keyed on render state — enemies, props, lit models — so it warms the
+   *  variant the live render actually uses, not a wrong scratch variant. */
+  live?: boolean;
 }
 
 const hooks: WarmupHook[] = [];
