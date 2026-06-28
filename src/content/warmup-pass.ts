@@ -3,6 +3,7 @@ import './spawn-warmups';   // side-effect: registers enemy/item/destructible wa
 import { getWarmupHooks } from './warmup-registry';
 import { WARM_MODELS } from './warmup-models';
 import { warmRenderWebGPU } from '../style/render-webgpu';
+import { beginLoading, endLoading } from '../scene/loading-gate';
 
 // ── The unified warmup pass ─────────────────────────────────────────────────
 //
@@ -181,30 +182,46 @@ export async function runWarmupPassWebGPU(
 ): Promise<void> {
   if (done) return;
   done = true;
+  // OWN THE FRAME — the game loop skips entirely while we warm (scene/loading-gate.ts):
+  // no sim, no audio, no render of our half-built subjects. The browser keeps painting
+  // the DOM loading cover (compositor) across our rAF yields.
+  beginLoading();
   const warmGroup = new THREE.Group();
   warmGroup.position.copy(camera.position);
   const hooks = getWarmupHooks();
   try {
-    scene.add(warmGroup);   // black load cover is up, so partial subjects never show
-    // BUILD in batches, yielding between — the fix for the boot freeze. ~70% of the bar.
-    const BATCH = 4;
-    for (let i = 0; i < hooks.length; i += BATCH) {
-      for (let j = i; j < Math.min(i + BATCH, hooks.length); j++) {
-        try { hooks[j].spawn(warmGroup); } catch { /* one bad hook must not sink it */ }
-      }
-      onProgress?.(Math.min(0.7, ((i + BATCH) / Math.max(1, hooks.length)) * 0.7));
+    scene.add(warmGroup);
+    // BUILD, TIME-SLICED. Each hook spawn (buildCreature/CSG/skinning) is heavy +
+    // synchronous — you cannot split ONE, but you can stop ACCUMULATING them into a
+    // long block. Spawn hooks until ~8ms of this frame is spent, then yield to rAF so
+    // the browser breathes (the "frame-gate work, worst-case frame" rule). Build = 70%.
+    const FRAME_BUDGET_MS = 8;
+    let idx = 0;
+    while (idx < hooks.length) {
+      const start = performance.now();
+      do {
+        try { hooks[idx].spawn(warmGroup); } catch { /* one bad hook must not sink it */ }
+        idx++;
+      } while (idx < hooks.length && performance.now() - start < FRAME_BUDGET_MS);
+      onProgress?.(Math.min(0.7, (idx / Math.max(1, hooks.length)) * 0.7));
       await yieldFrame();
     }
     noCull(warmGroup);
     retainMaterials(warmGroup);   // pin every program the drained instances compiled
     onProgress?.(0.72);
+    await yieldFrame();
     // COMPILE through the REAL PSX pipeline so pipelines match the live target format
     // exactly (compileAsync alone warms the canvas format → recompile-on-first-use).
-    await warmRenderWebGPU(renderer, scene, camera, 3);
-    onProgress?.(1);
+    // Yield between passes so the compile burst is broken up too.
+    for (let p = 0; p < 3; p++) {
+      await warmRenderWebGPU(renderer, scene, camera, 1);
+      onProgress?.(0.72 + ((p + 1) / 3) * 0.28);
+      await yieldFrame();
+    }
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
     for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
     scene.remove(warmGroup);   // pipelines retained via materials; don't dispose geometry
+    endLoading();   // game resumes — renders the ready world for the reveal fade
   }
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console

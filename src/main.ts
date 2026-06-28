@@ -144,6 +144,7 @@ import { lastWebGPUGpuMs, setWebGPULeanBloom } from './style/render-webgpu';
 import { pacerShouldDraw } from './scene/frame-pacer';
 import { beginBoot, bootSucceeded } from './boot-guard';
 import { installContextRecovery, isContextLost } from './scene/context-recovery';
+import { isLoading } from './scene/loading-gate';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
@@ -1644,6 +1645,12 @@ function tick() {
   // While the GPU context is lost, idle the loop (no sim, no render — rendering
   // would throw) until 'webglcontextrestored' clears the flag.
   if (isContextLost()) { requestAnimationFrame(tick); return; }
+  // While the first-floor warmup owns the frame, SKIP the whole game frame — no
+  // sim, no audio, no render. Otherwise the warmup's rAF yields let the game loop
+  // run underneath: it ticked the sim (sound/activity before the player could act)
+  // and rendered the warmup's roster subjects (artifacts). Only the warmup + the
+  // DOM loading cover run; the game resumes the instant warmup tears down.
+  if (isLoading()) { requestAnimationFrame(tick); return; }
   try {
     tickInner();
   } catch (err) {
