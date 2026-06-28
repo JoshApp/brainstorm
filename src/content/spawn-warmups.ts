@@ -5,6 +5,7 @@ import { ITEMS } from './items';
 import { createMaterialFromDef } from '../ecs/build-model';
 import { WARM_MODELS } from './warmup-models';
 import { COBWEB_BARRIER } from './cobweb';
+import { getTexture } from '../style/procedural-textures';
 
 // ── Content auto-warmups (CHEAP — materials on dummies, NOT full builds) ──────────
 //
@@ -70,6 +71,34 @@ for (const spec of Object.values(ENEMIES)) {
     clear: () => {},
   });
 }
+
+// NON-MeshStandard PRIMITIVES — the cheap warm above only covers MeshStandard (enemy/prop
+// bodies). But models + effects also use SPRITES (enemy eye-halos: additive 'fire-wisp';
+// status motes), POINTS, and BASIC materials — each a DISTINCT pipeline, keyed on blending +
+// fog. Those were compiling when first SEEN in-play (the compile-watch surfaced exactly these:
+// SpriteMaterial / PointsNodeMaterial / MeshBasicMaterial). Warm a representative of each
+// variant here so they're ready before the first enemy / proc / particle.
+registerWarmup({
+  label: 'primitive:sprites+basic', live: true,
+  spawn: (scene) => {
+    const wisp = getTexture('fire-wisp');
+    const sprite = (blending: THREE.Blending, fog: boolean): THREE.Sprite => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: wisp, transparent: true, blending, depthWrite: false, fog }));
+      s.frustumCulled = false; s.position.set(0, 0.5, 0);
+      return s;
+    };
+    // additive (eye-halos / glows) + normal, each with and without fog — the 4 sprite pipelines.
+    scene.add(sprite(THREE.AdditiveBlending, true), sprite(THREE.AdditiveBlending, false));
+    scene.add(sprite(THREE.NormalBlending, true), sprite(THREE.NormalBlending, false));
+    // basic unlit (simple effect/decal meshes), fog + no-fog.
+    for (const fog of [true, false]) {
+      const m = new THREE.Mesh(WARM_BOX, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, fog }));
+      m.castShadow = false; m.frustumCulled = false;
+      scene.add(m);
+    }
+  },
+  clear: () => {},
+});
 
 // ITEMS — floor drop models (plain meshes).
 for (const item of Object.values(ITEMS)) {
