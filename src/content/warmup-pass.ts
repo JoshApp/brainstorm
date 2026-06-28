@@ -213,14 +213,13 @@ export async function runWarmupPassWebGPU(
     retainMaterials(warmGroup);   // pin every program the drained instances compiled
     onProgress?.(0.72);
     await yieldFrame();
-    // COMPILE through the REAL PSX pipeline so pipelines match the live target format
-    // exactly (compileAsync alone warms the canvas format → recompile-on-first-use).
-    // Yield between passes so the compile burst is broken up too.
-    for (let p = 0; p < 3; p++) {
-      await warmRenderWebGPU(renderer, scene, camera, 1);
-      onProgress?.(0.72 + ((p + 1) / 3) * 0.28);
-      await yieldFrame();
-    }
+    // COMPILE through the real PSX pipeline (right target format). ONE pass — the compile
+    // happens on first use; extra passes are redundant. NB: this is ~hundreds of SYNC
+    // pipeline compiles (~55ms each) and is the real boot cost; compileAsync is WORSE here
+    // (it recompiles the whole scene). The only true wins are fewer pipelines + the browser's
+    // cross-session cache (see docs/WARMUP.md).
+    await warmRenderWebGPU(renderer, scene, camera, 1);
+    onProgress?.(1);
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
     for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
     scene.remove(warmGroup);   // pipelines retained via materials; don't dispose geometry

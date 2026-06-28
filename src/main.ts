@@ -2357,7 +2357,9 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     // tick compiles its floor / wall / decor pipelines, which the descend floor reuses.
     // Then warm the roster (enemy/item/effect materials) against that live state.
     await new Promise<void>((r) => { let n = 0; const t = () => (++n >= 6 ? r() : requestAnimationFrame(t)); requestAnimationFrame(t); });
+    const _t0 = performance.now();
     try { await runWarmupPassWebGPU(renderer, scene, camera); } catch { /* best-effort */ }
+    if (import.meta.env.DEV) console.log(`[bootWarm] roster warm took ${Math.round(performance.now() - _t0)}ms (high+same every reload = NOT cached; drops on 2nd = cached)`);
     startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); });
   }
 
