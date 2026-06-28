@@ -87,7 +87,7 @@ import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad, getCurre
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
 import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
-import { suppressNextDescentTitle } from './ui/descent-fade';
+import { suppressNextDescentTitle, setDescentProgress } from './ui/descent-fade';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
 import { applyState } from './state/save-hydration';
 import { initCharacterTracking, resetCharacter } from './state/character';
@@ -544,7 +544,7 @@ initLevelLoader({
       // fight. The subjects + a frame of effects briefly sit in the scene, so the
       // reveal MUST stay covered until this resolves — revealWhenReady holds the black.
       rosterPrecompiled = true;
-      prewarm = runWarmupPassWebGPU(renderer, scene, camera);
+      prewarm = runWarmupPassWebGPU(renderer, scene, camera, setDescentProgress);
       // From here, any new shader compile is an UNWARMED material — the guard
       // warns (DEV) naming it, so gaps are caught immediately. Fires once the
       // first real warm resolves.

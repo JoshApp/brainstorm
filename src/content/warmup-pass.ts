@@ -157,41 +157,57 @@ export function runWarmupPass(
  *
  *  Idempotent (shares the `done` guard with the WebGL path) and best-effort: a
  *  driver hiccup must not brick the load. */
+/** Yield to the next frame so the main thread never hard-blocks (no "page
+ *  unresponsive"). The compositor-driven loading cover keeps animating across it. */
+const yieldFrame = (): Promise<void> =>
+  new Promise((r) => requestAnimationFrame(() => r()));
+
+/** Run the unified warmup (WebGPU path), CHUNKED so the boot never freezes the tab.
+ *
+ *  The roster build (buildCreature/buildModel/CSG for every enemy + item + prop +
+ *  effect) is the heavy SYNCHRONOUS cost — doing it in one call is what froze the
+ *  whole tab ("page unresponsive"). Here we drain the warmup registry in small
+ *  BATCHES, yielding to a frame between each, so the main thread breathes and the
+ *  loading bar (onProgress) advances honestly. Then ONE compile through the real PSX
+ *  pipeline (subjects sit in the live scene behind the black load cover, so nothing
+ *  flashes; the main loop is gated via warmRenderWebGPU's `warmingUp`).
+ *
+ *  onProgress(0..1) drives the descent loading bar. Reveal is gated on this promise
+ *  (revealWhenReady), so the roster is compiled before the first enemy can spawn.
+ *  Idempotent + best-effort: a driver hiccup must not brick the load. */
 export async function runWarmupPassWebGPU(
   renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
+  onProgress?: (t: number) => void,
 ): Promise<void> {
   if (done) return;
   done = true;
-  // DETACHED warm: the roster subjects are NEVER added to the live scene — they're
-  // compiled via compileAsync's targetScene arg, which keys the pipelines against the
-  // live scene's lights/fog WITHOUT rendering the subjects. So nothing can flash on
-  // screen, period (the structural fix for the "loading bleeding into the game"
-  // artifact). Effects are excluded here (includeEffects=false) because they push into
-  // scene-resident pools — they warm on first use instead. The reveal is gated on this
-  // promise so the roster is compiled before the first enemy can spawn (no mid-fight
-  // pipeline freeze).
-  let built: { warmGroup: THREE.Group; hooks: ReturnType<typeof getWarmupHooks> } | null = null;
+  const warmGroup = new THREE.Group();
+  warmGroup.position.copy(camera.position);
+  const hooks = getWarmupHooks();
   try {
-    // Build EVERY warm subject — roster (enemies incl. bosses + items) AND effects
-    // (blood/coins/wisps/shatter/…). Add them to the live scene, which already holds
-    // the loaded floor, so ONE render captures floor + props + decor + roster +
-    // effects. Then render through the REAL PSX pipeline so the compiled pipelines
-    // match the live render's target format EXACTLY — the thing compileAsync got wrong
-    // (it warms the canvas format; the live render uses the internal HDR scene-pass
-    // target, so its pipelines were thrown away + recompiled on first use = the
-    // residual stutter). Behind the load cover (reveal gated on this), so nothing
-    // flashes; the main loop is held off via warmRenderWebGPU's `warmingUp` gate.
-    built = buildWarmSubjects(camera);
-    scene.add(built.warmGroup);
-    await warmRenderWebGPU(renderer, scene, camera, 3);
-  } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
-    if (built) {
-      for (const h of built.hooks) { try { h.clear(); } catch { /* skip */ } }
-      scene.remove(built.warmGroup);   // pipelines retained via materials; don't dispose geometry
+    scene.add(warmGroup);   // black load cover is up, so partial subjects never show
+    // BUILD in batches, yielding between — the fix for the boot freeze. ~70% of the bar.
+    const BATCH = 4;
+    for (let i = 0; i < hooks.length; i += BATCH) {
+      for (let j = i; j < Math.min(i + BATCH, hooks.length); j++) {
+        try { hooks[j].spawn(warmGroup); } catch { /* one bad hook must not sink it */ }
+      }
+      onProgress?.(Math.min(0.7, ((i + BATCH) / Math.max(1, hooks.length)) * 0.7));
+      await yieldFrame();
     }
+    noCull(warmGroup);
+    retainMaterials(warmGroup);   // pin every program the drained instances compiled
+    onProgress?.(0.72);
+    // COMPILE through the REAL PSX pipeline so pipelines match the live target format
+    // exactly (compileAsync alone warms the canvas format → recompile-on-first-use).
+    await warmRenderWebGPU(renderer, scene, camera, 3);
+    onProgress?.(1);
+  } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
+    for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }
+    scene.remove(warmGroup);   // pipelines retained via materials; don't dispose geometry
   }
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
-    console.log(`[warmup-pass:webgpu] floor + roster + effects rendered through PSX (real target format, no first-use recompile); retained ${retained.length} materials.`);
+    console.log(`[warmup-pass:webgpu] chunked warm done (${hooks.length} hooks); retained ${retained.length} materials.`);
   }
 }

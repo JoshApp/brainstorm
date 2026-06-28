@@ -134,11 +134,46 @@ function ensureLoadingMark(): HTMLDivElement {
   } as Partial<CSSStyleDeclaration>);
   loadingMark.textContent = 'descending';
   document.body.appendChild(loadingMark);
+
+  // A thin amber progress line under the mark — a real fill (driven by the warmup
+  // batches), not a spinner: it reads as the dark slowly admitting you, in keeping
+  // with the unhurried tone. Hidden (scaleX 0) until setDescentProgress drives it.
+  progressBar = document.createElement('div');
+  Object.assign(progressBar.style, {
+    position: 'fixed', left: '50%', bottom: 'calc(12% - 14px)',
+    width: 'min(180px, 40vw)', height: '2px',
+    transform: 'translateX(-50%)',
+    pointerEvents: 'none', opacity: '0', zIndex: '52',
+    transition: 'opacity 400ms ease-out',
+  } as Partial<CSSStyleDeclaration>);
+  const fill = document.createElement('div');
+  Object.assign(fill.style, {
+    height: '100%', width: '100%',
+    transformOrigin: 'left center', transform: 'scaleX(0)',
+    background: 'linear-gradient(90deg, rgba(255,150,80,0.15), rgba(255,150,80,0.7))',
+    transition: 'transform 280ms ease-out',
+  } as Partial<CSSStyleDeclaration>);
+  progressBar.appendChild(fill);
+  progressFill = fill;
+  document.body.appendChild(progressBar);
   return loadingMark;
+}
+
+let progressBar: HTMLDivElement | null = null;
+let progressFill: HTMLDivElement | null = null;
+
+/** Drive the descent loading bar, 0..1 (the warmup reports its batch progress).
+ *  No-op until the loading mark exists — fast floors never show it. */
+export function setDescentProgress(t: number): void {
+  if (!progressFill || !progressBar) return;
+  progressBar.style.opacity = '0.8';
+  progressFill.style.transform = `scaleX(${Math.max(0, Math.min(1, t))})`;
 }
 
 function showLoadingMark(): void {
   const el = ensureLoadingMark();
+  // Reset the bar to empty for this descent (the element is reused across loads).
+  if (progressFill) { progressFill.style.transition = 'none'; progressFill.style.transform = 'scaleX(0)'; void progressFill.offsetWidth; progressFill.style.transition = 'transform 280ms ease-out'; }
   el.style.opacity = '0.55';
   // Slow breathe so it reads as alive, not a spinner — matches the dungeon's
   // unhurried tone. Web Animations API, cancelled when we hide.
@@ -150,6 +185,7 @@ function showLoadingMark(): void {
 }
 
 function hideLoadingMark(): void {
+  if (progressBar) progressBar.style.opacity = '0';
   if (!loadingMark) return;
   loadingMark.getAnimations().forEach((a) => a.cancel());
   loadingMark.style.opacity = '0';
