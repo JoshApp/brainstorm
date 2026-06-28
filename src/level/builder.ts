@@ -9,6 +9,7 @@ import { CONFIG } from '../config';
 import { buildAltarPillar, buildAltarBlock } from './altar-pillar-builders';
 import { spawnVase, spawnVaseCluster, disposeDestructible, type Destructible } from './destructibles';
 import type { StyleMaterials } from '../style/materials';
+import { stdMat } from '../style/material-registry';
 import { installPropHeightAO } from '../style/surface-ao';
 import { createTorchlight, type Torch } from '../scene/torchlight';
 import { wallFixtureModel } from './lit-fixture-pool';
@@ -305,7 +306,7 @@ function buildRoomShell(
     }
     const bars = new THREE.Mesh(
       mergeGeometries(barGeos, false),
-      new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.55, metalness: 0.55 }),
+      stdMat({ color: 0x15171b, roughness: 0.55, metalness: 0.55 }),
     );
     bars.position.y = elev;
     bars.receiveShadow = true;
@@ -426,7 +427,7 @@ function buildRoomShell(
     // Black cavity above the hole — you see darkness, not sky.
     const cavity = new THREE.Mesh(
       new THREE.BoxGeometry(3.0, 0.8, 3.0),
-      new THREE.MeshStandardMaterial({ color: 0x020203, roughness: 1.0 }),
+      stdMat({ color: 0x020203, roughness: 1.0 }),
     );
     cavity.position.set(bx, elev + H + 0.4, bz);
     scene.add(cavity);
@@ -443,7 +444,7 @@ function buildRoomShell(
     applyShadowRole(beamB, 'receive');
     scene.add(beamA, beamB);
     // The fall: a rubble heap on the floor beneath, ankle-high, walkable.
-    const rubbleMat = new THREE.MeshStandardMaterial({ color: 0x231f19, roughness: 1.0, flatShading: true });
+    const rubbleMat = stdMat({ color: 0x231f19, roughness: 1.0, flatShading: true });
     const heap = new THREE.Group();
     const n = 5 + Math.floor(buildRng() * 3);
     for (let i = 0; i < n; i++) {

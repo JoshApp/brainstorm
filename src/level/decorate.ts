@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { LevelSpec, TileMap } from './types';
 import { brighten, darken } from '../style/color-utils';
+import { stdMat } from '../style/material-registry';
 
 // Auto-decoration pass for procgen floors.
 //
@@ -186,21 +187,21 @@ export function decorateFloor(
 
   // Materials — one per kind, shared by all instances. Tint pulled
   // from the floor's torch color so decorations reinforce identity.
-  const sigilMat = new THREE.MeshStandardMaterial({
+  const sigilMat = stdMat({
     color: 0x000000,
     emissive: brighten(tint, 0.55),
     emissiveIntensity: 1.4,
     roughness: 1.0,
     fog: false,
   });
-  const crackMat = new THREE.MeshStandardMaterial({
+  const crackMat = stdMat({
     color: 0x000000,
     emissive: darken(tint, 0.4),
     emissiveIntensity: 0.9,
     roughness: 1.0,
     fog: false,
   });
-  const rubbleMat = new THREE.MeshStandardMaterial({
+  const rubbleMat = stdMat({
     color: 0x252018,
     roughness: 1.0,
     metalness: 0.0,
@@ -211,16 +212,16 @@ export function decorateFloor(
   // got placed (informational — not used by the runtime currently).
   void spec;
 
-  const nicheStoneMat = new THREE.MeshStandardMaterial({
+  const nicheStoneMat = stdMat({
     color: 0x35302a, roughness: 0.8, metalness: 0.05, flatShading: true,
   });
-  const nicheVoidMat = new THREE.MeshStandardMaterial({
+  const nicheVoidMat = stdMat({
     color: 0x040405, roughness: 1.0,
   });
-  const nicheBoneMat = new THREE.MeshStandardMaterial({
+  const nicheBoneMat = stdMat({
     color: 0x9a8d74, roughness: 0.95, flatShading: true,
   });
-  const nicheEmberMat = new THREE.MeshStandardMaterial({
+  const nicheEmberMat = stdMat({
     color: 0x000000, emissive: brighten(tint, 0.3), emissiveIntensity: 0.9,
     roughness: 1.0, fog: false,
   });

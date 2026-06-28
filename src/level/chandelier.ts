@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { registerLight } from '../scene/light-pool';
 import { applyShadowRole } from '../scene/shadow-role';
 import { chainRun } from '../content/chain-links';
+import { stdMat } from '../style/material-registry';
 import { buildRng } from '../engine/rng';
 
 // ── CHANDELIER — the ceiling light class ─────────────────────────────
@@ -29,7 +30,7 @@ export function spawnChandelier(
   const ringY = ceilH - drop;
   const RING_R = 0.52;
 
-  const iron = new THREE.MeshStandardMaterial({
+  const iron = stdMat({
     color: 0x16140f, roughness: 0.6, metalness: 0.75, flatShading: true,
   });
   const group = new THREE.Group();
@@ -41,9 +42,9 @@ export function spawnChandelier(
   group.add(ring);
 
   // Candle stubs + flames around the rim.
-  const wax = new THREE.MeshStandardMaterial({ color: 0xb8a98c, roughness: 0.95 });
+  const wax = stdMat({ color: 0xb8a98c, roughness: 0.95 });
   const flameColor = tint ?? 0xffaa55;
-  const flame = new THREE.MeshStandardMaterial({
+  const flame = stdMat({
     color: 0x000000, emissive: flameColor, emissiveIntensity: 2.2, roughness: 1.0, fog: false,
   });
   const stubs = 4;
