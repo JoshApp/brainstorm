@@ -146,6 +146,7 @@ import { beginBoot, bootSucceeded } from './boot-guard';
 import { installContextRecovery, isContextLost } from './scene/context-recovery';
 import { isLoading } from './scene/loading-gate';
 import { startWarmupStream } from './scene/warmup-stream';
+import { installWebGPUCompileGuard, markWebGPUWarmupComplete } from './debug/webgpu-compile-guard';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
@@ -263,7 +264,13 @@ let renderer: THREE.WebGLRenderer;
   // we use (render/setSize/setPixelRatio/info/…), so cast.
   renderer = wgpu as unknown as THREE.WebGLRenderer;
   wgpu.init()
-    .then(() => { setWebGPUReady(true); if (import.meta.env.DEV) console.log('[webgpu] renderer initialised (backend:', wgpu.backend?.constructor?.name ?? '?', ')'); })
+    .then(() => {
+      setWebGPUReady(true);
+      // DEV: detect pipeline compiles (renderer.info has no .programs on WebGPU) so
+      // post-warmup compiles (warm gaps) are visible. window.__compileStats().
+      installWebGPUCompileGuard((wgpu.backend as unknown as { device?: unknown })?.device);
+      if (import.meta.env.DEV) console.log('[webgpu] renderer initialised (backend:', wgpu.backend?.constructor?.name ?? '?', ')');
+    })
     .catch((err) => console.error('[webgpu] init failed', err));
 }
 // DPR cap — the biggest single lever against fragment/fill cost. Desktop debug
@@ -551,7 +558,7 @@ initLevelLoader({
       // play (off-screen, idle-paced) so it never blocked the descent. The guard
       // arms (markWarmupComplete) only once the stream finishes — everything warm.
       prewarm
-        .then(() => startWarmupStream(scene, markWarmupComplete))
+        .then(() => startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); }))
         .catch(() => { /* best-effort */ });
     } else if (WEBGPU) {
       // WebGPU title vignette + later floors: compile this scene's pipelines in the
