@@ -2347,7 +2347,21 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     // world, so input never overwrites this pitch.)
     camera.rotation.x = -0.22;
   }
+  // Compile the whole roster at BOOT, behind the loading veil — against the title
+  // vignette (a real fogged dungeon scene with the live PSX pipeline), so the pipelines
+  // match the in-game render state. Held here so the menu only appears once warm: the
+  // first DESCEND is then instant (the floor warmup's `done` guard makes it a no-op).
+  async function bootWarm(): Promise<void> {
+    if (!WEBGPU) return;
+    // Let the title vignette (a real fogged dungeon floor) BUILD + RENDER first — the
+    // tick compiles its floor / wall / decor pipelines, which the descend floor reuses.
+    // Then warm the roster (enemy/item/effect materials) against that live state.
+    await new Promise<void>((r) => { let n = 0; const t = () => (++n >= 6 ? r() : requestAnimationFrame(t)); requestAnimationFrame(t); });
+    try { await runWarmupPassWebGPU(renderer, scene, camera); } catch { /* best-effort */ }
+    startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); });
+  }
+
   awaitBootUpdate()
-    .then((updating) => { if (!updating) { mountTitleScene(); hideBootLoading(); openTitle(); } })
+    .then(async (updating) => { if (!updating) { mountTitleScene(); await bootWarm(); hideBootLoading(); openTitle(); } })
     .catch(() => { mountTitleScene(); hideBootLoading(); openTitle(); });
 }
