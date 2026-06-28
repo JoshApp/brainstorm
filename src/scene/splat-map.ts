@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { markGoreThrow, markGoreProbe, markGoreWall, markGoreStamp } from '../debug/gore-debug';
 import { isWebGPU } from './renderer-mode';
+import { stampGoreWebGPU, stampWallGoreWebGPU, resetGoreWebGPU } from './gore-webgpu';
 
 // ── SPLAT MAP — the floor remembers its violence ─────────────────────
 //
@@ -267,6 +268,7 @@ export function resetSplatMap(minX: number, minZ: number, sizeX: number, sizeZ: 
   uSplatOn.value = 1;
   queue.length = 0;
   needsClear = true;
+  resetGoreWebGPU();   // wipe the WebGPU gore buffer too (no-op on WebGL)
   wallProbe = null;   // stale probes reference the dead floor's walkable
 }
 
@@ -275,6 +277,11 @@ export function stampSplat(
   x: number, z: number, radius: number, colorHex: number, alpha = 0.8,
   dir?: { x: number; z: number } | null,
 ): void {
+  // WebGPU: no render-target stamp — feed the per-fragment gore buffer instead
+  // (scene/gore-webgpu.ts). emitGoreSplash/stampSpray route through here, so this
+  // one hook covers all floor blood. (Wall arcs still go to the texture path,
+  // which is a WebGL-only no-op on WebGPU for now.)
+  if (isWebGPU()) { stampGoreWebGPU(x, z, radius, colorHex, alpha); return; }
   if (!rt) return;
   const b = uSplatBounds.value;
   const u = (x - b.x) / b.z;
@@ -379,6 +386,8 @@ export function stampWallArc(
 }
 
 function stampWallArcAt(hit: WallHit, y: number, colorHex: number, alpha: number, size: number): void {
+  // WebGPU: feed the per-fragment wall-arc buffer (scene/gore-webgpu.ts).
+  if (isWebGPU()) { stampWallGoreWebGPU(hit.axis, hit.plane, hit.along, y, size, colorHex, alpha); return; }
   if (!rt) return;
   const b = uSplatBounds.value;
   // Mirror of the wall-shader mapping (surface-detail.ts): X-facing

@@ -22,6 +22,7 @@ import { renderWithStyle, setDarkAdapt } from '../style/render-target';
 import { flushLux, luxPending } from '../debug/lux';
 import { tickSurfaceSeep } from '../style/surface-detail';
 import { flushSplats } from '../scene/splat-map';
+import { tickGoreWebGPU } from '../scene/gore-webgpu';
 import { isInspectActive, INSPECT_AMBIENT, tickInspectFraming } from '../debug/inspect-mode';
 import { setTorchProximity, setAudioListenerPose } from '../audio/sfx';
 import { tickAlerts } from '../mobs/alerts';
@@ -574,7 +575,8 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
 
     { name: 'render', phase: 'always', tick() {
       tickSurfaceSeep(performance.now() / 1000);
-      flushSplats(renderer);   // drain queued gore stamps into the splat map
+      flushSplats(renderer);   // WebGL: drain queued gore stamps into the splat map
+      tickGoreWebGPU();        // WebGPU: dry/evict + repack the per-fragment gore buffer
       renderWithStyle(renderer, scene, camera);
       // LUX readback must happen while this frame's buffer is still
       // valid (preserveDrawingBuffer is off in prod) — cheap no-op

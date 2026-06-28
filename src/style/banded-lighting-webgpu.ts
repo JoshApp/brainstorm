@@ -1,5 +1,6 @@
 import { PhysicalLightingModel, MeshStandardNodeMaterial } from 'three/webgpu';
 import { vec3, diffuseColor, luminance, mix, normalView, BRDF_Lambert, BRDF_GGX, specularColor, roughness, float } from 'three/tsl';
+import { applyGoreWebGPU } from '../scene/gore-webgpu';
 
 // WEBGPU port of banded-lighting.ts (cel / posterized direct lighting). The
 // GLSL version appended to THREE.ShaderChunk.lights_fragment_end globally; under
@@ -69,6 +70,11 @@ class BandedPhysicalLightingModel extends PhysicalLightingModel {
       const lum: any = (luminance as any)(out);
       out = (mix as any)((vec3 as any)(lum, lum, lum), out, this.chroma).max((vec3 as any)(0, 0, 0));
     }
+    // GORE creep — recolour toward blood where the WebGPU splat buffer covers this
+    // fragment (floor pools full, surface bases creep up). Post-lighting, like the
+    // GLSL composite-stage gore. ~free when there's no blood (the loop breaks at
+    // count 0). See scene/gore-webgpu.ts.
+    out = applyGoreWebGPU(out);
     context.outgoingLight.assign(out);
     super.finish(builder);
   }
