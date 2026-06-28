@@ -901,6 +901,11 @@ export function createEnemy(
   // the rest of the frame collapses), and a once-guard for the collapse trigger.
   let severedJoint: string | undefined;
   let crumbleCollapsed = false;
+  // Flung crumble chunks share the body materials but, on WebGPU, read their OWN
+  // per-object dissolve (mesh.userData.dissolve) — so we track them and drive their
+  // dissolve in sync with the body each frame (they no longer powder via a shared
+  // uniform). Cleared as they self-remove is handled by the flung-parts pool.
+  const deathChunks: THREE.Mesh[] = [];
   // Pre-collect every dissolve uniform we need to drive. Walking
   // `built.materials` per-frame would work too, but caching the refs
   // here keeps the per-frame tick branch-free.
@@ -1730,7 +1735,13 @@ export function createEnemy(
     // because collapsed/flung parts SHARE these materials, on every detached
     // bone too, so the whole skeleton powders in sync. (build-model.ts injects
     // uDissolve as a top-down ragged discard with an emissive edge band.)
-    for (const u of dissolveUniforms) u.value = dissolveT;
+    for (const u of dissolveUniforms) u.value = dissolveT;   // WebGL path (onBeforeCompile uDissolve)
+    // WebGPU path: dissolve is a PER-OBJECT node reading mesh.userData.dissolve, so it
+    // can't leak across the species (killing one mob no longer dissolves the rest — see
+    // build-model objectScalar). Drive the body here; flung crumble chunks get theirs
+    // set as they spawn (they share the material but read their own userData).
+    skinnedCreature.mesh.userData.dissolve = dissolveT;
+    for (const ch of deathChunks) ch.userData.dissolve = dissolveT;
 
     if (deathStyle === 'collapse') {
       // TOPPLE backward, LIE (rest), then SINK as it melts. The enemy faced the
@@ -1765,6 +1776,8 @@ export function createEnemy(
           for (const ch of skinnedCreature.crumbleToChunks(cuts)) {
             let dx = ch.position.x - cx, dz = ch.position.z - cz;
             if (Math.hypot(dx, dz) < 0.05) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; }
+            ch.userData.dissolve = dissolveT;   // seed per-object dissolve; driven below
+            deathChunks.push(ch);
             spawnFlungPart(scene as THREE.Object3D, ch, dx, dz, COLLAPSE_PRESET);
           }
           spawnShatterBurst(scene as THREE.Object3D, cx, container.position.y + 0.3, cz, true, spec.bloodColor ?? 0x8a8274);

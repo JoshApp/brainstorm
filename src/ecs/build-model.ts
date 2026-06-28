@@ -10,7 +10,8 @@ import { installNamedSurfaceDetail } from '../style/surface-detail';
 import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
 import { setMaterialChromaWebGPU } from '../style/banded-lighting-webgpu';
-import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep } from 'three/tsl';
+import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject } from 'three/tsl';
+import { Node as TSLNode, NodeUpdateType } from 'three/webgpu';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
 } from '../scene/geometry-pool';
@@ -529,6 +530,36 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
   };
 }
 
+// PER-OBJECT scalar uniform node (the fix for the WebGPU "kill one mob → whole
+// species shows the death state" leak). On WebGPU, structurally-identical node
+// materials collapse onto a SHARED GPU binding, so a plain per-material uniform(0)
+// animated on one creature leaks to every creature of that type (and disposing one
+// corrupts the rest). This node instead PULLS its value from `frame.object.userData[key]`
+// once per object, right before that object's draw (NodeUpdateType.OBJECT) — so each
+// mesh shows ITS OWN value even when the binding is shared, and there's nothing
+// per-instance to corrupt. The canonical three.webgpu pattern (official
+// webgpu_instance_uniform example). Drive it by setting `mesh.userData[key]`.
+// (WebGL is unaffected — it uses the onBeforeCompile uDissolve path, not this.)
+/* eslint-disable @typescript-eslint/no-explicit-any */
+class ObjectUniformScalar extends (TSLNode as any) {
+  key: string;
+  uniformNode: any;
+  constructor(key: string, init = 0) {
+    super('float');
+    this.key = key;
+    this.uniformNode = (tslUniform as any)(init);
+    this.updateType = (NodeUpdateType as any).OBJECT;
+  }
+  update(frame: any): void {
+    const v = frame.object?.userData?.[this.key];
+    this.uniformNode.value = typeof v === 'number' ? v : 0;
+  }
+  setup(): any { return this.uniformNode; }
+}
+/** Per-object scalar TSL node bound to `mesh.userData[key]` (default 0). */
+function objectScalar(key: string): any { return (nodeObject as any)(new ObjectUniformScalar(key)); }
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 /** WEBGPU rim reveal — additive fresnel emissive ("forms emerge from black").
  *  The GLSL seam's rim was darkness-reactive (brighter where scene light isn't);
  *  an emissive node can't read the final lit luma, so this is the constant-rim
@@ -563,8 +594,9 @@ function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef):
   // sequence ramps userData.uDissolve 0→1 (a TSL uniform exposes .value the same
   // way the {value} object did). Inert at 0 (gated by `active`).
   if (hasDissolve) {
-    const uDissolve: any = (tslUniform as any)(0);
-    mat.userData.uDissolve = uDissolve;
+    // PER-OBJECT dissolve (not a shared per-material uniform — that leaks across the
+    // species on WebGPU). Reads mesh.userData.dissolve each draw; enemy.ts drives it.
+    const uDissolve: any = objectScalar('dissolve');
     // Stable bind-space position → chunky cell hash (floor) = blocky flakes, not
     // per-pixel static; a faint top-down lean rides on top.
     const lp: any = positionGeometry;
