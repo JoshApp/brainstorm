@@ -46,7 +46,41 @@ if (typeof window !== 'undefined' && import.meta.env.DEV) {
 
 let pipeline: RenderPipeline | null = null;
 let scenePass: ReturnType<typeof pass> | null = null;
-let resScale = 0.4;   // match the WebGL PS1_SCALE_DEFAULT (0.4) — chunkier than 0.5
+let resScale = 0.4;   // CURRENT scene-render scale (adaptive may lower it below userScale)
+let userScale = 0.4;  // the CONFIGURED ceiling (settings / PS1 default) — adaptive never exceeds it
+
+// ── ADAPTIVE RESOLUTION (?adaptres=1) ───────────────────────────────────────
+// Fragment/lighting-bound: the scene-render scale is a DIRECT linear multiplier on
+// the bottleneck (research's #2 lever). We measure GPU frame time as the
+// renderAsync submit→resolve wall-clock — with MAX_IN_FLIGHT=1 that's ≈ the GPU's
+// per-frame cost — EMA it, and nudge the PSX scale DOWN when over budget / UP when
+// there's headroom, bounded by [ADAPT_MIN, userScale]. Off by default (A/B-able);
+// flip on with ?adaptres=1. Backend-agnostic in principle; wired on the WebGPU path
+// here (the WebGL custom pipeline can feed the same controller later).
+const ADAPTRES = typeof location !== 'undefined' && new URLSearchParams(location.search).get('adaptres') === '1';
+const ADAPT_MIN = 0.30;          // never below this (PSX already chunky; protects legibility)
+const ADAPT_BUDGET_MS = 15.0;    // target GPU frame — headroom under the 16.6ms vsync
+const ADAPT_STEP = 0.04;
+let gpuEmaMs = 0;
+let adaptCooldown = 0;           // frames to settle after a change (avoid oscillation)
+let tsInFlight = false;          // throttle the async timestamp resolve
+/** Internal: set the live scale without touching the user's ceiling. */
+function applyScale(s: number): void { resScale = s; scenePass?.setResolutionScale(s); }
+function feedAdaptive(ms: number): void {
+  if (ms > 0 && ms < 1000) gpuEmaMs = gpuEmaMs === 0 ? ms : gpuEmaMs * 0.9 + ms * 0.1;
+}
+function tickAdaptive(): void {
+  if (!ADAPTRES || gpuEmaMs <= 0) return;
+  if (adaptCooldown > 0) { adaptCooldown--; return; }
+  let s = resScale;
+  if (gpuEmaMs > ADAPT_BUDGET_MS * 1.08 && resScale > ADAPT_MIN) s = Math.max(ADAPT_MIN, resScale - ADAPT_STEP);
+  else if (gpuEmaMs < ADAPT_BUDGET_MS * 0.75 && resScale < userScale) s = Math.min(userScale, resScale + ADAPT_STEP);
+  if (s !== resScale) { applyScale(s); adaptCooldown = 30; }   // ~0.5s settle at 60fps
+}
+/** DEV readout for the gate/profiler — current adaptive state. */
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  (window as any).__adaptres = () => ({ on: ADAPTRES, resScale, userScale, gpuEmaMs: +gpuEmaMs.toFixed(2) });
+}
 // ?raw=1 — ISOLATION: bypass the whole PSX grade (bloom/crush/inscatter/vignette/
 // quantize), output the bare exposed scene. Tells us if the haze is the GRADE or
 // something upstream (lighting / fog / material response).
@@ -187,10 +221,12 @@ const ADAPT_LIFT: readonly [number, number, number] = [0.0025, 0.0024, 0.0021]; 
 const ADAPT_GAIN = 0.1;       // gentle multiply on the darks — pulls their faint form up a touch (space-stable)
 const ADAPT_CUTOFF = 0.30;    // LINEAR brightness above which the eye lift fades to 0 — keep it to the genuinely crushed shadows
 
-/** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res. */
+/** Set the scene-render resolution scale (the PSX downscale). 0.5 = half-res.
+ *  This sets the user/configured CEILING; adaptive resolution scales between
+ *  ADAPT_MIN and this. */
 export function setWebGPUResolutionScale(s: number): void {
-  resScale = s;
-  scenePass?.setResolutionScale(s);
+  userScale = s;
+  applyScale(s);
 }
 
 /** Toggle bloom (wired to the BLOOM setting). Rebuilds the pipeline next frame. */
@@ -431,6 +467,17 @@ export function renderWebGPU(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   void (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync()
     .then(() => {
       inFlight--;
+      // ADAPTIVE-RES SIGNAL: the REAL GPU frame ms from native timestamps (trackTimestamp
+      // is always on). renderAsync resolves at SUBMIT, not GPU completion, so wall-clock
+      // would read CPU submit time (~5ms), not the GPU cost (~27ms) — the timestamp is the
+      // true bottleneck signal. Self-throttled (skip if a resolve is already pending).
+      if (ADAPTRES && !tsInFlight) {
+        tsInFlight = true;
+        (renderer as unknown as { resolveTimestampsAsync?: (t: string) => Promise<number> })
+          .resolveTimestampsAsync?.('render')
+          .then((ms) => { tsInFlight = false; if (typeof ms === 'number' && Number.isFinite(ms)) { feedAdaptive(ms); tickAdaptive(); } },
+                () => { tsInFlight = false; });
+      }
       if (dev) dev.popErrorScope().then((err: any) => {
         if (err) {
           const msg = String(err.message || err);
