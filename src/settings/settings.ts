@@ -257,7 +257,7 @@ const DEFAULTS: Settings = {
   frameCap: '60',      // match the 60Hz sim: smooth everywhere + good battery
 
   bloom: true,
-  leanBloom: false,   // OFF until eyeballed on a phone; then a candidate default on mobile
+  leanBloom: true,   // cheaper 1-pass bloom (~identical look, mobile tile-bandwidth win)
   // ON by default: occlusion-culls rooms (and now enemies) hidden behind walls —
   // the big win on enemy-heavy floors, where the frustum cone otherwise draws a
   // whole packed room (and its shadow casters) through the wall you're facing.

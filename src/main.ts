@@ -229,19 +229,18 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 // WebGPU is now the DEFAULT on this branch — iterate the look/feel live, finish
 // the last features (reveal seam, clustered lighting, gore-splat) on the native
 // path. Opt OUT with ?webgpu=0 to A/B against the classic WebGL renderer.
-const WEBGPU = new URLSearchParams(window.location.search).get('webgpu') !== '0';
-setWebGPUMode(WEBGPU);
-// preserveDrawingBuffer forces the browser to COPY the drawing buffer every
-// presented frame (no efficient swap) — a present-latency/back-pressure hit that
-// scales with frame count. Kept to the HARNESS only (it reads canvas frames at
-// arbitrary times). Debug Mode's CAPTURE doesn't need it: its screenshot paths
-// re-render + toDataURL() in the SAME synchronous task, where the buffer is still
-// valid without preservation.
+// ONE renderer: WebGPURenderer (node/TSL pipeline). It auto-selects a WebGL2
+// backend on devices without WebGPU — same node materials, one code path — and
+// ?webgpu=0 forces that WebGL2 backend as a manual escape hatch / for testing the
+// fallback. The dedicated classic WebGLRenderer is gone (see render-webgpu.ts).
+const FORCE_WEBGL = new URLSearchParams(window.location.search).get('webgpu') === '0';
+const WEBGPU = true;   // single renderer now; kept for the existing WEBGPU-gated sites (always true)
+setWebGPUMode(true);
 let renderer: THREE.WebGLRenderer;
-if (WEBGPU) {
-  // trackTimestamp: native GPU timestamp queries for the profiler (frame-timing
-  // reads renderer.resolveTimestampsAsync). No-op if the adapter lacks the feature.
-  const wgpu = new WebGPURenderer({ canvas, antialias: false, trackTimestamp: true });
+{
+  // trackTimestamp: native GPU timestamp queries for the profiler + adaptive res
+  // (frame-timing / gore read resolveTimestampsAsync). No-op if the adapter lacks it.
+  const wgpu = new WebGPURenderer({ canvas, antialias: false, trackTimestamp: true, forceWebGL: FORCE_WEBGL });
   // Tiled (Forward+) lighting prototype (?tiled=1). Bins point lights into screen
   // tiles via a compute pass so each fragment shades at most ~8 lights regardless
   // of total count — lets the torch count climb without the per-fragment wall.
@@ -254,27 +253,17 @@ if (WEBGPU) {
     // pooled point lights in ONE loop instead of N unrolled per-light nodes, with two
     // byte-identical wins: parked pool slots (intensity 0) aren't packed, and a per-
     // fragment distance cull skips lights past their cutoff (Three's attenuation is
-    // exactly 0 there). Measured: matches WebGL on real floors, beats it where post
-    // dominates, and always beats the stock unrolled path. ?unrolled=1 reverts to
-    // stock node lighting for A/B; ?tiled=1 selects the Forward+ compute path.
+    // exactly 0 there). ?unrolled=1 reverts to stock node lighting for A/B; ?tiled=1
+    // selects the Forward+ compute path.
     (wgpu as any).lighting = new DelveLeanLighting();
     if (import.meta.env.DEV) console.log('[webgpu] lean lights (default)');
   }
-  // The codebase types the renderer as WebGLRenderer everywhere; WebGPURenderer
-  // shares the common surface we use (render/setSize/setPixelRatio/info/…), so
-  // cast for the transition. WebGL-specific paths (custom RTs, getContext, the
-  // GPU-timer ext) are guarded by isWebGPU() until ported.
+  // Codebase types the renderer as WebGLRenderer; WebGPURenderer shares the surface
+  // we use (render/setSize/setPixelRatio/info/…), so cast.
   renderer = wgpu as unknown as THREE.WebGLRenderer;
   wgpu.init()
     .then(() => { setWebGPUReady(true); if (import.meta.env.DEV) console.log('[webgpu] renderer initialised (backend:', wgpu.backend?.constructor?.name ?? '?', ')'); })
-    .catch((err) => console.error('[webgpu] init failed — falling back is automatic next reload', err));
-} else {
-  renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: false,
-    powerPreference: 'high-performance',
-    preserveDrawingBuffer: HARNESS_ENABLED,
-  });
+    .catch((err) => console.error('[webgpu] init failed', err));
 }
 // DPR cap — the biggest single lever against fragment/fill cost. Desktop debug
 // stays crisp at CONFIG.PIXEL_RATIO_CAP; mobile honours the live PIXEL DENSITY
