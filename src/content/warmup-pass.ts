@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import './spawn-warmups';   // side-effect: registers enemy/item/destructible warmups
 import { getWarmupHooks, essentialWarmupHooks } from './warmup-registry';
-import { WARM_MODELS } from './warmup-models';
 import { warmRenderWebGPU } from '../style/render-webgpu';
 import { beginLoading, endLoading } from '../scene/loading-gate';
 
@@ -213,12 +212,31 @@ export async function runWarmupPassWebGPU(
     retainMaterials(warmGroup);   // pin every program the drained instances compiled
     onProgress?.(0.72);
     await yieldFrame();
-    // COMPILE through the real PSX pipeline (right target format). ONE pass — the compile
-    // happens on first use; extra passes are redundant. NB: this is ~hundreds of SYNC
-    // pipeline compiles (~55ms each) and is the real boot cost; compileAsync is WORSE here
-    // (it recompiles the whole scene). The only true wins are fewer pipelines + the browser's
-    // cross-session cache (see docs/WARMUP.md).
-    await warmRenderWebGPU(renderer, scene, camera, 1);
+    // COMPILE IN SMALL BATCHES. Each pipeline compile is a ~55ms SYNCHRONOUS block; rendering
+    // all ~180 in ONE pass is a ~10s HARD FREEZE of the whole browser. So make only a few
+    // dummies visible at a time and render those — each pass compiles ~a few pipelines
+    // (~150ms), then we yield so the browser breathes. Same total time, but a RESPONSIVE
+    // loading screen (the veil animates, the bar moves) instead of a frozen tab. Compiles are
+    // sync because Three's render path uses createRenderPipeline; compileAsync is worse here.
+    // Hide the rest of the scene (floor, props, lights) during the batched compile so each
+    // pass renders ONLY the few visible dummies — cheap. (The pipeline is keyed on material +
+    // format + the GLOBAL banded model + fog, not the specific lights, so a near-empty scene
+    // compiles the same pipeline. The floor's own materials already compiled when the title
+    // rendered before this.)
+    const others = scene.children.filter((c) => c !== warmGroup);
+    const prevVis = others.map((c) => c.visible);
+    for (const c of others) c.visible = false;
+    const kids = warmGroup.children.slice();
+    for (const k of kids) k.visible = false;
+    const CBATCH = 3;
+    for (let i = 0; i < kids.length; i += CBATCH) {
+      for (let j = i; j < Math.min(i + CBATCH, kids.length); j++) kids[j].visible = true;
+      await warmRenderWebGPU(renderer, scene, camera, 1);
+      onProgress?.(0.72 + 0.28 * Math.min(1, (i + CBATCH) / Math.max(1, kids.length)));
+      await yieldFrame();
+    }
+    for (const k of kids) k.visible = true;
+    others.forEach((c, i) => { c.visible = prevVis[i]; });
     onProgress?.(1);
   } catch { /* best-effort — a driver hiccup must not brick the load */ } finally {
     for (const h of hooks) { try { h.clear(); } catch { /* skip */ } }

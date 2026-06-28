@@ -3,7 +3,7 @@ import { registerWarmup } from './warmup-registry';
 import { ENEMIES } from './enemies';
 import { ITEMS } from './items';
 import { createMaterialFromDef } from '../ecs/build-model';
-import { VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN } from './vase';
+import { WARM_MODELS } from './warmup-models';
 import { COBWEB_BARRIER } from './cobweb';
 
 // ── Content auto-warmups (CHEAP — materials on dummies, NOT full builds) ──────────
@@ -82,11 +82,15 @@ for (const item of Object.values(ITEMS)) {
   });
 }
 
-// DESTRUCTIBLES — vases + cobweb. VASE_BROKEN's gore-receiving material is otherwise
-// first-rendered live (it spawns on break mid-combat), so warm every variant.
-for (const spec of [VASE_TALL, VASE_SQUAT, VASE_FLASK, VASE_BROKEN, COBWEB_BARRIER]) {
+// STATIC PROPS / CLUTTER / CHESTS / DESTRUCTIBLES — the WARM_MODELS first-class list
+// (rubble, bone piles, pillars, sand drifts, chests, vases — incl. VASE_BROKEN's
+// gore-receiving material) + the cobweb barrier. These are plain (non-skinned) meshes;
+// deeper floors introduce types the first floor lacks, so without warming them they
+// compile mid-reveal / when first seen in-play (the hitches). This is the seam to extend:
+// add a prop spec to WARM_MODELS and it auto-warms.
+for (const spec of [...WARM_MODELS, COBWEB_BARRIER]) {
   registerWarmup({
-    label: `destructible:${spec.id}`, live: true,
+    label: `prop:${spec.id}`, live: true,
     spawn: (scene) => {
       for (const def of Object.values(spec.materials)) addPlainWarm(scene, createMaterialFromDef(def));
     },
