@@ -66,19 +66,29 @@ GAP) or a frame runs long (amber — GC/CPU). `window.__compileStats()` returns
 trending to 0** — when you add content, play it and watch: a red flash means you introduced a
 gap, and `gaps` names the material type.
 
-## How to add a warmable
+## How to preload new content (the four seams)
 
-- **Enemy / item / destructible / prop**: warmed automatically — enemies/items from their
-  registries, props from `WARM_MODELS` (`content/warmup-models.ts` — add a prop spec there).
-- **A new effect** that spawns a new material mid-combat: `registerWarmup({ label, spawn, clear })`
-  next to its spawn/tick/clear.
-- **CRITICAL — non-`MeshStandard` materials.** The cheap materials-on-dummies warm only covers
-  `MeshStandard`. **Sprites, Points, and Basic materials are SEPARATE pipelines** (keyed on
-  blending + fog), warmed by the `primitive:sprites+basic` hook in `spawn-warmups.ts`. If you
-  add a sprite/points/basic with a NEW blending or fog combo, the watch will flash it — extend
-  that hook with the new variant.
+When you add something, preloading it is one of these — pick the matching row:
 
-After any addition, confirm `window.__compileStats().compileHitches` stays ~0 while exercising it.
+1. **Enemy / item / destructible** → add to its registry (`ENEMIES` / `ITEMS` / the vase list).
+   Auto-warmed; nothing else to do.
+2. **Static prop / clutter / chest** → add the `ModelSpec` to `WARM_MODELS`
+   (`content/warmup-models.ts`). One line; auto-warmed.
+3. **A pooled effect** that spawns a material mid-combat → `registerWarmup({ label, spawn, clear })`
+   right next to the effect's spawn/tick/clear. Self-registering.
+4. **A scene-resident effect** that lives in the scene from boot (like the GPU embers) →
+   set `obj.userData.warmKeep = true`. The boot warm hides the rest of the scene but keeps
+   `warmKeep` objects visible, so their pipeline compiles in the warm.
+
+**Then check it.** Play the thing with DevTools open. If it hitches, the red **COMPILE HITCH**
+banner names the material type and `window.__compileStats().compileHitches` ticks up — that's
+your signal you missed a seam (or hit a NEW sprite/points/basic blending+fog combo, in which
+case extend the `primitive:sprites+basic` hook in `spawn-warmups.ts`). Goal: `compileHitches`
+stays ~0 while exercising new content.
+
+NOTE: the cheap warm covers `MeshStandard` materials directly; **sprites / points / basic are
+separate pipelines** (keyed on blending + fog) handled by the `primitive:sprites+basic` hook —
+that's the one thing the per-content seams above don't auto-cover for a genuinely new variant.
 
 ## Known limits / future options
 

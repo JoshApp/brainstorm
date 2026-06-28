@@ -2361,16 +2361,35 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     // world, so input never overwrites this pitch.)
     camera.rotation.x = -0.22;
   }
+  // Wait until pipeline compiling has SETTLED (the scene rendered everything it's going to)
+  // or maxMs elapses. DEV uses the compile guard's total (precise); prod has no counter, so
+  // a fixed ~1.5s budget gives the title time to render. requestAnimationFrame-paced.
+  async function settleCompiles(maxMs: number): Promise<void> {
+    const stats = (window as unknown as { __compileStats?: () => { total: number } }).__compileStats;
+    const start = performance.now();
+    let last = -1, stable = 0;
+    const raf = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
+    while (performance.now() - start < maxMs) {
+      await raf();
+      if (stats) {
+        const t = stats().total;
+        if (t === last) { if (++stable >= 12) return; } else { stable = 0; last = t; }
+      } else if (performance.now() - start > 1500) return;
+    }
+  }
+
   // Compile the whole roster at BOOT, behind the loading veil — against the title
   // vignette (a real fogged dungeon scene with the live PSX pipeline), so the pipelines
   // match the in-game render state. Held here so the menu only appears once warm: the
   // first DESCEND is then instant (the floor warmup's `done` guard makes it a no-op).
   async function bootWarm(): Promise<void> {
     if (!WEBGPU) return;
-    // Let the title vignette (a real fogged dungeon floor) BUILD + RENDER first — the
-    // tick compiles its floor / wall / decor pipelines, which the descend floor reuses.
-    // Then warm the roster (enemy/item/effect materials) against that live state.
-    await new Promise<void>((r) => { let n = 0; const t = () => (++n >= 6 ? r() : requestAnimationFrame(t)); requestAnimationFrame(t); });
+    // Let the title vignette (a real fogged dungeon floor) BUILD + RENDER + fully COMPILE its
+    // floor / wall / decor pipelines behind the veil — the descend floor + in-game safe rooms
+    // reuse them. The title loads async + its decor compiles over several frames, so wait until
+    // the compile count SETTLES (DEV: the guard's total stable; prod: a fixed ~1.5s budget),
+    // capped at 4s. Without this the title compiles when the MENU appears (a menu hitch).
+    await settleCompiles(4000);
     const _t0 = performance.now();
     try { await runWarmupPassWebGPU(renderer, scene, camera, setBootProgress); } catch { /* best-effort */ }
     if (import.meta.env.DEV) console.log(`[bootWarm] roster warm took ${Math.round(performance.now() - _t0)}ms (high+same every reload = NOT cached; drops on 2nd = cached)`);

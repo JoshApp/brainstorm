@@ -223,7 +223,9 @@ export async function runWarmupPassWebGPU(
     // format + the GLOBAL banded model + fog, not the specific lights, so a near-empty scene
     // compiles the same pipeline. The floor's own materials already compiled when the title
     // rendered before this.)
-    const others = scene.children.filter((c) => c !== warmGroup);
+    // Hide the rest of the scene EXCEPT objects flagged userData.warmKeep (e.g. the GPU
+    // embers Points) — those must render during the warm so their pipeline compiles here.
+    const others = scene.children.filter((c) => c !== warmGroup && !c.userData.warmKeep);
     const prevVis = others.map((c) => c.visible);
     for (const c of others) c.visible = false;
     const kids = warmGroup.children.slice();

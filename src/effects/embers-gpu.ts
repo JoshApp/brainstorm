@@ -81,6 +81,10 @@ export function initEmbersGPU(_renderer: any, scene: THREE.Scene): void {
   points = new THREE.Points(geom, mat);
   points.frustumCulled = false;
   points.renderOrder = 5;
+  // Stay visible through the boot warm so this compute-driven PointsNodeMaterial pipeline
+  // compiles THERE (the warm hides the rest of the scene; warmKeep opts back in) — else it
+  // first-compiles when a torch/bonfire comes into view in-play (a hitch). See warmup-pass.ts.
+  points.userData.warmKeep = true;
   scene.add(points);
 }
 
