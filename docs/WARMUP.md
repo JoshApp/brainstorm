@@ -56,13 +56,29 @@ on any that happen after warmup** — the WebGPU-native "record what compiles" i
 proof the warm is comprehensive, and it lights up immediately if a new material type isn't
 warmed.
 
+## The compile / lagspike watch (your radar)
+
+`renderer.info` has no `.programs` on WebGPU, so `debug/webgpu-compile-guard.ts` patches the
+device's pipeline creation to count compiles. `tickCompileWatch()` runs each frame (DEV) and
+**flashes an on-screen banner the instant a pipeline compiles in-play** (red — a fixable WARM
+GAP) or a frame runs long (amber — GC/CPU). `window.__compileStats()` returns
+`{ total, postWarmup, gaps, compileHitches, laggyFrames }`. **The goal is `compileHitches`
+trending to 0** — when you add content, play it and watch: a red flash means you introduced a
+gap, and `gaps` names the material type.
+
 ## How to add a warmable
 
-If you add a new enemy / item / destructible to its registry, it's warmed automatically
-(`spawn-warmups.ts` iterates the registries). For a new **effect** that spawns a new material
-mid-combat, add a `registerWarmup({ label, spawn, clear })` next to its spawn/tick/clear
-(`content/warmup-registry.ts`). Then check `window.__compileStats().postWarmup` stays 0 in a
-scene that exercises it.
+- **Enemy / item / destructible / prop**: warmed automatically — enemies/items from their
+  registries, props from `WARM_MODELS` (`content/warmup-models.ts` — add a prop spec there).
+- **A new effect** that spawns a new material mid-combat: `registerWarmup({ label, spawn, clear })`
+  next to its spawn/tick/clear.
+- **CRITICAL — non-`MeshStandard` materials.** The cheap materials-on-dummies warm only covers
+  `MeshStandard`. **Sprites, Points, and Basic materials are SEPARATE pipelines** (keyed on
+  blending + fog), warmed by the `primitive:sprites+basic` hook in `spawn-warmups.ts`. If you
+  add a sprite/points/basic with a NEW blending or fog combo, the watch will flash it — extend
+  that hook with the new variant.
+
+After any addition, confirm `window.__compileStats().compileHitches` stays ~0 while exercising it.
 
 ## Known limits / future options
 
