@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Vector4 } from 'three/webgpu';
 import { uniform, uniformArray, Fn, Loop, If, Break, int, float, vec3, positionWorld, normalWorld, luminance, mix } from 'three/tsl';
 import { groundYAt } from '../level/elevation';
+import { DEV } from '../debug/dev';
 
 // ── WEBGPU-NATIVE GORE ───────────────────────────────────────────────────────
 //
@@ -166,7 +167,7 @@ const goreFn = (Fn as any)(([outgoing]: any) => {
 /** Apply gore recolour to a lit-colour node (called from the banded lighting finish). */
 export function applyGoreWebGPU(outgoing: any): any { return goreFn(outgoing); }
 
-if (import.meta.env.DEV && typeof window !== 'undefined') {
+if (DEV && typeof window !== 'undefined') {
   (window as any).__goreState = () => ({
     floor: countU.value, walls: wcountU.value, n: splats.length, nWall: walls.length,
     p0: _pos[0].toArray(), c0: _col[0].toArray(),
