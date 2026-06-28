@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import './spawn-warmups';   // side-effect: registers enemy/item/destructible warmups
-import { getWarmupHooks } from './warmup-registry';
+import { getWarmupHooks, essentialWarmupHooks } from './warmup-registry';
 import { WARM_MODELS } from './warmup-models';
 import { warmRenderWebGPU } from '../style/render-webgpu';
 import { beginLoading, endLoading } from '../scene/loading-gate';
@@ -188,7 +188,10 @@ export async function runWarmupPassWebGPU(
   beginLoading();
   const warmGroup = new THREE.Group();
   warmGroup.position.copy(camera.position);
-  const hooks = getWarmupHooks();
+  // Boot warms ONLY the cheap ESSENTIAL hooks (core combat VFX) — fast. The heavy
+  // roster (enemies/items/destructibles) STREAMS during play (scene/warmup-stream.ts),
+  // so it no longer blocks the descent.
+  const hooks = essentialWarmupHooks();
   try {
     scene.add(warmGroup);
     // BUILD, TIME-SLICED. Each hook spawn (buildCreature/CSG/skinning) is heavy +

@@ -448,6 +448,15 @@ exclamations, no modern slang.
 - Commit often. Push often. Live URL always reflects latest work.
 - When in doubt, ask Josh which direction. Do not over-architect.
 - This is not a long-running production codebase. It is an evolving prototype. Optimize for iteration speed, not enterprise patterns.
+- **Fast iteration is for FEATURES. Baseline / cross-cutting systems get a proper,
+  research-grounded foundation — not a rushed patch.** Loading, the renderer, the
+  warmup, save/state, the frame loop, input — these are amortized over everything;
+  a shortcut here bites repeatedly and gets redone five times. The tell: if you're
+  patching the *symptom* of a baseline system a second time, stop and design the
+  system. **Especially now** — the WebGPU migration has us refactoring and deleting
+  legacy across the whole codebase, so it's the right moment to make these proper
+  rather than carry the debt forward. "Don't over-architect" still holds for
+  features; it is not a license to leave a load-bearing system half-built.
 
 ## Commit message format
 

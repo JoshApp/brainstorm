@@ -145,6 +145,7 @@ import { pacerShouldDraw } from './scene/frame-pacer';
 import { beginBoot, bootSucceeded } from './boot-guard';
 import { installContextRecovery, isContextLost } from './scene/context-recovery';
 import { isLoading } from './scene/loading-gate';
+import { startWarmupStream } from './scene/warmup-stream';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
@@ -546,10 +547,12 @@ initLevelLoader({
       // reveal MUST stay covered until this resolves — revealWhenReady holds the black.
       rosterPrecompiled = true;
       prewarm = runWarmupPassWebGPU(renderer, scene, camera, setDescentProgress);
-      // From here, any new shader compile is an UNWARMED material — the guard
-      // warns (DEV) naming it, so gaps are caught immediately. Fires once the
-      // first real warm resolves.
-      prewarm.then(() => markWarmupComplete()).catch(() => { /* best-effort */ });
+      // Essential warm done → reveal. Then STREAM the heavy deferred roster during
+      // play (off-screen, idle-paced) so it never blocked the descent. The guard
+      // arms (markWarmupComplete) only once the stream finishes — everything warm.
+      prewarm
+        .then(() => startWarmupStream(scene, markWarmupComplete))
+        .catch(() => { /* best-effort */ });
     } else if (WEBGPU) {
       // WebGPU title vignette + later floors: compile this scene's pipelines in the
       // BACKGROUND (no flash — nothing is spawned). Not gated: a new room may hitch
