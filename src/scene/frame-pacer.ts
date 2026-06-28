@@ -54,9 +54,6 @@ const STABLE_TOL = 0.35;   // interval spread under this × median = a stable si
 const MODE_HOLD = 40;      // callbacks a new mode must hold before switching
 const STEP_STABLE = 8;     // callbacks a new divisor must hold before adoption
 
-const LEGACY = typeof location !== 'undefined'
-  && new URLSearchParams(location.search).get('legacypacer') === '1';
-
 /** Should THIS rAF callback draw, for the given cap (fps)? cap<=0 = uncapped.
  *  Call once per rAF callback, before the draw/skip branch. */
 export function pacerShouldDraw(cap: number, now: number): boolean {
@@ -68,11 +65,6 @@ export function pacerShouldDraw(cap: number, now: number): boolean {
   if (cap <= 0 || cap >= nativeHz - 1) {
     mode = 0; sinceDraw = 0; budget = 0; effFps = nativeHz;
     return true;
-  }
-
-  if (LEGACY) {
-    effFps = Math.min(cap, nativeHz);
-    return legacyAccumulator(cap, dt);
   }
 
   // Choose the limiter for the current panel (hysteresis-gated).
@@ -103,19 +95,6 @@ export function pacerShouldDraw(cap: number, now: number): boolean {
     budget -= interval;
     if (budget > interval) budget = interval;   // cap the backlog — no catch-up burst after a stall
     if (budget < -grace) budget = -grace;        // and no runaway negative drift
-    return true;
-  }
-  return false;
-}
-
-/** The old plain wall-clock accumulator — kept behind ?legacypacer=1 so its
- *  metastable beat can be compared against the hybrid live. */
-function legacyAccumulator(cap: number, dt: number): boolean {
-  const interval = 1000 / cap;
-  budget += dt;
-  if (budget >= interval) {
-    budget -= interval;
-    if (budget > interval) budget = interval;
     return true;
   }
   return false;

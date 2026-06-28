@@ -58,7 +58,6 @@ import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lu
 import { initSplatMap, uSplatOn, uSplatBounds, uSplatTex, stampSplat, stampSpray, emitGoreSplash, setSplatWallProbe } from './scene/splat-map';
 import { setSurfaceAOStrength } from './style/surface-ao';
 import { setSurfaceDetailEnabled } from './style/surface-detail';
-import { installBandedLighting, setBandedLighting } from './style/banded-lighting';
 import { installBandedLightingWebGPU, setLeanLightingWebGPU } from './style/banded-lighting-webgpu';
 import {
   enterInspectMode, tickInspectFraming, isInspectActive,
@@ -342,8 +341,7 @@ if (import.meta.env.DEV) {
 // chosen banded-lighting state. Must precede any material compile; runtime
 // toggle is handled in the onSettingsChanged subscription. WebGPU uses a
 // lighting-model patch (no shared shader chunk under the node renderer).
-if (WEBGPU) installBandedLightingWebGPU(getSettings().bandedLighting);
-else installBandedLighting(getSettings().bandedLighting);
+installBandedLightingWebGPU(getSettings().bandedLighting);
 // ?lean=1 — compile the LEAN lighting model from boot (no live-recompile uncertainty)
 // for a clean A/B of the per-light BRDF cost.
 if (WEBGPU && new URLSearchParams(location.search).get('lean') === '1') setLeanLightingWebGPU(true);
@@ -1887,28 +1885,8 @@ onSettingsChanged((s) => {
   setEnvLightMuls(s.torchStrengthMul, s.torchRangeMul);
   setWickLift(s.wick);
   setWickFillMul(Math.pow(s.wick, 1.5));
-  // Banded lighting toggle: swap the global lighting chunk, then force every
-  // visible material to RECOMPILE so it re-reads the new chunk. Just setting
-  // needsUpdate isn't enough — Three.js's program cache keys off material
-  // params, not chunk content, so it'd reuse the old program. Flipping a
-  // (harmless, unused) define changes the cache key → guaranteed recompile.
-  if (setBandedLighting(s.bandedLighting)) {
-    const band = s.bandedLighting ? 1 : 0;
-    const seen = new Set<THREE.Material>();
-    scene.traverse((o) => {
-      const m = (o as THREE.Mesh).material;
-      if (!m) return;
-      for (const mat of Array.isArray(m) ? m : [m]) {
-        if (seen.has(mat)) continue;
-        seen.add(mat);
-        (mat as THREE.Material & { defines?: Record<string, unknown> }).defines = {
-          ...((mat as THREE.Material & { defines?: Record<string, unknown> }).defines ?? {}),
-          DELVE_BAND: band,
-        };
-        mat.needsUpdate = true;
-      }
-    });
-  }
+  // Banded lighting toggle — re-patch the node lighting model (WebGPU).
+  installBandedLightingWebGPU(s.bandedLighting);
 });
 
 // Perf overlay (FPS / frame time / draw calls). Hidden until the PERF
