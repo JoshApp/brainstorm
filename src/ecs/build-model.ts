@@ -622,6 +622,13 @@ function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef):
     emissive = emissive.add(heatTerm).add(coreTerm);
   }
 
+  // PER-OBJECT hit/death flash — additive white-warm emissive pop, driven per object by
+  // mesh.userData.flash (CoreReactor). EMISSIVE, not colorNode: an albedo mix washed the
+  // base colour on both backends (reverted 861871b). At flash=0 it adds exactly nothing,
+  // so it can't wash anything. 0xffeedd = (1.0, 0.933, 0.863); 1.4 = a bright hit pop.
+  const flashN: any = objectScalar('flash');
+  emissive = emissive.add((vec3 as any)(1.0, 0.933, 0.863).mul(flashN).mul(1.4));
+
   (mat as any).emissiveNode = emissive;
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
