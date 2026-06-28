@@ -103,6 +103,20 @@
         animation: boot-pulse 1.5s ease-in-out infinite;
       }
       @keyframes boot-pulse { 0%, 100% { opacity: 0.22; } 50% { opacity: 0.85; } }
+      /* Warmup progress bar — driven by main.ts setBootProgress() while the roster
+         compiles. Hidden until the first update so fast/cached boots never flash it. */
+      #boot-loading .boot-bar {
+        width: min(220px, 50vw); height: 2px; margin-top: 4px;
+        background: rgba(255, 150, 80, 0.1); overflow: hidden;
+        opacity: 0; transition: opacity 0.4s ease;
+      }
+      #boot-loading .boot-bar.on { opacity: 1; }
+      #boot-loading .boot-bar-fill {
+        height: 100%; width: 100%;
+        transform: scaleX(0); transform-origin: left center;
+        background: linear-gradient(90deg, rgba(255, 150, 80, 0.25), rgba(255, 150, 80, 0.8));
+        transition: transform 0.25s ease-out;
+      }
     </style>
   </head>
   <body>
@@ -111,6 +125,7 @@
     <div id="boot-loading">
       <div class="boot-mark">DELVE</div>
       <div class="boot-sub">descending</div>
+      <div class="boot-bar"><div class="boot-bar-fill"></div></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -24,8 +24,59 @@ const postWarmupLabels: string[] = [];
 export function markWebGPUWarmupComplete(): void { warmupDone = true; }
 
 /** Diagnostics: total pipelines compiled, and how many AFTER warmup (the gaps). */
-export function webgpuCompileStats(): { total: number; postWarmup: number; gaps: string[] } {
-  return { total, postWarmup, gaps: postWarmupLabels.slice() };
+export function webgpuCompileStats(): { total: number; postWarmup: number; gaps: string[]; compileHitches: number; laggyFrames: number } {
+  return { total, postWarmup, gaps: postWarmupLabels.slice(), compileHitches, laggyFrames };
+}
+
+// ── GAMEPLAY COMPILE / LAGSPIKE WATCH ────────────────────────────────────────
+// Surfaces hitches AS THEY HAPPEN so they're catchable when content is added: every
+// frame, if a new pipeline compiled in-play (a warm gap → the actionable kind) OR the
+// frame just ran long (GC/CPU), it FLASHES a small on-screen banner. Silent otherwise.
+// The goal is to make warm gaps impossible to miss: add a new effect, see it hitch,
+// add its warmable. Counts are in window.__compileStats().
+const SPIKE_MS = 32;          // >~2 frames at 60fps = a felt hitch
+let compileHitches = 0;
+let laggyFrames = 0;
+let watchTotal = 0;
+let watchAt = 0;
+let banner: HTMLDivElement | null = null;
+
+function ensureBanner(): HTMLDivElement {
+  if (banner) return banner;
+  banner = document.createElement('div');
+  Object.assign(banner.style, {
+    position: 'fixed', top: '8px', left: '50%', transform: 'translateX(-50%)',
+    zIndex: '9999', pointerEvents: 'none', padding: '3px 10px', borderRadius: '4px',
+    font: '600 11px ui-monospace, monospace', color: '#fff', letterSpacing: '0.04em',
+    opacity: '0', transition: 'opacity 0.25s ease',
+  } as Partial<CSSStyleDeclaration>);
+  document.body.appendChild(banner);
+  return banner;
+}
+
+/** Call once per frame (DEV). Flashes a banner on a compile-caused hitch (red — the
+ *  fixable kind) or a non-compile lag frame (amber — GC/CPU). */
+export function tickCompileWatch(): void {
+  if (!DEV) return;
+  const now = performance.now();
+  const frameMs = watchAt ? now - watchAt : 16;
+  watchAt = now;
+  const newCompiles = total - watchTotal;
+  watchTotal = total;
+  const compiled = warmupDone && newCompiles > 0;
+  const laggy = frameMs > SPIKE_MS;
+  if (compiled) compileHitches += newCompiles;
+  if (laggy) laggyFrames++;
+  if (!compiled && !laggy) { if (banner) banner.style.opacity = '0'; return; }
+  const el = ensureBanner();
+  if (compiled) {
+    el.textContent = `⚠ COMPILE HITCH ×${newCompiles} · ${Math.round(frameMs)}ms · WARM GAP — __compileStats().gaps`;
+    el.style.background = 'rgba(170,28,20,0.9)';
+  } else {
+    el.textContent = `lag ${Math.round(frameMs)}ms · no compile (GC/CPU)`;
+    el.style.background = 'rgba(150,95,20,0.8)';
+  }
+  el.style.opacity = '1';
 }
 
 /** Patch a GPUDevice's render+compute pipeline creation to count compiles and warn on

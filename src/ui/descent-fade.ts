@@ -78,10 +78,18 @@ function ensureTitleCard(): HTMLDivElement {
   return titleCard;
 }
 
+// TRUE from the start of a descent fade-out (or a reveal raising the black) until the
+// fade-in has fully receded. The world stays PAUSED across it (world-paused.ts ORs this
+// in), so gameplay can't begin until the new floor has fully appeared — no acting blind,
+// no being hit, during the transition.
+let transitioning = false;
+export function isDescendTransition(): boolean { return transitioning; }
+
 /** Fade the screen to black. Returns a promise that resolves after
  *  the fade completes. The caller should run the level swap during
  *  the black, then call fadeIn. */
 export function fadeOut(): Promise<void> {
+  transitioning = true;
   const el = ensureOverlay();
   return new Promise((resolve) => {
     el.style.transition = 'opacity 220ms ease-out';
@@ -90,7 +98,8 @@ export function fadeOut(): Promise<void> {
   });
 }
 
-/** Fade the black back out, revealing the new level. */
+/** Fade the black back out, revealing the new level. Gameplay resumes (transitioning
+ *  clears) only once the fade has fully completed. */
 export function fadeIn(): void {
   const el = ensureOverlay();
   // Slight delay so the first frame of the new level renders BEFORE
@@ -98,6 +107,7 @@ export function fadeIn(): void {
   window.setTimeout(() => {
     el.style.transition = 'opacity 320ms ease-out';
     el.style.opacity = '0';
+    window.setTimeout(() => { transitioning = false; }, 340);   // after the fade finishes
   }, 40);
 }
 
@@ -212,6 +222,7 @@ export function revealWhenReady(ready?: Promise<unknown> | void, onReveal?: () =
   // The descent path already faded out, but the first floor from the title loads via
   // loadInitialLevel with no fadeOut — so raise the black instantly here. fadeIn drops
   // it on reveal. (Idempotent: if already black, this is a no-op.)
+  transitioning = true;   // gameplay stays paused until fadeIn fully recedes
   const cover = ensureOverlay();
   cover.style.transition = 'opacity 0ms';
   cover.style.opacity = '1';

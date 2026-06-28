@@ -64,7 +64,7 @@ export interface Observation {
   depth: number;
   floorId: string;
   roomId: string | null;
-  pausedReason: 'harness' | 'hit' | 'screen' | 'debug' | null;
+  pausedReason: 'harness' | 'hit' | 'screen' | 'debug' | 'transition' | null;
 
   player: {
     pos: { x: number; z: number; y: number };

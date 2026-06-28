@@ -18,9 +18,10 @@ import { isFrozen } from './combat/hit-pause';
 import { isWorldFrozen } from './debug/freeze';
 import { isWorldPausedByScreen } from './ui/screen-manager';
 import { isHarnessPaused } from './harness/pause';
+import { isDescendTransition } from './ui/descent-fade';
 
 export function isWorldPaused(): boolean {
-  return isFrozen() || isWorldFrozen() || isWorldPausedByScreen() || isHarnessPaused();
+  return isFrozen() || isWorldFrozen() || isWorldPausedByScreen() || isHarnessPaused() || isDescendTransition();
 }
 
 /** True when the world is paused for a reason that must FREEZE the deterministic
@@ -30,15 +31,16 @@ export function isWorldPaused(): boolean {
  *  loop so a paused stretch neither burns in-flight skill windows nor leaks
  *  wall-clock time into a recorded run's tape (see game-clock.ts's contract). */
 export function shouldFreezeGameClock(): boolean {
-  return isWorldFrozen() || isWorldPausedByScreen() || isHarnessPaused();
+  return isWorldFrozen() || isWorldPausedByScreen() || isHarnessPaused() || isDescendTransition();
 }
 
 /** Which source is currently pausing the world? Used by the harness to
  *  report `pausedReason` in observations. Returns null when running. */
-export function pausedReason(): 'hit' | 'debug' | 'screen' | 'harness' | null {
+export function pausedReason(): 'hit' | 'debug' | 'screen' | 'harness' | 'transition' | null {
   if (isFrozen()) return 'hit';
   if (isWorldFrozen()) return 'debug';
   if (isWorldPausedByScreen()) return 'screen';
   if (isHarnessPaused()) return 'harness';
+  if (isDescendTransition()) return 'transition';
   return null;
 }

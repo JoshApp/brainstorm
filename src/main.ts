@@ -146,7 +146,7 @@ import { beginBoot, bootSucceeded } from './boot-guard';
 import { installContextRecovery, isContextLost } from './scene/context-recovery';
 import { isLoading } from './scene/loading-gate';
 import { startWarmupStream } from './scene/warmup-stream';
-import { installWebGPUCompileGuard, markWebGPUWarmupComplete } from './debug/webgpu-compile-guard';
+import { installWebGPUCompileGuard, markWebGPUWarmupComplete, tickCompileWatch } from './debug/webgpu-compile-guard';
 import { bootstrapSimWorld } from './engine/sim-bootstrap';
 import { validateContent } from './content/validate';
 import { initDriftingMotes } from './effects/drifting-motes';
@@ -1639,6 +1639,10 @@ function tickInner() {
   // (and tickPerfProbe is itself a no-op in prod, belt-and-suspenders).
   if (import.meta.env.DEV) tickPerfProbe(performance.now());
 
+  // DEV: flash a banner on any in-play pipeline compile (a warm gap) or lag frame, so
+  // hitches are impossible to miss as content is added. No-op in prod.
+  tickCompileWatch();
+
   // First fully-rendered frame proves boot is good — clear the boot-loop flag.
   if (!bootConfirmed) { bootConfirmed = true; bootSucceeded(); }
 
@@ -2050,6 +2054,16 @@ if (new URLSearchParams(window.location.search).get('fakemeta') === '1') {
 // not just the title. The title path holds it across a PWA-update reload (see
 // the gated call below); a safety timer guarantees it never strands if some
 // path forgets to clear it.
+// Drive the boot veil's warmup progress bar (index.html #boot-loading .boot-bar),
+// 0..1 — fed by runWarmupPassWebGPU's onProgress while the roster compiles. Reveals the
+// bar on first call so fast/cached boots never flash it.
+function setBootProgress(t: number): void {
+  const bar = document.querySelector('#boot-loading .boot-bar') as HTMLElement | null;
+  const fill = document.querySelector('#boot-loading .boot-bar-fill') as HTMLElement | null;
+  if (!bar || !fill) return;
+  bar.classList.add('on');
+  fill.style.transform = `scaleX(${Math.max(0, Math.min(1, t))})`;
+}
 function hideBootLoading() {
   const el = document.getElementById('boot-loading');
   if (!el || el.classList.contains('boot-hide')) return;
@@ -2358,7 +2372,7 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     // Then warm the roster (enemy/item/effect materials) against that live state.
     await new Promise<void>((r) => { let n = 0; const t = () => (++n >= 6 ? r() : requestAnimationFrame(t)); requestAnimationFrame(t); });
     const _t0 = performance.now();
-    try { await runWarmupPassWebGPU(renderer, scene, camera); } catch { /* best-effort */ }
+    try { await runWarmupPassWebGPU(renderer, scene, camera, setBootProgress); } catch { /* best-effort */ }
     if (import.meta.env.DEV) console.log(`[bootWarm] roster warm took ${Math.round(performance.now() - _t0)}ms (high+same every reload = NOT cached; drops on 2nd = cached)`);
     startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); });
   }
