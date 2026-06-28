@@ -134,6 +134,10 @@ export interface Settings {
    *  flames, hot rims). A few fullscreen passes of GPU fill; off is a real win
    *  on weak devices, at the cost of the soft glow. */
   bloom: boolean;
+  /** Lean bloom (WebGPU) — replace the 5-mip bloom (~11 render targets) with a
+   *  single low-res gaussian blur (~3). Fewer render-target switches = a tile-GPU
+   *  bandwidth win on mobile; the subtle glow looks ~identical. No-op on WebGL. */
+  leanBloom: boolean;
   /** Portal/room culling — skip rendering rooms hidden behind walls (only the
    *  room you're in + rooms visible through doorways draw). Big draw-call win
    *  in multi-room sightlines; experimental (watch for rooms popping in as you
@@ -253,6 +257,7 @@ const DEFAULTS: Settings = {
   frameCap: '60',      // match the 60Hz sim: smooth everywhere + good battery
 
   bloom: true,
+  leanBloom: false,   // OFF until eyeballed on a phone; then a candidate default on mobile
   // ON by default: occlusion-culls rooms (and now enemies) hidden behind walls —
   // the big win on enemy-heavy floors, where the frustum cone otherwise draws a
   // whole packed room (and its shadow casters) through the wall you're facing.

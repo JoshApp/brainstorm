@@ -424,6 +424,15 @@ const TAB_BUILDERS: Record<TabId, () => HTMLElement[]> = {
       set: (v) => updateSettings({ bloom: v }),
     }),
     makeToggle({
+      label: 'LEAN BLOOM',
+      description:
+        'A cheaper bloom: one low-res blur instead of the five-stage version. ' +
+        'Far fewer render passes — a real win on weaker phones — and the soft ' +
+        'glow looks all but identical. (No effect on the WebGL fallback.)',
+      get: () => getSettings().leanBloom,
+      set: (v) => updateSettings({ leanBloom: v }),
+    }),
+    makeToggle({
       label: 'PORTAL CULLING',
       description:
         'Skip rendering rooms hidden behind walls — only the room you’re in ' +

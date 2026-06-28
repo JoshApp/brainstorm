@@ -1,4 +1,5 @@
 import { setPS1Scale, PS1_SCALE_DEFAULT } from '../style/render-target';
+import { isWebGPU } from './renderer-mode';
 
 // Adaptive resolution — the highest-leverage knob for covering the spread of
 // phones. Watches real frame time and nudges the scene-render scale (the
@@ -55,17 +56,9 @@ export function setAdaptiveCeiling(v: number): void {
   }
 }
 
-/** Call once per frame with performance.now(). Cheap: a push, a trim, and an
- *  occasional average. No-op (one branch) when disabled. */
-export function tickAdaptiveResolution(nowMs: number): void {
-  if (!enabled) return;
-  frames.push(nowMs);
-  while (frames.length > 0 && nowMs - frames[0] > WINDOW_MS) frames.shift();
-
+/** Shared drop/raise step from a "how slow is the frame" ms signal. */
+function applyStep(avgMs: number, nowMs: number): void {
   if (nowMs - lastStep < COOLDOWN_MS) return;
-  if (frames.length < MIN_SAMPLES) return;
-
-  const avgMs = (frames[frames.length - 1] - frames[0]) / (frames.length - 1);
   if (avgMs > DROP_MS && scale > MIN_SCALE) {
     scale = Math.round((scale - STEP) * 100) / 100;
     setPS1Scale(scale);
@@ -75,6 +68,30 @@ export function tickAdaptiveResolution(nowMs: number): void {
     setPS1Scale(scale);
     lastStep = nowMs;
   }
+}
+
+/** Call once per frame with performance.now(). On WebGL the rAF interval IS the
+ *  frame time, so we average it here. On WebGPU it is NOT — the async render's
+ *  MAX_IN_FLIGHT=1 skip-pacing pins the rAF interval to vsync even under GPU
+ *  overload — so the WebGPU signal comes from feedAdaptiveGpuMs (native GPU
+ *  timestamps) instead, and this rAF path is skipped. */
+export function tickAdaptiveResolution(nowMs: number): void {
+  if (!enabled || isWebGPU()) return;
+  frames.push(nowMs);
+  while (frames.length > 0 && nowMs - frames[0] > WINDOW_MS) frames.shift();
+  if (frames.length < MIN_SAMPLES) return;
+  const avgMs = (frames[frames.length - 1] - frames[0]) / (frames.length - 1);
+  applyStep(avgMs, nowMs);
+}
+
+// EMA of GPU frame ms (WebGPU only) — the bottleneck signal the rAF interval can't see.
+let gpuEma = 0;
+/** Feed the latest GPU frame ms (native timestamp) — WebGPU's adaptive signal.
+ *  Drives the same drop/raise stepping as the WebGL frame-time path. */
+export function feedAdaptiveGpuMs(ms: number): void {
+  if (!enabled || !(ms > 0)) return;
+  gpuEma = gpuEma === 0 ? ms : gpuEma * 0.85 + ms * 0.15;
+  applyStep(gpuEma, performance.now());
 }
 
 /** Current scene-render scale (for a perf readout). */

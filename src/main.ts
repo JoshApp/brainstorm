@@ -140,7 +140,8 @@ import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
 import { setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-pool';
 import { packTokenCount } from './mobs/pack';
-import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution } from './scene/adaptive-resolution';
+import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution, feedAdaptiveGpuMs } from './scene/adaptive-resolution';
+import { lastWebGPUGpuMs, setWebGPULeanBloom } from './style/render-webgpu';
 import { pacerShouldDraw } from './scene/frame-pacer';
 import { beginBoot, bootSucceeded } from './boot-guard';
 import { installContextRecovery, isContextLost } from './scene/context-recovery';
@@ -1077,6 +1078,7 @@ function applyVideoSettings(s = getSettings()): void {
   // fixed scale explicitly whenever adaptive is off (desktop, or toggled off).
   if (!adaptiveOn) setPS1Scale(s.renderScale);
   setBloomEnabled(s.bloom);
+  setWebGPULeanBloom(s.leanBloom);   // WebGPU-only; no-op on WebGL
   setCrtFilmEnabled(s.crtFilm);
   setSharpBilinear(s.sharpUpscale);
   scheduleDprApply();   // honour the PIXEL DENSITY slider (debounced + no-op if unchanged)
@@ -1623,8 +1625,11 @@ function tickInner() {
   // tris/draws numbers reflect what was actually drawn.
   reportRendererInfo(renderer);
   tickPerfOverlay(performance.now());
-  // Adaptive resolution — self-gates (no-op unless enabled on a real phone).
+  // Adaptive resolution — self-gates (no-op unless enabled on a real phone). On
+  // WebGPU the rAF interval can't see GPU load (skip-pacing pins it to vsync), so
+  // feed the real GPU-timestamp ms; tickAdaptiveResolution drives the WebGL path.
   tickAdaptiveResolution(performance.now());
+  if (WEBGPU) feedAdaptiveGpuMs(lastWebGPUGpuMs());
   tickCombatDebug(realDt, currentLevel?.enemies ?? []);
   tickGoreDebug();
   // Programmatic perf probe (window.__perf for the headless perf runner).
