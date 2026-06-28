@@ -17,6 +17,7 @@ import { pass, vec3, vec4, float, screenUV, screenCoordinate, dot, smoothstep, m
   luminance, texture, uniform, mrt, output, normalView,
   acesFilmicToneMapping, agxToneMapping, neutralToneMapping } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 
 // SSAO (?ssao=…) — GTAO contact-darkening from an MRT depth+normal G-buffer.
@@ -135,6 +136,12 @@ let bloomEnabled = true;
 // bloom — not the whole image. Tune via the consts.
 const BLOOM_STRENGTH = 0.08, BLOOM_RADIUS = 0.3, BLOOM_THRESHOLD = 1.0;
 const BLOOM_RES_SCALE = 0.5;   // bloom mip-chain res vs the full buffer — scene is 0.4x, so bloom at full was over-resolved
+// ?leanbloom=1 — LEAN bloom: replace UnrealBloom's 5-mip chain (~11 render targets)
+// with bright-extract (ALU) + ONE separable gaussian blur (~3 RTs). Far fewer
+// render-target switches — the #1 tile-GPU bandwidth lever (research) — for DELVE's
+// SUBTLE glow (strength 0.08), which doesn't need 5 mip levels. Off by default until
+// eyeballed on a phone; the look should be ~identical at this strength.
+const LEANBLOOM = typeof location !== 'undefined' && new URLSearchParams(location.search).get('leanbloom') === '1';
 // EXPOSURE — r184 dropped useLegacyLights, so ambient/emissive/point intensities
 // read MUCH brighter than the legacy-tuned values → the whole dungeon lit pale.
 // Crush exposure hard to restore the dark-with-pools-of-torchlight look. (Quick
@@ -308,8 +315,18 @@ function ensurePipeline(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
 
   // Exposed scene + native bloom, additive, LINEAR. Bloom optional (BLOOM
   // setting); the bloomPass also feeds the fog inscatter below.
-  const bloomPass = bloomEnabled ? bloom(exposed, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD) : null;
-  if (bloomPass) {
+  let bloomPass: any = null;
+  if (bloomEnabled && LEANBLOOM) {
+    // LEAN bloom (~3 RTs): bright-extract above threshold (pure ALU, no pass) →
+    // ONE separable gaussian blur at low res → × strength. Drops ~8 render-target
+    // switches vs UnrealBloom's 5-mip chain. Feeds both the additive glow and the
+    // inscatter below, same as the UnrealBloom path.
+    const bright: any = (exposed as any).sub((float as any)(BLOOM_THRESHOLD)).max(0);
+    const gb: any = (gaussianBlur as any)(bright, null, 6);
+    gb.resolutionScale = 0.35;   // soft glow hides the low res (PS1-appropriate)
+    bloomPass = (gb as any).mul((float as any)(BLOOM_STRENGTH));
+  } else if (bloomEnabled) {
+    bloomPass = bloom(exposed, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
     // PERF: BloomNode sizes its 5-mip chain to the FULL drawing buffer (then /2),
     // but the scene is rendered at resScale (0.4x) — so bloom was processing MORE
     // pixels than the scene has. Scale its targets to ~match the scene; the soft
