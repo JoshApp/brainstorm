@@ -10,7 +10,7 @@ import { installNamedSurfaceDetail } from '../style/surface-detail';
 import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
 import { setMaterialChromaWebGPU } from '../style/banded-lighting-webgpu';
-import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject, materialColor } from 'three/tsl';
+import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject } from 'three/tsl';
 import { Node as TSLNode, NodeUpdateType } from 'three/webgpu';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
@@ -575,15 +575,6 @@ function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef):
   if (!hasRim && !hasDissolve) return;
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  // PER-OBJECT hit/death flash — lerp albedo toward the flash colour by a per-object
-  // scalar (mesh.userData.flash), so flashing ONE creature can't flash the whole
-  // species on WebGPU (same shared-binding hazard as dissolve). Driven by
-  // enemy-presentation's CoreReactor. Colour = CONFIG.ENEMY_HIT_FLASH_COLOR (0xffeedd).
-  // All creature materials are forced dissolvable (build-creature), so they all reach
-  // here. flash=0 at rest → mix is a no-op (returns the base colour).
-  const flash: any = objectScalar('flash');
-  (mat as any).colorNode = (materialColor as any).mix((vec3 as any)(1.0, 0.933, 0.863), flash);
-
   const e = mat.emissive, ei = mat.emissiveIntensity;
   let emissive: any = (vec3 as any)(e.r * ei, e.g * ei, e.b * ei);
 

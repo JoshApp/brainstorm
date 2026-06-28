@@ -442,7 +442,7 @@ export function createEnemy(
   // enemy-presentation.ts). Thin local aliases keep the AI state machine's
   // setEyeFlare/applyIdleEyes call sites below unchanged.
   const eyePresenter = createEyePresenter(built, spec);
-  const coreReactor = createCoreReactor(built, spec, skinnedCreature.mesh);
+  const coreReactor = createCoreReactor(built, spec);
   const setEyeFlare = eyePresenter.setFlare;
   const applyIdleEyes = eyePresenter.applyIdle;
 
