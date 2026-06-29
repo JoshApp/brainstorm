@@ -571,15 +571,13 @@ initLevelLoader({
       prewarm
         .then(() => startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); }))
         .catch(() => { /* best-effort */ });
-    } else if (WEBGPU) {
-      // WebGPU title vignette + later floors: compile this scene's pipelines in the
-      // BACKGROUND (no flash — nothing is spawned). Not gated: a new room may hitch
-      // one frame on first reveal, which is minor and matches WebGL; gating the full
-      // scene compile held the descent black for seconds.
-      void (renderer as unknown as { compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> })
-        .compileAsync(scene, camera)
-        .catch((err) => { if (import.meta.env.DEV) console.error('[webgpu] floor compileAsync failed', err); });
     }
+    // NOTE: no per-floor compileAsync(scene, camera) here. It compiled at the CANVAS target
+    // format, but the game renders into the PSX render target — a DIFFERENT format, hence a
+    // DIFFERENT pipeline. So it never warmed what the live render uses; it just double-compiled
+    // every floor's geometry at a format nothing draws (the log showed ~30 wasted compiles).
+    // The real fix for in-floor compiles is a BOUNDED pipeline set warmed at boot — see
+    // docs/PIPELINE-BUDGET.md (decor done; shell geometry-layout is the remaining tail).
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to
     // the scene root don't rasterize in this pipeline (blood-burst
@@ -1384,7 +1382,7 @@ window.addEventListener('resize', () => {
 });
 
 // --- Render loop ---
-const clock = new THREE.Clock();
+const clock = new THREE.Timer();   // THREE.Clock is deprecated; Timer.update()+getDelta() each frame
 const shakeOffset = new THREE.Vector3();
 const forwardScratch = new THREE.Vector3();
 
@@ -1535,6 +1533,7 @@ function tickInner() {
   // Build/tear-down the room culler to match the active level + setting.
   syncRoomCuller();
 
+  clock.update();   // Timer computes its delta at update(); getDelta() then returns this frame's
   const realDt = Math.min(clock.getDelta(), 0.1);
 
   // Harness: drain any in-flight tick budget and advance game-time clock.
