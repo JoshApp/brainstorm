@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundYAt } from '../level/elevation';
+import { stdMat } from '../style/material-registry';
 import { buildModel, mergeRigidSegments } from '../ecs/build-model';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable, getInRangeInteractable } from './system';
@@ -103,7 +104,9 @@ export function createPickup(
   scene.add(pickupGroup);
 
   // ── Floor disc — flat plane on the ground, rarity-tinted ───────────
-  const discMat = new THREE.MeshStandardMaterial({
+  // SHARED per rarity (the only varying field is the rarity colour; the fire-wisp texture is shared)
+  // — so loot litter reuses ~one pipeline per rarity instead of forging one per drop. Not mutated.
+  const discMat = stdMat({
     map: getTexture('fire-wisp'),
     color: rarityColor,
     emissive: rarityColor,
