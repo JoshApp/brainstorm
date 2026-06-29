@@ -538,8 +538,14 @@ export async function warmSceneCompile(
   const forcedVis: THREE.Object3D[] = [];
   const forcedFrustum: THREE.Object3D[] = [];
   scene.traverse((o) => {
+    const m = o as THREE.Mesh & { isMesh?: boolean; isSkinnedMesh?: boolean; isInstancedMesh?: boolean; isPoints?: boolean };
+    const isLeafMesh = !!(m.isMesh || m.isSkinnedMesh || m.isInstancedMesh || m.isPoints);
+    // A leaf mesh with no position attribute is malformed — compileAsync warns ("position not
+    // found") and can reject, aborting the rest of the warm (leaving later objects, e.g. enemies,
+    // un-warmed). Don't expose it; leave its culling as-is.
+    if (isLeafMesh && !m.geometry?.attributes?.position) return;
     if (o.visible === false) { o.visible = true; forcedVis.push(o); }
-    if ((o as THREE.Mesh).frustumCulled === true) { (o as THREE.Mesh).frustumCulled = false; forcedFrustum.push(o); }
+    if (isLeafMesh && m.frustumCulled === true) { m.frustumCulled = false; forcedFrustum.push(m); }
   });
   const restoreCull = (): void => {
     for (const o of forcedVis) o.visible = false;
@@ -547,20 +553,20 @@ export async function warmSceneCompile(
   };
   warmingUp = true;
   try {
-    // 1) MAIN pass, ALL rooms + ALL directions — bind the PSX target so the format matches,
-    //    compileAsync the whole (now-uncullable) scene.
+    // MAIN pass, ALL rooms + ALL directions — bind the PSX target so the format matches, then
+    // compileAsync the whole (now-uncullable) scene. compileAsync only COMPILES (no draw calls /
+    // render pass), so binding the scene-pass target here is safe — it can't create an 'output'
+    // read+write conflict. (We previously also did a real pipeline.renderAsync() here to warm the
+    // shadow pass, but that raw render — outside presentPass's setup — left the 'output' texture in
+    // a TextureBinding|RenderAttachment conflict on the next live frame. Removed; the few shadow
+    // variants compile on first cast instead, which is a far smaller cost than a per-descent
+    // validation error.)
     renderer.setRenderTarget(rt);
     try {
       await (renderer as unknown as { compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> }).compileAsync(scene, camera);
     } catch { /* best-effort */ }
-    renderer.setRenderTarget(prev);
-    restoreCull();   // restore visibility + frustum culling before the shadow render
-    // 2) SHADOW pass — compileAsync does NOT warm the lamp's shadow-map pipelines (a separate depth
-    //    render). One real PSX render compiles the (now-culled, spawn-area) casters' shadow variants;
-    //    they're keyed by caster material + layout, so the spawn-area set covers the floor's casters.
-    try { await (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync(); } catch { /* best-effort */ }
   } finally {
-    restoreCull();   // idempotent safety
+    restoreCull();
     renderer.setRenderTarget(prev);
     warmingUp = false;
   }

@@ -376,7 +376,16 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
     // -> the stage WGSL cache (see Pipelines.js). DO NOT revert to a unique key without first moving
     // any new per-instance-animated state onto objectScalar(), or the species-leak bug returns.
     let defSig: string;
-    try { defSig = JSON.stringify(def); } catch { defSig = 'mat' + (webgpuMatSeq++); }
+    try {
+      // CANONICAL (recursively key-sorted) so the key is order-INDEPENDENT. The boot roster warm
+      // builds its representative with `{ ...def, dissolvable: true }` (a spread), which can reorder
+      // keys vs the live `def` — a plain JSON.stringify would then mismatch, and the warmed pipeline
+      // wouldn't cover the live enemy (it compiles on spawn anyway). Canonicalizing makes them equal.
+      defSig = JSON.stringify(def, (_k, v) =>
+        (v && typeof v === 'object' && !Array.isArray(v))
+          ? Object.keys(v as object).sort().reduce((s: Record<string, unknown>, key) => { s[key] = (v as Record<string, unknown>)[key]; return s; }, {})
+          : v);
+    } catch { defSig = 'mat' + (webgpuMatSeq++); }
     const matKey = `delve|fs:${mat.flatShading}|tr:${mat.transparent}|bl:${mat.blending}|vc:${mat.vertexColors}|${defSig}`;
     (mat as unknown as { customProgramCacheKey: () => string }).customProgramCacheKey = () => matKey;
     return;
