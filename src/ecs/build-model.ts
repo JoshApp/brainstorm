@@ -321,11 +321,13 @@ function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Ma
   // Opt-in baked surface detail (dressed framing / column grain). Chains after
   // the rim/dissolve onBeforeCompile; no-ops if the named config isn't found.
   if (def.detail) installNamedSurfaceDetail(mat, def.detail);
-  // Name it for the compile report — the pipeline label is `renderPipeline_${name||type}_${id}`
-  // (WebGPUPipelineUtils), so any in-play compile from a built model (enemy/prop/item/vase) shows
-  // as 'modeldef' in __compileReport() instead of a bare 'MeshStandardMaterial'. Cosmetic only —
-  // the name is not part of the shader/cache key, so it doesn't affect dedup or warming.
-  mat.name = 'modeldef';
+  // Name it for the compile report (pipeline label = `renderPipeline_${name||type}_${id}`). Encode
+  // the DEF's identity (dissolve flag + structural params) so __compileReport() distinguishes
+  // duplicates-of-one-def (same name ×N → a cacheable per-instance miss) from genuine variety
+  // (many names → real content). 'dis' = death-dissolve materials (per-instance mutated, can't share);
+  // 'opa' = static (cacheable). Cosmetic only — not part of the shader/cache key.
+  const k = `${(def.color ?? 0).toString(16)}${def.transparent ? 't' : ''}${def.flatShading === true ? 'f' : ''}${def.emissive ? 'e' : ''}`;
+  mat.name = `modeldef:${def.dissolvable ? 'dis' : 'opa'}:${k}`;
   return mat;
 }
 
