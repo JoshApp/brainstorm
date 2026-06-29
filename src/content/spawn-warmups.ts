@@ -39,10 +39,14 @@ setRevealAttributes(WARM_BOX, undefined, true);
 const SKIN_GEO = (() => {
   const g = new THREE.PlaneGeometry(0.02, 0.02);   // position + normal + uv
   const n = g.attributes.position.count;
-  const skinIndex = new Uint16Array(n * 4);        // all bone 0
+  // skinIndex must be FLOAT32 to match the live creature: creature-skinned normalizeForSkin builds
+  // skinIndex as a Float32 BufferAttribute, and the vertex-attribute FORMAT (float32x4 vs uint16x4) is
+  // part of the pipeline key. A Uint16 dummy warmed a DIFFERENT pipeline than live spawns → every
+  // spawned-during-play creature recompiled (the descent warm only covered placed ones). Match it.
+  const skinIndex = new Float32Array(n * 4);        // all bone 0
   const skinWeight = new Float32Array(n * 4);
   for (let i = 0; i < n; i++) skinWeight[i * 4] = 1;
-  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
+  g.setAttribute('skinIndex', new THREE.Float32BufferAttribute(skinIndex, 4));
   g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
   setRevealAttributes(g, undefined, true);   // same aReveal* layout as the live creature body (see WARM_BOX)
   g.userData.pooled = true;
