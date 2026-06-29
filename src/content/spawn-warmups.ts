@@ -6,6 +6,8 @@ import { createMaterialFromDef } from '../ecs/build-model';
 import { WARM_MODELS } from './warmup-models';
 import { COBWEB_BARRIER } from './cobweb';
 import { getTexture } from '../style/procedural-textures';
+import { primeFloorPalette, registeredFloorMaterials } from '../style/material-registry';
+import { ACTS } from '../level/acts';
 
 // ── Content auto-warmups (CHEAP — materials on dummies, NOT full builds) ──────────
 //
@@ -54,6 +56,17 @@ function addPlainWarm(scene: THREE.Object3D, mat: THREE.Material): void {
   box.castShadow = false; box.frustumCulled = false;
   scene.add(box);
 }
+// Instanced dummy — floor decor (sigils/cracks/rubble/niches) renders as InstancedMesh, whose
+// instanceMatrix attribute makes it a DISTINCT pipeline variant from a plain mesh. Warming on a
+// plain box alone would miss it. One instance, identity transform.
+const IDENTITY_M4 = new THREE.Matrix4();
+function addInstancedWarm(scene: THREE.Object3D, mat: THREE.Material): void {
+  const inst = new THREE.InstancedMesh(WARM_BOX, mat, 1);
+  inst.setMatrixAt(0, IDENTITY_M4);
+  inst.instanceMatrix.needsUpdate = true;
+  inst.castShadow = false; inst.frustumCulled = false;
+  scene.add(inst);
+}
 
 // ENEMIES — each creature material on BOTH a skinned dummy (the body) AND a plain box (the
 // non-skinned flung-chunk variant). Creature materials are forced dissolvable (matches
@@ -95,6 +108,23 @@ registerWarmup({
       const m = new THREE.Mesh(WARM_BOX, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, fog }));
       m.castShadow = false; m.frustumCulled = false;
       scene.add(m);
+    }
+  },
+  clear: () => {},
+});
+
+// FLOOR DECOR — the closed decorate/builder/chandelier palette (PIPELINE-BUDGET Pillar 1b/2/3).
+// Prime the whole set × the bounded per-act tints, then warm each material on an INSTANCED
+// dummy (decor renders as InstancedMesh — a distinct pipeline from plain meshes) AND a plain
+// dummy (breach cavity, chandelier ring). Compiles the floor-decor pipelines at BOOT so the
+// first room-reveal reuses them instead of compiling in-play (the hitch you walk into).
+registerWarmup({
+  label: 'floor-decor', live: true,
+  spawn: (scene) => {
+    primeFloorPalette(ACTS.map((a) => a.torchTint));
+    for (const mat of registeredFloorMaterials()) {
+      addInstancedWarm(scene, mat);
+      addPlainWarm(scene, mat);
     }
   },
   clear: () => {},

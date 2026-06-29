@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { brighten, darken } from './color-utils';
 
 // ── BOUNDED MATERIAL REGISTRY ────────────────────────────────────────────────
 //
@@ -56,3 +57,43 @@ export function registeredFloorMaterials(): THREE.MeshStandardMaterial[] {
 
 /** Count of distinct floor pipelines the registry holds (DEV diagnostics / invariant check). */
 export function floorMaterialCount(): number { return cache.size; }
+
+// ── DECLARATIVE FLOOR-DECOR PALETTE (the precompile list — PIPELINE-BUDGET Pillar 1b) ─────
+//
+// The CLOSED set of per-floor decoration materials, as builder functions. Tinted entries take
+// the floor's per-act torch tint (a bounded set). This MIRRORS the inline params in
+// decorate.ts / builder.ts / chandelier.ts — since those call stdMat() with the same params,
+// constructing the palette here pre-populates the cache, and the floor builders cache-HIT it
+// (no second instance, no second pipeline). Keeping it a separate mirror (rather than editing
+// those files to import it) means the floor visuals are UNTOUCHED — priming can only change
+// compile TIMING, never appearance — and the compile-watch flags any param drift as an in-play
+// hitch. (When validated, this can collapse to a single source.)
+const floorPalette = {
+  sigil:      (t: number) => stdMat({ color: 0x000000, emissive: brighten(t, 0.55), emissiveIntensity: 1.4, roughness: 1.0, fog: false }),
+  crack:      (t: number) => stdMat({ color: 0x000000, emissive: darken(t, 0.4), emissiveIntensity: 0.9, roughness: 1.0, fog: false }),
+  nicheEmber: (t: number) => stdMat({ color: 0x000000, emissive: brighten(t, 0.3), emissiveIntensity: 0.9, roughness: 1.0, fog: false }),
+  chandFlame: (t: number) => stdMat({ color: 0x000000, emissive: t, emissiveIntensity: 2.2, roughness: 1.0, fog: false }),
+  rubble:        () => stdMat({ color: 0x252018, roughness: 1.0, metalness: 0.0, flatShading: true }),
+  nicheStone:    () => stdMat({ color: 0x35302a, roughness: 0.8, metalness: 0.05, flatShading: true }),
+  nicheVoid:     () => stdMat({ color: 0x040405, roughness: 1.0 }),
+  nicheBone:     () => stdMat({ color: 0x9a8d74, roughness: 0.95, flatShading: true }),
+  portcullisBars:() => stdMat({ color: 0x15171b, roughness: 0.55, metalness: 0.55 }),
+  breachCavity:  () => stdMat({ color: 0x020203, roughness: 1.0 }),
+  breachRubble:  () => stdMat({ color: 0x231f19, roughness: 1.0, flatShading: true }),
+  chandIron:     () => stdMat({ color: 0x16140f, roughness: 0.6, metalness: 0.75, flatShading: true }),
+  chandWax:      () => stdMat({ color: 0xb8a98c, roughness: 0.95 }),
+};
+const TINTED = [floorPalette.sigil, floorPalette.crack, floorPalette.nicheEmber, floorPalette.chandFlame];
+const PLAIN = [
+  floorPalette.rubble, floorPalette.nicheStone, floorPalette.nicheVoid, floorPalette.nicheBone,
+  floorPalette.portcullisBars, floorPalette.breachCavity, floorPalette.breachRubble,
+  floorPalette.chandIron, floorPalette.chandWax,
+];
+
+/** Construct the entire closed floor-decor palette into the registry — every plain material
+ *  plus every tinted material × the bounded per-act tint set — so the boot warm compiles it
+ *  all up front instead of lazily on first room-reveal. Idempotent (stdMat caches). */
+export function primeFloorPalette(tints: number[]): void {
+  for (const make of PLAIN) make();
+  for (const make of TINTED) for (const t of tints) make(t);
+}

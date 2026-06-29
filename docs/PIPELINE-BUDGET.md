@@ -59,10 +59,20 @@ guard rail that keeps the budget closed as content is added.
 ## Status
 
 - [x] Pillar 1 — `stdMat` registry + route the per-floor `new Material` sites through it.
-- [ ] Pillar 1b — boot-prime the registry (enumerate per-act tints) so the warm covers it
-      at boot, not just lazily on first encounter.
-- [ ] Pillar 2 — unify floor/decor geometry attribute layouts.
-- [ ] Pillar 3 — iterate `registeredFloorMaterials()` in the boot warm; drive hitches → 0.
+- [x] Pillar 1b — `floorPalette` + `primeFloorPalette(tints)` construct the closed decor set at
+      boot (× the per-act `ACTS` tints). Verified: `__floorMats()` = 21 at the menu, before any
+      floor (9 plain + 4 tinted × 3 tints).
+- [x] Pillar 2 (decor) — warm each material on the layout decor actually uses: an **InstancedMesh**
+      dummy (the instanceMatrix variant) + a plain dummy. `addInstancedWarm` in spawn-warmups.
+- [x] Pillar 3 (decor) — the `floor-decor` warmup hook iterates `registeredFloorMaterials()` in the
+      boot warm, so the closed decor set compiles up front (130 hooks). First room-reveal reuses it.
+- [ ] **Remaining tail** — the floor SHELL (walls/floor) uses the shared `StyleMaterials` (already
+      bounded) but per-floor MERGED geometry may vary its attribute layout, and the SHADOW pass
+      (`ShadowMaterial` × caster layout) compiles separately. These are the last non-zero sources;
+      measure with the watch on procgen floors and warm the shell-layout + a shadow caster if they
+      show. The DECOR explosion (the climbing-ID one) is closed.
+- [ ] Single-source — collapse `floorPalette` (currently mirrors the inline decorate/builder/
+      chandelier params; the watch guards drift) into the one source those files import.
 
 [W3C WebGPU spec]: https://www.w3.org/TR/webgpu/
 [MDN createRenderPipeline]: https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createRenderPipeline
