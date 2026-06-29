@@ -115,7 +115,16 @@ keeps the budget closed as content grows (dev/CI gate).
 - [ ] **A2 — animated interactables**: shared template + per-instance uniform for the 6 animated files.
 - [ ] **B — vertex-layout audit** (incl. the shadow-caster layout → closes the `ShadowMaterial` tail).
 - [ ] **C — the recorder + boot-warm the recorded manifest** (captures dynamic/enemy/effect too).
-- [ ] **D — formalize the descent load screen** (residency + gate).
+- [x] **D — descent load screen warms the whole floor (the centerpiece).** `warmSceneCompile`
+      (render-webgpu.ts): binds the PSX scene-pass target, then `renderer.compileAsync(scene, camera)`.
+      Two research findings made this work: (a) the render cache key includes the target FORMAT
+      (Pipelines.js `_getRenderCacheKey` → `backend.getRenderCacheKey`), and compileAsync warms at
+      the BOUND target (three.js #31220 / Mugen87) — so binding the PSX target is what makes the
+      warm match the live render; (b) compileAsync traverses EVERY material in the scene, not the
+      frustum, so hidden rooms warm too. Gated as the descent prewarm behind revealWhenReady's cover.
+      VERIFIED: descend → 51 pipelines compile behind the cover, then **grewSinceReveal: 0** — the
+      revealed floor renders with zero new compiles (kills both the descent hitch and the move-hitch).
+      three 0.184 makes compileAsync non-blocking, so the load screen stays responsive.
 - [ ] **E — wire `compileHitches===0` as a dev/CI invariant.**
 
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735

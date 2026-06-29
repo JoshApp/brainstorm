@@ -140,7 +140,7 @@ import { setOutlinesDisabled } from './interactables/outline';
 import { setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-pool';
 import { packTokenCount } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution, feedAdaptiveGpuMs } from './scene/adaptive-resolution';
-import { lastWebGPUGpuMs, setWebGPULeanBloom } from './style/render-webgpu';
+import { lastWebGPUGpuMs, setWebGPULeanBloom, warmSceneCompile } from './style/render-webgpu';
 import { pacerShouldDraw } from './scene/frame-pacer';
 import { beginBoot, bootSucceeded } from './boot-guard';
 import { installContextRecovery, isContextLost } from './scene/context-recovery';
@@ -556,28 +556,27 @@ initLevelLoader({
       // through to compileAsync, so it never actually stopped warming.) Pipelines now
       // compile lazily — first-use stutter is EXPECTED here; the only point is to A/B
       // whether warming is behind the 'output' texture hazard. prewarm stays undefined.
-    } else if (!rosterPrecompiled && !isTitleVignette) {
-      // WebGPU first REAL floor: roster + floor + effects compiled in ONE correct-
-      // context pass (runWarmupPassWebGPU adds the subjects to the scene + runs
-      // compileAsync(scene)), so cache keys match the live render and the first
-      // ooze/ghoul/vase-shatter reuses the warmed pipeline instead of freezing mid-
-      // fight. The subjects + a frame of effects briefly sit in the scene, so the
-      // reveal MUST stay covered until this resolves — revealWhenReady holds the black.
-      rosterPrecompiled = true;
-      prewarm = runWarmupPassWebGPU(renderer, scene, camera, setDescentProgress);
-      // Essential warm done → reveal. Then STREAM the heavy deferred roster during
-      // play (off-screen, idle-paced) so it never blocked the descent. The guard
-      // arms (markWarmupComplete) only once the stream finishes — everything warm.
-      prewarm
-        .then(() => startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); }))
-        .catch(() => { /* best-effort */ });
+    } else if (WEBGPU && !isTitleVignette) {
+      // WebGPU real floor — warm behind the descent cover, GATED on the reveal so the floor
+      // compiles before the player sees it. Two parts:
+      //   1. First real floor only: the spawn-time ROSTER (enemies/effects) via the warm pass.
+      //   2. EVERY floor: warmSceneCompile — compileAsync over the whole scene at the correct PSX
+      //      render-target format (see render-webgpu.ts). This is the fix the deep-research +
+      //      Pipelines.js read surfaced: compileAsync warms at the BOUND target's format, and our
+      //      scene renders into the PSX pass target, not the canvas — so we bind it first. It
+      //      traverses EVERY material (all rooms, not just the frustum), so it kills both the
+      //      descent hitch AND the "chunk when moving" hitch. Fast because the bounded boot-warmed
+      //      set (decor/roster/static interactables) is already compiled — descent only does the
+      //      floor's residue.
+      prewarm = (async () => {
+        if (!rosterPrecompiled) {
+          rosterPrecompiled = true;
+          try { await runWarmupPassWebGPU(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
+          startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); });
+        }
+        await warmSceneCompile(renderer, scene, camera);
+      })();
     }
-    // NOTE: no per-floor compileAsync(scene, camera) here. It compiled at the CANVAS target
-    // format, but the game renders into the PSX render target — a DIFFERENT format, hence a
-    // DIFFERENT pipeline. So it never warmed what the live render uses; it just double-compiled
-    // every floor's geometry at a format nothing draws (the log showed ~30 wasted compiles).
-    // The real fix for in-floor compiles is a BOUNDED pipeline set warmed at boot — see
-    // docs/PIPELINE-BUDGET.md (decor done; shell geometry-layout is the remaining tail).
     setCameraYaw(level.playerSpawn.yaw);
     // Gore-debug markers parent into the LEVEL group — runtime adds to
     // the scene root don't rasterize in this pipeline (blood-burst

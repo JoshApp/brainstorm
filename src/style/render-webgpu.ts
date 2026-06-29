@@ -513,6 +513,32 @@ export async function warmRenderWebGPU(
   }
 }
 
+/** Warm EVERY material in `scene` — ALL rooms, not just the camera frustum — at the correct PSX
+ *  render-target FORMAT, then return. The format part is load-bearing: our scene renders into the
+ *  scene pass's offscreen target (NOT the canvas), and Three's render-pipeline cache key includes
+ *  the target format (Pipelines.js _getRenderCacheKey → backend.getRenderCacheKey). compileAsync
+ *  warms at the CURRENTLY-BOUND target (three.js #31220, Mugen87), so we bind scenePass.renderTarget
+ *  first — otherwise it warms the canvas format and the live PSX render recompiles (the hitch).
+ *  Unlike a frustum render, compileAsync traverses every material in the scene, so rooms you walk
+ *  into later are covered too. Use as the GATED descent prewarm: the whole floor compiles behind
+ *  the load screen, killing both the descent hitch and the move-in-hitch. See docs/PIPELINE-BUDGET.md. */
+export async function warmSceneCompile(
+  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
+): Promise<void> {
+  ensurePipeline(renderer, scene, camera);
+  const rt = (scenePass as any)?.renderTarget;
+  if (!rt) return;
+  const prev = renderer.getRenderTarget();
+  warmingUp = true;
+  renderer.setRenderTarget(rt);
+  try {
+    await (renderer as unknown as { compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> }).compileAsync(scene, camera);
+  } catch { /* best-effort — never strand the descent */ } finally {
+    renderer.setRenderTarget(prev);
+    warmingUp = false;
+  }
+}
+
 // ?noframesync=1 reverts to pure fire-and-forget (no in-flight cap) for an A/B.
 const frameSyncOn = typeof location === 'undefined'
   || new URLSearchParams(location.search).get('noframesync') !== '1';
