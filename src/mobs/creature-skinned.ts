@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Creature } from '../content/creature-types';
+import { setRevealAttributes } from '../ecs/build-model';
 
 // ── Creature Render V2 — rigid-skinned creature (M1) ─────────────────────────
 //
@@ -91,6 +92,11 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     // Bake the mesh's world transform (joint chain) into ROOT/bind space.
     g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(rootInv, m.matrixWorld));
     const mat = m.material as THREE.Material;
+    // Stamp the per-vertex reveal colours (emissive + rim) so this creature shares ONE reveal pipeline
+    // with every other creature regardless of colour (see build-model installRevealWebGPU). force=true:
+    // EVERY part — even non-reveal materials — gets the aReveal* layout, so the multi-material grouped
+    // merge below stays attribute-consistent (mergeGeometries rejects a mismatch).
+    setRevealAttributes(g, (mat.userData as { reveal?: Record<string, number[]> }).reveal, true);
     const arr = byMat.get(mat);
     if (arr) arr.push(g); else byMat.set(mat, [g]);
   }

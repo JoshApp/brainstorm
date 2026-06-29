@@ -10,7 +10,7 @@ import { installNamedSurfaceDetail } from '../style/surface-detail';
 import { uSplatTex, uSplatBounds, uSplatOn } from '../scene/splat-map';
 import { isWebGPU } from '../scene/renderer-mode';
 import { setMaterialChromaWebGPU } from '../style/banded-lighting-webgpu';
-import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject } from 'three/tsl';
+import { vec3, normalWorld, positionWorld, cameraPosition, positionGeometry, uniform as tslUniform, float as tslFloat, smoothstep as tslSmoothstep, nodeObject, attribute as tslAttribute } from 'three/tsl';
 import { Node as TSLNode, NodeUpdateType } from 'three/webgpu';
 import {
   pooledBox, pooledSphere, pooledCylinder, pooledCone, pooledTorus, pooledCapsule,
@@ -269,6 +269,9 @@ export function mergeRigidSegments(built: BuiltModel, opts?: { ignoreNames?: boo
       const merged = mergeGeometries(geos, false);
       for (const g of geos) g.dispose();
       if (!merged) continue;   // attribute mismatch — leave the originals intact
+      // Single-material merge → one reveal colour for the whole merged mesh. Re-stamp it (the inputs
+      // carried it from makeMesh, but this is explicit + survives a future input that lacked it).
+      if (isWebGPU()) setRevealAttributes(merged, revealOf(mat));
       const mesh = new THREE.Mesh(merged, mat);
       mesh.castShadow = meshes[0].castShadow;
       mesh.receiveShadow = meshes[0].receiveShadow;
@@ -365,23 +368,30 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
   // over-saturation) — still need their own node ports; see WEBGPU-MIGRATION.md.
   if (isWebGPU()) {
     installRevealWebGPU(mat, def);
-    // SHARE the program across structurally-identical instances — 9 ghouls -> 1 pipeline, not 9.
-    // The leak the OLD unique-key-per-instance guarded against (kill one mob -> whole species shows
-    // the death state) is now handled PER-OBJECT: dissolve + flash are objectScalar() nodes that read
-    // mesh.userData each draw, so a SHARED program is safe. A structural key (everything that shapes
-    // the WGSL: resolved flatShading/transparent/blending/vertexColors + the def — rim/dissolve/
-    // chroma/gore/detail) means same structure -> same key -> one pipeline. Critically, this makes the
-    // boot/descent warm EFFECTIVE: a warmed representative now matches live spawns (same key), so
-    // enemies/loot/shards stop compiling on first spawn. customProgramCacheKey feeds the node cacheKey
-    // -> the stage WGSL cache (see Pipelines.js). DO NOT revert to a unique key without first moving
-    // any new per-instance-animated state onto objectScalar(), or the species-leak bug returns.
+    // SHARE the program across structurally-identical instances — 9 ghouls -> 1 pipeline, not 9, AND
+    // every COLOUR variant onto that same pipeline (a red ghoul + a green wraith were ~30 pipelines
+    // because their colours were baked into the shader; now colour rides on vertex attributes, see
+    // installRevealWebGPU). The species-leak the OLD unique-key guarded against is handled per-object
+    // (dissolve/flash via objectScalar reading mesh.userData) and per-vertex (the reveal colours), so
+    // a SHARED program is safe. The key below is STRUCTURAL — only what shapes the WGSL: render state
+    // + feature PRESENCE (rim/dissolve/chroma/gore) + still-baked situational values (chroma amount,
+    // gore, detail). The COLOURS (base color/emissive, rim colour/power/intensity) are STRIPPED — they
+    // are per-vertex now, identical WGSL regardless. This is what makes the boot/descent warm cover
+    // EVERY enemy from a handful of warmed representatives. customProgramCacheKey feeds the node
+    // cacheKey -> the stage WGSL cache (Pipelines.js). DO NOT put colour back in the key, and do not
+    // bake a colour into the shader — either re-explodes the pipeline set.
     let defSig: string;
     try {
-      // CANONICAL (recursively key-sorted) so the key is order-INDEPENDENT. The boot roster warm
-      // builds its representative with `{ ...def, dissolvable: true }` (a spread), which can reorder
-      // keys vs the live `def` — a plain JSON.stringify would then mismatch, and the warmed pipeline
-      // wouldn't cover the live enemy (it compiles on spawn anyway). Canonicalizing makes them equal.
-      defSig = JSON.stringify(def, (_k, v) =>
+      // STRUCTURAL projection of the def: drop the now-per-vertex colours; keep rim PRESENCE (rim vs
+      // no-rim IS a different shader). Canonical (recursively key-sorted) for order independence (the
+      // boot warm's `{ ...def, dissolvable: true }` spread can reorder keys vs the live def).
+      const structural: Record<string, unknown> = {};
+      for (const key of Object.keys(def)) {
+        if (key === 'color' || key === 'emissive' || key === 'emissiveIntensity') continue;
+        if (key === 'rim') { structural.rim = def.rim ? 1 : 0; continue; }   // presence only
+        structural[key] = (def as Record<string, unknown>)[key];
+      }
+      defSig = JSON.stringify(structural, (_k, v) =>
         (v && typeof v === 'object' && !Array.isArray(v))
           ? Object.keys(v as object).sort().reduce((s: Record<string, unknown>, key) => { s[key] = (v as Record<string, unknown>)[key]; return s; }, {})
           : v);
@@ -601,18 +611,31 @@ function installRevealWebGPU(mat: THREE.MeshStandardMaterial, def: MaterialDef):
   if (!hasRim && !hasDissolve) return;
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
+  // PER-VERTEX reveal colours — the keystone. The base emissive + rim colour are NOT baked into the
+  // shader as constants (which is what made a red ghoul and a green wraith DIFFERENT pipelines, ~30
+  // in all). They ride on VERTEX ATTRIBUTES instead: setRevealAttributes() bakes each part's colour
+  // into its geometry, so the WGSL is byte-identical across every creature → ONE shared pipeline,
+  // warmed once, covering every colour. Per-VERTEX (not per-object) so a multi-material merged
+  // creature — body + accent in one SkinnedMesh, one draw each — shows each part's own colour.
+  // We stash the values on mat.userData.reveal; makeMesh / mergeRigidSegments / the skinned-creature
+  // build copy them into the geometry. (PSO playbook: "variation rides on attributes, not new shaders".)
   const e = mat.emissive, ei = mat.emissiveIntensity;
-  let emissive: any = (vec3 as any)(e.r * ei, e.g * ei, e.b * ei);
+  const reveal: Record<string, number[]> = { reveal_emissive: [e.r * ei, e.g * ei, e.b * ei] };
+  mat.userData.reveal = reveal;
+  let emissive: any = (tslAttribute as any)('aRevealEmissive', 'vec3');
 
-  // RIM — fresnel emissive ("forms emerge from black"). World-space so it's
-  // unambiguous under the node renderer's conventions. (darkReactive deferred.)
+  // RIM — fresnel emissive ("forms emerge from black"). World-space so it's unambiguous under the
+  // node renderer's conventions. Colour·intensity + power ride on the aRevealRim vec4 (xyz = rim
+  // colour premultiplied by intensity, w = fresnel power) — per-vertex, so no baked-colour pipelines.
   if (hasRim) {
     const power = def.rim!.power ?? 2.5;
     const intens = def.rim!.intensity ?? 1.0;
     const c = new THREE.Color(def.rim!.color ?? 0xffffff);
+    reveal.reveal_rim = [c.r * intens, c.g * intens, c.b * intens, power];
+    const rimAttr: any = (tslAttribute as any)('aRevealRim', 'vec4');
     const viewDir = (cameraPosition as any).sub(positionWorld).normalize();
-    const fres = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(power);
-    emissive = emissive.add((vec3 as any)(c.r, c.g, c.b).mul(fres).mul(intens));
+    const fres = (normalWorld as any).dot(viewDir).clamp(0, 1).oneMinus().pow(rimAttr.w);
+    emissive = emissive.add(rimAttr.xyz.mul(fres));
   }
 
   // DISSOLVE — death crumble. The body erodes by chunky cells (alpha-cutout) with
@@ -867,8 +890,45 @@ function buildPart(part: PartSpec, materials: Map<string, THREE.Material>): THRE
   }
 }
 
+// Bake a material's reveal COLOURS (emissive + rim) into per-vertex attributes on a geometry, so the
+// reveal shader reads them per-vertex instead of having them baked in as constants. This is what lets
+// every colour variant share ONE pipeline (see installRevealWebGPU). `aRevealEmissive` (vec3) =
+// emissive·intensity; `aRevealRim` (vec4) = rim colour·intensity + fresnel power. ALWAYS sets both
+// (zeros when the field is absent) so a multi-material merge stays attribute-consistent — a creature's
+// non-rim group and rim group can merge into one geometry. WebGPU only; the GLSL path ignores these.
+// `force` adds default (zero) attributes even for a non-reveal material — used so EVERY part of a
+// merged creature carries the layout (mergeGeometries rejects a mismatch). Returns whether it touched geo.
+export function setRevealAttributes(geo: THREE.BufferGeometry, reveal?: Record<string, number[]>, force = false): boolean {
+  if (!reveal && !force) return false;
+  const pos = geo.getAttribute('position');
+  if (!pos) return false;
+  const n = pos.count;
+  const em = reveal?.reveal_emissive ?? [0, 0, 0];
+  const rim = reveal?.reveal_rim ?? [0, 0, 0, 1];
+  const eArr = new Float32Array(n * 3);
+  const rArr = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    eArr[i * 3] = em[0]; eArr[i * 3 + 1] = em[1]; eArr[i * 3 + 2] = em[2];
+    rArr[i * 4] = rim[0]; rArr[i * 4 + 1] = rim[1]; rArr[i * 4 + 2] = rim[2]; rArr[i * 4 + 3] = rim[3];
+  }
+  geo.setAttribute('aRevealEmissive', new THREE.BufferAttribute(eArr, 3));
+  geo.setAttribute('aRevealRim', new THREE.BufferAttribute(rArr, 4));
+  return true;
+}
+
+/** The reveal record a material stashed (emissive/rim colours), or undefined for a non-reveal material. */
+function revealOf(mat: THREE.Material): Record<string, number[]> | undefined {
+  return (mat.userData as { reveal?: Record<string, number[]> }).reveal;
+}
+
 function makeMesh(geo: THREE.BufferGeometry, mat: THREE.Material, part: PartSpec): THREE.Mesh {
-  const mesh = new THREE.Mesh(geo, mat);
+  // A reveal material reads the per-vertex aReveal* attributes; a pooled/shared geometry can't carry
+  // them (different materials share it), so CLONE before baking. Non-reveal materials keep the pooled
+  // geometry untouched. (WebGPU only — revealOf is empty on the GLSL path.)
+  const reveal = isWebGPU() ? revealOf(mat) : undefined;
+  const meshGeo = reveal ? geo.clone() : geo;
+  if (reveal) setRevealAttributes(meshGeo, reveal);
+  const mesh = new THREE.Mesh(meshGeo, mat);
   mesh.castShadow = part.castShadow ?? curShadow.cast;
   mesh.receiveShadow = part.receiveShadow ?? curShadow.receive;
   return mesh;

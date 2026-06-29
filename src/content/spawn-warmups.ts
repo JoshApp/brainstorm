@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { registerWarmup } from './warmup-registry';
 import { ENEMIES } from './enemies';
 import { ITEMS } from './items';
-import { createMaterialFromDef } from '../ecs/build-model';
+import { createMaterialFromDef, setRevealAttributes } from '../ecs/build-model';
 import { WARM_MODELS } from './warmup-models';
 import { COBWEB_BARRIER } from './cobweb';
 import { getTexture } from '../style/procedural-textures';
@@ -28,6 +28,11 @@ import { ACTS } from '../level/acts';
 // Plain (non-skinned) dummy — the variant flung dismember chunks + props/items use.
 const WARM_BOX = new THREE.BoxGeometry(0.02, 0.02, 0.02);
 WARM_BOX.userData.pooled = true;   // shared — the warm-pass teardown must not dispose it
+// The reveal colours ride on per-vertex aReveal* attributes (build-model), so the live reveal geometry
+// carries them and the shader CONSUMES them → they're part of the vertex layout → part of the pipeline.
+// The warm dummy must carry the same layout or it warms a DIFFERENT pipeline than the live spawn. Zeros
+// are fine — only the attribute's presence/shape matters for the pipeline, not the values.
+setRevealAttributes(WARM_BOX, undefined, true);
 
 // Skinned dummy — a quad with skin attributes + bound to a 1-bone skeleton. Compiles the
 // SKINNING shader variant (the creature body), which is independent of bone/vert count.
@@ -39,6 +44,7 @@ const SKIN_GEO = (() => {
   for (let i = 0; i < n; i++) skinWeight[i * 4] = 1;
   g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
   g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
+  setRevealAttributes(g, undefined, true);   // same aReveal* layout as the live creature body (see WARM_BOX)
   g.userData.pooled = true;
   return g;
 })();
