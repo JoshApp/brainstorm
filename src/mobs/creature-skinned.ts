@@ -185,11 +185,20 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     const posA = new Float32Array(verts.length * 3);
     const nrmA = new Float32Array(verts.length * 3);
     const uvA = uvAttr ? new Float32Array(verts.length * 2) : null;
+    // Per-vertex reveal colours — a flung chunk reuses the creature's reveal materials, which read
+    // aReveal* per-vertex (build-model). The chunk builds a FRESH geometry, so it must carry them too
+    // or the reveal shader errors ("attribute not found") and forces a recompile. Filled per group
+    // from each group's material, like the body — see setRevealAttributes / installRevealWebGPU.
+    const eA = new Float32Array(verts.length * 3);
+    const rA = new Float32Array(verts.length * 4);
     const chunkMats: THREE.Material[] = [];
     const grp: { start: number; count: number; mat: number }[] = [];
     let w = 0, sx = 0, sy = 0, sz = 0;
     for (const [mi, vs] of byMat) {
       const gStart = w;
+      const rev = (mats[mi]?.userData as { reveal?: Record<string, number[]> })?.reveal;
+      const em = rev?.reveal_emissive ?? [0, 0, 0];
+      const rim = rev?.reveal_rim ?? [0, 0, 0, 1];
       for (const v of vs) {
         _p.fromBufferAttribute(pos, v); mesh.applyBoneTransform(v, _p); _p.applyMatrix4(mesh.matrixWorld);
         posA[w * 3] = _p.x; posA[w * 3 + 1] = _p.y; posA[w * 3 + 2] = _p.z;
@@ -201,6 +210,8 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
           nrmA[w * 3] = _pn.x; nrmA[w * 3 + 1] = _pn.y; nrmA[w * 3 + 2] = _pn.z;
         }
         if (uvA && uvAttr) { uvA[w * 2] = uvAttr.getX(v); uvA[w * 2 + 1] = uvAttr.getY(v); }
+        eA[w * 3] = em[0]; eA[w * 3 + 1] = em[1]; eA[w * 3 + 2] = em[2];
+        rA[w * 4] = rim[0]; rA[w * 4 + 1] = rim[1]; rA[w * 4 + 2] = rim[2]; rA[w * 4 + 3] = rim[3];
         w++;
       }
       grp.push({ start: gStart, count: vs.length, mat: chunkMats.length });
@@ -212,6 +223,8 @@ export function buildSkinnedCreature(creature: Creature): SkinnedCreature {
     cg.setAttribute('position', new THREE.BufferAttribute(posA, 3));
     if (nrmAttr) cg.setAttribute('normal', new THREE.BufferAttribute(nrmA, 3)); else cg.computeVertexNormals();
     if (uvA) cg.setAttribute('uv', new THREE.BufferAttribute(uvA, 2));
+    cg.setAttribute('aRevealEmissive', new THREE.BufferAttribute(eA, 3));
+    cg.setAttribute('aRevealRim', new THREE.BufferAttribute(rA, 4));
     if (chunkMats.length > 1) for (const g of grp) cg.addGroup(g.start, g.count, g.mat);
     const chunk = new THREE.Mesh(cg, chunkMats.length === 1 ? chunkMats[0] : chunkMats);
     chunk.position.set(cx, cy, cz);
