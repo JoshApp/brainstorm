@@ -365,9 +365,19 @@ function attachShaderExtensions(mat: THREE.MeshStandardMaterial, def: MaterialDe
   // over-saturation) — still need their own node ports; see WEBGPU-MIGRATION.md.
   if (isWebGPU()) {
     installRevealWebGPU(mat, def);
-    // Isolate this material's render bindings so per-material uniforms (uDissolve, the
-    // hit/death flash, chroma) can't leak across the species when a mob dies + is removed.
-    const matKey = 'delve-mat-' + (webgpuMatSeq++);
+    // SHARE the program across structurally-identical instances — 9 ghouls -> 1 pipeline, not 9.
+    // The leak the OLD unique-key-per-instance guarded against (kill one mob -> whole species shows
+    // the death state) is now handled PER-OBJECT: dissolve + flash are objectScalar() nodes that read
+    // mesh.userData each draw, so a SHARED program is safe. A structural key (everything that shapes
+    // the WGSL: resolved flatShading/transparent/blending/vertexColors + the def — rim/dissolve/
+    // chroma/gore/detail) means same structure -> same key -> one pipeline. Critically, this makes the
+    // boot/descent warm EFFECTIVE: a warmed representative now matches live spawns (same key), so
+    // enemies/loot/shards stop compiling on first spawn. customProgramCacheKey feeds the node cacheKey
+    // -> the stage WGSL cache (see Pipelines.js). DO NOT revert to a unique key without first moving
+    // any new per-instance-animated state onto objectScalar(), or the species-leak bug returns.
+    let defSig: string;
+    try { defSig = JSON.stringify(def); } catch { defSig = 'mat' + (webgpuMatSeq++); }
+    const matKey = `delve|fs:${mat.flatShading}|tr:${mat.transparent}|bl:${mat.blending}|vc:${mat.vertexColors}|${defSig}`;
     (mat as unknown as { customProgramCacheKey: () => string }).customProgramCacheKey = () => matKey;
     return;
   }
