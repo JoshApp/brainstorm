@@ -60,6 +60,11 @@ export default defineConfig({
         // skipWaiting / clientsClaim deliberately OFF — the prompt-style
         // update flow is exactly what they would defeat.
         //
+        // Purge previous-build precaches on activation so a stale shell can't keep
+        // serving dead chunk hashes after a deploy (the "blank until hard refresh"
+        // bug). Pairs with the index.html self-heal as belt-and-suspenders.
+        cleanupOutdatedCaches: true,
+        //
         // Precache the UI ASSET types too, not just code. The default glob is
         // `**/*.{js,css,html}`, which leaves fonts, the woodcut textures, and the
         // baked cards to re-fetch on every weak connection. Listing them here puts

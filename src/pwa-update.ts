@@ -175,7 +175,7 @@ export async function applyUpdate(): Promise<void> {
   if (beforeReloadHook) {
     try { beforeReloadHook(); } catch { /* swallow — don't block reload */ }
   }
-  showUpdateToast();
+  showUpdateScreen();
   // updateSW(true) calls registration.waiting.postMessage({type:'SKIP_WAITING'}),
   // listens for controllerchange, and reloads the page.
   await updateSW(true);
@@ -203,7 +203,19 @@ export async function maybeApplyUpdateSilently(): Promise<boolean> {
   return true;
 }
 
-function showUpdateToast() {
+// Signal that an update is being applied (a reload is imminent). On the BOOT path the
+// loading veil is still up — turn it INTO the update screen ("reforging" + the bar) so the
+// reload lands smoothly on the fresh build's loading screen, exactly the flow we want. In
+// the rare in-RUN case (veil already dropped) fall back to a small corner toast.
+function showUpdateScreen() {
+  const veil = document.getElementById('boot-loading');
+  const sub = veil?.querySelector('.boot-sub') as HTMLElement | null;
+  const bar = veil?.querySelector('.boot-bar') as HTMLElement | null;
+  if (veil && !veil.classList.contains('boot-hide') && sub) {
+    sub.textContent = 'reforging';   // the deep is being rewritten — i.e. updating
+    if (bar) bar.classList.add('on');
+    return;
+  }
   const toast = document.createElement('div');
   toast.textContent = 'UPDATING…';
   Object.assign(toast.style, {

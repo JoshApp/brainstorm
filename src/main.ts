@@ -171,6 +171,13 @@ import { setGodMode } from './player/health';
 import { setHarnessPaused } from './harness/pause';
 import { isDesktopLike } from './controls/platform';
 
+// The entry module executed — tell the stale-shell watchdog in index.html the app booted,
+// so it won't self-heal (reload). If a deploy had left a stale cached shell pointing at
+// dead chunk hashes, this line would never run and the watchdog would refresh us onto the
+// fresh build instead of stranding on a blank screen.
+(window as unknown as { __delveBooted?: boolean }).__delveBooted = true;
+window.dispatchEvent(new Event('delve:booted'));
+
 // AI-playable harness: `?harness=1` flips the world into turn-based mode
 // from frame 0. The full harness module loads asynchronously below; the
 // synchronous setHarnessPaused above guarantees the world is frozen

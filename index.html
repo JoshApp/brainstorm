@@ -118,6 +118,47 @@
         transition: transform 0.25s ease-out;
       }
     </style>
+    <script>
+      // ── Stale-shell self-heal ───────────────────────────────────────────────
+      // PWA hazard: the service worker caches index.html, but a deploy replaces the
+      // HASHED js/css chunks it points at. The cached shell then requests chunk hashes
+      // that 404 → the app never boots → blank screen until a manual HARD REFRESH
+      // (which bypasses the SW). This does that hard refresh automatically: on a failed
+      // chunk load — or if the entry never boots within a budget — drop the SW + caches
+      // and reload to fetch the fresh build. A once-per-session guard prevents a reload
+      // loop when the failure is something else (a genuine network outage). Runs in
+      // <head>, BEFORE the entry module, so its error listener is armed in time.
+      (function () {
+        var HEAL = 'delve:self-heal', firing = false;
+        function selfHeal(reason) {
+          if (firing) return; firing = true;
+          if (sessionStorage.getItem(HEAL)) return;   // already healed this session — surface the real error
+          sessionStorage.setItem(HEAL, reason || '1');
+          var done = false, go = function () { if (!done) { done = true; location.reload(); } };
+          try {
+            var jobs = [];
+            if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations()
+              .then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+            if (window.caches) jobs.push(caches.keys()
+              .then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+            Promise.all(jobs).then(go, go);
+            setTimeout(go, 2000);   // never hang on cleanup
+          } catch (e) { go(); }
+        }
+        // A hashed chunk / stylesheet 404'd from a stale shell.
+        window.addEventListener('error', function (e) {
+          var t = e && e.target;
+          if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) selfHeal('asset');
+        }, true);
+        // A lazily-imported chunk failed mid-session (Vite's signal).
+        window.addEventListener('vite:preloadError', function () { selfHeal('preload'); });
+        // Backstop: the entry module never executed within the budget (set __delveBooted).
+        window.__delveBooted = false;
+        setTimeout(function () { if (!window.__delveBooted) selfHeal('timeout'); }, 10000);
+        // A clean boot clears the guard so a FUTURE real stale-shell can heal again.
+        window.addEventListener('delve:booted', function () { sessionStorage.removeItem(HEAL); });
+      })();
+    </script>
   </head>
   <body>
     <canvas id="scene"></canvas>
