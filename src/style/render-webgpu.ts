@@ -529,29 +529,38 @@ export async function warmSceneCompile(
   const rt = (scenePass as any)?.renderTarget;
   if (!rt) return;
   const prev = renderer.getRenderTarget();
-  // compileAsync builds its render list via _projectObject, which SKIPS object.visible===false
-  // (Renderer.js). Room culling hides far rooms (room-culling.ts sets .visible=false), so a plain
-  // compileAsync only warms the spawn room → walking into a new room compiles it (the move-hitch).
-  // Force every hidden object visible for the compile, then restore — so the WHOLE floor's
-  // main-pass pipelines warm behind the cover. (Restore is belt-and-suspenders; the per-frame
-  // culling re-derives visibility next tick anyway.)
-  const forced: THREE.Object3D[] = [];
-  scene.traverse((o) => { if (o.visible === false) { o.visible = true; forced.push(o); } });
+  // compileAsync builds its render list via _projectObject (Renderer.js), which SKIPS an object if
+  // `object.visible === false` OR (`object.frustumCulled` && it's outside the camera frustum). So a
+  // plain compileAsync only warms what the spawn camera FACES — walking into a room, or even just
+  // LOOKING AROUND, then compiles the rest (the hitches). Force every object visible AND
+  // frustum-unculled for the compile so the WHOLE floor (all rooms, all directions) warms behind the
+  // cover, then restore. (Restore is belt-and-suspenders; culling re-derives next tick.)
+  const forcedVis: THREE.Object3D[] = [];
+  const forcedFrustum: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (o.visible === false) { o.visible = true; forcedVis.push(o); }
+    if ((o as THREE.Mesh).frustumCulled === true) { (o as THREE.Mesh).frustumCulled = false; forcedFrustum.push(o); }
+  });
+  const restoreCull = (): void => {
+    for (const o of forcedVis) o.visible = false;
+    for (const o of forcedFrustum) (o as THREE.Mesh).frustumCulled = true;
+  };
   warmingUp = true;
   try {
-    // 1) MAIN pass, ALL rooms — bind the PSX target so the format matches, compileAsync the scene.
+    // 1) MAIN pass, ALL rooms + ALL directions — bind the PSX target so the format matches,
+    //    compileAsync the whole (now-uncullable) scene.
     renderer.setRenderTarget(rt);
     try {
       await (renderer as unknown as { compileAsync: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown> }).compileAsync(scene, camera);
     } catch { /* best-effort */ }
     renderer.setRenderTarget(prev);
-    for (const o of forced) o.visible = false;   // restore culling before the shadow render
+    restoreCull();   // restore visibility + frustum culling before the shadow render
     // 2) SHADOW pass — compileAsync does NOT warm the lamp's shadow-map pipelines (a separate depth
     //    render). One real PSX render compiles the (now-culled, spawn-area) casters' shadow variants;
     //    they're keyed by caster material + layout, so the spawn-area set covers the floor's casters.
     try { await (pipeline as unknown as { renderAsync: () => Promise<void> }).renderAsync(); } catch { /* best-effort */ }
   } finally {
-    for (const o of forced) o.visible = false;   // idempotent safety
+    restoreCull();   // idempotent safety
     renderer.setRenderTarget(prev);
     warmingUp = false;
   }

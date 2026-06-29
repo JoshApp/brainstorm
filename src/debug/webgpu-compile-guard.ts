@@ -1,4 +1,5 @@
 import { DEV } from './dev';
+import { isWarmingUp } from '../style/render-webgpu';
 
 // ── WEBGPU COMPILE GUARD ─────────────────────────────────────────────────────
 //
@@ -61,9 +62,11 @@ export function tickCompileWatch(): void {
   const now = performance.now();
   const frameMs = watchAt ? now - watchAt : 16;
   watchAt = now;
-  const newCompiles = total - watchTotal;
-  watchTotal = total;
-  const compiled = warmupDone && newCompiles > 0;
+  // Track postWarmup (felt, warm-aware) not total — so the banner flashes only on LIVE-play
+  // compiles, not the deliberate behind-cover warm.
+  const newCompiles = postWarmup - watchTotal;
+  watchTotal = postWarmup;
+  const compiled = newCompiles > 0;
   const laggy = frameMs > SPIKE_MS;
   if (compiled) compileHitches += newCompiles;
   if (laggy) laggyFrames++;
@@ -96,12 +99,16 @@ export function installWebGPUCompileGuard(device: unknown): void {
     dev[method] = (...args: unknown[]) => {
       try {
         total++;
-        if (warmupDone) {
+        // Only compiles during LIVE play are felt hitches. Compiles while a warm pass is running
+        // (boot warm, or the descent warmSceneCompile — both set warmingUp) happen behind the load
+        // cover and are EXPECTED, so don't count or warn on them. This makes postWarmup / the report
+        // reflect the actual problem set, not the deliberate warm.
+        if (warmupDone && !isWarmingUp()) {
           postWarmup++;
           const label = (args[0] as { label?: string } | undefined)?.label ?? '?';
-          if (postWarmupLabels.length < 60) postWarmupLabels.push(label);
+          if (postWarmupLabels.length < 1000) postWarmupLabels.push(label);
           // eslint-disable-next-line no-console
-          console.warn(`[warmup-guard:webgpu] pipeline #${postWarmup} compiled IN-PLAY — '${label}'. A warm gap; add a warmable (content/spawn-warmups.ts).`);
+          console.warn(`[warmup-guard:webgpu] pipeline #${postWarmup} compiled IN-PLAY — '${label}'. A warm gap; run __compileReport() for the compact summary.`);
         }
       } catch { /* bookkeeping must never break the renderer */ }
       return bound(...args);
@@ -110,5 +117,22 @@ export function installWebGPUCompileGuard(device: unknown): void {
   // Expose live stats for the perf overlay / manual checks.
   if (typeof window !== 'undefined') {
     (window as unknown as { __compileStats?: () => unknown }).__compileStats = () => webgpuCompileStats();
+    (window as unknown as { __compileReport?: () => unknown }).__compileReport = () => webgpuCompileReport();
   }
+}
+
+/** Compact, pasteable summary of what compiled IN-PLAY, grouped by SOURCE and sorted by count.
+ *  The pipeline label is `renderPipeline_${material.name || material.type}_${id}` (three.js
+ *  WebGPUPipelineUtils), so naming a material (e.g. mat.name='effect:blood') makes it show up here
+ *  by name instead of just 'MeshStandardMaterial'. Paste the output and it says exactly what's
+ *  still compiling during play. */
+export function webgpuCompileReport(): { total: number; postWarmup: number; bySource: Record<string, number> } {
+  const bySource: Record<string, number> = {};
+  for (const label of postWarmupLabels) {
+    const m = label.match(/^renderPipeline_(.+)_\d+$/);
+    const key = m ? m[1] : label;
+    bySource[key] = (bySource[key] || 0) + 1;
+  }
+  const sorted = Object.fromEntries(Object.entries(bySource).sort((a, b) => b[1] - a[1]));
+  return { total, postWarmup, bySource: sorted };
 }

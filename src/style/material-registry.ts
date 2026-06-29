@@ -43,6 +43,10 @@ function shared<T extends THREE.Material>(cache: Map<string, T>, make: () => T, 
   if (!m) {
     m = make();
     m.userData.sharedPalette = true;   // teardown/dispose passes must skip it
+    // Name for the compile report (label = renderPipeline_${name}_${id}); cosmetic, not in the
+    // shader/cache key. A shared material that slips through to an in-play compile shows as
+    // 'shared:…' in __compileReport(), flagging a warm-coverage miss vs a genuinely new material.
+    if (!m.name) m.name = m instanceof THREE.MeshBasicMaterial ? 'shared:basic' : 'shared:std';
     cache.set(key, m);
   }
   return m;
