@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { stdMat } from '../style/material-registry';
 import { generateEntityId, get } from '../ecs/world';
 import { registerInteractable } from './system';
 import { gameRng } from '../engine/rng';
@@ -82,7 +83,7 @@ export function spawnFountain(
   parent.add(group);
 
   // Stone pedestal — short octagonal column.
-  const stoneMat = new THREE.MeshStandardMaterial({
+  const stoneMat = stdMat({
     color: 0x3a342c,
     roughness: 0.95,
     metalness: 0.0,
@@ -109,7 +110,7 @@ export function spawnFountain(
 
   // Inner dry-stone disc — visible after the fountain is drunk. Starts
   // hidden behind the liquid (slightly lower).
-  const dryDiscMat = new THREE.MeshStandardMaterial({
+  const dryDiscMat = stdMat({
     color: 0x1a1612,
     roughness: 1.0,
   });
@@ -121,7 +122,7 @@ export function spawnFountain(
   group.add(dryDisc);
 
   // Liquid — emissive disc on top. Colour per variant; reads at a glance.
-  const liquidMat = new THREE.MeshStandardMaterial({
+  const liquidMat = stdMat({
     color:     style.liquidColor,
     emissive:  style.liquidEmissive,
     emissiveIntensity: 0.9,

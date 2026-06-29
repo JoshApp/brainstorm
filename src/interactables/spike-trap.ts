@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { stdMat } from '../style/material-registry';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { damagePlayer } from '../player/health';
@@ -68,7 +69,7 @@ export function spawnSpikeTrap(
   // a careful player notices it before stepping. Slight emissive on the
   // ring during ARMED state hints "this is a trap" without making it free
   // intel: the player has to look.
-  const plateMat = new THREE.MeshStandardMaterial({
+  const plateMat = stdMat({
     color: 0x1a1410,
     roughness: 0.95,
     metalness: 0.3,
@@ -83,7 +84,7 @@ export function spawnSpikeTrap(
 
   // Recessed border — a slightly larger flat plane underneath the plate
   // with a different color, so the plate reads as set into the floor.
-  const borderMat = new THREE.MeshStandardMaterial({
+  const borderMat = stdMat({
     color: 0x3a2818,
     roughness: 1.0,
   });
@@ -99,7 +100,7 @@ export function spawnSpikeTrap(
   // Spikes — 3×3 grid of thin cones. Start hidden well below the plate
   // (so they emerge dramatically rather than just "growing"). Stored so
   // we can animate Y in tick.
-  const spikeMat = new THREE.MeshStandardMaterial({
+  const spikeMat = stdMat({
     color: 0x6a5040,
     roughness: 0.4,
     metalness: 0.85,

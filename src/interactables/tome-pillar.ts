@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { stdMat } from '../style/material-registry';
 import { generateEntityId } from '../ecs/world';
 import { registerInteractable } from './system';
 import { registerLight } from '../scene/light-pool';
@@ -31,7 +32,7 @@ export function spawnTomePillar(
   // Pedestal — taller than the fountain bowl so the book reads at chest
   // height for the player. Same dark stone family as the fountain so
   // the safe-room fixtures feel hewn by the same hand.
-  const stoneMat = new THREE.MeshStandardMaterial({
+  const stoneMat = stdMat({
     color: 0x3a342c,
     roughness: 0.95,
     metalness: 0.0,
@@ -59,13 +60,13 @@ export function spawnTomePillar(
   // Self-illuminated pages (emissive) so the book itself is the light
   // source readers' eyes land on; the registered point light below
   // throws warmth onto the floor + nearby walls.
-  const leatherMat = new THREE.MeshStandardMaterial({
+  const leatherMat = stdMat({
     color: 0x3a1a0e,
     roughness: 0.7,
     metalness: 0.0,
     flatShading: true,
   });
-  const pageMat = new THREE.MeshStandardMaterial({
+  const pageMat = stdMat({
     color: 0xc8b078,
     emissive: 0xffb060,
     emissiveIntensity: 0.65,

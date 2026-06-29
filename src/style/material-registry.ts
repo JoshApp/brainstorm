@@ -20,11 +20,12 @@ import { brighten, darken } from './color-utils';
 // DON'T use for materials that get per-instance shader state (hit-flash, gore, independent
 // flame flicker); those own their instance by design (ModelSpec.materials / createMaterialFromDef).
 
-const cache = new Map<string, THREE.MeshStandardMaterial>();
+const stdCache = new Map<string, THREE.MeshStandardMaterial>();
+const basicCache = new Map<string, THREE.MeshBasicMaterial>();
 
 // Canonical key over the params: sorted keys, THREE.Color → hex, textures → uuid. Two calls
 // with structurally-equal params hash to the same key → share one instance → one pipeline.
-function canonKey(p: THREE.MeshStandardMaterialParameters): string {
+function canonKey(p: object): string {
   const o = p as Record<string, unknown>;
   return Object.keys(o).sort().map((k) => {
     let v: unknown = o[k];
@@ -36,27 +37,38 @@ function canonKey(p: THREE.MeshStandardMaterialParameters): string {
   }).join('|');
 }
 
-/** Shared, structurally-deduplicated MeshStandardMaterial — call this instead of
- *  `new THREE.MeshStandardMaterial` for any STATIC surface in per-floor build code, so the
- *  game's floor-material set stays closed and warmable. See docs/PIPELINE-BUDGET.md. */
-export function stdMat(params: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial {
+function shared<T extends THREE.Material>(cache: Map<string, T>, make: () => T, params: object): T {
   const key = canonKey(params);
   let m = cache.get(key);
   if (!m) {
-    m = new THREE.MeshStandardMaterial(params);
+    m = make();
     m.userData.sharedPalette = true;   // teardown/dispose passes must skip it
     cache.set(key, m);
   }
   return m;
 }
 
-/** Every distinct floor material created so far — the closed set the warm compiles. */
-export function registeredFloorMaterials(): THREE.MeshStandardMaterial[] {
-  return [...cache.values()];
+/** Shared, structurally-deduplicated MeshStandardMaterial — call instead of
+ *  `new THREE.MeshStandardMaterial` for any STATIC surface (decor, static interactables) so the
+ *  game's recurring-material set stays closed and warmable. See docs/PIPELINE-BUDGET.md. */
+export function stdMat(params: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial {
+  return shared(stdCache, () => new THREE.MeshStandardMaterial(params), params);
+}
+
+/** Shared, structurally-deduplicated MeshBasicMaterial — the unlit twin of stdMat, for static
+ *  interactable glows/rings/voids that aren't per-instance animated. (Animated ones own their
+ *  instance — see the PIPELINE-BUDGET 'animated interactables' list.) */
+export function basicMat(params: THREE.MeshBasicMaterialParameters): THREE.MeshBasicMaterial {
+  return shared(basicCache, () => new THREE.MeshBasicMaterial(params), params);
+}
+
+/** Every distinct shared material created so far — the closed set the warm compiles. */
+export function registeredFloorMaterials(): THREE.Material[] {
+  return [...stdCache.values(), ...basicCache.values()];
 }
 
 /** Count of distinct floor pipelines the registry holds (DEV diagnostics / invariant check). */
-export function floorMaterialCount(): number { return cache.size; }
+export function floorMaterialCount(): number { return stdCache.size + basicCache.size; }
 
 // ── DECLARATIVE FLOOR-DECOR PALETTE (the precompile list — PIPELINE-BUDGET Pillar 1b) ─────
 //
