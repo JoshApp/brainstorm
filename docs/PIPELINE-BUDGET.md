@@ -1,83 +1,123 @@
-# Pipeline Budget — zero in-game compilation
+# Pipeline Budget — zero in-game compilation (v2: the template architecture)
 
-The charter for "no hitches during gameplay, ever." Read with `docs/WARMUP.md` (the warm
-machinery) — this doc is the **why** and the **invariant**; WARMUP.md is the **how**.
+The charter for "no hitches during gameplay, ever." This is the **why** + the **architecture**;
+`docs/WARMUP.md` is the warm machinery. v1 (decor) is shipped and proved the approach; v2
+generalizes it to the whole renderer.
 
-## The law
+## The reframe (read this first)
 
-> A WebGPU render **pipeline** (PSO) is compiled the first time a unique
-> `(shader × vertex-layout × target-format × blend × depth × topology)` is drawn. The
-> compile is **synchronous and ~tens of ms** — so a first-use compile *during* a frame
-> *is* the hitch. ([W3C WebGPU spec], [MDN createRenderPipeline], [Toji glTF case study])
+There are TWO costs, and only the first is the hitch:
 
-Every shipping engine solves this the same two ways, together — "PSO precaching"
-([Unreal tech blog], [UE5 PSO playbook]):
+1. **Pipeline COMPILATION** — depends ONLY on `(material × vertex-layout × render-state)`. It does
+   **not** depend on the specific level. Two procgen floors made of the same wall material + vertex
+   format share the same pipeline. This set is **finite and knowable at build time**.
+2. **Resource RESIDENCY** — uploading *this* floor's buffers/textures. Level-specific, but **fast,
+   never compiles a shader**.
 
-1. **BOUND the set** of pipelines the game can ever need (no unbounded variants), and
-2. **PRECOMPILE that whole set up front**, at a loading screen.
+> **We do not prewarm "the level." We prewarm the closed SET of pipelines** — the same for every
+> floor → it belongs at the **boot** loading screen. The per-descent screen then does residency only.
 
-If the set is **closed** and **fully precompiled**, in-game compilation is not "rare" —
-it is *impossible*, because there is nothing left to compile.
+## Why we can't boot-warm today
 
-## Why DELVE hitched
+Not because the level doesn't exist yet (irrelevant — we warm the pipeline set, not geometry).
+The real blocker: **the pipeline set is unbounded.** On Three-WebGPU **every material *instance*
+becomes its own pipeline** ([three.js #32735] — it's why sharing decor instances via `stdMat` cut
+compiles). We mint instances *per thing* — per interactable, per enemy — and the animated ones
+**mutate their material per instance**, so they can't be naively shared. No finite list → nothing
+to enumerate and warm.
 
-A Three-WebGPU wrinkle makes (1) the hard part: the backend effectively mints a pipeline
-**per material *instance*** — two structurally-identical `MeshStandardMaterial`s each
-compile their own ([three.js #32735], [Babylon pipeline-cache notes]). So our pattern of
-`new THREE.MeshStandardMaterial(sameParams)` **inside per-floor build functions**
-(`decorate.ts`, `builder.ts`, `chandelier.ts`) minted **fresh pipelines every descent** —
-the unbounded explosion (material IDs climbing `_864 → _1853`, recompiling each floor).
-Multiplied by varied geometry attribute layouts, and made un-pre-warmable by LOS rooms
-that stay hidden until entered.
+## The law (how shipping games solve it)
 
-## The three pillars
+**PSO precaching**, two non-negotiable halves ([Unreal writeup], [UE5 PSO playbook]):
 
-**1. Closed material set — `style/material-registry.ts` (`stdMat`).**
-Every static surface material is requested via `stdMat(params)`, which returns a **shared,
-structurally-deduplicated instance**. Identical params → one instance → one pipeline. The
-distinct-material set becomes small and **enumerable** (a few kinds × the few per-act torch
-tints), not per-floor-unbounded. Level teardown never disposes materials (`builder.ts`), so
-sharing across floors is safe. **Invariant:** no `new THREE.MeshStandardMaterial` in
-per-floor build code — route it through `stdMat`.
+1. **Bound + enumerate the set** — ubershaders / **shared material templates** (per-instance variation
+   rides on **uniforms / instance-attributes**, never a new material instance) + **bounded vertex
+   layouts**.
+2. **Precompile the whole set at a loading screen** — often by RECORDING every PSO a playthrough
+   uses, shipping the manifest, warming it at load.
 
-**2. Bounded geometry layouts.** Floor/wall/decor meshes emit ONE attribute layout
-(position+normal+uv; vertexColors only where load-bearing and consistent) so `material ×
-layout` stays a small product, not a combinatorial blow-up. *(Pillar 2 — staged after 1.)*
+**The WebGPU constraint:** there is **no app-level pipeline cache API** (`GPUPipelineCache` deferred
+post-MVP). Unlike Vulkan/D3D/Unity we **cannot serialize + ship compiled pipelines**. So our "PSO
+cache" is a **recipe to recompile at load**, not a binary; the browser's `DawnWebGPUCache` amortizes
+repeat sessions.
 
-**3. Precompile the closed set at boot.** Because the set is enumerable, the boot warm
-compiles every `(material × layout × render-state)` — including the **shadow** pass and the
-**PSX target format** — once, behind the loading veil, exactly as it already does the enemy
-roster. `registeredFloorMaterials()` exposes the live set to the warm.
+## Principle: template the RECURRING set, not everything
 
-## The acceptance test (CI-able invariant)
+Templating *literally everything* is the wrong target. Disadvantages:
+- **Ubershader fattening** — collapsing variants into uniform-branches grows the shader (registers,
+  per-pixel cost); on mobile that bites. → keep a *small set of templates per render-state family*.
+- **Can't template across render STATE** — blending/depth/transparency *are* the pipeline; additive
+  glow and opaque stone physically cannot share one. Templating reorganizes into N families, not 1.
+- **Per-instance uniforms cost** a bind group per instance unless instanced.
+- **Diminishing returns on rare materials** — `DawnWebGPUCache` already makes a one-off compile
+  once-per-session-then-cached. Templating a unique set-piece buys "no first-run hitch on that one
+  thing" for real refactor cost.
 
-`window.__compileStats().compileHitches` must reach **0** during active play. The compile
-watch (`debug/webgpu-compile-guard.ts`) flashes the instant anything compiles in-game — so
-a single non-zero means *something minted a material outside the registry*. That is the
-guard rail that keeps the budget closed as content is added.
+→ **Template the recurring (every-floor / repeated) materials; let rare one-offs compile-once-cache.**
 
-## Status
+## The audit (real numbers, this codebase)
 
-- [x] Pillar 1 — `stdMat` registry + route the per-floor `new Material` sites through it.
-- [x] Pillar 1b — `floorPalette` + `primeFloorPalette(tints)` construct the closed decor set at
-      boot (× the per-act `ACTS` tints). Verified: `__floorMats()` = 21 at the menu, before any
-      floor (9 plain + 4 tinted × 3 tints).
-- [x] Pillar 2 (decor) — warm each material on the layout decor actually uses: an **InstancedMesh**
-      dummy (the instanceMatrix variant) + a plain dummy. `addInstancedWarm` in spawn-warmups.
-- [x] Pillar 3 (decor) — the `floor-decor` warmup hook iterates `registeredFloorMaterials()` in the
-      boot warm, so the closed decor set compiles up front (130 hooks). First room-reveal reuses it.
-- [ ] **Remaining tail** — the floor SHELL (walls/floor) uses the shared `StyleMaterials` (already
-      bounded) but per-floor MERGED geometry may vary its attribute layout, and the SHADOW pass
-      (`ShadowMaterial` × caster layout) compiles separately. These are the last non-zero sources;
-      measure with the watch on procgen floors and warm the shell-layout + a shadow caster if they
-      show. The DECOR explosion (the climbing-ID one) is closed.
-- [ ] Single-source — collapse `floorPalette` (currently mirrors the inline decorate/builder/
-      chandelier params; the watch guards drift) into the one source those files import.
+Material-creation sites by area:
 
-[W3C WebGPU spec]: https://www.w3.org/TR/webgpu/
-[MDN createRenderPipeline]: https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createRenderPipeline
-[Toji glTF case study]: https://toji.dev/webgpu-gltf-case-study/
-[Unreal tech blog]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem
-[UE5 PSO playbook]: https://www.strayspark.studio/blog/ue5-shader-stutter-pso-precaching-playbook
+| Area | creations | status / plan |
+|---|---|---|
+| **interactables** | **38 / 19 files** | **the dominant unbounded source** — see split below |
+| effects | 21 / 14 | mostly handled — clone-of-template (shares pipeline) + self-registered warmups; verify |
+| style | 11 / 4 | `StyleMaterials` shared palette — bounded, boot-warmed ✓ |
+| scene | 8 / 5 | audit (lamp/fog/post — likely few, shared) |
+| combat | 6 / 3 | audit (mostly effects-adjacent) |
+| ecs (`build-model`) | 5 / 1 | the dynamic-material factory (`createMaterialFromDef`) — enemy/prop path |
+| content / mobs / player / level | ~10 | decor done (`stdMat`); enemy halos are per-instance sprites (warmed via primitive hook) |
+
+**Interactables split** (the key finding — most are easy):
+- **STATIC (6, route through a shared cache like decor — low-risk):** `card-drop`, `fountain`,
+  `pickup`, `reliquary`, `spike-trap`, `tome-pillar`.
+- **ANIMATED (6, need template + per-instance uniform):** `door`, `tithe-basin`, `challenge-offering`,
+  `boss-mist`, `stairs`, `blood-altar`. These mutate `opacity`/`color`/`emissive` per instance (the
+  stair beacon, blood-altar pulse, tithe glow).
+
+**Dynamic families:** enemies build per-instance materials (`buildSkinnedCreature` / `createMaterialFromDef`;
+`enemy-presentation` animates per-instance halos/glow) — but they barely appear in the in-play logs,
+so per-type sharing + the roster warm largely cover them (verify the body material is shared per type).
+Effects use the clone-of-template pattern (clones share the pinned pipeline) + self-warm.
+
+## The architecture (A–E)
+
+**A. Material templates (keystone — bounds the set).** Route all *recurring* material creation through
+a template registry. Static families → share instances (the `stdMat` mechanism, generalized to
+`MeshBasic`). Animated families → a shared template + a per-instance **uniform/attribute** for the
+animated property (the beacon opacity becomes `material.opacity` on a *cloned-but-pipeline-shared*
+template, or an instance uniform), never a structurally-new material. Outcome: a finite template set.
+
+**B. Bounded vertex layouts.** A fixed, audited set — static / skinned / instanced / shadow-caster —
+so `material × layout` stays a small product.
+
+**C. Enumerate + record + warm at boot.** Templates × layouts × render-states = the closed set. Turn
+the compile-guard into a **recorder** (a headless sim playthrough captures every pipeline actually
+used → a manifest), then warm that manifest at boot through the real PSX pipeline. Covers dynamic
+materials too, because it records what the game *actually* draws.
+
+**D. The level-load screen (descent).** A real load screen covers (1) floor build, (2) a residency
+render of the spawn view to upload this floor's buffers — **no compilation** (pipelines pre-warmed),
+so it's quick + deterministic. Gameplay gated until it recedes (the descent gate / fade is the seam).
+
+**E. Self-validating invariant.** `window.__compileStats().compileHitches` must be **0** in gameplay.
+The watch flags any in-play compile → something escaped the template system → add a template. This
+keeps the budget closed as content grows (dev/CI gate).
+
+## Status & sequencing
+
+- [x] **v1 — decor proof:** `stdMat` registry (Pillar 1) + `primeFloorPalette` boot-prime + instanced/
+      plain warm (Pillars 1b/2/3). Decor compiles at boot; the climbing-ID explosion is closed.
+- [x] Removed the wrong-format per-floor `compileAsync` (wasted ~30 compiles/floor).
+- [ ] **A1 — static interactables** (the biggest *easy* win): generalize the cache to `MeshBasic`
+      (`basicMat`) and route the 6 static interactable files through it. Boot-prime + warm them.
+- [ ] **A2 — animated interactables**: shared template + per-instance uniform for the 6 animated files.
+- [ ] **B — vertex-layout audit** (incl. the shadow-caster layout → closes the `ShadowMaterial` tail).
+- [ ] **C — the recorder + boot-warm the recorded manifest** (captures dynamic/enemy/effect too).
+- [ ] **D — formalize the descent load screen** (residency + gate).
+- [ ] **E — wire `compileHitches===0` as a dev/CI invariant.**
+
 [three.js #32735]: https://github.com/mrdoob/three.js/issues/32735
-[Babylon pipeline-cache notes]: https://doc.babylonjs.com/setup/support/webGPU/webGPUInternals/webGPUCacheRenderPipeline
+[Unreal writeup]: https://www.unrealengine.com/tech-blog/game-engines-and-shader-stuttering-unreal-engines-solution-to-the-problem
+[UE5 PSO playbook]: https://www.strayspark.studio/blog/ue5-shader-stutter-pso-precaching-playbook
