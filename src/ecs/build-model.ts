@@ -324,13 +324,15 @@ function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Ma
   // Opt-in baked surface detail (dressed framing / column grain). Chains after
   // the rim/dissolve onBeforeCompile; no-ops if the named config isn't found.
   if (def.detail) installNamedSurfaceDetail(mat, def.detail);
-  // Name it for the compile report (pipeline label = `renderPipeline_${name||type}_${id}`). Encode
-  // the DEF's identity (dissolve flag + structural params) so __compileReport() distinguishes
-  // duplicates-of-one-def (same name ×N → a cacheable per-instance miss) from genuine variety
-  // (many names → real content). 'dis' = death-dissolve materials (per-instance mutated, can't share);
-  // 'opa' = static (cacheable). Cosmetic only — not part of the shader/cache key.
-  const k = `${(def.color ?? 0).toString(16)}${def.transparent ? 't' : ''}${def.flatShading === true ? 'f' : ''}${def.emissive ? 'e' : ''}`;
-  mat.name = `modeldef:${def.dissolvable ? 'dis' : 'opa'}:${k}`;
+  // Name it for the compile report (pipeline label = `renderPipeline_${name||type}_${id}`). Encode the
+  // STRUCTURAL identity (features + render state) — NOT the colour — so __compileReport() groups by the
+  // actual pipeline. Colours now ride on per-vertex attributes and collapse onto one pipeline, so a
+  // colour-based name would mislabel one shared pipeline as many. With this, a feature-combo that shows
+  // up ×N in the report is a genuine warm-coverage gap (that combo isn't pre-warmed); the same name ×N
+  // would instead mean the share is FAILING. Cosmetic only — not part of the shader/cache key.
+  const feat = `${def.rim ? 'r' : ''}${def.dissolvable ? 'd' : ''}${def.chroma != null && def.chroma !== 1 ? 'c' : ''}${def.detail ? 'D' : ''}` || 'plain';
+  const state = `${def.transparent ? 't' : ''}${def.flatShading === true ? 'f' : ''}`;
+  mat.name = `modeldef:${def.dissolvable ? 'dis' : 'opa'}:${feat}${state ? '+' + state : ''}`;
   return mat;
 }
 

@@ -105,8 +105,15 @@ export function installWebGPUCompileGuard(device: unknown): void {
         // reflect the actual problem set, not the deliberate warm.
         if (warmupDone && !isWarmingUp()) {
           postWarmup++;
-          const label = (args[0] as { label?: string } | undefined)?.label ?? '?';
-          if (postWarmupLabels.length < 1000) postWarmupLabels.push(label);
+          const desc = args[0] as { label?: string; vertex?: { buffers?: Array<{ attributes?: unknown[] } | null> } } | undefined;
+          const label = desc?.label ?? '?';
+          // Vertex-layout fingerprint: total attribute count across the pipeline's vertex buffers. The
+          // layout is part of the pipeline key, so the SAME material on a skinned body (more attrs) vs a
+          // plain chunk vs an instanced prop are DISTINCT pipelines. Tagging by attr-count lets the report
+          // separate "this feature-combo isn't warmed" from "this feature-combo is warmed on layout A but
+          // spawns on layout B" — the two need different fixes.
+          const nAttr = desc?.vertex?.buffers?.reduce((s, b) => s + (b?.attributes?.length ?? 0), 0) ?? 0;
+          if (postWarmupLabels.length < 1000) postWarmupLabels.push(`${label}||${nAttr}`);
           // eslint-disable-next-line no-console
           console.warn(`[warmup-guard:webgpu] pipeline #${postWarmup} compiled IN-PLAY — '${label}'. A warm gap; run __compileReport() for the compact summary.`);
         }
@@ -128,9 +135,13 @@ export function installWebGPUCompileGuard(device: unknown): void {
  *  still compiling during play. */
 export function webgpuCompileReport(): { total: number; postWarmup: number; bySource: Record<string, number> } {
   const bySource: Record<string, number> = {};
-  for (const label of postWarmupLabels) {
+  for (const tagged of postWarmupLabels) {
+    const [label, nAttr] = tagged.split('||');
     const m = label.match(/^renderPipeline_(.+)_\d+$/);
-    const key = m ? m[1] : label;
+    const name = m ? m[1] : label;
+    // Group by material name + vertex-layout fingerprint (attr-count) — same material name, different
+    // layout = different pipeline. e.g. 'modeldef:dis:rd #7a' (skinned body) vs '#5a' (plain chunk).
+    const key = nAttr ? `${name} #${nAttr}a` : name;
     bySource[key] = (bySource[key] || 0) + 1;
   }
   const sorted = Object.fromEntries(Object.entries(bySource).sort((a, b) => b[1] - a[1]));
