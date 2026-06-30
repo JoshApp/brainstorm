@@ -22,6 +22,7 @@ import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
 import { warmupContent } from './content/warmup';
 import { runWarmupPass, runWarmupPassWebGPU } from './content/warmup-pass';
+import { warmRealRoster } from './content/warm-real-roster';
 import { initStatusVfxPool } from './effects/status-vfx';
 import { initNetwork, pushDisplayName } from './net/delve-net';
 import { initDeathFeed } from './net/death-feed';
@@ -572,6 +573,10 @@ initLevelLoader({
         if (!rosterPrecompiled) {
           rosterPrecompiled = true;
           try { await runWarmupPassWebGPU(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
+          // Warm through the REAL build path — one real instance of every enemy/prop/item, compiled at
+          // the PSX format, so the warmed pipeline can't drift from the live spawn (kills the dummy-vs-
+          // real tail). Once, behind the first descent's cover. See warm-real-roster.ts.
+          try { await warmRealRoster(renderer, camera, setDescentProgress); } catch { /* best-effort */ }
           startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); });
         }
         await warmSceneCompile(renderer, scene, camera);
