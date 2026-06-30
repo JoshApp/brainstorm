@@ -40,18 +40,18 @@ export async function warmRealRoster(
   if (done || !isWebGPU()) return;
   done = true;
 
-  const scene = new THREE.Scene();
+  const subjects: THREE.Object3D[] = [];
   const geometries: THREE.BufferGeometry[] = [];
-  const add = (group: THREE.Object3D): void => {
-    group.traverse((o) => {
-      const m = o as THREE.Mesh;
+  const collect = (o: THREE.Object3D): void => {
+    o.traverse((c) => {
+      const m = c as THREE.Mesh;
       if (m.isMesh && m.geometry) geometries.push(m.geometry);
     });
-    scene.add(group);
+    subjects.push(o);
   };
 
   const t0 = DEV ? performance.now() : 0;
-  let built = 0, failed = 0;
+  let chunks = 0;
 
   // ENEMIES — real rigid-skinned creatures: the body pipeline + every per-material group, the exact
   // SkinnedMesh layout (Float32 skinIndex + per-vertex aReveal) the live spawn uses. PLUS the combat-
@@ -65,38 +65,46 @@ export async function warmRealRoster(
     try {
       const creature = buildCreature(spec.creature);
       buildSkinnedCreature(creature);     // adds the SkinnedMesh into creature.group
-      add(creature.group);
-      built++;
-    } catch { failed++; }
+      collect(creature.group);
+    } catch { /* body failed — chunks below still try */ }
     try {
       // Second instance, crumbled — warms the dismember-chunk pipelines (the crumble is destructive,
       // so it can't share the instance we just added as the live body).
       const c2 = buildCreature(spec.creature);
       const sk2 = buildSkinnedCreature(c2);
       const cuts = (spec as { severable?: readonly string[] }).severable ?? DEFAULT_CUTS;
-      for (const chunk of sk2.crumbleToChunks(cuts)) add(chunk);
+      for (const chunk of sk2.crumbleToChunks(cuts)) { collect(chunk); chunks++; }
     } catch { /* a creature with no severable layout still warmed its body above */ }
   }
   // PROPS + ITEM DROPS — real models through buildModel (the placement / drop path).
   for (const spec of WARM_MODELS) {
-    try { add(buildModel(spec).group); built++; } catch { failed++; }
+    try { collect(buildModel(spec).group); } catch { /* skip */ }
   }
   for (const item of Object.values(ITEMS)) {
-    try { add(buildModel(item.dropModel).group); built++; } catch { failed++; }
+    try { collect(buildModel(item.dropModel).group); } catch { /* skip */ }
   }
 
-  onProgress?.(0.5);
-  // compileAsync over the whole roster at the bound PSX target — warmSceneCompile forces every object
-  // visible + frustum-unculled, so all of it warms regardless of where the warm camera points.
-  try { await warmSceneCompile(renderer, scene, camera); } catch { /* best-effort */ }
-  onProgress?.(1);
+  // BATCHED compile — the keystone for robustness. One compileAsync over all ~200 objects ABORTS the
+  // whole warm if a single object is malformed (compileAsync rejects + skips the remainder), leaving
+  // most of the roster un-warmed — which is WORSE than no roster warm. Compiling in small batches
+  // isolates a failure to its 8 objects so everything else still warms. Each batch is its own scene
+  // (an Object3D has one parent, so adding moves it out of the previous batch — cheap, no clone).
+  const BATCH = 8;
+  let okBatches = 0, failBatches = 0;
+  for (let i = 0; i < subjects.length; i += BATCH) {
+    const batchScene = new THREE.Scene();
+    for (const s of subjects.slice(i, i + BATCH)) batchScene.add(s);
+    try { await warmSceneCompile(renderer, batchScene, camera); okBatches++; }
+    catch { failBatches++; }
+    batchScene.clear();
+    onProgress?.(Math.min(1, (i + BATCH) / subjects.length));
+  }
 
   // Free the geometry (big buffers); keep the materials so the compiled pipelines stay cached.
   for (const g of geometries) g.dispose();
-  scene.clear();
 
   if (DEV) {
     // eslint-disable-next-line no-console
-    console.log(`[warmRealRoster] ${built} real subjects warmed${failed ? `, ${failed} failed` : ''} in ${Math.round(performance.now() - t0)}ms (one-time; cached after)`);
+    console.log(`[warmRealRoster] ${subjects.length} subjects (${chunks} chunks) compiled in ${okBatches}/${okBatches + failBatches} batches, ${Math.round(performance.now() - t0)}ms (one-time; cached after)`);
   }
 }
