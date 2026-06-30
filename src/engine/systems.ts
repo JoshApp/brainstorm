@@ -131,6 +131,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
   const _shakeBase = new THREE.Vector3();   // clean (un-shaken) camera position, captured each un-paused frame
   let _shakeBaseSet = false;
   let _shakeTicks = 0;   // DEV: shake-apply tick counter
+  let _renderCamTx = 0;  // DEV: camera world-Y captured AT the render call (vs frame-end, to see if the shake survives to render)
   // DEV trace: __kick(mag,dur) fires a manual shake; __shakePeek() reports the live offset + whether the
   // camera matrix actually moved (matrixWorld translation vs the un-shaken base). Lets us tell "shake not
   // applied" from "applied but render ignores it".
@@ -140,6 +141,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     w.__shakePeek = (): unknown => ({
       offsetLen: +shakeOffset.length().toFixed(4),
       shakeTicks: _shakeTicks,           // increments every shake-apply tick — if frozen, the system isn't running
+      renderCamY: +_renderCamTx.toFixed(4),   // camera world-Y AT the render call — if this jitters off 1.6, the shake DOES reach the render
       state: shakeDebug(),               // amplitude/durationLeft/joltLeft — if durationLeft 0 after a kick, state's not shared
       paused: isWorldPaused(),
       camPos: camera.position.toArray().map((n) => +n.toFixed(3)),
@@ -610,6 +612,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       tickSurfaceSeep(performance.now() / 1000);
       flushSplats(renderer);   // WebGL: drain queued gore stamps into the splat map
       tickGoreWebGPU();        // WebGPU: dry/evict + repack the per-fragment gore buffer
+      if (import.meta.env.DEV) _renderCamTx = camera.matrixWorld.elements[13];   // camera world Y AT render time
       renderWithStyle(renderer, scene, camera);
       // LUX readback must happen while this frame's buffer is still
       // valid (preserveDrawingBuffer is off in prod) — cheap no-op
