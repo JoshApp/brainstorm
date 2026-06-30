@@ -254,7 +254,9 @@ const DEFAULTS: Settings = {
   renderScale: 0.4,    // = PS1_SCALE_DEFAULT (the authored look / adaptive ceiling)
   sharpUpscale: true,  // on = smooth lateral motion; toggle off for the nearest crawl
   pixelRatioCap: CONFIG.PIXEL_RATIO_CAP_MOBILE,  // mobile DPR cap; live slider in GRAPHICS
-  frameCap: '60',      // match the 60Hz sim: smooth everywhere + good battery
+  frameCap: '60',      // deliberate battery/thermal default (NOT a judder workaround):
+                       // render-interp smooths the 60Hz sim at any draw-rate, so >60 is
+                       // available + smooth as an opt-in — 60 just keeps phones cool.
 
   bloom: true,
   leanBloom: true,   // cheaper 1-pass bloom (~identical look, mobile tile-bandwidth win)
