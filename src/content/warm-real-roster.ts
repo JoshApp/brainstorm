@@ -5,7 +5,7 @@ import { WARM_MODELS } from './warmup-models';
 import { buildModel } from '../ecs/build-model';
 import { buildCreature } from './build-creature';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
-import { warmSceneCompile } from '../style/render-webgpu';
+import { warmRenderWebGPU } from '../style/render-webgpu';
 import { getWarmupHooks } from './warmup-registry';
 import { isWebGPU } from '../scene/renderer-mode';
 import { DEV } from '../debug/dev';
@@ -86,36 +86,42 @@ export async function warmRealRoster(
     try { collect(buildModel(item.dropModel).group); } catch { /* skip */ }
   }
 
-  // Warm INSIDE THE LIVE SCENE — not a synthetic one. A pipeline's shader is the LIT lighting model the
-  // game uses (indirectDiffuse + ambientOcclusion from the scene's ambient/light pool); a bare warm
-  // scene with no lights compiles the UNLIT variant, a different pipeline, so every lit material
-  // recompiled on first spawn (the shared:std / dis tail). The live scene already carries the exact
-  // lights + fog + ambient, so compiling subjects parented under it produces the pipeline the game
-  // actually draws. We attach a holder under the live scene, fill it a batch at a time, compile, and
-  // empty it — batched so one malformed object can't abort the whole warm, and removed at the end so the
-  // live floor is untouched. The live floor's own pipelines are already cached, so each compile only
-  // does the batch's new work.
+  // RENDER-warm — the keystone. compileAsync and a real render emit DIFFERENT shaders for LIT materials:
+  // warming in the live scene with all its lights STILL recompiled on first spawn, which proves the gap
+  // is the PATH, not the conditions. So we warm by RENDERING through the actual PSX render path
+  // (warmRenderWebGPU → pipeline.renderAsync), making the warmed pipeline byte-identical to what the game
+  // draws. A holder is parented under the LIVE scene (so the real lights/fog/ambient apply); every
+  // subject mesh is forced frustumCulled=false + visible so the render draws — and therefore compiles —
+  // it regardless of where it sits relative to the warm camera. Batched so one frame needn't draw the
+  // whole roster; removed at the end so the live floor is untouched. renderAsync awaits each draw's
+  // pipeline, so the compiles finish behind the descent cover.
   const holder = new THREE.Group();
   holder.name = '__warmRealRoster';
   liveScene.add(holder);
-  const BATCH = 12;
+  const forceDraw = (root: THREE.Object3D): void => root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) { m.frustumCulled = false; m.visible = true; }
+  });
+  const BATCH = 24;
   let okBatches = 0, failBatches = 0;
   for (let i = 0; i < subjects.length; i += BATCH) {
     for (const s of subjects.slice(i, i + BATCH)) holder.add(s);
-    try { await warmSceneCompile(renderer, liveScene, camera); okBatches++; }
+    forceDraw(holder);
+    try { await warmRenderWebGPU(renderer, liveScene, camera, 2); okBatches++; }
     catch { failBatches++; }
     holder.clear();
     onProgress?.(Math.min(1, (i + BATCH) / subjects.length));
   }
 
-  // EFFECTS + DECOR — the self-registered warmup hooks (VFX, decor palettes, sprite variants), warmed
-  // the SAME way: spawn each into the holder under the live scene so it compiles with the real lights +
-  // fog, one hook at a time so a single bad spawn can't abort the rest.
+  // EFFECTS + DECOR — the self-registered warmup hooks (VFX, decor palettes, sprite variants), warmed the
+  // SAME way: spawn each into the holder under the live scene and RENDER, so it compiles with the real
+  // lights + fog through the real path, one hook at a time so a single bad spawn can't abort the rest.
   let hookOk = 0, hookFail = 0;
   for (const hook of getWarmupHooks()) {
     try {
       hook.spawn(holder);
-      await warmSceneCompile(renderer, liveScene, camera);
+      forceDraw(holder);
+      await warmRenderWebGPU(renderer, liveScene, camera, 2);
       hookOk++;
     } catch { hookFail++; }
     try { hook.clear(); } catch { /* the effect's pool clear */ }
