@@ -128,8 +128,6 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
   const _trailTipScratch = new THREE.Vector3();
   const _trailCamScratch = new THREE.Vector3();
   const _lampFwd = new THREE.Vector3();
-  const _shakeBase = new THREE.Vector3();   // clean (un-shaken) camera position, captured each un-paused frame
-  let _shakeBaseSet = false;
   let _shakeTicks = 0;   // DEV: shake-apply tick counter
   let _renderCamTx = 0;  // DEV: camera world-Y captured AT the render call (vs frame-end, to see if the shake survives to render)
   // DEV trace: __kick(mag,dur) fires a manual shake; __shakePeek() reports the live offset + whether the
@@ -145,7 +143,6 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       state: shakeDebug(),               // amplitude/durationLeft/joltLeft — if durationLeft 0 after a kick, state's not shared
       paused: isWorldPaused(),
       camPos: camera.position.toArray().map((n) => +n.toFixed(3)),
-      base: _shakeBase.toArray().map((n) => +n.toFixed(3)),
       matrixTx: [camera.matrixWorld.elements[12], camera.matrixWorld.elements[13], camera.matrixWorld.elements[14]].map((n) => +n.toFixed(3)),
     });
   }
@@ -560,23 +557,15 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // kick + shake compose cleanly.
     { name: 'slowmo-fx', phase: 'always', tick(ctx) { tickSlowmoPresentation(camera, ctx.realDt); } },
 
-    // Screen shake. The offset PERSISTS through the render and is undone at the START of the NEXT frame —
-    // NOT subtracted right after render. Why: on WebGPU the render is async (renderAsync defers the actual
-    // draw to a microtask via its internal await), so a same-frame 'shake-restore' ran BEFORE the deferred
-    // render read the camera → the render saw the un-shaken camera and the shake never showed. Persisting
-    // it fixes WebGPU and is identical on WebGL. No accumulation: when the camera was re-set this frame
-    // (!paused, tickPlayerAction ran) we capture that clean base; when it wasn't (paused/hit-pause) we
-    // restore the base before re-applying — so it resets cleanly every frame either way.
+    // Screen shake. Add the offset; it PERSISTS through the render (incl. WebGPU's async deferred read)
+    // and is undone at the START of the next frame by the camera reset — interpRestore (fixed-step) or
+    // tickPlayerAction's absolute camera-set (variable). No same-frame restore (that wiped it before the
+    // async render read it). updateMatrixWorld(true) so the node pass samples the shaken matrix, not the
+    // pre-shake one (WebGL's renderer.render does this implicitly; the node pass doesn't).
     { name: 'shake-apply', phase: 'always', tick(ctx) {
       _shakeTicks++;
-      if (!isWorldPaused()) { _shakeBase.copy(camera.position); _shakeBaseSet = true; }
-      else if (_shakeBaseSet) camera.position.copy(_shakeBase);
       tickShake(ctx.realDt, shakeOffset);
       camera.position.add(shakeOffset);
-      // Force the world matrix to reflect the shaken position NOW. On WebGL renderer.render() does this
-      // for us; on WebGPU the node pass (pass(scene,camera)) reads camera.matrixWorld at render time and
-      // nothing recomputes it after we move camera.position — so without this the position moved but the
-      // matrix the shader samples didn't, and the shake was invisible.
       camera.updateMatrixWorld(true);
     } },
 

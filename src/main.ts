@@ -1580,6 +1580,13 @@ function tickInner() {
     // (count = accumulated wall-clock), then PRESENT once. fps-independent +
     // replayable; reorders into sim-pass-then-present-pass (feel-test before
     // making default).
+    // Restore last frame's authoritative camera pose HERE (frame start), not right after present. The
+    // drawn pose carries the screen-shake offset, and on WebGPU the render is async — `void renderAsync`
+    // reads the camera in a microtask AFTER present returns. Restoring right after present wiped the shake
+    // (and the interp pose) before that deferred read, so neither rendered. Restoring at the NEXT frame's
+    // start lets the drawn pose + shake survive the async render, while still being clean before this
+    // frame's sim integrates.
+    if (USE_INTERP) interpRestore(interpTargets);
     simAccumulator += realDt;
     let steps = 0;
     while (simAccumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
@@ -1598,7 +1605,8 @@ function tickInner() {
     frameBegin();
     presentPass(realDt);
     frameEnd();
-    if (USE_INTERP) interpRestore(interpTargets);
+    // (interpRestore MOVED to the top of this block — so the drawn pose + shake persist through WebGPU's
+    //  async render instead of being wiped before the deferred read. See the note above.)
   } else {
     // VARIABLE-dt path (default) — the original interleaved pass, unchanged.
     tickArrival(camera, realDt);
