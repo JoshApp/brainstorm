@@ -13,7 +13,7 @@ import { CONFIG } from './config';
 import { createTouchInput } from './controls/input';
 import { createFirstPersonCamera, setCameraYaw, setCameraPitch } from './controls/camera';
 import { createWeaponViewmodel } from './player/viewmodel';
-import { attachLamp, setLampStowed } from './player/handheld-lamp';
+import { attachLamp, setLampStowed, tickLamp } from './player/handheld-lamp';
 import { attachLampArm } from './player/lamp-arm';
 import { initBreath } from './effects/breath';
 import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handheld-offhand';
@@ -138,7 +138,7 @@ import { triggerAttack } from './controls/attack-input';
 import { triggerInteract } from './controls/interact-input';
 import { initPickupLightPool } from './interactables/pickup';
 import { setOutlinesDisabled } from './interactables/outline';
-import { setShadowMode, setEnvLightMuls, setWickFillMul } from './scene/light-pool';
+import { setShadowMode, setEnvLightMuls, setWickFillMul, tickLightPool } from './scene/light-pool';
 import { packTokenCount } from './mobs/pack';
 import { setAdaptiveResolution, setAdaptiveCeiling, tickAdaptiveResolution, feedAdaptiveGpuMs } from './scene/adaptive-resolution';
 import { lastWebGPUGpuMs, setWebGPULeanBloom, warmSceneCompile } from './style/render-webgpu';
@@ -570,6 +570,18 @@ initLevelLoader({
       //      set (decor/roster/static interactables) is already compiled — descent only does the
       //      floor's residue.
       prewarm = (async () => {
+        // Pump the floor's lights to PLAY-STATE before any warm renders. The compile diagnostic proved
+        // the warm was compiling UNLIT (no lights collected pre-game-loop → the lean-lights node saw an
+        // empty set → hasLights=false → unlit shader), so its shaders never matched the lit game render.
+        // tickLamp positions the handheld lamp; tickLightPool assigns + activates the torch slots for the
+        // spawn — so by the time the warm renders, the lighting node collects the real lights and compiles
+        // the LIT pipeline the game draws.
+        try {
+          const w = (level as { walkable?: { hasLineOfSight(ax: number, az: number, bx: number, bz: number): boolean } }).walkable;
+          const los = w ? (ax: number, az: number, bx: number, bz: number): boolean => w.hasLineOfSight(ax, az, bx, bz) : undefined;
+          tickLamp(0.1);
+          tickLightPool(camera, los);
+        } catch { /* best-effort — warm still runs, just possibly unlit */ }
         if (!rosterPrecompiled) {
           rosterPrecompiled = true;
           try { await runWarmupPassWebGPU(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
