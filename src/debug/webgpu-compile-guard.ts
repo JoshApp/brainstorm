@@ -50,19 +50,31 @@ function codeOf(d: unknown): { v?: string; f?: string } {
     f: x.fragment?.module ? moduleCode.get(x.fragment.module) : undefined,
   };
 }
-/** Lines present in the LIVE shader but not the warmed one — names the variant (fog uniform, an extra
- *  light iteration, a flatShading branch). Trimmed to the few meaningful lines. */
+/** Diff the live vs warmed shader, NORMALIZING generated variable names (nodeVar123 → nodeVar#) first.
+ *  If they're equal after normalization, the shaders are STRUCTURALLY IDENTICAL and only differ by the
+ *  node builder's global var counter — i.e. non-deterministic codegen, so warming a different instance
+ *  can never produce a byte-matching pipeline. If they still differ, it's a REAL variant (the salient
+ *  lines name it: fog / an extra light / flatShading). */
 function shaderDiff(live: { v?: string; f?: string }, warm: { v?: string; f?: string } | undefined): string {
   if (!warm) return '(no warmed shader to compare)';
-  const added = (a?: string, b?: string): string[] => {
-    if (!a || !b || a === b) return [];
-    const seen = new Set(b.split('\n').map((l) => l.trim()));
-    return a.split('\n').map((l) => l.trim()).filter((l) => l.length > 3 && !seen.has(l));
+  const norm = (s?: string): string => (s ?? '').replace(/\b(nodeVar|nodeConst|nodeUniform|tmp|nodeMeshLib|v_)\d+/g, '$1#');
+  const cmp = (a?: string, b?: string): { same: boolean; lines: string[] } => {
+    if (!a || !b) return { same: false, lines: ['(one side has no shader)'] };
+    const na = norm(a), nb = norm(b);
+    if (na === nb) return { same: true, lines: [] };
+    const seen = new Set(nb.split('\n').map((l) => l.trim()));
+    const lines = na.split('\n').map((l) => l.trim()).filter((l) => l.length > 3 && !seen.has(l));
+    const salient = lines.filter((l) => /fog|light|flat|shadow|directional|point|spot|ambient/i.test(l));
+    return { same: false, lines: (salient.length ? salient : lines).slice(0, 5) };
   };
-  const f = added(live.f, warm.f), v = added(live.v, warm.v);
-  const salient = [...f, ...v].filter((l) => /fog|light|Light|flat|Flat|shadow|Shadow|directional|point/i.test(l));
-  const show = (salient.length ? salient : [...f, ...v]).slice(0, 5);
-  return show.length ? show.join('  ⏎  ') : '(shaders differ but no line-level diff — likely struct/binding order)';
+  const f = cmp(live.f, warm.f), v = cmp(live.v, warm.v);
+  if (f.same && v.same) {
+    return 'PURE-RENUMBERING — structurally identical WGSL, only generated var-names differ (non-deterministic codegen; warming a separate instance can never byte-match → must share the instance or dedup the WGSL)';
+  }
+  const parts: string[] = [];
+  if (!f.same && f.lines.length) parts.push('frag+ ' + f.lines.join(' ⏎ '));
+  if (!v.same && v.lines.length) parts.push('vert+ ' + v.lines.join(' ⏎ '));
+  return parts.join('  ||  ') || 'real structural diff (no salient lines isolated)';
 }
 
 function parseLabel(raw: string | undefined): string {
