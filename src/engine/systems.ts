@@ -553,6 +553,11 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       else if (_shakeBaseSet) camera.position.copy(_shakeBase);
       tickShake(ctx.realDt, shakeOffset);
       camera.position.add(shakeOffset);
+      // Force the world matrix to reflect the shaken position NOW. On WebGL renderer.render() does this
+      // for us; on WebGPU the node pass (pass(scene,camera)) reads camera.matrixWorld at render time and
+      // nothing recomputes it after we move camera.position — so without this the position moved but the
+      // matrix the shader samples didn't, and the shake was invisible.
+      camera.updateMatrixWorld(true);
     } },
 
     // Portal/room culling — hide rooms not visible through doorways (no-op
