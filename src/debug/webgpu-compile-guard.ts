@@ -21,6 +21,65 @@ let total = 0;
 let postWarmup = 0;
 const postWarmupLabels: string[] = [];
 
+// ── METHODICAL DESCRIPTOR DIAGNOSTIC ──────────────────────────────────────────────────────────────
+// For EVERY pipeline the GPU compiles, fingerprint its full descriptor (vertex layout + blend + depth +
+// primitive + shader-module labels) — the GPU-level pipeline identity. Record what the WARM compiled
+// (by material label); then for each IN-PLAY compile, say whether the warm produced that EXACT
+// descriptor, and if not, the DIFF. Turns "X compiles" into "THIS descriptor isn't warmed; it differs
+// from the warmed one in <field>". With a fixed replayed floor, drive the list to zero, no guessing.
+interface PipeDesc { label: string; attrs: string; blend: string; depth: string; prim: string; targets: string; mod: string; }
+const warmedByLabel = new Map<string, PipeDesc[]>();   // material label -> descriptors compiled during the warm
+const liveCompiles: PipeDesc[] = [];                    // descriptors compiled in-play (post-warm)
+
+// Shader-module code hash, captured by patching createShaderModule — so the descriptor fingerprint
+// includes the SHADER identity (fog / flatShading / light-count variants live in the WGSL, not the GPU
+// render state). A live compile whose render state matches a warmed one but whose shader-hash differs is
+// a SHADER variant we warmed wrong, not a render-state miss — the verdict can then say which.
+const moduleHash = new WeakMap<object, string>();
+function hashStr(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+function parseLabel(raw: string | undefined): string {
+  const m = (raw ?? '').match(/^renderPipeline_(.+)_\d+$/);
+  return m ? m[1] : (raw || '?');
+}
+function describePipeline(d: unknown): PipeDesc {
+  const x = d as {
+    label?: string;
+    vertex?: { buffers?: Array<{ attributes?: Array<{ shaderLocation?: number; format?: string }> } | null>; module?: { label?: string } };
+    fragment?: { targets?: Array<{ format?: string; blend?: { color?: { srcFactor?: string; dstFactor?: string }; alpha?: { srcFactor?: string; dstFactor?: string } } } | null>; module?: { label?: string } };
+    depthStencil?: { depthWriteEnabled?: boolean; depthCompare?: string };
+    primitive?: { topology?: string; cullMode?: string };
+  };
+  const attrs = (x.vertex?.buffers ?? [])
+    .flatMap((b) => (b?.attributes ?? []).map((a) => `${a.shaderLocation}:${a.format}`)).sort().join(' ');
+  const targets = (x.fragment?.targets ?? []).map((t) => t?.format ?? '?').join('+');
+  const t0 = x.fragment?.targets?.[0];
+  const blend = t0?.blend ? `${t0.blend.color?.srcFactor}>${t0.blend.color?.dstFactor}|a:${t0.blend.alpha?.srcFactor}>${t0.blend.alpha?.dstFactor}` : 'opaque';
+  const ds = x.depthStencil;
+  const depth = ds ? `w${ds.depthWriteEnabled ? 1 : 0}:${ds.depthCompare}` : 'none';
+  const p = x.primitive ?? {};
+  const prim = `${p.topology ?? '?'}/${p.cullMode ?? 'none'}`;
+  const vm = x.vertex?.module as object | undefined;
+  const fm = x.fragment?.module as object | undefined;
+  const mod = `${(vm && moduleHash.get(vm)) ?? x.vertex?.module?.label ?? ''}|${(fm && moduleHash.get(fm)) ?? x.fragment?.module?.label ?? ''}`;
+  return { label: parseLabel(x.label), attrs, blend, depth, prim, targets, mod };
+}
+function sigOf(d: PipeDesc): string { return `${d.attrs}|${d.blend}|${d.depth}|${d.prim}|${d.targets}|${d.mod}`; }
+function diffDesc(live: PipeDesc, warm: PipeDesc): string {
+  const out: string[] = [];
+  if (live.attrs !== warm.attrs) out.push(`attrs live[${live.attrs}] vs warm[${warm.attrs}]`);
+  if (live.blend !== warm.blend) out.push(`blend ${live.blend} vs ${warm.blend}`);
+  if (live.depth !== warm.depth) out.push(`depth ${live.depth} vs ${warm.depth}`);
+  if (live.prim !== warm.prim) out.push(`prim ${live.prim} vs ${warm.prim}`);
+  if (live.targets !== warm.targets) out.push(`targets ${live.targets} vs ${warm.targets}`);
+  if (!out.length && live.mod !== warm.mod) out.push('shader-module differs (fog / flatShading / light-count variant — not in render state)');
+  return out.join('; ') || 'identical to a warmed descriptor (browser pipeline-cache miss)';
+}
+
 /** Arm the guard — call when the warmup finishes. */
 export function markWebGPUWarmupComplete(): void { warmupDone = true; }
 
@@ -92,6 +151,19 @@ export function installWebGPUCompileGuard(device: unknown): void {
   // The wrapper passes ALL args through unchanged and does its bookkeeping inside a
   // try/catch, so it can NEVER alter or break the real pipeline creation.
   const dev = device as unknown as Record<string, ((...a: unknown[]) => unknown) | undefined>;
+  // Capture each shader module's code hash so the descriptor fingerprint can see shader (fog/etc.) variants.
+  const origSM = dev['createShaderModule'];
+  if (typeof origSM === 'function') {
+    const boundSM = origSM.bind(device);
+    dev['createShaderModule'] = (...a: unknown[]) => {
+      const mod = boundSM(...a);
+      try {
+        const code = (a[0] as { code?: string } | undefined)?.code;
+        if (code && mod && typeof mod === 'object') moduleHash.set(mod, hashStr(code));
+      } catch { /* never break module creation */ }
+      return mod;
+    };
+  }
   for (const method of ['createRenderPipelineAsync', 'createRenderPipeline'] as const) {
     const orig = dev[method];
     if (typeof orig !== 'function') continue;
@@ -99,23 +171,21 @@ export function installWebGPUCompileGuard(device: unknown): void {
     dev[method] = (...args: unknown[]) => {
       try {
         total++;
-        // Only compiles during LIVE play are felt hitches. Compiles while a warm pass is running
-        // (boot warm, or the descent warmSceneCompile — both set warmingUp) happen behind the load
-        // cover and are EXPECTED, so don't count or warn on them. This makes postWarmup / the report
-        // reflect the actual problem set, not the deliberate warm.
-        if (warmupDone && !isWarmingUp()) {
+        const desc = describePipeline(args[0]);
+        if (isWarmingUp()) {
+          // Compiles while a warm pass runs (boot warm + descent warmSceneCompile + warmRealRoster) are
+          // the REFERENCE set: record each descriptor by material label so we can later tell whether an
+          // in-play compile matches something we warmed, and if not, exactly how it differs.
+          const arr = warmedByLabel.get(desc.label) ?? [];
+          if (arr.length < 64 && !arr.some((w) => sigOf(w) === sigOf(desc))) arr.push(desc);
+          warmedByLabel.set(desc.label, arr);
+        } else if (warmupDone) {
+          // Live play after warmup = a felt hitch (a warm gap).
           postWarmup++;
-          const desc = args[0] as { label?: string; vertex?: { buffers?: Array<{ attributes?: unknown[] } | null> } } | undefined;
-          const label = desc?.label ?? '?';
-          // Vertex-layout fingerprint: total attribute count across the pipeline's vertex buffers. The
-          // layout is part of the pipeline key, so the SAME material on a skinned body (more attrs) vs a
-          // plain chunk vs an instanced prop are DISTINCT pipelines. Tagging by attr-count lets the report
-          // separate "this feature-combo isn't warmed" from "this feature-combo is warmed on layout A but
-          // spawns on layout B" — the two need different fixes.
-          const nAttr = desc?.vertex?.buffers?.reduce((s, b) => s + (b?.attributes?.length ?? 0), 0) ?? 0;
-          if (postWarmupLabels.length < 1000) postWarmupLabels.push(`${label}||${nAttr}`);
+          liveCompiles.push(desc);
+          if (postWarmupLabels.length < 1000) postWarmupLabels.push(`${desc.label}||${desc.attrs.split(' ').filter(Boolean).length}`);
           // eslint-disable-next-line no-console
-          console.warn(`[warmup-guard:webgpu] pipeline #${postWarmup} compiled IN-PLAY — '${label}'. A warm gap; run __compileReport() for the compact summary.`);
+          console.warn(`[warmup-guard:webgpu] IN-PLAY compile #${postWarmup} — '${desc.label}' [${desc.blend} ${desc.depth}]. Run __compileReport() for the per-descriptor verdict.`);
         }
       } catch { /* bookkeeping must never break the renderer */ }
       return bound(...args);
@@ -128,22 +198,41 @@ export function installWebGPUCompileGuard(device: unknown): void {
   }
 }
 
-/** Compact, pasteable summary of what compiled IN-PLAY, grouped by SOURCE and sorted by count.
- *  The pipeline label is `renderPipeline_${material.name || material.type}_${id}` (three.js
- *  WebGPUPipelineUtils), so naming a material (e.g. mat.name='effect:blood') makes it show up here
- *  by name instead of just 'MeshStandardMaterial'. Paste the output and it says exactly what's
- *  still compiling during play. */
-export function webgpuCompileReport(): { total: number; postWarmup: number; bySource: Record<string, number> } {
-  const bySource: Record<string, number> = {};
-  for (const tagged of postWarmupLabels) {
-    const [label, nAttr] = tagged.split('||');
-    const m = label.match(/^renderPipeline_(.+)_\d+$/);
-    const name = m ? m[1] : label;
-    // Group by material name + vertex-layout fingerprint (attr-count) — same material name, different
-    // layout = different pipeline. e.g. 'modeldef:dis:rd #7a' (skinned body) vs '#5a' (plain chunk).
-    const key = nAttr ? `${name} #${nAttr}a` : name;
-    bySource[key] = (bySource[key] || 0) + 1;
+/** Methodical, pasteable verdict on what compiled IN-PLAY and WHY the warm missed it. For each distinct
+ *  in-play pipeline descriptor: its material, how many times it hit, and a VERDICT —
+ *   - NOT-WARMED          → the warm never compiled this material at all (coverage gap: warm it).
+ *   - MISMATCH: <diff>    → the warm compiled this material but with a DIFFERENT descriptor; the diff
+ *                           names the field (blend / depth / attrs / shader-module=fog) — fix the warm
+ *                           to produce THIS descriptor.
+ *   - CACHE-MISS          → byte-identical to a warmed descriptor yet recompiled (browser cache only).
+ *  Replay a fixed floor and drive `problems` to []. */
+export function webgpuCompileReport(): {
+  total: number; postWarmup: number;
+  problems: Array<{ material: string; count: number; layout: string; state: string; verdict: string }>;
+} {
+  const groups = new Map<string, { desc: PipeDesc; count: number }>();
+  for (const d of liveCompiles) {
+    const key = `${d.label}|${sigOf(d)}`;
+    const g = groups.get(key) ?? { desc: d, count: 0 };
+    g.count++;
+    groups.set(key, g);
   }
-  const sorted = Object.fromEntries(Object.entries(bySource).sort((a, b) => b[1] - a[1]));
-  return { total, postWarmup, bySource: sorted };
+  const problems = [...groups.values()].map(({ desc, count }) => {
+    const warm = warmedByLabel.get(desc.label);
+    let verdict: string;
+    if (!warm || warm.length === 0) {
+      verdict = 'NOT-WARMED — material never compiled during the warm';
+    } else if (warm.some((w) => sigOf(w) === sigOf(desc))) {
+      verdict = 'CACHE-MISS — identical descriptor was warmed but recompiled (browser pipeline cache)';
+    } else {
+      // Diff against the warmed variant that shares the most fields (the nearest miss).
+      const score = (w: PipeDesc): number =>
+        (w.attrs === desc.attrs ? 1 : 0) + (w.blend === desc.blend ? 1 : 0) + (w.depth === desc.depth ? 1 : 0) + (w.prim === desc.prim ? 1 : 0);
+      const nearest = warm.reduce((best, w) => (score(w) > score(best) ? w : best), warm[0]);
+      verdict = `MISMATCH — ${diffDesc(desc, nearest)}`;
+    }
+    return { material: desc.label, count, layout: desc.attrs || '(none)', state: `${desc.blend} ${desc.depth} ${desc.prim}`, verdict };
+  });
+  problems.sort((a, b) => b.count - a.count);
+  return { total, postWarmup, problems };
 }
