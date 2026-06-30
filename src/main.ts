@@ -506,6 +506,16 @@ function syncRoomCuller() {
 // One-shot guard: the enemy-roster shader pre-compile (in the live light
 // config) only needs to run once — programs stay resident after.
 let rosterPrecompiled = false;
+
+/** Yield to the browser so a just-shown cover (descent fade, boot veil, spawn screen) actually PAINTS —
+ *  and its CSS transition starts animating — BEFORE we block the main thread on a heavy warm/compile. Two
+ *  rAFs guarantee a paint landed; the small delay lets the transition become visible, so the freeze hides
+ *  behind a moving screen instead of a frozen click. Cheap (~1-2 frames + delay), once per transition. */
+function yieldToCover(delayMs = 90): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => window.setTimeout(resolve, delayMs)));
+  });
+}
 initLevelLoader({
   scene,
   materials,
@@ -570,6 +580,9 @@ initLevelLoader({
       //      set (decor/roster/static interactables) is already compiled — descent only does the
       //      floor's residue.
       prewarm = (async () => {
+        // Let the descent cover paint + its fade animate BEFORE we block on the warm — otherwise the
+        // compile freezes the frame the instant DESCEND is clicked, before the transition can show.
+        await yieldToCover();
         // Pump the floor's lights to PLAY-STATE before any warm renders. The compile diagnostic proved
         // the warm was compiling UNLIT (no lights collected pre-game-loop → the lean-lights node saw an
         // empty set → hasLights=false → unlit shader), so its shaders never matched the lit game render.
@@ -2416,6 +2429,8 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
     // the compile count SETTLES (DEV: the guard's total stable; prod: a fixed ~1.5s budget),
     // capped at 4s. Without this the title compiles when the MENU appears (a menu hitch).
     await settleCompiles(4000);
+    // Let the boot veil + loading bar paint before the warm blocks the thread (else boot looks frozen).
+    await yieldToCover();
     const _t0 = performance.now();
     try { await runWarmupPassWebGPU(renderer, scene, camera, setBootProgress); } catch { /* best-effort */ }
     if (import.meta.env.DEV) console.log(`[bootWarm] roster warm took ${Math.round(performance.now() - _t0)}ms (high+same every reload = NOT cached; drops on 2nd = cached)`);

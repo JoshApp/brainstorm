@@ -36,6 +36,13 @@ import { DEV } from '../debug/dev';
 
 let done = false;
 
+/** Yield one frame so the loading bar (onProgress) PAINTS + the main thread breathes between batches —
+ *  the warm stays a moving screen instead of one long freeze. No-op outside the browser. */
+const yieldFrame = (): Promise<void> =>
+  typeof requestAnimationFrame === 'function'
+    ? new Promise((r) => requestAnimationFrame(() => r()))
+    : Promise.resolve();
+
 export async function warmRealRoster(
   renderer: THREE.WebGLRenderer,
   liveScene: THREE.Scene,
@@ -154,6 +161,7 @@ export async function warmRealRoster(
     catch { failBatches++; }
     holder.clear();
     onProgress?.(Math.min(1, (i + BATCH) / subjects.length));
+    await yieldFrame();   // paint the bar + breathe between batches so the cover never looks frozen
   }
 
   // EFFECTS + DECOR — the self-registered warmup hooks (VFX, decor palettes, sprite variants), warmed the
