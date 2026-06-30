@@ -293,3 +293,26 @@ export function updateOutline(
 export function clearAllOutlines() {
   for (const target of [...outlines.keys()]) removeOutline(target);
 }
+
+// Self-registered warmup — compile the outline pipeline behind the load screen so the FIRST interactable
+// you near doesn't pay the compile. A box (position + normal, the only attrs the inverted-hull push reads)
+// wearing the real outline material; `live` so it warms in the lit real-scene pass (warm-real-roster).
+import { registerWarmup } from '../content/warmup-registry';
+let warmOutlineMesh: THREE.Mesh | null = null;
+registerWarmup({
+  label: 'interactable-outline',
+  live: true,
+  spawn: (scene: THREE.Object3D) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), makeOutlineMaterial());
+    mesh.userData.outline = true;
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    warmOutlineMesh = mesh;
+  },
+  clear: () => {
+    if (!warmOutlineMesh) return;
+    warmOutlineMesh.parent?.remove(warmOutlineMesh);
+    warmOutlineMesh.geometry.dispose();
+    warmOutlineMesh = null;
+  },
+});
