@@ -86,43 +86,42 @@ export async function warmRealRoster(
     try { collect(buildModel(item.dropModel).group); } catch { /* skip */ }
   }
 
-  // BATCHED compile — the keystone for robustness. One compileAsync over all ~200 objects ABORTS the
-  // whole warm if a single object is malformed (compileAsync rejects + skips the remainder), leaving
-  // most of the roster un-warmed — which is WORSE than no roster warm. Compiling in small batches
-  // isolates a failure to its 8 objects so everything else still warms. Each batch is its own scene
-  // (an Object3D has one parent, so adding moves it out of the previous batch — cheap, no clone).
-  const BATCH = 8;
+  // Warm INSIDE THE LIVE SCENE — not a synthetic one. A pipeline's shader is the LIT lighting model the
+  // game uses (indirectDiffuse + ambientOcclusion from the scene's ambient/light pool); a bare warm
+  // scene with no lights compiles the UNLIT variant, a different pipeline, so every lit material
+  // recompiled on first spawn (the shared:std / dis tail). The live scene already carries the exact
+  // lights + fog + ambient, so compiling subjects parented under it produces the pipeline the game
+  // actually draws. We attach a holder under the live scene, fill it a batch at a time, compile, and
+  // empty it — batched so one malformed object can't abort the whole warm, and removed at the end so the
+  // live floor is untouched. The live floor's own pipelines are already cached, so each compile only
+  // does the batch's new work.
+  const holder = new THREE.Group();
+  holder.name = '__warmRealRoster';
+  liveScene.add(holder);
+  const BATCH = 12;
   let okBatches = 0, failBatches = 0;
   for (let i = 0; i < subjects.length; i += BATCH) {
-    const batchScene = new THREE.Scene();
-    // CRITICAL: copy the live scene's fog onto the batch scene. `useFog` is a pipeline VARIANT — a
-    // bare (no-fog) warm scene compiles the no-fog pipeline, but the game renders WITH fog, so every
-    // creature/chunk would recompile its fog variant on first spawn (the tail that survived a complete
-    // warm). Same fog object = same useFog variant = the warmed pipeline matches live.
-    batchScene.fog = liveScene.fog;
-    for (const s of subjects.slice(i, i + BATCH)) batchScene.add(s);
-    try { await warmSceneCompile(renderer, batchScene, camera); okBatches++; }
+    for (const s of subjects.slice(i, i + BATCH)) holder.add(s);
+    try { await warmSceneCompile(renderer, liveScene, camera); okBatches++; }
     catch { failBatches++; }
-    batchScene.clear();
+    holder.clear();
     onProgress?.(Math.min(1, (i + BATCH) / subjects.length));
   }
 
-  // EFFECTS + DECOR — the self-registered warmup hooks (VFX, decor palettes, sprite variants). They
-  // were warming on a no-fog scratch scene (runWarmupPassWebGPU), so the same useFog mismatch hit them:
-  // the game's fogged render recompiled them on first use (the shared:std / MeshBasicNode tail). Re-warm
-  // each hook here into a FOG scene, one hook per scene so a single bad spawn can't abort the rest.
+  // EFFECTS + DECOR — the self-registered warmup hooks (VFX, decor palettes, sprite variants), warmed
+  // the SAME way: spawn each into the holder under the live scene so it compiles with the real lights +
+  // fog, one hook at a time so a single bad spawn can't abort the rest.
   let hookOk = 0, hookFail = 0;
   for (const hook of getWarmupHooks()) {
-    const hs = new THREE.Scene();
-    hs.fog = liveScene.fog;
     try {
-      hook.spawn(hs);
-      await warmSceneCompile(renderer, hs, camera);
+      hook.spawn(holder);
+      await warmSceneCompile(renderer, liveScene, camera);
       hookOk++;
     } catch { hookFail++; }
     try { hook.clear(); } catch { /* the effect's pool clear */ }
-    hs.clear();
+    holder.clear();
   }
+  liveScene.remove(holder);
 
   // Free the geometry (big buffers); keep the materials so the compiled pipelines stay cached.
   for (const g of geometries) g.dispose();
