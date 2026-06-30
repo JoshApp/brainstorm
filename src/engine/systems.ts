@@ -84,7 +84,7 @@ import { tickXpSigil } from '../ui/xp-sigil';
 import { updateDamageNumbers } from '../ui/damage-numbers';
 import { tickLowHpPulse } from '../ui/vignette';
 import { getPlayerHp, getPlayerMaxHp } from '../player/health';
-import { tickShake } from '../combat/screen-shake';
+import { tickShake, kickShake } from '../combat/screen-shake';
 import { isWorldPaused } from '../world-paused';
 
 // The per-frame system list, extracted from main.ts. The frame is an ordered
@@ -130,6 +130,19 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
   const _lampFwd = new THREE.Vector3();
   const _shakeBase = new THREE.Vector3();   // clean (un-shaken) camera position, captured each un-paused frame
   let _shakeBaseSet = false;
+  // DEV trace: __kick(mag,dur) fires a manual shake; __shakePeek() reports the live offset + whether the
+  // camera matrix actually moved (matrixWorld translation vs the un-shaken base). Lets us tell "shake not
+  // applied" from "applied but render ignores it".
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const w = window as unknown as Record<string, unknown>;
+    w.__kick = (mag = 0.5, dur = 1.0): void => kickShake(mag as number, dur as number);
+    w.__shakePeek = (): unknown => ({
+      offsetLen: +shakeOffset.length().toFixed(4),
+      camPos: camera.position.toArray().map((n) => +n.toFixed(3)),
+      base: _shakeBase.toArray().map((n) => +n.toFixed(3)),
+      matrixTx: [camera.matrixWorld.elements[12], camera.matrixWorld.elements[13], camera.matrixWorld.elements[14]].map((n) => +n.toFixed(3)),
+    });
+  }
 
   return [
     // Publish this frame's attack COMMITMENT (move/turn agency + dash-lock) from
