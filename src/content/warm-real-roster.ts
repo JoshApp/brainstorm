@@ -95,7 +95,15 @@ export async function warmRealRoster(
   // reps + disposed once at the end (not via `collect`, which would double-dispose it).
   const decorBox = new THREE.BoxGeometry(0.2, 0.2, 0.2);
   for (const mat of registeredFloorMaterials()) {
-    try { subjects.push(new THREE.Mesh(decorBox, mat)); } catch { /* skip */ }
+    try {
+      // needsUpdate is the keystone for SHARED materials: a node material builds its WGSL ONCE per
+      // instance and caches it; light changes don't invalidate it. These shared stdMat decor instances
+      // were first built UNLIT at boot (before the floor's lights existed), and nothing re-dirties them,
+      // so they stay unlit through the warm and only rebuild lit at play — the hitch. Bumping the version
+      // forces a rebuild, so their FIRST LIT build happens now (lights are pumped active) behind the cover.
+      (mat as THREE.Material).needsUpdate = true;
+      subjects.push(new THREE.Mesh(decorBox, mat));
+    } catch { /* skip */ }
   }
 
   // RENDER-warm — the keystone. compileAsync and a real render emit DIFFERENT shaders for LIT materials:
