@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { uniform as tslUniform, positionLocal, normalLocal, modelViewMatrix, vec4 } from 'three/tsl';
 import { isWebGPU } from '../scene/renderer-mode';
 import type { Interactable } from './types';
 import { getAllInteractables } from './system';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 // Outline highlight — a slightly larger silhouette of an interactable's
 // geometry, rendered with an additive emissive material. The classic
@@ -45,7 +49,7 @@ const OUTLINE_SCALE_DEFAULT = 1.07;
 // on a chest it's a hairline. Pixel-space is the only honest unit for
 // a line.
 const RIM_PX = 4.5;             // target rim width, device pixels (phone-tuned)
-function makeOutlineMaterial(): THREE.ShaderMaterial {
+function makeOutlineMaterialWebGL(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
       uColor: { value: new THREE.Color(COLOR_ARMED) },
@@ -76,12 +80,40 @@ function makeOutlineMaterial(): THREE.ShaderMaterial {
   });
 }
 
+// WEBGPU port of the outline to TSL: the identical inverted-hull rim — same screen-constant push
+// (position += normal · uPxScale · −viewZ in the vertex stage), same additive colour·opacity fragment —
+// but as a NODE material the WebGPU renderer can actually compile. The old GLSL ShaderMaterial threw on
+// the node renderer every frame near an interactable, which is why the outline was disabled on WebGPU.
+// A `.uniforms`-shaped facade (TSL uniforms expose `.value` like ShaderMaterial uniforms) lets
+// updateOutline() drive uColor/uOpacity identically across both backends.
+function makeOutlineMaterialWebGPU(): THREE.Material {
+  const uColor = (tslUniform as any)(new THREE.Color(COLOR_ARMED));
+  const uOpacity = (tslUniform as any)(0);
+  const mat: any = new (MeshBasicNodeMaterial as any)({
+    side: THREE.BackSide, transparent: true, fog: false, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const mv = (modelViewMatrix as any).mul((vec4 as any)(positionLocal, 1.0));
+  const push = (pxScaleWG as any).mul(mv.z.negate());   // uPxScale · −mvz → screen-constant width
+  mat.positionNode = (positionLocal as any).add((normalLocal as any).mul(push));
+  mat.colorNode = uColor;
+  mat.opacityNode = uOpacity;
+  mat.uniforms = { uColor, uOpacity };
+  return mat;
+}
+
+function makeOutlineMaterial(): THREE.Material {
+  return isWebGPU() ? makeOutlineMaterialWebGPU() : makeOutlineMaterialWebGL();
+}
+
 /** Per-frame px→world scale at unit depth: worldPerPx(z) = z * 2·tan(fov/2)/H. */
 export function updateOutlinePxScale(camera: THREE.PerspectiveCamera, viewportH: number): void {
   const worldPerPxAtUnitZ = (2 * Math.tan((camera.fov * Math.PI) / 360)) / viewportH;
-  pxScaleShared.value = worldPerPxAtUnitZ * RIM_PX;
+  const v = worldPerPxAtUnitZ * RIM_PX;
+  pxScaleShared.value = v;
+  (pxScaleWG as any).value = v;
 }
-const pxScaleShared = { value: 0.002 };
+const pxScaleShared = { value: 0.002 };          // WebGL ShaderMaterial uniform (shared across hulls)
+const pxScaleWG = (tslUniform as any)(0.002);    // WebGPU TSL uniform (shared); driven by updateOutlinePxScale
 const COLOR_ARMED  = 0xffd6a0;
 const COLOR_SEALED = 0x808088;
 
@@ -92,8 +124,9 @@ const SEALED_BASE_OPACITY = 0.45;
 
 interface OutlineRef {
   clone: THREE.Mesh;
-  /** Per-target material so opacity + color can differ by tier/distance. */
-  mat: THREE.ShaderMaterial;
+  /** Per-target material so opacity + color can differ by tier/distance. ShaderMaterial (WebGL) or a
+   *  MeshBasicNodeMaterial with a `.uniforms` facade (WebGPU) — both expose uColor/uOpacity `.value`. */
+  mat: any;
 }
 
 // One entry per interactable currently showing an outline.
@@ -170,9 +203,9 @@ function buildOutlinesFor(target: Interactable): OutlineRef[] {
     shell.computeVertexNormals();
 
     const mat = makeOutlineMaterial();
-    // Authored outlineScale maps to a rim-width multiplier.
-    mat.uniforms.uPxScale = { value: 0 };   // replaced by the shared ref below
-    (mat.uniforms as Record<string, { value: unknown }>).uPxScale = pxScaleShared;
+    // WebGL shares one px-scale uniform across hulls; the WebGPU node material reads the shared
+    // pxScaleWG uniform directly inside its positionNode, so no per-material wiring is needed.
+    if (!isWebGPU()) (mat as any).uniforms.uPxScale = pxScaleShared;
     void scaleFactor;
     const clone = new THREE.Mesh(shell, mat);
     clone.renderOrder = 999;
@@ -202,14 +235,8 @@ export function updateOutline(
   dt: number,
   playerPos: THREE.Vector3,
 ) {
-  // WEBGPU SPIKE: the outline is a GLSL ShaderMaterial (custom vertex push) the
-  // node renderer can't build — it threw every frame near any interactable, the
-  // main source of the WebGPU-path lag. Disabled until ported to TSL; the glow
-  // is non-essential for the port. See WEBGPU-MIGRATION.md.
-  if (isWebGPU()) {
-    if (outlines.size) clearAllOutlines();
-    return;
-  }
+  // (WebGPU now ported: makeOutlineMaterialWebGPU builds the inverted-hull rim as a TSL node material,
+  // so the outline runs on both backends. The old GLSL-ShaderMaterial-threw-every-frame spike is gone.)
   if (disabled) {
     if (outlines.size) clearAllOutlines();
     return;
