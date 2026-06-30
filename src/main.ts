@@ -1493,6 +1493,16 @@ const interpTargets: THREE.Object3D[] = [];
 function fillInterpTargets(): void {
   interpTargets.length = 0;
   interpTargets.push(camera);
+  // First-person weapon: its swing + held pose live on the root group, authored
+  // ABSOLUTELY each fixed sim step ('weapon' is kind:'sim'), so on a non-60Hz
+  // display the swing samples in 1/60 jumps and judders against the camera. The
+  // group is camera-local, so interp lerps its local pose — bringing the sword
+  // in line with the lamp/offhand viewmodels (those tick at present-rate and are
+  // already smooth). The arm IK under it is solved from this pose and rides
+  // along rigidly; its sub-pose is ≤1 step stale during a fast swing, masked by
+  // the swing speed. weapon.update sets the group absolutely, so the lerped draw
+  // pose can never feed back into the sim — no drift even before interpRestore.
+  interpTargets.push(weapon.group);
   const enemies = currentLevel?.enemies;
   if (enemies) {
     for (const e of enemies) {

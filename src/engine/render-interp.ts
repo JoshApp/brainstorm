@@ -35,6 +35,15 @@ import * as THREE from 'three';
 const SNAP_DIST = 1.5;
 const SNAP_DIST2 = SNAP_DIST * SNAP_DIST;
 
+// Orientation teleport: a per-step rotation jump past this (radians) is a
+// SCRIPTED snap (an event look-at, a respawn facing change, a weapon-swap held
+// pose) rather than real turning — slerping across it would streak the view
+// through a wrong heading for a frame. 2.0 rad ≈ 115°/step ≈ 6900°/s, far past
+// the fastest human flick (a 180° flick over 3 frames is ~60°/step), so real
+// look + swing input still interpolates smoothly. Mirrors SNAP_DIST's intent on
+// the rotational axis (the position check alone misses a pure-rotation snap).
+const SNAP_ANGLE = 2.0;
+
 interface Entry {
   prevPos: THREE.Vector3;
   currPos: THREE.Vector3;
@@ -98,7 +107,10 @@ export function interpApply(alpha: number, targets: readonly THREE.Object3D[]): 
   for (const obj of targets) {
     const e = entries.get(obj);
     if (!e) continue;
-    if (e.prevPos.distanceToSquared(e.currPos) > SNAP_DIST2) {
+    const teleported =
+      e.prevPos.distanceToSquared(e.currPos) > SNAP_DIST2 ||
+      e.prevQuat.angleTo(e.currQuat) > SNAP_ANGLE;
+    if (teleported) {
       obj.position.copy(e.currPos);
       obj.quaternion.copy(e.currQuat);
     } else {

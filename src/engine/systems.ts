@@ -84,8 +84,7 @@ import { tickXpSigil } from '../ui/xp-sigil';
 import { updateDamageNumbers } from '../ui/damage-numbers';
 import { tickLowHpPulse } from '../ui/vignette';
 import { getPlayerHp, getPlayerMaxHp } from '../player/health';
-import { tickShake, kickShake, shakeDebug } from '../combat/screen-shake';
-import { isWorldPaused } from '../world-paused';
+import { tickShake, kickShake } from '../combat/screen-shake';
 
 // The per-frame system list, extracted from main.ts. The frame is an ordered
 // list of systems (engine/loop.ts); each declares a phase ('unpaused' skips
@@ -128,23 +127,10 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
   const _trailTipScratch = new THREE.Vector3();
   const _trailCamScratch = new THREE.Vector3();
   const _lampFwd = new THREE.Vector3();
-  let _shakeTicks = 0;   // DEV: shake-apply tick counter
-  let _renderCamTx = 0;  // DEV: camera world-Y captured AT the render call (vs frame-end, to see if the shake survives to render)
-  // DEV trace: __kick(mag,dur) fires a manual shake; __shakePeek() reports the live offset + whether the
-  // camera matrix actually moved (matrixWorld translation vs the un-shaken base). Lets us tell "shake not
-  // applied" from "applied but render ignores it".
+  // DEV: __kick(mag,dur) fires a manual screen shake from the console for feel-tuning.
   if (import.meta.env.DEV && typeof window !== 'undefined') {
     const w = window as unknown as Record<string, unknown>;
     w.__kick = (mag = 0.5, dur = 1.0): void => kickShake(mag as number, dur as number);
-    w.__shakePeek = (): unknown => ({
-      offsetLen: +shakeOffset.length().toFixed(4),
-      shakeTicks: _shakeTicks,           // increments every shake-apply tick — if frozen, the system isn't running
-      renderCamY: +_renderCamTx.toFixed(4),   // camera world-Y AT the render call — if this jitters off 1.6, the shake DOES reach the render
-      state: shakeDebug(),               // amplitude/durationLeft/joltLeft — if durationLeft 0 after a kick, state's not shared
-      paused: isWorldPaused(),
-      camPos: camera.position.toArray().map((n) => +n.toFixed(3)),
-      matrixTx: [camera.matrixWorld.elements[12], camera.matrixWorld.elements[13], camera.matrixWorld.elements[14]].map((n) => +n.toFixed(3)),
-    });
   }
 
   return [
@@ -563,7 +549,6 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // async render read it). updateMatrixWorld(true) so the node pass samples the shaken matrix, not the
     // pre-shake one (WebGL's renderer.render does this implicitly; the node pass doesn't).
     { name: 'shake-apply', phase: 'always', tick(ctx) {
-      _shakeTicks++;
       tickShake(ctx.realDt, shakeOffset);
       camera.position.add(shakeOffset);
       camera.updateMatrixWorld(true);
@@ -601,7 +586,6 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       tickSurfaceSeep(performance.now() / 1000);
       flushSplats(renderer);   // WebGL: drain queued gore stamps into the splat map
       tickGoreWebGPU();        // WebGPU: dry/evict + repack the per-fragment gore buffer
-      if (import.meta.env.DEV) _renderCamTx = camera.matrixWorld.elements[13];   // camera world Y AT render time
       renderWithStyle(renderer, scene, camera);
       // LUX readback must happen while this frame's buffer is still
       // valid (preserveDrawingBuffer is off in prod) — cheap no-op
