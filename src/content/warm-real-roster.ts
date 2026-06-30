@@ -6,7 +6,9 @@ import { buildModel } from '../ecs/build-model';
 import { buildCreature } from './build-creature';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
 import { warmRenderWebGPU } from '../style/render-webgpu';
-import { registeredFloorMaterials } from '../style/material-registry';
+import { registeredFloorMaterials, stdMat } from '../style/material-registry';
+import { pooledPlane, pooledRing } from '../scene/geometry-pool';
+import { getTexture } from '../style/procedural-textures';
 import { getWarmupHooks } from './warmup-registry';
 import { isWebGPU } from '../scene/renderer-mode';
 import { DEV } from '../debug/dev';
@@ -105,6 +107,27 @@ export async function warmRealRoster(
       subjects.push(new THREE.Mesh(decorBox, mat));
     } catch { /* skip */ }
   }
+
+  // CHEST / LOOT SPAWN PATH — a spawned pickup is more than its model: a rarity-tinted GLOW DISC (a flat
+  // plane) + a pickup RING, on sprite/ring geometry the item's box model never covers. Chests are CLOSED
+  // at warm time, so this path never renders → the disc + ring compiled on first chest-open (the
+  // transparent shared:std + the MeshBasic in the report). Warm a rep of each on its real geometry; the
+  // rarity colour is a uniform, so one rep covers every rarity. Materials mirror createPickup so the
+  // warmed pipeline is the live one. (Pooled geometries are shared — don't add to `geometries` to dispose.)
+  try {
+    const discMat = stdMat({
+      map: getTexture('fire-wisp'), color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.2,
+      transparent: true, alphaTest: 0.05, side: THREE.DoubleSide, fog: false, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+    });
+    (discMat as THREE.Material).needsUpdate = true;
+    subjects.push(new THREE.Mesh(pooledPlane(0.9, 0.9), discMat));
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, fog: false,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    subjects.push(new THREE.Mesh(pooledRing(0.50, 0.62, 28), ringMat));
+  } catch { /* skip */ }
 
   // RENDER-warm — the keystone. compileAsync and a real render emit DIFFERENT shaders for LIT materials:
   // warming in the live scene with all its lights STILL recompiled on first spawn, which proves the gap
