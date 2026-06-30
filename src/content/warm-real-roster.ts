@@ -6,6 +6,7 @@ import { buildModel } from '../ecs/build-model';
 import { buildCreature } from './build-creature';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
 import { warmRenderWebGPU } from '../style/render-webgpu';
+import { registeredFloorMaterials } from '../style/material-registry';
 import { getWarmupHooks } from './warmup-registry';
 import { isWebGPU } from '../scene/renderer-mode';
 import { DEV } from '../debug/dev';
@@ -86,6 +87,17 @@ export async function warmRealRoster(
     try { collect(buildModel(item.dropModel).group); } catch { /* skip */ }
   }
 
+  // FLOOR DECOR + static interactables — the shared stdMat/basicMat palette. The floor decor you walk
+  // into mid-floor otherwise compiles its LIT shader on first reveal (the shared:std tail) because the
+  // descent warms it with compileAsync, not a render. Render a box per shared material here so the decor
+  // pipeline warms through the real path too. Shared instances, so one rep covers every decor that uses
+  // it. The box (pos/normal/uv) matches the non-instanced decor layout. Box geometry is shared across
+  // reps + disposed once at the end (not via `collect`, which would double-dispose it).
+  const decorBox = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+  for (const mat of registeredFloorMaterials()) {
+    try { subjects.push(new THREE.Mesh(decorBox, mat)); } catch { /* skip */ }
+  }
+
   // RENDER-warm — the keystone. compileAsync and a real render emit DIFFERENT shaders for LIT materials:
   // warming in the live scene with all its lights STILL recompiled on first spawn, which proves the gap
   // is the PATH, not the conditions. So we warm by RENDERING through the actual PSX render path
@@ -131,6 +143,7 @@ export async function warmRealRoster(
 
   // Free the geometry (big buffers); keep the materials so the compiled pipelines stay cached.
   for (const g of geometries) g.dispose();
+  decorBox.dispose();
 
   if (DEV) {
     // eslint-disable-next-line no-console
