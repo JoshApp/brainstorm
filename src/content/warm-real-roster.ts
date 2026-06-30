@@ -6,6 +6,7 @@ import { buildModel } from '../ecs/build-model';
 import { buildCreature } from './build-creature';
 import { buildSkinnedCreature } from '../mobs/creature-skinned';
 import { warmSceneCompile } from '../style/render-webgpu';
+import { getWarmupHooks } from './warmup-registry';
 import { isWebGPU } from '../scene/renderer-mode';
 import { DEV } from '../debug/dev';
 
@@ -106,11 +107,28 @@ export async function warmRealRoster(
     onProgress?.(Math.min(1, (i + BATCH) / subjects.length));
   }
 
+  // EFFECTS + DECOR — the self-registered warmup hooks (VFX, decor palettes, sprite variants). They
+  // were warming on a no-fog scratch scene (runWarmupPassWebGPU), so the same useFog mismatch hit them:
+  // the game's fogged render recompiled them on first use (the shared:std / MeshBasicNode tail). Re-warm
+  // each hook here into a FOG scene, one hook per scene so a single bad spawn can't abort the rest.
+  let hookOk = 0, hookFail = 0;
+  for (const hook of getWarmupHooks()) {
+    const hs = new THREE.Scene();
+    hs.fog = liveScene.fog;
+    try {
+      hook.spawn(hs);
+      await warmSceneCompile(renderer, hs, camera);
+      hookOk++;
+    } catch { hookFail++; }
+    try { hook.clear(); } catch { /* the effect's pool clear */ }
+    hs.clear();
+  }
+
   // Free the geometry (big buffers); keep the materials so the compiled pipelines stay cached.
   for (const g of geometries) g.dispose();
 
   if (DEV) {
     // eslint-disable-next-line no-console
-    console.log(`[warmRealRoster] ${subjects.length} subjects (${chunks} chunks) compiled in ${okBatches}/${okBatches + failBatches} batches, ${Math.round(performance.now() - t0)}ms (one-time; cached after)`);
+    console.log(`[warmRealRoster] ${subjects.length} subjects (${chunks} chunks) in ${okBatches}/${okBatches + failBatches} batches + ${hookOk}/${hookOk + hookFail} hooks, ${Math.round(performance.now() - t0)}ms (one-time; cached after)`);
   }
 }
