@@ -54,7 +54,13 @@ export async function warmRealRoster(
   let built = 0, failed = 0;
 
   // ENEMIES — real rigid-skinned creatures: the body pipeline + every per-material group, the exact
-  // SkinnedMesh layout (Float32 skinIndex + per-vertex aReveal) the live spawn uses.
+  // SkinnedMesh layout (Float32 skinIndex + per-vertex aReveal) the live spawn uses. PLUS the combat-
+  // only geometry the body never reveals: dismember CHUNKS. A chunk is a non-skinned mesh the runtime
+  // builds when a limb is severed (creature-skinned severBoneChunk) — a DIFFERENT vertex layout than
+  // the body, so it's its own pipeline and was compiling on the first dismember mid-fight. We crumble
+  // a second instance of every creature here so those chunk pipelines (opaque AND the transparent
+  // spectral/ooze variants — we crumble every enemy) warm too. Same real code as the live sever.
+  const DEFAULT_CUTS = ['head', 'shoulderL', 'shoulderR', 'armL', 'armR', 'hipL', 'hipR', 'legL', 'legR', 'tail'];
   for (const spec of Object.values(ENEMIES)) {
     try {
       const creature = buildCreature(spec.creature);
@@ -62,6 +68,14 @@ export async function warmRealRoster(
       add(creature.group);
       built++;
     } catch { failed++; }
+    try {
+      // Second instance, crumbled — warms the dismember-chunk pipelines (the crumble is destructive,
+      // so it can't share the instance we just added as the live body).
+      const c2 = buildCreature(spec.creature);
+      const sk2 = buildSkinnedCreature(c2);
+      const cuts = (spec as { severable?: readonly string[] }).severable ?? DEFAULT_CUTS;
+      for (const chunk of sk2.crumbleToChunks(cuts)) add(chunk);
+    } catch { /* a creature with no severable layout still warmed its body above */ }
   }
   // PROPS + ITEM DROPS — real models through buildModel (the placement / drop path).
   for (const spec of WARM_MODELS) {
