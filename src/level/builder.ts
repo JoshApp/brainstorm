@@ -1894,8 +1894,12 @@ export function buildLevel(
     setSurfaceSeep(dom, (SEEP_STRENGTH[dom] ?? 0) * 0.5);   // seep is the garnish now
     // WETNESS is the star: glossy seams that catch real specular from
     // every light — view-dependent, alive, coloured by the lights
-    // themselves. Mood floors run wet; warm floors stay dry.
-    setSurfaceWetness(SEEP_STRENGTH[dom] !== undefined ? 0.85 : 0);
+    // themselves. Mood floors run wet; warm floors stay dry. Scaled by the
+    // mood's seep intensity (blood wettest, violet faintest) rather than a flat
+    // 0.85 — that binary snap over-glossed every mood floor into a "wet gold"
+    // sheen on deeper levels (warm lamp specular blowing out too-high gloss).
+    const WETNESS_SCALE = 1.0;   // ×SEEP_STRENGTH → blood 0.50, green 0.40, violet 0.35
+    setSurfaceWetness((SEEP_STRENGTH[dom] ?? 0) * WETNESS_SCALE);
   }
   // ── CHANDELIERS — light from above for tall rooms ────────────────
   // One hung central source paints a wider pool than any wall torch
