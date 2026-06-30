@@ -29,17 +29,40 @@ const postWarmupLabels: string[] = [];
 // from the warmed one in <field>". With a fixed replayed floor, drive the list to zero, no guessing.
 interface PipeDesc { label: string; attrs: string; blend: string; depth: string; prim: string; targets: string; mod: string; }
 const warmedByLabel = new Map<string, PipeDesc[]>();   // material label -> descriptors compiled during the warm
-const liveCompiles: PipeDesc[] = [];                    // descriptors compiled in-play (post-warm)
+const liveCompiles: Array<{ desc: PipeDesc; code: { v?: string; f?: string } }> = [];   // in-play compiles + their shader code
 
 // Shader-module code hash, captured by patching createShaderModule — so the descriptor fingerprint
 // includes the SHADER identity (fog / flatShading / light-count variants live in the WGSL, not the GPU
 // render state). A live compile whose render state matches a warmed one but whose shader-hash differs is
 // a SHADER variant we warmed wrong, not a render-state miss — the verdict can then say which.
 const moduleHash = new WeakMap<object, string>();
+const moduleCode = new WeakMap<object, string>();          // module -> its WGSL (for diffing shader variants)
+const warmCodeByLabel = new Map<string, { v?: string; f?: string }>();   // first warmed shader code per material
 function hashStr(s: string): string {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);
+}
+function codeOf(d: unknown): { v?: string; f?: string } {
+  const x = d as { vertex?: { module?: object }; fragment?: { module?: object } };
+  return {
+    v: x.vertex?.module ? moduleCode.get(x.vertex.module) : undefined,
+    f: x.fragment?.module ? moduleCode.get(x.fragment.module) : undefined,
+  };
+}
+/** Lines present in the LIVE shader but not the warmed one — names the variant (fog uniform, an extra
+ *  light iteration, a flatShading branch). Trimmed to the few meaningful lines. */
+function shaderDiff(live: { v?: string; f?: string }, warm: { v?: string; f?: string } | undefined): string {
+  if (!warm) return '(no warmed shader to compare)';
+  const added = (a?: string, b?: string): string[] => {
+    if (!a || !b || a === b) return [];
+    const seen = new Set(b.split('\n').map((l) => l.trim()));
+    return a.split('\n').map((l) => l.trim()).filter((l) => l.length > 3 && !seen.has(l));
+  };
+  const f = added(live.f, warm.f), v = added(live.v, warm.v);
+  const salient = [...f, ...v].filter((l) => /fog|light|Light|flat|Flat|shadow|Shadow|directional|point/i.test(l));
+  const show = (salient.length ? salient : [...f, ...v]).slice(0, 5);
+  return show.length ? show.join('  ⏎  ') : '(shaders differ but no line-level diff — likely struct/binding order)';
 }
 
 function parseLabel(raw: string | undefined): string {
@@ -159,7 +182,7 @@ export function installWebGPUCompileGuard(device: unknown): void {
       const mod = boundSM(...a);
       try {
         const code = (a[0] as { code?: string } | undefined)?.code;
-        if (code && mod && typeof mod === 'object') moduleHash.set(mod, hashStr(code));
+        if (code && mod && typeof mod === 'object') { moduleHash.set(mod, hashStr(code)); moduleCode.set(mod, code); }
       } catch { /* never break module creation */ }
       return mod;
     };
@@ -179,10 +202,11 @@ export function installWebGPUCompileGuard(device: unknown): void {
           const arr = warmedByLabel.get(desc.label) ?? [];
           if (arr.length < 64 && !arr.some((w) => sigOf(w) === sigOf(desc))) arr.push(desc);
           warmedByLabel.set(desc.label, arr);
+          if (!warmCodeByLabel.has(desc.label)) warmCodeByLabel.set(desc.label, codeOf(args[0]));
         } else if (warmupDone) {
           // Live play after warmup = a felt hitch (a warm gap).
           postWarmup++;
-          liveCompiles.push(desc);
+          liveCompiles.push({ desc, code: codeOf(args[0]) });
           if (postWarmupLabels.length < 1000) postWarmupLabels.push(`${desc.label}||${desc.attrs.split(' ').filter(Boolean).length}`);
           // eslint-disable-next-line no-console
           console.warn(`[warmup-guard:webgpu] IN-PLAY compile #${postWarmup} — '${desc.label}' [${desc.blend} ${desc.depth}]. Run __compileReport() for the per-descriptor verdict.`);
@@ -210,14 +234,14 @@ export function webgpuCompileReport(): {
   total: number; postWarmup: number;
   problems: Array<{ material: string; count: number; layout: string; state: string; verdict: string }>;
 } {
-  const groups = new Map<string, { desc: PipeDesc; count: number }>();
-  for (const d of liveCompiles) {
-    const key = `${d.label}|${sigOf(d)}`;
-    const g = groups.get(key) ?? { desc: d, count: 0 };
+  const groups = new Map<string, { desc: PipeDesc; code: { v?: string; f?: string }; count: number }>();
+  for (const { desc, code } of liveCompiles) {
+    const key = `${desc.label}|${sigOf(desc)}`;
+    const g = groups.get(key) ?? { desc, code, count: 0 };
     g.count++;
     groups.set(key, g);
   }
-  const problems = [...groups.values()].map(({ desc, count }) => {
+  const problems = [...groups.values()].map(({ desc, code, count }) => {
     const warm = warmedByLabel.get(desc.label);
     let verdict: string;
     if (!warm || warm.length === 0) {
@@ -229,7 +253,10 @@ export function webgpuCompileReport(): {
       const score = (w: PipeDesc): number =>
         (w.attrs === desc.attrs ? 1 : 0) + (w.blend === desc.blend ? 1 : 0) + (w.depth === desc.depth ? 1 : 0) + (w.prim === desc.prim ? 1 : 0);
       const nearest = warm.reduce((best, w) => (score(w) > score(best) ? w : best), warm[0]);
-      verdict = `MISMATCH — ${diffDesc(desc, nearest)}`;
+      const renderStateSame = nearest.attrs === desc.attrs && nearest.blend === desc.blend && nearest.depth === desc.depth && nearest.prim === desc.prim;
+      verdict = renderStateSame
+        ? `SHADER-VARIANT — render state matches, WGSL differs by: ${shaderDiff(code, warmCodeByLabel.get(desc.label))}`
+        : `MISMATCH — ${diffDesc(desc, nearest)}`;
     }
     return { material: desc.label, count, layout: desc.attrs || '(none)', state: `${desc.blend} ${desc.depth} ${desc.prim}`, verdict };
   });
