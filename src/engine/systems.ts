@@ -84,7 +84,7 @@ import { tickXpSigil } from '../ui/xp-sigil';
 import { updateDamageNumbers } from '../ui/damage-numbers';
 import { tickLowHpPulse } from '../ui/vignette';
 import { getPlayerHp, getPlayerMaxHp } from '../player/health';
-import { tickShake, kickShake } from '../combat/screen-shake';
+import { tickShake, kickShake, shakeDebug } from '../combat/screen-shake';
 import { isWorldPaused } from '../world-paused';
 
 // The per-frame system list, extracted from main.ts. The frame is an ordered
@@ -130,6 +130,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
   const _lampFwd = new THREE.Vector3();
   const _shakeBase = new THREE.Vector3();   // clean (un-shaken) camera position, captured each un-paused frame
   let _shakeBaseSet = false;
+  let _shakeTicks = 0;   // DEV: shake-apply tick counter
   // DEV trace: __kick(mag,dur) fires a manual shake; __shakePeek() reports the live offset + whether the
   // camera matrix actually moved (matrixWorld translation vs the un-shaken base). Lets us tell "shake not
   // applied" from "applied but render ignores it".
@@ -138,6 +139,9 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     w.__kick = (mag = 0.5, dur = 1.0): void => kickShake(mag as number, dur as number);
     w.__shakePeek = (): unknown => ({
       offsetLen: +shakeOffset.length().toFixed(4),
+      shakeTicks: _shakeTicks,           // increments every shake-apply tick — if frozen, the system isn't running
+      state: shakeDebug(),               // amplitude/durationLeft/joltLeft — if durationLeft 0 after a kick, state's not shared
+      paused: isWorldPaused(),
       camPos: camera.position.toArray().map((n) => +n.toFixed(3)),
       base: _shakeBase.toArray().map((n) => +n.toFixed(3)),
       matrixTx: [camera.matrixWorld.elements[12], camera.matrixWorld.elements[13], camera.matrixWorld.elements[14]].map((n) => +n.toFixed(3)),
@@ -562,6 +566,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // (!paused, tickPlayerAction ran) we capture that clean base; when it wasn't (paused/hit-pause) we
     // restore the base before re-applying — so it resets cleanly every frame either way.
     { name: 'shake-apply', phase: 'always', tick(ctx) {
+      _shakeTicks++;
       if (!isWorldPaused()) { _shakeBase.copy(camera.position); _shakeBaseSet = true; }
       else if (_shakeBaseSet) camera.position.copy(_shakeBase);
       tickShake(ctx.realDt, shakeOffset);

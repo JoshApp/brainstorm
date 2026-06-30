@@ -98,3 +98,8 @@ export function tickShake(dt: number, outOffset: THREE.Vector3): boolean {
 
   return active;
 }
+
+/** DEV trace: the live shake state, so we can tell "kick didn't set it" from "set but not ticked". */
+export function shakeDebug(): { amplitude: number; durationLeft: number; joltLeft: number } {
+  return { amplitude: +amplitude.toFixed(3), durationLeft: +durationLeft.toFixed(3), joltLeft: +joltLeft.toFixed(3) };
+}
