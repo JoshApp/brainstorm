@@ -34,6 +34,7 @@ let done = false;
 
 export async function warmRealRoster(
   renderer: THREE.WebGLRenderer,
+  liveScene: THREE.Scene,
   camera: THREE.Camera,
   onProgress?: (frac: number) => void,
 ): Promise<void> {
@@ -93,6 +94,11 @@ export async function warmRealRoster(
   let okBatches = 0, failBatches = 0;
   for (let i = 0; i < subjects.length; i += BATCH) {
     const batchScene = new THREE.Scene();
+    // CRITICAL: copy the live scene's fog onto the batch scene. `useFog` is a pipeline VARIANT — a
+    // bare (no-fog) warm scene compiles the no-fog pipeline, but the game renders WITH fog, so every
+    // creature/chunk would recompile its fog variant on first spawn (the tail that survived a complete
+    // warm). Same fog object = same useFog variant = the warmed pipeline matches live.
+    batchScene.fog = liveScene.fog;
     for (const s of subjects.slice(i, i + BATCH)) batchScene.add(s);
     try { await warmSceneCompile(renderer, batchScene, camera); okBatches++; }
     catch { failBatches++; }

@@ -576,7 +576,7 @@ initLevelLoader({
           // Warm through the REAL build path — one real instance of every enemy/prop/item, compiled at
           // the PSX format, so the warmed pipeline can't drift from the live spawn (kills the dummy-vs-
           // real tail). Once, behind the first descent's cover. See warm-real-roster.ts.
-          try { await warmRealRoster(renderer, camera, setDescentProgress); } catch { /* best-effort */ }
+          try { await warmRealRoster(renderer, scene, camera, setDescentProgress); } catch { /* best-effort */ }
           startWarmupStream(scene, () => { markWarmupComplete(); markWebGPUWarmupComplete(); });
         }
         await warmSceneCompile(renderer, scene, camera);
