@@ -71,9 +71,17 @@ function shaderDiff(live: { v?: string; f?: string }, warm: { v?: string; f?: st
   if (f.same && v.same) {
     return 'PURE-RENUMBERING — structurally identical WGSL, only generated var-names differ (non-deterministic codegen; warming a separate instance can never byte-match → must share the instance or dedup the WGSL)';
   }
+  // Lighting-marker census: how much lighting code each shader has. If the warm has ~0 and live has
+  // some, the warm compiled UNLIT (no lights at warm-render time) — a state mismatch, not a count one.
+  const census = (code?: string): string => {
+    const c = code ?? '';
+    const n = (re: RegExp): number => (c.match(re) || []).length;
+    return `pt:${n(/directPointLight|PointLightShadow|PointLight/g)} indirect:${n(/indirectDiffuse|RE_IndirectDiffuse/g)} shadow:${n(/[Ss]hadow/g)} ambient:${n(/[Aa]mbient/g)} loop:${n(/Loop|\bfor\b/g)}`;
+  };
   const parts: string[] = [];
   if (!f.same && f.lines.length) parts.push('frag+ ' + f.lines.join(' ⏎ '));
   if (!v.same && v.lines.length) parts.push('vert+ ' + v.lines.join(' ⏎ '));
+  parts.push(`[lighting warm{${census(warm.f)}} vs live{${census(live.f)}}]`);
   return parts.join('  ||  ') || 'real structural diff (no salient lines isolated)';
 }
 
