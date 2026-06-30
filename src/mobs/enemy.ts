@@ -2086,9 +2086,11 @@ export function createEnemy(
       }
     }
 
-    // Face target is conditional — idle/returning faces the scan target,
-    // not the player; a staggered enemy is reeling and doesn't track you.
-    if (state !== 'idle' && state !== 'returning' && state !== 'staggered') {
+    // Face target is conditional — idle/returning faces the scan target, not the
+    // player; a staggered enemy is reeling and doesn't track you; and CHASING
+    // faces its direction of TRAVEL (handled in its own case below) so a prowling
+    // mob circles instead of crab-walking sideways while staring at you.
+    if (state !== 'idle' && state !== 'returning' && state !== 'staggered' && state !== 'chasing') {
       faceTarget(playerPos, dt);
     }
 
@@ -2202,18 +2204,23 @@ export function createEnemy(
             // Pause: keep watching the current direction for a beat.
             scanTargetYaw = container.rotation.y;
           } else {
-            // Gentle random-walk: step a little from where we're looking,
-            // clamped to ±arc around home so it never slams side-to-side.
-            const stepped = scanTargetYaw + (gameRng() * 2 - 1) * IDLE_SCAN_STEP;
+            // Gentle random-walk with a HOME-PULL: step a little from where we're
+            // looking, but bias 35% back toward home each step so the gaze settles
+            // looking forward instead of pinging between the arc edges (the old
+            // left-right metronome). Clamped to ±arc as a hard backstop.
+            const stepped = scanTargetYaw
+              + (gameRng() * 2 - 1) * IDLE_SCAN_STEP
+              - (scanTargetYaw - homeYaw) * 0.35;
             scanTargetYaw = Math.max(homeYaw - IDLE_SCAN_HALF_ARC,
                                      Math.min(homeYaw + IDLE_SCAN_HALF_ARC, stepped));
           }
         }
-        // Lerp container yaw toward scan target. Wrap delta to nearest π.
+        // Ease container yaw toward the scan target — slow, so a gaze shift drifts
+        // with weight instead of snapping. Wrap delta to nearest π.
         let delta = scanTargetYaw - container.rotation.y;
         while (delta >  Math.PI) delta -= Math.PI * 2;
         while (delta < -Math.PI) delta += Math.PI * 2;
-        container.rotation.y += delta * Math.min(1, dt * 0.9);
+        container.rotation.y += delta * Math.min(1, dt * 0.6);
         applyIdleEyes();
         applyTilt(0);
         built.group.position.y = 0;
@@ -2340,12 +2347,13 @@ export function createEnemy(
               container.position.z + (dz / len) * 2.0,
               moveSpeed, dt, walkable, nav,
             );
-            faceXZ(playerPos.x, playerPos.z);
+            faceXZ(playerPos.x, playerPos.z);   // ranged: keep the player in its sights as it backs off
           } else if (pref > 0 && distance <= commitDistance) {
             // KITER waiting out its cooldown while comfortably in range —
             // HOLD position (just keep facing the player). Without this it
             // would creep toward you between shots, which looked wrong for
             // a ranged enemy.
+            faceTarget(playerPos, dt);
           } else if (distance > 0.1) {
             // Melee/charger, or a kiter that's genuinely out of range — move to
             // the PACK target: a slot on the ring at strike distance along this
@@ -2356,6 +2364,22 @@ export function createEnemy(
             const tx = ringTarget ? ringTarget.x : playerPos.x;
             const tz = ringTarget ? ringTarget.z : playerPos.z;
             moveTowards(tx, tz, moveSpeed, dt, walkable, nav);
+            // FACE THE TRAVEL, not the player. From afar the ring slot is dead
+            // ahead, so it faces you as it charges in; up close where the ring
+            // turns tangential it faces along its path → it CIRCLES (shows its
+            // flank) instead of crab-walking sideways while staring at you. Once
+            // it has all but arrived (no meaningful travel left), face the player
+            // — poised on the ring, ready to commit. The windup's aim-ramp snaps
+            // the final aim onto you when it actually strikes.
+            const tdx = tx - container.position.x, tdz = tz - container.position.z;
+            if (tdx * tdx + tdz * tdz > 0.09) {   // >0.3m to travel → look where you're going
+              tmpTarget.set(tx, 0, tz);
+              faceTarget(tmpTarget, dt);
+            } else {
+              faceTarget(playerPos, dt);
+            }
+          } else {
+            faceTarget(playerPos, dt);   // basically on top of the player — face them
           }
         }
         setEyeFlare(0);

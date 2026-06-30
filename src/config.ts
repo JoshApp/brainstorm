@@ -558,11 +558,16 @@ export const CONFIG = {
                                       //   punish the locked recovery. This is the commit/positioning
                                       //   read; tune the start rate down for heavier, slower aimers.
     SEARCH_DURATION: 3.0,             // s — search at last-known position before giving up
-    IDLE_SCAN_INTERVAL_MIN: 3.0,      // s — base gap between idle gaze changes
-    IDLE_SCAN_INTERVAL_JITTER: 2.5,   // s — + up to this (desyncs a swarm)
-    IDLE_SCAN_HALF_ARC: 0.5,          // rad — ±29° max from home yaw
-    IDLE_SCAN_STEP: 0.35,             // rad — ±20° gentle step per gaze change
-    IDLE_SCAN_HOLD_CHANCE: 0.4,       // fraction of changes that just pause
+    // Idle gaze: a mob at post should mostly STAND and watch, with the odd small
+    // reorientation — NOT pivot its whole body left-right on a timer (that reads
+    // as a robot metronome). So: long gaps, mostly holds, small turns, a tight
+    // arc, and a home-pull in the random-walk (enemy.ts) so it settles looking
+    // forward instead of pinging between the arc edges.
+    IDLE_SCAN_INTERVAL_MIN: 4.5,      // s — base gap between idle gaze changes (was 3.0 — too restless)
+    IDLE_SCAN_INTERVAL_JITTER: 4.0,   // s — + up to this (desyncs a swarm; 4.5–8.5s gaps)
+    IDLE_SCAN_HALF_ARC: 0.34,         // rad — ±19° max from home yaw (was ±29°)
+    IDLE_SCAN_STEP: 0.20,             // rad — ±11° gentle step per gaze change (was ±20°)
+    IDLE_SCAN_HOLD_CHANCE: 0.62,      // fraction of changes that just pause (was 0.4 — now mostly holds)
     NAV_STUCK_TIME: 0.2,              // s pinned against geometry before a chasing mob sidesteps to flow around it
     // Peripheral awareness — within this range the mob notices a player in ANY
     // direction (LOS required), not just its sight cone. Fixes "only aggros when
