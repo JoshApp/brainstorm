@@ -85,6 +85,7 @@ import { updateDamageNumbers } from '../ui/damage-numbers';
 import { tickLowHpPulse } from '../ui/vignette';
 import { getPlayerHp, getPlayerMaxHp } from '../player/health';
 import { tickShake } from '../combat/screen-shake';
+import { isWorldPaused } from '../world-paused';
 
 // The per-frame system list, extracted from main.ts. The frame is an ordered
 // list of systems (engine/loop.ts); each declares a phase ('unpaused' skips
@@ -127,6 +128,8 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
   const _trailTipScratch = new THREE.Vector3();
   const _trailCamScratch = new THREE.Vector3();
   const _lampFwd = new THREE.Vector3();
+  const _shakeBase = new THREE.Vector3();   // clean (un-shaken) camera position, captured each un-paused frame
+  let _shakeBaseSet = false;
 
   return [
     // Publish this frame's attack COMMITMENT (move/turn agency + dash-lock) from
@@ -538,9 +541,16 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
     // kick + shake compose cleanly.
     { name: 'slowmo-fx', phase: 'always', tick(ctx) { tickSlowmoPresentation(camera, ctx.realDt); } },
 
-    // Screen shake offset is applied to the camera before light-pool + render,
-    // then removed after, so it never accumulates. Three ordered systems.
+    // Screen shake. The offset PERSISTS through the render and is undone at the START of the NEXT frame —
+    // NOT subtracted right after render. Why: on WebGPU the render is async (renderAsync defers the actual
+    // draw to a microtask via its internal await), so a same-frame 'shake-restore' ran BEFORE the deferred
+    // render read the camera → the render saw the un-shaken camera and the shake never showed. Persisting
+    // it fixes WebGPU and is identical on WebGL. No accumulation: when the camera was re-set this frame
+    // (!paused, tickPlayerAction ran) we capture that clean base; when it wasn't (paused/hit-pause) we
+    // restore the base before re-applying — so it resets cleanly every frame either way.
     { name: 'shake-apply', phase: 'always', tick(ctx) {
+      if (!isWorldPaused()) { _shakeBase.copy(camera.position); _shakeBaseSet = true; }
+      else if (_shakeBaseSet) camera.position.copy(_shakeBase);
       tickShake(ctx.realDt, shakeOffset);
       camera.position.add(shakeOffset);
     } },
@@ -583,7 +593,7 @@ export function buildSystems(deps: SystemDeps): GameSystem[] {
       // unless a measurement was requested.
       if (luxPending()) flushLux(renderer);
     } },
-
-    { name: 'shake-restore', phase: 'always', tick() { camera.position.sub(shakeOffset); } },
+    // (No 'shake-restore' — the shake is undone at the start of the next frame's shake-apply instead, so
+    //  it survives WebGPU's async render. See shake-apply above.)
   ];
 }
