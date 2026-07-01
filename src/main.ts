@@ -111,6 +111,8 @@ import { showNameEntry } from './ui/name-entry-screen';
 import { addItemSilently } from './player/inventory';
 import { get as getEntity } from './ecs/world';
 import { getScenarioFromUrl, applyScenario, buildVaultPreviewLevel } from './debug/scenarios';
+import { tickMobAiReadout, mobAiReadoutEnabled } from './debug/mob-ai-readout';
+import type { Enemy } from './mobs/enemy';
 import { showProvingGroundsScreen } from './ui/proving-grounds-screen';
 import { buildFightLevel, buildEventLevel } from './level/proving-grounds';
 import { isAnyScreenOpen, msSinceLastScreenClose, onScreenStateChanged, isWorldPausedByScreen } from './ui/screen-manager';
@@ -1702,6 +1704,20 @@ function tickInner() {
   // tris/draws numbers reflect what was actually drawn.
   reportRendererInfo(renderer);
   tickPerfOverlay(performance.now());
+  // DEV mob-AI readout (?aidebug=1) — feed the NEAREST live mob to the jitter
+  // diagnostic. Whole block DCEs in prod (import.meta.env.DEV → false).
+  if (import.meta.env.DEV && mobAiReadoutEnabled()) {
+    const es = currentLevel?.enemies;
+    let near: Enemy | null = null;
+    let nearD = Infinity;
+    if (es) for (const e of es) {
+      if (!e.alive) continue;
+      const dx = e.position.x - camera.position.x, dz = e.position.z - camera.position.z;
+      const dd = dx * dx + dz * dz;
+      if (dd < nearD) { nearD = dd; near = e; }
+    }
+    tickMobAiReadout(near, Math.sqrt(nearD), performance.now());
+  }
   // Adaptive resolution — self-gates (no-op unless enabled on a real phone). The
   // rAF interval can't see GPU load (skip-pacing pins it to vsync), so feed the
   // real GPU-timestamp ms.

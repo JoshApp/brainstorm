@@ -114,6 +114,24 @@ export function disposeEnemy(e: Enemy): void {
 //   - `model.group` (inside container) handles internal tilt animations
 // This way the body lean during windup doesn't fight the lookAt.
 
+/** DEV telemetry for the mob-AI readout (see src/debug/mob-ai-readout.ts). */
+export interface AiDebug {
+  kind: string;
+  state: EnemyState;
+  intent: string;
+  moveMode: string;
+  release: boolean;
+  yaw: number;          // body yaw, radians (the readout differentiates it → jitter)
+  poise: number;        // 0..1 (poiseLeft / poiseMax)
+  aggression: number;   // 0..1 mood
+  boldness: number;
+  patience: number;
+  feint: boolean;       // a feint is actively driving movement
+  decisionIn: number;   // s until the next intent re-decision
+  cower: number;        // s of cower left (fleeing)
+  broke: boolean;       // morale has broken this life
+}
+
 export type EnemyState =
   | 'idle'        // at post, scanning, has not seen player
   | 'dormant'     // boss-style spawn: no AI, no perception, waits for an
@@ -240,6 +258,9 @@ export interface Enemy extends Damageable {
   ): void;
   setDebugState(state: EnemyState, phaseTimer: number): void;
   setDebugPosition(x: number, z: number): void;
+  /** DEV: a live snapshot of this mob's AI for the debug readout (diagnosing
+   *  facing jitter etc.). Read-only, cheap. */
+  aiDebug(): AiDebug;
   /** Observation tooling: jump a multi-phase boss to phase `index`
    *  (0-based), applying each transition's settled pose INSTANTLY (no
    *  collapse animation) — for clean per-phase snaps. No-op for
@@ -2979,6 +3000,15 @@ export function createEnemy(
     get executable() {
       if (!aliveLocal || phaseInvulnTimer > 0) return false;
       return state === 'staggered';
+    },
+    aiDebug(): AiDebug {
+      return {
+        kind: spec.id, state, intent: currentIntent.intent, moveMode: currentIntent.moveMode,
+        release: currentIntent.releaseAttack, yaw: container.rotation.y,
+        poise: poiseMax > 0 ? Math.max(0, poiseLeft / poiseMax) : 1, aggression,
+        boldness: personality.boldness, patience: personality.patience,
+        feint: feintT >= 0, decisionIn: decisionTimer, cower: cowerTimer, broke: brokenOnce,
+      };
     },
     takeDamage,
     applyStaggerDamage,
