@@ -203,6 +203,9 @@ export interface Enemy extends Damageable {
   hitRadius: number;
   /** Height the swing cone aims at + where the damage number floats from. */
   aimHeight: number;
+  /** DEV nav overlay: the mob's live cached path waypoints (empty when steering
+   *  direct / phasing). Read-only view for debug rendering. */
+  readonly debugPath?: readonly Waypoint[];
   /** Locational hurtbox zones (body / head / weak / armor). The combat debug
    *  overlay draws these; the swing resolver tests against the ENABLED ones.
    *  See src/combat/hurtbox.ts + docs/COMBAT-HIT-SYSTEM.md. */
@@ -2790,6 +2793,7 @@ export function createEnemy(
     hitRadius: spec.hitRadius ?? 0,
     noPlayerCollision: !!spec.noPlayerCollision,
     phasing: !!spec.phasing,
+    get debugPath() { return path; },   // DEV nav overlay — the live cached route
     get dormant() {
       return dormantLocal;
     },

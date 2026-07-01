@@ -186,6 +186,14 @@ export class NavGrid {
     return this.walkable[r * this.cols + c] !== BLOCKED;
   }
 
+  /** Cell tier for the debug overlay: 0 BLOCKED, 1 FULL, 2 TIGHT, 3 GATE.
+   *  Out-of-bounds = BLOCKED. Fresh (rebuilds if the region moved). */
+  tierAt(c: number, r: number): number {
+    this.ensureFresh();
+    if (c < 0 || c >= this.cols || r < 0 || r >= this.rows) return BLOCKED;
+    return this.walkable[r * this.cols + c];
+  }
+
   /** Tier-aware passability: tight cells count as walls when the mob's
    *  radius exceeds the FULL clearance (a wide body can't thread a
    *  choke; pretending otherwise wedges it in the jamb). Gate cells

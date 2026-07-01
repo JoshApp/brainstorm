@@ -37,6 +37,11 @@ export interface Nav {
   _debugPath?: readonly Vec2[];
 }
 
+// The most recent path the bot queried — published for the DEV nav overlay so it
+// can draw the bot's route alongside the enemies'. Not gameplay state.
+let latestBotPath: readonly Vec2[] = [];
+export function getLatestBotPath(): readonly Vec2[] { return latestBotPath; }
+
 /** Wrap the level's NavGrid as a bot-steering helper. */
 export function makeNav(grid: NavGrid): Nav {
   let lastPath: Vec2[] = [];
@@ -46,6 +51,7 @@ export function makeNav(grid: NavGrid): Nav {
       // gate bands it can. Waypoints come back funnelled through archway centres.
       const path = grid.findPath(from.x, from.z, to.x, to.z, { radius: PLAYER_RADIUS });
       lastPath = path;
+      latestBotPath = path;
       if (!path.length) return null;
       // Steer at the first waypoint we haven't yet reached (~one cell ahead) so the
       // heading tracks the route's local turns rather than a distant point.

@@ -86,6 +86,7 @@ import { showTestChambersScreen } from './ui/test-chambers-screen';
 import { initLevelLoader, loadInitialLevel, loadLevel, tickPendingLoad, getCurrentDepth } from './level/loader';
 import { generateFloor } from './level/procgen';
 import { generateSafeRoom } from './level/safe-room';
+import { initNavOverlay, setNavOverlay, tickNavOverlay } from './debug/nav-overlay';
 import { suppressNextSafeRoomTransition } from './ui/safe-room-transition';
 import { suppressNextDescentTitle, setDescentProgress } from './ui/descent-fade';
 import { startNewRun, adoptSave, loadSave, clearSave, getRunState } from './state/run-state';
@@ -1142,6 +1143,14 @@ if (import.meta.env.DEV) {
     return next ?? null;
   };
   (window as unknown as Record<string, unknown>).__scene = scene;   // DEV: raw scene access for live debugging
+  // DEV: nav-grid debug overlay — window.__navDebug() / ?navdebug=1 / press N.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  initNavOverlay(scene, () => currentLevel as any);
+  (window as unknown as Record<string, unknown>).__navDebug = (on?: boolean) => setNavOverlay(on);
+  if (new URLSearchParams(location.search).get('navdebug') === '1') setNavOverlay(true);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'n' || e.key === 'N') setNavOverlay();
+  });
   // DEV: live sim fast-forward for bot/headless testing — window.__turbo(3) etc.
   (window as unknown as Record<string, unknown>).__turbo = (n: number) => {
     simTurbo = Math.max(1, Math.min(8, Math.floor(n) || 1));
@@ -1551,6 +1560,7 @@ function advanceSimStep(dt: number): void {
  *  real frame dt + the live time-scales — so visuals stay smooth and VFX
  *  slow-mo (which rides scaledDt) reads exactly as it does today. */
 function presentPass(realDt: number): void {
+  if (import.meta.env.DEV) tickNavOverlay();   // DEV nav-grid overlay (strips in prod)
   tickArrival(camera, realDt);
   if (!isWorldPaused()) tickChasmPresence(camera, realDt);
   const baseScale = getTimeScale() * getBossSlowmoTimeScale();
