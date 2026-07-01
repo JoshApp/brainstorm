@@ -588,6 +588,24 @@ export const CONFIG = {
       ORBIT_FLIP_MIN: 1.8,            // s — a prowling mob holds an orbit direction at least this long
       ORBIT_FLIP_MAX: 4.5,            // s — …and at most this, then REVERSES. So a pack doesn't circle one way forever — it weaves, less predictable.
     },
+    // INTENT — Enemy AI V2 (docs/ENEMY-AI-V2.md). A chasing mob picks an intent
+    // (close/circle/watch/press) on a slow decision tick and HOLDS its attacks
+    // until an aggressive intent releases one — so a fight breathes (size-up →
+    // burst) instead of shuffling and swinging on cooldown. Stage 1: tempo +
+    // individuality. Bosses opt out (they keep constant pressure).
+    INTENT: {
+      DECISION_MIN: 0.45,     // s — min gap between intent re-decisions (commitment, not jitter)
+      DECISION_JITTER: 0.5,   // s — + up to this, per mob, so a pack desyncs
+      JITTER: 0.15,           // utility-score noise so a pack doesn't move as one organism
+      // Aggression MOOD (0..1) drift. Warms toward a personality target while
+      // engaged, drops on hits taken + on committing (spending a swing → the lull).
+      MOOD_WARM_RATE: 0.20,   // /s — ease toward the warm target while chasing
+      MOOD_TARGET_BASE: 0.45, // warm target = this + boldness * MOOD_TARGET_BOLD
+      MOOD_TARGET_BOLD: 0.45,
+      MOOD_HURT_DROP: 0.35,   // aggression lost when it takes a hit (recoils, re-sizes-up)
+      MOOD_STAGGER_DROP: 0.6, // …and more when poise-broken
+      MOOD_COMMIT_DROP: 0.24, // aggression spent committing an attack — forces a lull before the next burst
+    },
   },
 
   // === EFFECTS — DRIFTING MOTES (ambient dust atmosphere) ===

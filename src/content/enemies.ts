@@ -217,6 +217,16 @@ export interface EnemySpec {
   preferredRange?: number;
 
   /**
+   * Personality defaults for the Intent layer (Enemy AI V2 — docs/ENEMY-AI-V2.md).
+   * Each 0..1; omitted fields default to 0.5, and spawn adds ±jitter so a pack
+   * has a coward and a berserker. `boldness` = rushes in + swings vs hangs back;
+   * `patience` = waits for openings vs constant pressure; `packLoyalty` reserved
+   * for Stage 3 flank coordination. A tank might be {boldness:0.3, patience:0.8};
+   * a swarm rat {boldness:0.8, patience:0.2}. Ignored for bosses (they opt out).
+   */
+  disposition?: { boldness?: number; patience?: number; packLoyalty?: number };
+
+  /**
    * Cooldown (s) on the DEFAULT ability synthesized from the legacy
    * fields. 0 = attack as fast as windup/strike/recover allow (holders
    * like the acid-spitter). Kiters need a non-zero value so there's a

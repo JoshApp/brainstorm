@@ -64,6 +64,7 @@ import { spawnGoldCoins } from '../effects/gold-coins';
 import { raiseAlert, sampleAlert } from './alerts';
 import { getCameraYaw } from '../controls/camera';
 import { joinPack, leavePack, packMoveTarget, packScratch, requestToken } from './pack';
+import { selectIntent, rollPersonality, type IntentChoice } from './intent';
 import type { Damageable } from '../combat/damageable';
 import { setZoneEnabled, type Hurtbox } from '../combat/hurtbox';
 import { createStunStars, type StunStars } from './stun-stars';
@@ -677,6 +678,19 @@ export function createEnemy(
   let timeSinceLOS = 0;             // seconds since enemy last had LOS to player
   const homePos = position.clone();  // post the enemy returns to when calm
 
+  // ── Intent layer (Enemy AI V2 — docs/ENEMY-AI-V2.md) ────────────────
+  // A chasing mob picks an INTENT (close/circle/watch/press) on a slow decision
+  // tick and HOLDS its attacks until an aggressive intent releases one — so the
+  // fight breathes (size-up → burst) instead of shuffling and swinging on
+  // cooldown. `aggression` is a drifting mood; `personality` is spawn-rolled so a
+  // pack has a coward and a berserker. BOSSES OPT OUT (useIntent=false) — they
+  // keep constant pressure, so their carefully tuned fights are untouched.
+  const personality = rollPersonality(gameRng, spec.disposition);
+  let aggression = CONFIG.ENEMY_AI.INTENT.MOOD_TARGET_BASE + personality.boldness * 0.2;
+  let decisionTimer = gameRng() * CONFIG.ENEMY_AI.INTENT.DECISION_MIN;   // desync the first decision
+  let currentIntent: IntentChoice = { intent: 'close', moveMode: 'close', speedMul: 1, releaseAttack: false };
+  const useIntent = !spec.isBoss;
+
   // Join the pack coordinator so a crowd of chasers rings the player instead of
   // piling on one point (src/mobs/pack.ts). `active` = actually in the fight
   // this frame; reach = strike range (the ring radius). Left on teardown via
@@ -984,6 +998,9 @@ export function createEnemy(
     // IS the wake-up).
     aggroed = true;
     timeSinceLOS = 0;
+    // Taking a hit cools the mood — the mob recoils and re-sizes-you-up before
+    // its next burst (the intent layer reads `aggression`). Survivors only.
+    if (entity.hp.current > 0) aggression = Math.max(0, aggression - CONFIG.ENEMY_AI.INTENT.MOOD_HURT_DROP);
     if (state === 'idle' || state === 'alerted' || state === 'searching' || state === 'returning') {
       state = 'chasing';
       phaseTimer = 0;
@@ -2319,8 +2336,33 @@ export function createEnemy(
         // token falls through to movement below: it holds the ring and prowls,
         // waiting its turn (the pack takes turns lunging instead of all swinging
         // at once). Bosses + lone mobs are unaffected (a token is always free).
+        // ── Intent decision (Enemy AI V2) ─────────────────────────────
+        // Warm the mood toward the personality's target while engaged, then
+        // re-pick the intent on the slow decision tick (commitment, not jitter).
+        // Bosses skip this and keep the old always-commit pressure.
+        if (useIntent) {
+          const I = CONFIG.ENEMY_AI.INTENT;
+          const warmTarget = I.MOOD_TARGET_BASE + personality.boldness * I.MOOD_TARGET_BOLD;
+          aggression += (warmTarget - aggression) * Math.min(1, I.MOOD_WARM_RATE * dt);
+          decisionTimer -= dt;
+          if (decisionTimer <= 0) {
+            decisionTimer = I.DECISION_MIN + gameRng() * I.DECISION_JITTER;
+            const ent = getEntity(entityId);
+            const hpFrac = ent?.hp && currentMaxHp > 0 ? ent.hp.current / currentMaxHp : 1;
+            currentIntent = selectIntent({
+              distance, reach: spec.strikeRange, commitDistance,
+              aggression, personality,
+              canAttack: selectAbility(distance) !== null,
+              hpFrac, rng: gameRng,
+            });
+          }
+        }
+
         const ability = selectAbility(distance);
-        if (ability && actionFsm.canAct() && requestToken(entityId)) {
+        // Attacks are HELD unless an aggressive intent (press) releases one —
+        // that's what makes the fight breathe. Bosses always release.
+        const mayRelease = !useIntent || currentIntent.releaseAttack;
+        if (ability && actionFsm.canAct() && mayRelease && requestToken(entityId)) {
           currentAbility = ability;
           meleeHitLanded = false;   // fresh strike — parryable until it connects
           state = 'winding';
@@ -2331,6 +2373,8 @@ export function createEnemy(
           // raise the spatial telegraph the instant the windup begins, so
           // the player has the full windup to step off the marker.
           setupAbilityTelegraph(ability, playerPos);
+          // Committing spends aggression → a lull before the next burst.
+          if (useIntent) aggression = Math.max(0, aggression - CONFIG.ENEMY_AI.INTENT.MOOD_COMMIT_DROP);
         } else {
           // No ability available (out of band, or on cooldown).
           const pref = spec.preferredRange ?? 0;
@@ -2354,16 +2398,22 @@ export function createEnemy(
             // would creep toward you between shots, which looked wrong for
             // a ranged enemy.
             faceTarget(playerPos, dt);
+          } else if (useIntent && currentIntent.moveMode === 'hold') {
+            // WATCH — the lull. Hold ground and stare the player down. Menacing
+            // stillness is the setup for the burst; it also grants breathing room
+            // so the pack doesn't read as a constant shove.
+            faceTarget(playerPos, dt);
           } else if (distance > 0.1) {
-            // Melee/charger, or a kiter that's genuinely out of range — move to
-            // the PACK target: a slot on the ring at strike distance along this
-            // mob's bearing (+ separation), so a crowd surrounds the player
-            // instead of stacking on one point. Falls back to the player's
-            // position if unregistered.
+            // CLOSE / CIRCLE / press — move to the PACK target: a slot on the ring
+            // at strike distance along this mob's bearing (+ separation), so a
+            // crowd surrounds the player instead of stacking on one point. Speed
+            // scales with the intent (press rushes, circle prowls). Falls back to
+            // the player's position if unregistered.
+            const spd = useIntent ? currentIntent.speedMul : 1;
             const ringTarget = packMoveTarget(entityId, playerPos, packScratch());
             const tx = ringTarget ? ringTarget.x : playerPos.x;
             const tz = ringTarget ? ringTarget.z : playerPos.z;
-            moveTowards(tx, tz, moveSpeed, dt, walkable, nav);
+            moveTowards(tx, tz, moveSpeed * spd, dt, walkable, nav);
             // FACE THE TRAVEL, not the player. From afar the ring slot is dead
             // ahead, so it faces you as it charges in; up close where the ring
             // turns tangential it faces along its path → it CIRCLES (shows its
