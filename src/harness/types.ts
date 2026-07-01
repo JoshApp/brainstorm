@@ -19,7 +19,7 @@ export type EntityState =
 export interface ObservedEnemy {
   id: string;
   kind: string;
-  pos: { x: number; z: number };
+  pos: { x: number; z: number; y: number };
   /** Metres from player camera (XZ plane). */
   distance: number;
   /** Bearing relative to player facing, radians. 0 = ahead, +π/2 = right. */
@@ -37,7 +37,7 @@ export interface ObservedEnemy {
 export interface ObservedInteractable {
   id: string;
   kind: string;
-  pos: { x: number; z: number };
+  pos: { x: number; z: number; y: number };
   distance: number;
   bearing: number;
   compass: Direction8;
@@ -49,7 +49,7 @@ export interface ObservedInteractable {
 export interface ObservedPickup {
   id: string;
   kind: string;
-  pos: { x: number; z: number };
+  pos: { x: number; z: number; y: number };
   distance: number;
   bearing: number;
   compass: Direction8;
@@ -101,8 +101,8 @@ export interface Observation {
 // ── Action ────────────────────────────────────────────────────────────
 
 export type Action =
-  | { kind: 'move'; dir: Direction8; seconds?: number; look?: { x: number; z: number } }
-  | { kind: 'steer'; to: { x: number; z: number }; seconds?: number; look?: { x: number; z: number } }
+  | { kind: 'move'; dir: Direction8; seconds?: number; look?: { x: number; z: number; y?: number } }
+  | { kind: 'steer'; to: { x: number; z: number }; seconds?: number; look?: { x: number; z: number; y?: number } }
   | { kind: 'turn'; angle: number }                       // relative radians
   | { kind: 'face'; target: Direction8 | { id: string } }
   | { kind: 'attack' }

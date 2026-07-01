@@ -96,11 +96,27 @@ async function dispatch(
 
 // ── Movement ─────────────────────────────────────────────────────────
 
+const PITCH_LIMIT = Math.PI / 2 - 0.05;
+
+/** Ease the camera pitch a capped step toward looking AT a focus point of known
+ *  height (down at a low chest / up at a tall foe), or back toward level if none.
+ *  Called each frame inside a move/steer input override. */
+function easePitch(ctx: HarnessContext, look?: { x: number; z: number; y?: number }): void {
+  const p = getCameraPitch();
+  let target = 0;   // level
+  if (look && look.y !== undefined) {
+    const cam = ctx.camera.position;
+    const horiz = Math.hypot(look.x - cam.x, look.z - cam.z) || 1e-3;
+    target = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, Math.atan2(look.y - cam.y, horiz)));
+  }
+  setCameraPitch(p + Math.max(-0.06, Math.min(0.06, target - p)));
+}
+
 async function moveAction(
   ctx: HarnessContext,
   dir: Direction8,
   seconds?: number,
-  look?: { x: number; z: number },
+  look?: { x: number; z: number; y?: number },
 ): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
   const target = DIRS[dir];
   if (!target) return { ok: false, reason: 'unknown-direction' };
@@ -123,8 +139,7 @@ async function moveAction(
     while (d < -Math.PI) d += 2 * Math.PI;
     const yaw = ctx.camera.rotation.y + Math.max(-0.08, Math.min(0.08, d));
     setCameraYaw(yaw);
-    const p = getCameraPitch();
-    setCameraPitch(p + Math.max(-0.05, Math.min(0.05, -p)));   // ease toward level
+    easePitch(ctx, look);                                 // look up/down at the focus, or level
     const cy = Math.cos(yaw);
     const sy = Math.sin(yaw);
     state.moveX =  target.wx * cy - target.wz * sy;
@@ -149,7 +164,7 @@ async function steerAction(
   ctx: HarnessContext,
   to: { x: number; z: number },
   seconds?: number,
-  look?: { x: number; z: number },
+  look?: { x: number; z: number; y?: number },
 ): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
   setInputOverride((state: InputState) => {
     const cam = ctx.camera.position;
@@ -163,8 +178,7 @@ async function steerAction(
     while (d < -Math.PI) d += 2 * Math.PI;
     const yaw = ctx.camera.rotation.y + Math.max(-0.08, Math.min(0.08, d));
     setCameraYaw(yaw);
-    const p = getCameraPitch();
-    setCameraPitch(p + Math.max(-0.05, Math.min(0.05, -p)));
+    easePitch(ctx, look);                               // pitch at the focus (down at a chest), or level
     const cy = Math.cos(yaw), sy = Math.sin(yaw);
     state.moveX = mx * cy - mz * sy;
     state.moveY = mx * sy + mz * cy;

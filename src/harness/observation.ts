@@ -65,7 +65,7 @@ export function buildObservation(
     enemies.push({
       id: e.entityId,
       kind: e.kind,
-      pos: { x: round(ex), z: round(ez) },
+      pos: { x: round(ex), z: round(ez), y: round(ey + (e.aimHeight ?? 0.5)) },
       distance: round(distance),
       bearing: round(bearing, 3),
       compass,
@@ -92,7 +92,7 @@ export function buildObservation(
     interactables.push({
       id: it.id,
       kind: kindFromId(it.id),
-      pos: { x: round(ix), z: round(iz) },
+      pos: { x: round(ix), z: round(iz), y: round(it.position.y) },
       distance: round(distance),
       bearing: round(bearing, 3),
       compass,

@@ -47,8 +47,13 @@ interface BotMemory {
   /** Committed explore heading — hysteresis so a straight hallway (both ends ~open)
    *  doesn't flip-flop the "most open" pick every step (the look-left-right stall). */
   exploreDir: Direction8 | null;
+  /** Floor id we last acted on — a change means we descended (player repositioned). */
+  lastFloorId: string | null;
+  /** Steps to WAIT after a floor change so the new level fully settles before we
+   *  move — acting too early spawned the bot outside the world. */
+  settleSteps: number;
 }
-const memory: BotMemory = { usedInteractableIds: new Set(), blacklist: new Set(), lastPos: null, stuckSteps: 0, breakout: 0, screenSteps: 0, exploreDir: null };
+const memory: BotMemory = { usedInteractableIds: new Set(), blacklist: new Set(), lastPos: null, stuckSteps: 0, breakout: 0, screenSteps: 0, exploreDir: null, lastFloorId: null, settleSteps: 0 };
 
 /** Reset bot memory. Call between episodes. */
 export function resetMemory(): void {
@@ -59,6 +64,8 @@ export function resetMemory(): void {
   memory.breakout = 0;
   memory.screenSteps = 0;
   memory.exploreDir = null;
+  memory.lastFloorId = null;
+  memory.settleSteps = 0;
 }
 
 /** Pick the single best action given the current observation. Reads
@@ -74,6 +81,22 @@ export function step(obs: Observation, nav?: Nav): Action {
     return { kind: 'wait', seconds: 0.1 };
   }
   memory.screenSteps = 0;
+
+  // MID-DESCENT / NEW-FLOOR SETTLE. During the descent fade the world is paused
+  // ('transition'); acting then (or the instant it clears, before the new floor's
+  // spawn + walkable are placed) flung the bot out of bounds. So: wait out the
+  // transition, and when the floor id changes (we descended → player repositioned)
+  // reset transient nav state and wait a few steps for the level to settle.
+  if (obs.pausedReason === 'transition') return { kind: 'wait', seconds: 0.1 };
+  if (obs.floorId !== memory.lastFloorId) {
+    memory.lastFloorId = obs.floorId;
+    memory.lastPos = null;
+    memory.stuckSteps = 0;
+    memory.breakout = 0;
+    memory.exploreDir = null;
+    memory.settleSteps = 4;
+  }
+  if (memory.settleSteps > 0) { memory.settleSteps--; return { kind: 'wait', seconds: 0.1 }; }
 
   // ANTI-STALL. The bot issues an action every step, but some situations produce
   // actions that don't advance us: an enemy behind a boss gate (unreachable → nav
