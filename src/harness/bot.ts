@@ -163,11 +163,15 @@ export function step(obs: Observation, nav?: Nav): Action {
     // Focused on the foe: STEER along the smoothed route, gaze locked on it.
     const wp = nav?.waypoint(obs.player.pos, nearHostile.pos);
     if (wp) return { kind: 'steer', to: wp, seconds: 0.3, look: nearHostile.pos };
-    // Greedy fallback (no nav / no route): face if off-axis, else step forward.
-    if (nearHostile.inSight && Math.abs(nearHostile.bearing) > Math.PI / 6) {
-      return { kind: 'face', target: { id: nearHostile.id } };
+    // NO ROUTE while a nav grid exists = the foe is genuinely unreachable (across a
+    // pit, on a ledge too narrow for the grid). DON'T fixate + drive toward it — the
+    // old greedy face/compass-move walked into the pit edge and just looked
+    // left-right, stuck. Fall through to explore, which moves us off the ledge.
+    // Greedy only when there's no grid at all (shouldn't happen in-game).
+    if (!nav && nearHostile.inSight) {
+      if (Math.abs(nearHostile.bearing) > Math.PI / 6) return { kind: 'face', target: { id: nearHostile.id } };
+      return { kind: 'move', dir: nearHostile.compass, seconds: 0.3, look: nearHostile.pos };
     }
-    if (nearHostile.inSight) return { kind: 'move', dir: nearHostile.compass, seconds: 0.3, look: nearHostile.pos };
   }
 
   // 4. LOOT FIRST — chest / pickup / corpse / fountain in range → face + interact.
@@ -197,7 +201,10 @@ export function step(obs: Observation, nav?: Nav): Action {
     // Focused on the loot: steer to it, gaze on it.
     const wp = nav?.waypoint(obs.player.pos, sightedUseful.pos);
     if (wp) return { kind: 'steer', to: wp, seconds: 0.4, look: sightedUseful.pos };
-    return { kind: 'move', dir: sightedUseful.compass, seconds: 0.4, look: sightedUseful.pos };
+    // No route (loot across a pit / on a too-narrow ledge) → skip it, don't drive
+    // toward it. Greedy compass-move only when there's no grid at all.
+    if (!nav) return { kind: 'move', dir: sightedUseful.compass, seconds: 0.4, look: sightedUseful.pos };
+    memory.blacklist.add(sightedUseful.id);   // stop re-pursuing an unreachable item
   }
 
   // 5.5 BOSS GATE — the fog wall (kind 'boss', from the 'boss-mist' id) SEALS the
