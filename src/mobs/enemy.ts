@@ -41,7 +41,6 @@ import {
 import type { EntityId } from '../ecs/types';
 import { createEyePresenter, createCoreReactor } from './enemy-presentation';
 import { buildSkinnedCreature } from './creature-skinned';
-import { isPooledGeometry } from '../scene/geometry-pool';
 import { createBodyAnimator } from './enemy-animation';
 import { createEnemyAction } from './enemy-action';
 import { tryJustDodge } from '../combat/just-dodge';
