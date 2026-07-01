@@ -297,9 +297,50 @@ export function createMaterialFromDef(def: MaterialDef, defaultFlatShading = fal
   return createMaterial(def, defaultFlatShading);
 }
 
+// ── POOLED MODEL MATERIALS ───────────────────────────────────────────────────
+// createMaterial used to mint a fresh MeshStandardNodeMaterial per build. On
+// WebGPU each instance gets its OWN auto-named NodeBuffer uniform block baked into
+// the generated WGSL, so structurally-identical materials compiled a NEW render
+// pipeline every build — the per-floor vertex-program churn (repeat enemy/item
+// species each floor). customProgramCacheKey (set below) is a no-op on the node
+// renderer, so it couldn't dedupe. The fix: POOL by canonical full-def key so
+// same-shape content shares ONE instance → one NodeBuffer → one pipeline, reused
+// across floors.
+//
+// Safe to share because per-object state does NOT live on the material: dissolve/
+// flash ride objectScalar (per-object userData), reveal emissive+rim ride per-
+// vertex attributes (setRevealAttributes, baked into each mesh's geometry), and
+// these materials are never mutated or disposed per-instance. The key includes
+// COLOUR (base albedo is still material.color — only emissive+rim moved to attrs),
+// so pooled sharers are visually identical in every param.
+//
+// This is the seed of a unified material factory: registeredModelMaterials() is
+// the closed, warmable set (parallels material-registry.ts registeredFloorMaterials).
+const modelMatCache = new Map<string, THREE.Material>();
+const registeredModelMats: THREE.Material[] = [];
+
+/** Canonical (recursively key-sorted) signature of the FULL def + resolved
+ *  flatShading — order-independent so the warm's `{ ...def, dissolvable: true }`
+ *  spread keys the same as an equivalent live def. */
+function modelMatKey(def: MaterialDef, flatShading: boolean): string {
+  const norm = (v: unknown): unknown =>
+    (v && typeof v === 'object' && !Array.isArray(v))
+      ? Object.keys(v as object).sort().reduce((s: Record<string, unknown>, k) => {
+          s[k] = norm((v as Record<string, unknown>)[k]); return s;
+        }, {})
+      : v;
+  return `fs:${flatShading}|` + JSON.stringify(norm(def as unknown));
+}
+
+/** Every distinct pooled model material — the closed, warmable set. */
+export function registeredModelMaterials(): readonly THREE.Material[] { return registeredModelMats; }
+
 function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Material {
   const flatShading =
     def.flatShading === 'auto' ? defaultFlatShading : (def.flatShading ?? false);
+  const cacheKey = modelMatKey(def, flatShading);
+  const pooled = modelMatCache.get(cacheKey);
+  if (pooled) return pooled;
   const mat = new THREE.MeshStandardMaterial({
     color: def.color,
     // Default the optional fields — passing `undefined` to the material
@@ -332,6 +373,11 @@ function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Ma
   const feat = `${def.rim ? 'r' : ''}${def.dissolvable ? 'd' : ''}${def.chroma != null && def.chroma !== 1 ? 'c' : ''}${def.detail ? 'D' : ''}` || 'plain';
   const state = `${def.transparent ? 't' : ''}${def.flatShading === true ? 'f' : ''}`;
   mat.name = `modeldef:${def.dissolvable ? 'dis' : 'opa'}:${feat}${state ? '+' + state : ''}`;
+  // POOL it — shared across every build of this shape. userData flag lets any
+  // material-disposing teardown skip it (parallels stdMat's sharedPalette).
+  mat.userData.sharedModelMat = true;
+  modelMatCache.set(cacheKey, mat);
+  registeredModelMats.push(mat);
   return mat;
 }
 
