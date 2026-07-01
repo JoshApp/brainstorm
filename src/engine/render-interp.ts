@@ -125,13 +125,15 @@ export function interpApply(alpha: number, targets: readonly THREE.Object3D[]): 
       (rotInterp && e.prevQuat.angleTo(e.currQuat) > SNAP_ANGLE);
     if (teleported) {
       obj.position.copy(e.currPos);
-      obj.quaternion.copy(e.currQuat);
+      if (rotInterp) obj.quaternion.copy(e.currQuat);
     } else {
       obj.position.lerpVectors(e.prevPos, e.currPos, a);
-      // Rotation: slerp for full-interp targets (camera, weapon); SNAP to the
-      // latest sim pose for position-only targets (enemies) — no yaw-swing jitter.
+      // Rotation: slerp for full-interp targets (camera, weapon). Position-only
+      // targets (enemies) leave rotation ENTIRELY to the sim's raw Euler — never
+      // write the quaternion, because Three re-derives the Euler on a quaternion
+      // set and in XYZ order clamps the middle axis (yaw) to ±90°, mangling any
+      // off-axis facing. Not touching it keeps the sim's unbounded yaw intact.
       if (rotInterp) obj.quaternion.copy(e.prevQuat).slerp(e.currQuat, a);
-      else obj.quaternion.copy(e.currQuat);
     }
   }
 }
@@ -163,6 +165,11 @@ export function interpRestore(targets: readonly THREE.Object3D[]): void {
     const e = entries.get(obj);
     if (!e) continue;
     obj.position.copy(e.currPos);
-    obj.quaternion.copy(e.currQuat);
+    // THE fix for enemy facing jitter: do NOT round-trip rotation through the
+    // quaternion for position-only targets. `quaternion.copy` re-derives the
+    // Euler in XYZ order, which clamps yaw to ±90° and flips x/z by π for any
+    // off-axis facing — corrupting the very yaw faceTarget reads next sim step.
+    // Enemies own their Euler yaw directly; interp leaves it alone.
+    if (!posOnly.has(obj)) obj.quaternion.copy(e.currQuat);
   }
 }
