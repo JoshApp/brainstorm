@@ -89,6 +89,8 @@ export function createBodyAnimator(
 
   let headPitch = 0;
   let headYaw = 0;
+  // Locomotion lean (forward pitch + bank roll) on the container, eased.
+  let leanPitch = 0, leanRoll = 0, prevHeading = 0, hasHeading = false;
   let knockVX = 0;
   let knockVZ = 0;
   let prevX = container.position.x;
@@ -204,6 +206,40 @@ export function createBodyAnimator(
         // Subtle vertical bob synced to the stride (up on each footfall).
         built.group.position.y += Math.abs(Math.sin(stridePhase)) * gaitAmp * 0.05;
       }
+    }
+    // LEAN — the body leans FORWARD into its run and BANKS into turns, so
+    // movement carries weight and a circling mob leans like a predator on a
+    // curve (DOOM's adaptive-animation read, approximated). On the CONTAINER
+    // roll/pitch: faceTarget zeros those each frame and nothing else writes them,
+    // so this never fights the inner-body telegraph / stagger / flinch poses.
+    {
+      const movedX = container.position.x - prevX;
+      const movedZ = container.position.z - prevZ;
+      const moved = Math.hypot(movedX, movedZ);
+      const speed = dt > 0 ? moved / dt : 0;
+      const spd01 = Math.min(1, speed / 2.6);   // 0..1 vs a typical run speed
+      let targetPitch = 0, targetRoll = 0;
+      if (moved > 0.0008) {
+        // Forward lean: −rotation.x tips the body's top toward its −Z facing.
+        targetPitch = -CONFIG.ENEMY_AI.LEAN_PITCH_MAX * spd01;
+        if (hasHeading) {
+          const heading = Math.atan2(movedX, movedZ);
+          const turn = Math.atan2(Math.sin(heading - prevHeading), Math.cos(heading - prevHeading));
+          prevHeading = heading;
+          targetRoll = Math.max(-1, Math.min(1, (turn / Math.max(dt, 1e-3)) * 0.22))
+            * CONFIG.ENEMY_AI.LEAN_ROLL_MAX * spd01;
+        } else {
+          prevHeading = Math.atan2(movedX, movedZ);
+          hasHeading = true;
+        }
+      } else {
+        hasHeading = false;
+      }
+      const a = Math.min(1, dt * 8);
+      leanPitch += (targetPitch - leanPitch) * a;
+      leanRoll += (targetRoll - leanRoll) * a;
+      container.rotation.x = leanPitch;
+      container.rotation.z = leanRoll;
     }
     prevX = container.position.x;
     prevZ = container.position.z;

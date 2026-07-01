@@ -571,6 +571,13 @@ export const CONFIG = {
     NAV_STUCK_TIME: 0.2,              // s pinned against geometry before a chasing mob sidesteps to flow around it
     FACE_MOVE_MIN: 0.5,              // m/s — below this SMOOTHED speed a chaser faces the PLAYER (standing / blocked / arrived); above it, it faces its ACTUAL travel so it never crab-walks or moonwalks. Smoothed heading kills the per-frame facing jitter that aiming at a noisy pack target caused.
     HEAD_TRACK_MAX: 1.15,           // rad (~66°) — DOOM-style focus tracking: max yaw the head/neck twists to keep the player in view while the BODY faces its movement. So a strafing/circling mob watches you (attention decoupled from locomotion) instead of looking where its feet go. Beyond this it looks over its shoulder; the body turns the rest as it slows + faces you.
+    // Locomotion LEAN (DOOM adaptive-animation approximation) — the body leans
+    // FORWARD into its run + BANKS into turns, so movement has weight and a
+    // circling mob leans like it means it. Applied to the container roll/pitch
+    // (faceTarget zeros those each frame; nothing else writes them), so it never
+    // fights the inner-body telegraph / stagger / flinch poses.
+    LEAN_PITCH_MAX: 0.16,           // rad — forward lean at a full sprint
+    LEAN_ROLL_MAX: 0.16,            // rad — bank into a hard turn
     // Peripheral awareness — within this range the mob notices a player in ANY
     // direction (LOS required), not just its sight cone. Fixes "only aggros when
     // I'm right on top of it": you can still sneak up from FAR (outside the

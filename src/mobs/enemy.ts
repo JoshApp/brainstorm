@@ -2403,7 +2403,12 @@ export function createEnemy(
         } else {
           // No ability available (out of band, or on cooldown).
           const pref = spec.preferredRange ?? 0;
-          if (pref > 0 && distance < pref) {
+          // Ranged mobs only fight from a CLEAR sightline (DOOM's ranged demons
+          // hold an open angle rather than firing into cover). A blocked kiter
+          // repositions to round the obstacle instead of holding behind a wall.
+          const kiterCanShoot = pref > 0
+            && walkable.hasLineOfSight(container.position.x, container.position.z, playerPos.x, playerPos.z);
+          if (kiterCanShoot && distance < pref) {
             // KITER too close — back away to reopen the gap (the
             // reposition window between shots). Aim ~2m directly away;
             // moveTowards pathfinds + clamps against walls. Cornered, it
@@ -2417,12 +2422,18 @@ export function createEnemy(
               moveSpeed, dt, walkable, nav,
             );
             faceXZ(playerPos.x, playerPos.z);   // ranged: keep the player in its sights as it backs off
-          } else if (pref > 0 && distance <= commitDistance) {
-            // KITER waiting out its cooldown while comfortably in range —
-            // HOLD position (just keep facing the player). Without this it
-            // would creep toward you between shots, which looked wrong for
-            // a ranged enemy.
+          } else if (kiterCanShoot && distance <= commitDistance) {
+            // KITER waiting out its cooldown while comfortably in range +
+            // sighted — HOLD position (just keep facing the player). Without this
+            // it would creep toward you between shots, which looked wrong.
             faceTarget(playerPos, dt);
+          } else if (pref > 0 && !kiterCanShoot) {
+            // RANGED, shot BLOCKED — advance to round the obstacle and regain a
+            // sightline (moveTowards pathfinds around walls); once it can see you
+            // again it drops back to hold + fire. Faces its actual travel.
+            const bx = container.position.x, bz = container.position.z;
+            moveTowards(playerPos.x, playerPos.z, moveSpeed, dt, walkable, nav);
+            faceMovement(container.position.x - bx, container.position.z - bz, playerPos, dt);
           } else if (useIntent && currentIntent.moveMode === 'hold') {
             // WATCH — the lull. Hold ground; not moving, so faceMovement settles
             // on the player: a menacing stare, the setup for the burst.
