@@ -615,6 +615,16 @@ export const CONFIG = {
       MOOD_HURT_DROP: 0.35,   // aggression lost when it takes a hit (recoils, re-sizes-up)
       MOOD_STAGGER_DROP: 0.6, // …and more when poise-broken
       MOOD_COMMIT_DROP: 0.24, // aggression spent committing an attack — forces a lull before the next burst
+      // FEINT (telegraph-the-wait) — a mob HOLDING the ring (watch intent, no
+      // attack-token) periodically fakes a lunge — darts in, snaps back — so it
+      // reads as a coiled predator circling for an opening, not a frozen satellite
+      // waiting its turn. Pure position pulse (no rotation conflict), it squares
+      // up to you through the feint (head already tracks).
+      FEINT_MIN: 1.3,         // s — min gap between feints while holding
+      FEINT_JITTER: 1.8,      // s — + up to this (desyncs a crowd)
+      FEINT_IN: 0.16,         // s — the dart-IN
+      FEINT_OUT: 0.24,        // s — the snap-BACK
+      FEINT_SPEED: 2.4,       // m/s — the feint dart speed (brief + sharp)
     },
   },
 

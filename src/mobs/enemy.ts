@@ -692,6 +692,11 @@ export function createEnemy(
   let decisionTimer = gameRng() * CONFIG.ENEMY_AI.INTENT.DECISION_MIN;   // desync the first decision
   let currentIntent: IntentChoice = { intent: 'close', moveMode: 'close', speedMul: 1, releaseAttack: false };
   const useIntent = !spec.isBoss;
+  // Feint (telegraph-the-wait): while HOLDING the ring, fake a lunge now and then
+  // so a waiting mob reads as coiled, not frozen. `feintCd` counts down between
+  // feints; `feintT` runs a feint (-1 = idle).
+  let feintCd = CONFIG.ENEMY_AI.INTENT.FEINT_MIN + gameRng() * CONFIG.ENEMY_AI.INTENT.FEINT_JITTER;
+  let feintT = -1;
 
   // Join the pack coordinator so a crowd of chasers rings the player instead of
   // piling on one point (src/mobs/pack.ts). `active` = actually in the fight
@@ -1393,6 +1398,35 @@ export function createEnemy(
       container.position.z + pz * (1 - w) + vz * w,
     );
     faceTarget(_faceMove, dt);
+  }
+
+  // Telegraph-the-wait: a holding mob periodically FEINTS — darts in toward the
+  // player, then snaps back — so it reads as a coiled predator circling for an
+  // opening instead of a frozen satellite waiting its turn. Pure position pulse;
+  // it squares up to the player throughout (a menacing fake-out). Returns true
+  // while a feint is actively driving movement (so the caller skips its hold).
+  function tickFeint(dt: number, playerPos: THREE.Vector3, walkable: WalkableRegion, nav?: NavGrid): boolean {
+    const F = CONFIG.ENEMY_AI.INTENT;
+    if (feintT < 0) {
+      feintCd -= dt;
+      if (feintCd > 0) return false;
+      feintT = 0;   // start a feint
+    }
+    feintT += dt;
+    if (feintT <= F.FEINT_IN) {
+      moveTowards(playerPos.x, playerPos.z, F.FEINT_SPEED, dt, walkable, nav);   // dart IN
+    } else if (feintT <= F.FEINT_IN + F.FEINT_OUT) {
+      const dx = container.position.x - playerPos.x, dz = container.position.z - playerPos.z;
+      const l = Math.hypot(dx, dz) || 1;
+      moveTowards(container.position.x + (dx / l) * 1.5, container.position.z + (dz / l) * 1.5,
+                  F.FEINT_SPEED * 0.85, dt, walkable, nav);   // snap BACK
+    } else {
+      feintT = -1;   // done — arm the next one
+      feintCd = F.FEINT_MIN + gameRng() * F.FEINT_JITTER;
+      return false;
+    }
+    faceTarget(playerPos, dt);   // square up to the player through the whole fake-out
+    return true;
   }
 
   /** Is the player looking roughly AT this enemy? A parry only catches a strike
@@ -2482,9 +2516,10 @@ export function createEnemy(
             moveTowards(playerPos.x, playerPos.z, moveSpeed, dt, walkable, nav);
             faceMovement(container.position.x - bx, container.position.z - bz, playerPos, dt);
           } else if (useIntent && currentIntent.moveMode === 'hold') {
-            // WATCH — the lull. Hold ground; not moving, so faceMovement settles
-            // on the player: a menacing stare, the setup for the burst.
-            faceMovement(0, 0, playerPos, dt);
+            // WATCH — the lull, but COILED not frozen: periodically feint a lunge
+            // (dart in, snap back) so it reads as circling for an opening. Between
+            // feints it holds + faces the player (the head already tracks).
+            if (!tickFeint(dt, playerPos, walkable, nav)) faceMovement(0, 0, playerPos, dt);
           } else if (distance > 0.1) {
             // CLOSE / CIRCLE / press — move to the PACK ring slot (surrounds the
             // player; speed scales with the intent — press rushes, circle prowls),
