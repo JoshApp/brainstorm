@@ -738,6 +738,38 @@ export function setInspectBypass(on: boolean): void {
   if (blitMaterial) blitMaterial.uniforms.uInspect.value = on ? 1 : 0;
 }
 
+/** Warm a whole floor's shader programs in the EXACT render context the live
+ *  frame uses. renderer.compile() compiles every material in the scene ignoring
+ *  the camera frustum (so rooms BEHIND the spawn warm too — a real render would
+ *  cull them), but it bakes each program in the renderer's CURRENT state: with
+ *  no target bound that's the CANVAS colour space (srgb) plus whatever fog/shadow
+ *  flags happen to be set. Gameplay instead renders the scene into lowResTarget
+ *  (srgb-LINEAR) with the shadow pass live — and Three keys programs on colour
+ *  space + fog + shadow, so a naively-compiled prop RE-compiled the instant it
+ *  first became visible (the per-floor `physical` churn: srgb→srgb-linear, ±fog
+ *  bits, that the warmup forensics pinned). Binding the low-res target + the
+ *  shadow pass here makes compile() mint the SAME program keys the live frame
+ *  asks for, so first reveal is hitch-free. Falls back to a bare compile before
+ *  the pipeline exists. Best-effort. */
+export function precompileFloorInLiveContext(
+  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
+): void {
+  if (!lowResTarget) { renderer.compile(scene, camera); return; }
+  const prevTarget = renderer.getRenderTarget();
+  const prevShadowEnabled = renderer.shadowMap.enabled;
+  const prevShadowNeedsUpdate = renderer.shadowMap.needsUpdate;
+  renderer.setRenderTarget(lowResTarget);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.needsUpdate = true;
+  try {
+    renderer.compile(scene, camera);
+  } finally {
+    renderer.setRenderTarget(prevTarget);
+    renderer.shadowMap.enabled = prevShadowEnabled;
+    renderer.shadowMap.needsUpdate = prevShadowNeedsUpdate;
+  }
+}
+
 export function renderWithStyle(
   renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,

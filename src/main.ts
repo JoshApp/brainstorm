@@ -52,7 +52,7 @@ import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots, warmViewmodelPrepass } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, precompileFloorInLiveContext, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots, warmViewmodelPrepass } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
@@ -527,7 +527,7 @@ initLevelLoader({
     // decor) into per-room merged meshes — big draw-call cut, runs once here.
     batchStaticFixtures(currentLevel);
     // PRE-WARM the floor's shaders NOW, behind the level-transition fade, while
-    // every room is still visible (the portal culler hasn't run yet, so compile
+    // every room is still visible (the portal culler hasn't run yet, so this
     // sees the whole floor). Without this, the FIRST time you turn to reveal a
     // portal-culled room, Three.js compiles that room's shell/decor programs on
     // the spot — a one-frame hitch that never repeats (resident after). boot
@@ -553,7 +553,16 @@ initLevelLoader({
     if (!WEBGPU) {
       // WebGL: synchronous compile + (first real floor) the roster + viewmodel-prepass
       // warm. All instant (offscreen render) — the reveal needn't wait.
-      try { renderer.compile(scene, camera); } catch { /* pre-warm is best-effort */ }
+      // precompileFloorInLiveContext, NOT a bare renderer.compile(): compile with
+      // no target bound bakes programs in the CANVAS color space (srgb) + stale
+      // fog/shadow, but gameplay renders the scene into lowResTarget (srgb-LINEAR)
+      // with live fog + the shadow pass. Three keys programs on those, so a bare
+      // compile recompiled every prop on first reveal (the per-floor `physical`
+      // churn the warmup forensics pinned). The helper binds the low-res target +
+      // shadow around compile() so it mints the SAME keys the live frame asks for,
+      // while still compiling the whole scene (compile ignores the frustum, so
+      // rooms behind the spawn warm too). See render-target.ts.
+      try { precompileFloorInLiveContext(renderer, scene, camera); } catch { /* pre-warm is best-effort */ }
       if (!rosterPrecompiled && !isTitleVignette) {
         rosterPrecompiled = true;
         try { runWarmupPass(renderer, scene, camera); } catch { /* best-effort */ }
@@ -1193,6 +1202,27 @@ if (import.meta.env.DEV) {
   };
   (window as unknown as Record<string, unknown>).__scene = scene;   // DEV: raw scene access for live debugging
   (window as unknown as Record<string, unknown>).__renderer = renderer;   // DEV: program-cache forensics
+  // DEV: shader-warmup forensics. __progDiff() seeds a baseline of the CURRENT
+  // program cache on first call (call it once warmup is done — after the first
+  // level loads), then on every later call returns the cacheKeys that compiled
+  // SINCE the seed — i.e. exactly the shaders warmup MISSED. Pass true to
+  // reseed. Pair with ?autobot=1: seed, let the bot play a few floors, call
+  // again → the list is the precise warmup gap, decode the flipped define.
+  {
+    let baseline: Set<string> | null = null;
+    const keysNow = () => (renderer.info.programs ?? []).map((p) => (p as { cacheKey?: string }).cacheKey ?? '');
+    (window as unknown as Record<string, unknown>).__progDiff = (reseed = false) => {
+      const now = keysNow();
+      if (!baseline || reseed) {
+        baseline = new Set(now);
+        return { seeded: baseline.size };
+      }
+      const gap = now.filter((k) => !baseline!.has(k));
+      const byType: Record<string, number> = {};
+      for (const k of gap) { const t = k.split(',')[0]; byType[t] = (byType[t] ?? 0) + 1; }
+      return { baseline: baseline.size, now: now.length, compiledSinceSeed: gap.length, byType, keys: gap };
+    };
+  }
   (window as unknown as Record<string, unknown>).__stamp = (r = 1.2, a = 1.0, spray = false) => {
     if (spray) {
       const fx = -Math.sin(camera.rotation.y), fz = -Math.cos(camera.rotation.y);
@@ -1912,6 +1942,41 @@ if (HARNESS_ENABLED) {
     // boot is fast), notify immediately.
     if (currentLevel) mod.notifyLevelReady();
   });
+}
+
+// DEV AUTO-PILOT — `?autobot=1` (implies `?harness=1`) drives the built-in bot
+// in a perpetual loop so the game plays ITSELF hands-off: walk, fight, descend,
+// forever. Purpose-built for shader-warmup forensics — instead of manually
+// steering combat to provoke first-use shader compiles, let this run a few
+// floors while you diff the program cache (window.__progDiff — see below) to
+// see EXACTLY what compiled after warmup. Godmode is forced on so a death can't
+// end the run; it just keeps descending into new content. DEV-only, so the
+// whole block dead-code-strips from the production bundle.
+if (import.meta.env.DEV && HARNESS_ENABLED
+    && new URLSearchParams(window.location.search).get('autobot') === '1') {
+  setGodMode(true);
+  void (async () => {
+    // bootHarness sets window.harness inside its own dynamic-import .then(), so
+    // it may not exist yet when this IIFE first runs — poll until it appears.
+    type H = { ready: Promise<void>; bot: { run(o?: unknown): Promise<{ stopReason: string }> } };
+    let h: H | undefined;
+    for (let i = 0; i < 200 && !h; i++) {
+      h = (window as unknown as { harness?: H }).harness;
+      if (!h) await new Promise((r) => setTimeout(r, 50));
+    }
+    if (!h) { console.warn('[autobot] window.harness never appeared'); return; }
+    await h.ready;
+    console.info('[autobot] harness ready — auto-piloting');
+    // bot.run stops on max-turns / stuck / no-level; just restart it so the
+    // session never idles. A short breath between runs lets any in-flight
+    // level swap settle before the next observation.
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      try { await h.bot.run({ maxTurns: 400 }); }
+      catch { /* transient — e.g. a race during a floor swap; loop and retry */ }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  })();
 }
 
 // Debug capture button — dynamic-import so player builds skip the whole
