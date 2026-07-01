@@ -54,10 +54,22 @@ interface Entry {
 // WeakMap keyed by the live Object3D: when an enemy's group is dropped from the
 // scene and GC'd, its entry goes with it — no manual pruning, no leak.
 const entries = new WeakMap<THREE.Object3D, Entry>();
+// Targets that interp POSITION but SNAP rotation to the latest sim pose. Enemies
+// go here: their container quaternion mixes facing-yaw with the locomotion lean
+// (pitch/roll), and slerping that between snapshots decodes to a NON-MONOTONIC
+// yaw during a hard turn — which, with a frame-beating alpha on a high-refresh
+// display, reads as the body "rotating like crazy" off-axis (measured ~1600°/s).
+// 60Hz rotation needs no smoothing anyway, and snapping it reads as crisper,
+// more FOCUSED facing. Only smooth-position matters for a moving body.
+const posOnly = new WeakSet<THREE.Object3D>();
 let enabled = false;
 
 export function setRenderInterpEnabled(on: boolean): void { enabled = on; }
 export function isRenderInterpEnabled(): boolean { return enabled; }
+/** Mark an object to interp position only (rotation snaps to the sim pose). */
+export function setInterpPositionOnly(obj: THREE.Object3D, on: boolean): void {
+  if (on) posOnly.add(obj); else posOnly.delete(obj);
+}
 
 function makeEntry(obj: THREE.Object3D): Entry {
   // Seed prev = curr = the object's current pose, so a newly-tracked object
@@ -107,15 +119,19 @@ export function interpApply(alpha: number, targets: readonly THREE.Object3D[]): 
   for (const obj of targets) {
     const e = entries.get(obj);
     if (!e) continue;
+    const rotInterp = !posOnly.has(obj);
     const teleported =
       e.prevPos.distanceToSquared(e.currPos) > SNAP_DIST2 ||
-      e.prevQuat.angleTo(e.currQuat) > SNAP_ANGLE;
+      (rotInterp && e.prevQuat.angleTo(e.currQuat) > SNAP_ANGLE);
     if (teleported) {
       obj.position.copy(e.currPos);
       obj.quaternion.copy(e.currQuat);
     } else {
       obj.position.lerpVectors(e.prevPos, e.currPos, a);
-      obj.quaternion.copy(e.prevQuat).slerp(e.currQuat, a);
+      // Rotation: slerp for full-interp targets (camera, weapon); SNAP to the
+      // latest sim pose for position-only targets (enemies) — no yaw-swing jitter.
+      if (rotInterp) obj.quaternion.copy(e.prevQuat).slerp(e.currQuat, a);
+      else obj.quaternion.copy(e.currQuat);
     }
   }
 }

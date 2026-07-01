@@ -98,6 +98,7 @@ import { runSystems, type GameSystem, type TickContext } from './engine/loop';
 import { buildSystems } from './engine/systems';
 import {
   setRenderInterpEnabled, interpStepBegin, interpStepEnd, interpApply, interpRestore,
+  setInterpPositionOnly,
 } from './engine/render-interp';
 import { initDarkAdaptReadout, setDarkAdaptReadoutVisible } from './debug/dark-adapt-readout';
 import { initBossEncounterReadout, setBossEncounterReadoutVisible } from './debug/boss-encounter-readout';
@@ -1527,7 +1528,7 @@ function fillInterpTargets(): void {
   const enemies = currentLevel?.enemies;
   if (enemies) {
     for (const e of enemies) {
-      if (e.alive || e.dying) interpTargets.push(e.group);
+      if (e.alive || e.dying) { interpTargets.push(e.group); setInterpPositionOnly(e.group, true); }
     }
   }
 }
