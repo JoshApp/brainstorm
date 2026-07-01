@@ -128,8 +128,10 @@ export type EnemyState =
   | 'recovering'
   | 'searching'   // lost sight, heading to last known position
   | 'returning'   // gave up search, walking back to post
-  | 'staggered';  // poise broken by a heavy hit — reeling, can't act,
+  | 'staggered'   // poise broken by a heavy hit — reeling, can't act,
                   // a free-hit window (see the poise system + Might)
+  | 'fleeing';    // nerve broke (low HP roll, or its leader fell) — routs away
+                  // then cowers; re-engages once, or is cut down cowering
 
 // AI timing/feel constants are tuned in src/config.ts (CONFIG.ENEMY_AI);
 // the rationale for each stays here at the use site.
@@ -697,6 +699,11 @@ export function createEnemy(
   // feints; `feintT` runs a feint (-1 = idle).
   let feintCd = CONFIG.ENEMY_AI.INTENT.FEINT_MIN + gameRng() * CONFIG.ENEMY_AI.INTENT.FEINT_JITTER;
   let feintT = -1;
+  // Morale: a creature's nerve can BREAK (low HP roll, weighted by how bold it
+  // is; or its leader falling) → it routs + cowers ('fleeing'). Breaks at most
+  // once per life (a re-engaged coward then fights on), so no perma-flee flicker.
+  let brokenOnce = false;
+  let cowerTimer = 0;   // >0 while cowering at the end of a rout
 
   // Join the pack coordinator so a crowd of chasers rings the player instead of
   // piling on one point (src/mobs/pack.ts). `active` = actually in the fight
@@ -1019,8 +1026,20 @@ export function createEnemy(
     timeSinceLOS = 0;
     // Taking a hit cools the mood — the mob recoils and re-sizes-you-up before
     // its next burst (the intent layer reads `aggression`). Survivors only.
-    if (entity.hp.current > 0) aggression = Math.max(0, aggression - CONFIG.ENEMY_AI.INTENT.MOOD_HURT_DROP);
-    if (state === 'idle' || state === 'alerted' || state === 'searching' || state === 'returning') {
+    if (entity.hp.current > 0) {
+      aggression = Math.max(0, aggression - CONFIG.ENEMY_AI.INTENT.MOOD_HURT_DROP);
+      // MORALE — crossing the low-HP line can BREAK the nerve: cowards rout,
+      // berserkers fight on. Once per life; never a boss / already-broken / reeling
+      // mob. (Bosses opt out of the intent layer, so `useIntent` gates it.)
+      const M = CONFIG.ENEMY_AI.MORALE;
+      if (useIntent && !brokenOnce && state !== 'fleeing' && state !== 'staggered'
+          && entity.hp.current <= currentMaxHp * M.BREAK_HP
+          && gameRngChance((1 - personality.boldness) * M.BREAK_CHANCE)) {
+        breakMorale();
+      }
+    }
+    if (state !== 'fleeing'
+        && (state === 'idle' || state === 'alerted' || state === 'searching' || state === 'returning')) {
       state = 'chasing';
       phaseTimer = 0;
     }
@@ -1268,6 +1287,19 @@ export function createEnemy(
     setStaggerVuln(true);          // expose any openWhenStaggered weak points
     // (Audio: the breaking hit's own hurt cry — via takeDamage — covers
     // the moment. A dedicated heavier "stagger" SFX is future polish.)
+  }
+
+  // Nerve BREAKS — the creature routs. Drop whatever it was doing and flee.
+  function breakMorale(): void {
+    brokenOnce = true;
+    currentAbility = null;
+    clearAoeTelegraph();
+    clearLashTendril();
+    reconcileThreat(false, false);   // its threat flash is spent
+    setEyeFlare(0);
+    cowerTimer = 0;
+    state = 'fleeing';
+    phaseTimer = 0;
   }
 
   // Resolve a parry against the CURRENT deflectable strike — fired the INSTANT
@@ -2213,7 +2245,8 @@ export function createEnemy(
     // player; a staggered enemy is reeling and doesn't track you; and CHASING
     // faces its direction of TRAVEL (handled in its own case below) so a prowling
     // mob circles instead of crab-walking sideways while staring at you.
-    if (state !== 'idle' && state !== 'returning' && state !== 'staggered' && state !== 'chasing') {
+    if (state !== 'idle' && state !== 'returning' && state !== 'staggered'
+        && state !== 'chasing' && state !== 'fleeing') {
       faceTarget(playerPos, dt);
     }
 
@@ -2291,6 +2324,41 @@ export function createEnemy(
           state = 'chasing';
           phaseTimer = 0;
         }
+        break;
+      }
+      case 'fleeing': {
+        // Nerve broke — ROUT away from the player, then COWER at a safe remove (a
+        // free kill), then re-engage ONCE (brokenOnce stops a second flee). The
+        // head-track keeps it glancing back over its shoulder as it runs.
+        phaseTimer += dt;
+        const M = CONFIG.ENEMY_AI.MORALE;
+        if (cowerTimer > 0) {
+          // COWERING — hunched, defenceless. Bolt again if the player closes back
+          // in; otherwise hold until nerve returns.
+          cowerTimer -= dt;
+          if (distance < M.FLEE_SAFE_DIST * 0.6) {
+            cowerTimer = 0;   // player chased it down → bolt
+          } else {
+            applyTilt(-0.5);            // hunched down/back
+            eyePresenter.applySearch();  // eyes dim — cowed, not glaring
+            built.group.position.y = 0;
+            if (cowerTimer <= 0) { applyTilt(0); state = 'chasing'; phaseTimer = 0; }
+            break;
+          }
+        }
+        // ROUT — run directly away from the player, panicked + fast.
+        const dxr = container.position.x - playerPos.x, dzr = container.position.z - playerPos.z;
+        const l = Math.hypot(dxr, dzr) || 1;
+        const bx = container.position.x, bz = container.position.z;
+        moveTowards(container.position.x + (dxr / l) * 3.0, container.position.z + (dzr / l) * 3.0,
+                    moveSpeed * M.FLEE_SPEED_MUL, dt, walkable, nav);
+        faceMovement(container.position.x - bx, container.position.z - bz, playerPos, dt);
+        eyePresenter.applySearch();
+        applyTilt(0);
+        built.group.position.y = 0;
+        // Reached safety → cower. Cornered (can't open the gap after a few
+        // seconds of running the walls) → cower anyway, a trapped coward.
+        if (distance >= M.FLEE_SAFE_DIST || phaseTimer > 3.0) cowerTimer = M.COWER_DURATION;
         break;
       }
       case 'idle': {

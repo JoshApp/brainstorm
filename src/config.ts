@@ -569,6 +569,17 @@ export const CONFIG = {
     IDLE_SCAN_STEP: 0.20,             // rad — ±11° gentle step per gaze change (was ±20°)
     IDLE_SCAN_HOLD_CHANCE: 0.62,      // fraction of changes that just pause (was 0.4 — now mostly holds)
     NAV_STUCK_TIME: 0.2,              // s pinned against geometry before a chasing mob sidesteps to flow around it
+    // MORALE (docs/ENEMY-AI-ROADMAP.md 1C) — a creature's nerve can BREAK: crossing
+    // the low-HP line rolls (weighted by 1−boldness, so cowards break + berserkers
+    // don't) to ROUT — it flees, then cowers at a safe remove (a free kill), then
+    // re-engages ONCE (won't flee twice). Bosses + fearless specs never break.
+    MORALE: {
+      BREAK_HP: 0.28,       // HP-fraction at/below which the break roll can fire
+      BREAK_CHANCE: 0.6,    // × (1−boldness) = a timid mob's break odds at the threshold
+      FLEE_SPEED_MUL: 1.3,  // panicked run is faster than a chase
+      FLEE_SAFE_DIST: 7,    // m from the player before it stops and cowers
+      COWER_DURATION: 2.6,  // s hunched + defenceless before nerve returns (or you cut it down)
+    },
     FACE_MOVE_MIN: 0.5,              // m/s — below this SMOOTHED speed a chaser faces the PLAYER (standing / blocked / arrived); above it, it faces its ACTUAL travel so it never crab-walks or moonwalks. Smoothed heading kills the per-frame facing jitter that aiming at a noisy pack target caused.
     HEAD_TRACK_MAX: 1.15,           // rad (~66°) — DOOM-style focus tracking: max yaw the head/neck twists to keep the player in view while the BODY faces its movement. So a strafing/circling mob watches you (attention decoupled from locomotion) instead of looking where its feet go. Beyond this it looks over its shoulder; the body turns the rest as it slows + faces you.
     // Locomotion LEAN (DOOM adaptive-animation approximation) — the body leans
