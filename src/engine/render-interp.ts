@@ -120,6 +120,25 @@ export function interpApply(alpha: number, targets: readonly THREE.Object3D[]): 
   }
 }
 
+/** Re-seed prev = curr = each object's CURRENT pose. Call after a HARD TELEPORT
+ *  (level load / respawn) that moves an object outside the sim step — otherwise
+ *  interpRestore keeps snapping it back to its stale pre-teleport `curr` (and while
+ *  the sim is paused, e.g. the harness bot between turns, it never updates, so the
+ *  object is pinned to the OLD position forever — the bot spawning out of bounds on
+ *  descent). Idempotent; creates the entry if the object is new. */
+export function interpSync(targets: readonly THREE.Object3D[]): void {
+  if (!enabled) return;
+  for (const obj of targets) {
+    const e = entries.get(obj);
+    if (e) {
+      e.prevPos.copy(obj.position); e.currPos.copy(obj.position);
+      e.prevQuat.copy(obj.quaternion); e.currQuat.copy(obj.quaternion);
+    } else {
+      entries.set(obj, makeEntry(obj));
+    }
+  }
+}
+
 /** After the present pass: restore the authoritative `curr` pose so the next
  *  sim step integrates from real state, not the interpolated draw pose. */
 export function interpRestore(targets: readonly THREE.Object3D[]): void {

@@ -44,6 +44,7 @@ import { showSafeRoomTransition } from '../ui/safe-room-transition';
 import { actForDepth } from './acts';
 import { getActStats } from '../state/run-state';
 import { setInputOverride } from '../controls/input';
+import { interpSync } from '../engine/render-interp';
 import { getUpdateStatus, applyUpdate } from '../pwa-update';
 import { getSettings } from '../settings/settings';
 
@@ -236,6 +237,14 @@ export function tickPendingLoad() {
   // bug. A human never hits this (no persistent input). Null restores the normal
   // touch/desktop schemes, which write 0 when there's no human input.
   setInputOverride(null);
+  // Re-seed render-interp to THIS new camera pose. The teleport happened outside a
+  // sim step, so interp's stored `curr` is still the OLD floor's pose and
+  // interpRestore would snap the camera back to it every frame — and while the sim
+  // is paused (the harness bot between turns) `curr` never updates, pinning the bot
+  // at the old coordinates on the new floor = spawned out of bounds. A human is
+  // unpaused, so their sim updates `curr` and it settles — which is why ONLY the
+  // bot hit this.
+  interpSync([camera]);
 
   const prewarm = onLoaded(level);
 
