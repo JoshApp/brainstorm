@@ -10,7 +10,7 @@
 
 import type { InputState } from '../controls/input';
 import { setInputOverride } from '../controls/input';
-import { setCameraYaw } from '../controls/camera';
+import { setCameraYaw, setCameraPitch } from '../controls/camera';
 import { triggerAttack } from '../controls/attack-input';
 import { useFirstConsumable } from '../controls/consumable-bar';
 import { getInRangeInteractable, getAllInteractables } from '../interactables/system';
@@ -178,6 +178,37 @@ function faceAction(
 async function attackAction(
   ctx: HarnessContext,
 ): Promise<Omit<ActionResult, 'observation' | 'elapsed'>> {
+  // AIM PITCH at the nearest reach-target's body before swinging. The bot never
+  // controls pitch, so a horizontal swing sails clean over a SHORT foe (a rat at
+  // your feet is ~1.3m below head height → the swing segment misses it). The strike
+  // reads the camera's TRUE look direction (pitch included), so pitching toward the
+  // target's aim height drops the swing onto it. Aim at position.y + aimHeight
+  // (exactly the point the hit test uses). Yaw is left ALONE — the strike cone is
+  // wide horizontally, and snapping yaw to a point-blank foe's noisy bearing is the
+  // pivot bug. Bot-only: player combat is untouched.
+  const level = ctx.getLevel();
+  if (level) {
+    const cam = ctx.camera;
+    let best: { e: (typeof level.enemies)[number]; d2: number } | null = null;
+    for (const e of level.enemies) {
+      if (!e.alive) continue;
+      const dx = e.group.position.x - cam.position.x;
+      const dz = e.group.position.z - cam.position.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < 2.4 * 2.4 && (!best || d2 < best.d2)) best = { e, d2 };
+    }
+    if (best) {
+      const e = best.e;
+      const dx = e.group.position.x - cam.position.x;
+      const dz = e.group.position.z - cam.position.z;
+      const dy = (e.group.position.y + e.aimHeight) - cam.position.y;
+      const horiz = Math.hypot(dx, dz) || 1e-3;
+      // atan2(dy, horiz): dy<0 (target below) → negative → look DOWN (pitch<0
+      // looks down; camera.rotation.x = pitch, YXZ, forward.y = sin(pitch)).
+      const targetPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, Math.atan2(dy, horiz)));
+      setCameraPitch(targetPitch);
+    }
+  }
   // Queue an attack press. combat.tick consumes this via
   // consumeAttackPressed and calls sword.startSwing() — that doesn't
   // happen until the NEXT unpaused frame, so we gate on "we've seen

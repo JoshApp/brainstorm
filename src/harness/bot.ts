@@ -52,22 +52,41 @@ export function step(obs: Observation): Action {
     // will see paused:screen in observations and intervene.
     return { kind: 'wait', seconds: 0.1 };
   }
-  // 1. Already engaged? Enemy in front + in melee range → swing.
+  // 1. AT STRIKE REACH → swing. A foe this close is inside the wide strike cone
+  //    regardless of its exact bearing, AND its horizontal bearing goes NOISY at
+  //    point-blank — distance/bearing are horizontal (hypot(dx,dz)/atan2), so a rat
+  //    circling at your feet sweeps bearing ±π frame to frame. The old code tried to
+  //    re-`face` that jitter (snap-turn to a swinging angle) → the endless pivot, then
+  //    fell through to `move` → walked straight through it. Fix: within reach, just
+  //    attack; only turn if the foe is genuinely BEHIND (a real turn, not point-blank
+  //    noise), never for one that's already ahead/beside.
+  const STRIKE_REACH = 1.7;
+  const inReach = obs.visible.enemies.find((e) =>
+    e.inSight && e.distance < STRIKE_REACH && !isDeadOrDying(e),
+  );
+  if (inReach) {
+    // |bearing| < ~2.2 rad (~125°) = ahead or beside → the cone covers it, swing.
+    // Only a foe clearly behind you warrants a turn.
+    if (Math.abs(inReach.bearing) < 2.2) return { kind: 'attack' };
+    return { kind: 'face', target: { id: inReach.id } };
+  }
+
+  // 2. Engaged at mid range + roughly facing → swing.
   const meleeTarget = obs.visible.enemies.find((e) =>
-    e.inSight && e.distance < 2.0 && Math.abs(e.bearing) < Math.PI / 4,
+    e.inSight && e.distance < 2.4 && Math.abs(e.bearing) < Math.PI / 4 && !isDeadOrDying(e),
   );
   if (meleeTarget) return { kind: 'attack' };
 
-  // 2. Hostile visible but off-axis → face it before approaching.
+  // 3. Hostile visible, off-axis, and NOT yet at reach → face before approaching.
   const nearHostile = obs.visible.enemies.find((e) =>
     e.inSight && e.distance < 8 && !isDeadOrDying(e),
   );
-  if (nearHostile && Math.abs(nearHostile.bearing) > Math.PI / 6) {
+  if (nearHostile && nearHostile.distance > STRIKE_REACH && Math.abs(nearHostile.bearing) > Math.PI / 6) {
     return { kind: 'face', target: { id: nearHostile.id } };
   }
 
-  // 3. Hostile in front but not in range → walk forward.
-  if (nearHostile && nearHostile.distance < 8) {
+  // 4. Hostile ahead but out of reach → walk forward (never when already at reach).
+  if (nearHostile && nearHostile.distance > STRIKE_REACH && nearHostile.distance < 8) {
     return { kind: 'move', dir: nearHostile.compass, seconds: 0.3 };
   }
 
