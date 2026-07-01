@@ -334,10 +334,11 @@ if (LAMP_SPOT) { initLampSpot(scene); setLampSpotActive(true); }
 // by difference against the native timestamp timer. DEV-only.
 if (import.meta.env.DEV) {
   (window as any).__gpuBreakdown = () => import('./debug/gpu-breakdown').then((m) => m.gpuBreakdown(renderer, scene));
-  // Floor-material registry size — the pipeline-budget invariant (docs/PIPELINE-BUDGET.md):
-  // this must PLATEAU as you descend, not climb per floor. Climbing = a `new Material` leaked
-  // past stdMat.
-  (window as any).__floorMats = () => import('./style/material-registry').then((m) => m.floorMaterialCount());
+  // Pooled-material counts — the pipeline-budget invariant (docs/PIPELINE-BUDGET.md):
+  // these must PLATEAU as you descend, not climb per floor. Climbing = a `new Material`
+  // leaking past the pools (stdMat for static, createMaterial for models). `total` is
+  // the unified registry (static + model + any registered pool).
+  (window as any).__floorMats = () => import('./style/material-registry').then((m) => ({ floor: m.floorMaterialCount(), total: m.totalMaterialCount() }));
 }
 
 // Inspection mode (preview snaps) lives in src/debug/inspect-mode.ts — the

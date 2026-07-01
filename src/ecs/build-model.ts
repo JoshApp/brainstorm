@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { registerMaterialPool } from '../style/material-registry';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import type { AimDir, MaterialDef, ModelSpec, PartSpec, PropClass, ShadowRole, Vec3 } from './model-types';
 import { shadowFlags } from '../scene/shadow-role';
@@ -334,6 +335,9 @@ function modelMatKey(def: MaterialDef, flatShading: boolean): string {
 
 /** Every distinct pooled model material — the closed, warmable set. */
 export function registeredModelMaterials(): readonly THREE.Material[] { return registeredModelMats; }
+// Join the unified pool registry so registeredMaterials() sees model mats too —
+// one source of truth across the static (stdMat) + model pools. See material-registry.
+registerMaterialPool(registeredModelMaterials);
 
 function createMaterial(def: MaterialDef, defaultFlatShading: boolean): THREE.Material {
   const flatShading =

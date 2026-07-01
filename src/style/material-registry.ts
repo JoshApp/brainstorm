@@ -74,6 +74,36 @@ export function registeredFloorMaterials(): THREE.Material[] {
 /** Count of distinct floor pipelines the registry holds (DEV diagnostics / invariant check). */
 export function floorMaterialCount(): number { return stdCache.size + basicCache.size; }
 
+// ── UNIFIED POOL REGISTRY ─────────────────────────────────────────────────────
+// stdMat/basicMat are the STATIC-surface pool; build-model's createMaterial is the
+// MODEL pool (creatures/items). They stay as separate typed entry points (their
+// warm paths differ — static warms on a dummy box, models need creature-shaped
+// dummies with skin/reveal attributes), but they register here so there's ONE
+// source of truth for "every pooled material." A pool joins via registerMaterialPool
+// (build-model calls it at module load) — no import cycle, and any future pool
+// auto-joins. registeredMaterials() / totalMaterialCount() are what diagnostics +
+// the compile-coverage net read; the compile guard flags anything that isn't pooled
+// (compiles in-play), which is how the "all creation goes through a pool" discipline
+// is ENFORCED rather than hand-audited.
+const externalPools: Array<() => readonly THREE.Material[]> = [];
+
+/** Register an additional pooled-material source (its live set). Called once, at
+ *  module load, by each pool outside this file (e.g. build-model's model pool). */
+export function registerMaterialPool(getMaterials: () => readonly THREE.Material[]): void {
+  externalPools.push(getMaterials);
+}
+
+/** Every pooled material across ALL pools (static + model + any registered) — the
+ *  closed, warmable set + the invariant surface (this must PLATEAU as you descend). */
+export function registeredMaterials(): THREE.Material[] {
+  const out: THREE.Material[] = [...stdCache.values(), ...basicCache.values()];
+  for (const pool of externalPools) out.push(...pool());
+  return out;
+}
+
+/** Total distinct pooled materials across all pools (DEV invariant check). */
+export function totalMaterialCount(): number { return registeredMaterials().length; }
+
 // ── DECLARATIVE FLOOR-DECOR PALETTE (the precompile list — PIPELINE-BUDGET Pillar 1b) ─────
 //
 // The CLOSED set of per-floor decoration materials, as builder functions. Tinted entries take
