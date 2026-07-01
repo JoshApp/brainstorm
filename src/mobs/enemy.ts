@@ -837,8 +837,13 @@ export function createEnemy(
     const dz = mz - container.position.z;
     const distSq = dx * dx + dz * dz;
     if (distSq < 1e-6) return;
-    const inv = 1 / Math.sqrt(distSq);
-    const step = speed * dt;
+    const dist = Math.sqrt(distSq);
+    const inv = 1 / dist;
+    // Don't OVERSHOOT the target — clamp the step to the remaining distance so a
+    // mob that has essentially arrived doesn't lurch past its slot and lurch back
+    // next frame (an overshoot oscillation that reads as jitter, worst when
+    // holding a ring slot at close range).
+    const step = Math.min(speed * dt, dist);
     const clampOpts = spec.phasing ? { ignoreObstacles: true } : undefined;
     const cx = container.position.x, cz = container.position.z;
     let resolved = walkable.clampMove(cx, cz, cx + dx * inv * step, cz + dz * inv * step, spec.collisionRadius, clampOpts);

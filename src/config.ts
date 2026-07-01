@@ -593,6 +593,7 @@ export const CONFIG = {
       SEPARATION_FORCE: 1.4,          // strength of the apart-push (scaled by overlap, in m/s-ish)
       ATTACK_TOKENS: 3,               // max mobs allowed to COMMIT to an attack at once (the rest prowl)
       TOKEN_REACQUIRE_CD: 0.7,        // s — a mob that just attacked waits this long before it can grab a token again (so others get a turn)
+      BEARING_SMOOTH: 4,              // 1/s — rate-limit on the ring slot's approach angle. Low enough to damp the close-range positive-feedback wiggle (atan2 hypersensitivity when the mob is inside the ring radius), high enough to still track the slow orbit. THE fix for "mobs jitter left-right up close." Lower = steadier but laggier; higher = twitchier.
       ORBIT_LEAD: 0.45,               // rad — a WAITING chaser aims this far AHEAD along the ring (a fixed lead → it prowls/circles the player). 0 = hold still
       ORBIT_FLIP_MIN: 1.8,            // s — a prowling mob holds an orbit direction at least this long
       ORBIT_FLIP_MAX: 4.5,            // s — …and at most this, then REVERSES. So a pack doesn't circle one way forever — it weaves, less predictable.

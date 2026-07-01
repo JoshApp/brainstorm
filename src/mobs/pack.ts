@@ -28,6 +28,8 @@ interface Member {
   attacking: () => boolean;    // mid-attack (winding/striking/recovering)?
   tx: number; tz: number;      // computed ring target (slot + separation + prowl) for this frame
   sepX: number; sepZ: number;  // separation push
+  bearing: number;             // SMOOTHED approach angle (rad) — the committed bearing the ring slot sits on, rate-limited so it can't swing with the twitchy instantaneous atan2
+  bearingSet: boolean;         // false until the first tick snaps `bearing` to the live angle
   orbitDir: number;            // ±1 current prowl direction (split per-mob, and it REVERSES)
   orbitFlipIn: number;         // s until this mob reverses its orbit — so a pack weaves, not circles
   tokenCd: number;             // s before this mob may grab a token again
@@ -61,6 +63,7 @@ export function joinPack(
   members.set(id, {
     id, pos, reach, active, attacking,
     tx: pos.x, tz: pos.z, sepX: 0, sepZ: 0,
+    bearing: 0, bearingSet: false,
     // Split the starting prowl direction per-mob (well-mixed id bit), then let
     // it reverse on a varied timer (tickPack) so a pack weaves instead of
     // orbiting one way forever.
@@ -121,7 +124,19 @@ export function tickPack(dt: number, player: THREE.Vector3): void {
     let bx = m.pos.x - player.x, bz = m.pos.z - player.z;
     let bl = Math.hypot(bx, bz);
     if (bl < 1e-3) { bx = m.sepX; bz = m.sepZ; bl = Math.hypot(bx, bz) || 1; }
-    let bearing = Math.atan2(bx, bz);
+    // SMOOTH the approach angle. The instantaneous atan2 is hypersensitive when
+    // the mob is closer than the ring radius (a few cm swings it a lot → the ring
+    // slot swings ring/dist× more → the mob wiggles chasing a slot that flees
+    // sideways: positive feedback). Rate-limiting the bearing breaks that loop —
+    // the slot sits on a COMMITTED angle, not a twitchy one. Fixes the close-range
+    // left-right jitter for every chaser incl. the (intent-less) boss.
+    const raw = Math.atan2(bx, bz);
+    if (!m.bearingSet) { m.bearing = raw; m.bearingSet = true; }
+    else {
+      const d = Math.atan2(Math.sin(raw - m.bearing), Math.cos(raw - m.bearing));
+      m.bearing += d * Math.min(1, P.BEARING_SMOOTH * dt);
+    }
+    let bearing = m.bearing;
     // Waiters (no token) aim a FIXED angle ahead along the ring → they prowl/
     // circle the player. Fixed lead (not an accumulating phase) keeps the target
     // at full ring radius each frame, so it orbits without spiralling inward.
