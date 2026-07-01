@@ -43,38 +43,33 @@ export function createInventoryPanel() {
   openButton = document.createElement('button');
   openButton.id = 'inventory-button'; openButton.classList.add('game-hud');
   openButton.setAttribute('aria-label', 'inventory');
-  // Leather satchel — same visual register as the Minimal-style hearts:
-  // filled dark-leather body, hairline gold edge, gold buckle as the
-  // hot accent, drop shadow for weight. Replaces the earlier
-  // pure-stroke glyph (which read flat next to the hearts).
+  // Leather MESSENGER SATCHEL — wide body + a big fold-over FLAP with a front
+  // buckle, straps splitting to the SIDES. The old version had a centred strap
+  // ARC over the body, which read as a padlock SHACKLE ("feature locked"). A
+  // dominant flap + side straps is unmistakably a bag. Same leather/gold palette
+  // as the Minimal hearts (filled dark leather, hairline gold edge, gold buckle).
   openButton.innerHTML = `
     <svg viewBox="0 0 24 24" width="22" height="22"
          style="display:block;margin:auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.85));">
-      <!-- Shoulder strap arc -->
-      <path d="M8 9 L8 7 Q8 4 12 4 Q16 4 16 7 L16 9"
-            fill="none"
-            stroke="rgba(150, 100, 60, 0.95)"
-            stroke-width="1.3"
-            stroke-linejoin="round"
-            stroke-linecap="round" />
-      <!-- Body — filled dark leather, hairline gold edge -->
-      <path d="M4.5 9.5 Q4.5 9 5 9 L19 9 Q19.5 9 19.5 9.5 L19.5 19.5 Q19.5 21 18 21 L6 21 Q4.5 21 4.5 19.5 Z"
+      <!-- Carry straps — split to the sides (NOT a centred shackle arc) -->
+      <path d="M5.2 10 Q3.8 7.6 4.6 5.4" fill="none"
+            stroke="rgba(150, 100, 60, 0.9)" stroke-width="1.2" stroke-linecap="round" />
+      <path d="M18.8 10 Q20.2 7.6 19.4 5.4" fill="none"
+            stroke="rgba(150, 100, 60, 0.9)" stroke-width="1.2" stroke-linecap="round" />
+      <!-- Body — wider than tall, rounded base -->
+      <path d="M4.5 10.5 L19.5 10.5 L19.5 18 Q19.5 20.5 17 20.5 L7 20.5 Q4.5 20.5 4.5 18 Z"
             fill="rgba(40, 26, 18, 0.92)"
-            stroke="rgba(200, 150, 80, 0.55)"
-            stroke-width="1.1"
-            stroke-linejoin="round" />
-      <!-- Flap fold line across the top of the body -->
-      <line x1="5" y1="13" x2="19" y2="13"
-            stroke="rgba(200, 150, 80, 0.32)"
-            stroke-width="0.8" />
+            stroke="rgba(200, 150, 80, 0.5)" stroke-width="1.1" stroke-linejoin="round" />
+      <!-- Flap folding over the front, dipping to a point in the middle -->
+      <path d="M3.8 8 Q3.8 6.9 5 6.9 L19 6.9 Q20.2 6.9 20.2 8 L20.2 11.6 Q20.2 12.6 19.4 13 L12 15 L4.6 13 Q3.8 12.6 3.8 11.6 Z"
+            fill="rgba(52, 34, 22, 0.95)"
+            stroke="rgba(200, 150, 80, 0.6)" stroke-width="1.1" stroke-linejoin="round" />
+      <!-- Buckle strap from flap down to the body -->
+      <rect x="10.9" y="12.6" width="2.2" height="4" rx="0.4"
+            fill="rgba(34, 22, 15, 0.95)" stroke="rgba(200, 150, 80, 0.35)" stroke-width="0.5" />
       <!-- Buckle — gold accent, the hot spot -->
-      <rect x="10.5" y="14.5" width="3" height="2.2" rx="0.4"
-            fill="rgba(230, 180, 90, 0.95)"
-            stroke="rgba(80, 50, 20, 0.85)"
-            stroke-width="0.4" />
-      <!-- Buckle prong -->
-      <line x1="12" y1="14.5" x2="12" y2="16.7"
-            stroke="rgba(60, 35, 15, 0.9)" stroke-width="0.5" />
+      <rect x="10.4" y="14" width="3.2" height="2.2" rx="0.4"
+            fill="rgba(230, 180, 90, 0.95)" stroke="rgba(80, 50, 20, 0.85)" stroke-width="0.4" />
     </svg>
   `;
   Object.assign(openButton.style, {

@@ -55,6 +55,7 @@ let container: HTMLDivElement | null = null;
 const buttons = new Map<string, ButtonHandle>();
 let flaskEl: HTMLButtonElement | null = null;
 let flaskCount: HTMLSpanElement | null = null;
+let flaskIcon: HTMLDivElement | null = null;   // re-rendered on charge change (liquid level)
 // Slot order for hotkeys + badges: [flask, ...secondaries]. Flask = slot 1.
 let order: string[] = [];
 
@@ -238,9 +239,9 @@ function ensureFlaskButton(): void {
   } as Partial<CSSStyleDeclaration>);
 
   const icon = document.createElement('div');
-  icon.innerHTML = flaskSvg(tint, 34);
   icon.style.lineHeight = '0';
   el.appendChild(icon);
+  flaskIcon = icon;
 
   const countLabel = document.createElement('span');
   countLabel.textContent = String(getFlask().charges);
@@ -285,14 +286,19 @@ function ensureFlaskButton(): void {
   updateFlaskButton();
 }
 
-/** Redraw the flask's charge count + state (dim when empty, warm at full). */
+/** Redraw the flask — the LIQUID LEVEL tracks charges/capacity (drains as you
+ *  drink, a stateful read only vector UI can do), plus the count + rim state. */
 function updateFlaskButton(): void {
   if (!flaskEl || !flaskCount) return;
   const { charges, capacity } = getFlask();
+  const frac = capacity > 0 ? charges / capacity : 0;
+  if (flaskIcon) flaskIcon.innerHTML = estusFlaskSvg(frac, 42);
   flaskCount.textContent = String(charges);
   const empty = charges <= 0;
   const full = charges >= capacity;
-  flaskEl.style.opacity = empty ? '0.4' : '1';
+  flaskEl.style.opacity = empty ? '0.5' : '1';
+  // The flask glows warmer the fuller it is — a lit ember when charged, cold glass when spent.
+  flaskEl.style.boxShadow = `0 0 ${(8 + frac * 16).toFixed(0)}px ${hexRgba(HEAL_TINT_FALLBACK, 0.15 + frac * 0.35)}`;
   flaskEl.style.borderColor = full ? 'rgba(255, 210, 120, 0.9)' : tintBorder(HEAL_TINT_FALLBACK);
   flaskCount.style.color = full
     ? 'rgba(255, 224, 150, 0.95)'
@@ -443,6 +449,35 @@ function flaskSvg(tint: number, px: number): string {
       fill="${liquid}" opacity="0.92"/>
     <ellipse cx="12" cy="14.5" rx="6" ry="1.2" fill="${liquid}"/>
     <path d="M8.4 9.5 C7.3 12 7 14.5 7.4 17" stroke="rgba(255,255,255,0.45)" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+  </svg>`;
+}
+
+// ── The Estus flask icon — a round-bottomed apothecary flask with an IRON
+// collar, its glowing liquid filling to the charge level. `fillFrac` (0..1 =
+// charges/capacity) sets the liquid surface height, so drinking visibly drops
+// the level and an empty flask reads as bare glass. This dynamic, per-state
+// render is exactly what a raster/AI-art icon can't do — the case for keeping
+// functional UI procedural (see the UI-pipeline note).
+function estusFlaskSvg(fillFrac: number, px: number): string {
+  const f = Math.max(0, Math.min(1, fillFrac));
+  const liquid = hexCss(HEAL_TINT_FALLBACK);
+  const glass = 'rgba(220,226,236,0.50)';
+  const glassFill = 'rgba(220,226,236,0.07)';
+  // Round-bottomed bulb; the clip keeps liquid + iron band inside the glass.
+  const bulb = 'M9.6 8 L14.4 8 C16 11 20 13 20 18.5 C20 23 16.4 26.5 12 26.5 C7.6 26.5 4 23 4 18.5 C4 13 8 11 9.6 8 Z';
+  const surfaceY = 26 - f * 15;   // liquid top: y=11 (full) → y=26 (empty)
+  const uid = 'estus-clip';
+  return `<svg viewBox="0 0 24 28" width="${px}" height="${(px * 28) / 24}" aria-hidden="true">
+    <defs><clipPath id="${uid}"><path d="${bulb}"/></clipPath></defs>
+    <rect x="9" y="0.5" width="6" height="3.2" rx="0.8" fill="#5a3d22" stroke="#3a2614" stroke-width="0.4"/>
+    <rect x="9.7" y="3.4" width="4.6" height="4.8" fill="${glassFill}" stroke="${glass}" stroke-width="0.7"/>
+    <path d="${bulb}" fill="${glassFill}" stroke="${glass}" stroke-width="0.9"/>
+    ${f > 0 ? `<rect x="0" y="${surfaceY.toFixed(1)}" width="24" height="28" fill="${liquid}" opacity="0.9" clip-path="url(#${uid})"/>
+    <ellipse cx="12" cy="${surfaceY.toFixed(1)}" rx="7.5" ry="0.9" fill="${liquid}" clip-path="url(#${uid})"/>` : ''}
+    <rect x="3.5" y="16.6" width="17" height="2.6" fill="rgba(28,24,22,0.92)" clip-path="url(#${uid})"/>
+    <circle cx="6.6" cy="17.9" r="0.55" fill="rgba(160,150,140,0.85)" clip-path="url(#${uid})"/>
+    <circle cx="17.4" cy="17.9" r="0.55" fill="rgba(160,150,140,0.85)" clip-path="url(#${uid})"/>
+    <path d="M8.2 9.6 C7.1 12 6.9 14.5 7.3 17" stroke="rgba(255,255,255,0.4)" stroke-width="0.8" fill="none" stroke-linecap="round"/>
   </svg>`;
 }
 
