@@ -139,23 +139,6 @@ export function unregisterViewmodel(root: THREE.Object3D): void {
 export function getViewmodelRoots(): readonly THREE.Object3D[] {
   return viewmodelRoots;
 }
-function setMeshDepthOnly(o: THREE.Object3D): void {
-  const mesh = o as THREE.Mesh;
-  if (!mesh.isMesh) return;
-  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  for (const m of mats) { m.colorWrite = false; m.depthTest = true; m.depthWrite = true; }
-}
-function restoreMeshColor(o: THREE.Object3D): void {
-  // Restore viewmodel materials to their MAIN-PASS state: depthTest on
-  // so they occlude each other, depthWrite off so they don't overwrite
-  // the depth values the pre-pass already wrote (which would lose the
-  // closest-wins composition between viewmodel parts).
-  const mesh = o as THREE.Mesh;
-  if (!mesh.isMesh) return;
-  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  for (const m of mats) { m.colorWrite = true; m.depthTest = true; m.depthWrite = false; }
-}
-
 const HORROR_BLIT_VERT = `
   varying vec2 vUv;
   void main() {
@@ -704,186 +687,14 @@ export function renderWithStyle(
   scene: THREE.Scene,
   camera: THREE.Camera,
 ) {
-  // WEBGPU SPIKE: the PSX pipeline below is WebGL/GLSL-only. Under ?webgpu=1,
-  // render the raw scene directly (node-converted standard materials) until the
-  // pipeline is ported to TSL — see docs/WEBGPU-MIGRATION.md. renderAsync is
-  // fire-and-forget per frame; nothing renders until init() has resolved.
-  if (isWebGPU()) {
-    // isWebGPUReady() ⇒ init() resolved, so the SYNC render() is valid here
-    // (renderAsync is deprecated in r184). try/catch so an unported material
-    // can't kill the loop — rate-limited to one log line.
-    if (isWebGPUReady()) {
-      try {
-        renderWebGPU(renderer, scene, camera);   // native RenderPipeline + low-res pass
-      } catch (err) {
-        if (!webgpuRenderErrored) { webgpuRenderErrored = true; console.error('[webgpu] render failed (first only):', err); }
-      }
-    }
-    return;
+  // The one render path: the native WebGPU RenderPipeline (render-webgpu.ts) owns
+  // the low-res PSX pass + bloom + grade. isWebGPUReady() ⇒ init() resolved, so the
+  // sync render() is valid. try/catch so an unported material can't kill the loop —
+  // rate-limited to one log line.
+  if (!isWebGPUReady()) return;
+  try {
+    renderWebGPU(renderer, scene, camera);
+  } catch (err) {
+    if (!webgpuRenderErrored) { webgpuRenderErrored = true; console.error('[webgpu] render failed (first only):', err); }
   }
-
-  // Reset renderer.info ONCE here so the per-frame draw/triangle counters
-  // accumulate across both passes below (the scene render + the blit). main.ts
-  // sets renderer.info.autoReset = false to hand us that control; without this
-  // the perf overlay / probe would only ever see the 1-draw blit quad. A no-op
-  // cost when info isn't being read.
-  renderer.info.reset();
-
-  // OVERDRAW DEBUG — isolated path: one additive, no-depth material on every
-  // mesh, straight to the screen on black. Brighter = more layers of fill.
-  // Returns before the normal low-res/bloom/blit pipeline runs (zero coupling).
-  if (overdrawMode) {
-    const prevOverride = scene.overrideMaterial;
-    scene.overrideMaterial = getOverdrawMat();
-    renderer.setRenderTarget(null);
-    renderer.setClearColor(0x000000, 1);
-    renderer.clear();
-    renderer.render(scene, camera);
-    scene.overrideMaterial = prevOverride;
-    return;
-  }
-
-  // Feed the camera's near/far so the blit can linearise depth for the crush.
-  if (blitMaterial && (camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
-    const pc = camera as THREE.PerspectiveCamera;
-    blitMaterial.uniforms.uNear.value = pc.near;
-    blitMaterial.uniforms.uFar.value = pc.far;
-  }
-
-  // Advance the CRT film clock ONLY while it's on — its grain/roll/flicker
-  // animate off uTime. One performance.now() per frame when enabled, zero cost
-  // (no uniform churn) when the film is off.
-  if (blitMaterial && crtFilmEnabled) {
-    blitMaterial.uniforms.uTime.value = performance.now() / 1000;
-  }
-
-  // Profiler sub-phase timing — split the render system's cost into
-  // prepass / scene / bloom / blit so "render: 11ms" becomes actionable.
-  // Gated on renderProbeActive() so the performance.now() calls (and any
-  // allocation) are skipped entirely for players. `pt` is the phase cursor.
-  const prof = renderProbeActive();
-  let pt = prof ? performance.now() : 0;
-  // Per-pass GPU spans (timer queries / sync probe) — same boundaries as the
-  // CPU sub-phases above, but measuring actual GPU execution. Free when off.
-  const gprof = gpuPassActive();
-
-  if (lowResTarget && blitScene && blitCamera) {
-    // Scene → low-res target, then the PSX blit (dither/quantize/CA/scanlines/
-    // exposure) to screen. NOTE: tone mapping is disabled on render-target
-    // passes, so all post + exposure must live in the blit shader.
-    renderer.setRenderTarget(lowResTarget);
-    renderer.clear();
-
-    // VIEWMODEL DEPTH PRE-PASS — runs BEFORE the main scene render so:
-    //   1. The world depth-tests against viewmodel depth and gets
-    //      properly occluded where the viewmodel covers (so walls don't
-    //      paint over the hand at the seam).
-    //   2. Viewmodel parts in the scene render then depth-test against
-    //      each other via the pre-pass depth (depthTest:true,
-    //      depthWrite:false on the materials), so a finger wrapping a
-    //      weapon visibly OCCLUDES the weapon at that pixel — the
-    //      weapon's higher renderOrder no longer wins shared pixels.
-    //   3. The depth-keyed post passes (distance crush, fog inscatter)
-    //      see the viewmodel as foreground.
-    //
-    // setMeshDepthOnly writes depth with test+write on (closer wins);
-    // restoreMeshColor sets the materials back to test:true / write:false
-    // for the upcoming scene render.
-    const prevAutoClearDepth = renderer.autoClearDepth;
-    if (viewmodelRoots.length && viewmodelPrepassEnabled) {
-      if (gprof) gpuPassBegin('prepass');
-      const prevAutoClear = renderer.autoClear;
-      renderer.autoClear = false;
-      // ONE render call for all held items, not one per root. Each
-      // renderer.render() pays fixed CPU overhead (light-state build, render
-      // lists, program state) — 3 calls cost ~2.4ms of phone CPU for ~0.1ms
-      // of GPU. attach() moves a root into the shared prepass scene
-      // preserving its world transform; the originals are attach()ed back
-      // right after, and the per-frame viewmodel animation rewrites the
-      // local transforms next frame anyway, so no drift can accumulate.
-      for (const vm of viewmodelRoots) {
-        if (!vm.visible || !vm.parent) continue;
-        prepassParents.push(vm.parent);
-        prepassRoots.push(vm);
-        prepassScene!.attach(vm);
-        vm.traverse(setMeshDepthOnly);
-      }
-      if (prepassRoots.length) renderer.render(prepassScene!, camera);
-      for (let i = 0; i < prepassRoots.length; i++) {
-        const vm = prepassRoots[i];
-        prepassParents[i].attach(vm);
-        vm.traverse(restoreMeshColor);
-      }
-      prepassRoots.length = 0;
-      prepassParents.length = 0;
-      renderer.autoClear = prevAutoClear;
-      // Keep the depth values we just wrote; the scene render below
-      // would otherwise auto-clear them and erase the pre-pass work.
-      renderer.autoClearDepth = false;
-      if (gprof) gpuPassEnd();
-    }
-    if (prof) { const n = performance.now(); reportRenderPhase('render·prepass', n - pt); pt = n; }   // viewmodel depth pre-pass
-
-    // Shadow cube-map throttle — the lamp's 6-face shadow pass re-renders
-    // every Nth frame instead of every frame (CONFIG.SHADOW_UPDATE_EVERY_N_FRAMES).
-    // Draw submission is the measured phone CPU wall; this halves the
-    // shadow share of it at N=2.
-    const shadowEvery = CONFIG.SHADOW_UPDATE_EVERY_N_FRAMES;
-    if (shadowEvery > 1) {
-      renderer.shadowMap.autoUpdate = false;
-      renderer.shadowMap.needsUpdate = (shadowFrameCounter++ % shadowEvery) === 0;
-    } else {
-      renderer.shadowMap.autoUpdate = true;
-    }
-
-    if (gprof) gpuPassBegin('scene');
-    renderer.render(scene, camera);
-    if (gprof) gpuPassEnd();
-    renderer.autoClearDepth = prevAutoClearDepth;
-    if (prof) { const n = performance.now(); reportRenderPhase('render·scene', n - pt); pt = n; }      // main scene draw — incl. auto shadow-map passes (the bulk of the draws)
-
-    // BLOOM passes — extract bright pixels, then ping-pong separable blur.
-    // Builds the glow texture the blit composites. Skipped when disabled.
-    if (bloomEnabled && bloomA && bloomB && bloomMesh && bloomExtractMat && bloomBlurMat && blitMaterial) {
-      if (gprof) gpuPassBegin('bloom');
-      const [bw, bh] = bloomDims();
-      // 1) bright-extract: lowResTarget → bloomA
-      bloomMesh.material = bloomExtractMat;
-      bloomExtractMat.uniforms.tDiffuse.value = lowResTarget.texture;
-      renderer.setRenderTarget(bloomA);
-      renderer.clear();
-      renderer.render(bloomMesh, blitCamera);
-      // 2) separable blur, ping-ponging A↔B (horizontal then vertical, ×steps)
-      bloomMesh.material = bloomBlurMat;
-      let src = bloomA, dst = bloomB;
-      for (let i = 0; i < BLOOM_BLUR_STEPS; i++) {
-        bloomBlurMat.uniforms.tDiffuse.value = src.texture;
-        bloomBlurMat.uniforms.uDir.value.set(1 / bw, 0);
-        renderer.setRenderTarget(dst); renderer.clear();
-        renderer.render(bloomMesh, blitCamera);
-        [src, dst] = [dst, src];
-        bloomBlurMat.uniforms.tDiffuse.value = src.texture;
-        bloomBlurMat.uniforms.uDir.value.set(0, 1 / bh);
-        renderer.setRenderTarget(dst); renderer.clear();
-        renderer.render(bloomMesh, blitCamera);
-        [src, dst] = [dst, src];
-      }
-      // `src` now holds the final blurred bloom; point the blit at it.
-      blitMaterial.uniforms.uBloom.value = src.texture;
-      if (gprof) gpuPassEnd();
-    }
-    if (prof) { const n = performance.now(); reportRenderPhase('render·bloom', n - pt); pt = n; }      // bright-extract + separable blur
-
-    if (gprof) gpuPassBegin('blit');
-    renderer.setRenderTarget(null);
-    renderer.render(blitScene, blitCamera);
-    if (gprof) gpuPassEnd();
-    if (prof) { const n = performance.now(); reportRenderPhase('render·blit', n - pt); pt = n; }        // fullscreen PSX post pass to the canvas
-  } else {
-    // Before initRenderPipeline runs (shouldn't happen in practice).
-    renderer.render(scene, camera);
-  }
-  // NB: the gl.finish/readPixels GPU probe lives in frame-timing's frameEnd
-  // (AFTER this system + the frame's timing is captured), so its synchronous
-  // stall doesn't inflate the render system's CPU time or the frame's dt.
 }
