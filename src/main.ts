@@ -1203,14 +1203,24 @@ if (import.meta.env.DEV) {
   (window as unknown as Record<string, unknown>).__scene = scene;   // DEV: raw scene access for live debugging
   (window as unknown as Record<string, unknown>).__renderer = renderer;   // DEV: program-cache forensics
   // DEV: shader-warmup forensics. __progDiff() seeds a baseline of the CURRENT
-  // program cache on first call (call it once warmup is done — after the first
-  // level loads), then on every later call returns the cacheKeys that compiled
-  // SINCE the seed — i.e. exactly the shaders warmup MISSED. Pass true to
-  // reseed. Pair with ?autobot=1: seed, let the bot play a few floors, call
-  // again → the list is the precise warmup gap, decode the flipped define.
+  // compiled-program cache on first call (call it once warmup is done — after the
+  // first level loads), then on every later call returns the keys that compiled
+  // SINCE the seed — i.e. exactly the shaders/pipelines warmup MISSED. Pass true
+  // to reseed. Pair with ?autobot=1: seed, let the bot play a few floors, call
+  // again → the list is the precise warmup gap, decode the flipped define/param.
+  //
+  // Renderer-agnostic: WebGL keys off renderer.info.programs[].cacheKey; WebGPU
+  // has no info.programs, so it keys off the pipeline cache (renderer._pipelines
+  // .caches — the RenderObjectPipeline map). Without the WebGPU branch this tool
+  // (and the compile guard) is BLIND on the default renderer.
   {
     let baseline: Set<string> | null = null;
-    const keysNow = () => (renderer.info.programs ?? []).map((p) => (p as { cacheKey?: string }).cacheKey ?? '');
+    const keysNow = (): string[] => {
+      const progs = (renderer as { info?: { programs?: ReadonlyArray<{ cacheKey?: string }> } }).info?.programs;
+      if (progs) return progs.map((p) => p.cacheKey ?? '');
+      const caches = (renderer as { _pipelines?: { caches?: Map<string, unknown> } })._pipelines?.caches;
+      return caches ? [...caches.keys()] : [];
+    };
     (window as unknown as Record<string, unknown>).__progDiff = (reseed = false) => {
       const now = keysNow();
       if (!baseline || reseed) {
