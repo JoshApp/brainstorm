@@ -20,8 +20,7 @@ import { attachOffhandViewmodel, detachOffhandViewmodel } from './player/handhel
 import { setSlot, onEquipmentChanged } from './player/equipment';
 import { setCurrentWeapon, FIST_STATS } from './player/current-weapon';
 import { ITEMS } from './content/items';
-import { warmupContent } from './content/warmup';
-import { runWarmupPass, runWarmupPassWebGPU } from './content/warmup-pass';
+import { runWarmupPassWebGPU } from './content/warmup-pass';
 import { warmRealRoster } from './content/warm-real-roster';
 import { initStatusVfxPool } from './effects/status-vfx';
 import { initNetwork, pushDisplayName } from './net/delve-net';
@@ -52,7 +51,7 @@ import { initRewardAudio } from './audio/reward-audio';
 import { initPlayerProfile } from './ai/player-profile';
 import { initAIRewards } from './ai/ai-rewards';
 import { buildMaterials } from './style/materials';
-import { initRenderPipeline, renderWithStyle, precompileFloorInLiveContext, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots, warmViewmodelPrepass } from './style/render-target';
+import { initRenderPipeline, renderWithStyle, setPS1Scale, setBloomEnabled, setCrtFilmEnabled, setSharpBilinear, setMasterBrightness, setWickLift, setOverdrawMode, getViewmodelRoots } from './style/render-target';
 import { initEncounterFeedback } from './feedback/encounter-feedback';
 import { initArenaLightArc } from './feedback/arena-light-arc';
 import { initLux, requestLux, showLuxCard, luxTour, LUX_BANDS } from './debug/lux';
@@ -230,21 +229,11 @@ if (!beginBoot()) throw new Error('delve: safe mode (boot guard)');
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
 // --- Renderer ---
-// WEBGPU SPIKE (branch `webgpu`): ?webgpu=1 swaps in Three's unified
-// WebGPURenderer (async init; auto-falls back to WebGL2). Default stays the
-// classic WebGLRenderer so the game is always runnable while the pipeline is
-// ported to TSL — see docs/WEBGPU-MIGRATION.md. The WebGPU path is intentionally
-// "raw" for now (custom PSX pipeline + reveal shaders bypassed); renderWithStyle
-// short-circuits to a direct renderAsync until those are ported.
-// WebGPU is now the DEFAULT on this branch — iterate the look/feel live, finish
-// the last features (reveal seam, clustered lighting, gore-splat) on the native
-// path. Opt OUT with ?webgpu=0 to A/B against the classic WebGL renderer.
 // ONE renderer: WebGPURenderer (node/TSL pipeline). It auto-selects a WebGL2
 // backend on devices without WebGPU — same node materials, one code path — and
 // ?webgpu=0 forces that WebGL2 backend as a manual escape hatch / for testing the
 // fallback. The dedicated classic WebGLRenderer is gone (see render-webgpu.ts).
 const FORCE_WEBGL = new URLSearchParams(window.location.search).get('webgpu') === '0';
-const WEBGPU = true;   // single renderer now; kept for the existing WEBGPU-gated sites (always true)
 setWebGPUMode(true);
 let renderer: THREE.WebGLRenderer;
 {
@@ -315,7 +304,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 // screen"). The WebGPU pipeline does its own exposure + hard clip (NoToneMapping)
 // for the punchy PSX look, so kill ACES on the renderer too (the node pipeline's
 // default output transform reads this) — otherwise it washes the whole image.
-renderer.toneMapping = WEBGPU ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+renderer.toneMapping = THREE.NoToneMapping;   // node pipeline does its own exposure + hard clip
 renderer.toneMappingExposure = 0.9;
 
 // --- Scene ---
@@ -330,7 +319,7 @@ scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
 // brighter (flat wash on the stone). Trimming the fill here — rather than via a
 // low global exposure — lets exposure stay high enough that the EMISSIVE/additive
 // flames stay vivid (a low exposure dimmed them to faint/transparent).
-const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY * (WEBGPU ? 0.3 : 1));
+const ambient = new THREE.AmbientLight(CONFIG.AMBIENT_COLOR, CONFIG.AMBIENT_INTENSITY * 0.3);
 scene.add(ambient);
 
 // GPU compute embers (WebGPU-only) — rise off the torches. Builds the storage
@@ -365,9 +354,9 @@ if (import.meta.env.DEV) {
 installBandedLightingWebGPU(getSettings().bandedLighting);
 // ?lean=1 — compile the LEAN lighting model from boot (no live-recompile uncertainty)
 // for a clean A/B of the per-light BRDF cost.
-if (WEBGPU && new URLSearchParams(location.search).get('lean') === '1') setLeanLightingWebGPU(true);
+if (new URLSearchParams(location.search).get('lean') === '1') setLeanLightingWebGPU(true);
 // DEV: toggle banded lighting model live to A/B its per-fragment cost.
-if (import.meta.env.DEV && WEBGPU) {
+if (import.meta.env.DEV) {
   (window as any).__setBanded = (on: boolean) => installBandedLightingWebGPU(on);
   // Lean lighting A/B — flips the model AND forces every node material to recompile
   // so the change is visible on the LIVE scene (not just freshly-built materials).
@@ -380,10 +369,6 @@ if (import.meta.env.DEV && WEBGPU) {
   };
 }
 const materials = buildMaterials(renderer);
-// The custom PSX pipeline builds WebGLRenderTargets + GLSL ShaderMaterials —
-// WebGL-only. Skipped under ?webgpu=1 (renderWithStyle short-circuits to a
-// direct renderAsync there) until it's ported to TSL.
-if (!WEBGPU) initRenderPipeline(renderer);
 // WebGL context-loss recovery — preventDefault + rebuild the custom render
 // targets on restore, so a GPU context drop (mobile memory pressure / a
 // backgrounded tab) is a brief veil, not a black screen or a false crash.
@@ -550,33 +535,12 @@ initLevelLoader({
     // compile held the descent black for seconds).
     const isTitleVignette = level.spec.id === 'title-vignette';
     let prewarm: Promise<void> | undefined;
-    if (!WEBGPU) {
-      // WebGL: synchronous compile + (first real floor) the roster + viewmodel-prepass
-      // warm. All instant (offscreen render) — the reveal needn't wait.
-      // precompileFloorInLiveContext, NOT a bare renderer.compile(): compile with
-      // no target bound bakes programs in the CANVAS color space (srgb) + stale
-      // fog/shadow, but gameplay renders the scene into lowResTarget (srgb-LINEAR)
-      // with live fog + the shadow pass. Three keys programs on those, so a bare
-      // compile recompiled every prop on first reveal (the per-floor `physical`
-      // churn the warmup forensics pinned). The helper binds the low-res target +
-      // shadow around compile() so it mints the SAME keys the live frame asks for,
-      // while still compiling the whole scene (compile ignores the frustum, so
-      // rooms behind the spawn warm too). See render-target.ts.
-      try { precompileFloorInLiveContext(renderer, scene, camera); } catch { /* pre-warm is best-effort */ }
-      if (!rosterPrecompiled && !isTitleVignette) {
-        rosterPrecompiled = true;
-        try { runWarmupPass(renderer, scene, camera); } catch { /* best-effort */ }
-        // Viewmodel DEPTH pre-pass renders in a 0-light scene (a different program);
-        // warm that variant too or the first prepass draw stalls ~6ms in-game.
-        try { warmViewmodelPrepass(renderer, camera); } catch { /* best-effort */ }
-      }
-    } else if (WEBGPU && new URLSearchParams(location.search).get('nowarm') === '1') {
-      // ?nowarm=1 — skip ALL pipeline warming: the PSX warm AND the per-floor
-      // compileAsync below. (My earlier version only skipped the PSX warm and fell
-      // through to compileAsync, so it never actually stopped warming.) Pipelines now
-      // compile lazily — first-use stutter is EXPECTED here; the only point is to A/B
-      // whether warming is behind the 'output' texture hazard. prewarm stays undefined.
-    } else if (WEBGPU && !isTitleVignette) {
+    if (new URLSearchParams(location.search).get('nowarm') === '1') {
+      // ?nowarm=1 — skip ALL pipeline warming: the roster warm AND the per-floor
+      // compileAsync below. Pipelines compile lazily — first-use stutter is
+      // EXPECTED here; the only point is to A/B whether warming is behind the
+      // 'output' texture hazard. prewarm stays undefined.
+    } else if (!isTitleVignette) {
       // WebGPU real floor — warm behind the descent cover, GATED on the reveal so the floor
       // compiles before the player sees it. Two parts:
       //   1. First real floor only: the spawn-time ROSTER (enemies/effects) via the warm pass.
@@ -1040,17 +1004,8 @@ document.addEventListener('visibilitychange', () => {
 // Pre-warm: build/render every drop + enemy model once at boot so the first
 // kill in-game doesn't pay shader-compile / JIT cost mid-fight. Also primes
 // the item-thumbnail cache so the first inventory rebuild after a pickup is
-// instant. Done after the renderer + level exist; before scenarios so an
-// inventory-open scenario doesn't pay the cost on first frame.
-// Renders to a target at boot to compile shaders — WebGL-only, and it'd run
-// before the async WebGPU backend is ready ("render() before init"). Skip under
-// WebGPU (shader warm is a WebGL-pipeline concern; the node renderer compiles
-// lazily). See WEBGPU-MIGRATION.md.
-if (!WEBGPU) warmupContent(renderer);
-
 // Pre-build the status-VFX mote pool (64 pooled sprites) at boot — its lazy
 // build on the first burn/poison proc was a measured mid-combat GC spike.
-// The sprite shader program itself is compiled by warmupContent above.
 initStatusVfxPool(scene);
 
 // Link to the living dungeon: connect to the shared death table and wire the
@@ -1724,11 +1679,11 @@ function tickInner() {
   // tris/draws numbers reflect what was actually drawn.
   reportRendererInfo(renderer);
   tickPerfOverlay(performance.now());
-  // Adaptive resolution — self-gates (no-op unless enabled on a real phone). On
-  // WebGPU the rAF interval can't see GPU load (skip-pacing pins it to vsync), so
-  // feed the real GPU-timestamp ms; tickAdaptiveResolution drives the WebGL path.
+  // Adaptive resolution — self-gates (no-op unless enabled on a real phone). The
+  // rAF interval can't see GPU load (skip-pacing pins it to vsync), so feed the
+  // real GPU-timestamp ms.
   tickAdaptiveResolution(performance.now());
-  if (WEBGPU) feedAdaptiveGpuMs(lastWebGPUGpuMs());
+  feedAdaptiveGpuMs(lastWebGPUGpuMs());
   tickCombatDebug(realDt, currentLevel?.enemies ?? []);
   tickGoreDebug();
   // Programmatic perf probe (window.__perf for the headless perf runner).
@@ -2515,7 +2470,6 @@ if (new URLSearchParams(window.location.search).get('showEnd') === '1') {
   // match the in-game render state. Held here so the menu only appears once warm: the
   // first DESCEND is then instant (the floor warmup's `done` guard makes it a no-op).
   async function bootWarm(): Promise<void> {
-    if (!WEBGPU) return;
     // Let the title vignette (a real fogged dungeon floor) BUILD + RENDER + fully COMPILE its
     // floor / wall / decor pipelines behind the veil — the descend floor + in-game safe rooms
     // reuse them. The title loads async + its decor compiles over several frames, so wait until

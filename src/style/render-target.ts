@@ -156,46 +156,6 @@ function restoreMeshColor(o: THREE.Object3D): void {
   for (const m of mats) { m.colorWrite = true; m.depthTest = true; m.depthWrite = false; }
 }
 
-/** Compile the viewmodels' PREPASS shader variant up front (call once at warmup).
- *
- *  The depth pre-pass renders the held viewmodels in `prepassScene`, which has
- *  ZERO lights — a different shader-program cache key than the ~11-light main
- *  scene the warmup pass compiles. So without this, the FIRST prepass draw of
- *  each viewmodel (the starting weapon, and again on every weapon/lamp/offhand
- *  swap) compiles a fresh 0-light variant mid-frame — a ~6ms prepass spike. This
- *  runs the real attach → depth-only → render → restore path once, into a
- *  throwaway target, so that compile happens on the loading screen instead. */
-export function warmViewmodelPrepass(renderer: THREE.WebGLRenderer, camera: THREE.Camera): void {
-  if (!prepassScene || !viewmodelRoots.length) return;
-  const moved: Array<{ vm: THREE.Object3D; parent: THREE.Object3D; vis: boolean }> = [];
-  for (const vm of viewmodelRoots) {
-    if (!vm.parent) continue;                  // need a parent to attach back to
-    moved.push({ vm, parent: vm.parent, vis: vm.visible });
-    vm.visible = true;                         // force-render even if currently hidden
-    prepassScene.attach(vm);                   // world-transform-preserving move
-    vm.traverse(setMeshDepthOnly);
-  }
-  const progBefore = renderer.info.programs?.length ?? 0;
-  if (moved.length) {
-    const target = new THREE.WebGLRenderTarget(16, 16);   // tiny — we only want the compile
-    const prevTarget = renderer.getRenderTarget();
-    renderer.setRenderTarget(target);
-    try { renderer.render(prepassScene, camera); } catch { /* best-effort warm */ }
-    renderer.setRenderTarget(prevTarget);
-    target.dispose();
-  }
-  for (const m of moved) {
-    m.parent.attach(m.vm);                     // back to the camera, transform preserved
-    m.vm.traverse(restoreMeshColor);
-    m.vm.visible = m.vis;
-  }
-  if (import.meta.env.DEV) {
-    const d = (renderer.info.programs?.length ?? 0) - progBefore;
-    // eslint-disable-next-line no-console
-    console.log(`[warm-prepass] ${moved.length} viewmodel root(s), +${d} program(s) — the 0-light depth variant; first in-game prepass should no longer spike.`);
-  }
-}
-
 const HORROR_BLIT_VERT = `
   varying vec2 vUv;
   void main() {
@@ -738,37 +698,6 @@ export function setInspectBypass(on: boolean): void {
   if (blitMaterial) blitMaterial.uniforms.uInspect.value = on ? 1 : 0;
 }
 
-/** Warm a whole floor's shader programs in the EXACT render context the live
- *  frame uses. renderer.compile() compiles every material in the scene ignoring
- *  the camera frustum (so rooms BEHIND the spawn warm too — a real render would
- *  cull them), but it bakes each program in the renderer's CURRENT state: with
- *  no target bound that's the CANVAS colour space (srgb) plus whatever fog/shadow
- *  flags happen to be set. Gameplay instead renders the scene into lowResTarget
- *  (srgb-LINEAR) with the shadow pass live — and Three keys programs on colour
- *  space + fog + shadow, so a naively-compiled prop RE-compiled the instant it
- *  first became visible (the per-floor `physical` churn: srgb→srgb-linear, ±fog
- *  bits, that the warmup forensics pinned). Binding the low-res target + the
- *  shadow pass here makes compile() mint the SAME program keys the live frame
- *  asks for, so first reveal is hitch-free. Falls back to a bare compile before
- *  the pipeline exists. Best-effort. */
-export function precompileFloorInLiveContext(
-  renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera,
-): void {
-  if (!lowResTarget) { renderer.compile(scene, camera); return; }
-  const prevTarget = renderer.getRenderTarget();
-  const prevShadowEnabled = renderer.shadowMap.enabled;
-  const prevShadowNeedsUpdate = renderer.shadowMap.needsUpdate;
-  renderer.setRenderTarget(lowResTarget);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.needsUpdate = true;
-  try {
-    renderer.compile(scene, camera);
-  } finally {
-    renderer.setRenderTarget(prevTarget);
-    renderer.shadowMap.enabled = prevShadowEnabled;
-    renderer.shadowMap.needsUpdate = prevShadowNeedsUpdate;
-  }
-}
 
 export function renderWithStyle(
   renderer: THREE.WebGLRenderer,
