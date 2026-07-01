@@ -275,10 +275,14 @@ export function createBodyAnimator(
         break;
       }
       case 'twitch': {
-        // Rat — fast yaw micro-shudder + scurry bob. Yaw is on
-        // container so the whole body twitches, not just the head.
-        container.rotation.y   += Math.sin(t * 7.0) * 0.045;
-        built.group.position.y += Math.abs(Math.sin(t * 8.5)) * 0.012;
+        // Rat — nervous scurry energy as a fast vertical bob ONLY. It must NOT
+        // touch container.rotation.y: that's the AI FACING yaw (faceTarget /
+        // head-track own it, render-interp slerps it, the debug gizmo reads it).
+        // The old version shuddered that yaw every frame, which fought faceTarget
+        // and read as the body "rotating like crazy" off-axis. (Not built.group
+        // rotation either — the stagger dizzy-spin owns that.) The fast scurry-bob
+        // + the head-track keeping its eyes on you already read as a nervous rat.
+        built.group.position.y += Math.abs(Math.sin(t * 8.5)) * 0.016;
         break;
       }
       case 'coiled': {
