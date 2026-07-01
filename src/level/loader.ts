@@ -43,6 +43,7 @@ import { fadeOut, showDescentTitle, revealWhenReady } from '../ui/descent-fade';
 import { showSafeRoomTransition } from '../ui/safe-room-transition';
 import { actForDepth } from './acts';
 import { getActStats } from '../state/run-state';
+import { setInputOverride } from '../controls/input';
 import { getUpdateStatus, applyUpdate } from '../pwa-update';
 import { getSettings } from '../settings/settings';
 
@@ -228,6 +229,13 @@ export function tickPendingLoad() {
   camera.rotation.y = level.playerSpawn.yaw;
   // Floor-load camera jump shouldn't fling the lamp on respawn.
   resetViewSway();
+  // Clear any harness INPUT OVERRIDE across the teleport. A bot steer/move sets a
+  // persistent per-frame override (drive toward a target point); left active, it
+  // would immediately move the player from THIS fresh spawn toward the OLD floor's
+  // target and fling them out of bounds — the "bot spawns outside the play area"
+  // bug. A human never hits this (no persistent input). Null restores the normal
+  // touch/desktop schemes, which write 0 when there's no human input.
+  setInputOverride(null);
 
   const prewarm = onLoaded(level);
 
