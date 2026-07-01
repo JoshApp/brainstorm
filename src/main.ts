@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
-import { setWebGPUMode, setWebGPUReady } from './scene/renderer-mode';
+import { setWebGPUReady } from './scene/renderer-mode';
 import { initEmbersGPU, tickEmbersGPU } from './effects/embers-gpu';
 import { DelveTiledLighting } from './scene/tiled-lighting';
 import { DelveLeanLighting } from './scene/lean-lights';
@@ -234,7 +234,6 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 // ?webgpu=0 forces that WebGL2 backend as a manual escape hatch / for testing the
 // fallback. The dedicated classic WebGLRenderer is gone (see render-webgpu.ts).
 const FORCE_WEBGL = new URLSearchParams(window.location.search).get('webgpu') === '0';
-setWebGPUMode(true);
 let renderer: THREE.WebGLRenderer;
 {
   // trackTimestamp: native GPU timestamp queries for the profiler + adaptive res

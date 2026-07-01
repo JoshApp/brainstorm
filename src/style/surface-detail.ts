@@ -283,11 +283,10 @@ export function installSurfaceDetail(material: THREE.Material, cfg: SurfaceTexCo
 }
 
 // Re-install onto a clone (the arched-ceiling material clones the base ceiling
-// material, and clone() does not carry onBeforeCompile). Reset first so we don't
-// double-install. Pass the BASE material whose config is registered.
+// material; clone() carries the node graph but reinstalling re-registers its
+// config). Pass the BASE material whose config is registered.
 export function reinstallSurfaceDetail(clone: THREE.Material, base: THREE.Material): void {
   const cfg = cfgMap.get(base);
   if (!cfg) return;
-  clone.onBeforeCompile = () => {};
   installSurfaceDetail(clone, cfg);
 }

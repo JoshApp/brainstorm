@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { ShadowMode } from '../settings/settings';
 import { CONFIG } from '../config';
-import { isWebGPU } from './renderer-mode';
 
 // Light slot pool — partitioned by category so each kind of light
 // plays by its own rules.

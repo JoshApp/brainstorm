@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import { installSurfaceAO } from './surface-ao';
 import { installSurfaceDetail, installNamedSurfaceDetail, registerSurfaceDetail } from './surface-detail';
 import { bakeSurfaceTexture, SURFACE_TILE } from './surface-textures';
 
@@ -114,10 +113,8 @@ export function buildMaterials(renderer: THREE.WebGLRenderer): StyleMaterials {
     emissiveIntensity: 0,
     side: THREE.DoubleSide,
   });
-
-  // Live-controllable baked surface AO (wall/floor vertex colours).
-  installSurfaceAO(wallBase);
-  installSurfaceAO(floorBase);
+  // Wall/floor baked AO rides the materials' vertexColors natively (node
+  // pipeline multiplies vColor into diffuse) — no install step needed.
 
   // Baked, mipmapped tiling stone detail. WALLS = brick, FLOOR = flagstones,
   // CEILING = coffered panels (its own language). Warm tint on the floor, cold
