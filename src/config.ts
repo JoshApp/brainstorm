@@ -736,6 +736,11 @@ export const CONFIG = {
     FALTER_CD: 0.9,         // s before the same enemy can be faltered again (no permastun-via-heavy-spam)
     FALTER_LOCK_S: 0.4,     // s of flinch-lock (can't start a new attack) after a falter
     FALTER_FLINCH: 0.35,    // rad — the backward stumble pose (reuses bodyAnim.flinch)
+    // TWITCH — the LIGHT rung: every solid, non-committed hit gives a quick small
+    // recoil so damage reads on the creature. Small + short so a flurry reads as
+    // "being battered", not a seizure.
+    TWITCH_MAG: 0.11,       // rad — shallow backward recoil per hit
+    TWITCH_DUR: 0.13,       // s — quick snap-and-settle
   },
 
   // === PLAYER HEALTH ===

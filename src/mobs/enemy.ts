@@ -994,6 +994,13 @@ export function createEnemy(
       }
     }
     coreReactor.hit();   // hit flash + glowing-core flare/pop (king)
+    // Light rung of the hit ladder: a surviving hit that isn't mid-commit twitches
+    // the body — "it felt that", so damage reads on a thinking thing, not a sponge.
+    // Committed states (winding/striking) keep their telegraph clean — only a
+    // FALTER (a heavy hit) interrupts those; a staggered mob is already reeling.
+    if (entity.hp.current > 0 && state !== 'winding' && state !== 'striking' && state !== 'staggered') {
+      bodyAnim.twitch();
+    }
     // Pained cry when it survives the blow — the creature's voice on top of
     // the weapon's impact, so every connecting hit reads as "I hurt it." The
     // death path has its own (heavier) collapse sound, so skip if this killed.

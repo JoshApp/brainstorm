@@ -19,9 +19,12 @@ export interface BodyAnimator {
   /** Set a decaying recoil impulse (charge contact, future stagger). */
   applyKnockback(dirX: number, dirZ: number, speed: number): void;
   /** Snap a parry-recoil pose: the body pitches back hard then eases out over
-   *  ~FLINCH_DUR. `mag` is the peak backward lean in radians. A brief shudder
-   *  rides the decay so the parry reads as a violent jolt, not a slow bow. */
-  flinch(mag: number): void;
+   *  `dur`. `mag` is the peak backward lean in radians. A brief shudder rides the
+   *  decay so the parry reads as a violent jolt, not a slow bow. */
+  flinch(mag: number, dur?: number): void;
+  /** The LIGHT rung of the hit ladder: a quick, small recoil so every solid hit
+   *  visibly registers on the creature ("it felt that"). A short flinch. */
+  twitch(): void;
   /** Tip the head toward the player when `aware` (pitch), and — DOOM-style focus
    *  tracking — twist it in YAW toward the player so it keeps watching you while
    *  the body's root faces its movement. `yawToPlayer` = signed angle from the
@@ -106,6 +109,7 @@ export function createBodyAnimator(
   const FLINCH_DUR = 0.34;
   let flinchT = 0;
   let flinchMag = 0;
+  let flinchDur = FLINCH_DUR;   // the duration of the CURRENT flinch/twitch (twitch is shorter)
 
   function applyKnockback(dirX: number, dirZ: number, speed: number) {
     const len = Math.hypot(dirX, dirZ);
@@ -114,15 +118,22 @@ export function createBodyAnimator(
     knockVZ = (dirZ / len) * speed;
   }
 
-  function flinch(mag: number) {
-    flinchT = FLINCH_DUR;
+  function flinch(mag: number, dur: number = FLINCH_DUR) {
+    flinchT = dur;
     flinchMag = mag;
+    flinchDur = dur;
+  }
+
+  // The light rung: a quick, small backward recoil so a solid hit reads on the
+  // creature. Just a short, shallow flinch — reuses the same overlay.
+  function twitch() {
+    flinch(CONFIG.POISE.TWITCH_MAG, CONFIG.POISE.TWITCH_DUR);
   }
 
   function tickFlinch(_dt: number) {
     if (flinchT <= 0) return;
     flinchT = Math.max(0, flinchT - _dt);
-    const k = flinchT / FLINCH_DUR;            // 1 at impact → 0 settled
+    const k = flinchT / flinchDur;             // 1 at impact → 0 settled
     // Ease-out so it snaps to the peak lean and decays back; a fast shudder
     // rides the front of the decay for the "jolt" read.
     const ease = k * k;
@@ -291,5 +302,5 @@ export function createBodyAnimator(
     }
   }
 
-  return { applyKnockback, flinch, tickHeadCrane, tickKnockback, tickFlinch, tickLocomotion, tickPresence };
+  return { applyKnockback, flinch, twitch, tickHeadCrane, tickKnockback, tickFlinch, tickLocomotion, tickPresence };
 }
