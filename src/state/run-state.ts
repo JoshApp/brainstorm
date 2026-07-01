@@ -15,6 +15,7 @@ import { levelForXp, xpInLevel, xpForNextLevel } from './leveling';
 import { serializeCharacter, type CharacterSave } from './character';
 import { clearMutations, serializeMutations, hydrateMutations } from './run-mutations';
 import { clearPhialIdentities, serializePhialIdentities, hydratePhialIdentities } from './phial-identities';
+import { resetFlask, restoreFlask, serializeFlask, type FlaskState } from '../player/flask';
 
 const STORAGE_KEY = 'delve:save';
 const SAVE_VERSION = 2;
@@ -68,6 +69,9 @@ export interface SaveData {
   hunger?: number;
   /** The equipped RITE (id into content/rites.ts) — the active-ability slot. */
   riteId?: string;
+  /** Healing-flask (Estus) state — charges/capacity/heal, per-run. Refilled at
+   *  the bonfire. Optional for older saves (restored to a full base flask). */
+  flask?: FlaskState;
 }
 
 /** The Hunger meter's ceiling. Built by fighting, spent on rites (the active
@@ -115,6 +119,9 @@ export function startNewRun(initialFloorId: string, opts?: { seed?: number; dept
   // die with their delver.
   clearMutations();
   clearPhialIdentities();
+  // Fresh, full flask (a second run in the same session mustn't inherit the
+  // last delver's depleted/upgraded flask).
+  resetFlask();
 }
 
 /** Hydrate memory state from a saved run. Used on CONTINUE. Fills in
@@ -129,6 +136,7 @@ export function adoptSave(save: SaveData) {
   };
   hydrateMutations(save.mutations);
   hydratePhialIdentities(save.phials);
+  restoreFlask(save.flask);   // full base flask when the save predates the field
 }
 
 export function grantXp(amount: number): void {
@@ -286,6 +294,7 @@ export function commitFloorEntry(args: {
   inMemory.character = serializeCharacter();   // persist the build at this floor entry
   inMemory.mutations = serializeMutations();   // persist active tainted brands
   inMemory.phials = serializePhialIdentities();  // persist phial knowledge
+  inMemory.flask = serializeFlask();           // persist flask charges/capacity
   persist();
 }
 

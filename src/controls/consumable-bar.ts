@@ -1,6 +1,7 @@
 import { getCount, removeItem, onInventoryChanged } from '../player/inventory';
 import { recordConsumableUse } from '../state/character';
 import { healPlayer, getPlayerHp, getPlayerMaxHp } from '../player/health';
+import { getFlask, spendCharge, onFlaskChanged } from '../player/flask';
 import { ITEMS, type ItemSpec } from '../content/items';
 import { applyBuff } from '../ecs/buffs';
 import { phialMutationId } from '../state/phial-identities';
@@ -48,9 +49,13 @@ const GAP = 8;
 
 const HEAL_TINT_FALLBACK = 0xff2233;
 
+const FLASK_ID = '__flask__';   // synthetic id for the always-present flask button
+
 let container: HTMLDivElement | null = null;
 const buttons = new Map<string, ButtonHandle>();
-// Slot order for hotkeys + badges: [heal, ...secondaries]. Heal = slot 1.
+let flaskEl: HTMLButtonElement | null = null;
+let flaskCount: HTMLSpanElement | null = null;
+// Slot order for hotkeys + badges: [flask, ...secondaries]. Flask = slot 1.
 let order: string[] = [];
 
 function hapticVibrate(ms: number) {
@@ -58,8 +63,6 @@ function hapticVibrate(ms: number) {
     navigator.vibrate(ms);
   }
 }
-
-const isHealItem = (i: ItemSpec) => i.consumableHeal != null;
 
 export function createConsumableBar() {
   if (container) return;
@@ -78,20 +81,24 @@ export function createConsumableBar() {
   } as Partial<CSSStyleDeclaration>);
   document.body.appendChild(container);
 
+  ensureFlaskButton();            // the always-present primary heal (the Estus flask)
+  onFlaskChanged(updateFlaskButton);
   onInventoryChanged(rebuild);
   rebuild();
 }
 
 function rebuild() {
   if (!container) return;
-  const held = Object.values(ITEMS).filter(
+  // The FLASK is the always-present primary heal (its own button, driven by
+  // player/flask.ts). Every held consumable — buffs, phials, and any legacy
+  // healing-potions — is a smaller SATELLITE above it. (Stage 2 of the Estus
+  // pass retires the potion into refill-draughts + shards; until then it still
+  // works as a one-off through useConsumable.)
+  const secondary = Object.values(ITEMS).filter(
     (i) => i.kind === 'consumable' && getCount(i.id) > 0,
   );
-  const heal = held.filter(isHealItem);
-  const secondary = held.filter((i) => !isHealItem(i));
-  const ordered = [...heal, ...secondary];   // heal = slot 1
-  order = ordered.map((i) => i.id);
-  const wanted = new Set(order);
+  order = [FLASK_ID, ...secondary.map((i) => i.id)];   // flask = slot 1
+  const wanted = new Set(secondary.map((i) => i.id));
 
   // Drop buttons for items no longer held.
   for (const [id, handle] of buttons) {
@@ -101,11 +108,12 @@ function rebuild() {
     }
   }
 
-  // Ensure + update buttons; assign slot badges.
-  ordered.forEach((item, idx) => {
+  // Ensure + update satellite buttons; assign slot badges (flask is slot 1, so
+  // satellites start at slot 2).
+  secondary.forEach((item, idx) => {
     let handle = buttons.get(item.id);
     if (!handle) {
-      handle = createButton(item, isHealItem(item));
+      handle = createButton(item, false);
       buttons.set(item.id, handle);
     }
     const count = getCount(item.id);
@@ -113,15 +121,17 @@ function rebuild() {
     const full = item.carryLimit != null && count >= item.carryLimit;
     handle.el.style.borderColor = full ? 'rgba(255, 210, 120, 0.9)' : tintBorder(readElixirTint(item));
     handle.countLabel.style.color = full ? 'rgba(255, 224, 150, 0.95)' : 'rgba(255, 220, 200, 0.92)';
-    if (handle.badge) handle.badge.textContent = String(idx + 1);
+    if (handle.badge) handle.badge.textContent = String(idx + 2);
   });
 
-  // Re-order DOM so satellites sit ABOVE the heal flask (heal = last child =
-  // bottom of the column). Re-appending an existing node just moves it.
-  for (const item of [...secondary, ...heal]) {
+  // DOM order: satellites first, flask LAST so it pins to the bottom of the
+  // column (nearest the resting thumb). Re-appending an existing node moves it.
+  for (const item of secondary) {
     const handle = buttons.get(item.id);
     if (handle) container.appendChild(handle.el);
   }
+  if (flaskEl) container.appendChild(flaskEl);
+  updateFlaskButton();
 }
 
 function createButton(item: ItemSpec, isHeal: boolean): ButtonHandle {
@@ -212,23 +222,132 @@ function createButton(item: ItemSpec, isHeal: boolean): ButtonHandle {
   return { itemId: item.id, el, countLabel, badge, isHeal };
 }
 
-/** Quick-use the FIRST consumable the player holds. Desktop 'Q' hotkey /
- *  future controller binding. Prefers healing when at sub-max HP. */
+// ── The Flask — always-present primary heal (Estus), bound to player/flask.ts ──
+function ensureFlaskButton(): void {
+  if (flaskEl || !container) return;
+  const tint = HEAL_TINT_FALLBACK;
+  const el = document.createElement('button');
+  el.setAttribute('aria-label', 'drink healing flask');
+  Object.assign(el.style, {
+    position: 'relative', width: `${HEAL_SIZE}px`, height: `${HEAL_SIZE}px`,
+    borderRadius: '50%', border: `2px solid ${tintBorder(tint)}`, background: tintBackground(tint),
+    boxShadow: `0 0 18px ${tintShadow(tint)}`, touchAction: 'manipulation',
+    userSelect: 'none', WebkitUserSelect: 'none', WebkitTapHighlightColor: 'transparent',
+    transition: 'transform 0.08s ease-out, opacity 0.2s ease-out, border-color 0.2s',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0',
+  } as Partial<CSSStyleDeclaration>);
+
+  const icon = document.createElement('div');
+  icon.innerHTML = flaskSvg(tint, 34);
+  icon.style.lineHeight = '0';
+  el.appendChild(icon);
+
+  const countLabel = document.createElement('span');
+  countLabel.textContent = String(getFlask().charges);
+  Object.assign(countLabel.style, {
+    position: 'absolute', bottom: '-2px', right: '2px', fontFamily: FONT_UI,
+    fontSize: '13px', fontWeight: '700', letterSpacing: '0.04em',
+    color: 'rgba(255, 220, 200, 0.92)', textShadow: '0 0 5px rgba(0,0,0,0.95)', pointerEvents: 'none',
+  } as Partial<CSSStyleDeclaration>);
+  el.appendChild(countLabel);
+
+  if (isDesktopLike()) {
+    const badge = document.createElement('div');
+    badge.textContent = '1';   // flask is always slot 1
+    Object.assign(badge.style, {
+      position: 'absolute', top: '1px', left: '4px', fontFamily: FONT_UI,
+      fontSize: '9px', fontWeight: '700', color: 'rgba(190, 150, 110, 0.75)', pointerEvents: 'none',
+    } as Partial<CSSStyleDeclaration>);
+    el.appendChild(badge);
+  }
+
+  // Fire-on-release (a graze during a joystick drag can't waste a charge).
+  let pressed = false;
+  const down = (e: Event) => { e.preventDefault(); pressed = true; el.style.transform = 'scale(0.9)'; };
+  const up = (e: Event) => {
+    e.preventDefault();
+    el.style.transform = 'scale(1)';
+    if (!pressed) return;
+    pressed = false;
+    drinkFlaskWithFeedback();
+  };
+  const cancel = () => { pressed = false; el.style.transform = 'scale(1)'; };
+  el.addEventListener('touchstart', down, { passive: false });
+  el.addEventListener('touchend', up, { passive: false });
+  el.addEventListener('touchcancel', cancel);
+  el.addEventListener('mousedown', down);
+  el.addEventListener('mouseup', up);
+  el.addEventListener('mouseleave', cancel);
+
+  container.appendChild(el);
+  flaskEl = el;
+  flaskCount = countLabel;
+  updateFlaskButton();
+}
+
+/** Redraw the flask's charge count + state (dim when empty, warm at full). */
+function updateFlaskButton(): void {
+  if (!flaskEl || !flaskCount) return;
+  const { charges, capacity } = getFlask();
+  flaskCount.textContent = String(charges);
+  const empty = charges <= 0;
+  const full = charges >= capacity;
+  flaskEl.style.opacity = empty ? '0.4' : '1';
+  flaskEl.style.borderColor = full ? 'rgba(255, 210, 120, 0.9)' : tintBorder(HEAL_TINT_FALLBACK);
+  flaskCount.style.color = full
+    ? 'rgba(255, 224, 150, 0.95)'
+    : empty ? 'rgba(210, 160, 160, 0.7)' : 'rgba(255, 220, 200, 0.92)';
+}
+
+/** Drink a flask charge with the right feedback. The heal is applied HERE (the
+ *  bar owns the health/transform imports; flask.ts stays pure state). A charge is
+ *  spent only when it actually heals — a withheld drink costs nothing. */
+function drinkFlaskWithFeedback(): void {
+  const { healPerCharge } = getFlask();
+  if (!getFlask().charges) { denyFlask('The flask runs dry.'); return; }
+  if (getPlayerHp() >= getPlayerMaxHp()) { denyFlask('Already whole.'); return; }
+  // 'passive' kind so a healing-suppressing transform (Red Thirst) can still deny
+  // it — healPlayer returns 0 when suppressed, and we keep the charge.
+  const healed = healPlayer(healPerCharge, 'passive');
+  if (healed <= 0) { denyFlask('The thirst refuses it.'); return; }
+  spendCharge();
+  playHealSlurp(); hapticVibrate(12);
+  flaskEl?.animate(
+    [{ filter: 'brightness(1.8)', transform: 'scale(1.06)' }, { filter: 'brightness(1)', transform: 'scale(1)' }],
+    { duration: 240, easing: 'ease-out' },
+  );
+}
+
+/** Shake the flask + murmur a line so a withheld drink reads as withheld, not
+ *  a broken button. */
+function denyFlask(msg: string): void {
+  flaskEl?.animate(
+    [
+      { transform: 'translateX(0)' }, { transform: 'translateX(-4px)' },
+      { transform: 'translateX(4px)' }, { transform: 'translateX(-2px)' }, { transform: 'translateX(0)' },
+    ],
+    { duration: 240, easing: 'ease-out' },
+  );
+  showInWorldMessage(msg);
+  playDenied();
+  hapticVibrate(8);
+}
+
+/** Quick-use: the flask when hurt, else the first held consumable. Desktop 'Q'. */
 export function useFirstConsumable() {
+  if (getPlayerHp() < getPlayerMaxHp() && getFlask().charges > 0) { drinkFlaskWithFeedback(); return; }
   const all = Object.values(ITEMS).filter(
     (i) => i.kind === 'consumable' && getCount(i.id) > 0,
   );
-  if (all.length === 0) return;
-  const heal = all.find(isHealItem);
-  const pick = heal && getPlayerHp() < getPlayerMaxHp() ? heal : all[0];
-  useConsumable(pick);
+  if (all.length > 0) useConsumable(all[0]);
 }
 
-/** Use the consumable in slot N (1-indexed; slot 1 = heal). Desktop number-
- *  key hotkeys. No-op for an empty slot. */
+/** Use the item in slot N (1-indexed; slot 1 = the flask). Desktop number-key
+ *  hotkeys. No-op for an empty slot. */
 export function useConsumableSlot(slot: number) {
   const id = order[slot - 1];
   if (!id) return;
+  if (id === FLASK_ID) { drinkFlaskWithFeedback(); return; }
   const item = ITEMS[id];
   if (item) useConsumable(item);
 }

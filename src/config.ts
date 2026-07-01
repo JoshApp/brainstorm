@@ -718,6 +718,16 @@ export const CONFIG = {
 
   // === PLAYER HEALTH ===
   PLAYER_HP_MAX: 8,    // bumped from 5 — multiple enemies stacking damage is brutal at 5
+
+  // === HEALING FLASK (Estus) — docs/LOOT-PUNCHLIST.md #3 ===
+  // The primary sustain: a fixed pool of CHARGES that refills at the bonfire.
+  // Turns healing from scattered-potion litter into a managed resource, so every
+  // fire is a "push or bank" decision (the delve tension). Per-run for now (meta
+  // capacity growth comes later); shards grow capacity mid-run, draughts top up.
+  FLASK: {
+    START_CAPACITY: 3,     // charges at run start + after a full bonfire refill
+    HEAL_PER_CHARGE: 3,    // HP restored per charge (of PLAYER_HP_MAX 8 → ~⅜ bar; the primary heal)
+  },
   PLAYER_HIT_PAUSE_MS: 110,         // longer freeze than landing — getting hit hurts more
   PLAYER_HIT_SHAKE_MAGNITUDE: 0.12, // stronger than landing-shake
   PLAYER_HIT_SHAKE_DURATION: 0.28,

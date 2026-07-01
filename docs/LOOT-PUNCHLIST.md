@@ -69,8 +69,17 @@ trash → diluted payoff; too much stuff → no clarity). The fixes:
 2. **Density + trash→sink** — cut overall chest count (esp. bronze) so
    each lands; make junk reliably convert to gold and gold feed the
    merchant/altars, so trash volume (fine in itself) stops being clutter.
-3. **Estus heal economy** (bigger, systemic) — shift healing toward a
-   fixed-charge flask refilled at the per-floor bonfire instead of
-   scattered potions. The `consumableMax` field + a comment already gesture
-   at this. Deepens the push-vs-bank-at-the-fire tension from
-   `THE-DUNGEON-NOTICES.md`.
+3. **Estus heal economy** (bigger, systemic) — DECIDED 2026-07-01: full Estus
+   flask, PER-RUN (meta capacity growth deferred). Healing loot tiers by rarity:
+   rare gated **flask shards** (+charge / +heal, from boss/elite/gold/challenge),
+   uncommon one-off **refill draughts**, common heal slots → **currency/sink**.
+   Fountains stay their own gamble (untouched).
+   - **Stage 1 DONE** — the flask itself: `src/player/flask.ts` (pure per-run
+     charge state), `CONFIG.FLASK`, an always-present primary heal button in the
+     consumable bar bound to it, **refill on bonfire REST** (`fate-fire.ts`, once
+     per fire), and per-run persistence in `run-state` (reset on new run, restored
+     on continue). flask.ts stays health-free so `run-state → flask` doesn't cycle.
+   - **Stage 2 (next)** — retire `healing-potion` from the ~12 enemy drop tables:
+     convert it into the refill-draught, add the flask shards (rare/gated), route
+     common heal slots to currency. Then the loot-density + trash→sink pass (#2).
+   Deepens the push-vs-bank-at-the-fire tension from `THE-DUNGEON-NOTICES.md`.

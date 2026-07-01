@@ -13,6 +13,7 @@ import { registerInteractable } from '../interactables/system';
 import { generateEntityId } from '../ecs/world';
 import { openCardReading } from '../ui/card-reading';
 import { armFateGate, clearFateGate } from '../state/fate-gate';
+import { refillFlask } from '../player/flask';
 
 interface FateFireOpts {
   /** The built bonfire model — its flame meshes/sprites get spent in place. */
@@ -48,6 +49,7 @@ export function registerFateFire(o: FateFireOpts): void {
         onDone: (picked) => {
           if (!picked || drawn) return;
           drawn = true;
+          refillFlask();   // resting at the fire refills the flask (once per fire)
           spendFlame(flames);
           o.dimLight?.(0.34);
           interactable.promptLabel = ''; // spent — no rest prompt
